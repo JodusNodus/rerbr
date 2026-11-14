@@ -2790,7 +2790,7 @@ impl layout::Vf158xCalls for RecordedVf158<'_> {
         let inner = record_after(self.call, &mut self.next, target);
         assert_eq!(target, 0x519950, "Vf158x call {}: slot 0 target", self.call.index);
         assert_eq!(inner.args, [car], "Vf158x call {}: slot 0 this", self.call.index);
-        assert_eq!(inner.eax, entity_layout::entity_vf00(mem, car), "Vf158x call {}: slot 0 return", self.call.index);
+        assert_eq!(inner.eax, entity_layout::entity_name(mem, car), "Vf158x call {}: slot 0 return", self.call.index);
     }
 
     fn solid_vf158(&mut self, mem: &mut Mem, _sp: u32, car: u32) -> u32 {
@@ -2838,7 +2838,8 @@ impl solid_layout::VerySoftHost for RecordedSolidVf158<'_> {
         let target = mem.u32(parent_vtable + 0x158);
         assert_eq!(mem.u8(target), 0xC3, "Vf158x call {}: parent slot-86 return stub", self.index);
         let mut relay = RecordedEntityVf158 { inner, index: self.index, object: this, parent, target };
-        let eax = entity_layout::entity_vf158(mem, &mut relay, this, sp).expect("recorded parent slot-86 relay");
+        let eax =
+            entity_layout::refile_through_parent(mem, &mut relay, this, sp).expect("recorded parent slot-86 relay");
         assert_eq!(eax, inner.eax, "Vf158x call {}: entity eax", self.index);
         Ok(())
     }
@@ -2894,8 +2895,8 @@ impl entity_layout::FilingHost for RecordedEntityVf158<'_> {
     }
 }
 
-impl entity_layout::EntityVf158Host for RecordedEntityVf158<'_> {
-    fn slot158(
+impl entity_layout::RefileHost for RecordedEntityVf158<'_> {
+    fn parent_refile(
         &mut self,
         _sp: u32,
         target: u32,

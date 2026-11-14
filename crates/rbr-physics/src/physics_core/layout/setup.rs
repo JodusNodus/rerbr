@@ -1,31 +1,31 @@
 //! Load-time setup of the physics core (`src/rbr/RBR_E46_Small.cpp`, group D of the README). These run once, not per step.
 
-use super::construct::{self, CDefHost, Heap};
+use super::construct::{self, Heap, PhysicsDefHost};
 use super::physics_object as physics;
 use crate::mem::Mem;
 use crate::physics_core::layout;
 
 /// `CPhysics::CDef`'s size, the block `E46_CreateDef` allocates.
-pub const CDEF_SIZE: u32 = 0x16160;
+pub const DEF_SIZE: u32 = 0x16160;
 
 /// The calls `E46_CreateDef` makes into code outside this port, after the def's own constructor.
-pub trait CreateHost: Heap + CDefHost {
+pub trait CreateHost: Heap + PhysicsDefHost {
     /// The def's slot 2 (0x52f0c0), the `StepForward` the original casts the def to. It initialises the def's
     /// sub-objects, so the caller runs it.
     fn step_forward(&mut self, mem: &mut Mem, def: u32, arg: u32);
     /// `E45_PhysUnk34` (0x523a20) on the def; returns its result.
-    fn phys_unk34(&mut self, mem: &mut Mem, def: u32) -> u32;
+    fn def_result(&mut self, mem: &mut Mem, def: u32) -> u32;
 }
 
 /// `E46_CreateDef(arg)` (0x526660): a def built on a new block, stepped with `arg`, and the `E45_PhysUnk34` result
 /// stored in the global `g_165b200`. Returns the def (0 when the allocation fails; the original then steps null).
 pub fn create_def(mem: &mut Mem, host: &mut impl CreateHost, arg: u32) -> u32 {
-    let def = host.alloc(mem, CDEF_SIZE);
+    let def = host.alloc(mem, DEF_SIZE);
     if def != 0 {
-        construct::construct_cdef(mem, host, def);
+        construct::construct_physics_def(mem, host, def);
     }
     host.step_forward(mem, def, arg);
-    let result = host.phys_unk34(mem, def);
+    let result = host.def_result(mem, def);
     layout::set_create_result(mem, result);
     def
 }
@@ -50,11 +50,11 @@ pub fn init_physics(
 ) {
     host.strip_comments(mem, script);
     host.tokenize(mem, cursor, script);
-    let def = layout::cdef_global(mem);
+    let def = layout::def_global(mem);
     if def == 0 {
         let def = create_def(mem, host, cursor);
-        layout::set_cdef_global(mem, def);
-        let object = physics::cdef_new_physics(mem, host, def);
+        layout::set_def_global(mem, def);
+        let object = physics::def_new_physics(mem, host, def);
         layout::set_physics_global(mem, object);
     } else {
         host.step_forward(mem, def, cursor);
@@ -103,12 +103,12 @@ pub trait WallHost {
     /// `E34Link10::UnlinkA` (0x4e41a0) on the relay's link at `link`.
     fn unlink(&mut self, mem: &mut Mem, link: u32);
     /// `CPhysics::CState::RegWall` (0x5263d0) on the state at `state`, with the relay as the wall.
-    fn reg_wall(&mut self, mem: &mut Mem, state: u32, wall: u32);
+    fn register(&mut self, mem: &mut Mem, state: u32, wall: u32);
 }
 
 /// `E43HostRel::WallRel` (0x5276a0): with a target list, lowers its count, unlinks the relay and registers the relay
 /// as a wall with the physics' state. `physics` is the host (`this`), `relay` the wall (the argument).
-pub fn wall_rel(mem: &mut Mem, host: &mut impl WallHost, physics: u32, relay: u32) {
+pub fn relink_wall(mem: &mut Mem, host: &mut impl WallHost, physics: u32, relay: u32) {
     let target = layout::relay_target(mem, relay);
     if target == 0 {
         return;
@@ -116,5 +116,5 @@ pub fn wall_rel(mem: &mut Mem, host: &mut impl WallHost, physics: u32, relay: u3
     layout::release_target(mem, target);
     host.unlink(mem, layout::relay_link(relay));
     let state = layout::state_of(mem, physics);
-    host.reg_wall(mem, state, relay);
+    host.register(mem, state, relay);
 }

@@ -607,7 +607,7 @@ pub fn construct_engine_state(mem: &mut Mem, this: u32, owner: u32) -> Result<()
     mem.set_u32(this + 0x1DC, air);
     mem.set_u32(this + 0x1E0, air);
     mem.set_u32(this + 0x274, 0);
-    if physics_core::layout::cdef_debug_flags(mem) & ENGINE_GRAPH_FLAG != 0 {
+    if physics_core::layout::def_debug_flags(mem) & ENGINE_GRAPH_FLAG != 0 {
         return Err(HostUnavailable);
     }
     mem.set_u32(this + 0x278, 0);

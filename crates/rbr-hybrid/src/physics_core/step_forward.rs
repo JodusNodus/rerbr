@@ -87,7 +87,7 @@ impl NodeHost for PhysicsStepCalls<'_> {
     }
 
     fn integrate(&mut self, mem: &mut Mem, node: u32, p: f32) {
-        layout::seed_work5500_edi(mem, self.stack);
+        layout::seed_body_pass_edi(mem, self.stack);
         let target = layout::virtual_target(mem, node, 0x6c);
         self.host.call_at(self.stack.work_slot_arg(), target, node, &[p.to_bits()]);
     }
@@ -99,27 +99,27 @@ impl NodeHost for PhysicsStepCalls<'_> {
 }
 
 impl core_physics::StepHost for PhysicsStepCalls<'_> {
-    fn entity_20(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
+    fn pre_step(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
         self.host.call_at(entry_sp, target, node, &[dt.to_bits()]);
     }
 
-    fn entity_24(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
+    fn post_bodies(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
         self.host.call_at(entry_sp, target, node, &[dt.to_bits()]);
     }
 
-    fn entity_48(&mut self, entry_sp: u32, target: u32, node: u32) {
+    fn init_pass(&mut self, entry_sp: u32, target: u32, node: u32) {
         self.host.call_at(entry_sp, target, node, &[]);
     }
 
-    fn entity_54(&mut self, entry_sp: u32, target: u32, node: u32) {
+    fn post_contact(&mut self, entry_sp: u32, target: u32, node: u32) {
         self.host.call_at(entry_sp, target, node, &[]);
     }
 
-    fn entity_98(&mut self, entry_sp: u32, target: u32, node: u32) {
+    fn end_step(&mut self, entry_sp: u32, target: u32, node: u32) {
         self.host.call_at(entry_sp, target, node, &[]);
     }
 
-    fn telemetry_60(&mut self, entry_sp: u32, receiver: u32, count: u32) {
+    fn telemetry_substep(&mut self, entry_sp: u32, receiver: u32, count: u32) {
         self.host.call_at(entry_sp, 0x499e60, receiver, &[count]);
     }
 
@@ -174,7 +174,7 @@ impl core_physics::StepHost for PhysicsStepCalls<'_> {
         self.host.call_at(entry_sp, target, solver, &[]);
     }
 
-    fn telemetry_90(&mut self, entry_sp: u32, receiver: u32) {
+    fn telemetry_after_solve(&mut self, entry_sp: u32, receiver: u32) {
         self.host.call_at(entry_sp, 0x499e90, receiver, &[]);
     }
 

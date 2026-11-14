@@ -21,7 +21,7 @@ pub trait GridHost {
 /// is the cell grid global, and the box is widened when the CDef's flags have `0x2000` (the drive's flags do).
 pub fn box_cells(mem: &mut Mem, host: &mut impl GridHost, a: u32, b: u32, out: u32) {
     let grid = layout::cell_grid(mem);
-    let widened = layout::cdef_flags(mem) & CELL_WIDEN_FLAG != 0;
+    let widened = layout::def_flags(mem) & CELL_WIDEN_FLAG != 0;
     let cells = detect::box_cells(|x, y| host.lookup_twin(grid, x, y), layout::xy(mem, a), layout::xy(mem, b), widened);
     layout::set_cells(mem, out, cells);
 }
@@ -35,7 +35,7 @@ pub trait EdgeHost {
 /// `E45_M46A0` (0x5246a0, fastcall with ecx = self, which the port does not read; four stack arguments): sweeps the
 /// edge pairs of the list at `list` between the corners `a` and `b`, writes the result object `out`, and returns the
 /// best hit's id (0 when nothing hit). A null list returns 0 before anything is written.
-pub fn e45_m46a0(mem: &mut Mem, host: &mut impl EdgeHost, a: u32, b: u32, list: u32, out: u32) -> u32 {
+pub fn sweep_edge_pairs(mem: &mut Mem, host: &mut impl EdgeHost, a: u32, b: u32, list: u32, out: u32) -> u32 {
     if list == 0 {
         return 0;
     }

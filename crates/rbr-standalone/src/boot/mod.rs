@@ -39,7 +39,7 @@ use rbr_physics::math::trig;
 use rbr_physics::mem::{Mem, Pages};
 use rbr_physics::ngp::layout::{car_init, runtime, stage as ngp_stage};
 use rbr_physics::physics_core::layout as physics;
-use rbr_physics::physics_core::layout::physics_object::cdef_new_physics;
+use rbr_physics::physics_core::layout::physics_object::def_new_physics;
 use rbr_physics::stage::layout as stage;
 use rbr_school::{Bank, Lesson, SchoolRun};
 
@@ -585,10 +585,10 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     let dls =
         markers::parse(&stage_files::read(data, stage_name, "dls")?).map_err(|e| format!("{stage_name}.dls: {e:?}"))?;
     let mut calls = PhysicsCalls { heap: heap.clone(), keeper: TimeKeeper::load(&dls), prefilled: false };
-    let physics_at = cdef_new_physics(&mut mem, &mut calls, def);
+    let physics_at = def_new_physics(&mut mem, &mut calls, def);
     assert!(calls.prefilled, "CPhysics::CPhysics prefills the event pool");
     collision::prefill_pool(&mut mem);
-    physics::set_cdef_global(&mut mem, def);
+    physics::set_def_global(&mut mem, def);
     physics::set_physics_global(&mut mem, physics_at);
     physics::store_frequency(&mut mem, race.frequency);
     load::enter_frame_sample(&mut mem, &mut Profiler);
@@ -730,7 +730,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
             detach.push((handle, part));
         }
         store_car_stuff(&mut mem, at, &pose, part, handle, index, slot(0));
-        physics::notify_stuff(&mut mem, &mut parts, at)
+        physics::notify_placement(&mut mem, &mut parts, at)
             .map_err(|_| format!("the car placement {} is not ported", part.name))?;
         if k == 0 {
             car = mem.u32(at + STUFF_OBJECT);
@@ -803,7 +803,7 @@ pub fn ngp_init(mem: &mut Mem, image: &Image) {
     // track-12_O), so the init runs with no manager.
     let replay = mem.u32(physics::TELEMETRY_GLOBAL);
     mem.set_u32(physics::TELEMETRY_GLOBAL, 0);
-    ngp_stage::stage_init(mem, physics::cdef_global(mem), tables);
+    ngp_stage::stage_init(mem, physics::def_global(mem), tables);
     mem.set_u32(physics::TELEMETRY_GLOBAL, replay);
 }
 

@@ -8,7 +8,7 @@ use std::path::Path;
 
 use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::mem::Mem;
-use rbr_physics::physics_core::layout::material;
+use rbr_physics::physics_core::layout::{def_global, material};
 use rbr_physics::tyre::layout::{Table, WORDS};
 use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CAR, DEF_MATERIALS, TYRE_SCRATCH};
@@ -17,8 +17,6 @@ use rbr_physics::wheel::layout::{BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CAR, DE
 const WHEELS: u32 = 0x470;
 /// The centre ray block (`o+0xc20`, `wheel::layout::RAY_CENTRE`): its weight and tags.
 const BLOCK_2: u32 = 0xC20;
-/// The physics definition global (`g_1659b6c`); the material manager is at its `DEF_MATERIALS`.
-const CDEF_GLOBAL: u32 = 0x0165_9b6c;
 /// A material's flags byte past its entry (the `CBitField` value at `+0x14c + 0xc`).
 const MAT_FLAGS: u32 = 0x158;
 /// The scratch's footprint the lab maps back (`load_frame` reads to `+0x50c`; the record's angle
@@ -110,7 +108,7 @@ impl TyreProbe {
             let block = wheel + BLOCK_2;
             let (tag1, tag2) = (mem.u32(block + BLOCK_TAG_1), mem.u32(block + BLOCK_TAG_2));
             writeln!(self.file, "block_tags: {tag1} {tag2} {:.6}", mem.f32(block + BLOCK_WEIGHT)).map_err(failed)?;
-            let manager = mem.u32(CDEF_GLOBAL) + DEF_MATERIALS;
+            let manager = def_global(mem) + DEF_MATERIALS;
             for tag in [tag1, tag2, 0] {
                 let entry = material::entry(manager, tag);
                 writeln!(

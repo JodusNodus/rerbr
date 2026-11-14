@@ -27,7 +27,7 @@ pub(super) fn vf80(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `()`: `CSolid::E43Vf8C` (slot 35, `S8C`), the word at `+0x1ec`.
 pub(super) fn vf8c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::cache_1ec(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(layout::end_step_word(&ctx.mem, r.ecx), 0))
 }
 
 /// thiscall `()`: `CEntity::E43Vf88` (slot 34), 0.
@@ -37,7 +37,7 @@ pub(super) fn entity_vf88(_: &mut Ctx, _: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `()`: `CEntity::Vf00`, the name pointer at +0x3c or the class-name fallback.
 pub(super) fn entity_vf00(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::entity_vf00(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(layout::entity_name(&ctx.mem, r.ecx), 0))
 }
 
 struct EntityVf158<'a> {
@@ -54,8 +54,8 @@ impl layout::FilingHost for EntityVf158<'_> {
     }
 }
 
-impl layout::EntityVf158Host for EntityVf158<'_> {
-    fn slot158(
+impl layout::RefileHost for EntityVf158<'_> {
+    fn parent_refile(
         &mut self,
         sp: u32,
         target: u32,
@@ -68,14 +68,14 @@ impl layout::EntityVf158Host for EntityVf158<'_> {
 /// thiscall `()`: `CEntity::E43Vf158`, its own WallRel filing or its parent's slot 86.
 pub(super) fn entity_vf158(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut host = EntityVf158 { host: ctx.host };
-    let eax = layout::entity_vf158(&mut ctx.mem, &mut host, r.ecx, r.esp)
+    let eax = layout::refile_through_parent(&mut ctx.mem, &mut host, r.ecx, r.esp)
         .map_err(|_| Decline::Unsupported("entity slot-86 filing is not CSolid"))?;
     Ok(Return::void(eax, 0))
 }
 
-/// thiscall `()` on an item's link: `E34Link10::UnlinkA` (`layout::unlink_a`).
+/// thiscall `()` on an item's link: `E34Link10::UnlinkA` (`layout::unlink_with_eax`).
 pub(super) fn unlink_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::unlink_a(&mut ctx.mem, r.ecx, r.eax), 0))
+    Ok(Return::void(layout::unlink_with_eax(&mut ctx.mem, r.ecx, r.eax), 0))
 }
 
 /// thiscall `(item)` on a list: `E34LinkList10::PushItem` (`layout::push_item`); eax is the item.
@@ -85,12 +85,12 @@ pub(super) fn push_item(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(item, 4))
 }
 
-/// thiscall `(object)` on the state: `CPhysics::CState::RegWall` (`layout::reg_wall`). The object's slots are entered
+/// thiscall `(object)` on the state: `CPhysics::CState::RegWall` (`layout::register_entity`). The object's slots are entered
 /// 12 bytes below the entry, as the original's.
 pub(super) fn reg_wall(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let object = r.stack[0];
     let host = ctx.host;
-    let eax = layout::reg_wall(&mut ctx.mem, r.ecx, object, |mem, slot| {
+    let eax = layout::register_entity(&mut ctx.mem, r.ecx, object, |mem, slot| {
         let target = mem.u32(mem.u32(object) + slot);
         host.call_at(r.esp - 0xc, target, object, &[]).eax != 0
     });
@@ -167,7 +167,7 @@ impl EdgeHost for Edges<'_> {
 pub(super) fn m46a0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, list, out, ..] = r.stack;
     let mut edges = Edges { mem: ctx.mem.clone(), host: ctx.host, temp: temps(r) };
-    let id = detect::e45_m46a0(&mut ctx.mem, &mut edges, a, b, list, out);
+    let id = detect::sweep_edge_pairs(&mut ctx.mem, &mut edges, a, b, list, out);
     Ok(Return::void(id, 16))
 }
 

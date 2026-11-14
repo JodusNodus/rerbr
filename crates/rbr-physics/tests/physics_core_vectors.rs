@@ -377,8 +377,8 @@ fn bits(v: Vec4) -> [u32; 4] {
 #[test]
 fn solid_getters_match() {
     let _pc24 = Precision::Pc24.scope();
-    replay_eax(VAR, GET_1DC, "CSolid::E43Vf80", true, |mem, a| layout::cache_1dc(mem, a[0]));
-    replay_eax(VAR, GET_1EC, "CSolid::E43Vf8C", true, |mem, a| layout::cache_1ec(mem, a[0]));
+    replay_eax(VAR, GET_1DC, "CSolid::E43Vf80", true, |mem, a| layout::takes_part_word(mem, a[0]));
+    replay_eax(VAR, GET_1EC, "CSolid::E43Vf8C", true, |mem, a| layout::end_step_word(mem, a[0]));
 }
 
 /// `CPhysics::CState::CState` (load time: from the entry dump's record, `RBR_PHYSICS_CORE_VECTORS`).
@@ -425,7 +425,7 @@ fn debug_hook_idle_matches() {
 struct Calls {
     blocks: VecDeque<u32>,
     hook: u32,
-    phys_unk34: u32,
+    def_result: u32,
     /// The name `GetNameOrNull` returns in the recorded body (the mock's answer to the body's name query).
     name: u32,
     /// The answer of the passenger's external flag test (`E37Get67C`).
@@ -440,7 +440,7 @@ impl Calls {
         Calls {
             blocks: calls.iter().filter(|i| i.addr == OPERATOR_NEW).map(|i| i.eax).collect(),
             hook: calls.iter().find(|i| i.addr == HOOK).map_or(0, |i| i.eax),
-            phys_unk34: calls.iter().find(|i| i.addr == PHYS_UNK34).map_or(0, |i| i.eax),
+            def_result: calls.iter().find(|i| i.addr == PHYS_UNK34).map_or(0, |i| i.eax),
             name: calls.iter().find(|i| i.addr == GET_NAME_OR_NULL).map_or(0, |i| i.eax),
             flag: calls.iter().find(|i| i.addr == E37_GET_67C).map_or(0, |i| i.eax),
             calls: Vec::new(),
@@ -464,7 +464,7 @@ impl construct::ScratchHost for Calls {
         self.calls.push((CTOR_SOLVER, vec![solver, def]));
     }
 
-    fn solver_s08(&mut self, _: &mut Mem, solver: u32) {
+    fn solver_post(&mut self, _: &mut Mem, solver: u32) {
         self.calls.push((SOLVER_S08, vec![solver]));
     }
 }
@@ -474,9 +474,9 @@ impl setup::CreateHost for Calls {
         self.calls.push((STEP_FORWARD, vec![def, arg]));
     }
 
-    fn phys_unk34(&mut self, _: &mut Mem, def: u32) -> u32 {
+    fn def_result(&mut self, _: &mut Mem, def: u32) -> u32 {
         self.calls.push((PHYS_UNK34, vec![def]));
-        self.phys_unk34
+        self.def_result
     }
 }
 
@@ -525,7 +525,7 @@ impl setup::WallHost for Calls {
         self.calls.push((UNLINK_A, vec![link]));
     }
 
-    fn reg_wall(&mut self, _: &mut Mem, state: u32, wall: u32) {
+    fn register(&mut self, _: &mut Mem, state: u32, wall: u32) {
         self.calls.push((REG_WALL, vec![state, wall]));
     }
 }
@@ -569,14 +569,14 @@ impl physics_object::PhysicsHost for Calls {
 }
 
 impl passenger_ctor::ShakeHost for Calls {
-    fn flag_67c(&mut self, _: &mut Mem, obj: u32) -> u32 {
+    fn grid_flag(&mut self, _: &mut Mem, obj: u32) -> u32 {
         self.calls.push((E37_GET_67C, vec![obj]));
         self.flag
     }
 
     /// `Clear6` clears its six vectors (96 bytes).
     /// `Clear6` clears the six vectors at +0x10 (`E09Vec4::Clear`, four words each; the record lists them before Clear6).
-    fn clear6(&mut self, mem: &mut Mem, at: u32) {
+    fn clear_payload(&mut self, mem: &mut Mem, at: u32) {
         for k in 0..6 {
             let vector = at + 0x10 + 16 * k;
             self.calls.push((VEC4_CLEAR, vec![vector]));
@@ -605,7 +605,7 @@ impl passenger_ctor::PassengerHost for Calls {
         self.calls.push((VEC4_CLEAR, vec![at]));
     }
 
-    fn scratch_vf04(&mut self, _: &mut Mem, at: u32) {
+    fn scratch_reset(&mut self, _: &mut Mem, at: u32) {
         self.calls.push((PASSENGER_SCRATCH_VF04, vec![at]));
     }
 }
@@ -647,7 +647,7 @@ impl mounted_body::BodyHost for Calls {
     }
 }
 
-impl construct::CDefHost for Calls {
+impl construct::PhysicsDefHost for Calls {
     fn def_manager(&mut self, _: &mut Mem, at: u32) {
         self.calls.push((DEF_MANAGER_CTOR, vec![at]));
     }
@@ -833,7 +833,7 @@ fn scratch_ctor_matches() {
 fn scratch_vf04_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay_calls(CSCRATCH_VF04, "CPhysics::CScratch::Vf04", &SOLVER_SKIP, |mem, call, host| {
-        construct::scratch_vf04(mem, host, call.args[0]);
+        construct::reset_scratch(mem, host, call.args[0]);
     });
 }
 
@@ -842,7 +842,7 @@ fn state_factory_matches() {
     let _pc24 = Precision::Pc24.scope();
     // Vf50(owner, name): the state's argument is the owner (args[1]), the name is not used.
     replay_calls(CSTATE_FACTORY, "CPhysics::CDef::Vf50", &[], |mem, call, host| {
-        assert_eq!(construct::cdef_new_state(mem, host, call.args[1]), call.eax);
+        assert_eq!(construct::def_new_state(mem, host, call.args[1]), call.eax);
     });
 }
 
@@ -850,7 +850,7 @@ fn state_factory_matches() {
 fn cdef_new_scratch_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay_calls(CDEF_VF54, "CPhysics::CDef::Vf54", &SOLVER_SKIP, |mem, call, host| {
-        assert_eq!(construct::cdef_new_scratch(mem, host, call.args[0]), call.eax);
+        assert_eq!(construct::def_new_scratch(mem, host, call.args[0]), call.eax);
     });
 }
 
@@ -866,7 +866,7 @@ fn physics_ctor_matches() {
 fn cdef_new_physics_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay_calls(CDEF_VF4C, "CPhysics::CDef::Vf4c", &LINK_SKIP, |mem, call, host| {
-        assert_eq!(physics_object::cdef_new_physics(mem, host, call.args[0]), call.eax);
+        assert_eq!(physics_object::def_new_physics(mem, host, call.args[0]), call.eax);
     });
 }
 
@@ -874,7 +874,7 @@ fn cdef_new_physics_matches() {
 fn cdef_ctor_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay_calls(CDEF_CTOR, "CPhysics::CDef::CDef", &CDEF_SKIP, |mem, call, host| {
-        construct::construct_cdef(mem, host, call.args[0]);
+        construct::construct_physics_def(mem, host, call.args[0]);
     });
 }
 
@@ -921,7 +921,7 @@ fn wall_rel_matches() {
             }
         },
         |mem, call, host| {
-            setup::wall_rel(mem, host, call.args[0], call.args[1]);
+            setup::relink_wall(mem, host, call.args[0], call.args[1]);
             if let Some(Window { at: count_at, before: pre, .. }) = call.windows.get(2) {
                 let before = u32::from_le_bytes(pre[..4].try_into().unwrap());
                 assert_eq!(mem.u32(*count_at), before - 1, "E43HostRel::WallRel: the count");
@@ -943,7 +943,7 @@ fn emit_local_time_matches() {
 fn passenger_flag_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay_calls(PASSENGER_FLAG, "E45_P33F0", &[], |mem, call, host| {
-        let set = passenger_ctor::flag_67c_set(mem, host, call.args[0]);
+        let set = passenger_ctor::grid_flag_set(mem, host, call.args[0]);
         assert_eq!(set as u32, call.eax, "E45_P33F0 call {}: eax", call.index);
     });
 }
@@ -1183,7 +1183,7 @@ fn mounted_state_ctor_matches() {
 #[test]
 fn mounted_vf4c_matches() {
     let _pc24 = Precision::Pc24.scope();
-    replay_value(MOUNTED_VF4C, "CMountedRigidBody::CDef::Vf4c", |_, _| mounted_ctor::vf4c());
+    replay_value(MOUNTED_VF4C, "CMountedRigidBody::CDef::Vf4c", |_, _| mounted_ctor::def_string());
 }
 
 /// The spans of a body the caller's code writes: everything but the words the port writes (the vptr at +0, the owner at
@@ -1399,7 +1399,7 @@ fn edge_sweep_matches() {
         let expected = records.len();
         let mut host = EdgeAnswers { records };
         let [_, a, b, list, out] = call.args[..] else { panic!("{name} call {}: five words", call.index) };
-        let ret = detect_calls::e45_m46a0(&mut mem, &mut host, a, b, list, out);
+        let ret = detect_calls::sweep_edge_pairs(&mut mem, &mut host, a, b, list, out);
         assert_eq!(ret, call.eax, "{name} call {}: eax", call.index);
         assert!(host.records.is_empty(), "{name} call {}: {expected} EdgeEdge records, not all tested", call.index);
         check_windows(call, &mem, name);

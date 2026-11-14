@@ -10,7 +10,7 @@ use crate::rigid_body::host::HostUnavailable;
 use crate::rigid_body::{self, sleep};
 
 /// The calls `CSolid::E43Vf90` (0x52bf30) and `CSolid::E43Vf94` (0x52c130) make outside the body; `CEntity::E43Vf90`
-/// and `E43Vf94`, which they call directly, are `core_layout::entity_rel` and need the body's filing.
+/// and `E43Vf94`, which they call directly, are `core_layout::refile_entity` and need the body's filing.
 pub trait RestHost: core_layout::FilingHost {
     /// The body's slot 18 (0x48; `CSolid::S18`, 0x529dc0, for the solids so far), `E43Vf90`'s only.
     fn slot18(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable>;
@@ -51,7 +51,7 @@ pub fn solid_wake(mem: &mut Mem, host: &mut impl RestHost, this: u32) -> Result<
     sleep::wake_up(&mut body);
     body.store(mem, this);
     host.slot18(mem, this)?;
-    core_layout::entity_rel(mem, host, this)?;
+    core_layout::refile_entity(mem, host, this)?;
     let body = Body::load(mem, this);
     host.emit(mem, &rigid_body::emit::event(&body, WAKE))
 }
@@ -62,7 +62,7 @@ pub fn solid_sleep(mem: &mut Mem, host: &mut impl RestHost, this: u32) -> Result
     let mut body = Body::load(mem, this);
     sleep::fall_asleep(&mut body);
     body.store(mem, this);
-    core_layout::entity_rel(mem, host, this)?;
+    core_layout::refile_entity(mem, host, this)?;
     let body = Body::load(mem, this);
     host.emit(mem, &rigid_body::emit::event(&body, SLEEP))
 }

@@ -11,12 +11,13 @@ use crate::mem::Mem;
 pub trait DetectorHost {
     /// Slot 0x118: the entity's collision grid, 0 for none (name ours).
     fn collision_grid(&mut self, sp: u32, entity: u32) -> u32;
-    /// Slot 0x110 and slot 0x10c: the gates the detectors test (nonzero passes).
-    fn entity_110(&mut self, sp: u32, entity: u32) -> u32;
-    fn entity_10c(&mut self, sp: u32, entity: u32) -> u32;
-    /// Slots 0x30 and 0x34: the entity's two frames.
-    fn entity_30(&mut self, sp: u32, entity: u32) -> u32;
-    fn entity_34(&mut self, sp: u32, entity: u32) -> u32;
+    /// Slot 0x110 (`CBody::Vf110`: its grid is active) and slot 0x10c (`CBody::Vf10C`: it has a grid), the gates the
+    /// detectors test (nonzero passes).
+    fn grid_active(&mut self, sp: u32, entity: u32) -> u32;
+    fn has_grid(&mut self, sp: u32, entity: u32) -> u32;
+    /// Slots 0x30 and 0x34: the entity's two transforms (`Vf30`, `Vf34`).
+    fn transform(&mut self, sp: u32, entity: u32) -> u32;
+    fn second_transform(&mut self, sp: u32, entity: u32) -> u32;
     /// Slot 0x120: the entity's box, its corners to `lo` and `hi` (name ours).
     fn entity_box(&mut self, sp: u32, entity: u32, lo: u32, hi: u32);
     /// Slot 0xcc: whether the entity overlaps the box of the two pair objects (name ours).
@@ -24,11 +25,11 @@ pub trait DetectorHost {
     /// Slot 0x80: the entity's gate on its children and its parent's (nonzero passes) (name ours).
     fn child_gate(&mut self, sp: u32, entity: u32) -> u32;
     /// Slot 0x30 called with one argument (`E34Call12_1::S30`).
-    fn entity_30_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32;
+    fn transform_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32;
     /// Slot 0xd0: the penetration response with the pair object, the other entity and the detector's word (eax).
-    fn entity_d0(&mut self, sp: u32, entity: u32, pair: u32, other: u32, extra: u32) -> u32;
+    fn pair_response(&mut self, sp: u32, entity: u32, pair: u32, other: u32, extra: u32) -> u32;
     /// Slot 0xd4: the seven arguments of `CL2Pen`'s pair response (`E45SCC::SD4`).
-    fn entity_d4(&mut self, sp: u32, entity: u32, args: [u32; 7]);
+    fn body_pair_response(&mut self, sp: u32, entity: u32, args: [u32; 7]);
     /// `CEntity::E43_ExclF80` (0x519f80): 0 when the entity excludes `other`.
     fn exclusion_test(&mut self, sp: u32, entity: u32, other: u32) -> u32;
     /// `E37GridOps::M6610` (0x4f6610) on the grid ops at `at`.
@@ -47,8 +48,8 @@ pub trait DetectorHost {
     fn detect(&mut self, sp: u32, detector: u32, node: u32);
     /// `CEntity::E43_Walk1F0` (0x51a1f0): the detector on the entity's children.
     fn walk(&mut self, sp: u32, entity: u32, detector: u32);
-    /// `CPhysics::Visit470` (0x526390): the detector on the physics' +0x470 list.
-    fn visit_list470(&mut self, sp: u32, physics: u32, detector: u32);
+    /// `CPhysics::Visit470` (0x526390): the detector on the state's +0x470 list (the walls).
+    fn visit_walls(&mut self, sp: u32, physics: u32, detector: u32);
     /// The probe kernel's tests of the entity at the cell node `node` (`kernel_collect`, whose frame is `frame`: the
     /// flags against `mask` and `excluded`, the grid and its solid byte, the overlap with the box of the frame's
     /// pairs), answered by a host that knows how they come out, with the words their calls write written. `None`
@@ -80,9 +81,9 @@ pub trait CollideHost {
     fn prof_exit(&mut self, sp: u32, chan: u32);
     /// `CPhysics::Work6a70` (0x526a70): the collision detectors over the entities.
     fn run_collision_detectors(&mut self, sp: u32, physics: u32, word: u32);
-    /// The telemetry hooks (0x499e70 with the event list, 0x499e90).
-    fn telemetry_70(&mut self, sp: u32, receiver: u32, events: u32);
-    fn telemetry_90(&mut self, sp: u32, receiver: u32);
+    /// The telemetry hooks (named by what they are given): 0x499e70 with the event list, 0x499e90 after the solver.
+    fn telemetry_events(&mut self, sp: u32, receiver: u32, events: u32);
+    fn telemetry_after_solve(&mut self, sp: u32, receiver: u32);
     /// The solver's sweep (0x4fbc20), its fraction (0x4fc500, the x87 result), its hit count (0x4fbca0), its pass
     /// (0x4fca20) and its slot 2 (`target`).
     fn solver_sweep_events(&mut self, sp: u32, solver: u32);
@@ -93,7 +94,7 @@ pub trait CollideHost {
     /// `CPhysics::Work5640` (0x525640) with the fraction and `Work5760` (0x525760) with the window.
     fn advance_contact_bodies(&mut self, sp: u32, physics: u32, fraction: f32);
     fn advance_contact_bodies_remainder(&mut self, sp: u32, physics: u32, window: f32);
-    /// The entity slots 0x48 and 0x54 (`target`) on `node`.
-    fn entity_48(&mut self, sp: u32, target: u32, node: u32);
-    fn entity_54(&mut self, sp: u32, target: u32, node: u32);
+    /// The entity slots 0x48 and 0x54 (`target`) on `node` (`layout::INIT_PASS_SLOT`, `POST_CONTACT_SLOT`).
+    fn init_pass(&mut self, sp: u32, target: u32, node: u32);
+    fn post_contact(&mut self, sp: u32, target: u32, node: u32);
 }

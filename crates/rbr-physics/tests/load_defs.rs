@@ -54,7 +54,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::ntweak::{ApplyHost, Unsupported};
 use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::physics_core::layout::construct::Heap;
-use rbr_physics::physics_core::layout::setup::CDEF_SIZE;
+use rbr_physics::physics_core::layout::setup::DEF_SIZE;
 use rbr_physics::snapshot::Snapshot;
 use rbr_physics::{car_body, collision, entities, rigid_body};
 use std::collections::VecDeque;
@@ -362,7 +362,7 @@ fn blocks(objects: &[Object]) -> BTreeMap<u32, Vec<u32>> {
     let mut blocks: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
     for object in objects {
         let size = match object.kind.as_str() {
-            "phys_def" => CDEF_SIZE,
+            "phys_def" => DEF_SIZE,
             "car_def" => car_body::layout::DEF_SIZE,
             "wheel_def" => 0x980,
             "engine_block" => object.bytes.len() as u32,
@@ -557,7 +557,7 @@ fn overlay_factory(mem: &mut Mem, source: &Mem, object: &Object, entry: &Mem) {
 }
 
 /// Start at the original's 0x4ea720 entry, remove the car cluster's prior filing/cell links, and rebuild the cluster
-/// through `notify_stuff` using the Rust factory outputs and captured CSigStuff inputs.
+/// through `notify_placement` using the Rust factory outputs and captured CSigStuff inputs.
 fn place_car_cluster(data: &Data, objects: &[Object], expected: &Snapshot, fill: Fill) -> Mem {
     let (built_instance, built_defs, _) = build(data, &COROLLA, objects, 0, Some(fill));
     let instance = objects_of([INSTANCE]);
@@ -613,7 +613,7 @@ fn place_car_cluster(data: &Data, objects: &[Object], expected: &Snapshot, fill:
             bytes[0x48..0x4c].copy_from_slice(&hook.to_le_bytes());
         }
         mem.map(stuff, &bytes);
-        physics_layout::notify_stuff(&mut mem, &mut host, stuff)
+        physics_layout::notify_placement(&mut mem, &mut host, stuff)
             .unwrap_or_else(|_| panic!("{} type {:#x} placement", placement.position, placement.object_type));
         let expected_object = expected_factory_objects[i].at;
         assert_eq!(mem.u32(stuff + 0x3c), expected_object, "{} object", placement.position);

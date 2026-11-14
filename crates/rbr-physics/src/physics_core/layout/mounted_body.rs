@@ -12,11 +12,12 @@ pub const BODY_SIZE: u32 = 0x590;
 /// The body's vtable (0x73e62c), at +0x00, and its scratch's (0x73e61c), at `SCRATCH_AT`.
 const BODY_VTABLE: u32 = 0x0073_e62c;
 const SCRATCH_VTABLE: u32 = 0x0073_e61c;
-/// The state (`CState`), the scratch, the owner and a word, at these offsets of the body.
+/// The state (`CState`), the scratch, the owner and the event-sent word (`physics_core::mounted`'s first-step flag), at
+/// these offsets of the body.
 const STATE_AT: u32 = 0x3d4;
 const OWNER_AT: u32 = 0x3d0;
 const SCRATCH_AT: u32 = 0x410;
-const WORD_AT: u32 = 0x584;
+const EVENT_SENT_AT: u32 = 0x584;
 /// The owner's flags (+0x60 of the owner): the owner counts only when bit 3 is set.
 const OWNER_FLAGS_AT: u32 = 0x60;
 const OWNER_FLAG: u8 = 0x8;
@@ -36,18 +37,18 @@ pub trait BodyHost {
     fn exclusion(&mut self, mem: &mut Mem, at: u32, n: u32);
 }
 
-/// `CMountedRigidBody::CtorBig(a, b, c, d)` (0x521c30) on the body at `this`: the solid base (with `d` and 0x800),
-/// the vptr, the name of `a` (when `a` is set), the state, the scratch base and its vptr, a zero word, the owner (`c`
-/// when it has the flag, else 0), and the exclusion `E43_ExclA000(2)`.
-pub fn construct_body(mem: &mut Mem, host: &mut impl BodyHost, this: u32, a: u32, b: u32, c: u32, d: u32) {
-    host.solid_base(mem, this, a, b, c, d | 0x800);
+/// `CMountedRigidBody::CtorBig(def, a, b, flags)` (0x521c30) on the body at `this`: the solid base (with `flags` and
+/// 0x800), the vptr, the name of `def` (when `def` is set), the state, the scratch base and its vptr, a zero word, the
+/// owner (`b` when it has the flag, else 0), and the exclusion `E43_ExclA000(2)`.
+pub fn construct_body(mem: &mut Mem, host: &mut impl BodyHost, this: u32, def: u32, a: u32, b: u32, flags: u32) {
+    host.solid_base(mem, this, def, a, b, flags | 0x800);
     layout::set_word(mem, this, BODY_VTABLE);
-    let name = if a != 0 { host.base_name(mem, a) } else { 0 };
-    host.state_ctor(mem, this + STATE_AT, this, name, c);
+    let name = if def != 0 { host.base_name(mem, def) } else { 0 };
+    host.state_ctor(mem, this + STATE_AT, this, name, b);
     host.scratch_base(mem, this + SCRATCH_AT);
     layout::set_word(mem, this + SCRATCH_AT, SCRATCH_VTABLE);
-    layout::set_word(mem, this + WORD_AT, 0);
-    let owner = if c != 0 && layout::byte(mem, c + OWNER_FLAGS_AT) & OWNER_FLAG != 0 { c } else { 0 };
+    layout::set_word(mem, this + EVENT_SENT_AT, 0);
+    let owner = if b != 0 && layout::byte(mem, b + OWNER_FLAGS_AT) & OWNER_FLAG != 0 { b } else { 0 };
     layout::set_word(mem, this + OWNER_AT, owner);
     host.exclusion(mem, this, 2);
 }

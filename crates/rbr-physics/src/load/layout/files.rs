@@ -9,7 +9,7 @@ use crate::mem::Mem;
 use crate::ntweak::{self, ApplyHost, Unsupported};
 use crate::physics_core::layout::construct::{self, Heap};
 use crate::physics_core::layout::mounted_ctor::{self, MountedHost};
-use crate::physics_core::layout::setup::CDEF_SIZE;
+use crate::physics_core::layout::setup::DEF_SIZE;
 use crate::{car_body, entities, rigid_body, wheel};
 
 /// The mounted definition's calls, answered by the ports: the solid definition's constructor and the unsigned's.
@@ -123,9 +123,9 @@ impl<H: ApplyHost + Heap> ApplyHost for Linked<'_, H> {
 /// `E46_CreateDef`'s block (0x526660) with `CPhysics::CDef::CDef` (0x524c70) on it, its members built by their ports.
 /// Returns the definition (0 when the allocation fails).
 pub fn new_physics_def(mem: &mut Mem, host: &mut impl Heap) -> u32 {
-    let def = host.alloc(mem, CDEF_SIZE);
+    let def = host.alloc(mem, DEF_SIZE);
     if def != 0 {
-        construct::construct_cdef(mem, &mut crate::physics_core::layout::Ported, def);
+        construct::construct_physics_def(mem, &mut crate::physics_core::layout::Ported, def);
     }
     def
 }

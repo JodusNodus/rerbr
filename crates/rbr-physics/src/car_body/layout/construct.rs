@@ -94,7 +94,7 @@ impl PassengerHost for PassengerTweaks {
     }
 
     /// `CPassenger::CScratch::Vf04` (0x5224e0) returns.
-    fn scratch_vf04(&mut self, _: &mut Mem, _: u32) {}
+    fn scratch_reset(&mut self, _: &mut Mem, _: u32) {}
 }
 
 /// `CCar::CDef`'s vtable (0x7382a4).

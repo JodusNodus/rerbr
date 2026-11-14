@@ -87,14 +87,14 @@ impl ScratchHost for Host {
         collision::ctor_solver(mem, solver, def);
     }
 
-    fn solver_s08(&mut self, mem: &mut Mem, solver: u32) {
+    fn solver_post(&mut self, mem: &mut Mem, solver: u32) {
         collision::drain_events(mem, solver).expect("an empty event list");
     }
 }
 
 impl PhysicsHost for Host {
     /// `E37Prefill5340` (0x4f5340) fills the collision event pool (`.data`; the step takes events from it): `build` runs
-    /// it once `cdef_new_physics` returns (nothing between reads the pool).
+    /// it once `def_new_physics` returns (nothing between reads the pool).
     fn prefill_pool(&mut self) {
         self.prefilled = true;
     }
@@ -169,7 +169,7 @@ fn build(snap0: &Mem, exe: &pe::Image, keeper: TimeKeeper, fill: u8) -> Mem {
     }
     let physics = snap0.u32(layout::PHYSICS_GLOBAL);
     let def = snap0.u32(physics + 0x24);
-    mem.map(def, &snap0.read(def, setup::CDEF_SIZE as usize));
+    mem.map(def, &snap0.read(def, setup::DEF_SIZE as usize));
     mem.map(EVENT_POOL, &vec![fill; EVENT_POOL_SIZE as usize]);
     let signals = snap0.u32(SIGNALS);
     mem.map(signals, &vec![0; SIGNALS_SIZE as usize]);
@@ -179,7 +179,7 @@ fn build(snap0: &Mem, exe: &pe::Image, keeper: TimeKeeper, fill: u8) -> Mem {
         mem.map(at, &vec![fill; size as usize]);
     }
     let mut host = Host { blocks, keeper, prefilled: false };
-    let made = physics::cdef_new_physics(&mut mem, &mut host, def);
+    let made = physics::def_new_physics(&mut mem, &mut host, def);
     assert_eq!(made, physics);
     assert!(host.prefilled);
     collision::prefill_pool(&mut mem);

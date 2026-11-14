@@ -170,7 +170,7 @@ const SAMPLE: u32 = 0x170;
 /// `E36DamageOps` (0x3eb0 bytes, 0x4ef410): not ported.
 pub fn place_solid(mem: &mut Mem, host: &mut impl PlaceHost, this: u32, stuff: u32) -> Result<(), HostUnavailable> {
     let one = 1.0f32.to_bits();
-    let orientation = if core_layout::cdef_flags(mem) & DBG_ORIENTATION != 0 {
+    let orientation = if core_layout::def_flags(mem) & DBG_ORIENTATION != 0 {
         std::array::from_fn(|i| mem.u32(stuff + STUFF_ORIENTATION + 4 * i as u32))
     } else {
         [0, 0, 0, one]

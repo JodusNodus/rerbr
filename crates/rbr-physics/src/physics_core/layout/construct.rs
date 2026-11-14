@@ -1,7 +1,7 @@
 //! The objects of the physics core as their constructors make them (`src/rbr/RBR_E46_CDef.cpp`, `RBR_E46_Physics.cpp`).
 //! A constructor writes only the words its body sets: the typed image below has those fields, and `layout` stores
 //! them and nothing else, so the other bytes of the object keep what they had. Vtable and name words are the
-//! addresses the original stores (`CState`'s own vtable and the NTweak ones); the names are the constants' meaning
+//! addresses the original stores (`StateImage`'s own vtable and the NTweak ones); the names are the constants' meaning
 //! where known and descriptive otherwise (see README "Unknown meaning").
 
 use crate::mem::Mem;
@@ -24,27 +24,29 @@ pub struct TweakUnsigned {
     pub value: u32,
 }
 
-/// `NTweak::CObjIdQueue` head words the `CState` constructor sets (+0x28, +0x2c, +0x30 of the state).
+/// `NTweak::CObjIdQueue` head words the `StateImage` constructor sets (+0x28, +0x2c, +0x30 of the state): its vtable, its
+/// name and a third word (zero).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ObjIdQueueHead {
     pub vtable: u32,
-    pub word_04: u32,
-    pub word_08: u32,
+    pub name: u32,
+    pub third_word: u32,
 }
 
-/// `E34Drain` list head: head node, a word, count, flag (0x10 bytes, all zero when a state is made).
+/// `E34Drain` list head: head node, tail node (`push_item` appends there), count, flag (0x10 bytes, all zero when a
+/// state is made).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DrainList {
     pub head: u32,
-    pub unk4: u32,
+    pub tail: u32,
     pub count: u32,
     pub flag: u32,
 }
 
-/// The constructor's image of `CPhysics::CState` (0x4b8 bytes): the words `CState::CState` writes.
+/// The constructor's image of `CPhysics::StateImage` (0x4b8 bytes): the words `CState::StateImage` writes.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CState {
-    /// `CPhysics::CState` vtable (`0x73f884`) and the `"Physics"` name, at +0x00.
+pub struct StateImage {
+    /// `CPhysics::StateImage` vtable (`0x73f884`) and the `"Physics"` name, at +0x00.
     pub base: TweakHeader,
     /// Substep counter (`m_u0c`), +0x0c.
     pub substep_count: TweakUnsigned,
@@ -52,41 +54,41 @@ pub struct CState {
     pub sim_time: f64,
     /// Object id queue, +0x28.
     pub queue: ObjIdQueueHead,
-    /// `m_u440`, +0x440.
-    pub unk_440: TweakUnsigned,
+    /// `m_u440`, +0x440 (an unsigned tweak; meaning not known).
+    pub first_unsigned: TweakUnsigned,
     /// The four walls lists, +0x450, +0x460, +0x470, +0x480.
     pub lists: [DrainList; 4],
     /// `m_r490`, a `CReal` header, +0x490. Its value (+0x49c) is not written by the constructor.
-    pub unk_490: TweakHeader,
-    /// `m_u4a0`, +0x4a0.
-    pub unk_4a0: TweakUnsigned,
+    pub real_header: TweakHeader,
+    /// `m_u4a0`, +0x4a0 (an unsigned tweak; meaning not known).
+    pub second_unsigned: TweakUnsigned,
     /// The constructor's argument, +0x4b0.
     pub extra: u32,
 }
 
-/// The `"Physics"` base name of `CState`'s `CBase`.
-const CBASE_NAME: u32 = 0x0073_f7b8;
-/// `CState`'s vtable.
-const CSTATE_VTABLE: u32 = 0x0073_f884;
+/// The `"Physics"` base name of `StateImage`'s `CBase`.
+const PHYSICS_NAME: u32 = 0x0073_f7b8;
+/// `StateImage`'s vtable.
+const STATE_VTABLE: u32 = 0x0073_f884;
 /// `CObjIdQueue`'s vtable and its second word (its name, as the CBase ones are).
 const OBJ_ID_QUEUE_VTABLE: u32 = 0x0074_04dc;
-const OBJ_ID_QUEUE_WORD_04: u32 = 0x0073_e920;
-/// The simulation time's seed (`CState` +0x20), the double at 0x73f878.
+const OBJ_ID_QUEUE_NAME: u32 = 0x0073_e920;
+/// The simulation time's seed (`StateImage` +0x20), the double at 0x73f878.
 const SIM_TIME_SEED: f64 = 43185.0;
 
-/// `CPhysics::CState::CState(extra)` (0x5270c0): the image the constructor leaves.
-pub fn new_state(extra: u32) -> CState {
+/// `CPhysics::CState::StateImage(extra)` (0x5270c0): the image the constructor leaves.
+pub fn new_state(extra: u32) -> StateImage {
     let unsigned =
         || TweakUnsigned { header: TweakHeader { vtable: UNSIGNED_VTABLE, name: UNSIGNED_NAME, dirty: 0 }, value: 0 };
-    CState {
-        base: TweakHeader { vtable: CSTATE_VTABLE, name: CBASE_NAME, dirty: 0 },
+    StateImage {
+        base: TweakHeader { vtable: STATE_VTABLE, name: PHYSICS_NAME, dirty: 0 },
         substep_count: unsigned(),
         sim_time: SIM_TIME_SEED,
-        queue: ObjIdQueueHead { vtable: OBJ_ID_QUEUE_VTABLE, word_04: OBJ_ID_QUEUE_WORD_04, word_08: 0 },
-        unk_440: unsigned(),
+        queue: ObjIdQueueHead { vtable: OBJ_ID_QUEUE_VTABLE, name: OBJ_ID_QUEUE_NAME, third_word: 0 },
+        first_unsigned: unsigned(),
         lists: [DrainList::default(); 4],
-        unk_490: TweakHeader { vtable: REAL_VTABLE, name: REAL_NAME, dirty: 0 },
-        unk_4a0: unsigned(),
+        real_header: TweakHeader { vtable: REAL_VTABLE, name: REAL_NAME, dirty: 0 },
+        second_unsigned: unsigned(),
         extra,
     }
 }
@@ -103,19 +105,19 @@ pub trait ScratchHost {
     /// `CCollisionSolver::CtorSolver(def)` (E38, 0x4fc930) on the solver at `solver`.
     fn ctor_solver(&mut self, mem: &mut Mem, solver: u32, def: u32);
     /// The solver's slot 2 (0x4fc0b0, the `S08` of `E45S08`), with the solver as `this`.
-    fn solver_s08(&mut self, mem: &mut Mem, solver: u32);
+    fn solver_post(&mut self, mem: &mut Mem, solver: u32);
 }
 
 /// `CPhysics::CScratch::CScratch(solverDef)` (0x524e80): the vtable, the solver's constructor, then `Vf04`.
 pub fn construct_scratch(mem: &mut Mem, host: &mut impl ScratchHost, this: u32, solver_def: u32) {
     layout::set_scratch_vtable(mem, this, SCRATCH_VTABLE);
     host.ctor_solver(mem, this + SOLVER_AT, solver_def);
-    scratch_vf04(mem, host, this);
+    reset_scratch(mem, host, this);
 }
 
 /// `CPhysics::CScratch::Vf04` (0x523c50): the solver's `S08`, then the block at +0xe840 is cleared.
-pub fn scratch_vf04(mem: &mut Mem, host: &mut impl ScratchHost, this: u32) {
-    host.solver_s08(mem, this + SOLVER_AT);
+pub fn reset_scratch(mem: &mut Mem, host: &mut impl ScratchHost, this: u32) {
+    host.solver_post(mem, this + SOLVER_AT);
     layout::clear_scratch_block(mem, this);
 }
 
@@ -132,7 +134,7 @@ pub trait Heap {
 
 /// `CPhysics::CDef::Vf54(owner)` (0x526760): a scratch of `SCRATCH_SIZE` bytes, built on the solver definition at
 /// `cdef + SOLVER_DEF_AT`. Returns the scratch, or 0 when the allocation fails. The original does not use `owner`.
-pub fn cdef_new_scratch(mem: &mut Mem, host: &mut (impl Heap + ScratchHost), cdef: u32) -> u32 {
+pub fn def_new_scratch(mem: &mut Mem, host: &mut (impl Heap + ScratchHost), cdef: u32) -> u32 {
     let at = host.alloc(mem, SCRATCH_SIZE);
     if at != 0 {
         construct_scratch(mem, host, at, cdef + SOLVER_DEF_AT);
@@ -140,12 +142,12 @@ pub fn cdef_new_scratch(mem: &mut Mem, host: &mut (impl Heap + ScratchHost), cde
     at
 }
 
-/// `CPhysics::CState`'s size, the block `CDef::Vf50` allocates.
+/// `CPhysics::StateImage`'s size, the block `CDef::Vf50` allocates.
 pub const STATE_SIZE: u32 = 0x4b8;
 
 /// `CPhysics::CDef::Vf50(owner, name)` (0x5278d0): a state of `STATE_SIZE` bytes with `extra` as its argument. Returns
 /// the state, or 0 when the allocation fails. The name is not used by the state.
-pub fn cdef_new_state(mem: &mut Mem, host: &mut impl Heap, extra: u32) -> u32 {
+pub fn def_new_state(mem: &mut Mem, host: &mut impl Heap, extra: u32) -> u32 {
     let at = host.alloc(mem, STATE_SIZE);
     if at != 0 {
         layout::store_state(mem, at, &new_state(extra));
@@ -154,7 +156,7 @@ pub fn cdef_new_state(mem: &mut Mem, host: &mut impl Heap, extra: u32) -> u32 {
 }
 
 /// `CPhysics::CDef`'s vtable, at +0x00.
-const CDEF_VTABLE: u32 = 0x0073_f72c;
+const DEF_VTABLE: u32 = 0x0073_f72c;
 /// The `CFlags` and `CDbgFlags` storages' vtables, and the `CLogFlags` one (`LOG_FLAGS_VTABLE`).
 pub const FLAGS_VTABLE: u32 = 0x0073_f60c;
 pub const DBG_FLAGS_VTABLE: u32 = 0x0073_f66c;
@@ -184,55 +186,57 @@ pub struct Storage {
 }
 
 /// The words `CPhysics::CDef::CDef` writes on its own (its base, its tweaks and flag storages). The def manager at
-/// +0x0c, the material manager at +0x18 and the solver's def at +0x16024 are built by their own constructors.
+/// +0x0c, the material manager at +0x18 and the solver's def at +0x16024 are built by their own constructors. The
+/// fields are named after the tweak keys at their offsets (`data/physics-lsp-fields.md`: `MaxExpirableCount` at
+/// +0x16070 to `SingleStepperDelay` at +0x16150; `flags`, `dbg` and `log` are `Flags`, `DbgFlags` and `LogFlags`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CDefImage {
+pub struct PhysicsDefImage {
     pub base: TweakHeader,
-    pub unk16070: TweakUnsigned,
-    pub unk16080: TweakReal,
-    pub unk16090: TweakReal,
-    pub unk160a0: TweakVector,
+    pub max_expirable_count: TweakUnsigned,
+    pub max_time_step: TweakReal,
+    pub min_time_delta: TweakReal,
+    pub gravity: TweakVector,
     pub flags: Storage,
     pub dbg: Storage,
     pub log: Storage,
-    pub unk16100: TweakReal,
-    pub unk16110: TweakReal,
-    pub unk16120: TweakReal,
-    pub unk16130: TweakUnsigned,
-    pub unk16140: TweakUnsigned,
-    pub unk16150: TweakUnsigned,
+    pub brake_wall_buffer: TweakReal,
+    pub brake_wall_factor: TweakReal,
+    pub brake_wall_damping: TweakReal,
+    pub damage_zone: TweakUnsigned,
+    pub force_material: TweakUnsigned,
+    pub single_stepper_delay: TweakUnsigned,
 }
 
 /// The `CDef` image the constructor leaves on its own (every tweak at its default, value zero).
-pub fn cdef_image() -> CDefImage {
+pub fn physics_def_image() -> PhysicsDefImage {
     let real = || TweakReal { header: TweakHeader { vtable: REAL_VTABLE, name: REAL_NAME, dirty: 0 }, value: 0.0 };
     let unsigned =
         || TweakUnsigned { header: TweakHeader { vtable: UNSIGNED_VTABLE, name: UNSIGNED_NAME, dirty: 0 }, value: 0 };
     let storage = |vtable| Storage { vtable, name: FLAGS_NAME };
-    CDefImage {
-        base: TweakHeader { vtable: CDEF_VTABLE, name: CBASE_NAME, dirty: 0 },
-        unk16070: unsigned(),
-        unk16080: real(),
-        unk16090: real(),
-        unk160a0: TweakVector {
+    PhysicsDefImage {
+        base: TweakHeader { vtable: DEF_VTABLE, name: PHYSICS_NAME, dirty: 0 },
+        max_expirable_count: unsigned(),
+        max_time_step: real(),
+        min_time_delta: real(),
+        gravity: TweakVector {
             header: TweakHeader { vtable: VECTOR_VTABLE, name: VECTOR_NAME, dirty: 0 },
             value: [0.0; 4],
         },
         flags: storage(FLAGS_VTABLE),
         dbg: storage(DBG_FLAGS_VTABLE),
         log: storage(LOG_FLAGS_VTABLE),
-        unk16100: real(),
-        unk16110: real(),
-        unk16120: real(),
-        unk16130: unsigned(),
-        unk16140: unsigned(),
-        unk16150: unsigned(),
+        brake_wall_buffer: real(),
+        brake_wall_factor: real(),
+        brake_wall_damping: real(),
+        damage_zone: unsigned(),
+        force_material: unsigned(),
+        single_stepper_delay: unsigned(),
     }
 }
 
 /// The calls `CPhysics::CDef::CDef` makes into code outside this port (its members' constructors in the body). Each
 /// gets the address of the object it builds.
-pub trait CDefHost {
+pub trait PhysicsDefHost {
     /// `E39_DefMgrCtor` (0x501d90) on the def manager at `at` (+0x0c).
     fn def_manager(&mut self, mem: &mut Mem, at: u32);
     /// `CMaterialManager::CMaterialManager` (0x520b30) on the material manager at `at` (+0x18).
@@ -243,8 +247,8 @@ pub trait CDefHost {
 
 /// `CPhysics::CDef::CDef` (0x524c70) on the object at `this`: its own words first, then the three built objects, in
 /// the original's order.
-pub fn construct_cdef(mem: &mut Mem, host: &mut impl CDefHost, this: u32) {
-    layout::store_cdef(mem, this, &cdef_image());
+pub fn construct_physics_def(mem: &mut Mem, host: &mut impl PhysicsDefHost, this: u32) {
+    layout::store_physics_def(mem, this, &physics_def_image());
     host.def_manager(mem, this + 0xc);
     host.materials(mem, this + 0x18);
     host.solver_def(mem, this + 0x16024);

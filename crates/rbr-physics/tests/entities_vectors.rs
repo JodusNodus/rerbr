@@ -2127,7 +2127,7 @@ fn detach_leaves_match_direct_records() {
         for call in &calls {
             let mut mem = map_windows(call);
             let listed = mem.u32(call.args[0] + 8) != 0;
-            let eax = core::unlink_a(&mut mem, call.args[0], call.eax);
+            let eax = core::unlink_with_eax(&mut mem, call.args[0], call.eax);
             if listed {
                 assert_eq!(eax, call.eax, "UnlinkA call {}: eax", call.index);
             }
@@ -2140,7 +2140,7 @@ fn detach_leaves_match_direct_records() {
             let mut mem = map_windows(call);
             let object = call.args[1];
             let mut slots = call.inner.iter();
-            let eax = core::reg_wall(&mut mem, call.args[0], object, |_, _| {
+            let eax = core::register_entity(&mut mem, call.args[0], object, |_, _| {
                 let asked = slots.next().expect("RegWall slot record");
                 assert_eq!(asked.args, [object], "RegWall call {}: slot", call.index);
                 asked.eax != 0

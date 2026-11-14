@@ -9,8 +9,8 @@ pub trait CoreStore: Raw {
     // The physics object at `this`, and its definition.
     /// The definition's step flags (the global physics object's): bit 0x10 collide window, 0x20 penetration pass.
     fn step_flags(&self) -> u32;
-    /// The definition's flags the contact loop reads (through the other physics global).
-    fn collide_flags(&self) -> u32;
+    /// The definition's `DbgFlags` (read through the other physics global); the contact loop reads them.
+    fn debug_flags(&self) -> u32;
     /// The gravity the passenger's walk starts from (three floats in the definition), or None for the sentinel pointer.
     fn gravity_point(&self) -> Option<[f32; 3]>;
     /// The base step time (the definition's), s.
@@ -93,7 +93,7 @@ pub trait CoreStore: Raw {
     /// Copies the body's pose source to its target, as four words.
     fn copy_pose_source(&mut self, body: u32);
 
-    // Signals: a `CMultiSignal1` and its connections.
+    // Signals: a multi-slot signal and its connections.
     /// The address of the slot count (zero when there is none).
     fn signal_count_at(&self, signal: u32) -> u32;
     /// The guard word: set while an emission walks its connections.
@@ -107,8 +107,7 @@ pub trait CoreStore: Raw {
     fn conn_owner(&self, conn: u32) -> u32;
     /// The slot count the count pointer points at.
     fn signal_count(&self, count_at: u32) -> u32;
-    /// The signal manager (`g_signalManager`).
-    /// The body event and state signals of the manager.
+    /// The signal manager's body event and state signals.
     fn body_event_signal(&self) -> u32;
     fn body_state_signal(&self) -> u32;
 
@@ -124,10 +123,10 @@ pub trait CoreStore: Raw {
     /// The pose of the mount on the car.
     fn mount_point(&self, car: u32) -> Vec4;
     fn mount_point_at(&self, car: u32) -> u32;
-    /// The definition's origin base address (null only for the sentinel definition).
-    fn origin_base(&self) -> u32;
-    /// Copies the definition's origin vector to `to`.
-    fn copy_origin(&mut self, base: u32, to: u32);
+    /// The address of the definition's `vecGravity` key (null only for the sentinel definition).
+    fn gravity_key(&self) -> u32;
+    /// Copies the gravity vector of the `vecGravity` key at `key` to `to`, as four words.
+    fn copy_key_gravity(&mut self, key: u32, to: u32);
     fn mounted_key(&self, body: u32) -> u32;
     fn mounted_event_sent(&self, body: u32) -> u32;
     fn set_mounted_event_sent(&mut self, body: u32, value: u32);

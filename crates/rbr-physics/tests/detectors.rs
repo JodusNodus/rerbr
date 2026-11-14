@@ -36,19 +36,19 @@ impl DetectorHost for Script {
         self.call("118", sp, &[entity]);
         self.grid
     }
-    fn entity_110(&mut self, sp: u32, entity: u32) -> u32 {
+    fn grid_active(&mut self, sp: u32, entity: u32) -> u32 {
         self.call("110", sp, &[entity]);
         1
     }
-    fn entity_10c(&mut self, sp: u32, entity: u32) -> u32 {
+    fn has_grid(&mut self, sp: u32, entity: u32) -> u32 {
         self.call("10c", sp, &[entity]);
         1
     }
-    fn entity_30(&mut self, sp: u32, entity: u32) -> u32 {
+    fn transform(&mut self, sp: u32, entity: u32) -> u32 {
         self.call("30", sp, &[entity]);
         0x30
     }
-    fn entity_34(&mut self, sp: u32, entity: u32) -> u32 {
+    fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
         self.call("34", sp, &[entity]);
         0x34
     }
@@ -59,11 +59,11 @@ impl DetectorHost for Script {
         self.call("cc", sp, &[entity, lo, hi]);
         1
     }
-    fn entity_d0(&mut self, sp: u32, entity: u32, pair: u32, other: u32, extra: u32) -> u32 {
+    fn pair_response(&mut self, sp: u32, entity: u32, pair: u32, other: u32, extra: u32) -> u32 {
         self.call("d0", sp, &[entity, pair, other, extra]);
         self.d0_answer
     }
-    fn entity_d4(&mut self, sp: u32, entity: u32, args: [u32; 7]) {
+    fn body_pair_response(&mut self, sp: u32, entity: u32, args: [u32; 7]) {
         let mut all = vec![entity];
         all.extend_from_slice(&args);
         self.call("d4", sp, &all);
@@ -72,7 +72,7 @@ impl DetectorHost for Script {
         self.call("80", sp, &[entity]);
         0
     }
-    fn entity_30_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32 {
+    fn transform_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32 {
         self.call("30w", sp, &[entity, arg]);
         0x31
     }
@@ -104,7 +104,7 @@ impl DetectorHost for Script {
     fn walk(&mut self, sp: u32, entity: u32, detector: u32) {
         self.call("walk", sp, &[entity, detector]);
     }
-    fn visit_list470(&mut self, sp: u32, physics: u32, detector: u32) {
+    fn visit_walls(&mut self, sp: u32, physics: u32, detector: u32) {
         self.call("visit", sp, &[physics, detector]);
     }
 }
@@ -119,10 +119,10 @@ impl CollideHost for Script {
     fn run_collision_detectors(&mut self, sp: u32, physics: u32, word: u32) {
         self.call("6a70", sp, &[physics, word]);
     }
-    fn telemetry_70(&mut self, sp: u32, receiver: u32, events: u32) {
+    fn telemetry_events(&mut self, sp: u32, receiver: u32, events: u32) {
         self.call("t70", sp, &[receiver, events]);
     }
-    fn telemetry_90(&mut self, sp: u32, receiver: u32) {
+    fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
         self.call("t90", sp, &[receiver]);
     }
     fn solver_sweep_events(&mut self, sp: u32, solver: u32) {
@@ -148,10 +148,10 @@ impl CollideHost for Script {
     fn advance_contact_bodies_remainder(&mut self, sp: u32, physics: u32, window: f32) {
         self.call("5760", sp, &[physics, window.to_bits()]);
     }
-    fn entity_48(&mut self, sp: u32, target: u32, node: u32) {
+    fn init_pass(&mut self, sp: u32, target: u32, node: u32) {
         self.call("48", sp, &[target, node]);
     }
-    fn entity_54(&mut self, sp: u32, target: u32, node: u32) {
+    fn post_contact(&mut self, sp: u32, target: u32, node: u32) {
         self.call("54", sp, &[target, node]);
     }
 }
@@ -287,7 +287,7 @@ fn kernel_collects_the_entities_that_pass() {
     let f = frame(0x58);
     mem.set_u32(f + 0x50, cell);
     let mut host = Script::new(grid);
-    let args = KernelArgs { a, b, mask: 8, excluded: 0, out };
+    let args = KernelArgs { center: a, half_size: b, mask: 8, excluded: 0, out };
     assert!(layout::kernel_collect(&mut mem, &mut host, args, ENTRY));
     assert_eq!((mem.u32(out), mem.u32(out + 4)), (1, BODY));
     assert_eq!(mem.u32(f + 0x28), f + 0x30);
@@ -365,7 +365,7 @@ fn l1_collision_detector_fills_an_l2_detector() {
 fn kernel_without_an_output_makes_no_call_and_stops_at_eight() {
     let mut mem = world();
     let mut host = Script::new(0);
-    let args = KernelArgs { a: 0, b: 0, mask: 0, excluded: 0, out: 0 };
+    let args = KernelArgs { center: 0, half_size: 0, mask: 0, excluded: 0, out: 0 };
     assert!(!layout::kernel_collect(&mut mem, &mut host, args, ENTRY));
     assert!(host.log.is_empty());
 
@@ -384,7 +384,7 @@ fn kernel_without_an_output_makes_no_call_and_stops_at_eight() {
     }
     mem.set_u32(frame(0x58) + 0x50, cell);
     let mut host = Script::new(grid);
-    let args = KernelArgs { a, b: a + 0x10, mask: 0, excluded: 0, out };
+    let args = KernelArgs { center: a, half_size: a + 0x10, mask: 0, excluded: 0, out };
     assert!(layout::kernel_collect(&mut mem, &mut host, args, ENTRY));
     assert_eq!(mem.u32(out), 8);
     assert_eq!(host.names().iter().filter(|&&n| n == "ops").count(), 8);
@@ -417,7 +417,7 @@ fn visit_470_skips_flagged_entities() {
     mem.set_u32(BODY + 0x10, second);
     mem.set_u8(BODY + 0x60, 0x40);
     let mut host = Script::new(0);
-    layout::visit_list470(&mut mem, &mut host, PHYSICS, 0x0300_0000, ENTRY);
+    layout::visit_walls(&mut mem, &mut host, PHYSICS, 0x0300_0000, ENTRY);
     assert_eq!(
         host.log,
         vec![("detect", ENTRY - 0x10, vec![0x0300_0000, second]), ("walk", ENTRY - 0x10, vec![second, 0x0300_0000]),]
@@ -492,7 +492,7 @@ fn e46_l2_runs_both_sides_in_the_original_order() {
     mem.set_u32(det + 0x20, 0x77);
     mem.set_u32(det + 0x24, 0x78);
     let mut host = Script::new(grid);
-    layout::e46_l2_detect(&mut mem, &mut host, det, other, ENTRY);
+    layout::l2_collision_detect(&mut mem, &mut host, det, other, ENTRY);
     let b = frame(0x1ad8);
     let identity = 0x007c_0000;
     let want: Vec<(&str, u32)> = vec![

@@ -7,8 +7,9 @@ use crate::store::Raw;
 
 /// A collision event's two solids (`+0xa0`, then `+0x98`).
 pub const EVENT_SOLIDS_AT: [u32; 2] = [0xa0, 0x98];
-/// The solid's slot 0x80 (its vtable entry), which the damper workers ask first.
-pub const SLOT_80: u32 = 0x80;
+/// The solid's slot 0x80 (its vtable entry), which the damper workers ask first: whether the solid takes part (name
+/// ours; `CState::RegWall` files an entity whose slot 0x80 answers in the body list).
+pub const TAKES_PART_SLOT: u32 = 0x80;
 /// The profiler samples of the contact loop (0x38 bytes each from 0x165afc0) and its name.
 pub const COLLIDE_SAMPLES: u32 = 0x0165_afc0;
 pub const COLLIDE_SAMPLE_SIZE: u32 = 0x38;

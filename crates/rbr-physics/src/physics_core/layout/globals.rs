@@ -107,11 +107,12 @@ pub fn physics(mem: &Mem) -> u32 {
 }
 
 /// The entity lists of a `CPhysics::CState` (head, tail, count), as `CState::RegWall` (0x5263d0) picks them from the
-/// entity's slots 0x8c, 0x80 and 0x88: +0x480 for the first, +0x450 for the second, else +0x470 for the third and
-/// +0x460 for none.
-pub fn entity_list(state: u32, s8c: bool, s80: bool, s88: bool) -> u32 {
+/// entity's slots 0x8c (`end_step`), 0x80 (`takes_part`) and 0x88 (`wall`), names ours by the list each picks: +0x480
+/// (the list `StepForward` ends each step on) for the first, +0x450 (the bodies) for the second, else +0x470 (the
+/// walls) for the third and +0x460 for none.
+pub fn entity_list(state: u32, end_step: bool, takes_part: bool, wall: bool) -> u32 {
     state
-        + match (s8c, s80, s88) {
+        + match (end_step, takes_part, wall) {
             (true, _, _) => 0x480,
             (false, true, _) => 0x450,
             (false, false, true) => 0x470,
@@ -131,13 +132,13 @@ pub fn set_cell_grid(mem: &mut Mem, grid: u32) {
 }
 
 /// The CDef's flags word (`+0x160cc` of the CDef the physics global points to, at its `+0x24`).
-pub fn cdef_flags(mem: &Mem) -> u32 {
+pub fn def_flags(mem: &Mem) -> u32 {
     let cdef = mem.u32(mem.u32(PHYSICS_GLOBAL_AT) + 0x24);
     mem.u32(cdef + 0x160cc)
 }
 
 /// The CDef's debug flags word (`+0x160e0`, `DbgFlags`'s value, of the CDef the physics global points to).
-pub fn cdef_debug_flags(mem: &Mem) -> u32 {
+pub fn def_debug_flags(mem: &Mem) -> u32 {
     let cdef = mem.u32(mem.u32(PHYSICS_GLOBAL_AT) + 0x24);
     mem.u32(cdef + 0x160e0)
 }

@@ -86,12 +86,12 @@ pub fn inverse_mass(mem: &Mem, body: u32) -> f32 {
 }
 
 /// The word at `+0x1dc` (`CSolid::E43Vf80`). Cleared with the body's dirty flags; its meaning is not known.
-pub fn cache_1dc(mem: &Mem, body: u32) -> u32 {
+pub fn takes_part_word(mem: &Mem, body: u32) -> u32 {
     mem.u32(body + 0x1dc)
 }
 
 /// The word at `+0x1ec` (`CSolid::E43Vf8C`). Cleared with the body's dirty flags; its meaning is not known.
-pub fn cache_1ec(mem: &Mem, body: u32) -> u32 {
+pub fn end_step_word(mem: &Mem, body: u32) -> u32 {
     mem.u32(body + 0x1ec)
 }
 

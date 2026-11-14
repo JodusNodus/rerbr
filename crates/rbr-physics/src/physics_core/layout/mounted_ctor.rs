@@ -13,7 +13,7 @@ const DEF_VTABLE: u32 = 0x0073_e59c;
 /// `CMountedRigidBody::CState`'s vtable (0x73e614), at +0x00.
 const STATE_VTABLE: u32 = 0x0073_e614;
 /// The string `CMountedRigidBody::CDef::Vf4c` returns (0x73e5fc).
-const VF4C_RESULT: u32 = 0x0073_e5fc;
+const DEF_STRING: u32 = 0x0073_e5fc;
 
 /// The calls the mounted constructors make into code outside this port, in the original's order. Each gets the
 /// address of the object it builds; the caller's code writes those objects' bytes.
@@ -54,8 +54,8 @@ pub fn construct_state(mem: &mut Mem, at: u32) {
 }
 
 /// `CMountedRigidBody::CDef::Vf4c` (0x521500): the constant string's address.
-pub fn vf4c() -> u32 {
-    VF4C_RESULT
+pub fn def_string() -> u32 {
+    DEF_STRING
 }
 
 #[cfg(test)]

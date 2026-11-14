@@ -56,9 +56,10 @@ const GRID_SOLID_AT: u32 = 0x68d;
 /// An entity's flag word (+0x60) and a cell node's entity (+0xc).
 const ENTITY_FLAGS_AT: u32 = 0x60;
 const CELL_NODE_ENTITY_AT: u32 = 0xc;
-/// A state's entity lists the detectors walk: +0x450 (the bodies) and +0x470.
+/// A state's entity lists the detectors walk: +0x450 (the bodies) and +0x470 (the walls: `CState::RegWall` files an
+/// entity there when its slot 0x88 answers; the stage load's walls are there, `tests/load_stage.rs`).
 pub(super) const STATE_BODIES_AT: u32 = 0x450;
-const STATE_LIST470_AT: u32 = 0x470;
+const STATE_WALLS_AT: u32 = 0x470;
 /// The detectors' vtables: `CL2GiganticPenetrationDetector`, `CL2PenetrationDetector` (its destructor stores it back),
 /// `E46L2Detector` and `E46L1PenDetector`.
 const GIANT_VTABLE: u32 = 0x0073_f5d0;
@@ -103,17 +104,18 @@ pub fn giant_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, thi
         return;
     }
     let grid = host.collision_grid(b - 4, other);
-    if grid_disabled(mem, grid) || host.exclusion_test(b - 8, owner, other) == 0 || host.entity_110(b - 4, other) == 0 {
+    if grid_disabled(mem, grid) || host.exclusion_test(b - 8, owner, other) == 0 || host.grid_active(b - 4, other) == 0
+    {
         return;
     }
     let owner = mem.u32(this + 4);
-    let other_frame = host.entity_34(b - 4, other);
-    let frame = host.entity_34(b - 8, owner);
+    let other_frame = host.second_transform(b - 4, other);
+    let frame = host.second_transform(b - 8, owner);
     let grid = host.collision_grid(b - 0xc, owner);
     host.grid_ops(b - 0x10, b + OLD_OPS, grid, frame, other_frame);
     let owner = mem.u32(this + 4);
-    let other_frame = host.entity_30(b - 4, other);
-    let frame = host.entity_30(b - 8, owner);
+    let other_frame = host.transform(b - 4, other);
+    let frame = host.transform(b - 8, owner);
     let grid = host.collision_grid(b - 0xc, owner);
     host.grid_ops(b - 0x10, b + OPS, grid, frame, other_frame);
     host.min_max(b - 0x10, b + OLD_OPS, b + OPS, b + LO, b + HI);
@@ -123,7 +125,7 @@ pub fn giant_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, thi
         let extra = mem.u32(this + 0x3c);
         let pair = store_pair(mem, b + PAIR_LO, b + OPS, other);
         let owner = mem.u32(this + 4);
-        host.entity_d0(b - 0x10, owner, pair, other, extra);
+        host.pair_response(b - 0x10, owner, pair, other, extra);
     }
     host.ray_clear(b - 4, b + OPS);
     host.ray_clear(b - 4, b + OLD_OPS);
@@ -144,7 +146,7 @@ pub fn l1_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: 
     const L2_OPS: u32 = 0x30;
     let b = detector_frame(entry, LOCALS);
     let grid = host.collision_grid(b - 4, other);
-    if grid_disabled(mem, grid) || host.entity_10c(b - 4, other) == 0 {
+    if grid_disabled(mem, grid) || host.has_grid(b - 4, other) == 0 {
         return;
     }
     host.entity_box(b - 0xc, other, b + LO, b + HI);
@@ -157,7 +159,7 @@ pub fn l1_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: 
             host.notify_filtered(b - 8, cell, b + L2);
         }
     }
-    let mut node = mem.u32(mem.u32(this + 0xc) + STATE_LIST470_AT);
+    let mut node = mem.u32(mem.u32(this + 0xc) + STATE_WALLS_AT);
     while node != 0 {
         let giant = b + GIANT;
         let (scale, word) = (mem.u32(this + 4), mem.u32(this + 8));
@@ -180,20 +182,21 @@ pub fn l1_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: 
 /// The stack arguments of `E46_Kernel5bd0`.
 #[derive(Clone, Copy, Debug)]
 pub struct KernelArgs {
-    pub a: u32,
-    pub b: u32,
+    /// The probe box's center and half size (`detectors::probe_box`).
+    pub center: u32,
+    pub half_size: u32,
     pub mask: u32,
     pub excluded: u32,
     pub out: u32,
 }
 
-/// `E46_Kernel5bd0` (0x525bd0, stdcall) with the vectors `a` and `b`, the flag mask, the excluded entity and the output
-/// at `out`; `entry` is its entry esp. The box `a - b`, `a + b` (+0x30, +0x40, paired with the identity at +0x28 and
+/// `E46_Kernel5bd0` (0x525bd0, stdcall) with the vectors `center` and `half_size`, the flag mask, the excluded entity and the output
+/// at `out`; `entry` is its entry esp. The box `center - half_size`, `center + half_size` (+0x30, +0x40, paired with the identity at +0x28 and
 /// +0x20) and its cells (+0x50); each cell's entities, up to `PROBE_MAX_HITS`, that pass the mask, the exclusion,
 /// their grid (set, its byte +0x68d set) and the overlap (slot 0xcc) go to `out` (+0 the count, +4 the entities, the
 /// grid ops of their frame 0x30 from +0x30, 0x6b0 bytes each). Returns whether any did (eax).
 pub fn kernel_collect(mem: &mut Mem, host: &mut impl DetectorHost, args: KernelArgs, entry: u32) -> bool {
-    let KernelArgs { a, b, mask, excluded, out } = args;
+    let KernelArgs { center, half_size, mask, excluded, out } = args;
     const LOCALS: u32 = 0x58;
     const PAIR_HI: u32 = 0x20;
     const PAIR_LO: u32 = 0x28;
@@ -208,7 +211,7 @@ pub fn kernel_collect(mem: &mut Mem, host: &mut impl DetectorHost, args: KernelA
     }
     let f = detector_frame(entry, LOCALS);
     mem.set_u32(out, 0);
-    let [va, vb] = [a, b].map(|at| vec3s::<1>(mem, at)[0]);
+    let [va, vb] = [center, half_size].map(|at| vec3s::<1>(mem, at)[0]);
     let (lo, hi) = probe_box(va, vb);
     set_vec3s(mem, f + LO, &[lo]);
     set_vec3s(mem, f + HI, &[hi]);
@@ -246,7 +249,7 @@ pub fn kernel_collect(mem: &mut Mem, host: &mut impl DetectorHost, args: KernelA
                 if record != 0 {
                     let entity = mem.u32(node + CELL_NODE_ENTITY_AT);
                     let identity = mem.u32(ROOT_IDENTITY);
-                    let frame = host.entity_30(f - 8, entity);
+                    let frame = host.transform(f - 8, entity);
                     let grid = host.collision_grid(f - 0xc, entity);
                     host.grid_ops(f - 0x10, record, grid, frame, identity);
                 }
@@ -266,8 +269,8 @@ pub struct KernelEntity {
     pub next: u32,
     pub entity: u32,
     pub flags: u32,
-    pub slot_118: u32,
-    pub slot_cc: u32,
+    pub grid_slot: u32,
+    pub overlap_slot: u32,
     pub grid: u32,
     pub solid: u8,
     pub bounds: Option<Vec4Pair>,
@@ -285,8 +288,8 @@ pub fn kernel_entity(mem: &Mem, node: u32) -> Option<KernelEntity> {
     let entity = mem.paged_u32(node + CELL_NODE_ENTITY_AT)?;
     let flags = mem.paged_u32(entity + ENTITY_FLAGS_AT)?;
     let vtable = mem.paged_u32(entity)?;
-    let slot_118 = mem.paged_u32(vtable + 0x118)?;
-    let slot_cc = mem.paged_u32(vtable + 0xcc)?;
+    let grid_slot = mem.paged_u32(vtable + 0x118)?;
+    let overlap_slot = mem.paged_u32(vtable + 0xcc)?;
     let grid = mem.paged_u32(entity + BODY_GRID_AT)?;
     let solid_at = grid.wrapping_add(GRID_SOLID_AT);
     let solid = match grid {
@@ -316,7 +319,7 @@ pub fn kernel_entity(mem: &Mem, node: u32) -> Option<KernelEntity> {
         entity + BODY_BOUNDS_AT,
         entity + BODY_BOUNDS_AT + 0x1f,
     ];
-    Some(KernelEntity { next, entity, flags, slot_118, slot_cc, grid, solid, bounds, reads })
+    Some(KernelEntity { next, entity, flags, grid_slot, overlap_slot, grid, solid, bounds, reads })
 }
 
 /// `CL1CollisionDetector::Vf04` (0x526ad0) on the detector at `this` (+4 a float word, +8 a word) with `other`; `entry`
@@ -336,15 +339,15 @@ pub fn l1_collision_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: u3
     const OLD_OPS: u32 = 0x730;
     let b = detector_frame(entry, LOCALS);
     let grid = host.collision_grid(b - 4, other);
-    if grid_disabled(mem, grid) || host.entity_10c(b - 4, other) == 0 {
+    if grid_disabled(mem, grid) || host.has_grid(b - 4, other) == 0 {
         return;
     }
     let identity = mem.u32(ROOT_IDENTITY);
-    let frame = host.entity_34(b - 8, other);
+    let frame = host.second_transform(b - 8, other);
     let grid = host.collision_grid(b - 0xc, other);
     host.grid_ops(b - 0x10, b + OLD_OPS, grid, frame, identity);
     let identity = mem.u32(ROOT_IDENTITY);
-    let frame = host.entity_30(b - 8, other);
+    let frame = host.transform(b - 8, other);
     let grid = host.collision_grid(b - 0xc, other);
     host.grid_ops(b - 0x10, b + OPS, grid, frame, identity);
     host.entity_box(b - 0xc, other, b + LO, b + HI);
@@ -370,7 +373,7 @@ pub fn l1_collision_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: u3
             host.notify_filtered(b - 8, cell, l2);
         }
     }
-    host.visit_list470(b - 8, physics(mem), l2);
+    host.visit_walls(b - 8, physics(mem), l2);
     host.ray_clear(b - 4, b + OPS);
     host.ray_clear(b - 4, b + OLD_OPS);
 }
@@ -403,7 +406,7 @@ pub fn l2_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: 
     if parent != 0 && host.child_gate(b - 4, other) == 0 && host.child_gate(b - 4, parent) != 0 {
         return;
     }
-    if host.entity_110(b - 4, other) == 0 {
+    if host.grid_active(b - 4, other) == 0 {
         return;
     }
     host.entity_box(b - 0xc, other, b + CORNER_LO, b + CORNER_HI);
@@ -420,19 +423,19 @@ pub fn l2_penetration_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: 
         return;
     }
     let pad = mem.u32(this + 4);
-    let ignored30 = host.entity_30(b - 4, other);
-    let pad30 = host.entity_30(b - 8, pad);
+    let ignored30 = host.transform(b - 4, other);
+    let pad30 = host.transform(b - 8, pad);
     let pad118 = host.collision_grid(b - 0xc, pad);
     host.grid_ops(b - 0x10, b + OPS_OWNER, pad118, pad30, ignored30);
     let pair = store_pair(mem, b + PAIR_OWNER, b + OPS_OWNER, other);
     let extra = mem.u32(this + 0x6e4);
-    if host.entity_d0(b - 0x10, pad, pair, other, extra) == 0 {
-        let pad30 = host.entity_30(b - 4, pad);
-        let other30 = host.entity_30(b - 8, other);
+    if host.pair_response(b - 0x10, pad, pair, other, extra) == 0 {
+        let pad30 = host.transform(b - 4, pad);
+        let other30 = host.transform(b - 8, other);
         let other118 = host.collision_grid(b - 0xc, other);
         host.grid_ops(b - 0x10, b + OPS_OTHER, other118, other30, pad30);
         let pair = store_pair(mem, b + PAIR_OTHER, b + OPS_OTHER, pad);
-        host.entity_d0(b - 0x10, other, pair, pad, mem.u32(this + 0x6e4));
+        host.pair_response(b - 0x10, other, pair, pad, mem.u32(this + 0x6e4));
         host.ray_clear(b - 4, b + OPS_OTHER);
     }
     host.ray_clear(b - 4, b + OPS_OWNER);
@@ -453,9 +456,9 @@ pub fn body_pair_detect(
     entry: u32,
 ) {
     let frame = entry - 0x20;
-    let r1 = host.entity_30(frame - 4, b);
-    let r2 = host.entity_34(frame - 4, b);
-    host.entity_d4(frame - 0x20, a, [c, r2, d, r1, b, mem.u32(this + 0x20), mem.u32(this + 0x24)]);
+    let r1 = host.transform(frame - 4, b);
+    let r2 = host.second_transform(frame - 4, b);
+    host.body_pair_response(frame - 0x20, a, [c, r2, d, r1, b, mem.u32(this + 0x20), mem.u32(this + 0x24)]);
 }
 
 /// `E46L2Detector::Vf04` (0x5257e0) on the detector at `this` (+4 its owner, +8 and +0x10 its box corners, +0x18 and
@@ -465,7 +468,7 @@ pub fn body_pair_detect(
 /// test (slot 0xcc on `this` +8 and +0x10). Then, with the owner's and `other`'s grid ops, `body_pair_detect` (the
 /// owner as `a`, `other`, the two grid ops); and when `other`'s slot 0x118 answers, the mirrored grid ops and
 /// `body_pair_detect` the other way. The ray clears close it.
-pub fn e46_l2_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: u32, other: u32, entry: u32) {
+pub fn l2_collision_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: u32, other: u32, entry: u32) {
     const LOCALS: u32 = 0x1ad8;
     const OPS_A: u32 = 0x10;
     const OPS_B: u32 = 0x6c0;
@@ -476,7 +479,7 @@ pub fn e46_l2_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: u32, oth
     if other == 0 || other == owner {
         return;
     }
-    if host.entity_110(b - 4, other) == 0 {
+    if host.grid_active(b - 4, other) == 0 {
         return;
     }
     if host.exclusion_test(b - 8, owner, other) == 0 {
@@ -493,19 +496,19 @@ pub fn e46_l2_detect(mem: &mut Mem, host: &mut impl DetectorHost, this: u32, oth
     if host.overlaps_box(b - 0xc, other, this + 8, this + 0x10) == 0 {
         return;
     }
-    let m34 = host.entity_34(b - 4, other);
+    let m34 = host.second_transform(b - 4, other);
     host.grid_ops(b - 0x10, b + OPS_D, mem.u32(this + 0x18), mem.u32(ROOT_IDENTITY), m34);
-    let m30 = host.entity_30(b - 4, other);
+    let m30 = host.transform(b - 4, other);
     host.grid_ops(b - 0x10, b + OPS_B, mem.u32(this + 0x1c), mem.u32(ROOT_IDENTITY), m30);
     let owner = mem.u32(this + 4);
     body_pair_detect(mem, host, this, owner, other, b + OPS_D, b + OPS_B, b - 0x14);
     if host.collision_grid(b - 4, other) != 0 {
-        let a = host.entity_34(b - 4, owner);
-        let inner = host.entity_34(b - 8, other);
+        let a = host.second_transform(b - 4, owner);
+        let inner = host.second_transform(b - 8, other);
         let gate = host.collision_grid(b - 0xc, other);
         host.grid_ops(b - 0x10, b + OPS_A, gate, inner, a);
-        let b30 = host.entity_30(b - 4, owner);
-        let inner2 = host.entity_30_with(b - 8, other, b30);
+        let b30 = host.transform(b - 4, owner);
+        let inner2 = host.transform_with(b - 8, other, b30);
         let gate2 = host.collision_grid(b - 0xc, other);
         host.grid_ops(b - 0x10, b + OPS_C, gate2, inner2, b30);
         body_pair_detect(mem, host, this, other, owner, b + OPS_A, b + OPS_C, b - 0x14);
@@ -538,8 +541,8 @@ const VISIT_SKIP_FLAG: u8 = 0x40;
 
 /// `CPhysics::Visit470(detector)` (0x526390) on the physics at `this`; `entry` is its entry esp. The detector runs on
 /// each entity of the state's +0x470 list without the skip flag, and on its children.
-pub fn visit_list470(mem: &mut Mem, host: &mut impl DetectorHost, this: u32, detector: u32, entry: u32) {
-    let mut node = mem.u32(mem.u32(this + STEP_STATE_AT) + STATE_LIST470_AT);
+pub fn visit_walls(mem: &mut Mem, host: &mut impl DetectorHost, this: u32, detector: u32, entry: u32) {
+    let mut node = mem.u32(mem.u32(this + STEP_STATE_AT) + STATE_WALLS_AT);
     while node != 0 {
         if mem.u8(node + ENTITY_FLAGS_AT) & VISIT_SKIP_FLAG == 0 {
             host.detect(entry - 0x10, detector, node);

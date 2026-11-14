@@ -108,7 +108,7 @@ impl ScratchHost for PhysicsCalls {
         collision::ctor_solver(mem, solver, def);
     }
 
-    fn solver_s08(&mut self, mem: &mut Mem, solver: u32) {
+    fn solver_post(&mut self, mem: &mut Mem, solver: u32) {
         collision::drain_events(mem, solver).expect("a new solver's event list is empty");
     }
 }

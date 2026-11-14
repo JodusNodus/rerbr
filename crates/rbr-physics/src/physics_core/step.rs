@@ -3,12 +3,17 @@
 
 use crate::physics_core::layout::contact_walk::NodeHost;
 use crate::physics_core::layout::physics_object::StepHost;
-use crate::physics_core::layout::{StepStack, SLOT_20, SLOT_24, SLOT_48, SLOT_54, SLOT_98, SOLVER_POST_SLOT};
+use crate::physics_core::layout::{
+    StepStack, END_STEP_SLOT, INIT_PASS_SLOT, POST_BODIES_SLOT, POST_CONTACT_SLOT, PRE_STEP_SLOT, SOLVER_POST_SLOT,
+};
 use crate::physics_core::pacing;
 use crate::physics_core::store::CoreStore;
 
 /// The collision window in steps: NGP's 20, where 1.02 reads 4.
 const MAX_WINDOW: f32 = 20.0;
+/// The physics flags that run the contact loop (`CHECK_COLL`) and the penetration pass (`CHECK_PENETR`).
+const CHECK_COLLISIONS: u32 = 0x10;
+const CHECK_PENETRATIONS: u32 = 0x20;
 
 /// Calls `each` on every node of the list the owner (`this`'s state) holds at its head, linked through the nodes. The
 /// owner and the head are read at the start of the walk, and each link after its node's call (the calls may change the
@@ -45,13 +50,14 @@ fn walk_slot<S: CoreStore>(store: &S, head: u32, slot: u32, mut each: impl FnMut
 
 /// The physics step: first-step setup, the physics workers and solver in step order, and the
 /// per-substep clock. Ported callees are direct Rust calls; entity callbacks, listeners, collision work and the
-/// solver chain use `StepHost`. `stack` is the caller's stack image.
+/// solver chain use `StepHost`. `stack` is the caller's stack image, `saved_frame` the caller's frame word the step
+/// keeps there while its loop runs.
 pub fn step_forward<S: CoreStore>(
     store: &mut S,
     host: &mut impl StepHost<S>,
     this: u32,
     requested: u32,
-    saved_ebp: u32,
+    saved_frame: u32,
     stack: StepStack,
 ) {
     stack.enter(store);
@@ -67,8 +73,8 @@ pub fn step_forward<S: CoreStore>(
 
     let state = store.physics_state(this);
     if store.step_counter(state) == 0 {
-        walk_slot(store, store.bodies_head(state), SLOT_48, |target, node| {
-            host.entity_48(stack.first_slot48(), target, node)
+        walk_slot(store, store.bodies_head(state), INIT_PASS_SLOT, |target, node| {
+            host.init_pass(stack.first_init_pass(), target, node)
         });
     }
 
@@ -77,7 +83,7 @@ pub fn step_forward<S: CoreStore>(
     stack.record_interval(store, base, scaled);
 
     if count != 0 {
-        stack.record_saved_ebp(store, saved_ebp);
+        stack.record_saved_frame(store, saved_frame);
     }
     let mut step = 0;
     stack.record_step(store, step);
@@ -92,30 +98,30 @@ pub fn step_forward<S: CoreStore>(
         let substeps = store.step_counter(state).wrapping_add(1);
         store.set_step_counter(state, substeps);
         let telemetry = store.telemetry();
-        host.telemetry_60(stack.loop_arg(), telemetry, substeps);
+        host.telemetry_substep(stack.loop_arg(), telemetry, substeps);
         store.set_step_index(step);
 
         let state = store.physics_state(this);
-        walk_slot(store, store.bodies_head(state), SLOT_20, |target, node| {
-            host.entity_20(stack.loop_arg(), target, node, base)
+        walk_slot(store, store.bodies_head(state), PRE_STEP_SLOT, |target, node| {
+            host.pre_step(stack.loop_arg(), target, node, base)
         });
 
         stack.seed_integrate(store, base, this);
         step_bodies(store, host, this, base);
 
         let state = store.physics_state(this);
-        walk_slot(store, store.bodies_head(state), SLOT_24, |target, node| {
-            host.entity_24(stack.loop_arg(), target, node, base)
+        walk_slot(store, store.bodies_head(state), POST_BODIES_SLOT, |target, node| {
+            host.post_bodies(stack.loop_arg(), target, node, base)
         });
 
         let flags = store.step_flags();
         let state = store.physics_state(this);
         if pacing::contact_due(flags, store.step_counter(state)) {
-            if flags & 0x10 != 0 {
+            if flags & CHECK_COLLISIONS != 0 {
                 host.collide_window(stack.loop_arg(), this, scaled);
             }
 
-            if store.step_flags() & 0x20 != 0 {
+            if store.step_flags() & CHECK_PENETRATIONS != 0 {
                 let telemetry = store.telemetry();
                 host.penetration_scope(stack, this, telemetry);
 
@@ -128,7 +134,7 @@ pub fn step_forward<S: CoreStore>(
                     host.solver_pass(stack.loop_void(), store.solver(this));
                 }
                 let telemetry = store.telemetry();
-                host.telemetry_90(stack.loop_void(), telemetry);
+                host.telemetry_after_solve(stack.loop_void(), telemetry);
                 let solver = store.solver(this);
                 host.solver_post(stack.loop_void(), store.node_slot(solver, SOLVER_POST_SLOT), solver);
             }
@@ -137,13 +143,13 @@ pub fn step_forward<S: CoreStore>(
             host.solver_post(stack.loop_void(), store.node_slot(solver, SOLVER_POST_SLOT), solver);
 
             let state = store.physics_state(this);
-            walk_slot(store, store.bodies_head(state), SLOT_54, |target, node| {
-                host.entity_54(stack.loop_void(), target, node)
+            walk_slot(store, store.bodies_head(state), POST_CONTACT_SLOT, |target, node| {
+                host.post_contact(stack.loop_void(), target, node)
             });
 
             let state = store.physics_state(this);
-            walk_slot(store, store.bodies_head(state), SLOT_48, |target, node| {
-                host.entity_48(stack.loop_void(), target, node)
+            walk_slot(store, store.bodies_head(state), INIT_PASS_SLOT, |target, node| {
+                host.init_pass(stack.loop_void(), target, node)
             });
         }
 
@@ -151,8 +157,8 @@ pub fn step_forward<S: CoreStore>(
         let mut node = store.second_head(state);
         while node != 0 {
             let next = store.node_next(node);
-            let target = store.node_slot(node, SLOT_98);
-            host.entity_98(stack.loop_void(), target, node);
+            let target = store.node_slot(node, END_STEP_SLOT);
+            host.end_step(stack.loop_void(), target, node);
             node = next;
         }
 

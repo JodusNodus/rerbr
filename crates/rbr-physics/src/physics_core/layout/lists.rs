@@ -44,7 +44,7 @@ pub fn unlink_item(mem: &mut Mem, link: u32) {
 
 /// `E34Link10::UnlinkA` (0x4e41a0) as a call: `unlink_item`, and the eax the original leaves, the pointer it read last
 /// (the previous item when both neighbours exist, else the list). An unlisted link leaves `caller_eax`.
-pub fn unlink_a(mem: &mut Mem, link: u32, caller_eax: u32) -> u32 {
+pub fn unlink_with_eax(mem: &mut Mem, link: u32, caller_eax: u32) -> u32 {
     let (next, prev, list) = (mem.u32(link), mem.u32(link + 4), mem.u32(link + 8));
     unlink_item(mem, link);
     match (list, next != 0 && prev != 0) {
@@ -57,7 +57,7 @@ pub fn unlink_a(mem: &mut Mem, link: u32, caller_eax: u32) -> u32 {
 /// `CPhysics::CState::RegWall` (0x5263d0) on the state at `state`: `object` goes to the list its slots 0x8c, 0x80 and
 /// 0x88 choose (`entity_list`), asked in that order until one answers; `slot(mem, offset)` is the virtual call. Returns
 /// the eax the original leaves: the list, or the object when it goes to the third list or none (`PushItem`'s).
-pub fn reg_wall(mem: &mut Mem, state: u32, object: u32, mut slot: impl FnMut(&mut Mem, u32) -> bool) -> u32 {
+pub fn register_entity(mem: &mut Mem, state: u32, object: u32, mut slot: impl FnMut(&mut Mem, u32) -> bool) -> u32 {
     let filing = if slot(mem, 0x8c) {
         (true, false, false)
     } else if slot(mem, 0x80) {

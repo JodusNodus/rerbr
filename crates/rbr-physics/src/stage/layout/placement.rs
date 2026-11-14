@@ -51,7 +51,7 @@ impl<H: StageHost> GridBuildHost for Calls<'_, H> {
     }
 }
 
-/// `CPhysics::E46_Notify67d0` (0x5267d0, `physics_core::layout::notify_stuff`) on a placement the stage load emits,
+/// `CPhysics::E46_Notify67d0` (0x5267d0, `physics_core::layout::notify_placement`) on a placement the stage load emits,
 /// stored in the host's scratch: its object is a `CSolid` (`CSolid::CDef::Vf50`), placed (`CSolid::Vf44`), filed with
 /// the state and put to sleep (`CSolid::E43Vf94`; a placement with flag 1 is woken, `CSolid::E43Vf90`). The objects'
 /// virtual calls are answered for `CSolid` only; another class, a parent, a dynamic placement or a listener of the body
@@ -59,7 +59,7 @@ impl<H: StageHost> GridBuildHost for Calls<'_, H> {
 pub fn place(mem: &mut Mem, host: &mut impl StageHost, placement: &Placement) -> Result<(), HostUnavailable> {
     let at = host.scratch(mem, PLACEMENT_SIZE);
     store_placement(mem, at, placement);
-    physics::notify_stuff(mem, &mut Calls(host), at)
+    physics::notify_placement(mem, &mut Calls(host), at)
 }
 
 /// The virtual slots the placements' objects are checked for, with the function each must hold: the new solid

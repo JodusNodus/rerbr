@@ -19,8 +19,8 @@ const CONN_VTABLE: [u32; 6] = [0x0073_f944, 0x0073_f950, 0x0073_f95c, 0x0073_f95
 const CONN_CALLBACK: [u32; 6] = [0x0052_3d40, 0x0052_67d0, 0x0052_69e0, 0x0052_72e0, 0x0052_7330, 0x0052_3e80];
 /// The signal list each connection is linked into (the list's head word in `g_signalManager`); the last is not linked.
 const CONN_LIST: [Option<u32>; 6] = [Some(0x3448), Some(0x4938), Some(0x4b50), Some(0x4f80), Some(0x5198), None];
-/// `m_unkF4`'s value after the factories.
-const UNK_F4: u32 = 2000;
+/// `m_unkF4`'s value after the factories (the last word the constructor sets; meaning not known).
+const LAST_WORD: u32 = 2000;
 /// The size of the object `E21Stub::Hook` is given (`operator new(0x10)`).
 const HOOK_OBJECT_SIZE: u32 = 0x10;
 
@@ -33,7 +33,7 @@ pub struct Connection {
 }
 
 /// The words `CPhysics` gets before its first call: the vtable, the log storage, the function pointers, the
-/// connections, the def and two zeros (`m_unk5c`, `m_unk60`).
+/// connections, the def and two zeros (`m_unk5c`, `m_unk60`: the single-step delay and pending words the step reads).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysicsFront {
     pub vtable: u32,
@@ -41,8 +41,8 @@ pub struct PhysicsFront {
     pub funcs: [u32; 4],
     pub conns: [Connection; 6],
     pub def: u32,
-    pub unk5c: u32,
-    pub unk60: u32,
+    pub single_step_delay: u32,
+    pub single_step_pending: u32,
 }
 
 /// The calls `CPhysics::CPhysics` makes into code outside this port, and its signal links. The caller runs them
@@ -69,12 +69,16 @@ pub const PENETRATION_NAME: u32 = 0x0073_f8d0;
 /// available (`SetDirty`, `Work5500`, and the profiler operations) stay in Rust; entity slots and the remaining
 /// listeners, collision work, and solver functions are dispatched by the host at their original stack depths.
 pub trait StepHost<S = Mem>: NodeHost<S> {
-    fn entity_20(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32);
-    fn entity_24(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32);
-    fn entity_48(&mut self, entry_sp: u32, target: u32, node: u32);
-    fn entity_54(&mut self, entry_sp: u32, target: u32, node: u32);
-    fn entity_98(&mut self, entry_sp: u32, target: u32, node: u32);
-    fn telemetry_60(&mut self, entry_sp: u32, receiver: u32, count: u32);
+    /// The node slots at `target` (`layout::PRE_STEP_SLOT` and the others, names ours): S20 and S24 with `dt`, S48,
+    /// S54 and S98 without.
+    fn pre_step(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32);
+    fn post_bodies(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32);
+    fn init_pass(&mut self, entry_sp: u32, target: u32, node: u32);
+    fn post_contact(&mut self, entry_sp: u32, target: u32, node: u32);
+    fn end_step(&mut self, entry_sp: u32, target: u32, node: u32);
+    /// The telemetry hooks (named by what they are given): 0x499e60 with the substep count, 0x499e90 after the
+    /// solver.
+    fn telemetry_substep(&mut self, entry_sp: u32, receiver: u32, count: u32);
     fn collide_window(&mut self, entry_sp: u32, physics: u32, window: f32);
     fn penetration_scope(&mut self, stack: layout::StepStack, physics: u32, telemetry: u32);
     fn solver_clear_rows(&mut self, entry_sp: u32, solver: u32);
@@ -83,7 +87,7 @@ pub trait StepHost<S = Mem>: NodeHost<S> {
     fn solver_step(&mut self, entry_sp: u32, solver: u32);
     fn solver_pass(&mut self, entry_sp: u32, solver: u32);
     fn solver_post(&mut self, entry_sp: u32, target: u32, solver: u32);
-    fn telemetry_90(&mut self, entry_sp: u32, receiver: u32);
+    fn telemetry_after_solve(&mut self, entry_sp: u32, receiver: u32);
     fn reset_drive_part(&mut self, entry_sp: u32, drive: u32);
 }
 
@@ -95,8 +99,8 @@ fn front(this: u32, def: u32) -> PhysicsFront {
         funcs: FUNCS,
         conns: std::array::from_fn(|i| Connection { vtable: CONN_VTABLE[i], owner: this, callback: CONN_CALLBACK[i] }),
         def,
-        unk5c: 0,
-        unk60: 0,
+        single_step_delay: 0,
+        single_step_pending: 0,
     }
 }
 
@@ -110,10 +114,10 @@ pub fn construct_physics(mem: &mut Mem, host: &mut impl PhysicsHost, this: u32, 
         return;
     }
     host.name_or_null(def);
-    let state = construct::cdef_new_state(mem, host, this);
-    let scratch = construct::cdef_new_scratch(mem, host, def);
+    let state = construct::def_new_state(mem, host, this);
+    let scratch = construct::def_new_scratch(mem, host, def);
     layout::set_physics_pointers(mem, this, state, scratch);
-    layout::set_physics_tail(mem, this, UNK_F4);
+    layout::set_physics_tail(mem, this, LAST_WORD);
     for (&c, list) in layout::CONN_AT.iter().zip(CONN_LIST) {
         if let Some(list) = list {
             host.link(mem, list, this + c);
@@ -126,7 +130,7 @@ pub fn construct_physics(mem: &mut Mem, host: &mut impl PhysicsHost, this: u32, 
 
 /// `CPhysics::CDef::Vf4c()` (0x5284f0): a `CPhysics` of `PHYSICS_SIZE` bytes built on the def at `cdef`. Returns it, or
 /// 0 when the allocation fails.
-pub fn cdef_new_physics(mem: &mut Mem, host: &mut impl PhysicsHost, cdef: u32) -> u32 {
+pub fn def_new_physics(mem: &mut Mem, host: &mut impl PhysicsHost, cdef: u32) -> u32 {
     let at = host.alloc(mem, PHYSICS_SIZE);
     if at != 0 {
         construct_physics(mem, host, at, cdef);

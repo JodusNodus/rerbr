@@ -128,7 +128,7 @@ pub fn attach_water(mem: &mut Mem, host: &mut impl StageHost, water: u32) {
     file_with_state(mem, water, WATER_FILING);
     if mem.u32(water + PARENT) == 0 {
         let physics = physics::physics(mem);
-        setup::wall_rel(mem, &mut physics::Filer(WATER_FILING), physics, water);
+        setup::relink_wall(mem, &mut physics::Filer(WATER_FILING), physics, water);
     }
 }
 

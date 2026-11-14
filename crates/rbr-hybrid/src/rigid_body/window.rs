@@ -83,8 +83,8 @@ impl core_layout::FilingHost for Wake<'_> {
     }
 }
 
-impl core_layout::EntityVf158Host for Wake<'_> {
-    fn slot158(&mut self, sp: u32, target: u32, parent: u32) -> Result<u32, HostUnavailable> {
+impl core_layout::RefileHost for Wake<'_> {
+    fn parent_refile(&mut self, sp: u32, target: u32, parent: u32) -> Result<u32, HostUnavailable> {
         Ok(self.host.call_at(sp, target, parent, &[]).eax)
     }
 }

@@ -203,7 +203,7 @@ const SLOT_SLEEP: (u32, u32) = (0x94, 0x0052_C130);
 /// A body's first child.
 const FIRST_CHILD: u32 = 0x48;
 
-/// `CPhysics::E46_Notify67d0` (0x5267d0, `physics_core::layout::notify_stuff`) on the car loader's placements: each
+/// `CPhysics::E46_Notify67d0` (0x5267d0, `physics_core::layout::notify_placement`) on the car loader's placements: each
 /// definition's factory makes the part (`factory`), which is placed (`CSolid::Vf44`, or `CBody::Vf44` for the car body),
 /// attached to the car (`CCar::Vf150x` and `CEntity::E43Vf150`) or filed, and woken or put to sleep. The cell grid is
 /// the stage's; `heap` gives the cells' link blocks, and `sync_scratch` is free memory for `SyncGrid`'s vertices (its
@@ -343,7 +343,7 @@ impl<F: PartFactory, H: entities::exclusion::Heap> NotifyHost for CarParts<'_, F
         if mem.u32(mem.u32(object) + slot) == function {
             rigid_body::layout::solid_wake(mem, self, object)
         } else {
-            physics_core::layout::entity_rel(mem, self, object)
+            physics_core::layout::refile_entity(mem, self, object)
         }
     }
 
@@ -352,7 +352,7 @@ impl<F: PartFactory, H: entities::exclusion::Heap> NotifyHost for CarParts<'_, F
         if mem.u32(mem.u32(object) + slot) == function {
             rigid_body::layout::solid_sleep(mem, self, object)
         } else {
-            physics_core::layout::entity_rel(mem, self, object)
+            physics_core::layout::refile_entity(mem, self, object)
         }
     }
 }

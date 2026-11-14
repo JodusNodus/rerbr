@@ -4,31 +4,31 @@
 use super::physics_object::PhysicsFront;
 use crate::mem::Mem;
 use crate::physics_core::layout::construct::{
-    self, CDefHost, CDefImage, CState, SolverDefImage, Storage, TweakHeader, TweakReal, TweakUnsigned,
+    self, PhysicsDefHost, PhysicsDefImage, SolverDefImage, StateImage, Storage, TweakHeader, TweakReal, TweakUnsigned,
 };
 use crate::physics_core::layout::material::MaterialImage;
 pub(super) use crate::physics_core::layout::PHYSICS_GLOBAL as PHYSICS_GLOBAL_AT;
 
-/// Writes the words of a state image at `at` (the `CState` object). Only the fields the constructor sets are written.
-pub fn store_state(mem: &mut Mem, at: u32, s: &CState) {
+/// Writes the words of a state image at `at` (the `StateImage` object). Only the fields the constructor sets are written.
+pub fn store_state(mem: &mut Mem, at: u32, s: &StateImage) {
     store_header(mem, at, &s.base);
     store_unsigned(mem, at + 0x0c, &s.substep_count);
     let bits = s.sim_time.to_bits();
     mem.set_u32(at + 0x20, bits as u32);
     mem.set_u32(at + 0x24, (bits >> 32) as u32);
     mem.set_u32(at + 0x28, s.queue.vtable);
-    mem.set_u32(at + 0x2c, s.queue.word_04);
-    mem.set_u32(at + 0x30, s.queue.word_08);
-    store_unsigned(mem, at + 0x440, &s.unk_440);
+    mem.set_u32(at + 0x2c, s.queue.name);
+    mem.set_u32(at + 0x30, s.queue.third_word);
+    store_unsigned(mem, at + 0x440, &s.first_unsigned);
     for (i, list) in s.lists.iter().enumerate() {
         let list_at = at + 0x450 + 0x10 * i as u32;
         mem.set_u32(list_at, list.head);
-        mem.set_u32(list_at + 4, list.unk4);
+        mem.set_u32(list_at + 4, list.tail);
         mem.set_u32(list_at + 8, list.count);
         mem.set_u32(list_at + 12, list.flag);
     }
-    store_header(mem, at + 0x490, &s.unk_490);
-    store_unsigned(mem, at + 0x4a0, &s.unk_4a0);
+    store_header(mem, at + 0x490, &s.real_header);
+    store_unsigned(mem, at + 0x4a0, &s.second_unsigned);
     mem.set_u32(at + 0x4b0, s.extra);
 }
 
@@ -80,8 +80,8 @@ pub fn store_physics_front(mem: &mut Mem, at: u32, f: &PhysicsFront) {
         mem.set_u32(at + c + 0x14, conn.callback);
     }
     mem.set_u32(at + 0x24, f.def);
-    mem.set_u32(at + 0x5c, f.unk5c);
-    mem.set_u32(at + 0x60, f.unk60);
+    mem.set_u32(at + 0x5c, f.single_step_delay);
+    mem.set_u32(at + 0x60, f.single_step_pending);
 }
 
 /// The state (+0x20) and the scratch (+0x28) of a `CPhysics`; both zero when there is no def.
@@ -91,12 +91,12 @@ pub fn set_physics_pointers(mem: &mut Mem, at: u32, state: u32, scratch: u32) {
 }
 
 /// The words the constructor sets after the factories: +0x04, +0x08, +0x0c, +0x14, +0x18 and +0x1c are zero, and
-/// +0xf4 (`m_unkF4`) is `unk_f4`.
-pub fn set_physics_tail(mem: &mut Mem, at: u32, unk_f4: u32) {
+/// +0xf4 (`m_unkF4`) is `last_word`.
+pub fn set_physics_tail(mem: &mut Mem, at: u32, last_word: u32) {
     for off in [0x04, 0x08, 0x0c, 0x14, 0x18, 0x1c] {
         mem.set_u32(at + off, 0);
     }
-    mem.set_u32(at + 0xf4, unk_f4);
+    mem.set_u32(at + 0xf4, last_word);
 }
 
 /// The hook result (+0x40, `m_unk40`) and +0x54 (`m_unk54`, zero) of a `CPhysics`.
@@ -105,25 +105,25 @@ pub fn set_physics_hook(mem: &mut Mem, at: u32, hooked: u32) {
     mem.set_u32(at + 0x54, 0);
 }
 
-/// Writes the words `CPhysics::CDef` gets from its own constructor (see `CDefImage`).
-pub fn store_cdef(mem: &mut Mem, at: u32, c: &CDefImage) {
+/// Writes the words `CPhysics::CDef` gets from its own constructor (see `PhysicsDefImage`).
+pub fn store_physics_def(mem: &mut Mem, at: u32, c: &PhysicsDefImage) {
     store_header(mem, at, &c.base);
-    store_unsigned(mem, at + 0x16070, &c.unk16070);
-    store_real(mem, at + 0x16080, &c.unk16080);
-    store_real(mem, at + 0x16090, &c.unk16090);
-    store_header(mem, at + 0x160a0, &c.unk160a0.header);
-    for (i, v) in c.unk160a0.value.iter().enumerate() {
+    store_unsigned(mem, at + 0x16070, &c.max_expirable_count);
+    store_real(mem, at + 0x16080, &c.max_time_step);
+    store_real(mem, at + 0x16090, &c.min_time_delta);
+    store_header(mem, at + 0x160a0, &c.gravity.header);
+    for (i, v) in c.gravity.value.iter().enumerate() {
         mem.set_f32(at + 0x160b0 + 4 * i as u32, *v);
     }
     store_storage(mem, at + 0x160c0, &c.flags);
     store_storage(mem, at + 0x160d4, &c.dbg);
     store_storage(mem, at + 0x160e8, &c.log);
-    store_real(mem, at + 0x16100, &c.unk16100);
-    store_real(mem, at + 0x16110, &c.unk16110);
-    store_real(mem, at + 0x16120, &c.unk16120);
-    store_unsigned(mem, at + 0x16130, &c.unk16130);
-    store_unsigned(mem, at + 0x16140, &c.unk16140);
-    store_unsigned(mem, at + 0x16150, &c.unk16150);
+    store_real(mem, at + 0x16100, &c.brake_wall_buffer);
+    store_real(mem, at + 0x16110, &c.brake_wall_factor);
+    store_real(mem, at + 0x16120, &c.brake_wall_damping);
+    store_unsigned(mem, at + 0x16130, &c.damage_zone);
+    store_unsigned(mem, at + 0x16140, &c.force_material);
+    store_unsigned(mem, at + 0x16150, &c.single_stepper_delay);
 }
 
 fn store_real(mem: &mut Mem, at: u32, r: &TweakReal) {
@@ -148,14 +148,14 @@ pub fn set_create_result(mem: &mut Mem, value: u32) {
 }
 
 /// The global `g_1659b6c`: the def `E46_InitPhysics` created (0 before the first call).
-const CDEF_GLOBAL_AT: u32 = 0x0165_9b6c;
+const DEF_GLOBAL_AT: u32 = 0x0165_9b6c;
 
-pub fn cdef_global(mem: &Mem) -> u32 {
-    mem.u32(CDEF_GLOBAL_AT)
+pub fn def_global(mem: &Mem) -> u32 {
+    mem.u32(DEF_GLOBAL_AT)
 }
 
-pub fn set_cdef_global(mem: &mut Mem, def: u32) {
-    mem.set_u32(CDEF_GLOBAL_AT, def);
+pub fn set_def_global(mem: &mut Mem, def: u32) {
+    mem.set_u32(DEF_GLOBAL_AT, def);
 }
 
 pub fn set_physics_global(mem: &mut Mem, object: u32) {
@@ -184,7 +184,7 @@ pub fn construct_material_manager(mem: &mut Mem, at: u32) {
 /// `CPhysics::CDef`'s members built by their ports.
 pub struct Ported;
 
-impl CDefHost for Ported {
+impl PhysicsDefHost for Ported {
     fn def_manager(&mut self, mem: &mut Mem, at: u32) {
         store_header(mem, at, &construct::def_manager_image());
     }

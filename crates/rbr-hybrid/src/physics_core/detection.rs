@@ -50,7 +50,7 @@ impl DetectorHost for Detectors<'_> {
         self.slot(sp, entity, 0x118, &[])
     }
 
-    fn entity_110(&mut self, sp: u32, entity: u32) -> u32 {
+    fn grid_active(&mut self, sp: u32, entity: u32) -> u32 {
         if vslot(&self.mem, entity, 0x110) == crate::collision::BODY_VF110
             && crate::skip_call(self.host, &mut self.mem, sp, &[])
         {
@@ -59,15 +59,15 @@ impl DetectorHost for Detectors<'_> {
         self.slot(sp, entity, 0x110, &[])
     }
 
-    fn entity_10c(&mut self, sp: u32, entity: u32) -> u32 {
+    fn has_grid(&mut self, sp: u32, entity: u32) -> u32 {
         self.slot(sp, entity, 0x10c, &[])
     }
 
-    fn entity_30(&mut self, sp: u32, entity: u32) -> u32 {
+    fn transform(&mut self, sp: u32, entity: u32) -> u32 {
         self.slot(sp, entity, 0x30, &[])
     }
 
-    fn entity_34(&mut self, sp: u32, entity: u32) -> u32 {
+    fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
         self.slot(sp, entity, 0x34, &[])
     }
 
@@ -94,11 +94,11 @@ impl DetectorHost for Detectors<'_> {
         self.slot(sp, entity, 0xcc, &[lo, hi])
     }
 
-    fn entity_d0(&mut self, sp: u32, entity: u32, pair: u32, other: u32, extra: u32) -> u32 {
+    fn pair_response(&mut self, sp: u32, entity: u32, pair: u32, other: u32, extra: u32) -> u32 {
         self.slot(sp, entity, 0xd0, &[pair, other, extra])
     }
 
-    fn entity_d4(&mut self, sp: u32, entity: u32, args: [u32; 7]) {
+    fn body_pair_response(&mut self, sp: u32, entity: u32, args: [u32; 7]) {
         self.slot(sp, entity, 0xd4, &args);
     }
 
@@ -106,7 +106,7 @@ impl DetectorHost for Detectors<'_> {
         self.slot(sp, entity, 0x80, &[])
     }
 
-    fn entity_30_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32 {
+    fn transform_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32 {
         self.slot(sp, entity, 0x30, &[arg])
     }
 
@@ -157,7 +157,7 @@ impl DetectorHost for Detectors<'_> {
         self.host.call_at(sp, WALK_PRE_ORDER, entity, &[detector]);
     }
 
-    fn visit_list470(&mut self, sp: u32, physics: u32, detector: u32) {
+    fn visit_walls(&mut self, sp: u32, physics: u32, detector: u32) {
         self.host.call_at(sp, VISIT_470, physics, &[detector]);
     }
 }
@@ -175,11 +175,11 @@ impl CollideHost for Detectors<'_> {
         self.host.call_at(sp, 0x526a70, physics, &[word]);
     }
 
-    fn telemetry_70(&mut self, sp: u32, receiver: u32, events: u32) {
+    fn telemetry_events(&mut self, sp: u32, receiver: u32, events: u32) {
         self.host.call_at(sp, 0x499e70, receiver, &[events]);
     }
 
-    fn telemetry_90(&mut self, sp: u32, receiver: u32) {
+    fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
         self.host.call_at(sp, 0x499e90, receiver, &[]);
     }
 
@@ -211,11 +211,11 @@ impl CollideHost for Detectors<'_> {
         self.host.call_at(sp, 0x525760, physics, &[window.to_bits()]);
     }
 
-    fn entity_48(&mut self, sp: u32, target: u32, node: u32) {
+    fn init_pass(&mut self, sp: u32, target: u32, node: u32) {
         self.host.call_at(sp, target, node, &[]);
     }
 
-    fn entity_54(&mut self, sp: u32, target: u32, node: u32) {
+    fn post_contact(&mut self, sp: u32, target: u32, node: u32) {
         self.host.call_at(sp, target, node, &[]);
     }
 }
@@ -254,7 +254,7 @@ pub(super) fn penetration_vf04(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 /// thiscall `(other)`: `E46L2Detector::Vf04`.
 pub(super) fn e46_l2_vf04(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Detectors::new(ctx);
-    layout::e46_l2_detect(&mut ctx.mem, &mut calls, r.ecx, r.stack[0], r.esp);
+    layout::l2_collision_detect(&mut ctx.mem, &mut calls, r.ecx, r.stack[0], r.esp);
     Ok(Return::void(0, 4))
 }
 
@@ -268,7 +268,7 @@ pub(super) fn l1_pen_vf04(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// stdcall `(a, b, mask, excluded, out)`: `E46_Kernel5bd0`, whether it collected any entity (eax).
 pub(super) fn kernel_5bd0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, mask, excluded, out, ..] = r.stack;
-    let args = layout::KernelArgs { a, b, mask, excluded, out };
+    let args = layout::KernelArgs { center: a, half_size: b, mask, excluded, out };
     let mut calls = Detectors { vf_cc: Some(None), ..Detectors::new(ctx) };
     let any = layout::kernel_collect(&mut ctx.mem, &mut calls, args, r.esp);
     Ok(Return::void(any as u32, 0x14))
@@ -299,7 +299,7 @@ pub(super) fn collide_window(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 /// thiscall `(detector)`: `CPhysics::Visit470`.
 pub(super) fn visit_list470(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Detectors::new(ctx);
-    layout::visit_list470(&mut ctx.mem, &mut calls, r.ecx, r.stack[0], r.esp);
+    layout::visit_walls(&mut ctx.mem, &mut calls, r.ecx, r.stack[0], r.esp);
     Ok(Return::void(0, 4))
 }
 

@@ -100,7 +100,7 @@ pub fn impulse_tail<S: RigidStore>(
         let hook_args = [args[2], args[3], word, args[5], args[6], out, point, args[7]];
         calls.hook(store, frame.hook_sp, hook, hook_args);
     }
-    if core_layout::cdef_debug_flags(store.mem()) & RING_BIT != 0 && store.ring_tail(this) != 0 {
+    if core_layout::def_debug_flags(store.mem()) & RING_BIT != 0 && store.ring_tail(this) != 0 {
         calls.compose_a(store, frame.compose_sp, point, this, out);
         let ring = store.ring_tail(this);
         calls.ring_append(store, frame.ring_sp, ring, [out, 0, 1.0f32.to_bits(), 0]);

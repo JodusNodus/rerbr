@@ -50,13 +50,13 @@ impl PullFrame {
         self.0 + 0x50
     }
 
-    /// The velocity term less the origin (three lanes; the fourth is the stack's).
+    /// The velocity term less the gravity (three lanes; the fourth is the stack's).
     pub fn term(self) -> u32 {
         self.0 + 0x20
     }
 
-    /// The copy of the CDef's origin.
-    pub fn origin(self) -> u32 {
+    /// The copy of the definition's gravity (`vecGravity`).
+    pub fn gravity(self) -> u32 {
         self.0 + 0x40
     }
 
@@ -109,11 +109,11 @@ impl StepFrame {
 pub struct Payload(u32);
 
 impl Payload {
-    pub fn word0(self) -> u32 {
+    pub fn first_word(self) -> u32 {
         self.0
     }
 
-    pub fn word1(self) -> u32 {
+    pub fn second_word(self) -> u32 {
         self.0 + 4
     }
 

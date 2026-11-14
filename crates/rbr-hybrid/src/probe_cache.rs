@@ -197,9 +197,9 @@ fn distinct_pages(reads: [u32; 10]) -> Option<(u8, [u32; PAGES])> {
 }
 
 fn stage(read: &KernelEntity) -> Stage {
-    match read.slot_118 {
+    match read.grid_slot {
         BODY_GRID if read.grid == 0 || read.solid == 0 => Stage::FailsAtGrid,
-        BODY_GRID => match (read.slot_cc, read.bounds) {
+        BODY_GRID => match (read.overlap_slot, read.bounds) {
             (BODY_OVERLAPS, Some(bounds)) => Stage::Overlap(bounds),
             _ => Stage::OverlapOther,
         },

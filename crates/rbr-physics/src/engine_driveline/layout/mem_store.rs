@@ -26,7 +26,7 @@ use crate::engine_driveline::sim::{BlendRec, Bracket};
 use crate::engine_driveline::store::EngineStore;
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
-use crate::physics_core::layout::cdef_flags;
+use crate::physics_core::layout::def_flags;
 use crate::spring_damper::{BlendTerms, Relaxation};
 
 impl EngineStore for Mem {
@@ -289,7 +289,7 @@ impl EngineStore for Mem {
                 let at = def + 0xF0 * k as u32;
                 Wheel { weight: self.f32(at + 0x148), pack: self.u32(at + 0x158) }
             }),
-            gear_guard: cdef_flags(self) & 0x80000 != 0,
+            gear_guard: def_flags(self) & 0x80000 != 0,
             torque_scale: f(0x48),
             slip_gain_a: f(0x664),
             slip_gain_b: f(0x674),

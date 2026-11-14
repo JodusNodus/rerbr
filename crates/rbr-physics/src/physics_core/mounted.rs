@@ -8,10 +8,10 @@ use super::math::{mounted_step, mounted_velocity, Vec3, Vec4};
 use super::store::CoreStore;
 
 /// The mounted body's velocity pull on the body at `this`, through the layout's pull frame: the mount point composed
-/// into the owner's frame, its velocity term less the physics definition's origin, the origin's copy, the walk's output
-/// and the gap between the body and its mount point. Then the mount-point velocity (`math::mounted_velocity`). A body
-/// without an owner runs the solid body's pull. Returns the velocity's address, None before any call when the
-/// definition's origin is the null sentinel.
+/// into the owner's frame, its velocity term less the physics definition's gravity (`vecGravity`), the gravity's copy,
+/// the walk's output and the gap between the body and its mount point. Then the mount-point velocity
+/// (`math::mounted_velocity`). A body without an owner runs the solid body's pull. Returns the velocity's address, None
+/// before any call when the definition's gravity key is the null sentinel.
 pub fn mounted_pull<S: CoreStore>(
     store: &mut S,
     host: &mut impl MountedPullHost,
@@ -23,17 +23,17 @@ pub fn mounted_pull<S: CoreStore>(
     if owner == 0 {
         return Some(host.solid_pull(frame.solid_sp(), this));
     }
-    let base = store.origin_base();
-    if base == 0 {
+    let key = store.gravity_key();
+    if key == 0 {
         return None;
     }
     let mount = store.mount_point_at(store.mounted_car(this));
     host.world_compose(frame.compose_sp(), owner, mount, frame.composed());
     point_velocity_at(store, owner, frame.composed(), frame.term());
-    store.copy_origin(base, frame.origin());
-    let origin = Vec4::load(store, frame.origin());
+    store.copy_key_gravity(key, frame.gravity());
+    let gravity = Vec4::load(store, frame.gravity());
     let term = Vec4::load(store, frame.term());
-    Vec3 { x: term.x - origin.x, y: term.y - origin.y, z: term.z - origin.z }.store(store, frame.term());
+    Vec3 { x: term.x - gravity.x, y: term.y - gravity.y, z: term.z - gravity.z }.store(store, frame.term());
     host.walk(frame.walk_sp(), frame.term(), owner, frame.walked());
     let position = store.mounted_position(this);
     let point = store.mount_point(store.mounted_car(this));
@@ -66,18 +66,18 @@ pub fn mounted_position_step<S: CoreStore>(
     store.set_mounted_position(this, step.position);
     if store.mounted_event_sent(this) == 0 {
         let sig = frame.event();
-        store.set_u32(sig.word1(), store.mounted_key(this));
-        store.set_u32(sig.word0(), 1);
+        store.set_u32(sig.second_word(), store.mounted_key(this));
+        store.set_u32(sig.first_word(), 1);
         store.copy_mounted_rotation(this, sig.rotation());
         store.copy_mounted_position(this, sig.position());
         store.copy_vec4(sig.rotation(), sig.rotation_copy());
         store.copy_vec4(sig.position(), sig.position_copy());
-        host.emit_event(frame.emit_sp(), store.body_event_signal(), sig.word0());
+        host.emit_event(frame.emit_sp(), store.body_event_signal(), sig.first_word());
         store.set_mounted_event_sent(this, 1);
     }
     let sig = frame.state();
-    store.set_u32(sig.word0(), store.mounted_key(this));
+    store.set_u32(sig.first_word(), store.mounted_key(this));
     store.copy_mounted_rotation(this, sig.rotation());
     store.copy_mounted_position(this, sig.position());
-    host.emit_state(frame.emit_sp(), store.body_state_signal(), sig.word0())
+    host.emit_state(frame.emit_sp(), store.body_state_signal(), sig.first_word())
 }

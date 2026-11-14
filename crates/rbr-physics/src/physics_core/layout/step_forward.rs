@@ -33,7 +33,7 @@ impl StepStack {
         self.below(0x34)
     }
 
-    pub fn first_slot48(self) -> u32 {
+    pub fn first_init_pass(self) -> u32 {
         self.below(0x38)
     }
 
@@ -125,7 +125,8 @@ impl StepStack {
         store.set_f32(self.scaled_local(), scaled);
     }
 
-    pub(crate) fn record_saved_ebp(self, store: &mut impl Raw, ebp: u32) {
+    /// The caller's `ebp`, which the original pushes around its substep loop.
+    pub(crate) fn record_saved_frame(self, store: &mut impl Raw, ebp: u32) {
         store.set_u32(self.loop_saved_ebp(), ebp);
     }
 
@@ -158,12 +159,15 @@ pub(super) const STEP_STATE_AT: u32 = 0x20;
 pub(super) const STEP_SCRATCH_AT: u32 = 0x28;
 pub(super) const STEP_NODE_NEXT_AT: u32 = 0x10;
 
-/// The vtable slots `StepForward` calls on the nodes of the state's lists, and the solver's slot 2 (`solver_post`).
-pub const SLOT_20: u32 = 0x20;
-pub const SLOT_24: u32 = 0x24;
-pub const SLOT_48: u32 = 0x48;
-pub const SLOT_54: u32 = 0x54;
-pub const SLOT_98: u32 = 0x98;
+/// The vtable slots `StepForward` calls on the nodes of the state's lists (names ours, by when the step calls them):
+/// S20 before the body pass (`CSolid`'s is the substep child walk), S24 after it (`CSolid`'s returns at once), S48
+/// on the first step and after the contacts (the entities' init walk), S54 after the contacts, S98 at the end of the
+/// step on the second list. Then the solver's slot 2 (`solver_post`).
+pub const PRE_STEP_SLOT: u32 = 0x20;
+pub const POST_BODIES_SLOT: u32 = 0x24;
+pub const INIT_PASS_SLOT: u32 = 0x48;
+pub const POST_CONTACT_SLOT: u32 = 0x54;
+pub const END_STEP_SLOT: u32 = 0x98;
 pub const SOLVER_POST_SLOT: u32 = 0x08;
 
 /// Mirrors the StepForward prologue and its direct profiler `Enter` call. The exception link at `entry-0xc` is left as
@@ -193,9 +197,9 @@ pub fn seed_penetration_exit(mem: &mut Mem, stack: StepStack) {
     mem.set_u32(stack.penetration_prof_return(), 0x0052_7579);
 }
 
-/// The saved `EDI` word written by Work5500 when its S6c/S58 pass has at least one node. StepForward has `EDI == 0`
+/// The saved `EDI` word written by the body pass `Work5500` when its S6c/S58 pass has at least one node. StepForward has `EDI == 0`
 /// when it enters Work5500 because its preceding list walk ended at the null link.
-pub fn seed_work5500_edi(mem: &mut Mem, stack: StepStack) {
+pub fn seed_body_pass_edi(mem: &mut Mem, stack: StepStack) {
     mem.set_u32(stack.work_saved_edi(), 0);
 }
 

@@ -23,13 +23,16 @@ const HITS_LAST_AT: u32 = 0x8;
 const HITS_MAXIMUM_AT: u32 = 0xc;
 const PASS_MAXIMUM_AT: u32 = 0x14;
 const PASS_COUNT_AT: u32 = 0x18;
-// The CDef.
+// The definition (`CPhysics::CDef`): the values of `Flags`, `DbgFlags` and `MaxTimeStep`.
 const STEP_FLAGS_AT: u32 = 0x160cc;
-const COLLIDE_FLAGS_AT: u32 = 0x160e0;
+const DEBUG_FLAGS_AT: u32 = 0x160e0;
 const STEP_INTERVAL_AT: u32 = 0x1608c;
-const GRAVITY_AT: u32 = 0x160b0;
-/// The sentinel -0x160a0 in the CDef's place makes the original read address 0.
-const NO_GRAVITY: u32 = 0x160a0u32.wrapping_neg();
+/// The definition's `vecGravity` key (an NTweak vector: its header, then the gravity at `+0x10`), and the gravity.
+const GRAVITY_KEY_AT: u32 = 0x160a0;
+const GRAVITY_KEY_VALUE_AT: u32 = 0x10;
+const GRAVITY_AT: u32 = GRAVITY_KEY_AT + GRAVITY_KEY_VALUE_AT;
+/// The sentinel -0x160a0 in the definition's place makes the original read the key at address 0.
+const NO_GRAVITY: u32 = GRAVITY_KEY_AT.wrapping_neg();
 // The state and its nodes.
 const STATE_COUNTER_AT: u32 = 0x18;
 const STATE_TIME_AT: u32 = 0x20;
@@ -48,8 +51,8 @@ const STEP_CALL_COUNT_GLOBAL: u32 = 0x0165_9b74;
 const PASSENGER_HOST_AT: u32 = 0x14;
 const STEP_HOST_AT: u32 = 0x40;
 const VELOCITY_AT: u32 = 0x30;
-const HOST_H40_AT: u32 = 0x40;
-const HOST_H90_AT: u32 = 0x90;
+const HOST_PULL_RATE_AT: u32 = 0x40;
+const HOST_PULL_OFFSET_AT: u32 = 0x90;
 const HOST_OFFSET_AT: u32 = 0x230;
 // The mounted body.
 const BODY_EVENT_SIGNAL: u32 = 0xec98;
@@ -62,7 +65,6 @@ const CAR_POSE_AT: u32 = 0x220;
 const MOUNTED_LINEAR_AT: u32 = 0x1c0;
 const MOUNT_VELOCITY_AT: u32 = 0x230;
 const MOUNT_POINT_AT: u32 = 0x220;
-const ORIGIN_BASE_AT: u32 = 0x160a0;
 const MOUNTED_KEY_AT: u32 = 0x30;
 const MOUNTED_EVENT_SENT_AT: u32 = 0x584;
 const MOUNTED_ENABLE_AT: u32 = 0x580;
@@ -78,8 +80,8 @@ impl CoreStore for Mem {
         self.u32(def + STEP_FLAGS_AT)
     }
 
-    fn collide_flags(&self) -> u32 {
-        self.u32(self.u32(physics(self) + PHYSICS_DEF_AT) + COLLIDE_FLAGS_AT)
+    fn debug_flags(&self) -> u32 {
+        self.u32(self.u32(physics(self) + PHYSICS_DEF_AT) + DEBUG_FLAGS_AT)
     }
 
     fn gravity_point(&self) -> Option<[f32; 3]> {
@@ -249,16 +251,16 @@ impl CoreStore for Mem {
     }
 
     fn host_pull_at(&self, host: u32) -> u32 {
-        host + HOST_H90_AT
+        host + HOST_PULL_OFFSET_AT
     }
 
     fn host_pull_vectors(&self, host: u32) -> (Vec4, Vec4) {
-        (Vec4::load(self, host + HOST_H40_AT), Vec4::load(self, host + HOST_H90_AT))
+        (Vec4::load(self, host + HOST_PULL_RATE_AT), Vec4::load(self, host + HOST_PULL_OFFSET_AT))
     }
 
-    fn store_host_pull_vectors(&mut self, host: u32, h40: Vec4, h90: Vec4) {
-        h40.store(self, host + HOST_H40_AT);
-        h90.store(self, host + HOST_H90_AT);
+    fn store_host_pull_vectors(&mut self, host: u32, rate: Vec4, offset: Vec4) {
+        rate.store(self, host + HOST_PULL_RATE_AT);
+        offset.store(self, host + HOST_PULL_OFFSET_AT);
     }
 
     fn mounted_enable(&self, body: u32) -> u32 {
@@ -379,12 +381,12 @@ impl CoreStore for Mem {
         car + MOUNT_POINT_AT
     }
 
-    fn copy_origin(&mut self, base: u32, to: u32) {
-        CoreStore::copy_vec4(self, base + 0x10, to);
+    fn copy_key_gravity(&mut self, key: u32, to: u32) {
+        CoreStore::copy_vec4(self, key + GRAVITY_KEY_VALUE_AT, to);
     }
 
-    fn origin_base(&self) -> u32 {
-        self.u32(physics_global(self) + PHYSICS_DEF_AT).wrapping_add(ORIGIN_BASE_AT)
+    fn gravity_key(&self) -> u32 {
+        self.u32(physics_global(self) + PHYSICS_DEF_AT).wrapping_add(GRAVITY_KEY_AT)
     }
 
     fn mounted_key(&self, body: u32) -> u32 {
