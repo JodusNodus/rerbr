@@ -1,8 +1,9 @@
 //! The storage seam of the physics (Phase B, `notes/physics.md` "Store seam").
 //!
 //! Each subsystem declares a store trait (`TyreStore`, `StrutStore`, `VcuStore`, ...) whose methods are its layout's
-//! `load_*`/`store_*` groups. [`Mem`] implements every one of them with today's layout bodies (the Mem store), and the
-//! sequence functions are generic over the trait, so the Mem build compiles to the code it had before the seam.
+//! `load_*`/`store_*` groups. [`Mem`] implements them with the layout bodies (the Mem store), but for the typed
+//! subsystems (the struts, the VCU), whose stores are views over their typed state ([`typed::CarTyped`]); the sequence
+//! functions are generic over the trait.
 //!
 //! [`Raw`] is the word access every store has: on [`Mem`] it is the inherent accessors, elsewhere the inner image's.
 //! A sequence function reaches what its subsystem's trait does not name yet (the caller's out pointers, another

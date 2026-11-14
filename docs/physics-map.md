@@ -103,7 +103,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Clutch | `engine_driveline/drive_worker.rs`, `ngp/drive.rs`, `vcu/clutch.rs` | `engine_driveline::drive_worker::clutch_torque`, `ngp::drive::clutch_state`, `vcu::clutch::launch_clutch` |
 | Differentials, torque split | `ngp/diff.rs`, `ngp/axle.rs`, `ngp/drive.rs`, `vcu/locks.rs` | `ngp::diff::lock_torques`, `ngp::axle::axle_worker`, `ngp::drive::split_factor`, `vcu::locks::diff_locks` |
 | Gearbox | `engine_driveline/drive.rs`, `engine_driveline/drive_worker.rs` | `engine_driveline::drive::gear_ratio`, `request_gear`, `engine_driveline::drive_worker::gear_logic` |
-| VCU (auto shift, rev cut) | `vcu/` | `vcu::step::step`, `vcu::gear::update`, `vcu::cut::rev_limit_cut` |
+| VCU (auto shift, rev cut) | `vcu/` | `vcu::step::step`, `vcu::gear::update`, `vcu::cut::rev_limit_cut`, `vcu::layout::Unit` (the typed state) |
 | Aero drag | `car_body/drag.rs` | `car_body::drag::apply_drag` |
 | Downforce, air density | `ngp/downforce.rs`, `ngp/atmosphere.rs` | `ngp::downforce::downforce`, `ngp::atmosphere::atmosphere` |
 | Brakes | `ngp/brake.rs`, `engine_driveline/drive.rs` | `ngp::brake::brake_step` (torque, disc temperatures), `engine_driveline::drive::set_brake_in` |

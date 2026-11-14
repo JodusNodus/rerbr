@@ -528,3 +528,97 @@ fn query_slip_matches_original_calls() {
     }
     eprintln!("query_slip: {} calls match, by answer: {answers:?}", calls.len());
 }
+
+/// The callees of the entries' sequences: the getters return what the record's did, the setters do nothing (their
+/// writes are not the VCU's).
+struct Recorded<'a>(&'a Call);
+
+impl layout::VcuCalls for Recorded<'_> {
+    fn engine_speed(&mut self, _: u32) -> f32 {
+        inner_value(self.0, GET_4520)
+    }
+    fn lock_speed(&mut self, _: u32) -> f32 {
+        inner_value(self.0, GET_4540)
+    }
+    fn car_speed(&mut self, _: u32) -> f32 {
+        inner_value(self.0, GET_15F8)
+    }
+    fn set_diff_lock(&mut self, _: u32, _: u32, _: f32) -> u32 {
+        0
+    }
+    fn set_clutch_slip(&mut self, _: u32, _: f32) -> u32 {
+        0
+    }
+    fn set_cut_flags(&mut self, _: u32, _: [u32; 4]) -> u32 {
+        0
+    }
+    fn set_engine_pedal(&mut self, _: u32, _: f32) {}
+    fn set_brake_light(&mut self, _: u32, _: bool) {}
+    fn set_neutral_light(&mut self, _: u32, _: bool) {}
+    fn query_slip(&mut self) -> bool {
+        false
+    }
+    fn set_dirty(&mut self, _: u32) {}
+}
+
+/// The chain on the image between calls (each entry lifts and lowers the unit) and on the typed storage over the whole
+/// chain (lifted before it, lowered after) leave every byte of the record's windows and the unit's objects equal, on
+/// every Step record.
+#[test]
+fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
+    let _pc24 = Precision::Pc24.scope();
+    let Some(calls) = load(STEP) else {
+        eprintln!("skipping the typed storage's chain: RBR_VCU_VECTORS not set");
+        return;
+    };
+    let mut chained = 0;
+    for call in calls.iter().filter(|call| call.windows.len() >= 7) {
+        let scratch = call.args[0];
+        let mut base = windows(call);
+        on_unit(&mut base, scratch, |_| ());
+        // A packet that sets the gear (flag 4) to the one in use, so the dispatch runs and changes no request.
+        let gear = layout::gearbox_at(&base, base.u32(base.u32(scratch + ScratchObj::drive.at) + 8)).gear;
+        let packet = layout::Packet {
+            pedals: layout::Pedals { throttle: 0.75, brake: 0.25, handbrake: 0.5 },
+            fixed_clutch: 0.5,
+            carried_word: 3,
+            flags: 4,
+            value: gear,
+        };
+        // The entries in a row, as a step makes its VCU calls: the packet, the gear logic, the launch clutch, both
+        // steps, the cut and the locks.
+        let (dt, tuning) = (f32::from_bits(call.args[1]), layout::Tuning::STOCK);
+        let entries: [&dyn Fn(&mut VcuView); 8] = [
+            &|v| layout::read_packet(v, packet),
+            &|v| _ = layout::apply_packet(v, &mut Recorded(call), packet, &tuning),
+            &|v| layout::gearbox_update(v, &mut Recorded(call), dt, tuning),
+            &|v| _ = layout::launch_clutch(v, &mut Recorded(call), dt, tuning),
+            &|v| layout::step(v, &mut Recorded(call), dt, true, tuning),
+            &|v| layout::step(v, &mut Recorded(call), dt, false, tuning),
+            &|v| _ = layout::rev_limit_cut(v, &mut Recorded(call), tuning.cut_margin),
+            &|v| _ = layout::diff_locks(v, &mut Recorded(call)),
+        ];
+        let mut per_call = base.clone();
+        for entry in entries {
+            layout::with_vcu(&mut per_call, scratch, entry);
+        }
+        let mut typed = base.clone();
+        let held = layout::CarVcu::of(&typed, scratch);
+        let mut view = held.view(&mut typed);
+        for entry in entries {
+            entry(&mut view);
+        }
+        held.lower(&mut typed);
+        let state = base.u32(scratch + ScratchObj::state.at);
+        let objects = [(scratch, ScratchObj::SIZE as usize), (state, layout::StateObj::SIZE as usize)];
+        for (at, len) in call.windows.iter().map(|w| (w.at, w.len)).chain(objects) {
+            let (a, b) = (per_call.read(at, len), typed.read(at, len));
+            let k = a.iter().zip(&b).position(|(x, y)| x != y);
+            assert!(k.is_none(), "call {}: {at:#x}+{:#x} differs between the storages", call.index, k.unwrap_or(0));
+        }
+        assert_ne!(per_call.read(scratch, 0x20), base.read(scratch, 0x20), "call {}: the packet", call.index);
+        chained += 1;
+    }
+    assert!(chained > 0, "no Step record with every window");
+    eprintln!("the typed storage's chain: {chained} Step records, every byte equal to the per-call path's");
+}

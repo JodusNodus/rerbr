@@ -153,7 +153,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | --- | --- | --- |
 | `store::Raw` (supertrait: words, `mem()`) | `store/mod.rs` | same |
 | `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: `spring_damper/layout.rs` |
-| `VcuStore` | `vcu/store.rs` | `vcu/layout.rs` |
+| `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: `vcu/layout.rs` |
 | `TyreStore` | `tyre/store.rs` | `tyre/layout/kernels.rs` |
 | `WheelStore` | `wheel/layout/store.rs` | `wheel/layout/fields.rs` |
 | `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
@@ -202,6 +202,25 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   (`--features rbr-hybrid/poison`, the held words poisoned in the runs' memory) 84084/84084; `round_trip` 192 typed
   bytes equal on 43 snapshots; `tests/pure_struts.rs` both storages equal to the original and to each other.
   The hybrid gate's 1.02 snapshots run no strut call but the kernels and `GetName` in 30 steps (`Step` declines).
+- One typed storage for the car: `store::typed::CarTyped` (the struts in a `RefCell`, their runs never nest; the VCU
+  in a `Cell`, FlagDispatch calls the slip query, a VCU binding, through the host), lifted and lowered together by
+  `Pure::typed` (was `typed_struts`) around `Playback::step`, reached by the bindings through `Host::typed`.
+- The VCU, second: `vcu::layout::Unit` (the scratch's pedals, fixed clutch, carried word, launch and slip fields; the
+  state's lockout, launch clutch with its dirty word, pedal swap, gear timer and cooldown; 16 words) in `CarVcu`
+  (`VcuImage`, `lift`/`lower` on `ScratchObj`/`StateObj`, `with_vcu` per call, `round_trip`). Definition, pointers and
+  the owner car stay in the image, read per call. The drive's gear block, outputs (CReals, lock torques), gear count
+  and ratios are the drive's (its step and setters read them in the same step), so `DriveBlocks` writes them on the
+  image; `CDrive::M6840` stays a `Mem` function. `VcuCalls` keeps every callee a host call (drive, engine, car,
+  lights untyped; the slip query because the original's call places its stack words). CopyDef's maps and ReadPacket's
+  packet are read and written on the image, their scratch fields through the store; ReadPacket's run is lowered
+  before FlagDispatch's, so the per-call slip query lifts it. Readers outside the bindings during a step: NGP's
+  engine wrapper (the cooldown, `state+0x64`) and drive wrapper and curve term (the handbrake, `car+0x864`), through
+  `rbr_hybrid::vcu::unit_of` (an unrouted read fails the poison run: `vcu gear timer (+0x4)` in `0x5273a0`).
+  Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps; poison 84084/84084;
+  `round_trip` 64 typed bytes on 40 snapshots; `vcu_vectors` on the per-call store (records' unmapped unit bytes
+  zero-filled; CheckSlip's drive+8 mapped to its window), and the chain test (8 entries per-call vs held, every byte,
+  240 Step records); hybrid gate 13/13 runs Step and ReadPacket per call (drive2 has auto gears and clutch help off,
+  so its gear logic and launch clutch return early); +0.14 % instructions per step.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
@@ -274,7 +293,7 @@ blocks (`+0x3a18`, `+0x3aac`: `layout::DriveDamage`, `EngineOptions`; rbr-recomp
 
 ## VCU
 
-`src/vcu/` (`CScratchSim::Step` 0x537f50 sequence, tables and locks in the file docs). RSF drive2 attempt 5 parted
+`src/vcu/` (`CScratchSim::Step` 0x537f50 sequence, tables and locks in the file docs; typed state in "Store seam"). RSF drive2 attempt 5 parted
 at its first launch without PC53 rounding of the pedal and speed tables.
 
 ## Ground and surfaces
