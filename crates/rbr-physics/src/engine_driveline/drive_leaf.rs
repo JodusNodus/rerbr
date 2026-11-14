@@ -32,16 +32,16 @@ pub fn gear_speed_error(w: &DriveWorker, g: &GearWork) -> f64 {
 /// word is cleared before the writes.
 pub fn clutch_flags(w: &mut DriveWorker) {
     let gate = |k: usize| w.state.blocks[k].gate.value != 0;
-    let (b3, b4, b5) = (gate(0), gate(1), gate(2));
-    let gated = gate(3);
+    let (gated0, gated1, gated2) = (gate(0), gate(1), gate(2));
+    let gated3 = gate(3);
     let axles = w.def.axles;
     w.state.lane_active[0] = 0;
-    if !gated && !b3 && !b4 && !b5 {
+    if !gated3 && !gated0 && !gated1 && !gated2 {
         w.state.branch = 0;
         w.state.lane_active[1..].fill(0);
         return;
     }
-    if gated && b3 && b4 && b5 {
+    if gated3 && gated0 && gated1 && gated2 {
         w.state.branch = 2;
         for (k, axle) in axles.iter().take(3).enumerate() {
             let flag = u32::from(w.state.terms[k].sign == 0);
