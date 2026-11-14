@@ -265,7 +265,7 @@ impl PairOps for PairWalk<'_> {
 
 /// `layout::copy_vec4` on the solids' store: `from` is a solid's vector at times (`MB560` on the car's position).
 pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
-    let Some(solids) = held_solids(host) else {
+    let Some(solids) = held_solids(host).filter(|s| s.reaches(from, 16) || s.reaches(to, 16)) else {
         return layout::copy_vec4(mem, to, from);
     };
     if solids.read(from).is_some() || solids.read(to).is_some() {

@@ -221,23 +221,35 @@ impl CarSolids {
     /// The held solid whose object holds `at` (which [`slot`] then tells held or not), and the offset in it; `None`
     /// outside every held span. The solid found last is tried first: runs read one solid's words in a row, its held
     /// and its other words alike.
-    #[inline]
+    #[inline(always)]
     fn find(&self, at: u32) -> Option<(&HeldSolid, u32)> {
         if !self.bounds.contains(&at) {
             return None;
         }
-        let in_object = |s: &HeldSolid| Some(at.wrapping_sub(s.at)).filter(|off| *off < Solid::SIZE);
         if let Some(s) = self.solids.get(self.last.get()) {
-            if let Some(off) = in_object(s) {
+            let off = at.wrapping_sub(s.at);
+            if off < Solid::SIZE {
                 return Some((s, off));
             }
         }
-        // The last solid that starts at or below `at`: the only one whose object can hold it.
+        self.search(at)
+    }
+
+    /// [`CarSolids::find`] past the solid found last: the last solid that starts at or below `at`, the only one whose
+    /// object can hold it.
+    #[inline(never)]
+    fn search(&self, at: u32) -> Option<(&HeldSolid, u32)> {
         let k = self.solids.partition_point(|s| s.at <= at).checked_sub(1)?;
         let s = &self.solids[k];
-        let off = in_object(s)?;
+        let off = Some(at.wrapping_sub(s.at)).filter(|off| *off < Solid::SIZE)?;
         self.last.set(k);
         Some((s, off))
+    }
+
+    /// Whether the `len` bytes from `at` reach a held span's bounds: a block that does not is the image's.
+    #[inline]
+    pub fn reaches(&self, at: u32, len: u32) -> bool {
+        at < self.bounds.end && at.saturating_add(len) > self.bounds.start
     }
 
     /// The held solid at `at` (its address).
