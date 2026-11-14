@@ -1,5 +1,6 @@
 //! NGP's material sheet lookup (`0x1004df40`), which the exe's indexed lookup (`0x520240`, its call at `0x520265`)
-//! calls in place of 1.02's slot lookup (`0x520010`, `entities::layout::sample_slot`).
+//! calls in place of 1.02's slot lookup (`0x520010`, `entities::layout::materials::sample_slot` (git e5824ccc), removed
+//! with 1.02's physics).
 
 use crate::mem::Mem;
 use crate::ngp::material::{cell, SIDE};

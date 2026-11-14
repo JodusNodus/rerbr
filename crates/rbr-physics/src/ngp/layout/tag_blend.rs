@@ -10,7 +10,7 @@ use crate::wheel::layout::{
 };
 
 /// The physics definition (`g_1659b6c`); NGP skips the blend while it is 0.
-const CDEF_GLOBAL: u32 = 0x0165_9b6c;
+const PHYSICS_DEF: u32 = 0x0165_9b6c;
 /// The second tag NGP replaces with the first.
 const TAG_SAME: u32 = 0xfe;
 
@@ -27,7 +27,7 @@ fn load_material(mem: &Mem, entry: u32) -> Material {
 /// `0x1005e8a0` on the block at `blk`: the tag remap, the materials' lookup (the exe's `Tag520940`) and the blend,
 /// stored at `+0x54` and `+0x58`. Its eax (the C runtime's leftovers) is not modelled.
 pub fn update(mem: &mut Mem, blk: u32) {
-    let def = mem.u32(CDEF_GLOBAL);
+    let def = mem.u32(PHYSICS_DEF);
     if def == 0 {
         return;
     }

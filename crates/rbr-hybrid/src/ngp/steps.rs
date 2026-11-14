@@ -164,7 +164,7 @@ pub(crate) fn axle_worker(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `0x10015fc0` (thiscall on the drive line, `(pos, x)`, `ret 8`, st0): NGP's `SampleBig` in doubles
 /// (`rbr_physics::ngp::drive_line`).
 pub(crate) fn drive_line_sample(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let v = drive_line::sample(&ctx.mem, r.ecx, r.stack[0], f(r.stack[1]));
+    let v = drive_line::position_of(&ctx.mem, r.ecx, r.stack[0], f(r.stack[1]));
     Ok(Return::float(f64::from(v), 8))
 }
 

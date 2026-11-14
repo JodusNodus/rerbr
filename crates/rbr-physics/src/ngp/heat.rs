@@ -19,7 +19,7 @@ pub fn heat_flow(hot: f32, cold: f32, h: f32, area: f32) -> f32 {
     (hot - cold) * (h * area)
 }
 
-/// [`heat_flow`] to surroundings at `ambient`, a 1.02 temperature that assumes [`REFERENCE_AIR`], moved with the air
+/// [`heat_flow`] to surroundings at `ambient`, a 1.02 temperature that assumes `REFERENCE_AIR`, moved with the air
 /// at `air_temperature`.
 pub fn heat_flow_to_air(hot: f32, ambient: f32, h: f32, area: f32, air_temperature: f32) -> f32 {
     heat_flow(hot, ambient - REFERENCE_AIR + air_temperature, h, area)

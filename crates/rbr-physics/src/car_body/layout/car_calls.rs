@@ -277,9 +277,9 @@ pub fn split_17c<S: CarStore + EngineStore>(mem: &mut S, car: u32, a: u32, b: u3
     let t = fv - i as f32;
     let drive = mem.u32(DRIVE_LINE);
     let store3 = |mem: &mut S, at: u32, v: [f32; 3]| (0..3).for_each(|k| mem.set_f32(at + 4 * k, v[k as usize]));
-    let blend = ngp::layout::drive_line::blend_b_f32(mem.mem(), drive, i, t);
+    let blend = ngp::layout::drive_line::point_at(mem.mem(), drive, i, t);
     store3(mem, a, blend);
-    let lerp = ngp::layout::drive_line::lerp_at_f32(mem.mem(), drive, i, t);
+    let lerp = ngp::layout::drive_line::tangent_at(mem.mem(), drive, i, t);
     store3(mem, b, lerp);
     Vec4::load(mem, b).normalize().store(mem, b);
 }
