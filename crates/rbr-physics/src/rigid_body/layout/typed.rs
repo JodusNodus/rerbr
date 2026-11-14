@@ -169,13 +169,17 @@ impl SolidWords for SolidView<'_> {
 
     #[inline]
     fn words<const N: usize>(&self, at: u32) -> [u32; N] {
-        std::array::from_fn(|k| self.word(at + 4 * k as u32))
+        match self.solids {
+            Some(_) => std::array::from_fn(|k| self.word(at + 4 * k as u32)),
+            None => self.mem.words(at),
+        }
     }
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
-        for (k, word) in words.into_iter().enumerate() {
-            self.set_word(at + 4 * k as u32, word);
+        match self.solids {
+            Some(_) => words.into_iter().enumerate().for_each(|(k, word)| self.set_word(at + 4 * k as u32, word)),
+            None => self.mem.set_words4(at, words),
         }
     }
 }
