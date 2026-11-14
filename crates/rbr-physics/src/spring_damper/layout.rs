@@ -7,7 +7,7 @@ use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
     HeatCapacity, RealValue, Relaxation, SetupValues, StepOutput, UpdateTerms, WeightedValue,
 };
-use crate::mem::Mem;
+use crate::mem::{Block, Mem};
 use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
 use crate::store::defs::{self, Defs};
 use crate::store::{Raw, Real};
@@ -371,24 +371,38 @@ pub const DEFINITION_BYTES: std::ops::Range<u32> = DEFINITION_DEBUG_ID..DEFINITI
 
 /// Reads the fields needed by the reached spring-damper functions.
 pub fn definition(mem: &Mem, at: u32) -> Definition {
+    definition_from(|a| mem.u32(a), at)
+}
+
+/// [`definition`] from one read of its bytes ([`DEFINITION_BYTES`]): the typed definitions' lift (`store::defs`).
+pub fn lift_definition(mem: &Mem, at: u32) -> Definition {
+    const WORDS: usize = (DEFINITION_BYTES.end - DEFINITION_BYTES.start) as usize / 4;
+    let block = Block::<WORDS>::read(mem, at + DEFINITION_BYTES.start);
+    definition_from(|a| block.u32(a), at)
+}
+
+/// The definition at `at`, its words read by `word`.
+#[inline(always)]
+fn definition_from(word: impl Fn(u32) -> u32, at: u32) -> Definition {
+    let real_value = |at: u32| RealValue { label: word(at), dirty: word(at + 8), value: f32::from_bits(word(at + 12)) };
     Definition {
-        debug_id: mem.u32(at + DEFINITION_DEBUG_ID),
-        bump_stop_pos: real_value(mem, at + DEFINITION_BUMP_STOP_POS),
-        droop_stop_pos: real_value(mem, at + DEFINITION_DROOP_STOP_POS),
-        spring_free_length: real_value(mem, at + DEFINITION_SPRING_FREE_LENGTH),
-        spring_rate: real_value(mem, at + DEFINITION_SPRING_RATE),
-        helper_min_length: real_value(mem, at + DEFINITION_HELPER_MIN_LENGTH),
-        helper_length: real_value(mem, at + DEFINITION_HELPER_LENGTH),
-        helper_rate: real_value(mem, at + DEFINITION_HELPER_RATE),
-        bump_stop_rate: real_value(mem, at + DEFINITION_BUMP_STOP_RATE),
-        droop_stop_rate: real_value(mem, at + DEFINITION_DROOP_STOP_RATE),
-        damp_bump: real_value(mem, at + DEFINITION_DAMP_BUMP),
-        damp_rebound: real_value(mem, at + DEFINITION_DAMP_REBOUND),
-        stop_damp: real_value(mem, at + DEFINITION_STOP_DAMP),
-        hs_break_bump: real_value(mem, at + DEFINITION_HS_BREAK_BUMP),
-        hs_break_rebound: real_value(mem, at + DEFINITION_HS_BREAK_REBOUND),
-        hs_damp_bump: real_value(mem, at + DEFINITION_HS_DAMP_BUMP),
-        hs_damp_rebound: real_value(mem, at + DEFINITION_HS_DAMP_REBOUND),
+        debug_id: word(at + DEFINITION_DEBUG_ID),
+        bump_stop_pos: real_value(at + DEFINITION_BUMP_STOP_POS),
+        droop_stop_pos: real_value(at + DEFINITION_DROOP_STOP_POS),
+        spring_free_length: real_value(at + DEFINITION_SPRING_FREE_LENGTH),
+        spring_rate: real_value(at + DEFINITION_SPRING_RATE),
+        helper_min_length: real_value(at + DEFINITION_HELPER_MIN_LENGTH),
+        helper_length: real_value(at + DEFINITION_HELPER_LENGTH),
+        helper_rate: real_value(at + DEFINITION_HELPER_RATE),
+        bump_stop_rate: real_value(at + DEFINITION_BUMP_STOP_RATE),
+        droop_stop_rate: real_value(at + DEFINITION_DROOP_STOP_RATE),
+        damp_bump: real_value(at + DEFINITION_DAMP_BUMP),
+        damp_rebound: real_value(at + DEFINITION_DAMP_REBOUND),
+        stop_damp: real_value(at + DEFINITION_STOP_DAMP),
+        hs_break_bump: real_value(at + DEFINITION_HS_BREAK_BUMP),
+        hs_break_rebound: real_value(at + DEFINITION_HS_BREAK_REBOUND),
+        hs_damp_bump: real_value(at + DEFINITION_HS_DAMP_BUMP),
+        hs_damp_rebound: real_value(at + DEFINITION_HS_DAMP_REBOUND),
     }
 }
 

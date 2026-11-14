@@ -52,9 +52,9 @@ impl Defs {
     pub fn lift(mem: &Mem, car: u32) -> Self {
         let mut defs = Defs::default();
         for (k, at) in mem.wheel_pointers(car).into_iter().enumerate().filter(|&(_, at)| at != 0) {
-            add(&mut defs.wheels, k, mem.u32(at + wheel::DEF), |def| WheelDef::lift(mem, def));
+            add(&mut defs.wheels, k, mem.u32(at + wheel::DEF), |def| WheelDef::read(mem, def));
             let strut_def = ControllerObj::definition.load(mem, at + wheel::STRUT);
-            add(&mut defs.struts, k, strut_def, |def| strut::definition(mem, def));
+            add(&mut defs.struts, k, strut_def, |def| strut::lift_definition(mem, def));
             add(&mut defs.tyres, k, mem.u32(at + wheel::TYRE_DEF), |def| TyreDef::lift(mem, def));
         }
         defs
