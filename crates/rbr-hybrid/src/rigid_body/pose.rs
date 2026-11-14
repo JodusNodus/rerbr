@@ -5,10 +5,11 @@ use rbr_physics::rigid_body::host::{CellHost, HostUnavailable};
 use rbr_physics::rigid_body::integrate::{integrate, IntegrateHost, StateSignal};
 use rbr_physics::rigid_body::layout::{Body, Def, ParentFrame, Vec4};
 use rbr_physics::rigid_body::pose::{pose_step, PoseHost};
+use rbr_physics::rigid_body::store::RigidStore;
 
 use super::{
-    unavailable, APPEND_CELL, CELL_GRID, COPY16_WALK, DRIVE, INTEGRATE, LOOKUP_TWIN, SCRATCH_BELOW_ESP, SIGNALS,
-    STATE_EMIT, WALKER,
+    on_solids, unavailable, with_solids, APPEND_CELL, CELL_GRID, COPY16_WALK, DRIVE, INTEGRATE, LOOKUP_TWIN,
+    SCRATCH_BELOW_ESP, SIGNALS, STATE_EMIT, WALKER,
 };
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -20,7 +21,8 @@ fn walk_sp(esp: u32) -> u32 {
 }
 
 /// The calls the solid's pose step and integrator make outside the body, as the original makes them (`CellHost`,
-/// `PoseHost`, `IntegrateHost`). The temps the original passes by pointer are in scratch memory below the call.
+/// `PoseHost`, `IntegrateHost`). The temps the original passes by pointer are in scratch memory below the call. The
+/// entity walk and the sleep trip store the body on the solids' store before their call and read it back after.
 struct Pose<'a> {
     mem: Mem,
     host: &'a dyn Host,
@@ -68,16 +70,18 @@ impl PoseHost for Pose<'_> {
 
 impl IntegrateHost for Pose<'_> {
     fn entity_walk(&mut self, body: &Body, dt: f32) -> Body {
-        body.store(&mut self.mem, self.this);
-        self.host.call_at(walk_sp(self.esp), INTEGRATE, self.this, &[dt.to_bits()]);
-        Body::load(&self.mem, self.this)
+        let this = self.this;
+        with_solids(self.host, &mut self.mem, |s| s.store_body(this, body));
+        self.host.call_at(walk_sp(self.esp), INTEGRATE, this, &[dt.to_bits()]);
+        with_solids(self.host, &mut self.mem, |s| s.body(this))
     }
 
     fn sleep_trip(&mut self, body: &Body) -> Result<Body, HostUnavailable> {
-        body.store(&mut self.mem, self.this);
-        let slot37 = self.mem.u32(self.mem.u32(self.this) + 4 * 37);
-        self.host.call(slot37, self.this, &[]);
-        Ok(Body::load(&self.mem, self.this))
+        let this = self.this;
+        with_solids(self.host, &mut self.mem, |s| s.store_body(this, body));
+        let slot37 = self.mem.u32(self.mem.u32(this) + 4 * 37);
+        self.host.call(slot37, this, &[]);
+        Ok(with_solids(self.host, &mut self.mem, |s| s.body(this)))
     }
 
     fn emit_state(&mut self, state: &StateSignal) -> Result<(), HostUnavailable> {
@@ -99,11 +103,11 @@ impl IntegrateHost for Pose<'_> {
 pub(super) fn integrate_pose(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let this = r.ecx;
-    let mut body = Body::load(&ctx.mem, this);
+    let mut body = on_solids(ctx, |s| s.body(this));
     let parent = (body.parent != 0).then(|| ParentFrame::load(&ctx.mem, body.parent));
     let mut calls = Pose { mem: ctx.mem.clone(), host: ctx.host, this, scratch: r.esp - SCRATCH_BELOW_ESP, esp: r.esp };
     pose_step(&mut body, f32::from_bits(a), b != 0, c != 0, parent, &mut calls).map_err(unavailable)?;
-    body.store(&mut ctx.mem, this);
+    on_solids(ctx, |s| s.store_body(this, &body));
     Ok(Return::void(0, 12))
 }
 
@@ -113,10 +117,10 @@ pub(super) fn e43vf6c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
     let this = r.ecx;
     let def = Def::load(&ctx.mem, ctx.mem.u32(this + 0x34));
-    let mut body = Body::load(&ctx.mem, this);
+    let mut body = on_solids(ctx, |s| s.body(this));
     let parent = (body.parent != 0).then(|| ParentFrame::load(&ctx.mem, body.parent));
     let mut calls = Pose { mem: ctx.mem.clone(), host: ctx.host, this, scratch: r.esp - SCRATCH_BELOW_ESP, esp: r.esp };
     integrate(&mut body, &def, f32::from_bits(r.stack[0]), parent, &mut calls).map_err(unavailable)?;
-    body.store(&mut ctx.mem, this);
+    on_solids(ctx, |s| s.store_body(this, &body));
     Ok(Return::void(0, 4))
 }

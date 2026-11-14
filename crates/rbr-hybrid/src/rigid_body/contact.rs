@@ -6,14 +6,15 @@ use rbr_physics::rigid_body::contact::{ContactHost, Impulse, SampleHook};
 use rbr_physics::rigid_body::contact_list::{contact_list_step, Event, ListHost, Record};
 use rbr_physics::rigid_body::force::accumulate_force;
 use rbr_physics::rigid_body::host::{BodyCalls, HostUnavailable};
-use rbr_physics::rigid_body::layout::{self, Body, Vec4};
+use rbr_physics::rigid_body::layout::{self, Vec4};
+use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::rigid_body::vote::ContactVoteHost;
 
 use super::force_pass::{SLOT_RESPONSE, SLOT_S30};
 use super::slots::Flush;
 use super::{
-    unavailable, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A, SAMPLE, SCRATCH_BELOW_ESP, SIGNALS,
-    SLOT_SAMPLE_HOOK, WALKER,
+    on_solids, unavailable, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A, SAMPLE,
+    SCRATCH_BELOW_ESP, SIGNALS, SLOT_SAMPLE_HOOK, WALKER,
 };
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
@@ -44,7 +45,8 @@ pub(super) fn vf81x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls =
         VoteCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, frame: aligned_frame(r.esp) - 0x40, range };
     let count = crate::collision::contact_count(ctx.host, &ctx.mem, r.ecx);
-    let eax = layout::contact_vote(&mut ctx.mem, count, a, b, &mut calls).expect("the host answers every call");
+    let eax =
+        on_solids(ctx, |s| layout::contact_vote(s, count, a, b, &mut calls)).expect("the host answers every call");
     Ok(Return::void(eax, 12))
 }
 
@@ -118,7 +120,8 @@ pub(super) fn big_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
         ContactCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, frame: aligned_frame(r.esp) - 0x70, e, a };
     let out = layout::ContactOut { force_out: a, torque_out: b, force, depth };
     let contact = crate::collision::read_contact(ctx.host, &ctx.mem, e);
-    let eax = layout::contact_worker(&mut ctx.mem, r.ecx, out, contact, f32::from_bits(range), &mut calls)
+    let range = f32::from_bits(range);
+    let eax = on_solids(ctx, |s| layout::contact_worker(s, r.ecx, out, contact, range, &mut calls))
         .expect("the host answers every call");
     Ok(Return::void(eax, 0x18))
 }
@@ -203,7 +206,7 @@ impl ListCalls<'_> {
 /// thiscall, no stack arguments: the contact list step (`CSolid::BigB`). The list comes from `E36Collect` (collision's
 /// binding, when it is bound); the step's calls on the body go through the original.
 pub(super) fn big_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let body = Body::load(&ctx.mem, r.ecx);
+    let body = on_solids(ctx, |s| s.body(r.ecx));
     let mut calls = ListCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, scratch: r.esp - SCRATCH_BELOW_ESP };
     contact_list_step(&body, &mut calls).map_err(unavailable)?;
     Ok(Return::void(0, 0))
@@ -214,11 +217,10 @@ pub(super) fn big_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn e43vf70(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let app = ctx.mem.u32(APP);
     let flags = ctx.mem.u32(app + 0x38) | ctx.mem.u32(ctx.mem.u32(app + 0x24) + 0x160f4);
-    let pp = Vec4::load(&ctx.mem, r.stack[0]);
-    let mut body = Body::load(&ctx.mem, r.ecx);
+    let (pp, mut body) = on_solids(ctx, |s| (s.row(r.stack[0]), s.body(r.ecx)));
     let mut flush = Flush { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, eax: None };
     accumulate_force(&mut body, pp, flags, &mut flush).map_err(unavailable)?;
-    body.store(&mut ctx.mem, r.ecx);
+    on_solids(ctx, |s| s.store_body(r.ecx, &body));
     Ok(Return::void(flush.eax.unwrap_or(app), 4))
 }
 

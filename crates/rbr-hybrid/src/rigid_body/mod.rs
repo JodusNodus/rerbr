@@ -35,21 +35,24 @@ use window::{
 };
 pub(crate) use window::{vf16, vf17x_state};
 
-/// Runs `run` on the rigid store over the car's solids as a step leaves them: held while the pure host holds them
-/// ([`crate::pure::Pure::typed_solids`]), else every word on the image (the per-call path). Borrow it per call into a
-/// solid's words; never across a host call (the held solids are borrowed one word at a time).
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
+/// Runs `run` on the rigid store over the car's solids as a step leaves them ([`with_solids`] on the binding's memory).
 pub(crate) fn on_solids<T>(ctx: &mut Ctx, run: impl FnOnce(&mut SolidView) -> T) -> T {
-    let typed = ctx.host.typed();
+    with_solids(ctx.host, &mut ctx.mem, run)
+}
+
+/// Runs `run` on the rigid store over `mem` with the car's solids as a step leaves them: held while the pure host holds
+/// them ([`crate::pure::Pure::typed_solids`]), else every word on the image (the per-call path). The held solids are
+/// borrowed one word at a time, so `run` may call the host: a nested run reads and writes the same words.
+pub(crate) fn with_solids<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut SolidView) -> T) -> T {
+    let typed = host.typed();
     match typed.as_deref().and_then(|t| t.solids.as_ref()) {
-        Some(solids) => run(&mut solids.view(&mut ctx.mem)),
-        None => run(&mut SolidView::image(&mut ctx.mem)),
+        Some(solids) => run(&mut solids.view(mem)),
+        None => run(&mut SolidView::image(mem)),
     }
 }
 
 /// The word at `at` as a step leaves it: a held solid's if one names it, else the image's. For readers of a solid's
 /// words outside the rigid body's bindings.
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
 pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
     host.typed().and_then(|t| t.solids.as_ref().and_then(|s| s.read(at))).unwrap_or_else(|| mem.u32(at))
 }

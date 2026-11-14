@@ -11,6 +11,7 @@ use rbr_physics::physics_core::layout::{self, mounted};
 use super::passenger_step::SLOT_24;
 use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, MB560, TEMPS, WALKER};
 use crate::entities::VF5C;
+use crate::rigid_body::{on_solids, solid_word};
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `()`: `CSolid::E43Vf5C`: `CEntity::E43Vf5C` on the solid, then its slot 24.
@@ -20,14 +21,14 @@ pub(crate) fn dispatch_vf5c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::void(ctx.host.call(slot, r.ecx, &[]).eax, 0))
 }
 
-/// thiscall `()`: `CSolid::E43Vf80`, the word at `+0x1dc`.
+/// thiscall `()`: `CSolid::E43Vf80`, the word at `+0x1dc` (on the solids' store).
 pub(super) fn vf80(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.u32(r.ecx + 0x1dc), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::takes_part_word(s, r.ecx)), 0))
 }
 
-/// thiscall `()`: `CSolid::E43Vf8C` (slot 35, `S8C`), the word at `+0x1ec`.
+/// thiscall `()`: `CSolid::E43Vf8C` (slot 35, `S8C`), the word at `+0x1ec` (on the solids' store).
 pub(super) fn vf8c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::end_step_word(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::end_step_word(s, r.ecx)), 0))
 }
 
 /// thiscall `()`: `CEntity::E43Vf88` (slot 34), 0.
@@ -50,7 +51,7 @@ impl layout::FilingHost for EntityVf158<'_> {
         mem: &Mem,
         object: u32,
     ) -> Result<rbr_physics::physics_core::layout::Filing, rbr_physics::rigid_body::host::HostUnavailable> {
-        rbr_physics::rigid_body::layout::solid_filing(mem, object)
+        rbr_physics::rigid_body::layout::solid_filing_with(mem, object, |at| solid_word(self.host, mem, at))
     }
 }
 

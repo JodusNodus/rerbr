@@ -5,20 +5,22 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{self as core_layout, signal_emit};
 use rbr_physics::rigid_body::host::HostUnavailable;
 use rbr_physics::rigid_body::impulse::{self, ImpulseHost};
-use rbr_physics::rigid_body::layout::{self, Body, Def, Vec4};
+use rbr_physics::rigid_body::layout::{self, Def, SolidView, Vec4};
 use rbr_physics::rigid_body::scratch::FlushHost;
 use rbr_physics::rigid_body::sleep;
+use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::rigid_body::vote::{probe_ground, Vote, VoteHost};
 use rbr_physics::stage::layout as stage_layout;
+use rbr_physics::store::Raw;
 
 use super::force_pass::{vcall_at, SLOT_S30};
-use super::{unavailable, Original, COPY16_WALK, MB560, RING_APPEND, SLOT_HOOK, WALKER};
+use super::{on_solids, unavailable, Original, COPY16_WALK, MB560, RING_APPEND, SLOT_HOOK, WALKER};
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `(point*, out*)`, `ret 8`: `CSolid::Step76`, the velocity of a point on the body (`layout::point_velocity`).
 pub(super) fn step76(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::point_velocity(&mut ctx.mem, r.ecx, r.stack[0], r.stack[1]);
+    on_solids(ctx, |s| layout::point_velocity(s, r.ecx, r.stack[0], r.stack[1]));
     Ok(Return::void(0, 8))
 }
 
@@ -36,7 +38,7 @@ pub(super) fn inverse_mass(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// Its eax is `e`: the last load before the pops is `mov eax, [esp+0x20]` (0x52b9d0), the fifth stack word.
 pub(crate) fn e43vf138(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, dp, e, f, ..] = r.stack;
-    layout::response_combine_at(&mut ctx.mem, r.ecx, [a, b, c, dp, e, f]);
+    on_solids(ctx, |s| layout::response_combine_at(s, r.ecx, [a, b, c, dp, e, f]));
     Ok(Return::void(e, 0x18))
 }
 
@@ -72,56 +74,60 @@ impl ImpulseHost for ImpulseCalls<'_> {
     }
 }
 
-impl layout::ImpulseTailCalls for ImpulseCalls<'_> {
-    fn pose(&mut self, mem: &mut Mem, sp: u32, body: u32, pushed: u32) -> u32 {
-        vcall_at(mem, self.host, sp, body, SLOT_S30, &[pushed]).eax
+impl layout::ImpulseTailCalls<SolidView<'_>> for ImpulseCalls<'_> {
+    fn pose(&mut self, store: &mut SolidView, sp: u32, body: u32, pushed: u32) -> u32 {
+        vcall_at(store.mem(), self.host, sp, body, SLOT_S30, &[pushed]).eax
     }
 
-    fn compose(&mut self, mem: &mut Mem, sp: u32, point: u32, matrix: u32, out: u32) {
-        self.host.call_at(sp, COPY16_WALK, mem.u32(WALKER), &[point, matrix, out]);
+    fn compose(&mut self, store: &mut SolidView, sp: u32, point: u32, matrix: u32, out: u32) {
+        self.host.call_at(sp, COPY16_WALK, store.mem().u32(WALKER), &[point, matrix, out]);
     }
 
-    fn hook(&mut self, mem: &mut Mem, sp: u32, hook: u32, args: [u32; 8]) {
-        vcall_at(mem, self.host, sp, hook, SLOT_HOOK, &args);
+    fn hook(&mut self, store: &mut SolidView, sp: u32, hook: u32, args: [u32; 8]) {
+        vcall_at(store.mem(), self.host, sp, hook, SLOT_HOOK, &args);
     }
 
-    fn ring_append(&mut self, _: &mut Mem, sp: u32, ring: u32, args: [u32; 4]) {
+    fn ring_append(&mut self, _: &mut SolidView, sp: u32, ring: u32, args: [u32; 4]) {
         self.host.call_at(sp, RING_APPEND, ring, &args);
     }
 }
 
 /// thiscall `(point*, impulse*, c, d, e*, f, g, h)`, `ret 0x20`: `CSolid::E43Vf128`, the impulse at the point, then the
-/// hook and the ring tail (`layout::impulse_tail`).
+/// hook and the ring tail (`layout::impulse_tail`). The transforms read the body's pose, which the impulse does not
+/// change; the body is stored on the solids' store before the tail's calls.
 pub(crate) fn impulse_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args: [u32; 8] = r.stack[..8].try_into().expect("E43Vf128 has eight stack words");
     let [point, impulse, ..] = args;
     let def = Def::load(&ctx.mem, ctx.mem.u32(r.ecx + 0x34));
-    let mut body = Body::load(&ctx.mem, r.ecx);
+    let (mut body, point, impulse) = on_solids(ctx, |s| (s.body(r.ecx), s.row(point), s.row(impulse)));
     let mut calls =
         ImpulseCalls { mem: ctx.mem.clone(), host: ctx.host, body: r.ecx, frame: aligned_frame(r.esp) - 0x80 };
-    impulse::impulse(&mut body, &def, Vec4::load(&ctx.mem, point), Vec4::load(&ctx.mem, impulse), &mut calls);
-    body.store(&mut ctx.mem, r.ecx);
+    impulse::impulse(&mut body, &def, point, impulse, &mut calls);
     let frame = calls.frame;
-    layout::impulse_tail(&mut ctx.mem, r.ecx, args, frame, &mut calls);
+    on_solids(ctx, |s| {
+        s.store_body(r.ecx, &body);
+        layout::impulse_tail(s, r.ecx, args, frame, &mut calls)
+    });
     Ok(Return::void(0, 0x20))
 }
 
 /// thiscall `(src*, a, b, c)`, `ret 0x10`: `E46_RingAppend`, a ring tail's append (`layout::ring_append`).
 pub(super) fn ring_append(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, a, b, c, ..] = r.stack;
-    Ok(Return::void(layout::ring_append(&mut ctx.mem, r.ecx, src, [a, b, c]), 0x10))
+    Ok(Return::void(on_solids(ctx, |s| layout::ring_append(s, r.ecx, src, [a, b, c])), 0x10))
 }
 
 /// thiscall `(rows, count)`: subtract the current position, then transform the rows by the current matrix.
 pub(super) fn e43vfa0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    Ok(Return::void(layout::rows_to_body(&mut ctx.mem, r.ecx, rows, count), 8))
+    Ok(Return::void(on_solids(ctx, |s| layout::rows_to_body(s, r.ecx, rows, count)), 8))
 }
 
 /// thiscall `(dir*, penetration, unused, mu)`: the brake-wall impulse's four-lane accumulation.
 pub(super) fn clamp_velocity_along(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [dir, penetration, _unused, mu, ..] = r.stack;
-    let eax = layout::clamp_velocity_along(&mut ctx.mem, r.ecx, dir, f32::from_bits(penetration), f32::from_bits(mu));
+    let (penetration, mu) = (f32::from_bits(penetration), f32::from_bits(mu));
+    let eax = on_solids(ctx, |s| layout::clamp_velocity_along(s, r.ecx, dir, penetration, mu));
     Ok(Return::void(eax, 16))
 }
 
@@ -200,7 +206,7 @@ pub(super) fn e43vf74(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let app = ctx.mem.u32(APP);
     let flags = ctx.mem.u32(app + 0x38) | ctx.mem.u32(ctx.mem.u32(app + 0x24) + 0x160f4);
     let mut flush = Flush { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, eax: None };
-    layout::scratch_accumulate(&mut ctx.mem, r.ecx, r.stack[0], flags, &mut flush).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::scratch_accumulate(s, r.ecx, r.stack[0], flags, &mut flush)).map_err(unavailable)?;
     Ok(Return::void(0, 4))
 }
 
@@ -209,9 +215,9 @@ pub(super) fn e43vf74(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn vf24x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let this = r.ecx;
     let def = Def::load(&ctx.mem, ctx.mem.u32(this + 0x34));
-    let mut body = Body::load(&ctx.mem, this);
+    let mut body = on_solids(ctx, |s| s.body(this));
     let slept = sleep::step(&mut body, &def, f32::from_bits(r.stack[0]));
-    body.store(&mut ctx.mem, this);
+    on_solids(ctx, |s| s.store_body(this, &body));
     if slept {
         let slot37 = ctx.mem.u32(ctx.mem.u32(this) + 4 * 37);
         ctx.host.call(slot37, this, &[]);
@@ -223,49 +229,49 @@ pub(super) fn vf24x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// original call.
 pub(super) fn transform_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::transform_body_rows(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::transform_body_rows(s, r.ecx, rows, count));
     Ok(Return::void(0, 8))
 }
 
 /// thiscall `(rows, count)`: the three-lane variant (`CSolid::E43VfB0`).
 pub(super) fn transform_rows3(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::transform_body_rows3(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::transform_body_rows3(s, r.ecx, rows, count));
     Ok(Return::void(0, 8))
 }
 
 /// thiscall `(rows, count)`: the start quaternion plus the start position (`CSolid::E43VfA4`).
 pub(super) fn quat_plus_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::quat_plus_body_rows(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::quat_plus_body_rows(s, r.ecx, rows, count));
     Ok(Return::void(rows, 8))
 }
 
 /// thiscall `(rows, count)`: rows in the start pose's local frame (`CSolid::E43VfA8`).
 pub(super) fn quat_diff_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::quat_diff_body_rows(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::quat_diff_body_rows(s, r.ecx, rows, count));
     Ok(Return::void(rows, 8))
 }
 
 /// thiscall `(rows, count)`: transform by the start quaternion (`CSolid::E43VfB4`).
 pub(super) fn quat_transform_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::quat_transform_body_rows(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::quat_transform_body_rows(s, r.ecx, rows, count));
     Ok(Return::void(rows, 8))
 }
 
 /// thiscall `(rows, count)`: the alternate quaternion row order (`CSolid::E43VfB8`).
 pub(super) fn quat_rows_b8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::body_rotate_rows(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::body_rotate_rows(s, r.ecx, rows, count));
     Ok(Return::void(rows, 8))
 }
 
 /// thiscall `(rows, count)`, eax `rows`: the origin folded into the fourth lane (`CSolid::E43VfBC`).
 pub(super) fn fold_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::fold_body_rows(&mut ctx.mem, r.ecx, rows, count);
+    on_solids(ctx, |s| layout::fold_body_rows(s, r.ecx, rows, count));
     Ok(Return::void(rows, 8))
 }
 
@@ -273,7 +279,7 @@ pub(super) fn fold_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// port makes no original call; eax is `rows`.
 pub(super) fn scale_add_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, n, ..] = r.stack;
-    let eax = layout::scale_add_rows(&mut ctx.mem, r.ecx, rows, n);
+    let eax = on_solids(ctx, |s| layout::scale_add_rows(s, r.ecx, rows, n));
     Ok(Return::void(eax, 8))
 }
 
@@ -303,7 +309,8 @@ pub(super) fn step77(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     let pos_at = r.ecx + 0x140;
     let mut vote = Step77Vote { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp), pos_at };
-    let out = probe_ground(Vec4::load(&ctx.mem, pos_at), ctx.mem.f32(b), &mut vote).map_err(unavailable)?;
+    let pos = on_solids(ctx, |s| s.row(pos_at));
+    let out = probe_ground(pos, ctx.mem.f32(b), &mut vote).map_err(unavailable)?;
     ctx.mem.set_u32(a, out.index);
     ctx.mem.set_f32(b, out.drop);
     Ok(Return::void(out.result as u32, 8))

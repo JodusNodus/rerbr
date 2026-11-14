@@ -6,9 +6,13 @@ use rbr_physics::rigid_body::force::{force_pass, ForceHost};
 use rbr_physics::rigid_body::host::{BodyCalls, HostUnavailable};
 use rbr_physics::rigid_body::layout::{self, Body, Def, Vec4};
 use rbr_physics::rigid_body::response::ResponseHost;
+use rbr_physics::rigid_body::store::RigidStore;
 
 use super::slots::impulse_run;
-use super::{COLLECT_OBJECT, COPY16_WALK, DAMPING_EMIT, E36_COLLECT, MB560, RETIRE_A, SIGNALS, VF81X, WALKER};
+use super::{
+    on_solids, with_solids, COLLECT_OBJECT, COPY16_WALK, DAMPING_EMIT, E36_COLLECT, MB560, RETIRE_A, SIGNALS, VF81X,
+    WALKER,
+};
 use crate::entities::VF64;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -81,7 +85,7 @@ pub(super) fn response_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let aligned = aligned_frame(r.esp);
     let frame = aligned.wrapping_sub(0x34).wrapping_sub(12);
     let mut calls = ResponseCalls { mem: ctx.mem.clone(), host: ctx.host, point, output, frame };
-    let eax = layout::solid_response(&mut ctx.mem, r.ecx, point, output, &mut calls);
+    let eax = on_solids(ctx, |s| layout::solid_response(s, r.ecx, point, output, &mut calls));
     Ok(Return::void(eax, 8))
 }
 
@@ -92,12 +96,12 @@ pub(super) fn e43vf64(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0x50;
     ctx.host.call_at(frame - 4, VF64, r.ecx, &[]);
     let def = Def::load(&ctx.mem, ctx.mem.u32(r.ecx + 0x34));
-    let mut body = Body::load(&ctx.mem, r.ecx);
+    let mut body = on_solids(ctx, |s| s.body(r.ecx));
     let transforms =
         if body.body_flags & layout::CONTACT_LIST_FLAG != 0 { Transforms::List } else { Transforms::Force(0) };
     let mut host = Calls::new(ctx, r, frame, transforms);
     force_pass(&mut body, &def, &mut host).expect("the host answers every call");
-    body.store(&mut ctx.mem, r.ecx);
+    on_solids(ctx, |s| s.store_body(r.ecx, &body));
     Ok(Return::void(0, 0))
 }
 
@@ -122,7 +126,8 @@ enum Transforms {
 
 /// The original callees of `BigB` and the force pass, run in the emulator. `frame` is the pass's aligned locals after its
 /// callee-saves (the vote's two vectors at +0x10 and +0x20, the transforms' sources at +0x30 and +0x40); `voted` is set
-/// from a vote hit to the read after its applies.
+/// from a vote hit to the read after its applies. The pass's own transforms' outputs and the reread are the body's
+/// words, on the solids' store.
 struct Calls<'a> {
     mem: Mem,
     host: &'a dyn Host,
@@ -196,7 +201,7 @@ impl BodyCalls for Calls<'_> {
                 let args = [src, walker, out];
                 let body = self.host.call_at(self.frame - 0x10, target, self.body, &args).eax;
                 self.host.call_at(self.frame - 0x10, MB560, body, &args);
-                out
+                return with_solids(self.host, &mut self.mem, |s| s.row(out));
             }
         };
         Vec4::load(&self.mem, out)
@@ -267,6 +272,7 @@ impl ForceHost for Calls<'_> {
         } else {
             self.transforms = Transforms::Force(0);
         }
-        Body::load(&self.mem, self.body)
+        let body = self.body;
+        with_solids(self.host, &mut self.mem, |s| s.body(body))
     }
 }
