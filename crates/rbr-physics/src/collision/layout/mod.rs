@@ -24,6 +24,7 @@ mod solver;
 pub mod solver_hosts;
 pub mod sort;
 pub mod state;
+mod typed;
 mod vec_ops;
 pub mod wall_tree;
 mod walls;
@@ -72,6 +73,10 @@ pub use mesh_query::{
 pub(in crate::collision) use mesh_query::{sweep_scratch, SweepScratch};
 pub use solver::ctor_solver;
 pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
+pub use typed::{
+    differential, round_trip, CarCollision, CollisionImage, CollisionTyped, CollisionView, ContactCountObj,
+    ContactRowObj, ContactRows, GridHitsObj, OffsetCountObj, OffsetRowObj, RowsHeadObj, Touched,
+};
 pub use vec_ops::{
     bounds_union, scaled, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross, vec3_cross_dot,
     vec3_dot, vec3_normalize, vec3_scale, vec3_sub, vec3_sub_dot, vec4_copy_from, vec4_normalize, vec4_sub_stale,

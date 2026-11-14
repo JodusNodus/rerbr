@@ -1,10 +1,11 @@
 //! Checks the `object!` tables on snapshots: `lower(lift(image)) == image` on every owned byte of the car's tabled
 //! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's, the drive's, the engine's, the tyres', the
-//! wheels' and the car's own typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
+//! wheels', the car's own and the collision's typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
 //! `engine_driveline::layout::{drive_round_trip, engine_round_trip}`, `tyre::layout::round_trip`,
-//! `wheel::layout::round_trip`, `car_body::layout::round_trip`); the typed stage's bytes and queries against the image's
-//! (`stage::layout::round_trip`, `differential`); the wheel's, the engine's and the car's entries per call against held
-//! (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`, `car_body::layout::differential`).
+//! `wheel::layout::round_trip`, `car_body::layout::round_trip`, `collision::layout::round_trip`); the typed stage's bytes
+//! and queries against the image's (`stage::layout::round_trip`, `differential`); the wheel's, the engine's, the car's
+//! and the collision's entries per call against held (`wheel::layout::differential`,
+//! `engine_driveline::layout::engine_differential`, `car_body::layout::differential`, `collision::layout::differential`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
@@ -14,6 +15,7 @@ use std::process::ExitCode;
 
 use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::layout as car_body;
+use rbr_physics::collision::layout as collision;
 use rbr_physics::engine_driveline::layout as drive;
 use rbr_physics::snapshot::Snapshot;
 use rbr_physics::spring_damper::layout as spring;
@@ -73,6 +75,7 @@ fn main() -> ExitCode {
             ("tyres", tyre::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("wheels", wheel::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("car", car_body::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
+            ("collision", collision::round_trip(&mem), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
             (
@@ -89,6 +92,11 @@ fn main() -> ExitCode {
             (
                 "car entries",
                 car_body::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x400),
+                "bytes equal per call and held",
+            ),
+            (
+                "collision entries",
+                collision::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x1000),
                 "bytes equal per call and held",
             ),
         ];
