@@ -24,8 +24,10 @@ pub(super) fn pull_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn step_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = StepCalls { mem: ctx.mem.clone(), host: ctx.host, temp: (r.esp - TEMPS) & !0xf };
     let sentinel = "the physics object's gravity pointer is the original's sentinel (its read is address 0)";
-    let eax = layout::passenger_step(&mut ctx.mem, &mut calls, r.ecx, f32::from_bits(r.stack[0]))
-        .ok_or(Decline::Unsupported(sentinel))?;
+    // On the car's store: the walk's offset is the car's acceleration estimate, its solid's words.
+    let eax =
+        crate::car_body::on_car(ctx, |m| layout::passenger_step(m, &mut calls, r.ecx, f32::from_bits(r.stack[0])))
+            .ok_or(Decline::Unsupported(sentinel))?;
     Ok(Return::void(eax, 4))
 }
 

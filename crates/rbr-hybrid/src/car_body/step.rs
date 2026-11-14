@@ -362,15 +362,16 @@ pub(super) fn split_17c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     crate::ngp::only()?;
     let image = ctx.mem.clone();
-    on_stage(ctx.host, &image, |line| layout::drive_line_sample(&mut ctx.mem, line, r.ecx, a, b));
+    on_stage(ctx.host, &image, |line| on_car(ctx, |m| layout::drive_line_sample(m, line, r.ecx, a, b)));
     Ok(Return::void(b, 8))
 }
 
-/// thiscall `(a, b, c)`, `ret 0xc`: `CCar::Sampler54A0` (0x4e54a0). The car is not read; eax is the vote's 1 or 0.
+/// thiscall `(a, b, c)`, `ret 0xc`: `CCar::Sampler54A0` (0x4e54a0). The car is not read; eax is the vote's 1 or 0. The
+/// probe `a` is the car's position for `MotionProbe` (`car + 0x140`): read through the car's store, the held solid's.
 pub(super) fn vote_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = car_calls(ctx, r);
-    let hit = layout::vote_probe(&mut ctx.mem, &mut calls, r.esp, a, b, c);
+    let hit = on_car(ctx, |m| layout::vote_probe(m, &mut calls, r.esp, a, b, c));
     Ok(Return::void(hit, 0xc))
 }
 

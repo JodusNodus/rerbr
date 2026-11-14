@@ -205,7 +205,7 @@ pub(super) fn vf24x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `()`: `CCar::Vf54x`, the E47 scratch reset followed by slot 1 of `m_scratch1690`.
 pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = CarVf54 { mem: ctx.mem.clone(), host: ctx.host, car: r.ecx };
-    let eax = layout::reset_scratch_and_dispatch(&mut calls, &mut ctx.mem, r.ecx)
+    let eax = on_car(ctx, |m| layout::reset_scratch_and_dispatch(&mut calls, m, r.ecx))
         .unwrap_or_else(|_| unreachable!("the emulator always answers host calls"));
     Ok(Return::void(eax, 0))
 }
@@ -213,7 +213,7 @@ pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Retu
 /// thiscall `(out*)`: the car's integer surface probe (`MotionProbe`).
 pub(super) fn motion_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Car { mem: ctx.mem.clone(), host: ctx.host, scratch: probe_scratch(r.esp) };
-    let outcome = probe::motion_probe(&mut calls, &ctx.mem, r.ecx);
+    let outcome = on_car(ctx, |m| probe::motion_probe(&mut calls, m, r.ecx));
     ctx.mem.set_u32(r.stack[0], outcome.out());
     Ok(Return::void(outcome.ret(), 4))
 }

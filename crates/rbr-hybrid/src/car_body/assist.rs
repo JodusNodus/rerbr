@@ -9,7 +9,7 @@ use rbr_physics::mem::Mem;
 use super::car_calls::{car_calls, Car};
 use super::seed::SLOT_S158;
 use super::step::EMIT_DF0;
-use crate::car_body::UPDATE_SEED;
+use crate::car_body::{on_car, UPDATE_SEED};
 use crate::engine_driveline::SIGNALS;
 use crate::pure::OUTSIDE_ASSISTANCE_EMIT;
 use crate::vcu::SET_DIRTY;
@@ -63,8 +63,9 @@ const OUTSIDE_EMITTER: u32 = 0xD378;
 pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let car = r.ecx;
     let mut calls = car_calls(ctx, r);
-    let verdict = on_stage(ctx.host, &ctx.mem, |line| {
-        car::layout::lane_test(&ctx.mem, line, car, |v| ProbeCalls::to_world(&mut calls, car, v))
+    let image = ctx.mem.clone();
+    let verdict = on_stage(ctx.host, &image, |line| {
+        on_car(ctx, |m| car::layout::lane_test(m, line, car, |v| ProbeCalls::to_world(&mut calls, car, v)))
     });
     match verdict {
         Some(eax) => Ok(Return::void(eax, 0)),
