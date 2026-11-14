@@ -110,8 +110,7 @@ fn held_across_steps_is_the_per_step_lift_byte_for_byte() {
 }
 
 /// With the `poison` feature, while the state held across steps is stale a read of a held word through the image's
-/// memory fails: a clone kept from before the step, and `Pure::mem` (the readers not on the gate yet); after
-/// `Pure::image` lowers it, both read.
+/// memory fails (a clone kept from before the step); after `Pure::image` lowers it, it reads.
 #[cfg(feature = "poison")]
 #[test]
 fn a_stale_read_of_a_held_word_fails() {
@@ -128,7 +127,6 @@ fn a_stale_read_of_a_held_word_fails() {
     let held = rbr_physics::rigid_body::layout::CarSolids::lift(&kept, car).owned()[0].0.start;
     playback.step(None, snap.metadata().substeps);
     assert!(catch_unwind(AssertUnwindSafe(|| kept.u32(held))).is_err());
-    assert!(catch_unwind(AssertUnwindSafe(|| playback.pure.mem.u32(held))).is_err());
     let lowered = playback.pure.image().u32(held);
-    assert_eq!((kept.u32(held), playback.pure.mem.u32(held)), (lowered, lowered));
+    assert_eq!(kept.u32(held), lowered);
 }

@@ -9,10 +9,9 @@
 # - with --typed, the typed storage's checks (notes/physics.md "Store seam"): twin-typed and twin-aids, the standalone
 #   run's command again (its work files) with --twin typed, aids off and all on, PASS when the twin line reads equal
 #   after each of 84084 steps and both round trips equal, with exit status 0 (aids on: 0, or 1 with no failure but the
-#   recording's); twin-across, the same with --twin across (aids off: held across steps against held over each step);
-#   poison, a release build with rbr-hybrid/poison into target/poison and the drive with it, PASS as the standalone
-#   check; poison-across, that build with --twin across, PASS as twin-typed. Both across checks read "skipped" while
-#   the build lacks Pure::typed_across_steps (twin.rs);
+#   recording's); twin-across, the same with --twin across (aids off: held over each step against the default, held
+#   across steps); poison, a release build with rbr-hybrid/poison into target/poison and the drive with it, PASS as
+#   the standalone check;
 # - with --perf BASE_BIN, after the others: the step's cost of this build against BASE_BIN (scripts/perf-step.sh,
 #   3 runs), no verdict.
 # Prints one line per check and a final PASS/FAIL (exit 1). A check's full output is in /tmp/gate-<pid>-<name>.txt,
@@ -135,12 +134,6 @@ sys.stdout.write("\0".join(c))' "$out/standalone/5/summary.json")
     start twin-typed "${drive[@]}" --twin typed
     start twin-aids "${drive[@]}" --auto-gears on --gear-guard on --neutral-lock on --clutch-help on --twin typed
     start twin-across "${drive[@]}" --twin across
-    # The poison build is the poison job's (cargo waits for its lock, then finds it fresh).
-    poison_across() {
-        cargo build --release -j 8 --target-dir target/poison -p rbr-standalone --features rbr-hybrid/poison &&
-            target/poison/release/rbr-standalone "${drive[@]:1}" --twin across
-    }
-    start poison-across poison_across
 fi
 if [ "$hybrid" = 1 ]; then
     # Every "run B vs run A" line equal, one per snapshot (13), and exit status 0.
@@ -166,14 +159,7 @@ if [ "$typed" = 1 ]; then
         [[ $line == $held ]]
     }
     twin_typed() { twin_line "$1" && [ "$2" = 0 ]; }
-    # Until the build holds the typed state across steps, the run stops at its start with twin.rs's message.
-    twin_across() {
-        if grep -q 'needs Pure::typed_across_steps' "$1"; then
-            echo "skipped, the build lacks Pure::typed_across_steps"
-        else
-            twin_line "$1" "$2" Across && [ "$2" = 0 ]
-        fi
-    }
+    twin_across() { twin_line "$1" "$2" Across && [ "$2" = 0 ]; }
     # Aids on, the run differs from the recording: exit 1 passes when none of the report's other failures shows (no
     # stop, the time card and the application state equal; headless/report.rs).
     twin_aids() {
@@ -183,7 +169,6 @@ if [ "$typed" = 1 ]; then
     finish twin-typed twin_typed
     finish twin-aids twin_aids
     finish twin-across twin_across
-    finish poison-across twin_across
 fi
 
 if [ -n "$perf" ]; then

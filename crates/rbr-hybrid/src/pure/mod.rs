@@ -129,10 +129,9 @@ pub struct Pure {
     /// The image the runs read and write (their clones share its bytes: [`Pure::lend`]). Between steps the code here
     /// reaches it through [`Pure::image`] and [`Pure::image_mut`] only.
     raw: Mem,
-    /// The image for the readers outside this crate that do not go through [`Pure::image`] yet (rbr-standalone): the
-    /// same bytes, and with the `poison` feature the gate's checks ([`gate`]). Once they do, it goes private (the gate's
-    /// memory, which [`Pure::image`] returns).
-    pub mem: Mem,
+    /// The image [`Pure::image`] and [`Pure::image_mut`] hand out: the same bytes, and with the `poison` feature the
+    /// gate's checks ([`gate`]).
+    mem: Mem,
     heap: Arc<Mutex<PureHeap>>,
     /// The bindings running, which the allocator's unwritten-read log watches.
     run_depth: Arc<AtomicUsize>,
@@ -193,7 +192,7 @@ pub struct Pure {
     pub typed_solids: bool,
     /// The typed state while a step holds it ([`Pure::typed`]), and with [`Pure::typed_across_steps`] between steps.
     held: RefCell<Option<Typed>>,
-    /// With [`Pure::typed`]: whether the typed state stays held after a step (off by default): the next step runs on it
+    /// With [`Pure::typed`]: whether the typed state stays held after a step (on by default): the next step runs on it
     /// without a lift, [`Pure::image`] lowers it when it changed, [`Pure::image_mut`] lowers and drops it. Off, a step
     /// lifts before and lowers after.
     pub typed_across_steps: bool,
@@ -269,7 +268,7 @@ impl Pure {
             typed: true,
             typed_solids: true,
             held: RefCell::default(),
-            typed_across_steps: false,
+            typed_across_steps: true,
             stale: Cell::new(false),
             stage: Default::default(),
             #[cfg(feature = "poison")]

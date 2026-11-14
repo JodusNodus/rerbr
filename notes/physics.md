@@ -184,18 +184,17 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 
 - `store::typed::Typed`: `car: CarTyped` (`struts`, `vcu`, `drive`, `engine`, `tyres`, `wheels`, `own`, `collision`),
   `core` (one per world), `stage` (an `Arc`, one per loaded stage), `defs` (read only) and `solids`.
-- A step holds it (`Pure::typed`, `Pure::typed_solids`, both on by default): `Playback::step` lifts it before
-  `StepForward` and lowers it after (a stop too); the bindings reach it through `Host::typed()`. Between steps the
-  image holds every word (telemetry, SND1, FRM1, the twin, `restore`). The stage is lifted once (`OnceLock`), the
+- A step holds it (`Pure::typed`, `Pure::typed_solids`, both on by default); the bindings reach it through
+  `Host::typed()`. The stage is lifted once (`OnceLock`), the
   definitions every step (setup, respawn and restart write them between steps); neither is lowered.
-- Across steps (`Pure::typed_across_steps`, off until the standalone reads through the gate): a step lifts only when
+- Across steps (`Pure::typed_across_steps`, on by default; off, a step lifts before and lowers after): a step lifts only when
   nothing is held and leaves it held (stale); `Pure::image()` lowers a stale state (it stays held), `image_mut()`
   lowers and drops it (the next step lifts the writer's words), `snapshot` lowers, `restore` drops; the runs between
   steps (`notify_a_vector`, `Playback::emit`, `reset_strut_dampers`) run on the held state and mark it stale. A held
   solid's image copy follows each lower (else a word back at its lifted value stays unlowered: drive2 frame 920).
-  `Pure::mem` is the transition's raw field (rbr-standalone's readers; private once they use the gate); with `poison`
-  it and every image clone panic at a held word while stale. drive2 with it on and the readers on the gate (scratch):
-  84084/84084, poison too; instructions -0.9 % a step, allocations 26498 -> 9221 bytes a step.
+  Every reader and writer between steps goes through the gate (`Pure`'s image is private); with `poison` every image
+  clone panics at a held word while stale. drive2: instructions -0.9 % a step, allocations 26498 -> 9221 bytes a step
+  (`layout::car_state` and the headless compare still lower every step).
 - Per call (the hybrid check's emulator, the vectors, `typed` off) the views run on the image: the struts, VCU, tyres
   and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
   field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
@@ -253,9 +252,8 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 
 - `scripts/gate.sh --typed`: twin-typed and twin-aids (drive2 with `--twin typed`, aids off and on: held against per
   call after each of 84084 steps, round trips and stage queries equal) and poison (`rbr-hybrid/poison`: held words
-  poisoned, definitions watched); twin-across and poison-across (`--twin across`, release and poison builds: held
-  across steps against held over each step; "skipped" until `Pure::typed_across_steps` exists, `twin.rs`
-  `hold_across_steps`). `--twin mem|mem-direct` check the `Mem` path and Mem-direct dispatch the same way. The twin
+  poisoned, definitions watched, held across steps); twin-across (`--twin across`: held over each step against held
+  across steps). `--twin mem|mem-direct` check the `Mem` path and Mem-direct dispatch the same way. The twin
   and the recording compare read the images through `Pure::image`.
 - `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
   image, the differentials (host-free entries in a row per call against held, every byte); the chain tests
