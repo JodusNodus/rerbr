@@ -154,7 +154,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `store::Raw` (supertrait: words, `mem()`) | `store/mod.rs` | same |
 | `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: `spring_damper/layout.rs` |
 | `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: `vcu/layout.rs` |
-| `TyreStore` | `tyre/store.rs` | `tyre/layout/kernels.rs` |
+| `TyreStore` (handle `Tyre`) | `tyre/store.rs` | `TyreView` only; the callers' blocks: `tyre/layout/kernels.rs` |
 | `WheelStore` | `wheel/layout/store.rs` | `wheel/layout/fields.rs` |
 | `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
 | `EngineStore: DamperBlocks` | `engine_driveline/store.rs` | `engine_driveline/layout/mem_store.rs` |
@@ -221,6 +221,27 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   zero-filled; CheckSlip's drive+8 mapped to its window), and the chain test (8 entries per-call vs held, every byte,
   240 Step records); hybrid gate 13/13 runs Step and ReadPacket per call (drive2 has auto gears and clutch help off,
   so its gear logic and launch clutch return early); +0.14 % instructions per step.
+- The tyres, third: `tyre::tyres::Tyres` (per wheel a `Tyre`: the scratch's contact, material copy, patch, forces,
+  slips, noise signal, outputs, heat and soil words and the tread sectors' wear; the state's active flag, relaxation
+  counter, start flag, deflections, radius, setup copies, inner air, engaged flags, hold direction, searches,
+  temperatures and sector; 992 bytes a tyre) in `CarTyres` (`layout/typed.rs`: `TyreImage` lift/lower, `with_tyre` per
+  call, `round_trip`). The setup (`m_def`), the pointers and the wheel's contact angle (`wheel+0x5ac`) stay in the
+  image, read per call; a wear pointer of 0 holds no wear. The store loads and stores a whole `Frame`; the entries
+  (`layout/entries.rs`) take the callers' blocks as values and return their outputs, which the bindings write after
+  the tyre, so a pointer into the tyre's own words keeps its write (ComputeOutputs' record at `this+0x20` is the
+  tyre's stiffnesses). Ten scratch scalars are words of the material block: lower writes the block then the scalars,
+  and the view's store settles the block (`settle_material`), so the held state is lower∘lift's. Indices past a window
+  (heat, sector, surface wear, the limits' blend) decline with `Outside`. EmitNoise lowers a held tyre around the emit
+  (its connections read the block at its address); CopyFrom on a held tyre's `+0x1a0` goes to its store. Readers
+  during a step, through `rbr_hybrid::tyre::read_tyre`: NGP's step wrapper (the speed), the thermal words (in contact,
+  the boost `+0x1c8`), the ground probe's radius (`GroundCalls::effective_radius`), the pure host's tyre term; an
+  unrouted read fails the poison run (`wheel0 tyre forces (+0x3c)` in `0x791fb660`, the wrapper's speed). Locate,
+  TyreClamp, FloorS32, TyreFrictionCurve, Set414 and the getters stay on the image (the callers' words). Evidence:
+  drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on); poison
+  84084/84084; `round_trip` 3968 typed bytes on 43 snapshots; `tyre_vectors` on the per-call store (frame records'
+  unmapped footprint zero-filled) and the chain test (20 entries per call vs held, every byte, 1020 WriteOutputs
+  records); hybrid gate 13/13 (the 1.02 snapshots run the original Step, which calls the sub-entries per call);
+  +0.54 % instructions per step.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
@@ -266,7 +287,8 @@ the damage record at `+0x7f0` (top mount up and side, steering, hub, two sector 
 
 ## Tyre
 
-`src/tyre/` (stage order and name map in `entries.rs`, record layouts in `layout/`). 1.02 multiplies the static
+`src/tyre/` (stage order and name map in `entries.rs`, record layouts in `layout/`, the typed state in `tyres.rs`
+and `layout/typed.rs`, see "Store seam"). 1.02 multiplies the static
 friction (`F[0x7A]`, `+0x1e8`) by the temperature grip (`+0x4bc`) twice (NGP the kinetic one the second time); the
 sticking load `normal_force*0.1` (`F[0xC5]`; NGP 0.025) rounds before `*sticking_weight` (`F[0xFC]`).
 

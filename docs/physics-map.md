@@ -90,7 +90,7 @@ next step's body pass (derived from the call order, not traced word by word).
 
 | Quantity or concept | Module or file | Main type or fn |
 | --- | --- | --- |
-| Tyre slip | `tyre/slip.rs` | `tyre::slip::compute_slip`, `weigh_models` (sticking against sliding) |
+| Tyre slip | `tyre/slip.rs` | `tyre::slip::compute_slip`, `weigh_models` (sticking against sliding), `tyre::tyres::Tyres` (the tyres' typed state) |
 | Tyre contact patch, normal force | `tyre/contact_patch.rs`, `tyre/solve.rs`, `tyre/forces.rs` | `tyre::contact_patch::contact_patch`, `tyre::forces::solve_forces` |
 | Tyre heat and wear | `tyre/heat.rs`, `tyre/relax.rs`, `ngp/heat.rs` | `tyre::heat::heat_step`, `tyre::relax::relax_sector`, `ngp::heat::TyreThermal` |
 | Grip, friction curve | `tyre/friction_curve.rs`, `tyre/friction_limits.rs`, `tyre/grip.rs`, `ngp/outputs.rs` | `tyre::friction_curve::friction_curve`, `tyre::friction_limits::friction_limits`, `tyre::grip::limit_to_friction_circle`, `ngp::outputs::friction_limits` |
