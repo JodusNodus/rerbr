@@ -72,14 +72,14 @@ pub fn sweep_faces(grid: &mut impl FaceGrid, start: Vec4, end: Vec3) -> Option<F
             z: normalized.z,
             w: -((vertices[0].z * normalized.z + vertices[0].y * normalized.y) + vertices[0].x * normalized.x),
         };
-        let delta4 = Vec4 {
+        let direction = Vec4 {
             x: delta.x,
             y: delta.y,
             z: delta.z,
             // The fourth lane of the direction is zero: the original's temporary does not carry half.x into it.
             w: 0.0,
         };
-        let point = start.add_scaled(delta4, distance);
+        let point = start.add_scaled(direction, distance);
 
         let material = grid.material();
         let samples = if let Some((width, height)) = grid.sample_dimensions() {
@@ -88,12 +88,12 @@ pub fn sweep_faces(grid: &mut impl FaceGrid, start: Vec4, end: Vec3) -> Option<F
             let u = result.u.expect("a segment-triangle hit has u");
             let v = result.v.expect("a segment-triangle hit has v");
             let w = 1.0 - (v + u);
-            let g0 = (((r1[0] as f32 * u) + (r2[0] as f32 * v)) + (r0[0] as f32 * w)) * (1.0 / 256.0);
-            let g1 = (((r0[1] as f32 * w) + (r1[1] as f32 * u)) + (r2[1] as f32 * v)) * (1.0 / 256.0);
+            let sample_x = (((r1[0] as f32 * u) + (r2[0] as f32 * v)) + (r0[0] as f32 * w)) * (1.0 / 256.0);
+            let sample_y = (((r0[1] as f32 * w) + (r1[1] as f32 * u)) + (r2[1] as f32 * v)) * (1.0 / 256.0);
             let width_f = f32::from(width);
             let height_f = f32::from(height);
-            let first = table_index(width, width_f * g0, width_f * g1);
-            let second = table_index(height, height_f * g0, height_f * g1);
+            let first = table_index(width, width_f * sample_x, width_f * sample_y);
+            let second = table_index(height, height_f * sample_x, height_f * sample_y);
             Some(grid.sample_bytes(first, second))
         } else {
             None

@@ -86,5 +86,5 @@ pub fn copy_grid_frame(entry: u32) -> CopyGridFrame {
 }
 
 pub use crate::collision::grid_edge::{
-    copy_grid, edge_normal, edge_pair, grid_add_edge, grid_row_walk, store_edge_edge_hit, vec_set_gap,
+    copy_grid, edge_normal, edge_pair, grid_add_edge, grid_row_walk, signed_volume_at, store_edge_edge_hit,
 };

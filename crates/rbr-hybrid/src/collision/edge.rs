@@ -16,7 +16,7 @@ pub(super) fn edge_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// st0.
 pub(super) fn vec_set_gap(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [p2, p3, p4, ..] = r.stack;
-    let gap = layout::vec_set_gap(&ctx.mem, r.ecx, p2, p3, p4);
+    let gap = layout::signed_volume_at(&ctx.mem, r.ecx, p2, p3, p4);
     Ok(Return::float(gap, 0xc))
 }
 

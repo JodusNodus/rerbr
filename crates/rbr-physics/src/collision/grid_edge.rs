@@ -183,28 +183,29 @@ pub fn grid_add_edge<S: CollisionStore>(store: &mut S, this: u32, vec: u32) -> u
     moved
 }
 
-/// The signed volume of the tetrahedron at `this`, `p2`, `p3`, `p4`: the gap.
-pub fn vec_set_gap<S: CollisionStore>(store: &S, this: u32, p2: u32, p3: u32, p4: u32) -> f64 {
-    pair::signed_volume(store.vec3(this), store.vec3(p2), store.vec3(p3), store.vec3(p4))
+/// The signed volume of the tetrahedron at `apex`, `b`, `c`, `d` ([`pair::signed_volume`]): the gap.
+pub fn signed_volume_at<S: CollisionStore>(store: &S, apex: u32, b: u32, c: u32, d: u32) -> f64 {
+    pair::signed_volume(store.vec3(apex), store.vec3(b), store.vec3(c), store.vec3(d))
 }
 
-/// The row's edge normal to `out`. Returns 1.0.
-pub fn edge_normal<S: CollisionStore>(store: &mut S, grid: u32, index: u32, p3: u32, p4: u32, out: u32) -> f32 {
+/// The row's edge normal against the pair's points at `a` and `b` ([`pair::row_frame_normal`]) to `out`. Returns 1.0.
+pub fn edge_normal<S: CollisionStore>(store: &mut S, grid: u32, index: u32, a: u32, b: u32, out: u32) -> f32 {
     let normal = {
         let view = GridReads { store: &*store, grid };
         let [row_from, row_to] = view.row(index);
-        pair::row_frame_normal(view.vertex(row_to), view.vertex(row_from), store.vec3(p3), store.vec3(p4))
+        pair::row_frame_normal(view.vertex(row_to), view.vertex(row_from), store.vec3(a), store.vec3(b))
     };
     store.store_vec4(out, normal);
     1.0
 }
 
-/// The walk's `t` (2.0 for a miss). `p8` and `p9` are written once the first gate passes, `p7` on a hit.
+/// The row walk of the pair `a0`-`a1`, `b0`-`b1` ([`pair::row_walk`]): its `t` (2.0 for a miss). The two lerped points
+/// go to `lerp_a` and `lerp_b` once the first gate passes, the hit point to `point` on a hit.
 pub fn grid_row_walk<S: CollisionStore>(
     store: &mut S,
     grid: u32,
     index: u32,
-    [p3, p4, p5, p6, p7, p8, p9]: [u32; 7],
+    [a0, a1, b0, b1, point, lerp_a, lerp_b]: [u32; 7],
 ) -> f32 {
     let walk = {
         let view = GridReads { store: &*store, grid };
@@ -212,18 +213,18 @@ pub fn grid_row_walk<S: CollisionStore>(
         pair::row_walk(
             view.vertex(row_from),
             view.vertex(row_to),
-            store.vec4(p3),
-            store.vec4(p4),
-            store.vec4(p5),
-            store.vec4(p6),
+            store.vec4(a0),
+            store.vec4(a1),
+            store.vec4(b0),
+            store.vec4(b1),
         )
     };
     if let Some([a, b]) = walk.lerps {
-        store.store_vec4(p8, a);
-        store.store_vec4(p9, b);
+        store.store_vec4(lerp_a, a);
+        store.store_vec4(lerp_b, b);
     }
-    if let Some(point) = walk.point {
-        store.store_vec4(p7, point);
+    if let Some(hit) = walk.point {
+        store.store_vec4(point, hit);
     }
     walk.t
 }
@@ -231,10 +232,10 @@ pub fn grid_row_walk<S: CollisionStore>(
 /// The edge-pair test of the two edges through the grid's rows. `t` is always written (1.01 when no row beat it);
 /// the hit, normal and sample bytes only on a hit. Returns 1 on a hit, else 0.
 pub fn edge_pair<S: CollisionStore>(store: &mut S, grid: u32, args: [u32; 10]) -> u32 {
-    let [p2, p3, p4, p5, hit_at, t_at, normal_at, ..] = args;
+    let [a0_at, a1_at, b0_at, b1_at, hit_at, t_at, normal_at, ..] = args;
     let result = {
         let view = GridReads { store: &*store, grid };
-        let [a0, a1, b0, b1] = [p2, p3, p4, p5].map(|at| store.vec4(at));
+        let [a0, a1, b0, b1] = [a0_at, a1_at, b0_at, b1_at].map(|at| store.vec4(at));
         pair::edge_pair(&view, a0, a1, b0, b1)
     };
     store.set_f32(t_at, result.t);

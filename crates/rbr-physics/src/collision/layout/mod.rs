@@ -59,8 +59,8 @@ pub(in crate::collision) use grid_edges::copy_grid_frame;
 pub use grid_edges::{
     copy_grid, edge_edge_bounds, edge_edge_face, edge_edge_face_count, edge_edge_face_is_valid, edge_edge_hit_word,
     edge_edge_sample_bytes, edge_edge_sample_dimensions, edge_edge_sample_indices, edge_edge_vertex_samples,
-    edge_edge_vertices, edge_normal, edge_pair, grid_add_edge, grid_row_walk, store_edge_edge_hit,
-    store_edge_edge_sample_bytes, vec_set_gap,
+    edge_edge_vertices, edge_normal, edge_pair, grid_add_edge, grid_row_walk, signed_volume_at, store_edge_edge_hit,
+    store_edge_edge_sample_bytes,
 };
 pub use mesh_query::{
     box_sat_overlap, face_query, load_material_pair, load_sat_box, material_manager, mesh_copy_bounds, mesh_ray_query,

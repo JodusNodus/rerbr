@@ -366,7 +366,7 @@ fn m74a0_matches_original_calls() {
 fn store_5570_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay_st0(E37_STORE_5570, "E37VecSet::Store5570", |mem, args| {
-        layout::vec_set_gap(mem, args[0], args[1], args[2], args[3]) as f32
+        layout::signed_volume_at(mem, args[0], args[1], args[2], args[3]) as f32
     });
 }
 

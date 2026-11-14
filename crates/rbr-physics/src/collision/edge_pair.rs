@@ -82,17 +82,17 @@ pub fn row_frame_normal(row_end: Vec3, row_start: Vec3, a: Vec3, b: Vec3) -> Vec
 }
 
 /// One row of the grid (its vertices `row_start`, `row_end`) against the pair `a0`-`a1` and `b0`-`b1`.
-/// Two volumes (`f2`, `f7`) must have opposite signs, and the four side normals must agree with the frame's
-/// cross `g7`/`g8` (both signs) before the hit point is taken; each gate is an ordered compare, so a NaN passes it.
+/// Two volumes (`volume_a`, `volume_b`) must have opposite signs, and the four side normals must agree with the frame's
+/// cross (`side_b0`, `side_b1`: both signs) before the hit point is taken; each gate is an ordered compare, so a NaN passes it.
 /// The volumes are stored as f32; `t` is stored.
 pub fn row_walk(row_start: Vec3, row_end: Vec3, a0: Vec4, a1: Vec4, b0: Vec4, b1: Vec4) -> RowWalk {
-    let f2 = signed_volume(row_start, row_end, a0.xyz(), a1.xyz()) as f32;
-    let f7 = signed_volume(row_start, row_end, b0.xyz(), b1.xyz()) as f32;
+    let volume_a = signed_volume(row_start, row_end, a0.xyz(), a1.xyz()) as f32;
+    let volume_b = signed_volume(row_start, row_end, b0.xyz(), b1.xyz()) as f32;
     let miss = |lerps| RowWalk { t: 2.0, lerps, point: None };
-    if (f2 > 0.0 && f7 > 0.0) || (f2 < 0.0 && f7 < 0.0) {
+    if (volume_a > 0.0 && volume_b > 0.0) || (volume_a < 0.0 && volume_b < 0.0) {
         return miss(None);
     }
-    let t = x87_div(f64::from(f2), x87_sub(f64::from(f2), f64::from(f7))) as f32;
+    let t = x87_div(f64::from(volume_a), x87_sub(f64::from(volume_a), f64::from(volume_b))) as f32;
     let a = a0.lerp(b0, t);
     let b = a1.lerp(b1, t);
     let lerps = Some([a, b]);
@@ -102,16 +102,16 @@ pub fn row_walk(row_start: Vec3, row_end: Vec3, a0: Vec4, a1: Vec4, b0: Vec4, b1
     let n_c = sub(row_end, b3).cross3(sub(a3, b3));
     let n_d = sub(a3, row_end).cross3(sub(row_start, row_end));
     let frame = row_start.cross3(row_end);
-    let g7 = dot_zyx(b0.xyz(), frame);
-    let g8 = dot_zyx(b1.xyz(), frame);
-    if (g7 > 0.0 && g8 > 0.0) || (g7 < 0.0 && g8 < 0.0) {
+    let side_b0 = dot_zyx(b0.xyz(), frame);
+    let side_b1 = dot_zyx(b1.xyz(), frame);
+    if (side_b0 > 0.0 && side_b1 > 0.0) || (side_b0 < 0.0 && side_b1 < 0.0) {
         return miss(lerps);
     }
     let sides = [dot_zyx(n_b, n_a), dot_zyx(n_c, n_b), dot_zyx(n_d, n_c), dot_zyx(n_d, n_a)];
     if sides.iter().any(|&d| d < 0.0) {
         return miss(lerps);
     }
-    let s = sse::div(g7, sse::sub(g7, g8));
+    let s = sse::div(side_b0, sse::sub(side_b0, side_b1));
     RowWalk { t, lerps, point: Some(a.lerp(b, s)) }
 }
 
@@ -149,16 +149,16 @@ fn pair_samples(grid: &impl PairGrid, rows: [u8; 2], hit: Vec4, (width, height):
     let end_sample = grid.sample_pair(grid.sample_slot(rows[1]));
     let start_sample = grid.sample_pair(grid.sample_slot(rows[0]));
     let scale = 1.0 / 256.0;
-    let g0 = sse::mul(
+    let sample_x = sse::mul(
         sse::add(sse::mul(f32::from(end_sample[0]), one_minus), sse::mul(f32::from(start_sample[0]), r)),
         scale,
     );
-    let g1 = sse::mul(
+    let sample_y = sse::mul(
         sse::add(sse::mul(f32::from(start_sample[1]), r), sse::mul(f32::from(end_sample[1]), one_minus)),
         scale,
     );
     let (w, h) = (f32::from(width), f32::from(height));
-    let first = table_index(width, sse::mul(w, g0), sse::mul(w, g1));
-    let second = table_index(height, sse::mul(h, g0), sse::mul(h, g1));
+    let first = table_index(width, sse::mul(w, sample_x), sse::mul(w, sample_y));
+    let second = table_index(height, sse::mul(h, sample_x), sse::mul(h, sample_y));
     grid.sample_bytes(first, second)
 }
