@@ -3,6 +3,7 @@
 //! original's depth where the callee reads its stack. `CWheel::Hook` (0x539a20) runs in its profiler scope
 //! (`physics_core::scope`).
 
+use rbr_physics::car_body::store::CarStore;
 use rbr_physics::collision::layout::CtorHost;
 use rbr_physics::entities::frame::{Form, Hook, Owner};
 use rbr_physics::entities::layout::{construct_entity, EntityArgs};
@@ -12,10 +13,11 @@ use rbr_physics::physics_core::layout::vtable_target;
 use rbr_physics::rigid_body::emit::{BodyEvent, EmitHost};
 use rbr_physics::rigid_body::host::{HostUnavailable, SolidCtorHost};
 use rbr_physics::rigid_body::layout::Body;
+use rbr_physics::store::Value;
 use rbr_physics::wheel::axes::Trig;
 use rbr_physics::wheel::layout::{
-    self, BlendCalls, CarSlotCalls, ConstructCalls, DefCopyCalls, EmbeddedCalls, HookCalls, SlotCalls, SolidCalls,
-    SubBlockInit, SubCalls, WalkCalls, WheelView,
+    self, BlendCalls, CarSlotCalls, ConstructCalls, DefCopyCalls, EmbeddedCalls, HookCalls, Slot, SlotCalls,
+    SolidCalls, SubBlockInit, SubCalls, WalkCalls, WheelView,
 };
 
 use crate::{aligned_frame, physics_core, rigid_body, Binding, Ctx, Decline, Host, Regs, Return};
@@ -101,9 +103,32 @@ pub static BINDINGS: [Binding; 30] = [
     bind(SUB_OBJECT_CTOR, "E51Wheel::Ctor", wheel_ctor),
 ];
 
-/// Runs `run` on the wheel's store, every wheel on the image (`layout::WheelView`).
+/// Runs `run` on the wheel's store: the step's wheels in typed storage while the host holds them ([`Host::typed`]),
+/// any other wheel, and every wheel per call, on the image (`layout::WheelView`).
 pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T) -> T {
-    run(&mut WheelView::new(&mut ctx.mem, None))
+    let host = ctx.host;
+    let typed = host.typed();
+    run(&mut WheelView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.car.wheels)))
+}
+
+/// The field `slot` of the wheel at `this` as a step leaves it at this point: the typed storage's while the host holds
+/// it, else the image's. For the readers outside the wheel's bindings (NGP's engine wrapper and the tyres' thermal
+/// words).
+pub(crate) fn read_wheel<T: Value>(host: &dyn Host, mem: &Mem, this: u32, slot: Slot<T>) -> T {
+    host.typed().and_then(|t| t.car.wheels.read(this, slot)).unwrap_or_else(|| T::load(mem, this + slot.at))
+}
+
+/// The wheels' rim speeds of the car at `car` (`CarStore::wheel_speeds`: each wheel's speed scale times its spin rate)
+/// as a step leaves them at this point.
+pub(crate) fn wheel_speeds(host: &dyn Host, mem: &Mem, car: u32) -> [f32; 4] {
+    let read = |wheel, slot| read_wheel(host, mem, wheel, slot);
+    mem.wheel_pointers(car).map(|wheel| {
+        if wheel == 0 {
+            0.0
+        } else {
+            read(wheel, layout::slot::speed_scale) * read(wheel, layout::slot::spin_rate)
+        }
+    })
 }
 
 /// The original callees a wheel binding makes: the vtable calls on an object (`mem` shares the emulator's memory).

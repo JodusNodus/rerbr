@@ -152,7 +152,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         let input = rbr_engine::Inputs {
             dt,
             speed,
-            wheels: m.wheel_speeds(car),
+            wheels: crate::wheel::wheel_speeds(ctx.host, m, car),
             body_speed: m.forward_speed(car),
             throttle: i.throttle,
             shift_cut: i.shift_cooldown > 0.0,

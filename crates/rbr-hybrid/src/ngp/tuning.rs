@@ -8,7 +8,7 @@ use rbr_physics::tyre::layout::{
     material_word, DEF_CARCASS_RADIUS, DEF_CARCASS_THICKNESS, DEF_DEBUG_ID, DEF_SIDEWALL_HEIGHT, DEF_TREAD_DEPTH,
     DEF_TREAD_WIDTH,
 };
-use rbr_physics::wheel::layout::{ProbeTuning, WheelTuning};
+use rbr_physics::wheel::layout::{slot, ProbeTuning, WheelTuning};
 
 use crate::{Ctx, Decline};
 
@@ -114,7 +114,7 @@ pub(crate) fn thermal(ctx: &Ctx, scratch: u32) -> Result<TyreThermal, Decline> {
         airflow: Airflow {
             // NGP reads the definition's `DebugId` word as the tyre's kind.
             kind: m.u32(def + DEF_DEBUG_ID),
-            spin: m.f32(wheel + 0xea0),
+            spin: crate::wheel::read_wheel(ctx.host, m, wheel, slot::end_spin_rate),
             car_speed: m.f32(m.u32(wheel + 0x7f4) + 0x15f8),
             // The boost is the material block's word 10 (`+0x1c8`) while in contact (`+0x480`).
             boost: (in_contact != 0).then(|| f32::from_bits(material)),
