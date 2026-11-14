@@ -14,6 +14,10 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use super::drive_objects::{IntLane, Lane};
+use super::engine_objects::{
+    EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_STATE_PTR,
+};
+use crate::engine_driveline::store::EngineStore;
 use crate::mem::Mem;
 use crate::store::{Object, Raw, Tabled};
 
@@ -79,14 +83,84 @@ crate::object! {
     }
 }
 
-/// The engine's state pointer (`+8`).
-const ENGINE_STATE_PTR: u32 = 0x8;
+/// The state's misfire output (`EngineState::misfire_out`), a word of the `EngineNoise` payload: on the image.
+const STATE_MISFIRE_OUT: u32 = 0x3c;
+/// The intake entries' words the records name: the stage (`+0x30`), the load (`+0x34`), the two slot words (`+0xc`,
+/// `+0x24`).
+const ENTRY_STAGE: usize = 0x30 / 4;
+const ENTRY_LOAD: usize = 0x34 / 4;
+const ENTRY_SLOT_A: usize = 0xc / 4;
+const ENTRY_SLOT_B: usize = 0x24 / 4;
 
 /// The engine's typed state: its own words and its state's.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EngineTyped {
     pub own: EngineObj,
     pub state: EngineStateObj,
+}
+
+impl EngineTyped {
+    /// The state's record (`EngineState`), `misfire_out` the image's.
+    fn state_record(&self, misfire_out: f32) -> EngineState {
+        let s = &self.state;
+        let entry = |k: usize, w: usize| f32::from_bits(s.entries[k][w]);
+        EngineState {
+            crank_angle: s.crank_angle,
+            crank_count: s.crank_count,
+            crank_count_prev: s.crank_count_prev,
+            misfire_rate: s.misfire[0],
+            misfire_time: s.misfire[1],
+            misfire_count: s.misfire[2],
+            misfire_out,
+            stage: std::array::from_fn(|k| entry(k, ENTRY_STAGE)),
+            extra_stage: s.extra_stage,
+            compliance_dirty: s.compliance.dirty,
+            compliance_inverse: s.compliance.value,
+            speed: s.speed,
+            abs_value_dirty: s.abs_value.dirty,
+            abs_value: s.abs_value.value,
+            scaled_value_dirty: s.scaled_value.dirty,
+            scaled_value: s.scaled_value.value,
+            signed_rate: s.signed_rate,
+            load_a: entry(0, ENTRY_LOAD),
+            load_b: entry(1, ENTRY_LOAD),
+            load_c: entry(2, ENTRY_LOAD),
+            load_d: entry(3, ENTRY_LOAD),
+            threshold_value: s.threshold_value,
+            torque_accum: s.torque_accum,
+            torque: s.torque,
+            slot_a: std::array::from_fn(|k| entry(k, ENTRY_SLOT_A)),
+            slot_b: std::array::from_fn(|k| entry(k, ENTRY_SLOT_B)),
+            smoothed: s.smoothed,
+            solved: s.solved,
+        }
+    }
+
+    /// Writes the state's record back (`misfire_out` is the caller's, on the image).
+    fn set_state_record(&mut self, v: &EngineState) {
+        let s = &mut self.state;
+        s.crank_angle = v.crank_angle;
+        s.crank_count = v.crank_count;
+        s.crank_count_prev = v.crank_count_prev;
+        s.misfire = [v.misfire_rate, v.misfire_time, v.misfire_count];
+        s.extra_stage = v.extra_stage;
+        s.compliance = Lane { dirty: v.compliance_dirty, value: v.compliance_inverse };
+        s.speed = v.speed;
+        s.abs_value = Lane { dirty: v.abs_value_dirty, value: v.abs_value };
+        s.scaled_value = Lane { dirty: v.scaled_value_dirty, value: v.scaled_value };
+        s.signed_rate = v.signed_rate;
+        s.threshold_value = v.threshold_value;
+        s.torque_accum = v.torque_accum;
+        s.torque = v.torque;
+        for (k, entry) in s.entries.iter_mut().enumerate() {
+            entry[ENTRY_STAGE] = v.stage[k].to_bits();
+            entry[ENTRY_LOAD] = [v.load_a, v.load_b, v.load_c, v.load_d][k].to_bits();
+            entry[ENTRY_SLOT_A] = v.slot_a[k].to_bits();
+            entry[ENTRY_SLOT_B] = v.slot_b[k].to_bits();
+        }
+        s.smoothed = v.smoothed;
+        s.solved = v.solved;
+    }
 }
 
 /// Where an engine's typed state lives in the image: the engine and the state it points at.
@@ -124,27 +198,27 @@ impl EngineImage {
         vec![Tabled::of::<EngineObj>("engine", self.engine), Tabled::of::<EngineStateObj>("engine state", self.state)]
     }
 
-    /// The word at the aligned address `at` where `e` holds it.
-    #[inline]
-    fn word(&self, e: &EngineTyped, at: u32) -> Option<u32> {
+    /// The word at the aligned address `at` where `e` holds it; `typed` is borrowed only for an address in its objects.
+    #[inline(always)]
+    fn word(&self, typed: &RefCell<EngineTyped>, at: u32) -> Option<u32> {
         let (own, state) = (at.wrapping_sub(self.engine), at.wrapping_sub(self.state));
         if own < EngineObj::SIZE {
-            e.own.word_of(own)
+            typed.borrow().own.word_of(own)
         } else if state < EngineStateObj::SIZE {
-            e.state.word_of(state)
+            typed.borrow().state.word_of(state)
         } else {
             None
         }
     }
 
-    /// Writes the word at the aligned address `at` where `e` holds it; false where it does not.
-    #[inline]
-    fn set_word(&self, e: &mut EngineTyped, at: u32, value: u32) -> bool {
+    /// Writes the word at the aligned address `at` where `typed` holds it; false where it does not.
+    #[inline(always)]
+    fn set_word(&self, typed: &RefCell<EngineTyped>, at: u32, value: u32) -> bool {
         let (own, state) = (at.wrapping_sub(self.engine), at.wrapping_sub(self.state));
         if own < EngineObj::SIZE {
-            e.own.set_word_of(own, value)
+            typed.borrow_mut().own.set_word_of(own, value)
         } else if state < EngineStateObj::SIZE {
-            e.state.set_word_of(state, value)
+            typed.borrow_mut().state.set_word_of(state, value)
         } else {
             false
         }
@@ -225,20 +299,20 @@ impl<'a> EngineView<'a> {
     }
 
     /// The aligned word at `at`: the held engine's where it holds it, else the image's.
-    #[inline]
+    #[inline(always)]
     fn aligned(&self, at: u32) -> u32 {
         if let Some((image, typed)) = self.held {
-            if let Some(w) = image.word(&typed.borrow(), at) {
+            if let Some(w) = image.word(typed, at) {
                 return w;
             }
         }
         self.mem.u32(at)
     }
 
-    #[inline]
+    #[inline(always)]
     fn set_aligned(&mut self, at: u32, value: u32) {
         if let Some((image, typed)) = self.held {
-            if image.set_word(&mut typed.borrow_mut(), at, value) {
+            if image.set_word(typed, at, value) {
                 return;
             }
         }
@@ -255,12 +329,12 @@ impl Raw for EngineView<'_> {
         self.mem
     }
 
-    #[inline]
+    #[inline(always)]
     fn u8(&self, at: u32) -> u8 {
         self.aligned(at & !3).to_le_bytes()[(at & 3) as usize]
     }
 
-    #[inline]
+    #[inline(always)]
     fn u32(&self, at: u32) -> u32 {
         if at & 3 == 0 {
             self.aligned(at)
@@ -269,29 +343,29 @@ impl Raw for EngineView<'_> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn f32(&self, at: u32) -> f32 {
         f32::from_bits(self.u32(at))
     }
 
-    #[inline]
+    #[inline(always)]
     fn u32s<const N: usize>(&self, at: u32) -> [u32; N] {
         std::array::from_fn(|k| self.u32(at.wrapping_add(4 * k as u32)))
     }
 
-    #[inline]
+    #[inline(always)]
     fn f32s<const N: usize>(&self, at: u32) -> [f32; N] {
         std::array::from_fn(|k| self.f32(at.wrapping_add(4 * k as u32)))
     }
 
-    #[inline]
+    #[inline(always)]
     fn set_u8(&mut self, at: u32, value: u8) {
         let mut bytes = self.aligned(at & !3).to_le_bytes();
         bytes[(at & 3) as usize] = value;
         self.set_aligned(at & !3, u32::from_le_bytes(bytes))
     }
 
-    #[inline]
+    #[inline(always)]
     fn set_u32(&mut self, at: u32, value: u32) {
         if at & 3 == 0 {
             self.set_aligned(at, value)
@@ -302,16 +376,77 @@ impl Raw for EngineView<'_> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn set_f32(&mut self, at: u32, value: f32) {
         self.set_u32(at, value.to_bits())
+    }
+}
+
+/// The engine's records: a held engine's from its typed state (the option block and `misfire_out` on the image), any
+/// other the image's.
+impl EngineStore for EngineView<'_> {
+    fn engine_objects(&self, engine: u32) -> EngineObjects {
+        self.mem.engine_objects(engine)
+    }
+
+    fn load_load_def(&self, at: u32) -> LoadDef {
+        self.mem.load_load_def(at)
+    }
+
+    fn load_engine_def(&self, at: u32) -> EngineDef {
+        self.mem.load_engine_def(at)
+    }
+
+    fn load_engine_own(&self, engine: u32) -> EngineOwn {
+        match self.held.filter(|(image, _)| image.engine == engine) {
+            Some((_, typed)) => {
+                let own = &typed.borrow().own;
+                EngineOwn { pedal: own.pedal, misfire_level: own.misfire_level }
+            }
+            None => self.mem.load_engine_own(engine),
+        }
+    }
+
+    fn store_engine_own(&mut self, engine: u32, value: &EngineOwn) {
+        match self.held.filter(|(image, _)| image.engine == engine) {
+            Some((_, typed)) => {
+                let own = &mut typed.borrow_mut().own;
+                own.pedal = value.pedal;
+                own.misfire_level = value.misfire_level;
+            }
+            None => self.mem.store_engine_own(engine, value),
+        }
+    }
+
+    fn load_engine_state(&self, at: u32) -> EngineState {
+        match self.held.filter(|(image, _)| image.state == at) {
+            Some((_, typed)) => typed.borrow().state_record(self.mem.f32(at + STATE_MISFIRE_OUT)),
+            None => self.mem.load_engine_state(at),
+        }
+    }
+
+    fn store_engine_state(&mut self, at: u32, value: &EngineState) {
+        match self.held.filter(|(image, _)| image.state == at) {
+            Some((_, typed)) => {
+                typed.borrow_mut().set_state_record(value);
+                self.mem.set_f32(at + STATE_MISFIRE_OUT, value.misfire_out);
+            }
+            None => self.mem.store_engine_state(at, value),
+        }
+    }
+
+    fn load_engine_options(&self, at: u32) -> EngineOptions {
+        self.mem.load_engine_options(at)
+    }
+
+    fn store_stall_terms(&mut self, at: u32, value: &EngineOptions) {
+        self.mem.store_stall_terms(at, value)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine_driveline::store::EngineStore;
     use crate::store::check_table;
 
     const ENGINE: u32 = 0x1000;
@@ -327,7 +462,7 @@ mod tests {
                 assert!(f.at % 4 == 0 && f.len % 4 == 0, "{}", f.name);
                 let img = EngineImage { engine: ENGINE, state: STATE };
                 for k in (0..f.len).step_by(4) {
-                    assert!(img.word(&e, base + f.at + k).is_some(), "{} +{k:#x}", f.name);
+                    assert!(img.word(&RefCell::new(e), base + f.at + k).is_some(), "{} +{k:#x}", f.name);
                 }
             }
         }

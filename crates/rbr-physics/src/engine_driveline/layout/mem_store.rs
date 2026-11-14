@@ -1,6 +1,6 @@
-//! The engine's stores on any word store (`super::super::store::{EngineStore, EngineTables}`): the bodies are the
-//! layout's reads and writes at the records' addresses, so `Mem` reads the image and the engine's view
-//! (`super::engine_typed::EngineView`) its typed state where it holds the words.
+//! The engine's stores on the image (`super::super::store::{EngineStore, EngineTables}`): the bodies are the layout's
+//! reads and writes at the records' addresses. The tables are on every word store, so the engine's view
+//! (`super::engine_typed::EngineView`) reads its typed state where it holds the words; its records are its own.
 
 use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
 use super::drive_objects::Lane;
@@ -16,9 +16,11 @@ use crate::engine_driveline::drive_line::DriveLinePoint;
 use crate::engine_driveline::sim::{BlendRec, Bracket};
 use crate::engine_driveline::store::{EngineStore, EngineTables};
 use crate::math::vec::Vec4;
+use crate::mem::Mem;
 use crate::store::Raw;
 
-impl<R: Raw> EngineStore for R {
+/// The image's records (the engine's view serves a held engine's from its typed state, `super::engine_typed`).
+impl EngineStore for Mem {
     fn engine_objects(&self, engine: u32) -> EngineObjects {
         EngineObjects {
             def: self.u32(engine + ENGINE_DEF_PTR),

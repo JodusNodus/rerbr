@@ -277,24 +277,30 @@ macro_rules! object {
             /// The word at byte `offset` of the object, where a field of whole words holds it (`Value::word`).
             #[inline]
             pub fn word_of(&self, offset: u32) -> Option<u32> {
-                $(
-                    let d = offset.wrapping_sub($at);
-                    if d < <$ty as $crate::store::Value>::LEN {
-                        return if d % 4 == 0 { $crate::store::Value::word(&self.$field, d / 4) } else { None };
-                    }
-                )*
+                #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
+                enum Fields { $($field),* }
+                const WORDS: [(u8, u16); ($size as usize).div_ceil(4)] =
+                    $crate::store::word_fields(<$name as $crate::store::Object>::FIELDS);
+                let (field, k) = *WORDS.get((offset / 4) as usize).filter(|_| offset % 4 == 0)?;
+                $( if field == Fields::$field as u8 {
+                    return $crate::store::Value::word(&self.$field, u32::from(k));
+                } )*
                 None
             }
 
             /// Writes the word at byte `offset` (see `word_of`); false where no field of whole words holds it.
             #[inline]
             pub fn set_word_of(&mut self, offset: u32, value: u32) -> bool {
-                $(
-                    let d = offset.wrapping_sub($at);
-                    if d < <$ty as $crate::store::Value>::LEN {
-                        return d % 4 == 0 && $crate::store::Value::set_word(&mut self.$field, d / 4, value);
-                    }
-                )*
+                #[allow(non_camel_case_types, clippy::upper_case_acronyms)]
+                enum Fields { $($field),* }
+                const WORDS: [(u8, u16); ($size as usize).div_ceil(4)] =
+                    $crate::store::word_fields(<$name as $crate::store::Object>::FIELDS);
+                let Some(&(field, k)) = WORDS.get((offset / 4) as usize).filter(|_| offset % 4 == 0) else {
+                    return false;
+                };
+                $( if field == Fields::$field as u8 {
+                    return $crate::store::Value::set_word(&mut self.$field, u32::from(k), value);
+                } )*
                 false
             }
         }
@@ -317,6 +323,26 @@ macro_rules! object {
             }
         }
     };
+}
+
+/// For each word of an object, the index of the field of whole words (4-byte aligned, a multiple of 4 bytes long) that
+/// holds it and the word's index in the field, or `u8::MAX` (`object!`'s `word_of`).
+pub const fn word_fields<const N: usize>(fields: &[FieldInfo]) -> [(u8, u16); N] {
+    assert!(fields.len() < u8::MAX as usize, "too many fields for a word table");
+    let mut out = [(u8::MAX, 0); N];
+    let mut f = 0;
+    while f < fields.len() {
+        let (at, len) = (fields[f].at, fields[f].len);
+        if at % 4 == 0 && len % 4 == 0 {
+            let mut w = at / 4;
+            while w < (at + len) / 4 {
+                out[w as usize] = (f as u8, (w - at / 4) as u16);
+                w += 1;
+            }
+        }
+        f += 1;
+    }
+    out
 }
 
 /// Panics unless the fields of `T` are in offset order, do not overlap and fit `T::SIZE`.
