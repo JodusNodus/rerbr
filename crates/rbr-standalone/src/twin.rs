@@ -1,11 +1,12 @@
 //! `--twin mem` (Phase B): a second playback from the same image, stepped with the
 //! same payloads, and compared with the first after every step: the car and wheel blocks (FRM1's bytes) and every
-//! owned byte of the car's tabled objects (`rbr_physics::store::car_objects`). Both images' tables are checked with
+//! owned byte of the car's and the physics core's tabled objects (`rbr_physics::store::car_objects`,
+//! `rbr_physics::physics_core::layout::core_objects`). Both images' tables are checked with
 //! `lower(lift(image)) == image` first.
 //!
 //! `mem` runs the second side as the first, the Mem path against itself; `mem-direct` runs it with B1's Mem-direct
 //! dispatch ([`rbr_hybrid::pure::Pure::direct`]); `typed` runs it with the typed subsystems (the struts, the VCU, the
-//! drive, the engine, the tyres, the wheels) on the image between calls, against the first side's typed storage over each step
+//! drive, the engine, the tyres, the wheels, the car's own, the physics core) on the image between calls, against the first side's typed storage over each step
 //! ([`rbr_hybrid::pure::Pure::typed`], the default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
 //! stage's queries against the image's (`stage::layout::differential`).
 
@@ -122,8 +123,11 @@ impl Twin {
     }
 }
 
+/// The car's tabled objects and the physics core's.
 fn objects(mem: &Mem) -> Vec<store::Tabled> {
-    store::car_objects(mem, mem.u32(CAR_PTR))
+    let mut objects = store::car_objects(mem, mem.u32(CAR_PTR));
+    objects.extend(rbr_physics::physics_core::layout::core_objects(mem));
+    objects
 }
 
 /// The first difference between `a` and `b`: a word of the car and wheel blocks, else an owned byte of a tabled object.

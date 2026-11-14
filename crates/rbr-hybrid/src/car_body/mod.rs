@@ -50,8 +50,8 @@ pub(crate) fn on_car<T>(ctx: &mut Ctx, run: impl FnOnce(&mut CarView) -> T) -> T
     let host = ctx.host;
     let typed = host.typed();
     let car = typed.as_deref().map(|t| &t.car);
-    let defs = typed.as_deref().map(|t| &t.defs);
-    run(&mut CarView::new(&mut ctx.mem, car.map(|c| &c.own), car.map(|c| &c.wheels)).with_defs(defs))
+    let (defs, core) = (typed.as_deref().map(|t| &t.defs), typed.as_deref().map(|t| &t.core));
+    run(&mut CarView::new(&mut ctx.mem, car.map(|c| &c.own), car.map(|c| &c.wheels)).with_defs(defs).with_core(core))
 }
 
 /// The field `slot` of the car at `car` as a step leaves it at this point: the typed storage's while the host holds it,

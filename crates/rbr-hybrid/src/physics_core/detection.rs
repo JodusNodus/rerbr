@@ -292,7 +292,7 @@ pub(super) fn penetration_check(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decli
 pub(super) fn collide_window(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Detectors::new(ctx);
     let window = f32::from_bits(r.stack[0]);
-    let passes = layout::collide_window(&mut ctx.mem, &mut calls, r.ecx, window, r.esp);
+    let passes = super::on_core(ctx, |core| layout::collide_window(core, &mut calls, r.ecx, window, r.esp));
     Ok(Return::void(passes, 4))
 }
 

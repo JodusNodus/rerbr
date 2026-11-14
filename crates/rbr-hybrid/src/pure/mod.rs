@@ -21,8 +21,7 @@ use std::sync::{Arc, Mutex};
 use rbr_physics::math::trig;
 use rbr_physics::mem::{Backend, Mem, PagesSnapshot};
 use rbr_physics::stage::typed::Stage;
-use rbr_physics::store::defs::Defs;
-use rbr_physics::store::typed::{CarTyped, Typed};
+use rbr_physics::store::typed::Typed;
 
 use crate::{binding_slot, bound, Called, Ctx, Decline, Host, Regs, Return, STACK_ARGS};
 
@@ -246,16 +245,16 @@ impl Pure {
         }
     }
 
-    /// Lifts the car's typed state into typed storage for a step, with the stage's ([`Pure::typed`]; nothing without
-    /// it or without a car). With the `poison` feature the runs' memory has their words poisoned until
-    /// [`Pure::lower_typed`].
+    /// Lifts the car's and the physics core's typed state into typed storage for a step, with the stage's
+    /// ([`Pure::typed`]; nothing without it or without a car). With the `poison` feature the runs' memory has their
+    /// words poisoned until [`Pure::lower_typed`].
     pub(crate) fn lift_typed(&self) {
         let car = self.mem.u32(CAR_PTR);
         if !self.typed || car == 0 {
             return;
         }
         let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.mem))).clone();
-        let typed = Typed { car: CarTyped::lift(&self.mem, car), stage, defs: Defs::lift(&self.mem, car) };
+        let typed = Typed::lift(&self.mem, car, stage);
         #[cfg(feature = "poison")]
         {
             let mut poisoned = self.mem.clone();
@@ -266,12 +265,13 @@ impl Pure {
         *self.held.borrow_mut() = Some(typed);
     }
 
-    /// Lowers the car's typed state a step held back into the image, and drops it (the stage's stays as it is).
+    /// Lowers the car's and the core's typed state a step held back into the image, and drops it (the stage's stays as
+    /// it is).
     pub(crate) fn lower_typed(&self) {
         #[cfg(feature = "poison")]
         self.poisoned.borrow_mut().take();
         if let Some(typed) = self.held.borrow_mut().take() {
-            typed.car.lower(&mut self.mem.clone());
+            typed.lower(&mut self.mem.clone());
         }
     }
 

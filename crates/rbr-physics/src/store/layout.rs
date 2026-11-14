@@ -86,6 +86,36 @@ impl Value for f32 {
     }
 }
 
+/// A double field (two words, the low first); `from_bits`/`to_bits` keep every bit pattern.
+impl Value for f64 {
+    const LEN: u32 = 8;
+    #[inline]
+    fn load(mem: &Mem, at: u32) -> Self {
+        f64::from_bits(u64::from(mem.u32(at)) | u64::from(mem.u32(at + 4)) << 32)
+    }
+    #[inline]
+    fn store(self, mem: &mut Mem, at: u32) {
+        let bits = self.to_bits();
+        mem.set_u32(at, bits as u32);
+        mem.set_u32(at + 4, (bits >> 32) as u32);
+    }
+    #[inline]
+    fn word(&self, k: u32) -> Option<u32> {
+        let bits = self.to_bits();
+        [bits as u32, (bits >> 32) as u32].get(k as usize).copied()
+    }
+    #[inline]
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        let bits = self.to_bits();
+        *self = f64::from_bits(match k {
+            0 => bits & !0xffff_ffff | u64::from(value),
+            1 => bits & 0xffff_ffff | u64::from(value) << 32,
+            _ => return false,
+        });
+        true
+    }
+}
+
 impl Value for u8 {
     const LEN: u32 = 1;
     #[inline]
