@@ -35,7 +35,7 @@ pub mod publish {
     pub const MOUNTED_TEST: u32 = 0x521920;
     /// The mounted body's update, when its test holds.
     pub const MOUNTED_UPDATE: u32 = 0x522000;
-    /// The ground probe on the car (`vote::probe_ground`): takes the output vector and the distance.
+    /// The ground probe on the car (`rigid_body::vote::probe_ground`): takes the output vector and the distance.
     pub const PROBE_GROUND: u32 = 0x529D30;
     /// The car's body frame composed into the world frame (`world_placement::compose_body_into_world`).
     pub const COMPOSE_BODY_INTO_WORLD: u32 = 0x4E8130;

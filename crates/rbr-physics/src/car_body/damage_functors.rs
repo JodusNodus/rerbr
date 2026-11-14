@@ -1,10 +1,9 @@
-//! The leaf functors of the damage dispatch: the functions the impact path calls through the handler's functor
-//! table (`damage_ops::FUNCTORS`). Their callers are not ported yet, so these are the pure parts: each takes the words it
-//! reads as typed values and returns `None` when its gate fails, or the word it writes and the ring event it pushes (a
-//! functor that pushes no event returns a `bool`; an unconditional no-op returns its value). The layout (`layout::damage_handler`)
-//! reads the words, calls these, and writes
-//! the result. The original decides the order and the rounding: the gates compare ordered (a NaN fails `a > b`),
-//! and the clamp keeps a NaN.
+//! The leaf functors of the damage dispatch: the functions the impact path calls through the handler's functor table
+//! (`layout::damage_handler_at::FUNCTORS`), each named after the part whose word it changes. These are the pure parts:
+//! each takes the words it reads as typed values and returns `None` when its gate fails, or the word it writes and the
+//! ring event it pushes (a functor that pushes no event returns a `bool`; an unconditional no-op returns its value). The
+//! layout (`layout::damage_handler`) reads the words, calls these, and writes the result. The original decides the
+//! order and the rounding: the gates compare ordered (a NaN fails `a > b`), and the clamp keeps a NaN.
 
 use super::wall_friction::clamp;
 

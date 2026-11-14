@@ -297,6 +297,12 @@ Fences (`.fnc`) are cloth and never touch the car.
 
 `src/car_body/damage*.rs` (offsets, functor tables, levels and clamp in the file docs). Four table values at
 `+0x2a88..+0x2b90` are 0.1f: `load_defs::damage_ops_tables_match_lcb1_load_dump`.
+Each functor is named after the part whose handler word it changes: the word's `NRepair::C*Damage` reader (RTTI names,
+rbr-recomp `RBR_E39_Damage*.cpp`: radiator `+0x3b00`, oil cooler `+0x3b0c`, oil pressure `+0x3b08`, clutch `+0x3a9c`,
+water pump `+0x3af4`, hydraulics `+0x3aa8`, starter `+0x3a94`, brake circuit `+0x3a98`, gearbox factor `+0x3aa0`,
+driveshafts `+0x3a30`, differentials `+0x3a1c`, windshield chips `+0x3dc4` and cracks `+0x3dd8`) or the light block's
+lamp kind (`notes/renderer.md`). The reconstruction's own functor comments (gearbox, head gasket, suspension arm, ...)
+disagree with those readers and are not used.
 
 ## Tweak keys
 

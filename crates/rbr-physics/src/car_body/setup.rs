@@ -10,7 +10,7 @@ use super::layout::{self, setup as callee, Setup, SETUP_COPY};
 pub trait SetupCalls {
     /// The setup block as it is now (`layout::Setup::load`).
     fn setup(&mut self) -> Setup;
-    /// The car's four wheel pointers as they are now (`layout::wheel_pointers`).
+    /// The car's four wheel pointers as they are now (`CarStore::wheel_pointers`).
     fn wheels(&mut self) -> [u32; 4];
     /// The object the setup words land in, as it is now.
     fn setup_target(&mut self) -> u32;

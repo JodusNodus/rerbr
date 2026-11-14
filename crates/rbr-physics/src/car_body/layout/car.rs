@@ -483,7 +483,7 @@ impl CarStore for Mem {
         self.u32(car + GRID_PUSHED) != 0
     }
 
-    /// Stores the grid flag (`layout::grid_pushed`), 1 when set.
+    /// Stores the grid flag (`CarStore::grid_pushed`), 1 when set.
     fn set_grid_pushed(&mut self, car: u32, pushed: bool) {
         self.set_u32(car + GRID_PUSHED, pushed as u32);
     }
