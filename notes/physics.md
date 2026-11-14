@@ -155,7 +155,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: `spring_damper/layout.rs` |
 | `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: `vcu/layout.rs` |
 | `TyreStore` (handle `Tyre`) | `tyre/store.rs` | `TyreView` only; the callers' blocks: `tyre/layout/kernels.rs` |
-| `WheelStore` | `wheel/layout/store.rs` | `wheel/layout/fields.rs` |
+| `WheelStore` (by `Slot`; the image's words as default methods) | `wheel/layout/store.rs` | `wheel/layout/fields.rs` (every field on the image, per call); `WheelView` (typed) |
 | `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
 | `EngineStore: DamperBlocks` | `engine_driveline/store.rs` | `engine_driveline/layout/mem_store.rs` |
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
@@ -261,6 +261,36 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   image; M520240 declines there (NGP's). Not typed: the collision system and its copies, the `.col` tree, the mesh
   grids and water meshes (the collision queries, heap graphs; their scratch is written per query); `CollisionQuery`
   is NGP's runtime copy (no image word) or the snapshot's operand.
+- The wheels, fifth: `wheel::layout::Wheel` (`object!` with a `Slot` per field, `layout/typed.rs`; 444 bytes a wheel):
+  the pose the refresh and the axes leave (deformed top mount, steering rod length, wishbone copy, wobbled and inclined
+  axle, strut direction, tip, inverse arm and rack, drive axle direction, rod mount, steering rod, debug rows), the walk
+  output, the probe's frame axis, contact distance, sector values, sweep residue, ground body and copies (`+0xdb0..
+  +0xe30`, the two edge copies `Blend4`'s), the edge force's across vector, the step's strut velocity, spin, four forces
+  and end spin, the damage-changed flag. `CarWheels` (lift, lower, owned, `round_trip`) is in `CarTyped`, lifted and
+  lowered with the rest. The wheel's runs nest through the host (the step calls the refresh, the probe, the edge forces,
+  the top mount, the hub torque and the spin cross; the probe the sector lerps, the contact pick, the tag blend), so
+  the state is a `RefCell` borrowed one field at a time, and there is no per-call lift: `WheelView` holds the step's
+  wheels typed and keeps any other wheel on the image, field by field at its address (the `Mem` store is the same,
+  for the vectors), which is the per-call path (emulator, hybrid gate, between steps). The store keys a wheel by its
+  address: per call that is the image's word, held the view finds the wheel. Stay in the image, read and written there:
+  the definition, the pointers (car, def, damage, tyre setup, wheel index), the damage record (the car's damage object,
+  `+0x3c04 + 0x38k`, its functors and `ResetDamage`), the solid's words (position, orientation, velocities; the refresh
+  writes them), the reals' headers (`SetDirty`), and every word another subsystem reads or writes at its address: the
+  wheel angle and strut length (the tyre's contact angle, `Snap9360`), the axle and knuckle axis (the car's transforms),
+  the world hub, axle, probe direction, carcass edges and hub velocity (the car's walks, the CRT vector helpers, the
+  collision casts), the car force and scratch (the car's accumulators), the blend ops and last tags (the tyre step's
+  pointers, NGP's step wrapper), the ray blocks (the mesh queries' hit words, NGP's tag blend), the ground flag
+  (`Vf6cx`), NGP's strut words `+0xe80..+0xe8c`. The calls into the tyre and the strut stay host calls: they take
+  pointers into the step's frame and the image words above, NGP rewrites three of them (the tyre step, the spring
+  step, the relaxation), and the host writes the original's stack words around each. Readers
+  during a step, through `rbr_hybrid::wheel::read_wheel`: NGP's engine wrapper (the rim speeds, under the engine
+  model) and the tyres' thermal words (the end spin); an unrouted read fails the poison run (`wheel0 end_spin_rate`
+  in `0x5358c0`). Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (also
+  aids on with realistic damage); poison 84084/84084 (both); `round_trip` 1776 typed bytes and `differential` (the
+  host-free entries in a row per call against held, every byte of the wheels, damage records and outputs, 21856
+  bytes) on 40 snapshots; `wheel_vectors` on the Mem store; the hybrid gate 13/13 (the 1.02 snapshots run the original
+  step, which calls the refresh, probe, sector lerps, `Blend4`, the hub torque and the spin cross per call; `M3DD30`
+  and `M3D460` decline there); +0.73 % instructions per step.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core

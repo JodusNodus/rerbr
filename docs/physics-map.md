@@ -95,7 +95,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Tyre heat and wear | `tyre/heat.rs`, `tyre/relax.rs`, `ngp/heat.rs` | `tyre::heat::heat_step`, `tyre::relax::relax_sector`, `ngp::heat::TyreThermal` |
 | Grip, friction curve | `tyre/friction_curve.rs`, `tyre/friction_limits.rs`, `tyre/grip.rs`, `ngp/outputs.rs` | `tyre::friction_curve::friction_curve`, `tyre::friction_limits::friction_limits`, `tyre::grip::limit_to_friction_circle`, `ngp::outputs::friction_limits` |
 | Tyre on surface, wetness, inclination | `tyre/surface.rs`, `tyre/soil.rs`, `ngp/inclination.rs` | `tyre::surface::surface_friction`, `tyre::soil::soil_drag`, `ngp::inclination::grip_scale` |
-| Suspension geometry | `wheel/refresh.rs`, `wheel/axes.rs` | `wheel::layout::refresh` |
+| Suspension geometry | `wheel/refresh.rs`, `wheel/axes.rs` | `wheel::layout::refresh`, `wheel::layout::Wheel` (the wheels' typed state) |
 | Spring, bump stop, damper | `spring_damper/mod.rs`, `spring_damper/suspension.rs`, `spring_damper/strut.rs`, `ngp/spring.rs` | `spring_damper::step`, `spring_damper::suspension::Suspension`, `spring_damper::strut::Struts` (the typed state), `ngp::spring::bump_stop`, `ngp::spring::latch` |
 | Anti-roll bars | `car_body/roll_bars.rs` | `car_body::roll_bars::update_roll_bars` |
 | Engine torque | `engine_driveline/engine.rs`, `engine_driveline/layout/engine_sim.rs`, `ngp/engine.rs` | `engine_driveline::engine::torque_curve`, `engine_driveline::layout::engine_step`, `ngp::engine::torque` |
