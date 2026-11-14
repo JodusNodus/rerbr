@@ -89,7 +89,7 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   `car_body_vectors` (`same_word`: `to_quat`, `steering_ffb`), `entities_solve` (`+0x624`), `entities_slip`,
   `spring_damper_vectors` (st0 returns, `check_spring_windows`), `engine_driveline_vectors` (`check_st0`,
   `check_windows_nan`, `sim_e660` for `torque`, which a NaN `load_d` makes NaN: x86_64 writes `0xffc00000` where the
-  record holds `0x7fc00000`), `wheel_vectors` (`split_on_sub`, sign only). Recorded st0 NaNs carry no sign
+  record holds `0x7fc00000`), `wheel_vectors` (`edge_force`, sign only). Recorded st0 NaNs carry no sign
   (`harness/vcu_vectors.py`). `harness/rust_step.py` excludes words NaN in both runs that differ only in bit 31. A
   new site gets its own entry, never a blanket tolerance. The vector targets pass on arm64 (CI's macOS job) and on
   x86_64.
@@ -221,6 +221,11 @@ Hinged model per quantity in `src/entities/hinge_*.rs`, offsets in `layout/`; mo
 `src/wheel/` (quantities in the model modules, memory and calls out in `layout/`; CDef-key reals in `refresh.rs`
 and `refresh_pose.rs`, NGP damage keys in `data/ngp-lsp-keys.md`). The asm has no int conversions. Unicorn picks
 between two NaNs the x87 way, so its records differ from `math::sse` in NaN sign only.
+
+Layout, from the asm (`layout/fields.rs`): the three ray blocks (0x70 each, centre `+0xc20`, edges `+0xc90` minus and
+`+0xd00` plus) hold the cast's hit words at `+0x10` (point, normal `+0x20`) and the offset across the tyre at `+0x50`;
+the damage record at `+0x7f0` (top mount up and side, steering, hub, two sector tables); `CopyCF30`
+(`layout::apply_setup`) copies the `CSetup` into the CDef and stores `StrutDimZ + StrutPlatformHeight` at `def+0x3fc`.
 
 ## Tyre
 
