@@ -245,7 +245,7 @@ fn boot_start(
     dump: Option<&Path>,
 ) -> Result<Start, String> {
     let (playback, image) = boot_playback(data, stage, name, race, dump, true)?;
-    let mem = &playback.pure.mem;
+    let mem = playback.pure.image();
     let compare = Compare::at_start_of(mem, image.regions.clone(), mask.to_vec(), frames);
     let dt = keeper_layout::max_time_step(mem);
     Ok(Start {
@@ -311,7 +311,7 @@ pub fn run(
     let dt = image_dt.unwrap_or(DT);
     let values = stage.track_values.clone();
     let mut game = Game::new(
-        Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(&playback.pure.mem)),
+        Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(playback.pure.image())),
         Grid::from_settings(&Ini::parse("")),
         &stage.markers,
         values,
@@ -343,10 +343,10 @@ pub fn run(
         dt,
         dt_image: image_dt.is_some(),
         noise: compare.noise(),
-        noise_unmasked: compare.kept_words(&playback.pure.mem).iter().filter(|&&i| !mask[i]).count(),
-        boot_pointer_candidates: compare.kept_boot_pointers(&playback.pure.mem).len(),
+        noise_unmasked: compare.kept_words(playback.pure.image()).iter().filter(|&&i| !mask[i]).count(),
+        boot_pointer_candidates: compare.kept_boot_pointers(playback.pure.image()).len(),
         boot_pointer_candidates_unmasked: compare
-            .kept_boot_pointers(&playback.pure.mem)
+            .kept_boot_pointers(playback.pure.image())
             .iter()
             .filter(|&&i| !mask[i])
             .count(),
@@ -381,10 +381,10 @@ pub fn run(
                 }
             }
             if start == 0 && i > first {
-                let kept = compare.kept_words(&playback.pure.mem);
+                let kept = compare.kept_words(playback.pure.image());
                 noise_kept_through_driving = Some(kept.iter().copied().collect());
                 out.noise_kept_after_countdown = Some(kept);
-                let pointers = compare.kept_boot_pointers(&playback.pure.mem);
+                let pointers = compare.kept_boot_pointers(playback.pure.image());
                 boot_pointers_kept_through_driving = Some(pointers.iter().copied().collect());
                 out.boot_pointers_kept_after_countdown = Some(pointers);
             }
@@ -422,8 +422,8 @@ pub fn run(
             continue;
         }
         if i == first {
-            out.keeper_diff = keeper_difference(&game, &playback.pure.mem).map(|d| (None, d));
-            let states = (game.stage().state().value(), pure::app_state(&playback.pure.mem));
+            out.keeper_diff = keeper_difference(&game, playback.pure.image()).map(|d| (None, d));
+            let states = (game.stage().state().value(), pure::app_state(playback.pure.image()));
             out.state_diff = (states.0 != states.1).then_some(states);
         }
         if out.steps == steps {
@@ -484,7 +484,7 @@ pub fn run(
         if let Some(word) = control.and_then(|c| c.first_difference(expected)) {
             out.control_diff.get_or_insert((frame.pre, word));
         }
-        let mem = &playback.pure.mem;
+        let mem = playback.pure.image();
         if out.keeper_diff.is_none() {
             out.keeper_diff = keeper_difference(&game, mem).map(|d| (Some(frame.pre), d));
         }
@@ -537,11 +537,11 @@ pub fn run(
     if let Some(trace) = trace_out {
         trace.finish()?;
     }
-    out.noise_kept_at_stop = compare.kept_words(&playback.pure.mem);
+    out.noise_kept_at_stop = compare.kept_words(playback.pure.image());
     out.noise_released = compare.released_noise_words().len();
     out.noise_released_by_recording = compare.recorded_noise_released_words();
     out.noise_kept_through_driving = noise_kept_through_driving.map(|kept| kept.into_iter().collect());
-    out.boot_pointers_kept_at_stop = compare.kept_boot_pointers(&playback.pure.mem);
+    out.boot_pointers_kept_at_stop = compare.kept_boot_pointers(playback.pure.image());
     out.boot_pointers_kept_through_driving = boot_pointers_kept_through_driving.map(|kept| kept.into_iter().collect());
     out.allocator_unwritten_reads = playback.pure.allocator_unwritten_reads();
     out.twin = twin.map(|t| (t.summary(), t.equal()));

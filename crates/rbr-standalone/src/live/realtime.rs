@@ -70,7 +70,7 @@ fn write(out: &mut dyn Write, bytes: &[u8]) -> std::io::Result<()> {
 
 /// The frame's digest after it ran: the log and the `--frames` and `--replay` comparisons check it.
 fn digest(live: &Live) -> u64 {
-    realtime::digest(&pure::frame_bytes(&live.playback.pure.mem))
+    realtime::digest(&pure::frame_bytes(live.playback.pure.image()))
 }
 
 /// Reads the viewer's messages into `shared` until the input ends.
