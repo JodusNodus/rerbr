@@ -270,6 +270,10 @@ pass on bit 3 of `bodyA+0x60`).
 `src/rigid_body/` contact files. The wall table is read eight floats at an 8-byte stride (original; keep).
 `Impulse640` (0x529640): 4th argument a time (`dt`), 3rd unused. `E36SphereBox` sums `dz + dy + dx` in x87.
 `BoxHit` sets only `AL`.
+`E37GridOps::Get00`-`Get2C`, `T04_2`, `Valid5990` (0x4f5950-0x4f5a60) read a `CSigCollisionMesh` descriptor: the
+offsets and widths of `load_mesh_desc` (`layout::grid_elems::desc_*`). `CColGrid` names its vertices (+0x40) `edge`,
+its edges (+0x484) `pair` and its vertex count (+0x68d) `edge_count` (`layout::ColGrid`, the stores); `MeshGrid` and
+`grid_elems` say vertices and edges.
 
 ## Entities
 
