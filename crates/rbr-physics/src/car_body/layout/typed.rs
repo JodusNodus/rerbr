@@ -691,16 +691,17 @@ fn entries<S: crate::car_body::store::CarStore>(mem: &mut S, car: u32, scratch: 
 }
 
 /// The car's host-free entries in a row ([`entries`]) on the car at `car`, per call on `per_call` (every field on the
-/// image) and on the car held in typed storage over the row on `held` (lifted before, lowered after), two copies of one
-/// image; `scratch` is free memory of both (0x400 bytes). Compares every byte of the car and the scratch, and what the
-/// callers were given: the bytes compared, or the first that differs.
+/// image) and on the car held in typed storage over the row on `held` (lifted before, lowered after, its definitions
+/// held too), two copies of one image; `scratch` is free memory of both (0x400 bytes). Compares every byte of the car
+/// and the scratch, and what the callers were given: the bytes compared, or the first that differs.
 pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) -> Result<usize, String> {
     const CAR_BYTES: u32 = 0x1d60;
     const SCRATCH_BYTES: u32 = 0x400;
     let own = CarOwn::lift(held, car);
     let wheels = CarWheels::lift(held, car);
+    let defs = Defs::lift(held, car);
     let a = entries(per_call, car, scratch);
-    let b = entries(&mut CarView::new(held, Some(&own), Some(&wheels)), car, scratch);
+    let b = entries(&mut CarView::new(held, Some(&own), Some(&wheels)).with_defs(Some(&defs)), car, scratch);
     if a != b {
         let k = a.iter().zip(&b).position(|(x, y)| x != y).unwrap_or(a.len().min(b.len()));
         return Err(format!("the callers differ at word {k}: per call {:x?}, held {:x?}", a.get(k), b.get(k)));
