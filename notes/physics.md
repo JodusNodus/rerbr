@@ -489,8 +489,12 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   vector helpers through `with_solids`). The host calls after a body store (`Window::refresh_state` to slot 16, the
   pose's sleep trip to slot 37, the impulse's and force pass's transforms) reach routed callees, so none lowers. Left on
   the image: the wheel's hand-off words (`CAR_FORCE`, `CAR_SCRATCH`, the axle and knuckle axes; passed by pointer to
-  the car's slots 28/29 and transforms), pointers handed to other groups' callees (`Step77Vote`'s `+0x140` to the
-  collision probe, `MB560`, `E36Collect`, the car's transforms, `INTEGRATE`), construction. Evidence: a shadow survey
+  the car's slots 28/29 and transforms), construction. The callees handed pointers into a solid read them on its store:
+  `MB560`/`COPY16_WALK` (`entities::walks::copy_vec4`, the frame hooks), `Step77Vote`'s `+0x140` (`RaycastEntry`'s
+  `solid_word`), `CCar::ToWorld` (`vec_at`/`set_vec`), `WorldCompose` (`COPY16_WALK`), the wheel step's `Cross` (in
+  place on `with_solids`); `S30` (the node getter), `E36Collect`, `Collide6000`, `INTEGRATE`, `NAME_WALK` and
+  `CState::Unk44` (`CBody+0x70`) read no solid word (shadow survey, holding on, aids off and on, drive1/1 and
+  rsf-test1/1 too: none). Evidence: a shadow survey
   (held on, held writes through to the image, held reads checked against it; 84084/84084) lists none of these
   bindings; the wheel `differential` holds the solids (21856 bytes, 43 snapshots; an unrouted `ORIENTATION` store
   fails it); +0.92 % instructions per step held off (`Body::read`/`write` take the image at once, `SolidWords::image`;
@@ -510,7 +514,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   `Sampler54A0`, `Test7910`, `Vf54x` with `store_scratch_reset` on any `SolidWords`, `Vf64x`, `Vf180`, `Vf6cx`,
   `Snap9360`, the passenger step); `RaycastEntry` takes the point's words (`wall_probe(xy)`, read with `solid_word`);
   NGP's atmosphere and downforce use `solid_f32`/`set_solid_word`; the walks of `car+0x380` (`Vf64x`) and `car+0x1c0`
-  (`Sim8E20`'s airflow) by address lower those words first (`lower_solid_words`; `MB560` reads them on the image).
+  (`Sim8E20`'s airflow) go by address to `MB560`, whose copy reads the solids' store.
   `AppendA980` touches only the link `+0x160..+0x168`, not held. Evidence: the survey build with holding on lists none
   of these bindings. Still on the image: `ToQuat` (entities), physics_core's mounted-body words (`mount_velocity`,
   `mount_point`, the pose copy `+0x100`/`+0x2a0`; not stepped on drive2).
