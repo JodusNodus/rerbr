@@ -11,6 +11,7 @@ use super::store::WheelStore;
 use crate::car_body::layout::{CarOwn, Slot as CarSlot};
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
+use crate::rigid_body::layout::CarSolids;
 use crate::store::defs::{self, Defs};
 use crate::store::{Object, Raw, Value};
 
@@ -177,12 +178,13 @@ pub struct WheelView<'a> {
     wheels: Option<&'a CarWheels>,
     car: Option<&'a CarOwn>,
     defs: Option<&'a Defs>,
+    solids: Option<&'a CarSolids>,
 }
 
 impl<'a> WheelView<'a> {
     /// The store over `mem` with `wheels` held (none: every wheel on the image).
     pub fn new(mem: &'a mut Mem, wheels: Option<&'a CarWheels>) -> Self {
-        WheelView { mem, wheels, car: None, defs: None }
+        WheelView { mem, wheels, car: None, defs: None, solids: None }
     }
 
     /// The store with the car's own state held too: the car's words the wheel reads (`WheelStore::car_field`).
@@ -193,6 +195,12 @@ impl<'a> WheelView<'a> {
     /// The store with the step's typed definitions (none: every definition on the image).
     pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
         WheelView { defs, ..self }
+    }
+
+    /// The store with the car's solids held (none: every solid's words on the image): the solids' words the wheel
+    /// reads and writes (`WheelStore::solid_u32`).
+    pub fn with_solids(self, solids: Option<&'a CarSolids>) -> Self {
+        WheelView { solids, ..self }
     }
 
     fn held(&self, this: u32) -> Option<&'a RefCell<Wheel>> {
@@ -231,6 +239,32 @@ impl WheelStore for WheelView<'_> {
     #[inline]
     fn car_field<T: Value>(&self, car: u32, slot: CarSlot<T>) -> T {
         self.car.and_then(|c| c.read(car, slot)).unwrap_or_else(|| T::load(self.mem, car + slot.at))
+    }
+
+    #[inline]
+    fn solid_u32(&self, at: u32) -> u32 {
+        self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
+    }
+
+    #[inline]
+    fn solid_vec4(&self, at: u32) -> Vec4 {
+        match self.solids {
+            Some(_) => Vec4::from([0, 4, 8, 12].map(|k| self.solid_f32(at + k))),
+            None => Vec4::load(self.mem, at),
+        }
+    }
+
+    #[inline]
+    fn set_solid_vec4(&mut self, at: u32, v: Vec4) {
+        let Some(solids) = self.solids else {
+            return v.store(self.mem, at);
+        };
+        for (k, lane) in [v.x, v.y, v.z, v.w].into_iter().enumerate() {
+            let at = at + 4 * k as u32;
+            if !solids.write(at, lane.to_bits()) {
+                self.mem.set_u32(at, lane.to_bits());
+            }
+        }
     }
 
     #[inline]

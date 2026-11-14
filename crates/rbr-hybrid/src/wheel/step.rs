@@ -1,14 +1,15 @@
 //! The wheel's step (`E51Wheel::M3DD30`) and the calls around it: the pose refresh, the ground probe, `CWheel::Vf28`'s
 //! finish and the strut update.
 
-use rbr_physics::collision::layout as collision;
 use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
+use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
 use super::{on_wheels, Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
 use crate::collision::{RAY_CLEAR, RAY_SEEDS};
 use crate::entities::BODY_COMPOSE;
+use crate::rigid_body::with_solids;
 use crate::vcu::SET_DIRTY;
 use crate::{Ctx, Decline, Host, Regs, Return};
 use std::cell::Cell;
@@ -196,33 +197,32 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, M3D520, this, &[out, normal])
     }
 
-    // The vector callees (`collision/vectors.rs`' bindings, which make no call) run here on the pure host.
+    // The vector callees (`collision/vectors.rs`' bindings, which make no call) run here on the pure host, on the
+    // solids' store (their pointers may point into a solid: the car's angular velocity, the wheel's position).
     fn clear_vec4(&mut self, at: u32, sp: u32) {
         if crate::skip_call(self.host, &mut self.mem, sp, &[]) {
-            return clear_vec4().store(&mut self.mem, at);
+            return with_solids(self.host, &mut self.mem, |s| s.store_row(at, clear_vec4()));
         }
         self.on(sp, 0x465D80, at, &[]);
     }
 
     fn copy_vec4(&mut self, dst: u32, src: u32, sp: u32) {
         if crate::skip_call(self.host, &mut self.mem, sp, &[src]) {
-            collision::vec4_copy_from(&mut self.mem, dst, src);
-            return;
+            return with_solids(self.host, &mut self.mem, |s| s.store_row(dst, s.row(src)));
         }
         self.on(sp, 0x43C5B0, dst, &[src]);
     }
 
     fn cross(&mut self, a: u32, b: u32, out: u32, sp: u32) {
         if crate::skip_call(self.host, &mut self.mem, sp, &[b, out]) {
-            collision::vec3_cross(&mut self.mem, a, b, out);
-            return;
+            return with_solids(self.host, &mut self.mem, |s| s.store_vec3(out, s.vec3(a).cross3(s.vec3(b))));
         }
         self.on(sp, 0x43C630, a, &[b, out]);
     }
 
     fn scale_vec4(&mut self, src: u32, factor: f32, out: u32, sp: u32) {
         if crate::skip_call(self.host, &mut self.mem, sp, &[factor.to_bits(), out]) {
-            return collision::scaled(&mut self.mem, src, out, factor);
+            return with_solids(self.host, &mut self.mem, |s| s.store_row(out, s.row(src).scale(factor)));
         }
         self.on(sp, 0x473CD0, src, &[factor.to_bits(), out]);
     }

@@ -86,7 +86,7 @@ pub fn refresh<S: WheelStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: 
     let linkage = refresh::linkage(&input, &strut);
     let steer_target = if def.is_steered { mem.car_field(mem.u32(CAR_GLOBAL), car_slot::steer_target) } else { 0.0 };
     let frame = refresh::hub_frame(&input, &strut, &linkage, steer_target, strut.steering_rod_length);
-    frame.hub_position.store(mem, this + HUB_POSITION);
+    mem.set_solid_vec4(this + HUB_POSITION, frame.hub_position);
     (Vec3 { x: frame.rotation[0][0], y: frame.rotation[0][1], z: frame.rotation[0][2] }).store(mem, this + AXLE);
     let tyre_def = calls.tyre_def(this + TYRE_SCRATCH);
     let (hub_position, drive_axle_dir) = refresh::place_hub(
@@ -96,7 +96,7 @@ pub fn refresh<S: WheelStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: 
         def.drive_axle_mount_offset,
         def.drive_axle_joint,
     );
-    hub_position.store(mem, this + HUB_POSITION);
+    mem.set_solid_vec4(this + HUB_POSITION, hub_position);
     frame.neg_knuckle_z.store(mem, this + NEG_KNUCKLE_Z);
     mem.set(this, slot::strut_dir, frame.strut_dir);
     mem.set(this, slot::tip, frame.tip);
@@ -109,6 +109,6 @@ pub fn refresh<S: WheelStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: 
         mem.set(this, slot::debug_rows, frame.knuckle_axes);
     }
     let q = quat::to_quat(&frame.rotation);
-    Vec4 { x: q.x, y: q.y, z: q.z, w: q.w }.store(mem, this + ORIENTATION);
+    mem.set_solid_vec4(this + ORIENTATION, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
     calls.refresh_solid(this)
 }

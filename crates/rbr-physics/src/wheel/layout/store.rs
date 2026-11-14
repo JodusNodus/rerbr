@@ -27,6 +27,22 @@ pub trait WheelStore: Raw {
     /// Stores the field `slot` of the state of the wheel at `this`.
     fn set<T: Value>(&mut self, this: u32, slot: Slot<T>, value: T);
 
+    // The solids' words: the wheel's and the car's `CSolid` words (orientation, matrix, position, velocities; the
+    // rigid body's `Solid`) the image's, a typed store's held solid's where it holds the word (`WheelView`).
+
+    fn solid_u32(&self, at: u32) -> u32 {
+        self.u32(at)
+    }
+    fn solid_f32(&self, at: u32) -> f32 {
+        f32::from_bits(self.solid_u32(at))
+    }
+    fn solid_vec4(&self, at: u32) -> Vec4 {
+        Vec4::load(self, at)
+    }
+    fn set_solid_vec4(&mut self, at: u32, v: Vec4) {
+        v.store(self, at)
+    }
+
     // The image's words.
 
     /// Loads the ray block at `at` (the hit word is read first, as the original does).

@@ -13,6 +13,7 @@ use rbr_physics::physics_core::layout::vtable_target;
 use rbr_physics::rigid_body::emit::{BodyEvent, EmitHost};
 use rbr_physics::rigid_body::host::{HostUnavailable, SolidCtorHost};
 use rbr_physics::rigid_body::layout::Body;
+use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::store::Value;
 use rbr_physics::wheel::axes::Trig;
 use rbr_physics::wheel::layout::{
@@ -104,13 +105,16 @@ pub static BINDINGS: [Binding; 30] = [
 ];
 
 /// Runs `run` on the wheel's store: the step's wheels in typed storage while the host holds them ([`Host::typed`]),
-/// any other wheel, and every wheel per call, on the image (`layout::WheelView`).
+/// any other wheel, and every wheel per call, on the image (`layout::WheelView`); the car's own state, the
+/// definitions and the solids likewise.
 pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T) -> T {
     let host = ctx.host;
     let typed = host.typed();
     let car = typed.as_deref().map(|t| &t.car);
     let defs = typed.as_deref().map(|t| &t.defs);
-    run(&mut WheelView::new(&mut ctx.mem, car.map(|c| &c.wheels)).with_car(car.map(|c| &c.own)).with_defs(defs))
+    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    let view = WheelView::new(&mut ctx.mem, car.map(|c| &c.wheels)).with_car(car.map(|c| &c.own)).with_defs(defs);
+    run(&mut view.with_solids(solids))
 }
 
 /// The field `slot` of the wheel at `this` as a step leaves it at this point: the typed storage's while the host holds
@@ -586,9 +590,10 @@ impl EmitHost for WheelCtor<'_> {
     }
 
     fn wake(&mut self, body: &mut Body) -> Result<(), HostUnavailable> {
-        body.store(&mut self.mem, self.this);
-        self.host.call_at(self.wake_sp, SOLID_WAKE, self.this, &[]);
-        *body = Body::load(&self.mem, self.this);
+        let this = self.this;
+        rigid_body::with_solids(self.host, &mut self.mem, |s| s.store_body(this, body));
+        self.host.call_at(self.wake_sp, SOLID_WAKE, this, &[]);
+        *body = rigid_body::with_solids(self.host, &mut self.mem, |s| s.body(this));
         Ok(())
     }
 }

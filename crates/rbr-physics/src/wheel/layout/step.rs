@@ -151,17 +151,17 @@ pub fn wheel_step<S: WheelStore>(
 
     // Two rows of the wheel's matrix, each loaded into the frame and copied to a frame slot. Lane 3 of each copy takes
     // the frame's old `+0x6c`, as the asm leaves it.
-    mem.set_u32(f + 0x60, mem.u32(this + MATRIX_ROW_2));
-    mem.set_u32(f + 0x64, mem.u32(this + MATRIX_ROW_2 + 4));
-    mem.set_u32(f + 0x68, mem.u32(this + MATRIX_ROW_2 + 8));
+    mem.set_u32(f + 0x60, mem.solid_u32(this + MATRIX_ROW_2));
+    mem.set_u32(f + 0x64, mem.solid_u32(this + MATRIX_ROW_2 + 4));
+    mem.set_u32(f + 0x68, mem.solid_u32(this + MATRIX_ROW_2 + 8));
     mem.set_u32(f + 0xA0, mem.u32(f + 0x60));
     mem.set_u32(f + 0xA4, mem.u32(f + 0x64));
     mem.set_u32(f + 0xA8, mem.u32(f + 0x68));
     mem.set_u32(f + 0xAC, mem.u32(f + 0x6C));
     calls.copy_vec4(f + 0x160, f + 0xA0, f - 8);
-    mem.set_u32(f + 0x60, mem.u32(this + MATRIX_ROW_1));
-    mem.set_u32(f + 0x64, mem.u32(this + MATRIX_ROW_1 + 4));
-    mem.set_u32(f + 0x68, mem.u32(this + MATRIX_ROW_1 + 8));
+    mem.set_u32(f + 0x60, mem.solid_u32(this + MATRIX_ROW_1));
+    mem.set_u32(f + 0x64, mem.solid_u32(this + MATRIX_ROW_1 + 4));
+    mem.set_u32(f + 0x68, mem.solid_u32(this + MATRIX_ROW_1 + 8));
     mem.set_u32(f + 0xA0, mem.u32(f + 0x60));
     mem.set_u32(f + 0xA4, mem.u32(f + 0x64));
     mem.set_u32(f + 0xA8, mem.u32(f + 0x68));
@@ -217,7 +217,7 @@ fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: 
     // The car's linear velocity, unless the car is the null object (`car == -0x1b0`).
     let pf = if car.wrapping_add(CAR_LINEAR_VELOCITY_TWEAK) == 0 { 0 } else { car + LINEAR_VELOCITY };
     for k in 0..3 {
-        let v = mem.f32(pf + 4 * k) + mem.f32(f + 0xE0 + 4 * k);
+        let v = mem.solid_f32(pf + 4 * k) + mem.f32(f + 0xE0 + 4 * k);
         mem.set_f32(f + 0xE0 + 4 * k, v);
     }
     let s = mem.get(this, slot::strut_velocity);
@@ -393,9 +393,9 @@ fn spring_and_slip<S: WheelStore>(
     mem.set_f32(f + 0x34, p + spring + breakpoint);
     mem.set(this, slot::damper_force, p + breakpoint);
 
-    let v0 = mem.f32(this + HUB_POSITION) - mem.def_f32(def, DEF_TOP_MOUNT);
-    let v1 = mem.f32(this + HUB_POSITION + 4) - mem.def_f32(def, DEF_TOP_MOUNT + 4);
-    let v2 = mem.f32(this + HUB_POSITION + 8) - mem.def_f32(def, DEF_TOP_MOUNT + 8);
+    let v0 = mem.solid_f32(this + HUB_POSITION) - mem.def_f32(def, DEF_TOP_MOUNT);
+    let v1 = mem.solid_f32(this + HUB_POSITION + 4) - mem.def_f32(def, DEF_TOP_MOUNT + 4);
+    let v2 = mem.solid_f32(this + HUB_POSITION + 8) - mem.def_f32(def, DEF_TOP_MOUNT + 8);
     mem.set_f32(f + 0x110, v0);
     mem.set_f32(f + 0x114, v1);
     mem.set_f32(f + 0x118, v2);

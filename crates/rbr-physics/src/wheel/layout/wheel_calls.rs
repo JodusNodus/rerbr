@@ -57,10 +57,10 @@ pub fn transform_and_copy<S: WheelStore>(
     car_transform: impl FnOnce(u32, Vec4) -> Vec4,
 ) {
     let tmp =
-        hub::tyre_centre(Vec4::load(mem, this + AXLE), mem.load_hub_offset(this), Vec4::load(mem, this + HUB_POSITION));
+        hub::tyre_centre(Vec4::load(mem, this + AXLE), mem.load_hub_offset(this), mem.solid_vec4(this + HUB_POSITION));
     let x = car_transform(mem.load_car(this), tmp);
     x.store(mem, x_at);
-    Vec4::load(mem, this + ORIENTATION).store(mem, out_at);
+    mem.solid_vec4(this + ORIENTATION).store(mem, out_at);
 }
 
 /// `Blend4` (0x539180): the carcass edges, `b` moved along the axle `a` by plus (`c`) and minus (`d`) half the tyre's
@@ -109,7 +109,7 @@ pub fn car_frames<S: WheelStore>(host: &mut impl CarXform, mem: &mut S, this: u3
 /// stored to the walk output. `GetB1C` is read only after the walk call, when `|inv_rack| > 0.001` (as the asm does).
 pub fn steering_walk<S: WheelStore>(host: &mut impl WalkCalls, mem: &mut S, this: u32) -> Vec4 {
     let car = mem.load_car(this);
-    let a = (car.wrapping_add(0x180) != 0).then(|| Vec4::load(mem, car + 0x190));
+    let a = (car.wrapping_add(0x180) != 0).then(|| mem.solid_vec4(car + 0x190));
     let walk = host.pair_walk(mem.u32(FRAME), a, car);
     let (inv_arm, inv_rack) = (mem.get(this, slot::inv_arm), mem.get(this, slot::inv_rack));
     let gain = walk::steer_gain(inv_arm, inv_rack, || mem.car_field(car, car_slot::steer_target_rate));
@@ -174,8 +174,8 @@ pub fn update_strut<S: WheelStore>(
 /// calls the wheel's `Vf40` (`refresh_solid`, 0x53b5b0), then forwards `p` to `CSolid::E43Vf20` (`walk_children`,
 /// 0x529200).
 pub fn clear_and_forward<S: WheelStore>(host: &mut impl SlotCalls, mem: &mut S, this: u32, p: u32) {
-    Vec4::default().store(mem, this + LINEAR_VELOCITY);
-    Vec4::default().store(mem, this + ANGULAR_VELOCITY);
+    mem.set_solid_vec4(this + LINEAR_VELOCITY, Vec4::default());
+    mem.set_solid_vec4(this + ANGULAR_VELOCITY, Vec4::default());
     host.refresh_solid(this);
     host.walk_children(this, p);
 }
