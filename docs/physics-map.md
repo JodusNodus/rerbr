@@ -116,7 +116,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Collision response | `collision/contact_solver.rs`, `collision/solver_pass.rs`, `collision/obb.rs`, `collision/wall.rs` | `collision::contact_solver::normal_impulse`, `friction_impulse`, `collision::obb::obb_contact`, `collision::wall::wall_raycast` |
 | Damage | `car_body/damage.rs`, `car_body/damage_ops.rs`, `car_body/damage_functors.rs`, `wheel/axes.rs` | `car_body::damage::set_level`, `car_body::damage_ops::level_fractions`, `ngp::engine::damage_factor` |
 | Force feedback | `car_body/steering_ffb.rs`, `ngp/ffb.rs` | `car_body::steering_ffb::filtered_torque`, `ngp::ffb::curve` |
-| Car and setup values from `.lsp` | `load/`, `ntweak/` | `load::physics_file`, `load::setup_file`, `ntweak::plan::plan` |
+| Car and setup values from `.lsp` | `load/`, `ntweak/`, `store/defs.rs` | `load::physics_file`, `load::setup_file`, `ntweak::plan::plan`, `store::defs::Defs` (the definitions a step reads, typed) |
 
 The `.lsp` keys each object reads are in [data/physics-lsp-fields.md](../data/physics-lsp-fields.md) and
 [data/ngp-lsp-keys.md](../data/ngp-lsp-keys.md).

@@ -371,6 +371,23 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   cell setters, grid edge, outside assistance, respawn pose and respawn, snapshot, sensors; every byte of the car and
   the scratch, 8544 bytes, and every caller's word) on 40 snapshots; `car_body` and `wheel` vectors on the Mem store;
   hybrid gate 13/13; +0.40 % instructions per step.
+- The definitions, ninth, read-only: `store::defs::Defs` in `Typed`, keyed by address, one per wheel slot unless an
+  earlier slot holds it: `wheel::layout::WheelDef` (every word the wheel reads), the strut's `Definition`, the tyre's
+  `TyreDef` (setup, hub offset, surface and wear words), `car_body::layout::CarDef` (`CarStore`'s getters),
+  `vcu::Def`, `engine_driveline::layout::DriveDefinition` (accessors, ratios, locks, workers, bands) and the address of
+  the physics definition's flags word. `Pure` lifts them each step (setup adoption, respawn and restart write them
+  between steps) from block reads; nothing lowers them, the load builds them on the image. The views take
+  `with_defs`; without it (per call, emulator, vectors) the image. The step writes stay on the image: the wheel
+  definitions' `+0x880..+0x900` (`M3A8A0`'s frames) and the tyre setups' by-load tables `+0x204..+0x284` (NGP's step
+  wrapper scales `+0x204..+0x244` and restores `+0x204..+0x284`; held, the write watch fails the poison run there).
+  The poison build checks each typed answer against the image's (`defs::checked`) and watches the held bytes
+  (`Mem::watch_writes`: a write panics, reads go through). Not held: the engine's definition (read by raw offsets in
+  `engine_sim.rs` and `engine_calls.rs`: curves, tables, `+0x26f8`), the hinged and mounted definitions, the physics
+  definition beyond the flags word (`MaxTimeStep`, gravity, the wheel's world flags), the car list's `wheel def +0x4fc`
+  and `+0x23c`. Evidence: drive2 84084/84084 typed; `--twin typed` and `--twin aids` equal after each of 84084 steps;
+  poison 84084/84084 and aids on with no watch or check failure; `round_trip` 8492 definition bytes equal on 43
+  snapshots, the wheel's and the car's `differential` held on them; hybrid gate 13/13; the lift 28.6k instructions
+  (+1.33 %), the whole -0.90 % instructions per step (fewer image reads), so no generation counter.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
