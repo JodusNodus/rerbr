@@ -179,6 +179,9 @@ pub struct Pure {
     /// struts, the VCU, the tyres), lifted before it and lowered after it, and the stage's, so their bindings run on it
     /// ([`Host::typed`]); without, they run per call on the image's words.
     pub typed: bool,
+    /// With [`Pure::typed`]: whether the step holds the car's solids too (off until every reader of a solid's words runs
+    /// on the store: [`crate::rigid_body::on_solids`], [`crate::rigid_body::solid_word`]).
+    pub typed_solids: bool,
     /// The typed state while a step holds it ([`Pure::typed`]).
     held: RefCell<Option<Typed>>,
     /// The stage's typed state, lifted at the first step that holds it: the image holds one stage for the playback's
@@ -238,6 +241,7 @@ impl Pure {
             captures: Watch::default(),
             ngp_base: 0,
             typed: true,
+            typed_solids: false,
             held: RefCell::default(),
             stage: Default::default(),
             #[cfg(feature = "poison")]
@@ -254,7 +258,11 @@ impl Pure {
             return;
         }
         let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.mem))).clone();
-        let typed = Typed::lift(&self.mem, car, stage);
+        let typed = if self.typed_solids {
+            Typed::lift_with_solids(&self.mem, car, stage)
+        } else {
+            Typed::lift(&self.mem, car, stage)
+        };
         #[cfg(feature = "poison")]
         {
             let mut poisoned = self.mem.clone();

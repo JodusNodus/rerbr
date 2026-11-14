@@ -7,7 +7,8 @@ use rbr_physics::physics_core::layout::construct::Heap;
 use rbr_physics::rigid_body::host::{EntityWalkHost, HostUnavailable};
 use rbr_physics::rigid_body::rotation::MulHost;
 
-use crate::{Binding, Decline, Host};
+use crate::{Binding, Ctx, Decline, Host};
+use rbr_physics::rigid_body::layout::SolidView;
 
 mod contact;
 mod force_pass;
@@ -33,6 +34,39 @@ use window::{
     advance_rest, back_step, e43vf158, e43vf90, e43vf94, scratch_reset_after_entity, vf16_helper, vf17x, window_start,
 };
 pub(crate) use window::{vf16, vf17x_state};
+
+/// Runs `run` on the rigid store over the car's solids as a step leaves them: held while the pure host holds them
+/// ([`crate::pure::Pure::typed_solids`]), else every word on the image (the per-call path). Borrow it per call into a
+/// solid's words; never across a host call (the held solids are borrowed one word at a time).
+#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
+pub(crate) fn on_solids<T>(ctx: &mut Ctx, run: impl FnOnce(&mut SolidView) -> T) -> T {
+    let typed = ctx.host.typed();
+    match typed.as_deref().and_then(|t| t.solids.as_ref()) {
+        Some(solids) => run(&mut solids.view(&mut ctx.mem)),
+        None => run(&mut SolidView::image(&mut ctx.mem)),
+    }
+}
+
+/// The word at `at` as a step leaves it: a held solid's if one names it, else the image's. For readers of a solid's
+/// words outside the rigid body's bindings.
+#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
+pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
+    host.typed().and_then(|t| t.solids.as_ref().and_then(|s| s.read(at))).unwrap_or_else(|| mem.u32(at))
+}
+
+/// The f32 at `at` as a step leaves it ([`solid_word`]).
+#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
+pub(crate) fn solid_f32(host: &dyn Host, mem: &Mem, at: u32) -> f32 {
+    f32::from_bits(solid_word(host, mem, at))
+}
+
+/// Stores the word at `at`: into a held solid if one names it, else the image.
+#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
+pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32) {
+    if !host.typed().is_some_and(|t| t.solids.as_ref().is_some_and(|s| s.write(at, value))) {
+        mem.set_u32(at, value);
+    }
+}
 
 pub const NEW_DEF: u32 = 0x52b8b0;
 pub const VF20_JUMP: u32 = 0x529200;
