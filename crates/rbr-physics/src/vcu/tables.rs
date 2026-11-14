@@ -30,7 +30,7 @@ pub fn table_blend(knots: &[Knot], x: f32, lo: f32, hi: f32) -> f64 {
 /// value is returned, above the last key the last one. Between keys `k[u - 1]` and `k[u]` the x87 interpolation is
 /// `(1 - f) * v[u] + f * v[u - 1]` with `f = 1 - (x - k[u-1]) / (k[u] - k[u-1])`.
 ///
-/// `!(x > key)` is a below-or-equal compare (`jbe`), so a NaN `x` stops at the first record.
+/// `!(x > key)` is a below-or-equal compare that holds when unordered, so a NaN `x` stops at the first record.
 pub fn lookup_pair_table(knots: &[SpeedKnot], x: f32) -> f64 {
     let first = knots[0];
     let last = knots[knots.len() - 1];
@@ -50,8 +50,8 @@ pub fn lookup_pair_table(knots: &[SpeedKnot], x: f32) -> f64 {
     r(r(below * hi.value as f64) + r(f * lo.value as f64))
 }
 
-/// The asm's `cvttss2si` with its range guards: `f >= 2^31` gives `i32::MAX`; `f` in `[-2^31, 2^31)`
-/// truncates toward zero; `f < -2^31` and NaN give `i32::MIN`.
+/// The knot index: the float truncated toward zero, with range guards. `f >= 2^31` gives `i32::MAX`; `f` in
+/// `[-2^31, 2^31)` truncates; `f < -2^31` and NaN give `i32::MIN`.
 fn knot_index(f: f32) -> i32 {
     if f >= 2147483648.0 {
         i32::MAX
