@@ -59,8 +59,8 @@ pub fn scratch_reset_after_entity(
     Ok(())
 }
 
-/// `CSolid::E43Vf20` (0x529200), the slot-8 entry: a bare jump to the entity walk `CEntity::E43Vf20` (0x51a3a0) with
-/// the same stack argument. Returns the walk's result.
-pub fn entity_vf20_jump(body: u32, arg: u32, host: &mut impl EntityWalkHost) -> u32 {
+/// `CSolid::E43Vf20` (0x529200), the slot-8 entry (name ours, the wheel's for it): a bare jump to the entity walk
+/// `CEntity::E43Vf20` (0x51a3a0) with the same stack argument. Returns the walk's result.
+pub fn walk_children(body: u32, arg: u32, host: &mut impl EntityWalkHost) -> u32 {
     host.walk_entity(body, arg)
 }

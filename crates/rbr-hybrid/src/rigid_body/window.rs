@@ -90,7 +90,7 @@ impl core_layout::EntityVf158Host for Wake<'_> {
 }
 
 impl layout::RestHost for Wake<'_> {
-    fn slot18(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
+    fn start_window(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
         let slot18 = layout::vtable_target(mem, this, 0x48);
         self.host.call_at(self.frame - 0x10, slot18, this, &[]);
         Ok(())
@@ -106,13 +106,13 @@ impl layout::RestHost for Wake<'_> {
 }
 
 impl layout::VerySoftHost for Wake<'_> {
-    fn slot0(&mut self, mem: &Mem, sp: u32, this: u32) -> Result<(), HostUnavailable> {
+    fn entity_name(&mut self, mem: &Mem, sp: u32, this: u32) -> Result<(), HostUnavailable> {
         let target = layout::vtable_target(mem, this, 0);
         self.host.call_at(sp, target, this, &[]);
         Ok(())
     }
 
-    fn entity_vf158(&mut self, _mem: &mut Mem, sp: u32, this: u32) -> Result<(), HostUnavailable> {
+    fn entity_refile(&mut self, _mem: &mut Mem, sp: u32, this: u32) -> Result<(), HostUnavailable> {
         self.host.call_at(sp, ENTITY_VF158, this, &[]);
         Ok(())
     }
@@ -160,7 +160,7 @@ pub(super) fn e43vf158(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     check_filing(ctx, this)?;
     let frame = ((r.esp - 4) & !0xF) - 0x64;
     let mut soft = Wake { host: ctx.host, frame, eax: 0 };
-    let eax = layout::solid_vf158(&mut ctx.mem, &mut soft, this, frame).map_err(unavailable)?;
+    let eax = layout::solid_soften(&mut ctx.mem, &mut soft, this, frame).map_err(unavailable)?;
     Ok(Return::void(eax, 0))
 }
 

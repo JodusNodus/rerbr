@@ -30,8 +30,8 @@ use rbr_physics::rigid_body::layout::{
     transform_body_rows, transform_body_rows3, Body, Def, ParentFrame, Vec4,
 };
 use rbr_physics::rigid_body::layout::{
-    cdef_new_solid, construct_state, contact_vote, entity_vf20_jump, load_contact, new_def, refresh_and_reset,
-    refresh_state_rotation, scale_add_rows, scratch_reset_after_entity, solid_def_ctor, solid_filing, solid_sleep,
+    construct_def, construct_state, contact_vote, load_contact, new_def, new_solid, refresh_and_reset,
+    refresh_state_rotation, scale_add_rows, scratch_reset_after_entity, solid_filing, solid_sleep, walk_children,
     RestHost,
 };
 use rbr_physics::rigid_body::layout::{impulse_tail, ring_append, ImpulseTailCalls};
@@ -1315,7 +1315,7 @@ impl FilingHost for SleepReplay {
 }
 
 impl RestHost for SleepReplay {
-    fn slot18(&mut self, _mem: &mut Mem, _this: u32) -> Result<(), HostUnavailable> {
+    fn start_window(&mut self, _mem: &mut Mem, _this: u32) -> Result<(), HostUnavailable> {
         unreachable!("E43Vf94 makes no slot-18 call")
     }
 
@@ -1950,10 +1950,10 @@ impl EntityWalkHost for WalkRecord {
 /// `CSolid::E43Vf20` (0x529200) is a bare jump: the walk gets the body and the same stack argument, and its result is
 /// returned as it is (the record for this is unit-level; the walk's own vectors are `entities_vectors`).
 #[test]
-fn entity_vf20_jump_passes_through() {
+fn walk_children_passes_through() {
     let _pc24 = Precision::Pc24.scope();
     let mut walk = WalkRecord::default();
-    let ret = entity_vf20_jump(0x6000_1000, 0x6000_2000, &mut walk);
+    let ret = walk_children(0x6000_1000, 0x6000_2000, &mut walk);
     assert_eq!(walk.0, vec![(0x6000_1000, 0x6000_2000)]);
     assert_eq!(ret, 0x0051_A3A0);
 }
@@ -2014,7 +2014,7 @@ fn new_def_matches_original_calls() {
 /// arguments. Its recorded calls need the constructor's object graph (not reproduced), so this is a unit test: a failed
 /// allocation builds nothing, and a made body gets the constructor's arguments.
 #[test]
-fn cdef_new_solid_builds_on_the_heap_block() {
+fn new_solid_builds_on_the_heap_block() {
     let _pc24 = Precision::Pc24.scope();
     struct SolidFake {
         block: u32,
@@ -2046,13 +2046,13 @@ fn cdef_new_solid_builds_on_the_heap_block() {
 
     let mut mem = Mem::new();
     let mut host = SolidFake { block: 0x6000_8000, built: Vec::new() };
-    let body = cdef_new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host).expect("the solid is built");
+    let body = new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host).expect("the solid is built");
     assert_eq!(body, 0x6000_8000);
     assert_eq!(host.built, vec![(0x6000_8000, 0x6000_1000, 0x6000_2000, 0x6000_3000)]);
 
     host.block = 0;
     host.built.clear();
-    let body = cdef_new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host)
+    let body = new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host)
         .expect("a failed allocation is not a host failure");
     assert_eq!(body, 0);
     assert!(host.built.is_empty());
@@ -2082,6 +2082,6 @@ fn e47_state_ctor_matches_original_calls() {
 fn cdef_ctor_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VAR, CDEF_CTOR, "CSolid::CDef::CDef", |call, mem| {
-        solid_def_ctor(mem, call.args[0], call.args[1]);
+        construct_def(mem, call.args[0], call.args[1]);
     });
 }

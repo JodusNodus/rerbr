@@ -704,14 +704,14 @@ addr,module,rust_item,test,status
 0x528c20,physics_core/layout/vectors.rs,physics_core::layout::vectors::mat_mul,physics_core_vectors::mat_mul_matches,checked
 0x528dd0,physics_core/layout/vectors.rs,physics_core::layout::vectors::mat_scale_rows,exact_batch::vec_add_and_scale_rows_work_on_each_row,checked
 0x529100,rigid_body/solid_contacts.rs,rigid_body::solid_contacts::ring_append,rigid_body_vectors::ring_append_matches_original_calls,checked
-0x529200,rigid_body/layout/scratch_state.rs,rigid_body::layout::scratch_state::entity_vf20_jump,rigid_body_vectors::entity_vf20_jump_passes_through,unit
+0x529200,rigid_body/layout/scratch_state.rs,rigid_body::layout::scratch_state::walk_children,rigid_body_vectors::walk_children_passes_through,unit
 0x529250,physics_core/accumulate.rs,physics_core::accumulate::accumulate_forces,exact_batch::accum_250_walks_the_gravity_and_scales_it_into_the_force,checked
 0x529340,rigid_body/force.rs,rigid_body::force::accumulate_force,rigid_body_vectors::accumulate_force_matches_original_calls,checked
 0x5293e0,physics_core/layout/vectors.rs,physics_core::layout::vectors::cache_1ec,physics_core_vectors::solid_getters_match,checked
 0x529540,physics_core/accumulate.rs,physics_core::accumulate::point_velocity_at,physics_core_vectors::offset_540_matches,checked
 0x529640,rigid_body/solid_rows.rs,rigid_body::solid_rows::clamp_velocity_along,rigid_body_vectors::impulse640_matches_original_calls,checked
 0x5297d0,rigid_body/solid_rows.rs,rigid_body::solid_rows::solid_inverse_mass,rigid_body_vectors::inverse_mass_matches_original_calls,checked
-0x529840,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::solid_def_ctor,rigid_body_vectors::cdef_ctor_matches_original_calls,checked
+0x529840,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::construct_def,rigid_body_vectors::cdef_ctor_matches_original_calls,checked
 0x529a50,rigid_body/rotation.rs,rigid_body::rotation::refresh_rotation,rigid_body_vectors::refresh_state_rotation_matches_original_calls,checked
 0x529af0,rigid_body/layout/scratch_state.rs,rigid_body::layout::scratch_state::store_scratch_reset,rigid_body_vectors::reset_block_matches_original_calls,checked
 0x529c80,rigid_body/solid_rows.rs,rigid_body::solid_rows::point_velocity,pure_solid_support::point_velocity_is_the_cross_with_w_plus_the_velocity_in_three_lanes,unit
@@ -744,7 +744,7 @@ addr,module,rust_item,test,status
 0x52b9f0,rigid_body/contact.rs,rigid_body::contact::contact_step,rigid_body_vectors::contact_step_matches_original_calls,checked
 0x52be70,physics_core/emit.rs,physics_core::emit::emit,rigid_body_vectors::contact_list_matches_original_calls,checked
 0x52bf30,rigid_body/emit.rs,rigid_body::emit::emit_body_event,rigid_body_vectors::emit_body_event_matches_original_calls,checked
-0x52c030,rigid_body/layout/rest.rs,rigid_body::layout::rest::solid_vf158,car_body_vectors::solid_vf158_matches_original_calls,checked
+0x52c030,rigid_body/layout/rest.rs,rigid_body::layout::rest::solid_soften,car_body_vectors::solid_vf158_matches_original_calls,checked
 0x52c130,rigid_body/layout/rest.rs,rigid_body::layout::rest::solid_sleep,rigid_body_vectors::sleep_body_matches_original_calls,checked
 0x52c220,rigid_body/contact_list.rs,rigid_body::contact_list::contact_list_step,rigid_body_vectors::contact_list_matches_original_calls,checked
 0x52c510,rigid_body/vote.rs,rigid_body::vote::vote,rigid_body_vectors::vote_matches_original_calls,checked
@@ -756,7 +756,7 @@ addr,module,rust_item,test,status
 0x52d110,rigid_body/window.rs,rigid_body::window::advance_rest,rigid_body_vectors::advance_rest_matches_original_calls,checked
 0x52d280,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::construct_state,rigid_body_vectors::e47_state_ctor_matches_original_calls,checked
 0x52d480,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::construct_solid,load_defs::car_instance_matches_the_game,checked
-0x52d640,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::cdef_new_solid,rigid_body_vectors::cdef_new_solid_builds_on_the_heap_block,unit
+0x52d640,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::new_solid,rigid_body_vectors::new_solid_builds_on_the_heap_block,unit
 0x52d710,spring_damper/layout.rs,spring_damper::layout::setup_options_dictionary,spring_damper_vectors::setup_options_dictionary_matches,checked
 0x52d730,spring_damper/layout.rs,spring_damper::layout::definition_dictionary,spring_damper_vectors::definition_dictionary_matches,checked
 0x52d750,spring_damper/layout.rs,spring_damper::layout::construct_definition,spring_damper_vectors::definition_constructor_matches,checked

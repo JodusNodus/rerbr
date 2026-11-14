@@ -23,8 +23,8 @@ use crate::physics_core::layout::{self as physics, FilingHost, NotifyHost};
 use crate::rigid_body::emit::{window_start, BodyEvent};
 use crate::rigid_body::host::{HostUnavailable, SolidCtorHost};
 use crate::rigid_body::layout::{
-    cdef_new_solid, construct_solid, place_solid, refresh_and_reset, scale_add_rows, solid_filing, solid_sleep,
-    solid_wake, Body, PlaceHost, RestHost,
+    construct_solid, new_solid, place_solid, refresh_and_reset, scale_add_rows, solid_filing, solid_sleep, solid_wake,
+    Body, PlaceHost, RestHost,
 };
 use crate::rigid_body::rotation::{self, MulHost};
 use crate::stage::Placement;
@@ -109,7 +109,7 @@ impl<H: StageHost> NotifyHost for Calls<'_, H> {
     /// A stage object has no parent; its definition must be a `CSolid::CDef`.
     fn def_new(&mut self, mem: &mut Mem, def: u32, a: u32, b: u32) -> Result<u32, HostUnavailable> {
         check(b == 0 && holds(mem, def, SOLID_DEF_NEW))?;
-        cdef_new_solid(mem, def, a, b, self)
+        new_solid(mem, def, a, b, self)
     }
 
     fn place(&mut self, mem: &mut Mem, object: u32, stuff: u32) -> Result<(), HostUnavailable> {
@@ -168,7 +168,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
     /// (`state_unka44`, with its last call, `CColGrid::SyncGrid` on the body's grid, made after it the same way), then
     /// `CEntity::Vf40` (0x51a4b0): the state's slot 0x44 (`CBase::Unk44`, nothing) and the walk of the children (a placed
     /// solid has none).
-    fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
+    fn refresh(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
         check(holds(mem, this, SOLID_REFRESH))?;
         let mut deferred = Deferred::default();
         refresh_and_reset(mem, this, &mut deferred)?;
@@ -309,7 +309,7 @@ impl Owner for FrameWalk<'_> {
 /// `CSolid::E43Vf90`'s and `E43Vf94`'s calls: the body's slot 18 and the body event.
 impl<H> RestHost for Calls<'_, H> {
     /// `CSolid::S18` (0x529dc0): the walk of the children (a placed solid has none), then `emit::window_start`.
-    fn slot18(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
+    fn start_window(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
         check(holds(mem, this, SOLID_WINDOW_START) && mem.u32(this + FIRST_CHILD) == 0)?;
         let mut body = Body::load(mem, this);
         window_start(&mut body);

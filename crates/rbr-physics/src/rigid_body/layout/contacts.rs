@@ -41,18 +41,18 @@ pub fn contact_record(mem: &Mem, this: u32, k: u32) -> u32 {
     mem.u32(this + CONTACT_LIST) + 0x10 + 0x60 * k
 }
 
-/// The contact record at `e` (`BigA`'s fifth argument). Offsets are the original's; names are `contact.rs`'s
+/// The contact record at `at` (`BigA`'s fifth argument). Offsets are the original's; names are `contact.rs`'s
 /// (by use in the force formulas).
-pub fn load_contact(mem: &Mem, e: u32) -> Contact {
+pub fn load_contact(mem: &Mem, at: u32) -> Contact {
     Contact {
-        id: mem.u32(e + 0x4),
-        stiffness: mem.f32(e + 0x10),
-        force_cap: mem.f32(e + 0x14),
-        tangent_cap_0: mem.f32(e + 0x18),
-        tangent_cap_1: mem.f32(e + 0x1C),
-        point: Vec4::load(mem, e + 0x20),
-        normal: Vec4::load(mem, e + 0x30),
-        vector: Vec4::load(mem, e + 0x40),
+        id: mem.u32(at + 0x4),
+        stiffness: mem.f32(at + 0x10),
+        force_cap: mem.f32(at + 0x14),
+        tangent_cap_0: mem.f32(at + 0x18),
+        tangent_cap_1: mem.f32(at + 0x1C),
+        point: Vec4::load(mem, at + 0x20),
+        normal: Vec4::load(mem, at + 0x30),
+        vector: Vec4::load(mem, at + 0x40),
     }
 }
 

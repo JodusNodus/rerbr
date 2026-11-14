@@ -180,7 +180,7 @@ const CDEF_VTABLE: u32 = 0x0074_281C;
 /// reals at +0x904 to +0x964 and the vectors at +0x880 to +0x8f0. The five reals from +0x924 are marked dirty and take a
 /// value at +0xc; the float at +0x900 is zero. Returns `this`.
 pub fn cdef_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
-    rigid_body::layout::solid_def_ctor(mem, this, outer);
+    rigid_body::layout::construct_def(mem, this, outer);
     mem.set_u32(this, CDEF_VTABLE);
     for at in [0x1F0, 0x230, 0x240, 0x350, 0x360, 0x3E0, 0x3F0, 0x400, 0x410, 0x420] {
         ntweak::construct_real(mem, this + at);

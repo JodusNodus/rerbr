@@ -1,4 +1,4 @@
-//! The solid's rest and window slots: the filing, wake and sleep, `E43Vf158`.
+//! The solid's rest and window slots: the filing, wake and sleep, and the soften (`E43Vf158`).
 
 use super::sleep_body::Body;
 use super::vtable_target;
@@ -12,8 +12,9 @@ use crate::rigid_body::{self, sleep};
 /// The calls `CSolid::E43Vf90` (0x52bf30) and `CSolid::E43Vf94` (0x52c130) make outside the body; `CEntity::E43Vf90`
 /// and `E43Vf94`, which they call directly, are `core_layout::entity_rel` and need the body's filing.
 pub trait RestHost: core_layout::FilingHost {
-    /// The body's slot 18 (0x48; `CSolid::S18`, 0x529dc0, for the solids so far), `E43Vf90`'s only.
-    fn slot18(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable>;
+    /// The body's window start: its slot 18 (0x48; `CSolid::S18`, 0x529dc0, `solid_window_start`, for the solids so
+    /// far), `E43Vf90`'s only.
+    fn start_window(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable>;
     /// `CMultiSignal1<const CSigMrRBodyEvent&>::Emit` (0x51f7c0): the body's event.
     fn emit(&mut self, mem: &Mem, event: &BodyEvent) -> Result<(), HostUnavailable>;
 }
@@ -44,13 +45,13 @@ pub fn store_body_event(mem: &mut Mem, at: u32, event: &BodyEvent) {
     event.orientation_again.store(mem, at + 0x40);
 }
 
-/// `CSolid::E43Vf90` (0x52bf30, slot 36) on the body at `this`: `sleep::wake_up`, the body's slot 18,
+/// `CSolid::E43Vf90` (0x52bf30, slot 36) on the body at `this`: `sleep::wake_up`, the body's window start (slot 18),
 /// `CEntity::E43Vf90` and the body's wake event (`emit::emit_body_event` on a loaded body).
 pub fn solid_wake(mem: &mut Mem, host: &mut impl RestHost, this: u32) -> Result<(), HostUnavailable> {
     let mut body = Body::load(mem, this);
     sleep::wake_up(&mut body);
     body.store(mem, this);
-    host.slot18(mem, this)?;
+    host.start_window(mem, this)?;
     core_layout::entity_rel(mem, host, this)?;
     let body = Body::load(mem, this);
     host.emit(mem, &rigid_body::emit::event(&body, WAKE))
@@ -70,23 +71,32 @@ pub fn solid_sleep(mem: &mut Mem, host: &mut impl RestHost, this: u32) -> Result
 /// The calls `CSolid::E43Vf158` makes at the original stack depths: slot 0 on a parentless body, the entity's slot-86
 /// helper, and the body's event emit.
 pub trait VerySoftHost {
-    fn slot0(&mut self, mem: &Mem, sp: u32, this: u32) -> Result<(), HostUnavailable>;
-    fn entity_vf158(&mut self, mem: &mut Mem, sp: u32, this: u32) -> Result<(), HostUnavailable>;
+    /// The body's slot 0 (`CEntity::Vf00`, 0x519950, for every object so far: it reads the name). Its result is not
+    /// used.
+    fn entity_name(&mut self, mem: &Mem, sp: u32, this: u32) -> Result<(), HostUnavailable>;
+    /// `CEntity::E43Vf158` (0x519aa0), the entity's part of slot 86: a parentless entity is filed again, otherwise the
+    /// parent's slot 86 runs.
+    fn entity_refile(&mut self, mem: &mut Mem, sp: u32, this: u32) -> Result<(), HostUnavailable>;
     fn emit(&mut self, mem: &mut Mem, frame: u32, event: &BodyEvent) -> Result<u32, HostUnavailable>;
 }
 
-/// `CSolid::E43Vf158` (0x52c030, slot 86): a parentless body becomes very soft and is refiled; both parent branches
+/// `CSolid::E43Vf158` (0x52c030, slot 86; name ours, by use): a parentless body becomes very soft and is refiled; both parent branches
 /// clear the armed word and emit the same 0x50-byte event with kind 2. `frame` is `((entry - 4) & !0xf) - 0x64`.
-pub fn solid_vf158(mem: &mut Mem, host: &mut impl VerySoftHost, this: u32, frame: u32) -> Result<u32, HostUnavailable> {
+pub fn solid_soften(
+    mem: &mut Mem,
+    host: &mut impl VerySoftHost,
+    this: u32,
+    frame: u32,
+) -> Result<u32, HostUnavailable> {
     let mut body = Body::load(mem, this);
     if body.parent == 0 {
-        host.slot0(mem, frame - 0x10, this)?;
+        host.entity_name(mem, frame - 0x10, this)?;
         sleep::become_very_soft(&mut body);
     } else {
         body.sleep_armed = 0;
     }
     body.store(mem, this);
-    host.entity_vf158(mem, frame - 0x10, this)?;
+    host.entity_refile(mem, frame - 0x10, this)?;
     let body = Body::load(mem, this);
     host.emit(mem, frame, &rigid_body::emit::event(&body, SLEEP))
 }

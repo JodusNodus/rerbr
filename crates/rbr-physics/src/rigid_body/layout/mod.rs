@@ -27,14 +27,14 @@ pub(crate) use contacts::HALF;
 pub use contacts::{
     contact_record, contact_records, impulse_tail_frame, load_contact, store_event, ImpulseTailFrame, CONTACT_LIST,
 };
-pub use rest::{solid_filing, solid_sleep, solid_vf158, solid_wake, store_body_event, RestHost, VerySoftHost};
+pub use rest::{solid_filing, solid_sleep, solid_soften, solid_wake, store_body_event, RestHost, VerySoftHost};
 pub use scratch_state::{
-    clear_vec, entity_vf20_jump, scratch_reset_after_entity, store_scratch_base_init, store_scratch_reset, CELL_LINK,
+    clear_vec, scratch_reset_after_entity, store_scratch_base_init, store_scratch_reset, walk_children, CELL_LINK,
     SCRATCH_VTABLE,
 };
 pub use sleep_body::{Body, Def, ParentFrame};
 pub use solid_ctor::{
-    cdef_new_solid, construct_solid, construct_state, new_def, place_solid, solid_def_ctor, PlaceHost, SolidCtorHost,
+    construct_def, construct_solid, construct_state, new_def, new_solid, place_solid, PlaceHost, SolidCtorHost,
     DEF_SIZE, SOLID_SIZE,
 };
 

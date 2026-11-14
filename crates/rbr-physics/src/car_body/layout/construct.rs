@@ -122,7 +122,7 @@ const DEF_DEFAULTS: [(u32, u32); 4] =
 /// (+0x4444), two reals (+0x4454, the anti-roll bars), four reals and two unsigneds (+0x4474..+0x44c4), then the
 /// defaults.
 pub fn construct_def(mem: &mut Mem, host: &mut impl construct::Heap, this: u32, outer: u32) {
-    rigid_body::layout::solid_def_ctor(mem, this, outer);
+    rigid_body::layout::construct_def(mem, this, outer);
     mem.set_u32(this, DEF_VTABLE);
     for at in (0x1F0..0x250).step_by(0x10) {
         ntweak::construct_real(mem, this + at);
