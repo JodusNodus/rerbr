@@ -4,6 +4,7 @@
 
 pub mod layout;
 pub mod store;
+pub mod strut;
 pub mod suspension;
 
 use crate::fpu::{round24, round_x87};

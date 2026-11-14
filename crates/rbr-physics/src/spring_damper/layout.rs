@@ -1,6 +1,7 @@
 //! Spring-damper game-memory boundary. This file alone knows object offsets.
 
 use super::store::{DamperBlocks, StrutStore};
+use super::strut::{Strut, StrutId, Struts};
 use super::suspension::Damping;
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
@@ -29,13 +30,13 @@ crate::object! {
         state @ 0x08: u32,
         scratch_vtable @ 0x0c: u32,
         fade @ 0x10: u32,
-        mode @ 0x14: u32,
-        high_speed_hold @ 0x18: u32,
+        mode @ 0x14: i32,
+        high_speed_hold @ 0x18: i32,
         signal_id @ 0x1c: u32,
         signal_peak @ 0x20: f32,
         signal_bump @ 0x24: f32,
         signal_droop @ 0x28: f32,
-        signal_valid @ 0x2c: u32,
+        signal_valid @ 0x2c: i32,
     }
 }
 
@@ -52,6 +53,15 @@ crate::object! {
         last_deflection @ 0x1c: Real,
         unsigned_header @ 0x2c: [u32; 3],
         unsigned_tweak @ 0x38: u32,
+    }
+}
+
+crate::object! {
+    /// The strut's fade pair (the controller's `+0x10` points at it): the damage handler's damper pair of the wheel
+    /// (`+0x3ce4 + 8k`), which `ResetDamage` clears the amount of (`ntweak::layout::clear_unsigned_value`).
+    pub struct FadeObj, size 0x08 {
+        test_multiplier @ 0x00: f32,
+        amount @ 0x04: f32,
     }
 }
 
@@ -514,6 +524,237 @@ impl StrutStore for Mem {
     }
 }
 
+/// Where a strut's typed state lives in the image: its controller, the definition and state it points at, and its fade
+/// pair (0 before `E51Wheel::UnkA860` sets it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StrutImage {
+    pub controller: u32,
+    pub definition: u32,
+    pub state: u32,
+    pub fade: u32,
+}
+
+/// The words a strut's typed state owns: the controller's from the mode to the signal's last word, the state's three
+/// effective dampings, the fade pair.
+const OWNED_CONTROLLER: std::ops::Range<u32> = ControllerObj::mode.at..ControllerObj::signal_valid.at + 4;
+const OWNED_STATE: std::ops::Range<u32> = StateObj::damp_bump_eff.at..StateObj::hs_damp_bump_eff.at + 4;
+const OWNED_FADE: std::ops::Range<u32> = FadeObj::test_multiplier.at..FadeObj::amount.at + 4;
+
+impl StrutImage {
+    /// The strut whose controller is at `controller`, its objects as its pointers give them.
+    pub fn of(mem: &Mem, controller: u32) -> Self {
+        StrutImage {
+            controller,
+            definition: ControllerObj::definition.load(mem, controller),
+            state: ControllerObj::state.load(mem, controller),
+            fade: ControllerObj::fade.load(mem, controller),
+        }
+    }
+
+    /// The strut's typed state, read from the image. Without a fade pair the fade is zero (nothing reads it: the
+    /// view panics where the original would read address 0).
+    pub fn lift(&self, mem: &Mem) -> Strut {
+        let (c, state, fade) = (self.controller, self.state, self.fade);
+        Strut {
+            controller: Controller {
+                mode: ControllerObj::mode.load(mem, c),
+                high_speed_hold: ControllerObj::high_speed_hold.load(mem, c),
+                signal: DamperSignal {
+                    owner_id: ControllerObj::signal_id.load(mem, c),
+                    peak_velocity: ControllerObj::signal_peak.load(mem, c),
+                    bump_velocity: ControllerObj::signal_bump.load(mem, c),
+                    droop_velocity: ControllerObj::signal_droop.load(mem, c),
+                    valid: ControllerObj::signal_valid.load(mem, c),
+                },
+            },
+            damping: Damping {
+                bump: StateObj::damp_bump_eff.load(mem, state),
+                rebound: StateObj::damp_rebound_eff.load(mem, state),
+                high_speed_bump: StateObj::hs_damp_bump_eff.load(mem, state),
+            },
+            fade: match fade {
+                0 => FadeState::default(),
+                _ => FadeState {
+                    test_multiplier: FadeObj::test_multiplier.load(mem, fade),
+                    amount: FadeObj::amount.load(mem, fade),
+                },
+            },
+        }
+    }
+
+    /// Writes the strut's typed state back: every owned word, nothing else.
+    pub fn lower(&self, strut: &Strut, mem: &mut Mem) {
+        let (c, state, fade) = (self.controller, self.state, self.fade);
+        let controller = &strut.controller;
+        ControllerObj::mode.store(mem, c, controller.mode);
+        ControllerObj::high_speed_hold.store(mem, c, controller.high_speed_hold);
+        ControllerObj::signal_id.store(mem, c, controller.signal.owner_id);
+        ControllerObj::signal_peak.store(mem, c, controller.signal.peak_velocity);
+        ControllerObj::signal_bump.store(mem, c, controller.signal.bump_velocity);
+        ControllerObj::signal_droop.store(mem, c, controller.signal.droop_velocity);
+        ControllerObj::signal_valid.store(mem, c, controller.signal.valid);
+        StateObj::damp_bump_eff.store(mem, state, strut.damping.bump);
+        StateObj::damp_rebound_eff.store(mem, state, strut.damping.rebound);
+        StateObj::hs_damp_bump_eff.store(mem, state, strut.damping.high_speed_bump);
+        if fade != 0 {
+            FadeObj::test_multiplier.store(mem, fade, strut.fade.test_multiplier);
+            FadeObj::amount.store(mem, fade, strut.fade.amount);
+        }
+    }
+
+    /// The owned byte ranges with their names (the fade pair's only when the strut has one).
+    pub fn owned(&self) -> impl Iterator<Item = (std::ops::Range<u32>, &'static str)> {
+        let at = |base: u32, r: &std::ops::Range<u32>| base + r.start..base + r.end;
+        let parts = [
+            (at(self.controller, &OWNED_CONTROLLER), "strut controller"),
+            (at(self.state, &OWNED_STATE), "strut damping"),
+            (at(self.fade, &OWNED_FADE), "strut fade"),
+        ];
+        parts.into_iter().take(if self.fade == 0 { 2 } else { 3 })
+    }
+}
+
+/// Struts in typed storage: where each lives in the image and its state, by slot ([`StrutId`]). A car's are by wheel
+/// ([`CarStruts::lift`]); the per-call path holds one ([`with_strut`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CarStruts {
+    pub images: [Option<StrutImage>; 4],
+    pub struts: Struts,
+}
+
+impl CarStruts {
+    /// The struts of the car at `car`, wheel by wheel, lifted from the image.
+    pub fn lift(mem: &Mem, car: u32) -> Self {
+        let wheels = crate::car_body::store::CarStore::wheel_pointers(mem, car);
+        Self::lift_controllers(mem, wheels.map(|wheel| (wheel != 0).then_some(wheel + crate::wheel::layout::STRUT)))
+    }
+
+    /// The struts whose controllers are at `controllers`, slot by slot, lifted from the image.
+    pub fn lift_controllers(mem: &Mem, controllers: [Option<u32>; 4]) -> Self {
+        let images = controllers.map(|c| c.map(|c| StrutImage::of(mem, c)));
+        CarStruts { images, struts: Struts(images.map(|image| image.map(|image| image.lift(mem)))) }
+    }
+
+    /// Writes every strut's state back to the image.
+    pub fn lower(&self, mem: &mut Mem) {
+        for (image, strut) in self.images.iter().zip(&self.struts.0) {
+            if let (Some(image), Some(strut)) = (image, strut) {
+                image.lower(strut, mem);
+            }
+        }
+    }
+
+    /// The slot of the strut whose controller is at `controller`, if it is one of these.
+    pub fn id_of(&self, controller: u32) -> Option<StrutId> {
+        self.images.iter().position(|image| image.is_some_and(|image| image.controller == controller)).map(StrutId)
+    }
+
+    /// The struts as a store: their state here, their definitions and owners in `mem`.
+    pub fn view<'a>(&'a mut self, mem: &'a Mem) -> StrutView<'a> {
+        StrutView { mem, images: &self.images, struts: &mut self.struts }
+    }
+
+    /// Every owned byte range, named by its wheel slot and part.
+    pub fn owned(&self) -> Vec<(std::ops::Range<u32>, String)> {
+        let slots = self.images.iter().enumerate().filter_map(|(k, image)| image.map(|image| (k, image)));
+        slots.flat_map(|(k, image)| image.owned().map(move |(r, name)| (r, format!("wheel{k} {name}")))).collect()
+    }
+}
+
+/// Runs `run` on the strut whose controller is at `controller`, lifted into a store of its own and lowered after it:
+/// the per-call path, on which the image holds the strut between calls.
+pub fn with_strut<T>(mem: &mut Mem, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
+    let mut one = CarStruts::lift_controllers(mem, [Some(controller), None, None, None]);
+    let out = run(&mut one.view(mem), StrutId(0));
+    one.lower(mem);
+    out
+}
+
+/// `lower(lift(image))` of the car's struts into an empty image, compared with `mem` on every owned byte: their count,
+/// or the first byte that differs.
+pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
+    let struts = CarStruts::lift(mem, car);
+    let mut out = Mem::new();
+    struts.lower(&mut out);
+    let mut bytes = 0;
+    for (range, name) in struts.owned() {
+        let len = (range.end - range.start) as usize;
+        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
+        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
+            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
+        }
+        bytes += len;
+    }
+    Ok(bytes)
+}
+
+/// Struts in typed storage as a [`StrutStore`]: the state in [`CarStruts`], the definitions and the owners' ids read
+/// from the image.
+pub struct StrutView<'a> {
+    mem: &'a Mem,
+    images: &'a [Option<StrutImage>; 4],
+    struts: &'a mut Struts,
+}
+
+impl StrutView<'_> {
+    fn image(&self, strut: StrutId) -> &StrutImage {
+        self.images[strut.0].as_ref().expect("a strut in its slot")
+    }
+
+    /// Panics for a strut without its fade pair, where the original reads address 0.
+    fn has_fade(&self, strut: StrutId) {
+        assert!(self.image(strut).fade != 0, "the strut at {:#010x} has no fade pair", self.image(strut).controller);
+    }
+}
+
+impl StrutStore for StrutView<'_> {
+    type Strut = StrutId;
+
+    fn definition(&self, strut: StrutId) -> Definition {
+        definition(self.mem, self.image(strut).definition)
+    }
+
+    fn damping(&self, strut: StrutId) -> Damping {
+        self.struts.get(strut).damping
+    }
+
+    fn store_damping(&mut self, strut: StrutId, value: Damping) {
+        self.struts.get_mut(strut).damping = value;
+    }
+
+    fn owner_id(&self, strut: StrutId) -> u32 {
+        let owner = StateObj::owner.load(self.mem, self.image(strut).state);
+        self.mem.u32(owner + OWNER_WHEEL_INDEX)
+    }
+
+    fn controller(&self, strut: StrutId) -> Controller {
+        self.struts.get(strut).controller
+    }
+
+    fn store_step_state(&mut self, strut: StrutId, value: Controller) {
+        let controller = &mut self.struts.get_mut(strut).controller;
+        controller.mode = value.mode;
+        controller.high_speed_hold = value.high_speed_hold;
+        controller.signal.peak_velocity = value.signal.peak_velocity;
+        controller.signal.bump_velocity = value.signal.bump_velocity;
+        controller.signal.droop_velocity = value.signal.droop_velocity;
+    }
+
+    fn store_signal(&mut self, strut: StrutId, value: DamperSignal) {
+        self.struts.get_mut(strut).controller.signal = value;
+    }
+
+    fn fade(&self, strut: StrutId) -> FadeState {
+        self.has_fade(strut);
+        self.struts.get(strut).fade
+    }
+
+    fn store_fade(&mut self, strut: StrutId, value: FadeState) {
+        self.has_fade(strut);
+        self.struts.get_mut(strut).fade = value;
+    }
+}
+
 /// The Mem store of the damper kernels' blocks.
 impl DamperBlocks for Mem {
     fn load_update_terms(&self, at: u32) -> UpdateTerms {
@@ -608,5 +849,82 @@ impl DamperBlocks for Mem {
 
     fn store_weighted(&mut self, at: u32, value: WeightedValue) {
         store_pair(self, at, [value.weight, value.value]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::{check_table, Object};
+
+    const CONTROLLER: u32 = 0x1000;
+    const STATE: u32 = 0x2000;
+    const FADE: u32 = 0x3000;
+    const DEFINITION: u32 = 0x4000;
+
+    #[test]
+    fn tables_are_ordered_and_fit() {
+        check_table::<ControllerObj>();
+        check_table::<StateObj>();
+        check_table::<FadeObj>();
+    }
+
+    /// The strut's three objects mapped with `pattern`-derived bytes, the controller's pointers set.
+    fn image(pattern: u8) -> Mem {
+        let mut mem = Mem::new();
+        let bytes = |n: u32, salt: u8| (0..n).map(|k| (k as u8).wrapping_mul(31) ^ salt ^ pattern).collect::<Vec<_>>();
+        mem.map(CONTROLLER, &bytes(ControllerObj::SIZE + 0x10, 1));
+        mem.map(STATE, &bytes(StateObj::SIZE, 2));
+        mem.map(FADE - 8, &bytes(0x18, 3));
+        mem.map(DEFINITION, &bytes(0x120, 4));
+        ControllerObj::definition.store(&mut mem, CONTROLLER, DEFINITION);
+        ControllerObj::state.store(&mut mem, CONTROLLER, STATE);
+        ControllerObj::fade.store(&mut mem, CONTROLLER, FADE);
+        mem
+    }
+
+    #[test]
+    fn lower_writes_the_lifted_owned_words_and_nothing_else() {
+        let a = image(0);
+        let image_a = StrutImage::of(&a, CONTROLLER);
+        assert_eq!(image_a, StrutImage { controller: CONTROLLER, definition: DEFINITION, state: STATE, fade: FADE });
+        let strut = image_a.lift(&a);
+        let mut b = image(0x5a);
+        // Same pointers, so the same image.
+        image_a.lower(&strut, &mut b);
+        let owned: Vec<_> = image_a.owned().map(|(r, _)| r).collect();
+        assert_eq!(owned.iter().map(|r| r.end - r.start).sum::<u32>(), 12 * 4);
+        for (base, len) in [(CONTROLLER, ControllerObj::SIZE + 0x10), (STATE, StateObj::SIZE), (FADE - 8, 0x18)] {
+            for at in base..base + len {
+                let want = if owned.iter().any(|r| r.contains(&at)) { &a } else { &image(0x5a) };
+                assert_eq!(b.u8(at), want.u8(at), "{at:#x}");
+            }
+        }
+        assert_eq!(StrutImage::of(&b, CONTROLLER).lift(&b), strut);
+    }
+
+    #[test]
+    fn the_view_reads_and_writes_what_the_mem_store_does() {
+        let mut mem = image(0);
+        let owner = 0x5000;
+        StateObj::owner.store(&mut mem, STATE, owner);
+        mem.map(owner + OWNER_WHEEL_INDEX, &2u32.to_le_bytes());
+        // A byte map's clone is a copy.
+        let mut viewed = mem.clone();
+        let signal = reset_outputs(&mut mem, CONTROLLER);
+        let viewed_signal = with_strut(&mut viewed, CONTROLLER, |view, id| reset_outputs(view, id));
+        assert_eq!(signal, viewed_signal);
+        assert_eq!(with_strut(&mut viewed, CONTROLLER, |view, id| view.owner_id(id)), 2);
+        let words = |m: &Mem| [m.read(CONTROLLER, 0x40), m.read(STATE, 0x3c), m.read(FADE, 8)];
+        assert_eq!(words(&mem), words(&viewed));
+    }
+
+    #[test]
+    #[should_panic(expected = "has no fade pair")]
+    fn the_view_panics_on_a_strut_without_its_fade_pair() {
+        let mut mem = image(0);
+        ControllerObj::fade.store(&mut mem, CONTROLLER, 0);
+        assert_eq!(StrutImage::of(&mem, CONTROLLER).owned().count(), 2);
+        with_strut(&mut mem, CONTROLLER, |view, id| update_forces(view, id));
     }
 }

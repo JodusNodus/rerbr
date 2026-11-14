@@ -1,5 +1,6 @@
 //! Checks the `object!` tables on snapshots: `lower(lift(image)) == image` on every owned byte of the car's tabled
-//! objects (`rbr_physics::store::car_objects`). The boot images are checked by `rbr-standalone --twin`.
+//! objects (`rbr_physics::store::car_objects`), and of the struts' typed state (`spring_damper::layout::round_trip`).
+//! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
 
@@ -50,6 +51,13 @@ fn main() -> ExitCode {
             Ok(bytes) => println!("{path}: {} objects, {bytes} owned bytes equal after lower(lift)", objects.len()),
             Err(e) => {
                 println!("{path}: {e}");
+                ok = false;
+            }
+        }
+        match spring::round_trip(&mem, car) {
+            Ok(bytes) => println!("{path}: struts, {bytes} typed bytes equal after lower(lift)"),
+            Err(e) => {
+                println!("{path}: struts: {e}");
                 ok = false;
             }
         }

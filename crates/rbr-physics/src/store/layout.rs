@@ -278,8 +278,8 @@ impl Tabled {
     }
 }
 
-/// The tabled objects of the car at `car` (`object!` tables so far: the tyre scratches, the struts and their states,
-/// the VCU scratch and its state).
+/// The tabled objects of the car at `car` (`object!` tables so far: the tyre scratches, the struts with their states and
+/// fade pairs, the VCU scratch and its state).
 pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
     use crate::{car_body, spring_damper, tyre, vcu, wheel};
     let mut out = Vec::new();
@@ -295,6 +295,10 @@ pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
         out.push(Tabled::of::<spring_damper::layout::ControllerObj>(format!("wheel{k} strut"), strut));
         let state = spring_damper::layout::ControllerObj::state.load(mem, strut);
         out.push(Tabled::of::<spring_damper::layout::StateObj>(format!("wheel{k} strut state"), state));
+        let fade = spring_damper::layout::ControllerObj::fade.load(mem, strut);
+        if fade != 0 {
+            out.push(Tabled::of::<spring_damper::layout::FadeObj>(format!("wheel{k} strut fade"), fade));
+        }
     }
     let scratch = car_body::layout::scratch_at(car);
     out.push(Tabled::of::<vcu::layout::ScratchObj>("vcu scratch", scratch));
