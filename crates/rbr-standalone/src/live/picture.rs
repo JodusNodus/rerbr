@@ -213,7 +213,7 @@ impl Picture {
             scenery: active_interactive_poses(mem, interactive_handle_end),
             sound: {
                 let mut sound = Sound {
-                    water: rbr_physics::engine_driveline::layout::sim_e970(mem, car + CAR_ENGINE) as f32,
+                    water: rbr_physics::engine_driveline::layout::coolant_temperature(mem, car + CAR_ENGINE) as f32,
                     ..Sound::read_from(car, |at| {
                         mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                     })
@@ -472,12 +472,12 @@ pub fn dash(
         distance,
         start: at(TAG_START),
         finish: at(TAG_FINISH),
-        water: engine::sim_e970(mem, car + CAR_ENGINE) as f32,
+        water: engine::coolant_temperature(mem, car + CAR_ENGINE) as f32,
         brakes: mem.u32(block + 0x80) as f32,
         engine: if options != 0 { mem.f32(options + 0x58) } else { 0.0 },
         battery: mem.f32(block + 0x8c) * sound::BATTERY_SCALE,
-        boost: engine::sim_ee60(mem, car + CAR_ENGINE),
-        engine_runs: engine::rpm_above_40(mem, car + CAR_ENGINE) != 0,
+        boost: engine::boost_pressure(mem, car + CAR_ENGINE),
+        engine_runs: engine::engine_running(mem, car + CAR_ENGINE) != 0,
         still: signals.0,
         problem: signals.1,
         splits: keys.iter().filter(|k| k.tag == TAG_SPLIT).map(|k| k.distance).collect(),

@@ -2,8 +2,8 @@
 
 use super::drive_objects::{DriveState, IntLane, Lane};
 use super::step::{
-    BLOCK_LATCH_BOUND, OBJ_TORQUE_GAIN, STATE_CAR, STATE_STEP_COUNT, THIS_ABS_DUMMY, THIS_RING_RATIO, THIS_SPEED_COPY,
-    THIS_WHEEL_BIAS,
+    BLOCK_LATCH_BOUND, DAMAGE_TORQUE_GAIN, DRIVE_CLUTCH_MAGNITUDE, DRIVE_RING_RATIO, DRIVE_SPEED_COPY,
+    DRIVE_WHEEL_BIAS, STATE_CAR, STATE_STEP_COUNT,
 };
 use crate::engine_driveline::store::EngineStore;
 use crate::mem::Mem;
@@ -216,8 +216,9 @@ pub struct WorkerState {
     pub reset_count: Lane,
     /// The count of the latches (`+0x5a4`).
     pub latch_count: u32,
-    /// The count of the clutch passes (`+0x5a8`).
-    pub count_a: u32,
+    /// The count of the clutch state's changes (`+0x5a8`; names ours): `ngp::drive::clutch_state`
+    /// adds one when it changes a block while the pending word is clear.
+    pub clutch_change_count: u32,
     /// The count of the wheel worker's repeats (`+0x5ac`).
     pub repeat_count: u32,
     /// The count of the dirty bumps (`+0x5b0`).
@@ -261,7 +262,7 @@ impl WorkerState {
             step_count: Lane::load(mem, at + STATE_STEP_COUNT),
             reset_count: Lane::load(mem, at + 0x594),
             latch_count: u(0x5A4),
-            count_a: u(0x5A8),
+            clutch_change_count: u(0x5A8),
             repeat_count: u(0x5AC),
             dirty_count: u(0x5B0),
             step_iter: u(0x5B4),
@@ -317,7 +318,7 @@ impl WorkerState {
         self.step_count.store(mem, at + STATE_STEP_COUNT);
         self.reset_count.store(mem, at + 0x594);
         mem.set_u32(at + 0x5A4, self.latch_count);
-        mem.set_u32(at + 0x5A8, self.count_a);
+        mem.set_u32(at + 0x5A8, self.clutch_change_count);
         mem.set_u32(at + 0x5AC, self.repeat_count);
         mem.set_u32(at + 0x5B0, self.dirty_count);
         mem.set_u32(at + 0x5B4, self.step_iter);
@@ -365,16 +366,18 @@ impl WorkerState {
 pub const CLUTCH_MATRIX_AT: u32 = 0x470;
 pub const STEP_MATRIX_AT: u32 = 0x4B0;
 pub const STEP_VEC_AT: u32 = 0x530;
-pub const LOC_AT: u32 = 0xA0;
+pub const SOLUTION_AT: u32 = 0xA0;
 
-/// The CDrive's own words the workers use (`this`): the `loc0` lane (`+0x84`), the MatVec output `loc` (`+0xa0`), the
-/// pack outputs (`+0xc0`), the wheel
-/// offsets (`+0xf4`, 0x10 apart), the shift's speed and trim words (`+0x1b4`, `+0x1b8`) and the gear level (`+0x1c4`).
+/// The CDrive's own words the workers use (`this`): the value rate lane (`+0x84`), the
+/// MatVec output (`+0xa0`), the pack outputs (`+0xc0`), the wheel offsets (`+0xf4`, 0x10 apart), the shift's speed and
+/// trim words (`+0x1b4`, `+0x1b8`) and the gear level (`+0x1c4`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct WorkerThis {
-    pub loc0: Lane,
-    /// The output of `E39_MatVec` (`+0xa0`, the original's `loc20`).
-    pub loc: [f32; 4],
+pub struct DriveOwn {
+    /// The rate the driven term's value integrates at (`+0x84`, the original's `loc0`; names ours): term 0's in the
+    /// wheel worker, term 1's in the pair worker, zero while the wheels latch.
+    pub value_rate: Lane,
+    /// The output of `E39_MatVec` (`+0xa0`, the original's `loc20`): the solved rate of each axle index.
+    pub solution: [f32; 4],
     /// The lane at `+0x40` (`M5970` sets its scale).
     pub lane_scale: Lane,
     /// The lane at `+0x74` (`M5970` sets the scale times the definition's gain).
@@ -388,10 +391,10 @@ pub struct WorkerThis {
     /// `+0x1c8`, the speed factor `M6C90` writes (names ours).
     pub speed_factor: f32,
     pub pack_out: [f32; 4],
-    /// The pair worker's two pack outputs (`+0xd0`), its solved pair (`+0xd8`) and its slip values (`+0xe0`), one per
-    /// wheel parity (names ours).
+    /// The pair worker's two pack outputs (`+0xd0`), its solved pair (`+0xd8`) and its
+    /// slip values (`+0xe0`), one per wheel parity (names ours).
     pub pair_pack: [f32; 2],
-    pub pair_loc: [f32; 2],
+    pub pair_solution: [f32; 2],
     pub pair_slip: [f32; 2],
     pub wheel_offset: [f32; 4],
     pub shift_speed: f32,
@@ -404,14 +407,14 @@ pub struct WorkerThis {
     /// The speed copy: the engine speed or the drive speed key, as bits (`+0x1a4`; names ours).
     pub speed_copy: u32,
     /// The magnitude of the clutch torque (`+0x1bc`; names ours).
-    pub abs_dummy: f32,
+    pub clutch_magnitude: f32,
 }
 
-impl WorkerThis {
+impl DriveOwn {
     pub(super) fn load(mem: &Mem, this: u32) -> Self {
-        WorkerThis {
-            loc0: Lane::load(mem, this + 0x84),
-            loc: mem.f32s(this + 0xA0),
+        DriveOwn {
+            value_rate: Lane::load(mem, this + 0x84),
+            solution: mem.f32s(this + 0xA0),
             lane_scale: Lane::load(mem, this + 0x40),
             lane_scaled: Lane::load(mem, this + 0x74),
             lane_gate: mem.u32(this + 0x50),
@@ -420,22 +423,22 @@ impl WorkerThis {
             speed_factor: mem.f32(this + 0x1C8),
             pack_out: mem.f32s(this + 0xC0),
             pair_pack: mem.f32s(this + 0xD0),
-            pair_loc: mem.f32s(this + 0xD8),
+            pair_solution: mem.f32s(this + 0xD8),
             pair_slip: mem.f32s(this + 0xE0),
             wheel_offset: std::array::from_fn(|k| mem.f32(this + 0xF4 + 0x10 * k as u32)),
             shift_speed: mem.f32(this + 0x1B4),
             shift_trim: mem.u32(this + 0x1B8),
             gear_level: mem.f32(this + 0x1C4),
-            ring_ratio: mem.f32(this + THIS_RING_RATIO),
-            wheel_bias: std::array::from_fn(|k| mem.f32(this + THIS_WHEEL_BIAS + 0x10 * k as u32)),
-            speed_copy: mem.u32(this + THIS_SPEED_COPY),
-            abs_dummy: mem.f32(this + THIS_ABS_DUMMY),
+            ring_ratio: mem.f32(this + DRIVE_RING_RATIO),
+            wheel_bias: std::array::from_fn(|k| mem.f32(this + DRIVE_WHEEL_BIAS + 0x10 * k as u32)),
+            speed_copy: mem.u32(this + DRIVE_SPEED_COPY),
+            clutch_magnitude: mem.f32(this + DRIVE_CLUTCH_MAGNITUDE),
         }
     }
 
     pub(super) fn store(&self, mem: &mut Mem, this: u32) {
-        self.loc0.store(mem, this + 0x84);
-        for (k, v) in self.loc.iter().enumerate() {
+        self.value_rate.store(mem, this + 0x84);
+        for (k, v) in self.solution.iter().enumerate() {
             mem.set_f32(this + 0xA0 + 4 * k as u32, *v);
         }
         self.lane_scale.store(mem, this + 0x40);
@@ -447,7 +450,7 @@ impl WorkerThis {
         for (k, v) in self.pack_out.iter().enumerate() {
             mem.set_f32(this + 0xC0 + 4 * k as u32, *v);
         }
-        for (k, v) in self.pair_pack.iter().chain(&self.pair_loc).chain(&self.pair_slip).enumerate() {
+        for (k, v) in self.pair_pack.iter().chain(&self.pair_solution).chain(&self.pair_slip).enumerate() {
             mem.set_f32(this + 0xD0 + 4 * k as u32, *v);
         }
         for (k, v) in self.wheel_offset.iter().enumerate() {
@@ -456,19 +459,22 @@ impl WorkerThis {
         mem.set_f32(this + 0x1B4, self.shift_speed);
         mem.set_u32(this + 0x1B8, self.shift_trim);
         mem.set_f32(this + 0x1C4, self.gear_level);
-        mem.set_f32(this + THIS_RING_RATIO, self.ring_ratio);
+        mem.set_f32(this + DRIVE_RING_RATIO, self.ring_ratio);
         for (k, v) in self.wheel_bias.iter().enumerate() {
-            mem.set_f32(this + THIS_WHEEL_BIAS + 0x10 * k as u32, *v);
+            mem.set_f32(this + DRIVE_WHEEL_BIAS + 0x10 * k as u32, *v);
         }
-        mem.set_u32(this + THIS_SPEED_COPY, self.speed_copy);
-        mem.set_f32(this + THIS_ABS_DUMMY, self.abs_dummy);
+        mem.set_u32(this + DRIVE_SPEED_COPY, self.speed_copy);
+        mem.set_f32(this + DRIVE_CLUTCH_MAGNITUDE, self.clutch_magnitude);
     }
 }
 
-/// The drive's worker object (`this+0x170`): the enable word per wheel (`+0x18`, 0xc apart), the rate (`+0x74`), the
-/// enable (`+0x78`), the scale (`+0x88`) and the gear's scale (`+0x48`, four bytes per gear). The names are ours.
+/// The drive's damage block (`this+0x170`): the damage handler's block at `+0x3a18`,
+/// which `E39_Link3AB0` links and `E39_StateInitC70` resets (rbr-recomp `notes/physics/damage.md` 1a,
+/// `notes/sound.md` 6.4). The enable word per wheel (`+0x18`, 0xc apart; a broken driveshaft clears it), the rate
+/// (`+0x74`), the enable (`+0x78`), the scale (`+0x88`) and the gear's scale (`+0x48`, four bytes per gear). The
+/// field names are ours.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct WorkerObj {
+pub struct DriveDamage {
     /// The gate trip (`+0x70`; names ours): `Step1E0` clears it when the trip is taken.
     pub gate_trip: u32,
     /// The torque gain (`+0x84`; names ours): `Step1E0` scales the clutch torque by it.
@@ -483,9 +489,9 @@ pub struct WorkerObj {
     pub scale: f32,
 }
 
-impl WorkerObj {
+impl DriveDamage {
     pub(super) fn load(mem: &Mem, obj: u32) -> Self {
-        WorkerObj {
+        DriveDamage {
             wheel_enabled: std::array::from_fn(|k| mem.u32(obj + 0x18 + 0xC * k as u32)),
             rate: mem.f32(obj + 0x74),
             enable: mem.u32(obj + 0x78),
@@ -493,7 +499,7 @@ impl WorkerObj {
             speed_term: mem.f32(obj + 0x8C),
             scale: mem.f32(obj + 0x88),
             gate_trip: mem.u32(obj + 0x70),
-            torque_gain: mem.f32(obj + OBJ_TORQUE_GAIN),
+            torque_gain: mem.f32(obj + DAMAGE_TORQUE_GAIN),
         }
     }
 
@@ -507,18 +513,20 @@ impl WorkerObj {
         mem.set_f32(obj + 0x8C, self.speed_term);
         mem.set_f32(obj + 0x88, self.scale);
         mem.set_u32(obj + 0x70, self.gate_trip);
-        mem.set_f32(obj + OBJ_TORQUE_GAIN, self.torque_gain);
+        mem.set_f32(obj + DAMAGE_TORQUE_GAIN, self.torque_gain);
     }
 }
 
 /// The objects one drive worker call reads and writes: the definition (`this+4`), the state (`this+8`), the drive's own
-/// words (`this`) and the worker object (`this+0x170`). The gear-indexed words are in `GearWork`.
+/// words (`this`) and its damage block (`this+0x170`). The gear-indexed words are in `GearWork`.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DriveWorker {
     pub def: WorkerDef,
     pub state: WorkerState,
-    pub this: WorkerThis,
-    pub obj: WorkerObj,
+    /// The drive's own words (`this`).
+    pub own: DriveOwn,
+    /// The drive's damage block (`this+0x170`).
+    pub damage: DriveDamage,
 }
 
 impl DriveWorker {

@@ -103,19 +103,19 @@ pub(super) fn drive_speed_key(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline
     Ok(Return::float(st0 as f64, 0))
 }
 
-/// thiscall `()`, eax: the word at `+8` (`layout::mgr_b_word8`).
+/// thiscall `()`, eax: the word at `+8` (`EngineStore::table_manager_word`).
 pub(super) fn mgr_b_word8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.mgr_b_word8(r.ecx), 0))
+    Ok(Return::void(ctx.mem.table_manager_word(r.ecx), 0))
 }
 
-/// thiscall `(idx)`, eax: entry `idx` of the table (`layout::mgr_b_entry`).
+/// thiscall `(idx)`, eax: entry `idx` of the table (`EngineStore::table_manager_entry`).
 pub(super) fn mgr_b_entry(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.mgr_b_entry(r.ecx, r.stack[0]), 4))
+    Ok(Return::void(ctx.mem.table_manager_entry(r.ecx, r.stack[0]), 4))
 }
 
-/// thiscall `(idx)`, eax: the field at `+0xc` of entry `idx` (`layout::mgr_b_field_at`).
+/// thiscall `(idx)`, eax: the field at `+0xc` of entry `idx` (`layout::table_entry_field_at`).
 pub(super) fn mgr_b_field_at(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::mgr_b_field_at(r.ecx, r.stack[0]), 4))
+    Ok(Return::void(layout::table_entry_field_at(r.ecx, r.stack[0]), 4))
 }
 
 /// thiscall `(v, out)`, eax: the matrix times the vector into `out` (`layout::mat4_mul_vec4`).
@@ -130,9 +130,9 @@ pub(super) fn copy_row(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 8))
 }
 
-/// thiscall `(out)`: the transpose of the matrix at `this` into `out` (`layout::rows_copy`).
+/// thiscall `(out)`: the transpose of the matrix at `this` into `out` (`layout::transpose_into`).
 pub(super) fn rows_copy(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::rows_copy(&mut ctx.mem, r.ecx, r.stack[0]);
+    layout::transpose_into(&mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(0, 4))
 }
 
@@ -142,9 +142,9 @@ pub(super) fn mat4_inverse_transposed(ctx: &mut Ctx, r: &Regs) -> Result<Return,
     Ok(Return::void(0, 4))
 }
 
-/// thiscall `(a, x, y)`, eax: `a * 0x10` (`layout::set_two`).
+/// thiscall `(a, x, y)`, eax: `a * 0x10` (`layout::set_wheel_offset_and_bias`).
 pub(crate) fn set_two(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::set_two(&mut ctx.mem, r.ecx, r.stack[0], f(r.stack[1]), f(r.stack[2]));
+    let eax = layout::set_wheel_offset_and_bias(&mut ctx.mem, r.ecx, r.stack[0], f(r.stack[1]), f(r.stack[2]));
     Ok(Return::void(eax, 0xc))
 }
 
@@ -154,9 +154,9 @@ pub(super) fn set_diff_lock(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::void(eax, 8))
 }
 
-/// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::m6db0`).
+/// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::wheel_prev_force`).
 pub(crate) fn m6db0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let st0 = layout::m6db0(&ctx.mem, r.ecx, r.stack[0]);
+    let st0 = layout::wheel_prev_force(&ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::float_with_eax(r.stack[0].wrapping_mul(0xc8), st0 as f64, 4))
 }
 
@@ -176,9 +176,9 @@ pub(super) fn drive_gate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(layout::drive_gate(&ctx.mem, r.ecx), 0))
 }
 
-/// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::m6dd0`).
+/// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::wheel_slip`).
 pub(crate) fn m6dd0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let st0 = layout::m6dd0(&ctx.mem, r.ecx, r.stack[0]);
+    let st0 = layout::wheel_slip(&ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::float_with_eax(r.stack[0].wrapping_mul(0xc8), st0 as f64, 4))
 }
 

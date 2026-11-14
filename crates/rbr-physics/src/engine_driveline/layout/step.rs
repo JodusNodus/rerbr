@@ -1,6 +1,6 @@
-//! `CDrive::Step1E0` (0x50a1e0), the drive's step.
+//! The drive's step (`CDrive::Step1E0`, 0x50a1e0).
 
-use super::curve::{curve_input_at, curve_state_at, hook_block_at, ratio_ring_at, with_gear, with_worker};
+use super::curve::{brake_block_at, curve_input_at, curve_state_at, ratio_ring_at, with_gear, with_worker};
 use super::drive_objects::{Drive, DriveObjects, Lane, DRIVE_STATE_ENGINE_SPEED};
 use super::worker::{DriveWorker, GearWork, RatioRing};
 use crate::engine_driveline::drive_step::{self, DriveStepHost};
@@ -11,7 +11,7 @@ use crate::engine_driveline::store::EngineStore;
 /// forwarder is a host call; the wheel, pair and gear workers run through their typed ports, each on a fresh load of the
 /// worker, as their bindings do. The speed term, the curve terms and the wheel worker are NGP's rewrites (host calls),
 /// and the clutch input takes NGP's `clutch_scale`.
-pub fn step1e0<S: EngineStore>(host: &mut impl DriveStepHost, mem: &mut S, this: u32, dt: f32, clutch_scale: f32) {
+pub fn step_drive<S: EngineStore>(host: &mut impl DriveStepHost, mem: &mut S, this: u32, dt: f32, clutch_scale: f32) {
     let objects = DriveObjects::at(mem, this);
     let (def, state) = (objects.def, objects.state);
     // The words a step reads or writes alone are read and written alone: loading and storing the whole worker for one
@@ -28,13 +28,13 @@ pub fn step1e0<S: EngineStore>(host: &mut impl DriveStepHost, mem: &mut S, this:
     let mut ring = RatioRing::load(mem, ring_at);
     let ratio = drive_worker::ring_average(&mut ring, fr);
     ring.store(mem, ring_at);
-    mem.set_f32(this + THIS_RING_RATIO, ratio);
+    mem.set_f32(this + DRIVE_RING_RATIO, ratio);
 
     let sum = drive_step::clutch_sum(host.ngp_speed_term(dt), ratio);
-    let bias: [f32; 4] = std::array::from_fn(|k| mem.f32(this + THIS_WHEEL_BIAS + 0x10 * k as u32));
+    let bias: [f32; 4] = std::array::from_fn(|k| mem.f32(this + DRIVE_WHEEL_BIAS + 0x10 * k as u32));
     for (k, wheel_bias) in bias.iter().enumerate() {
         let k = k as u32;
-        let (state_at_k, block_at) = (curve_state_at(state, k), hook_block_at(def, k));
+        let (state_at_k, block_at) = (curve_state_at(state, k), brake_block_at(def, k));
         let term = host.ngp_curve_term([state_at_k, block_at, def, curve_input_at(this)], dt);
         let block = state_at(mem) + 200 * k;
         mem.set_f32(block + BLOCK_LATCH_BOUND, drive_step::wheel_latch(term, *wheel_bias));
@@ -45,13 +45,13 @@ pub fn step1e0<S: EngineStore>(host: &mut impl DriveStepHost, mem: &mut S, this:
     let k2 = drive_step::clutch_ratio(GearWork::load(mem, this).band.ratio, ratio_gain);
 
     let slip = Drive::load(mem, this).clutch_slip.value;
-    let gain = mem.f32(mem.u32(this + 0x170) + OBJ_TORQUE_GAIN);
+    let gain = mem.f32(mem.u32(this + 0x170) + DAMAGE_TORQUE_GAIN);
     let b = drive_step::clutch_input(slip, gain, clutch_scale);
     let written = with_gear(mem, this, |w, g| drive_worker::clutch_torque(w, g, host, sum, [b, k2, dt]));
-    let dummy = written.unwrap_or(0.0);
+    let torque = written.unwrap_or(0.0);
 
     with_gear(mem, this, |w, g| {
-        w.state.drive_gain = drive_step::drive_gain(w, g, dummy, k2);
+        w.state.drive_gain = drive_step::drive_gain(w, g, torque, k2);
         if drive_step::trips(w) {
             drive_step::trip(w, g);
         }
@@ -64,19 +64,19 @@ pub fn step1e0<S: EngineStore>(host: &mut impl DriveStepHost, mem: &mut S, this:
     }
 
     let w = DriveWorker::load(mem, this);
-    mem.set_u32(this + THIS_SPEED_COPY, drive_step::speed_copy(&w, k2));
-    mem.set_f32(this + THIS_ABS_DUMMY, drive_step::abs_magnitude(dummy));
+    mem.set_u32(this + DRIVE_SPEED_COPY, drive_step::speed_copy(&w, k2));
+    mem.set_f32(this + DRIVE_CLUTCH_MAGNITUDE, drive_step::abs_magnitude(torque));
 }
 
-/// The worker words `step1e0` reads or writes alone: the def's (`this+4`), the state's (`this+8`), the drive's and the
-/// worker object's (`this+0x170`).
+/// The worker words `step_drive` reads or writes alone: the def's (`this+4`), the state's (`this+8`), the drive's own and
+/// its damage block's (`this+0x170`).
 pub(super) const DEF_RATIO_GAIN: u32 = 0xA54;
 pub(super) const DEF_MODE: u32 = 0x640;
 pub(super) const STATE_CAR: u32 = 0x580;
 pub(super) const STATE_STEP_COUNT: u32 = 0x584;
 pub(super) const BLOCK_LATCH_BOUND: u32 = 0xF8;
-pub(super) const THIS_RING_RATIO: u32 = 0x19C;
-pub(super) const THIS_WHEEL_BIAS: u32 = 0x134;
-pub(super) const THIS_SPEED_COPY: u32 = 0x1A4;
-pub(super) const THIS_ABS_DUMMY: u32 = 0x1BC;
-pub(super) const OBJ_TORQUE_GAIN: u32 = 0x84;
+pub(super) const DRIVE_RING_RATIO: u32 = 0x19C;
+pub(super) const DRIVE_WHEEL_BIAS: u32 = 0x134;
+pub(super) const DRIVE_SPEED_COPY: u32 = 0x1A4;
+pub(super) const DRIVE_CLUTCH_MAGNITUDE: u32 = 0x1BC;
+pub(super) const DAMAGE_TORQUE_GAIN: u32 = 0x84;

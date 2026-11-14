@@ -23,8 +23,9 @@ pub fn curve_state_at(state: u32, k: u32) -> u32 {
     state + 0x48 + 200 * k
 }
 
-/// The def's curve block `k` (`+0x12c`, 240 bytes a block): `Hook4160`'s second argument.
-pub fn hook_block_at(def: u32, k: u32) -> u32 {
+/// The def's brake block of wheel `k` (`+0x12c`, 240 bytes a block, the tweak keys `BrakeRatio_*` at `+0xe0` in it):
+/// `Hook4160`'s second argument.
+pub fn brake_block_at(def: u32, k: u32) -> u32 {
     def + 0x12c + 0xf0 * k
 }
 
@@ -94,11 +95,13 @@ impl CurveState {
     }
 }
 
-/// The input block of Hook4160 (`x`): the words at `+0x60` and `+0x70`. Names are ours.
+/// The input block of Hook4160 (`x`, the drive's `+0x10`): the values of the drive's brake torque lane (`+0x60`, the
+/// drive's `+0x70`) and of its handbrake torque lane (`+0x70`, the drive's `+0x80`, which `Set44C0` scales by
+/// `MaxHandbrakePressure`). NGP's brake reads them as the pedal and handbrake pressures.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CurveInput {
-    pub w60: f32,
-    pub w70: f32,
+    pub brake_torque: f32,
+    pub handbrake_torque: f32,
 }
 
 impl CurveInput {
@@ -107,25 +110,27 @@ impl CurveInput {
     }
 }
 
-/// The car block's words Hook4160 reads (`c`): the row index (`+0xdc`), the gain (`+0x6c`), the speed term's scales
-/// (`+0xec` and `+0xcc`), the position term's scales (`+0x9c`, `+0xbc` and `+0x8c`) and the denominators (`+0x7c` and
-/// `+0x3c`). Names are ours.
+/// A wheel's brake block of the def (`c`, the block `Hook4160` reads): the curve
+/// row index (`+0xdc`) and the words NGP's brake reads as its per-wheel keys (`Brake*_NGP`, see
+/// [`crate::ngp::brake::Brake`]): the effective radius (`+0x6c`, the block gain of 1.02's curve workers), the ratio
+/// (`+0xec`), the piston area (`+0xcc`), the plate area (`+0x9c`), the internal convection (`+0xbc`), the heat
+/// absorption (`+0x8c`), the specific heat (`+0x7c`) and the mass (`+0x3c`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct HookBlock {
+pub struct BrakeBlock {
     pub index: u32,
-    pub gain: f32,
-    pub e_scale: f32,
-    pub dt_scale: f32,
-    pub p_scale: f32,
-    pub x1_scale: f32,
-    pub w_scale: f32,
-    pub den_a: f32,
-    pub den_b: f32,
+    pub effective_radius: f32,
+    pub ratio: f32,
+    pub piston_area: f32,
+    pub plate_area: f32,
+    pub internal_convection: f32,
+    pub heat_absorption: f32,
+    pub specific_heat: f32,
+    pub mass: f32,
 }
 
-impl HookBlock {
+impl BrakeBlock {
     pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
-        mem.load_hook_block(at)
+        mem.load_brake_block(at)
     }
 }
 

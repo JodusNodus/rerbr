@@ -3,8 +3,8 @@
 
 use super::drive_line::DriveLinePoint;
 use super::layout::{
-    BlendKnot, CurveInput, CurveKnot, CurveRow, CurveState, CurveTables, Drive, DriveDef, DriveObjects, DriveState,
-    DriveWorker, EngineDef, EngineObjects, EngineOptions, EngineState, EngineThis, GearBand, GearWork, HookBlock,
+    BlendKnot, BrakeBlock, CurveInput, CurveKnot, CurveRow, CurveState, CurveTables, Drive, DriveDef, DriveObjects,
+    DriveState, DriveWorker, EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, GearBand, GearWork,
     LaneScale, LoadDef, RatioRing, UnitSplit, WorkerDef,
 };
 use super::sim::{BlendRec, Bracket};
@@ -26,12 +26,12 @@ pub trait EngineStore: SpringStore {
     fn load_curve_state(&self, at: u32) -> CurveState;
     fn store_curve_state(&mut self, at: u32, value: &CurveState);
     fn load_curve_input(&self, at: u32) -> CurveInput;
-    fn load_hook_block(&self, at: u32) -> HookBlock;
+    fn load_brake_block(&self, at: u32) -> BrakeBlock;
     fn engine_objects(&self, engine: u32) -> EngineObjects;
     fn load_load_def(&self, at: u32) -> LoadDef;
     fn load_engine_def(&self, at: u32) -> EngineDef;
-    fn load_engine_this(&self, engine: u32) -> EngineThis;
-    fn store_engine_this(&mut self, engine: u32, value: &EngineThis);
+    fn load_engine_own(&self, engine: u32) -> EngineOwn;
+    fn store_engine_own(&mut self, engine: u32, value: &EngineOwn);
     fn load_engine_state(&self, at: u32) -> EngineState;
     /// Writes every field back (the ones a kernel did not change keep their bytes).
     fn store_engine_state(&mut self, at: u32, value: &EngineState);
@@ -57,13 +57,14 @@ pub trait EngineStore: SpringStore {
     fn curve_gain(&self, block: u32) -> f32;
     /// The block's row index that `drive_curve::row_value` picks the row by.
     fn curve_index(&self, block: u32) -> u32;
-    /// The gate word of the drive object that the curve term reads.
-    fn obj_gate(&self, this: u32) -> u32;
-    fn drive_record_f32(&self, this: u32, a: u32, at: u32) -> f32;
-    /// The manager's second word (the table manager's `mgr_b` record).
-    fn mgr_b_word8(&self, this: u32) -> u32;
+    /// The gate word of the drive's damage block that the curve term reads.
+    fn damage_gate(&self, drive: u32) -> u32;
+    /// The float at `at` of wheel `a`'s block of the drive's state.
+    fn wheel_block_f32(&self, drive: u32, a: u32, at: u32) -> f32;
+    /// The table manager's word after its header (named by use).
+    fn table_manager_word(&self, manager: u32) -> u32;
     /// Entry `idx` of the table the manager points to.
-    fn mgr_b_entry(&self, this: u32, idx: u32) -> u32;
+    fn table_manager_entry(&self, manager: u32, idx: u32) -> u32;
     /// The drive line's stores: the entries, the count, and entries `n..10000` with zero position and tangent and distance -1. The
     /// tags of the filled entries are left as they were. The log lines are skipped; a count over 10000 traps in the
     /// original.

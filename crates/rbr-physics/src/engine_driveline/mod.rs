@@ -8,7 +8,6 @@ pub mod drive_line;
 pub mod drive_step;
 pub mod drive_worker;
 pub mod engine;
-pub mod engine_def;
 pub mod layout;
 pub mod mat4;
 pub mod sim;

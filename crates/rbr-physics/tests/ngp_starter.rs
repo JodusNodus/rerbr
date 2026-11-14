@@ -13,17 +13,17 @@ fn starter_matches_original_calls() {
         let f = |k: usize| f32::from_bits(w[k] as u32);
         let (dt, band) = (f(3), f(4));
         let mut d = DriveWorker::default();
-        d.this.lane_gate = w[0] as u32;
-        d.obj.ready = w[1] as u32;
+        d.own.lane_gate = w[0] as u32;
+        d.damage.ready = w[1] as u32;
         d.state.drive.engine_speed = f(5);
-        d.obj.speed_term = f(6);
-        d.obj.rate = f(7);
+        d.damage.speed_term = f(6);
+        d.damage.rate = f(7);
         // the hold before the step: the original's E less this step's dt
         let before = w[2] - (f64::from(dt) * 1.0e6).round() as u64;
-        let held = sim_held(d.this.lane_gate != 0, dt, before);
+        let held = sim_held(d.own.lane_gate != 0, dt, before);
         let v = starter(&mut d, dt, band, held);
         let got =
-            [d.this.scaled_term, d.this.speed_factor, d.obj.speed_term, d.state.drive.engine_speed].map(f32::to_bits);
+            [d.own.scaled_term, d.own.speed_factor, d.damage.speed_term, d.state.drive.engine_speed].map(f32::to_bits);
         let want = [w[9], w[10], w[11], w[12]].map(|x| x as u32);
         let same = |a: u32, b: u32| a == b || (f32::from_bits(a).is_nan() && f32::from_bits(b).is_nan());
         assert!((0..4).all(|k| same(got[k], want[k])), "{line}: {got:08x?}");

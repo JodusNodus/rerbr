@@ -228,7 +228,7 @@ fn set_scratch08_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_SCRATCH08, "CEngine::SetScratch08", |mem, call| {
         let engine_at = call.args[0];
-        let mut this = layout::EngineThis::load(mem, engine_at);
+        let mut this = layout::EngineOwn::load(mem, engine_at);
         engine::set_pedal(&mut this.pedal, call.args[1]);
         this.store(mem, engine_at);
     });
@@ -252,7 +252,7 @@ fn sim_e470_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VARIABLE, SIM_E470, "CEngine::SimE470", |call, mem| {
         let objects = layout::EngineObjects::at(mem, call.args[0]);
-        let this = layout::EngineThis::load(mem, call.args[0]);
+        let this = layout::EngineOwn::load(mem, call.args[0]);
         let state = layout::EngineState::load(mem, objects.state);
         let options = layout::EngineOptions::load(mem, objects.options);
         let st0 =
@@ -327,7 +327,7 @@ fn sim_e520_matches_original_calls() {
         mem.set_u32(seed_at, seed);
         state.store(mem, objects.state);
         if let Some(level) = level {
-            let mut this = layout::EngineThis::load(mem, engine_at);
+            let mut this = layout::EngineOwn::load(mem, engine_at);
             this.misfire_level = level;
             this.store(mem, engine_at);
         }
@@ -518,7 +518,7 @@ fn sim_e1f0_matches_original_calls() {
 fn blend_b_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(BLEND_B, "CDriveLine::BlendB", |mem, call| {
-        let out = layout::blend_b(mem, call.args[0], call.args[1] as i32, f32::from_bits(call.args[2]));
+        let out = layout::spline_at(mem, call.args[0], call.args[1] as i32, f32::from_bits(call.args[2]));
         out.store(mem, call.args[3]);
     });
 }
@@ -537,7 +537,7 @@ fn sample_matches_original_calls() {
 #[test]
 fn last_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(LAST, "CDriveLine::Last", |mem, call| layout::last(mem, call.args[0]));
+    each_st0(LAST, "CDriveLine::Last", |mem, call| layout::last_distance(mem, call.args[0]));
 }
 
 #[test]
@@ -545,7 +545,7 @@ fn thunk_4f0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // E12_SampleX is not ported: its result is the record's st0, and the host word is the window at 0x7eaba8.
     each_st0(THUNK_4F0, "CDriveLine::Thunk4F0", |mem, call| {
-        layout::thunk_4f0(mem, call.args[1], |_host, _x| f64::from_bits(call.st0_bits) as f32)
+        layout::forward_distance_at(mem, call.args[1], |_host, _x| f64::from_bits(call.st0_bits) as f32)
     });
 }
 
@@ -554,7 +554,7 @@ fn sample_x_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // E12_SampleX is the thunk's callee: the record's st0 is the port's answer at the thunk's x.
     each_st0(THUNK_4F0, "E12_SampleX", |mem, call| {
-        layout::sample_x(mem, f32::from_bits(call.args[1])).expect("the original does not assert")
+        layout::distance_at(mem, f32::from_bits(call.args[1])).expect("the original does not assert")
     });
 }
 
@@ -562,7 +562,7 @@ fn sample_x_matches_original_calls() {
 fn clamp_mix_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(CLAMP_MIX, "CDriveLine::ClampMix", |mem, call| {
-        let out = layout::clamp_mix(mem, call.args[0], f32::from_bits(call.args[1]));
+        let out = layout::point_at(mem, call.args[0], f32::from_bits(call.args[1]));
         out.store(mem, call.args[2]);
     });
 }
@@ -1111,7 +1111,7 @@ fn sim8d90_matches_original_calls() {
     for call in &calls {
         let mut mem = shared_windows(call);
         let mut host = Sim43Externals { inner: &call.inner, next: 0, mem: mem.clone() };
-        let st0 = layout::sim8d90(&mut host, &mut mem, call.args[0], call.args[1], call.args[2]);
+        let st0 = layout::intake_entry_update(&mut host, &mut mem, call.args[0], call.args[1], call.args[2]);
         assert_eq!(host.next, call.inner.len(), "E43EngineSim::Sim8D90 call {}: externals", call.index);
         check_st0_nan_tolerant(call, st0, "E43EngineSim::Sim8D90");
         check_windows(call, &mem, "E43EngineSim::Sim8D90");
@@ -1202,7 +1202,7 @@ fn sim8610_matches_original_calls() {
     };
     for call in &calls {
         let mut mem = map_windows(call);
-        let eax = layout::sim8610(&mut mem, call.args[0], f32::from_bits(call.args[1]));
+        let eax = layout::overheat_step(&mut mem, call.args[0], f32::from_bits(call.args[1]));
         assert_eq!(eax, call.eax, "E43EngineSim::Sim8610 call {}: eax", call.index);
         check_windows_nan(call, &mem, "E43EngineSim::Sim8610");
     }
@@ -1255,7 +1255,7 @@ fn sim8890_matches_original_calls() {
     };
     for call in &calls {
         let mut mem = map_windows(call);
-        let eax = layout::sim8890(
+        let eax = layout::heat_step(
             &mut NoWalk,
             &mut mem,
             call.args[0],
@@ -1287,7 +1287,7 @@ const SAMPLE_BIG: u32 = 0x50b300;
 fn sample_big_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VARIABLE, SAMPLE_BIG, "CDriveLine::SampleBig", |call, mem| {
-        let got = layout::sample_big(mem, call.args[0], call.args[1], f32::from_bits(call.args[2]));
+        let got = layout::project_point(mem, call.args[0], call.args[1], f32::from_bits(call.args[2]));
         check_st0_nan_tolerant(call, got, "CDriveLine::SampleBig");
     });
 }
@@ -1298,7 +1298,7 @@ const SIM_EBB0: u32 = 0x50ebb0;
 fn sim_ebb0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SIM_EBB0, "CEngine::SimEBB0", |mem, call| {
-        layout::sim_ebb0(mem, call.args[0]);
+        layout::pedal_cosine(mem, call.args[0]);
     });
 }
 
@@ -1333,20 +1333,20 @@ fn set_state4_matches_original_calls() {
 #[test]
 fn get48_58_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(GET_48_58, "CEngine::Get48_58", |mem, call| layout::options_gate_58(mem, call.args[0]));
+    each_st0(GET_48_58, "CEngine::Get48_58", |mem, call| layout::options_first_gate(mem, call.args[0]));
 }
 
 #[test]
 fn sim_e970_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(SIM_E970, "CEngine::SimE970", |mem, call| layout::sim_e970(mem, call.args[0]));
+    each_st0(SIM_E970, "CEngine::SimE970", |mem, call| layout::coolant_temperature(mem, call.args[0]));
 }
 
 #[test]
 fn sim_e980_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SIM_E980, "CEngine::SimE980", |mem, call| {
-        let eax = layout::rpm_above_40(mem, call.args[0]);
+        let eax = layout::engine_running(mem, call.args[0]);
         assert_eq!(eax, call.eax, "CEngine::SimE980 call {}: eax", call.index);
     });
 }
@@ -1355,7 +1355,7 @@ fn sim_e980_matches_original_calls() {
 fn sim_e9a0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SIM_E9A0, "CEngine::SimE9A0", |mem, call| {
-        let eax = layout::sim_e9a0(mem, call.args[0]);
+        let eax = layout::discarded_temperatures(mem, call.args[0]);
         assert_eq!(eax, call.eax, "CEngine::SimE9A0 call {}: eax", call.index);
     });
 }
@@ -1363,7 +1363,7 @@ fn sim_e9a0_matches_original_calls() {
 #[test]
 fn sim_ee60_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(SIM_EE60, "CEngine::SimEE60", |mem, call| layout::sim_ee60(mem, call.args[0]));
+    each_st0(SIM_EE60, "CEngine::SimEE60", |mem, call| layout::boost_pressure(mem, call.args[0]));
 }
 
 #[test]
@@ -1376,7 +1376,7 @@ fn get_state188_matches_original_calls() {
 fn set_two_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_TWO, "CDrive::SetTwo", |mem, call| {
-        let eax = layout::set_two(
+        let eax = layout::set_wheel_offset_and_bias(
             mem,
             call.args[0],
             call.args[1],
@@ -1399,13 +1399,13 @@ fn set4570_matches_original_calls() {
 #[test]
 fn m6db0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(M6DB0, "CDrive::M6DB0", |mem, call| layout::m6db0(mem, call.args[0], call.args[1]));
+    each_st0(M6DB0, "CDrive::M6DB0", |mem, call| layout::wheel_prev_force(mem, call.args[0], call.args[1]));
 }
 
 #[test]
 fn m6dd0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(M6DD0, "CDrive::M6DD0", |mem, call| layout::m6dd0(mem, call.args[0], call.args[1]));
+    each_st0(M6DD0, "CDrive::M6DD0", |mem, call| layout::wheel_slip(mem, call.args[0], call.args[1]));
 }
 
 #[test]
@@ -1432,7 +1432,7 @@ fn sim8cf0_matches_original_calls() {
     each_call(SIM_8CF0, "E43EngineSim::Sim8CF0", |mem, call| {
         // The signal table is not in the windows; the sink ignores the object it points at.
         mem.map(0x0089_3600, &0x0010_0000u32.to_le_bytes());
-        let eax = layout::sim8cf0(&mut NoSignal, mem, call.args[0]);
+        let eax = layout::signal_update(&mut NoSignal, mem, call.args[0]);
         assert_eq!(eax, call.eax, "E43EngineSim::Sim8CF0 call {}: eax", call.index);
     });
 }
@@ -1441,7 +1441,7 @@ fn sim8cf0_matches_original_calls() {
 fn mgr_b_word8_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(0x501fa0, "E39_MgrB_Word8", |mem, call| {
-        let eax = mem.mgr_b_word8(call.args[0]);
+        let eax = mem.table_manager_word(call.args[0]);
         assert_eq!(eax, call.eax, "E39_MgrB_Word8 call {}: eax", call.index);
     });
 }
@@ -1450,7 +1450,7 @@ fn mgr_b_word8_matches_original_calls() {
 fn mgr_b_entry_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(0x501fb0, "E39_MgrB_Entry", |mem, call| {
-        let eax = mem.mgr_b_entry(call.args[0], call.args[1]);
+        let eax = mem.table_manager_entry(call.args[0], call.args[1]);
         assert_eq!(eax, call.eax, "E39_MgrB_Entry call {}: eax", call.index);
     });
 }
@@ -1459,7 +1459,7 @@ fn mgr_b_entry_matches_original_calls() {
 fn mgr_b_field_at_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(0x502060, "E39_MgrB_FieldAt", |_mem, call| {
-        let eax = layout::mgr_b_field_at(call.args[0], call.args[1]);
+        let eax = layout::table_entry_field_at(call.args[0], call.args[1]);
         assert_eq!(eax, call.eax, "E39_MgrB_FieldAt call {}: eax", call.index);
     });
 }

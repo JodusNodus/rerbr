@@ -1,4 +1,4 @@
-//! The pure parts of the drive's step. The memory sequence is `layout::step1e0`, which runs the typed ports and the
+//! The pure parts of the drive's step. The memory sequence is `layout::step_drive`, which runs the typed ports and the
 //! host calls in the original's order and does the edges. The host calls are typed here, with no memory.
 
 use super::drive_worker::{FreeWheelHost, GearHost, MatInverseHost, MatVecHost};
@@ -40,7 +40,7 @@ pub fn wheel_latch(term: f32, bias: f32) -> f32 {
     term + bias
 }
 
-/// The clutch torque's `b`: the drive's clutch slip gives `1 - slip`, scaled by the object's gain and `scale`.
+/// The clutch torque's `b`: the drive's clutch slip gives `1 - slip`, scaled by the damage block's torque gain and `scale`.
 pub fn clutch_input(slip: f32, torque_gain: f32, scale: f32) -> f32 {
     (1.0 - slip) * torque_gain * scale
 }
@@ -55,19 +55,19 @@ pub fn takes_alternate_worker(mode: u32) -> bool {
     mode == 3
 }
 
-/// The drive gain: zero when the gear flag is clear or the gear's ratio is zero, else the clutch's
-/// magnitude times `k2`.
-pub fn drive_gain(w: &DriveWorker, g: &GearWork, dummy: f32, k2: f32) -> f32 {
+/// The drive gain: zero when the gear flag is clear or the gear's ratio is zero, else the clutch torque (the value
+/// [`clutch_torque`](super::drive_worker::clutch_torque) wrote, 0 when it wrote none) times `k2`.
+pub fn drive_gain(w: &DriveWorker, g: &GearWork, torque: f32, k2: f32) -> f32 {
     if w.state.gear_flag.value == 0 || g.band.ratio == 0.0 {
         0.0
     } else {
-        dummy * k2
+        torque * k2
     }
 }
 
-/// Whether the step trips: the trigger or the object's gate trip is set.
+/// Whether the step trips: the trigger or the damage block's gate trip is set.
 pub fn trips(w: &DriveWorker) -> bool {
-    w.state.trigger != 0 || w.obj.gate_trip != 0
+    w.state.trigger != 0 || w.damage.gate_trip != 0
 }
 
 /// The trip: the pack gain takes the trip's term, the pending word is set, the step count goes up, and the trigger and
@@ -84,7 +84,7 @@ pub fn trip(w: &mut DriveWorker, g: &GearWork) {
     w.state.pending = 1;
     w.state.step_iter = w.state.step_iter.wrapping_add(1);
     w.state.trigger = 0;
-    w.obj.gate_trip = 0;
+    w.damage.gate_trip = 0;
 }
 
 /// The speed copy, as bits: the engine speed unless the sign word, the gear flag and `k2` are all set, when it is the
@@ -97,11 +97,11 @@ pub fn speed_copy(w: &DriveWorker, k2: f32) -> u32 {
     }
 }
 
-/// The magnitude of the clutch torque: `dummy` when it is positive, else `0 - dummy`.
-pub fn abs_magnitude(dummy: f32) -> f32 {
-    if dummy > 0.0 {
-        dummy
+/// The magnitude of the clutch torque: `torque` when it is positive, else `0 - torque`.
+pub fn abs_magnitude(torque: f32) -> f32 {
+    if torque > 0.0 {
+        torque
     } else {
-        0.0 - dummy
+        0.0 - torque
     }
 }

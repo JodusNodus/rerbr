@@ -115,21 +115,21 @@ impl EngineDef {
 /// `CEngine`'s own pedal: the `CReal` header at +0x14 (its value at +0x20).
 pub(super) const ENGINE_PEDAL: u32 = 0x14;
 
-/// The engine object's own fields (`CEngine`, not its objects): the pedal (`+0x14` is its `CReal` header, dirty at
+/// The engine object's own fields (`CEngine`'s `this`, not its objects): the pedal (`+0x14` is its `CReal` header, dirty at
 /// `+0x1c`, the value at `+0x20`) and the misfire level (`+0x194`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct EngineThis {
+pub struct EngineOwn {
     pub pedal: Lane,
     pub misfire_level: f32,
 }
 
-impl EngineThis {
+impl EngineOwn {
     pub fn load<S: EngineStore>(mem: &S, engine: u32) -> Self {
-        mem.load_engine_this(engine)
+        mem.load_engine_own(engine)
     }
 
     pub fn store<S: EngineStore>(&self, mem: &mut S, engine: u32) {
-        mem.store_engine_this(engine, self)
+        mem.store_engine_own(engine, self)
     }
 }
 
@@ -209,9 +209,10 @@ impl EngineState {
     }
 }
 
-/// The engine's option block (`this+0x48`). `first_gate` (`+0x58`) enables the absolute rpm term (`Sim410`) and is
-/// the first stall gate (`SimECF0`), whose second is `second_gate` (`+0x5c`). `stall_terms` (`+0x8`, `+0x18`, `+0x28`, `+0x38`)
-/// count in `SimECF0`; `stage_t` (`+0xc`, `+0x1c`, `+0x2c`, `+0x3c`) and `fifth_t` (`+0x70`) are the stage fractions
+/// The engine's option block (`this+0x48`): the damage handler's engine block at `+0x3aac` (rbr-recomp
+/// `notes/physics/damage.md` 1a; `reset_engine_damage` resets it, `fuel_air_terms` lowers `first_gate`). `first_gate`
+/// (`+0x58`) enables the absolute rpm term (`Sim410`) and is the first stall gate (`SimECF0`), whose second is
+/// `second_gate` (`+0x5c`). `stall_terms` (`+0x8`, `+0x18`, `+0x28`, `+0x38`) count in `SimECF0`; `stage_t` (`+0xc`, `+0x1c`, `+0x2c`, `+0x3c`) and `fifth_t` (`+0x70`) are the stage fractions
 /// of `SimE9F0`; `rev_gate` (`+0x74`) gates `SimE470`. The meanings beyond the uses are not known.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct EngineOptions {

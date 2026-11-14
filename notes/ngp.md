@@ -126,7 +126,7 @@ unquantized channels, mapped flags, a gear select only when it differs from the 
 All in `rbr-standalone --boot --ngp-physics`:
 
 1. Files: `*_NGP` keys go through the stock parser (keys below); `ntweak::plan`/`apply` are NGP's. NGP's load
-   edits (`engine_driveline::engine_def::NGP_WORDS`, `ntweak::plan`, `tyre::layout::construct`,
+   edits (`engine_driveline::layout::engine_def::NGP_WORDS`, `ntweak::plan`, `tyre::layout::construct`,
    `CBrakesPage::vf48` in `load`: `scripts/gen-engine-def.py`): `CEngine::CDef` gains `+0x2830` (`TorqueCut_NGP`,
    +0x2820 a `CRealPair`, `0x50f247`) and two zeroed defaults; `BrakeWearLimit_NGP` (`+0x58c`) uses NGP's `CUnsigned` reader
    (value plus up to 30 unnamed floats into `+0x59c`); `CTyre::CDef` leaves `+0xdc`, `+0xfc`, `+0x10c` at 0;

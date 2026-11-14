@@ -55,7 +55,7 @@ one loop.
    4. Child walk, right after each body's integrate. For the car, `car_body::controls::step_controls`, in order:
       steering slew and rack; the VCU (`vcu::step::step`); the drive (step 5); the wheels (step 6); the anti-roll
       bars (`car_body::roll_bars::update_roll_bars`); the force-feedback torque (`car_body::layout::update_ffb_torque`).
-5. **Engine and driveline**, `engine_driveline::layout::step1e0`, in order: the engine step through NGP's wrapper
+5. **Engine and driveline**, `engine_driveline::layout::step_drive`, in order: the engine step through NGP's wrapper
    (wear and death in `ngp::engine`, air from `ngp::atmosphere::atmosphere`, the engine sim
    `engine_driveline::layout::engine_step`, NGP's torque `ngp::engine::torque`); the starter
    (`ngp::starter::starter`); each wheel's brake (`ngp::brake::brake_step`); gear trim and clutch

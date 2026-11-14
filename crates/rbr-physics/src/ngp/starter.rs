@@ -1,5 +1,5 @@
 //! NGP's starter. Like 1.02's (`engine_driveline::drive_leaf::speed_term` (git e5824ccc), removed with 1.02's physics)
-//! it drains the worker object's term at its rate while the ignition and the ready word are set, but only from 0.5 s to
+//! it drains the damage block's term at its rate while the ignition and the ready word are set, but only from 0.5 s to
 //! 2.5 s after the ignition was last clear. Its knee is 0.75 of NGP's idle band rather than 300, the term stays at or
 //! above 0, and the gear-1 gate is gone. A crank on a stopped engine (`|speed| < 0.001`) sets the engine speed to
 //! 0.001. All SSE.
@@ -33,22 +33,22 @@ pub fn sim_held(ignition: bool, dt: f32, held: u64) -> u64 {
 /// The starter on the worker for `dt`, with NGP's idle band and `held`, the time since the ignition was last clear
 /// (us). Returns the starter's term.
 pub fn starter(w: &mut DriveWorker, dt: f32, band: f32, held: u64) -> f32 {
-    if w.this.lane_gate == 0 || !WINDOW.contains(&held) || w.obj.ready == 0 {
-        w.this.speed_factor = 0.0;
-        w.this.scaled_term = 0.0;
+    if w.own.lane_gate == 0 || !WINDOW.contains(&held) || w.damage.ready == 0 {
+        w.own.speed_factor = 0.0;
+        w.own.scaled_term = 0.0;
         return 0.0;
     }
     let knee = band * 0.75;
     let speed = w.state.drive.engine_speed;
-    let term = w.obj.speed_term;
+    let term = w.damage.speed_term;
     let factor = if speed > knee { (1.0 - (speed - knee) / (band - knee)) * term } else { term };
-    w.this.speed_factor = factor;
-    w.obj.speed_term = max_ss(0.0, term - w.obj.rate * 0.02 * factor * dt);
+    w.own.speed_factor = factor;
+    w.damage.speed_term = max_ss(0.0, term - w.damage.rate * 0.02 * factor * dt);
     let out = factor * 80.0;
     if out > 0.0 && 0.001 > speed.abs() {
         w.state.drive.engine_speed = 0.001;
     }
-    w.this.scaled_term = out;
+    w.own.scaled_term = out;
     out
 }
 
@@ -58,10 +58,10 @@ mod tests {
 
     fn worker() -> DriveWorker {
         let mut w = DriveWorker::default();
-        w.this.lane_gate = 1;
-        w.obj.ready = 1;
-        w.obj.speed_term = 1.0;
-        w.obj.rate = 1.0;
+        w.own.lane_gate = 1;
+        w.damage.ready = 1;
+        w.damage.speed_term = 1.0;
+        w.damage.rate = 1.0;
         w
     }
 
@@ -78,7 +78,7 @@ mod tests {
             }
         }
         assert_eq!((cranked[0], *cranked.last().unwrap()), (201, 1000));
-        w.this.lane_gate = 0;
+        w.own.lane_gate = 0;
         assert_eq!(starter(&mut w, dt, 100.0, held), 0.0);
     }
 

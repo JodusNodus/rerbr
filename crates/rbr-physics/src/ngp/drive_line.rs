@@ -1,6 +1,6 @@
 //! NGP's drive line: a cubic Hermite path through points with tangents, searched in doubles. The point and the
 //! points' floats widen to f64 and only the result rounds back to f32. Against 1.02's search
-//! (`engine_driveline::layout::sample_big`) the refinement takes up to 40 bisection steps to a dot of 0.002 (1.02: 9
+//! (`engine_driveline::layout::project_point`) the refinement takes up to 40 bisection steps to a dot of 0.002 (1.02: 9
 //! steps, 0.01), and a NaN dot raises the lower bound. [`layout::drive_line`](super::layout::drive_line) reads the
 //! line from memory.
 

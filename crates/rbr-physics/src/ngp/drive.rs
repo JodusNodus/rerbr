@@ -37,8 +37,8 @@ pub fn wheel_slip_value(w: &mut DriveWorker, x: usize, split: f32) {
         return;
     }
     let mut f = 0.0f32;
-    if w.obj.wheel_enabled[x] != 0 {
-        f = (0.0 - (block.gate.value as f32) * block.latch_bound) + w.this.wheel_offset[x];
+    if w.damage.wheel_enabled[x] != 0 {
+        f = (0.0 - (block.gate.value as f32) * block.latch_bound) + w.own.wheel_offset[x];
     }
     let (factor, g) = drive_factor(w, x, split);
     let pack = w.def.wheels[x].pack as usize;
@@ -52,21 +52,21 @@ pub fn wheel_slip_value(w: &mut DriveWorker, x: usize, split: f32) {
 pub fn wheel_latch(w: &mut DriveWorker, x: usize, split: f32) {
     let block = w.state.blocks[x];
     if block.gate.value != 0 {
-        w.this.pack_out[x] = 0.0;
+        w.own.pack_out[x] = 0.0;
         return;
     }
     let (factor, g) = drive_factor(w, x, split);
     let pack = w.def.wheels[x].pack as usize;
-    let gain = w.state.drive_gain - w.state.pack_gain * w.this.loc0.value;
+    let gain = w.state.drive_gain - w.state.pack_gain * w.own.value_rate.value;
     let slip = g * HALF * w.state.terms[0].speed + w.state.terms[pack].speed;
     let f = (f64::from(factor) * f64::from(gain) - f64::from(slip)) as f32;
-    let (k, h) = if w.obj.wheel_enabled[x] == 0 { (0.0, 0.0) } else { (w.this.wheel_offset[x], block.latch_bound) };
+    let (k, h) = if w.damage.wheel_enabled[x] == 0 { (0.0, 0.0) } else { (w.own.wheel_offset[x], block.latch_bound) };
     if !(h - k >= f) {
         latch(w, x, 1);
     } else if !(f >= 0.0 - (k + h)) {
         latch(w, x, -1);
     } else {
-        w.this.pack_out[x] = 0.0;
+        w.own.pack_out[x] = 0.0;
     }
 }
 
@@ -89,7 +89,7 @@ fn clutch_pass(w: &mut DriveWorker) -> bool {
         let block = w.state.blocks[k];
         if block.gate.value == 0 {
             count[pack] += 1;
-        } else if sign(block.force.value) != block.gate.value && w.this.pack_out[k] == 0.0 {
+        } else if sign(block.force.value) != block.gate.value && w.own.pack_out[k] == 0.0 {
             w.state.blocks[k].force.value = 0.0;
             w.state.blocks[k].gate.value = 0;
             armed[pack] = true;
@@ -108,7 +108,7 @@ fn clutch_pass(w: &mut DriveWorker) -> bool {
         return false;
     }
     if w.state.pending == 0 {
-        w.state.count_a = w.state.count_a.wrapping_add(1);
+        w.state.clutch_change_count = w.state.clutch_change_count.wrapping_add(1);
     }
     w.state.pending = 1;
     for u in 1..3 {

@@ -32,7 +32,7 @@ pub(crate) fn starter_step(m: &mut Mem, drive: u32, dt: f32) -> f32 {
     let kept = u64::from(m.u32(held_at)) | u64::from(m.u32(held_at + 4)) << 32;
     let band = m.f32(at(0x1017_1a98).unwrap());
     let (v, kept) = with_worker(m, drive, |w| {
-        let gated = w.this.lane_gate != 0;
+        let gated = w.own.lane_gate != 0;
         let (held, kept) = match WALL_CLOCK.get() {
             Some(now) if gated => (now.wrapping_sub(kept), kept),
             Some(now) => (0, now),

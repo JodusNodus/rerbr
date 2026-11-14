@@ -68,8 +68,8 @@ fn slip_value(w: &mut DriveWorker, k: usize) {
     let pack = wheel.pack as usize;
     let axle = w.def.axles[pack];
     let mut off = 0.0;
-    if w.obj.wheel_enabled[k] != 0 {
-        off = w.this.wheel_offset[k] - blk.gate.value as f32 * blk.latch_bound;
+    if w.damage.wheel_enabled[k] != 0 {
+        off = w.own.wheel_offset[k] - blk.gate.value as f32 * blk.latch_bound;
     }
     let off = off - w.state.terms[pack].speed;
     let reach = axle.scale * HALF * wheel.weight;
@@ -80,7 +80,7 @@ fn slip_value(w: &mut DriveWorker, k: usize) {
 /// gates to its side, and its pack output takes the wheel's weight; otherwise the pack output is zero.
 fn latch(w: &mut DriveWorker, k: usize) {
     if w.state.blocks[k].gate.value != 0 {
-        w.this.pack_out[k] = 0.0;
+        w.own.pack_out[k] = 0.0;
         return;
     }
     let wheel = w.def.wheels[k];
@@ -88,20 +88,20 @@ fn latch(w: &mut DriveWorker, k: usize) {
     let axle = w.def.axles[pack];
     let s = &w.state;
     let dir = axle.direction as f32;
-    let v = (dir * s.drive_gain - dir * w.this.loc0.value * s.pack_gain) * HALF * axle.scale * wheel.weight
+    let v = (dir * s.drive_gain - dir * w.own.value_rate.value * s.pack_gain) * HALF * axle.scale * wheel.weight
         - s.terms[pack].speed;
     let (bound, off) =
-        if w.obj.wheel_enabled[k] != 0 { (s.blocks[k].latch_bound, w.this.wheel_offset[k]) } else { (0.0, 0.0) };
+        if w.damage.wheel_enabled[k] != 0 { (s.blocks[k].latch_bound, w.own.wheel_offset[k]) } else { (0.0, 0.0) };
     let gate = if !(bound - off >= v) {
         1
     } else if !(v >= -(off + bound)) {
         -1
     } else {
-        w.this.pack_out[k] = 0.0;
+        w.own.pack_out[k] = 0.0;
         return;
     };
     w.state.blocks[k].gate.value = gate;
-    w.this.pack_out[k] = wheel.weight;
+    w.own.pack_out[k] = wheel.weight;
     if w.state.pending == 0 {
         w.state.latch_count = w.state.latch_count.wrapping_add(1);
     }
@@ -138,7 +138,7 @@ pub fn axle_worker(w: &mut DriveWorker, dt: f32, g: usize) {
         reset(w, g);
     }
     if w.state.blocks[a].gate.value == 0 && w.state.blocks[b].gate.value == 0 {
-        w.this.loc0.value = 0.0;
+        w.own.value_rate.value = 0.0;
         w.state.terms[g].speed = 0.0;
         latch(w, a);
         latch(w, b);
@@ -151,9 +151,9 @@ pub fn axle_worker(w: &mut DriveWorker, dt: f32, g: usize) {
             slip_value(w, b);
             let m = w.state.clutch_matrix;
             let (va, vb) = (w.state.step_vec[a], w.state.step_vec[b]);
-            w.this.loc[0] = vb * m[5] + va * m[4];
+            w.own.solution[0] = vb * m[5] + va * m[4];
             let loc = vb * m[7] + va * m[6];
-            w.this.loc[g] = loc;
+            w.own.solution[g] = loc;
             if w.state.lane_active[g + 1] != 1 || w.state.terms[g].scale >= loc.abs() {
                 break;
             }
@@ -161,18 +161,18 @@ pub fn axle_worker(w: &mut DriveWorker, dt: f32, g: usize) {
             w.state.repeat_count = w.state.repeat_count.wrapping_add(1);
             reset(w, g);
         }
-        let value_rate = w.this.loc[0];
-        let loc = w.this.loc[g];
+        let value_rate = w.own.solution[0];
+        let loc = w.own.solution[g];
         let term_rate = if w.state.lane_active[g + 1] == 1 {
             w.state.terms[g].speed = loc;
             0.0
         } else {
             loc
         };
-        w.this.loc0.value = 0.0;
+        w.own.value_rate.value = 0.0;
         latch(w, a);
         latch(w, b);
-        w.this.loc0.value = w.def.axles[g].direction as f32 * value_rate;
+        w.own.value_rate.value = w.def.axles[g].direction as f32 * value_rate;
         let t = &mut w.state.terms[g];
         t.value += value_rate * dt;
         t.term += term_rate * dt;
@@ -183,7 +183,7 @@ pub fn axle_worker(w: &mut DriveWorker, dt: f32, g: usize) {
         }
         let t = w.state.terms[g];
         for k in [a, b] {
-            if w.state.blocks[k].gate.value != 0 && w.this.pack_out[k] == 0.0 {
+            if w.state.blocks[k].gate.value != 0 && w.own.pack_out[k] == 0.0 {
                 w.state.blocks[k].force.value = t.value * w.def.wheels[k].weight / w.def.axles[g].scale + t.term * HALF;
             }
         }
@@ -192,7 +192,7 @@ pub fn axle_worker(w: &mut DriveWorker, dt: f32, g: usize) {
             let mut any = false;
             for k in [a, b] {
                 let blk = &mut w.state.blocks[k];
-                if blk.gate.value != sign(blk.force.value) && w.this.pack_out[k] == 0.0 {
+                if blk.gate.value != sign(blk.force.value) && w.own.pack_out[k] == 0.0 {
                     blk.force.value = 0.0;
                     blk.gate.value = 0;
                     any = true;
@@ -205,7 +205,7 @@ pub fn axle_worker(w: &mut DriveWorker, dt: f32, g: usize) {
     }
     w.state.drive.drive_speed_key = w.def.axles[g].direction as f32 * w.state.terms[g].value;
     for k in [a, b] {
-        if w.obj.wheel_enabled[k] != 0 {
+        if w.damage.wheel_enabled[k] != 0 {
             let blk = &mut w.state.blocks[k];
             let force = blk.force.value;
             let slip = (force - blk.prev_force.value) / dt;

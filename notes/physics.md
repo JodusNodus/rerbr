@@ -253,6 +253,8 @@ NaN. `SimE010` sets a cut flag when `x <= limit` or unordered. `Sim8E20` (0x518e
 `CDriveLine::Sample` (0x50b180): the first entry from 1 whose distance is above `d` (`comiss`+`ja`, so NaN finds
 none) gives `BlendB` at `(d - d0) / (d1 - d0)`; otherwise the last entry's position (`this - 0x20` when empty).
 The `test eax,eax` after a hit is dead (`k >= 1`, direct-call branch cover).
+The drive's `+0x170` and the engine's `+0x48` (the option block) point at the damage handler's drive and engine
+blocks (`+0x3a18`, `+0x3aac`: `layout::DriveDamage`, `EngineOptions`; rbr-recomp `notes/physics/damage.md` 1a).
 
 ## VCU
 

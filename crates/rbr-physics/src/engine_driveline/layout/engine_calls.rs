@@ -2,7 +2,7 @@
 //! abs-rpm and compliance terms.
 
 use super::drive_objects::Lane;
-use super::engine_objects::{EngineDef, EngineObjects, EngineOptions, EngineState, EngineThis, EngineTuning};
+use super::engine_objects::{EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, EngineTuning};
 use crate::engine_driveline::store::EngineStore;
 use crate::engine_driveline::{engine, sim};
 use crate::math::trig::one_minus_x87_cos;
@@ -29,9 +29,10 @@ pub fn exhaust_blend_at<S: EngineStore>(mem: &S, this: u32, i: u32, q: u32) -> f
     engine::exhaust_blend(&row, &s)
 }
 
-/// `CEngine::SimEBB0` (0x50ebb0, thiscall): the lane at `this+0x24` takes `1 - cos(angle)` and is set dirty (the
-/// angle is `engine::clamped_angle` of the engine's value and the definition's floor).
-pub fn sim_ebb0<S: EngineStore>(mem: &mut S, this: u32) {
+/// `CEngine::SimEBB0` (0x50ebb0, thiscall): the pedal's cosine response. The lane at `this+0x24` takes
+/// `1 - cos(angle)` and is set dirty (the angle is `engine::clamped_angle` of the pedal's value, `+0x20`, and the
+/// definition's floor).
+pub fn pedal_cosine<S: EngineStore>(mem: &mut S, this: u32) {
     let objects = EngineObjects::at(mem, this);
     let angle = engine::clamped_angle(mem.f32(this + 0x20), mem.f32(objects.def + 0x2708));
     let value = one_minus_x87_cos(angle);
@@ -55,9 +56,9 @@ pub fn set_cut_flags<S: EngineStore>(mem: &mut S, this: u32, words: [u32; 4]) ->
     state
 }
 
-/// `CEngine::Get48_58` (0x50d380, thiscall, x87 float): the float at `+0x58` of the options block, or 0 when the
-/// block's pointer at `+0x48` is 0.
-pub fn options_gate_58<S: EngineStore>(mem: &S, this: u32) -> f32 {
+/// `CEngine::Get48_58` (0x50d380, thiscall, x87 float): the options block's first gate (`EngineOptions::first_gate`,
+/// `+0x58`), or 0 when the block's pointer at `+0x48` is 0.
+pub fn options_first_gate<S: EngineStore>(mem: &S, this: u32) -> f32 {
     let o = mem.u32(this + 0x48);
     if o != 0 {
         mem.f32(o + 0x58)
@@ -66,20 +67,22 @@ pub fn options_gate_58<S: EngineStore>(mem: &S, this: u32) -> f32 {
     }
 }
 
-/// `CEngine::SimE970` (0x50e970, thiscall, x87 float): `DamperBiasSub` (0x52e390) of the state's float at `+0x28`.
-pub fn sim_e970<S: EngineStore>(mem: &S, this: u32) -> f64 {
+/// `CEngine::SimE970` (0x50e970, thiscall, x87 float): the engine's coolant temperature in °C, `DamperBiasSub`
+/// (0x52e390, K to °C) of the state's float at `+0x28` (named by use: the dash's water gauge reads it).
+pub fn coolant_temperature<S: EngineStore>(mem: &S, this: u32) -> f64 {
     spring_damper::kelvin_to_celsius(mem.f32(mem.u32(this + 8) + 0x28))
 }
 
-/// `CEngine::SimE980` (0x50e980, thiscall): 1 when the state's float at `+0x188` is above 40 (a NaN gives 0), else 0.
-pub fn rpm_above_40<S: EngineStore>(mem: &S, this: u32) -> u32 {
+/// `CEngine::SimE980` (0x50e980, thiscall): whether the engine runs, 1 when the engine speed (the state's `+0x188`,
+/// rad/s) is above 40 (a NaN gives 0), else 0.
+pub fn engine_running<S: EngineStore>(mem: &S, this: u32) -> u32 {
     u32::from(mem.f32(mem.u32(this + 8) + 0x188) > 40.0)
 }
 
-/// `CEngine::SimE9A0` (0x50e9a0, thiscall): under the keeper's flag `0x80000` it runs three `DamperBiasSub`s whose
-/// results are popped, so nothing is written. Returns eax, which the asm leaves as the state pointer when the flag is
+/// `CEngine::SimE9A0` (0x50e9a0, thiscall): under the keeper's flag `0x80000` it runs three `DamperBiasSub`s (K to °C)
+/// whose results are popped, so nothing is written (named by use). Returns eax, which the asm leaves as the state pointer when the flag is
 /// set and as the world object's pointer (the global at `0x1659b70`) when it is not.
-pub fn sim_e9a0<S: EngineStore>(mem: &S, this: u32) -> u32 {
+pub fn discarded_temperatures<S: EngineStore>(mem: &S, this: u32) -> u32 {
     let world = mem.u32(PHYSICS_GLOBAL);
     if mem.u32(mem.u32(world + 0x24) + 0x160e0) & 0x8_0000 != 0 {
         mem.u32(this + 8)
@@ -88,9 +91,10 @@ pub fn sim_e9a0<S: EngineStore>(mem: &S, this: u32) -> u32 {
     }
 }
 
-/// `CEngine::SimEE60` (0x50ee60, thiscall, x87 float): the state's float at `+0x68` when the definition's word at
-/// `+0x26f8` is set, else 0.
-pub fn sim_ee60<S: EngineStore>(mem: &S, this: u32) -> f32 {
+/// `CEngine::SimEE60` (0x50ee60, thiscall, x87 float): the boost pressure, the state's float at `+0x68` when the
+/// definition's `Turbo` (`+0x26f8`) is set, else 0 (named by use: the turbo's inlet pressure in `intake_state_reset`,
+/// the dash's boost gauge).
+pub fn boost_pressure<S: EngineStore>(mem: &S, this: u32) -> f32 {
     if mem.u32(mem.u32(this + 4) + 0x26f8) != 0 {
         mem.f32(mem.u32(this + 8) + 0x68)
     } else {
@@ -111,7 +115,7 @@ pub fn rev_gate<S: EngineStore>(mem: &S, this: u32, tuning: &EngineTuning) -> f6
     let objects = EngineObjects::at(mem, this);
     let state = EngineState::load(mem, objects.state);
     let options = EngineOptions::load(mem, objects.options);
-    engine::rev_gate(state.speed, EngineThis::load(mem, this).pedal.value, options.rev_gate, tuning.rev_gate)
+    engine::rev_gate(state.speed, EngineOwn::load(mem, this).pedal.value, options.rev_gate, tuning.rev_gate)
 }
 
 /// `CEngine::SimED70` (0x50ed70, thiscall `(x, q)`): the torque curve at `x`, written to the eight words at `q` (name ours).
@@ -191,7 +195,7 @@ pub fn compliance<S: EngineStore>(mem: &mut S, this: u32) {
 }
 
 /// `x` clamped to `[0, max]` the way the asm does it: below zero is zero, above `max` is `max`, and a NaN stays.
-pub(super) fn clamp_asm(v: f32, max: f32) -> f32 {
+pub(super) fn clamp_keep_nan(v: f32, max: f32) -> f32 {
     if v < 0.0 {
         0.0
     } else if v > max {

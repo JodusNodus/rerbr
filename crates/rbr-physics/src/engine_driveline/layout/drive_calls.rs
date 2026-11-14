@@ -3,7 +3,7 @@
 
 use super::drive_line::{self, entry_at};
 use super::drive_objects::{DriveObjects, Lane};
-use super::engine_calls::rpm_above_40;
+use super::engine_calls::engine_running;
 use crate::engine_driveline::mat4;
 use crate::engine_driveline::store::EngineStore;
 use crate::fpu;
@@ -22,9 +22,9 @@ pub fn clear_lanes<S: EngineStore>(mem: &mut S, this: u32) {
     }
 }
 
-/// `E12_SampleX` (0x475ea0, stdcall `(x)`, st0) on the drive line at the global `DRIVE_LINE`: the count and each entry's
-/// arc length. None where the original asserts (see `drive_line::interpolate_distance`).
-pub fn sample_x<S: EngineStore>(mem: &S, x: f32) -> Option<f32> {
+/// `E12_SampleX` (0x475ea0, stdcall `(x)`, st0) on the drive line at the global `DRIVE_LINE`: the distance at the
+/// position `x`, from the count and each entry's arc length. None where the original asserts (see `drive_line::interpolate_distance`).
+pub fn distance_at<S: EngineStore>(mem: &S, x: f32) -> Option<f32> {
     let this = mem.u32(crate::stage::layout::DRIVE_LINE);
     crate::engine_driveline::drive_line::interpolate_distance(
         mem.u32(this + drive_line::COUNT_AT),
@@ -33,10 +33,10 @@ pub fn sample_x<S: EngineStore>(mem: &S, x: f32) -> Option<f32> {
     )
 }
 
-/// `CDriveLine::SampleBig` (0x50b300, thiscall `(pos, x)`, st0): the arc position of the point at `pos` on the drive
-/// line, bisected from the index `x`. The reads are the point's three floats and the table (`ClampMix`, `BlendB` and
+/// `CDriveLine::SampleBig` (0x50b300, thiscall `(pos, x)`, st0): the point at `pos` projected onto the drive line, as
+/// its arc position, bisected from the index `x`. The reads are the point's three floats and the table (`ClampMix`, `BlendB` and
 /// the entries' positions and tangents). The original traps where the index is outside the table, and so does this.
-pub fn sample_big<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
+pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
     let n = mem.u32(this + drive_line::COUNT_AT) as i32;
     if n == 0 {
         return 0.0;
@@ -45,7 +45,7 @@ pub fn sample_big<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
     let q_at = |k: i32| entry_at(this, k as u32);
     let ix = fpu::trunc_i32(x as f64);
     assert!(ix >= 0, "CDriveLine::SampleBig: index {ix} outside the table (the original traps)");
-    let va = if ix < n { drive_line::clamp_mix(mem, this, x) } else { Vec4::load(mem, q_at(n - 1)) };
+    let va = if ix < n { drive_line::point_at(mem, this, x) } else { Vec4::load(mem, q_at(n - 1)) };
     let d = Vec4 { x: va.x - ps[0], y: va.y - ps[1], z: va.z - ps[2], w: 0.0 };
     let h = (d.length3() - 6.0) * 0.5;
     let k = match trunc_i64(h as f64) as i32 {
@@ -93,11 +93,11 @@ pub fn sample_big<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
     // The bisection between the two tangents of ib and ib + 1: the mid point, until it is close or the steps run out.
     let v_lo = Vec4::load(mem, q_at(ib) + 0x10);
     let v_hi = Vec4::load(mem, q_at(ib + 1) + 0x10);
-    let (mut f20, mut f24) = (0.0f32, 1.0f32);
+    let (mut lo, mut hi) = (0.0f32, 1.0f32);
     let mut steps = 0;
     loop {
-        let mid = (f24 + f20) * 0.5;
-        let vb = drive_line::blend_b(mem, this, ib, mid);
+        let mid = (hi + lo) * 0.5;
+        let vb = drive_line::spline_at(mem, this, ib, mid);
         let d = [ps[0] - vb.x, ps[1] - vb.y, ps[2] - vb.z];
         let w = v_lo.lerp(v_hi, mid);
         let dot = (w.z * d[2] + w.y * d[1]) + d[0] * w.x;
@@ -113,26 +113,29 @@ pub fn sample_big<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
         }
         // The asm's `jbe`: a NaN dot takes the lower bound too.
         if !(dot > 0.0) {
-            f24 = mid;
+            hi = mid;
         } else {
-            f20 = mid;
+            lo = mid;
         }
     }
 }
 
-/// `CDrive::M6DB0` (0x506db0): the float at `+0x64` of record `a` (0xc8 bytes) of the table at `this+8`.
-pub fn m6db0<S: EngineStore>(mem: &S, this: u32, a: u32) -> f32 {
-    mem.drive_record_f32(this, a, 0x64)
+/// `CDrive::M6DB0` (0x506db0): wheel `a`'s previous force, the float at `+0x64` of block `a` (0xc8 bytes) of the state at
+/// `this+8` (`WheelBlock::prev_force`'s value).
+pub fn wheel_prev_force<S: EngineStore>(mem: &S, this: u32, a: u32) -> f32 {
+    mem.wheel_block_f32(this, a, 0x64)
 }
 
-/// `CDrive::M6DD0` (0x506dd0): the float at `+0x54` of record `a` (0xc8 bytes) of the table at `this+8`.
-pub fn m6dd0<S: EngineStore>(mem: &S, this: u32, a: u32) -> f32 {
-    mem.drive_record_f32(this, a, 0x54)
+/// `CDrive::M6DD0` (0x506dd0): wheel `a`'s slip, the float at `+0x54` of block `a` (0xc8 bytes) of the state at `this+8`
+/// (`WheelBlock::slip`'s value).
+pub fn wheel_slip<S: EngineStore>(mem: &S, this: u32, a: u32) -> f32 {
+    mem.wheel_block_f32(this, a, 0x54)
 }
 
-/// `CDrive::SetTwo` (0x5043c0): sets the `+0xc` of the two sub-objects at `this + a * 0x10 + 0xe8` (to `x`) and
-/// `this + a * 0x10 + 0x128` (to `y`), each dirtied first. Returns the eax the original leaves (`a * 0x10`).
-pub fn set_two<S: EngineStore>(mem: &mut S, this: u32, a: u32, x: f32, y: f32) -> u32 {
+/// `CDrive::SetTwo` (0x5043c0): wheel `a`'s offset and bias (`DriveOwn::wheel_offset`, `wheel_bias`): sets the `+0xc`
+/// of the two sub-objects at `this + a * 0x10 + 0xe8` (to `x`) and `this + a * 0x10 + 0x128` (to `y`), each dirtied
+/// first. Returns the eax the original leaves (`a * 0x10`).
+pub fn set_wheel_offset_and_bias<S: EngineStore>(mem: &mut S, this: u32, a: u32, x: f32, y: f32) -> u32 {
     let base = this.wrapping_add(a.wrapping_mul(0x10));
     for (at, v) in [(base.wrapping_add(0xe8), x), (base.wrapping_add(0x128), y)] {
         set_dirty(mem.mem_mut(), at);
@@ -173,7 +176,7 @@ pub fn drive_gate<S: EngineStore>(mem: &S, this: u32) -> u32 {
         return 0;
     }
     let engine = mem.u32(objects.state + 0x580) + 0x690;
-    let engine_on = rpm_above_40(mem, engine) != 0;
+    let engine_on = engine_running(mem, engine) != 0;
     if !engine_on && (0.5 > mem.f32(worker + 0x8c) || mem.u32(worker + 0x7c) == 0) {
         return 0;
     }
@@ -204,7 +207,7 @@ pub fn copy_row<S: EngineStore>(mem: &mut S, table: u32, idx: u32, out: u32) -> 
 }
 
 /// `E39_RowsCopy` (0x502570, name ours): the 16 words at `this` are copied to `other` transposed (`mat4::transpose`).
-pub fn rows_copy<S: EngineStore>(mem: &mut S, this: u32, other: u32) {
+pub fn transpose_into<S: EngineStore>(mem: &mut S, this: u32, other: u32) {
     let m: [f32; 16] = mem.f32s(this);
     for (k, v) in mat4::transpose(m).into_iter().enumerate() {
         mem.set_f32(other + 4 * k as u32, v);
@@ -220,7 +223,7 @@ pub fn mat4_inverse_transposed<S: EngineStore>(mem: &mut S, obj: u32, out: u32) 
     }
 }
 
-/// `E39_MgrB` (0x502060, name ours): the field at `+0xc` of entry `idx` (20 bytes each) of the table at `this`.
-pub fn mgr_b_field_at(this: u32, idx: u32) -> u32 {
-    this.wrapping_add(idx.wrapping_mul(20)).wrapping_add(0xc)
+/// `E39_MgrB` (0x502060, name ours): the field at `+0xc` of entry `idx` (20 bytes each) of the table at `table`.
+pub fn table_entry_field_at(table: u32, idx: u32) -> u32 {
+    table.wrapping_add(idx.wrapping_mul(20)).wrapping_add(0xc)
 }
