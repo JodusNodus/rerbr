@@ -24,9 +24,9 @@ pub trait FlagDispatch {
 /// flag bit 2 makes the check on `e`, and a nonzero answer makes the second call. Returns what the original returns.
 pub fn dispatch_by_flags(calls: &mut impl FlagDispatch, args: [u32; 5]) -> u32 {
     if calls.flags().1 & 1 != 0 {
-        let eax = calls.first_call(args);
-        if eax != 0 {
-            return eax;
+        let answer = calls.first_call(args);
+        if answer != 0 {
+            return answer;
         }
     }
     let (flags, bits) = calls.flags();

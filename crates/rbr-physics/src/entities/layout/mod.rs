@@ -7,8 +7,8 @@ mod classes;
 mod collide_init;
 mod construct;
 mod detach;
-mod e90;
 mod entity_slots;
+mod fence;
 mod frames;
 mod functor;
 mod hinge_state;
@@ -26,7 +26,7 @@ pub use crate::entities::hinge_step::{
     hinge_advance_at, hinge_limit_residual, hinge_limit_sum, hinge_rotation, hinge_solve_at, limit_update_at, pivot_at,
     pose_at, slip_term_at,
 };
-pub use crate::entities::material_table::{sample_indexed, Indexed};
+pub use crate::entities::material_table::Indexed;
 pub use crate::entities::slots::{clear_car_bodies, componentwise_mul, init_walker_marks, ClearBodiesCalls};
 pub use classes::{
     TweakKind, BASE_VTABLE, ENTITY_DEF_VTABLE, GROUND_DEF_NAME, GROUND_DEF_SIZE, GROUND_DEF_VTABLE, GROUND_OPTIONS,
@@ -40,26 +40,27 @@ pub use construct::{
     release_entity_def, sibling, EntityArgs, HINGED_DEF_SIZE, HINGED_SIZE,
 };
 pub use detach::{
-    sim_da60, sim_f350, sim_fd00, step_big, DA60Calls, F350Calls, FD00Calls, StepBigCalls, FD00_SLOT_48, FD00_SLOT_54,
-    FD00_SLOT_90,
-};
-pub use e90::{
-    add_bend, add_fixed, add_particle, add_pin, add_spring, build_e90_group, build_e90_post, build_e90_span,
-    construct_e90_seg, d3dx_vec3_normalize, destroy_e90_seg, e90_seg_init, init_e90_bend_pool, init_e90_part_pool,
-    init_e90_pin_pool, init_e90_ptr_tab, init_e90_seg_pool, E90BuildCalls, E90PoolCalls, E90SegInitCalls,
-    E90SegPoolCalls, E90SegmentCalls,
+    apply_impulse_owned, detach_from_car, mounted_detach, pose_to_world, DetachCalls, ImpulseCalls, MountedDetachCalls,
+    PoseToWorldCalls,
 };
 pub use entity_slots::{
-    clear_bodies_detach_sp, dummy_span_frame, load_excluder, vf_cc, vf_d0, zero_hook, DummySpanFrame,
+    clear_bodies_detach_sp, dummy_span_frame, load_excluder, overlaps_box, penetration_response, zero_hook,
+    DummySpanFrame,
+};
+pub use fence::{
+    add_bend, add_fixed, add_particle, add_pin, add_spring, build_fence_group, build_fence_post, build_fence_span,
+    construct_segment, d3dx_vec3_normalize, destroy_segment, init_bend_pool, init_particle_pool, init_pin_pool,
+    init_segment, init_segment_pool, init_spring_table, ClothPoolCalls, FenceGroupCalls, FenceSegmentCalls,
+    SegmentInitCalls, SegmentPoolCalls,
 };
 pub use frames::{construct_entity_frame, construct_frame, ROOT_IDENTITY};
-pub use functor::{call_stored, Calls as FunctorCalls, TAIL40};
+pub use functor::{call_stored, Calls as FunctorCalls, SLOT16_FORWARD};
 pub use hinge_state::{
-    angle_tweak, limit_object, pivot_frame, position_at, rate_tweak, scaled_vector, set_hinge_link, slip_frame,
-    solve_frame, store_walk_vector, vec3, vf_e070,
+    angle_tweak, build_hinge_axes, limit_object, pivot_frame, position_at, rate_tweak, scaled_vector, set_hinge_link,
+    slip_frame, solve_frame, store_walk_vector, vec3,
 };
-pub use materials::{build_material_table, fill_ones, store_material_table};
+pub use materials::{build_material_table, fill_ones, sample_indexed, store_material_table};
 pub use walk_nodes::{
-    append_name_index, copy_grid, copy_mat16, empty_hook, node_of, old_frame_of, vtable_target, walker_address,
+    append_name_index, copy_block16, copy_grid, empty_hook, node_of, old_frame_of, vtable_target, walker_address,
     GRID_FIRST_BOXES, GRID_SECOND_BOXES, GRID_STRIDE,
 };

@@ -1,9 +1,9 @@
 //! `CGround::VfE8` (0x51c6f0) and `E33Mat34::CollideInit` (0x51bd30).
 
+use super::frames::ROOT_IDENTITY;
 use crate::collision::layout::EVENT_SIZE;
 use crate::entities::collide;
 use crate::entities::ground::ProbeScratch;
-pub(super) use crate::entities::layout::ROOT_IDENTITY as IDENTITY_GLOBAL;
 use crate::entities::store::EntityStore;
 use crate::mem::Mem;
 use crate::stage;
@@ -178,7 +178,7 @@ pub fn collide_init(host: &mut impl CollideHost, mem: &mut Mem, this: u32, body:
     if host.segment_gate(s - 0x10, collide_host(mem), gate_a, gate_b) == 0 {
         return 0;
     }
-    let identity = mem.u32(IDENTITY_GLOBAL);
+    let identity = mem.u32(ROOT_IDENTITY);
     let transform = host.transform(s - 8, body);
     let source = host.grid_source(s - 0xC, body);
     host.build_grid(s - 0x10, grid, source, transform, identity);
@@ -257,7 +257,7 @@ fn compose_contact(
 ) -> u32 {
     let s = f.s;
     let transform = host.transform(s - 8, body);
-    host.compose(s - 0x10, mem.u32(IDENTITY_GLOBAL), at, transform, contact);
+    host.compose(s - 0x10, mem.u32(ROOT_IDENTITY), at, transform, contact);
     let event = host.alloc_event(s - 8, EVENT_SIZE);
     if event == 0 {
         return 0;

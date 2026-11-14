@@ -1,4 +1,5 @@
-//! The detach of a hinged or mounted body: `SimF350`, `SimDA60`, `SimFD00`, `CMountedRigidBody::StepBig`.
+//! A hinged body's impulse on its car (`SimF350`) and the detach of a hinged or mounted body from its car (`SimDA60`,
+//! `SimFD00`, `CMountedRigidBody::StepBig`).
 
 use super::hinge_state::HINGE_OWNER;
 use crate::entities::layout::ROOT_IDENTITY;
@@ -6,10 +7,10 @@ use crate::entities::{hinge_detach, hinge_impulse};
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
 use crate::physics_core;
-use crate::physics_core::layout::{CELL_GRID_GLOBAL, SIGNAL_MANAGER};
+use crate::physics_core::layout::{CELL_GRID_GLOBAL, INIT_PASS_SLOT, POST_CONTACT_SLOT, SIGNAL_MANAGER};
 
-/// The original callees of `CHingedRigidBody::SimF350`, at their entry stack pointers.
-pub trait F350Calls {
+/// The original callees of the impulse (`CHingedRigidBody::SimF350`), at their entry stack pointers.
+pub trait ImpulseCalls {
     fn xform(&mut self, sp: u32, car: u32, pose: u32, out: u32);
     fn construct(&mut self, sp: u32, at: u32);
     fn scale(&mut self, sp: u32, vector: u32, scalar: f32, out: u32);
@@ -18,9 +19,11 @@ pub trait F350Calls {
     fn exclude(&mut self, sp: u32, body: u32, car: u32);
 }
 
-/// The owned-car path of `CHingedRigidBody::SimF350` (0x51f350). Host calls and local buffers use the original's
-/// aligned frame base, which is `(entry_esp - 4) & !0xf`.
-pub fn sim_f350(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32, calls: &mut impl F350Calls) {
+/// The owned-car path of `CHingedRigidBody::SimF350` (0x51f350): an impulse at a point changes the hinge rate by its
+/// torque about the hinge axis over the hinge inertia, and its clamped axial part goes to the car; a clamped impulse
+/// breaks the hinge (the link cleared, the body cleared from the car and excluded from it). Host calls and local buffers
+/// use the original's aligned frame base, which is `(entry_esp - 4) & !0xf`.
+pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32, calls: &mut impl ImpulseCalls) {
     let car = mem.u32(this + 0x3d0);
     let def = mem.u32(this + 0x34);
     let transformed = frame - 0x50;
@@ -44,8 +47,8 @@ pub fn sim_f350(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32, calls: &mu
     let projection = hinge_impulse::torque_about_axis(t, c);
     let denominator = mem.f32(def + 0x4bc);
     calls.construct(frame - 0x78, frame - 0x10);
-    let angle = mem.f32(this + 0x40c) + projection / denominator;
-    mem.set_f32(this + 0x40c, angle);
+    let rate = mem.f32(this + 0x40c) + projection / denominator;
+    mem.set_f32(this + 0x40c, rate);
 
     let dot_impulse = Vec4::load(mem, impulse);
     let dot = dot_impulse.z * t.z + dot_impulse.y * t.y;
@@ -89,17 +92,16 @@ const BODY_ANGULAR: u32 = 0x190;
 const BODY_LINEAR: u32 = 0x1c0;
 const BODY_START_ORIENTATION: u32 = 0x2a0;
 const BODY_START_POSITION: u32 = 0x330;
-/// The body's slots `SimFD00` calls: 21 (`E47_Vf54Helper`), 36 (`E43Vf90`) and 18 (`E43Vf48`).
-pub const FD00_SLOT_54: u32 = 0x54;
-pub const FD00_SLOT_90: u32 = 0x90;
-pub const FD00_SLOT_48: u32 = 0x48;
+/// The body's slot 36 (`E43Vf90`, the solid's body event, `rigid_body::emit::emit_body_event`), which `SimFD00` calls
+/// between slot 21 (`E47_Vf54Helper`, [`POST_CONTACT_SLOT`]) and slot 18 (`E43Vf48`, [`INIT_PASS_SLOT`]).
+const BODY_EVENT_SLOT: u32 = 0x90;
 
 fn copy16(mem: &mut Mem, to: u32, from: u32) {
     mem.copy(to, from, 16);
 }
 
-/// The original callees of `CHingedRigidBody::SimDA60`, at their entry stack pointers.
-pub trait DA60Calls {
+/// The original callees of the pose to the world (`CHingedRigidBody::SimDA60`), at their entry stack pointers.
+pub trait PoseToWorldCalls {
     /// `E33Mat34::ComposeA` (0x51b4c0) with the car as ecx.
     fn compose_a(&mut self, mem: &mut Mem, sp: u32, car: u32, args: [u32; 3]);
     /// `E15Shell::M83DD0` (0x483dd0) with the car's orientation as ecx.
@@ -108,7 +110,7 @@ pub trait DA60Calls {
 
 /// `CHingedRigidBody::SimDA60` (0x51da60): the body's position and orientation go to the world through its car, and the
 /// start pose takes them. `frame` is the original's esp after its prologue, `((entry - 4) & !0xf) - 0x40`.
-pub fn sim_da60(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl DA60Calls) {
+pub fn pose_to_world(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl PoseToWorldCalls) {
     let walker = mem.u32(ROOT_IDENTITY);
     let car = mem.u32(this + HINGE_OWNER);
     calls.compose_a(mem, frame - 0x10, car, [this + BODY_POSITION, walker, frame + 0x20]);
@@ -120,10 +122,10 @@ pub fn sim_da60(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl DA60Calls
     copy16(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
 }
 
-/// The original callees of `CHingedRigidBody::SimFD00`, at their entry stack pointers.
-pub trait FD00Calls {
+/// The original callees of the detach (`CHingedRigidBody::SimFD00`), at their entry stack pointers.
+pub trait DetachCalls {
     /// `CHingedRigidBody::SimDA60` (0x51da60).
-    fn sim_da60(&mut self, mem: &mut Mem, sp: u32, body: u32);
+    fn pose_to_world(&mut self, mem: &mut Mem, sp: u32, body: u32);
     /// `CCar::ToWorld` (0x4e68e0).
     fn to_world(&mut self, mem: &mut Mem, sp: u32, car: u32, local: u32, out: u32);
     /// The body's virtual slot at `slot` (no arguments).
@@ -139,7 +141,7 @@ pub trait FD00Calls {
     /// The cell move (0x4faeb0, cdecl).
     fn move_to_cell(&mut self, mem: &mut Mem, sp: u32, link: u32, cell: u32);
     /// `CPhysics::CState::RegWall` (0x5263d0).
-    fn reg_wall(&mut self, mem: &mut Mem, sp: u32, state: u32, body: u32);
+    fn file_in_state(&mut self, mem: &mut Mem, sp: u32, state: u32, body: u32);
     /// `CMultiSignal1<CSigDetachFromParent>::Emit` (0x51f580).
     fn emit_detach(&mut self, mem: &mut Mem, sp: u32, signal: u32, sig: u32);
     /// `CMultiSignal1<CSigMrRBodyEvent>::Emit` (0x51f7c0).
@@ -150,7 +152,7 @@ pub trait FD00Calls {
 /// and velocities go to the world, it leaves the car's list and is filed again in its cell and the physics state, and the
 /// detach signal and a body event (kind 3, before and after) are emitted. Returns 1 for a detach, else 0. `frame` is the
 /// original's esp after its prologue, `((entry - 4) & !0xf) - 0x90`; the event is at `frame + 0x40`.
-pub fn sim_fd00(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl FD00Calls) -> u32 {
+pub fn detach_from_car(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl DetachCalls) -> u32 {
     if mem.u32(this + BODY_PARENT) == 0 || mem.u32(this + BODY_LINK_LIST) == 0 {
         return 0;
     }
@@ -163,13 +165,14 @@ pub fn sim_fd00(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl FD00Calls
     mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
     mem.set_u32(frame + 0x18, event + 0x40);
     copy16(mem, event + 0x40, this + BODY_ORIENTATION);
-    calls.sim_da60(mem, frame - 4, this);
+    calls.pose_to_world(mem, frame - 4, this);
     detach_tail(mem, this, frame, event, frame + 0x10, calls);
     1
 }
 
-/// The calls `CMountedRigidBody::StepBig` makes besides the detach's (`FD00Calls`) and `M83DD0` (`DA60Calls`).
-pub trait StepBigCalls: FD00Calls + DA60Calls {
+/// The calls the mounted detach (`CMountedRigidBody::StepBig`) makes besides the detach's (`DetachCalls`) and `M83DD0`
+/// (`PoseToWorldCalls`).
+pub trait MountedDetachCalls: DetachCalls + PoseToWorldCalls {
     /// `CCar::WorldCompose` (0x4e6950) with the car as ecx: the point at `point` into the world, into `out`.
     fn world_compose(&mut self, mem: &mut Mem, sp: u32, car: u32, point: u32, out: u32);
     /// `E34Quat::Norm` (0x4e4c70) on the quaternion at `quat`: its unit quaternion into `out`.
@@ -181,7 +184,7 @@ pub trait StepBigCalls: FD00Calls + DA60Calls {
 /// (+0x330, +0x2a0) takes the new pose; then the detach (`detach_tail`). Returns 1 for a detach, else 0. `frame` is the
 /// original's esp after its prologue, `((entry - 4) & !0xf) - 0xb0`; the event is at `frame + 0x60`, the detach payload
 /// at `frame + 0x18`, the composed position at `frame + 0x40` and the turned orientation at `frame + 0x50`.
-pub fn step_big(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl StepBigCalls) -> u32 {
+pub fn mounted_detach(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl MountedDetachCalls) -> u32 {
     if mem.u32(this + BODY_PARENT) == 0 || mem.u32(this + BODY_LINK_LIST) == 0 {
         return 0;
     }
@@ -211,7 +214,7 @@ pub fn step_big(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl StepBigCa
 /// body leaves its car's list and is filed again in its cell and the physics state, then the detach signal (its payload
 /// at `sig`) and the body event at `event` (kind 3; its after pose filled here) are emitted. `frame` is the caller's esp
 /// after its prologue: the calls and the locals are at the same depths in both.
-fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls: &mut impl FD00Calls) {
+fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls: &mut impl DetachCalls) {
     for (at, local) in [(BODY_LINEAR, frame + 0x30), (BODY_ANGULAR, frame + 0x20)] {
         let car = mem.u32(this + HINGE_OWNER);
         calls.to_world(mem, frame - 0xc, car, this + at, local);
@@ -223,7 +226,7 @@ fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls
             mem.set_f32(this + at + 4 * k, lane);
         }
     }
-    calls.slot(mem, frame - 4, this, FD00_SLOT_54);
+    calls.slot(mem, frame - 4, this, POST_CONTACT_SLOT);
     calls.clear_accumulators(mem, frame - 4, this);
     let list = mem.u32(this + BODY_LINK_LIST);
     if list != 0 {
@@ -232,18 +235,18 @@ fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls
     }
     mem.set_u32(this + BODY_PARENT, 0);
     mem.set_u32(this + HINGE_OWNER, 0);
-    calls.slot(mem, frame - 4, this, FD00_SLOT_90);
+    calls.slot(mem, frame - 4, this, BODY_EVENT_SLOT);
     calls.init_walker_marks(mem, frame - 4, this);
     let (x, y) = (mem.u32(this + BODY_POSITION), mem.u32(this + BODY_POSITION + 4));
     let grid = mem.u32(CELL_GRID_GLOBAL);
     let cell = calls.lookup_twin(mem, frame - 0xc, grid, x, y);
     calls.move_to_cell(mem, frame - 0xc, this + BODY_CELL_LINK, cell);
     let state = mem.u32(physics_core::layout::physics(mem) + PHYSICS_STATE);
-    calls.reg_wall(mem, frame - 8, state, this);
+    calls.file_in_state(mem, frame - 8, state, this);
     let signals = mem.u32(SIGNAL_MANAGER);
     mem.set_u32(sig, mem.u32(this + BODY_OWNER_WORD));
     calls.emit_detach(mem, frame - 8, signals + DETACH_SIGNAL, sig);
-    calls.slot(mem, frame - 4, this, FD00_SLOT_48);
+    calls.slot(mem, frame - 4, this, INIT_PASS_SLOT);
     copy16(mem, event + 0x10, this + BODY_POSITION);
     mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
     mem.set_u32(frame + 0x1c, event + 0x20);

@@ -1,13 +1,58 @@
-//! `E90Group`'s build (0x601270-0x606070): the fence posts and spans, the segment, particle, spring, pin and bend
-//! pools.
+//! The fence cloth (`E90Group`'s build, 0x601270-0x606070): the fence posts and spans of a group, the segment, particle,
+//! spring, pin and bend pools.
 
-use crate::entities::fence_group;
 use crate::entities::fence_span;
 use crate::math::vec::Vec3;
 use crate::mem::Mem;
 
-/// Native E90 build calls. Each stack pointer is relative to the original Build entry, before the call instruction.
-pub trait E90BuildCalls {
+/// The fence types (`0x7d81a0`, 0x2c bytes each): the spring kind (+4), columns (+8), rows (+0xc), height (+0x10), layers
+/// (+0x24) and layer step (+0x28).
+const FENCE_TYPES: u32 = 0x7d81a0;
+const FENCE_TYPE_STRIDE: u32 = 0x2c;
+/// The fence handler (`g_fenceHandler`), the `this` of the post and span builds.
+const FENCE_HANDLER: u32 = 0x167ea90;
+/// A fence post (`NStickSystem::CDummyObject`, 0xb4 bytes).
+const DUMMY_SIZE: u32 = 0xb4;
+
+/// The cloth's records: a segment (`E90Seg`), a particle, a spring, a bend and a pool's pointer entry.
+const SEGMENT_SIZE: u32 = 0x78;
+const PARTICLE_SIZE: u32 = 0x28;
+const SPRING_SIZE: u32 = 0x20;
+const BEND_SIZE: u32 = 0xc;
+const POINTER_SIZE: u32 = 4;
+/// A span's inner particle with its pin (0x2c), a spring with its table pointer (0x24), and a post's particle with its
+/// bend (0x34).
+const PINNED_PARTICLE: u32 = PARTICLE_SIZE + POINTER_SIZE;
+const SPRING_ENTRY: u32 = SPRING_SIZE + POINTER_SIZE;
+const BENT_PARTICLE: u32 = PARTICLE_SIZE + BEND_SIZE;
+/// A post's records besides its bent particles (0x140): the segment, three particles, two springs, the fixed spring's
+/// and the pin's pointers.
+const POST_BASE: u32 = SEGMENT_SIZE + 3 * PARTICLE_SIZE + 2 * SPRING_ENTRY + 2 * POINTER_SIZE;
+const _: () = assert!(PINNED_PARTICLE == 0x2c && SPRING_ENTRY == 0x24 && BENT_PARTICLE == 0x34 && POST_BASE == 0x140);
+
+/// The size of a group's zeroed block for `n` posts (`n - 1` spans) of a type with `cols`, `rows` and `layers`. Each step
+/// is the original's wrapping 32-bit arithmetic.
+fn group_block_size(n: u32, cols: u32, rows: u32, layers: u32) -> u32 {
+    let spans = n.wrapping_sub(1);
+    let a = cols.wrapping_sub(2).wrapping_mul(PINNED_PARTICLE).wrapping_add(SPRING_ENTRY);
+    let b = cols
+        .wrapping_sub(4)
+        .wrapping_add(rows.wrapping_sub(1).wrapping_mul(cols.wrapping_sub(1)).wrapping_mul(4))
+        .wrapping_mul(SPRING_ENTRY);
+    let span_size = a.wrapping_mul(rows).wrapping_add(b).wrapping_mul(layers).wrapping_add(SEGMENT_SIZE);
+    let post_size = layers.wrapping_mul(rows).wrapping_mul(BENT_PARTICLE).wrapping_add(POST_BASE).wrapping_mul(n);
+    span_size.wrapping_mul(spans).wrapping_add(post_size)
+}
+
+/// The next segment of the pool with `count` taken from `data`: its address (from the count before the increment) and the
+/// new count.
+fn next_segment(count: u32, data: u32) -> (u32, u32) {
+    (data.wrapping_add(count.wrapping_mul(SEGMENT_SIZE)), count.wrapping_add(1))
+}
+
+/// The group build's calls into the original. Each stack pointer is relative to the build's entry, before the call
+/// instruction.
+pub trait FenceGroupCalls {
     fn allocate(&mut self, sp: u32, size: u32) -> u32;
     fn init(&mut self, sp: u32, pool: u32, count: u32, mem: u32) -> u32;
     fn build_post(&mut self, sp: u32, handler: u32, segment: u32, dummies: u32, mem: u32) -> u32;
@@ -16,16 +61,16 @@ pub trait E90BuildCalls {
 
 /// `E90Group::Build` (0x601470): allocate and clear its block, initialize the segment pool, then build and link posts and
 /// spans. The fence handler's post and span construction remains in the original exe.
-pub fn build_e90_group(mem: &mut Mem, group: u32, frame: u32, calls: &mut impl E90BuildCalls) {
+pub fn build_fence_group(mem: &mut Mem, group: u32, frame: u32, calls: &mut impl FenceGroupCalls) {
     if mem.u32(group + 0x3c) != 0 {
         return;
     }
     let n = mem.u32(group);
-    let type_at = 0x7d81a0u32.wrapping_add(mem.u32(group + 0x2c).wrapping_mul(0x2c));
+    let type_at = FENCE_TYPES.wrapping_add(mem.u32(group + 0x2c).wrapping_mul(FENCE_TYPE_STRIDE));
     let cols = mem.u32(type_at + 8);
     let rows = mem.u32(type_at + 0xc);
     let layers = mem.u32(type_at + 0x24);
-    let bytes = fence_group::build_size(n, cols, rows, layers);
+    let bytes = group_block_size(n, cols, rows, layers);
     let allocation = calls.allocate(frame - 0x28, bytes);
     mem.set_u32(group + 0x3c, allocation);
     for at in (0..bytes).step_by(4) {
@@ -37,19 +82,19 @@ pub fn build_e90_group(mem: &mut Mem, group: u32, frame: u32, calls: &mut impl E
 
     let pool = group + 0x40;
     let mem_end = calls.init(frame - 0x2c, pool, n.wrapping_add(n.wrapping_sub(1)), allocation);
-    let (mut prev, next_count) = fence_group::next_segment(mem.u32(pool), mem.u32(pool + 0xc));
+    let (mut prev, next_count) = next_segment(mem.u32(pool), mem.u32(pool + 0xc));
     mem.set_u32(pool, next_count);
     let dummies = mem.u32(group + 0xc);
-    let mut cursor = calls.build_post(frame - 0x30, 0x167ea90, prev, dummies, mem_end);
+    let mut cursor = calls.build_post(frame - 0x30, FENCE_HANDLER, prev, dummies, mem_end);
 
     for i in 0..n.wrapping_sub(1) {
-        let dummy = dummies.wrapping_add(i.wrapping_mul(0xb4));
-        let (span, count) = fence_group::next_segment(mem.u32(pool), mem.u32(pool + 0xc));
+        let dummy = dummies.wrapping_add(i.wrapping_mul(DUMMY_SIZE));
+        let (span, count) = next_segment(mem.u32(pool), mem.u32(pool + 0xc));
         mem.set_u32(pool, count);
-        let (post, count) = fence_group::next_segment(mem.u32(pool), mem.u32(pool + 0xc));
+        let (post, count) = next_segment(mem.u32(pool), mem.u32(pool + 0xc));
         mem.set_u32(pool, count);
-        cursor = calls.build_post(frame - 0x34, 0x167ea90, post, mem.u32(dummy + 0x64), cursor);
-        cursor = calls.build_span(frame - 0x40, 0x167ea90, span, prev, post, dummy, cursor);
+        cursor = calls.build_post(frame - 0x34, FENCE_HANDLER, post, mem.u32(dummy + 0x64), cursor);
+        cursor = calls.build_span(frame - 0x40, FENCE_HANDLER, span, prev, post, dummy, cursor);
         mem.set_u32(prev + 0x58, span);
         mem.set_u32(span + 0x54, prev);
         mem.set_u32(span + 0x58, post);
@@ -58,12 +103,12 @@ pub fn build_e90_group(mem: &mut Mem, group: u32, frame: u32, calls: &mut impl E
         mem.set_u32(dummy + 0x80, prev);
         prev = post;
     }
-    mem.set_u32(dummies + n.wrapping_sub(1).wrapping_mul(0xb4) + 0x80, prev);
+    mem.set_u32(dummies + n.wrapping_sub(1).wrapping_mul(DUMMY_SIZE) + 0x80, prev);
 }
 
 /// Calls made by `CFenceHandler::BuildPost` and `BuildSpan`. The stack offsets are relative to the helper's entry
 /// ESP; keeping them here lets the binding reproduce the original's call sites.
-pub trait E90SegmentCalls {
+pub trait FenceSegmentCalls {
     fn init(&mut self, sp: u32, segment: u32, dummy: u32);
     fn parts_init(&mut self, sp: u32, segment: u32, count: u32, mem: u32) -> u32;
     fn springs_init(&mut self, sp: u32, segment: u32, count: u32, mem: u32) -> u32;
@@ -79,26 +124,23 @@ pub trait E90SegmentCalls {
 /// The CRT calls `E90SegPool::Init` makes when it owns its array: `operator new`, the `eh vector` constructor and
 /// destructor iterators over the segments (0x78 bytes each, with `E90Seg::E90Seg` and `E90Seg::~E90Seg`), and
 /// `operator delete`. `sp` is the callee's entry esp.
-pub trait E90SegPoolCalls {
+pub trait SegmentPoolCalls {
     fn allocate(&mut self, sp: u32, size: u32) -> u32;
     fn construct_all(&mut self, sp: u32, segments: u32, count: u32);
     fn destroy_all(&mut self, sp: u32, segments: u32, count: u32);
     fn release(&mut self, sp: u32, block: u32);
 }
 
-/// A segment's size in the pool (`E90Seg`).
-const SEGMENT_SIZE: u32 = 0x78;
-
 /// `E90SegPool::Init` (0x601270): `count` segments from `block` when it is given (the cursor after them), else an owned
 /// `new[]` array (its count in the word before the segments, each constructed; the cursor is 0). An owned array from
 /// before is destroyed and deleted first. `frame` is the entry esp.
-pub fn init_e90_seg_pool(
+pub fn init_segment_pool(
     mem: &mut Mem,
     pool: u32,
     count: u32,
     block: u32,
     frame: u32,
-    calls: &mut impl E90SegPoolCalls,
+    calls: &mut impl SegmentPoolCalls,
 ) -> u32 {
     mem.set_u32(pool, 0);
     mem.set_u32(pool + 4, 0);
@@ -137,7 +179,7 @@ const SEG_POOLS: [u32; 3] = [0x40, 0x30, 0x20];
 
 /// `E90Seg::E90Seg` (0x600ff0, thiscall, no args): every pool's words and flag cleared, in the asm's order (the table's
 /// four words between the first and second pools). Returns `seg`.
-pub fn construct_e90_seg(mem: &mut Mem, seg: u32) -> u32 {
+pub fn construct_segment(mem: &mut Mem, seg: u32) -> u32 {
     for pool in [0, 0x20, 0x30, 0x40] {
         mem.set_u32(seg + pool, 0);
         mem.set_u32(seg + pool + 4, 0);
@@ -155,18 +197,18 @@ pub fn construct_e90_seg(mem: &mut Mem, seg: u32) -> u32 {
 /// `E90Seg::~E90Seg` (0x601030, thiscall, no args): the pools at +0x40, +0x30 and +0x20 emptied (their owned storage
 /// deleted), the table's words cleared (its storage is not deleted), then the particle pool emptied. `frame` is the
 /// entry esp; `release` is `operator delete`.
-pub fn destroy_e90_seg(mem: &mut Mem, seg: u32, frame: u32, calls: &mut impl E90SegPoolCalls) {
+pub fn destroy_segment(mem: &mut Mem, seg: u32, frame: u32, calls: &mut impl SegmentPoolCalls) {
     for pool in SEG_POOLS {
-        empty_seg_pool(mem, seg + pool, frame - 0x20, calls);
+        empty_segment_pool(mem, seg + pool, frame - 0x20, calls);
     }
     for at in [0x10, 0x14, 0x18, 0x1c] {
         mem.set_u32(seg + at, 0);
     }
-    empty_seg_pool(mem, seg, frame - 0x20, calls);
+    empty_segment_pool(mem, seg, frame - 0x20, calls);
 }
 
 /// One pool of `~E90Seg`: count and capacity cleared, owned storage deleted.
-fn empty_seg_pool(mem: &mut Mem, pool: u32, sp: u32, calls: &mut impl E90SegPoolCalls) {
+fn empty_segment_pool(mem: &mut Mem, pool: u32, sp: u32, calls: &mut impl SegmentPoolCalls) {
     mem.set_u32(pool, 0);
     mem.set_u32(pool + 4, 0);
     let storage = mem.u32(pool + 0xc);
@@ -178,7 +220,7 @@ fn empty_seg_pool(mem: &mut Mem, pool: u32, sp: u32, calls: &mut impl E90SegPool
 
 /// The original's `E90Pool::Free` prefix: reset the live count and capacity; storage is retained when it is
 /// externally owned. Group builds pass an external block, so the owned-storage delete path is not reached there.
-fn reset_e90_pool(mem: &mut Mem, pool: u32) {
+fn reset_pool(mem: &mut Mem, pool: u32) {
     mem.set_u32(pool, 0);
     mem.set_u32(pool + 4, 0);
     if mem.u8(pool + 8) == 0 && mem.u32(pool + 0xc) != 0 {
@@ -188,17 +230,17 @@ fn reset_e90_pool(mem: &mut Mem, pool: u32) {
 
 /// `CFenceHandler::BuildPost` (0x602fe0). The pool operations and particle/spring builders remain calls to their
 /// original helpers; this ports the order, arguments, frame positions and pointer setup around those calls.
-pub fn build_e90_post(
+pub fn build_fence_post(
     mem: &mut Mem,
     handler: u32,
     post: u32,
     dummy: u32,
     mut block: u32,
     frame: u32,
-    calls: &mut impl E90SegmentCalls,
+    calls: &mut impl FenceSegmentCalls,
 ) -> u32 {
     let group = mem.u32(dummy + 0xb0);
-    let type_at = 0x7d81a0u32.wrapping_add(mem.u32(group + 0x30).wrapping_mul(0x2c));
+    let type_at = FENCE_TYPES.wrapping_add(mem.u32(group + 0x30).wrapping_mul(FENCE_TYPE_STRIDE));
     let rows = mem.u32(type_at + 0xc);
     let height = mem.f32(type_at + 0x10);
     let layers = mem.u32(type_at + 0x24);
@@ -208,7 +250,7 @@ pub fn build_e90_post(
     block = calls.parts_init(frame - 0x40, post, layers.wrapping_mul(rows).wrapping_add(3), block);
     block = calls.springs_init(frame - 0x40, post + 0x10, 2, block);
 
-    reset_e90_pool(mem, post + 0x20);
+    reset_pool(mem, post + 0x20);
     mem.set_u32(post + 0x20, 0);
     mem.set_u32(post + 0x24, 1);
     if block != 0 {
@@ -223,7 +265,7 @@ pub fn build_e90_post(
     }
     block = calls.bends_init(frame - 0x40, post + 0x30, layers.wrapping_mul(rows), block);
 
-    reset_e90_pool(mem, post + 0x40);
+    reset_pool(mem, post + 0x40);
     mem.set_u32(post + 0x40, 0);
     mem.set_u32(post + 0x44, 1);
     if block != 0 {
@@ -257,9 +299,9 @@ pub fn build_e90_post(
     let spring = calls.add_spring(frame - 0x48, post, top, fixed_b, 0, 1.0);
     calls.add_fixed(frame - 0x3c, post, spring);
     for layer in 0..layers {
-        let parts = mem.u32(post + 0xc).wrapping_add(layer.wrapping_mul(rows).wrapping_mul(0x28));
+        let parts = mem.u32(post + 0xc).wrapping_add(layer.wrapping_mul(rows).wrapping_mul(PARTICLE_SIZE));
         for row in 0..rows {
-            calls.add_bend(frame - 0x40, post, spring, parts.wrapping_add(row.wrapping_mul(0x28)));
+            calls.add_bend(frame - 0x40, post, spring, parts.wrapping_add(row.wrapping_mul(PARTICLE_SIZE)));
         }
     }
     let _ = handler;
@@ -269,7 +311,7 @@ pub fn build_e90_post(
 /// `CFenceHandler::BuildSpan` (0x6029b0). Its helper calls stay at the original entry ESP offsets; the span's
 /// particle grid and spring creation order follow the native loop.
 #[allow(clippy::assign_op_pattern)] // preserve the original floating-point operand order
-pub fn build_e90_span(
+pub fn build_fence_span(
     mem: &mut Mem,
     _handler: u32,
     span: u32,
@@ -278,10 +320,10 @@ pub fn build_e90_span(
     dummy: u32,
     mut block: u32,
     frame: u32,
-    calls: &mut impl E90SegmentCalls,
+    calls: &mut impl FenceSegmentCalls,
 ) -> u32 {
     let group = mem.u32(dummy + 0xb0);
-    let type_at = 0x7d81a0u32.wrapping_add(mem.u32(group + 0x2c).wrapping_mul(0x2c));
+    let type_at = FENCE_TYPES.wrapping_add(mem.u32(group + 0x2c).wrapping_mul(FENCE_TYPE_STRIDE));
     let cols = mem.u32(type_at + 8);
     let rows = mem.u32(type_at + 0xc);
     let layers = mem.u32(type_at + 0x24);
@@ -298,8 +340,8 @@ pub fn build_e90_span(
         .wrapping_add(cols))
     .wrapping_mul(layers);
     block = calls.springs_init(frame - 0xa8, span + 0x10, spring_count, block);
-    reset_e90_pool(mem, span + 0x20);
-    reset_e90_pool(mem, span + 0x30);
+    reset_pool(mem, span + 0x20);
+    reset_pool(mem, span + 0x30);
     block = calls.pins_init(frame - 0xa8, span + 0x40, inner.wrapping_mul(layers).wrapping_mul(rows), block);
 
     let step = 1.0f32 / (cols as f32 - 1.0f32);
@@ -325,42 +367,43 @@ pub fn build_e90_span(
             }
             y = dy + y;
         }
-        let base = mem.u32(span + 0xc).wrapping_add(layer.wrapping_mul(inner).wrapping_mul(rows).wrapping_mul(0x28));
+        let base =
+            mem.u32(span + 0xc).wrapping_add(layer.wrapping_mul(inner).wrapping_mul(rows).wrapping_mul(PARTICLE_SIZE));
         let mut q = base;
         for _column in 1..inner {
             if rows != 1 && rows.wrapping_sub(1) < 0x8000_0000 {
                 for _row in 0..rows.wrapping_sub(1) {
-                    calls.add_spring(frame - 0xb0, span, q, q + 0x28, stiffness, 1.0);
-                    calls.add_spring(frame - 0xb0, span, q, q + rows * 0x28, 0, 1.0);
-                    calls.add_spring(frame - 0xb0, span, q, q + (rows + 1) * 0x28, 0, 1.0);
-                    calls.add_spring(frame - 0xb0, span, q + 0x28, q + rows * 0x28, 0, 1.0);
-                    q = q.wrapping_add(0x28);
+                    calls.add_spring(frame - 0xb0, span, q, q + PARTICLE_SIZE, stiffness, 1.0);
+                    calls.add_spring(frame - 0xb0, span, q, q + rows * PARTICLE_SIZE, 0, 1.0);
+                    calls.add_spring(frame - 0xb0, span, q, q + (rows + 1) * PARTICLE_SIZE, 0, 1.0);
+                    calls.add_spring(frame - 0xb0, span, q + PARTICLE_SIZE, q + rows * PARTICLE_SIZE, 0, 1.0);
+                    q = q.wrapping_add(PARTICLE_SIZE);
                 }
             }
-            q = q.wrapping_add(0x28);
+            q = q.wrapping_add(PARTICLE_SIZE);
         }
-        q = base.wrapping_add(rows.wrapping_sub(1).wrapping_mul(0x28));
+        q = base.wrapping_add(rows.wrapping_sub(1).wrapping_mul(PARTICLE_SIZE));
         for _column in 1..inner {
-            calls.add_spring(frame - 0xb0, span, q, q + rows * 0x28, 0, 1.0);
-            q = q.wrapping_add(rows.wrapping_mul(0x28));
+            calls.add_spring(frame - 0xb0, span, q, q + rows * PARTICLE_SIZE, 0, 1.0);
+            q = q.wrapping_add(rows.wrapping_mul(PARTICLE_SIZE));
         }
-        q = base.wrapping_add(inner.wrapping_sub(1).wrapping_mul(rows).wrapping_mul(0x28));
+        q = base.wrapping_add(inner.wrapping_sub(1).wrapping_mul(rows).wrapping_mul(PARTICLE_SIZE));
         for _row in 0..rows.wrapping_sub(1) {
-            calls.add_spring(frame - 0xb0, span, q, q + 0x28, 0, 1.0);
-            q = q.wrapping_add(0x28);
+            calls.add_spring(frame - 0xb0, span, q, q + PARTICLE_SIZE, 0, 1.0);
+            q = q.wrapping_add(PARTICLE_SIZE);
         }
-        let prev_parts = mem.u32(prev + 0xc).wrapping_add(layer.wrapping_mul(rows).wrapping_mul(0x28));
-        let next_parts = mem.u32(next + 0xc).wrapping_add(layer.wrapping_mul(rows).wrapping_mul(0x28));
-        let last_row = last.wrapping_sub(rows.wrapping_sub(1).wrapping_mul(0x28));
+        let prev_parts = mem.u32(prev + 0xc).wrapping_add(layer.wrapping_mul(rows).wrapping_mul(PARTICLE_SIZE));
+        let next_parts = mem.u32(next + 0xc).wrapping_add(layer.wrapping_mul(rows).wrapping_mul(PARTICLE_SIZE));
+        let last_row = last.wrapping_sub(rows.wrapping_sub(1).wrapping_mul(PARTICLE_SIZE));
         for row in 0..rows.wrapping_sub(1) {
-            let p0 = prev_parts.wrapping_add(row.wrapping_mul(0x28));
-            let p1 = p0 + 0x28;
-            let q0 = base.wrapping_add(row.wrapping_mul(0x28));
-            let q1 = q0 + 0x28;
-            let n0 = next_parts.wrapping_add(row.wrapping_mul(0x28));
-            let n1 = n0 + 0x28;
-            let l0 = last_row.wrapping_add(row.wrapping_mul(0x28));
-            let l1 = l0 + 0x28;
+            let p0 = prev_parts.wrapping_add(row.wrapping_mul(PARTICLE_SIZE));
+            let p1 = p0 + PARTICLE_SIZE;
+            let q0 = base.wrapping_add(row.wrapping_mul(PARTICLE_SIZE));
+            let q1 = q0 + PARTICLE_SIZE;
+            let n0 = next_parts.wrapping_add(row.wrapping_mul(PARTICLE_SIZE));
+            let n1 = n0 + PARTICLE_SIZE;
+            let l0 = last_row.wrapping_add(row.wrapping_mul(PARTICLE_SIZE));
+            let l1 = l0 + PARTICLE_SIZE;
             calls.add_spring(frame - 0xb0, span, p0, q0, 0, 1.0);
             calls.add_spring(frame - 0xb0, span, p0, q1, 0, 1.0);
             calls.add_spring(frame - 0xb0, span, p1, q0, 0, 1.0);
@@ -368,10 +411,10 @@ pub fn build_e90_span(
             calls.add_spring(frame - 0xb0, span, n0, l1, 0, 1.0);
             calls.add_spring(frame - 0xb0, span, n1, l0, 0, 1.0);
         }
-        let last_prev = prev_parts.wrapping_add(rows.wrapping_sub(1).wrapping_mul(0x28));
-        let last_base = base.wrapping_add(rows.wrapping_sub(1).wrapping_mul(0x28));
-        let last_next = next_parts.wrapping_add(rows.wrapping_sub(1).wrapping_mul(0x28));
-        let last_edge = last_row.wrapping_add(rows.wrapping_sub(1).wrapping_mul(0x28));
+        let last_prev = prev_parts.wrapping_add(rows.wrapping_sub(1).wrapping_mul(PARTICLE_SIZE));
+        let last_base = base.wrapping_add(rows.wrapping_sub(1).wrapping_mul(PARTICLE_SIZE));
+        let last_next = next_parts.wrapping_add(rows.wrapping_sub(1).wrapping_mul(PARTICLE_SIZE));
+        let last_edge = last_row.wrapping_add(rows.wrapping_sub(1).wrapping_mul(PARTICLE_SIZE));
         calls.add_spring(frame - 0xb0, span, last_prev, last_base, 0, 1.0);
         calls.add_spring(frame - 0xb0, span, last_next, last_edge, 0, 1.0);
     }
@@ -383,13 +426,13 @@ pub fn build_e90_span(
 }
 
 /// The D3DX normalise `E90Seg::Init` calls (`_D3DXVec3Normalize@8`, 0x627235, stdcall): `out = normalize(v)`.
-pub trait E90SegInitCalls {
+pub trait SegmentInitCalls {
     fn normalize(&mut self, sp: u32, out: u32, v: u32);
 }
 
 /// The up vector `E90Seg::Init` uses (0x16fc524), and the bit 0 of 0x16fc530 that says it is stored.
-const E90_UP: u32 = 0x16fc524;
-const E90_UP_GUARD: u32 = 0x16fc530;
+const SEGMENT_UP: u32 = 0x16fc524;
+const SEGMENT_UP_GUARD: u32 = 0x16fc530;
 
 /// The position of the dummy's neighbour linked at `link` (+0x64 next, +0x68 prev), or of the dummy when it has none.
 fn neighbour_position(mem: &Mem, dummy: u32, link: u32) -> u32 {
@@ -402,16 +445,16 @@ fn neighbour_position(mem: &Mem, dummy: u32, link: u32) -> u32 {
 /// `E90Seg::Init` (0x605b60, thiscall on the segment with `dummy`, ret 4): the owner dummy and cleared links, then the
 /// plane through the dummy along the fence line. The direction and side are normalised in the frame, through the D3DX
 /// calls at the original's stack positions (their vectors are in memory, as the original leaves them).
-pub fn e90_seg_init(mem: &mut Mem, seg: u32, dummy: u32, frame: u32, calls: &mut impl E90SegInitCalls) {
+pub fn init_segment(mem: &mut Mem, seg: u32, dummy: u32, frame: u32, calls: &mut impl SegmentInitCalls) {
     mem.set_u32(seg + 0x50, dummy);
     mem.set_u32(seg + 0x54, 0);
     mem.set_u32(seg + 0x58, 0);
     mem.set_u32(seg + 0x5c, 0);
-    if mem.u32(E90_UP_GUARD) & 1 == 0 {
-        mem.set_u32(E90_UP_GUARD, mem.u32(E90_UP_GUARD) | 1);
-        (Vec3 { x: 0.0, y: 1.0, z: 0.0 }).store(mem, E90_UP);
+    if mem.u32(SEGMENT_UP_GUARD) & 1 == 0 {
+        mem.set_u32(SEGMENT_UP_GUARD, mem.u32(SEGMENT_UP_GUARD) | 1);
+        (Vec3 { x: 0.0, y: 1.0, z: 0.0 }).store(mem, SEGMENT_UP);
     }
-    let up = Vec3::load(mem, E90_UP);
+    let up = Vec3::load(mem, SEGMENT_UP);
     let a = neighbour_position(mem, dummy, 0x68);
     let b = neighbour_position(mem, dummy, 0x64);
     let dir_at = frame - 0x1c;
@@ -430,9 +473,9 @@ pub fn e90_seg_init(mem: &mut Mem, seg: u32, dummy: u32, frame: u32, calls: &mut
     }
 }
 
-/// The allocator and constructor calls of the E90 pool inits, at their stack positions: `operator new[]` (0x70bf84),
+/// The allocator and constructor calls of the cloth pool inits, at their stack positions: `operator new[]` (0x70bf84),
 /// `operator delete[]` (0x70c27e), and the element constructor (0x602220) that `NLB_ApplyAll` calls on each element.
-pub trait E90PoolCalls {
+pub trait ClothPoolCalls {
     fn allocate(&mut self, sp: u32, size: u32) -> u32;
     fn release(&mut self, sp: u32, block: u32);
     fn construct(&mut self, sp: u32, element: u32);
@@ -440,7 +483,7 @@ pub trait E90PoolCalls {
 
 /// `E90Pool<T>::Free`, the prefix of each pool init: the count and capacity reset, and owned storage goes to
 /// `delete[]`.
-fn free_pool(mem: &mut Mem, pool: u32, sp: u32, calls: &mut impl E90PoolCalls) {
+fn free_pool(mem: &mut Mem, pool: u32, sp: u32, calls: &mut impl ClothPoolCalls) {
     mem.set_u32(pool, 0);
     mem.set_u32(pool + 4, 0);
     if mem.u8(pool + 8) == 0 && mem.u32(pool + 0xc) != 0 {
@@ -458,7 +501,7 @@ fn init_pod_pool(
     block: u32,
     size: u32,
     sps: (u32, u32),
-    calls: &mut impl E90PoolCalls,
+    calls: &mut impl ClothPoolCalls,
 ) -> u32 {
     free_pool(mem, pool, sps.0, calls);
     if n == 0 {
@@ -477,40 +520,33 @@ fn init_pod_pool(
     block
 }
 
-/// `E90BendPool::Init` (0x6028b0): see [`init_pod_pool`], 12-byte bends.
-pub fn init_e90_bend_pool(
+/// `E90BendPool::Init` (0x6028b0): the plain-element pool init (`init_pod_pool`) with 12-byte bends.
+pub fn init_bend_pool(
     mem: &mut Mem,
     pool: u32,
     n: u32,
     block: u32,
     frame: u32,
-    calls: &mut impl E90PoolCalls,
+    calls: &mut impl ClothPoolCalls,
 ) -> u32 {
-    init_pod_pool(mem, pool, n, block, 0xc, (frame - 0xc, frame - 0x10), calls)
+    init_pod_pool(mem, pool, n, block, BEND_SIZE, (frame - 0xc, frame - 0x10), calls)
 }
 
-/// `E90PinPool::Init` (0x602930): see [`init_pod_pool`], 4-byte particle pointers.
-pub fn init_e90_pin_pool(
-    mem: &mut Mem,
-    pool: u32,
-    n: u32,
-    block: u32,
-    frame: u32,
-    calls: &mut impl E90PoolCalls,
-) -> u32 {
-    init_pod_pool(mem, pool, n, block, 4, (frame - 0xc, frame - 0x10), calls)
+/// `E90PinPool::Init` (0x602930): the plain-element pool init (`init_pod_pool`) with 4-byte particle pointers.
+pub fn init_pin_pool(mem: &mut Mem, pool: u32, n: u32, block: u32, frame: u32, calls: &mut impl ClothPoolCalls) -> u32 {
+    init_pod_pool(mem, pool, n, block, POINTER_SIZE, (frame - 0xc, frame - 0x10), calls)
 }
 
 /// `E90PartPool::Init` (0x6026a0): `n` particles of 0x28 bytes, from `block` (the cursor after them) or from `new[]`,
 /// each element constructed. The original runs the constructor loop in `NLB_ApplyAll`; the loop is taken here, and the
 /// constructor is called at the stack position `NLB_ApplyAll` gives it.
-pub fn init_e90_part_pool(
+pub fn init_particle_pool(
     mem: &mut Mem,
     pool: u32,
     n: u32,
     block: u32,
     frame: u32,
-    calls: &mut impl E90PoolCalls,
+    calls: &mut impl ClothPoolCalls,
 ) -> u32 {
     free_pool(mem, pool, frame - 0x24, calls);
     if n == 0 {
@@ -521,13 +557,13 @@ pub fn init_e90_part_pool(
     if block != 0 {
         mem.set_u32(pool + 0xc, block);
         mem.set_u8(pool + 8, 1);
-        return block.wrapping_add(n.wrapping_mul(0x28));
+        return block.wrapping_add(n.wrapping_mul(PARTICLE_SIZE));
     }
     mem.set_u8(pool + 8, 0);
-    let data = calls.allocate(frame - 0x24, n.wrapping_mul(0x28));
+    let data = calls.allocate(frame - 0x24, n.wrapping_mul(PARTICLE_SIZE));
     if data != 0 {
         for i in 0..n {
-            calls.construct(frame - 0x44, data.wrapping_add(i.wrapping_mul(0x28)));
+            calls.construct(frame - 0x44, data.wrapping_add(i.wrapping_mul(PARTICLE_SIZE)));
         }
     }
     mem.set_u32(pool + 0xc, data);
@@ -536,7 +572,14 @@ pub fn init_e90_part_pool(
 
 /// `E90PtrTab::Init` (0x6027a0): `n` blocks of 0x20 bytes from `block`, and the `n` pointers to them after the blocks
 /// (the cursor after both), or both from `new[]` (the cursor is 0). The pointer table takes no `Free` first.
-pub fn init_e90_ptr_tab(mem: &mut Mem, tab: u32, n: u32, block: u32, frame: u32, calls: &mut impl E90PoolCalls) -> u32 {
+pub fn init_spring_table(
+    mem: &mut Mem,
+    tab: u32,
+    n: u32,
+    block: u32,
+    frame: u32,
+    calls: &mut impl ClothPoolCalls,
+) -> u32 {
     mem.set_u32(tab, 0);
     mem.set_u32(tab + 4, 0);
     mem.set_u32(tab + 8, 0);
@@ -546,17 +589,17 @@ pub fn init_e90_ptr_tab(mem: &mut Mem, tab: u32, n: u32, block: u32, frame: u32,
     }
     mem.set_u32(tab + 4, n);
     let (blocks, ptrs, cursor) = if block != 0 {
-        let ptrs = block.wrapping_add(n.wrapping_mul(0x20));
+        let ptrs = block.wrapping_add(n.wrapping_mul(SPRING_SIZE));
         (block, ptrs, ptrs.wrapping_add(n.wrapping_mul(4)))
     } else {
-        let blocks = calls.allocate(frame - 0x18, n.wrapping_mul(0x20));
+        let blocks = calls.allocate(frame - 0x18, n.wrapping_mul(SPRING_SIZE));
         mem.set_u32(tab + 8, blocks);
         (blocks, calls.allocate(frame - 0x1c, n.wrapping_mul(4)), 0)
     };
     mem.set_u32(tab + 8, blocks);
     mem.set_u32(tab + 0xc, ptrs);
     for i in 0..n {
-        mem.set_u32(ptrs.wrapping_add(i.wrapping_mul(4)), blocks.wrapping_add(i.wrapping_mul(0x20)));
+        mem.set_u32(ptrs.wrapping_add(i.wrapping_mul(4)), blocks.wrapping_add(i.wrapping_mul(SPRING_SIZE)));
     }
     cursor
 }
@@ -568,12 +611,12 @@ pub fn d3dx_vec3_normalize(mem: &mut Mem, out: u32, v: u32) -> u32 {
     out
 }
 
-// The E90 segment's pools as (count, data, element size): `Next()` raises the count and returns the slot of the old
+// The segment's pools as (count, data, element size): `Next()` raises the count and returns the slot of the old
 // count. Particles are 0x28 bytes, bends 0xc; the spring, fixed and pin pools hold pointers.
-const SEG_PARTS: (u32, u32, u32) = (0x00, 0x0c, 0x28);
+const SEG_PARTS: (u32, u32, u32) = (0x00, 0x0c, PARTICLE_SIZE);
 const SEG_SPRINGS: (u32, u32, u32) = (0x10, 0x1c, 4);
 const SEG_FIXED: (u32, u32, u32) = (0x20, 0x2c, 4);
-const SEG_BENDS: (u32, u32, u32) = (0x30, 0x3c, 0xc);
+const SEG_BENDS: (u32, u32, u32) = (0x30, 0x3c, BEND_SIZE);
 const SEG_PINS: (u32, u32, u32) = (0x40, 0x4c, 4);
 
 /// The next slot of the pool `(count, data, size)` at `seg`: the count rises by one and the slot is the old count's.

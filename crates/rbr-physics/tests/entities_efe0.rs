@@ -3,7 +3,7 @@
 //!
 //! Every call the port makes is answered from the record: it must be the next recorded call, with the same arguments. Before
 //! the call, the body's bytes must be what the original had (the port's stores), and the record's post bytes then replace
-//! them, so the port continues from the original's values. `VfE070` is the exception: the port makes it (`layout::vf_e070`)
+//! them, so the port continues from the original's values. `VfE070` is the exception: the port makes it (`layout::build_hinge_axes`)
 //! on the record's windows, and the windows it leaves must be the record's post bytes. Checked: the calls in order, the
 //! arguments, the body before each call, and every window at the end.
 
@@ -94,7 +94,7 @@ impl RefreshCalls for Answers<'_> {
             self.mem.map(*at, pre);
         }
         let [a, b, c, d, e, f] = args;
-        layout::vf_e070(
+        layout::build_hinge_axes(
             &mut self.mem,
             &AxesHandles { origin: a, direction: b, reference: c, inverse_origin: d, axes: e, inverse_axes: f },
         );

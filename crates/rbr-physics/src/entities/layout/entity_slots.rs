@@ -9,13 +9,15 @@ pub fn zero_hook() -> u32 {
     0
 }
 
-/// `CEntity::VfCC` (0x519e90, slot 51, ret 8): the entity answers 1 whatever its two arguments are.
-pub fn vf_cc() -> u32 {
+/// The entity's box overlap test (slot 51 at +0xcc, named by use: the detectors' overlap test, see
+/// `physics_core::layout::detector_hosts`): `CEntity::VfCC` (0x519e90, ret 8) answers 1 whatever its two arguments are.
+pub fn overlaps_box() -> u32 {
     1
 }
 
-/// `CEntity::VfD0` (0x519ea0, slot 52, ret 12): the entity answers 0 whatever its three arguments are.
-pub fn vf_d0() -> u32 {
+/// The entity's penetration response (slot 52 at +0xd0, named by use: the detectors' response call):
+/// `CEntity::VfD0` (0x519ea0, ret 12) answers 0 whatever its three arguments are.
+pub fn penetration_response() -> u32 {
     0
 }
 

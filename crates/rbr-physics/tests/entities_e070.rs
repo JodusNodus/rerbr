@@ -36,7 +36,7 @@ fn vf_e070_matches_original_calls() {
         let [_this, a, b, c, d, e, f] = call.args[..] else {
             panic!("VfE070 inner call {index}: {} arguments", call.args.len());
         };
-        layout::vf_e070(
+        layout::build_hinge_axes(
             &mut mem,
             &AxesHandles { origin: a, direction: b, reference: c, inverse_origin: d, axes: e, inverse_axes: f },
         );

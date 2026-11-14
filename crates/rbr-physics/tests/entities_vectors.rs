@@ -166,7 +166,7 @@ fn old_frame_and_vf120_target() {
 /// and the callback `E43_Tail40` calls the argument's slot 16 with the argument as `this`.
 #[test]
 fn functor_calls_callback_or_tail_target() {
-    use rbr_physics::entities::layout::{call_stored, FunctorCalls as Calls, TAIL40};
+    use rbr_physics::entities::layout::{call_stored, FunctorCalls as Calls, SLOT16_FORWARD};
 
     struct Host {
         words: Vec<(u32, u32)>,
@@ -187,7 +187,7 @@ fn functor_calls_callback_or_tail_target() {
     assert_eq!(call_stored(&mut host, functor, arg), 7);
     assert_eq!(host.calls, vec![(other, functor, arg)]);
 
-    host.words[0].1 = TAIL40;
+    host.words[0].1 = SLOT16_FORWARD;
     host.calls.clear();
     assert_eq!(call_stored(&mut host, functor, arg), 7);
     assert_eq!(host.calls, vec![(0x5000, arg, arg)]);
@@ -281,7 +281,7 @@ impl Walk for WalkAnswers<'_> {
     }
 
     fn copy16(&mut self, to: u32, from: u32) {
-        layout::copy_mat16(self.mem, to, from);
+        layout::copy_block16(self.mem, to, from);
         if let Some(expected) = self.copy_expected {
             assert_eq!(self.mem.read(to, 16).as_slice(), expected, "copy of {from:#x}");
         }
@@ -1303,8 +1303,8 @@ fn sim_f950_runs_the_calls_in_order_and_writes_the_payload() {
 /// `CEntity::VfCC` (0x519e90) answers 1 and `VfD0` (0x519ea0) answers 0 whatever the arguments: unit checks.
 #[test]
 fn entity_flag_slots_unit() {
-    assert_eq!(layout::vf_cc(), 1);
-    assert_eq!(layout::vf_d0(), 0);
+    assert_eq!(layout::overlaps_box(), 1);
+    assert_eq!(layout::penetration_response(), 0);
 }
 
 struct E90BuildRecorded<'a> {
@@ -1329,7 +1329,7 @@ impl E90BuildRecorded<'_> {
     }
 }
 
-impl layout::E90BuildCalls for E90BuildRecorded<'_> {
+impl layout::FenceGroupCalls for E90BuildRecorded<'_> {
     fn allocate(&mut self, sp: u32, size: u32) -> u32 {
         assert_eq!(sp, self.frame - 0x28);
         self.take(0x70bec2, &[size])
@@ -1364,7 +1364,7 @@ fn e90_group_build_matches_original_calls() {
         map_after_zero(&call.after, &mut mem);
         let mut host =
             E90BuildRecorded { inner: &call.inner, mem: mem.clone(), next: 0, frame: 0x300000, build_posts: 0 };
-        layout::build_e90_group(&mut mem, call.args[0], 0x300000, &mut host);
+        layout::build_fence_group(&mut mem, call.args[0], 0x300000, &mut host);
         assert_eq!(host.next, call.inner.len(), "E90 Build call {}: external calls", call.index);
         check_windows(call, &mem, "E90Group::Build");
     }
@@ -1398,7 +1398,7 @@ impl E90SegmentRecorded<'_> {
     }
 }
 
-impl layout::E90SegmentCalls for E90SegmentRecorded<'_> {
+impl layout::FenceSegmentCalls for E90SegmentRecorded<'_> {
     fn init(&mut self, sp: u32, segment: u32, dummy: u32) {
         let depth = if sp == self.frame - 0xa4 { 0xa4 } else { 0x3c };
         self.take(sp, depth, 0x605b60, &[segment, dummy]);
@@ -1442,7 +1442,7 @@ fn e90_segment_helpers_match_direct_records() {
             map_after_zero(&call.after, &mut mem);
             let mut host = E90SegPoolRecorded { inner: &call.inner, mem: mem.clone(), next: 0, index: call.index };
             let eax =
-                layout::init_e90_seg_pool(&mut mem, call.args[0], call.args[1], call.args[2], 0x300000, &mut host);
+                layout::init_segment_pool(&mut mem, call.args[0], call.args[1], call.args[2], 0x300000, &mut host);
             assert_eq!(eax, call.eax, "E90SegPool::Init call {} eax", call.index);
             assert_eq!(host.next, call.inner.len(), "E90SegPool::Init call {} CRT calls", call.index);
             check_windows(call, &mem, "E90SegPool::Init");
@@ -1454,7 +1454,7 @@ fn e90_segment_helpers_match_direct_records() {
         for call in &calls {
             let mut mem = map_windows(call);
             assert_eq!(
-                layout::construct_e90_seg(&mut mem, call.args[0]),
+                layout::construct_segment(&mut mem, call.args[0]),
                 call.eax,
                 "E90Seg::E90Seg call {}",
                 call.index
@@ -1467,7 +1467,7 @@ fn e90_segment_helpers_match_direct_records() {
         for call in &calls {
             let mut mem = shared_windows(call);
             let mut host = E90SegPoolRecorded { inner: &call.inner, mem: mem.clone(), next: 0, index: call.index };
-            layout::destroy_e90_seg(&mut mem, call.args[0], 0x300000, &mut host);
+            layout::destroy_segment(&mut mem, call.args[0], 0x300000, &mut host);
             assert_eq!(host.next, call.inner.len(), "E90Seg::~E90Seg call {} deletes", call.index);
             check_windows(call, &mem, "E90Seg::~E90Seg");
         }
@@ -1482,7 +1482,7 @@ fn e90_segment_helpers_match_direct_records() {
             let frame = call.inner.iter().find(|i| i.addr == 0x605f30).unwrap().args[1] + 0x18;
             let mut host = E90SegmentRecorded { inner: &call.inner, mem: mem.clone(), next: 0, frame };
             let eax = if is_span {
-                layout::build_e90_span(
+                layout::build_fence_span(
                     &mut mem,
                     call.args[0],
                     call.args[1],
@@ -1494,7 +1494,7 @@ fn e90_segment_helpers_match_direct_records() {
                     &mut host,
                 )
             } else {
-                layout::build_e90_post(
+                layout::build_fence_post(
                     &mut mem,
                     call.args[0],
                     call.args[1],
@@ -1535,14 +1535,14 @@ impl E90SegPoolRecorded<'_> {
     }
 }
 
-impl layout::E90SegPoolCalls for E90SegPoolRecorded<'_> {
+impl layout::SegmentPoolCalls for E90SegPoolRecorded<'_> {
     fn allocate(&mut self, _sp: u32, size: u32) -> u32 {
         self.take(0x70bec2, &[size])
     }
 
     fn construct_all(&mut self, _sp: u32, segments: u32, count: u32) {
         for i in 0..count {
-            layout::construct_e90_seg(&mut self.mem, segments + i * 0x78);
+            layout::construct_segment(&mut self.mem, segments + i * 0x78);
         }
         self.take(0x70c408, &[segments, 0x78, count, 0x600ff0, 0x601030]);
     }
@@ -1550,7 +1550,7 @@ impl layout::E90SegPoolCalls for E90SegPoolRecorded<'_> {
     fn destroy_all(&mut self, _sp: u32, segments: u32, count: u32) {
         let mut mem = self.mem.clone();
         for i in (0..count).rev() {
-            layout::destroy_e90_seg(&mut mem, segments + i * 0x78, 0x300000, self);
+            layout::destroy_segment(&mut mem, segments + i * 0x78, 0x300000, self);
         }
         self.take(0x70c4da, &[segments, 0x78, count, 0x601030]);
     }
@@ -1753,7 +1753,7 @@ impl F350Recorded<'_> {
     }
 }
 
-impl layout::F350Calls for F350Recorded<'_> {
+impl layout::ImpulseCalls for F350Recorded<'_> {
     fn xform(&mut self, sp: u32, car: u32, pose: u32, out: u32) {
         assert_eq!(sp, self.frame - 0x7c);
         self.take(0x4e68e0, &[car, pose, out], &[0x51b560]);
@@ -1802,7 +1802,7 @@ fn sim_f350_matches_owner_car_records() {
         let frame = xform.args[2].wrapping_add(0x50);
         let args: [u32; 8] = call.args[1..9].try_into().expect("SimF350 has eight stack arguments");
         let mut host = F350Recorded { inner: &call.inner, mem: mem.clone(), next: 0, frame, car_target };
-        layout::sim_f350(&mut mem, this, args, frame, &mut host);
+        layout::apply_impulse_owned(&mut mem, this, args, frame, &mut host);
         assert_eq!(host.next, call.inner.len(), "SimF350 call {}: external calls", call.index);
         check_windows(call, &mem, "CHingedRigidBody::SimF350");
     }
@@ -1857,13 +1857,13 @@ impl E90InitRecorded<'_> {
     }
 }
 
-impl layout::E90SegInitCalls for E90InitRecorded<'_> {
+impl layout::SegmentInitCalls for E90InitRecorded<'_> {
     fn normalize(&mut self, _sp: u32, out: u32, v: u32) {
         self.take(0x627235, &[out, v]);
     }
 }
 
-impl layout::E90PoolCalls for E90InitRecorded<'_> {
+impl layout::ClothPoolCalls for E90InitRecorded<'_> {
     fn allocate(&mut self, _sp: u32, size: u32) -> u32 {
         self.take(0x70bf84, &[size])
     }
@@ -1886,16 +1886,16 @@ fn e90_seg_init_and_pool_inits_match_direct_records() {
         // The span's temporaries sit at the original's stack: the first normalise's vector is `frame - 0x1c`.
         let frame = call.inner[0].args[0] + 0x1c;
         let mut host = E90InitRecorded { inner: &call.inner, mem: mem.clone(), next: 0 };
-        layout::e90_seg_init(&mut mem, call.args[0], call.args[1], frame, &mut host);
+        layout::init_segment(&mut mem, call.args[0], call.args[1], frame, &mut host);
         assert_eq!(host.next, call.inner.len(), "E90Seg::Init call {} inner", call.index);
         check_windows(call, &mem, "E90Seg::Init");
     }
     type Init = fn(&mut Mem, u32, u32, u32, u32, &mut E90InitRecorded) -> u32;
     let pools: [(u32, &str, Init); 4] = [
-        (0x6026a0, "E90PartPool::Init", |m, p, n, b, f, h| layout::init_e90_part_pool(m, p, n, b, f, h)),
-        (0x6027a0, "E90PtrTab::Init", |m, p, n, b, f, h| layout::init_e90_ptr_tab(m, p, n, b, f, h)),
-        (0x6028b0, "E90BendPool::Init", |m, p, n, b, f, h| layout::init_e90_bend_pool(m, p, n, b, f, h)),
-        (0x602930, "E90PinPool::Init", |m, p, n, b, f, h| layout::init_e90_pin_pool(m, p, n, b, f, h)),
+        (0x6026a0, "E90PartPool::Init", |m, p, n, b, f, h| layout::init_particle_pool(m, p, n, b, f, h)),
+        (0x6027a0, "E90PtrTab::Init", |m, p, n, b, f, h| layout::init_spring_table(m, p, n, b, f, h)),
+        (0x6028b0, "E90BendPool::Init", |m, p, n, b, f, h| layout::init_bend_pool(m, p, n, b, f, h)),
+        (0x602930, "E90PinPool::Init", |m, p, n, b, f, h| layout::init_pin_pool(m, p, n, b, f, h)),
     ];
     for (addr, name, port) in pools {
         let Some(calls) = load(VAR, addr) else {
@@ -1972,7 +1972,7 @@ fn seed_inner(mem: &mut Mem, call: &Call) {
     }
 }
 
-impl layout::DA60Calls for InOrder<'_> {
+impl layout::PoseToWorldCalls for InOrder<'_> {
     fn compose_a(&mut self, mem: &mut Mem, _: u32, car: u32, [a, b, c]: [u32; 3]) {
         self.take(mem, Some(0x51b4c0), &[car, a, b, c]);
     }
@@ -1982,8 +1982,8 @@ impl layout::DA60Calls for InOrder<'_> {
     }
 }
 
-impl layout::FD00Calls for InOrder<'_> {
-    fn sim_da60(&mut self, mem: &mut Mem, _: u32, body: u32) {
+impl layout::DetachCalls for InOrder<'_> {
+    fn pose_to_world(&mut self, mem: &mut Mem, _: u32, body: u32) {
         self.take(mem, Some(0x51da60), &[body]);
     }
 
@@ -2015,7 +2015,7 @@ impl layout::FD00Calls for InOrder<'_> {
         self.take(mem, Some(0x4faeb0), &[link, cell]);
     }
 
-    fn reg_wall(&mut self, mem: &mut Mem, _: u32, state: u32, body: u32) {
+    fn file_in_state(&mut self, mem: &mut Mem, _: u32, state: u32, body: u32) {
         self.take(mem, Some(0x5263d0), &[state, body]);
     }
 
@@ -2035,7 +2035,7 @@ impl layout::FD00Calls for InOrder<'_> {
     }
 }
 
-impl layout::StepBigCalls for InOrder<'_> {
+impl layout::MountedDetachCalls for InOrder<'_> {
     fn world_compose(&mut self, mem: &mut Mem, _: u32, car: u32, point: u32, out: u32) {
         self.take(mem, Some(0x4e6950), &[car, point, out]);
     }
@@ -2060,7 +2060,7 @@ fn step_big_matches_direct_records() {
         // The event is the last call's argument, 0x60 above the frame.
         let frame = call.inner.last().map_or(0, |emit| emit.args[1] - 0x60);
         let mut host = InOrder { name: "StepBig", index: call.index, inner: &call.inner, next: 0, frame };
-        let eax = layout::step_big(&mut mem, call.args[0], frame, &mut host);
+        let eax = layout::mounted_detach(&mut mem, call.args[0], frame, &mut host);
         host.finish();
         assert_eq!(eax, call.eax, "StepBig call {}: eax", call.index);
         check_windows(call, &mem, "CMountedRigidBody::StepBig");
@@ -2083,7 +2083,7 @@ fn sim_fd00_matches_direct_records() {
         // The event is the last call's argument, 0x40 above the frame.
         let frame = call.inner.last().map_or(0, |emit| emit.args[1] - 0x40);
         let mut host = InOrder { name: "SimFD00", index: call.index, inner: &call.inner, next: 0, frame };
-        let eax = layout::sim_fd00(&mut mem, call.args[0], frame, &mut host);
+        let eax = layout::detach_from_car(&mut mem, call.args[0], frame, &mut host);
         host.finish();
         assert_eq!(eax, call.eax, "SimFD00 call {}: eax", call.index);
         check_windows(call, &mem, "CHingedRigidBody::SimFD00");
@@ -2103,7 +2103,7 @@ fn sim_da60_matches_direct_records() {
         seed_inner(&mut mem, call);
         let frame = call.inner[0].args[3] - 0x20;
         let mut host = InOrder { name: "SimDA60", index: call.index, inner: &call.inner, next: 0, frame };
-        layout::sim_da60(&mut mem, call.args[0], frame, &mut host);
+        layout::pose_to_world(&mut mem, call.args[0], frame, &mut host);
         host.finish();
         check_windows(call, &mem, "CHingedRigidBody::SimDA60");
     }

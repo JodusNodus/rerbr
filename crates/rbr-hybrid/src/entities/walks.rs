@@ -257,7 +257,7 @@ impl PairOps for PairWalk<'_> {
     }
 
     fn copy16(&mut self, to: u32, from: u32) {
-        layout::copy_mat16(self.mem, to, from);
+        layout::copy_block16(self.mem, to, from);
     }
 }
 

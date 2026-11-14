@@ -3,8 +3,8 @@
 //! `E43_Tail40` (0x5194a0) is a tail jump to the argument's slot 16, with the argument as `this`; the port makes that
 //! call itself, one frame up, so the pure step has no tail call.
 
-/// `E43_Tail40` (0x5194a0): the callback that jumps to its argument's slot 16.
-pub const TAIL40: u32 = 0x5194a0;
+/// The callback that forwards to its argument's slot 16 (`E43_Tail40`, 0x5194a0).
+pub const SLOT16_FORWARD: u32 = 0x5194a0;
 /// Byte offset of slot 16 in a vtable.
 const SLOT16: u32 = 0x40;
 
@@ -18,7 +18,7 @@ pub trait Calls {
 /// `CPlainUnaryFunction::Vf04x` (and `Vf00x`): calls the stored callback with `arg`; returns the callee's eax.
 pub fn call_stored(calls: &mut impl Calls, this: u32, arg: u32) -> u32 {
     let callback = calls.word(this + 4);
-    if callback == TAIL40 {
+    if callback == SLOT16_FORWARD {
         let slot16 = calls.word(calls.word(arg) + SLOT16);
         calls.call(slot16, arg, arg)
     } else {

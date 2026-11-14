@@ -1,8 +1,8 @@
 //! `Mem`'s `EntityStore` for the entity layer around the hinges: the walker marks, the ground probe's record, the nodes,
 //! frames and transforms, the dummy object, the exclusion sets and the car's body slots.
 
-use super::collide_init::IDENTITY_GLOBAL;
 use super::entity_slots::EXCL_SET;
+use super::frames::ROOT_IDENTITY;
 use crate::entities::frame::EntityFrame;
 use crate::entities::ground::Contact;
 use crate::entities::store::{EntityStore, SlotLookup};
@@ -50,11 +50,14 @@ const SEGMENT_HIT: u32 = 0x8;
 const FLAGS_OBJECT: u32 = 0x24;
 const FLAGS_BYTE: u32 = 0x160CC;
 
+/// The car's four body slots (`CCar`, +0x480).
 const CAR_BODY_SLOTS: u32 = 0x480;
+/// The entity's vtable slot 71 (+0x11c), whose target the query reads.
+const QUERY_SLOT: u32 = 0x11c;
 
 impl EntityStore for Mem {
     fn identity(&self) -> u32 {
-        self.u32(IDENTITY_GLOBAL)
+        self.u32(ROOT_IDENTITY)
     }
 
     fn walker_count(&self, walker: u32) -> u32 {
@@ -124,7 +127,7 @@ impl EntityStore for Mem {
     }
 
     fn query_slot_target(&self, entity: u32) -> u32 {
-        self.u32(self.u32(entity) + 0x11c)
+        self.u32(self.u32(entity) + QUERY_SLOT)
     }
 
     fn material_slot(&self, table: u32, index: u8) -> SlotLookup {
