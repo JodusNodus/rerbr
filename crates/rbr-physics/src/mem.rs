@@ -426,6 +426,17 @@ impl Mem {
         }
     }
 
+    /// Writes `words` from `at` as that many [`Mem::set_u32`] in order do; at once where the pages hold them all.
+    pub fn set_u32s(&mut self, at: u32, words: &[u32]) {
+        let len = 4 * words.len();
+        self.guard_write(at, len);
+        let whole = at.is_multiple_of(4) && !words.is_empty() && at.checked_add(len as u32 - 1).is_some();
+        match self.pages_for(at, len).filter(|_| whole) {
+            Some(pages) => pages.set_run(at, words),
+            None => (0..).zip(words).for_each(|(k, &word)| self.set_u32(at.wrapping_add(4 * k), word)),
+        }
+    }
+
     #[inline]
     pub fn set_f32(&mut self, at: u32, value: f32) {
         self.set_u32(at, value.to_bits());
@@ -626,6 +637,10 @@ mod tests {
         let mut bytes = Mem::new();
         bytes.map(0x10, &[1, 2, 3, 4, 5, 6, 7, 8]);
         assert_eq!(bytes.u32s::<2>(0x10), [0x0403_0201, 0x0807_0605]);
+        for (mut mem, at) in [(Mem::new(), 0x1ffc), (Mem::with_pages(Pages::default()), 0x1ffc), (flat(), 0x10f0)] {
+            mem.set_u32s(at, &[1, 2, 3]);
+            assert_eq!(mem.u32s::<3>(at), [1, 2, 3]);
+        }
     }
 
     /// `copy` is a memmove and `copy_words` a forward `rep movsd`, on pages as on the byte map; `u16` reads across a

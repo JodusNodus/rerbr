@@ -93,42 +93,60 @@ fn slot(off: u32) -> Option<usize> {
 }
 
 /// A solid in typed storage: its address, its name and its state, [`Solid`]'s words over the held span (one cell a
-/// word, so a nested run reads and writes the same words; a word the table does not name stays zero and unused).
-#[derive(Clone, Debug, PartialEq)]
+/// word, so a nested run reads and writes the same words; a word the table does not name is read and never used), and
+/// the span as lifted.
+#[derive(Clone, Debug)]
 pub struct HeldSolid {
     pub at: u32,
     pub name: &'static str,
-    words: [Cell<u32>; WORDS],
+    words: Cell<[u32; WORDS]>,
+    lifted: [u32; WORDS],
+}
+
+impl PartialEq for HeldSolid {
+    fn eq(&self, other: &Self) -> bool {
+        (self.at, self.name, self.words.get()) == (other.at, other.name, other.words.get())
+    }
 }
 
 impl HeldSolid {
-    /// The solid at `at`, its span read at once (the words its table does not name are read and never used).
+    /// The solid at `at`, its span read at once.
     fn lift(mem: &Mem, at: u32, name: &'static str) -> Self {
-        let words = mem.u32s::<WORDS>(at + HELD.start).map(Cell::new);
-        HeldSolid { at, name, words }
+        let lifted = mem.u32s(at + HELD.start);
+        HeldSolid { at, name, words: Cell::new(lifted), lifted }
     }
 
-    /// Writes the named words back, each run of them at once.
-    fn lower(&self, mem: &mut Mem) {
-        let mut bytes = [0; 4 * WORDS];
-        for (out, word) in bytes.chunks_exact_mut(4).zip(&self.words) {
-            out.copy_from_slice(&word.get().to_le_bytes());
+    /// Writes back the named words, each run of them at once; with `changed`, only the runs that differ from the lift:
+    /// the image still holds the others, since nothing writes a held word on it while the solid is held (the `poison`
+    /// check).
+    fn lower(&self, mem: &mut Mem, changed: bool) {
+        let words = self.words.get();
+        if changed && words == self.lifted {
+            return;
         }
         for &(from, to) in &RUNS[..RUNS_LEN] {
-            mem.map(self.at + HELD.start + 4 * from as u32, &bytes[4 * from as usize..4 * to as usize]);
+            let run = from as usize..to as usize;
+            if !changed || words[run.clone()] != self.lifted[run.clone()] {
+                mem.set_u32s(self.at + HELD.start + 4 * from as u32, &words[run]);
+            }
         }
+    }
+
+    #[inline]
+    fn cells(&self) -> &[Cell<u32>; WORDS] {
+        self.words.as_array_of_cells()
     }
 
     /// The word at byte `off` of the solid, where its table names it.
     #[inline]
     pub fn word(&self, off: u32) -> Option<u32> {
-        slot(off).map(|i| self.words[i].get())
+        slot(off).map(|i| self.cells()[i].get())
     }
 
     /// Stores the word at byte `off` of the solid; false where its table does not name it.
     #[inline]
     pub fn set_word(&self, off: u32, value: u32) -> bool {
-        slot(off).map(|i| self.words[i].set(value)).is_some()
+        slot(off).map(|i| self.cells()[i].set(value)).is_some()
     }
 
     /// The field `f` of [`Solid`].
@@ -137,7 +155,7 @@ impl HeldSolid {
         let mut value = T::default();
         let first = ((f.at - HELD.start) / 4) as usize;
         for k in 0..T::LEN / 4 {
-            value.set_word(k, self.words[first + k as usize].get());
+            value.set_word(k, self.cells()[first + k as usize].get());
         }
         value
     }
@@ -147,7 +165,7 @@ impl HeldSolid {
     pub fn set<T: Value>(&self, f: Field<T>, value: T) {
         let first = ((f.at - HELD.start) / 4) as usize;
         for k in 0..T::LEN / 4 {
-            self.words[first + k as usize].set(value.word(k).expect("a field of whole words"));
+            self.cells()[first + k as usize].set(value.word(k).expect("a field of whole words"));
         }
     }
 }
@@ -205,10 +223,10 @@ impl CarSolids {
         CarSolids { solids, bounds, last: Cell::new(0), gap: Cell::new((0, 0)) }
     }
 
-    /// Writes every solid's state back to the image.
+    /// Writes every solid's state back to the image it was lifted from: the words that changed.
     pub fn lower(&self, mem: &mut Mem) {
         for s in &self.solids {
-            s.lower(mem);
+            s.lower(mem, true);
         }
     }
 
@@ -433,7 +451,9 @@ impl SolidWords for SolidView<'_> {
 pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     let solids = CarSolids::lift(mem, car);
     let mut out = Mem::new();
-    solids.lower(&mut out);
+    for s in &solids.solids {
+        s.lower(&mut out, false);
+    }
     let mut bytes = 0;
     for (range, name) in solids.owned() {
         let len = (range.end - range.start) as usize;
