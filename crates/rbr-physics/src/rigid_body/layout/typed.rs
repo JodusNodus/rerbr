@@ -65,6 +65,25 @@ const NAMED: [bool; WORDS] = {
     out
 };
 
+/// The runs of named words in the held span (word indices `from..to`), and their count.
+const RUNS_MAX: usize = 32;
+const RUNS_AND_LEN: ([(u8, u8); RUNS_MAX], usize) = {
+    let (mut runs, mut n, mut k) = ([(0, 0); RUNS_MAX], 0, 0);
+    while k < WORDS {
+        if NAMED[k] && (k == 0 || !NAMED[k - 1]) {
+            runs[n].0 = k as u8;
+        }
+        if NAMED[k] && (k + 1 == WORDS || !NAMED[k + 1]) {
+            runs[n].1 = (k + 1) as u8;
+            n += 1;
+        }
+        k += 1;
+    }
+    (runs, n)
+};
+const RUNS: [(u8, u8); RUNS_MAX] = RUNS_AND_LEN.0;
+const RUNS_LEN: usize = RUNS_AND_LEN.1;
+
 /// The index in the held span of the word at byte `off` of a solid, where [`Solid`]'s table names it.
 #[inline]
 fn slot(off: u32) -> Option<usize> {
@@ -83,15 +102,20 @@ pub struct HeldSolid {
 }
 
 impl HeldSolid {
+    /// The solid at `at`, its span read at once (the words its table does not name are read and never used).
     fn lift(mem: &Mem, at: u32, name: &'static str) -> Self {
-        let words =
-            std::array::from_fn(|k| Cell::new(if NAMED[k] { mem.u32(at + HELD.start + 4 * k as u32) } else { 0 }));
+        let words = mem.u32s::<WORDS>(at + HELD.start).map(Cell::new);
         HeldSolid { at, name, words }
     }
 
+    /// Writes the named words back, each run of them at once.
     fn lower(&self, mem: &mut Mem) {
-        for (k, word) in self.words.iter().enumerate().filter(|(k, _)| NAMED[*k]) {
-            mem.set_u32(self.at + HELD.start + 4 * k as u32, word.get());
+        let mut bytes = [0; 4 * WORDS];
+        for (out, word) in bytes.chunks_exact_mut(4).zip(&self.words) {
+            out.copy_from_slice(&word.get().to_le_bytes());
+        }
+        for &(from, to) in &RUNS[..RUNS_LEN] {
+            mem.map(self.at + HELD.start + 4 * from as u32, &bytes[4 * from as usize..4 * to as usize]);
         }
     }
 
@@ -169,8 +193,10 @@ impl CarSolids {
         for k in 0..3 {
             add(["mounted0 solid", "mounted1 solid", "mounted2 solid"][k], mem.u32(mounted_slot(car, k as u32)));
         }
-        let bounds = match (solids.iter().map(|s| s.at).min(), solids.iter().map(|s| s.at).max()) {
-            (Some(lo), Some(hi)) => lo + HELD.start..hi + HELD.end,
+        solids.sort_by_key(|s| s.at);
+        assert!(solids.windows(2).all(|w| w[1].at - w[0].at >= HELD.end), "two solids' held spans overlap");
+        let bounds = match (solids.first(), solids.last()) {
+            (Some(lo), Some(hi)) => lo.at + HELD.start..hi.at + HELD.end,
             _ => 0..0,
         };
         CarSolids { solids, bounds, last: Cell::new(0) }
@@ -204,7 +230,10 @@ impl CarSolids {
                 return Some((s, off));
             }
         }
-        let (k, s, off) = self.solids.iter().enumerate().find_map(|(k, s)| in_span(s).map(|off| (k, s, off)))?;
+        // The last solid that starts at or below `at`'s span start: the only one whose span can hold it.
+        let k = self.solids.partition_point(|s| s.at + HELD.start <= at).checked_sub(1)?;
+        let s = &self.solids[k];
+        let off = in_span(s)?;
         self.last.set(k);
         Some((s, off))
     }
