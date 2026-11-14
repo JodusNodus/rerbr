@@ -44,6 +44,9 @@ pub struct Mem {
     /// The byte ranges another storage owns (`Mem::poison`, check builds with the `poison` feature only).
     #[cfg(feature = "poison")]
     poison: Option<Arc<Poison>>,
+    /// The byte ranges nothing may write (`Mem::watch_writes`, the `poison` feature only).
+    #[cfg(feature = "poison")]
+    watch: Option<Arc<Poison>>,
 }
 
 /// Owned byte ranges, sorted by start, with their owners' names: an access to one of them panics.
@@ -55,20 +58,30 @@ struct Poison(Vec<(u32, u32, String)>);
 impl Poison {
     #[cold]
     #[inline(never)]
-    fn hit(&self, at: u32, len: usize) -> ! {
+    fn new(ranges: impl IntoIterator<Item = (std::ops::Range<u32>, String)>) -> Option<Arc<Self>> {
+        let mut list: Vec<_> =
+            ranges.into_iter().filter(|(r, _)| r.start < r.end).map(|(r, n)| (r.start, r.end, n)).collect();
+        list.sort_by_key(|&(lo, _, _)| lo);
+        assert!(list.windows(2).all(|w| w[0].1 <= w[1].0), "poisoned ranges overlap");
+        (!list.is_empty()).then(|| Arc::new(Poison(list)))
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn hit(&self, at: u32, len: usize, (what, tail): (&str, &str)) -> ! {
         let end = u64::from(at) + len as u64;
         let (lo, _, name) =
             self.0.iter().find(|(lo, hi, _)| u64::from(*lo) < end && at < *hi).expect("a poisoned range");
-        panic!("poisoned access {at:#010x}+{len:#x}: {name} (+{:#x}) belongs to the typed storage", at.max(*lo) - lo)
+        panic!("{what} {at:#010x}+{len:#x}: {name} (+{:#x}){tail}", at.max(*lo) - lo)
     }
 
     #[inline]
-    fn check(&self, at: u32, len: usize) {
+    fn check(&self, at: u32, len: usize, what: (&str, &str)) {
         let end = u64::from(at) + len as u64;
         // the first range ending after `at`
         let k = self.0.partition_point(|(_, hi, _)| *hi <= at);
         if self.0.get(k).is_some_and(|(lo, _, _)| u64::from(*lo) < end) {
-            self.hit(at, len)
+            self.hit(at, len, what)
         }
     }
 }
@@ -120,6 +133,8 @@ impl Mem {
             ngp_runtime: None,
             #[cfg(feature = "poison")]
             poison: None,
+            #[cfg(feature = "poison")]
+            watch: None,
         }
     }
 
@@ -192,14 +207,19 @@ impl Mem {
     /// this memory, or a clone made after this call, panics with the owner's name. An empty list clears the poison.
     #[cfg(feature = "poison")]
     pub fn poison(&mut self, ranges: impl IntoIterator<Item = (std::ops::Range<u32>, String)>) {
-        let mut list: Vec<_> =
-            ranges.into_iter().filter(|(r, _)| r.start < r.end).map(|(r, n)| (r.start, r.end, n)).collect();
-        list.sort_by_key(|&(lo, _, _)| lo);
-        assert!(list.windows(2).all(|w| w[0].1 <= w[1].0), "poisoned ranges overlap");
-        self.poison = (!list.is_empty()).then(|| Arc::new(Poison(list)));
+        self.poison = Poison::new(ranges);
     }
 
-    /// This memory without its poison, sharing the storage: what `lift` and `lower` of the owner read and write.
+    /// Watches `ranges` (check builds with the `poison` feature): every later write to one of their bytes through this
+    /// memory, or a clone made after this call, panics with the range's name; reads go through. An empty list clears
+    /// the watch.
+    #[cfg(feature = "poison")]
+    pub fn watch_writes(&mut self, ranges: impl IntoIterator<Item = (std::ops::Range<u32>, String)>) {
+        self.watch = Poison::new(ranges);
+    }
+
+    /// This memory without its poison and watch, sharing the storage: what `lift` and `lower` of the owner read and
+    /// write.
     #[cfg(feature = "poison")]
     pub fn unpoisoned(&self) -> Mem {
         Self::of(self.storage.clone())
@@ -210,7 +230,16 @@ impl Mem {
     fn guard(&self, _at: u32, _len: usize) {
         #[cfg(feature = "poison")]
         if let Some(poison) = &self.poison {
-            poison.check(_at, _len)
+            poison.check(_at, _len, ("poisoned access", " belongs to the typed storage"))
+        }
+    }
+
+    /// Panics when `at..at + len` touches a watched byte ([`Mem::watch_writes`]); nothing without the `poison` feature.
+    #[inline(always)]
+    fn guard_write(&self, _at: u32, _len: usize) {
+        #[cfg(feature = "poison")]
+        if let Some(watch) = &self.watch {
+            watch.check(_at, _len, ("write into a read-only range at", ""))
         }
     }
 
@@ -244,6 +273,7 @@ impl Mem {
 
     /// Maps `bytes` at address `at`. Overlapping mappings must hold the same bytes.
     pub fn map(&mut self, at: u32, bytes: &[u8]) {
+        self.guard_write(at, bytes.len());
         match self.holder(at, bytes.len()) {
             Some(backend) => backend.write(at, bytes),
             None => {
@@ -258,6 +288,7 @@ impl Mem {
 
     /// Copies `len` bytes from `from` to `to` as a read of them all and then a write gives it (`memmove`).
     pub fn copy(&mut self, to: u32, from: u32, len: usize) {
+        self.guard_write(to, len);
         let words = u32::try_from(len / 4).ok().filter(|_| len.is_multiple_of(4));
         if let (Some(n), Some(pages)) = (words, self.pages_for(from, len).and(self.pages_for(to, len))) {
             if pages.move_words(to, from, n) {
@@ -271,6 +302,7 @@ impl Mem {
     /// Copies `n` words from `from` to `to` one at a time in ascending order, as `rep movsd` does.
     pub fn copy_words(&mut self, to: u32, from: u32, n: u32) {
         let len = 4 * n as usize;
+        self.guard_write(to, len);
         if let Some(pages) = self.pages_for(from, len).and(self.pages_for(to, len)) {
             if pages.copy_words(to, from, n) {
                 return;
@@ -360,6 +392,7 @@ impl Mem {
     /// Writes `N` consecutive words from `at` at once when the pages hold them all; false (nothing written) otherwise.
     #[inline]
     fn set_paged_u32s<const N: usize>(&self, at: u32, words: [u32; N]) -> bool {
+        self.guard_write(at, 4 * N);
         self.pages_for(at, 4 * N).is_some_and(|pages| pages.set_words(at, words))
     }
 
@@ -374,6 +407,7 @@ impl Mem {
     }
 
     pub fn set_u8(&mut self, at: u32, value: u8) {
+        self.guard_write(at, 1);
         if let Some(pages) = self.pages_for(at, 1) {
             return pages.set_u8(at, value);
         }
@@ -382,6 +416,7 @@ impl Mem {
 
     #[inline]
     pub fn set_u32(&mut self, at: u32, value: u32) {
+        self.guard_write(at, 4);
         if let Some(pages) = self.pages_for(at, 4) {
             return pages.set_word(at, value);
         }
@@ -659,6 +694,26 @@ mod tests {
         .contains(": Sample (+0x0)"));
         mem.poison([]);
         assert_eq!(mem.u32(0x1010), 0x1312_1110);
+    }
+
+    #[cfg(feature = "poison")]
+    #[test]
+    fn watched_bytes_read_and_panic_on_a_write() {
+        let mut mem = flat();
+        mem.watch_writes([(0x1010..0x1018, "Def".to_string())]);
+        assert_eq!(mem.u32(0x1014), 0x1716_1514);
+        mem.set_u32(0x100c, 0);
+        let write = |f: fn(&mut Mem)| {
+            let mut m = mem.clone();
+            let e = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f(&mut m))).unwrap_err();
+            e.downcast::<String>().map(|s| *s).unwrap_or_default()
+        };
+        assert!(write(|m| m.set_u8(0x1017, 0)).contains("Def (+0x7)"));
+        assert!(write(|m| m.copy(0x1008, 0x1000, 0x10)).contains("Def (+0x0)"));
+        assert!(write(|m| m.copy_words(0x1014, 0x1000, 1)).contains("Def (+0x4)"));
+        mem.unpoisoned().set_u32(0x1010, 0);
+        mem.watch_writes([]);
+        mem.set_u32(0x1010, 1);
     }
 
     #[test]

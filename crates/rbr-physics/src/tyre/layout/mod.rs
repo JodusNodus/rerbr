@@ -38,7 +38,7 @@ pub use scratch_ctor::{
     construct_scratch, create_scratch, delete_container, delete_scratch, destroy_scratch, destroy_scratch_body,
     init_scratch, reset_tweak_headers, SCRATCH_SIZE,
 };
-pub use typed::{frame_of, round_trip, with_tyre, CarTyres, TyreImage, TyreView, MATERIAL};
+pub use typed::{frame_of, round_trip, with_tyre, CarTyres, TyreDef, TyreImage, TyreView, DEF_BYTES, MATERIAL};
 
 // The `CScratch` (`this`) words, its state (`m_state`, `this+0x14`) and its setup (`m_def`, `this+0x10`).
 

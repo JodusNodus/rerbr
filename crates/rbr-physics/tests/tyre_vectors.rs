@@ -8,6 +8,7 @@ use common::{load, map_windows, After, Call, Window};
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::vec::Vec4;
 use rbr_physics::mem::Mem;
+use rbr_physics::store::defs::{Defs, Held};
 use rbr_physics::tyre::layout::entries;
 use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::tyre::tyres::TyreId;
@@ -762,7 +763,11 @@ fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
         }
         let mut typed = base.clone();
         let mut held = layout::CarTyres::lift_scratches(&typed, [Some(scratch), None, None, None]);
-        let mut view = held.view(&typed);
+        // The setup held too, as a step's typed definitions hold it.
+        let def = layout::TyreImage::of(&typed, scratch).def;
+        let mut defs = Defs::default();
+        defs.tyres[0] = Some(Held { at: def, def: layout::TyreDef::lift(&typed, def) });
+        let mut view = held.view(&typed).with_defs(Some(&defs));
         for entry in entries {
             entry(&mut view, TyreId(0));
         }

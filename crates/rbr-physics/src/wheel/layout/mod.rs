@@ -3,6 +3,7 @@
 
 mod copy_and_emit;
 mod ctors;
+mod def;
 mod fields;
 mod host;
 mod probe;
@@ -21,6 +22,7 @@ pub use ctors::{
     new_wheel, refresh_travel, scratch_ctor, select_top_mount, setup_ctor, setup_dictionary, setup_options_dictionary,
     state_ctor, tyre_tail_setup, wheel_ctor, FinishCalls, WHEEL_SIZE,
 };
+pub use def::WheelDef;
 pub use fields::{
     AXLE, BLEND_OPS, BLOCK_BLEND, BLOCK_CLAMP_A, BLOCK_CLAMP_B, BLOCK_DIFF, BLOCK_INPUT, BLOCK_PHASE, BLOCK_TAG_1,
     BLOCK_TAG_2, BLOCK_TOTAL, BLOCK_WEIGHT, CAR, CARCASS_EDGE_MINUS, CARCASS_EDGE_MINUS_COPY, CARCASS_EDGE_PLUS,

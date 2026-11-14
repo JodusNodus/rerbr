@@ -99,7 +99,7 @@ pub fn car_frames<S: WheelStore>(host: &mut impl CarXform, mem: &mut S, this: u3
     let car = if obj != 0 && mem.car_flags(obj) & CAR_FLAG_XFORM != 0 { obj } else { 0 };
     for (i, &(guard, src, out)) in XFORM_PAIRS.iter().enumerate() {
         let def = mem.load_def(this);
-        let a = (def.wrapping_add(guard) != 0).then(|| Vec4::load(mem, def + src));
+        let a = (def.wrapping_add(guard) != 0).then(|| mem.def_vec4(def, src));
         let v = transform_call(host, i, car, a);
         v.store(mem, def + out);
     }

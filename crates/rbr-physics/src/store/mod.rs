@@ -15,6 +15,7 @@
 
 use crate::mem::Mem;
 
+pub mod defs;
 mod layout;
 pub mod typed;
 pub use layout::{

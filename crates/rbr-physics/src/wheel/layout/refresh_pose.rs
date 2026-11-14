@@ -1,6 +1,6 @@
 //! `E51Wheel::M3B900` (0x53b900), the pose refresh, and the CDef words it reads.
 
-use super::fields::{AXLE, DAMAGE_STEERING, HUB_POSITION, ORIENTATION, TYRE_DEF_HUB_OFFSET, TYRE_SCRATCH};
+use super::fields::{AXLE, DAMAGE_STEERING, HUB_POSITION, ORIENTATION, TYRE_SCRATCH};
 use super::store::WheelStore;
 use super::typed::slot;
 use crate::car_body::layout::slot as car_slot;
@@ -91,7 +91,7 @@ pub fn refresh<S: WheelStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: 
     let tyre_def = calls.tyre_def(this + TYRE_SCRATCH);
     let (hub_position, drive_axle_dir) = refresh::place_hub(
         Vec4::load(mem, this + AXLE),
-        mem.f32(tyre_def + TYRE_DEF_HUB_OFFSET),
+        mem.hub_offset_of(tyre_def),
         frame.hub_position,
         def.drive_axle_mount_offset,
         def.drive_axle_joint,

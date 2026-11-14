@@ -11,6 +11,7 @@ use super::store::WheelStore;
 use crate::car_body::layout::{CarOwn, Slot as CarSlot};
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
+use crate::store::defs::{self, Defs};
 use crate::store::{Object, Raw, Value};
 
 /// A field of [`Wheel`]: its offset in the wheel (the image's word) and its place in the typed state.
@@ -169,23 +170,29 @@ impl CarWheels {
 }
 
 /// The wheel's store: the held wheels' state in [`CarWheels`], every other wheel's on the image (the per-call path,
-/// on which the image holds the state between calls and each nested run reads and writes it there), and the image
-/// for the rest.
+/// on which the image holds the state between calls and each nested run reads and writes it there), the step's typed
+/// definitions (the wheels' and the tyres' setups), and the image for the rest.
 pub struct WheelView<'a> {
     mem: &'a mut Mem,
     wheels: Option<&'a CarWheels>,
     car: Option<&'a CarOwn>,
+    defs: Option<&'a Defs>,
 }
 
 impl<'a> WheelView<'a> {
     /// The store over `mem` with `wheels` held (none: every wheel on the image).
     pub fn new(mem: &'a mut Mem, wheels: Option<&'a CarWheels>) -> Self {
-        WheelView { mem, wheels, car: None }
+        WheelView { mem, wheels, car: None, defs: None }
     }
 
     /// The store with the car's own state held too: the car's words the wheel reads (`WheelStore::car_field`).
     pub fn with_car(self, car: Option<&'a CarOwn>) -> Self {
         WheelView { car, ..self }
+    }
+
+    /// The store with the step's typed definitions (none: every definition on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        WheelView { defs, ..self }
     }
 
     fn held(&self, this: u32) -> Option<&'a RefCell<Wheel>> {
@@ -224,6 +231,34 @@ impl WheelStore for WheelView<'_> {
     #[inline]
     fn car_field<T: Value>(&self, car: u32, slot: CarSlot<T>) -> T {
         self.car.and_then(|c| c.read(car, slot)).unwrap_or_else(|| T::load(self.mem, car + slot.at))
+    }
+
+    #[inline]
+    fn def_u32(&self, def: u32, off: u32) -> u32 {
+        let image = || self.mem.u32(def + off);
+        match self.defs.and_then(|d| d.wheel(def)).and_then(|d| d.word_of(off)) {
+            Some(word) => defs::checked(word, image),
+            None => image(),
+        }
+    }
+
+    #[inline]
+    fn hub_offset_of(&self, tyre_def: u32) -> f32 {
+        let image = || self.mem.u32(tyre_def + super::TYRE_DEF_HUB_OFFSET);
+        f32::from_bits(match self.defs.and_then(|d| d.tyre(tyre_def)) {
+            Some(d) => defs::checked(d.hub_offset.to_bits(), image),
+            None => image(),
+        })
+    }
+
+    #[inline]
+    fn load_carcass_width(&self, this: u32) -> f32 {
+        let tyre_def = self.tyre_def(this);
+        let image = || self.mem.u32(tyre_def + super::TYRE_DEF_CARCASS_WIDTH);
+        f32::from_bits(match self.defs.and_then(|d| d.tyre(tyre_def)) {
+            Some(d) => defs::checked(d.carcass_width().to_bits(), image),
+            None => image(),
+        })
     }
 }
 
@@ -313,16 +348,17 @@ fn entries<S: WheelStore>(mem: &mut S, this: u32, scratch: u32) -> Vec<[u32; 7]>
 }
 
 /// The wheel's host-free entries in a row on each wheel of the car at `car`, per call on `per_call` (every field on
-/// the image) and on the car's wheels held in typed storage over the row on `held` (lifted before, lowered after),
-/// two copies of one image; `scratch` is free memory of both for the outputs. Compares every byte of each wheel, its
+/// the image) and on the car's wheels held in typed storage over the row on `held` (lifted before, lowered after; the
+/// definitions the step's typed ones), two copies of one image; `scratch` is free memory of both for the outputs. Compares every byte of each wheel, its
 /// damage record and the outputs, and what the callers were given: the bytes compared, or the first that differs.
 pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) -> Result<usize, String> {
     let wheels = CarWheels::lift(held, car);
+    let defs = Defs::lift(held, car);
     let pointers = crate::car_body::store::CarStore::wheel_pointers(per_call, car);
     let mut bytes = 0;
     for (k, &this) in pointers.iter().enumerate().filter(|(_, &w)| w != 0) {
         let a = entries(per_call, this, scratch);
-        let b = entries(&mut wheels.view(held), this, scratch);
+        let b = entries(&mut wheels.view(held).with_defs(Some(&defs)), this, scratch);
         if a != b {
             return Err(format!("wheel{k}: the edge forces' callers differ: {a:x?} against {b:x?}"));
         }

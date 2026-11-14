@@ -43,11 +43,32 @@ pub trait WheelStore: Raw {
     }
     /// The tyre's `HubOffset` (`tyre_def+0x6c`).
     fn load_hub_offset(&self, this: u32) -> f32 {
-        self.f32(self.tyre_def(this) + TYRE_DEF_HUB_OFFSET)
+        self.hub_offset_of(self.tyre_def(this))
+    }
+    /// The `HubOffset` of the tyre setup at `tyre_def`.
+    fn hub_offset_of(&self, tyre_def: u32) -> f32 {
+        self.f32(tyre_def + TYRE_DEF_HUB_OFFSET)
     }
     /// The tyre's `CarcassWidth` (`tyre_def+0xcc`).
     fn load_carcass_width(&self, this: u32) -> f32 {
         self.f32(self.tyre_def(this) + TYRE_DEF_CARCASS_WIDTH)
+    }
+    /// The word at `off` of the wheel definition at `def` (the image's; a typed store's held definition's where it
+    /// holds the word, `WheelView`).
+    fn def_u32(&self, def: u32, off: u32) -> u32 {
+        self.u32(def + off)
+    }
+    fn def_f32(&self, def: u32, off: u32) -> f32 {
+        f32::from_bits(self.def_u32(def, off))
+    }
+    /// The vector at `off` of the wheel definition at `def`, its lanes in order.
+    fn def_vec4(&self, def: u32, off: u32) -> Vec4 {
+        let [x, y, z, w] = [0, 4, 8, 12].map(|k| self.def_f32(def, off + k));
+        Vec4 { x, y, z, w }
+    }
+    fn def_vec3(&self, def: u32, off: u32) -> Vec3 {
+        let [x, y, z] = [0, 4, 8].map(|k| self.def_f32(def, off + k));
+        Vec3 { x, y, z }
     }
     /// The car pointer (`this+0x7f4`).
     fn load_car(&self, this: u32) -> u32 {
@@ -67,11 +88,11 @@ pub trait WheelStore: Raw {
     }
     /// A float of the CDef at `off`.
     fn load_def_f32(&self, this: u32, off: u32) -> f32 {
-        self.f32(self.load_def(this) + off)
+        self.def_f32(self.load_def(this), off)
     }
     /// A vector of the CDef at `off` (`DEF_*`).
     fn load_def_vec(&self, this: u32, off: u32) -> Vec4 {
-        Vec4::load(self, self.load_def(this) + off)
+        self.def_vec4(self.load_def(this), off)
     }
     /// The damage record pointer (`this+0x7f0`).
     fn load_damage(&self, this: u32) -> u32 {
@@ -111,22 +132,22 @@ pub trait WheelStore: Raw {
     fn load_suspension_def(&self, this: u32) -> SuspensionDef {
         let def = self.load_def(this);
         SuspensionDef {
-            steering_rod_length: self.f32(def + DEF_STEERING_ROD_LENGTH),
-            wishbone_header: [self.u32(def + DEF_WISHBONE_HEADER), self.u32(def + DEF_WISHBONE_HEADER + 4)],
-            wishbone_length: self.f32(def + DEF_WISHBONE_LENGTH),
-            joint_mount: Vec3::load(self, def + DEF_JOINT_MOUNT),
-            joint_axis: Vec4::load(self, def + DEF_JOINT_AXIS),
-            wishbone_sign: self.f32(def + DEF_WISHBONE_SIGN),
-            strut_dim_x: self.f32(def + DEF_STRUT_DIM_X),
-            strut_dim_z: self.f32(def + DEF_STRUT_DIM_Z),
-            steering_sign: self.f32(def + DEF_STEERING_SIGN),
-            strut_rod_mount: Vec3::load(self, def + DEF_STRUT_ROD_MOUNT),
-            strut_hub_point: Vec3::load(self, def + DEF_STRUT_HUB_POINT),
-            is_steered: self.u32(def + DEF_IS_STEERED) != 0,
-            drive_axle_mount_offset: self.f32(def + DEF_DRIVE_AXLE_MOUNT_OFFSET),
-            steering_mount: Vec4::load(self, def + DEF_STEERING_MOUNT),
-            steering_axis: Vec4::load(self, def + DEF_STEERING_AXIS),
-            drive_axle_joint: Vec3::load(self, def + DEF_DRIVE_AXLE_JOINT),
+            steering_rod_length: self.def_f32(def, DEF_STEERING_ROD_LENGTH),
+            wishbone_header: [self.def_u32(def, DEF_WISHBONE_HEADER), self.def_u32(def, DEF_WISHBONE_HEADER + 4)],
+            wishbone_length: self.def_f32(def, DEF_WISHBONE_LENGTH),
+            joint_mount: self.def_vec3(def, DEF_JOINT_MOUNT),
+            joint_axis: self.def_vec4(def, DEF_JOINT_AXIS),
+            wishbone_sign: self.def_f32(def, DEF_WISHBONE_SIGN),
+            strut_dim_x: self.def_f32(def, DEF_STRUT_DIM_X),
+            strut_dim_z: self.def_f32(def, DEF_STRUT_DIM_Z),
+            steering_sign: self.def_f32(def, DEF_STEERING_SIGN),
+            strut_rod_mount: self.def_vec3(def, DEF_STRUT_ROD_MOUNT),
+            strut_hub_point: self.def_vec3(def, DEF_STRUT_HUB_POINT),
+            is_steered: self.def_u32(def, DEF_IS_STEERED) != 0,
+            drive_axle_mount_offset: self.def_f32(def, DEF_DRIVE_AXLE_MOUNT_OFFSET),
+            steering_mount: self.def_vec4(def, DEF_STEERING_MOUNT),
+            steering_axis: self.def_vec4(def, DEF_STEERING_AXIS),
+            drive_axle_joint: self.def_vec3(def, DEF_DRIVE_AXLE_JOINT),
         }
     }
 

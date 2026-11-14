@@ -5,6 +5,7 @@
 use std::ops::Range;
 
 use crate::mem::{Block, Mem};
+use crate::store::defs::{self, Defs};
 
 use super::frame::{settle_material, Outside, Table, WORDS};
 use super::frame_types::{ContactFrame, Frame, Indentation, Scratch, Segment, Setup, StateWords};
@@ -396,56 +397,20 @@ impl TyreImage {
 
     /// The tyre's setup, read from the image (the words 0x1c..0x314 at once).
     pub fn setup(&self, mem: &Mem) -> Setup {
-        let def = self.def;
-        let d = Block::<{ (0x314 - DEF_DEBUG_ID as usize) / 4 }>::read(mem, def + DEF_DEBUG_ID);
-        let table = |at: u32, len: usize| Table {
-            below: d.f32(at - 4),
-            len,
-            entries: std::array::from_fn(|k| if k < len { d.f32(at + 4 * k as u32) } else { 0.0 }),
-        };
-        Setup {
-            debug_id: d.u32(def + DEF_DEBUG_ID),
-            pressure_ratio: d.f32(def + 0x2C),
-            reference_friction: d.f32(def + DEF_REFERENCE_FRICTION),
-            carcass_stiffness_lateral: d.f32(def + DEF_CARCASS_STIFFNESS_LATERAL),
-            carcass_stiffness_torsional: d.f32(def + DEF_CARCASS_STIFFNESS_TORSIONAL),
-            carcass_radius: d.f32(def + DEF_CARCASS_RADIUS),
-            tread_depth: d.f32(def + DEF_TREAD_DEPTH),
-            carcass_thickness: d.f32(def + 0x9C),
-            tread_width: d.f32(def + DEF_TREAD_WIDTH),
-            tread_coverage: d.f32(def + DEF_TREAD_COVERAGE),
-            carcass_width: d.f32(def + DEF_CARCASS_WIDTH),
-            sidewall_height: d.f32(def + 0xEC),
-            wet_wear_factor: d.f32(def + 0x310),
-            inclination_heat_scale: d.f32(def + 0x10C),
-            surface_capacity: d.f32s(def + 0x110),
-            tread_capacity: d.f32s(def + 0x11C),
-            carcass_capacity: d.f32s(def + 0x128),
-            tread_conductivity: d.f32(def + 0x118),
-            carcass_conductivity: d.f32(def + 0x124),
-            pressure_axis: table(def + 0x134, 4),
-            stiffness_factor_by_pressure: table(def + 0x144, 4),
-            contact_pressure_axis: table(def + 0x154, 6),
-            contact_conductance: table(def + 0x16C, 6),
-            temperature_axis: table(def + 0x184, 8),
-            rubber_friction_by_temperature: table(def + 0x1A4, 8),
-            rubber_wear_by_temperature: table(def + 0x1C4, 8),
-            load_axis: table(def + 0x1E4, 8),
-            cornering_stiffness_by_load: table(def + 0x204, 8),
-            traction_stiffness_by_load: table(def + 0x224, 8),
-            cornering_friction_by_load: table(def + 0x244, 8),
-            traction_friction_by_load: table(def + 0x264, 8),
-            cornering_peak_slip_by_load: table(def + 0x284, 8),
-            traction_peak_slip_by_load: table(def + 0x2A4, 8),
-        }
+        setup_at(mem, self.def)
     }
 
     /// The frame of the tyre whose state is `tyre`: its setup and the contact angle from the image.
     pub fn frame(&self, mem: &Mem, tyre: &Tyre) -> Frame {
+        self.frame_with(mem, tyre, self.setup(mem))
+    }
+
+    /// The frame of the tyre whose state is `tyre` with `setup`, the contact angle from the image.
+    fn frame_with(&self, mem: &Mem, tyre: &Tyre, setup: Setup) -> Frame {
         Frame {
             scratch: tyre.scratch,
             state: tyre.state,
-            setup: self.setup(mem),
+            setup,
             contact_angle: mem.f32(self.record + RECORD_CONTACT_ANGLE),
         }
     }
@@ -453,9 +418,11 @@ impl TyreImage {
     /// The surface friction's inputs (see [`TyreStore::load_surface_input`]): the setup's tables at `+0x2c4` (base),
     /// `+0x2e0` (wet slope) and `+0x2f8` (wear factor) at the class indices, which are words (so the address wraps as
     /// the original's), and its design wetness `+0x2dc`; the wear of the sector `tyre` names.
+    /// `held` is the setup's typed definition, if the step holds it: a word it holds is its, any other the image's.
     fn surface_input(
         &self,
         mem: &Mem,
+        held: Option<&TyreDef>,
         tyre: &Tyre,
         classes: [u32; 2],
         wetness: [f32; 2],
@@ -465,14 +432,21 @@ impl TyreImage {
         let wear = tyre.scratch.wear;
         let sector = tyre.state.sector;
         let sector_wear = *wear.get(sector as usize).ok_or(Outside { index: sector as i32, len: wear.len() })?;
+        let read = |table: u32, k: u32| {
+            let image = || mem.u32(word_at(def + table, k));
+            f32::from_bits(match held.and_then(|d| d.surface(table, k)) {
+                Some(v) => defs::checked(v.to_bits(), image),
+                None => image(),
+            })
+        };
         Ok(SurfaceInput {
-            base_first: mem.f32(word_at(def + 0x2C4, first)),
-            base_second: mem.f32(word_at(def + 0x2C4, second)),
-            wet_slope_first: mem.f32(word_at(def + 0x2E0, first)),
-            wet_slope_second: mem.f32(word_at(def + 0x2E0, second)),
-            wear_factor_first: mem.f32(word_at(def + 0x2F8, first)),
-            wear_factor_second: mem.f32(word_at(def + 0x2F8, second)),
-            design_wetness: mem.f32(def + 0x2DC),
+            base_first: read(BASE_FRICTION, first),
+            base_second: read(BASE_FRICTION, second),
+            wet_slope_first: read(WET_SLOPE, first),
+            wet_slope_second: read(WET_SLOPE, second),
+            wear_factor_first: read(WEAR_FACTOR, first),
+            wear_factor_second: read(WEAR_FACTOR, second),
+            design_wetness: read(DESIGN_WETNESS, 0),
             wetness_first: wetness[0],
             wetness_second: wetness[1],
             sector_wear,
@@ -489,6 +463,152 @@ impl TyreImage {
             .map(at(self.scratch))
             .chain(OWNED_STATE.into_iter().map(at(self.state)))
             .chain((self.wear != 0).then_some((self.wear..self.wear + 0x20, "tyre wear")))
+    }
+}
+
+/// The setup at `def`, read from the image (the words 0x1c..0x314 at once).
+fn setup_at(mem: &Mem, def: u32) -> Setup {
+    let d = Block::<{ (0x314 - DEF_DEBUG_ID as usize) / 4 }>::read(mem, def + DEF_DEBUG_ID);
+    let table = |at: u32, len: usize| Table {
+        below: d.f32(at - 4),
+        len,
+        entries: std::array::from_fn(|k| if k < len { d.f32(at + 4 * k as u32) } else { 0.0 }),
+    };
+    Setup {
+        debug_id: d.u32(def + DEF_DEBUG_ID),
+        pressure_ratio: d.f32(def + 0x2C),
+        reference_friction: d.f32(def + DEF_REFERENCE_FRICTION),
+        carcass_stiffness_lateral: d.f32(def + DEF_CARCASS_STIFFNESS_LATERAL),
+        carcass_stiffness_torsional: d.f32(def + DEF_CARCASS_STIFFNESS_TORSIONAL),
+        carcass_radius: d.f32(def + DEF_CARCASS_RADIUS),
+        tread_depth: d.f32(def + DEF_TREAD_DEPTH),
+        carcass_thickness: d.f32(def + 0x9C),
+        tread_width: d.f32(def + DEF_TREAD_WIDTH),
+        tread_coverage: d.f32(def + DEF_TREAD_COVERAGE),
+        carcass_width: d.f32(def + DEF_CARCASS_WIDTH),
+        sidewall_height: d.f32(def + 0xEC),
+        wet_wear_factor: d.f32(def + 0x310),
+        inclination_heat_scale: d.f32(def + 0x10C),
+        surface_capacity: d.f32s(def + 0x110),
+        tread_capacity: d.f32s(def + 0x11C),
+        carcass_capacity: d.f32s(def + 0x128),
+        tread_conductivity: d.f32(def + 0x118),
+        carcass_conductivity: d.f32(def + 0x124),
+        pressure_axis: table(def + 0x134, 4),
+        stiffness_factor_by_pressure: table(def + 0x144, 4),
+        contact_pressure_axis: table(def + 0x154, 6),
+        contact_conductance: table(def + 0x16C, 6),
+        temperature_axis: table(def + 0x184, 8),
+        rubber_friction_by_temperature: table(def + 0x1A4, 8),
+        rubber_wear_by_temperature: table(def + 0x1C4, 8),
+        load_axis: table(def + 0x1E4, 8),
+        cornering_stiffness_by_load: table(def + 0x204, 8),
+        traction_stiffness_by_load: table(def + 0x224, 8),
+        cornering_friction_by_load: table(def + 0x244, 8),
+        traction_friction_by_load: table(def + 0x264, 8),
+        cornering_peak_slip_by_load: table(def + 0x284, 8),
+        traction_peak_slip_by_load: table(def + 0x2A4, 8),
+    }
+}
+
+/// The setup's surface tables, by their offset: the base frictions, the design wetness, the wet slopes and the wear
+/// factors (six surface classes each).
+const BASE_FRICTION: u32 = 0x2C4;
+const DESIGN_WETNESS: u32 = 0x2DC;
+const WET_SLOPE: u32 = 0x2E0;
+const WEAR_FACTOR: u32 = 0x2F8;
+const CLASSES: usize = 6;
+/// The four by-load tables (stiffnesses and frictions) NGP's step wrapper scales by the surface around `Step` and
+/// restores after it (`rbr_hybrid::ngp::steps::step_wrapper`): a step writes them, so they stay on the image.
+const SCALED: Range<u32> = 0x204..0x284;
+/// The setup's bytes [`TyreDef`] holds: what a step reads (the frame's setup, the hub offset, the surface tables) but
+/// [`SCALED`].
+pub const DEF_BYTES: [Range<u32>; 2] = [DEF_DEBUG_ID..SCALED.start, SCALED.end..0x314];
+
+/// The by-load tables at `def` ([`SCALED`]), from the image, as [`setup_at`] reads them.
+fn scaled_tables(mem: &Mem, def: u32) -> [Table; 4] {
+    let words: [f32; 0x21] = mem.f32s(def + SCALED.start - 4);
+    std::array::from_fn(|k| Table {
+        below: words[8 * k],
+        len: 8,
+        entries: std::array::from_fn(|i| words[8 * k + 1 + i]),
+    })
+}
+
+/// A tyre's setup (`m_def`) as a step reads it, held read only with the step's definitions (`store::defs`): the
+/// frame's setup, the `HubOffset` the wheel reads (`+0x6c`) and the surface tables. The setup's by-load tables are
+/// read on the image ([`TyreDef::setup`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TyreDef {
+    setup: Setup,
+    pub hub_offset: f32,
+    pub base_friction: [f32; CLASSES],
+    pub design_wetness: f32,
+    pub wet_slope: [f32; CLASSES],
+    pub wear_factor: [f32; CLASSES],
+}
+
+impl TyreDef {
+    /// The setup at `def`, from the image.
+    pub fn lift(mem: &Mem, def: u32) -> Self {
+        TyreDef {
+            setup: setup_at(mem, def),
+            hub_offset: mem.f32(def + crate::wheel::layout::TYRE_DEF_HUB_OFFSET),
+            base_friction: mem.f32s(def + BASE_FRICTION),
+            design_wetness: mem.f32(def + DESIGN_WETNESS),
+            wet_slope: mem.f32s(def + WET_SLOPE),
+            wear_factor: mem.f32s(def + WEAR_FACTOR),
+        }
+    }
+
+    /// The setup at `def` (this one's address): the held words, the by-load tables from `mem`.
+    pub fn setup(&self, mem: &Mem, def: u32) -> Setup {
+        let [cornering_stiffness, traction_stiffness, cornering_friction, traction_friction] = scaled_tables(mem, def);
+        Setup {
+            cornering_stiffness_by_load: cornering_stiffness,
+            traction_stiffness_by_load: traction_stiffness,
+            cornering_friction_by_load: cornering_friction,
+            traction_friction_by_load: traction_friction,
+            ..self.setup
+        }
+    }
+
+    /// The setup's `CarcassWidth`.
+    pub fn carcass_width(&self) -> f32 {
+        self.setup.carcass_width
+    }
+
+    /// Entry `k` of the surface table at `table` (`k` 0 of the design wetness), `None` past it.
+    fn surface(&self, table: u32, k: u32) -> Option<f32> {
+        let k = k as usize;
+        match table {
+            BASE_FRICTION => self.base_friction.get(k).copied(),
+            DESIGN_WETNESS => (k == 0).then_some(self.design_wetness),
+            WET_SLOPE => self.wet_slope.get(k).copied(),
+            WEAR_FACTOR => self.wear_factor.get(k).copied(),
+            _ => None,
+        }
+    }
+
+    /// Every answer of the setup at `def` against the image's: the setup, the hub offset and each table entry. The
+    /// bytes compared, or the first answer that differs.
+    pub fn differential(&self, mem: &Mem, def: u32) -> Result<usize, String> {
+        if self.setup(mem, def) != setup_at(mem, def) {
+            return Err(format!("tyre setup at {def:#010x}: the typed setup differs from the image's"));
+        }
+        let mut bytes = DEF_BYTES.iter().map(|r| (r.end - r.start) as usize).sum::<usize>();
+        let mut words = vec![(crate::wheel::layout::TYRE_DEF_HUB_OFFSET, self.hub_offset)];
+        for table in [BASE_FRICTION, WET_SLOPE, WEAR_FACTOR] {
+            words.extend((0..CLASSES as u32).map(|k| (table + 4 * k, self.surface(table, k).unwrap())));
+        }
+        words.push((DESIGN_WETNESS, self.design_wetness));
+        for (off, typed) in words {
+            if typed.to_bits() != mem.u32(def + off) {
+                return Err(format!("tyre setup at {def:#010x} +{off:#x}: typed {:#x}", typed.to_bits()));
+            }
+            bytes += 4;
+        }
+        Ok(bytes)
     }
 }
 
@@ -553,7 +673,7 @@ impl CarTyres {
 
     /// The tyres as a store: their state here, their setups, pointers and contact angles in `mem`.
     pub fn view<'a>(&'a mut self, mem: &'a Mem) -> TyreView<'a> {
-        TyreView { mem, images: &self.images, tyres: &mut self.tyres }
+        TyreView { mem, images: &self.images, tyres: &mut self.tyres, defs: None }
     }
 
     /// Every owned byte range, named by its wheel slot and part.
@@ -591,17 +711,30 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(bytes)
 }
 
-/// Tyres in typed storage as a [`TyreStore`]: the state in [`CarTyres`], the setups, the pointers and the wheels'
-/// contact angles read from the image.
+/// Tyres in typed storage as a [`TyreStore`]: the state in [`CarTyres`], the setups the step's typed definitions hold
+/// ([`TyreView::with_defs`]); the other setups, the pointers and the wheels' contact angles read from the image.
 pub struct TyreView<'a> {
     mem: &'a Mem,
     images: &'a [Option<TyreImage>; 4],
     tyres: &'a mut Tyres,
+    defs: Option<&'a Defs>,
+}
+
+impl<'a> TyreView<'a> {
+    /// The view with the step's typed definitions (`None`: every setup on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        TyreView { defs, ..self }
+    }
 }
 
 impl TyreView<'_> {
     fn image(&self, tyre: TyreId) -> &TyreImage {
         self.images[tyre.0].as_ref().expect("a tyre in its slot")
+    }
+
+    /// The typed setup of the tyre `tyre`, where the step holds it.
+    fn held(&self, tyre: TyreId) -> Option<&TyreDef> {
+        self.defs?.tyre(self.image(tyre).def)
     }
 }
 
@@ -609,7 +742,12 @@ impl TyreStore for TyreView<'_> {
     type Tyre = TyreId;
 
     fn load_frame(&self, tyre: TyreId) -> Frame {
-        self.image(tyre).frame(self.mem, self.tyres.get(tyre))
+        let image = self.image(tyre);
+        let setup = match self.held(tyre) {
+            Some(def) => defs::checked(def.setup(self.mem, image.def), || image.setup(self.mem)),
+            None => image.setup(self.mem),
+        };
+        image.frame_with(self.mem, self.tyres.get(tyre), setup)
     }
 
     fn store_frame(&mut self, tyre: TyreId, frame: &Frame) {
@@ -620,7 +758,7 @@ impl TyreStore for TyreView<'_> {
     }
 
     fn load_surface_input(&self, tyre: TyreId, classes: [u32; 2], wetness: [f32; 2]) -> Result<SurfaceInput, Outside> {
-        self.image(tyre).surface_input(self.mem, self.tyres.get(tyre), classes, wetness)
+        self.image(tyre).surface_input(self.mem, self.held(tyre), self.tyres.get(tyre), classes, wetness)
     }
 }
 

@@ -51,7 +51,7 @@ pub(crate) fn on_strut<T>(ctx: &mut Ctx, controller: u32, run: impl FnOnce(&mut 
     if let Some(typed) = ctx.host.typed() {
         let mut struts = typed.car.struts.borrow_mut();
         if let Some(id) = struts.id_of(controller) {
-            return run(&mut struts.view(&ctx.mem), id);
+            return run(&mut struts.view(&ctx.mem).with_defs(Some(&typed.defs)), id);
         }
     }
     layout::with_strut(&mut ctx.mem, controller, run)

@@ -14,15 +14,18 @@ use crate::engine_driveline::layout::{CarDrive, CarEngine};
 use crate::mem::Mem;
 use crate::spring_damper::layout::CarStruts;
 use crate::stage::typed::Stage;
+use crate::store::defs::Defs;
 use crate::tyre::layout::CarTyres;
 use crate::vcu::layout::CarVcu;
 use crate::wheel::layout::CarWheels;
 
-/// What a step holds in typed storage: the car's state and the stage's.
+/// What a step holds in typed storage: the car's state, the stage's and the definitions the car's subsystems read
+/// (lifted with the car's, read only: `defs`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Typed {
     pub car: CarTyped,
     pub stage: Arc<Stage>,
+    pub defs: Defs,
 }
 
 impl Typed {
@@ -31,6 +34,11 @@ impl Typed {
         let mut owned = self.car.owned();
         owned.extend(self.stage.owned());
         owned
+    }
+
+    /// The byte ranges a step must not write, named: the held definitions'.
+    pub fn watched(&self) -> Vec<(Range<u32>, String)> {
+        self.defs.watched()
     }
 }
 
@@ -85,7 +93,7 @@ impl CarTyped {
 }
 
 /// `lower(lift(image))` of the car's typed state into an empty image, compared with `mem` on every owned byte, and the
-/// stage's typed bytes against the image's: their count, or the first byte that differs.
+/// stage's typed bytes and the definitions' answers against the image's: their count, or the first byte that differs.
 pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(crate::spring_damper::layout::round_trip(mem, car)?
         + crate::vcu::layout::round_trip(mem, car)?
@@ -94,5 +102,6 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
         + crate::tyre::layout::round_trip(mem, car)?
         + crate::wheel::layout::round_trip(mem, car)?
         + crate::car_body::layout::round_trip(mem, car)?
-        + crate::stage::layout::round_trip(mem)?)
+        + crate::stage::layout::round_trip(mem)?
+        + crate::store::defs::differential(mem, car)?)
 }

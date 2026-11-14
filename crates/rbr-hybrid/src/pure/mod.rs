@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use rbr_physics::math::trig;
 use rbr_physics::mem::{Backend, Mem, PagesSnapshot};
 use rbr_physics::stage::typed::Stage;
+use rbr_physics::store::defs::Defs;
 use rbr_physics::store::typed::{CarTyped, Typed};
 
 use crate::{binding_slot, bound, Called, Ctx, Decline, Host, Regs, Return, STACK_ARGS};
@@ -254,11 +255,12 @@ impl Pure {
             return;
         }
         let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.mem))).clone();
-        let typed = Typed { car: CarTyped::lift(&self.mem, car), stage };
+        let typed = Typed { car: CarTyped::lift(&self.mem, car), stage, defs: Defs::lift(&self.mem, car) };
         #[cfg(feature = "poison")]
         {
             let mut poisoned = self.mem.clone();
             poisoned.poison(typed.owned());
+            poisoned.watch_writes(typed.watched());
             *self.poisoned.borrow_mut() = Some(poisoned);
         }
         *self.held.borrow_mut() = Some(typed);

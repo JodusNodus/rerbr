@@ -9,6 +9,7 @@ use super::{
 };
 use crate::mem::Mem;
 use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
+use crate::store::defs::{self, Defs};
 use crate::store::{Raw, Real};
 
 const DEFINITION_VTABLE: u32 = 0x0074_0124; // 0x52d750
@@ -364,8 +365,12 @@ fn definition_at(mem: &Mem, controller: u32) -> u32 {
     mem.u32(controller + DEFINITION_POINTER)
 }
 
+/// The bytes of a definition [`definition`] reads (from the debug id to the last real), the ones the typed definitions
+/// hold (`store::defs`).
+pub const DEFINITION_BYTES: std::ops::Range<u32> = DEFINITION_DEBUG_ID..DEFINITION_HS_DAMP_REBOUND + 0x10;
+
 /// Reads the fields needed by the reached spring-damper functions.
-fn definition(mem: &Mem, at: u32) -> Definition {
+pub fn definition(mem: &Mem, at: u32) -> Definition {
     Definition {
         debug_id: mem.u32(at + DEFINITION_DEBUG_ID),
         bump_stop_pos: real_value(mem, at + DEFINITION_BUMP_STOP_POS),
@@ -542,7 +547,7 @@ impl CarStruts {
 
     /// The struts as a store: their state here, their definitions and owners in `mem`.
     pub fn view<'a>(&'a mut self, mem: &'a Mem) -> StrutView<'a> {
-        StrutView { mem, images: &self.images, struts: &mut self.struts }
+        StrutView { mem, images: &self.images, struts: &mut self.struts, defs: None }
     }
 
     /// Every owned byte range, named by its wheel slot and part.
@@ -579,12 +584,20 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(bytes)
 }
 
-/// Struts in typed storage as a [`StrutStore`]: the state in [`CarStruts`], the definitions and the owners' ids read
-/// from the image.
+/// Struts in typed storage as a [`StrutStore`]: the state in [`CarStruts`], the definitions the step's typed
+/// definitions hold ([`StrutView::with_defs`]), the other definitions and the owners' ids read from the image.
 pub struct StrutView<'a> {
     mem: &'a Mem,
     images: &'a [Option<StrutImage>; 4],
     struts: &'a mut Struts,
+    defs: Option<&'a Defs>,
+}
+
+impl<'a> StrutView<'a> {
+    /// The view with the step's typed definitions (`None`: every definition on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        StrutView { defs, ..self }
+    }
 }
 
 impl StrutView<'_> {
@@ -602,7 +615,11 @@ impl StrutStore for StrutView<'_> {
     type Strut = StrutId;
 
     fn definition(&self, strut: StrutId) -> Definition {
-        definition(self.mem, self.image(strut).definition)
+        let at = self.image(strut).definition;
+        match self.defs.and_then(|defs| defs.strut(at)) {
+            Some(def) => defs::checked(*def, || definition(self.mem, at)),
+            None => definition(self.mem, at),
+        }
     }
 
     fn damping(&self, strut: StrutId) -> Damping {

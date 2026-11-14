@@ -3,7 +3,8 @@
 //! wheels' and the car's own typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
 //! `engine_driveline::layout::{drive_round_trip, engine_round_trip}`, `tyre::layout::round_trip`,
 //! `wheel::layout::round_trip`, `car_body::layout::round_trip`); the typed stage's bytes and queries against the image's
-//! (`stage::layout::round_trip`, `differential`); the wheel's, the engine's and the car's entries per call against held
+//! (`stage::layout::round_trip`, `differential`) and the typed definitions' answers (`store::defs::differential`); the
+//! wheel's, the engine's and the car's entries per call against held
 //! (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`, `car_body::layout::differential`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
@@ -75,6 +76,7 @@ fn main() -> ExitCode {
             ("car", car_body::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
+            ("definitions", store::defs::differential(&mem, car), "answer bytes equal to the image's"),
             (
                 "engine entries",
                 drive::engine_differential(&mut snap.mem(), &mut snap.mem(), car),

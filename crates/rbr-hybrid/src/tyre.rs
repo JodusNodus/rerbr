@@ -85,7 +85,7 @@ pub(crate) fn on_tyre<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut Tyre
     if let Some(typed) = ctx.host.typed() {
         let mut tyres = typed.car.tyres.borrow_mut();
         if let Some(id) = tyres.id_of(scratch) {
-            return run(&mut tyres.view(&ctx.mem), id);
+            return run(&mut tyres.view(&ctx.mem).with_defs(Some(&typed.defs)), id);
         }
     }
     layout::with_tyre(&mut ctx.mem, scratch, run)
