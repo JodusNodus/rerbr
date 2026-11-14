@@ -10,6 +10,7 @@ use crate::entities::transform::Transform;
 use crate::entities::walk::Node;
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
+use crate::rigid_body::layout::SolidWords;
 use crate::stage;
 
 const WALKER_COUNT: u32 = 8;
@@ -51,6 +52,15 @@ const CAR_BODY_SLOTS: u32 = 0x480;
 /// The entity's vtable slot 71 (+0x11c), whose target the query reads.
 const QUERY_SLOT: u32 = 0x11c;
 
+/// Clears the solid's force and then its torque accumulator (`CSolid::E43ClearAcc`), held or on the image. Returns the
+/// torque accumulator's address.
+pub fn clear_solid_accumulators<W: SolidWords + ?Sized>(solids: &mut W, this: u32) -> u32 {
+    for at in [BODY_FORCE, BODY_TORQUE] {
+        solids.set_words4(this + at, [0; 4]);
+    }
+    this + BODY_TORQUE
+}
+
 impl EntityStore for Mem {
     fn identity(&self) -> u32 {
         self.u32(ROOT_IDENTITY)
@@ -69,10 +79,7 @@ impl EntityStore for Mem {
     }
 
     fn clear_accumulators(&mut self, this: u32) -> u32 {
-        for at in [BODY_FORCE, BODY_TORQUE] {
-            self.map(this + at, &[0; 16]);
-        }
-        this + BODY_TORQUE
+        clear_solid_accumulators(self, this)
     }
 
     fn probe_host(&self) -> u32 {

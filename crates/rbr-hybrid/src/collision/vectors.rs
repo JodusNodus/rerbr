@@ -3,6 +3,7 @@
 use rbr_physics::collision::layout::{self};
 use rbr_physics::math::vec::{clear_vec4, Vec3};
 
+use crate::rigid_body::on_solids;
 use crate::{Ctx, Decline, Regs, Return};
 
 /// thiscall on `dst` (`ecx`) with `(src*)`, ret 4: `E01Vec4::CopyFrom` (0x43c5b0), the sixteen bytes of `src` to `dst`.
@@ -22,7 +23,7 @@ pub(super) fn vec4_clear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// four lanes. Eax is `out`.
 pub(super) fn float3_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [scale, out, ..] = r.stack;
-    layout::scaled(&mut ctx.mem, r.ecx, out, f32::from_bits(scale));
+    on_solids(ctx, |s| layout::scaled(s, r.ecx, out, f32::from_bits(scale)));
     Ok(Return::void(out, 8))
 }
 

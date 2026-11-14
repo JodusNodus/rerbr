@@ -4,6 +4,7 @@ use crate::math::vec::Vec3;
 use crate::mem::Mem;
 
 use crate::math::vec::Vec4;
+use crate::rigid_body::layout::SolidWords;
 
 /// E38Vec::M_CD10 (0x4fd10): `out = a - b`. Both inputs are read before the store. Returns `out`.
 pub fn vec3_sub(mem: &mut Mem, a: u32, b: u32, out: u32) -> u32 {
@@ -138,9 +139,11 @@ pub fn bounds_union(mem: &mut Mem, this: u32, src: u32, lo: u32, hi: u32) -> u32
 }
 
 /// E33Vec4::Scaled (0x4e0700): stores the input vector times `scale` at `output`. `this` is the input and the scale is
-/// the second stack word, after the output pointer.
-pub fn scaled(mem: &mut Mem, input: u32, output: u32, scale: f32) {
-    Vec4::load(mem, input).scale(scale).store(mem, output);
+/// the second stack word, after the output pointer. Either vector may be a solid's (`CFloat3::Scale` on the hinged
+/// body's angular velocity): `solids` resolves a held one.
+pub fn scaled<W: SolidWords + ?Sized>(solids: &mut W, input: u32, output: u32, scale: f32) {
+    let v = Vec4::from(solids.words::<4>(input).map(f32::from_bits)).scale(scale);
+    solids.set_words4(output, [v.x, v.y, v.z, v.w].map(f32::to_bits));
 }
 
 impl Vec4Pair {

@@ -11,6 +11,7 @@ use rbr_physics::physics_core::layout::{self, mounted};
 use super::passenger_step::SLOT_24;
 use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, MB560, TEMPS, WALKER};
 use crate::entities::VF5C;
+use crate::rigid_body::on_solids;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `()`: `CSolid::E43Vf5C`: `CEntity::E43Vf5C` on the solid, then its slot 24.
@@ -22,12 +23,12 @@ pub(crate) fn dispatch_vf5c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 
 /// thiscall `()`: `CSolid::E43Vf80`, the word at `+0x1dc`.
 pub(super) fn vf80(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.u32(r.ecx + 0x1dc), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::takes_part_word(s, r.ecx)), 0))
 }
 
 /// thiscall `()`: `CSolid::E43Vf8C` (slot 35, `S8C`), the word at `+0x1ec`.
 pub(super) fn vf8c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::end_step_word(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::end_step_word(s, r.ecx)), 0))
 }
 
 /// thiscall `()`: `CEntity::E43Vf88` (slot 34), 0.
