@@ -2,7 +2,7 @@
 //! first, then the attaches on the drive, the engine and the light system (their argument is the address of that
 //! part's damage state inside the damage object), then the three lists of bodies (each entry: the wheels get an
 //! attach with their damage and a refresh; a non-null hinged or mounted body gets its two calls). Then the control
-//! update runs on a local neutral block (every word zero but the gear word, which is left as the stack has it), and
+//! update runs on a local neutral block (every word zero but the gear word, which is left as it was), and
 //! the car-init emit takes the pair (the car, its sort key). The order is the original's; the calls are answered from
 //! the original's records.
 

@@ -1,6 +1,6 @@
 //! The car's per-step control input: the control payload (`notes/gameplay.md` "Control payload") is `p`, or a neutral
 //! block when the override timer is above zero (every word zero but the handbrake at 1.0; the gear word is left as
-//! the stack has it). The scratch sim, the engine and the drive take the payload; the car keeps its throttle, brake
+//! it was). The scratch sim, the engine and the drive take the payload; the car keeps its throttle, brake
 //! and steering. Unless the replay object is in its state 2, the payload's flags pick: the reset flag asks the car to
 //! reset (after clearing the partial-contact flag) unless the car's gate is closed; otherwise the call-for-help flag
 //! probes the car's motion and emits: the pair (out, 1) on the problem signal when the probe returns 0, or the
