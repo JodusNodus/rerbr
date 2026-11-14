@@ -16,6 +16,7 @@ use crate::entities::layout::ROOT_IDENTITY;
 use crate::fpu::round_x87;
 use crate::physics_core::layout::SIGNAL_MANAGER;
 use crate::rigid_body::layout::{ANGULAR_VELOCITY, LINEAR_VELOCITY};
+use crate::spring_damper::{StepInput, StepOutput};
 
 /// The host calls of `wheel_step`, one method per original callee (`car_slot` is the car's vtable slot 12, called with
 /// its arguments left on the stack for `pair_walk`, which pops them as the asm does).
@@ -57,8 +58,9 @@ pub trait StepCalls {
     /// `CSolid::Step76` (0x529c80, `rigid_body::solid_rows::point_velocity`) on the body `body`: the velocity of the point
     /// at `point`, to `out`.
     fn point_velocity(&mut self, body: u32, point: u32, out: u32, sp: u32);
-    /// `CSpringDamper::Step` (0x52e090) on the strut, with its six arguments.
-    fn spring_step(&mut self, strut: u32, args: [u32; 6], sp: u32);
+    /// `CSpringDamper::Step` (0x52e090) on the strut: its three outputs for `input`. The original writes them through its
+    /// last three arguments, `out` in the caller's frame, where the caller stores them again.
+    fn spring_step(&mut self, strut: u32, input: StepInput, out: [u32; 3], sp: u32) -> StepOutput;
     /// `CTyre::CScratch::SetStateField` (0x532470, `tyre::state::set_active`).
     fn set_tyre_active(&mut self, scratch: u32, v: u32, sp: u32);
     /// `CTyre::CScratch::SetState48` (0x533490, `tyre::state::set_penetration_depth`).
@@ -339,12 +341,15 @@ fn spring_and_slip<S: WheelStore>(
     let round24 = round_x87;
     let [slip_lo, slip_hi, slip_k] = slip;
     let y = mem.def_f32(def, DEF_PLATFORM_HEIGHT) + mem.f32(this + STRUT_LENGTH);
-    let z = mem.get(this, slot::strut_velocity).to_bits();
-    calls.spring_step(
-        this + STRUT,
-        [mem.u32(this + STRUT_LENGTH), y.to_bits(), z, f + 0x24, f + 0x28, f + 0x30],
-        f - 0x1C,
-    );
+    let input = StepInput {
+        travel: mem.f32(this + STRUT_LENGTH),
+        coordinate: y,
+        velocity: mem.get(this, slot::strut_velocity),
+    };
+    let out = calls.spring_step(this + STRUT, input, [f + 0x24, f + 0x28, f + 0x30], f - 0x1C);
+    mem.set_f32(f + 0x24, out.spring_stop_force);
+    mem.set_f32(f + 0x28, out.breakpoint_offset);
+    mem.set_f32(f + 0x30, out.damping_coefficient);
 
     let roll_bar = calls.roll_bar_force(
         car,

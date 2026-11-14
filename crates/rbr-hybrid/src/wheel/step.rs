@@ -4,6 +4,7 @@
 use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::store::RigidStore;
+use rbr_physics::spring_damper::{StepInput, StepOutput};
 use rbr_physics::tyre::layout::{entries, TyreView};
 use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
@@ -292,9 +293,21 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x529C80, body, &[point, out]);
     }
 
-    fn spring_step(&mut self, strut: u32, args: [u32; 6], sp: u32) {
+    // NGP's wrapper as its binding runs it, direct on the held strut; 0x52E090 (1.02, whose binding declines) and another
+    // car's strut through the host.
+    fn spring_step(&mut self, strut: u32, input: StepInput, out: [u32; 3], sp: u32) -> StepOutput {
+        if crate::ngp::is_ngp() && crate::spring_damper::holds_strut(self.host, strut) {
+            if let Ok(forces) = crate::ngp::spring(self.host, &mut self.mem, strut, input) {
+                self.host.ran_direct();
+                return forces;
+            }
+        }
         // 0x52E090, or NGP's 0x10059f70
+        let StepInput { travel, coordinate, velocity } = input;
+        let args = [travel.to_bits(), coordinate.to_bits(), velocity.to_bits(), out[0], out[1], out[2]];
         self.on(sp, crate::ngp::Call::SpringStep.address(), strut, &args);
+        let [spring_stop_force, breakpoint_offset, damping_coefficient] = out.map(|at| self.mem.f32(at));
+        StepOutput { spring_stop_force, breakpoint_offset, damping_coefficient }
     }
 
     fn set_tyre_active(&mut self, scratch: u32, v: u32, sp: u32) {

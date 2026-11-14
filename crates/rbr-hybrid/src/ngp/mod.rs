@@ -15,6 +15,7 @@ mod tuning;
 mod tyre_model;
 
 pub(crate) use calls::Call;
+pub(crate) use damper::spring;
 
 pub(crate) use address::{at, is_file, is_ngp, only, trampolines};
 pub use address::{base_in, file, file_at, original_for, runs_ngp, set_wall_clock, Scope};
