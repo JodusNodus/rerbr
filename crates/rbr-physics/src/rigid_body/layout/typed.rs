@@ -94,13 +94,13 @@ fn slot(off: u32) -> Option<usize> {
 
 /// A solid in typed storage: its address, its name and its state, [`Solid`]'s words over the held span (one cell a
 /// word, so a nested run reads and writes the same words; a word the table does not name is read and never used), and
-/// the span as lifted.
+/// the span as the image holds it (as lifted, then as last lowered: the state stays held across steps).
 #[derive(Clone, Debug)]
 pub struct HeldSolid {
     pub at: u32,
     pub name: &'static str,
     words: Cell<[u32; WORDS]>,
-    lifted: [u32; WORDS],
+    lifted: Cell<[u32; WORDS]>,
 }
 
 impl PartialEq for HeldSolid {
@@ -113,23 +113,24 @@ impl HeldSolid {
     /// The solid at `at`, its span read at once.
     fn lift(mem: &Mem, at: u32, name: &'static str) -> Self {
         let lifted = mem.u32s(at + HELD.start);
-        HeldSolid { at, name, words: Cell::new(lifted), lifted }
+        HeldSolid { at, name, words: Cell::new(lifted), lifted: Cell::new(lifted) }
     }
 
-    /// Writes back the named words, each run of them at once; with `changed`, only the runs that differ from the lift:
-    /// the image still holds the others, since nothing writes a held word on it while the solid is held (the `poison`
-    /// check).
+    /// Writes back the named words, each run of them at once; with `changed`, only the runs that differ from the
+    /// image's copy (`lifted`): the image still holds the others, since nothing writes a held word on it while the solid
+    /// is held (the `poison` check). The copy is then what was written.
     fn lower(&self, mem: &mut Mem, changed: bool) {
-        let words = self.words.get();
-        if changed && words == self.lifted {
+        let (words, image) = (self.words.get(), self.lifted.get());
+        if changed && words == image {
             return;
         }
         for &(from, to) in &RUNS[..RUNS_LEN] {
             let run = from as usize..to as usize;
-            if !changed || words[run.clone()] != self.lifted[run.clone()] {
+            if !changed || words[run.clone()] != image[run.clone()] {
                 mem.set_u32s(self.at + HELD.start + 4 * from as u32, &words[run]);
             }
         }
+        self.lifted.set(words);
     }
 
     #[inline]
@@ -604,5 +605,9 @@ mod tests {
         assert_eq!(mem.f32(other + LINEAR_VELOCITY), 6.0);
         solids.lower(&mut mem);
         assert_eq!(mem.f32s::<4>(car + LINEAR_VELOCITY), [2.0, 3.0, 4.0, 5.0]);
+        // Held on: a word back at its lifted value is lowered too (the image holds the last lower's).
+        solids.view(&mut mem).store_linear_velocity(car, crate::math::vec::Vec4::default());
+        solids.lower(&mut mem);
+        assert_eq!(mem.f32s::<4>(car + LINEAR_VELOCITY), [0.0; 4]);
     }
 }
