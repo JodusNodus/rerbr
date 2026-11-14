@@ -6,8 +6,9 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::mem::Mem;
 
 use super::{FRAME_VF04, FRAME_VF08, FRAME_VF0C, FRAME_VF10, FRAME_VF14};
-use crate::rigid_body::{E43VFAC, E43VFB0};
+use crate::rigid_body::{held_solids, holds_solid_word, E43VFAC, E43VFB0};
 use crate::{Ctx, Decline, Host, Regs, Return};
+use rbr_physics::rigid_body::store::RigidStore;
 
 /// The call depth of a frame hook's owner slot: the original pushes its arguments after the saved esi.
 const FRAME_CALL_DEPTH: u32 = 16;
@@ -44,21 +45,17 @@ impl Owner for FrameOwner<'_> {
         let sp = self.esp.wrapping_sub(FRAME_CALL_DEPTH);
         let target = layout::vtable_target(self.mem, owner, frame_slot(hook, form));
         // `CSolid::E43Vf9C`, `E43VfAC` and `E43VfB0` (their bindings in `rigid_body` make no call) run here on the pure
-        // host.
+        // host, on the solids' store (the owner's matrix and position, and rows that may be a solid's).
         use rbr_physics::rigid_body::layout as solid;
         if matches!(target, SOLID_SCALE_ADD_ROWS | E43VFAC | E43VFB0)
             && crate::skip_call(self.host, self.mem, sp, &[a, b])
         {
-            return match target {
-                SOLID_SCALE_ADD_ROWS => solid::scale_add_rows(self.mem, owner, a, b),
-                E43VFAC => {
-                    solid::transform_body_rows(self.mem, owner, a, b);
-                    0
+            return match held_solids(self.host) {
+                Some(solids) => {
+                    not_kept_on_held(self.host, owner + solid::POSITION, (0..b).map(|k| a + 16 * k));
+                    solid_rows_in_place(&mut solids.view(self.mem), target, owner, a, b)
                 }
-                _ => {
-                    solid::transform_body_rows3(self.mem, owner, a, b);
-                    0
-                }
+                None => solid_rows_in_place(self.mem, target, owner, a, b),
             };
         }
         self.host.call_at(sp, target, owner, &[a, b]).eax
@@ -81,6 +78,31 @@ impl Owner for FrameOwner<'_> {
 
     fn old_frame_of(&mut self, _ent: u32) -> u32 {
         unreachable!("a frame hook asks no entity for its old frame")
+    }
+}
+
+/// `CSolid::E43Vf9C`, `E43VfAC` or `E43VfB0` (`target`) on the solid `owner` with `(a, b)`, on `store`; their eax.
+fn solid_rows_in_place<S: RigidStore>(store: &mut S, target: u32, owner: u32, a: u32, b: u32) -> u32 {
+    use rbr_physics::rigid_body::layout as solid;
+    match target {
+        SOLID_SCALE_ADD_ROWS => solid::scale_add_rows(store, owner, a, b),
+        E43VFAC => {
+            solid::transform_body_rows(store, owner, a, b);
+            0
+        }
+        _ => {
+            solid::transform_body_rows3(store, owner, a, b);
+            0
+        }
+    }
+}
+
+/// Counts a run in place that reads or writes a held solid's words (at `first` or one of `rest`) as a run through the
+/// host ([`Host::ran_direct`]), so the call memo, which sees only the image, keeps no call around it
+/// (`crate::call_memo`).
+pub(super) fn not_kept_on_held(host: &dyn Host, first: u32, rest: impl IntoIterator<Item = u32>) {
+    if holds_solid_word(host, first) || rest.into_iter().any(|at| holds_solid_word(host, at)) {
+        host.ran_direct();
     }
 }
 

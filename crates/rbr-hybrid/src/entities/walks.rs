@@ -13,9 +13,11 @@ use rbr_physics::entities::tree::{
 use rbr_physics::entities::walk::{self, carry_three_four, Node, Walk as PairOps, Walker};
 use rbr_physics::mem::Mem;
 
-use super::frame::{frame_hook_at, FrameOwner};
+use super::frame::{frame_hook_at, not_kept_on_held, FrameOwner};
 use super::WALK_PRE_ORDER;
+use crate::rigid_body::held_solids;
 use crate::{Ctx, Decline, Host, Regs, Return};
+use rbr_physics::rigid_body::layout::SolidWords;
 
 /// Where a walk's calls enter, below the binding's entry esp (the return address's slot), as the original's pushes put
 /// them: `gate` for each child's gate, `call` for the child's slot, `name` for the walk's own name call.
@@ -257,7 +259,20 @@ impl PairOps for PairWalk<'_> {
     }
 
     fn copy_vec4(&mut self, to: u32, from: u32) {
-        layout::copy_vec4(self.mem, to, from);
+        copy_vec4(self.host, self.mem, to, from);
+    }
+}
+
+/// `layout::copy_vec4` on the solids' store: `from` is a solid's vector at times (`MB560` on the car's position).
+pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
+    let Some(solids) = held_solids(host) else {
+        return layout::copy_vec4(mem, to, from);
+    };
+    not_kept_on_held(host, from, [to]);
+    let mut store = solids.view(mem);
+    for k in 0..4 {
+        let word = store.word(from + 4 * k);
+        store.set_word(to + 4 * k, word);
     }
 }
 

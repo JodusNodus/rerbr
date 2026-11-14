@@ -26,7 +26,7 @@ pub(crate) fn fetch_x_direct(host: &dyn Host, mem: &mut Mem, sp: u32, matrix: u3
     if t.node != arg {
         return None;
     }
-    layout::copy_vec4(mem, out, t.matrix);
+    super::walks::copy_vec4(host, mem, out, t.matrix);
     crate::skip_call(host, mem, sp.wrapping_sub(FETCH_X_CALL), &[arg, out, 1]);
     Some(out)
 }
