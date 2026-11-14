@@ -1,7 +1,8 @@
 //! Bindings of the VCU ports (`rbr_physics::vcu`, exe 0x536880-0x5380a0). The ABIs are the original's
 //! (`harness/vcu_vectors.py` VCU_SPECS: thiscall `this` in ecx, the bytes `ret` pops). Each binding decodes the
 //! registers and runs its entry's sequence (`rbr_physics::vcu::layout`). Accessors and setters on the drive, the
-//! engine, the car and the lights stay original: the entries call them through the host (`VcuHost`).
+//! engine and the car run direct on the held state (`VcuCallees`); the lights, the slip query and the per-call path
+//! call the originals through the host (`VcuHost`).
 
 use std::cell::Ref;
 
