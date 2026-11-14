@@ -1,12 +1,10 @@
 //! The drive state, definition and worker object the wheel and gear workers read and write (`E39`).
 
 use super::drive_objects::{DriveState, IntLane, Lane};
-use super::step::{
-    BLOCK_LATCH_BOUND, DAMAGE_TORQUE_GAIN, DRIVE_CLUTCH_MAGNITUDE, DRIVE_RING_RATIO, DRIVE_SPEED_COPY,
-    DRIVE_WHEEL_BIAS, STATE_CAR, STATE_STEP_COUNT,
-};
-use crate::engine_driveline::store::EngineStore;
+use super::step::{DAMAGE_TORQUE_GAIN, DEF_MODE, DEF_RATIO_GAIN};
 use crate::mem::Mem;
+use crate::physics_core::layout::def_flags;
+use crate::store::Value;
 
 /// One axle record of the definition (`CDef`, 0x60 bytes each, four from `+0x0`): the direction word (`+0x18`), the two
 /// block indices (`+0x28`, `+0x38`), the scale (`+0x48`) and the active index (`+0x68`). The names are ours.
@@ -36,9 +34,10 @@ pub struct GearBand {
 }
 
 impl GearBand {
-    /// The band of `gear` (any value, read at the band's offset as the original does).
-    pub fn load<S: EngineStore>(mem: &S, def: u32, gear: u32) -> Self {
-        mem.load_gear_band(def, gear)
+    /// The band of `gear` in the definition at `def` (any value, read at the band's offset as the original does).
+    pub fn load(mem: &Mem, def: u32, gear: u32) -> Self {
+        let band = def.wrapping_add(0x688).wrapping_add(gear.wrapping_mul(0x50));
+        GearBand { ratio: mem.f32(band + 0xC), lower_edge: mem.f32(band + 0x3C), upper_edge: mem.f32(band + 0x4C) }
     }
 }
 
@@ -70,15 +69,41 @@ pub struct WorkerDef {
 }
 
 impl WorkerDef {
-    /// The definition at `def`.
-    pub fn load<S: EngineStore>(mem: &S, def: u32) -> Self {
-        mem.load_worker_def(def)
+    /// The definition at `def` (the image's: a step does not write it).
+    pub fn load(mem: &Mem, def: u32) -> Self {
+        let f = |off: u32| mem.f32(def + off);
+        WorkerDef {
+            axles: std::array::from_fn(|k| {
+                let at = def + 0x60 * k as u32;
+                Axle {
+                    direction: mem.u32(at + 0x18) as i32,
+                    block_pair: [mem.u32(at + 0x28), mem.u32(at + 0x38)],
+                    scale: mem.f32(at + 0x48),
+                    active_index: mem.u32(at + 0x68),
+                }
+            }),
+            wheels: std::array::from_fn(|k| {
+                let at = def + 0xF0 * k as u32;
+                Wheel { weight: mem.f32(at + 0x148), pack: mem.u32(at + 0x158) }
+            }),
+            gear_guard: def_flags(mem) & 0x80000 != 0,
+            torque_scale: f(0x48),
+            slip_gain_a: f(0x664),
+            slip_gain_b: f(0x674),
+            ratio_gain: f(DEF_RATIO_GAIN),
+            slope_limit: f(0xA74),
+            reach_limit: f(0xA84),
+            lane_scale_gain: f(0x630),
+            mode: mem.u32(def + DEF_MODE),
+            pack_term: f(0x684),
+        }
     }
 }
 
 /// One wheel term of the state (`0xc + 0x14 i`, `i < 4`): the value (`+0`), the term (`+4`), the sign (`+8`), the scale
 /// (`+0xc`) and the speed (`+0x10`). Term 3's words are the first words of block 0's slip lane (`+0x48` to `+0x58`):
-/// the workers read its value and term only, and `WorkerState::store` writes terms 0 to 2 only.
+/// they are wheel 0's words in the typed state (`DriveTyped`), whose store writes term 3's sign and scale only where
+/// they changed.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WheelTerm {
     pub value: f32,
@@ -88,8 +113,9 @@ pub struct WheelTerm {
     pub speed: f32,
 }
 
-impl WheelTerm {
-    pub(super) fn load(mem: &Mem, at: u32) -> Self {
+impl Value for WheelTerm {
+    const LEN: u32 = 0x14;
+    fn load(mem: &Mem, at: u32) -> Self {
         WheelTerm {
             value: mem.f32(at),
             term: mem.f32(at + 4),
@@ -99,7 +125,7 @@ impl WheelTerm {
         }
     }
 
-    pub(super) fn store(&self, mem: &mut Mem, at: u32) {
+    fn store(self, mem: &mut Mem, at: u32) {
         mem.set_f32(at, self.value);
         mem.set_f32(at + 4, self.term);
         mem.set_u32(at + 8, self.sign as u32);
@@ -131,40 +157,6 @@ pub struct WheelBlock {
     pub clutch_load: f32,
     /// The latch bound (`+0xf8`), read by `WheelSlipValue` and `WheelLatch`.
     pub latch_bound: f32,
-}
-
-impl WheelBlock {
-    pub(super) fn load(mem: &Mem, at: u32) -> Self {
-        WheelBlock {
-            slip: Lane::load(mem, at + 0x48),
-            prev_force: Lane::load(mem, at + 0x58),
-            prev_force_aux: mem.u32(at + 0x5C),
-            prev_gate: IntLane::load(mem, at + 0x68),
-            prev_gate_aux: mem.u32(at + 0x6C),
-            force: Lane::load(mem, at + 0x88),
-            force_aux: mem.u32(at + 0x8C),
-            gate: IntLane::load(mem, at + 0x98),
-            gate_aux: mem.u32(at + 0x9C),
-            inertia: mem.f32(at + 0x84),
-            clutch_load: mem.f32(at + 0xB4),
-            latch_bound: mem.f32(at + BLOCK_LATCH_BOUND),
-        }
-    }
-
-    /// Writes the block's words except `slip`, which the state writes when it changed (see `WorkerState::store`).
-    pub(super) fn store(&self, mem: &mut Mem, at: u32) {
-        self.prev_force.store(mem, at + 0x58);
-        mem.set_u32(at + 0x5C, self.prev_force_aux);
-        self.prev_gate.store(mem, at + 0x68);
-        mem.set_u32(at + 0x6C, self.prev_gate_aux);
-        self.force.store(mem, at + 0x88);
-        mem.set_u32(at + 0x8C, self.force_aux);
-        self.gate.store(mem, at + 0x98);
-        mem.set_u32(at + 0x9C, self.gate_aux);
-        mem.set_f32(at + 0x84, self.inertia);
-        mem.set_f32(at + 0xB4, self.clutch_load);
-        mem.set_f32(at + BLOCK_LATCH_BOUND, self.latch_bound);
-    }
 }
 
 /// The drive state the wheel workers read and write (`CDrive::CState`, `this+8`). `drive` is the shared part (the gear
@@ -234,122 +226,6 @@ pub struct WorkerState {
 }
 
 impl WorkerState {
-    pub(super) fn load(mem: &Mem, at: u32) -> Self {
-        let f = |off: u32| mem.f32(at + off);
-        let u = |off: u32| mem.u32(at + off);
-        WorkerState {
-            drive: DriveState::load(mem, at),
-            sign_word: u(0x368) as i32,
-            drive_gain: f(0x37C),
-            drive_gain_neg: f(0x380),
-            pack_gain: f(0x460),
-            clutch_matrix: mem.f32s(at + 0x470),
-            step_matrix: mem.f32s(at + 0x4B0),
-            step_vec: std::array::from_fn(|k| f(0x530 + 4 * k as u32)),
-            lane_active: std::array::from_fn(|k| u(0x4F0 + 4 * k as u32)),
-            pair_matrix: mem.f32s(at + 0x500),
-            pair_inverse: mem.f32s(at + 0x510),
-            pair_active: [u(0x520), u(0x524)],
-            pair_words: [u(0x528), u(0x52C)],
-            shift_from: [u(0x544), u(0x548)],
-            commanded_aux: u(0x568),
-            gear_flag: IntLane::load(mem, at + 0x550),
-            trim: f(0x560),
-            trim_accum: f(0x574),
-            trigger: u(0x578),
-            rng: u(0x57C),
-            car: u(STATE_CAR),
-            step_count: Lane::load(mem, at + STATE_STEP_COUNT),
-            reset_count: Lane::load(mem, at + 0x594),
-            latch_count: u(0x5A4),
-            clutch_change_count: u(0x5A8),
-            repeat_count: u(0x5AC),
-            dirty_count: u(0x5B0),
-            step_iter: u(0x5B4),
-            branch: u(0x5B8),
-            pending: u(0x5BC),
-            terms: std::array::from_fn(|k| WheelTerm::load(mem, at + 0xC + 0x14 * k as u32)),
-            blocks: std::array::from_fn(|k| WheelBlock::load(mem, at + 200 * k as u32)),
-        }
-    }
-
-    /// Writes the state back. `before` is the state as loaded (the memory still holds it). Term 3's sign and scale are
-    /// block 0's slip lane (`+0x50`, `+0x54`), so each of the two is written only when the port changed it, and the
-    /// slip lane likewise: a stale copy of the other must not overwrite the change.
-    pub(super) fn store(&self, mem: &mut Mem, at: u32, before: &WorkerState) {
-        self.drive.store(mem, at);
-        mem.set_u32(at + 0x368, self.sign_word as u32);
-        mem.set_f32(at + 0x37C, self.drive_gain);
-        mem.set_f32(at + 0x380, self.drive_gain_neg);
-        mem.set_f32(at + 0x460, self.pack_gain);
-        for (k, v) in self.clutch_matrix.iter().enumerate() {
-            mem.set_f32(at + 0x470 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.step_matrix.iter().enumerate() {
-            mem.set_f32(at + 0x4B0 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.step_vec.iter().enumerate() {
-            mem.set_f32(at + 0x530 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.lane_active.iter().enumerate() {
-            mem.set_u32(at + 0x4F0 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.pair_matrix.iter().enumerate() {
-            mem.set_f32(at + 0x500 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.pair_inverse.iter().enumerate() {
-            mem.set_f32(at + 0x510 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.pair_active.iter().enumerate() {
-            mem.set_u32(at + 0x520 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.pair_words.iter().enumerate() {
-            mem.set_u32(at + 0x528 + 4 * k as u32, *v);
-        }
-        mem.set_u32(at + 0x544, self.shift_from[0]);
-        mem.set_u32(at + 0x548, self.shift_from[1]);
-        mem.set_u32(at + 0x568, self.commanded_aux);
-        self.gear_flag.store(mem, at + 0x550);
-        mem.set_f32(at + 0x560, self.trim);
-        mem.set_f32(at + 0x574, self.trim_accum);
-        mem.set_u32(at + 0x578, self.trigger);
-        mem.set_u32(at + 0x57C, self.rng);
-        mem.set_u32(at + STATE_CAR, self.car);
-        self.step_count.store(mem, at + STATE_STEP_COUNT);
-        self.reset_count.store(mem, at + 0x594);
-        mem.set_u32(at + 0x5A4, self.latch_count);
-        mem.set_u32(at + 0x5A8, self.clutch_change_count);
-        mem.set_u32(at + 0x5AC, self.repeat_count);
-        mem.set_u32(at + 0x5B0, self.dirty_count);
-        mem.set_u32(at + 0x5B4, self.step_iter);
-        mem.set_u32(at + 0x5B8, self.branch);
-        mem.set_u32(at + 0x5BC, self.pending);
-        for (k, term) in self.terms.iter().enumerate().take(3) {
-            term.store(mem, at + 0xC + 0x14 * k as u32);
-        }
-        let shared = self.terms[3];
-        let old = before.terms[3];
-        let t3 = at + 0xC + 0x14 * 3;
-        mem.set_f32(t3, shared.value);
-        mem.set_f32(t3 + 4, shared.term);
-        mem.set_f32(t3 + 0x10, shared.speed);
-        if shared.sign != old.sign {
-            mem.set_u32(t3 + 8, shared.sign as u32);
-        }
-        if shared.scale.to_bits() != old.scale.to_bits() {
-            mem.set_f32(t3 + 0xC, shared.scale);
-        }
-        for (k, block) in self.blocks.iter().enumerate() {
-            let base = at + 200 * k as u32;
-            block.store(mem, base);
-            if block.slip != before.blocks[k].slip {
-                block.slip.store(mem, base + 0x48);
-            }
-        }
-    }
-}
-
-impl WorkerState {
     /// Sets block `i`'s slip. Block 0's slip is the words term 3 reads as its sign and scale (see `WheelTerm`), so a
     /// write to block 0 is also term 3's: its sign takes the slip's dirty flag, its scale the value.
     pub fn set_slip(&mut self, i: usize, value: f32) {
@@ -410,64 +286,6 @@ pub struct DriveOwn {
     pub clutch_magnitude: f32,
 }
 
-impl DriveOwn {
-    pub(super) fn load(mem: &Mem, this: u32) -> Self {
-        DriveOwn {
-            value_rate: Lane::load(mem, this + 0x84),
-            solution: mem.f32s(this + 0xA0),
-            lane_scale: Lane::load(mem, this + 0x40),
-            lane_scaled: Lane::load(mem, this + 0x74),
-            lane_gate: mem.u32(this + 0x50),
-            gate_level: mem.f32(this + 0x2C),
-            scaled_term: mem.f32(this + 0x1A0),
-            speed_factor: mem.f32(this + 0x1C8),
-            pack_out: mem.f32s(this + 0xC0),
-            pair_pack: mem.f32s(this + 0xD0),
-            pair_solution: mem.f32s(this + 0xD8),
-            pair_slip: mem.f32s(this + 0xE0),
-            wheel_offset: std::array::from_fn(|k| mem.f32(this + 0xF4 + 0x10 * k as u32)),
-            shift_speed: mem.f32(this + 0x1B4),
-            shift_trim: mem.u32(this + 0x1B8),
-            gear_level: mem.f32(this + 0x1C4),
-            ring_ratio: mem.f32(this + DRIVE_RING_RATIO),
-            wheel_bias: std::array::from_fn(|k| mem.f32(this + DRIVE_WHEEL_BIAS + 0x10 * k as u32)),
-            speed_copy: mem.u32(this + DRIVE_SPEED_COPY),
-            clutch_magnitude: mem.f32(this + DRIVE_CLUTCH_MAGNITUDE),
-        }
-    }
-
-    pub(super) fn store(&self, mem: &mut Mem, this: u32) {
-        self.value_rate.store(mem, this + 0x84);
-        for (k, v) in self.solution.iter().enumerate() {
-            mem.set_f32(this + 0xA0 + 4 * k as u32, *v);
-        }
-        self.lane_scale.store(mem, this + 0x40);
-        self.lane_scaled.store(mem, this + 0x74);
-        mem.set_u32(this + 0x50, self.lane_gate);
-        mem.set_f32(this + 0x2C, self.gate_level);
-        mem.set_f32(this + 0x1A0, self.scaled_term);
-        mem.set_f32(this + 0x1C8, self.speed_factor);
-        for (k, v) in self.pack_out.iter().enumerate() {
-            mem.set_f32(this + 0xC0 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.pair_pack.iter().chain(&self.pair_solution).chain(&self.pair_slip).enumerate() {
-            mem.set_f32(this + 0xD0 + 4 * k as u32, *v);
-        }
-        for (k, v) in self.wheel_offset.iter().enumerate() {
-            mem.set_f32(this + 0xF4 + 0x10 * k as u32, *v);
-        }
-        mem.set_f32(this + 0x1B4, self.shift_speed);
-        mem.set_u32(this + 0x1B8, self.shift_trim);
-        mem.set_f32(this + 0x1C4, self.gear_level);
-        mem.set_f32(this + DRIVE_RING_RATIO, self.ring_ratio);
-        for (k, v) in self.wheel_bias.iter().enumerate() {
-            mem.set_f32(this + DRIVE_WHEEL_BIAS + 0x10 * k as u32, *v);
-        }
-        mem.set_u32(this + DRIVE_SPEED_COPY, self.speed_copy);
-        mem.set_f32(this + DRIVE_CLUTCH_MAGNITUDE, self.clutch_magnitude);
-    }
-}
-
 /// The drive's damage block (`this+0x170`): the damage handler's block at `+0x3a18`,
 /// which `E39_Link3AB0` links and `E39_StateInitC70` resets (rbr-recomp `notes/physics/damage.md` 1a,
 /// `notes/sound.md` 6.4). The enable word per wheel (`+0x18`, 0xc apart; a broken driveshaft clears it), the rate
@@ -490,7 +308,8 @@ pub struct DriveDamage {
 }
 
 impl DriveDamage {
-    pub(super) fn load(mem: &Mem, obj: u32) -> Self {
+    /// The block at `obj` (the damage handler's, on the image: its functors write it too).
+    pub fn load(mem: &Mem, obj: u32) -> Self {
         DriveDamage {
             wheel_enabled: std::array::from_fn(|k| mem.u32(obj + 0x18 + 0xC * k as u32)),
             rate: mem.f32(obj + 0x74),
@@ -503,7 +322,7 @@ impl DriveDamage {
         }
     }
 
-    pub(super) fn store(&self, mem: &mut Mem, obj: u32) {
+    pub fn store(&self, mem: &mut Mem, obj: u32) {
         for (k, v) in self.wheel_enabled.iter().enumerate() {
             mem.set_u32(obj + 0x18 + 0xC * k as u32, *v);
         }
@@ -529,37 +348,16 @@ pub struct DriveWorker {
     pub damage: DriveDamage,
 }
 
-impl DriveWorker {
-    pub fn load<S: EngineStore>(mem: &S, this: u32) -> Self {
-        mem.load_drive_worker(this)
-    }
-
-    pub fn store<S: EngineStore>(&self, mem: &mut S, this: u32) {
-        mem.store_drive_worker(this, self)
-    }
-}
-
 /// The words the gear workers read at the state's gear: the gear's band (`CDef`, `+0x688`), the gear's scale (the object's
 /// `+0x48` table) and the gear's time step (`this+0x174`). Only the gear workers load them, since the gear is an index
-/// the other workers never read at. `store` writes the scale and the time step last: the scale can share a word with
-/// the object's rate (at gear 11), and the rate is written first.
+/// the other workers never read at. `DriveStore::store_gear_work` writes the scale and the time step after the worker:
+/// the scale can share a word with the object's rate (at gear 11), and the rate is written first.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct GearWork {
     pub gear: u32,
     pub band: GearBand,
     pub scale: f32,
     pub dt: f32,
-}
-
-impl GearWork {
-    pub fn load<S: EngineStore>(mem: &S, this: u32) -> Self {
-        mem.load_gear_work(this)
-    }
-
-    /// Writes the gear's scale and time step (the state's gear is the one `load` read).
-    pub fn store<S: EngineStore>(&self, mem: &mut S, this: u32) {
-        mem.store_gear_work(this, self)
-    }
 }
 
 /// The ring of `E39_RatioCA0` (0x503ca0): the count (`+0`, at most 8), the index of the last value written (`+4`) and the
@@ -571,14 +369,17 @@ pub struct RatioRing {
     pub values: [f32; 8],
 }
 
-impl RatioRing {
-    /// The ring at `at`.
-    pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
-        mem.load_ratio_ring(at)
+impl Value for RatioRing {
+    const LEN: u32 = 0x28;
+    fn load(mem: &Mem, at: u32) -> Self {
+        RatioRing { count: mem.u32(at), index: mem.u32(at + 4), values: mem.f32s(at + 8) }
     }
-
-    pub fn store<S: EngineStore>(&self, mem: &mut S, at: u32) {
-        mem.store_ratio_ring(at, self)
+    fn store(self, mem: &mut Mem, at: u32) {
+        mem.set_u32(at, self.count);
+        mem.set_u32(at + 4, self.index);
+        for (k, v) in self.values.iter().enumerate() {
+            mem.set_f32(at + 8 + 4 * k as u32, *v);
+        }
     }
 }
 
@@ -590,7 +391,8 @@ pub struct LaneScale {
 }
 
 impl LaneScale {
-    pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
-        mem.load_lane_scale(at)
+    /// The record at `at` (`M5970`'s argument, the caller's).
+    pub fn load(mem: &Mem, at: u32) -> Self {
+        LaneScale { scale: mem.f32(at + 8), gate: mem.u32(at + 0x1C) }
     }
 }

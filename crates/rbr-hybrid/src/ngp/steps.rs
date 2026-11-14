@@ -2,7 +2,10 @@
 
 use crate::stage::on_stage;
 use rbr_physics::car_body::store::CarStore;
-use rbr_physics::engine_driveline::layout::{with_worker, BrakeBlock, DriveWorker};
+use rbr_physics::engine_driveline::layout::{
+    curve_input_at, wheel_at, with_worker, BrakeBlock, CurveInput, DriveObjects,
+};
+use rbr_physics::engine_driveline::store::DriveStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::atmosphere::atmosphere;
 use rbr_physics::ngp::axle;
@@ -13,8 +16,10 @@ use rbr_physics::ngp::drive;
 use rbr_physics::ngp::layout::{drive_line, material, tag_blend};
 use rbr_physics::ngp::outputs;
 use rbr_physics::ngp::step_wrapper::{self, SurfaceHeatPercent};
+use rbr_physics::store::Raw;
 use rbr_physics::tyre::layout::{self, entries};
 
+use crate::engine_driveline::{on_drive, on_drive_in};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 use super::address::{at, FILE_BASE};
@@ -96,7 +101,8 @@ fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
 pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let drive = r.ecx;
     let m = &ctx.mem;
-    let (def, state, obj) = (m.u32(drive + 4), m.u32(drive + 8), m.u32(drive + 0x170));
+    let objects = DriveObjects::at(m, drive);
+    let (def, state, obj) = (objects.def, objects.state, objects.damage);
     let word = m.u32(def + 0x640);
     let kind = diff::drive_type(word);
     let settings = m.u32(m.u32(at(SETTINGS).expect("hooked only with NGP")));
@@ -111,13 +117,11 @@ pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     }
     apply_downforce(&mut ctx.mem, drive);
     let loss = super::drive_loss::loss(kind, ctx.mem.u32(settings + 0xe88));
-    let gain = diff::after_loss(ctx.mem.f32(state + 0x37c), loss);
-    ctx.mem.set_f32(state + 0x37c, gain);
-    if (4..8).contains(&kind) {
+    let tuning = (4..8).contains(&kind).then(|| {
         let m = &ctx.mem;
         let car = m.u32(state + 0x580);
         let locks = m.u32(car + 0x850);
-        let tuning = diff::DiffTuning {
+        diff::DiffTuning {
             locks: [[0x1b8, 0x268], [0x738, 0x7e8], [0x9f8, 0xaa8]].map(|p| p.map(|o| m.f32(locks + o))),
             handbrake: crate::vcu::unit_of(ctx.host, m, car).scratch.pedals.handbrake,
             handbrake_release: m.f32(locks + 0x198),
@@ -125,17 +129,25 @@ pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
             enabled: [4, 0xc, 0x14].map(|o| m.u32(obj + o)),
             split: data_f32(ctx, 0x1017_1a90),
             viscous_gain: data_f32(ctx, 0x1017_1aa0),
-        };
-        let w = DriveWorker::load(m, drive);
-        let scales = diff::lock_torques(&w, diff::diff_types(word), &tuning);
-        for (g, v) in scales.into_iter().enumerate() {
-            ctx.mem.set_f32(state + 0x18 + 0x14 * g as u32, v);
         }
-    }
+    });
+    // The gain after the loss (the state's `+0x37c`), then the diffs' lock torques (the lock channels' scales) from
+    // the worker as the gain leaves it.
+    on_drive(ctx, drive, |d| {
+        with_worker(d, |w| {
+            w.state.drive_gain = diff::after_loss(w.state.drive_gain, loss);
+            if let Some(tuning) = &tuning {
+                let scales = diff::lock_torques(w, diff::diff_types(word), tuning);
+                for (term, v) in w.state.terms.iter_mut().zip(scales) {
+                    term.scale = v;
+                }
+            }
+        })
+    });
     let dt = r.stack[0];
     if matches!(kind, 4 | 5) {
         let g = (kind - 3) as usize;
-        with_worker(&mut ctx.mem, drive, |w| axle::axle_worker(w, f(dt), g));
+        on_drive(ctx, drive, |d| with_worker(d, |w| axle::axle_worker(w, f(dt), g)));
         return Ok(Return::void(0, 4));
     }
     let called = ctx.host.call(at(WHEEL_WORKER).unwrap(), drive, &[dt]);
@@ -154,11 +166,11 @@ fn axle_fits(m: &Mem, def: u32, g: u32) -> bool {
 /// `0x100487f0` (thiscall on the drive, `(dt, g)`, `ret 8`, void): NGP's axle worker (`rbr_physics::ngp::axle`).
 pub(crate) fn axle_worker(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [dt, g, ..] = r.stack;
-    let def = ctx.mem.u32(r.ecx + 4);
+    let def = DriveObjects::at(&ctx.mem, r.ecx).def;
     if !matches!(g, 1 | 2) || !axle_fits(&ctx.mem, def, g) {
         return Err(Decline::Unsupported("the axle's blocks or packs are out of range"));
     }
-    with_worker(&mut ctx.mem, r.ecx, |w| axle::axle_worker(w, f(dt), g as usize));
+    on_drive(ctx, r.ecx, |d| with_worker(d, |w| axle::axle_worker(w, f(dt), g as usize)));
     Ok(Return::void(0, 8))
 }
 
@@ -182,13 +194,14 @@ pub(crate) fn curve_term_binding(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
 }
 
 /// `0x10046880`'s work; declines (before any writes) without NGP's settings or for a state that isn't a wheel's. The
-/// handbrake is the VCU's, as `host` holds it ([`crate::vcu::unit_of`]).
+/// handbrake is the VCU's, as `host` holds it ([`crate::vcu::unit_of`]). The wheel's words (`a1`) and the drive's input
+/// block (`x`, the drive's `+0x10`) are the drive's typed state ([`on_drive_in`]); an `x` elsewhere is read on the image.
 pub(crate) fn curve_term(m: &mut Mem, host: &dyn Host, drive: u32, args: [u32; 5]) -> Result<f32, Decline> {
     let [a1, c, n, x, dt] = args;
-    let state = m.u32(drive + 8);
+    let state = DriveObjects::at(m, drive).state;
     let car = m.u32(state + 0x580);
     let u = a1.wrapping_sub(state).wrapping_sub(0x48) / 200;
-    if u > 3 {
+    if u > 3 || wheel_at(state, u) != a1 {
         return Err(Decline::Unsupported("the curve state is not a wheel's"));
     }
     let settings = m.u32(m.u32(at(SETTINGS).expect("hooked only with NGP")));
@@ -203,44 +216,69 @@ pub(crate) fn curve_term(m: &mut Mem, host: &dyn Host, drive: u32, args: [u32; 5
     // radius +0x6c, plate area +0x9c, internal convection +0xbc, heat absorption +0x8c, specific heat +0x7c, mass
     // +0x3c, convection factor +0x4c, layer mass share +0x5c, vent area +0xac.
     let block = BrakeBlock::load(m, c);
-    let i = BrakeIn {
-        brake: Brake {
-            ratio: block.ratio,
-            piston_area: block.piston_area,
-            effective_radius: block.effective_radius,
-            plate_area: block.plate_area,
-            internal_convection: block.internal_convection,
-            heat_absorption: block.heat_absorption,
-            specific_heat: block.specific_heat,
-            mass: block.mass,
-            convection_factor: m.f32(c + 0x4c),
-            layer_mass_share: m.f32(c + 0x5c),
-            vent_area: m.f32(c + 0xac),
-        },
-        wheel_speed: m.f32(a1 + 0x1c),
-        layer_temperature: m.u32(a1 + 0x7c),
-        core_temperature: m.u32(a1 + 0x8c),
-        pedal_pressure: super::scaled_pedal(u, m.f32(x + 0x60)),
-        handbrake_pressure: m.f32(x + 0x70),
-        handbrake_gain: m.f32(a1 + 0xac),
-        handbrake_factor: m.f32(at(0x1017_1a94).unwrap()),
-        released: front && m.u32(m.u32(drive + 0x170) + 0x80) == 0,
-        speed_fade: m.f32(settings + if front { 0xfe8 } else { 0x1168 }),
-        car_speed: m.f32(car + 0x15f8),
-        air_temperature: m.f32(at(0x1017_1adc).unwrap()),
-        dt: f(dt),
-        split_handbrake: rear_split,
+    let brake = Brake {
+        ratio: block.ratio,
+        piston_area: block.piston_area,
+        effective_radius: block.effective_radius,
+        plate_area: block.plate_area,
+        internal_convection: block.internal_convection,
+        heat_absorption: block.heat_absorption,
+        specific_heat: block.specific_heat,
+        mass: block.mass,
+        convection_factor: m.f32(c + 0x4c),
+        layer_mass_share: m.f32(c + 0x5c),
+        vent_area: m.f32(c + 0xac),
     };
-    let o = brake_step(&i, |force| crate::engine_driveline::row_value_at(m, force, a1, c, n, f(dt)) as f32);
-    m.set_u32(a1 + 0x7c, o.layer_temperature);
-    m.set_u32(a1 + 0x8c, o.core_temperature);
+    let handbrake_factor = m.f32(at(0x1017_1a94).unwrap());
+    let released = front && m.u32(DriveObjects::at(m, drive).damage + 0x80) == 0;
+    let speed_fade = m.f32(settings + if front { 0xfe8 } else { 0x1168 });
+    let car_speed = m.f32(car + 0x15f8);
+    let air_temperature = m.f32(at(0x1017_1adc).unwrap());
+    let own_input = x == curve_input_at(drive);
+    let image_input = (!own_input).then(|| CurveInput::load(m, x));
+    let o = on_drive_in(host, m, drive, |d| {
+        let wheel = d.curve_state(u);
+        let input = image_input.unwrap_or_else(|| d.curve_input());
+        let i = BrakeIn {
+            brake,
+            wheel_speed: wheel.slope,
+            layer_temperature: wheel.pos.value as u32,
+            core_temperature: wheel.lane.value as u32,
+            pedal_pressure: super::scaled_pedal(u, input.brake_torque),
+            handbrake_pressure: input.handbrake_torque,
+            handbrake_gain: wheel.term_gain,
+            handbrake_factor,
+            released,
+            speed_fade,
+            car_speed,
+            air_temperature,
+            dt: f(dt),
+            split_handbrake: rear_split,
+        };
+        let o = brake_step(&i, |force| {
+            let mut wheel = d.curve_state(u);
+            let v = crate::engine_driveline::row_value_of(d.mem(), &mut wheel, force, c, n, f(dt));
+            d.store_curve_state(u, &wheel);
+            v as f32
+        });
+        let mut wheel = d.curve_state(u);
+        wheel.pos.value = o.layer_temperature as i32;
+        wheel.lane.value = o.core_temperature as i32;
+        d.store_curve_state(u, &wheel);
+        o
+    });
     let row = at(0x1017_662c).unwrap() + 0x3c * u;
     for (k, v) in o.telemetry.into_iter().enumerate() {
         m.set_f32(row + 4 * k as u32, v);
     }
     if let Some(t) = o.transfer {
-        let slot = state + 200 * u - 0x98;
-        m.set_f32(slot, m.f32(slot) + t);
+        // Into the latch bound of the wheel two before (the front wheel on this side); none before the front wheels.
+        if u >= 2 {
+            on_drive_in(host, m, drive, |d| d.store_latch_bound(u - 2, d.latch_bound(u - 2) + t));
+        } else {
+            let slot = state + 200 * u - 0x98;
+            m.set_f32(slot, m.f32(slot) + t);
+        }
     }
     Ok(o.torque)
 }
@@ -311,7 +349,7 @@ pub(crate) fn tag_blend(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(crate) fn wheel_slip_value(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let split = data_f32(ctx, SPLIT);
     let x = r.stack[0] as usize;
-    with_worker(&mut ctx.mem, r.ecx, |w| drive::wheel_slip_value(w, x, split));
+    on_drive(ctx, r.ecx, |d| with_worker(d, |w| drive::wheel_slip_value(w, x, split)));
     Ok(Return::void(0, 4))
 }
 
@@ -319,7 +357,7 @@ pub(crate) fn wheel_slip_value(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 pub(crate) fn wheel_latch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let split = data_f32(ctx, SPLIT);
     let x = r.stack[0] as usize;
-    with_worker(&mut ctx.mem, r.ecx, |w| drive::wheel_latch(w, x, split));
+    on_drive(ctx, r.ecx, |d| with_worker(d, |w| drive::wheel_latch(w, x, split)));
     Ok(Return::void(0, 4))
 }
 

@@ -6,7 +6,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::ngp::engine::{self as ngp_engine, EngineDamage, TorqueIn};
 use rbr_physics::ngp::starter;
 
-use crate::{Ctx, Decline, Regs, Return};
+use crate::engine_driveline::on_drive_in;
+use crate::{Ctx, Decline, Host, Regs, Return};
 
 use super::address::{at, WALL_CLOCK};
 use super::engine_model;
@@ -21,27 +22,29 @@ const STARTER_HELD: u32 = 0x1017_6718;
 
 /// `0x100456c0` (thiscall on the drive, `(dt)`, `ret 4`, st0): NGP's starter (`rbr_physics::ngp::starter`).
 pub(crate) fn starter_binding(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let v = starter_step(&mut ctx.mem, r.ecx, f(r.stack[0]));
+    let v = starter_step(&mut ctx.mem, ctx.host, r.ecx, f(r.stack[0]));
     Ok(Return::float(f64::from(v), 4))
 }
 
 /// `0x100456c0`'s work, timed by simulation time (the hold kept at NGP's stamp, `notes/ngp.md`) or by the wall clock
 /// set for the step (the stamp taken while the gate is clear, as NGP does).
-pub(crate) fn starter_step(m: &mut Mem, drive: u32, dt: f32) -> f32 {
+pub(crate) fn starter_step(m: &mut Mem, host: &dyn Host, drive: u32, dt: f32) -> f32 {
     let held_at = at(STARTER_HELD).expect("hooked only with NGP");
     let kept = u64::from(m.u32(held_at)) | u64::from(m.u32(held_at + 4)) << 32;
     let band = m.f32(at(0x1017_1a98).unwrap());
-    let (v, kept) = with_worker(m, drive, |w| {
-        let gated = w.own.lane_gate != 0;
-        let (held, kept) = match WALL_CLOCK.get() {
-            Some(now) if gated => (now.wrapping_sub(kept), kept),
-            Some(now) => (0, now),
-            None => {
-                let held = starter::sim_held(gated, dt, kept);
-                (held, held)
-            }
-        };
-        (starter::starter(w, dt, band, held), kept)
+    let (v, kept) = on_drive_in(host, m, drive, |d| {
+        with_worker(d, |w| {
+            let gated = w.own.lane_gate != 0;
+            let (held, kept) = match WALL_CLOCK.get() {
+                Some(now) if gated => (now.wrapping_sub(kept), kept),
+                Some(now) => (0, now),
+                None => {
+                    let held = starter::sim_held(gated, dt, kept);
+                    (held, held)
+                }
+            };
+            (starter::starter(w, dt, band, held), kept)
+        })
     });
     m.set_u32(held_at, kept as u32);
     m.set_u32(held_at + 4, (kept >> 32) as u32);

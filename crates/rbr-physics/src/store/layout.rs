@@ -281,7 +281,7 @@ impl Tabled {
 /// The tabled objects of the car at `car` (`object!` tables so far: the wheels' typed state, the tyre scratches, the
 /// struts with their states and fade pairs, the VCU scratch and its state).
 pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
-    use crate::{car_body, spring_damper, tyre, vcu, wheel};
+    use crate::{car_body, engine_driveline, spring_damper, tyre, vcu, wheel};
     let mut out = Vec::new();
     for (k, wheel) in car_body::store::CarStore::wheel_pointers(mem, car).into_iter().enumerate() {
         if wheel == 0 {
@@ -305,6 +305,7 @@ pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
     out.push(Tabled::of::<vcu::layout::ScratchObj>("vcu scratch", scratch));
     let state = vcu::layout::ScratchObj::state.load(mem, scratch);
     out.push(Tabled::of::<vcu::layout::StateObj>("vcu state", state));
+    out.extend(engine_driveline::layout::DriveImage::of(mem, car_body::layout::drive_at(car)).tabled());
     out
 }
 

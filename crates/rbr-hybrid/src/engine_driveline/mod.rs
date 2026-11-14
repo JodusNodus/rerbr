@@ -4,7 +4,10 @@
 //! callees are computed by the ports; `CCar::Get30`, the gear-change signal and `E12_SampleX` are host calls. eax is
 //! given where the original returns a value; elsewhere it is a scratch value no caller reads, given as 0.
 
-use crate::Binding;
+use rbr_physics::engine_driveline::layout::{self, DriveView};
+use rbr_physics::mem::Mem;
+
+use crate::{Binding, Ctx, Host};
 
 mod curves;
 mod engine_sim;
@@ -13,7 +16,7 @@ mod workers;
 
 use crate::entities::MB560;
 use crate::rigid_body::WALKER;
-pub(crate) use curves::row_value_at;
+pub(crate) use curves::row_value_of;
 use curves::{
     blend_b, blend_tables, blend_tables_checked, clamp_mix, count_down, curve_eta, e12_sample_x, find_bracket, last,
     lerp_at, ring_average, row_value, set_drive_line, split_unit_fraction, table_lerp, thunk_4f0, unsigned_table_lerp,
@@ -163,4 +166,40 @@ pub static BINDINGS: [Binding; 99] = [
 
 fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
+}
+
+/// Runs `run` on the drive at `drive`: in the typed storage the host holds over a step ([`crate::Host::typed`]), else
+/// (another car's, or no step holds it) per access on the image ([`layout::with_drive`]).
+pub(crate) fn on_drive_in<T>(host: &dyn Host, mem: &mut Mem, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
+    if let Some(typed) = host.typed() {
+        if typed.car.drive.is(drive) {
+            return run(&mut typed.car.drive.view(mem));
+        }
+    }
+    layout::with_drive(mem, drive, run)
+}
+
+/// [`on_drive_in`] on a binding's memory and host.
+pub(crate) fn on_drive<T>(ctx: &mut Ctx, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
+    on_drive_in(ctx.host, &mut ctx.mem, drive, run)
+}
+
+/// The held drive whose wheel block (`Hook4160`'s `a1`, the curve workers' state) is at `at`: the drive and the wheel.
+/// `None` where no step holds a drive, or the block is not one of its wheels'.
+pub(crate) fn held_wheel(host: &dyn Host, at: u32) -> Option<(u32, u32)> {
+    let typed = host.typed()?;
+    let drive = &typed.car.drive;
+    drive.wheel_of(at).map(|k| (drive.image.drive, k))
+}
+
+/// The held drive whose ratio ring (`E39_RatioCA0`'s pointer) is at `at`.
+fn held_ring(host: &dyn Host, at: u32) -> Option<u32> {
+    let typed = host.typed()?;
+    let drive = &typed.car.drive;
+    (layout::ratio_ring_at(drive.image.state) == at).then_some(drive.image.drive)
+}
+
+/// Whether `drive` is the drive a step holds.
+pub(crate) fn is_held(host: &dyn Host, drive: u32) -> bool {
+    host.typed().is_some_and(|typed| typed.car.drive.is(drive))
 }

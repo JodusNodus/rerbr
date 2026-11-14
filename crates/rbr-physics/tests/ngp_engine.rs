@@ -199,9 +199,6 @@ impl VcuCalls for Drive {
     fn query_slip(&mut self) -> bool {
         unreachable!()
     }
-    fn set_dirty(&mut self, _: u32) {
-        unreachable!()
-    }
 }
 
 #[test]

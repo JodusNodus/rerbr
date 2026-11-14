@@ -174,6 +174,7 @@ pub(super) fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_en
 #[cfg(test)]
 pub(super) fn ratio_ring_newest(playback: &Playback) -> f32 {
     use rbr_physics::engine_driveline::layout::{ratio_ring_at, RatioRing};
+    use rbr_physics::store::Value;
     let mem = &playback.pure.mem;
     let ring = RatioRing::load(mem, ratio_ring_at(mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8)));
     ring.values[ring.index as usize]

@@ -8,6 +8,7 @@
 mod common;
 
 use common::{Call, Inner, Window};
+use rbr_physics::engine_driveline::layout::{CarDrive, DriveImage, DriveObj, DriveRef, DriveStateObj};
 use rbr_physics::fpu::Precision;
 use rbr_physics::mem::Mem;
 use rbr_physics::store::Object;
@@ -61,13 +62,23 @@ fn fill(mem: &mut Mem, at: u32, len: u32) {
 }
 
 /// Runs `run` on the unit whose scratch is at `scratch`, on the per-call store. The per-call path lifts the whole unit
-/// (its scratch and its state); a record's windows hold what the call reads, so the rest of the unit's bytes are mapped
-/// as zeros first, which no window compare reads.
+/// (its scratch and its state) and, for the drive's blocks, the whole drive (the drive and its state); a record's
+/// windows hold what the call reads, so the rest of their bytes are mapped as zeros first, which no window compare
+/// reads.
 fn on_unit<T>(mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
+    fill_unit(mem, scratch);
+    layout::with_vcu(mem, scratch, run)
+}
+
+/// The zeros [`on_unit`] maps: the unit's objects and its drive's.
+fn fill_unit(mem: &mut Mem, scratch: u32) {
     fill(mem, scratch, ScratchObj::SIZE);
     let state = mem.u32(scratch + ScratchObj::state.at);
     fill(mem, state, layout::StateObj::SIZE);
-    layout::with_vcu(mem, scratch, run)
+    let drive = ScratchObj::drive.load(mem, scratch);
+    fill(mem, drive, DriveObj::SIZE);
+    let drive_state = DriveImage::of(mem, drive).state;
+    fill(mem, drive_state, DriveStateObj::SIZE);
 }
 
 /// Windows mapped from `call`'s before bytes.
@@ -558,11 +569,11 @@ impl layout::VcuCalls for Recorded<'_> {
     fn query_slip(&mut self) -> bool {
         false
     }
-    fn set_dirty(&mut self, _: u32) {}
 }
 
 /// The chain on the image between calls (each entry lifts and lowers the unit) and on the typed storage over the whole
-/// chain (lifted before it, lowered after) leave every byte of the record's windows and the unit's objects equal, on
+/// chain (the unit and its drive lifted before it, lowered after) leave every byte of the record's windows, the unit's
+/// objects and the drive's equal, on
 /// every Step record.
 #[test]
 fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
@@ -577,7 +588,8 @@ fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
         let mut base = windows(call);
         on_unit(&mut base, scratch, |_| ());
         // A packet that sets the gear (flag 4) to the one in use, so the dispatch runs and changes no request.
-        let gear = layout::gearbox_at(&base, base.u32(base.u32(scratch + ScratchObj::drive.at) + 8)).gear;
+        let drive = ScratchObj::drive.load(&base, scratch);
+        let gear = DriveRef::of(&base, None, drive).gearbox(&base).gear;
         let packet = layout::Packet {
             pedals: layout::Pedals { throttle: 0.75, brake: 0.25, handbrake: 0.5 },
             fixed_clutch: 0.5,
@@ -604,13 +616,21 @@ fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
         }
         let mut typed = base.clone();
         let held = layout::CarVcu::of(&typed, scratch);
-        let mut view = held.view(&mut typed);
+        let held_drive = CarDrive::of(&typed, drive);
+        let mut view = held.view(&mut typed, Some(&held_drive));
         for entry in entries {
             entry(&mut view);
         }
         held.lower(&mut typed);
+        held_drive.lower(&mut typed);
         let state = base.u32(scratch + ScratchObj::state.at);
-        let objects = [(scratch, ScratchObj::SIZE as usize), (state, layout::StateObj::SIZE as usize)];
+        let drive_state = DriveImage::of(&base, drive).state;
+        let objects = [
+            (scratch, ScratchObj::SIZE as usize),
+            (state, layout::StateObj::SIZE as usize),
+            (drive, DriveObj::SIZE as usize),
+            (drive_state, DriveStateObj::SIZE as usize),
+        ];
         for (at, len) in call.windows.iter().map(|w| (w.at, w.len)).chain(objects) {
             let (a, b) = (per_call.read(at, len), typed.read(at, len));
             let k = a.iter().zip(&b).position(|(x, y)| x != y);

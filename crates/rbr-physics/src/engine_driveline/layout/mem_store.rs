@@ -1,14 +1,8 @@
-//! The Mem store of the engine and the drive (`super::super::store::EngineStore`): the bodies are the layout's reads
+//! The Mem store of the engine (`super::super::store::EngineStore`): the bodies are the layout's reads
 //! and writes, moved from the records' `load`/`store` and the readers next to them.
 
-use super::curve::{
-    BrakeBlock, CurveInput, CurveRow, CurveState, CurveTables, CURVE_TABLE_A_AT, CURVE_TABLE_B_AT, CURVE_TABLE_C_AT,
-};
 use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
-use super::drive_objects::{
-    Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane, DRIVE_DEF_GEAR_COUNT, DRIVE_DEF_MAX_FOOTBRAKE_PRESSURE,
-    DRIVE_DEF_PTR, DRIVE_STATE_COMMANDED_GEAR_LANE, DRIVE_STATE_ENGINE_SPEED, DRIVE_STATE_GEAR, DRIVE_STATE_PTR,
-};
+use super::drive_objects::Lane;
 use super::engine_objects::{
     EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_DEF_ABS_SCALE, ENGINE_DEF_PTR,
     ENGINE_OPTIONS_PTR, ENGINE_PEDAL, ENGINE_STATE_ABS_VALUE, ENGINE_STATE_ABS_VALUE_DIRTY,
@@ -16,120 +10,15 @@ use super::engine_objects::{
     ENGINE_STATE_CRANK_COUNT_PREV, ENGINE_STATE_ENGINE_SPEED, ENGINE_STATE_PTR, ENGINE_STATE_SCALED_VALUE,
     ENGINE_STATE_SCALED_VALUE_DIRTY, ENGINE_STATE_SMOOTHED, ENGINE_STATE_TORQUE_ACCUM,
 };
-use super::step::{DEF_MODE, DEF_RATIO_GAIN};
 use super::tables::{BlendKnot, CurveKnot, UnitSplit};
-use super::worker::{
-    Axle, DriveDamage, DriveOwn, DriveWorker, GearBand, GearWork, LaneScale, RatioRing, Wheel, WorkerDef, WorkerState,
-};
 use crate::engine_driveline::drive_line::DriveLinePoint;
 use crate::engine_driveline::sim::{BlendRec, Bracket};
 use crate::engine_driveline::store::EngineStore;
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
-use crate::physics_core::layout::def_flags;
 use crate::spring_damper::{BlendTerms, Relaxation};
 
 impl EngineStore for Mem {
-    fn load_drive(&self, at: u32) -> Drive {
-        Drive {
-            throttle_in: Lane::load(self, at + 0x20),
-            brake_in: Lane::load(self, at + 0x30),
-            brake_torque: Lane::load(self, at + 0x64),
-            clutch_slip: Lane::load(self, at + 0x54),
-        }
-    }
-
-    fn store_drive(&mut self, at: u32, value: &Drive) {
-        value.throttle_in.store(self, at + 0x20);
-        value.brake_in.store(self, at + 0x30);
-        value.brake_torque.store(self, at + 0x64);
-        value.clutch_slip.store(self, at + 0x54);
-    }
-
-    fn load_drive_def(&self, at: u32) -> DriveDef {
-        DriveDef {
-            max_footbrake_pressure: self.f32(at + DRIVE_DEF_MAX_FOOTBRAKE_PRESSURE),
-            gear_count: self.u32(at + DRIVE_DEF_GEAR_COUNT),
-        }
-    }
-
-    fn load_drive_state(&self, at: u32) -> DriveState {
-        DriveState {
-            drive_speed_key: self.f32(at + 0x384),
-            engine_speed: self.f32(at + DRIVE_STATE_ENGINE_SPEED),
-            gear: self.u32(at + DRIVE_STATE_GEAR) as i32,
-            commanded_gear: IntLane::load(self, at + DRIVE_STATE_COMMANDED_GEAR_LANE),
-        }
-    }
-
-    fn store_drive_state(&mut self, at: u32, value: &DriveState) {
-        self.set_f32(at + 0x384, value.drive_speed_key);
-        self.set_f32(at + DRIVE_STATE_ENGINE_SPEED, value.engine_speed);
-        self.set_u32(at + DRIVE_STATE_GEAR, value.gear as u32);
-        value.commanded_gear.store(self, at + DRIVE_STATE_COMMANDED_GEAR_LANE);
-    }
-
-    fn store_commanded_gear(&mut self, at: u32, value: &DriveState) {
-        value.commanded_gear.store(self, at + DRIVE_STATE_COMMANDED_GEAR_LANE);
-    }
-
-    fn drive_objects(&self, drive: u32) -> DriveObjects {
-        DriveObjects { def: self.u32(drive + DRIVE_DEF_PTR), state: self.u32(drive + DRIVE_STATE_PTR) }
-    }
-
-    /// The row at `at` (see [`curve_row_at`](super::curve_row_at)).
-    fn load_curve_row(&self, at: u32) -> CurveRow {
-        CurveRow {
-            breaks: std::array::from_fn(|k| self.u32(at + 0xC + 0x10 * k as u32)),
-            values: std::array::from_fn(|k| self.f32(at + 0x6C + 0x10 * k as u32)),
-            gain: self.f32(at + 0x4C),
-            rate: self.f32(at + 0x5C),
-            limit: self.u32(at + 0xAC),
-        }
-    }
-
-    fn load_curve_tables(&self, def: u32) -> CurveTables {
-        CurveTables {
-            a: self.f32s(def + CURVE_TABLE_A_AT),
-            b: self.f32s(def + CURVE_TABLE_B_AT),
-            c: self.f32s(def + CURVE_TABLE_C_AT),
-        }
-    }
-
-    fn load_curve_state(&self, at: u32) -> CurveState {
-        CurveState {
-            pos: IntLane::load(self, at + 0x70),
-            slope: self.f32(at + 0x1C),
-            term_gain: self.f32(at + 0xAC),
-            lane: IntLane::load(self, at + 0x80),
-            counter: IntLane::load(self, at + 0xB8),
-        }
-    }
-
-    fn store_curve_state(&mut self, at: u32, value: &CurveState) {
-        value.pos.store(self, at + 0x70);
-        value.lane.store(self, at + 0x80);
-        value.counter.store(self, at + 0xB8);
-    }
-
-    fn load_curve_input(&self, at: u32) -> CurveInput {
-        CurveInput { brake_torque: self.f32(at + 0x60), handbrake_torque: self.f32(at + 0x70) }
-    }
-
-    fn load_brake_block(&self, at: u32) -> BrakeBlock {
-        BrakeBlock {
-            index: self.u32(at + 0xDC),
-            effective_radius: self.f32(at + 0x6C),
-            ratio: self.f32(at + 0xEC),
-            piston_area: self.f32(at + 0xCC),
-            plate_area: self.f32(at + 0x9C),
-            internal_convection: self.f32(at + 0xBC),
-            heat_absorption: self.f32(at + 0x8C),
-            specific_heat: self.f32(at + 0x7C),
-            mass: self.f32(at + 0x3C),
-        }
-    }
-
     fn engine_objects(&self, engine: u32) -> EngineObjects {
         EngineObjects {
             def: self.u32(engine + ENGINE_DEF_PTR),
@@ -266,121 +155,12 @@ impl EngineStore for Mem {
         }
     }
 
-    /// The band of `gear` (any value, read at the band's offset as the original does).
-    fn load_gear_band(&self, def: u32, gear: u32) -> GearBand {
-        let band = def.wrapping_add(0x688).wrapping_add(gear.wrapping_mul(0x50));
-        GearBand { ratio: self.f32(band + 0xC), lower_edge: self.f32(band + 0x3C), upper_edge: self.f32(band + 0x4C) }
-    }
-
-    /// The definition at `def`.
-    fn load_worker_def(&self, def: u32) -> WorkerDef {
-        let f = |off: u32| self.f32(def + off);
-        WorkerDef {
-            axles: std::array::from_fn(|k| {
-                let at = def + 0x60 * k as u32;
-                Axle {
-                    direction: self.u32(at + 0x18) as i32,
-                    block_pair: [self.u32(at + 0x28), self.u32(at + 0x38)],
-                    scale: self.f32(at + 0x48),
-                    active_index: self.u32(at + 0x68),
-                }
-            }),
-            wheels: std::array::from_fn(|k| {
-                let at = def + 0xF0 * k as u32;
-                Wheel { weight: self.f32(at + 0x148), pack: self.u32(at + 0x158) }
-            }),
-            gear_guard: def_flags(self) & 0x80000 != 0,
-            torque_scale: f(0x48),
-            slip_gain_a: f(0x664),
-            slip_gain_b: f(0x674),
-            ratio_gain: f(DEF_RATIO_GAIN),
-            slope_limit: f(0xA74),
-            reach_limit: f(0xA84),
-            lane_scale_gain: f(0x630),
-            mode: self.u32(def + DEF_MODE),
-            pack_term: f(0x684),
-        }
-    }
-
-    fn load_drive_worker(&self, this: u32) -> DriveWorker {
-        DriveWorker {
-            def: WorkerDef::load(self, self.u32(this + 4)),
-            state: WorkerState::load(self, self.u32(this + 8)),
-            own: DriveOwn::load(self, this),
-            damage: DriveDamage::load(self, self.u32(this + 0x170)),
-        }
-    }
-
-    fn store_drive_worker(&mut self, this: u32, value: &DriveWorker) {
-        let state_at = self.u32(this + 8);
-        let before = WorkerState::load(self, state_at);
-        value.state.store(self, state_at, &before);
-        value.own.store(self, this);
-        value.damage.store(self, self.u32(this + 0x170));
-    }
-
-    fn load_gear_work(&self, this: u32) -> GearWork {
-        let gear = self.u32(self.u32(this + 8) + 0x54C);
-        let shift = gear.wrapping_mul(4);
-        GearWork {
-            gear,
-            band: GearBand::load(self, self.u32(this + 4), gear),
-            scale: self.f32(self.u32(this + 0x170).wrapping_add(0x48).wrapping_add(shift)),
-            dt: self.f32(this.wrapping_add(0x174).wrapping_add(shift)),
-        }
-    }
-
-    /// Writes the gear's scale and time step (the state's gear is the one `load` read).
-    fn store_gear_work(&mut self, this: u32, value: &GearWork) {
-        let shift = value.gear.wrapping_mul(4);
-        self.set_f32(self.u32(this + 0x170).wrapping_add(0x48).wrapping_add(shift), value.scale);
-        self.set_f32(this.wrapping_add(0x174).wrapping_add(shift), value.dt);
-    }
-
-    /// The ring at `at`.
-    fn load_ratio_ring(&self, at: u32) -> RatioRing {
-        RatioRing { count: self.u32(at), index: self.u32(at + 4), values: self.f32s(at + 8) }
-    }
-
-    fn store_ratio_ring(&mut self, at: u32, value: &RatioRing) {
-        self.set_u32(at, value.count);
-        self.set_u32(at + 4, value.index);
-        for (k, v) in value.values.iter().enumerate() {
-            self.set_f32(at + 8 + 4 * k as u32, *v);
-        }
-    }
-
-    fn load_lane_scale(&self, at: u32) -> LaneScale {
-        LaneScale { scale: self.f32(at + 8), gate: self.u32(at + 0x1C) }
-    }
-
     /// Writes the record at `at` (the four words; the rest of the object is left alone).
     fn store_unit_split(&mut self, at: u32, value: &UnitSplit) {
         self.set_f32(at + 0x08, value.at_zero);
         self.set_f32(at + 0x0c, value.w_low);
         self.set_f32(at + 0x10, value.w_mid);
         self.set_f32(at + 0x14, value.w_high);
-    }
-
-    /// The block's gain (`+0x6c`) that the curve workers scale by.
-    fn curve_gain(&self, block: u32) -> f32 {
-        self.f32(block + 0x6C)
-    }
-
-    /// The block's row index (`+0xdc`) that `Worker4060` picks the row by.
-    fn curve_index(&self, block: u32) -> u32 {
-        self.u32(block + 0xDC)
-    }
-
-    /// The gate word of the drive's damage block, which `Hook4160` reads: `drive+0x170` points at the block, its `+0x80`
-    /// is the gate.
-    fn damage_gate(&self, drive: u32) -> u32 {
-        self.u32(self.u32(drive + 0x170) + 0x80)
-    }
-
-    /// The float at `at` of block `a` (0xc8 bytes) of the state at `drive+8`.
-    fn wheel_block_f32(&self, drive: u32, a: u32, at: u32) -> f32 {
-        self.f32(self.u32(drive + 0x08).wrapping_add(a.wrapping_mul(0xc8)).wrapping_add(at))
     }
 
     /// `E39_MgrB` (0x501fa0, name ours): the word at `manager + 8`.
@@ -503,11 +283,6 @@ impl EngineStore for Mem {
                 y2: self.f32(base + 0xc * k + 8),
             })
             .collect()
-    }
-
-    /// The drive's definition (`+4`), which `CDrive::M8770` fills.
-    fn drive_def(&self, drive: u32) -> u32 {
-        self.u32(drive + 4)
     }
 
     fn load_entry(&self, at: u32) -> DriveLinePoint {

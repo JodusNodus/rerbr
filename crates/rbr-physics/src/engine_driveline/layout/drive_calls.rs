@@ -5,22 +5,35 @@ use super::drive_line;
 use super::drive_objects::{DriveObjects, Lane};
 use super::engine_calls::engine_running;
 use crate::engine_driveline::mat4;
-use crate::engine_driveline::store::EngineStore;
+use crate::engine_driveline::store::{DriveStore, Part};
 use crate::fpu;
 use crate::math::ftol::trunc_i64;
 use crate::math::le_or_unordered;
 use crate::math::vec::Vec4;
-use crate::ntweak::set_dirty;
+use crate::mem::Mem;
+use crate::ntweak::DIRTY;
 use crate::stage::store::StageStore;
 use crate::vcu::locks::lock_output;
 
-/// `E39_ClearLanes` (0x502c00, thiscall, no arguments): the lanes at `this+0x10` and `this+0x44` are set dirty and
-/// zeroed (the original's `SetDirty` on each, then a float zero stored into its value).
-pub fn clear_lanes<S: EngineStore>(mem: &mut S, this: u32) {
-    for at in [this + 0x10, this + 0x44] {
-        let lane = Lane { dirty: 1, value: 0.0 };
-        lane.store(mem, at);
+/// The lanes `E39_ClearLanes` clears, from its `this`.
+const CLEARED_LANES: [u32; 2] = [0x10, 0x44];
+/// The drive's scratch member (`+0x10`), which its `Set4510` clears.
+pub const DRIVE_SCRATCH: u32 = 0x10;
+
+/// `E39_ClearLanes` (0x502c00, thiscall, no arguments) on the image: the lanes at `this+0x10` and `this+0x44` are set
+/// dirty and zeroed (the original's `SetDirty` on each, then a float zero stored into its value).
+pub fn clear_lanes(mem: &mut Mem, this: u32) {
+    for at in CLEARED_LANES {
+        Lane { dirty: 1, value: 0.0 }.store(mem, this + at);
     }
+}
+
+/// `E39_ClearLanes` on a drive's scratch member ([`DRIVE_SCRATCH`]): its lanes are the throttle and the clutch slip.
+pub fn clear_drive_lanes<S: DriveStore>(store: &mut S) {
+    let mut lanes = store.lanes();
+    lanes.throttle_in = Lane { dirty: 1, value: 0.0 };
+    lanes.clutch_slip = Lane { dirty: 1, value: 0.0 };
+    store.store_lanes(&lanes);
 }
 
 /// `E12_SampleX` (0x475ea0, stdcall `(x)`, st0) on the drive line at the global `DRIVE_LINE`: the distance at the
@@ -117,27 +130,27 @@ pub fn project_point<S: StageStore + ?Sized>(line: &S, this: u32, ps: [f32; 3], 
 }
 
 /// `CDrive::M6DB0` (0x506db0): wheel `a`'s previous force, the float at `+0x64` of block `a` (0xc8 bytes) of the state at
-/// `this+8` (`WheelBlock::prev_force`'s value).
-pub fn wheel_prev_force<S: EngineStore>(mem: &S, this: u32, a: u32) -> f32 {
-    mem.wheel_block_f32(this, a, 0x64)
+/// `this+8` (`WheelBlock::prev_force`'s value), for any `a`.
+pub fn wheel_prev_force<S: DriveStore>(store: &S, a: u32) -> f32 {
+    f32::from_bits(store.word(Part::State, a.wrapping_mul(0xc8).wrapping_add(0x64)))
 }
 
 /// `CDrive::M6DD0` (0x506dd0): wheel `a`'s slip, the float at `+0x54` of block `a` (0xc8 bytes) of the state at `this+8`
-/// (`WheelBlock::slip`'s value).
-pub fn wheel_slip<S: EngineStore>(mem: &S, this: u32, a: u32) -> f32 {
-    mem.wheel_block_f32(this, a, 0x54)
+/// (`WheelBlock::slip`'s value), for any `a`.
+pub fn wheel_slip<S: DriveStore>(store: &S, a: u32) -> f32 {
+    f32::from_bits(store.word(Part::State, a.wrapping_mul(0xc8).wrapping_add(0x54)))
 }
 
 /// `CDrive::SetTwo` (0x5043c0): wheel `a`'s offset and bias (`DriveOwn::wheel_offset`, `wheel_bias`): sets the `+0xc`
 /// of the two sub-objects at `this + a * 0x10 + 0xe8` (to `x`) and `this + a * 0x10 + 0x128` (to `y`), each dirtied
-/// first. Returns the eax the original leaves (`a * 0x10`).
-pub fn set_wheel_offset_and_bias<S: EngineStore>(mem: &mut S, this: u32, a: u32, x: f32, y: f32) -> u32 {
-    let base = this.wrapping_add(a.wrapping_mul(0x10));
+/// first, for any `a`. Returns the eax the original leaves (`a * 0x10`).
+pub fn set_wheel_offset_and_bias<S: DriveStore>(store: &mut S, a: u32, x: f32, y: f32) -> u32 {
+    let base = a.wrapping_mul(0x10);
     for (at, v) in [(base.wrapping_add(0xe8), x), (base.wrapping_add(0x128), y)] {
-        set_dirty(mem.mem_mut(), at);
-        mem.set_f32(at + 0xc, v);
+        store.set_word(Part::Drive, at.wrapping_add(DIRTY), 1);
+        store.set_word(Part::Drive, at.wrapping_add(0xc), v.to_bits());
     }
-    a.wrapping_mul(0x10)
+    base
 }
 
 /// `CDrive::Set4570` (0x504570): the diff lock of channel `a` (0 centre, 1 front, 2 rear) for `value`, clamped to
@@ -145,16 +158,16 @@ pub fn set_wheel_offset_and_bias<S: EngineStore>(mem: &mut S, this: u32, a: u32,
 /// at `+0xc` and the maximum torque at `+0x58` of def entry `a` (0x60 bytes at `this+4`). It is enabled when the word
 /// at `[this+0x170]+0x90` is nonzero; otherwise the lock is 0. Returns the eax the original leaves: the state pointer
 /// when disabled, `a * 0x60` when enabled.
-pub fn set_diff_lock<S: EngineStore>(mem: &mut S, this: u32, a: u32, value: f32) -> u32 {
-    let objects = DriveObjects::at(mem, this);
-    let rec = objects.state.wrapping_add(a.wrapping_mul(0x14));
-    if mem.u32(mem.u32(this + 0x170).wrapping_add(0x90)) == 0 {
-        mem.set_f32(rec + 0x18, 0.0);
+pub fn set_diff_lock<S: DriveStore>(store: &mut S, a: u32, value: f32) -> u32 {
+    let objects = store.objects();
+    let rec = a.wrapping_mul(0x14);
+    if store.u32(objects.damage.wrapping_add(0x90)) == 0 {
+        store.set_word(Part::State, rec.wrapping_add(0x18), 0f32.to_bits());
         return objects.state;
     }
-    let ratio = mem.f32(rec + 0xc);
-    let max_torque = mem.f32(objects.def.wrapping_add(a.wrapping_mul(0x60)).wrapping_add(0x58));
-    mem.set_f32(rec + 0x18, lock_output(value, ratio, true, max_torque));
+    let ratio = f32::from_bits(store.word(Part::State, rec.wrapping_add(0xc)));
+    let max_torque = store.f32(objects.def.wrapping_add(a.wrapping_mul(0x60)).wrapping_add(0x58));
+    store.set_word(Part::State, rec.wrapping_add(0x18), lock_output(value, ratio, true, max_torque).to_bits());
     a.wrapping_mul(0x60)
 }
 
@@ -163,9 +176,9 @@ pub fn set_diff_lock<S: EngineStore>(mem: &mut S, this: u32, a: u32, value: f32)
 /// the worker's enable word (`+0x78`) must be set, and then either the car's engine is on (`SimE980` of the car at the
 /// state's `+0x580`, plus `+0x690`) or 0.5 (0x795e18) is not above the speed term (`+0x8c`) and the ready word (`+0x7c`)
 /// is set. Last, 0.2 must not be above the torque gain (`+0x84`), a NaN gain counting as not above.
-pub fn drive_gate<S: EngineStore>(mem: &S, this: u32) -> u32 {
+pub fn drive_gate(mem: &Mem, this: u32) -> u32 {
     let objects = DriveObjects::at(mem, this);
-    let worker = mem.u32(this + 0x170);
+    let worker = objects.damage;
     let count = mem.u32(objects.def + 0x654);
     let above = (2..count).filter(|&i| mem.f32(worker + 0x48 + 4 * i) > 0.2).count();
     if above == 0 || mem.u32(worker + 0x78) == 0 {
@@ -181,7 +194,7 @@ pub fn drive_gate<S: EngineStore>(mem: &S, this: u32) -> u32 {
 
 /// `E39_MgrD` (0x502400, name ours): the matrix at `m` (its four columns, 16 bytes each) times the vector at `v`,
 /// `out = c0 * v.x + c1 * v.y + c2 * v.z + c3 * v.w` lane by lane in the asm's order. Returns eax, the output pointer.
-pub fn mat4_mul_vec4<S: EngineStore>(mem: &mut S, m: u32, v: u32, out: u32) -> u32 {
+pub fn mat4_mul_vec4(mem: &mut Mem, m: u32, v: u32, out: u32) -> u32 {
     let c: [[f32; 4]; 4] = std::array::from_fn(|k| mem.f32s(m + 0x10 * k as u32));
     let s: [f32; 4] = mem.f32s(v);
     let lanes: [f32; 4] = std::array::from_fn(|i| c[0][i] * s[0] + c[1][i] * s[1] + c[2][i] * s[2] + c[3][i] * s[3]);
@@ -193,7 +206,7 @@ pub fn mat4_mul_vec4<S: EngineStore>(mem: &mut S, m: u32, v: u32, out: u32) -> u
 
 /// `E39_MgrD` (0x502460, name ours): copies row `idx` (16 bytes at `table + 0x10 idx`) to `out` as four words. Returns
 /// eax, `out`.
-pub fn copy_row<S: EngineStore>(mem: &mut S, table: u32, idx: u32, out: u32) -> u32 {
+pub fn copy_row(mem: &mut Mem, table: u32, idx: u32, out: u32) -> u32 {
     let row = table + idx.wrapping_mul(0x10);
     for k in 0..4 {
         let w = mem.u32(row + 4 * k);
@@ -203,7 +216,7 @@ pub fn copy_row<S: EngineStore>(mem: &mut S, table: u32, idx: u32, out: u32) -> 
 }
 
 /// `E39_RowsCopy` (0x502570, name ours): the 16 words at `this` are copied to `other` transposed (`mat4::transpose`).
-pub fn transpose_into<S: EngineStore>(mem: &mut S, this: u32, other: u32) {
+pub fn transpose_into(mem: &mut Mem, this: u32, other: u32) {
     let m: [f32; 16] = mem.f32s(this);
     for (k, v) in mat4::transpose(m).into_iter().enumerate() {
         mem.set_f32(other + 4 * k as u32, v);
@@ -212,7 +225,7 @@ pub fn transpose_into<S: EngineStore>(mem: &mut S, this: u32, other: u32) {
 
 /// `E39_Step4990` (0x504990, name ours): the matrix at `obj` (16 floats) through `mat4::inverse_transposed` into `out`. The
 /// original copies `obj` into a local with `E39_RowsCopy` first; the port reads it straight.
-pub fn mat4_inverse_transposed<S: EngineStore>(mem: &mut S, obj: u32, out: u32) {
+pub fn mat4_inverse_transposed(mem: &mut Mem, obj: u32, out: u32) {
     let m: [f32; 16] = mem.f32s(obj);
     for (k, v) in mat4::inverse_transposed(m).into_iter().enumerate() {
         mem.set_f32(out + 4 * k as u32, v);
