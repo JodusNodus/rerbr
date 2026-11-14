@@ -3,7 +3,7 @@
 use super::contacts::{HOOK, RING_TAIL};
 use super::mem_store::{quat, set_vec4, vec4, SolidWords};
 use super::rest::{ACTIVE, VERY_SOFT};
-use super::Solid;
+use super::{HeldSolid, Solid};
 use super::{
     ACCEL_ANGULAR_EST, ACCEL_ANGULAR_FILT, ACCEL_LINEAR_EST, ACCEL_LINEAR_FILT, ANGULAR_ACCEL, ANGULAR_VELOCITY,
     DEF_ANGULAR_SLEEP_VELOCITY, DEF_INVERSE_MASS, DEF_LINEAR_SLEEP_VELOCITY, DEF_LOCAL_INVERSE_INERTIA, DEF_SLEEPABLE,
@@ -160,47 +160,47 @@ impl Body {
             return Self::read_words(mem, this);
         }
         match w.held(this) {
-            Some(solid) => Self::from_held(&solid.borrow(), w.mem(), this),
+            Some(solid) => Self::from_held(solid, w.mem(), this),
             None => Self::read_words(w, this),
         }
     }
 
     /// [`Body::read_words`] with the solid held: its typed state's words at once, the rest the image's.
-    fn from_held(s: &Solid, mem: &Mem, this: u32) -> Self {
+    fn from_held(s: &HeldSolid, mem: &Mem, this: u32) -> Self {
         let quat = |[x, y, z, w]: [f32; 4]| Quat { x, y, z, w };
         Body {
-            linear_velocity: s.linear_velocity.into(),
-            angular_velocity: s.angular_velocity.into(),
-            sleep_timer: s.sleep_timer,
-            sleep_armed: s.sleep_armed,
-            is_active: s.is_active,
-            orientation: quat(s.orientation),
-            position: s.position.into(),
-            progress: s.progress,
-            start_orientation: quat(s.start_orientation),
-            start_position: s.start_position.into(),
-            start_linear_velocity: s.start_linear_velocity.into(),
-            start_angular_velocity: s.start_angular_velocity.into(),
+            linear_velocity: Vec4::from(s.get(Solid::linear_velocity)),
+            angular_velocity: Vec4::from(s.get(Solid::angular_velocity)),
+            sleep_timer: s.get(Solid::sleep_timer),
+            sleep_armed: s.get(Solid::sleep_armed),
+            is_active: s.get(Solid::is_active),
+            orientation: quat(s.get(Solid::orientation)),
+            position: Vec4::from(s.get(Solid::position)),
+            progress: s.get(Solid::progress),
+            start_orientation: quat(s.get(Solid::start_orientation)),
+            start_position: Vec4::from(s.get(Solid::start_position)),
+            start_linear_velocity: Vec4::from(s.get(Solid::start_linear_velocity)),
+            start_angular_velocity: Vec4::from(s.get(Solid::start_angular_velocity)),
             body_flags: mem.u8(this + ENTITY_FLAGS),
             parent: mem.u32(this + PARENT),
-            step_flags: s.step_flags,
-            sampled: s.sampled,
+            step_flags: s.get(Solid::step_flags),
+            sampled: s.get(Solid::sampled),
             sampled_dirty: mem.u32(this + 0x178),
-            scratch: s.scratch.into(),
+            scratch: Vec4::from(s.get(Solid::scratch)),
             scratch_scale: mem.f32(this + SCRATCH_SCALE),
-            angular_accel: s.angular_accel.into(),
-            linear_accel: s.linear_accel.into(),
-            prev_angular_velocity: s.prev_angular_velocity.into(),
-            prev_linear_velocity: s.prev_linear_velocity.into(),
-            accel_linear_est: s.accel_linear_est.into(),
-            accel_angular_est: s.accel_angular_est.into(),
-            accel_linear_filt: s.accel_linear_filt.into(),
-            accel_angular_filt: s.accel_angular_filt.into(),
+            angular_accel: Vec4::from(s.get(Solid::angular_accel)),
+            linear_accel: Vec4::from(s.get(Solid::linear_accel)),
+            prev_angular_velocity: Vec4::from(s.get(Solid::prev_angular_velocity)),
+            prev_linear_velocity: Vec4::from(s.get(Solid::prev_linear_velocity)),
+            accel_linear_est: Vec4::from(s.get(Solid::accel_linear_est)),
+            accel_angular_est: Vec4::from(s.get(Solid::accel_angular_est)),
+            accel_linear_filt: Vec4::from(s.get(Solid::accel_linear_filt)),
+            accel_angular_filt: Vec4::from(s.get(Solid::accel_angular_filt)),
             state_owner: mem.u32(this + 0x30),
-            force: s.force.into(),
+            force: Vec4::from(s.get(Solid::force)),
             tweak_a_dirty: mem.u32(this + 0x1D8),
             tweak_b_dirty: mem.u32(this + 0x1E8),
-            very_soft: s.very_soft,
+            very_soft: s.get(Solid::very_soft),
             hook: mem.u32(this + HOOK),
             ring_tail: mem.u32(this + RING_TAIL),
         }
@@ -250,41 +250,41 @@ impl Body {
         if let Some(mem) = w.image() {
             return self.write_words(mem, this);
         }
-        match w.held(this).map(|solid| self.store_held(&mut solid.borrow_mut())) {
+        match w.held(this).map(|solid| self.store_held(solid)) {
             Some(()) => self.store_unheld(w.mem_mut(), this),
             None => self.write_words(w, this),
         }
     }
 
     /// [`Body::write_words`]' words a held solid's typed state holds.
-    fn store_held(&self, s: &mut Solid) {
+    fn store_held(&self, s: &HeldSolid) {
         let vec = |v: Vec4| [v.x, v.y, v.z, v.w];
         let quat = |q: Quat| [q.x, q.y, q.z, q.w];
-        s.linear_velocity = vec(self.linear_velocity);
-        s.angular_velocity = vec(self.angular_velocity);
-        s.sleep_timer = self.sleep_timer;
-        s.sleep_armed = self.sleep_armed;
-        s.is_active = self.is_active;
-        s.orientation = quat(self.orientation);
-        s.position = vec(self.position);
-        s.progress = self.progress;
-        s.start_orientation = quat(self.start_orientation);
-        s.start_position = vec(self.start_position);
-        s.start_linear_velocity = vec(self.start_linear_velocity);
-        s.start_angular_velocity = vec(self.start_angular_velocity);
-        s.step_flags = self.step_flags;
-        s.sampled = self.sampled;
-        s.scratch = vec(self.scratch);
-        s.angular_accel = vec(self.angular_accel);
-        s.linear_accel = vec(self.linear_accel);
-        s.prev_angular_velocity = vec(self.prev_angular_velocity);
-        s.prev_linear_velocity = vec(self.prev_linear_velocity);
-        s.accel_linear_est = vec(self.accel_linear_est);
-        s.accel_angular_est = vec(self.accel_angular_est);
-        s.accel_linear_filt = vec(self.accel_linear_filt);
-        s.accel_angular_filt = vec(self.accel_angular_filt);
-        s.force = vec(self.force);
-        s.very_soft = self.very_soft;
+        s.set(Solid::linear_velocity, vec(self.linear_velocity));
+        s.set(Solid::angular_velocity, vec(self.angular_velocity));
+        s.set(Solid::sleep_timer, self.sleep_timer);
+        s.set(Solid::sleep_armed, self.sleep_armed);
+        s.set(Solid::is_active, self.is_active);
+        s.set(Solid::orientation, quat(self.orientation));
+        s.set(Solid::position, vec(self.position));
+        s.set(Solid::progress, self.progress);
+        s.set(Solid::start_orientation, quat(self.start_orientation));
+        s.set(Solid::start_position, vec(self.start_position));
+        s.set(Solid::start_linear_velocity, vec(self.start_linear_velocity));
+        s.set(Solid::start_angular_velocity, vec(self.start_angular_velocity));
+        s.set(Solid::step_flags, self.step_flags);
+        s.set(Solid::sampled, self.sampled);
+        s.set(Solid::scratch, vec(self.scratch));
+        s.set(Solid::angular_accel, vec(self.angular_accel));
+        s.set(Solid::linear_accel, vec(self.linear_accel));
+        s.set(Solid::prev_angular_velocity, vec(self.prev_angular_velocity));
+        s.set(Solid::prev_linear_velocity, vec(self.prev_linear_velocity));
+        s.set(Solid::accel_linear_est, vec(self.accel_linear_est));
+        s.set(Solid::accel_angular_est, vec(self.accel_angular_est));
+        s.set(Solid::accel_linear_filt, vec(self.accel_linear_filt));
+        s.set(Solid::accel_angular_filt, vec(self.accel_angular_filt));
+        s.set(Solid::force, vec(self.force));
+        s.set(Solid::very_soft, self.very_soft);
     }
 
     /// [`Body::write_words`]' other words, on the image.

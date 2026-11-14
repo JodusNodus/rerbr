@@ -6,13 +6,13 @@
 //! the scratch block's other words stay in the image. The pure step holds them (`Typed::lift_with_solids`); their
 //! readers at their addresses in other subsystems run on `SolidWords` stores (notes).
 
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::ops::Range;
 
 use super::mem_store::SolidWords;
 use crate::car_body::layout::{hinged_slot, mounted_slot, wheel_list_at};
 use crate::mem::Mem;
-use crate::store::{Object, Raw};
+use crate::store::{Field, Object, Raw, Value};
 
 crate::object! {
     /// The words of a `CSolid` a step writes (names by use, `Body`'s; offsets the solid's). The quaternions and vectors
@@ -50,22 +50,100 @@ crate::object! {
 /// The span of a solid its table covers: a word outside it is never typed.
 const HELD: Range<u32> = 0x100..0x3b8;
 
-/// A solid in typed storage: its address, its name and its state, borrowed for one word at a time.
+/// The words of the held span.
+const WORDS: usize = ((HELD.end - HELD.start) / 4) as usize;
+
+/// For each word of the held span, whether [`Solid`]'s table names it (a word it does not is the image's).
+const NAMED: [bool; WORDS] = {
+    const ALL: [(u8, u16); (Solid::SIZE / 4) as usize] = crate::store::word_fields(Solid::FIELDS);
+    let mut out = [false; WORDS];
+    let mut k = 0;
+    while k < WORDS {
+        out[k] = ALL[k + (HELD.start / 4) as usize].0 != u8::MAX;
+        k += 1;
+    }
+    out
+};
+
+/// The index in the held span of the word at byte `off` of a solid, where [`Solid`]'s table names it.
+#[inline]
+fn slot(off: u32) -> Option<usize> {
+    let k = off.wrapping_sub(HELD.start);
+    let i = (k / 4) as usize;
+    (k % 4 == 0 && i < WORDS && NAMED[i]).then_some(i)
+}
+
+/// A solid in typed storage: its address, its name and its state, [`Solid`]'s words over the held span (one cell a
+/// word, so a nested run reads and writes the same words; a word the table does not name stays zero and unused).
 #[derive(Clone, Debug, PartialEq)]
 pub struct HeldSolid {
     pub at: u32,
     pub name: &'static str,
-    pub state: RefCell<Solid>,
+    words: [Cell<u32>; WORDS],
+}
+
+impl HeldSolid {
+    fn lift(mem: &Mem, at: u32, name: &'static str) -> Self {
+        let words =
+            std::array::from_fn(|k| Cell::new(if NAMED[k] { mem.u32(at + HELD.start + 4 * k as u32) } else { 0 }));
+        HeldSolid { at, name, words }
+    }
+
+    fn lower(&self, mem: &mut Mem) {
+        for (k, word) in self.words.iter().enumerate().filter(|(k, _)| NAMED[*k]) {
+            mem.set_u32(self.at + HELD.start + 4 * k as u32, word.get());
+        }
+    }
+
+    /// The word at byte `off` of the solid, where its table names it.
+    #[inline]
+    pub fn word(&self, off: u32) -> Option<u32> {
+        slot(off).map(|i| self.words[i].get())
+    }
+
+    /// Stores the word at byte `off` of the solid; false where its table does not name it.
+    #[inline]
+    pub fn set_word(&self, off: u32, value: u32) -> bool {
+        slot(off).map(|i| self.words[i].set(value)).is_some()
+    }
+
+    /// The field `f` of [`Solid`].
+    #[inline]
+    pub fn get<T: Value + Default>(&self, f: Field<T>) -> T {
+        let mut value = T::default();
+        let first = ((f.at - HELD.start) / 4) as usize;
+        for k in 0..T::LEN / 4 {
+            value.set_word(k, self.words[first + k as usize].get());
+        }
+        value
+    }
+
+    /// Stores the field `f` of [`Solid`].
+    #[inline]
+    pub fn set<T: Value>(&self, f: Field<T>, value: T) {
+        let first = ((f.at - HELD.start) / 4) as usize;
+        for k in 0..T::LEN / 4 {
+            self.words[first + k as usize].set(value.word(k).expect("a field of whole words"));
+        }
+    }
 }
 
 /// The car's solids: the car's own, each wheel's, each hinged and each mounted body's (the car's slots that are set,
 /// each address once).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct CarSolids {
     pub solids: Vec<HeldSolid>,
     /// From the lowest held span's start to the highest one's end: most words a store asks for (the stack's, the
     /// globals') are outside it.
     bounds: Range<u32>,
+    /// The solid the last word found was in: runs read and write one solid's words in a row.
+    last: Cell<usize>,
+}
+
+impl PartialEq for CarSolids {
+    fn eq(&self, other: &Self) -> bool {
+        self.solids == other.solids
+    }
 }
 
 impl CarSolids {
@@ -74,7 +152,7 @@ impl CarSolids {
         let mut solids: Vec<HeldSolid> = Vec::with_capacity(12);
         let mut add = |name: &'static str, at: u32| {
             if at != 0 && solids.iter().all(|s| s.at != at) {
-                solids.push(HeldSolid { at, name, state: RefCell::new(Solid::lift(mem, at)) });
+                solids.push(HeldSolid::lift(mem, at, name));
             }
         };
         add("car solid", car);
@@ -95,13 +173,13 @@ impl CarSolids {
             (Some(lo), Some(hi)) => lo + HELD.start..hi + HELD.end,
             _ => 0..0,
         };
-        CarSolids { solids, bounds }
+        CarSolids { solids, bounds, last: Cell::new(0) }
     }
 
     /// Writes every solid's state back to the image.
     pub fn lower(&self, mem: &mut Mem) {
         for s in &self.solids {
-            s.state.borrow().lower(mem, s.at);
+            s.lower(mem);
         }
     }
 
@@ -114,35 +192,40 @@ impl CarSolids {
         self.solids.iter().flat_map(field).collect()
     }
 
-    /// The held solid whose typed words hold `at`, and the offset in it.
+    /// The held solid whose span holds `at`, and the offset in it.
     #[inline]
     fn find(&self, at: u32) -> Option<(&HeldSolid, u32)> {
         if !self.bounds.contains(&at) {
             return None;
         }
-        self.solids.iter().find_map(|s| {
-            let off = at.wrapping_sub(s.at);
-            HELD.contains(&off).then_some((s, off))
-        })
+        let in_span = |s: &HeldSolid| Some(at.wrapping_sub(s.at)).filter(|off| HELD.contains(off));
+        if let Some(s) = self.solids.get(self.last.get()) {
+            if let Some(off) = in_span(s) {
+                return Some((s, off));
+            }
+        }
+        let (k, s, off) = self.solids.iter().enumerate().find_map(|(k, s)| in_span(s).map(|off| (k, s, off)))?;
+        self.last.set(k);
+        Some((s, off))
     }
 
-    /// The typed state of the held solid at `at` (its address).
+    /// The held solid at `at` (its address).
     #[inline]
-    pub fn held(&self, at: u32) -> Option<&RefCell<Solid>> {
-        self.solids.iter().find(|s| s.at == at).map(|s| &s.state)
+    pub fn held(&self, at: u32) -> Option<&HeldSolid> {
+        self.solids.iter().find(|s| s.at == at)
     }
 
     /// The word at `at` if a held solid's table names it.
     #[inline]
     pub fn read(&self, at: u32) -> Option<u32> {
         let (s, off) = self.find(at)?;
-        s.state.borrow().word_of(off)
+        s.word(off)
     }
 
     /// Stores the word at `at` if a held solid's table names it; false otherwise.
     #[inline]
     pub fn write(&self, at: u32, value: u32) -> bool {
-        self.find(at).is_some_and(|(s, off)| s.state.borrow_mut().set_word_of(off, value))
+        self.find(at).is_some_and(|(s, off)| s.set_word(off, value))
     }
 
     /// The word at `at` as a step leaves it: a held solid's where its table names it, else `mem`'s.
@@ -159,33 +242,28 @@ impl CarSolids {
         }
     }
 
-    /// The `N` words from `at` ([`CarSolids::word`]), the held solid found and borrowed once. A block no held span
-    /// reaches is `mem`'s at once. A span is longer than any block, and two are further apart, so a block that starts
-    /// outside every span and ends outside every span touches none.
+    /// The `N` words from `at` ([`CarSolids::word`]), the held solid found once. A block no held span reaches is
+    /// `mem`'s at once. A span is longer than any block, and two are further apart, so a block that starts outside every
+    /// span and ends outside every span touches none.
     #[inline]
     pub fn words<const N: usize>(&self, mem: &Mem, at: u32) -> [u32; N] {
         match self.find(at) {
-            Some((s, off)) => {
-                let state = s.state.borrow();
-                std::array::from_fn(|k| {
-                    let k = 4 * k as u32;
-                    state.word_of(off + k).unwrap_or_else(|| mem.u32(at.wrapping_add(k)))
-                })
-            }
+            Some((s, off)) => std::array::from_fn(|k| {
+                let k = 4 * k as u32;
+                s.word(off + k).unwrap_or_else(|| mem.u32(at.wrapping_add(k)))
+            }),
             None if self.find(at.wrapping_add(4 * (N as u32).saturating_sub(1))).is_none() => mem.u32s(at),
             None => std::array::from_fn(|k| self.word(mem, at.wrapping_add(4 * k as u32))),
         }
     }
 
-    /// Stores four words from `at` ([`CarSolids::set_word`]), the held solid found and borrowed once (see
-    /// [`CarSolids::words`]).
+    /// Stores four words from `at` ([`CarSolids::set_word`]), the held solid found once (see [`CarSolids::words`]).
     #[inline]
     pub fn set_words4(&self, mem: &mut Mem, at: u32, words: [u32; 4]) {
         match self.find(at) {
             Some((s, off)) => {
-                let mut state = s.state.borrow_mut();
                 for (k, word) in (0..16).step_by(4).zip(words) {
-                    if !state.set_word_of(off + k, word) {
+                    if !s.set_word(off + k, word) {
                         mem.set_u32(at.wrapping_add(k), word)
                     }
                 }
@@ -289,7 +367,7 @@ impl SolidWords for SolidView<'_> {
         }
     }
     #[inline]
-    fn held(&self, this: u32) -> Option<&RefCell<Solid>> {
+    fn held(&self, this: u32) -> Option<&HeldSolid> {
         self.solids?.held(this)
     }
 }
