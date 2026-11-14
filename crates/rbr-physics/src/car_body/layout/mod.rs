@@ -50,11 +50,12 @@ pub use damage_ctor::{
     init_damage_ops_tables, DamageOpsCalls, ResetPorts, DAMAGE_HOST_SIZE, DAMAGE_OPS_SIZE,
 };
 pub use damage_handler::{
-    apply_functors, cap_word, clear_head_gasket, clear_triple, clear_windshield, damage_rand, damage_slot1, dmg_7b0,
-    dmg_820, dmg_930, dmg_9a0, dmg_aa0, dmg_b20, dmg_bb0, dmg_cc30, dmg_d020, dmg_d300, drain_word, engine_gate,
-    fail_brake_disc, fail_hub, fail_steering_rod, fail_suspension_arm, fail_water_pump, gearbox_wear,
-    grow_cooling_wear, grow_intercooler_wear, grow_zone, impact_scale, ring_store, second_zero, set_body_state,
-    zone_scaled, DamageHitCalls, ImpactCalls,
+    always_zero, apply_functors, apply_impact, bend_top_mount, break_hinged_body, break_hinged_lock,
+    break_lamps_kind_1, break_lamps_kind_2, break_lamps_kind_3, break_lamps_kind_4, break_lamps_kind_5,
+    break_lamps_kind_6, cap_clutch, chip_windshield, crack_windshield, damage_radiator, damage_rand,
+    drain_oil_pressure, engine_gate, fail_brake_circuit, fail_differential, fail_driveshaft, fail_hydraulics,
+    fail_starter, fail_water_pump, grow_cooling_wear, impact_scale, leak_oil_cooler, ring_store, second_zero,
+    set_body_state, wear_gearbox, zone_scaled, DamageHitCalls, ImpactCalls,
 };
 pub use offsets::{
     all_receivers_at, control, damage_source_at, drive_line_position_at, emitter_busy_at, emitter_source_at, handler,

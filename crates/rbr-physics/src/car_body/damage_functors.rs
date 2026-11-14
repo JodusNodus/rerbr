@@ -1,7 +1,7 @@
 //! The leaf functors of the damage dispatch: the functions the impact path calls through the handler's functor
 //! table (`damage_ops::FUNCTORS`). Their callers are not ported yet, so these are the pure parts: each takes the words it
 //! reads as typed values and returns `None` when its gate fails, or the word it writes and the ring event it pushes (a
-//! functor that pushes no event returns a `bool`; an unconditional no-op returns its value). The layout (`layout::dmg_*`)
+//! functor that pushes no event returns a `bool`; an unconditional no-op returns its value). The layout (`layout::damage_handler`)
 //! reads the words, calls these, and writes
 //! the result. The original decides the order and the rounding: the gates compare ordered (a NaN fails `a > b`),
 //! and the clamp keeps a NaN.
@@ -35,9 +35,9 @@ fn speed(a: f32, threshold: f32) -> f32 {
     }
 }
 
-/// Gearbox wear: at level 2 or more, the wear word (below 1.0) grows by `(a - b) * c`,
-/// clamped to [0, 0.9] at level 3 and [0, 0.6] below it.
-pub fn wear(level: i32, a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<f32>> {
+/// Radiator damage: at level 2 or more, the radiator's word (below 1.0) grows by `(a - b) * c`, clamped to [0, 0.9] at
+/// level 3 and [0, 0.6] below it.
+pub fn radiator(level: i32, a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<f32>> {
     if level < 2 || !(a > b) || !(word < 1.0) {
         return None;
     }
@@ -45,7 +45,7 @@ pub fn wear(level: i32, a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<P
     pass(clamp((a - b) * c + word, 0.0, cap), 0, tag)
 }
 
-/// Cooling wear: the cooling-wear word grows by `(a - b) * c`, capped at 1.0.
+/// Cooling wear (the turbo's hosing and intercooler): the cooling-wear word grows by `(a - b) * c`, capped at 1.0.
 #[allow(clippy::double_comparisons)] // Keep the original ordered `<= 1.0` then `!= 1.0` gates explicit.
 pub fn cooling_wear(a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<f32>> {
     if !(a > b) || !(word <= 1.0 && word != 1.0) {
@@ -54,51 +54,48 @@ pub fn cooling_wear(a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<
     pass(clamp((a - b) * c + word, 0.0, 1.0), 3, tag)
 }
 
-/// Intercooler wear: at signed level 2 or more, the intercooler-wear word grows by
-/// `(a - b) * c`, capped at 1.0.
+/// Oil cooler leak: at signed level 2 or more, the oil cooler's leak word grows by `(a - b) * c`, capped at 1.0.
 #[allow(clippy::double_comparisons)] // Keep the original ordered `<= 1.0` then `!= 1.0` gates explicit.
-pub fn intercooler_wear(level: i32, a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<f32>> {
+pub fn oil_cooler_leak(level: i32, a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<f32>> {
     if level < 2 || !(a > b) || !(word <= 1.0 && word != 1.0) {
         return None;
     }
     pass(clamp((a - b) * c + word, 0.0, 1.0), 0x19, tag)
 }
 
-/// Zone growth: the wheel's zone float `zones[i]` (i below 4, below 1.0) grows by `(a - b) * c`,
-/// clamped to [0, 1].
-pub fn zone(zones: &[f32; 4], i: u32, a: f32, b: f32, c: f32) -> Option<Pass<(usize, f32)>> {
-    let k = usize::try_from(i).ok().filter(|&k| k < zones.len())?;
-    if !(a > b) || !(zones[k] < 1.0) {
+/// Top mount: the side deflection of wheel `i`'s top mount (`deflections[i]`, i below 4, below 1.0) grows by
+/// `(a - b) * c`, clamped to [0, 1].
+pub fn top_mount_side(deflections: &[f32; 4], i: u32, a: f32, b: f32, c: f32) -> Option<Pass<(usize, f32)>> {
+    let k = usize::try_from(i).ok().filter(|&k| k < deflections.len())?;
+    if !(a > b) || !(deflections[k] < 1.0) {
         return None;
     }
-    pass((k, clamp((a - b) * c + zones[k], 0.0, 1.0)), 10, i)
+    pass((k, clamp((a - b) * c + deflections[k], 0.0, 1.0)), 10, i)
 }
 
-/// Triple flag: with `a > b` and the triple's first word set, the
-/// layout clears it and sets the damage-event flag.
-pub fn triple(a: f32, b: f32, word: u32, i: u32) -> Option<Pass<()>> {
+/// Driveshaft: with `a > b` and the driveshaft's word set, the layout clears it and sets the damage-event flag.
+pub fn driveshaft(a: f32, b: f32, word: u32, i: u32) -> Option<Pass<()>> {
     if !(a > b) || word == 0 {
         return None;
     }
     pass((), 0x11, i)
 }
 
-/// Windshield: with `a > b` and the windshield word at 1, the layout
-/// clears it and returns 4. No ring event is pushed, so this is a plain gate.
-pub fn windshield(a: f32, b: f32, word: u32) -> bool {
+/// Windshield chip: with `a > b` and the chip word at 1, the layout clears it and returns 4. No ring event is pushed,
+/// so this is a plain gate.
+pub fn windshield_chip(a: f32, b: f32, word: u32) -> bool {
     a > b && word == 1
 }
 
-/// Head gasket: at level 2 or more (a signed compare), with `a > b` and
-/// the word at 1, the layout clears it and returns 3. No ring event, so a plain gate.
-pub fn head_gasket(level: i32, a: f32, b: f32, word: u32) -> bool {
+/// Windshield crack: at level 2 or more (a signed compare), with `a > b` and the crack word at 1, the layout clears it
+/// and returns 3. No ring event, so a plain gate.
+pub fn windshield_crack(level: i32, a: f32, b: f32, word: u32) -> bool {
     level >= 2 && a > b && word == 1
 }
 
-/// Mounted body state: the mounted body's state word. The speed
-/// (`a / threshold`, see `speed`) must pass `b`. From 0 the state becomes 2 above `2b` and 1 otherwise; from 1 it becomes
-/// 2. Any other state fails.
-pub fn state(threshold: f32, a: f32, b: f32, word: u32, i: u32) -> Option<Pass<u32>> {
+/// Mounted body state: the mounted body's state word. The speed (`a / threshold`, see `speed`) must pass `b`. From 0 the
+/// state becomes 2 above `2b` and 1 otherwise; from 1 it becomes 2. Any other state fails.
+pub fn mounted_body_state(threshold: f32, a: f32, b: f32, word: u32, i: u32) -> Option<Pass<u32>> {
     let v = speed(a, threshold);
     if !(v > b) {
         return None;
@@ -122,18 +119,17 @@ pub fn second_zero() -> u32 {
     0
 }
 
-/// Door ajar: with `a > b`, the triple's first word clear and its second
-/// set, the layout clears the second.
-pub fn door(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
+/// Hinged body: with `a > b`, the body's lock word clear and its second word set, the layout clears the second.
+pub fn hinged_body(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
     if !(a > b) || first != 0 || second == 0 {
         return None;
     }
     pass((), 7, i)
 }
 
-/// Door speed: with the speed (see `speed`) above `b`, the triple's first word
-/// set, and index 2 only at level 2 or more, the layout clears that word.
-pub fn door_speed(threshold: f32, a: f32, b: f32, first: u32, level: i32, i: u32) -> Option<Pass<()>> {
+/// Hinged body lock: with the speed (see `speed`) above `b`, the lock word set, and index 2 only at level 2 or more,
+/// the layout clears that word.
+pub fn hinged_lock(threshold: f32, a: f32, b: f32, first: u32, level: i32, i: u32) -> Option<Pass<()>> {
     if !(speed(a, threshold) > b) || first == 0 || (i == 2 && level < 2) {
         return None;
     }
@@ -157,8 +153,8 @@ pub fn clear_flag(a: f32, b: f32, flag: u32, kind: u32, tag: u32) -> Option<Pass
     pass((), kind, tag)
 }
 
-/// Water pump: the water-pump flag clears when `a > b` and it is set.
-pub fn water_pump(a: f32, b: f32, flag: u32, tag: u32) -> Option<Pass<()>> {
+/// Hydraulics: the hydraulics' flag clears when `a > b` and it is set.
+pub fn hydraulics(a: f32, b: f32, flag: u32, tag: u32) -> Option<Pass<()>> {
     clear_flag(a, b, flag, 0x1a, tag)
 }
 
@@ -178,9 +174,8 @@ pub fn cap_03(level: i32, a: f32, b: f32, word: f32, tag: u32) -> Option<Pass<f3
     pass(0.3, 0x10, tag)
 }
 
-/// Pair word: with `i` below 3 and `a > b`, the pair's word set,
-/// the layout clears it.
-pub fn clear_pair_word(a: f32, b: f32, words: &[u32; 3], i: u32) -> Option<Pass<()>> {
+/// Differential: with `i` below 3 and `a > b`, differential `i`'s word set, the layout clears it.
+pub fn differential(a: f32, b: f32, words: &[u32; 3], i: u32) -> Option<Pass<()>> {
     let k = usize::try_from(i).ok().filter(|&k| k < words.len())?;
     if !(a > b) || words[k] == 0 {
         return None;
@@ -188,7 +183,8 @@ pub fn clear_pair_word(a: f32, b: f32, words: &[u32; 3], i: u32) -> Option<Pass<
     pass((), 4, i)
 }
 
-/// Pair: with `a > b` and either word of the pair set, the layout clears both and sets the flag. It returns 1 on a pass.
+/// Lamp: with `a > b` and either word of the lamp's pair (works and glass) set, the layout clears both and sets the
+/// light kind's flag. It returns 1 on a pass.
 pub fn clear_pair(a: f32, b: f32, first: u32, second: u32, kind: u32, i: u32) -> Option<Pass<()>> {
     if !(a > b) || (first == 0 && second == 0) {
         return None;
@@ -196,29 +192,29 @@ pub fn clear_pair(a: f32, b: f32, first: u32, second: u32, kind: u32, i: u32) ->
     pass((), kind, i)
 }
 
-/// Suspension arm: the suspension-arm pair clears and sets the suspension-failed flag.
-pub fn suspension_arm(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
+/// Light kind 4's lamp (`clear_pair` with its event kind).
+pub fn lamps_kind_4(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
     clear_pair(a, b, first, second, 0x15, i)
 }
 
-/// Steering rod: the steering-rod pair clears and sets the steering-failed flag.
-pub fn steering_rod(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
+/// Light kind 3's lamp (`clear_pair` with its event kind).
+pub fn lamps_kind_3(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
     clear_pair(a, b, first, second, 0x15, i)
 }
 
-/// Hub: the hub pair clears and sets the hub-failed flag.
-pub fn hub(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
+/// Light kind 5's lamp (`clear_pair` with its event kind).
+pub fn lamps_kind_5(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
     clear_pair(a, b, first, second, 0x16, i)
 }
 
-/// Brake disc: the brake-disc pair clears and sets the brake-failed flag.
-pub fn brake_disc(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
+/// Light kind 6's lamp (`clear_pair` with its event kind).
+pub fn lamps_kind_6(a: f32, b: f32, first: u32, second: u32, i: u32) -> Option<Pass<()>> {
     clear_pair(a, b, first, second, 0x18, i)
 }
 
-/// Drop to floor: at level 2 or more with `a > b` and the word not 0.0 (a NaN passes),
-/// the word falls by `(a - b) * c`, clamped to [lower, 1]; `lower` is 0.4 below level 3 and 0 from level 3. The layout
-/// sets the damage-event flag and returns 5 on a pass.
+/// Drop to floor (the gearbox factor): at level 2 or more with `a > b` and the word not 0.0 (a NaN passes), the word
+/// falls by `(a - b) * c`, clamped to [lower, 1]; `lower` is 0.4 below level 3 and 0 from level 3. The layout sets the
+/// damage-event flag and returns 5 on a pass.
 pub fn drop_to_floor(level: i32, a: f32, b: f32, c: f32, word: f32, tag: u32) -> Option<Pass<f32>> {
     if level < 2 || !(a > b) || word == 0.0 {
         return None;

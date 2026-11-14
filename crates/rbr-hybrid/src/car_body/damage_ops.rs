@@ -27,7 +27,7 @@ fn damage_functor(ctx: &mut Ctx, r: &Regs, run: fn(&mut Mem, u32, [u32; 4]) -> u
 }
 
 pub(super) fn gearbox_wear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::gearbox_wear)
+    damage_functor(ctx, r, layout::damage_radiator)
 }
 
 pub(super) fn grow_cooling_wear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -35,87 +35,87 @@ pub(super) fn grow_cooling_wear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decli
 }
 
 pub(super) fn grow_zone(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::grow_zone)
+    damage_functor(ctx, r, layout::bend_top_mount)
 }
 
 pub(super) fn clear_triple(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::clear_triple)
+    damage_functor(ctx, r, layout::fail_driveshaft)
 }
 
 pub(super) fn clear_head_gasket(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::clear_head_gasket)
+    damage_functor(ctx, r, layout::crack_windshield)
 }
 
 pub(super) fn clear_windshield(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::clear_windshield)
+    damage_functor(ctx, r, layout::chip_windshield)
 }
 
 pub(super) fn dmg_9a0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_9a0)
+    damage_functor(ctx, r, layout::fail_brake_circuit)
 }
 
 pub(super) fn dmg_7b0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_7b0)
+    damage_functor(ctx, r, layout::fail_differential)
 }
 
 pub(super) fn dmg_aa0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_aa0)
+    damage_functor(ctx, r, layout::break_hinged_body)
 }
 
 pub(super) fn dmg_b20(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_b20)
+    damage_functor(ctx, r, layout::break_hinged_lock)
 }
 
 pub(super) fn drain_word(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::drain_word)
+    damage_functor(ctx, r, layout::drain_oil_pressure)
 }
 
 pub(super) fn dmg_930(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_930)
-}
-
-pub(super) fn dmg_820(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_820)
-}
-
-pub(super) fn cap_word(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::cap_word)
-}
-
-pub(super) fn dmg_bb0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_bb0)
-}
-
-pub(super) fn dmg_cc30(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_cc30)
-}
-
-pub(super) fn fail_suspension_arm(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::fail_suspension_arm)
-}
-
-pub(super) fn fail_steering_rod(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::fail_steering_rod)
-}
-
-pub(super) fn fail_hub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::fail_hub)
-}
-
-pub(super) fn fail_brake_disc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::fail_brake_disc)
-}
-
-pub(super) fn fail_water_pump(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     damage_functor(ctx, r, layout::fail_water_pump)
 }
 
+pub(super) fn dmg_820(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::fail_starter)
+}
+
+pub(super) fn cap_word(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::cap_clutch)
+}
+
+pub(super) fn dmg_bb0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::break_lamps_kind_2)
+}
+
+pub(super) fn dmg_cc30(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::break_lamps_kind_1)
+}
+
+pub(super) fn fail_suspension_arm(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::break_lamps_kind_4)
+}
+
+pub(super) fn fail_steering_rod(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::break_lamps_kind_3)
+}
+
+pub(super) fn fail_hub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::break_lamps_kind_5)
+}
+
+pub(super) fn fail_brake_disc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::break_lamps_kind_6)
+}
+
+pub(super) fn fail_water_pump(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    damage_functor(ctx, r, layout::fail_hydraulics)
+}
+
 pub(super) fn grow_intercooler_wear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::grow_intercooler_wear)
+    damage_functor(ctx, r, layout::leak_oil_cooler)
 }
 
 pub(super) fn dmg_d020(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_d020)
+    damage_functor(ctx, r, layout::wear_gearbox)
 }
 
 pub(super) fn set_body_state(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -127,7 +127,7 @@ pub(super) fn zero2f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 pub(super) fn dmg_d300(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::dmg_d300)
+    damage_functor(ctx, r, layout::always_zero)
 }
 
 /// The handler's slot 1 at the impact's stack: the callee's return slot is the thunk's arguments' end (`sp`).
@@ -163,7 +163,7 @@ impl layout::DamageHitCalls for DamageHit<'_> {
 pub(super) fn damage_slot1(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args = r.stack[..8].try_into().unwrap();
     let tuning = crate::ngp::damage_tuning(ctx);
-    let eax = layout::damage_slot1(&mut DamageHit(ctx.host), &mut ctx.mem, r.ecx, r.esp, args, tuning);
+    let eax = layout::apply_impact(&mut DamageHit(ctx.host), &mut ctx.mem, r.ecx, r.esp, args, tuning);
     Ok(Return::void(eax, 0x20))
 }
 
