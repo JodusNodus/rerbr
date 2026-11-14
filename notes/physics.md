@@ -229,8 +229,9 @@ the damage record at `+0x7f0` (top mount up and side, steering, hub, two sector 
 
 ## Tyre
 
-`src/tyre/` (stage order and name map in `entries.rs`, record layouts in `layout/`). `F[0x7A]` is multiplied by `e3`
-twice; `F[0xC5]*0.1` rounds before `*F[0xFC]`.
+`src/tyre/` (stage order and name map in `entries.rs`, record layouts in `layout/`). 1.02 multiplies the static
+friction (`F[0x7A]`, `+0x1e8`) by the temperature grip (`+0x4bc`) twice (NGP the kinetic one the second time); the
+sticking load `normal_force*0.1` (`F[0xC5]`; NGP 0.025) rounds before `*sticking_weight` (`F[0xFC]`).
 
 ## Spring-damper
 

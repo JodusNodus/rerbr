@@ -20,7 +20,7 @@ Nothing here changes what the game computes.
   wear table, contact record, NGP's `.data`) plus a `txt` sidecar with the
   addresses and thermal scalars. Read-only, as the probe.
 - `examples/ngp_transient.rs`: loads the image into a `Mem` and runs NGP's
-  real per-wheel tyre step (`entries::step` + `entries::relax_count`, exactly
+  real per-wheel tyre step (`entries::step` + `entries::relax_and_count`, exactly
   the wheel step's sequence) under scripted kinematics: validation against the
   sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
   `--fz N`, `--speed M/S` and `--ramps-only` give the whole step's slip-angle
