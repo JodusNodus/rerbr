@@ -88,13 +88,17 @@ pub(super) fn ring_header(mem: &Mem, ring: u32) -> RingHeader {
     }
 }
 
-/// The entry at `index`: its three float words, and the vector at `src` copied into the vector slot after the header.
-pub(super) fn store_ring_entry(mem: &mut Mem, ring: u32, index: u32, words: [u32; 3], src: u32) {
+/// The entry at `index`: its three float words, and the vector (the caller's `src`, read by the store) into the vector
+/// slot after the header.
+pub(super) fn store_ring_entry(mem: &mut Mem, ring: u32, index: u32, words: [u32; 3], vector: [u32; 4]) {
     let floats = ring + RING_FLOATS + index.wrapping_mul(12);
     for (k, word) in words.into_iter().enumerate() {
         mem.set_u32(floats + 4 * k as u32, word);
     }
-    mem.copy(ring + index.wrapping_add(1).wrapping_mul(16), src, 16);
+    let slot = ring + index.wrapping_add(1).wrapping_mul(16);
+    for (k, word) in vector.into_iter().enumerate() {
+        mem.set_u32(slot + 4 * k as u32, word);
+    }
 }
 
 pub(super) fn store_ring_cursor(mem: &mut Mem, ring: u32, index: u32, count: u32) {
