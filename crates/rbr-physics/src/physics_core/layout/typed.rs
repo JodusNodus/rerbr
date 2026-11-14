@@ -253,28 +253,26 @@ impl Raw for CoreView<'_> {
 impl SolidWords for CoreView<'_> {
     #[inline]
     fn word(&self, at: u32) -> u32 {
-        self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
+        self.solids.map_or_else(|| self.mem.u32(at), |s| s.word(self.mem, at))
     }
 
     #[inline]
     fn set_word(&mut self, at: u32, value: u32) {
-        if !self.solids.is_some_and(|s| s.write(at, value)) {
-            self.mem.set_u32(at, value)
+        match self.solids {
+            Some(s) => s.set_word(self.mem, at, value),
+            None => self.mem.set_u32(at, value),
         }
     }
 
     #[inline]
     fn words<const N: usize>(&self, at: u32) -> [u32; N] {
-        match self.solids {
-            Some(_) => std::array::from_fn(|k| self.word(at + 4 * k as u32)),
-            None => self.mem.u32s(at),
-        }
+        self.solids.map_or_else(|| self.mem.u32s(at), |s| s.words(self.mem, at))
     }
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
         match self.solids {
-            Some(_) => (0..4).for_each(|k| self.set_word(at + 4 * k, words[k as usize])),
+            Some(s) => s.set_words4(self.mem, at, words),
             None => self.mem.set_words4(at, words),
         }
     }

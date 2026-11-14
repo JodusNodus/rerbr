@@ -54,7 +54,7 @@ const HELD: Range<u32> = 0x100..0x3b8;
 #[derive(Clone, Debug, PartialEq)]
 pub struct HeldSolid {
     pub at: u32,
-    pub name: String,
+    pub name: &'static str,
     pub state: RefCell<Solid>,
 }
 
@@ -68,19 +68,25 @@ pub struct CarSolids {
 impl CarSolids {
     /// The solids of the car at `car`, lifted from the image.
     pub fn lift(mem: &Mem, car: u32) -> Self {
-        let mut solids: Vec<HeldSolid> = Vec::new();
-        let mut add = |name: String, at: u32| {
+        let mut solids: Vec<HeldSolid> = Vec::with_capacity(12);
+        let mut add = |name: &'static str, at: u32| {
             if at != 0 && solids.iter().all(|s| s.at != at) {
                 solids.push(HeldSolid { at, name, state: RefCell::new(Solid::lift(mem, at)) });
             }
         };
-        add("car solid".into(), car);
+        add("car solid", car);
         for k in 0..4 {
-            add(format!("wheel{k} solid"), mem.u32(wheel_list_at(car, k)));
-            add(format!("hinged{k} solid"), mem.u32(hinged_slot(car, k)));
+            add(
+                ["wheel0 solid", "wheel1 solid", "wheel2 solid", "wheel3 solid"][k],
+                mem.u32(wheel_list_at(car, k as u32)),
+            );
+            add(
+                ["hinged0 solid", "hinged1 solid", "hinged2 solid", "hinged3 solid"][k],
+                mem.u32(hinged_slot(car, k as u32)),
+            );
         }
         for k in 0..3 {
-            add(format!("mounted{k} solid"), mem.u32(mounted_slot(car, k)));
+            add(["mounted0 solid", "mounted1 solid", "mounted2 solid"][k], mem.u32(mounted_slot(car, k as u32)));
         }
         CarSolids { solids }
     }
@@ -95,7 +101,7 @@ impl CarSolids {
     /// Every owned byte range, named by its solid and field.
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         let field = |s: &HeldSolid| {
-            let (at, name) = (s.at, s.name.clone());
+            let (at, name) = (s.at, s.name);
             Solid::FIELDS.iter().map(move |f| (at + f.at..at + f.at + f.len, format!("{name} {}", f.name)))
         };
         self.solids.iter().flat_map(field).collect()
@@ -121,6 +127,56 @@ impl CarSolids {
     #[inline]
     pub fn write(&self, at: u32, value: u32) -> bool {
         self.find(at).is_some_and(|(s, off)| s.state.borrow_mut().set_word_of(off, value))
+    }
+
+    /// The word at `at` as a step leaves it: a held solid's where its table names it, else `mem`'s.
+    #[inline]
+    pub fn word(&self, mem: &Mem, at: u32) -> u32 {
+        self.read(at).unwrap_or_else(|| mem.u32(at))
+    }
+
+    /// Stores the word at `at`: into a held solid where its table names it, else into `mem`.
+    #[inline]
+    pub fn set_word(&self, mem: &mut Mem, at: u32, value: u32) {
+        if !self.write(at, value) {
+            mem.set_u32(at, value)
+        }
+    }
+
+    /// The `N` words from `at` ([`CarSolids::word`]), the held solid found and borrowed once. A block no held span
+    /// reaches is `mem`'s at once. A span is longer than any block, and two are further apart, so a block that starts
+    /// outside every span and ends outside every span touches none.
+    #[inline]
+    pub fn words<const N: usize>(&self, mem: &Mem, at: u32) -> [u32; N] {
+        match self.find(at) {
+            Some((s, off)) => {
+                let state = s.state.borrow();
+                std::array::from_fn(|k| {
+                    let k = 4 * k as u32;
+                    state.word_of(off + k).unwrap_or_else(|| mem.u32(at.wrapping_add(k)))
+                })
+            }
+            None if self.find(at.wrapping_add(4 * (N as u32).saturating_sub(1))).is_none() => mem.u32s(at),
+            None => std::array::from_fn(|k| self.word(mem, at.wrapping_add(4 * k as u32))),
+        }
+    }
+
+    /// Stores four words from `at` ([`CarSolids::set_word`]), the held solid found and borrowed once (see
+    /// [`CarSolids::words`]).
+    #[inline]
+    pub fn set_words4(&self, mem: &mut Mem, at: u32, words: [u32; 4]) {
+        match self.find(at) {
+            Some((s, off)) => {
+                let mut state = s.state.borrow_mut();
+                for (k, word) in (0..16).step_by(4).zip(words) {
+                    if !state.set_word_of(off + k, word) {
+                        mem.set_u32(at.wrapping_add(k), word)
+                    }
+                }
+            }
+            None if self.find(at.wrapping_add(12)).is_none() => mem.set_words4(at, words),
+            None => (0..16).step_by(4).zip(words).for_each(|(k, word)| self.set_word(mem, at.wrapping_add(k), word)),
+        }
     }
 
     /// The rigid store over `mem` with these solids held.
@@ -193,28 +249,26 @@ impl SolidWords for SolidView<'_> {
 
     #[inline]
     fn word(&self, at: u32) -> u32 {
-        self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
+        self.solids.map_or_else(|| self.mem.u32(at), |s| s.word(self.mem, at))
     }
 
     #[inline]
     fn set_word(&mut self, at: u32, value: u32) {
-        if !self.solids.is_some_and(|s| s.write(at, value)) {
-            self.mem.set_u32(at, value)
+        match self.solids {
+            Some(s) => s.set_word(self.mem, at, value),
+            None => self.mem.set_u32(at, value),
         }
     }
 
     #[inline]
     fn words<const N: usize>(&self, at: u32) -> [u32; N] {
-        match self.solids {
-            Some(_) => std::array::from_fn(|k| self.word(at + 4 * k as u32)),
-            None => self.mem.u32s(at),
-        }
+        self.solids.map_or_else(|| self.mem.u32s(at), |s| s.words(self.mem, at))
     }
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
         match self.solids {
-            Some(_) => words.into_iter().enumerate().for_each(|(k, word)| self.set_word(at + 4 * k as u32, word)),
+            Some(s) => s.set_words4(self.mem, at, words),
             None => self.mem.set_words4(at, words),
         }
     }
