@@ -1,5 +1,6 @@
 //! `CDrive`'s inputs and accessors, the signal emits, the matrix helpers and the forwarded members.
 
+use rbr_physics::engine_driveline::layout::DriveView;
 use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::engine_driveline::{drive, layout};
 use rbr_physics::physics_core::layout::signal_emit;
@@ -72,12 +73,15 @@ pub(super) fn set_throttle_in(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline
 
 /// thiscall `(slip)`.
 pub(super) fn set_clutch_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_drive(ctx, r.ecx, |d| {
-        let mut lanes = d.lanes();
-        drive::set_clutch_slip(&mut lanes, f(r.stack[0]));
-        d.store_lanes(&lanes);
-    });
+    on_drive(ctx, r.ecx, |d| clutch_slip(d, f(r.stack[0])));
     Ok(Return::void(0, 4))
+}
+
+/// `CDrive::Set4820`'s body (0x504820) on the drive's store: the clutch slip into its lanes. Also the VCU's direct call.
+pub(crate) fn clutch_slip(d: &mut DriveView, slip: f32) {
+    let mut lanes = d.lanes();
+    drive::set_clutch_slip(&mut lanes, slip);
+    d.store_lanes(&lanes);
 }
 
 /// thiscall `(delta)`.

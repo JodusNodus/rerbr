@@ -183,6 +183,17 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   instructions.
 - Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed` (the car, wheels, every solid
   the car has held and the tabled objects' owned bytes), the `poison` feature.
+- Direct calls between held subsystems (row 13): the `*Calls` trait stays the seam; with `Host::typed()` the caller
+  runs the callee's body on the held state with values and calls `ran_direct`, else the host. Done: VCU to the drive
+  (`Get4520`, `Get4540`, `Set4570`, `Set4820`), engine (`SetState4`, `SetScratch08`) and car (`Get15F8`)
+  (`vcu::VcuCallees`); wheel to the tyre (`SetState48`, `SetStateField`, NGP's `RelaxCount`, `TyreTail_Get10`,
+  `TyreTail_Get14`) and strut (NGP's spring step `0x10059f70`, `CBase::GetName`). Residue audit: the words each
+  skipped host call would write (return slot and arguments, at its `sp` or the pure host's placement
+  `(esp - 0x1000) & !0xf`) filled with `0xffbadbad` after the direct call: drive2 physics PASS 84084/84084, twin typed
+  equal aids off and on. drive2 binding runs per step 1087.6 to 1055.0, instructions -0.84 % against `2983b008`. Left
+  on the host: the lights and `SetDirty` (image objects), the slip query (the VCU's own, at its depth), `Get4540` from
+  the car's step (car body), `ResetOutputs` and `UpdateAndReset` (not run on drive2; the first emits at the binding's
+  depth), the tyre step (`NOT_DIRECT`).
 - The generic sequences sit outside the layouts (`rigid_body::{solid_rows, solid_contacts, solid_window}`,
   `physics_core::{step, contact_loop, passenger_step, pose, emit, mounted, accumulate}`, `entities::hinge_step`,
   `ntweak::plan`, `collision::{solver_pass, entry, events, body_contact, grid_edge, mesh, wall, body}`), re-exported

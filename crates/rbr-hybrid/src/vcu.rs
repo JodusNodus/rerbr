@@ -1,9 +1,16 @@
 //! Bindings of the VCU ports (`rbr_physics::vcu`, exe 0x536880-0x5380a0). The ABIs are the original's
 //! (`harness/vcu_vectors.py` VCU_SPECS: thiscall `this` in ecx, the bytes `ret` pops). Each binding decodes the
 //! registers and runs its entry's sequence (`rbr_physics::vcu::layout`). Accessors and setters on the drive, the
-//! engine, the car and the lights stay original: the entries call them through the host (`VcuHost`).
+//! engine and the car run direct on the held state (`VcuCallees`); the lights, the slip query and the per-call path
+//! call the originals through the host (`VcuHost`).
 
+use std::cell::Ref;
+
+use rbr_physics::car_body::layout::slot as car_slot;
+use rbr_physics::engine_driveline::layout::{self as driveline, DriveView, EngineView};
+use rbr_physics::engine_driveline::{drive, store::DriveStore};
 use rbr_physics::mem::Mem;
+use rbr_physics::store::typed::Typed;
 use rbr_physics::vcu::layout::{self, Unit, VcuCalls, VcuView};
 use rbr_physics::vcu::store::VcuStore;
 
@@ -121,8 +128,91 @@ impl VcuCalls for VcuHost<'_> {
     }
 }
 
-fn calls<'a>(host: &'a dyn Host, r: &Regs) -> VcuHost<'a> {
-    VcuHost { host, esp: r.esp, scratch: r.ecx }
+/// The VCU's callees on the typed state the host holds over a step: the held drive's, engine's and car's run here, on
+/// their typed state with the values as arguments, each counted as a run ([`Host::ran_direct`]: the call memo keeps no
+/// call around them). They are leaves that read nothing but their arguments, decline nowhere and run at the same
+/// address with or without NGP, and no later code reads the words the host call leaves on the stack (`notes/physics.md`
+/// "Store seam", direct calls). The lights (on the image), the slip query (the VCU's own, at its stack depth) and
+/// another car's callees go through the host ([`VcuHost`]), as everything does on the per-call path.
+pub(crate) struct VcuCallees<'a> {
+    host: VcuHost<'a>,
+    held: Option<(Ref<'a, Typed>, Mem)>,
+}
+
+impl VcuCallees<'_> {
+    /// `run` on the drive at `drive` when the step holds it.
+    fn drive<T>(&mut self, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> Option<T> {
+        let (typed, mem) = self.held.as_mut().filter(|(t, _)| t.car.drive.is(drive))?;
+        self.host.host.ran_direct();
+        Some(run(&mut typed.car.drive.view(mem).with_defs(Some(&typed.defs))))
+    }
+
+    /// `run` on the engine at `engine` when the step holds it.
+    fn engine<T>(&mut self, engine: u32, run: impl FnOnce(&mut EngineView) -> T) -> Option<T> {
+        let (typed, mem) = self.held.as_mut().filter(|(t, _)| t.car.engine.is(engine))?;
+        self.host.host.ran_direct();
+        Some(run(&mut typed.car.engine.view(mem).with_defs(Some(&typed.defs))))
+    }
+}
+
+impl VcuCalls for VcuCallees<'_> {
+    fn engine_speed(&mut self, drive: u32) -> f32 {
+        self.drive(drive, |d| drive::engine_speed(&d.state())).unwrap_or_else(|| self.host.engine_speed(drive))
+    }
+
+    fn lock_speed(&mut self, drive: u32) -> f32 {
+        self.drive(drive, |d| drive::drive_speed_key(&d.state())).unwrap_or_else(|| self.host.lock_speed(drive))
+    }
+
+    fn car_speed(&mut self, car: u32) -> f32 {
+        let held = self.held.as_ref().and_then(|(t, _)| t.car.own.read(car, car_slot::forward_speed));
+        match held {
+            Some(speed) => {
+                self.host.host.ran_direct();
+                speed
+            }
+            None => self.host.car_speed(car),
+        }
+    }
+
+    fn set_diff_lock(&mut self, drive: u32, channel: u32, value: f32) -> u32 {
+        self.drive(drive, |d| driveline::set_diff_lock(d, channel, value))
+            .unwrap_or_else(|| self.host.set_diff_lock(drive, channel, value))
+    }
+
+    fn set_clutch_slip(&mut self, drive: u32, value: f32) -> u32 {
+        self.drive(drive, |d| crate::engine_driveline::clutch_slip(d, value))
+            .map_or_else(|| self.host.set_clutch_slip(drive, value), |()| 0)
+    }
+
+    fn set_cut_flags(&mut self, engine: u32, flags: [u32; 4]) -> u32 {
+        self.engine(engine, |e| driveline::set_cut_flags(e, engine, flags))
+            .unwrap_or_else(|| self.host.set_cut_flags(engine, flags))
+    }
+
+    fn set_engine_pedal(&mut self, engine: u32, value: f32) {
+        if self.engine(engine, |e| crate::engine_driveline::engine_pedal(e, engine, value.to_bits())).is_none() {
+            self.host.set_engine_pedal(engine, value);
+        }
+    }
+
+    fn set_brake_light(&mut self, lights: u32, on: bool) {
+        self.host.set_brake_light(lights, on);
+    }
+
+    fn set_neutral_light(&mut self, lights: u32, on: bool) {
+        self.host.set_neutral_light(lights, on);
+    }
+
+    fn query_slip(&mut self) -> bool {
+        self.host.query_slip()
+    }
+}
+
+/// The callees of the VCU binding entered with `r`: direct on the typed state the host holds, else through the host.
+fn calls<'a>(ctx: &Ctx<'a>, r: &Regs) -> VcuCallees<'a> {
+    let host = ctx.host;
+    VcuCallees { host: VcuHost { host, esp: r.esp, scratch: r.ecx }, held: host.typed().map(|t| (t, ctx.mem.clone())) }
 }
 
 fn f(bits: u32) -> f32 {
@@ -181,14 +271,14 @@ fn lock_max(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `()`: the three diff locks, sent to the drive's `Set4570`.
 fn diff_locks(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     let eax = on_vcu(ctx, r.ecx, |vcu| layout::diff_locks(vcu, &mut calls));
     Ok(Return::void(eax, 0))
 }
 
 /// fastcall `()`, `ret 0`: `E50_QuerySlip` (0x536fe0), the slip query before a downshift.
 fn query_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     let on = on_vcu(ctx, r.ecx, |vcu| layout::query_slip(vcu, &mut calls));
     Ok(Return::void(on as u32, 0))
 }
@@ -196,7 +286,7 @@ fn query_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `()`: the rev-limit cut flags, sent to the engine's `SetState4`.
 fn rev_limit_cut(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let margin = crate::ngp::vcu_tuning(ctx).cut_margin;
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     let eax = on_vcu(ctx, r.ecx, |vcu| layout::rev_limit_cut(vcu, &mut calls, margin));
     Ok(Return::void(eax, 0))
 }
@@ -211,7 +301,7 @@ fn check_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// the other exits' residue is not modelled.
 fn gearbox_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     on_vcu(ctx, r.ecx, |vcu| layout::gearbox_update(vcu, &mut calls, f(r.stack[0]), tuning));
     Ok(Return::void(0, 4))
 }
@@ -219,7 +309,7 @@ fn gearbox_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(dt)`: the launch clutch, sent to the drive's `Set4820` (nothing with the launch mode off).
 fn launch_clutch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     let eax = on_vcu(ctx, r.ecx, |vcu| layout::launch_clutch(vcu, &mut calls, f(r.stack[0]), tuning));
     Ok(Return::void(eax, 4))
 }
@@ -242,7 +332,7 @@ fn read_packet(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// this run left it: on the per-call path the image, so ReadPacket's writes are lowered before it.
 fn apply_packet(ctx: &mut Ctx, r: &Regs, packet: rbr_physics::vcu::layout::Packet) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     let on = on_vcu(ctx, r.ecx, |vcu| layout::apply_packet(vcu, &mut calls, packet, &tuning));
     Ok(Return::void(on as u32, 4))
 }
@@ -274,7 +364,7 @@ fn step_basic(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(dt)`: Step (`gear`, with the gear logic) or StepBasic; eax is the state pointer.
 fn run_step(ctx: &mut Ctx, r: &Regs, gear: bool) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let mut calls = calls(ctx.host, r);
+    let mut calls = calls(ctx, r);
     on_vcu(ctx, r.ecx, |vcu| layout::step(vcu, &mut calls, f(r.stack[0]), gear, tuning));
     Ok(Return::void(layout::state_of(&ctx.mem, r.ecx), 4))
 }

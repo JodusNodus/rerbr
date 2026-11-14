@@ -75,6 +75,8 @@ pub struct Run {
     looping: Duration,
     /// Instructions, cycles and allocations in the steps' `Game::frame` calls.
     stepping_counts: Counts,
+    /// The bindings the pure host ran in the steps' `Game::frame` calls ([`rbr_hybrid::pure::Pure::runs`]).
+    binding_runs: u64,
     pointers: usize,
     allocator_pointers: usize,
     allocator_unwritten_reads: Vec<u32>,
@@ -455,6 +457,7 @@ pub fn run(
             };
         out.stepping += stepping.elapsed();
         out.stepping_counts += counting.elapsed();
+        out.binding_runs += playback.pure.runs() - runs;
         out.steps += 1;
         out.assists.extend(events.substeps.iter().filter_map(|s| s.outside_assistance).map(|code| (frame.pre, code)));
         out.penalties.extend(events.clock_events.penalty.map(|p| (frame.pre, p)));

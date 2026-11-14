@@ -129,14 +129,15 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
     };
     eprintln!(
         "{path}: timing: {} steps, stepping {:.2} s ({:.0} steps/s), with the compare {:.2} s ({:.0} steps/s); \
-         stepping {cpu}{} allocations ({} bytes) per step",
+         stepping {cpu}{} allocations ({} bytes) per step, {:.2} binding runs per step",
         r.steps,
         r.stepping.as_secs_f64(),
         per_s(r.stepping),
         r.looping.as_secs_f64(),
         per_s(r.looping),
         per_step(counts.allocations),
-        per_step(counts.allocated)
+        per_step(counts.allocated),
+        r.binding_runs as f64 / r.steps.max(1) as f64
     );
     println!(
         "  phase steps run/equal (physics substeps): settle {}/{}, {} ; countdown {}/{}, {} ; driving {}/{}, {}",

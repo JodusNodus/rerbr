@@ -104,6 +104,11 @@ pub(crate) fn read_tyre<T>(host: &dyn Host, mem: &Mem, scratch: u32, read: impl 
     read(&layout::TyreImage::of(mem, scratch).lift(mem))
 }
 
+/// Whether the step holds the tyre whose scratch is at `scratch`.
+pub(crate) fn holds_tyre(host: &dyn Host, scratch: u32) -> bool {
+    host.typed().is_some_and(|typed| typed.car.tyres.borrow().id_of(scratch).is_some())
+}
+
 /// Runs `run` (a call whose callees read the tyre's words at their addresses) with the tyre whose scratch is at
 /// `scratch` on the image: a held tyre is lowered before it and lifted after it, through memory without poison (the
 /// words are the tyre's).

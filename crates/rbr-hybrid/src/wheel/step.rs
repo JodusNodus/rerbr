@@ -4,6 +4,9 @@
 use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::store::RigidStore;
+use rbr_physics::spring_damper::{StepInput, StepOutput};
+use rbr_physics::tyre::layout::{self as tyre_layout, entries, TyreView};
+use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
 use super::{on_wheels, Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
@@ -41,6 +44,9 @@ impl layout::RefreshCalls for Refresh<'_> {
     }
 
     fn tyre_def(&mut self, scratch: u32) -> u32 {
+        if goes_direct(self.host, crate::tyre::holds_tyre(self.host, scratch)) {
+            return tyre_layout::load_def_pointer(&self.mem, scratch);
+        }
         self.host.call(0x5326B0, scratch, &[]).eax
     }
 
@@ -77,7 +83,10 @@ impl Ground<'_> {
 
 impl layout::GroundCalls for Ground<'_> {
     fn effective_radius(&mut self, scratch: u32) -> f32 {
-        self.call(0x5326C0, scratch, &[]);
+        // The getter's state pointer is not read: the radius is the tyre's (`TyreTail_Get14`, direct on a held tyre).
+        if !goes_direct(self.host, crate::tyre::holds_tyre(self.host, scratch)) {
+            self.call(0x5326C0, scratch, &[]);
+        }
         crate::tyre::read_tyre(self.host, &self.mem, scratch, |t| t.state.effective_radius)
     }
 
@@ -162,6 +171,16 @@ pub fn wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 4))
 }
 
+/// Whether a call into the held tyre or strut runs direct (`held`), counted as a run ([`Host::ran_direct`]): the
+/// getters' bindings read their object's image words only (`TyreTail_Get10`, `TyreTail_Get14`, `CBase::GetName`), and
+/// the wheel reads none of the words the host call leaves on the stack (`notes/physics.md` "Store seam").
+fn goes_direct(host: &dyn Host, held: bool) -> bool {
+    if held {
+        host.ran_direct();
+    }
+    held
+}
+
 /// The host calls of `wheel_step`: each one is the original callee at its address, with `sp` below the frame.
 struct Step<'a> {
     mem: Mem,
@@ -171,6 +190,18 @@ struct Step<'a> {
 }
 
 impl Step<'_> {
+    /// `run` on the tyre whose scratch is `scratch` when the step holds it: the wheel's direct calls of the tyre's
+    /// setters and relaxation, on its typed state with the values as arguments, each counted as a run
+    /// ([`Host::ran_direct`]). Their bindings make no call and read nothing of the stack but their arguments, and the
+    /// wheel step reads none of the words the host call leaves below its frame (`notes/physics.md` "Store seam").
+    fn on_tyre<T>(&self, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> Option<T> {
+        let typed = self.host.typed()?;
+        let mut tyres = typed.car.tyres.borrow_mut();
+        let id = tyres.id_of(scratch)?;
+        self.host.ran_direct();
+        Some(run(&mut tyres.view(&self.mem).with_defs(Some(&typed.defs)), id))
+    }
+
     fn on(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> u32 {
         self.host.call_at(sp, addr, ecx, args).eax
     }
@@ -182,6 +213,9 @@ impl Step<'_> {
 
 impl layout::StepCalls for Step<'_> {
     fn strut_name(&mut self, strut: u32, sp: u32) -> u32 {
+        if goes_direct(self.host, crate::spring_damper::holds_strut(self.host, strut)) {
+            return tyre_layout::load_name_object(&self.mem, strut);
+        }
         self.on(sp, 0x52DB10, strut, &[])
     }
 
@@ -278,20 +312,43 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x529C80, body, &[point, out]);
     }
 
-    fn spring_step(&mut self, strut: u32, args: [u32; 6], sp: u32) {
+    // NGP's wrapper as its binding runs it, direct on the held strut; 0x52E090 (1.02, whose binding declines) and another
+    // car's strut through the host.
+    fn spring_step(&mut self, strut: u32, input: StepInput, out: [u32; 3], sp: u32) -> StepOutput {
+        if crate::ngp::is_ngp() && crate::spring_damper::holds_strut(self.host, strut) {
+            if let Ok(forces) = crate::ngp::spring(self.host, &mut self.mem, strut, input) {
+                self.host.ran_direct();
+                return forces;
+            }
+        }
         // 0x52E090, or NGP's 0x10059f70
+        let StepInput { travel, coordinate, velocity } = input;
+        let args = [travel.to_bits(), coordinate.to_bits(), velocity.to_bits(), out[0], out[1], out[2]];
         self.on(sp, crate::ngp::Call::SpringStep.address(), strut, &args);
+        let [spring_stop_force, breakpoint_offset, damping_coefficient] = out.map(|at| self.mem.f32(at));
+        StepOutput { spring_stop_force, breakpoint_offset, damping_coefficient }
     }
 
     fn set_tyre_active(&mut self, scratch: u32, v: u32, sp: u32) {
-        self.on(sp, 0x532470, scratch, &[v]);
+        if self.on_tyre(scratch, |t, id| entries::set_active(t, id, v)).is_none() {
+            self.on(sp, 0x532470, scratch, &[v]);
+        }
     }
 
     fn set_penetration_depth(&mut self, scratch: u32, v: f32, sp: u32) {
-        self.on(sp, 0x533490, scratch, &[v.to_bits()]);
+        if self.on_tyre(scratch, |t, id| entries::set_penetration_depth(t, id, v)).is_none() {
+            self.on(sp, 0x533490, scratch, &[v.to_bits()]);
+        }
     }
 
+    // NGP's relaxation, as the binding runs it: direct with NGP's thermal words (none on a 1.02 image, where the
+    // binding declines).
     fn relax_count(&mut self, scratch: u32, x: f32, sp: u32) {
+        if let Ok(ngp) = crate::ngp::thermal_in(self.host, &self.mem, scratch) {
+            if self.on_tyre(scratch, |t, id| entries::relax_and_count(t, id, x, &ngp)).is_some() {
+                return;
+            }
+        }
         self.on(sp, 0x5358C0, scratch, &[x.to_bits()]);
     }
 

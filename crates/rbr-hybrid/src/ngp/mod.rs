@@ -15,6 +15,7 @@ mod tuning;
 mod tyre_model;
 
 pub(crate) use calls::Call;
+pub(crate) use damper::spring;
 
 pub(crate) use address::{at, is_file, is_ngp, only, trampolines};
 pub use address::{base_in, file, file_at, original_for, runs_ngp, set_wall_clock, Scope};
@@ -27,7 +28,7 @@ pub use engine_model::{engine_model_telemetry, is_set as engine_model_is_set, re
 pub(crate) use steps::{curve_term, CURVE_TERM};
 pub(crate) use tuning::{
     clutch_scale, damage_tuning, damper_step, drag_factor, drive_split, engine_tuning, probe_tuning, step_slip,
-    thermal, vcu_tuning, wheel_tuning,
+    thermal, thermal_in, vcu_tuning, wheel_tuning,
 };
 pub use tyre_model::{restart_tyre_model, set_tyre_model};
 pub(crate) use tyre_model::{tyre_model_set, with_tyre_model};
