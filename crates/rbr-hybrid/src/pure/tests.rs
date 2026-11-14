@@ -11,11 +11,11 @@ fn allocator_views_keep_the_boot_runtime_without_mapping_code() {
     mem.set_ngp_runtime(Runtime::new([0x1000, 0x2000, 0x3000], 10));
     let runtime = mem.ngp_runtime().unwrap().clone();
     let mut pure = Pure::new(mem, false);
-    assert!(Arc::ptr_eq(pure.mem.ngp_runtime().unwrap(), &runtime));
+    assert!(Arc::ptr_eq(pure.image().ngp_runtime().unwrap(), &runtime));
     pure.untrack_allocator();
-    assert!(Arc::ptr_eq(pure.mem.ngp_runtime().unwrap(), &runtime));
-    assert!(pure.mem.try_read(0x50d9c4, 1).is_none());
-    assert!(pure.mem.try_read(0x4f13a7, 4).is_none());
+    assert!(Arc::ptr_eq(pure.image().ngp_runtime().unwrap(), &runtime));
+    assert!(pure.image().try_read(0x50d9c4, 1).is_none());
+    assert!(pure.image().try_read(0x4f13a7, 4).is_none());
 }
 
 #[test]
@@ -103,9 +103,9 @@ fn a_call_with_no_binding_stops_with_its_address_and_caller() {
     let unbound = Stop::Unbound { addr: UNBOUND, caller: STEP_FORWARD };
     assert_eq!(stop_of(&pure, UNBOUND, 0), unbound);
     // Through a trampoline, the stop is the method it leads to.
-    pure.mem.clone().set_u32(CONN + 0x14, UNBOUND);
+    pure.image_mut().set_u32(CONN + 0x14, UNBOUND);
     assert_eq!(stop_of(&pure, TRAMPOLINE, CONN), unbound);
-    assert_eq!(uncovered(&pure.mem, TRAMPOLINE, CONN, &[1]), Some(UNBOUND));
+    assert_eq!(uncovered(pure.image(), TRAMPOLINE, CONN, &[1]), Some(UNBOUND));
 }
 
 #[test]
@@ -130,13 +130,13 @@ fn keep_going_counts_the_stop_and_answers_zero() {
 #[test]
 fn a_call_runs_below_its_caller_with_the_return_slot_and_arguments() {
     let pure = host(false);
-    let mut mem = pure.mem.clone();
+    let mut mem = pure.image_mut();
     mem.set_u32(CONN + 0x14, RET_4);
     // The trampoline leaves eax = the connection; `ret 4` keeps it.
     assert_eq!(call(&pure, TRAMPOLINE, CONN, &[0x1234]).eax, CONN);
     let sp = (0x11ff0 - 0x1000) & !0xf;
     assert_eq!((mem.u32(sp), mem.u32(sp + 4)), (CALL_RET, 0x1234));
-    assert_eq!(uncovered(&pure.mem, TRAMPOLINE, CONN, &[0x1234]), None);
+    assert_eq!(uncovered(pure.image(), TRAMPOLINE, CONN, &[0x1234]), None);
 }
 
 #[test]
@@ -172,16 +172,16 @@ fn the_pure_crt_allocator_aligns_reuses_by_size_and_zeroes_new_blocks() {
     assert_eq!(a % 16, 0);
     assert_eq!(b % 16, 0);
     assert_ne!(a, b);
-    pure.mem.clone().map(a, &[0xaa; 0x21]);
+    pure.image_mut().map(a, &[0xaa; 0x21]);
     call(&pure, CRT_DELETE_ARRAY, 0, &[a]);
     call(&pure, CRT_DELETE, 0, &[b]);
     assert_eq!(call(&pure, CRT_NEW, 0, &[0x30]).eax, b);
     assert_eq!(call(&pure, CRT_NEW_ARRAY, 0, &[0x21]).eax, a);
-    assert_eq!(pure.mem.read(a, 0x21), vec![0; 0x21]);
+    assert_eq!(pure.image().read(a, 0x21), vec![0; 0x21]);
 
     {
         let _run = PureRunGuard::new(&pure.run_depth);
-        assert_eq!(pure.mem.read(a, 4), [0, 0, 0, 0]);
+        assert_eq!(pure.image().read(a, 4), [0, 0, 0, 0]);
     }
     assert_eq!(pure.allocator_unwritten_reads(), (a..a + 4).collect::<Vec<_>>());
 }

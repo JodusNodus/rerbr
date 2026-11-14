@@ -26,6 +26,8 @@ use rbr_physics::store::typed::Typed;
 use crate::{binding_slot, bound, Called, Ctx, Decline, Host, Regs, Return, STACK_ARGS};
 
 mod compare;
+#[cfg(feature = "poison")]
+mod gate;
 mod heap;
 mod image;
 mod leaves;
@@ -124,6 +126,12 @@ pub struct RunSnapshot {
 
 /// Runs bindings on `mem`, which must share its bytes with its clones (a backend's, as `Snapshot::mem` gives).
 pub struct Pure {
+    /// The image the runs read and write (their clones share its bytes: [`Pure::lend`]). Between steps the code here
+    /// reaches it through [`Pure::image`] and [`Pure::image_mut`] only.
+    raw: Mem,
+    /// The image for the readers outside this crate that do not go through [`Pure::image`] yet (rbr-standalone): the
+    /// same bytes, and with the `poison` feature the gate's checks ([`gate`]). Once they do, it goes private (the gate's
+    /// memory, which [`Pure::image`] returns).
     pub mem: Mem,
     heap: Arc<Mutex<PureHeap>>,
     /// The bindings running, which the allocator's unwritten-read log watches.
@@ -183,8 +191,17 @@ pub struct Pure {
     /// runs on their store: [`crate::rigid_body::on_solids`], [`crate::rigid_body::solid_word`]). Off, they stay on the
     /// image.
     pub typed_solids: bool,
-    /// The typed state while a step holds it ([`Pure::typed`]).
+    /// The typed state while a step holds it ([`Pure::typed`]), and with [`Pure::typed_across_steps`] between steps.
     held: RefCell<Option<Typed>>,
+    /// With [`Pure::typed`]: whether the typed state stays held after a step (off by default): the next step runs on it
+    /// without a lift, [`Pure::image`] lowers it when it changed, [`Pure::image_mut`] lowers and drops it. Off, a step
+    /// lifts before and lowers after.
+    pub typed_across_steps: bool,
+    /// Whether the held state changed since it was last lowered (a step or a run between steps on it).
+    stale: Cell<bool>,
+    /// The gate's checks behind `mem` (the `poison` feature).
+    #[cfg(feature = "poison")]
+    gate: Arc<gate::Gate>,
     /// The stage's typed state, lifted at the first step that holds it: the image holds one stage for the playback's
     /// life, and a step does not write it.
     stage: std::sync::OnceLock<Arc<Stage>>,
@@ -209,8 +226,16 @@ impl Pure {
         if let Some(runtime) = runtime {
             mem.set_ngp_runtime(runtime);
         }
+        #[cfg(feature = "poison")]
+        let gate = Arc::new(gate::Gate::new(mem.clone()));
         Pure {
-            mem,
+            #[cfg(not(feature = "poison"))]
+            mem: mem.clone(),
+            #[cfg(feature = "poison")]
+            mem: gated(&gate, &mem),
+            #[cfg(feature = "poison")]
+            gate,
+            raw: mem,
             heap,
             run_depth,
             spare: RefCell::default(),
@@ -244,6 +269,8 @@ impl Pure {
             typed: true,
             typed_solids: true,
             held: RefCell::default(),
+            typed_across_steps: false,
+            stale: Cell::new(false),
             stage: Default::default(),
             #[cfg(feature = "poison")]
             poisoned: RefCell::default(),
@@ -251,37 +278,82 @@ impl Pure {
     }
 
     /// Lifts the car's and the physics core's typed state into typed storage for a step, with the stage's
-    /// ([`Pure::typed`]; nothing without it or without a car). With the `poison` feature the runs' memory has their
-    /// words poisoned until [`Pure::lower_typed`].
+    /// ([`Pure::typed`]; nothing without it, without a car, or while it is held already). With the `poison` feature
+    /// the runs' memory has their words poisoned until [`Pure::lower_typed`]. Nothing is held before, so the image
+    /// holds every word: the lift and the stage's read it directly.
     pub(crate) fn lift_typed(&self) {
-        let car = self.mem.u32(CAR_PTR);
+        if self.held.borrow().is_some() {
+            return;
+        }
+        let car = self.raw.u32(CAR_PTR);
         if !self.typed || car == 0 {
             return;
         }
-        let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.mem))).clone();
+        let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.raw))).clone();
         let typed = if self.typed_solids {
-            Typed::lift_with_solids(&self.mem, car, stage)
+            Typed::lift_with_solids(&self.raw, car, stage)
         } else {
-            Typed::lift(&self.mem, car, stage)
+            Typed::lift(&self.raw, car, stage)
         };
         #[cfg(feature = "poison")]
         {
-            let mut poisoned = self.mem.clone();
-            poisoned.poison(typed.owned());
+            let owned = typed.owned();
+            self.gate.hold(&owned);
+            let mut poisoned = self.raw.clone();
+            poisoned.poison(owned);
             poisoned.watch_writes(typed.watched());
             *self.poisoned.borrow_mut() = Some(poisoned);
         }
         *self.held.borrow_mut() = Some(typed);
     }
 
-    /// Lowers the car's and the core's typed state a step held back into the image, and drops it (the stage's stays as
-    /// it is).
+    /// Marks the held state changed (after a step, or a run between steps on it), so [`Pure::image`] lowers it.
+    pub(crate) fn held_changed(&self) {
+        if self.held.borrow().is_some() {
+            self.set_stale(true);
+        }
+    }
+
+    fn set_stale(&self, stale: bool) {
+        self.stale.set(stale);
+        #[cfg(feature = "poison")]
+        self.gate.set_stale(stale);
+    }
+
+    /// Lowers the held typed state into the image where it changed since the last lower, and drops it (the stage's
+    /// stays as it is): the next step lifts again.
     pub(crate) fn lower_typed(&self) {
         #[cfg(feature = "poison")]
         self.poisoned.borrow_mut().take();
         if let Some(typed) = self.held.borrow_mut().take() {
-            typed.lower(&mut self.mem.clone());
+            if self.stale.get() {
+                typed.lower(&mut self.raw.clone());
+            }
         }
+        self.set_stale(false);
+    }
+
+    /// Drops the held typed state without lowering it (the image is about to be written whole: [`Pure::restore`]).
+    fn drop_typed(&self) {
+        #[cfg(feature = "poison")]
+        self.poisoned.borrow_mut().take();
+        self.held.borrow_mut().take();
+        self.set_stale(false);
+    }
+
+    /// `raw` as the image, and `mem` over it.
+    fn set_image(&mut self, raw: Mem) {
+        assert!(self.held.borrow().is_none(), "the image changes with nothing held");
+        #[cfg(feature = "poison")]
+        {
+            self.gate = Arc::new(gate::Gate::new(raw.clone()));
+            self.mem = gated(&self.gate, &raw);
+        }
+        #[cfg(not(feature = "poison"))]
+        {
+            self.mem = raw.clone();
+        }
+        self.raw = raw;
     }
 
     /// Puts the allocator's blocks into the pages `mem` keeps the rest in (a boot image's), before anything runs: every
@@ -289,7 +361,7 @@ impl Pure {
     /// ([`Pure::allocator_unwritten_reads`] stays empty). The blocks read and write as before: the region reads zero
     /// where nothing wrote, and a block is zero when allocated. For the live run; the checks keep the log.
     pub fn untrack_allocator(&mut self) {
-        let Some(pages) = self.mem.pages().cloned() else {
+        let Some(pages) = self.raw.pages().cloned() else {
             return;
         };
         let mut heap = self.heap.lock().unwrap_or_else(|p| p.into_inner());
@@ -297,11 +369,12 @@ impl Pure {
         pages.write(ALLOCATOR_HEAP_BASE, &vec![0; (ALLOCATOR_HEAP_END - ALLOCATOR_HEAP_BASE) as usize]);
         heap.pages = Some(pages.clone());
         drop(heap);
-        let runtime = self.mem.ngp_runtime().cloned();
-        self.mem = Mem::with_pages(pages);
+        let runtime = self.raw.ngp_runtime().cloned();
+        let mut raw = Mem::with_pages(pages);
         if let Some(runtime) = runtime {
-            self.mem.set_ngp_runtime(runtime);
+            raw.set_ngp_runtime(runtime);
         }
+        self.set_image(raw);
     }
 
     /// The calls [`Pure::direct`] ran in place.
@@ -334,14 +407,30 @@ impl Pure {
 
     /// The image for a reader between steps: what the step left, the typed state's words included. Every reader
     /// outside a step goes through this (or [`Pure::image_mut`]) rather than `mem`, so the typed state can stay held
-    /// across steps: then it is lowered into the image first.
+    /// across steps ([`Pure::typed_across_steps`]): it is lowered into the image first when it changed since the last
+    /// lower (it stays held). Not inside a run. With the `poison` feature, a clone of it read after the next step
+    /// panics at a held word until this is called again.
     pub fn image(&self) -> &Mem {
+        if self.stale.get() {
+            self.lower_held();
+        }
         &self.mem
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn lower_held(&self) {
+        assert_eq!(self.run_depth.load(Ordering::Relaxed), 0, "the image is lowered between steps only");
+        if let Some(typed) = self.held.borrow().as_ref() {
+            typed.lower(&mut self.raw.clone());
+        }
+        self.set_stale(false);
     }
 
     /// The image for a writer between steps (a clone sharing its bytes: writes land in the image). With the typed
     /// state held across steps, it is lowered and dropped first, so the next step lifts what the writer left.
     pub fn image_mut(&self) -> Mem {
+        self.lower_typed();
         self.mem.clone()
     }
 
@@ -354,15 +443,18 @@ impl Pure {
     /// bytes live in the pages in an untracked run). Restoring writes the pages back onto themselves, so the
     /// snapshot's pages stay valid; the heap's shared pages follow.
     pub fn snapshot(&self) -> RunSnapshot {
+        self.image();
         RunSnapshot {
-            pages: self.mem.pages().map(|pages| pages.snapshot()),
+            pages: self.raw.pages().map(|pages| pages.snapshot()),
             heap: self.heap.lock().unwrap_or_else(|p| p.into_inner()).clone(),
         }
     }
 
-    /// Writes a [`Pure::snapshot`] back: the pages, then the allocator heap's bookkeeping.
+    /// Writes a [`Pure::snapshot`] back: the pages, then the allocator heap's bookkeeping. The typed state held across
+    /// steps is dropped: the next step lifts the restored image's.
     pub fn restore(&mut self, snapshot: &RunSnapshot) {
-        if let (Some(pages), Some(snap)) = (self.mem.pages(), snapshot.pages.as_ref()) {
+        self.drop_typed();
+        if let (Some(pages), Some(snap)) = (self.raw.pages(), snapshot.pages.as_ref()) {
             pages.restore(snap);
         }
         let mut heap = self.heap.lock().unwrap_or_else(|p| p.into_inner());
@@ -372,12 +464,18 @@ impl Pure {
     }
 
     /// Runs `CSpringDamper::ResetOutputs` on each strut — the wheel frame finish's damper reset, which the physics
-    /// step does not run — and keeps each emitted payload as a typed damper event for the host.
-    pub fn reset_strut_dampers(&mut self, struts: [u32; 4]) {
+    /// step does not run — and keeps each emitted payload as a typed damper event for the host. On the held struts
+    /// when the typed state is held across steps, else per call on the image.
+    pub fn reset_strut_dampers(&self, struts: [u32; 4]) {
+        let mut mem = self.lend();
         for strut in struts {
-            let payload = rbr_physics::spring_damper::layout::reset_outputs(&mut self.mem, strut);
+            let payload = crate::spring_damper::on_strut_in(self, &mut mem, strut, |s, id| {
+                rbr_physics::spring_damper::strut::reset_outputs(s, id)
+            });
             self.emit_damper(strut, payload);
         }
+        self.give_back(mem);
+        self.held_changed();
     }
 
     /// The damper-signal payloads emitted since the last call, in emit order: the strut and its payload.
@@ -419,9 +517,9 @@ impl Pure {
         let _ngp = (self.run_depth.load(Ordering::Relaxed) == 0).then(|| crate::ngp::Scope::new(self.ngp_base));
         let _run = PureRunGuard::new(&self.run_depth);
         self.entered.set(self.entered.get() + 1);
-        self.mem.u32s_into(regs.esp + 4, &mut regs.stack);
+        self.raw.u32s_into(regs.esp + 4, &mut regs.stack);
         if WATCHED.contains(&addr) {
-            self.captures.watch(&self.mem, addr, &regs, self.keep_tyre_particles);
+            self.captures.watch(&self.raw, addr, &regs, self.keep_tyre_particles);
         }
         match self.slot_of(crate::ngp::file_at(self.ngp_base, addr)) {
             Some(slot) => self.run_bound(slot, addr, &regs, mem),
@@ -482,7 +580,7 @@ impl Pure {
     fn ran_bound(&self, slot: usize, addr: u32, regs: &Regs) {
         let b = bound()[slot];
         if self.keep_tyre_particles && TYRE_STEPS.contains(&b.addr) {
-            let term = tyre_term(self, &self.mem, regs.ecx, f32::from_bits(regs.stack[1]));
+            let term = tyre_term(self, &self.raw, regs.ecx, f32::from_bits(regs.stack[1]));
             self.captures.push_tyre_term(regs.ecx, term);
         }
         if b.addr == addr {
@@ -590,15 +688,15 @@ impl Pure {
     /// as the stand-in enters it ([`Pure::stand_in`]); the other stand-ins go through the host.
     #[inline(never)]
     fn invoke_plain(&self, addr: u32, mut regs: Regs, args: &[u32], write: bool) -> Option<Called> {
-        let known = *self.stand_ins.borrow_mut().entry(addr).or_insert_with(|| stand_in(&self.mem, addr));
+        let known = *self.stand_ins.borrow_mut().entry(addr).or_insert_with(|| stand_in(&self.raw, addr));
         let Some(StandIn::Invoke { method, owner_offset }) = known else {
             return None;
         };
         let conn = regs.ecx;
-        let owner_offset = owner_offset.map_or(0, |at| self.mem.u32(conn + at));
-        let target = self.mem.u32(conn + method);
+        let owner_offset = owner_offset.map_or(0, |at| self.raw.u32(conn + at));
+        let target = self.raw.u32(conn + method);
         let slot = self.slot_of(crate::ngp::file_at(self.ngp_base, target))?;
-        regs.ecx = self.mem.u32(conn + 0x10).wrapping_add(owner_offset);
+        regs.ecx = self.raw.u32(conn + 0x10).wrapping_add(owner_offset);
         regs.eax = conn;
         self.entered.set(self.entered.get() + 1);
         self.run_plain(slot, target, regs, args, write)
@@ -624,8 +722,8 @@ impl Pure {
             return poisoned.clone();
         }
         match self.spare.borrow_mut().pop() {
-            Some(mem) if mem.shares(&self.mem) => mem,
-            _ => self.mem.clone(),
+            Some(mem) if mem.shares(&self.raw) => mem,
+            _ => self.raw.clone(),
         }
     }
 
@@ -643,14 +741,14 @@ impl Pure {
     fn stand_in(&self, addr: u32, regs: &Regs) -> Option<Return> {
         let angle = f32::from_bits(regs.stack[0]);
         // The code and the import slot a stand-in is known by do not change while the image runs.
-        let known = *self.stand_ins.borrow_mut().entry(addr).or_insert_with(|| stand_in(&self.mem, addr));
+        let known = *self.stand_ins.borrow_mut().entry(addr).or_insert_with(|| stand_in(&self.raw, addr));
         let r = match known? {
             StandIn::Invoke { method, owner_offset } => {
                 let conn = regs.ecx;
-                let owner_offset = owner_offset.map_or(0, |at| self.mem.u32(conn + at));
-                let owner = self.mem.u32(conn + 0x10).wrapping_add(owner_offset);
+                let owner_offset = owner_offset.map_or(0, |at| self.raw.u32(conn + at));
+                let owner = self.raw.u32(conn + 0x10).wrapping_add(owner_offset);
                 let r = Regs { ecx: owner, eax: conn, ..*regs };
-                self.enter(self.mem.u32(conn + method), r)
+                self.enter(self.raw.u32(conn + method), r)
             }
             StandIn::Ret(pop) | StandIn::Listener(pop) => Return::void(regs.eax, pop),
             StandIn::Sin => Return::float_with_eax(regs.eax, trig::x87_sin(angle), 0),
@@ -697,7 +795,7 @@ impl Pure {
     fn counter(&self, out: u32) -> Return {
         let ticks = self.ticks.get() + 1000;
         self.ticks.set(ticks);
-        let mut mem = self.mem.clone();
+        let mut mem = self.raw.clone();
         mem.map(out, &ticks.to_le_bytes());
         Return::void(1, 4)
     }
@@ -765,6 +863,16 @@ impl Pure {
             trace.reader.store(reader, Ordering::Relaxed);
         }
     }
+}
+
+/// `mem` behind `gate`'s checks, with its NGP runtime.
+#[cfg(feature = "poison")]
+fn gated(gate: &Arc<gate::Gate>, mem: &Mem) -> Mem {
+    let mut gated = Mem::with_backend(gate.clone());
+    if let Some(runtime) = mem.ngp_runtime().cloned() {
+        gated.set_ngp_runtime(runtime);
+    }
+    gated
 }
 
 /// A frame's entry registers but the stack's: what a call from it keeps ([`Host::call_at`]).
