@@ -134,6 +134,7 @@ goes in experimental physics (below).
 | `scripts/rust-vectors.sh <module>` | the recorded and fuzzed calls of the original for one module's ports (`car_body`, `tyre`, `wheel`, `vcu`, ...), including branches no drive reaches; needs `RBR_VECTOR_STORE` |
 | `scripts/gate.sh` | drive2 attempt 5 through `rbr-standalone`: every one of 84084 NGP steps equal to the recording |
 | `scripts/gate.sh --hybrid` | also the hybrid check: each port inside the original's step in the emulator, every "run B vs run A" line equal |
+| `scripts/gate.sh --typed` | also the typed storage a step holds: the drive with it against the per-call path after every step (aids off and on), and with the held words poisoned ([physics.md](../notes/physics.md), "Store seam") |
 
 The hybrid check's snapshots are 1.02's, so ports that hold NGP's behaviour (the step itself, the strut, the tyre,
 the `ngp` functions) decline there and the original runs them: for those, only the standalone drive and their

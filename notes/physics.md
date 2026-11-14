@@ -141,13 +141,12 @@ Instruction operands are decoded only for captured-memory validation.
 
 ## Store seam
 
-The standalone gameplay adapter samples a typed `CarState`; backend memory reads, gear lookup, tyre-noise
-attribution and control encoding stay in `rbr-standalone/src/physics/layout.rs`. Live and recorded samples use the
-same conversion.
+The standalone gameplay adapter samples a typed `CarState`; backend memory reads, gear lookup, tyre-noise attribution
+and control encoding stay in `rbr-standalone/src/physics/layout.rs`. Live and recorded samples use the same conversion.
 
-One physics code over two storages (Phase B). A subsystem's store trait names its layout's load and store groups;
-`Mem` implements each with the layout's bodies. Sequence functions are generic over the trait (`fn step<S:
-TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
+One physics code over two storages. A subsystem's store trait names its layout's load and store groups; `Mem`
+implements each with the layout's bodies (the per-call path), a view over the typed state the held path. Sequence
+functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 
 | Trait | File | Mem impl |
 | --- | --- | --- |
@@ -166,340 +165,106 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `TweakStore` | `ntweak/store.rs` | `ntweak/layout/mod.rs` |
 | `CollisionStore` (by address; every method defaults to the image's) | `collision/store.rs` | `collision/layout/mem_store.rs`; `CollisionView` (`layout/typed.rs`, the held words only) |
 
-- A calls trait takes the store as a parameter defaulting to `Mem` (`Vf6cxCalls<S = Mem>`); clashing names use
-  UFCS; what a trait does not name yet goes through `Raw`. Constructors and setup copies stay on `&mut Mem`.
-- `object!` (`store/layout.rs`) tables an object once (struct, `Field` per row, `lift`/`lower`, `word_of` for a field
-  of whole words); tabled so far (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and
-  state, drive, drive state and its four wheel blocks, engine and engine state, the car's own state, the solver's rows
-  and counts, the car's grids' hit bytes.
-- Mem-direct dispatch (`--dispatch direct`, live default): a call within the `IN_PLACE` subsystems
-  (`rbr-hybrid/src/pure/mod.rs`) to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) runs as a plain call
-  when it passes exactly the words the leaf pops; a non-leaf binding too (B1b, `Pure::call_plain`, `call_framed`:
-  words written as the host writes them, nothing read back, own frame, image word for word the host path's;
-  `args` holds the words it pops, `Pure::stack_words`). Watched emits and tyre steps always go through the host
-  (`NOT_DIRECT`). `Host::call_direct` leaves the words unwritten where the callee reads only its arguments (ground
-  probe's callees, `E45_M40C0`'s `LookupTwin`, CRT vector iterators). Bindings get `Direct` (`pure/mod.rs`);
-  `Pure`'s own `Host` is the fact-check's (`--dispatch pure`). 176-step NGP bench: 739.8e9 to 678.3e9
-  instructions.
-- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed` (the car, wheels, every solid
-  the car has held and the tabled objects' owned bytes), the `poison` feature.
-- Direct calls between held subsystems (row 13): the `*Calls` trait stays the seam; with `Host::typed()` the caller
-  runs the callee's body on the held state with values and calls `ran_direct`, else the host. Done: VCU to the drive
-  (`Get4520`, `Get4540`, `Set4570`, `Set4820`), engine (`SetState4`, `SetScratch08`) and car (`Get15F8`)
-  (`vcu::VcuCallees`); wheel to the tyre (`SetState48`, `SetStateField`, NGP's `RelaxCount`, `TyreTail_Get10`,
-  `TyreTail_Get14`) and strut (NGP's spring step `0x10059f70`, `CBase::GetName`). Residue audit: the words each
-  skipped host call would write (return slot and arguments, at its `sp` or the pure host's placement
-  `(esp - 0x1000) & !0xf`) filled with `0xffbadbad` after the direct call: drive2 physics PASS 84084/84084, twin typed
-  equal aids off and on. drive2 binding runs per step 1087.6 to 1055.0, instructions -0.84 % against `2983b008`. Left
-  on the host: the lights and `SetDirty` (image objects), the slip query (the VCU's own, at its depth), `Get4540` from
-  the car's step (car body), `ResetOutputs` and `UpdateAndReset` (not run on drive2; the first emits at the binding's
-  depth), the tyre step (`NOT_DIRECT`).
-- The generic sequences sit outside the layouts (`rigid_body::{solid_rows, solid_contacts, solid_window}`,
-  `physics_core::{step, contact_loop, passenger_step, pose, emit, mounted, accumulate}`, `entities::hinge_step`,
-  `ntweak::plan`, `collision::{solver_pass, entry, events, body_contact, grid_edge, mesh, wall, body}`), re-exported
-  from `layout` under their old paths; object offsets and frame constants stay in the layout. Evidence: drive2
-  attempt 5 physics PASS 84084/84084, the 4 hybrid snapshots identical.
-- Stay on `Mem`: constructors and setup copies everywhere; `load` and stage's load code (image construction only);
-  code writing at computed addresses in the original's stack frames (physics_core detector walks, `notify`,
-  `prof_calls`; entities `collide_init`, detach events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (via
-  physics_core's Mem-typed `FilingHost`); NTweak apply and parse (host-bound); collision cell grid, links, the event pool and its
-  free list, grid construction, `brake_wall_contact` (calls `car_body::light::sub_block_init`).
-- Typed storage (B2), the strut first: `spring_damper::strut::Struts` (per wheel: the controller's mode, latch and
-  signal, the three effective dampings, the fade pair; 12 words a strut) behind `StrutStore` keyed by `StrutId`; the
-  image side is `layout::{StrutImage, CarStruts}` (`lift`/`lower` on the `object!` fields, `FadeObj` the fade pair).
-  The definition, the headers and every pointer stay in the image, read per call. Per call (`layout::with_strut`):
-  the emulator's bindings, the vectors, `Pure::reset_strut_dampers`, another car's strut. Over a step
-  (`Pure::typed_struts`, the default): `Playback::step` lifts the car's struts before `StepForward` and lowers them
-  after (a stop too), the bindings take them through `Host::struts`, so every reader between steps (telemetry, SND1,
-  FRM1, the twin, a restart's `restore`) sees the image's words. NGP's strut words (`strut+0x30..0x38`, the owner
-  wheel's `+0xe80..0xe8c`) and the step's out pointers stay the binding's, on the image. Evidence: drive2 attempt 5
-  84084/84084 typed; `--twin typed` (against the per-call path) equal after each of 84084 steps; the `poison` build
-  (`--features rbr-hybrid/poison`, the held words poisoned in the runs' memory) 84084/84084; `round_trip` 192 typed
-  bytes equal on 43 snapshots; `tests/pure_struts.rs` both storages equal to the original and to each other.
-  The hybrid gate's 1.02 snapshots run no strut call but the kernels and `GetName` in 30 steps (`Step` declines).
-- One typed storage for the car: `store::typed::CarTyped` (the struts in a `RefCell`, their runs never nest; the VCU
-  in a `Cell`, FlagDispatch calls the slip query, a VCU binding, through the host), lifted and lowered together by
-  `Pure::typed` (was `typed_struts`) around `Playback::step`, reached by the bindings through `Host::typed`, which
-  holds `store::typed::Typed` (the car's and the stage's).
-- The VCU, second: `vcu::layout::Unit` (the scratch's pedals, fixed clutch, carried word, launch and slip fields; the
-  state's lockout, launch clutch with its dirty word, pedal swap, gear timer and cooldown; 16 words) in `CarVcu`
-  (`VcuImage`, `lift`/`lower` on `ScratchObj`/`StateObj`, `with_vcu` per call, `round_trip`). Definition, pointers and
-  the owner car stay in the image, read per call. The drive's gear block, outputs (CReals, lock torques), gear count
-  and ratios are the drive's: `DriveBlocks` reads and writes them on the drive's typed state (`VcuView` holds the
-  car's `CarDrive`); `CDrive::M6840` is a `DriveBlocks` function whose `SetDirty` the binding skips on a held drive. `VcuCalls` keeps every callee a host call (drive, engine, car,
-  lights untyped; the slip query because the original's call places its stack words). CopyDef's maps and ReadPacket's
-  packet are read and written on the image, their scratch fields through the store; ReadPacket's run is lowered
-  before FlagDispatch's, so the per-call slip query lifts it. Readers outside the bindings during a step: NGP's
-  engine wrapper (the cooldown, `state+0x64`) and drive wrapper and curve term (the handbrake, `car+0x864`), through
-  `rbr_hybrid::vcu::unit_of` (an unrouted read fails the poison run: `vcu gear timer (+0x4)` in `0x5273a0`).
-  Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps; poison 84084/84084;
-  `round_trip` 64 typed bytes on 40 snapshots; `vcu_vectors` on the per-call store (records' unmapped unit bytes
-  zero-filled; CheckSlip's drive+8 mapped to its window), and the chain test (8 entries per-call vs held, every byte,
-  240 Step records); hybrid gate 13/13 runs Step and ReadPacket per call (drive2 has auto gears and clutch help off,
-  so its gear logic and launch clutch return early); +0.14 % instructions per step.
-- The tyres, third: `tyre::tyres::Tyres` (per wheel a `Tyre`: the scratch's contact, material copy, patch, forces,
-  slips, noise signal, outputs, heat and soil words and the tread sectors' wear; the state's active flag, relaxation
-  counter, start flag, deflections, radius, setup copies, inner air, engaged flags, hold direction, searches,
-  temperatures and sector; 992 bytes a tyre) in `CarTyres` (`layout/typed.rs`: `TyreImage` lift/lower, `with_tyre` per
-  call, `round_trip`). The setup (`m_def`), the pointers and the wheel's contact angle (`wheel+0x5ac`) stay in the
-  image, read per call; a wear pointer of 0 holds no wear. The store loads and stores a whole `Frame`; the entries
-  (`layout/entries.rs`) take the callers' blocks as values and return their outputs, which the bindings write after
-  the tyre, so a pointer into the tyre's own words keeps its write (ComputeOutputs' record at `this+0x20` is the
-  tyre's stiffnesses). Ten scratch scalars are words of the material block: lower writes the block then the scalars,
-  and the view's store settles the block (`settle_material`), so the held state is lower∘lift's. Indices past a window
-  (heat, sector, surface wear, the limits' blend) decline with `Outside`. EmitNoise lowers a held tyre around the emit
-  (its connections read the block at its address); CopyFrom on a held tyre's `+0x1a0` goes to its store. Readers
-  during a step, through `rbr_hybrid::tyre::read_tyre`: NGP's step wrapper (the speed), the thermal words (in contact,
-  the boost `+0x1c8`), the ground probe's radius (`GroundCalls::effective_radius`), the pure host's tyre term; an
-  unrouted read fails the poison run (`wheel0 tyre forces (+0x3c)` in `0x791fb660`, the wrapper's speed). Locate,
-  TyreClamp, FloorS32, TyreFrictionCurve, Set414 and the getters stay on the image (the callers' words). Evidence:
-  drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on); poison
-  84084/84084; `round_trip` 3968 typed bytes on 43 snapshots; `tyre_vectors` on the per-call store (frame records'
-  unmapped footprint zero-filled) and the chain test (20 entries per call vs held, every byte, 1020 WriteOutputs
-  records); hybrid gate 13/13 (the 1.02 snapshots run the original Step, which calls the sub-entries per call);
-  +0.54 % instructions per step.
-- The stage, fourth, read-only: `stage::typed::Stage` (the drive line `DRIVE_LINE` names: its 10000 entries of 0x30
-  bytes and the count, `line+0x10..+0x75314`; `MATERIAL_TABLE`'s 256 slots, slot address and count, `+0..+0x808`, and
-  the 256-byte sheet of each slot with one), one per loaded stage, not per car: `Pure` lifts it at the first step
-  (`OnceLock`) and puts an `Arc` of it in each step's `Typed`; nothing lowers it. `layout::StageView` is `StageStore`
-  over it, the image for a read it does not hold (past the table, another address); without a step (emulator, vectors,
-  between steps) the readers run on `Mem`'s. Readers: E12_SampleX, SampleBig, BlendB, LerpAt, Last, ClampMix,
-  `Test7910`, `Vf98x`'s and Split17C's samples, NGP's sampler, `E44MatTable::M520240` and NGP's sheet lookup, through
-  `rbr_hybrid::stage::on_stage`; `SetDriveLine` and `Build` (load) write it on the image. Unchanged by a step: the
-  poison run (an unrouted E12_SampleX fails: `drive line (+0x75300)` in `0x475ea0`); `.col` image, sheets, table and
-  drive line hash equal before and after drive2, while NGP's first collision-system copy changes at `+0x1014..+0x1024`
-  (the queries' found list: collision state, not the stage's). The poison build checks each typed answer against the
-  image's. Evidence: drive2 84084/84084 typed; `--twin typed` equal after each of 84084 steps (also aids on, and wet
-  with realistic damage); poison 84084/84084 and on RSF 122/117 wet (60000 autopilot steps each); `round_trip`
-  484876-491532 stage bytes and `differential` (every entry, slot and texel, 624196 answer bytes) on 40 snapshots and
-  `load_stage`; perf -0.23 % instructions. The hybrid gate runs E12_SampleX, Thunk4F0 and SampleBig per call on the
-  image; M520240 declines there (NGP's). Not typed: the collision system and its copies, the `.col` tree, the mesh
-  grids and water meshes (the collision queries, heap graphs; their scratch is written per query); `CollisionQuery`
-  is NGP's runtime copy (no image word) or the snapshot's operand.
-- The wheels, fifth: `wheel::layout::Wheel` (`object!` with a `Slot` per field, `layout/typed.rs`; 444 bytes a wheel):
-  the pose the refresh and the axes leave (deformed top mount, steering rod length, wishbone copy, wobbled and inclined
-  axle, strut direction, tip, inverse arm and rack, drive axle direction, rod mount, steering rod, debug rows), the walk
-  output, the probe's frame axis, contact distance, sector values, sweep residue, ground body and copies (`+0xdb0..
-  +0xe30`, the two edge copies `Blend4`'s), the edge force's across vector, the step's strut velocity, spin, four forces
-  and end spin, the damage-changed flag, the ground flag (with the car's state). `CarWheels` (lift, lower, owned,
-  `round_trip`) is in `CarTyped`, lifted and lowered with the rest. The wheel's runs nest through the host (the step
-  calls the refresh, the probe, the edge forces,
-  the top mount, the hub torque and the spin cross; the probe the sector lerps, the contact pick, the tag blend), so
-  the state is a `RefCell` borrowed one field at a time, and there is no per-call lift: `WheelView` holds the step's
-  wheels typed and keeps any other wheel on the image, field by field at its address (the `Mem` store is the same,
-  for the vectors), which is the per-call path (emulator, hybrid gate, between steps). The store keys a wheel by its
-  address: per call that is the image's word, held the view finds the wheel. Stay in the image, read and written there:
-  the definition, the pointers (car, def, damage, tyre setup, wheel index), the damage record (the car's damage object,
-  `+0x3c04 + 0x38k`, its functors and `ResetDamage`), the solid's words (position, orientation, velocities; the refresh
-  writes them), the reals' headers (`SetDirty`), and every word another subsystem reads or writes at its address: the
-  wheel angle and strut length (the tyre's contact angle, `Snap9360`), the axle and knuckle axis (the car's transforms),
-  the world hub, axle, probe direction, carcass edges and hub velocity (the car's walks, the CRT vector helpers, the
-  collision casts), the car force and scratch (the car's accumulators), the blend ops and last tags (the tyre step's
-  pointers, NGP's step wrapper), the ray blocks (the mesh queries' hit words, NGP's tag blend), NGP's strut
-  words `+0xe80..+0xe8c`. The calls into the tyre and the strut stay host calls: they take
-  pointers into the step's frame and the image words above, NGP rewrites three of them (the tyre step, the spring
-  step, the relaxation), and the host writes the original's stack words around each. Readers
-  during a step, through `rbr_hybrid::wheel::read_wheel`: NGP's engine wrapper (the rim speeds, under the engine
-  model) and the tyres' thermal words (the end spin); an unrouted read fails the poison run (`wheel0 end_spin_rate`
-  in `0x5358c0`). Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (also
-  aids on with realistic damage); poison 84084/84084 (both); `round_trip` 1776 typed bytes and `differential` (the
-  host-free entries in a row per call against held, every byte of the wheels, damage records and outputs, 21856
-  bytes) on 40 snapshots; `wheel_vectors` on the Mem store; the hybrid gate 13/13 (the 1.02 snapshots run the original
-  step, which calls the refresh, probe, sector lerps, `Blend4`, the hub torque and the spin cross per call; `M3DD30`
-  and `M3D460` decline there); +0.73 % instructions per step.
-- The drive, sixth: `engine_driveline::layout::DriveTyped` (`layout/drive_typed.rs`: `DriveObj`, the `CDrive`'s lanes,
-  pair, pack, wheel offset and bias CReals, gear time steps and scalars; `DriveStateObj`, the state's lock channels,
-  gains, ring, engine speed, clutch and pair matrices, gear fields, counters; `WheelObj` per wheel, the 200-byte block
-  at the state's `+0x48`; 1076 bytes) in `CarDrive` (`DriveImage` lift/lower, `with_drive` per call, `round_trip`).
-  An aliased word is one field and the records are views: term 3 is wheel 0's slip lane and its neighbours, the
-  gate level the throttle's value, the curve state (NGP's wheel speed, temperatures, handbrake gain) the wheel block's
-  words; the worker's store writes term 3 and each slip only when changed, as before. Held in a `RefCell` borrowed per
-  access, never across a host call (Step1E0 re-enters the drive's bindings through the host). Stay on the image: the
-  definition, the damage handler's block (its functors write it), the pointers, the state's car (`+0x580`, read raw by
-  NGP's downforce) and the wheel worker's matrix words (`state+0x4b0`, `+0x530`, `drive+0xa0`, written for the
-  original `E39_MatVec`). `DriveStore::word`/`set_word` serve the original's index arithmetic (SetTwo, Set4570,
-  M6DB0/M6DD0, the gear's scale and time step at any gear): named words directly, a word the typed state holds in part
-  byte by byte, the rest on the image. Readers during a step, through `rbr_hybrid::engine_driveline::on_drive_in`:
-  NGP's starter, drive wrapper, axle worker, curve term (its `a1` a wheel, `x` the input block, the transfer into wheel
-  `u - 2`'s latch bound), M5FE0/M6260, the clutch torque, the car's MrR payload (`CarCalls::drive_engine_speed`,
-  was a raw read; unrouted it fails the poison run: `drive state` in `0x5273a0`), the VCU's blocks; `E39_RatioCA0`,
-  `WorkerF60`/`Worker4060` and `ClearLanes` resolve a held drive's ring, wheel or scratch member, else the image.
-  Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on);
-  poison 84084/84084; `round_trip` 1076 typed bytes on 43 snapshots; `engine_driveline_vectors` on the per-call store
-  (unmapped drive bytes zero-filled) and its chain test (14 entries per call vs held, every byte, 42 pair-worker
-  records); `vcu_vectors`' chain with the drive held too; hybrid gate 13/13; -2.6 % instructions per step.
-- The engine, seventh: `engine_driveline::layout::EngineTyped` (`layout/engine_typed.rs`: `EngineObj`, the `CEngine`'s
-  crank delta, pedal and its cosine, heat total and rates, abs term, signal, stall sum, misfire level, heat output;
-  `EngineStateObj`, the state's misfire, radiator and coolant pairs, turbo speed, boost and band damper blocks, stages,
-  the four intake entries (14 words each), cut flags, crank, rates, the intake lanes, the dampers' lanes, averages,
-  cycle, torque terms and compliance; 500 bytes) in `CarEngine` (`EngineImage` lift/lower, `round_trip`). The ports
-  reach its words by the original's offsets (the entries and damper blocks are records several kernels read
-  differently, `torque_curve` and `exhaust_blend_at` take an entry's pointer), so `EngineView` is a word store
-  (`Raw`): a word the held engine's tables name is its typed state's (`object!`'s `word_of`, a word table per object),
-  any other byte the image's; per call (`EngineView::image`) it is the image. `EngineStore` (the records) is `Mem`'s
-  and the view's, which serves a held engine's `EngineOwn` and `EngineState` by field; `EngineTables` and
-  `DamperBlocks` are on every word store. Held in a `RefCell` borrowed per word, never across a host call (`Sim8E20`
-  calls `Sim80D0` through the host). Stay on the image: the definition (held read only with the definitions since),
-  the pointers, the option block (the damage handler's engine block at `+0x3aac`: its functors and NGP's engine
-  wrapper write it; the stall terms, gates, health),
-  the roll table and seed, and the state's `EngineNoise` payload (`+0x2c..+0x5c`, `misfire_out` and the cut words in
-  it: the emit's listeners read it at its address). Readers during a step, through
-  `rbr_hybrid::engine_driveline::on_engine_in`: the engine bindings (the VCU's `SetState4`/`SetScratch08` and the car's
-  sensor getters `SimEE60`, `SimE970`, `Get48_58`, `GetState188`, `SimE980` are bindings), NGP's engine wrapper (the
-  pedal, the friction torque `+0x270`, the engine temperature `+0x23c` for the engine model, the stall guard), the
-  drive's gate (`SimE980`); unrouted, the wrapper's friction torque fails the poison run (`engine state` in
-  `0x5273a0`). Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off
-  and on); poison 84084/84084 (aids on too: no poisoned access in 84084 steps); `round_trip` 500 typed bytes and
-  `engine_differential` (the step, heat, overheat, fuel, turbo, intake resets, signal, setters and getters per call
-  vs held, 1200 bytes) on 43 snapshots; `engine_driveline_vectors` and its engine chain (12 entries per call vs held,
-  every byte, 645 `SimE660` records); hybrid gate 13/13 (the 1.02 snapshots run the original `Sim8E20`, which calls
-  `SimE370`, `SimE520`, `SimE660`, `SimE060`, `SimE1F0`, `Sim8D90`, `Sim80D0`, `Sim8610`, `Sim8B20` per call;
-  `Sim8E20`, `Sim7D30` and `Sim8890` decline there); +0.48 % instructions per step.
-  records); `vcu_vectors`' chain with the drive held too; hybrid gate 13/13; -2.6 % instructions per step. Not typed
-  yet: the engine (`EngineStore`: `EngineOwn`, `EngineState`, the options' stall terms, the unit split, the damper
-  blocks in its objects), which stays on `Mem`.
-- The car's own state, eighth: `car_body::layout::CarState` (`layout/typed.rs`, `object!` with a `Slot` per field; 180
-  bytes): the control update's counter, marks and kept controls (steering input, throttle, brake), the snapshot flag,
-  the partial and wall contact times and the partial-contact flag, the values of the value cells (anti-roll bar
-  matrix, torque sum, filtered steering torque, slew, target and rate, speed sum: `CarStore::cell` by `Cell`, the
-  headers with their dirty words on the image, so `SetDirty` through the host stays right), the smoothed vector, the
-  respawn countdown, forward speed and speed, the overload flag, wall penetration, override timer, assistance block and
-  grid flag. `CarOwn` (lift, lower, owned, `round_trip`) is in `CarTyped`; `CarStore` is implemented over `CarFields`
-  (`Mem` per call; `CarView` holds the step's car and wheels, any other car on the image) and the bindings run on
-  `rbr_hybrid::car_body::on_car`, borrowing one field at a time (the controls step runs the drive, whose wheels call
-  `AddADC`; the step runs the retire check). The wheel's ground flag (`+0xebc`) is the wheel's typed now
-  (`wheel::layout::slot::on_ground`, read by the car's wheel count); the wheel's reads of the steering target and its
-  rate go through `WheelStore::car_field`. Stay on the image: the solid's words (`< +0x470`: pose, velocities, the
-  accumulators the wheels' car force and scratch add to), the pointers, the parts (drive, engine, VCU scratch, lights,
-  passenger), the damage handler, the step marks' other payload words, `+0xaa0`/`+0xac0` (the respawn clears them),
-  and the speed before the update and the direction opposite the velocity (`+0x1600`, `+0x1610`: the hinged bodies
-  read them, `SimCFF0`, the second through `E01Vec4::CopyFrom` of its address; typed, the poison run fails with
-  `car dir_back` in `0x43c5b0`). The wheel angle and strut length (`+0x5ac`, `+0x5bc`) stay the wheel's on the image
-  (the tyre's contact angle and the wheel step's pushed words read them there). Readers during a step, through
-  `rbr_hybrid::car_body::read_car`: NGP's downforce (forward speed and speed), curve term, engine wrapper and the tyres'
-  thermal words (forward speed); unrouted it fails the poison run (`car forward_speed` in `0x791e8d50`). The sensor
-  sampler and the publish step are not bound (vectors only), so the engine's sensor words stay calls. Evidence: drive2
-  attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on); poison 84084/84084
-  (aids off, aids on, aids on with realistic damage); `round_trip` 180 typed bytes and `differential` (the host-free
-  entries in a row per call against held: controls, control update with a call for help, forces, step, retire check,
-  cell setters, grid edge, outside assistance, respawn pose and respawn, snapshot, sensors; every byte of the car and
-  the scratch, 8544 bytes, and every caller's word) on 40 snapshots; `car_body` and `wheel` vectors on the Mem store;
-  hybrid gate 13/13; +0.40 % instructions per step.
-- The definitions, ninth, read-only: `store::defs::Defs` in `Typed`, keyed by address, one per wheel slot unless an
-  earlier slot holds it: `wheel::layout::WheelDef` (every word the wheel reads), the strut's `Definition`, the tyre's
-  `TyreDef` (setup, hub offset, surface and wear words), `car_body::layout::CarDef` (`CarStore`'s getters),
-  `vcu::Def`, `engine_driveline::layout::DriveDefinition` (accessors, ratios, locks, workers, bands),
-  `engine_driveline::layout::EngineDefinition` (below) and the address of the physics definition's flags word. `Pure`
-  lifts them each step (setup adoption, respawn and restart write them between steps) from block reads; nothing lowers them, the load builds them on the image. The views take
-  `with_defs`; without it (per call, emulator, vectors) the image. The step writes stay on the image: the wheel
-  definitions' `+0x880..+0x900` (`M3A8A0`'s frames) and the tyre setups' by-load tables `+0x204..+0x284` (NGP's step
-  wrapper scales `+0x204..+0x244` and restores `+0x204..+0x284`; held, the write watch fails the poison run there).
-  The poison build checks each typed answer against the image's (`defs::checked`) and watches the held bytes
-  (`Mem::watch_writes`: a write panics, reads go through). Not held: the hinged and mounted definitions, the physics
-  definition beyond the flags word (`MaxTimeStep`, gravity, the wheel's world flags), the car list's `wheel def +0x4fc`
-  and `+0x23c`. Evidence: drive2 84084/84084 typed; `--twin typed` and `--twin aids` equal after each of 84084 steps;
-  poison 84084/84084 and aids on with no watch or check failure; `round_trip` 8492 definition bytes equal on 43
-  snapshots, the wheel's and the car's `differential` held on them; hybrid gate 13/13; the lift 28.6k instructions
-  (+1.33 %), the whole -0.90 % instructions per step (fewer image reads), so no generation counter.
-- The engine's definition (`layout/engine_definition.rs`): the 155 words of `CEngine::CDef` the ports read but the
-  exhaust table's (the turbo's, the cylinders' phases and oil galleries, the torque curve's, the VE and back-pressure
-  curves' knots, the inlet's, the flow table, the cooling's, the oil's, `TorqueCut_NGP`, the friction's; named by
-  their NGP keys), a slot table by offset, lifted per step. `EngineView::with_defs` serves them at their addresses
-  (`on_engine_in`); the ports read them as records (`TurboDef`, `InletDef`, `HeatDef`, `EngineDef`, `LoadDef`) and
-  single words (`turbo`, `cylinder_count`, `cylinder_phase`, `idle_speed_throttle`, `oil_capacity`, `torque_cut`, the
-  last two NGP's engine wrapper's, was raw), the tables at named offsets. On the image: the exhaust table (256 rows
-  from `+0x1fc`, read at the crank's keys; holding the whole `+0x18..+0x2870` block cost +0.76 % instructions a step
-  for its lift, this +0.35 % in all) and the turbo's two blend tables (heap blocks behind `+0xa0`, `+0xa8`). The
-  watch covers the whole `+0x18..+0x2870`: nothing writes it in a step (drive2 aids off and on). Evidence: drive2
-  84084/84084 typed; `--twin typed` and aids on equal after each of 84084 steps; poison 84084/84084 and aids on with
-  no watch or check failure; `round_trip` 620 engine definition bytes (9112 in all) on 43 snapshots and
-  `engine_differential` with the definition held (11528 bytes); the engine chain (645 `SimE660` records) held;
-  hybrid gate 13/13; one bit flipped in the held `EngineHeatTransferCoefficient_NGP` fails drive2 at step 816, in
-  `TurboInertia_NGP` at step 0 (the drive2 car is turbocharged), so the step reads the held words.
-- The physics core's singletons, ninth: `physics_core::layout::typed` (`PhysicsObj`: the contact loop's hits, last
-  and maximum hits, pass maximum and count, the penetration pass's hit count, the single stepper's delay and pending
-  flag; `StateObj`: the substep counter, the value of the state's `CUnsigned` at `+0x0c`, and the clock, an `f64` at
-  `+0x20`; `StepGlobals`: the step calls `0x1659b74` and substep index `0x1659b78`; 52 bytes), one per world:
-  `store::typed::Typed::core` (`Core`, a `Cell`, the step's runs nest: the contact loop and the car's step run inside
-  the step), lifted and lowered with the car's. `CoreStore` is implemented over `CoreFields` (`Mem` per call, `CoreView`
-  held); StepForward and CollideWork run on `rbr_hybrid::physics_core::on_core`. Stay on the image: the pointers (state,
-  definition, scratch), the counter's NTweak header and dirty word (`SetDirty`), the scratch's solver and its event list
-  (`solver+4`, the collision's: its solver writes it), the entity lists and their nodes' links. Readers during a step:
-  the car's `timer_double`/`timer_word` and `CTimeKeeper::Diff`'s clock by its address (`CarFields: CoreFields`,
-  `CarView::with_core`), `CTimeKeeper::Update`'s counter (`read_core`); unrouted, the car's clock read fails the poison
-  run (`physics state elapsed` in `0x5273a0 > 0x4ea300`), the update's counter `physics state step_counter` in
-  `0x5273a0 > 0x4ea300 > 0x4a0320`. Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of
-  84084 steps (aids off and on, the core's objects compared); poison 84084/84084 (aids on too: no poisoned access);
-  `round_trip` 52 typed bytes and the core's `differential` (three steps and a contact loop with hits counted, per call
-  vs held: every call's words, the physics object, the state, the globals and the frame, 956-1244 bytes) on 40
-  snapshots; `physics_core_vectors`, `car_body_vectors` on the Mem store; hybrid gate 13/13 (StepForward declines on
-  1.02; CollideWork runs per call); +0.03 % instructions per step.
-- The entity lists are not typed (a link map needs more first): the `+0x10/+0x14/+0x18` link of a node is also the
-  link of the entity child lists (parent `+0x48/+0x4c/+0x50`, `entities/layout/construct.rs`), the sleeping list
-  `+0x460` holds 3172-8217 nodes on the snapshots (eager lift not viable: a lazy arena with image fallback, and poison
-  of what it holds), and the writers and readers are `Mem`-bound outside the core: wake, sleep and soften
-  (`rigid_body/layout/rest.rs` through `refile_entity`/`relink_wall`), detach (`entities/layout/detach.rs`: the child
-  list's count and owner), the detector walks (`penetration_check`, `run_collision_detectors`, `visit_walls`, the
-  gigantic detector over `+0x470`) and the entities' child walks (`rbr-hybrid` `entities/walks.rs`). drive2 moves a
-  node twice in 84084 steps (two unlinks, two pushes), so it would not prove them.
-- The collision state, ninth: `collision::layout::CarCollision` (`layout/typed.rs`; the world's, one solver): the
-  solver's contact and offset counts (`solver+0x18`, `+0xc420`), its 64 contact-row blocks (header body and count, 8
-  rows of 0x60: suppressed, tag, ids, restitution, friction, point, plane, other) and 64 offset rows (body, count, 8
-  offsets), lifted lazily per block on first touch (`Touched`, no allocation per step) and lowered only if touched;
-  the car's grids' (ids 1-9, `0x8f7030 + 0x6b0 id`) sample and hit bytes `+0x688..+0x68a`, eager. Survey on drive2
-  (84084 steps): a step writes a bank grid only there (EdgeEdge on id 1, the hit takes on ids 1 and 16); bounds, ray
-  seeds and copies go to stack copies; 2 contact rows and offset row 0 used. `CollisionStore`'s methods default to
-  the image's, so `CollisionView` (held, or `image` per call: emulator, vectors) overrides only these words; a grid
-  outside the car's (props, id >= 10) stays on the image (`on_grids`). Stay on the image: each row's composed point
-  (`+0x40`: BigA's host calls, `COPY16_WALK`, the sample hook, read it at its address), the body's `+0x274` link,
-  the grids' other words (bounds, edges, cells), the events, the event pool and free list (`0x8ef810`, `0x8ef7f0..`),
-  the solver's event list. Readers during a step, through `rbr_hybrid::collision`: the rigid body's `BigA` (rows as
-  values, `RigidStore::contact_input` takes a `Contact`) and contact vote (the count), the car's `Collide6000`
-  (`EdgeProbeCalls::take_grid_hits`), the respawn (`RespawnCalls::clear_contact_rows`); unrouted, BigA fails the
-  poison run (`solver contact rows (+0x0)` in `0x52b9f0`), and `Collide6000` the twin (`collision grid 1 hits
-  (+0x688)` at step 16826). Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084
-  steps (aids off and on); poison 84084/84084; `round_trip` 51226 typed bytes and `differential` (offsets, contact
-  rows open, store, count, read and clear, grid sample stores, takes, copy, ray seeds per call vs held, every byte of
-  the solver, the car's grids, the car and the scratch, 77920 bytes) on 40 snapshots; `collision_vectors` on the
-  per-call view; hybrid gate 13/13 (the snapshots run EdgeEdge, the solver passes, `MakeEvent`, `BigA` and
-  `Collide6000` per call); +0.42 % instructions per step, no allocation. Not typed: the events. An eager lift and
-  lower of the pool (128 events of 60 words and the 4 globals, word by word as `object!` does) costs +23.9 %
-  instructions per step (upper bound, the lower reads each word again), so they need the lazy arena; only pool events
-  121-127 are ever taken on drive2 (552 allocations, none from `operator new`). Their words are read and written at
-  their addresses by the entities (`MB560`, `collide_init`, detach, on `Mem`), the rigid body (point velocity,
-  impulse materials) and physics_core's contact loop, so typing them needs those ported to a store first.
-- The solids, tenth, held over the pure step (`Pure::typed_solids`, on by default; off, they stay on the image):
-  `rigid_body::layout::Solid` (`layout/typed.rs`, `object!`; 89 words a solid: orientation, the state's matrix and the
-  word after it `+0x110..+0x138`, position, the drive-line sample `+0x17c`, velocities, active and very-soft words,
-  previous velocities, acceleration estimates and filters, sleep timer and armed word, window progress, the window's
-  start pose and velocities, scratch, angular and linear acceleration, force accumulator, step flags) for the car, its
-  wheels and its hinged and mounted bodies (`CarSolids`, by address, 11-12 solids). Stay on the image: pointers, the
-  flags byte, the NTweak headers and dirty words (`+0x178`, `+0x1d8`, `+0x1e8`), the scale `+0xd0`, the state's
-  diagonal and gate, the scratch block's other words (`+0x2b0..`, `+0x390`, `+0x3a0..+0x3b0`). Evidence: `round_trip`
-  4272 typed bytes and `differential` (per call against held, every byte of each solid and the scratch) on 40
-  snapshots; the wheel `differential` (21856 bytes, 43 snapshots).
-- Their store: `SolidWords` (a word of the solids: `Mem` per call; `SolidView`, `CarView::with_solids`,
-  `CoreView::with_solids` held, resolving any address in a held span, so rows and vectors passed by pointer into a
-  solid are typed too; `SolidWords::held` gives a whole solid, which `Body::read`/`write` take at once). Readers outside
-  the rigid body reach it through `rbr_hybrid::rigid_body::{on_solids, with_solids, solid_word, set_solid_word,
-  held_solids}`: the rigid body's bindings, the wheel's solid words, collision's body words, the car's (`CarStore` and
-  `CoreFields` are `SolidWords` stores), physics_core's mounted-body words, the entities' walks and detaches (`MB560`'s
-  copy, the frame hooks, `StepBig`, `SimFD00`, `SimDA60`), `CCar::ToWorld`, NGP's atmosphere and downforce. In-place
-  runs on held words call `ran_direct` (the call memo cannot see held reads). No lower or lift inside a step, so the
-  orderings an image round trip around host calls broke (the force pass after `MB560`'s `+0x320`/`+0x380`, the window
-  start after `Vf54x`'s scratch clears, `E43Vf70` after `E43Vf60`, the impulse after the car's `Vf128x`) are moot.
-- Evidence, holding on: a shadow survey (held writes through to the image, held reads from it, every access to a
-  held word on the poisoned image logged with its bindings; an unrouted read put back is listed) lists none on drive2
-  with aids off, aids on, and `--damage realistic` with aids off and on; poison PASS 84084/84084 (aids off), and no hit
-  with aids on and with `--damage realistic` (aids off and on); `--twin typed` equal after each of 84084 steps in all
-  four. Cost +11.7 % instructions per step against 2983b008 (holding off there; 13000 steps of drive2; a bounds
-  check before the span search, `Body` whole from the typed solid and `MB560`'s copy as blocks took it from +39 %):
-  every held word costs a span search, a `RefCell` borrow and a field-table lookup where the image read was one paged
-  load.
-- The mounted bodies' mount point `+0x220` and block `+0x200` are the `CDef`'s, not a solid's. `--twin typed` compares
-  every solid the car has held, a detached mounted body too (an unrouted velocity store in the detach fails it at step
-  4159 with aids on and `--damage realistic`).
-- Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
+- A calls trait takes the store as a parameter defaulting to `Mem` (`ForcesCalls<S = Mem>`); clashing names use UFCS;
+  what a trait does not name yet goes through `Raw`. Generic sequences sit outside the layouts
+  (`rigid_body::{solid_rows, solid_contacts, solid_window}`, `physics_core::{step, contact_loop, passenger_step, pose,
+  emit, mounted, accumulate}`, `entities::hinge_step`, `ntweak::plan`, `collision::{solver_pass, entry, events,
+  body_contact, grid_edge, mesh, wall, body}`). `object!` (`store/layout.rs`) tables an object once (struct, `Field`
+  per row, `lift`/`lower`, `word_of`); `store::car_objects` lists the car's.
+- Stay on `Mem`: constructors, setup copies, `load` and the stage's load (image construction); code writing at
+  computed addresses in the original's stack frames (detector walks, `notify`, `prof_calls`, `collide_init`, detach
+  events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (`FilingHost`); NTweak apply and parse; the collision
+  cell grid, links, event pool and free list, grid construction, `brake_wall_contact`.
+- Mem-direct dispatch (`--dispatch direct`, the live default; `pure` is the fact-check's host): a call within the
+  `IN_PLACE` subsystems to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) or a binding (`Pure::call_plain`)
+  runs as a plain call when it passes exactly the words the callee pops (`Pure::stack_words`); watched emits and tyre
+  steps stay host calls (`NOT_DIRECT`); `Host::call_direct` skips the words where the callee reads only its arguments.
+
+### Typed storage
+
+- `store::typed::Typed`: `car: CarTyped` (`struts`, `vcu`, `drive`, `engine`, `tyres`, `wheels`, `own`, `collision`),
+  `core` (one per world), `stage` (an `Arc`, one per loaded stage), `defs` (read only) and `solids`.
+- A step holds it (`Pure::typed`, `Pure::typed_solids`, both on by default): `Playback::step` lifts it before
+  `StepForward` and lowers it after (a stop too); the bindings reach it through `Host::typed()`. Between steps the
+  image holds every word (telemetry, SND1, FRM1, the twin, `restore`). The stage is lifted once (`OnceLock`), the
+  definitions every step (setup, respawn and restart write them between steps); neither is lowered.
+- Per call (the hybrid check's emulator, the vectors, `typed` off) the views run on the image: the struts, VCU, tyres
+  and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
+  field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
+  `with_solids` (car, wheel, collision, core); an address a view does not hold (another car, a prop) is the image's.
+- Readers outside the bindings during a step (NGP's wrappers, the hinged and mounted bodies, `CCar::ToWorld`) use
+  `rbr_hybrid`'s accessors: `vcu::unit_of`, `tyre::read_tyre`, `wheel::read_wheel`, `engine_driveline::on_drive_in`,
+  `on_engine_in`, `car_body::{on_car, read_car}`, `physics_core::{on_core, read_core}`, `stage::on_stage`,
+  `collision::on_grids`, `rigid_body::{on_solids, with_solids, solid_word, set_solid_word}`.
+- Direct calls between held subsystems: the `*Calls` trait stays the seam; with `Host::typed()` the caller runs the
+  callee on the held state with values, else the host. Direct: the VCU's calls of the drive, engine and car
+  (`vcu::VcuCallees`); the wheel's of the tyre's setters, relaxation and tail getters and of the strut (NGP's spring
+  step, `GetName`). Host: lights, `SetDirty`, the VCU's slip query, `Get4540` from the car's step, `ResetOutputs`,
+  `UpdateAndReset`, the tyre step. Residue audit: the words each skipped host call would write, filled with
+  `0xffbadbad`, change nothing on drive2.
+
+### Per subsystem
+
+Each passes drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
+hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence" adds the rest.
+
+| Typed state (storage) | What is typed | On the image, why | Evidence |
+| --- | --- | --- | --- |
+| Struts, `spring_damper::strut::Struts` (`RefCell`, per run) | controller mode, latch, signal; effective dampings; fade pair | definition, headers, pointers; NGP's strut words `strut+0x30..0x38`, wheel `+0xe80..+0xe8c` and the out pointers (the binding writes them) | `tests/pure_struts.rs` |
+| VCU, `vcu::layout::Unit` (`Cell`) | pedals, clutch, launch, slip, lockout, gear timer, cooldown; the drive's gear words through `DriveBlocks` | definition, pointers, owner car; CopyDef's maps, ReadPacket's packet | `vcu_vectors` per call, chain test |
+| Tyres, `tyre::tyres::Tyres` (`RefCell`, per run) | contact, patch, forces, slips, outputs, heat, soil, wear; relaxation, deflections, temperatures | setup, pointers, the wheel's contact angle; `Locate`, `TyreClamp`, the friction curve, getters (callers' words) | `tyre_vectors` per call, chain test |
+| Stage, `stage::typed::Stage` (read only, `Arc`) | drive line, material table, sheets | collision system and copies, `.col` tree, mesh grids, water meshes (heap graphs, per-query scratch) | `differential` (every entry, slot, texel); poison on RSF 122, 117 |
+| Wheels, `wheel::layout::Wheel` (field at a time) | refresh and axes pose, walk, probe, sectors, ground copies, spin, forces, flags | pointers, damage record, reals' headers, every word another subsystem reads at its address (angle, axle, hub, car force, ray blocks, NGP's strut words) | `differential`; `wheel_vectors` on `Mem` |
+| Drive, `engine_driveline::layout::DriveTyped` (`RefCell`, per access) | lanes, pair, pack, bias, gear steps; locks, gains, ring, clutch and pair matrices, gear fields, wheel blocks | definition, damage block (its functors), pointers, state's car `+0x580` (NGP reads it raw), worker matrices (`E39_MatVec`) | `engine_driveline_vectors`, chain test |
+| Engine, `engine_driveline::layout::EngineTyped` (`RefCell`, per word; a word store via `word_of`) | crank, pedal, heat, stall, misfire; radiator, coolant, turbo, boost, dampers, intake, cut flags, torque terms | option block (damage handler's, NGP's wrapper writes it), roll table and seed, `EngineNoise` payload (listeners read it at its address) | `engine_differential`, chain test |
+| Car's own, `car_body::layout::CarState` (field at a time) | control update and kept controls, contact times, value cells (`CarStore::cell`), speeds, respawn, overload, assistance | pointers, parts, damage handler, cell headers (`SetDirty`), `+0xaa0`/`+0xac0`, `+0x1600`/`+0x1610` (hinged bodies read them at their address) | `differential`; `car_body` vectors on `Mem` |
+| Core, `physics_core::layout::Core` (`Cell`) | hit and pass counters, single stepper, substep and step counters, clock, step globals | pointers, the counter's NTweak header, the solver and its event list, entity lists | `differential` |
+| Collision, `collision::layout::CarCollision` | solver counts, contact and offset rows (per block on first touch, `Touched`), car grids' (ids 1-9) hit bytes | rows' composed point `+0x40` (read at its address), body link, grids' other words, props' grids, events, pool, free list | `differential`; `collision_vectors` per call |
+| Definitions, `store::defs::Defs` (read only, watched) | `WheelDef`, strut `Definition`, `TyreDef`, `CarDef`, `vcu::layout::Def`, `DriveDefinition`, `EngineDefinition`, flags word | step-written words (wheel defs `+0x880..+0x900`, tyre setups `+0x204..+0x284`), exhaust and turbo tables (lift cost), hinged and mounted defs (mount point `+0x220`, block `+0x200`), physics def but flags | `store::defs::differential`; a bit flipped in the held engine def fails drive2 |
+| Solids, `rigid_body::layout::Solid` (per solid, held by address) | pose, velocities, acceleration estimates, sleep and window state, scratch, accumulators: car, wheels, hinged and mounted bodies | pointers, flags byte, NTweak headers, scale, state's diagonal and gate, other scratch words | `differential`; twin over every solid held, detached too; shadow survey |
+
+### Rules
+
+- Borrow per access, never over a host call, where runs re-enter through the host (drive, engine, wheel, car, core);
+  struts and tyres borrow per run. No lift or lower inside a step: image round trips around nested runs broke
+  orderings (the force pass after `MB560`'s copy, `E43Vf70` after `E43Vf60`).
+- Lazy for large state: lift on touch (collision rows) or leave on the image (the exhaust table's lift cost +0.76 % a
+  step, an eager event pool +23.9 %).
+- Values over pointers: entries take the callers' blocks as values and return outputs the binding writes after
+  (`RigidStore::contact_input` takes a `Contact`); a pointer into the subsystem's own words keeps its write.
+- Readers at an address (NGP's wrappers, hinged bodies, `CopyFrom`) show only in the twin or poison, rarely in the
+  drive: each needs an accessor. A run in place on held words calls `ran_direct` (the call memo sees only the image).
+- Definitions are watched, not poisoned: reads go through and are checked against the image (`defs::checked`), a
+  write panics (`Mem::watch_writes`).
+
+### Checks
+
+- `scripts/gate.sh --typed`: twin-typed and twin-aids (drive2 with `--twin typed`, aids off and on: held against per
+  call after each of 84084 steps, round trips and stage queries equal) and poison (`rbr-hybrid/poison`: held words
+  poisoned, definitions watched). `--twin mem|mem-direct` check the `Mem` path and Mem-direct dispatch the same way.
+- `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
+  image, the differentials (host-free entries in a row per call against held, every byte); the chain tests
+  (`the_typed_*_over_a_chain_keeps_the_per_call_bytes`) over vectors.
+- Shadow survey (instrumented build, not in the tree): held words written through and read from the image, every
+  access to one on the poisoned image logged with its bindings, so all unrouted readers at once.
+
+### Left
+
+- The event pool as a lazy arena (its readers at an address, `MB560`, `collide_init`, detach and the contact loop,
+  need stores first); collision arenas: the cell grid, links, the entity lists as link maps (the sleeping list holds
+  3172-8217 nodes: lazy, image fallback).
+- The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
+- State typed across steps; `--twin` in the live run; more direct calls (the host calls above).
+- The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
+  game (per call stays for the hybrid check and the vectors).
+
+Open decisions, with the defaults taken until decided:
+
+- Typed allocations go through the stand-in allocator (`pure/heap.rs`: placement and log) for now.
+- State becomes typed across steps (every presentation reader then reads through a lower).
+- The pure run drops its stack-frame image once direct edges pass the residue audit.
+- Definitions: A now (lifted read only, step-written words moved into state, writes watched), B later (built from
+  parsed files, lowered by a placement plan); whether B changes what milestone L is proved by is open.
 
 ## Physics core
 
