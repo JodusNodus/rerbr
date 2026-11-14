@@ -4,6 +4,8 @@
 use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::store::RigidStore;
+use rbr_physics::tyre::layout::{entries, TyreView};
+use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
 use super::{on_wheels, Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
@@ -171,6 +173,18 @@ struct Step<'a> {
 }
 
 impl Step<'_> {
+    /// `run` on the tyre whose scratch is `scratch` when the step holds it: the wheel's direct calls of the tyre's
+    /// setters and relaxation, on its typed state with the values as arguments, each counted as a run
+    /// ([`Host::ran_direct`]). Their bindings make no call and read nothing of the stack but their arguments, and the
+    /// wheel step reads none of the words the host call leaves below its frame (`notes/physics.md` "Store seam").
+    fn on_tyre<T>(&self, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> Option<T> {
+        let typed = self.host.typed()?;
+        let mut tyres = typed.car.tyres.borrow_mut();
+        let id = tyres.id_of(scratch)?;
+        self.host.ran_direct();
+        Some(run(&mut tyres.view(&self.mem).with_defs(Some(&typed.defs)), id))
+    }
+
     fn on(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> u32 {
         self.host.call_at(sp, addr, ecx, args).eax
     }
@@ -284,14 +298,25 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn set_tyre_active(&mut self, scratch: u32, v: u32, sp: u32) {
-        self.on(sp, 0x532470, scratch, &[v]);
+        if self.on_tyre(scratch, |t, id| entries::set_active(t, id, v)).is_none() {
+            self.on(sp, 0x532470, scratch, &[v]);
+        }
     }
 
     fn set_penetration_depth(&mut self, scratch: u32, v: f32, sp: u32) {
-        self.on(sp, 0x533490, scratch, &[v.to_bits()]);
+        if self.on_tyre(scratch, |t, id| entries::set_penetration_depth(t, id, v)).is_none() {
+            self.on(sp, 0x533490, scratch, &[v.to_bits()]);
+        }
     }
 
+    // NGP's relaxation, as the binding runs it: direct with NGP's thermal words (none on a 1.02 image, where the
+    // binding declines).
     fn relax_count(&mut self, scratch: u32, x: f32, sp: u32) {
+        if let Ok(ngp) = crate::ngp::thermal_in(self.host, &self.mem, scratch) {
+            if self.on_tyre(scratch, |t, id| entries::relax_and_count(t, id, x, &ngp)).is_some() {
+                return;
+            }
+        }
         self.on(sp, 0x5358C0, scratch, &[x.to_bits()]);
     }
 
