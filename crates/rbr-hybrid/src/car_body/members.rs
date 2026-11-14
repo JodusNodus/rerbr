@@ -307,7 +307,7 @@ struct BodyCalls<'a> {
 }
 
 impl car::body::BodyCalls for BodyCalls<'_> {
-    fn slot0(&mut self, body: u32) {
+    fn entity_name(&mut self, body: u32) {
         let target = self.mem.u32(self.mem.u32(body));
         self.host.call(target, body, &[]);
     }

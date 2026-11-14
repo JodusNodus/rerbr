@@ -20,6 +20,29 @@ pub const FLOATS_AT: u32 = 0x3808;
 pub const TAIL_AT: u32 = 0x3A0C;
 pub const TAIL_WORDS: u32 = 0xFA;
 
+/// The words cleared in each zone.
+pub const ZONE_WORDS: u32 = 3;
+
+/// Zone `z`'s first word.
+pub fn zone_at(handler: u32, z: u32) -> u32 {
+    handler + ZONES_AT + ZONE_STRIDE * z
+}
+
+/// Word `word` of zone `z`.
+pub fn zone_word_at(handler: u32, z: u32, word: u32) -> u32 {
+    handler + ZONES_AT + ZONE_STRIDE * z + 4 * word
+}
+
+/// Zone `z`'s float.
+pub fn float_at(handler: u32, z: u32) -> u32 {
+    handler + FLOATS_AT + 4 * z
+}
+
+/// Word `i` of the tail.
+pub fn tail_word_at(handler: u32, i: u32) -> u32 {
+    handler + TAIL_AT + 4 * i
+}
+
 /// Members `reset_damage` resets by call: the function, the first member's offset and the stride between the members.
 pub struct Member {
     pub function: u32,
@@ -57,6 +80,11 @@ pub const PAIRS_AT: u32 = 0x3E08;
 pub const PAIRS: u32 = 10;
 pub const PAIR_INITIAL: u32 = 0x1D;
 
+/// The two words of pair `k`.
+pub fn pair_at(handler: u32, k: u32) -> (u32, u32) {
+    (handler + PAIRS_AT + 8 * k, handler + PAIRS_AT + 4 + 8 * k)
+}
+
 /// The material lookup: the inner material id word, the world manager's offset in the world, its material table and its
 /// flag word with the flag that enables the lookup.
 pub const MATERIAL_ID_AT: u32 = 0x3E04;
@@ -64,6 +92,11 @@ pub const WORLD_MANAGER_AT: u32 = 0x24;
 pub const MATERIAL_TABLE_AT: u32 = 0x18;
 pub const MANAGER_FLAGS_AT: u32 = 0x160E0;
 pub const MANAGER_MATERIAL_NAMES: u32 = 0x0100_0000;
+
+/// The name pointer of a material entry.
+pub fn material_name_at(entry: u32) -> u32 {
+    entry + 4
+}
 
 /// The functor table: the count word, the entry size and slots, and the function each index of the original's switch
 /// stores (0x4ef720's jump table); `None` where the switch leaves an index out.

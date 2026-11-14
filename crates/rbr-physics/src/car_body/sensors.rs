@@ -22,7 +22,7 @@ pub trait SensorCalls {
     fn engine_word_10(&mut self, engine: u32) -> f32;
     /// Payload word 14: 1 when the engine's speed is above a fixed limit, else 0.
     fn engine_word_14(&mut self, engine: u32) -> u32;
-    /// The timer gap as a double (`obj` is the call's `this`, `at` the address of the timer's double).
+    /// The timer gap as a double (`obj` is the object it is called on, `at` the address of the timer's double).
     fn timer_gap(&mut self, obj: u32, at: u32) -> f64;
     /// Emits the payload on the sensor signal.
     fn emit_sensor(&mut self, payload: &[u32; 16]);

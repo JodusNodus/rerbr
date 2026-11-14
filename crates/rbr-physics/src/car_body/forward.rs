@@ -3,7 +3,7 @@
 
 use super::layout;
 
-/// The drive's function the forward jumps to: its `this` is the drive member (not ported: the drive's own code).
+/// The drive's function the forward jumps to, called on the drive member (not ported: the drive's own code).
 pub trait DriveCalls {
     fn drive(&mut self, drive: u32);
 }

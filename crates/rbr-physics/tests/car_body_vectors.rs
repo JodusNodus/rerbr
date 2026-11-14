@@ -1144,7 +1144,7 @@ impl StepCalls for RecordedVf6cx<'_> {
         check_input("position emit", self.call.index, 0, inner, &bytes);
     }
 
-    fn emit_mrr(&mut self, _mem: &mut Mem, payload: [u32; 3]) {
+    fn emit_car_state(&mut self, _mem: &mut Mem, payload: [u32; 3]) {
         let inner = self.record(0x4E8BF0);
         let bytes: Vec<u8> = payload.iter().flat_map(|w| w.to_le_bytes()).collect();
         check_input("MrR emit", self.call.index, 0, inner, &bytes);
@@ -2447,7 +2447,7 @@ struct RecordedBody<'a> {
 }
 
 impl BodyCalls for RecordedBody<'_> {
-    fn slot0(&mut self, body: u32) {
+    fn entity_name(&mut self, body: u32) {
         let inner = next_record(self.call, &mut self.next, BODY_SLOT0);
         assert_eq!(inner.args, [body], "scatter call {}: slot 0", self.call.index);
     }

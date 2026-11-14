@@ -76,7 +76,7 @@ one loop.
    advance the rest); the penetration check (`physics_core::layout::penetration_check`); the solver
    (`collision::solver_pass`: `clear_contact_rows`, `event_count`, `refresh_events`, `correct_penetrations`,
    `solve_due_events`, arithmetic in `collision::contact_solver`); then each body's post-contact hooks (the car
-   resets its per-step scratch: `car_body::scratch_dispatch::dispatch_scratch_slot1`).
+   resets its per-step scratch: `car_body::scratch_dispatch::dispatch_scratch_after_reset`).
 8. **End-of-step hooks and clock.** The end-of-step hook of each body that has one (the car's respawn countdown:
    `car_body::layout::run_countdown`), then the clock (`physics_core::pacing::advance_time`).
 9. **Outputs.** Nothing is returned: the step leaves the state in memory. Gameplay samples the car after each step

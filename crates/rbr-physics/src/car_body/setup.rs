@@ -14,8 +14,8 @@ pub trait SetupCalls {
     fn wheels(&mut self) -> [u32; 4];
     /// The object the setup words land in, as it is now.
     fn setup_target(&mut self) -> u32;
-    /// An external call: `callee` on `this`, with `args` on the stack (the first one first).
-    fn call(&mut self, callee: u32, this: u32, args: &[u32]);
+    /// An external call: `callee` on `object`, with the arguments `args` (the first one first).
+    fn call(&mut self, callee: u32, object: u32, args: &[u32]);
     /// A word the applier stores (a setup word, at `at`).
     fn store_word(&mut self, at: u32, word: u32);
     /// The damage wiring on the car.

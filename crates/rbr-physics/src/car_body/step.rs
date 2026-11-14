@@ -1,8 +1,8 @@
 //! The car's per-step composite after the physics step. The order is the original's: the override timer, the passenger,
 //! scratch, drive and solid steps, the brake-wall raycast (its impulse, emit and contact time), the walk of the velocity,
 //! the hinged-body and mounted-body loops, the timekeeper, the dangerous-acceleration flag, the partial-contact time,
-//! the speed sum, the speed and the two state emits. The externals are answered by `StepCalls`; the signal emit is one
-//! of them (it is ported, but its record is not an inner call of this function).
+//! the speed sum, the speed and the two state emits (the position and the car state). The externals are answered by
+//! `StepCalls`; the signal emit is one of them (it is ported, but its record is not an inner call of this function).
 
 use super::layout;
 use crate::car_body::store::CarStore;
@@ -77,8 +77,8 @@ pub trait StepCalls<S = Mem> {
     fn check_retire(&mut self, mem: &mut S, car: u32, v: u32);
     /// The position signal: the car's position lanes and the timer word, 20 bytes.
     fn emit_position(&mut self, mem: &mut S, payload: [u32; 5]);
-    /// The MrR car state signal: the car, its sort key and the drive's last float, 12 bytes.
-    fn emit_mrr(&mut self, mem: &mut S, payload: [u32; 3]);
+    /// The car state signal: the car, its sort key and a float of the drive, 12 bytes.
+    fn emit_car_state(&mut self, mem: &mut S, payload: [u32; 3]);
 }
 
 /// The speed, m/s, below which the direction is cleared instead of scaled.
@@ -189,6 +189,6 @@ pub fn step_car<S: CarStore>(calls: &mut impl StepCalls<S>, mem: &mut S, car: u3
     let words = mem.position_words(car);
     let timer_word = mem.timer_word();
     calls.emit_position(mem, [words[0], words[1], words[2], words[3], timer_word]);
-    let payload = [car, mem.sort_key(car), mem.mrr_word(car)];
-    calls.emit_mrr(mem, payload);
+    let payload = [car, mem.sort_key(car), mem.car_state_word(car)];
+    calls.emit_car_state(mem, payload);
 }

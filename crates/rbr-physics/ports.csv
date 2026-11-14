@@ -147,7 +147,7 @@ addr,module,rust_item,test,status
 0x4e7910,car_body/layout/car_calls.rs,car_body::layout::car_calls::lane_test,car_body_vectors::lane_test_matches_original_calls,checked
 0x4e7ad0,car_body/wall_friction.rs,car_body::wall_friction::wall_friction,car_body_vectors::sim7ad0_matches_original_calls,checked
 0x4e7dc0,car_body/drag.rs,car_body::drag::apply_drag,car_body_vectors::drag_and_spin_damp_matches_original_calls,checked
-0x4e7f90,car_body/scratch_dispatch.rs,car_body::scratch_dispatch::dispatch_scratch_slot1,pure_car_support::vf54x_resets_the_scratch_then_dispatches_slot_one,checked
+0x4e7f90,car_body/scratch_dispatch.rs,car_body::scratch_dispatch::dispatch_scratch_after_reset,pure_car_support::vf54x_resets_the_scratch_then_dispatches_slot_one,checked
 0x4e7ff0,car_body/steering_ffb.rs,car_body::steering_ffb::filtered_torque,car_body_vectors::update_ffb_torque_matches_original_calls,checked
 0x4e8130,car_body/world_placement.rs,car_body::world_placement::compose_body_into_world,car_body_vectors::xform_8130_matches_original_calls,checked
 0x4e81b0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,partial

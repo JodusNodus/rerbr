@@ -1,13 +1,13 @@
 //! The car body's two point scatters: one subtracts the body's base from each point, the other adds it (lanes 0 to 2;
-//! lane 3 is not written). When the body gate is on, the body's first virtual method runs first. The edge reads the gate
-//! and the base (`layout::body_pre_step_gate`, `layout::body_base`) and the points before the call: that method is a getter with
-//! no effect, so none of them changes.
+//! lane 3 is not written). When the body gate is on, the body's name getter runs first. The edge reads the gate and the
+//! base (`CarStore::body_pre_step_gate`, `CarStore::body_base`) and the points before the call: the getter has no effect,
+//! so none of them changes.
 
 use crate::math::vec::{Vec3, Vec4};
 
-/// The call the scatter makes out of its body: the body's first virtual method.
+/// The call the scatter makes out of its body: the body's name getter (its result is not used).
 pub trait BodyCalls {
-    fn slot0(&mut self, body: u32);
+    fn entity_name(&mut self, body: u32);
 }
 
 /// The scatter's operator.
@@ -30,7 +30,7 @@ pub fn add_points(calls: &mut impl BodyCalls, gate: bool, body: u32, base: Optio
 
 fn scatter(calls: &mut impl BodyCalls, gate: bool, body: u32, base: Option<Vec3>, points: &mut [Vec4], op: Op) {
     if gate {
-        calls.slot0(body);
+        calls.entity_name(body);
     }
     if points.is_empty() {
         return;

@@ -395,8 +395,8 @@ impl CarStore for Mem {
         std::array::from_fn(|k| self.u32(car + 0x140 + 4 * k as u32))
     }
 
-    /// The float at `*(car + 0x4b8) + 0x45c` (the MrR payload's last word, as bits).
-    fn mrr_word(&self, car: u32) -> u32 {
+    /// The float at `*(car + 0x4b8) + 0x45c` (the last word of the MrR car state payload, as bits).
+    fn car_state_word(&self, car: u32) -> u32 {
         self.u32(self.u32(car + 0x4B8) + 0x45C)
     }
 

@@ -46,6 +46,11 @@ pub const RESET_GROUPS: u32 = 4;
 pub const RESET_BASE: u32 = 0x20;
 pub const RESET_FLAG: u32 = 0xDC;
 
+/// The base of reset group `group`: `RESET_BASE`, 8 bytes on per group.
+pub fn reset_group_base(block: u32, group: u32) -> u32 {
+    block + RESET_BASE + 8 * group
+}
+
 /// The sub-block's words: two integers and a float.
 pub const SUB_BLOCK_FIRST: u32 = 0;
 pub const SUB_BLOCK_SECOND: u32 = 4;

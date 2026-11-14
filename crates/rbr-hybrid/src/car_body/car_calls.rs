@@ -201,7 +201,7 @@ impl rbr_physics::rigid_body::host::EntityScratchTailHost for CarVf54<'_> {
 }
 
 impl ScratchDispatchCalls for CarVf54<'_> {
-    fn scratch_slot1(&mut self, scratch: u32) -> u32 {
+    fn scratch_after_reset(&mut self, scratch: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(scratch) + 4);
         self.host.call(target, scratch, &[]).eax
     }

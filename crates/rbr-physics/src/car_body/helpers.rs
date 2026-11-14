@@ -4,15 +4,15 @@
 use crate::math::rsqrt::rsqrt;
 use crate::math::vec::Vec4;
 
-/// `this x a` on the three first lanes, each lane times the reciprocal square root of the squared length of those
-/// lanes (`(x*x + y*y) + z*z`). Lane 3 is `w*a.w - a.w*w` (zero for finite words), scaled the same way. The scale is the
+/// `a x b` on the three first lanes, each lane times the reciprocal square root of the squared length of those
+/// lanes (`(x*x + y*y) + z*z`). Lane 3 is `a.w*b.w - b.w*a.w` (zero for finite words), scaled the same way. The scale is the
 /// reference CPU's reciprocal square root estimate (`math::rsqrt`), not an IEEE square root.
-pub fn cross_normalized(this: Vec4, a: Vec4) -> Vec4 {
-    let c = this.cross3(a);
+pub fn cross_normalized(a: Vec4, b: Vec4) -> Vec4 {
+    let c = a.cross3(b);
     let r = rsqrt(((c.x * c.x) + c.y * c.y) + c.z * c.z);
     // Lane 3 is `w*w' - w'*w`: zero for finite words, NaN for an infinite one (`eq_op` is intended).
     #[allow(clippy::eq_op)]
-    let w = this.w * a.w - a.w * this.w;
+    let w = a.w * b.w - b.w * a.w;
     Vec4 { x: c.x * r, y: c.y * r, z: c.z * r, w: w * r }
 }
 

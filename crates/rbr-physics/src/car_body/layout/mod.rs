@@ -58,6 +58,6 @@ pub use damage_handler::{
 pub use offsets::{
     all_receivers_at, control, damage_source_at, drive_line_position_at, emitter_busy_at, emitter_source_at, handler,
     index_receivers_at, light_system_at, next_receiver_at, position_at, signal_at, step_mark_steering_at,
-    step_mark_timer_at, walk_source_at, BRAKE_AT, CAR_INIT_EMITTER_AT, PARTIAL_CONTACT_FLAG, PROBLEM_EMITTER_AT,
-    RETIRE_EMITTER_AT, STAND_STILL_EMITTER_AT, THROTTLE_AT,
+    step_mark_timer_at, tweak_word_at, walk_source_at, BRAKE_AT, CAR_INIT_EMITTER_AT, PARTIAL_CONTACT_FLAG,
+    PROBLEM_EMITTER_AT, RETIRE_EMITTER_AT, STAND_STILL_EMITTER_AT, THROTTLE_AT, TWEAK_BLOCK_WORDS,
 };

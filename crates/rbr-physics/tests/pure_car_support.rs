@@ -44,7 +44,7 @@ impl EntityScratchTailHost for Vf54Calls {
 }
 
 impl scratch_dispatch::ScratchDispatchCalls for Vf54Calls {
-    fn scratch_slot1(&mut self, scratch: u32) -> u32 {
+    fn scratch_after_reset(&mut self, scratch: u32) -> u32 {
         assert_eq!(scratch, self.car + 0x1690);
         self.events.push("scratch slot 1");
         0x7654_3210

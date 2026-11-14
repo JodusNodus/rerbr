@@ -12,15 +12,15 @@ use crate::mem::Mem;
 
 /// The calls the wiring makes out of its own body. The test answers them from the original's records.
 pub trait WiringCalls<S = Mem> {
-    /// A call out of the body: `callee` on `this`, with the words `args` (the callee's arguments, first one first). The
+    /// A call out of the body: `callee` on `object`, with the words `args` (the callee's arguments, first one first). The
     /// callee's return is not used.
-    fn call(&mut self, callee: u32, this: u32, args: &[u32]);
+    fn call(&mut self, callee: u32, object: u32, args: &[u32]);
     /// The car-init emit on `emitter` with the pair (the car, its sort key), passed by pointer.
     fn emit(&mut self, emitter: u32, pair: [u32; 2]);
 }
 
-/// Wires `car` to its damage object. `block` is the local block the control update takes as its payload (0x20 bytes on
-/// the original's stack).
+/// Wires `car` to its damage object. `block` is the local block the control update takes as its payload (32 bytes, a
+/// local of the original's).
 pub fn wire_damage<S: CarStore>(calls: &mut impl WiringCalls<S>, mem: &mut S, car: u32, block: u32) {
     let damage = mem.u32(layout::damage_source_at(car));
     mem.set_u32(car + layout::DAMAGE_HANDLER, damage);

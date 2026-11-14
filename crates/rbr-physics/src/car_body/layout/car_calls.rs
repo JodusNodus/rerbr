@@ -90,7 +90,7 @@ pub fn reset_scratch_and_dispatch<S: CarStore>(
     car: u32,
 ) -> Result<u32, HostUnavailable> {
     rigid_body::layout::scratch_reset_after_entity(mem.mem_mut(), car, calls)?;
-    Ok(scratch_dispatch::dispatch_scratch_slot1(calls, scratch1690(car)))
+    Ok(scratch_dispatch::dispatch_scratch_after_reset(calls, scratch1690(car)))
 }
 
 /// `CCar::Test7910` (0x4e7910, thiscall, no args): the car's position less the drive line's point at its lane (`BlendB`

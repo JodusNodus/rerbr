@@ -81,7 +81,7 @@ pub trait CarStore: Raw {
     /// The brake-wall penetration, m: the wall drag acts only while it is above 0.
     fn wall_penetration(&self, car: u32) -> f32;
     fn set_wall_penetration(&mut self, car: u32, v: f32);
-    /// The car's force accumulator (the wall drag's `ToWorld` input; the force adds into it).
+    /// The car's force accumulator (the wall drag moves it to the world frame; the force adds into it).
     fn force_accumulator(&self, car: u32) -> Vec3;
     /// The inverse mass, 1/kg (`InverseMass`).
     fn inverse_mass(&self, car: u32) -> f32;
@@ -105,15 +105,15 @@ pub trait CarStore: Raw {
     fn timer_word(&self) -> u32;
     /// The car's position lanes (four words), the start of the position payload.
     fn position_words(&self, car: u32) -> [u32; 4];
-    /// The last word of the MrR car state payload, as bits: a float of the drive.
-    fn mrr_word(&self, car: u32) -> u32;
+    /// The last word of the car state payload, as bits: a float of the drive.
+    fn car_state_word(&self, car: u32) -> u32;
     /// The drive's sensor block: its count and scale are the sensor payload's words 11 and 12.
     fn sensor_block(&self, car: u32) -> u32;
     /// The block's count, read as a signed integer by the sensor sampler.
     fn sensor_count(&self, block: u32) -> u32;
     /// The block's scale, a float.
     fn sensor_scale(&self, block: u32) -> f32;
-    /// The timer gap's arguments: the keeper (the call's `this`) and the address of the timer's double.
+    /// The timer gap's arguments: the keeper (the object the call is on) and the address of the timer's double.
     fn timer_gap_args(&self) -> (u32, u32);
     fn time_keeper_diff(&self, keeper: u32, current: u32) -> TimeKeeperDiff;
     fn load_f64(&self, at: u32) -> f64;

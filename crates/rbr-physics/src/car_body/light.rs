@@ -19,7 +19,7 @@ pub fn def_table() -> u32 {
 /// Sets the four groups of words to 1, in the original's order, then the flag word.
 pub fn block_reset<S: CarStore>(mem: &mut S, block: u32) {
     for group in 0..mem_at::RESET_GROUPS {
-        let base = block + mem_at::RESET_BASE + 8 * group;
+        let base = mem_at::reset_group_base(block, group);
         for offset in mem_at::RESET_WORDS {
             mem.set_u32(base.wrapping_add_signed(offset), 1);
         }

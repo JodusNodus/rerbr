@@ -133,3 +133,11 @@ pub const CAR_INIT_EMITTER_AT: u32 = 0xE868;
 /// The signal manager's retire emitter and stand-still emitter.
 pub const RETIRE_EMITTER_AT: u32 = 0xABB0;
 pub const STAND_STILL_EMITTER_AT: u32 = 0xCB18;
+
+/// The words of a tweak triple and of the binary block it loads from (`tweak::load_binary`).
+pub const TWEAK_BLOCK_WORDS: usize = 4;
+
+/// Word `i` of a tweak triple or of its binary block.
+pub fn tweak_word_at(at: u32, i: u32) -> u32 {
+    at + 4 * i
+}

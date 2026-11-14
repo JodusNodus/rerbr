@@ -323,7 +323,7 @@ impl StepCalls for Car<'_> {
         self.host.call(EMIT_POSITION, emitter, &[at]);
     }
 
-    fn emit_mrr(&mut self, mem: &mut Mem, payload: [u32; 3]) {
+    fn emit_car_state(&mut self, mem: &mut Mem, payload: [u32; 3]) {
         let at = self.payload(&payload);
         let emitter = mem.u32(SIGNALS) + MRR_EMITTER;
         self.host.call(EMIT_MRR, emitter, &[at]);

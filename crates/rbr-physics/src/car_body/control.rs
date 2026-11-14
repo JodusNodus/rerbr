@@ -52,8 +52,8 @@ const ASSIST_WORDS: [u32; 3] = [1, 0x3F00_0000, 0x4080_0000];
 /// The number of timing marks, at every thousandth step.
 const MARKS: u32 = 4;
 
-/// Applies the control payload `p` to `car`. `local` is the 0x20-byte block the original uses for the neutral payload (its
-/// stack). Returns the new step count.
+/// Applies the control payload `p` to `car`. `local` is the 32-byte block the original uses for the neutral payload (a
+/// local of its own). Returns the new step count.
 pub fn apply_control<S: CarStore>(calls: &mut impl ControlCalls<S>, mem: &mut S, car: u32, p: u32, local: u32) -> u32 {
     let payload = if mem.override_timer(car) > 0.0 {
         for (at, value) in NEUTRAL {
