@@ -18,7 +18,7 @@ use super::{
 };
 use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
-use crate::rigid_body::{E43VF64, E43VF6C};
+use crate::rigid_body::{on_solids, on_solids_in, E43VF64, E43VF6C};
 use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -70,7 +70,7 @@ pub(super) fn sim_f950_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let dt = f32::from_bits(r.stack[0]);
     let frame = aligned_frame(r.esp);
     let mut calls = F950Host { host: ctx.host, frame };
-    let eax = layout::hinge_advance_at(&mut ctx.mem, r.ecx, dt, frame - 0x30, &mut calls);
+    let eax = on_solids(ctx, |s| layout::hinge_advance_at(s, r.ecx, dt, frame - 0x30, &mut calls));
     Ok(Return::void(eax, 4))
 }
 
@@ -165,7 +165,7 @@ impl SlipCalls for SlipHost<'_> {
 pub(super) fn sim_cff0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = SlipHost { mem: ctx.mem.clone(), host: ctx.host, frame };
-    let term = layout::slip_term_at(&ctx.mem, r.ecx, frame, &mut calls);
+    let term = on_solids(ctx, |s| layout::slip_term_at(s, r.ecx, frame, &mut calls));
     Ok(Return::float(term as f64, 0))
 }
 
@@ -197,7 +197,7 @@ impl PivotCalls for PivotHost<'_> {
 pub(super) fn sim_e1d0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = PivotHost { mem: ctx.mem.clone(), host: ctx.host, frame };
-    let eax = layout::pivot_at(&mut ctx.mem, r.ecx, frame, &mut calls);
+    let eax = on_solids(ctx, |s| layout::pivot_at(s, r.ecx, frame, &mut calls));
     Ok(Return::void(eax, 0))
 }
 
@@ -212,11 +212,11 @@ struct D160Host<'a> {
 
 impl PoseCalls for D160Host<'_> {
     fn load(&self) -> PoseState {
-        self.mem.pose_state(self.this)
+        on_solids_in(self.host, &mut self.mem.clone(), |s| s.pose_state(self.this))
     }
 
     fn store(&mut self, state: &PoseState) {
-        self.mem.store_pose_state(self.this, state);
+        on_solids_in(self.host, &mut self.mem, |s| s.store_pose_state(self.this, state));
     }
 
     fn car_transform(&mut self, car: u32, pose: u32, out: u32) {
@@ -239,7 +239,7 @@ impl PoseCalls for D160Host<'_> {
 /// thiscall: `CHingedRigidBody::SimD160` (0x51d160), the hinge's frame update. Pops nothing.
 pub(super) fn sim_d160_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = D160Host { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp), this: r.ecx };
-    let eax = layout::pose_at(&ctx.mem, r.ecx, &mut calls);
+    let eax = on_solids(ctx, |s| layout::pose_at(s, r.ecx, &mut calls));
     Ok(Return::void(eax, 0))
 }
 
@@ -326,11 +326,11 @@ const EFE0_EDGE: u32 = 0x10;
 
 impl RefreshCalls for EfeHost<'_> {
     fn load(&self) -> RefreshState {
-        self.mem.hinge_refresh_state(self.this)
+        on_solids_in(self.host, &mut self.mem.clone(), |s| s.hinge_refresh_state(self.this))
     }
 
     fn store(&mut self, state: &RefreshState) {
-        self.mem.store_hinge_refresh_state(self.this, state);
+        on_solids_in(self.host, &mut self.mem, |s| s.store_hinge_refresh_state(self.this, state));
     }
 
     fn wake_body(&mut self, this: u32) {

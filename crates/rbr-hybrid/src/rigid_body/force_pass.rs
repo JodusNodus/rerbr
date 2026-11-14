@@ -81,7 +81,7 @@ pub(super) fn response_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let aligned = aligned_frame(r.esp);
     let frame = aligned.wrapping_sub(0x34).wrapping_sub(12);
     let mut calls = ResponseCalls { mem: ctx.mem.clone(), host: ctx.host, point, output, frame };
-    let eax = layout::solid_response(&mut ctx.mem, r.ecx, point, output, &mut calls);
+    let eax = super::on_solids(ctx, |s| layout::solid_response(s, r.ecx, point, output, &mut calls));
     Ok(Return::void(eax, 8))
 }
 
