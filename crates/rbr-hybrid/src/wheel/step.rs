@@ -5,7 +5,7 @@ use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::spring_damper::{StepInput, StepOutput};
-use rbr_physics::tyre::layout::{entries, TyreView};
+use rbr_physics::tyre::layout::{self as tyre_layout, entries, TyreView};
 use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
@@ -44,6 +44,9 @@ impl layout::RefreshCalls for Refresh<'_> {
     }
 
     fn tyre_def(&mut self, scratch: u32) -> u32 {
+        if goes_direct(self.host, crate::tyre::holds_tyre(self.host, scratch)) {
+            return tyre_layout::load_def_pointer(&self.mem, scratch);
+        }
         self.host.call(0x5326B0, scratch, &[]).eax
     }
 
@@ -80,7 +83,10 @@ impl Ground<'_> {
 
 impl layout::GroundCalls for Ground<'_> {
     fn effective_radius(&mut self, scratch: u32) -> f32 {
-        self.call(0x5326C0, scratch, &[]);
+        // The getter's state pointer is not read: the radius is the tyre's (`TyreTail_Get14`, direct on a held tyre).
+        if !goes_direct(self.host, crate::tyre::holds_tyre(self.host, scratch)) {
+            self.call(0x5326C0, scratch, &[]);
+        }
         crate::tyre::read_tyre(self.host, &self.mem, scratch, |t| t.state.effective_radius)
     }
 
@@ -165,6 +171,16 @@ pub fn wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 4))
 }
 
+/// Whether a call into the held tyre or strut runs direct (`held`), counted as a run ([`Host::ran_direct`]): the
+/// getters' bindings read their object's image words only (`TyreTail_Get10`, `TyreTail_Get14`, `CBase::GetName`), and
+/// the wheel reads none of the words the host call leaves on the stack (`notes/physics.md` "Store seam").
+fn goes_direct(host: &dyn Host, held: bool) -> bool {
+    if held {
+        host.ran_direct();
+    }
+    held
+}
+
 /// The host calls of `wheel_step`: each one is the original callee at its address, with `sp` below the frame.
 struct Step<'a> {
     mem: Mem,
@@ -197,6 +213,9 @@ impl Step<'_> {
 
 impl layout::StepCalls for Step<'_> {
     fn strut_name(&mut self, strut: u32, sp: u32) -> u32 {
+        if goes_direct(self.host, crate::spring_damper::holds_strut(self.host, strut)) {
+            return tyre_layout::load_name_object(&self.mem, strut);
+        }
         self.on(sp, 0x52DB10, strut, &[])
     }
 
