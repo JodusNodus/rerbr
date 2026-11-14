@@ -152,13 +152,13 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | Trait | File | Mem impl |
 | --- | --- | --- |
 | `store::Raw` (supertrait: words, `mem()`) | `store/mod.rs` | same |
-| `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: `spring_damper/layout.rs` |
+| `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: every word store (`spring_damper/layout.rs`) |
 | `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: the drive's typed state (`DriveRef`) |
 | `TyreStore` (handle `Tyre`) | `tyre/store.rs` | `TyreView` only; the callers' blocks: `tyre/layout/kernels.rs` |
 | `WheelStore` (by `Slot`; the image's words as default methods) | `wheel/layout/store.rs` | `wheel/layout/fields.rs` (every field on the image, per call); `WheelView` (typed) |
 | `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
 | `DriveStore` (one drive, no handle; `word`/`set_word` for the index arithmetic) | `engine_driveline/store.rs` | `DriveView` only (`layout/drive_typed.rs`) |
-| `EngineStore: DamperBlocks` | `engine_driveline/store.rs` | `engine_driveline/layout/mem_store.rs` |
+| `EngineStore: DamperBlocks + EngineTables` (the engine's records, by address), `EngineTables` (tables, drive line, callers' records) | `engine_driveline/store.rs` | `layout/mem_store.rs` (`EngineTables` on every word store); `EngineView` (`layout/engine_typed.rs`) |
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
 | `CoreStore` | `physics_core/store.rs` | `physics_core/layout/mem_store.rs` |
 | `HingeStore`, `EntityStore: HingeStore` | `entities/store.rs` | `entities/layout/hinge_state.rs`, `layout/store_mem.rs` |
@@ -168,9 +168,9 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 
 - A calls trait takes the store as a parameter defaulting to `Mem` (`Vf6cxCalls<S = Mem>`); clashing names use
   UFCS; what a trait does not name yet goes through `Raw`. Constructors and setup copies stay on `&mut Mem`.
-- `object!` (`store/layout.rs`) tables an object once (struct, `Field` per row, `lift`/`lower`); tabled so far
-  (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and state, drive, drive state and
-  its four wheel blocks.
+- `object!` (`store/layout.rs`) tables an object once (struct, `Field` per row, `lift`/`lower`, `word_of` for a field
+  of whole words); tabled so far (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and
+  state, drive, drive state and its four wheel blocks, engine and engine state.
 - Mem-direct dispatch (`--dispatch direct`, live default): a call within the `IN_PLACE` subsystems
   (`rbr-hybrid/src/pure/mod.rs`) to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) runs as a plain call
   when it passes exactly the words the leaf pops; a non-leaf binding too (B1b, `Pure::call_plain`, `call_framed`:
@@ -313,9 +313,33 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on);
   poison 84084/84084; `round_trip` 1076 typed bytes on 43 snapshots; `engine_driveline_vectors` on the per-call store
   (unmapped drive bytes zero-filled) and its chain test (14 entries per call vs held, every byte, 42 pair-worker
-  records); `vcu_vectors`' chain with the drive held too; hybrid gate 13/13; -2.6 % instructions per step. Not typed
-  yet: the engine (`EngineStore`: `EngineOwn`, `EngineState`, the options' stall terms, the unit split, the damper
-  blocks in its objects), which stays on `Mem`.
+  records); `vcu_vectors`' chain with the drive held too; hybrid gate 13/13; -2.6 % instructions per step.
+- The engine, seventh: `engine_driveline::layout::EngineTyped` (`layout/engine_typed.rs`: `EngineObj`, the `CEngine`'s
+  crank delta, pedal and its cosine, heat total and rates, abs term, signal, stall sum, misfire level, heat output;
+  `EngineStateObj`, the state's misfire, radiator and coolant pairs, turbo speed, boost and band damper blocks, stages,
+  the four intake entries (14 words each), cut flags, crank, rates, the intake lanes, the dampers' lanes, averages,
+  cycle, torque terms and compliance; 500 bytes) in `CarEngine` (`EngineImage` lift/lower, `round_trip`). The ports
+  reach its words by the original's offsets (the entries and damper blocks are records several kernels read
+  differently, `torque_curve` and `exhaust_blend_at` take an entry's pointer), so `EngineView` is a word store
+  (`Raw`): a word the held engine's tables name is its typed state's (`object!`'s `word_of`, a word table per object),
+  any other byte the image's; per call (`EngineView::image`) it is the image. `EngineStore` (the records) is `Mem`'s
+  and the view's, which serves a held engine's `EngineOwn` and `EngineState` by field; `EngineTables` and
+  `DamperBlocks` are on every word store. Held in a `RefCell` borrowed per word, never across a host call (`Sim8E20`
+  calls `Sim80D0` through the host). Stay on the image: the definition, the pointers, the option block (the damage
+  handler's engine block at `+0x3aac`: its functors and NGP's engine wrapper write it; the stall terms, gates, health),
+  the roll table and seed, and the state's `EngineNoise` payload (`+0x2c..+0x5c`, `misfire_out` and the cut words in
+  it: the emit's listeners read it at its address). Readers during a step, through
+  `rbr_hybrid::engine_driveline::on_engine_in`: the engine bindings (the VCU's `SetState4`/`SetScratch08` and the car's
+  sensor getters `SimEE60`, `SimE970`, `Get48_58`, `GetState188`, `SimE980` are bindings), NGP's engine wrapper (the
+  pedal, the friction torque `+0x270`, the engine temperature `+0x23c` for the engine model, the stall guard), the
+  drive's gate (`SimE980`); unrouted, the wrapper's friction torque fails the poison run (`engine state` in
+  `0x5273a0`). Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off
+  and on); poison 84084/84084 (aids on too: no poisoned access in 84084 steps); `round_trip` 500 typed bytes and
+  `engine_differential` (the step, heat, overheat, fuel, turbo, intake resets, signal, setters and getters per call
+  vs held, 1200 bytes) on 43 snapshots; `engine_driveline_vectors` and its engine chain (12 entries per call vs held,
+  every byte, 645 `SimE660` records); hybrid gate 13/13 (the 1.02 snapshots run the original `Sim8E20`, which calls
+  `SimE370`, `SimE520`, `SimE660`, `SimE060`, `SimE1F0`, `Sim8D90`, `Sim80D0`, `Sim8610`, `Sim8B20` per call;
+  `Sim8E20`, `Sim7D30` and `Sim8890` decline there); +0.48 % instructions per step.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
