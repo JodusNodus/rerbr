@@ -308,11 +308,11 @@ impl<F: PartFactory, H: entities::exclusion::Heap> NotifyHost for CarParts<'_, F
         self.factory.make(mem, def, key, parent)
     }
 
-    fn place(&mut self, mem: &mut Mem, object: u32, stuff: u32) -> Result<(), rigid_body::host::HostUnavailable> {
+    fn place(&mut self, mem: &mut Mem, object: u32, placement: u32) -> Result<(), rigid_body::host::HostUnavailable> {
         match mem.u32(mem.u32(object) + PLACE_SLOT) {
-            SOLID_PLACE => rigid_body::layout::place_solid(mem, self, object, stuff),
+            SOLID_PLACE => rigid_body::layout::place_solid(mem, self, object, placement),
             BODY_PLACE => {
-                let grid = collision::layout::select_table(mem, stuff);
+                let grid = collision::layout::select_table(mem, placement);
                 Body::new(object).set_grid(mem, grid);
                 // `CBody::Vf44` calls `CEntity::Vf44`: its `CBase::Unk44` is empty, and a new body has no children.
                 if mem.u32(object + FIRST_CHILD) != 0 {

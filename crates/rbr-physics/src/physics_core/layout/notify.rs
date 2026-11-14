@@ -23,8 +23,8 @@ pub trait FilingHost {
 pub trait NotifyHost: GridBuildHost + FilingHost {
     /// Slot 0x50 of the definition `def` with `a` and `b` (under `E39_EntfCreate`): returns the new object.
     fn def_new(&mut self, mem: &mut Mem, def: u32, a: u32, b: u32) -> Result<u32, HostUnavailable>;
-    /// Slot 0x44 of `object` with the placement at `stuff`.
-    fn place(&mut self, mem: &mut Mem, object: u32, stuff: u32) -> Result<(), HostUnavailable>;
+    /// Slot 0x44 of `object` with the placement `placement`.
+    fn place(&mut self, mem: &mut Mem, object: u32, placement: u32) -> Result<(), HostUnavailable>;
     /// Slot 0x150 of `parent` with `object`.
     fn adopt(&mut self, mem: &mut Mem, parent: u32, object: u32) -> Result<(), HostUnavailable>;
     /// Slot 0x90 of `object` (the placement's flag bit 0), else slot 0x94.
@@ -119,11 +119,11 @@ impl WallHost for Filer {
 }
 
 /// A placement (`CSigStuff`): its collision id (or descriptor), object type, object, handle and flags.
-const STUFF_COLLISION: u32 = 0x34;
-const STUFF_TYPE: u32 = 0x38;
-const STUFF_OBJECT: u32 = 0x3C;
-const STUFF_HANDLE: u32 = 0x40;
-const STUFF_FLAGS: u32 = 0x44;
+const PLACEMENT_COLLISION: u32 = 0x34;
+const PLACEMENT_OBJECT_TYPE: u32 = 0x38;
+const PLACEMENT_OBJECT: u32 = 0x3C;
+const PLACEMENT_HANDLE: u32 = 0x40;
+const PLACEMENT_FLAGS: u32 = 0x44;
 /// A collision grid's name.
 const GRID_NAME: u32 = 0x684;
 /// The physics object's definition and scratch, and its own debug word; the scratch's stack of parents (`+0xe848`) and
@@ -145,8 +145,8 @@ fn current_parent(mem: &Mem, scratch: u32) -> u32 {
     }
 }
 
-/// `CPhysics::E46_Notify67d0` (0x5267d0) on `[0x1659b70]`, the receiver of a placement (`CSigStuff`) at `stuff`:
-/// `E45_MD60` (the cell grid, if there is none yet); the object of the registry entry `signal::stuff_kind` picks
+/// `CPhysics::E46_Notify67d0` (0x5267d0) on `[0x1659b70]`, the receiver of the placement (`CSigStuff`) `placement`:
+/// `E45_MD60` (the cell grid, if there is none yet); the object of the registry entry `signal::placement_kind` picks
 /// ([`create_entity`]), made with the placement's handle (the sort key: the emitter sets it) and the current parent,
 /// kept at the placement's `+0x3c`; its slot 0x44 on the placement; filed under the parent (its slot 0x150) or, with
 /// none, with the state (`CState::RegWall`); its slot 0x90 or 0x94. A placement with flag 2 makes its object the
@@ -154,11 +154,11 @@ fn current_parent(mem: &Mem, scratch: u32) -> u32 {
 /// last with flag 4). A dynamic placement first has its descriptor's grid built (`E37SigEmit9B30`, whose signal's
 /// receiver is `E37SigFactory720`), under the next free collision id with flags 0x30. The debug branch (bit 0x100 of
 /// the definition's or the physics' debug word: the object's slot 0x118 and its state's slot 0x4c) is not ported.
-pub fn notify_placement(mem: &mut Mem, host: &mut impl NotifyHost, stuff: u32) -> Result<(), HostUnavailable> {
+pub fn notify_placement(mem: &mut Mem, host: &mut impl NotifyHost, placement: u32) -> Result<(), HostUnavailable> {
     let physics = physics(mem);
     detect::build_cell_grid(mem, host);
-    let desc = mem.u32(stuff + STUFF_COLLISION);
-    match signal::mesh_emit(mem.u32(stuff + STUFF_FLAGS)) {
+    let desc = mem.u32(placement + PLACEMENT_COLLISION);
+    match signal::mesh_emit(mem.u32(placement + PLACEMENT_FLAGS)) {
         signal::MeshEmit::None => {}
         emit => {
             if emit == signal::MeshEmit::NewId {
@@ -169,16 +169,16 @@ pub fn notify_placement(mem: &mut Mem, host: &mut impl NotifyHost, stuff: u32) -
             crate::collision::layout::collision_mesh_factory(mem, desc);
         }
     }
-    let collision = mem.u32(stuff + STUFF_COLLISION);
-    let grid = if collision == 0 { 0 } else { crate::collision::layout::select_table(mem, stuff) };
+    let collision = mem.u32(placement + PLACEMENT_COLLISION);
+    let grid = if collision == 0 { 0 } else { crate::collision::layout::select_table(mem, placement) };
     let name = if grid == 0 { 0 } else { mem.u32(grid + GRID_NAME) };
     let name = (name != 0).then(|| c_string(mem, name));
-    let kind = signal::stuff_kind(mem.u32(stuff + STUFF_TYPE), name.as_deref());
+    let kind = signal::placement_kind(mem.u32(placement + PLACEMENT_OBJECT_TYPE), name.as_deref());
     let scratch = mem.u32(physics + PHYSICS_SCRATCH);
     let parent = current_parent(mem, scratch);
-    let object = create_entity(mem, host, REGISTRY, kind, mem.u32(stuff + STUFF_HANDLE), parent)?;
-    mem.set_u32(stuff + STUFF_OBJECT, object);
-    host.place(mem, object, stuff)?;
+    let object = create_entity(mem, host, REGISTRY, kind, mem.u32(placement + PLACEMENT_HANDLE), parent)?;
+    mem.set_u32(placement + PLACEMENT_OBJECT, object);
+    host.place(mem, object, placement)?;
     let parent = current_parent(mem, scratch);
     if parent != 0 {
         host.adopt(mem, parent, object)?;
@@ -186,7 +186,7 @@ pub fn notify_placement(mem: &mut Mem, host: &mut impl NotifyHost, stuff: u32) -
         let (end_step, takes_part, wall) = host.filing(mem, object)?;
         push_item(mem, entity_list(state_of(mem, physics), end_step, takes_part, wall), object);
     }
-    if mem.u32(stuff + STUFF_FLAGS) & 1 != 0 {
+    if mem.u32(placement + PLACEMENT_FLAGS) & 1 != 0 {
         host.wake(mem, object)?;
     } else {
         host.sleep(mem, object)?;
@@ -195,7 +195,7 @@ pub fn notify_placement(mem: &mut Mem, host: &mut impl NotifyHost, stuff: u32) -
     if (mem.u32(def + DEF_DEBUG) | mem.u32(physics + PHYSICS_DEBUG)) & 0x100 != 0 {
         return Err(HostUnavailable);
     }
-    let flags = mem.u32(stuff + STUFF_FLAGS);
+    let flags = mem.u32(placement + PLACEMENT_FLAGS);
     let top = mem.u32(scratch + PARENT_TOP) as i32;
     if flags & 2 != 0 {
         mem.set_u32(scratch + PARENT_TOP, (top + 1) as u32);

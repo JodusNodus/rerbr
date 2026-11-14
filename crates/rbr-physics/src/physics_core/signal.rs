@@ -17,7 +17,7 @@ const BANNER_STAND_KIND: u32 = 0x15;
 
 /// The object kind a placement is made as: its own `object_type`, unless the name of its collision grid (`None`
 /// without a grid or a name) holds `CONE` or else `BANNER_STAND`.
-pub fn stuff_kind(object_type: u32, grid_name: Option<&[u8]>) -> u32 {
+pub fn placement_kind(object_type: u32, grid_name: Option<&[u8]>) -> u32 {
     let holds = |name: &[u8], part: &[u8]| name.windows(part.len()).any(|w| w == part);
     match grid_name {
         Some(name) if holds(name, b"CONE") => CONE_KIND,
@@ -52,9 +52,9 @@ mod tests {
 
     #[test]
     fn stuff_kind_takes_cones_and_banner_stands_by_their_grids_name() {
-        assert_eq!(stuff_kind(7, None), 7);
-        assert_eq!(stuff_kind(7, Some(b"POLE")), 7);
-        assert_eq!(stuff_kind(7, Some(b"X_TRAFFIC_CONE_1")), 0x19);
-        assert_eq!(stuff_kind(7, Some(b"BANNER_STAND_A")), 0x15);
+        assert_eq!(placement_kind(7, None), 7);
+        assert_eq!(placement_kind(7, Some(b"POLE")), 7);
+        assert_eq!(placement_kind(7, Some(b"X_TRAFFIC_CONE_1")), 0x19);
+        assert_eq!(placement_kind(7, Some(b"BANNER_STAND_A")), 0x15);
     }
 }

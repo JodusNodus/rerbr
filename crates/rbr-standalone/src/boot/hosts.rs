@@ -176,7 +176,7 @@ pub struct StageCalls {
     pub heap: BootHeap,
     pub handles: HashMap<u32, u32>,
     pub keyed: usize,
-    pub stuffs: usize,
+    pub placements: usize,
     pub scratch: u32,
     /// The mesh list's buffer (the `.trk`'s mesh count of words: the original's `std::vector` grows, nothing here
     /// links it).
@@ -217,9 +217,9 @@ impl StageHost for StageCalls {
     }
     fn emit_placement(&mut self, mem: &mut Mem, placement: &Placement) {
         if stage::place(mem, self, placement).is_err() {
-            self.failed.get_or_insert(self.stuffs);
+            self.failed.get_or_insert(self.placements);
         }
-        self.stuffs += 1;
+        self.placements += 1;
     }
     fn scratch(&mut self, mem: &mut Mem, size: u32) -> u32 {
         if self.scratch + size > SCRATCH_SIZE {

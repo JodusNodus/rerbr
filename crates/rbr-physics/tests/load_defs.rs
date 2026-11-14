@@ -596,14 +596,14 @@ fn place_car_cluster(data: &Data, objects: &[Object], expected: &Snapshot, fill:
     let scratch = mem.u32(physics + 0x28);
     mem.set_u32(scratch + 0xE888, u32::MAX);
     let metadata = expected.metadata();
-    let stuff_base = metadata.stack_lo + 0x2000;
+    let placement_base = metadata.stack_lo + 0x2000;
     let mut host = load::layout::CarParts {
         factory: ReplayFactory(factory_calls()),
         heap: &mut NoCellBlocks,
-        sync_scratch: stuff_base + 0x2000,
+        sync_scratch: placement_base + 0x2000,
     };
     for (i, placement) in placements().iter().enumerate() {
-        let stuff = stuff_base + i as u32 * 0x80;
+        let at = placement_base + i as u32 * 0x80;
         let mut bytes = placement.bytes.clone();
         if placement.object_type != 0x27 {
             // The capture and lcb1 dump use separate Wine heap layouts; rebase the solid's hook pointer to
@@ -612,11 +612,11 @@ fn place_car_cluster(data: &Data, objects: &[Object], expected: &Snapshot, fill:
                 u32::from_le_bytes(expected.mem().read(expected_factory_objects[i].at + 0x3cc, 4).try_into().unwrap());
             bytes[0x48..0x4c].copy_from_slice(&hook.to_le_bytes());
         }
-        mem.map(stuff, &bytes);
-        physics_layout::notify_placement(&mut mem, &mut host, stuff)
+        mem.map(at, &bytes);
+        physics_layout::notify_placement(&mut mem, &mut host, at)
             .unwrap_or_else(|_| panic!("{} type {:#x} placement", placement.position, placement.object_type));
         let expected_object = expected_factory_objects[i].at;
-        assert_eq!(mem.u32(stuff + 0x3c), expected_object, "{} object", placement.position);
+        assert_eq!(mem.u32(at + 0x3c), expected_object, "{} object", placement.position);
     }
     assert!(host.factory.0.is_empty(), "factory calls left: {}", host.factory.0.len());
     mem

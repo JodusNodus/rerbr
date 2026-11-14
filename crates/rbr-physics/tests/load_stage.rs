@@ -163,7 +163,7 @@ struct Host {
     meshes: u32,
     names: usize,
     handles: usize,
-    stuffs: usize,
+    placements: usize,
     /// The next scratch block's offset.
     scratch: u32,
     /// The game's sort key of each placement's object (the handles the interactive objects give), by placement.
@@ -243,11 +243,11 @@ impl StageHost for Host {
     /// The handle is the sort key the game's object of this placement has.
     fn interactive_handle(&mut self, _: u32) -> Option<u32> {
         self.handles += 1;
-        Some(self.keys.get(&self.stuffs).copied().unwrap_or(0))
+        Some(self.keys.get(&self.placements).copied().unwrap_or(0))
     }
     fn emit_placement(&mut self, mem: &mut Mem, placement: &Placement) {
         stage::place(mem, self, placement).expect("the placement's calls are ported");
-        self.stuffs += 1;
+        self.placements += 1;
     }
     fn scratch(&mut self, mem: &mut Mem, size: u32) -> u32 {
         if self.scratch + size > SCRATCH_SIZE {
@@ -319,7 +319,7 @@ fn build(data: &Data, objects: &[Object], fill: u8) -> (Mem, Host) {
         meshes: 0,
         names: 0,
         handles: 0,
-        stuffs: 0,
+        placements: 0,
         scratch: 0,
         keys: objects
             .iter()
@@ -409,7 +409,7 @@ fn stage_world_matches_the_game() {
     };
     let objects = objects();
     let ((zeros, host), (ones, _)) = (build(&data, &objects, 0), build(&data, &objects, 0xff));
-    assert_eq!((host.meshes, host.names, host.stuffs, host.handles), (21, 21, PLACEMENTS, HANDLES));
+    assert_eq!((host.meshes, host.names, host.placements, host.handles), (21, 21, PLACEMENTS, HANDLES));
 
     let mut counts: BTreeMap<&str, [u32; 4]> = BTreeMap::new();
     let mut differing = Vec::new();

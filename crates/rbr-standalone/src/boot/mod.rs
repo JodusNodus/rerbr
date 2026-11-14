@@ -355,20 +355,20 @@ const DRIVE_LINE_SIZE: u32 = 0x75330;
 /// Free memory for the original's temporaries (the placements, `SyncGrid`'s vertices, the fire mesh's descriptor).
 const SCRATCH: u32 = 0x0030_0000;
 const SCRATCH_SIZE: u32 = 0x1_0000;
-const STUFF_SIZE: u32 = 0x64;
+const PLACEMENT_SIZE: u32 = 0x64;
 /// A car placement's fields: the orientation, the extent, the grid, the registry index, the sort key, the flags, the
 /// hook (the car's damage handler), the word 0xf, the position again (`x`, `z - 0.5`, `y`) and the last word.
-const STUFF_ORIENTATION: u32 = 0x10;
-const STUFF_EXTENT: u32 = 0x20;
-const STUFF_GRID: u32 = 0x34;
-const STUFF_INDEX: u32 = 0x38;
-const STUFF_OBJECT: u32 = 0x3C;
-const STUFF_HANDLE: u32 = 0x40;
-const STUFF_FLAGS: u32 = 0x44;
-const STUFF_HOOK: u32 = 0x48;
-const STUFF_F: u32 = 0x50;
-const STUFF_POSITION: u32 = 0x54;
-const STUFF_TAIL: u32 = 0x60;
+const PLACEMENT_ORIENTATION: u32 = 0x10;
+const PLACEMENT_EXTENT: u32 = 0x20;
+const PLACEMENT_GRID: u32 = 0x34;
+const PLACEMENT_INDEX: u32 = 0x38;
+const PLACEMENT_OBJECT: u32 = 0x3C;
+const PLACEMENT_HANDLE: u32 = 0x40;
+const PLACEMENT_FLAGS: u32 = 0x44;
+const PLACEMENT_HOOK: u32 = 0x48;
+const PLACEMENT_F: u32 = 0x50;
+const PLACEMENT_POSITION: u32 = 0x54;
+const PLACEMENT_TAIL: u32 = 0x60;
 /// The damage host's slots (0x10 into it, `DAMAGE_OPS_SIZE` apart).
 const DAMAGE_SLOTS: u32 = 0x10;
 /// The stack: the control payload at its bottom, `StepForward`'s return slot near its top.
@@ -451,7 +451,7 @@ fn pack_file(race: &Race, dir: &str, name: &str) -> Option<Result<Vec<u8>, Strin
 
 /// The car placement `part` at `at` (its handle, the registry index `index`, the damage handler `hook`), as the car
 /// load emits it: the car's at the start pose, the parts' at the origin with no rotation.
-fn store_car_stuff(
+fn store_car_placement(
     mem: &mut Mem,
     at: u32,
     pose: &([f32; 3], [f32; 4]),
@@ -460,7 +460,7 @@ fn store_car_stuff(
     index: u32,
     hook: u32,
 ) {
-    mem.map(at, &[0; STUFF_SIZE as usize]);
+    mem.map(at, &[0; PLACEMENT_SIZE as usize]);
     let root = std::ptr::eq(part, &CAR_PARTS[0]);
     let (position, orientation) = pose;
     if root {
@@ -470,23 +470,23 @@ fn store_car_stuff(
     }
     let orientation = if root { *orientation } else { [0.0, 0.0, 0.0, 1.0] };
     for (k, &x) in orientation.iter().enumerate() {
-        mem.set_f32(at + STUFF_ORIENTATION + 4 * k as u32, x);
+        mem.set_f32(at + PLACEMENT_ORIENTATION + 4 * k as u32, x);
     }
     for k in 0..3 {
-        mem.set_f32(at + STUFF_EXTENT + 4 * k, 1.0);
+        mem.set_f32(at + PLACEMENT_EXTENT + 4 * k, 1.0);
     }
-    mem.set_u32(at + STUFF_GRID, part.grid);
-    mem.set_u32(at + STUFF_INDEX, index);
-    mem.set_u32(at + STUFF_OBJECT, 0);
-    mem.set_u32(at + STUFF_HANDLE, handle);
-    mem.set_u32(at + STUFF_FLAGS, part.flags);
-    mem.set_u32(at + STUFF_HOOK, hook);
-    mem.set_u32(at + STUFF_F, 0xf);
+    mem.set_u32(at + PLACEMENT_GRID, part.grid);
+    mem.set_u32(at + PLACEMENT_INDEX, index);
+    mem.set_u32(at + PLACEMENT_OBJECT, 0);
+    mem.set_u32(at + PLACEMENT_HANDLE, handle);
+    mem.set_u32(at + PLACEMENT_FLAGS, part.flags);
+    mem.set_u32(at + PLACEMENT_HOOK, hook);
+    mem.set_u32(at + PLACEMENT_F, 0xf);
     let [x, y, z] = *position;
     for (k, v) in [x, z - 0.5, y].into_iter().enumerate() {
-        mem.set_f32(at + STUFF_POSITION + 4 * k as u32, v);
+        mem.set_f32(at + PLACEMENT_POSITION + 4 * k as u32, v);
     }
-    mem.set_u32(at + STUFF_TAIL, part.tail);
+    mem.set_u32(at + PLACEMENT_TAIL, part.tail);
 }
 
 /// The image for `race` on `stage_name`, the application in state `app_state`.
@@ -636,7 +636,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
         heap: heap.clone(),
         handles: interactive_handles(&lbs),
         keyed: 0,
-        stuffs: 0,
+        placements: 0,
         scratch: 0,
         mesh_list,
         mesh_capacity,
@@ -651,7 +651,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     if let Some(k) = calls.failed {
         return Err(format!("{stage_name}: stage placement {k} is not ported"));
     }
-    built.push(("stage placements", calls.stuffs as u64));
+    built.push(("stage placements", calls.placements as u64));
     built.push(("interactive handles", calls.keyed as u64));
     built.push(("stage meshes", u64::from(calls.meshes)));
     let mat_image = heap.take(mat.len() as u32);
@@ -729,11 +729,11 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
         if let Some(part) = part.node.and_then(rbr_recording::detach::part_index) {
             detach.push((handle, part));
         }
-        store_car_stuff(&mut mem, at, &pose, part, handle, index, slot(0));
+        store_car_placement(&mut mem, at, &pose, part, handle, index, slot(0));
         physics::notify_placement(&mut mem, &mut parts, at)
             .map_err(|_| format!("the car placement {} is not ported", part.name))?;
         if k == 0 {
-            car = mem.u32(at + STUFF_OBJECT);
+            car = mem.u32(at + PLACEMENT_OBJECT);
         }
     }
     built.push(("car placements", CAR_PARTS.len() as u64));

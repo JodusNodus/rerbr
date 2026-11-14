@@ -112,9 +112,9 @@ impl<H: StageHost> NotifyHost for Calls<'_, H> {
         new_solid(mem, def, a, b, self)
     }
 
-    fn place(&mut self, mem: &mut Mem, object: u32, stuff: u32) -> Result<(), HostUnavailable> {
+    fn place(&mut self, mem: &mut Mem, object: u32, placement: u32) -> Result<(), HostUnavailable> {
         check(holds(mem, object, SOLID_PLACE))?;
-        place_solid(mem, self, object, stuff)
+        place_solid(mem, self, object, placement)
     }
 
     fn adopt(&mut self, _: &mut Mem, _: u32, _: u32) -> Result<(), HostUnavailable> {
