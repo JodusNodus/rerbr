@@ -332,6 +332,19 @@ impl Pure {
         self.captures.take_engine_fires()
     }
 
+    /// The image for a reader between steps: what the step left, the typed state's words included. Every reader
+    /// outside a step goes through this (or [`Pure::image_mut`]) rather than `mem`, so the typed state can stay held
+    /// across steps: then it is lowered into the image first.
+    pub fn image(&self) -> &Mem {
+        &self.mem
+    }
+
+    /// The image for a writer between steps (a clone sharing its bytes: writes land in the image). With the typed
+    /// state held across steps, it is lowered and dropped first, so the next step lifts what the writer left.
+    pub fn image_mut(&self) -> Mem {
+        self.mem.clone()
+    }
+
     /// The `CSigCarDamageSpeech` codes emitted since the last call, a bit per code (`1 << code`).
     pub fn take_speech(&self) -> u32 {
         self.captures.take_speech()
