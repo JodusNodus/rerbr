@@ -1144,6 +1144,11 @@ impl StepCalls for RecordedVf6cx<'_> {
         check_input("position emit", self.call.index, 0, inner, &bytes);
     }
 
+    fn drive_engine_speed(&mut self, mem: &mut Mem, drive: u32) -> u32 {
+        let state = rbr_physics::engine_driveline::layout::DriveImage::of(mem, drive).state;
+        rbr_physics::engine_driveline::layout::DriveStateObj::engine_speed.load(mem, state).to_bits()
+    }
+
     fn emit_car_state(&mut self, _mem: &mut Mem, payload: [u32; 3]) {
         let inner = self.record(0x4E8BF0);
         let bytes: Vec<u8> = payload.iter().flat_map(|w| w.to_le_bytes()).collect();

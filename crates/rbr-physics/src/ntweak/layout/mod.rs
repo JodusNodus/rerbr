@@ -52,7 +52,7 @@ pub(crate) const VECTOR_VALUE: u32 = 0x10;
 /// The name word of a tweak header or object, at +4: the name it points at.
 const NAME: u32 = 0x04;
 /// The dirty flag of a tweak header, at +8.
-const DIRTY: u32 = 0x08;
+pub const DIRTY: u32 = 0x08;
 
 /// The dispatch-table slots the walk reads: slot 2 (+8), the parse entry, and slot 5 (+0x14, `Unk14`), the inner-group
 /// entry.

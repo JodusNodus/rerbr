@@ -9,9 +9,9 @@ mod common;
 
 use common::{load, map_windows, Call, Inner};
 use rbr_physics::car_body::layout::{self, VoteCalls};
+use rbr_physics::engine_driveline::layout::DriveRef;
 use rbr_physics::mem::Mem;
 use rbr_physics::vcu::gear;
-use rbr_physics::vcu::store::DriveBlocks;
 
 const VAR: &str = "RBR_G_VF98_VECTORS";
 const VOTE: u32 = 0x4fe810;
@@ -89,7 +89,7 @@ fn m6840_stores_the_commanded_gear() {
     for call in &calls {
         let mem = map_windows(call);
         let (drive, value) = (call.args[0], call.args[1]);
-        let count = mem.gear_count(drive);
+        let count = DriveRef::of(&mem, None, drive).gear_count(&mem);
         assert_eq!(
             gear::commanded_gear(count, value),
             post_word(call, 1, 0x570),

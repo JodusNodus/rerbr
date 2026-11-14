@@ -2,7 +2,7 @@
 //! hold, else it keeps slipping in the real direction. With no model (`GearHost` default) NGP's worker is unchanged.
 
 use rbr_physics::engine_driveline::drive_worker::{clutch_torque, GearHost};
-use rbr_physics::engine_driveline::layout::with_gear;
+use rbr_physics::engine_driveline::layout::{with_drive, with_gear};
 use rbr_physics::mem::Mem;
 
 const THIS: u32 = 0x1000_0000;
@@ -58,7 +58,7 @@ fn call(model: bool, engine: f32, locked: f32, a: f32, b: f32) -> After {
     mem.set_f32(STATE + 0x384, locked / C);
     mem.set_f32(DEF + 0x664, SLIP_GAIN_A);
     mem.set_f32(DEF + 0x674, 0.017);
-    let out = with_gear(&mut mem, THIS, |w, g| clutch_torque(w, g, &mut Host(model), a, [b, C, D]));
+    let out = with_drive(&mut mem, THIS, |d| with_gear(d, |w, g| clutch_torque(w, g, &mut Host(model), a, [b, C, D])));
     After { out, engine: mem.f32(STATE + 0x45c), word: mem.u32(STATE + 0x368) as i32, trigger: mem.u32(STATE + 0x578) }
 }
 

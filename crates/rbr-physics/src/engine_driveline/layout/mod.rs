@@ -6,6 +6,7 @@ mod curve;
 mod drive_calls;
 mod drive_line;
 mod drive_objects;
+mod drive_typed;
 mod engine_calls;
 mod engine_def;
 mod engine_objects;
@@ -22,18 +23,23 @@ pub use construct::{
     construct_engine_setup, construct_engine_state, drive_reset_part, reset_drive_damage, reset_engine_damage,
 };
 pub use curve::{
-    brake_block_at, curve_input_at, curve_row_at, curve_state_at, ratio_ring_at, with_gear, with_worker, BrakeBlock,
-    CurveInput, CurveRow, CurveState, CurveTables,
+    brake_block_at, curve_input_at, curve_row_at, ratio_ring_at, with_gear, with_worker, BrakeBlock, CurveInput,
+    CurveRow, CurveState, CurveTables,
 };
 pub use drive_calls::{
-    clear_lanes, copy_row, distance_at, drive_gate, mat4_inverse_transposed, mat4_mul_vec4, project_point,
-    set_diff_lock, set_wheel_offset_and_bias, table_entry_field_at, transpose_into, wheel_prev_force, wheel_slip,
+    clear_drive_lanes, clear_lanes, copy_row, distance_at, drive_gate, mat4_inverse_transposed, mat4_mul_vec4,
+    project_point, set_diff_lock, set_wheel_offset_and_bias, table_entry_field_at, transpose_into, wheel_prev_force,
+    wheel_slip, DRIVE_SCRATCH,
 };
 pub use drive_line::{
     entry_at, forward_distance_at, last_distance, point_at, sample, set_drive_line, spline_at, tangent_lerp, COUNT_AT,
     MAX_ENTRIES, STRIDE,
 };
 pub use drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane};
+pub use drive_typed::{
+    gear_request_at, round_trip as drive_round_trip, wheel_at, with_drive, CarDrive, DriveImage, DriveObj, DriveRef,
+    DriveStateObj, DriveTyped, DriveView, WheelObj,
+};
 pub use engine_calls::{
     abs_rpm_term, boost_pressure, compliance, coolant_temperature, discarded_temperatures, engine_running,
     engine_state_speed, exhaust_blend_at, init_real_lerp, options_first_gate, pedal_cosine, rev_gate, set_cut_flags,

@@ -1,12 +1,13 @@
 //! The typed storage a step holds (B2, `notes/physics.md` "Store seam"): [`Typed`], the car's typed subsystems
 //! ([`CarTyped`]) and the stage they run on. The car's are lifted from the image together and lowered together; the
 //! struts and the tyres are borrowed by each of their runs (their runs do not nest); the VCU's state is in a cell, since its runs call
-//! each other through the host. The stage is lifted once per loaded stage and never lowered (a step only reads it).
+//! each other through the host, and the drive's is borrowed per access for the same reason. The stage is lifted once per loaded stage and never lowered (a step only reads it).
 
 use std::cell::RefCell;
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::engine_driveline::layout::CarDrive;
 use crate::mem::Mem;
 use crate::spring_damper::layout::CarStruts;
 use crate::stage::typed::Stage;
@@ -34,6 +35,7 @@ impl Typed {
 pub struct CarTyped {
     pub struts: RefCell<CarStruts>,
     pub vcu: CarVcu,
+    pub drive: CarDrive,
     pub tyres: RefCell<CarTyres>,
 }
 
@@ -43,6 +45,7 @@ impl CarTyped {
         CarTyped {
             struts: RefCell::new(CarStruts::lift(mem, car)),
             vcu: CarVcu::lift(mem, car),
+            drive: CarDrive::lift(mem, car),
             tyres: RefCell::new(CarTyres::lift(mem, car)),
         }
     }
@@ -51,6 +54,7 @@ impl CarTyped {
     pub fn lower(&self, mem: &mut Mem) {
         self.struts.borrow().lower(mem);
         self.vcu.lower(mem);
+        self.drive.lower(mem);
         self.tyres.borrow().lower(mem);
     }
 
@@ -58,6 +62,7 @@ impl CarTyped {
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         let mut owned = self.struts.borrow().owned();
         owned.extend(self.vcu.owned());
+        owned.extend(self.drive.owned());
         owned.extend(self.tyres.borrow().owned());
         owned
     }
@@ -68,6 +73,7 @@ impl CarTyped {
 pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(crate::spring_damper::layout::round_trip(mem, car)?
         + crate::vcu::layout::round_trip(mem, car)?
+        + crate::engine_driveline::layout::drive_round_trip(mem, car)?
         + crate::tyre::layout::round_trip(mem, car)?
         + crate::stage::layout::round_trip(mem)?)
 }

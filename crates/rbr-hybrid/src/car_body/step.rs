@@ -324,6 +324,11 @@ impl StepCalls for Car<'_> {
         self.host.call(EMIT_POSITION, emitter, &[at]);
     }
 
+    fn drive_engine_speed(&mut self, mem: &mut Mem, drive: u32) -> u32 {
+        use rbr_physics::engine_driveline::store::DriveStore;
+        crate::engine_driveline::on_drive_in(self.host, mem, drive, |d| d.state().engine_speed.to_bits())
+    }
+
     fn emit_car_state(&mut self, mem: &mut Mem, payload: [u32; 3]) {
         let at = self.payload(&payload);
         let emitter = mem.u32(SIGNALS) + MRR_EMITTER;

@@ -5,16 +5,29 @@ use rbr_physics::engine_driveline::{drive_curve, drive_worker, layout, sim};
 use rbr_physics::mem::Mem;
 use rbr_physics::stage::store::StageStore;
 
-use super::{f, E12_SAMPLE_X};
+use super::{f, held_ring, held_wheel, on_drive, E12_SAMPLE_X};
 use crate::{Ctx, Decline, Regs, Return};
-use rbr_physics::engine_driveline::store::EngineStore;
+use rbr_physics::engine_driveline::store::{DriveStore, EngineStore};
+use rbr_physics::store::{Raw, Value};
 
-/// stdcall `(v, p)`, st0: the ring at `p` takes `v`, and the mean is returned.
+/// stdcall `(v, p)`, st0: the ring at `p` takes `v`, and the mean is returned: a held drive's typed ring where `p` is
+/// its, else the image's.
 pub(super) fn ring_average(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let p = r.stack[1];
-    let mut ring = layout::RatioRing::load(&ctx.mem, p);
-    let mean = drive_worker::ring_average(&mut ring, f(r.stack[0]));
-    ring.store(&mut ctx.mem, p);
+    let (v, p) = (f(r.stack[0]), r.stack[1]);
+    let mean = match held_ring(ctx.host, p) {
+        Some(drive) => on_drive(ctx, drive, |d| {
+            let mut ring = d.ratio_ring();
+            let mean = drive_worker::ring_average(&mut ring, v);
+            d.store_ratio_ring(&ring);
+            mean
+        }),
+        None => {
+            let mut ring = layout::RatioRing::load(&ctx.mem, p);
+            let mean = drive_worker::ring_average(&mut ring, v);
+            ring.store(&mut ctx.mem, p);
+            mean
+        }
+    };
     Ok(Return::float(mean as f64, 8))
 }
 
@@ -31,33 +44,50 @@ pub(super) fn unsigned_table_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Dec
     Ok(Return::float(v, 0x14))
 }
 
+/// The curve state at `b` (a wheel's block of a drive state) for `run`, and written back: a held drive's typed wheel,
+/// else the image's.
+fn on_curve_state<T>(ctx: &mut Ctx, b: u32, run: impl FnOnce(&Mem, &mut layout::CurveState) -> T) -> T {
+    match held_wheel(ctx.host, b) {
+        Some((drive, k)) => on_drive(ctx, drive, |d| {
+            let mut state = d.curve_state(k);
+            let out = run(d.mem(), &mut state);
+            d.store_curve_state(k, &state);
+            out
+        }),
+        None => {
+            let mut state = layout::CurveState::load(&ctx.mem, b);
+            let out = run(&ctx.mem, &mut state);
+            state.store(&mut ctx.mem, b);
+            out
+        }
+    }
+}
+
 /// stdcall `(dt, a, b, c, n, s)`, eax: `E39_WorkerF60`, the row `a` and the state `b`; eax is 1 when the counter counted.
 pub(super) fn count_down(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let row = layout::CurveRow::load(&ctx.mem, r.stack[1]);
-    let tables = layout::CurveTables::load(&ctx.mem, r.stack[4]);
-    let block_gain = ctx.mem.curve_gain(r.stack[3]);
-    let mut state = layout::CurveState::load(&ctx.mem, r.stack[2]);
-    let ok = drive_curve::count_down(f(r.stack[0]), &row, &mut state, &tables, block_gain, f(r.stack[5]));
-    state.store(&mut ctx.mem, r.stack[2]);
+    let [dt, a, b, c, n, s, ..] = r.stack;
+    let ok = on_curve_state(ctx, b, |mem, state| {
+        let row = layout::CurveRow::load(mem, a);
+        let tables = layout::CurveTables::load(mem, n);
+        let block_gain = layout::BrakeBlock::gain(mem, c);
+        drive_curve::count_down(f(dt), &row, state, &tables, block_gain, f(s))
+    });
     Ok(Return::void(u32::from(ok), 0x18))
 }
 
 /// stdcall `(dt, b, c, n, s)`, st0: `E39_Worker4060`, the row the block `c` picks in the def `n`.
 pub(super) fn row_value(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [dt, b, c, n, s, ..] = r.stack;
-    let v = row_value_at(&mut ctx.mem, f(dt), b, c, n, f(s));
+    let v = on_curve_state(ctx, b, |mem, state| row_value_of(mem, state, f(dt), c, n, f(s)));
     Ok(Return::float(v, 0x14))
 }
 
-/// `E39_Worker4060` on the state `b`, the block `c` and the def `n`.
-pub(crate) fn row_value_at(mem: &mut Mem, dt: f32, b: u32, c: u32, n: u32, s: f32) -> f64 {
-    let row = layout::CurveRow::load(mem, layout::curve_row_at(n, mem.curve_index(c)));
+/// `E39_Worker4060` on the curve state `state`, the block `c` and the def `n` (read on `mem`).
+pub(crate) fn row_value_of(mem: &Mem, state: &mut layout::CurveState, dt: f32, c: u32, n: u32, s: f32) -> f64 {
+    let row = layout::CurveRow::load(mem, layout::curve_row_at(n, layout::BrakeBlock::row_index(mem, c)));
     let tables = layout::CurveTables::load(mem, n);
-    let block_gain = mem.curve_gain(c);
-    let mut state = layout::CurveState::load(mem, b);
-    let v = drive_curve::row_value(dt, &row, &mut state, &tables, block_gain, s);
-    state.store(mem, b);
-    v
+    let block_gain = layout::BrakeBlock::gain(mem, c);
+    drive_curve::row_value(dt, &row, state, &tables, block_gain, s)
 }
 
 /// stdcall `(x)`, `ret 4`, st0: `E12_SampleX` (0x475ea0), the drive line's value at `x`. The original asserts outside the

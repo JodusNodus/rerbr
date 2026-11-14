@@ -105,8 +105,6 @@ pub trait CarStore: Raw {
     fn timer_word(&self) -> u32;
     /// The car's position lanes (four words), the start of the position payload.
     fn position_words(&self, car: u32) -> [u32; 4];
-    /// The last word of the car state payload, as bits: a float of the drive.
-    fn car_state_word(&self, car: u32) -> u32;
     /// The drive's sensor block: its count and scale are the sensor payload's words 11 and 12.
     fn sensor_block(&self, car: u32) -> u32;
     /// The block's count, read as a signed integer by the sensor sampler.

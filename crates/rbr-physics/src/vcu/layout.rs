@@ -2,10 +2,11 @@
 //! 0xcac bytes), the unit's state (`CState`, 0x68 bytes) and the per-step scratch (`CScratchSim`).
 //! Offsets are the original's (rbr-recomp `notes/physics/renames/vcu.csv`, `notes/physics.md` "VCU"); this file alone
 //! knows them. The unit's typed state ([`Unit`]: the scratch's and the state's changing words) lifts from its image
-//! ([`VcuImage`]) and lowers back; [`VcuView`] is the store over it ([`with_vcu`] per call), with the definition, the
-//! pointers and the drive's blocks read and written on the image.
+//! ([`VcuImage`]) and lowers back; [`VcuView`] is the store over it ([`with_vcu`] per call), with the definition and
+//! the pointers read on the image and the drive's blocks on the drive's typed state (`engine_driveline::layout`).
 
 use super::store::{DriveBlocks, VcuStore};
+use crate::engine_driveline::layout::{CarDrive, DriveRef};
 use crate::mem::Mem;
 use crate::store::Real;
 
@@ -89,13 +90,6 @@ const LAUNCH_CLUTCH: u32 = StateObj::launch_clutch.at + 12;
 const PEDAL_SWAP: u32 = StateObj::pedal_swap.at;
 const GEAR_TIMER: u32 = StateObj::gear_timer.at;
 const SHIFT_COOLDOWN: u32 = StateObj::shift_cooldown.at;
-
-/// The drive state's gear fields the VCU reads (`CDrive::CState`, rbr-recomp
-/// `notes/physics/renames/engine-driveline.csv`).
-const DRIVE_STATE_GEAR: u32 = 0x54c;
-const DRIVE_STATE_COMMANDED_GEAR: u32 = 0x570;
-const DRIVE_STATE_CHANGED: u32 = 0x56c;
-const DRIVE_STATE_SLIP: u32 = 0x55c;
 
 /// One knot of a pedal map. Records are 0x10 bytes apart; the value is at +0x0c.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -566,8 +560,6 @@ pub trait VcuCalls {
     fn set_neutral_light(&mut self, lights: u32, on: bool);
     /// `E50_QuerySlip` (fastcall on the unit's scratch), as FlagDispatch calls it.
     fn query_slip(&mut self) -> bool;
-    /// `NTweak::CBase::SetDirty` on `object`, as `CDrive::M6840` calls it.
-    fn set_dirty(&mut self, object: u32);
 }
 
 // The VCU functions' sequences, one per original entry, generic over the store (moved from the bindings in
@@ -727,13 +719,17 @@ pub fn apply_packet<S: VcuStore + DriveBlocks>(
     on
 }
 
-/// `CDrive::M6840 (value)`, the drive's own: `SetDirty` on the gear block's `+0x564`, then the commanded gear at
-/// `+0x570`; the request flag is not touched.
-pub fn set_commanded_gear(mem: &mut Mem, calls: &mut impl VcuCalls, drive: u32, value: u32) {
-    let count = mem.gear_count(drive);
-    let gears = mem.u32(drive + DRIVE_STATE);
-    calls.set_dirty(gears + 0x564);
-    mem.set_u32(gears + DRIVE_STATE_COMMANDED_GEAR, super::gear::commanded_gear(count, value));
+/// `CDrive::M6840 (value)`, the drive's own: `SetDirty` on the gear request (the drive state's `+0x564`, whose dirty
+/// word is [`Gearbox::changed`]), then the commanded gear at `+0x570`. The caller makes the `SetDirty` call before
+/// this; `dirty` sets the flag here instead, where the caller skipped it (`SetDirty`'s one write is the flag, to 1).
+pub fn set_commanded_gear<S: DriveBlocks>(store: &mut S, drive: u32, value: u32, dirty: bool) {
+    let count = store.gear_count(drive);
+    let mut gears = store.gearbox(drive);
+    if dirty {
+        gears.changed = 1;
+    }
+    gears.commanded = super::gear::commanded_gear(count, value);
+    store.store_gearbox(drive, &gears);
 }
 
 /// `CScratchSim::Step (dt)` (`gear`, with the gear logic) or `StepBasic`. It writes the state, the drive's gear block
@@ -906,85 +902,6 @@ pub fn packet(mem: &Mem, at: u32) -> Packet {
     }
 }
 
-/// The drive's gear block (`CDrive::Get08`, `[drive + 8]`, its state).
-const DRIVE_STATE: u32 = 0x08;
-/// The drive's definition (`[drive + 4]`).
-const DRIVE_DEF: u32 = 0x04;
-
-/// The gear fields of the drive state at `at` (the drive's `[drive + 8]`).
-pub fn gearbox_at(mem: &Mem, at: u32) -> Gearbox {
-    Gearbox {
-        gear: mem.u32(at + DRIVE_STATE_GEAR),
-        commanded: mem.u32(at + DRIVE_STATE_COMMANDED_GEAR),
-        changed: mem.u32(at + DRIVE_STATE_CHANGED),
-        slip: mem.u32(at + DRIVE_STATE_SLIP),
-    }
-}
-
-/// The drive's blocks on the image, where they are the drive's (`vcu::store`).
-impl DriveBlocks for Mem {
-    fn gearbox(&self, drive: u32) -> Gearbox {
-        gearbox_at(self, self.u32(drive + DRIVE_STATE))
-    }
-
-    fn store_gearbox(&mut self, drive: u32, value: &Gearbox) {
-        let at = self.u32(drive + DRIVE_STATE);
-        self.set_u32(at + DRIVE_STATE_GEAR, value.gear);
-        self.set_u32(at + DRIVE_STATE_COMMANDED_GEAR, value.commanded);
-        self.set_u32(at + DRIVE_STATE_CHANGED, value.changed);
-        self.set_u32(at + DRIVE_STATE_SLIP, value.slip);
-    }
-
-    /// Gear count of the drive's own definition (`[drive + 4] + 0x654`), which `CDrive::Set47B0` clamps to.
-    fn gear_count(&self, drive: u32) -> u32 {
-        self.u32(self.u32(drive + DRIVE_DEF) + 0x654)
-    }
-
-    fn gear_ratios(&self, drive: u32) -> GearRatios {
-        let def = self.u32(drive + DRIVE_DEF);
-        GearRatios {
-            lower_ratio: std::array::from_fn(|g| self.f32(def + 0x644 + 0x50 * g as u32)),
-            ratio: std::array::from_fn(|g| self.f32(def + 0x694 + 0x50 * g as u32)),
-        }
-    }
-
-    fn outputs(&self, drive: u32) -> Outputs {
-        let drive_state = self.u32(drive + DRIVE_STATE);
-        let def = self.u32(drive + DRIVE_DEF);
-        let locks = Locks {
-            ratio: std::array::from_fn(|ch| self.f32(drive_state + 0x14 * ch as u32 + 0x0c)),
-            enabled: self.u32(self.u32(drive + 0x170) + 0x90) != 0,
-            max_torque: std::array::from_fn(|ch| self.f32(def + 0x58 + 0x60 * ch as u32)),
-            torque: std::array::from_fn(|ch| self.f32(drive_state + 0x14 * ch as u32 + 0x18)),
-        };
-        let reals = Reals {
-            throttle: self.f32(drive + 0x2c),
-            brake: self.f32(drive + 0x3c),
-            brake_scaled: self.f32(drive + 0x70),
-            clutch_slip: self.f32(drive + 0x60),
-            brake_scale: self.f32(def + 0x620),
-        };
-        Outputs { locks, reals }
-    }
-
-    fn store_outputs(&mut self, drive: u32, value: &Outputs) {
-        let drive_state = self.u32(drive + DRIVE_STATE);
-        for (ch, &torque) in value.locks.torque.iter().enumerate() {
-            self.set_f32(drive_state + 0x14 * ch as u32 + 0x18, torque);
-        }
-        let reals = &value.reals;
-        for (dirty, value, v) in [
-            (0x28, 0x2c, reals.throttle),
-            (0x38, 0x3c, reals.brake),
-            (0x6c, 0x70, reals.brake_scaled),
-            (0x5c, 0x60, reals.clutch_slip),
-        ] {
-            self.set_u32(drive + dirty, 1);
-            self.set_f32(drive + value, v);
-        }
-    }
-}
-
 /// Where a unit's typed state lives in the image: its scratch, and the definition and state the scratch points at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VcuImage {
@@ -1101,9 +1018,10 @@ impl CarVcu {
         self.image.scratch == scratch
     }
 
-    /// The unit as a store: its state here, its definition, pointers and the drive's blocks in `mem`.
-    pub fn view<'a>(&'a self, mem: &'a mut Mem) -> VcuView<'a> {
-        VcuView { mem, image: &self.image, unit: &self.unit }
+    /// The unit as a store: its state here, its definition and pointers in `mem`; the drive's blocks `drive`'s where it
+    /// is the unit's drive, else the image's.
+    pub fn view<'a>(&'a self, mem: &'a mut Mem, drive: Option<&'a CarDrive>) -> VcuView<'a> {
+        VcuView { mem, image: &self.image, unit: &self.unit, drive }
     }
 
     /// Every owned byte range, named.
@@ -1116,7 +1034,7 @@ impl CarVcu {
 /// per-call path, on which the image holds the unit between calls.
 pub fn with_vcu<T>(mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
     let one = CarVcu::of(mem, scratch);
-    let out = run(&mut one.view(mem));
+    let out = run(&mut one.view(mem, None));
     one.lower(mem);
     out
 }
@@ -1140,11 +1058,13 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
 }
 
 /// A unit in typed storage as a [`VcuStore`]: the state in [`CarVcu`], the definition and the pointers read from the
-/// image; and the drive's blocks, on the image ([`DriveBlocks`]).
+/// image; and the drive's blocks ([`DriveBlocks`]), the drive's typed state (held in `drive`, else per access on the
+/// image).
 pub struct VcuView<'a> {
     mem: &'a mut Mem,
     image: &'a VcuImage,
     unit: &'a std::cell::Cell<Unit>,
+    drive: Option<&'a CarDrive>,
 }
 
 impl VcuStore for VcuView<'_> {
@@ -1182,29 +1102,35 @@ impl VcuStore for VcuView<'_> {
     }
 }
 
+impl VcuView<'_> {
+    fn drive(&self, drive: u32) -> DriveRef<'_> {
+        DriveRef::of(self.mem, self.drive, drive)
+    }
+}
+
 impl DriveBlocks for VcuView<'_> {
     fn gearbox(&self, drive: u32) -> Gearbox {
-        self.mem.gearbox(drive)
+        self.drive(drive).gearbox(self.mem)
     }
 
     fn store_gearbox(&mut self, drive: u32, value: &Gearbox) {
-        self.mem.store_gearbox(drive, value)
+        DriveRef::of(self.mem, self.drive, drive).store_gearbox(self.mem, value)
     }
 
     fn gear_count(&self, drive: u32) -> u32 {
-        self.mem.gear_count(drive)
+        self.drive(drive).gear_count(self.mem)
     }
 
     fn gear_ratios(&self, drive: u32) -> GearRatios {
-        self.mem.gear_ratios(drive)
+        self.drive(drive).gear_ratios(self.mem)
     }
 
     fn outputs(&self, drive: u32) -> Outputs {
-        self.mem.outputs(drive)
+        self.drive(drive).outputs(self.mem)
     }
 
     fn store_outputs(&mut self, drive: u32, value: &Outputs) {
-        self.mem.store_outputs(drive, value)
+        DriveRef::of(self.mem, self.drive, drive).store_outputs(self.mem, value)
     }
 }
 

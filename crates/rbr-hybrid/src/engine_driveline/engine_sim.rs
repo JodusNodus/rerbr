@@ -8,7 +8,6 @@ use rbr_physics::mem::Mem;
 use super::{f, E01LOG, FLOOR_S32_FORMAT, GRAPH_PUSH, MB560, SIGNALS, WALKER};
 use crate::ngp::engine_tuning;
 use crate::{Ctx, Decline, Host, Regs, Return};
-use rbr_physics::engine_driveline::store::EngineStore;
 
 /// thiscall `()`, st0.
 pub(super) fn abs_rpm_term(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -331,7 +330,7 @@ pub(super) fn turbo_energy_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decli
 /// thiscall `(setup)`, `ret 4`: `CDrive::M8770` (0x508770), the setup into the drive's definition
 /// (`layout::drive_setup_into_def`).
 pub(super) fn drive_setup(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let def = ctx.mem.drive_def(r.ecx);
+    let def = layout::DriveObjects::at(&ctx.mem, r.ecx).def;
     layout::drive_setup_into_def(&mut ctx.mem, def, r.stack[0]);
     Ok(Return::void(0, 4))
 }

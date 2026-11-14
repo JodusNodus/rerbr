@@ -1,7 +1,6 @@
 //! The VCU's stores (`crate::store`): the unit's typed state, its definition and the objects its calls go to
-//! ([`VcuStore`]), and the drive's blocks it reads and writes ([`DriveBlocks`]). The drive's blocks are the drive's
-//! objects: its own step and setters read and write them in the same step, so they stay on the image until the drive's
-//! state is typed. `layout.rs` implements both on `VcuView`, and the drive's blocks on `Mem`.
+//! ([`VcuStore`]), and the drive's blocks it reads and writes ([`DriveBlocks`]). The drive's blocks are words of the
+//! drive's typed state (`engine_driveline::layout::DriveRef`); `layout.rs` implements both on `VcuView`.
 
 use super::layout::{Def, GearRatios, Gearbox, Outputs, Scratch, SimParts, State};
 

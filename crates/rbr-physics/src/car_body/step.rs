@@ -77,6 +77,8 @@ pub trait StepCalls<S = Mem> {
     fn check_retire(&mut self, mem: &mut S, car: u32, v: u32);
     /// The position signal: the car's position lanes and the timer word, 20 bytes.
     fn emit_position(&mut self, mem: &mut S, payload: [u32; 5]);
+    /// The drive state's engine speed (rad/s, as bits): the car state payload's last word, from the drive's typed state.
+    fn drive_engine_speed(&mut self, mem: &mut S, drive: u32) -> u32;
     /// The car state signal: the car, its sort key and a float of the drive, 12 bytes.
     fn emit_car_state(&mut self, mem: &mut S, payload: [u32; 3]);
 }
@@ -189,6 +191,6 @@ pub fn step_car<S: CarStore>(calls: &mut impl StepCalls<S>, mem: &mut S, car: u3
     let words = mem.position_words(car);
     let timer_word = mem.timer_word();
     calls.emit_position(mem, [words[0], words[1], words[2], words[3], timer_word]);
-    let payload = [car, mem.sort_key(car), mem.car_state_word(car)];
+    let payload = [car, mem.sort_key(car), calls.drive_engine_speed(mem, layout::drive_at(car))];
     calls.emit_car_state(mem, payload);
 }

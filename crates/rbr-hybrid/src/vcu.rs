@@ -119,11 +119,6 @@ impl VcuCalls for VcuHost<'_> {
     fn query_slip(&mut self) -> bool {
         self.host.call_at(self.esp - 0x10, QUERY_SLIP, self.scratch, &[]).eax != 0
     }
-
-    /// Entered two words below `M6840`'s entry.
-    fn set_dirty(&mut self, object: u32) {
-        self.host.call_at(self.esp - 12, SET_DIRTY, object, &[]);
-    }
 }
 
 fn calls<'a>(host: &'a dyn Host, r: &Regs) -> VcuHost<'a> {
@@ -140,7 +135,7 @@ fn f(bits: u32) -> f32 {
 pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
     if let Some(typed) = ctx.host.typed() {
         if typed.car.vcu.is(scratch) {
-            return run(&mut typed.car.vcu.view(&mut ctx.mem));
+            return run(&mut typed.car.vcu.view(&mut ctx.mem, Some(&typed.car.drive)));
         }
     }
     layout::with_vcu(&mut ctx.mem, scratch, run)
@@ -252,9 +247,19 @@ fn apply_packet(ctx: &mut Ctx, r: &Regs, packet: rbr_physics::vcu::layout::Packe
     Ok(Return::void(on as u32, 4))
 }
 
-/// thiscall `(value)`, `ret 4`: `CDrive::M6840` (0x506840), the drive's own, on the image.
+/// thiscall `(value)`, `ret 4`: `CDrive::M6840` (0x506840), the drive's own. Its `SetDirty` on the gear request,
+/// entered two words below its entry, runs through the host; on a held drive it is skipped (its word is the typed
+/// state's) and the port sets the flag.
 fn set_commanded_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::set_commanded_gear(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, r.stack[0]);
+    let (drive, value) = (r.ecx, r.stack[0]);
+    let sp = r.esp - 12;
+    let skipped =
+        crate::engine_driveline::is_held(ctx.host, drive) && crate::skip_call(ctx.host, &mut ctx.mem, sp, &[]);
+    if !skipped {
+        let request = rbr_physics::engine_driveline::layout::gear_request_at(&ctx.mem, drive);
+        ctx.host.call_at(sp, SET_DIRTY, request, &[]);
+    }
+    crate::engine_driveline::on_drive(ctx, drive, |d| layout::set_commanded_gear(d, drive, value, skipped));
     Ok(Return::void(0, 4))
 }
 
@@ -328,16 +333,17 @@ mod tests {
         ctx.mem.set_f32(def + 0x158, 0.25);
         ctx.mem.map(state, &[0; 0x6c]);
         ctx.mem.set_u32(state + 0x68, car);
-        ctx.mem.map(drive, &[0; 0x10]);
+        // The drive and its state whole: the drive's blocks are its typed state, lifted per access.
+        ctx.mem.map(drive, &[0; 0x200]);
         ctx.mem.set_u32(drive + 4, drive_def);
         ctx.mem.set_u32(drive + 8, gears);
         ctx.mem.map(drive_def, &[0; 0x658]);
         ctx.mem.set_u32(drive_def + 0x654, 6);
-        ctx.mem.map(gears, &[0; 0x574]);
+        ctx.mem.map(gears, &[0; 0x5c0]);
         ctx.mem.set_u32(gears + 0x54c, 2);
         ctx.mem.set_u32(gears + 0x570, 2);
         assert_eq!(gearbox_update(&mut ctx, &regs(this, &[0.01f32.to_bits()])), Ok(Return::void(0, 4)));
-        let got = layout::gearbox_at(&ctx.mem, gears);
+        let got = rbr_physics::engine_driveline::layout::DriveRef::of(&ctx.mem, None, drive).gearbox(&ctx.mem);
         assert_eq!((got.gear, got.commanded, got.changed), (2, 3, 1));
         let got = layout::VcuImage::of(&ctx.mem, this).lift(&ctx.mem).state;
         assert_eq!((got.shift_lockout, got.shift_cooldown), (0.25, 0.05));
