@@ -2051,7 +2051,7 @@ impl RecordedSnap<'_> {
     }
 }
 
-impl layout::Snap9360Calls for RecordedSnap<'_> {
+impl layout::SnapshotCalls for RecordedSnap<'_> {
     fn compose_body_into_world(&mut self, _mem: &mut Mem, _sp: u32, car: u32, a: u32, out: u32) {
         let post = self.inner(0, 0x4E8130, &[car, a, out]).windows[1].after.clone();
         self.mem.map(out, &post);
@@ -2644,7 +2644,7 @@ impl Collide6000Recorded<'_> {
     }
 }
 
-impl layout::Collide6000Calls for Collide6000Recorded<'_> {
+impl layout::EdgeProbeCalls for Collide6000Recorded<'_> {
     fn grid(&mut self, _sp: u32, _car: u32, _target: u32) -> u32 {
         self.grid
     }
@@ -2672,7 +2672,7 @@ fn car_collide6000_matches_direct_records() {
         let [car, a, b, c] = call.args[..4].try_into().expect("Collide6000 four words");
         // The grid getter's slot is read from the car's vtable, which the windows do not cover (its target is not checked).
         mem.map(mem.u32(car) + 0x118, &[0; 4]);
-        layout::collide6000(&mut mem, car, a, b, c, frame, &mut host);
+        layout::edge_probe(&mut mem, car, a, b, c, frame, &mut host);
         assert_eq!(host.next, call.inner.len(), "Collide6000 nested calls");
         check_windows(call, &mem, "CCar::Collide6000");
     }
@@ -2769,7 +2769,7 @@ fn assist_8df0_matches_original_calls() {
         let mut mem = map_windows(call);
         let car = call.args[0];
         let mut answers = RecordedAssist { call, next: 0, lane: 0 };
-        layout::assist_8df0(&mut answers, &mut mem, car, ENTRY, call.args[1], call.args[2], call.args[3]);
+        layout::outside_assistance(&mut answers, &mut mem, car, ENTRY, call.args[1], call.args[2], call.args[3]);
         let post = call.windows.iter().find(|w| w.index == 0).map(|w| w.after.clone()).expect("the car window");
         for off in [0x15E4, 0x1670, 0x1680, 0x1684, 0x1688, 0x168C, 0x9F0, 0xAEC] {
             let theirs = u32::from_le_bytes(window_post(call, car, off, &post));
@@ -2785,15 +2785,15 @@ struct RecordedVf158<'a> {
     entry: u32,
 }
 
-impl layout::Vf158xCalls for RecordedVf158<'_> {
-    fn slot0(&mut self, mem: &Mem, target: u32, _sp: u32, car: u32) {
+impl layout::CarSoftenCalls for RecordedVf158<'_> {
+    fn entity_name(&mut self, mem: &Mem, target: u32, _sp: u32, car: u32) {
         let inner = record_after(self.call, &mut self.next, target);
         assert_eq!(target, 0x519950, "Vf158x call {}: slot 0 target", self.call.index);
         assert_eq!(inner.args, [car], "Vf158x call {}: slot 0 this", self.call.index);
         assert_eq!(inner.eax, entity_layout::entity_name(mem, car), "Vf158x call {}: slot 0 return", self.call.index);
     }
 
-    fn solid_vf158(&mut self, mem: &mut Mem, _sp: u32, car: u32) -> u32 {
+    fn solid_soften(&mut self, mem: &mut Mem, _sp: u32, car: u32) -> u32 {
         assert_eq!(self.call.addr, 0x4E5EE0);
         assert_eq!(self.call.args, [car]);
         let eax = self.call.eax;
@@ -2920,7 +2920,7 @@ fn vf158x_matches_original_calls() {
     for call in &calls {
         let mut mem = shared_windows(call);
         let mut host = RecordedVf158 { call, next: 0, entry: ENTRY };
-        let eax = layout::vf158x(&mut host, &mut mem, call.args[0], ENTRY);
+        let eax = layout::car_soften(&mut host, &mut mem, call.args[0], ENTRY);
         assert_eq!(eax, call.eax, "Vf158x call {}: eax", call.index);
         assert_eq!(host.next, call.inner.len(), "Vf158x call {}: records left", call.index);
         check_windows(call, &mem, "CCar::Vf158x");
@@ -3148,7 +3148,7 @@ impl RecordedRespawn<'_> {
     }
 }
 
-impl layout::Sampler54Calls for RecordedRespawn<'_> {
+impl layout::VoteCalls for RecordedRespawn<'_> {
     fn vote(&mut self, mem: &mut Mem, _sp: u32, probe_a: u32, probe_b: u32, raw: u32) -> u32 {
         let obj = self.call.inner[self.next..].iter().find(|c| c.addr == 0x4FE810).map_or(0, |c| c.args[0]);
         self.take(
@@ -3160,31 +3160,31 @@ impl layout::Sampler54Calls for RecordedRespawn<'_> {
     }
 }
 
-impl layout::Vf98xCalls for RecordedRespawn<'_> {
-    fn slot97(&mut self, mem: &mut Mem, _sp: u32, car: u32, sel: u32, sample: u32) {
+impl layout::CountdownCalls for RecordedRespawn<'_> {
+    fn respawn_pose(&mut self, mem: &mut Mem, _sp: u32, car: u32, sel: u32, sample: u32) {
         self.take(mem, SLOT97, car, &[(0, car, Before::All), (1, sel, Before::Lanes3), (2, sample, Before::Lanes3)]);
     }
 
-    fn m6840(&mut self, mem: &mut Mem, _sp: u32, drive: u32, value: u32) {
+    fn set_commanded_gear(&mut self, mem: &mut Mem, _sp: u32, drive: u32, value: u32) {
         let gears = mem.u32(drive + 8);
         let inner = record_on(self.call, &mut self.next, 0x506840, drive);
         assert_eq!(inner.args, [drive, value], "Vf98x call {}: M6840", self.call.index);
         answer(mem, inner, &[(0, gears, Before::All)], self.call.index);
     }
 
-    fn slot18(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
+    fn start_window(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
         self.take(mem, 0x529DC0, car, &[(0, car, Before::All)]);
     }
 }
 
-impl layout::Slot97Calls for RecordedRespawn<'_> {
+impl layout::RespawnPoseCalls for RecordedRespawn<'_> {
     fn respawn_car(&mut self, mem: &mut Mem, _sp: u32, car: u32, a: u32, b: u32) {
         self.take(mem, SLOT96, car, &[(0, car, Before::All), (1, a, Before::Lanes3), (2, b, Before::All)]);
     }
 }
 
-impl layout::Vf180Calls for RecordedRespawn<'_> {
-    fn slot17_e0(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
+impl layout::RespawnCalls for RecordedRespawn<'_> {
+    fn refresh_rotation(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
         self.take(mem, 0x529A50, car + 0xE0, &[(0, car + 0xE0, Before::All)]);
     }
 
@@ -3192,11 +3192,11 @@ impl layout::Vf180Calls for RecordedRespawn<'_> {
         self.take(mem, 0x4E8130, car, &[(0, car, Before::All), (1, a, Before::All), (2, out, Before::Output)]);
     }
 
-    fn clear_acc(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
+    fn clear_accumulators(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
         self.take(mem, 0x529E60, car, &[(0, car, Before::All)]);
     }
 
-    fn slot36(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
+    fn wake(&mut self, mem: &mut Mem, _sp: u32, car: u32) {
         self.take(mem, 0x52BF30, car, &[(0, car, Before::All)]);
     }
 
@@ -3240,7 +3240,7 @@ fn s184_matches_original_calls() {
         let mut mem = with_stack(map_windows(call));
         let mut host = RecordedRespawn { call, next: 0 };
         let [car, sel, sample] = call.args[..] else { panic!("S184 call {}: args", call.index) };
-        layout::slot97(&mut mem, &mut host, car, sel, sample, ENTRY);
+        layout::respawn_pose(&mut mem, &mut host, car, sel, sample, ENTRY);
         assert!(car == 0 || call.inner.last().is_some_and(|c| c.addr == SLOT96), "S184 call {}", call.index);
         check_windows(call, &mem, "CCar::S184");
     }

@@ -104,7 +104,8 @@ pub mod handler {
     /// The light system's damage block.
     pub const LIGHTS: u32 = 0x3B24;
 
-    /// Wheel `i`'s damage (0x38 bytes each), its value pair (8 bytes each) and its eight-byte value (0x20 each).
+    /// Wheel `i`'s damage (0x38 bytes each), its value pair (8 bytes each) and its eight floats (`CU32Value8`, 0x20
+    /// bytes each).
     pub fn wheel(handler: u32, i: u32) -> u32 {
         handler + 0x3C04 + 0x38 * i
     }
@@ -113,7 +114,7 @@ pub mod handler {
         handler + 0x3CE4 + 8 * i
     }
 
-    pub fn wheel_value8(handler: u32, i: u32) -> u32 {
+    pub fn wheel_floats(handler: u32, i: u32) -> u32 {
         handler + 0x3D04 + 0x20 * i
     }
 

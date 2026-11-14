@@ -23,7 +23,7 @@ impl rbr_physics::entities::layout::ClearBodiesCalls for Clear480Host<'_> {
 
 struct Collide6000Host<'a>(&'a dyn Host);
 
-impl layout::Collide6000Calls for Collide6000Host<'_> {
+impl layout::EdgeProbeCalls for Collide6000Host<'_> {
     fn grid(&mut self, sp: u32, car: u32, target: u32) -> u32 {
         self.0.call_at(sp, target, car, &[]).eax
     }
@@ -35,16 +35,16 @@ impl layout::Collide6000Calls for Collide6000Host<'_> {
 
 struct Vf128xHost<'a>(&'a dyn Host);
 
-impl layout::Vf128xCalls for Vf128xHost<'_> {
-    fn compose_a(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
+impl layout::CarImpulseCalls for Vf128xHost<'_> {
+    fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
         self.0.call_at(sp, COPY16_WALK, this, &[a, car, out]);
     }
 
-    fn collide6000(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
+    fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
         self.0.call_at(sp, 0x4e6000, car, &[m, f1, f2]);
     }
 
-    fn e43vf128(&mut self, sp: u32, car: u32, args: [u32; 8]) {
+    fn solid_impulse(&mut self, sp: u32, car: u32, args: [u32; 8]) {
         self.0.call_at(sp, crate::rigid_body::E43VF128, car, &args);
     }
 }
@@ -60,7 +60,7 @@ pub(super) fn clear480(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn collide6000(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = Collide6000Host(ctx.host);
-    layout::collide6000(&mut ctx.mem, r.ecx, a, b, c, r.esp, &mut calls);
+    layout::edge_probe(&mut ctx.mem, r.ecx, a, b, c, r.esp, &mut calls);
     Ok(Return::void(0, 0xc))
 }
 
@@ -68,7 +68,7 @@ pub(super) fn collide6000(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args: [u32; 8] = r.stack[..8].try_into().expect("Vf128x has eight stack words");
     let mut calls = Vf128xHost(ctx.host);
-    layout::vf128x(&mut ctx.mem, r.ecx, args, r.esp, &mut calls);
+    layout::car_impulse(&mut ctx.mem, r.ecx, args, r.esp, &mut calls);
     Ok(Return::void(0, 0x20))
 }
 
@@ -229,14 +229,14 @@ pub(super) fn get_b1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.
 pub(super) fn add_adc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::add_adc(&mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
+    layout::add_steer_torque_sum(&mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(i, j, v)`: `SetA1C` dirties the matrix cell and sets it.
 pub(super) fn set_a1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, v, ..] = r.stack;
-    layout::set_a1c(&mut ctx.mem, r.ecx, i, j, f32::from_bits(v));
+    layout::set_roll_bar_cell(&mut ctx.mem, r.ecx, i, j, f32::from_bits(v));
     Ok(Return::void(0, 12))
 }
 
@@ -259,7 +259,7 @@ pub(super) fn get_a48(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// called directly; the copies are the original's `E01Vec4::CopyFrom` on the host.
 pub(super) fn state_vf44x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = StateCallees { mem: ctx.mem.clone(), host: ctx.host };
-    let eax = layout::state_vf44x(&mut calls, &mut ctx.mem, r.ecx, scratch(r))
+    let eax = layout::reset_body_grid(&mut calls, &mut ctx.mem, r.ecx, scratch(r))
         .ok_or(Decline::Unsupported("the state has no owner (the original faults)"))?;
     Ok(Return::void(eax, 0))
 }

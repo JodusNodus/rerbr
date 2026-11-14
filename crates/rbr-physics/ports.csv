@@ -119,10 +119,10 @@ addr,module,rust_item,test,status
 0x4e58e0,car_body/forward.rs,car_body::forward::forward_to_drive,car_body_vectors::vf24x_forwards_to_drive_member,unit
 0x4e58f0,entities/slots.rs,entities::slots::clear_car_bodies,entities_vectors::clear480_and_exclusion_remove_match_direct_records,checked
 0x4e5cf0,car_body/accessors.rs,car_body::accessors::ground_direction,car_body_vectors::get_dir_matches_original_calls,checked
-0x4e5ee0,car_body/layout/car_calls.rs,car_body::layout::car_calls::vf158x,car_body_vectors::vf158x_matches_original_calls,checked
+0x4e5ee0,car_body/layout/car_calls.rs,car_body::layout::car_calls::car_soften,car_body_vectors::vf158x_matches_original_calls,checked
 0x4e5f20,car_body/wheel.rs,car_body::wheel::attach_wheel,car_body_vectors::vf150x_matches_original_calls,checked
-0x4e6000,car_body/layout/car_calls.rs,car_body::layout::car_calls::collide6000,car_body_vectors::car_collide6000_matches_direct_records,checked
-0x4e6100,car_body/layout/car_calls.rs,car_body::layout::car_calls::vf128x,entities_vectors::car_vf128x_matches_direct_records,checked
+0x4e6000,car_body/layout/car_calls.rs,car_body::layout::car_calls::edge_probe,car_body_vectors::car_collide6000_matches_direct_records,checked
+0x4e6100,car_body/layout/car_calls.rs,car_body::layout::car_calls::car_impulse,entities_vectors::car_vf128x_matches_direct_records,checked
 0x4e61f0,car_body/layout/construct.rs,car_body::layout::construct::construct_def,load_defs::ngp_definitions_match_the_game,checked
 0x4e65b0,car_body/layout/car.rs,car_body::layout::car::state_address,car_body_vectors::accessors_match_original_calls,checked
 0x4e65e0,car_body/layout/car.rs,car_body::layout::car::steer_target,car_body_vectors::accessors_match_original_calls,checked
@@ -163,7 +163,7 @@ addr,module,rust_item,test,status
 0x4e8b30,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
 0x4e8bf0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
 0x4e8cb0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,partial
-0x4e8df0,car_body/layout/car_calls.rs,car_body::layout::car_calls::assist_8df0,car_body_vectors::assist_8df0_matches_original_calls,checked
+0x4e8df0,car_body/layout/car_calls.rs,car_body::layout::car_calls::outside_assistance,car_body_vectors::assist_8df0_matches_original_calls,checked
 0x4e8fa0,car_body/layout/car_calls.rs,car_body::layout::car_calls::retire_announce,car_body_vectors::retire_a_matches_original_calls,checked
 0x4e9020,car_body/forces.rs,car_body::forces::apply_forces,car_body_vectors::vf64x_matches_original_calls,checked
 0x4e91f0,car_body/control.rs,car_body::control::apply_control,car_body_vectors::update_seed_matches_original_calls,checked
@@ -182,7 +182,7 @@ addr,module,rust_item,test,status
 0x4eb510,car_body/layout/construct.rs,car_body::layout::construct::construct_body_def,load_defs::ngp_definitions_match_the_game,checked
 0x4eb5e0,car_body/layout/construct.rs,car_body::layout::construct::body_def_after_parse,load_defs::ngp_definitions_match_the_game,checked
 0x4eb610,car_body/layout/construct.rs,car_body::layout::construct::construct_body,load_defs::car_instance_matches_the_game,checked
-0x4eb6a0,car_body/layout/body_points.rs,car_body::layout::body_points::state_vf44x,car_body_state::vf44x_calls_in_the_original_order,unit
+0x4eb6a0,car_body/layout/body_points.rs,car_body::layout::body_points::reset_body_grid,car_body_state::vf44x_calls_in_the_original_order,unit
 0x4eb730,car_body/layout/construct.rs,car_body::layout::construct::construct_body,load_defs::car_instance_matches_the_game,checked
 0x4eb820,car_body/body.rs,car_body::body::subtract_points,car_body_vectors::vf9cx_matches_original_calls,checked
 0x4eb8c0,car_body/body.rs,car_body::body::add_points,car_body_vectors::vfa0x_matches_original_calls,checked

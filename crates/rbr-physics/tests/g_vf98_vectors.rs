@@ -8,7 +8,7 @@
 mod common;
 
 use common::{load, map_windows, Call, Inner};
-use rbr_physics::car_body::layout::{self, Sampler54Calls};
+use rbr_physics::car_body::layout::{self, VoteCalls};
 use rbr_physics::mem::Mem;
 use rbr_physics::vcu::gear;
 use rbr_physics::vcu::store::VcuStore;
@@ -25,7 +25,7 @@ struct RecordedVote<'a> {
     votes: usize,
 }
 
-impl Sampler54Calls for RecordedVote<'_> {
+impl VoteCalls for RecordedVote<'_> {
     fn vote(&mut self, mem: &mut Mem, _sp: u32, _probe_a: u32, _probe_b: u32, raw: u32) -> u32 {
         let inner: &Inner = self
             .call

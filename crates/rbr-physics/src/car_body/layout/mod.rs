@@ -17,21 +17,22 @@ pub mod lights;
 mod offsets;
 pub mod wall_hit;
 
-pub use body_points::{scatter_points, state_vf44x};
+pub use body_points::{reset_body_grid, scatter_points};
 pub use callees::{
     publish, setup, virtual_target, wiring, DAMAGE_PUBLISH_SLOT, IDENTITY_SLOT, VEC4_CLEAR, VEC4_COPY_FROM,
 };
 pub use car::{
-    attach_lights, roll_bar_cell_at, roll_bar_force_at, scratch1690, state_address, steer_slew_at, steer_target_at,
-    steer_target_rate_at, steer_torque_sum_at, Real, ANGULAR_VELOCITY, DAMAGE_HANDLER, DIR_BACK, FLAG_50G, GRID_PUSHED,
-    PARTIAL_CONTACT, RACK_RATE, SNAPSHOT_ON, SPEED, SPEED_PRE, STATE, STEER_INPUT, STEP_COUNT, T_OVERRIDE, VELOCITY,
-    WALL_CONTACT, WALL_PENETRATION, WORLD,
+    attach_lights, roll_bar_cell_at, roll_bar_force_at, solid_scratch_at, state_address, steer_slew_at,
+    steer_target_at, steer_target_rate_at, steer_torque_sum_at, Real, ANGULAR_VELOCITY, DAMAGE_HANDLER, DIR_BACK,
+    GRID_PUSHED, OVERLOAD_FLAG, OVERRIDE_TIMER, PARTIAL_CONTACT, SNAPSHOT_ON, SPEED, SPEED_PRE, STATE, STEER_INPUT,
+    STEER_TARGET_RATE, STEP_COUNT, VELOCITY, WALL_CONTACT, WALL_PENETRATION, WORLD,
 };
 pub use car_calls::{
-    add_adc, assist_8df0, collide6000, lane_test, push_grid_edge, refresh_edge, reset_scratch_and_dispatch,
-    respawn_car, retire_announce, run_countdown, set_a1c, set_brake_light, set_neutral_light, slot97, snapshot,
-    speed_sum_at, split_17c, update_ffb_torque, vf128x, vf158x, vote_probe, Collide6000Calls, Sampler54Calls,
-    Slot97Calls, Snap9360Calls, Vf128xCalls, Vf158xCalls, Vf180Calls, Vf98xCalls, DRIVE_LINE,
+    add_steer_torque_sum, car_impulse, car_soften, drive_line_sample, edge_probe, lane_test, outside_assistance,
+    push_grid_edge, refresh_edge, reset_scratch_and_dispatch, respawn_car, respawn_pose, retire_announce,
+    run_countdown, set_brake_light, set_neutral_light, set_roll_bar_cell, snapshot, speed_sum_at, update_ffb_torque,
+    vote_probe, CarImpulseCalls, CarSoftenCalls, CountdownCalls, EdgeProbeCalls, RespawnCalls, RespawnPoseCalls,
+    SnapshotCalls, VoteCalls, DRIVE_LINE,
 };
 pub use car_parts::{
     drive_at, engine_at, hinged_slot, mounted_slot, passenger_at, scratch_at, wheel_list_at, Setup, TimeKeeperDiff,

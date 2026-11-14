@@ -69,11 +69,11 @@ pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     }
 }
 
-/// thiscall `(a, b, c)`, `ret 12`: `CCar::Assist8DF0`, the outside-assistance worker (`layout::assist_8df0`).
+/// thiscall `(a, b, c)`, `ret 12`: `CCar::Assist8DF0`, the outside-assistance worker (`layout::outside_assistance`).
 pub(super) fn assist_8df0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = car_calls(ctx, r);
-    car::layout::assist_8df0(&mut calls, &mut ctx.mem, r.ecx, r.esp, a, b, c);
+    car::layout::outside_assistance(&mut calls, &mut ctx.mem, r.ecx, r.esp, a, b, c);
     Ok(Return::void(0, 12))
 }
 
@@ -82,17 +82,17 @@ pub(super) fn vf158x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     struct Calls<'a> {
         host: &'a dyn Host,
     }
-    impl car::layout::Vf158xCalls for Calls<'_> {
-        fn slot0(&mut self, _mem: &Mem, target: u32, sp: u32, car: u32) {
+    impl car::layout::CarSoftenCalls for Calls<'_> {
+        fn entity_name(&mut self, _mem: &Mem, target: u32, sp: u32, car: u32) {
             self.host.call_at(sp, target, car, &[]);
         }
 
-        fn solid_vf158(&mut self, _mem: &mut Mem, sp: u32, car: u32) -> u32 {
+        fn solid_soften(&mut self, _mem: &mut Mem, sp: u32, car: u32) -> u32 {
             self.host.call_at(sp, 0x52c030, car, &[]).eax
         }
     }
     let mut calls = Calls { host: ctx.host };
-    let eax = car::layout::vf158x(&mut calls, &mut ctx.mem, r.ecx, r.esp);
+    let eax = car::layout::car_soften(&mut calls, &mut ctx.mem, r.ecx, r.esp);
     Ok(Return::void(eax, 0))
 }
 

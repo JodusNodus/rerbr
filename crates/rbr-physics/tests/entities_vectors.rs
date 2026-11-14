@@ -1611,22 +1611,22 @@ impl Vf128xRecorded<'_> {
     }
 }
 
-impl rbr_physics::car_body::layout::Vf128xCalls for Vf128xRecorded<'_> {
-    fn compose_a(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
+impl rbr_physics::car_body::layout::CarImpulseCalls for Vf128xRecorded<'_> {
+    fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
         assert_eq!(sp, self.frame - 0x3c);
         self.order.push(0x51b4c0);
         let index = self.find(0x51b4c0, &[this, a, car, out]);
         self.apply(index);
     }
 
-    fn collide6000(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
+    fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
         assert_eq!(sp, self.frame - 0x3c);
         self.order.push(0x4e6000);
         let index = self.find(0x4e6000, &[car, m, f1, f2]);
         self.apply(index);
     }
 
-    fn e43vf128(&mut self, sp: u32, car: u32, args: [u32; 8]) {
+    fn solid_impulse(&mut self, sp: u32, car: u32, args: [u32; 8]) {
         assert_eq!(sp, self.frame - 0x50);
         self.order.push(0x52a0e0);
         let mut expected = vec![car];
@@ -1653,7 +1653,7 @@ fn car_vf128x_matches_direct_records() {
         let frame = compose.args[3] + 0x1c;
         let args: [u32; 8] = call.args[1..9].try_into().expect("Vf128x eight args");
         let mut host = Vf128xRecorded { inner: &call.inner, mem: mem.clone(), frame, order: Vec::new() };
-        rbr_physics::car_body::layout::vf128x(&mut mem, call.args[0], args, frame, &mut host);
+        rbr_physics::car_body::layout::car_impulse(&mut mem, call.args[0], args, frame, &mut host);
         assert_eq!(host.order, [0x51b4c0, 0x4e6000, 0x52a0e0], "Vf128x nested order");
         host.finish();
         check_windows(call, &mem, "CCar::Vf128x");

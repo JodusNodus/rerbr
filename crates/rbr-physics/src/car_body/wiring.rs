@@ -30,7 +30,7 @@ pub fn wire_damage<S: CarStore>(calls: &mut impl WiringCalls<S>, mem: &mut S, ca
     calls.call(callee::LIGHTS_ATTACH, layout::light_system_at(car), &[damage + handler::LIGHTS]);
     for i in 0..4 {
         let wheel = mem.u32(layout::wheel_list_at(car, i));
-        let attach = [handler::wheel(damage, i), handler::wheel_pair(damage, i), handler::wheel_value8(damage, i)];
+        let attach = [handler::wheel(damage, i), handler::wheel_pair(damage, i), handler::wheel_floats(damage, i)];
         calls.call(callee::WHEEL_ATTACH, wheel, &attach);
         calls.call(callee::WHEEL_REFRESH, mem.u32(layout::wheel_list_at(car, i)), &[]);
     }

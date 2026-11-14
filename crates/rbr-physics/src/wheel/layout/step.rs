@@ -49,9 +49,9 @@ pub trait StepCalls {
     /// `CCar::GetA48` (0x4e6730, `CarStore::roll_bar_force`): the anti-roll bar's force on the cell `(id, slot)`; its st0
     /// result.
     fn roll_bar_force(&mut self, car: u32, id: u32, slot: u32, sp: u32) -> f32;
-    /// `CCar::AddADC` (0x4e6660, `car_body::layout::car_calls::add_adc`): adds `v` to the steered wheels' torque sum.
+    /// `CCar::AddADC` (0x4e6660, `car_body::layout::add_steer_torque_sum`): adds `v` to the steered wheels' torque sum.
     fn add_steer_torque(&mut self, car: u32, v: f32, sp: u32);
-    /// `CCar::SetA1C` (0x4e66a0, `car_body::layout::car_calls::set_a1c`): the anti-roll bar's cell `(id, slot)` takes `v`.
+    /// `CCar::SetA1C` (0x4e66a0, `car_body::layout::set_roll_bar_cell`): the anti-roll bar's cell `(id, slot)` takes `v`.
     fn set_roll_bar_cell(&mut self, car: u32, id: u32, slot: u32, v: f32, sp: u32);
     /// `CE36SubBlock::Init` (0x4f3e80) on the block at `this`.
     fn init_sub_block(&mut self, this: u32, sp: u32);

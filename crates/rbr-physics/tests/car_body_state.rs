@@ -1,8 +1,8 @@
-//! `CCarBody::CState::Vf44x` (`car_body::layout::state_vf44x`) against a recording of the state's calls: the order, the
+//! `CCarBody::CState::Vf44x` (`car_body::layout::reset_body_grid`) against a recording of the state's calls: the order, the
 //! bounds and the null owner. The asm decides (see `car_body/state.rs`).
 
 use rbr_physics::car_body::body_grid::{GridCalls, BOUND};
-use rbr_physics::car_body::layout::state_vf44x;
+use rbr_physics::car_body::layout::reset_body_grid;
 use rbr_physics::mem::Mem;
 
 #[derive(Debug, PartialEq)]
@@ -37,7 +37,7 @@ fn vf44x_calls_in_the_original_order() {
     let mut mem = Mem::new();
     mem.set_u32(state + 0x40, 0x2000);
     let mut calls = Record::default();
-    let eax = state_vf44x(&mut calls, &mut mem, state, scratch);
+    let eax = reset_body_grid(&mut calls, &mut mem, state, scratch);
     assert_eq!(eax, Some(state + 0x30));
     assert_eq!(
         calls.0,
@@ -62,7 +62,7 @@ fn vf44x_without_an_owner_writes_nothing() {
     mem.set_u32(state + 0x40, 0);
     mem.set_u32(state + 0x1c, 0);
     let mut calls = Record::default();
-    assert_eq!(state_vf44x(&mut calls, &mut mem, state, 0x5000), None);
+    assert_eq!(reset_body_grid(&mut calls, &mut mem, state, 0x5000), None);
     assert!(calls.0.is_empty());
     assert_eq!(mem.u32(state + 0x1c), 0);
 }
