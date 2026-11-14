@@ -7,7 +7,8 @@
 //! (`stage::layout::round_trip`, `differential`) and the typed definitions' answers (`store::defs::differential`); the
 //! wheel's, the engine's, the car's, the collision's and the core's entries per call against held
 //! (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`, `car_body::layout::differential`,
-//! `collision::layout::differential`, `physics_core::layout::typed::differential`).
+//! `collision::layout::differential`, `physics_core::layout::typed::differential`); the car's solids' round trip and
+//! their host-free entries per call against held (`rigid_body::layout::{round_trip, differential}`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
@@ -20,6 +21,7 @@ use rbr_physics::car_body::layout as car_body;
 use rbr_physics::collision::layout as collision;
 use rbr_physics::engine_driveline::layout as drive;
 use rbr_physics::physics_core::layout::typed as core;
+use rbr_physics::rigid_body::layout as rigid;
 use rbr_physics::snapshot::Snapshot;
 use rbr_physics::spring_damper::layout as spring;
 use rbr_physics::stage::layout as stage;
@@ -80,6 +82,7 @@ fn main() -> ExitCode {
             ("car", car_body::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("core", core::round_trip(&mem), "typed bytes equal after lower(lift)"),
             ("collision", collision::round_trip(&mem), "typed bytes equal after lower(lift)"),
+            ("solids", rigid::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
             ("definitions", store::defs::differential(&mem, car), "answer bytes equal to the image's"),
@@ -103,6 +106,11 @@ fn main() -> ExitCode {
                 "core entries",
                 // The entries' frames go below the snapshot's stack pointer.
                 core::differential(&mut snap.mem(), &mut snap.mem(), snap.metadata().registers.esp - 0x400),
+                "bytes equal per call and held",
+            ),
+            (
+                "solid entries",
+                rigid::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x400),
                 "bytes equal per call and held",
             ),
             (

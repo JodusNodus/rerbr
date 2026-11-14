@@ -108,7 +108,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Downforce, air density | `ngp/downforce.rs`, `ngp/atmosphere.rs` | `ngp::downforce::downforce`, `ngp::atmosphere::atmosphere` |
 | Brakes | `ngp/brake.rs`, `engine_driveline/drive.rs` | `ngp::brake::brake_step` (torque, disc temperatures), `engine_driveline::drive::set_brake_in` |
 | Steering | `car_body/controls.rs` | `car_body::controls::step_controls`, `car_body::layout::CarState` (the car's own typed state) |
-| Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate` |
+| Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate`, `rigid_body::layout::Solid` (the solids' typed state, not held over a step yet) |
 | Gravity | `physics_core/accumulate.rs`, `physics_core/math.rs` | `physics_core::accumulate::accumulate_forces`, `physics_core::math::gravity_force` |
 | Step pacing, physics clock | `physics_core/step.rs`, `physics_core/pacing.rs`, `physics_core/contact_loop.rs` | `physics_core::step::step_forward`, `physics_core::pacing::advance_time`, `physics_core::layout::Core` (the core's typed state: clock, substep counter, pass and hit counters) |
 | Ground surface, materials | `entities/ground.rs`, `entities/material_table.rs`, `ngp/material.rs`, `ngp/tag_blend.rs`, `stage/` | `entities::ground::box_probe`, `entities::material_table::MaterialTable`, `ngp::material::cell`, `ngp::tag_blend::blend`, `wheel::layout::ground_probe` |
