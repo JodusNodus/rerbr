@@ -1,5 +1,7 @@
 //! The car's store (`crate::store`): the typed reads and writes of the car, its parts, wheels and body points, and the
-//! world's timer words, in physical terms. `Mem` implements it in `layout/car.rs`, which knows where each value lives.
+//! world's timer words, in physical terms. It is implemented in `layout/car.rs`, which knows where each value lives,
+//! over the car's typed fields (`layout::CarFields`: `Mem` per call on the image, `layout::CarView` on a step's held
+//! state).
 
 use super::layout::{Real, TimeKeeperDiff};
 use crate::math::quat::Quat;
@@ -7,7 +9,44 @@ use crate::math::vec::{Vec3, Vec4};
 use crate::math::Mat3;
 use crate::store::Raw;
 
+/// The car's value cells (a dirty flag and a value; `notes/ngp.md` "Force feedback" for the steering's): the steering
+/// slew, its target (the rack position) and the target's rate, the steered wheels' torque sum, the filtered steering
+/// torque, the speed sum, and cell `(i, j)` of the anti-roll bars' matrix (columns 0 and 1 the travels of bar `i`'s two
+/// sides, column 2 its force).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cell {
+    SteerSlew,
+    SteerTarget,
+    SteerTargetRate,
+    SteerTorqueSum,
+    FfbTorque,
+    SpeedSum,
+    RollBar(u32, u32),
+}
+
 pub trait CarStore: Raw {
+    /// The value cell `cell` of the car.
+    fn cell(&self, car: u32, cell: Cell) -> Real;
+    /// Stores the value cell `cell` (its dirty flag and value).
+    fn store_cell(&mut self, car: u32, cell: Cell, v: Real);
+    /// Stores the value of the cell `cell` only.
+    fn set_cell_value(&mut self, car: u32, cell: Cell, v: f32);
+    /// The control update's step counter.
+    fn step_count(&self, car: u32) -> u32;
+    fn set_step_count(&mut self, car: u32, n: u32);
+    /// Records the timing mark `mark` (0 to 3): the timer word and the payload's steering word.
+    fn set_step_mark(&mut self, car: u32, mark: u32, timer_word: u32, steering: u32);
+    /// Keeps the control payload's steering (the steering input), throttle and brake words.
+    fn keep_controls(&mut self, car: u32, steering: u32, throttle: u32, brake: u32);
+    /// The partial-contact flag: 1 while the car has been in partial contact for over a second (the respawn turns the
+    /// car over then).
+    fn partial_contact_flag(&self, car: u32) -> u32;
+    fn set_partial_contact_flag(&mut self, car: u32, v: u32);
+    /// The respawn countdown, s: the countdown worker respawns the car when it is 0.
+    fn respawn_countdown(&self, car: u32) -> f32;
+    fn set_respawn_countdown(&mut self, car: u32, v: f32);
+    /// Clears the four words the outside assistance clears (named by use).
+    fn clear_assistance_block(&mut self, car: u32);
     /// Reads the matrix of `at` (nine words, row by row).
     fn load_mat3(&self, at: u32) -> Mat3;
     /// The car entity's sort key, which the car's signals send to identify it.

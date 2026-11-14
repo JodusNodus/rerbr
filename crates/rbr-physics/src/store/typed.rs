@@ -1,14 +1,15 @@
 //! The typed storage a step holds (B2, `notes/physics.md` "Store seam"): [`Typed`], the car's typed subsystems
 //! ([`CarTyped`]) and the stage they run on. The car's are lifted from the image together and lowered together. The
 //! struts and the tyres are borrowed by each of their runs (their runs do not nest); the VCU's state is in a cell and
-//! the drive's is borrowed per access, since their runs call each other through the host; the wheels' fields are
-//! borrowed one at a time, since the wheel's runs nest. The stage is lifted once per loaded stage and never lowered (a
-//! step only reads it).
+//! the drive's is borrowed per access, since their runs call each other through the host; the wheels' fields and the
+//! car's own are borrowed one at a time, since their runs nest. The stage is lifted once per loaded stage and never
+//! lowered (a step only reads it).
 
 use std::cell::RefCell;
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::car_body::layout::CarOwn;
 use crate::engine_driveline::layout::CarDrive;
 use crate::mem::Mem;
 use crate::spring_damper::layout::CarStruts;
@@ -41,6 +42,7 @@ pub struct CarTyped {
     pub drive: CarDrive,
     pub tyres: RefCell<CarTyres>,
     pub wheels: CarWheels,
+    pub own: CarOwn,
 }
 
 impl CarTyped {
@@ -52,6 +54,7 @@ impl CarTyped {
             drive: CarDrive::lift(mem, car),
             tyres: RefCell::new(CarTyres::lift(mem, car)),
             wheels: CarWheels::lift(mem, car),
+            own: CarOwn::lift(mem, car),
         }
     }
 
@@ -62,6 +65,7 @@ impl CarTyped {
         self.drive.lower(mem);
         self.tyres.borrow().lower(mem);
         self.wheels.lower(mem);
+        self.own.lower(mem);
     }
 
     /// Every owned byte range, named.
@@ -71,6 +75,7 @@ impl CarTyped {
         owned.extend(self.drive.owned());
         owned.extend(self.tyres.borrow().owned());
         owned.extend(self.wheels.owned());
+        owned.extend(self.own.owned());
         owned
     }
 }
@@ -83,5 +88,6 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
         + crate::engine_driveline::layout::drive_round_trip(mem, car)?
         + crate::tyre::layout::round_trip(mem, car)?
         + crate::wheel::layout::round_trip(mem, car)?
+        + crate::car_body::layout::round_trip(mem, car)?
         + crate::stage::layout::round_trip(mem)?)
 }

@@ -1,5 +1,6 @@
 //! NGP's per-car tuning words in its `.data`, read the way the ports tune themselves.
 
+use rbr_physics::car_body::layout::slot as car_slot;
 use rbr_physics::engine_driveline::layout::EngineTuning;
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::atmosphere::Atmosphere;
@@ -115,7 +116,7 @@ pub(crate) fn thermal(ctx: &Ctx, scratch: u32) -> Result<TyreThermal, Decline> {
             // NGP reads the definition's `DebugId` word as the tyre's kind.
             kind: m.u32(def + DEF_DEBUG_ID),
             spin: crate::wheel::read_wheel(ctx.host, m, wheel, slot::end_spin_rate),
-            car_speed: m.f32(m.u32(wheel + 0x7f4) + 0x15f8),
+            car_speed: crate::car_body::read_car(ctx.host, m, m.u32(wheel + 0x7f4), car_slot::forward_speed),
             // The boost is the material block's word 10 (`+0x1c8`) while in contact (`+0x480`).
             boost: (in_contact != 0).then(|| f32::from_bits(material)),
             factors: [data_f32(ctx, 0x1017_1470), data_f32(ctx, 0x1017_1474)],

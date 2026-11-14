@@ -1,6 +1,6 @@
 //! NGP's starter and engine wrapper.
 
-use rbr_physics::car_body::store::CarStore;
+use rbr_physics::car_body::layout::slot as car_slot;
 use rbr_physics::engine_driveline::layout::with_worker;
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::engine::{self as ngp_engine, EngineDamage, TorqueIn};
@@ -156,7 +156,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
             dt,
             speed,
             wheels: crate::wheel::wheel_speeds(ctx.host, m, car),
-            body_speed: m.forward_speed(car),
+            body_speed: crate::car_body::read_car(ctx.host, m, car, car_slot::forward_speed),
             throttle: i.throttle,
             shift_cut: i.shift_cooldown > 0.0,
             damage: ngp_engine::damage_factor(&i.damage),

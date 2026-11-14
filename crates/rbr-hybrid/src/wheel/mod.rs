@@ -108,7 +108,8 @@ pub static BINDINGS: [Binding; 30] = [
 pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T) -> T {
     let host = ctx.host;
     let typed = host.typed();
-    run(&mut WheelView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.car.wheels)))
+    let car = typed.as_deref().map(|t| &t.car);
+    run(&mut WheelView::new(&mut ctx.mem, car.map(|c| &c.wheels)).with_car(car.map(|c| &c.own)))
 }
 
 /// The field `slot` of the wheel at `this` as a step leaves it at this point: the typed storage's while the host holds

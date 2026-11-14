@@ -3,8 +3,8 @@
 use super::fields::{AXLE, DAMAGE_STEERING, HUB_POSITION, ORIENTATION, TYRE_DEF_HUB_OFFSET, TYRE_SCRATCH};
 use super::store::WheelStore;
 use super::typed::slot;
+use crate::car_body::layout::slot as car_slot;
 pub use crate::car_body::layout::CURRENT_CAR as CAR_GLOBAL;
-use crate::car_body::store::CarStore;
 use crate::math::quat;
 use crate::math::vec::{Vec3, Vec4};
 pub use crate::physics_core::layout::PHYSICS_GLOBAL as DEBUG_GLOBAL;
@@ -84,7 +84,7 @@ pub fn refresh<S: WheelStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: 
     let wishbone = [def.wishbone_header[0], def.wishbone_header[1], def.wishbone_length.to_bits()];
     mem.set(this, slot::wishbone_length, wishbone);
     let linkage = refresh::linkage(&input, &strut);
-    let steer_target = if def.is_steered { mem.mem().steer_target(mem.u32(CAR_GLOBAL)) } else { 0.0 };
+    let steer_target = if def.is_steered { mem.car_field(mem.u32(CAR_GLOBAL), car_slot::steer_target) } else { 0.0 };
     let frame = refresh::hub_frame(&input, &strut, &linkage, steer_target, strut.steering_rod_length);
     frame.hub_position.store(mem, this + HUB_POSITION);
     (Vec3 { x: frame.rotation[0][0], y: frame.rotation[0][1], z: frame.rotation[0][2] }).store(mem, this + AXLE);

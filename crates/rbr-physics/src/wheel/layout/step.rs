@@ -4,9 +4,9 @@ use super::fields::{
     AXLE, BLEND_OPS, CAR, CAR_FORCE, CAR_SCRATCH, DAMAGE, DAMAGE_FACTOR, DAMAGE_STEERING, DAMAGE_TOP_MOUNT_UP, DEF,
     DEF_ANTI_ROLL_BAR_ID, DEF_ANTI_ROLL_BAR_SLOT, DEF_FLAGS, DEF_INVERSE_MASS, DEF_MAX_DEFORM_UP, DEF_PLATFORM_HEIGHT,
     DEF_TOP_MOUNT, DEF_TOP_MOUNT_DAMAGE_MAX_FORCE, DEF_TOP_MOUNT_DAMAGE_THRESHOLD, HUB_POSITION, HUB_VELOCITY,
-    LAST_TAG_1, LAST_TAG_2, LAST_WEIGHT, MATRIX_ROW_1, MATRIX_ROW_2, ON_GROUND, PROBE_DIRECTION, STRUT,
-    STRUT_INNER_BUMP_POS, STRUT_LENGTH, STRUT_OUTER_BUMP_POS, STRUT_TWEAK, STRUT_VEL_TWEAK, TYRE_SCRATCH, WHEEL_ANGLE,
-    WHEEL_ANGLE_TWEAK, WHEEL_INDEX, WORLD_AXLE, WORLD_DEF, WORLD_HUB,
+    LAST_TAG_1, LAST_TAG_2, LAST_WEIGHT, MATRIX_ROW_1, MATRIX_ROW_2, PROBE_DIRECTION, STRUT, STRUT_INNER_BUMP_POS,
+    STRUT_LENGTH, STRUT_OUTER_BUMP_POS, STRUT_TWEAK, STRUT_VEL_TWEAK, TYRE_SCRATCH, WHEEL_ANGLE, WHEEL_ANGLE_TWEAK,
+    WHEEL_INDEX, WORLD_AXLE, WORLD_DEF, WORLD_HUB,
 };
 use super::refresh_pose::{DEF_IS_STEERED, NEG_KNUCKLE_Z};
 use super::store::WheelStore;
@@ -190,7 +190,7 @@ pub fn wheel_step<S: WheelStore>(
     if ground != 0 {
         ground_contact(mem, calls, this, dt, f, car);
     } else {
-        mem.set_u32(this + ON_GROUND, 0);
+        mem.set(this, slot::on_ground, 0);
         mem.set_f32(f + 0x34, 0.0);
         calls.clear_vec4(f + 0xD0, f - 4);
         calls.clear_vec4(f + 0x90, f - 4);
@@ -209,7 +209,7 @@ fn car_walk(calls: &mut impl StepCalls, car: u32, a: u32, b: u32, c: u32, sp: u3
 
 /// The branch of `wheel_step` with a ground contact (`M3D520` returned 1): the contact's frame and its force.
 fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: u32, dt: f32, f: u32, car: u32) {
-    mem.set_u32(this + ON_GROUND, 1);
+    mem.set(this, slot::on_ground, 1);
     calls.to_world(car, this + NEG_KNUCKLE_Z, f + 0x1C0, f - 0xC);
     let g = mem.u32(ROOT_IDENTITY);
     car_walk(calls, car, this + HUB_POSITION, g, f + 0xA0, f - 0x10);

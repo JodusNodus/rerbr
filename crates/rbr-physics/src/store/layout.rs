@@ -306,6 +306,7 @@ pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
     let state = vcu::layout::ScratchObj::state.load(mem, scratch);
     out.push(Tabled::of::<vcu::layout::StateObj>("vcu state", state));
     out.extend(engine_driveline::layout::DriveImage::of(mem, car_body::layout::drive_at(car)).tabled());
+    out.push(Tabled::of::<car_body::layout::CarState>("car", car));
     out
 }
 

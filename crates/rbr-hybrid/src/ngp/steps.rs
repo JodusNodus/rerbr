@@ -1,6 +1,8 @@
 //! NGP's wrappers of the physics step's functions.
 
+use crate::car_body::read_car;
 use crate::stage::on_stage;
+use rbr_physics::car_body::layout::slot as car_slot;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::engine_driveline::layout::{
     curve_input_at, wheel_at, with_worker, BrakeBlock, CurveInput, DriveObjects,
@@ -50,13 +52,14 @@ pub(crate) fn apply_atmosphere(m: &mut Mem, car: u32) {
 /// `eax` is what the original's path leaves: 8 (no downforce), the speed's direction (0, 1 or -1, no speed) or the
 /// wheel at `car+0x474` (applied).
 pub(crate) fn downforce_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(apply_downforce(&mut ctx.mem, r.stack[0]), 0))
+    Ok(Return::void(apply_downforce(ctx.host, &mut ctx.mem, r.stack[0]), 0))
 }
 
 /// `0x10047040`'s work for `p`; returns its eax. With an aero model set (`super::aero_model`, ours), the file's
 /// downforce and the drag factor take its factors: for the car's sideslip, from the speed along its axis over its
-/// speed (+0x15fc), and for the file's downforce over its `Cd * A`.
-fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
+/// speed (+0x15fc), and for the file's downforce over its `Cd * A`. The car's speeds are its typed state's, as `host`
+/// holds it ([`crate::car_body::read_car`]).
+fn apply_downforce(host: &dyn Host, m: &mut Mem, p: u32) -> u32 {
     let car = m.u32(m.u32(p + 8) + 0x580);
     let def = m.u32(car + 0x34);
     let dmg = m.u32(car + 0x9f4);
@@ -65,14 +68,14 @@ fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
         front: m.f32(def + 0x1fc),
         rear: m.f32(def + 0x20c),
         density: m.f32(at(0x1017_1ae0).expect("hooked only with NGP")),
-        speed: m.f32(car + 0x15f8),
+        speed: read_car(host, m, car, car_slot::forward_speed),
         wheel_arms: [0x470, 0x474, 0x478, 0x47c].map(|o| m.f32(m.u32(car + o) + 0x8b4)),
         force_sum: m.f32(car + 0x378),
         moment_sum: m.f32(car + 0x310),
     };
     let model = super::aero_model::model().map(|model| {
         let cd_area = m.drag_coefficient(car) * m.frontal_area(car);
-        model.factors(i.speed, m.f32(car + 0x15fc), i.front + i.rear, cd_area)
+        model.factors(i.speed, read_car(host, m, car, car_slot::speed), i.front + i.rear, cd_area)
     });
     if let Some((front, rear, _)) = model {
         i.front *= front;
@@ -115,7 +118,7 @@ pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     if matches!(kind, 4 | 5) && !axle_fits(m, def, kind - 3) {
         return Err(Decline::Unsupported("the axle's blocks or packs are out of range"));
     }
-    apply_downforce(&mut ctx.mem, drive);
+    apply_downforce(ctx.host, &mut ctx.mem, drive);
     let loss = super::drive_loss::loss(kind, ctx.mem.u32(settings + 0xe88));
     let tuning = (4..8).contains(&kind).then(|| {
         let m = &ctx.mem;
@@ -232,7 +235,7 @@ pub(crate) fn curve_term(m: &mut Mem, host: &dyn Host, drive: u32, args: [u32; 5
     let handbrake_factor = m.f32(at(0x1017_1a94).unwrap());
     let released = front && m.u32(DriveObjects::at(m, drive).damage + 0x80) == 0;
     let speed_fade = m.f32(settings + if front { 0xfe8 } else { 0x1168 });
-    let car_speed = m.f32(car + 0x15f8);
+    let car_speed = read_car(host, m, car, car_slot::forward_speed);
     let air_temperature = m.f32(at(0x1017_1adc).unwrap());
     let own_input = x == curve_input_at(drive);
     let image_input = (!own_input).then(|| CurveInput::load(m, x));

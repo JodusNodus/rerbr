@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use super::store::WheelStore;
+use crate::car_body::layout::{CarOwn, Slot as CarSlot};
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::store::{Object, Raw, Value};
@@ -112,6 +113,8 @@ wheel_state! {
         strut_force @ 0xE7C: f32,
         /// The spin rate read again at the end of the step.
         end_spin_rate @ 0xEA0: f32,
+        /// 1 when the ground probe found a contact (the car's step counts the wheels that are on).
+        on_ground @ 0xEBC: u32,
         /// 1 when the damage record changed.
         damage_changed @ 0xEC0: u32,
     }
@@ -161,7 +164,7 @@ impl CarWheels {
 
     /// The wheels as a store over `mem`.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> WheelView<'a> {
-        WheelView { mem, wheels: Some(self) }
+        WheelView::new(mem, Some(self))
     }
 }
 
@@ -171,12 +174,18 @@ impl CarWheels {
 pub struct WheelView<'a> {
     mem: &'a mut Mem,
     wheels: Option<&'a CarWheels>,
+    car: Option<&'a CarOwn>,
 }
 
 impl<'a> WheelView<'a> {
     /// The store over `mem` with `wheels` held (none: every wheel on the image).
     pub fn new(mem: &'a mut Mem, wheels: Option<&'a CarWheels>) -> Self {
-        WheelView { mem, wheels }
+        WheelView { mem, wheels, car: None }
+    }
+
+    /// The store with the car's own state held too: the car's words the wheel reads (`WheelStore::car_field`).
+    pub fn with_car(self, car: Option<&'a CarOwn>) -> Self {
+        WheelView { car, ..self }
     }
 
     fn held(&self, this: u32) -> Option<&'a RefCell<Wheel>> {
@@ -210,6 +219,11 @@ impl WheelStore for WheelView<'_> {
             Some(wheel) => (slot.set)(&mut wheel.borrow_mut(), value),
             None => value.store(self.mem, this + slot.at),
         }
+    }
+
+    #[inline]
+    fn car_field<T: Value>(&self, car: u32, slot: CarSlot<T>) -> T {
+        self.car.and_then(|c| c.read(car, slot)).unwrap_or_else(|| T::load(self.mem, car + slot.at))
     }
 }
 
@@ -379,13 +393,13 @@ mod tests {
             (slot::damper_force.at, DAMPER_FORCE),
             (slot::strut_force.at, STRUT_FORCE),
             (slot::end_spin_rate.at, END_SPIN_RATE),
+            (slot::on_ground.at, ON_GROUND),
             (slot::damage_changed.at, DAMAGE_CHANGED),
         ] {
             assert_eq!(at, named);
         }
         // The pointers, the strut and the tyre scratch are not owned.
-        for at in [DEF, XFORM_CAR, DAMAGE, CAR, WHEEL_INDEX, ON_GROUND, STRUT, TYRE_SCRATCH, STRUT_LENGTH, WHEEL_ANGLE]
-        {
+        for at in [DEF, XFORM_CAR, DAMAGE, CAR, WHEEL_INDEX, STRUT, TYRE_SCRATCH, STRUT_LENGTH, WHEEL_ANGLE] {
             assert!(Wheel::field_at(at).is_none(), "{at:#x}");
         }
     }
