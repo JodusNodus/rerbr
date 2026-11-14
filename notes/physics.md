@@ -188,6 +188,14 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `StepForward` and lowers it after (a stop too); the bindings reach it through `Host::typed()`. Between steps the
   image holds every word (telemetry, SND1, FRM1, the twin, `restore`). The stage is lifted once (`OnceLock`), the
   definitions every step (setup, respawn and restart write them between steps); neither is lowered.
+- Across steps (`Pure::typed_across_steps`, off until the standalone reads through the gate): a step lifts only when
+  nothing is held and leaves it held (stale); `Pure::image()` lowers a stale state (it stays held), `image_mut()`
+  lowers and drops it (the next step lifts the writer's words), `snapshot` lowers, `restore` drops; the runs between
+  steps (`notify_a_vector`, `Playback::emit`, `reset_strut_dampers`) run on the held state and mark it stale. A held
+  solid's image copy follows each lower (else a word back at its lifted value stays unlowered: drive2 frame 920).
+  `Pure::mem` is the transition's raw field (rbr-standalone's readers; private once they use the gate); with `poison`
+  it and every image clone panic at a held word while stale. drive2 with it on and the readers on the gate (scratch):
+  84084/84084, poison too; instructions -0.9 % a step, allocations 26498 -> 9221 bytes a step.
 - Per call (the hybrid check's emulator, the vectors, `typed` off) the views run on the image: the struts, VCU, tyres
   and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
   field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
@@ -258,7 +266,8 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
   need stores first); collision arenas: the cell grid, links, the entity lists as link maps (the sleeping list holds
   3172-8217 nodes: lazy, image fallback).
 - The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
-- State typed across steps; `--twin` in the live run; more direct calls (the host calls above).
+- State typed across steps on by default (after the standalone and twin read through the gate); `--twin` in the live
+  run; more direct calls (the host calls above).
 - The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
   game (per call stays for the hybrid check and the vectors).
 
