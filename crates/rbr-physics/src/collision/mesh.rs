@@ -152,7 +152,7 @@ pub fn mesh_test<S: CollisionStore>(
     1
 }
 
-/// Queries the grid cells overlapping the start's box (widened by [`SWEEP_MARGIN`]), giving four list heads in the
+/// Queries the grid cells overlapping the start's box (widened by `SWEEP_MARGIN`), giving four list heads in the
 /// scratch. Tests each flagged mesh object in those lists with [`mesh_test`] until one hits; the widened box stays
 /// in the scratch for the query.
 pub fn segment_sweep<S: CollisionStore>(

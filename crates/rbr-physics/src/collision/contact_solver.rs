@@ -211,7 +211,7 @@ fn offsets_direction(offsets: &[Vec4]) -> Option<Vec4> {
 const MAX_OFFSET_MOVE: f32 = 0.03;
 
 /// A body's move from the offsets collected in its row: along their normalised sum, as far as the largest projection
-/// of one of them (from 0, at most [`MAX_OFFSET_MOVE`]). The original unrolls the projections by four; the first of
+/// of one of them (from 0, at most `MAX_OFFSET_MOVE`). The original unrolls the projections by four; the first of
 /// each four (and each of the rest) sums `z, x, y`, the other three `z, y, x`.
 pub fn offsets_move(offsets: &[Vec4]) -> Option<Vec4> {
     let d = offsets_direction(offsets)?;
