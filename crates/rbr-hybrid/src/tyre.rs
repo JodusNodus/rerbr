@@ -10,12 +10,13 @@
 //! with `Outside` leaves the tyre as it was, so the original runs.
 
 use rbr_physics::math::vec::Vec4;
+use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::signal_emit;
 use rbr_physics::tyre::layout::{self, entries, TyreView};
-use rbr_physics::tyre::tyres::TyreId;
+use rbr_physics::tyre::tyres::{Tyre, TyreId};
 use rbr_physics::tyre::{grip, solve};
 
-use crate::{Binding, Ctx, Decline, Regs, Return, SignalCallees};
+use crate::{Binding, Ctx, Decline, Host, Regs, Return, SignalCallees};
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("tyre", addr, name, run)
@@ -78,10 +79,51 @@ fn frame<T>(r: Result<T, layout::Outside>) -> Result<T, Decline> {
     r.map_err(|_| Decline::Unsupported("index outside the frame"))
 }
 
-/// Runs `run` on the tyre whose scratch is at `scratch` and its store: per call, lifted from the image and lowered
-/// after `run` (`layout::with_tyre`).
+/// Runs `run` on the tyre whose scratch is at `scratch` and its store: the typed storage's while the host holds the
+/// car's tyres (`Host::typed`), else per call, lifted from the image and lowered after `run` (`layout::with_tyre`).
 pub(crate) fn on_tyre<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> T {
+    if let Some(typed) = ctx.host.typed() {
+        let mut tyres = typed.tyres.borrow_mut();
+        if let Some(id) = tyres.id_of(scratch) {
+            return run(&mut tyres.view(&ctx.mem), id);
+        }
+    }
     layout::with_tyre(&mut ctx.mem, scratch, run)
+}
+
+/// `read` of the tyre whose scratch is at `scratch` as a step leaves it at this point: the typed storage's while the
+/// host holds it, else the image's. For the readers outside the tyre's bindings (NGP's step wrapper and thermal words,
+/// the ground probe, the pure host's tyre term).
+pub(crate) fn read_tyre<T>(host: &dyn Host, mem: &Mem, scratch: u32, read: impl FnOnce(&Tyre) -> T) -> T {
+    if let Some(typed) = host.typed() {
+        let tyres = typed.tyres.borrow();
+        if let Some(id) = tyres.id_of(scratch) {
+            return read(tyres.tyres.get(id));
+        }
+    }
+    read(&layout::TyreImage::of(mem, scratch).lift(mem))
+}
+
+/// Runs `run` (a call whose callees read the tyre's words at their addresses) with the tyre whose scratch is at
+/// `scratch` on the image: a held tyre is lowered before it and lifted after it, through memory without poison (the
+/// words are the tyre's).
+fn on_image<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut Ctx) -> T) -> T {
+    let Some(id) = ctx.host.typed().and_then(|typed| typed.tyres.borrow().id_of(scratch)) else {
+        return run(ctx);
+    };
+    let mut image = unpoisoned(&ctx.mem);
+    ctx.host.typed().expect("held").tyres.borrow().lower_tyre(id, &mut image);
+    let out = run(ctx);
+    ctx.host.typed().expect("held").tyres.borrow_mut().lift_tyre(id, &unpoisoned(&ctx.mem));
+    out
+}
+
+/// `mem` sharing its storage, without the poison of a check build.
+fn unpoisoned(mem: &Mem) -> Mem {
+    #[cfg(feature = "poison")]
+    return mem.unpoisoned();
+    #[cfg(not(feature = "poison"))]
+    mem.clone()
 }
 
 /// The stiffnesses `ComputeOutputs` passes through from its record `src`: `None` when the record is the scratch's own
@@ -323,9 +365,17 @@ fn split_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(src*)`.
+/// thiscall `(src*)`: the material words copied from `src` into the block at `this`, a held tyre's when it is one's
+/// (`this` its scratch's `+0x1a0`).
 fn copy_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    entries::copy_material(&mut ctx.mem, r.ecx, r.stack[0]);
+    let material = layout::load_material(&ctx.mem, r.stack[0]);
+    let scratch = r.ecx.wrapping_sub(layout::MATERIAL);
+    let held = ctx.host.typed().is_some_and(|typed| typed.tyres.borrow().id_of(scratch).is_some());
+    if held {
+        on_tyre(ctx, scratch, |v, t| entries::adopt_material(v, t, &material));
+    } else {
+        layout::store_material(&mut ctx.mem, r.ecx, &material);
+    }
     Ok(Return::void(0, 4))
 }
 
@@ -410,7 +460,8 @@ fn scratch_ctor(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(src)`: the setup copied into the def, the state's copies, and `DamperUpdateB` (in the port).
 fn copy_def_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::copy_def_from(&mut ctx.mem, r.ecx, r.stack[0]);
+    let copies = layout::copy_setup_into_def(&mut ctx.mem, r.ecx, r.stack[0]);
+    on_tyre(ctx, r.ecx, |v, t| entries::adopt_setup(v, t, copies));
     Ok(Return::void(0, 4))
 }
 
@@ -423,19 +474,22 @@ pub(crate) fn signal_emit<const EMIT: u32>(ctx: &mut Ctx, r: &Regs) -> Result<Re
     Ok(Return::void(0, 4))
 }
 
-/// thiscall: `CScratch::EmitNoise`, the tyre-noise signal emitted with the scratch's signal block. Declines like
+/// thiscall: `CScratch::EmitNoise`, the tyre-noise signal emitted with the scratch's signal block, which the emit's
+/// connections read at its address (so a held tyre is on the image around it, [`on_image`]). Declines like
 /// `signal_emit` when the emit would trap. Under NGP the emit is NGP's wrapper (`ngp::original_for`), which the host
 /// runs; eax is what it leaves.
 fn emit_noise(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, layout::noise_signal(&ctx.mem))?;
-    let target = crate::ngp::Call::TyreNoise.address();
-    if target != 0x534F80 {
-        // NGP's emit wrapper (0x100ee970): the host runs it, as `layout::emit_noise` runs the emit.
-        let signal = layout::noise_signal(&ctx.mem);
-        let called = ctx.host.call(target, signal, &[r.ecx + 0x420]);
-        ctx.mem.set_u32(r.ecx + 0x424, 0);
-        return Ok(Return::void(called.eax, 0));
-    }
-    layout::emit_noise(&mut ctx.mem, &mut SignalCallees(ctx.host, crate::emit_name(0x534f80)), r.ecx);
-    Ok(Return::void(0, 0))
+    on_image(ctx, r.ecx, |ctx| {
+        let target = crate::ngp::Call::TyreNoise.address();
+        if target != 0x534F80 {
+            // NGP's emit wrapper (0x100ee970): the host runs it, as `layout::emit_noise` runs the emit.
+            let signal = layout::noise_signal(&ctx.mem);
+            let called = ctx.host.call(target, signal, &[r.ecx + 0x420]);
+            ctx.mem.set_u32(r.ecx + 0x424, 0);
+            return Ok(Return::void(called.eax, 0));
+        }
+        layout::emit_noise(&mut ctx.mem, &mut SignalCallees(ctx.host, crate::emit_name(0x534f80)), r.ecx);
+        Ok(Return::void(0, 0))
+    })
 }

@@ -63,6 +63,11 @@ pub fn settle_material(s: &mut Scratch) {
     }
 }
 
+/// The material block's copied word `word` (`this+0x1a0+4·word`, one of [`WORDS`]) in the scratch's copy.
+pub fn material_word(s: &Scratch, word: u32) -> u32 {
+    s.material[WORDS.iter().position(|&w| w == word).expect("a copied word of the material block")]
+}
+
 /// A table index the frame does not hold: `index` is outside the table's window (`-1`, the word below it, and its `len`
 /// entries). The original would read memory the port does not hold, so the caller declines and the original runs.
 #[derive(Clone, Copy, Debug, PartialEq)]

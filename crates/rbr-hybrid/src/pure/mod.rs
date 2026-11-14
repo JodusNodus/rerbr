@@ -90,14 +90,17 @@ const SLOT_CACHE: usize = 1024;
 /// of `scratch`, from the step it ended (`dt` its divisor, `Step`'s second word): `(tread depth + carcass radius - c -
 /// state +0x48) / dt`, which nothing in `Step` changes after it. `None` when the step took the no-contact path, which
 /// clears the block's flag (`+0x47c`).
-fn tyre_term(mem: &Mem, scratch: u32, dt: f32) -> Option<f32> {
-    use rbr_physics::tyre::layout::{DEF, DEF_CARCASS_RADIUS, DEF_TREAD_DEPTH, STATE};
-    if mem.u32(scratch + 0x47c) == 0 {
+fn tyre_term(host: &dyn Host, mem: &Mem, scratch: u32, dt: f32) -> Option<f32> {
+    use rbr_physics::tyre::layout::{sig, DEF, DEF_CARCASS_RADIUS, DEF_TREAD_DEPTH};
+    // The tyre's words as the step left them (the held tyre's while the step holds it); the def's are the image's.
+    let (flag, hub, depth) = crate::tyre::read_tyre(host, mem, scratch, |t| {
+        (t.scratch.signal[sig::FLAG], t.scratch.hub_height, t.state.penetration_depth)
+    });
+    if flag == 0 {
         return None;
     }
-    let (def, state) = (mem.u32(scratch + DEF), mem.u32(scratch + STATE));
-    let c = mem.f32(scratch + 0x3a8);
-    Some((mem.f32(def + DEF_TREAD_DEPTH) + mem.f32(def + DEF_CARCASS_RADIUS) - c - mem.f32(state + 0x48)) / dt)
+    let def = mem.u32(scratch + DEF);
+    Some((mem.f32(def + DEF_TREAD_DEPTH) + mem.f32(def + DEF_CARCASS_RADIUS) - hub - depth) / dt)
 }
 
 /// Why the pure run could not go on: the callee at `addr`, called from the binding at `caller` (0: the driver).
@@ -171,7 +174,7 @@ pub struct Pure {
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
     pub ngp_base: u32,
-    /// Whether [`Playback::step`] holds the car's typed state (the struts, the VCU) in typed storage over each step (the
+    /// Whether [`Playback::step`] holds the car's typed state (the struts, the VCU, the tyres) in typed storage over each step (the
     /// default), lifted before it and lowered after it, so their bindings run on it ([`Host::typed`]); without, they
     /// run per call on the image's words.
     pub typed: bool,
@@ -448,7 +451,7 @@ impl Pure {
     fn ran_bound(&self, slot: usize, addr: u32, regs: &Regs) {
         let b = bound()[slot];
         if self.keep_tyre_particles && TYRE_STEPS.contains(&b.addr) {
-            let term = tyre_term(&self.mem, regs.ecx, f32::from_bits(regs.stack[1]));
+            let term = tyre_term(self, &self.mem, regs.ecx, f32::from_bits(regs.stack[1]));
             self.captures.push_tyre_term(regs.ecx, term);
         }
         if b.addr == addr {

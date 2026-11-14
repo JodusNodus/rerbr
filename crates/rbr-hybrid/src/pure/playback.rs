@@ -115,7 +115,7 @@ impl Playback {
     }
 
     /// [`step`] with the payload `control` (`None` for the snapshot's own step). A stop panics as [`Pure::enter`].
-    /// With [`Pure::typed`] the car's typed state (the struts, the VCU) is in typed storage over the step: lifted before
+    /// With [`Pure::typed`] the car's typed state (the struts, the VCU, the tyres) is in typed storage over the step: lifted before
     /// it, lowered after
     /// it (on a stop too), so every reader between steps sees the image's words.
     pub fn step(&self, control: Option<&[u8; CONTROL_BYTES]>, substeps: u32) -> Return {

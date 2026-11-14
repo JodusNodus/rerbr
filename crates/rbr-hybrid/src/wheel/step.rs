@@ -73,8 +73,9 @@ impl Ground<'_> {
 }
 
 impl layout::GroundCalls for Ground<'_> {
-    fn tyre_state(&mut self, scratch: u32) -> u32 {
-        self.call(0x5326C0, scratch, &[])
+    fn effective_radius(&mut self, scratch: u32) -> f32 {
+        self.call(0x5326C0, scratch, &[]);
+        crate::tyre::read_tyre(self.host, &self.mem, scratch, |t| t.state.effective_radius)
     }
 
     fn table_lerp_pair(&mut self, wheel: u32) {

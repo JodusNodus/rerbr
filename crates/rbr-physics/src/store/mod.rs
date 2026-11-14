@@ -2,7 +2,7 @@
 //!
 //! Each subsystem declares a store trait (`TyreStore`, `StrutStore`, `VcuStore`, ...) whose methods are its layout's
 //! `load_*`/`store_*` groups. [`Mem`] implements them with the layout bodies (the Mem store), but for the typed
-//! subsystems (the struts, the VCU), whose stores are views over their typed state ([`typed::CarTyped`]); the sequence
+//! subsystems (the struts, the VCU, the tyres), whose stores are views over their typed state ([`typed::CarTyped`]); the sequence
 //! functions are generic over the trait.
 //!
 //! [`Raw`] is the word access every store has: on [`Mem`] it is the inherent accessors, elsewhere the inner image's.

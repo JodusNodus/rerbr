@@ -19,7 +19,7 @@ pub use construct::{
     construct_def, construct_options, construct_setup, construct_state, construct_tyre_type, copy_def_from,
     copy_setup_into_def, set_setup_type, SetupCopies,
 };
-pub use frame::{copy_material, settle_material, Outside, Table, WORDS};
+pub use frame::{copy_material, material_word, settle_material, Outside, Table, WORDS};
 pub use frame_inputs::{
     apply_contact, apply_heat, apply_inner_air_terms, apply_relax, apply_sector, apply_slip, apply_soil, contact_axes,
     contact_input, count_relax, heat_input, hold_input, inner_air_terms, limits_input, patch_input, relax_input,
@@ -38,7 +38,7 @@ pub use scratch_ctor::{
     construct_scratch, create_scratch, delete_container, delete_scratch, destroy_scratch, destroy_scratch_body,
     init_scratch, reset_tweak_headers, SCRATCH_SIZE,
 };
-pub use typed::{frame_of, round_trip, with_tyre, CarTyres, TyreImage, TyreView};
+pub use typed::{frame_of, round_trip, with_tyre, CarTyres, TyreImage, TyreView, MATERIAL};
 
 // The `CScratch` (`this`) words, its state (`m_state`, `this+0x14`) and its setup (`m_def`, `this+0x10`).
 

@@ -5,7 +5,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::ngp::atmosphere::Atmosphere;
 use rbr_physics::ngp::heat::{Airflow, TyreShape, TyreThermal};
 use rbr_physics::tyre::layout::{
-    DEF_CARCASS_RADIUS, DEF_CARCASS_THICKNESS, DEF_DEBUG_ID, DEF_SIDEWALL_HEIGHT, DEF_TREAD_DEPTH, DEF_TREAD_WIDTH,
+    material_word, DEF_CARCASS_RADIUS, DEF_CARCASS_THICKNESS, DEF_DEBUG_ID, DEF_SIDEWALL_HEIGHT, DEF_TREAD_DEPTH,
+    DEF_TREAD_WIDTH,
 };
 use rbr_physics::wheel::layout::{ProbeTuning, WheelTuning};
 
@@ -104,6 +105,8 @@ pub(crate) fn thermal(ctx: &Ctx, scratch: u32) -> Result<TyreThermal, Decline> {
     only()?;
     let m = &ctx.mem;
     let (def, wheel) = (m.u32(scratch + 0x10), m.u32(scratch + 0x410));
+    let (in_contact, material) =
+        crate::tyre::read_tyre(ctx.host, m, scratch, |t| (t.scratch.in_contact, material_word(&t.scratch, 0x0A)));
     Ok(TyreThermal {
         air_temperature: data_f32(ctx, 0x1017_1adc),
         relax_rate: data_f32(ctx, 0x1017_1478),
@@ -113,7 +116,8 @@ pub(crate) fn thermal(ctx: &Ctx, scratch: u32) -> Result<TyreThermal, Decline> {
             kind: m.u32(def + DEF_DEBUG_ID),
             spin: m.f32(wheel + 0xea0),
             car_speed: m.f32(m.u32(wheel + 0x7f4) + 0x15f8),
-            boost: (m.u32(scratch + 0x480) != 0).then(|| m.f32(scratch + 0x1c8)),
+            // The boost is the material block's word 10 (`+0x1c8`) while in contact (`+0x480`).
+            boost: (in_contact != 0).then(|| f32::from_bits(material)),
             factors: [data_f32(ctx, 0x1017_1470), data_f32(ctx, 0x1017_1474)],
         },
     })

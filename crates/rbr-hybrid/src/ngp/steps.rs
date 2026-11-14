@@ -256,7 +256,7 @@ pub(crate) fn step_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let def = m.u32(r.ecx + 0x10);
     let saved: [u32; 0x20] = m.u32s(def + 0x204);
     let p = r.stack[4];
-    let k = step_wrapper::speed_factor(m.f32(r.ecx + 0x360));
+    let k = step_wrapper::speed_factor(crate::tyre::read_tyre(ctx.host, m, r.ecx, |t| t.scratch.speed));
     let percent = SurfaceHeatPercent {
         class_2: m.u32(settings + 0xe98),
         class_1: m.u32(settings + 0xea8),

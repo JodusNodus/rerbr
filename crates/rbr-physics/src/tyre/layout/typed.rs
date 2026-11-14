@@ -40,8 +40,8 @@ const OWNED_STATE: [(Range<u32>, &str); 5] = [
     (0x80..0xCC, "tyre searches"),
     (0xD0..0x138, "tyre temperatures"),
 ];
-/// The material block (`this+0x1a0`).
-const MATERIAL: u32 = 0x1A0;
+/// The material block (`this+0x1a0`, a `CTyreMatData`).
+pub const MATERIAL: u32 = 0x1A0;
 
 /// The material block's copied words as byte ranges of the scratch: runs of consecutive words.
 fn material_ranges() -> Vec<Range<u32>> {
@@ -529,6 +529,16 @@ impl CarTyres {
                 image.lower(tyre, mem);
             }
         }
+    }
+
+    /// Writes the tyre in slot `id` back to the image, for a call whose callees read its words at their addresses.
+    pub fn lower_tyre(&self, id: TyreId, mem: &mut Mem) {
+        self.images[id.0].expect("a tyre in its slot").lower(self.tyres.get(id), mem);
+    }
+
+    /// Lifts the tyre in slot `id` from the image again, after such a call.
+    pub fn lift_tyre(&mut self, id: TyreId, mem: &Mem) {
+        *self.tyres.get_mut(id) = self.images[id.0].expect("a tyre in its slot").lift(mem);
     }
 
     /// The slot of the tyre whose scratch is at `scratch`, if it is one of these.

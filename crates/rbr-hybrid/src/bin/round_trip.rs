@@ -1,6 +1,6 @@
 //! Checks the `object!` tables on snapshots: `lower(lift(image)) == image` on every owned byte of the car's tabled
-//! objects (`rbr_physics::store::car_objects`), and of the struts' and the VCU's typed state
-//! (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`).
+//! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's and the tyres' typed state
+//! (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`, `tyre::layout::round_trip`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
@@ -12,6 +12,7 @@ use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::snapshot::Snapshot;
 use rbr_physics::spring_damper::layout as spring;
 use rbr_physics::store;
+use rbr_physics::tyre::layout as tyre;
 use rbr_physics::vcu::layout as vcu;
 
 fn main() -> ExitCode {
@@ -55,7 +56,12 @@ fn main() -> ExitCode {
                 ok = false;
             }
         }
-        for (name, trip) in [("struts", spring::round_trip(&mem, car)), ("vcu", vcu::round_trip(&mem, car))] {
+        let trips = [
+            ("struts", spring::round_trip(&mem, car)),
+            ("vcu", vcu::round_trip(&mem, car)),
+            ("tyres", tyre::round_trip(&mem, car)),
+        ];
+        for (name, trip) in trips {
             match trip {
                 Ok(bytes) => println!("{path}: {name}, {bytes} typed bytes equal after lower(lift)"),
                 Err(e) => {

@@ -19,6 +19,7 @@ use crate::mem::Mem;
 use crate::ngp::heat::TyreThermal;
 use crate::tyre::friction_limits::{FrictionLimits, LimitsInput};
 use crate::tyre::grip::GripInput;
+use crate::tyre::material::Material;
 use crate::tyre::model::Model;
 use crate::tyre::output_block::OutputBlock;
 use crate::tyre::patch_forces::PatchForces;
@@ -279,6 +280,11 @@ pub fn step<S: TyreStore>(
     tyre_model: Option<Model>,
 ) -> Result<StepOut, Outside> {
     with_frame(store, tyre, |f| step::step(f, args, ngp, tyre_model))
+}
+
+/// `CTyreMatData::CopyFrom (src*)` on the tyre's own material block: the words of `material` copied into it.
+pub fn adopt_material<S: TyreStore>(store: &mut S, tyre: S::Tyre, material: &Material) {
+    on_frame(store, tyre, |f| super::copy_material(f, material))
 }
 
 /// `CScratch::CopyDefFrom`'s state copies after the def's ([`super::copy_setup_into_def`]): the setup's copies, the

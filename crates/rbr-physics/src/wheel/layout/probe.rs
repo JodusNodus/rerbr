@@ -11,7 +11,6 @@ use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::physics_core::layout::COLLISION_GLOBAL;
 use crate::stage::layout::COLLISION_SYSTEM;
-use crate::tyre;
 
 /// The probe's scratch, as offsets from the body's frame `S` (its `esp` after the prologue, see `PROBE_PROLOGUE`): the
 /// E46 output `rayWork` at `PROBE_RAYS` (the list `E45_M46A0` reads), the eight ray objects of `PROBE_RAY_SIZE` bytes
@@ -87,8 +86,9 @@ impl ProbeTuning {
 /// The original callees the probe calls, each with the arguments the asm passes: the object `ecx` names first, then the
 /// stack words in order. The callees with an `eax` return it.
 pub trait GroundCalls {
-    /// `TyreTail_Get14` (0x5326c0) on the tyre scratch: its state (`tyre::layout::STATE`).
-    fn tyre_state(&mut self, scratch: u32) -> u32;
+    /// `TyreTail_Get14` (0x5326c0) on the tyre scratch, then its state's effective radius
+    /// (`tyre::layout::STATE_EFFECTIVE_RADIUS`): the tyre's as the step leaves it at this point.
+    fn effective_radius(&mut self, scratch: u32) -> f32;
     /// `CWheel::Unk96e0` (0x5396e0) on the wheel (name ours).
     fn table_lerp_pair(&mut self, wheel: u32);
     /// `E39_SegTest170` (0x4ff170) on `object` with the segment's start and test vector, and a null output.
@@ -180,7 +180,7 @@ pub fn ground_probe<S: WheelStore>(
     let object = tuning.collision;
     let sweep = mem.u32(COLLISION_GLOBAL);
 
-    let radius = mem.f32(calls.tyre_state(o + TYRE_SCRATCH) + tyre::layout::STATE_EFFECTIVE_RADIUS);
+    let radius = calls.effective_radius(o + TYRE_SCRATCH);
     let offset = mem.u32(MINUS_EDGE_OFFSET);
     mem.set_u32(minus + RAY_OFFSET, offset);
     mem.set_f32(centre + RAY_OFFSET, 0.0);
