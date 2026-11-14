@@ -472,17 +472,29 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   +0.26 % instructions per step on `Mem` (`SolidWords::words`/`set_words4` keep the paged block reads; per word, +4.2 %).
   Readers at the solids' addresses on drive2 (a survey build poisoning `+0x100..+0x3c8` of the 12 solids, logging the
   innermost binding; `rbr-hybrid` bindings by name): the rigid body's own (window, force pass, integrate, contact,
-  impulse, rows, wake and sleep; `Window::refresh_state`, `Calls`, `Pose` and `impulse_run` store the body and call
-  slot 16/the walks through the host, so held they need a lower around the call); the car's `Vf98x`, `MotionProbe`,
+  impulse, rows, wake and sleep; routed, below); the car's `Vf98x`, `MotionProbe`,
   `Vf54x` (clears the scratch block), `Vf64x`, `Vf180`, `Vf6cx`, `AppendA980`, `Fwd18E20`, `Sampler54A0`'s and the
   raycast's `car+0x140` pointers, `MB560` on `car+0x380`; collision's `E36Collect`, `RaycastEntry`, `NotifyFiltered`,
   `SegmentSweep`, `Kernel5bd0` and `E38` sweeps (`+0x140`, `+0x160..+0x16c`, `+0x274`, `+0x290`, `+0x3b0`); the
   entities' pair walks `M51B460`, `M51B4C0`, `M51B500`, `MB560` (matrix and position), `ToQuat`, `CFloat3::Scale`;
   the hinged bodies' `SimCFF0`, `SimD160`, `SimE1D0` (the car's `+0x250`), `M51F950`, `E44_JmpA570`; the passenger
   step (the car's `+0x230`); the wheel's `E43Vf20`, `M3AFB0`, `M3B5B0` (the refresh writes the matrix), `M3B900`,
-  `M3DD30`; NGP's code at `0x791e8d50` (the car's `+0x310`, `+0x378`). The mounted bodies' only readers are
-  `NotifyFiltered` and `E43Vf80` (they are not stepped on drive2). Holding them needs each of these on `SolidView` (or a
-  lower/lift around its host call) and the poison run.
+  `M3DD30` (routed, below); NGP's code at `0x791e8d50` (the car's `+0x310`, `+0x378`). The mounted bodies' only
+  readers are `NotifyFiltered` and `E43Vf80` (they are not stepped on drive2). Holding them needs each of these on
+  `SolidView` (or a lower/lift around its host call) and the poison run.
+- Routed onto the solids' store (holding still off): the rigid body's bindings (`rbr_hybrid::rigid_body::on_solids`,
+  `with_solids`: every body load and store, the rows, quaternion helpers, wake/sleep/soften and their filing
+  (`solid_filing_with`), `E43Vf80`/`E43Vf8C`, the vote's contact list `+0x274`) and the wheel's solid words
+  (`WheelStore::solid_u32`/`solid_f32`/`solid_vec4`/`set_solid_vec4`, `WheelView::with_solids`; the step's inline
+  vector helpers through `with_solids`). The host calls after a body store (`Window::refresh_state` to slot 16, the
+  pose's sleep trip to slot 37, the impulse's and force pass's transforms) reach routed callees, so none lowers. Left on
+  the image: the wheel's hand-off words (`CAR_FORCE`, `CAR_SCRATCH`, the axle and knuckle axes; passed by pointer to
+  the car's slots 28/29 and transforms), pointers handed to other groups' callees (`Step77Vote`'s `+0x140` to the
+  collision probe, `MB560`, `E36Collect`, the car's transforms, `INTEGRATE`), construction. Evidence: a shadow survey
+  (held on, held writes through to the image, held reads checked against it; 84084/84084) lists none of these
+  bindings; the wheel `differential` holds the solids (21856 bytes, 43 snapshots; an unrouted `ORIENTATION` store
+  fails it); +0.92 % instructions per step held off (`Body::read`/`write` take the image at once, `SolidWords::image`;
+  per word +2.66 %).
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
