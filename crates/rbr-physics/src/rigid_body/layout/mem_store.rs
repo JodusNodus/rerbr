@@ -55,9 +55,28 @@ pub trait SolidWords: Raw {
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
         Vec4::from(words.map(f32::from_bits)).store(self.mem_mut(), at)
     }
+    /// The image when it has every word (nothing held), for a caller that reads or writes many at once.
+    #[inline]
+    fn image(&mut self) -> Option<&mut Mem> {
+        None
+    }
+    /// [`SolidWords::image`], to read.
+    #[inline]
+    fn image_ref(&self) -> Option<&Mem> {
+        None
+    }
 }
 
-impl SolidWords for Mem {}
+impl SolidWords for Mem {
+    #[inline]
+    fn image(&mut self) -> Option<&mut Mem> {
+        Some(self)
+    }
+    #[inline]
+    fn image_ref(&self) -> Option<&Mem> {
+        Some(self)
+    }
+}
 
 #[inline]
 fn f<W: SolidWords + ?Sized>(w: &W, at: u32) -> f32 {

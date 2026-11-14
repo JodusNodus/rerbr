@@ -183,6 +183,16 @@ impl Raw for SolidView<'_> {
 
 impl SolidWords for SolidView<'_> {
     #[inline]
+    fn image(&mut self) -> Option<&mut Mem> {
+        self.solids.is_none().then_some(&mut *self.mem)
+    }
+
+    #[inline]
+    fn image_ref(&self) -> Option<&Mem> {
+        self.solids.is_none().then_some(&*self.mem)
+    }
+
+    #[inline]
     fn word(&self, at: u32) -> u32 {
         self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
     }

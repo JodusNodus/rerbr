@@ -155,6 +155,13 @@ impl Body {
 
     /// [`Body::load`] on a rigid store's words (a held solid's typed state where it holds the word).
     pub fn read<W: SolidWords + ?Sized>(w: &W, this: u32) -> Self {
+        match w.image_ref() {
+            Some(mem) => Self::read_words(mem, this),
+            None => Self::read_words(w, this),
+        }
+    }
+
+    fn read_words<W: SolidWords + ?Sized>(w: &W, this: u32) -> Self {
         Body {
             linear_velocity: vec4(w, this + LINEAR_VELOCITY),
             angular_velocity: vec4(w, this + ANGULAR_VELOCITY),
@@ -195,6 +202,13 @@ impl Body {
 
     /// [`Body::store`] on a rigid store's words, in the same order.
     pub fn write<W: SolidWords + ?Sized>(&self, w: &mut W, this: u32) {
+        match w.image() {
+            Some(mem) => self.write_words(mem, this),
+            None => self.write_words(w, this),
+        }
+    }
+
+    fn write_words<W: SolidWords + ?Sized>(&self, w: &mut W, this: u32) {
         set_vec4(w, this + LINEAR_VELOCITY, self.linear_velocity);
         set_vec4(w, this + ANGULAR_VELOCITY, self.angular_velocity);
         w.set_word(this + SLEEP_TIMER, self.sleep_timer.to_bits());
