@@ -383,6 +383,97 @@ fn sim_e660_matches_original_calls() {
     });
 }
 
+/// The engine's entries in a row on the per-call path (the image, `EngineView::image`) and on a held engine (lifted
+/// before the chain, lowered after) leave every byte of the engine, its state, its option block, the definition, the
+/// roll table and the record's windows equal, and give the same results, on every `SimE660` record: the torque sum (the
+/// record's call), the crank tick, the misfire roll, the rev gate, the compliance, the abs-rpm term, the pedal and its
+/// cosine, the cut flags, the slot roll, the torque curve into an intake entry and the exhaust blend of one. The
+/// bytes no window holds are mapped as zeros first (the definition's span its kernels read, the roll table, the seed).
+#[test]
+fn the_typed_engine_over_a_chain_keeps_the_per_call_bytes() {
+    let _pc24 = Precision::Pc24.scope();
+    let Some(calls) = load(VARIABLE, SIM_E660) else {
+        eprintln!("skipping the typed engine's chain: {VARIABLE} not set");
+        return;
+    };
+    type Entry<'e> = &'e dyn Fn(&mut layout::EngineView) -> u32;
+    let tuning = layout::EngineTuning::STOCK;
+    let mut chained = 0;
+    for call in &calls {
+        let this = call.args[0];
+        let a = f32::from_bits(call.args[1]);
+        let mut base = map_windows(call);
+        fill(&mut base, this, layout::EngineObj::SIZE);
+        let objects = layout::EngineObjects::at(&base, this);
+        let regions = [
+            (this, layout::EngineObj::SIZE),
+            (objects.state, layout::EngineStateObj::SIZE),
+            (objects.options, 0x80),
+            (objects.def, 0x2870),
+            (ROLL_TABLE, 0x10),
+        ];
+        for (at, len) in regions {
+            fill(&mut base, at, len);
+        }
+        let seed_at = base.u32(objects.options);
+        fill(&mut base, seed_at, 4);
+        let entry_at = objects.state + 0x88 + 0x38;
+        let entries: [Entry; 12] = [
+            &|e| layout::engine_torque(e, this, a).to_bits(),
+            &|e| {
+                let (cycles, delta) = layout::crank_tick(e, this, a * 600.0);
+                cycles as u32 ^ delta.to_bits()
+            },
+            &|e| {
+                layout::misfire_roll(e, this, a);
+                layout::EngineOwn::load(e, this).misfire_level.to_bits()
+            },
+            &|e| (layout::rev_gate(e, this, &tuning) as f32).to_bits(),
+            &|e| {
+                layout::compliance(e, this);
+                layout::EngineState::load(e, objects.state).compliance_inverse.to_bits()
+            },
+            &|e| layout::abs_rpm_term(e, this).to_bits(),
+            &|e| {
+                let mut own = layout::EngineOwn::load(e, this);
+                engine::set_pedal(&mut own.pedal, 0.5f32.to_bits());
+                own.store(e, this);
+                layout::pedal_cosine(e, this);
+                e.u32(this + 0x30)
+            },
+            &|e| layout::set_cut_flags(e, this, [1, 0, 1, 0]),
+            &|e| layout::slot_roll(e, this, 1),
+            &|e| {
+                layout::torque_curve(e, this, 0.25, entry_at);
+                e.u32(entry_at + 4)
+            },
+            &|e| (layout::exhaust_blend_at(e, this, 3, entry_at) as f32).to_bits(),
+            &|e| layout::engine_torque(e, this, a * 2.0).to_bits(),
+        ];
+        let mut per_call = base.clone();
+        let x: Vec<u32> = entries.iter().map(|entry| entry(&mut layout::EngineView::image(&mut per_call))).collect();
+        let mut typed = base.clone();
+        let held = layout::CarEngine::of(&typed, this);
+        let y: Vec<u32> = {
+            let mut view = held.view(&mut typed);
+            entries.iter().map(|entry| entry(&mut view)).collect()
+        };
+        held.lower(&mut typed);
+        // Compared as bits: a NaN result is the same NaN on both paths.
+        assert_eq!(x, y, "call {}: the entries' results", call.index);
+        let windows = call.windows.iter().map(|w| (w.at, w.len));
+        for (at, len) in windows.chain(regions.map(|(at, len)| (at, len as usize))) {
+            let (p, q) = (per_call.read(at, len), typed.read(at, len));
+            let k = p.iter().zip(&q).position(|(u, v)| u != v);
+            assert!(k.is_none(), "call {}: {at:#x}+{:#x} differs between the storages", call.index, k.unwrap_or(0));
+        }
+        assert_ne!(per_call.read(objects.state, 0x280), base.read(objects.state, 0x280), "call {}", call.index);
+        chained += 1;
+    }
+    assert!(chained > 0, "no SimE660 record");
+    eprintln!("the typed engine's chain: {chained} SimE660 records, every byte equal to the per-call path's");
+}
+
 #[test]
 fn sim_d870_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();

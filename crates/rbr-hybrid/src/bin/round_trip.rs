@@ -4,7 +4,8 @@
 //! `engine_driveline::layout::{drive_round_trip, engine_round_trip}`, `tyre::layout::round_trip`,
 //! `wheel::layout::round_trip`); the typed
 //! stage's bytes and queries against the image's (`stage::layout::round_trip`, `differential`); the wheel's host-free
-//! entries per call against held (`wheel::layout::differential`).
+//! entries and the engine's per call against held (`wheel::layout::differential`,
+//! `engine_driveline::layout::engine_differential`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
@@ -73,6 +74,11 @@ fn main() -> ExitCode {
             ("wheels", wheel::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
+            (
+                "engine entries",
+                drive::engine_differential(&mut snap.mem(), &mut snap.mem(), car),
+                "bytes equal per call and held",
+            ),
             (
                 "wheel entries",
                 // The outputs go below the snapshot's stack pointer.

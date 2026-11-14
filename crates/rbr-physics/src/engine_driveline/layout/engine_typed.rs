@@ -284,6 +284,102 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(bytes)
 }
 
+/// The hosts of [`differential`]'s entries: every call out answered alike (no reset, a null walk, no sinks), so both
+/// storages run the same words.
+struct QuietHost;
+
+impl crate::engine_driveline::engine::IntakeResetHost for QuietHost {
+    fn intake_state_reset(&mut self, _engine: u32, _x: u32) {}
+}
+
+impl crate::engine_driveline::engine::CarWalkHost for QuietHost {
+    fn walk_object(&mut self, _car: u32) -> u32 {
+        0
+    }
+
+    fn transform_point(&mut self, _a: u32, _b: u32) -> [f32; 4] {
+        [0.25, 0.5, -0.5, 1.0]
+    }
+}
+
+impl crate::engine_driveline::engine::EngineStepHost for QuietHost {
+    fn emit(&mut self, _signal: u32) {}
+    fn graph_push(&mut self, _graph: u32, _value: f32) {}
+    fn floor_log(&mut self, _value: f32) {}
+}
+
+impl crate::engine_driveline::engine::SignalHost for QuietHost {
+    fn signal(&mut self, _signal_object: u32, _arg: u32) -> u32 {
+        0
+    }
+}
+
+/// The engine's entries in a row ([`QuietHost`] for their calls out): the step (`Sim8E20`) a few times, the heat,
+/// overheat, fuel and turbo steps, the intake resets, the signal update, the setters and the getters. Their results.
+fn entries(e: &mut EngineView, this: u32) -> Vec<u32> {
+    use super::EngineTuning;
+    use super::{engine_calls as calls, engine_sim as sim};
+    let tuning = EngineTuning::STOCK;
+    let mut out = Vec::new();
+    for (a, b) in [(0.003_333_3, 420.0), (0.003_333_3, 650.0), (0.01, -30.0), (0.003_333_3, 2000.0)] {
+        out.push(sim::engine_step(&mut QuietHost, e, this, a, b, &tuning).to_bits());
+    }
+    out.push(sim::heat_step(&mut QuietHost, e, this, 0.033, &tuning));
+    out.push(sim::overheat_step(e, this, 0.033));
+    out.push(sim::fuel_air_terms(e, this, 0.066));
+    if e.u32(EngineObjects::at(e, this).def + 0x26f8) != 0 {
+        out.push(sim::turbo_energy_step(e, this, 0.003_333_3, &tuning));
+    }
+    for i in 0..4 {
+        out.push(sim::intake_state_reset(e, this, i, &tuning));
+    }
+    out.push(sim::signal_update(&mut QuietHost, e, this));
+    let mut own = e.load_engine_own(this);
+    crate::engine_driveline::engine::set_pedal(&mut own.pedal, 0.75f32.to_bits());
+    e.store_engine_own(this, &own);
+    calls::pedal_cosine(e, this);
+    out.push(calls::set_cut_flags(e, this, [0, 1, 0, 1]));
+    out.push(sim::engine_step(&mut QuietHost, e, this, 0.003_333_3, 500.0, &tuning).to_bits());
+    out.push(calls::engine_running(e, this));
+    out.push(calls::boost_pressure(e, this).to_bits());
+    out.push((calls::coolant_temperature(e, this) as f32).to_bits());
+    out.push(calls::options_first_gate(e, this).to_bits());
+    out.push(calls::engine_state_speed(e, this).to_bits());
+    out
+}
+
+/// The engine's entries ([`entries`]) of the car at `car` per call (`per_call`, on the image) and on its engine held
+/// (`held`, lifted before, lowered after), two images of one snapshot: the results and every byte of the engine, its
+/// state, its option block, the roll table and the seed equal. The bytes compared, or the first that differs.
+pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32) -> Result<usize, String> {
+    let this = crate::car_body::layout::engine_at(car);
+    let objects = EngineObjects::at(per_call, this);
+    let seed = per_call.u32(objects.options);
+    let regions = [
+        (this, EngineObj::SIZE, "engine"),
+        (objects.state, EngineStateObj::SIZE, "engine state"),
+        (objects.options, 0x80, "option block"),
+        (super::engine_calls::ROLL_TABLE, 0x10, "roll table"),
+        (seed, 4, "seed"),
+    ];
+    let a = entries(&mut EngineView::image(per_call), this);
+    let engine = CarEngine::of(held, this);
+    let b = entries(&mut engine.view(held), this);
+    engine.lower(held);
+    if a != b {
+        return Err(format!("the entries' results differ: {a:x?} per call, {b:x?} held"));
+    }
+    let mut bytes = 0;
+    for (at, len, name) in regions {
+        let (want, got) = (per_call.read(at, len as usize), held.read(at, len as usize));
+        if let Some(i) = want.iter().zip(&got).position(|(x, y)| x != y) {
+            return Err(format!("{name} +{i:#x} differs: per call {:#04x}, held {:#04x}", want[i], got[i]));
+        }
+        bytes += len as usize;
+    }
+    Ok(bytes)
+}
+
 /// The engine's stores (`EngineStore`, `EngineTables`, `DamperBlocks`) over a held engine's typed state and the image
 /// ([`CarEngine::view`]), or over the image alone ([`EngineView::image`], per call): each word the held engine's
 /// tables name is its typed state's, every other the image's.
@@ -298,28 +394,22 @@ impl<'a> EngineView<'a> {
         EngineView { mem, held: None }
     }
 
-    /// The aligned word at `at`: the held engine's where it holds it, else the image's.
+    /// The held engine's word at the aligned address `at`, where it holds it.
     #[inline(always)]
-    fn aligned(&self, at: u32) -> u32 {
-        if let Some((image, typed)) = self.held {
-            if let Some(w) = image.word(typed, at) {
-                return w;
-            }
-        }
-        self.mem.u32(at)
+    fn held_word(&self, at: u32) -> Option<u32> {
+        let (image, typed) = self.held?;
+        image.word(typed, at)
     }
 
+    /// Writes the held engine's word at the aligned address `at`; false where it does not hold it.
     #[inline(always)]
-    fn set_aligned(&mut self, at: u32, value: u32) {
-        if let Some((image, typed)) = self.held {
-            if image.set_word(typed, at, value) {
-                return;
-            }
-        }
-        self.mem.set_u32(at, value)
+    fn set_held_word(&mut self, at: u32, value: u32) -> bool {
+        self.held.is_some_and(|(image, typed)| image.set_word(typed, at, value))
     }
 }
 
+/// Each byte the held engine's tables name is its typed state's, every other byte the image's (an unaligned word is
+/// its bytes).
 impl Raw for EngineView<'_> {
     fn mem(&self) -> &Mem {
         self.mem
@@ -331,15 +421,20 @@ impl Raw for EngineView<'_> {
 
     #[inline(always)]
     fn u8(&self, at: u32) -> u8 {
-        self.aligned(at & !3).to_le_bytes()[(at & 3) as usize]
+        match self.held_word(at & !3) {
+            Some(w) => w.to_le_bytes()[(at & 3) as usize],
+            None => self.mem.u8(at),
+        }
     }
 
     #[inline(always)]
     fn u32(&self, at: u32) -> u32 {
         if at & 3 == 0 {
-            self.aligned(at)
-        } else {
+            self.held_word(at).unwrap_or_else(|| self.mem.u32(at))
+        } else if self.held.is_some() {
             u32::from_le_bytes(std::array::from_fn(|i| self.u8(at.wrapping_add(i as u32))))
+        } else {
+            self.mem.u32(at)
         }
     }
 
@@ -360,19 +455,28 @@ impl Raw for EngineView<'_> {
 
     #[inline(always)]
     fn set_u8(&mut self, at: u32, value: u8) {
-        let mut bytes = self.aligned(at & !3).to_le_bytes();
-        bytes[(at & 3) as usize] = value;
-        self.set_aligned(at & !3, u32::from_le_bytes(bytes))
+        match self.held_word(at & !3) {
+            Some(w) => {
+                let mut bytes = w.to_le_bytes();
+                bytes[(at & 3) as usize] = value;
+                self.set_held_word(at & !3, u32::from_le_bytes(bytes));
+            }
+            None => self.mem.set_u8(at, value),
+        }
     }
 
     #[inline(always)]
     fn set_u32(&mut self, at: u32, value: u32) {
         if at & 3 == 0 {
-            self.set_aligned(at, value)
-        } else {
+            if !self.set_held_word(at, value) {
+                self.mem.set_u32(at, value)
+            }
+        } else if self.held.is_some() {
             for (i, byte) in value.to_le_bytes().into_iter().enumerate() {
                 self.set_u8(at.wrapping_add(i as u32), byte);
             }
+        } else {
+            self.mem.set_u32(at, value)
         }
     }
 
