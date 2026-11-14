@@ -204,7 +204,8 @@ guard's `int3` sits at entry + 0x3d. `game_log_vectors`: 4000 direct calls.
 `src/rigid_body/` (`layout/` offsets; contact record in `layout::contacts::load_contact`; behavior per function in
 the file docs: `force.rs`, `integrate.rs`, `impulse.rs`, `contact.rs`, `contact_list.rs`, `window.rs`). The step's
 S60/S64/S6C are slots 25/27 (code: `Vf25x`/`Vf27x`, no S-numbers). Flag 0x4 at `+0x60` is the parent-updates-child
-bit, not a "contact body" name.
+bit, not a "contact body" name. Flag 0x8 there is `layout::CONTACT_LIST_FLAG` (named by use: the contact list step,
+the slow-velocity clears, the pose step's drive-line sample, the contact sample hook, the placement's hook).
 
 ## Car body
 
