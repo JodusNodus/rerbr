@@ -106,10 +106,10 @@ pub trait TyreStore: Raw {
     fn store_surface_friction(&mut self, o1: u32, o2: u32, out: SurfaceFriction);
     /// Stores the relaxation results, then the relaxation counter: up by one, with its dirty flag set.
     fn store_relax_count(&mut self, this: u32, out: &RelaxOutput);
-    /// The first word of the wheel container's tyre tail.
-    fn load_tyre_tail10(&self, container: u32) -> u32;
-    /// The second word of the wheel container's tyre tail.
-    fn load_tyre_tail14(&self, container: u32) -> u32;
+    /// The scratch's setup pointer.
+    fn load_def_pointer(&self, this: u32) -> u32;
+    /// The scratch's state pointer.
+    fn load_state_pointer(&self, this: u32) -> u32;
     /// The tweak's name object.
     fn load_name_object(&self, this: u32) -> u32;
     /// The tyre-noise signal.

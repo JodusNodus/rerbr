@@ -113,7 +113,7 @@ impl ResetDamageCalls for ResetPorts {
             STATE_INIT => engine_driveline::layout::state_init_c70(mem, this),
             ENGINE_RESET => engine_driveline::layout::reset_sub78(mem, this),
             WHEEL_ZERO => crate::wheel::layout::damage_zero(mem, this),
-            VALUE8_CLEAR => tyre::layout::value8_clear(mem, this),
+            VALUE8_CLEAR => tyre::layout::clear_eight_floats(mem, this),
             VALUE_CLEAR => spring_damper::layout::clear_unsigned_value(mem, this),
             FILL_ONES => entities::layout::fill_ones(mem, this),
             M1640 => mounted::clear_state(mem, this),

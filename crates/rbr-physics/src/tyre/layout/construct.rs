@@ -133,8 +133,9 @@ const DEF_FROM_SETUP: [(u32, u32); 122] = [
     (0x310, 0x6A8),
 ];
 
-/// `m_state+0x4c`: the constant 0.315 the original stores at 0x72fca8 (the value the records show).
-const STATE_UNK4C: f32 = 0.315;
+/// `m_state+0x4c`: the effective radius `copy_def_from` stores in the state, m: the constant 0.315 the original stores at
+/// 0x72fca8 (the value the records show).
+const INITIAL_EFFECTIVE_RADIUS: f32 = 0.315;
 
 /// `CopyDefFrom(src)` (0x534760, thiscall, one stack word) on the scratch at `this`: the setup block (`src+0x2c`) is
 /// copied into the def (`this+0x10`), the state's copies follow (`this+0x14`), then `DamperUpdateB` runs on the
@@ -149,7 +150,7 @@ pub fn copy_def_from(mem: &mut Mem, this: u32, src: u32) {
     mem.set_u32(state + 0x54, mem.u32(setup + 0x88));
     mem.set_u32(state + 0x58, mem.u32(def + 0xBC));
     mem.set_u32(state + 0x68, mem.u32(src + 0x28));
-    mem.set_f32(state + STATE_EFFECTIVE_RADIUS, STATE_UNK4C);
+    mem.set_f32(state + STATE_EFFECTIVE_RADIUS, INITIAL_EFFECTIVE_RADIUS);
     spring_damper::layout::solve_scale(mem, state + 0x60, 287.0);
 }
 
