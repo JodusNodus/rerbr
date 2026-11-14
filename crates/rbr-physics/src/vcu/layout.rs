@@ -44,10 +44,13 @@ crate::object! {
         shift_lockout @ 0x2c: f32,
         /// The launch clutch's CReal: its dirty word (`+0x48`) and value (`+0x4c`).
         launch_clutch @ 0x40: Real,
-        w50 @ 0x50: u32,
-        w54 @ 0x54: u32,
+        /// `+0x50`: a word the constructor clears; named by use, no reader known.
+        cleared_a @ 0x50: u32,
+        /// `+0x54`: a word the constructor clears; named by use, no reader known.
+        cleared_b @ 0x54: u32,
         pedal_swap @ 0x58: u32,
-        w5c @ 0x5c: u32,
+        /// `+0x5c`: a word the constructor clears; named by use, no reader known.
+        cleared_c @ 0x5c: u32,
         gear_timer @ 0x60: f32,
         shift_cooldown @ 0x64: f32,
         owner @ 0x68: u32,
@@ -64,7 +67,8 @@ crate::object! {
         throttle @ 0x0c: f32,
         brake @ 0x10: f32,
         handbrake @ 0x14: f32,
-        unknown_18 @ 0x18: u32,
+        /// `+0x18` (`m_unk18`): the packet word ReadPacket carries; no reader known.
+        carried_word @ 0x18: u32,
         fixed_clutch @ 0x1c: f32,
         launch_enabled @ 0x40: u32,
         slip_gate_rpm @ 0x44: u32,
@@ -88,13 +92,15 @@ const SHIFT_COOLDOWN: u32 = StateObj::shift_cooldown.at;
 /// `notes/physics/renames/engine-driveline.csv`).
 const DRIVE_STATE_GEAR: u32 = 0x54c;
 const DRIVE_STATE_COMMANDED_GEAR: u32 = 0x570;
+const DRIVE_STATE_CHANGED: u32 = 0x56c;
+const DRIVE_STATE_SLIP: u32 = 0x55c;
 
 const SCRATCH_DEF: u32 = ScratchObj::def.at;
 const SCRATCH_STATE: u32 = ScratchObj::state.at;
 const SCRATCH_THROTTLE: u32 = ScratchObj::throttle.at;
 const SCRATCH_BRAKE: u32 = ScratchObj::brake.at;
 const SCRATCH_HANDBRAKE: u32 = ScratchObj::handbrake.at;
-const SCRATCH_UNKNOWN_18: u32 = ScratchObj::unknown_18.at;
+const SCRATCH_CARRIED_WORD: u32 = ScratchObj::carried_word.at;
 const SCRATCH_FIXED_CLUTCH: u32 = ScratchObj::fixed_clutch.at;
 const SCRATCH_LAUNCH_ENABLED: u32 = ScratchObj::launch_enabled.at;
 const SCRATCH_SLIP_GATE_RPM: u32 = ScratchObj::slip_gate_rpm.at;
@@ -322,16 +328,17 @@ pub struct Outputs {
     pub reals: Reals,
 }
 
-/// The drive definition's per-gear ratios that `E50_QuerySlip` reads: `lim` at +0x644 and `div` at +0x694,
-/// 0x50 bytes per gear.
+/// The drive definition's per-gear ratios that `E50_QuerySlip` reads, 0x50 bytes per gear.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct GearRatios {
-    pub lim: [f32; GEARS],
-    pub div: [f32; GEARS],
+    /// `+0x644` (rbr-recomp's `lim`): the word 0x50 before `ratio`, so gear `g - 1`'s ratio for `g >= 1`.
+    pub lower_ratio: [f32; GEARS],
+    /// `+0x694` (rbr-recomp's `div`): the gear's ratio (its gear band's, `engine_driveline::layout::GearBand::ratio`).
+    pub ratio: [f32; GEARS],
 }
 
-/// The drive's diff-lock channels, as `CDrive::Set4570` reads and writes them: each channel's record in the drive's
-/// D8 object (0x14 bytes: `ratio` at +0x0c, `torque` at +0x18), the gate at `drive + 0x170` (its `+0x90`), and each
+/// The drive's diff-lock channels, as `CDrive::Set4570` reads and writes them: each channel's record in the drive state
+/// (`[drive + 8]`, 0x14 bytes: `ratio` at +0x0c, `torque` at +0x18), the gate at `drive + 0x170` (its `+0x90`), and each
 /// channel's `max_torque` in the drive's definition (`drive + 4`, `+0x58` with 0x60 per channel).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Locks {
@@ -355,8 +362,8 @@ pub struct Pedals {
 pub struct Packet {
     pub pedals: Pedals,
     pub fixed_clutch: f32,
-    /// The word at +0x10, copied to the scratch's `unknown_18`. Meaning unknown.
-    pub unknown_10: u32,
+    /// The word at +0x10, copied to the scratch's `carried_word`. Named by use; meaning unknown.
+    pub carried_word: u32,
     /// The request flags (+0x14): 1 upshift, 2 downshift, 4 set the gear to `value`.
     pub flags: u8,
     /// The gear for the set flag (+0x18).
@@ -373,8 +380,9 @@ pub struct Scratch {
     pub pedals: Pedals,
     /// Fixed clutch sent when the launch mode is off (copied from the packet by ReadPacket).
     pub fixed_clutch: f32,
-    /// Copied from the packet's `unknown_10` by ReadPacket. Meaning unknown.
-    pub unknown_18: u32,
+    /// `+0x18`: copied from the packet's `carried_word` by ReadPacket. Named by use; meaning
+    /// unknown.
+    pub carried_word: u32,
     /// The gear logic and the launch step run only when this is nonzero.
     pub launch_enabled: u32,
     /// Selects the launch clutch logic (`UpdateC`): set from the setup's `+0x18`, or else its `+0x48`.
@@ -534,7 +542,7 @@ pub fn copy_def<S: VcuStore>(mem: &mut S, scratch: u32, setup: u32) {
     mem.store_scratch(scratch, &value);
 }
 
-/// `CScratchSim::ReadPacket` (0x537f20): copies the packet's pedals, fixed clutch and `unknown_10` into the
+/// `CScratchSim::ReadPacket` (0x537f20): copies the packet's pedals, fixed clutch and `carried_word` into the
 /// scratch, then returns the packet. The asm tail-jumps into FlagDispatch, so the caller applies the packet
 /// with `super::dispatch::flag_dispatch`.
 pub fn read_packet<S: VcuStore>(mem: &mut S, scratch: u32, packet_at: u32) -> Packet {
@@ -542,7 +550,7 @@ pub fn read_packet<S: VcuStore>(mem: &mut S, scratch: u32, packet_at: u32) -> Pa
     let value = Scratch {
         pedals: packet.pedals,
         fixed_clutch: packet.fixed_clutch,
-        unknown_18: packet.unknown_10,
+        carried_word: packet.carried_word,
         ..mem.scratch(scratch)
     };
     mem.store_scratch(scratch, &value);
@@ -940,16 +948,16 @@ impl VcuStore for Mem {
         Gearbox {
             gear: self.u32(at + DRIVE_STATE_GEAR),
             commanded: self.u32(at + DRIVE_STATE_COMMANDED_GEAR),
-            changed: self.u32(at + 0x56c),
-            slip: self.u32(at + 0x55c),
+            changed: self.u32(at + DRIVE_STATE_CHANGED),
+            slip: self.u32(at + DRIVE_STATE_SLIP),
         }
     }
 
     fn store_gearbox(&mut self, at: u32, value: &Gearbox) {
         self.set_u32(at + DRIVE_STATE_GEAR, value.gear);
         self.set_u32(at + DRIVE_STATE_COMMANDED_GEAR, value.commanded);
-        self.set_u32(at + 0x56c, value.changed);
-        self.set_u32(at + 0x55c, value.slip);
+        self.set_u32(at + DRIVE_STATE_CHANGED, value.changed);
+        self.set_u32(at + DRIVE_STATE_SLIP, value.slip);
     }
 
     /// Gear count of the drive's own definition (`[drive + 4] + 0x654`), which `CDrive::Set47B0` clamps to.
@@ -991,27 +999,27 @@ impl VcuStore for Mem {
     fn gear_ratios(&self, drive: u32) -> GearRatios {
         let def = self.u32(drive + 0x04);
         GearRatios {
-            lim: std::array::from_fn(|g| self.f32(def + 0x644 + 0x50 * g as u32)),
-            div: std::array::from_fn(|g| self.f32(def + 0x694 + 0x50 * g as u32)),
+            lower_ratio: std::array::from_fn(|g| self.f32(def + 0x644 + 0x50 * g as u32)),
+            ratio: std::array::from_fn(|g| self.f32(def + 0x694 + 0x50 * g as u32)),
         }
     }
 
     fn locks(&self, drive: u32) -> Locks {
-        let d8 = self.u32(drive + 0x08);
+        let drive_state = self.u32(drive + 0x08);
         let def = self.u32(drive + 0x04);
         Locks {
-            ratio: std::array::from_fn(|ch| self.f32(d8 + 0x14 * ch as u32 + 0x0c)),
+            ratio: std::array::from_fn(|ch| self.f32(drive_state + 0x14 * ch as u32 + 0x0c)),
             enabled: self.u32(self.u32(drive + 0x170) + 0x90) != 0,
             max_torque: std::array::from_fn(|ch| self.f32(def + 0x58 + 0x60 * ch as u32)),
-            torque: std::array::from_fn(|ch| self.f32(d8 + 0x14 * ch as u32 + 0x18)),
+            torque: std::array::from_fn(|ch| self.f32(drive_state + 0x14 * ch as u32 + 0x18)),
         }
     }
 
     /// Writes the locks back. Only the torques change; the ratios and the maximum torques are inputs here.
     fn store_locks(&mut self, drive: u32, value: &Locks) {
-        let d8 = self.u32(drive + 0x08);
+        let drive_state = self.u32(drive + 0x08);
         for (ch, &torque) in value.torque.iter().enumerate() {
-            self.set_f32(d8 + 0x14 * ch as u32 + 0x18, torque);
+            self.set_f32(drive_state + 0x14 * ch as u32 + 0x18, torque);
         }
     }
 
@@ -1033,7 +1041,7 @@ impl VcuStore for Mem {
         Packet {
             pedals: Pedals { throttle: self.f32(at), brake: self.f32(at + 0x04), handbrake: self.f32(at + 0x08) },
             fixed_clutch: self.f32(at + 0x0c),
-            unknown_10: self.u32(at + 0x10),
+            carried_word: self.u32(at + 0x10),
             flags: self.u8(at + 0x14),
             value: self.u32(at + 0x18),
         }
@@ -1045,7 +1053,7 @@ impl VcuStore for Mem {
             state: self.u32(at + SCRATCH_STATE),
             pedals: self.pedals(at),
             fixed_clutch: self.f32(at + SCRATCH_FIXED_CLUTCH),
-            unknown_18: self.u32(at + SCRATCH_UNKNOWN_18),
+            carried_word: self.u32(at + SCRATCH_CARRIED_WORD),
             launch_enabled: self.u32(at + SCRATCH_LAUNCH_ENABLED),
             launch_mode: self.u32(at + SCRATCH_LAUNCH_MODE),
             vcu_enabled: self.u32(at + SCRATCH_VCU_ENABLED),
@@ -1062,7 +1070,7 @@ impl VcuStore for Mem {
         self.set_u32(at + SCRATCH_STATE, value.state);
         self.store_pedals(at, &value.pedals);
         self.set_f32(at + SCRATCH_FIXED_CLUTCH, value.fixed_clutch);
-        self.set_u32(at + SCRATCH_UNKNOWN_18, value.unknown_18);
+        self.set_u32(at + SCRATCH_CARRIED_WORD, value.carried_word);
         self.set_u32(at + SCRATCH_LAUNCH_ENABLED, value.launch_enabled);
         self.set_u32(at + SCRATCH_LAUNCH_MODE, value.launch_mode);
         self.set_u32(at + SCRATCH_VCU_ENABLED, value.vcu_enabled);

@@ -137,7 +137,7 @@ fn neutral(input: &Input, speed: f32, def: &Def, state: &mut State, drive: &mut 
         return;
     }
     if state.gear_timer > 0.0 {
-        // 0 - dt, as the asm writes it (so a zero dt gives +0).
+        // 0 - dt, so a zero dt gives +0.
         state.gear_timer = 0.0 - input.dt;
     } else if NEUTRAL_TIMER_LIMIT > state.gear_timer {
         if lockout_clear(state) {

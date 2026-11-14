@@ -1,8 +1,8 @@
 //! The slip query that the flag dispatch makes before a downshift. Two gates, each on
 //! when its slip gate (the setup's, copied from the definition) is nonzero. The rpm gate, in gears above 2, asks whether
-//! the gear's rpm is above the rev limit. The speed gate, in second gear, asks whether the car speed's magnitude
-//! is above 10 km/h. The operation order is fixed: the rpm is rounded to f32
-//! before it multiplies the gear ratio.
+//! the engine rpm taken to the gear below (times that gear's ratio over this one's) is above the rev limit. The speed
+//! gate, in second gear, asks whether the car speed's magnitude is above 10 km/h. The operation order is fixed: the rpm
+//! is rounded to f32 before it multiplies the ratio.
 
 use super::gear::gear_index;
 use super::layout::{GearRatios, RPM_PER_RAD_S};
@@ -21,12 +21,12 @@ pub fn query_slip(
     engine: f32,
     car_speed: f32,
 ) -> bool {
-    // The gear compares as a signed word (`jle`).
+    // The gear compares as a signed word.
     let gear_signed = gear as i32;
     if gate_rpm != 0 && gear_signed > 2 {
         let k = gear_index(gear);
         let rpm = engine * RPM_PER_RAD_S;
-        let v = gears.lim[k] / gears.div[k] * rpm;
+        let v = gears.lower_ratio[k] / gears.ratio[k] * rpm;
         if v > rpm_limit {
             return true;
         }
