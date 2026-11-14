@@ -162,6 +162,8 @@ pub struct CarSolids {
     bounds: Range<u32>,
     /// The solid the last word found was in: runs read and write one solid's words in a row.
     last: Cell<usize>,
+    /// The gap between two solids the last word not found was in (another object's words, read in a row).
+    gap: Cell<(u32, u32)>,
 }
 
 impl PartialEq for CarSolids {
@@ -199,7 +201,7 @@ impl CarSolids {
             (Some(lo), Some(hi)) => lo.at + HELD.start..hi.at + HELD.end,
             _ => 0..0,
         };
-        CarSolids { solids, bounds, last: Cell::new(0) }
+        CarSolids { solids, bounds, last: Cell::new(0), gap: Cell::new((0, 0)) }
     }
 
     /// Writes every solid's state back to the image.
@@ -232,18 +234,27 @@ impl CarSolids {
                 return Some((s, off));
             }
         }
+        let (start, end) = self.gap.get();
+        if (start..end).contains(&at) {
+            return None;
+        }
         self.search(at)
     }
 
-    /// [`CarSolids::find`] past the solid found last: the last solid that starts at or below `at`, the only one whose
-    /// object can hold it.
+    /// [`CarSolids::find`] past the solid and the gap found last: the last solid that starts at or below `at` is the
+    /// only one whose object can hold it; else the gap between two solids that holds `at` is kept.
     #[inline(never)]
     fn search(&self, at: u32) -> Option<(&HeldSolid, u32)> {
-        let k = self.solids.partition_point(|s| s.at <= at).checked_sub(1)?;
-        let s = &self.solids[k];
-        let off = Some(at.wrapping_sub(s.at)).filter(|off| *off < Solid::SIZE)?;
+        let next = self.solids.partition_point(|s| s.at <= at);
+        let found = next.checked_sub(1).map(|k| (k, &self.solids[k])).filter(|(_, s)| at - s.at < Solid::SIZE);
+        let Some((k, s)) = found else {
+            let start = next.checked_sub(1).map_or(self.bounds.start, |k| self.solids[k].at + Solid::SIZE);
+            let end = self.solids.get(next).map_or(self.bounds.end, |s| s.at);
+            self.gap.set((start, end));
+            return None;
+        };
         self.last.set(k);
-        Some((s, off))
+        Some((s, at - s.at))
     }
 
     /// Whether the `len` bytes from `at` reach a held span's bounds: a block that does not is the image's.
