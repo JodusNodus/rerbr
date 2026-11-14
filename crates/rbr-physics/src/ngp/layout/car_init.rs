@@ -5,8 +5,9 @@
 //! file addresses; [`Data`] places them at the DLL's base in `mem`.
 //!
 //! Not ported: the CRC check of the car files (`0x100e88e0`, `0x10041810`; a mismatch sets the drive definition's
-//! `+0x654` to 3), the per-slot force-feedback percentages (`ForceFeedbackSensitivity<Surface>_Car<slot>`), the listener unlinks (`0x10042940`), the idle table's
-//! shared count (`0x101767ec`; nothing in the step reads it) and the game object's two words.
+//! `+0x654` to 3), the per-slot force-feedback percentages (`ForceFeedbackSensitivity<Surface>_Car<slot>`), the
+//! listener unlinks (`0x10042940`), the idle table's shared count (`0x101767ec`; nothing in the step reads it) and the
+//! game object's two words.
 
 use crate::mem::Mem;
 use crate::ngp::atmosphere::atmosphere;
@@ -89,7 +90,7 @@ const TYRE_DEF: u32 = 0x56c;
 const TYRE_COPIES: u32 = 0x1017_68c8;
 const TYRE_COPY_SIZE: u32 = 0x314;
 
-/// `0x100f1690`: the wheels' tyre definitions (`+0x56c`, 0xc5 words) into [`TYRE_COPIES`].
+/// `0x100f1690`: the wheels' tyre definitions (`+0x56c`, 0xc5 words) into NGP's copies (`0x101768c8`).
 pub fn copy_tyre_defs(mem: &mut Mem, data: Data, car: u32) {
     for k in 0..4 {
         let def = mem.u32(mem.u32(car + WHEELS + 4 * k) + DEF);
@@ -636,18 +637,20 @@ fn tyre(mem: &mut Mem, data: Data, c: Car, wheel: u32, k: u32, tables: &Tables) 
     for at in [t + 0x4c, t + 0x5c, w + 0x50, w + 0x54] {
         scale(mem, at, r);
     }
-    let fc = mem.f32(t + 0xfc);
-    if fc > 0.0 {
+    // `+0xfc` scales the air pressure axis (`+0x134`, 4 entries); named by use.
+    let pressure_axis_scale = mem.f32(t + 0xfc);
+    if pressure_axis_scale > 0.0 {
         for at in [0x134, 0x138, 0x13c, 0x140] {
-            scale(mem, t + at, fc);
+            scale(mem, t + at, pressure_axis_scale);
         }
     }
-    let g = mem.f32(t + 0x3c);
-    if g <= 0.0 {
+    // `ReferenceFriction` (`+0x3c`): its square scales `CrnStf_L` and `TrctStf_L` (`+0x204`, `+0x224`).
+    let reference_friction = mem.f32(t + 0x3c);
+    if reference_friction <= 0.0 {
         mem.set_f32(t + 0x3c, 1.0);
     } else {
         for at in (0x204..=0x240).step_by(4) {
-            scale(mem, t + at, g * g);
+            scale(mem, t + at, reference_friction * reference_friction);
         }
     }
     for (from, to) in [(0x2c, 0x2c), (0x4c, 0x4c), (0x5c, 0x5c)] {
