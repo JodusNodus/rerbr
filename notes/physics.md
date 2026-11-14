@@ -147,17 +147,17 @@ same conversion.
 
 One physics code over two storages (Phase B). A subsystem's store trait names its layout's load and store groups;
 `Mem` implements each with the layout's bodies. Sequence functions are generic over the trait (`fn step<S:
-SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
+TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 
 | Trait | File | Mem impl |
 | --- | --- | --- |
 | `store::Raw` (supertrait: words, `mem()`) | `store/mod.rs` | same |
-| `SpringStore` | `spring_damper/store.rs` | `spring_damper/layout.rs` |
+| `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: `spring_damper/layout.rs` |
 | `VcuStore` | `vcu/store.rs` | `vcu/layout.rs` |
 | `TyreStore` | `tyre/store.rs` | `tyre/layout/kernels.rs` |
 | `WheelStore` | `wheel/layout/store.rs` | `wheel/layout/fields.rs` |
 | `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
-| `EngineStore: SpringStore` | `engine_driveline/store.rs` | `engine_driveline/layout/mem_store.rs` |
+| `EngineStore: DamperBlocks` | `engine_driveline/store.rs` | `engine_driveline/layout/mem_store.rs` |
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
 | `CoreStore` | `physics_core/store.rs` | `physics_core/layout/mem_store.rs` |
 | `HingeStore`, `EntityStore: HingeStore` | `entities/store.rs` | `entities/layout/hinge_state.rs`, `layout/store_mem.rs` |
@@ -168,7 +168,7 @@ SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
 - A calls trait takes the store as a parameter defaulting to `Mem` (`Vf6cxCalls<S = Mem>`); clashing names use
   UFCS; what a trait does not name yet goes through `Raw`. Constructors and setup copies stay on `&mut Mem`.
 - `object!` (`store/layout.rs`) tables an object once (struct, `Field` per row, `lift`/`lower`); tabled so far
-  (`store::car_objects`): tyre scratch, strut and state, VCU scratch and state.
+  (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and state.
 - Mem-direct dispatch (`--dispatch direct`, live default): a call within the `IN_PLACE` subsystems
   (`rbr-hybrid/src/pure/mod.rs`) to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) runs as a plain call
   when it passes exactly the words the leaf pops; a non-leaf binding too (B1b, `Pure::call_plain`, `call_framed`:
@@ -178,7 +178,7 @@ SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
   probe's callees, `E45_M40C0`'s `LookupTwin`, CRT vector iterators). Bindings get `Direct` (`pure/mod.rs`);
   `Pure`'s own `Host` is the fact-check's (`--dispatch pure`). 176-step NGP bench: 739.8e9 to 678.3e9
   instructions.
-- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct`, the `poison` feature.
+- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed`, the `poison` feature.
 - The generic sequences sit outside the layouts (`rigid_body::{solid_rows, solid_contacts, solid_window}`,
   `physics_core::{step, contact_loop, passenger_step, pose, emit, mounted, accumulate}`, `entities::hinge_step`,
   `ntweak::plan`, `collision::{solver_pass, entry, events, body_contact, grid_edge, mesh, wall, body}`), re-exported
@@ -189,7 +189,20 @@ SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
   `prof_calls`; entities `collide_init`, detach events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (via
   physics_core's Mem-typed `FilingHost`); NTweak apply and parse (host-bound); collision cell grid, links, pools,
   `col_grids`, `brake_wall_contact` (calls `car_body::light::sub_block_init`).
-- Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run.
+- Typed storage (B2), the strut first: `spring_damper::strut::Struts` (per wheel: the controller's mode, latch and
+  signal, the three effective dampings, the fade pair; 12 words a strut) behind `StrutStore` keyed by `StrutId`; the
+  image side is `layout::{StrutImage, CarStruts}` (`lift`/`lower` on the `object!` fields, `FadeObj` the fade pair).
+  The definition, the headers and every pointer stay in the image, read per call. Per call (`layout::with_strut`):
+  the emulator's bindings, the vectors, `Pure::reset_strut_dampers`, another car's strut. Over a step
+  (`Pure::typed_struts`, the default): `Playback::step` lifts the car's struts before `StepForward` and lowers them
+  after (a stop too), the bindings take them through `Host::struts`, so every reader between steps (telemetry, SND1,
+  FRM1, the twin, a restart's `restore`) sees the image's words. NGP's strut words (`strut+0x30..0x38`, the owner
+  wheel's `+0xe80..0xe8c`) and the step's out pointers stay the binding's, on the image. Evidence: drive2 attempt 5
+  84084/84084 typed; `--twin typed` (against the per-call path) equal after each of 84084 steps; the `poison` build
+  (`--features rbr-hybrid/poison`, the held words poisoned in the runs' memory) 84084/84084; `round_trip` 192 typed
+  bytes equal on 43 snapshots; `tests/pure_struts.rs` both storages equal to the original and to each other.
+  The hybrid gate's 1.02 snapshots run no strut call but the kernels and `GetName` in 30 steps (`Step` declines).
+- Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
 
@@ -240,9 +253,12 @@ sticking load `normal_force*0.1` (`F[0xC5]`; NGP 0.025) rounds before `*sticking
 
 ## Spring-damper
 
-`src/spring_damper/` (lifecycle in `suspension.rs`, kernels in the model docs, `Mem` edge in `layout.rs`; damper
-events via `Host::emit_damper`). `CSpringDamper`'s fade pointer `+0x10` is read without a check; its writer is not
-found.
+`src/spring_damper/` (lifecycle in `suspension.rs`, typed state and its updates in `strut.rs`, kernels in the model
+docs, `Mem` edge in `layout.rs`; damper events via `Host::emit_damper`). `CSpringDamper`'s fade pointer `+0x10` is
+read without a check; its writer is `CState::SetUnk10` (0x52da40, writes `this+0x10`), which `E51Wheel::UnkA860`
+calls on the strut (record: ecx the controller, vtable 0x7401e8), not the state: `layout::set_fade_pointer`. The fade
+pair is the damage handler's wheel damper pair (`+0x3ce4 + 8k`, `+0` 0.5 the test multiplier from
+`E36DamageOps::Slot4`, `+4` the amount, cleared by `ResetDamage`'s `CU32Value::Clear`, `ntweak::layout`).
 
 ## Engine and driveline
 

@@ -1,7 +1,7 @@
 //! Owned suspension state and the complete per-strut update: the definition, the controller, the fade and the
 //! effective damping. The caller supplies travel and current settings; nothing here accesses a memory image or a call
-//! stack. The memory edge (`layout`) loads a `Suspension` from the strut's objects, runs one method, and stores it
-//! back, so every dispatch path (bindings, host calls, pure leaves) runs this code.
+//! stack. A `Suspension` loads from a strut's store (`StrutStore`), runs one method, and stores back, so every
+//! dispatch path (bindings, host calls, pure leaves) runs this code.
 //!
 //! The step mirrors NGP's spring-damper step wrapper: the bump rubber softens the definition for
 //! this calculation alone, the high-speed latch overrides the effective damping and clears its break speed, the
