@@ -1,12 +1,13 @@
 //! Checks the `object!` tables on snapshots: `lower(lift(image)) == image` on every owned byte of the car's tabled
 //! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's, the drive's, the engine's, the tyres', the
-//! wheels' and the car's own typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
+//! wheels', the car's own and the collision's typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
 //! `engine_driveline::layout::{drive_round_trip, engine_round_trip}`, `tyre::layout::round_trip`,
-//! `wheel::layout::round_trip`, `car_body::layout::round_trip`) and of the physics core's (`physics_core::layout::typed`);
-//! the typed stage's bytes and queries against the image's (`stage::layout::round_trip`, `differential`) and the typed
-//! definitions' answers (`store::defs::differential`); the wheel's, the engine's, the car's and the core's entries per
-//! call against held (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`,
-//! `car_body::layout::differential`, `physics_core::layout::typed::differential`).
+//! `wheel::layout::round_trip`, `car_body::layout::round_trip`, `collision::layout::round_trip`) and of the physics
+//! core's (`physics_core::layout::typed`); the typed stage's bytes and queries against the image's
+//! (`stage::layout::round_trip`, `differential`) and the typed definitions' answers (`store::defs::differential`); the
+//! wheel's, the engine's, the car's, the collision's and the core's entries per call against held
+//! (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`, `car_body::layout::differential`,
+//! `collision::layout::differential`, `physics_core::layout::typed::differential`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
@@ -16,6 +17,7 @@ use std::process::ExitCode;
 
 use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::layout as car_body;
+use rbr_physics::collision::layout as collision;
 use rbr_physics::engine_driveline::layout as drive;
 use rbr_physics::physics_core::layout::typed as core;
 use rbr_physics::snapshot::Snapshot;
@@ -77,6 +79,7 @@ fn main() -> ExitCode {
             ("wheels", wheel::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("car", car_body::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("core", core::round_trip(&mem), "typed bytes equal after lower(lift)"),
+            ("collision", collision::round_trip(&mem), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
             ("definitions", store::defs::differential(&mem, car), "answer bytes equal to the image's"),
@@ -100,6 +103,11 @@ fn main() -> ExitCode {
                 "core entries",
                 // The entries' frames go below the snapshot's stack pointer.
                 core::differential(&mut snap.mem(), &mut snap.mem(), snap.metadata().registers.esp - 0x400),
+                "bytes equal per call and held",
+            ),
+            (
+                "collision entries",
+                collision::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x1000),
                 "bytes equal per call and held",
             ),
         ];

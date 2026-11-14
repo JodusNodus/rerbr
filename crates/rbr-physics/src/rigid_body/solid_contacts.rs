@@ -1,6 +1,6 @@
 //! The body's contact calls over the store: the contact worker, the vote, the impulse tail and the ring append.
 
-use super::contact::{self, ContactHost};
+use super::contact::{self, Contact, ContactHost};
 use super::host::HostUnavailable;
 use super::impulse;
 use super::layout;
@@ -19,14 +19,14 @@ pub struct ContactOut {
     pub depth: u32,
 }
 
-/// The contact at `contact` with the range `range`. The body's inverse mass, the world's maximum time step and the
-/// sample test (the hook and the contact-list flag) are read first; the writes are the depth, the force when it is
+/// The contact `contact` (its record's words) with the range `range`. The body's inverse mass, the world's maximum
+/// time step and the sample test (the hook and the contact-list flag) are read first; the writes are the depth, the force when it is
 /// computed, and the pair on a hit. Returns 1 on a hit.
 pub fn contact_worker<S: RigidStore>(
     store: &mut S,
     this: u32,
     out: ContactOut,
-    contact: u32,
+    contact: Contact,
     range: f32,
     host: &mut impl ContactHost,
 ) -> Result<u32, HostUnavailable> {
@@ -46,15 +46,16 @@ pub fn contact_worker<S: RigidStore>(
     Ok(1)
 }
 
-/// The vote into the force and torque outputs (written only when the body has a list). Returns whether it hit.
+/// The vote over the body's `count` contacts into the force and torque outputs (written only when the body has a
+/// list, `count` not `None`). Returns whether it hit.
 pub fn contact_vote<S: RigidStore>(
     store: &mut S,
-    this: u32,
+    count: Option<u32>,
     a: u32,
     b: u32,
     host: &mut impl ContactVoteHost,
 ) -> Result<u32, HostUnavailable> {
-    let Some(v) = vote::vote(store.contact_count(this), host)? else {
+    let Some(v) = vote::vote(count, host)? else {
         return Ok(0);
     };
     store.store_row(a, v.force);

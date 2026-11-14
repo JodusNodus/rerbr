@@ -43,7 +43,8 @@ pub(super) fn vf81x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, range, ..] = r.stack;
     let mut calls =
         VoteCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, frame: aligned_frame(r.esp) - 0x40, range };
-    let eax = layout::contact_vote(&mut ctx.mem, r.ecx, a, b, &mut calls).expect("the host answers every call");
+    let count = crate::collision::contact_count(ctx.host, &ctx.mem, r.ecx);
+    let eax = layout::contact_vote(&mut ctx.mem, count, a, b, &mut calls).expect("the host answers every call");
     Ok(Return::void(eax, 12))
 }
 
@@ -116,7 +117,8 @@ pub(super) fn big_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls =
         ContactCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, frame: aligned_frame(r.esp) - 0x70, e, a };
     let out = layout::ContactOut { force_out: a, torque_out: b, force, depth };
-    let eax = layout::contact_worker(&mut ctx.mem, r.ecx, out, e, f32::from_bits(range), &mut calls)
+    let contact = crate::collision::read_contact(ctx.host, &ctx.mem, e);
+    let eax = layout::contact_worker(&mut ctx.mem, r.ecx, out, contact, f32::from_bits(range), &mut calls)
         .expect("the host answers every call");
     Ok(Return::void(eax, 0x18))
 }

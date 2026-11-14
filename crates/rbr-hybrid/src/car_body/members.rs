@@ -32,6 +32,11 @@ impl layout::EdgeProbeCalls for Collide6000Host<'_> {
     fn edge_edge(&mut self, sp: u32, grid: u32, args: [u32; 6]) -> u32 {
         self.0.call_at(sp, E37_EDGE_EDGE, grid, &args).eax
     }
+
+    fn take_grid_hits(&mut self, mem: &mut Mem, grid: u32) -> [u8; 2] {
+        use rbr_physics::collision::store::CollisionStore;
+        crate::collision::on_collision(self.0, mem, |s| s.take_grid_hit_flags(grid)).map(|b| b as u8)
+    }
 }
 
 struct Vf128xHost<'a>(&'a dyn Host);

@@ -435,6 +435,10 @@ impl<S: CarStore> layout::RespawnCalls<S> for Car<'_> {
     fn emit_respawn(&mut self, _mem: &mut S, sp: u32, emitter: u32, payload: u32) {
         self.host.call_at(sp, 0x4e8830, emitter, &[payload]);
     }
+
+    fn clear_contact_rows(&mut self, mem: &mut S, rows: u32) {
+        crate::collision::clear_row_body(self.host, mem.mem_mut(), rows);
+    }
 }
 
 impl<S: CarStore> layout::CountdownCalls<S> for Car<'_> {

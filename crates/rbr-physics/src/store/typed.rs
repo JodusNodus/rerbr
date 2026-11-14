@@ -10,6 +10,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::car_body::layout::CarOwn;
+use crate::collision::layout::CarCollision;
 use crate::engine_driveline::layout::{CarDrive, CarEngine};
 use crate::mem::Mem;
 use crate::physics_core::layout::Core;
@@ -66,6 +67,7 @@ pub struct CarTyped {
     pub tyres: RefCell<CarTyres>,
     pub wheels: CarWheels,
     pub own: CarOwn,
+    pub collision: CarCollision,
 }
 
 impl CarTyped {
@@ -79,6 +81,7 @@ impl CarTyped {
             tyres: RefCell::new(CarTyres::lift(mem, car)),
             wheels: CarWheels::lift(mem, car),
             own: CarOwn::lift(mem, car),
+            collision: CarCollision::lift(mem),
         }
     }
 
@@ -91,6 +94,7 @@ impl CarTyped {
         self.tyres.borrow().lower(mem);
         self.wheels.lower(mem);
         self.own.lower(mem);
+        self.collision.lower(mem);
     }
 
     /// Every owned byte range, named.
@@ -102,6 +106,7 @@ impl CarTyped {
         owned.extend(self.tyres.borrow().owned());
         owned.extend(self.wheels.owned());
         owned.extend(self.own.owned());
+        owned.extend(self.collision.owned());
         owned
     }
 }
@@ -117,6 +122,7 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
         + crate::tyre::layout::round_trip(mem, car)?
         + crate::wheel::layout::round_trip(mem, car)?
         + crate::car_body::layout::round_trip(mem, car)?
+        + crate::collision::layout::round_trip(mem)?
         + crate::physics_core::layout::typed::round_trip(mem)?
         + crate::stage::layout::round_trip(mem)?
         + crate::store::defs::differential(mem, car)?)

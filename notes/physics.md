@@ -164,13 +164,14 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `HingeStore`, `EntityStore: HingeStore` | `entities/store.rs` | `entities/layout/hinge_state.rs`, `layout/store_mem.rs` |
 | `StageStore` (the drive line, the material table and its sheets) | `stage/store.rs` | `stage/layout/queries.rs`; `StageView` (typed) |
 | `TweakStore` | `ntweak/store.rs` | `ntweak/layout/mod.rs` |
-| `CollisionStore` | `collision/store.rs` | `collision/layout/mem_store.rs` |
+| `CollisionStore` (by address; every method defaults to the image's) | `collision/store.rs` | `collision/layout/mem_store.rs`; `CollisionView` (`layout/typed.rs`, the held words only) |
 
 - A calls trait takes the store as a parameter defaulting to `Mem` (`Vf6cxCalls<S = Mem>`); clashing names use
   UFCS; what a trait does not name yet goes through `Raw`. Constructors and setup copies stay on `&mut Mem`.
 - `object!` (`store/layout.rs`) tables an object once (struct, `Field` per row, `lift`/`lower`, `word_of` for a field
   of whole words); tabled so far (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and
-  state, drive, drive state and its four wheel blocks, engine and engine state.
+  state, drive, drive state and its four wheel blocks, engine and engine state, the car's own state, the solver's rows
+  and counts, the car's grids' hit bytes.
 - Mem-direct dispatch (`--dispatch direct`, live default): a call within the `IN_PLACE` subsystems
   (`rbr-hybrid/src/pure/mod.rs`) to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) runs as a plain call
   when it passes exactly the words the leaf pops; a non-leaf binding too (B1b, `Pure::call_plain`, `call_framed`:
@@ -189,8 +190,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 - Stay on `Mem`: constructors and setup copies everywhere; `load` and stage's load code (image construction only);
   code writing at computed addresses in the original's stack frames (physics_core detector walks, `notify`,
   `prof_calls`; entities `collide_init`, detach events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (via
-  physics_core's Mem-typed `FilingHost`); NTweak apply and parse (host-bound); collision cell grid, links, pools,
-  `col_grids`, `brake_wall_contact` (calls `car_body::light::sub_block_init`).
+  physics_core's Mem-typed `FilingHost`); NTweak apply and parse (host-bound); collision cell grid, links, the event pool and its
+  free list, grid construction, `brake_wall_contact` (calls `car_body::light::sub_block_init`).
 - Typed storage (B2), the strut first: `spring_damper::strut::Struts` (per wheel: the controller's mode, latch and
   signal, the three effective dampings, the fade pair; 12 words a strut) behind `StrutStore` keyed by `StrutId`; the
   image side is `layout::{StrutImage, CarStruts}` (`lift`/`lower` on the `object!` fields, `FadeObj` the fade pair).
@@ -414,6 +415,32 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   list's count and owner), the detector walks (`penetration_check`, `run_collision_detectors`, `visit_walls`, the
   gigantic detector over `+0x470`) and the entities' child walks (`rbr-hybrid` `entities/walks.rs`). drive2 moves a
   node twice in 84084 steps (two unlinks, two pushes), so it would not prove them.
+- The collision state, ninth: `collision::layout::CarCollision` (`layout/typed.rs`; the world's, one solver): the
+  solver's contact and offset counts (`solver+0x18`, `+0xc420`), its 64 contact-row blocks (header body and count, 8
+  rows of 0x60: suppressed, tag, ids, restitution, friction, point, plane, other) and 64 offset rows (body, count, 8
+  offsets), lifted lazily per block on first touch (`Touched`, no allocation per step) and lowered only if touched;
+  the car's grids' (ids 1-9, `0x8f7030 + 0x6b0 id`) sample and hit bytes `+0x688..+0x68a`, eager. Survey on drive2
+  (84084 steps): a step writes a bank grid only there (EdgeEdge on id 1, the hit takes on ids 1 and 16); bounds, ray
+  seeds and copies go to stack copies; 2 contact rows and offset row 0 used. `CollisionStore`'s methods default to
+  the image's, so `CollisionView` (held, or `image` per call: emulator, vectors) overrides only these words; a grid
+  outside the car's (props, id >= 10) stays on the image (`on_grids`). Stay on the image: each row's composed point
+  (`+0x40`: BigA's host calls, `COPY16_WALK`, the sample hook, read it at its address), the body's `+0x274` link,
+  the grids' other words (bounds, edges, cells), the events, the event pool and free list (`0x8ef810`, `0x8ef7f0..`),
+  the solver's event list. Readers during a step, through `rbr_hybrid::collision`: the rigid body's `BigA` (rows as
+  values, `RigidStore::contact_input` takes a `Contact`) and contact vote (the count), the car's `Collide6000`
+  (`EdgeProbeCalls::take_grid_hits`), the respawn (`RespawnCalls::clear_contact_rows`); unrouted, BigA fails the
+  poison run (`solver contact rows (+0x0)` in `0x52b9f0`), and `Collide6000` the twin (`collision grid 1 hits
+  (+0x688)` at step 16826). Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084
+  steps (aids off and on); poison 84084/84084; `round_trip` 51226 typed bytes and `differential` (offsets, contact
+  rows open, store, count, read and clear, grid sample stores, takes, copy, ray seeds per call vs held, every byte of
+  the solver, the car's grids, the car and the scratch, 77920 bytes) on 40 snapshots; `collision_vectors` on the
+  per-call view; hybrid gate 13/13 (the snapshots run EdgeEdge, the solver passes, `MakeEvent`, `BigA` and
+  `Collide6000` per call); +0.42 % instructions per step, no allocation. Not typed: the events. An eager lift and
+  lower of the pool (128 events of 60 words and the 4 globals, word by word as `object!` does) costs +23.9 %
+  instructions per step (upper bound, the lower reads each word again), so they need the lazy arena; only pool events
+  121-127 are ever taken on drive2 (552 allocations, none from `operator new`). Their words are read and written at
+  their addresses by the entities (`MB560`, `collide_init`, detach, on `Mem`), the rigid body (point velocity,
+  impulse materials) and physics_core's contact loop, so typing them needs those ported to a store first.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
