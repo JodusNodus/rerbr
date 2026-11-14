@@ -6,9 +6,9 @@ use super::layout::{DriveWorker, GearWork, IntLane, LaneScale};
 /// Sets the lane scale. The scale lane takes `x`'s scale, the scaled lane takes the scale times the definition's
 /// `lane_scale_gain`, and the gate word takes `x`'s word.
 pub fn set_lane_scale(w: &mut DriveWorker, x: LaneScale) {
-    w.this.lane_scale.set(x.scale);
-    w.this.lane_scaled.set(w.def.lane_scale_gain * x.scale);
-    w.this.lane_gate = x.gate;
+    w.own.lane_scale.set(x.scale);
+    w.own.lane_scaled.set(w.def.lane_scale_gain * x.scale);
+    w.own.lane_gate = x.gate;
 }
 
 /// The engine speed over the current gear's ratio, less the definition's `ratio_gain` times the state's
@@ -101,7 +101,7 @@ pub fn clutch_values(w: &mut DriveWorker, x: usize) {
 /// The wheel latch: the output takes the wheel's weight, the block's gate is set to `sign`, and the count
 /// goes up the first time `pending` is clear, which then becomes set.
 pub(crate) fn latch(w: &mut DriveWorker, x: usize, sign: i32) {
-    w.this.pack_out[x] = w.def.wheels[x].weight;
+    w.own.pack_out[x] = w.def.wheels[x].weight;
     w.state.blocks[x].gate = IntLane { dirty: 1, value: sign };
     if w.state.pending == 0 {
         w.state.latch_count = w.state.latch_count.wrapping_add(1);
@@ -178,16 +178,16 @@ pub fn pair_slip_value(w: &mut DriveWorker, x: usize) {
     let wheel = w.def.wheels[x];
     let block = w.state.blocks[x];
     if block.gate.value == 0 {
-        w.this.pair_slip[x & 1] = 0.0;
+        w.own.pair_slip[x & 1] = 0.0;
         return;
     }
     let pack = wheel.pack as usize;
     let g = w.def.axles[pack].scale * wheel.weight;
     let mut f = 0.0f32;
-    if w.obj.wheel_enabled[x] != 0 {
-        f = (0.0 - (block.gate.value as f32) * block.latch_bound) + w.this.wheel_offset[x];
+    if w.damage.wheel_enabled[x] != 0 {
+        f = (0.0 - (block.gate.value as f32) * block.latch_bound) + w.own.wheel_offset[x];
     }
-    w.this.pair_slip[x & 1] = g * 0.5 * w.state.drive_gain_neg + (f - w.state.terms[pack].speed);
+    w.own.pair_slip[x & 1] = g * 0.5 * w.state.drive_gain_neg + (f - w.state.terms[pack].speed);
 }
 
 /// The pair worker's clamp-and-latch of wheel `x`, written to
@@ -198,23 +198,23 @@ pub fn pair_latch(w: &mut DriveWorker, x: usize) {
     let wheel = w.def.wheels[x];
     let block = w.state.blocks[x];
     if block.gate.value != 0 {
-        w.this.pair_pack[x & 1] = 0.0;
+        w.own.pair_pack[x & 1] = 0.0;
         return;
     }
     let pack = wheel.pack as usize;
-    let drive = w.state.drive_gain_neg - w.state.pack_gain * w.this.loc0.value;
+    let drive = w.state.drive_gain_neg - w.state.pack_gain * w.own.value_rate.value;
     let g = w.def.axles[pack].scale * wheel.weight * 0.5;
     let f = drive * g - w.state.terms[pack].speed;
-    let (k, h) = if w.obj.wheel_enabled[x] == 0 { (0.0, 0.0) } else { (w.this.wheel_offset[x], block.latch_bound) };
+    let (k, h) = if w.damage.wheel_enabled[x] == 0 { (0.0, 0.0) } else { (w.own.wheel_offset[x], block.latch_bound) };
     let s = if f > h - k {
         1
     } else if 0.0 - (h + k) > f {
         -1
     } else {
-        w.this.pair_pack[x & 1] = 0.0;
+        w.own.pair_pack[x & 1] = 0.0;
         return;
     };
-    w.this.pair_pack[x & 1] = wheel.weight;
+    w.own.pair_pack[x & 1] = wheel.weight;
     w.state.blocks[x].gate.set(s);
     if w.state.pending == 0 {
         w.state.latch_count = w.state.latch_count.wrapping_add(1);
@@ -258,7 +258,7 @@ pub fn block_pair_gate(w: &mut DriveWorker, x: usize) -> bool {
         if w.state.terms[x].sign != 0 {
             return false;
         }
-        if w.this.pack_out[k] == 0.0 && w.this.pack_out[m] == 0.0 {
+        if w.own.pack_out[k] == 0.0 && w.own.pack_out[m] == 0.0 {
             zero_block(w, if g0 != 0 { k } else { m });
             clear_term_value(w, x);
             return true;

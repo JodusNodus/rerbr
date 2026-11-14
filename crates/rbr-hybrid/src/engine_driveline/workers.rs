@@ -99,7 +99,7 @@ impl drive_worker::MatVecHost for WheelCalls<'_> {
     fn mat_vec(&mut self, m: [f32; 16], v: [f32; 4]) -> [f32; 4] {
         let matrix = self.state + layout::STEP_MATRIX_AT;
         let vec = self.state + layout::STEP_VEC_AT;
-        let out = self.this + layout::LOC_AT;
+        let out = self.this + layout::SOLUTION_AT;
         store_floats(&mut self.mem, matrix, &m);
         store_floats(&mut self.mem, vec, &v);
         self.host.call(MATVEC, matrix, &[vec, out]);
@@ -316,7 +316,7 @@ pub(super) fn step1e0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
     let mut calls = Step1Calls { wheel: wheel_calls(ctx, r), gear: gear(ctx, r), host: ctx.host, this: r.ecx };
     let scale = clutch_scale(ctx);
-    layout::step1e0(&mut calls, &mut ctx.mem, r.ecx, f(r.stack[0]), scale);
+    layout::step_drive(&mut calls, &mut ctx.mem, r.ecx, f(r.stack[0]), scale);
     Ok(Return::void(0, 4))
 }
 

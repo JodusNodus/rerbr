@@ -43,9 +43,9 @@ pub use engine_sim::{
     sim8cf0, sim8d90, smooth_damper, solve_damper, turbo_energy_step,
 };
 pub use setup::{drive_setup_into_def, link_worker, normalize_gear_rows, select_gear_rows};
-pub use step::step1e0;
+pub use step::step_drive;
 pub use tables::{BlendKnot, CurveKnot, UnitSplit};
 pub use worker::{
-    Axle, DriveWorker, GearBand, GearWork, LaneScale, RatioRing, Wheel, WheelBlock, WheelTerm, WorkerDef, WorkerObj,
-    WorkerState, WorkerThis, CLUTCH_MATRIX_AT, LOC_AT, STEP_MATRIX_AT, STEP_VEC_AT,
+    Axle, DriveDamage, DriveOwn, DriveWorker, GearBand, GearWork, LaneScale, RatioRing, Wheel, WheelBlock, WheelTerm,
+    WorkerDef, WorkerState, CLUTCH_MATRIX_AT, SOLUTION_AT, STEP_MATRIX_AT, STEP_VEC_AT,
 };

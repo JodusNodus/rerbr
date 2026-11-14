@@ -45,7 +45,7 @@ pub struct DiffTuning {
     pub handbrake_release: f32,
     /// The drive definition's `CenterDiffMaxTorque`, `FrontDiffMaxTorque` and `RearDiffMaxTorque`: the lock's floor.
     pub max_torque: [f32; 3],
-    /// The worker object's enable word of each diff: a diff whose word is 0 opens unless it is locked (type 3).
+    /// The drive damage block's enable word of each diff: a diff whose word is 0 opens unless it is locked (type 3).
     pub enabled: [u32; 3],
     /// NGP's front/rear drive split ([`super::drive::split_factor`]) and the max torque word the viscous lock is
     /// scaled by.
@@ -120,7 +120,7 @@ fn neg_sign(v: f32) -> f32 {
 /// after the downforce and the gain's loss.
 pub fn lock_torques(w: &DriveWorker, types: [u32; 3], t: &DiffTuning) -> [f32; 3] {
     let s = &w.state;
-    let base = s.drive_gain - s.pack_gain * w.this.loc0.value;
+    let base = s.drive_gain - s.pack_gain * w.own.value_rate.value;
     // Per wheel: the magnitude of its force and of its torque on the diff.
     let mut force = [0.0f32; 4];
     let mut diff_torque = [0.0f32; 4];
@@ -131,7 +131,7 @@ pub fn lock_torques(w: &DriveWorker, types: [u32; 3], t: &DiffTuning) -> [f32; 3
         // the wheel's weight, truncated, signed by its axle's direction
         let signed_weight = crate::fpu::trunc_i32(f64::from(wheel.weight)).wrapping_mul(axle.direction);
         let signed = signed_weight as f32;
-        let mut clutch = (w.this.wheel_offset[k] - blk.clutch_load * blk.slip.value) * signed;
+        let mut clutch = (w.own.wheel_offset[k] - blk.clutch_load * blk.slip.value) * signed;
         let prev_force = signed * blk.prev_force.value;
         force[k] = prev_force.abs();
         let drive = split_factor(axle.scale * 0.5 * base, k, t.split);
@@ -144,7 +144,7 @@ pub fn lock_torques(w: &DriveWorker, types: [u32; 3], t: &DiffTuning) -> [f32; 3
             neg_sign(prev_force)
         };
         let mut bound = direction * blk.latch_bound;
-        if w.obj.wheel_enabled[k] == 0 {
+        if w.damage.wheel_enabled[k] == 0 {
             clutch = (signed_weight.wrapping_neg() as f32) * blk.slip.value * blk.clutch_load;
             bound = 0.0;
         }

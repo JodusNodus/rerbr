@@ -55,8 +55,8 @@ pub fn gear_band_guard(w: &mut DriveWorker, g: &GearWork, host: &mut impl GearHo
     if !w.def.gear_guard {
         return false;
     }
-    let lower = w.obj.scale * g.band.lower_edge * g.scale;
-    let upper = w.obj.scale * g.band.upper_edge * g.scale;
+    let lower = w.damage.scale * g.band.lower_edge * g.scale;
+    let upper = w.damage.scale * g.band.upper_edge * g.scale;
     if dt < lower || upper < dt {
         w.state.gear_flag.set(0);
         w.state.trigger = 1;
@@ -77,7 +77,7 @@ pub fn gear_logic(w: &mut DriveWorker, g: &mut GearWork, host: &mut impl GearHos
         w.state.rng = rng;
         // The remainder is below 100001, so the unsigned-to-float correction never applies.
         let m = rng % 100_001;
-        let rate = dt * w.obj.rate * 0.000_5;
+        let rate = dt * w.damage.rate * 0.000_5;
         let step = m as f32 * 1.0e-5 * (rate * rate);
         let f = g.scale - step;
         let f = if f < 0.0 { 0.0 } else { f };
@@ -95,18 +95,18 @@ pub fn gear_logic(w: &mut DriveWorker, g: &mut GearWork, host: &mut impl GearHos
         term
     };
     let sq = (level + 0.2).sqrt();
-    w.this.gear_level = sq;
+    w.own.gear_level = sq;
     signal_gear_change(w, host, sq.to_bits());
 }
 
 /// The gear trim. While the state's gear differs from its
-/// target and the object's enable is set, the trim accumulator is compared with the slope and the reach. If the slope is
+/// target and the damage block's enable is set, the trim accumulator is compared with the slope and the reach. If the slope is
 /// not above the accumulator and the reach is at or below it (NaN included), the trim takes the target gear and returns;
 /// else, with the gear flag set, the flag clears and the gear change is signalled. Either way, the accumulator grows by
 /// `dt`. With the trim off, a set flag holds the trim (`shift_speed` zero) and a clear one steps it from `gear_speed_error`.
 /// NaN passes the comparisons, which are written with [`le_or_unordered`].
 pub fn gear_trim(w: &mut DriveWorker, g: &GearWork, host: &mut impl GearHost, dt: f32) {
-    if w.state.drive.gear != w.state.drive.commanded_gear.value && w.obj.enable != 0 {
+    if w.state.drive.gear != w.state.drive.commanded_gear.value && w.damage.enable != 0 {
         let limit = w.state.trim_accum;
         let slope = w.def.slope_limit;
         if le_or_unordered(slope, limit) {
@@ -130,8 +130,8 @@ pub fn gear_trim(w: &mut DriveWorker, g: &GearWork, host: &mut impl GearHost, dt
         return;
     }
     if w.state.gear_flag.value != 0 {
-        w.this.shift_speed = 0.0;
-        w.this.shift_trim = w.state.trim.to_bits();
+        w.own.shift_speed = 0.0;
+        w.own.shift_trim = w.state.trim.to_bits();
         return;
     }
     let speed_error = gear_speed_error(w, g) as f32;
@@ -154,8 +154,8 @@ pub fn gear_trim(w: &mut DriveWorker, g: &GearWork, host: &mut impl GearHost, dt
         next
     };
     w.state.trim = next;
-    w.this.shift_speed = speed_gap;
-    w.this.shift_trim = w.state.trim.to_bits();
+    w.own.shift_speed = speed_gap;
+    w.own.shift_trim = w.state.trim.to_bits();
 }
 
 /// The clutch-torque worker. Returns the value the original writes to its out pointer on this call, or `None` when the
@@ -252,7 +252,7 @@ pub fn clutch_torque(
 /// reset repeats.
 pub fn reset_wheels(w: &mut DriveWorker, host: &mut impl MatInverseHost) {
     reset_lanes(w);
-    w.this.pack_out = [0.0; 4];
+    w.own.pack_out = [0.0; 4];
     w.state.step_matrix = host.mat4_inverse_transposed(w.state.clutch_matrix);
     w.state.reset_count.set(w.state.reset_count.value + 1.0);
     w.state.pending = 0;
@@ -275,7 +275,7 @@ fn reset_lanes(w: &mut DriveWorker) {
 /// latches the wheels and steps the axle pairs ([`axle_pair_stages`]). Otherwise it sets the speed terms, takes the
 /// slip values and multiplies the step matrix by the step vector, repeating the reset while a wheel's sign changes. It
 /// integrates the terms over `dt`, latches the wheels, sets the blocks' forces and runs the clutch state. Last, each
-/// block takes its slip: [`free_wheel_step`] when the object's enable word for the wheel is zero, else the force's
+/// block takes its slip: [`free_wheel_step`] when the damage block's enable word for the wheel is zero, else the force's
 /// change over `dt`; then the previous values follow the current ones.
 pub fn wheel_worker(
     w: &mut DriveWorker,
@@ -290,7 +290,7 @@ pub fn wheel_worker(
         reset_wheels(w, host);
     }
     if w.state.branch == 0 {
-        w.this.loc0.set(0.0);
+        w.own.value_rate.set(0.0);
         for term in &mut w.state.terms[..3] {
             term.speed = 0.0;
         }
@@ -304,12 +304,12 @@ pub fn wheel_worker(
             slip(w, x);
         }
         loop {
-            w.this.loc = host.mat_vec(w.state.step_matrix, w.state.step_vec);
+            w.own.solution = host.mat_vec(w.state.step_matrix, w.state.step_vec);
             let mut again = false;
             for g in 0..3 {
                 let li = w.def.axles[g].active_index as usize;
                 if w.state.lane_active[li] == 1 {
-                    let v = w.this.loc[li];
+                    let v = w.own.solution[li];
                     if abs_by_subtraction(v) > w.state.terms[g].scale {
                         w.state.terms[g].sign = sign(v);
                         again = true;
@@ -329,15 +329,15 @@ pub fn wheel_worker(
         for g in 0..3 {
             let li = w.def.axles[g].active_index as usize;
             if w.state.lane_active[li] == 1 {
-                w.state.terms[g].speed = w.this.loc[li];
+                w.state.terms[g].speed = w.own.solution[li];
             }
         }
-        let loc = [0, 1, 2, 3].map(|k| if w.state.lane_active[k] == 0 { w.this.loc[k] } else { 0.0 });
-        w.this.loc0.set(0.0);
+        let loc = [0, 1, 2, 3].map(|k| if w.state.lane_active[k] == 0 { w.own.solution[k] } else { 0.0 });
+        w.own.value_rate.set(0.0);
         for x in 0..4 {
             latch(w, x);
         }
-        w.this.loc0.set(loc[0]);
+        w.own.value_rate.set(loc[0]);
         w.state.terms[0].value += loc[0] * dt;
         for g in 0..3 {
             let li = w.def.axles[g].active_index as usize;
@@ -357,7 +357,7 @@ pub fn wheel_worker(
         let ratio2 = w.def.axles[2].direction as f32 / scale0;
         w.state.terms[2].value = ratio2 * w.state.terms[0].value + half_term;
         for k in 0..4 {
-            if w.state.blocks[k].gate.value != 0 && w.this.pack_out[k] == 0.0 {
+            if w.state.blocks[k].gate.value != 0 && w.own.pack_out[k] == 0.0 {
                 let ix = w.def.wheels[k].pack as usize;
                 let term = w.state.terms[ix];
                 let force = (term.value / w.def.axles[ix].scale) * w.def.wheels[k].weight + term.term * 0.5;
@@ -368,7 +368,7 @@ pub fn wheel_worker(
     }
     w.state.drive.drive_speed_key = w.state.terms[0].value;
     for i in 0..4 {
-        if w.obj.wheel_enabled[i] == 0 {
+        if w.damage.wheel_enabled[i] == 0 {
             host.free_wheel_step(w, i, dt);
         } else {
             held_wheel_step(w, i, dt);
@@ -395,7 +395,7 @@ fn held_wheel_step(w: &mut DriveWorker, i: usize, dt: f32) {
 /// latch bound sets the latch to its sign and the slip to zero.
 pub fn free_wheel_step(w: &mut DriveWorker, i: usize, dt: f32) {
     let block = w.state.blocks[i];
-    let offset = w.this.wheel_offset[i];
+    let offset = w.own.wheel_offset[i];
     let latch = block.prev_gate.value;
     if latch == 0 {
         if abs_by_subtraction(offset) > block.latch_bound {
@@ -441,7 +441,7 @@ pub fn reset_pair(w: &mut DriveWorker) {
 /// and 1 driven, 2 and 3 free). It runs on term 1 and the 2x2 pair matrix where [`wheel_worker`] runs on the three
 /// terms and the 4x4 matrix. With both blocks ungated it only latches the wheels ([`pair_latch`]) and stages the axle
 /// ([`pair_axle_stage`]). Otherwise it solves the pair (the inverse times the slip values, [`pair_slip_value`]),
-/// repeating the reset ([`reset_pair`]) while term 1's active index is set and its output (`loc`, which nothing here
+/// repeating the reset ([`reset_pair`]) while term 1's active index is set and its output (`solution`, which nothing here
 /// writes) is beyond the scale, integrates term 1 over `dt`, latches, sets the gated blocks' forces and stages the
 /// axle until no block's gate disagrees with its force. The drive speed key is `0 - ` term 1's value. Wheels 0 and 1
 /// then take their step ([`free_wheel_step`] or the held step, by the enable word), and wheels 2 and 3 take
@@ -452,7 +452,7 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
         reset_pair(w);
     }
     if w.state.blocks[0].gate.value == 0 && w.state.blocks[1].gate.value == 0 {
-        w.this.loc0.set(0.0);
+        w.own.value_rate.set(0.0);
         w.state.terms[1].speed = 0.0;
         pair_latch(w, 0);
         pair_latch(w, 1);
@@ -461,14 +461,14 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
         pair_slip_values(w);
         let solved = loop {
             let [i0, i1, i2, i3] = w.state.pair_inverse;
-            let [e0, e1] = w.this.pair_slip;
+            let [e0, e1] = w.own.pair_slip;
             let solved = [i0 * e0 + i1 * e1, i2 * e0 + i3 * e1];
-            w.this.pair_loc = solved;
+            w.own.pair_solution = solved;
             let gi = w.def.axles[1].active_index as usize;
-            if w.state.lane_active[gi] != 1 || !(abs_by_subtraction(w.this.loc[gi]) > w.state.terms[1].scale) {
+            if w.state.lane_active[gi] != 1 || !(abs_by_subtraction(w.own.solution[gi]) > w.state.terms[1].scale) {
                 break solved;
             }
-            w.state.terms[1].sign = sign(w.this.loc[gi]);
+            w.state.terms[1].sign = sign(w.own.solution[gi]);
             w.state.repeat_count = w.state.repeat_count.wrapping_add(1);
             reset_pair(w);
             pair_slip_values(w);
@@ -478,10 +478,10 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
         }
         let value_rate = if w.state.pair_active[0] == 0 { solved[0] } else { 0.0 };
         let term_rate = if w.state.pair_active[1] == 0 { solved[1] } else { 0.0 };
-        w.this.loc0.set(0.0);
+        w.own.value_rate.set(0.0);
         pair_latch(w, 0);
         pair_latch(w, 1);
-        w.this.loc0.set(value_rate);
+        w.own.value_rate.set(value_rate);
         let t = &mut w.state.terms[1];
         t.value += value_rate * dt;
         t.term += term_rate * dt;
@@ -491,7 +491,7 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
             bump_dirty(w);
         }
         for k in 0..2 {
-            if w.state.blocks[k].gate.value != 0 && w.this.pair_pack[k] == 0.0 {
+            if w.state.blocks[k].gate.value != 0 && w.own.pair_pack[k] == 0.0 {
                 let ix = w.def.wheels[k].pack as usize;
                 let term = w.state.terms[ix];
                 let force = (term.value / w.def.axles[ix].scale) * w.def.wheels[k].weight + term.term * 0.5;
@@ -503,7 +503,7 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
             let mut any = false;
             for k in 0..2 {
                 let block = w.state.blocks[k];
-                if block.gate.value != sign(block.force.value) && w.this.pair_pack[k & 1] == 0.0 {
+                if block.gate.value != sign(block.force.value) && w.own.pair_pack[k & 1] == 0.0 {
                     w.state.blocks[k].force.set(0.0);
                     w.state.blocks[k].gate.set(0);
                     any = true;
@@ -517,7 +517,7 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
     }
     w.state.drive.drive_speed_key = 0.0 - w.state.terms[1].value;
     for i in 0..2 {
-        if w.obj.wheel_enabled[i] == 0 {
+        if w.damage.wheel_enabled[i] == 0 {
             free_wheel_step(w, i, dt);
         } else {
             held_wheel_step(w, i, dt);

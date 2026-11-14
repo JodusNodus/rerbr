@@ -19,7 +19,7 @@ use super::engine_objects::{
 use super::step::{DEF_MODE, DEF_RATIO_GAIN};
 use super::tables::{BlendKnot, CurveKnot, UnitSplit};
 use super::worker::{
-    Axle, DriveWorker, GearBand, GearWork, LaneScale, RatioRing, Wheel, WorkerDef, WorkerObj, WorkerState, WorkerThis,
+    Axle, DriveDamage, DriveOwn, DriveWorker, GearBand, GearWork, LaneScale, RatioRing, Wheel, WorkerDef, WorkerState,
 };
 use crate::engine_driveline::drive_line::DriveLinePoint;
 use crate::engine_driveline::sim::{BlendRec, Bracket};
@@ -306,8 +306,8 @@ impl EngineStore for Mem {
         DriveWorker {
             def: WorkerDef::load(self, self.u32(this + 4)),
             state: WorkerState::load(self, self.u32(this + 8)),
-            this: WorkerThis::load(self, this),
-            obj: WorkerObj::load(self, self.u32(this + 0x170)),
+            own: DriveOwn::load(self, this),
+            damage: DriveDamage::load(self, self.u32(this + 0x170)),
         }
     }
 
@@ -315,8 +315,8 @@ impl EngineStore for Mem {
         let state_at = self.u32(this + 8);
         let before = WorkerState::load(self, state_at);
         value.state.store(self, state_at, &before);
-        value.this.store(self, this);
-        value.obj.store(self, self.u32(this + 0x170));
+        value.own.store(self, this);
+        value.damage.store(self, self.u32(this + 0x170));
     }
 
     fn load_gear_work(&self, this: u32) -> GearWork {
