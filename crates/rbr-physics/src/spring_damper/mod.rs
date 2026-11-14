@@ -575,16 +575,6 @@ pub fn reset_outputs(controller: &mut Controller, owner_id: u32) -> DamperSignal
 /// returns the payload to its caller; listener dispatch is owned by the runtime.
 pub fn emit_signal(_signal: DamperSignal) {}
 
-/// Clears a tweak value's payload.
-pub fn clear_unsigned_value(value: &mut u32) {
-    *value = 0;
-}
-
-/// Writes the raw bits into effective rebound damping.
-pub fn set_rebound_damping_bits(state: &mut State, value: u32) {
-    state.damp_rebound_eff = f32::from_bits(value);
-}
-
 /// Copies the nine named setup values and their bookkeeping into their definition fields.
 pub fn apply_setup(definition: &mut Definition, setup: SetupValues) {
     definition.spring_free_length = setup.spring_free_length;

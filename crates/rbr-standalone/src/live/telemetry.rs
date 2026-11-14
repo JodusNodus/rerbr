@@ -20,7 +20,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{
     ACCEL_ANGULAR_EST, ACCEL_LINEAR_EST, ANGULAR_VELOCITY, LINEAR_VELOCITY, ORIENTATION, POSITION,
 };
-use rbr_physics::spring_damper::store::SpringStore;
+use rbr_physics::spring_damper::store::StrutStore;
 use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_INNER_AIR_TEMPERATURE};
 use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{STRUT, STRUT_LENGTH, TYRE_SCRATCH};

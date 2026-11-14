@@ -1,4 +1,6 @@
-//! The spring-damper's store (`crate::store`): the layout's load and store groups. `Mem` implements it in `layout.rs`.
+//! The spring-damper's stores (`crate::store`): the strut's load and store groups ([`StrutStore`]) and the damper
+//! kernels' blocks, which live in the engine's and the tyre's objects ([`DamperBlocks`]). `Mem` implements both in
+//! `layout.rs`.
 
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
@@ -6,7 +8,8 @@ use super::{
 };
 use crate::store::Raw;
 
-pub trait SpringStore: Raw {
+/// The strut: its controller, definition, state and fade.
+pub trait StrutStore: Raw {
     /// The controller's definition, state and fade pointers.
     fn definition_at(&self, controller: u32) -> u32;
     fn state_at(&self, controller: u32) -> u32;
@@ -19,7 +22,6 @@ pub trait SpringStore: Raw {
 
     fn state(&self, at: u32) -> State;
     fn store_effective_damping(&mut self, at: u32, value: State);
-    fn store_rebound_damping(&mut self, at: u32, value: State);
     /// The signal owner id of the state's car.
     fn owner_id(&self, state_at: u32) -> u32;
 
@@ -29,12 +31,10 @@ pub trait SpringStore: Raw {
 
     fn fade_state(&self, at: u32) -> FadeState;
     fn store_fade_state(&mut self, at: u32, value: FadeState);
+}
 
-    /// An unsigned tweak value's payload word.
-    fn unsigned_value(&self, at: u32) -> u32;
-    fn store_unsigned_value(&mut self, at: u32, value: u32);
-
-    // The damper kernels' blocks (in the engine's and the tyre's objects).
+/// The damper kernels' blocks (in the engine's and the tyre's objects).
+pub trait DamperBlocks: Raw {
     fn load_update_terms(&self, at: u32) -> UpdateTerms;
     fn store_update_terms(&mut self, at: u32, terms: UpdateTerms);
     fn load_blend_terms(&self, at: u32) -> BlendTerms;

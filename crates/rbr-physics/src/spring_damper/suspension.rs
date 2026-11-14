@@ -10,7 +10,7 @@
 //! car's copies capture the pre-step latch state; `Output` carries them as typed values
 //! so the memory edge can store them without reimplementing the logic.
 
-use super::store::SpringStore;
+use super::store::StrutStore;
 use super::{Controller, DamperSignal, Definition, FadeState, NgpStep, SetupValues, State, StepInput, StepOutput};
 use crate::ngp::spring::{bump_stop, latch, rebound_scale, BumpRubber, Latch};
 
@@ -78,7 +78,7 @@ pub struct Suspension {
 
 impl Suspension {
     /// Loads the strut's owned state from its controller, definition, state and fade objects.
-    pub fn load<S: SpringStore>(mem: &S, controller_at: u32) -> Self {
+    pub fn load<S: StrutStore>(mem: &S, controller_at: u32) -> Self {
         Self {
             definition: mem.definition(mem.definition_at(controller_at)),
             controller: mem.controller(controller_at),
@@ -89,7 +89,7 @@ impl Suspension {
 
     /// Stores the controller, fade and effective damping. The definition is untouched by the step; `adopt_setup`
     /// persists through [`store_definition`](Self::store_definition).
-    pub fn store_state<S: SpringStore>(&self, mem: &mut S, controller_at: u32) {
+    pub fn store_state<S: StrutStore>(&self, mem: &mut S, controller_at: u32) {
         mem.store_step_state(controller_at, self.controller);
         mem.store_fade_state(mem.fade_at(controller_at), self.fade);
         let mut stored = mem.state(mem.state_at(controller_at));
@@ -100,7 +100,7 @@ impl Suspension {
     }
 
     /// Persists the definition fields `adopt_setup` mutates (the nine setup-adopted bodies).
-    pub fn store_definition<S: SpringStore>(&self, mem: &mut S, controller_at: u32) {
+    pub fn store_definition<S: StrutStore>(&self, mem: &mut S, controller_at: u32) {
         mem.store_setup_values(mem.definition_at(controller_at), &self.definition);
     }
 

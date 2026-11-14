@@ -9,10 +9,10 @@ use super::layout::{
 };
 use super::sim::{BlendRec, Bracket};
 use crate::math::vec::Vec4;
-use crate::spring_damper::store::SpringStore;
+use crate::spring_damper::store::DamperBlocks;
 use crate::spring_damper::{BlendTerms, Relaxation};
 
-pub trait EngineStore: SpringStore {
+pub trait EngineStore: DamperBlocks {
     fn load_drive(&self, at: u32) -> Drive;
     fn store_drive(&mut self, at: u32, value: &Drive);
     fn load_drive_def(&self, at: u32) -> DriveDef;

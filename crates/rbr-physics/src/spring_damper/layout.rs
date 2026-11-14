@@ -1,6 +1,6 @@
 //! Spring-damper game-memory boundary. This file alone knows object offsets.
 
-use super::store::SpringStore;
+use super::store::{DamperBlocks, StrutStore};
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
     HeatCapacity, RealValue, Relaxation, SetupValues, State, UpdateTerms, WeightedValue,
@@ -212,23 +212,16 @@ pub fn construct_state(mem: &mut Mem, at: u32, owner: u32) -> u32 {
     at
 }
 
-/// CState::SetUnk10 writes the raw argument bits at the effective rebound slot. 0x52da40.
-pub fn set_rebound_damping<S: SpringStore>(mem: &mut S, at: u32, bits: u32) {
-    let mut value = mem.state(at);
-    super::set_rebound_damping_bits(&mut value, bits);
-    mem.store_rebound_damping(at, value);
-}
-
-/// CU32Value::Clear clears its payload word. 0x52d960.
-pub fn clear_unsigned_value<S: SpringStore>(mem: &mut S, at: u32) {
-    let mut value = mem.unsigned_value(at);
-    super::clear_unsigned_value(&mut value);
-    mem.store_unsigned_value(at, value);
+/// `CState::SetUnk10` (0x52da40) writes its argument at `this+0x10`. Its one caller (`E51Wheel::UnkA860`) calls it on
+/// the strut, whose `+0x10` is the fade pointer: this is the fade pointer's writer, the damage handler's damper pair of
+/// the wheel (the wheel's `+0x3ce4 + 8k`).
+pub fn set_fade_pointer(mem: &mut Mem, controller_at: u32, fade_at: u32) {
+    ControllerObj::fade.store(mem, controller_at, fade_at);
 }
 
 /// Copies a CSetup's nine CReal bodies into the matching CDef fields. 0x52dbd0.
 /// Loads only this call's footprint (definition and setup); the owned adoption runs on `Suspension`.
-pub fn apply_setup<S: SpringStore>(mem: &mut S, controller_at: u32, setup_at: u32) {
+pub fn apply_setup<S: StrutStore>(mem: &mut S, controller_at: u32, setup_at: u32) {
     let mut suspension = super::suspension::Suspension {
         definition: mem.definition(mem.definition_at(controller_at)),
         ..super::suspension::Suspension::default()
@@ -245,7 +238,7 @@ fn write_real_body(mem: &mut Mem, at: u32, value: RealValue) {
 
 /// Recomputes the three effective damping values. 0x52dd70.
 /// Loads and stores only this call's footprint (definition, state effects, fade).
-pub fn update_forces<S: SpringStore>(mem: &mut S, controller_at: u32) {
+pub fn update_forces<S: StrutStore>(mem: &mut S, controller_at: u32) {
     let state_at = mem.state_at(controller_at);
     let mut suspension = super::suspension::Suspension {
         definition: mem.definition(mem.definition_at(controller_at)),
@@ -260,7 +253,7 @@ pub fn update_forces<S: SpringStore>(mem: &mut S, controller_at: u32) {
 /// Runs one typed spring-damper step and stores its outputs and changed state. 0x52e090.
 /// NGP turned the two jumps that limited the stops' damping to the force over the
 /// speed (at 0x52e22b and 0x52e279) into no-ops, so the port never limits it.
-pub fn step<S: SpringStore>(mem: &mut S, arguments: &[u32], ngp: super::NgpStep) {
+pub fn step<S: StrutStore>(mem: &mut S, arguments: &[u32], ngp: super::NgpStep) {
     let [controller_at, travel, coordinate, velocity, spring_force, breakpoint, damping, ..] = arguments else {
         panic!("CSpringDamper::Step expects seven recorded arguments");
     };
@@ -295,7 +288,7 @@ pub fn step<S: SpringStore>(mem: &mut S, arguments: &[u32], ngp: super::NgpStep)
 /// Resets the signal after handing its previous payload to the runtime. 0x52e010.
 /// Loads and stores only this call's footprint (controller, owner link, signal words). Returns the emitted payload
 /// for the host's typed damper event.
-pub fn reset_outputs<S: SpringStore>(mem: &mut S, controller_at: u32) -> DamperSignal {
+pub fn reset_outputs<S: StrutStore>(mem: &mut S, controller_at: u32) -> DamperSignal {
     let mut suspension = super::suspension::Suspension {
         controller: mem.controller(controller_at),
         ..super::suspension::Suspension::default()
@@ -328,7 +321,7 @@ fn store_pair(mem: &mut Mem, at: u32, values: [f32; 2]) {
 }
 
 /// Runs DamperAccumA (heat accumulation) on its capacity pair and running temperature. 0x52e3a0.
-pub fn accumulate_heat<S: SpringStore>(mem: &mut S, capacity_at: u32, heat: f32, temperature_at: u32) {
+pub fn accumulate_heat<S: DamperBlocks>(mem: &mut S, capacity_at: u32, heat: f32, temperature_at: u32) {
     let capacity = mem.load_heat_capacity(capacity_at);
     let mut temperature = mem.f32(temperature_at);
     super::accumulate_heat(capacity, heat, &mut temperature);
@@ -337,14 +330,14 @@ pub fn accumulate_heat<S: SpringStore>(mem: &mut S, capacity_at: u32, heat: f32,
 
 /// Runs DamperAccumB (heat accumulation through the shared scale word) on its scale word
 /// and per-block accumulator. 0x52e3d0.
-pub fn accumulate_heat_scaled<S: SpringStore>(mem: &mut S, scale_at: u32, heat: f32, cell_at: u32) {
+pub fn accumulate_heat_scaled<S: DamperBlocks>(mem: &mut S, scale_at: u32, heat: f32, cell_at: u32) {
     let mut cell = mem.load_heat_accumulator(cell_at);
     super::accumulate_heat_scaled(mem.f32(scale_at), heat, &mut cell);
     mem.store_heat_accumulator(cell_at, cell);
 }
 
 /// Runs DamperClamp on typed transfer values. 0x52e400.
-pub fn clamp_value<S: SpringStore>(mem: &mut S, parameters_at: u32, target_at: u32) -> f32 {
+pub fn clamp_value<S: DamperBlocks>(mem: &mut S, parameters_at: u32, target_at: u32) -> f32 {
     let parameters = mem.load_clamp_parameters(parameters_at);
     let mut target = mem.load_weighted(target_at);
     let result = super::clamp_value(parameters, &mut target);
@@ -353,7 +346,7 @@ pub fn clamp_value<S: SpringStore>(mem: &mut S, parameters_at: u32, target_at: u
 }
 
 /// Runs DamperMerge on typed weighted values. 0x52e460.
-pub fn merge_value<S: SpringStore>(mem: &mut S, source_at: u32, target_at: u32) {
+pub fn merge_value<S: DamperBlocks>(mem: &mut S, source_at: u32, target_at: u32) {
     let source = mem.load_weighted(source_at);
     let mut target = mem.load_weighted(target_at);
     super::merge_value(source, &mut target);
@@ -361,28 +354,28 @@ pub fn merge_value<S: SpringStore>(mem: &mut S, source_at: u32, target_at: u32) 
 }
 
 /// Runs DamperUpdateA (solves the response term) on its four-value terms. 0x52e4c0.
-pub fn solve_response<S: SpringStore>(mem: &mut S, terms_at: u32, gas_constant: f32) {
+pub fn solve_response<S: DamperBlocks>(mem: &mut S, terms_at: u32, gas_constant: f32) {
     let mut terms = mem.load_update_terms(terms_at);
     super::solve_response(&mut terms, gas_constant);
     mem.store_update_terms(terms_at, terms);
 }
 
 /// Runs DamperUpdateB (solves the scale term) on its four-value terms. 0x52e4f0.
-pub fn solve_scale<S: SpringStore>(mem: &mut S, terms_at: u32, gas_constant: f32) {
+pub fn solve_scale<S: DamperBlocks>(mem: &mut S, terms_at: u32, gas_constant: f32) {
     let mut terms = mem.load_update_terms(terms_at);
     super::solve_scale(&mut terms, gas_constant);
     mem.store_update_terms(terms_at, terms);
 }
 
 /// Runs DamperUpdateC (solves the numerator term) on its four-value terms. 0x52e530.
-pub fn solve_numerator<S: SpringStore>(mem: &mut S, terms_at: u32, gas_constant: f32) {
+pub fn solve_numerator<S: DamperBlocks>(mem: &mut S, terms_at: u32, gas_constant: f32) {
     let mut terms = mem.load_update_terms(terms_at);
     super::solve_numerator(&mut terms, gas_constant);
     mem.store_update_terms(terms_at, terms);
 }
 
 /// Runs DamperCombine on its target and source blocks. 0x52e630.
-pub fn combine<S: SpringStore>(mem: &mut S, target_at: u32, source_at: u32, input: f32) {
+pub fn combine<S: DamperBlocks>(mem: &mut S, target_at: u32, source_at: u32, input: f32) {
     let mut target = mem.load_blend_terms(target_at);
     let source = mem.load_blend_terms(source_at);
     super::combine(&mut target, source, input);
@@ -390,14 +383,14 @@ pub fn combine<S: SpringStore>(mem: &mut S, target_at: u32, source_at: u32, inpu
 }
 
 /// Runs DamperRelax on its four-value state. 0x52e6d0.
-pub fn relax<S: SpringStore>(mem: &mut S, state_at: u32, amount: f32, divisor: f32) {
+pub fn relax<S: DamperBlocks>(mem: &mut S, state_at: u32, amount: f32, divisor: f32) {
     let mut value = mem.load_relaxation(state_at);
     super::relax(&mut value, amount, divisor);
     mem.store_relaxation(state_at, value);
 }
 
 /// Runs DamperSolve on its four-value state. 0x52e760.
-pub fn solve<S: SpringStore>(mem: &mut S, state_at: u32, input: f32, limit: f32, divisor: f32) -> f32 {
+pub fn solve<S: DamperBlocks>(mem: &mut S, state_at: u32, input: f32, limit: f32, divisor: f32) -> f32 {
     let mut value = mem.load_relaxation(state_at);
     let result = super::solve(&mut value, input, limit, divisor);
     mem.store_relaxation(state_at, value);
@@ -405,14 +398,14 @@ pub fn solve<S: SpringStore>(mem: &mut S, state_at: u32, input: f32, limit: f32,
 }
 
 /// Runs DamperForce on its four-value accumulator. 0x52e8a0.
-pub fn force<S: SpringStore>(mem: &mut S, state_at: u32, input: f32, divisor: f32, velocity: f32) {
+pub fn force<S: DamperBlocks>(mem: &mut S, state_at: u32, input: f32, divisor: f32, velocity: f32) {
     let mut value = mem.load_force_terms(state_at);
     super::force(&mut value, input, divisor, velocity);
     mem.store_force_terms(state_at, value);
 }
 
-/// The Mem store: the bodies are the layout's reads and writes.
-impl SpringStore for Mem {
+/// The Mem store of the strut: the bodies are the layout's reads and writes.
+impl StrutStore for Mem {
     fn definition_at(&self, controller: u32) -> u32 {
         self.u32(controller + DEFINITION_POINTER)
     }
@@ -493,10 +486,6 @@ impl SpringStore for Mem {
         self.set_f32(at + STATE_HS_DAMP_BUMP_EFF, value.hs_damp_bump_eff);
     }
 
-    fn store_rebound_damping(&mut self, at: u32, value: State) {
-        self.set_f32(at + STATE_DAMP_REBOUND_EFF, value.damp_rebound_eff);
-    }
-
     fn owner_id(&self, state_at: u32) -> u32 {
         let owner = self.u32(state_at + STATE_OWNER);
         self.u32(owner + OWNER_WHEEL_INDEX)
@@ -540,15 +529,10 @@ impl SpringStore for Mem {
         self.set_f32(at, value.test_multiplier);
         self.set_f32(at + 4, value.amount);
     }
+}
 
-    fn unsigned_value(&self, at: u32) -> u32 {
-        self.u32(at + 4)
-    }
-
-    fn store_unsigned_value(&mut self, at: u32, value: u32) {
-        self.set_u32(at + 4, value);
-    }
-
+/// The Mem store of the damper kernels' blocks.
+impl DamperBlocks for Mem {
     fn load_update_terms(&self, at: u32) -> UpdateTerms {
         UpdateTerms {
             scale: self.f32(at),

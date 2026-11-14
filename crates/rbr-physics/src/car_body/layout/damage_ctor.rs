@@ -7,7 +7,7 @@ use crate::car_body::layout::{VEC4_CLEAR, VEC4_COPY_FROM};
 use crate::mem::Mem;
 use crate::physics_core::layout::mounted;
 pub(super) use crate::physics_core::layout::SIGNAL_MANAGER as DAMAGE_SIGNALS;
-use crate::{engine_driveline, entities, spring_damper, tyre};
+use crate::{engine_driveline, entities, ntweak, tyre};
 
 /// The `E36DamageOps` object constructed by `CCar::SetPtr3CC` (exe 0x4ef410). The constructor initializes the
 /// damage zones, calls the fixed E35 threshold-table initializer (0x4ed370), and returns the same object.
@@ -114,7 +114,7 @@ impl ResetDamageCalls for ResetPorts {
             ENGINE_RESET => engine_driveline::layout::reset_engine_damage(mem, this),
             WHEEL_ZERO => crate::wheel::layout::damage_zero(mem, this),
             EIGHT_FLOATS_CLEAR => tyre::layout::clear_eight_floats(mem, this),
-            VALUE_CLEAR => spring_damper::layout::clear_unsigned_value(mem, this),
+            VALUE_CLEAR => ntweak::layout::clear_unsigned_value(mem, this),
             FILL_ONES => entities::layout::fill_ones(mem, this),
             MOUNTED_CLEAR_STATE => mounted::clear_state(mem, this),
             _ => unreachable!("ResetDamage calls no other member ({callee:#x})"),

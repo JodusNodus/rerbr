@@ -240,6 +240,12 @@ pub fn construct_unsigned(mem: &mut Mem, at: u32) {
     mem.set_u32(at + VALUE, 0);
 }
 
+/// `CU32Value::Clear` (0x52d960) on the value at `at`: its word at +4 is 0. The damage reset (`ResetDamage`) calls it on
+/// the damage handler's four wheel damper pairs (+0x3ce4, 8 apart), the struts' fade pairs, whose +4 is the fade amount.
+pub fn clear_unsigned_value(mem: &mut Mem, at: u32) {
+    mem.set_u32(at + 4, 0);
+}
+
 /// `NTweak::CInteger`'s vtable (0x740594) and name word (0x7405e0).
 const INTEGER_VTABLE: u32 = 0x0074_0594;
 const INTEGER_NAME: u32 = 0x0074_05E0;

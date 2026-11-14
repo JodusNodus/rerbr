@@ -108,7 +108,7 @@ fn definition_constructor_matches() {
 fn clear_unsigned_value_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52d960, |call, mem| {
-        layout::clear_unsigned_value(mem, call.args[0]);
+        rbr_physics::ntweak::layout::clear_unsigned_value(mem, call.args[0]);
         ReturnValue::Ignore
     });
 }
@@ -120,10 +120,10 @@ fn setup_dictionary_matches() {
 }
 
 #[test]
-fn set_rebound_damping_matches() {
+fn set_fade_pointer_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52da40, |call, mem| {
-        layout::set_rebound_damping(mem, call.args[0], call.args[1]);
+        layout::set_fade_pointer(mem, call.args[0], call.args[1]);
         ReturnValue::Ignore
     });
 }
