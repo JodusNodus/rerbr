@@ -228,7 +228,7 @@ fn on_off(flag: &str, value: &str) -> Result<bool, String> {
 
 /// `--help`'s text.
 pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snapshot Y [--snapshot Z...] [--steps N] [--data DIR] [--read-set DIR]
-       rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
+       rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct|typed] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
@@ -1040,6 +1040,7 @@ mod tests {
             (format!("{BOOT_REC} --twin mem-direct"), |a| {
                 assert_eq!(a.twin, Some(crate::twin::Kind::MemDirect))
             }),
+            (format!("{BOOT_REC} --twin typed"), |a| assert_eq!(a.twin, Some(crate::twin::Kind::Typed))),
             (format!("{BOOT} --damage-in IN --damage-out OUT2 --result-out RES"), |a| {
                 assert_eq!(a.damage_in, Some(PathBuf::from("IN")));
                 assert_eq!(a.damage_out, Some(PathBuf::from("OUT2")));
@@ -1114,7 +1115,7 @@ mod tests {
             (format!("{REC} --autopilot OUT --aim 1,2,x"), "--aim 1,2,x"),
             (format!("{LIVE} --callout-distance x"), "--callout-distance x"),
             (format!("{LIVE} --marker-threshold x"), "--marker-threshold x"),
-            (format!("{BOOT_REC} --twin both"), "--twin both: mem or mem-direct"),
+            (format!("{BOOT_REC} --twin both"), "--twin both: mem, mem-direct or typed"),
             (
                 format!("{BOOT_REC} --twin mem --physics experimental"),
                 "--twin takes no --physics experimental (the twin would step the run's models again)",

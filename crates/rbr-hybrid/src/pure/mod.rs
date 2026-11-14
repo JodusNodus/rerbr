@@ -13,13 +13,14 @@
 //! running binding's entry, as the bridge does, with the return address `CALL_RET` and the arguments written there.
 
 use leaves::LEAVES;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rbr_physics::math::trig;
 use rbr_physics::mem::{Backend, Mem, PagesSnapshot};
+use rbr_physics::spring_damper::layout::CarStruts;
 
 use crate::{binding_slot, bound, Called, Ctx, Decline, Host, Regs, Return, STACK_ARGS};
 
@@ -170,6 +171,16 @@ pub struct Pure {
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
     pub ngp_base: u32,
+    /// Whether [`Playback::step`] holds the car's struts in typed storage over each step (the default), lifted before
+    /// it and lowered after it, so the strut bindings run on them ([`Host::struts`]); without, they run per call on
+    /// the image's words.
+    pub typed_struts: bool,
+    /// The car's struts while a step holds them ([`Pure::typed_struts`]).
+    struts: RefCell<Option<CarStruts>>,
+    /// `mem` with the typed struts' words poisoned while a step holds them (the `poison` feature): the clones the runs
+    /// get ([`Pure::lend`]).
+    #[cfg(feature = "poison")]
+    poisoned: RefCell<Option<Mem>>,
 }
 
 impl Pure {
@@ -219,6 +230,36 @@ impl Pure {
             keep_tyre_particles: false,
             captures: Watch::default(),
             ngp_base: 0,
+            typed_struts: true,
+            struts: RefCell::default(),
+            #[cfg(feature = "poison")]
+            poisoned: RefCell::default(),
+        }
+    }
+
+    /// Lifts the car's struts into typed storage for a step ([`Pure::typed_struts`]; nothing without them or without a
+    /// car). With the `poison` feature the runs' memory has their words poisoned until [`Pure::lower_struts`].
+    pub(crate) fn lift_struts(&self) {
+        let car = self.mem.u32(CAR_PTR);
+        if !self.typed_struts || car == 0 {
+            return;
+        }
+        let struts = CarStruts::lift(&self.mem, car);
+        #[cfg(feature = "poison")]
+        {
+            let mut poisoned = self.mem.clone();
+            poisoned.poison(struts.owned());
+            *self.poisoned.borrow_mut() = Some(poisoned);
+        }
+        *self.struts.borrow_mut() = Some(struts);
+    }
+
+    /// Lowers the struts a step held back into the image, and drops them.
+    pub(crate) fn lower_struts(&self) {
+        #[cfg(feature = "poison")]
+        self.poisoned.borrow_mut().take();
+        if let Some(struts) = self.struts.borrow_mut().take() {
+            struts.lower(&mut self.mem.clone());
         }
     }
 
@@ -544,15 +585,23 @@ impl Pure {
     /// A clone of `mem`, from the spare ones when one still shares its bytes.
     #[inline(always)]
     fn lend(&self) -> Mem {
+        #[cfg(feature = "poison")]
+        if let Some(poisoned) = self.poisoned.borrow().as_ref() {
+            return poisoned.clone();
+        }
         match self.spare.borrow_mut().pop() {
             Some(mem) if mem.shares(&self.mem) => mem,
             _ => self.mem.clone(),
         }
     }
 
-    /// Keeps a clone of [`Pure::lend`] for the next run.
+    /// Keeps a clone of [`Pure::lend`] for the next run (not a poisoned one).
     #[inline(always)]
     fn give_back(&self, mem: Mem) {
+        #[cfg(feature = "poison")]
+        if self.poisoned.borrow().is_some() {
+            return;
+        }
         self.spare.borrow_mut().push(mem);
     }
 
@@ -735,6 +784,10 @@ impl Host for Pure {
         self.captures.push_damper(strut, signal);
     }
 
+    fn struts(&self) -> Option<RefMut<'_, CarStruts>> {
+        RefMut::filter_map(self.struts.borrow_mut(), Option::as_mut).ok()
+    }
+
     fn call_slot_word(&self) -> Option<u32> {
         Some(CALL_RET)
     }
@@ -786,6 +839,10 @@ impl Host for Direct {
 
     fn emit_damper(&self, strut: u32, signal: rbr_physics::spring_damper::DamperSignal) {
         self.0.emit_damper(strut, signal);
+    }
+
+    fn struts(&self) -> Option<RefMut<'_, CarStruts>> {
+        self.0.struts()
     }
 
     fn ran_direct(&self) {

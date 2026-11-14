@@ -44,9 +44,15 @@ fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
-/// Runs `run` on the strut whose controller is `controller` (the original's `ecx`): lifted from the image into a store
-/// of its own and lowered after it (the per-call path).
+/// Runs `run` on the strut whose controller is `controller` (the original's `ecx`): in the typed storage the host
+/// holds over a step ([`crate::Host::struts`]), else (another car's, or no step holds them) lifted from the image into
+/// a store of its own and lowered after it (the per-call path).
 pub(crate) fn on_strut<T>(ctx: &mut Ctx, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
+    if let Some(mut struts) = ctx.host.struts() {
+        if let Some(id) = struts.id_of(controller) {
+            return run(&mut struts.view(&ctx.mem), id);
+        }
+    }
     layout::with_strut(&mut ctx.mem, controller, run)
 }
 

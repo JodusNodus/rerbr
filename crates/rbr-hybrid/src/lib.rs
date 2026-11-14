@@ -137,6 +137,12 @@ pub trait Host {
     /// emulator runs the original fan-out through the signal manager; the pure host keeps the typed payload for the
     /// game, which reads it instead of the manager's words.
     fn emit_damper(&self, _strut: u32, _signal: rbr_physics::spring_damper::DamperSignal) {}
+    /// The car's struts while the pure host holds them in typed storage over a step ([`pure::Pure::typed_struts`]):
+    /// the strut bindings run on them, not on the image's words. `None` elsewhere (the emulator, between steps),
+    /// where the bindings run per call on the image.
+    fn struts(&self) -> Option<std::cell::RefMut<'_, rbr_physics::spring_damper::layout::CarStruts>> {
+        None
+    }
 }
 
 /// For a call at `sp` whose callee is known to do nothing more than the caller does itself (a getter, a walk of equal

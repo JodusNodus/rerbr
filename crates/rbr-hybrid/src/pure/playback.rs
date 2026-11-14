@@ -46,6 +46,22 @@ pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
     pure.with_frame(EMIT, &entry, || pure.host().call(UPDATE_SEED, car, &[control]));
 }
 
+/// The car's struts held in typed storage while it lives ([`Pure::lift_struts`]), lowered when it drops.
+struct HeldStruts<'a>(&'a Pure);
+
+impl<'a> HeldStruts<'a> {
+    fn lift(pure: &'a Pure) -> Self {
+        pure.lift_struts();
+        HeldStruts(pure)
+    }
+}
+
+impl Drop for HeldStruts<'_> {
+    fn drop(&mut self) {
+        self.0.lower_struts();
+    }
+}
+
 /// The return address of the driver's `StepForward` call (`replay.py`'s `SENTINEL`).
 pub const SENTINEL: u32 = 0xfeed_0000;
 
@@ -99,6 +115,8 @@ impl Playback {
     }
 
     /// [`step`] with the payload `control` (`None` for the snapshot's own step). A stop panics as [`Pure::enter`].
+    /// With [`Pure::typed_struts`] the car's struts are in typed storage over the step: lifted before it, lowered after
+    /// it (on a stop too), so every reader between steps sees the image's words.
     pub fn step(&self, control: Option<&[u8; CONTROL_BYTES]>, substeps: u32) -> Return {
         let mut mem = self.pure.mem.clone();
         let control = control.map(|c| {
@@ -106,6 +124,7 @@ impl Playback {
             self.control_at
         });
         mem.set_u32(self.slot, SENTINEL);
+        let _struts = HeldStruts::lift(&self.pure);
         step(&self.pure, self.regs, self.slot, control, substeps)
     }
 

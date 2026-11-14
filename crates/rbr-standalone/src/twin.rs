@@ -4,11 +4,13 @@
 //! `lower(lift(image)) == image` first.
 //!
 //! `mem` runs the second side as the first, the Mem path against itself; `mem-direct` runs it with B1's Mem-direct
-//! dispatch ([`rbr_hybrid::pure::Pure::direct`]). B2's typed storage is a further kind of the second side.
+//! dispatch ([`rbr_hybrid::pure::Pure::direct`]); `typed` runs it with the struts on the image between calls, against
+//! the first side's typed storage over each step ([`rbr_hybrid::pure::Pure::typed_struts`], the default). Both images'
+//! struts are checked with `lower(lift(image)) == image` at the start too.
 
 use rbr_hybrid::pure::{frame_bytes, word_name, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
-use rbr_physics::store;
+use rbr_physics::{spring_damper, store};
 use rbr_recording::CONTROL_BYTES;
 
 /// What the second side runs.
@@ -19,6 +21,9 @@ pub enum Kind {
     /// The Mem storage on the pure host with the leaf calls of the entity walk, wheel, collision and rigid body run in
     /// place.
     MemDirect,
+    /// The struts on the image between calls (each strut call lifts and lowers its own), against the first side's
+    /// typed storage over each step.
+    Typed,
 }
 
 impl Kind {
@@ -26,7 +31,8 @@ impl Kind {
         match value {
             "mem" => Ok(Kind::Mem),
             "mem-direct" => Ok(Kind::MemDirect),
-            _ => Err(format!("--twin {value}: mem or mem-direct")),
+            "typed" => Ok(Kind::Typed),
+            _ => Err(format!("--twin {value}: mem, mem-direct or typed")),
         }
     }
 }
@@ -45,7 +51,11 @@ impl Twin {
     /// The twin of `a` on `b`, a second playback of the same image.
     pub fn new(kind: Kind, a: &Playback, mut b: Playback) -> Self {
         b.pure.direct = kind == Kind::MemDirect;
-        let round_trip = [&a.pure.mem, &b.pure.mem].map(|mem| store::round_trip(mem, &objects(mem)));
+        b.pure.typed_struts = a.pure.typed_struts && kind != Kind::Typed;
+        let round_trip = [&a.pure.mem, &b.pure.mem].map(|mem| {
+            let bytes = store::round_trip(mem, &objects(mem))?;
+            Ok(bytes + spring_damper::layout::round_trip(mem, mem.u32(CAR_PTR))?)
+        });
         for (side, r) in ["first", "second"].iter().zip(&round_trip) {
             eprintln!("twin: lower(lift) of the {side} side's image: {}", Self::round_trip_text(r));
         }
