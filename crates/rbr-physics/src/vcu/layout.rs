@@ -406,8 +406,7 @@ const DEF_NAME: u32 = 0x0073_80C8;
 pub const DEF_SIZE: u32 = 0xCAC;
 /// The reals the constructor sets (dirty, then the value): +0x14c..+0x17c, from the float words at 0x72f674, 0x72f428,
 /// 0x72d150 and 0x731050.
-const DEF_DEFAULTS: [(u32, u32); 4] =
-    [(0x14C, 0x3F33_3333), (0x15C, 0x3E4C_CCCD), (0x16C, 0x4080_0000), (0x17C, 0x45F3_C000)];
+const DEF_DEFAULTS: [(u32, f32); 4] = [(0x14C, 0.7), (0x15C, 0.2), (0x16C, 4.0), (0x17C, 7_800.0)];
 
 /// `CVehicleControlUnit::CDef::CDef` (0x5377a0) on the definition at `this`: the base, the vtable, every real, then
 /// the four defaults.
@@ -419,7 +418,7 @@ pub fn construct_def(mem: &mut Mem, this: u32) {
     }
     for (at, value) in DEF_DEFAULTS {
         crate::ntweak::set_dirty(mem, this + at);
-        mem.set_u32(this + at + 0xC, value);
+        mem.set_f32(this + at + 0xC, value);
     }
 }
 
@@ -1079,5 +1078,15 @@ impl VcuStore for Mem {
         self.set_u32(at + SCRATCH_ENGINE, value.engine);
         self.set_u32(at + SCRATCH_DRIVE, value.drive);
         self.set_u32(at + SCRATCH_LIGHTS, value.lights);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(DEF_DEFAULTS.map(|(_, v)| v.to_bits()), [0x3F33_3333, 0x3E4C_CCCD, 0x4080_0000, 0x45F3_C000]);
     }
 }

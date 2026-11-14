@@ -209,7 +209,7 @@ const HINGED_DEF_LANES: [(u32, f32); 21] = [
 ];
 /// The reals the constructor sets last, each marked dirty first: the hinge's maximum and minimum angles and +0x4a0
 /// (-0.05, -1.8849558 and 0.05, from 0x73996c, 0x73d3b8 and 0x72dd78).
-const HINGED_DEF_DEFAULTS: [(u32, u32); 3] = [(0x470, 0xBD4C_CCCD), (0x480, 0xBFF1_463B), (0x4A0, 0x3D4C_CCCD)];
+const HINGED_DEF_DEFAULTS: [(u32, f32); 3] = [(0x470, -0.05), (0x480, -1.884_955_8), (0x4A0, 0.05)];
 
 /// `CHingedRigidBody::CDef::CDef(name)` (0x51e680) on the definition at `at`: the solid definition's base, the vtable,
 /// the tweaks, then the default lanes and reals.
@@ -240,7 +240,7 @@ pub fn construct_hinged_def(mem: &mut Mem, at: u32, name: u32) {
     }
     for (off, value) in HINGED_DEF_DEFAULTS {
         ntweak::set_dirty(mem, at + off);
-        mem.set_u32(at + off + 0xC, value);
+        mem.set_f32(at + off + 0xC, value);
     }
 }
 
@@ -344,4 +344,14 @@ pub fn ground_make(
     mem.set_u32(at, GROUND_VTABLE);
     mem.set_u32(GROUND_SINGLETON, at);
     at
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(HINGED_DEF_DEFAULTS.map(|(_, v)| v.to_bits()), [0xBD4C_CCCD, 0xBFF1_463B, 0x3D4C_CCCD]);
+    }
 }
