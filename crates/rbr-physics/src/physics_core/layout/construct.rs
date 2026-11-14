@@ -133,11 +133,11 @@ pub trait Heap {
 }
 
 /// `CPhysics::CDef::Vf54(owner)` (0x526760): a scratch of `SCRATCH_SIZE` bytes, built on the solver definition at
-/// `cdef + SOLVER_DEF_AT`. Returns the scratch, or 0 when the allocation fails. The original does not use `owner`.
-pub fn def_new_scratch(mem: &mut Mem, host: &mut (impl Heap + ScratchHost), cdef: u32) -> u32 {
+/// `def + SOLVER_DEF_AT`. Returns the scratch, or 0 when the allocation fails. The original does not use `owner`.
+pub fn def_new_scratch(mem: &mut Mem, host: &mut (impl Heap + ScratchHost), def: u32) -> u32 {
     let at = host.alloc(mem, SCRATCH_SIZE);
     if at != 0 {
-        construct_scratch(mem, host, at, cdef + SOLVER_DEF_AT);
+        construct_scratch(mem, host, at, def + SOLVER_DEF_AT);
     }
     at
 }

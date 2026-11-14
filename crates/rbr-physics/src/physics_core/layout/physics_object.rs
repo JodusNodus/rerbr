@@ -128,12 +128,12 @@ pub fn construct_physics(mem: &mut Mem, host: &mut impl PhysicsHost, this: u32, 
     layout::set_physics_hook(mem, this, hooked);
 }
 
-/// `CPhysics::CDef::Vf4c()` (0x5284f0): a `CPhysics` of `PHYSICS_SIZE` bytes built on the def at `cdef`. Returns it, or
+/// `CPhysics::CDef::Vf4c()` (0x5284f0): a `CPhysics` of `PHYSICS_SIZE` bytes built on the definition `def`. Returns it, or
 /// 0 when the allocation fails.
-pub fn def_new_physics(mem: &mut Mem, host: &mut impl PhysicsHost, cdef: u32) -> u32 {
+pub fn def_new_physics(mem: &mut Mem, host: &mut impl PhysicsHost, def: u32) -> u32 {
     let at = host.alloc(mem, PHYSICS_SIZE);
     if at != 0 {
-        construct_physics(mem, host, at, cdef);
+        construct_physics(mem, host, at, def);
     }
     at
 }

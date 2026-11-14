@@ -155,9 +155,9 @@ pub fn copy_def_from(mem: &mut Mem, this: u32, src: u32) {
 }
 
 /// `CTyre::CDef`'s vtable (`_vftable_`, the first word of the base sub-object).
-const CDEF_VTABLE: u32 = 0x0074_0B04;
+const DEF_VTABLE: u32 = 0x0074_0B04;
 /// `CTyre::CState`'s vtable (`_vftable_`, the base word of the state).
-const CSTATE_VTABLE: u32 = 0x0074_0B7C;
+const STATE_VTABLE: u32 = 0x0074_0B7C;
 /// `CTyre::CScratch`'s own vtable: the first word the constructor and the destructor write.
 pub(super) const SCRATCH_VTABLE: u32 = 0x0074_0BE8;
 /// The vtable `Init` leaves on the scratch's sub-block (`m_sub`, `+0x20`), after the rigid body's base init.
@@ -168,8 +168,8 @@ const TYRE_NAME: u32 = 0x0074_0B60;
 /// The words `CTyre::CDef::CDef` (0x530c50) writes, as (offset, bits): the base, CReal and CUnsigned sub-objects' labels,
 /// vtables and values, and the tyre defaults. The 176 are the words the recorded calls changed; each is the same in
 /// every call, and the constructor's callees (0x52f090, 0x52f450, 0x52fea0, 0x52fec0) write nothing else.
-const CDEF_DEFAULTS: [(u32, u32); 176] = [
-    (0x000, CDEF_VTABLE),
+const DEF_DEFAULTS: [(u32, u32); 176] = [
+    (0x000, DEF_VTABLE),
     (0x004, TYRE_NAME),
     (0x008, 0x00000000),
     (0x010, UNSIGNED_VTABLE),
@@ -349,23 +349,23 @@ const CDEF_DEFAULTS: [(u32, u32); 176] = [
 
 /// The defaults NGP's patches leave unwritten (the stores at 0x530dd3, 0x530ea2 and 0x530ecc NOPed): 25000, 0.0015708
 /// and 5 keep the reals' 0.
-const NGP_CDEF_WORDS: [(u32, u32); 3] = [(0x0DC, 0), (0x0FC, 0), (0x10C, 0)];
+const NGP_DEF_WORDS: [(u32, u32); 3] = [(0x0DC, 0), (0x0FC, 0), (0x10C, 0)];
 
 /// `CTyre::CDef::CDef` (0x530c50, thiscall, no stack words) on the def at `this`: writes the defaults, without the
 /// three NGP removes. The original returns `this` in eax.
-pub fn construct_cdef(mem: &mut Mem, this: u32) {
-    for (at, bits) in CDEF_DEFAULTS {
+pub fn construct_def(mem: &mut Mem, this: u32) {
+    for (at, bits) in DEF_DEFAULTS {
         mem.set_u32(this + at, bits);
     }
-    for (at, bits) in NGP_CDEF_WORDS {
+    for (at, bits) in NGP_DEF_WORDS {
         mem.set_u32(this + at, bits);
     }
 }
 
 /// `CTyre::CState::CState` (0x531500) writes, as (offset, bits). The three stack words are not stored. Every word is the
 /// same in each recorded call; the constructor's callees write only inside the state.
-const CSTATE_DEFAULTS: [(u32, u32); 76] = [
-    (0x000, CSTATE_VTABLE),
+const STATE_DEFAULTS: [(u32, u32); 76] = [
+    (0x000, STATE_VTABLE),
     (0x004, TYRE_NAME),
     (0x008, 0x00000000),
     (0x00C, 0x00000000),
@@ -489,7 +489,7 @@ pub fn construct_tyre_type(mem: &mut Mem, this: u32) {
 
 /// `CTyre::CState::CState(a, b, c)` (0x531500, thiscall, `ret 0xC`) on the state at `this`: writes the defaults.
 pub fn construct_state(mem: &mut Mem, this: u32) {
-    for (at, bits) in CSTATE_DEFAULTS {
+    for (at, bits) in STATE_DEFAULTS {
         mem.set_u32(this + at, bits);
     }
 }

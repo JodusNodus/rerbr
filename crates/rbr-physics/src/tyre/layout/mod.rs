@@ -14,7 +14,7 @@ mod scratch_ctor;
 
 pub use crate::tyre::slip::ContactAxes;
 pub use construct::{
-    construct_cdef, construct_options, construct_setup, construct_state, construct_tyre_type, copy_def_from,
+    construct_def, construct_options, construct_setup, construct_state, construct_tyre_type, copy_def_from,
     set_setup_type,
 };
 pub use frame::{copy_material, Outside, Table, WORDS};

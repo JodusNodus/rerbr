@@ -140,14 +140,14 @@ pub fn finish<S: WheelStore>(mem: &mut S, calls: &mut impl FinishCalls, this: u3
 }
 
 /// `CWheel::CState`'s vtable (0x7427b4), stored after the E47 state's constructor.
-const CSTATE_VTABLE: u32 = 0x0074_27B4;
+const STATE_VTABLE: u32 = 0x0074_27B4;
 
 /// `CWheel::CState::CState(owner, name, unused)` (0x538dd0, thiscall, ret 0xc) on the state at `this`: the E47 solid state,
 /// its vtable, the vectors and reals, the spring damper at +0x2a0 and the tyre state at +0x2e0, then the scalars, the dirty
 /// flag and the `0.5` of the `+0x1e0` real. The third argument is not used. Returns `this`.
 pub fn state_ctor(mem: &mut Mem, this: u32, owner: u32, name: u32) -> u32 {
     rigid_body::layout::construct_state(mem, this, owner, name);
-    mem.set_u32(this, CSTATE_VTABLE);
+    mem.set_u32(this, STATE_VTABLE);
     ntweak::construct_vector(mem, this + 0x1B0);
     ntweak::construct_real(mem, this + 0x1D0);
     ntweak::construct_real(mem, this + 0x1E0);
@@ -173,15 +173,15 @@ pub fn state_ctor(mem: &mut Mem, this: u32, owner: u32, name: u32) -> u32 {
 }
 
 /// `CWheel::CDef`'s vtable (0x74281c), stored after the solid definition's constructor.
-const CDEF_VTABLE: u32 = 0x0074_281C;
+const DEF_VTABLE: u32 = 0x0074_281C;
 
 /// `CWheel::CDef::CDef(outer)` (0x5387e0, thiscall, ret 4) on the definition at `this`: the solid definition, the vtable,
 /// the tweaks in the asm's order (reals, unsigned, vectors), the spring damper and tyre definitions (+0x450, +0x56c), the
 /// reals at +0x904 to +0x964 and the vectors at +0x880 to +0x8f0. The five reals from +0x924 are marked dirty and take a
 /// value at +0xc; the float at +0x900 is zero. Returns `this`.
-pub fn cdef_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
+pub fn def_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
     rigid_body::layout::construct_def(mem, this, outer);
-    mem.set_u32(this, CDEF_VTABLE);
+    mem.set_u32(this, DEF_VTABLE);
     for at in [0x1F0, 0x230, 0x240, 0x350, 0x360, 0x3E0, 0x3F0, 0x400, 0x410, 0x420] {
         ntweak::construct_real(mem, this + at);
     }
@@ -192,7 +192,7 @@ pub fn cdef_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
         ntweak::construct_vector(mem, this + at);
     }
     spring_damper::layout::construct_definition(mem, this + 0x450);
-    tyre::layout::construct_cdef(mem, this + 0x56C);
+    tyre::layout::construct_def(mem, this + 0x56C);
     for at in [0x904, 0x914, 0x924, 0x934, 0x944, 0x954, 0x964] {
         ntweak::construct_real(mem, this + at);
     }
@@ -217,12 +217,12 @@ pub fn cdef_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
 /// The size of a wheel definition block (`operator new(0x980)` in `CWheel::M3B610`).
 const BODY_DEF_SIZE: u32 = 0x980;
 
-/// `CWheel::M3B610(outer)` (0x53b610, thiscall, ret 4): a definition block from `host`, built by `cdef_ctor` on `outer`.
+/// `CWheel::M3B610(outer)` (0x53b610, thiscall, ret 4): a definition block from `host`, built by `def_ctor` on `outer`.
 /// Returns the block, or 0 when the allocation fails.
-pub fn new_cdef(mem: &mut Mem, outer: u32, host: &mut impl Heap) -> u32 {
+pub fn new_def(mem: &mut Mem, outer: u32, host: &mut impl Heap) -> u32 {
     let block = host.alloc(mem, BODY_DEF_SIZE);
     if block != 0 {
-        cdef_ctor(mem, block, outer);
+        def_ctor(mem, block, outer);
     }
     block
 }

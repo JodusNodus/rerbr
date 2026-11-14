@@ -798,7 +798,7 @@ addr,module,rust_item,test,status
 0x52ff20,ntweak/layout/mod.rs,ntweak::layout::construct_integer,load_defs::ngp_definitions_match_the_game,checked
 0x52ff80,ntweak/layout/mod.rs,ntweak::layout::construct_vector,wheel_vectors::ntweak_constructors_match_original_calls,checked
 0x52fff0,ntweak/layout/mod.rs,ntweak::layout::construct_vector4,wheel_vectors::ntweak_base_and_members_match_original_calls,checked
-0x530c50,tyre/layout/construct.rs,tyre::layout::construct::construct_cdef,-,partial
+0x530c50,tyre/layout/construct.rs,tyre::layout::construct::construct_def,-,partial
 0x531500,tyre/layout/construct.rs,tyre::layout::construct::construct_state,tyre_vectors::construct_state_matches_original_calls,checked
 0x531ba0,tyre/forces.rs,tyre::forces::rolling_torque,tyre_vectors::rolling_torque_matches_original_calls,checked
 0x531c70,tyre/hold.rs,tyre::hold::hold,tyre_vectors::hold_matches_original_calls,checked
@@ -867,7 +867,7 @@ addr,module,rust_item,test,status
 0x537f50,vcu/step.rs,vcu::step::step,vcu_vectors::step_matches_original_calls,checked
 0x5380a0,vcu/step.rs,vcu::step::step_basic,vcu_vectors::step_basic_matches_original_calls,checked
 0x5381f0,wheel/layout/host.rs,wheel::layout::host::blend_ops,wheel_vectors::blend_ops_weights_match_the_asm,checked
-0x5387e0,wheel/layout/ctors.rs,wheel::layout::ctors::cdef_ctor,-,partial
+0x5387e0,wheel/layout/ctors.rs,wheel::layout::ctors::def_ctor,-,partial
 0x538b40,wheel/layout/ctors.rs,wheel::layout::ctors::definition_name,wheel_vectors::constant_accessors_match_original_calls,checked
 0x538d70,wheel/layout/ctors.rs,wheel::layout::ctors::definition_dictionary,wheel_vectors::constant_accessors_match_original_calls,checked
 0x538dd0,wheel/layout/ctors.rs,wheel::layout::ctors::state_ctor,wheel_vectors::cstate_ctor_matches_original_calls,checked
@@ -896,7 +896,7 @@ addr,module,rust_item,test,status
 0x53b550,wheel/layout/ctors.rs,wheel::layout::ctors::setup_dictionary,wheel_vectors::constant_accessors_match_original_calls,checked
 0x53b570,wheel/layout/ctors.rs,wheel::layout::ctors::setup_options_dictionary,wheel_vectors::constant_accessors_match_original_calls,checked
 0x53b5b0,wheel/layout/copy_and_emit.rs,wheel::layout::copy_and_emit::refresh_solid,wheel_vectors::refresh_solid_matches_original_calls,checked
-0x53b610,wheel/layout/ctors.rs,wheel::layout::ctors::new_cdef,-,partial
+0x53b610,wheel/layout/ctors.rs,wheel::layout::ctors::new_def,-,partial
 0x53b670,wheel/layout/ctors.rs,wheel::layout::ctors::scratch_ctor,wheel_vectors::scratch_ctor_matches_original_calls,checked
 0x53b6e0,wheel/layout/ctors.rs,wheel::layout::ctors::wheel_ctor,wheel_vectors::wheel_ctor_matches_original_calls,checked
 0x53b880,wheel/layout/ctors.rs,wheel::layout::ctors::refresh_travel,wheel_vectors::refresh_travel_matches_original_calls,checked

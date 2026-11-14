@@ -343,7 +343,7 @@ pub(crate) fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `()`: the CDef's defaults, the object in eax.
 fn cdef_ctor(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
-    layout::construct_cdef(&mut ctx.mem, r.ecx);
+    layout::construct_def(&mut ctx.mem, r.ecx);
     Ok(Return::void(r.ecx, 0))
 }
 

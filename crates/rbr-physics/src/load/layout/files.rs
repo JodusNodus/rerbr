@@ -45,7 +45,7 @@ fn make_def(mem: &mut Mem, host: &mut impl Heap, factory: &str, outer: u32) -> O
             Some(at)
         }
         // `CWheel::M3B610` (0x53b610) and `CCar::CDef::Create` (0x4e6f20)
-        "Wheel" => Some(wheel::layout::new_cdef(mem, outer, host)),
+        "Wheel" => Some(wheel::layout::new_def(mem, outer, host)),
         "Car" => Some(car_body::layout::new_def(mem, outer, host)),
         "CarBody" => Some(car_body::layout::new_body_def(mem, outer, host)),
         "HingedBody" => Some(entities::layout::hinged_def_new(mem, outer, host)),

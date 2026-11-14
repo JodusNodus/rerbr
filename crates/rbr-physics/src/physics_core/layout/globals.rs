@@ -133,14 +133,14 @@ pub fn set_cell_grid(mem: &mut Mem, grid: u32) {
 
 /// The CDef's flags word (`+0x160cc` of the CDef the physics global points to, at its `+0x24`).
 pub fn def_flags(mem: &Mem) -> u32 {
-    let cdef = mem.u32(mem.u32(PHYSICS_GLOBAL_AT) + 0x24);
-    mem.u32(cdef + 0x160cc)
+    let def = mem.u32(mem.u32(PHYSICS_GLOBAL_AT) + 0x24);
+    mem.u32(def + 0x160cc)
 }
 
 /// The CDef's debug flags word (`+0x160e0`, `DbgFlags`'s value, of the CDef the physics global points to).
 pub fn def_debug_flags(mem: &Mem) -> u32 {
-    let cdef = mem.u32(mem.u32(PHYSICS_GLOBAL_AT) + 0x24);
-    mem.u32(cdef + 0x160e0)
+    let def = mem.u32(mem.u32(PHYSICS_GLOBAL_AT) + 0x24);
+    mem.u32(def + 0x160e0)
 }
 
 /// The physics object global (`g_1659b70`).

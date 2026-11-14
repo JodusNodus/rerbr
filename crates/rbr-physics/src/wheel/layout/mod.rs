@@ -16,7 +16,7 @@ pub use copy_and_emit::{
     Ported,
 };
 pub use ctors::{
-    cdef_ctor, clear_scratch, construct_options, damage_zero, definition_dictionary, definition_name, finish, new_cdef,
+    clear_scratch, construct_options, damage_zero, def_ctor, definition_dictionary, definition_name, finish, new_def,
     new_wheel, refresh_travel, scratch_ctor, select_top_mount, setup_ctor, setup_dictionary, setup_options_dictionary,
     state_ctor, tyre_tail_setup, wheel_ctor, FinishCalls, WHEEL_SIZE,
 };
