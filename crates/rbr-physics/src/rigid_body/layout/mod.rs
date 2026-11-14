@@ -30,7 +30,9 @@ pub use contacts::{
     ImpulseTailFrame, CONTACT_LIST,
 };
 pub use mem_store::SolidWords;
-pub use rest::{solid_filing, solid_sleep, solid_soften, solid_wake, store_body_event, RestHost, VerySoftHost};
+pub use rest::{
+    solid_filing, solid_filing_with, solid_sleep, solid_soften, solid_wake, store_body_event, RestHost, VerySoftHost,
+};
 pub use scratch_state::{
     clear_vec, scratch_reset_after_entity, store_scratch_base_init, store_scratch_reset, walk_children, CELL_LINK,
     SCRATCH_VTABLE,

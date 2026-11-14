@@ -4,6 +4,7 @@
 use crate::math::table::TableIndex;
 use crate::mem::Mem;
 use crate::physics_core::math::{Mat, Vec3, Vec4};
+use crate::store::Raw;
 
 /// The calls `E46_Accum250` (`CSolid::E43Vf60`) makes: the hook `S00` (vtable 0, when the log flag 0x4000 is set), the
 /// base `CEntity::E43Vf60`, the point `S30` (vtable 0x30, given the out pointer the original pushes), the walk
@@ -85,13 +86,15 @@ pub fn inverse_mass(mem: &Mem, body: u32) -> f32 {
     mem.f32(mem.u32(body + 0x34) + 0x16c)
 }
 
-/// The word at `+0x1dc` (`CSolid::E43Vf80`). Cleared with the body's dirty flags; its meaning is not known.
-pub fn takes_part_word(mem: &Mem, body: u32) -> u32 {
+/// The word at `+0x1dc` (`CSolid::E43Vf80`; a solid's word: a held solid's on its store). Cleared with the body's
+/// dirty flags; its meaning is not known.
+pub fn takes_part_word<R: Raw + ?Sized>(mem: &R, body: u32) -> u32 {
     mem.u32(body + 0x1dc)
 }
 
-/// The word at `+0x1ec` (`CSolid::E43Vf8C`). Cleared with the body's dirty flags; its meaning is not known.
-pub fn end_step_word(mem: &Mem, body: u32) -> u32 {
+/// The word at `+0x1ec` (`CSolid::E43Vf8C`; a solid's word, as `takes_part_word`). Cleared with the body's dirty
+/// flags; its meaning is not known.
+pub fn end_step_word<R: Raw + ?Sized>(mem: &R, body: u32) -> u32 {
     mem.u32(body + 0x1ec)
 }
 

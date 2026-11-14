@@ -1,6 +1,7 @@
 //! The body's scratch (`E47SolidScratch`) and state (`E47SolidState`) words: the resets and the
 //! quaternion words.
 
+use super::mem_store::SolidWords;
 use super::solid_ctor::SOLID_SCRATCH;
 use crate::mem::Mem;
 use crate::rigid_body::host::{EntityScratchTailHost, EntityWalkHost, HostUnavailable};
@@ -11,13 +12,14 @@ const SCRATCH_CLEARED_VECTORS: [u32; 11] = [0x20, 0x60, 0x70, 0x80, 0xa0, 0xb0, 
 const SCRATCH_CLEARED_WORDS: [u32; 3] = [0x110, 0x130, 0x134];
 
 /// `E47SolidScratch::Vf04` (0x529af0, slot 1): `block` is the scratch at the body's +0x280. Clears the vectors and
-/// words listed above; the pointers and the 1.0 at +0x10 are left as they are.
-pub fn store_scratch_reset(mem: &mut Mem, block: u32) {
+/// words listed above; the pointers and the 1.0 at +0x10 are left as they are. Most of them are the solid's words
+/// (`SolidWords`: a held solid's where a step holds it).
+pub fn store_scratch_reset<W: SolidWords + ?Sized>(w: &mut W, block: u32) {
     for v in SCRATCH_CLEARED_VECTORS {
-        clear_vec(mem, block + v);
+        w.set_words4(block + v, [0; 4]);
     }
-    for w in SCRATCH_CLEARED_WORDS {
-        mem.set_u32(block + w, 0);
+    for at in SCRATCH_CLEARED_WORDS {
+        w.set_word(block + at, 0);
     }
 }
 
@@ -49,13 +51,13 @@ pub const CELL_LINK: u32 = 0x160;
 
 /// `E47_Vf54Helper` (0x52b6b0) (name ours): the entity call first, then the scratch block's reset (the helper
 /// tail-jumps to the scratch's slot 1, `Vf04`). `this` is the body; its scratch block is at +0x280.
-pub fn scratch_reset_after_entity(
-    mem: &mut Mem,
+pub fn scratch_reset_after_entity<W: SolidWords + ?Sized>(
+    w: &mut W,
     this: u32,
     host: &mut impl EntityScratchTailHost,
 ) -> Result<(), HostUnavailable> {
     host.entity_scratch_tail()?;
-    store_scratch_reset(mem, this + SOLID_SCRATCH);
+    store_scratch_reset(w, this + SOLID_SCRATCH);
     Ok(())
 }
 

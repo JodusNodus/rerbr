@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use super::mem_store::SolidWords;
+use super::Vec4;
 use crate::car_body::layout::{hinged_slot, mounted_slot, wheel_list_at};
 use crate::mem::Mem;
 use crate::store::{Object, Raw};
@@ -143,6 +144,8 @@ impl<'a> SolidView<'a> {
     }
 }
 
+/// The view's word accesses resolve a held solid's words too (a pointer a caller passes may point into a solid); the
+/// bytes and `mem()` are the image's.
 impl Raw for SolidView<'_> {
     #[inline]
     fn mem(&self) -> &Mem {
@@ -151,6 +154,30 @@ impl Raw for SolidView<'_> {
     #[inline]
     fn mem_mut(&mut self) -> &mut Mem {
         self.mem
+    }
+    #[inline]
+    fn u32(&self, at: u32) -> u32 {
+        self.word(at)
+    }
+    #[inline]
+    fn f32(&self, at: u32) -> f32 {
+        f32::from_bits(self.word(at))
+    }
+    #[inline]
+    fn u32s<const N: usize>(&self, at: u32) -> [u32; N] {
+        self.words(at)
+    }
+    #[inline]
+    fn f32s<const N: usize>(&self, at: u32) -> [f32; N] {
+        self.words::<N>(at).map(f32::from_bits)
+    }
+    #[inline]
+    fn set_u32(&mut self, at: u32, value: u32) {
+        self.set_word(at, value)
+    }
+    #[inline]
+    fn set_f32(&mut self, at: u32, value: f32) {
+        self.set_word(at, value.to_bits())
     }
 }
 
@@ -169,11 +196,17 @@ impl SolidWords for SolidView<'_> {
 
     #[inline]
     fn words<const N: usize>(&self, at: u32) -> [u32; N] {
-        std::array::from_fn(|k| self.word(at + 4 * k as u32))
+        match self.solids {
+            Some(_) => std::array::from_fn(|k| self.word(at + 4 * k as u32)),
+            None => self.mem.u32s(at),
+        }
     }
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
+        if self.solids.is_none() {
+            return Vec4::from(words.map(f32::from_bits)).store(self.mem, at);
+        }
         for (k, word) in words.into_iter().enumerate() {
             self.set_word(at + 4 * k as u32, word);
         }
