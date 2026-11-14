@@ -224,7 +224,7 @@ fn repointed_engine_and_clutch_match_original_calls() {
         let x = || f32::from_bits(call.words[0]);
         let case = match call.func {
             SIM8890 => {
-                let eax = layout::sim8890(&mut Walk(&call.walk), &mut mem, this, x(), &tuning);
+                let eax = layout::heat_step(&mut Walk(&call.walk), &mut mem, this, x(), &tuning);
                 assert_eq!(eax, call.eax, "Sim8890 seed {:x}: eax", call.seed);
                 if call.walk.is_empty() {
                     "no walk"
@@ -233,7 +233,7 @@ fn repointed_engine_and_clutch_match_original_calls() {
                 }
             }
             SIM_E970 => {
-                let st0 = layout::sim_e970(&mem, this);
+                let st0 = layout::coolant_temperature(&mem, this);
                 assert_eq!(st0.to_bits(), call.st0.to_bits(), "SimE970 seed {:x}", call.seed);
                 ""
             }

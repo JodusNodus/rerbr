@@ -85,29 +85,29 @@ pub(super) fn set_cut_flags(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::void(eax, 0x10))
 }
 
-/// thiscall `()`, st0: the options block's float at +0x58, or 0 (`layout::options_gate_58`).
+/// thiscall `()`, st0: the options block's float at +0x58, or 0 (`layout::options_first_gate`).
 pub(super) fn options_gate_58(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(layout::options_gate_58(&ctx.mem, r.ecx) as f64, 0))
+    Ok(Return::float(layout::options_first_gate(&ctx.mem, r.ecx) as f64, 0))
 }
 
-/// thiscall `()`, st0: the damper bias of the state's float at +0x28 (`layout::sim_e970`).
+/// thiscall `()`, st0: the damper bias of the state's float at +0x28 (`layout::coolant_temperature`).
 pub(super) fn sim_e970(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(layout::sim_e970(&ctx.mem, r.ecx), 0))
+    Ok(Return::float(layout::coolant_temperature(&ctx.mem, r.ecx), 0))
 }
 
-/// thiscall `()`, eax: 1 when the state's float at +0x188 is above 40 (`layout::rpm_above_40`).
+/// thiscall `()`, eax: 1 when the state's float at +0x188 is above 40 (`layout::engine_running`).
 pub(super) fn rpm_above_40(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::rpm_above_40(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(layout::engine_running(&ctx.mem, r.ecx), 0))
 }
 
-/// thiscall `()`, eax: the state or the world object (`layout::sim_e9a0`); nothing is written.
+/// thiscall `()`, eax: the state or the world object (`layout::discarded_temperatures`); nothing is written.
 pub(super) fn sim_e9a0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::sim_e9a0(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(layout::discarded_temperatures(&ctx.mem, r.ecx), 0))
 }
 
-/// thiscall `()`, st0: the state's float at +0x68 when the definition's flag is set, else 0 (`layout::sim_ee60`).
+/// thiscall `()`, st0: the state's float at +0x68 when the definition's flag is set, else 0 (`layout::boost_pressure`).
 pub(super) fn sim_ee60(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(layout::sim_ee60(&ctx.mem, r.ecx) as f64, 0))
+    Ok(Return::float(layout::boost_pressure(&ctx.mem, r.ecx) as f64, 0))
 }
 
 /// thiscall `()`, st0: the state's float at +0x188 (`layout::engine_state_speed`).
@@ -115,9 +115,9 @@ pub(super) fn engine_state_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     Ok(Return::float(layout::engine_state_speed(&ctx.mem, r.ecx) as f64, 0))
 }
 
-/// thiscall `(x)`: the brake-side damper step; the `eax` is the options block or the state (`layout::sim8610`).
+/// thiscall `(x)`: the brake-side damper step; the `eax` is the options block or the state (`layout::overheat_step`).
 pub(super) fn sim8610(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::sim8610(&mut ctx.mem, r.ecx, f(r.stack[0]));
+    let eax = layout::overheat_step(&mut ctx.mem, r.ecx, f(r.stack[0]));
     Ok(Return::void(eax, 4))
 }
 
@@ -129,7 +129,7 @@ pub(super) fn fuel_air_terms(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 
 /// thiscall `(pedal)`.
 pub(super) fn set_scratch08(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut this = layout::EngineThis::load(&ctx.mem, r.ecx);
+    let mut this = layout::EngineOwn::load(&ctx.mem, r.ecx);
     engine::set_pedal(&mut this.pedal, r.stack[0]);
     this.store(&mut ctx.mem, r.ecx);
     Ok(Return::void(0, 4))
@@ -220,11 +220,11 @@ impl engine::SignalHost for Sim8CF0Calls<'_> {
     }
 }
 
-/// thiscall `()`, eax: the emit's eax (`layout::sim8cf0`).
+/// thiscall `()`, eax: the emit's eax (`layout::signal_update`).
 pub(super) fn sim8cf0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let host = ctx.host;
     let emit = crate::ngp::Call::Exhaust.address();
-    let eax = layout::sim8cf0(&mut Sim8CF0Calls { host, emit }, &mut ctx.mem, r.ecx);
+    let eax = layout::signal_update(&mut Sim8CF0Calls { host, emit }, &mut ctx.mem, r.ecx);
     Ok(Return::void(eax, 0))
 }
 
@@ -238,12 +238,12 @@ pub(crate) fn engine_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::float(st0 as f64, 8))
 }
 
-/// thiscall `(x)`, void: the car's damper step (`layout::sim8890`), its walk through the host.
+/// thiscall `(x)`, void: the car's damper step (`layout::heat_step`), its walk through the host.
 pub(super) fn sim8890(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
     let mut calls = Sim8890Calls { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - 0x800 };
     let tuning = engine_tuning(ctx);
-    let eax = layout::sim8890(&mut calls, &mut ctx.mem, r.ecx, f(r.stack[0]), &tuning);
+    let eax = layout::heat_step(&mut calls, &mut ctx.mem, r.ecx, f(r.stack[0]), &tuning);
     Ok(Return::void(eax, 4))
 }
 
@@ -258,16 +258,16 @@ impl engine::IntakeResetHost for Sim43Calls<'_> {
     }
 }
 
-/// thiscall, no arguments: `1 - cos` of the engine's value into the lane at `+0x24` (`layout::sim_ebb0`).
+/// thiscall, no arguments: `1 - cos` of the engine's value into the lane at `+0x24` (`layout::pedal_cosine`).
 pub(super) fn sim_ebb0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::sim_ebb0(&mut ctx.mem, r.ecx);
+    layout::pedal_cosine(&mut ctx.mem, r.ecx);
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(pos, x)`, st0: the arc position of `pos` on the drive line (`drive_line::sample_big`).
+/// thiscall `(pos, x)`, st0: the arc position of `pos` on the drive line (`layout::project_point`).
 pub(super) fn sample_big(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [pos, x, ..] = r.stack;
-    Ok(Return::float(layout::sample_big(&ctx.mem, r.ecx, pos, f(x)) as f64, 8))
+    Ok(Return::float(layout::project_point(&ctx.mem, r.ecx, pos, f(x)) as f64, 8))
 }
 
 /// thiscall `(b, s, out)`, eax = `out`: `out = this + (b - this) * s` (`Vec4::lerp`, the `E11_VecLerp` of the drive line).
@@ -279,10 +279,10 @@ pub(super) fn vec_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(out, 12))
 }
 
-/// thiscall `(x, y)`, x87 return: the table entry `x` takes the key `y` (`layout::sim8d90`).
+/// thiscall `(x, y)`, x87 return: the table entry `x` takes the key `y` (`layout::intake_entry_update`).
 pub(super) fn sim8d90(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, y, ..] = r.stack;
-    let v = layout::sim8d90(&mut Sim43Calls { host: ctx.host }, &mut ctx.mem, r.ecx, x, y);
+    let v = layout::intake_entry_update(&mut Sim43Calls { host: ctx.host }, &mut ctx.mem, r.ecx, x, y);
     Ok(Return::float(v, 8))
 }
 

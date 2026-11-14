@@ -115,7 +115,7 @@ pub fn compliance(def: &EngineDef, options: &EngineOptions, state: &mut EngineSt
 /// The call the intake entry update makes out of the port: the reset of table entry `x`, which works in memory. The
 /// port reads the entry again after the call.
 pub trait IntakeResetHost {
-    fn intake_state_reset(&mut self, this: u32, x: u32);
+    fn intake_state_reset(&mut self, engine: u32, x: u32);
 }
 
 /// The calls the engine's pose update makes out of the port. `walk_object` is the car's object the transform walks
@@ -139,7 +139,7 @@ pub trait EngineStepHost: IntakeResetHost + CarWalkHost {
 /// `arg` is the engine's signed rate, which the emit reads through its pointer.
 pub trait SignalHost {
     /// Returns the word the emit leaves for the caller.
-    fn signal(&mut self, obj: u32, arg: u32) -> u32;
+    fn signal(&mut self, signal_object: u32, arg: u32) -> u32;
 }
 
 /// The lateral term of the pose update: `k[0] * v[1] + k[1] * v[2] + k[2] * v[0]`, zero when that is negative (a NaN stays).

@@ -1,7 +1,7 @@
 //! NGP's wrappers of the physics step's functions.
 
 use rbr_physics::car_body::store::CarStore;
-use rbr_physics::engine_driveline::layout::{with_worker, DriveWorker, HookBlock};
+use rbr_physics::engine_driveline::layout::{with_worker, BrakeBlock, DriveWorker};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::atmosphere::atmosphere;
 use rbr_physics::ngp::axle;
@@ -198,17 +198,17 @@ pub(crate) fn curve_term(m: &mut Mem, drive: u32, args: [u32; 5]) -> Result<f32,
     // The hook block's words are NGP's per-wheel brake keys (`Brake*_NGP`): ratio +0xec, piston area +0xcc, effective
     // radius +0x6c, plate area +0x9c, internal convection +0xbc, heat absorption +0x8c, specific heat +0x7c, mass
     // +0x3c, convection factor +0x4c, layer mass share +0x5c, vent area +0xac.
-    let block = HookBlock::load(m, c);
+    let block = BrakeBlock::load(m, c);
     let i = BrakeIn {
         brake: Brake {
-            ratio: block.e_scale,
-            piston_area: block.dt_scale,
-            effective_radius: block.gain,
-            plate_area: block.p_scale,
-            internal_convection: block.x1_scale,
-            heat_absorption: block.w_scale,
-            specific_heat: block.den_a,
-            mass: block.den_b,
+            ratio: block.ratio,
+            piston_area: block.piston_area,
+            effective_radius: block.effective_radius,
+            plate_area: block.plate_area,
+            internal_convection: block.internal_convection,
+            heat_absorption: block.heat_absorption,
+            specific_heat: block.specific_heat,
+            mass: block.mass,
             convection_factor: m.f32(c + 0x4c),
             layer_mass_share: m.f32(c + 0x5c),
             vent_area: m.f32(c + 0xac),

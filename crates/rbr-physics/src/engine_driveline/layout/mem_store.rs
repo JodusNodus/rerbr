@@ -2,7 +2,7 @@
 //! and writes, moved from the records' `load`/`store` and the readers next to them.
 
 use super::curve::{
-    CurveInput, CurveRow, CurveState, CurveTables, HookBlock, CURVE_TABLE_A_AT, CURVE_TABLE_B_AT, CURVE_TABLE_C_AT,
+    BrakeBlock, CurveInput, CurveRow, CurveState, CurveTables, CURVE_TABLE_A_AT, CURVE_TABLE_B_AT, CURVE_TABLE_C_AT,
 };
 use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES, STRIDE};
 use super::drive_objects::{
@@ -10,7 +10,7 @@ use super::drive_objects::{
     DRIVE_DEF_PTR, DRIVE_STATE_COMMANDED_GEAR_LANE, DRIVE_STATE_ENGINE_SPEED, DRIVE_STATE_GEAR, DRIVE_STATE_PTR,
 };
 use super::engine_objects::{
-    EngineDef, EngineObjects, EngineOptions, EngineState, EngineThis, LoadDef, ENGINE_DEF_ABS_SCALE, ENGINE_DEF_PTR,
+    EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_DEF_ABS_SCALE, ENGINE_DEF_PTR,
     ENGINE_OPTIONS_PTR, ENGINE_PEDAL, ENGINE_STATE_ABS_VALUE, ENGINE_STATE_ABS_VALUE_DIRTY,
     ENGINE_STATE_COMPLIANCE_DIRTY, ENGINE_STATE_COMPLIANCE_INVERSE, ENGINE_STATE_CRANK_ANGLE, ENGINE_STATE_CRANK_COUNT,
     ENGINE_STATE_CRANK_COUNT_PREV, ENGINE_STATE_ENGINE_SPEED, ENGINE_STATE_PTR, ENGINE_STATE_SCALED_VALUE,
@@ -113,20 +113,20 @@ impl EngineStore for Mem {
     }
 
     fn load_curve_input(&self, at: u32) -> CurveInput {
-        CurveInput { w60: self.f32(at + 0x60), w70: self.f32(at + 0x70) }
+        CurveInput { brake_torque: self.f32(at + 0x60), handbrake_torque: self.f32(at + 0x70) }
     }
 
-    fn load_hook_block(&self, at: u32) -> HookBlock {
-        HookBlock {
+    fn load_brake_block(&self, at: u32) -> BrakeBlock {
+        BrakeBlock {
             index: self.u32(at + 0xDC),
-            gain: self.f32(at + 0x6C),
-            e_scale: self.f32(at + 0xEC),
-            dt_scale: self.f32(at + 0xCC),
-            p_scale: self.f32(at + 0x9C),
-            x1_scale: self.f32(at + 0xBC),
-            w_scale: self.f32(at + 0x8C),
-            den_a: self.f32(at + 0x7C),
-            den_b: self.f32(at + 0x3C),
+            effective_radius: self.f32(at + 0x6C),
+            ratio: self.f32(at + 0xEC),
+            piston_area: self.f32(at + 0xCC),
+            plate_area: self.f32(at + 0x9C),
+            internal_convection: self.f32(at + 0xBC),
+            heat_absorption: self.f32(at + 0x8C),
+            specific_heat: self.f32(at + 0x7C),
+            mass: self.f32(at + 0x3C),
         }
     }
 
@@ -166,11 +166,11 @@ impl EngineStore for Mem {
         }
     }
 
-    fn load_engine_this(&self, engine: u32) -> EngineThis {
-        EngineThis { pedal: Lane::load(self, engine + ENGINE_PEDAL), misfire_level: self.f32(engine + 0x194) }
+    fn load_engine_own(&self, engine: u32) -> EngineOwn {
+        EngineOwn { pedal: Lane::load(self, engine + ENGINE_PEDAL), misfire_level: self.f32(engine + 0x194) }
     }
 
-    fn store_engine_this(&mut self, engine: u32, value: &EngineThis) {
+    fn store_engine_own(&mut self, engine: u32, value: &EngineOwn) {
         value.pedal.store(self, engine + ENGINE_PEDAL);
         self.set_f32(engine + 0x194, value.misfire_level);
     }
@@ -372,23 +372,25 @@ impl EngineStore for Mem {
         self.u32(block + 0xDC)
     }
 
-    /// The gate word of the drive object, which `Hook4160` reads: `this+0x170` points at it, its `+0x80` is the gate.
-    fn obj_gate(&self, this: u32) -> u32 {
-        self.u32(self.u32(this + 0x170) + 0x80)
+    /// The gate word of the drive's damage block, which `Hook4160` reads: `drive+0x170` points at the block, its `+0x80`
+    /// is the gate.
+    fn damage_gate(&self, drive: u32) -> u32 {
+        self.u32(self.u32(drive + 0x170) + 0x80)
     }
 
-    fn drive_record_f32(&self, this: u32, a: u32, at: u32) -> f32 {
-        self.f32(self.u32(this + 0x08).wrapping_add(a.wrapping_mul(0xc8)).wrapping_add(at))
+    /// The float at `at` of block `a` (0xc8 bytes) of the state at `drive+8`.
+    fn wheel_block_f32(&self, drive: u32, a: u32, at: u32) -> f32 {
+        self.f32(self.u32(drive + 0x08).wrapping_add(a.wrapping_mul(0xc8)).wrapping_add(at))
     }
 
-    /// `E39_MgrB` (0x501fa0, name ours): the word at `this + 8`.
-    fn mgr_b_word8(&self, this: u32) -> u32 {
-        self.u32(this + 8)
+    /// `E39_MgrB` (0x501fa0, name ours): the word at `manager + 8`.
+    fn table_manager_word(&self, manager: u32) -> u32 {
+        self.u32(manager + 8)
     }
 
-    /// `E39_MgrB` (0x501fb0, name ours): entry `idx` (20 bytes each) of the table the word at `this + 0xc` points to.
-    fn mgr_b_entry(&self, this: u32, idx: u32) -> u32 {
-        self.u32(this + 0xc).wrapping_add(idx.wrapping_mul(20))
+    /// `E39_MgrB` (0x501fb0, name ours): entry `idx` (20 bytes each) of the table the word at `manager + 0xc` points to.
+    fn table_manager_entry(&self, manager: u32, idx: u32) -> u32 {
+        self.u32(manager + 0xc).wrapping_add(idx.wrapping_mul(20))
     }
 
     /// `SetDriveLine`'s stores: the entries, the count, and entries `n..10000` with zero `q` and `v` and `s = -1`. The

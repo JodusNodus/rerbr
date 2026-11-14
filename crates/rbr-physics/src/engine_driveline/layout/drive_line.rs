@@ -14,15 +14,15 @@ pub const MAX_ENTRIES: u32 = MAX_POINTS;
 /// The stride of one entry in the table (`0x30` bytes).
 pub const STRIDE: u32 = 0x30;
 /// The E12 host word that `Thunk4F0` loads (`ecx` for `E12_SampleX`).
-const E12_HOST_AT: u32 = 0x007e_aba8;
+const DISTANCE_HOST_AT: u32 = 0x007e_aba8;
 
 /// The address of entry `k`'s fields, `this + 0x30k + 0x10`. The index wraps as the original's 32-bit one does.
 pub fn entry_at(this: u32, k: u32) -> u32 {
     this.wrapping_add(k.wrapping_mul(STRIDE)).wrapping_add(0x10)
 }
 
-/// `CDriveLine::BlendB` (0x50a650): the spline between entries `idx` and `idx + 1` at `t`.
-pub fn blend_b<S: EngineStore>(mem: &S, this: u32, idx: i32, t: f32) -> Vec4 {
+/// `CDriveLine::BlendB` (0x50a650): the point on the spline between entries `idx` and `idx + 1` at `t`.
+pub fn spline_at<S: EngineStore>(mem: &S, this: u32, idx: i32, t: f32) -> Vec4 {
     let at = entry_at(this, idx as u32);
     let (p0, v0) = (Vec4::load(mem, at), Vec4::load(mem, at + 0x10));
     let next = at.wrapping_add(STRIDE);
@@ -40,31 +40,31 @@ pub fn sample<S: EngineStore>(mem: &S, this: u32, d: f32) -> Vec4 {
         let d1 = distance(k);
         if d1 > d {
             let d0 = distance(k - 1);
-            return blend_b(mem, this, (k - 1) as i32, (d - d0) / (d1 - d0));
+            return spline_at(mem, this, (k - 1) as i32, (d - d0) / (d1 - d0));
         }
     }
     Vec4::load(mem, entry_at(this, n.wrapping_sub(1)))
 }
 
-/// `CDriveLine::ClampMix` (0x50b0f0): `BlendB` at the segment of `x` (see `drive_line::segment_of`). An index of
+/// `CDriveLine::ClampMix` (0x50b0f0): the point at the position `x` along the entries, `BlendB` at the segment of `x` (see `drive_line::segment_of`). An index of
 /// 0x7fffffff wraps to `this - 0x30`.
-pub fn clamp_mix<S: EngineStore>(mem: &S, this: u32, x: f32) -> Vec4 {
+pub fn point_at<S: EngineStore>(mem: &S, this: u32, x: f32) -> Vec4 {
     let (idx, t) = drive_line::segment_of(x);
-    blend_b(mem, this, idx, t)
+    spline_at(mem, this, idx, t)
 }
 
 /// `CDriveLine::Last` (0x50ad40): the distance of the last entry, entry `count - 1`. The original traps on an empty
 /// table.
-pub fn last<S: EngineStore>(mem: &S, this: u32) -> f32 {
+pub fn last_distance<S: EngineStore>(mem: &S, this: u32) -> f32 {
     let n = mem.u32(this + COUNT_AT);
     assert!(n > 0, "CDriveLine::Last on an empty table (the original traps)");
     mem.f32(entry_at(this, n - 1) + 0x20)
 }
 
-/// `CDriveLine::Thunk4F0` (0x50a4f0): loads the E12 host word and tail-jumps to `E12_SampleX` with `id` as its float
-/// argument. The E12 side is `sample_x(host, x)`.
-pub fn thunk_4f0<S: EngineStore>(mem: &S, id: u32, sample_x: impl FnOnce(u32, f32) -> f32) -> f32 {
-    sample_x(mem.u32(E12_HOST_AT), f32::from_bits(id))
+/// `CDriveLine::Thunk4F0` (0x50a4f0): the distance at a position, forwarded: loads the E12 host word and tail-jumps to `E12_SampleX` with `id` as its float
+/// argument. The E12 side is `distance_at(host, x)`.
+pub fn forward_distance_at<S: EngineStore>(mem: &S, id: u32, distance_at: impl FnOnce(u32, f32) -> f32) -> f32 {
+    distance_at(mem.u32(DISTANCE_HOST_AT), f32::from_bits(id))
 }
 
 /// `CDriveLine::SetDriveLine` (0x50aec0): copies the signal's `n` entries (count at +0, base at +4, each entry

@@ -51,7 +51,7 @@ const CAR_BRAKE_WEAR: u32 = 0xc9c;
 const BRAKE_STRIDE: u32 = 0xc8;
 const BRAKE_WEAR_SCALE: f32 = 6.666_666_5e-8;
 /// The engine state's coolant temperatures, K: the radiator's (+0x20, named by NGP's packet) and the engine's
-/// (+0x28, `sim_e970`'s), and the engine's (+0x23c, `rbr-hybrid` `ngp::engine`'s `ENGINE_TEMPERATURE`).
+/// (+0x28, `coolant_temperature`'s), and the engine's (+0x23c, `rbr-hybrid` `ngp::engine`'s `ENGINE_TEMPERATURE`).
 const ENGINE_RADIATOR_COOLANT: u32 = 0x20;
 const ENGINE_COOLANT: u32 = 0x28;
 const ENGINE_TEMPERATURE: u32 = 0x23c;

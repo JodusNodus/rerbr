@@ -62,7 +62,7 @@ const BRAKE: [(u32, Tweak); 15] = [
     (0xD0, Tweak::Unsigned),
     (0xE0, Tweak::Real),
 ];
-const CTOR870: [(u32, Tweak); 11] = [
+const CURVE_ROW: [(u32, Tweak); 11] = [
     (0x00, Tweak::Unsigned),
     (0x10, Tweak::Unsigned),
     (0x20, Tweak::Unsigned),
@@ -75,7 +75,7 @@ const CTOR870: [(u32, Tweak); 11] = [
     (0x90, Tweak::Real),
     (0xA0, Tweak::Unsigned),
 ];
-const MIXED50: [(u32, Tweak); 5] =
+const GEAR_ROW: [(u32, Tweak); 5] =
     [(0x00, Tweak::Real), (0x10, Tweak::Integer), (0x20, Tweak::Integer), (0x30, Tweak::Real), (0x40, Tweak::Real)];
 /// A compound's tweaks: (offset, kind).
 type Members = &'static [(u32, Tweak)];
@@ -83,10 +83,10 @@ type Members = &'static [(u32, Tweak)];
 const DRIVE_ARRAYS: [(u32, u32, u32, Members); 6] = [
     (0xC, 0x60, 3, &DIFF),
     (0x12C, 0xF0, 4, &BRAKE),
-    (0x4EC, 0xB0, 1, &CTOR870),
-    (0x688, 0x50, 10, &MIXED50),
-    (0x9A8, 0x50, 1, &MIXED50),
-    (0x9F8, 0x50, 1, &MIXED50),
+    (0x4EC, 0xB0, 1, &CURVE_ROW),
+    (0x688, 0x50, 10, &GEAR_ROW),
+    (0x9A8, 0x50, 1, &GEAR_ROW),
+    (0x9F8, 0x50, 1, &GEAR_ROW),
 ];
 /// The plain tweaks after the compounds at +0x4ec and at +0xa48.
 const DRIVE_TWEAKS: [(u32, Tweak); 11] = [
@@ -106,7 +106,7 @@ const DRIVE_TWEAKS: [(u32, Tweak); 11] = [
 /// 0x72b068, 0x7355d4 and 0x731e00), and the unsigned 0.
 const BRAKE_DEFAULTS: [(u32, u32); 4] = [(0x90, 0x3DCC_CCCD), (0x80, 0x3F73_3333), (0xB0, 0x43C8_0000), (0xD0, 0)];
 /// Each of the ten `E13Mixed50` at +0x688: 10000.0 and -10000.0 (0x72f420, 0x72f41c).
-const MIXED50_DEFAULTS: [(u32, u32); 2] = [(0x40, 0x461C_4000), (0x30, 0xC61C_4000)];
+const GEAR_ROW_DEFAULTS: [(u32, u32); 2] = [(0x40, 0x461C_4000), (0x30, 0xC61C_4000)];
 /// The tweaks the constructor sets next (dirty, then the value word), in its order. The floats come from the exe's
 /// constants (0x730888, 0x73a2dc, 0x72f440, 0x72b068, 0x730890, 0x73a2d8, 0x795e20, 0x795e14, 0x73a2d4, 0x73a2d0,
 /// 0x731fe0, 0x7304a0, 0x73a2cc, 0x72dd78, 0x72fcb4).
@@ -247,7 +247,7 @@ pub fn construct_drive_def(mem: &mut Mem, this: u32) {
         }
     }
     for k in 0..10 {
-        for (at, value) in MIXED50_DEFAULTS {
+        for (at, value) in GEAR_ROW_DEFAULTS {
             set_default(mem, this + 0x688 + k * 0x50 + at, value);
         }
     }
@@ -292,7 +292,7 @@ const ONE_UNSIGNED: [(u32, Tweak); 1] = [(0, Tweak::Unsigned)];
 /// twelve ids, then 24 reals (two brakes' reals with an `E13Real9` each, then the two brake choices at +0x61c and +0x62c).
 const DRIVE_SETUP_ARRAYS: [(u32, u32, u32, Members); 4] = [
     (0xC, 0x10, 3, &ONE_REAL),
-    (0x3C, 0x50, 12, &MIXED50),
+    (0x3C, 0x50, 12, &GEAR_ROW),
     (0x3FC, 0x10, 12, &ONE_UNSIGNED),
     (0x4BC, 0x10, 24, &ONE_REAL),
 ];
@@ -300,7 +300,7 @@ const DRIVE_SETUP_ARRAYS: [(u32, u32, u32, Members); 4] = [
 /// `E13UnsignedPair`s (each gear's choices), four unsigneds (the final drive's and drop gear's choices), then 57 reals
 /// (`E13RealTriple`s, the brake choices and the brakes' `E13Real10`s).
 const DRIVE_OPTIONS_ARRAYS: [(u32, u32, u32, Members); 4] = [
-    (0xC, 0x50, 37, &MIXED50),
+    (0xC, 0x50, 37, &GEAR_ROW),
     (0xB9C, 0x10, 21, &ONE_UNSIGNED),
     (0xCEC, 0x10, 4, &ONE_UNSIGNED),
     (0xD2C, 0x10, 57, &ONE_REAL),
@@ -464,11 +464,12 @@ const DRIVE_STATE_DEFAULTS: [(u32, u32); 8] = [
     (0x278, 0x3F80_0000),
     (0x340, 0x3F80_0000),
 ];
-/// `CDrive::CState::+0x45c`'s value outside the game mode 0x566690 accepts (400.0, 0x731e00).
-const DRIVE_STATE_45C: f32 = 400.0;
+/// The drive state's engine speed at the start (`+0x45c` and `+0x458`, rad/s) outside the game mode 0x566690 accepts
+/// (400.0, 0x731e00).
+const START_ENGINE_SPEED: f32 = 400.0;
 
-/// `0x566690` on the game's options: mode 7 with sub-mode 0 or 10.
-fn game_mode_6690(mem: &Mem) -> bool {
+/// `0x566690` on the game's options: mode 7 with sub-mode 0 or 10, where the drive state's engine speed starts at 0.
+fn engine_starts_off(mem: &Mem) -> bool {
     let options = mem.u32(FLOW_OBJECT);
     mem.u32(options) == 7 && matches!(mem.u32(options + 0xCA4), 0 | 10)
 }
@@ -507,7 +508,7 @@ pub fn construct_drive_state(mem: &mut Mem, this: u32) {
         set_default(mem, this + at, value);
     }
     clear_words(mem, this, &[0x384, 0x380]);
-    let value = if game_mode_6690(mem) { 0.0 } else { DRIVE_STATE_45C };
+    let value = if engine_starts_off(mem) { 0.0 } else { START_ENGINE_SPEED };
     mem.set_f32(this + 0x45C, value);
     mem.set_f32(this + 0x458, value);
     mem.set_u32(this + 0x368, 0);
@@ -625,11 +626,11 @@ pub fn construct_engine_state(mem: &mut Mem, this: u32, owner: u32) -> Result<()
     Ok(())
 }
 
-/// `E39_StateInitC70` (0x502c70, fastcall `(self)`): the reset of the drive state's copy in the damage handler
-/// (`ResetDamage` calls it at `+0x3a18`). Three (1.0, 1) pairs from `+0x0`, four (1, 1, 0) triples from `+0x18`, ten
-/// floats 1.0 from `+0x48`, the words `+0x70` and `+0x78..+0x80` 1, the floats `+0x84..+0x8c` 1.0 and the word `+0x90`
-/// 1. `+0x74` is left as it is.
-pub fn state_init_c70(mem: &mut Mem, this: u32) {
+/// `E39_StateInitC70` (0x502c70, fastcall `(self)`): the reset of the drive's damage block (`DriveDamage`, the block at
+/// the damage handler's `+0x3a18` that the drive's `+0x170` points at; `ResetDamage` calls it there). Three (1.0, 1)
+/// pairs from `+0x0`, four (1, 1, 0) triples from `+0x18`, ten floats 1.0 from `+0x48`, the words `+0x70` and
+/// `+0x78..+0x80` 1, the floats `+0x84..+0x8c` 1.0 and the word `+0x90` 1. `+0x74` is left as it is.
+pub fn reset_drive_damage(mem: &mut Mem, this: u32) {
     for pair in 0..3 {
         mem.set_f32(this + 8 * pair, 1.0);
         mem.set_u32(this + 8 * pair + 4, 1);
@@ -651,10 +652,11 @@ pub fn state_init_c70(mem: &mut Mem, this: u32) {
     }
 }
 
-/// `CEngine::CState::ResetSub78` (0x50c370, thiscall): the reset of the engine state's copy in the damage handler
-/// (`ResetDamage` calls it at `+0x3aac`). Four vectors (0, 0, 1, 0) from `+0x8`, the word `+0x48` 1, the floats
-/// `+0x4c`, `+0x50`, `+0x58` and `+0x5c` 1.0 and `+0x54`, `+0x60..+0x70` 0, and the word `+0x74` 1.
-pub fn reset_sub78(mem: &mut Mem, this: u32) {
+/// `CEngine::CState::ResetSub78` (0x50c370, thiscall): the reset of the engine's damage block (the options block
+/// `EngineOptions`, the block at the damage handler's `+0x3aac` that the engine's `+0x48` points at; `ResetDamage` calls
+/// it there). Four vectors (0, 0, 1, 0) from `+0x8`, the word `+0x48` 1, the floats `+0x4c`, `+0x50`, `+0x58` and
+/// `+0x5c` 1.0 and `+0x54`, `+0x60..+0x70` 0, and the word `+0x74` 1.
+pub fn reset_engine_damage(mem: &mut Mem, this: u32) {
     for k in 0..4 {
         let at = this + 8 + 0x10 * k;
         mem.set_f32(at, 0.0);

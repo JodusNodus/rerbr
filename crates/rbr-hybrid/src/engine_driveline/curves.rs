@@ -61,7 +61,7 @@ pub(crate) fn row_value_at(mem: &mut Mem, dt: f32, b: u32, c: u32, n: u32, s: f3
 /// stdcall `(x)`, `ret 4`, st0: `E12_SampleX` (0x475ea0), the drive line's value at `x`. The original asserts outside the
 /// table, so the port declines there (before anything is written).
 pub(super) fn e12_sample_x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    match layout::sample_x(&ctx.mem, f32::from_bits(r.stack[0])) {
+    match layout::distance_at(&ctx.mem, f32::from_bits(r.stack[0])) {
         Some(st0) => Ok(Return::float(st0 as f64, 4)),
         None => Err(Decline::Unsupported("E12_SampleX outside the table (the original asserts)")),
     }
@@ -70,14 +70,16 @@ pub(super) fn e12_sample_x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(x)`, st0: `E12_SampleX` on the E12 host word.
 pub(super) fn thunk_4f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let host = ctx.host;
-    let st0 = layout::thunk_4f0(&ctx.mem, r.stack[0], |e12, x| host.call(E12_SAMPLE_X, e12, &[x.to_bits()]).st0 as f32);
+    let st0 = layout::forward_distance_at(&ctx.mem, r.stack[0], |e12, x| {
+        host.call(E12_SAMPLE_X, e12, &[x.to_bits()]).st0 as f32
+    });
     Ok(Return::float(st0 as f64, 4))
 }
 
 /// thiscall `(idx, t, out*)`.
 pub(super) fn blend_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [idx, t, out, ..] = r.stack;
-    let v = layout::blend_b(&ctx.mem, r.ecx, idx as i32, f(t));
+    let v = layout::spline_at(&ctx.mem, r.ecx, idx as i32, f(t));
     v.store(&mut ctx.mem, out);
     Ok(Return::void(0, 0xc))
 }
@@ -95,7 +97,7 @@ pub(super) fn lerp_at(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `()`, st0.
 pub(super) fn last(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(layout::last(&ctx.mem, r.ecx) as f64, 0))
+    Ok(Return::float(layout::last_distance(&ctx.mem, r.ecx) as f64, 0))
 }
 
 /// thiscall `(signal*)`. Declines a count over 10000 (the original traps).
@@ -110,7 +112,7 @@ pub(super) fn set_drive_line(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 /// thiscall `(x, out*)`.
 pub(super) fn clamp_mix(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, out, ..] = r.stack;
-    let v = layout::clamp_mix(&ctx.mem, r.ecx, f(x));
+    let v = layout::point_at(&ctx.mem, r.ecx, f(x));
     v.store(&mut ctx.mem, out);
     Ok(Return::void(0, 8))
 }

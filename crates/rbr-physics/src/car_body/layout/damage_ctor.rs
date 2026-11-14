@@ -110,8 +110,8 @@ impl ResetDamageCalls for ResetPorts {
     fn call(&mut self, mem: &mut Mem, callee: u32, this: u32) {
         use crate::car_body::layout::damage_handler_at::*;
         match callee {
-            STATE_INIT => engine_driveline::layout::state_init_c70(mem, this),
-            ENGINE_RESET => engine_driveline::layout::reset_sub78(mem, this),
+            STATE_INIT => engine_driveline::layout::reset_drive_damage(mem, this),
+            ENGINE_RESET => engine_driveline::layout::reset_engine_damage(mem, this),
             WHEEL_ZERO => crate::wheel::layout::damage_zero(mem, this),
             VALUE8_CLEAR => tyre::layout::clear_eight_floats(mem, this),
             VALUE_CLEAR => spring_damper::layout::clear_unsigned_value(mem, this),

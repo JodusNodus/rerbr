@@ -11,7 +11,7 @@ use crate::car_body::edge::EdgeCalls;
 use crate::car_body::scratch_dispatch::ScratchDispatchCalls;
 use crate::car_body::store::CarStore;
 use crate::car_body::{accessors, edge, scratch_dispatch, steering_ffb};
-use crate::engine_driveline::layout::{blend_b, COUNT_AT};
+use crate::engine_driveline::layout::{spline_at, COUNT_AT};
 use crate::engine_driveline::store::EngineStore;
 use crate::math::quat::{self};
 use crate::math::vec::{Vec3, Vec4};
@@ -104,7 +104,7 @@ pub fn lane_test<S: CarStore + EngineStore>(mem: &S, car: u32, to_world: impl Fn
     if i as u32 >= mem.u32(drive + COUNT_AT) {
         return None;
     }
-    let point = blend_b(mem, drive, i, t);
+    let point = spline_at(mem, drive, i, t);
     let d = Vec3 {
         x: mem.f32(car + 0x140) - point.x,
         y: mem.f32(car + 0x144) - point.y,

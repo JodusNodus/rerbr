@@ -2,9 +2,10 @@
 
 use super::drive_objects::Lane;
 use super::engine_calls::{
-    abs_rpm_term, clamp_asm, compliance, exhaust_blend_at, merge_into, rev_gate, sim_ebb0, slot_roll, torque_curve,
+    abs_rpm_term, clamp_keep_nan, compliance, exhaust_blend_at, merge_into, pedal_cosine, rev_gate, slot_roll,
+    torque_curve,
 };
-use super::engine_objects::{EngineObjects, EngineOptions, EngineState, EngineThis, EngineTuning, LoadDef};
+use super::engine_objects::{EngineObjects, EngineOptions, EngineOwn, EngineState, EngineTuning, LoadDef};
 
 use crate::engine_driveline::store::EngineStore;
 use crate::engine_driveline::{engine, sim};
@@ -15,13 +16,19 @@ use crate::spring_damper::{self, BlendTerms, UpdateTerms, WeightedValue};
 use crate::{fpu, ngp};
 
 /// `Sim8E20`'s cycle factor (0x73b6f4): 20.371832.
-const SIM8E20_F10: f32 = 20.371_832;
+const CYCLE_FACTOR: f32 = 20.371_832;
 
-/// `E43EngineSim::Sim8D90` (0x518d90, thiscall `(x, y)`, x87 return). The table entry `x` (`state+0x88+0x38 x`: the
+/// `E43EngineSim::Sim8D90` (0x518d90, thiscall `(x, y)`, x87 return): the intake entry update. The table entry `x` (`state+0x88+0x38 x`: the
 /// key, then the value) takes the key `y` plus the definition's lane word for `x` (`+0x108+0x40 x`). When that key
 /// is below the entry's old key, the entry is reset by the host first, and the change is taken from the reset value.
 /// The host writes the entry, so the old value is read again after the call.
-pub fn sim8d90<S: EngineStore>(host: &mut impl engine::IntakeResetHost, mem: &mut S, this: u32, x: u32, y: u32) -> f64 {
+pub fn intake_entry_update<S: EngineStore>(
+    host: &mut impl engine::IntakeResetHost,
+    mem: &mut S,
+    this: u32,
+    x: u32,
+    y: u32,
+) -> f64 {
     let objects = EngineObjects::at(mem, this);
     let at = objects.state + 0x88 + 0x38 * x;
     let key = engine::entry_key(mem.u32(objects.def + 0x108 + 0x40 * x), y);
@@ -110,7 +117,7 @@ pub fn engine_step<S: EngineStore>(
                     + mem.f32(row + 0x1f0) * t14
                     + mem.f32(row + 0x1ec) * t10
                     + mem.f32(row + 0x1f4) * tc))
-                * SIM8E20_F10;
+                * CYCLE_FACTOR;
             b = f13;
             offset += 0x40;
             at += 0x38;
@@ -119,7 +126,7 @@ pub fn engine_step<S: EngineStore>(
         let mut t18 = 0.0;
         for k in 0..count {
             let y = mem.u32(s + 0x17c);
-            let g = sim8d90(host, mem, this, k, y);
+            let g = intake_entry_update(host, mem, this, k, y);
             t18 = fpu::round_x87(g + f64::from(t18)) as f32;
         }
         b = t18 / delta;
@@ -153,7 +160,7 @@ pub fn engine_step<S: EngineStore>(
     }
     let cycle = mem.u32(s + 0x234);
     if cycle.is_multiple_of(10) {
-        sim8890(host, mem, this, a * 10.0, tuning);
+        heat_step(host, mem, this, a * 10.0, tuning);
     }
     if cycle.is_multiple_of(20) {
         fuel_air_terms(mem, this, a * 20.0);
@@ -180,7 +187,7 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
     let p = s + 0x88 + 0x38 * i;
     mem.set_u32(p, 0);
     mem.set_f32(p + 4, 0.0);
-    sim_ebb0(mem, this);
+    pedal_cosine(mem, this);
     if mem.u32(d + 0x26f8) == 0 {
         Lane { dirty: 1, value: air.pressure }.store(mem, s + 0x1ac);
         Lane { dirty: 1, value: air.temperature }.store(mem, s + 0x19c);
@@ -417,12 +424,13 @@ pub fn turbo_energy_step<S: EngineStore>(mem: &mut S, this: u32, x: f32, tuning:
     s
 }
 
-/// `E43EngineSim::Sim8610` (0x518610, thiscall `(x)`, ret 4): the first damper step of the brake-side term. It moves the two
-/// slots of the state (`+0x1c`, `+0x24`) by at most the rate and the limits, merges the two weighted values into them
-/// (`DamperMerge` twice), and adds the step to `this+0x58`. Its lerp is `InitRealLerp` (0x50f010): `(b - a) * c + a`
+/// `E43EngineSim::Sim8610` (0x518610, thiscall `(x)`, ret 4): the overheat step (named by use: `heat_step` runs it
+/// when the coolant temperature `+0x28` is above the definition's `+0x2774`). It moves the two slots of the state
+/// (`+0x1c`, `+0x24`) by at most the rate and the limits, merges the two weighted values into them (`DamperMerge`
+/// twice), and adds the step to `this+0x58`. Its lerp is `InitRealLerp` (0x50f010): `(b - a) * c + a`
 /// with `a = def+0x27ac`, `b = def+0x27bc` and `c` the options' `1 - v54` rounded to f32 (the x87 store). Returns the
 /// `eax` the original leaves: the options block when the gate is off, else the state.
-pub fn sim8610<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
+pub fn overheat_step<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     let objects = EngineObjects::at(mem, this);
     let (d, s, o) = (objects.def, objects.state, objects.options);
     if mem.u32(o + 0x48) == 0 {
@@ -455,14 +463,14 @@ pub fn sim8610<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     if v54 == 0.0 || !(mem.f32(s + 0x1c) > q) {
         mem.set_f32(s + 0x40, 0.0);
     } else {
-        let v = clamp_asm(v54, 1.0);
+        let v = clamp_keep_nan(v54, 1.0);
         mem.set_f32(s + 0x40, (v / x) * f3);
         f3 *= 1.0 - v * 0.1;
     }
     merge_into(mem, WeightedValue { weight: t, value: m1_value }, s + 0x24);
     merge_into(mem, WeightedValue { weight: f3, value: m2_value }, s + 0x1c);
-    mem.set_f32(s + 0x24, clamp_asm(mem.f32(s + 0x24), max));
-    mem.set_f32(s + 0x1c, clamp_asm(mem.f32(s + 0x1c), mem.f32(d + 0x279c)));
+    mem.set_f32(s + 0x24, clamp_keep_nan(mem.f32(s + 0x24), max));
+    mem.set_f32(s + 0x1c, clamp_keep_nan(mem.f32(s + 0x1c), mem.f32(d + 0x279c)));
     let total = mem.f32(this + 0x58) + t;
     set_dirty(mem.mem_mut(), this + 0x4c);
     mem.set_f32(this + 0x58, total);
@@ -490,7 +498,7 @@ pub fn misfire_roll<S: EngineStore>(mem: &mut S, this: u32, a: f32) {
     mem.set_u32(seed_at, seed);
     state.store(mem, objects.state);
     if let Some(level) = level {
-        let mut fields = EngineThis::load(mem, this);
+        let mut fields = EngineOwn::load(mem, this);
         fields.misfire_level = level;
         fields.store(mem, this);
     }
@@ -507,13 +515,14 @@ pub fn engine_torque<S: EngineStore>(mem: &mut S, this: u32, a: f32) -> f32 {
     st0
 }
 
-/// `E43EngineSim::Sim8890` (0x518890, thiscall `(x)`, void): the car's damper step. The first spring-damper step moves
+/// `E43EngineSim::Sim8890` (0x518890, thiscall `(x)`, void): the engine's heat step, between the engine (`+0x23c`),
+/// the coolant (`+0x28`), the radiator (`+0x20`) and the air. The first spring-damper step moves
 /// the state's `+0x24` and the definition's accumulator, and `DamperAccumA` takes the rest of `+0x238` into `+0x23c`.
 /// The second step moves `+0x1c` from the car's walk: the object from slot 12 (`S30`) and the point `MB560` transforms
 /// it to (the host calls). Then `Sim8610` runs when `+0x28` is above the definition's `+0x2774`, both slots are clamped,
 /// and the engine's four outputs (`+0x198`, `+0x64`, `+0x68`, `+0x6c`) take the reciprocal of `x` times their terms.
 /// Returns the state, the `eax` the original leaves.
-pub fn sim8890<S: EngineStore>(
+pub fn heat_step<S: EngineStore>(
     host: &mut impl engine::CarWalkHost,
     mem: &mut S,
     this: u32,
@@ -546,7 +555,7 @@ pub fn sim8890<S: EngineStore>(
         spring_damper::layout::accumulate_heat_scaled(mem, d + 0x2748, -t2c, s + 0x1c);
     }
     if mem.f32(d + 0x2774) < mem.f32(s + 0x28) {
-        sim8610(mem, this, x);
+        overheat_step(mem, this, x);
     }
     let g1 = spring_damper::layout::clamp_value(mem, d + 0x2748, s + 0x1c);
     let inv = 1.0 / x;
@@ -590,23 +599,23 @@ pub fn fuel_air_terms<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     }
     if 0.0 < f11 {
         let v = mem.f32(o + 0x58) - (f11 * x) / mem.f32(d + 0x281c);
-        mem.set_f32(o + 0x58, clamp_asm(v, 1.0));
+        mem.set_f32(o + 0x58, clamp_keep_nan(v, 1.0));
     }
     mem.set_f32(this + 0x78, f5);
     o
 }
 
-/// `E43EngineSim::Sim8CF0` (0x518cf0, thiscall, no arguments): `+0x184` becomes 0.7 times the state's float at `+0x200`
+/// `E43EngineSim::Sim8CF0` (0x518cf0, thiscall, no arguments): the engine's signal update. `+0x184` becomes 0.7 times the state's float at `+0x200`
 /// plus 0.3 times itself, and `+0x190` the options block's `+8`, `+0x18`, `+0x28` and `+0x38` summed, halved and clamped
 /// to [0, 1]. Then the emit (0x50ee90) runs on the global signal object (`[0x893600] + 0x3cb8`) with `+0x184` as its
 /// argument, and `+0x194` is cleared. Returns the eax the emit leaves.
-pub fn sim8cf0<S: EngineStore>(host: &mut impl engine::SignalHost, mem: &mut S, this: u32) -> u32 {
+pub fn signal_update<S: EngineStore>(host: &mut impl engine::SignalHost, mem: &mut S, this: u32) -> u32 {
     let state = mem.u32(this + 8);
     let options = mem.u32(this + 0x48);
     let blend = mem.f32(state + 0x200) * 0.7 + mem.f32(this + 0x184) * 0.3;
     mem.set_f32(this + 0x184, blend);
     let sum = mem.f32(options + 8) + mem.f32(options + 0x18) + mem.f32(options + 0x28) + mem.f32(options + 0x38);
-    mem.set_f32(this + 0x190, clamp_asm(sum * 0.5, 1.0));
+    mem.set_f32(this + 0x190, clamp_keep_nan(sum * 0.5, 1.0));
     let eax = host.signal(mem.u32(SIGNAL_MANAGER) + 0x3cb8, this + 0x184);
     mem.set_f32(this + 0x194, 0.0);
     eax

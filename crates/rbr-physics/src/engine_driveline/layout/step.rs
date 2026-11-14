@@ -1,6 +1,6 @@
 //! The drive's step (`CDrive::Step1E0`, 0x50a1e0).
 
-use super::curve::{curve_input_at, curve_state_at, hook_block_at, ratio_ring_at, with_gear, with_worker};
+use super::curve::{brake_block_at, curve_input_at, curve_state_at, ratio_ring_at, with_gear, with_worker};
 use super::drive_objects::{Drive, DriveObjects, Lane, DRIVE_STATE_ENGINE_SPEED};
 use super::worker::{DriveWorker, GearWork, RatioRing};
 use crate::engine_driveline::drive_step::{self, DriveStepHost};
@@ -34,7 +34,7 @@ pub fn step_drive<S: EngineStore>(host: &mut impl DriveStepHost, mem: &mut S, th
     let bias: [f32; 4] = std::array::from_fn(|k| mem.f32(this + DRIVE_WHEEL_BIAS + 0x10 * k as u32));
     for (k, wheel_bias) in bias.iter().enumerate() {
         let k = k as u32;
-        let (state_at_k, block_at) = (curve_state_at(state, k), hook_block_at(def, k));
+        let (state_at_k, block_at) = (curve_state_at(state, k), brake_block_at(def, k));
         let term = host.ngp_curve_term([state_at_k, block_at, def, curve_input_at(this)], dt);
         let block = state_at(mem) + 200 * k;
         mem.set_f32(block + BLOCK_LATCH_BOUND, drive_step::wheel_latch(term, *wheel_bias));
