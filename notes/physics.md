@@ -153,10 +153,11 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | --- | --- | --- |
 | `store::Raw` (supertrait: words, `mem()`) | `store/mod.rs` | same |
 | `StrutStore` (handle `Strut`), `DamperBlocks` | `spring_damper/store.rs` | `StrutView` only; `DamperBlocks`: `spring_damper/layout.rs` |
-| `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: `vcu/layout.rs` |
+| `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: the drive's typed state (`DriveRef`) |
 | `TyreStore` (handle `Tyre`) | `tyre/store.rs` | `TyreView` only; the callers' blocks: `tyre/layout/kernels.rs` |
 | `WheelStore` | `wheel/layout/store.rs` | `wheel/layout/fields.rs` |
 | `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
+| `DriveStore` (one drive, no handle; `word`/`set_word` for the index arithmetic) | `engine_driveline/store.rs` | `DriveView` only (`layout/drive_typed.rs`) |
 | `EngineStore: DamperBlocks` | `engine_driveline/store.rs` | `engine_driveline/layout/mem_store.rs` |
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
 | `CoreStore` | `physics_core/store.rs` | `physics_core/layout/mem_store.rs` |
@@ -168,7 +169,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 - A calls trait takes the store as a parameter defaulting to `Mem` (`Vf6cxCalls<S = Mem>`); clashing names use
   UFCS; what a trait does not name yet goes through `Raw`. Constructors and setup copies stay on `&mut Mem`.
 - `object!` (`store/layout.rs`) tables an object once (struct, `Field` per row, `lift`/`lower`); tabled so far
-  (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and state.
+  (`store::car_objects`): tyre scratch, strut, its state and fade pair, VCU scratch and state, drive, drive state and
+  its four wheel blocks.
 - Mem-direct dispatch (`--dispatch direct`, live default): a call within the `IN_PLACE` subsystems
   (`rbr-hybrid/src/pure/mod.rs`) to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) runs as a plain call
   when it passes exactly the words the leaf pops; a non-leaf binding too (B1b, `Pure::call_plain`, `call_framed`:
@@ -210,8 +212,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   state's lockout, launch clutch with its dirty word, pedal swap, gear timer and cooldown; 16 words) in `CarVcu`
   (`VcuImage`, `lift`/`lower` on `ScratchObj`/`StateObj`, `with_vcu` per call, `round_trip`). Definition, pointers and
   the owner car stay in the image, read per call. The drive's gear block, outputs (CReals, lock torques), gear count
-  and ratios are the drive's (its step and setters read them in the same step), so `DriveBlocks` writes them on the
-  image; `CDrive::M6840` stays a `Mem` function. `VcuCalls` keeps every callee a host call (drive, engine, car,
+  and ratios are the drive's: `DriveBlocks` reads and writes them on the drive's typed state (`VcuView` holds the
+  car's `CarDrive`); `CDrive::M6840` is a `DriveBlocks` function whose `SetDirty` the binding skips on a held drive. `VcuCalls` keeps every callee a host call (drive, engine, car,
   lights untyped; the slip query because the original's call places its stack words). CopyDef's maps and ReadPacket's
   packet are read and written on the image, their scratch fields through the store; ReadPacket's run is lowered
   before FlagDispatch's, so the per-call slip query lifts it. Readers outside the bindings during a step: NGP's
@@ -261,6 +263,29 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   image; M520240 declines there (NGP's). Not typed: the collision system and its copies, the `.col` tree, the mesh
   grids and water meshes (the collision queries, heap graphs; their scratch is written per query); `CollisionQuery`
   is NGP's runtime copy (no image word) or the snapshot's operand.
+- The drive, fifth: `engine_driveline::layout::DriveTyped` (`layout/drive_typed.rs`: `DriveObj`, the `CDrive`'s lanes,
+  pair, pack, wheel offset and bias CReals, gear time steps and scalars; `DriveStateObj`, the state's lock channels,
+  gains, ring, engine speed, clutch and pair matrices, gear fields, counters; `WheelObj` per wheel, the 200-byte block
+  at the state's `+0x48`; 1076 bytes) in `CarDrive` (`DriveImage` lift/lower, `with_drive` per call, `round_trip`).
+  An aliased word is one field and the records are views: term 3 is wheel 0's slip lane and its neighbours, the
+  gate level the throttle's value, the curve state (NGP's wheel speed, temperatures, handbrake gain) the wheel block's
+  words; the worker's store writes term 3 and each slip only when changed, as before. Held in a `RefCell` borrowed per
+  access, never across a host call (Step1E0 re-enters the drive's bindings through the host). Stay on the image: the
+  definition, the damage handler's block (its functors write it), the pointers, the state's car (`+0x580`, read raw by
+  NGP's downforce) and the wheel worker's matrix words (`state+0x4b0`, `+0x530`, `drive+0xa0`, written for the
+  original `E39_MatVec`). `DriveStore::word`/`set_word` serve the original's index arithmetic (SetTwo, Set4570,
+  M6DB0/M6DD0, the gear's scale and time step at any gear): named words directly, a word the typed state holds in part
+  byte by byte, the rest on the image. Readers during a step, through `rbr_hybrid::engine_driveline::on_drive_in`:
+  NGP's starter, drive wrapper, axle worker, curve term (its `a1` a wheel, `x` the input block, the transfer into wheel
+  `u - 2`'s latch bound), M5FE0/M6260, the clutch torque, the car's MrR payload (`CarCalls::drive_engine_speed`,
+  was a raw read; unrouted it fails the poison run: `drive state` in `0x5273a0`), the VCU's blocks; `E39_RatioCA0`,
+  `WorkerF60`/`Worker4060` and `ClearLanes` resolve a held drive's ring, wheel or scratch member, else the image.
+  Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on);
+  poison 84084/84084; `round_trip` 1076 typed bytes on 43 snapshots; `engine_driveline_vectors` on the per-call store
+  (unmapped drive bytes zero-filled) and its chain test (14 entries per call vs held, every byte, 42 pair-worker
+  records); `vcu_vectors`' chain with the drive held too; hybrid gate 13/13; -2.6 % instructions per step. Not typed
+  yet: the engine (`EngineStore`: `EngineOwn`, `EngineState`, the options' stall terms, the unit split, the damper
+  blocks in its objects), which stays on `Mem`.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
