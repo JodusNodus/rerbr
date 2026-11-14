@@ -280,8 +280,8 @@ impl Walk for WalkAnswers<'_> {
         self.mem.load_node(at)
     }
 
-    fn copy16(&mut self, to: u32, from: u32) {
-        layout::copy_block16(self.mem, to, from);
+    fn copy_vec4(&mut self, to: u32, from: u32) {
+        layout::copy_vec4(self.mem, to, from);
         if let Some(expected) = self.copy_expected {
             assert_eq!(self.mem.read(to, 16).as_slice(), expected, "copy of {from:#x}");
         }
@@ -1151,7 +1151,7 @@ fn copy_blocks_then_walk_copies_each_block_and_walks() {
             self.walks.push((which, receiver, o2, a, b));
             a
         }
-        fn copy16(&mut self, to: u32, from: u32) {
+        fn copy_vec4(&mut self, to: u32, from: u32) {
             for k in 0..4 {
                 let word = self.mem.u32(from + 4 * k);
                 self.mem.set_u32(to + 4 * k, word);

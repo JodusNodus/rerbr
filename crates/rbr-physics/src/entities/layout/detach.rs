@@ -2,6 +2,7 @@
 //! `SimFD00`, `CMountedRigidBody::StepBig`).
 
 use super::hinge_state::HINGE_OWNER;
+use super::walk_nodes::copy_vec4;
 use crate::entities::layout::ROOT_IDENTITY;
 use crate::entities::{hinge_detach, hinge_impulse};
 use crate::math::vec::{Vec3, Vec4};
@@ -96,10 +97,6 @@ const BODY_START_POSITION: u32 = 0x330;
 /// between slot 21 (`E47_Vf54Helper`, [`POST_CONTACT_SLOT`]) and slot 18 (`E43Vf48`, [`INIT_PASS_SLOT`]).
 const BODY_EVENT_SLOT: u32 = 0x90;
 
-fn copy16(mem: &mut Mem, to: u32, from: u32) {
-    mem.copy(to, from, 16);
-}
-
 /// The original callees of the pose to the world (`CHingedRigidBody::SimDA60`), at their entry stack pointers.
 pub trait PoseToWorldCalls {
     /// `E33Mat34::ComposeA` (0x51b4c0) with the car as ecx.
@@ -114,12 +111,12 @@ pub fn pose_to_world(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl Pose
     let walker = mem.u32(ROOT_IDENTITY);
     let car = mem.u32(this + HINGE_OWNER);
     calls.compose_a(mem, frame - 0x10, car, [this + BODY_POSITION, walker, frame + 0x20]);
-    copy16(mem, this + BODY_POSITION, frame + 0x20);
+    copy_vec4(mem, this + BODY_POSITION, frame + 0x20);
     let car = mem.u32(this + HINGE_OWNER);
     calls.quat_mul(mem, frame - 0xc, car + BODY_ORIENTATION, this + BODY_ORIENTATION, frame + 0x30);
-    copy16(mem, this + BODY_ORIENTATION, frame + 0x30);
-    copy16(mem, this + BODY_START_POSITION, this + BODY_POSITION);
-    copy16(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
+    copy_vec4(mem, this + BODY_ORIENTATION, frame + 0x30);
+    copy_vec4(mem, this + BODY_START_POSITION, this + BODY_POSITION);
+    copy_vec4(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
 }
 
 /// The original callees of the detach (`CHingedRigidBody::SimFD00`), at their entry stack pointers.
@@ -159,12 +156,12 @@ pub fn detach_from_car(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl De
     let event = frame + 0x40;
     mem.set_u32(event + 4, mem.u32(this + BODY_OWNER_WORD));
     mem.set_u32(event, 3);
-    copy16(mem, event + 0x30, this + BODY_POSITION);
+    copy_vec4(mem, event + 0x30, this + BODY_POSITION);
     // The original's pointer locals, as it leaves them.
     mem.set_u32(frame + 0x1c, this + 0xf0);
     mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
     mem.set_u32(frame + 0x18, event + 0x40);
-    copy16(mem, event + 0x40, this + BODY_ORIENTATION);
+    copy_vec4(mem, event + 0x40, this + BODY_ORIENTATION);
     calls.pose_to_world(mem, frame - 4, this);
     detach_tail(mem, this, frame, event, frame + 0x10, calls);
     1
@@ -191,21 +188,21 @@ pub fn mounted_detach(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl Mou
     let event = frame + 0x60;
     mem.set_u32(event, 3);
     mem.set_u32(event + 4, mem.u32(this + BODY_OWNER_WORD));
-    copy16(mem, event + 0x30, this + BODY_POSITION);
+    copy_vec4(mem, event + 0x30, this + BODY_POSITION);
     // The original's pointer locals, as it leaves them.
     mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
     mem.set_u32(frame + 0x1c, event + 0x40);
-    copy16(mem, event + 0x40, this + BODY_ORIENTATION);
+    copy_vec4(mem, event + 0x40, this + BODY_ORIENTATION);
     let car = mem.u32(this + HINGE_OWNER);
     calls.world_compose(mem, frame - 0xc, car, this + BODY_POSITION, frame + 0x40);
-    copy16(mem, this + BODY_POSITION, frame + 0x40);
+    copy_vec4(mem, this + BODY_POSITION, frame + 0x40);
     let car = mem.u32(this + HINGE_OWNER);
     calls.quat_mul(mem, frame - 0xc, car + BODY_ORIENTATION, this + BODY_ORIENTATION, frame + 0x50);
     calls.quat_norm(mem, frame - 8, frame + 0x50, this + BODY_ORIENTATION);
-    copy16(mem, this + BODY_START_POSITION, this + BODY_POSITION);
+    copy_vec4(mem, this + BODY_START_POSITION, this + BODY_POSITION);
     mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
     mem.set_u32(frame + 0x1c, this + BODY_START_ORIENTATION);
-    copy16(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
+    copy_vec4(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
     detach_tail(mem, this, frame, event, frame + 0x18, calls);
     1
 }
@@ -247,10 +244,10 @@ fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls
     mem.set_u32(sig, mem.u32(this + BODY_OWNER_WORD));
     calls.emit_detach(mem, frame - 8, signals + DETACH_SIGNAL, sig);
     calls.slot(mem, frame - 4, this, INIT_PASS_SLOT);
-    copy16(mem, event + 0x10, this + BODY_POSITION);
+    copy_vec4(mem, event + 0x10, this + BODY_POSITION);
     mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
     mem.set_u32(frame + 0x1c, event + 0x20);
-    copy16(mem, event + 0x20, this + BODY_ORIENTATION);
+    copy_vec4(mem, event + 0x20, this + BODY_ORIENTATION);
     let signals = mem.u32(SIGNAL_MANAGER);
     calls.emit_event(mem, frame - 8, signals + BODY_EVENT_SIGNAL, event);
 }

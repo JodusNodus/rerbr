@@ -280,7 +280,7 @@ impl Walk for FrameWalk<'_> {
         EntityStore::grid_count(self.mem, grid)
     }
 
-    fn copy16(&mut self, to: u32, from: u32) {
+    fn copy_vec4(&mut self, to: u32, from: u32) {
         self.mem.copy(to, from, 0x10);
     }
 }

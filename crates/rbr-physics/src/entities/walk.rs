@@ -66,7 +66,7 @@ pub trait Walk {
     /// `which` called on `receiver` with (o2, a, b).
     fn walk(&mut self, which: Walker, receiver: u32, o2: u32, a: u32, b: u32) -> u32;
     /// The 16 bytes at `from` stored at `to`.
-    fn copy16(&mut self, to: u32, from: u32);
+    fn copy_vec4(&mut self, to: u32, from: u32);
     /// The edge count of the contact grid at `grid` (its first pass's count), for the grid hooks.
     fn grid_count(&self, grid: u32) -> u32;
 }
@@ -173,7 +173,7 @@ pub fn run<W: Walk>(w: &mut W, which: Walker, receiver: u32, o2: u32, a: u32, b:
 /// Copies the 16 bytes at `a` to `c`, then walks `receiver` against `b` with `RoutePairThreeFour` (`c` as its `a`, 1 as its
 /// `b`): the vector at `a` carried from `receiver`'s frame to `b`'s, into `c`.
 pub fn carry_three_four<W: Walk>(w: &mut W, receiver: u32, a: u32, b: u32, c: u32) {
-    w.copy16(c, a);
+    w.copy_vec4(c, a);
     w.walk(Walker::RoutePairThreeFour, receiver, b, c, 1);
 }
 

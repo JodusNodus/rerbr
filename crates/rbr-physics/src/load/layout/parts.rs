@@ -136,7 +136,7 @@ impl entities::walk::Walk for CarFrameWalk<'_> {
         entities::walk::run(self, which, receiver, other, a, b)
     }
 
-    fn copy16(&mut self, to: u32, from: u32) {
+    fn copy_vec4(&mut self, to: u32, from: u32) {
         self.mem.copy(to, from, 0x10);
     }
 

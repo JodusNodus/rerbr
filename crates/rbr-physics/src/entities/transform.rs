@@ -12,14 +12,14 @@ pub struct Transform {
 /// Copies the transform's matrix to `out`, then its node walks `arg` against `out` with `RoutePairOneTwo` (`out` as its `a`,
 /// 1 as its `b`). Returns `out`.
 pub fn transform_one_two<W: Walk>(w: &mut W, t: Transform, out: u32, arg: u32) -> u32 {
-    w.copy16(out, t.matrix);
+    w.copy_vec4(out, t.matrix);
     w.walk(Walker::RoutePairOneTwo, t.node, arg, out, 1);
     out
 }
 
 /// `transform_one_two` with the `RoutePairFiveSix` walk. Returns `out`.
 pub fn transform_five_six<W: Walk>(w: &mut W, t: Transform, out: u32, arg: u32) -> u32 {
-    w.copy16(out, t.matrix);
+    w.copy_vec4(out, t.matrix);
     w.walk(Walker::RoutePairFiveSix, t.node, arg, out, 1);
     out
 }
@@ -53,7 +53,7 @@ pub fn copy_blocks_and_walk_three_four<W: Walk>(w: &mut W, receiver: u32, o2: u3
 
 fn copy_blocks_then<W: Walk>(w: &mut W, walker: Walker, receiver: u32, o2: u32, src: u32, dst: u32, n: u32) -> u32 {
     for k in 0..n {
-        w.copy16(dst + 16 * k, src + 16 * k);
+        w.copy_vec4(dst + 16 * k, src + 16 * k);
     }
     w.walk(walker, receiver, o2, dst, n);
     dst

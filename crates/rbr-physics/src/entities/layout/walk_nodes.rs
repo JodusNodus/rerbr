@@ -6,8 +6,8 @@ use crate::entities::walk::Walker;
 use crate::mem::Mem;
 pub use crate::physics_core::layout::vtable_target;
 
-/// Copies the 16-byte block at `from` to `to` (the `E43Mat16` assignments).
-pub fn copy_block16(mem: &mut Mem, to: u32, from: u32) {
+/// Copies the four words (a vector, 16 bytes) at `from` to `to` (the `E43Mat16` assignments).
+pub fn copy_vec4(mem: &mut Mem, to: u32, from: u32) {
     mem.copy_words(to, from, 4);
 }
 

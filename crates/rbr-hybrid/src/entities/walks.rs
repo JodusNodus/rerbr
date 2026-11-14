@@ -191,7 +191,7 @@ pub(super) fn name_walk_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 }
 
 /// The pair walk's calls on the original's objects: node reads, the frame hooks (`Vf04..Vf18`) and the walkers
-/// (`E43PairWalk`), through the host. Only `walk` (at `MB560_CALL`) and `copy16` are reached from `MB560`.
+/// (`E43PairWalk`), through the host. Only `walk` (at `MB560_CALL`) and `copy_vec4` are reached from `MB560`.
 pub(super) struct PairWalk<'a> {
     pub(super) mem: &'a mut Mem,
     pub(super) host: &'a dyn Host,
@@ -256,8 +256,8 @@ impl PairOps for PairWalk<'_> {
         self.mem.grid_count(grid)
     }
 
-    fn copy16(&mut self, to: u32, from: u32) {
-        layout::copy_block16(self.mem, to, from);
+    fn copy_vec4(&mut self, to: u32, from: u32) {
+        layout::copy_vec4(self.mem, to, from);
     }
 }
 
