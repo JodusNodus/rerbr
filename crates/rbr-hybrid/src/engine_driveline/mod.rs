@@ -168,8 +168,8 @@ fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
-/// Runs `run` on the engine at `engine`: in the typed storage the host holds over a step ([`crate::Host::typed`]), else
-/// (another car's, or no step holds it) on the image ([`EngineView::image`]). The engine's readers outside its bindings
+/// Runs `run` on the engine at `engine`: in the typed storage the host holds over a step ([`crate::Host::typed`]), with
+/// the held definitions, else (another car's, or no step holds it) on the image ([`EngineView::image`]). The engine's readers outside its bindings
 /// (NGP's engine wrapper, the drive's gate) and any reader of its words during a step go through it.
 pub(crate) fn on_engine_in<T>(
     host: &dyn Host,
@@ -179,7 +179,7 @@ pub(crate) fn on_engine_in<T>(
 ) -> T {
     if let Some(typed) = host.typed() {
         if typed.car.engine.is(engine) {
-            return run(&mut typed.car.engine.view(mem));
+            return run(&mut typed.car.engine.view(mem).with_defs(Some(&typed.defs)));
         }
     }
     run(&mut EngineView::image(mem))

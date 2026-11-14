@@ -10,6 +10,7 @@ mod drive_objects;
 mod drive_typed;
 mod engine_calls;
 mod engine_def;
+mod engine_definition;
 mod engine_objects;
 mod engine_sim;
 mod engine_typed;
@@ -48,6 +49,7 @@ pub use engine_calls::{
     engine_state_speed, exhaust_blend_at, init_real_lerp, options_first_gate, pedal_cosine, rev_gate, set_cut_flags,
     set_options, slot_roll, torque_curve, ROLL_TABLE,
 };
+pub use engine_definition::{torque_cut, turbo, EngineDefinition, ENGINE_DEF_BYTES};
 pub use engine_objects::{EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, EngineTuning, LoadDef};
 pub use engine_sim::{
     crank_tick, engine_step, engine_torque, fuel_air_terms, heat_step, intake_entry_update, intake_state_reset,

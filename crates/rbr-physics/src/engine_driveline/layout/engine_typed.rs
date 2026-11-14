@@ -6,19 +6,22 @@
 //! damper blocks and the lanes are records several kernels read differently), so the view serves the store's words
 //! (`Raw`): a word a held engine's table names is its typed state's, any other the image's. The records
 //! (`EngineStore`) and the damper blocks are those words. Per call (no step holds the engine) the view is the image.
-//! The definition, the pointers, the option block (the damage handler's engine block: its functors and NGP's engine
-//! wrapper read and write it there) and the state's `EngineNoise` payload (`+0x2c..+0x5c`, read at its address by the
-//! emit's listeners) stay in the image.
+//! A step's view also serves the engine's definition from the step's held definitions (`store::defs`, read only;
+//! `EngineDefinition`). The pointers, the option block (the damage handler's engine block: its functors and NGP's
+//! engine wrapper read and write it there) and the state's `EngineNoise` payload (`+0x2c..+0x5c`, read at its address
+//! by the emit's listeners) stay in the image.
 
 use std::cell::RefCell;
 use std::ops::Range;
 
 use super::drive_objects::{IntLane, Lane};
+use super::engine_definition::{EngineDefinition, ENGINE_DEF_BYTES};
 use super::engine_objects::{
     EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_STATE_PTR,
 };
 use crate::engine_driveline::store::EngineStore;
 use crate::mem::Mem;
+use crate::store::defs::{self, Defs, Held};
 use crate::store::{Object, Raw, Tabled};
 
 crate::object! {
@@ -257,7 +260,7 @@ impl CarEngine {
 
     /// The engine as a store: its state here, the rest of the image in `mem`.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> EngineView<'a> {
-        EngineView { mem, held: Some((self.image, &self.typed)) }
+        EngineView { mem, held: Some((self.image, &self.typed)), def: None }
     }
 
     /// Every owned byte range, named.
@@ -327,7 +330,7 @@ fn entries(e: &mut EngineView, this: u32) -> Vec<u32> {
     out.push(sim::heat_step(&mut QuietHost, e, this, 0.033, &tuning));
     out.push(sim::overheat_step(e, this, 0.033));
     out.push(sim::fuel_air_terms(e, this, 0.066));
-    if e.u32(EngineObjects::at(e, this).def + 0x26f8) != 0 {
+    if super::engine_definition::turbo(e, EngineObjects::at(e, this).def) {
         out.push(sim::turbo_energy_step(e, this, 0.003_333_3, &tuning));
     }
     for i in 0..4 {
@@ -348,9 +351,10 @@ fn entries(e: &mut EngineView, this: u32) -> Vec<u32> {
     out
 }
 
-/// The engine's entries ([`entries`]) of the car at `car` per call (`per_call`, on the image) and on its engine held
-/// (`held`, lifted before, lowered after), two images of one snapshot: the results and every byte of the engine, its
-/// state, its option block, the roll table and the seed equal. The bytes compared, or the first that differs.
+/// The engine's entries ([`entries`]) of the car at `car` per call (`per_call`, on the image) and on its engine and
+/// definition held (`held`, lifted before, the engine lowered after), two images of one snapshot: the results and every
+/// byte of the engine, its state, its option block, the definition, the roll table and the seed equal. The bytes
+/// compared, or the first that differs.
 pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32) -> Result<usize, String> {
     let this = crate::car_body::layout::engine_at(car);
     let objects = EngineObjects::at(per_call, this);
@@ -359,12 +363,15 @@ pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32) -> Result<usiz
         (this, EngineObj::SIZE, "engine"),
         (objects.state, EngineStateObj::SIZE, "engine state"),
         (objects.options, 0x80, "option block"),
+        (objects.def + ENGINE_DEF_BYTES.start, ENGINE_DEF_BYTES.end - ENGINE_DEF_BYTES.start, "definition"),
         (super::engine_calls::ROLL_TABLE, 0x10, "roll table"),
         (seed, 4, "seed"),
     ];
     let a = entries(&mut EngineView::image(per_call), this);
     let engine = CarEngine::of(held, this);
-    let b = entries(&mut engine.view(held), this);
+    let def = Held { at: objects.def, def: EngineDefinition::lift(held, objects.def) };
+    let defs = Defs { engine: Some(def), ..Defs::default() };
+    let b = entries(&mut engine.view(held).with_defs(Some(&defs)), this);
     engine.lower(held);
     if a != b {
         return Err(format!("the entries' results differ: {a:x?} per call, {b:x?} held"));
@@ -382,23 +389,41 @@ pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32) -> Result<usiz
 
 /// The engine's stores (`EngineStore`, `EngineTables`, `DamperBlocks`) over a held engine's typed state and the image
 /// ([`CarEngine::view`]), or over the image alone ([`EngineView::image`], per call): each word the held engine's
-/// tables name is its typed state's, every other the image's.
+/// tables name is its typed state's, each word of a held definition ([`EngineView::with_defs`]) the definition's, every
+/// other the image's.
 pub struct EngineView<'a> {
     mem: &'a mut Mem,
     held: Option<(EngineImage, &'a RefCell<EngineTyped>)>,
+    def: Option<&'a Held<EngineDefinition>>,
 }
 
 impl<'a> EngineView<'a> {
     /// The engine's store on the image (per call: no step holds it).
     pub fn image(mem: &'a mut Mem) -> Self {
-        EngineView { mem, held: None }
+        EngineView { mem, held: None, def: None }
+    }
+
+    /// The view with the engine definition `defs` holds read from it (read only: a write goes to the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        EngineView { def: defs.and_then(|d| d.engine.as_ref()), ..self }
     }
 
     /// The held engine's word at the aligned address `at`, where it holds it.
     #[inline(always)]
-    fn held_word(&self, at: u32) -> Option<u32> {
+    fn engine_word(&self, at: u32) -> Option<u32> {
         let (image, typed) = self.held?;
         image.word(typed, at)
+    }
+
+    /// The held engine's or the held definition's word at the aligned address `at`, where one holds it.
+    #[inline(always)]
+    fn held_word(&self, at: u32) -> Option<u32> {
+        if let Some(word) = self.engine_word(at) {
+            return Some(word);
+        }
+        let held = self.def?;
+        let word = held.def.word(at.wrapping_sub(held.at))?;
+        Some(defs::checked(word, || self.mem.u32(at)))
     }
 
     /// Writes the held engine's word at the aligned address `at`; false where it does not hold it.
@@ -431,7 +456,7 @@ impl Raw for EngineView<'_> {
     fn u32(&self, at: u32) -> u32 {
         if at & 3 == 0 {
             self.held_word(at).unwrap_or_else(|| self.mem.u32(at))
-        } else if self.held.is_some() {
+        } else if self.held.is_some() || self.def.is_some() {
             u32::from_le_bytes(std::array::from_fn(|i| self.u8(at.wrapping_add(i as u32))))
         } else {
             self.mem.u32(at)
@@ -455,7 +480,7 @@ impl Raw for EngineView<'_> {
 
     #[inline(always)]
     fn set_u8(&mut self, at: u32, value: u8) {
-        match self.held_word(at & !3) {
+        match self.engine_word(at & !3) {
             Some(w) => {
                 let mut bytes = w.to_le_bytes();
                 bytes[(at & 3) as usize] = value;
@@ -494,11 +519,11 @@ impl EngineStore for EngineView<'_> {
     }
 
     fn load_load_def(&self, at: u32) -> LoadDef {
-        self.mem.load_load_def(at)
+        LoadDef::read(self, at)
     }
 
     fn load_engine_def(&self, at: u32) -> EngineDef {
-        self.mem.load_engine_def(at)
+        EngineDef::read(self, at)
     }
 
     fn load_engine_own(&self, engine: u32) -> EngineOwn {

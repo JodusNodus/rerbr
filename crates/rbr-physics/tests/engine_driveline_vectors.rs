@@ -384,8 +384,8 @@ fn sim_e660_matches_original_calls() {
     });
 }
 
-/// The engine's entries in a row on the per-call path (the image, `EngineView::image`) and on a held engine (lifted
-/// before the chain, lowered after) leave every byte of the engine, its state, its option block, the definition, the
+/// The engine's entries in a row on the per-call path (the image, `EngineView::image`) and on a held engine and
+/// definition (lifted before the chain, the engine lowered after) leave every byte of the engine, its state, its option block, the definition, the
 /// roll table and the record's windows equal, and give the same results, on every `SimE660` record: the torque sum (the
 /// record's call), the crank tick, the misfire roll, the rev gate, the compliance, the abs-rpm term, the pedal and its
 /// cosine, the cut flags, the slot roll, the torque curve into an intake entry and the exhaust blend of one. The
@@ -455,8 +455,11 @@ fn the_typed_engine_over_a_chain_keeps_the_per_call_bytes() {
         let x: Vec<u32> = entries.iter().map(|entry| entry(&mut layout::EngineView::image(&mut per_call))).collect();
         let mut typed = base.clone();
         let held = layout::CarEngine::of(&typed, this);
+        // The definition held too, as a step's typed definitions hold it.
+        let def = Held { at: objects.def, def: layout::EngineDefinition::lift(&typed, objects.def) };
+        let defs = Defs { engine: Some(def), ..Defs::default() };
         let y: Vec<u32> = {
-            let mut view = held.view(&mut typed);
+            let mut view = held.view(&mut typed).with_defs(Some(&defs));
             entries.iter().map(|entry| entry(&mut view)).collect()
         };
         held.lower(&mut typed);

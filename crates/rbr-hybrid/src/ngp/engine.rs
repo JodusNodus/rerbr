@@ -1,7 +1,7 @@
 //! NGP's starter and engine wrapper.
 
 use rbr_physics::car_body::layout::slot as car_slot;
-use rbr_physics::engine_driveline::layout::{with_worker, EngineObjects, EngineOwn, EngineState};
+use rbr_physics::engine_driveline::layout::{self, with_worker, EngineObjects, EngineOwn, EngineState};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::engine::{self as ngp_engine, EngineDamage, TorqueIn};
 use rbr_physics::ngp::starter;
@@ -116,20 +116,22 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     if !alive || !crate::engine_driveline::engine_running(ctx, engine) {
         return Ok(Return::float(ngp_engine::output(r_value), 8));
     }
-    // The engine's words through its store: the typed engine a step holds.
-    let (throttle, friction_torque, engine_temperature) = on_engine(ctx, engine, |e| {
-        let state = EngineState::load(e, EngineObjects::at(e, engine).state);
-        (EngineOwn::load(e, engine).pedal.value, state.torque, state.threshold_value)
+    // The engine's words through its store: the typed engine and definition a step holds.
+    let (throttle, friction_torque, engine_temperature, torque_cut, turbo) = on_engine(ctx, engine, |e| {
+        let objects = EngineObjects::at(e, engine);
+        let state = EngineState::load(e, objects.state);
+        let def = objects.def;
+        let pedal = EngineOwn::load(e, engine).pedal.value;
+        (pedal, state.torque, state.threshold_value, layout::torque_cut(e, def), layout::turbo(e, def))
     });
     let m = &ctx.mem;
-    let def = m.u32(engine + 4);
     let i = TorqueIn {
         speed,
         rev_limit,
         throttle,
         shift_cooldown: crate::vcu::unit_of(ctx.host, m, car).state.shift_cooldown,
-        shift_idle_scale: m.f32(def + 0x283c),
-        stage_enabled: m.u32(def + 0x26f8) != 0,
+        shift_idle_scale: torque_cut,
+        stage_enabled: turbo,
         modes,
         has_idle_table: table != 0,
         braking: m.f32(at(0x1017_234c).unwrap()),

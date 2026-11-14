@@ -2,6 +2,7 @@
 //! abs-rpm and compliance terms.
 
 use super::drive_objects::Lane;
+use super::engine_definition::{idle_speed_throttle, turbo};
 use super::engine_objects::{EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, EngineTuning};
 use crate::engine_driveline::store::EngineStore;
 use crate::engine_driveline::{engine, sim};
@@ -34,7 +35,7 @@ pub fn exhaust_blend_at<S: EngineStore>(mem: &S, this: u32, i: u32, q: u32) -> f
 /// definition's floor).
 pub fn pedal_cosine<S: EngineStore>(mem: &mut S, this: u32) {
     let objects = EngineObjects::at(mem, this);
-    let angle = engine::clamped_angle(mem.f32(this + 0x20), mem.f32(objects.def + 0x2708));
+    let angle = engine::clamped_angle(mem.f32(this + 0x20), idle_speed_throttle(mem, objects.def));
     let value = one_minus_x87_cos(angle);
     Lane { dirty: 1, value }.store(mem, this + 0x24);
 }
@@ -95,8 +96,9 @@ pub fn discarded_temperatures<S: EngineStore>(mem: &S, this: u32) -> u32 {
 /// definition's `Turbo` (`+0x26f8`) is set, else 0 (named by use: the turbo's inlet pressure in `intake_state_reset`,
 /// the dash's boost gauge).
 pub fn boost_pressure<S: EngineStore>(mem: &S, this: u32) -> f32 {
-    if mem.u32(mem.u32(this + 4) + 0x26f8) != 0 {
-        mem.f32(mem.u32(this + 8) + 0x68)
+    let objects = EngineObjects::at(mem, this);
+    if turbo(mem, objects.def) {
+        mem.f32(objects.state + 0x68)
     } else {
         0.0
     }

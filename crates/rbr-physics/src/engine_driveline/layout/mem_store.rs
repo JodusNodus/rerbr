@@ -5,11 +5,11 @@
 use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
 use super::drive_objects::Lane;
 use super::engine_objects::{
-    EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_DEF_ABS_SCALE, ENGINE_DEF_PTR,
-    ENGINE_OPTIONS_PTR, ENGINE_PEDAL, ENGINE_STATE_ABS_VALUE, ENGINE_STATE_ABS_VALUE_DIRTY,
-    ENGINE_STATE_COMPLIANCE_DIRTY, ENGINE_STATE_COMPLIANCE_INVERSE, ENGINE_STATE_CRANK_ANGLE, ENGINE_STATE_CRANK_COUNT,
-    ENGINE_STATE_CRANK_COUNT_PREV, ENGINE_STATE_ENGINE_SPEED, ENGINE_STATE_PTR, ENGINE_STATE_SCALED_VALUE,
-    ENGINE_STATE_SCALED_VALUE_DIRTY, ENGINE_STATE_SMOOTHED, ENGINE_STATE_TORQUE_ACCUM,
+    EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_DEF_PTR, ENGINE_OPTIONS_PTR,
+    ENGINE_PEDAL, ENGINE_STATE_ABS_VALUE, ENGINE_STATE_ABS_VALUE_DIRTY, ENGINE_STATE_COMPLIANCE_DIRTY,
+    ENGINE_STATE_COMPLIANCE_INVERSE, ENGINE_STATE_CRANK_ANGLE, ENGINE_STATE_CRANK_COUNT, ENGINE_STATE_CRANK_COUNT_PREV,
+    ENGINE_STATE_ENGINE_SPEED, ENGINE_STATE_PTR, ENGINE_STATE_SCALED_VALUE, ENGINE_STATE_SCALED_VALUE_DIRTY,
+    ENGINE_STATE_SMOOTHED, ENGINE_STATE_TORQUE_ACCUM,
 };
 use super::tables::{BlendKnot, CurveKnot, UnitSplit};
 use crate::engine_driveline::drive_line::DriveLinePoint;
@@ -30,31 +30,11 @@ impl EngineStore for Mem {
     }
 
     fn load_load_def(&self, at: u32) -> LoadDef {
-        let f = |off: u32| self.f32(at + off);
-        LoadDef {
-            load_den: [f(0x138), f(0x178), f(0x1b8), f(0x1f8)],
-            load_span: f(0x284c),
-            threshold_slope: f(0x285c),
-            threshold: f(0x286c),
-        }
+        LoadDef::read(self, at)
     }
 
     fn load_engine_def(&self, at: u32) -> EngineDef {
-        let f = |off: u32| self.f32(at + off);
-        EngineDef {
-            abs_scale: f(ENGINE_DEF_ABS_SCALE),
-            stage_low: [f(0x118), f(0x158), f(0x198), f(0x1d8)],
-            stage_high: [f(0x128), f(0x168), f(0x1a8), f(0x1e8)],
-            extra_stage_low: f(0xd8),
-            extra_stage_high: f(0xe8),
-            enable: self.u32(at + 0x26f8),
-            torque_a: [f(0x2214), f(0x2218), f(0x221c)],
-            torque_a_scale: f(0x21e0),
-            torque_b: [f(0x21fc), f(0x2200), f(0x2204)],
-            torque_b_scale: f(0x21dc),
-            torque_c: [f(0x222c), f(0x2230), f(0x2234)],
-            torque_c_scale: f(0x21e4),
-        }
+        EngineDef::read(self, at)
     }
 
     fn load_engine_own(&self, engine: u32) -> EngineOwn {

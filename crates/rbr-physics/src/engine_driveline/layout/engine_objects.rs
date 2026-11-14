@@ -3,6 +3,7 @@
 use super::drive_objects::Lane;
 use crate::engine_driveline::store::EngineStore;
 use crate::ngp::atmosphere::Atmosphere;
+use crate::store::Raw;
 
 /// `CEngine`'s object pointers (rbr-recomp `notes/physics/engine-driveline.md` 2).
 pub(super) const ENGINE_DEF_PTR: u32 = 0x04;
@@ -64,7 +65,7 @@ impl EngineTuning {
 }
 
 /// `CEngine::CDef` members (rbr-recomp `notes/physics/renames/engine-driveline.csv`).
-pub(super) const ENGINE_DEF_ABS_SCALE: u32 = 0x282c;
+const ENGINE_DEF_ABS_SCALE: u32 = 0x282c;
 
 /// The engine definition's fields the ported kernels read (`CEngine::CDef`, `this+4`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -104,11 +105,41 @@ impl LoadDef {
     pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
         mem.load_load_def(at)
     }
+
+    /// The record at `at`, word by word from `mem`.
+    pub(super) fn read<R: Raw>(mem: &R, at: u32) -> Self {
+        let f = |off: u32| mem.f32(at + off);
+        LoadDef {
+            load_den: [f(0x138), f(0x178), f(0x1b8), f(0x1f8)],
+            load_span: f(0x284c),
+            threshold_slope: f(0x285c),
+            threshold: f(0x286c),
+        }
+    }
 }
 
 impl EngineDef {
     pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
         mem.load_engine_def(at)
+    }
+
+    /// The record at `at`, word by word from `mem`.
+    pub(super) fn read<R: Raw>(mem: &R, at: u32) -> Self {
+        let f = |off: u32| mem.f32(at + off);
+        EngineDef {
+            abs_scale: f(ENGINE_DEF_ABS_SCALE),
+            stage_low: [f(0x118), f(0x158), f(0x198), f(0x1d8)],
+            stage_high: [f(0x128), f(0x168), f(0x1a8), f(0x1e8)],
+            extra_stage_low: f(0xd8),
+            extra_stage_high: f(0xe8),
+            enable: mem.u32(at + 0x26f8),
+            torque_a: [f(0x2214), f(0x2218), f(0x221c)],
+            torque_a_scale: f(0x21e0),
+            torque_b: [f(0x21fc), f(0x2200), f(0x2204)],
+            torque_b_scale: f(0x21dc),
+            torque_c: [f(0x222c), f(0x2230), f(0x2234)],
+            torque_c_scale: f(0x21e4),
+        }
     }
 }
 
