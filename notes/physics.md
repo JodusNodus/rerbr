@@ -181,7 +181,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   probe's callees, `E45_M40C0`'s `LookupTwin`, CRT vector iterators). Bindings get `Direct` (`pure/mod.rs`);
   `Pure`'s own `Host` is the fact-check's (`--dispatch pure`). 176-step NGP bench: 739.8e9 to 678.3e9
   instructions.
-- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed`, the `poison` feature.
+- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed` (the car, wheels, every solid
+  the car has held and the tabled objects' owned bytes), the `poison` feature.
 - The generic sequences sit outside the layouts (`rigid_body::{solid_rows, solid_contacts, solid_window}`,
   `physics_core::{step, contact_loop, passenger_step, pose, emit, mounted, accumulate}`, `entities::hinge_step`,
   `ntweak::plan`, `collision::{solver_pass, entry, events, body_contact, grid_edge, mesh, wall, body}`), re-exported
@@ -503,8 +504,14 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   over `SolidWords`) and the response on `on_solids`; the frame hooks and the walks' vector copies on
   `rigid_body::held_solids`. In-place runs on held words call `ran_direct` (the call memo cannot see held reads).
   Per call `SolidView::image` keeps `Mem`'s paged `words`/`set_words4`; +0.47 % instructions per step off (gate 13/13).
-  Left with aids on: the mounted detach (`StepBig` 0x522100, `detach.rs` on `Mem`) and its leaves `M83DD0`,
-  `E34Quat::Norm`, `CCar::ToWorld`, which take pointers into the solids.
+  The mounted bodies: the detaches (`SimFD00`, `SimDA60`, `StepBig` 0x522100, `detach.rs`) run on `SolidWords`, and
+  the leaves they hand solid pointers to (`M83DD0`, `E34Quat::Norm`, `CCar::ToWorld`, `WorldCompose`) resolve them
+  on the store (`on_solids`, `solid_word`), so the calls keep the original's pointers and stack bytes; the mounted
+  pull, step and pose (`CoreStore` on `CoreView::with_solids`) too; the mount point `+0x220` and block `+0x200` are
+  the `CDef`'s, not a solid's. Evidence: drive2 aids on and `--damage realistic` (one `StepBig` detach, step 4159):
+  the shadow survey lists no reader; `--twin typed`, which compares every solid the car has held (a detached body
+  too), equal after each of 84084 steps (an unrouted velocity store in the detach fails it at step 4159);
+  `StepBig` 60, `SimFD00` 70, `SimDA60` 30 direct records; gate 13/13.
   lower/lift around its host call) and the poison run. The car's are routed: `CarStore` and `CoreFields` are
   `SolidWords` stores and `on_car`'s `CarView::with_solids` holds them (`Vf98x`, `Split17C`, `MotionProbe`,
   `Sampler54A0`, `Test7910`, `Vf54x` with `store_scratch_reset` on any `SolidWords`, `Vf64x`, `Vf180`, `Vf6cx`,
@@ -512,8 +519,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   NGP's atmosphere and downforce use `solid_f32`/`set_solid_word`; the walks of `car+0x380` (`Vf64x`) and `car+0x1c0`
   (`Sim8E20`'s airflow) by address lower those words first (`lower_solid_words`; `MB560` reads them on the image).
   `AppendA980` touches only the link `+0x160..+0x168`, not held. Evidence: the survey build with holding on lists none
-  of these bindings. Still on the image: `ToQuat` (entities), physics_core's mounted-body words (`mount_velocity`,
-  `mount_point`, the pose copy `+0x100`/`+0x2a0`; not stepped on drive2).
+  of these bindings. Still on the image: `ToQuat` (entities).
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
