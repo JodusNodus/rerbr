@@ -54,7 +54,7 @@ fn point_at(line: &impl Line, x: f64) -> V3 {
     }
 }
 
-/// [`hermite_point`] in doubles, rounded to f32 lane by lane.
+/// `hermite_point` in doubles, rounded to f32 lane by lane.
 pub fn hermite_point_f32(line: &impl Line, idx: i32, t: f32) -> [f32; 3] {
     hermite_point(line, idx as u32, f64::from(t)).map(|x| x as f32)
 }

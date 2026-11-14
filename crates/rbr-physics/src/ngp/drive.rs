@@ -29,7 +29,7 @@ fn drive_factor(w: &DriveWorker, x: usize, split: f32) -> (f32, f32) {
     (split_factor(v, x, split), g)
 }
 
-/// As 1.02's `drive_leaf::wheel_slip_value`, with the split drive term.
+/// As 1.02's `drive_leaf::wheel_slip_value` (git e5824ccc, removed with 1.02's physics), with the split drive term.
 pub fn wheel_slip_value(w: &mut DriveWorker, x: usize, split: f32) {
     let block = w.state.blocks[x];
     if block.gate.value == 0 {
@@ -47,8 +47,8 @@ pub fn wheel_slip_value(w: &mut DriveWorker, x: usize, split: f32) {
     w.state.step_vec[x] = (drive + f64::from(rest)) as f32;
 }
 
-/// As 1.02's `drive_leaf::wheel_latch`, with the split drive term, and a NaN `f` latches `+1` (a negated compare
-/// jumps on unordered), where 1.02 zeroes the output.
+/// As 1.02's `drive_leaf::wheel_latch` (git e5824ccc, removed with 1.02's physics), with the split drive term, and a
+/// NaN `f` latches `+1` (a negated compare jumps on unordered), where 1.02 zeroes the output.
 pub fn wheel_latch(w: &mut DriveWorker, x: usize, split: f32) {
     let block = w.state.blocks[x];
     if block.gate.value != 0 {
@@ -70,9 +70,10 @@ pub fn wheel_latch(w: &mut DriveWorker, x: usize, split: f32) {
     }
 }
 
-/// The clutch state, in passes until one changes nothing. Unlike 1.02's `drive_worker::clutch_state`: a block reset on either axle arms that axle's update, which keeps its value when the
+/// The clutch state, in passes until one changes nothing. Unlike 1.02's `drive_worker::clutch_state` (git e5824ccc,
+/// removed with 1.02's physics): a block reset on either axle arms that axle's update, which keeps its value when the
 /// pair's sum has the term's sign (1.02 compares the sum with the sign); axle 2's reset does not ask for another pass;
-/// both axles open clear the signs too; the lane step is NGP's ([`lane_step`]); and the block writes leave the dirty
+/// both axles open clear the signs too; the lane step is NGP's (`lane_step`); and the block writes leave the dirty
 /// flags.
 pub fn clutch_state(w: &mut DriveWorker) {
     while clutch_pass(w) {}

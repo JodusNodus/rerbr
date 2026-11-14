@@ -1,7 +1,8 @@
 //! NGP's starter. Like 1.02's (`engine_driveline::drive_leaf::speed_term` (git e5824ccc), removed with 1.02's physics)
-//! it drains the worker object's term at its rate while the ignition and the ready word are set, but only from 0.5 s
-//! to 2.5 s after the ignition was last clear. Its knee is 0.75 of NGP's idle band rather than 300, the term stays at
-//! or above 0, and the gear-1 gate is gone. A crank on a stopped engine (`|speed| < 0.001`) sets the engine speed to 0.001. All SSE.
+//! it drains the worker object's term at its rate while the ignition and the ready word are set, but only from 0.5 s to
+//! 2.5 s after the ignition was last clear. Its knee is 0.75 of NGP's idle band rather than 300, the term stays at or
+//! above 0, and the gear-1 gate is gone. A crank on a stopped engine (`|speed| < 0.001`) sets the engine speed to
+//! 0.001. All SSE.
 //!
 //! NGP times the hold by the wall clock (in us, stamped while the ignition is clear); the caller gives the hold, by
 //! simulation time ([`sim_held`]) so a playback cranks for the same steps at any speed, or by a recording's clock.
