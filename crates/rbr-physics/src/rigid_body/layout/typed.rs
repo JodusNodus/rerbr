@@ -175,10 +175,10 @@ impl PartialEq for CarSolids {
 impl CarSolids {
     /// The solids of the car at `car`, lifted from the image.
     pub fn lift(mem: &Mem, car: u32) -> Self {
-        let mut solids: Vec<HeldSolid> = Vec::with_capacity(12);
+        let mut found: Vec<(u32, &'static str)> = Vec::with_capacity(12);
         let mut add = |name: &'static str, at: u32| {
-            if at != 0 && solids.iter().all(|s| s.at != at) {
-                solids.push(HeldSolid::lift(mem, at, name));
+            if at != 0 && found.iter().all(|&(a, _)| a != at) {
+                found.push((at, name));
             }
         };
         add("car solid", car);
@@ -195,8 +195,9 @@ impl CarSolids {
         for k in 0..3 {
             add(["mounted0 solid", "mounted1 solid", "mounted2 solid"][k], mem.u32(mounted_slot(car, k as u32)));
         }
-        solids.sort_by_key(|s| s.at);
-        assert!(solids.windows(2).all(|w| w[1].at - w[0].at >= Solid::SIZE), "two solids overlap");
+        found.sort_unstable_by_key(|&(at, _)| at);
+        assert!(found.windows(2).all(|w| w[1].0 - w[0].0 >= Solid::SIZE), "two solids overlap");
+        let solids: Vec<HeldSolid> = found.into_iter().map(|(at, name)| HeldSolid::lift(mem, at, name)).collect();
         let bounds = match (solids.first(), solids.last()) {
             (Some(lo), Some(hi)) => lo.at + HELD.start..hi.at + HELD.end,
             _ => 0..0,

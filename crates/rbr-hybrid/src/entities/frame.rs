@@ -6,8 +6,9 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::mem::Mem;
 
 use super::{FRAME_VF04, FRAME_VF08, FRAME_VF0C, FRAME_VF10, FRAME_VF14};
-use crate::rigid_body::{held_solids, holds_solid_word, E43VFAC, E43VFB0};
+use crate::rigid_body::{held_solids, E43VFAC, E43VFB0};
 use crate::{Ctx, Decline, Host, Regs, Return};
+use rbr_physics::rigid_body::layout::CarSolids;
 use rbr_physics::rigid_body::store::RigidStore;
 
 /// The call depth of a frame hook's owner slot: the original pushes its arguments after the saved esi.
@@ -52,7 +53,7 @@ impl Owner for FrameOwner<'_> {
         {
             return match held_solids(self.host) {
                 Some(solids) => {
-                    not_kept_on_held(self.host, owner + solid::POSITION, (0..b).map(|k| a + 16 * k));
+                    not_kept_on_held(self.host, &solids, owner + solid::POSITION, (0..b).map(|k| a + 16 * k));
                     solid_rows_in_place(&mut solids.view(self.mem), target, owner, a, b)
                 }
                 None => solid_rows_in_place(self.mem, target, owner, a, b),
@@ -100,8 +101,8 @@ fn solid_rows_in_place<S: RigidStore>(store: &mut S, target: u32, owner: u32, a:
 /// Counts a run in place that reads or writes a held solid's words (at `first` or one of `rest`) as a run through the
 /// host ([`Host::ran_direct`]), so the call memo, which sees only the image, keeps no call around it
 /// (`crate::call_memo`).
-pub(super) fn not_kept_on_held(host: &dyn Host, first: u32, rest: impl IntoIterator<Item = u32>) {
-    if holds_solid_word(host, first) || rest.into_iter().any(|at| holds_solid_word(host, at)) {
+fn not_kept_on_held(host: &dyn Host, solids: &CarSolids, first: u32, rest: impl IntoIterator<Item = u32>) {
+    if solids.read(first).is_some() || rest.into_iter().any(|at| solids.read(at).is_some()) {
         host.ran_direct();
     }
 }

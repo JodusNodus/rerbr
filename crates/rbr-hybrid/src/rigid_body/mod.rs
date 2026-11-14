@@ -76,11 +76,6 @@ pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
     Ref::filter_map(host.typed()?, |t| t.solids.as_ref()).ok()
 }
 
-/// Whether a held solid's typed state holds the word at `at` (never per call).
-pub(crate) fn holds_solid_word(host: &dyn Host, at: u32) -> bool {
-    held_solids(host).is_some_and(|s| s.read(at).is_some())
-}
-
 pub const NEW_DEF: u32 = 0x52b8b0;
 pub const VF20_JUMP: u32 = 0x529200;
 pub const VF16_HELPER: u32 = 0x52b6d0;
