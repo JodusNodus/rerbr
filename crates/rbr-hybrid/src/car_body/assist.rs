@@ -1,5 +1,6 @@
 //! The driver assists and the retire paths (`rbr_physics::car_body::assist`).
 
+use crate::stage::on_stage;
 use rbr_physics::car_body::assist::{AssistCalls, RetireCalls};
 use rbr_physics::car_body::probe::ProbeCalls;
 use rbr_physics::car_body::{self as car};
@@ -62,7 +63,9 @@ const OUTSIDE_EMITTER: u32 = 0xD378;
 pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let car = r.ecx;
     let mut calls = car_calls(ctx, r);
-    let verdict = car::layout::lane_test(&ctx.mem, &ctx.mem, car, |v| ProbeCalls::to_world(&mut calls, car, v));
+    let verdict = on_stage(ctx.host, &ctx.mem, |line| {
+        car::layout::lane_test(&ctx.mem, line, car, |v| ProbeCalls::to_world(&mut calls, car, v))
+    });
     match verdict {
         Some(eax) => Ok(Return::void(eax, 0)),
         None => Err(Decline::Unsupported("LerpAt's count check (the original traps past the count)")),

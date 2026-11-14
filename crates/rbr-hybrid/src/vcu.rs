@@ -139,8 +139,8 @@ fn f(bits: u32) -> f32 {
 /// own and lowered after it (the per-call path).
 pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
     if let Some(typed) = ctx.host.typed() {
-        if typed.vcu.is(scratch) {
-            return run(&mut typed.vcu.view(&mut ctx.mem));
+        if typed.car.vcu.is(scratch) {
+            return run(&mut typed.car.vcu.view(&mut ctx.mem));
         }
     }
     layout::with_vcu(&mut ctx.mem, scratch, run)
@@ -151,8 +151,8 @@ pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuVi
 pub(crate) fn unit_of(host: &dyn Host, mem: &Mem, car: u32) -> Unit {
     let scratch = rbr_physics::car_body::layout::scratch_at(car);
     if let Some(typed) = host.typed() {
-        if typed.vcu.is(scratch) {
-            return typed.vcu.unit.get();
+        if typed.car.vcu.is(scratch) {
+            return typed.car.vcu.unit.get();
         }
     }
     layout::VcuImage::of(mem, scratch).lift(mem)

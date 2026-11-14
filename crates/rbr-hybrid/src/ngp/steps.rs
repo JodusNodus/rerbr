@@ -1,5 +1,6 @@
 //! NGP's wrappers of the physics step's functions.
 
+use crate::stage::on_stage;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::engine_driveline::layout::{with_worker, BrakeBlock, DriveWorker};
 use rbr_physics::mem::Mem;
@@ -165,7 +166,7 @@ pub(crate) fn axle_worker(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// (`rbr_physics::ngp::drive_line`).
 pub(crate) fn drive_line_sample(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let point = ctx.mem.f32s(r.stack[0]);
-    let v = drive_line::position_of(&ctx.mem, r.ecx, point, f(r.stack[1]));
+    let v = on_stage(ctx.host, &ctx.mem, |line| drive_line::position_of(line, r.ecx, point, f(r.stack[1])));
     Ok(Return::float(f64::from(v), 8))
 }
 
@@ -321,5 +322,5 @@ pub(crate) fn wheel_latch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `0x1004df40` (thiscall `(a, b)` on the slot): NGP's 16 by 16 sheet lookup.
 pub(crate) fn sample_slot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
-    Ok(Return::void(material::sample_slot(&ctx.mem, r.ecx, f(a), f(b)), 8))
+    Ok(Return::void(on_stage(ctx.host, &ctx.mem, |stage| material::sample_slot(stage, r.ecx, f(a), f(b))), 8))
 }

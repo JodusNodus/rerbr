@@ -1,5 +1,6 @@
 //! The entities' small virtual slots: `CEntity`, `CDummyObject`, `CGround`, the exclusion test and the limit update.
 
+use crate::stage::on_stage;
 use rbr_physics::entities::dummy;
 use rbr_physics::entities::exclusion::{exclusion_test, ParentTest};
 use rbr_physics::entities::ground;
@@ -275,7 +276,7 @@ pub(super) fn sample_indexed_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     crate::ngp::only()?;
     let [index, f, b, ..] = r.stack;
     let (f, b) = (f32::from_bits(f), f32::from_bits(b));
-    let found = layout::sample_indexed(&ctx.mem, r.ecx, index as u8, f, b);
+    let found = on_stage(ctx.host, &ctx.mem, |stage| layout::sample_indexed(stage, r.ecx, index as u8, f, b));
     let eax = match found {
         layout::Indexed::Texel(texel) => texel,
         layout::Indexed::NoTable => r.eax & !0xff,

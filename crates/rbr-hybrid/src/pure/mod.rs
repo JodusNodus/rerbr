@@ -20,7 +20,8 @@ use std::sync::{Arc, Mutex};
 
 use rbr_physics::math::trig;
 use rbr_physics::mem::{Backend, Mem, PagesSnapshot};
-use rbr_physics::store::typed::CarTyped;
+use rbr_physics::stage::typed::Stage;
+use rbr_physics::store::typed::{CarTyped, Typed};
 
 use crate::{binding_slot, bound, Called, Ctx, Decline, Host, Regs, Return, STACK_ARGS};
 
@@ -171,12 +172,15 @@ pub struct Pure {
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
     pub ngp_base: u32,
-    /// Whether [`Playback::step`] holds the car's typed state (the struts, the VCU) in typed storage over each step (the
-    /// default), lifted before it and lowered after it, so their bindings run on it ([`Host::typed`]); without, they
-    /// run per call on the image's words.
+    /// Whether [`Playback::step`] holds the typed state in typed storage over each step (the default): the car's (the
+    /// struts, the VCU), lifted before it and lowered after it, and the stage's, so their bindings run on it
+    /// ([`Host::typed`]); without, they run per call on the image's words.
     pub typed: bool,
-    /// The car's typed state while a step holds it ([`Pure::typed`]).
-    held: RefCell<Option<CarTyped>>,
+    /// The typed state while a step holds it ([`Pure::typed`]).
+    held: RefCell<Option<Typed>>,
+    /// The stage's typed state, lifted at the first step that holds it: the image holds one stage for the playback's
+    /// life, and a step does not write it.
+    stage: std::sync::OnceLock<Arc<Stage>>,
     /// `mem` with the typed state's words poisoned while a step holds them (the `poison` feature): the clones the runs
     /// get ([`Pure::lend`]).
     #[cfg(feature = "poison")]
@@ -232,19 +236,22 @@ impl Pure {
             ngp_base: 0,
             typed: true,
             held: RefCell::default(),
+            stage: Default::default(),
             #[cfg(feature = "poison")]
             poisoned: RefCell::default(),
         }
     }
 
-    /// Lifts the car's typed state into typed storage for a step ([`Pure::typed`]; nothing without it or without a
-    /// car). With the `poison` feature the runs' memory has its words poisoned until [`Pure::lower_typed`].
+    /// Lifts the car's typed state into typed storage for a step, with the stage's ([`Pure::typed`]; nothing without
+    /// it or without a car). With the `poison` feature the runs' memory has their words poisoned until
+    /// [`Pure::lower_typed`].
     pub(crate) fn lift_typed(&self) {
         let car = self.mem.u32(CAR_PTR);
         if !self.typed || car == 0 {
             return;
         }
-        let typed = CarTyped::lift(&self.mem, car);
+        let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.mem))).clone();
+        let typed = Typed { car: CarTyped::lift(&self.mem, car), stage };
         #[cfg(feature = "poison")]
         {
             let mut poisoned = self.mem.clone();
@@ -254,12 +261,12 @@ impl Pure {
         *self.held.borrow_mut() = Some(typed);
     }
 
-    /// Lowers the typed state a step held back into the image, and drops it.
+    /// Lowers the car's typed state a step held back into the image, and drops it (the stage's stays as it is).
     pub(crate) fn lower_typed(&self) {
         #[cfg(feature = "poison")]
         self.poisoned.borrow_mut().take();
         if let Some(typed) = self.held.borrow_mut().take() {
-            typed.lower(&mut self.mem.clone());
+            typed.car.lower(&mut self.mem.clone());
         }
     }
 
@@ -784,7 +791,7 @@ impl Host for Pure {
         self.captures.push_damper(strut, signal);
     }
 
-    fn typed(&self) -> Option<Ref<'_, CarTyped>> {
+    fn typed(&self) -> Option<Ref<'_, Typed>> {
         Ref::filter_map(self.held.borrow(), Option::as_ref).ok()
     }
 
@@ -841,7 +848,7 @@ impl Host for Direct {
         self.0.emit_damper(strut, signal);
     }
 
-    fn typed(&self) -> Option<Ref<'_, CarTyped>> {
+    fn typed(&self) -> Option<Ref<'_, Typed>> {
         self.0.typed()
     }
 
