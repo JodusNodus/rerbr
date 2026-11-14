@@ -113,7 +113,8 @@ impl<S: CarStore> layout::SnapshotCalls<S> for Car<'_> {
     }
 }
 
-/// The calls `Vf64x` makes out of its own body (`forces.rs`): the car's externals, and the walk of +0x380 by its address.
+/// The calls `Vf64x` makes out of its own body (`forces.rs`): the car's externals, and the walk of +0x380 by its address
+/// (the solid's linear acceleration: a held solid's is lowered into the image for the walk, which only reads it).
 impl<S: CarStore> ForcesCalls<S> for Car<'_> {
     fn passenger_idle(&mut self, obj: u32) {
         self.host.call(0x5224F0, obj, &[]);
@@ -125,6 +126,7 @@ impl<S: CarStore> ForcesCalls<S> for Car<'_> {
 
     fn walk_car_vector(&mut self, car: u32) -> Vec4 {
         let (out, frame) = (self.scratch + C, self.mem.u32(FRAME));
+        crate::rigid_body::lower_solid_words(self.host, &self.mem, car + 0x380, 4);
         self.host.call(MB560, frame, &[car + 0x380, car, out]);
         Vec4::load(&self.mem, out)
     }
