@@ -1,7 +1,9 @@
 //! `E44MatTable`: the build, the stores and the slot lookups.
 
-use crate::entities::material_table::{MaterialEntry, MaterialTable};
+use crate::entities::material_table::{Indexed, MaterialEntry, MaterialTable};
+use crate::entities::store::{EntityStore, SlotLookup};
 use crate::mem::Mem;
+use crate::ngp;
 
 /// Source record of `E44MatTable::Build`: the count at +0x700, the tags at +0x200, the low bytes at +0
 /// and the high words at +0x300 (one per entry, in order).
@@ -40,5 +42,15 @@ pub fn fill_ones(mem: &mut Mem, at: u32) {
     // the words' meaning is not known
     for k in 0..3 {
         mem.set_u32(at + 4 * k, 1);
+    }
+}
+
+/// The material table's lookup by index: slot `index` of the table at `this`, if it has one. The slot sampling is
+/// NGP's (`ngp::layout::material`), which also reads `b`.
+pub fn sample_indexed<S: EntityStore>(store: &S, this: u32, index: u8, f: f32, b: f32) -> Indexed {
+    match store.material_slot(this, index) {
+        SlotLookup::NoTable => Indexed::NoTable,
+        SlotLookup::OutOfRange => Indexed::OutOfRange,
+        SlotLookup::At(slot) => Indexed::Texel(ngp::layout::material::sample_slot(store.mem(), slot, f, b)),
     }
 }

@@ -147,10 +147,11 @@ fn set_mat3(mem: &mut Mem, at: u32, m: &Mat3) {
     }
 }
 
-/// `CHingedRigidBody::VfE070` (0x51e070) on the windows of `frame`. It stores `e`, then reads `f[9]` (the word after `f`: the
+/// A frame build of the hinged definition ([`hinge_axes`]): `CHingedRigidBody::VfE070` (0x51e070) on the windows of
+/// `frame`. It stores `e`, then reads `f[9]` (the word after `f`: the
 /// second call's is `e[0]`, which that store has just written), and stores `f` and `d`. The asm stores `f` before it reads
 /// `f[9]` and reads `a` after that; `a` is read here before `f` is stored, which changes nothing: the windows don't overlap.
-pub fn vf_e070(mem: &mut Mem, frame: &AxesHandles) {
+pub fn build_hinge_axes(mem: &mut Mem, frame: &AxesHandles) {
     let axes = hinge_axes::axes(mem.f32s(frame.direction), vec3(mem, frame.reference));
     set_mat3(mem, frame.axes, &axes);
     let tail = mem.f32(frame.inverse_axes + 36);

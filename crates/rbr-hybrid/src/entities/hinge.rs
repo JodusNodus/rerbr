@@ -412,7 +412,7 @@ struct F350Host<'a> {
     host: &'a dyn Host,
 }
 
-impl rbr_physics::entities::layout::F350Calls for F350Host<'_> {
+impl rbr_physics::entities::layout::ImpulseCalls for F350Host<'_> {
     fn xform(&mut self, sp: u32, car: u32, pose: u32, out: u32) {
         self.host.call_at(sp, 0x4e68e0, car, &[pose, out]);
     }
@@ -463,14 +463,14 @@ pub(super) fn sim_f350_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     }
     let frame = aligned_frame(r.esp);
     let mut calls = F350Host { mem: ctx.mem.clone(), host: ctx.host };
-    layout::sim_f350(&mut ctx.mem, r.ecx, args, frame, &mut calls);
+    layout::apply_impulse_owned(&mut ctx.mem, r.ecx, args, frame, &mut calls);
     Ok(Return::void(0, 0x20))
 }
 
 /// The original callees of `SimDA60` and `SimFD00`, in the emulator, at the stack pointers the layout gives.
 struct DetachHost<'a>(&'a dyn Host);
 
-impl layout::DA60Calls for DetachHost<'_> {
+impl layout::PoseToWorldCalls for DetachHost<'_> {
     fn compose_a(&mut self, _: &mut Mem, sp: u32, car: u32, args: [u32; 3]) {
         self.0.call_at(sp, COPY16_WALK, car, &args);
     }
@@ -480,8 +480,8 @@ impl layout::DA60Calls for DetachHost<'_> {
     }
 }
 
-impl layout::FD00Calls for DetachHost<'_> {
-    fn sim_da60(&mut self, _: &mut Mem, sp: u32, body: u32) {
+impl layout::DetachCalls for DetachHost<'_> {
+    fn pose_to_world(&mut self, _: &mut Mem, sp: u32, body: u32) {
         self.0.call_at(sp, SIM_DA60, body, &[]);
     }
 
@@ -514,7 +514,7 @@ impl layout::FD00Calls for DetachHost<'_> {
         self.0.call_at(sp, 0x4faeb0, 0, &[link, cell]);
     }
 
-    fn reg_wall(&mut self, _: &mut Mem, sp: u32, state: u32, body: u32) {
+    fn file_in_state(&mut self, _: &mut Mem, sp: u32, state: u32, body: u32) {
         self.0.call_at(sp, 0x5263d0, state, &[body]);
     }
 
@@ -527,7 +527,7 @@ impl layout::FD00Calls for DetachHost<'_> {
     }
 }
 
-impl layout::StepBigCalls for DetachHost<'_> {
+impl layout::MountedDetachCalls for DetachHost<'_> {
     fn world_compose(&mut self, _: &mut Mem, sp: u32, car: u32, point: u32, out: u32) {
         self.0.call_at(sp, 0x4e6950, car, &[point, out]);
     }
@@ -537,25 +537,25 @@ impl layout::StepBigCalls for DetachHost<'_> {
     }
 }
 
-/// thiscall, no stack arguments: `CHingedRigidBody::SimFD00` (0x51fd00), the detach from the car (`layout::sim_fd00`).
+/// thiscall, no stack arguments: `CHingedRigidBody::SimFD00` (0x51fd00), the detach from the car (`layout::detach_from_car`).
 pub(super) fn sim_fd00_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0x90;
-    let eax = layout::sim_fd00(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
+    let eax = layout::detach_from_car(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
     Ok(Return::void(eax, 0))
 }
 
 /// thiscall, no stack arguments: `CMountedRigidBody::StepBig` (0x522100), the mounted body's detach from the car
-/// (`layout::step_big`).
+/// (`layout::mounted_detach`).
 pub(super) fn step_big_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0xb0;
-    let eax = layout::step_big(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
+    let eax = layout::mounted_detach(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
     Ok(Return::void(eax, 0))
 }
 
 /// thiscall, no stack arguments: `CHingedRigidBody::SimDA60` (0x51da60), the body's pose through its car.
 pub(super) fn sim_da60_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0x40;
-    layout::sim_da60(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
+    layout::pose_to_world(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
     Ok(Return::void(r.ecx + 0x2a0, 0))
 }
 
@@ -574,10 +574,10 @@ pub(super) fn set_650_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 4))
 }
 
-/// thiscall `(a, b, c, d, e, f)`, `ret 0x18`: `CHingedRigidBody::VfE070` (0x51e070, `layout::vf_e070`).
+/// thiscall `(a, b, c, d, e, f)`, `ret 0x18`: `CHingedRigidBody::VfE070` (0x51e070, `layout::build_hinge_axes`).
 pub(super) fn hinge_vf_e070(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, d, e, f, ..] = r.stack;
-    layout::vf_e070(
+    layout::build_hinge_axes(
         &mut ctx.mem,
         &rbr_physics::entities::hinge_axes::AxesHandles {
             origin: a,

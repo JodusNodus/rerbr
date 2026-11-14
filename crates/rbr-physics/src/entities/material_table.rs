@@ -1,9 +1,6 @@
 //! The material table the stage loader fills: for each source entry, the slot at its tag takes the entry's low byte and
 //! high word.
 
-use super::store::{EntityStore, SlotLookup};
-use crate::ngp;
-
 /// One source record: the material's tag (its table slot), and the low byte and high word of the slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaterialEntry {
@@ -37,21 +34,11 @@ impl MaterialTable {
     }
 }
 
-/// What the indexed lookup found.
+/// What the indexed lookup (`layout::sample_indexed`) found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Indexed {
     Texel(u32),
     /// No table.
     NoTable,
     OutOfRange,
-}
-
-/// The material table's lookup by index: slot `index` of the table at `this`, if it has one. The slot sampling is
-/// NGP's (`ngp::layout::material`), which also reads `b`.
-pub fn sample_indexed<S: EntityStore>(store: &S, this: u32, index: u8, f: f32, b: f32) -> Indexed {
-    match store.material_slot(this, index) {
-        SlotLookup::NoTable => Indexed::NoTable,
-        SlotLookup::OutOfRange => Indexed::OutOfRange,
-        SlotLookup::At(slot) => Indexed::Texel(ngp::layout::material::sample_slot(store.mem(), slot, f, b)),
-    }
 }

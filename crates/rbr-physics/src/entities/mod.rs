@@ -8,7 +8,6 @@ pub mod collide;
 pub mod def;
 pub mod dummy;
 pub mod exclusion;
-pub mod fence_group;
 pub mod fence_span;
 pub mod frame;
 pub mod ground;

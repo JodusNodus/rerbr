@@ -34,7 +34,7 @@ pub struct StatePayload {
     pub position: [f32; 4],
 }
 
-/// What the material table's indexed lookup finds at `index` (`sample_indexed` samples the slot).
+/// What the material table's indexed lookup finds at `index` (`layout::sample_indexed` samples the slot).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotLookup {
     /// No table.

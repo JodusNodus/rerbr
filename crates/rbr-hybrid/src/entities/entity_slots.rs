@@ -135,7 +135,7 @@ pub(super) fn dummy_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(a, b)`, ret 8: `CEntity::VfCC` (0x519e90), eax 1.
 pub(super) fn entity_vf_cc(_ctx: &mut Ctx, _r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vf_cc(), 8))
+    Ok(Return::void(layout::overlaps_box(), 8))
 }
 
 /// thiscall with eight arguments, ret 0x20: `CEntity::VfF0` (0x519eb0), `xor eax, eax`.
@@ -152,7 +152,7 @@ pub(super) fn entity_vf140(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(a, b, c)`, ret 12: `CEntity::VfD0` (0x519ea0), eax 0.
 pub(super) fn entity_vf_d0(_ctx: &mut Ctx, _r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vf_d0(), 12))
+    Ok(Return::void(layout::penetration_response(), 12))
 }
 
 /// thiscall: `CDummyObject::Vf110` (0x600c80), the dummy is present (eax 1).
