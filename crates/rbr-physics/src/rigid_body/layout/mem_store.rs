@@ -45,6 +45,16 @@ pub trait SolidWords: Raw {
     fn set_word(&mut self, at: u32, value: u32) {
         self.mem_mut().set_u32(at, value)
     }
+    /// `N` words from `at` (the image's at once where its pages hold them).
+    #[inline]
+    fn words<const N: usize>(&self, at: u32) -> [u32; N] {
+        self.mem().u32s(at)
+    }
+    /// Four words from `at`, written as a vector.
+    #[inline]
+    fn set_words4(&mut self, at: u32, words: [u32; 4]) {
+        Vec4::from(words.map(f32::from_bits)).store(self.mem_mut(), at)
+    }
 }
 
 impl SolidWords for Mem {}
@@ -61,7 +71,7 @@ fn set_f<W: SolidWords + ?Sized>(w: &mut W, at: u32, value: f32) {
 
 #[inline]
 pub(super) fn floats<const N: usize, W: SolidWords + ?Sized>(w: &W, at: u32) -> [f32; N] {
-    std::array::from_fn(|k| f(w, at + 4 * k as u32))
+    w.words::<N>(at).map(f32::from_bits)
 }
 
 #[inline]
@@ -71,9 +81,7 @@ pub(super) fn vec4<W: SolidWords + ?Sized>(w: &W, at: u32) -> Vec4 {
 
 #[inline]
 pub(super) fn set_vec4<W: SolidWords + ?Sized>(w: &mut W, at: u32, v: Vec4) {
-    for (k, x) in [v.x, v.y, v.z, v.w].into_iter().enumerate() {
-        set_f(w, at + 4 * k as u32, x);
-    }
+    w.set_words4(at, [v.x, v.y, v.z, v.w].map(f32::to_bits));
 }
 
 #[inline]

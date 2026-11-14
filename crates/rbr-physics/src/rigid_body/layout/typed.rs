@@ -166,6 +166,18 @@ impl SolidWords for SolidView<'_> {
             self.mem.set_u32(at, value)
         }
     }
+
+    #[inline]
+    fn words<const N: usize>(&self, at: u32) -> [u32; N] {
+        std::array::from_fn(|k| self.word(at + 4 * k as u32))
+    }
+
+    #[inline]
+    fn set_words4(&mut self, at: u32, words: [u32; 4]) {
+        for (k, word) in words.into_iter().enumerate() {
+            self.set_word(at + 4 * k as u32, word);
+        }
+    }
 }
 
 /// `lower(lift(image))` of the car's solids into an empty image, compared with `mem` on every owned byte: their count,

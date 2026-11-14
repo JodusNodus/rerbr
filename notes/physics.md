@@ -453,7 +453,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   scratch block's other words (`+0x2b0..`, `+0x390`, `+0x3a0..+0x3b0`). Evidence: `round_trip` 4272 typed bytes and
   `differential` (window start, point velocity, the row transforms, folds and quaternion loops, scale-add, the clamp
   along a vector inside the solid, the scratch accumulate; per call against held, every byte of each solid and the
-  scratch, 12672 bytes) on 40 snapshots; `rigid_body`, `wheel`, `car_body`, `collision` vectors; hybrid gate 13/13.
+  scratch, 12672 bytes) on 40 snapshots; `rigid_body`, `wheel`, `car_body`, `collision` vectors; hybrid gate 13/13;
+  +0.26 % instructions per step on `Mem` (`SolidWords::words`/`set_words4` keep the paged block reads; per word, +4.2 %).
   Readers at the solids' addresses on drive2 (a survey build poisoning `+0x100..+0x3c8` of the 12 solids, logging the
   innermost binding; `rbr-hybrid` bindings by name): the rigid body's own (window, force pass, integrate, contact,
   impulse, rows, wake and sleep; `Window::refresh_state`, `Calls`, `Pose` and `impulse_run` store the body and call
