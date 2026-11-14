@@ -234,6 +234,10 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
   (`RigidStore::contact_input` takes a `Contact`); a pointer into the subsystem's own words keeps its write.
 - Readers at an address (NGP's wrappers, hinged bodies, `CopyFrom`) show only in the twin or poison, rarely in the
   drive: each needs an accessor. A run in place on held words calls `ran_direct` (the call memo sees only the image).
+- Per-word cost: a held word read was a span search, a borrow and a field lookup where the image read was one load
+  (+12 % a step for the solids). Held solids keep their span as one cell array and a copy as lifted; lookups try the
+  bounds, the last solid, the last gap, then a binary search; lower writes only the changed runs (`Mem::set_u32s`),
+  which is sound because poison forbids image writes to held words in a step (+3.4 % against holding off).
 - Definitions are watched, not poisoned: reads go through and are checked against the image (`defs::checked`), a
   write panics (`Mem::watch_writes`).
 
