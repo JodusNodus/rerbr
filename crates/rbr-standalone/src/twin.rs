@@ -8,11 +8,13 @@
 //! dispatch ([`rbr_hybrid::pure::Pure::direct`]); `typed` runs it with the typed subsystems (the struts, the VCU, the
 //! drive, the engine, the tyres, the wheels, the car's own, the physics core) on the image between calls, against the first side's typed storage over each step
 //! ([`rbr_hybrid::pure::Pure::typed`], the default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
-//! stage's queries against the image's (`stage::layout::differential`).
+//! stage's queries against the image's (`stage::layout::differential`). Every solid the car has held so far is compared
+//! too (`rigid_body::layout::Solid`'s owned bytes): a mounted body leaves the car's slots when it detaches.
 
 use rbr_hybrid::pure::{frame_bytes, word_name, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
-use rbr_physics::store;
+use rbr_physics::rigid_body::layout::{CarSolids, Solid};
+use rbr_physics::store::{self, Object};
 use rbr_recording::CONTROL_BYTES;
 
 /// What the second side runs.
@@ -45,6 +47,8 @@ pub struct Twin {
     /// Steps compared, and the first one that differed with what differed.
     steps: usize,
     first: Option<(usize, String)>,
+    /// The address and name of every solid the first side's car has had, in the order they appeared.
+    solids: Vec<(u32, &'static str)>,
     /// The owned bytes of each side's tables, from the round trip at the start (or its failure).
     round_trip: [Result<usize, String>; 2],
 }
@@ -65,7 +69,7 @@ impl Twin {
             Ok(bytes) => eprintln!("twin: the typed stage's queries equal the image's, {bytes} bytes"),
             Err(e) => eprintln!("twin: the typed stage's queries differ from the image's: {e}"),
         }
-        let mut twin = Twin { kind, playback: b, steps: 0, first: None, round_trip };
+        let mut twin = Twin { kind, playback: b, steps: 0, first: None, solids: Vec::new(), round_trip };
         twin.compare(a, "the start");
         twin
     }
@@ -89,7 +93,15 @@ impl Twin {
         if self.first.is_some() {
             return;
         }
-        if let Some(what) = difference(&a.pure.mem, &self.playback.pure.mem) {
+        let mem = &a.pure.mem;
+        for solid in CarSolids::lift(mem, mem.u32(CAR_PTR)).solids {
+            if self.solids.iter().all(|(at, _)| *at != solid.at) {
+                self.solids.push((solid.at, solid.name));
+            }
+        }
+        let what = difference(mem, &self.playback.pure.mem)
+            .or_else(|| solid_difference(mem, &self.playback.pure.mem, &self.solids));
+        if let Some(what) = what {
             self.first = Some((self.steps, format!("{when}: {what}")));
         }
     }
@@ -105,7 +117,11 @@ impl Twin {
     pub fn summary(&self) -> String {
         let round_trip = Self::round_trip_text;
         let compare = match &self.first {
-            None => format!("{} steps, car, wheels and owned bytes equal after each", self.steps),
+            None => format!(
+                "{} steps, car, wheels, solids ({}) and owned bytes equal after each",
+                self.steps,
+                self.solids.len()
+            ),
             Some((_, what)) => format!("{} steps, first difference at {what}", self.steps),
         };
         format!(
@@ -139,5 +155,16 @@ fn difference(a: &Mem, b: &Mem) -> Option<String> {
     }
     objects(a).iter().find_map(|o| {
         o.first_difference(a, b).map(|(field, offset)| format!("{} at {:#010x}: {field} (+{offset:#x})", o.name, o.at))
+    })
+}
+
+/// The first owned byte of a solid in `solids` that differs between `a` and `b`.
+fn solid_difference(a: &Mem, b: &Mem, solids: &[(u32, &str)]) -> Option<String> {
+    solids.iter().find_map(|&(at, name)| {
+        Solid::FIELDS.iter().find_map(|f| {
+            let (x, y) = (a.read(at + f.at, f.len as usize), b.read(at + f.at, f.len as usize));
+            let offset = x.iter().zip(&y).position(|(p, q)| p != q)?;
+            Some(format!("{name} at {at:#010x}: {} (+{offset:#x})", f.name))
+        })
     })
 }

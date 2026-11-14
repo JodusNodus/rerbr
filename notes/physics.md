@@ -181,7 +181,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   probe's callees, `E45_M40C0`'s `LookupTwin`, CRT vector iterators). Bindings get `Direct` (`pure/mod.rs`);
   `Pure`'s own `Host` is the fact-check's (`--dispatch pure`). 176-step NGP bench: 739.8e9 to 678.3e9
   instructions.
-- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed`, the `poison` feature.
+- Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct|typed` (the car, wheels, every solid
+  the car has held and the tabled objects' owned bytes), the `poison` feature.
 - The generic sequences sit outside the layouts (`rigid_body::{solid_rows, solid_contacts, solid_window}`,
   `physics_core::{step, contact_loop, passenger_step, pose, emit, mounted, accumulate}`, `entities::hinge_step`,
   `ntweak::plan`, `collision::{solver_pass, entry, events, body_contact, grid_edge, mesh, wall, body}`), re-exported
@@ -484,6 +485,9 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   check before the span search, `Body` whole from the typed solid and `MB560`'s copy as blocks took it from +39 %):
   every held word costs a span search, a `RefCell` borrow and a field-table lookup where the image read was one paged
   load.
+- The mounted bodies' mount point `+0x220` and block `+0x200` are the `CDef`'s, not a solid's. `--twin typed` compares
+  every solid the car has held, a detached mounted body too (an unrouted velocity store in the detach fails it at step
+  4159 with aids on and `--damage realistic`).
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core

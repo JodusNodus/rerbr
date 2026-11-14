@@ -149,7 +149,7 @@ if [ "$typed" = 1 ]; then
     finish poison standalone
     # The twin's report line "twin Typed: <steps>; lower(lift) first side <...>, second side <...>; ..." (twin.rs).
     twin_line() {
-        local line held="84084 steps, car, wheels and owned bytes equal after each; lower(lift) first side "
+        local line held="84084 steps, car, wheels, solids (*) and owned bytes equal after each; lower(lift) first side "
         held+="* owned bytes equal, second side * owned bytes equal;*"
         line=$(sed -n 's/^  twin Typed: //p' "$1" | head -1)
         echo "${line:-no twin line}" | cut -d';' -f1-2
