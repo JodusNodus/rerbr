@@ -222,17 +222,17 @@ pub fn wall_segment_hit<S: CollisionStore>(
     0
 }
 
-/// Copies the point's x and y to the 8-byte buffer at `tmp`, then raycasts the manager's wall through it; 0 without
-/// a wall. The raycast's leaf list lives below `tmp` in the caller's frame.
+/// Copies the point's x and y words `xy` (the caller's point, read where it lives: the car's position) to the 8-byte
+/// buffer at `tmp`, then raycasts the manager's wall through it; 0 without a wall. The raycast's leaf list lives below
+/// `tmp` in the caller's frame.
 pub fn wall_probe<S: CollisionStore>(
     calls: &mut impl RaycastCalls,
     store: &mut S,
     manager: u32,
-    point: u32,
+    xy: [u32; 2],
     out: u32,
     tmp: u32,
 ) -> u32 {
-    let xy = store.u32s(point);
     let wall = store.manager_wall(manager);
     store.store_probe_point(tmp, xy);
     if wall == 0 {

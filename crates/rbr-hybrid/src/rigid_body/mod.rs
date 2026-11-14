@@ -49,7 +49,6 @@ pub(crate) fn on_solids<T>(ctx: &mut Ctx, run: impl FnOnce(&mut SolidView) -> T)
 
 /// The word at `at` as a step leaves it: a held solid's if one names it, else the image's. For readers of a solid's
 /// words outside the rigid body's bindings.
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
 pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
     host.typed().and_then(|t| t.solids.as_ref().and_then(|s| s.read(at))).unwrap_or_else(|| mem.u32(at))
 }

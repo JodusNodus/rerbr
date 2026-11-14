@@ -52,10 +52,12 @@ pub(super) fn wall_raycast(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// `CBrakeWallManager::RaycastEntry` (0x4e4960): thiscall `(point, out)`; the point's copy is in the original's frame,
-/// 8 bytes below the entry esp.
+/// 8 bytes below the entry esp. The point is the car's position (`CCar::Vf6cx`): its x and y are read as a step leaves
+/// them, the held solid's ([`crate::rigid_body::solid_word`]).
 pub(super) fn raycast_entry(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [point, out, ..] = r.stack;
-    let eax = layout::wall_probe(&mut WallRaycast::new(ctx), &mut ctx.mem, r.ecx, point, out, r.esp - 8);
+    let xy = [point, point + 4].map(|at| crate::rigid_body::solid_word(ctx.host, &ctx.mem, at));
+    let eax = layout::wall_probe(&mut WallRaycast::new(ctx), &mut ctx.mem, r.ecx, xy, out, r.esp - 8);
     Ok(Return::void(eax, 8))
 }
 
