@@ -791,7 +791,7 @@ impl CollectReplayHost<'_> {
     }
 }
 
-impl layout::e36_collect::CollectHost for CollectReplayHost<'_> {
+impl layout::entry::CollectHost for CollectReplayHost<'_> {
     fn virtual_call(&mut self, _mem: &mut Mem, _sp: u32, target: u32, args: &[u32]) -> u32 {
         let call = self.take(target, "virtual");
         assert_eq!(call.args.first(), args.first(), "E36Collect virtual this argument");
@@ -1948,9 +1948,9 @@ fn e36_obb_test_matches_original_calls() {
 #[test]
 fn e36_accessors_and_init_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(E36_GET_680, "E36Get680", u32::MAX, |mem, args| layout::e36_collect::active_shape(mem, args[0]));
-    replay(E36_GET_68A, "E36Get68a", u32::MAX, |mem, args| layout::e36_collect::flag_bit2(mem, args[0]));
-    replay(E36_COLLIDE_INIT, "E36CollideInit", u32::MAX, |mem, args| layout::e36_collect::collide_init(mem, args[0]));
+    replay(E36_GET_680, "E36Get680", u32::MAX, |mem, args| layout::entry::active_shape(mem, args[0]));
+    replay(E36_GET_68A, "E36Get68a", u32::MAX, |mem, args| layout::entry::flag_bit2(mem, args[0]));
+    replay(E36_COLLIDE_INIT, "E36CollideInit", u32::MAX, |mem, args| layout::entry::collide_init(mem, args[0]));
 }
 
 #[test]
@@ -2031,7 +2031,7 @@ fn e36_collect_matches_original_calls() {
             }
         }
         let mut host = CollectReplayHost { inner: &call.inner, used: vec![false; call.inner.len()] };
-        let eax = layout::e36_collect::collect(
+        let eax = layout::entry::collect(
             &mut mem,
             COLLECT_FRAME,
             call.args[0],
@@ -2067,7 +2067,7 @@ fn e36_nop_matches_original_calls() {
         assert!(call.args.is_empty(), "E36Nop arguments");
         assert!(call.windows.is_empty(), "E36Nop memory windows");
         assert!(call.inner.is_empty(), "E36Nop nested calls");
-        layout::e36_collect::nop();
+        layout::entry::nop();
     }
     eprintln!("E36Nop: {} no-op calls matched", calls.len());
 }

@@ -1,17 +1,17 @@
-//! E36's collision box and contact slots, and the sphere and OBB tests.
+//! The collision entry's box (E36's collision object) and contact slots, and the sphere and OBB test inputs.
 
 use crate::mem::Mem;
 
 use crate::collision::obb::ObbFrame;
 use crate::math::vec::Vec4;
 
-/// E36's collision object: an OBB frame, half-extents, and four 0x40-byte contact records.
+/// The collision entry's box (E36's collision object): an OBB frame, half-extents, and four 0x40-byte contact records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct E36Box {
+pub struct EntryBox {
     base: u32,
 }
 
-impl E36Box {
+impl EntryBox {
     pub const fn new(base: u32) -> Self {
         Self { base }
     }
@@ -29,8 +29,8 @@ impl E36Box {
         [mem.f32(at), mem.f32(at + 4), mem.f32(at + 8)]
     }
 
-    pub fn contact(self, index: u32) -> E36Contact {
-        E36Contact::new(self.base + index * 0x40)
+    pub fn contact(self, index: u32) -> EntryContact {
+        EntryContact::new(self.base + index * 0x40)
     }
 
     /// The OBB frame: the centre, the half extents, and the basis rows.
@@ -43,13 +43,13 @@ impl E36Box {
     }
 }
 
-/// One E36 result slot, relative to the start of an E36Box.
+/// One contact slot of the entry (an E36 result slot), relative to the start of an `EntryBox`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct E36Contact {
+pub struct EntryContact {
     base: u32,
 }
 
-impl E36Contact {
+impl EntryContact {
     const POSITION: u32 = 0x90;
     const NORMAL: u32 = 0xA0;
     const INPUT: u32 = 0xB0;

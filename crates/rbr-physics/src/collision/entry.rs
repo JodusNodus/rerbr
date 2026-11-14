@@ -1,7 +1,7 @@
 //! The collision entry: the sphere and box tests and the cell walk that collects contacts, generic over the store.
 
 use super::layout;
-use super::layout::e36_collect::{collect_frame, COMPOSE, PAIR_WALK};
+use super::layout::entry::{collect_frame, COMPOSE, PAIR_WALK};
 use super::layout::slots::{GRID_SLOT, TRANSFORM_SLOT};
 use super::obb::{self, ObbFrame};
 use super::store::CollisionStore;

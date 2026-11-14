@@ -1,4 +1,4 @@
-//! E36 collision primitives that produce an OBB contact from a sphere.
+//! The collision entry's memory (E36): its accessors and initializer, the collect's transforms and frame.
 
 use crate::mem::Mem;
 

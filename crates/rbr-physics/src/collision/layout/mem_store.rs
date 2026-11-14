@@ -1,7 +1,7 @@
 //! The Mem store of the collision subsystem: the layout's reads and writes behind `CollisionStore`.
 
 use super::col_grids::{ColGrid, PHYSICS_GLOBAL};
-use super::e36_box::{self, E36Box};
+use super::entry_box::{self, EntryBox};
 use super::event_pool::{self, EVENT_BODY, EVENT_FLAGS, EVENT_MATERIAL_A, EVENT_MATERIAL_B, EVENT_NEXT, EVENT_PARTNER};
 use super::mesh_query::{load_material_pair, material_manager};
 use super::solver::{
@@ -283,7 +283,7 @@ impl CollisionStore for Mem {
     }
 
     fn obb_frame(&self, object: u32) -> ObbFrame {
-        E36Box::new(object).frame(self)
+        EntryBox::new(object).frame(self)
     }
 
     fn sphere_input(&self, at: u32) -> (Vec4, f32) {
@@ -295,11 +295,11 @@ impl CollisionStore for Mem {
     }
 
     fn contact_normal_w(&self, object: u32, index: u32) -> f32 {
-        E36Box::new(object).contact(index).normal(self).w
+        EntryBox::new(object).contact(index).normal(self).w
     }
 
     fn store_sphere_contact(&mut self, object: u32, index: u32, input: Vec4, contact: &SphereContact) {
-        let slot = E36Box::new(object).contact(index);
+        let slot = EntryBox::new(object).contact(index);
         slot.set_input(self, input);
         slot.set_depth(self, contact.depth);
         slot.set_position(self, contact.position);
@@ -308,7 +308,7 @@ impl CollisionStore for Mem {
     }
 
     fn store_obb_contact(&mut self, object: u32, index: u32, input: Vec4, contact: &ObbContact) {
-        let slot = E36Box::new(object).contact(index);
+        let slot = EntryBox::new(object).contact(index);
         let position_w = slot.position(self).w;
         slot.set_depth(self, contact.depth);
         slot.set_input(self, input);
@@ -355,11 +355,11 @@ impl CollisionStore for Mem {
     }
 
     fn shape_axis(&self, shape: u32, axis: u32) -> Vec4 {
-        e36_box::shape_axis(self, shape, axis as usize)
+        entry_box::shape_axis(self, shape, axis as usize)
     }
 
     fn shape_extent(&self, shape: u32, axis: u32) -> f32 {
-        e36_box::shape_extent(self, shape, axis as usize)
+        entry_box::shape_extent(self, shape, axis as usize)
     }
 
     fn cell_first(&self, cell: u32) -> u32 {

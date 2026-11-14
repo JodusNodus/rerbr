@@ -1,6 +1,6 @@
 //! The broad queries: `E36Collect` and the sphere/box tests, the rays and segment sweeps, the grid ops and samples.
 
-use rbr_physics::collision::layout::e36_collect::{self, CollectHost};
+use rbr_physics::collision::layout::entry::CollectHost;
 use rbr_physics::collision::layout::grid_hosts::{AllocHost, GridOpsHost};
 use rbr_physics::collision::layout::solver_hosts::{self, CellQueryHost, RayHost, SampleHost};
 use rbr_physics::collision::layout::{self, Body, GridSyncHost};
@@ -40,7 +40,7 @@ pub(super) fn collect(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     // The original's frame holds the collect's temporaries, and its callees run below it. The original's body esp:
     // after `push ebp; and esp, -0x10; sub esp, 0xe4` and its three pushes (0x4f3950-0x4f3964).
     let frame = ((r.esp - 4) & !0xF) - 0xF0;
-    let eax = e36_collect::collect(&mut ctx.mem, frame, r.ecx, body, list_out, count_out, &mut Callees(ctx.host));
+    let eax = layout::entry::collect(&mut ctx.mem, frame, r.ecx, body, list_out, count_out, &mut Callees(ctx.host));
     Ok(Return::void(eax, 12))
 }
 

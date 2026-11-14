@@ -1,15 +1,15 @@
 //! The collision subsystem's game memory: typed views of its objects, the original's calls and their sequencing.
 
+mod body;
 pub(in crate::collision) mod body_contacts;
 pub mod body_hosts;
 pub mod body_slots;
-mod cbody;
 mod cell_grid;
 mod col_grids;
 pub mod collide_hosts;
 pub mod dictionary;
-mod e36_box;
-pub mod e36_collect;
+pub mod entry;
+mod entry_box;
 pub mod event_pool;
 mod events;
 mod grid_edges;
@@ -33,21 +33,21 @@ pub use crate::collision::solver_pass::{
     add_body_offset, apply_offsets, clear_contact_rows, contact_rows, correct_penetrations, drain_events, event_count,
     mark_suppressing_materials, min_contact_time, refresh_events, solve_due_events, solve_event,
 };
-pub use body_contacts::{grid_contacts, pair_contacts};
-pub(in crate::collision) use cbody::BODY_GRID;
-pub use cbody::{
+pub(in crate::collision) use body::BODY_GRID;
+pub use body::{
     aabb_pretest, body_grid_active, body_has_grid, box_edge_hit_frame, box_edge_hit_sp, clear_grid, ctor,
     grid_edge_count, grid_hit_args, record_edge_hits_frame, reset_state_and_base, select_grid, state_ctor,
     state_unka44, store_grid_hit, store_vf_f4_hit, take_grid_flags, vtable_slot, Body, CtorHost, IDENTITY_WORKER_SLOT,
 };
+pub use body_contacts::{grid_contacts, pair_contacts};
 pub use cell_grid::{cell_grid_ctor, lookup_twin, move_to_cell, unlink, CellGrid, Link};
 pub(in crate::collision) use col_grids::GRID_TAG;
 pub use col_grids::{
     alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, load_col_grid, load_mesh_desc, sample_a,
     sample_b, select_table, store_col_grid, store_samples, sync_grid, ColGrid, GridSyncHost,
 };
-pub(in crate::collision) use e36_box::{obb_input_extents, sphere_input_radius};
-pub use e36_box::{shape_axis, shape_extent, E36Box, E36Contact};
+pub(in crate::collision) use entry_box::{obb_input_extents, sphere_input_radius};
+pub use entry_box::{shape_axis, shape_extent, EntryBox, EntryContact};
 pub use events::{
     apply_event_impulse, init_full, make_event_at, make_event_frame, make_event_payload, prefill_pool,
     query_event_bodies, relative_point_velocity, store_payload, EventBodyHost, EVENT_SIZE,
