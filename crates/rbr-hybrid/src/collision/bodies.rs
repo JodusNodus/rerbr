@@ -51,7 +51,7 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, y, ..] = r.stack;
-    let link = layout::lookup_twin(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, f32::from_bits(x), f32::from_bits(y));
+    let link = layout::cell_link_at(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, f32::from_bits(x), f32::from_bits(y));
     Ok(Return::void(link, 8))
 }
 

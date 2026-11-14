@@ -1680,7 +1680,7 @@ fn cell_grid_lookup_twin_matches_original_calls() {
             mem.map(output.at, &vec![0; output.len]);
         }
         let mut host = CellGridReplayHost { allocation: output.at, calls: 0 };
-        let eax = layout::lookup_twin(
+        let eax = layout::cell_link_at(
             &mut host,
             &mut mem,
             call.args[0],

@@ -4,7 +4,7 @@ use rbr_formats::fnc;
 
 use super::files::NoParent;
 use crate::collision::layout::grid_hosts::AllocHost;
-use crate::collision::layout::{lookup_twin, move_to_cell};
+use crate::collision::layout::{cell_link_at, move_to_cell};
 use crate::entities::layout::{construct_entity, EntityArgs};
 use crate::mem::Mem;
 use crate::physics_core::layout as physics;
@@ -142,7 +142,7 @@ fn construct_dummy(mem: &mut Mem, at: u32) {
 /// `CDummyObject::Relink` (0x600bb0): the dummy's link to the head of the grid cell under its position (x, z).
 fn relink_dummy(mem: &mut Mem, host: &mut impl AllocHost, dummy: u32) {
     let (x, z) = (mem.f32(dummy + DUMMY_POS), mem.f32(dummy + DUMMY_POS + 8));
-    let cell = lookup_twin(host, mem, physics::cell_grid(mem), x, z);
+    let cell = cell_link_at(host, mem, physics::cell_grid(mem), x, z);
     move_to_cell(mem, dummy + DUMMY_LINK, cell);
 }
 

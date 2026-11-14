@@ -6,7 +6,7 @@ use rbr_formats::trk;
 use super::files::{NoParent, StageHost};
 use super::images::MESH_RECORD;
 use super::{MESH_COUNT, MESH_SLOTS};
-use crate::collision::layout::{alloc_collision_id, collision_mesh_factory, lookup_twin, move_to_cell, unlink, Vec4};
+use crate::collision::layout::{alloc_collision_id, cell_link_at, collision_mesh_factory, move_to_cell, unlink, Vec4};
 use crate::entities::layout::{construct_entity, EntityArgs};
 use crate::mem::Mem;
 use crate::physics_core::layout::Filing;
@@ -123,7 +123,7 @@ pub fn construct_water(mem: &mut Mem, at: u32, record: u32) {
 /// `CEntity::E43Vf94` (0x519a80) runs.
 pub fn attach_water(mem: &mut Mem, host: &mut impl StageHost, water: u32) {
     let (x, y) = stage::water_centre(Vec4::load(mem, water + LOW), Vec4::load(mem, water + HIGH), mem.f32(HALF));
-    let cell = lookup_twin(host, mem, physics::cell_grid(mem), x, y);
+    let cell = cell_link_at(host, mem, physics::cell_grid(mem), x, y);
     move_to_cell(mem, water + LINK, cell);
     file_with_state(mem, water, WATER_FILING);
     if mem.u32(water + PARENT) == 0 {

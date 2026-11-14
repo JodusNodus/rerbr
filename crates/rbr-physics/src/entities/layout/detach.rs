@@ -137,7 +137,7 @@ pub trait DetachCalls {
     /// `CEntity::E43_InitBD0` (0x519bd0).
     fn init_walker_marks(&mut self, mem: &mut Mem, sp: u32, body: u32);
     /// `CCellGrid::LookupTwin` (0x4e03b0) at the position's x and y words: returns the cell.
-    fn lookup_twin(&mut self, mem: &mut Mem, sp: u32, grid: u32, x: u32, y: u32) -> u32;
+    fn cell_link_at(&mut self, mem: &mut Mem, sp: u32, grid: u32, x: u32, y: u32) -> u32;
     /// The cell move (0x4faeb0, cdecl).
     fn move_to_cell(&mut self, mem: &mut Mem, sp: u32, link: u32, cell: u32);
     /// `CPhysics::CState::RegWall` (0x5263d0).
@@ -239,7 +239,7 @@ fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls
     calls.init_walker_marks(mem, frame - 4, this);
     let (x, y) = (mem.u32(this + BODY_POSITION), mem.u32(this + BODY_POSITION + 4));
     let grid = mem.u32(CELL_GRID_GLOBAL);
-    let cell = calls.lookup_twin(mem, frame - 0xc, grid, x, y);
+    let cell = calls.cell_link_at(mem, frame - 0xc, grid, x, y);
     calls.move_to_cell(mem, frame - 0xc, this + BODY_CELL_LINK, cell);
     let state = mem.u32(physics_core::layout::physics(mem) + PHYSICS_STATE);
     calls.file_in_state(mem, frame - 8, state, this);

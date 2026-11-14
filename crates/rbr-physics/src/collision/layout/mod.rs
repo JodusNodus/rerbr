@@ -40,7 +40,7 @@ pub use body::{
     store_box_edge_hit, store_grid_hit, take_grid_flags, vtable_slot, Body, CtorHost, IDENTITY_WORKER_SLOT,
 };
 pub use body_contacts::{grid_contacts, pair_contacts};
-pub use cell_grid::{cell_grid_ctor, lookup_twin, move_to_cell, unlink, CellGrid, Link};
+pub use cell_grid::{cell_grid_ctor, cell_link_at, move_to_cell, unlink, CellGrid, Link};
 pub(in crate::collision) use col_grids::GRID_TAG;
 pub use col_grids::{
     alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, edge_sample, load_col_grid,

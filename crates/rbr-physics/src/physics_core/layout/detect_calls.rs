@@ -14,7 +14,7 @@ const CELL_WIDEN_FLAG: u32 = 0x2000;
 /// The caller's side of the cell lookup: `CCellGrid::LookupTwin(x, y)` (thiscall on the grid, two float stack
 /// arguments), which returns the cell's handle, 0 for none.
 pub trait GridHost {
-    fn lookup_twin(&mut self, grid: u32, x: f32, y: f32) -> u32;
+    fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32;
 }
 
 /// `E45_M40C0` (0x5240c0, cdecl): the cells of the box between the corners at `a` and `b`, written to `out`. The grid
@@ -22,7 +22,8 @@ pub trait GridHost {
 pub fn box_cells(mem: &mut Mem, host: &mut impl GridHost, a: u32, b: u32, out: u32) {
     let grid = layout::cell_grid(mem);
     let widened = layout::def_flags(mem) & CELL_WIDEN_FLAG != 0;
-    let cells = detect::box_cells(|x, y| host.lookup_twin(grid, x, y), layout::xy(mem, a), layout::xy(mem, b), widened);
+    let cells =
+        detect::box_cells(|x, y| host.cell_link_at(grid, x, y), layout::xy(mem, a), layout::xy(mem, b), widened);
     layout::set_cells(mem, out, cells);
 }
 

@@ -127,7 +127,7 @@ pub(super) fn flag_is_two(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 struct Cells<'a>(&'a dyn Host);
 
 impl GridHost for Cells<'_> {
-    fn lookup_twin(&mut self, grid: u32, x: f32, y: f32) -> u32 {
+    fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32 {
         self.0.call_direct(0, LOOKUP_TWIN, grid, &[x.to_bits(), y.to_bits()]).eax
     }
 }

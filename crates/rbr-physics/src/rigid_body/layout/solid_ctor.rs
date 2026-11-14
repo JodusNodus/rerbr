@@ -199,7 +199,7 @@ pub fn place_solid(mem: &mut Mem, host: &mut impl PlaceHost, this: u32, placemen
     ntweak::set_dirty(mem, this + SAMPLE);
     mem.set_u32(this + SAMPLE + 0xc, mem.u32(placement + PLACEMENT_SAMPLE));
     let (x, y) = (mem.f32(this + POSITION), mem.f32(this + POSITION + 4));
-    let cell = collision::layout::lookup_twin(host, mem, core_layout::cell_grid(mem), x, y);
+    let cell = collision::layout::cell_link_at(host, mem, core_layout::cell_grid(mem), x, y);
     collision::layout::move_to_cell(mem, this + CELL_LINK, cell);
     let grid = collision::layout::select_table(mem, placement);
     Body::new(this).set_grid(mem, grid);

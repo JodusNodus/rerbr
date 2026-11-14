@@ -2007,7 +2007,7 @@ impl layout::DetachCalls for InOrder<'_> {
         self.take(mem, Some(0x519bd0), &[body]);
     }
 
-    fn lookup_twin(&mut self, mem: &mut Mem, _: u32, grid: u32, x: u32, y: u32) -> u32 {
+    fn cell_link_at(&mut self, mem: &mut Mem, _: u32, grid: u32, x: u32, y: u32) -> u32 {
         self.take(mem, Some(0x4e03b0), &[grid, x, y]).eax
     }
 

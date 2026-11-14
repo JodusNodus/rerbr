@@ -506,7 +506,7 @@ impl layout::DetachCalls for DetachHost<'_> {
         self.0.call_at(sp, INIT_BD0, body, &[]);
     }
 
-    fn lookup_twin(&mut self, _: &mut Mem, sp: u32, grid: u32, x: u32, y: u32) -> u32 {
+    fn cell_link_at(&mut self, _: &mut Mem, sp: u32, grid: u32, x: u32, y: u32) -> u32 {
         self.0.call_at(sp, 0x4e03b0, grid, &[x, y]).eax
     }
 

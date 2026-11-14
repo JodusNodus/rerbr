@@ -48,7 +48,7 @@ addr,module,rust_item,test,status
 0x4e0020,collision/layout/cell_grid.rs,collision::layout::cell_grid::unlink,collision_vectors::intrusive_link_helpers_match_original_calls,checked
 0x4e0080,collision/layout/links.rs,collision::layout::links::notify_filtered,collision_vectors::body_link_notify_filtered_matches_original_calls,checked
 0x4e01d0,collision/layout/links.rs,collision::layout::links::cell_link_ctor,collision_vectors::intrusive_link_helpers_match_original_calls,checked
-0x4e03b0,collision/layout/cell_grid.rs,collision::layout::cell_grid::lookup_twin,collision_vectors::cell_grid_lookup_twin_matches_original_calls,checked
+0x4e03b0,collision/layout/cell_grid.rs,collision::layout::cell_grid::cell_link_at,collision_vectors::cell_grid_lookup_twin_matches_original_calls,checked
 0x4e0550,collision/layout/cell_grid.rs,collision::layout::cell_grid::cell_grid_ctor,collision_vectors::cell_grid_ctor_matches_original_calls,checked
 0x4e0700,collision/layout/vec_ops.rs,collision::layout::vec_ops::scaled,collision_vectors::scaled_matches_original_calls,checked
 0x4e0750,math/vec.rs,math::vec::min_lanes,collision_vectors::min_matches_original_calls,checked

@@ -38,10 +38,10 @@ pub trait CollideHost {
     /// `CCollisionEvent::InitFull` (0x4f50e0) on `event` with `(kind, body, contact, table, point, 0)`. Returns the
     /// event.
     fn init_event(&mut self, sp: u32, event: u32, kind: u32, body: u32, contact: u32, point: u32) -> u32;
-    /// `E37GridOps::SampleB` (0x4e0950) on the grid with `(index, out_a, out_b)`.
-    fn sample_b(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32);
+    /// `CColGrid::SampleB` (0x4e0950) on the grid with `(index, out_a, out_b)`.
+    fn vertex_sample(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32);
     /// `CColGrid::SampleA` (0x4e0840) on the grid with `(index, t, out_a, out_b)`.
-    fn sample_a(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32);
+    fn edge_sample(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32);
     /// The event sink's slot 1 (0x4fc9a0) with `event`.
     fn report(&mut self, sp: u32, sink: u32, event: u32);
     /// `E11_VecLerp` (0x473c90) on `a` with `(b, t, out)`.
@@ -199,7 +199,7 @@ pub fn collide_init(host: &mut impl CollideHost, mem: &mut Mem, this: u32, body:
         let contact = f.at(CollideFrame::CONTACT);
         let event = report_contact(host, mem, &f, body, edge, contact, collide::HIT_KIND);
         let [a, b] = EVENT_SAMPLES.map(|k| event + k);
-        host.sample_b(s - 0x10, grid, i, a, b);
+        host.vertex_sample(s - 0x10, grid, i, a, b);
         host.report(s - 8, sink, event);
         hit = true;
     }
@@ -347,7 +347,7 @@ fn pair_hit(
     mem.set_f32(f.at(CollideFrame::PAIR_FIRST), to_second);
     let span = host.length(s - 0xC, f.at(CollideFrame::SPAN));
     let [out_a, out_b] = EVENT_SAMPLES.map(|k| event + k);
-    host.sample_a(s - 0x14, f.at(CollideFrame::GRID), index, to_second / span, out_a, out_b);
+    host.edge_sample(s - 0x14, f.at(CollideFrame::GRID), index, to_second / span, out_a, out_b);
     host.report(s - 8, sink, event);
     true
 }

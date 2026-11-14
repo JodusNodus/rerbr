@@ -124,11 +124,11 @@ impl CollideHost for Answers<'_> {
         self.eax(Some(0x4F50E0), &[event, kind, body, contact, ZERO_VEC4, point, 0])
     }
 
-    fn sample_b(&mut self, _: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
+    fn vertex_sample(&mut self, _: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
         self.take(Some(0x4E0950), &[grid, index, out_a, out_b]);
     }
 
-    fn sample_a(&mut self, _: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
+    fn edge_sample(&mut self, _: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
         self.take(Some(0x4E0840), &[grid, index, t.to_bits(), out_a, out_b]);
     }
 

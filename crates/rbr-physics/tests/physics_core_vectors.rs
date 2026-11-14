@@ -1327,7 +1327,7 @@ struct GridAnswers {
 }
 
 impl detect_calls::GridHost for GridAnswers {
-    fn lookup_twin(&mut self, grid: u32, x: f32, y: f32) -> u32 {
+    fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32 {
         self.calls.push((LOOKUP_TWIN, vec![grid, x.to_bits(), y.to_bits()]));
         self.answers.pop_front().expect("a recorded LookupTwin")
     }

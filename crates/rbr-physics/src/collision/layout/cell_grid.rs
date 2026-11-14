@@ -67,7 +67,7 @@ pub fn cell_grid_ctor(
 }
 
 /// A body's cell link (next, previous, cell) at `link` moved to the cell link `cell` (head, tail, count) that
-/// `lookup_twin` gave: out of its old cell (count down, `unlink`), then in at the head of `cell` unless it is 0. The
+/// `cell_link_at` gave: out of its old cell (count down, `unlink`), then in at the head of `cell` unless it is 0. The
 /// inline sequence `CCollisionMeshWater::Vf15CW` (0x4faf00) and `CSolid::Vf44` (0x52c700) share.
 pub fn move_to_cell(mem: &mut Mem, link: u32, cell: u32) {
     let owner = mem.u32(link + 8);
@@ -92,7 +92,7 @@ pub fn move_to_cell(mem: &mut Mem, link: u32, cell: u32) {
 
 /// CCellGrid::LookupTwin (0x4e03b0): the point's link, after lazily building its cell's 10x10 link block (host
 /// allocation, then the link constructors).
-pub fn lookup_twin(host: &mut impl AllocHost, mem: &mut Mem, grid: u32, x: f32, y: f32) -> u32 {
+pub fn cell_link_at(host: &mut impl AllocHost, mem: &mut Mem, grid: u32, x: f32, y: f32) -> u32 {
     let cell_grid = CellGrid::load(mem, grid);
     let map = CellMap {
         origin_x: cell_grid.origin_x,

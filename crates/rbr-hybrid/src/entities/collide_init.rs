@@ -91,11 +91,11 @@ impl CollideHost for CollideCalls<'_> {
         self.host.call_at(sp, COLL_EVENT_INIT_FULL, event, &args).eax
     }
 
-    fn sample_b(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
+    fn vertex_sample(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
         self.host.call_at(sp, COLGRID_SAMPLE_B, grid, &[index, out_a, out_b]);
     }
 
-    fn sample_a(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
+    fn edge_sample(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
         let args = [index, t.to_bits(), out_a, out_b];
         self.host.call_at(sp, COLGRID_SAMPLE_A, grid, &args);
     }
