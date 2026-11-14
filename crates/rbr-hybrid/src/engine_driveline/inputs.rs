@@ -5,7 +5,7 @@ use rbr_physics::engine_driveline::{drive, layout};
 use rbr_physics::physics_core::layout::signal_emit;
 use rbr_physics::store::Raw;
 
-use super::{f, is_held, on_drive};
+use super::{f, is_held, on_drive, on_engine_in};
 use crate::{Ctx, Decline, Regs, Return, SignalCallees};
 
 /// `ret 4` with no body (0x503860, 0x5043b0): the original does nothing with its argument.
@@ -181,7 +181,9 @@ pub(super) fn drive_reset_part(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 
 /// thiscall `()`, eax: 1 when the drive's gate holds (`layout::drive_gate`).
 pub(super) fn drive_gate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::drive_gate(&ctx.mem, r.ecx), 0))
+    let (host, mut mem) = (ctx.host, ctx.mem.clone());
+    let engine_on = |engine| on_engine_in(host, &mut mem, engine, |e| layout::engine_running(e, engine) != 0);
+    Ok(Return::void(layout::drive_gate(&ctx.mem, r.ecx, engine_on), 0))
 }
 
 /// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::wheel_slip`).

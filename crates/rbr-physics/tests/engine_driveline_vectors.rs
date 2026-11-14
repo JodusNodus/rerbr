@@ -1541,7 +1541,8 @@ fn m6dd0_matches_original_calls() {
 fn test4840_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(TEST_4840, "CDrive::Test4840", |mem, call| {
-        let eax = layout::drive_gate(mem, call.args[0]);
+        let image = mem.clone();
+        let eax = layout::drive_gate(mem, call.args[0], |engine| layout::engine_running(&image, engine) != 0);
         assert_eq!(eax, call.eax, "CDrive::Test4840 call {}: eax", call.index);
     });
 }

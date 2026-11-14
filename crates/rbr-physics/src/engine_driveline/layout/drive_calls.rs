@@ -3,7 +3,6 @@
 
 use super::drive_line;
 use super::drive_objects::{DriveObjects, Lane};
-use super::engine_calls::engine_running;
 use crate::engine_driveline::mat4;
 use crate::engine_driveline::store::{DriveStore, Part};
 use crate::fpu;
@@ -175,8 +174,9 @@ pub fn set_diff_lock<S: DriveStore>(store: &mut S, a: u32, value: f32) -> u32 {
 /// (the words at worker `+0x48`, indices 2 up to the gear count at def `+0x654`) above 0.2 (0x72f428). With a count,
 /// the worker's enable word (`+0x78`) must be set, and then either the car's engine is on (`SimE980` of the car at the
 /// state's `+0x580`, plus `+0x690`) or 0.5 (0x795e18) is not above the speed term (`+0x8c`) and the ready word (`+0x7c`)
-/// is set. Last, 0.2 must not be above the torque gain (`+0x84`), a NaN gain counting as not above.
-pub fn drive_gate(mem: &Mem, this: u32) -> u32 {
+/// is set. Last, 0.2 must not be above the torque gain (`+0x84`), a NaN gain counting as not above. `engine_on` is
+/// `SimE980` on the engine at its address (the caller's store of the engine).
+pub fn drive_gate(mem: &Mem, this: u32, engine_on: impl FnOnce(u32) -> bool) -> u32 {
     let objects = DriveObjects::at(mem, this);
     let worker = objects.damage;
     let count = mem.u32(objects.def + 0x654);
@@ -185,7 +185,7 @@ pub fn drive_gate(mem: &Mem, this: u32) -> u32 {
         return 0;
     }
     let engine = mem.u32(objects.state + 0x580) + 0x690;
-    let engine_on = engine_running(mem, engine) != 0;
+    let engine_on = engine_on(engine);
     if !engine_on && (0.5 > mem.f32(worker + 0x8c) || mem.u32(worker + 0x7c) == 0) {
         return 0;
     }

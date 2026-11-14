@@ -10,10 +10,11 @@ use super::engine_objects::{EngineObjects, EngineOptions, EngineOwn, EngineState
 use crate::engine_driveline::store::EngineStore;
 use crate::engine_driveline::{engine, sim};
 use crate::math::le_or_unordered;
-use crate::ntweak::set_dirty;
+use crate::ntweak::DIRTY;
 use crate::physics_core::layout::{PHYSICS_GLOBAL, SIGNAL_MANAGER};
 use crate::spring_damper::store::DamperBlocks;
 use crate::spring_damper::{self, BlendTerms, UpdateTerms, WeightedValue};
+use crate::store::Raw;
 use crate::{fpu, ngp};
 
 /// `Sim8E20`'s cycle factor (0x73b6f4): 20.371832.
@@ -69,7 +70,7 @@ pub fn engine_step<S: EngineStore>(
     };
     let objects = EngineObjects::at(mem, this);
     let (d, s) = (objects.def, objects.state);
-    set_dirty(mem.mem_mut(), s + 0x228);
+    set_dirty(mem, s + 0x228);
     mem.set_u32(s + 0x234, mem.u32(s + 0x234).wrapping_add(1));
     mem.set_f32(s + 0x184, b);
     mem.set_f32(s + 0x188, mem.f32(s + 0x184) * 0.3 + mem.f32(s + 0x188) * 0.7);
@@ -138,11 +139,11 @@ pub fn engine_step<S: EngineStore>(
     let sum = torque + b;
     let signed_sum = mem.f32(s + 0x184) * sum;
     let average = mem.f32(s + 0x210) * 0.95 + sum * 0.050_000_012;
-    set_dirty(mem.mem_mut(), s + 0x204);
+    set_dirty(mem, s + 0x204);
     mem.set_f32(s + 0x210, average);
     let scaled_sum = signed_sum * 0.050_000_012;
     let average = mem.f32(s + 0x220) * 0.95 + scaled_sum;
-    set_dirty(mem.mem_mut(), s + 0x214);
+    set_dirty(mem, s + 0x214);
     mem.set_f32(s + 0x220, average);
 
     let g = mem.u32(PHYSICS_GLOBAL);
@@ -167,6 +168,12 @@ pub fn engine_step<S: EngineStore>(
         fuel_air_terms(mem, this, a * 20.0);
     }
     sum
+}
+
+/// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `at`, through the store's words (the engine's typed state holds
+/// its dirty words).
+fn set_dirty<S: Raw>(mem: &mut S, at: u32) {
+    mem.set_u32(at + DIRTY, 1);
 }
 
 /// The magnitude as `Sim80D0` takes it (`if (f <= 0) f = 0 - f`).
@@ -477,7 +484,7 @@ pub fn overheat_step<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     mem.set_f32(s + 0x24, clamp_keep_nan(mem.f32(s + 0x24), max));
     mem.set_f32(s + 0x1c, clamp_keep_nan(mem.f32(s + 0x1c), mem.f32(d + 0x279c)));
     let total = mem.f32(this + 0x58) + t;
-    set_dirty(mem.mem_mut(), this + 0x4c);
+    set_dirty(mem, this + 0x4c);
     mem.set_f32(this + 0x58, total);
     s
 }
@@ -585,7 +592,7 @@ pub fn fuel_air_terms<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     let scaled_abs = mem.f32(o + 0x5c) * abs_term;
     compliance(mem, this);
     let p = mem.f32(s + 0x26c) * scaled_abs;
-    set_dirty(mem.mem_mut(), s + 0x250);
+    set_dirty(mem, s + 0x250);
     mem.set_f32(s + 0x25c, p);
     mem.set_f32(s + 0xbc, p / mem.f32(s + 0xb8));
     let sum1 = mem.f32(s + 0xbc) * mem.f32(o + 0xc) + (abs_term - one_minus * scaled_abs);

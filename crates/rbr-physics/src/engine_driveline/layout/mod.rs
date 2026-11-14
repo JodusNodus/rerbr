@@ -11,6 +11,7 @@ mod engine_calls;
 mod engine_def;
 mod engine_objects;
 mod engine_sim;
+mod engine_typed;
 mod mem_store;
 mod setup;
 mod step;
@@ -49,6 +50,9 @@ pub use engine_objects::{EngineDef, EngineObjects, EngineOptions, EngineOwn, Eng
 pub use engine_sim::{
     crank_tick, engine_step, engine_torque, fuel_air_terms, heat_step, intake_entry_update, intake_state_reset,
     misfire_roll, overheat_step, signal_update, smooth_damper, solve_damper, turbo_energy_step,
+};
+pub use engine_typed::{
+    round_trip as engine_round_trip, CarEngine, EngineImage, EngineObj, EngineStateObj, EngineTyped, EngineView,
 };
 pub use setup::{drive_setup_into_def, link_worker, normalize_gear_rows, select_gear_rows};
 pub use step::step_drive;

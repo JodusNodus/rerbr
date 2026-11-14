@@ -5,7 +5,7 @@
 //!
 //! `mem` runs the second side as the first, the Mem path against itself; `mem-direct` runs it with B1's Mem-direct
 //! dispatch ([`rbr_hybrid::pure::Pure::direct`]); `typed` runs it with the typed subsystems (the struts, the VCU, the
-//! drive, the tyres, the wheels) on the image between calls, against the first side's typed storage over each step
+//! drive, the engine, the tyres, the wheels) on the image between calls, against the first side's typed storage over each step
 //! ([`rbr_hybrid::pure::Pure::typed`], the default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
 //! stage's queries against the image's (`stage::layout::differential`).
 

@@ -1,7 +1,8 @@
 //! Checks the `object!` tables on snapshots: `lower(lift(image)) == image` on every owned byte of the car's tabled
-//! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's, the drive's, the tyres' and the wheels'
-//! typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
-//! `engine_driveline::layout::drive_round_trip`, `tyre::layout::round_trip`, `wheel::layout::round_trip`); the typed
+//! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's, the drive's, the engine's, the tyres' and
+//! the wheels' typed state (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`,
+//! `engine_driveline::layout::{drive_round_trip, engine_round_trip}`, `tyre::layout::round_trip`,
+//! `wheel::layout::round_trip`); the typed
 //! stage's bytes and queries against the image's (`stage::layout::round_trip`, `differential`); the wheel's host-free
 //! entries per call against held (`wheel::layout::differential`).
 //! The boot images are checked by `rbr-standalone --twin`.
@@ -67,6 +68,7 @@ fn main() -> ExitCode {
             ("struts", spring::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("vcu", vcu::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("drive", drive::drive_round_trip(&mem, car), "typed bytes equal after lower(lift)"),
+            ("engine", drive::engine_round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("tyres", tyre::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("wheels", wheel::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),

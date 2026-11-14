@@ -4,7 +4,7 @@
 //! callees are computed by the ports; `CCar::Get30`, the gear-change signal and `E12_SampleX` are host calls. eax is
 //! given where the original returns a value; elsewhere it is a scratch value no caller reads, given as 0.
 
-use rbr_physics::engine_driveline::layout::{self, DriveView};
+use rbr_physics::engine_driveline::layout::{self, DriveView, EngineView};
 use rbr_physics::mem::Mem;
 
 use crate::{Binding, Ctx, Host};
@@ -166,6 +166,28 @@ pub static BINDINGS: [Binding; 99] = [
 
 fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
+}
+
+/// Runs `run` on the engine at `engine`: in the typed storage the host holds over a step ([`crate::Host::typed`]), else
+/// (another car's, or no step holds it) on the image ([`EngineView::image`]). The engine's readers outside its bindings
+/// (NGP's engine wrapper, the drive's gate) and any reader of its words during a step go through it.
+pub(crate) fn on_engine_in<T>(
+    host: &dyn Host,
+    mem: &mut Mem,
+    engine: u32,
+    run: impl FnOnce(&mut EngineView) -> T,
+) -> T {
+    if let Some(typed) = host.typed() {
+        if typed.car.engine.is(engine) {
+            return run(&mut typed.car.engine.view(mem));
+        }
+    }
+    run(&mut EngineView::image(mem))
+}
+
+/// [`on_engine_in`] on a binding's memory and host.
+pub(crate) fn on_engine<T>(ctx: &mut Ctx, engine: u32, run: impl FnOnce(&mut EngineView) -> T) -> T {
+    on_engine_in(ctx.host, &mut ctx.mem, engine, run)
 }
 
 /// Runs `run` on the drive at `drive`: in the typed storage the host holds over a step ([`crate::Host::typed`]), else
