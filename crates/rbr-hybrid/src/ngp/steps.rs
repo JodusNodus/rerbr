@@ -22,6 +22,7 @@ use rbr_physics::store::Raw;
 use rbr_physics::tyre::layout::{self, entries};
 
 use crate::engine_driveline::{on_drive, on_drive_in};
+use crate::rigid_body::{set_solid_word, solid_f32};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 use super::address::{at, FILE_BASE};
@@ -34,14 +35,15 @@ const ATMOSPHERE_OUT: [u32; 6] = [0x1017_1adc, 0x1017_1ad8, 0x1017_1ae0, 0x1017_
 /// in eax (its first load).
 pub(crate) fn atmosphere_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let car = r.stack[0];
-    apply_atmosphere(&mut ctx.mem, car);
+    apply_atmosphere(ctx.host, &mut ctx.mem, car);
     Ok(Return::void(car, 0))
 }
 
-/// `0x1004b5a0`'s work for `car`.
-pub(crate) fn apply_atmosphere(m: &mut Mem, car: u32) {
+/// `0x1004b5a0`'s work for `car`. The height is the car solid's position as `host` holds it
+/// ([`crate::rigid_body::solid_f32`]).
+pub(crate) fn apply_atmosphere(host: &dyn Host, m: &mut Mem, car: u32) {
     let constants = rbr_physics::ngp::layout::atmosphere::constants(m, at(FILE_BASE).expect("NGP atmosphere"));
-    let a = atmosphere(m.f32(car + 0x148), &constants);
+    let a = atmosphere(solid_f32(host, m, car + 0x148), &constants);
     let values = [a.temperature, a.pressure, a.density, a.inv_pressure, a.pressure_115, a.pressure_0987];
     for (addr, v) in ATMOSPHERE_OUT.into_iter().zip(values) {
         m.set_f32(at(addr).expect("hooked only with NGP"), v);
@@ -58,7 +60,8 @@ pub(crate) fn downforce_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 /// `0x10047040`'s work for `p`; returns its eax. With an aero model set (`super::aero_model`, ours), the file's
 /// downforce and the drag factor take its factors: for the car's sideslip, from the speed along its axis over its
 /// speed (+0x15fc), and for the file's downforce over its `Cd * A`. The car's speeds are its typed state's, as `host`
-/// holds it ([`crate::car_body::read_car`]).
+/// holds it ([`crate::car_body::read_car`]); the sums (`+0x378`, the force accumulator's z, and `+0x310`, the solid's
+/// scratch) its solid's ([`crate::rigid_body::solid_f32`]).
 fn apply_downforce(host: &dyn Host, m: &mut Mem, p: u32) -> u32 {
     let car = m.u32(m.u32(p + 8) + 0x580);
     let def = m.u32(car + 0x34);
@@ -70,8 +73,8 @@ fn apply_downforce(host: &dyn Host, m: &mut Mem, p: u32) -> u32 {
         density: m.f32(at(0x1017_1ae0).expect("hooked only with NGP")),
         speed: read_car(host, m, car, car_slot::forward_speed),
         wheel_arms: [0x470, 0x474, 0x478, 0x47c].map(|o| m.f32(m.u32(car + o) + 0x8b4)),
-        force_sum: m.f32(car + 0x378),
-        moment_sum: m.f32(car + 0x310),
+        force_sum: solid_f32(host, m, car + 0x378),
+        moment_sum: solid_f32(host, m, car + 0x310),
     };
     let model = super::aero_model::model().map(|model| {
         let cd_area = m.drag_coefficient(car) * m.frontal_area(car);
@@ -88,8 +91,8 @@ fn apply_downforce(host: &dyn Host, m: &mut Mem, p: u32) -> u32 {
     m.set_f32(car + 0x4a4, o.speed_ratio_sq);
     m.set_f32(car + 0x4a8, o.front_force);
     m.set_f32(car + 0x4ac, o.rear_force);
-    m.set_f32(car + 0x378, o.force_sum);
-    m.set_f32(car + 0x310, o.moment_sum);
+    set_solid_word(host, m, car + 0x378, o.force_sum.to_bits());
+    set_solid_word(host, m, car + 0x310, o.moment_sum.to_bits());
     m.set_f32(at(0x1017_147c).expect("hooked only with NGP"), o.drag_factor);
     match o.path {
         Path::NoDownforce => 8,

@@ -228,8 +228,9 @@ impl<S: CoreFields> CoreStore for S {
         self.u32(passenger + STEP_HOST_AT)
     }
 
+    /// The host's words (the car's acceleration estimate) are its solid's (`SolidWords`).
     fn host_offset(&self, host: u32) -> [f32; 3] {
-        [0, 4, 8].map(|k| self.f32(host + HOST_OFFSET_AT + k))
+        [0, 4, 8].map(|k| f32::from_bits(self.word(host + HOST_OFFSET_AT + k)))
     }
 
     fn passenger_velocity(&self, passenger: u32) -> Vec4 {

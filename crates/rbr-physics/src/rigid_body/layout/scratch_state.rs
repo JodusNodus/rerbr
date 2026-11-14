@@ -40,9 +40,9 @@ pub fn store_scratch_base_init(mem: &mut Mem, block: u32) {
 pub(super) const STATE_VTABLE: u32 = 0x0073_fc04;
 
 /// `E09Vec4::Clear` (0x465d80) on the row at `at`: four zero words.
-pub fn clear_vec(mem: &mut Mem, at: u32) {
+pub fn clear_vec<W: SolidWords + ?Sized>(mem: &mut W, at: u32) {
     for k in 0..4 {
-        mem.set_u32(at + 4 * k, 0);
+        mem.set_word(at + 4 * k, 0);
     }
 }
 

@@ -59,7 +59,6 @@ pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
 }
 
 /// The f32 at `at` as a step leaves it ([`solid_word`]).
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
 pub(crate) fn solid_f32(host: &dyn Host, mem: &Mem, at: u32) -> f32 {
     f32::from_bits(solid_word(host, mem, at))
 }
@@ -80,6 +79,25 @@ pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
 /// Whether a held solid's typed state holds the word at `at` (never per call).
 pub(crate) fn holds_solid_word(host: &dyn Host, at: u32) -> bool {
     held_solids(host).is_some_and(|s| s.read(at).is_some())
+}
+
+/// Lowers the `n` words from `at` that a held solid names into the image (through memory without poison: the words are
+/// the solid's), for a hosted callee that reads them at their address and writes none of them. Nothing when no solid
+/// is held.
+pub(crate) fn lower_solid_words(host: &dyn Host, mem: &Mem, at: u32, n: u32) {
+    let typed = host.typed();
+    let Some(solids) = typed.as_deref().and_then(|t| t.solids.as_ref()) else {
+        return;
+    };
+    #[cfg(feature = "poison")]
+    let mut image = mem.unpoisoned();
+    #[cfg(not(feature = "poison"))]
+    let mut image = mem.clone();
+    for at in (0..n).map(|k| at + 4 * k) {
+        if let Some(word) = solids.read(at) {
+            image.set_u32(at, word);
+        }
+    }
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;

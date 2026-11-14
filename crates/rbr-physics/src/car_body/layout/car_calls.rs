@@ -3,7 +3,7 @@
 //! the grid edge, the drive line sample (`Split17C`), the vote probe, the countdown, the respawn pose (`Slot97`) and the
 //! respawn.
 
-use super::car::{solid_scratch_at, WORLD};
+use super::car::{solid_scratch_at, solid_vec4, store_solid_vec4, WORLD};
 use super::car_parts::FLOW_OBJECT;
 use super::construct::SIGNALS;
 use crate::car_body::assist::{self, AssistCalls, RetireCalls};
@@ -107,7 +107,7 @@ pub fn reset_scratch_and_dispatch<S: CarStore>(
     mem: &mut S,
     car: u32,
 ) -> Result<u32, HostUnavailable> {
-    rigid_body::layout::scratch_reset_after_entity(mem.mem_mut(), car, calls)?;
+    rigid_body::layout::scratch_reset_after_entity(mem, car, calls)?;
     Ok(scratch_dispatch::dispatch_scratch_after_reset(calls, solid_scratch_at(car)))
 }
 
@@ -121,7 +121,7 @@ pub fn lane_test<S: CarStore>(
     car: u32,
     to_world: impl FnOnce(Vec3) -> Vec3,
 ) -> Option<u32> {
-    let fv = mem.f32(car + 0x17C);
+    let fv = f32::from_bits(mem.drive_line_word(car));
     let i = fpu::trunc_i32(f64::from(fv));
     let t = fv - i as f32;
     let drive = line.drive_line();
@@ -129,11 +129,8 @@ pub fn lane_test<S: CarStore>(
         return None;
     }
     let point = spline_at(line, drive, i, t);
-    let d = Vec3 {
-        x: mem.f32(car + 0x140) - point.x,
-        y: mem.f32(car + 0x144) - point.y,
-        z: mem.f32(car + 0x148) - point.z,
-    };
+    let [x, y, z, _] = mem.position_words(car).map(f32::from_bits);
+    let d = Vec3 { x: x - point.x, y: y - point.y, z: z - point.z };
     Some(assist::lane_verdict(d, to_world))
 }
 
@@ -295,7 +292,7 @@ pub trait CountdownCalls<S = Mem>: VoteCalls<S> {
 /// calls to its samplers in doubles (`ngp::layout::drive_line`), which write three lanes and don't trap (1.02's `LerpAt` traps
 /// past the table's count). `line` holds the drive line.
 pub fn drive_line_sample<S: CarStore>(mem: &mut S, line: &impl StageStore, car: u32, a: u32, b: u32) {
-    let fv = mem.f32(car + 0x17C);
+    let fv = f32::from_bits(mem.drive_line_word(car));
     let i = fpu::trunc_i32(f64::from(fv));
     let t = fv - i as f32;
     let drive = line.drive_line();
@@ -313,7 +310,7 @@ pub fn drive_line_sample<S: CarStore>(mem: &mut S, line: &impl StageStore, car: 
 pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry: u32, a: u32, b: u32, c: u32) -> u32 {
     let frame = ((entry - 4) & !0xf) - 0x2c;
     let (probe_a, probe_b) = (frame + 0x1c, frame + 0xc);
-    let probe = Vec4::load(mem, a);
+    let probe = solid_vec4(mem, a);
     (Vec4 { z: probe.z + 10.0, ..probe }).store(mem, probe_a);
     (Vec4 { z: probe.z - 10.0, ..probe }).store(mem, probe_b);
     if calls.vote(mem, frame - 20, probe_a, probe_b, c) == 0 {
@@ -446,23 +443,23 @@ pub fn respawn_car<S: CarStore>(mem: &mut S, calls: &mut impl RespawnCalls<S>, c
         return;
     }
     let frame = ((entry - 4) & !0xf) - 0x50;
-    Vec4::load(mem, b).store(mem, car + 0x100);
-    Vec4::load(mem, a).store(mem, car + 0x140);
+    store_solid_vec4(mem, car + 0x100, Vec4::load(mem, b));
+    store_solid_vec4(mem, car + 0x140, Vec4::load(mem, a));
     calls.refresh_rotation(mem, frame - 4, car);
     mem.zero_vec4(frame + 0x20);
     calls.compose_body_into_world(mem, frame - 12, car, frame + 0x20, frame + 0x10);
-    let z = mem.f32(car + 0x148);
-    mem.set_f32(car + 0x148, (z - mem.f32(frame + 0x18)) + z);
+    let z = f32::from_bits(mem.word(car + 0x148));
+    mem.set_word(car + 0x148, ((z - mem.f32(frame + 0x18)) + z).to_bits());
     calls.clear_accumulators(mem, frame - 4, car);
     for at in [0x1C0, 0x190, 0xAA0, 0xAC0] {
         mem.zero_vec4(car + at);
     }
     calls.wake(mem, frame - 4, car);
     Vec4::load(mem, a).store(mem, frame + 0x30);
-    let pending = mem.u32(car + 0x274);
+    let pending = mem.word(car + 0x274);
     if pending != 0 {
         calls.clear_contact_rows(mem, pending);
-        mem.set_u32(car + 0x274, 0);
+        mem.set_word(car + 0x274, 0);
     }
     mem.set_wall_contact(car, 0.0);
     let emitter = mem.u32(SIGNALS) + RESPAWN_EMITTER;
@@ -487,8 +484,8 @@ pub trait SnapshotCalls<S = Mem> {
 pub fn snapshot<S: CarStore>(mem: &mut S, calls: &mut impl SnapshotCalls<S>, car: u32, entry: u32) {
     let frame = ((entry - 4) & !0xf) - 0xa0;
     let payload = frame + 0x40;
-    Vec4::load(mem, car + 0x140).store(mem, frame + 0x10);
-    Vec4::load(mem, car + 0x100).store(mem, frame + 0x30);
+    solid_vec4(mem, car + 0x140).store(mem, frame + 0x10);
+    solid_vec4(mem, car + 0x100).store(mem, frame + 0x30);
     mem.zero_vec4(frame + 0x20);
     calls.compose_body_into_world(mem, frame - 12, car, frame + 0x20, frame + 0x10);
     Vec4::load(mem, frame + 0x10).store(mem, payload + 0x10);

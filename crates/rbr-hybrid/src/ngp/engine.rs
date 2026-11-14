@@ -110,7 +110,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     if dies {
         engine_dies(ctx, r.esp, health_at);
     }
-    apply_atmosphere(&mut ctx.mem, car);
+    apply_atmosphere(ctx.host, &mut ctx.mem, car);
     let sim = crate::engine_driveline::engine_step(ctx, r)?;
     let r_value = sim.st0.expect("Sim8E20 returns st0") as f32;
     if !alive || !crate::engine_driveline::engine_running(ctx, engine) {

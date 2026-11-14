@@ -113,7 +113,8 @@ impl<S: CarStore> layout::SnapshotCalls<S> for Car<'_> {
     }
 }
 
-/// The calls `Vf64x` makes out of its own body (`forces.rs`): the car's externals, and the walk of +0x380 by its address.
+/// The calls `Vf64x` makes out of its own body (`forces.rs`): the car's externals, and the walk of +0x380 by its address
+/// (the solid's linear acceleration: a held solid's is lowered into the image for the walk, which only reads it).
 impl<S: CarStore> ForcesCalls<S> for Car<'_> {
     fn passenger_idle(&mut self, obj: u32) {
         self.host.call(0x5224F0, obj, &[]);
@@ -125,6 +126,7 @@ impl<S: CarStore> ForcesCalls<S> for Car<'_> {
 
     fn walk_car_vector(&mut self, car: u32) -> Vec4 {
         let (out, frame) = (self.scratch + C, self.mem.u32(FRAME));
+        crate::rigid_body::lower_solid_words(self.host, &self.mem, car + 0x380, 4);
         self.host.call(MB560, frame, &[car + 0x380, car, out]);
         Vec4::load(&self.mem, out)
     }
@@ -362,15 +364,16 @@ pub(super) fn split_17c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     crate::ngp::only()?;
     let image = ctx.mem.clone();
-    on_stage(ctx.host, &image, |line| layout::drive_line_sample(&mut ctx.mem, line, r.ecx, a, b));
+    on_stage(ctx.host, &image, |line| on_car(ctx, |m| layout::drive_line_sample(m, line, r.ecx, a, b)));
     Ok(Return::void(b, 8))
 }
 
-/// thiscall `(a, b, c)`, `ret 0xc`: `CCar::Sampler54A0` (0x4e54a0). The car is not read; eax is the vote's 1 or 0.
+/// thiscall `(a, b, c)`, `ret 0xc`: `CCar::Sampler54A0` (0x4e54a0). The car is not read; eax is the vote's 1 or 0. The
+/// probe `a` is the car's position for `MotionProbe` (`car + 0x140`): read through the car's store, the held solid's.
 pub(super) fn vote_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = car_calls(ctx, r);
-    let hit = layout::vote_probe(&mut ctx.mem, &mut calls, r.esp, a, b, c);
+    let hit = on_car(ctx, |m| layout::vote_probe(m, &mut calls, r.esp, a, b, c));
     Ok(Return::void(hit, 0xc))
 }
 

@@ -505,6 +505,15 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   Per call `SolidView::image` keeps `Mem`'s paged `words`/`set_words4`; +0.47 % instructions per step off (gate 13/13).
   Left with aids on: the mounted detach (`StepBig` 0x522100, `detach.rs` on `Mem`) and its leaves `M83DD0`,
   `E34Quat::Norm`, `CCar::ToWorld`, which take pointers into the solids.
+  lower/lift around its host call) and the poison run. The car's are routed: `CarStore` and `CoreFields` are
+  `SolidWords` stores and `on_car`'s `CarView::with_solids` holds them (`Vf98x`, `Split17C`, `MotionProbe`,
+  `Sampler54A0`, `Test7910`, `Vf54x` with `store_scratch_reset` on any `SolidWords`, `Vf64x`, `Vf180`, `Vf6cx`,
+  `Snap9360`, the passenger step); `RaycastEntry` takes the point's words (`wall_probe(xy)`, read with `solid_word`);
+  NGP's atmosphere and downforce use `solid_f32`/`set_solid_word`; the walks of `car+0x380` (`Vf64x`) and `car+0x1c0`
+  (`Sim8E20`'s airflow) by address lower those words first (`lower_solid_words`; `MB560` reads them on the image).
+  `AppendA980` touches only the link `+0x160..+0x168`, not held. Evidence: the survey build with holding on lists none
+  of these bindings. Still on the image: `ToQuat` (entities), physics_core's mounted-body words (`mount_velocity`,
+  `mount_point`, the pose copy `+0x100`/`+0x2a0`; not stepped on drive2).
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core
