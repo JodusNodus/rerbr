@@ -182,12 +182,7 @@ pub trait MountedDetachCalls: DetachCalls + PoseToWorldCalls {
 /// (+0x330, +0x2a0) takes the new pose; then the detach (`detach_tail`). Returns 1 for a detach, else 0. `frame` is the
 /// original's esp after its prologue, `((entry - 4) & !0xf) - 0xb0`; the event is at `frame + 0x60`, the detach payload
 /// at `frame + 0x18`, the composed position at `frame + 0x40` and the turned orientation at `frame + 0x50`.
-pub fn mounted_detach<S: SolidWords>(
-    mem: &mut S,
-    this: u32,
-    frame: u32,
-    calls: &mut impl MountedDetachCalls,
-) -> u32 {
+pub fn mounted_detach<S: SolidWords>(mem: &mut S, this: u32, frame: u32, calls: &mut impl MountedDetachCalls) -> u32 {
     if mem.word(this + BODY_PARENT) == 0 || mem.word(this + BODY_LINK_LIST) == 0 {
         return 0;
     }
@@ -225,7 +220,10 @@ fn detach_tail<S: SolidWords>(mem: &mut S, this: u32, frame: u32, event: u32, si
     for (at, local) in [(BODY_LINEAR, frame + 0x30), (BODY_ANGULAR, frame + 0x20)] {
         let car = mem.word(this + HINGE_OWNER);
         for k in 0..3 {
-            let lane = hinge_detach::world_lane(f32::from_bits(mem.word(car + at + 4 * k)), f32::from_bits(mem.word(local + 4 * k)));
+            let lane = hinge_detach::world_lane(
+                f32::from_bits(mem.word(car + at + 4 * k)),
+                f32::from_bits(mem.word(local + 4 * k)),
+            );
             mem.set_word(this + at + 4 * k, lane.to_bits());
         }
     }
