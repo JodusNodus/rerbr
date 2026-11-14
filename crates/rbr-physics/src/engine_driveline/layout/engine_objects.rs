@@ -50,7 +50,7 @@ impl EngineTuning {
         air: Atmosphere {
             temperature: 293.140_01,
             pressure: 101_300.0,
-            density: f32::from_bits(0x3f9a_1f07),
+            density: 1.204_071_9,
             inv_pressure: 9.871_668_2e-6,
             pressure_115: 116_495.0,
             pressure_0987: 100_000.0,
@@ -237,5 +237,15 @@ impl EngineOptions {
     /// Writes the words `SimD870` changes (the stall terms); the rest of the block keeps its bytes.
     pub fn store_stall_terms<S: EngineStore>(&self, mem: &mut S, at: u32) {
         mem.store_stall_terms(at, self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(EngineTuning::STOCK.air.density.to_bits(), 0x3f9a_1f07);
     }
 }

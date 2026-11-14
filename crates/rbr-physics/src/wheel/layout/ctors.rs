@@ -201,13 +201,7 @@ pub fn cdef_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
     }
     mem.set_f32(this + 0x900, 0.0);
     // The values are the float words at 0x742814, 0x742810, 0x74280c, 0x731e08 and 0x73e8a8.
-    for (at, value) in [
-        (0x924, f32::from_bits(0x46FA_0000)),
-        (0x934, f32::from_bits(0x4788_B800)),
-        (0x944, f32::from_bits(0x3EB2_B021)),
-        (0x954, f32::from_bits(0x45FA_0000)),
-        (0x964, f32::from_bits(0x476A_6000)),
-    ] {
+    for (at, value) in [(0x924, 32_000.0), (0x934, 70_000.0), (0x944, 0.349), (0x954, 8_000.0), (0x964, 60_000.0)] {
         ntweak::set_dirty(mem, this + at);
         mem.set_f32(this + at + 0xC, value);
     }
@@ -296,7 +290,7 @@ pub fn select_top_mount(mem: &mut Mem, setup: u32, options: u32) {
 const WHEEL_VTABLE: u32 = 0x0074_288C;
 
 /// The float at 0x72f5e0 (300.0), stored at +0xeb0.
-const WHEEL_TAIL_FLOAT: f32 = f32::from_bits(0x4396_0000);
+const WHEEL_TAIL_FLOAT: f32 = 300.0;
 
 /// `E51Wheel::Ctor(def, name, owner, flags)` (0x53b6e0, thiscall, ret 0x10) on the wheel at `this`. `def` is the car's
 /// definition (0 for none), `owner` an optional body (0 for none). Runs the solid base (`host`, with the flags' 0x20), the
@@ -362,4 +356,23 @@ pub fn new_wheel(
         return Ok(0);
     }
     wheel_ctor(mem, host, block, def, a, b, 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(WHEEL_TAIL_FLOAT.to_bits(), 0x4396_0000);
+        for (value, bits) in [
+            (32_000.0_f32, 0x46FA_0000),
+            (70_000.0, 0x4788_B800),
+            (0.349, 0x3EB2_B021),
+            (8_000.0, 0x45FA_0000),
+            (60_000.0, 0x476A_6000),
+        ] {
+            assert_eq!(value.to_bits(), bits, "{value}");
+        }
+    }
 }

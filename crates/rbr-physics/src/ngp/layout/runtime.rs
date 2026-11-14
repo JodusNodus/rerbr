@@ -33,6 +33,14 @@ impl Runtime {
 pub fn head_gasket(durability: i32) -> Option<[f32; 2]> {
     (durability > 1).then(|| {
         let scale = 1.0 / durability as f32;
-        [scale, (scale - 1.0) * f32::from_bits(0x3c23_d70a)]
+        [scale, (scale - 1.0) * 0.01]
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(0.01_f32.to_bits(), 0x3c23_d70a);
+    }
 }
