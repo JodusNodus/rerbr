@@ -2,35 +2,35 @@
 //! kernels' blocks, which live in the engine's and the tyre's objects ([`DamperBlocks`]). `Mem` implements both in
 //! `layout.rs`.
 
+use super::suspension::Damping;
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
-    HeatCapacity, Relaxation, SetupValues, State, UpdateTerms, WeightedValue,
+    HeatCapacity, Relaxation, UpdateTerms, WeightedValue,
 };
 use crate::store::Raw;
 
-/// The strut: its controller, definition, state and fade. The step's out pointers are its caller's (the binding's).
+/// The struts: each one's definition, controller, effective damping and fade, by a handle. The step's out pointers
+/// are its caller's (the binding's).
 pub trait StrutStore {
-    /// The controller's definition, state and fade pointers.
-    fn definition_at(&self, controller: u32) -> u32;
-    fn state_at(&self, controller: u32) -> u32;
-    fn fade_at(&self, controller: u32) -> u32;
+    /// A strut: what the store tells its struts apart by (on `Mem`, its controller's address).
+    type Strut: Copy;
 
-    fn definition(&self, at: u32) -> Definition;
-    /// The nine setup reals a definition adopts, and their store into the definition.
-    fn setup_values(&self, at: u32) -> SetupValues;
-    fn store_setup_values(&mut self, definition_at: u32, definition: &Definition);
+    /// The strut's definition (read only: its setup copy is the image's).
+    fn definition(&self, strut: Self::Strut) -> Definition;
 
-    fn state(&self, at: u32) -> State;
-    fn store_effective_damping(&mut self, at: u32, value: State);
-    /// The signal owner id of the state's car.
-    fn owner_id(&self, state_at: u32) -> u32;
+    /// The three effective damping values.
+    fn damping(&self, strut: Self::Strut) -> Damping;
+    fn store_damping(&mut self, strut: Self::Strut, value: Damping);
+    /// The damper signal's owner id (the owner wheel's index).
+    fn owner_id(&self, strut: Self::Strut) -> u32;
 
-    fn controller(&self, at: u32) -> Controller;
-    fn store_step_state(&mut self, at: u32, value: Controller);
-    fn store_signal(&mut self, at: u32, value: DamperSignal);
+    fn controller(&self, strut: Self::Strut) -> Controller;
+    /// Stores the words the step changes: the mode, the hold and the three velocities.
+    fn store_step_state(&mut self, strut: Self::Strut, value: Controller);
+    fn store_signal(&mut self, strut: Self::Strut, value: DamperSignal);
 
-    fn fade_state(&self, at: u32) -> FadeState;
-    fn store_fade_state(&mut self, at: u32, value: FadeState);
+    fn fade(&self, strut: Self::Strut) -> FadeState;
+    fn store_fade(&mut self, strut: Self::Strut, value: FadeState);
 }
 
 /// The damper kernels' blocks (in the engine's and the tyre's objects).

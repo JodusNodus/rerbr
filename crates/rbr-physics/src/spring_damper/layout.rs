@@ -1,9 +1,10 @@
 //! Spring-damper game-memory boundary. This file alone knows object offsets.
 
 use super::store::{DamperBlocks, StrutStore};
+use super::suspension::Damping;
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
-    HeatCapacity, RealValue, Relaxation, SetupValues, State, StepOutput, UpdateTerms, WeightedValue,
+    HeatCapacity, RealValue, Relaxation, SetupValues, StepOutput, UpdateTerms, WeightedValue,
 };
 use crate::mem::Mem;
 use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
@@ -220,14 +221,13 @@ pub fn set_fade_pointer(mem: &mut Mem, controller_at: u32, fade_at: u32) {
 }
 
 /// Copies a CSetup's nine CReal bodies into the matching CDef fields. 0x52dbd0.
-/// Loads only this call's footprint (definition and setup); the owned adoption runs on `Suspension`.
-pub fn apply_setup<S: StrutStore>(mem: &mut S, controller_at: u32, setup_at: u32) {
-    let mut suspension = super::suspension::Suspension {
-        definition: mem.definition(mem.definition_at(controller_at)),
-        ..super::suspension::Suspension::default()
-    };
-    suspension.adopt_setup(mem.setup_values(setup_at));
-    suspension.store_definition(mem, controller_at);
+/// A setup copy on the image: the definition stays there; the owned adoption runs on `Suspension`.
+pub fn apply_setup(mem: &mut Mem, controller_at: u32, setup_at: u32) {
+    let definition_at = definition_at(mem, controller_at);
+    let mut suspension =
+        super::suspension::Suspension { definition: definition(mem, definition_at), ..Default::default() };
+    suspension.adopt_setup(setup_values(mem, setup_at));
+    store_setup_values(mem, definition_at, &suspension.definition);
 }
 
 fn write_real_body(mem: &mut Mem, at: u32, value: RealValue) {
@@ -237,54 +237,41 @@ fn write_real_body(mem: &mut Mem, at: u32, value: RealValue) {
 }
 
 /// Recomputes the three effective damping values. 0x52dd70.
-/// Loads and stores only this call's footprint (definition, state effects, fade).
-pub fn update_forces<S: StrutStore>(mem: &mut S, controller_at: u32) {
-    let state_at = mem.state_at(controller_at);
+/// Loads and stores only this call's footprint (definition, effective damping, fade).
+pub fn update_forces<S: StrutStore>(store: &mut S, strut: S::Strut) {
     let mut suspension = super::suspension::Suspension {
-        definition: mem.definition(mem.definition_at(controller_at)),
-        fade: mem.fade_state(mem.fade_at(controller_at)),
-        damping: super::suspension::Damping::from_state(mem.state(state_at)),
-        ..super::suspension::Suspension::default()
+        definition: store.definition(strut),
+        fade: store.fade(strut),
+        damping: store.damping(strut),
+        ..Default::default()
     };
     suspension.update_damping();
-    mem.store_effective_damping(state_at, suspension.damping.state());
+    store.store_damping(strut, suspension.damping);
 }
 
-/// Runs one typed spring-damper step on the strut whose controller is at `controller_at`, stores its changed state and
-/// returns its three outputs (the caller writes them to its out pointers). 0x52e090.
+/// Runs one typed spring-damper step, stores its changed state and returns its three outputs (the caller writes them
+/// to its out pointers). 0x52e090.
 /// NGP turned the two jumps that limited the stops' damping to the force over the
 /// speed (at 0x52e22b and 0x52e279) into no-ops, so the port never limits it.
-pub fn step<S: StrutStore>(
-    mem: &mut S,
-    controller_at: u32,
-    input: super::StepInput,
-    ngp: super::NgpStep,
-) -> StepOutput {
-    let definition_at = mem.definition_at(controller_at);
-    let state_at = mem.state_at(controller_at);
-    let fade_at = mem.fade_at(controller_at);
-    let mut controller = mem.controller(controller_at);
-    let mut fade = mem.fade_state(fade_at);
-    let mut state = mem.state(state_at);
-    let output = super::step(&mut controller, &mut fade, &mem.definition(definition_at), &mut state, input, ngp);
-    mem.store_fade_state(fade_at, fade);
-    mem.store_effective_damping(state_at, state);
-    mem.store_step_state(controller_at, controller);
+pub fn step<S: StrutStore>(store: &mut S, strut: S::Strut, input: super::StepInput, ngp: super::NgpStep) -> StepOutput {
+    let mut controller = store.controller(strut);
+    let mut fade = store.fade(strut);
+    let mut state = store.damping(strut).state();
+    let output = super::step(&mut controller, &mut fade, &store.definition(strut), &mut state, input, ngp);
+    store.store_fade(strut, fade);
+    store.store_damping(strut, Damping::from_state(state));
+    store.store_step_state(strut, controller);
     output
 }
 
 /// Resets the signal after handing its previous payload to the runtime. 0x52e010.
-/// Loads and stores only this call's footprint (controller, owner link, signal words). Returns the emitted payload
+/// Loads and stores only this call's footprint (controller, owner id, signal words). Returns the emitted payload
 /// for the host's typed damper event.
-pub fn reset_outputs<S: StrutStore>(mem: &mut S, controller_at: u32) -> DamperSignal {
-    let mut suspension = super::suspension::Suspension {
-        controller: mem.controller(controller_at),
-        ..super::suspension::Suspension::default()
-    };
-    let owner_id = mem.owner_id(mem.state_at(controller_at));
-    let emitted = suspension.reset_signal(owner_id);
+pub fn reset_outputs<S: StrutStore>(store: &mut S, strut: S::Strut) -> DamperSignal {
+    let mut suspension = super::suspension::Suspension { controller: store.controller(strut), ..Default::default() };
+    let emitted = suspension.reset_signal(store.owner_id(strut));
     super::emit_signal(emitted);
-    mem.store_signal(controller_at, suspension.controller.signal);
+    store.store_signal(strut, suspension.controller.signal);
     emitted
 }
 
@@ -392,90 +379,96 @@ pub fn force<S: DamperBlocks>(mem: &mut S, state_at: u32, input: f32, divisor: f
     mem.store_force_terms(state_at, value);
 }
 
-/// The Mem store of the strut: the bodies are the layout's reads and writes.
+/// The controller's definition, state and fade pointers.
+fn definition_at(mem: &Mem, controller: u32) -> u32 {
+    mem.u32(controller + DEFINITION_POINTER)
+}
+
+fn state_at(mem: &Mem, controller: u32) -> u32 {
+    mem.u32(controller + STATE_POINTER)
+}
+
+fn fade_at(mem: &Mem, controller: u32) -> u32 {
+    mem.u32(controller + FADE_POINTER)
+}
+
+/// Reads the fields needed by the reached spring-damper functions.
+fn definition(mem: &Mem, at: u32) -> Definition {
+    Definition {
+        debug_id: mem.u32(at + DEFINITION_DEBUG_ID),
+        bump_stop_pos: real_value(mem, at + DEFINITION_BUMP_STOP_POS),
+        droop_stop_pos: real_value(mem, at + DEFINITION_DROOP_STOP_POS),
+        spring_free_length: real_value(mem, at + DEFINITION_SPRING_FREE_LENGTH),
+        spring_rate: real_value(mem, at + DEFINITION_SPRING_RATE),
+        helper_min_length: real_value(mem, at + DEFINITION_HELPER_MIN_LENGTH),
+        helper_length: real_value(mem, at + DEFINITION_HELPER_LENGTH),
+        helper_rate: real_value(mem, at + DEFINITION_HELPER_RATE),
+        bump_stop_rate: real_value(mem, at + DEFINITION_BUMP_STOP_RATE),
+        droop_stop_rate: real_value(mem, at + DEFINITION_DROOP_STOP_RATE),
+        damp_bump: real_value(mem, at + DEFINITION_DAMP_BUMP),
+        damp_rebound: real_value(mem, at + DEFINITION_DAMP_REBOUND),
+        stop_damp: real_value(mem, at + DEFINITION_STOP_DAMP),
+        hs_break_bump: real_value(mem, at + DEFINITION_HS_BREAK_BUMP),
+        hs_break_rebound: real_value(mem, at + DEFINITION_HS_BREAK_REBOUND),
+        hs_damp_bump: real_value(mem, at + DEFINITION_HS_DAMP_BUMP),
+        hs_damp_rebound: real_value(mem, at + DEFINITION_HS_DAMP_REBOUND),
+    }
+}
+
+/// Reads the nine setup values that CopyStateToDef adopts.
+fn setup_values(mem: &Mem, at: u32) -> SetupValues {
+    SetupValues {
+        spring_free_length: real_value(mem, at + SETUP_SPRING_FREE_LENGTH),
+        spring_rate: real_value(mem, at + SETUP_SPRING_RATE),
+        helper_min_length: real_value(mem, at + SETUP_HELPER_MIN_LENGTH),
+        helper_length: real_value(mem, at + SETUP_HELPER_LENGTH),
+        helper_rate: real_value(mem, at + SETUP_HELPER_RATE),
+        damp_bump: real_value(mem, at + SETUP_DAMP_BUMP),
+        damp_rebound: real_value(mem, at + SETUP_DAMP_REBOUND),
+        hs_break_bump: real_value(mem, at + SETUP_HS_BREAK_BUMP),
+        hs_damp_bump: real_value(mem, at + SETUP_HS_DAMP_BUMP),
+    }
+}
+
+fn store_setup_values(mem: &mut Mem, definition_at: u32, definition: &Definition) {
+    // CopyStateToDef copies each CReal's label, dirty word, and value, in this order.
+    write_real_body(mem, definition_at + DEFINITION_SPRING_FREE_LENGTH, definition.spring_free_length);
+    write_real_body(mem, definition_at + DEFINITION_SPRING_RATE, definition.spring_rate);
+    write_real_body(mem, definition_at + DEFINITION_HELPER_MIN_LENGTH, definition.helper_min_length);
+    write_real_body(mem, definition_at + DEFINITION_HELPER_LENGTH, definition.helper_length);
+    write_real_body(mem, definition_at + DEFINITION_HELPER_RATE, definition.helper_rate);
+    write_real_body(mem, definition_at + DEFINITION_DAMP_BUMP, definition.damp_bump);
+    write_real_body(mem, definition_at + DEFINITION_DAMP_REBOUND, definition.damp_rebound);
+    write_real_body(mem, definition_at + DEFINITION_HS_BREAK_BUMP, definition.hs_break_bump);
+    write_real_body(mem, definition_at + DEFINITION_HS_DAMP_BUMP, definition.hs_damp_bump);
+}
+
+/// The Mem store of the strut: a strut is its controller's address; the bodies are the layout's reads and writes.
 impl StrutStore for Mem {
-    fn definition_at(&self, controller: u32) -> u32 {
-        self.u32(controller + DEFINITION_POINTER)
+    type Strut = u32;
+
+    fn definition(&self, controller: u32) -> Definition {
+        definition(self, definition_at(self, controller))
     }
 
-    fn state_at(&self, controller: u32) -> u32 {
-        self.u32(controller + STATE_POINTER)
-    }
-
-    fn fade_at(&self, controller: u32) -> u32 {
-        self.u32(controller + FADE_POINTER)
-    }
-
-    /// Reads the fields needed by the reached spring-damper functions.
-    fn definition(&self, at: u32) -> Definition {
-        Definition {
-            debug_id: self.u32(at + DEFINITION_DEBUG_ID),
-            bump_stop_pos: real_value(self, at + DEFINITION_BUMP_STOP_POS),
-            droop_stop_pos: real_value(self, at + DEFINITION_DROOP_STOP_POS),
-            spring_free_length: real_value(self, at + DEFINITION_SPRING_FREE_LENGTH),
-            spring_rate: real_value(self, at + DEFINITION_SPRING_RATE),
-            helper_min_length: real_value(self, at + DEFINITION_HELPER_MIN_LENGTH),
-            helper_length: real_value(self, at + DEFINITION_HELPER_LENGTH),
-            helper_rate: real_value(self, at + DEFINITION_HELPER_RATE),
-            bump_stop_rate: real_value(self, at + DEFINITION_BUMP_STOP_RATE),
-            droop_stop_rate: real_value(self, at + DEFINITION_DROOP_STOP_RATE),
-            damp_bump: real_value(self, at + DEFINITION_DAMP_BUMP),
-            damp_rebound: real_value(self, at + DEFINITION_DAMP_REBOUND),
-            stop_damp: real_value(self, at + DEFINITION_STOP_DAMP),
-            hs_break_bump: real_value(self, at + DEFINITION_HS_BREAK_BUMP),
-            hs_break_rebound: real_value(self, at + DEFINITION_HS_BREAK_REBOUND),
-            hs_damp_bump: real_value(self, at + DEFINITION_HS_DAMP_BUMP),
-            hs_damp_rebound: real_value(self, at + DEFINITION_HS_DAMP_REBOUND),
+    fn damping(&self, controller: u32) -> Damping {
+        let at = state_at(self, controller);
+        Damping {
+            bump: self.f32(at + STATE_DAMP_BUMP_EFF),
+            rebound: self.f32(at + STATE_DAMP_REBOUND_EFF),
+            high_speed_bump: self.f32(at + STATE_HS_DAMP_BUMP_EFF),
         }
     }
 
-    /// Reads the nine setup values that CopyStateToDef adopts.
-    fn setup_values(&self, at: u32) -> SetupValues {
-        SetupValues {
-            spring_free_length: real_value(self, at + SETUP_SPRING_FREE_LENGTH),
-            spring_rate: real_value(self, at + SETUP_SPRING_RATE),
-            helper_min_length: real_value(self, at + SETUP_HELPER_MIN_LENGTH),
-            helper_length: real_value(self, at + SETUP_HELPER_LENGTH),
-            helper_rate: real_value(self, at + SETUP_HELPER_RATE),
-            damp_bump: real_value(self, at + SETUP_DAMP_BUMP),
-            damp_rebound: real_value(self, at + SETUP_DAMP_REBOUND),
-            hs_break_bump: real_value(self, at + SETUP_HS_BREAK_BUMP),
-            hs_damp_bump: real_value(self, at + SETUP_HS_DAMP_BUMP),
-        }
+    fn store_damping(&mut self, controller: u32, value: Damping) {
+        let at = state_at(self, controller);
+        self.set_f32(at + STATE_DAMP_BUMP_EFF, value.bump);
+        self.set_f32(at + STATE_DAMP_REBOUND_EFF, value.rebound);
+        self.set_f32(at + STATE_HS_DAMP_BUMP_EFF, value.high_speed_bump);
     }
 
-    fn store_setup_values(&mut self, definition_at: u32, definition: &Definition) {
-        // CopyStateToDef copies each CReal's label, dirty word, and value, in this order.
-        write_real_body(self, definition_at + DEFINITION_SPRING_FREE_LENGTH, definition.spring_free_length);
-        write_real_body(self, definition_at + DEFINITION_SPRING_RATE, definition.spring_rate);
-        write_real_body(self, definition_at + DEFINITION_HELPER_MIN_LENGTH, definition.helper_min_length);
-        write_real_body(self, definition_at + DEFINITION_HELPER_LENGTH, definition.helper_length);
-        write_real_body(self, definition_at + DEFINITION_HELPER_RATE, definition.helper_rate);
-        write_real_body(self, definition_at + DEFINITION_DAMP_BUMP, definition.damp_bump);
-        write_real_body(self, definition_at + DEFINITION_DAMP_REBOUND, definition.damp_rebound);
-        write_real_body(self, definition_at + DEFINITION_HS_BREAK_BUMP, definition.hs_break_bump);
-        write_real_body(self, definition_at + DEFINITION_HS_DAMP_BUMP, definition.hs_damp_bump);
-    }
-
-    fn state(&self, at: u32) -> State {
-        State {
-            damp_bump_eff: self.f32(at + STATE_DAMP_BUMP_EFF),
-            damp_rebound_eff: self.f32(at + STATE_DAMP_REBOUND_EFF),
-            hs_damp_bump_eff: self.f32(at + STATE_HS_DAMP_BUMP_EFF),
-            owner: self.u32(at + STATE_OWNER),
-            last_deflection: real_value(self, at + STATE_LAST_DEFLECTION),
-            unsigned_tweak: self.u32(at + STATE_UNSIGNED_TWEAK),
-        }
-    }
-
-    fn store_effective_damping(&mut self, at: u32, value: State) {
-        self.set_f32(at + STATE_DAMP_BUMP_EFF, value.damp_bump_eff);
-        self.set_f32(at + STATE_DAMP_REBOUND_EFF, value.damp_rebound_eff);
-        self.set_f32(at + STATE_HS_DAMP_BUMP_EFF, value.hs_damp_bump_eff);
-    }
-
-    fn owner_id(&self, state_at: u32) -> u32 {
-        let owner = self.u32(state_at + STATE_OWNER);
+    fn owner_id(&self, controller: u32) -> u32 {
+        let owner = self.u32(state_at(self, controller) + STATE_OWNER);
         self.u32(owner + OWNER_WHEEL_INDEX)
     }
 
@@ -509,11 +502,13 @@ impl StrutStore for Mem {
         self.set_u32(at + SIGNAL_VALID, value.valid as u32);
     }
 
-    fn fade_state(&self, at: u32) -> FadeState {
+    fn fade(&self, controller: u32) -> FadeState {
+        let at = fade_at(self, controller);
         FadeState { test_multiplier: self.f32(at), amount: self.f32(at + 4) }
     }
 
-    fn store_fade_state(&mut self, at: u32, value: FadeState) {
+    fn store_fade(&mut self, controller: u32, value: FadeState) {
+        let at = fade_at(self, controller);
         self.set_f32(at, value.test_multiplier);
         self.set_f32(at + 4, value.amount);
     }

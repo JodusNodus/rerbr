@@ -306,7 +306,7 @@ fn suspension(mem: &Mem, car: u32, i: u32) -> Suspension {
         damper_force: mem.f32(wheel + WHEEL_DAMPER_FORCE),
         strut_force: mem.f32(wheel + WHEEL_STRUT_FORCE),
         helper_spring_active: controller.mode,
-        damper_damage: mem.fade_state(mem.fade_at(wheel + STRUT)).amount,
+        damper_damage: mem.fade(wheel + STRUT).amount,
         piston_velocity: mem.f32(wheel + WHEEL_STRUT_VELOCITY),
         ..out
     };

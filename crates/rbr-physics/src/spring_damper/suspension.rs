@@ -77,31 +77,21 @@ pub struct Suspension {
 }
 
 impl Suspension {
-    /// Loads the strut's owned state from its controller, definition, state and fade objects.
-    pub fn load<S: StrutStore>(mem: &S, controller_at: u32) -> Self {
+    /// Loads the strut's state: its definition, controller, fade and effective damping.
+    pub fn load<S: StrutStore>(store: &S, strut: S::Strut) -> Self {
         Self {
-            definition: mem.definition(mem.definition_at(controller_at)),
-            controller: mem.controller(controller_at),
-            fade: mem.fade_state(mem.fade_at(controller_at)),
-            damping: Damping::from_state(mem.state(mem.state_at(controller_at))),
+            definition: store.definition(strut),
+            controller: store.controller(strut),
+            fade: store.fade(strut),
+            damping: store.damping(strut),
         }
     }
 
-    /// Stores the controller, fade and effective damping. The definition is untouched by the step; `adopt_setup`
-    /// persists through [`store_definition`](Self::store_definition).
-    pub fn store_state<S: StrutStore>(&self, mem: &mut S, controller_at: u32) {
-        mem.store_step_state(controller_at, self.controller);
-        mem.store_fade_state(mem.fade_at(controller_at), self.fade);
-        let mut stored = mem.state(mem.state_at(controller_at));
-        stored.damp_bump_eff = self.damping.bump;
-        stored.damp_rebound_eff = self.damping.rebound;
-        stored.hs_damp_bump_eff = self.damping.high_speed_bump;
-        mem.store_effective_damping(mem.state_at(controller_at), stored);
-    }
-
-    /// Persists the definition fields `adopt_setup` mutates (the nine setup-adopted bodies).
-    pub fn store_definition<S: StrutStore>(&self, mem: &mut S, controller_at: u32) {
-        mem.store_setup_values(mem.definition_at(controller_at), &self.definition);
+    /// Stores the controller, fade and effective damping. The definition is untouched by the step.
+    pub fn store_state<S: StrutStore>(&self, store: &mut S, strut: S::Strut) {
+        store.store_step_state(strut, self.controller);
+        store.store_fade(strut, self.fade);
+        store.store_damping(strut, self.damping);
     }
 
     /// Adopts the nine setup values into the definition. Effective damping is left
