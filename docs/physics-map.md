@@ -98,7 +98,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Suspension geometry | `wheel/refresh.rs`, `wheel/axes.rs` | `wheel::layout::refresh`, `wheel::layout::Wheel` (the wheels' typed state) |
 | Spring, bump stop, damper | `spring_damper/mod.rs`, `spring_damper/suspension.rs`, `spring_damper/strut.rs`, `ngp/spring.rs` | `spring_damper::step`, `spring_damper::suspension::Suspension`, `spring_damper::strut::Struts` (the typed state), `ngp::spring::bump_stop`, `ngp::spring::latch` |
 | Anti-roll bars | `car_body/roll_bars.rs` | `car_body::roll_bars::update_roll_bars` |
-| Engine torque | `engine_driveline/engine.rs`, `engine_driveline/layout/engine_sim.rs`, `ngp/engine.rs` | `engine_driveline::engine::torque_curve`, `engine_driveline::layout::engine_step`, `ngp::engine::torque`, `engine_driveline::layout::EngineTyped` (the engine's typed state) |
+| Engine torque | `engine_driveline/engine.rs`, `engine_driveline/layout/engine_sim.rs`, `ngp/engine.rs` | `engine_driveline::engine::torque_curve`, `engine_driveline::layout::engine_step`, `ngp::engine::torque`, `engine_driveline::layout::EngineTyped` (the engine's typed state), `EngineDefinition` (its definition, held read only) |
 | Starter | `ngp/starter.rs` | `ngp::starter::starter` |
 | Clutch | `engine_driveline/drive_worker.rs`, `ngp/drive.rs`, `vcu/clutch.rs` | `engine_driveline::drive_worker::clutch_torque`, `ngp::drive::clutch_state`, `vcu::clutch::launch_clutch` |
 | Differentials, torque split | `ngp/diff.rs`, `ngp/axle.rs`, `ngp/drive.rs`, `vcu/locks.rs` | `ngp::diff::lock_torques`, `ngp::axle::axle_worker`, `ngp::drive::split_factor`, `vcu::locks::diff_locks` |

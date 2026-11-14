@@ -327,8 +327,9 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   any other byte the image's; per call (`EngineView::image`) it is the image. `EngineStore` (the records) is `Mem`'s
   and the view's, which serves a held engine's `EngineOwn` and `EngineState` by field; `EngineTables` and
   `DamperBlocks` are on every word store. Held in a `RefCell` borrowed per word, never across a host call (`Sim8E20`
-  calls `Sim80D0` through the host). Stay on the image: the definition, the pointers, the option block (the damage
-  handler's engine block at `+0x3aac`: its functors and NGP's engine wrapper write it; the stall terms, gates, health),
+  calls `Sim80D0` through the host). Stay on the image: the definition (held read only with the definitions since),
+  the pointers, the option block (the damage handler's engine block at `+0x3aac`: its functors and NGP's engine
+  wrapper write it; the stall terms, gates, health),
   the roll table and seed, and the state's `EngineNoise` payload (`+0x2c..+0x5c`, `misfire_out` and the cut words in
   it: the emit's listeners read it at its address). Readers during a step, through
   `rbr_hybrid::engine_driveline::on_engine_in`: the engine bindings (the VCU's `SetState4`/`SetScratch08` and the car's
@@ -375,20 +376,34 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 - The definitions, ninth, read-only: `store::defs::Defs` in `Typed`, keyed by address, one per wheel slot unless an
   earlier slot holds it: `wheel::layout::WheelDef` (every word the wheel reads), the strut's `Definition`, the tyre's
   `TyreDef` (setup, hub offset, surface and wear words), `car_body::layout::CarDef` (`CarStore`'s getters),
-  `vcu::Def`, `engine_driveline::layout::DriveDefinition` (accessors, ratios, locks, workers, bands) and the address of
-  the physics definition's flags word. `Pure` lifts them each step (setup adoption, respawn and restart write them
-  between steps) from block reads; nothing lowers them, the load builds them on the image. The views take
+  `vcu::Def`, `engine_driveline::layout::DriveDefinition` (accessors, ratios, locks, workers, bands),
+  `engine_driveline::layout::EngineDefinition` (below) and the address of the physics definition's flags word. `Pure`
+  lifts them each step (setup adoption, respawn and restart write them between steps) from block reads; nothing lowers them, the load builds them on the image. The views take
   `with_defs`; without it (per call, emulator, vectors) the image. The step writes stay on the image: the wheel
   definitions' `+0x880..+0x900` (`M3A8A0`'s frames) and the tyre setups' by-load tables `+0x204..+0x284` (NGP's step
   wrapper scales `+0x204..+0x244` and restores `+0x204..+0x284`; held, the write watch fails the poison run there).
   The poison build checks each typed answer against the image's (`defs::checked`) and watches the held bytes
-  (`Mem::watch_writes`: a write panics, reads go through). Not held: the engine's definition (read by raw offsets in
-  `engine_sim.rs` and `engine_calls.rs`: curves, tables, `+0x26f8`), the hinged and mounted definitions, the physics
+  (`Mem::watch_writes`: a write panics, reads go through). Not held: the hinged and mounted definitions, the physics
   definition beyond the flags word (`MaxTimeStep`, gravity, the wheel's world flags), the car list's `wheel def +0x4fc`
   and `+0x23c`. Evidence: drive2 84084/84084 typed; `--twin typed` and `--twin aids` equal after each of 84084 steps;
   poison 84084/84084 and aids on with no watch or check failure; `round_trip` 8492 definition bytes equal on 43
   snapshots, the wheel's and the car's `differential` held on them; hybrid gate 13/13; the lift 28.6k instructions
   (+1.33 %), the whole -0.90 % instructions per step (fewer image reads), so no generation counter.
+- The engine's definition (`layout/engine_definition.rs`): the 155 words of `CEngine::CDef` the ports read but the
+  exhaust table's (the turbo's, the cylinders' phases and oil galleries, the torque curve's, the VE and back-pressure
+  curves' knots, the inlet's, the flow table, the cooling's, the oil's, `TorqueCut_NGP`, the friction's; named by
+  their NGP keys), a slot table by offset, lifted per step. `EngineView::with_defs` serves them at their addresses
+  (`on_engine_in`); the ports read them as records (`TurboDef`, `InletDef`, `HeatDef`, `EngineDef`, `LoadDef`) and
+  single words (`turbo`, `cylinder_count`, `cylinder_phase`, `idle_speed_throttle`, `oil_capacity`, `torque_cut`, the
+  last two NGP's engine wrapper's, was raw), the tables at named offsets. On the image: the exhaust table (256 rows
+  from `+0x1fc`, read at the crank's keys; holding the whole `+0x18..+0x2870` block cost +0.76 % instructions a step
+  for its lift, this +0.35 % in all) and the turbo's two blend tables (heap blocks behind `+0xa0`, `+0xa8`). The
+  watch covers the whole `+0x18..+0x2870`: nothing writes it in a step (drive2 aids off and on). Evidence: drive2
+  84084/84084 typed; `--twin typed` and aids on equal after each of 84084 steps; poison 84084/84084 and aids on with
+  no watch or check failure; `round_trip` 620 engine definition bytes (9112 in all) on 43 snapshots and
+  `engine_differential` with the definition held (11528 bytes); the engine chain (645 `SimE660` records) held;
+  hybrid gate 13/13; one bit flipped in the held `EngineHeatTransferCoefficient_NGP` fails drive2 at step 816, in
+  `TurboInertia_NGP` at step 0 (the drive2 car is turbocharged), so the step reads the held words.
 - The physics core's singletons, ninth: `physics_core::layout::typed` (`PhysicsObj`: the contact loop's hits, last
   and maximum hits, pass maximum and count, the penetration pass's hit count, the single stepper's delay and pending
   flag; `StateObj`: the substep counter, the value of the state's `CUnsigned` at `+0x0c`, and the clock, an `f64` at
