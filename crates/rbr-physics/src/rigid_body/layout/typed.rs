@@ -89,7 +89,7 @@ const RUNS_LEN: usize = RUNS_AND_LEN.1;
 fn slot(off: u32) -> Option<usize> {
     let k = off.wrapping_sub(HELD.start);
     let i = (k / 4) as usize;
-    (k % 4 == 0 && i < WORDS && NAMED[i]).then_some(i)
+    (k.is_multiple_of(4) && i < WORDS && NAMED[i]).then_some(i)
 }
 
 /// A solid in typed storage: its address, its name and its state, [`Solid`]'s words over the held span (one cell a
