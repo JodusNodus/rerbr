@@ -4,6 +4,7 @@
 
 use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
 use super::drive_objects::Lane;
+use super::engine_definition::EXHAUST_ROWS;
 use super::engine_objects::{
     EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, LoadDef, ENGINE_DEF_PTR, ENGINE_OPTIONS_PTR,
     ENGINE_PEDAL, ENGINE_STATE_ABS_VALUE, ENGINE_STATE_ABS_VALUE_DIRTY, ENGINE_STATE_COMPLIANCE_DIRTY,
@@ -177,7 +178,7 @@ impl<R: Raw> EngineTables for R {
 
     /// One row of the exhaust table (`SimEC40`): eight floats at `+0x1fc + 0x20 * i` of the definition.
     fn exhaust_row(&self, def: u32, i: u32) -> [f32; 8] {
-        self.f32s(def + 0x1fc + 0x20 * i)
+        self.f32s(def + EXHAUST_ROWS + 0x20 * i)
     }
 
     /// The `n` knots of a curve at `at`.
