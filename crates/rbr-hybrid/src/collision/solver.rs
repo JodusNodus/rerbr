@@ -61,7 +61,7 @@ pub(super) fn correct_penetrations(ctx: &mut Ctx, r: &Regs) -> Result<Return, De
 /// E38_004FCA20 (0x4fca20): thiscall on the solver; eax is a callee's residue, which no caller reads.
 pub(super) fn solve_due_events(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = DueEventCalls { host: ctx.host, esp: r.esp };
-    layout::solve_due_events(&mut calls, &mut ctx.mem, r.ecx);
+    on_collision(ctx.host, &mut ctx.mem, |s| layout::solve_due_events(&mut calls, s, r.ecx));
     Ok(Return::void(0, 0))
 }
 

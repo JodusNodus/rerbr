@@ -14,6 +14,7 @@ use rbr_physics::mem::Mem;
 
 use super::{E90_BUILD, EXCLUSION_TEST, FETCH_X};
 use crate::collision::E01_VEC4_COPY_FROM;
+use crate::rigid_body::on_solids;
 use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -287,7 +288,7 @@ pub(super) fn sample_indexed_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
 
 /// thiscall, no stack arguments: `CSolid::E43ClearAcc` (0x529e60), the two accumulators cleared.
 pub(super) fn clear_acc_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.clear_accumulators(r.ecx), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::clear_solid_accumulators(s, r.ecx)), 0))
 }
 
 /// thiscall, no stack arguments: `CEntity::E43_InitBD0` (0x519bd0), the walker marks.

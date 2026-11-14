@@ -495,6 +495,16 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   bindings; the wheel `differential` holds the solids (21856 bytes, 43 snapshots; an unrouted `ORIENTATION` store
   fails it); +0.92 % instructions per step held off (`Body::read`/`write` take the image at once, `SolidWords::image`;
   per word +2.66 %).
+  `M3DD30`; NGP's code at `0x791e8d50` (the car's `+0x310`, `+0x378`). The mounted bodies' only readers are
+  `NotifyFiltered` and `E43Vf80` (they are not stepped on drive2). Holding them needs each of these on `SolidView` (or a
+  lower/lift around its host call) and the poison run. Routed (group 11b; shadow survey with aids off and on: none
+  left): collision's body words through `CollisionView::with_solids`, the wall probe's point and the vote's list word
+  as values; `E43Vf80`/`Vf8C`, the accumulator clear, `CFloat3::Scale`, `ToQuat`'s output, the hinge (`HingeStore`
+  over `SolidWords`) and the response on `on_solids`; the frame hooks and the walks' vector copies on
+  `rigid_body::held_solids`. In-place runs on held words call `ran_direct` (the call memo cannot see held reads).
+  Per call `SolidView::image` keeps `Mem`'s paged `words`/`set_words4`; +0.47 % instructions per step off (gate 13/13).
+  Left with aids on: the mounted detach (`StepBig` 0x522100, `detach.rs` on `Mem`) and its leaves `M83DD0`,
+  `E34Quat::Norm`, `CCar::ToWorld`, which take pointers into the solids.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core

@@ -15,10 +15,10 @@ use crate::entities::hinge_slip::{SlipHandles, SlipInput};
 use crate::entities::hinge_solve::{ContactHandles, EntryTerms, SolveTerms};
 use crate::entities::hinge_stops::Limits;
 use crate::entities::store::{AdvanceInput, HingeStore, StatePayload};
-use crate::math::vec::Vec4;
 use crate::math::Mat3;
 use crate::mem::Mem;
 use crate::physics_core;
+use crate::rigid_body::layout::SolidWords;
 
 // The hinged body (`CHingedRigidBody`, at `this`). The names follow the model's fields ([`HingeStore`]'s inputs).
 /// Its key (+0x30), definition (+0x34), contact grid (+0x64), orientation quaternion (+0x100), position (+0x140) and
@@ -154,27 +154,42 @@ pub fn set_hinge_link(mem: &mut Mem, at: u32, link: u32) {
     mem.set_u32(at + HINGE_LINK, link);
 }
 
-pub fn vec3(mem: &Mem, at: u32) -> [f32; 3] {
-    [mem.f32(at), mem.f32(at + 4), mem.f32(at + 8)]
+// The words' accessors are the solids' (`SolidWords`): a hinged body is a solid, whose words a step may hold typed
+// (`rigid_body::layout::CarSolids`); on `Mem` they are the image's.
+
+fn f<W: SolidWords + ?Sized>(w: &W, at: u32) -> f32 {
+    f32::from_bits(w.word(at))
 }
 
-fn mat3(mem: &Mem, at: u32) -> [[f32; 3]; 3] {
-    std::array::from_fn(|row| vec3(mem, at + 12 * row as u32))
+fn set_f<W: SolidWords + ?Sized>(w: &mut W, at: u32, value: f32) {
+    w.set_word(at, value.to_bits());
 }
 
-pub(super) fn words<const N: usize>(mem: &Mem, at: u32) -> [u32; N] {
-    std::array::from_fn(|i| mem.u32(at + 4 * i as u32))
+fn floats<const N: usize, W: SolidWords + ?Sized>(w: &W, at: u32) -> [f32; N] {
+    w.words::<N>(at).map(f32::from_bits)
 }
 
-fn set_words(mem: &mut Mem, at: u32, values: &[u32]) {
+pub fn vec3<W: SolidWords + ?Sized>(w: &W, at: u32) -> [f32; 3] {
+    [f(w, at), f(w, at + 4), f(w, at + 8)]
+}
+
+fn mat3<W: SolidWords + ?Sized>(w: &W, at: u32) -> [[f32; 3]; 3] {
+    std::array::from_fn(|row| vec3(w, at + 12 * row as u32))
+}
+
+pub(super) fn words<const N: usize, W: SolidWords + ?Sized>(w: &W, at: u32) -> [u32; N] {
+    std::array::from_fn(|i| w.word(at + 4 * i as u32))
+}
+
+fn set_words<W: SolidWords + ?Sized>(w: &mut W, at: u32, values: &[u32]) {
     for (i, value) in values.iter().enumerate() {
-        mem.set_u32(at + 4 * i as u32, *value);
+        w.set_word(at + 4 * i as u32, *value);
     }
 }
 
-fn set_mat3(mem: &mut Mem, at: u32, m: &Mat3) {
+fn set_mat3<W: SolidWords + ?Sized>(w: &mut W, at: u32, m: &Mat3) {
     for (i, value) in m.iter().flatten().enumerate() {
-        mem.set_f32(at + 4 * i as u32, *value);
+        set_f(w, at + 4 * i as u32, *value);
     }
 }
 
@@ -197,8 +212,8 @@ fn set_f32s(mem: &mut Mem, at: u32, values: &[f32]) {
     }
 }
 
-fn load_window(mem: &Mem, at: u32) -> [u32; 3] {
-    std::array::from_fn(|i| mem.u32(at + 4 * i as u32))
+fn load_window<W: SolidWords + ?Sized>(w: &W, at: u32) -> [u32; 3] {
+    words(w, at)
 }
 
 /// The limit object the flag call is made on.
@@ -261,14 +276,14 @@ pub fn position_at(this: u32) -> u32 {
 }
 
 /// The definition's limit block `idx` (any index: the asm's `idx * 0x60` wraps).
-fn limit_block(mem: &Mem, def: u32, idx: u32) -> LimitSpring {
+fn limit_block<W: SolidWords + ?Sized>(w: &W, def: u32, idx: u32) -> LimitSpring {
     let block = def.wrapping_add(LIMIT_BLOCK).wrapping_add(LIMIT_STRIDE.wrapping_mul(idx));
     LimitSpring {
-        kind: mem.u32(block + LIMIT_KIND),
-        stiffness: mem.f32(block + LIMIT_STIFFNESS),
-        damping: mem.f32(block + LIMIT_DAMPING),
-        max_displacement: mem.f32(block + LIMIT_MAX_DISPLACEMENT),
-        span: mem.f32(block + LIMIT_SPAN),
+        kind: w.word(block + LIMIT_KIND),
+        stiffness: f(w, block + LIMIT_STIFFNESS),
+        damping: f(w, block + LIMIT_DAMPING),
+        max_displacement: f(w, block + LIMIT_MAX_DISPLACEMENT),
+        span: f(w, block + LIMIT_SPAN),
     }
 }
 
@@ -277,23 +292,23 @@ fn limit_state_at(this: u32, idx: u32) -> u32 {
     this.wrapping_add(HINGE_SPRING_POSITIONS).wrapping_add(idx.wrapping_mul(4))
 }
 
-impl HingeStore for Mem {
+impl<W: SolidWords> HingeStore for W {
     fn hinge_link(&self, this: u32) -> u32 {
-        self.u32(this + HINGE_LINK)
+        self.word(this + HINGE_LINK)
     }
 
     fn hinge_definition(&self, this: u32) -> u32 {
-        self.u32(this + HINGE_DEF)
+        self.word(this + HINGE_DEF)
     }
 
     /// `*(this+0x650) != 0` makes `SimEAD0` return at once.
     fn hinge_linked(&self, this: u32) -> bool {
-        self.u32(self.u32(this + HINGE_LINK)) != 0
+        self.word(self.word(this + HINGE_LINK)) != 0
     }
 
     /// `SimEAD0` solves only for a body with an owner car (`this+0x3d0`).
     fn hinge_owned(&self, this: u32) -> bool {
-        self.u32(this + HINGE_OWNER) != 0
+        self.word(this + HINGE_OWNER) != 0
     }
 
     fn load_hinge_limit(&self, def: u32, idx: u32) -> LimitSpring {
@@ -307,82 +322,82 @@ impl HingeStore for Mem {
     /// The hinge state of the body at `this`: its limit states, angle and rate.
     fn load_hinge_state(&self, this: u32) -> HingeState {
         HingeState {
-            spring_position: self.f32s(this + HINGE_SPRING_POSITIONS),
-            angle: self.f32(this + HINGE_ANGLE),
-            rate: self.f32(this + HINGE_RATE),
+            spring_position: floats(self, this + HINGE_SPRING_POSITIONS),
+            angle: f(self, this + HINGE_ANGLE),
+            rate: f(self, this + HINGE_RATE),
         }
     }
 
     fn body_limit(&self, this: u32, idx: u32) -> LimitSpring {
-        limit_block(self, self.u32(this + HINGE_DEF), idx)
+        limit_block(self, self.word(this + HINGE_DEF), idx)
     }
 
     fn body_limits(&self, this: u32) -> [LimitSpring; 2] {
-        self.load_hinge_limits(self.u32(this + HINGE_DEF))
+        self.load_hinge_limits(self.word(this + HINGE_DEF))
     }
 
     fn limit_position(&self, this: u32, idx: u32) -> f32 {
-        self.f32(limit_state_at(this, idx))
+        f(self, limit_state_at(this, idx))
     }
 
     fn store_limit_position(&mut self, this: u32, idx: u32, value: f32) {
-        self.set_f32(limit_state_at(this, idx), value);
+        set_f(self, limit_state_at(this, idx), value);
     }
 
     fn store_limit_positions(&mut self, this: u32, values: [f32; 2]) {
         for (i, value) in values.into_iter().enumerate() {
-            self.set_f32(this + HINGE_SPRING_POSITIONS + 4 * i as u32, value);
+            set_f(self, this + HINGE_SPRING_POSITIONS + 4 * i as u32, value);
         }
     }
 
     fn angle_rate(&self, this: u32) -> (f32, f32) {
-        (self.f32(this + HINGE_ANGLE), self.f32(this + HINGE_RATE))
+        (f(self, this + HINGE_ANGLE), f(self, this + HINGE_RATE))
     }
 
     fn hinge_angle(&self, this: u32) -> f32 {
-        self.f32(this + HINGE_ANGLE)
+        f(self, this + HINGE_ANGLE)
     }
 
     /// The rotation block of the hinge angle, nine words row by row.
     fn store_rotation_block(&mut self, this: u32, block: &RotationBlock) {
         for (i, value) in block.rows.iter().flatten().enumerate() {
-            self.set_f32(this + HINGE_ROTATION + 4 * i as u32, *value);
+            set_f(self, this + HINGE_ROTATION + 4 * i as u32, *value);
         }
     }
 
     /// The inputs of `CHingedRigidBody::SimCFF0` (0x51cff0) at `this`.
     fn slip_input(&self, this: u32) -> SlipInput {
-        let def = self.u32(this + HINGE_DEF);
-        let car = self.u32(this + HINGE_OWNER);
+        let def = self.word(this + HINGE_DEF);
+        let car = self.word(this + HINGE_OWNER);
         let state = car_body::layout::state_address(car);
         SlipInput {
             body: this,
             face_normal_bf: def + DEF_FACE_NORMAL_BF,
             car,
             state,
-            identity: self.u32(ROOT_IDENTITY),
+            identity: self.word(ROOT_IDENTITY),
             car_vector: state + STATE_VECTOR,
             position: vec3(self, this + HINGE_POSITION),
             composed_hinge_point: vec3(self, def + DEF_COMPOSED_HINGE_POINT),
-            face_area: self.f32(def + DEF_FACE_AREA),
+            face_area: f(self, def + DEF_FACE_AREA),
             hinge_axis_rf: vec3(self, def + DEF_HINGE_AXIS_RF),
         }
     }
 
     fn car_speed(&self, state: u32) -> f32 {
-        self.f32(state + STATE_SPEED)
+        f(self, state + STATE_SPEED)
     }
 
     /// The inputs `SimE1D0` reads (`PivotInput`). The probe and the compose's `a` are taken only when their gate word's
     /// address is nonzero, as the asm tests the address (`leal`/`testl`), not the memory.
     fn pivot_input(&self, this: u32) -> PivotInput {
-        let def = self.u32(this + HINGE_DEF);
-        let car = self.u32(this + HINGE_OWNER);
+        let def = self.word(this + HINGE_DEF);
+        let car = self.word(this + HINGE_OWNER);
         PivotInput {
-            identity: self.u32(ROOT_IDENTITY),
+            identity: self.word(ROOT_IDENTITY),
             car,
-            car_acceleration_xy: [self.u32(car + CAR_ACCELERATION), self.u32(car + CAR_ACCELERATION + 4)],
-            car_acceleration_z: self.f32(car + CAR_ACCELERATION_Z),
+            car_acceleration_xy: [self.word(car + CAR_ACCELERATION), self.word(car + CAR_ACCELERATION + 4)],
+            car_acceleration_z: f(self, car + CAR_ACCELERATION_Z),
             car_angular_acceleration: car + CAR_ANGULAR_ACCELERATION,
             car_angular_velocity: if car + CAR_ANGULAR_VELOCITY_TWEAK != 0 { car + CAR_ANGULAR_VELOCITY } else { 0 },
             hinge_point_rf: if def + DEF_HINGE_POINT_RF_TWEAK != 0 { def + DEF_HINGE_POINT_RF } else { 0 },
@@ -393,13 +408,13 @@ impl HingeStore for Mem {
     /// Stores `SimE1D0`'s pivot (+0x600..+0x608) and settle value (+0x620) in the hinged body.
     fn store_pivot(&mut self, this: u32, pivot: &Pivot) {
         for (i, &v) in pivot.hinge_point_acceleration.iter().enumerate() {
-            self.set_f32(this + HINGE_POINT_ACCELERATION + 4 * i as u32, v);
+            set_f(self, this + HINGE_POINT_ACCELERATION + 4 * i as u32, v);
         }
-        self.set_f32(this + HINGE_FRAME_ANGULAR_ACCELERATION, pivot.frame_angular_acceleration);
+        set_f(self, this + HINGE_FRAME_ANGULAR_ACCELERATION, pivot.frame_angular_acceleration);
     }
 
     fn settle_axis(&self, this: u32) -> u32 {
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         if def.wrapping_add(DEF_HINGE_AXIS_RF_TWEAK) == 0 {
             0
         } else {
@@ -410,35 +425,35 @@ impl HingeStore for Mem {
     /// The inputs `SimFB40` reads (`SignalInput`). Its branches test the key and the owner; the addresses it forms are not
     /// tested in memory, so every field is read here.
     fn signal_input(&self, this: u32) -> SignalInput {
-        let definition = self.u32(this + HINGE_DEF);
-        let link = self.u32(this + HINGE_LINK);
+        let definition = self.word(this + HINGE_DEF);
+        let link = self.word(this + HINGE_LINK);
         SignalInput {
             body: this,
             orientation_matrix: this + HINGE_ORIENTATION_MATRIX,
-            identity: self.u32(ROOT_IDENTITY),
+            identity: self.word(ROOT_IDENTITY),
             hinge_point_bf: definition + DEF_HINGE_POINT_BF,
-            key: self.u32(this + HINGE_KEY),
-            owner: self.u32(this + HINGE_OWNER),
-            orientation: self.f32s(this + HINGE_ORIENTATION),
-            linear_velocity: self.f32s(this + HINGE_LINEAR_VELOCITY),
-            angular_velocity: self.f32s(this + HINGE_ANGULAR_VELOCITY),
-            hinge_point_rf: self.f32s(definition + DEF_HINGE_POINT_RF),
-            body_id: self.u32(definition + DEF_BODY_ID),
-            angle: self.f32(this + HINGE_ANGLE),
-            default_angle: self.f32(definition + DEF_DEFAULT_ANGLE),
-            link_flag: self.u32(link),
+            key: self.word(this + HINGE_KEY),
+            owner: self.word(this + HINGE_OWNER),
+            orientation: floats(self, this + HINGE_ORIENTATION),
+            linear_velocity: floats(self, this + HINGE_LINEAR_VELOCITY),
+            angular_velocity: floats(self, this + HINGE_ANGULAR_VELOCITY),
+            hinge_point_rf: floats(self, definition + DEF_HINGE_POINT_RF),
+            body_id: self.word(definition + DEF_BODY_ID),
+            angle: f(self, this + HINGE_ANGLE),
+            default_angle: f(self, definition + DEF_DEFAULT_ANGLE),
+            link_flag: self.word(link),
         }
     }
 
     /// The definition's `+0x4bc` (`b0`) and `+0x16c` (`mass`), read before `SimE1D0`.
     fn solve_entry_terms(&self, this: u32) -> EntryTerms {
-        let def = self.u32(this + HINGE_DEF);
-        EntryTerms { inertia: self.f32(def + DEF_INERTIA), inverse_mass: self.f32(def + DEF_INVERSE_MASS) }
+        let def = self.word(this + HINGE_DEF);
+        EntryTerms { inertia: f(self, def + DEF_INERTIA), inverse_mass: f(self, def + DEF_INVERSE_MASS) }
     }
 
     /// The solve's inputs, read after `SimE1D0`.
     fn solve_terms(&self, this: u32) -> SolveTerms {
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         SolveTerms {
             axes_rf: mat3(self, def + DEF_AXES_RF),
             hinge_rotation: mat3(self, this + HINGE_ROTATION),
@@ -447,32 +462,32 @@ impl HingeStore for Mem {
             hinge_axis_rf: vec3(self, def + DEF_HINGE_AXIS_RF),
             hinge_axis_bf: vec3(self, def + DEF_HINGE_AXIS_BF),
             hinge_point_bf: vec3(self, def + DEF_HINGE_POINT_BF),
-            default_angle: self.f32(def + DEF_DEFAULT_ANGLE),
-            spring_rate: self.f32(def + DEF_SPRING_RATE),
-            damping: self.f32(def + DEF_DAMPING),
-            angle: self.f32(this + HINGE_ANGLE),
-            rate: self.f32(this + HINGE_RATE),
-            frame_angular_acceleration: self.f32(this + HINGE_FRAME_ANGULAR_ACCELERATION),
+            default_angle: f(self, def + DEF_DEFAULT_ANGLE),
+            spring_rate: f(self, def + DEF_SPRING_RATE),
+            damping: f(self, def + DEF_DAMPING),
+            angle: f(self, this + HINGE_ANGLE),
+            rate: f(self, this + HINGE_RATE),
+            frame_angular_acceleration: f(self, this + HINGE_FRAME_ANGULAR_ACCELERATION),
         }
     }
 
     /// The solve's value, which `SimEAD0` writes at +0x624.
     fn store_solved(&mut self, this: u32, value: f32) {
-        self.set_f32(this + HINGE_SOLVED, value);
+        set_f(self, this + HINGE_SOLVED, value);
     }
 
     /// The inputs of `CHingedRigidBody::SimDB40` (0x51db40) at `this`, or `None` when its guard fails: the debug flag is
     /// clear, or there is no owner car. The asm tests the flag first, then the car.
     fn frame_walk_input(&self, this: u32) -> Option<FrameWalkInput> {
-        let physics = self.u32(car_body::layout::WORLD);
-        let flags = self.u32(self.u32(physics + PHYSICS_DEF) + DBG_FLAGS);
-        let car = self.u32(this + HINGE_OWNER);
+        let physics = self.word(car_body::layout::WORLD);
+        let flags = self.word(self.word(physics + PHYSICS_DEF) + DBG_FLAGS);
+        let car = self.word(this + HINGE_OWNER);
         if flags & DBG_HINGE_FLAG == 0 || car == 0 {
             return None;
         }
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         Some(FrameWalkInput {
-            identity: self.u32(ROOT_IDENTITY),
+            identity: self.word(ROOT_IDENTITY),
             body: this,
             car,
             hinge_rotation: mat3(self, this + HINGE_ROTATION),
@@ -486,10 +501,10 @@ impl HingeStore for Mem {
 
     /// The inputs of `CHingedRigidBody::SimD860` (0x51d860) at `this`.
     fn offset_input(&self, this: u32) -> OffsetInput {
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         OffsetInput {
-            identity: self.u32(ROOT_IDENTITY),
-            car: self.u32(this + HINGE_OWNER),
+            identity: self.word(ROOT_IDENTITY),
+            car: self.word(this + HINGE_OWNER),
             rotation_row: vec3(self, this + HINGE_ROTATION + 12),
             axes_rf: mat3(self, def + DEF_AXES_RF),
             offset: vec3(self, this + HINGE_OFFSET),
@@ -498,20 +513,23 @@ impl HingeStore for Mem {
 
     /// The body and definition words `SimEFE0` reads or writes (`RefreshState`), as the body is in memory now.
     fn hinge_refresh_state(&self, this: u32) -> RefreshState {
-        let def = self.u32(this + HINGE_DEF);
-        let link_address = self.u32(this + HINGE_LINK);
+        let def = self.word(this + HINGE_DEF);
+        let link_address = self.word(this + HINGE_LINK);
         RefreshState {
-            unlocked: self.u32(def + DEF_UNLOCKED),
+            unlocked: self.word(def + DEF_UNLOCKED),
             definition_angle_block: words(self, def + DEF_ANGLE_BLOCK),
-            max_angle: self.u32(def + DEF_MAX_ANGLE),
-            min_angle: self.u32(def + DEF_MIN_ANGLE),
-            definition_spring_position: [self.u32(def + DEF_SPRING_POSITION_A), self.u32(def + DEF_SPRING_POSITION_B)],
+            max_angle: self.word(def + DEF_MAX_ANGLE),
+            min_angle: self.word(def + DEF_MIN_ANGLE),
+            definition_spring_position: [
+                self.word(def + DEF_SPRING_POSITION_A),
+                self.word(def + DEF_SPRING_POSITION_B),
+            ],
             hinge_point_bf: words(self, def + DEF_HINGE_POINT_BF),
             link_address,
-            link_flag: self.u32(link_address),
-            grid: self.u32(this + HINGE_GRID),
-            dirty: self.u32(this + HINGE_DIRTY_TWEAK + 8),
-            dirty_counter: self.u32(this + HINGE_DIRTY_COUNTER),
+            link_flag: self.word(link_address),
+            grid: self.word(this + HINGE_GRID),
+            dirty: self.word(this + HINGE_DIRTY_TWEAK + 8),
+            dirty_counter: self.word(this + HINGE_DIRTY_COUNTER),
             angle_block: words(self, this + HINGE_ANGLE_BLOCK),
             spring_position: words(self, this + HINGE_SPRING_POSITIONS),
             position: words(self, this + HINGE_POSITION),
@@ -527,7 +545,7 @@ impl HingeStore for Mem {
     /// Writes the words `SimEFE0` changes: the flag, the CBase and its counter, the angle block, the limit words and the
     /// copies.
     fn store_hinge_refresh_state(&mut self, this: u32, state: &RefreshState) {
-        self.set_u32(state.link_address, state.link_flag);
+        self.set_word(state.link_address, state.link_flag);
         set_words(self, this + HINGE_DIRTY_TWEAK + 8, &[state.dirty]);
         set_words(self, this + HINGE_DIRTY_COUNTER, &[state.dirty_counter]);
         set_words(self, this + HINGE_ANGLE_BLOCK, &state.angle_block);
@@ -541,10 +559,10 @@ impl HingeStore for Mem {
     /// The addresses `SimEFE0` passes to its calls: the definition's blocks (the `VfE070` pointers, `BodyCompose`'s `a` and
     /// output) and the body's car. `offset_result` is the caller's scratch vector for `SimD860`.
     fn refresh_handles(&self, this: u32, offset_result: u32) -> RefreshHandles {
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         RefreshHandles {
             body: this,
-            car: self.u32(this + HINGE_OWNER),
+            car: self.word(this + HINGE_OWNER),
             first_axes: [
                 def + DEF_HINGE_POINT_RF,
                 def + DEF_HINGE_AXIS_RF,
@@ -569,12 +587,12 @@ impl HingeStore for Mem {
 
     /// The addresses `SimD160` passes to its calls.
     fn pose_handles(&self, this: u32) -> PoseHandles {
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         PoseHandles {
-            car: self.u32(this + HINGE_OWNER),
+            car: self.word(this + HINGE_OWNER),
             hinge_point_rf: def + DEF_HINGE_POINT_RF,
             hinge_axis_rf: def + DEF_HINGE_AXIS_RF,
-            identity: self.u32(ROOT_IDENTITY),
+            identity: self.word(ROOT_IDENTITY),
             transformed_hinge_point: this + HINGE_OFFSET,
             carried_hinge_axis: this + HINGE_CARRIED_AXIS,
             body: this,
@@ -585,7 +603,7 @@ impl HingeStore for Mem {
 
     /// The definition's frame words, and the body's block and position, as they are in memory now (`SimD160`'s reads).
     fn pose_state(&self, this: u32) -> PoseState {
-        let def = self.u32(this + HINGE_DEF);
+        let def = self.word(this + HINGE_DEF);
         PoseState {
             definition: PoseDefinition {
                 composed_hinge_point: vec3(self, def + DEF_COMPOSED_HINGE_POINT),
@@ -598,7 +616,7 @@ impl HingeStore for Mem {
                 frame_matrix: mat3(self, this + HINGE_FRAME_MATRIX),
                 hinge_rotation: mat3(self, this + HINGE_ROTATION),
             },
-            position: self.f32s(this + HINGE_POSITION),
+            position: floats(self, this + HINGE_POSITION),
         }
     }
 
@@ -608,16 +626,16 @@ impl HingeStore for Mem {
         set_mat3(self, this + HINGE_ORIENTATION_MATRIX, &state.body.orientation_matrix);
         set_mat3(self, this + HINGE_FRAME_MATRIX, &state.body.frame_matrix);
         for (i, value) in state.position.iter().enumerate() {
-            self.set_f32(this + HINGE_POSITION + 4 * i as u32, *value);
+            set_f(self, this + HINGE_POSITION + 4 * i as u32, *value);
         }
     }
 
     fn limit_inputs(&self, this: u32) -> Limits {
-        let tweak = self.u32(this + HINGE_DEF);
+        let tweak = self.word(this + HINGE_DEF);
         Limits {
-            angle: self.f32(this + HINGE_ANGLE),
-            rate: self.f32(this + HINGE_RATE),
-            restitution: self.f32(tweak + DEF_RESTITUTION),
+            angle: f(self, this + HINGE_ANGLE),
+            rate: f(self, this + HINGE_RATE),
+            restitution: f(self, tweak + DEF_RESTITUTION),
             max_angle: load_window(self, tweak + DEF_MAX_ANGLE_RECORD),
             min_angle: load_window(self, tweak + DEF_MIN_ANGLE_RECORD),
         }
@@ -625,36 +643,36 @@ impl HingeStore for Mem {
 
     fn store_limit_window(&mut self, this: u32, window: [u32; 3]) {
         for (i, word) in window.into_iter().enumerate() {
-            self.set_u32(this + HINGE_ANGLE_BLOCK + 4 * i as u32, word);
+            self.set_word(this + HINGE_ANGLE_BLOCK + 4 * i as u32, word);
         }
     }
 
     fn store_limit_rate(&mut self, this: u32, rate: f32) {
-        self.set_f32(this + HINGE_RATE, rate);
+        set_f(self, this + HINGE_RATE, rate);
     }
 
     fn advance_input(&self, this: u32) -> AdvanceInput {
         AdvanceInput {
-            solved: self.f32(this + HINGE_SOLVED),
-            rate: self.f32(this + HINGE_RATE),
-            angle: self.f32(this + HINGE_ANGLE),
+            solved: f(self, this + HINGE_SOLVED),
+            rate: f(self, this + HINGE_RATE),
+            angle: f(self, this + HINGE_ANGLE),
         }
     }
 
     fn store_rate(&mut self, this: u32, rate: f32) {
-        self.set_f32(this + HINGE_RATE, rate);
+        set_f(self, this + HINGE_RATE, rate);
     }
 
     fn store_angle(&mut self, this: u32, angle: f32) {
-        self.set_f32(this + HINGE_ANGLE, angle);
+        set_f(self, this + HINGE_ANGLE, angle);
     }
 
     fn rate_axis(&self, this: u32) -> u32 {
-        self.u32(this + HINGE_DEF) + DEF_HINGE_AXIS_RF
+        self.word(this + HINGE_DEF) + DEF_HINGE_AXIS_RF
     }
 
     fn clear_linear_velocity(&mut self, this: u32) {
-        Vec4::from([0.0; 4]).store(self, this + HINGE_LINEAR_VELOCITY);
+        self.set_words4(this + HINGE_LINEAR_VELOCITY, [0; 4]);
     }
 
     /// The payload's reads: the key, the rotation block's vector (+0x100, or 0 when `this` is -0xf0) and the position
@@ -662,21 +680,21 @@ impl HingeStore for Mem {
     fn state_payload(&self, this: u32) -> StatePayload {
         let orientation_at = if this.wrapping_add(0xF0) != 0 { this + HINGE_ORIENTATION } else { 0 };
         StatePayload {
-            key: self.u32(this + HINGE_KEY),
-            orientation: self.f32s(orientation_at),
-            position: self.f32s(this + HINGE_POSITION),
+            key: self.word(this + HINGE_KEY),
+            orientation: floats(self, orientation_at),
+            position: floats(self, this + HINGE_POSITION),
         }
     }
 
     /// The key, the orientation at +0x20, then the position (`E01Vec4::CopyFrom`) at +0x14, which overwrites the
     /// orientation's first lane (+0x20). The padding words are not written, as the original does not write them.
     fn store_state_payload(&mut self, sig: u32, payload: &StatePayload) {
-        self.set_u32(sig, payload.key);
-        Vec4::from(payload.orientation).store(self, sig + 0x20);
-        Vec4::from(payload.position).store(self, sig + 0x14);
+        self.set_word(sig, payload.key);
+        self.set_words4(sig + 0x20, payload.orientation.map(f32::to_bits));
+        self.set_words4(sig + 0x14, payload.position.map(f32::to_bits));
     }
 
     fn state_signal(&self) -> u32 {
-        physics_core::layout::signal_manager(self) + STATE_SIGNAL
+        physics_core::layout::signal_manager(self.mem()) + STATE_SIGNAL
     }
 }

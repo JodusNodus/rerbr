@@ -61,6 +61,7 @@ pub use hinge_state::{
 };
 pub use materials::{build_material_table, fill_ones, sample_indexed, store_material_table};
 pub(crate) use materials::{SLOT_SIZE, TABLE_COUNT, TABLE_SELF};
+pub use store_mem::clear_solid_accumulators;
 pub use walk_nodes::{
     append_name_index, copy_grid, copy_vec4, empty_hook, node_of, old_frame_of, vtable_target, walker_address,
     GRID_FIRST_BOXES, GRID_SECOND_BOXES, GRID_STRIDE,

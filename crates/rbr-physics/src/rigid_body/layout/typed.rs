@@ -10,7 +10,6 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use super::mem_store::SolidWords;
-use super::Vec4;
 use crate::car_body::layout::{hinged_slot, mounted_slot, wheel_list_at};
 use crate::mem::Mem;
 use crate::store::{Object, Raw};
@@ -214,11 +213,9 @@ impl SolidWords for SolidView<'_> {
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
-        if self.solids.is_none() {
-            return Vec4::from(words.map(f32::from_bits)).store(self.mem, at);
-        }
-        for (k, word) in words.into_iter().enumerate() {
-            self.set_word(at + 4 * k as u32, word);
+        match self.solids {
+            Some(_) => words.into_iter().enumerate().for_each(|(k, word)| self.set_word(at + 4 * k as u32, word)),
+            None => self.mem.set_words4(at, words),
         }
     }
 }

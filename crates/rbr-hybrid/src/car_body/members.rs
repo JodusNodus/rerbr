@@ -10,7 +10,7 @@ use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
 use super::on_car;
 use crate::collision::{BodyCallees, E01_VEC4_COPY_FROM, E37_EDGE_EDGE};
 use crate::entities::COPY16_WALK;
-use crate::rigid_body::VF16_HELPER;
+use crate::rigid_body::{set_solid_word, VF16_HELPER};
 use crate::{engine_driveline, entities, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
 
@@ -170,12 +170,13 @@ pub(super) fn flow_m566640(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(ctx.mem.flow_holds(r.ecx), 0))
 }
 
-/// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`.
+/// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`. `out` may be a solid's orientation
+/// (the hinged body's `SimD160`), stored held.
 pub(super) fn to_quat(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let out = r.stack[0];
     let q = quat::to_quat(&ctx.mem.load_mat3(r.ecx));
     for (k, lane) in [q.x, q.y, q.z, q.w].into_iter().enumerate() {
-        ctx.mem.set_f32(out + 4 * k as u32, lane);
+        set_solid_word(ctx.host, &mut ctx.mem, out + 4 * k as u32, lane.to_bits());
     }
     Ok(Return::void(out, 4))
 }

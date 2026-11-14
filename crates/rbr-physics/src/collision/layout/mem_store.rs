@@ -5,9 +5,9 @@ use super::entry_box::{self, EntryBox};
 use super::event_pool::{self, EVENT_BODY, EVENT_FLAGS, EVENT_MATERIAL_A, EVENT_MATERIAL_B, EVENT_NEXT, EVENT_PARTNER};
 use super::mesh_query::{load_material_pair, material_manager};
 use super::solver::{
-    BODY_CONTACT_ROW, BODY_CONTACT_ROW_SIZE, BODY_OFFSET_ROW, BODY_POSITION, FRAME_GLOBAL, SOLVER_CONTACT_COUNT,
-    SOLVER_CONTACT_ROW, SOLVER_CONTACT_ROWS, SOLVER_EVENTS, SOLVER_EVENT_COUNT, SOLVER_OFFSET_COUNT, SOLVER_OFFSET_ROW,
-    SOLVER_OFFSET_ROWS,
+    BODY_CONTACT_ROW, BODY_CONTACT_ROW_SIZE, BODY_OFFSET_ROW, BODY_POSITION, BODY_PROGRESS, FRAME_GLOBAL,
+    SOLVER_CONTACT_COUNT, SOLVER_CONTACT_ROW, SOLVER_CONTACT_ROWS, SOLVER_EVENTS, SOLVER_EVENT_COUNT,
+    SOLVER_OFFSET_COUNT, SOLVER_OFFSET_ROW, SOLVER_OFFSET_ROWS,
 };
 use super::walls::{HITS_COUNT, PENETRATION_EMITTER, SEG_COUNT, SEG_INDEX, WALL_LATCH, WALL_LEAVES, WALL_MESH};
 use super::{grid_edges, mesh_query};
@@ -33,9 +33,14 @@ const EVENT_POINT_PARTNER: u32 = 0x60;
 const EVENT_POINT_BODY: u32 = 0xc0;
 const EVENT_PLANE: u32 = 0x70;
 const BODY_FLAGS: u32 = 0x60;
-const BODY_PROGRESS: u32 = 0x290;
 /// The material flag byte (`+0x158`) whose bit 3 suppresses the event.
 const MATERIAL_FLAGS: u32 = 0x158;
+
+/// The header of the contact rows at `rows` opened for `body`: the body, and no rows.
+pub(super) fn open_rows_header(mem: &mut Mem, rows: u32, body: u32) {
+    mem.set_u32(rows, body);
+    mem.set_u32(rows + 4, 0);
+}
 
 impl CollisionStore for Mem {
     fn vec4(&self, at: u32) -> Vec4 {
@@ -211,8 +216,7 @@ impl CollisionStore for Mem {
     }
 
     fn open_contact_row(&mut self, rows: u32, body: u32) {
-        self.set_u32(rows, body);
-        self.set_u32(rows + 4, 0);
+        open_rows_header(self, rows, body);
         self.set_u32(body + BODY_CONTACT_ROW, rows);
     }
 

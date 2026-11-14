@@ -8,7 +8,8 @@ use rbr_physics::rigid_body::host::{EntityWalkHost, HostUnavailable};
 use rbr_physics::rigid_body::rotation::MulHost;
 
 use crate::{Binding, Ctx, Decline, Host};
-use rbr_physics::rigid_body::layout::SolidView;
+use rbr_physics::rigid_body::layout::{CarSolids, SolidView};
+use std::cell::Ref;
 
 mod contact;
 mod force_pass;
@@ -64,11 +65,21 @@ pub(crate) fn solid_f32(host: &dyn Host, mem: &Mem, at: u32) -> f32 {
 }
 
 /// Stores the word at `at`: into a held solid if one names it, else the image.
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
 pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32) {
     if !host.typed().is_some_and(|t| t.solids.as_ref().is_some_and(|s| s.write(at, value))) {
         mem.set_u32(at, value);
     }
+}
+
+/// The car's solids while the pure host holds them over a step ([`on_solids`]); `None` per call, where a caller on a
+/// hot path keeps its run on `Mem` (`SolidView::image` reads word by word).
+pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
+    Ref::filter_map(host.typed()?, |t| t.solids.as_ref()).ok()
+}
+
+/// Whether a held solid's typed state holds the word at `at` (never per call).
+pub(crate) fn holds_solid_word(host: &dyn Host, at: u32) -> bool {
+    held_solids(host).is_some_and(|s| s.read(at).is_some())
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;

@@ -151,10 +151,11 @@ pub static BINDINGS: [Binding; 93] = [
 ];
 
 /// Runs `run` on the collision store: the solver's rows and the car's grids' bytes in the typed storage the host holds
-/// over a step ([`Host::typed`]), else (per call) the image's.
+/// over a step ([`Host::typed`]), and the bodies' words in the car's solids when it holds them; else (per call) the
+/// image's.
 pub(crate) fn on_collision<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CollisionView) -> T) -> T {
     match host.typed() {
-        Some(typed) => run(&mut typed.car.collision.view(mem)),
+        Some(typed) => run(&mut typed.car.collision.view(mem).with_solids(typed.solids.as_ref())),
         None => run(&mut CollisionView::image(mem)),
     }
 }
