@@ -108,3 +108,27 @@ fn held_across_steps_is_the_per_step_lift_byte_for_byte() {
     }
     assert_same(&snap, &a, &b, "a step after the restore");
 }
+
+/// With the `poison` feature, while the state held across steps is stale a read of a held word through the image's
+/// memory fails: a clone kept from before the step, and `Pure::mem` (the readers not on the gate yet); after
+/// `Pure::image` lowers it, both read.
+#[cfg(feature = "poison")]
+#[test]
+fn a_stale_read_of_a_held_word_fails() {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    let Some((snap_path, _)) = inputs() else {
+        eprintln!("RBR_SNAPS or RBR_RECORDINGS unset; skipped");
+        return;
+    };
+    let snap = Snapshot::open(&snap_path).unwrap();
+    let mut playback = Playback::new(&snap, true);
+    playback.pure.typed_across_steps = true;
+    let kept = playback.pure.image().clone();
+    let car = kept.u32(CAR_PTR);
+    let held = rbr_physics::rigid_body::layout::CarSolids::lift(&kept, car).owned()[0].0.start;
+    playback.step(None, snap.metadata().substeps);
+    assert!(catch_unwind(AssertUnwindSafe(|| kept.u32(held))).is_err());
+    assert!(catch_unwind(AssertUnwindSafe(|| playback.pure.mem.u32(held))).is_err());
+    let lowered = playback.pure.image().u32(held);
+    assert_eq!((kept.u32(held), playback.pure.mem.u32(held)), (lowered, lowered));
+}
