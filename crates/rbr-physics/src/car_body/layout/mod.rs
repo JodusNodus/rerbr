@@ -15,6 +15,7 @@ pub mod damage_handler_at;
 pub mod damage_tables;
 pub mod lights;
 mod offsets;
+mod typed;
 pub mod wall_hit;
 
 pub use body_points::{reset_body_grid, scatter_points};
@@ -22,7 +23,7 @@ pub use callees::{
     publish, setup, virtual_target, wiring, DAMAGE_PUBLISH_SLOT, IDENTITY_SLOT, VEC4_CLEAR, VEC4_COPY_FROM,
 };
 pub use car::{
-    attach_lights, roll_bar_cell_at, roll_bar_force_at, solid_scratch_at, state_address, steer_slew_at,
+    attach_lights, cell_at, roll_bar_cell_at, roll_bar_force_at, solid_scratch_at, state_address, steer_slew_at,
     steer_target_at, steer_target_rate_at, steer_torque_sum_at, Real, ANGULAR_VELOCITY, DAMAGE_HANDLER, DIR_BACK,
     GRID_PUSHED, OVERLOAD_FLAG, OVERRIDE_TIMER, PARTIAL_CONTACT, SNAPSHOT_ON, SPEED, SPEED_PRE, STATE, STEER_INPUT,
     STEER_TARGET_RATE, STEP_COUNT, VELOCITY, WALL_CONTACT, WALL_PENETRATION, WORLD,
@@ -62,4 +63,7 @@ pub use offsets::{
     index_receivers_at, light_system_at, next_receiver_at, position_at, signal_at, step_mark_steering_at,
     step_mark_timer_at, tweak_word_at, walk_source_at, BRAKE_AT, CAR_INIT_EMITTER_AT, PARTIAL_CONTACT_FLAG,
     PROBLEM_EMITTER_AT, RETIRE_EMITTER_AT, STAND_STILL_EMITTER_AT, THROTTLE_AT, TWEAK_BLOCK_WORDS,
+};
+pub use typed::{
+    cell_value_slot, differential, round_trip, slot, CarFields, CarOwn, CarState, CarView, Slot, STEP_MARK_STEERING,
 };

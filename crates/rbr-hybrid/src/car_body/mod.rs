@@ -2,7 +2,10 @@
 //! are the original's (thiscall `this` in ecx, the stack words `ret` pops). The car's and body's slots, the walks and the
 //! compose calls are the original's: a binding calls them through the host, and a bound callee runs in Rust again.
 
-use crate::{physics_core, Binding};
+use crate::{physics_core, Binding, Ctx, Host};
+use rbr_physics::car_body::layout::{CarView, Slot};
+use rbr_physics::mem::Mem;
+use rbr_physics::store::Value;
 
 mod assist;
 mod car_calls;
@@ -40,6 +43,22 @@ use step::{
 pub(crate) const UPDATE_SEED: u32 = 0x4E91F0;
 /// `E37GridOps::AddEdge` (0x4f65b0).
 pub(crate) const ADD_EDGE: u32 = 0x4F65B0;
+
+/// Runs `run` on the car's store: the step's car and its wheels in typed storage while the host holds them
+/// ([`Host::typed`]), any other car, and every car per call, on the image (`layout::CarView`).
+pub(crate) fn on_car<T>(ctx: &mut Ctx, run: impl FnOnce(&mut CarView) -> T) -> T {
+    let host = ctx.host;
+    let typed = host.typed();
+    let car = typed.as_deref().map(|t| &t.car);
+    run(&mut CarView::new(&mut ctx.mem, car.map(|c| &c.own), car.map(|c| &c.wheels)))
+}
+
+/// The field `slot` of the car at `car` as a step leaves it at this point: the typed storage's while the host holds it,
+/// else the image's. For the readers outside the car's bindings (NGP's downforce, curve term, engine wrapper and the
+/// tyres' thermal words).
+pub(crate) fn read_car<T: Value>(host: &dyn Host, mem: &Mem, car: u32, slot: Slot<T>) -> T {
+    host.typed().and_then(|t| t.car.own.read(car, slot)).unwrap_or_else(|| T::load(mem, car + slot.at))
+}
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("car_body", addr, name, run)

@@ -7,6 +7,7 @@ use rbr_physics::math::quat;
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
+use super::on_car;
 use crate::collision::{BodyCallees, E01_VEC4_COPY_FROM, E37_EDGE_EDGE};
 use crate::entities::COPY16_WALK;
 use crate::rigid_body::VF16_HELPER;
@@ -151,7 +152,7 @@ pub(super) fn sort_key(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall: `CCar::Get15F8` returns the float at `this + 0x15f8` in st0.
 pub(super) fn forward_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(f64::from(ctx.mem.forward_speed(r.ecx)), 0))
+    Ok(Return::float(f64::from(on_car(ctx, |m| m.forward_speed(r.ecx))), 0))
 }
 
 /// fastcall: `E60Flow::M5666b0` (0x5666b0), the damage-select word `MotionProbe` asks the flow.
@@ -219,37 +220,37 @@ pub(super) fn state_atb(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall: `GetB0C` returns the float at +0xb0c in st0.
 pub(super) fn get_b0c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(ctx.mem.steer_target(r.ecx) as f64, 0))
+    Ok(Return::float(on_car(ctx, |m| m.steer_target(r.ecx)) as f64, 0))
 }
 
 /// thiscall: `GetB1C` returns the float at +0xb1c in st0.
 pub(super) fn get_b1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(ctx.mem.steer_target_rate(r.ecx) as f64, 0))
+    Ok(Return::float(on_car(ctx, |m| m.steer_target_rate(r.ecx)) as f64, 0))
 }
 
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.
 pub(super) fn add_adc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::add_steer_torque_sum(&mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
+    on_car(ctx, |m| layout::add_steer_torque_sum(m, r.ecx, f32::from_bits(r.stack[0])));
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(i, j, v)`: `SetA1C` dirties the matrix cell and sets it.
 pub(super) fn set_a1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, v, ..] = r.stack;
-    layout::set_roll_bar_cell(&mut ctx.mem, r.ecx, i, j, f32::from_bits(v));
+    on_car(ctx, |m| layout::set_roll_bar_cell(m, r.ecx, i, j, f32::from_bits(v)));
     Ok(Return::void(0, 12))
 }
 
 /// thiscall: `Damp66D0`, the two anti-roll bars' force cells.
 pub(super) fn update_roll_bars(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    car::roll_bars::update_roll_bars(&mut ctx.mem, r.ecx);
+    on_car(ctx, |m| car::roll_bars::update_roll_bars(m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(i, neg)`: `GetA48`, the lane word at `+0xa48 + 0x40 * i`, negated when `neg` is nonzero; returns it in st0.
 pub(super) fn get_a48(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, neg, ..] = r.stack;
-    let lane = ctx.mem.roll_bar_force(r.ecx, i);
+    let lane = on_car(ctx, |m| m.roll_bar_force(r.ecx, i));
     let value = car::accessors::signed_force(lane, neg != 0);
     Ok(Return::float(value as f64, 8))
 }

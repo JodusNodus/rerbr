@@ -6,9 +6,8 @@
 //! port's. The order is the original's.
 
 use super::accessors::set_cell;
-use super::layout::{self, Real};
 use super::roll_bars;
-use crate::car_body::store::CarStore;
+use crate::car_body::store::{CarStore, Cell};
 use crate::mem::Mem;
 
 /// The calls the controls step makes out of its own body. Each cell write is its own dirtying (inside `set_cell`).
@@ -31,8 +30,7 @@ const SLEW_LIMIT: f32 = 20.0;
 /// Runs the controls step of `car` for the step `dt`, s.
 pub fn step_controls<S: CarStore>(calls: &mut impl ControlsCalls<S>, mem: &mut S, car: u32, dt: f32) {
     let inv_dt = 1.0 / dt;
-    let slew_at = layout::steer_slew_at(car);
-    let slew = Real::load(mem, slew_at);
+    let slew = mem.cell(car, Cell::SteerSlew);
     let mut step = mem.steer_input(car) - slew.value;
     let mut rate = inv_dt * step;
     // `|rate|`, with the original's compare: NaN takes the negated branch.
@@ -41,19 +39,19 @@ pub fn step_controls<S: CarStore>(calls: &mut impl ControlsCalls<S>, mem: &mut S
         step = (step / rate) * SLEW_LIMIT;
     }
     let new_slew = slew.value + step;
-    set_cell(slew, new_slew).store(mem, slew_at);
+    mem.store_cell(car, Cell::SteerSlew, set_cell(slew, new_slew));
 
     let old_target = mem.steer_target(car);
-    let target_at = layout::steer_target_at(car);
     let target = (new_slew * mem.max_steering_lock(car)) * mem.steering_rack_ratio(car);
-    set_cell(Real::load(mem, target_at), target).store(mem, target_at);
+    let cell = set_cell(mem.cell(car, Cell::SteerTarget), target);
+    mem.store_cell(car, Cell::SteerTarget, cell);
 
-    let rate_at = layout::steer_target_rate_at(car);
     let target_rate = (target - old_target) * inv_dt;
-    set_cell(Real::load(mem, rate_at), target_rate).store(mem, rate_at);
+    let cell = set_cell(mem.cell(car, Cell::SteerTargetRate), target_rate);
+    mem.store_cell(car, Cell::SteerTargetRate, cell);
 
-    let demand_at = layout::steer_torque_sum_at(car);
-    set_cell(Real::load(mem, demand_at), 0.0).store(mem, demand_at);
+    let cell = set_cell(mem.cell(car, Cell::SteerTorqueSum), 0.0);
+    mem.store_cell(car, Cell::SteerTorqueSum, cell);
 
     calls.scratch_step(mem, car, dt);
     calls.drive_step(mem, car, dt);

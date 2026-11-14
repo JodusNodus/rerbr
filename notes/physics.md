@@ -156,7 +156,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `VcuStore` (one unit, no handle), `DriveBlocks` | `vcu/store.rs` | `VcuView` only; `DriveBlocks`: the drive's typed state (`DriveRef`) |
 | `TyreStore` (handle `Tyre`) | `tyre/store.rs` | `TyreView` only; the callers' blocks: `tyre/layout/kernels.rs` |
 | `WheelStore` (by `Slot`; the image's words as default methods) | `wheel/layout/store.rs` | `wheel/layout/fields.rs` (every field on the image, per call); `WheelView` (typed) |
-| `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs` |
+| `CarStore` | `car_body/store.rs` | `car_body/layout/car.rs`, over `CarFields`: `Mem` per call, `CarView` (typed) |
 | `DriveStore` (one drive, no handle; `word`/`set_word` for the index arithmetic) | `engine_driveline/store.rs` | `DriveView` only (`layout/drive_typed.rs`) |
 | `EngineStore: DamperBlocks + EngineTables` (the engine's records, by address), `EngineTables` (tables, drive line, callers' records) | `engine_driveline/store.rs` | `layout/mem_store.rs` (`EngineTables` on every word store); `EngineView` (`layout/engine_typed.rs`) |
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
@@ -268,8 +268,9 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   axle, strut direction, tip, inverse arm and rack, drive axle direction, rod mount, steering rod, debug rows), the walk
   output, the probe's frame axis, contact distance, sector values, sweep residue, ground body and copies (`+0xdb0..
   +0xe30`, the two edge copies `Blend4`'s), the edge force's across vector, the step's strut velocity, spin, four forces
-  and end spin, the damage-changed flag. `CarWheels` (lift, lower, owned, `round_trip`) is in `CarTyped`, lifted and
-  lowered with the rest. The wheel's runs nest through the host (the step calls the refresh, the probe, the edge forces,
+  and end spin, the damage-changed flag, the ground flag (with the car's state). `CarWheels` (lift, lower, owned,
+  `round_trip`) is in `CarTyped`, lifted and lowered with the rest. The wheel's runs nest through the host (the step
+  calls the refresh, the probe, the edge forces,
   the top mount, the hub torque and the spin cross; the probe the sector lerps, the contact pick, the tag blend), so
   the state is a `RefCell` borrowed one field at a time, and there is no per-call lift: `WheelView` holds the step's
   wheels typed and keeps any other wheel on the image, field by field at its address (the `Mem` store is the same,
@@ -281,8 +282,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   wheel angle and strut length (the tyre's contact angle, `Snap9360`), the axle and knuckle axis (the car's transforms),
   the world hub, axle, probe direction, carcass edges and hub velocity (the car's walks, the CRT vector helpers, the
   collision casts), the car force and scratch (the car's accumulators), the blend ops and last tags (the tyre step's
-  pointers, NGP's step wrapper), the ray blocks (the mesh queries' hit words, NGP's tag blend), the ground flag
-  (`Vf6cx`), NGP's strut words `+0xe80..+0xe8c`. The calls into the tyre and the strut stay host calls: they take
+  pointers, NGP's step wrapper), the ray blocks (the mesh queries' hit words, NGP's tag blend), NGP's strut
+  words `+0xe80..+0xe8c`. The calls into the tyre and the strut stay host calls: they take
   pointers into the step's frame and the image words above, NGP rewrites three of them (the tyre step, the spring
   step, the relaxation), and the host writes the original's stack words around each. Readers
   during a step, through `rbr_hybrid::wheel::read_wheel`: NGP's engine wrapper (the rim speeds, under the engine
@@ -340,6 +341,36 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   every byte, 645 `SimE660` records); hybrid gate 13/13 (the 1.02 snapshots run the original `Sim8E20`, which calls
   `SimE370`, `SimE520`, `SimE660`, `SimE060`, `SimE1F0`, `Sim8D90`, `Sim80D0`, `Sim8610`, `Sim8B20` per call;
   `Sim8E20`, `Sim7D30` and `Sim8890` decline there); +0.48 % instructions per step.
+  records); `vcu_vectors`' chain with the drive held too; hybrid gate 13/13; -2.6 % instructions per step. Not typed
+  yet: the engine (`EngineStore`: `EngineOwn`, `EngineState`, the options' stall terms, the unit split, the damper
+  blocks in its objects), which stays on `Mem`.
+- The car's own state, eighth: `car_body::layout::CarState` (`layout/typed.rs`, `object!` with a `Slot` per field; 180
+  bytes): the control update's counter, marks and kept controls (steering input, throttle, brake), the snapshot flag,
+  the partial and wall contact times and the partial-contact flag, the values of the value cells (anti-roll bar
+  matrix, torque sum, filtered steering torque, slew, target and rate, speed sum: `CarStore::cell` by `Cell`, the
+  headers with their dirty words on the image, so `SetDirty` through the host stays right), the smoothed vector, the
+  respawn countdown, forward speed and speed, the overload flag, wall penetration, override timer, assistance block and
+  grid flag. `CarOwn` (lift, lower, owned, `round_trip`) is in `CarTyped`; `CarStore` is implemented over `CarFields`
+  (`Mem` per call; `CarView` holds the step's car and wheels, any other car on the image) and the bindings run on
+  `rbr_hybrid::car_body::on_car`, borrowing one field at a time (the controls step runs the drive, whose wheels call
+  `AddADC`; the step runs the retire check). The wheel's ground flag (`+0xebc`) is the wheel's typed now
+  (`wheel::layout::slot::on_ground`, read by the car's wheel count); the wheel's reads of the steering target and its
+  rate go through `WheelStore::car_field`. Stay on the image: the solid's words (`< +0x470`: pose, velocities, the
+  accumulators the wheels' car force and scratch add to), the pointers, the parts (drive, engine, VCU scratch, lights,
+  passenger), the damage handler, the step marks' other payload words, `+0xaa0`/`+0xac0` (the respawn clears them),
+  and the speed before the update and the direction opposite the velocity (`+0x1600`, `+0x1610`: the hinged bodies
+  read them, `SimCFF0`, the second through `E01Vec4::CopyFrom` of its address; typed, the poison run fails with
+  `car dir_back` in `0x43c5b0`). The wheel angle and strut length (`+0x5ac`, `+0x5bc`) stay the wheel's on the image
+  (the tyre's contact angle and the wheel step's pushed words read them there). Readers during a step, through
+  `rbr_hybrid::car_body::read_car`: NGP's downforce (forward speed and speed), curve term, engine wrapper and the tyres'
+  thermal words (forward speed); unrouted it fails the poison run (`car forward_speed` in `0x791e8d50`). The sensor
+  sampler and the publish step are not bound (vectors only), so the engine's sensor words stay calls. Evidence: drive2
+  attempt 5 84084/84084 typed; `--twin typed` equal after each of 84084 steps (aids off and on); poison 84084/84084
+  (aids off, aids on, aids on with realistic damage); `round_trip` 180 typed bytes and `differential` (the host-free
+  entries in a row per call against held: controls, control update with a call for help, forces, step, retire check,
+  cell setters, grid edge, outside assistance, respawn pose and respawn, snapshot, sensors; every byte of the car and
+  the scratch, 8544 bytes, and every caller's word) on 40 snapshots; `car_body` and `wheel` vectors on the Mem store;
+  hybrid gate 13/13; +0.40 % instructions per step.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core

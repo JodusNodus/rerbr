@@ -3,18 +3,15 @@
 //! the grid edge, the drive line sample (`Split17C`), the vote probe, the countdown, the respawn pose (`Slot97`) and the
 //! respawn.
 
-use super::car::{
-    roll_bar_cell_at, solid_scratch_at, steer_torque_sum_at, Real, OVERRIDE_TIMER, PARTIAL_CONTACT, WALL_CONTACT, WORLD,
-};
+use super::car::{solid_scratch_at, WORLD};
 use super::car_parts::FLOW_OBJECT;
 use super::construct::SIGNALS;
 use crate::car_body::assist::{self, AssistCalls, RetireCalls};
 use crate::car_body::edge::EdgeCalls;
 use crate::car_body::scratch_dispatch::ScratchDispatchCalls;
-use crate::car_body::store::CarStore;
+use crate::car_body::store::{CarStore, Cell};
 use crate::car_body::{accessors, edge, scratch_dispatch, steering_ffb};
 use crate::engine_driveline::layout::spline_at;
-use crate::engine_driveline::store::EngineStore;
 use crate::entities::layout::ROOT_IDENTITY;
 use crate::math::quat::{self};
 use crate::math::vec::{Vec3, Vec4};
@@ -148,16 +145,14 @@ pub fn outside_assistance<S: CarStore>(
     c: u32,
 ) {
     let frame = ((entry - 4) & !0xf) - 0x40;
-    mem.set_u32(car + 0x15E4, b);
-    mem.set_u32(car + OVERRIDE_TIMER, c);
-    for k in 0..4 {
-        mem.set_u32(car + 0x1680 + 4 * k, 0);
-    }
+    mem.set_respawn_countdown(car, f32::from_bits(b));
+    mem.set_override_timer(car, f32::from_bits(c));
+    mem.clear_assistance_block(car);
     if a == 0 {
-        mem.set_u32(car + 0x9F0, 0);
+        mem.set_partial_contact_flag(car, 0);
     } else {
-        let partial = u32::from(1.0 < mem.f32(car + PARTIAL_CONTACT));
-        mem.set_u32(car + 0x9F0, partial);
+        let partial = u32::from(1.0 < mem.partial_contact(car));
+        mem.set_partial_contact_flag(car, partial);
         let code = if partial != 0 { 1 } else { 3 - u32::from(calls.lane_test(car) != 0) };
         mem.set_u32(frame + 0xC, code);
         calls.emit_outside(frame + 0xC);
@@ -167,8 +162,8 @@ pub fn outside_assistance<S: CarStore>(
         mem.set_u32(frame + 0x20 + word, 0);
     }
     calls.apply_control(car, frame + 0x20);
-    calls.set_dirty(car + 0xAE0);
-    mem.set_u32(car + 0xAEC, 0);
+    calls.set_dirty(super::cell_at(car, Cell::FfbTorque));
+    mem.set_cell_value(car, Cell::FfbTorque, 0.0);
 }
 
 /// The two calls in `CCar::Vf158x`: slot 0 on the car (the name getter, `CEntity::Vf00`) and the tail-call to the solid's
@@ -234,14 +229,14 @@ pub fn set_neutral_light<S: CarStore>(mem: &mut S, this: u32, x: u32) -> u32 {
 
 /// `CCar::AddADC(v)` (0x4e6660): the demand cell is dirtied, then `value += v`.
 pub fn add_steer_torque_sum<S: CarStore>(mem: &mut S, car: u32, v: f32) {
-    let at = steer_torque_sum_at(car);
-    accessors::add_steer_torque(Real::load(mem, at), v).store(mem, at);
+    let cell = accessors::add_steer_torque(mem.cell(car, Cell::SteerTorqueSum), v);
+    mem.store_cell(car, Cell::SteerTorqueSum, cell);
 }
 
 /// `CCar::SetA1C(i, j, v)` (0x4e66a0): the matrix cell is dirtied, then set to `v`.
 pub fn set_roll_bar_cell<S: CarStore>(mem: &mut S, car: u32, i: u32, j: u32, v: f32) {
-    let at = roll_bar_cell_at(car, i, j);
-    accessors::set_cell(Real::load(mem, at), v).store(mem, at);
+    let cell = accessors::set_cell(mem.cell(car, Cell::RollBar(i, j)), v);
+    mem.store_cell(car, Cell::RollBar(i, j), cell);
 }
 
 /// `CCar::UpdateFfbTorque` (0x4e7ff0): the filtered steering torque (+0xae0) takes the new value, dirtied.
@@ -254,7 +249,7 @@ pub fn update_ffb_torque<S: CarStore>(mem: &mut S, car: u32) {
         mem.steer_torque_sum(car).value,
         cell.value,
     );
-    accessors::set_cell(cell, v).store(mem, car + 0xAE0);
+    mem.store_cell(car, Cell::FfbTorque, accessors::set_cell(cell, v));
 }
 
 /// `CCar::PushGridEdge` (0x4e7270) on the car: the flag is set after the edge is added, as the asm orders it.
@@ -327,7 +322,7 @@ pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry
 /// probe on a miss) and the sample; then `M6840(1)` and slot 18. Otherwise the countdown falls by the app's tick and is
 /// stored as 0 when it goes negative (NaN stays). Nothing happens for a null car. `entry` is the entry esp; the frame is
 /// aligned as the original's. `line` holds the drive line.
-pub fn run_countdown<S: CarStore + EngineStore>(
+pub fn run_countdown<S: CarStore>(
     mem: &mut S,
     line: &impl StageStore,
     calls: &mut impl CountdownCalls<S>,
@@ -338,7 +333,7 @@ pub fn run_countdown<S: CarStore + EngineStore>(
         return;
     }
     let frame = ((entry - 4) & !0xf) - 0x7c;
-    let timer = mem.f32(car + 0x15E4);
+    let timer = mem.respawn_countdown(car);
     if timer == 0.0 {
         let (probe, sample, ans, raw) = (frame + 0x1c, frame + 0xc, frame + 0x2c, frame + 0x3c);
         drive_line_sample(mem, line, car, probe, sample);
@@ -352,9 +347,9 @@ pub fn run_countdown<S: CarStore + EngineStore>(
     }
     let tick = mem.f32(mem.u32(mem.u32(WORLD) + 0x24) + 0x1608C);
     let left = timer - tick;
-    mem.set_f32(car + 0x15E4, left);
+    mem.set_respawn_countdown(car, left);
     if left < 0.0 {
-        mem.set_f32(car + 0x15E4, 0.0);
+        mem.set_respawn_countdown(car, 0.0);
     }
 }
 
@@ -418,13 +413,13 @@ pub fn respawn_pose<S: CarStore>(
 
     let out = Vec4::load(mem, sel).add_scaled(Vec4::load(mem, frame + 0x30), BASIS_WEIGHT);
     out.store(mem, frame + 0x60);
-    if mem.u32(car + 0x9F0) != 0 {
+    if mem.partial_contact_flag(car) != 0 {
         let scaled = Vec4 { x: s.x * SAMPLE_SCALE, y: s.y * SAMPLE_SCALE, z: s.z * SAMPLE_SCALE, w: 1.0 };
         scaled.store(mem, frame + 0x70);
         let product = quat::mul(mem.load_quat(frame + 0x70), mem.load_quat(frame + 0x50));
         mem.store_quat(frame + 0x50, quat::normalize(product));
         mem.set_f32(frame + 0x68, mem.f32(frame + 0x68) + BASIS_WEIGHT);
-        mem.set_u32(car + 0x9F0, 0);
+        mem.set_partial_contact_flag(car, 0);
     }
     calls.respawn_car(mem, frame - 12, car, frame + 0x60, frame + 0x50);
 }
@@ -456,7 +451,7 @@ pub fn respawn_car<S: CarStore>(mem: &mut S, calls: &mut impl RespawnCalls<S>, c
         mem.set_u32(pending, 0);
         mem.set_u32(car + 0x274, 0);
     }
-    mem.set_f32(car + WALL_CONTACT, 0.0);
+    mem.set_wall_contact(car, 0.0);
     let emitter = mem.u32(SIGNALS) + RESPAWN_EMITTER;
     calls.emit_respawn(mem, frame - 8, emitter, frame + 0x30);
 }

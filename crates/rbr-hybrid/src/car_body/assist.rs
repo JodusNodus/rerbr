@@ -76,7 +76,7 @@ pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn assist_8df0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = car_calls(ctx, r);
-    car::layout::outside_assistance(&mut calls, &mut ctx.mem, r.ecx, r.esp, a, b, c);
+    super::on_car(ctx, |m| car::layout::outside_assistance(&mut calls, m, r.ecx, r.esp, a, b, c));
     Ok(Return::void(0, 12))
 }
 

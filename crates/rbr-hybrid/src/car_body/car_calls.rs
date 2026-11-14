@@ -14,7 +14,7 @@ use rbr_physics::mem::Mem;
 
 use super::members::{FLOW_OBJECT, M5666B0, SAMPLER_54A0};
 use super::step::SLOT_S8C;
-use crate::car_body::ADD_EDGE;
+use crate::car_body::{on_car, ADD_EDGE};
 use crate::entities::{BODY_COMPOSE, COPY16_WALK, MB560, NODE_OF};
 use crate::rigid_body::VF20_JUMP;
 use crate::{aligned_frame, Called, Ctx, Decline, Host, Regs, Return};
@@ -131,8 +131,8 @@ impl EdgeCalls for Car<'_> {
     }
 }
 
-impl DragCalls for Car<'_> {
-    fn pre_step(&mut self, _mem: &mut Mem, car: u32) {
+impl<S: CarStore> DragCalls<S> for Car<'_> {
+    fn pre_step(&mut self, _mem: &mut S, car: u32) {
         self.slot(car, SLOT_PRE_STEP, &[]);
     }
 
@@ -141,20 +141,20 @@ impl DragCalls for Car<'_> {
         self.walk(frame, a, car)
     }
 
-    fn drag_force(&mut self, _mem: &mut Mem, car: u32, force: Vec3) {
+    fn drag_force(&mut self, _mem: &mut S, car: u32, force: Vec3) {
         let at = self.scratch + SEND;
         self.put(at, force);
         self.slot(car, SLOT_FORCE, &[at]);
     }
 
-    fn spin_damping(&mut self, _mem: &mut Mem, car: u32, damping: Vec3) {
+    fn spin_damping(&mut self, _mem: &mut S, car: u32, damping: Vec3) {
         let at = self.scratch + SEND;
         self.put(at, damping);
         self.slot(car, SLOT_SPIN, &[at]);
     }
 }
 
-impl WallFrictionCalls for Car<'_> {
+impl<S: CarStore> WallFrictionCalls<S> for Car<'_> {
     fn to_world(&mut self, car: u32, v: Vec3) -> Vec3 {
         let (a_at, b_at) = (self.scratch + A, self.scratch + B);
         self.put(a_at, v);
@@ -163,15 +163,15 @@ impl WallFrictionCalls for Car<'_> {
     }
 
     fn walk_vector(&mut self, a: Vec3, car: u32) -> Vec3 {
-        DragCalls::walk_vector(self, a, car)
+        DragCalls::<S>::walk_vector(self, a, car)
     }
 
-    fn wall_force(&mut self, mem: &mut Mem, car: u32, force: Vec3) {
-        DragCalls::drag_force(self, mem, car, force);
+    fn wall_force(&mut self, mem: &mut S, car: u32, force: Vec3) {
+        DragCalls::<S>::drag_force(self, mem, car, force);
     }
 
-    fn wall_torque(&mut self, mem: &mut Mem, car: u32, spin: Vec3) {
-        DragCalls::spin_damping(self, mem, car, spin);
+    fn wall_torque(&mut self, mem: &mut S, car: u32, spin: Vec3) {
+        DragCalls::<S>::spin_damping(self, mem, car, spin);
     }
 }
 
@@ -303,21 +303,21 @@ pub(super) fn compose_body_into_world(ctx: &mut Ctx, r: &Regs) -> Result<Return,
 /// thiscall: `CCar::PushGridEdge` (`Update7270`), the grid edge once and the flag.
 pub(super) fn push_grid_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
-    layout::push_grid_edge(&mut calls, &mut ctx.mem, r.ecx);
+    on_car(ctx, |m| layout::push_grid_edge(&mut calls, m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(a)`: `CCar::RefreshEdge` (`Vf20x72D0`); eax is the `Vf20` call's.
 pub(super) fn refresh_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
-    let eax = layout::refresh_edge(&mut calls, &mut ctx.mem, r.ecx, r.stack[0]);
+    let eax = on_car(ctx, |m| layout::refresh_edge(&mut calls, m, r.ecx, r.stack[0]));
     Ok(Return::void(eax, 4))
 }
 
 /// thiscall: `CCar::Sim7AD0`, the wheel aero gust.
 pub(super) fn wall_friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
-    car::wall_friction::wall_friction(&mut calls, &mut ctx.mem, r.ecx);
+    on_car(ctx, |m| car::wall_friction::wall_friction(&mut calls, m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
@@ -325,12 +325,12 @@ pub(super) fn wall_friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 pub(super) fn apply_drag(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
     let factor = crate::ngp::drag_factor(ctx);
-    car::drag::apply_drag(&mut calls, &mut ctx.mem, r.ecx, factor);
+    on_car(ctx, |m| car::drag::apply_drag(&mut calls, m, r.ecx, factor));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall: `CCar::UpdateFfbTorque` (`Hook1FF0`), the filtered steering torque for force feedback.
 pub(super) fn update_ffb_torque(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::update_ffb_torque(&mut ctx.mem, r.ecx);
+    on_car(ctx, |m| layout::update_ffb_torque(m, r.ecx));
     Ok(Return::void(0, 0))
 }

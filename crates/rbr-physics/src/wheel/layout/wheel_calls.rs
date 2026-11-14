@@ -11,7 +11,7 @@ use super::fields::{
 use super::host::{transform_call, CarSlotCalls, CarXform, SlotCalls, StrutCalls, SubCalls, WalkCalls};
 use super::store::WheelStore;
 use super::typed::slot;
-use crate::car_body::store::CarStore;
+use crate::car_body::layout::slot as car_slot;
 use crate::car_body::transform::FRAME;
 use crate::math::vec::Vec4;
 use crate::ngp;
@@ -112,7 +112,7 @@ pub fn steering_walk<S: WheelStore>(host: &mut impl WalkCalls, mem: &mut S, this
     let a = (car.wrapping_add(0x180) != 0).then(|| Vec4::load(mem, car + 0x190));
     let walk = host.pair_walk(mem.u32(FRAME), a, car);
     let (inv_arm, inv_rack) = (mem.get(this, slot::inv_arm), mem.get(this, slot::inv_rack));
-    let gain = walk::steer_gain(inv_arm, inv_rack, || mem.mem().steer_target_rate(car));
+    let gain = walk::steer_gain(inv_arm, inv_rack, || mem.car_field(car, car_slot::steer_target_rate));
     let v = walk::steered_walk(mem.get(this, slot::strut_dir), gain, walk);
     mem.set(this, slot::walk_out, v);
     v

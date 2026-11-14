@@ -86,6 +86,10 @@ pub trait WheelStore: Raw {
         let at = self.load_damage(this) + off;
         self.set_f32(at, value);
     }
+    /// The field `slot` of the car at `car` (the car's typed state: the steering target and its rate).
+    fn car_field<T: Value>(&self, car: u32, slot: crate::car_body::layout::Slot<T>) -> T {
+        T::load(self.mem(), car + slot.at)
+    }
     /// The wheel's angle of rotation (`this+0x5ac`).
     fn load_angle(&self, this: u32) -> f32 {
         self.f32(this + WHEEL_ANGLE)

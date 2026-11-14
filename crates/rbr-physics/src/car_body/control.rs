@@ -66,15 +66,14 @@ pub fn apply_control<S: CarStore>(calls: &mut impl ControlCalls<S>, mem: &mut S,
     calls.read_packet(mem, layout::scratch_at(car), payload);
     calls.engine_idle(mem, layout::engine_at(car), payload);
     calls.drive_control(mem, layout::drive_at(car), payload);
-    mem.set_u32(car + layout::STEER_INPUT, mem.u32(payload + word::STEERING));
-    mem.set_u32(car + layout::THROTTLE_AT, mem.u32(payload + word::THROTTLE));
-    mem.set_u32(car + layout::BRAKE_AT, mem.u32(payload + word::BRAKE));
+    let words = [word::STEERING, word::THROTTLE, word::BRAKE].map(|at| mem.u32(payload + at));
+    mem.keep_controls(car, words[0], words[1], words[2]);
 
     if calls.replay_is_state2(mem.u32(TELEMETRY_GLOBAL)) == 0 {
         let flags = mem.u32(p + word::FLAGS);
         if flags & word::FLAG_RESET != 0 {
             if calls.blocked(car) == 0 {
-                mem.set_u32(car + layout::PARTIAL_CONTACT_FLAG, 0);
+                mem.set_partial_contact_flag(car, 0);
                 calls.reset_car(car);
             }
         } else if flags & word::FLAG_CALL_FOR_HELP != 0 {
@@ -87,12 +86,11 @@ pub fn apply_control<S: CarStore>(calls: &mut impl ControlCalls<S>, mem: &mut S,
         }
     }
 
-    let steps = mem.u32(car + layout::STEP_COUNT);
+    let steps = mem.step_count(car);
     if steps.is_multiple_of(1000) && steps / 1000 < MARKS {
-        let mark = steps / 1000;
-        mem.set_u32(layout::step_mark_timer_at(car, mark), mem.timer_word());
-        mem.set_u32(layout::step_mark_steering_at(car, mark), mem.u32(p + word::STEERING));
+        let timer_word = mem.timer_word();
+        mem.set_step_mark(car, steps / 1000, timer_word, mem.u32(p + word::STEERING));
     }
-    mem.set_u32(car + layout::STEP_COUNT, steps.wrapping_add(1));
+    mem.set_step_count(car, steps.wrapping_add(1));
     steps.wrapping_add(1)
 }
