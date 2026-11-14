@@ -198,6 +198,10 @@ SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
 take `0x73f5b4`/`0x73f7b0` (structure in `layout/detector_calls.rs`). Handler-stack base `+0xe848` (top `+0xe888`,
 -1 empty). The row/column helpers are `mul_rows`/`transform_xyz`, not the exe's `XformRows`/`MulVec` names. The emit
 guard's `int3` sits at entry + 0x3d. `game_log_vectors`: 4000 direct calls.
+The step's node slots by when it calls them (names ours): S20 `PRE_STEP_SLOT`, S24 `POST_BODIES_SLOT`, S48
+`INIT_PASS_SLOT`, S54 `POST_CONTACT_SLOT`, S98 `END_STEP_SLOT`; the solids' S80 `TAKES_PART_SLOT`. The mounted pull
+subtracts the definition's `vecGravity`: its key at `+0x160a0`, the vector at `+0x10` of it, the `+0x160b0` the
+accumulate reads (`CoreStore::gravity_key`). The contact loop's hit counts read `DbgFlags` (`+0x160e0`, bit 0x20000).
 
 ## Rigid body
 
