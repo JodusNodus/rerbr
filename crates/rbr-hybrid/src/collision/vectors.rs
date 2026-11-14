@@ -96,7 +96,7 @@ pub(super) fn vec_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// E33Vec4::MinMaxA (0x4e0ae0): thiscall on the pair with `(src, lo, hi)`, ret 0xc; eax is `hi`.
 pub(super) fn min_max_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, lo, hi, ..] = r.stack;
-    let eax = layout::min_max_a(&mut ctx.mem, r.ecx, src, lo, hi);
+    let eax = layout::bounds_union(&mut ctx.mem, r.ecx, src, lo, hi);
     Ok(Return::void(eax, 12))
 }
 

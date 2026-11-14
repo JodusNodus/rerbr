@@ -4,7 +4,7 @@
 use super::globals::{physics, physics_global, SIGNAL_MANAGER};
 use super::prof_calls::{set_word64, word64, LOG_FLAGS_AT, LOG_HOOK_FLAG, PHYSICS_FLAGS_AT};
 use crate::car_body::layout::CURRENT_CAR;
-use crate::collision::layout::sort::event_get_94;
+use crate::collision::layout::sort::event_time;
 use crate::mem::Mem;
 use crate::physics_core::contact::advanced_by_contact_step;
 use crate::physics_core::layout::TELEMETRY_GLOBAL;
@@ -202,7 +202,7 @@ impl CoreStore for Mem {
     }
 
     fn event_penetration(&self, event: u32) -> f32 {
-        event_get_94(self, event)
+        event_time(self, event)
     }
 
     fn solid_advanced(&self, solid: u32) -> bool {

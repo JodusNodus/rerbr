@@ -79,7 +79,7 @@ impl CollisionStore for Mem {
     }
 
     fn pool_event(&mut self, event: u32) {
-        event_pool::vf1cx(self, event, 1);
+        event_pool::release_event(self, event, 1);
     }
 
     fn event_body(&self, event: u32) -> u32 {
@@ -103,7 +103,7 @@ impl CollisionStore for Mem {
     }
 
     fn event_time(&self, event: u32) -> f32 {
-        sort::event_get_94(self, event)
+        sort::event_time(self, event)
     }
 
     fn event_plane(&self, event: u32) -> EventPlane {

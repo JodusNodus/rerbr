@@ -127,10 +127,11 @@ pub struct Vec4Pair {
     pub upper: Vec4,
 }
 
-/// `E33Vec4::MinMaxA(src, lo, hi)` (0x4e0ae0) on the pair at `this`: `E33Vec4::Min` of the lower vectors to `lo`, then
+/// `E33Vec4::MinMaxA(src, lo, hi)` (0x4e0ae0) (name ours) on the pair at `this`: the union of two bounds.
+/// `E33Vec4::Min` of the lower vectors to `lo`, then
 /// `E33Vec4::Max` of the upper ones (+0x10) to `hi`, read after the first store as the two calls do. Returns `hi`, the
 /// second call's eax.
-pub fn min_max_a(mem: &mut Mem, this: u32, src: u32, lo: u32, hi: u32) -> u32 {
+pub fn bounds_union(mem: &mut Mem, this: u32, src: u32, lo: u32, hi: u32) -> u32 {
     Vec4::load(mem, this).min_lanes(Vec4::load(mem, src)).store(mem, lo);
     Vec4::load(mem, this + 0x10).max_lanes(Vec4::load(mem, src + 0x10)).store(mem, hi);
     hi

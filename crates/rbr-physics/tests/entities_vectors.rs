@@ -957,7 +957,7 @@ fn brake_wall_vf_f0_matches_original_calls() {
         let mut answers = SlotE8Answers { mem: mem.clone(), inner: &call.inner, next: 0 };
         let mut args = [0; 8];
         args.copy_from_slice(&call.args[1..9]);
-        let eax = rbr_physics::collision::layout::brake_wall_vf_f0(&mut answers, &mut mem, call.args[0], args, entry);
+        let eax = rbr_physics::collision::layout::brake_wall_contact(&mut answers, &mut mem, call.args[0], args, entry);
         assert_eq!(eax, call.eax, "{name} call {}: eax", call.index);
         assert_eq!(answers.next, call.inner.len(), "{name} call {}: calls", call.index);
         check_windows(call, &mem, name);

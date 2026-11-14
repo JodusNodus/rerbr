@@ -1,7 +1,7 @@
 //! The brake walls (`E34WallVf`, `CBrakeWall`, `CBrakeWallManager`): the wall layout's constants and `VfF0`. The probes
 //! are `collision::wall`, generic over `CollisionStore`.
 //!
-//! `brake_wall_vf_f0` stays on `Mem`: it clears the sub-block through `car_body::light::sub_block_init`.
+//! `brake_wall_contact` stays on `Mem`: it clears the sub-block through `car_body::light::sub_block_init`.
 
 use crate::mem::Mem;
 
@@ -24,11 +24,18 @@ pub(super) const PENETRATION_EMITTER: u32 = 0xa780;
 /// The wall's leaf list (+0x7c) that `CBrakeWall::QueryBox` fills (its count is the list's word at +0x190).
 pub(super) const WALL_LEAVES: u32 = 0x7c;
 
-/// `CBrakeWall::VfF0` (0x4e3970) on the wall at `this` with its eight pointer arguments `a`..`h`; `entry` is its entry
+/// `CBrakeWall::VfF0` (0x4e3970) (name ours): the wall's segment contact, on the wall at `this` with its eight pointer
+/// arguments `a`..`h`; `entry` is its entry
 /// esp. In the original's `and esp, -0x10` frame `CE36SubBlock::Init` clears the block at +0x2c, then `VfE8` fills the
 /// four vectors at +0xc. On a hit: `CopyFrom` of the first vector to `c`, the frame word at +8 points at the second,
 /// which goes to `e`; the fourth's `y` goes to `d`, and `f`, `g` and `h` get 0. Returns 1 on a hit, else 0 (eax).
-pub fn brake_wall_vf_f0(host: &mut impl WallSegmentHost, mem: &mut Mem, this: u32, args: [u32; 8], entry: u32) -> u32 {
+pub fn brake_wall_contact(
+    host: &mut impl WallSegmentHost,
+    mem: &mut Mem,
+    this: u32,
+    args: [u32; 8],
+    entry: u32,
+) -> u32 {
     let [a, b, c, d, e, f, g, h] = args;
     let frame = ((entry - 4) & !0xf) - 0x4c;
     let out = frame + 0xc;

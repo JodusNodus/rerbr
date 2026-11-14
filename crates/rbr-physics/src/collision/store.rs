@@ -353,8 +353,8 @@ pub trait CollisionStore: Raw {
     fn node_owner(&self, node: u32) -> u32;
 }
 
-/// The addresses of a collision entry's frame: the point and axes the bodies' transforms read (`*_in`) and the places they
-/// write (`*_out`).
+/// The addresses of a collision entry's frame: the point and axes the bodies' transforms read (`*_in`) and the places
+/// they write (`*_out`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EntryFrame {
     pub centre_in: u32,

@@ -2,18 +2,19 @@
 
 use crate::mem::Mem;
 
-/// E36Get680 (0x4f2c30) (name ours): read the collision entry's active-shape pointer.
+/// E36Get680 (0x4f2c30) (name ours): the grid's shape record (+0x680, `CollisionStore::collision_shape`).
 pub fn active_shape(mem: &Mem, object: u32) -> u32 {
     mem.u32(object.wrapping_add(0x680))
 }
 
-/// E36Get68a (0x4f2c40) (name ours): return collision flag bit 2 as a zero-or-one word.
-pub fn flag_bit2(mem: &Mem, object: u32) -> u32 {
+/// E36Get68a (0x4f2c40) (name ours): the grid's status bit 2 (+0x68a), a sphere shape record
+/// (`CollisionStore::collision_is_sphere`), as a zero-or-one word.
+pub fn is_sphere(mem: &Mem, object: u32) -> u32 {
     u32::from((mem.u8(object.wrapping_add(0x68a)) & 4) >> 2)
 }
 
-/// E36CollideInit (0x4f2c50): initialize a collision entry's base vectors, matrix, and radii.
-pub fn collide_init(mem: &mut Mem, object: u32) -> u32 {
+/// E36CollideInit (0x4f2c50) (name ours): initialize a collision entry's base vectors, matrix, and radii.
+pub fn init_entry(mem: &mut Mem, object: u32) -> u32 {
     mem.set_f32(object.wrapping_add(0x60), 1.0);
     mem.set_f32(object.wrapping_add(0x64), 0.0);
     mem.set_f32(object.wrapping_add(0x68), 0.0);

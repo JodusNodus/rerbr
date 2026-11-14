@@ -1,12 +1,13 @@
-//! E37 intrusive-list pointer accessors and fixed-size zero helpers.
+//! E37 intrusive lists: the head and node accessors, the clears, the insert, unlink, release and drains.
 
 use super::event_pool::{FREE_LIST_COUNT, FREE_LIST_HEAD};
 use crate::mem::Mem;
 
 const FREE_LIST_TAIL: u32 = 0x008e_f7f8;
 
-/// E37Zero3 (0x4f4b40): zero three dwords, preserving the retail store order.
-pub fn zero_3(mem: &mut Mem, object: u32) {
+/// E37Zero3 (0x4f4b40) (name ours): clears a node's three link words (next, previous, head), in the original's store
+/// order.
+pub fn clear_link(mem: &mut Mem, object: u32) {
     for offset in [4, 0, 8] {
         mem.set_u32(object + offset, 0);
     }
@@ -22,13 +23,14 @@ pub fn first_twin(mem: &Mem, object: u32) -> u32 {
     mem.u32(object)
 }
 
-/// E37At8 (0x4f4b70): return the word at list-head offset eight.
-pub fn at_8(mem: &Mem, object: u32) -> u32 {
+/// E37At8 (0x4f4b70) (name ours): the list's count (its head's word at +8).
+pub fn count(mem: &Mem, object: u32) -> u32 {
     mem.u32(object + 8)
 }
 
-/// E37Zero4 (0x4f4b80): zero four dwords, preserving the retail store order.
-pub fn zero_4(mem: &mut Mem, object: u32) {
+/// E37Zero4 (0x4f4b80) (name ours): clears a list head's four words (first, last, count, flag), in the original's
+/// store order.
+pub fn clear_list(mem: &mut Mem, object: u32) {
     for offset in [4, 0, 8, 0x0c] {
         mem.set_u32(object + offset, 0);
     }
@@ -123,14 +125,14 @@ pub fn drain(mem: &mut Mem, head: u32, flag: u32) {
             unlink(mem, link);
         }
         if flag != 0 && node != 0 {
-            super::event_pool::vf1cx(mem, node, 1);
+            super::event_pool::release_event(mem, node, 1);
         }
         left = mem.u32(head + 8);
     }
 }
 
-/// CCollisionList::Vf08x (0x4f4f40): drain the embedded head at +4 with the pool flag set.
-pub fn collision_list_vf08x(mem: &mut Mem, object: u32) {
+/// CCollisionList::Vf08x (0x4f4f40) (name ours): drain the embedded head at +4 with the pool flag set.
+pub fn drain_collision_list(mem: &mut Mem, object: u32) {
     drain(mem, object + 4, 1);
 }
 
@@ -147,18 +149,19 @@ fn release_owner(mem: &mut Mem, node: u32) {
     }
 }
 
-/// E37Release4F50 (0x4f4f50): decrement the non-null owner and unlink the node.
-pub fn release_4f50(mem: &mut Mem, node: u32) {
+/// E37Release4F50 (0x4f4f50) (name ours): decrement the non-null owner and unlink the node.
+pub fn release_link(mem: &mut Mem, node: u32) {
     release_owner(mem, node);
 }
 
-/// E37Release4F60 (0x4f4f60): tail-jump twin of E37Release4F50.
-pub fn release_4f60(mem: &mut Mem, node: u32) {
+/// E37Release4F60 (0x4f4f60) (name ours): tail-jump twin of `release_link`.
+pub fn release_link_twin(mem: &mut Mem, node: u32) {
     release_owner(mem, node);
 }
 
-/// E37ListOps::Set1C (0x4f5470): store the supplied pointer at list-head offset 0x1c.
-pub fn set_1c(mem: &mut Mem, object: u32, value: u32) {
+/// E37ListOps::Set1C (0x4f5470) (name ours, by use): stores the supplied pointer at +0x1c of the list head; its
+/// reader is not known.
+pub fn set_extra_pointer(mem: &mut Mem, object: u32, value: u32) {
     mem.set_u32(object + 0x1c, value);
 }
 

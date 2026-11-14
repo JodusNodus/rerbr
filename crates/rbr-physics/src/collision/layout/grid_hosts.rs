@@ -26,18 +26,19 @@ pub fn status_flag_bit1_clear(status_flag: u8) -> u32 {
     u32::from(!(status_flag >> 1) & 1)
 }
 
-/// CColGrid::ReadClear (0x4e0a20): returns `(m_unk689, m_unk688)` from the flag bytes `(688, 689)` the caller took
+/// CColGrid::ReadClear (0x4e0a20) (name ours): returns `(m_unk689, m_unk688)` from the flag bytes `(688, 689)` the
+/// caller took
 /// (clearing them is `ColGrid::take_event_flags`).
-pub fn read_clear((flag_688, flag_689): (u8, u8)) -> (u32, u32) {
+pub fn event_flag_words((flag_688, flag_689): (u8, u8)) -> (u32, u32) {
     (u32::from(flag_689), u32::from(flag_688))
 }
 
-/// CColGrid::EdgeForA (0x4e0a90): the edge named by the first byte of the pair.
-pub fn edge_for_a(grid: ColGrid, pair: [u8; 6]) -> u32 {
+/// CColGrid::EdgeForA (0x4e0a90) (name ours): the edge (`ColGrid::edge`) named by the first byte of the pair.
+pub fn pair_first_edge(grid: ColGrid, pair: [u8; 6]) -> u32 {
     grid.edge(u32::from(pair[0]))
 }
 
-/// CColGrid::EdgeForB (0x4e0ab0): the edge named by the second byte of the pair.
-pub fn edge_for_b(grid: ColGrid, pair: [u8; 6]) -> u32 {
+/// CColGrid::EdgeForB (0x4e0ab0) (name ours): the edge (`ColGrid::edge`) named by the second byte of the pair.
+pub fn pair_second_edge(grid: ColGrid, pair: [u8; 6]) -> u32 {
     grid.edge(u32::from(pair[1]))
 }

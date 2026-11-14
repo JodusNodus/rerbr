@@ -56,8 +56,8 @@ pub fn edge_ratio(edge_length: f32, hit_length: f32) -> f32 {
 }
 
 /// The overlap box of an edge-pair search `[lo, hi]` as a centre and a half extent: `(hi + lo) * 0.5` and
-/// `(hi - lo) * 0.5`. The original sums (`addss`, `subss`) the three first lanes into locals whose fourth lane it never writes, then scales all four by
-/// 0.5 (`mulps`), so each `w` is that local's stale lane (`centre_w`, `half_w`) halved.
+/// `(hi - lo) * 0.5`. The original sums (`addss`, `subss`) the three first lanes into locals whose fourth lane it never
+/// writes, then scales all four by 0.5 (`mulps`), so each `w` is that local's stale lane (`centre_w`, `half_w`) halved.
 pub fn overlap_centre_half(lo: Vec4, hi: Vec4, centre_w: f32, half_w: f32) -> (Vec4, Vec4) {
     let halved = |x: f32, y: f32, z: f32, w: f32| Vec4 {
         x: sse::mul(0.5, x),

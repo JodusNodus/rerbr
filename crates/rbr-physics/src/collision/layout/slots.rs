@@ -1,4 +1,5 @@
-//! The entity vtable slots (byte offsets in the vtable) the collision model calls through `CollisionStore::vtable_slot`.
+//! The entity vtable slots (byte offsets in the vtable) the collision model calls through
+//! `CollisionStore::vtable_slot`.
 
 /// Slot 12 (0x30, `CEntity::Vf30`): the receiver of the entity's transforms, its own pointer in the entity tree.
 pub const TRANSFORM_SLOT: u32 = 0x30;

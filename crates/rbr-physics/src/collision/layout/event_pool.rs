@@ -53,13 +53,15 @@ pub fn is_suppressed(mem: &Mem, event: u32) -> bool {
     mem.u32(event + EVENT_FLAGS) & 0x6000 != 0
 }
 
-/// E37EvOps::Copy80 (0x4f4200): copy the three raw words at event +0x80 to the output.
-pub fn copy_80(mem: &mut Mem, event: u32, out: u32) {
+/// E37EvOps::Copy80 (0x4f4200) (name ours): copy the partner side's three material words (+0x80, as
+/// `refresh_materials` reads them) to the output.
+pub fn copy_partner_materials(mem: &mut Mem, event: u32, out: u32) {
     mem.copy(out, event + EVENT_MATERIAL_A, 12);
 }
 
-/// E37EvOps::Cmp15 (0x4f4570): compare the nine selected float fields used for deduplication.
-pub fn cmp_15(mem: &Mem, event: u32, other: u32) -> u32 {
+/// E37EvOps::Cmp15 (0x4f4570) (name ours): 1 when the two events' compared fields are equal (the eight float lanes and
+/// the word at +0x38), as the deduplication compares them.
+pub fn same_contact(mem: &Mem, event: u32, other: u32) -> u32 {
     const FLOAT_LANES: [u32; 8] = [0, 1, 2, 4, 5, 6, 7, 13];
     u32::from(
         FLOAT_LANES.iter().all(|lane| mem.f32(event + lane * 4) == mem.f32(other + lane * 4))
@@ -98,8 +100,9 @@ pub fn dtor_body(mem: &mut Mem, event: u32) {
     }
 }
 
-/// CCollisionEvent::Vf1Cx (0x4f52f0): demote and unlink, then optionally return to the free list.
-pub fn vf1cx(mem: &mut Mem, event: u32, flags: u32) -> u32 {
+/// CCollisionEvent::Vf1Cx (0x4f52f0) (name ours): demote and unlink, then with `flags` bit 0 return the event to the
+/// free list. Returns `event`.
+pub fn release_event(mem: &mut Mem, event: u32, flags: u32) -> u32 {
     dtor_body(mem, event);
     if flags & 1 != 0 {
         // Retail stores the event pointer in the free-list node fields; the reconstructed C++'s

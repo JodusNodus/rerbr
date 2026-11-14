@@ -181,14 +181,14 @@ SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
 - Checks: `round_trip` (`rbr-hybrid`), `rbr-standalone --twin mem|mem-direct`, the `poison` feature.
 - The generic sequences sit outside the layouts (`rigid_body::{solid_rows, solid_contacts, solid_window}`,
   `physics_core::{step, contact_loop, passenger_step, pose, emit, mounted, accumulate}`, `entities::hinge_step`,
-  `ntweak::plan`, `collision::{solver_pass, e36, events, body_contact, grid_edge, mesh, wall, body}`), re-exported
+  `ntweak::plan`, `collision::{solver_pass, entry, events, body_contact, grid_edge, mesh, wall, body}`), re-exported
   from `layout` under their old paths; object offsets and frame constants stay in the layout. Evidence: drive2
   attempt 5 physics PASS 84084/84084, the 4 hybrid snapshots identical.
 - Stay on `Mem`: constructors and setup copies everywhere; `load` and stage's load code (image construction only);
   code writing at computed addresses in the original's stack frames (physics_core detector walks, `notify`,
   `prof_calls`; entities `collide_init`, detach events, `vf_e070`); rigid_body wake, sleep, `Vf158` (via
   physics_core's Mem-typed `FilingHost`); NTweak apply and parse (host-bound); collision cell grid, links, pools,
-  `col_grids`, `brake_wall_vf_f0` (calls `car_body::light::sub_block_init`).
+  `col_grids`, `brake_wall_contact` (calls `car_body::light::sub_block_init`).
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run.
 
 ## Physics core

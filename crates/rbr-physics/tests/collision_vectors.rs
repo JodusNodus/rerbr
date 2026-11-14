@@ -1074,7 +1074,7 @@ fn min_max_a_matches_original_calls() {
         let [this, lower_source_and_upper_source, lower_out, upper_out] = args[..] else {
             panic!("unexpected MinMaxA args: {}", args.len());
         };
-        layout::min_max_a(mem, this, lower_source_and_upper_source, lower_out, upper_out)
+        layout::bounds_union(mem, this, lower_source_and_upper_source, lower_out, upper_out)
     });
 }
 
@@ -1153,7 +1153,7 @@ fn colgrid_read_clear_matches_original_calls() {
             panic!("unexpected ReadClear args: {}", args.len());
         };
         let flags = layout::ColGrid::new(grid_ptr).take_event_flags(mem);
-        let (first, second) = layout::grid_hosts::read_clear(flags);
+        let (first, second) = layout::grid_hosts::event_flag_words(flags);
         mem.set_u32(out_a, first);
         mem.set_u32(out_b, second);
         0
@@ -1181,14 +1181,14 @@ fn colgrid_vector_and_edge_helpers_match_original_calls() {
             panic!("unexpected EdgeForA args: {}", args.len());
         };
         let grid = layout::ColGrid::new(grid_ptr);
-        layout::grid_hosts::edge_for_a(grid, grid.pair(mem, index as usize))
+        layout::grid_hosts::pair_first_edge(grid, grid.pair(mem, index as usize))
     });
     replay(GRID_EDGE_FOR_B, "CColGrid::EdgeForB", u32::MAX, |mem, args| {
         let [grid_ptr, index] = args[..] else {
             panic!("unexpected EdgeForB args: {}", args.len());
         };
         let grid = layout::ColGrid::new(grid_ptr);
-        layout::grid_hosts::edge_for_b(grid, grid.pair(mem, index as usize))
+        layout::grid_hosts::pair_second_edge(grid, grid.pair(mem, index as usize))
     });
     replay(GRID_SAMPLE_A, "CColGrid::SampleA", 0, |mem, args| {
         let [grid_ptr, index, t_bits, out_a, out_b] = args[..] else {
@@ -1949,8 +1949,8 @@ fn e36_obb_test_matches_original_calls() {
 fn e36_accessors_and_init_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E36_GET_680, "E36Get680", u32::MAX, |mem, args| layout::entry::active_shape(mem, args[0]));
-    replay(E36_GET_68A, "E36Get68a", u32::MAX, |mem, args| layout::entry::flag_bit2(mem, args[0]));
-    replay(E36_COLLIDE_INIT, "E36CollideInit", u32::MAX, |mem, args| layout::entry::collide_init(mem, args[0]));
+    replay(E36_GET_68A, "E36Get68a", u32::MAX, |mem, args| layout::entry::is_sphere(mem, args[0]));
+    replay(E36_COLLIDE_INIT, "E36CollideInit", u32::MAX, |mem, args| layout::entry::init_entry(mem, args[0]));
 }
 
 #[test]
@@ -2124,22 +2124,22 @@ fn e37_refresh_4a20_matches_original_calls() {
 #[test]
 fn e37_sort_scalar_helpers_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_st0(COLLISION_EVENT_GET_94, "CCollisionEvent::Get94", |mem, args| layout::sort::event_get_94(mem, args[0]));
+    replay_st0(COLLISION_EVENT_GET_94, "CCollisionEvent::Get94", |mem, args| layout::sort::event_time(mem, args[0]));
     replay(E37_GET_F7F0, "E37GetF7F0", u32::MAX, |mem, _args| layout::sort::live_event_count(mem));
-    replay(E37_ZERO_4090, "E37Zero4090", u32::MAX, |_mem, _args| layout::sort::zero_4090());
+    replay(E37_ZERO_4090, "E37Zero4090", u32::MAX, |_mem, _args| layout::sort::zero());
     replay(E37_NOP_40A0, "E37Nop40A0", 0, |_mem, _args| {
-        layout::sort::nop_40a0();
+        layout::sort::nop();
         0
     });
-    replay(E37_ZERO_40B0, "E37Zero40B0", u32::MAX, |_mem, _args| layout::sort::zero_40b0());
+    replay(E37_ZERO_40B0, "E37Zero40B0", u32::MAX, |_mem, _args| layout::sort::zero_twin());
 }
 
 #[test]
 fn e37_sort_constant_getters_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_st0(E37_GET_795E14A, "E37Get795E14a", |_mem, _args| layout::sort::get_795e14a());
-    replay_st0(E37_GET_795E14B, "E37Get795E14b", |_mem, _args| layout::sort::get_795e14b());
-    replay_st0(E37_GET_72AFCC, "E37Get72AFCC", |_mem, _args| layout::sort::get_72afcc());
+    replay_st0(E37_GET_795E14A, "E37Get795E14a", |_mem, _args| layout::sort::one());
+    replay_st0(E37_GET_795E14B, "E37Get795E14b", |_mem, _args| layout::sort::one_twin());
+    replay_st0(E37_GET_72AFCC, "E37Get72AFCC", |_mem, _args| layout::sort::three_tenths());
 }
 
 #[test]
@@ -2158,7 +2158,7 @@ fn e37_find_int_matches_original_calls() {
 #[test]
 fn e37_init_70_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(E37_INIT_70, "E37Init70Obj::Init70", u32::MAX, |mem, args| layout::sort::init_70(mem, args[0], args[1]));
+    replay(E37_INIT_70, "E37Init70Obj::Init70", u32::MAX, |mem, args| layout::sort::copy_plane(mem, args[0], args[1]));
 }
 
 #[test]
@@ -2172,67 +2172,85 @@ fn e37_plane_scale_matches_original_calls() {
 #[test]
 fn e37_element_accessors_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(E37_ELEM_T68A, "E37GridOps::T68A", u32::MAX, |mem, args| layout::grid_elems::t68a(mem, args[0]));
+    replay(E37_ELEM_T68A, "E37GridOps::T68A", u32::MAX, |mem, args| layout::grid_elems::status_bit0(mem, args[0]));
     replay(E37_ELEM_AT_E8, "E37GridOps::AtE8", u32::MAX, |_mem, args| {
-        layout::grid_elems::at_e8(args[0], args[1] as i32)
+        layout::grid_elems::normal_at(args[0], args[1] as i32)
     });
     replay(E37_ELEM_AT_E10, "E37GridOps::AtE10", u32::MAX, |_mem, args| {
-        layout::grid_elems::at_e10(args[0], args[1] as i32)
+        layout::grid_elems::vertex_at(args[0], args[1] as i32)
     });
     replay(E37_ELEM_IDX7, "E37GridOps::Idx7", u32::MAX, |mem, args| {
-        layout::grid_elems::idx7(mem, args[0], args[1] as i32)
+        layout::grid_elems::face_at(mem, args[0], args[1] as i32)
     });
-    replay(E37_ELEM_GET_684, "E37GridOps::Get684", u32::MAX, |mem, args| layout::grid_elems::get_684(mem, args[0]));
+    replay(E37_ELEM_GET_684, "E37GridOps::Get684", u32::MAX, |mem, args| layout::grid_elems::name(mem, args[0]));
     replay(E37_ELEM_SET_68A, "E37GridOps::Set68A", u32::MAX, |mem, args| {
-        layout::grid_elems::set_68a(mem, args[0], args[1])
+        layout::grid_elems::set_status_bit0(mem, args[0], args[1])
     });
-    replay(E37_ELEM_T158_2, "E37GridOps::T158_2", u32::MAX, |mem, args| layout::grid_elems::t158_2(mem, args[0]));
-    replay(E37_ELEM_T158_4, "E37GridOps::T158_4", u32::MAX, |mem, args| layout::grid_elems::t158_4(mem, args[0]));
-    replay(E37_ELEM_GET_30, "E37GridOps::Get30", 0xff, |mem, args| layout::grid_elems::get_30(mem, args[0]));
+    replay(E37_ELEM_T158_2, "E37GridOps::T158_2", u32::MAX, |mem, args| {
+        layout::grid_elems::flag_word_bit1(mem, args[0])
+    });
+    replay(E37_ELEM_T158_4, "E37GridOps::T158_4", u32::MAX, |mem, args| {
+        layout::grid_elems::flag_word_bit2(mem, args[0])
+    });
+    replay(E37_ELEM_GET_30, "E37GridOps::Get30", 0xff, |mem, args| layout::grid_elems::desc_material(mem, args[0]));
 }
 
 #[test]
 fn e37_element_header_fields_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(E37_ELEM_GET_04, "E37GridOps::Get04", u32::MAX, |mem, args| layout::grid_elems::get_04(mem, args[0]));
+    replay(E37_ELEM_GET_04, "E37GridOps::Get04", u32::MAX, |mem, args| layout::grid_elems::desc_flags(mem, args[0]));
     replay(E37_ELEM_SET_04, "E37GridOps::Set04", 0, |mem, args| {
-        layout::grid_elems::set_04(mem, args[0], args[1]);
+        layout::grid_elems::set_desc_flags(mem, args[0], args[1]);
         0
     });
-    replay(E37_ELEM_GET_00, "E37GridOps::Get00", u32::MAX, |mem, args| layout::grid_elems::get_00(mem, args[0]));
-    replay(E37_ELEM_T04_2, "E37GridOps::T04_2", u32::MAX, |mem, args| layout::grid_elems::t04_2(mem, args[0]));
+    replay(E37_ELEM_GET_00, "E37GridOps::Get00", u32::MAX, |mem, args| layout::grid_elems::desc_id(mem, args[0]));
+    replay(E37_ELEM_T04_2, "E37GridOps::T04_2", u32::MAX, |mem, args| layout::grid_elems::desc_skipped(mem, args[0]));
     replay(E37_ELEM_VALID_5990, "E37GridOps::Valid5990", u32::MAX, |mem, args| {
-        layout::grid_elems::valid_5990(mem, args[0])
+        layout::grid_elems::desc_has_geometry(mem, args[0])
     });
-    replay(E37_ELEM_GET_08, "E37GridOps::Get08", u32::MAX, |mem, args| layout::grid_elems::get_08(mem, args[0]));
-    replay(E37_ELEM_GET_0C_W, "E37GridOps::Get0Cw", 0xffff, |mem, args| layout::grid_elems::get_0c_w(mem, args[0]));
-    replay(E37_ELEM_GET_10, "E37GridOps::Get10", u32::MAX, |mem, args| layout::grid_elems::get_10(mem, args[0]));
-    replay(E37_ELEM_GET_0E_W, "E37GridOps::Get0Ew", 0xffff, |mem, args| layout::grid_elems::get_0e_w(mem, args[0]));
-    replay(E37_ELEM_GET_14, "E37GridOps::Get14", u32::MAX, |mem, args| layout::grid_elems::get_14(mem, args[0]));
-    replay(E37_ELEM_GET_18, "E37GridOps::Get18", u32::MAX, |mem, args| layout::grid_elems::get_18(mem, args[0]));
-    replay(E37_ELEM_GET_1C, "E37GridOps::Get1C", u32::MAX, |mem, args| layout::grid_elems::get_1c(mem, args[0]));
-    replay(E37_ELEM_GET_20_W, "E37GridOps::Get20w", 0xffff, |mem, args| layout::grid_elems::get_20_w(mem, args[0]));
-    replay(E37_ELEM_GET_22_W, "E37GridOps::Get22w", 0xffff, |mem, args| layout::grid_elems::get_22_w(mem, args[0]));
-    replay(E37_ELEM_GET_24, "E37GridOps::Get24", u32::MAX, |mem, args| layout::grid_elems::get_24(mem, args[0]));
-    replay(E37_ELEM_GET_28, "E37GridOps::Get28", u32::MAX, |mem, args| layout::grid_elems::get_28(mem, args[0]));
-    replay(E37_ELEM_GET_2C, "E37GridOps::Get2C", u32::MAX, |mem, args| layout::grid_elems::get_2c(mem, args[0]));
+    replay(E37_ELEM_GET_08, "E37GridOps::Get08", u32::MAX, |mem, args| layout::grid_elems::desc_name(mem, args[0]));
+    replay(E37_ELEM_GET_0C_W, "E37GridOps::Get0Cw", 0xffff, |mem, args| {
+        layout::grid_elems::desc_vertex_count(mem, args[0])
+    });
+    replay(E37_ELEM_GET_10, "E37GridOps::Get10", u32::MAX, |mem, args| layout::grid_elems::desc_vertices(mem, args[0]));
+    replay(E37_ELEM_GET_0E_W, "E37GridOps::Get0Ew", 0xffff, |mem, args| {
+        layout::grid_elems::desc_face_count(mem, args[0])
+    });
+    replay(E37_ELEM_GET_14, "E37GridOps::Get14", u32::MAX, |mem, args| layout::grid_elems::desc_faces(mem, args[0]));
+    replay(E37_ELEM_GET_18, "E37GridOps::Get18", u32::MAX, |mem, args| layout::grid_elems::desc_sampled(mem, args[0]));
+    replay(E37_ELEM_GET_1C, "E37GridOps::Get1C", u32::MAX, |mem, args| {
+        layout::grid_elems::desc_sample_data(mem, args[0])
+    });
+    replay(E37_ELEM_GET_20_W, "E37GridOps::Get20w", 0xffff, |mem, args| {
+        layout::grid_elems::desc_sample_width(mem, args[0])
+    });
+    replay(E37_ELEM_GET_22_W, "E37GridOps::Get22w", 0xffff, |mem, args| {
+        layout::grid_elems::desc_sample_height(mem, args[0])
+    });
+    replay(E37_ELEM_GET_24, "E37GridOps::Get24", u32::MAX, |mem, args| {
+        layout::grid_elems::desc_sample_table_a(mem, args[0])
+    });
+    replay(E37_ELEM_GET_28, "E37GridOps::Get28", u32::MAX, |mem, args| {
+        layout::grid_elems::desc_sample_table_b(mem, args[0])
+    });
+    replay(E37_ELEM_GET_2C, "E37GridOps::Get2C", u32::MAX, |mem, args| layout::grid_elems::desc_shape(mem, args[0]));
 }
 
 #[test]
 fn e37_element_cell_global_accessors_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_ZERO_5A70, "E37Zero5A70", 0, |mem, _args| {
-        layout::grid_elems::zero_5a70(mem);
+        layout::grid_elems::clear_global_word(mem);
         0
     });
-    replay(E37_GET_5A80, "E37Get5A80", u32::MAX, |mem, _args| layout::grid_elems::get_5a80(mem));
+    replay(E37_GET_5A80, "E37Get5A80", u32::MAX, |mem, _args| layout::grid_elems::global_word(mem));
 }
 
 #[test]
 fn e37_nop_5cf0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_NOP_5CF0, "E37Nop5CF0", 0, |_mem, _args| {
-        layout::grid_elems::nop_5cf0();
+        layout::grid_elems::nop();
         0
     });
 }
@@ -2342,7 +2360,7 @@ fn e38_solver_material_tag_matches_original_calls() {
 fn e37_element_5f20_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay_st0(E37_ELEM_5F20, "E37GridOps::Elem5F20", |mem, args| {
-        layout::grid_elems::elem_5f20(mem, args[0], args[1], args[2], args[3])
+        layout::grid_elems::segment_face_t(mem, args[0], args[1], args[2], args[3])
     });
 }
 
@@ -2386,7 +2404,7 @@ fn e38_vector_leaves_match_original_calls() {
 fn e37_copy_80_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_COPY_80, "E37EvOps::Copy80", 0, |mem, args| {
-        layout::event_pool::copy_80(mem, args[0], args[1]);
+        layout::event_pool::copy_partner_materials(mem, args[0], args[1]);
         0
     });
 }
@@ -2394,21 +2412,23 @@ fn e37_copy_80_matches_original_calls() {
 #[test]
 fn e37_cmp_15_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(E37_CMP_15, "E37EvOps::Cmp15", u32::MAX, |mem, args| layout::event_pool::cmp_15(mem, args[0], args[1]));
+    replay(E37_CMP_15, "E37EvOps::Cmp15", u32::MAX, |mem, args| {
+        layout::event_pool::same_contact(mem, args[0], args[1])
+    });
 }
 
 #[test]
 fn e37_list_primitives_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_ZERO_3, "E37Zero3", 0, |mem, args| {
-        layout::list::zero_3(mem, args[0]);
+        layout::list::clear_link(mem, args[0]);
         0
     });
     replay(E37_FIRST, "E37First", u32::MAX, |mem, args| layout::list::first(mem, args[0]));
     replay(E37_FIRST_TWIN, "E37FirstTwin", u32::MAX, |mem, args| layout::list::first_twin(mem, args[0]));
-    replay(E37_AT_8, "E37At8", u32::MAX, |mem, args| layout::list::at_8(mem, args[0]));
+    replay(E37_AT_8, "E37At8", u32::MAX, |mem, args| layout::list::count(mem, args[0]));
     replay(E37_ZERO_4, "E37Zero4", 0, |mem, args| {
-        layout::list::zero_4(mem, args[0]);
+        layout::list::clear_list(mem, args[0]);
         0
     });
 }
@@ -2441,11 +2461,11 @@ fn e37_rate_4c70_matches_original_calls() {
 fn e37_release_owner_twins_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_RELEASE_4F50, "E37Release4F50", 0, |mem, args| {
-        layout::list::release_4f50(mem, args[0]);
+        layout::list::release_link(mem, args[0]);
         0
     });
     replay(E37_RELEASE_4F60, "E37Release4F60", 0, |mem, args| {
-        layout::list::release_4f60(mem, args[0]);
+        layout::list::release_link_twin(mem, args[0]);
         0
     });
 }
@@ -2463,7 +2483,7 @@ fn e37_list_release_matches_original_calls() {
 fn e37_list_set_1c_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_LIST_SET_1C, "E37ListOps::Set1C", 0, |mem, args| {
-        layout::list::set_1c(mem, args[0], args[1]);
+        layout::list::set_extra_pointer(mem, args[0], args[1]);
         0
     });
 }
@@ -2523,7 +2543,7 @@ fn e37_event_dtor_body_matches_original_calls() {
 fn e37_event_vf1cx_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_EVENT_VF1CX, "CCollisionEvent::Vf1Cx", u32::MAX, |mem, args| {
-        layout::event_pool::vf1cx(mem, args[0], args[1])
+        layout::event_pool::release_event(mem, args[0], args[1])
     });
 }
 
@@ -2540,7 +2560,7 @@ fn e37_list_drain_matches_original_calls() {
 fn e37_drain_wrappers_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(E37_COLLISION_LIST_VF08X, "CCollisionList::Vf08x", 0, |mem, args| {
-        layout::list::collision_list_vf08x(mem, args[0]);
+        layout::list::drain_collision_list(mem, args[0]);
         0
     });
     replay(E37_DRAIN_4F70, "E37Drain4F70", 0, |mem, args| {

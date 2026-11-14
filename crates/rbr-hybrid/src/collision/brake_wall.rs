@@ -105,7 +105,7 @@ pub(super) fn brake_wall_vf_f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
     let mut args = [0; 8];
     args.copy_from_slice(&r.stack[..8]);
     let mut calls = WallSlotE8 { mem: ctx.mem.clone(), host: ctx.host };
-    let eax = layout::brake_wall_vf_f0(&mut calls, &mut ctx.mem, r.ecx, args, r.esp);
+    let eax = layout::brake_wall_contact(&mut calls, &mut ctx.mem, r.ecx, args, r.esp);
     Ok(Return::void(eax, 0x20))
 }
 

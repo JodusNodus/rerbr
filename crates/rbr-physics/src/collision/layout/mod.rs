@@ -73,11 +73,11 @@ pub(in crate::collision) use mesh_query::{sweep_scratch, SweepScratch};
 pub use solver::ctor_solver;
 pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
 pub use vec_ops::{
-    min_max_a, scaled, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross, vec3_cross_dot,
+    bounds_union, scaled, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross, vec3_cross_dot,
     vec3_dot, vec3_normalize, vec3_scale, vec3_sub, vec3_sub_dot, vec4_copy_from, vec4_normalize, vec4_sub_stale,
     Vec4Pair,
 };
-pub use walls::{brake_wall_vf_f0, query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
+pub use walls::{brake_wall_contact, query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
 pub(in crate::collision) use walls::{probe_hits, wall_box_frame, wall_ends_frame};
 
 /// The 16-aligned frame base of a function entered at `sp` (`push ebp; mov ebp, esp; and esp, -0x10`).

@@ -258,7 +258,7 @@ fn min_max_a_reads_the_upper_pair_after_the_lower_store() {
     v(0.0, 6.0, 0.0, 1.0).store(&mut mem, GRID + 0x20);
     v(3.0, 1.0, 1.0, 1.0).store(&mut mem, GRID + 0x30);
     // `lo` is the receiver's upper vector, so the max sees the min's result.
-    let eax = layout::min_max_a(&mut mem, GRID, GRID + 0x20, GRID + 0x10, GRID + 0x30);
+    let eax = layout::bounds_union(&mut mem, GRID, GRID + 0x20, GRID + 0x10, GRID + 0x30);
     assert_eq!(eax, GRID + 0x30);
     assert_eq!(Vec4::load(&mem, GRID + 0x10), v(0.0, 5.0, -1.0, 0.0));
     // Read before the store, the max would be (3, 2, 2, 2).

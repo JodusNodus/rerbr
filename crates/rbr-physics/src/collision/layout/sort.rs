@@ -1,10 +1,10 @@
-//! E37 event sorting and scalar getter leaves.
+//! E37 event sorting, the event time and the constant getter leaves.
 
 use super::event_pool::EVENT_COUNT;
 use crate::mem::Mem;
 
-/// CCollisionEvent::Get94 (0x4f3f80): return the stored penetration scalar.
-pub fn event_get_94(mem: &Mem, event: u32) -> f32 {
+/// CCollisionEvent::Get94 (0x4f3f80) (name ours): the event's time (+0x94).
+pub fn event_time(mem: &Mem, event: u32) -> f32 {
     mem.f32(event + 0x94)
 }
 
@@ -13,31 +13,31 @@ pub fn live_event_count(mem: &Mem) -> u32 {
     mem.u32(EVENT_COUNT)
 }
 
-/// E37Zero4090 (0x4f4090).
-pub const fn zero_4090() -> u32 {
+/// E37Zero4090 (0x4f4090) (name ours): 0.
+pub const fn zero() -> u32 {
     0
 }
 
-/// E37Nop40A0 (0x4f40a0).
-pub const fn nop_40a0() {}
+/// E37Nop40A0 (0x4f40a0) (name ours): an empty function.
+pub const fn nop() {}
 
-/// E37Zero40B0 (0x4f40b0).
-pub const fn zero_40b0() -> u32 {
+/// E37Zero40B0 (0x4f40b0) (name ours): 0, as `zero`.
+pub const fn zero_twin() -> u32 {
     0
 }
 
-/// E37Get795E14a (0x4f40c0).
-pub const fn get_795e14a() -> f32 {
+/// E37Get795E14a (0x4f40c0) (name ours): the float at 0x795e14, 1.0.
+pub const fn one() -> f32 {
     1.0
 }
 
-/// E37Get795E14b (0x4f40d0).
-pub const fn get_795e14b() -> f32 {
+/// E37Get795E14b (0x4f40d0) (name ours): 1.0, as `one`.
+pub const fn one_twin() -> f32 {
     1.0
 }
 
-/// E37Get72AFCC (0x4f40e0).
-pub const fn get_72afcc() -> f32 {
+/// E37Get72AFCC (0x4f40e0) (name ours): the float at 0x72afcc, 0.3.
+pub const fn three_tenths() -> f32 {
     0.3
 }
 
@@ -76,8 +76,9 @@ pub fn find_int(mem: &Mem, base: u32, count: u32, key: u32) -> u32 {
     }
 }
 
-/// E37Init70Obj::Init70 (0x4f4080): load the four-float block at +0x70.
-pub fn init_70(mem: &mut Mem, object: u32, out: u32) -> u32 {
+/// E37Init70Obj::Init70 (0x4f4080) (name ours): copies the four floats at +0x70 (an event's plane, as `plane_scale`
+/// reads it) to `out`. Returns `out`.
+pub fn copy_plane(mem: &mut Mem, object: u32, out: u32) -> u32 {
     mem.copy(out, object + 0x70, 16);
     out
 }
