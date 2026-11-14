@@ -29,9 +29,9 @@ pub fn grid_contacts<S: CollisionStore>(
     let grid = f.at(GridWalkFrame::GRID);
     host.ray_seeds(f.call_sp(1), grid);
     if (store.entity_flags(other) as i8) < 0 {
-        let eax = host.collide_init(f.call_sp(4), other, this, list);
+        let result = host.collide_init(f.call_sp(4), other, this, list);
         host.ray_clear(f.call_sp(1), grid);
-        return eax;
+        return result;
     }
     if host.grid_active(f.call_sp(1), other) == 0 {
         host.ray_clear(f.call_sp(1), grid);

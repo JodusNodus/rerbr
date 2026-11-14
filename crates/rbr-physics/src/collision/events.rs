@@ -2,6 +2,7 @@
 
 use super::contact_solver;
 use super::layout::event_pool::partner_slot;
+use super::layout::slots::{DOT_PRODUCTS_SLOT, IMPULSE_SLOT, POINT_VELOCITY_SLOT, TRANSFORM_SLOT};
 use super::layout::{self, EventQueryFrame};
 use super::store::{CollisionStore, Side};
 use crate::math::vec::{Vec3, Vec4};
@@ -21,11 +22,6 @@ pub trait EventBodyHost {
     /// The body's eight-word impulse query.
     fn impulse(&mut self, sp: u32, target: u32, body: u32, args: [u32; 8]) -> u32;
 }
-
-const SLOT_TRANSFORM: u32 = 0x30;
-const SLOT_IMPULSE: u32 = 0x128;
-const SLOT_DOT_PRODUCTS: u32 = 0x138;
-const SLOT_POINT_VELOCITY: u32 = 0x140;
 
 fn side_body<S: CollisionStore>(store: &S, event: u32, side: Side) -> u32 {
     match side {
@@ -63,14 +59,14 @@ fn query_body<S: CollisionStore>(
     let (ta, tb, tc) = (frame.walk_a, frame.walk_b, frame.composed);
     for (walk, out) in [(a, ta), (b, tb)] {
         let body = side_body(store, event, side);
-        let r = host.transform(frame.transform_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+        let r = host.transform(frame.transform_sp, store.vtable_slot(body, TRANSFORM_SLOT), body);
         host.pair_walk(frame.walk_sp, event, walk, r, out);
     }
     let body = side_body(store, event, side);
-    let r = host.transform(frame.transform_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    let r = host.transform(frame.transform_sp, store.vtable_slot(body, TRANSFORM_SLOT), body);
     host.compose(frame.walk_sp, event, store.event_point(event), r, tc);
     let body = side_body(store, event, side);
-    host.dot_products(frame.query_sp, store.vtable_slot(body, SLOT_DOT_PRODUCTS), body, [tc, ta, tb, c, d, e])
+    host.dot_products(frame.query_sp, store.vtable_slot(body, DOT_PRODUCTS_SLOT), body, [tc, ta, tb, c, d, e])
 }
 
 /// Applies the event's impulse to its bodies, unless the event's suppression flags are set (returning the flags word
@@ -93,7 +89,7 @@ pub fn apply_event_impulse<S: CollisionStore>(
         let ids = store.event_ids(event);
         let (id, word) = partner_slot(ids.second[0], ids.second[1], ids.first[0], ids.first[1]);
         let args = [store.event_point(event), c, id, word, store.event_materials_at(event, Side::Partner), a, b, d];
-        host.impulse(frame.impulse_sp, store.vtable_slot(body_a, SLOT_IMPULSE), body_a, args);
+        host.impulse(frame.impulse_sp, store.vtable_slot(body_a, IMPULSE_SLOT), body_a, args);
     }
     let body_b = store.event_partner(event);
     if body_b == 0 {
@@ -104,7 +100,7 @@ pub fn apply_event_impulse<S: CollisionStore>(
     let [id, word] = store.event_ids(event).first;
     scaled(store, c, tb, -1.0);
     let args = [store.event_point(event), tb, id, word, store.event_materials_at(event, Side::Body), a, b, ta];
-    host.impulse(frame.impulse_sp, store.vtable_slot(body_b, SLOT_IMPULSE), body_b, args)
+    host.impulse(frame.impulse_sp, store.vtable_slot(body_b, IMPULSE_SLOT), body_b, args)
 }
 
 /// Stores the input vector scaled by `scale` at `output`.
@@ -147,7 +143,7 @@ fn side_velocity<S: CollisionStore>(
     if body == 0 {
         store.store_vec4(at, Vec4::default());
     } else {
-        let target = store.vtable_slot(body, SLOT_POINT_VELOCITY);
+        let target = store.vtable_slot(body, POINT_VELOCITY_SLOT);
         host.point_velocity(sp, target, body, store.event_point(event), at);
     }
     store.vec3(at)
@@ -167,10 +163,10 @@ pub fn init_full<S: CollisionStore>(
 
     let (compose_out, walk_out) = store.event_contact_outputs(event);
     let body = store.event_body(event);
-    let frame = host.transform(call_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    let frame = host.transform(call_sp, store.vtable_slot(body, TRANSFORM_SLOT), body);
     host.compose(call_sp, frame, point_a, event, compose_out);
     let body = store.event_body(event);
-    let frame = host.transform(call_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    let frame = host.transform(call_sp, store.vtable_slot(body, TRANSFORM_SLOT), body);
     host.pair_walk(call_sp, frame, point_b, event, walk_out);
     store.count_event();
     event

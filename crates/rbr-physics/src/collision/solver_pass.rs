@@ -4,16 +4,11 @@
 //! `ImpulseHost`.
 
 use super::contact_solver::{self, Correction, SolverContact};
+use super::layout::slots::{ACTIVE_SLOT, INVERSE_MASS_SLOT, VERY_SOFT_SLOT, WAKE_SLOT};
 use super::layout::solver_hosts::{ImpulseHost, SolverHost};
 use super::layout::{contact_row_frame, solve_event_frame};
 use super::store::{CollisionStore, Side};
 use crate::math::vec::Vec4;
-
-/// The virtual slots the passes call on a body.
-const SLOT_INVERSE_MASS: u32 = 0x13c;
-const SLOT_TEST_A: u32 = 0x80;
-const SLOT_TEST_B: u32 = 0x8c;
-const SLOT_WAKE: u32 = 0x90;
 
 /// An offset row holds 8 offsets after its header; the solver has 64 rows. A body's contact row holds 8 rows, the
 /// solver's 64.
@@ -103,7 +98,7 @@ fn set_event_flag<S: CollisionStore>(store: &mut S, event: u32, flag: u32) {
 }
 
 fn inverse_mass<S: CollisionStore>(host: &mut impl SolverHost, store: &S, body: u32) -> f64 {
-    host.inverse_mass(store.vtable_slot(body, SLOT_INVERSE_MASS), body)
+    host.inverse_mass(store.vtable_slot(body, INVERSE_MASS_SLOT), body)
 }
 
 /// Per event, refreshes the materials and suppress flags, then flags a movable body (0x800) and a movable active
@@ -203,10 +198,10 @@ pub fn correct_penetrations<S: CollisionStore>(host: &mut impl SolverHost, store
 /// Wakes `body` when it is movable and both wake tests pass.
 fn wake_if_movable<S: CollisionStore>(host: &mut impl SolverHost, store: &S, body: u32) {
     if contact_solver::movable(inverse_mass(host, store, body))
-        && host.body_test(store.vtable_slot(body, SLOT_TEST_A), body) == 0
-        && host.body_test(store.vtable_slot(body, SLOT_TEST_B), body) == 0
+        && host.body_test(store.vtable_slot(body, ACTIVE_SLOT), body) == 0
+        && host.body_test(store.vtable_slot(body, VERY_SOFT_SLOT), body) == 0
     {
-        host.body_wake(store.vtable_slot(body, SLOT_WAKE), body);
+        host.body_wake(store.vtable_slot(body, WAKE_SLOT), body);
     }
 }
 

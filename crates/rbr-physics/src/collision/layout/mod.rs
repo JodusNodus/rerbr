@@ -19,6 +19,7 @@ pub mod links;
 pub mod list;
 mod mem_store;
 mod mesh_query;
+pub mod slots;
 mod solver;
 pub mod solver_hosts;
 pub mod sort;

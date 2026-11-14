@@ -2,6 +2,7 @@
 
 use super::layout;
 use super::layout::e36_collect::{collect_frame, COMPOSE, PAIR_WALK};
+use super::layout::slots::{GRID_SLOT, TRANSFORM_SLOT};
 use super::obb::{self, ObbFrame};
 use super::store::CollisionStore;
 use crate::mem::Mem;
@@ -53,10 +54,6 @@ pub trait CollectHost<S = Mem> {
     fn length(&mut self, mem: &S, sp: u32, vector: u32) -> f32;
 }
 
-/// The body's virtual slots: the receiver of its transforms, and its collision pointer.
-const SLOT_TRANSFORM: u32 = 0x30;
-const SLOT_COLLISION: u32 = 0x118;
-
 fn transform<S: CollisionStore>(
     store: &mut S,
     owner: u32,
@@ -67,14 +64,14 @@ fn transform<S: CollisionStore>(
     sp: u32,
     host: &mut impl CollectHost<S>,
 ) {
-    let target = store.vtable_slot(owner, SLOT_TRANSFORM);
+    let target = store.vtable_slot(owner, TRANSFORM_SLOT);
     // Both calls share one argument block: the first call leaves the pushed words on the stack for the second.
     let receiver = host.virtual_call(store, sp, target, &[owner, a, matrix, c]);
     host.transform(store, sp, finish, receiver, a, matrix, c);
 }
 
 fn collision_pointer<S: CollisionStore>(store: &mut S, owner: u32, sp: u32, host: &mut impl CollectHost<S>) -> u32 {
-    let target = store.vtable_slot(owner, SLOT_COLLISION);
+    let target = store.vtable_slot(owner, GRID_SLOT);
     host.virtual_call(store, sp, target, &[owner])
 }
 
