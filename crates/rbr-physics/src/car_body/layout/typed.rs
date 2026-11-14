@@ -10,6 +10,7 @@ use std::ops::Range;
 
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
+use crate::store::defs::{self, Defs};
 use crate::store::{Object, Raw, Value};
 use crate::wheel::layout::{slot as wheel_slot, CarWheels};
 
@@ -141,6 +142,16 @@ pub trait CarFields: Raw {
     fn set_field<T: Value>(&mut self, car: u32, slot: Slot<T>, value: T);
     /// The ground flag of the wheel at `wheel` (the wheel's typed state's).
     fn wheel_on_ground(&self, wheel: u32) -> u32;
+    /// The word at `off` of the car definition at `def` (the image's; a typed store's held definition's where it holds
+    /// the word, `CarView`).
+    #[inline]
+    fn def_u32(&self, def: u32, off: u32) -> u32 {
+        self.u32(def + off)
+    }
+    #[inline]
+    fn def_f32(&self, def: u32, off: u32) -> f32 {
+        f32::from_bits(self.def_u32(def, off))
+    }
 }
 
 impl CarFields for Mem {
@@ -198,12 +209,18 @@ pub struct CarView<'a> {
     mem: &'a mut Mem,
     own: Option<&'a CarOwn>,
     wheels: Option<&'a CarWheels>,
+    defs: Option<&'a Defs>,
 }
 
 impl<'a> CarView<'a> {
     /// The store over `mem` with the car `own` and its `wheels` held (none: every word on the image).
     pub fn new(mem: &'a mut Mem, own: Option<&'a CarOwn>, wheels: Option<&'a CarWheels>) -> Self {
-        CarView { mem, own, wheels }
+        CarView { mem, own, wheels, defs: None }
+    }
+
+    /// The store with the step's typed definitions (none: the car's definition on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        CarView { defs, ..self }
     }
 
     fn held(&self, car: u32) -> Option<&'a CarOwn> {
@@ -243,6 +260,15 @@ impl CarFields for CarView<'_> {
     fn wheel_on_ground(&self, wheel: u32) -> u32 {
         let on_ground = wheel_slot::on_ground;
         self.wheels.and_then(|w| w.read(wheel, on_ground)).unwrap_or_else(|| self.mem.u32(wheel + on_ground.at))
+    }
+
+    #[inline]
+    fn def_u32(&self, def: u32, off: u32) -> u32 {
+        let image = || self.mem.u32(def + off);
+        match self.defs.and_then(|d| d.car(def)).and_then(|d| d.word_of(off)) {
+            Some(word) => defs::checked(word, image),
+            None => image(),
+        }
     }
 }
 

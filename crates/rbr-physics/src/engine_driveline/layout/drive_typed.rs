@@ -11,13 +11,15 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use super::curve::{CurveInput, CurveState};
-use super::drive_objects::{Drive, DriveObjects, DriveState, IntLane, Lane, DRIVE_DEF_PTR, DRIVE_STATE_PTR};
+use super::drive_def::{brake_scale_at, gear_count_at, gear_ratios_at, lock_max_torque_at, DriveDefinition};
+use super::drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane, DRIVE_DEF_PTR, DRIVE_STATE_PTR};
 use super::worker::{
     DriveDamage, DriveOwn, DriveWorker, GearBand, GearWork, RatioRing, WheelBlock, WheelTerm, WorkerDef, WorkerState,
     SOLUTION_AT, STEP_MATRIX_AT, STEP_VEC_AT,
 };
 use crate::engine_driveline::store::{DriveStore, Part};
 use crate::mem::Mem;
+use crate::store::defs::{self, Defs};
 use crate::store::{Object, Raw, Real, Tabled};
 use crate::vcu::layout::{GearRatios, Gearbox, Locks, Outputs, Reals};
 use crate::vcu::store::DriveBlocks;
@@ -131,13 +133,6 @@ const GEAR_DT_AT: u32 = 0x174;
 const DAMAGE_GEAR_SCALE_AT: u32 = 0x48;
 /// The damage handler's diff-lock enable (`+0x90`).
 const DAMAGE_LOCKS_ENABLED: u32 = 0x90;
-/// The definition's words the VCU reads: each lock channel's maximum torque (`+0x58`, 0x60 apart), the gear ratios
-/// (`+0x644` and `+0x694`, 0x50 apart; the lower one is the previous gear's), the gear count and the brake scale.
-const DEF_LOCK_MAX_TORQUE: u32 = 0x58;
-const DEF_LOWER_RATIO: u32 = 0x644;
-const DEF_RATIO: u32 = 0x694;
-const DEF_GEAR_COUNT: u32 = 0x654;
-const DEF_BRAKE_SCALE: u32 = 0x620;
 
 /// The gear request of the drive at `drive` (its state's `+0x564`, an `NTweak` header whose dirty word is
 /// `DriveStateObj::commanded`'s), which `CDrive::M6840` passes to `SetDirty`.
@@ -653,7 +648,7 @@ impl CarDrive {
 
     /// The drive as a store: its state here, its definition, damage block and pointers in `mem`.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> DriveView<'a> {
-        DriveView { mem, at: DriveRef { image: self.image, held: Some(&self.typed) } }
+        DriveView { mem, at: DriveRef { image: self.image, held: Some(&self.typed), defs: None } }
     }
 
     /// Every owned byte range, named.
@@ -665,7 +660,7 @@ impl CarDrive {
 /// Runs `run` on the drive at `drive` per call: each store access lifts the drive from the image and lowers what it
 /// changes, so the image holds the drive between accesses (the drive's step calls other entries through the host).
 pub fn with_drive<T>(mem: &mut Mem, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
-    let at = DriveRef { image: DriveImage::of(mem, drive), held: None };
+    let at = DriveRef { image: DriveImage::of(mem, drive), held: None, defs: None };
     run(&mut DriveView { mem, at })
 }
 
@@ -692,15 +687,26 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
 pub struct DriveRef<'a> {
     image: DriveImage,
     held: Option<&'a RefCell<DriveTyped>>,
+    defs: Option<&'a Defs>,
 }
 
 impl<'a> DriveRef<'a> {
     /// The drive at `drive`: `held`'s state when it is that drive, else the image's.
     pub fn of(mem: &Mem, held: Option<&'a CarDrive>, drive: u32) -> Self {
         match held.filter(|d| d.is(drive)) {
-            Some(d) => DriveRef { image: d.image, held: Some(&d.typed) },
-            None => DriveRef { image: DriveImage::of(mem, drive), held: None },
+            Some(d) => DriveRef { image: d.image, held: Some(&d.typed), defs: None },
+            None => DriveRef { image: DriveImage::of(mem, drive), held: None, defs: None },
         }
+    }
+
+    /// The drive with the step's typed definitions (`None`: its definition on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        DriveRef { defs, ..self }
+    }
+
+    /// The typed definition at `def`, where the step holds it.
+    fn held_def(&self, def: u32) -> Option<&'a DriveDefinition> {
+        self.defs?.drive(def)
     }
 
     fn read<T>(&self, mem: &Mem, f: impl FnOnce(&DriveTyped) -> T) -> T {
@@ -750,25 +756,35 @@ impl<'a> DriveRef<'a> {
     }
 
     pub fn gear_count(&self, mem: &Mem) -> u32 {
-        mem.u32(self.def(mem) + DEF_GEAR_COUNT)
+        let def = self.def(mem);
+        match self.held_def(def) {
+            Some(d) => defs::checked(d.accessors.gear_count, || gear_count_at(mem, def)),
+            None => gear_count_at(mem, def),
+        }
     }
 
     pub fn gear_ratios(&self, mem: &Mem) -> GearRatios {
         let def = self.def(mem);
-        GearRatios {
-            lower_ratio: std::array::from_fn(|g| mem.f32(def + DEF_LOWER_RATIO + 0x50 * g as u32)),
-            ratio: std::array::from_fn(|g| mem.f32(def + DEF_RATIO + 0x50 * g as u32)),
+        match self.held_def(def) {
+            Some(d) => defs::checked(d.ratios, || gear_ratios_at(mem, def)),
+            None => gear_ratios_at(mem, def),
         }
     }
 
     pub fn outputs(&self, mem: &Mem) -> Outputs {
         let objects = self.objects(mem);
+        let (max_torque, brake_scale) = match self.held_def(objects.def) {
+            Some(d) => defs::checked((d.lock_max_torque, d.accessors.max_footbrake_pressure), || {
+                (lock_max_torque_at(mem, objects.def), brake_scale_at(mem, objects.def))
+            }),
+            None => (lock_max_torque_at(mem, objects.def), brake_scale_at(mem, objects.def)),
+        };
         self.read(mem, |d| {
             let terms = &d.state.terms;
             let locks = Locks {
                 ratio: terms.map(|t| t.value),
                 enabled: mem.u32(objects.damage + DAMAGE_LOCKS_ENABLED) != 0,
-                max_torque: std::array::from_fn(|ch| mem.f32(objects.def + DEF_LOCK_MAX_TORQUE + 0x60 * ch as u32)),
+                max_torque,
                 torque: terms.map(|t| t.scale),
             };
             let o = &d.own;
@@ -777,7 +793,7 @@ impl<'a> DriveRef<'a> {
                 brake: o.brake.value,
                 brake_scaled: o.brake_torque.value,
                 clutch_slip: o.clutch_slip.value,
-                brake_scale: mem.f32(objects.def + DEF_BRAKE_SCALE),
+                brake_scale,
             };
             Outputs { locks, reals }
         })
@@ -810,6 +826,13 @@ pub struct DriveView<'a> {
     at: DriveRef<'a>,
 }
 
+impl<'a> DriveView<'a> {
+    /// The view with the step's typed definitions (`None`: the definition on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        DriveView { at: self.at.with_defs(defs), ..self }
+    }
+}
+
 impl DriveView<'_> {
     /// The gear's scale (the damage block's `+0x48` at `shift`) as an offset from the drive.
     fn gear_scale_offset(&self, damage: u32, shift: u32) -> u32 {
@@ -836,6 +859,14 @@ impl DriveStore for DriveView<'_> {
         self.at.objects(self.mem)
     }
 
+    fn def(&self) -> DriveDef {
+        let at = self.objects().def;
+        match self.at.held_def(at) {
+            Some(d) => defs::checked(d.accessors, || DriveDef::load(self.mem, at)),
+            None => DriveDef::load(self.mem, at),
+        }
+    }
+
     fn lanes(&self) -> Drive {
         self.at.read(self.mem, DriveTyped::lanes)
     }
@@ -859,8 +890,12 @@ impl DriveStore for DriveView<'_> {
     fn worker(&self) -> DriveWorker {
         let (image, objects) = (self.at.image, self.objects());
         let mem = &*self.mem;
+        let def = match self.at.held_def(objects.def) {
+            Some(held) => defs::checked(held.worker, || WorkerDef::load(mem, objects.def)),
+            None => WorkerDef::load(mem, objects.def),
+        };
         self.at.read(mem, |d| DriveWorker {
-            def: WorkerDef::load(mem, objects.def),
+            def,
             state: d.worker_state(mem, image.state),
             own: d.own(mem, image.drive),
             damage: DriveDamage::load(mem, objects.damage),
@@ -885,7 +920,10 @@ impl DriveStore for DriveView<'_> {
         let shift = gear.wrapping_mul(4);
         GearWork {
             gear,
-            band: GearBand::load(self.mem, objects.def, gear),
+            band: match self.at.held_def(objects.def).and_then(|d| d.band(gear)) {
+                Some(band) => defs::checked(band, || GearBand::load(self.mem, objects.def, gear)),
+                None => GearBand::load(self.mem, objects.def, gear),
+            },
             scale: f32::from_bits(self.word(Part::Drive, self.gear_scale_offset(objects.damage, shift))),
             dt: f32::from_bits(self.word(Part::Drive, GEAR_DT_AT.wrapping_add(shift))),
         }

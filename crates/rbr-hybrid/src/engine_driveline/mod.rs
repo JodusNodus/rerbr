@@ -195,7 +195,7 @@ pub(crate) fn on_engine<T>(ctx: &mut Ctx, engine: u32, run: impl FnOnce(&mut Eng
 pub(crate) fn on_drive_in<T>(host: &dyn Host, mem: &mut Mem, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
     if let Some(typed) = host.typed() {
         if typed.car.drive.is(drive) {
-            return run(&mut typed.car.drive.view(mem));
+            return run(&mut typed.car.drive.view(mem).with_defs(Some(&typed.defs)));
         }
     }
     layout::with_drive(mem, drive, run)

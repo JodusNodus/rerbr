@@ -135,7 +135,7 @@ fn f(bits: u32) -> f32 {
 pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
     if let Some(typed) = ctx.host.typed() {
         if typed.car.vcu.is(scratch) {
-            return run(&mut typed.car.vcu.view(&mut ctx.mem, Some(&typed.car.drive)));
+            return run(&mut typed.car.vcu.view(&mut ctx.mem, Some(&typed.car.drive)).with_defs(Some(&typed.defs)));
         }
     }
     layout::with_vcu(&mut ctx.mem, scratch, run)

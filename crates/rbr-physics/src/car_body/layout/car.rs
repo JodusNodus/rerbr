@@ -314,7 +314,7 @@ impl<S: CarFields> CarStore for S {
 
     /// The setup word at `def + 0x22c`, `MaxSteeringLock` (the value of the key's CReal at `+0x220`).
     fn max_steering_lock(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x22c)
+        self.def_f32(self.def_address(car), 0x22c)
     }
 
     /// The snapshot flag (+0x9e4, `m_snapshotOn`): `StepEngine` calls `Snap9360` while it is set.
@@ -344,17 +344,17 @@ impl<S: CarFields> CarStore for S {
 
     /// The setup word at `def + 0x23c`, `SteeringRackRatio` (the value of the key's CReal at `+0x230`).
     fn steering_rack_ratio(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x23c)
+        self.def_f32(self.def_address(car), 0x23c)
     }
 
     /// The drag coefficient `Cd` (`def + 0x4490`, `notes/physics.md` "Car body": `DragCoefficient`).
     fn drag_coefficient(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + DEF_DRAG_COEFFICIENT)
+        self.def_f32(self.def_address(car), DEF_DRAG_COEFFICIENT)
     }
 
     /// The frontal area `A` (`def + 0x4480`, `notes/physics.md` "Car body": `FrontArea`).
     fn frontal_area(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + DEF_FRONTAL_AREA)
+        self.def_f32(self.def_address(car), DEF_FRONTAL_AREA)
     }
 
     /// The car's velocity (`CCar::m_velocity`, three lanes at +0x1c0).
@@ -374,12 +374,14 @@ impl<S: CarFields> CarStore for S {
 
     /// The setup gain of damper `i` (`def + 0x4460 + 0x10 i`).
     fn roll_bar_stiffness(&self, car: u32, i: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x4460 + 0x10 * i)
+        self.def_f32(self.def_address(car), 0x4460 + 0x10 * i)
     }
 
     /// The three inertia-like words of the def (`def + 0x130 + 4 i`, `CCar::Vf64x`'s divisors; their meaning is open).
     fn local_inverse_inertia(&self, car: u32) -> Vec3 {
-        Vec3::load(self, self.def_address(car) + 0x130)
+        let def = self.def_address(car);
+        let [x, y, z] = [0, 4, 8].map(|k| self.def_f32(def, 0x130 + k));
+        Vec3 { x, y, z }
     }
 
     /// The vector at +0x15d0 (`CCar::Vf64x` blends it; its meaning is open). All four lanes are modelled: the blend runs
@@ -422,7 +424,7 @@ impl<S: CarFields> CarStore for S {
 
     /// The inverse mass (`def + 0x16c`, `notes/physics.md` "Car body"): `Sim7AD0` divides by it.
     fn inverse_mass(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x16c)
+        self.def_f32(self.def_address(car), 0x16c)
     }
 
     /// The gravity (`Sim7AD0`'s gust): the world keeper's vector at `+0x160a0 + 0x10`.
@@ -650,7 +652,7 @@ impl<S: CarFields> CarStore for S {
 
     /// The dangerous acceleration (`CDef::m_dangerousAcceleration`, def +0x44b0).
     fn dangerous_acceleration(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + DEF_DANGEROUS_ACCELERATION)
+        self.def_f32(self.def_address(car), DEF_DANGEROUS_ACCELERATION)
     }
 
     /// Whether the force-feedback output is muted: the car's word at +0x1ec (the gate `CSolid::E43Vf8C`, 0x5293e0, returns on).
@@ -661,12 +663,12 @@ impl<S: CarFields> CarStore for S {
     /// The setup word at `def + 0x44a0`, `MaxFFTorque` (the value of the key's CReal at `+0x4494`), which `FfbNorm`
     /// divides by.
     fn max_ff_torque(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x44A0)
+        self.def_f32(self.def_address(car), 0x44A0)
     }
 
     /// The setup word at `def + 0x24c` (a working name): the gain of the drive's torque term in `Vf6cx`'s position.
     fn eff_wheel_radius(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x24C)
+        self.def_f32(self.def_address(car), 0x24C)
     }
 
     /// The word at +0x15f4 (the position's running value, `Vf6cx` and the payload's `* 0.001`).

@@ -13,6 +13,7 @@ mod damage_ctor;
 mod damage_handler;
 pub mod damage_handler_at;
 pub mod damage_tables;
+mod def;
 pub mod lights;
 mod offsets;
 mod typed;
@@ -58,6 +59,7 @@ pub use damage_handler::{
     fail_starter, fail_water_pump, grow_cooling_wear, impact_scale, leak_oil_cooler, ring_store, second_zero,
     set_body_state, wear_gearbox, zone_scaled, DamageHitCalls, ImpactCalls,
 };
+pub use def::CarDef;
 pub use offsets::{
     all_receivers_at, control, damage_source_at, drive_line_position_at, emitter_busy_at, emitter_source_at, handler,
     index_receivers_at, light_system_at, next_receiver_at, position_at, signal_at, step_mark_steering_at,

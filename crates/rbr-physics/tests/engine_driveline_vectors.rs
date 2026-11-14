@@ -14,6 +14,7 @@ use rbr_physics::fpu::Precision;
 use rbr_physics::math::vec::Vec4;
 use rbr_physics::mem::Mem;
 use rbr_physics::spring_damper::store::DamperBlocks;
+use rbr_physics::store::defs::{Defs, Held};
 use rbr_physics::store::{Object, Raw, Value};
 
 const PHYSICS_GLOBAL: u32 = 0x0165_9B70;
@@ -170,7 +171,7 @@ fn set30_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_30, "CDrive::Set30", |mem, call| {
         on_drive(mem, call.args[0], |d| {
-            let def = layout::DriveDef::load(d.mem(), d.objects().def);
+            let def = d.def();
             let mut lanes = d.lanes();
             drive::set_brake_in(&mut lanes, &def, f32::from_bits(call.args[1]));
             d.store_lanes(&lanes);
@@ -207,7 +208,7 @@ fn set47b0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_47B0, "CDrive::Set47B0", |mem, call| {
         on_drive(mem, call.args[0], |d| {
-            let def = layout::DriveDef::load(d.mem(), d.objects().def);
+            let def = d.def();
             let mut state = d.state();
             drive::request_gear(&mut state, def.gear_count, call.args[1] as i32);
             d.store_commanded_gear(&state);
@@ -1069,7 +1070,7 @@ fn the_typed_drive_over_a_chain_keeps_the_per_call_bytes() {
             },
             &|d| lanes(d, |l| drive::set_throttle_in(l, 0.75)),
             &|d| {
-                let def = layout::DriveDef::load(d.mem(), d.objects().def);
+                let def = d.def();
                 let mut lanes = d.lanes();
                 drive::set_brake_in(&mut lanes, &def, 0.25);
                 d.store_lanes(&lanes);
@@ -1077,7 +1078,7 @@ fn the_typed_drive_over_a_chain_keeps_the_per_call_bytes() {
             },
             &|d| lanes(d, |l| drive::set_clutch_slip(l, 0.5)),
             &|d| {
-                let def = layout::DriveDef::load(d.mem(), d.objects().def);
+                let def = d.def();
                 let mut state = d.state();
                 drive::request_gear(&mut state, def.gear_count, 1);
                 d.store_commanded_gear(&state);
@@ -1122,8 +1123,12 @@ fn the_typed_drive_over_a_chain_keeps_the_per_call_bytes() {
         let a: Vec<u32> = entries.iter().map(|entry| layout::with_drive(&mut per_call, this, |d| entry(d))).collect();
         let mut typed = base.clone();
         let held = layout::CarDrive::of(&typed, this);
+        // The definition held too, as a step's typed definitions hold it.
+        let def = layout::DriveObjects::at(&typed, this).def;
+        let lifted = layout::DriveDefinition::lift(&typed, def);
+        let defs = Defs { drive: Some(Held { at: def, def: lifted }), ..Defs::default() };
         let b: Vec<u32> = {
-            let mut view = held.view(&mut typed);
+            let mut view = held.view(&mut typed).with_defs(Some(&defs));
             entries.iter().map(|entry| entry(&mut view)).collect()
         };
         held.lower(&mut typed);

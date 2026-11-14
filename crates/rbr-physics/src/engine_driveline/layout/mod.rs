@@ -4,6 +4,7 @@
 mod construct;
 mod curve;
 mod drive_calls;
+mod drive_def;
 mod drive_line;
 mod drive_objects;
 mod drive_typed;
@@ -32,6 +33,7 @@ pub use drive_calls::{
     project_point, set_diff_lock, set_wheel_offset_and_bias, table_entry_field_at, transpose_into, wheel_prev_force,
     wheel_slip, DRIVE_SCRATCH,
 };
+pub use drive_def::{DriveDefinition, DRIVE_DEF_BYTES};
 pub use drive_line::{
     entry_at, forward_distance_at, last_distance, point_at, sample, set_drive_line, spline_at, tangent_lerp, COUNT_AT,
     MAX_ENTRIES, STRIDE,

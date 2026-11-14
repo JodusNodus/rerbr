@@ -3,7 +3,6 @@
 use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::engine_driveline::{drive, layout};
 use rbr_physics::physics_core::layout::signal_emit;
-use rbr_physics::store::Raw;
 
 use super::{f, is_held, on_drive, on_engine_in};
 use crate::{Ctx, Decline, Regs, Return, SignalCallees};
@@ -53,7 +52,7 @@ pub(super) fn init_real_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 /// thiscall `(brake)`.
 pub(super) fn set_brake_in(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     on_drive(ctx, r.ecx, |d| {
-        let def = layout::DriveDef::load(d.mem(), d.objects().def);
+        let def = d.def();
         let mut lanes = d.lanes();
         drive::set_brake_in(&mut lanes, &def, f(r.stack[0]));
         d.store_lanes(&lanes);
@@ -84,7 +83,7 @@ pub(super) fn set_clutch_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline
 /// thiscall `(delta)`.
 pub(super) fn request_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     on_drive(ctx, r.ecx, |d| {
-        let def = layout::DriveDef::load(d.mem(), d.objects().def);
+        let def = d.def();
         let mut state = d.state();
         drive::request_gear(&mut state, def.gear_count, r.stack[0] as i32);
         d.store_commanded_gear(&state);

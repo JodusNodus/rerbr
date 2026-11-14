@@ -8,6 +8,7 @@
 use super::store::{DriveBlocks, VcuStore};
 use crate::engine_driveline::layout::{CarDrive, DriveRef};
 use crate::mem::Mem;
+use crate::store::defs::{self, Defs};
 use crate::store::Real;
 
 /// Knots in a pedal map and in a speed map (the VCU always passes 11).
@@ -815,6 +816,11 @@ pub fn pedal_map(mem: &Mem, at: u32, n: usize) -> Vec<Knot> {
     (0..n as u32).map(|k| pedal_knot(mem, at, k)).collect()
 }
 
+/// The bytes of the definition [`def`] reads, from the first gear's rpm to the last speed knot (the object's end):
+/// what the step's typed definition stands for (`store::defs`).
+pub const DEF_BYTES: std::ops::Range<u32> = GEAR_UPSHIFT_RPM..REAR_SPEED_LOCK + 0x20 * (KNOTS as u32 - 1) + 0x20;
+const _: () = assert!(DEF_BYTES.end == DEF_SIZE);
+
 /// The definition at `at`. The memory must cover the whole object (0xcac bytes).
 pub fn def(mem: &Mem, at: u32) -> Def {
     let f = |off: u32| mem.f32(at + off);
@@ -1021,7 +1027,7 @@ impl CarVcu {
     /// The unit as a store: its state here, its definition and pointers in `mem`; the drive's blocks `drive`'s where it
     /// is the unit's drive, else the image's.
     pub fn view<'a>(&'a self, mem: &'a mut Mem, drive: Option<&'a CarDrive>) -> VcuView<'a> {
-        VcuView { mem, image: &self.image, unit: &self.unit, drive }
+        VcuView { mem, image: &self.image, unit: &self.unit, drive, defs: None }
     }
 
     /// Every owned byte range, named.
@@ -1057,19 +1063,31 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(bytes)
 }
 
-/// A unit in typed storage as a [`VcuStore`]: the state in [`CarVcu`], the definition and the pointers read from the
-/// image; and the drive's blocks ([`DriveBlocks`]), the drive's typed state (held in `drive`, else per access on the
-/// image).
+/// A unit in typed storage as a [`VcuStore`]: the state in [`CarVcu`], the definition the step's typed definitions
+/// hold ([`VcuView::with_defs`], else the image's), the pointers read from the image; and the drive's blocks
+/// ([`DriveBlocks`]), the drive's typed state (held in `drive`, else per access on the image).
 pub struct VcuView<'a> {
     mem: &'a mut Mem,
     image: &'a VcuImage,
     unit: &'a std::cell::Cell<Unit>,
     drive: Option<&'a CarDrive>,
+    defs: Option<&'a Defs>,
+}
+
+impl<'a> VcuView<'a> {
+    /// The view with the step's typed definitions (`None`: the definition on the image).
+    pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
+        VcuView { defs, ..self }
+    }
 }
 
 impl VcuStore for VcuView<'_> {
     fn def(&self) -> Def {
-        def(self.mem, self.image.def)
+        let at = self.image.def;
+        match self.defs.and_then(|d| d.vcu(at)) {
+            Some(held) => defs::checked(held.clone(), || def(self.mem, at)),
+            None => def(self.mem, at),
+        }
     }
 
     fn scratch(&self) -> Scratch {
@@ -1104,7 +1122,7 @@ impl VcuStore for VcuView<'_> {
 
 impl VcuView<'_> {
     fn drive(&self, drive: u32) -> DriveRef<'_> {
-        DriveRef::of(self.mem, self.drive, drive)
+        DriveRef::of(self.mem, self.drive, drive).with_defs(self.defs)
     }
 }
 

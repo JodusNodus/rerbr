@@ -11,6 +11,7 @@ use common::{Call, Inner, Window};
 use rbr_physics::engine_driveline::layout::{CarDrive, DriveImage, DriveObj, DriveRef, DriveStateObj};
 use rbr_physics::fpu::Precision;
 use rbr_physics::mem::Mem;
+use rbr_physics::store::defs::{Defs, Held};
 use rbr_physics::store::Object;
 use rbr_physics::vcu::layout::{ScratchObj, VcuView};
 use rbr_physics::vcu::store::{DriveBlocks, VcuStore};
@@ -617,7 +618,10 @@ fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
         let mut typed = base.clone();
         let held = layout::CarVcu::of(&typed, scratch);
         let held_drive = CarDrive::of(&typed, drive);
-        let mut view = held.view(&mut typed, Some(&held_drive));
+        // The definition held too, as a step's typed definitions hold it.
+        let def = held.image.def;
+        let defs = Defs { vcu: Some(Held { at: def, def: layout::def(&typed, def) }), ..Defs::default() };
+        let mut view = held.view(&mut typed, Some(&held_drive)).with_defs(Some(&defs));
         for entry in entries {
             entry(&mut view);
         }

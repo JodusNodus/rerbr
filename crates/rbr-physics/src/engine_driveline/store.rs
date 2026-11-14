@@ -6,7 +6,7 @@
 
 use super::drive_line::DriveLinePoint;
 use super::layout::{
-    BlendKnot, CurveInput, CurveKnot, CurveState, Drive, DriveObjects, DriveState, DriveWorker, EngineDef,
+    BlendKnot, CurveInput, CurveKnot, CurveState, Drive, DriveDef, DriveObjects, DriveState, DriveWorker, EngineDef,
     EngineObjects, EngineOptions, EngineOwn, EngineState, GearWork, LoadDef, RatioRing, UnitSplit,
 };
 use super::sim::{BlendRec, Bracket};
@@ -27,6 +27,8 @@ pub trait DriveStore: Raw {
     fn at(&self) -> u32;
     /// Its definition, state and damage block (the image's pointers).
     fn objects(&self) -> DriveObjects;
+    /// The definition's fields the accessors read.
+    fn def(&self) -> DriveDef;
     fn lanes(&self) -> Drive;
     fn store_lanes(&mut self, value: &Drive);
     fn state(&self) -> DriveState;
