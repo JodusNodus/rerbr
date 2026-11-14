@@ -161,7 +161,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
 | `CoreStore` | `physics_core/store.rs` | `physics_core/layout/mem_store.rs` |
 | `HingeStore`, `EntityStore: HingeStore` | `entities/store.rs` | `entities/layout/hinge_state.rs`, `layout/store_mem.rs` |
-| `StageStore` | `stage/store.rs` | `stage/layout/queries.rs` |
+| `StageStore` (the drive line, the material table and its sheets) | `stage/store.rs` | `stage/layout/queries.rs`; `StageView` (typed) |
 | `TweakStore` | `ntweak/store.rs` | `ntweak/layout/mod.rs` |
 | `CollisionStore` | `collision/store.rs` | `collision/layout/mem_store.rs` |
 
@@ -204,7 +204,8 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   The hybrid gate's 1.02 snapshots run no strut call but the kernels and `GetName` in 30 steps (`Step` declines).
 - One typed storage for the car: `store::typed::CarTyped` (the struts in a `RefCell`, their runs never nest; the VCU
   in a `Cell`, FlagDispatch calls the slip query, a VCU binding, through the host), lifted and lowered together by
-  `Pure::typed` (was `typed_struts`) around `Playback::step`, reached by the bindings through `Host::typed`.
+  `Pure::typed` (was `typed_struts`) around `Playback::step`, reached by the bindings through `Host::typed`, which
+  holds `store::typed::Typed` (the car's and the stage's).
 - The VCU, second: `vcu::layout::Unit` (the scratch's pedals, fixed clutch, carried word, launch and slip fields; the
   state's lockout, launch clutch with its dirty word, pedal swap, gear timer and cooldown; 16 words) in `CarVcu`
   (`VcuImage`, `lift`/`lower` on `ScratchObj`/`StateObj`, `with_vcu` per call, `round_trip`). Definition, pointers and
@@ -242,6 +243,24 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   unmapped footprint zero-filled) and the chain test (20 entries per call vs held, every byte, 1020 WriteOutputs
   records); hybrid gate 13/13 (the 1.02 snapshots run the original Step, which calls the sub-entries per call);
   +0.54 % instructions per step.
+- The stage, fourth, read-only: `stage::typed::Stage` (the drive line `DRIVE_LINE` names: its 10000 entries of 0x30
+  bytes and the count, `line+0x10..+0x75314`; `MATERIAL_TABLE`'s 256 slots, slot address and count, `+0..+0x808`, and
+  the 256-byte sheet of each slot with one), one per loaded stage, not per car: `Pure` lifts it at the first step
+  (`OnceLock`) and puts an `Arc` of it in each step's `Typed`; nothing lowers it. `layout::StageView` is `StageStore`
+  over it, the image for a read it does not hold (past the table, another address); without a step (emulator, vectors,
+  between steps) the readers run on `Mem`'s. Readers: E12_SampleX, SampleBig, BlendB, LerpAt, Last, ClampMix,
+  `Test7910`, `Vf98x`'s and Split17C's samples, NGP's sampler, `E44MatTable::M520240` and NGP's sheet lookup, through
+  `rbr_hybrid::stage::on_stage`; `SetDriveLine` and `Build` (load) write it on the image. Unchanged by a step: the
+  poison run (an unrouted E12_SampleX fails: `drive line (+0x75300)` in `0x475ea0`); `.col` image, sheets, table and
+  drive line hash equal before and after drive2, while NGP's first collision-system copy changes at `+0x1014..+0x1024`
+  (the queries' found list: collision state, not the stage's). The poison build checks each typed answer against the
+  image's. Evidence: drive2 84084/84084 typed; `--twin typed` equal after each of 84084 steps (also aids on, and wet
+  with realistic damage); poison 84084/84084 and on RSF 122/117 wet (60000 autopilot steps each); `round_trip`
+  484876-491532 stage bytes and `differential` (every entry, slot and texel, 624196 answer bytes) on 40 snapshots and
+  `load_stage`; perf -0.23 % instructions. The hybrid gate runs E12_SampleX, Thunk4F0 and SampleBig per call on the
+  image; M520240 declines there (NGP's). Not typed: the collision system and its copies, the `.col` tree, the mesh
+  grids and water meshes (the collision queries, heap graphs; their scratch is written per query); `CollisionQuery`
+  is NGP's runtime copy (no image word) or the snapshot's operand.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core

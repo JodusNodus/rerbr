@@ -1287,7 +1287,8 @@ const SAMPLE_BIG: u32 = 0x50b300;
 fn sample_big_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VARIABLE, SAMPLE_BIG, "CDriveLine::SampleBig", |call, mem| {
-        let got = layout::project_point(mem, call.args[0], call.args[1], f32::from_bits(call.args[2]));
+        let point = mem.f32s(call.args[1]);
+        let got = layout::project_point(mem, call.args[0], point, f32::from_bits(call.args[2]));
         check_st0_nan_tolerant(call, got, "CDriveLine::SampleBig");
     });
 }

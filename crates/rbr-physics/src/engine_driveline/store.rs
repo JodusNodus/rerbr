@@ -8,7 +8,6 @@ use super::layout::{
     LaneScale, LoadDef, RatioRing, UnitSplit, WorkerDef,
 };
 use super::sim::{BlendRec, Bracket};
-use crate::math::vec::Vec4;
 use crate::spring_damper::store::DamperBlocks;
 use crate::spring_damper::{BlendTerms, Relaxation};
 
@@ -69,9 +68,6 @@ pub trait EngineStore: DamperBlocks {
     /// tags of the filled entries are left as they were. The log lines are skipped; a count over 10000 traps in the
     /// original.
     fn store_drive_line(&mut self, this: u32, entries: &[DriveLinePoint]);
-    /// The lerp of the drive line entry `idx`'s tangent and entry `idx + 1`'s, at `t`. The count check is the caller's
-    /// (the original traps past it).
-    fn lerp_at(&self, this: u32, idx: i32, t: f32) -> Vec4;
     /// Row `i` of the definition's exhaust table: eight floats.
     fn exhaust_row(&self, def: u32, i: u32) -> [f32; 8];
     /// The `n` knots of a curve at `at`.

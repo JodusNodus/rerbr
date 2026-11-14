@@ -23,6 +23,7 @@ mod probe_cache;
 pub mod pure;
 pub mod rigid_body;
 pub mod spring_damper;
+mod stage;
 pub mod timekeeper;
 pub mod tyre;
 pub mod vcu;
@@ -137,10 +138,11 @@ pub trait Host {
     /// emulator runs the original fan-out through the signal manager; the pure host keeps the typed payload for the
     /// game, which reads it instead of the manager's words.
     fn emit_damper(&self, _strut: u32, _signal: rbr_physics::spring_damper::DamperSignal) {}
-    /// The car's typed storage while the pure host holds it over a step ([`pure::Pure::typed`]): the typed
-    /// subsystems' bindings (the struts, the VCU, the tyres) run on it, not on the image's words. `None` elsewhere (the emulator,
-    /// between steps), where the bindings run per call on the image.
-    fn typed(&self) -> Option<std::cell::Ref<'_, rbr_physics::store::typed::CarTyped>> {
+    /// The typed storage while the pure host holds it over a step ([`pure::Pure::typed`]): the typed subsystems'
+    /// bindings (the struts, the VCU, the tyres, the stage's
+    /// readers) run on it, not on the image's words. `None` elsewhere (the emulator, between
+    /// steps), where the bindings run per call on the image.
+    fn typed(&self) -> Option<std::cell::Ref<'_, rbr_physics::store::typed::Typed>> {
         None
     }
 }

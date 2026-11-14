@@ -30,8 +30,8 @@ pub use drive_calls::{
     set_diff_lock, set_wheel_offset_and_bias, table_entry_field_at, transpose_into, wheel_prev_force, wheel_slip,
 };
 pub use drive_line::{
-    entry_at, forward_distance_at, last_distance, point_at, sample, set_drive_line, spline_at, COUNT_AT, MAX_ENTRIES,
-    STRIDE,
+    entry_at, forward_distance_at, last_distance, point_at, sample, set_drive_line, spline_at, tangent_lerp, COUNT_AT,
+    MAX_ENTRIES, STRIDE,
 };
 pub use drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane};
 pub use engine_calls::{

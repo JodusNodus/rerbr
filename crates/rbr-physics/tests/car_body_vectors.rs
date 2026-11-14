@@ -2699,7 +2699,7 @@ fn lane_test_matches_original_calls() {
     for call in &calls {
         let mem = map_windows(call);
         let mut next = 0;
-        let verdict = layout::lane_test(&mem, call.args[0], |v| {
+        let verdict = layout::lane_test(&mem, &mem, call.args[0], |v| {
             let inner = record_after(call, &mut next, TO_WORLD);
             // The inner windows are renumbered from 0 in the spec's order: the input, then the output.
             assert!(vec3_of(&inner_window(inner, 0).before) == v, "Test7910 call {}: ToWorld input", call.index);
@@ -3221,7 +3221,8 @@ fn vf98x_matches_original_calls() {
             continue;
         }
         let mut host = RecordedRespawn { call, next: 0 };
-        layout::run_countdown(&mut mem, &mut host, car, ENTRY);
+        // The countdown path reads no drive line.
+        layout::run_countdown(&mut mem, &Mem::new(), &mut host, car, ENTRY);
         assert_eq!(host.next, call.inner.len(), "Vf98x call {}: records left", call.index);
         check_windows(call, &mem, "CCar::Vf98x");
     }

@@ -83,7 +83,7 @@ fn frame<T>(r: Result<T, layout::Outside>) -> Result<T, Decline> {
 /// car's tyres (`Host::typed`), else per call, lifted from the image and lowered after `run` (`layout::with_tyre`).
 pub(crate) fn on_tyre<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> T {
     if let Some(typed) = ctx.host.typed() {
-        let mut tyres = typed.tyres.borrow_mut();
+        let mut tyres = typed.car.tyres.borrow_mut();
         if let Some(id) = tyres.id_of(scratch) {
             return run(&mut tyres.view(&ctx.mem), id);
         }
@@ -96,7 +96,7 @@ pub(crate) fn on_tyre<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut Tyre
 /// the ground probe, the pure host's tyre term).
 pub(crate) fn read_tyre<T>(host: &dyn Host, mem: &Mem, scratch: u32, read: impl FnOnce(&Tyre) -> T) -> T {
     if let Some(typed) = host.typed() {
-        let tyres = typed.tyres.borrow();
+        let tyres = typed.car.tyres.borrow();
         if let Some(id) = tyres.id_of(scratch) {
             return read(tyres.tyres.get(id));
         }
@@ -108,13 +108,13 @@ pub(crate) fn read_tyre<T>(host: &dyn Host, mem: &Mem, scratch: u32, read: impl 
 /// `scratch` on the image: a held tyre is lowered before it and lifted after it, through memory without poison (the
 /// words are the tyre's).
 fn on_image<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut Ctx) -> T) -> T {
-    let Some(id) = ctx.host.typed().and_then(|typed| typed.tyres.borrow().id_of(scratch)) else {
+    let Some(id) = ctx.host.typed().and_then(|typed| typed.car.tyres.borrow().id_of(scratch)) else {
         return run(ctx);
     };
     let mut image = unpoisoned(&ctx.mem);
-    ctx.host.typed().expect("held").tyres.borrow().lower_tyre(id, &mut image);
+    ctx.host.typed().expect("held").car.tyres.borrow().lower_tyre(id, &mut image);
     let out = run(ctx);
-    ctx.host.typed().expect("held").tyres.borrow_mut().lift_tyre(id, &unpoisoned(&ctx.mem));
+    ctx.host.typed().expect("held").car.tyres.borrow_mut().lift_tyre(id, &unpoisoned(&ctx.mem));
     out
 }
 
@@ -370,7 +370,7 @@ fn split_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 fn copy_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let material = layout::load_material(&ctx.mem, r.stack[0]);
     let scratch = r.ecx.wrapping_sub(layout::MATERIAL);
-    let held = ctx.host.typed().is_some_and(|typed| typed.tyres.borrow().id_of(scratch).is_some());
+    let held = ctx.host.typed().is_some_and(|typed| typed.car.tyres.borrow().id_of(scratch).is_some());
     if held {
         on_tyre(ctx, scratch, |v, t| entries::adopt_material(v, t, &material));
     } else {

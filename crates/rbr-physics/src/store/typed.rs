@@ -1,14 +1,33 @@
-//! The car's typed storage (B2, `notes/physics.md` "Store seam"): the subsystems whose state is typed, lifted from the
-//! image together and lowered together. The struts and the tyres are borrowed by each of their runs (their runs do not
-//! nest); the VCU's state is in a cell, since its runs call each other through the host.
+//! The typed storage a step holds (B2, `notes/physics.md` "Store seam"): [`Typed`], the car's typed subsystems
+//! ([`CarTyped`]) and the stage they run on. The car's are lifted from the image together and lowered together; the
+//! struts and the tyres are borrowed by each of their runs (their runs do not nest); the VCU's state is in a cell, since its runs call
+//! each other through the host. The stage is lifted once per loaded stage and never lowered (a step only reads it).
 
 use std::cell::RefCell;
 use std::ops::Range;
+use std::sync::Arc;
 
 use crate::mem::Mem;
 use crate::spring_damper::layout::CarStruts;
+use crate::stage::typed::Stage;
 use crate::tyre::layout::CarTyres;
 use crate::vcu::layout::CarVcu;
+
+/// What a step holds in typed storage: the car's state and the stage's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Typed {
+    pub car: CarTyped,
+    pub stage: Arc<Stage>,
+}
+
+impl Typed {
+    /// Every owned byte range, named: the car's and the stage's.
+    pub fn owned(&self) -> Vec<(Range<u32>, String)> {
+        let mut owned = self.car.owned();
+        owned.extend(self.stage.owned());
+        owned
+    }
+}
 
 /// The typed state of the car at one address.
 #[derive(Clone, Debug, PartialEq)]
@@ -44,10 +63,11 @@ impl CarTyped {
     }
 }
 
-/// `lower(lift(image))` of the car's typed state into an empty image, compared with `mem` on every owned byte: their
-/// count, or the first byte that differs.
+/// `lower(lift(image))` of the car's typed state into an empty image, compared with `mem` on every owned byte, and the
+/// stage's typed bytes against the image's: their count, or the first byte that differs.
 pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
     Ok(crate::spring_damper::layout::round_trip(mem, car)?
         + crate::vcu::layout::round_trip(mem, car)?
-        + crate::tyre::layout::round_trip(mem, car)?)
+        + crate::tyre::layout::round_trip(mem, car)?
+        + crate::stage::layout::round_trip(mem)?)
 }

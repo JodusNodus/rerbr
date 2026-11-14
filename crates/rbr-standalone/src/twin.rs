@@ -6,7 +6,8 @@
 //! `mem` runs the second side as the first, the Mem path against itself; `mem-direct` runs it with B1's Mem-direct
 //! dispatch ([`rbr_hybrid::pure::Pure::direct`]); `typed` runs it with the typed subsystems (the struts, the VCU, the tyres) on the
 //! image between calls, against the first side's typed storage over each step ([`rbr_hybrid::pure::Pure::typed`], the
-//! default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too.
+//! default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
+//! stage's queries against the image's (`stage::layout::differential`).
 
 use rbr_hybrid::pure::{frame_bytes, word_name, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
@@ -58,6 +59,10 @@ impl Twin {
         });
         for (side, r) in ["first", "second"].iter().zip(&round_trip) {
             eprintln!("twin: lower(lift) of the {side} side's image: {}", Self::round_trip_text(r));
+        }
+        match rbr_physics::stage::layout::differential(&a.pure.mem) {
+            Ok(bytes) => eprintln!("twin: the typed stage's queries equal the image's, {bytes} bytes"),
+            Err(e) => eprintln!("twin: the typed stage's queries differ from the image's: {e}"),
         }
         let mut twin = Twin { kind, playback: b, steps: 0, first: None, round_trip };
         twin.compare(a, "the start");

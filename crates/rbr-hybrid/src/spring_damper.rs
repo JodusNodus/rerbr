@@ -49,7 +49,7 @@ fn f(bits: u32) -> f32 {
 /// a store of its own and lowered after it (the per-call path).
 pub(crate) fn on_strut<T>(ctx: &mut Ctx, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
     if let Some(typed) = ctx.host.typed() {
-        let mut struts = typed.struts.borrow_mut();
+        let mut struts = typed.car.struts.borrow_mut();
         if let Some(id) = struts.id_of(controller) {
             return run(&mut struts.view(&ctx.mem), id);
         }
