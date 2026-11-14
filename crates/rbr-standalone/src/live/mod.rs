@@ -299,9 +299,9 @@ impl<'a> Live<'a> {
         self.school.as_ref()
     }
 
-    /// The pure physics' memory after the last step.
+    /// The image after the last step, for a reader between steps ([`rbr_hybrid::pure::Pure::image`]).
     pub fn mem(&self) -> &Mem {
-        &self.playback.pure.mem
+        self.playback.pure.image()
     }
 
     /// NGP's base address in the image.
@@ -355,7 +355,7 @@ impl<'a> Live<'a> {
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
     /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`).
     pub fn wheel_force(&self) -> f32 {
-        let mem = &self.playback.pure.mem;
+        let mem = self.playback.pure.image();
         match self.ffb_tyres {
             Some(trail) => crate::tyre_ffb::force(mem, trail),
             None => rbr_physics::car_body::steering_ffb::force(mem, mem.u32(CAR_PTR)),
@@ -441,7 +441,7 @@ impl<'a> Live<'a> {
                 ..FrameInput::default()
             },
             Control::Input(input) => FrameInput {
-                raw: poll(&input, &self.playback.pure.mem),
+                raw: poll(&input, self.playback.pure.image()),
                 help_call: input.flags & CALL_FOR_HELP != 0,
                 acknowledge: input.flags & ACCEPT_MESSAGE != 0,
                 confirm: input.flags & ACCEPT_MESSAGE != 0,
@@ -527,7 +527,7 @@ impl<'a> Live<'a> {
                 track: &self.track,
                 control: &self.control,
             };
-            telemetry.send(&self.playback.pure.mem, &self.game, driving, &frame);
+            telemetry.send(self.playback.pure.image(), &self.game, driving, &frame);
         }
         Ok(substeps)
     }
@@ -546,16 +546,16 @@ impl<'a> Live<'a> {
         // as a typed event and reset its words, so SND1 carries the frame's payloads as the original's signal
         // traffic does.
         let struts = {
-            let mem = &self.playback.pure.mem;
+            let mem = self.playback.pure.image();
             let car = mem.u32(CAR_PTR);
             std::array::from_fn(|k| {
                 mem.u32(car + rbr_recording::sound::CAR_WHEELS + 4 * k as u32) + rbr_recording::sound::WHEEL_STRUT
             })
         };
         self.playback.pure.reset_strut_dampers(struts);
-        let dampers = damper_frame(&self.playback.pure.mem, &self.playback.pure.take_damper_signals());
+        let dampers = damper_frame(self.playback.pure.image(), &self.playback.pure.take_damper_signals());
         self.last = Picture::of(
-            &self.playback.pure.mem,
+            self.playback.pure.image(),
             race_hud(race_clock, self.penalties),
             &splits,
             self.stage.interactive_handle_end,

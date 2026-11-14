@@ -511,7 +511,7 @@ fn live_damper_words_reset_each_frame() {
             }
             stepped += 1;
             // The picture reset the words it just emitted.
-            let mem = &live.playback.pure.mem;
+            let mem = live.playback.pure.image();
             let car = mem.u32(CAR_PTR);
             for k in 0..4 {
                 let wheel = mem.u32(car + rbr_recording::sound::CAR_WHEELS + 4 * k as u32);
@@ -987,7 +987,7 @@ fn snd1_s_turbo_words_follow_a_model_and_are_the_engine_s_without_one() {
                 let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
                 let records = records::read_records(&mut &rest[..]).unwrap();
                 let (_, snd) = records.iter().find(|(tag, _)| *tag == rbr_recording::sound::SND1).unwrap();
-                let mem = &live.playback.pure.mem;
+                let mem = live.playback.pure.image();
                 let state = Sound::read_from(mem.u32(CAR_PTR), |at| {
                     mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                 });

@@ -339,7 +339,7 @@ pub fn ngp_sound(mem: &Mem) -> Vec<u8> {
 /// +0x200 and the engine's +0x188, `particles::EXHAUST`).
 pub fn particle_events(pure: &pure::Pure) -> Vec<u8> {
     let mut events = pure.take_particle_events();
-    let mem = &pure.mem;
+    let mem = pure.image();
     // The engine is embedded in the car (`rbr_recording::sound`'s reader takes it so too).
     let engine = mem.u32(CAR_PTR) + CAR_ENGINE;
     let state = mem.u32(engine + ENGINE_STATE);

@@ -78,7 +78,7 @@ impl<'a> Live<'a> {
     /// The end page the race's end opens (`CApplication::M00480810`): `Test3B20` on the car as it is now, and the
     /// rally's last stage from `--rally-next`.
     pub(super) fn end_page(&self, end: &StageEnd) -> EndPage {
-        let drivable = rally::drivable(&self.playback.pure.mem);
+        let drivable = rally::drivable(self.playback.pure.image());
         EndPage::of(self.game.flow().mode(), end, drivable, self.rally_next == RallyNext::End)
     }
 
@@ -89,7 +89,7 @@ impl<'a> Live<'a> {
         eprintln!("step {step}: the race ended: {:?}, {:?}, end page {:#x}", end.cause, end.end_race, page.value());
         if let Some(school) = &self.school {
             // `EvalFilters` on the HUD's time and the car's damage; a lesson's drive keeps no stage record.
-            let damage = rally::stage_out(&self.playback.pure.mem, *end, false).damage;
+            let damage = rally::stage_out(self.playback.pure.image(), *end, false).damage;
             let (lesson, verdict) = (school.lesson(), school.verdict(end.end_race.time, &damage));
             eprintln!("step {step}: rally school lesson {} verdict {verdict} of 4", lesson.index());
             self.school_verdict = Some(verdict);
@@ -210,7 +210,7 @@ impl<'a> Live<'a> {
     pub(super) fn dash(&self, signals: (Option<[u32; 2]>, Option<u32>), pace: &[&PaceCallout]) -> Vec<u8> {
         let jumped = self.game.race_clock().jumped;
         dash(
-            &self.playback.pure.mem,
+            self.playback.pure.image(),
             &self.stage.track,
             &self.track,
             self.game.markers().keys(),

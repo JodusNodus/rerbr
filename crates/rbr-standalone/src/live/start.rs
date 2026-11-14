@@ -110,7 +110,7 @@ impl<'a> Live<'a> {
         crate::physics::require_ngp(&playback)?;
         let dt = pure::max_time_step(snap).unwrap_or(DT);
         let game = new_game(Stage::driving(stage.number, stage.car), stage, dt, settings);
-        let settle = load_substeps(&playback.pure.mem).div_ceil(SETTLE_SUBSTEPS[0]) * SETTLE_SUBSTEPS[0];
+        let settle = load_substeps(playback.pure.image()).div_ceil(SETTLE_SUBSTEPS[0]) * SETTLE_SUBSTEPS[0];
         Ok(Self::with(playback, game, stage, StepClock { step: dt, settle }, h.step, Some(h.substeps), Vec::new()))
     }
 
@@ -128,9 +128,9 @@ impl<'a> Live<'a> {
         let (playback, image) = boot_playback(data, stage, name, race, None, false)?;
         let built: Vec<String> = image.built.iter().map(|(what, n)| format!("{what} {n}")).collect();
         eprintln!("rbr-standalone: boot built {}", built.join(", "));
-        let dt = keeper_layout::max_time_step(&playback.pure.mem);
+        let dt = keeper_layout::max_time_step(playback.pure.image());
         let mut game = new_game(
-            Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(&playback.pure.mem)),
+            Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(playback.pure.image())),
             stage,
             dt,
             settings,
@@ -165,9 +165,9 @@ impl<'a> Live<'a> {
     fn first_picture(playback: &Playback, game: &Game, stage: &StageData, detach: &[(u32, u32)]) -> Picture {
         let splits = split_record(game, stage, None);
         // Before any frame ran no reset has: the memory words stand as the step left them.
-        let dampers = damper_frame(&playback.pure.mem, &[]);
+        let dampers = damper_frame(playback.pure.image(), &[]);
         let mut last = Picture::of(
-            &playback.pure.mem,
+            playback.pure.image(),
             race_hud(game.race_clock(), 0.0),
             &splits,
             stage.interactive_handle_end,
@@ -178,8 +178,9 @@ impl<'a> Live<'a> {
         let track = stage.track_values.clone();
         // The countdown's frames repeat this one: its dash is the car's as it stands (not an empty record, whose
         // zero battery and engine would light the warnings).
-        last.dash = dash(&playback.pure.mem, &stage.track, &track, game.markers().keys(), (None, None), &[], 0, None)
-            .to_bytes();
+        last.dash =
+            dash(playback.pure.image(), &stage.track, &track, game.markers().keys(), (None, None), &[], 0, None)
+                .to_bytes();
         last
     }
 
