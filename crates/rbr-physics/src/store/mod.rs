@@ -15,6 +15,7 @@
 use crate::mem::Mem;
 
 mod layout;
+pub mod typed;
 pub use layout::{
     car_objects, check_table, first_difference, round_trip, Field, FieldInfo, Object, Real, Tabled, Value,
 };

@@ -3,7 +3,8 @@
 //! registers and runs its entry's sequence (`rbr_physics::vcu::layout`). Accessors and setters on the drive, the
 //! engine, the car and the lights stay original: the entries call them through the host (`VcuHost`).
 
-use rbr_physics::vcu::layout::{self, VcuCalls, VcuView};
+use rbr_physics::mem::Mem;
+use rbr_physics::vcu::layout::{self, Unit, VcuCalls, VcuView};
 use rbr_physics::vcu::store::VcuStore;
 
 use crate::{Binding, Ctx, Decline, Host, Regs, Return};
@@ -133,10 +134,28 @@ fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
-/// Runs `run` on the unit whose scratch is `scratch` (the original's `ecx`), lifted from the image into a store of its
+/// Runs `run` on the unit whose scratch is `scratch` (the original's `ecx`): in the typed storage the host holds over a
+/// step ([`crate::Host::typed`]), else (another car's, or no step holds it) lifted from the image into a store of its
 /// own and lowered after it (the per-call path).
 pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
+    if let Some(typed) = ctx.host.typed() {
+        if typed.vcu.is(scratch) {
+            return run(&mut typed.vcu.view(&mut ctx.mem));
+        }
+    }
     layout::with_vcu(&mut ctx.mem, scratch, run)
+}
+
+/// The car at `car`'s VCU state as a step leaves it at this point: the typed storage's while the host holds it, else
+/// the image's. For the readers outside the VCU's bindings (NGP's engine and drive wrappers).
+pub(crate) fn unit_of(host: &dyn Host, mem: &Mem, car: u32) -> Unit {
+    let scratch = rbr_physics::car_body::layout::scratch_at(car);
+    if let Some(typed) = host.typed() {
+        if typed.vcu.is(scratch) {
+            return typed.vcu.unit.get();
+        }
+    }
+    layout::VcuImage::of(mem, scratch).lift(mem)
 }
 
 /// stdcall `(table, x, lo, hi, n)`, st0. The VCU always passes 11 knots; the port's index math is checked for
@@ -267,7 +286,6 @@ fn copy_def(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 mod tests {
     use super::*;
     use crate::tests::Script;
-    use rbr_physics::mem::Mem;
 
     fn regs(ecx: u32, stack: &[u32]) -> Regs {
         let mut r = Regs { ecx, ..Regs::default() };

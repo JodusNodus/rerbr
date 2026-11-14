@@ -122,7 +122,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         speed,
         rev_limit,
         throttle: m.f32(engine + 0x20),
-        shift_cooldown: m.f32(m.u32(car + 0x854) + 0x64),
+        shift_cooldown: crate::vcu::unit_of(ctx.host, m, car).state.shift_cooldown,
         shift_idle_scale: m.f32(def + 0x283c),
         stage_enabled: m.u32(def + 0x26f8) != 0,
         modes,

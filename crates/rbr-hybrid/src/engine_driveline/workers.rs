@@ -298,7 +298,7 @@ impl DriveStepHost for Step1Calls<'_> {
     fn ngp_curve_term(&mut self, args: [u32; 4], dt: f32) -> f32 {
         let [a, b, c, d] = args;
         let args = [a, b, c, d, dt.to_bits()];
-        if let Ok(v) = crate::ngp::curve_term(&mut self.gear.mem, self.this, args) {
+        if let Ok(v) = crate::ngp::curve_term(&mut self.gear.mem, self.host, self.this, args) {
             return v;
         }
         let target = crate::ngp::at(crate::ngp::CURVE_TERM).expect("NGP drive step");

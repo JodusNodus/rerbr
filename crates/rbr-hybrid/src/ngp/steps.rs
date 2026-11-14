@@ -14,7 +14,7 @@ use rbr_physics::ngp::outputs;
 use rbr_physics::ngp::step_wrapper::{self, SurfaceHeatPercent};
 use rbr_physics::tyre::store::TyreStore;
 
-use crate::{Ctx, Decline, Regs, Return};
+use crate::{Ctx, Decline, Host, Regs, Return};
 
 use super::address::{at, FILE_BASE};
 use super::{data_f32, f, SETTINGS, SPLIT};
@@ -118,7 +118,7 @@ pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
         let locks = m.u32(car + 0x850);
         let tuning = diff::DiffTuning {
             locks: [[0x1b8, 0x268], [0x738, 0x7e8], [0x9f8, 0xaa8]].map(|p| p.map(|o| m.f32(locks + o))),
-            handbrake: m.f32(car + 0x864),
+            handbrake: crate::vcu::unit_of(ctx.host, m, car).scratch.pedals.handbrake,
             handbrake_release: m.f32(locks + 0x198),
             max_torque: [0, 1, 2].map(|g| m.f32(def + 0x58 + 0x60 * g)),
             enabled: [4, 0xc, 0x14].map(|o| m.u32(obj + o)),
@@ -175,12 +175,13 @@ pub(crate) const CURVE_TERM: u32 = 0x1004_6880;
 /// (`rbr_physics::ngp::brake`), with 1.02's `Worker4060` ported.
 pub(crate) fn curve_term_binding(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a1, c, n, x, dt, ..] = r.stack;
-    let v = curve_term(&mut ctx.mem, r.ecx, [a1, c, n, x, dt])?;
+    let v = curve_term(&mut ctx.mem, ctx.host, r.ecx, [a1, c, n, x, dt])?;
     Ok(Return::float(f64::from(v), 0x14))
 }
 
-/// `0x10046880`'s work; declines (before any writes) without NGP's settings or for a state that isn't a wheel's.
-pub(crate) fn curve_term(m: &mut Mem, drive: u32, args: [u32; 5]) -> Result<f32, Decline> {
+/// `0x10046880`'s work; declines (before any writes) without NGP's settings or for a state that isn't a wheel's. The
+/// handbrake is the VCU's, as `host` holds it ([`crate::vcu::unit_of`]).
+pub(crate) fn curve_term(m: &mut Mem, host: &dyn Host, drive: u32, args: [u32; 5]) -> Result<f32, Decline> {
     let [a1, c, n, x, dt] = args;
     let state = m.u32(drive + 8);
     let car = m.u32(state + 0x580);
@@ -193,8 +194,9 @@ pub(crate) fn curve_term(m: &mut Mem, drive: u32, args: [u32; 5]) -> Result<f32,
         return Err(Decline::Unsupported("NGP's settings object is not made yet"));
     }
     let front = u < 2;
+    let handbrake = crate::vcu::unit_of(host, m, car).scratch.pedals.handbrake;
     let rear_split =
-        diff::diff_types(m.u32(n + 0x640))[0] == 3 && !front && m.f32(m.u32(car + 0x850) + 0x198) >= m.f32(car + 0x864);
+        diff::diff_types(m.u32(n + 0x640))[0] == 3 && !front && m.f32(m.u32(car + 0x850) + 0x198) >= handbrake;
     // The hook block's words are NGP's per-wheel brake keys (`Brake*_NGP`): ratio +0xec, piston area +0xcc, effective
     // radius +0x6c, plate area +0x9c, internal convection +0xbc, heat absorption +0x8c, specific heat +0x7c, mass
     // +0x3c, convection factor +0x4c, layer mass share +0x5c, vent area +0xac.

@@ -46,19 +46,19 @@ pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
     pure.with_frame(EMIT, &entry, || pure.host().call(UPDATE_SEED, car, &[control]));
 }
 
-/// The car's struts held in typed storage while it lives ([`Pure::lift_struts`]), lowered when it drops.
-struct HeldStruts<'a>(&'a Pure);
+/// The car's typed state held in typed storage while it lives ([`Pure::lift_typed`]), lowered when it drops.
+struct HeldTyped<'a>(&'a Pure);
 
-impl<'a> HeldStruts<'a> {
+impl<'a> HeldTyped<'a> {
     fn lift(pure: &'a Pure) -> Self {
-        pure.lift_struts();
-        HeldStruts(pure)
+        pure.lift_typed();
+        HeldTyped(pure)
     }
 }
 
-impl Drop for HeldStruts<'_> {
+impl Drop for HeldTyped<'_> {
     fn drop(&mut self) {
-        self.0.lower_struts();
+        self.0.lower_typed();
     }
 }
 
@@ -115,7 +115,8 @@ impl Playback {
     }
 
     /// [`step`] with the payload `control` (`None` for the snapshot's own step). A stop panics as [`Pure::enter`].
-    /// With [`Pure::typed_struts`] the car's struts are in typed storage over the step: lifted before it, lowered after
+    /// With [`Pure::typed`] the car's typed state (the struts, the VCU) is in typed storage over the step: lifted before
+    /// it, lowered after
     /// it (on a stop too), so every reader between steps sees the image's words.
     pub fn step(&self, control: Option<&[u8; CONTROL_BYTES]>, substeps: u32) -> Return {
         let mut mem = self.pure.mem.clone();
@@ -124,7 +125,7 @@ impl Playback {
             self.control_at
         });
         mem.set_u32(self.slot, SENTINEL);
-        let _struts = HeldStruts::lift(&self.pure);
+        let _typed = HeldTyped::lift(&self.pure);
         step(&self.pure, self.regs, self.slot, control, substeps)
     }
 

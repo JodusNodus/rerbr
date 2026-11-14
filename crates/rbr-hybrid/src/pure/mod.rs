@@ -13,14 +13,14 @@
 //! running binding's entry, as the bridge does, with the return address `CALL_RET` and the arguments written there.
 
 use leaves::LEAVES;
-use std::cell::{Cell, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rbr_physics::math::trig;
 use rbr_physics::mem::{Backend, Mem, PagesSnapshot};
-use rbr_physics::spring_damper::layout::CarStruts;
+use rbr_physics::store::typed::CarTyped;
 
 use crate::{binding_slot, bound, Called, Ctx, Decline, Host, Regs, Return, STACK_ARGS};
 
@@ -171,13 +171,13 @@ pub struct Pure {
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
     pub ngp_base: u32,
-    /// Whether [`Playback::step`] holds the car's struts in typed storage over each step (the default), lifted before
-    /// it and lowered after it, so the strut bindings run on them ([`Host::struts`]); without, they run per call on
-    /// the image's words.
-    pub typed_struts: bool,
-    /// The car's struts while a step holds them ([`Pure::typed_struts`]).
-    struts: RefCell<Option<CarStruts>>,
-    /// `mem` with the typed struts' words poisoned while a step holds them (the `poison` feature): the clones the runs
+    /// Whether [`Playback::step`] holds the car's typed state (the struts, the VCU) in typed storage over each step (the
+    /// default), lifted before it and lowered after it, so their bindings run on it ([`Host::typed`]); without, they
+    /// run per call on the image's words.
+    pub typed: bool,
+    /// The car's typed state while a step holds it ([`Pure::typed`]).
+    held: RefCell<Option<CarTyped>>,
+    /// `mem` with the typed state's words poisoned while a step holds them (the `poison` feature): the clones the runs
     /// get ([`Pure::lend`]).
     #[cfg(feature = "poison")]
     poisoned: RefCell<Option<Mem>>,
@@ -230,36 +230,36 @@ impl Pure {
             keep_tyre_particles: false,
             captures: Watch::default(),
             ngp_base: 0,
-            typed_struts: true,
-            struts: RefCell::default(),
+            typed: true,
+            held: RefCell::default(),
             #[cfg(feature = "poison")]
             poisoned: RefCell::default(),
         }
     }
 
-    /// Lifts the car's struts into typed storage for a step ([`Pure::typed_struts`]; nothing without them or without a
-    /// car). With the `poison` feature the runs' memory has their words poisoned until [`Pure::lower_struts`].
-    pub(crate) fn lift_struts(&self) {
+    /// Lifts the car's typed state into typed storage for a step ([`Pure::typed`]; nothing without it or without a
+    /// car). With the `poison` feature the runs' memory has its words poisoned until [`Pure::lower_typed`].
+    pub(crate) fn lift_typed(&self) {
         let car = self.mem.u32(CAR_PTR);
-        if !self.typed_struts || car == 0 {
+        if !self.typed || car == 0 {
             return;
         }
-        let struts = CarStruts::lift(&self.mem, car);
+        let typed = CarTyped::lift(&self.mem, car);
         #[cfg(feature = "poison")]
         {
             let mut poisoned = self.mem.clone();
-            poisoned.poison(struts.owned());
+            poisoned.poison(typed.owned());
             *self.poisoned.borrow_mut() = Some(poisoned);
         }
-        *self.struts.borrow_mut() = Some(struts);
+        *self.held.borrow_mut() = Some(typed);
     }
 
-    /// Lowers the struts a step held back into the image, and drops them.
-    pub(crate) fn lower_struts(&self) {
+    /// Lowers the typed state a step held back into the image, and drops it.
+    pub(crate) fn lower_typed(&self) {
         #[cfg(feature = "poison")]
         self.poisoned.borrow_mut().take();
-        if let Some(struts) = self.struts.borrow_mut().take() {
-            struts.lower(&mut self.mem.clone());
+        if let Some(typed) = self.held.borrow_mut().take() {
+            typed.lower(&mut self.mem.clone());
         }
     }
 
@@ -784,8 +784,8 @@ impl Host for Pure {
         self.captures.push_damper(strut, signal);
     }
 
-    fn struts(&self) -> Option<RefMut<'_, CarStruts>> {
-        RefMut::filter_map(self.struts.borrow_mut(), Option::as_mut).ok()
+    fn typed(&self) -> Option<Ref<'_, CarTyped>> {
+        Ref::filter_map(self.held.borrow(), Option::as_ref).ok()
     }
 
     fn call_slot_word(&self) -> Option<u32> {
@@ -841,8 +841,8 @@ impl Host for Direct {
         self.0.emit_damper(strut, signal);
     }
 
-    fn struts(&self) -> Option<RefMut<'_, CarStruts>> {
-        self.0.struts()
+    fn typed(&self) -> Option<Ref<'_, CarTyped>> {
+        self.0.typed()
     }
 
     fn ran_direct(&self) {

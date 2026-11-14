@@ -11,7 +11,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# Check builds only: the pure host poisons the words its typed storage holds over a step (`Pure::typed_struts`).
+# Check builds only: the pure host poisons the words its typed storage holds over a step (`Pure::typed`).
 poison = ["rbr-physics/poison"]
 
 [dependencies]
