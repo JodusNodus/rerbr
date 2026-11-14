@@ -155,7 +155,7 @@ pub fn engine_step<S: EngineStore>(
                 }
             }
         }
-        host.graph_push(mem.u32(s + 0x274), sum * f32::from_bits(0x3af4_fe91));
+        host.graph_push(mem.u32(s + 0x274), sum * 0.001_869_158_9);
         host.graph_push(mem.u32(s + 0x278), mem.f32(s + 0x220) * 4.484_305e-6);
     }
     let cycle = mem.u32(s + 0x234);
@@ -624,4 +624,12 @@ pub fn signal_update<S: EngineStore>(host: &mut impl engine::SignalHost, mem: &m
     let eax = host.signal(mem.u32(SIGNAL_MANAGER) + 0x3cb8, this + 0x184);
     mem.set_f32(this + 0x194, 0.0);
     eax
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(0.001_869_158_9_f32.to_bits(), 0x3af4_fe91);
+    }
 }

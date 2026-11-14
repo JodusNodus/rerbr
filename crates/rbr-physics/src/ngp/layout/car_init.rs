@@ -155,7 +155,7 @@ pub fn ratio(mem: &Mem, car: u32) -> f32 {
     }
     let inverse_mass = mem.f32(def + 0x16c);
     if inverse_mass > 0.0 {
-        (f64::from(f32::from_bits(0x3a3b_2bbb)) / f64::from(inverse_mass)) as f32
+        (f64::from(0.000_714_f32) / f64::from(inverse_mass)) as f32
     } else {
         1.0
     }
@@ -314,7 +314,7 @@ fn engine(mem: &mut Mem, data: Data, c: Car, tables: &Tables) {
             }
         }
         idle_table(mem, data, c.idle_table, &knots);
-        let fac = mem.f32(def + 0x26d8) * mem.f32(def + 0x2650) / f32::from_bits(0x3574_46ba); // 9.1e-7
+        let fac = mem.f32(def + 0x26d8) * mem.f32(def + 0x2650) / 9.100_000_4e-7;
         let fixed = [0x21fc, 0x2200, 0x2204, 0x2214, 0x2218, 0x221c, 0x222c, 0x2230, 0x2234];
         for i in 0..256 {
             for j in 0..6 {
@@ -339,28 +339,28 @@ fn engine(mem: &mut Mem, data: Data, c: Car, tables: &Tables) {
             }
         }
         for (k, word) in [
-            0x38d1_b717u32,
-            0x3ba3_d70a,
-            0x3c75_c28f,
-            0x3d4c_cccd,
-            0x3dcc_cccd,
-            0x3e4c_cccd,
-            0x3eb3_3333,
-            0x3f0c_cccd,
-            0x3f33_3333,
-            0x3f4c_cccd,
-            0x3f60_0000,
-            0x3f6c_cccd,
-            0x3f73_3333,
-            0x3f78_51ec,
-            0x3f7c_28f6,
-            0x3f7e_b852,
-            0x3f80_0000,
+            0.000_1_f32,
+            0.005,
+            0.015,
+            0.05,
+            0.1,
+            0.2,
+            0.35,
+            0.55,
+            0.7,
+            0.8,
+            0.875,
+            0.925,
+            0.95,
+            0.97,
+            0.985,
+            0.995,
+            1.0,
         ]
         .into_iter()
         .enumerate()
         {
-            mem.set_u32(def + 0x2654 + 4 * k as u32, word);
+            mem.set_f32(def + 0x2654 + 4 * k as u32, word);
         }
         let acc = max_torque * 1.3;
         d(mem, 0x1017_1acc, acc);
@@ -381,7 +381,7 @@ fn engine(mem: &mut Mem, data: Data, c: Car, tables: &Tables) {
         d(mem, 0x1017_1abc, misfire * 0.5);
         mem.set_u32(state + 0x24, mem.u32(def + 0x2764));
         mem.set_u32(state + 0x1c, mem.u32(def + 0x279c));
-        mem.set_u32(state + 0x23c, 0x43b0_9333);
+        mem.set_f32(state + 0x23c, 353.15);
         if mem.f32(def + 0x287c) > 0.0 {
             mem.set_u32(def + 0x271c, mem.u32(def + 0x287c));
         }
@@ -701,7 +701,7 @@ fn tyre(mem: &mut Mem, data: Data, c: Car, wheel: u32, k: u32, tables: &Tables) 
     let mass = (outer * outer - inner * inner) * (width * f(0xbc)) * 950.0;
     mem.set_f32(t + 0x11c, mass * 0.95);
     mem.set_f32(t + 0x110, mass * 0.05 * 0.125);
-    let heat = (f32::from_bits(0x3d87_79a6) / (mean * outer)) * r; // 0.06615
+    let heat = (0.066_149_995 / (mean * outer)) * r;
     let carcass = ((inner * inner - core) * width + wall * area) * 1645.0;
     mem.set_f32(t + 0x128, carcass);
     for at in [0x154, 0x158, 0x15c, 0x160, 0x168, 0x164] {
@@ -734,5 +734,34 @@ mod tests {
         assert_eq!(clamped(-1.0, 0.0, 1.0), Some(0.0));
         assert_eq!(clamped(3.0, 0.0, 0.0), Some(0.0));
         assert_eq!(clamped(f32::NAN, 0.0, 1.0), Some(1.0));
+    }
+
+    #[test]
+    fn constants_are_the_originals() {
+        for (value, bits) in [
+            (0.000_714_f32, 0x3a3b_2bbb),
+            (9.100_000_4e-7, 0x3574_46ba),
+            (0.066_149_995, 0x3d87_79a6),
+            (353.15, 0x43b0_9333),
+            (0.000_1, 0x38d1_b717),
+            (0.005, 0x3ba3_d70a),
+            (0.015, 0x3c75_c28f),
+            (0.05, 0x3d4c_cccd),
+            (0.1, 0x3dcc_cccd),
+            (0.2, 0x3e4c_cccd),
+            (0.35, 0x3eb3_3333),
+            (0.55, 0x3f0c_cccd),
+            (0.7, 0x3f33_3333),
+            (0.8, 0x3f4c_cccd),
+            (0.875, 0x3f60_0000),
+            (0.925, 0x3f6c_cccd),
+            (0.95, 0x3f73_3333),
+            (0.97, 0x3f78_51ec),
+            (0.985, 0x3f7c_28f6),
+            (0.995, 0x3f7e_b852),
+            (1.0, 0x3f80_0000),
+        ] {
+            assert_eq!(value.to_bits(), bits, "{value}");
+        }
     }
 }

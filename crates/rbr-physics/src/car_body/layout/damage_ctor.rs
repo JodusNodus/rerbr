@@ -37,7 +37,7 @@ pub fn construct_damage_ops(mem: &mut Mem, this: u32) -> u32 {
     mem.set_u32(this + 0x3df0, 3);
     for zone in 0..0x40 {
         let at = this + 0x2210 + 0x58 * zone;
-        mem.set_f32(at, f32::from_bits(0x3a03_126f));
+        mem.set_f32(at, 0.000_5);
         mem.set_u32(at + 4, 0);
         mem.set_u32(at + 8, 0);
         mem.set_u32(at + 0xc, 0);
@@ -215,5 +215,13 @@ pub fn damage_level_fractions(calls: &mut impl DamageOpsCalls, mem: &mut Mem, th
     mem.set_u32(this + 0x3a08, 0);
     for zone in 0..0x40 {
         mem.set_u32(this + 0x3908 + 4 * zone, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(0.000_5_f32.to_bits(), 0x3a03_126f);
     }
 }

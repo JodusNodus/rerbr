@@ -350,8 +350,8 @@ const RESPAWN_EMITTER: u32 = 0xc0a0;
 
 /// `CCar::Slot97`'s scale of the basis in the output vector (`0.4`, asm 0x72f664), and of the sample in the
 /// quaternion's input (asm 0x738230).
-const BASIS_WEIGHT: f32 = f32::from_bits(0x3ECC_CCCD);
-const SAMPLE_SCALE: f32 = f32::from_bits(0xBE86_0A92);
+const BASIS_WEIGHT: f32 = 0.4;
+const SAMPLE_SCALE: f32 = -0.261_799_4;
 
 /// The calls `CCar::Slot97` (the car's vtable slot 97, 0x4e5270) makes out of its own body: the car's slot 96
 /// (`CCar::Vf180`), entered at `sp`, with the output vector and the quaternion on the stack.
@@ -482,4 +482,15 @@ pub fn snapshot<S: CarStore>(mem: &mut S, calls: &mut impl SnapshotCalls<S>, car
     }
     let emitter = mem.u32(SIGNALS) + REPLAY_STATE_EMITTER;
     calls.emit_replay_state(mem, frame - 8, emitter, payload);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(BASIS_WEIGHT.to_bits(), 0x3ECC_CCCD);
+        assert_eq!(SAMPLE_SCALE.to_bits(), 0xBE86_0A92);
+    }
 }

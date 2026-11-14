@@ -114,8 +114,7 @@ const DEF_LIGHTS: u32 = 0x4210;
 const DEF_PASSENGERS: [u32; 2] = [0x440C, 0x4428];
 /// The reals the constructor sets last (dirty, then the value): `MaxFFTorque` 10.0, `FrontArea` 2.0, `DragCoefficient`
 /// 0.4 and `DangerousAcceleration` 490.50003 (the floats at 0x72b154, 0x72ad94, 0x72f664 and 0x738298).
-const DEF_DEFAULTS: [(u32, u32); 4] =
-    [(0x4494, 0x4120_0000), (0x4474, 0x4000_0000), (0x4484, 0x3ECC_CCCD), (0x44A4, 0x43F5_4001)];
+const DEF_DEFAULTS: [(u32, f32); 4] = [(0x4494, 10.0), (0x4474, 2.0), (0x4484, 0.4), (0x44A4, 490.500_03)];
 
 /// `CCar::CDef::CDef(outer)` (0x4e61f0, thiscall, ret 4) on the definition at `this`: the solid definition's base, the
 /// vtable, six reals (+0x1f0..+0x240), the definitions inside it (the engine's allocates from `host`), an unsigned
@@ -143,7 +142,7 @@ pub fn construct_def(mem: &mut Mem, host: &mut impl construct::Heap, this: u32, 
     }
     for (at, value) in DEF_DEFAULTS {
         ntweak::set_dirty(mem, this + at);
-        mem.set_u32(this + at + 0xC, value);
+        mem.set_f32(this + at + 0xC, value);
     }
 }
 
@@ -512,4 +511,14 @@ pub fn new_body(mem: &mut Mem, host: &mut (impl construct::Heap + CtorHost), def
 /// `+0x140` to 1.
 pub fn body_def_after_parse(mem: &mut Mem, this: u32) {
     mem.set_u32(this + BODY_DEF_PARSED, 1);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(DEF_DEFAULTS.map(|(_, v)| v.to_bits()), [0x4120_0000, 0x4000_0000, 0x3ECC_CCCD, 0x43F5_4001]);
+    }
 }

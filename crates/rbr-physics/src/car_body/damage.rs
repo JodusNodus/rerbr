@@ -164,8 +164,8 @@ pub fn rand(draw: u32, lo: f32, hi: f32) -> f32 {
     fraction(draw) * (hi - lo) + lo
 }
 
-/// The spread factor of a functor's value: one ulp above 0.2.
-const SPREAD: f32 = f32::from_bits(0x3E4C_CCD0);
+/// The spread factor of a functor's value: three ulps above 0.2.
+const SPREAD: f32 = 0.200_000_05;
 
 /// A functor entry's value for a draw (24-bit rounding): `(fraction * spread + 0.9) * scale`.
 pub fn functor_value(draw: u32, scale: f32) -> f32 {
@@ -238,5 +238,15 @@ pub fn inner_id(a3: u32) -> u32 {
         0
     } else {
         a3
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(SPREAD.to_bits(), 0x3E4C_CCD0);
     }
 }

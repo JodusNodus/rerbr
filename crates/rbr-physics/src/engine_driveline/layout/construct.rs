@@ -106,7 +106,7 @@ const DRIVE_TWEAKS: [(u32, Tweak); 11] = [
 /// 0x72b068, 0x7355d4 and 0x731e00), and the unsigned 0.
 const BRAKE_DEFAULTS: [(u32, u32); 4] = [(0x90, 0x3DCC_CCCD), (0x80, 0x3F73_3333), (0xB0, 0x43C8_0000), (0xD0, 0)];
 /// Each of the ten `E13Mixed50` at +0x688: 10000.0 and -10000.0 (0x72f420, 0x72f41c).
-const GEAR_ROW_DEFAULTS: [(u32, u32); 2] = [(0x40, 0x461C_4000), (0x30, 0xC61C_4000)];
+const GEAR_ROW_DEFAULTS: [(u32, f32); 2] = [(0x40, 10_000.0), (0x30, -10_000.0)];
 /// The tweaks the constructor sets next (dirty, then the value word), in its order. The floats come from the exe's
 /// constants (0x730888, 0x73a2dc, 0x72f440, 0x72b068, 0x730890, 0x73a2d8, 0x795e20, 0x795e14, 0x73a2d4, 0x73a2d0,
 /// 0x731fe0, 0x7304a0, 0x73a2cc, 0x72dd78, 0x72fcb4).
@@ -248,7 +248,7 @@ pub fn construct_drive_def(mem: &mut Mem, this: u32) {
     }
     for k in 0..10 {
         for (at, value) in GEAR_ROW_DEFAULTS {
-            set_default(mem, this + 0x688 + k * 0x50 + at, value);
+            set_default(mem, this + 0x688 + k * 0x50 + at, value.to_bits());
         }
     }
     for (at, value) in DRIVE_DEFAULTS {
@@ -454,16 +454,8 @@ const DIFF_STATE_SIZE: u32 = 0xC8;
 /// `CDrive::CState`'s vtable (0x73a0cc) and its base's name (`"Drive"`, 0x7380c0).
 const DRIVE_STATE_VTABLE: u32 = 0x0073_A0CC;
 /// The drive state's reals set after the differentials' (dirty, then the value): each differential's +0x90 and +0xa0.
-const DRIVE_STATE_DEFAULTS: [(u32, u32); 8] = [
-    (0xD8, 0x3F80_0000),
-    (0x1A0, 0x3F80_0000),
-    (0x268, 0x3F00_0000),
-    (0x330, 0x3F00_0000),
-    (0xE8, 0),
-    (0x1B0, 0),
-    (0x278, 0x3F80_0000),
-    (0x340, 0x3F80_0000),
-];
+const DRIVE_STATE_DEFAULTS: [(u32, f32); 8] =
+    [(0xD8, 1.0), (0x1A0, 1.0), (0x268, 0.5), (0x330, 0.5), (0xE8, 0.0), (0x1B0, 0.0), (0x278, 1.0), (0x340, 1.0)];
 /// The drive state's engine speed at the start (`+0x45c` and `+0x458`, rad/s) outside the game mode 0x566690 accepts
 /// (400.0, 0x731e00).
 const START_ENGINE_SPEED: f32 = 400.0;
@@ -505,7 +497,7 @@ pub fn construct_drive_state(mem: &mut Mem, this: u32) {
     }
     clear_words(mem, this, &(0xC..0x48).step_by(4).collect::<Vec<_>>());
     for (at, value) in DRIVE_STATE_DEFAULTS {
-        set_default(mem, this + at, value);
+        set_default(mem, this + at, value.to_bits());
     }
     clear_words(mem, this, &[0x384, 0x380]);
     let value = if engine_starts_off(mem) { 0.0 } else { START_ENGINE_SPEED };
@@ -552,17 +544,17 @@ const ENGINE_STATE: [(u32, Tweak); 13] = [
 const ENGINE_BLOCKS: u32 = 0x88;
 const ENGINE_BLOCK: u32 = 0x38;
 const ENGINE_BLOCK_FLAGS: u32 = 0x168;
-const ENGINE_BLOCK_WORDS: [(u32, u32); 3] = [(0x08, 0x3F80_0000), (0x18, 0x3C23_D70A), (0x30, 0x3F80_0000)];
+const ENGINE_BLOCK_WORDS: [(u32, f32); 3] = [(0x08, 1.0), (0x18, 0.01), (0x30, 1.0)];
 /// The engine state's two air terms (`+0x60` and `+0x70`, four floats each, `DamperUpdateB` with 287.0): the words
 /// +0xc, +8 and +4 (0.03, 110300.0 and 293.15: the floats at 0x739958, 0x73b5c0 and 0x73a13c), set before the update
 /// writes the first.
 const ENGINE_AIR: [u32; 2] = [0x60, 0x70];
-const ENGINE_AIR_TERMS: [(u32, u32); 3] = [(0xC, 0x3CF5_C28F), (0x8, 0x47D7_6E00), (0x4, 0x4392_9333)];
+const ENGINE_AIR_TERMS: [(u32, f32); 3] = [(0xC, 0.03), (0x8, 110_300.0), (0x4, 293.15)];
 const ENGINE_AIR_INPUT: f32 = 287.0;
 /// The engine state's reals set (dirty, then the value) before the air terms, in the asm's order: 116495.0, 101300.0,
 /// 293.14 and 816.814 (0x73b5d0, 0x73b5cc, 0x73b5c8, 0x73b5c4). 293.14 also goes to +0x1dc and +0x1e0.
-const ENGINE_STATE_DEFAULTS: [(u32, u32); 4] =
-    [(0x1BC, 0x47E3_8780), (0x1AC, 0x47C5_DA00), (0x19C, 0x4392_91EC), (0x18C, 0x444C_341A)];
+const ENGINE_STATE_DEFAULTS: [(u32, f32); 4] =
+    [(0x1BC, 116_495.0), (0x1AC, 101_300.0), (0x19C, 293.14), (0x18C, 816.814_1)];
 /// The engine state's words after the air terms, in the asm's order (1.0, 373.0, 373.0, 0, 1.5, 0, 5.2, 0, 423.0).
 const ENGINE_STATE_WORDS: [(u32, u32); 9] = [
     (0x80, 0x3F80_0000),
@@ -596,13 +588,13 @@ pub fn construct_engine_state(mem: &mut Mem, this: u32, owner: u32) -> Result<()
         let block = this + ENGINE_BLOCKS + k * ENGINE_BLOCK;
         clear_words(mem, block, &(0..ENGINE_BLOCK).step_by(4).collect::<Vec<_>>());
         for (at, value) in ENGINE_BLOCK_WORDS {
-            mem.set_u32(block + at, value);
+            mem.set_f32(block + at, value);
         }
         mem.set_u32(this + ENGINE_BLOCK_FLAGS + 4 * k, 1);
     }
     clear_words(mem, this, &[0x178, 0x17C, 0x180, 0x184, 0x188]);
     for (at, value) in ENGINE_STATE_DEFAULTS {
-        set_default(mem, this + at, value);
+        set_default(mem, this + at, value.to_bits());
     }
     let air = mem.u32(this + 0x19C + 0xC);
     mem.set_u32(this + 0x1DC, air);
@@ -615,7 +607,7 @@ pub fn construct_engine_state(mem: &mut Mem, this: u32, owner: u32) -> Result<()
     mem.set_u32(this + 0x5C, 0);
     for at in ENGINE_AIR {
         for (term, value) in ENGINE_AIR_TERMS {
-            mem.set_u32(this + at + term, value);
+            mem.set_f32(this + at + term, value);
         }
         spring_damper::layout::solve_scale(mem, this + at, ENGINE_AIR_INPUT);
     }
@@ -672,4 +664,24 @@ pub fn reset_engine_damage(mem: &mut Mem, this: u32) {
         mem.set_f32(this + at, 0.0);
     }
     mem.set_u32(this + 0x74, 1);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(GEAR_ROW_DEFAULTS.map(|(_, v)| v.to_bits()), [0x461C_4000, 0xC61C_4000]);
+        assert_eq!(
+            DRIVE_STATE_DEFAULTS.map(|(_, v)| v.to_bits()),
+            [0x3F80_0000, 0x3F80_0000, 0x3F00_0000, 0x3F00_0000, 0, 0, 0x3F80_0000, 0x3F80_0000]
+        );
+        assert_eq!(ENGINE_BLOCK_WORDS.map(|(_, v)| v.to_bits()), [0x3F80_0000, 0x3C23_D70A, 0x3F80_0000]);
+        assert_eq!(ENGINE_AIR_TERMS.map(|(_, v)| v.to_bits()), [0x3CF5_C28F, 0x47D7_6E00, 0x4392_9333]);
+        assert_eq!(
+            ENGINE_STATE_DEFAULTS.map(|(_, v)| v.to_bits()),
+            [0x47E3_8780, 0x47C5_DA00, 0x4392_91EC, 0x444C_341A]
+        );
+    }
 }

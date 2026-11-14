@@ -285,17 +285,17 @@ pub fn build_fence_post(
             let y = (1.0f32 - layer_step * layer as f32) - row as f32 * row_step;
             mem.set_f32(p + 4, y + mem.f32(dummy + 0x70));
             mem.set_f32(p + 8, mem.f32(dummy + 0x74));
-            calls.add_particle(frame - 0x40, post, p, f32::from_bits(0x3dcccccd));
+            calls.add_particle(frame - 0x40, post, p, 0.1);
         }
     }
     mem.set_f32(p, mem.f32(dummy + 0x6c));
     mem.set_f32(p + 4, mem.f32(dummy + 0x70) + 1.1f32);
     mem.set_f32(p + 8, mem.f32(dummy + 0x74));
-    let top = calls.add_particle(frame - 0x40, post, p, f32::from_bits(0x3dcccccd));
+    let top = calls.add_particle(frame - 0x40, post, p, 0.1);
     calls.add_pin(frame - 0x3c, post, top);
     let fixed_a = calls.add_particle(frame - 0x40, post, p, 0.0);
     let fixed_b = calls.add_particle(frame - 0x40, post, dummy + 0x6c, 0.0);
-    calls.add_spring(frame - 0x48, post, top, fixed_a, 1, f32::from_bits(0x3dcccccd));
+    calls.add_spring(frame - 0x48, post, top, fixed_a, 1, 0.1);
     let spring = calls.add_spring(frame - 0x48, post, top, fixed_b, 0, 1.0);
     calls.add_fixed(frame - 0x3c, post, spring);
     for layer in 0..layers {
@@ -697,4 +697,12 @@ pub fn add_bend(mem: &mut Mem, seg: u32, spring: u32, particle: u32) {
     let inv = 1.0 / (((dz * dz) + (dx * dx)) + (dy * dy)).sqrt();
     let proj = (((pz * inv) * (dz * inv)) + ((px * inv) * (dx * inv))) + ((py * inv) * (dy * inv));
     mem.set_f32(bend + 8, proj);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(0.1_f32.to_bits(), 0x3dcc_cccd);
+    }
 }

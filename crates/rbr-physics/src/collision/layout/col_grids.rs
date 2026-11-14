@@ -74,7 +74,7 @@ pub fn vertex_sample(mem: &Mem, grid: u32, index: usize) -> (u32, u32) {
     }
 
     let point = data.wrapping_add(u32::from(grid.sample_index(mem, index)) * 2);
-    let scale = f32::from_bits(0x3b80_0000); // 1/256
+    let scale = 0.003_906_25; // 1/256
     let fx = f32::from(mem.u8(point)) * scale;
     let fy = f32::from(mem.u8(point + 1)) * scale;
 
@@ -334,4 +334,12 @@ pub fn collision_mesh_factory(mem: &mut Mem, desc: u32) {
 
 fn c_string(mem: &Mem, at: u32) -> Vec<u8> {
     (at..).map(|a| mem.u8(a)).take_while(|&b| b != 0).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn constants_are_the_originals() {
+        assert_eq!(0.003_906_25_f32.to_bits(), 0x3b80_0000);
+    }
 }
