@@ -54,13 +54,11 @@ pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
 }
 
 /// The f32 at `at` as a step leaves it ([`solid_word`]).
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
 pub(crate) fn solid_f32(host: &dyn Host, mem: &Mem, at: u32) -> f32 {
     f32::from_bits(solid_word(host, mem, at))
 }
 
 /// Stores the word at `at`: into a held solid if one names it, else the image.
-#[allow(dead_code)] // The solid routing rows use these; remove the allow once each has a caller.
 pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32) {
     if !host.typed().is_some_and(|t| t.solids.as_ref().is_some_and(|s| s.write(at, value))) {
         mem.set_u32(at, value);
