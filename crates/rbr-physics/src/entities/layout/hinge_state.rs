@@ -369,7 +369,7 @@ impl HingeStore for Mem {
         }
     }
 
-    fn car_slip_word(&self, state: u32) -> f32 {
+    fn car_speed(&self, state: u32) -> f32 {
         self.f32(state + STATE_SPEED)
     }
 

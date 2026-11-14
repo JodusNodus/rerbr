@@ -520,7 +520,7 @@ fn init_pod_pool(
     block
 }
 
-/// `E90BendPool::Init` (0x6028b0): see [`init_pod_pool`], 12-byte bends.
+/// `E90BendPool::Init` (0x6028b0): the plain-element pool init (`init_pod_pool`) with 12-byte bends.
 pub fn init_bend_pool(
     mem: &mut Mem,
     pool: u32,
@@ -532,7 +532,7 @@ pub fn init_bend_pool(
     init_pod_pool(mem, pool, n, block, BEND_SIZE, (frame - 0xc, frame - 0x10), calls)
 }
 
-/// `E90PinPool::Init` (0x602930): see [`init_pod_pool`], 4-byte particle pointers.
+/// `E90PinPool::Init` (0x602930): the plain-element pool init (`init_pod_pool`) with 4-byte particle pointers.
 pub fn init_pin_pool(mem: &mut Mem, pool: u32, n: u32, block: u32, frame: u32, calls: &mut impl ClothPoolCalls) -> u32 {
     init_pod_pool(mem, pool, n, block, POINTER_SIZE, (frame - 0xc, frame - 0x10), calls)
 }

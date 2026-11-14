@@ -69,8 +69,9 @@ pub trait HingeStore: Raw {
     fn store_rotation_block(&mut self, this: u32, block: &RotationBlock);
 
     fn slip_input(&self, this: u32) -> SlipInput;
-    /// The car state's word the slip term reads (`state` is the state object, from `slip_input`).
-    fn car_slip_word(&self, state: u32) -> f32;
+    /// The car state's speed word (named by use: the slip term squares it; `state` is the state object, from
+    /// `slip_input`).
+    fn car_speed(&self, state: u32) -> f32;
     fn pivot_input(&self, this: u32) -> PivotInput;
     fn store_pivot(&mut self, this: u32, pivot: &Pivot);
     /// The definition's settle vector when its gate is set, else 0.

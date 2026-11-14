@@ -157,7 +157,7 @@ impl SlipCalls for SlipHost<'_> {
     }
 
     fn car_speed(&self, state: u32) -> f32 {
-        self.mem.car_slip_word(state)
+        self.mem.car_speed(state)
     }
 }
 
