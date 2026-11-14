@@ -93,10 +93,10 @@ pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f3
     // The bisection between the two tangents of ib and ib + 1: the mid point, until it is close or the steps run out.
     let v_lo = Vec4::load(mem, q_at(ib) + 0x10);
     let v_hi = Vec4::load(mem, q_at(ib + 1) + 0x10);
-    let (mut f20, mut f24) = (0.0f32, 1.0f32);
+    let (mut lo, mut hi) = (0.0f32, 1.0f32);
     let mut steps = 0;
     loop {
-        let mid = (f24 + f20) * 0.5;
+        let mid = (hi + lo) * 0.5;
         let vb = drive_line::spline_at(mem, this, ib, mid);
         let d = [ps[0] - vb.x, ps[1] - vb.y, ps[2] - vb.z];
         let w = v_lo.lerp(v_hi, mid);
@@ -113,9 +113,9 @@ pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f3
         }
         // The asm's `jbe`: a NaN dot takes the lower bound too.
         if !(dot > 0.0) {
-            f24 = mid;
+            hi = mid;
         } else {
-            f20 = mid;
+            lo = mid;
         }
     }
 }

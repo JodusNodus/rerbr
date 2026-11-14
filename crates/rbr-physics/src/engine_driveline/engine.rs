@@ -208,19 +208,19 @@ pub fn stall_guard(speed: f32, options: &EngineOptions, stall_speed: f32) -> boo
 /// The torque curve at `x`, written to `q[7]`. The curve is 0 when `q[2]` is set (and `q[7]` is still stored).
 /// Otherwise the product takes the second curve when `q[3]` is set, the third otherwise, scaled by `q[4]` or `q[5]`.
 pub fn torque_curve(def: &EngineDef, x: f32, q: &mut [f32; 8]) {
-    let mut f3 = 0.0;
+    let mut torque = 0.0;
     if q[2] == 0.0 {
         let x2 = x * x;
         // The coefficients are constant, linear, quadratic: (quadratic * x2 + linear * x) + constant.
         let poly = |c: &[f32; 3]| (c[2] * x2 + c[1] * x) + c[0];
-        f3 = poly(&def.torque_a) * def.torque_a_scale * q[4];
+        torque = poly(&def.torque_a) * def.torque_a_scale * q[4];
         if q[3] != 0.0 {
-            f3 += poly(&def.torque_b) * def.torque_b_scale * q[3];
+            torque += poly(&def.torque_b) * def.torque_b_scale * q[3];
         } else {
-            f3 += poly(&def.torque_c) * def.torque_c_scale * q[5];
+            torque += poly(&def.torque_c) * def.torque_c_scale * q[5];
         }
     }
-    q[7] = f3;
+    q[7] = torque;
 }
 
 /// The misfire roll with the input `a` (the step's time). With the rate at 0 the output is cleared. When the state's
