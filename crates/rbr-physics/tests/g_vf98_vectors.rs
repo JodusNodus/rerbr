@@ -11,7 +11,7 @@ use common::{load, map_windows, Call, Inner};
 use rbr_physics::car_body::layout::{self, VoteCalls};
 use rbr_physics::mem::Mem;
 use rbr_physics::vcu::gear;
-use rbr_physics::vcu::store::VcuStore;
+use rbr_physics::vcu::store::DriveBlocks;
 
 const VAR: &str = "RBR_G_VF98_VECTORS";
 const VOTE: u32 = 0x4fe810;

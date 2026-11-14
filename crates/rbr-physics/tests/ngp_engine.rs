@@ -11,7 +11,7 @@ use rbr_physics::engine_driveline::engine::{self, CarWalkHost};
 use rbr_physics::engine_driveline::layout::{self, EngineObjects, EngineOptions, EngineState, EngineTuning};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::engine::{idle_table_lookup, is_fatal, rev_limit, worn_health};
-use rbr_physics::vcu::layout::{launch_clutch, Tuning, VcuCalls};
+use rbr_physics::vcu::layout::{launch_clutch, with_vcu, Tuning, VcuCalls};
 
 #[test]
 fn engine_wear_and_death_match_original_calls() {
@@ -196,7 +196,7 @@ impl VcuCalls for Drive {
     fn set_neutral_light(&mut self, _: u32, _: bool) {
         unreachable!()
     }
-    fn query_slip(&mut self, _: u32) -> bool {
+    fn query_slip(&mut self) -> bool {
         unreachable!()
     }
     fn set_dirty(&mut self, _: u32) {
@@ -253,7 +253,7 @@ fn repointed_engine_and_clutch_match_original_calls() {
                 let scratch = heap + SCRATCH;
                 let drive = mem.u32(scratch + 0x58);
                 let mut calls = Drive { engine: mem.f32(mem.u32(drive + 8) + 0x45c), sent: None };
-                let eax = launch_clutch(&mut mem, &mut calls, scratch, x(), clutch);
+                let eax = with_vcu(&mut mem, scratch, |vcu| launch_clutch(vcu, &mut calls, x(), clutch));
                 // Set4820: SetDirty on its tweak at +0x54, then the value at +0x60; its eax is the caller's.
                 if let Some(value) = calls.sent {
                     rbr_physics::ntweak::set_dirty(&mut mem, drive + 0x54);

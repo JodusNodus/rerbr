@@ -1,11 +1,13 @@
 //! Typed views of the game memory the VCU reads and writes: the setup (`CVehicleControlUnit::CDef`,
 //! 0xcac bytes), the unit's state (`CState`, 0x68 bytes) and the per-step scratch (`CScratchSim`).
-//! Offsets are the original's (rbr-recomp `notes/physics/renames/vcu.csv`, `notes/physics.md` "VCU"). The `load`
-//! and `store` functions below are the only code that knows them; the logic works on the fields.
+//! Offsets are the original's (rbr-recomp `notes/physics/renames/vcu.csv`, `notes/physics.md` "VCU"); this file alone
+//! knows them. The unit's typed state ([`Unit`]: the scratch's and the state's changing words) lifts from its image
+//! ([`VcuImage`]) and lowers back; [`VcuView`] is the store over it ([`with_vcu`] per call), with the definition, the
+//! pointers and the drive's blocks read and written on the image.
 
-use super::store::VcuStore;
+use super::store::{DriveBlocks, VcuStore};
 use crate::mem::Mem;
-use crate::store::{Raw, Real};
+use crate::store::Real;
 
 /// Knots in a pedal map and in a speed map (the VCU always passes 11).
 pub const KNOTS: usize = 11;
@@ -94,22 +96,6 @@ const DRIVE_STATE_GEAR: u32 = 0x54c;
 const DRIVE_STATE_COMMANDED_GEAR: u32 = 0x570;
 const DRIVE_STATE_CHANGED: u32 = 0x56c;
 const DRIVE_STATE_SLIP: u32 = 0x55c;
-
-const SCRATCH_DEF: u32 = ScratchObj::def.at;
-const SCRATCH_STATE: u32 = ScratchObj::state.at;
-const SCRATCH_THROTTLE: u32 = ScratchObj::throttle.at;
-const SCRATCH_BRAKE: u32 = ScratchObj::brake.at;
-const SCRATCH_HANDBRAKE: u32 = ScratchObj::handbrake.at;
-const SCRATCH_CARRIED_WORD: u32 = ScratchObj::carried_word.at;
-const SCRATCH_FIXED_CLUTCH: u32 = ScratchObj::fixed_clutch.at;
-const SCRATCH_LAUNCH_ENABLED: u32 = ScratchObj::launch_enabled.at;
-const SCRATCH_SLIP_GATE_RPM: u32 = ScratchObj::slip_gate_rpm.at;
-const SCRATCH_SLIP_GATE_SPEED: u32 = ScratchObj::slip_gate_speed.at;
-const SCRATCH_LAUNCH_MODE: u32 = ScratchObj::launch_mode.at;
-const SCRATCH_VCU_ENABLED: u32 = ScratchObj::vcu_enabled.at;
-const SCRATCH_ENGINE: u32 = ScratchObj::engine.at;
-const SCRATCH_DRIVE: u32 = ScratchObj::drive.at;
-const SCRATCH_LIGHTS: u32 = ScratchObj::lights.at;
 
 /// One knot of a pedal map. Records are 0x10 bytes apart; the value is at +0x0c.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -370,13 +356,10 @@ pub struct Packet {
     pub value: u32,
 }
 
-/// The per-step scratch (`CScratchSim`, `car + 0x850`). The pointers are the game's objects.
+/// The per-step scratch's changing words (`CScratchSim`, `car + 0x850`); its pointers stay the image's
+/// ([`VcuImage`], [`VcuStore::parts`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Scratch {
-    /// `CVehicleControlUnit::CDef`.
-    pub def: u32,
-    /// `CVehicleControlUnit::CState`.
-    pub state: u32,
     pub pedals: Pedals,
     /// Fixed clutch sent when the launch mode is off (copied from the packet by ReadPacket).
     pub fixed_clutch: f32,
@@ -393,9 +376,13 @@ pub struct Scratch {
     pub slip_gate_rpm: u32,
     /// The speed slip gate (`+0x48`, copied from the setup by CopyDef): the slip query checks it.
     pub slip_gate_speed: u32,
-    pub engine: u32,
-    pub drive: u32,
-    pub lights: u32,
+}
+
+/// The unit's typed state: its scratch's and its state's changing words.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Unit {
+    pub scratch: Scratch,
+    pub state: State,
 }
 
 /// `CVehicleControlUnit::CDef`'s vtable (0x7412dc) and the name its base gets (`"ControlUnit"`, 0x7380c8).
@@ -515,49 +502,49 @@ pub fn set_driver_aids(mem: &mut Mem, this: u32, aids: [u32; 4]) {
 }
 
 /// The definition's part of `CScratchSim::CopyDef` (0x537c90): the setup's knot maps into the definition at `def`
-/// (`copy_def` does it through a scratch, with the scratch's own fields).
-pub fn copy_maps<S: VcuStore>(mem: &mut S, def: u32, setup: u32) {
-    let maps = mem.knot_maps(setup);
-    mem.store_knot_maps(def, &maps);
+/// (`copy_def` does it through a scratch).
+pub fn copy_maps(mem: &mut Mem, def: u32, setup: u32) {
+    let maps = knot_maps(mem, setup);
+    store_knot_maps(mem, def, &maps);
 }
 
-/// `CScratchSim::CopyDef` (`CopySetup`, 0x537c90): copies the setup at `setup`'s knot maps into the CDef of the
-/// scratch at `scratch`, then sets the launch and slip fields of the scratch. The copies are dword moves, so the bytes
-/// are the original's whatever the values. The asm's order decides the writes (`notes/physics.md` "VCU"); the C++ in
-/// `src/rbr` has them in a different order, which the asm decides.
-pub fn copy_def<S: VcuStore>(mem: &mut S, scratch: u32, setup: u32) {
-    let fields = mem.scratch(scratch);
-    let maps = mem.knot_maps(setup);
-    mem.store_knot_maps(fields.def, &maps);
-    let flags = mem.setup_flags(setup);
+/// `CScratchSim::CopyDef` (`CopySetup`, 0x537c90) up to the scratch's fields: the setup at `setup`'s knot maps into
+/// the CDef of the scratch at `scratch`, and the setup's flags, which [`copy_flags`] sets on the scratch after them. The
+/// copies are dword moves, so the bytes are the original's whatever the values. The asm's order decides the writes
+/// (`notes/physics.md` "VCU"); the C++ in `src/rbr` has them in a different order, which the asm decides.
+pub fn copy_def(mem: &mut Mem, scratch: u32, setup: u32) -> SetupFlags {
+    copy_maps(mem, ScratchObj::def.load(mem, scratch), setup);
+    setup_flags(mem, setup)
+}
+
+/// CopyDef's last writes: the scratch's launch and slip fields from the setup's flags.
+pub fn copy_flags<S: VcuStore>(store: &mut S, flags: SetupFlags) {
     let value = Scratch {
         launch_enabled: flags.launch,
         vcu_enabled: flags.launch,
         launch_mode: flags.launch_mode(),
         slip_gate_rpm: flags.slip_gate_rpm,
         slip_gate_speed: flags.slip_gate_speed,
-        ..fields
+        ..store.scratch()
     };
-    mem.store_scratch(scratch, &value);
+    store.store_scratch(&value);
 }
 
 /// `CScratchSim::ReadPacket` (0x537f20): copies the packet's pedals, fixed clutch and `carried_word` into the
-/// scratch, then returns the packet. The asm tail-jumps into FlagDispatch, so the caller applies the packet
-/// with `super::dispatch::flag_dispatch`.
-pub fn read_packet<S: VcuStore>(mem: &mut S, scratch: u32, packet_at: u32) -> Packet {
-    let packet = mem.packet(packet_at);
+/// scratch. The asm tail-jumps into FlagDispatch, so the caller applies the packet with [`apply_packet`].
+pub fn read_packet<S: VcuStore>(store: &mut S, packet: Packet) {
     let value = Scratch {
         pedals: packet.pedals,
         fixed_clutch: packet.fixed_clutch,
         carried_word: packet.carried_word,
-        ..mem.scratch(scratch)
+        ..store.scratch()
     };
-    mem.store_scratch(scratch, &value);
-    packet
+    store.store_scratch(&value);
 }
 
 /// The original functions the VCU's entries call (thiscall each): the drive's, the engine's, the car's and the lights'
-/// accessors and setters, and the slip query. The bindings make them through the host.
+/// accessors and setters, and the slip query. None of their objects is typed, so the bindings make them through the
+/// host; the slip query is the VCU's own, called through the host as the original calls it (its stack words).
 pub trait VcuCalls {
     /// `CDrive::Get4520`: the engine speed (rad/s).
     fn engine_speed(&mut self, drive: u32) -> f32;
@@ -577,8 +564,8 @@ pub trait VcuCalls {
     fn set_brake_light(&mut self, lights: u32, on: bool);
     /// `Lights::Set1ed0`: the neutral light.
     fn set_neutral_light(&mut self, lights: u32, on: bool);
-    /// `E50_QuerySlip` (fastcall on the scratch), as FlagDispatch calls it.
-    fn query_slip(&mut self, scratch: u32) -> bool;
+    /// `E50_QuerySlip` (fastcall on the unit's scratch), as FlagDispatch calls it.
+    fn query_slip(&mut self) -> bool;
     /// `NTweak::CBase::SetDirty` on `object`, as `CDrive::M6840` calls it.
     fn set_dirty(&mut self, object: u32);
 }
@@ -586,42 +573,29 @@ pub trait VcuCalls {
 // The VCU functions' sequences, one per original entry, generic over the store (moved from the bindings in
 // `rbr-hybrid/src/vcu.rs`, which decode the registers and call these).
 
-/// The scratch's drive (`+0x58`): the object the drive accessors and setters take.
-fn drive_of<S: VcuStore>(mem: &S, this: u32) -> u32 {
-    mem.u32(this + ScratchObj::drive.at)
-}
-
-/// The drive's gear block (`CDrive::Get08`, `[drive + 8]`).
-fn gears_at<S: VcuStore>(mem: &S, drive: u32) -> u32 {
-    mem.u32(drive + 8)
-}
-
-/// The state's car (`m_state + 0x68`).
-fn state_car<S: VcuStore>(mem: &S, state: u32) -> u32 {
-    mem.u32(state + 0x68)
-}
-
-/// `E49Proxy::VcuTableBlend (table, x, lo, hi, n)`, st0, for `n` from 2 (the VCU always passes 11).
-pub fn table_blend<S: VcuStore>(mem: &S, table: u32, x: f32, lo: f32, hi: f32, n: u32) -> f64 {
-    super::tables::table_blend(&mem.pedal_map(table, n as usize), x, lo, hi)
+/// `E49Proxy::VcuTableBlend (table, x, lo, hi, n)`, st0, for `n` from 2 (the VCU always passes 11): a map of the
+/// definition, read where it is.
+pub fn table_blend(mem: &Mem, table: u32, x: f32, lo: f32, hi: f32, n: u32) -> f64 {
+    super::tables::table_blend(&pedal_map(mem, table, n as usize), x, lo, hi)
 }
 
 /// `NPhysics::LookupPairTable (table, x, n)`, st0, for `n` from 1.
-pub fn lookup_pair_table<S: VcuStore>(mem: &S, table: u32, x: f32, n: u32) -> f64 {
-    super::tables::lookup_pair_table(&mem.speed_map(table, n as usize), x)
+pub fn lookup_pair_table(mem: &Mem, table: u32, x: f32, n: u32) -> f64 {
+    super::tables::lookup_pair_table(&speed_map(mem, table, n as usize), x)
 }
 
-/// `CScratchSim::LockMax (t1, t2, t3, f)`, st0: the largest of the throttle, brake and speed maps.
-pub fn lock_max<S: VcuStore>(mem: &S, this: u32, t: [u32; 3], f: f32) -> f32 {
-    super::locks::lock_max(mem.pedals(this), &pedal_map(mem, t[0]), &pedal_map(mem, t[1]), &speed_map(mem, t[2]), f)
+/// `CScratchSim::LockMax (t1, t2, t3, f)`, st0: the largest of the throttle, brake and speed maps (the definition's,
+/// at `t`) at the scratch's `pedals`.
+pub fn lock_max(mem: &Mem, pedals: Pedals, t: [u32; 3], f: f32) -> f32 {
+    let [throttle, brake, speed] = t;
+    super::locks::lock_max(pedals, &pedal_knots(mem, throttle), &pedal_knots(mem, brake), &speed_knots(mem, speed), f)
 }
 
 /// `CScratchSim::DiffLocks`: the three diff locks, sent to the drive's `Set4570`; eax is the last send's.
-pub fn diff_locks<S: VcuStore>(mem: &S, calls: &mut impl VcuCalls, this: u32) -> u32 {
-    let drive = drive_of(mem, this);
+pub fn diff_locks<S: VcuStore>(store: &S, calls: &mut impl VcuCalls) -> u32 {
+    let drive = store.parts().drive;
     let speed = calls.lock_speed(drive);
-    let def = mem.def(mem.u32(this + ScratchObj::def.at));
-    let values = super::locks::diff_locks(mem.pedals(this), &def, speed);
+    let values = super::locks::diff_locks(store.scratch().pedals, &store.def(), speed);
     let mut eax = 0;
     for (channel, value) in values.into_iter().enumerate() {
         eax = calls.set_diff_lock(drive, channel as u32, value);
@@ -631,36 +605,35 @@ pub fn diff_locks<S: VcuStore>(mem: &S, calls: &mut impl VcuCalls, this: u32) ->
 
 /// `E50_QuerySlip`: the slip query before a downshift. The engine speed and the car speed come from their getters,
 /// each called only where its gate reads it, as the original does.
-pub fn query_slip<S: VcuStore>(mem: &S, calls: &mut impl VcuCalls, this: u32) -> bool {
-    let scratch = mem.scratch(this);
-    let gear = mem.gearbox(gears_at(mem, scratch.drive)).gear;
-    let gears = mem.gear_ratios(scratch.drive);
-    let rpm_limit = mem.def(scratch.def).rpm_limit;
-    let engine = if scratch.slip_gate_rpm != 0 && gear as i32 > 2 { calls.engine_speed(scratch.drive) } else { 0.0 };
-    let car_speed =
-        if scratch.slip_gate_speed != 0 && gear == 2 { calls.car_speed(state_car(mem, scratch.state)) } else { 0.0 };
+pub fn query_slip<S: VcuStore + DriveBlocks>(store: &S, calls: &mut impl VcuCalls) -> bool {
+    let scratch = store.scratch();
+    let drive = store.parts().drive;
+    let gear = store.gearbox(drive).gear;
+    let gears = store.gear_ratios(drive);
+    let rpm_limit = store.def().rpm_limit;
+    let engine = if scratch.slip_gate_rpm != 0 && gear as i32 > 2 { calls.engine_speed(drive) } else { 0.0 };
+    let car_speed = if scratch.slip_gate_speed != 0 && gear == 2 { calls.car_speed(store.car()) } else { 0.0 };
     super::slip::query_slip(scratch.slip_gate_rpm, scratch.slip_gate_speed, gear, &gears, rpm_limit, engine, car_speed)
 }
 
 /// `CScratchSim::RevLimitCut`: the rev-limit cut flags, sent to the engine's `SetState4`; eax is its.
-pub fn rev_limit_cut<S: VcuStore>(mem: &S, calls: &mut impl VcuCalls, this: u32, margin: f32) -> u32 {
-    let engine_speed = calls.engine_speed(drive_of(mem, this));
-    let def = mem.def(mem.u32(this + ScratchObj::def.at));
-    let state = mem.state(mem.u32(this + ScratchObj::state.at));
-    let flags = super::cut::rev_limit_cut(engine_speed, &def, &state, margin);
-    calls.set_cut_flags(mem.u32(this + ScratchObj::engine.at), flags)
+pub fn rev_limit_cut<S: VcuStore>(store: &S, calls: &mut impl VcuCalls, margin: f32) -> u32 {
+    let parts = store.parts();
+    let engine_speed = calls.engine_speed(parts.drive);
+    let flags = super::cut::rev_limit_cut(engine_speed, &store.def(), &store.state(), margin);
+    calls.set_cut_flags(parts.engine, flags)
 }
 
 /// `CScratchSim::CheckSlip (x)`: the slip gate.
-pub fn check_slip<S: VcuStore>(mem: &S, this: u32, x: f32) -> bool {
-    let slip = mem.gearbox(gears_at(mem, drive_of(mem, this))).slip;
-    super::cut::check_slip(mem.scratch(this).vcu_enabled, slip, x)
+pub fn check_slip<S: VcuStore + DriveBlocks>(store: &S, x: f32) -> bool {
+    let slip = store.gearbox(store.parts().drive).slip;
+    super::cut::check_slip(store.scratch().vcu_enabled, slip, x)
 }
 
 /// The engine speed and the car speed the gear logic reads, in its order (`CDrive::Get4520`, then `CCar::Get15F8` on
 /// the state's car), or None where it returns before reading them: the launch flag off, or a shift under way.
 fn gear_speeds<S: VcuStore>(
-    mem: &S,
+    store: &S,
     calls: &mut impl VcuCalls,
     scratch: &Scratch,
     gears: &Gearbox,
@@ -668,17 +641,17 @@ fn gear_speeds<S: VcuStore>(
     if scratch.launch_enabled == 0 || gears.gear != gears.commanded {
         return None;
     }
-    let engine = calls.engine_speed(scratch.drive);
-    Some((engine, calls.car_speed(state_car(mem, scratch.state))))
+    let engine = calls.engine_speed(store.parts().drive);
+    Some((engine, calls.car_speed(store.car())))
 }
 
 /// `CScratchSim::GearboxUpdate (dt)`: the gear logic. With the launch flag off, or a shift under way, it returns before
 /// any call. The requests' `CDrive::Set47B0` writes (`SetDirty` and the commanded gear) are the gear block it stores.
-pub fn gearbox_update<S: VcuStore>(mem: &mut S, calls: &mut impl VcuCalls, this: u32, dt: f32, tuning: Tuning) {
-    let scratch = mem.scratch(this);
-    let gears_at = gears_at(mem, scratch.drive);
-    let mut gears = mem.gearbox(gears_at);
-    let (engine, speed) = gear_speeds(mem, calls, &scratch, &gears).unwrap_or((0.0, 0.0));
+pub fn gearbox_update<S: VcuStore + DriveBlocks>(store: &mut S, calls: &mut impl VcuCalls, dt: f32, tuning: Tuning) {
+    let scratch = store.scratch();
+    let drive = store.parts().drive;
+    let mut gears = store.gearbox(drive);
+    let (engine, speed) = gear_speeds(store, calls, &scratch, &gears).unwrap_or((0.0, 0.0));
     let input = super::gear::Input {
         launch_enabled: scratch.launch_enabled,
         vcu_enabled: scratch.vcu_enabled,
@@ -686,31 +659,36 @@ pub fn gearbox_update<S: VcuStore>(mem: &mut S, calls: &mut impl VcuCalls, this:
         engine,
         speed,
         dt,
-        gear_count: mem.gear_count(scratch.drive),
+        gear_count: store.gear_count(drive),
         tuning,
     };
-    let def = mem.def(scratch.def);
-    let mut state = mem.state(scratch.state);
+    let def = store.def();
+    let mut state = store.state();
     super::gear::update(input, &def, &mut state, &mut gears);
-    mem.store_state(scratch.state, &state);
-    mem.store_gearbox(gears_at, &gears);
+    store.store_state(&state);
+    store.store_gearbox(drive, &gears);
 }
 
 /// `CScratchSim::LaunchClutch (dt)`: the launch clutch, sent to the drive's `Set4820` (nothing with the launch mode
 /// off); eax is the send's, else 0.
-pub fn launch_clutch<S: VcuStore>(mem: &mut S, calls: &mut impl VcuCalls, this: u32, dt: f32, tuning: Tuning) -> u32 {
-    let scratch = mem.scratch(this);
+pub fn launch_clutch<S: VcuStore + DriveBlocks>(
+    store: &mut S,
+    calls: &mut impl VcuCalls,
+    dt: f32,
+    tuning: Tuning,
+) -> u32 {
+    let scratch = store.scratch();
     if scratch.launch_mode == 0 {
         return 0;
     }
-    let drive = scratch.drive;
+    let drive = store.parts().drive;
     let input =
         super::clutch::Input { launch_mode: scratch.launch_mode, engine: calls.engine_speed(drive), dt, tuning };
-    let gears = mem.gearbox(gears_at(mem, drive));
-    let def = mem.def(scratch.def);
-    let mut state = mem.state(scratch.state);
+    let gears = store.gearbox(drive);
+    let def = store.def();
+    let mut state = store.state();
     let sent = super::clutch::launch_clutch(input, &gears, &def, &mut state);
-    mem.store_state(scratch.state, &state);
+    store.store_state(&state);
     match sent {
         Some(value) => calls.set_clutch_slip(drive, value),
         None => 0,
@@ -720,23 +698,21 @@ pub fn launch_clutch<S: VcuStore>(mem: &mut S, calls: &mut impl VcuCalls, this: 
 /// FlagDispatch's body: the packet's flags as gear requests; whether anything was requested. The drive setters it
 /// calls (`Set47B0`, `M6840`) write the gear block it stores; the slip query reads the gear in use, the tables and the
 /// speeds, none of which an upshift request changes, so the stores can follow it.
-pub fn apply_packet<S: VcuStore>(
-    mem: &mut S,
+pub fn apply_packet<S: VcuStore + DriveBlocks>(
+    store: &mut S,
     calls: &mut impl VcuCalls,
-    this: u32,
     packet: Packet,
     tuning: &Tuning,
 ) -> bool {
-    let scratch = mem.scratch(this);
-    let drive = scratch.drive;
-    let gears_at = gears_at(mem, drive);
-    let mut gears = mem.gearbox(gears_at);
-    let def = mem.def(scratch.def);
-    let mut state = mem.state(scratch.state);
-    let gear_count = mem.gear_count(drive);
+    let scratch = store.scratch();
+    let drive = store.parts().drive;
+    let mut gears = store.gearbox(drive);
+    let def = store.def();
+    let mut state = store.state();
+    let gear_count = store.gear_count(drive);
     let on = super::dispatch::flag_dispatch(
         packet,
-        || calls.query_slip(this),
+        || calls.query_slip(),
         scratch.vcu_enabled,
         gear_count,
         &def,
@@ -745,50 +721,44 @@ pub fn apply_packet<S: VcuStore>(
         &mut gears,
     );
     if on {
-        mem.store_state(scratch.state, &state);
-        mem.store_gearbox(gears_at, &gears);
+        store.store_state(&state);
+        store.store_gearbox(drive, &gears);
     }
     on
 }
 
-/// `CDrive::M6840 (value)`: `SetDirty` on the gear block's `+0x564`, then the commanded gear at `+0x570`; the request
-/// flag is not touched.
-pub fn set_commanded_gear<S: VcuStore>(mem: &mut S, calls: &mut impl VcuCalls, drive: u32, value: u32) {
+/// `CDrive::M6840 (value)`, the drive's own: `SetDirty` on the gear block's `+0x564`, then the commanded gear at
+/// `+0x570`; the request flag is not touched.
+pub fn set_commanded_gear(mem: &mut Mem, calls: &mut impl VcuCalls, drive: u32, value: u32) {
     let count = mem.gear_count(drive);
-    let gears = gears_at(mem, drive);
+    let gears = mem.u32(drive + DRIVE_STATE);
     calls.set_dirty(gears + 0x564);
     mem.set_u32(gears + DRIVE_STATE_COMMANDED_GEAR, super::gear::commanded_gear(count, value));
 }
 
 /// `CScratchSim::Step (dt)` (`gear`, with the gear logic) or `StepBasic`. It writes the state, the drive's gear block
 /// and its outputs (the drive setters' writes); the engine and light setters are called in the port's order, after
-/// the stores. Returns the state pointer, the original's last load (eax at its ret).
-pub fn step<S: VcuStore>(
-    mem: &mut S,
-    calls: &mut impl VcuCalls,
-    this: u32,
-    dt: f32,
-    gear: bool,
-    tuning: Tuning,
-) -> u32 {
+/// the stores. The original's eax at its ret is the state pointer ([`state_of`]).
+pub fn step<S: VcuStore + DriveBlocks>(store: &mut S, calls: &mut impl VcuCalls, dt: f32, gear: bool, tuning: Tuning) {
     use super::step::Send;
-    let scratch = mem.scratch(this);
-    let drive = scratch.drive;
-    let gears_at = gears_at(mem, drive);
-    let mut gears = mem.gearbox(gears_at);
+    let scratch = store.scratch();
+    let parts = store.parts();
+    let drive = parts.drive;
+    let mut gears = store.gearbox(drive);
     // Read only by the gear logic, which skips it without the launch flag or during a shift.
-    let car_speed = if gear { gear_speeds(mem, calls, &scratch, &gears).map_or(0.0, |(_, speed)| speed) } else { 0.0 };
+    let car_speed =
+        if gear { gear_speeds(store, calls, &scratch, &gears).map_or(0.0, |(_, speed)| speed) } else { 0.0 };
     let input = super::step::Input {
         dt,
         engine: calls.engine_speed(drive),
         car_speed,
         drive_speed: calls.lock_speed(drive),
-        gear_count: mem.gear_count(drive),
+        gear_count: store.gear_count(drive),
         tuning,
     };
-    let def = mem.def(scratch.def);
-    let mut state = mem.state(scratch.state);
-    let mut out = mem.outputs(drive);
+    let def = store.def();
+    let mut state = store.state();
+    let mut out = store.outputs(drive);
     // The step sends at most ten: seven, and a lock on each of the three channels.
     let mut sends = [None; 10];
     let mut sent = 0;
@@ -797,162 +767,168 @@ pub fn step<S: VcuStore>(
         sends[sent] = Some(s);
         sent += 1;
     });
-    mem.store_state(scratch.state, &state);
-    mem.store_gearbox(gears_at, &gears);
-    mem.store_outputs(drive, &out);
+    store.store_state(&state);
+    store.store_gearbox(drive, &gears);
+    store.store_outputs(drive, &out);
     for send in sends.into_iter().flatten() {
         match send {
-            Send::EnginePedal(v) => calls.set_engine_pedal(scratch.engine, v),
+            Send::EnginePedal(v) => calls.set_engine_pedal(parts.engine, v),
             Send::CutFlags(flags) => {
-                calls.set_cut_flags(scratch.engine, flags);
+                calls.set_cut_flags(parts.engine, flags);
             }
-            Send::BrakeLight(on) => calls.set_brake_light(scratch.lights, on),
-            Send::NeutralLight(on) => calls.set_neutral_light(scratch.lights, on),
+            Send::BrakeLight(on) => calls.set_brake_light(parts.lights, on),
+            Send::NeutralLight(on) => calls.set_neutral_light(parts.lights, on),
             // the drive setters' writes are the outputs stored above
             Send::DriveThrottle(_) | Send::DriveBrake(_) | Send::DriveClutch(_) | Send::DiffLock { .. } => {}
         }
     }
-    scratch.state
+}
+
+/// The state of the scratch at `scratch` (its `m_state`, an image pointer).
+pub fn state_of(mem: &Mem, scratch: u32) -> u32 {
+    ScratchObj::state.load(mem, scratch)
 }
 
 /// Knot `k` of the speed map at `at`.
-fn speed_knot<S: Raw + ?Sized>(mem: &S, at: u32, k: u32) -> SpeedKnot {
+fn speed_knot(mem: &Mem, at: u32, k: u32) -> SpeedKnot {
     SpeedKnot { key: mem.f32(at + 0x20 * k + 0x0c), value: mem.f32(at + 0x20 * k + 0x1c) }
 }
 
 /// Knot `k` of the pedal map at `at`.
-fn pedal_knot<S: Raw + ?Sized>(mem: &S, at: u32, k: u32) -> Knot {
+fn pedal_knot(mem: &Mem, at: u32, k: u32) -> Knot {
     Knot { value: mem.f32(at + 0x10 * k + 0x0c) }
 }
 
 /// The [`KNOTS`] records of the speed map at `at`.
-fn speed_map<S: Raw + ?Sized>(mem: &S, at: u32) -> [SpeedKnot; KNOTS] {
+fn speed_knots(mem: &Mem, at: u32) -> [SpeedKnot; KNOTS] {
     std::array::from_fn(|k| speed_knot(mem, at, k as u32))
 }
 
 /// The [`KNOTS`] knots of the pedal map at `at`.
-fn pedal_map<S: Raw + ?Sized>(mem: &S, at: u32) -> [Knot; KNOTS] {
+fn pedal_knots(mem: &Mem, at: u32) -> [Knot; KNOTS] {
     std::array::from_fn(|k| pedal_knot(mem, at, k as u32))
 }
 
-/// The Mem store: the bodies are the layout's reads and writes.
-impl VcuStore for Mem {
-    /// Reads a speed map of `n` records at `at`.
-    fn speed_map(&self, at: u32, n: usize) -> Vec<SpeedKnot> {
-        (0..n as u32).map(|k| speed_knot(self, at, k)).collect()
+/// The speed map of `n` records at `at`.
+pub fn speed_map(mem: &Mem, at: u32, n: usize) -> Vec<SpeedKnot> {
+    (0..n as u32).map(|k| speed_knot(mem, at, k)).collect()
+}
+
+/// The pedal map of `n` knots at `at`.
+pub fn pedal_map(mem: &Mem, at: u32, n: usize) -> Vec<Knot> {
+    (0..n as u32).map(|k| pedal_knot(mem, at, k)).collect()
+}
+
+/// The definition at `at`. The memory must cover the whole object (0xcac bytes).
+pub fn def(mem: &Mem, at: u32) -> Def {
+    let f = |off: u32| mem.f32(at + off);
+    Def {
+        gear_upshift_rpm: std::array::from_fn(|k| f(GEAR_UPSHIFT_RPM + 0x20 * k as u32)),
+        gear_downshift_rpm: std::array::from_fn(|k| f(GEAR_DOWNSHIFT_RPM + 0x20 * k as u32)),
+        shift_lockout_up_s: f(SHIFT_LOCKOUT_UP_S),
+        shift_lockout_down_s: f(SHIFT_LOCKOUT_DOWN_S),
+        clutch_ramp_rate: f(CLUTCH_RAMP_RATE),
+        rpm_limit: f(RPM_LIMIT),
+        centre_diff_handbrake_release: f(CENTRE_DIFF_HANDBRAKE_RELEASE),
+        left_foot_brake_threshold: f(LEFT_FOOT_BRAKE_THRESHOLD),
+        gear_count: mem.u32(at + 0x654),
+        centre_throttle_lock: pedal_knots(mem, at + CENTRE_THROTTLE_LOCK),
+        centre_brake_lock: pedal_knots(mem, at + CENTRE_BRAKE_LOCK),
+        centre_speed_lock: speed_knots(mem, at + CENTRE_SPEED_LOCK),
+        lf_centre_throttle_lock: pedal_knots(mem, at + LF_CENTRE_THROTTLE_LOCK),
+        lf_centre_brake_lock: pedal_knots(mem, at + LF_CENTRE_BRAKE_LOCK),
+        lf_centre_speed_lock: speed_knots(mem, at + LF_CENTRE_SPEED_LOCK),
+        front_throttle_lock: pedal_knots(mem, at + FRONT_THROTTLE_LOCK),
+        front_brake_lock: pedal_knots(mem, at + FRONT_BRAKE_LOCK),
+        front_speed_lock: speed_knots(mem, at + FRONT_SPEED_LOCK),
+        rear_throttle_lock: pedal_knots(mem, at + REAR_THROTTLE_LOCK),
+        rear_brake_lock: pedal_knots(mem, at + REAR_BRAKE_LOCK),
+        rear_speed_lock: speed_knots(mem, at + REAR_SPEED_LOCK),
+    }
+}
+
+/// The maps of the setup at `setup`.
+fn knot_maps(mem: &Mem, setup: u32) -> KnotMaps {
+    let pedal = |at: u32| load_triples(mem, setup + at, 0x10);
+    let speed = |keys: u32, values: u32| SpeedWords {
+        keys: load_triples(mem, setup + keys, 0x10),
+        values: load_triples(mem, setup + values, 0x10),
+    };
+    KnotMaps {
+        centre_throttle: pedal(0x070),
+        centre_brake: pedal(0x120),
+        lf_centre_throttle: pedal(0x330),
+        lf_centre_brake: pedal(0x3e0),
+        front_throttle: pedal(0x5f0),
+        front_brake: pedal(0x6a0),
+        rear_throttle: pedal(0x8b0),
+        rear_brake: pedal(0x960),
+        centre_speed: speed(0x1d0, 0x280),
+        lf_centre_speed: speed(0x490, 0x540),
+        front_speed: speed(0x750, 0x800),
+        rear_speed: speed(0xa10, 0xac0),
+    }
+}
+
+/// Writes the maps into the CDef at `def`.
+fn store_knot_maps(mem: &mut Mem, def: u32, value: &KnotMaps) {
+    store_triples(mem, def + 0x1b0, 0x10, &value.centre_throttle);
+    store_triples(mem, def + 0x260, 0x10, &value.centre_brake);
+    store_triples(mem, def + 0x470, 0x10, &value.lf_centre_throttle);
+    store_triples(mem, def + 0x520, 0x10, &value.lf_centre_brake);
+    store_triples(mem, def + 0x730, 0x10, &value.front_throttle);
+    store_triples(mem, def + 0x7e0, 0x10, &value.front_brake);
+    store_triples(mem, def + 0x9f0, 0x10, &value.rear_throttle);
+    store_triples(mem, def + 0xaa0, 0x10, &value.rear_brake);
+    store_speed(mem, def + 0x310, def + 0x320, &value.centre_speed);
+    store_speed(mem, def + 0x5d0, def + 0x5e0, &value.lf_centre_speed);
+    store_speed(mem, def + 0x890, def + 0x8a0, &value.front_speed);
+    store_speed(mem, def + 0xb50, def + 0xb60, &value.rear_speed);
+}
+
+fn setup_flags(mem: &Mem, setup: u32) -> SetupFlags {
+    SetupFlags {
+        launch: mem.u32(setup + 0x18),
+        slip_gate_rpm: mem.u32(setup + 0x28),
+        slip_gate_speed: mem.u32(setup + 0x38),
+        launch_mode_when_off: mem.u32(setup + 0x48),
+    }
+}
+
+/// The request packet at `at`.
+pub fn packet(mem: &Mem, at: u32) -> Packet {
+    Packet {
+        pedals: Pedals { throttle: mem.f32(at), brake: mem.f32(at + 0x04), handbrake: mem.f32(at + 0x08) },
+        fixed_clutch: mem.f32(at + 0x0c),
+        carried_word: mem.u32(at + 0x10),
+        flags: mem.u8(at + 0x14),
+        value: mem.u32(at + 0x18),
+    }
+}
+
+/// The drive's gear block (`CDrive::Get08`, `[drive + 8]`, its state).
+const DRIVE_STATE: u32 = 0x08;
+/// The drive's definition (`[drive + 4]`).
+const DRIVE_DEF: u32 = 0x04;
+
+/// The gear fields of the drive state at `at` (the drive's `[drive + 8]`).
+pub fn gearbox_at(mem: &Mem, at: u32) -> Gearbox {
+    Gearbox {
+        gear: mem.u32(at + DRIVE_STATE_GEAR),
+        commanded: mem.u32(at + DRIVE_STATE_COMMANDED_GEAR),
+        changed: mem.u32(at + DRIVE_STATE_CHANGED),
+        slip: mem.u32(at + DRIVE_STATE_SLIP),
+    }
+}
+
+/// The drive's blocks on the image, where they are the drive's (`vcu::store`).
+impl DriveBlocks for Mem {
+    fn gearbox(&self, drive: u32) -> Gearbox {
+        gearbox_at(self, self.u32(drive + DRIVE_STATE))
     }
 
-    /// Reads a pedal map of `n` knots at `at`.
-    fn pedal_map(&self, at: u32, n: usize) -> Vec<Knot> {
-        (0..n as u32).map(|k| pedal_knot(self, at, k)).collect()
-    }
-
-    /// Reads the setup at `at`. The memory must cover the whole object (0xcac bytes).
-    fn def(&self, at: u32) -> Def {
-        let f = |off: u32| self.f32(at + off);
-        Def {
-            gear_upshift_rpm: std::array::from_fn(|k| f(GEAR_UPSHIFT_RPM + 0x20 * k as u32)),
-            gear_downshift_rpm: std::array::from_fn(|k| f(GEAR_DOWNSHIFT_RPM + 0x20 * k as u32)),
-            shift_lockout_up_s: f(SHIFT_LOCKOUT_UP_S),
-            shift_lockout_down_s: f(SHIFT_LOCKOUT_DOWN_S),
-            clutch_ramp_rate: f(CLUTCH_RAMP_RATE),
-            rpm_limit: f(RPM_LIMIT),
-            centre_diff_handbrake_release: f(CENTRE_DIFF_HANDBRAKE_RELEASE),
-            left_foot_brake_threshold: f(LEFT_FOOT_BRAKE_THRESHOLD),
-            gear_count: self.u32(at + 0x654),
-            centre_throttle_lock: pedal_map(self, at + CENTRE_THROTTLE_LOCK),
-            centre_brake_lock: pedal_map(self, at + CENTRE_BRAKE_LOCK),
-            centre_speed_lock: speed_map(self, at + CENTRE_SPEED_LOCK),
-            lf_centre_throttle_lock: pedal_map(self, at + LF_CENTRE_THROTTLE_LOCK),
-            lf_centre_brake_lock: pedal_map(self, at + LF_CENTRE_BRAKE_LOCK),
-            lf_centre_speed_lock: speed_map(self, at + LF_CENTRE_SPEED_LOCK),
-            front_throttle_lock: pedal_map(self, at + FRONT_THROTTLE_LOCK),
-            front_brake_lock: pedal_map(self, at + FRONT_BRAKE_LOCK),
-            front_speed_lock: speed_map(self, at + FRONT_SPEED_LOCK),
-            rear_throttle_lock: pedal_map(self, at + REAR_THROTTLE_LOCK),
-            rear_brake_lock: pedal_map(self, at + REAR_BRAKE_LOCK),
-            rear_speed_lock: speed_map(self, at + REAR_SPEED_LOCK),
-        }
-    }
-
-    /// Reads the maps of the setup at `setup`.
-    fn knot_maps(&self, setup: u32) -> KnotMaps {
-        let pedal = |at: u32| load_triples(self, setup + at, 0x10);
-        let speed = |keys: u32, values: u32| SpeedWords {
-            keys: load_triples(self, setup + keys, 0x10),
-            values: load_triples(self, setup + values, 0x10),
-        };
-        KnotMaps {
-            centre_throttle: pedal(0x070),
-            centre_brake: pedal(0x120),
-            lf_centre_throttle: pedal(0x330),
-            lf_centre_brake: pedal(0x3e0),
-            front_throttle: pedal(0x5f0),
-            front_brake: pedal(0x6a0),
-            rear_throttle: pedal(0x8b0),
-            rear_brake: pedal(0x960),
-            centre_speed: speed(0x1d0, 0x280),
-            lf_centre_speed: speed(0x490, 0x540),
-            front_speed: speed(0x750, 0x800),
-            rear_speed: speed(0xa10, 0xac0),
-        }
-    }
-
-    /// Writes the maps into the CDef at `def`.
-    fn store_knot_maps(&mut self, def: u32, value: &KnotMaps) {
-        store_triples(self, def + 0x1b0, 0x10, &value.centre_throttle);
-        store_triples(self, def + 0x260, 0x10, &value.centre_brake);
-        store_triples(self, def + 0x470, 0x10, &value.lf_centre_throttle);
-        store_triples(self, def + 0x520, 0x10, &value.lf_centre_brake);
-        store_triples(self, def + 0x730, 0x10, &value.front_throttle);
-        store_triples(self, def + 0x7e0, 0x10, &value.front_brake);
-        store_triples(self, def + 0x9f0, 0x10, &value.rear_throttle);
-        store_triples(self, def + 0xaa0, 0x10, &value.rear_brake);
-        store_speed(self, def + 0x310, def + 0x320, &value.centre_speed);
-        store_speed(self, def + 0x5d0, def + 0x5e0, &value.lf_centre_speed);
-        store_speed(self, def + 0x890, def + 0x8a0, &value.front_speed);
-        store_speed(self, def + 0xb50, def + 0xb60, &value.rear_speed);
-    }
-
-    fn setup_flags(&self, setup: u32) -> SetupFlags {
-        SetupFlags {
-            launch: self.u32(setup + 0x18),
-            slip_gate_rpm: self.u32(setup + 0x28),
-            slip_gate_speed: self.u32(setup + 0x38),
-            launch_mode_when_off: self.u32(setup + 0x48),
-        }
-    }
-
-    fn state(&self, at: u32) -> State {
-        State {
-            shift_lockout: self.f32(at + SHIFT_LOCKOUT),
-            launch_clutch: self.f32(at + LAUNCH_CLUTCH),
-            launch_clutch_dirty: self.u32(at + LAUNCH_CLUTCH_DIRTY),
-            pedal_swap: self.u32(at + PEDAL_SWAP),
-            gear_timer: self.f32(at + GEAR_TIMER),
-            shift_cooldown: self.f32(at + SHIFT_COOLDOWN),
-        }
-    }
-
-    fn store_state(&mut self, at: u32, value: &State) {
-        self.set_f32(at + SHIFT_LOCKOUT, value.shift_lockout);
-        self.set_f32(at + LAUNCH_CLUTCH, value.launch_clutch);
-        self.set_u32(at + LAUNCH_CLUTCH_DIRTY, value.launch_clutch_dirty);
-        self.set_u32(at + PEDAL_SWAP, value.pedal_swap);
-        self.set_f32(at + GEAR_TIMER, value.gear_timer);
-        self.set_f32(at + SHIFT_COOLDOWN, value.shift_cooldown);
-    }
-
-    fn gearbox(&self, at: u32) -> Gearbox {
-        Gearbox {
-            gear: self.u32(at + DRIVE_STATE_GEAR),
-            commanded: self.u32(at + DRIVE_STATE_COMMANDED_GEAR),
-            changed: self.u32(at + DRIVE_STATE_CHANGED),
-            slip: self.u32(at + DRIVE_STATE_SLIP),
-        }
-    }
-
-    fn store_gearbox(&mut self, at: u32, value: &Gearbox) {
+    fn store_gearbox(&mut self, drive: u32, value: &Gearbox) {
+        let at = self.u32(drive + DRIVE_STATE);
         self.set_u32(at + DRIVE_STATE_GEAR, value.gear);
         self.set_u32(at + DRIVE_STATE_COMMANDED_GEAR, value.commanded);
         self.set_u32(at + DRIVE_STATE_CHANGED, value.changed);
@@ -961,123 +937,274 @@ impl VcuStore for Mem {
 
     /// Gear count of the drive's own definition (`[drive + 4] + 0x654`), which `CDrive::Set47B0` clamps to.
     fn gear_count(&self, drive: u32) -> u32 {
-        self.u32(self.u32(drive + 0x4) + 0x654)
-    }
-
-    fn reals(&self, drive: u32) -> Reals {
-        Reals {
-            throttle: self.f32(drive + 0x2c),
-            brake: self.f32(drive + 0x3c),
-            brake_scaled: self.f32(drive + 0x70),
-            clutch_slip: self.f32(drive + 0x60),
-            brake_scale: self.f32(self.u32(drive + 0x04) + 0x620),
-        }
-    }
-
-    fn store_reals(&mut self, drive: u32, value: &Reals) {
-        for (dirty, value, v) in [
-            (0x28, 0x2c, value.throttle),
-            (0x38, 0x3c, value.brake),
-            (0x6c, 0x70, value.brake_scaled),
-            (0x5c, 0x60, value.clutch_slip),
-        ] {
-            self.set_u32(drive + dirty, 1);
-            self.set_f32(drive + value, v);
-        }
-    }
-
-    fn outputs(&self, drive: u32) -> Outputs {
-        Outputs { locks: self.locks(drive), reals: self.reals(drive) }
-    }
-
-    fn store_outputs(&mut self, drive: u32, value: &Outputs) {
-        self.store_locks(drive, &value.locks);
-        self.store_reals(drive, &value.reals);
+        self.u32(self.u32(drive + DRIVE_DEF) + 0x654)
     }
 
     fn gear_ratios(&self, drive: u32) -> GearRatios {
-        let def = self.u32(drive + 0x04);
+        let def = self.u32(drive + DRIVE_DEF);
         GearRatios {
             lower_ratio: std::array::from_fn(|g| self.f32(def + 0x644 + 0x50 * g as u32)),
             ratio: std::array::from_fn(|g| self.f32(def + 0x694 + 0x50 * g as u32)),
         }
     }
 
-    fn locks(&self, drive: u32) -> Locks {
-        let drive_state = self.u32(drive + 0x08);
-        let def = self.u32(drive + 0x04);
-        Locks {
+    fn outputs(&self, drive: u32) -> Outputs {
+        let drive_state = self.u32(drive + DRIVE_STATE);
+        let def = self.u32(drive + DRIVE_DEF);
+        let locks = Locks {
             ratio: std::array::from_fn(|ch| self.f32(drive_state + 0x14 * ch as u32 + 0x0c)),
             enabled: self.u32(self.u32(drive + 0x170) + 0x90) != 0,
             max_torque: std::array::from_fn(|ch| self.f32(def + 0x58 + 0x60 * ch as u32)),
             torque: std::array::from_fn(|ch| self.f32(drive_state + 0x14 * ch as u32 + 0x18)),
-        }
+        };
+        let reals = Reals {
+            throttle: self.f32(drive + 0x2c),
+            brake: self.f32(drive + 0x3c),
+            brake_scaled: self.f32(drive + 0x70),
+            clutch_slip: self.f32(drive + 0x60),
+            brake_scale: self.f32(def + 0x620),
+        };
+        Outputs { locks, reals }
     }
 
-    /// Writes the locks back. Only the torques change; the ratios and the maximum torques are inputs here.
-    fn store_locks(&mut self, drive: u32, value: &Locks) {
-        let drive_state = self.u32(drive + 0x08);
-        for (ch, &torque) in value.torque.iter().enumerate() {
+    fn store_outputs(&mut self, drive: u32, value: &Outputs) {
+        let drive_state = self.u32(drive + DRIVE_STATE);
+        for (ch, &torque) in value.locks.torque.iter().enumerate() {
             self.set_f32(drive_state + 0x14 * ch as u32 + 0x18, torque);
         }
+        let reals = &value.reals;
+        for (dirty, value, v) in [
+            (0x28, 0x2c, reals.throttle),
+            (0x38, 0x3c, reals.brake),
+            (0x6c, 0x70, reals.brake_scaled),
+            (0x5c, 0x60, reals.clutch_slip),
+        ] {
+            self.set_u32(drive + dirty, 1);
+            self.set_f32(drive + value, v);
+        }
+    }
+}
+
+/// Where a unit's typed state lives in the image: its scratch, and the definition and state the scratch points at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VcuImage {
+    pub scratch: u32,
+    pub def: u32,
+    pub state: u32,
+}
+
+/// The words a unit's typed state owns: the scratch's pedals to its fixed clutch and its launch and slip fields, the
+/// state's shift lockout, launch clutch (its dirty word and value), pedal swap, gear timer and shift cooldown.
+const OWNED_SCRATCH: [(std::ops::Range<u32>, &str); 2] = [
+    (ScratchObj::throttle.at..ScratchObj::fixed_clutch.at + 4, "vcu pedals"),
+    (ScratchObj::launch_enabled.at..ScratchObj::vcu_enabled.at + 4, "vcu flags"),
+];
+const OWNED_STATE: [(std::ops::Range<u32>, &str); 4] = [
+    (SHIFT_LOCKOUT..SHIFT_LOCKOUT + 4, "vcu shift lockout"),
+    (LAUNCH_CLUTCH_DIRTY..LAUNCH_CLUTCH + 4, "vcu launch clutch"),
+    (PEDAL_SWAP..PEDAL_SWAP + 4, "vcu pedal swap"),
+    (GEAR_TIMER..SHIFT_COOLDOWN + 4, "vcu gear timer"),
+];
+
+impl VcuImage {
+    /// The unit whose scratch is at `scratch`, its objects as its pointers give them.
+    pub fn of(mem: &Mem, scratch: u32) -> Self {
+        VcuImage { scratch, def: ScratchObj::def.load(mem, scratch), state: ScratchObj::state.load(mem, scratch) }
     }
 
-    fn pedals(&self, scratch: u32) -> Pedals {
-        Pedals {
-            throttle: self.f32(scratch + SCRATCH_THROTTLE),
-            brake: self.f32(scratch + SCRATCH_BRAKE),
-            handbrake: self.f32(scratch + SCRATCH_HANDBRAKE),
+    /// The unit's typed state, read from the image.
+    pub fn lift(&self, mem: &Mem) -> Unit {
+        let (s, st) = (self.scratch, self.state);
+        Unit {
+            scratch: Scratch {
+                pedals: Pedals {
+                    throttle: ScratchObj::throttle.load(mem, s),
+                    brake: ScratchObj::brake.load(mem, s),
+                    handbrake: ScratchObj::handbrake.load(mem, s),
+                },
+                fixed_clutch: ScratchObj::fixed_clutch.load(mem, s),
+                carried_word: ScratchObj::carried_word.load(mem, s),
+                launch_enabled: ScratchObj::launch_enabled.load(mem, s),
+                launch_mode: ScratchObj::launch_mode.load(mem, s),
+                vcu_enabled: ScratchObj::vcu_enabled.load(mem, s),
+                slip_gate_rpm: ScratchObj::slip_gate_rpm.load(mem, s),
+                slip_gate_speed: ScratchObj::slip_gate_speed.load(mem, s),
+            },
+            state: State {
+                shift_lockout: mem.f32(st + SHIFT_LOCKOUT),
+                launch_clutch: mem.f32(st + LAUNCH_CLUTCH),
+                launch_clutch_dirty: mem.u32(st + LAUNCH_CLUTCH_DIRTY),
+                pedal_swap: mem.u32(st + PEDAL_SWAP),
+                gear_timer: mem.f32(st + GEAR_TIMER),
+                shift_cooldown: mem.f32(st + SHIFT_COOLDOWN),
+            },
         }
     }
 
-    fn store_pedals(&mut self, scratch: u32, value: &Pedals) {
-        self.set_f32(scratch + SCRATCH_THROTTLE, value.throttle);
-        self.set_f32(scratch + SCRATCH_BRAKE, value.brake);
-        self.set_f32(scratch + SCRATCH_HANDBRAKE, value.handbrake);
+    /// Writes the unit's typed state back: every owned word, nothing else.
+    pub fn lower(&self, unit: &Unit, mem: &mut Mem) {
+        let (s, st) = (self.scratch, self.state);
+        let (scratch, state) = (&unit.scratch, &unit.state);
+        ScratchObj::throttle.store(mem, s, scratch.pedals.throttle);
+        ScratchObj::brake.store(mem, s, scratch.pedals.brake);
+        ScratchObj::handbrake.store(mem, s, scratch.pedals.handbrake);
+        ScratchObj::carried_word.store(mem, s, scratch.carried_word);
+        ScratchObj::fixed_clutch.store(mem, s, scratch.fixed_clutch);
+        ScratchObj::launch_enabled.store(mem, s, scratch.launch_enabled);
+        ScratchObj::slip_gate_rpm.store(mem, s, scratch.slip_gate_rpm);
+        ScratchObj::slip_gate_speed.store(mem, s, scratch.slip_gate_speed);
+        ScratchObj::launch_mode.store(mem, s, scratch.launch_mode);
+        ScratchObj::vcu_enabled.store(mem, s, scratch.vcu_enabled);
+        mem.set_f32(st + SHIFT_LOCKOUT, state.shift_lockout);
+        mem.set_u32(st + LAUNCH_CLUTCH_DIRTY, state.launch_clutch_dirty);
+        mem.set_f32(st + LAUNCH_CLUTCH, state.launch_clutch);
+        mem.set_u32(st + PEDAL_SWAP, state.pedal_swap);
+        mem.set_f32(st + GEAR_TIMER, state.gear_timer);
+        mem.set_f32(st + SHIFT_COOLDOWN, state.shift_cooldown);
     }
 
-    fn packet(&self, at: u32) -> Packet {
-        Packet {
-            pedals: Pedals { throttle: self.f32(at), brake: self.f32(at + 0x04), handbrake: self.f32(at + 0x08) },
-            fixed_clutch: self.f32(at + 0x0c),
-            carried_word: self.u32(at + 0x10),
-            flags: self.u8(at + 0x14),
-            value: self.u32(at + 0x18),
+    /// The owned byte ranges with their names.
+    pub fn owned(&self) -> impl Iterator<Item = (std::ops::Range<u32>, &'static str)> {
+        let at =
+            |base: u32| move |(r, name): (std::ops::Range<u32>, &'static str)| (base + r.start..base + r.end, name);
+        OWNED_SCRATCH.into_iter().map(at(self.scratch)).chain(OWNED_STATE.into_iter().map(at(self.state)))
+    }
+}
+
+/// A unit in typed storage: where it lives in the image and its state. The state is in a cell: the unit's entries call
+/// each other through the host (FlagDispatch the slip query), so the views of one unit share it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CarVcu {
+    pub image: VcuImage,
+    pub unit: std::cell::Cell<Unit>,
+}
+
+impl CarVcu {
+    /// The VCU of the car at `car`, lifted from the image.
+    pub fn lift(mem: &Mem, car: u32) -> Self {
+        Self::of(mem, crate::car_body::layout::scratch_at(car))
+    }
+
+    /// The unit whose scratch is at `scratch`, lifted from the image.
+    pub fn of(mem: &Mem, scratch: u32) -> Self {
+        let image = VcuImage::of(mem, scratch);
+        CarVcu { image, unit: std::cell::Cell::new(image.lift(mem)) }
+    }
+
+    /// Writes the unit's state back to the image.
+    pub fn lower(&self, mem: &mut Mem) {
+        self.image.lower(&self.unit.get(), mem);
+    }
+
+    /// Whether this is the unit whose scratch is at `scratch`.
+    pub fn is(&self, scratch: u32) -> bool {
+        self.image.scratch == scratch
+    }
+
+    /// The unit as a store: its state here, its definition, pointers and the drive's blocks in `mem`.
+    pub fn view<'a>(&'a self, mem: &'a mut Mem) -> VcuView<'a> {
+        VcuView { mem, image: &self.image, unit: &self.unit }
+    }
+
+    /// Every owned byte range, named.
+    pub fn owned(&self) -> Vec<(std::ops::Range<u32>, String)> {
+        self.image.owned().map(|(r, name)| (r, name.to_string())).collect()
+    }
+}
+
+/// Runs `run` on the unit whose scratch is at `scratch`, lifted into a store of its own and lowered after it: the
+/// per-call path, on which the image holds the unit between calls.
+pub fn with_vcu<T>(mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
+    let one = CarVcu::of(mem, scratch);
+    let out = run(&mut one.view(mem));
+    one.lower(mem);
+    out
+}
+
+/// `lower(lift(image))` of the car's VCU into an empty image, compared with `mem` on every owned byte: their count, or
+/// the first byte that differs.
+pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
+    let vcu = CarVcu::lift(mem, car);
+    let mut out = Mem::new();
+    vcu.lower(&mut out);
+    let mut bytes = 0;
+    for (range, name) in vcu.owned() {
+        let len = (range.end - range.start) as usize;
+        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
+        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
+            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
+        }
+        bytes += len;
+    }
+    Ok(bytes)
+}
+
+/// A unit in typed storage as a [`VcuStore`]: the state in [`CarVcu`], the definition and the pointers read from the
+/// image; and the drive's blocks, on the image ([`DriveBlocks`]).
+pub struct VcuView<'a> {
+    mem: &'a mut Mem,
+    image: &'a VcuImage,
+    unit: &'a std::cell::Cell<Unit>,
+}
+
+impl VcuStore for VcuView<'_> {
+    fn def(&self) -> Def {
+        def(self.mem, self.image.def)
+    }
+
+    fn scratch(&self) -> Scratch {
+        self.unit.get().scratch
+    }
+
+    fn store_scratch(&mut self, value: &Scratch) {
+        self.unit.set(Unit { scratch: *value, ..self.unit.get() });
+    }
+
+    fn state(&self) -> State {
+        self.unit.get().state
+    }
+
+    fn store_state(&mut self, value: &State) {
+        self.unit.set(Unit { state: *value, ..self.unit.get() });
+    }
+
+    fn parts(&self) -> SimParts {
+        let s = self.image.scratch;
+        SimParts {
+            engine: ScratchObj::engine.load(self.mem, s),
+            drive: ScratchObj::drive.load(self.mem, s),
+            lights: ScratchObj::lights.load(self.mem, s),
         }
     }
 
-    fn scratch(&self, at: u32) -> Scratch {
-        Scratch {
-            def: self.u32(at + SCRATCH_DEF),
-            state: self.u32(at + SCRATCH_STATE),
-            pedals: self.pedals(at),
-            fixed_clutch: self.f32(at + SCRATCH_FIXED_CLUTCH),
-            carried_word: self.u32(at + SCRATCH_CARRIED_WORD),
-            launch_enabled: self.u32(at + SCRATCH_LAUNCH_ENABLED),
-            launch_mode: self.u32(at + SCRATCH_LAUNCH_MODE),
-            vcu_enabled: self.u32(at + SCRATCH_VCU_ENABLED),
-            slip_gate_rpm: self.u32(at + SCRATCH_SLIP_GATE_RPM),
-            slip_gate_speed: self.u32(at + SCRATCH_SLIP_GATE_SPEED),
-            engine: self.u32(at + SCRATCH_ENGINE),
-            drive: self.u32(at + SCRATCH_DRIVE),
-            lights: self.u32(at + SCRATCH_LIGHTS),
-        }
+    fn car(&self) -> u32 {
+        StateObj::owner.load(self.mem, self.image.state)
+    }
+}
+
+impl DriveBlocks for VcuView<'_> {
+    fn gearbox(&self, drive: u32) -> Gearbox {
+        self.mem.gearbox(drive)
     }
 
-    fn store_scratch(&mut self, at: u32, value: &Scratch) {
-        self.set_u32(at + SCRATCH_DEF, value.def);
-        self.set_u32(at + SCRATCH_STATE, value.state);
-        self.store_pedals(at, &value.pedals);
-        self.set_f32(at + SCRATCH_FIXED_CLUTCH, value.fixed_clutch);
-        self.set_u32(at + SCRATCH_CARRIED_WORD, value.carried_word);
-        self.set_u32(at + SCRATCH_LAUNCH_ENABLED, value.launch_enabled);
-        self.set_u32(at + SCRATCH_LAUNCH_MODE, value.launch_mode);
-        self.set_u32(at + SCRATCH_VCU_ENABLED, value.vcu_enabled);
-        self.set_u32(at + SCRATCH_SLIP_GATE_RPM, value.slip_gate_rpm);
-        self.set_u32(at + SCRATCH_SLIP_GATE_SPEED, value.slip_gate_speed);
-        self.set_u32(at + SCRATCH_ENGINE, value.engine);
-        self.set_u32(at + SCRATCH_DRIVE, value.drive);
-        self.set_u32(at + SCRATCH_LIGHTS, value.lights);
+    fn store_gearbox(&mut self, drive: u32, value: &Gearbox) {
+        self.mem.store_gearbox(drive, value)
+    }
+
+    fn gear_count(&self, drive: u32) -> u32 {
+        self.mem.gear_count(drive)
+    }
+
+    fn gear_ratios(&self, drive: u32) -> GearRatios {
+        self.mem.gear_ratios(drive)
+    }
+
+    fn outputs(&self, drive: u32) -> Outputs {
+        self.mem.outputs(drive)
+    }
+
+    fn store_outputs(&mut self, drive: u32, value: &Outputs) {
+        self.mem.store_outputs(drive, value)
     }
 }
 
@@ -1085,8 +1212,73 @@ impl VcuStore for Mem {
 mod tests {
     use super::*;
 
+    use crate::store::{check_table, Object};
+
+    const SCRATCH: u32 = 0x1000;
+    const STATE: u32 = 0x2000;
+
     #[test]
     fn constants_are_the_originals() {
         assert_eq!(DEF_DEFAULTS.map(|(_, v)| v.to_bits()), [0x3F33_3333, 0x3E4C_CCCD, 0x4080_0000, 0x45F3_C000]);
+    }
+
+    #[test]
+    fn tables_are_ordered_and_fit() {
+        check_table::<ScratchObj>();
+        check_table::<StateObj>();
+    }
+
+    /// The scratch and the state mapped with `pattern`-derived bytes, the scratch's pointers set.
+    fn image(pattern: u8) -> Mem {
+        let mut mem = Mem::new();
+        let bytes = |n: u32, salt: u8| (0..n).map(|k| (k as u8).wrapping_mul(31) ^ salt ^ pattern).collect::<Vec<_>>();
+        mem.map(SCRATCH, &bytes(ScratchObj::SIZE, 1));
+        mem.map(STATE, &bytes(StateObj::SIZE, 2));
+        ScratchObj::def.store(&mut mem, SCRATCH, 0x3000);
+        ScratchObj::state.store(&mut mem, SCRATCH, STATE);
+        mem
+    }
+
+    /// The unit's owned bytes as `lower` writes them (a NaN payload compares as its bits).
+    fn bytes(unit: &Unit) -> Vec<u8> {
+        let (image, mut mem) = (VcuImage { scratch: SCRATCH, def: 0, state: STATE }, Mem::new());
+        image.lower(unit, &mut mem);
+        image.owned().flat_map(|(r, _)| mem.read(r.start, (r.end - r.start) as usize)).collect()
+    }
+
+    #[test]
+    fn lower_writes_the_lifted_owned_words_and_nothing_else() {
+        let a = image(0);
+        let image_a = VcuImage::of(&a, SCRATCH);
+        assert_eq!(image_a, VcuImage { scratch: SCRATCH, def: 0x3000, state: STATE });
+        let unit = image_a.lift(&a);
+        let mut b = image(0x5a);
+        image_a.lower(&unit, &mut b);
+        let owned: Vec<_> = image_a.owned().map(|(r, _)| r).collect();
+        assert_eq!(owned.iter().map(|r| r.end - r.start).sum::<u32>(), 16 * 4);
+        for (base, len) in [(SCRATCH, ScratchObj::SIZE), (STATE, StateObj::SIZE)] {
+            for at in base..base + len {
+                let want = if owned.iter().any(|r| r.contains(&at)) { &a } else { &image(0x5a) };
+                assert_eq!(b.u8(at), want.u8(at), "{at:#x}");
+            }
+        }
+        assert_eq!(bytes(&VcuImage::of(&b, SCRATCH).lift(&b)), bytes(&unit));
+    }
+
+    #[test]
+    fn the_per_call_store_lowers_what_a_sequence_stores() {
+        let mut mem = image(0);
+        let packet = Packet {
+            pedals: Pedals { throttle: 0.25, brake: 0.5, handbrake: 1.0 },
+            fixed_clutch: 0.75,
+            carried_word: 7,
+            flags: 0,
+            value: 0,
+        };
+        let before = VcuImage::of(&mem, SCRATCH).lift(&mem);
+        with_vcu(&mut mem, SCRATCH, |vcu| read_packet(vcu, packet));
+        let after = VcuImage::of(&mem, SCRATCH).lift(&mem);
+        let want = Scratch { pedals: packet.pedals, fixed_clutch: 0.75, carried_word: 7, ..before.scratch };
+        assert_eq!(bytes(&after), bytes(&Unit { scratch: want, ..before }));
     }
 }

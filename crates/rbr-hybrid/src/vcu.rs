@@ -3,7 +3,7 @@
 //! registers and runs its entry's sequence (`rbr_physics::vcu::layout`). Accessors and setters on the drive, the
 //! engine, the car and the lights stay original: the entries call them through the host (`VcuHost`).
 
-use rbr_physics::vcu::layout::{self, VcuCalls};
+use rbr_physics::vcu::layout::{self, VcuCalls, VcuView};
 use rbr_physics::vcu::store::VcuStore;
 
 use crate::{Binding, Ctx, Decline, Host, Regs, Return};
@@ -64,10 +64,11 @@ fn nop_a(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// The original callees of the VCU's entries, through the host. The binding's entry `esp` places the two calls the
-/// original makes at a known depth (the slip query and `SetDirty`).
+/// original makes at a known depth (the slip query and `SetDirty`); the slip query is on the binding's scratch.
 pub(crate) struct VcuHost<'a> {
     pub host: &'a dyn Host,
     pub esp: u32,
+    pub scratch: u32,
 }
 
 impl VcuHost<'_> {
@@ -114,8 +115,8 @@ impl VcuCalls for VcuHost<'_> {
     }
 
     /// In the original at FlagDispatch's esp: three pushes and the return slot below the entry.
-    fn query_slip(&mut self, scratch: u32) -> bool {
-        self.host.call_at(self.esp - 0x10, QUERY_SLIP, scratch, &[]).eax != 0
+    fn query_slip(&mut self) -> bool {
+        self.host.call_at(self.esp - 0x10, QUERY_SLIP, self.scratch, &[]).eax != 0
     }
 
     /// Entered two words below `M6840`'s entry.
@@ -125,11 +126,17 @@ impl VcuCalls for VcuHost<'_> {
 }
 
 fn calls<'a>(host: &'a dyn Host, r: &Regs) -> VcuHost<'a> {
-    VcuHost { host, esp: r.esp }
+    VcuHost { host, esp: r.esp, scratch: r.ecx }
 }
 
 fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
+}
+
+/// Runs `run` on the unit whose scratch is `scratch` (the original's `ecx`), lifted from the image into a store of its
+/// own and lowered after it (the per-call path).
+pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
+    layout::with_vcu(&mut ctx.mem, scratch, run)
 }
 
 /// stdcall `(table, x, lo, hi, n)`, st0. The VCU always passes 11 knots; the port's index math is checked for
@@ -154,66 +161,79 @@ fn lookup_pair_table(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(t1, t2, t3, f)`, st0: the largest of the throttle, brake and speed maps.
 fn lock_max(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [t1, t2, t3, x, ..] = r.stack;
-    Ok(Return::float(layout::lock_max(&ctx.mem, r.ecx, [t1, t2, t3], f(x)) as f64, 0x10))
+    let pedals = on_vcu(ctx, r.ecx, |vcu| vcu.scratch().pedals);
+    Ok(Return::float(layout::lock_max(&ctx.mem, pedals, [t1, t2, t3], f(x)) as f64, 0x10))
 }
 
 /// thiscall `()`: the three diff locks, sent to the drive's `Set4570`.
 fn diff_locks(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::diff_locks(&ctx.mem, &mut calls(ctx.host, r), r.ecx);
+    let mut calls = calls(ctx.host, r);
+    let eax = on_vcu(ctx, r.ecx, |vcu| layout::diff_locks(vcu, &mut calls));
     Ok(Return::void(eax, 0))
 }
 
 /// fastcall `()`, `ret 0`: `E50_QuerySlip` (0x536fe0), the slip query before a downshift.
 fn query_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let on = layout::query_slip(&ctx.mem, &mut calls(ctx.host, r), r.ecx);
+    let mut calls = calls(ctx.host, r);
+    let on = on_vcu(ctx, r.ecx, |vcu| layout::query_slip(vcu, &mut calls));
     Ok(Return::void(on as u32, 0))
 }
 
 /// thiscall `()`: the rev-limit cut flags, sent to the engine's `SetState4`.
 fn rev_limit_cut(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let margin = crate::ngp::vcu_tuning(ctx).cut_margin;
-    let eax = layout::rev_limit_cut(&ctx.mem, &mut calls(ctx.host, r), r.ecx, margin);
+    let mut calls = calls(ctx.host, r);
+    let eax = on_vcu(ctx, r.ecx, |vcu| layout::rev_limit_cut(vcu, &mut calls, margin));
     Ok(Return::void(eax, 0))
 }
 
 /// thiscall `(x)`, eax: the slip gate.
 fn check_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::check_slip(&ctx.mem, r.ecx, f(r.stack[0])) as u32, 4))
+    let on = on_vcu(ctx, r.ecx, |vcu| layout::check_slip(vcu, f(r.stack[0])));
+    Ok(Return::void(on as u32, 4))
 }
 
 /// thiscall `(dt)`: the gear logic. eax is 0 only on the flag-off return; Step, the one caller, reloads it at once, so
 /// the other exits' residue is not modelled.
 fn gearbox_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    layout::gearbox_update(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, f(r.stack[0]), tuning);
+    let mut calls = calls(ctx.host, r);
+    on_vcu(ctx, r.ecx, |vcu| layout::gearbox_update(vcu, &mut calls, f(r.stack[0]), tuning));
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(dt)`: the launch clutch, sent to the drive's `Set4820` (nothing with the launch mode off).
 fn launch_clutch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let eax = layout::launch_clutch(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, f(r.stack[0]), tuning);
+    let mut calls = calls(ctx.host, r);
+    let eax = on_vcu(ctx, r.ecx, |vcu| layout::launch_clutch(vcu, &mut calls, f(r.stack[0]), tuning));
     Ok(Return::void(eax, 4))
 }
 
 /// thiscall `(packet)`, `ret 4`: the packet's flags as gear requests. eax is whether anything was requested.
 fn flag_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let packet = ctx.mem.packet(r.stack[0]);
-    let tuning = crate::ngp::vcu_tuning(ctx);
-    let on = layout::apply_packet(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, packet, &tuning);
-    Ok(Return::void(on as u32, 4))
+    let packet = layout::packet(&ctx.mem, r.stack[0]);
+    apply_packet(ctx, r, packet)
 }
 
 /// thiscall `(packet)`, `ret 4`: copies the packet into the scratch, then tail-jumps to FlagDispatch with the stack
 /// as it entered (the asm stores the packet pointer back into its own argument slot, the same word).
 fn read_packet(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let packet = layout::read_packet(&mut ctx.mem, r.ecx, r.stack[0]);
+    let packet = layout::packet(&ctx.mem, r.stack[0]);
+    on_vcu(ctx, r.ecx, |vcu| layout::read_packet(vcu, packet));
+    apply_packet(ctx, r, packet)
+}
+
+/// FlagDispatch on `packet`. Its slip query goes through the host to the VCU's own binding, which finds the unit as
+/// this run left it: on the per-call path the image, so ReadPacket's writes are lowered before it.
+fn apply_packet(ctx: &mut Ctx, r: &Regs, packet: rbr_physics::vcu::layout::Packet) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let on = layout::apply_packet(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, packet, &tuning);
+    let mut calls = calls(ctx.host, r);
+    let on = on_vcu(ctx, r.ecx, |vcu| layout::apply_packet(vcu, &mut calls, packet, &tuning));
     Ok(Return::void(on as u32, 4))
 }
 
-/// thiscall `(value)`, `ret 4`: `CDrive::M6840` (0x506840).
+/// thiscall `(value)`, `ret 4`: `CDrive::M6840` (0x506840), the drive's own, on the image.
 fn set_commanded_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     layout::set_commanded_gear(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, r.stack[0]);
     Ok(Return::void(0, 4))
@@ -230,14 +250,16 @@ fn step_basic(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(dt)`: Step (`gear`, with the gear logic) or StepBasic; eax is the state pointer.
 fn run_step(ctx: &mut Ctx, r: &Regs, gear: bool) -> Result<Return, Decline> {
     let tuning = crate::ngp::vcu_tuning(ctx);
-    let eax = layout::step(&mut ctx.mem, &mut calls(ctx.host, r), r.ecx, f(r.stack[0]), gear, tuning);
-    Ok(Return::void(eax, 4))
+    let mut calls = calls(ctx.host, r);
+    on_vcu(ctx, r.ecx, |vcu| layout::step(vcu, &mut calls, f(r.stack[0]), gear, tuning));
+    Ok(Return::void(layout::state_of(&ctx.mem, r.ecx), 4))
 }
 
-/// thiscall `(setup)`, `ret 4`: `CScratchSim::CopyDef` (0x537c90), the VCU setup into the scratch's definition
-/// (`rbr_physics::vcu::layout::copy_def`).
+/// thiscall `(setup)`, `ret 4`: `CScratchSim::CopyDef` (0x537c90), the VCU setup into the scratch's definition, then
+/// the setup's flags into the scratch (`rbr_physics::vcu::layout::copy_def`).
 fn copy_def(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    rbr_physics::vcu::layout::copy_def(&mut ctx.mem, r.ecx, r.stack[0]);
+    let flags = layout::copy_def(&mut ctx.mem, r.ecx, r.stack[0]);
+    on_vcu(ctx, r.ecx, |vcu| layout::copy_flags(vcu, flags));
     Ok(Return::void(0, 4))
 }
 
@@ -297,9 +319,9 @@ mod tests {
         ctx.mem.set_u32(gears + 0x54c, 2);
         ctx.mem.set_u32(gears + 0x570, 2);
         assert_eq!(gearbox_update(&mut ctx, &regs(this, &[0.01f32.to_bits()])), Ok(Return::void(0, 4)));
-        let got = ctx.mem.gearbox(gears);
+        let got = layout::gearbox_at(&ctx.mem, gears);
         assert_eq!((got.gear, got.commanded, got.changed), (2, 3, 1));
-        let got = ctx.mem.state(state);
+        let got = layout::VcuImage::of(&ctx.mem, this).lift(&ctx.mem).state;
         assert_eq!((got.shift_lockout, got.shift_cooldown), (0.25, 0.05));
         assert_eq!(*host.log.borrow(), vec![(GET_4520, drive, vec![]), (GET_15F8, car, vec![])]);
     }
@@ -324,7 +346,8 @@ mod tests {
         assert_eq!(log[0], (GET_4520, drive, vec![]));
         assert_eq!(log[1].0, SET_STATE4);
         assert_eq!(log[1].1, engine);
-        let want = rbr_physics::vcu::cut::rev_limit_cut(0.0, &ctx.mem.def(def), &ctx.mem.state(state), 300.0);
+        let unit = layout::VcuImage::of(&ctx.mem, this).lift(&ctx.mem);
+        let want = rbr_physics::vcu::cut::rev_limit_cut(0.0, &layout::def(&ctx.mem, def), &unit.state, 300.0);
         assert_eq!(log[1].2, want);
     }
 }

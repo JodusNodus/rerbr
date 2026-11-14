@@ -1,40 +1,33 @@
-//! The VCU's store (`crate::store`): the layout's load and store groups. `Mem` implements it in `layout.rs`.
+//! The VCU's stores (`crate::store`): the unit's typed state, its definition and the objects its calls go to
+//! ([`VcuStore`]), and the drive's blocks it reads and writes ([`DriveBlocks`]). The drive's blocks are the drive's
+//! objects: its own step and setters read and write them in the same step, so they stay on the image until the drive's
+//! state is typed. `layout.rs` implements both on `VcuView`, and the drive's blocks on `Mem`.
 
-use super::layout::{
-    Def, GearRatios, Gearbox, Knot, KnotMaps, Locks, Outputs, Packet, Pedals, Reals, Scratch, SetupFlags, SpeedKnot,
-    State,
-};
-use crate::store::Raw;
+use super::layout::{Def, GearRatios, Gearbox, Outputs, Scratch, SimParts, State};
 
-pub trait VcuStore: Raw {
-    /// Reads a speed map of `n` records at `at`.
-    fn speed_map(&self, at: u32, n: usize) -> Vec<SpeedKnot>;
-    /// Reads a pedal map of `n` knots at `at`.
-    fn pedal_map(&self, at: u32, n: usize) -> Vec<Knot>;
-    /// Reads the setup at `at`. The memory must cover the whole object.
-    fn def(&self, at: u32) -> Def;
-    /// Reads the maps of the setup at `setup`.
-    fn knot_maps(&self, setup: u32) -> KnotMaps;
-    /// Writes the maps into the setup at `def`.
-    fn store_knot_maps(&mut self, def: u32, value: &KnotMaps);
-    fn setup_flags(&self, setup: u32) -> SetupFlags;
-    fn state(&self, at: u32) -> State;
-    fn store_state(&mut self, at: u32, value: &State);
-    fn gearbox(&self, at: u32) -> Gearbox;
-    fn store_gearbox(&mut self, at: u32, value: &Gearbox);
+/// One unit: its scratch's and state's changing words, its definition (read only: the image's) and the objects its
+/// calls go to (the image's pointers).
+pub trait VcuStore {
+    fn def(&self) -> Def;
+    fn scratch(&self) -> Scratch;
+    fn store_scratch(&mut self, value: &Scratch);
+    fn state(&self) -> State;
+    fn store_state(&mut self, value: &State);
+    /// The car's engine, drive and lights.
+    fn parts(&self) -> SimParts;
+    /// The state's car, which the car speed is read on.
+    fn car(&self) -> u32;
+}
+
+/// The drive's blocks, by the drive's address: its gear fields, its gear count and ratios, and the outputs the step's
+/// drive setters write.
+pub trait DriveBlocks {
+    fn gearbox(&self, drive: u32) -> Gearbox;
+    fn store_gearbox(&mut self, drive: u32, value: &Gearbox);
     /// Gear count of the drive's own definition, which the gear setter clamps to.
     fn gear_count(&self, drive: u32) -> u32;
-    fn reals(&self, drive: u32) -> Reals;
-    fn store_reals(&mut self, drive: u32, value: &Reals);
-    fn outputs(&self, drive: u32) -> Outputs;
-    fn store_outputs(&mut self, drive: u32, value: &Outputs);
     fn gear_ratios(&self, drive: u32) -> GearRatios;
-    fn locks(&self, drive: u32) -> Locks;
-    /// Writes the locks back. Only the torques change; the ratios and the maximum torques are inputs here.
-    fn store_locks(&mut self, drive: u32, value: &Locks);
-    fn pedals(&self, scratch: u32) -> Pedals;
-    fn store_pedals(&mut self, scratch: u32, value: &Pedals);
-    fn packet(&self, at: u32) -> Packet;
-    fn scratch(&self, at: u32) -> Scratch;
-    fn store_scratch(&mut self, at: u32, value: &Scratch);
+    fn outputs(&self, drive: u32) -> Outputs;
+    /// Writes the outputs back. Of the locks only the torques change; the ratios and the maximum torques are inputs.
+    fn store_outputs(&mut self, drive: u32, value: &Outputs);
 }
