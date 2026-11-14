@@ -8,9 +8,10 @@
 //! step first touches it and only lifted rows are lowered; the counts and the grids' bytes are lifted with the rest.
 //! Per call (no step holds them) the view is the image. The rest stays in the image: the grids' load-time words (the
 //! vertices the bodies' transforms read at their addresses, the edges, counts and sample tables), the solver's event
-//! list and the events, the bodies' links to their rows (`+0x274`, `+0x3b0`, the solid's words), and each contact
-//! row's composed point (`+0x40`): the rigid body's contact composes it, samples it and hands it to the body's hook at
-//! its address (`CSolid::BigA`'s `ComposeA`, `Sample` and slot-2 calls).
+//! list and the events, the bodies' offset-row link (`+0x3b0`), and each contact row's composed point (`+0x40`): the
+//! rigid body's contact composes it, samples it and hands it to the body's hook at its address (`CSolid::BigA`'s
+//! `ComposeA`, `Sample` and slot-2 calls). The bodies' position, progress and contact-row link (`+0x140`, `+0x290`,
+//! `+0x274`) are the solids' words: held ones through [`CollisionView::with_solids`], else the image.
 
 use std::cell::RefCell;
 use std::ops::Range;
