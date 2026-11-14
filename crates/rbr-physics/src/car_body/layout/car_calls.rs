@@ -56,6 +56,13 @@ pub fn car_impulse<S: CarStore>(mem: &mut S, car: u32, args: [u32; 8], frame: u3
 pub trait EdgeProbeCalls {
     fn grid(&mut self, sp: u32, car: u32, target: u32) -> u32;
     fn edge_edge(&mut self, sp: u32, grid: u32, args: [u32; 6]) -> u32;
+    /// The grid's two sample bytes (+0x688, +0x689), read and cleared: the collision's (typed over a step).
+    fn take_grid_hits(&mut self, mem: &mut Mem, grid: u32) -> [u8; 2] {
+        let hits = [mem.u8(grid + 0x688), mem.u8(grid + 0x689)];
+        mem.set_u8(grid + 0x688, 0);
+        mem.set_u8(grid + 0x689, 0);
+        hits
+    }
 }
 
 /// `CCar::Collide6000` (0x4e6000, thiscall, `ret 0xc`): the edge probe along `a`, scaled to length 10 (cleared below
@@ -84,10 +91,9 @@ pub fn edge_probe<S: CarStore>(
     let grid = calls.grid(body - 28, car, target);
     if calls.edge_edge(body - 28, grid, args) != 0 {
         let grid = calls.grid(body - 4, car, target);
-        mem.set_u32(c, u32::from(mem.u8(grid + 0x689)));
-        mem.set_u32(b, u32::from(mem.u8(grid + 0x688)));
-        mem.set_u8(grid + 0x688, 0);
-        mem.set_u8(grid + 0x689, 0);
+        let [first, second] = calls.take_grid_hits(mem.mem_mut(), grid);
+        mem.set_u32(c, u32::from(second));
+        mem.set_u32(b, u32::from(first));
     } else {
         mem.set_u32(c, 0);
         mem.set_u32(b, 0);
@@ -378,6 +384,13 @@ pub trait RespawnCalls<S = Mem> {
     fn clear_accumulators(&mut self, mem: &mut S, sp: u32, car: u32);
     fn wake(&mut self, mem: &mut S, sp: u32, car: u32);
     fn emit_respawn(&mut self, mem: &mut S, sp: u32, emitter: u32, payload: u32);
+    /// Clears the body word of the car's pending contact rows at `rows` (the collision solver's: typed over a step).
+    fn clear_contact_rows(&mut self, mem: &mut S, rows: u32)
+    where
+        S: crate::store::Raw,
+    {
+        mem.set_u32(rows, 0);
+    }
 }
 
 /// `CCar::Slot97(sel, sample)` (0x4e5270, thiscall, `ret 8`, the car's slot 97; name ours: the respawn pose). Builds a frame from the sample `s` and
@@ -448,7 +461,7 @@ pub fn respawn_car<S: CarStore>(mem: &mut S, calls: &mut impl RespawnCalls<S>, c
     Vec4::load(mem, a).store(mem, frame + 0x30);
     let pending = mem.u32(car + 0x274);
     if pending != 0 {
-        mem.set_u32(pending, 0);
+        calls.clear_contact_rows(mem, pending);
         mem.set_u32(car + 0x274, 0);
     }
     mem.set_wall_contact(car, 0.0);

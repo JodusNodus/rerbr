@@ -25,7 +25,8 @@ pub use crate::rigid_body::solid_window::{
 };
 pub(crate) use contacts::HALF;
 pub use contacts::{
-    contact_record, contact_records, impulse_tail_frame, load_contact, store_event, ImpulseTailFrame, CONTACT_LIST,
+    contact_count, contact_list, contact_record, contact_records, impulse_tail_frame, load_contact, store_event,
+    ImpulseTailFrame, CONTACT_LIST,
 };
 pub use rest::{solid_filing, solid_sleep, solid_soften, solid_wake, store_body_event, RestHost, VerySoftHost};
 pub use scratch_state::{

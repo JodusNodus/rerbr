@@ -36,6 +36,17 @@ pub fn store_event(mem: &mut Mem, at: u32, event: &Event) {
 /// records from +0x10.
 pub const CONTACT_LIST: u32 = 0x274;
 
+/// The body's contact list (0 without one).
+pub fn contact_list(mem: &Mem, this: u32) -> u32 {
+    mem.u32(this + CONTACT_LIST)
+}
+
+/// The count of the body's contact list in the image, `None` when the body has no list.
+pub fn contact_count(mem: &Mem, this: u32) -> Option<u32> {
+    let list = contact_list(mem, this);
+    (list != 0).then(|| mem.u32(list + 4))
+}
+
 /// The address of record `k` of the body's contact list (the vote reads the list word again for each record).
 pub fn contact_record(mem: &Mem, this: u32, k: u32) -> u32 {
     mem.u32(this + CONTACT_LIST) + 0x10 + 0x60 * k

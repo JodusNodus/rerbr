@@ -1,6 +1,6 @@
 //! The Mem store of the rigid body: the layout's reads and writes behind `RigidStore`.
 
-use super::contacts::{self, CONTACT_LIST, HALF, HOOK, RING_TAIL};
+use super::contacts::{self, HALF, HOOK, RING_TAIL};
 
 use super::solid_ctor::SOLID_STATE;
 use super::{
@@ -12,7 +12,7 @@ use crate::math::vec::Vec3;
 use crate::mem::Mem;
 use crate::physics_core::layout as core_layout;
 use crate::physics_core::math::Mat;
-use crate::rigid_body::contact::Input;
+use crate::rigid_body::contact::{Contact, Input};
 use crate::rigid_body::rows::RowFrame;
 use crate::rigid_body::store::{HookPair, Motion, RigidStore, RingHeader, StateRotation};
 
@@ -129,19 +129,14 @@ impl RigidStore for Mem {
         (self.f32(settings + CLAMP_LIMIT), self.f32(settings + CLAMP_SCALE))
     }
 
-    fn contact_input(&self, this: u32, contact: u32, range: f32) -> Input {
+    fn contact_input(&self, this: u32, contact: Contact, range: f32) -> Input {
         Input {
-            contact: contacts::load_contact(self, contact),
+            contact,
             inverse_mass: RigidStore::inverse_mass(self, this),
             max_step: self.f32(settings(self) + MAX_TIME_STEP),
             range,
             sample: self.u32(this + HOOK) != 0 && self.u8(this + ENTITY_FLAGS) & CONTACT_LIST_FLAG != 0,
         }
-    }
-
-    fn contact_count(&self, this: u32) -> Option<u32> {
-        let list = self.u32(this + CONTACT_LIST);
-        (list != 0).then(|| self.u32(list + 4))
     }
 
     fn linear_velocity_at(&self, this: u32) -> u32 {

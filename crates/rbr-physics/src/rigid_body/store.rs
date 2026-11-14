@@ -1,7 +1,7 @@
 //! The rigid body's store (`crate::store`): the layout's load and store groups. `Mem` implements it in
 //! `layout/mem_store.rs`.
 
-use super::contact::Input;
+use super::contact::{Contact, Input};
 use super::layout::{Body, Def, ParentFrame, Vec4};
 use super::rows::RowFrame;
 use crate::math::quat::Quat;
@@ -83,11 +83,8 @@ pub trait RigidStore: Raw {
     /// The two limits the velocity clamp reads from the physics settings.
     fn impulse_limits(&self) -> (f32, f32);
 
-    /// The contact worker's inputs: the contact at `contact`, the body's inverse mass, the world's time step and
-    /// the sample test.
-    fn contact_input(&self, this: u32, contact: u32, range: f32) -> Input;
-    /// The contact list's count, `None` when the body has no list.
-    fn contact_count(&self, this: u32) -> Option<u32>;
+    /// The contact worker's inputs: the contact, the body's inverse mass, the world's time step and the sample test.
+    fn contact_input(&self, this: u32, contact: Contact, range: f32) -> Input;
     /// The hook and the ring tail of the body, zero when absent.
     fn hook(&self, this: u32) -> u32;
     fn ring_tail(&self, this: u32) -> u32;

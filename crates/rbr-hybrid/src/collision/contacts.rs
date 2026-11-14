@@ -4,6 +4,7 @@ use rbr_physics::collision::grid_contact::ContactKind;
 use rbr_physics::collision::layout::body_slots::{self, BoxEdgeHitCalls, EdgeHitsCalls, GridHitCalls};
 use rbr_physics::collision::layout::collide_hosts::{GridContactHost, PairContactHost};
 use rbr_physics::collision::layout::{self, Body};
+use rbr_physics::collision::store::CollisionStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::ZERO_VEC4;
 
@@ -253,7 +254,9 @@ impl PairContactHost for VfD0Calls<'_> {
 pub(super) fn body_vf_dc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, other, _, list, ..] = r.stack;
     let mut calls = VfD0Calls { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::pair_contacts(&mut calls, &mut ctx.mem, r.ecx, a, b, other, list, r.esp);
+    let eax = super::on_collision(ctx.host, &mut ctx.mem, |s| {
+        layout::pair_contacts(&mut calls, s, r.ecx, a, b, other, list, r.esp)
+    });
     Ok(Return::void(eax, 0x14))
 }
 
@@ -262,7 +265,9 @@ pub(super) fn body_vf_dc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn body_vf_d0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [matrix, other, list, ..] = r.stack;
     let mut calls = VfD0Calls { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::grid_contacts(&mut calls, &mut ctx.mem, r.ecx, matrix, other, list, r.esp);
+    let eax = super::on_collision(ctx.host, &mut ctx.mem, |s| {
+        layout::grid_contacts(&mut calls, s, r.ecx, matrix, other, list, r.esp)
+    });
     Ok(Return::void(eax, 12))
 }
 
@@ -296,7 +301,8 @@ impl GridHitCalls for E8CallsAt<'_> {
     }
 
     fn take_grid_flags(&mut self) -> (u32, u32) {
-        layout::take_grid_flags(self.mem, self.this)
+        let this = self.this;
+        super::on_collision(self.host, self.mem, |s| s.take_body_grid_flags(this))
     }
 
     fn store_hit(&mut self, record: u32, flags: (u32, u32)) {

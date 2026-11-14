@@ -65,7 +65,8 @@ pub(super) fn ray_triangle(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// E38RaySeeds (0x4f6550): thiscall on the ray object; eax is the object (its `E09Vec4::Clear` calls return it).
 pub(super) fn ray_seeds(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = RaySeedCalls { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp };
-    Ok(Return::void(layout::ray_seeds(&mut calls, &mut ctx.mem, r.ecx), 0))
+    let eax = super::on_grids(ctx.host, &mut ctx.mem, &[r.ecx], |s| layout::ray_seeds(&mut calls, s, r.ecx));
+    Ok(Return::void(eax, 0))
 }
 
 /// `E38RaySeeds`' `E09Vec4::Clear` calls, at the pure host's placement below its entry `esp`, run here there (the
@@ -306,8 +307,11 @@ pub(super) fn grid_add_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 /// with one point (the asm's bounds loop would not end) and no grid with a source.
 pub(super) fn grid_ops_m6610(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, a, b, ..] = r.stack;
-    let eax = layout::copy_grid(&mut GridOps(ctx.host), &mut ctx.mem, r.ecx, src, a, b, r.esp)
-        .ok_or(Decline::Unsupported("a grid with one point, or none with a source"))?;
+    let host = ctx.host;
+    let eax = super::on_grids(host, &mut ctx.mem, &[r.ecx, src], |s| {
+        layout::copy_grid(&mut GridOps(host), s, r.ecx, src, a, b, r.esp)
+    })
+    .ok_or(Decline::Unsupported("a grid with one point, or none with a source"))?;
     Ok(Return::void(eax, 12))
 }
 

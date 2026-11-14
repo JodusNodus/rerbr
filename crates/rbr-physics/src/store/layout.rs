@@ -426,6 +426,7 @@ pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
     out.extend(engine_driveline::layout::DriveImage::of(mem, car_body::layout::drive_at(car)).tabled());
     out.extend(engine_driveline::layout::EngineImage::of(mem, car_body::layout::engine_at(car)).tabled());
     out.push(Tabled::of::<car_body::layout::CarState>("car", car));
+    out.extend(crate::collision::layout::CollisionImage::of(mem).tabled());
     out
 }
 
