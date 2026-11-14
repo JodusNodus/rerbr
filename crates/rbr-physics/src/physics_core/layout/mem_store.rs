@@ -59,6 +59,8 @@ const MOUNTED_KEY_AT: u32 = 0x30;
 const MOUNTED_EVENT_SENT_AT: u32 = 0x584;
 const MOUNTED_ENABLE_AT: u32 = 0x580;
 const MOUNTED_DIRTY_AT: u32 = 0x1dc;
+// The body's `+0x34` is its `CSolid::CDef` ("car" in the reconstruction's `E45_M1980`): the mount point `+0x220` and
+// the block `+0x200` are the definition's words, not a solid's.
 const MOUNTED_CAR_AT: u32 = 0x34;
 const MOUNTED_OWNER_AT: u32 = 0x3d0;
 const POSE_SOURCE_AT: u32 = 0x100;

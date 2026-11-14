@@ -3,8 +3,8 @@
 //! its wheels and its hinged and mounted bodies ([`CarSolids`], keyed by the solid's address), and their store
 //! ([`SolidView`]: a word a held solid's table names is its typed state's, any other the image's). The pointers, the
 //! flags byte, the NTweak headers and dirty words (`SetDirty`), the scale `+0xd0`, the state's diagonal and gate and
-//! the scratch block's other words stay in the image. Not held over a step yet: the solids' words have readers at
-//! their addresses in most subsystems (notes).
+//! the scratch block's other words stay in the image. The pure step holds them (`Typed::lift_with_solids`); their
+//! readers at their addresses in other subsystems run on `SolidWords` stores (notes).
 
 use std::cell::RefCell;
 use std::ops::Range;

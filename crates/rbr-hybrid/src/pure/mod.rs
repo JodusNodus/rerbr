@@ -179,8 +179,9 @@ pub struct Pure {
     /// struts, the VCU, the tyres), lifted before it and lowered after it, and the stage's, so their bindings run on it
     /// ([`Host::typed`]); without, they run per call on the image's words.
     pub typed: bool,
-    /// With [`Pure::typed`]: whether the step holds the car's solids too (off until every reader of a solid's words runs
-    /// on the store: [`crate::rigid_body::on_solids`], [`crate::rigid_body::solid_word`]).
+    /// With [`Pure::typed`]: whether the step holds the car's solids too (the default; every reader of a solid's words
+    /// runs on their store: [`crate::rigid_body::on_solids`], [`crate::rigid_body::solid_word`]). Off, they stay on the
+    /// image.
     pub typed_solids: bool,
     /// The typed state while a step holds it ([`Pure::typed`]).
     held: RefCell<Option<Typed>>,
