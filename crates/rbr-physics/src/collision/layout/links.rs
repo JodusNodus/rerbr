@@ -4,9 +4,9 @@ use crate::mem::Mem;
 
 use super::Link;
 
-/// Visitor slot called by CBodyLink::NotifyFiltered (0x4e0080).
+/// The visitor's slot 1 (`Vf04`) that CBodyLink::NotifyFiltered (0x4e0080) calls on each body.
 pub trait NotifyFilteredHost {
-    fn vf04(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32;
+    fn visit(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32;
 }
 
 /// CBodyLink::Head (0x4e0000).
@@ -32,7 +32,7 @@ pub fn notify_filtered(mem: &mut Mem, head: u32, visitor: u32, host: &mut impl N
     while link != 0 {
         let body = mem.u32(link + 0x0c);
         if body != 0 && mem.u32(body + 0x60) & 0x20 == 0 {
-            let _ = host.vf04(mem, visitor, body);
+            let _ = host.visit(mem, visitor, body);
         }
         link = mem.u32(link);
     }

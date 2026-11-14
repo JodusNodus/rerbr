@@ -7,7 +7,7 @@ use super::{WALL, WALL_ROOT};
 use crate::collision::layout::body_hosts::BodyResetHost;
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::StateHost;
-use crate::collision::layout::{cell_grid_ctor, state_unka44, sync_grid, CtorHost, GridSyncHost};
+use crate::collision::layout::{cell_grid_ctor, reset_bounds, sync_grid, CtorHost, GridSyncHost};
 use crate::entities::frame::{entity_hook, Form, Hook, Owner};
 use crate::entities::layout::{construct_entity, node_of, EntityArgs};
 use crate::entities::store::EntityStore;
@@ -165,7 +165,7 @@ impl<H> CtorHost for Calls<'_, H> {
 impl<H: StageHost> PlaceHost for Calls<'_, H> {
     /// `CSolid::Vf40` (0x52b6d0, `refresh_and_reset`): `CBody::Vf40`'s two calls end it, and nothing reads what they write
     /// before them, so `Deferred` keeps them and they are made here after it, in its order: `CBody::CState::Unk44`
-    /// (`state_unka44`, with its last call, `CColGrid::SyncGrid` on the body's grid, made after it the same way), then
+    /// (`reset_bounds`, with its last call, `CColGrid::SyncGrid` on the body's grid, made after it the same way), then
     /// `CEntity::Vf40` (0x51a4b0): the state's slot 0x44 (`CBase::Unk44`, nothing) and the walk of the children (a placed
     /// solid has none).
     fn refresh(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
@@ -177,7 +177,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
         };
         check(holds(mem, this, NODE_OF))?;
         let mut sync = Deferred::default();
-        state_unka44(&mut sync, mem, state);
+        reset_bounds(&mut sync, mem, state);
         if let Some((grid, a, low, high)) = sync.sync {
             let scratch = self.0.scratch(mem, 16 * u32::from(mem.u8(grid + GRID_EDGES)));
             let mut walk = GridSync { failed: false };
@@ -192,7 +192,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
 /// A collision grid's edge-vector count (`+0x68d`, the vectors from `+0x40`).
 const GRID_EDGES: u32 = 0x68D;
 
-/// The calls `refresh_and_reset` and `state_unka44` end with, kept to be made after them: `CBody::Vf40`'s state and body, and
+/// The calls `refresh_and_reset` and `reset_bounds` end with, kept to be made after them: `CBody::Vf40`'s state and body, and
 /// `SyncGrid`'s grid and arguments.
 #[derive(Default)]
 struct Deferred {
@@ -223,11 +223,11 @@ impl BodyResetHost for Deferred {
 
 /// The state's owner slot 0x30 is `node_of` (checked by the caller).
 impl StateHost for Deferred {
-    fn owner_vf30(&mut self, owner: u32) -> u32 {
+    fn owner_transform(&mut self, owner: u32) -> u32 {
         node_of(owner)
     }
 
-    fn wall_sync(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
+    fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
         self.sync = Some((wall, body, vec_a, vec_b));
         0
     }

@@ -29,9 +29,9 @@ pub fn select_table(mem: &Mem, object: u32) -> u32 {
     GRID_TABLE_BANK.wrapping_add(index.wrapping_mul(ColGrid::SIZE as u32))
 }
 
-/// CColGrid::SampleA (0x4e0840). Inputs are the edge-pair index and the interpolation parameter; the output tuple is
+/// CColGrid::SampleA (0x4e0840) (name ours): the surface sample along an edge. Inputs are the edge-pair index and the interpolation parameter; the output tuple is
 /// `(o1, o2)`, matching the original pointer write order.
-pub fn sample_a(mem: &Mem, grid: u32, index: usize, t: f32) -> (u32, u32) {
+pub fn edge_sample(mem: &Mem, grid: u32, index: usize, t: f32) -> (u32, u32) {
     let grid = ColGrid::new(grid);
     let data = grid.data(mem);
     if data == 0 {
@@ -64,9 +64,9 @@ pub fn store_samples(mem: &mut Mem, out_1: u32, out_2: u32, (o1, o2): (u32, u32)
     mem.set_u32(out_1, o1);
 }
 
-/// CColGrid::SampleB (0x4e0950): as SampleA, but at the point the grid's byte `+0x690 + index` names, unblended
+/// CColGrid::SampleB (0x4e0950) (name ours): the surface sample at a vertex; as `edge_sample`, but at the point the grid's byte `+0x690 + index` names, unblended
 /// (`(x, y) / 256`). `(o1, o2)` as SampleA.
-pub fn sample_b(mem: &Mem, grid: u32, index: usize) -> (u32, u32) {
+pub fn vertex_sample(mem: &Mem, grid: u32, index: usize) -> (u32, u32) {
     let grid = ColGrid::new(grid);
     let data = grid.data(mem);
     if data == 0 {

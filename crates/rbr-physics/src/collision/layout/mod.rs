@@ -36,15 +36,15 @@ pub use crate::collision::solver_pass::{
 pub(in crate::collision) use body::BODY_GRID;
 pub use body::{
     aabb_pretest, body_grid_active, body_has_grid, box_edge_hit_frame, box_edge_hit_sp, clear_grid, ctor,
-    grid_edge_count, grid_hit_args, record_edge_hits_frame, reset_state_and_base, select_grid, state_ctor,
-    state_unka44, store_grid_hit, store_vf_f4_hit, take_grid_flags, vtable_slot, Body, CtorHost, IDENTITY_WORKER_SLOT,
+    grid_edge_count, grid_hit_args, record_edge_hits_frame, reset_body, reset_bounds, select_grid, state_ctor,
+    store_box_edge_hit, store_grid_hit, take_grid_flags, vtable_slot, Body, CtorHost, IDENTITY_WORKER_SLOT,
 };
 pub use body_contacts::{grid_contacts, pair_contacts};
 pub use cell_grid::{cell_grid_ctor, lookup_twin, move_to_cell, unlink, CellGrid, Link};
 pub(in crate::collision) use col_grids::GRID_TAG;
 pub use col_grids::{
-    alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, load_col_grid, load_mesh_desc, sample_a,
-    sample_b, select_table, store_col_grid, store_samples, sync_grid, ColGrid, GridSyncHost,
+    alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, edge_sample, load_col_grid,
+    load_mesh_desc, select_table, store_col_grid, store_samples, sync_grid, vertex_sample, ColGrid, GridSyncHost,
 };
 pub(in crate::collision) use entry_box::{obb_input_extents, sphere_input_radius};
 pub use entry_box::{shape_axis, shape_extent, EntryBox, EntryContact};

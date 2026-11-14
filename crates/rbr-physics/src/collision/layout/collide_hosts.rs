@@ -33,9 +33,10 @@ pub trait GridContactHost {
     /// `E33Mat34::CombineTwin` (0x51ab70), thiscall on `desc` with `(point, transform)`.
     fn combine_twin(&mut self, sp: u32, desc: u32, point: u32, transform: u32);
     /// `ComposeA` (0x51b4c0), thiscall on `transform` with `(point, other, out)`.
-    fn compose_a(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32);
-    /// `ComposeB` (0x51b600), thiscall on `transform` with `(point, other, out)`.
-    fn compose_b(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32);
+    fn compose(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32);
+    /// `ComposeB` (0x51b600), thiscall on `transform` with `(point, other, out)`; name ours, by use (the walks pass
+    /// normals).
+    fn compose_normal(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32);
     /// `E37GridOps::M6610` (0x4f6610), thiscall on the frame's grid with `(src, a, b)`.
     fn grid_copy(&mut self, sp: u32, grid: u32, src: u32, a: u32, b: u32);
     /// `E37GridOps::EdgeEdge` (0x4f8280), thiscall on the frame's grid with `(from, to, hit, t, normal, material)`:
@@ -62,9 +63,9 @@ pub trait GridContactHost {
     #[allow(clippy::too_many_arguments)]
     fn make_event(&mut self, sp: u32, kind: ContactKind, hit: u32, body: u32, other: u32, at: u32, normal: u32) -> u32;
     /// `CColGrid::SampleB` (0x4e0950), thiscall on the grid with `(index, out_a, out_b)`.
-    fn sample_b(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32);
+    fn vertex_sample(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32);
     /// `CColGrid::SampleA` (0x4e0840), thiscall on the grid with `(index, t, out_a, out_b)`.
-    fn sample_a(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32);
+    fn edge_sample(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32);
 }
 
 /// The calls CBody::VfDC (0x4e2850) makes beyond VfD0's, each entered at `sp` as the original's.

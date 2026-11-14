@@ -18,12 +18,12 @@ struct StateCallees<'a> {
 }
 
 impl StateHost for StateCallees<'_> {
-    fn owner_vf30(&mut self, owner: u32) -> u32 {
+    fn owner_transform(&mut self, owner: u32) -> u32 {
         let slot = self.mem.u32(self.mem.u32(owner) + 0x30);
         self.host.call(slot, owner, &[]).eax
     }
 
-    fn wall_sync(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
+    fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
         self.host.call(E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
     }
 }
@@ -32,7 +32,7 @@ impl StateHost for StateCallees<'_> {
 /// Eax is the owner's slot-12 result, or the wall sync's when the owner has a wall.
 pub(super) fn state_unka44(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut host = StateCallees { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::state_unka44(&mut host, &mut ctx.mem, r.ecx);
+    let eax = layout::reset_bounds(&mut host, &mut ctx.mem, r.ecx);
     Ok(Return::void(eax, 0))
 }
 
@@ -57,7 +57,7 @@ pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
 pub(super) fn body_vf40(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::reset_state_and_base(&mut Vf40Callees { host: ctx.host, sp: r.esp }, r.ecx), 0))
+    Ok(Return::void(layout::reset_body(&mut Vf40Callees { host: ctx.host, sp: r.esp }, r.ecx), 0))
 }
 
 /// CBody::ClearGrid (0x4e11a0): thiscall on the body with the source and two bound vectors; eax is the grid's wall
@@ -198,7 +198,7 @@ struct Notify<'a> {
 }
 
 impl NotifyFilteredHost for Notify<'_> {
-    fn vf04(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32 {
+    fn visit(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32 {
         let target = mem.u32(mem.u32(visitor) + 4);
         // A detector's is run here on the pure host, as the host would run it: the call's words, then the binding
         // entered at `sp` (the calls it makes are all placed from its entry).

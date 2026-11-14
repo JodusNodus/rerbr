@@ -91,11 +91,11 @@ struct StateCalls {
 }
 
 impl StateHost for StateCalls {
-    fn owner_vf30(&mut self, owner: u32) -> u32 {
+    fn owner_transform(&mut self, owner: u32) -> u32 {
         entities::layout::node_of(owner)
     }
 
-    fn wall_sync(&mut self, grid: u32, a: u32, lower: u32, upper: u32) -> u32 {
+    fn sync_grid(&mut self, grid: u32, a: u32, lower: u32, upper: u32) -> u32 {
         self.sync = Some((grid, a, lower, upper));
         0
     }
@@ -240,7 +240,7 @@ impl<F, H: entities::exclusion::Heap> rigid_body::layout::PlaceHost for CarParts
         rigid_body::layout::refresh_and_reset(mem, this, &mut deferred)?;
         let state = deferred.state.expect("CBody::Vf40 calls its state");
         let mut state_calls = StateCalls::default();
-        collision::layout::state_unka44(&mut state_calls, mem, state);
+        collision::layout::reset_bounds(&mut state_calls, mem, state);
         if let Some((grid, a, lower, upper)) = state_calls.sync {
             let bytes = u32::from(mem.u8(grid + GRID_POINT_COUNT)) * 0x10;
             mem.map(self.sync_scratch, &vec![0; bytes.max(0x10) as usize]);

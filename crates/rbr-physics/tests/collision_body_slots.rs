@@ -1,9 +1,11 @@
 //! CBody::VfD8 (0x4e3070) against a scripted host: the calls' order and arguments, the hit path (compose, event, sample,
 //! append) and the miss path. The game's own runs are checked by `harness/rust_step.py` (rbr-hybrid's bound.csv).
 
-use rbr_physics::collision::layout::body_slots::{self, D8Calls, D8Frame, E8Calls, F4Calls, F4Frame};
+use rbr_physics::collision::layout::body_slots::{
+    self, BoxEdgeHitCalls, BoxEdgeHitFrame, EdgeHitsCalls, EdgeHitsFrame, GridHitCalls,
+};
 
-const FRAME: D8Frame = D8Frame {
+const FRAME: EdgeHitsFrame = EdgeHitsFrame {
     a: 0x100,
     b: 0x104,
     ray_a: 0x200,
@@ -25,7 +27,7 @@ struct Script {
     log: Vec<String>,
 }
 
-impl D8Calls for Script {
+impl EdgeHitsCalls for Script {
     fn ray_seeds(&mut self, ray: u32) {
         self.log.push(format!("seeds {ray:#x}"));
     }
@@ -34,18 +36,18 @@ impl D8Calls for Script {
         self.log.push(format!("fetch_y {matrix:#x} {out:#x} {worker:#x}"));
     }
 
-    fn other_vf34(&mut self) -> u32 {
+    fn other_second_transform(&mut self) -> u32 {
         self.log.push("vf34".into());
         0x34
     }
 
-    fn other_vf30(&mut self) -> u32 {
+    fn other_transform(&mut self) -> u32 {
         self.log.push("vf30".into());
         0x30
     }
 
-    fn this_vf30(&mut self) -> u32 {
-        self.log.push("this_vf30".into());
+    fn this_transform(&mut self) -> u32 {
+        self.log.push("this_transform".into());
         0x3
     }
 
@@ -68,7 +70,7 @@ impl D8Calls for Script {
         self.hits.contains(&edge)
     }
 
-    fn compose_a(&mut self, out: u32, payload: u32, worker: u32) {
+    fn compose(&mut self, out: u32, payload: u32, worker: u32) {
         self.log.push(format!("compose {out:#x} {payload:#x} {worker:#x}"));
     }
 
@@ -86,7 +88,7 @@ impl D8Calls for Script {
         event + 1
     }
 
-    fn sample_b(&mut self, index: u32, event: u32) {
+    fn vertex_sample(&mut self, index: u32, event: u32) {
         self.log.push(format!("sample_b {index} {event:#x}"));
     }
 
@@ -163,7 +165,7 @@ fn vf_d8_records_a_hit_with_its_event_and_returns_one() {
     expected.extend(edge(0x50));
     expected.extend(lines(&[
         &[
-            "this_vf30",
+            "this_transform",
             "compose 0x440 0x400 0x3",
             "alloc",
             "init_full 0x900 0x440 0x400",
@@ -181,8 +183,10 @@ fn vf_d8_without_an_event_appends_null_and_returns_one() {
     assert_eq!(body_slots::record_edge_hits(&mut calls, &FRAME), 1);
     let mut expected = lines(&[&HEAD]);
     expected.extend(edge(0x40));
-    expected
-        .extend(lines(&[&["this_vf30", "compose 0x440 0x400 0x3", "alloc", "sample_b 0 0x0", "append 0x0"], &TAIL]));
+    expected.extend(lines(&[
+        &["this_transform", "compose 0x440 0x400 0x3", "alloc", "sample_b 0 0x0", "append 0x0"],
+        &TAIL,
+    ]));
     assert_eq!(calls.log, expected);
 }
 
@@ -205,7 +209,7 @@ struct E8Script {
     log: Vec<String>,
 }
 
-impl E8Calls for E8Script {
+impl GridHitCalls for E8Script {
     fn box_edge_hit(&mut self, a: u32, b: u32, record: u32) -> u32 {
         self.log.push(format!("box_edge_hit {a:#x} {b:#x} {record:#x}"));
         self.answer
@@ -243,13 +247,13 @@ struct F4Script {
     log: Vec<String>,
 }
 
-impl F4Calls for F4Script {
-    fn vf34(&mut self) -> u32 {
+impl BoxEdgeHitCalls for F4Script {
+    fn second_transform(&mut self) -> u32 {
         self.log.push("vf34".into());
         0x500
     }
 
-    fn vf30(&mut self) -> u32 {
+    fn transform(&mut self) -> u32 {
         self.log.push("vf30".into());
         0x600
     }
@@ -267,17 +271,27 @@ impl F4Calls for F4Script {
         self.log.push(format!("store_hit {f:#x} {g:#x} {h:#x}"));
     }
 
-    fn compose_a(&mut self, transform: u32, point: u32, out: u32) {
-        self.log.push(format!("compose_a {transform:#x} {point:#x} {out:#x}"));
+    fn compose(&mut self, transform: u32, point: u32, out: u32) {
+        self.log.push(format!("compose {transform:#x} {point:#x} {out:#x}"));
     }
 
-    fn compose_b(&mut self, transform: u32, point: u32, out: u32) {
-        self.log.push(format!("compose_b {transform:#x} {point:#x} {out:#x}"));
+    fn compose_normal(&mut self, transform: u32, point: u32, out: u32) {
+        self.log.push(format!("compose_normal {transform:#x} {point:#x} {out:#x}"));
     }
 }
 
-const F4_FRAME: F4Frame =
-    F4Frame { a: 0x100, b: 0x104, c: 0x108, d: 0x10c, e: 0x110, f: 0x114, g: 0x118, h: 0x11c, from: 0x200, to: 0x210 };
+const F4_FRAME: BoxEdgeHitFrame = BoxEdgeHitFrame {
+    first: 0x100,
+    second: 0x104,
+    hit: 0x108,
+    t: 0x10c,
+    normal: 0x110,
+    cleared: 0x114,
+    material: 0x118,
+    material_out: 0x11c,
+    from: 0x200,
+    to: 0x210,
+};
 
 #[test]
 fn vf_f4_fetches_both_boxes_then_composes_on_a_hit() {
@@ -293,9 +307,9 @@ fn vf_f4_fetches_both_boxes_then_composes_on_a_hit() {
             "edge_edge 0x200 0x210 0x108 0x10c 0x110 0x118",
             "store_hit 0x114 0x118 0x11c",
             "vf30",
-            "compose_a 0x600 0x108 0x108",
+            "compose 0x600 0x108 0x108",
             "vf30",
-            "compose_b 0x600 0x110 0x110",
+            "compose_normal 0x600 0x110 0x110",
         ]
     );
 }

@@ -1,7 +1,7 @@
 //! `CBody`'s contact slots (`VfD0`, `VfD8`, `VfDC`, `VfE8`, `VfF4`; `rbr_physics::collision::layout::{body_slots, collide_hosts}`).
 
 use rbr_physics::collision::grid_contact::ContactKind;
-use rbr_physics::collision::layout::body_slots::{self, D8Calls, E8Calls, F4Calls};
+use rbr_physics::collision::layout::body_slots::{self, BoxEdgeHitCalls, EdgeHitsCalls, GridHitCalls};
 use rbr_physics::collision::layout::collide_hosts::{GridContactHost, PairContactHost};
 use rbr_physics::collision::layout::{self, Body};
 use rbr_physics::mem::Mem;
@@ -49,7 +49,7 @@ impl D8CallsAt<'_> {
     }
 }
 
-impl D8Calls for D8CallsAt<'_> {
+impl EdgeHitsCalls for D8CallsAt<'_> {
     fn ray_seeds(&mut self, ray: u32) {
         self.host.call(RAY_SEEDS, ray, &[]);
     }
@@ -58,15 +58,15 @@ impl D8Calls for D8CallsAt<'_> {
         self.host.call(FETCH_Y, matrix, &[out, worker]);
     }
 
-    fn other_vf34(&mut self) -> u32 {
+    fn other_second_transform(&mut self) -> u32 {
         self.virtual_call(self.other, VF34_SLOT, &[])
     }
 
-    fn other_vf30(&mut self) -> u32 {
+    fn other_transform(&mut self) -> u32 {
         self.virtual_call(self.other, VF30_SLOT, &[])
     }
 
-    fn this_vf30(&mut self) -> u32 {
+    fn this_transform(&mut self) -> u32 {
         self.virtual_call(self.this, VF30_SLOT, &[])
     }
 
@@ -86,7 +86,7 @@ impl D8Calls for D8CallsAt<'_> {
         self.virtual_call(self.other, VF_E8_SLOT, &[twin, desc, 0x8000_0001, payload, 1]) != 0
     }
 
-    fn compose_a(&mut self, out: u32, payload: u32, worker: u32) {
+    fn compose(&mut self, out: u32, payload: u32, worker: u32) {
         let identity = self.mem.u32(layout::IDENTITY_WORKER_SLOT);
         self.host.call(COPY16_WALK, identity, &[payload, worker, out]);
     }
@@ -99,7 +99,7 @@ impl D8Calls for D8CallsAt<'_> {
         self.host.call(COLL_EVENT_INIT_FULL, event, &[0, self.this, aux, ZERO_VEC4, payload, 0]).eax
     }
 
-    fn sample_b(&mut self, index: u32, event: u32) {
+    fn vertex_sample(&mut self, index: u32, event: u32) {
         let grid = Body::new(self.this).grid(self.mem);
         self.host.call(COLGRID_SAMPLE_B, grid, &[index, event + 0xa4, event + 0xa8]);
     }
@@ -179,11 +179,11 @@ impl GridContactHost for VfD0Calls<'_> {
         self.host.call_at(sp, PAIR_COMBINE_TWIN, desc, &[point, transform]);
     }
 
-    fn compose_a(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32) {
+    fn compose(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32) {
         self.host.call_at(sp, COPY16_WALK, transform, &[point, other, out]);
     }
 
-    fn compose_b(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32) {
+    fn compose_normal(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32) {
         self.host.call_at(sp, COMPOSE_B, transform, &[point, other, out]);
     }
 
@@ -223,11 +223,11 @@ impl GridContactHost for VfD0Calls<'_> {
         self.host.call_at(sp, E33_MAKE_EVENT, 0, &args).eax
     }
 
-    fn sample_b(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
+    fn vertex_sample(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
         self.host.call_at(sp, COLGRID_SAMPLE_B, grid, &[index, out_a, out_b]);
     }
 
-    fn sample_a(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
+    fn edge_sample(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
         let args = [index, t.to_bits(), out_a, out_b];
         self.host.call_at(sp, COLGRID_SAMPLE_A, grid, &args);
     }
@@ -288,7 +288,7 @@ struct E8CallsAt<'a> {
 const VF_E8_CALL_SP: u32 = 0x2c;
 const VF_F4_SLOT: u32 = 0xf4;
 
-impl E8Calls for E8CallsAt<'_> {
+impl GridHitCalls for E8CallsAt<'_> {
     fn box_edge_hit(&mut self, a: u32, b: u32, record: u32) -> u32 {
         let target = layout::vtable_slot(self.mem, self.this, VF_F4_SLOT);
         let args = layout::grid_hit_args(a, b, record);
@@ -331,14 +331,14 @@ impl F4CallsAt<'_> {
     }
 }
 
-impl F4Calls for F4CallsAt<'_> {
-    fn vf34(&mut self) -> u32 {
+impl BoxEdgeHitCalls for F4CallsAt<'_> {
+    fn second_transform(&mut self) -> u32 {
         self.virtual_call(VF34_SLOT, self.sp - 4)
     }
 
     // The original pushes the compose arguments before the second and third calls, so those run lower; the callee
     // takes none, and nothing it writes is read after the call, so the entry at `sp - 4` is equivalent.
-    fn vf30(&mut self) -> u32 {
+    fn transform(&mut self) -> u32 {
         self.virtual_call(VF30_SLOT, self.sp - 4)
     }
 
@@ -353,15 +353,15 @@ impl F4Calls for F4CallsAt<'_> {
     }
 
     fn store_hit(&mut self, f: u32, g: u32, h: u32) {
-        layout::store_vf_f4_hit(self.mem, f, g, h);
+        layout::store_box_edge_hit(self.mem, f, g, h);
     }
 
-    fn compose_a(&mut self, transform: u32, point: u32, out: u32) {
+    fn compose(&mut self, transform: u32, point: u32, out: u32) {
         let identity = self.mem.u32(layout::IDENTITY_WORKER_SLOT);
         self.host.call_at(self.sp - 0x10, COPY16_WALK, transform, &[point, identity, out]);
     }
 
-    fn compose_b(&mut self, transform: u32, point: u32, out: u32) {
+    fn compose_normal(&mut self, transform: u32, point: u32, out: u32) {
         let identity = self.mem.u32(layout::IDENTITY_WORKER_SLOT);
         self.host.call_at(self.sp - 0x10, COMPOSE_B, transform, &[point, identity, out]);
     }

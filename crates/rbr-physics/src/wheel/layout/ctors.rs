@@ -215,12 +215,12 @@ pub fn cdef_ctor(mem: &mut Mem, this: u32, outer: u32) -> u32 {
 }
 
 /// The size of a wheel definition block (`operator new(0x980)` in `CWheel::M3B610`).
-const CDEF_SIZE: u32 = 0x980;
+const BODY_DEF_SIZE: u32 = 0x980;
 
 /// `CWheel::M3B610(outer)` (0x53b610, thiscall, ret 4): a definition block from `host`, built by `cdef_ctor` on `outer`.
 /// Returns the block, or 0 when the allocation fails.
 pub fn new_cdef(mem: &mut Mem, outer: u32, host: &mut impl Heap) -> u32 {
-    let block = host.alloc(mem, CDEF_SIZE);
+    let block = host.alloc(mem, BODY_DEF_SIZE);
     if block != 0 {
         cdef_ctor(mem, block, outer);
     }

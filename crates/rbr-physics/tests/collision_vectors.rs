@@ -630,12 +630,12 @@ impl<'a> StateReplayHost<'a> {
 }
 
 impl layout::state::StateHost for StateReplayHost<'_> {
-    fn owner_vf30(&mut self, owner: u32) -> u32 {
+    fn owner_transform(&mut self, owner: u32) -> u32 {
         let call = self.take(0x519c00, &[owner], "CBody owner slot 12");
         call.eax
     }
 
-    fn wall_sync(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
+    fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
         let call = self.take(0x4f7090, &[wall, body, vec_a, vec_b], "E37 wall sync");
         for window in &call.windows {
             assert_eq!(self.mem.read(window.at, window.len), window.before, "E37 wall sync input at {:#x}", window.at);
@@ -649,7 +649,7 @@ impl layout::state::StateHost for StateReplayHost<'_> {
 
 impl layout::body_hosts::ClearGridHost for StateReplayHost<'_> {
     fn sync_grid(&mut self, grid: u32, source: u32, lower: u32, upper: u32) -> u32 {
-        layout::state::StateHost::wall_sync(self, grid, source, lower, upper)
+        layout::state::StateHost::sync_grid(self, grid, source, lower, upper)
     }
 }
 
@@ -868,7 +868,7 @@ impl layout::grid_hosts::AllocHost for CellGridCtorReplayHost {
 }
 
 impl layout::links::NotifyFilteredHost for NotifyFilteredReplayHost<'_> {
-    fn vf04(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32 {
+    fn visit(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32 {
         let call = self.inner.get(self.next).unwrap_or_else(|| panic!("unexpected visitor Vf04 call {}", self.next));
         assert_eq!(call.addr, 0x4e3590, "visitor slot-1 target");
         assert_eq!(call.args, [visitor, body], "visitor slot-1 arguments");
@@ -1194,7 +1194,7 @@ fn colgrid_vector_and_edge_helpers_match_original_calls() {
         let [grid_ptr, index, t_bits, out_a, out_b] = args[..] else {
             panic!("unexpected SampleA args: {}", args.len());
         };
-        let (first, second) = layout::sample_a(mem, grid_ptr, index as usize, f32::from_bits(t_bits));
+        let (first, second) = layout::edge_sample(mem, grid_ptr, index as usize, f32::from_bits(t_bits));
         mem.set_u32(out_a, first);
         mem.set_u32(out_b, second);
         0
@@ -1204,7 +1204,7 @@ fn colgrid_vector_and_edge_helpers_match_original_calls() {
         let [grid_ptr, index, out_a, out_b] = args[..] else {
             panic!("unexpected SampleB args: {}", args.len());
         };
-        let (first, second) = layout::sample_b(mem, grid_ptr, index as usize);
+        let (first, second) = layout::vertex_sample(mem, grid_ptr, index as usize);
         mem.set_u32(out_a, first);
         mem.set_u32(out_b, second);
         0
@@ -1299,8 +1299,8 @@ fn make_event_matches_original_calls() {
 fn body_state_accessors_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(BODY_DEF_VF4C, "CBody::CDef::Vf4c", u32::MAX, |_mem, _args| layout::state::body_def_name());
-    replay(BODY_STATE_VF20, "CBody::CState::Vf20", u32::MAX, |_mem, _args| layout::state::state_table_vf20());
-    replay(BODY_STATE_VF1C, "CBody::CState::Vf1C", u32::MAX, |_mem, _args| layout::state::state_table_vf1c());
+    replay(BODY_STATE_VF20, "CBody::CState::Vf20", u32::MAX, |_mem, _args| layout::state::state_table());
+    replay(BODY_STATE_VF1C, "CBody::CState::Vf1C", u32::MAX, |_mem, _args| layout::state::state_table_twin());
     replay(BODY_STATE_GET_OWNER, "CBody::CState::GetOwner", u32::MAX, |mem, args| {
         layout::state::state_owner(mem, args[0])
     });
@@ -1314,7 +1314,7 @@ fn body_state_uninit_and_scratch_noop_match_original_calls() {
         0
     });
     replay(BODY_SCRATCH_VF04, "CBody::CScratch::Vf04", 0, |mem, args| {
-        layout::state::scratch_vf04(mem, args[0]);
+        layout::state::scratch_noop(mem, args[0]);
         0
     });
 }
@@ -1359,7 +1359,7 @@ fn body_state_unka44_matches_original_calls() {
             }
         }
         let mut host = StateReplayHost { inner: &call.inner, next: 0, mem: mem.clone() };
-        let eax = layout::state_unka44(&mut host, &mut mem, call.args[0]);
+        let eax = layout::reset_bounds(&mut host, &mut mem, call.args[0]);
         assert_eq!(eax, call.eax, "CBody::CState::Unk44 call {} EAX", call.index);
         assert_eq!(host.next, call.inner.len(), "CBody::CState::Unk44 inner calls");
         for window in &call.windows {
@@ -1389,7 +1389,7 @@ fn body_vf40_matches_original_calls() {
             mem.map(window.at, &window.before);
         }
         let mut host = BodyVf40ReplayHost { inner: &call.inner, next: 0, mem: &mut mem };
-        let eax = layout::reset_state_and_base(&mut host, call.args[0]);
+        let eax = layout::reset_body(&mut host, call.args[0]);
         assert_eq!(eax, call.eax, "CBody::Vf40 call {} EAX", call.index);
         assert_eq!(host.next, call.inner.len(), "CBody::Vf40 inner calls");
         for window in &call.windows {
@@ -3390,11 +3390,11 @@ impl layout::collide_hosts::GridContactHost for VfD0ReplayHost<'_> {
         self.take(Some(0x51ab70), &[desc, point, transform], 1);
     }
 
-    fn compose_a(&mut self, _: u32, transform: u32, point: u32, other: u32, out: u32) {
+    fn compose(&mut self, _: u32, transform: u32, point: u32, other: u32, out: u32) {
         self.take(Some(0x51b4c0), &[transform, point, other, out], 1);
     }
 
-    fn compose_b(&mut self, _: u32, transform: u32, point: u32, other: u32, out: u32) {
+    fn compose_normal(&mut self, _: u32, transform: u32, point: u32, other: u32, out: u32) {
         self.take(Some(0x51b600), &[transform, point, other, out], 1);
     }
 
@@ -3443,11 +3443,11 @@ impl layout::collide_hosts::GridContactHost for VfD0ReplayHost<'_> {
         self.take(Some(0x4e0d00), &args, 0)
     }
 
-    fn sample_b(&mut self, _: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
+    fn vertex_sample(&mut self, _: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
         self.take(Some(0x4e0950), &[grid, index, out_a, out_b], 2);
     }
 
-    fn sample_a(&mut self, _: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
+    fn edge_sample(&mut self, _: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
         let args = [grid, index, t.to_bits(), out_a, out_b];
         self.take(Some(0x4e0840), &args, 2);
     }
@@ -3701,7 +3701,7 @@ fn hit_path_leaves_unit() {
     let grid = 0x0110_0000;
     let (data, table_a, table_b) = (0x0120_0000, 0x0130_0000, 0x0140_0000);
     mem.set_u32(grid + 0x400, 0);
-    assert_eq!(layout::sample_b(&mem, grid, 0), (0, 0));
+    assert_eq!(layout::vertex_sample(&mem, grid, 0), (0, 0));
     mem.set_u32(grid + 0x400, data);
     mem.set_u32(grid + 0x404, 4 | (8 << 16)); // width 4, height 8
     mem.set_u32(grid + 0x408, table_a);
@@ -3710,7 +3710,7 @@ fn hit_path_leaves_unit() {
     mem.map(data + 10, &[128, 192]); // (x, y) = (0.5, 0.75)
     mem.set_u8(table_a + 3 * 4 + 2, 0x11);
     mem.set_u8(table_b + 6 * 8 + 4, 0x22);
-    assert_eq!(layout::sample_b(&mem, grid, 3), (0x22, 0x11));
+    assert_eq!(layout::vertex_sample(&mem, grid, 3), (0x22, 0x11));
     layout::store_samples(&mut mem, a, b, (0x22, 0x11));
     assert_eq!((mem.u32(a), mem.u32(b)), (0x22, 0x11));
 }

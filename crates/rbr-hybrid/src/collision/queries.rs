@@ -315,7 +315,7 @@ pub(super) fn grid_ops_m6610(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 /// leaves it: `out_1`, or 0 (the grid's data word) when the grid has no data.
 pub(super) fn grid_sample_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [index, t, out_1, out_2, ..] = r.stack;
-    let samples = layout::sample_a(&ctx.mem, r.ecx, index as usize, f32::from_bits(t));
+    let samples = layout::edge_sample(&ctx.mem, r.ecx, index as usize, f32::from_bits(t));
     Ok(Return::void(store_samples(ctx, r.ecx, out_1, out_2, samples), 0x10))
 }
 
@@ -333,6 +333,6 @@ fn store_samples(ctx: &mut Ctx, grid: u32, out_1: u32, out_2: u32, samples: (u32
 /// thiscall on the grid with `(index, out_1, out_2)`, ret 0xc: `CColGrid::SampleB` (0x4e0950). Eax as SampleA's.
 pub(super) fn grid_sample_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [index, out_1, out_2, ..] = r.stack;
-    let samples = layout::sample_b(&ctx.mem, r.ecx, index as usize);
+    let samples = layout::vertex_sample(&ctx.mem, r.ecx, index as usize);
     Ok(Return::void(store_samples(ctx, r.ecx, out_1, out_2, samples), 0xc))
 }

@@ -64,7 +64,7 @@ pub fn refresh_and_reset<S: RigidStore>(
     let state = store.state_at(this);
     refresh_state_rotation(store, state, host)?;
     refresh_state_rotation(store, state, host)?;
-    Ok(collision::layout::reset_state_and_base(host, this))
+    Ok(collision::layout::reset_body(host, this))
 }
 
 /// The scratch accumulator gets `delta * scale` added; then the flush runs when `gate` has its bit. The same sum as

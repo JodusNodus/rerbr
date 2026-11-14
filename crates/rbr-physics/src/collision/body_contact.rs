@@ -123,7 +123,7 @@ fn slot_contacts<S: CollisionStore>(
         host.fetch_x(f.call_sp(3), desc_b, f.at(GridWalkFrame::AT), transform);
         let event = make_event(host, f, ContactKind::Point, this, other, f.at(GridWalkFrame::AT));
         let (first, second) = store.event_sample_slots(event);
-        host.sample_b(f.call_sp(4), f.at(GridWalkFrame::GRID), i, first, second);
+        host.vertex_sample(f.call_sp(4), f.at(GridWalkFrame::GRID), i, first, second);
         host.append(f.call_sp(2), list, event);
         result = 1;
     }
@@ -160,11 +160,11 @@ fn point_contact<S: CollisionStore>(
     };
     let this_transform = host.transform(f.call_sp(2), this);
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_a(f.call_sp(4), transform, at, this_transform, f.at(GridWalkFrame::AT));
+    host.compose(f.call_sp(4), transform, at, this_transform, f.at(GridWalkFrame::AT));
     to_world(host, store, f, other);
     let event = make_event(host, f, ContactKind::Point, this, other, f.at(GridWalkFrame::AT));
     let (first, second) = store.event_sample_slots(event);
-    host.sample_b(f.call_sp(4), f.at(GridWalkFrame::GRID), i, first, second);
+    host.vertex_sample(f.call_sp(4), f.at(GridWalkFrame::GRID), i, first, second);
     host.append(f.call_sp(2), list, event);
     1
 }
@@ -199,16 +199,16 @@ fn edge_contact<S: CollisionStore>(
     let ratio = collide_big::edge_ratio(edge_length, hit_length);
     let transform = host.transform(f.call_sp(4), other);
     let hit = f.at(GridWalkFrame::HIT);
-    host.compose_a(f.call_sp(4), transform, hit, store.frame_root(), hit);
+    host.compose(f.call_sp(4), transform, hit, store.frame_root(), hit);
     let this_transform = host.transform(f.call_sp(2), this);
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_a(f.call_sp(4), transform, mid, this_transform, mid);
+    host.compose(f.call_sp(4), transform, mid, this_transform, mid);
     let normal = f.at(GridWalkFrame::NORMAL);
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_b(f.call_sp(4), transform, normal, store.frame_root(), normal);
+    host.compose_normal(f.call_sp(4), transform, normal, store.frame_root(), normal);
     let event = make_event(host, f, ContactKind::Edge, this, other, mid);
     let (first, second) = store.event_sample_slots(event);
-    host.sample_a(f.call_sp(5), f.at(GridWalkFrame::GRID), i, ratio, first, second);
+    host.edge_sample(f.call_sp(5), f.at(GridWalkFrame::GRID), i, ratio, first, second);
     host.append(f.call_sp(2), list, event);
     1
 }
@@ -269,9 +269,9 @@ fn probe<S: CollisionStore>(
 fn to_world<S: CollisionStore>(host: &mut impl GridContactHost, store: &mut S, f: &GridWalkFrame, other: u32) {
     let (hit, normal) = (f.at(GridWalkFrame::HIT), f.at(GridWalkFrame::NORMAL));
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_a(f.call_sp(4), transform, hit, store.frame_root(), hit);
+    host.compose(f.call_sp(4), transform, hit, store.frame_root(), hit);
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_b(f.call_sp(4), transform, normal, store.frame_root(), normal);
+    host.compose_normal(f.call_sp(4), transform, normal, store.frame_root(), normal);
 }
 
 fn make_event(
@@ -399,12 +399,12 @@ fn pair_contact<S: CollisionStore>(
     }
     let identity = store.frame_root();
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_a(f.call_sp(4), transform, hit, identity, hit);
+    host.compose(f.call_sp(4), transform, hit, identity, hit);
     let identity = store.frame_root();
     let transform = host.transform(f.call_sp(4), other);
-    host.compose_b(f.call_sp(4), transform, normal, identity, normal);
+    host.compose_normal(f.call_sp(4), transform, normal, identity, normal);
     let this_transform = host.transform(f.call_sp(2), this);
-    host.compose_a(f.call_sp(4), store.frame_root(), hit, this_transform, at);
+    host.compose(f.call_sp(4), store.frame_root(), hit, this_transform, at);
     let t = store.u32(f.at(PairWalkFrame::T));
     let event = host.pair_event(f.call_sp(10), hit, t, this, other, at, normal);
     let (flag_low, flag_high) = store.take_body_grid_flags(this);

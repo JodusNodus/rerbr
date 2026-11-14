@@ -6,20 +6,19 @@ use crate::mem::Mem;
 use super::body_hosts::{BodyResetHost, GridSelectHost};
 use super::body_slots;
 use super::state::{
-    StateHost, BODY_SCRATCH_VTABLE, BODY_STATE_VTABLE, CREAL_NAME, CREAL_VTABLE, CSTATE_OWNER_OFFSET,
-    CSTATE_REAL_OFFSET,
+    StateHost, BODY_SCRATCH_VTABLE, BODY_STATE_VTABLE, REAL_NAME, REAL_VTABLE, STATE_OWNER, STATE_REAL,
 };
 use super::vec_ops::Vec4Pair;
 pub use crate::entities::layout::ROOT_IDENTITY as IDENTITY_WORKER_SLOT;
 pub use crate::physics_core::layout::vtable_target as vtable_slot;
 
 /// CBody's vtable, which CBody::CBody (0x4e3460) stores at the body's first word.
-const CBODY_VTABLE: u32 = 0x737c9c;
+const BODY_VTABLE: u32 = 0x737c9c;
 
-/// The xyz sentinels that CState::Unk44 writes to its two vectors (`0x4974_23fe` is about +1e6, `0xc974_23fe` about
-/// -1e6).
-const CSTATE_WALL_RESET_POSITIVE: u32 = 0x4974_23fe;
-const CSTATE_WALL_RESET_NEGATIVE: u32 = 0xc974_23fe;
+/// The xyz sentinels that CState::Unk44 writes to the state's bounds, an empty box: the lower corner about +1e6
+/// (`0x4974_23fe`), the upper about -1e6 (`0xc974_23fe`).
+const EMPTY_BOUNDS_LOWER: u32 = 0x4974_23fe;
+const EMPTY_BOUNDS_UPPER: u32 = 0xc974_23fe;
 
 /// The `CBody` members `Body` reads (`collision/README.md` (git 9c28c0b8)): the grid pointer that `CBody::Vf44` stores, and the bounds.
 pub(in crate::collision) const BODY_GRID: u32 = 0x64;
@@ -60,30 +59,31 @@ impl Body {
     }
 }
 
-/// CBody::Vf40 (0x4e1120) (name ours): the E33 state reset on the body's state, then CEntity's base walk. Both are host
-/// calls.
-pub fn reset_state_and_base(host: &mut impl BodyResetHost, body: u32) -> u32 {
+/// CBody::Vf40 (0x4e1120) (name ours): the reset of the body's state (`reset_bounds`), then CEntity's base walk. Both
+/// are host calls.
+pub fn reset_body(host: &mut impl BodyResetHost, body: u32) -> u32 {
     let _ = host.reset_state(Body::new(body).state());
     host.reset_entity(body)
 }
 
-/// CBody::CState::Unk44 (0x4e33e0): reset the xyz sentinels in both vectors at `state + 0x10` and `state + 0x20`, then
-/// the owner's slot-12 transform (host), and the wall sync (host) when the owner has a wall.
-pub fn state_unka44(host: &mut impl StateHost, mem: &mut Mem, state: u32) -> u32 {
-    let vec_a = state + 0x10;
-    let vec_b = state + 0x20;
+/// CBody::CState::Unk44 (0x4e33e0) (name ours): empties the state's bounds (the xyz sentinels in the lower and upper
+/// corners at `state + 0x10` and `state + 0x20`), then the owner's slot-12 transform (host), and the grid's bound sync
+/// (host) when the owner has a grid.
+pub fn reset_bounds(host: &mut impl StateHost, mem: &mut Mem, state: u32) -> u32 {
+    let lower = state + 0x10;
+    let upper = state + 0x20;
     for lane in 0..3 {
-        mem.set_u32(vec_a + lane * 4, CSTATE_WALL_RESET_POSITIVE);
-        mem.set_u32(vec_b + lane * 4, CSTATE_WALL_RESET_NEGATIVE);
+        mem.set_u32(lower + lane * 4, EMPTY_BOUNDS_LOWER);
+        mem.set_u32(upper + lane * 4, EMPTY_BOUNDS_UPPER);
     }
 
-    let owner = mem.u32(state + CSTATE_OWNER_OFFSET);
-    let eax = host.owner_vf30(owner);
-    let wall = mem.u32(owner + 0x64);
-    if wall == 0 {
-        eax
+    let owner = mem.u32(state + STATE_OWNER);
+    let transform = host.owner_transform(owner);
+    let grid = mem.u32(owner + BODY_GRID);
+    if grid == 0 {
+        transform
     } else {
-        host.wall_sync(wall, eax, vec_a, vec_b)
+        host.sync_grid(grid, transform, lower, upper)
     }
 }
 
@@ -94,13 +94,13 @@ pub fn state_ctor(mem: &mut Mem, state: u32, body: u32, name: u32) -> u32 {
     mem.set_u32(state + 8, 0);
     mem.set_u32(state, BODY_STATE_VTABLE);
 
-    mem.set_u32(state + CSTATE_REAL_OFFSET, CREAL_VTABLE);
-    mem.set_u32(state + CSTATE_REAL_OFFSET + 4, CREAL_NAME);
-    mem.set_u32(state + CSTATE_REAL_OFFSET + 8, 0);
-    mem.set_u32(state + CSTATE_REAL_OFFSET + 12, 0);
+    mem.set_u32(state + STATE_REAL, REAL_VTABLE);
+    mem.set_u32(state + STATE_REAL + 4, REAL_NAME);
+    mem.set_u32(state + STATE_REAL + 8, 0);
+    mem.set_u32(state + STATE_REAL + 12, 0);
 
     let owner = if body != 0 && mem.u32(body + 0x60) & 2 != 0 { body } else { 0 };
-    mem.set_u32(state + CSTATE_OWNER_OFFSET, owner);
+    mem.set_u32(state + STATE_OWNER, owner);
     state
 }
 
@@ -123,7 +123,7 @@ pub fn ctor(
     let _ = host.entity_ctor(mem, body, definition, frame, parent, flags | 2);
     let name = if definition == 0 { 0 } else { mem.u32(definition + 4) };
     state_ctor(mem, Body::new(body).state(), body, name);
-    mem.set_u32(body, CBODY_VTABLE);
+    mem.set_u32(body, BODY_VTABLE);
     mem.set_u32(body + 0xc0, BODY_SCRATCH_VTABLE);
     Body::new(body).set_grid(mem, 0);
     body
@@ -142,10 +142,10 @@ pub fn select_grid(host: &mut impl GridSelectHost, mem: &mut Mem, body: u32, obj
 /// The frame of CBody::VfD8 (`body_slots::record_edge_hits`) below its entry stack pointer `esp`, 16-byte aligned: the
 /// two ray buffers (0x6b0 bytes each) and the payload, aux matrix and descriptors, all above the callees (the host
 /// places them 0x1000 below `esp`).
-pub fn record_edge_hits_frame(esp: u32, a: u32, b: u32) -> body_slots::D8Frame {
+pub fn record_edge_hits_frame(esp: u32, a: u32, b: u32) -> body_slots::EdgeHitsFrame {
     let base = esp & !0xf;
     let payload = base - 0x80;
-    body_slots::D8Frame {
+    body_slots::EdgeHitsFrame {
         a,
         b,
         ray_a: base - 0xde0,
@@ -182,10 +182,21 @@ pub fn store_grid_hit(mem: &mut Mem, record: u32, flags: (u32, u32), body: u32) 
 
 /// The frame of CBody::VfF4 (`body_slots::box_edge_hit`) below its entry stack pointer `esp`: the two box temporaries,
 /// above the callees (which run below `box_edge_hit_sp`).
-pub fn box_edge_hit_frame(esp: u32, args: [u32; 8]) -> body_slots::F4Frame {
+pub fn box_edge_hit_frame(esp: u32, args: [u32; 8]) -> body_slots::BoxEdgeHitFrame {
     let base = (esp - 4) & !0xf;
-    let [a, b, c, d, e, f, g, h] = args;
-    body_slots::F4Frame { a, b, c, d, e, f, g, h, from: base - 0x10, to: base - 0x20 }
+    let [first, second, hit, t, normal, cleared, material, material_out] = args;
+    body_slots::BoxEdgeHitFrame {
+        first,
+        second,
+        hit,
+        t,
+        normal,
+        cleared,
+        material,
+        material_out,
+        from: base - 0x10,
+        to: base - 0x20,
+    }
 }
 
 /// The stack pointer below CBody::VfF4's saved registers (`esi`, `edi`, `ebx`) for the entry stack pointer `esp`: the
@@ -194,11 +205,11 @@ pub fn box_edge_hit_sp(esp: u32) -> u32 {
     ((esp - 4) & !0xf) - 0x30
 }
 
-/// CBody::VfF4's hit record: `h` takes the word at `g`, and `f` is cleared to 0.0.
-pub fn store_vf_f4_hit(mem: &mut Mem, f: u32, g: u32, h: u32) {
-    let word = mem.u32(g);
-    mem.set_u32(h, word);
-    mem.set_f32(f, 0.0);
+/// CBody::VfF4's hit record: `material_out` takes the word at `material`, and `cleared` is cleared to 0.0.
+pub fn store_box_edge_hit(mem: &mut Mem, cleared: u32, material: u32, material_out: u32) {
+    let word = mem.u32(material);
+    mem.set_u32(material_out, word);
+    mem.set_f32(cleared, 0.0);
 }
 
 /// The grid's edge count (+0x68d) of the body's grid (+0x64), which CBody::VfD8 walks.
