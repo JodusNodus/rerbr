@@ -186,7 +186,7 @@ SpringStore>`), never `dyn`, so the `Mem` path compiles as before.
   attempt 5 physics PASS 84084/84084, the 4 hybrid snapshots identical.
 - Stay on `Mem`: constructors and setup copies everywhere; `load` and stage's load code (image construction only);
   code writing at computed addresses in the original's stack frames (physics_core detector walks, `notify`,
-  `prof_calls`; entities `collide_init`, detach events, `vf_e070`); rigid_body wake, sleep, `Vf158` (via
+  `prof_calls`; entities `collide_init`, detach events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (via
   physics_core's Mem-typed `FilingHost`); NTweak apply and parse (host-bound); collision cell grid, links, pools,
   `col_grids`, `brake_wall_vf_f0` (calls `car_body::light::sub_block_init`).
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run.
@@ -273,8 +273,11 @@ pass on bit 3 of `bodyA+0x60`).
 
 ## Entities
 
-`src/entities/` (hooks, `E90SegPool`, walks in the file docs). `E90SegPool::Init` (0x601270) owns a `new[]` array
-with the count word before it. Walks are pre-order over children whose `S80() != 0`.
+`src/entities/` (hooks, `E90SegPool`, walks in the file docs; fence cloth in `layout/fence.rs`). `E90SegPool::Init`
+(0x601270) owns a `new[]` array with the count word before it. A group's block is `n` posts of `0x140 + 0x34 * layers *
+rows` and `n - 1` spans of `0x78 + layers * (rows * (0x24 + 0x2c * (cols - 2)) + 0x24 * (cols - 4 + 4 * (rows - 1) *
+(cols - 1)))` (segment 0x78, particle 0x28, spring 0x20, bend 0xc, pointer 4). Walks are pre-order over children whose
+`S80() != 0`.
 
 ## Scenery
 
