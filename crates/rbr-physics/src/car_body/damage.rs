@@ -45,10 +45,10 @@ pub trait ResetDamageCalls<S = Mem> {
 pub fn reset_damage<S: CarStore>(calls: &mut impl ResetDamageCalls<S>, mem: &mut S, handler: u32) {
     mem.set_u32(handler + at::RESET_COUNT_AT, mem.u32(handler + at::RESET_COUNT_AT).wrapping_add(1));
     for z in 0..at::ZONES {
-        for word in 0..3u32 {
-            mem.set_u32(handler + at::ZONES_AT + at::ZONE_STRIDE * z + 4 * word, 0);
+        for word in 0..at::ZONE_WORDS {
+            mem.set_u32(at::zone_word_at(handler, z, word), 0);
         }
-        mem.set_f32(handler + at::FLOATS_AT + 4 * z, 0.0);
+        mem.set_f32(at::float_at(handler, z), 0.0);
     }
     calls.call(mem, at::STATE_INIT, handler + at::STATE_AT);
     calls.call(mem, at::ENGINE_RESET, handler + at::ENGINE_AT);
@@ -73,8 +73,9 @@ pub fn reset_damage<S: CarStore>(calls: &mut impl ResetDamageCalls<S>, mem: &mut
         mem.set_u32(handler + word, 0);
     }
     for k in 0..at::PAIRS {
-        mem.set_u32(handler + at::PAIRS_AT + 8 * k, at::PAIR_INITIAL);
-        mem.set_u32(handler + at::PAIRS_AT + 4 + 8 * k, 0);
+        let (first, second) = at::pair_at(handler, k);
+        mem.set_u32(first, at::PAIR_INITIAL);
+        mem.set_u32(second, 0);
     }
 }
 
@@ -96,7 +97,7 @@ pub fn material_name<S: CarStore>(calls: &mut impl MaterialNameCalls, mem: &S, h
     if tag == 0 {
         NULL_NAME
     } else {
-        mem.u32(tag + 4)
+        mem.u32(at::material_name_at(tag))
     }
 }
 
@@ -104,11 +105,11 @@ pub fn material_name<S: CarStore>(calls: &mut impl MaterialNameCalls, mem: &S, h
 /// turn), then the tail, as one flat sequence in that order (the source is read before its word is written).
 pub fn copy_from<S: CarStore>(mem: &mut S, handler: u32, src: u32) {
     for z in 0..at::ZONES {
-        copy_word(mem, handler + at::ZONES_AT + at::ZONE_STRIDE * z, src + at::ZONES_AT + at::ZONE_STRIDE * z);
-        copy_word(mem, handler + at::FLOATS_AT + 4 * z, src + at::FLOATS_AT + 4 * z);
+        copy_word(mem, at::zone_at(handler, z), at::zone_at(src, z));
+        copy_word(mem, at::float_at(handler, z), at::float_at(src, z));
     }
     for i in 0..at::TAIL_WORDS {
-        copy_word(mem, handler + at::TAIL_AT + 4 * i, src + at::TAIL_AT + 4 * i);
+        copy_word(mem, at::tail_word_at(handler, i), at::tail_word_at(src, i));
     }
 }
 
@@ -210,7 +211,7 @@ pub fn ring_next(cur: u32) -> u32 {
 }
 
 /// The impact path's two constants: the engine damage's limit (11000.0) and the impact above which a hit emits (500.0). NGP scales both per car at load (`notes/ngp.md` "Force feedback", the "0.94195 group" factor): it
-/// patches the push's immediate and repoints the compare to its own `1017130c`.
+/// patches the engine damage's limit and points the emit test at a constant of its own.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DamageTuning {
     pub engine_gate_limit: f32,

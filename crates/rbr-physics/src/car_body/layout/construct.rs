@@ -211,8 +211,9 @@ const STATE_DRIVE: u32 = 0x190;
 const STATE_ENGINE: u32 = 0x750;
 const STATE_LIGHTS: u32 = 0x9D0;
 const STATE_PASSENGERS: [u32; 2] = [0xA50, 0xB10];
-/// `+0xc70`'s first value (4.0, the float at 0x72d150).
-const STATE_C70: f32 = 4.0;
+/// `+0xc70`'s first value (4.0, the float at 0x72d150): the car's override timer (`OVERRIDE_TIMER`, the state at
+/// `STATE`).
+const OVERRIDE_TIMER_INITIAL: f32 = 4.0;
 
 /// `CCar::CState::CState(car, name, unused)` (0x4e6f80, thiscall) on the state at `this`: the base named `name`, the
 /// vtable, the pairs, two vectors and five reals, the inner states (only the engine's reads an argument: `car`, its
@@ -259,7 +260,7 @@ pub fn construct_state(mem: &mut Mem, this: u32, car: u32, name: u32) -> Result<
     rigid_body::layout::clear_vec(mem, this + 0xC10);
     mem.set_u32(this + 0xC00, 0);
     rigid_body::layout::clear_vec(mem, this + 0xC80);
-    mem.set_f32(this + 0xC70, STATE_C70);
+    mem.set_f32(this + 0xC70, OVERRIDE_TIMER_INITIAL);
     mem.set_u32(this + 0xBE4, 0);
     Ok(())
 }
@@ -285,8 +286,9 @@ const CAR_ENGINE: u32 = 0x690;
 const CAR_LIGHTS: u32 = 0x838;
 const CAR_SCRATCH_SIM: u32 = 0x850;
 const CAR_PASSENGERS: [(u32, u32, u32); 2] = [(0x8B0, 0x1450, 0x440C), (0x900, 0x1510, 0x4428)];
-/// The car's word after its state (`+0x1690`, a vtable 0x73828c, then five cleared words) and the ray object (+0x16b0).
-const CAR_1690_VTABLE: u32 = 0x0073_828C;
+/// The car's word after its state (`+0x1690`, the embedded solid scratch's vtable 0x73828c, then five cleared words) and
+/// the ray object (+0x16b0).
+const SOLID_SCRATCH_VTABLE: u32 = 0x0073_828C;
 const CAR_RAYS: u32 = 0x16B0;
 /// The words of the exclusion set `CCar::CCar` asks for.
 const CAR_EXCLUSIONS: u32 = 0x20;
@@ -388,7 +390,7 @@ pub fn construct_car(
     }
     let name = if def != 0 { ntweak::name_or_null(mem, def) } else { 0 };
     construct_state(mem, state, this, name)?;
-    mem.set_u32(this + 0x1690, CAR_1690_VTABLE);
+    mem.set_u32(this + 0x1690, SOLID_SCRATCH_VTABLE);
     for at in [0x1698, 0x16A0, STEER_INPUT, 0x1694, 0x169C] {
         mem.set_u32(this + at, 0);
     }

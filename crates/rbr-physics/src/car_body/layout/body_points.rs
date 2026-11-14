@@ -5,11 +5,11 @@ use crate::car_body::body::BodyCalls;
 use crate::car_body::body_grid::GridCalls;
 use crate::car_body::store::CarStore;
 
-/// `CCarBody::CState::Vf44x` (0x4eb6a0): the flag at +0x1c is set, the owner's grid is cleared over the bounds (their
+/// `CCarBody::CState::Vf44x` (0x4eb6a0; name ours: the body grid's reset, `body_grid`): the flag at +0x1c is set, the owner's grid is cleared over the bounds (their
 /// vectors at `scratch` (plus) and `scratch + 0x10` (minus)), then plus is copied to +0x20 and minus to +0x30. Returns
 /// the eax the original leaves (the last copy's destination). None when the state has no owner: the original faults
 /// there, before anything is written, so the caller declines.
-pub fn state_vf44x<S: CarStore>(calls: &mut impl GridCalls, mem: &mut S, state: u32, scratch: u32) -> Option<u32> {
+pub fn reset_body_grid<S: CarStore>(calls: &mut impl GridCalls, mem: &mut S, state: u32, scratch: u32) -> Option<u32> {
     let owner = mem.u32(state + 0x40);
     if owner == 0 {
         return None;

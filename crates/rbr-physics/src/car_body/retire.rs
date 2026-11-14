@@ -13,7 +13,7 @@ use crate::car_body::store::CarStore;
 
 /// The calls the check makes out of its own body. The test answers them from the original's records.
 pub trait RetireCheckCalls {
-    /// The timer gap as a double (`obj` is the call's `this`, `at` the address of the timer's double).
+    /// The timer gap as a double (`obj` is the object it is called on, `at` the address of the timer's double).
     fn timer_gap(&mut self, obj: u32, at: u32) -> f64;
     /// The flow object's check: 1 when it holds, else 0.
     fn flow_holds(&mut self, flow: u32) -> u32;

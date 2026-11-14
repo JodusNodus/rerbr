@@ -35,7 +35,7 @@ pub mod publish {
     pub const MOUNTED_TEST: u32 = 0x521920;
     /// The mounted body's update, when its test holds.
     pub const MOUNTED_UPDATE: u32 = 0x522000;
-    /// The ground probe on the car (`vote::probe_ground`): takes the output vector and the distance.
+    /// The ground probe on the car (`rigid_body::vote::probe_ground`): takes the output vector and the distance.
     pub const PROBE_GROUND: u32 = 0x529D30;
     /// The car's body frame composed into the world frame (`world_placement::compose_body_into_world`).
     pub const COMPOSE_BODY_INTO_WORLD: u32 = 0x4E8130;
@@ -98,6 +98,56 @@ pub mod publish {
         /// Wheel `i`'s two vectors' offsets (16 bytes apart per wheel).
         pub const fn wheel(i: u32) -> (u32, u32) {
             (WHEEL_A + 0x10 * i, WHEEL_B + 0x10 * i)
+        }
+    }
+
+    /// The addresses of the publish step's locals, from the base of its frame (offsets in `frame`).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct PublishFrame {
+        pub drive_line_payload: u32,
+        pub zero: u32,
+        pub walked: u32,
+        pub walked_copy: u32,
+        pub direction: u32,
+        pub direction_copy: u32,
+        pub speed_payload: u32,
+        pub world_frame: u32,
+        pub body_frame: u32,
+        pub state_payload: u32,
+        pub position: u32,
+        pub velocity: u32,
+        pub angular_velocity: u32,
+        pub probe_out: u32,
+        pub probe_distance: u32,
+        base: u32,
+    }
+
+    impl PublishFrame {
+        pub fn at(base: u32) -> Self {
+            PublishFrame {
+                drive_line_payload: base + frame::DRIVE_LINE_PAYLOAD,
+                zero: base + frame::ZERO,
+                walked: base + frame::WALKED,
+                walked_copy: base + frame::WALKED_COPY,
+                direction: base + frame::DIRECTION,
+                direction_copy: base + frame::DIRECTION_COPY,
+                speed_payload: base + frame::SPEED_PAYLOAD,
+                world_frame: base + frame::WORLD_FRAME,
+                body_frame: base + frame::BODY_FRAME,
+                state_payload: base + frame::STATE_PAYLOAD,
+                position: base + frame::POSITION,
+                velocity: base + frame::VELOCITY,
+                angular_velocity: base + frame::ANGULAR_VELOCITY,
+                probe_out: base + frame::PROBE_OUT,
+                probe_distance: base + frame::PROBE_DISTANCE,
+                base,
+            }
+        }
+
+        /// Wheel `i`'s two vectors.
+        pub fn wheel(&self, i: u32) -> (u32, u32) {
+            let (a, b) = frame::wheel(i);
+            (self.base + a, self.base + b)
         }
     }
 }

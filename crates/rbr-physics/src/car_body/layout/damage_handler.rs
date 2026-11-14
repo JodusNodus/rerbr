@@ -232,14 +232,15 @@ pub fn ring_store<S: CarStore>(
     0
 }
 
-/// `E36DamageOps::Slot1(a1, a2, a3, dmg, a5, src_a, src_b, _)` (0x4f12a0, the handler's slot 1, `ret 0x20`, entered at
+/// `E36DamageOps::Slot1(a1, a2, a3, dmg, a5, src_a, src_b, _)` (0x4f12a0, the handler's slot 1, `ret 0x20`; name ours:
+/// the impact), entered at
 /// `sp`): the impact of `dmg` on zone `a2`. With damage on (the manager's flag), the zone is raised (`zone_scaled`), and
 /// with a threshold above 0 the functor tables run with the threshold times `dmg`: table `a1`, then the zone's four
 /// functor links (each by its factor), the best weight a local at `sp - 8`; then `engine_gate` with the zone's engine
 /// share. A raised zone or an impact above `tuning.emit_impact` stores the hit and emits `CSigCarDamage`. Last the
 /// handler's last zone and table, its last impact and peak, and its inner id (`a3`, 0 above 0xff). Returns the asm's
 /// eax (0xff).
-pub fn damage_slot1<S: CarStore>(
+pub fn apply_impact<S: CarStore>(
     calls: &mut impl DamageHitCalls,
     mem: &mut S,
     handler: u32,
@@ -324,24 +325,26 @@ fn ring_push<S: CarStore>(mem: &mut S, this: u32, event: Event) {
 }
 
 /// The four stack words as floats (`a`, `b`, `c`) and the fourth as it is (`tag` or the index).
-fn floats3([a, b, c, _]: [u32; 4]) -> (f32, f32, f32) {
+fn float_args([a, b, c, _]: [u32; 4]) -> (f32, f32, f32) {
     (f32::from_bits(a), f32::from_bits(b), f32::from_bits(c))
 }
 
-/// `CCarDamageHandler::Dmg660` (0x4ec660, thiscall with four stack words, `ret 0x10`): the wear word +0x3b00.
-pub fn gearbox_wear<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, c) = floats3(args);
+/// `CCarDamageHandler::Dmg660` (0x4ec660, thiscall with four stack words, `ret 0x10`; name ours): the radiator's damage
+/// word +0x3b00 grows (`NRepair::CEngineRadiatorDamage` reads `1 - +0x3b00`; its repair clears it).
+pub fn damage_radiator<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, c) = float_args(args);
     let word = mem.f32(this + 0x3B00);
-    if let Some(pass) = functors::wear(mem.u32(this + LEVEL) as i32, a, b, c, word, args[3]) {
+    if let Some(pass) = functors::radiator(mem.u32(this + LEVEL) as i32, a, b, c, word, args[3]) {
         mem.set_f32(this + 0x3B00, pass.write);
         ring_push(mem, this, pass.event);
     }
     0
 }
 
-/// `CCarDamageHandler::Dmg720` (0x4ec720): the cooling-wear word (+0x3b10) grows by `(a - b) * c`, capped at 1.0.
+/// `CCarDamageHandler::Dmg720` (0x4ec720): the cooling-wear word (+0x3b10) grows by `(a - b) * c`, capped at 1.0
+/// (`NRepair::CTurboHosingDamage` and `CTurboIntercoolerDamage` read it).
 pub fn grow_cooling_wear<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, c) = floats3(args);
+    let (a, b, c) = float_args(args);
     let word = mem.f32(this + 0x3B10);
     if let Some(pass) = functors::cooling_wear(a, b, c, word, args[3]) {
         mem.set_f32(this + 0x3B10, pass.write);
@@ -350,11 +353,13 @@ pub fn grow_cooling_wear<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) ->
     0
 }
 
-/// `CCarDamageHandler::DmgA00` (0x4eca00) (name ours): the zone float of wheel `args[3]` (+0x3c08 + 0x38 i) takes the scaled step.
-pub fn grow_zone<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, c) = floats3(args);
-    let zones = std::array::from_fn(|k| mem.f32(this + 0x3C08 + 0x38 * k as u32));
-    if let Some(pass) = functors::zone(&zones, args[3], a, b, c) {
+/// `CCarDamageHandler::DmgA00` (0x4eca00) (name ours): wheel `args[3]`'s top mount side deflection (+0x3c08 + 0x38 i,
+/// the wheel's damage record's `DAMAGE_TOP_MOUNT_SIDE`; `NRepair::CSuspensionTopMountDamage` reads it) takes the scaled
+/// step.
+pub fn bend_top_mount<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, c) = float_args(args);
+    let deflections = std::array::from_fn(|k| mem.f32(this + 0x3C08 + 0x38 * k as u32));
+    if let Some(pass) = functors::top_mount_side(&deflections, args[3], a, b, c) {
         let (k, value) = pass.write;
         mem.set_f32(this + 0x3C08 + 0x38 * k as u32, value);
         ring_push(mem, this, pass.event);
@@ -362,12 +367,13 @@ pub fn grow_zone<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     0
 }
 
-/// `CCarDamageHandler::DmgCF20` (0x4ecf20) (name ours): the triple's first word (+0x3a30 + 0xc i) clears, and the flag +0x3a88 is set.
-pub fn clear_triple<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::DmgCF20` (0x4ecf20) (name ours): driveshaft `i`'s word (+0x3a30 + 0xc i,
+/// `NRepair::CDriveShaftDamage`) clears, and the flag +0x3a88 is set.
+pub fn fail_driveshaft<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let i = args[3];
     let at = indexed(this, 0x3A30, 0xC, i);
-    if let Some(pass) = functors::triple(a, b, mem.u32(at), i) {
+    if let Some(pass) = functors::driveshaft(a, b, mem.u32(at), i) {
         mem.set_u32(this + 0x3A88, 1);
         mem.set_u32(at, 0);
         ring_push(mem, this, pass.event);
@@ -375,31 +381,34 @@ pub fn clear_triple<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 
     0
 }
 
-/// `CCarDamageHandler::DmgCFE0` (0x4ecfe0) (name ours): the windshield word (+0x3dc4 + 4i) clears when it is 1; returns 4 on a pass.
-pub fn clear_windshield<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::DmgCFE0` (0x4ecfe0) (name ours): windshield word `i` (+0x3dc4 + 4i, the chips
+/// `NRepair::CWindshieldDamage` reads) clears when it is 1; returns 4 on a pass.
+pub fn chip_windshield<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let at = indexed(this, 0x3DC4, 4, args[3]);
-    if functors::windshield(a, b, mem.u32(at)) {
+    if functors::windshield_chip(a, b, mem.u32(at)) {
         mem.set_u32(at, 0);
         return 4;
     }
     0
 }
 
-/// `CCarDamageHandler::DmgCFA0` (0x4ecfa0) (name ours): the head gasket word (+0x3dd8 + 4i) clears when it is 1; returns 3 on a pass.
-pub fn clear_head_gasket<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::DmgCFA0` (0x4ecfa0) (name ours): windshield word `i` (+0x3dd8 + 4i, the cracks
+/// `NRepair::CWindshieldDamage` reads) clears when it is 1, from level 2; returns 3 on a pass.
+pub fn crack_windshield<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let at = indexed(this, 0x3DD8, 4, args[3]);
-    if functors::head_gasket(mem.u32(this + LEVEL) as i32, a, b, mem.u32(at)) {
+    if functors::windshield_crack(mem.u32(this + LEVEL) as i32, a, b, mem.u32(at)) {
         mem.set_u32(at, 0);
         return 3;
     }
     0
 }
 
-/// `CCarDamageHandler::Dmg9A0` (0x4ec9a0): the flag +0x3a98 clears.
-pub fn dmg_9a0<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::Dmg9A0` (0x4ec9a0) (name ours): the brake circuit's flag +0x3a98 (`NRepair::CBrakeCircuitDamage`)
+/// clears.
+pub fn fail_brake_circuit<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     if let Some(pass) = functors::clear_flag(a, b, mem.u32(this + 0x3A98), 0xD, args[3]) {
         mem.set_u32(this + 0x3A98, 0);
         ring_push(mem, this, pass.event);
@@ -407,46 +416,49 @@ pub fn dmg_9a0<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     0
 }
 
-/// `CCarDamageHandler::Dmg7B0` (0x4ec7b0): the pair's word (+0x3a1c + 8 i) for i below 3 clears.
-pub fn dmg_7b0<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::Dmg7B0` (0x4ec7b0) (name ours): differential `i`'s flag (+0x3a1c + 8 i, for i below 3; the word
+/// `NRepair::CDifferentialDamage` tests) clears.
+pub fn fail_differential<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let words = std::array::from_fn(|k| mem.u32(this + 0x3A1C + 8 * k as u32));
-    if let Some(pass) = functors::clear_pair_word(a, b, &words, args[3]) {
+    if let Some(pass) = functors::differential(a, b, &words, args[3]) {
         mem.set_u32(this + 0x3A1C + 8 * args[3], 0);
         ring_push(mem, this, pass.event);
     }
     0
 }
 
-/// `CCarDamageHandler::DmgAA0` (0x4ecaa0): the triple's second word (+0x3d88 + 0xc i) clears.
-pub fn dmg_aa0<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::DmgAA0` (0x4ecaa0) (name ours): hinged body `i`'s second word (+0x3d88 + 0xc i,
+/// `NRepair::CHingedBodyDamage`) clears while its lock word is clear.
+pub fn break_hinged_body<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let i = args[3];
     let at = indexed(this, 0x3D88, 0xC, i);
     let first = mem.u32(indexed(this, 0x3D84, 0xC, i));
-    if let Some(pass) = functors::door(a, b, first, mem.u32(at), i) {
+    if let Some(pass) = functors::hinged_body(a, b, first, mem.u32(at), i) {
         mem.set_u32(at, 0);
         ring_push(mem, this, pass.event);
     }
     0
 }
 
-/// `CCarDamageHandler::DmgB20` (0x4ecb20): the triple's first word (+0x3d84 + 0xc i) clears, on the speed.
-pub fn dmg_b20<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::DmgB20` (0x4ecb20) (name ours): hinged body `i`'s lock word (+0x3d84 + 0xc i,
+/// `NRepair::CHingedBodyLockDamage`) clears, on the speed.
+pub fn break_hinged_lock<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let i = args[3];
     let at = indexed(this, 0x3D84, 0xC, i);
     let threshold = mem.f32(this + 0x3DEC);
-    if let Some(pass) = functors::door_speed(threshold, a, b, mem.u32(at), mem.u32(this + LEVEL) as i32, i) {
+    if let Some(pass) = functors::hinged_lock(threshold, a, b, mem.u32(at), mem.u32(this + LEVEL) as i32, i) {
         mem.set_u32(at, 0);
         ring_push(mem, this, pass.event);
     }
     0
 }
 
-/// `CCarDamageHandler::Dmg890` (0x4ec890) (name ours): the word +0x3b08 falls.
-pub fn drain_word<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, c) = floats3(args);
+/// `CCarDamageHandler::Dmg890` (0x4ec890) (name ours): the oil pressure word +0x3b08 (`NRepair::COilPumpDamage`) falls.
+pub fn drain_oil_pressure<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, c) = float_args(args);
     let word = mem.f32(this + 0x3B08);
     if let Some(pass) = functors::drain(mem.u32(this + LEVEL) as i32, a, b, c, word, args[3]) {
         mem.set_f32(this + 0x3B08, pass.write);
@@ -455,9 +467,10 @@ pub fn drain_word<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     0
 }
 
-/// `CCarDamageHandler::Dmg930` (0x4ec930): the flag +0x3af4 clears at level 2 or more.
-pub fn dmg_930<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::Dmg930` (0x4ec930) (name ours): the water pump's flag +0x3af4 (`NRepair::CWaterPumpDamage`) clears
+/// at level 2 or more.
+pub fn fail_water_pump<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let flag = mem.u32(this + 0x3AF4);
     if let Some(pass) = functors::clear_flag_level2(mem.u32(this + LEVEL) as i32, a, b, flag, 0xF, args[3]) {
         mem.set_u32(this + 0x3AF4, 0);
@@ -466,9 +479,10 @@ pub fn dmg_930<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     0
 }
 
-/// `CCarDamageHandler::Dmg820` (0x4ec820): the flag +0x3a94 clears at level 2 or more.
-pub fn dmg_820<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::Dmg820` (0x4ec820) (name ours): the starter's flag +0x3a94 (`NRepair::CStarterDamage`) clears at
+/// level 2 or more.
+pub fn fail_starter<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let flag = mem.u32(this + 0x3A94);
     if let Some(pass) = functors::clear_flag_level2(mem.u32(this + LEVEL) as i32, a, b, flag, 0xB, args[3]) {
         mem.set_u32(this + 0x3A94, 0);
@@ -477,9 +491,10 @@ pub fn dmg_820<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     0
 }
 
-/// `CCarDamageHandler::DmgCEB0` (0x4eceb0) (name ours): the word +0x3a9c caps at 0.3.
-pub fn cap_word<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+/// `CCarDamageHandler::DmgCEB0` (0x4eceb0) (name ours): the clutch word +0x3a9c (`NRepair::CClutchDamage`; its repair
+/// sets 1.0) caps at 0.3.
+pub fn cap_clutch<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
     let word = mem.f32(this + 0x3A9C);
     if let Some(pass) = functors::cap_03(mem.u32(this + LEVEL) as i32, a, b, word, args[3]) {
         mem.set_f32(this + 0x3A9C, pass.write);
@@ -488,39 +503,46 @@ pub fn cap_word<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     0
 }
 
-/// `CCarDamageHandler::DmgBB0` (0x4ecbb0): the pair (+0x3b60 + 8 i) clears, the flag +0x3b2c is set; returns 1 on a pass.
-pub fn dmg_bb0<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    clear_pair(mem, this, args, 0x3B60, 0x3B2C, 0x13)
+/// `CCarDamageHandler::DmgBB0` (0x4ecbb0) (name ours): lamp `i` of light kind 2 (its works and glass pair, +0x3b60 + 8 i
+/// in the light block at +0x3b24) clears, and the kind's flag +0x3b2c is set; returns 1 on a pass.
+pub fn break_lamps_kind_2<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    break_lamps(mem, this, args, 0x3B60, 0x3B2C, 0x13)
 }
 
-/// `CCarDamageHandler::DmgCC30` (0x4ecc30): the pair (+0x3b40 + 8 i) clears, the flag +0x3b28 is set; returns 1 on a pass.
-pub fn dmg_cc30<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    clear_pair(mem, this, args, 0x3B40, 0x3B28, 0x14)
+/// `CCarDamageHandler::DmgCC30` (0x4ecc30) (name ours): lamp `i` of light kind 1 (+0x3b40 + 8 i) clears, and the kind's
+/// flag +0x3b28 is set; returns 1 on a pass.
+pub fn break_lamps_kind_1<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    break_lamps(mem, this, args, 0x3B40, 0x3B28, 0x14)
 }
 
-/// `CCarDamageHandler::DmgCCB0` (0x4eccb0): the suspension-arm pair (+0x3ba0 + 8 i) clears; returns 2 on a pass.
-pub fn fail_suspension_arm<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    clear_pair_with(mem, this, args, 0x3BA0, 0x3B30, functors::suspension_arm, 2)
+/// `CCarDamageHandler::DmgCCB0` (0x4eccb0) (name ours): lamp `i` of light kind 4 (+0x3ba0 + 8 i) clears, and the kind's
+/// flag +0x3b30 is set; returns 2 on a pass.
+pub fn break_lamps_kind_4<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    break_lamps_with(mem, this, args, 0x3BA0, 0x3B30, functors::lamps_kind_4, 2)
 }
 
-/// `CCarDamageHandler::DmgCD30` (0x4ecd30): the steering-rod pair (+0x3b80 + 8 i) clears; returns 2 on a pass.
-pub fn fail_steering_rod<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    clear_pair_with(mem, this, args, 0x3B80, 0x3B3C, functors::steering_rod, 2)
+/// `CCarDamageHandler::DmgCD30` (0x4ecd30) (name ours): lamp `i` of light kind 3 (+0x3b80 + 8 i) clears, and the kind's
+/// flag +0x3b3c is set; returns 2 on a pass.
+pub fn break_lamps_kind_3<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    break_lamps_with(mem, this, args, 0x3B80, 0x3B3C, functors::lamps_kind_3, 2)
 }
 
-/// `CCarDamageHandler::DmgCDB0` (0x4ecdb0): the hub pair (+0x3bc0 + 8 i) clears; returns 2 on a pass.
-pub fn fail_hub<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    clear_pair_with(mem, this, args, 0x3BC0, 0x3B34, functors::hub, 2)
+/// `CCarDamageHandler::DmgCDB0` (0x4ecdb0) (name ours): lamp `i` of light kind 5 (+0x3bc0 + 8 i) clears, and the kind's
+/// flag +0x3b34 is set; returns 2 on a pass.
+pub fn break_lamps_kind_5<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    break_lamps_with(mem, this, args, 0x3BC0, 0x3B34, functors::lamps_kind_5, 2)
 }
 
-/// `CCarDamageHandler::DmgCE30` (0x4ece30): the brake-disc pair (+0x3be0 + 8 i) clears; returns 1 on a pass.
-pub fn fail_brake_disc<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    clear_pair_with(mem, this, args, 0x3BE0, 0x3B38, functors::brake_disc, 1)
+/// `CCarDamageHandler::DmgCE30` (0x4ece30) (name ours): lamp `i` of light kind 6 (+0x3be0 + 8 i) clears, and the kind's
+/// flag +0x3b38 is set; returns 1 on a pass.
+pub fn break_lamps_kind_6<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    break_lamps_with(mem, this, args, 0x3BE0, 0x3B38, functors::lamps_kind_6, 1)
 }
 
-/// The pair functors: both words of the pair at `base + 8 i` clear, the flag at `flag` is set, and the asm returns 1.
-fn clear_pair<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4], base: u32, flag: u32, kind: u32) -> u32 {
-    let (a, b, _) = floats3(args);
+/// The lamp functors: both words of lamp `i`'s pair at `base + 8 i` clear, the kind's flag at `flag` is set, and the asm
+/// returns 1.
+fn break_lamps<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4], base: u32, flag: u32, kind: u32) -> u32 {
+    let (a, b, _) = float_args(args);
     let i = args[3];
     let (first_at, second_at) = (indexed(this, base, 8, i), indexed(this, base + 4, 8, i));
     let (first, second) = (mem.u32(first_at), mem.u32(second_at));
@@ -534,8 +556,8 @@ fn clear_pair<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4], base: u32, fl
     1
 }
 
-/// The pair-failure layout for functors with their own pure pass rule.
-fn clear_pair_with<S: CarStore>(
+/// The lamp functors with their own pure pass rule and return.
+fn break_lamps_with<S: CarStore>(
     mem: &mut S,
     this: u32,
     args: [u32; 4],
@@ -544,7 +566,7 @@ fn clear_pair_with<S: CarStore>(
     pass: fn(f32, f32, u32, u32, u32) -> Option<functors::Pass<()>>,
     result: u32,
 ) -> u32 {
-    let (a, b, _) = floats3(args);
+    let (a, b, _) = float_args(args);
     let i = args[3];
     let (first_at, second_at) = (indexed(this, base, 8, i), indexed(this, base + 4, 8, i));
     let (first, second) = (mem.u32(first_at), mem.u32(second_at));
@@ -558,10 +580,11 @@ fn clear_pair_with<S: CarStore>(
     result
 }
 
-/// `CCarDamageHandler::DmgD0F0` (0x4ed0f0): the water-pump flag (+0x3aa8) clears; returns 5 on a pass.
-pub fn fail_water_pump<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
-    if let Some(pass) = functors::water_pump(a, b, mem.u32(this + 0x3AA8), args[3]) {
+/// `CCarDamageHandler::DmgD0F0` (0x4ed0f0) (name ours): the hydraulics' flag +0x3aa8 (`NRepair::CHydraulicsDamage`)
+/// clears; returns 5 on a pass.
+pub fn fail_hydraulics<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, _) = float_args(args);
+    if let Some(pass) = functors::hydraulics(a, b, mem.u32(this + 0x3AA8), args[3]) {
         mem.set_u32(this + 0x3AA8, 0);
         ring_push(mem, this, pass.event);
         return 5;
@@ -569,21 +592,23 @@ pub fn fail_water_pump<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u
     0
 }
 
-/// `CCarDamageHandler::DmgD160` (0x4ed160): signed level 2 or more grows the intercooler-wear word (+0x3b0c), capped at 1.
-pub fn grow_intercooler_wear<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, c) = floats3(args);
+/// `CCarDamageHandler::DmgD160` (0x4ed160) (name ours): from signed level 2, the oil cooler's leak word +0x3b0c
+/// (`NRepair::COilCoolerDamage`) grows, capped at 1.
+pub fn leak_oil_cooler<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, c) = float_args(args);
     let level = mem.u32(this + LEVEL) as i32;
     let word = mem.f32(this + 0x3B0C);
-    if let Some(pass) = functors::intercooler_wear(level, a, b, c, word, args[3]) {
+    if let Some(pass) = functors::oil_cooler_leak(level, a, b, c, word, args[3]) {
         mem.set_f32(this + 0x3B0C, pass.write);
         ring_push(mem, this, pass.event);
     }
     0
 }
 
-/// `CCarDamageHandler::DmgD020` (0x4ed020): the word +0x3aa0 falls, and the flag +0x3a88 is set; returns 5 on a pass.
-pub fn dmg_d020<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, c) = floats3(args);
+/// `CCarDamageHandler::DmgD020` (0x4ed020) (name ours): the gearbox factor +0x3aa0 (`NRepair::CGearboxDamage` scales each
+/// gear's word by it) falls, and the flag +0x3a88 is set; returns 5 on a pass.
+pub fn wear_gearbox<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
+    let (a, b, c) = float_args(args);
     let word = mem.f32(this + 0x3AA0);
     let Some(pass) = functors::drop_to_floor(mem.u32(this + LEVEL) as i32, a, b, c, word, args[3]) else {
         return 0;
@@ -594,21 +619,22 @@ pub fn dmg_d020<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
     5
 }
 
-/// `CCarDamageHandler::DmgD200` (0x4ed200) (name ours): the mounted body's state word (+0x3db4 + 4 i) moves to 1 or 2 on the speed.
+/// `CCarDamageHandler::DmgD200` (0x4ed200) (name ours): the mounted body's state word (+0x3db4 + 4 i,
+/// `NRepair::CMountedBodyDamage`) moves to 1 or 2 on the speed.
 pub fn set_body_state<S: CarStore>(mem: &mut S, this: u32, args: [u32; 4]) -> u32 {
-    let (a, b, _) = floats3(args);
+    let (a, b, _) = float_args(args);
     let i = args[3];
     let at = indexed(this, 0x3DB4, 4, i);
     let threshold = mem.f32(this + 0x3DEC);
-    if let Some(pass) = functors::state(threshold, a, b, mem.u32(at), i) {
+    if let Some(pass) = functors::mounted_body_state(threshold, a, b, mem.u32(at), i) {
         mem.set_u32(at, pass.write);
         ring_push(mem, this, pass.event);
     }
     0
 }
 
-/// `CCarDamageHandler::DmgD300` (0x4ed300): ignores the handler and stack words and returns zero.
-pub fn dmg_d300(_mem: &mut Mem, _this: u32, _args: [u32; 4]) -> u32 {
+/// `CCarDamageHandler::DmgD300` (0x4ed300) (name ours): ignores the handler and stack words and returns zero.
+pub fn always_zero(_mem: &mut Mem, _this: u32, _args: [u32; 4]) -> u32 {
     functors::zero()
 }
 

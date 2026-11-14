@@ -2,7 +2,7 @@
 //! first, then the attaches on the drive, the engine and the light system (their argument is the address of that
 //! part's damage state inside the damage object), then the three lists of bodies (each entry: the wheels get an
 //! attach with their damage and a refresh; a non-null hinged or mounted body gets its two calls). Then the control
-//! update runs on a local neutral block (every word zero but the gear word, which is left as the stack has it), and
+//! update runs on a local neutral block (every word zero but the gear word, which is left as it was), and
 //! the car-init emit takes the pair (the car, its sort key). The order is the original's; the calls are answered from
 //! the original's records.
 
@@ -12,15 +12,15 @@ use crate::mem::Mem;
 
 /// The calls the wiring makes out of its own body. The test answers them from the original's records.
 pub trait WiringCalls<S = Mem> {
-    /// A call out of the body: `callee` on `this`, with the words `args` (the callee's arguments, first one first). The
+    /// A call out of the body: `callee` on `object`, with the words `args` (the callee's arguments, first one first). The
     /// callee's return is not used.
-    fn call(&mut self, callee: u32, this: u32, args: &[u32]);
+    fn call(&mut self, callee: u32, object: u32, args: &[u32]);
     /// The car-init emit on `emitter` with the pair (the car, its sort key), passed by pointer.
     fn emit(&mut self, emitter: u32, pair: [u32; 2]);
 }
 
-/// Wires `car` to its damage object. `block` is the local block the control update takes as its payload (0x20 bytes on
-/// the original's stack).
+/// Wires `car` to its damage object. `block` is the local block the control update takes as its payload (32 bytes, a
+/// local of the original's).
 pub fn wire_damage<S: CarStore>(calls: &mut impl WiringCalls<S>, mem: &mut S, car: u32, block: u32) {
     let damage = mem.u32(layout::damage_source_at(car));
     mem.set_u32(car + layout::DAMAGE_HANDLER, damage);
@@ -30,7 +30,7 @@ pub fn wire_damage<S: CarStore>(calls: &mut impl WiringCalls<S>, mem: &mut S, ca
     calls.call(callee::LIGHTS_ATTACH, layout::light_system_at(car), &[damage + handler::LIGHTS]);
     for i in 0..4 {
         let wheel = mem.u32(layout::wheel_list_at(car, i));
-        let attach = [handler::wheel(damage, i), handler::wheel_pair(damage, i), handler::wheel_value8(damage, i)];
+        let attach = [handler::wheel(damage, i), handler::wheel_pair(damage, i), handler::wheel_floats(damage, i)];
         calls.call(callee::WHEEL_ATTACH, wheel, &attach);
         calls.call(callee::WHEEL_REFRESH, mem.u32(layout::wheel_list_at(car, i)), &[]);
     }

@@ -33,82 +33,82 @@ fn check_call(call: &Call, name: &str, run: fn(&mut Mem, u32, [u32; 4]) -> u32) 
 
 #[test]
 fn dmg_660_matches_original_calls() {
-    check_functor(0x4EC660, "CCarDamageHandler::Dmg660", layout::gearbox_wear);
+    check_functor(0x4EC660, "CCarDamageHandler::Dmg660", layout::damage_radiator);
 }
 
 #[test]
 fn dmg_a00_matches_original_calls() {
-    check_functor(0x4ECA00, "CCarDamageHandler::DmgA00", layout::grow_zone);
+    check_functor(0x4ECA00, "CCarDamageHandler::DmgA00", layout::bend_top_mount);
 }
 
 #[test]
 fn dmg_cf20_matches_original_calls() {
-    check_functor(0x4ECF20, "CCarDamageHandler::DmgCF20", layout::clear_triple);
+    check_functor(0x4ECF20, "CCarDamageHandler::DmgCF20", layout::fail_driveshaft);
 }
 
 #[test]
 fn dmg_cfa0_matches_original_calls() {
-    check_functor(0x4ECFA0, "CCarDamageHandler::DmgCFA0", layout::clear_head_gasket);
+    check_functor(0x4ECFA0, "CCarDamageHandler::DmgCFA0", layout::crack_windshield);
 }
 
 #[test]
 fn dmg_cfe0_matches_original_calls() {
-    check_functor(0x4ECFE0, "CCarDamageHandler::DmgCFE0", layout::clear_windshield);
+    check_functor(0x4ECFE0, "CCarDamageHandler::DmgCFE0", layout::chip_windshield);
 }
 
 #[test]
 fn dmg_9a0_matches_original_calls() {
-    check_functor(0x4EC9A0, "CCarDamageHandler::Dmg9A0", layout::dmg_9a0);
+    check_functor(0x4EC9A0, "CCarDamageHandler::Dmg9A0", layout::fail_brake_circuit);
 }
 
 #[test]
 fn dmg_7b0_matches_original_calls() {
-    check_functor(0x4EC7B0, "CCarDamageHandler::Dmg7B0", layout::dmg_7b0);
+    check_functor(0x4EC7B0, "CCarDamageHandler::Dmg7B0", layout::fail_differential);
 }
 
 #[test]
 fn dmg_aa0_matches_original_calls() {
-    check_functor(0x4ECAA0, "CCarDamageHandler::DmgAA0", layout::dmg_aa0);
+    check_functor(0x4ECAA0, "CCarDamageHandler::DmgAA0", layout::break_hinged_body);
 }
 
 #[test]
 fn dmg_b20_matches_original_calls() {
-    check_functor(0x4ECB20, "CCarDamageHandler::DmgB20", layout::dmg_b20);
+    check_functor(0x4ECB20, "CCarDamageHandler::DmgB20", layout::break_hinged_lock);
 }
 
 #[test]
 fn dmg_890_matches_original_calls() {
-    check_functor(0x4EC890, "CCarDamageHandler::Dmg890", layout::drain_word);
+    check_functor(0x4EC890, "CCarDamageHandler::Dmg890", layout::drain_oil_pressure);
 }
 
 #[test]
 fn dmg_930_matches_original_calls() {
-    check_functor(0x4EC930, "CCarDamageHandler::Dmg930", layout::dmg_930);
+    check_functor(0x4EC930, "CCarDamageHandler::Dmg930", layout::fail_water_pump);
 }
 
 #[test]
 fn dmg_820_matches_original_calls() {
-    check_functor(0x4EC820, "CCarDamageHandler::Dmg820", layout::dmg_820);
+    check_functor(0x4EC820, "CCarDamageHandler::Dmg820", layout::fail_starter);
 }
 
 #[test]
 fn dmg_ceb0_matches_original_calls() {
-    check_functor(0x4ECEB0, "CCarDamageHandler::DmgCEB0", layout::cap_word);
+    check_functor(0x4ECEB0, "CCarDamageHandler::DmgCEB0", layout::cap_clutch);
 }
 
 #[test]
 fn dmg_bb0_matches_original_calls() {
-    check_functor(0x4ECBB0, "CCarDamageHandler::DmgBB0", layout::dmg_bb0);
+    check_functor(0x4ECBB0, "CCarDamageHandler::DmgBB0", layout::break_lamps_kind_2);
 }
 
 #[test]
 fn dmg_cc30_matches_original_calls() {
-    check_functor(0x4ECC30, "CCarDamageHandler::DmgCC30", layout::dmg_cc30);
+    check_functor(0x4ECC30, "CCarDamageHandler::DmgCC30", layout::break_lamps_kind_1);
 }
 
 #[test]
 fn dmg_d020_matches_original_calls() {
-    check_functor(0x4ED020, "CCarDamageHandler::DmgD020", layout::dmg_d020);
+    check_functor(0x4ED020, "CCarDamageHandler::DmgD020", layout::wear_gearbox);
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn dmg_d200_matches_original_calls() {
 
 #[test]
 fn dmg_d300_matches_original_calls() {
-    check_functor(0x4ED300, "CCarDamageHandler::DmgD300", layout::dmg_d300);
+    check_functor(0x4ED300, "CCarDamageHandler::DmgD300", layout::always_zero);
 }
 
 #[test]
@@ -128,32 +128,32 @@ fn dmg_720_matches_original_calls() {
 
 #[test]
 fn dmg_ccb0_matches_original_calls() {
-    check_functor(0x4ECCB0, "CCarDamageHandler::DmgCCB0", layout::fail_suspension_arm);
+    check_functor(0x4ECCB0, "CCarDamageHandler::DmgCCB0", layout::break_lamps_kind_4);
 }
 
 #[test]
 fn dmg_cd30_matches_original_calls() {
-    check_functor(0x4ECD30, "CCarDamageHandler::DmgCD30", layout::fail_steering_rod);
+    check_functor(0x4ECD30, "CCarDamageHandler::DmgCD30", layout::break_lamps_kind_3);
 }
 
 #[test]
 fn dmg_cdb0_matches_original_calls() {
-    check_functor(0x4ECDB0, "CCarDamageHandler::DmgCDB0", layout::fail_hub);
+    check_functor(0x4ECDB0, "CCarDamageHandler::DmgCDB0", layout::break_lamps_kind_5);
 }
 
 #[test]
 fn dmg_ce30_matches_original_calls() {
-    check_functor(0x4ECE30, "CCarDamageHandler::DmgCE30", layout::fail_brake_disc);
+    check_functor(0x4ECE30, "CCarDamageHandler::DmgCE30", layout::break_lamps_kind_6);
 }
 
 #[test]
 fn dmg_d0f0_matches_original_calls() {
-    check_functor(0x4ED0F0, "CCarDamageHandler::DmgD0F0", layout::fail_water_pump);
+    check_functor(0x4ED0F0, "CCarDamageHandler::DmgD0F0", layout::fail_hydraulics);
 }
 
 #[test]
 fn dmg_d160_matches_original_calls() {
-    check_functor(0x4ED160, "CCarDamageHandler::DmgD160", layout::grow_intercooler_wear);
+    check_functor(0x4ED160, "CCarDamageHandler::DmgD160", layout::leak_oil_cooler);
 }
 
 #[test]

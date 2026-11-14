@@ -15,8 +15,8 @@ pub trait PlacementCalls<S = Mem>: FrameCompose {
     fn identity(&mut self, car: u32) -> u32;
 }
 
-/// Composes the body frame of `a` into the world frame with `b`: `local` is the 28-byte local the body frame goes to (on
-/// the original's stack).
+/// Composes the body frame of `a` into the world frame with `b`: `local` is the 28-byte local the body frame goes to (the
+/// original's local).
 pub fn compose_body_into_world<S: CarStore>(
     calls: &mut impl PlacementCalls<S>,
     mem: &mut S,

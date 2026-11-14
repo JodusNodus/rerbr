@@ -1,6 +1,6 @@
 //! The car's outside-assistance announcers: the lane test, the outside-assistance worker, and the retire announcer
 //! that calls it. The order of the calls and the constants are the original's; the reconstructed C++ is approximate in
-//! places (its lane test hands `ToWorld` the car's xy, the original hands it `(0, -1, 0)`). The call sequences are in
+//! places (its lane test moves the car's xy to the world frame, the original `(0, -1, 0)`). The call sequences are in
 //! `layout`; the calls are answered by the caller (host calls to the original, or ports).
 
 use crate::math::vec::Vec3;

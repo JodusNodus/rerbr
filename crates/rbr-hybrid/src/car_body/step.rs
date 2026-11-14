@@ -101,7 +101,7 @@ pub(super) fn snapshot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0))
 }
 
-impl layout::Snap9360Calls for Car<'_> {
+impl layout::SnapshotCalls for Car<'_> {
     fn compose_body_into_world(&mut self, _mem: &mut Mem, sp: u32, car: u32, a: u32, out: u32) {
         self.host.call_at(sp, 0x4e8130, car, &[a, out]);
     }
@@ -323,7 +323,7 @@ impl StepCalls for Car<'_> {
         self.host.call(EMIT_POSITION, emitter, &[at]);
     }
 
-    fn emit_mrr(&mut self, mem: &mut Mem, payload: [u32; 3]) {
+    fn emit_car_state(&mut self, mem: &mut Mem, payload: [u32; 3]) {
         let at = self.payload(&payload);
         let emitter = mem.u32(SIGNALS) + MRR_EMITTER;
         self.host.call(EMIT_MRR, emitter, &[at]);
@@ -353,7 +353,7 @@ pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 pub(super) fn split_17c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     crate::ngp::only()?;
-    layout::split_17c(&mut ctx.mem, r.ecx, a, b);
+    layout::drive_line_sample(&mut ctx.mem, r.ecx, a, b);
     Ok(Return::void(b, 8))
 }
 
@@ -365,7 +365,7 @@ pub(super) fn vote_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(hit, 0xc))
 }
 
-impl layout::Sampler54Calls for Car<'_> {
+impl layout::VoteCalls for Car<'_> {
     fn vote(&mut self, mem: &mut Mem, sp: u32, probe_a: u32, probe_b: u32, raw: u32) -> u32 {
         let obj = rbr_physics::stage::layout::CollisionQuery::CarProbe.system(mem);
         let target = mem.u32(mem.u32(obj));
@@ -380,11 +380,11 @@ pub(super) fn ghost_set_playback(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     Ok(Return::void(0, 4))
 }
 
-/// thiscall `(sel, sample)`, `ret 8`: `CCar::S184` (0x4e5270), the car's slot 97 (`layout::slot97`).
+/// thiscall `(sel, sample)`, `ret 8`: `CCar::S184` (0x4e5270), the car's slot 97 (`layout::respawn_pose`).
 pub(super) fn s184(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [sel, sample, ..] = r.stack;
     let mut calls = car_calls(ctx, r);
-    layout::slot97(&mut ctx.mem, &mut calls, r.ecx, sel, sample, r.esp);
+    layout::respawn_pose(&mut ctx.mem, &mut calls, r.ecx, sel, sample, r.esp);
     Ok(Return::void(0, 8))
 }
 
@@ -396,15 +396,15 @@ pub(super) fn respawn_car(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 8))
 }
 
-impl layout::Slot97Calls for Car<'_> {
+impl layout::RespawnPoseCalls for Car<'_> {
     fn respawn_car(&mut self, mem: &mut Mem, sp: u32, car: u32, a: u32, b: u32) {
         let target = mem.u32(mem.u32(car) + 0x180);
         self.host.call_at(sp, target, car, &[a, b]);
     }
 }
 
-impl layout::Vf180Calls for Car<'_> {
-    fn slot17_e0(&mut self, mem: &mut Mem, sp: u32, car: u32) {
+impl layout::RespawnCalls for Car<'_> {
+    fn refresh_rotation(&mut self, mem: &mut Mem, sp: u32, car: u32) {
         let obj = car + 0xE0;
         let target = mem.u32(mem.u32(obj) + 0x44);
         self.host.call_at(sp, target, obj, &[]);
@@ -414,11 +414,11 @@ impl layout::Vf180Calls for Car<'_> {
         self.host.call_at(sp, 0x4e8130, car, &[a, out]);
     }
 
-    fn clear_acc(&mut self, _mem: &mut Mem, sp: u32, car: u32) {
+    fn clear_accumulators(&mut self, _mem: &mut Mem, sp: u32, car: u32) {
         self.host.call_at(sp, 0x529e60, car, &[]);
     }
 
-    fn slot36(&mut self, mem: &mut Mem, sp: u32, car: u32) {
+    fn wake(&mut self, mem: &mut Mem, sp: u32, car: u32) {
         let target = mem.u32(mem.u32(car) + 0x90);
         self.host.call_at(sp, target, car, &[]);
     }
@@ -428,17 +428,17 @@ impl layout::Vf180Calls for Car<'_> {
     }
 }
 
-impl layout::Vf98xCalls for Car<'_> {
-    fn slot97(&mut self, mem: &mut Mem, sp: u32, car: u32, sel: u32, sample: u32) {
+impl layout::CountdownCalls for Car<'_> {
+    fn respawn_pose(&mut self, mem: &mut Mem, sp: u32, car: u32, sel: u32, sample: u32) {
         let target = mem.u32(mem.u32(car) + 0x184);
         self.host.call_at(sp, target, car, &[sel, sample]);
     }
 
-    fn m6840(&mut self, _mem: &mut Mem, sp: u32, drive: u32, value: u32) {
+    fn set_commanded_gear(&mut self, _mem: &mut Mem, sp: u32, drive: u32, value: u32) {
         self.host.call_at(sp, vcu::M6840, drive, &[value]);
     }
 
-    fn slot18(&mut self, mem: &mut Mem, sp: u32, car: u32) {
+    fn start_window(&mut self, mem: &mut Mem, sp: u32, car: u32) {
         let target = mem.u32(mem.u32(car) + 0x48);
         self.host.call_at(sp, target, car, &[]);
     }

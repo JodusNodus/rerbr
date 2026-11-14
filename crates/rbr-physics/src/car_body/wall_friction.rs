@@ -84,7 +84,7 @@ pub fn wall_friction<S: CarStore>(calls: &mut impl WallFrictionCalls<S>, mem: &m
     let unit = velocity.scale(1.0 / speed);
     let wall_weight = clamp(penetration * PENETRATION_GAIN, 0.0, 1.0);
     let low_speed_weight = clamp(speed * LOW_SPEED_GAIN, 0.0, 1.0);
-    // The original scales the speed here (its register still holds it); the C++ scales the low-speed weight instead.
+    // The original scales the speed here; the C++ scales the low-speed weight instead.
     let high_speed_weight = clamp(speed * HIGH_SPEED_GAIN, 0.0, 1.0);
     let dir = unit.scale(
         0.0 - (high_speed_weight * HIGH_SPEED_SHARE + low_speed_weight * LOW_SPEED_SHARE) * wall_weight * support,

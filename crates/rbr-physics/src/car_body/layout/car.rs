@@ -47,18 +47,18 @@ pub const WALL_CONTACT: u32 = 0x9ec;
 pub const DAMAGE_HANDLER: u32 = 0x9f4;
 pub const ANGULAR_VELOCITY: u32 = 0x190;
 pub const VELOCITY: u32 = 0x1c0;
-pub const RACK_RATE: u32 = 0xb1c;
+pub const STEER_TARGET_RATE: u32 = 0xb1c;
 pub const SPEED: u32 = 0x15fc;
 pub const SPEED_PRE: u32 = 0x1600;
 pub const DIR_BACK: u32 = 0x1610;
-pub const FLAG_50G: u32 = 0x1668;
+pub const OVERLOAD_FLAG: u32 = 0x1668;
 pub const WALL_PENETRATION: u32 = 0x166c;
-pub const T_OVERRIDE: u32 = 0x1670;
+pub const OVERRIDE_TIMER: u32 = 0x1670;
 pub const STEER_INPUT: u32 = 0x16a4;
 pub const GRID_PUSHED: u32 = 0x16a8;
 
 /// The embedded `E47SolidScratch` member used by `CCar::Vf54x`.
-pub fn scratch1690(car: u32) -> u32 {
+pub fn solid_scratch_at(car: u32) -> u32 {
     car + 0x1690
 }
 
@@ -218,7 +218,7 @@ impl CarStore for Mem {
 
     /// The word at +0xb1c (`CCar::GetB1C`): the rate of `steer_target`, by `notes/physics.md` "Car body".
     fn steer_target_rate(&self, car: u32) -> f32 {
-        self.f32(car + RACK_RATE)
+        self.f32(car + STEER_TARGET_RATE)
     }
 
     /// The target the slew moves toward (`m_steerInput`, +0x16a4).
@@ -238,7 +238,7 @@ impl CarStore for Mem {
 
     /// The override timer (+0x1670): while above 0 the filtered steering torque is held at 0 (`CCar::UpdateFfbTorque`).
     fn override_timer(&self, car: u32) -> f32 {
-        self.f32(car + T_OVERRIDE)
+        self.f32(car + OVERRIDE_TIMER)
     }
 
     /// The car speed (+0x15fc), m/s (rbr-recomp `notes/physics/car-body.md` 2a, inferred).
@@ -395,8 +395,8 @@ impl CarStore for Mem {
         std::array::from_fn(|k| self.u32(car + 0x140 + 4 * k as u32))
     }
 
-    /// The float at `*(car + 0x4b8) + 0x45c` (the MrR payload's last word, as bits).
-    fn mrr_word(&self, car: u32) -> u32 {
+    /// The float at `*(car + 0x4b8) + 0x45c` (the last word of the MrR car state payload, as bits).
+    fn car_state_word(&self, car: u32) -> u32 {
         self.u32(self.u32(car + 0x4B8) + 0x45C)
     }
 
@@ -483,7 +483,7 @@ impl CarStore for Mem {
         self.u32(car + GRID_PUSHED) != 0
     }
 
-    /// Stores the grid flag (`layout::grid_pushed`), 1 when set.
+    /// Stores the grid flag (`CarStore::grid_pushed`), 1 when set.
     fn set_grid_pushed(&mut self, car: u32, pushed: bool) {
         self.set_u32(car + GRID_PUSHED, pushed as u32);
     }
@@ -520,12 +520,12 @@ impl CarStore for Mem {
 
     /// Stores the override timer (+0x1670, `m_tOverride`).
     fn set_override_timer(&mut self, car: u32, v: f32) {
-        self.set_f32(car + T_OVERRIDE, v);
+        self.set_f32(car + OVERRIDE_TIMER, v);
     }
 
     /// The 50g flag (+0x1668, `m_flag50g`).
     fn overload_flag(&self, car: u32) -> bool {
-        self.u32(car + FLAG_50G) != 0
+        self.u32(car + OVERLOAD_FLAG) != 0
     }
 
     /// The damage handler pointer (+0x9f4): the damage object the car is wired to.
@@ -535,7 +535,7 @@ impl CarStore for Mem {
 
     /// Sets the 50g flag (+0x1668, `m_flag50g`) to 1.
     fn set_overload_flag(&mut self, car: u32) {
-        self.set_u32(car + FLAG_50G, 1);
+        self.set_u32(car + OVERLOAD_FLAG, 1);
     }
 
     /// Stores the speed before the update (+0x1600, `m_speedPre`).
