@@ -16,6 +16,7 @@
 
 pub mod layout;
 pub mod store;
+pub mod typed;
 
 use rbr_formats::trk;
 

@@ -8,7 +8,9 @@ mod images;
 mod meshes;
 mod placement;
 mod queries;
+mod typed;
 pub use queries::CollisionQuery;
+pub use typed::{differential, round_trip, StageView};
 
 pub use crate::car_body::layout::DRIVE_LINE;
 pub use fence::load_fence;

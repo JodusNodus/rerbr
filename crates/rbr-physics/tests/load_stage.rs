@@ -410,6 +410,10 @@ fn stage_world_matches_the_game() {
     let objects = objects();
     let ((zeros, host), (ones, _)) = (build(&data, &objects, 0), build(&data, &objects, 0xff));
     assert_eq!((host.meshes, host.names, host.placements, host.handles), (21, 21, PLACEMENTS, HANDLES));
+    // The typed stage a step reads holds the built drive line and material table, and answers as the image does.
+    let held = stage::round_trip(&zeros).expect("the typed stage's bytes are the image's");
+    assert!(held > 0x75304 + 0x808, "the typed stage holds the drive line and the material table ({held} bytes)");
+    stage::differential(&zeros).expect("the typed stage's queries answer as the image's");
 
     let mut counts: BTreeMap<&str, [u32; 4]> = BTreeMap::new();
     let mut differing = Vec::new();
