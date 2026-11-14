@@ -382,17 +382,18 @@ fn entries<S: WheelStore>(mem: &mut S, this: u32, scratch: u32) -> Vec<[u32; 7]>
 }
 
 /// The wheel's host-free entries in a row on each wheel of the car at `car`, per call on `per_call` (every field on
-/// the image) and on the car's wheels held in typed storage over the row on `held` (lifted before, lowered after; the
-/// definitions the step's typed ones), two copies of one image; `scratch` is free memory of both for the outputs. Compares every byte of each wheel, its
+/// the image) and on the car's wheels and solids held in typed storage over the row on `held` (lifted before, lowered
+/// after; the definitions the step's typed ones), two copies of one image; `scratch` is free memory of both for the outputs. Compares every byte of each wheel, its
 /// damage record and the outputs, and what the callers were given: the bytes compared, or the first that differs.
 pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) -> Result<usize, String> {
     let wheels = CarWheels::lift(held, car);
     let defs = Defs::lift(held, car);
+    let solids = CarSolids::lift(held, car);
     let pointers = crate::car_body::store::CarStore::wheel_pointers(per_call, car);
     let mut bytes = 0;
     for (k, &this) in pointers.iter().enumerate().filter(|(_, &w)| w != 0) {
         let a = entries(per_call, this, scratch);
-        let b = entries(&mut wheels.view(held).with_defs(Some(&defs)), this, scratch);
+        let b = entries(&mut wheels.view(held).with_defs(Some(&defs)).with_solids(Some(&solids)), this, scratch);
         if a != b {
             return Err(format!("wheel{k}: the edge forces' callers differ: {a:x?} against {b:x?}"));
         }
@@ -402,6 +403,7 @@ pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) 
             regions.push((damage, DAMAGE_BYTES, "damage record"));
         }
         wheels.lower(held);
+        solids.lower(held);
         for (at, len, name) in regions {
             let (want, got) = (per_call.read(at, len as usize), held.read(at, len as usize));
             if let Some(i) = want.iter().zip(&got).position(|(x, y)| x != y) {

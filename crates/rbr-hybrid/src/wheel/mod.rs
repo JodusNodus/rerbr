@@ -354,7 +354,7 @@ fn new_sub_object(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(p)`, `ret 4`: `CWheel::E43Vf20` (vtable slot 8), `layout::clear_and_forward` (name ours).
 fn clear_and_forward(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Slots { mem: ctx.mem.clone(), host: ctx.host };
-    layout::clear_and_forward(&mut calls, &mut ctx.mem, r.ecx, r.stack[0]);
+    on_wheels(ctx, |m| layout::clear_and_forward(&mut calls, m, r.ecx, r.stack[0]));
     Ok(Return::void(0, 4))
 }
 

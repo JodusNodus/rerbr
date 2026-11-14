@@ -5,6 +5,7 @@ use crate::mem::Mem;
 use crate::rigid_body::contact::Contact;
 use crate::rigid_body::contact_list::{Event, Record};
 use crate::rigid_body::store::RingHeader;
+use crate::store::Raw;
 
 /// The contact records `E36Collect` left: `count` records of 0x40 bytes from `list` (`BigB` reads them in order).
 pub fn contact_records(mem: &Mem, list: u32, count: u32) -> Vec<Record> {
@@ -36,8 +37,8 @@ pub fn store_event(mem: &mut Mem, at: u32, event: &Event) {
 /// records from +0x10.
 pub const CONTACT_LIST: u32 = 0x274;
 
-/// The body's contact list (0 without one).
-pub fn contact_list(mem: &Mem, this: u32) -> u32 {
+/// The body's contact list (0 without one; the solid's word, a held solid's on its store).
+pub fn contact_list<R: Raw + ?Sized>(mem: &R, this: u32) -> u32 {
     mem.u32(this + CONTACT_LIST)
 }
 
@@ -48,7 +49,7 @@ pub fn contact_count(mem: &Mem, this: u32) -> Option<u32> {
 }
 
 /// The address of record `k` of the body's contact list (the vote reads the list word again for each record).
-pub fn contact_record(mem: &Mem, this: u32, k: u32) -> u32 {
+pub fn contact_record<R: Raw + ?Sized>(mem: &R, this: u32, k: u32) -> u32 {
     mem.u32(this + CONTACT_LIST) + 0x10 + 0x60 * k
 }
 

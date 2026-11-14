@@ -178,9 +178,9 @@ pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {
 }
 
 /// The count of the body's contact list (`None` without one), as a step leaves it at this point: a held solver row's,
-/// else the image's. For the rigid body's vote.
+/// else the image's; the list word is the solid's (`rigid_body::solid_word`). For the rigid body's vote.
 pub(crate) fn contact_count(host: &dyn Host, mem: &Mem, body: u32) -> Option<u32> {
-    let list = rbr_physics::rigid_body::layout::contact_list(mem, body);
+    let list = crate::rigid_body::solid_word(host, mem, body + rbr_physics::rigid_body::layout::CONTACT_LIST);
     (list != 0).then(|| {
         host.typed().and_then(|typed| typed.car.collision.row_count(mem, list)).unwrap_or_else(|| mem.u32(list + 4))
     })

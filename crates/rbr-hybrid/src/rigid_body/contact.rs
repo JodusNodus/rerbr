@@ -13,7 +13,7 @@ use rbr_physics::rigid_body::vote::ContactVoteHost;
 use super::force_pass::{SLOT_RESPONSE, SLOT_S30};
 use super::slots::Flush;
 use super::{
-    on_solids, unavailable, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A, SAMPLE,
+    on_solids, unavailable, with_solids, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A, SAMPLE,
     SCRATCH_BELOW_ESP, SIGNALS, SLOT_SAMPLE_HOOK, WALKER,
 };
 use crate::timekeeper::layout::APP;
@@ -31,7 +31,8 @@ struct VoteCalls<'a> {
 
 impl ContactVoteHost for VoteCalls<'_> {
     fn contact(&mut self, k: u32) -> Result<Option<Impulse>, HostUnavailable> {
-        let e = layout::contact_record(&self.mem, self.this, k);
+        let this = self.this;
+        let e = with_solids(self.host, &mut self.mem, |s| layout::contact_record(s, this, k));
         let (a, b) = (self.frame + 0x20, self.frame + 0x30);
         let args = [a, b, self.frame + 0x1c, self.frame + 0x18, e, self.range];
         let hit = self.host.call_at(self.frame - 0x1c, BIG_A, self.this, &args).eax != 0;
