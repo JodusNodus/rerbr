@@ -70,9 +70,12 @@ fn update_and_reset(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(travel, coordinate, velocity, spring_force*, breakpoint*, damping*)`.
 fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [travel, coordinate, velocity, spring_force, breakpoint, damping, ..] = r.stack;
-    let args = [r.ecx, travel, coordinate, velocity, spring_force, breakpoint, damping];
     let ngp = crate::ngp::damper_step(&ctx.mem)?;
-    layout::step(&mut ctx.mem, &args, ngp);
+    let input = sd::StepInput { travel: f(travel), coordinate: f(coordinate), velocity: f(velocity) };
+    let out = layout::step(&mut ctx.mem, r.ecx, input, ngp);
+    ctx.mem.set_f32(spring_force, out.spring_stop_force);
+    ctx.mem.set_f32(breakpoint, out.breakpoint_offset);
+    ctx.mem.set_f32(damping, out.damping_coefficient);
     Ok(Return::void(0, 0x18))
 }
 

@@ -3,7 +3,7 @@
 use super::store::{DamperBlocks, StrutStore};
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
-    HeatCapacity, RealValue, Relaxation, SetupValues, State, UpdateTerms, WeightedValue,
+    HeatCapacity, RealValue, Relaxation, SetupValues, State, StepOutput, UpdateTerms, WeightedValue,
 };
 use crate::mem::Mem;
 use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
@@ -250,39 +250,27 @@ pub fn update_forces<S: StrutStore>(mem: &mut S, controller_at: u32) {
     mem.store_effective_damping(state_at, suspension.damping.state());
 }
 
-/// Runs one typed spring-damper step and stores its outputs and changed state. 0x52e090.
+/// Runs one typed spring-damper step on the strut whose controller is at `controller_at`, stores its changed state and
+/// returns its three outputs (the caller writes them to its out pointers). 0x52e090.
 /// NGP turned the two jumps that limited the stops' damping to the force over the
 /// speed (at 0x52e22b and 0x52e279) into no-ops, so the port never limits it.
-pub fn step<S: StrutStore>(mem: &mut S, arguments: &[u32], ngp: super::NgpStep) {
-    let [controller_at, travel, coordinate, velocity, spring_force, breakpoint, damping, ..] = arguments else {
-        panic!("CSpringDamper::Step expects seven recorded arguments");
-    };
-    let definition_at = mem.definition_at(*controller_at);
-    let state_at = mem.state_at(*controller_at);
-    let fade_at = mem.fade_at(*controller_at);
-    let mut controller = mem.controller(*controller_at);
+pub fn step<S: StrutStore>(
+    mem: &mut S,
+    controller_at: u32,
+    input: super::StepInput,
+    ngp: super::NgpStep,
+) -> StepOutput {
+    let definition_at = mem.definition_at(controller_at);
+    let state_at = mem.state_at(controller_at);
+    let fade_at = mem.fade_at(controller_at);
+    let mut controller = mem.controller(controller_at);
     let mut fade = mem.fade_state(fade_at);
     let mut state = mem.state(state_at);
-    let output = super::step(
-        &mut controller,
-        &mut fade,
-        &mem.definition(definition_at),
-        &mut state,
-        super::StepInput {
-            travel: f32::from_bits(*travel),
-            coordinate: f32::from_bits(*coordinate),
-            velocity: f32::from_bits(*velocity),
-        },
-        ngp,
-    );
-
-    // The three outputs go to the caller's out pointers.
-    mem.set_f32(*spring_force, output.spring_stop_force);
-    mem.set_f32(*breakpoint, output.breakpoint_offset);
-    mem.set_f32(*damping, output.damping_coefficient);
+    let output = super::step(&mut controller, &mut fade, &mem.definition(definition_at), &mut state, input, ngp);
     mem.store_fade_state(fade_at, fade);
     mem.store_effective_damping(state_at, state);
-    mem.store_step_state(*controller_at, controller);
+    mem.store_step_state(controller_at, controller);
+    output
 }
 
 /// Resets the signal after handing its previous payload to the runtime. 0x52e010.

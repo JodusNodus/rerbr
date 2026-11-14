@@ -8,8 +8,8 @@ use super::{
 };
 use crate::store::Raw;
 
-/// The strut: its controller, definition, state and fade.
-pub trait StrutStore: Raw {
+/// The strut: its controller, definition, state and fade. The step's out pointers are its caller's (the binding's).
+pub trait StrutStore {
     /// The controller's definition, state and fade pointers.
     fn definition_at(&self, controller: u32) -> u32;
     fn state_at(&self, controller: u32) -> u32;

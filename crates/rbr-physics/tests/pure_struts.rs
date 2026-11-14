@@ -5,7 +5,7 @@
 //! anything else fails. The tape: `harness/subtree_tape.py` (its header names the run).
 
 use rbr_physics::mem::Mem;
-use rbr_physics::spring_damper::{layout, NgpStep};
+use rbr_physics::spring_damper::{layout, NgpStep, StepInput};
 
 const TAPE: &str = include_str!("vectors/struts-snap-300.txt");
 /// Where the pure run's `Step` writes its three outputs (the original's slots are in the wheel's frame).
@@ -74,7 +74,15 @@ fn struts_run_alone_bit_exact() {
             "call" => {
                 let s = &struts[word(f[1]) as usize];
                 let [travel, coordinate, velocity] = [f[2], f[3], f[4]].map(word);
-                layout::step(&mut mem, &[s.controller, travel, coordinate, velocity, OUT, OUT + 4, OUT + 8], FADE);
+                let input = StepInput {
+                    travel: f32::from_bits(travel),
+                    coordinate: f32::from_bits(coordinate),
+                    velocity: f32::from_bits(velocity),
+                };
+                let out = layout::step(&mut mem, s.controller, input, FADE);
+                mem.set_f32(OUT, out.spring_stop_force);
+                mem.set_f32(OUT + 4, out.breakpoint_offset);
+                mem.set_f32(OUT + 8, out.damping_coefficient);
                 let want: Vec<u8> = f[6..9].iter().flat_map(|w| word(w).to_le_bytes()).collect();
                 compare(&mem, OUT, &want, &format!("{}: Step outputs", place(step)));
                 calls += 1;
