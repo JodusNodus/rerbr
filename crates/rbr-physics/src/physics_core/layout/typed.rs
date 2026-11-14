@@ -15,7 +15,7 @@ use super::physics_object::StepHost;
 use super::step_forward::StepStack;
 use crate::mem::Mem;
 use crate::physics_core::store::CoreStore;
-use crate::rigid_body::layout::SolidWords;
+use crate::rigid_body::layout::{CarSolids, SolidWords};
 use crate::store::{Object, Raw, Tabled, Value};
 
 crate::object! {
@@ -114,8 +114,8 @@ pub mod slot {
 /// The core's typed fields as a store finds them: `Mem` on the image (the per-call path), [`CoreView`] on the step's
 /// held state. `CoreStore` is implemented over it (`mem_store.rs`). `base` is the object's address: the physics
 /// object, its state, or the physics global's for the globals. The words of the bodies the core reads at their
-/// addresses are the solids' ([`SolidWords`]: the car's store holds them, `CarView::with_solids`; the core's own view
-/// reads them on the image).
+/// addresses are the solids' ([`SolidWords`]: held by the car's store, `CarView::with_solids`, and the core's,
+/// `CoreView::with_solids`).
 pub trait CoreFields: SolidWords {
     fn core_field<T: Value>(&self, base: u32, slot: Slot<T>) -> T;
     fn set_core_field<T: Value>(&mut self, base: u32, slot: Slot<T>, value: T);
@@ -219,16 +219,22 @@ pub fn core_objects(mem: &Mem) -> Vec<Tabled> {
 }
 
 /// The core's store over the held typed state: the held objects' fields typed, any other object's on the image (the
-/// per-call path), and the image for the rest.
+/// per-call path), the held solids' words typed ([`SolidWords`]), and the image for the rest.
 pub struct CoreView<'a> {
     mem: &'a mut Mem,
     core: Option<&'a Core>,
+    solids: Option<&'a CarSolids>,
 }
 
 impl<'a> CoreView<'a> {
     /// The store over `mem` with `core` held (none: every word on the image).
     pub fn new(mem: &'a mut Mem, core: Option<&'a Core>) -> Self {
-        CoreView { mem, core }
+        CoreView { mem, core, solids: None }
+    }
+
+    /// The store with the car's solids held too (none: the solids' words on the image).
+    pub fn with_solids(self, solids: Option<&'a CarSolids>) -> Self {
+        CoreView { solids, ..self }
     }
 }
 
@@ -243,7 +249,36 @@ impl Raw for CoreView<'_> {
     }
 }
 
-impl SolidWords for CoreView<'_> {}
+/// A solid's word at its address: the held solids' where their tables name it, else the image's.
+impl SolidWords for CoreView<'_> {
+    #[inline]
+    fn word(&self, at: u32) -> u32 {
+        self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
+    }
+
+    #[inline]
+    fn set_word(&mut self, at: u32, value: u32) {
+        if !self.solids.is_some_and(|s| s.write(at, value)) {
+            self.mem.set_u32(at, value)
+        }
+    }
+
+    #[inline]
+    fn words<const N: usize>(&self, at: u32) -> [u32; N] {
+        match self.solids {
+            Some(_) => std::array::from_fn(|k| self.word(at + 4 * k as u32)),
+            None => self.mem.u32s(at),
+        }
+    }
+
+    #[inline]
+    fn set_words4(&mut self, at: u32, words: [u32; 4]) {
+        match self.solids {
+            Some(_) => (0..4).for_each(|k| self.set_word(at + 4 * k, words[k as usize])),
+            None => self.mem.set_words4(at, words),
+        }
+    }
+}
 
 impl CoreFields for CoreView<'_> {
     #[inline]

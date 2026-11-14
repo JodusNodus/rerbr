@@ -227,14 +227,15 @@ impl AccumHost for Accum<'_> {
 pub(super) fn accumulate_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let sentinel = "the physics object's gravity pointer is the original's sentinel (its read is address 0)";
     let mut calls = Accum { mem: ctx.mem.clone(), host: ctx.host };
-    layout::accumulate_forces(&mut ctx.mem, &mut calls, r.ecx, temps(r)).ok_or(Decline::Unsupported(sentinel))?;
+    super::on_core(ctx, |core| layout::accumulate_forces(core, &mut calls, r.ecx, temps(r)))
+        .ok_or(Decline::Unsupported(sentinel))?;
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(point*, out*)`, `ret 8`: `E46_Offset540`, the velocity term of a point on the body.
 pub(super) fn offset_540(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [point, out, ..] = r.stack;
-    layout::point_velocity_at(&mut ctx.mem, r.ecx, point, out);
+    super::on_core(ctx, |core| layout::point_velocity_at(core, r.ecx, point, out));
     // eax: the last cross product's output, the original's local at its aligned frame - 0x20.
     Ok(Return::void(aligned_frame(r.esp) - 0x20, 8))
 }

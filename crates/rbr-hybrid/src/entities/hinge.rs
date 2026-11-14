@@ -540,7 +540,8 @@ impl layout::MountedDetachCalls for DetachHost<'_> {
 /// thiscall, no stack arguments: `CHingedRigidBody::SimFD00` (0x51fd00), the detach from the car (`layout::detach_from_car`).
 pub(super) fn sim_fd00_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0x90;
-    let eax = layout::detach_from_car(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
+    let mut calls = DetachHost(ctx.host);
+    let eax = on_solids(ctx, |s| layout::detach_from_car(s, r.ecx, frame, &mut calls));
     Ok(Return::void(eax, 0))
 }
 
@@ -548,14 +549,16 @@ pub(super) fn sim_fd00_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// (`layout::mounted_detach`).
 pub(super) fn step_big_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0xb0;
-    let eax = layout::mounted_detach(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
+    let mut calls = DetachHost(ctx.host);
+    let eax = on_solids(ctx, |s| layout::mounted_detach(s, r.ecx, frame, &mut calls));
     Ok(Return::void(eax, 0))
 }
 
 /// thiscall, no stack arguments: `CHingedRigidBody::SimDA60` (0x51da60), the body's pose through its car.
 pub(super) fn sim_da60_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0x40;
-    layout::pose_to_world(&mut ctx.mem, r.ecx, frame, &mut DetachHost(ctx.host));
+    let mut calls = DetachHost(ctx.host);
+    on_solids(ctx, |s| layout::pose_to_world(s, r.ecx, frame, &mut calls));
     Ok(Return::void(r.ecx + 0x2a0, 0))
 }
 

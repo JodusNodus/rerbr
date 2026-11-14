@@ -47,12 +47,13 @@ const SPRING_EAX_AT: u32 = 0x70;
 /// The temporaries the walk's point takes, below the entry's return slot (as `rigid_body`'s).
 const TEMPS: u32 = 0x100;
 
-/// Runs `run` on the physics core's store: the typed storage's core while the host holds it over a step, else every
-/// word on the image (the per-call path).
+/// Runs `run` on the physics core's store: the typed storage's core and the car's solids while the host holds them
+/// over a step, else every word on the image (the per-call path).
 pub(crate) fn on_core<T>(ctx: &mut crate::Ctx, run: impl FnOnce(&mut CoreView) -> T) -> T {
     let host = ctx.host;
     let typed = host.typed();
-    run(&mut CoreView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.core)))
+    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    run(&mut CoreView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.core)).with_solids(solids))
 }
 
 /// The core's field `slot` of the object at `base` as a step leaves it at this point: the typed storage's while the

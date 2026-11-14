@@ -30,8 +30,8 @@ pub struct Typed {
     pub core: Core,
     pub stage: Arc<Stage>,
     pub defs: Defs,
-    /// The car's solids, held only when the step asks for them (`lift_with_solids`): until every reader of a solid's
-    /// words at its address runs on the store, holding them would leave those readers on stale words.
+    /// The car's solids, held when the step asks for them (`lift_with_solids`, the pure step's default): every reader
+    /// of a solid's words at its address runs on the solids' store (`SolidWords`).
     pub solids: Option<CarSolids>,
 }
 
@@ -136,6 +136,7 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
         + crate::wheel::layout::round_trip(mem, car)?
         + crate::car_body::layout::round_trip(mem, car)?
         + crate::collision::layout::round_trip(mem)?
+        + crate::rigid_body::layout::round_trip(mem, car)?
         + crate::physics_core::layout::typed::round_trip(mem)?
         + crate::stage::layout::round_trip(mem)?
         + crate::store::defs::differential(mem, car)?)

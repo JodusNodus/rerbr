@@ -232,15 +232,17 @@ impl ProbeCalls for Car<'_> {
     }
 }
 
-/// The vector the original's argument points at (lanes 0 to 2).
-fn vec_at(mem: &Mem, at: u32) -> Vec3 {
-    Vec3::load(mem, at)
+/// The vector the original's argument points at (lanes 0 to 2), on the solids' store: a solid's velocities at times
+/// (the detach's).
+fn vec_at(host: &dyn Host, mem: &Mem, at: u32) -> Vec3 {
+    let lane = |k: u32| crate::rigid_body::solid_f32(host, mem, at + 4 * k);
+    Vec3 { x: lane(0), y: lane(1), z: lane(2) }
 }
 
-fn set_vec(mem: &mut Mem, at: u32, v: Vec3) {
-    mem.set_f32(at, v.x);
-    mem.set_f32(at + 4, v.y);
-    mem.set_f32(at + 8, v.z);
+fn set_vec(host: &dyn Host, mem: &mut Mem, at: u32, v: Vec3) {
+    for (k, lane) in [v.x, v.y, v.z].into_iter().enumerate() {
+        crate::rigid_body::set_solid_word(host, mem, at + 4 * k as u32, lane.to_bits());
+    }
 }
 
 /// thiscall `(data*)`: `NTweak::CFloat3::LoadBinary` reads the four words at `data` into `this`; returns `this`.
@@ -261,8 +263,8 @@ pub(super) fn to_world(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
         return Err(Decline::Unsupported("the frame global is unset (the original halts)"));
     }
     let mut calls = car_calls(ctx, r);
-    let v = car::transform::to_world(&mut calls, &ctx.mem, r.ecx, vec_at(&ctx.mem, a));
-    set_vec(&mut ctx.mem, b, v);
+    let v = car::transform::to_world(&mut calls, &ctx.mem, r.ecx, vec_at(ctx.host, &ctx.mem, a));
+    set_vec(ctx.host, &mut ctx.mem, b, v);
     Ok(Return::void(b, 8))
 }
 

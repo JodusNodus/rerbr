@@ -290,14 +290,12 @@ impl<S: CoreFields> CoreStore for S {
     }
 
     fn set_mounted_dirty(&mut self, body: u32, value: u32) {
-        self.set_u32(body + MOUNTED_DIRTY_AT, value);
+        self.set_word(body + MOUNTED_DIRTY_AT, value);
     }
 
     fn copy_pose_source(&mut self, body: u32) {
-        let words = [0, 4, 8, 12].map(|k| self.u32(body + POSE_SOURCE_AT + k));
-        for (k, value) in [0, 4, 8, 12].into_iter().zip(words) {
-            self.set_u32(body + POSE_TARGET_AT + k, value);
-        }
+        let words = self.words::<4>(body + POSE_SOURCE_AT);
+        (0..4).for_each(|k| self.set_word(body + POSE_TARGET_AT + 4 * k, words[k as usize]));
     }
 
     fn signal_count_at(&self, signal: u32) -> u32 {
@@ -337,27 +335,27 @@ impl<S: CoreFields> CoreStore for S {
     }
 
     fn mounted_position(&self, body: u32) -> Vec4 {
-        Vec4::load(self, body + MOUNTED_POSITION_AT)
+        solid_vec4(self, body + MOUNTED_POSITION_AT)
     }
 
     fn set_mounted_position(&mut self, body: u32, value: Vec4) {
-        value.store(self, body + MOUNTED_POSITION_AT);
+        set_solid_vec4(self, body + MOUNTED_POSITION_AT, value);
     }
 
     fn mounted_linear(&self, body: u32) -> Vec4 {
-        Vec4::load(self, body + MOUNTED_LINEAR_AT)
+        solid_vec4(self, body + MOUNTED_LINEAR_AT)
     }
 
     fn set_mounted_linear(&mut self, body: u32, value: Vec4) {
-        value.store(self, body + MOUNTED_LINEAR_AT);
+        set_solid_vec4(self, body + MOUNTED_LINEAR_AT, value);
     }
 
     fn mount_velocity(&self, body: u32) -> Vec4 {
-        Vec4::load(self, body + MOUNT_VELOCITY_AT)
+        solid_vec4(self, body + MOUNT_VELOCITY_AT)
     }
 
     fn set_mount_velocity(&mut self, body: u32, value: Vec4) {
-        value.store(self, body + MOUNT_VELOCITY_AT);
+        set_solid_vec4(self, body + MOUNT_VELOCITY_AT, value);
     }
 
     fn mount_velocity_at(&self, body: u32) -> u32 {
@@ -393,19 +391,21 @@ impl<S: CoreFields> CoreStore for S {
     }
 
     fn copy_mounted_rotation(&mut self, body: u32, to: u32) {
-        CoreStore::copy_vec4(self, body + POSE_SOURCE_AT, to);
+        let words = self.words::<4>(body + POSE_SOURCE_AT);
+        (0..4).for_each(|k| self.set_u32(to + 4 * k, words[k as usize]));
     }
 
     fn copy_mounted_position(&mut self, body: u32, to: u32) {
-        CoreStore::copy_vec4(self, body + MOUNTED_POSITION_AT, to);
+        let words = self.words::<4>(body + MOUNTED_POSITION_AT);
+        (0..4).for_each(|k| self.set_u32(to + 4 * k, words[k as usize]));
     }
 
     fn body_motion(&self, body: u32) -> BodyMotion {
         BodyMotion {
-            position: Vec4::load(self, body + MOUNTED_POSITION_AT),
-            angular: Vec4::load(self, body + 0x190),
-            lever: Vec4::load(self, body + 0x260),
-            base: Vec4::load(self, body + 0x250),
+            position: solid_vec4(self, body + MOUNTED_POSITION_AT),
+            angular: solid_vec4(self, body + 0x190),
+            lever: solid_vec4(self, body + 0x260),
+            base: solid_vec4(self, body + 0x250),
         }
     }
 
@@ -427,4 +427,14 @@ impl<S: CoreFields> CoreStore for S {
         let def = self.u32(physics_global(self.mem()) + PHYSICS_DEF_AT);
         CoreStore::copy_vec4(self, def + GRAVITY_AT, to);
     }
+}
+
+/// The vector at `at` of a solid (`SolidWords`: held over a step).
+fn solid_vec4<S: CoreFields>(store: &S, at: u32) -> Vec4 {
+    Vec4::from(store.words::<4>(at).map(f32::from_bits))
+}
+
+/// Stores the vector at `at` of a solid ([`solid_vec4`]).
+fn set_solid_vec4<S: CoreFields>(store: &mut S, at: u32, value: Vec4) {
+    store.set_words4(at, [value.x, value.y, value.z, value.w].map(f32::to_bits));
 }

@@ -241,7 +241,7 @@ impl Pure {
             captures: Watch::default(),
             ngp_base: 0,
             typed: true,
-            typed_solids: false,
+            typed_solids: true,
             held: RefCell::default(),
             stage: Default::default(),
             #[cfg(feature = "poison")]

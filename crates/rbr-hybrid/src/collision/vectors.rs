@@ -10,7 +10,7 @@ use crate::{Ctx, Decline, Regs, Return};
 /// Eax is `dst`.
 pub(super) fn vec4_copy_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, ..] = r.stack;
-    Ok(Return::void(layout::vec4_copy_from(&mut ctx.mem, r.ecx, src), 4))
+    Ok(Return::void(on_solids(ctx, |s| layout::vec4_copy_from(s, r.ecx, src)), 4))
 }
 
 /// thiscall on the row (`ecx`), no arguments: `E09Vec4::Clear` (0x465d80), the zero row. Eax is the row.

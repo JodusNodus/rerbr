@@ -101,9 +101,11 @@ pub fn vec3_scale(mem: &mut Mem, a: u32, scale: f32, out: u32) -> u32 {
 }
 
 /// E01Vec4::CopyFrom (0x43c5b0, thiscall on `dst`, `(src*)`, ret 4): the sixteen bytes at `src` go to `dst`, read whole
-/// before the store (`movups`), so the two may overlap. Returns `dst`.
-pub fn vec4_copy_from(mem: &mut Mem, dst: u32, src: u32) -> u32 {
-    Vec4::load(mem, src).store(mem, dst);
+/// before the store (`movups`), so the two may overlap. Returns `dst`. On the solids' store: a solid's vector at times
+/// (the mounted body's pose update).
+pub fn vec4_copy_from<W: SolidWords + ?Sized>(mem: &mut W, dst: u32, src: u32) -> u32 {
+    let words = mem.words::<4>(src);
+    mem.set_words4(dst, words);
     dst
 }
 
