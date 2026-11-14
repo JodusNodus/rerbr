@@ -201,7 +201,7 @@ pub fn select_tyre_type(mem: &mut Mem, setups: &Setups, tyre_type: u32) {
 /// and cosine).
 pub fn copy_setups(mem: &mut Mem, wheels: [u32; 4], setups: &Setups) {
     for (wheel, setup) in wheels.into_iter().zip(&setups.wheels) {
-        wheel::layout::copy_cf30(
+        wheel::layout::apply_setup(
             &mut wheel::layout::Ported,
             &mut wheel::axes::X87Trig,
             mem,

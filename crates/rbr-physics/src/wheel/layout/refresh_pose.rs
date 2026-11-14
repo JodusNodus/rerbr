@@ -1,8 +1,8 @@
 //! `E51Wheel::M3B900` (0x53b900), the pose refresh, and the CDef words it reads.
 
 use super::fields::{
-    AXLE, DEFORMED_TOP_MOUNT, HUB_POSITION, INV_ARM, INV_RACK, ORIENTATION, STRUT_DIR, TAIL_HUB_OFFSET, TYRE_SCRATCH,
-    WOBBLED_AXLE,
+    AXLE, DAMAGE_STEERING, DEFORMED_TOP_MOUNT, HUB_POSITION, INV_ARM, INV_RACK, ORIENTATION, STRUT_DIR,
+    TYRE_DEF_HUB_OFFSET, TYRE_SCRATCH, WOBBLED_AXLE,
 };
 use super::store::WheelStore;
 pub use crate::car_body::layout::CURRENT_CAR as CAR_GLOBAL;
@@ -20,7 +20,8 @@ pub const DEF_WISHBONE_HEADER: u32 = 0x244;
 pub const DEF_WISHBONE_LENGTH: u32 = 0x24C;
 pub const DEF_JOINT_MOUNT: u32 = 0x880;
 pub const DEF_JOINT_AXIS: u32 = 0x890;
-/// `+0x36c` (`WishboneSign`), `+0x3fc` (the real after `StrutDimX`), `+0x3ec` (`StrutDimX`) and `+0x35c` (`SteeringSign`).
+/// `+0x36c` (`WishboneSign`), `+0x3fc` (the real after `StrutDimX`: `StrutDimZ` plus the setup's `StrutPlatformHeight`,
+/// as `CopyCF30` stores it), `+0x3ec` (`StrutDimX`) and `+0x35c` (`SteeringSign`).
 pub const DEF_WISHBONE_SIGN: u32 = 0x36C;
 pub const DEF_STRUT_DIM_Z: u32 = 0x3FC;
 pub const DEF_STRUT_DIM_X: u32 = 0x3EC;
@@ -35,8 +36,6 @@ pub const DEF_DRIVE_AXLE_MOUNT_OFFSET: u32 = 0x42C;
 pub const DEF_STEERING_MOUNT: u32 = 0x8B0;
 pub const DEF_STEERING_AXIS: u32 = 0x8C0;
 pub const DEF_DRIVE_AXLE_JOINT: u32 = 0x8D0;
-/// The damage record's `+8` word (the steering damage: 0.015 of it shortens the steering rod).
-pub const BLOCK_STEERING_DAMAGE: u32 = 0x8;
 
 /// `this+0x5d0`: the object `SetDirty` runs on (the live copy of `SteeringRodLength`).
 pub const STEERING_ROD_TWEAK: u32 = 0x5D0;
@@ -58,14 +57,15 @@ pub const ROD_MOUNT: u32 = 0xE50;
 pub const STEERING_ROD: u32 = 0xE60;
 
 /// The original calls `E51Wheel::M3B900` makes: `SetDirty` (0x52f450), `TyreTail_Get10` (0x5326b0) and the wheel's
-/// vtable slot 0x40 (`Vf40`, thiscall, no arguments).
+/// vtable slot 16 (`Vf40`, thiscall, no arguments).
 pub trait RefreshCalls {
     /// `NTweak::CBase::SetDirty` (0x52f450) on `object` (no arguments).
     fn set_dirty(&mut self, object: u32);
-    /// `TyreTail_Get10` (0x5326b0) on the tyre container: the tail pointer.
-    fn tyre_tail(&mut self, container: u32) -> u32;
-    /// The wheel's vtable slot 0x40, called on `wheel`; returns eax.
-    fn vf40(&mut self, wheel: u32) -> u32;
+    /// `TyreTail_Get10` (0x5326b0) on the tyre scratch: its setup.
+    fn tyre_def(&mut self, scratch: u32) -> u32;
+    /// The wheel's vtable slot 16 (+0x40, `E51Wheel::M3B5B0`, [`refresh_solid`](super::refresh_solid)), called on
+    /// `wheel`; returns eax.
+    fn refresh_solid(&mut self, wheel: u32) -> u32;
 }
 
 /// `E51Wheel::M3B900` (0x53b900) after its prologue calls: the deformed top mount (`M3AB90`) is stored at `+0x570`, the
@@ -75,7 +75,7 @@ pub fn refresh<S: WheelStore + CarStore>(mem: &mut S, calls: &mut impl RefreshCa
     let input = PoseIn {
         travel,
         def: mem.load_suspension_def(this),
-        steering_damage: mem.load_block_f32(this, BLOCK_STEERING_DAMAGE),
+        steering_damage: mem.load_damage_f32(this, DAMAGE_STEERING),
         top_mount: mem.load_at(this, DEFORMED_TOP_MOUNT),
         axle: mem.load_at(this, WOBBLED_AXLE),
     };
@@ -91,10 +91,10 @@ pub fn refresh<S: WheelStore + CarStore>(mem: &mut S, calls: &mut impl RefreshCa
     let frame = refresh::hub_frame(&input, &strut, &linkage, steer_target, strut.steering_rod_length);
     mem.store_at(this, HUB_POSITION, frame.hub_position);
     (Vec3 { x: frame.rotation[0][0], y: frame.rotation[0][1], z: frame.rotation[0][2] }).store(mem, this + AXLE);
-    let tail = calls.tyre_tail(this + TYRE_SCRATCH);
+    let tyre_def = calls.tyre_def(this + TYRE_SCRATCH);
     let (hub_position, drive_axle_dir) = refresh::place_hub(
         mem.load_at(this, AXLE),
-        mem.f32(tail + TAIL_HUB_OFFSET),
+        mem.f32(tyre_def + TYRE_DEF_HUB_OFFSET),
         frame.hub_position,
         def.drive_axle_mount_offset,
         def.drive_axle_joint,
@@ -115,7 +115,5 @@ pub fn refresh<S: WheelStore + CarStore>(mem: &mut S, calls: &mut impl RefreshCa
     }
     let q = quat::to_quat(&frame.rotation);
     mem.store_at(this, ORIENTATION, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
-    calls.vf40(this)
+    calls.refresh_solid(this)
 }
-
-// The ground probe (`M3D520`): three ray casts from the wheel's points, each with its block, then the blend of the hits.

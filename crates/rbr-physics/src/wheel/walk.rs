@@ -1,4 +1,4 @@
-//! The steering walk and the spin's cross product. The sequences are `layout::walk_result` and `layout::spin_cross`; this
+//! The steering walk and the spin's cross product. The sequences are `layout::steering_walk` and `layout::spin_cross`; this
 //! module holds the pure parts.
 
 use crate::fpu::round_x87;

@@ -7,13 +7,13 @@ use crate::wheel::contact::RayBlock;
 use crate::wheel::refresh::SuspensionDef;
 
 pub trait WheelStore: Raw {
-    /// Loads the ray block at `at` (the gate word is read first, as the original does).
+    /// Loads the ray block at `at` (the hit word is read first, as the original does).
     fn load_ray_block(&self, at: u32) -> RayBlock;
-    /// The tyre tail object of the wheel: the pointer at `this+0xf10`.
-    fn tail(&self, this: u32) -> u32;
-    /// The tyre's `HubOffset` (`tail+0x6c`).
+    /// The tyre's setup: the pointer at `this+0xf10`.
+    fn tyre_def(&self, this: u32) -> u32;
+    /// The tyre's `HubOffset` (`tyre_def+0x6c`).
     fn load_hub_offset(&self, this: u32) -> f32;
-    /// The tyre's `CarcassWidth` (`tail+0xcc`).
+    /// The tyre's `CarcassWidth` (`tyre_def+0xcc`).
     fn load_carcass_width(&self, this: u32) -> f32;
     /// The car pointer (`this+0x7f4`).
     fn load_car(&self, this: u32) -> u32;
@@ -30,17 +30,17 @@ pub trait WheelStore: Raw {
     /// A float of the CDef at `off`.
     fn load_def_f32(&self, this: u32, off: u32) -> f32;
     /// The damage record pointer (`this+0x7f0`).
-    fn load_block(&self, this: u32) -> u32;
-    /// A float of the damage record at `off` (`BLOCK_*`).
-    fn load_block_f32(&self, this: u32, off: u32) -> f32;
+    fn load_damage(&self, this: u32) -> u32;
+    /// A float of the damage record at `off` (`DAMAGE_*`).
+    fn load_damage_f32(&self, this: u32, off: u32) -> f32;
     /// The wheel's angle of rotation (`this+0x5ac`).
     fn load_angle(&self, this: u32) -> f32;
     /// A float of this at `at` (the wheel's scalars).
     fn load_f32(&self, this: u32, off: u32) -> f32;
     /// Stores a float of this at `off`.
     fn store_f32(&mut self, this: u32, off: u32, value: f32);
-    /// Stores a float of the damage record at `off` (`BLOCK_*`).
-    fn store_block_f32(&mut self, this: u32, off: u32, value: f32);
+    /// Stores a float of the damage record at `off` (`DAMAGE_*`).
+    fn store_damage_f32(&mut self, this: u32, off: u32, value: f32);
     /// Stores an int at `this + off`.
     fn store_u32(&mut self, this: u32, off: u32, value: u32);
     /// A vector of the CDef at `off` (`DEF_*`).

@@ -1,6 +1,6 @@
 //! The ground probe's ray blocks. After a block's materials are blended (`ngp::tag_blend`), its blended total is compared
-//! with its target and the difference limited. The sequence (the reads, the blend and the stores) is `layout::pose_flag`;
-//! this module holds the pure part.
+//! with its target and the difference limited. The sequence (the reads, the blend and the stores) is
+//! `layout::update_ray_block`; this module holds the pure part.
 
 /// What limiting a ray block's difference stores: the difference, whether the block is valid (its second word), and
 /// whether its two limit words are reset to zero.

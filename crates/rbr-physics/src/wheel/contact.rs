@@ -4,12 +4,12 @@
 use crate::fpu::round_x87;
 use crate::math::vec::Vec4;
 
-/// The part of a ray block the contact reads: its point (only when the block's gate word is nonzero) and two floats of
-/// unknown meaning (`coord_a`, and `difference`, the block's limited difference).
+/// The part of a ray block the contact reads: the hit's normal (only when the ray hit), the ray's offset across the tyre
+/// (named by use) and the block's limited difference (`ray::limit_ray`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RayBlock {
-    pub point: Option<Vec4>,
-    pub coord_a: f32,
+    pub normal: Option<Vec4>,
+    pub offset: f32,
     pub difference: f32,
 }
 
@@ -18,9 +18,9 @@ fn sqrt24(x: f32) -> f32 {
     crate::fpu::round24((x as f64).sqrt()) as f32
 }
 
-/// The dot of the axis with a point, lanes 0..2, summed y, z, then x.
-pub fn dot(axis: Vec4, point: Vec4) -> f32 {
-    (axis.y * point.y + axis.z * point.z) + axis.x * point.x
+/// The dot of the axis with a normal, lanes 0..2, summed y, z, then x.
+pub fn dot(axis: Vec4, normal: Vec4) -> f32 {
+    (axis.y * normal.y + axis.z * normal.z) + axis.x * normal.x
 }
 
 /// `|d|` with the original's compare: `0 - d` unless `d > 0` (so NaN is negated).
@@ -41,14 +41,14 @@ pub struct ContactMix {
     pub second: f32,
 }
 
-/// The mix of two ray blocks along `axis`. A block with no point counts as a dot of 0. `axis_scale` is the dot of larger
+/// The mix of two ray blocks along `axis`. A block with no normal counts as a dot of 0. `axis_scale` is the dot of larger
 /// magnitude (`b`'s on a tie or a NaN). `s = sqrt(1 - axis_scale^2)` when positive, else 0. The unit normal of the blocks'
-/// coordinate difference, `r * (b.coord_a - a.coord_a, b.difference - a.difference)`, scales by `s`; its sign makes `first`
+/// coordinate difference, `r * (b.offset - a.offset, b.difference - a.difference)`, scales by `s`; its sign makes `first`
 /// and `second`. The comparisons are the original's (`!(x > 0)` takes the negating branch, and `e1 > e2` picks `d1`), so
 /// NaN follows the same branches.
 pub fn mix_contacts(axis: Vec4, a: &RayBlock, b: &RayBlock) -> ContactMix {
-    let d1 = a.point.map_or(0.0, |v| dot(axis, v));
-    let d2 = b.point.map_or(0.0, |v| dot(axis, v));
+    let d1 = a.normal.map_or(0.0, |v| dot(axis, v));
+    let d2 = b.normal.map_or(0.0, |v| dot(axis, v));
     let e1 = abs_of(d1);
     let e2 = abs_of(d2);
     let m = if e1 > e2 { d1 } else { d2 };
@@ -57,7 +57,7 @@ pub fn mix_contacts(axis: Vec4, a: &RayBlock, b: &RayBlock) -> ContactMix {
     // The unit normal: each product, the sum, the root and the quotient are rounded to the thread's precision, the
     // reciprocal of the root stored as a float.
     let x87 = round_x87;
-    let x = b.coord_a - a.coord_a;
+    let x = b.offset - a.offset;
     let y = b.difference - a.difference;
     let sum = x87(x87(x as f64 * x as f64) + x87(y as f64 * y as f64));
     let r = x87(1.0 / x87(sum.sqrt())) as f32;

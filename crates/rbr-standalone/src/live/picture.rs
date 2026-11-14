@@ -20,7 +20,7 @@ use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::rigid_body::layout::Body;
 use rbr_physics::spring_damper::DamperSignal;
 use rbr_physics::tyre::store::TyreStore;
-use rbr_physics::wheel::layout::{TAIL_HUB_OFFSET, TYRE_SCRATCH, TYRE_TAIL};
+use rbr_physics::wheel::layout::{TYRE_DEF, TYRE_DEF_HUB_OFFSET, TYRE_SCRATCH};
 use rbr_recording::damage::{self, Damage};
 use rbr_recording::dash::{Dash, StackKey};
 use rbr_recording::detach::{self, DoorAngle, PartPose};
@@ -259,8 +259,8 @@ pub fn hub_offsets(mem: &Mem) -> [f32; 4] {
     let car = mem.u32(CAR_PTR);
     let read = |at: u32| mem.try_read(at, 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
     std::array::from_fn(|k| {
-        let tail = read(car + CAR_WHEELS + 4 * k as u32).filter(|&w| w != 0).and_then(|w| read(w + TYRE_TAIL));
-        tail.filter(|&t| t != 0).and_then(|t| read(t + TAIL_HUB_OFFSET)).map_or(0.0, f32::from_bits)
+        let tail = read(car + CAR_WHEELS + 4 * k as u32).filter(|&w| w != 0).and_then(|w| read(w + TYRE_DEF));
+        tail.filter(|&t| t != 0).and_then(|t| read(t + TYRE_DEF_HUB_OFFSET)).map_or(0.0, f32::from_bits)
     })
 }
 

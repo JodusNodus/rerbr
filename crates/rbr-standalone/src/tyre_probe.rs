@@ -15,7 +15,7 @@ use rbr_physics::wheel::layout::{BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CAR, DE
 
 /// The wheel pointers in the car (`car+0x470`, `ngp::layout::car_init::WHEELS`).
 const WHEELS: u32 = 0x470;
-/// The middle ray block (`o+0xc20`, `wheel::layout::probe`'s `PROBE_BLOCK_2`): its weight and tags.
+/// The centre ray block (`o+0xc20`, `wheel::layout::RAY_CENTRE`): its weight and tags.
 const BLOCK_2: u32 = 0xC20;
 /// The physics definition global (`g_1659b6c`); the material manager is at its `DEF_MATERIALS`.
 const CDEF_GLOBAL: u32 = 0x0165_9b6c;

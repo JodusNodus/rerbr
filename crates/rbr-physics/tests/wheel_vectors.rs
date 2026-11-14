@@ -85,11 +85,11 @@ fn transform_and_copy_matches_original_calls() {
 }
 
 #[test]
-fn blend_pair_matches_original_calls() {
+fn carcass_edges_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x539180, "blend4", |mem, c| {
         let [this, a, b, cc, d] = [c.args[0], c.args[1], c.args[2], c.args[3], c.args[4]];
-        layout::blend_pair(mem, this, a, b, cc, d);
+        layout::carcass_edges(mem, this, a, b, cc, d);
     });
 }
 
@@ -103,11 +103,11 @@ fn pick_contact_matches_original_calls() {
 }
 
 #[test]
-fn uint_select_matches_original_calls() {
+fn pick_sector_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x539660, "unk9660", |mem, c| {
         let [this, p, n] = [c.args[0], c.args[1], c.args[2]];
-        let wraps = layout::uint_select(mem, this, p, n);
+        let wraps = layout::pick_sector(mem, this, p, n);
         assert_eq!(wraps, c.eax, "Unk9660 call {}: wrap count", c.index);
     });
 }
@@ -145,25 +145,25 @@ struct RecordedEmbedded<'a> {
 }
 
 impl EmbeddedCalls for RecordedEmbedded<'_> {
-    fn solid_vf40(&mut self, wheel: u32) -> Result<(), HostUnavailable> {
+    fn base_refresh(&mut self, wheel: u32) -> Result<(), HostUnavailable> {
         let inner = next_call(self.call, &mut self.next, 0x52B6D0);
         assert_eq!(inner.args[0], wheel, "M3B5B0 call {}: base", self.call.index);
         apply_writes(&mut self.mem, &windows_of(inner));
         Ok(())
     }
 
-    fn embedded_slot17(&mut self, obj: u32) -> Result<u32, HostUnavailable> {
+    fn state_rotation(&mut self, obj: u32) -> Result<u32, HostUnavailable> {
         assert_eq!(obj, self.call.args[0] + 0x3D0, "M3B5B0 call {}: tail object", self.call.index);
         Ok(self.call.eax)
     }
 }
 
 #[test]
-fn embedded_dispatch_matches_original_calls() {
+fn refresh_solid_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay_with(0x53B5B0, "m3b5b0", shared_windows, |mem, c| {
         let mut host = RecordedEmbedded { call: c, next: 0, mem: mem.clone() };
-        let eax = layout::embedded_dispatch(&mut host, c.args[0]).unwrap();
+        let eax = layout::refresh_solid(&mut host, c.args[0]).unwrap();
         assert_eq!(eax, c.eax, "M3B5B0 call {}: eax", c.index);
     });
 }
@@ -268,7 +268,7 @@ impl WalkCalls for RecordedWalk<'_> {
 }
 
 #[test]
-fn turn_axis_matches_original_calls() {
+fn wobbled_axle_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x53A9E0, "m3a9e0", |mem, c| {
         let this = c.args[0];
@@ -279,7 +279,7 @@ fn turn_axis_matches_original_calls() {
 }
 
 #[test]
-fn axis_from_angle_matches_original_calls() {
+fn inclined_axle_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x53AB00, "m3ab00", |mem, c| {
         let this = c.args[0];
@@ -307,7 +307,7 @@ fn returns(addr: u32, name: &str, port: impl Fn(&Call) -> u32) {
 }
 
 #[test]
-fn state_lerp_matches_original_calls() {
+fn deformed_top_mount_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x53AB90, "m3ab90", |mem, c| {
         let this = c.args[0];
@@ -317,7 +317,7 @@ fn state_lerp_matches_original_calls() {
 }
 
 #[test]
-fn set_input_matches_original_calls() {
+fn apply_hub_torque_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x53AC50, "m3ac50", |mem, c| {
         let this = c.args[0];
@@ -329,14 +329,14 @@ fn set_input_matches_original_calls() {
 }
 
 #[test]
-fn walk_result_matches_original_calls() {
+fn steering_walk_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x53AEF0, "m3aef0", |mem, c| {
         let this = c.args[0];
         let mut host = RecordedWalk { call: c, next: 0 };
         // The walker is the world frame global; the original reads it, so the test maps it to the recorded walker.
         mem.set_u32(FRAME, c.inner[0].args[0]);
-        layout::walk_result(&mut host, mem, this);
+        layout::steering_walk(&mut host, mem, this);
         assert_eq!(host.next, c.inner.len(), "walk call {}: MB560 not all made", c.index);
     });
 }
@@ -402,7 +402,7 @@ impl StrutCalls for RecordedStrut<'_> {
         self.writes.extend(windows_of(inner));
     }
 
-    fn apply_dirty_sum(&mut self, wheel: u32, sum: f32) {
+    fn refresh(&mut self, wheel: u32, sum: f32) {
         let inner = next_call(self.call, &mut self.next, 0x53B900);
         assert_eq!([inner.args[0], inner.args[1]], [wheel, sum.to_bits()], "M3D030 call {}: M3B900", self.call.index);
         self.writes.extend(windows_of(inner));
@@ -425,8 +425,8 @@ fn update_strut_matches_original_calls() {
     });
 }
 
-/// Answers `Vf20`'s two calls from the records, in call order: `wheel_vf40` (its window is the wheel, applied after the
-/// port) and `solid_vf20` (its window is the wheel too). Each must be the next recorded call of its address.
+/// Answers `Vf20`'s two calls from the records, in call order: `refresh_solid` (its window is the wheel, applied after the
+/// port) and `walk_children` (its window is the wheel too). Each must be the next recorded call of its address.
 struct RecordedSlots<'a> {
     call: &'a Call,
     next: usize,
@@ -434,13 +434,13 @@ struct RecordedSlots<'a> {
 }
 
 impl SlotCalls for RecordedSlots<'_> {
-    fn wheel_vf40(&mut self, wheel: u32) {
+    fn refresh_solid(&mut self, wheel: u32) {
         let inner = next_call(self.call, &mut self.next, 0x53B5B0);
         assert_eq!(inner.args[0], wheel, "E43Vf20 call {}: Vf40 receiver", self.call.index);
         self.writes.extend(windows_of(inner));
     }
 
-    fn solid_vf20(&mut self, wheel: u32, p: u32) {
+    fn walk_children(&mut self, wheel: u32, p: u32) {
         let inner = next_call(self.call, &mut self.next, 0x529200);
         assert_eq!([inner.args[0], inner.args[1]], [wheel, p], "E43Vf20 call {}: forward", self.call.index);
         self.writes.extend(windows_of(inner));
@@ -464,11 +464,11 @@ impl RecordedCarSlots<'_> {
 }
 
 impl CarSlotCalls for RecordedCarSlots<'_> {
-    fn car_vf70(&mut self, car: u32, p: u32) {
+    fn accumulate_force(&mut self, car: u32, p: u32) {
         self.car_call(0x529340, car, p);
     }
 
-    fn car_vf74(&mut self, car: u32, p: u32) {
+    fn accumulate_scratch(&mut self, car: u32, p: u32) {
         self.car_call(0x529EA0, car, p);
     }
 }
@@ -504,7 +504,7 @@ struct RecordedSub<'a> {
 }
 
 impl SubCalls for RecordedSub<'_> {
-    fn sub_unk94d0(&mut self, wheel: u32, sub: u32, v: Vec4, a: u32, b: u32, c: u32) {
+    fn edge_force(&mut self, wheel: u32, sub: u32, v: Vec4, a: u32, b: u32, c: u32) {
         let inner = next_call(self.call, &mut self.next, 0x5394D0);
         assert_eq!(
             [inner.args[0], inner.args[1], inner.args[3], inner.args[4], inner.args[5]],
@@ -531,7 +531,7 @@ impl SubCalls for RecordedSub<'_> {
 /// that differ in the sign: where both operands of an `addss`/`mulss` are NaNs, the emulator the records come from
 /// picks the x87 way (the larger significand, then the positive sign) and `math::sse` the right operand's.
 #[test]
-fn split_on_sub_matches_original_calls() {
+fn edge_force_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     let Some(calls) = load(VAR, 0x5394D0) else {
         eprintln!("skipping Unk94d0: {VAR} not set");
@@ -543,7 +543,7 @@ fn split_on_sub_matches_original_calls() {
         let mut mem = map_windows(c);
         let Window { at: residue_at, .. } =
             c.windows.iter().find(|w| w.index == 6).expect("Unk94d0 record: the stack word");
-        let eax = layout::split_on_sub(&mut mem, c.args[0], c.args[1], c.args[2], c.args[3], residue_at + 0x18);
+        let eax = layout::edge_force(&mut mem, c.args[0], c.args[1], c.args[2], c.args[3], residue_at + 0x18);
         assert_eq!(eax, c.eax, "Unk94d0 call {}: eax", c.index);
         for Window { index: k, at, len: _, before: _, after: post } in &c.windows {
             for (w, bytes) in post.chunks_exact(4).enumerate() {
@@ -569,11 +569,11 @@ fn split_on_sub_matches_original_calls() {
 }
 
 #[test]
-fn unk97a0_matches_original_calls() {
+fn edge_forces_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay_with(0x5397A0, "unk97a0", shared_windows, |mem, c| {
         let mut host = RecordedSub { call: c, next: 0, mem: mem.clone() };
-        let gated = layout::update_sub_objects(&mut host, mem, c.args[0], c.args[1], c.args[2], c.args[3]);
+        let gated = layout::edge_forces(&mut host, mem, c.args[0], c.args[1], c.args[2], c.args[3]);
         assert_eq!(u32::from(gated), c.eax, "Unk97a0 call {}: result", c.index);
         assert_eq!(host.next, c.inner.len(), "Unk97a0 call {}: calls not all made", c.index);
     });
@@ -614,12 +614,12 @@ impl DefCopyCalls for RecordedDefCopy<'_> {
 }
 
 #[test]
-fn copy_cf30_matches_original_calls() {
+fn apply_setup_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay_with(0x53CF30, "copycf30", shared_windows, |mem, c| {
         let mut host = RecordedDefCopy { call: c, next: 0, mem: mem.clone(), matched: 0 };
         let mut trig = RecordedTrig { call: c, next: 0 };
-        layout::copy_cf30(&mut host, &mut trig, mem, c.args[0], c.args[1], c.args[2], c.args[3]);
+        layout::apply_setup(&mut host, &mut trig, mem, c.args[0], c.args[1], c.args[2], c.args[3]);
         let crt = c.inner.iter().filter(|i| matches!(i.addr, 0x53F3B0 | 0x53F3A0)).count();
         assert_eq!(host.matched, c.inner.len() - crt, "CopyCF30 call {}: host calls not all made", c.index);
     });
@@ -630,7 +630,7 @@ fn copy_cf30_matches_original_calls() {
 struct RecordedStep(Vec<(u32, u32)>);
 
 impl HookCalls for RecordedStep {
-    fn wheel_vf180(&mut self, wheel: u32, p: u32) {
+    fn step(&mut self, wheel: u32, p: u32) {
         self.0.push((wheel, p));
     }
 }
@@ -651,7 +651,7 @@ struct RecordedSolidCall<'a> {
 }
 
 impl SolidCalls for RecordedSolidCall<'_> {
-    fn solid_vf6c(&mut self, wheel: u32, f: f32) {
+    fn integrate(&mut self, wheel: u32, f: f32) {
         assert_eq!(
             [self.solid.args[0], self.solid.args[1]],
             [wheel, f.to_bits()],
@@ -664,7 +664,7 @@ impl SolidCalls for RecordedSolidCall<'_> {
 }
 
 #[test]
-fn forward_vf6c_matches_original_calls() {
+fn forward_integrate_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     let Some(solids) = load(VAR, 0x52CC30) else {
         eprintln!("skipping vf6c: {VAR} not set");
@@ -676,7 +676,7 @@ fn forward_vf6c_matches_original_calls() {
             .find(|s| s.index + 1 == c.index)
             .unwrap_or_else(|| panic!("Vf6C call {}: no solid record before it", c.index));
         let mut host = RecordedSolidCall { solid, writes: Vec::new() };
-        layout::forward_vf6c(&mut host, c.args[0], f32::from_bits(c.args[1]));
+        layout::forward_integrate(&mut host, c.args[0], f32::from_bits(c.args[1]));
         apply_writes(mem, &host.writes);
     });
 }
@@ -852,11 +852,11 @@ impl layout::RefreshCalls for RecordedRefresh<'_> {
         apply_writes(&mut self.mem, &windows_of(inner));
     }
 
-    fn tyre_tail(&mut self, container: u32) -> u32 {
+    fn tyre_def(&mut self, container: u32) -> u32 {
         self.mem.u32(container + 0x10)
     }
 
-    fn vf40(&mut self, wheel: u32) -> u32 {
+    fn refresh_solid(&mut self, wheel: u32) -> u32 {
         let inner = next_call(self.call, &mut self.next, 0x53B5B0);
         assert_eq!(inner.args[0], wheel, "M3B900 call {}: Vf40 object", self.call.index);
         apply_writes(&mut self.mem, &windows_of(inner));
@@ -884,10 +884,10 @@ fn refresh_matches_original_calls() {
 #[test]
 fn constant_accessors_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    returns(0x538B40, "CDef::Unk4C", |_| layout::cdef_unk4c());
-    returns(0x538D70, "CDef::Unk20", |_| layout::cdef_unk20());
-    returns(0x53B550, "E51Setup::Vf20", |_| layout::setup_vf20());
-    returns(0x53B570, "E51Setup::Vf28", |_| layout::setup_vf28());
+    returns(0x538B40, "CDef::Unk4C", |_| layout::definition_name());
+    returns(0x538D70, "CDef::Unk20", |_| layout::definition_dictionary());
+    returns(0x53B550, "E51Setup::Vf20", |_| layout::setup_dictionary());
+    returns(0x53B570, "E51Setup::Vf28", |_| layout::setup_options_dictionary());
 }
 
 #[test]
@@ -897,9 +897,9 @@ fn damage_zero_matches_original_calls() {
 }
 
 #[test]
-fn scratch_vf04_matches_original_calls() {
+fn clear_scratch_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x538F50, "scratch vf04", |mem, c| layout::scratch_vf04(mem, c.args[0]));
+    replay(0x538F50, "scratch vf04", |mem, c| layout::clear_scratch(mem, c.args[0]));
 }
 
 #[test]
@@ -1203,12 +1203,12 @@ fn finish_calls_in_original_order() {
             self.0.push(format!("reset_outputs {strut:#x} sp {sp:#x}"));
         }
 
-        fn tyre_tail(&mut self, scratch: u32, sp: u32) {
-            self.0.push(format!("tyre_tail {scratch:#x} sp {sp:#x}"));
+        fn tyre_def(&mut self, scratch: u32, sp: u32) {
+            self.0.push(format!("tyre_def {scratch:#x} sp {sp:#x}"));
         }
 
-        fn step77(&mut self, this: u32, a: u32, b: u32, sp: u32) {
-            self.0.push(format!("step77 {this:#x} {a:#x} {b:#x} sp {sp:#x}"));
+        fn probe_ground(&mut self, this: u32, a: u32, b: u32, sp: u32) {
+            self.0.push(format!("probe_ground {this:#x} {a:#x} {b:#x} sp {sp:#x}"));
         }
 
         fn emit(&mut self, signal: u32, payload: u32, sp: u32) {
@@ -1248,8 +1248,8 @@ fn finish_calls_in_original_order() {
         log.0,
         [
             format!("reset_outputs {:#x} sp {:#x}", WHEEL + 0xEC4, f - 4),
-            format!("tyre_tail {:#x} sp {:#x}", WHEEL + 0xF00, f - 4),
-            format!("step77 {WHEEL:#x} {:#x} {:#x} sp {:#x}", f + 0x90, f + 0x94, f - 12),
+            format!("tyre_def {:#x} sp {:#x}", WHEEL + 0xF00, f - 4),
+            format!("probe_ground {WHEEL:#x} {:#x} {:#x} sp {:#x}", f + 0x90, f + 0x94, f - 12),
             format!("emit {sig:#x} {:#x} sp {:#x}", f + 0x40, f - 8),
             format!("emit_noise {:#x} sp {:#x}", WHEEL + 0xF00, f - 4),
         ]

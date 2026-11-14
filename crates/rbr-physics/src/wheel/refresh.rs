@@ -35,9 +35,8 @@ pub struct SuspensionDef {
     pub wishbone_sign: f32,
     /// `StrutDimX`: the strut's x extent.
     pub strut_dim_x: f32,
-    /// The real after `StrutDimX` in the definition, which the strut's z extent takes (named by use: the unit strut
-    /// direction is `(strut_dim_x, 0, travel + strut_dim_z)` over the strut length; the key table lists `StrutDimZ` two
-    /// reals further on).
+    /// The strut's z extent: `StrutDimZ` plus the setup's `StrutPlatformHeight`, as the setup's copy stores it (the unit
+    /// strut direction is `(strut_dim_x, 0, travel + strut_dim_z)` over the strut length).
     pub strut_dim_z: f32,
     /// `SteeringSign`: the sign of the steering rod's sine.
     pub steering_sign: f32,

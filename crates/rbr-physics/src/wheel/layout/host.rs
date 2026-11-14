@@ -5,11 +5,9 @@ use crate::math::vec::Vec4;
 use crate::ntweak;
 use crate::rigid_body::host::HostUnavailable;
 use crate::wheel::layout::store::WheelStore;
+use crate::wheel::layout::WHEEL_SIZE;
 
-/// `operator new(0x1420)`'s size, the wheel's sub-object.
-const SUB_OBJECT_SIZE: u32 = 0x1420;
-
-/// The calls `E51Wheel::M3D1C0` (0x53d1c0) makes: `operator new` (cdecl, 0x70bec2) and the sub-object's constructor
+/// The calls `E51Wheel::M3D1C0` (0x53d1c0) makes: `operator new` (cdecl, 0x70bec2) and the wheel's constructor
 /// (thiscall, 0x53b6e0, with four stack words: the outer object, the two arguments, and 0).
 pub trait ConstructCalls {
     /// `operator new(size)`: the block's address, or 0 when the allocation fails.
@@ -18,11 +16,11 @@ pub trait ConstructCalls {
     fn construct(&mut self, obj: u32, outer: u32, a: u32, b: u32) -> u32;
 }
 
-/// `E51Wheel::M3D1C0` (0x53d1c0, thiscall, `ret 8`): allocates the wheel's 0x1420-byte sub-object and constructs it from
-/// the two arguments. A failed allocation returns 0 and constructs nothing; otherwise the constructor's result. The
+/// `E51Wheel::M3D1C0` (0x53d1c0, thiscall, `ret 8`): allocates a wheel (`WHEEL_SIZE` bytes) and constructs it from the
+/// two arguments. A failed allocation returns 0 and constructs nothing; otherwise the constructor's result. The
 /// original's SEH frame restores `FS:[0]` on both paths and leaves nothing else, so the port has no part for it.
 pub fn construct(host: &mut impl ConstructCalls, outer: u32, a: u32, b: u32) -> u32 {
-    let obj = host.allocate(SUB_OBJECT_SIZE);
+    let obj = host.allocate(WHEEL_SIZE);
     if obj == 0 {
         return 0;
     }
@@ -31,52 +29,56 @@ pub fn construct(host: &mut impl ConstructCalls, outer: u32, a: u32, b: u32) -> 
 
 /// The calls `CWheel::E43Vf20` (0x539090) makes outside the wheel. The wheel is `wheel`.
 pub trait SlotCalls {
-    /// `E51Wheel::M3B5B0` (0x53b5b0), the wheel's `Vf40` (vtable slot 0x40): an `E47` call, then an indirect tail jump.
-    /// Working name `wheel_vf40`; its meaning is not known.
-    fn wheel_vf40(&mut self, wheel: u32);
-    /// `CSolid::E43Vf20` (0x529200, the jump thunk to `CEntity::E43Vf20` at 0x51a3a0), forwarding `p`.
-    fn solid_vf20(&mut self, wheel: u32, p: u32);
+    /// The wheel's `Vf40` (vtable slot 16, +0x40): `E51Wheel::M3B5B0` (0x53b5b0, [`refresh_solid`](super::refresh_solid)).
+    fn refresh_solid(&mut self, wheel: u32);
+    /// `CSolid::E43Vf20` (0x529200, the jump thunk to `CEntity::E43Vf20` at 0x51a3a0, the gated child walk), forwarding
+    /// `p`.
+    fn walk_children(&mut self, wheel: u32, p: u32);
 }
 
 /// The calls `CWheel::E43Vf5C` makes on the car (`this+0x44`): its vtable slots 28 and 29, each with a vector argument.
 pub trait CarSlotCalls {
-    /// The car's slot 28 (`CSolid::E43Vf70`, 0x529340, adds the vector to the force). Working name `car_vf70`.
-    fn car_vf70(&mut self, car: u32, p: u32);
-    /// The car's slot 29 (`CSolid::E43Vf74`, 0x529ea0, accumulates the vector into the scratch). Working name `car_vf74`.
-    fn car_vf74(&mut self, car: u32, p: u32);
+    /// The car's slot 28 (`CSolid::E43Vf70`, 0x529340, `rigid_body::force::accumulate_force`): adds the vector to the
+    /// force.
+    fn accumulate_force(&mut self, car: u32, p: u32);
+    /// The car's slot 29 (`CSolid::E43Vf74`, 0x529ea0, `rigid_body::scratch::accumulate`): adds the vector to the
+    /// scratch.
+    fn accumulate_scratch(&mut self, car: u32, p: u32);
 }
 
 /// The call `CWheel::Hook` makes on the wheel itself: its vtable slot 96 (0x180), with the argument `p`.
 pub trait HookCalls {
-    /// The wheel's slot 96 (vtable 0x180; the step's record is 0x53dd30 in the original). Working name `wheel_vf180`.
-    fn wheel_vf180(&mut self, wheel: u32, p: u32);
+    /// The wheel's slot 96 (vtable 0x180): the step (`E51Wheel::M3DD30`, 0x53dd30, [`wheel_step`](super::wheel_step)).
+    fn step(&mut self, wheel: u32, p: u32);
 }
 
 /// `CWheel::Hook` (E43Vf58, 0x539a20, vtable slot 22): calls the wheel's slot 96 with `p`. The profiler scope and the try
 /// block around that call are the binding's (`physics_core::scope`), not this port's.
 pub fn hook(host: &mut impl HookCalls, wheel: u32, p: u32) {
-    host.wheel_vf180(wheel, p);
+    host.step(wheel, p);
 }
 
 /// The call `CWheel::E43Vf6C` makes outside the wheel: a tail call, so the callee's record is its own.
 pub trait SolidCalls {
-    /// `CSolid::E43Vf6C` (0x52cc30, thiscall, one float) on the wheel `wheel`.
-    fn solid_vf6c(&mut self, wheel: u32, f: f32);
+    /// `CSolid::E43Vf6C` (0x52cc30, thiscall, one float, `rigid_body::integrate::integrate`) on the wheel `wheel`, over
+    /// `dt`.
+    fn integrate(&mut self, wheel: u32, dt: f32);
 }
 
-/// `CWheel::E43Vf6C` (0x539eb0, vtable slot 27): forwards its float `f` to `CSolid::E43Vf6C` as a tail call.
-pub fn forward_vf6c(host: &mut impl SolidCalls, wheel: u32, f: f32) {
-    host.solid_vf6c(wheel, f);
+/// `CWheel::E43Vf6C` (0x539eb0, vtable slot 27): forwards its float `dt` to the solid's integrator, `CSolid::E43Vf6C`, as
+/// a tail call.
+pub fn forward_integrate(host: &mut impl SolidCalls, wheel: u32, dt: f32) {
+    host.integrate(wheel, dt);
 }
 
-/// The calls `E51Wheel::M3B5B0` (0x53b5b0, the slot that `SlotCalls::wheel_vf40` names) makes: `CSolid::Vf40` on the
-/// wheel, then slot 17 of the embedded object as a tail jump.
+/// The calls `E51Wheel::M3B5B0` (0x53b5b0, the slot that `SlotCalls::refresh_solid` names) makes: the solid's own slot 16
+/// on the wheel, then slot 17 of the wheel's state as a tail jump.
 pub trait EmbeddedCalls {
-    /// `CSolid::Vf40` (0x52b6d0, `E47_Vf16Helper`) on the wheel.
-    fn solid_vf40(&mut self, wheel: u32) -> Result<(), HostUnavailable>;
-    /// Slot 17 (+0x44) of the vtable of the object at `obj`, read after the base call. The tail jump's results are the
-    /// wheel's, so the eax comes back here.
-    fn embedded_slot17(&mut self, obj: u32) -> Result<u32, HostUnavailable>;
+    /// `CSolid::Vf40` (0x52b6d0, `E47_Vf16Helper`, `rigid_body::solid_window::refresh_and_reset`) on the wheel.
+    fn base_refresh(&mut self, wheel: u32) -> Result<(), HostUnavailable>;
+    /// Slot 17 (+0x44) of the vtable of the state at `state` (`Vf17x`, the rotation refresh), read after the base call.
+    /// The tail jump's results are the wheel's, so the eax comes back here.
+    fn state_rotation(&mut self, state: u32) -> Result<u32, HostUnavailable>;
 }
 
 /// The calls `E51MultiTire::Emit` (0x53d0d0) makes: `Invoke` on each connection of its signal, and the two `E01Log`
@@ -128,11 +130,11 @@ pub trait SubBlockInit {
     fn init_sub_block(&mut self, block: u32);
 }
 
-/// The call `CWheel::Unk97a0` makes on a gated-on sub-object.
+/// The call `CWheel::Unk97a0` makes on a gated-on edge ray block.
 pub trait SubCalls {
-    /// `CWheel::Unk94d0` (0x5394d0) as the asm calls it: `wheel` is the `this` register, the first stack word is the
-    /// sub-object `sub`, then `v` (a stack vector), `a`, `b` and `c`. Working name `sub_unk94d0`.
-    fn sub_unk94d0(&mut self, wheel: u32, sub: u32, v: Vec4, a: u32, b: u32, c: u32);
+    /// `CWheel::Unk94d0` (0x5394d0, [`edge_force`](super::edge_force)) as the asm calls it: `wheel` is the `this`
+    /// register, the first stack word is the ray block `block`, then `v` (a stack vector), `a`, `b` and `c`.
+    fn edge_force(&mut self, wheel: u32, block: u32, v: Vec4, a: u32, b: u32, c: u32);
 }
 
 /// The calls `E51Wheel::M3D030` (0x53d030) makes outside the wheel, one method each. The arguments and results are typed
@@ -142,9 +144,9 @@ pub trait StrutCalls {
     fn strut_name(&mut self, strut: u32) -> u32;
     /// `NTweak::CBase::SetDirty` (0x52f450) on the object `object` (the tweak at `this+0x5b0`).
     fn mark_dirty(&mut self, object: u32);
-    /// `E51Wheel::M3B900` (0x53b900, thiscall, one float) on the wheel `wheel`: `sum` is the value stored at its
-    /// `+0x5bc`. Working name `apply_dirty_sum`; its meaning is not known.
-    fn apply_dirty_sum(&mut self, wheel: u32, sum: f32);
+    /// `E51Wheel::M3B900` (0x53b900, thiscall, one float, the pose refresh [`refresh`](super::refresh)) on the wheel
+    /// `wheel` for the travel `travel`, the value stored at its `+0x5bc`.
+    fn refresh(&mut self, wheel: u32, travel: f32);
     /// `CSpringDamper::UpdateAndReset` (0x52e060) on the strut, the strut's last call.
     fn update_and_reset(&mut self, strut: u32);
 }

@@ -18,7 +18,7 @@
 //!   negative longitudinal velocity, free-rolling spin is positive, `spin = -vlong / R`).
 //! - The x87 runs at PC=53 (`Precision::Pc53`): the race thread's control word (`notes/ngp.md`).
 //! - Each harness step is one tyre step (`entries::step`) plus one relaxation (`entries::relax_count`) at
-//!   `dt = 1/720` s, the wheel step's order (`wheel_step`: `scratch_step`, then `relax_count`). The contact
+//!   `dt = 1/720` s, the wheel step's order (`wheel_step`: `tyre_step`, then `relax_count`). The contact
 //!   angle (`record+0x5ac`, the wheel's own word) advances by `spin*dt` as the wheel step advances it, so
 //!   heat spreads over the tread sectors as the wheel rolls.
 //! - The surface friction words are refreshed to their base values before every step: the step copies the

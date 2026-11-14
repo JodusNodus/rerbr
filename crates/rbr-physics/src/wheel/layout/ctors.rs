@@ -1,7 +1,7 @@
 //! The wheel's vtable-slot answers, the scratch and damage clears, `M3B880`, `UnkA860`, `CWheel::Vf28` and the
 //! constructors (`CState`, `CDef`, `CSetup`, `CSetupOptions`, `E51Wheel`).
 
-use super::fields::{ON_GROUND, STRUT, TYRE_BLOCK, TYRE_SCRATCH, WHEEL_INDEX};
+use super::fields::{CAR, DAMAGE, DAMAGE_CHANGED, ON_GROUND, SETUP_TOP_MOUNT, STATE, STRUT, TYRE_SCRATCH, WHEEL_INDEX};
 use super::store::WheelStore;
 use crate::car_body::light;
 use crate::mem::Mem;
@@ -14,23 +14,24 @@ use crate::rigid_body::layout::Body;
 use crate::tyre::store::TyreStore;
 use crate::{fpu, ntweak, rigid_body, spring_damper, tyre};
 
-/// `CDef::Unk4C` (0x538b40, a vtable slot, no arguments): the address of a static string.
-pub fn cdef_unk4c() -> u32 {
+/// `CDef::Unk4C` (0x538b40, vtable slot 19, no arguments): the definition's class name, "DefWheel".
+pub fn definition_name() -> u32 {
     0x0074_287C
 }
 
-/// `CDef::Unk20` (0x538d70, a vtable slot, no arguments): the address of a static block.
-pub fn cdef_unk20() -> u32 {
+/// `CDef::Unk20` (0x538d70, vtable slot 8, no arguments): the tweak-key dictionary of `CWheel::CDef`.
+pub fn definition_dictionary() -> u32 {
     0x0165_F2CC
 }
 
-/// `E51Setup::Vf20` (0x53b550, a vtable slot, no arguments): the address of a static block.
-pub fn setup_vf20() -> u32 {
+/// `E51Setup::Vf20` (0x53b550, `CWheel::CSetup`'s slot 8, no arguments): the tweak-key dictionary of `CWheel::CSetup`.
+pub fn setup_dictionary() -> u32 {
     0x0165_F2A0
 }
 
-/// `E51Setup::Vf28` (0x53b570, a vtable slot, no arguments): the address of a static block.
-pub fn setup_vf28() -> u32 {
+/// `E51Setup::Vf28` (0x53b570, `CWheel::CSetupOptions`' slot 8, no arguments): the tweak-key dictionary of
+/// `CWheel::CSetupOptions`.
+pub fn setup_options_dictionary() -> u32 {
     0x0165_F2F4
 }
 
@@ -43,7 +44,7 @@ pub fn damage_zero(mem: &mut Mem, this: u32) {
 
 /// `CScratch::Vf04` (0x538f50, thiscall, no arguments): clears the vectors at +0x20, +0x60, +0x70, +0x80, +0x1f0 and
 /// +0x200 (sixteen bytes each), zeroes the word at +0x57c and the float at +0x210.
-pub fn scratch_vf04(mem: &mut Mem, this: u32) {
+pub fn clear_scratch(mem: &mut Mem, this: u32) {
     for at in [0x20, 0x60, 0x70, 0x80, 0x1F0, 0x200] {
         for k in 0..4 {
             mem.set_u32(this + at + 4 * k, 0);
@@ -54,13 +55,14 @@ pub fn scratch_vf04(mem: &mut Mem, this: u32) {
 }
 
 /// `CWheel::CScratch::CScratch` (0x53b670, thiscall, returns `this`): the scratch's base init, its vtable word, the
-/// material at +0x2a4, the sub-block at +0x404, and `Vf04`. The original's SEH frame leaves nothing else.
+/// material at +0x2a4, the sub-block at +0x404, and `Vf04` ([`clear_scratch`]). The original's SEH frame leaves nothing
+/// else.
 pub fn scratch_ctor(mem: &mut Mem, this: u32) -> u32 {
     rigid_body::layout::store_scratch_base_init(mem, this);
     mem.set_u32(this, 0x0074_2804);
     material::construct(mem, this + 0x2A4);
     light::sub_block_init(mem, this + 0x404);
-    scratch_vf04(mem, this);
+    clear_scratch(mem, this);
     this
 }
 
@@ -82,11 +84,11 @@ pub fn refresh_travel<S: WheelStore>(mem: &mut S, this: u32) -> u32 {
     travel
 }
 
-/// `E51Wheel::UnkA860` (0x53a860, thiscall, stack words a, b, c; ret 0xc): `a` is the tyre block (`this+0x7f0`), `b` is
-/// `SetUnk10` on the strut (0x52da40, `set_rebound_damping`), and `c` is the wear table on the tyre scratch
+/// `E51Wheel::UnkA860` (0x53a860, thiscall, stack words a, b, c; ret 0xc): `a` is the damage record (`this+0x7f0`), `b`
+/// is `SetUnk10` on the strut (0x52da40, `set_rebound_damping`), and `c` is the wear table on the tyre scratch
 /// (`CScratch::Set414`, 0x532490, `store_wear_table`). The asm's order is the port's.
 pub fn tyre_tail_setup(mem: &mut Mem, this: u32, a: u32, b: u32, c: u32) {
-    mem.set_u32(this + TYRE_BLOCK, a);
+    mem.set_u32(this + DAMAGE, a);
     spring_damper::layout::set_rebound_damping(mem, this + STRUT, b);
     mem.store_wear_table(this + TYRE_SCRATCH, c);
 }
@@ -96,10 +98,12 @@ pub fn tyre_tail_setup(mem: &mut Mem, this: u32, a: u32, b: u32, c: u32) {
 pub trait FinishCalls {
     /// `CSpringDamper::ResetOutputs` (0x52e010) on the strut.
     fn reset_outputs(&mut self, strut: u32, sp: u32);
-    /// `TyreTail_Get10` (0x5326b0) on the tyre scratch. Its result feeds only the car transform's input, which the port does not run.
-    fn tyre_tail(&mut self, scratch: u32, sp: u32);
-    /// `CSolid::Step77` (0x529d30) on the wheel, with the two stack pointers `a` and `b`.
-    fn step77(&mut self, this: u32, a: u32, b: u32, sp: u32);
+    /// `TyreTail_Get10` (0x5326b0) on the tyre scratch: its setup. Its result feeds only the car transform's input, which
+    /// the port does not run.
+    fn tyre_def(&mut self, scratch: u32, sp: u32);
+    /// `CSolid::Step77` (0x529d30, `rigid_body::vote::probe_ground`) on the wheel, with the two stack pointers `index`
+    /// and `drop` (the vote's out words).
+    fn probe_ground(&mut self, this: u32, index: u32, drop: u32, sp: u32);
     /// `CSigSolidGeneralState`'s emit (`E51SigGeneral::Emit`, 0x53d0d0, the same code as the tire-particle emit) on `signal`,
     /// with the payload at `payload`.
     fn emit(&mut self, signal: u32, payload: u32, sp: u32);
@@ -109,12 +113,13 @@ pub trait FinishCalls {
 
 /// The wheel's key (+0x30): the payload's word 0.
 const KEY: u32 = 0x30;
-/// The payload (`CSigSolidGeneralState`, four words), and `Step77`'s two stack arguments `a` (+0x90) and `b` (+0x94).
+/// The payload (`CSigSolidGeneralState`, four words), and the ground vote's two stack arguments, its index (+0x90) and
+/// drop (+0x94).
 const FINISH_PAYLOAD: u32 = 0x40;
-const FINISH_A: u32 = 0x90;
-const FINISH_B: u32 = 0x94;
-/// The constant `Step77` takes as `b` (5.0, read from 0x72ae44).
-const STEP77_B: u32 = 0x0072_AE44;
+const VOTE_INDEX: u32 = 0x90;
+const VOTE_DROP: u32 = 0x94;
+/// The drop the vote starts from (5.0, read from 0x72ae44).
+const VOTE_DROP_START: u32 = 0x0072_AE44;
 /// The signal manager (`g_signalManager`, a pointer) and the `E51SigGeneral` signal in it (+0x29e0).
 const SIG_GENERAL: u32 = 0x29E0;
 
@@ -125,10 +130,10 @@ const SIG_GENERAL: u32 = 0x29E0;
 /// whose eax it returns.
 pub fn finish<S: WheelStore>(mem: &mut S, calls: &mut impl FinishCalls, this: u32, frame: u32) -> u32 {
     calls.reset_outputs(this + STRUT, frame - 4);
-    calls.tyre_tail(this + TYRE_SCRATCH, frame - 4);
+    calls.tyre_def(this + TYRE_SCRATCH, frame - 4);
     mem.set_u32(frame + FINISH_PAYLOAD, mem.u32(this + KEY));
-    mem.set_u32(frame + FINISH_B, mem.u32(STEP77_B));
-    calls.step77(this, frame + FINISH_A, frame + FINISH_B, frame - 12);
+    mem.set_u32(frame + VOTE_DROP, mem.u32(VOTE_DROP_START));
+    calls.probe_ground(this, frame + VOTE_INDEX, frame + VOTE_DROP, frame - 12);
     calls.emit(mem.u32(SIGNAL_MANAGER) + SIG_GENERAL, frame + FINISH_PAYLOAD, frame - 8);
     calls.emit_noise(this + TYRE_SCRATCH, frame - 4);
     refresh_travel(mem, this)
@@ -269,10 +274,9 @@ pub fn construct_options(mem: &mut Mem, this: u32) {
     }
 }
 
-/// `CWheel::CSetup`'s `TopMountSlot` (a real, its value at +0xc) and `vecTopMountPosition`, and `CWheel::CSetupOptions`'
-/// `vecTopMount00`: vector tweaks of 0x20 bytes, one after another.
+/// `CWheel::CSetup`'s `TopMountSlot` (a real, its value at +0xc; its `vecTopMountPosition` is `SETUP_TOP_MOUNT`), and
+/// `CWheel::CSetupOptions`' `vecTopMount00`: vector tweaks of 0x20 bytes, one after another.
 const SETUP_TOP_MOUNT_SLOT: u32 = 0xC + 0xC;
-const SETUP_TOP_MOUNT: u32 = 0x20;
 const OPTIONS_TOP_MOUNTS: u32 = 0x20;
 const VECTOR_TWEAK: u32 = 0x20;
 
@@ -311,11 +315,11 @@ pub fn wheel_ctor(
     host.solid_ctor(mem, this, def, name, owner, flags | 0x20)?;
     mem.set_u32(this, WHEEL_VTABLE);
     let base_name = if def != 0 { ntweak::name_or_null(mem, def) } else { 0 };
-    state_ctor(mem, this + 0x3D0, this, base_name);
+    state_ctor(mem, this + STATE, this, base_name);
     scratch_ctor(mem, this + 0x800);
     let (controller_def, tyre_def, record) = if def != 0 { (def + 0x450, def + 0x56C, this) } else { (0, 0, 0) };
-    spring_damper::layout::construct_controller(mem, this + 0xEC4, controller_def, this + 0x670);
-    tyre::layout::construct_scratch(mem, this + 0xF00, tyre_def, this + 0x6B0, record);
+    spring_damper::layout::construct_controller(mem, this + STRUT, controller_def, this + 0x670);
+    tyre::layout::construct_scratch(mem, this + TYRE_SCRATCH, tyre_def, this + 0x6B0, record);
     for at in [0xEA0, 0xEA4, 0xEA8, 0xEAC] {
         mem.set_f32(this + at, 0.0);
     }
@@ -335,9 +339,9 @@ pub fn wheel_ctor(
     } else {
         0
     };
-    mem.set_u32(this + 0x7F4, kept);
-    mem.set_u32(this + 0x7F0, 0);
-    mem.set_u32(this + 0xEC0, 0);
+    mem.set_u32(this + CAR, kept);
+    mem.set_u32(this + DAMAGE, 0);
+    mem.set_u32(this + DAMAGE_CHANGED, 0);
     Ok(this)
 }
 

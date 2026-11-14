@@ -18,9 +18,9 @@ use std::cell::Cell;
 /// `layout::refresh`.
 pub(super) fn refresh(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let x = f32::from_bits(r.stack[0]);
-    layout::state_lerp(&mut ctx.mem, r.ecx);
+    layout::deform_top_mount(&mut ctx.mem, r.ecx);
     let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    layout::turn_axis(&mut libm, &mut ctx.mem, r.ecx);
+    layout::wobble_axle(&mut libm, &mut ctx.mem, r.ecx);
     let mut calls = Refresh { mem: ctx.mem.clone(), host: ctx.host };
     let eax = layout::refresh(&mut ctx.mem, &mut calls, r.ecx, x);
     Ok(Return::void(eax, 4))
@@ -37,11 +37,11 @@ impl layout::RefreshCalls for Refresh<'_> {
         self.host.call(0x52F450, object, &[]);
     }
 
-    fn tyre_tail(&mut self, container: u32) -> u32 {
-        self.host.call(0x5326B0, container, &[]).eax
+    fn tyre_def(&mut self, scratch: u32) -> u32 {
+        self.host.call(0x5326B0, scratch, &[]).eax
     }
 
-    fn vf40(&mut self, wheel: u32) -> u32 {
+    fn refresh_solid(&mut self, wheel: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(wheel) + 0x40);
         self.host.call(target, wheel, &[]).eax
     }
@@ -50,12 +50,12 @@ impl layout::RefreshCalls for Refresh<'_> {
 /// `E51Wheel::M3D520` (0x53d520), `ret 8`: the ground probe (name ours). Its scratch is the frame of the body's
 /// prologue (`S`, see `layout::PROBE_PROLOGUE`), and its callees run below it.
 pub(super) fn ground_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, tmp, ..] = r.stack;
+    let [out, normal, ..] = r.stack;
     let frame = ((r.esp - 4) & !0xF) - layout::PROBE_PROLOGUE;
     let mut calls = Ground { mem: ctx.mem.clone(), host: ctx.host, sp: frame - 0x20 };
     let tuning =
         if crate::ngp::is_ngp() { crate::ngp::probe_tuning(ctx) } else { layout::ProbeTuning::stock(&ctx.mem) };
-    let eax = layout::ground_probe(&mut ctx.mem, &mut calls, r.ecx, frame, out, tmp, tuning);
+    let eax = layout::ground_probe(&mut ctx.mem, &mut calls, r.ecx, frame, out, normal, tuning);
     Ok(Return::void(eax, 8))
 }
 
@@ -73,8 +73,8 @@ impl Ground<'_> {
 }
 
 impl layout::GroundCalls for Ground<'_> {
-    fn tyre_tail14(&mut self, container: u32) -> u32 {
-        self.call(0x5326C0, container, &[])
+    fn tyre_state(&mut self, scratch: u32) -> u32 {
+        self.call(0x5326C0, scratch, &[])
     }
 
     fn table_lerp_pair(&mut self, wheel: u32) {
@@ -109,15 +109,15 @@ impl layout::GroundCalls for Ground<'_> {
         self.call(0x70C4DA, 0, &[rays, 0x6B0, 8, RAY_CLEAR]);
     }
 
-    fn kernel5bd0(&mut self, world: u32, a: u32, b: u32, out: u32) {
+    fn collect_entities(&mut self, world: u32, a: u32, b: u32, out: u32) {
         self.call(0x525BD0, world, &[a, b, 8, 0, out]);
     }
 
-    fn m_d760x(&mut self, object: u32, b: u32, c: u32, d: u32) -> u32 {
+    fn mesh_ray_query(&mut self, object: u32, b: u32, c: u32, d: u32) -> u32 {
         self.call(0x4FD760, object, &[b, c, d, 0])
     }
 
-    fn m46a0(&mut self, world: u32, a: u32, b: u32, list: u32, out: u32) -> u32 {
+    fn cast_ray(&mut self, world: u32, a: u32, b: u32, list: u32, out: u32) -> u32 {
         self.call(0x5246A0, world, &[a, b, list, out])
     }
 
@@ -126,15 +126,15 @@ impl layout::GroundCalls for Ground<'_> {
         self.call(target, hit, &[])
     }
 
-    fn pose_flag(&mut self, wheel: u32, block: u32, b: f32, c: f32) {
-        self.call(0x53D460, wheel, &[block, b.to_bits(), c.to_bits()]);
+    fn update_ray_block(&mut self, wheel: u32, block: u32, limit: f32, floor: f32) {
+        self.call(0x53D460, wheel, &[block, limit.to_bits(), floor.to_bits()]);
     }
 
     fn segment_sweep(&mut self, object: u32, a: u32, b: u32, c: u32, d: u32) -> u32 {
         self.call(0x4FAD90, object, &[a, b, c, d])
     }
 
-    fn pick(&mut self, wheel: u32, a: u32, b: u32, out: u32) {
+    fn pick_contact(&mut self, wheel: u32, a: u32, b: u32, out: u32) {
         self.call(0x539290, wheel, &[a, b, out]);
     }
 
@@ -142,8 +142,8 @@ impl layout::GroundCalls for Ground<'_> {
         self.call(0x539900, wheel, &[x, y, z.to_bits()]);
     }
 
-    fn load_binary(&mut self, tmp: u32, data: u32) {
-        self.call(0x4F3D20, tmp, &[data]);
+    fn load_binary(&mut self, to: u32, data: u32) {
+        self.call(0x4F3D20, to, &[data]);
     }
 }
 
@@ -189,8 +189,8 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x53B900, this, &[travel.to_bits()]);
     }
 
-    fn ground(&mut self, this: u32, out: u32, tmp: u32, sp: u32) -> u32 {
-        self.on(sp, M3D520, this, &[out, tmp])
+    fn ground_probe(&mut self, this: u32, out: u32, normal: u32, sp: u32) -> u32 {
+        self.on(sp, M3D520, this, &[out, normal])
     }
 
     // The vector callees (`collision/vectors.rs`' bindings, which make no call) run here on the pure host.
@@ -243,36 +243,36 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x4E68E0, car, &[a, b]);
     }
 
-    fn fwd6db0(&mut self, car: u32, a: u32, sp: u32) -> f32 {
-        self.float(sp, 0x4E6600, car, &[a])
+    fn spin_rate(&mut self, car: u32, wheel: u32, sp: u32) -> f32 {
+        self.float(sp, 0x4E6600, car, &[wheel])
     }
 
-    fn fwd6dd0(&mut self, car: u32, a: u32, sp: u32) -> f32 {
-        self.float(sp, 0x4E6610, car, &[a])
+    fn axle_term(&mut self, car: u32, wheel: u32, sp: u32) -> f32 {
+        self.float(sp, 0x4E6610, car, &[wheel])
     }
 
-    fn fwd43c0(&mut self, car: u32, i: u32, a: f32, b: f32, sp: u32) {
-        self.on(sp, 0x4E6620, car, &[i, a.to_bits(), b.to_bits()]);
+    fn set_drive_pair(&mut self, car: u32, wheel: u32, a: f32, b: f32, sp: u32) {
+        self.on(sp, 0x4E6620, car, &[wheel, a.to_bits(), b.to_bits()]);
     }
 
-    fn get_a48(&mut self, car: u32, i: u32, j: u32, sp: u32) -> f32 {
-        self.float(sp, 0x4E6730, car, &[i, j])
+    fn roll_bar_force(&mut self, car: u32, id: u32, slot: u32, sp: u32) -> f32 {
+        self.float(sp, 0x4E6730, car, &[id, slot])
     }
 
-    fn add_adc(&mut self, car: u32, v: f32, sp: u32) {
+    fn add_steer_torque(&mut self, car: u32, v: f32, sp: u32) {
         self.on(sp, 0x4E6660, car, &[v.to_bits()]);
     }
 
-    fn set_a1c(&mut self, car: u32, i: u32, j: u32, v: f32, sp: u32) {
-        self.on(sp, 0x4E66A0, car, &[i, j, v.to_bits()]);
+    fn set_roll_bar_cell(&mut self, car: u32, id: u32, slot: u32, v: f32, sp: u32) {
+        self.on(sp, 0x4E66A0, car, &[id, slot, v.to_bits()]);
     }
 
     fn init_sub_block(&mut self, this: u32, sp: u32) {
         self.on(sp, 0x4F3E80, this, &[]);
     }
 
-    fn step76(&mut self, this: u32, a: u32, b: u32, sp: u32) {
-        self.on(sp, 0x529C80, this, &[a, b]);
+    fn point_velocity(&mut self, body: u32, point: u32, out: u32, sp: u32) {
+        self.on(sp, 0x529C80, body, &[point, out]);
     }
 
     fn spring_step(&mut self, strut: u32, args: [u32; 6], sp: u32) {
@@ -280,11 +280,11 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, crate::ngp::Call::SpringStep.address(), strut, &args);
     }
 
-    fn set_state_field(&mut self, scratch: u32, v: u32, sp: u32) {
+    fn set_tyre_active(&mut self, scratch: u32, v: u32, sp: u32) {
         self.on(sp, 0x532470, scratch, &[v]);
     }
 
-    fn set_state48(&mut self, scratch: u32, v: f32, sp: u32) {
+    fn set_penetration_depth(&mut self, scratch: u32, v: f32, sp: u32) {
         self.on(sp, 0x533490, scratch, &[v.to_bits()]);
     }
 
@@ -292,32 +292,32 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x5358C0, scratch, &[x.to_bits()]);
     }
 
-    fn scratch_step(&mut self, scratch: u32, args: [u32; 16], sp: u32) {
+    fn tyre_step(&mut self, scratch: u32, args: [u32; 16], sp: u32) {
         // 0x5360C0, or NGP's wrapper 0x1005b660
         self.on(sp, crate::ngp::Call::TyreStep.address(), scratch, &args);
     }
 
-    fn blend4(&mut self, this: u32, a: u32, b: u32, c: u32, d: u32, sp: u32) {
-        self.on(sp, 0x539180, this, &[a, b, c, d]);
+    fn carcass_edges(&mut self, this: u32, axle: u32, hub: u32, plus: u32, minus: u32, sp: u32) {
+        self.on(sp, 0x539180, this, &[axle, hub, plus, minus]);
     }
 
-    fn update_sub_objects(&mut self, this: u32, a: u32, b: u32, c: u32, sp: u32) {
+    fn edge_forces(&mut self, this: u32, a: u32, b: u32, c: u32, sp: u32) {
         self.on(sp, UNK97A0, this, &[a, b, c]);
     }
 
-    fn state_lerp(&mut self, this: u32, sp: u32) {
+    fn deform_top_mount(&mut self, this: u32, sp: u32) {
         self.on(sp, 0x53AB90, this, &[]);
     }
 
-    fn set_input(&mut self, this: u32, v: f32, sp: u32) {
-        self.on(sp, 0x53AC50, this, &[v.to_bits()]);
+    fn apply_hub_torque(&mut self, this: u32, torque: f32, sp: u32) {
+        self.on(sp, 0x53AC50, this, &[torque.to_bits()]);
     }
 
     fn spin_cross(&mut self, this: u32, p: u32, sp: u32) {
         self.on(sp, 0x53AFB0, this, &[p]);
     }
 
-    fn emit(&mut self, multi_tire: u32, sig: u32, sp: u32) {
+    fn emit_tyre_particles(&mut self, multi_tire: u32, sig: u32, sp: u32) {
         // 0x53D0D0, or NGP's 0x1005f8a0, which reads the wheel from esi
         self.host.call_at_esi(sp, crate::ngp::Call::TyreParticles.address(), multi_tire, self.wheel, &[sig]);
     }
@@ -342,12 +342,12 @@ impl layout::FinishCalls for Finish<'_> {
         self.host.call_at(sp, 0x52E010, strut, &[]);
     }
 
-    fn tyre_tail(&mut self, scratch: u32, sp: u32) {
+    fn tyre_def(&mut self, scratch: u32, sp: u32) {
         self.host.call_at(sp, 0x5326B0, scratch, &[]);
     }
 
-    fn step77(&mut self, this: u32, a: u32, b: u32, sp: u32) {
-        self.host.call_at(sp, 0x529D30, this, &[a, b]);
+    fn probe_ground(&mut self, this: u32, index: u32, drop: u32, sp: u32) {
+        self.host.call_at(sp, 0x529D30, this, &[index, drop]);
     }
 
     fn emit(&mut self, signal: u32, payload: u32, sp: u32) {
@@ -407,8 +407,8 @@ impl StrutCalls for Strut<'_> {
         self.host.call(SET_DIRTY, object, &[]);
     }
 
-    fn apply_dirty_sum(&mut self, wheel: u32, sum: f32) {
-        self.host.call(M3B900, wheel, &[sum.to_bits()]);
+    fn refresh(&mut self, wheel: u32, travel: f32) {
+        self.host.call(M3B900, wheel, &[travel.to_bits()]);
     }
 
     fn update_and_reset(&mut self, strut: u32) {

@@ -116,17 +116,18 @@ impl Calls<'_> {
 }
 
 impl CarSlotCalls for Calls<'_> {
-    fn car_vf70(&mut self, car: u32, p: u32) {
+    fn accumulate_force(&mut self, car: u32, p: u32) {
         self.slot(car, 0x70, p);
     }
 
-    fn car_vf74(&mut self, car: u32, p: u32) {
+    fn accumulate_scratch(&mut self, car: u32, p: u32) {
         self.slot(car, 0x74, p);
     }
 }
 
-/// `Unk94d0` as the asm calls it: ecx is the wheel, the stack is the sub-object, then the vector (written at `Unk97a0`'s
-/// local, its aligned frame's -0x10), `a`, `b` and `c`; the call enters at the frame's -0x58, as the original's.
+/// `Unk94d0` as the asm calls it: ecx is the wheel, the stack is the edge ray block, then the vector (written at
+/// `Unk97a0`'s local, its aligned frame's -0x10), `a`, `b` and `c`; the call enters at the frame's -0x58, as the
+/// original's.
 struct Sub<'a> {
     mem: Mem,
     host: &'a dyn Host,
@@ -134,10 +135,10 @@ struct Sub<'a> {
 }
 
 impl SubCalls for Sub<'_> {
-    fn sub_unk94d0(&mut self, wheel: u32, sub: u32, v: Vec4, a: u32, b: u32, c: u32) {
+    fn edge_force(&mut self, wheel: u32, block: u32, v: Vec4, a: u32, b: u32, c: u32) {
         let v_at = self.frame - 0x10;
         v.store(&mut self.mem, v_at);
-        self.host.call_at(self.frame - 0x58, UNK94D0, wheel, &[sub, v_at, a, b, c]);
+        self.host.call_at(self.frame - 0x58, UNK94D0, wheel, &[block, v_at, a, b, c]);
     }
 }
 
@@ -160,11 +161,11 @@ fn blend_ops(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0x14))
 }
 
-/// thiscall `(a, b, c)`, eax: 1 when a sub-object is gated on (name ours).
+/// thiscall `(a, b, c)`, eax: 1 when an edge ray block is gated on (`layout::edge_forces`).
 fn update_sub_objects(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = Sub { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp) };
-    let gated = layout::update_sub_objects(&mut calls, &mut ctx.mem, r.ecx, a, b, c);
+    let gated = layout::edge_forces(&mut calls, &mut ctx.mem, r.ecx, a, b, c);
     Ok(Return::void(u32::from(gated), 0xC))
 }
 
@@ -174,12 +175,12 @@ struct DefCopy<'a> {
 }
 
 impl DefCopyCalls for DefCopy<'_> {
-    fn copy_state_to_def(&mut self, _: &mut Mem, strut: u32, b: u32) {
-        self.host.call(0x52DBD0, strut, &[b]);
+    fn copy_state_to_def(&mut self, _: &mut Mem, strut: u32, setup: u32) {
+        self.host.call(0x52DBD0, strut, &[setup]);
     }
 
-    fn copy_def_from(&mut self, _: &mut Mem, scratch: u32, c: u32) {
-        self.host.call(0x534760, scratch, &[c]);
+    fn copy_def_from(&mut self, _: &mut Mem, scratch: u32, setup: u32) {
+        self.host.call(0x534760, scratch, &[setup]);
     }
 
     fn set_dirty(&mut self, _: &mut Mem, base: u32) {
@@ -212,16 +213,17 @@ impl Trig for Libm<'_> {
     }
 }
 
-/// thiscall `(a, b, c)`: the CDef copies. The asm leaves the sine in the caller's `b` slot and the angle in `c`'s.
+/// thiscall `(setup, damper_setup, tyre_setup)`: the setup copy (`layout::apply_setup`). The asm leaves the sine in the
+/// caller's second slot and the angle in the third's.
 fn copy_cf30(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let host = ctx.host;
     let mut libm = Libm { host, eax: Cell::new(0) };
     let mut calls = DefCopy { host };
-    layout::copy_cf30(&mut calls, &mut libm, &mut ctx.mem, r.ecx, a, b, c);
+    layout::apply_setup(&mut calls, &mut libm, &mut ctx.mem, r.ecx, a, b, c);
     let def = ctx.mem.u32(r.ecx + layout::DEF);
-    ctx.mem.set_u32(r.esp + 8, ctx.mem.u32(def + layout::CF_DEF_SIN));
-    ctx.mem.set_u32(r.esp + 0xC, ctx.mem.u32(a + layout::CF_SRC_ANG));
+    ctx.mem.set_u32(r.esp + 8, ctx.mem.u32(def + layout::DEF_INCLINED_AXLE + 8));
+    ctx.mem.set_u32(r.esp + 0xC, ctx.mem.u32(a + layout::SETUP_AXIS_INCLINATION));
     Ok(Return::void(libm.eax.get(), 0xC))
 }
 
@@ -229,7 +231,7 @@ fn copy_cf30(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// (name ours).
 fn uint_select(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [p, n, ..] = r.stack;
-    let wraps = layout::uint_select(&mut ctx.mem, r.ecx, p, n);
+    let wraps = layout::pick_sector(&mut ctx.mem, r.ecx, p, n);
     Ok(Return::void(wraps, 8))
 }
 
@@ -257,7 +259,7 @@ fn table_lerp_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `M3B5B0`'s scratch: below the return address, as the rigid-body bindings use it for `E46Mat::Mul`'s operands.
 const SCRATCH_BELOW_ESP: u32 = 0x800;
 
-/// The calls `M3B5B0` makes, run as the rigid-body ports run them: `Vf16Helper` on the wheel, then the embedded object's
+/// The calls `M3B5B0` makes, run as the rigid-body ports run them: `Vf16Helper` on the wheel, then the wheel state's
 /// slot 17 (`Vf17x`, 0x529a50), whose eax is the matrix at `+0x30` (the asm's last `SetFromQuat` return).
 struct Dispatch<'c, 'h> {
     ctx: &'c mut Ctx<'h>,
@@ -265,28 +267,28 @@ struct Dispatch<'c, 'h> {
 }
 
 impl EmbeddedCalls for Dispatch<'_, '_> {
-    fn solid_vf40(&mut self, wheel: u32) -> Result<(), HostUnavailable> {
+    fn base_refresh(&mut self, wheel: u32) -> Result<(), HostUnavailable> {
         rigid_body::vf16(self.ctx, wheel, self.scratch).map(drop)
     }
 
-    fn embedded_slot17(&mut self, obj: u32) -> Result<u32, HostUnavailable> {
-        if self.ctx.mem.u32(self.ctx.mem.u32(obj) + 0x44) != rigid_body::VF17X {
+    fn state_rotation(&mut self, state: u32) -> Result<u32, HostUnavailable> {
+        if self.ctx.mem.u32(self.ctx.mem.u32(state) + 0x44) != rigid_body::VF17X {
             return Err(HostUnavailable);
         }
-        rigid_body::vf17x_state(self.ctx, obj, self.scratch)?;
-        Ok(obj + 0x30)
+        rigid_body::vf17x_state(self.ctx, state, self.scratch)?;
+        Ok(state + 0x30)
     }
 }
 
-/// `M3B5B0` (thiscall, no stack words, plain `ret`) (name ours). The tail's target is checked before anything runs, so
-/// a different target declines with no side effect.
+/// `M3B5B0` (thiscall, no stack words, plain `ret`), `layout::refresh_solid` (name ours). The tail's target is checked
+/// before anything runs, so a different target declines with no side effect.
 fn embedded_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let obj = r.ecx + layout::EMBEDDED_OBJ;
-    if ctx.mem.u32(ctx.mem.u32(obj) + 0x44) != rigid_body::VF17X {
-        return Err(Decline::Unsupported("the embedded object's slot 17 is not Vf17x"));
+    let state = r.ecx + layout::STATE;
+    if ctx.mem.u32(ctx.mem.u32(state) + 0x44) != rigid_body::VF17X {
+        return Err(Decline::Unsupported("the wheel state's slot 17 is not Vf17x"));
     }
     let mut calls = Dispatch { ctx, scratch: r.esp - SCRATCH_BELOW_ESP };
-    let eax = layout::embedded_dispatch(&mut calls, r.ecx)
+    let eax = layout::refresh_solid(&mut calls, r.ecx)
         .map_err(|HostUnavailable| Decline::Unsupported("a rigid-body port is unavailable"))?;
     Ok(Return::void(eax, 0))
 }
@@ -320,7 +322,7 @@ fn clear_and_forward(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 4))
 }
 
-/// The calls `E43Vf20` makes outside the wheel: its `Vf40` (the vtable's slot 0x40, no stack word) and
+/// The calls `E43Vf20` makes outside the wheel: its `Vf40` (the vtable's slot 16 at +0x40, no stack word) and
 /// `CSolid::E43Vf20`.
 struct Slots<'a> {
     mem: Mem,
@@ -328,20 +330,20 @@ struct Slots<'a> {
 }
 
 impl SlotCalls for Slots<'_> {
-    fn wheel_vf40(&mut self, wheel: u32) {
+    fn refresh_solid(&mut self, wheel: u32) {
         let target = self.mem.u32(self.mem.u32(wheel) + 0x40);
         self.host.call(target, wheel, &[]);
     }
 
-    fn solid_vf20(&mut self, wheel: u32, p: u32) {
+    fn walk_children(&mut self, wheel: u32, p: u32) {
         self.host.call(rigid_body::VF20_JUMP, wheel, &[p]);
     }
 }
 
-/// thiscall `(a, b, c, d)`, `ret 0x10`: `CWheel::Blend4`, `layout::blend_pair`.
+/// thiscall `(a, b, c, d)`, `ret 0x10`: `CWheel::Blend4`, `layout::carcass_edges`.
 fn blend4(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, d, ..] = r.stack;
-    layout::blend_pair(&mut ctx.mem, r.ecx, a, b, c, d);
+    layout::carcass_edges(&mut ctx.mem, r.ecx, a, b, c, d);
     Ok(Return::void(0, 0x10))
 }
 
@@ -402,15 +404,15 @@ struct Slot96<'a> {
 }
 
 impl HookCalls for Slot96<'_> {
-    fn wheel_vf180(&mut self, wheel: u32, p: u32) {
+    fn step(&mut self, wheel: u32, p: u32) {
         let target = self.mem.u32(self.mem.u32(wheel) + 0x180);
         self.host.call(target, wheel, &[p]);
     }
 }
 
-/// thiscall `(f)`, `ret 4`: `CWheel::E43Vf6C`, `layout::forward_vf6c` (name ours).
+/// thiscall `(dt)`, `ret 4`: `CWheel::E43Vf6C`, `layout::forward_integrate` (name ours).
 fn forward_vf6c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::forward_vf6c(&mut Solid(ctx.host), r.ecx, f32::from_bits(r.stack[0]));
+    layout::forward_integrate(&mut Solid(ctx.host), r.ecx, f32::from_bits(r.stack[0]));
     Ok(Return::void(0, 4))
 }
 
@@ -418,28 +420,29 @@ fn forward_vf6c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 struct Solid<'a>(&'a dyn Host);
 
 impl SolidCalls for Solid<'_> {
-    fn solid_vf6c(&mut self, wheel: u32, f: f32) {
-        self.0.call(rigid_body::E43VF6C, wheel, &[f.to_bits()]);
+    fn integrate(&mut self, wheel: u32, dt: f32) {
+        self.0.call(rigid_body::E43VF6C, wheel, &[dt.to_bits()]);
     }
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3A9E0`, `layout::turn_axis` (name ours). eax is the last sine or cosine call's.
+/// thiscall, plain `ret`: `E51Wheel::M3A9E0`, `layout::wobble_axle` (name ours). eax is the last sine or cosine call's.
 fn turn_axis(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    layout::turn_axis(&mut libm, &mut ctx.mem, r.ecx);
+    layout::wobble_axle(&mut libm, &mut ctx.mem, r.ecx);
     Ok(Return::void(libm.eax.get(), 0))
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3AB90`, `layout::state_lerp` (name ours).
+/// thiscall, plain `ret`: `E51Wheel::M3AB90`, `layout::deform_top_mount` (name ours).
 fn state_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::state_lerp(&mut ctx.mem, r.ecx);
+    layout::deform_top_mount(&mut ctx.mem, r.ecx);
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(v)`, `ret 4`: `E51Wheel::M3AC50`, `layout::set_input` (name ours). eax is the last sine or cosine call's.
+/// thiscall `(torque)`, `ret 4`: `E51Wheel::M3AC50`, `layout::apply_hub_torque` (name ours). eax is the last sine or
+/// cosine call's.
 fn set_input(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    layout::set_input(&mut libm, &mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
+    layout::apply_hub_torque(&mut libm, &mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
     Ok(Return::void(libm.eax.get(), 4))
 }
 
@@ -466,10 +469,10 @@ impl WalkCalls for Walk<'_> {
     }
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3AEF0`, `layout::walk_result` (name ours).
+/// thiscall, plain `ret`: `E51Wheel::M3AEF0`, `layout::steering_walk` (name ours).
 fn walk_result(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
-    layout::walk_result(&mut walk, &mut ctx.mem, r.ecx);
+    layout::steering_walk(&mut walk, &mut ctx.mem, r.ecx);
     Ok(Return::void(0, 0))
 }
 
@@ -480,11 +483,11 @@ fn spin_cross(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 4))
 }
 
-/// thiscall `(blk, b, c)`, `ret 0xC`: `E51Wheel::M3D460`, `layout::pose_flag` (name ours).
+/// thiscall `(blk, limit, floor)`, `ret 0xC`: `E51Wheel::M3D460`, `layout::update_ray_block` (name ours).
 fn pose_flag(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
     let [blk, b, c, ..] = r.stack;
-    layout::pose_flag(&mut ctx.mem, blk, f32::from_bits(b), f32::from_bits(c));
+    layout::update_ray_block(&mut ctx.mem, blk, f32::from_bits(b), f32::from_bits(c));
     Ok(Return::void(0, 0xC))
 }
 
@@ -496,11 +499,11 @@ fn tyre_tail_setup(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0xC))
 }
 
-/// thiscall `(sub, v, acc, b, c)`, `ret 0x14`: `CWheel::Unk94d0`, `layout::split_on_sub` (name ours). eax is the copy's
+/// thiscall `(block, v, acc, b, c)`, `ret 0x14`: `CWheel::Unk94d0`, `layout::edge_force` (name ours). eax is the copy's
 /// destination.
 fn split_on_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [sub, v, acc, ..] = r.stack;
-    let eax = layout::split_on_sub(&mut ctx.mem, r.ecx, sub, v, acc, r.esp);
+    let [block, v, acc, ..] = r.stack;
+    let eax = layout::edge_force(&mut ctx.mem, r.ecx, block, v, acc, r.esp);
     Ok(Return::void(eax, 0x14))
 }
 

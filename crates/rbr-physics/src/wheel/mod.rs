@@ -7,7 +7,7 @@
 //! - `refresh`: the suspension geometry for a strut travel (wishbone, knuckle, hub, wheel rotation, steering levers).
 //! - `hub`: points on the wheel axle (the tyre's centre, the carcass edges).
 //! - `contact`: how two ground-probe ray blocks combine into the contact vector; `ray` limits a block's difference.
-//! - `axis_force`: the force on a gated sub-object along its axis, with friction.
+//! - `axis_force`: the force at a carcass edge's ground hit along its normal, with friction.
 //! - `walk`: the steering gain and the spin's cross product.
 //! - `sector`: the wheel's angular sectors and their interpolation.
 //! - `strut`: the strut's travel at rest.
