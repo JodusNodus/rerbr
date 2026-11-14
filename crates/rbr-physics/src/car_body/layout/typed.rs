@@ -10,6 +10,7 @@ use std::ops::Range;
 
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
+use crate::physics_core::layout::typed::{Core, CoreFields, Slot as CoreSlot};
 use crate::store::{Object, Raw, Value};
 use crate::wheel::layout::{slot as wheel_slot, CarWheels};
 
@@ -133,8 +134,9 @@ pub fn cell_value_slot(offset: u32) -> Option<Slot<f32>> {
 }
 
 /// The car's typed fields and the wheels' ground flags as a store finds them: `Mem` on the image (the per-call path),
-/// [`CarView`] on the step's held state. `CarStore` is implemented over it (`car.rs`).
-pub trait CarFields: Raw {
+/// [`CarView`] on the step's held state. `CarStore` is implemented over it (`car.rs`); the physics core's fields it reads
+/// (the clock and the substep counter) are the core's (`CoreFields`).
+pub trait CarFields: CoreFields {
     /// The field `slot` of the car at `car`.
     fn field<T: Value>(&self, car: u32, slot: Slot<T>) -> T;
     /// Stores the field `slot` of the car at `car`.
@@ -198,12 +200,18 @@ pub struct CarView<'a> {
     mem: &'a mut Mem,
     own: Option<&'a CarOwn>,
     wheels: Option<&'a CarWheels>,
+    core: Option<&'a Core>,
 }
 
 impl<'a> CarView<'a> {
     /// The store over `mem` with the car `own` and its `wheels` held (none: every word on the image).
     pub fn new(mem: &'a mut Mem, own: Option<&'a CarOwn>, wheels: Option<&'a CarWheels>) -> Self {
-        CarView { mem, own, wheels }
+        CarView { mem, own, wheels, core: None }
+    }
+
+    /// The store with the physics core `core` held too.
+    pub fn with_core(self, core: Option<&'a Core>) -> Self {
+        CarView { core, ..self }
     }
 
     fn held(&self, car: u32) -> Option<&'a CarOwn> {
@@ -219,6 +227,20 @@ impl Raw for CarView<'_> {
     #[inline]
     fn mem_mut(&mut self) -> &mut Mem {
         self.mem
+    }
+}
+
+impl CoreFields for CarView<'_> {
+    #[inline]
+    fn core_field<T: Value>(&self, base: u32, slot: CoreSlot<T>) -> T {
+        self.core.and_then(|c| c.read(base, slot)).unwrap_or_else(|| T::load(self.mem, base + slot.at))
+    }
+
+    #[inline]
+    fn set_core_field<T: Value>(&mut self, base: u32, slot: CoreSlot<T>, value: T) {
+        if !self.core.is_some_and(|c| c.write(base, slot, value)) {
+            value.store(self.mem, base + slot.at)
+        }
     }
 }
 

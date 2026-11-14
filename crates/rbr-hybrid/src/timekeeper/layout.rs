@@ -150,18 +150,14 @@ pub fn set_flag20(mem: &mut Mem, card: u32) {
     mem.set_u32(card + FLAG20, 1);
 }
 
-/// The step counter (`CState` +0x18), the value `Update` takes mod 100.
-pub fn step(mem: &Mem) -> u32 {
-    mem.u32(state(mem) + 0x18)
-}
-
 /// The physics definition's `MaxTimeStep`, the step `Check` divides by.
 pub fn max_time_step(mem: &Mem) -> f32 {
     mem.f32(mem.u32(mem.u32(APP) + 0x24) + 0x1608c)
 }
 
-/// The state (`CState`), the application root's +0x20.
-fn state(mem: &Mem) -> u32 {
+/// The state (`CState`), the application root's +0x20: its step counter (+0x18, the physics core's
+/// `slot::step_counter`) is the value `Update` takes mod 100.
+pub fn state(mem: &Mem) -> u32 {
     mem.u32(mem.u32(APP) + 0x20)
 }
 

@@ -12,6 +12,7 @@ use crate::math::quat::Quat;
 use crate::math::vec::{Vec3, Vec4};
 use crate::math::Mat3;
 use crate::mem::Mem;
+use crate::physics_core::layout::typed::slot as core_slot;
 pub use crate::physics_core::layout::PHYSICS_GLOBAL as WORLD;
 use crate::store::Raw;
 
@@ -461,15 +462,15 @@ impl<S: CarFields> CarStore for S {
         self.u32(self.u32(WORLD) + 0x20)
     }
 
-    /// The timer's double (`*(timer card + 0x20)`), which the timekeeper records and the drive line's thunk reads.
+    /// The timer's double (`*(timer card + 0x20)`: the physics clock), which the timekeeper records and the drive line's
+    /// thunk reads.
     fn timer_double(&self) -> f64 {
-        let at = self.timer_card() + 0x20;
-        f64::from_bits(u64::from(self.u32(at)) | u64::from(self.u32(at + 4)) << 32)
+        self.core_field(self.timer_card(), core_slot::elapsed)
     }
 
-    /// The timer card's word at +0x18 (the position payload's last word).
+    /// The timer card's word at +0x18 (the physics substep counter; the position payload's last word).
     fn timer_word(&self) -> u32 {
-        self.u32(self.timer_card() + 0x18)
+        self.core_field(self.timer_card(), core_slot::step_counter)
     }
 
     /// The car's position lanes (`car + 0x140`, four words), the start of the position payload.
@@ -501,7 +502,12 @@ impl<S: CarFields> CarStore for S {
 
     fn time_keeper_diff(&self, keeper: u32, current: u32) -> TimeKeeperDiff {
         let card = self.u32(keeper + 4);
-        let end = if self.u32(card + 0x58) != 0 { self.load_f64(card + 0x50) } else { self.load_f64(current) };
+        // `current` is the address of the physics clock (the core's field) as the step passes it.
+        let end = if self.u32(card + 0x58) != 0 {
+            self.load_f64(card + 0x50)
+        } else {
+            self.core_field(current.wrapping_sub(core_slot::elapsed.at), core_slot::elapsed)
+        };
         TimeKeeperDiff { origin: self.load_f64(card + 0x38), end }
     }
 

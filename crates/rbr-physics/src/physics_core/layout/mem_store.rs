@@ -1,11 +1,13 @@
-//! The Mem store of the physics core: `CoreStore` over the game's memory, with the offsets of the physics object, its
-//! state, the body list's nodes, the collision events and the passenger.
+//! The physics core's store: `CoreStore` over `CoreFields` (`typed.rs`: the physics object's, its state's and the step
+//! globals' typed words, `Mem`'s per call or `CoreView`'s held), with the offsets of the rest: the pointers, the body
+//! list's nodes, the collision events, the passenger and the mounted body, on the image.
 
 use super::globals::{physics, physics_global, SIGNAL_MANAGER};
-use super::prof_calls::{set_word64, word64, LOG_FLAGS_AT, LOG_HOOK_FLAG, PHYSICS_FLAGS_AT};
+use super::prof_calls::{LOG_FLAGS_AT, LOG_HOOK_FLAG, PHYSICS_FLAGS_AT};
+use super::typed::{slot, CoreFields};
+use super::PHYSICS_GLOBAL;
 use crate::car_body::layout::CURRENT_CAR;
 use crate::collision::layout::sort::event_time;
-use crate::mem::Mem;
 use crate::physics_core::contact::advanced_by_contact_step;
 use crate::physics_core::layout::TELEMETRY_GLOBAL;
 use crate::physics_core::math::{BodyMotion, Vec4};
@@ -15,14 +17,6 @@ use crate::physics_core::store::CoreStore;
 const PHYSICS_DEF_AT: u32 = 0x24;
 const PHYSICS_STATE_AT: u32 = 0x20;
 const PHYSICS_SCRATCH_AT: u32 = 0x28;
-const CONTACT_HIT_AT: u32 = 0x1c;
-const SINGLE_DELAY_AT: u32 = 0x5c;
-const SINGLE_PENDING_AT: u32 = 0x60;
-const HITS_AT: u32 = 0x4;
-const HITS_LAST_AT: u32 = 0x8;
-const HITS_MAXIMUM_AT: u32 = 0xc;
-const PASS_MAXIMUM_AT: u32 = 0x14;
-const PASS_COUNT_AT: u32 = 0x18;
 // The definition (`CPhysics::CDef`): the values of `Flags`, `DbgFlags` and `MaxTimeStep`.
 const STEP_FLAGS_AT: u32 = 0x160cc;
 const DEBUG_FLAGS_AT: u32 = 0x160e0;
@@ -34,8 +28,6 @@ const GRAVITY_AT: u32 = GRAVITY_KEY_AT + GRAVITY_KEY_VALUE_AT;
 /// The sentinel -0x160a0 in the definition's place makes the original read the key at address 0.
 const NO_GRAVITY: u32 = GRAVITY_KEY_AT.wrapping_neg();
 // The state and its nodes.
-const STATE_COUNTER_AT: u32 = 0x18;
-const STATE_TIME_AT: u32 = 0x20;
 const STATE_DIRTY_AT: u32 = 0x0c;
 const STATE_BODIES_AT: u32 = 0x450;
 const STATE_SECOND_AT: u32 = 0x480;
@@ -45,8 +37,6 @@ const EVENT_NEXT_AT: u32 = 0xc;
 const SOLID_FLAGS_AT: u32 = 0x60;
 // Globals.
 const CAR_DRIVE_AT: u32 = 0x4b0;
-const STEP_INDEX_GLOBAL: u32 = 0x0165_9b78;
-const STEP_CALL_COUNT_GLOBAL: u32 = 0x0165_9b74;
 // The passenger and its host.
 const PASSENGER_HOST_AT: u32 = 0x14;
 const STEP_HOST_AT: u32 = 0x40;
@@ -74,18 +64,18 @@ const MOUNTED_OWNER_AT: u32 = 0x3d0;
 const POSE_SOURCE_AT: u32 = 0x100;
 const POSE_TARGET_AT: u32 = 0x2a0;
 
-impl CoreStore for Mem {
+impl<S: CoreFields> CoreStore for S {
     fn step_flags(&self) -> u32 {
-        let def = self.u32(physics_global(self) + PHYSICS_DEF_AT);
+        let def = self.u32(physics_global(self.mem()) + PHYSICS_DEF_AT);
         self.u32(def + STEP_FLAGS_AT)
     }
 
     fn debug_flags(&self) -> u32 {
-        self.u32(self.u32(physics(self) + PHYSICS_DEF_AT) + DEBUG_FLAGS_AT)
+        self.u32(self.u32(physics(self.mem()) + PHYSICS_DEF_AT) + DEBUG_FLAGS_AT)
     }
 
     fn gravity_point(&self) -> Option<[f32; 3]> {
-        let def = self.u32(physics_global(self) + PHYSICS_DEF_AT);
+        let def = self.u32(physics_global(self.mem()) + PHYSICS_DEF_AT);
         if def == NO_GRAVITY {
             return None;
         }
@@ -98,15 +88,15 @@ impl CoreStore for Mem {
     }
 
     fn single_step_pending(&self, this: u32) -> u32 {
-        self.u32(this + SINGLE_PENDING_AT)
+        self.core_field(this, slot::single_step_pending)
     }
 
     fn single_step_delay(&self, this: u32) -> u32 {
-        self.u32(this + SINGLE_DELAY_AT)
+        self.core_field(this, slot::single_step_delay)
     }
 
     fn set_single_step_delay(&mut self, this: u32, value: u32) {
-        self.set_u32(this + SINGLE_DELAY_AT, value);
+        self.set_core_field(this, slot::single_step_delay, value);
     }
 
     fn physics_state(&self, this: u32) -> u32 {
@@ -114,7 +104,7 @@ impl CoreStore for Mem {
     }
 
     fn set_contact_hit(&mut self, this: u32, hits: u32) {
-        self.set_u32(this + CONTACT_HIT_AT, hits);
+        self.set_core_field(this, slot::contact_hit, hits);
     }
 
     fn solver(&self, this: u32) -> u32 {
@@ -126,47 +116,47 @@ impl CoreStore for Mem {
     }
 
     fn pass_count(&self, this: u32) -> u32 {
-        self.u32(this + PASS_COUNT_AT)
+        self.core_field(this, slot::pass_count)
     }
 
     fn set_pass_count(&mut self, this: u32, value: u32) {
-        self.set_u32(this + PASS_COUNT_AT, value);
+        self.set_core_field(this, slot::pass_count, value);
     }
 
     fn pass_maximum(&self, this: u32) -> u32 {
-        self.u32(this + PASS_MAXIMUM_AT)
+        self.core_field(this, slot::pass_maximum)
     }
 
     fn set_pass_maximum(&mut self, this: u32, value: u32) {
-        self.set_u32(this + PASS_MAXIMUM_AT, value);
+        self.set_core_field(this, slot::pass_maximum, value);
     }
 
     fn set_hits(&mut self, this: u32, value: u32) {
-        self.set_u32(this + HITS_AT, value);
+        self.set_core_field(this, slot::hits, value);
     }
 
     fn set_hits_last(&mut self, this: u32, value: u32) {
-        self.set_u32(this + HITS_LAST_AT, value);
+        self.set_core_field(this, slot::hits_last, value);
     }
 
     fn hits_maximum(&self, this: u32) -> u32 {
-        self.u32(this + HITS_MAXIMUM_AT)
+        self.core_field(this, slot::hits_maximum)
     }
 
     fn set_hits_maximum(&mut self, this: u32, value: u32) {
-        self.set_u32(this + HITS_MAXIMUM_AT, value);
+        self.set_core_field(this, slot::hits_maximum, value);
     }
 
     fn step_counter(&self, state: u32) -> u32 {
-        self.u32(state + STATE_COUNTER_AT)
+        self.core_field(state, slot::step_counter)
     }
 
     fn set_step_counter(&mut self, state: u32, value: u32) {
-        self.set_u32(state + STATE_COUNTER_AT, value);
+        self.set_core_field(state, slot::step_counter, value);
     }
 
     fn mark_state_dirty(&mut self, state: u32) {
-        crate::ntweak::layout::set_dirty(self, state + STATE_DIRTY_AT);
+        crate::ntweak::layout::set_dirty(self.mem_mut(), state + STATE_DIRTY_AT);
     }
 
     fn bodies_head(&self, state: u32) -> u32 {
@@ -186,11 +176,11 @@ impl CoreStore for Mem {
     }
 
     fn elapsed(&self, state: u32) -> f64 {
-        f64::from_bits(word64(self, state + STATE_TIME_AT))
+        self.core_field(state, slot::elapsed)
     }
 
     fn set_elapsed(&mut self, state: u32, value: f64) {
-        set_word64(self, state + STATE_TIME_AT, value.to_bits());
+        self.set_core_field(state, slot::elapsed, value);
     }
 
     fn event_next(&self, event: u32) -> u32 {
@@ -202,7 +192,7 @@ impl CoreStore for Mem {
     }
 
     fn event_penetration(&self, event: u32) -> f32 {
-        event_time(self, event)
+        event_time(self.mem(), event)
     }
 
     fn solid_advanced(&self, solid: u32) -> bool {
@@ -214,12 +204,12 @@ impl CoreStore for Mem {
     }
 
     fn set_step_index(&mut self, step: u32) {
-        self.set_u32(STEP_INDEX_GLOBAL, step);
+        self.set_core_field(PHYSICS_GLOBAL, slot::step_index, step);
     }
 
     fn count_step_call(&mut self) {
-        let calls = self.u32(STEP_CALL_COUNT_GLOBAL).wrapping_add(1);
-        self.set_u32(STEP_CALL_COUNT_GLOBAL, calls);
+        let calls = self.core_field(PHYSICS_GLOBAL, slot::call_count).wrapping_add(1);
+        self.set_core_field(PHYSICS_GLOBAL, slot::call_count, calls);
     }
 
     fn player_car(&self) -> u32 {
@@ -386,7 +376,7 @@ impl CoreStore for Mem {
     }
 
     fn gravity_key(&self) -> u32 {
-        self.u32(physics_global(self) + PHYSICS_DEF_AT).wrapping_add(GRAVITY_KEY_AT)
+        self.u32(physics_global(self.mem()) + PHYSICS_DEF_AT).wrapping_add(GRAVITY_KEY_AT)
     }
 
     fn mounted_key(&self, body: u32) -> u32 {
@@ -419,7 +409,7 @@ impl CoreStore for Mem {
     }
 
     fn accumulate_hook(&self) -> bool {
-        let physics = physics_global(self);
+        let physics = physics_global(self.mem());
         let log_flags = self.u32(self.u32(physics + PHYSICS_DEF_AT) + LOG_FLAGS_AT);
         (log_flags | self.u32(physics + PHYSICS_FLAGS_AT)) & LOG_HOOK_FLAG != 0
     }
@@ -433,7 +423,7 @@ impl CoreStore for Mem {
     }
 
     fn copy_gravity(&mut self, to: u32) {
-        let def = self.u32(physics_global(self) + PHYSICS_DEF_AT);
+        let def = self.u32(physics_global(self.mem()) + PHYSICS_DEF_AT);
         CoreStore::copy_vec4(self, def + GRAVITY_AT, to);
     }
 }
