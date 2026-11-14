@@ -275,7 +275,7 @@ pub fn run(
         Source::Boot(_, _, race, _) => race.assist_settings(),
         Source::Snapshot(_) => AssistSettings::QUICK_RACE,
     };
-    let Start { playback, trace, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
+    let Start { mut playback, trace, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
         match source {
             Source::Snapshot(path) => snapshot_start(path, frames, mask, read_set.is_some())?,
             Source::Boot(data, name, race, dump) => boot_start(data, stage, name, race, frames, mask, dump)?,
@@ -284,12 +284,12 @@ pub fn run(
     let mut twin = match twin {
         Some(kind) => Some(Twin::new(
             kind,
-            &playback,
+            &mut playback,
             match source {
                 Source::Snapshot(path) => snapshot_start(path, frames, mask, false)?.playback,
                 Source::Boot(data, name, race, _) => boot_start(data, stage, name, race, frames, mask, None)?.playback,
             },
-        )),
+        )?),
         None => None,
     };
     compare.mask_ngp_padding();

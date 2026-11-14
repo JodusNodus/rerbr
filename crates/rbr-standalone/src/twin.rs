@@ -10,8 +10,12 @@
 //! ([`rbr_hybrid::pure::Pure::typed`], the default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
 //! stage's queries against the image's (`stage::layout::differential`). Every solid the car has held so far is compared
 //! too (`rigid_body::layout::Solid`'s owned bytes): a mounted body leaves the car's slots when it detaches.
+//! `across` runs the first side with its typed state held across steps (`Pure::typed_across_steps`) and the second
+//! with it lifted and lowered around each step, the proof that holding it across steps changes nothing.
+//!
+//! Both sides' images are read through [`Pure::image`] (the typed state's words lowered into them first).
 
-use rbr_hybrid::pure::{frame_bytes, word_name, Playback, CAR_PTR};
+use rbr_hybrid::pure::{frame_bytes, word_name, Playback, Pure, CAR_PTR};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{CarSolids, Solid};
 use rbr_physics::store::{self, Object};
@@ -26,8 +30,11 @@ pub enum Kind {
     /// place.
     MemDirect,
     /// The typed subsystems on the image between calls (each call lifts and lowers its own), against the first side's
-    /// typed storage over each step.
+    /// typed storage (held over each step or across steps).
     Typed,
+    /// The typed storage held over each step (lifted before it, lowered after), against the first side's held across
+    /// steps.
+    Across,
 }
 
 impl Kind {
@@ -36,7 +43,8 @@ impl Kind {
             "mem" => Ok(Kind::Mem),
             "mem-direct" => Ok(Kind::MemDirect),
             "typed" => Ok(Kind::Typed),
-            _ => Err(format!("--twin {value}: mem, mem-direct or typed")),
+            "across" => Ok(Kind::Across),
+            _ => Err(format!("--twin {value}: mem, mem-direct, typed or across")),
         }
     }
 }
@@ -54,24 +62,28 @@ pub struct Twin {
 }
 
 impl Twin {
-    /// The twin of `a` on `b`, a second playback of the same image.
-    pub fn new(kind: Kind, a: &Playback, mut b: Playback) -> Self {
+    /// The twin of `a` on `b`, a second playback of the same image; [`Kind::Across`] sets `a` to hold its typed state
+    /// across steps.
+    pub fn new(kind: Kind, a: &mut Playback, mut b: Playback) -> Result<Self, String> {
+        if kind == Kind::Across {
+            hold_across_steps(&mut a.pure)?;
+        }
         b.pure.direct = kind == Kind::MemDirect;
         b.pure.typed = a.pure.typed && kind != Kind::Typed;
-        let round_trip = [&a.pure.mem, &b.pure.mem].map(|mem| {
+        let round_trip = [a.pure.image(), b.pure.image()].map(|mem| {
             let bytes = store::round_trip(mem, &objects(mem))?;
             Ok(bytes + store::typed::round_trip(mem, mem.u32(CAR_PTR))?)
         });
         for (side, r) in ["first", "second"].iter().zip(&round_trip) {
             eprintln!("twin: lower(lift) of the {side} side's image: {}", Self::round_trip_text(r));
         }
-        match rbr_physics::stage::layout::differential(&a.pure.mem) {
+        match rbr_physics::stage::layout::differential(a.pure.image()) {
             Ok(bytes) => eprintln!("twin: the typed stage's queries equal the image's, {bytes} bytes"),
             Err(e) => eprintln!("twin: the typed stage's queries differ from the image's: {e}"),
         }
         let mut twin = Twin { kind, playback: b, steps: 0, first: None, solids: Vec::new(), round_trip };
         twin.compare(a, "the start");
-        twin
+        Ok(twin)
     }
 
     /// Steps the second side as the first was stepped, then compares them.
@@ -93,14 +105,13 @@ impl Twin {
         if self.first.is_some() {
             return;
         }
-        let mem = &a.pure.mem;
+        let (mem, other) = (a.pure.image(), self.playback.pure.image());
         for solid in CarSolids::lift(mem, mem.u32(CAR_PTR)).solids {
             if self.solids.iter().all(|(at, _)| *at != solid.at) {
                 self.solids.push((solid.at, solid.name));
             }
         }
-        let what = difference(mem, &self.playback.pure.mem)
-            .or_else(|| solid_difference(mem, &self.playback.pure.mem, &self.solids));
+        let what = difference(mem, other).or_else(|| solid_difference(mem, other, &self.solids));
         if let Some(what) = what {
             self.first = Some((self.steps, format!("{when}: {what}")));
         }
@@ -137,6 +148,11 @@ impl Twin {
     pub fn equal(&self) -> bool {
         self.first.is_none() && self.round_trip.iter().all(Result::is_ok)
     }
+}
+
+/// Holds `pure`'s typed state across steps.
+fn hold_across_steps(_pure: &mut Pure) -> Result<(), String> {
+    Err("--twin across needs Pure::typed_across_steps (the typed state held across steps), not in this build".into())
 }
 
 /// The car's tabled objects and the physics core's.

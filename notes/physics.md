@@ -253,7 +253,10 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 
 - `scripts/gate.sh --typed`: twin-typed and twin-aids (drive2 with `--twin typed`, aids off and on: held against per
   call after each of 84084 steps, round trips and stage queries equal) and poison (`rbr-hybrid/poison`: held words
-  poisoned, definitions watched). `--twin mem|mem-direct` check the `Mem` path and Mem-direct dispatch the same way.
+  poisoned, definitions watched); twin-across and poison-across (`--twin across`, release and poison builds: held
+  across steps against held over each step; "skipped" until `Pure::typed_across_steps` exists, `twin.rs`
+  `hold_across_steps`). `--twin mem|mem-direct` check the `Mem` path and Mem-direct dispatch the same way. The twin
+  and the recording compare read the images through `Pure::image`.
 - `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
   image, the differentials (host-free entries in a row per call against held, every byte); the chain tests
   (`the_typed_*_over_a_chain_keeps_the_per_call_bytes`) over vectors.
