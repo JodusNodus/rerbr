@@ -4,7 +4,7 @@ use super::contacts::{self, CONTACT_LIST, HALF, HOOK, RING_TAIL};
 
 use super::solid_ctor::SOLID_STATE;
 use super::{
-    Body, Def, ParentFrame, Vec4, ANGULAR_VELOCITY, BODY_FLAG_8, DEFINITION, DEF_INVERSE_MASS, DEF_VERY_SOFT,
+    Body, Def, ParentFrame, Vec4, ANGULAR_VELOCITY, CONTACT_LIST_FLAG, DEFINITION, DEF_INVERSE_MASS, DEF_VERY_SOFT,
     ENTITY_FLAGS, LINEAR_VELOCITY, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE, START_ORIENTATION, START_POSITION,
 };
 use crate::math::quat::Quat;
@@ -135,7 +135,7 @@ impl RigidStore for Mem {
             inverse_mass: RigidStore::inverse_mass(self, this),
             max_step: self.f32(settings(self) + MAX_TIME_STEP),
             range,
-            sample: self.u32(this + HOOK) != 0 && self.u8(this + ENTITY_FLAGS) & BODY_FLAG_8 != 0,
+            sample: self.u32(this + HOOK) != 0 && self.u8(this + ENTITY_FLAGS) & CONTACT_LIST_FLAG != 0,
         }
     }
 

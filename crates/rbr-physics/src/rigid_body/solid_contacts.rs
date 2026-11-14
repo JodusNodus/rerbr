@@ -19,18 +19,18 @@ pub struct ContactOut {
     pub depth: u32,
 }
 
-/// The contact at `e` with the range `f`. The body's inverse mass, the world's maximum time step and the sample
-/// test (the hook and the retire flag) are read first; the writes are the depth, the force when it is computed, and
-/// the pair on a hit. Returns 1 on a hit.
+/// The contact at `contact` with the range `range`. The body's inverse mass, the world's maximum time step and the
+/// sample test (the hook and the contact-list flag) are read first; the writes are the depth, the force when it is
+/// computed, and the pair on a hit. Returns 1 on a hit.
 pub fn contact_worker<S: RigidStore>(
     store: &mut S,
     this: u32,
     out: ContactOut,
-    e: u32,
-    f: f32,
+    contact: u32,
+    range: f32,
     host: &mut impl ContactHost,
 ) -> Result<u32, HostUnavailable> {
-    let input = store.contact_input(this, e, f);
+    let input = store.contact_input(this, contact, range);
     let r = contact::contact_step(&input, host)?;
     store.set_f32(out.depth, r.depth);
     if let Some(force) = r.force {
@@ -70,7 +70,7 @@ pub trait ImpulseTailCalls<S = Mem> {
     /// The body's pose query on `body`: returns the body's pose.
     fn pose(&mut self, store: &mut S, sp: u32, body: u32, pushed: u32) -> u32;
     /// Composes `point` with the walker's `matrix` into `out`.
-    fn compose_a(&mut self, store: &mut S, sp: u32, point: u32, matrix: u32, out: u32);
+    fn compose(&mut self, store: &mut S, sp: u32, point: u32, matrix: u32, out: u32);
     /// The hook's call with its eight arguments.
     fn hook(&mut self, store: &mut S, sp: u32, hook: u32, args: [u32; 8]);
     /// Appends to the ring tail.
@@ -92,7 +92,7 @@ pub fn impulse_tail<S: RigidStore>(
     let out = frame.composed;
     if store.hook(this) != 0 {
         let pose = calls.pose(store, frame.pose_sp, this, out);
-        calls.compose_a(store, frame.compose_sp, point, pose, out);
+        calls.compose(store, frame.compose_sp, point, pose, out);
         let pair = args[4];
         let pair = store.hook_pair(pair);
         let word = if impulse::hook_takes_first(pair.third, pair.half) { pair.first } else { pair.second };
@@ -101,7 +101,7 @@ pub fn impulse_tail<S: RigidStore>(
         calls.hook(store, frame.hook_sp, hook, hook_args);
     }
     if core_layout::def_debug_flags(store.mem()) & RING_BIT != 0 && store.ring_tail(this) != 0 {
-        calls.compose_a(store, frame.compose_sp, point, this, out);
+        calls.compose(store, frame.compose_sp, point, this, out);
         let ring = store.ring_tail(this);
         calls.ring_append(store, frame.ring_sp, ring, [out, 0, 1.0f32.to_bits(), 0]);
     }

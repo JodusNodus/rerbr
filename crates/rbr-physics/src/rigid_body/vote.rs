@@ -55,20 +55,21 @@ pub trait VoteHost {
     fn vote(&mut self, pos: Vec4, point: Vec4) -> Result<Option<Vote>, HostUnavailable>;
 }
 
-/// What the ground probe returns and writes: the result, the int at `*a` and the float at `*b`, after the call.
+/// What the ground probe returns and writes: the result, then the words it leaves at its two pointers, the index and
+/// the drop (the wheel's names for them).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Step77 {
-    pub ret: i32,
-    pub a: u32,
-    pub b: f32,
+pub struct GroundProbe {
+    pub result: i32,
+    pub index: u32,
+    pub drop: f32,
 }
 
-/// Votes for the position `pos` with its z lowered by `b`. When the vote is taken, `*a` is the vote's index and `*b`
-/// is scaled by its scale; otherwise `*a` is 1.0 and `*b` is unchanged.
-pub fn probe_ground(pos: Vec4, b: f32, host: &mut impl VoteHost) -> Result<Step77, HostUnavailable> {
-    let point = Vec4 { z: sse::sub(pos.z, b), ..pos };
+/// Votes for the position `pos` with its z lowered by `drop`. When the vote is taken, the index is the vote's and the
+/// drop is scaled by its scale; otherwise the index word is 1.0 and the drop is unchanged.
+pub fn probe_ground(pos: Vec4, drop: f32, host: &mut impl VoteHost) -> Result<GroundProbe, HostUnavailable> {
+    let point = Vec4 { z: sse::sub(pos.z, drop), ..pos };
     Ok(match host.vote(pos, point)? {
-        Some(v) => Step77 { ret: 1, a: v.index, b: sse::mul(b, v.scale) },
-        None => Step77 { ret: 0, a: 1.0f32.to_bits(), b },
+        Some(v) => GroundProbe { result: 1, index: v.index, drop: sse::mul(drop, v.scale) },
+        None => GroundProbe { result: 0, index: 1.0f32.to_bits(), drop },
     })
 }

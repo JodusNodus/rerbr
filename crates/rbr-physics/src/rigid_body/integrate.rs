@@ -5,7 +5,7 @@
 //! keeps its old value.
 
 use super::host::HostUnavailable;
-use super::layout::{Body, Def, ParentFrame, Vec4, BODY_FLAG_8};
+use super::layout::{Body, Def, ParentFrame, Vec4, CONTACT_LIST_FLAG};
 use super::pose::{pose_step, PoseHost};
 use super::sleep;
 use crate::math::quat::Quat;
@@ -82,10 +82,11 @@ fn add_scaled_sse(v: Vec4, a: Vec4, dt: f32) -> Vec4 {
     }
 }
 
-/// The flag-8 clears. Returns the pose step's flags `(update position, update orientation)`: a cleared linear velocity
-/// stops the position update, a cleared angular velocity stops the orientation update.
+/// The clears on a body with [`CONTACT_LIST_FLAG`]. Returns the pose step's flags `(update position, update
+/// orientation)`: a cleared linear velocity stops the position update, a cleared angular velocity stops the orientation
+/// update.
 fn clear_slow(body: &mut Body, threshold: f32) -> (bool, bool) {
-    if body.body_flags & BODY_FLAG_8 == 0 || !(squared_speed(body.linear_velocity) < threshold) {
+    if body.body_flags & CONTACT_LIST_FLAG == 0 || !(squared_speed(body.linear_velocity) < threshold) {
         return (true, true);
     }
     body.linear_velocity = Vec4::default();

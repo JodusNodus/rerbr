@@ -128,7 +128,7 @@ impl<H> rigid_body::host::SolidCtorHost for Instance<'_, H> {
 impl<H> rigid_body::emit::EmitHost for Instance<'_, H> {
     /// `CSolid::S18` (0x529dc0, the wheel's slot 18): a new body has no children (the entity's constructor clears the
     /// list), so its walk calls nothing.
-    fn slot18(&mut self, body: &mut rigid_body::layout::Body) {
+    fn start_window(&mut self, body: &mut rigid_body::layout::Body) {
         rigid_body::emit::window_start(body);
     }
 

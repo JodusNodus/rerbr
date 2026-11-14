@@ -997,7 +997,7 @@ impl SolidCtorHost for SolidReplay<'_> {
 
 /// The wake is the recorded `E43Vf90`, so its parts are never asked.
 impl EmitHost for SolidReplay<'_> {
-    fn slot18(&mut self, _body: &mut rbr_physics::rigid_body::layout::Body) {
+    fn start_window(&mut self, _body: &mut rbr_physics::rigid_body::layout::Body) {
         unreachable!("the wake is the recorded E43Vf90")
     }
 
@@ -1064,8 +1064,8 @@ impl SolidCtorHost for NewWheel<'_> {
 }
 
 impl EmitHost for NewWheel<'_> {
-    fn slot18(&mut self, body: &mut rbr_physics::rigid_body::layout::Body) {
-        self.solid.slot18(body)
+    fn start_window(&mut self, body: &mut rbr_physics::rigid_body::layout::Body) {
+        self.solid.start_window(body)
     }
 
     fn entity_notify(&mut self) {

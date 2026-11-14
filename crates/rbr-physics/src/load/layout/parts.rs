@@ -235,7 +235,7 @@ impl<F, H: entities::exclusion::Heap> AllocHost for CarParts<'_, F, H> {
 }
 
 impl<F, H: entities::exclusion::Heap> rigid_body::layout::PlaceHost for CarParts<'_, F, H> {
-    fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
+    fn refresh(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
         let mut deferred = DeferredStateReset::default();
         rigid_body::layout::refresh_and_reset(mem, this, &mut deferred)?;
         let state = deferred.state.expect("CBody::Vf40 calls its state");
@@ -261,7 +261,7 @@ impl<F, H> FilingHost for CarParts<'_, F, H> {
 }
 
 impl<F, H> rigid_body::layout::RestHost for CarParts<'_, F, H> {
-    fn slot18(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
+    fn start_window(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
         rigid_body::layout::solid_window_start(mem, this);
         Ok(())
     }

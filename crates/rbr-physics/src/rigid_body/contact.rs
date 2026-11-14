@@ -67,7 +67,8 @@ pub struct SampleHook {
     pub offset: Vec4,
 }
 
-/// The result of one contact response. `depth` is always written, `force` when the force is computed, `impulse` on a hit.
+/// The result of one contact response. `depth` is always written, `force` when the force is computed, `impulse` on a
+/// hit.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Outcome {
     pub depth: f32,

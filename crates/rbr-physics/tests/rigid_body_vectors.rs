@@ -30,8 +30,8 @@ use rbr_physics::rigid_body::layout::{
     transform_body_rows, transform_body_rows3, Body, Def, ParentFrame, Vec4,
 };
 use rbr_physics::rigid_body::layout::{
-    cdef_new_solid, construct_state, contact_vote, entity_vf20_jump, load_contact, new_def, refresh_and_reset,
-    refresh_state_rotation, scale_add_rows, scratch_reset_after_entity, solid_def_ctor, solid_filing, solid_sleep,
+    construct_def, construct_state, contact_vote, load_contact, new_def, new_solid, refresh_and_reset,
+    refresh_state_rotation, scale_add_rows, scratch_reset_after_entity, solid_filing, solid_sleep, walk_children,
     RestHost,
 };
 use rbr_physics::rigid_body::layout::{impulse_tail, ring_append, ImpulseTailCalls};
@@ -296,7 +296,7 @@ impl PoseHost for Replay<'_> {
         Vec4::default()
     }
 
-    fn sample_big(&mut self, _at: Vec4, value: f32) -> f32 {
+    fn drive_line_sample(&mut self, _at: Vec4, value: f32) -> f32 {
         let sample = self.take(SAMPLE_BIG);
         assert_eq!(sample.args[2], value.to_bits(), "SampleBig argument");
         f64::from_bits(sample.st0_bits) as f32
@@ -1128,8 +1128,8 @@ fn e43vf138_matches_original_calls() {
                 a: vec3_at(w, 0),
                 b: vec3_at(w, 1),
                 c: vec3_at(w, 2),
-                scale: vec3_at(w, 5),
-                k: f32_at(w, 6),
+                inverse_inertia: vec3_at(w, 5),
+                inverse_mass: f32_at(w, 6),
             };
             let (f, e) = response_combine(&input, call.args[4], f32_at(w, 4), f32_at(w, 3));
             let mut mem = map_window_list(w);
@@ -1180,11 +1180,11 @@ fn step77_matches_original_calls() {
         let pos = vec4_of(&mem.read(this + 0x140, 16));
         let rec = call.inner.iter().find(|r| r.addr == VOTE).expect("Step77 made no vote");
         let out = probe_ground(pos, mem.f32(b_at), &mut VoteReplay(rec)).expect("the replay host answers the vote");
-        assert_eq!(out.ret as u32, call.eax, "Step77 call {}: eax", call.index);
-        mem.set_u32(a, out.a);
-        mem.set_f32(b_at, out.b);
+        assert_eq!(out.result as u32, call.eax, "Step77 call {}: eax", call.index);
+        mem.set_u32(a, out.index);
+        mem.set_f32(b_at, out.drop);
         check_windows(call, &mem, "Step77");
-        if out.ret != 0 {
+        if out.result != 0 {
             voted += 1;
         } else {
             passed += 1;
@@ -1230,14 +1230,14 @@ fn vf85_matches_original_calls() {
 /// Replays `E43Vf90`'s host: counts the slot-18 call and the notify, and keeps the event.
 #[derive(Default)]
 struct EmitReplay {
-    slot18: usize,
+    start_window: usize,
     notified: usize,
     emitted: Option<BodyEvent>,
 }
 
 impl EmitHost for EmitReplay {
-    fn slot18(&mut self, _body: &mut Body) {
-        self.slot18 += 1;
+    fn start_window(&mut self, _body: &mut Body) {
+        self.start_window += 1;
     }
 
     fn entity_notify(&mut self) {
@@ -1275,7 +1275,7 @@ fn emit_body_event_matches_original_calls() {
         let mut host = EmitReplay::default();
         emit_body_event(&mut body, &mut host).expect("E43Vf90: the replay answers every call");
         body.store(&mut mem, this);
-        assert_eq!(host.slot18, 1, "E43Vf90 call {}: slot 18", call.index);
+        assert_eq!(host.start_window, 1, "E43Vf90 call {}: slot 18", call.index);
         assert_eq!(
             host.notified,
             call.inner.iter().filter(|r| r.addr == ENTITY_NOTIFY && r.args.first() == Some(&this)).count(),
@@ -1315,7 +1315,7 @@ impl FilingHost for SleepReplay {
 }
 
 impl RestHost for SleepReplay {
-    fn slot18(&mut self, _mem: &mut Mem, _this: u32) -> Result<(), HostUnavailable> {
+    fn start_window(&mut self, _mem: &mut Mem, _this: u32) -> Result<(), HostUnavailable> {
         unreachable!("E43Vf94 makes no slot-18 call")
     }
 
@@ -1499,7 +1499,7 @@ impl ImpulseTailCalls for TailReplay<'_> {
     }
 
     /// The walker (ecx) is the binding's: the recorded one.
-    fn compose_a(&mut self, mem: &mut Mem, _: u32, point: u32, matrix: u32, out: u32) {
+    fn compose(&mut self, mem: &mut Mem, _: u32, point: u32, matrix: u32, out: u32) {
         let walker = self.inner.get(self.next).map_or(0, |r| r.args[0]);
         self.take(mem, Some(0x51b4c0), &[walker, point, matrix, out]);
     }
@@ -1950,10 +1950,10 @@ impl EntityWalkHost for WalkRecord {
 /// `CSolid::E43Vf20` (0x529200) is a bare jump: the walk gets the body and the same stack argument, and its result is
 /// returned as it is (the record for this is unit-level; the walk's own vectors are `entities_vectors`).
 #[test]
-fn entity_vf20_jump_passes_through() {
+fn walk_children_passes_through() {
     let _pc24 = Precision::Pc24.scope();
     let mut walk = WalkRecord::default();
-    let ret = entity_vf20_jump(0x6000_1000, 0x6000_2000, &mut walk);
+    let ret = walk_children(0x6000_1000, 0x6000_2000, &mut walk);
     assert_eq!(walk.0, vec![(0x6000_1000, 0x6000_2000)]);
     assert_eq!(ret, 0x0051_A3A0);
 }
@@ -2014,7 +2014,7 @@ fn new_def_matches_original_calls() {
 /// arguments. Its recorded calls need the constructor's object graph (not reproduced), so this is a unit test: a failed
 /// allocation builds nothing, and a made body gets the constructor's arguments.
 #[test]
-fn cdef_new_solid_builds_on_the_heap_block() {
+fn new_solid_builds_on_the_heap_block() {
     let _pc24 = Precision::Pc24.scope();
     struct SolidFake {
         block: u32,
@@ -2046,13 +2046,13 @@ fn cdef_new_solid_builds_on_the_heap_block() {
 
     let mut mem = Mem::new();
     let mut host = SolidFake { block: 0x6000_8000, built: Vec::new() };
-    let body = cdef_new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host).expect("the solid is built");
+    let body = new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host).expect("the solid is built");
     assert_eq!(body, 0x6000_8000);
     assert_eq!(host.built, vec![(0x6000_8000, 0x6000_1000, 0x6000_2000, 0x6000_3000)]);
 
     host.block = 0;
     host.built.clear();
-    let body = cdef_new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host)
+    let body = new_solid(&mut mem, 0x6000_1000, 0x6000_2000, 0x6000_3000, &mut host)
         .expect("a failed allocation is not a host failure");
     assert_eq!(body, 0);
     assert!(host.built.is_empty());
@@ -2082,6 +2082,6 @@ fn e47_state_ctor_matches_original_calls() {
 fn cdef_ctor_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VAR, CDEF_CTOR, "CSolid::CDef::CDef", |call, mem| {
-        solid_def_ctor(mem, call.args[0], call.args[1]);
+        construct_def(mem, call.args[0], call.args[1]);
     });
 }

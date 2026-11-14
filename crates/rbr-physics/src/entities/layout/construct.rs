@@ -214,7 +214,7 @@ const HINGED_DEF_DEFAULTS: [(u32, u32); 3] = [(0x470, 0xBD4C_CCCD), (0x480, 0xBF
 /// `CHingedRigidBody::CDef::CDef(name)` (0x51e680) on the definition at `at`: the solid definition's base, the vtable,
 /// the tweaks, then the default lanes and reals.
 pub fn construct_hinged_def(mem: &mut Mem, at: u32, name: u32) {
-    rigid_body::layout::solid_def_ctor(mem, at, name);
+    rigid_body::layout::construct_def(mem, at, name);
     mem.set_u32(at, HINGED_DEF_VTABLE);
     for spring in HINGED_DEF_SPRINGS {
         ntweak::construct_unsigned(mem, at + spring);

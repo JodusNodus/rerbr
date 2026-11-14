@@ -93,7 +93,8 @@ pub(super) fn e43vf64(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     ctx.host.call_at(frame - 4, VF64, r.ecx, &[]);
     let def = Def::load(&ctx.mem, ctx.mem.u32(r.ecx + 0x34));
     let mut body = Body::load(&ctx.mem, r.ecx);
-    let transforms = if body.body_flags & layout::BODY_FLAG_8 != 0 { Transforms::List } else { Transforms::Force(0) };
+    let transforms =
+        if body.body_flags & layout::CONTACT_LIST_FLAG != 0 { Transforms::List } else { Transforms::Force(0) };
     let mut host = Calls::new(ctx, r, frame, transforms);
     force_pass(&mut body, &def, &mut host).expect("the host answers every call");
     body.store(&mut ctx.mem, r.ecx);

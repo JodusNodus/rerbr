@@ -58,18 +58,18 @@ pub fn def_flag(store: &impl RigidStore, this: u32) -> bool {
     store.def_very_soft(this)
 }
 
-/// `args` are the addresses `a`, `b`, `c` (vectors), `dp` (the int), `e` and `f` (the floats, written back). The
-/// definition's scale and `k`.
-pub fn response_combine_at<S: RigidStore>(store: &mut S, this: u32, [a, b, c, dp, e, f]: [u32; 6]) {
+/// `args` are the addresses `a`, `b`, `c` (vectors), `gate` (the int), `e` and `f` (the floats, written back), with the
+/// definition's local inverse inertia diagonal and inverse mass.
+pub fn response_combine_at<S: RigidStore>(store: &mut S, this: u32, [a, b, c, gate, e, f]: [u32; 6]) {
     let def = store.definition(this);
     let input = ResponseInput {
         a: store.row(a),
         b: store.row(b),
         c: store.row(c),
-        scale: def.local_inverse_inertia,
-        k: def.inverse_mass,
+        inverse_inertia: def.local_inverse_inertia,
+        inverse_mass: def.inverse_mass,
     };
-    let (f_out, e_out) = dot::response_combine(&input, dp, store.f32(f), store.f32(e));
+    let (f_out, e_out) = dot::response_combine(&input, gate, store.f32(f), store.f32(e));
     store.set_f32(f, f_out);
     store.set_f32(e, e_out);
 }

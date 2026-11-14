@@ -2800,7 +2800,7 @@ impl layout::Vf158xCalls for RecordedVf158<'_> {
         let windows = self.call.windows.as_slice();
         let mut host = RecordedSolidVf158 { call: self.call, next: self.next, index: self.call.index };
         let frame = ((self.entry - 4) & !0xF) - 0x64;
-        let result = solid_layout::solid_vf158(mem, &mut host, car, frame).expect("recorded E43Vf158 has all calls");
+        let result = solid_layout::solid_soften(mem, &mut host, car, frame).expect("recorded E43Vf158 has all calls");
         self.next = host.next;
         assert_eq!(result, eax, "Vf158x call {}: solid eax", self.call.index);
         check_window_list(windows, mem, "CSolid::E43Vf158");
@@ -2815,7 +2815,7 @@ struct RecordedSolidVf158<'a> {
 }
 
 impl solid_layout::VerySoftHost for RecordedSolidVf158<'_> {
-    fn slot0(
+    fn entity_name(
         &mut self,
         _mem: &Mem,
         _sp: u32,
@@ -2824,7 +2824,7 @@ impl solid_layout::VerySoftHost for RecordedSolidVf158<'_> {
         panic!("Vf158x call {}: parentful fixture called slot 0", self.index);
     }
 
-    fn entity_vf158(
+    fn entity_refile(
         &mut self,
         mem: &mut Mem,
         sp: u32,
@@ -2941,7 +2941,7 @@ fn solid_vf158_matches_original_calls() {
     for call in &calls {
         let mut mem = shared_windows(call);
         let mut host = RecordedSolidVf158 { call, next: 0, index: call.index };
-        let eax = solid_layout::solid_vf158(&mut mem, &mut host, call.args[0], ((ENTRY - 4) & !0xF) - 0x64)
+        let eax = solid_layout::solid_soften(&mut mem, &mut host, call.args[0], ((ENTRY - 4) & !0xF) - 0x64)
             .expect("recorded E43Vf158 has all calls");
         assert_eq!(eax, call.eax, "E43Vf158 call {}: eax", call.index);
         assert_eq!(host.next, call.inner.len(), "E43Vf158 call {}: records left", call.index);

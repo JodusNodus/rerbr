@@ -6,7 +6,7 @@
 //! and `BodyCalls`; the arithmetic is in operation order.
 
 use super::host::{BodyCalls, HostUnavailable};
-use super::layout::{Body, Vec4};
+use super::layout::{Body, Vec4, CONTACT_LIST_FLAG};
 
 /// One contact record of the collected list. Names are by role where the meaning is known, by position otherwise.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -70,7 +70,7 @@ pub fn contact_list_step(body: &Body, host: &mut impl ListHost) -> Result<(), Ho
         return Ok(());
     };
     for r in &records {
-        if r.kind == 200 && body.body_flags & 8 != 0 {
+        if r.kind == 200 && body.body_flags & CONTACT_LIST_FLAG != 0 {
             host.retire()?;
         }
     }

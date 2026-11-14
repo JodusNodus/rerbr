@@ -23,7 +23,7 @@ impl<H: Heap> Heap for Mounted<'_, H> {
 
 impl<H> MountedHost for Mounted<'_, H> {
     fn solid_def(&mut self, mem: &mut Mem, at: u32, name: u32) {
-        rigid_body::layout::solid_def_ctor(mem, at, name);
+        rigid_body::layout::construct_def(mem, at, name);
     }
 
     fn unsigned(&mut self, mem: &mut Mem, at: u32) {

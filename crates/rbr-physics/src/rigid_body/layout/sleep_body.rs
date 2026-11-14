@@ -87,7 +87,8 @@ pub struct Body {
     /// with the pose; names are ours).
     pub start_linear_velocity: Vec4,
     pub start_angular_velocity: Vec4,
-    /// Body flags byte (`CSolid+0x60`): bit 0x8 takes the contact sample in the pose step.
+    /// Body flags byte (`CSolid+0x60`): [`CONTACT_LIST_FLAG`](super::CONTACT_LIST_FLAG) (0x8) takes the drive-line
+    /// sample in the pose step.
     pub body_flags: u8,
     /// Parent frame pointer (`CSolid+0x44`), 0 when the body is free.
     pub parent: u32,

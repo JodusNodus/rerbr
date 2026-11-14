@@ -2,7 +2,7 @@
 
 use super::contacts::{HOOK, RING_TAIL};
 use super::scratch_state::{clear_vec, store_scratch_base_init, CELL_LINK, STATE_VTABLE};
-use super::{BODY_FLAG_8, ENTITY_FLAGS, FORCE_ACCUM, ORIENTATION, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE};
+use super::{CONTACT_LIST_FLAG, ENTITY_FLAGS, FORCE_ACCUM, ORIENTATION, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE};
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::body_def_ctor;
 use crate::collision::layout::{Body, CtorHost};
@@ -65,7 +65,7 @@ const SOLID_DEF_VTABLE: u32 = 0x0073_FAFC;
 
 /// `CSolid::CDef::CDef(outer)` (0x529840, thiscall): the body definition's base (`body_def_ctor`), the vtable, then the
 /// tweaks at +0x120 to +0x1e0 in the asm's order.
-pub fn solid_def_ctor(mem: &mut Mem, def: u32, outer: u32) {
+pub fn construct_def(mem: &mut Mem, def: u32, outer: u32) {
     body_def_ctor(mem, def, outer);
     mem.set_u32(def, SOLID_DEF_VTABLE);
     ntweak::construct_vector(mem, def + 0x120);
@@ -122,14 +122,14 @@ pub const SOLID_SIZE: u32 = 0x3D0;
 pub fn new_def(mem: &mut Mem, outer: u32, host: &mut impl Heap) -> u32 {
     let block = host.alloc(mem, DEF_SIZE);
     if block != 0 {
-        solid_def_ctor(mem, block, outer);
+        construct_def(mem, block, outer);
     }
     block
 }
 
 /// `CSolid::CDef::Vf50` (0x52d640): a body from the heap, built by the `CSolid` constructor on this definition with `a`
 /// and `b`. Returns the body, or 0 when the allocation fails.
-pub fn cdef_new_solid(
+pub fn new_solid(
     mem: &mut Mem,
     def: u32,
     a: u32,
@@ -144,17 +144,19 @@ pub fn cdef_new_solid(
 }
 
 /// The calls `CSolid::Vf44` (0x52c700) makes outside the body: the cell grid's link blocks (`CCellGrid::LookupTwin`,
-/// 0x4e03b0) and the body's slot 16, `this->Vf40()`, which `CEntity::Vf44` (0x519e60) makes under `CBody::Vf44`.
+/// 0x4e03b0) and the body's refresh.
 pub trait PlaceHost: AllocHost {
-    fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable>;
+    /// The body's refresh: its slot 16, `this->Vf40()` (`CSolid::Vf40`, 0x52b6d0, `refresh_and_reset`, for a solid),
+    /// which `CEntity::Vf44` (0x519e60) makes under `CBody::Vf44`.
+    fn refresh(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable>;
 }
 
 /// A placement (`CSigStuff`): its position, orientation, extent, sample word (`+0x30`) and hook (`+0x48`).
-const STUFF_POSITION: u32 = 0x0;
-const STUFF_ORIENTATION: u32 = 0x10;
-const STUFF_EXTENT: u32 = 0x20;
-const STUFF_SAMPLE: u32 = 0x30;
-const STUFF_HOOK: u32 = 0x48;
+const PLACEMENT_POSITION: u32 = 0x0;
+const PLACEMENT_ORIENTATION: u32 = 0x10;
+const PLACEMENT_EXTENT: u32 = 0x20;
+const PLACEMENT_SAMPLE: u32 = 0x30;
+const PLACEMENT_HOOK: u32 = 0x48;
 /// The `DbgFlags` bit that takes the placement's orientation (else the identity).
 const DBG_ORIENTATION: u32 = 0x400;
 /// The body's extent (`+0x150`; `+0x15c` becomes 1.0 unless the extent is (1, 1, 1)), the hook flag word, the sample
@@ -163,22 +165,22 @@ const EXTENT: u32 = 0x150;
 const HOOK_SET: u32 = 0x3C0;
 const SAMPLE: u32 = 0x170;
 
-/// `CSolid::Vf44(stuff)` (0x52c700) on the body at `this`: the placement at `stuff` gives the orientation (with
+/// `CSolid::Vf44(stuff)` (0x52c700) on the body at `this`: the placement at `placement` gives the orientation (with
 /// `DbgFlags` bit 0x400, else the identity), the extent, the hook and the position; the sample tweak is marked dirty
 /// and takes the placement's word; the body moves to the grid cell under its position; then `CBody::Vf44` (0x4e1140):
-/// the grid `E36SelectTable` picks for the placement, and the body's slot 16. A body with flag 8 and no hook gets a new
-/// `E36DamageOps` (0x3eb0 bytes, 0x4ef410): not ported.
-pub fn place_solid(mem: &mut Mem, host: &mut impl PlaceHost, this: u32, stuff: u32) -> Result<(), HostUnavailable> {
+/// the grid `E36SelectTable` picks for the placement, and the body's refresh (slot 16). A body with
+/// [`CONTACT_LIST_FLAG`] and no hook gets a new `E36DamageOps` (0x3eb0 bytes, 0x4ef410): not ported.
+pub fn place_solid(mem: &mut Mem, host: &mut impl PlaceHost, this: u32, placement: u32) -> Result<(), HostUnavailable> {
     let one = 1.0f32.to_bits();
     let orientation = if core_layout::def_flags(mem) & DBG_ORIENTATION != 0 {
-        std::array::from_fn(|i| mem.u32(stuff + STUFF_ORIENTATION + 4 * i as u32))
+        std::array::from_fn(|i| mem.u32(placement + PLACEMENT_ORIENTATION + 4 * i as u32))
     } else {
         [0, 0, 0, one]
     };
     for (i, word) in (0..).zip(orientation) {
         mem.set_u32(this + ORIENTATION + 4 * i, word);
     }
-    let extent: [f32; 3] = mem.f32s(stuff + STUFF_EXTENT);
+    let extent: [f32; 3] = mem.f32s(placement + PLACEMENT_EXTENT);
     for (i, value) in (0..).zip(extent) {
         mem.set_f32(this + EXTENT + 4 * i, value);
     }
@@ -186,20 +188,20 @@ pub fn place_solid(mem: &mut Mem, host: &mut impl PlaceHost, this: u32, stuff: u
         mem.set_u32(this + EXTENT + 0xc, one);
     }
     mem.set_u32(this + HOOK_SET, 0);
-    let hook = mem.u32(stuff + STUFF_HOOK);
-    if mem.u8(this + ENTITY_FLAGS) & BODY_FLAG_8 != 0 && hook == 0 {
+    let hook = mem.u32(placement + PLACEMENT_HOOK);
+    if mem.u8(this + ENTITY_FLAGS) & CONTACT_LIST_FLAG != 0 && hook == 0 {
         return Err(HostUnavailable);
     }
     mem.set_u32(this + HOOK, hook);
     for i in 0..3 {
-        mem.set_u32(this + POSITION + 4 * i, mem.u32(stuff + STUFF_POSITION + 4 * i));
+        mem.set_u32(this + POSITION + 4 * i, mem.u32(placement + PLACEMENT_POSITION + 4 * i));
     }
     ntweak::set_dirty(mem, this + SAMPLE);
-    mem.set_u32(this + SAMPLE + 0xc, mem.u32(stuff + STUFF_SAMPLE));
+    mem.set_u32(this + SAMPLE + 0xc, mem.u32(placement + PLACEMENT_SAMPLE));
     let (x, y) = (mem.f32(this + POSITION), mem.f32(this + POSITION + 4));
     let cell = collision::layout::lookup_twin(host, mem, core_layout::cell_grid(mem), x, y);
     collision::layout::move_to_cell(mem, this + CELL_LINK, cell);
-    let grid = collision::layout::select_table(mem, stuff);
+    let grid = collision::layout::select_table(mem, placement);
     Body::new(this).set_grid(mem, grid);
-    host.vf40(mem, this)
+    host.refresh(mem, this)
 }

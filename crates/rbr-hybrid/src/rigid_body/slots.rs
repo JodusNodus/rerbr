@@ -77,7 +77,7 @@ impl layout::ImpulseTailCalls for ImpulseCalls<'_> {
         vcall_at(mem, self.host, sp, body, SLOT_S30, &[pushed]).eax
     }
 
-    fn compose_a(&mut self, mem: &mut Mem, sp: u32, point: u32, matrix: u32, out: u32) {
+    fn compose(&mut self, mem: &mut Mem, sp: u32, point: u32, matrix: u32, out: u32) {
         self.host.call_at(sp, COPY16_WALK, mem.u32(WALKER), &[point, matrix, out]);
     }
 
@@ -167,7 +167,7 @@ pub(super) fn new_def(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(arg)`, eax: the slot-8 jump to the entity walk on the body, which pops the argument.
 pub(super) fn vf20_jump(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::entity_vf20_jump(r.ecx, r.stack[0], &mut Original(ctx.host));
+    let eax = layout::walk_children(r.ecx, r.stack[0], &mut Original(ctx.host));
     Ok(Return::void(eax, 4))
 }
 
@@ -304,7 +304,7 @@ pub(super) fn step77(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let pos_at = r.ecx + 0x140;
     let mut vote = Step77Vote { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp), pos_at };
     let out = probe_ground(Vec4::load(&ctx.mem, pos_at), ctx.mem.f32(b), &mut vote).map_err(unavailable)?;
-    ctx.mem.set_u32(a, out.a);
-    ctx.mem.set_f32(b, out.b);
-    Ok(Return::void(out.ret as u32, 8))
+    ctx.mem.set_u32(a, out.index);
+    ctx.mem.set_f32(b, out.drop);
+    Ok(Return::void(out.result as u32, 8))
 }
