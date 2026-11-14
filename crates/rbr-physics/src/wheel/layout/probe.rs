@@ -1,11 +1,12 @@
 //! `E51Wheel::M3D520` (0x53d520), the ground probe, and the wheel tuning NGP retunes.
 
 use super::fields::{
-    BLOCK_DIFF, BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CARCASS_EDGE_MINUS, CARCASS_EDGE_PLUS, FRAME_AXIS, GROUND_BODY,
-    PROBE_DIRECTION, RAY_CENTRE, RAY_DISTANCE, RAY_EDGE_MINUS, RAY_EDGE_PLUS, RAY_HIT, RAY_HIT_POINT, RAY_NORMAL,
-    RAY_OFFSET, RAY_VALID, SECTOR_VALUE_B, SPEED_SCALE, SWEEP_RESIDUE, TYRE_SCRATCH, WORLD_AXLE, WORLD_HUB,
+    BLOCK_DIFF, BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CARCASS_EDGE_MINUS, CARCASS_EDGE_PLUS, PROBE_DIRECTION,
+    RAY_CENTRE, RAY_DISTANCE, RAY_EDGE_MINUS, RAY_EDGE_PLUS, RAY_HIT, RAY_HIT_POINT, RAY_NORMAL, RAY_OFFSET, RAY_VALID,
+    TYRE_SCRATCH, WORLD_AXLE, WORLD_HUB,
 };
 use super::store::WheelStore;
+use super::typed::{slot, Slot};
 use crate::car_body::layout as car_layout;
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
@@ -38,14 +39,6 @@ pub const PROBE_PROLOGUE: u32 = 0x36B0;
 const MINUS_EDGE_OFFSET: u32 = 0x0073_9594;
 /// The copied block's dwords (`rep movsd` of `0x1c`).
 const PROBE_BLOCK_WORDS: u32 = 0x1C;
-/// The wheel's copies of the centre ray (its start `+0xdb0` and end `+0xdc0`), of the probe direction (`+0xe20`), of the
-/// contact point (`+0xdd0`, when the centre ray hit) and of the edge rays' hit points (`+0xe10`, `+0xdf0`).
-const CENTRE_RAY_START: u32 = 0xDB0;
-const CENTRE_RAY_END: u32 = 0xDC0;
-const PROBE_DIRECTION_COPY: u32 = 0xE20;
-const CONTACT_POINT_COPY: u32 = 0xDD0;
-const MINUS_HIT_POINT_COPY: u32 = 0xE10;
-const PLUS_HIT_POINT_COPY: u32 = 0xDF0;
 /// The best-hit limit (`2.0`), the test vector's fill (`0.4`), the centre ray's floor (`0.2`), the blend's average
 /// (`0.5`), and the plus edge block's offset (`0.1`).
 const PROBE_LIMIT: f32 = 2.0;
@@ -120,10 +113,10 @@ pub trait GroundCalls {
     fn load_binary(&mut self, to: u32, data: u32);
 }
 
-/// `E01Vec4::CopyFrom` (0x43c5b0): the 16 bytes at `src` go to `dst`.
-fn copy_vec<S: WheelStore>(mem: &mut S, dst: u32, src: u32) {
+/// `E01Vec4::CopyFrom` (0x43c5b0): the 16 bytes at `src` go to the wheel's field `to`.
+fn copy_into<S: WheelStore>(mem: &mut S, this: u32, to: Slot<Vec4>, src: u32) {
     let v = Vec4::load(mem, src);
-    v.store(mem, dst);
+    mem.set(this, to, v);
 }
 
 /// `count` words from `src` to `dst`, in order (the `rep movsd` copies).
@@ -185,7 +178,7 @@ pub fn ground_probe<S: WheelStore>(
     mem.set_u32(minus + RAY_OFFSET, offset);
     mem.set_f32(centre + RAY_OFFSET, 0.0);
     mem.set_f32(plus + RAY_OFFSET, PLUS_EDGE_OFFSET);
-    mem.set_u32(o + GROUND_BODY, 0);
+    mem.set(o, slot::ground_body, 0);
     let mut best = PROBE_LIMIT;
     calls.table_lerp_pair(o);
     let fv = frame + PROBE_FV;
@@ -207,12 +200,12 @@ pub fn ground_probe<S: WheelStore>(
         copy_words(mem, minus + RAY_HIT_POINT, buf, 16);
         let dist = mem.f32(buf + PROBE_HIT_DIST);
         if hit_takes(mem, obj, dist, PROBE_LIMIT) {
-            mem.set_u32(o + GROUND_BODY, obj);
+            mem.set(o, slot::ground_body, obj);
             best = dist;
         }
-        calls.update_ray_block(o, minus, radius, mem.f32(o + SECTOR_VALUE_B));
+        calls.update_ray_block(o, minus, radius, mem.get(o, slot::sector_values)[1]);
     } else if mem.u32(minus + RAY_HIT) != 0 {
-        calls.update_ray_block(o, minus, radius, mem.f32(o + SECTOR_VALUE_B));
+        calls.update_ray_block(o, minus, radius, mem.get(o, slot::sector_values)[1]);
     } else {
         mem.set_u32(minus + RAY_VALID, 0);
     }
@@ -228,12 +221,12 @@ pub fn ground_probe<S: WheelStore>(
         copy_words(mem, plus + RAY_HIT_POINT, buf, 16);
         let dist = mem.f32(buf + PROBE_HIT_DIST);
         if hit_takes(mem, obj, dist, best) {
-            mem.set_u32(o + GROUND_BODY, obj);
+            mem.set(o, slot::ground_body, obj);
             best = dist;
         }
-        calls.update_ray_block(o, plus, radius, mem.f32(o + SECTOR_VALUE_B));
+        calls.update_ray_block(o, plus, radius, mem.get(o, slot::sector_values)[1]);
     } else if mem.u32(plus + RAY_HIT) != 0 {
-        calls.update_ray_block(o, plus, radius, mem.f32(o + SECTOR_VALUE_B));
+        calls.update_ray_block(o, plus, radius, mem.get(o, slot::sector_values)[1]);
     } else {
         mem.set_u32(plus + RAY_VALID, 0);
     }
@@ -241,9 +234,9 @@ pub fn ground_probe<S: WheelStore>(
     // Ray 3: from the world hub; the hit goes to the centre block.
     let v3 = frame + PROBE_V3;
     (scaled_plus(Vec4::load(mem, dir), 1.0, Vec4::load(mem, hub))).store(mem, v3);
-    copy_vec(mem, o + CENTRE_RAY_START, hub);
-    copy_vec(mem, o + CENTRE_RAY_END, v3);
-    copy_vec(mem, o + PROBE_DIRECTION_COPY, dir);
+    copy_into(mem, o, slot::centre_ray_start, hub);
+    copy_into(mem, o, slot::centre_ray_end, v3);
+    copy_into(mem, o, slot::probe_direction_copy, dir);
     mem.set_u32(centre + RAY_HIT, calls.mesh_ray_query(object, hub, v3, centre + RAY_HIT_POINT));
     let obj = calls.cast_ray(world, hub, v3, list, buf);
     let miss = ray_misses(mem, calls, centre, buf, obj);
@@ -251,11 +244,11 @@ pub fn ground_probe<S: WheelStore>(
         mem.set_u32(centre + RAY_HIT, 1);
         copy_words(mem, centre + RAY_HIT_POINT, buf, 16);
         if hit_takes(mem, obj, mem.f32(buf + PROBE_HIT_DIST), best) {
-            mem.set_u32(o + GROUND_BODY, obj);
+            mem.set(o, slot::ground_body, obj);
         }
     } else if mem.u32(centre + RAY_HIT) == 0 {
         mem.set_u32(centre + RAY_VALID, 0);
-        mem.set_f32(o + SWEEP_RESIDUE, 0.0);
+        mem.set(o, slot::sweep_residue, 0.0);
     }
     if !miss || mem.u32(centre + RAY_HIT) != 0 {
         // The sweep path: the centre block's update with the pose floor, then the sweep from the hub along the probe.
@@ -263,7 +256,7 @@ pub fn ground_probe<S: WheelStore>(
         let hv = calls.segment_sweep(sweep, hub, v3, frame + PROBE_SWEEP_OUT, frame + PROBE_SWEEP_DIST);
         let dist = mem.f32(frame + PROBE_SWEEP_DIST);
         let residue = if hv != 0 && radius > dist { radius - dist } else { 0.0 };
-        mem.set_f32(o + SWEEP_RESIDUE, residue);
+        mem.set(o, slot::sweep_residue, residue);
     }
 
     // The blend. Without a block the probe clears its blocks and returns 0.
@@ -274,7 +267,8 @@ pub fn ground_probe<S: WheelStore>(
     }
     // The asm stores the cross's three lanes only; lane 3 (+0xA9C) keeps its old value, and the stack copies read it.
     let cross = Vec4::load(mem, o + WORLD_AXLE).cross3(Vec4::load(mem, dir));
-    (crate::math::vec::Vec3 { x: cross.x, y: cross.y, z: cross.z }).store(mem, o + FRAME_AXIS);
+    let axis = mem.get(o, slot::frame_axis);
+    mem.set(o, slot::frame_axis, Vec4 { w: axis.w, ..cross });
     let distance = if mem.u32(minus + RAY_VALID) != 0 && mem.u32(plus + RAY_VALID) != 0 {
         let average = (mem.f32(plus + BLOCK_DIFF) + mem.f32(minus + BLOCK_DIFF)) * HALF;
         if mem.u32(centre + RAY_VALID) == 0 || !(average > mem.f32(centre + BLOCK_DIFF)) {
@@ -307,7 +301,7 @@ pub fn ground_probe<S: WheelStore>(
             centre_diff
         }
     };
-    mem.set_f32(o + SPEED_SCALE, distance);
+    mem.set(o, slot::speed_scale, distance);
     (scaled_plus(Vec4::load(mem, dir), distance, Vec4::load(mem, hub))).store(mem, out);
     if mem.u32(centre + RAY_HIT) == 0 {
         let source = if mem.u32(minus + RAY_HIT) != 0 { minus } else { plus };
@@ -315,13 +309,13 @@ pub fn ground_probe<S: WheelStore>(
     }
     calls.blend_tags(o, mem.u32(centre + BLOCK_TAG_1), mem.u32(centre + BLOCK_TAG_2), mem.f32(centre + BLOCK_WEIGHT));
     if mem.u32(centre + RAY_HIT) != 0 {
-        copy_vec(mem, o + CONTACT_POINT_COPY, out);
+        copy_into(mem, o, slot::contact_point_copy, out);
     }
     if mem.u32(minus + RAY_HIT) != 0 {
-        copy_vec(mem, o + MINUS_HIT_POINT_COPY, minus + RAY_HIT_POINT);
+        copy_into(mem, o, slot::minus_hit_point_copy, minus + RAY_HIT_POINT);
     }
     if mem.u32(plus + RAY_HIT) != 0 {
-        copy_vec(mem, o + PLUS_HIT_POINT_COPY, plus + RAY_HIT_POINT);
+        copy_into(mem, o, slot::plus_hit_point_copy, plus + RAY_HIT_POINT);
     }
     calls.ray_blocks_fini(blocks);
     1

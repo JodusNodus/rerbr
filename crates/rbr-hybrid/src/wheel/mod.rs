@@ -15,7 +15,7 @@ use rbr_physics::rigid_body::layout::Body;
 use rbr_physics::wheel::axes::Trig;
 use rbr_physics::wheel::layout::{
     self, BlendCalls, CarSlotCalls, ConstructCalls, DefCopyCalls, EmbeddedCalls, HookCalls, SlotCalls, SolidCalls,
-    SubBlockInit, SubCalls, WalkCalls,
+    SubBlockInit, SubCalls, WalkCalls, WheelView,
 };
 
 use crate::{aligned_frame, physics_core, rigid_body, Binding, Ctx, Decline, Host, Regs, Return};
@@ -101,6 +101,11 @@ pub static BINDINGS: [Binding; 30] = [
     bind(SUB_OBJECT_CTOR, "E51Wheel::Ctor", wheel_ctor),
 ];
 
+/// Runs `run` on the wheel's store, every wheel on the image (`layout::WheelView`).
+pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T) -> T {
+    run(&mut WheelView::new(&mut ctx.mem, None))
+}
+
 /// The original callees a wheel binding makes: the vtable calls on an object (`mem` shares the emulator's memory).
 struct Calls<'a> {
     mem: Mem,
@@ -165,7 +170,7 @@ fn blend_ops(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 fn update_sub_objects(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = Sub { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp) };
-    let gated = layout::edge_forces(&mut calls, &mut ctx.mem, r.ecx, a, b, c);
+    let gated = on_wheels(ctx, |m| layout::edge_forces(&mut calls, m, r.ecx, a, b, c));
     Ok(Return::void(u32::from(gated), 0xC))
 }
 
@@ -252,7 +257,7 @@ fn table_lerp_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut init = Init { host: ctx.host };
     let tuning = if crate::ngp::is_ngp() { crate::ngp::wheel_tuning(ctx) } else { layout::WheelTuning::STOCK };
     let li = r.esp.wrapping_sub(0x10);
-    let block = layout::table_lerp_pair(&mut init, &mut ctx.mem, r.ecx, li, tuning);
+    let block = on_wheels(ctx, |m| layout::table_lerp_pair(&mut init, m, r.ecx, li, tuning));
     Ok(Return::void(block, 0))
 }
 
@@ -343,14 +348,14 @@ impl SlotCalls for Slots<'_> {
 /// thiscall `(a, b, c, d)`, `ret 0x10`: `CWheel::Blend4`, `layout::carcass_edges`.
 fn blend4(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, d, ..] = r.stack;
-    layout::carcass_edges(&mut ctx.mem, r.ecx, a, b, c, d);
+    on_wheels(ctx, |m| layout::carcass_edges(m, r.ecx, a, b, c, d));
     Ok(Return::void(0, 0x10))
 }
 
 /// thiscall `(a, b, out)`, `ret 0xC`: `CWheel::Unk9290`, `layout::pick_contact` (name ours).
 fn pick_contact(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, out, ..] = r.stack;
-    layout::pick_contact(&mut ctx.mem, r.ecx, a, b, out);
+    on_wheels(ctx, |m| layout::pick_contact(m, r.ecx, a, b, out));
     Ok(Return::void(0, 0xC))
 }
 
@@ -428,13 +433,13 @@ impl SolidCalls for Solid<'_> {
 /// thiscall, plain `ret`: `E51Wheel::M3A9E0`, `layout::wobble_axle` (name ours). eax is the last sine or cosine call's.
 fn turn_axis(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    layout::wobble_axle(&mut libm, &mut ctx.mem, r.ecx);
+    on_wheels(ctx, |m| layout::wobble_axle(&mut libm, m, r.ecx));
     Ok(Return::void(libm.eax.get(), 0))
 }
 
 /// thiscall, plain `ret`: `E51Wheel::M3AB90`, `layout::deform_top_mount` (name ours).
 fn state_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::deform_top_mount(&mut ctx.mem, r.ecx);
+    on_wheels(ctx, |m| layout::deform_top_mount(m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
@@ -442,7 +447,7 @@ fn state_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// cosine call's.
 fn set_input(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    layout::apply_hub_torque(&mut libm, &mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
+    on_wheels(ctx, |m| layout::apply_hub_torque(&mut libm, m, r.ecx, f32::from_bits(r.stack[0])));
     Ok(Return::void(libm.eax.get(), 4))
 }
 
@@ -472,14 +477,14 @@ impl WalkCalls for Walk<'_> {
 /// thiscall, plain `ret`: `E51Wheel::M3AEF0`, `layout::steering_walk` (name ours).
 fn walk_result(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
-    layout::steering_walk(&mut walk, &mut ctx.mem, r.ecx);
+    on_wheels(ctx, |m| layout::steering_walk(&mut walk, m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(p)`, `ret 4`: `E51Wheel::M3AFB0`, `layout::spin_cross` (name ours).
 fn spin_cross(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
-    layout::spin_cross(&mut walk, &mut ctx.mem, r.ecx, r.stack[0]);
+    on_wheels(ctx, |m| layout::spin_cross(&mut walk, m, r.ecx, r.stack[0]));
     Ok(Return::void(0, 4))
 }
 
@@ -503,7 +508,7 @@ fn tyre_tail_setup(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// destination.
 fn split_on_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [block, v, acc, ..] = r.stack;
-    let eax = layout::edge_force(&mut ctx.mem, r.ecx, block, v, acc, r.esp);
+    let eax = on_wheels(ctx, |m| layout::edge_force(m, r.ecx, block, v, acc, r.esp));
     Ok(Return::void(eax, 0x14))
 }
 

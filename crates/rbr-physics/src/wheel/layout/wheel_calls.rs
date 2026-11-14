@@ -3,14 +3,14 @@
 
 use super::fields::{
     AXLE, BLOCK_CLAMP_A, BLOCK_CLAMP_B, BLOCK_DIFF, BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_TOTAL, BLOCK_WEIGHT,
-    CARCASS_EDGE_MINUS, CARCASS_EDGE_MINUS_COPY, CARCASS_EDGE_PLUS, CARCASS_EDGE_PLUS_COPY, CAR_FLAG_XFORM, CAR_FORCE,
-    CAR_SCRATCH, CAR_SCRATCH_WORD, DEF_FLAGS, DEF_PAIR_TAG, EDGE_ACROSS, FLAG_PAIR_TAG, FRAME_AXIS, HUB_POSITION,
-    HUB_VELOCITY, INV_ARM, INV_RACK, ORIENTATION, PROBE_DIRECTION, RAY_DISTANCE, RAY_EDGE_MINUS, RAY_EDGE_PLUS,
-    RAY_NORMAL, RAY_VALID, SPIN_RATE, STRUT, STRUT_DIR, STRUT_INNER_BUMP_POS, STRUT_LENGTH, STRUT_OUTER_BUMP_POS,
-    STRUT_TWEAK, WALK_OUT, WORLD_AXLE, XFORM_CAR, XFORM_PAIRS,
+    CARCASS_EDGE_MINUS, CARCASS_EDGE_PLUS, CAR_FLAG_XFORM, CAR_FORCE, CAR_SCRATCH, CAR_SCRATCH_WORD, DEF_FLAGS,
+    DEF_PAIR_TAG, EDGE_ACROSS, FLAG_PAIR_TAG, HUB_POSITION, HUB_VELOCITY, ORIENTATION, PROBE_DIRECTION, RAY_DISTANCE,
+    RAY_EDGE_MINUS, RAY_EDGE_PLUS, RAY_NORMAL, RAY_VALID, STRUT, STRUT_INNER_BUMP_POS, STRUT_LENGTH,
+    STRUT_OUTER_BUMP_POS, STRUT_TWEAK, WORLD_AXLE, XFORM_CAR, XFORM_PAIRS,
 };
 use super::host::{transform_call, CarSlotCalls, CarXform, SlotCalls, StrutCalls, SubCalls, WalkCalls};
 use super::store::WheelStore;
+use super::typed::slot;
 use crate::car_body::store::CarStore;
 use crate::car_body::transform::FRAME;
 use crate::math::vec::Vec4;
@@ -56,10 +56,11 @@ pub fn transform_and_copy<S: WheelStore>(
     out_at: u32,
     car_transform: impl FnOnce(u32, Vec4) -> Vec4,
 ) {
-    let tmp = hub::tyre_centre(mem.load_at(this, AXLE), mem.load_hub_offset(this), mem.load_at(this, HUB_POSITION));
+    let tmp =
+        hub::tyre_centre(Vec4::load(mem, this + AXLE), mem.load_hub_offset(this), Vec4::load(mem, this + HUB_POSITION));
     let x = car_transform(mem.load_car(this), tmp);
     x.store(mem, x_at);
-    mem.load_at(this, ORIENTATION).store(mem, out_at);
+    Vec4::load(mem, this + ORIENTATION).store(mem, out_at);
 }
 
 /// `Blend4` (0x539180): the carcass edges, `b` moved along the axle `a` by plus (`c`) and minus (`d`) half the tyre's
@@ -71,22 +72,22 @@ pub fn carcass_edges<S: WheelStore>(mem: &mut S, this: u32, a_at: u32, b_at: u32
     c.store(mem, c_at);
     let d = hub::along_axle(Vec4::load(mem, a_at), 0.0 - k, Vec4::load(mem, b_at));
     d.store(mem, d_at);
-    mem.store_at(this, CARCASS_EDGE_MINUS, d);
-    mem.store_at(this, CARCASS_EDGE_PLUS, c);
-    mem.store_at(this, CARCASS_EDGE_PLUS_COPY, c);
-    mem.store_at(this, CARCASS_EDGE_MINUS_COPY, d);
+    d.store(mem, this + CARCASS_EDGE_MINUS);
+    c.store(mem, this + CARCASS_EDGE_PLUS);
+    mem.set(this, slot::carcass_edge_plus_copy, c);
+    mem.set(this, slot::carcass_edge_minus_copy, d);
 }
 
 /// `Unk9290` (0x539290): the contact normal of the ray blocks `a_at` and `b_at`. `out` is `m * axis`, then `+ world_axle *
 /// second` and `+ probe_direction * first`. Each step is stored before the next reads `out`, which may overlap the
 /// vectors.
 pub fn pick_contact<S: WheelStore>(mem: &mut S, this: u32, a_at: u32, b_at: u32, out_at: u32) {
-    let axis = mem.load_at(this, FRAME_AXIS);
+    let axis = mem.get(this, slot::frame_axis);
     let mix = contact::mix_contacts(axis, &mem.load_ray_block(a_at), &mem.load_ray_block(b_at));
     axis.scale(mix.axis_scale).store(mem, out_at);
-    let v = mem.load_at(this, WORLD_AXLE).scale(mix.second) + Vec4::load(mem, out_at);
+    let v = Vec4::load(mem, this + WORLD_AXLE).scale(mix.second) + Vec4::load(mem, out_at);
     v.store(mem, out_at);
-    let v = mem.load_at(this, PROBE_DIRECTION).scale(mix.first) + Vec4::load(mem, out_at);
+    let v = Vec4::load(mem, this + PROBE_DIRECTION).scale(mix.first) + Vec4::load(mem, out_at);
     v.store(mem, out_at);
 }
 
@@ -106,21 +107,21 @@ pub fn car_frames<S: WheelStore>(host: &mut impl CarXform, mem: &mut S, this: u3
 
 /// `M3AEF0` (0x53aef0): the walk `MB560` on the world frame (its `c` is the walk output), then `strut_dir * gain + walk`
 /// stored to the walk output. `GetB1C` is read only after the walk call, when `|inv_rack| > 0.001` (as the asm does).
-pub fn steering_walk<S: WheelStore + CarStore>(host: &mut impl WalkCalls, mem: &mut S, this: u32) -> Vec4 {
+pub fn steering_walk<S: WheelStore>(host: &mut impl WalkCalls, mem: &mut S, this: u32) -> Vec4 {
     let car = mem.load_car(this);
     let a = (car.wrapping_add(0x180) != 0).then(|| Vec4::load(mem, car + 0x190));
     let walk = host.pair_walk(mem.u32(FRAME), a, car);
-    let gain =
-        walk::steer_gain(mem.load_f32(this, INV_ARM), mem.load_f32(this, INV_RACK), || mem.steer_target_rate(car));
-    let v = walk::steered_walk(mem.load_at(this, STRUT_DIR), gain, walk);
-    mem.store_at(this, WALK_OUT, v);
+    let (inv_arm, inv_rack) = (mem.get(this, slot::inv_arm), mem.get(this, slot::inv_rack));
+    let gain = walk::steer_gain(inv_arm, inv_rack, || mem.mem().steer_target_rate(car));
+    let v = walk::steered_walk(mem.get(this, slot::strut_dir), gain, walk);
+    mem.set(this, slot::walk_out, v);
     v
 }
 
 /// `M3AFB0` (0x53afb0): runs `steering_walk`, then writes the spin's cross product to the caller's `p`.
-pub fn spin_cross<S: WheelStore + CarStore>(host: &mut impl WalkCalls, mem: &mut S, this: u32, p: u32) {
+pub fn spin_cross<S: WheelStore>(host: &mut impl WalkCalls, mem: &mut S, this: u32, p: u32) {
     let walk = steering_walk(host, mem, this);
-    let cross = walk::spin_cross(walk, mem.load_at(this, AXLE), mem.load_f32(this, SPIN_RATE));
+    let cross = walk::spin_cross(walk, Vec4::load(mem, this + AXLE), mem.get(this, slot::spin_rate));
     cross.store(mem, p);
 }
 
@@ -173,8 +174,8 @@ pub fn update_strut<S: WheelStore>(
 /// calls the wheel's `Vf40` (`refresh_solid`, 0x53b5b0), then forwards `p` to `CSolid::E43Vf20` (`walk_children`,
 /// 0x529200).
 pub fn clear_and_forward<S: WheelStore>(host: &mut impl SlotCalls, mem: &mut S, this: u32, p: u32) {
-    mem.store_at(this, LINEAR_VELOCITY, Vec4::default());
-    mem.store_at(this, ANGULAR_VELOCITY, Vec4::default());
+    Vec4::default().store(mem, this + LINEAR_VELOCITY);
+    Vec4::default().store(mem, this + ANGULAR_VELOCITY);
     host.refresh_solid(this);
     host.walk_children(this, p);
 }
@@ -187,9 +188,9 @@ pub fn forward_to_car_and_clear<S: WheelStore>(host: &mut impl CarSlotCalls, mem
     host.accumulate_force(car, this + CAR_FORCE);
     let car = mem.u32(this + XFORM_CAR);
     host.accumulate_scratch(car, this + CAR_SCRATCH);
-    mem.store_at(this, CAR_FORCE, Vec4::default());
-    mem.store_at(this, CAR_SCRATCH, Vec4::default());
-    mem.store_u32(this, CAR_SCRATCH_WORD, 0);
+    Vec4::default().store(mem, this + CAR_FORCE);
+    Vec4::default().store(mem, this + CAR_SCRATCH);
+    mem.set_u32(this + CAR_SCRATCH_WORD, 0);
 }
 
 /// Where `Unk94d0` reads its remainder's lane 3: this far below its aligned `ebp` (`(sp - 4) & !0xf`).
@@ -201,16 +202,16 @@ const EDGE_RESIDUE: u32 = 0x14;
 /// written. Returns eax, the copy's destination.
 pub fn edge_force<S: WheelStore>(mem: &mut S, this: u32, block: u32, v: u32, acc: u32, sp: u32) -> u32 {
     let input = AxisForceIn {
-        axis: mem.load_at(block, RAY_NORMAL),
+        axis: Vec4::load(mem, block + RAY_NORMAL),
         scale: mem.f32(block + BLOCK_CLAMP_A),
-        probe_direction: mem.load_at(this, PROBE_DIRECTION),
-        velocity: mem.load_at(v, 0),
-        force: mem.load_at(acc, 0),
+        probe_direction: Vec4::load(mem, this + PROBE_DIRECTION),
+        velocity: Vec4::load(mem, v),
+        force: Vec4::load(mem, acc),
         residue: mem.f32(((sp - 4) & !0xF) - EDGE_RESIDUE),
     };
     let out = axis_force::axis_force(&input);
-    mem.store_at(acc, 0, out.force);
-    mem.store_at(this, EDGE_ACROSS, out.across);
+    out.force.store(mem, acc);
+    mem.set(this, slot::edge_across, out.across);
     this + EDGE_ACROSS
 }
 
@@ -234,8 +235,8 @@ pub fn edge_forces<S: WheelStore>(host: &mut impl SubCalls, mem: &mut S, this: u
     if !on_plus && !on_minus {
         return false;
     }
-    let cross = mem.load_at(this, WORLD_AXLE).cross3(mem.load_at(this, PROBE_DIRECTION));
-    let k = mem.f32(this + SPIN_RATE) * 0.2;
+    let cross = Vec4::load(mem, this + WORLD_AXLE).cross3(Vec4::load(mem, this + PROBE_DIRECTION));
+    let k = mem.get(this, slot::spin_rate) * 0.2;
     let v = Vec4 {
         x: mem.f32(this + HUB_VELOCITY) + k * cross.x,
         y: mem.f32(this + HUB_VELOCITY + 4) + k * cross.y,

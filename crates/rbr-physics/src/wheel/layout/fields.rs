@@ -1,18 +1,10 @@
 //! The wheel's member offsets (`CWheel`, its CDef, its tyre block and tail) and the small loaders and stores over
 //! them.
 
-use super::refresh_pose::{
-    DEBUG_GLOBAL, DEF_DRIVE_AXLE_JOINT, DEF_DRIVE_AXLE_MOUNT_OFFSET, DEF_IS_STEERED, DEF_JOINT_AXIS, DEF_JOINT_MOUNT,
-    DEF_STEERING_AXIS, DEF_STEERING_MOUNT, DEF_STEERING_ROD_LENGTH, DEF_STEERING_SIGN, DEF_STRUT_DIM_X,
-    DEF_STRUT_DIM_Z, DEF_STRUT_HUB_POINT, DEF_STRUT_ROD_MOUNT, DEF_WISHBONE_HEADER, DEF_WISHBONE_LENGTH,
-    DEF_WISHBONE_SIGN,
-};
 use super::store::WheelStore;
-use crate::math::vec::{Vec3, Vec4};
+use super::typed::Slot;
 use crate::mem::Mem;
-use crate::wheel::axes::{AxleWobbleIn, HubDamageIn, HubDamageUpdate, Inclination, InclinedAxle, TopMountDeformIn};
-use crate::wheel::contact::RayBlock;
-use crate::wheel::refresh::SuspensionDef;
+use crate::store::Value;
 
 /// `CWheel::m_car` (`+0x7f4`): the car this wheel belongs to (the receiver of `Xform6870`).
 pub const CAR: u32 = 0x7F4;
@@ -298,208 +290,15 @@ pub const STRUT_VEL: u32 = 0x5CC;
 /// The strut definition's `+0x28` (`InnerBumpRubberPos`, the bump stop) and `+0x38` (`OuterBumpRubberPos`, the droop stop).
 pub const STRUT_INNER_BUMP_POS: u32 = 0x28;
 pub const STRUT_OUTER_BUMP_POS: u32 = 0x38;
-// The typed inputs and outputs of the ports. Each `load_*` reads the game memory a port takes, and each `store_*` writes
-// what the port returns; the ports never touch `Mem`.
-
-/// The Mem store: the bodies are the layout's reads and writes.
+/// The Mem store: every field of the wheel's state on the image, at its address (the per-call path).
 impl WheelStore for Mem {
-    /// Loads the ray block at `at` (the hit word is read first, as the original does).
-    fn load_ray_block(&self, at: u32) -> RayBlock {
-        RayBlock {
-            normal: (self.u32(at + RAY_HIT) != 0).then(|| Vec4::load(self, at + RAY_NORMAL)),
-            offset: self.f32(at + RAY_OFFSET),
-            difference: self.f32(at + BLOCK_DIFF),
-        }
+    #[inline]
+    fn get<T: Value>(&self, this: u32, slot: Slot<T>) -> T {
+        T::load(self, this + slot.at)
     }
 
-    /// The tyre's setup: the pointer at `this+0xf10`.
-    fn tyre_def(&self, this: u32) -> u32 {
-        self.u32(this + TYRE_DEF)
-    }
-
-    /// The tyre's `HubOffset` (`tyre_def+0x6c`).
-    fn load_hub_offset(&self, this: u32) -> f32 {
-        self.f32(self.tyre_def(this) + TYRE_DEF_HUB_OFFSET)
-    }
-
-    /// The tyre's `CarcassWidth` (`tyre_def+0xcc`).
-    fn load_carcass_width(&self, this: u32) -> f32 {
-        self.f32(self.tyre_def(this) + TYRE_DEF_CARCASS_WIDTH)
-    }
-
-    /// The car pointer (`this+0x7f4`).
-    fn load_car(&self, this: u32) -> u32 {
-        self.u32(this + CAR)
-    }
-
-    /// A wheel vector at `this + offset`.
-    fn load_at(&self, this: u32, offset: u32) -> Vec4 {
-        Vec4::load(self, this + offset)
-    }
-
-    /// Stores a wheel vector at `this + offset`.
-    fn store_at(&mut self, this: u32, offset: u32, v: Vec4) {
-        v.store(self, this + offset);
-    }
-
-    /// The CDef pointer (`this+0x34`).
-    fn load_def(&self, this: u32) -> u32 {
-        self.u32(this + DEF)
-    }
-
-    /// The car `M3A8A0` reads (`this+0x44`), before its flag test.
-    fn load_xform_car(&self, this: u32) -> u32 {
-        self.u32(this + XFORM_CAR)
-    }
-
-    /// The flags byte of a car (`car+0x60`).
-    fn car_flags(&self, car: u32) -> u8 {
-        self.u8(car + CAR_FLAGS)
-    }
-
-    /// A float of the CDef at `off`.
-    fn load_def_f32(&self, this: u32, off: u32) -> f32 {
-        self.f32(self.load_def(this) + off)
-    }
-
-    /// The damage record pointer (`this+0x7f0`).
-    fn load_damage(&self, this: u32) -> u32 {
-        self.u32(this + DAMAGE)
-    }
-
-    /// A float of the damage record at `off` (`DAMAGE_*`).
-    fn load_damage_f32(&self, this: u32, off: u32) -> f32 {
-        self.f32(self.load_damage(this) + off)
-    }
-
-    /// The angle `M3A9E0` reads (`this+0x5ac`).
-    fn load_angle(&self, this: u32) -> f32 {
-        self.f32(this + WHEEL_ANGLE)
-    }
-
-    /// A float of this at `at` (the wheel's scalars).
-    fn load_f32(&self, this: u32, off: u32) -> f32 {
-        self.f32(this + off)
-    }
-
-    /// Stores a float of this at `off`.
-    fn store_f32(&mut self, this: u32, off: u32, value: f32) {
-        self.set_f32(this + off, value);
-    }
-
-    /// Stores a float of the damage record at `off` (`DAMAGE_*`).
-    fn store_damage_f32(&mut self, this: u32, off: u32, value: f32) {
-        self.set_f32(self.load_damage(this) + off, value);
-    }
-
-    /// Stores an int at `this + off`.
-    fn store_u32(&mut self, this: u32, off: u32, value: u32) {
-        self.set_u32(this + off, value);
-    }
-
-    /// A vector of the CDef at `off` (`DEF_*`).
-    fn load_def_vec(&self, this: u32, off: u32) -> Vec4 {
-        Vec4::load(self, self.load_def(this) + off)
-    }
-
-    /// The CDef the CPhysics global points at.
-    fn world_def(&self) -> u32 {
-        self.u32(self.u32(crate::car_body::layout::WORLD) + WORLD_DEF)
-    }
-
-    fn load_axle_wobble(&self, this: u32) -> AxleWobbleIn {
-        AxleWobbleIn {
-            hub_damage: self.load_damage_f32(this, DAMAGE_HUB),
-            axle: self.load_at(this, INCLINED_AXLE),
-            side: self.load_at(this, INCLINED_SIDE),
-            wheel_angle: self.load_angle(this),
-            previous_w: self.f32(this + WOBBLED_AXLE + 12),
-        }
-    }
-
-    fn store_wobbled_axle(&mut self, this: u32, v: Vec4) {
-        self.store_at(this, WOBBLED_AXLE, v);
-    }
-
-    fn load_inclination(&self, this: u32) -> Inclination {
-        Inclination {
-            hub_damage: self.load_damage_f32(this, DAMAGE_HUB),
-            damage_angle: self.load_def_f32(this, DEF_INCLINATION_DAMAGE_ANGLE),
-            axis_inclination: self.load_def_f32(this, DEF_AXIS_INCLINATION),
-        }
-    }
-
-    fn store_inclined_axle(&mut self, this: u32, axle: &InclinedAxle) {
-        axle.axle.store(self, this + INCLINED_AXLE);
-        axle.side.store(self, this + INCLINED_SIDE);
-    }
-
-    fn load_top_mount_deform(&self, this: u32) -> TopMountDeformIn {
-        TopMountDeformIn {
-            up_damage: self.load_damage_f32(this, DAMAGE_TOP_MOUNT_UP),
-            side_damage: self.load_damage_f32(this, DAMAGE_TOP_MOUNT_SIDE),
-            max_up: self.load_def_f32(this, DEF_MAX_DEFORM_UP),
-            max_side: self.load_def_f32(this, DEF_MAX_DEFORM_SIDE),
-            up_axis: self.load_def_vec(this, DEF_TOP_MOUNT_UP_AXIS),
-            mount: self.load_def_vec(this, DEF_TOP_MOUNT),
-            side_axis: self.load_def_vec(this, DEF_TOP_MOUNT_SIDE_AXIS),
-        }
-    }
-
-    fn store_deformed_top_mount(&mut self, this: u32, v: Vec4) {
-        self.store_at(this, DEFORMED_TOP_MOUNT, v);
-    }
-
-    fn load_hub_damage(&self, this: u32, torque: f32) -> HubDamageIn {
-        HubDamageIn {
-            torque,
-            threshold: self.load_def_f32(this, DEF_HUB_DAMAGE_THRESHOLD),
-            max_torque: self.load_def_f32(this, DEF_HUB_DAMAGE_MAX_TORQUE),
-            hub_damage: self.load_damage_f32(this, DAMAGE_HUB),
-            inclination: self.load_inclination(this),
-        }
-    }
-
-    /// Stores the damage update and sets the changed flag. Nothing is written when `update` is `None`.
-    fn store_hub_damage(&mut self, this: u32, update: Option<&HubDamageUpdate>) {
-        if let Some(update) = update {
-            self.store_damage_f32(this, DAMAGE_HUB, update.hub_damage);
-            self.store_inclined_axle(this, &update.axle);
-            self.store_u32(this, DAMAGE_CHANGED, 1);
-        }
-    }
-
-    /// The CDef words `M3B900` reads (`this+0x34`).
-    fn load_suspension_def(&self, this: u32) -> SuspensionDef {
-        let def = self.load_def(this);
-        SuspensionDef {
-            steering_rod_length: self.f32(def + DEF_STEERING_ROD_LENGTH),
-            wishbone_header: [self.u32(def + DEF_WISHBONE_HEADER), self.u32(def + DEF_WISHBONE_HEADER + 4)],
-            wishbone_length: self.f32(def + DEF_WISHBONE_LENGTH),
-            joint_mount: Vec3::load(self, def + DEF_JOINT_MOUNT),
-            joint_axis: Vec4::load(self, def + DEF_JOINT_AXIS),
-            wishbone_sign: self.f32(def + DEF_WISHBONE_SIGN),
-            strut_dim_x: self.f32(def + DEF_STRUT_DIM_X),
-            strut_dim_z: self.f32(def + DEF_STRUT_DIM_Z),
-            steering_sign: self.f32(def + DEF_STEERING_SIGN),
-            strut_rod_mount: Vec3::load(self, def + DEF_STRUT_ROD_MOUNT),
-            strut_hub_point: Vec3::load(self, def + DEF_STRUT_HUB_POINT),
-            is_steered: self.u32(def + DEF_IS_STEERED) != 0,
-            drive_axle_mount_offset: self.f32(def + DEF_DRIVE_AXLE_MOUNT_OFFSET),
-            steering_mount: Vec4::load(self, def + DEF_STEERING_MOUNT),
-            steering_axis: Vec4::load(self, def + DEF_STEERING_AXIS),
-            drive_axle_joint: Vec3::load(self, def + DEF_DRIVE_AXLE_JOINT),
-        }
-    }
-
-    /// The debug flag word, `[[0x1659b70] + 0x24] + 0x160e0`: bit 2 is the debug flag `M3B900` tests, bit 0x400 gates the
-    /// travel in `M3B880`.
-    fn flag_word(&self) -> u32 {
-        let global = self.u32(DEBUG_GLOBAL);
-        self.u32(self.u32(global + 0x24) + 0x160E0)
-    }
-
-    fn debug_flag(&self) -> bool {
-        self.flag_word() & 4 != 0
+    #[inline]
+    fn set<T: Value>(&mut self, this: u32, slot: Slot<T>, value: T) {
+        value.store(self, this + slot.at)
     }
 }

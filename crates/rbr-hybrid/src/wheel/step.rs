@@ -6,7 +6,7 @@ use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
-use super::{Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
+use super::{on_wheels, Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
 use crate::collision::{RAY_CLEAR, RAY_SEEDS};
 use crate::entities::BODY_COMPOSE;
 use crate::vcu::SET_DIRTY;
@@ -18,11 +18,13 @@ use std::cell::Cell;
 /// `layout::refresh`.
 pub(super) fn refresh(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let x = f32::from_bits(r.stack[0]);
-    layout::deform_top_mount(&mut ctx.mem, r.ecx);
     let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    layout::wobble_axle(&mut libm, &mut ctx.mem, r.ecx);
     let mut calls = Refresh { mem: ctx.mem.clone(), host: ctx.host };
-    let eax = layout::refresh(&mut ctx.mem, &mut calls, r.ecx, x);
+    let eax = on_wheels(ctx, |m| {
+        layout::deform_top_mount(m, r.ecx);
+        layout::wobble_axle(&mut libm, m, r.ecx);
+        layout::refresh(m, &mut calls, r.ecx, x)
+    });
     Ok(Return::void(eax, 4))
 }
 
@@ -55,7 +57,7 @@ pub(super) fn ground_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Ground { mem: ctx.mem.clone(), host: ctx.host, sp: frame - 0x20 };
     let tuning =
         if crate::ngp::is_ngp() { crate::ngp::probe_tuning(ctx) } else { layout::ProbeTuning::stock(&ctx.mem) };
-    let eax = layout::ground_probe(&mut ctx.mem, &mut calls, r.ecx, frame, out, normal, tuning);
+    let eax = on_wheels(ctx, |m| layout::ground_probe(m, &mut calls, r.ecx, frame, out, normal, tuning));
     Ok(Return::void(eax, 8))
 }
 
@@ -155,7 +157,7 @@ pub fn wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let dt = f32::from_bits(r.stack[0]);
     let mut calls = Step { mem: ctx.mem.clone(), host: ctx.host, wheel: r.ecx };
     let slip = crate::ngp::step_slip(ctx)?;
-    layout::wheel_step(&mut ctx.mem, &mut calls, r.ecx, dt, frame, slip);
+    on_wheels(ctx, |m| layout::wheel_step(m, &mut calls, r.ecx, dt, frame, slip));
     Ok(Return::void(0, 4))
 }
 
@@ -422,6 +424,6 @@ pub(super) fn update_strut(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let host = ctx.host;
     let mut calls = Strut { mem: ctx.mem.clone(), host, scratch: r.esp - SCRATCH_BELOW_ESP };
     let mut libm = Libm { host, eax: Cell::new(0) };
-    layout::update_strut(&mut calls, &mut libm, &mut ctx.mem, r.ecx);
+    on_wheels(ctx, |m| layout::update_strut(&mut calls, &mut libm, m, r.ecx));
     Ok(Return::void(0, 0))
 }

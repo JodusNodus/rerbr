@@ -1,7 +1,8 @@
 //! Checks the `object!` tables on snapshots: `lower(lift(image)) == image` on every owned byte of the car's tabled
-//! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's and the tyres' typed state
-//! (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`, `tyre::layout::round_trip`); the typed stage's bytes
-//! and queries against the image's (`stage::layout::round_trip`, `differential`).
+//! objects (`rbr_physics::store::car_objects`), and of the struts', the VCU's, the tyres' and the wheels' typed state
+//! (`spring_damper::layout::round_trip`, `vcu::layout::round_trip`, `tyre::layout::round_trip`,
+//! `wheel::layout::round_trip`); the typed stage's bytes and queries against the image's (`stage::layout::round_trip`,
+//! `differential`); the wheel's host-free entries per call against held (`wheel::layout::differential`).
 //! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
@@ -16,6 +17,7 @@ use rbr_physics::stage::layout as stage;
 use rbr_physics::store;
 use rbr_physics::tyre::layout as tyre;
 use rbr_physics::vcu::layout as vcu;
+use rbr_physics::wheel::layout as wheel;
 
 fn main() -> ExitCode {
     let paths: Vec<String> = std::env::args().skip(1).collect();
@@ -25,14 +27,15 @@ fn main() -> ExitCode {
     }
     let mut ok = true;
     for path in &paths {
-        let mem = match Snapshot::open(path) {
-            Ok(snap) => snap.mem(),
+        let snap = match Snapshot::open(path) {
+            Ok(snap) => snap,
             Err(e) => {
                 println!("{path}: {e}");
                 ok = false;
                 continue;
             }
         };
+        let mem = snap.mem();
         let car = mem.u32(CAR_PTR);
         let objects = store::car_objects(&mem, car);
         // The owners the tables name: each strut state's owner is its wheel, the VCU state's is the car.
@@ -62,8 +65,15 @@ fn main() -> ExitCode {
             ("struts", spring::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("vcu", vcu::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("tyres", tyre::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
+            ("wheels", wheel::round_trip(&mem, car), "typed bytes equal after lower(lift)"),
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
+            (
+                "wheel entries",
+                // The outputs go below the snapshot's stack pointer.
+                wheel::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x400),
+                "bytes equal per call and held",
+            ),
         ];
         for (name, trip, what) in trips {
             match trip {
