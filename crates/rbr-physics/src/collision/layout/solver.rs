@@ -22,6 +22,8 @@ pub(super) const BODY_CONTACT_ROW: u32 = 0x274;
 pub(super) const BODY_OFFSET_ROW: u32 = 0x3b0;
 /// The vector the offset rows move (+0x140; the solid's position, name ours).
 pub(super) const BODY_POSITION: u32 = 0x140;
+/// The body's window progress (+0x290, the solid's), the due-event test's.
+pub(super) const BODY_PROGRESS: u32 = 0x290;
 /// A body's contact rows hold 0x60 bytes each after a 16-byte header.
 pub(super) const BODY_CONTACT_ROW_SIZE: u32 = 0x60;
 

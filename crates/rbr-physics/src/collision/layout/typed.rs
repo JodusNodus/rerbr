@@ -16,9 +16,10 @@ use std::cell::RefCell;
 use std::ops::Range;
 
 use super::col_grids::{col_grid_at, ColGrid};
+use super::mem_store::open_rows_header;
 use super::solver::{
-    BODY_CONTACT_ROW, BODY_OFFSET_ROW, SOLVER_CONTACT_ROW, SOLVER_CONTACT_ROWS, SOLVER_OFFSET_COUNT, SOLVER_OFFSET_ROW,
-    SOLVER_OFFSET_ROWS,
+    BODY_CONTACT_ROW, BODY_OFFSET_ROW, BODY_POSITION, BODY_PROGRESS, SOLVER_CONTACT_ROW, SOLVER_CONTACT_ROWS,
+    SOLVER_OFFSET_COUNT, SOLVER_OFFSET_ROW, SOLVER_OFFSET_ROWS,
 };
 use super::Body;
 use crate::collision::contact_solver::ContactRow;
@@ -27,6 +28,7 @@ use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::physics_core::layout::PHYSICS_GLOBAL;
 use crate::rigid_body::contact::Contact;
+use crate::rigid_body::layout::CarSolids;
 use crate::store::{Object, Raw, Tabled};
 
 /// The solver's rows: 64 contact rows (a body's, 8 rows each) and 64 offset rows (a body's, 8 offsets each).
@@ -379,7 +381,7 @@ impl CarCollision {
 
     /// The held state as a store: its words here, the rest of the image in `mem`.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> CollisionView<'a> {
-        CollisionView { mem, held: Some(self) }
+        CollisionView { mem, held: Some(self), solids: None }
     }
 
     /// The contact rows `k`, lifted from `image` when the step had not touched them.
@@ -439,16 +441,36 @@ fn on_image<T>(mem: &Mem, f: impl FnOnce(&Mem) -> T) -> T {
 }
 
 /// The collision store over the held state: a held word from it, any other from the image. Per call (`held` none) it
-/// is the image.
+/// is the image. With the car's solids held (`with_solids`), the bodies' words the solver reads and writes (position,
+/// window progress, the contact-row link `+0x274`) are theirs.
 pub struct CollisionView<'a> {
     mem: &'a mut Mem,
     held: Option<&'a CarCollision>,
+    solids: Option<&'a CarSolids>,
 }
 
 impl<'a> CollisionView<'a> {
     /// The image as the store (per call).
     pub fn image(mem: &'a mut Mem) -> Self {
-        CollisionView { mem, held: None }
+        CollisionView { mem, held: None, solids: None }
+    }
+
+    /// The store with the car's solids held too (none: the bodies' words on the image).
+    pub fn with_solids(self, solids: Option<&'a CarSolids>) -> Self {
+        CollisionView { solids, ..self }
+    }
+
+    /// A body's word: a held solid's, else the image's.
+    #[inline]
+    fn body_word(&self, at: u32) -> u32 {
+        self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
+    }
+
+    #[inline]
+    fn set_body_word(&mut self, at: u32, value: u32) {
+        if !self.solids.is_some_and(|s| s.write(at, value)) {
+            self.mem.set_u32(at, value);
+        }
     }
 
     #[inline]
@@ -497,6 +519,28 @@ impl Raw for CollisionView<'_> {
 }
 
 impl CollisionStore for CollisionView<'_> {
+    fn body_progress(&self, body: u32) -> f32 {
+        f32::from_bits(self.body_word(body + BODY_PROGRESS))
+    }
+
+    fn body_position(&self, body: u32) -> Vec4 {
+        Vec4::from([0, 4, 8, 12].map(|k| f32::from_bits(self.body_word(body + BODY_POSITION + k))))
+    }
+
+    fn store_body_position(&mut self, body: u32, value: Vec4) {
+        for (k, lane) in [value.x, value.y, value.z, value.w].into_iter().enumerate() {
+            self.set_body_word(body + BODY_POSITION + 4 * k as u32, lane.to_bits());
+        }
+    }
+
+    fn body_contact_rows(&self, body: u32) -> u32 {
+        self.body_word(body + BODY_CONTACT_ROW)
+    }
+
+    fn set_body_contact_rows(&mut self, body: u32, rows: u32) {
+        self.set_body_word(body + BODY_CONTACT_ROW, rows);
+    }
+
     fn solver_contact_count(&self, solver: u32) -> u32 {
         match self.solver(solver) {
             Some(h) => h.typed.borrow().contact_count,
@@ -520,15 +564,13 @@ impl CollisionStore for CollisionView<'_> {
 
     fn open_contact_row(&mut self, rows: u32, body: u32) {
         match self.contact_rows(rows) {
-            Some((h, k)) => {
-                h.rows(self.mem, k, |r| {
-                    r.head.body = body;
-                    r.head.count = 0;
-                });
-                self.mem.set_u32(body + BODY_CONTACT_ROW, rows);
-            }
-            None => CollisionStore::open_contact_row(self.mem, rows, body),
+            Some((h, k)) => h.rows(self.mem, k, |r| {
+                r.head.body = body;
+                r.head.count = 0;
+            }),
+            None => open_rows_header(self.mem, rows, body),
         }
+        self.set_body_contact_rows(body, rows);
     }
 
     fn contact_row_count(&self, rows: u32) -> u32 {
