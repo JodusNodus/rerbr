@@ -1,13 +1,14 @@
 //! The car's store (`crate::store`): the typed reads and writes of the car, its parts, wheels and body points, and the
 //! world's timer words, in physical terms. It is implemented in `layout/car.rs`, which knows where each value lives,
 //! over the car's typed fields (`layout::CarFields`: `Mem` per call on the image, `layout::CarView` on a step's held
-//! state).
+//! state). The words of the car's solids (its own, its wheels', its hinged and mounted bodies') at their addresses are
+//! the solids' store's (`SolidWords`): held where the view holds them, else the image's.
 
 use super::layout::{Real, TimeKeeperDiff};
 use crate::math::quat::Quat;
 use crate::math::vec::{Vec3, Vec4};
 use crate::math::Mat3;
-use crate::store::Raw;
+use crate::rigid_body::layout::SolidWords;
 
 /// The car's value cells (a dirty flag and a value; `notes/ngp.md` "Force feedback" for the steering's): the steering
 /// slew, its target (the rack position) and the target's rate, the steered wheels' torque sum, the filtered steering
@@ -24,7 +25,7 @@ pub enum Cell {
     RollBar(u32, u32),
 }
 
-pub trait CarStore: Raw {
+pub trait CarStore: SolidWords {
     /// The value cell `cell` of the car.
     fn cell(&self, car: u32, cell: Cell) -> Real;
     /// Stores the value cell `cell` (its dirty flag and value).

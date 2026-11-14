@@ -1,6 +1,6 @@
 //! `CCar`'s own words: the `CReal` record, the member offsets, the getters and setters the car-body ports read and
 //! write, the flow and timer words. `CarStore` is implemented over `CarFields` (`typed.rs`): the car's typed fields
-//! through it, every other word on the image.
+//! through it, the solid's words (pose, velocities, accumulators) through `SolidWords`, every other word on the image.
 
 use super::car_parts::{wheel_list_at, TimeKeeperDiff};
 use super::construct::{DEF_DANGEROUS_ACCELERATION, DEF_DRAG_COEFFICIENT, DEF_FRONTAL_AREA};
@@ -14,7 +14,24 @@ use crate::math::Mat3;
 use crate::mem::Mem;
 use crate::physics_core::layout::typed::slot as core_slot;
 pub use crate::physics_core::layout::PHYSICS_GLOBAL as WORLD;
+use crate::rigid_body::layout::SolidWords;
 use crate::store::Raw;
+
+/// The vector of four words at `at` through the solids' store: a held solid's where its table names them.
+pub(super) fn solid_vec4<S: SolidWords + ?Sized>(s: &S, at: u32) -> Vec4 {
+    Vec4::from(s.words::<4>(at).map(f32::from_bits))
+}
+
+/// Stores the vector at `at` through the solids' store.
+pub(super) fn store_solid_vec4<S: SolidWords + ?Sized>(s: &mut S, at: u32, v: Vec4) {
+    s.set_words4(at, [v.x, v.y, v.z, v.w].map(f32::to_bits));
+}
+
+/// The first three of the four words at `at` through the solids' store.
+fn solid_vec3<S: SolidWords + ?Sized>(s: &S, at: u32) -> Vec3 {
+    let [x, y, z] = s.words::<3>(at).map(f32::from_bits);
+    Vec3 { x, y, z }
+}
 
 /// A `CReal` record (0x10 bytes): the dirty flag at +0x8 (`CBase::SetDirty` writes 1) and the value at +0xc.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -245,7 +262,7 @@ impl<S: CarFields> CarStore for S {
 
     /// Reads the matrix of `at` (nine words, row by row).
     fn load_mat3(&self, at: u32) -> Mat3 {
-        std::array::from_fn(|r| std::array::from_fn(|c| self.f32(at + 4 * (3 * r + c) as u32)))
+        std::array::from_fn(|r| std::array::from_fn(|c| f32::from_bits(self.word(at + 4 * (3 * r + c) as u32))))
     }
 
     /// `CCar::Get30` (0x4e67f0): the word at `this + 0x30`, the entity's sort key.
@@ -360,12 +377,12 @@ impl<S: CarFields> CarStore for S {
 
     /// The car's velocity (`CCar::m_velocity`, three lanes at +0x1c0).
     fn velocity(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + VELOCITY)
+        solid_vec3(self, car + VELOCITY)
     }
 
     /// The car's angular velocity (`CCar::m_angularVelocity`, three lanes at +0x190).
     fn angular_velocity(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + ANGULAR_VELOCITY)
+        solid_vec3(self, car + ANGULAR_VELOCITY)
     }
 
     /// The first and fifth lanes of damper `i` (at +0xa28 + 0x40 i and +0x10 more): their difference is its force.
@@ -420,7 +437,7 @@ impl<S: CarFields> CarStore for S {
 
     /// The vector at +0x370, the seed `E46_Get370` returns (`Sim7AD0`'s `ToWorld` input). S70 adds into it.
     fn force_accumulator(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + 0x370)
+        solid_vec3(self, car + 0x370)
     }
 
     /// The inverse mass (`def + 0x16c`, `notes/physics.md` "Car body"): `Sim7AD0` divides by it.
@@ -477,7 +494,7 @@ impl<S: CarFields> CarStore for S {
 
     /// The car's position lanes (`car + 0x140`, four words), the start of the position payload.
     fn position_words(&self, car: u32) -> [u32; 4] {
-        std::array::from_fn(|k| self.u32(car + 0x140 + 4 * k as u32))
+        self.words(car + 0x140)
     }
 
     /// The E39 block (+0x620): its count word (+0x80) and scale (+0x8c) are the sensor payload's words 11 and 12.
@@ -647,13 +664,12 @@ impl<S: CarFields> CarStore for S {
 
     /// The velocity with its fourth lane (+0x1c0, four lanes; `velocity` is the first three).
     fn velocity4(&self, car: u32) -> Vec4 {
-        let [x, y, z, w] = self.f32s(car + VELOCITY);
-        Vec4 { x, y, z, w }
+        solid_vec4(self, car + VELOCITY)
     }
 
     /// The three words of the def at +0x230, +0x234, +0x238 (`Vf6cx`'s 50g test squares them).
     fn acceleration(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + 0x230)
+        solid_vec3(self, car + 0x230)
     }
 
     /// The dangerous acceleration (`CDef::m_dangerousAcceleration`, def +0x44b0).
@@ -663,7 +679,7 @@ impl<S: CarFields> CarStore for S {
 
     /// Whether the force-feedback output is muted: the car's word at +0x1ec (the gate `CSolid::E43Vf8C`, 0x5293e0, returns on).
     fn ffb_muted(&self, car: u32) -> bool {
-        self.u32(car + 0x1EC) != 0
+        self.word(car + 0x1EC) != 0
     }
 
     /// The setup word at `def + 0x44a0`, `MaxFFTorque` (the value of the key's CReal at `+0x4494`), which `FfbNorm`
@@ -758,7 +774,7 @@ impl<S: CarFields> CarStore for S {
 
     /// The drive line index at +0x17c, the word the drive line's thunk (`0x50a4f0`) takes.
     fn drive_line_word(&self, car: u32) -> u32 {
-        self.u32(car + 0x17C)
+        self.word(car + 0x17C)
     }
 
     /// `E36Triple::MinPick` (0x4f3ec0) on the triple at `at`: the int pair and the float.
@@ -771,14 +787,15 @@ impl<S: CarFields> CarStore for S {
     }
 
     fn load_quat(&self, at: u32) -> Quat {
-        Quat::load(self, at)
+        let Vec4 { x, y, z, w } = solid_vec4(self, at);
+        Quat { x, y, z, w }
     }
 
     fn store_quat(&mut self, at: u32, q: Quat) {
-        q.store(self, at);
+        store_solid_vec4(self, at, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
     }
 
     fn zero_vec4(&mut self, at: u32) {
-        Vec4::default().store(self, at);
+        store_solid_vec4(self, at, Vec4::default());
     }
 }

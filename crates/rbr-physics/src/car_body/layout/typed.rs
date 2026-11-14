@@ -1,9 +1,10 @@
 //! The car's typed state on the image (`notes/physics.md` "Store seam"): the `CCar`'s own words that only the car's
 //! functions read and write during a step ([`CarState`], one [`Slot`] per field), their access ([`CarFields`]: `Mem`'s
 //! on the image, [`CarView`]'s on the held state), the car in typed storage ([`CarOwn`]) and the round trip. The solid's
-//! words (`< +0x470`: pose, velocities, accumulators), the pointers, the parts (drive, engine, VCU scratch, lights,
-//! passenger), the value cells' headers (`SetDirty`), the damage handler and every word another subsystem reads or
-//! writes at its address stay in the image.
+//! words (`< +0x470`: pose, velocities, accumulators) are the solids' ([`SolidWords`], held with
+//! [`CarView::with_solids`]); the pointers, the parts (drive, engine, VCU scratch, lights, passenger), the value cells'
+//! headers (`SetDirty`), the damage handler and every word another subsystem reads or writes at its address stay in the
+//! image.
 
 use std::cell::RefCell;
 use std::ops::Range;
@@ -11,6 +12,7 @@ use std::ops::Range;
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::physics_core::layout::typed::{Core, CoreFields, Slot as CoreSlot};
+use crate::rigid_body::layout::{CarSolids, SolidWords};
 use crate::store::defs::{self, Defs};
 use crate::store::{Object, Raw, Value};
 use crate::wheel::layout::{slot as wheel_slot, CarWheels};
@@ -206,19 +208,21 @@ impl CarOwn {
 }
 
 /// The car's store over the held typed state: the held car's fields and the held wheels' ground flags typed, any other
-/// car's and wheel's on the image (the per-call path), and the image for the rest.
+/// car's and wheel's on the image (the per-call path), the held solids' words typed ([`SolidWords`]), and the image for
+/// the rest.
 pub struct CarView<'a> {
     mem: &'a mut Mem,
     own: Option<&'a CarOwn>,
     wheels: Option<&'a CarWheels>,
     defs: Option<&'a Defs>,
     core: Option<&'a Core>,
+    solids: Option<&'a CarSolids>,
 }
 
 impl<'a> CarView<'a> {
     /// The store over `mem` with the car `own` and its `wheels` held (none: every word on the image).
     pub fn new(mem: &'a mut Mem, own: Option<&'a CarOwn>, wheels: Option<&'a CarWheels>) -> Self {
-        CarView { mem, own, wheels, defs: None, core: None }
+        CarView { mem, own, wheels, defs: None, core: None, solids: None }
     }
 
     /// The store with the step's typed definitions (none: the car's definition on the image).
@@ -229,6 +233,11 @@ impl<'a> CarView<'a> {
     /// The store with the physics core `core` held too.
     pub fn with_core(self, core: Option<&'a Core>) -> Self {
         CarView { core, ..self }
+    }
+
+    /// The store with the car's solids held too (none: the solids' words on the image).
+    pub fn with_solids(self, solids: Option<&'a CarSolids>) -> Self {
+        CarView { solids, ..self }
     }
 
     fn held(&self, car: u32) -> Option<&'a CarOwn> {
@@ -244,6 +253,37 @@ impl Raw for CarView<'_> {
     #[inline]
     fn mem_mut(&mut self) -> &mut Mem {
         self.mem
+    }
+}
+
+/// A solid's word at its address: the held solids' where their tables name it, else the image's.
+impl SolidWords for CarView<'_> {
+    #[inline]
+    fn word(&self, at: u32) -> u32 {
+        self.solids.and_then(|s| s.read(at)).unwrap_or_else(|| self.mem.u32(at))
+    }
+
+    #[inline]
+    fn set_word(&mut self, at: u32, value: u32) {
+        if !self.solids.is_some_and(|s| s.write(at, value)) {
+            self.mem.set_u32(at, value)
+        }
+    }
+
+    #[inline]
+    fn words<const N: usize>(&self, at: u32) -> [u32; N] {
+        match self.solids {
+            Some(_) => std::array::from_fn(|k| self.word(at + 4 * k as u32)),
+            None => self.mem.u32s(at),
+        }
+    }
+
+    #[inline]
+    fn set_words4(&mut self, at: u32, words: [u32; 4]) {
+        match self.solids {
+            Some(_) => (0..4).for_each(|k| self.set_word(at + 4 * k, words[k as usize])),
+            None => Vec4::from(words.map(f32::from_bits)).store(self.mem, at),
+        }
     }
 }
 

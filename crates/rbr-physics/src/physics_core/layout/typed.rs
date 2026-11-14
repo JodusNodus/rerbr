@@ -15,6 +15,7 @@ use super::physics_object::StepHost;
 use super::step_forward::StepStack;
 use crate::mem::Mem;
 use crate::physics_core::store::CoreStore;
+use crate::rigid_body::layout::SolidWords;
 use crate::store::{Object, Raw, Tabled, Value};
 
 crate::object! {
@@ -112,8 +113,10 @@ pub mod slot {
 
 /// The core's typed fields as a store finds them: `Mem` on the image (the per-call path), [`CoreView`] on the step's
 /// held state. `CoreStore` is implemented over it (`mem_store.rs`). `base` is the object's address: the physics
-/// object, its state, or the physics global's for the globals.
-pub trait CoreFields: Raw {
+/// object, its state, or the physics global's for the globals. The words of the bodies the core reads at their
+/// addresses are the solids' ([`SolidWords`]: the car's store holds them, `CarView::with_solids`; the core's own view
+/// reads them on the image).
+pub trait CoreFields: SolidWords {
     fn core_field<T: Value>(&self, base: u32, slot: Slot<T>) -> T;
     fn set_core_field<T: Value>(&mut self, base: u32, slot: Slot<T>, value: T);
 }
@@ -239,6 +242,8 @@ impl Raw for CoreView<'_> {
         self.mem
     }
 }
+
+impl SolidWords for CoreView<'_> {}
 
 impl CoreFields for CoreView<'_> {
     #[inline]
