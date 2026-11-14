@@ -5,6 +5,7 @@
 use super::contacts::{self, HALF, HOOK, RING_TAIL};
 
 use super::solid_ctor::SOLID_STATE;
+use super::Solid;
 use super::{
     Body, Def, ParentFrame, Vec4, ANGULAR_VELOCITY, CONTACT_LIST_FLAG, DEFINITION, DEF_INVERSE_MASS, DEF_VERY_SOFT,
     ENTITY_FLAGS, LINEAR_VELOCITY, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE, START_ORIENTATION, START_POSITION,
@@ -17,6 +18,7 @@ use crate::rigid_body::contact::{Contact, Input};
 use crate::rigid_body::rows::RowFrame;
 use crate::rigid_body::store::{HookPair, Motion, RigidStore, RingHeader, StateRotation};
 use crate::store::Raw;
+use std::cell::RefCell;
 
 /// The physics global (`g_1659b70`), whose `+0x24` is the settings object.
 const PHYSICS_GLOBAL: u32 = 0x1659b70;
@@ -63,6 +65,11 @@ pub trait SolidWords: Raw {
     /// [`SolidWords::image`], to read.
     #[inline]
     fn image_ref(&self) -> Option<&Mem> {
+        None
+    }
+    /// The typed state of the solid at `this` while it is held, for a caller that reads or writes a whole body.
+    #[inline]
+    fn held(&self, _this: u32) -> Option<&RefCell<Solid>> {
         None
     }
 }

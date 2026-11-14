@@ -13,7 +13,7 @@ use rbr_physics::entities::tree::{
 use rbr_physics::entities::walk::{self, carry_three_four, Node, Walk as PairOps, Walker};
 use rbr_physics::mem::Mem;
 
-use super::frame::{frame_hook_at, not_kept_on_held, FrameOwner};
+use super::frame::{frame_hook_at, FrameOwner};
 use super::WALK_PRE_ORDER;
 use crate::rigid_body::held_solids;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -268,8 +268,15 @@ pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
     let Some(solids) = held_solids(host) else {
         return layout::copy_vec4(mem, to, from);
     };
-    not_kept_on_held(host, from, [to]);
+    if solids.read(from).is_some() || solids.read(to).is_some() {
+        host.ran_direct(); // as `not_kept_on_held`
+    }
     let mut store = solids.view(mem);
+    if to.abs_diff(from) >= 16 {
+        let words = store.words::<4>(from);
+        store.set_words4(to, words);
+        return;
+    }
     for k in 0..4 {
         let word = store.word(from + 4 * k);
         store.set_word(to + 4 * k, word);

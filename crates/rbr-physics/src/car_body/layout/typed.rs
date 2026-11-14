@@ -12,7 +12,7 @@ use std::ops::Range;
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::physics_core::layout::typed::{Core, CoreFields, Slot as CoreSlot};
-use crate::rigid_body::layout::{CarSolids, SolidWords};
+use crate::rigid_body::layout::{CarSolids, Solid, SolidWords};
 use crate::store::defs::{self, Defs};
 use crate::store::{Object, Raw, Value};
 use crate::wheel::layout::{slot as wheel_slot, CarWheels};
@@ -282,6 +282,10 @@ impl SolidWords for CarView<'_> {
             Some(s) => s.set_words4(self.mem, at, words),
             None => self.mem.set_words4(at, words),
         }
+    }
+    #[inline]
+    fn held(&self, this: u32) -> Option<&RefCell<Solid>> {
+        self.solids?.held(this)
     }
 }
 

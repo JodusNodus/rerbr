@@ -63,6 +63,9 @@ pub struct HeldSolid {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CarSolids {
     pub solids: Vec<HeldSolid>,
+    /// From the lowest held span's start to the highest one's end: most words a store asks for (the stack's, the
+    /// globals') are outside it.
+    bounds: Range<u32>,
 }
 
 impl CarSolids {
@@ -88,7 +91,11 @@ impl CarSolids {
         for k in 0..3 {
             add(["mounted0 solid", "mounted1 solid", "mounted2 solid"][k], mem.u32(mounted_slot(car, k as u32)));
         }
-        CarSolids { solids }
+        let bounds = match (solids.iter().map(|s| s.at).min(), solids.iter().map(|s| s.at).max()) {
+            (Some(lo), Some(hi)) => lo + HELD.start..hi + HELD.end,
+            _ => 0..0,
+        };
+        CarSolids { solids, bounds }
     }
 
     /// Writes every solid's state back to the image.
@@ -110,10 +117,19 @@ impl CarSolids {
     /// The held solid whose typed words hold `at`, and the offset in it.
     #[inline]
     fn find(&self, at: u32) -> Option<(&HeldSolid, u32)> {
+        if !self.bounds.contains(&at) {
+            return None;
+        }
         self.solids.iter().find_map(|s| {
             let off = at.wrapping_sub(s.at);
             HELD.contains(&off).then_some((s, off))
         })
+    }
+
+    /// The typed state of the held solid at `at` (its address).
+    #[inline]
+    pub fn held(&self, at: u32) -> Option<&RefCell<Solid>> {
+        self.solids.iter().find(|s| s.at == at).map(|s| &s.state)
     }
 
     /// The word at `at` if a held solid's table names it.
@@ -271,6 +287,10 @@ impl SolidWords for SolidView<'_> {
             Some(s) => s.set_words4(self.mem, at, words),
             None => self.mem.set_words4(at, words),
         }
+    }
+    #[inline]
+    fn held(&self, this: u32) -> Option<&RefCell<Solid>> {
+        self.solids?.held(this)
     }
 }
 

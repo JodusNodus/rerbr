@@ -5,7 +5,7 @@
 //! (state, definition, scratch), the step counter's NTweak header and dirty word (`SetDirty`), the entity lists and
 //! their nodes' links, the scratch's solver and its event list (the collision's), and the definition stay in the image.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ops::Range;
 
 use super::contact_walk::NodeHost;
@@ -15,7 +15,7 @@ use super::physics_object::StepHost;
 use super::step_forward::StepStack;
 use crate::mem::Mem;
 use crate::physics_core::store::CoreStore;
-use crate::rigid_body::layout::{CarSolids, SolidWords};
+use crate::rigid_body::layout::{CarSolids, Solid, SolidWords};
 use crate::store::{Object, Raw, Tabled, Value};
 
 crate::object! {
@@ -275,6 +275,10 @@ impl SolidWords for CoreView<'_> {
             Some(s) => s.set_words4(self.mem, at, words),
             None => self.mem.set_words4(at, words),
         }
+    }
+    #[inline]
+    fn held(&self, this: u32) -> Option<&RefCell<Solid>> {
+        self.solids?.held(this)
     }
 }
 
