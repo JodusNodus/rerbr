@@ -194,7 +194,7 @@ impl CarSolids {
             add(["mounted0 solid", "mounted1 solid", "mounted2 solid"][k], mem.u32(mounted_slot(car, k as u32)));
         }
         solids.sort_by_key(|s| s.at);
-        assert!(solids.windows(2).all(|w| w[1].at - w[0].at >= HELD.end), "two solids' held spans overlap");
+        assert!(solids.windows(2).all(|w| w[1].at - w[0].at >= Solid::SIZE), "two solids overlap");
         let bounds = match (solids.first(), solids.last()) {
             (Some(lo), Some(hi)) => lo.at + HELD.start..hi.at + HELD.end,
             _ => 0..0,
@@ -218,22 +218,24 @@ impl CarSolids {
         self.solids.iter().flat_map(field).collect()
     }
 
-    /// The held solid whose span holds `at`, and the offset in it.
+    /// The held solid whose object holds `at` (which [`slot`] then tells held or not), and the offset in it; `None`
+    /// outside every held span. The solid found last is tried first: runs read one solid's words in a row, its held
+    /// and its other words alike.
     #[inline]
     fn find(&self, at: u32) -> Option<(&HeldSolid, u32)> {
         if !self.bounds.contains(&at) {
             return None;
         }
-        let in_span = |s: &HeldSolid| Some(at.wrapping_sub(s.at)).filter(|off| HELD.contains(off));
+        let in_object = |s: &HeldSolid| Some(at.wrapping_sub(s.at)).filter(|off| *off < Solid::SIZE);
         if let Some(s) = self.solids.get(self.last.get()) {
-            if let Some(off) = in_span(s) {
+            if let Some(off) = in_object(s) {
                 return Some((s, off));
             }
         }
-        // The last solid that starts at or below `at`'s span start: the only one whose span can hold it.
-        let k = self.solids.partition_point(|s| s.at + HELD.start <= at).checked_sub(1)?;
+        // The last solid that starts at or below `at`: the only one whose object can hold it.
+        let k = self.solids.partition_point(|s| s.at <= at).checked_sub(1)?;
         let s = &self.solids[k];
-        let off = in_span(s)?;
+        let off = in_object(s)?;
         self.last.set(k);
         Some((s, off))
     }
@@ -276,6 +278,7 @@ impl CarSolids {
     /// span and ends outside every span touches none.
     #[inline]
     pub fn words<const N: usize>(&self, mem: &Mem, at: u32) -> [u32; N] {
+        const { assert!(4 * N < HELD.start as usize, "a block reaches past the solid it starts in into the next") };
         match self.find(at) {
             Some((s, off)) => std::array::from_fn(|k| {
                 let k = 4 * k as u32;
