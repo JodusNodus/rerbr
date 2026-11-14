@@ -23,11 +23,11 @@ pub use frame_inputs::{
     soil_input, table_at,
 };
 pub use frame_types::{sig, ContactFrame, Frame, Indentation, Scratch, Segment, Setup, StateWords, SOIL_DENSITY};
-pub use kernels::{emit_noise, scaled_sum, value8_clear, word_at, StepArgs, StepOut, StepPtrs};
+pub use kernels::{clear_eight_floats, emit_noise, scaled_sum, word_at, StepArgs, StepOut, StepPtrs};
 pub use objects::ScratchObj;
 pub use scratch_ctor::{
-    cbase_headers_17, cbase_headers_3, construct_scratch, create_scratch, delete_container, delete_scratch,
-    destroy_scratch, destroy_scratch_body, init_scratch, SCRATCH_SIZE,
+    construct_scratch, create_scratch, delete_container, delete_scratch, destroy_scratch, destroy_scratch_body,
+    init_scratch, reset_tweak_headers, SCRATCH_SIZE,
 };
 
 // The `CScratch` (`this`) words, its state (`m_state`, `this+0x14`) and its setup (`m_def`, `this+0x10`).
@@ -37,26 +37,28 @@ pub const DEF: u32 = 0x10;
 /// `this+0x14`: the tyre state, `m_state` (a CState; its words are the `STATE_*` consts).
 pub const STATE: u32 = 0x14;
 /// `this+0x170`: the contact frame, rows 0x10 bytes apart (lateral, rolling, normal).
-pub const SLIP_MATRIX: u32 = 0x170;
+pub const CONTACT_FRAME: u32 = 0x170;
 /// `this+0x360`: the contact-plane slip speed `sqrt(s0² + s1²)`, m/s (`m_speed`).
 pub const SPEED: u32 = 0x360;
 /// `this+0x364`: `s0² + s1²` (`m_speedSq`).
 pub const SPEED_SQ: u32 = 0x364;
-/// `this+0x368`, `+0x36c`, `+0x370`: the three slip velocity components (`m_slipX`, `m_slipY`, `m_slipZ`).
-pub const SLIP_X: u32 = 0x368;
-/// `this+0x374`: `R·ω + s1`, the longitudinal velocity of the contact point (`m_contactLongVel`).
-pub const LONG_CONTACT_VEL: u32 = 0x374;
+/// `this+0x368`, `+0x36c`, `+0x370`: the contact point's velocity in the contact frame, lateral, longitudinal and
+/// normal (`m_slipX`, `m_slipY`, `m_slipZ`).
+pub const CONTACT_VELOCITY: u32 = 0x368;
+/// `this+0x374`: `R·ω + s1`, the slip velocity along the rolling axis (`m_contactLongVel`).
+pub const LONG_SLIP_VELOCITY: u32 = 0x374;
 /// `this+0x378`: the wheel's spin rate ω, rad/s, stored as float bits (`m_spin`).
 pub const SPIN: u32 = 0x378;
-/// `this+0x37c`: `-(1/R)·s1 - ω` (`m_slipRatioTerm`).
-pub const SLIP_RATIO_TERM: u32 = 0x37C;
+/// `this+0x37c`: `-(1/R)·s1 - ω`, the spin the contact's longitudinal velocity does not explain
+/// (`m_slipRatioTerm`).
+pub const SPIN_SLIP: u32 = 0x37C;
 
 /// `m_state+0x4c`: the effective radius `R`, m (`m_effectiveRadius`).
 pub const STATE_EFFECTIVE_RADIUS: u32 = 0x4C;
-/// `m_state+0x58`: the tread coverage.
-pub const STATE_LERP_WEIGHT: u32 = 0x58;
+/// `m_state+0x58`: the tread coverage (`TreadCoverage`).
+pub const STATE_TREAD_COVERAGE: u32 = 0x58;
 /// `m_state+0x64`: the temperature of the air inside the tyre, K (the gas state at `+0x60`).
-pub const STATE_TYRE_TEMPERATURE: u32 = 0x64;
+pub const STATE_INNER_AIR_TEMPERATURE: u32 = 0x64;
 
 // The CDef words (`m_def`), named by the tweak keys of `CTyre::CDef` (rbr-recomp `notes/physics/tyre.md` 2c).
 /// `m_def+0x1c`: the tweak key `DebugId`, read as the signal owner id.

@@ -98,18 +98,18 @@ pub trait TyreStore: Raw {
     fn load_step(&self, w: &[u32]) -> (StepArgs, StepPtrs);
     /// Stores the outputs of the tyre step (the `None` fields are not written).
     fn store_step(&mut self, p: &StepPtrs, out: &StepOut);
-    /// Loads the surface friction's inputs for the surface classes at the indices `i` and `j` with the wetnesses `a` and
-    /// `b`: the setup's base frictions, wet slopes and wear factors at those indices, its design wetness, and the wear
-    /// of the sector. The indices are words, so the address is wrapping.
-    fn load_surface_input(&self, this: u32, i: u32, j: u32, a: f32, b: f32) -> SurfaceInput;
-    /// Stores the surface friction through the caller's pointers `o1` and `o2`, in that order.
-    fn store_surface_friction(&mut self, o1: u32, o2: u32, out: SurfaceFriction);
+    /// Loads the surface friction's inputs for the two surface classes at the indices `classes`, with their
+    /// `wetness`: the setup's base frictions, wet slopes and wear factors at those indices, its design wetness, and the
+    /// wear of the sector. The indices are words, so the address is wrapping.
+    fn load_surface_input(&self, this: u32, classes: [u32; 2], wetness: [f32; 2]) -> SurfaceInput;
+    /// Stores the surface friction through the caller's pointers `first` and `second`, in that order.
+    fn store_surface_friction(&mut self, first: u32, second: u32, out: SurfaceFriction);
     /// Stores the relaxation results, then the relaxation counter: up by one, with its dirty flag set.
     fn store_relax_count(&mut self, this: u32, out: &RelaxOutput);
-    /// The first word of the wheel container's tyre tail.
-    fn load_tyre_tail10(&self, container: u32) -> u32;
-    /// The second word of the wheel container's tyre tail.
-    fn load_tyre_tail14(&self, container: u32) -> u32;
+    /// The scratch's setup pointer.
+    fn load_def_pointer(&self, this: u32) -> u32;
+    /// The scratch's state pointer.
+    fn load_state_pointer(&self, this: u32) -> u32;
     /// The tweak's name object.
     fn load_name_object(&self, this: u32) -> u32;
     /// The tyre-noise signal.

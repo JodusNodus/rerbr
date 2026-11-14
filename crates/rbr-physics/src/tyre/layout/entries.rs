@@ -40,78 +40,78 @@ pub fn locate<S: TyreStore>(mem: &mut S, table: u32, x: f32, n: u32, out: u32) -
 }
 
 /// `CScratch::Sign`, st0.
-pub fn sign<S: TyreStore>(mem: &S, this: u32) -> f64 {
+pub fn rolling_torque<S: TyreStore>(mem: &S, this: u32) -> f64 {
     forces::rolling_torque(mem.load_rolling_input(this))
 }
 
-/// `CScratch::Friction (k)`, st0.
-pub fn friction<S: TyreStore>(mem: &mut S, this: u32, k: f32) -> f64 {
-    let out = hold::hold(mem.load_hold_input(this, k));
+/// `CScratch::Friction (dt)`, st0.
+pub fn hold<S: TyreStore>(mem: &mut S, this: u32, dt: f32) -> f64 {
+    let out = hold::hold(mem.load_hold_input(this, dt));
     mem.store_hold_direction(this, out.direction);
     out.torque
 }
 
-/// `CScratch::Align (a*, b*)`: whether it aligned.
-pub fn align<S: TyreStore>(mem: &mut S, this: u32, a: u32, b: u32) -> Result<bool, Outside> {
-    let a = Vec4::load(mem, a);
-    let b = Vec4::load(mem, b);
-    with_frame(mem, this, |frame| Ok(contact_frame::build(frame, a, b)))
+/// `CScratch::Align (normal*, axle*)`: whether it aligned.
+pub fn build_contact_frame<S: TyreStore>(mem: &mut S, this: u32, normal: u32, axle: u32) -> Result<bool, Outside> {
+    let normal = Vec4::load(mem, normal);
+    let axle = Vec4::load(mem, axle);
+    with_frame(mem, this, |frame| Ok(contact_frame::build(frame, normal, axle)))
 }
 
 /// `CScratch::ComputeOutputs`: the 17 stack words, scales at 1, 2, 4 and 5, `src` at 6, the output pointers at 7 to 16.
-pub fn compute_outputs<S: TyreStore>(mem: &mut S, this: u32, s: &[u32]) {
+pub fn friction_limits<S: TyreStore>(mem: &mut S, this: u32, s: &[u32]) {
     let f = f32::from_bits;
     let input = mem.load_friction_limits(this, s[6], [f(s[1]), f(s[2])], [f(s[4]), f(s[5])]);
     let out = friction_limits::friction_limits(&input);
     mem.store_friction_limits(std::array::from_fn(|i| s[7 + i]), &out);
 }
 
-/// `TyreClamp (a, b, c, out*)`.
-pub fn tyre_clamp<S: TyreStore>(mem: &mut S, a: f32, b: f32, c: f32, out: u32) {
-    mem.set_f32(out, grip::clamp_deflection(a, b, c));
+/// `TyreClamp (friction_force, stiffness, deflection, out*)`.
+pub fn clamp_deflection<S: TyreStore>(mem: &mut S, friction_force: f32, stiffness: f32, deflection: f32, out: u32) {
+    mem.set_f32(out, grip::clamp_deflection(friction_force, stiffness, deflection));
 }
 
 /// `FloorS32 (x, table, count)`, st0.
-pub fn floor_s32<S: TyreStore>(mem: &S, x: f32, table: u32, count: u32) -> f64 {
+pub fn table_lerp<S: TyreStore>(mem: &S, x: f32, table: u32, count: u32) -> f64 {
     curve::table_lerp(x, count as i32, |i| mem.f32(table + 4 * i))
 }
 
-/// `CScratch::ComputeSlip (dir*, spin)`.
-pub fn compute_slip<S: TyreStore>(mem: &mut S, this: u32, dir: u32, spin: f32) {
-    let dir = [mem.f32(dir), mem.f32(dir + 4), mem.f32(dir + 8)];
+/// `CScratch::ComputeSlip (velocity*, spin)`.
+pub fn compute_slip<S: TyreStore>(mem: &mut S, this: u32, velocity: u32, spin: f32) {
+    let velocity = [mem.f32(velocity), mem.f32(velocity + 4), mem.f32(velocity + 8)];
     let radius = mem.load_effective_radius(this);
     let axes = mem.load_contact_axes(this);
-    let out = slip::compute_slip(&axes, radius, dir, spin);
+    let out = slip::compute_slip(&axes, radius, velocity, spin);
     mem.store_slip(this, &out);
 }
 
-/// `CScratch::SolveForces (k, out1*, out2*)`: `out2` is read (the asm adds into it), and both are written.
-pub fn solve_forces<S: TyreStore>(mem: &mut S, this: u32, k: f32, out1: u32, out2: u32) -> Result<(), Outside> {
-    let out2_in = Vec4::load(mem, out2);
-    let (v1, v2) = with_frame(mem, this, |frame| Ok(forces::solve_forces(frame, k, out2_in, 0.0)))?;
-    v1.store(mem, out1);
-    v2.store(mem, out2);
+/// `CScratch::SolveForces (dt, force*, torque*)`: `torque` is read (the asm adds into it), and both are written.
+pub fn solve_forces<S: TyreStore>(mem: &mut S, this: u32, dt: f32, force: u32, torque: u32) -> Result<(), Outside> {
+    let torque_in = Vec4::load(mem, torque);
+    let (f, t) = with_frame(mem, this, |frame| Ok(forces::solve_forces(frame, dt, torque_in, 0.0)))?;
+    f.store(mem, force);
+    t.store(mem, torque);
     Ok(())
 }
 
-/// `CScratch::FillOutputs (src*, debug_words*, divisor)`.
-pub fn fill_outputs<S: TyreStore>(
+/// `CScratch::FillOutputs (velocity*, debug_words*, divisor)`.
+pub fn fill_noise_signal<S: TyreStore>(
     mem: &mut S,
     this: u32,
-    src: u32,
+    velocity: u32,
     debug_words: u32,
     divisor: f32,
 ) -> Result<(), Outside> {
-    let src = Vec4::load(mem, src);
+    let velocity = Vec4::load(mem, velocity);
     let debug_words: [u32; 3] = std::array::from_fn(|k| mem.u32(debug_words + 4 * k as u32));
     with_frame(mem, this, |frame| {
-        noise_signal::fill_noise_signal(frame, src, debug_words, divisor);
+        noise_signal::fill_noise_signal(frame, velocity, debug_words, divisor);
         Ok(())
     })
 }
 
 /// `CScratch::WriteOutputs (out*)`.
-pub fn write_outputs<S: TyreStore>(mem: &mut S, this: u32, out: u32) -> Result<(), Outside> {
+pub fn write_output_block<S: TyreStore>(mem: &mut S, this: u32, out: u32) -> Result<(), Outside> {
     let block = with_frame(mem, this, |frame| Ok(output_block::write_output_block(frame)))?;
     mem.store_output_block(out, &block);
     Ok(())
@@ -139,17 +139,25 @@ pub fn friction_curve<S: TyreStore>(mem: &mut S, s: &[u32]) -> f64 {
     out.friction
 }
 
-/// `CScratch::SolveDirs (a, b, c, out0*, out1*, out2*)`.
-pub fn solve_dirs<S: TyreStore>(mem: &mut S, this: u32, abc: [f32; 3], outs: [u32; 3]) {
+/// `CScratch::SolveDirs (spin, lateral, longitudinal, out0*, out1*, out2*)`.
+pub fn slip_directions<S: TyreStore>(mem: &mut S, this: u32, velocities: [f32; 3], outs: [u32; 3]) {
     let radius = mem.load_effective_radius(this);
-    let out = slip::slip_directions(abc[0], abc[1], abc[2], radius);
+    let [spin, lateral, longitudinal] = velocities;
+    let out = slip::slip_directions(spin, lateral, longitudinal, radius);
     for (at, value) in outs.into_iter().zip(out) {
         mem.set_f32(at, value);
     }
 }
 
-/// `CScratch::ClampGrip (s, a, b, c, d, out_a*, out_b*)`.
-pub fn clamp_grip<S: TyreStore>(mem: &mut S, this: u32, g: GripInput, out_a: u32, out_b: u32) -> Result<(), Outside> {
+/// `CScratch::ClampGrip (normal_force, static_friction, kinetic_friction, lateral_stiffness, torsional_stiffness,
+/// deflection*, torsion*)`.
+pub fn limit_to_friction_circle<S: TyreStore>(
+    mem: &mut S,
+    this: u32,
+    g: GripInput,
+    deflection: u32,
+    torsion: u32,
+) -> Result<(), Outside> {
     let out = with_frame(mem, this, |frame| {
         let out = grip::limit_to_friction_circle(&frame.state, g);
         frame.state.grip_clamped = out.clamped;
@@ -157,97 +165,120 @@ pub fn clamp_grip<S: TyreStore>(mem: &mut S, this: u32, g: GripInput, out_a: u32
         frame.scratch.stick_phase_b = out.phase_b;
         Ok(out)
     })?;
-    mem.set_f32(out_a, out.deflection);
-    mem.set_f32(out_b, out.torsion);
+    mem.set_f32(deflection, out.deflection);
+    mem.set_f32(torsion, out.torsion);
     Ok(())
 }
 
 /// `CScratch::Accumulate`.
-pub fn accumulate<S: TyreStore>(mem: &mut S, this: u32) {
+pub fn soil_drag<S: TyreStore>(mem: &mut S, this: u32) {
     let out = soil::soil_drag(mem.load_soil_input(this));
     mem.store_soil_drag(this, &out);
 }
 
-/// The contact solvers `(p*, qb*, r*, ...)`: the contact loaded from and stored back to the three blocks.
-pub fn with_contact<S: TyreStore>(mem: &mut S, this: u32, p: u32, qb: u32, r: u32, run: impl FnOnce(&mut Contact)) {
-    let mut contact = mem.load_contact(this, p, qb, r);
+/// The contact solvers `(indentation*, forces*, coefficients*, ...)`: the contact loaded from and stored back to the
+/// three blocks (the coefficients are read only).
+pub fn with_contact<S: TyreStore>(
+    mem: &mut S,
+    this: u32,
+    indentation: u32,
+    forces: u32,
+    coefficients: u32,
+    run: impl FnOnce(&mut Contact),
+) {
+    let mut contact = mem.load_contact(this, indentation, forces, coefficients);
     run(&mut contact);
-    mem.store_contact(this, p, qb, &contact);
+    mem.store_contact(this, indentation, forces, &contact);
 }
 
-/// `CScratch::HeatStep (a, b, c)`.
-pub fn heat_step<S: TyreStore>(mem: &mut S, this: u32, a: f32, b: f32, c: f32, ngp: &TyreThermal) {
-    let input = mem.load_heat(this, a, b, c);
+/// `CScratch::HeatStep (lateral_force, longitudinal_force, dt)`.
+pub fn heat_step<S: TyreStore>(
+    mem: &mut S,
+    this: u32,
+    lateral_force: f32,
+    longitudinal_force: f32,
+    dt: f32,
+    ngp: &TyreThermal,
+) {
+    let input = mem.load_heat(this, lateral_force, longitudinal_force, dt);
     mem.store_heat(this, &heat::heat_step(input, ngp));
 }
 
-/// `CScratch::TableStep (idx, x)`.
-pub fn table_step<S: TyreStore>(mem: &mut S, this: u32, idx: u32, x: f32, ngp: &TyreThermal) {
-    let input = mem.load_sector_input(this, idx);
-    let out = relax::relax_sector(&input, x, ngp);
-    mem.store_sector(this, idx, &out);
+/// `CScratch::TableStep (sector, elapsed)`.
+pub fn relax_sector<S: TyreStore>(mem: &mut S, this: u32, sector: u32, elapsed: f32, ngp: &TyreThermal) {
+    let input = mem.load_sector_input(this, sector);
+    let out = relax::relax_sector(&input, elapsed, ngp);
+    mem.store_sector(this, sector, &out);
 }
 
-/// `CScratch::SetStateField (flag)`.
-pub fn set_state_field<S: TyreStore>(mem: &mut S, this: u32, flag: u32) -> Result<(), Outside> {
+/// `CScratch::SetStateField (flag)`: the active flag.
+pub fn set_active<S: TyreStore>(mem: &mut S, this: u32, flag: u32) -> Result<(), Outside> {
     with_frame(mem, this, |frame| {
         state::set_active(frame, flag);
         Ok(())
     })
 }
 
-/// `CScratch::SetState48 (v)`.
-pub fn set_state48<S: TyreStore>(mem: &mut S, this: u32, v: f32) -> Result<(), Outside> {
+/// `CScratch::SetState48 (height)`.
+pub fn set_penetration_depth<S: TyreStore>(mem: &mut S, this: u32, height: f32) -> Result<(), Outside> {
     with_frame(mem, this, |frame| {
-        state::set_penetration_depth(frame, v);
+        state::set_penetration_depth(frame, height);
         Ok(())
     })
 }
 
-/// `CScratch::BlendTable (i, j, a, b, o1, o2)`.
-pub fn blend_table<S: TyreStore>(mem: &mut S, this: u32, i: u32, j: u32, ab: [f32; 2], o1: u32, o2: u32) {
-    let input = mem.load_surface_input(this, i, j, ab[0], ab[1]);
-    mem.store_surface_friction(o1, o2, surface::surface_friction(&input));
+/// `CScratch::BlendTable (first_class, second_class, first_wetness, second_wetness, first*, second*)`.
+pub fn surface_friction<S: TyreStore>(
+    mem: &mut S,
+    this: u32,
+    classes: [u32; 2],
+    wetness: [f32; 2],
+    first: u32,
+    second: u32,
+) {
+    let input = mem.load_surface_input(this, classes, wetness);
+    mem.store_surface_friction(first, second, surface::surface_friction(&input));
 }
 
-/// `CScratch::RelaxCount (dt)`: RelaxStep, then the counter at state+0x1c.
-pub fn relax_count<S: TyreStore>(mem: &mut S, this: u32, dt: f32, ngp: &TyreThermal) {
+/// `CScratch::RelaxCount (dt)`: `RelaxStep`, then the relaxation counter (`m_state+0x1c`).
+pub fn relax_and_count<S: TyreStore>(mem: &mut S, this: u32, dt: f32, ngp: &TyreThermal) {
     let input = mem.load_relax(this, dt);
     let out = relax::relax(&input, ngp);
     mem.store_relax_count(this, &out);
 }
 
 /// `CScratch::RelaxStep (dt)`.
-pub fn relax_step<S: TyreStore>(mem: &mut S, this: u32, dt: f32, ngp: &TyreThermal) {
+pub fn relax<S: TyreStore>(mem: &mut S, this: u32, dt: f32, ngp: &TyreThermal) {
     let input = mem.load_relax(this, dt);
     let out = relax::relax(&input, ngp);
     mem.store_relax(this, &out);
 }
 
 /// `CScratch::SplitSlip`.
-pub fn split_slip<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> {
+pub fn weigh_models<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> {
     with_frame(mem, this, |frame| {
         slip::weigh_models(frame);
         Ok(())
     })
 }
 
-/// `CTyreMatData::CopyFrom (src*)`.
-pub fn copy_from<S: TyreStore>(mem: &mut S, this: u32, src: u32) {
+/// `CTyreMatData::CopyFrom (src*)`: the material words copied from the block at `src`.
+pub fn copy_material<S: TyreStore>(mem: &mut S, this: u32, src: u32) {
     let src = mem.load_material(src);
     mem.store_material(this, &src);
 }
 
 /// `CScratch::SolvePair`.
-pub fn solve_pair<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> {
+pub fn limit_sticking<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> {
     with_frame(mem, this, |frame| {
         grip::limit_sticking(frame);
         Ok(())
     })
 }
 
-/// `CScratch::StepInner (rec*, vec3*, vec4*, out3*, out4*, out5*)`; the record is the scratch's own words.
-pub fn step_inner<S: TyreStore>(mem: &mut S, this: u32, outs: [u32; 5]) {
+/// `CScratch::StepInner (rec*, forces*, zeroed*, trail*, lateral_phase*, longitudinal_phase*)`; the record is the
+/// scratch's own words.
+pub fn patch_forces<S: TyreStore>(mem: &mut S, this: u32, outs: [u32; 5]) {
     let input = mem.load_patch_input(this);
     let out = patch_forces::patch_forces(&input);
     mem.store_patch_forces(outs, &out);
@@ -263,7 +294,7 @@ pub fn contact_patch<S: TyreStore>(mem: &mut S, this: u32, out: u32) -> Result<b
 }
 
 /// `CScratch::SolvePatch`.
-pub fn solve_patch<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> {
+pub fn solve_sliding<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> {
     with_frame(mem, this, sliding::solve_sliding)
 }
 

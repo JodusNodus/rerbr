@@ -145,15 +145,15 @@ fn arg_f32(call: &Call, i: usize) -> f32 {
 }
 
 #[test]
-fn sign_matches_original_calls() {
+fn rolling_torque_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x531ba0, "sign", |mem, c| Some(forces::rolling_torque(mem.load_rolling_input(c.args[0]))));
+    replay(0x531ba0, "rolling_torque", |mem, c| Some(forces::rolling_torque(mem.load_rolling_input(c.args[0]))));
 }
 
 #[test]
-fn tyre_clamp_matches_original_calls() {
+fn clamp_deflection_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x5322e0, "tyre_clamp", |mem, c| {
+    replay(0x5322e0, "clamp_deflection", |mem, c| {
         let out = grip::clamp_deflection(arg_f32(c, 0), arg_f32(c, 1), arg_f32(c, 2));
         mem.set_f32(c.args[3], out);
         None
@@ -176,9 +176,9 @@ fn compute_slip_matches_original_calls() {
 }
 
 #[test]
-fn solve_dirs_matches_original_calls() {
+fn slip_directions_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x533640, "solve_dirs", |mem, c| {
+    replay(0x533640, "slip_directions", |mem, c| {
         let radius = mem.load_effective_radius(c.args[0]);
         let out = slip::slip_directions(arg_f32(c, 1), arg_f32(c, 2), arg_f32(c, 3), radius);
         for (i, value) in out.iter().enumerate() {
@@ -189,9 +189,9 @@ fn solve_dirs_matches_original_calls() {
 }
 
 #[test]
-fn accumulate_matches_original_calls() {
+fn soil_drag_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_inner(0x5338a0, "accumulate", true, |mem, c| {
+    replay_inner(0x5338a0, "soil_drag", true, |mem, c| {
         let this = c.args[0];
         let out = soil::soil_drag(mem.load_soil_input(this));
         mem.store_soil_drag(this, &out);
@@ -200,9 +200,9 @@ fn accumulate_matches_original_calls() {
 }
 
 #[test]
-fn copy_from_matches_original_calls() {
+fn store_material_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x535040, "copy_from", |mem, c| {
+    replay(0x535040, "store_material", |mem, c| {
         let src = mem.load_material(c.args[1]);
         mem.store_material(c.args[0], &src);
         None
@@ -210,9 +210,9 @@ fn copy_from_matches_original_calls() {
 }
 
 #[test]
-fn set_414_matches_original_calls() {
+fn store_wear_table_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x532490, "set_414", |mem, c| {
+    replay(0x532490, "store_wear_table", |mem, c| {
         mem.store_wear_table(c.args[0], c.args[1]);
         None
     });
@@ -245,42 +245,42 @@ fn same_words(ours: &[u8], orig: &[u8]) -> bool {
 }
 
 #[test]
-fn solve_a_matches_original_calls() {
+fn solve_tread_only_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_solve(0x533ae0, "solve_a", |contact, c| solve::solve_tread_only(contact, c.args[4] as i32));
+    replay_solve(0x533ae0, "solve_tread_only", |contact, c| solve::solve_tread_only(contact, c.args[4] as i32));
 }
 
 #[test]
-fn solve_b_matches_original_calls() {
+fn solve_both_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_solve(0x533bf0, "solve_b", |contact, c| solve::solve_both(contact, c.args[4] as i32));
+    replay_solve(0x533bf0, "solve_both", |contact, c| solve::solve_both(contact, c.args[4] as i32));
 }
 
 #[test]
-fn solve_c_matches_original_calls() {
+fn solve_neither_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_solve(0x533d40, "solve_c", |contact, c| solve::solve_neither(contact, c.args[4] as i32));
+    replay_solve(0x533d40, "solve_neither", |contact, c| solve::solve_neither(contact, c.args[4] as i32));
 }
 
 #[test]
-fn solve_d_matches_original_calls() {
+fn solve_carcass_only_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_solve(0x533e80, "solve_d", |contact, c| solve::solve_carcass_only(contact, c.args[4] as i32));
+    replay_solve(0x533e80, "solve_carcass_only", |contact, c| solve::solve_carcass_only(contact, c.args[4] as i32));
 }
 
 #[test]
-fn solve_dispatch_matches_original_calls() {
+fn solve_contact_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_solve(0x5351a0, "solve_dispatch", |contact, c| {
+    replay_solve(0x5351a0, "solve_contact", |contact, c| {
         solve::solve_contact(contact, c.args[4] != 0, c.args[5] != 0, c.args[6] as i32)
     });
 }
 
 /// `friction` with NaN-tolerant windows: its `sqrt` of a negative takes the host's NaN sign (see `same_words`).
 #[test]
-fn friction_matches_original_calls() {
+fn hold_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_inner(0x531c70, "friction", true, |mem, c| {
+    replay_inner(0x531c70, "hold", true, |mem, c| {
         let this = c.args[0];
         let out = hold::hold(mem.load_hold_input(this, arg_f32(c, 1)));
         mem.store_hold_direction(this, out.direction);
@@ -290,9 +290,9 @@ fn friction_matches_original_calls() {
 
 /// `floor_s32` (FloorS32, stdcall: x, the table, its count). The table is a window read through `mem`.
 #[test]
-fn floor_s32_matches_original_calls() {
+fn table_lerp_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x5325f0, "floor_s32", |mem, c| {
+    replay(0x5325f0, "table_lerp", |mem, c| {
         let (table, count) = (c.args[1], c.args[2] as i32);
         Some(friction_curve::table_lerp(arg_f32(c, 0), count, |i| mem.f32(table + 4 * i)))
     });
@@ -327,9 +327,9 @@ fn friction_curve_matches_original_calls() {
 /// `split_slip` (SplitSlip, thiscall, no stack words): the slip speed at +0x360 splits into the weights at +0x3dc
 /// and +0x3f0.
 #[test]
-fn split_slip_matches_original_calls() {
+fn weigh_models_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x5346f0, "split_slip", false, |frame, _mem, _c| {
+    replay_frame(0x5346f0, "weigh_models", false, |frame, _mem, _c| {
         slip::weigh_models(frame);
         Ok(None)
     });
@@ -337,23 +337,23 @@ fn split_slip_matches_original_calls() {
 
 /// `align` (Align, thiscall: the two vector pointers as stack words). Its eax is 1 when it aligned.
 #[test]
-fn align_matches_original_calls() {
+fn build_contact_frame_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x531fc0, "align", true, |frame, mem, c| {
+    replay_frame(0x531fc0, "build_contact_frame", true, |frame, mem, c| {
         let a = Vec4::load(mem, c.args[1]);
         let b = Vec4::load(mem, c.args[2]);
         let aligned = contact_frame::build(frame, a, b);
-        assert_eq!(u32::from(aligned), c.eax, "align call {}: eax", c.index);
+        assert_eq!(u32::from(aligned), c.eax, "build_contact_frame call {}: eax", c.index);
         Ok(None)
     });
 }
 
 /// `clamp_grip` (ClampGrip, thiscall, seven stack words: five floats, then the out pointers).
 #[test]
-fn clamp_grip_matches_original_calls() {
+fn limit_to_friction_circle_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // The outputs are pointers that may sit in the frame: they are written after the frame, as the binding does.
-    replay_run(0x533760, "clamp_grip", false, map_frame, |mem, c| {
+    replay_run(0x533760, "limit_to_friction_circle", false, map_frame, |mem, c| {
         let this = c.args[0];
         let g = grip::GripInput {
             normal_force: f32::from_bits(c.args[1]),
@@ -376,9 +376,9 @@ fn clamp_grip_matches_original_calls() {
 
 /// `solve_pair` (SolvePair, thiscall, no stack words).
 #[test]
-fn solve_pair_matches_original_calls() {
+fn limit_sticking_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x5352a0, "solve_pair", false, |frame, _mem, _c| {
+    replay_frame(0x5352a0, "limit_sticking", false, |frame, _mem, _c| {
         grip::limit_sticking(frame);
         Ok(None)
     });
@@ -417,9 +417,9 @@ fn solve_forces_matches_original_calls() {
 
 /// `fill_outputs` (FillOutputs, thiscall: the `src` vector pointer, the `pair` pointer and the divisor as stack words).
 #[test]
-fn fill_outputs_matches_original_calls() {
+fn fill_noise_signal_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x532f10, "fill_outputs", false, |frame, mem, c| {
+    replay_frame(0x532f10, "fill_noise_signal", false, |frame, mem, c| {
         let src = Vec4::load(mem, c.args[1]);
         let debug_words: [u32; 3] = std::array::from_fn(|k| mem.u32(c.args[2] + 4 * k as u32));
         noise_signal::fill_noise_signal(frame, src, debug_words, arg_f32(c, 3));
@@ -429,11 +429,11 @@ fn fill_outputs_matches_original_calls() {
 
 /// `write_outputs` (WriteOutputs, thiscall: the output struct pointer as its stack word).
 #[test]
-fn write_outputs_matches_original_calls() {
+fn write_output_block_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // Fuzz call 3858 differs only in the sign of six default NaNs (see rbr-recomp notes/rust-physics.md section 8).
     // The outputs are pointers that may sit in the frame: they are written after the frame, as the binding does.
-    replay_run(0x533080, "write_outputs", true, map_frame, |mem, c| {
+    replay_run(0x533080, "write_output_block", true, map_frame, |mem, c| {
         let this = c.args[0];
         let mut frame = mem.load_frame(this);
         let block = output_block::write_output_block(&mut frame);
@@ -491,9 +491,9 @@ fn map_locate(call: &Call) -> Mem {
 
 /// `set_state_field` (SetStateField, thiscall with the flag as its stack word).
 #[test]
-fn set_state_field_matches_original_calls() {
+fn set_active_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x532470, "set_state_field", false, |frame, _mem, c| {
+    replay_frame(0x532470, "set_active", false, |frame, _mem, c| {
         state::set_active(frame, c.args[1]);
         Ok(None)
     });
@@ -501,11 +501,11 @@ fn set_state_field_matches_original_calls() {
 
 /// `set_state48` (SetState48, thiscall with the float as its stack word). The windows include the def (`+0x7c`, `+0x8c`).
 #[test]
-fn set_state48_matches_original_calls() {
+fn set_penetration_depth_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // The original reads the def's `+0x7c` and `+0x8c`. A record without a window over them (`d-s*`) cannot show the
     // result, so the call is counted as declined.
-    replay_run(0x533490, "set_state48", false, map_frame, |mem, c| {
+    replay_run(0x533490, "set_penetration_depth", false, map_frame, |mem, c| {
         let this = c.args[0];
         let def = mem.u32(this + 0x10);
         if !recorded(c, def + 0x7C, 0x14) {
@@ -533,32 +533,32 @@ fn clear_bias_matches_original_calls() {
 /// `blend_table` (BlendTable, thiscall with six stack words; eax is 1). The outputs go through the out pointers in
 /// the asm's order.
 #[test]
-fn blend_table_matches_original_calls() {
+fn surface_friction_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x534e70, "blend_table", |mem, c| {
-        let input = mem.load_surface_input(c.args[0], c.args[1], c.args[2], arg_f32(c, 3), arg_f32(c, 4));
+    replay(0x534e70, "surface_friction", |mem, c| {
+        let input = mem.load_surface_input(c.args[0], [c.args[1], c.args[2]], [arg_f32(c, 3), arg_f32(c, 4)]);
         mem.store_surface_friction(c.args[5], c.args[6], surface::surface_friction(&input));
-        assert_eq!(c.eax, 1, "blend_table call {}: eax", c.index);
+        assert_eq!(c.eax, 1, "surface_friction call {}: eax", c.index);
         None
     });
 }
 
-/// `TyreTail_Get10` (thiscall, no stack words): the word at the container's `+0x10`, returned in eax.
+/// `TyreTail_Get10` (thiscall, no stack words): the scratch's setup pointer (`+0x10`), returned in eax.
 #[test]
-fn tyre_tail10_matches_original_calls() {
+fn def_pointer_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x5326b0, "tyre_tail10", |mem, c| {
-        assert_eq!(mem.load_tyre_tail10(c.args[0]), c.eax, "tyre_tail10 call {}: eax", c.index);
+    replay(0x5326b0, "def_pointer", |mem, c| {
+        assert_eq!(mem.load_def_pointer(c.args[0]), c.eax, "def_pointer call {}: eax", c.index);
         None
     });
 }
 
-/// `TyreTail_Get14` (thiscall, no stack words): the word at the container's `+0x14`, returned in eax.
+/// `TyreTail_Get14` (thiscall, no stack words): the scratch's state pointer (`+0x14`), returned in eax.
 #[test]
-fn tyre_tail14_matches_original_calls() {
+fn state_pointer_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x5326c0, "tyre_tail14", |mem, c| {
-        assert_eq!(mem.load_tyre_tail14(c.args[0]), c.eax, "tyre_tail14 call {}: eax", c.index);
+    replay(0x5326c0, "state_pointer", |mem, c| {
+        assert_eq!(mem.load_state_pointer(c.args[0]), c.eax, "state_pointer call {}: eax", c.index);
         None
     });
 }
@@ -587,20 +587,20 @@ fn copy_def_from_matches_original_calls() {
 /// `CTyre::CState::CState` (thiscall, three stack words the constructor does not store, `ret 0xC`): the defaults.
 /// It returns `this`.
 #[test]
-fn cstate_ctor_matches_original_calls() {
+fn construct_state_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x531500, "cstate_ctor", false, map_windows, |mem, c| {
+    replay_run(0x531500, "construct_state", false, map_windows, |mem, c| {
         layout::construct_state(mem, c.args[0]);
-        assert_eq!(c.eax, c.args[0], "cstate_ctor call {}: eax", c.index);
+        assert_eq!(c.eax, c.args[0], "construct_state call {}: eax", c.index);
         Ok(None)
     });
 }
 
 /// `CTyre::CScratch::Init` (thiscall, no stack words): the scratch's defaults, on the scratch the call is made on.
 #[test]
-fn scratch_init_matches_original_calls() {
+fn init_scratch_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x5327d0, "scratch_init", false, map_windows, |mem, c| {
+    replay_run(0x5327d0, "init_scratch", false, map_windows, |mem, c| {
         layout::init_scratch(mem, c.args[0]);
         Ok(None)
     });
@@ -609,11 +609,11 @@ fn scratch_init_matches_original_calls() {
 /// `CTyre::CScratch::CScratch(def, state, record)` (thiscall, three stack words, `ret 0xC`): `Init` on the sub-block,
 /// the scratch's defaults, and the three pointers. It returns `this`.
 #[test]
-fn scratch_ctor_matches_original_calls() {
+fn construct_scratch_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x5328d0, "scratch_ctor", false, map_windows, |mem, c| {
+    replay_run(0x5328d0, "construct_scratch", false, map_windows, |mem, c| {
         layout::construct_scratch(mem, c.args[0], c.args[1], c.args[2], c.args[3]);
-        assert_eq!(c.eax, c.args[0], "scratch_ctor call {}: eax", c.index);
+        assert_eq!(c.eax, c.args[0], "construct_scratch call {}: eax", c.index);
         Ok(None)
     });
 }
@@ -642,29 +642,29 @@ fn create_scratch_matches_original_calls() {
 
 /// `FUN_005324a0` (fastcall, no stack words): 17 `NTweak::CBase` headers at every 0x10 bytes of the block.
 #[test]
-fn cbase_headers_17_matches_original_calls() {
+fn reset_tweak_headers_17_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x5324a0, "cbase_headers_17", false, map_windows, |mem, c| {
-        layout::cbase_headers_17(mem, c.args[0]);
+    replay_run(0x5324a0, "reset_tweak_headers_17", false, map_windows, |mem, c| {
+        layout::reset_tweak_headers(mem, c.args[0], 17);
         Ok(None)
     });
 }
 
 /// `FUN_00532550` (fastcall, no stack words): 3 `NTweak::CBase` headers at every 0x10 bytes of the block.
 #[test]
-fn cbase_headers_3_matches_original_calls() {
+fn reset_tweak_headers_3_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x532550, "cbase_headers_3", false, map_windows, |mem, c| {
-        layout::cbase_headers_3(mem, c.args[0]);
+    replay_run(0x532550, "reset_tweak_headers_3", false, map_windows, |mem, c| {
+        layout::reset_tweak_headers(mem, c.args[0], 3);
         Ok(None)
     });
 }
 
 /// `CTyre::CScratch::CScratch()` (0x532570, the destructor body, thiscall): the defaults on the scratch.
 #[test]
-fn scratch_body_matches_original_calls() {
+fn destroy_scratch_body_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x532570, "scratch_body", false, map_windows, |mem, c| {
+    replay_run(0x532570, "destroy_scratch_body", false, map_windows, |mem, c| {
         layout::destroy_scratch_body(mem, c.args[0]);
         Ok(None)
     });
@@ -673,9 +673,9 @@ fn scratch_body_matches_original_calls() {
 /// `CTyre::CScratch::~CScratch` (0x5329a0, thiscall): the scratch's words, its def and state cleared, and the body on
 /// the sub-block. The release of the def is a no-op in the original.
 #[test]
-fn scratch_dtor_matches_original_calls() {
+fn destroy_scratch_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x5329a0, "scratch_dtor", false, map_windows, |mem, c| {
+    replay_run(0x5329a0, "destroy_scratch", false, map_windows, |mem, c| {
         layout::destroy_scratch(mem, c.args[0]);
         Ok(None)
     });

@@ -247,7 +247,7 @@ pub struct Scratch {
 /// The state words the tyre step reads and writes (`m_state`, at `this+0x14`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StateWords {
-    /// `+0x0c`: 1 once `step` has run with contact (`sti[3]`); a zero leaves `friction` at once.
+    /// `+0x0c`: 1 once `step` has run with contact (`sti[3]`); a zero leaves `hold::hold` at once.
     pub active: u32,
     /// `+0x28`: the dirty word `SetDirty(+0x20)` writes.
     pub started_dirty: u32,
@@ -258,7 +258,7 @@ pub struct StateWords {
     /// `+0x40`: the lateral deflection of the carcass, m. `+0x44`: its torsion, rad.
     pub lateral_deflection: f32,
     pub torsion_angle: f32,
-    /// `+0x48`: how far the outer radius reaches below a surface at a given height (`set_penetration`).
+    /// `+0x48`: how far the outer radius reaches below a surface at a given height (`state::set_penetration_depth`).
     pub penetration_depth: f32,
     /// `+0x4c`: the effective radius, m.
     pub effective_radius: f32,
@@ -275,7 +275,7 @@ pub struct StateWords {
     /// compressed); the next solve starts from them.
     pub tread_engaged: u32,
     pub carcass_engaged: u32,
-    /// `+0x80` to `+0x8c`: the hold direction `friction` keeps.
+    /// `+0x80` to `+0x8c`: the hold direction `hold::hold` keeps.
     pub hold_direction: Vec4,
     /// `+0x90` (the pressure search), `+0x9c` (the load search), `+0xa8` (the search at the sector's surface
     /// temperature), `+0xb4` (the search at the tread temperature) and `+0xc0` (the contact pressure search). Each is
@@ -363,8 +363,8 @@ pub struct Frame {
 /// The index of `this+0x238` (`SoilDensity`) in the material block (`material::WORDS`).
 pub const SOIL_DENSITY: usize = 17;
 
-/// The words of `Scratch::signal` (the `+0x420` block), named for what `fill_outputs` writes there. Word `k` is `+0x420 +
-/// 4k`. The rest are copied by `write_outputs` or read by the signal's owner.
+/// The words of `Scratch::signal` (the `+0x420` block), named for what `fill_noise_signal` writes there. Word `k` is
+/// `+0x420 + 4k`. The rest are copied by `write_output_block` or read by the signal's owner.
 pub mod sig {
     /// `+0x420`: the owner's debug id (raw). `+0x424`: the running maximum. `+0x428`: the force sum times 1000.
     pub const DEBUG_ID: usize = 0;
@@ -382,7 +382,7 @@ pub mod sig {
     /// `+0x450`: the contact point (raw). `+0x460`: the contact velocity Step passes in (raw).
     pub const CONTACT_POINT: usize = 12;
     pub const CONTACT_VELOCITY: usize = 16;
-    /// `+0x470..+0x478`: the debug words (raw). `+0x47c`: the flag, 1 once `fill_outputs` has run.
+    /// `+0x470..+0x478`: the debug words (raw). `+0x47c`: the flag, 1 once `fill_noise_signal` has run.
     pub const DEBUG_WORDS: usize = 20;
     pub const FLAG: usize = 23;
 }

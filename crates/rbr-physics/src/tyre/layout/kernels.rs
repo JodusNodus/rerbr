@@ -6,10 +6,10 @@ use crate::math::vec::Vec4;
 use crate::mem::{Block, Mem};
 
 use super::{
-    ContactAxes, ContactFrame, Indentation, DEF, DEF_CARCASS_RADIUS, DEF_CARCASS_STIFFNESS_LATERAL,
-    DEF_CARCASS_STIFFNESS_TORSIONAL, DEF_CARCASS_WIDTH, DEF_DEBUG_ID, DEF_REFERENCE_FRICTION, DEF_TREAD_COVERAGE,
-    DEF_TREAD_DEPTH, DEF_TREAD_WIDTH, LONG_CONTACT_VEL, SLIP_MATRIX, SLIP_RATIO_TERM, SLIP_X, SPEED, SPEED_SQ, SPIN,
-    STATE, STATE_EFFECTIVE_RADIUS, STATE_LERP_WEIGHT, STATE_TYRE_TEMPERATURE,
+    ContactAxes, ContactFrame, Indentation, CONTACT_FRAME, CONTACT_VELOCITY, DEF, DEF_CARCASS_RADIUS,
+    DEF_CARCASS_STIFFNESS_LATERAL, DEF_CARCASS_STIFFNESS_TORSIONAL, DEF_CARCASS_WIDTH, DEF_DEBUG_ID,
+    DEF_REFERENCE_FRICTION, DEF_TREAD_COVERAGE, DEF_TREAD_DEPTH, DEF_TREAD_WIDTH, LONG_SLIP_VELOCITY, SPEED, SPEED_SQ,
+    SPIN, SPIN_SLIP, STATE, STATE_EFFECTIVE_RADIUS, STATE_INNER_AIR_TEMPERATURE, STATE_TREAD_COVERAGE,
 };
 use crate::physics_core::layout::SignalHost;
 use crate::spring_damper::{ForceTerms, HeatCapacity};
@@ -65,7 +65,6 @@ pub fn word_at(base: u32, index: u32) -> u32 {
     base.wrapping_add(index.wrapping_mul(4))
 }
 
-/// The sector the relaxation steps: `m_state+0x1c & 7`.
 /// The solve coefficients from their eight words.
 fn coefficients_from_words(w: [f32; 8]) -> Coefficients {
     Coefficients {
@@ -80,6 +79,7 @@ fn coefficients_from_words(w: [f32; 8]) -> Coefficients {
     }
 }
 
+/// The sector the relaxation steps: `m_state+0x1c & 7`.
 fn relax_index(mem: &Mem, state: u32) -> u32 {
     mem.u32(state + 0x1C) & 7
 }
@@ -151,7 +151,7 @@ pub fn emit_noise<S: TyreStore>(mem: &mut S, host: &mut impl SignalHost, this: u
 }
 
 /// `CU32Value8::Clear` (0x5317f0, thiscall): the eight floats at `this` become 0.0.
-pub fn value8_clear<S: TyreStore>(mem: &mut S, this: u32) {
+pub fn clear_eight_floats<S: TyreStore>(mem: &mut S, this: u32) {
     for k in 0..8 {
         mem.set_f32(this + 4 * k, 0.0);
     }
@@ -194,9 +194,9 @@ impl TyreStore for Mem {
         let scratch = Scratch {
             contact_point: s.vec4(this + 0x160),
             contact_frame: ContactFrame {
-                lateral: s.vec4(this + SLIP_MATRIX),
-                rolling: s.vec4(this + SLIP_MATRIX + 0x10),
-                normal: s.vec4(this + SLIP_MATRIX + 0x20),
+                lateral: s.vec4(this + CONTACT_FRAME),
+                rolling: s.vec4(this + CONTACT_FRAME + 0x10),
+                normal: s.vec4(this + CONTACT_FRAME + 0x20),
             },
             material: std::array::from_fn(|i| s.u32(this + 0x1A0 + 4 * WORDS[i])),
             static_friction_dirty: s.u32(this + 0x1E4),
@@ -228,10 +228,10 @@ impl TyreStore for Mem {
             soil_flow_opposed: f(0x35C),
             speed: f(SPEED),
             speed_sq: f(SPEED_SQ),
-            contact_velocity: s.f32s(this + SLIP_X),
-            long_slip_velocity: f(LONG_CONTACT_VEL),
+            contact_velocity: s.f32s(this + CONTACT_VELOCITY),
+            long_slip_velocity: f(LONG_SLIP_VELOCITY),
             spin: f(SPIN),
-            spin_slip: f(SLIP_RATIO_TERM),
+            spin_slip: f(SPIN_SLIP),
             low_speed_a: f(0x380),
             low_speed_b: f(0x384),
             slip_phase: f(0x388),
@@ -306,7 +306,7 @@ impl TyreStore for Mem {
             effective_radius: st(STATE_EFFECTIVE_RADIUS),
             vertical_stiffness: st(0x50),
             tread_elasticity: st(0x54),
-            tread_coverage: st(STATE_LERP_WEIGHT),
+            tread_coverage: st(STATE_TREAD_COVERAGE),
             grip_clamped: t.u32(state + 0x5C),
             air_pressure: st(0x68),
             tread_engaged: t.u32(state + 0x70),
@@ -402,10 +402,10 @@ impl TyreStore for Mem {
         self.set_f32(this + 0x35C, s.soil_flow_opposed);
         self.set_f32(this + SPEED, s.speed);
         self.set_f32(this + SPEED_SQ, s.speed_sq);
-        store_floats(self, this + SLIP_X, &s.contact_velocity);
-        self.set_f32(this + LONG_CONTACT_VEL, s.long_slip_velocity);
+        store_floats(self, this + CONTACT_VELOCITY, &s.contact_velocity);
+        self.set_f32(this + LONG_SLIP_VELOCITY, s.long_slip_velocity);
         self.set_f32(this + SPIN, s.spin);
-        self.set_f32(this + SLIP_RATIO_TERM, s.spin_slip);
+        self.set_f32(this + SPIN_SLIP, s.spin_slip);
         self.set_f32(this + 0x380, s.low_speed_a);
         self.set_f32(this + 0x384, s.low_speed_b);
         self.set_f32(this + 0x388, s.slip_phase);
@@ -464,9 +464,9 @@ impl TyreStore for Mem {
         self.set_f32(this + 0x508, s.smoothed_drag_weight);
         self.set_f32(this + 0x50C, s.smoothed_furrow_ratio);
         s.contact_point.store(self, this + 0x160);
-        s.contact_frame.lateral.store(self, this + SLIP_MATRIX);
-        s.contact_frame.rolling.store(self, this + SLIP_MATRIX + 0x10);
-        s.contact_frame.normal.store(self, this + SLIP_MATRIX + 0x20);
+        s.contact_frame.lateral.store(self, this + CONTACT_FRAME);
+        s.contact_frame.rolling.store(self, this + CONTACT_FRAME + 0x10);
+        s.contact_frame.normal.store(self, this + CONTACT_FRAME + 0x20);
         self.set_u32(this + 0x1E4, s.static_friction_dirty);
         self.set_u32(this + 0x1F4, s.kinetic_friction_dirty);
         self.set_u32(this + 0x3C0, s.sector);
@@ -488,7 +488,7 @@ impl TyreStore for Mem {
                 st.tread_elasticity,
             ],
         );
-        self.set_f32(state + STATE_LERP_WEIGHT, st.tread_coverage);
+        self.set_f32(state + STATE_TREAD_COVERAGE, st.tread_coverage);
         self.set_u32(state + 0x5C, st.grip_clamped);
         self.set_f32(state + 0x68, st.air_pressure);
         self.set_u32(state + 0x70, st.tread_engaged);
@@ -530,21 +530,21 @@ impl TyreStore for Mem {
     /// Loads the contact frame's axes (`this+0x170`, rows 0x10 bytes apart).
     fn load_contact_axes(&self, this: u32) -> ContactAxes {
         ContactAxes {
-            lateral: self.f32s(this + SLIP_MATRIX),
-            rolling: self.f32s(this + SLIP_MATRIX + 0x10),
-            normal: self.f32s(this + SLIP_MATRIX + 0x20),
+            lateral: self.f32s(this + CONTACT_FRAME),
+            rolling: self.f32s(this + CONTACT_FRAME + 0x10),
+            normal: self.f32s(this + CONTACT_FRAME + 0x20),
         }
     }
 
     /// Stores the slip.
     fn store_slip(&mut self, this: u32, slip: &Slip) {
         for (i, v) in slip.velocity.iter().enumerate() {
-            self.set_f32(this + SLIP_X + 4 * i as u32, *v);
+            self.set_f32(this + CONTACT_VELOCITY + 4 * i as u32, *v);
         }
         self.set_f32(this + SPEED_SQ, slip.speed_sq);
         self.set_f32(this + SPEED, slip.speed);
-        self.set_f32(this + LONG_CONTACT_VEL, slip.long_slip_velocity);
-        self.set_f32(this + SLIP_RATIO_TERM, slip.spin_slip);
+        self.set_f32(this + LONG_SLIP_VELOCITY, slip.long_slip_velocity);
+        self.set_f32(this + SPIN_SLIP, slip.spin_slip);
     }
 
     /// Loads the rolling resistance torque inputs.
@@ -566,14 +566,14 @@ impl TyreStore for Mem {
         SoilInput {
             sink_depth: f(0x340),
             carcass_compression: f(0x344),
-            tread_coverage: self.f32(state + STATE_LERP_WEIGHT),
+            tread_coverage: self.f32(state + STATE_TREAD_COVERAGE),
             carcass_width: self.f32(def + DEF_CARCASS_WIDTH),
             patch_length: f(0x30c),
             normal_force: f(0x314),
             soil_density: f(0x238),
-            lateral_velocity: f(SLIP_X),
-            longitudinal_velocity: f(SLIP_X + 4),
-            long_slip_velocity: f(LONG_CONTACT_VEL),
+            lateral_velocity: f(CONTACT_VELOCITY),
+            longitudinal_velocity: f(CONTACT_VELOCITY + 4),
+            long_slip_velocity: f(LONG_SLIP_VELOCITY),
             lateral_deflection_ratio: f(0x300),
             inclination_cos: f(0x3b0),
             effective_radius: self.f32(state + STATE_EFFECTIVE_RADIUS),
@@ -645,7 +645,7 @@ impl TyreStore for Mem {
             speed: self.f32(this + SPEED),
             normal_force: self.f32(this + 0x314),
             kinetic_friction: self.f32(this + 0x1F8),
-            lateral: Vec4::load(self, this + SLIP_MATRIX),
+            lateral: Vec4::load(self, this + CONTACT_FRAME),
             rolling: Vec4::load(self, this + 0x180),
             normal: Vec4::load(self, this + 0x190),
             direction: Vec4::load(self, state + 0x80),
@@ -672,8 +672,8 @@ impl TyreStore for Mem {
             longitudinal_force,
             dt,
             water_factor: self.f32(this + 0x288),
-            lateral_velocity: self.f32(this + SLIP_X),
-            long_slip_velocity: self.f32(this + LONG_CONTACT_VEL),
+            lateral_velocity: self.f32(this + CONTACT_VELOCITY),
+            long_slip_velocity: self.f32(this + LONG_SLIP_VELOCITY),
             spin: self.f32(this + SPIN),
             rolling_torque: self.f32(this + 0x3C8),
             contact_pressure: self.f32(this + 0x310),
@@ -746,7 +746,7 @@ impl TyreStore for Mem {
         RelaxInput {
             dt,
             carcass_temperature: self.f32(state + 0x130),
-            inner_air_temperature: self.f32(state + STATE_TYRE_TEMPERATURE),
+            inner_air_temperature: self.f32(state + STATE_INNER_AIR_TEMPERATURE),
             carcass_radius: self.f32(def + DEF_CARCASS_RADIUS),
             tread_width: self.f32(def + DEF_TREAD_WIDTH),
             carcass_conductivity: self.f32(def + 0x124),
@@ -794,8 +794,8 @@ impl TyreStore for Mem {
         let (weight, tables) = load_blend(self, this);
         PatchInput {
             speed: self.f32(this + SPEED),
-            lateral_velocity: self.f32(this + SLIP_X),
-            longitudinal_velocity: self.f32(this + SLIP_X + 4),
+            lateral_velocity: self.f32(this + CONTACT_VELOCITY),
+            longitudinal_velocity: self.f32(this + CONTACT_VELOCITY + 4),
             spin: self.f32(this + SPIN),
             effective_radius: self.f32(state + STATE_EFFECTIVE_RADIUS),
             static_friction: self.f32(this + 0x1E8),
@@ -895,32 +895,33 @@ impl TyreStore for Mem {
         }
     }
 
-    /// Loads the surface friction's inputs for the surface classes at the indices `i` and `j` with the wetnesses `a` and
-    /// `b`: the setup's base frictions (`+0x2c4`), wet slopes (`+0x2e0`) and wear factors (`+0x2f8`) at those indices, its
-    /// design wetness (`+0x2dc`), and the wear of the sector (`m_state+0x134`). The indices are words, so the address is
-    /// wrapping, as the original's is.
-    fn load_surface_input(&self, this: u32, i: u32, j: u32, a: f32, b: f32) -> SurfaceInput {
+    /// Loads the surface friction's inputs for the two surface classes at the indices `classes`, with their
+    /// `wetness`: the setup's base frictions (`+0x2c4`), wet slopes (`+0x2e0`) and wear factors (`+0x2f8`) at those
+    /// indices, its design wetness (`+0x2dc`), and the wear of the sector (`m_state+0x134`). The indices are words, so
+    /// the address is wrapping, as the original's is.
+    fn load_surface_input(&self, this: u32, classes: [u32; 2], wetness: [f32; 2]) -> SurfaceInput {
         let def = self.u32(this + DEF);
         let state = self.u32(this + STATE);
         let wear = self.u32(this + 0x414);
+        let [first, second] = classes;
         SurfaceInput {
-            base_first: self.f32(word_at(def + 0x2C4, i)),
-            base_second: self.f32(word_at(def + 0x2C4, j)),
-            wet_slope_first: self.f32(word_at(def + 0x2E0, i)),
-            wet_slope_second: self.f32(word_at(def + 0x2E0, j)),
-            wear_factor_first: self.f32(word_at(def + 0x2F8, i)),
-            wear_factor_second: self.f32(word_at(def + 0x2F8, j)),
+            base_first: self.f32(word_at(def + 0x2C4, first)),
+            base_second: self.f32(word_at(def + 0x2C4, second)),
+            wet_slope_first: self.f32(word_at(def + 0x2E0, first)),
+            wet_slope_second: self.f32(word_at(def + 0x2E0, second)),
+            wear_factor_first: self.f32(word_at(def + 0x2F8, first)),
+            wear_factor_second: self.f32(word_at(def + 0x2F8, second)),
             design_wetness: self.f32(def + 0x2DC),
-            wetness_first: a,
-            wetness_second: b,
+            wetness_first: wetness[0],
+            wetness_second: wetness[1],
             sector_wear: self.f32(word_at(wear, self.u32(state + 0x134))),
         }
     }
 
-    /// Stores the surface friction through the caller's pointers `o1` and `o2`, in that order.
-    fn store_surface_friction(&mut self, o1: u32, o2: u32, out: SurfaceFriction) {
-        self.set_f32(o1, out.first);
-        self.set_f32(o2, out.second);
+    /// Stores the surface friction through the caller's pointers `first` and `second`, in that order.
+    fn store_surface_friction(&mut self, first: u32, second: u32, out: SurfaceFriction) {
+        self.set_f32(first, out.first);
+        self.set_f32(second, out.second);
     }
 
     /// Stores the `RelaxStep` results, then `RelaxCount`'s counter: `m_state+0x1c` goes up by one and its dirty flag
@@ -933,14 +934,14 @@ impl TyreStore for Mem {
         self.set_u32(state + 0x1C, count.wrapping_add(1));
     }
 
-    /// `TyreTail_Get10` (0x5326b0, thiscall): the word at `container+0x10`, the tyre tail of a wheel's container.
-    fn load_tyre_tail10(&self, container: u32) -> u32 {
-        self.u32(container + 0x10)
+    /// `TyreTail_Get10` (0x5326b0, thiscall): the scratch's setup pointer (`this+0x10`, `m_def`).
+    fn load_def_pointer(&self, this: u32) -> u32 {
+        self.u32(this + DEF)
     }
 
-    /// `TyreTail_Get14` (0x5326c0, thiscall): the word at `container+0x14`.
-    fn load_tyre_tail14(&self, container: u32) -> u32 {
-        self.u32(container + 0x14)
+    /// `TyreTail_Get14` (0x5326c0, thiscall): the scratch's state pointer (`this+0x14`, `m_state`).
+    fn load_state_pointer(&self, this: u32) -> u32 {
+        self.u32(this + STATE)
     }
 
     /// `NTweak::CBase::GetName` (0x52db10, thiscall): the name object at `this+4`.

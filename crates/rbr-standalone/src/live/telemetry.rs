@@ -21,7 +21,7 @@ use rbr_physics::rigid_body::layout::{
     ACCEL_ANGULAR_EST, ACCEL_LINEAR_EST, ANGULAR_VELOCITY, LINEAR_VELOCITY, ORIENTATION, POSITION,
 };
 use rbr_physics::spring_damper::store::SpringStore;
-use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_TYRE_TEMPERATURE};
+use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_INNER_AIR_TEMPERATURE};
 use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{STRUT, STRUT_LENGTH, TYRE_SCRATCH};
 use rbr_recording::sound::{CAR_ENGINE, CAR_WHEELS, ENGINE_STATE, WHEEL_STRUT_VELOCITY};
@@ -317,7 +317,7 @@ fn suspension(mem: &Mem, car: u32, i: u32) -> Suspension {
         let state = &frame.state;
         out.tyre = Tyre {
             pressure: state.air_pressure,
-            temperature: mem.f32(mem.u32(scratch + TYRE_STATE) + STATE_TYRE_TEMPERATURE),
+            temperature: mem.f32(mem.u32(scratch + TYRE_STATE) + STATE_INNER_AIR_TEMPERATURE),
             carcass_temperature: state.carcass_temperature,
             tread_temperature: state.tread_temperature,
             current_segment: state.sector,

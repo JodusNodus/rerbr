@@ -84,31 +84,31 @@ fn locate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `()`, st0.
 fn sign(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(entries::sign(&ctx.mem, r.ecx), 0))
+    Ok(Return::float(entries::rolling_torque(&ctx.mem, r.ecx), 0))
 }
 
 /// thiscall `(k)`, st0.
 fn friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(entries::friction(&mut ctx.mem, r.ecx, f(r.stack[0])), 4))
+    Ok(Return::float(entries::hold(&mut ctx.mem, r.ecx, f(r.stack[0])), 4))
 }
 
 /// thiscall `(a*, b*)`; eax is 1 when it aligned.
 fn align(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let aligned = frame(entries::align(&mut ctx.mem, r.ecx, r.stack[0], r.stack[1]))?;
+    let aligned = frame(entries::build_contact_frame(&mut ctx.mem, r.ecx, r.stack[0], r.stack[1]))?;
     Ok(Return::void(aligned as u32, 8))
 }
 
 /// thiscall with 17 stack words: scales at 1, 2, 4 and 5, `src` at 6, the output pointers at 7 to 16.
 fn compute_outputs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
-    entries::compute_outputs(&mut ctx.mem, r.ecx, &r.stack);
+    entries::friction_limits(&mut ctx.mem, r.ecx, &r.stack);
     Ok(Return::void(0, 0x44))
 }
 
 /// stdcall `(a, b, c, out*)`.
 fn tyre_clamp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, out, ..] = r.stack;
-    entries::tyre_clamp(&mut ctx.mem, f(a), f(b), f(c), out);
+    entries::clamp_deflection(&mut ctx.mem, f(a), f(b), f(c), out);
     Ok(Return::void(0, 0x10))
 }
 
@@ -121,7 +121,7 @@ fn set_414(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// stdcall `(x, table, count)`, st0.
 fn floor_s32(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, table, count, ..] = r.stack;
-    Ok(Return::float(entries::floor_s32(&ctx.mem, f(x), table, count), 0xc))
+    Ok(Return::float(entries::table_lerp(&ctx.mem, f(x), table, count), 0xc))
 }
 
 /// thiscall `(dir*, spin)`.
@@ -141,13 +141,13 @@ fn solve_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(src*, pair*, divisor)`.
 fn fill_outputs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, pair, divisor, ..] = r.stack;
-    frame(entries::fill_outputs(&mut ctx.mem, r.ecx, src, pair, f(divisor)))?;
+    frame(entries::fill_noise_signal(&mut ctx.mem, r.ecx, src, pair, f(divisor)))?;
     Ok(Return::void(0, 0xc))
 }
 
 /// thiscall `(out*)`.
 fn write_outputs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    frame(entries::write_outputs(&mut ctx.mem, r.ecx, r.stack[0]))?;
+    frame(entries::write_output_block(&mut ctx.mem, r.ecx, r.stack[0]))?;
     Ok(Return::void(0, 4))
 }
 
@@ -159,7 +159,7 @@ fn friction_curve(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(a, b, c, out0*, out1*, out2*)`.
 fn solve_dirs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let s = &r.stack;
-    entries::solve_dirs(&mut ctx.mem, r.ecx, [f(s[0]), f(s[1]), f(s[2])], [s[3], s[4], s[5]]);
+    entries::slip_directions(&mut ctx.mem, r.ecx, [f(s[0]), f(s[1]), f(s[2])], [s[3], s[4], s[5]]);
     Ok(Return::void(0, 0x18))
 }
 
@@ -173,13 +173,13 @@ fn clamp_grip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
         lateral_stiffness: f(c),
         torsional_stiffness: f(d),
     };
-    frame(entries::clamp_grip(&mut ctx.mem, r.ecx, g, out_a, out_b))?;
+    frame(entries::limit_to_friction_circle(&mut ctx.mem, r.ecx, g, out_a, out_b))?;
     Ok(Return::void(0, 0x1c))
 }
 
 /// thiscall `()`.
 fn accumulate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    entries::accumulate(&mut ctx.mem, r.ecx);
+    entries::soil_drag(&mut ctx.mem, r.ecx);
     Ok(Return::void(0, 0))
 }
 
@@ -229,33 +229,33 @@ fn heat_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 fn table_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [idx, x, ..] = r.stack;
     let ngp = crate::ngp::thermal(ctx, r.ecx)?;
-    entries::table_step(&mut ctx.mem, r.ecx, idx, f(x), &ngp);
+    entries::relax_sector(&mut ctx.mem, r.ecx, idx, f(x), &ngp);
     Ok(Return::void(0, 8))
 }
 
 /// thiscall `(flag)`.
 fn set_state_field(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    frame(entries::set_state_field(&mut ctx.mem, r.ecx, r.stack[0]))?;
+    frame(entries::set_active(&mut ctx.mem, r.ecx, r.stack[0]))?;
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(v)`.
 fn set_state48(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    frame(entries::set_state48(&mut ctx.mem, r.ecx, f(r.stack[0])))?;
+    frame(entries::set_penetration_depth(&mut ctx.mem, r.ecx, f(r.stack[0])))?;
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(i, j, a, b, o1, o2)`, eax 1.
 fn blend_table(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, a, b, o1, o2, ..] = r.stack;
-    entries::blend_table(&mut ctx.mem, r.ecx, i, j, [f(a), f(b)], o1, o2);
+    entries::surface_friction(&mut ctx.mem, r.ecx, [i, j], [f(a), f(b)], o1, o2);
     Ok(Return::void(1, 0x18))
 }
 
 /// thiscall `(dt)`: RelaxStep, then the counter at state+0x1c.
 fn relax_count(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let ngp = crate::ngp::thermal(ctx, r.ecx)?;
-    entries::relax_count(&mut ctx.mem, r.ecx, f(r.stack[0]), &ngp);
+    entries::relax_and_count(&mut ctx.mem, r.ecx, f(r.stack[0]), &ngp);
     Ok(Return::void(0, 4))
 }
 
@@ -264,38 +264,38 @@ fn name_object(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(ctx.mem.load_name_object(r.ecx), 0))
 }
 
-/// thiscall `()`: the tail word at +0x10 (eax).
+/// thiscall `()`: the setup pointer at +0x10 (eax).
 fn tyre_tail10(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.load_tyre_tail10(r.ecx), 0))
+    Ok(Return::void(ctx.mem.load_def_pointer(r.ecx), 0))
 }
 
-/// thiscall `()`: the tail word at +0x14 (eax).
+/// thiscall `()`: the state pointer at +0x14 (eax).
 fn tyre_tail14(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.load_tyre_tail14(r.ecx), 0))
+    Ok(Return::void(ctx.mem.load_state_pointer(r.ecx), 0))
 }
 
 /// thiscall `(dt)`.
 fn relax_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let ngp = crate::ngp::thermal(ctx, r.ecx)?;
-    entries::relax_step(&mut ctx.mem, r.ecx, f(r.stack[0]), &ngp);
+    entries::relax(&mut ctx.mem, r.ecx, f(r.stack[0]), &ngp);
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `()`.
 fn split_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    frame(entries::split_slip(&mut ctx.mem, r.ecx))?;
+    frame(entries::weigh_models(&mut ctx.mem, r.ecx))?;
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(src*)`.
 fn copy_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    entries::copy_from(&mut ctx.mem, r.ecx, r.stack[0]);
+    entries::copy_material(&mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `()`.
 fn solve_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    frame(entries::solve_pair(&mut ctx.mem, r.ecx))?;
+    frame(entries::limit_sticking(&mut ctx.mem, r.ecx))?;
     Ok(Return::void(0, 0))
 }
 
@@ -307,7 +307,7 @@ fn step_inner(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     if s[0] != r.ecx + 0x20 {
         return Err(Decline::Unsupported("record is not the scratch's"));
     }
-    entries::step_inner(&mut ctx.mem, r.ecx, std::array::from_fn(|i| s[1 + i]));
+    entries::patch_forces(&mut ctx.mem, r.ecx, std::array::from_fn(|i| s[1 + i]));
     Ok(Return::void(0, 0x18))
 }
 
@@ -320,7 +320,7 @@ fn contact_patch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `()`.
 fn solve_patch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
-    frame(entries::solve_patch(&mut ctx.mem, r.ecx))?;
+    frame(entries::solve_sliding(&mut ctx.mem, r.ecx))?;
     Ok(Return::void(0, 0))
 }
 

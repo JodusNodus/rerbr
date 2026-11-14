@@ -4,7 +4,7 @@ use crate::entities::layout::BASE_VTABLE;
 use crate::mem::Mem;
 use crate::physics_core::layout::construct::{FLAGS_NAME, REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
 use crate::physics_core::layout::material::{FLAGS_VTABLE as MATERIAL_FLAGS_VTABLE, VTABLE as MATERIAL_VTABLE};
-use crate::rigid_body::layout::SCRATCH_VTABLE as E47_SCRATCH_VTABLE;
+use crate::rigid_body::layout::SCRATCH_VTABLE as RIGID_BODY_SCRATCH_VTABLE;
 
 use super::construct::{SCRATCH_SUB_VTABLE, SCRATCH_VTABLE};
 use super::{DEF, STATE};
@@ -231,18 +231,10 @@ pub fn create_scratch(mem: &mut Mem, block: u32) -> u32 {
     block
 }
 
-/// `NTweak::CBase` headers `NPhysics::CTyre` tear-downs write: the vtable and a zero, every 0x10 bytes.
-/// `CBASE_HEADERS_17` is `FUN_005324a0` (0x5324a0, 17 headers), and `CBASE_HEADERS_3` is `FUN_00532550` (3 headers).
-pub fn cbase_headers_17(mem: &mut Mem, at: u32) {
-    for k in 0..17 {
-        mem.set_u32(at + 0x10 * k, BASE_VTABLE);
-        mem.set_u32(at + 0x10 * k + 4, 0);
-    }
-}
-
-/// See `cbase_headers_17`: the three headers of `FUN_00532550` (0x532550).
-pub fn cbase_headers_3(mem: &mut Mem, at: u32) {
-    for k in 0..3 {
+/// The `count` tweak headers (`NTweak::CBase`) from `at` that the tyre's tear-downs reset: the base vtable and a zero,
+/// every 0x10 bytes. `FUN_005324a0` (0x5324a0) resets 17 headers, `FUN_00532550` (0x532550) 3.
+pub fn reset_tweak_headers(mem: &mut Mem, at: u32, count: u32) {
+    for k in 0..count {
         mem.set_u32(at + 0x10 * k, BASE_VTABLE);
         mem.set_u32(at + 0x10 * k + 4, 0);
     }
@@ -252,7 +244,7 @@ pub fn cbase_headers_3(mem: &mut Mem, at: u32) {
 /// CBase headers, the rigid body's vtable, and the sub-block's words. Recorded with the flags' pointer null; the
 /// CBitField destructor calls through that pointer only when it is not null (see the README).
 const SCRATCH_BODY_DEFAULTS: [(u32, u32); 42] = [
-    (0x000, E47_SCRATCH_VTABLE),
+    (0x000, RIGID_BODY_SCRATCH_VTABLE),
     (0x180, BASE_VTABLE),
     (0x184, 0x00000000),
     (0x18C, BASE_VTABLE),

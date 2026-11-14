@@ -17,7 +17,7 @@
 //!   i.e. lateral `V*sin a` and longitudinal `-V*cos a`, the sweep's sign convention (forward motion gives a
 //!   negative longitudinal velocity, free-rolling spin is positive, `spin = -vlong / R`).
 //! - The x87 runs at PC=53 (`Precision::Pc53`): the race thread's control word (`notes/ngp.md`).
-//! - Each harness step is one tyre step (`entries::step`) plus one relaxation (`entries::relax_count`) at
+//! - Each harness step is one tyre step (`entries::step`) plus one relaxation (`entries::relax_and_count`) at
 //!   `dt = 1/720` s, the wheel step's order (`wheel_step`: `tyre_step`, then `relax_count`). The contact
 //!   angle (`record+0x5ac`, the wheel's own word) advances by `spin*dt` as the wheel step advances it, so
 //!   heat spreads over the tread sectors as the wheel rolls.
@@ -367,7 +367,7 @@ impl Rig {
         let model = forces.as_mut().map(|f| f as &mut dyn FnMut(&ForceInput) -> Option<ForceOutput>);
         entries::step(&mut self.mem, scratch, &words, &self.thermal, model)
             .expect("the flat-road step stays in the frame");
-        entries::relax_count(&mut self.mem, self.scratch, DT, &self.thermal);
+        entries::relax_and_count(&mut self.mem, self.scratch, DT, &self.thermal);
         let angle = self.mem.f32(self.record + 0x5AC) + spin * DT;
         self.mem.set_f32(self.record + 0x5AC, angle);
         self.thermal.airflow.spin = spin;
