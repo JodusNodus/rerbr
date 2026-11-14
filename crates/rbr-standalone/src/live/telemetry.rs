@@ -22,7 +22,6 @@ use rbr_physics::rigid_body::layout::{
 };
 use rbr_physics::spring_damper::layout::StrutImage;
 use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_INNER_AIR_TEMPERATURE};
-use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{STRUT, STRUT_LENGTH, TYRE_SCRATCH};
 use rbr_recording::sound::{CAR_ENGINE, CAR_WHEELS, ENGINE_STATE, WHEEL_STRUT_VELOCITY};
 use rbr_recording::CONTROL_BYTES;
@@ -313,7 +312,7 @@ fn suspension(mem: &Mem, car: u32, i: u32) -> Suspension {
     let scratch = wheel + TYRE_SCRATCH;
     // The tyre's state, setup, record and wear blocks (the scratch's pointers), all built by the car's load.
     if [0x10, 0x14, 0x410, 0x414].iter().all(|at| mem.u32(scratch + at) != 0) {
-        let frame = mem.load_frame(scratch);
+        let frame = rbr_physics::tyre::layout::frame_of(mem, scratch);
         let state = &frame.state;
         out.tyre = Tyre {
             pressure: state.air_pressure,

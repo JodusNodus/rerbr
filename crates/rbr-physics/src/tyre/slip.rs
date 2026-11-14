@@ -3,7 +3,7 @@
 
 use crate::fpu::round_x87;
 
-use super::layout::Frame;
+use super::layout::{self, Frame};
 
 /// The axes of the contact frame, each as three components.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,16 +46,14 @@ pub fn compute_slip(axes: &ContactAxes, radius: f32, velocity: [f32; 3], spin: f
 
 /// [`compute_slip`] on the frame, for the contact point moving at `velocity`.
 pub fn update_slip(f: &mut Frame, velocity: [f32; 3]) {
-    let row = |v: crate::math::vec::Vec4| [v.x, v.y, v.z];
-    let frame = f.scratch.contact_frame;
-    let axes = ContactAxes { lateral: row(frame.lateral), rolling: row(frame.rolling), normal: row(frame.normal) };
-    let slip = compute_slip(&axes, f.state.effective_radius, velocity, f.scratch.spin);
-    let s = &mut f.scratch;
-    s.contact_velocity = slip.velocity;
-    s.speed_sq = slip.speed_sq;
-    s.speed = slip.speed;
-    s.long_slip_velocity = slip.long_slip_velocity;
-    s.spin_slip = slip.spin_slip;
+    let spin = f.scratch.spin;
+    update_slip_at(f, velocity, spin);
+}
+
+/// [`compute_slip`] on the frame, for the contact point moving at `velocity` against the wheel spinning at `spin`.
+pub fn update_slip_at(f: &mut Frame, velocity: [f32; 3], spin: f32) {
+    let slip = compute_slip(&layout::contact_axes(f), f.state.effective_radius, velocity, spin);
+    layout::apply_slip(f, &slip);
 }
 
 /// Splits the slip speed into the weights of the sticking and the sliding model: above 2 m/s the sliding model has

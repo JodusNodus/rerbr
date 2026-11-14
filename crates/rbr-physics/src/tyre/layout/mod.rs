@@ -1,7 +1,8 @@
 //! Typed views of the memory the tyre functions read and write: the scratch (`CScratch`, `this`), its
 //! state (`m_state`, the pointer at `this+0x14`) and the tyre setup (`m_def`, at `this+0x10`). The offsets
-//! are the original's (rbr-recomp `notes/physics/tyre.md` 2a-2c, `notes/physics/renames/tyre.csv`). The `load` and
-//! `store` functions below are the only code that knows them; the physics works on the typed values.
+//! are the original's (rbr-recomp `notes/physics/tyre.md` 2a-2c, `notes/physics/renames/tyre.csv`). The lift and lower
+//! of the typed state (`typed.rs`) and the block loads and stores (`kernels.rs`) are the only code that knows them;
+//! the physics works on the typed values.
 
 mod construct;
 pub mod entries;
@@ -11,24 +12,33 @@ mod frame_types;
 mod kernels;
 mod objects;
 mod scratch_ctor;
+mod typed;
 
 pub use crate::tyre::slip::ContactAxes;
 pub use construct::{
     construct_def, construct_options, construct_setup, construct_state, construct_tyre_type, copy_def_from,
-    set_setup_type,
+    copy_setup_into_def, set_setup_type, SetupCopies,
 };
-pub use frame::{copy_material, Outside, Table, WORDS};
+pub use frame::{copy_material, settle_material, Outside, Table, WORDS};
 pub use frame_inputs::{
-    apply_contact, apply_heat, apply_soil, contact_input, heat_input, hold_input, patch_input, rolling_input,
-    soil_input, table_at,
+    apply_contact, apply_heat, apply_inner_air_terms, apply_relax, apply_sector, apply_slip, apply_soil, contact_axes,
+    contact_input, count_relax, heat_input, hold_input, inner_air_terms, limits_input, patch_input, relax_input,
+    rolling_input, sector_input, soil_input, table_at,
 };
 pub use frame_types::{sig, ContactFrame, Frame, Indentation, Scratch, Segment, Setup, StateWords, SOIL_DENSITY};
-pub use kernels::{clear_eight_floats, emit_noise, scaled_sum, word_at, StepArgs, StepOut, StepPtrs};
+pub use kernels::{
+    clear_eight_floats, coefficients_from_words, emit_noise, load_contact_blocks, load_def_pointer,
+    load_limit_stiffnesses, load_material, load_name_object, load_segment, load_state_pointer, load_step,
+    load_step_flag, noise_signal, read_table, scaled_sum, store_contact_blocks, store_friction_limits, store_material,
+    store_output_block, store_patch_forces, store_segment, store_step, store_surface_friction, store_wear_table,
+    word_at, StepArgs, StepOut, StepPtrs,
+};
 pub use objects::ScratchObj;
 pub use scratch_ctor::{
     construct_scratch, create_scratch, delete_container, delete_scratch, destroy_scratch, destroy_scratch_body,
     init_scratch, reset_tweak_headers, SCRATCH_SIZE,
 };
+pub use typed::{frame_of, round_trip, with_tyre, CarTyres, TyreImage, TyreView};
 
 // The `CScratch` (`this`) words, its state (`m_state`, `this+0x14`) and its setup (`m_def`, `this+0x10`).
 

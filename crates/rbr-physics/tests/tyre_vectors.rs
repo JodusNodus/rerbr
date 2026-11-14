@@ -8,11 +8,10 @@ use common::{load, map_windows, After, Call, Window};
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::vec::Vec4;
 use rbr_physics::mem::Mem;
+use rbr_physics::tyre::layout::entries;
 use rbr_physics::tyre::store::TyreStore;
-use rbr_physics::tyre::{
-    contact_frame, contact_patch, forces, friction_curve, grip, hold, layout, locate, noise_signal, output_block, slip,
-    soil, solve, state, surface,
-};
+use rbr_physics::tyre::tyres::TyreId;
+use rbr_physics::tyre::{forces, grip, layout, solve, state};
 
 const VAR: &str = "RBR_TYRE_VECTORS";
 
@@ -93,22 +92,21 @@ fn replay_inner(addr: u32, name: &str, nan_tolerant: bool, port: impl Fn(&mut Me
     replay_run(addr, name, nan_tolerant, map_windows, |mem, c| Ok(port(mem, c)));
 }
 
-/// Replays `addr` through a frame port: the frame is loaded from `this` (`args[0]`) once, `port` runs on it, and the
-/// frame is stored once after. `port` reads the call's other words through `mem`; a port with output pointers that may
-/// sit in the frame writes them through `replay_run`, after the frame.
-fn replay_frame(
+/// Replays `addr` through a tyre entry on the per-call view, as the binding runs it: `run` reads the call's blocks,
+/// runs the entry on the tyre at `this` (`args[0]`, [`on_tyre`]) and writes its outputs through the call's pointers
+/// after, on the memory of a frame call.
+fn replay_tyre(
     addr: u32,
     name: &str,
     nan_tolerant: bool,
-    port: impl Fn(&mut layout::Frame, &mut Mem, &Call) -> Result<Option<f64>, layout::Outside>,
+    run: impl Fn(&mut Mem, &Call) -> Result<Option<f64>, layout::Outside>,
 ) {
-    replay_run(addr, name, nan_tolerant, map_frame, |mem, c| {
-        let this = c.args[0];
-        let mut frame = mem.load_frame(this);
-        let out = port(&mut frame, mem, c)?;
-        mem.store_frame(this, &frame);
-        Ok(out)
-    });
+    replay_run(addr, name, nan_tolerant, map_frame, run);
+}
+
+/// Runs `run` on the tyre whose scratch is `args[0]`, lifted and lowered around it (`layout::with_tyre`).
+fn on_tyre<T>(mem: &mut Mem, c: &Call, run: impl FnOnce(&mut layout::TyreView, TyreId) -> T) -> T {
+    layout::with_tyre(mem, c.args[0], run)
 }
 
 /// Whether the call's windows hold the `len` bytes at `at`.
@@ -147,15 +145,16 @@ fn arg_f32(call: &Call, i: usize) -> f32 {
 #[test]
 fn rolling_torque_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x531ba0, "rolling_torque", |mem, c| Some(forces::rolling_torque(mem.load_rolling_input(c.args[0]))));
+    replay_tyre(0x531ba0, "rolling_torque", false, |mem, c| {
+        Ok(Some(on_tyre(mem, c, |v, t| entries::rolling_torque(v, t))))
+    });
 }
 
 #[test]
 fn clamp_deflection_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x5322e0, "clamp_deflection", |mem, c| {
-        let out = grip::clamp_deflection(arg_f32(c, 0), arg_f32(c, 1), arg_f32(c, 2));
-        mem.set_f32(c.args[3], out);
+        entries::clamp_deflection(mem, arg_f32(c, 0), arg_f32(c, 1), arg_f32(c, 2), c.args[3]);
         None
     });
 }
@@ -163,39 +162,33 @@ fn clamp_deflection_matches_original_calls() {
 #[test]
 fn compute_slip_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x532a30, "compute_slip", |mem, c| {
-        let this = c.args[0];
+    replay_tyre(0x532a30, "compute_slip", false, |mem, c| {
         let dir = c.args[1];
         let dir = [mem.f32(dir), mem.f32(dir + 4), mem.f32(dir + 8)];
-        let radius = mem.load_effective_radius(this);
-        let axes = mem.load_contact_axes(this);
-        let out = slip::compute_slip(&axes, radius, dir, arg_f32(c, 2));
-        mem.store_slip(this, &out);
-        None
+        on_tyre(mem, c, |v, t| entries::compute_slip(v, t, dir, arg_f32(c, 2)));
+        Ok(None)
     });
 }
 
 #[test]
 fn slip_directions_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x533640, "slip_directions", |mem, c| {
-        let radius = mem.load_effective_radius(c.args[0]);
-        let out = slip::slip_directions(arg_f32(c, 1), arg_f32(c, 2), arg_f32(c, 3), radius);
+    replay_tyre(0x533640, "slip_directions", false, |mem, c| {
+        let velocities = [arg_f32(c, 1), arg_f32(c, 2), arg_f32(c, 3)];
+        let out = on_tyre(mem, c, |v, t| entries::slip_directions(v, t, velocities));
         for (i, value) in out.iter().enumerate() {
             mem.set_f32(c.args[4 + i], *value);
         }
-        None
+        Ok(None)
     });
 }
 
 #[test]
 fn soil_drag_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_inner(0x5338a0, "soil_drag", true, |mem, c| {
-        let this = c.args[0];
-        let out = soil::soil_drag(mem.load_soil_input(this));
-        mem.store_soil_drag(this, &out);
-        None
+    replay_tyre(0x5338a0, "soil_drag", true, |mem, c| {
+        on_tyre(mem, c, |v, t| entries::soil_drag(v, t));
+        Ok(None)
     });
 }
 
@@ -203,8 +196,7 @@ fn soil_drag_matches_original_calls() {
 fn store_material_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x535040, "store_material", |mem, c| {
-        let src = mem.load_material(c.args[1]);
-        mem.store_material(c.args[0], &src);
+        entries::copy_material(mem, c.args[0], c.args[1]);
         None
     });
 }
@@ -213,21 +205,21 @@ fn store_material_matches_original_calls() {
 fn store_wear_table_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x532490, "store_wear_table", |mem, c| {
-        mem.store_wear_table(c.args[0], c.args[1]);
+        layout::store_wear_table(mem, c.args[0], c.args[1]);
         None
     });
 }
 
-/// The solve tests: the contact values are loaded from the record's `p`, `qb` and `r` and stored back after.
-/// The windows are compared with `same_words`: a NaN the solve makes from finite operands (`inf - inf`, a
-/// `sqrt` of a negative) may take a different default-NaN sign on the host. Every other word must match bit for bit.
+/// The solve tests: the contact blocks are read from the record's `p`, `qb` and `r`, and the solved contact stored back
+/// after the tyre. The windows are compared with `same_words`: a NaN the solve makes from finite operands (`inf - inf`,
+/// a `sqrt` of a negative) may take a different default-NaN sign on the host. Every other word must match bit for bit.
 fn replay_solve(addr: u32, name: &str, run: impl Fn(&mut rbr_physics::tyre::solve::Contact, &Call)) {
-    replay_inner(addr, name, true, |mem, c| {
-        let (this, p, qb, r) = (c.args[0], c.args[1], c.args[2], c.args[3]);
-        let mut contact = mem.load_contact(this, p, qb, r);
-        run(&mut contact, c);
-        mem.store_contact(this, p, qb, &contact);
-        None
+    replay_tyre(addr, name, true, |mem, c| {
+        let (p, qb, r) = (c.args[1], c.args[2], c.args[3]);
+        let blocks = layout::load_contact_blocks(mem, p, qb, r);
+        let contact = on_tyre(mem, c, |v, t| entries::with_contact(v, t, blocks, |contact| run(contact, c)));
+        layout::store_contact_blocks(mem, p, qb, &contact);
+        Ok(None)
     });
 }
 
@@ -280,22 +272,14 @@ fn solve_contact_matches_original_calls() {
 #[test]
 fn hold_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_inner(0x531c70, "hold", true, |mem, c| {
-        let this = c.args[0];
-        let out = hold::hold(mem.load_hold_input(this, arg_f32(c, 1)));
-        mem.store_hold_direction(this, out.direction);
-        Some(out.torque)
-    });
+    replay_tyre(0x531c70, "hold", true, |mem, c| Ok(Some(on_tyre(mem, c, |v, t| entries::hold(v, t, arg_f32(c, 1))))));
 }
 
 /// `floor_s32` (FloorS32, stdcall: x, the table, its count). The table is a window read through `mem`.
 #[test]
 fn table_lerp_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x5325f0, "table_lerp", |mem, c| {
-        let (table, count) = (c.args[1], c.args[2] as i32);
-        Some(friction_curve::table_lerp(arg_f32(c, 0), count, |i| mem.f32(table + 4 * i)))
-    });
+    replay(0x5325f0, "table_lerp", |mem, c| Some(entries::table_lerp(mem, arg_f32(c, 0), c.args[1], c.args[2])));
 }
 
 /// `friction_curve` (TyreFrictionCurve, stdcall with 13 words): args 0-8 are values, 9 and 10 the outputs,
@@ -303,25 +287,7 @@ fn table_lerp_matches_original_calls() {
 #[test]
 fn friction_curve_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_inner(0x5334d0, "friction_curve", true, |mem, c| {
-        let (table, count) = (c.args[11], c.args[12] as i32);
-        let input = friction_curve::CurveInput {
-            slip: arg_f32(c, 0),
-            peak_slip: arg_f32(c, 1),
-            end_slip: arg_f32(c, 2),
-            peak_friction: arg_f32(c, 3),
-            slide_friction: arg_f32(c, 4),
-            stiffness: arg_f32(c, 5),
-            load: arg_f32(c, 6),
-            trail_linear: arg_f32(c, 7),
-            trail_sliding: arg_f32(c, 8),
-            count,
-        };
-        let out = friction_curve::friction_curve(&input, |i| mem.f32(table + 4 * i));
-        mem.set_f32(c.args[9], out.trail_fraction);
-        mem.set_f32(c.args[10], out.phase);
-        Some(out.friction)
-    });
+    replay_inner(0x5334d0, "friction_curve", true, |mem, c| Some(entries::friction_curve(mem, &c.args)));
 }
 
 /// `split_slip` (SplitSlip, thiscall, no stack words): the slip speed at +0x360 splits into the weights at +0x3dc
@@ -329,8 +295,8 @@ fn friction_curve_matches_original_calls() {
 #[test]
 fn weigh_models_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x5346f0, "weigh_models", false, |frame, _mem, _c| {
-        slip::weigh_models(frame);
+    replay_tyre(0x5346f0, "weigh_models", false, |mem, c| {
+        on_tyre(mem, c, |v, t| entries::weigh_models(v, t));
         Ok(None)
     });
 }
@@ -339,10 +305,9 @@ fn weigh_models_matches_original_calls() {
 #[test]
 fn build_contact_frame_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x531fc0, "build_contact_frame", true, |frame, mem, c| {
-        let a = Vec4::load(mem, c.args[1]);
-        let b = Vec4::load(mem, c.args[2]);
-        let aligned = contact_frame::build(frame, a, b);
+    replay_tyre(0x531fc0, "build_contact_frame", true, |mem, c| {
+        let (a, b) = (Vec4::load(mem, c.args[1]), Vec4::load(mem, c.args[2]));
+        let aligned = on_tyre(mem, c, |v, t| entries::build_contact_frame(v, t, a, b));
         assert_eq!(u32::from(aligned), c.eax, "build_contact_frame call {}: eax", c.index);
         Ok(None)
     });
@@ -352,24 +317,18 @@ fn build_contact_frame_matches_original_calls() {
 #[test]
 fn limit_to_friction_circle_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    // The outputs are pointers that may sit in the frame: they are written after the frame, as the binding does.
-    replay_run(0x533760, "limit_to_friction_circle", false, map_frame, |mem, c| {
-        let this = c.args[0];
+    // The outputs are pointers that may sit in the tyre: they are written after it, as the binding does.
+    replay_tyre(0x533760, "limit_to_friction_circle", false, |mem, c| {
         let g = grip::GripInput {
-            normal_force: f32::from_bits(c.args[1]),
-            static_friction: f32::from_bits(c.args[2]),
-            kinetic_friction: f32::from_bits(c.args[3]),
-            lateral_stiffness: f32::from_bits(c.args[4]),
-            torsional_stiffness: f32::from_bits(c.args[5]),
+            normal_force: arg_f32(c, 1),
+            static_friction: arg_f32(c, 2),
+            kinetic_friction: arg_f32(c, 3),
+            lateral_stiffness: arg_f32(c, 4),
+            torsional_stiffness: arg_f32(c, 5),
         };
-        let mut frame = mem.load_frame(this);
-        let out = grip::limit_to_friction_circle(&frame.state, g);
-        frame.state.grip_clamped = out.clamped;
-        frame.scratch.stick_phase_a = out.phase_a;
-        frame.scratch.stick_phase_b = out.phase_b;
-        mem.store_frame(this, &frame);
-        mem.set_f32(c.args[6], out.deflection);
-        mem.set_f32(c.args[7], out.torsion);
+        let (deflection, torsion) = on_tyre(mem, c, |v, t| entries::limit_to_friction_circle(v, t, g));
+        mem.set_f32(c.args[6], deflection);
+        mem.set_f32(c.args[7], torsion);
         Ok(None)
     });
 }
@@ -378,8 +337,8 @@ fn limit_to_friction_circle_matches_original_calls() {
 #[test]
 fn limit_sticking_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x5352a0, "limit_sticking", false, |frame, _mem, _c| {
-        grip::limit_sticking(frame);
+    replay_tyre(0x5352a0, "limit_sticking", false, |mem, c| {
+        on_tyre(mem, c, |v, t| entries::limit_sticking(v, t));
         Ok(None)
     });
 }
@@ -389,28 +348,28 @@ fn limit_sticking_matches_original_calls() {
 #[test]
 fn solve_forces_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    // The outputs are pointers that may sit in the frame: they are written after the frame, as the binding does.
-    replay_run(0x532b60, "solve_forces", true, map_frame, |mem, c| {
-        let this = c.args[0];
-        let out2 = Vec4::load(mem, c.args[3]);
-        let mut frame = mem.load_frame(this);
-        // A tyre model at full weight (ours): no damping, the trail unscaled, whatever the sticking weight.
-        let mut model = frame;
-        forces::solve_forces(&mut model, arg_f32(c, 1), out2, 1.0);
-        let s = &frame.scratch;
-        let lateral = 0.0 - frame.state.lateral_deflection * s.lateral_stiffness * s.inclination_cos;
-        let torsion = 0.0 - frame.state.torsion_angle * s.torsional_stiffness;
-        let same = |a: f32, b: f32| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
-        // (A NaN weight or spin slip, which only fuzzed records hold, makes the factors NaN either way.)
-        if [s.sliding_weight, s.sticking_weight, s.spin_slip].iter().all(|x| x.is_finite()) {
-            assert!(same(model.scratch.lateral_force, lateral), "{} {lateral}", model.scratch.lateral_force);
-            assert!(same(model.scratch.torsion_torque, torsion), "{} {torsion}", model.scratch.torsion_torque);
-            assert!(same(model.scratch.pneumatic_trail, s.pneumatic_trail));
-        }
-        let (out1, out2) = forces::solve_forces(&mut frame, arg_f32(c, 1), out2, 0.0);
-        mem.store_frame(this, &frame);
-        out1.store(mem, c.args[2]);
-        out2.store(mem, c.args[3]);
+    // The outputs are pointers that may sit in the tyre: they are written after it, as the binding does.
+    replay_tyre(0x532b60, "solve_forces", true, |mem, c| {
+        let torque_in = Vec4::load(mem, c.args[3]);
+        let (force, torque) = on_tyre(mem, c, |v, t| {
+            // A tyre model at full weight (ours): no damping, the trail unscaled, whatever the sticking weight.
+            let frame = v.load_frame(t);
+            let mut model = frame;
+            forces::solve_forces(&mut model, arg_f32(c, 1), torque_in, 1.0);
+            let s = &frame.scratch;
+            let lateral = 0.0 - frame.state.lateral_deflection * s.lateral_stiffness * s.inclination_cos;
+            let torsion = 0.0 - frame.state.torsion_angle * s.torsional_stiffness;
+            let same = |a: f32, b: f32| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
+            // (A NaN weight or spin slip, which only fuzzed records hold, makes the factors NaN either way.)
+            if [s.sliding_weight, s.sticking_weight, s.spin_slip].iter().all(|x| x.is_finite()) {
+                assert!(same(model.scratch.lateral_force, lateral), "{} {lateral}", model.scratch.lateral_force);
+                assert!(same(model.scratch.torsion_torque, torsion), "{} {torsion}", model.scratch.torsion_torque);
+                assert!(same(model.scratch.pneumatic_trail, s.pneumatic_trail));
+            }
+            entries::solve_forces(v, t, arg_f32(c, 1), torque_in)
+        });
+        force.store(mem, c.args[2]);
+        torque.store(mem, c.args[3]);
         Ok(None)
     });
 }
@@ -419,10 +378,10 @@ fn solve_forces_matches_original_calls() {
 #[test]
 fn fill_noise_signal_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x532f10, "fill_noise_signal", false, |frame, mem, c| {
-        let src = Vec4::load(mem, c.args[1]);
+    replay_tyre(0x532f10, "fill_noise_signal", false, |mem, c| {
+        let velocity = Vec4::load(mem, c.args[1]);
         let debug_words: [u32; 3] = std::array::from_fn(|k| mem.u32(c.args[2] + 4 * k as u32));
-        noise_signal::fill_noise_signal(frame, src, debug_words, arg_f32(c, 3));
+        on_tyre(mem, c, |v, t| entries::fill_noise_signal(v, t, velocity, debug_words, arg_f32(c, 3)));
         Ok(None)
     });
 }
@@ -432,13 +391,10 @@ fn fill_noise_signal_matches_original_calls() {
 fn write_output_block_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // Fuzz call 3858 differs only in the sign of six default NaNs (see rbr-recomp notes/rust-physics.md section 8).
-    // The outputs are pointers that may sit in the frame: they are written after the frame, as the binding does.
-    replay_run(0x533080, "write_output_block", true, map_frame, |mem, c| {
-        let this = c.args[0];
-        let mut frame = mem.load_frame(this);
-        let block = output_block::write_output_block(&mut frame);
-        mem.store_frame(this, &frame);
-        mem.store_output_block(c.args[1], &block);
+    // The outputs are pointers that may sit in the tyre: they are written after it, as the binding does.
+    replay_tyre(0x533080, "write_output_block", true, |mem, c| {
+        let block = on_tyre(mem, c, |v, t| entries::write_output_block(v, t));
+        layout::store_output_block(mem, c.args[1], &block);
         Ok(None)
     });
 }
@@ -448,12 +404,9 @@ fn write_output_block_matches_original_calls() {
 #[test]
 fn contact_patch_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    // The outputs are pointers that may sit in the frame: they are written after the frame, as the binding does.
-    replay_run(0x5358f0, "contact_patch", true, map_frame, |mem, c| {
-        let this = c.args[0];
-        let mut frame = mem.load_frame(this);
-        let out = contact_patch::contact_patch(&mut frame);
-        mem.store_frame(this, &frame);
+    // The outputs are pointers that may sit in the tyre: they are written after it, as the binding does.
+    replay_tyre(0x5358f0, "contact_patch", true, |mem, c| {
+        let out = on_tyre(mem, c, |v, t| entries::contact_patch(v, t));
         assert_eq!(u32::from(out.is_some()), c.eax, "contact_patch call {}: eax", c.index);
         if let Some(value) = out {
             mem.set_f32(c.args[1], value);
@@ -468,10 +421,7 @@ fn locate_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // NaN-tolerant: a NaN fraction's sign is the host's default, not the original's x87 one.
     replay_run(0x528980, "locate", true, map_locate, |mem, c| {
-        let (table, n, out) = (c.args[0], c.args[2], c.args[3]);
-        let table = mem.read_table(table, n as usize);
-        let seg = locate::locate(mem.load_segment(out), &table, arg_f32(c, 1))?;
-        mem.store_segment(out, &seg);
+        entries::locate(mem, c.args[0], arg_f32(c, 1), c.args[2], c.args[3])?;
         Ok(None)
     });
 }
@@ -493,8 +443,8 @@ fn map_locate(call: &Call) -> Mem {
 #[test]
 fn set_active_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_frame(0x532470, "set_active", false, |frame, _mem, c| {
-        state::set_active(frame, c.args[1]);
+    replay_tyre(0x532470, "set_active", false, |mem, c| {
+        on_tyre(mem, c, |v, t| entries::set_active(v, t, c.args[1]));
         Ok(None)
     });
 }
@@ -505,16 +455,13 @@ fn set_penetration_depth_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     // The original reads the def's `+0x7c` and `+0x8c`. A record without a window over them (`d-s*`) cannot show the
     // result, so the call is counted as declined.
-    replay_run(0x533490, "set_penetration_depth", false, map_frame, |mem, c| {
-        let this = c.args[0];
-        let def = mem.u32(this + 0x10);
+    replay_tyre(0x533490, "set_penetration_depth", false, |mem, c| {
+        let def = mem.u32(c.args[0] + 0x10);
         if !recorded(c, def + 0x7C, 0x14) {
             // Not an index: no window holds the def. The empty window (index 0 of 0 entries) is outside it.
             return Err(layout::Outside { index: 0, len: 0 });
         }
-        let mut frame = mem.load_frame(this);
-        state::set_penetration_depth(&mut frame, arg_f32(c, 1));
-        mem.store_frame(this, &frame);
+        on_tyre(mem, c, |v, t| entries::set_penetration_depth(v, t, arg_f32(c, 1)));
         Ok(None)
     });
 }
@@ -535,11 +482,12 @@ fn clear_bias_matches_original_calls() {
 #[test]
 fn surface_friction_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(0x534e70, "surface_friction", |mem, c| {
-        let input = mem.load_surface_input(c.args[0], [c.args[1], c.args[2]], [arg_f32(c, 3), arg_f32(c, 4)]);
-        mem.store_surface_friction(c.args[5], c.args[6], surface::surface_friction(&input));
+    replay_tyre(0x534e70, "surface_friction", false, |mem, c| {
+        let (classes, wetness) = ([c.args[1], c.args[2]], [arg_f32(c, 3), arg_f32(c, 4)]);
+        let out = on_tyre(mem, c, |v, t| entries::surface_friction(v, t, classes, wetness))?;
+        layout::store_surface_friction(mem, c.args[5], c.args[6], out);
         assert_eq!(c.eax, 1, "surface_friction call {}: eax", c.index);
-        None
+        Ok(None)
     });
 }
 
@@ -548,7 +496,7 @@ fn surface_friction_matches_original_calls() {
 fn def_pointer_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x5326b0, "def_pointer", |mem, c| {
-        assert_eq!(mem.load_def_pointer(c.args[0]), c.eax, "def_pointer call {}: eax", c.index);
+        assert_eq!(layout::load_def_pointer(mem, c.args[0]), c.eax, "def_pointer call {}: eax", c.index);
         None
     });
 }
@@ -558,7 +506,7 @@ fn def_pointer_matches_original_calls() {
 fn state_pointer_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x5326c0, "state_pointer", |mem, c| {
-        assert_eq!(mem.load_state_pointer(c.args[0]), c.eax, "state_pointer call {}: eax", c.index);
+        assert_eq!(layout::load_state_pointer(mem, c.args[0]), c.eax, "state_pointer call {}: eax", c.index);
         None
     });
 }
@@ -568,7 +516,7 @@ fn state_pointer_matches_original_calls() {
 fn name_object_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52db10, "name_object", |mem, c| {
-        assert_eq!(mem.load_name_object(c.args[0]), c.eax, "name_object call {}: eax", c.index);
+        assert_eq!(layout::load_name_object(mem, c.args[0]), c.eax, "name_object call {}: eax", c.index);
         None
     });
 }
@@ -578,7 +526,7 @@ fn name_object_matches_original_calls() {
 #[test]
 fn copy_def_from_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay_run(0x534760, "copy_def_from", true, map_windows, |mem, c| {
+    replay_tyre(0x534760, "copy_def_from", true, |mem, c| {
         layout::copy_def_from(mem, c.args[0], c.args[1]);
         Ok(None)
     });
@@ -736,4 +684,99 @@ fn emit_noise_clears_the_signal_block() {
     rbr_physics::tyre::layout::emit_noise(&mut mem, &mut NoConnections, scratch);
     assert_eq!(mem.u32(scratch + 0x420), 0x1111);
     assert_eq!(mem.u32(scratch + 0x424), 0);
+}
+
+/// A tyre entry on its store.
+type Entry<'a> = dyn Fn(&mut layout::TyreView, TyreId) + 'a;
+
+/// The entries in a row on the image between calls (each lifts and lowers the tyre) and on the typed storage over the
+/// whole row (lifted before it, lowered after) leave every byte of the record's windows and the tyre's scratch, state
+/// and wear equal, on every `WriteOutputs` record.
+#[test]
+fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
+    use rbr_physics::ngp::heat::{Airflow, TyreShape, TyreThermal};
+    let _pc24 = Precision::Pc24.scope();
+    let Some(calls) = load(VAR, 0x533080) else {
+        eprintln!("skipping the typed storage's chain: {VAR} not set");
+        return;
+    };
+    let thermal = TyreThermal {
+        air_temperature: 288.0,
+        relax_rate: 100.0,
+        shape: TyreShape {
+            carcass_radius: 0.3,
+            tread_depth: 0.01,
+            carcass_thickness: 0.005,
+            tread_width: 0.2,
+            sidewall_height: 0.09,
+        },
+        airflow: Airflow { kind: 0, spin: 40.0, car_speed: 12.0, boost: None, factors: [6.0, 6.0] },
+    };
+    let g = grip::GripInput {
+        normal_force: 3000.0,
+        static_friction: 1.1,
+        kinetic_friction: 0.9,
+        lateral_stiffness: 40000.0,
+        torsional_stiffness: 900.0,
+    };
+    let copies = layout::SetupCopies {
+        vertical_stiffness: 200000.0,
+        tread_elasticity: 0.5,
+        tread_coverage: 0.7,
+        air_pressure: 2.0,
+    };
+    let x = Vec4 { x: 1.0, y: 0.0, z: 0.0, w: 0.0 };
+    let y = Vec4 { x: 0.0, y: 1.0, z: 0.0, w: 0.0 };
+    let blocks = (layout::Indentation::from_words([0.01; 7]), [3000.0, 1000.0, 2000.0], [0.5; 8]);
+    let dt = 0.004;
+    let mut chained = 0;
+    for call in &calls {
+        let scratch = call.args[0];
+        let base = map_frame(call);
+        // The entries in a row, as a step and its callers make their tyre calls.
+        let entries: [&Entry; 20] = [
+            &|v, t| entries::set_active(v, t, 1),
+            &|v, t| entries::adopt_setup(v, t, copies),
+            &|v, t| entries::set_penetration_depth(v, t, 0.02),
+            &|v, t| _ = entries::build_contact_frame(v, t, y, x),
+            &|v, t| entries::compute_slip(v, t, [1.0, 0.5, 2.0], 3.0),
+            &|v, t| entries::weigh_models(v, t),
+            &|v, t| _ = entries::with_contact(v, t, blocks, |c| solve::solve_both(c, 0)),
+            &|v, t| entries::soil_drag(v, t),
+            &|v, t| _ = entries::hold(v, t, dt),
+            &|v, t| _ = entries::limit_to_friction_circle(v, t, g),
+            &|v, t| entries::limit_sticking(v, t),
+            &|v, t| _ = entries::solve_sliding(v, t),
+            &|v, t| _ = entries::contact_patch(v, t),
+            &|v, t| _ = entries::solve_forces(v, t, dt, x),
+            &|v, t| _ = entries::write_output_block(v, t),
+            &|v, t| entries::fill_noise_signal(v, t, x, [1, 2, 3], 2.0),
+            &|v, t| _ = entries::heat_step(v, t, 100.0, 200.0, dt, &thermal),
+            &|v, t| _ = entries::relax_sector(v, t, 0, dt, &thermal),
+            &|v, t| entries::relax(v, t, dt, &thermal),
+            &|v, t| entries::relax_and_count(v, t, dt, &thermal),
+        ];
+        let mut per_call = base.clone();
+        for entry in entries {
+            layout::with_tyre(&mut per_call, scratch, entry);
+        }
+        let mut typed = base.clone();
+        let mut held = layout::CarTyres::lift_scratches(&typed, [Some(scratch), None, None, None]);
+        let mut view = held.view(&typed);
+        for entry in entries {
+            entry(&mut view, TyreId(0));
+        }
+        held.lower(&mut typed);
+        let image = layout::TyreImage::of(&base, scratch);
+        let objects = [(scratch, 0x520), (image.state, 0x140), (image.wear, 0x20)];
+        for (at, len) in call.windows.iter().map(|w| (w.at, w.len)).chain(objects) {
+            let (a, b) = (per_call.read(at, len), typed.read(at, len));
+            let k = a.iter().zip(&b).position(|(x, y)| x != y);
+            assert!(k.is_none(), "call {}: {at:#x}+{:#x} differs between the storages", call.index, k.unwrap_or(0));
+        }
+        assert_ne!(per_call.read(image.state, 0x140), base.read(image.state, 0x140), "call {}: the state", call.index);
+        chained += 1;
+    }
+    assert!(chained > 0, "no WriteOutputs record");
+    eprintln!("the typed storage's chain: {chained} WriteOutputs records, every byte equal to the per-call path's");
 }

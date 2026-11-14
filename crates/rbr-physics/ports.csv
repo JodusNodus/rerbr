@@ -845,7 +845,7 @@ addr,module,rust_item,test,status
 0x5352a0,tyre/grip.rs,tyre::grip::limit_sticking,tyre_vectors::limit_sticking_matches_original_calls,checked
 0x535310,tyre/patch_forces.rs,tyre::patch_forces::patch_forces,-,partial
 0x535890,tyre/layout/kernels.rs,tyre::layout::kernels::emit_noise,wheel_vectors::emit_noise_matches_original_calls,checked
-0x5358c0,tyre/layout/kernels.rs,tyre::layout::kernels::store_relax_count,-,partial
+0x5358c0,tyre/layout/entries.rs,tyre::layout::entries::relax_and_count,-,partial
 0x5358f0,tyre/contact_patch.rs,tyre::contact_patch::contact_patch,tyre_vectors::contact_patch_matches_original_calls,checked
 0x535d60,tyre/sliding.rs,tyre::sliding::solve_sliding,-,partial
 0x5360c0,tyre/step.rs,tyre::step::step,-,partial

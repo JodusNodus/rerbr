@@ -10,7 +10,6 @@ use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::sign;
-use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{INV_ARM, INV_RACK, ON_GROUND, TYRE_SCRATCH};
 
 /// The mechanical trail, m, that gives AC EVO's torque by front slip angle on the r40 circle (`notes/ngp.md`):
@@ -31,7 +30,7 @@ pub fn torque(mem: &Mem, trail: f32) -> f32 {
         .map(|k| mem.u32(car + WHEELS + 4 * k))
         .filter(|&wheel| mem.u32(wheel + ON_GROUND) != 0)
         .map(|wheel| {
-            let s = mem.load_frame(wheel + TYRE_SCRATCH).scratch;
+            let s = rbr_physics::tyre::layout::frame_of(mem, wheel + TYRE_SCRATCH).scratch;
             let moment = sign(s.contact_velocity[1]) as f32 * (s.pneumatic_trail + trail) * s.lateral_force;
             moment * s.contact_frame.normal.z * (mem.f32(wheel + INV_ARM) * mem.f32(wheel + INV_RACK)).abs()
         })

@@ -4,7 +4,6 @@ use rbr_gameplay::control::CarControl;
 use rbr_gameplay::stage::{State, LOAD_SUBSTEPS};
 use rbr_hybrid::pure::{self, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
-use rbr_physics::tyre::store::TyreStore;
 use rbr_recording::sound::{TyreMax, CAR_WHEELS, WHEEL_TYRE_SCRATCH};
 use rbr_recording::{read_f32, CONTROL_BYTES};
 
@@ -56,7 +55,7 @@ pub(super) fn tyre_wheels(playback: &Playback) -> Vec<rbr_tyre::Wheel> {
                 class_friction: std::array::from_fn(|k| mem.f32(def + 0x2C4 + 4 * k as u32)),
                 class_wet_slope: std::array::from_fn(|k| mem.f32(def + 0x2E0 + 4 * k as u32)),
                 design_wetness: mem.f32(def + 0x2DC),
-                ..rbr_tyre::Wheel::new(t, &mem.load_frame(t).setup)
+                ..rbr_tyre::Wheel::new(t, &rbr_physics::tyre::layout::TyreImage::of(mem, t).setup(mem))
             }
         })
         .collect()

@@ -1,13 +1,15 @@
 //! The model inputs taken from a loaded `Frame`, and their results put back into it.
 
 use super::frame::{Outside, Table};
-use super::frame_types::{Frame, SOIL_DENSITY};
-use crate::spring_damper::HeatCapacity;
+use super::frame_types::{Frame, StateWords, SOIL_DENSITY};
+use crate::spring_damper::{ForceTerms, HeatCapacity, UpdateTerms};
 use crate::tyre::forces::RollingInput;
-use crate::tyre::friction_limits::BlendPair;
+use crate::tyre::friction_limits::{BlendPair, LimitsInput};
 use crate::tyre::heat::{HeatInput, HeatOutput};
 use crate::tyre::hold::HoldInput;
 use crate::tyre::patch_forces::PatchInput;
+use crate::tyre::relax::{RelaxInput, RelaxOutput, SectorInput, SectorOutput};
+use crate::tyre::slip::{ContactAxes, Slip};
 use crate::tyre::soil::{SoilDrag, SoilInput};
 use crate::tyre::solve::{Coefficients, Contact};
 
@@ -142,13 +144,49 @@ pub fn apply_heat(f: &mut Frame, out: &HeatOutput) {
     st.carcass_temperature = out.carcass_temperature;
 }
 
+/// The four load tables' entries at the load search's two ends (the cornering and traction friction, their peak
+/// slips), which the friction limits and the patch forces blend.
+fn load_blend(f: &Frame) -> Result<[BlendPair; 4], Outside> {
+    let (st, d) = (&f.state, &f.setup);
+    let blend = |base: &Table| -> Result<BlendPair, Outside> {
+        Ok(BlendPair { at_a: table_at(base, st.load_segment.lo)?, at_b: table_at(base, st.load_segment.hi)? })
+    };
+    Ok([
+        blend(&d.cornering_friction_by_load)?,
+        blend(&d.traction_friction_by_load)?,
+        blend(&d.cornering_peak_slip_by_load)?,
+        blend(&d.traction_peak_slip_by_load)?,
+    ])
+}
+
+/// The friction limits' inputs from the frame: the stiffnesses pass through; the shares and the scales are the
+/// caller's.
+pub fn limits_input(
+    f: &Frame,
+    stiffnesses: [f32; 2],
+    shares: [f32; 2],
+    scales: [f32; 2],
+) -> Result<LimitsInput, Outside> {
+    let [cornering_friction, traction_friction, cornering_peak_slip, traction_peak_slip] = load_blend(f)?;
+    Ok(LimitsInput {
+        weight: f.state.load_segment.frac,
+        cornering_friction,
+        traction_friction,
+        cornering_peak_slip,
+        traction_peak_slip,
+        lateral_share: shares[0],
+        longitudinal_share: shares[1],
+        static_scale: scales[0],
+        kinetic_scale: scales[1],
+        cornering_stiffness: stiffnesses[0],
+        traction_stiffness: stiffnesses[1],
+    })
+}
+
 /// The patch forces' inputs from the frame. (The original reads the record at `this+0x20`, so its words are scratch
 /// words.)
 pub fn patch_input(f: &Frame) -> Result<PatchInput, Outside> {
     let (s, st, d) = (&f.scratch, &f.state, &f.setup);
-    let blend = |base: &Table| -> Result<BlendPair, Outside> {
-        Ok(BlendPair { at_a: table_at(base, st.load_segment.lo)?, at_b: table_at(base, st.load_segment.hi)? })
-    };
     Ok(PatchInput {
         speed: s.speed,
         lateral_velocity: s.contact_velocity[0],
@@ -165,12 +203,7 @@ pub fn patch_input(f: &Frame) -> Result<PatchInput, Outside> {
         patch_length: s.patch_length,
         sink_depth: s.indentation.sink_depth,
         weight: st.load_segment.frac,
-        tables: [
-            blend(&d.cornering_friction_by_load)?,
-            blend(&d.traction_friction_by_load)?,
-            blend(&d.cornering_peak_slip_by_load)?,
-            blend(&d.traction_peak_slip_by_load)?,
-        ],
+        tables: load_blend(f)?,
     })
 }
 
@@ -198,4 +231,121 @@ pub fn apply_contact(f: &mut Frame, c: &Contact) {
     s.tread_force = c.tread_force;
     f.state.tread_engaged = c.tread_engaged;
     f.state.carcass_engaged = c.carcass_engaged;
+}
+
+/// The contact frame's axes, each as three components.
+pub fn contact_axes(f: &Frame) -> ContactAxes {
+    let row = |v: crate::math::vec::Vec4| [v.x, v.y, v.z];
+    let frame = f.scratch.contact_frame;
+    ContactAxes { lateral: row(frame.lateral), rolling: row(frame.rolling), normal: row(frame.normal) }
+}
+
+/// Stores the slip into the frame.
+pub fn apply_slip(f: &mut Frame, slip: &Slip) {
+    let s = &mut f.scratch;
+    s.contact_velocity = slip.velocity;
+    s.speed_sq = slip.speed_sq;
+    s.speed = slip.speed;
+    s.long_slip_velocity = slip.long_slip_velocity;
+    s.spin_slip = slip.spin_slip;
+}
+
+/// The sector step's inputs for sector `idx`: its surface temperature, the speed, the tread temperature, the tread's
+/// conductivity and the capacities of the surface layer and of the tread. `Outside` for a sector past the eight.
+pub fn sector_input(f: &Frame, idx: u32) -> Result<SectorInput, Outside> {
+    let (st, d) = (&f.state, &f.setup);
+    let surface_temperature = *st
+        .surface_temperature
+        .get(idx as usize)
+        .ok_or(Outside { index: idx as i32, len: st.surface_temperature.len() })?;
+    Ok(SectorInput {
+        surface_temperature,
+        speed: f.scratch.speed,
+        tread_temperature: st.tread_temperature,
+        tread_conductivity: d.tread_conductivity,
+        surface_capacity: capacity(d.surface_capacity),
+        tread_capacity: capacity(d.tread_capacity),
+    })
+}
+
+/// Stores the sector step's results into the frame: the tread's heat loss, sector `idx`'s surface temperature and the
+/// tread temperature (`idx` is one [`sector_input`] took).
+pub fn apply_sector(f: &mut Frame, idx: u32, out: &SectorOutput) {
+    f.scratch.tread_heat_loss = out.tread_heat_loss;
+    f.state.surface_temperature[idx as usize] = out.surface_temperature;
+    f.state.tread_temperature = out.tread_temperature;
+}
+
+fn capacity([mass, specific_heat]: [f32; 2]) -> HeatCapacity {
+    HeatCapacity { mass, specific_heat }
+}
+
+/// The sector the relaxation steps: the counter's low three bits.
+fn relax_sector(st: &StateWords) -> u32 {
+    st.relax_count & 7
+}
+
+/// The inner air's gas state as the relaxation's force terms.
+fn inner_air(st: &StateWords) -> ForceTerms {
+    ForceTerms {
+        multiplier: st.inner_air_mass,
+        accumulated_force: st.inner_air_temperature,
+        response: st.air_pressure,
+        divisor: st.inner_air_volume,
+    }
+}
+
+/// The relaxation's inputs from the frame: the carcass temperature and the inner air's, the carcass radius, the tread
+/// width and the conductivity between the carcass and the tread, the capacities, the inner air's gas and the sector
+/// input at the sector the counter names.
+pub fn relax_input(f: &Frame, dt: f32) -> RelaxInput {
+    let (st, d) = (&f.state, &f.setup);
+    let sector = sector_input(f, relax_sector(st)).expect("the counter names one of the eight sectors");
+    RelaxInput {
+        dt,
+        carcass_temperature: st.carcass_temperature,
+        inner_air_temperature: st.inner_air_temperature,
+        carcass_radius: d.carcass_radius,
+        tread_width: d.tread_width,
+        carcass_conductivity: d.carcass_conductivity,
+        tread_capacity: capacity(d.tread_capacity),
+        carcass_capacity: capacity(d.carcass_capacity),
+        inner_air: inner_air(st),
+        sector,
+    }
+}
+
+/// Stores the relaxation's results into the frame: the carcass temperature, the sidewalls' heat loss, the inner air's
+/// gas, and the sector.
+pub fn apply_relax(f: &mut Frame, out: &RelaxOutput) {
+    let st = &mut f.state;
+    st.carcass_temperature = out.carcass_temperature;
+    f.scratch.sidewall_heat_loss = out.sidewall_heat_loss;
+    let air = out.inner_air;
+    (st.inner_air_mass, st.inner_air_temperature, st.air_pressure, st.inner_air_volume) =
+        (air.multiplier, air.accumulated_force, air.response, air.divisor);
+    let idx = relax_sector(&f.state);
+    apply_sector(f, idx, &out.sector);
+}
+
+/// The relaxation counter up by one, with its dirty word set.
+pub fn count_relax(f: &mut Frame) {
+    f.state.relax_dirty = 1;
+    f.state.relax_count = f.state.relax_count.wrapping_add(1);
+}
+
+/// The inner air's gas state as the setup copy's terms (its mass is solved from the other three).
+pub fn inner_air_terms(st: &StateWords) -> UpdateTerms {
+    UpdateTerms {
+        scale: st.inner_air_mass,
+        numerator: st.inner_air_temperature,
+        denominator: st.air_pressure,
+        response: st.inner_air_volume,
+    }
+}
+
+/// Stores the setup copy's terms back into the inner air's gas state.
+pub fn apply_inner_air_terms(st: &mut StateWords, t: &UpdateTerms) {
+    (st.inner_air_mass, st.inner_air_temperature, st.air_pressure, st.inner_air_volume) =
+        (t.scale, t.numerator, t.denominator, t.response);
 }

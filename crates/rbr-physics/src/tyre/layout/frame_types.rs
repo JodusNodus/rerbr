@@ -207,9 +207,7 @@ pub struct Scratch {
     pub sticking_torsion: f32,
     /// `+0x404`: the abrasion rate of the heat step (0 below 0.05).
     pub abrasion_rate: f32,
-    /// `*(+0x410) + 0x5ac`: the contact angle (read only; the record is not part of the frame).
-    pub contact_angle: f32,
-    /// `*(+0x414)[0..8]`: the wear of each tread sector, 0 to 1.
+    /// `*(+0x414)[0..8]`: the wear of each tread sector, 0 to 1 (the table is the damage handler's, `m_wear`).
     pub wear: [f32; 8],
     /// `+0x420` to `+0x47c`: the tyre-noise signal block: 24 words, read and written as dwords.
     pub signal: [u32; 24],
@@ -237,6 +235,10 @@ pub struct Scratch {
     pub wet_damping: f32,
     /// `+0x4e8`: NGP's heat power term (`ngp::inclination`), unused by 1.02.
     pub ngp_heat_power: f32,
+    /// `+0x4f8`: the heat the tread loses to its sector's surface layer, W (the sector step's). `+0x4fc`: the heat the
+    /// sidewalls lose, W (the relaxation's).
+    pub tread_heat_loss: f32,
+    pub sidewall_heat_loss: f32,
     /// `+0x504`, `+0x508`, `+0x50c`: the soil drag, the lateral weight and the furrow ratio, each averaged with the
     /// factor 0.9 (`Accumulate`).
     pub smoothed_soil_drag: f32,
@@ -249,6 +251,10 @@ pub struct Scratch {
 pub struct StateWords {
     /// `+0x0c`: 1 once `step` has run with contact (`sti[3]`); a zero leaves `hold::hold` at once.
     pub active: u32,
+    /// `+0x18`: the dirty word of the relaxation counter. `+0x1c`: the counter (a `CU32Value` at `+0x10`): its low three
+    /// bits are the sector the relaxation steps.
+    pub relax_dirty: u32,
+    pub relax_count: u32,
     /// `+0x28`: the dirty word `SetDirty(+0x20)` writes.
     pub started_dirty: u32,
     /// `+0x2c`: set on the first step.
@@ -269,8 +275,12 @@ pub struct StateWords {
     /// model clamps to the friction circle.
     pub tread_coverage: f32,
     pub grip_clamped: u32,
-    /// `+0x68`: the air pressure in the tyre, Pa (the response of the inner air's gas state at `+0x60`).
+    /// The inner air's gas state, `+0x60` to `+0x6c` (by use: the setup copy solves `+0x60` as `p·V/(R·T)` from the
+    /// other three): its mass, its temperature (K), the air pressure in the tyre (Pa) and its volume.
+    pub inner_air_mass: f32,
+    pub inner_air_temperature: f32,
     pub air_pressure: f32,
+    pub inner_air_volume: f32,
     /// `+0x70`, `+0x74`: the flags the last contact solve left (by use: the tread is loaded, the carcass is
     /// compressed); the next solve starts from them.
     pub tread_engaged: u32,
@@ -352,12 +362,15 @@ pub struct Setup {
     pub traction_peak_slip_by_load: Table,
 }
 
-/// The whole tyre step footprint: loaded once by `load_frame`, written back once by `store_frame`.
+/// The whole tyre step footprint: loaded once by `load_frame`, written back once by `store_frame`. The scratch and the
+/// state are the tyre's state; the setup and the contact angle are read only.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
     pub scratch: Scratch,
     pub state: StateWords,
     pub setup: Setup,
+    /// `*(+0x410) + 0x5ac`: the contact angle, the wheel's.
+    pub contact_angle: f32,
 }
 
 /// The index of `this+0x238` (`SoilDensity`) in the material block (`material::WORDS`).

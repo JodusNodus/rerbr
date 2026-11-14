@@ -19,7 +19,6 @@ use rbr_physics::ngp::{ffb, layout::car_init};
 use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::rigid_body::layout::Body;
 use rbr_physics::spring_damper::DamperSignal;
-use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{TYRE_DEF, TYRE_DEF_HUB_OFFSET, TYRE_SCRATCH};
 use rbr_recording::damage::{self, Damage};
 use rbr_recording::dash::{Dash, StackKey};
@@ -273,7 +272,7 @@ pub fn tyre_temperatures(mem: &Mem) -> [Tyre; 4] {
         let scratch = read(car + CAR_WHEELS + 4 * k as u32).filter(|&w| w != 0).map(|w| w + TYRE_SCRATCH);
         let built = |s: &u32| [0x10, 0x14, 0x410, 0x414].iter().all(|at| read(s + at).is_some_and(|p| p != 0));
         scratch.filter(built).map_or(Tyre::default(), |s| {
-            let frame = mem.load_frame(s);
+            let frame = rbr_physics::tyre::layout::frame_of(mem, s);
             let (state, setup) = (&frame.state, &frame.setup);
             let (axis, friction) = (&setup.temperature_axis, &setup.rubber_friction_by_temperature);
             let best = (0..friction.count() as i32)

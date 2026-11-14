@@ -1,5 +1,5 @@
 //! NGP's tyre *dynamics*: run NGP's real per-wheel tyre step
-//! (`rbr_physics::tyre::step::step`, via `layout::entries::step` on a `Mem`, exactly as the game calls it)
+//! (`rbr_physics::tyre::step::step`, via `layout::entries::step` on the per-call view, exactly as the game calls it)
 //! in a loop under scripted kinematics, starting from a frame captured from a real run.
 //!
 //! Research tooling: the steady-state sweep (`sweep.rs`) cannot show transient lag, the sticking/sliding
@@ -8,7 +8,7 @@
 //! Capture (read-only): `rbr-standalone --autopilot OUT --boot ... --tyre-image FILE [--tyre-image-step N]`
 //! writes `FILE` (records `base size bytes`, u32 LE each, as `boot::dump` writes them) plus a `txt` sidecar
 //! with the wheels' addresses and NGP's thermal scalars. This example loads them into a `Mem`, so
-//! `TyreStore::load_frame(scratch_at)` works exactly as in the probe.
+//! `layout::frame_of(mem, scratch_at)` works exactly as in the probe.
 //!
 //! Kinematic conventions (flat road, documented where used):
 //! - y is up: the surface normal is `(0, 1, 0)`, the axle `(1, 0, 0)`. The step builds the contact frame as
@@ -44,10 +44,9 @@ use std::path::Path;
 use rbr_physics::fpu::{set_precision, Precision};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::heat::{Airflow, TyreShape, TyreThermal};
-use rbr_physics::tyre::layout::{entries, Frame, WORDS};
+use rbr_physics::tyre::layout::{self, entries, Frame, WORDS};
 use rbr_physics::tyre::material::Material;
 use rbr_physics::tyre::model::{ForceInput, ForceOutput};
-use rbr_physics::tyre::store::TyreStore;
 use rbr_tyre_lab::write;
 
 /// The physics step, s.
@@ -188,7 +187,7 @@ struct Rig {
 
 impl Rig {
     fn new(mem: Mem, cap: &WheelCap, ngp: NgpCap) -> Rig {
-        let frame: Frame = mem.load_frame(cap.scratch);
+        let frame: Frame = layout::frame_of(&mem, cap.scratch);
         let (s, st, d) = (&frame.scratch, &frame.state, &frame.setup);
         let static_idx = WORDS.iter().position(|&w| w == 0x12).expect("the material holds 0x1e8");
         let kinetic_idx = WORDS.iter().position(|&w| w == 0x16).expect("the material holds 0x1f8");
@@ -352,7 +351,7 @@ impl Rig {
         material[self.static_idx] = self.base_static.to_bits();
         material[self.kinetic_idx] = self.base_kinetic.to_bits();
         material[self.water_idx] = self.water.to_bits();
-        self.mem.store_material(self.mat, &material);
+        layout::store_material(&mut self.mem, self.mat, &material);
         self.words[0] = spin.to_bits();
         self.words[2] = hub.to_bits();
         self.words[3] = self.slip_scale.to_bits();
@@ -365,18 +364,21 @@ impl Rig {
             .as_mut()
             .map(|m| move |x: &ForceInput| m.forces(scratch, &ForceInput { surface_classes: classes, ..*x }));
         let model = forces.as_mut().map(|f| f as &mut dyn FnMut(&ForceInput) -> Option<ForceOutput>);
-        entries::step(&mut self.mem, scratch, &words, &self.thermal, model)
+        let (args, ptrs) = layout::load_step(&self.mem, &words);
+        let thermal = &self.thermal;
+        let out = layout::with_tyre(&mut self.mem, scratch, |v, t| entries::step(v, t, &args, thermal, model))
             .expect("the flat-road step stays in the frame");
-        entries::relax_and_count(&mut self.mem, self.scratch, DT, &self.thermal);
+        layout::store_step(&mut self.mem, &ptrs, &out);
+        layout::with_tyre(&mut self.mem, scratch, |v, t| entries::relax_and_count(v, t, DT, thermal));
         let angle = self.mem.f32(self.record + 0x5AC) + spin * DT;
         self.mem.set_f32(self.record + 0x5AC, angle);
         self.thermal.airflow.spin = spin;
-        self.mem.load_frame(self.scratch)
+        layout::frame_of(&self.mem, self.scratch)
     }
 
     /// The hub height giving `target` N at `(vx, vz, spin)`, by bisection from a restored footprint.
     fn bisect_hub(&mut self, vx: f32, vz: f32, spin: f32, target: f32) -> f32 {
-        let frame: Frame = self.mem.load_frame(self.scratch);
+        let frame: Frame = layout::frame_of(&self.mem, self.scratch);
         let wear = frame.scratch.wear[frame.state.sector as usize].clamp(0.0, 0.99);
         let outer = frame.setup.carcass_radius + (1.0 - wear) * frame.setup.tread_depth;
         let (mut lo, mut hi) = (outer - 0.06, outer - 0.00015);
@@ -488,7 +490,7 @@ fn main() {
     let pick = match wheel_arg {
         Some(k) => k,
         None => {
-            let fz: Vec<f32> = caps.iter().map(|c| mem.load_frame(c.scratch).scratch.normal_force).collect();
+            let fz: Vec<f32> = caps.iter().map(|c| layout::frame_of(&mem, c.scratch).scratch.normal_force).collect();
             println!("captured Fz per wheel: {fz:.0?}");
             if fz[0] >= fz[1] {
                 0
@@ -499,7 +501,7 @@ fn main() {
     };
     println!("wheel {pick}");
     let mut rig = Rig::new(mem, &caps[pick as usize], ngp);
-    let setup = rig.mem.load_frame(rig.scratch).setup;
+    let setup = layout::frame_of(&rig.mem, rig.scratch).setup;
     let wheel = rbr_tyre::Wheel::new(rig.scratch, &setup);
     rig.model = rbr_tyre::model(&model_name, &[wheel], &rbr_tyre::Tuning::default()).expect("--model");
     if thermal_only {
@@ -554,7 +556,7 @@ in as zero. Temperatures restored to captured before each validation point and e
         na += 1;
         rig.reset_temps();
         let (vx, vz, spin) = lateral_kin(ramp_v, alpha, r0);
-        let mut f = rig.mem.load_frame(rig.scratch);
+        let mut f = layout::frame_of(&rig.mem, rig.scratch);
         for _ in 0..400 {
             f = rig.step_once(vx, vz, spin, hub_ramp);
         }
@@ -596,7 +598,7 @@ Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness
         let kappa = -1.0 + nk as f32 * 0.02;
         rig.reset_temps();
         let (vx, vz, spin) = long_kin(ramp_v, kappa, r0);
-        let mut f = rig.mem.load_frame(rig.scratch);
+        let mut f = layout::frame_of(&rig.mem, rig.scratch);
         for _ in 0..400 {
             f = rig.step_once(vx, vz, spin, hub_ramp);
         }
@@ -762,7 +764,7 @@ brake peak {mu_brake:.3} at kappa {k_brake:.2}, locked {mu_locked:.3} ({:.3} of 
     rig.settle(cx0, cz0, cs0, chub, 3000);
     let (px, pz, ps) = lateral_kin(20.0, 2.0, r0);
     rig.reset_temps();
-    let mut f = rig.mem.load_frame(rig.scratch);
+    let mut f = layout::frame_of(&rig.mem, rig.scratch);
     for _ in 0..400 {
         f = rig.step_once(px, pz, ps, chub);
     }
@@ -1086,7 +1088,7 @@ fn slides(rig: &mut Rig, r0: f32, target_fz: f32, out: &Path) -> String {
             let max = s.iter().fold(f32::MIN, |a, &b| a.max(b));
             (mean, max, f.state.tread_temperature, f.state.carcass_temperature, f.scratch.temperature_grip)
         };
-        let first = row(&rig.mem.load_frame(rig.scratch));
+        let first = row(&layout::frame_of(&rig.mem, rig.scratch));
         md.push_str(&format!("| {name} | 0 | {:.1} | {:.1} | {:.1} | {:.3} |\n", first.0, first.1, first.2, first.4));
         let (mut t, mut next) = (0.0f32, 0);
         for p in &phases {
@@ -1127,7 +1129,7 @@ fn thermal_keys(rig: &mut Rig, fz: f32) {
         rig.reset();
         rig.water = water;
         let hub = rig.bisect_hub(kin.0, kin.1, kin.2, fz);
-        let start = rig.mem.load_frame(rig.scratch);
+        let start = layout::frame_of(&rig.mem, rig.scratch);
         let mut f = start;
         for _ in 0..(secs / DT).round() as u32 {
             f = rig.step_once(kin.0, kin.1, kin.2, hub);

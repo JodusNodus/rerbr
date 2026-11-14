@@ -12,7 +12,7 @@ use rbr_physics::ngp::drive;
 use rbr_physics::ngp::layout::{drive_line, material, tag_blend};
 use rbr_physics::ngp::outputs;
 use rbr_physics::ngp::step_wrapper::{self, SurfaceHeatPercent};
-use rbr_physics::tyre::store::TyreStore;
+use rbr_physics::tyre::layout::{self, entries};
 
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -289,9 +289,13 @@ pub(crate) fn step_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// original, then its edits of the lateral and longitudinal end slips.
 pub(crate) fn compute_outputs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let s = &r.stack;
-    let input = ctx.mem.load_friction_limits(r.ecx, s[6], [f(s[1]), f(s[2])], [f(s[4]), f(s[5])]);
+    let stiffnesses = crate::tyre::limit_stiffnesses(ctx, r.ecx, s[6]);
+    let (shares, scales) = ([f(s[1]), f(s[2])], [f(s[4]), f(s[5])]);
+    let input =
+        crate::tyre::on_tyre(ctx, r.ecx, |v, t| entries::friction_limits_input(v, t, stiffnesses, shares, scales))
+            .map_err(|_| Decline::Unsupported("index outside the frame"))?;
     let out = outputs::friction_limits(&input);
-    ctx.mem.store_friction_limits(std::array::from_fn(|i| s[7 + i]), &out);
+    layout::store_friction_limits(&mut ctx.mem, std::array::from_fn(|i| s[7 + i]), &out);
     Ok(Return::void(0, 0x44))
 }
 

@@ -10,7 +10,6 @@ use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{def_global, material};
 use rbr_physics::tyre::layout::{Table, WORDS};
-use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CAR, DEF_MATERIALS, TYRE_SCRATCH};
 
 /// The wheel pointers in the car (`car+0x470`, `ngp::layout::car_init::WHEELS`).
@@ -102,7 +101,7 @@ impl TyreProbe {
             let wheel = mem.u32(car + WHEELS + 4 * k);
             let scratch_at = wheel + TYRE_SCRATCH;
             let def = mem.u32(scratch_at + 0x10);
-            let frame = mem.load_frame(scratch_at);
+            let frame = rbr_physics::tyre::layout::frame_of(mem, scratch_at);
             let (s, st, d) = (&frame.scratch, &frame.state, &frame.setup);
             writeln!(self.file, "wheel: {k} scratch {scratch_at:#010x} def {def:#010x}").map_err(failed)?;
             let block = wheel + BLOCK_2;
