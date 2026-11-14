@@ -173,6 +173,12 @@ fn controller_constructor_matches() {
 fn reset_outputs_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e010, |call, mem| {
+        // The record leaves out the fade pair, which the reset neither reads nor writes; the per-call path lifts the
+        // strut whole and lowers it, so the pair is mapped here (the windows checked after are the record's).
+        let fade = layout::ControllerObj::fade.load(mem, call.args[0]);
+        if mem.try_read(fade, 8).is_none() {
+            mem.map(fade, &[0; 8]);
+        }
         layout::reset_outputs(mem, call.args[0]);
         ReturnValue::Ignore
     });

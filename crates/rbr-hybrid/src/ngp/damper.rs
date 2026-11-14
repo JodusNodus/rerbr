@@ -5,6 +5,7 @@ use rbr_physics::spring_damper::layout as damper_layout;
 use rbr_physics::spring_damper::suspension::{self, Environment};
 use rbr_physics::spring_damper::StepInput;
 
+use crate::spring_damper::on_strut;
 use crate::{Ctx, Decline, Regs, Return};
 
 use super::address::at;
@@ -29,8 +30,6 @@ pub(crate) fn spring_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let obj = m.u32(strut + 8);
     let car = m.u32(obj + 0x18);
     let car_def = m.u32(car + 0x34);
-    // The owned suspension runs the wrapper's logic; memory is only loaded and stored at the edge.
-    let mut suspension = suspension::Suspension::load(m, strut);
     let environment = Environment {
         progressive: m.u32(settings + 0xe38) & 0x20000 != 0 && m.u32(game + 0x69c) & 1 != 0,
         gap_offset: m.f32(car_def + 0x41c),
@@ -38,7 +37,14 @@ pub(crate) fn spring_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     };
     let input = StepInput { travel: f(a0), coordinate: f(a1), velocity: f(a2) };
     let ngp = damper_step(m)?;
-    let out = suspension.step(input, environment, ngp);
+    // The owned suspension runs the wrapper's logic on the strut's store.
+    let out = on_strut(ctx, strut, |store, id| {
+        let mut suspension = suspension::Suspension::load(store, id);
+        let out = suspension.step(input, environment, ngp);
+        suspension.store_state(store, id);
+        out
+    });
+    // The strut's scratch words and the owner's copies stay in the image.
     let mem = &mut ctx.mem;
     mem.set_f32(strut + 0x30, out.diagnostics.bump_ratio);
     mem.set_f32(strut + 0x34, out.diagnostics.bump_stiffness);
@@ -50,7 +56,6 @@ pub(crate) fn spring_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     mem.set_f32(a3, out.forces.spring_stop_force);
     mem.set_f32(a4, out.forces.breakpoint_offset);
     mem.set_f32(a5, out.forces.damping_coefficient);
-    suspension.store_state(mem, strut);
     Ok(Return::void(mem.u32(strut + 8), 0x18))
 }
 

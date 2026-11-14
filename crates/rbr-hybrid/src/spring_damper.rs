@@ -3,7 +3,10 @@
 //! eax is the residue the original leaves where it is an argument or `this` field; elsewhere it is a scratch value
 //! no caller reads, given as 0.
 
-use rbr_physics::spring_damper::{self as sd, layout};
+use rbr_physics::spring_damper as sd;
+use rbr_physics::spring_damper::layout::{self, StrutView};
+use rbr_physics::spring_damper::store::StrutStore;
+use rbr_physics::spring_damper::strut::StrutId;
 
 use crate::engine_driveline::SIGNALS;
 use crate::{Binding, Ctx, Decline, Regs, Return};
@@ -41,9 +44,15 @@ fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
+/// Runs `run` on the strut whose controller is `controller` (the original's `ecx`): lifted from the image into a store
+/// of its own and lowered after it (the per-call path).
+pub(crate) fn on_strut<T>(ctx: &mut Ctx, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
+    layout::with_strut(&mut ctx.mem, controller, run)
+}
+
 /// thiscall `()`; eax is the state pointer (`this+8`).
 fn update_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::update_forces(&mut ctx.mem, r.ecx);
+    on_strut(ctx, r.ecx, |store, strut| sd::strut::update_forces(store, strut));
     Ok(Return::void(ctx.mem.u32(r.ecx + 8), 0))
 }
 
@@ -54,25 +63,29 @@ fn reset_outputs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let signal = ctx.mem.u32(SIGNALS) + 0xc2b8;
     let target = crate::ngp::Call::DamperSignal.address();
     ctx.host.call(target, signal, &[r.ecx + 0x1c]);
-    let emitted = layout::reset_outputs(&mut ctx.mem, r.ecx);
+    let emitted = on_strut(ctx, r.ecx, |store, strut| sd::strut::reset_outputs(store, strut));
     ctx.host.emit_damper(r.ecx, emitted);
     Ok(Return::void(ctx.mem.u32(r.ecx + 8), 0))
 }
 
 /// thiscall `()`: `UpdateForces`, then `ResetOutputs`' reset without the emit. The wheel's setup update
-/// (`E51Wheel::M3D030`) tail-jumps here. eax is the owner wheel's id.
+/// (`E51Wheel::M3D030`) tail-jumps here. eax is the owner wheel's id (the reset signal's).
 fn update_and_reset(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::update_forces(&mut ctx.mem, r.ecx);
-    let _ = layout::reset_outputs(&mut ctx.mem, r.ecx);
-    Ok(Return::void(ctx.mem.u32(r.ecx + 0x1c), 0))
+    let owner_id = on_strut(ctx, r.ecx, |store, strut| {
+        sd::strut::update_forces(store, strut);
+        sd::strut::reset_outputs(store, strut);
+        store.controller(strut).signal.owner_id
+    });
+    Ok(Return::void(owner_id, 0))
 }
 
-/// thiscall `(travel, coordinate, velocity, spring_force*, breakpoint*, damping*)`.
+/// thiscall `(travel, coordinate, velocity, spring_force*, breakpoint*, damping*)`: the three outputs go to the
+/// caller's out pointers.
 fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [travel, coordinate, velocity, spring_force, breakpoint, damping, ..] = r.stack;
     let ngp = crate::ngp::damper_step(&ctx.mem)?;
     let input = sd::StepInput { travel: f(travel), coordinate: f(coordinate), velocity: f(velocity) };
-    let out = layout::step(&mut ctx.mem, r.ecx, input, ngp);
+    let out = on_strut(ctx, r.ecx, |store, strut| sd::strut::step(store, strut, input, ngp));
     ctx.mem.set_f32(spring_force, out.spring_stop_force);
     ctx.mem.set_f32(breakpoint, out.breakpoint_offset);
     ctx.mem.set_f32(damping, out.damping_coefficient);

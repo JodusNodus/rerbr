@@ -20,7 +20,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{
     ACCEL_ANGULAR_EST, ACCEL_LINEAR_EST, ANGULAR_VELOCITY, LINEAR_VELOCITY, ORIENTATION, POSITION,
 };
-use rbr_physics::spring_damper::store::StrutStore;
+use rbr_physics::spring_damper::layout::StrutImage;
 use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_INNER_AIR_TEMPERATURE};
 use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{STRUT, STRUT_LENGTH, TYRE_SCRATCH};
@@ -298,15 +298,15 @@ fn suspension(mem: &Mem, car: u32, i: u32) -> Suspension {
     if wheel == 0 {
         return out;
     }
-    let controller = mem.controller(wheel + STRUT);
+    let strut = StrutImage::of(mem, wheel + STRUT).lift(mem);
     out = Suspension {
         spring_deflection: mem.f32(wheel + STRUT_LENGTH),
         rollbar_force: mem.f32(wheel + WHEEL_ROLLBAR_FORCE),
         spring_force: mem.f32(wheel + WHEEL_SPRING_FORCE),
         damper_force: mem.f32(wheel + WHEEL_DAMPER_FORCE),
         strut_force: mem.f32(wheel + WHEEL_STRUT_FORCE),
-        helper_spring_active: controller.mode,
-        damper_damage: mem.fade(wheel + STRUT).amount,
+        helper_spring_active: strut.controller.mode,
+        damper_damage: strut.fade.amount,
         piston_velocity: mem.f32(wheel + WHEEL_STRUT_VELOCITY),
         ..out
     };

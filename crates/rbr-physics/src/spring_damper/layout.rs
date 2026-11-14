@@ -1,7 +1,7 @@
 //! Spring-damper game-memory boundary. This file alone knows object offsets.
 
 use super::store::{DamperBlocks, StrutStore};
-use super::strut::{Strut, StrutId, Struts};
+use super::strut::{self, Strut, StrutId, Struts};
 use super::suspension::Damping;
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
@@ -71,11 +71,6 @@ const SCRATCH_VTABLE_WORD: u32 = ControllerObj::scratch_vtable.at;
 const FADE_POINTER: u32 = ControllerObj::fade.at;
 const MODE: u32 = ControllerObj::mode.at;
 const HIGH_SPEED_HOLD: u32 = ControllerObj::high_speed_hold.at;
-const SIGNAL_ID: u32 = ControllerObj::signal_id.at;
-const SIGNAL_PEAK: u32 = ControllerObj::signal_peak.at;
-const SIGNAL_BUMP: u32 = ControllerObj::signal_bump.at;
-const SIGNAL_DROOP: u32 = ControllerObj::signal_droop.at;
-const SIGNAL_VALID: u32 = ControllerObj::signal_valid.at;
 
 /// `CSpringDamper::CDef` members (rbr-recomp `notes/physics/renames/spring-damper.csv`). The reals are CReal headers;
 /// each value is at +0xc.
@@ -246,43 +241,23 @@ fn write_real_body(mem: &mut Mem, at: u32, value: RealValue) {
     mem.set_f32(at + 12, value.value);
 }
 
-/// Recomputes the three effective damping values. 0x52dd70.
-/// Loads and stores only this call's footprint (definition, effective damping, fade).
-pub fn update_forces<S: StrutStore>(store: &mut S, strut: S::Strut) {
-    let mut suspension = super::suspension::Suspension {
-        definition: store.definition(strut),
-        fade: store.fade(strut),
-        damping: store.damping(strut),
-        ..Default::default()
-    };
-    suspension.update_damping();
-    store.store_damping(strut, suspension.damping);
+/// `CSpringDamper::UpdateForces` (0x52dd70) on the strut whose controller is at `controller_at`, per call
+/// ([`with_strut`]): [`strut::update_forces`].
+pub fn update_forces(mem: &mut Mem, controller_at: u32) {
+    with_strut(mem, controller_at, |view, id| strut::update_forces(view, id))
 }
 
-/// Runs one typed spring-damper step, stores its changed state and returns its three outputs (the caller writes them
-/// to its out pointers). 0x52e090.
-/// NGP turned the two jumps that limited the stops' damping to the force over the
-/// speed (at 0x52e22b and 0x52e279) into no-ops, so the port never limits it.
-pub fn step<S: StrutStore>(store: &mut S, strut: S::Strut, input: super::StepInput, ngp: super::NgpStep) -> StepOutput {
-    let mut controller = store.controller(strut);
-    let mut fade = store.fade(strut);
-    let mut state = store.damping(strut).state();
-    let output = super::step(&mut controller, &mut fade, &store.definition(strut), &mut state, input, ngp);
-    store.store_fade(strut, fade);
-    store.store_damping(strut, Damping::from_state(state));
-    store.store_step_state(strut, controller);
-    output
+/// `CSpringDamper::Step` (0x52e090) on the strut whose controller is at `controller_at`, per call: [`strut::step`],
+/// whose three outputs the caller writes to its out pointers. NGP turned the two jumps that limited the stops'
+/// damping to the force over the speed (at 0x52e22b and 0x52e279) into no-ops, so the port never limits it.
+pub fn step(mem: &mut Mem, controller_at: u32, input: super::StepInput, ngp: super::NgpStep) -> StepOutput {
+    with_strut(mem, controller_at, |view, id| strut::step(view, id, input, ngp))
 }
 
-/// Resets the signal after handing its previous payload to the runtime. 0x52e010.
-/// Loads and stores only this call's footprint (controller, owner id, signal words). Returns the emitted payload
-/// for the host's typed damper event.
-pub fn reset_outputs<S: StrutStore>(store: &mut S, strut: S::Strut) -> DamperSignal {
-    let mut suspension = super::suspension::Suspension { controller: store.controller(strut), ..Default::default() };
-    let emitted = suspension.reset_signal(store.owner_id(strut));
-    super::emit_signal(emitted);
-    store.store_signal(strut, suspension.controller.signal);
-    emitted
+/// `CSpringDamper::ResetOutputs` (0x52e010) on the strut whose controller is at `controller_at`, per call:
+/// [`strut::reset_outputs`], the emitted payload for the host's typed damper event (the binding runs the emit).
+pub fn reset_outputs(mem: &mut Mem, controller_at: u32) -> DamperSignal {
+    with_strut(mem, controller_at, |view, id| strut::reset_outputs(view, id))
 }
 
 /// CSpringDamper::CSpringDamper initializes its pointers, scratch header, and counters. 0x52df20.
@@ -389,17 +364,9 @@ pub fn force<S: DamperBlocks>(mem: &mut S, state_at: u32, input: f32, divisor: f
     mem.store_force_terms(state_at, value);
 }
 
-/// The controller's definition, state and fade pointers.
+/// The controller's definition pointer.
 fn definition_at(mem: &Mem, controller: u32) -> u32 {
     mem.u32(controller + DEFINITION_POINTER)
-}
-
-fn state_at(mem: &Mem, controller: u32) -> u32 {
-    mem.u32(controller + STATE_POINTER)
-}
-
-fn fade_at(mem: &Mem, controller: u32) -> u32 {
-    mem.u32(controller + FADE_POINTER)
 }
 
 /// Reads the fields needed by the reached spring-damper functions.
@@ -451,77 +418,6 @@ fn store_setup_values(mem: &mut Mem, definition_at: u32, definition: &Definition
     write_real_body(mem, definition_at + DEFINITION_DAMP_REBOUND, definition.damp_rebound);
     write_real_body(mem, definition_at + DEFINITION_HS_BREAK_BUMP, definition.hs_break_bump);
     write_real_body(mem, definition_at + DEFINITION_HS_DAMP_BUMP, definition.hs_damp_bump);
-}
-
-/// The Mem store of the strut: a strut is its controller's address; the bodies are the layout's reads and writes.
-impl StrutStore for Mem {
-    type Strut = u32;
-
-    fn definition(&self, controller: u32) -> Definition {
-        definition(self, definition_at(self, controller))
-    }
-
-    fn damping(&self, controller: u32) -> Damping {
-        let at = state_at(self, controller);
-        Damping {
-            bump: self.f32(at + STATE_DAMP_BUMP_EFF),
-            rebound: self.f32(at + STATE_DAMP_REBOUND_EFF),
-            high_speed_bump: self.f32(at + STATE_HS_DAMP_BUMP_EFF),
-        }
-    }
-
-    fn store_damping(&mut self, controller: u32, value: Damping) {
-        let at = state_at(self, controller);
-        self.set_f32(at + STATE_DAMP_BUMP_EFF, value.bump);
-        self.set_f32(at + STATE_DAMP_REBOUND_EFF, value.rebound);
-        self.set_f32(at + STATE_HS_DAMP_BUMP_EFF, value.high_speed_bump);
-    }
-
-    fn owner_id(&self, controller: u32) -> u32 {
-        let owner = self.u32(state_at(self, controller) + STATE_OWNER);
-        self.u32(owner + OWNER_WHEEL_INDEX)
-    }
-
-    fn controller(&self, at: u32) -> Controller {
-        Controller {
-            mode: self.u32(at + MODE) as i32,
-            high_speed_hold: self.u32(at + HIGH_SPEED_HOLD) as i32,
-            signal: DamperSignal {
-                owner_id: self.u32(at + SIGNAL_ID),
-                peak_velocity: self.f32(at + SIGNAL_PEAK),
-                bump_velocity: self.f32(at + SIGNAL_BUMP),
-                droop_velocity: self.f32(at + SIGNAL_DROOP),
-                valid: self.u32(at + SIGNAL_VALID) as i32,
-            },
-        }
-    }
-
-    fn store_step_state(&mut self, at: u32, value: Controller) {
-        self.set_u32(at + MODE, value.mode as u32);
-        self.set_u32(at + HIGH_SPEED_HOLD, value.high_speed_hold as u32);
-        self.set_f32(at + SIGNAL_PEAK, value.signal.peak_velocity);
-        self.set_f32(at + SIGNAL_BUMP, value.signal.bump_velocity);
-        self.set_f32(at + SIGNAL_DROOP, value.signal.droop_velocity);
-    }
-
-    fn store_signal(&mut self, at: u32, value: DamperSignal) {
-        self.set_u32(at + SIGNAL_ID, value.owner_id);
-        self.set_f32(at + SIGNAL_PEAK, value.peak_velocity);
-        self.set_f32(at + SIGNAL_BUMP, value.bump_velocity);
-        self.set_f32(at + SIGNAL_DROOP, value.droop_velocity);
-        self.set_u32(at + SIGNAL_VALID, value.valid as u32);
-    }
-
-    fn fade(&self, controller: u32) -> FadeState {
-        let at = fade_at(self, controller);
-        FadeState { test_multiplier: self.f32(at), amount: self.f32(at + 4) }
-    }
-
-    fn store_fade(&mut self, controller: u32, value: FadeState) {
-        let at = fade_at(self, controller);
-        self.set_f32(at, value.test_multiplier);
-        self.set_f32(at + 4, value.amount);
-    }
 }
 
 /// Where a strut's typed state lives in the image: its controller, the definition and state it points at, and its fade
@@ -904,19 +800,18 @@ mod tests {
     }
 
     #[test]
-    fn the_view_reads_and_writes_what_the_mem_store_does() {
+    fn the_reset_emits_the_held_signal_and_takes_its_owner_from_the_image() {
         let mut mem = image(0);
         let owner = 0x5000;
         StateObj::owner.store(&mut mem, STATE, owner);
         mem.map(owner + OWNER_WHEEL_INDEX, &2u32.to_le_bytes());
-        // A byte map's clone is a copy.
-        let mut viewed = mem.clone();
-        let signal = reset_outputs(&mut mem, CONTROLLER);
-        let viewed_signal = with_strut(&mut viewed, CONTROLLER, |view, id| reset_outputs(view, id));
-        assert_eq!(signal, viewed_signal);
-        assert_eq!(with_strut(&mut viewed, CONTROLLER, |view, id| view.owner_id(id)), 2);
-        let words = |m: &Mem| [m.read(CONTROLLER, 0x40), m.read(STATE, 0x3c), m.read(FADE, 8)];
-        assert_eq!(words(&mem), words(&viewed));
+        let lifted = |mem: &Mem| StrutImage::of(mem, CONTROLLER).lift(mem);
+        let held = lifted(&mem);
+        assert_eq!(reset_outputs(&mut mem, CONTROLLER), held.controller.signal);
+        let after = lifted(&mem);
+        let reset = DamperSignal { owner_id: 2, peak_velocity: 0.0, bump_velocity: 0.0, droop_velocity: 0.0, valid: 1 };
+        assert_eq!(after.controller.signal, reset);
+        assert_eq!((after.damping, after.fade), (held.damping, held.fade));
     }
 
     #[test]
@@ -925,6 +820,6 @@ mod tests {
         let mut mem = image(0);
         ControllerObj::fade.store(&mut mem, CONTROLLER, 0);
         assert_eq!(StrutImage::of(&mem, CONTROLLER).owned().count(), 2);
-        with_strut(&mut mem, CONTROLLER, |view, id| update_forces(view, id));
+        update_forces(&mut mem, CONTROLLER);
     }
 }

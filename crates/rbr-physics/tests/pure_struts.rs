@@ -4,14 +4,14 @@
 //! re-seeded from the tape, and the memory holds only the struts' objects and their owners' ids, so a port that reads
 //! anything else fails. The tape: `harness/subtree_tape.py` (its header names the run).
 //!
-//! The tape runs on each storage of the struts' state: the image (the Mem store), the per-call path (each call lifts
-//! its strut and lowers it) and the typed storage over each step (lifted at the step's start, lowered at its end); the
-//! images must be equal byte for byte after every step.
+//! The tape runs on both storages of the struts' state: the image between calls (each call lifts its strut and
+//! lowers it) and the typed storage over each step (lifted at the step's start, lowered at its end); the images must
+//! be equal byte for byte after every step.
 
 use rbr_physics::mem::Mem;
 use rbr_physics::spring_damper::layout::{self, CarStruts};
 use rbr_physics::spring_damper::store::StrutStore;
-use rbr_physics::spring_damper::{DamperSignal, NgpStep, StepInput, StepOutput};
+use rbr_physics::spring_damper::{strut, DamperSignal, NgpStep, StepInput, StepOutput};
 
 const TAPE: &str = include_str!("vectors/struts-snap-300.txt");
 /// Where the pure run's `Step` writes its three outputs (the original's slots are in the wheel's frame).
@@ -37,8 +37,6 @@ impl Strut {
 /// Where the struts' state lives while the tape runs.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Storage {
-    /// The image, through the Mem store.
-    Image,
     /// The image between calls: each call runs on its strut lifted into a store of its own.
     PerCall,
     /// The typed storage over each step.
@@ -75,12 +73,12 @@ enum Out {
     Done,
 }
 
-fn run_op<S: StrutStore>(store: &mut S, strut: S::Strut, op: Op) -> Out {
+fn run_op<S: StrutStore>(store: &mut S, id: S::Strut, op: Op) -> Out {
     match op {
-        Op::Step(input) => Out::Step(layout::step(store, strut, input, FADE)),
-        Op::Reset => Out::Reset(layout::reset_outputs(store, strut)),
+        Op::Step(input) => Out::Step(strut::step(store, id, input, FADE)),
+        Op::Reset => Out::Reset(strut::reset_outputs(store, id)),
         Op::Update => {
-            layout::update_forces(store, strut);
+            strut::update_forces(store, id);
             Out::Done
         }
     }
@@ -89,7 +87,6 @@ fn run_op<S: StrutStore>(store: &mut S, strut: S::Strut, op: Op) -> Out {
 /// `op` on the strut whose controller is at `controller`, in `storage` (`typed` the struts lifted at the step).
 fn call(storage: Storage, mem: &mut Mem, typed: Option<&mut CarStruts>, controller: u32, op: Op) -> Out {
     match storage {
-        Storage::Image => run_op(mem, controller, op),
         Storage::PerCall => layout::with_strut(mem, controller, |view, id| run_op(view, id, op)),
         Storage::Typed => {
             let typed = typed.expect("lifted at the step");
@@ -207,18 +204,15 @@ fn run(storage: Storage) -> Vec<Vec<u8>> {
 
 #[test]
 fn struts_run_alone_bit_exact() {
-    run(Storage::Image);
+    run(Storage::PerCall);
 }
 
 #[test]
-fn the_typed_storages_keep_the_image_s_bytes_after_every_step() {
-    let image = run(Storage::Image);
-    for storage in [Storage::PerCall, Storage::Typed] {
-        let other = run(storage);
-        assert_eq!(other.len(), image.len());
-        for (step, (a, b)) in image.iter().zip(&other).enumerate() {
-            let at = a.iter().zip(b).position(|(x, y)| x != y);
-            assert!(at.is_none(), "{storage:?}: step {step} differs from the image at byte {at:?}");
-        }
+fn the_typed_storage_over_a_step_keeps_the_per_call_bytes() {
+    let (per_call, typed) = (run(Storage::PerCall), run(Storage::Typed));
+    assert_eq!(per_call.len(), typed.len());
+    for (step, (a, b)) in per_call.iter().zip(&typed).enumerate() {
+        let at = a.iter().zip(b).position(|(x, y)| x != y);
+        assert!(at.is_none(), "step {step} differs from the per-call path at byte {at:?}");
     }
 }
