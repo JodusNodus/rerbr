@@ -1,6 +1,6 @@
 //! The spring-damper's stores (`crate::store`): the strut's load and store groups ([`StrutStore`]) and the damper
-//! kernels' blocks, which live in the engine's and the tyre's objects ([`DamperBlocks`]). `Mem` implements both in
-//! `layout.rs`.
+//! kernels' blocks, which live in the engine's and the tyre's objects ([`DamperBlocks`]). `layout.rs` implements both:
+//! the strut store on `StrutView`, the blocks on every word store.
 
 use super::suspension::Damping;
 use super::{
@@ -33,7 +33,8 @@ pub trait StrutStore {
     fn store_fade(&mut self, strut: Self::Strut, value: FadeState);
 }
 
-/// The damper kernels' blocks (in the engine's and the tyre's objects).
+/// The damper kernels' blocks (in the engine's and the tyre's objects). Every word store has them, at their addresses
+/// (`layout.rs`): a typed store's view routes the words it holds.
 pub trait DamperBlocks: Raw {
     fn load_update_terms(&self, at: u32) -> UpdateTerms;
     fn store_update_terms(&mut self, at: u32, terms: UpdateTerms);

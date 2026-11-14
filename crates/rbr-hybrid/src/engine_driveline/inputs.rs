@@ -1,6 +1,6 @@
 //! `CDrive`'s inputs and accessors, the signal emits, the matrix helpers and the forwarded members.
 
-use rbr_physics::engine_driveline::store::{DriveStore, EngineStore};
+use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::engine_driveline::{drive, layout};
 use rbr_physics::physics_core::layout::signal_emit;
 use rbr_physics::store::Raw;

@@ -9,7 +9,7 @@ use super::{
 };
 use crate::mem::Mem;
 use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
-use crate::store::Real;
+use crate::store::{Raw, Real};
 
 const DEFINITION_VTABLE: u32 = 0x0074_0124; // 0x52d750
 const STATE_VTABLE: u32 = 0x0074_018c; // 0x52da50
@@ -274,11 +274,6 @@ pub fn construct_controller(mem: &mut Mem, at: u32, definition: u32, state: u32)
 
 /// CDamperSignal::Emit is an external signal-manager call with no spring-owned memory effects.
 pub fn emit_signal() {}
-
-fn store_pair(mem: &mut Mem, at: u32, values: [f32; 2]) {
-    mem.set_f32(at, values[0]);
-    mem.set_f32(at + 4, values[1]);
-}
 
 /// Runs DamperAccumA (heat accumulation) on its capacity pair and running temperature. 0x52e3a0.
 pub fn accumulate_heat<S: DamperBlocks>(mem: &mut S, capacity_at: u32, heat: f32, temperature_at: u32) {
@@ -651,8 +646,8 @@ impl StrutStore for StrutView<'_> {
     }
 }
 
-/// The Mem store of the damper kernels' blocks.
-impl DamperBlocks for Mem {
+/// The damper kernels' blocks on any word store, at their addresses.
+impl<R: Raw> DamperBlocks for R {
     fn load_update_terms(&self, at: u32) -> UpdateTerms {
         UpdateTerms {
             scale: self.f32(at),
@@ -726,7 +721,8 @@ impl DamperBlocks for Mem {
     }
 
     fn store_heat_accumulator(&mut self, at: u32, value: HeatAccumulator) {
-        store_pair(self, at, [value.divisor, value.temperature]);
+        self.set_f32(at, value.divisor);
+        self.set_f32(at + 4, value.temperature);
     }
 
     fn load_clamp_parameters(&self, at: u32) -> ClampParameters {
@@ -744,7 +740,8 @@ impl DamperBlocks for Mem {
     }
 
     fn store_weighted(&mut self, at: u32, value: WeightedValue) {
-        store_pair(self, at, [value.weight, value.value]);
+        self.set_f32(at, value.weight);
+        self.set_f32(at + 4, value.value);
     }
 }
 

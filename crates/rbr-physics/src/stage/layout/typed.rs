@@ -320,7 +320,7 @@ pub fn differential(mem: &Mem) -> Result<usize, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine_driveline::store::EngineStore;
+    use crate::engine_driveline::store::EngineTables;
     use crate::entities::material_table::{MaterialEntry, MaterialTable};
 
     /// A stage of three drive line points and two material sheets, as the load stores them.

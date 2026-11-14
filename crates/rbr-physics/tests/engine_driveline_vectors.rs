@@ -8,11 +8,12 @@ mod common;
 
 use common::Inner;
 use common::{check_st0_nan_tolerant, check_windows, inner_window_at, load, map_windows, shared_windows, Call, Window};
-use rbr_physics::engine_driveline::store::{DriveStore, EngineStore};
+use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::engine_driveline::{drive, drive_curve, drive_leaf, drive_worker, engine, layout, sim};
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::vec::Vec4;
 use rbr_physics::mem::Mem;
+use rbr_physics::spring_damper::store::DamperBlocks;
 use rbr_physics::store::{Object, Raw, Value};
 
 const PHYSICS_GLOBAL: u32 = 0x0165_9B70;

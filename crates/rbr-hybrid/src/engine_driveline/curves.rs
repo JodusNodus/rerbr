@@ -7,7 +7,7 @@ use rbr_physics::stage::store::StageStore;
 
 use super::{f, held_ring, held_wheel, on_drive, E12_SAMPLE_X};
 use crate::{Ctx, Decline, Regs, Return};
-use rbr_physics::engine_driveline::store::{DriveStore, EngineStore};
+use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::store::{Raw, Value};
 
 /// stdcall `(v, p)`, st0: the ring at `p` takes `v`, and the mean is returned: a held drive's typed ring where `p` is

@@ -12,6 +12,7 @@ use crate::engine_driveline::{engine, sim};
 use crate::math::le_or_unordered;
 use crate::ntweak::set_dirty;
 use crate::physics_core::layout::{PHYSICS_GLOBAL, SIGNAL_MANAGER};
+use crate::spring_damper::store::DamperBlocks;
 use crate::spring_damper::{self, BlendTerms, UpdateTerms, WeightedValue};
 use crate::{fpu, ngp};
 
@@ -208,9 +209,9 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
                 response: block.denominator,
                 scale: block.response,
             };
-            let mut target = EngineStore::load_blend_terms(mem, s + 0x70);
+            let mut target = DamperBlocks::load_blend_terms(mem, s + 0x70);
             spring_damper::combine(&mut target, source, 287.0);
-            EngineStore::store_blend_terms(mem, s + 0x70, target);
+            DamperBlocks::store_blend_terms(mem, s + 0x70, target);
             mem.set_f32(s + 0x1dc, block.numerator);
         }
         mem.set_f32(p + 0x28, mem.f32(s + 0x78) * 1.15);
@@ -321,10 +322,10 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
 pub fn smooth_damper<S: EngineStore>(mem: &mut S, this: u32, abc: [f32; 3], table: u32, dt: f32, block_at: u32) -> f32 {
     let objects = EngineObjects::at(mem, this);
     let table = mem.blend_table(table);
-    let mut block = EngineStore::load_blend_terms(mem, block_at);
+    let mut block = DamperBlocks::load_blend_terms(mem, block_at);
     let mut state = EngineState::load(mem, objects.state);
     let g = engine::smooth_damper(&table, abc[0], abc[1], abc[2], dt, &mut block, &mut state.smoothed);
-    EngineStore::store_blend_terms(mem, block_at, block);
+    DamperBlocks::store_blend_terms(mem, block_at, block);
     state.store(mem, objects.state);
     g
 }
@@ -343,10 +344,10 @@ pub fn solve_damper<S: EngineStore>(
 ) -> f32 {
     let objects = EngineObjects::at(mem, this);
     let table = mem.blend_table(table);
-    let mut block = EngineStore::load_relaxation(mem, block_at);
+    let mut block = DamperBlocks::load_relaxation(mem, block_at);
     let mut state = EngineState::load(mem, objects.state);
     let v = engine::solve_damper(&table, ab[0], ab[1], dt, &mut block, &mut state.solved, tuning.air.pressure);
-    EngineStore::store_relaxation(mem, block_at, block);
+    DamperBlocks::store_relaxation(mem, block_at, block);
     state.store(mem, objects.state);
     v
 }

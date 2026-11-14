@@ -42,6 +42,17 @@ impl Value for Lane {
         mem.set_u32(at, self.dirty);
         mem.set_f32(at + 4, self.value);
     }
+    fn word(&self, k: u32) -> Option<u32> {
+        [self.dirty, self.value.to_bits()].get(k as usize).copied()
+    }
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        match k {
+            0 => self.dirty = value,
+            1 => self.value = f32::from_bits(value),
+            _ => return false,
+        }
+        true
+    }
 }
 
 /// The same header as `Lane`, with an integer value (the commanded gear).
@@ -77,6 +88,17 @@ impl Value for IntLane {
     fn store(self, mem: &mut Mem, at: u32) {
         mem.set_u32(at, self.dirty);
         mem.set_u32(at + 4, self.value as u32);
+    }
+    fn word(&self, k: u32) -> Option<u32> {
+        [self.dirty, self.value as u32].get(k as usize).copied()
+    }
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        match k {
+            0 => self.dirty = value,
+            1 => self.value = value as i32,
+            _ => return false,
+        }
+        true
     }
 }
 

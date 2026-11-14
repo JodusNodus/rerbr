@@ -9,6 +9,16 @@ pub trait Value: Copy {
     const LEN: u32;
     fn load(mem: &Mem, at: u32) -> Self;
     fn store(self, mem: &mut Mem, at: u32);
+    /// Word `k` of the value as the game stores it, for a value of whole words (`None` for any other).
+    #[inline]
+    fn word(&self, _k: u32) -> Option<u32> {
+        None
+    }
+    /// Writes word `k` of the value (see [`Value::word`]); false where the value is not of whole words.
+    #[inline]
+    fn set_word(&mut self, _k: u32, _value: u32) -> bool {
+        false
+    }
 }
 
 impl Value for u32 {
@@ -21,6 +31,15 @@ impl Value for u32 {
     fn store(self, mem: &mut Mem, at: u32) {
         mem.set_u32(at, self)
     }
+    #[inline]
+    fn word(&self, _k: u32) -> Option<u32> {
+        Some(*self)
+    }
+    #[inline]
+    fn set_word(&mut self, _k: u32, value: u32) -> bool {
+        *self = value;
+        true
+    }
 }
 
 impl Value for i32 {
@@ -32,6 +51,15 @@ impl Value for i32 {
     #[inline]
     fn store(self, mem: &mut Mem, at: u32) {
         mem.set_u32(at, self as u32)
+    }
+    #[inline]
+    fn word(&self, _k: u32) -> Option<u32> {
+        Some(*self as u32)
+    }
+    #[inline]
+    fn set_word(&mut self, _k: u32, value: u32) -> bool {
+        *self = value as i32;
+        true
     }
 }
 
@@ -46,6 +74,15 @@ impl Value for f32 {
     #[inline]
     fn store(self, mem: &mut Mem, at: u32) {
         mem.set_f32(at, self)
+    }
+    #[inline]
+    fn word(&self, _k: u32) -> Option<u32> {
+        Some(self.to_bits())
+    }
+    #[inline]
+    fn set_word(&mut self, _k: u32, value: u32) -> bool {
+        *self = f32::from_bits(value);
+        true
     }
 }
 
@@ -97,6 +134,22 @@ impl<T: Value, const N: usize> Value for [T; N] {
             v.store(mem, at + T::LEN * k as u32);
         }
     }
+    #[inline]
+    fn word(&self, k: u32) -> Option<u32> {
+        let n = T::LEN / 4;
+        if n == 0 || T::LEN % 4 != 0 {
+            return None;
+        }
+        self.get((k / n) as usize)?.word(k % n)
+    }
+    #[inline]
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        let n = T::LEN / 4;
+        if n == 0 || T::LEN % 4 != 0 {
+            return false;
+        }
+        self.get_mut((k / n) as usize).is_some_and(|v| v.set_word(k % n, value))
+    }
 }
 
 /// An `NTweak::CReal` body as objects embed it: the label (vtable) word, the name, the dirty word and the value.
@@ -120,6 +173,21 @@ impl Value for Real {
         mem.set_u32(at + 4, self.name);
         mem.set_u32(at + 8, self.dirty);
         mem.set_f32(at + 12, self.value);
+    }
+    #[inline]
+    fn word(&self, k: u32) -> Option<u32> {
+        [self.label, self.name, self.dirty, self.value.to_bits()].get(k as usize).copied()
+    }
+    #[inline]
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        match k {
+            0 => self.label = value,
+            1 => self.name = value,
+            2 => self.dirty = value,
+            3 => self.value = f32::from_bits(value),
+            _ => return false,
+        }
+        true
     }
 }
 
@@ -205,6 +273,30 @@ macro_rules! object {
         #[allow(non_upper_case_globals, dead_code)]
         impl $name {
             $( pub const $field: $crate::store::Field<$ty> = $crate::store::Field::new($at); )*
+
+            /// The word at byte `offset` of the object, where a field of whole words holds it (`Value::word`).
+            #[inline]
+            pub fn word_of(&self, offset: u32) -> Option<u32> {
+                $(
+                    let d = offset.wrapping_sub($at);
+                    if d < <$ty as $crate::store::Value>::LEN {
+                        return if d % 4 == 0 { $crate::store::Value::word(&self.$field, d / 4) } else { None };
+                    }
+                )*
+                None
+            }
+
+            /// Writes the word at byte `offset` (see `word_of`); false where no field of whole words holds it.
+            #[inline]
+            pub fn set_word_of(&mut self, offset: u32, value: u32) -> bool {
+                $(
+                    let d = offset.wrapping_sub($at);
+                    if d < <$ty as $crate::store::Value>::LEN {
+                        return d % 4 == 0 && $crate::store::Value::set_word(&mut self.$field, d / 4, value);
+                    }
+                )*
+                false
+            }
         }
 
         impl $crate::store::Object for $name {

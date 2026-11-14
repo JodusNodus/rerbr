@@ -1,7 +1,8 @@
 //! The engine's and the drive's stores (`crate::store`). [`DriveStore`] is one drive's typed state (its records) and
 //! the words of its objects the original's index arithmetic reaches; `layout/drive_typed.rs` implements it on
-//! `DriveView`, over typed storage or per access on the image. [`EngineStore`] is the engine's records and the
-//! table and word readers; `Mem` implements it in `layout/mem_store.rs`.
+//! `DriveView`, over typed storage or per access on the image. [`EngineStore`] is the engine's records, [`EngineTables`]
+//! the tables and the callers' records at any address; every word store has both (`layout/mem_store.rs`), so the engine's
+//! view (`layout/engine_typed.rs`) serves them from its typed state where it holds the words.
 
 use super::drive_line::DriveLinePoint;
 use super::layout::{
@@ -10,7 +11,6 @@ use super::layout::{
 };
 use super::sim::{BlendRec, Bracket};
 use crate::spring_damper::store::DamperBlocks;
-use crate::spring_damper::{BlendTerms, Relaxation};
 use crate::store::Raw;
 
 /// Which of a drive's objects a word is in: the drive itself or its state.
@@ -56,7 +56,10 @@ pub trait DriveStore: Raw {
     fn set_word(&mut self, part: Part, offset: u32, value: u32);
 }
 
-pub trait EngineStore: DamperBlocks {
+/// The engine's records, at the addresses of the engine and its objects (the definition, the state, the option block).
+/// Every word store has them (`layout/mem_store.rs`): a typed engine's view (`EngineView`) routes the words it holds
+/// to its typed state, the rest to the image.
+pub trait EngineStore: DamperBlocks + EngineTables {
     fn engine_objects(&self, engine: u32) -> EngineObjects;
     fn load_load_def(&self, at: u32) -> LoadDef;
     fn load_engine_def(&self, at: u32) -> EngineDef;
@@ -68,6 +71,12 @@ pub trait EngineStore: DamperBlocks {
     fn load_engine_options(&self, at: u32) -> EngineOptions;
     /// Writes the words the stall roll changes (the stall terms); the rest of the block keeps its bytes.
     fn store_stall_terms(&mut self, at: u32, value: &EngineOptions);
+}
+
+/// The tables and records the engine and drive ports read and write at any address: the definitions' curves and
+/// tables, the table manager's words, the stage's drive line, and the records the callers' pointers name. Every word
+/// store has them (`layout/mem_store.rs`).
+pub trait EngineTables: Raw {
     /// Writes the record at `at` (the four words; the rest of the object is left alone).
     fn store_unit_split(&mut self, at: u32, value: &UnitSplit);
     /// The table manager's word after its header (named by use).
@@ -87,12 +96,6 @@ pub trait EngineStore: DamperBlocks {
     /// The knots of a two-level blend table at `at`: each outer record has a key and a sub-table, which is read with its
     /// own count.
     fn blend_table(&self, at: u32) -> Vec<BlendKnot>;
-    /// The four words of a `BlendTerms` block at `at`.
-    fn load_blend_terms(&self, at: u32) -> BlendTerms;
-    fn store_blend_terms(&mut self, at: u32, block: BlendTerms);
-    /// The four words of a `Relaxation` block at `at`.
-    fn load_relaxation(&self, at: u32) -> Relaxation;
-    fn store_relaxation(&mut self, at: u32, block: Relaxation);
     /// The four outputs of `find_bracket`, written through the pointers the caller passed (`hi`, `lo` as ints).
     fn store_bracket(&mut self, b: &Bracket, out: [u32; 4]);
     /// `n` consecutive floats at `at`.

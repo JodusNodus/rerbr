@@ -1,5 +1,6 @@
-//! The Mem store of the engine (`super::super::store::EngineStore`): the bodies are the layout's reads
-//! and writes, moved from the records' `load`/`store` and the readers next to them.
+//! The engine's stores on any word store (`super::super::store::{EngineStore, EngineTables}`): the bodies are the
+//! layout's reads and writes at the records' addresses, so `Mem` reads the image and the engine's view
+//! (`super::engine_typed::EngineView`) its typed state where it holds the words.
 
 use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
 use super::drive_objects::Lane;
@@ -13,12 +14,11 @@ use super::engine_objects::{
 use super::tables::{BlendKnot, CurveKnot, UnitSplit};
 use crate::engine_driveline::drive_line::DriveLinePoint;
 use crate::engine_driveline::sim::{BlendRec, Bracket};
-use crate::engine_driveline::store::EngineStore;
+use crate::engine_driveline::store::{EngineStore, EngineTables};
 use crate::math::vec::Vec4;
-use crate::mem::Mem;
-use crate::spring_damper::{BlendTerms, Relaxation};
+use crate::store::Raw;
 
-impl EngineStore for Mem {
+impl<R: Raw> EngineStore for R {
     fn engine_objects(&self, engine: u32) -> EngineObjects {
         EngineObjects {
             def: self.u32(engine + ENGINE_DEF_PTR),
@@ -154,7 +154,9 @@ impl EngineStore for Mem {
             self.set_f32(at + 0x8 + 0x10 * i as u32, *v);
         }
     }
+}
 
+impl<R: Raw> EngineTables for R {
     /// Writes the record at `at` (the four words; the rest of the object is left alone).
     fn store_unit_split(&mut self, at: u32, value: &UnitSplit) {
         self.set_f32(at + 0x08, value.at_zero);
@@ -222,40 +224,6 @@ impl EngineStore for Mem {
                 BlendKnot { key: self.f32(row), records: self.blend_records(row, self.u32(row + 4) as usize) }
             })
             .collect()
-    }
-
-    /// The four words of a `BlendTerms` block at `at` (weight +0, value +4, response +8, scale +0xc).
-    fn load_blend_terms(&self, at: u32) -> BlendTerms {
-        BlendTerms {
-            weight: self.f32(at),
-            value: self.f32(at + 4),
-            response: self.f32(at + 8),
-            scale: self.f32(at + 0xc),
-        }
-    }
-
-    fn store_blend_terms(&mut self, at: u32, block: BlendTerms) {
-        self.set_f32(at, block.weight);
-        self.set_f32(at + 4, block.value);
-        self.set_f32(at + 8, block.response);
-        self.set_f32(at + 0xc, block.scale);
-    }
-
-    /// The four words of a `Relaxation` block at `at` (remaining +0, accumulated +4, response +8, scale +0xc).
-    fn load_relaxation(&self, at: u32) -> Relaxation {
-        Relaxation {
-            remaining: self.f32(at),
-            accumulated: self.f32(at + 4),
-            response: self.f32(at + 8),
-            scale: self.f32(at + 0xc),
-        }
-    }
-
-    fn store_relaxation(&mut self, at: u32, block: Relaxation) {
-        self.set_f32(at, block.remaining);
-        self.set_f32(at + 4, block.accumulated);
-        self.set_f32(at + 8, block.response);
-        self.set_f32(at + 0xc, block.scale);
     }
 
     /// The four outputs of `E41_BlendW`, written through the pointers the caller passed (`hi`, `lo` as ints).
