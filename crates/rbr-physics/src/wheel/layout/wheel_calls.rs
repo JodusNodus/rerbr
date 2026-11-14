@@ -46,17 +46,18 @@ pub fn update_ray_block<S: WheelStore>(mem: &mut S, blk: u32, limit: f32, floor:
 // The edge functions: each runs one original function in its order. They read the inputs and store the results between
 // the host calls, as the asm does; the ports they call are pure. The tests and the hybrid binding call these.
 
-/// `Copy100` (0x5390d0): `x` is `Xform6870` (`xform_6870`, on the car) of the tyre's centre, then the orientation is copied
-/// to `out`. The asm's test of `this+0xf0` (its address, never zero) always takes `this+0x100`.
+/// `Copy100` (0x5390d0): `x` is the car transform (`CCar::Xform6870`, `car_body::transform::compose_with_body`, on the
+/// car) of the tyre's centre, then the orientation is copied to `out`. The asm's test of `this+0xf0` (its address, never
+/// zero) always takes `this+0x100`.
 pub fn transform_and_copy<S: WheelStore>(
     mem: &mut S,
     this: u32,
     x_at: u32,
     out_at: u32,
-    xform_6870: impl FnOnce(u32, Vec4) -> Vec4,
+    car_transform: impl FnOnce(u32, Vec4) -> Vec4,
 ) {
     let tmp = hub::tyre_centre(mem.load_at(this, AXLE), mem.load_hub_offset(this), mem.load_at(this, HUB_POSITION));
-    let x = xform_6870(mem.load_car(this), tmp);
+    let x = car_transform(mem.load_car(this), tmp);
     x.store(mem, x_at);
     mem.load_at(this, ORIENTATION).store(mem, out_at);
 }

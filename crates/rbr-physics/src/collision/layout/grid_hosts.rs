@@ -26,11 +26,10 @@ pub fn status_flag_bit1_clear(status_flag: u8) -> u32 {
     u32::from(!(status_flag >> 1) & 1)
 }
 
-/// CColGrid::ReadClear (0x4e0a20) (name ours): returns `(m_unk689, m_unk688)` from the flag bytes `(688, 689)` the
-/// caller took
-/// (clearing them is `ColGrid::take_event_flags`).
-pub fn event_flag_words((flag_688, flag_689): (u8, u8)) -> (u32, u32) {
-    (u32::from(flag_689), u32::from(flag_688))
+/// CColGrid::ReadClear (0x4e0a20) (name ours): returns `(m_unk689, m_unk688)` from the flag bytes `(first, second)`
+/// (+0x688, +0x689) the caller took (clearing them is `ColGrid::take_event_flags`).
+pub fn event_flag_words((first, second): (u8, u8)) -> (u32, u32) {
+    (u32::from(second), u32::from(first))
 }
 
 /// CColGrid::EdgeForA (0x4e0a90) (name ours): the edge (`ColGrid::edge`) named by the first byte of the pair.

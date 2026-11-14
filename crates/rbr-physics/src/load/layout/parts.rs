@@ -238,7 +238,7 @@ impl<F, H: entities::exclusion::Heap> rigid_body::layout::PlaceHost for CarParts
     fn refresh(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
         let mut deferred = DeferredStateReset::default();
         rigid_body::layout::refresh_and_reset(mem, this, &mut deferred)?;
-        let state = deferred.state.expect("CBody::Vf40 calls its state");
+        let state = deferred.state.expect("the body refresh calls its state");
         let mut state_calls = StateCalls::default();
         collision::layout::reset_bounds(&mut state_calls, mem, state);
         if let Some((grid, a, lower, upper)) = state_calls.sync {
