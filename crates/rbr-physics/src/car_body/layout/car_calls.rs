@@ -13,13 +13,14 @@ use crate::car_body::edge::EdgeCalls;
 use crate::car_body::scratch_dispatch::ScratchDispatchCalls;
 use crate::car_body::store::CarStore;
 use crate::car_body::{accessors, edge, scratch_dispatch, steering_ffb};
-use crate::engine_driveline::layout::{spline_at, COUNT_AT};
+use crate::engine_driveline::layout::spline_at;
 use crate::engine_driveline::store::EngineStore;
 use crate::entities::layout::ROOT_IDENTITY;
 use crate::math::quat::{self};
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
 use crate::rigid_body::host::HostUnavailable;
+use crate::stage::store::StageStore;
 use crate::{fpu, ngp, ntweak, rigid_body};
 
 /// The native callees used by `CCar::Vf128x` (0x4e6100): `ComposeA` (the frame compose on `entity`), `Collide6000`
@@ -109,16 +110,22 @@ pub fn reset_scratch_and_dispatch<S: CarStore>(
 
 /// `CCar::Test7910` (0x4e7910, thiscall, no args): the car's position less the drive line's point at its lane (`BlendB`
 /// at the index and fraction of the car's float at +0x17c), with the verdict of `lane_verdict`. `LerpAt` runs in the
-/// original too, its result unused, and traps past the table's count: the port returns `None` there. `to_world` is the car's `ToWorld`.
-pub fn lane_test<S: CarStore + EngineStore>(mem: &S, car: u32, to_world: impl FnOnce(Vec3) -> Vec3) -> Option<u32> {
+/// original too, its result unused, and traps past the table's count: the port returns `None` there. `to_world` is the car's `ToWorld`;
+/// `line` holds the drive line.
+pub fn lane_test<S: CarStore>(
+    mem: &S,
+    line: &impl StageStore,
+    car: u32,
+    to_world: impl FnOnce(Vec3) -> Vec3,
+) -> Option<u32> {
     let fv = mem.f32(car + 0x17C);
     let i = fpu::trunc_i32(f64::from(fv));
     let t = fv - i as f32;
-    let drive = mem.u32(DRIVE_LINE);
-    if i as u32 >= mem.u32(drive + COUNT_AT) {
+    let drive = line.drive_line();
+    if i as u32 >= line.line_count(drive) {
         return None;
     }
-    let point = spline_at(mem, drive, i, t);
+    let point = spline_at(line, drive, i, t);
     let d = Vec3 {
         x: mem.f32(car + 0x140) - point.x,
         y: mem.f32(car + 0x144) - point.y,
@@ -285,16 +292,16 @@ pub trait CountdownCalls<S = Mem>: VoteCalls<S> {
 /// float at +0x17c (`BlendB`), `b` takes its lerp (`LerpAt`), and `b` is normalized. The index is truncated as
 /// `cvttss2si` does it. `LerpAt` traps past the table's count, so the port returns `None` there. NGP retargets both
 /// calls to its samplers in doubles (`ngp::layout::drive_line`), which write three lanes and don't trap (1.02's `LerpAt` traps
-/// past the table's count).
-pub fn drive_line_sample<S: CarStore + EngineStore>(mem: &mut S, car: u32, a: u32, b: u32) {
+/// past the table's count). `line` holds the drive line.
+pub fn drive_line_sample<S: CarStore>(mem: &mut S, line: &impl StageStore, car: u32, a: u32, b: u32) {
     let fv = mem.f32(car + 0x17C);
     let i = fpu::trunc_i32(f64::from(fv));
     let t = fv - i as f32;
-    let drive = mem.u32(DRIVE_LINE);
+    let drive = line.drive_line();
     let store3 = |mem: &mut S, at: u32, v: [f32; 3]| (0..3).for_each(|k| mem.set_f32(at + 4 * k, v[k as usize]));
-    let blend = ngp::layout::drive_line::point_at(mem.mem(), drive, i, t);
+    let blend = ngp::layout::drive_line::point_at(line, drive, i, t);
     store3(mem, a, blend);
-    let lerp = ngp::layout::drive_line::tangent_at(mem.mem(), drive, i, t);
+    let lerp = ngp::layout::drive_line::tangent_at(line, drive, i, t);
     store3(mem, b, lerp);
     Vec4::load(mem, b).normalize().store(mem, b);
 }
@@ -319,8 +326,14 @@ pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry
 /// drive line's sample (`Split17C`) is negated, the sampler votes on the probe, and slot 97 takes the voted block (the
 /// probe on a miss) and the sample; then `M6840(1)` and slot 18. Otherwise the countdown falls by the app's tick and is
 /// stored as 0 when it goes negative (NaN stays). Nothing happens for a null car. `entry` is the entry esp; the frame is
-/// aligned as the original's.
-pub fn run_countdown<S: CarStore + EngineStore>(mem: &mut S, calls: &mut impl CountdownCalls<S>, car: u32, entry: u32) {
+/// aligned as the original's. `line` holds the drive line.
+pub fn run_countdown<S: CarStore + EngineStore>(
+    mem: &mut S,
+    line: &impl StageStore,
+    calls: &mut impl CountdownCalls<S>,
+    car: u32,
+    entry: u32,
+) {
     if car == 0 {
         return;
     }
@@ -328,7 +341,7 @@ pub fn run_countdown<S: CarStore + EngineStore>(mem: &mut S, calls: &mut impl Co
     let timer = mem.f32(car + 0x15E4);
     if timer == 0.0 {
         let (probe, sample, ans, raw) = (frame + 0x1c, frame + 0xc, frame + 0x2c, frame + 0x3c);
-        drive_line_sample(mem, car, probe, sample);
+        drive_line_sample(mem, line, car, probe, sample);
         (Vec4::load(mem, sample).scale(-1.0)).store(mem, sample);
         let hit = vote_probe(mem, calls, frame - 20, probe, ans, raw);
         let sel = if hit != 0 { ans } else { probe };

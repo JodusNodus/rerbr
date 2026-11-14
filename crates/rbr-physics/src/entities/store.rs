@@ -138,7 +138,6 @@ pub trait EntityStore: HingeStore {
     fn load_transform(&self, at: u32) -> Transform;
     /// The entity's query slot target.
     fn query_slot_target(&self, entity: u32) -> u32;
-    fn material_slot(&self, table: u32, index: u8) -> SlotLookup;
 
     /// The flags object and its flag byte.
     fn entity_flags(&self) -> (u32, u8);

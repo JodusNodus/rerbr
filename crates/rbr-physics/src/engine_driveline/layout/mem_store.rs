@@ -4,7 +4,7 @@
 use super::curve::{
     BrakeBlock, CurveInput, CurveRow, CurveState, CurveTables, CURVE_TABLE_A_AT, CURVE_TABLE_B_AT, CURVE_TABLE_C_AT,
 };
-use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES, STRIDE};
+use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
 use super::drive_objects::{
     Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane, DRIVE_DEF_GEAR_COUNT, DRIVE_DEF_MAX_FOOTBRAKE_PRESSURE,
     DRIVE_DEF_PTR, DRIVE_STATE_COMMANDED_GEAR_LANE, DRIVE_STATE_ENGINE_SPEED, DRIVE_STATE_GEAR, DRIVE_STATE_PTR,
@@ -409,15 +409,6 @@ impl EngineStore for Mem {
             Vec4::default().store(self, at + 0x10);
             self.set_f32(at + 0x20, -1.0);
         }
-    }
-
-    /// `CDriveLine::LerpAt` (0x50a920): the lerp of entry `idx`'s tangent `v` and entry `idx + 1`'s, at `t`, as the jump
-    /// into `E11_VecLerp` takes them (self at +0x20 of the entry, the other at the next entry's +0x20). The count check is
-    /// the caller's (the original traps past it).
-    fn lerp_at(&self, this: u32, idx: i32, t: f32) -> Vec4 {
-        let at = entry_at(this, idx as u32);
-        let next = at.wrapping_add(STRIDE);
-        Vec4::load(self, at + 0x10).lerp(Vec4::load(self, next + 0x10), t)
     }
 
     /// One row of the exhaust table (`SimEC40`): eight floats at `+0x1fc + 0x20 * i` of the definition.

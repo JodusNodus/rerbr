@@ -345,7 +345,8 @@ pub(super) fn step_car(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
     let mut calls = car_calls(ctx, r);
-    layout::run_countdown(&mut ctx.mem, &mut calls, r.ecx, r.esp);
+    let image = ctx.mem.clone();
+    layout::run_countdown(&mut ctx.mem, &image, &mut calls, r.ecx, r.esp);
     Ok(Return::void(0, 0))
 }
 
@@ -353,7 +354,8 @@ pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 pub(super) fn split_17c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     crate::ngp::only()?;
-    layout::drive_line_sample(&mut ctx.mem, r.ecx, a, b);
+    let image = ctx.mem.clone();
+    layout::drive_line_sample(&mut ctx.mem, &image, r.ecx, a, b);
     Ok(Return::void(b, 8))
 }
 

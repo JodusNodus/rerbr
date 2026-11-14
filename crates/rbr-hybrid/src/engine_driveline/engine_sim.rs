@@ -267,7 +267,8 @@ pub(super) fn sim_ebb0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(pos, x)`, st0: the arc position of `pos` on the drive line (`layout::project_point`).
 pub(super) fn sample_big(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [pos, x, ..] = r.stack;
-    Ok(Return::float(layout::project_point(&ctx.mem, r.ecx, pos, f(x)) as f64, 8))
+    let point = ctx.mem.f32s(pos);
+    Ok(Return::float(layout::project_point(&ctx.mem, r.ecx, point, f(x)) as f64, 8))
 }
 
 /// thiscall `(b, s, out)`, eax = `out`: `out = this + (b - this) * s` (`Vec4::lerp`, the `E11_VecLerp` of the drive line).

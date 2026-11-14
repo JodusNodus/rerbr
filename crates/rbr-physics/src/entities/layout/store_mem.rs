@@ -5,7 +5,7 @@ use super::entity_slots::EXCL_SET;
 use super::frames::ROOT_IDENTITY;
 use crate::entities::frame::EntityFrame;
 use crate::entities::ground::Contact;
-use crate::entities::store::{EntityStore, SlotLookup};
+use crate::entities::store::EntityStore;
 use crate::entities::transform::Transform;
 use crate::entities::walk::Node;
 use crate::math::vec::{Vec3, Vec4};
@@ -31,10 +31,6 @@ const FRAME_DEPTH: u32 = 0x08;
 const FRAME_OWNER: u32 = 0x0c;
 
 const GRID_COUNT_FIRST: u32 = 0x68D;
-
-const TABLE_SELF: u32 = 0x800;
-const TABLE_COUNT: u32 = 0x804;
-const SLOT_SIZE: u32 = 8;
 
 /// The dummy's centre (+0x94) and half extents (+0xa0), as stored (x, z, y: see `dummy::box_corners`); its span group (+0xb0),
 /// span segment (+0x7c) and post segment (+0x80); and the flag word the segments keep at +0x5c (bit 3, `8`).
@@ -128,17 +124,6 @@ impl EntityStore for Mem {
 
     fn query_slot_target(&self, entity: u32) -> u32 {
         self.u32(self.u32(entity) + QUERY_SLOT)
-    }
-
-    fn material_slot(&self, table: u32, index: u8) -> SlotLookup {
-        let slots = self.u32(table + TABLE_SELF);
-        if slots == 0 {
-            return SlotLookup::NoTable;
-        }
-        if index as u32 >= self.u32(table + TABLE_COUNT) {
-            return SlotLookup::OutOfRange;
-        }
-        SlotLookup::At(slots + SLOT_SIZE * index as u32)
     }
 
     fn entity_flags(&self) -> (u32, u8) {

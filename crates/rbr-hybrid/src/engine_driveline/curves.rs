@@ -2,6 +2,7 @@
 
 use rbr_physics::engine_driveline::{drive_curve, drive_worker, layout, sim};
 use rbr_physics::mem::Mem;
+use rbr_physics::stage::store::StageStore;
 
 use super::{f, E12_SAMPLE_X};
 use crate::{Ctx, Decline, Regs, Return};
@@ -87,10 +88,10 @@ pub(super) fn blend_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(i, t, out)`, `ret 0xc`: `CDriveLine::LerpAt` (0x50a920), which jumps into `E11_VecLerp`. Eax is `out`.
 pub(super) fn lerp_at(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [idx, t, out, ..] = r.stack;
-    if idx >= ctx.mem.u32(r.ecx + layout::COUNT_AT) {
+    if idx >= ctx.mem.line_count(r.ecx) {
         return Err(Decline::Unsupported("drive line index past its count (LerpAt traps)"));
     }
-    let v = ctx.mem.lerp_at(r.ecx, idx as i32, f(t));
+    let v = layout::tangent_lerp(&ctx.mem, r.ecx, idx as i32, f(t));
     v.store(&mut ctx.mem, out);
     Ok(Return::void(out, 0xc))
 }

@@ -1,7 +1,7 @@
 //! `CDrive`'s and `CDriveLine`'s small calls: the lanes, the drive line samples, the record getters and the
 //! `E39` matrix helpers.
 
-use super::drive_line::{self, entry_at};
+use super::drive_line;
 use super::drive_objects::{DriveObjects, Lane};
 use super::engine_calls::engine_running;
 use crate::engine_driveline::mat4;
@@ -11,6 +11,7 @@ use crate::math::ftol::trunc_i64;
 use crate::math::le_or_unordered;
 use crate::math::vec::Vec4;
 use crate::ntweak::set_dirty;
+use crate::stage::store::StageStore;
 use crate::vcu::locks::lock_output;
 
 /// `E39_ClearLanes` (0x502c00, thiscall, no arguments): the lanes at `this+0x10` and `this+0x44` are set dirty and
@@ -24,28 +25,23 @@ pub fn clear_lanes<S: EngineStore>(mem: &mut S, this: u32) {
 
 /// `E12_SampleX` (0x475ea0, stdcall `(x)`, st0) on the drive line at the global `DRIVE_LINE`: the distance at the
 /// position `x`, from the count and each entry's arc length. None where the original asserts (see `drive_line::interpolate_distance`).
-pub fn distance_at<S: EngineStore>(mem: &S, x: f32) -> Option<f32> {
-    let this = mem.u32(crate::stage::layout::DRIVE_LINE);
-    crate::engine_driveline::drive_line::interpolate_distance(
-        mem.u32(this + drive_line::COUNT_AT),
-        |k| mem.f32(entry_at(this, k) + 0x20),
-        x,
-    )
+pub fn distance_at<S: StageStore + ?Sized>(line: &S, x: f32) -> Option<f32> {
+    let this = line.drive_line();
+    crate::engine_driveline::drive_line::interpolate_distance(line.line_count(this), |k| line.line_distance(this, k), x)
 }
 
 /// `CDriveLine::SampleBig` (0x50b300, thiscall `(pos, x)`, st0): the point at `pos` projected onto the drive line, as
-/// its arc position, bisected from the index `x`. The reads are the point's three floats and the table (`ClampMix`, `BlendB` and
-/// the entries' positions and tangents). The original traps where the index is outside the table, and so does this.
-pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
-    let n = mem.u32(this + drive_line::COUNT_AT) as i32;
+/// its arc position, bisected from the index `x`. `ps` is the point's three floats; the reads are the table's
+/// (`ClampMix`, `BlendB` and the entries' positions and tangents). The original traps where the index is outside the
+/// table, and so does this.
+pub fn project_point<S: StageStore + ?Sized>(line: &S, this: u32, ps: [f32; 3], x: f32) -> f32 {
+    let n = line.line_count(this) as i32;
     if n == 0 {
         return 0.0;
     }
-    let ps = [mem.f32(pos), mem.f32(pos + 4), mem.f32(pos + 8)];
-    let q_at = |k: i32| entry_at(this, k as u32);
     let ix = fpu::trunc_i32(x as f64);
     assert!(ix >= 0, "CDriveLine::SampleBig: index {ix} outside the table (the original traps)");
-    let va = if ix < n { drive_line::point_at(mem, this, x) } else { Vec4::load(mem, q_at(n - 1)) };
+    let va = if ix < n { drive_line::point_at(line, this, x) } else { line.line_position(this, (n - 1) as u32) };
     let d = Vec4 { x: va.x - ps[0], y: va.y - ps[1], z: va.z - ps[2], w: 0.0 };
     let h = (d.length3() - 6.0) * 0.5;
     let k = match trunc_i64(h as f64) as i32 {
@@ -60,7 +56,7 @@ pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f3
 
     // The nearest entry in ib..=cnt by squared distance from the point (the first wins a tie).
     let offset = |k: i32| {
-        let q = Vec4::load(mem, q_at(k));
+        let q = line.line_position(this, k as u32);
         [ps[0] - q.x, ps[1] - q.y, ps[2] - q.z]
     };
     let dist = |e: [f32; 3]| (e[2] * e[2] + e[1] * e[1]) + e[0] * e[0];
@@ -80,7 +76,7 @@ pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f3
         } else {
             // A tangent that points back (its dot is negative) steps the entry back one.
             let e = offset(ib);
-            let v = Vec4::load(mem, q_at(ib) + 0x10);
+            let v = line.line_tangent(this, ib as u32);
             if (v.y * e[1] + v.z * e[2]) + v.x * e[0] < 0.0 {
                 ib -= 1;
             }
@@ -91,13 +87,13 @@ pub fn project_point<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f3
     }
 
     // The bisection between the two tangents of ib and ib + 1: the mid point, until it is close or the steps run out.
-    let v_lo = Vec4::load(mem, q_at(ib) + 0x10);
-    let v_hi = Vec4::load(mem, q_at(ib + 1) + 0x10);
+    let v_lo = line.line_tangent(this, ib as u32);
+    let v_hi = line.line_tangent(this, (ib + 1) as u32);
     let (mut lo, mut hi) = (0.0f32, 1.0f32);
     let mut steps = 0;
     loop {
         let mid = (hi + lo) * 0.5;
-        let vb = drive_line::spline_at(mem, this, ib, mid);
+        let vb = drive_line::spline_at(line, this, ib, mid);
         let d = [ps[0] - vb.x, ps[1] - vb.y, ps[2] - vb.z];
         let w = v_lo.lerp(v_hi, mid);
         let dot = (w.z * d[2] + w.y * d[1]) + d[0] * w.x;
