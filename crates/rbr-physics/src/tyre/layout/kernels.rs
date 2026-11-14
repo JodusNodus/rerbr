@@ -895,32 +895,33 @@ impl TyreStore for Mem {
         }
     }
 
-    /// Loads the surface friction's inputs for the surface classes at the indices `i` and `j` with the wetnesses `a` and
-    /// `b`: the setup's base frictions (`+0x2c4`), wet slopes (`+0x2e0`) and wear factors (`+0x2f8`) at those indices, its
-    /// design wetness (`+0x2dc`), and the wear of the sector (`m_state+0x134`). The indices are words, so the address is
-    /// wrapping, as the original's is.
-    fn load_surface_input(&self, this: u32, i: u32, j: u32, a: f32, b: f32) -> SurfaceInput {
+    /// Loads the surface friction's inputs for the two surface classes at the indices `classes`, with their
+    /// `wetness`: the setup's base frictions (`+0x2c4`), wet slopes (`+0x2e0`) and wear factors (`+0x2f8`) at those
+    /// indices, its design wetness (`+0x2dc`), and the wear of the sector (`m_state+0x134`). The indices are words, so
+    /// the address is wrapping, as the original's is.
+    fn load_surface_input(&self, this: u32, classes: [u32; 2], wetness: [f32; 2]) -> SurfaceInput {
         let def = self.u32(this + DEF);
         let state = self.u32(this + STATE);
         let wear = self.u32(this + 0x414);
+        let [first, second] = classes;
         SurfaceInput {
-            base_first: self.f32(word_at(def + 0x2C4, i)),
-            base_second: self.f32(word_at(def + 0x2C4, j)),
-            wet_slope_first: self.f32(word_at(def + 0x2E0, i)),
-            wet_slope_second: self.f32(word_at(def + 0x2E0, j)),
-            wear_factor_first: self.f32(word_at(def + 0x2F8, i)),
-            wear_factor_second: self.f32(word_at(def + 0x2F8, j)),
+            base_first: self.f32(word_at(def + 0x2C4, first)),
+            base_second: self.f32(word_at(def + 0x2C4, second)),
+            wet_slope_first: self.f32(word_at(def + 0x2E0, first)),
+            wet_slope_second: self.f32(word_at(def + 0x2E0, second)),
+            wear_factor_first: self.f32(word_at(def + 0x2F8, first)),
+            wear_factor_second: self.f32(word_at(def + 0x2F8, second)),
             design_wetness: self.f32(def + 0x2DC),
-            wetness_first: a,
-            wetness_second: b,
+            wetness_first: wetness[0],
+            wetness_second: wetness[1],
             sector_wear: self.f32(word_at(wear, self.u32(state + 0x134))),
         }
     }
 
-    /// Stores the surface friction through the caller's pointers `o1` and `o2`, in that order.
-    fn store_surface_friction(&mut self, o1: u32, o2: u32, out: SurfaceFriction) {
-        self.set_f32(o1, out.first);
-        self.set_f32(o2, out.second);
+    /// Stores the surface friction through the caller's pointers `first` and `second`, in that order.
+    fn store_surface_friction(&mut self, first: u32, second: u32, out: SurfaceFriction) {
+        self.set_f32(first, out.first);
+        self.set_f32(second, out.second);
     }
 
     /// Stores the `RelaxStep` results, then `RelaxCount`'s counter: `m_state+0x1c` goes up by one and its dirty flag

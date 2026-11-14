@@ -536,7 +536,7 @@ fn clear_bias_matches_original_calls() {
 fn surface_friction_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x534e70, "surface_friction", |mem, c| {
-        let input = mem.load_surface_input(c.args[0], c.args[1], c.args[2], arg_f32(c, 3), arg_f32(c, 4));
+        let input = mem.load_surface_input(c.args[0], [c.args[1], c.args[2]], [arg_f32(c, 3), arg_f32(c, 4)]);
         mem.store_surface_friction(c.args[5], c.args[6], surface::surface_friction(&input));
         assert_eq!(c.eax, 1, "surface_friction call {}: eax", c.index);
         None

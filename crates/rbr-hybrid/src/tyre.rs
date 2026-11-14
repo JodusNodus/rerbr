@@ -248,7 +248,7 @@ fn set_state48(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(i, j, a, b, o1, o2)`, eax 1.
 fn blend_table(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, a, b, o1, o2, ..] = r.stack;
-    entries::surface_friction(&mut ctx.mem, r.ecx, i, j, [f(a), f(b)], o1, o2);
+    entries::surface_friction(&mut ctx.mem, r.ecx, [i, j], [f(a), f(b)], o1, o2);
     Ok(Return::void(1, 0x18))
 }
 
