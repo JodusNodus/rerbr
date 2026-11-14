@@ -160,7 +160,7 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
 | `DriveStore` (one drive, no handle; `word`/`set_word` for the index arithmetic) | `engine_driveline/store.rs` | `DriveView` only (`layout/drive_typed.rs`) |
 | `EngineStore: DamperBlocks + EngineTables` (the engine's records, by address), `EngineTables` (tables, drive line, callers' records) | `engine_driveline/store.rs` | `layout/mem_store.rs` (`EngineTables` on every word store); `EngineView` (`layout/engine_typed.rs`) |
 | `RigidStore` | `rigid_body/store.rs` | `rigid_body/layout/mem_store.rs` |
-| `CoreStore` | `physics_core/store.rs` | `physics_core/layout/mem_store.rs` |
+| `CoreStore` | `physics_core/store.rs` | `physics_core/layout/mem_store.rs`, over `CoreFields` (`layout/typed.rs`): `Mem` per call, `CoreView` (typed) |
 | `HingeStore`, `EntityStore: HingeStore` | `entities/store.rs` | `entities/layout/hinge_state.rs`, `layout/store_mem.rs` |
 | `StageStore` (the drive line, the material table and its sheets) | `stage/store.rs` | `stage/layout/queries.rs`; `StageView` (typed) |
 | `TweakStore` | `ntweak/store.rs` | `ntweak/layout/mod.rs` |
@@ -371,6 +371,32 @@ TyreStore>`), never `dyn`, so the `Mem` path compiles as before.
   cell setters, grid edge, outside assistance, respawn pose and respawn, snapshot, sensors; every byte of the car and
   the scratch, 8544 bytes, and every caller's word) on 40 snapshots; `car_body` and `wheel` vectors on the Mem store;
   hybrid gate 13/13; +0.40 % instructions per step.
+- The physics core's singletons, ninth: `physics_core::layout::typed` (`PhysicsObj`: the contact loop's hits, last
+  and maximum hits, pass maximum and count, the penetration pass's hit count, the single stepper's delay and pending
+  flag; `StateObj`: the substep counter, the value of the state's `CUnsigned` at `+0x0c`, and the clock, an `f64` at
+  `+0x20`; `StepGlobals`: the step calls `0x1659b74` and substep index `0x1659b78`; 52 bytes), one per world:
+  `store::typed::Typed::core` (`Core`, a `Cell`, the step's runs nest: the contact loop and the car's step run inside
+  the step), lifted and lowered with the car's. `CoreStore` is implemented over `CoreFields` (`Mem` per call, `CoreView`
+  held); StepForward and CollideWork run on `rbr_hybrid::physics_core::on_core`. Stay on the image: the pointers (state,
+  definition, scratch), the counter's NTweak header and dirty word (`SetDirty`), the scratch's solver and its event list
+  (`solver+4`, the collision's: its solver writes it), the entity lists and their nodes' links. Readers during a step:
+  the car's `timer_double`/`timer_word` and `CTimeKeeper::Diff`'s clock by its address (`CarFields: CoreFields`,
+  `CarView::with_core`), `CTimeKeeper::Update`'s counter (`read_core`); unrouted, the car's clock read fails the poison
+  run (`physics state elapsed` in `0x5273a0 > 0x4ea300`), the update's counter `physics state step_counter` in
+  `0x5273a0 > 0x4ea300 > 0x4a0320`. Evidence: drive2 attempt 5 84084/84084 typed; `--twin typed` equal after each of
+  84084 steps (aids off and on, the core's objects compared); poison 84084/84084 (aids on too: no poisoned access);
+  `round_trip` 52 typed bytes and the core's `differential` (three steps and a contact loop with hits counted, per call
+  vs held: every call's words, the physics object, the state, the globals and the frame, 956-1244 bytes) on 40
+  snapshots; `physics_core_vectors`, `car_body_vectors` on the Mem store; hybrid gate 13/13 (StepForward declines on
+  1.02; CollideWork runs per call); +0.03 % instructions per step.
+- The entity lists are not typed (a link map needs more first): the `+0x10/+0x14/+0x18` link of a node is also the
+  link of the entity child lists (parent `+0x48/+0x4c/+0x50`, `entities/layout/construct.rs`), the sleeping list
+  `+0x460` holds 3172-8217 nodes on the snapshots (eager lift not viable: a lazy arena with image fallback, and poison
+  of what it holds), and the writers and readers are `Mem`-bound outside the core: wake, sleep and soften
+  (`rigid_body/layout/rest.rs` through `refile_entity`/`relink_wall`), detach (`entities/layout/detach.rs`: the child
+  list's count and owner), the detector walks (`penetration_check`, `run_collision_detectors`, `visit_walls`, the
+  gigantic detector over `+0x470`) and the entities' child walks (`rbr-hybrid` `entities/walks.rs`). drive2 moves a
+  node twice in 84084 steps (two unlinks, two pushes), so it would not prove them.
 - Left: how a non-`Mem` store hosts the original's stack frames; `--twin` in the live run; typed state across steps.
 
 ## Physics core

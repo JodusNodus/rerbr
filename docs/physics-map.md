@@ -110,6 +110,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Steering | `car_body/controls.rs` | `car_body::controls::step_controls`, `car_body::layout::CarState` (the car's own typed state) |
 | Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate` |
 | Gravity | `physics_core/accumulate.rs`, `physics_core/math.rs` | `physics_core::accumulate::accumulate_forces`, `physics_core::math::gravity_force` |
+| Step pacing, physics clock | `physics_core/step.rs`, `physics_core/pacing.rs`, `physics_core/contact_loop.rs` | `physics_core::step::step_forward`, `physics_core::pacing::advance_time`, `physics_core::layout::Core` (the core's typed state: clock, substep counter, pass and hit counters) |
 | Ground surface, materials | `entities/ground.rs`, `entities/material_table.rs`, `ngp/material.rs`, `ngp/tag_blend.rs`, `stage/` | `entities::ground::box_probe`, `entities::material_table::MaterialTable`, `ngp::material::cell`, `ngp::tag_blend::blend`, `wheel::layout::ground_probe` |
 | Stage world (`.col`, `.mat`, `.trk`) | `stage/`, `engine_driveline/drive_line.rs`, `ngp/drive_line.rs` | `stage::layout::load_col`, `ngp::drive_line::project` (drive line), `stage::typed::Stage` (what a step reads, typed) |
 | Collision grid | `collision/cells.rs`, `collision/mesh_grid.rs`, `physics_core/detect.rs`, `load/car_grids.rs` | `collision::mesh_grid::MeshGrid`, `collision::cells::point_cell`, `physics_core::detect::box_cells` |
