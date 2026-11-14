@@ -27,8 +27,8 @@ use engine_sim::{
     set_cut_flags, set_options, set_scratch08, sim8610, sim8890, sim8cf0, sim8d90, sim_e970, sim_e9a0, sim_ebb0,
     sim_ee60, slot_roll, smooth_damper, solve_damper, stall_guard, torque_curve, turbo_energy_step, vec_lerp,
 };
-pub(crate) use engine_sim::{engine_running, engine_step};
-pub(crate) use inputs::{clear_lanes, m6db0, m6dd0, set_two};
+pub(crate) use engine_sim::{engine_pedal, engine_running, engine_step};
+pub(crate) use inputs::{clear_lanes, clutch_slip, m6db0, m6dd0, set_two};
 use inputs::{
     copy_row, drive_gate, drive_reset_part, drive_speed_key, emit_gear_change, emit_noise, get_engine_speed, get_gear,
     init_real_lerp, mat4_inverse_transposed, mat4_mul_vec4, mgr_b_entry, mgr_b_field_at, mgr_b_word8, nop_ret4,

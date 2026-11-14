@@ -138,12 +138,15 @@ pub(super) fn fuel_air_terms(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 
 /// thiscall `(pedal)`.
 pub(super) fn set_scratch08(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_engine(ctx, r.ecx, |e| {
-        let mut this = layout::EngineOwn::load(e, r.ecx);
-        engine::set_pedal(&mut this.pedal, r.stack[0]);
-        this.store(e, r.ecx);
-    });
+    on_engine(ctx, r.ecx, |e| engine_pedal(e, r.ecx, r.stack[0]));
     Ok(Return::void(0, 4))
+}
+
+/// `CEngine::SetScratch08`'s body (0x50eb90) on the engine's store: the pedal's word. Also the VCU's direct call.
+pub(crate) fn engine_pedal(e: &mut layout::EngineView, engine: u32, pedal: u32) {
+    let mut this = layout::EngineOwn::load(e, engine);
+    engine::set_pedal(&mut this.pedal, pedal);
+    this.store(e, engine);
 }
 
 /// thiscall `(row, s*)`, st0.
