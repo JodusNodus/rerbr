@@ -267,7 +267,7 @@ pub fn construct_drive_def(mem: &mut Mem, this: u32) {
 /// then the words it writes (`engine_def`, generated from the exe: its 36 KB are constant stores), and NGP's patched
 /// constructor's words over them.
 pub fn construct_engine_def(mem: &mut Mem, host: &mut impl Heap, this: u32) {
-    use crate::engine_driveline::engine_def::{ALLOCATIONS, IMAGES, NGP_WORDS};
+    use super::engine_def::{ALLOCATIONS, IMAGES, NGP_WORDS};
     let blocks: Vec<u32> = ALLOCATIONS.iter().map(|&n| host.alloc(mem, n)).collect();
     for (image, at) in IMAGES.iter().zip(std::iter::once(this).chain(blocks.iter().copied())) {
         for &(offset, run) in image.runs {

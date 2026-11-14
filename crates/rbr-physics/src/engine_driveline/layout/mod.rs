@@ -7,6 +7,7 @@ mod drive_calls;
 mod drive_line;
 mod drive_objects;
 mod engine_calls;
+mod engine_def;
 mod engine_objects;
 mod engine_sim;
 mod mem_store;
