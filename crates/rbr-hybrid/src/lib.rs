@@ -145,6 +145,16 @@ pub trait Host {
     fn call_in_place(&self, _sp: u32, _addr: u32, _ecx: u32, _args: &[u32]) -> Option<Called> {
         None
     }
+    /// The esp a call at `sp` enters its callee at (0: the host places it), for the words a caller that runs the callee
+    /// itself leaves unwritten (the residue audit's fills).
+    fn call_esp(&self, sp: u32) -> u32 {
+        sp
+    }
+    /// `run` on the image the bindings run on (the pure host's, as [`Host::call_in_place`] lends it), for a caller on
+    /// held state that runs a callee's port itself with values; `None` (nothing ran) on a host that runs the original.
+    fn with_image(&self, _run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
+        None
+    }
     /// [`Host::call_slot_word`] and whether [`skip_call`] writes the skipped call's words (not under the pure host's
     /// direct dispatch, [`pure::Pure::direct`]), in one call for the skipped calls.
     fn skip_word(&self) -> Option<(u32, bool)> {

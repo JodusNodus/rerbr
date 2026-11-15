@@ -15,7 +15,7 @@ use rbr_physics::mem::Mem;
 use super::members::{FLOW_OBJECT, M5666B0, SAMPLER_54A0};
 use super::step::SLOT_S8C;
 use crate::car_body::{on_car, ADD_EDGE};
-use crate::entities::{BODY_COMPOSE, COPY16_WALK, MB560, NODE_OF};
+use crate::entities::{Op, BODY_COMPOSE, NODE_OF};
 use crate::rigid_body::VF20_JUMP;
 use crate::{aligned_frame, Called, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
@@ -66,7 +66,7 @@ impl Car<'_> {
     fn walk(&mut self, this: u32, a: Vec3, b: u32) -> Vec3 {
         let (a_at, c_at) = (self.scratch + A, self.scratch + C);
         self.put(a_at, a);
-        crate::entities::call_op(self.host, 0, MB560, this, &[a_at, b, c_at]);
+        crate::entities::op(self.host, 0, this, Op::Mb560 { a: a_at, b, c: c_at });
         self.get(c_at)
     }
 }
@@ -93,7 +93,7 @@ impl FrameWalk for Car<'_> {
 
 impl FrameCompose for Car<'_> {
     fn compose_frames(&mut self, this: u32, a: u32, t: u32, out: u32) -> u32 {
-        crate::entities::call_op(self.host, 0, COPY16_WALK, this, &[a, t, out]);
+        crate::entities::op(self.host, 0, this, Op::ComposeA { src: a, o2: t, out });
         out
     }
 }

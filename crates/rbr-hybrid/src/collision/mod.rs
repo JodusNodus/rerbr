@@ -15,7 +15,7 @@ mod queries;
 mod solver;
 mod vectors;
 
-use crate::entities::{COMPOSE_B, ENTITY_VF118, FETCH_X, NAME_WALK, NODE_OF, PAIR_COMBINE_TWIN, SAMPLE_INDEXED};
+use crate::entities::{ENTITY_VF118, NAME_WALK, NODE_OF, SAMPLE_INDEXED};
 pub(crate) use bodies::{
     body_box_direct, body_vf_cc_direct, held_cell_link, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
 };
@@ -235,4 +235,3 @@ const E37_EDGE_PAIR: u32 = 0x4f8560;
 const E37_WALK_5FF0: u32 = 0x4f5ff0;
 const E37_M74A0: u32 = 0x4f74a0;
 const E37_STORE_5570: u32 = 0x4f5570;
-const MAT_COLLIDE_INIT: u32 = 0x51bd30;

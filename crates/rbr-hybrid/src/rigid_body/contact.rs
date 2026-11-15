@@ -13,9 +13,10 @@ use rbr_physics::rigid_body::vote::ContactVoteHost;
 use super::force_pass::{s30_at, SLOT_RESPONSE};
 use super::slots::{flush_gate, Flush};
 use super::{
-    held_solids, on_solids, unavailable, with_solids, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A,
-    SAMPLE, SCRATCH_BELOW_ESP, SIGNALS, SLOT_SAMPLE_HOOK, WALKER,
+    held_solids, on_solids, unavailable, with_solids, BIG_A, COLLECT_OBJECT, E36_COLLECT, RETIRE_A, SAMPLE,
+    SCRATCH_BELOW_ESP, SIGNALS, SLOT_SAMPLE_HOOK, WALKER,
 };
+use crate::entities::Op;
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -92,7 +93,7 @@ impl BodyCalls for ContactCalls<'_> {
         src.store(&mut self.mem, at);
         let body = s30_at(&self.mem, self.host, self.frame - 8, self.this, &[self.a]);
         let walker = self.mem.u32(WALKER);
-        crate::entities::call_op(self.host, self.frame - 0x10, MB560, walker, &[at, body, self.a]);
+        crate::entities::op(self.host, self.frame - 0x10, walker, Op::Mb560 { a: at, b: body, c: self.a });
         Vec4::load(&self.mem, self.a)
     }
 }
@@ -101,8 +102,8 @@ impl ContactHost for ContactCalls<'_> {
     /// `ComposeA (e+0x40, walker, frame point*)` on the body.
     fn compose(&mut self, _vector: Vec4) -> Vec4 {
         let walker = self.mem.u32(WALKER);
-        let args = [self.e + 0x40, walker, self.frame + 0x40];
-        crate::entities::call_op(self.host, self.frame - 0x10, COPY16_WALK, self.this, &args);
+        let op = Op::ComposeA { src: self.e + 0x40, o2: walker, out: self.frame + 0x40 };
+        crate::entities::op(self.host, self.frame - 0x10, self.this, op);
         Vec4::load(&self.mem, self.frame + 0x40)
     }
 
@@ -165,7 +166,7 @@ impl BodyCalls for ListCalls<'_> {
         src.store(&mut self.mem, a);
         let slot12 = self.mem.u32(self.mem.u32(self.this) + 4 * 12);
         self.host.call(slot12, self.this, &[]);
-        crate::entities::call_op(self.host, 0, MB560, self.mem.u32(WALKER), &[a, self.this, c]);
+        crate::entities::op(self.host, 0, self.mem.u32(WALKER), Op::Mb560 { a, b: self.this, c });
         Vec4::load(&self.mem, c)
     }
 }

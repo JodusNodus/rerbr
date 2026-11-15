@@ -14,6 +14,7 @@ mod matrices;
 mod walks;
 
 use crate::rigid_body::VF81X;
+pub(crate) use collide_init::collide_init;
 use collide_init::{collide_init_run, copy_grid_run};
 use e90::{
     d3dx_normalize_run, e90_add_bend_run, e90_add_fixed_run, e90_add_particle_run, e90_add_pin_run, e90_add_spring_run,
@@ -37,15 +38,18 @@ use hinge::{
     sim_e1d0_run, sim_e4f0_run, sim_ea80_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run,
     state_emit_run, step_big_run, SIM_D160, SIM_D860, VF_E070,
 };
-pub(crate) use matrices::{call_op, fetch_x_direct, transform_direct};
-use matrices::{compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run};
+use matrices::{
+    compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run, mb560_run,
+    pair_combine_run,
+};
+pub(crate) use matrices::{fetch_x_direct, op, transform_direct, Op};
 use walks::{
-    functor_run, grid_hooks_hi_run, grid_hooks_lo_run, integrate_run, mb560_run, mul4_run, name_walk_run, node_of_run,
-    pair_combine_run, pair_echo_run, pair_five_six_deeper_run, pair_five_six_run, pair_five_six_shallower_run,
-    pair_grids_deeper_run, pair_grids_run, pair_grids_shallower_run, pair_one_two_deeper_run, pair_one_two_run,
-    pair_one_two_shallower_run, pair_three_four_deeper_run, pair_three_four_run, pair_three_four_shallower_run,
-    route_pair_five_six_run, route_pair_grids_run, route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58,
-    vf5c, vf64, walk_pre_order_run,
+    functor_run, grid_hooks_hi_run, grid_hooks_lo_run, integrate_run, mul4_run, name_walk_run, node_of_run,
+    pair_echo_run, pair_five_six_deeper_run, pair_five_six_run, pair_five_six_shallower_run, pair_grids_deeper_run,
+    pair_grids_run, pair_grids_shallower_run, pair_one_two_deeper_run, pair_one_two_run, pair_one_two_shallower_run,
+    pair_three_four_deeper_run, pair_three_four_run, pair_three_four_shallower_run, route_pair_five_six_run,
+    route_pair_grids_run, route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58, vf5c, vf64,
+    walk_pre_order_run,
 };
 
 pub const VF58: u32 = 0x51a250;
@@ -126,6 +130,7 @@ pub(crate) const BODY_COMPOSE: u32 = 0x4e6a30;
 const XFORM_8130: u32 = 0x4e8130;
 const TO_QUAT: u32 = 0x4e4d10;
 pub(crate) const EXCLUSION_TEST: u32 = 0x519f80;
+pub(crate) const MAT_COLLIDE_INIT: u32 = 0x51bd30;
 
 pub(crate) const ENTITY_VF118: u32 = 0x519ac0;
 
@@ -245,7 +250,7 @@ pub static BINDINGS: [Binding; 119] = [
     bind(ENTITY_VF120, "CEntity::Vf120", vf120_run),
     bind(0x51bb70, "CGround::Vf110", ground_present),
     bind(0x51bb80, "CGround::Vf114", ground_present),
-    bind(0x51bd30, "E33Mat34::CollideInit", collide_init_run),
+    bind(MAT_COLLIDE_INIT, "E33Mat34::CollideInit", collide_init_run),
     bind(0x4f6770, "E37GridOps::Copy6770", copy_grid_run),
     bind(0x51bc70, "CGround::VfCC", ground_vf_cc),
     bind(0x51c6f0, "CGround::VfE8", ground_vf_e8),

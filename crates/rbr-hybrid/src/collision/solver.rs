@@ -9,7 +9,7 @@ use rbr_physics::store::Raw;
 
 use super::{on_collision, Callees};
 use super::{COLL_EVENT_INIT_FULL, E36_ALLOC_EVENT};
-use crate::entities::{COPY16_WALK, MB560};
+use crate::entities::Op;
 use crate::rigid_body::OPERATOR_NEW;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -172,11 +172,11 @@ impl EventBodyHost for Callees<'_> {
     }
 
     fn pair_walk(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32) {
-        crate::entities::call_op(self.0, sp, MB560, event, &[a, b, c]);
+        crate::entities::op(self.0, sp, event, Op::Mb560 { a, b, c });
     }
 
     fn compose(&mut self, sp: u32, frame: u32, point: u32, body: u32, out: u32) {
-        crate::entities::call_op(self.0, sp, COPY16_WALK, frame, &[point, body, out]);
+        crate::entities::op(self.0, sp, frame, Op::ComposeA { src: point, o2: body, out });
     }
 
     fn dot_products(&mut self, sp: u32, target: u32, body: u32, args: [u32; 6]) -> u32 {
@@ -203,7 +203,7 @@ impl ImpulseHost for Callees<'_> {
     }
 
     fn compose(&mut self, sp: u32, frame: u32, point: u32, body: u32, out: u32) {
-        crate::entities::call_op(self.0, sp, COPY16_WALK, frame, &[point, body, out]);
+        crate::entities::op(self.0, sp, frame, Op::ComposeA { src: point, o2: body, out });
     }
 }
 

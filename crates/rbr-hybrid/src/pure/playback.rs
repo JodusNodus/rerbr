@@ -13,7 +13,6 @@ use super::heap::{Base, PureMemory, PureRunGuard};
 use super::image::{app_state, CAR_PTR, LOAD_STATE};
 use super::{Pure, EMIT, EMIT_OFFSET, SIGNALS, STEP_FORWARD};
 use crate::car_body::UPDATE_SEED;
-use crate::entities::MB560;
 use crate::{Regs, Return};
 use rbr_physics::fpu::Precision;
 
@@ -141,12 +140,13 @@ impl Playback {
         let entry = Regs { esp: self.slot, ..self.regs };
         let scratch = (self.slot - 0x100) & !0xf;
         let (car, frame) = (mem.u32(CAR_PTR), mem.u32(FRAME));
-        // In place (the carry as values, `entities::call_op`): none of the call's words, which the next step's frames
-        // write before any read (residue audit).
+        // As values (`entities::op`): none of the call's words, which the next step's frames write before any read
+        // (residue audit).
         self.pure.with_frame(STEP_FORWARD, &entry, || {
             let args = [car + 0x220, car, scratch];
             crate::skip_unwritten(self.pure.host(), &mut mem.clone(), (self.slot - 0x1000) & !0xf, &args);
-            crate::entities::call_op(self.pure.host(), 0, MB560, frame, &args);
+            let [a, b, c] = args;
+            crate::entities::op(self.pure.host(), 0, frame, crate::entities::Op::Mb560 { a, b, c });
         });
         self.pure.held_changed();
         mem.f32s(scratch)

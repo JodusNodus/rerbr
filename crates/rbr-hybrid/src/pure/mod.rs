@@ -760,6 +760,14 @@ impl Pure {
         }
     }
 
+    /// [`Host::with_image`]: `run` on a [`Pure::lend`] of the image, given back after.
+    fn on_image(&self, run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
+        let mut mem = self.lend();
+        let r = run(&mut mem);
+        self.give_back(mem);
+        r
+    }
+
     /// Keeps a clone of [`Pure::lend`] for the next run (not a poisoned one).
     #[inline(always)]
     fn give_back(&self, mem: Mem) {
@@ -990,6 +998,14 @@ impl Host for Pure {
         self.run_in_place(sp, addr, ecx, args)
     }
 
+    fn with_image(&self, run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
+        self.on_image(run)
+    }
+
+    fn call_esp(&self, sp: u32) -> u32 {
+        self.call_regs(sp, 0).esp
+    }
+
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
         let regs = self.call_regs(sp, ecx);
@@ -1057,6 +1073,14 @@ impl Host for Direct {
 
     fn call_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<Called> {
         self.0.run_in_place(sp, addr, ecx, args)
+    }
+
+    fn with_image(&self, run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
+        self.0.on_image(run)
+    }
+
+    fn call_esp(&self, sp: u32) -> u32 {
+        self.0.call_regs(sp, 0).esp
     }
 
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {

@@ -187,6 +187,8 @@ pub enum RowKind {
     StartRows,
     /// `rotate_rows` with the orientation at the step's start.
     StartRows3,
+    /// `fold_origin_rows`.
+    Fold,
 }
 
 /// A body's map of the rows carried through its frame, with the pose it reads, read once: the rows are values, not
@@ -200,6 +202,7 @@ pub enum RowMap {
     StartPointsIn { orientation: Quat, offset: Vec4 },
     StartRows(Quat),
     StartRows3(Quat),
+    Fold(RowFrame),
 }
 
 impl RowMap {
@@ -226,6 +229,7 @@ impl RowMap {
             RowMap::StartPointsIn { orientation, offset } => quat_diff_rows(*orientation, *offset, rows),
             RowMap::StartRows(orientation) => quat_transform_rows(*orientation, rows),
             RowMap::StartRows3(orientation) => rotate_rows(*orientation, rows),
+            RowMap::Fold(frame) => fold_origin_rows(frame, rows),
         }
     }
 }

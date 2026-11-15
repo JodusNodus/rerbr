@@ -290,15 +290,28 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   owner map a `rigid_body::rows::RowMap` with the pose read once, `entities::layout::passage` from the frame's and
   owner's vtables) and store the result where the original wrote it; no hook, gate or owner slot is called (the old
   frames' through the host before). Back out to the walk in place: a hook, gate or owner slot not in `passage`
-  (`CCarBody::Vf9Cx`, 2.0 a step from `ComposeA`: its gated name getter is the car body's; `CSolid::E43VfBC`), an
-  output on the owner's pose words, overlapping rows, more than 16 rows. Still the bindings' entry (`call_op` runs
-  them in place: its 60 callers pass no memory, 20 leave the placement to the host); the child walks' words are
-  written as in place (`HeldFrames::descend`, to go with `PairWalk::walk`'s). A carry counts as a run only when it
-  touched held words (else the call memo of the E36 collect's transforms stops keeping them: +0.5 % instead).
-  `FetchY`/`WB410` (grids' box tables, not rows) and `Combine` (a pair store) stay in place. The notify vector's
-  `MB560` between steps (`Playback::notify_a_vector`) in place, 1.02 host calls a step. Audit (`residue-audit`, the
-  hooks', gates' and owner slots' words filled): reports equal to the base aids off, on, damage realistic; twin typed
-  and mem-direct equal aids off and on.
+  (an unknown owner; a car body's scatter with its gate set calls the body's slot 0), an output on the pose words the
+  owner's loop reads (per loop: the start-pose loops read other words than the matrix loops), overlapping rows,
+  more than 16 rows. A scatter (`CCarBody::Vf9Cx`/`VfA0x`: base subtracted/added, gate clear) is `Passage::Points`; its
+  hook call's words are written as the walk in place writes them (a reader of that dead stack exists: the tyre noise
+  payload's `+0x46c`, tags show it in the audit). The notify vector's `MB560` between steps (`Playback::notify_a_vector`)
+  is entered as the others. Audit (`residue-audit`, the hooks', gates' and owner slots' words filled): reports equal to
+  the base aids off, on, damage realistic; twin typed and mem-direct equal aids off and on.
+- The ops as Rust calls with values (batch 16; drive2 host calls 375.1 -> 372.0 a step, instructions -1.41 %,
+  allocations 26 -> 24 a step): `entities::{op, Op}` (`hybrid/entities/matrices.rs`): `Op::{Mb560, ComposeA, ComposeB,
+  FetchX, FetchY, Combine, CopyBlocks}` carry the stack words as values with the receiver; on held state `op` runs them
+  (`run`) on the image `Host::with_image` lends, no call, no frame, no sp (`sp` only places the audit's fills:
+  `Host::call_esp`); the 60 callers say `entities::op(host, sp, this, Op::..)`. The bindings (`mb560_run`, ...) are the
+  per-call adapter and call the same `run`; where it backs out they walk in place (`bound`), as `call_in_place` enters a
+  binding when `op` backs out. `FetchY` (the box tables of the grid copied to `out`, carried by `carry_grid` over both
+  tables, the grid's first count) and `Combine` (the pair stored) are values too. `CollideInit` is `entities::collide_init`
+  (`hybrid/entities/collide_init.rs`) from `CBody::VfD0`: a Rust call on held state at its frame on the image, its
+  `CopyFrom` and `Length` direct. What the ops still read from the image: the frames' words and vtables (tree nodes,
+  `layout::passage`), the car body's gate and base, `FetchY`'s grid words, `CollideInit`'s frame and callees (its queries
+  stay host calls). Fallbacks (drive2: none reached, `entities::op` backouts 0 a step; per-call and the emulator keep the
+  call): more than 16 rows (14 in the contact loops), overlapping rows, a frame hook, gate or owner slot not in `passage`
+  (the car body's scatter with the gate set, an unknown owner), an output on the pose words its loop reads, a grid of
+  more than 30 boxes. The walks themselves (`PairWalk`, `walks.rs`, the tree links) stay on the image (row 15e).
 - The hinged body's calls of its own bindings run in place on a held body (`entities::hinge::call_hinge`): the limit
   update, `SimD160`, `SimC960`, `SimE1D0`, `SimCFF0`, `SimEA80`, `SimD860` from `SimF950`, `SimEAD0`, `SimD160` and
   `SimEFE0`; the limit update's `SetDirty` direct (`hinge::set_dirty`, the rate tweak's dirty word on the image).

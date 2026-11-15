@@ -6,7 +6,8 @@ use rbr_physics::engine_driveline::{engine, layout};
 use rbr_physics::math::vec::Vec4;
 use rbr_physics::mem::Mem;
 
-use super::{f, on_engine, E01LOG, FLOOR_S32_FORMAT, GRAPH_PUSH, MB560, SIGNALS, WALKER};
+use super::{f, on_engine, E01LOG, FLOOR_S32_FORMAT, GRAPH_PUSH, SIGNALS, WALKER};
+use crate::entities::Op;
 use crate::ngp::engine_tuning;
 use crate::{Ctx, Decline, Host, Regs, Return};
 use rbr_physics::store::Raw;
@@ -175,7 +176,7 @@ impl engine::CarWalkHost for Sim8890Calls<'_> {
     /// `a` is the car's velocity (`Sim8E20`'s radiator airflow): `MB560` copies it on the solids' store.
     fn transform_point(&mut self, a: u32, b: u32) -> [f32; 4] {
         let c = self.scratch;
-        crate::entities::call_op(self.host, 0, MB560, self.mem.u32(WALKER), &[a, b, c]);
+        crate::entities::op(self.host, 0, self.mem.u32(WALKER), Op::Mb560 { a, b, c });
         self.mem.f32s(c)
     }
 }
