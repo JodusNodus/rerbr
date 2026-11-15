@@ -4,6 +4,7 @@
 
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::construct::Heap;
+use rbr_physics::physics_core::layout::takes_part_word;
 use rbr_physics::rigid_body::host::{EntityWalkHost, HostUnavailable};
 use rbr_physics::rigid_body::rotation::MulHost;
 
@@ -70,6 +71,17 @@ pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32
     }
 }
 
+/// `CSolid::E43Vf80` (0x5293d0, a solid's gate) when it is `target`, on the held solid `this`: its word at `+0x1dc`
+/// (`takes_part_word`), counted as a run ([`Host::ran_direct`]); its binding reads nothing of the stack, and its callers
+/// read none of the call's words. `None` for another target or body and per call, where the caller calls the host.
+pub(crate) fn solid_gate_direct(host: &dyn Host, mem: &mut Mem, target: u32, this: u32) -> Option<u32> {
+    if target != SOLID_VF80 || !held_solids(host).is_some_and(|s| s.held(this).is_some()) {
+        return None;
+    }
+    host.ran_direct();
+    Some(with_solids(host, mem, |s| takes_part_word(s, this)))
+}
+
 /// The car's solids while the pure host holds them over a step ([`on_solids`]); `None` per call, where a caller on a
 /// hot path keeps its run on `Mem` (`SolidView::image` reads word by word).
 pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
@@ -77,6 +89,7 @@ pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;
+const SOLID_VF80: u32 = 0x5293d0;
 pub const VF20_JUMP: u32 = 0x529200;
 pub const VF16_HELPER: u32 = 0x52b6d0;
 pub const STATE_CTOR: u32 = 0x52d280;

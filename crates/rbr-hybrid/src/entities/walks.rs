@@ -15,7 +15,7 @@ use rbr_physics::mem::Mem;
 
 use super::frame::{frame_hook_at, FrameOwner};
 use super::WALK_PRE_ORDER;
-use crate::rigid_body::held_solids;
+use crate::rigid_body::{held_solids, solid_gate_direct};
 use crate::{Ctx, Decline, Host, Regs, Return};
 use rbr_physics::rigid_body::layout::SolidWords;
 
@@ -87,7 +87,10 @@ impl Children for Walk<'_> {
     }
 
     fn gated(&mut self, child: u32) -> bool {
-        self.host.call_at(self.at(self.depths.gate), layout::vtable_target(&self.mem, child, 0x80), child, &[]).eax != 0
+        let target = layout::vtable_target(&self.mem, child, 0x80);
+        solid_gate_direct(self.host, &mut self.mem, target, child)
+            .unwrap_or_else(|| self.host.call_at(self.at(self.depths.gate), target, child, &[]).eax)
+            != 0
     }
 }
 

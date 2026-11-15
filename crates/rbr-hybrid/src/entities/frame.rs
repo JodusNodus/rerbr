@@ -6,7 +6,7 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::mem::Mem;
 
 use super::{FRAME_VF04, FRAME_VF08, FRAME_VF0C, FRAME_VF10, FRAME_VF14};
-use crate::rigid_body::{held_solids, E43VFAC, E43VFB0};
+use crate::rigid_body::{held_solids, solid_gate_direct, E43VFAC, E43VFB0};
 use crate::{Ctx, Decline, Host, Regs, Return};
 use rbr_physics::rigid_body::layout::CarSolids;
 use rbr_physics::rigid_body::store::RigidStore;
@@ -63,14 +63,9 @@ impl Owner for FrameOwner<'_> {
     }
 
     fn gate(&mut self, owner: u32) -> u32 {
-        self.host
-            .call_at(
-                self.esp.wrapping_sub(OLD_FRAME_GATE_DEPTH),
-                layout::vtable_target(self.mem, owner, 0x80),
-                owner,
-                &[],
-            )
-            .eax
+        let target = layout::vtable_target(self.mem, owner, 0x80);
+        solid_gate_direct(self.host, self.mem, target, owner)
+            .unwrap_or_else(|| self.host.call_at(self.esp.wrapping_sub(OLD_FRAME_GATE_DEPTH), target, owner, &[]).eax)
     }
 
     fn frame_of(&mut self, _ent: u32) -> u32 {
