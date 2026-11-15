@@ -193,8 +193,10 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   steps (`notify_a_vector`, `Playback::emit`, `reset_strut_dampers`) run on the held state and mark it stale. A held
   solid's image copy follows each lower (else a word back at its lifted value stays unlowered: drive2 frame 920).
   Every reader and writer between steps goes through the gate (`Pure`'s image is private); with `poison` every image
-  clone panics at a held word while stale. drive2: instructions -0.9 % a step, allocations 26498 -> 9221 bytes a step
-  (`layout::car_state` and the headless compare still lower every step).
+  clone panics at a held word while stale. drive2: instructions -0.9 % a step, allocations 26498 -> 9221 bytes a step.
+  Per-step and per-frame readers (`layout::{car_state, accumulate_tyre_terms, drive_gear}`, live `poll`, the wheel force,
+  the picture's strut pointers) read `Pure::with_held` or `Pure::unheld_image` and do not lower: drive2 lowers in the
+  step 2 -> 0, instructions -5.6 %, 9221 -> 2951 bytes; live one lower per answer (picture, dash, sound stay on `image()`).
 - Per call (the hybrid check's emulator, the vectors, `typed` off) the views run on the image: the struts, VCU, tyres
   and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
   field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
