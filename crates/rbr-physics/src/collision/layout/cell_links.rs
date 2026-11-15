@@ -8,6 +8,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 use std::ops::Range;
 
 use super::cell_table::CellTable;
@@ -21,6 +22,26 @@ const RECORD: u32 = 0x10;
 /// The held words of a record.
 const WORDS: u32 = 3;
 
+/// A multiplicative hash of an address: the probe walks look a record up for every node they visit.
+#[derive(Default)]
+struct AddressHasher(u64);
+
+impl Hasher for AddressHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        bytes.iter().for_each(|&b| self.write_u32(u32::from(b)));
+    }
+
+    fn write_u32(&mut self, i: u32) {
+        self.0 = (self.0.rotate_left(5) ^ u64::from(i)).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+
+type Records = HashMap<u32, [u32; 3], BuildHasherDefault<AddressHasher>>;
+
 /// The held records over a step: the link blocks known (for which lists are cells'), the bodies' links that were in
 /// the cells' lists at the lift (owned with the blocks' heads), and every record written since, by address.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -29,7 +50,7 @@ pub struct CellLinks {
     blocks: RefCell<Vec<u32>>,
     /// The bodies' links in the cells' lists at the lift.
     listed: Vec<u32>,
-    records: RefCell<HashMap<u32, [u32; 3]>>,
+    records: RefCell<Records>,
 }
 
 impl CellLinks {
@@ -60,7 +81,7 @@ impl CellLinks {
         let k = blocks.partition_point(|&b| b <= head);
         k > 0 && {
             let offset = head - blocks[k - 1];
-            offset < HEADS * RECORD && offset % RECORD == 0
+            offset < HEADS * RECORD && offset.is_multiple_of(RECORD)
         }
     }
 

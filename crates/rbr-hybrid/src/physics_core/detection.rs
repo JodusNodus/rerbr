@@ -144,7 +144,7 @@ impl DetectorHost for Detectors<'_> {
         let host = self.host;
         let corners = || last.and_then(|c| c.for_call(frame - 0xc, frame + 0x28, frame + 0x20, host.entered()));
         let next = |mem: &Mem, node| crate::collision::cell_word(host, mem, node);
-        self.kernel.tests(mem, ret, frame, node, (mask, excluded), corners, next)
+        self.kernel.tests(mem, ret, frame, node, (mask, excluded), (corners, next))
     }
 
     fn cell_first(&self, mem: &Mem, cell: u32) -> u32 {

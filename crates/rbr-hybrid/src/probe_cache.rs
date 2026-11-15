@@ -91,8 +91,7 @@ impl KernelCall {
         frame: u32,
         start: u32,
         (mask, excluded): (u32, u32),
-        corners: impl FnOnce() -> Option<[Vec4; 2]>,
-        next: impl Fn(&Mem, u32) -> u32,
+        (corners, next): (impl FnOnce() -> Option<[Vec4; 2]>, impl Fn(&Mem, u32) -> u32),
     ) -> Option<KernelTest> {
         let mut corners = Some(corners);
         let mut fetched = None;
