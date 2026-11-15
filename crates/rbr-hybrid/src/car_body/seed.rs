@@ -40,7 +40,7 @@ impl<S: CarStore> ControlCalls<S> for Seed<'_> {
     }
 
     fn engine_idle(&mut self, _mem: &mut S, obj: u32, seed: u32) {
-        self.host.call_at(self.sp(4), NOP_D570, obj, &[seed]);
+        crate::call_or_trivial(self.host, self.sp(4), NOP_D570, obj, &[seed]);
     }
 
     fn drive_control(&mut self, _mem: &mut S, obj: u32, seed: u32) {
@@ -165,7 +165,7 @@ struct Mrr<'a> {
 
 impl WiringCalls for Mrr<'_> {
     fn call(&mut self, callee: u32, this: u32, args: &[u32]) {
-        self.host.call(callee, this, args);
+        crate::call_or_trivial(self.host, 0, callee, this, args);
     }
 
     fn emit(&mut self, obj: u32, pair: [u32; 2]) {

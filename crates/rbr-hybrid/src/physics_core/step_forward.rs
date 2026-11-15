@@ -13,12 +13,12 @@ use crate::pure::QUERY_PERFORMANCE_COUNTER;
 use crate::rigid_body::{VF_DX, VF_EX};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-/// The counter through the import table.
+/// The counter: the pure host's without a call ([`Host::query_counter`]), else through the import table.
 struct Timer<'a>(&'a dyn Host, u32);
 
 impl ProfHost for Timer<'_> {
     fn counter(&mut self, at: u32) -> u32 {
-        self.0.call(self.1, 0, &[at]).eax
+        self.0.query_counter(at).unwrap_or_else(|| self.0.call(self.1, 0, &[at]).eax)
     }
 }
 
@@ -105,7 +105,7 @@ impl<S: Raw> core_physics::StepHost<S> for PhysicsStepCalls<'_> {
     }
 
     fn post_bodies(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
-        self.host.call_at(entry_sp, target, node, &[dt.to_bits()]);
+        crate::call_or_trivial(self.host, entry_sp, target, node, &[dt.to_bits()]);
     }
 
     fn init_pass(&mut self, entry_sp: u32, target: u32, node: u32) {
@@ -121,7 +121,7 @@ impl<S: Raw> core_physics::StepHost<S> for PhysicsStepCalls<'_> {
     }
 
     fn telemetry_substep(&mut self, entry_sp: u32, receiver: u32, count: u32) {
-        self.host.call_at(entry_sp, 0x499e60, receiver, &[count]);
+        crate::call_or_trivial(self.host, entry_sp, 0x499e60, receiver, &[count]);
     }
 
     fn collide_window(&mut self, entry_sp: u32, physics: u32, window: f32) {
@@ -145,7 +145,7 @@ impl<S: Raw> core_physics::StepHost<S> for PhysicsStepCalls<'_> {
             |ctx| {
                 ctx.host.call_at(stack.loop_void(), 0x526cc0, physics, &[]);
                 let events = layout::step_scratch_events(&ctx.mem, physics);
-                ctx.host.call_at(stack.loop_arg(), 0x499e70, telemetry, &[events]);
+                crate::call_or_trivial(ctx.host, stack.loop_arg(), 0x499e70, telemetry, &[events]);
                 layout::seed_penetration_exit(&mut ctx.mem, stack);
             },
         );
@@ -176,7 +176,7 @@ impl<S: Raw> core_physics::StepHost<S> for PhysicsStepCalls<'_> {
     }
 
     fn telemetry_after_solve(&mut self, entry_sp: u32, receiver: u32) {
-        self.host.call_at(entry_sp, 0x499e90, receiver, &[]);
+        crate::call_or_trivial(self.host, entry_sp, 0x499e90, receiver, &[]);
     }
 
     fn reset_drive_part(&mut self, entry_sp: u32, drive: u32) {

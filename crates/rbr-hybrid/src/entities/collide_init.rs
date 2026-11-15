@@ -6,8 +6,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::ZERO_VEC4;
 
 use crate::collision::{
-    CE36_SUB_BLOCK_INIT, COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, COLL_EVENT_INIT_FULL, E01_VEC4_COPY_FROM,
-    E01_VEC4_NORMALIZE, E36_ALLOC_EVENT, E37_GRID_COPY, FLOAT3_LENGTH, RAY_CLEAR,
+    COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, COLL_EVENT_INIT_FULL, E01_VEC4_COPY_FROM, E01_VEC4_NORMALIZE, E36_ALLOC_EVENT,
+    E37_GRID_COPY, FLOAT3_LENGTH, RAY_CLEAR,
 };
 use crate::entities::COPY16_WALK;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -39,7 +39,7 @@ impl CollideCalls<'_> {
 
 impl CollideHost for CollideCalls<'_> {
     fn init_block(&mut self, sp: u32, block: u32) {
-        self.host.call_at(sp, CE36_SUB_BLOCK_INIT, block, &[]);
+        crate::car_body::init_sub_block(self.host, &mut self.mem, sp, block);
     }
 
     fn gate_boxes(&mut self, sp: u32, body: u32, a: u32, b: u32) {
@@ -51,7 +51,8 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn transform(&mut self, sp: u32, body: u32) -> u32 {
-        self.slot(sp, body, 0x30, &[])
+        let target = layout::vtable_target(&self.mem, body, 0x30);
+        crate::call_or_trivial(self.host, sp, target, body, &[])
     }
 
     fn grid_source(&mut self, sp: u32, body: u32) -> u32 {

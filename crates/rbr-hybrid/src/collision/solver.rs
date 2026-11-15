@@ -168,7 +168,7 @@ const E37_EMIT_4DC0: u32 = 0x4f4dc0;
 
 impl EventBodyHost for Callees<'_> {
     fn transform(&mut self, sp: u32, target: u32, body: u32) -> u32 {
-        self.0.call_at(sp, target, body, &[]).eax
+        crate::call_or_trivial(self.0, sp, target, body, &[])
     }
 
     fn pair_walk(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32) {

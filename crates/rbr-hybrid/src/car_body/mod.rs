@@ -27,6 +27,7 @@ use damage_ops::{
     gearbox_wear, grow_cooling_wear, grow_intercooler_wear, grow_zone, ring_store, set_body_state, zero2f0,
     zone_scaled,
 };
+pub(crate) use members::init_sub_block;
 use members::{
     add_adc, body_to_world_pair, body_vf40x, body_vf80x, car_vf40x, car_vf_d8x, clear480, collide6000, emit_init,
     flow_m566640, flow_m5666b0, forward_speed, fwd18e20, fwd43c0, fwd6db0, fwd6dd0, get_a48, get_b0c, get_b1c,

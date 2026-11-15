@@ -232,6 +232,11 @@ pub enum StandIn {
     Free,
 }
 
+/// Whether `addr` is one of the `ret n` stand-ins of [`CODE_STAND_INS`] (the exe's empty functions).
+pub(crate) fn is_ret(addr: u32) -> bool {
+    CODE_STAND_INS.iter().any(|&(at, s)| at == addr && matches!(s, StandIn::Ret(_)))
+}
+
 /// The stand-in at `addr`, by its code bytes or its address.
 pub fn stand_in(mem: &Mem, addr: u32) -> Option<StandIn> {
     // A listener returns at its entry whatever its bytes: the damage receivers are Invoke trampolines.

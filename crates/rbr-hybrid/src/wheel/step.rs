@@ -265,7 +265,7 @@ impl layout::StepCalls for Step<'_> {
         // The car's vtable slot 12: `call [[car] + 0x30]`; the arguments stay on the stack for `pair_walk`.
         let vtable = self.mem.u32(car);
         let slot = self.mem.u32(vtable + 0x30);
-        self.on(sp, slot, car, args)
+        crate::call_or_trivial(self.host, sp, slot, car, args)
     }
 
     fn pair_walk(&mut self, this: u32, a: u32, b: u32, c: u32, sp: u32) {
@@ -305,7 +305,7 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn init_sub_block(&mut self, this: u32, sp: u32) {
-        self.on(sp, 0x4F3E80, this, &[]);
+        crate::car_body::init_sub_block(self.host, &mut self.mem, sp, this);
     }
 
     fn point_velocity(&mut self, body: u32, point: u32, out: u32, sp: u32) {

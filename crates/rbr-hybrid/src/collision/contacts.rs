@@ -14,7 +14,7 @@ use super::{
     E37_EDGE_EDGE, E37_EDGE_PAIR, E37_GRID_COPY, FETCH_X, MAT_COLLIDE_INIT, PAIR_COMBINE_TWIN,
 };
 use super::{COLL_EVENT_INIT_FULL, E36_ALLOC_EVENT};
-use crate::collision::{CE36_SUB_BLOCK_INIT, RAY_CLEAR};
+use crate::collision::RAY_CLEAR;
 use crate::entities::{COPY16_WALK, FETCH_Y, PAIR_COMBINE};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -64,11 +64,13 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn other_transform(&mut self) -> u32 {
-        self.virtual_call(self.other, VF30_SLOT, &[])
+        let target = layout::vtable_slot(self.mem, self.other, VF30_SLOT);
+        crate::call_or_trivial(self.host, 0, target, self.other, &[])
     }
 
     fn this_transform(&mut self) -> u32 {
-        self.virtual_call(self.this, VF30_SLOT, &[])
+        let target = layout::vtable_slot(self.mem, self.this, VF30_SLOT);
+        crate::call_or_trivial(self.host, 0, target, self.this, &[])
     }
 
     fn combine(&mut self, out: u32, src: u32, worker: u32) {
@@ -76,7 +78,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn sub_block_init(&mut self, block: u32) {
-        self.host.call(CE36_SUB_BLOCK_INIT, block, &[]);
+        crate::car_body::init_sub_block(self.host, &mut self.mem.clone(), 0, block);
     }
 
     fn grid_count(&mut self) -> u32 {
@@ -141,7 +143,8 @@ impl GridContactHost for VfD0Calls<'_> {
     }
 
     fn transform(&mut self, sp: u32, entity: u32) -> u32 {
-        self.slot(sp, entity, 0x30, &[])
+        let target = self.mem.u32(self.mem.u32(entity) + 0x30);
+        crate::call_or_trivial(self.host, sp, target, entity, &[])
     }
 
     fn grid_active(&mut self, sp: u32, entity: u32) -> u32 {
@@ -345,7 +348,8 @@ impl BoxEdgeHitCalls for F4CallsAt<'_> {
     // The original pushes the compose arguments before the second and third calls, so those run lower; the callee
     // takes none, and nothing it writes is read after the call, so the entry at `sp - 4` is equivalent.
     fn transform(&mut self) -> u32 {
-        self.virtual_call(VF30_SLOT, self.sp - 4)
+        let target = layout::vtable_slot(self.mem, self.this, VF30_SLOT);
+        crate::call_or_trivial(self.host, self.sp - 4, target, self.this, &[])
     }
 
     fn fetch_x(&mut self, matrix: u32, out: u32, t: u32) {

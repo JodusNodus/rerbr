@@ -64,7 +64,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn transform(&mut self, sp: u32, entity: u32) -> u32 {
-        self.slot(sp, entity, 0x30, &[])
+        crate::call_or_trivial(self.host, sp, vslot(&self.mem, entity, 0x30), entity, &[])
     }
 
     fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
@@ -107,7 +107,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn transform_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32 {
-        self.slot(sp, entity, 0x30, &[arg])
+        crate::call_or_trivial(self.host, sp, vslot(&self.mem, entity, 0x30), entity, &[arg])
     }
 
     fn exclusion_test(&mut self, sp: u32, entity: u32, other: u32) -> u32 {
@@ -176,10 +176,16 @@ impl CollideHost for Detectors<'_> {
     }
 
     fn telemetry_events(&mut self, sp: u32, receiver: u32, events: u32) {
-        self.host.call_at(sp, 0x499e70, receiver, &[events]);
+        crate::call_or_trivial(self.host, sp, 0x499e70, receiver, &[events]);
     }
 
     fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
+        // A `ret`, but the slot of its return address is read after it (car+0x14c, `--twin mem-direct` at drive2's step
+        // 19211): written under either dispatch.
+        if crate::skip_call_writing(self.host, &mut self.mem, sp, &[]) {
+            self.host.ran_direct();
+            return;
+        }
         self.host.call_at(sp, 0x499e90, receiver, &[]);
     }
 

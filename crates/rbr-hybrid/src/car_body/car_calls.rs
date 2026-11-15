@@ -104,7 +104,7 @@ impl PlacementCalls for Car<'_> {
     }
 
     fn identity(&mut self, car: u32) -> u32 {
-        self.host.call(NODE_OF, car, &[]).eax
+        crate::call_or_trivial(self.host, 0, NODE_OF, car, &[])
     }
 }
 
@@ -195,7 +195,7 @@ impl rbr_physics::rigid_body::host::EntityScratchTailHost for CarVf54<'_> {
     fn entity_scratch_tail(&mut self) -> Result<(), rbr_physics::rigid_body::host::HostUnavailable> {
         let entity = self.car + 0x5c;
         let target = self.mem.u32(self.mem.u32(entity) + 4);
-        self.host.call(target, entity, &[]);
+        crate::call_or_trivial(self.host, 0, target, entity, &[]);
         Ok(())
     }
 }

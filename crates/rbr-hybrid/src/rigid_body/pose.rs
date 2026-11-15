@@ -52,8 +52,15 @@ impl PoseHost for Pose<'_> {
         local.store(&mut self.mem, local_at);
         let s30 = self.mem.u32(self.mem.u32(parent) + 4 * 12);
         let walker = self.mem.u32(WALKER);
-        let called = self.host.call(s30, parent, &[local_at, walker, out_at]);
-        self.host.call(COPY16_WALK, called.eax, &[]);
+        let args = [local_at, walker, out_at];
+        match crate::trivial(self.host, s30, parent) {
+            // ComposeA pops the three words the getter's call leaves: it is passed them.
+            Some(node) => self.host.call(COPY16_WALK, node, &args),
+            None => {
+                let node = self.host.call(s30, parent, &args).eax;
+                self.host.call(COPY16_WALK, node, &[])
+            }
+        };
         Vec4::load(&self.mem, out_at)
     }
 

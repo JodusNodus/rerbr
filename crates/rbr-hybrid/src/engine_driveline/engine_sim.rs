@@ -169,7 +169,7 @@ struct Sim8890Calls<'a> {
 impl engine::CarWalkHost for Sim8890Calls<'_> {
     fn walk_object(&mut self, car: u32) -> u32 {
         let slot12 = self.mem.u32(self.mem.u32(car) + 4 * 12);
-        self.host.call(slot12, car, &[]).eax
+        crate::call_or_trivial(self.host, 0, slot12, car, &[])
     }
 
     /// `a` is the car's velocity (`Sim8E20`'s radiator airflow): `MB560` copies it on the solids' store.

@@ -181,7 +181,7 @@ impl EntityScratchTailHost for EntityVf54<'_> {
     fn entity_scratch_tail(&mut self) -> Result<(), HostUnavailable> {
         let object = self.this + 0x5c;
         let slot1 = layout::vtable_target(&self.mem, object, 4);
-        self.host.call_at(self.sp, slot1, object, &[]);
+        crate::call_or_trivial(self.host, self.sp, slot1, object, &[]);
         Ok(())
     }
 }

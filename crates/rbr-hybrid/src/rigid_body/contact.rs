@@ -10,7 +10,7 @@ use rbr_physics::rigid_body::layout::{self, Vec4};
 use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::rigid_body::vote::ContactVoteHost;
 
-use super::force_pass::{SLOT_RESPONSE, SLOT_S30};
+use super::force_pass::{s30_at, SLOT_RESPONSE};
 use super::slots::Flush;
 use super::{
     on_solids, unavailable, with_solids, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A, SAMPLE,
@@ -76,8 +76,7 @@ impl BodyCalls for ContactCalls<'_> {
     fn transform(&mut self, src: Vec4) -> Vec4 {
         let at = self.frame + 0x60;
         src.store(&mut self.mem, at);
-        let target = layout::vtable_target(&self.mem, self.this, SLOT_S30);
-        let body = self.host.call_at(self.frame - 8, target, self.this, &[self.a]).eax;
+        let body = s30_at(&self.mem, self.host, self.frame - 8, self.this, &[self.a]);
         let walker = self.mem.u32(WALKER);
         self.host.call_at(self.frame - 0x10, MB560, walker, &[at, body, self.a]);
         Vec4::load(&self.mem, self.a)

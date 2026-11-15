@@ -75,7 +75,7 @@ struct WallCorners<'a> {
 impl WallQueryHost for WallCorners<'_> {
     fn frame(&mut self, sp: u32, wall: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(wall) + 0x30);
-        self.host.call_at(sp, target, wall, &[]).eax
+        crate::call_or_trivial(self.host, sp, target, wall, &[])
     }
 
     fn fetch_x(&mut self, sp: u32, corner: u32, out: u32, frame: u32) {

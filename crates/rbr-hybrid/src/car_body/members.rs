@@ -120,7 +120,11 @@ fn helper_then_slot17(ctx: &mut Ctx, r: &Regs, helper: u32, at: u32) -> Result<R
     ctx.host.call(helper, r.ecx, &[]);
     let object = r.ecx + at;
     let slot = ctx.mem.u32(ctx.mem.u32(object) + 0x44);
-    Ok(Return::void(ctx.host.call(slot, object, &[]).eax, 0))
+    let eax = match crate::trivial(ctx.host, slot, object) {
+        Some(_) => r.eax, // an empty hook leaves the caller's
+        None => ctx.host.call(slot, object, &[]).eax,
+    };
+    Ok(Return::void(eax, 0))
 }
 
 /// thiscall `()`: `CCar::Vf40x`, `CSolid::Vf40` and then the slot of the object at `+0xa00`.
@@ -280,7 +284,7 @@ struct StateCallees<'a> {
 impl GridCalls for StateCallees<'_> {
     fn grid(&mut self, owner: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(owner) + 0x30);
-        self.host.call(target, owner, &[]).eax
+        crate::call_or_trivial(self.host, 0, target, owner, &[])
     }
 
     fn clear_grid(&mut self, owner: u32, grid: u32, plus: u32, minus: u32) {
@@ -318,6 +322,17 @@ impl car::body::BodyCalls for BodyCalls<'_> {
         let target = self.mem.u32(self.mem.u32(body));
         self.host.call(target, body, &[]);
     }
+}
+
+/// `NTweak::CE36SubBlock::Init` (0x4f3e80) on `block`, entered at `sp`: on the pure host its port, without the call
+/// (as [`crate::trivial`]: no reader reads the call's words); else the call.
+pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, sp: u32, block: u32) {
+    if host.call_slot_word().is_none() {
+        host.call_at(sp, crate::collision::CE36_SUB_BLOCK_INIT, block, &[]);
+        return;
+    }
+    host.ran_direct();
+    car::light::sub_block_init(mem, block);
 }
 
 /// thiscall `()`: `NTweak::CE36SubBlock::Init` zeroes the sub-block.
@@ -360,7 +375,7 @@ pub(super) fn body_to_world_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     }
     let [a, b, ..] = r.stack;
     let slot = |mem: &Mem, this: u32| mem.u32(mem.u32(this) + 0x30);
-    let own = ctx.host.call(slot(&ctx.mem, car), car, &[]).eax;
+    let own = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, car), car, &[]);
     let receiver = ctx.host.call(slot(&ctx.mem, body), body, &[]).eax;
     ctx.host.call(entities::MB560, receiver, &[a, own, b]);
     Ok(Return::void(b, 8))

@@ -384,12 +384,12 @@ impl CarPathCalls for E4F0Host<'_> {
     fn car_frame(&mut self, buf: u32) -> u32 {
         let car = self.car();
         let target = self.mem.u32(self.mem.u32(car) + 0x30);
-        self.host.call_at(self.frame - 0x48, target, car, &[buf]).eax
+        crate::call_or_trivial(self.host, self.frame - 0x48, target, car, &[buf])
     }
 
     fn body_frame(&mut self, v: u32, u: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(self.this) + 0x30);
-        self.host.call_at(self.frame - 0x50, target, self.this, &[v, u]).eax
+        crate::call_or_trivial(self.host, self.frame - 0x50, target, self.this, &[v, u])
     }
 
     fn carry_pose(&mut self, x: u32, a: u32, b: u32, c: u32) {

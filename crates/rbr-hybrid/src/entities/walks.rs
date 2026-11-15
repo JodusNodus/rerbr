@@ -131,7 +131,8 @@ impl PreOrder for Walk<'_> {
 impl NameWalk for Walk<'_> {
     fn state_pass(&mut self, node: u32) {
         let state = node + 0x38;
-        self.host.call_at(self.at(self.depths.name), layout::vtable_target(&self.mem, state, 0x44), state, &[]);
+        let target = layout::vtable_target(&self.mem, state, 0x44);
+        crate::call_or_trivial(self.host, self.at(self.depths.name), target, state, &[]);
     }
 
     fn walk_children_pre(&mut self, node: u32, functor: u32) {

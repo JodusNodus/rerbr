@@ -274,18 +274,19 @@ fn uint_select(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `CE36SubBlock::Init` (0x4f3e80, thiscall) as the original calls it from `Unk96e0`.
 struct Init<'a> {
     host: &'a dyn Host,
+    mem: Mem,
 }
 
 impl SubBlockInit for Init<'_> {
     fn init_sub_block(&mut self, block: u32) {
-        self.host.call(0x4F3E80, block, &[]);
+        crate::car_body::init_sub_block(self.host, &mut self.mem, 0, block);
     }
 }
 
 /// `Unk96e0` (thiscall, plain `ret`) (name ours). Its local is the free stack below the return address (as `Unk97a0`'s
 /// payload). The eax it returns is the tyre block pointer, which the asm leaves there.
 fn table_lerp_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut init = Init { host: ctx.host };
+    let mut init = Init { host: ctx.host, mem: ctx.mem.clone() };
     let tuning = if crate::ngp::is_ngp() { crate::ngp::wheel_tuning(ctx) } else { layout::WheelTuning::STOCK };
     let li = r.esp.wrapping_sub(0x10);
     let block = on_wheels(ctx, |m| layout::table_lerp_pair(&mut init, m, r.ecx, li, tuning));

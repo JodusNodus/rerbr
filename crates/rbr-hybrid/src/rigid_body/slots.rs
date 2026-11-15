@@ -13,7 +13,7 @@ use rbr_physics::rigid_body::vote::{probe_ground, Vote, VoteHost};
 use rbr_physics::stage::layout as stage_layout;
 use rbr_physics::store::Raw;
 
-use super::force_pass::{vcall_at, SLOT_S30};
+use super::force_pass::{s30_at, vcall_at};
 use super::{on_solids, unavailable, Original, COPY16_WALK, MB560, RING_APPEND, SLOT_HOOK, WALKER};
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
@@ -56,7 +56,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
     fn transform_by_body(&mut self, v: Vec4) -> Vec4 {
         let (src, out) = (self.frame + 0x40, self.frame + 0x30);
         v.store(&mut self.mem, src);
-        let pose = vcall_at(&self.mem, self.host, self.frame - 8, self.body, SLOT_S30, &[out]).eax;
+        let pose = s30_at(&self.mem, self.host, self.frame - 8, self.body, &[out]);
         let walker = self.mem.u32(WALKER);
         self.host.call_at(self.frame - 0x10, MB560, walker, &[src, pose, out]);
         Vec4::load(&self.mem, out)
@@ -68,7 +68,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
         v.store(&mut self.mem, src);
         let walker = self.mem.u32(WALKER);
         let args = [src, walker, out];
-        let pose = vcall_at(&self.mem, self.host, self.frame - 0x10, self.body, SLOT_S30, &args).eax;
+        let pose = s30_at(&self.mem, self.host, self.frame - 0x10, self.body, &args);
         self.host.call_at(self.frame - 0x10, MB560, pose, &args);
         Vec4::load(&self.mem, out)
     }
@@ -76,7 +76,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
 
 impl layout::ImpulseTailCalls<SolidView<'_>> for ImpulseCalls<'_> {
     fn pose(&mut self, store: &mut SolidView, sp: u32, body: u32, pushed: u32) -> u32 {
-        vcall_at(store.mem(), self.host, sp, body, SLOT_S30, &[pushed]).eax
+        s30_at(store.mem(), self.host, sp, body, &[pushed])
     }
 
     fn compose(&mut self, store: &mut SolidView, sp: u32, point: u32, matrix: u32, out: u32) {

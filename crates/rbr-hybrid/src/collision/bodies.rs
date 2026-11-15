@@ -20,7 +20,7 @@ struct StateCallees<'a> {
 impl StateHost for StateCallees<'_> {
     fn owner_transform(&mut self, owner: u32) -> u32 {
         let slot = self.mem.u32(self.mem.u32(owner) + 0x30);
-        self.host.call(slot, owner, &[]).eax
+        crate::call_or_trivial(self.host, 0, slot, owner, &[])
     }
 
     fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {

@@ -20,7 +20,7 @@ use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// The body's virtual slots, as vtable offsets: slot 12 (`S30`, returns the body), slots 28 and 29 (the force and torque
 /// applies) and slot 80 (the response to a point).
-pub(super) const SLOT_S30: u32 = 0x30;
+const SLOT_S30: u32 = 0x30;
 const SLOT_APPLY_FORCE: u32 = 0x70;
 const SLOT_APPLY_TORQUE: u32 = 0x74;
 pub(super) const SLOT_RESPONSE: u32 = 0x140;
@@ -115,6 +115,11 @@ pub(super) fn vcall_at(mem: &Mem, host: &dyn Host, sp: u32, this: u32, slot: u32
     host.call_at(sp, mem.u32(mem.u32(this) + slot), this, args)
 }
 
+/// Slot 12 (`S30`) of `this` entered at `sp` with `args` (its next call's, which take them again): its eax.
+pub(super) fn s30_at(mem: &Mem, host: &dyn Host, sp: u32, this: u32, args: &[u32]) -> u32 {
+    crate::call_or_trivial(host, sp, layout::vtable_target(mem, this, SLOT_S30), this, args)
+}
+
 /// Which transform the body's `transform` call is. `BigB`'s go through the walker with the body as the matrix, into a
 /// temporary. The force pass's own (after `BigB`) go through the body with the walker as the matrix, straight into the
 /// linear (`+0x380`, the first) and the angular acceleration (`+0x320`, the second).
@@ -188,7 +193,7 @@ impl BodyCalls for Calls<'_> {
             Transforms::List => {
                 let src = self.put(SRC, v);
                 let out = self.temp + DST;
-                let body = self.vcall(SLOT_S30, &[out]).eax;
+                let body = s30_at(&self.mem, self.host, 0, self.body, &[out]);
                 self.host.call(MB560, walker, &[src, body, out]);
                 out
             }
@@ -197,9 +202,8 @@ impl BodyCalls for Calls<'_> {
                 self.transforms = Transforms::Force(k + 1);
                 let src = self.frame + 0x30 + 0x10 * k;
                 v.store(&mut self.mem, src);
-                let target = layout::vtable_target(&self.mem, self.body, SLOT_S30);
                 let args = [src, walker, out];
-                let body = self.host.call_at(self.frame - 0x10, target, self.body, &args).eax;
+                let body = s30_at(&self.mem, self.host, self.frame - 0x10, self.body, &args);
                 self.host.call_at(self.frame - 0x10, MB560, body, &args);
                 return with_solids(self.host, &mut self.mem, |s| s.row(out));
             }

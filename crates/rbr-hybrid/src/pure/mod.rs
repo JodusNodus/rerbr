@@ -45,6 +45,7 @@ use heap::{Base, PureHeap, PureMemory, PureRunGuard};
 pub use heap::{ALLOCATOR_HEAP_BASE, ALLOCATOR_HEAP_END};
 pub use image::{app_state, clock, max_time_step, set_app_state, time_keeper, CAR_BYTES, CAR_PTR};
 pub use playback::{step, Playback, ReadTrace, SENTINEL};
+pub(crate) use stand_in::is_ret;
 pub use stand_in::{stand_in, uncovered, StandIn};
 pub(crate) use watch::{Watch, OUTSIDE_ASSISTANCE_EMIT, TYRE_PARTICLES_EMIT, WATCHED};
 pub use watch::{PARTICLE_EVENT_BYTES, TYRE_PARTICLES_BYTES};
@@ -954,6 +955,11 @@ impl Host for Pure {
         self.entered.set(self.entered.get() + 1);
     }
 
+    fn query_counter(&self, out: u32) -> Option<u32> {
+        self.ran_direct();
+        Some(self.counter(out).eax)
+    }
+
     fn tyre_stepped(&self, scratch: u32, dt: f32) {
         if self.keep_tyre_particles {
             self.captures.push_tyre_term(scratch, tyre_term(self, &self.raw, scratch, dt));
@@ -1011,6 +1017,10 @@ impl Host for Direct {
 
     fn tyre_stepped(&self, scratch: u32, dt: f32) {
         self.0.tyre_stepped(scratch, dt);
+    }
+
+    fn query_counter(&self, out: u32) -> Option<u32> {
+        Host::query_counter(&self.0, out)
     }
 
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {

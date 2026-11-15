@@ -210,7 +210,7 @@ impl AccumHost for Accum<'_> {
     }
 
     fn point(&mut self, body: u32, out: u32) -> u32 {
-        self.host.call(vslot(&self.mem, body, 0x30), body, &[out]).eax
+        crate::call_or_trivial(self.host, 0, vslot(&self.mem, body, 0x30), body, &[out])
     }
 
     fn walk(&mut self, copy: u32, point: u32, out: u32) {

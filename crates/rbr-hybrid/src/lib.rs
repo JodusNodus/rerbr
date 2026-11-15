@@ -125,6 +125,11 @@ pub trait Host {
     /// A tyre step (`CScratch::Step` or NGP's wrapper) a caller ran itself on the tyre at `scratch` with the time step
     /// `dt`: the pure host keeps its term as after a run of the binding ([`pure::Pure::take_tyre_terms`]).
     fn tyre_stepped(&self, _scratch: u32, _dt: f32) {}
+    /// `QueryPerformanceCounter(out)` without its call: the pure host's count into `out` (its stand-in's, the same tick
+    /// sequence) and the eax; `None` on a host that runs the original, whose caller makes the call.
+    fn query_counter(&self, _out: u32) -> Option<u32> {
+        None
+    }
     /// [`Host::call_at`] of a callee whose binding reads its stack words only from `args` (none through `esp`), and
     /// whose caller reads none of the call's words after it. Under the pure host's direct dispatch (B1b) the call
     /// runs as a plain call, without its words on the stack, when `args` are the words the callee pops; elsewhere it
@@ -176,6 +181,28 @@ fn skip_call_with(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], always_
         }
     }
     true
+}
+
+/// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`
+/// from the slot-12 identity getter (`E43PairWalk::MFc00`, 0x519c00, `mov eax, ecx; ret`), 0 from the empty hook
+/// (`NTweak::CBase::Unk44`, 0x52f480, `ret`) and the `ret n` stand-ins ([`pure::is_ret`]), whose eax no caller reads.
+/// The words the call would write are left as they are: no later reader reads them (residue audit, notes/physics.md
+/// "Store seam"). `None` for another callee or a host that runs the original (the emulator), which the caller calls.
+pub(crate) fn trivial(host: &dyn Host, target: u32, this: u32) -> Option<u32> {
+    let eax = match target {
+        entities::NODE_OF => this,
+        ntweak::CBASE_UNK44 => 0,
+        _ if pure::is_ret(target) => 0,
+        _ => return None,
+    };
+    host.call_slot_word()?;
+    host.ran_direct();
+    Some(eax)
+}
+
+/// `host.call_at(sp, target, this, args)`'s eax, or [`trivial`]'s without the call.
+pub(crate) fn call_or_trivial(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> u32 {
+    trivial(host, target, this).unwrap_or_else(|| host.call_at(sp, target, this, args).eax)
 }
 
 /// The frame base of a binding's original after `push ebp; mov ebp, esp; and esp, -16`, from its entry `esp` (the
