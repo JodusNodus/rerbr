@@ -12,8 +12,9 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::math::vec::clear_vec4;
 use rbr_physics::mem::Mem;
 
-use super::{E90_BUILD, EXCLUSION_TEST, FETCH_X};
+use super::{E90_BUILD, EXCLUSION_TEST};
 use crate::collision::E01_VEC4_COPY_FROM;
+use crate::entities::Op;
 use crate::rigid_body::on_solids;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -116,7 +117,7 @@ struct DummyCallsAt<'a> {
 
 impl DummyCalls for DummyCallsAt<'_> {
     fn fetch_x(&mut self, sp: u32, this: u32, out: u32, arg: u32) {
-        crate::entities::call_op(self.host, sp, FETCH_X, this, &[out, arg]);
+        crate::entities::op(self.host, sp, this, Op::FetchX { out, arg });
     }
 
     fn group_on_hit(&mut self, sp: u32, group: u32) {
@@ -229,7 +230,7 @@ struct ProbeCallsAt<'a> {
 
 impl ground::ProbeCalls for ProbeCallsAt<'_> {
     fn transform(&mut self, this: u32, out: u32, arg: u32) -> u32 {
-        crate::entities::call_op(self.host, self.frame.fetch_sp, FETCH_X, this, &[out, arg]).eax
+        crate::entities::op(self.host, self.frame.fetch_sp, this, Op::FetchX { out, arg })
     }
 
     fn query(&mut self, host: u32, first: u32, second: u32, out: u32) -> u32 {

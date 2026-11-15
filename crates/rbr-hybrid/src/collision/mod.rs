@@ -15,7 +15,7 @@ mod queries;
 mod solver;
 mod vectors;
 
-use crate::entities::{COMPOSE_B, ENTITY_VF118, FETCH_X, NAME_WALK, NODE_OF, PAIR_COMBINE_TWIN, SAMPLE_INDEXED};
+use crate::entities::{ENTITY_VF118, NAME_WALK, NODE_OF, SAMPLE_INDEXED};
 pub(crate) use bodies::{
     body_box_direct, body_vf_cc_direct, held_cell_link, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
 };

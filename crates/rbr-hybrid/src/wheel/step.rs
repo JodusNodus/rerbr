@@ -12,12 +12,12 @@ use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
 use super::{
-    call_wheel, on_wheels, set_dirty_held, Libm, BLEND4, M3AB90, M3AC50, M3AFB0, M3B900, M3D460, M3D520, MB560,
+    call_wheel, on_wheels, set_dirty_held, Libm, BLEND4, M3AB90, M3AC50, M3AFB0, M3B900, M3D460, M3D520,
     SCRATCH_BELOW_ESP, UNK9290, UNK96E0, UNK97A0, UNK9900,
 };
 use crate::car_body::on_held_car;
 use crate::collision::{RAY_CLEAR, RAY_SEEDS};
-use crate::entities::BODY_COMPOSE;
+use crate::entities::{Op, BODY_COMPOSE};
 use crate::rigid_body::with_solids;
 use crate::vcu::SET_DIRTY;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -305,7 +305,7 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn pair_walk(&mut self, this: u32, a: u32, b: u32, c: u32, sp: u32) {
-        crate::entities::call_op(self.host, sp, MB560, this, &[a, b, c]);
+        crate::entities::op(self.host, sp, this, Op::Mb560 { a, b, c });
     }
 
     fn world_compose(&mut self, car: u32, a: u32, b: u32, sp: u32) {

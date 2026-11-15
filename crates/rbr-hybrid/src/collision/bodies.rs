@@ -7,7 +7,8 @@ use rbr_physics::collision::layout::{self, Body, CellLink, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 
-use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, FETCH_X, NAME_WALK};
+use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, NAME_WALK};
+use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// The original callees of `CBody::CState::Unk44`: the owner's slot 12 (thiscall, `+0x30` of its vtable), and the wall
@@ -112,7 +113,7 @@ impl ClearGridHost for BodyCallees<'_> {
 
 impl CornerHost for BodyCallees<'_> {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32 {
-        crate::entities::call_op(self.0, 0, FETCH_X, matrix, &[out, worker]).eax
+        crate::entities::op(self.0, 0, matrix, Op::FetchX { out, arg: worker })
     }
 }
 
@@ -186,7 +187,7 @@ impl CornerHost for DirectVfCcCalls<'_> {
             Some(eax) => eax,
             None => {
                 self.direct = false;
-                crate::entities::call_op(self.host, sp, FETCH_X, matrix, &[out, worker]).eax
+                crate::entities::op(self.host, sp, matrix, Op::FetchX { out, arg: worker })
             }
         }
     }

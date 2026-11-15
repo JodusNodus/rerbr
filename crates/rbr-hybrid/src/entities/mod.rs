@@ -37,15 +37,18 @@ use hinge::{
     sim_e1d0_run, sim_e4f0_run, sim_ea80_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run,
     state_emit_run, step_big_run, SIM_D160, SIM_D860, VF_E070,
 };
-pub(crate) use matrices::{call_op, fetch_x_direct, transform_direct};
-use matrices::{compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run};
+use matrices::{
+    compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run, mb560_run,
+    pair_combine_run,
+};
+pub(crate) use matrices::{fetch_x_direct, op, transform_direct, Op};
 use walks::{
-    functor_run, grid_hooks_hi_run, grid_hooks_lo_run, integrate_run, mb560_run, mul4_run, name_walk_run, node_of_run,
-    pair_combine_run, pair_echo_run, pair_five_six_deeper_run, pair_five_six_run, pair_five_six_shallower_run,
-    pair_grids_deeper_run, pair_grids_run, pair_grids_shallower_run, pair_one_two_deeper_run, pair_one_two_run,
-    pair_one_two_shallower_run, pair_three_four_deeper_run, pair_three_four_run, pair_three_four_shallower_run,
-    route_pair_five_six_run, route_pair_grids_run, route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58,
-    vf5c, vf64, walk_pre_order_run,
+    functor_run, grid_hooks_hi_run, grid_hooks_lo_run, integrate_run, mul4_run, name_walk_run, node_of_run,
+    pair_echo_run, pair_five_six_deeper_run, pair_five_six_run, pair_five_six_shallower_run, pair_grids_deeper_run,
+    pair_grids_run, pair_grids_shallower_run, pair_one_two_deeper_run, pair_one_two_run, pair_one_two_shallower_run,
+    pair_three_four_deeper_run, pair_three_four_run, pair_three_four_shallower_run, route_pair_five_six_run,
+    route_pair_grids_run, route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58, vf5c, vf64,
+    walk_pre_order_run,
 };
 
 pub const VF58: u32 = 0x51a250;

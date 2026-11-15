@@ -11,6 +11,7 @@ use super::{
     on_solids, unavailable, with_solids, APPEND_CELL, CELL_GRID, COPY16_WALK, DRIVE, INTEGRATE, LOOKUP_TWIN,
     SCRATCH_BELOW_ESP, SIGNALS, STATE_EMIT, WALKER,
 };
+use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// The entity walk's callee entry, below the binding's entry stack pointer `esp`. `CSolid::E43Vf6C` (0x52cc30) makes its
@@ -55,12 +56,14 @@ impl PoseHost for Pose<'_> {
         let args = [local_at, walker, out_at];
         match crate::trivial(self.host, s30, parent) {
             // ComposeA pops the three words the getter's call leaves: it is passed them.
-            Some(node) => crate::entities::call_op(self.host, 0, COPY16_WALK, node, &args),
+            Some(node) => {
+                crate::entities::op(self.host, 0, node, Op::ComposeA { src: local_at, o2: walker, out: out_at });
+            }
             None => {
                 let node = self.host.call(s30, parent, &args).eax;
-                self.host.call(COPY16_WALK, node, &[])
+                self.host.call(COPY16_WALK, node, &[]);
             }
-        };
+        }
         Vec4::load(&self.mem, out_at)
     }
 

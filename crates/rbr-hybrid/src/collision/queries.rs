@@ -10,7 +10,7 @@ use rbr_physics::mem::Mem;
 use super::{
     Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
 };
-use crate::entities::{COPY_BLOCKS, COPY_BLOCKS_THREE_FOUR, MB560};
+use crate::entities::{Op, MB560};
 use crate::rigid_body::OPERATOR_NEW;
 use crate::stage::on_stage;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -194,7 +194,12 @@ pub(super) fn ray_clear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 impl GridSyncHost for Callees<'_> {
     fn copy_transform(&mut self, _: &mut Mem, a: u32, edges: u32, worker: u32, out: u32, count: u32) {
-        crate::entities::call_op(self.0, 0, COPY_BLOCKS, a, &[edges, worker, out, count]);
+        crate::entities::op(
+            self.0,
+            0,
+            a,
+            Op::CopyBlocks { src: edges, o2: worker, dst: out, n: count, three_four: false },
+        );
     }
 
     fn copy_vec4(&mut self, mem: &mut Mem, dst: u32, src: u32) {
@@ -306,11 +311,11 @@ impl GridOpsHost for GridOps<'_> {
     }
 
     fn copy_blocks_one_two(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32) {
-        crate::entities::call_op(self.0, sp, COPY_BLOCKS, a, &[src, o2, dst, n]);
+        crate::entities::op(self.0, sp, a, Op::CopyBlocks { src, o2, dst, n, three_four: false });
     }
 
     fn copy_blocks_three_four(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32) {
-        crate::entities::call_op(self.0, sp, COPY_BLOCKS_THREE_FOUR, a, &[src, o2, dst, n]);
+        crate::entities::op(self.0, sp, a, Op::CopyBlocks { src, o2, dst, n, three_four: true });
     }
 }
 

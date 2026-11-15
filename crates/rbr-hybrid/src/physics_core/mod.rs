@@ -1,7 +1,7 @@
 //! Bindings of the physics core (`rbr_physics::physics_core`, exe 0x5224f0-0x5293d0 mostly): the passenger's step,
 //! `CPhysics::StepForward` and its passes, the detectors, the mounted body and the small forwarding slots.
 
-use crate::entities::{empty_hook_run, EMPTY_HOOK, MB560, STATE_EMIT};
+use crate::entities::{empty_hook_run, EMPTY_HOOK, STATE_EMIT};
 use crate::Binding;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::typed::Slot;

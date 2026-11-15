@@ -17,7 +17,7 @@ use super::car_calls::{
 };
 use super::on_car;
 use crate::engine_driveline::{E01LOG, SIGNALS};
-use crate::entities::{MB560, REMOVE_EXCLUSION, SIM_FD00};
+use crate::entities::{Op, REMOVE_EXCLUSION, SIM_FD00};
 use crate::physics_core::{MOUNTED_VF6C, PASSENGER_STEP};
 use crate::rigid_body::{DRIVE, E43VF6C, E46_IMPULSE640};
 use crate::vcu::GET_4540;
@@ -126,7 +126,7 @@ impl<S: CarStore> ForcesCalls<S> for Car<'_> {
 
     fn walk_car_vector(&mut self, car: u32) -> Vec4 {
         let (out, frame) = (self.scratch + C, self.mem.u32(FRAME));
-        crate::entities::call_op(self.host, 0, MB560, frame, &[car + 0x380, car, out]);
+        crate::entities::op(self.host, 0, frame, Op::Mb560 { a: car + 0x380, b: car, c: out });
         Vec4::load(&self.mem, out)
     }
 

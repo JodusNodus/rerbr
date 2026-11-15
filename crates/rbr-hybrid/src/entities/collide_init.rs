@@ -9,7 +9,7 @@ use crate::collision::{
     COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, COLL_EVENT_INIT_FULL, E01_VEC4_COPY_FROM, E01_VEC4_NORMALIZE, E36_ALLOC_EVENT,
     E37_GRID_COPY, FLOAT3_LENGTH, RAY_CLEAR,
 };
-use crate::entities::COPY16_WALK;
+use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 const SEGMENT_GATE: u32 = 0x4ff070;
@@ -80,7 +80,7 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn compose(&mut self, sp: u32, identity: u32, point: u32, transform: u32, out: u32) {
-        crate::entities::call_op(self.host, sp, COPY16_WALK, identity, &[point, transform, out]);
+        crate::entities::op(self.host, sp, identity, Op::ComposeA { src: point, o2: transform, out });
     }
 
     fn alloc_event(&mut self, sp: u32, size: u32) -> u32 {

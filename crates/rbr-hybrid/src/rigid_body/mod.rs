@@ -21,7 +21,7 @@ mod window;
 
 use crate::collision::CSTATE_UNKA44;
 use crate::engine_driveline::SIGNALS;
-use crate::entities::{COPY16_WALK, INTEGRATE, MB560, NAME_WALK, STATE_EMIT, VF20};
+use crate::entities::{COPY16_WALK, INTEGRATE, NAME_WALK, STATE_EMIT, VF20};
 pub(crate) use contact::contact_vote_direct;
 use contact::{big_a, big_b, e43vf70, vf81x};
 use force_pass::{e43vf64, mounted_vf128, response_run};

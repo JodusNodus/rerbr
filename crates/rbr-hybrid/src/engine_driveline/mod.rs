@@ -14,7 +14,6 @@ mod engine_sim;
 mod inputs;
 mod workers;
 
-use crate::entities::MB560;
 use crate::rigid_body::WALKER;
 pub(crate) use curves::row_value_of;
 use curves::{
