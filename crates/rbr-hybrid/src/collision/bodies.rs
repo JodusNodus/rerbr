@@ -7,7 +7,7 @@ use rbr_physics::collision::layout::{self, Body, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 
-use super::{Callees, CSTATE_UNKA44, E01_VEC4_COPY_FROM, E37_WALL_SYNC, FETCH_X, NAME_WALK};
+use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, FETCH_X, NAME_WALK};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// The original callees of `CBody::CState::Unk44`: the owner's slot 12 (thiscall, `+0x30` of its vtable), and the wall
@@ -256,7 +256,7 @@ pub(crate) fn body_box_direct(host: &dyn Host, mem: &mut Mem, sp: u32, body: u32
 pub(super) fn body_vf11c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [lo, hi, ..] = r.stack;
     let (lower, upper) = Body::new(r.ecx).bounds_at();
-    ctx.host.call_at(r.esp - 0xc, E01_VEC4_COPY_FROM, lo, &[lower]);
-    let eax = ctx.host.call_at(r.esp - 0xc, E01_VEC4_COPY_FROM, hi, &[upper]).eax;
+    super::copy_vec4(ctx.host, &mut ctx.mem, r.esp - 0xc, lo, lower);
+    let eax = super::copy_vec4(ctx.host, &mut ctx.mem, r.esp - 0xc, hi, upper);
     Ok(Return::void(eax, 8))
 }

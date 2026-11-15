@@ -8,8 +8,7 @@ use rbr_physics::math::vec::clear_vec4;
 use rbr_physics::mem::Mem;
 
 use super::{
-    Callees, BODY_GRID, E01_VEC4_COPY_FROM, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, FLOAT3_LENGTH, NODE_OF,
-    RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
+    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
 };
 use crate::entities::{COPY_BLOCKS, COPY_BLOCKS_THREE_FOUR, MB560};
 use crate::rigid_body::OPERATOR_NEW;
@@ -198,8 +197,8 @@ impl GridSyncHost for Callees<'_> {
         self.0.call(COPY_BLOCKS, a, &[edges, worker, out, count]);
     }
 
-    fn copy_vec4(&mut self, _: &mut Mem, dst: u32, src: u32) {
-        self.0.call(E01_VEC4_COPY_FROM, dst, &[src]);
+    fn copy_vec4(&mut self, mem: &mut Mem, dst: u32, src: u32) {
+        super::copy_vec4(self.0, mem, 0, dst, src);
     }
 }
 
@@ -249,8 +248,8 @@ impl CollectHost for Callees<'_> {
         self.0.call_at(sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
     }
 
-    fn length(&mut self, _mem: &Mem, sp: u32, vector: u32) -> f32 {
-        self.0.call_at(sp, FLOAT3_LENGTH, vector, &[]).st0 as f32
+    fn length(&mut self, mem: &Mem, sp: u32, vector: u32) -> f32 {
+        super::length(self.0, mem, sp, vector)
     }
 }
 

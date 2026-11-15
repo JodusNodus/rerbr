@@ -13,8 +13,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::{self, layout::SignalHost};
 
 use super::{
-    BODY_COMPOSE, CLEAR_ACC, COPY16_WALK, E01_VEC4_COPY_FROM, INIT_BD0, LIMIT_UPDATE, MB560, SIM_C960, SIM_CFF0,
-    SIM_DA60, SIM_E1D0, SIM_EA80, STATE_EMIT, TO_QUAT, VF81X, XFORM_8130,
+    BODY_COMPOSE, CLEAR_ACC, COPY16_WALK, INIT_BD0, LIMIT_UPDATE, MB560, SIM_C960, SIM_CFF0, SIM_DA60, SIM_E1D0,
+    SIM_EA80, STATE_EMIT, TO_QUAT, VF81X, XFORM_8130,
 };
 use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
@@ -148,7 +148,7 @@ struct SlipHost<'a> {
 
 impl SlipCalls for SlipHost<'_> {
     fn copy_vector(&mut self, to: u32, from: u32) {
-        self.host.call_at(self.frame - 0x78, E01_VEC4_COPY_FROM, to, &[from]);
+        crate::collision::copy_vec4(self.host, &mut self.mem, self.frame - 0x78, to, from);
     }
 
     fn carry(&mut self, receiver: u32, a: u32, b: u32, out: u32) -> [f32; 3] {

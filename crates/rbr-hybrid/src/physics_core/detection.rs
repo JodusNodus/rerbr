@@ -7,7 +7,7 @@ use rbr_physics::physics_core::layout::detect_calls::{self as detect, Penetratio
 use rbr_physics::physics_core::layout::detector_hosts::{CollideHost, DetectorHost, KernelTest};
 
 use super::slots::vslot;
-use crate::collision::{BODY_GRID, E01_VEC4_COPY_FROM, E37_GRID_COPY, E45_CELL_QUERY, RAY_CLEAR, RAY_SEEDS};
+use crate::collision::{BODY_GRID, E37_GRID_COPY, E45_CELL_QUERY, RAY_CLEAR, RAY_SEEDS};
 use crate::entities::{EXCLUSION_TEST, WALK_PRE_ORDER};
 use crate::probe_cache::BODY_OVERLAPS;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -328,8 +328,8 @@ impl PenetrationHost for Penetration<'_> {
         self.host.call_at(self.entry - 8, RAY_SEEDS, seeds, &[]);
     }
 
-    fn copy_vec4(&mut self, _mem: &mut Mem, to: u32, from: u32) {
-        self.host.call_at(self.entry - 0xc, E01_VEC4_COPY_FROM, to, &[from]);
+    fn copy_vec4(&mut self, mem: &mut Mem, to: u32, from: u32) {
+        crate::collision::copy_vec4(self.host, mem, self.entry - 0xc, to, from);
     }
 }
 

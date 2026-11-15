@@ -8,7 +8,7 @@ use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
 use super::on_car;
-use crate::collision::{BodyCallees, E01_VEC4_COPY_FROM, E37_EDGE_EDGE};
+use crate::collision::{BodyCallees, E37_EDGE_EDGE};
 use crate::entities::COPY16_WALK;
 use crate::rigid_body::{set_solid_word, VF16_HELPER};
 use crate::{engine_driveline, entities, Ctx, Decline, Host, Regs, Return};
@@ -292,7 +292,7 @@ impl GridCalls for StateCallees<'_> {
     }
 
     fn copy_from(&mut self, dst: u32, src: u32) -> u32 {
-        self.host.call(E01_VEC4_COPY_FROM, dst, &[src]).eax
+        crate::collision::copy_vec4(self.host, &mut self.mem, 0, dst, src)
     }
 }
 

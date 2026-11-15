@@ -13,7 +13,6 @@ mod hinge;
 mod matrices;
 mod walks;
 
-use crate::collision::E01_VEC4_COPY_FROM;
 use crate::rigid_body::VF81X;
 use collide_init::{collide_init_run, copy_grid_run};
 use e90::{

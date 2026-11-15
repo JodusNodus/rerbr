@@ -3,8 +3,32 @@
 use rbr_physics::collision::layout::{self};
 use rbr_physics::math::vec::{clear_vec4, Vec3};
 
-use crate::rigid_body::on_solids;
-use crate::{Ctx, Decline, Regs, Return};
+use rbr_physics::mem::Mem;
+
+use super::{E01_VEC4_COPY_FROM, FLOAT3_LENGTH};
+use crate::rigid_body::{on_solids, with_solids};
+use crate::{Ctx, Decline, Host, Regs, Return};
+
+/// `E01Vec4::CopyFrom` of `src` to `dst` as a call at `sp` makes it, its eax (`dst`): direct on the pure host
+/// ([`Host::call_slot_word`]), counted as a run ([`Host::ran_direct`]); its binding makes no call and reads nothing of
+/// the stack but its argument, and its callers read none of the call's words (residue audit, notes/physics.md "Store
+/// seam"). Through the host elsewhere.
+pub(crate) fn copy_vec4(host: &dyn Host, mem: &mut Mem, sp: u32, dst: u32, src: u32) -> u32 {
+    if host.call_slot_word().is_none() {
+        return host.call_at(sp, E01_VEC4_COPY_FROM, dst, &[src]).eax;
+    }
+    host.ran_direct();
+    with_solids(host, mem, |s| layout::vec4_copy_from(s, dst, src))
+}
+
+/// `CFloat3::Length` of the vector at `vector` as a call at `sp` returns it, direct on the pure host as [`copy_vec4`].
+pub(crate) fn length(host: &dyn Host, mem: &Mem, sp: u32, vector: u32) -> f32 {
+    if host.call_slot_word().is_none() {
+        return host.call_at(sp, FLOAT3_LENGTH, vector, &[]).st0 as f32;
+    }
+    host.ran_direct();
+    Vec3::load(mem, vector).length3()
+}
 
 /// thiscall on `dst` (`ecx`) with `(src*)`, ret 4: `E01Vec4::CopyFrom` (0x43c5b0), the sixteen bytes of `src` to `dst`.
 /// Eax is `dst`.
