@@ -16,24 +16,6 @@ const FRAME_CALL_DEPTH: u32 = 16;
 const SOLID_SCALE_ADD_ROWS: u32 = 0x52ac80;
 const OLD_FRAME_GATE_DEPTH: u32 = 8;
 
-/// The owner's slot each frame hook calls; old frames choose form X or Y from the owner's gate.
-fn frame_slot(hook: Hook, form: Form) -> u32 {
-    match (hook, form) {
-        (Hook::One, Form::X) => 0x9c,
-        (Hook::Two, Form::X) => 0xa0,
-        (Hook::Three, Form::X) => 0xac,
-        (Hook::Four, Form::X) => 0xb0,
-        (Hook::Five, Form::X) => 0xbc,
-        (Hook::Six, Form::X) => 0xc0,
-        (Hook::One, Form::Y) => 0xa4,
-        (Hook::Two, Form::Y) => 0xa8,
-        (Hook::Three, Form::Y) => 0xb4,
-        (Hook::Four, Form::Y) => 0xb8,
-        (Hook::Five, Form::Y) => 0xc4,
-        (Hook::Six, Form::Y) => 0xc8,
-    }
-}
-
 /// The frame's calls on its owner, through the host: the owner's hook slot with `this` the owner.
 pub(super) struct FrameOwner<'a> {
     pub(super) mem: &'a mut Mem,
@@ -44,7 +26,7 @@ pub(super) struct FrameOwner<'a> {
 impl Owner for FrameOwner<'_> {
     fn hook(&mut self, owner: u32, hook: Hook, form: Form, a: u32, b: u32) -> u32 {
         let sp = self.esp.wrapping_sub(FRAME_CALL_DEPTH);
-        let target = layout::vtable_target(self.mem, owner, frame_slot(hook, form));
+        let target = layout::vtable_target(self.mem, owner, layout::frame_slot(hook, form));
         // `CSolid::E43Vf9C`, `E43VfAC` and `E43VfB0` (their bindings in `rigid_body` make no call) run here on the pure
         // host, on the solids' store (the owner's matrix and position, and rows that may be a solid's).
         use rbr_physics::rigid_body::layout as solid;

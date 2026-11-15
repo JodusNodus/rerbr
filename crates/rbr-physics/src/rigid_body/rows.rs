@@ -4,6 +4,7 @@
 use super::layout::Vec4;
 use crate::math::quat::{from_quat, Quat};
 use crate::math::sse;
+use crate::physics_core::math::Mat;
 
 /// What the loops read from the body: the matrix (ten words; `m[9]` is the unset word) and the origin (the body's
 /// position; its `w` is not read).
@@ -164,5 +165,67 @@ pub fn fold_rows_by_rows(m: &[f32; 10], offset: Vec4, rows: &mut [Vec4]) {
         row.y = ny;
         row.z = nz;
         row.w = 0.0 - ((0.0 - row.w) - ((offset.x * x + offset.y * y) + offset.z * z));
+    }
+}
+
+/// Which of a body's maps carries rows through its frame (`RowMap`), named by what it does to them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    /// Points of the body to its parent: the matrix scales each row, then the origin is added.
+    PointsOut,
+    /// Points of the parent to the body: the origin subtracted from every row, then the matrix times its three lanes.
+    PointsIn,
+    /// `transform_rows`.
+    Rows,
+    /// `transform_rows3`.
+    Rows3,
+    /// `quat_plus_rows` with the body's pose at the step's start.
+    StartPointsOut,
+    /// `quat_diff_rows` with the pose at the step's start.
+    StartPointsIn,
+    /// `quat_transform_rows` with the orientation at the step's start.
+    StartRows,
+    /// `rotate_rows` with the orientation at the step's start.
+    StartRows3,
+}
+
+/// A body's map of the rows carried through its frame, with the pose it reads, read once: the rows are values, not
+/// the body's words.
+pub enum RowMap {
+    PointsOut { matrix: Mat, origin: Vec4 },
+    PointsIn { origin: Vec4, matrix: [f32; 9] },
+    Rows(RowFrame),
+    Rows3(RowFrame),
+    StartPointsOut { orientation: Quat, offset: Vec4 },
+    StartPointsIn { orientation: Quat, offset: Vec4 },
+    StartRows(Quat),
+    StartRows3(Quat),
+}
+
+impl RowMap {
+    /// The rows mapped, each as the body's loop over rows that are not its own words maps it.
+    pub fn apply(&self, rows: &mut [Vec4]) {
+        match self {
+            RowMap::PointsOut { matrix, origin } => {
+                matrix.scale_rows(rows);
+                for row in rows {
+                    *row = *row + *origin;
+                }
+            }
+            RowMap::PointsIn { origin, matrix } => {
+                for row in rows.iter_mut() {
+                    subtract_origin_row(row, *origin);
+                }
+                for row in rows {
+                    transform_matrix_row(matrix, row);
+                }
+            }
+            RowMap::Rows(frame) => transform_rows(frame, rows),
+            RowMap::Rows3(frame) => transform_rows3(frame, rows),
+            RowMap::StartPointsOut { orientation, offset } => quat_plus_rows(*orientation, *offset, rows),
+            RowMap::StartPointsIn { orientation, offset } => quat_diff_rows(*orientation, *offset, rows),
+            RowMap::StartRows(orientation) => quat_transform_rows(*orientation, rows),
+            RowMap::StartRows3(orientation) => rotate_rows(*orientation, rows),
+        }
     }
 }

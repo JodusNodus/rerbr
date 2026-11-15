@@ -288,6 +288,9 @@ pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
 /// `RoutePairThreeFour` (`c` as its `a`, 1 as its `b`). That walk returns its `a` (`c`), which is the original's eax.
 pub(super) fn mb560_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
+    if super::matrices::carried_op(ctx.host, &mut ctx.mem, r.esp, super::MB560, r.ecx, [a, b, c]) {
+        return Ok(Return::void(c, 12));
+    }
     let mut walk = PairWalk { mem: &mut ctx.mem, host: ctx.host, esp: r.esp, walk_depth: MB560_CALL };
     carry_three_four(&mut walk, r.ecx, a, b, c);
     Ok(Return::void(c, 12))
@@ -341,7 +344,7 @@ pub(super) fn mul4_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// Where a walker's child walks enter below its entry esp (the original's pushes for that walker).
-fn walk_depth(which: Walker) -> u32 {
+pub(super) fn walk_depth(which: Walker) -> u32 {
     match which {
         Walker::PairOneTwoShallower | Walker::PairThreeFourShallower | Walker::PairFiveSixShallower => 28,
         Walker::PairGridsShallower => 24,
