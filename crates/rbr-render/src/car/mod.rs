@@ -515,12 +515,14 @@ fn load_set(
                 lights::projected_area(&positions, &placed.indices, along)
             })
             .sum();
+        // A brake disc's lit part follows the brake lamp's box but is the hot disc, not a lamp: it keeps its own texture.
+        let disc = mesh.node.name.to_ascii_lowercase().contains("brakedisc");
         // Of a lit part with lamp and body classes only the lamp's faces glow, not a pod's or bar's housing.
         let lamp_faces = faces.iter().any(|f| lights::lamp_class(&f.shader));
         let body_faces = faces.iter().any(|f| !lights::lamp_class(&f.shader));
         groups.extend(built.meshes.into_iter().map(|(order, mut placed, effect)| {
             let glows = !(lamp_faces && body_faces) || lights::lamp_class(&ranks[order.1].0);
-            if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass && glows) {
+            if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass && glows && !disc) {
                 for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
                     shade.glow = Some(switch.glow(lit_area));
                     shade.glow_kind = if switch.steady { switch.kind.number() as u8 } else { 0 };
