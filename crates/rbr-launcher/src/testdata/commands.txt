@@ -103,6 +103,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 wet
 --size
@@ -207,6 +209,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 dry
 --size
@@ -405,6 +409,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size
@@ -512,6 +518,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 dry
 --size
@@ -619,6 +627,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size
@@ -723,6 +733,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size
@@ -830,6 +842,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size
@@ -937,6 +951,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size
@@ -1044,6 +1060,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size
@@ -1151,6 +1169,8 @@ evo_IX
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
 pack-mitsubishilancerevoixn4
+--car-year
+2011
 --weather
 damp
 --size

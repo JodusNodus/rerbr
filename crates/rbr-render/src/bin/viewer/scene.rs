@@ -290,6 +290,7 @@ fn load_scene<'scope, 'env>(
                         progress(Step::Car);
                         let mut car = car::load_lit(data, car_name, car::placement_at(stage.start), lit(&day_clock))
                             .map_err(error)?;
+                        car.set_headlamp_year(args.car_year.filter(|_| args.enhance.lighting));
                         damage_static(&mut car, args);
                         report_car(&car.at_rest().add_to_stage(&mut stage));
                     }
@@ -313,6 +314,7 @@ fn load_scene<'scope, 'env>(
                         progress(Step::Car);
                         let mut car =
                             car::load_lit(data, car_name, car::placement_at(None), lit(&day_clock)).map_err(error)?;
+                        car.set_headlamp_year(args.car_year.filter(|_| args.enhance.lighting));
                         if args.enhance.cabin {
                             car.add_inner_glass();
                         }

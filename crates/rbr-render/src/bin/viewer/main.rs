@@ -245,6 +245,7 @@ fn run() -> Result<(), String> {
         eprintln!("viewer: {}", selected.describe());
         args.car.get_or_insert_with(|| selected.folder().to_owned());
         fmod_bank = selected.audio_bank;
+        args.car_year = selected.car.year;
         args.pack_car.key.get_or_insert_with(|| format!("rsf-{}", selected.car.id));
         args.pack_car.model = Some(rbr_formats::car_pack::file_under(&selected.root, &selected.model.entry.file_name));
         data = selected.data;
