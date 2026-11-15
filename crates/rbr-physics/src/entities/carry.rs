@@ -4,6 +4,7 @@
 
 use super::frame::Hook;
 use super::walk::{self, Node, Walk, Walker};
+use crate::math::vec::Vec3;
 use crate::rigid_body::layout::Vec4;
 use crate::rigid_body::rows::RowMap;
 
@@ -13,6 +14,8 @@ pub enum Passage {
     Unchanged,
     /// Its owner body's map.
     Body(RowMap),
+    /// A car body's point scatter: its base subtracted from (`sub`) or added to each point's `x, y, z`.
+    Points { base: Vec3, sub: bool },
 }
 
 /// The frames a carry walks: the node reads and what each frame does.
@@ -47,6 +50,10 @@ impl<F: Frames> Walk for Carry<'_, F> {
             Some(Passage::Unchanged) => {}
             Some(Passage::Body(map)) => match self.rows.get_mut(..count as usize) {
                 Some(rows) => map.apply(rows),
+                None => self.known = false,
+            },
+            Some(Passage::Points { base, sub }) => match self.rows.get_mut(..count as usize) {
+                Some(rows) => crate::car_body::body::shift_points(base, rows, sub),
                 None => self.known = false,
             },
             None => self.known = false,
