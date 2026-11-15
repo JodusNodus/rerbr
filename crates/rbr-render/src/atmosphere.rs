@@ -659,7 +659,7 @@ mod tests {
     fn every_installed_comment_with_a_time_word_is_read() {
         let roots: Vec<PathBuf> = ["RBR_DATA", "RBR_RSF"]
             .iter()
-            .filter_map(|var| std::env::var_os(var))
+            .filter_map(std::env::var_os)
             .map(|root| PathBuf::from(root).join("Maps"))
             .collect();
         if roots.is_empty() {
