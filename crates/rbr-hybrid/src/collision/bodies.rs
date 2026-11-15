@@ -24,7 +24,7 @@ impl StateHost for StateCallees<'_> {
     }
 
     fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
-        self.host.call(E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
+        super::call_grid(self.host, 0, E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
     }
 }
 
@@ -60,16 +60,17 @@ pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(link, 8))
 }
 
-/// The link of the point `(x, y)` on the grid at `grid` from the table a step holds, counted as a run of
+/// The link of the point `(x, y)` on the grid at `grid` from the table a step holds, in place of the call at `sp`,
+/// counted as a run of
 /// `LookupTwin` ([`Host::ran_direct`]): `None` per call, for another grid and for a cell with no link block yet
 /// (the caller calls, and the binding builds it).
-pub(crate) fn held_cell_link(host: &dyn Host, mem: &Mem, grid: u32, x: f32, y: f32) -> Option<u32> {
+pub(crate) fn held_cell_link(host: &dyn Host, mem: &mut Mem, sp: u32, grid: u32, x: f32, y: f32) -> Option<u32> {
     match host.typed()?.car.collision.cells.link_at(mem, grid, x, y)? {
-        CellLink::Link(link) => {
+        CellLink::Link(link) if crate::skip_unwritten(host, mem, sp, &[x.to_bits(), y.to_bits()]) => {
             host.ran_direct();
             Some(link)
         }
-        CellLink::Empty(_) => None,
+        _ => None,
     }
 }
 
@@ -105,7 +106,7 @@ pub(crate) struct BodyCallees<'a>(pub(crate) &'a dyn Host);
 
 impl ClearGridHost for BodyCallees<'_> {
     fn sync_grid(&mut self, grid: u32, source: u32, lower: u32, upper: u32) -> u32 {
-        self.0.call(E37_WALL_SYNC, grid, &[source, lower, upper]).eax
+        super::call_grid(self.0, 0, E37_WALL_SYNC, grid, &[source, lower, upper]).eax
     }
 }
 

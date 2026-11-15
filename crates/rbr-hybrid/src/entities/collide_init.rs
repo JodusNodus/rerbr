@@ -60,7 +60,7 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn build_grid(&mut self, sp: u32, grid: u32, source: u32, transform: u32, identity: u32) {
-        self.host.call_at(sp, E37_GRID_COPY, grid, &[source, transform, identity]);
+        crate::collision::call_grid(self.host, sp, E37_GRID_COPY, grid, &[source, transform, identity]);
     }
 
     fn copy_from(&mut self, sp: u32, to: u32, from: u32) {
@@ -68,7 +68,7 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn ray_query(&mut self, sp: u32, host: u32, a: u32, b: u32, out: u32) -> u32 {
-        self.host.call_at(sp, RAY_QUERY, host, &[a, b, out, 0]).eax
+        crate::collision::call_grid(self.host, sp, RAY_QUERY, host, &[a, b, out, 0]).eax
     }
 
     fn fallback_query(&mut self, sp: u32, host: u32, a: u32, out: u32) -> u32 {

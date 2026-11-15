@@ -675,6 +675,11 @@ impl Pure {
         let mut regs = self.call_regs(sp, ecx);
         self.raw.u32s_into(regs.esp + 4, &mut regs.stack);
         regs.stack[..args.len()].copy_from_slice(args);
+        // The words the call would write, filled so that a reader of them shows in the drive (the low half: the callee).
+        #[cfg(feature = "residue-audit")]
+        for k in 0..=args.len() as u32 {
+            self.raw.clone().set_u32(regs.esp + 4 * k, 0xffbd_0000 | (addr & 0xffff));
+        }
         Host::ran_direct(self);
         let r = self.run_bound(slot, addr, &regs, self.lend());
         Some(Called { eax: r.eax, st0: r.st0.unwrap_or(f64::NAN) })

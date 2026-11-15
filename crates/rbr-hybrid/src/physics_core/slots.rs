@@ -130,11 +130,13 @@ pub(super) fn flag_is_two(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 struct Cells<'a> {
     mem: Mem,
     host: &'a dyn Host,
+    /// Where the host places the lookups: below the binding's frame.
+    sp: u32,
 }
 
 impl GridHost for Cells<'_> {
     fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32 {
-        crate::collision::held_cell_link(self.host, &self.mem, grid, x, y)
+        crate::collision::held_cell_link(self.host, &mut self.mem, self.sp, grid, x, y)
             .unwrap_or_else(|| self.host.call_direct(0, LOOKUP_TWIN, grid, &[x.to_bits(), y.to_bits()]).eax)
     }
 }
@@ -142,7 +144,7 @@ impl GridHost for Cells<'_> {
 /// cdecl `(a, b, out)`: `E45_M40C0`, the cells of the box between `a` and `b`.
 pub(super) fn m40c0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, out, ..] = r.stack;
-    let mut cells = Cells { mem: ctx.mem.clone(), host: ctx.host };
+    let mut cells = Cells { mem: ctx.mem.clone(), host: ctx.host, sp: (r.esp - 0x1000) & !0xf };
     detect::box_cells(&mut ctx.mem, &mut cells, a, b, out);
     Ok(Return::void(0, 0))
 }

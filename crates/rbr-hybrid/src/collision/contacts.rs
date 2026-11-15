@@ -192,7 +192,7 @@ impl GridContactHost for VfD0Calls<'_> {
     }
 
     fn grid_copy(&mut self, sp: u32, grid: u32, src: u32, a: u32, b: u32) {
-        self.host.call_at(sp, E37_GRID_COPY, grid, &[src, a, b]);
+        super::call_grid(self.host, sp, E37_GRID_COPY, grid, &[src, a, b]);
     }
 
     fn edge_edge(

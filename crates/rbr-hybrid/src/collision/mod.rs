@@ -173,6 +173,18 @@ fn on_grids<T>(host: &dyn Host, mem: &mut Mem, grids: &[u32], run: impl FnOnce(&
     }
 }
 
+/// `host.call_at(sp, target, this, args)` of a binding on the cell grid or a collision grid (`E45_M40C0`, `E45_M46A0`,
+/// `M_D760X`, `CColGrid::SyncGrid`, `E37GridOps::M6610`, `CLink::Unlink`) from a caller on held state: run in place
+/// while the pure host holds the state ([`Host::call_in_place`]: the cell table and the grids' hit bytes are the held
+/// ones through their views, the rest is the image's either way, and none of the call's words is read after it:
+/// residue audit, notes/physics.md "Store seam"), else the host call.
+pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
+    let held = host.typed().is_some();
+    held.then(|| host.call_in_place(sp, target, this, args))
+        .flatten()
+        .unwrap_or_else(|| host.call_at(sp, target, this, args))
+}
+
 /// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the
 /// rigid body's contact (`CSolid::BigA`), which reads the solver's rows.
 pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {

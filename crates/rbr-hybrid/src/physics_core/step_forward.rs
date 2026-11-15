@@ -244,7 +244,7 @@ pub(super) fn advance_contact_bodies_remainder(ctx: &mut Ctx, r: &Regs) -> Resul
 /// The sample enter's unlink, through the original.
 impl EnterHost for Timer<'_> {
     fn unlink(&mut self, sample: u32) {
-        self.0.call(UNLINK, sample, &[]);
+        crate::collision::call_grid(self.0, 0, UNLINK, sample, &[]);
     }
 }
 

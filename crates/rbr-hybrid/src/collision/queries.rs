@@ -210,7 +210,7 @@ impl RayHost for Callees<'_> {
 
 impl CellQueryHost for Callees<'_> {
     fn query_cells(&mut self, _mem: &mut Mem, lo: u32, hi: u32, cells: u32) {
-        self.0.call(E45_CELL_QUERY, 0, &[lo, hi, cells]);
+        super::call_grid(self.0, 0, E45_CELL_QUERY, 0, &[lo, hi, cells]);
     }
 }
 
@@ -245,7 +245,7 @@ impl CollectHost for Callees<'_> {
     }
 
     fn query_cells(&mut self, _mem: &mut Mem, sp: u32, lo: u32, hi: u32, cells: u32) {
-        self.0.call_at(sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+        super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
     }
 
     fn length(&mut self, mem: &Mem, sp: u32, vector: u32) -> f32 {
