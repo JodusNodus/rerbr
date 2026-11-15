@@ -138,6 +138,17 @@ pub(crate) fn read_wheel<T: Value>(host: &dyn Host, mem: &Mem, this: u32, slot: 
     host.typed().and_then(|t| t.car.wheels.read(this, slot)).unwrap_or_else(|| T::load(mem, this + slot.at))
 }
 
+/// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` when a held wheel holds its dirty word
+/// (`CarWheels::set_dirty`), counted as a run ([`Host::ran_direct`]): its one write, and its binding reads nothing of
+/// the stack. False per call or for another tweak, where the caller calls the host.
+fn set_dirty_held(host: &dyn Host, object: u32) -> bool {
+    let held = host.typed().is_some_and(|t| t.car.wheels.set_dirty(object));
+    if held {
+        host.ran_direct();
+    }
+    held
+}
+
 /// The wheels' rim speeds of the car at `car` (`CarStore::wheel_speeds`: each wheel's speed scale times its spin rate)
 /// as a step leaves them at this point.
 pub(crate) fn wheel_speeds(host: &dyn Host, mem: &Mem, car: u32) -> [f32; 4] {

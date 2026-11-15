@@ -12,8 +12,8 @@ use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
 use super::{
-    call_wheel, on_wheels, Libm, BLEND4, M3AB90, M3AC50, M3AFB0, M3B900, M3D460, M3D520, MB560, SCRATCH_BELOW_ESP,
-    UNK9290, UNK96E0, UNK97A0, UNK9900,
+    call_wheel, on_wheels, set_dirty_held, Libm, BLEND4, M3AB90, M3AC50, M3AFB0, M3B900, M3D460, M3D520, MB560,
+    SCRATCH_BELOW_ESP, UNK9290, UNK96E0, UNK97A0, UNK9900,
 };
 use crate::car_body::on_held_car;
 use crate::collision::{RAY_CLEAR, RAY_SEEDS};
@@ -46,7 +46,9 @@ struct Refresh<'a> {
 
 impl layout::RefreshCalls for Refresh<'_> {
     fn set_dirty(&mut self, object: u32) {
-        self.host.call(0x52F450, object, &[]);
+        if !set_dirty_held(self.host, object) {
+            self.host.call(SET_DIRTY, object, &[]);
+        }
     }
 
     fn tyre_def(&mut self, scratch: u32) -> u32 {
@@ -248,7 +250,9 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn set_dirty(&mut self, object: u32, sp: u32) {
-        self.on(sp, 0x52F450, object, &[]);
+        if !set_dirty_held(self.host, object) {
+            self.on(sp, SET_DIRTY, object, &[]);
+        }
     }
 
     fn refresh(&mut self, this: u32, travel: f32, sp: u32) {
@@ -517,7 +521,9 @@ impl StrutCalls for Strut<'_> {
     }
 
     fn mark_dirty(&mut self, object: u32) {
-        self.host.call(SET_DIRTY, object, &[]);
+        if !set_dirty_held(self.host, object) {
+            self.host.call(SET_DIRTY, object, &[]);
+        }
     }
 
     fn refresh(&mut self, wheel: u32, travel: f32) {

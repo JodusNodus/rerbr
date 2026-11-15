@@ -237,6 +237,11 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   frames on the image. Leaf math direct with values on the pure host (`collision::{copy_vec4, length}`): `Length` from
   `E36Collect`, `CopyFrom` from `SyncGrid`, `CBody::Vf11C`, the body state, the L2 detector, `SimCFF0`. Audit (the
   skipped words `0xffbadbad`): drive2 PASS, traces equal aids off, on, damage realistic; twin typed, mem-direct equal.
+- `SetDirty` (0x52f450: `m_dirty = 1`, nothing else; its readers `IsDirty`/`ClrDirty` are the tweak UI's, not run)
+  direct from `M3DD30`, `M3B900` (the wheel's four reals' dirty words held: `CarWheels::set_dirty`) and the hinge's
+  `SimF950` (its headers on the image, `set_solid_word`): drive2 787.5 -> 761.3 host calls a step. Host: `CopyCF30`,
+  `M3D030`, `E45_M1980` and the boot step's first four (no held state there). Audit as above; poison with one
+  site back on the host stops at the held `strut_length_dirty`.
 
 ### Per subsystem
 
@@ -249,7 +254,7 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 | VCU, `vcu::layout::Unit` (`Cell`) | pedals, clutch, launch, slip, lockout, gear timer, cooldown; the drive's gear words through `DriveBlocks` | definition, pointers, owner car; CopyDef's maps, ReadPacket's packet | `vcu_vectors` per call, chain test |
 | Tyres, `tyre::tyres::Tyres` (`RefCell`, per run) | contact, patch, forces, slips, outputs, heat, soil, wear; relaxation, deflections, temperatures | setup, pointers, the wheel's contact angle; `Locate`, `TyreClamp`, the friction curve, getters (callers' words) | `tyre_vectors` per call, chain test |
 | Stage, `stage::typed::Stage` (read only, `Arc`) | drive line, material table, sheets | collision system and copies, `.col` tree, mesh grids, water meshes (heap graphs, per-query scratch) | `differential` (every entry, slot, texel); poison on RSF 122, 117 |
-| Wheels, `wheel::layout::Wheel` (field at a time) | refresh and axes pose, walk, probe, sectors, ground copies, spin, forces, flags | pointers, damage record, reals' headers, every word another subsystem reads at its address (angle, axle, hub, car force, ray blocks, NGP's strut words) | `differential`; `wheel_vectors` on `Mem` |
+| Wheels, `wheel::layout::Wheel` (field at a time) | refresh and axes pose, walk, probe, sectors, ground copies, spin, forces, flags, four reals' dirty words | pointers, damage record, reals' other header words, every word another subsystem reads at its address (angle, axle, hub, car force, ray blocks, NGP's strut words) | `differential`; `wheel_vectors` on `Mem` |
 | Drive, `engine_driveline::layout::DriveTyped` (`RefCell`, per access) | lanes, pair, pack, bias, gear steps; locks, gains, ring, clutch and pair matrices, gear fields, wheel blocks | definition, damage block (its functors), pointers, state's car `+0x580` (NGP reads it raw), worker matrices (`E39_MatVec`) | `engine_driveline_vectors`, chain test |
 | Engine, `engine_driveline::layout::EngineTyped` (`RefCell`, per word; a word store via `word_of`) | crank, pedal, heat, stall, misfire; radiator, coolant, turbo, boost, dampers, intake, cut flags, torque terms | option block (damage handler's, NGP's wrapper writes it), roll table and seed, `EngineNoise` payload (listeners read it at its address) | `engine_differential`, chain test |
 | Car's own, `car_body::layout::CarState` (field at a time) | control update and kept controls, contact times, value cells (`CarStore::cell`), speeds, respawn, overload, assistance | pointers, parts, damage handler, cell headers (`SetDirty`), `+0xaa0`/`+0xac0`, `+0x1600`/`+0x1610` (hinged bodies read them at their address) | `differential`; `car_body` vectors on `Mem` |

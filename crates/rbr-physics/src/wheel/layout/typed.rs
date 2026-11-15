@@ -60,9 +60,15 @@ wheel_state! {
     pub struct Wheel, size 0x1420 {
         /// The deformed top mount (`M3AB90`).
         deformed_top_mount @ 0x570: Vec4,
-        /// The strut's velocity, the value of the real at `+0x5c0` (its header stays in the image).
+        /// The dirty words of the reals of the wheel's angle (`+0x5a0`) and the strut's length (`+0x5b0`), whose
+        /// values stay in the image; `SetDirty` sets them ([`CarWheels::set_dirty`]).
+        wheel_angle_dirty @ 0x5A8: u32,
+        strut_length_dirty @ 0x5B8: u32,
+        /// The dirty word of the real at `+0x5c0` and its value, the strut's velocity.
+        strut_velocity_dirty @ 0x5C8: u32,
         strut_velocity @ 0x5CC: f32,
-        /// The steering rod's length after damage, the value of the real at `+0x5d0`.
+        /// The dirty word of the real at `+0x5d0` and its value, the steering rod's length after damage.
+        steering_rod_dirty @ 0x5D8: u32,
         steering_rod_length @ 0x5DC: f32,
         /// The name, dirty word and value of the definition's `WishboneLength` real, copied by the refresh.
         wishbone_length @ 0x5E4: [u32; 3],
@@ -152,6 +158,18 @@ impl CarWheels {
     /// The field `slot` of the wheel at `this`, if it is one of these.
     pub fn read<T>(&self, this: u32, slot: Slot<T>) -> Option<T> {
         self.held(this).map(|wheel| (slot.get)(&wheel.borrow()))
+    }
+
+    /// `NTweak::CBase::SetDirty` (0x52f450, `ntweak::set_dirty`) on the tweak at `at` where one of these wheels holds
+    /// its dirty word: the word becomes 1. False for any other tweak, which the caller dirties on the image.
+    pub fn set_dirty(&self, at: u32) -> bool {
+        let word = at.wrapping_add(crate::ntweak::DIRTY);
+        let dirty =
+            [slot::wheel_angle_dirty, slot::strut_length_dirty, slot::strut_velocity_dirty, slot::steering_rod_dirty];
+        self.wheels.iter().flatten().any(|(this, wheel)| {
+            let slot = dirty.into_iter().find(|s| this.wrapping_add(s.at) == word);
+            slot.inspect(|s| (s.set)(&mut wheel.borrow_mut(), 1)).is_some()
+        })
     }
 
     /// Every owned byte range, named by its wheel slot and field.
@@ -425,8 +443,11 @@ const WHEEL_BYTES: u32 = 0x1420;
 #[cfg(test)]
 mod tests {
     use super::super::fields::*;
-    use super::super::refresh_pose::{DEBUG_ROWS, ROD_MOUNT, STEERING_ROD, STEERING_ROD_LENGTH, TIP, WISHBONE_COPY};
+    use super::super::refresh_pose::{
+        DEBUG_ROWS, ROD_MOUNT, STEERING_ROD, STEERING_ROD_LENGTH, STEERING_ROD_TWEAK, TIP, WISHBONE_COPY,
+    };
     use super::*;
+    use crate::ntweak::DIRTY;
     use crate::store::check_table;
 
     const WHEEL_AT: u32 = 0x10000;
@@ -436,7 +457,11 @@ mod tests {
         check_table::<Wheel>();
         for (at, named) in [
             (slot::deformed_top_mount.at, DEFORMED_TOP_MOUNT),
+            (slot::wheel_angle_dirty.at, WHEEL_ANGLE_TWEAK + DIRTY),
+            (slot::strut_length_dirty.at, STRUT_TWEAK + DIRTY),
+            (slot::strut_velocity_dirty.at, STRUT_VEL_TWEAK + DIRTY),
             (slot::strut_velocity.at, STRUT_VEL),
+            (slot::steering_rod_dirty.at, STEERING_ROD_TWEAK + DIRTY),
             (slot::steering_rod_length.at, STEERING_ROD_LENGTH),
             (slot::wishbone_length.at, WISHBONE_COPY),
             (slot::wobbled_axle.at, WOBBLED_AXLE),
@@ -505,6 +530,23 @@ mod tests {
         let mut view = WheelView::new(&mut other, Some(&wheels));
         view.set(0x30000 - 0x9A0, slot::strut_dir, v);
         assert_eq!(Vec4::load(&other, 0x30000), v);
+    }
+
+    #[test]
+    fn set_dirty_sets_a_held_wheels_dirty_word_only() {
+        let mut mem = image(0);
+        let wheels =
+            CarWheels { wheels: [Some((WHEEL_AT, RefCell::new(Wheel::lift(&mem, WHEEL_AT)))), None, None, None] };
+        for tweak in [WHEEL_ANGLE_TWEAK, STRUT_TWEAK, STRUT_VEL_TWEAK, STEERING_ROD_TWEAK] {
+            assert!(wheels.set_dirty(WHEEL_AT + tweak), "{tweak:#x}");
+        }
+        // Another tweak, another wheel's: the image's.
+        assert!(!wheels.set_dirty(WHEEL_AT + WISHBONE_COPY - 4));
+        assert!(!wheels.set_dirty(0x30000 + STRUT_TWEAK));
+        wheels.lower(&mut mem);
+        for tweak in [WHEEL_ANGLE_TWEAK, STRUT_TWEAK, STRUT_VEL_TWEAK, STEERING_ROD_TWEAK] {
+            assert_eq!(mem.u32(WHEEL_AT + tweak + DIRTY), 1, "{tweak:#x}");
+        }
     }
 
     #[test]
