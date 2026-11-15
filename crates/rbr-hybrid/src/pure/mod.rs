@@ -76,9 +76,10 @@ pub(crate) const QUERY_PERFORMANCE_COUNTER: u32 = 0x729190;
 /// engine, NTweak, NGP) still writes its stack words.
 const IN_PLACE: [&str; 7] = ["entities", "wheel", "tyre", "spring_damper", "vcu", "collision", "rigid-body"];
 
-/// `CScratch::Step` (0x5360c0) and NGP's wrapper of it (`0x1005b660`): after each, with [`Pure::keep_tyre_particles`],
-/// the term its `FillOutputs` (0x532f10) folded into the tyre-noise block's word 1 is kept for the host
-/// ([`Pure::take_tyre_terms`]), since the frame finish that clears the word does not run here.
+/// `CScratch::Step` (0x5360c0) and NGP's wrapper of it (`0x1005b660`): after each (or the wheel's direct call,
+/// [`Host::tyre_stepped`]), with [`Pure::keep_tyre_particles`], the term its `FillOutputs` (0x532f10) folded into the
+/// tyre-noise block's word 1 is kept for the host ([`Pure::take_tyre_terms`]), since the frame finish that clears the
+/// word does not run here.
 const TYRE_STEPS: [u32; 2] = [0x5360c0, 0x1005_b660];
 
 /// [`Pure::stack_words`] of a binding not run through the host yet, and of one that never runs as a plain call (the
@@ -592,8 +593,7 @@ impl Pure {
     fn ran_bound(&self, slot: usize, addr: u32, regs: &Regs) {
         let b = bound()[slot];
         if self.keep_tyre_particles && TYRE_STEPS.contains(&b.addr) {
-            let term = tyre_term(self, &self.raw, regs.ecx, f32::from_bits(regs.stack[1]));
-            self.captures.push_tyre_term(regs.ecx, term);
+            self.tyre_stepped(regs.ecx, f32::from_bits(regs.stack[1]));
         }
         if b.addr == addr {
             let ran = &self.ran[slot];
@@ -954,6 +954,12 @@ impl Host for Pure {
         self.entered.set(self.entered.get() + 1);
     }
 
+    fn tyre_stepped(&self, scratch: u32, dt: f32) {
+        if self.keep_tyre_particles {
+            self.captures.push_tyre_term(scratch, tyre_term(self, &self.raw, scratch, dt));
+        }
+    }
+
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
         let regs = self.call_regs(sp, ecx);
@@ -1001,6 +1007,10 @@ impl Host for Direct {
 
     fn ran_direct(&self) {
         self.0.entered.set(self.0.entered.get() + 1);
+    }
+
+    fn tyre_stepped(&self, scratch: u32, dt: f32) {
+        self.0.tyre_stepped(scratch, dt);
     }
 
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {

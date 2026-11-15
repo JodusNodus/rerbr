@@ -25,7 +25,7 @@ pub use brake_scale::set_brake_scale;
 pub use drive_loss::set_four_wheel_drive_loss;
 pub(crate) use engine::{engine_wrapper, starter_step, OPERATOR_NEW};
 pub use engine_model::{engine_model_telemetry, is_set as engine_model_is_set, restart_engine_model, set_engine_model};
-pub(crate) use steps::{curve_term, CURVE_TERM};
+pub(crate) use steps::{curve_term, tyre_step, CURVE_TERM};
 pub(crate) use tuning::{
     clutch_scale, damage_tuning, damper_step, drag_factor, drive_split, engine_tuning, probe_tuning, step_slip,
     thermal, thermal_in, vcu_tuning, wheel_tuning,

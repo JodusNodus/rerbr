@@ -352,7 +352,18 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x5358C0, scratch, &[x.to_bits()]);
     }
 
+    // NGP's wrapper as its binding runs it, direct on the held tyre (its term kept, `Host::tyre_stepped`); a decline
+    // leaves the memory as it was, and the host call runs. 0x5360C0 (1.02, whose binding declines) and another car's
+    // tyre through the host.
     fn tyre_step(&mut self, scratch: u32, args: [u32; 16], sp: u32) {
+        if crate::ngp::is_ngp()
+            && crate::tyre::holds_tyre(self.host, scratch)
+            && crate::ngp::tyre_step(self.host, &mut self.mem, scratch, &args).is_ok()
+        {
+            self.host.ran_direct();
+            self.host.tyre_stepped(scratch, f32::from_bits(args[1]));
+            return;
+        }
         // 0x5360C0, or NGP's wrapper 0x1005b660
         self.on(sp, crate::ngp::Call::TyreStep.address(), scratch, &args);
     }

@@ -292,17 +292,24 @@ pub(crate) fn curve_term(m: &mut Mem, host: &dyn Host, drive: u32, args: [u32; 5
 const WHEEL_WORKER: u32 = 0x1004_5df0;
 
 /// `0x1005b660` (thiscall on the scratch, 16 words, `ret 0x40`): NGP's wrapper of `CScratch::Step`
-/// (`rbr_physics::ngp::step_wrapper`) around the ported `Step`.
+/// (`rbr_physics::ngp::step_wrapper`) around the ported `Step`: [`tyre_step`].
 pub(crate) fn step_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let m = &ctx.mem;
+    tyre_step(ctx.host, &mut ctx.mem, r.ecx, &r.stack[..16])?;
+    Ok(Return::void(0, 0x40))
+}
+
+/// [`step_wrapper`]'s body on `host` and `mem` for the tyre whose scratch is at `scratch`, with the wrapper's sixteen
+/// stack words `stack`. Also the wheel step's direct call. On a decline the memory is as it was.
+pub(crate) fn tyre_step(host: &dyn Host, mem: &mut Mem, scratch: u32, stack: &[u32]) -> Result<(), Decline> {
+    let m = &*mem;
     let settings = m.u32(m.u32(at(SETTINGS).expect("hooked only with NGP")));
     if settings == 0 {
         return Err(Decline::Unsupported("NGP's settings object is not made yet"));
     }
-    let def = m.u32(r.ecx + 0x10);
+    let def = m.u32(scratch + 0x10);
     let saved: [u32; 0x20] = m.u32s(def + 0x204);
-    let p = r.stack[4];
-    let k = step_wrapper::speed_factor(crate::tyre::read_tyre(ctx.host, m, r.ecx, |t| t.scratch.speed));
+    let p = stack[4];
+    let k = step_wrapper::speed_factor(crate::tyre::read_tyre(host, m, scratch, |t| t.scratch.speed));
     let percent = SurfaceHeatPercent {
         class_2: m.u32(settings + 0xe98),
         class_1: m.u32(settings + 0xea8),
@@ -311,21 +318,21 @@ pub(crate) fn step_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let scale = step_wrapper::surface_scale(m.u32(p + 0x148), m.u32(def + 0xc), percent);
     let words = [0x48, 0x58, 0x78].map(|o| m.u32(p + o));
     for o in [0x48, 0x58, 0x78] {
-        ctx.mem.set_f32(p + o, k * ctx.mem.f32(p + o));
+        mem.set_f32(p + o, k * mem.f32(p + o));
     }
     if let Some(s) = scale {
         for o in (0x204..0x244).step_by(4) {
-            ctx.mem.set_f32(def + o, ctx.mem.f32(def + o) * s);
+            mem.set_f32(def + o, mem.f32(def + o) * s);
         }
     }
-    let ret = crate::tyre::step(ctx, r);
+    let ret = crate::tyre::step_in(host, mem, scratch, stack);
     for (o, w) in (0x204..0x284).step_by(4).zip(saved) {
-        ctx.mem.set_u32(def + o, w);
+        mem.set_u32(def + o, w);
     }
     if ret.is_err() {
         // `Step` declined before writing: undo the speed factor too, so the original runs on the entry state.
         for (o, w) in [0x48, 0x58, 0x78].into_iter().zip(words) {
-            ctx.mem.set_u32(p + o, w);
+            mem.set_u32(p + o, w);
         }
     }
     ret

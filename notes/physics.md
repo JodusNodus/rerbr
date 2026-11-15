@@ -209,9 +209,12 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   callee on the held state with values, else the host. Direct: the VCU's calls of the drive, engine and car
   (`vcu::VcuCallees`), its light setters (on the image: the light block is no typed state's) and its slip query (a
   second view of the held unit's `Cell`); the car's `Get4540` (step) and `SetDirty` (assist: its one write, the cell
-  header's dirty word, on the image); the wheel's of the tyre's setters, relaxation and tail getters and of the strut
-  (NGP's spring step, `GetName`). Host: `ResetOutputs`, `UpdateAndReset`, the tyre step. Residue audit: the words each
-  skipped host call would write, filled with `0xffbadbad`, change nothing on drive2 (aids off and on).
+  header's dirty word, on the image); the wheel's of the tyre's setters, relaxation and tail getters, of the strut
+  (NGP's spring step, `GetName`) and of the tyre step (NGP's wrapper, `ngp::tyre_step`; its term through
+  `Host::tyre_stepped`). Host: `ResetOutputs` and `UpdateAndReset` (no held caller: `CWheel::Vf28` never runs in a
+  pure step, `Pure::reset_strut_dampers` is its held reset; `M3D030` runs only in the boot's first step, before the
+  car's lift). Residue audit: the words each skipped host call would write, filled with `0xffbadbad`, change nothing
+  on drive2 (aids off and on; the tyre step's 17 also with damage on).
 
 ### Per subsystem
 
