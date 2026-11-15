@@ -81,6 +81,8 @@ pub struct Scene {
     pub roadside: Option<rbr_render::roadside::Roadside>,
     /// The engine's reflections follow the roadside (not `--no-roadside`).
     pub echoes: bool,
+    /// The stage's lamps and their sprites (`rbr_render::stage_lamps`).
+    pub stage_lamps: rbr_render::stage_lamps::StageLamps,
 }
 
 impl Scene {
@@ -102,6 +104,7 @@ impl Scene {
             let crew: Vec<usize> = self.crew.iter().flat_map(|crew| crew.slots()).collect();
             renderer.set_car(&playback.car_meshes(), &crew);
         }
+        renderer.set_stage_lamps(&self.stage_lamps);
         renderer.set_precipitation(self.precipitation);
         renderer.set_cabin_sun(self.cabin_sun.clone());
         renderer.set_cabin_mask(self.cabin_mask);
@@ -232,6 +235,7 @@ fn load_scene<'scope, 'env>(
                 grass: None,
                 roadside: None,
                 echoes: args.roadside,
+                stage_lamps: Default::default(),
             })
         }
         (stage_name, car_name) => {
@@ -268,6 +272,10 @@ fn load_scene<'scope, 'env>(
             }
             if args.enhance.decals {
                 rbr_render::decals::blend_ground_decals(&mut stage);
+            }
+            let stage_lamps = rbr_render::stage_lamps::take(&mut stage);
+            if !stage_lamps.lamps.is_empty() {
+                eprintln!("stage lamps: {}", stage_lamps.lamps.len());
             }
             let grass = grass.then(|| rbr_render::grass::add(&mut stage)).flatten().map(|field| {
                 eprintln!("grass: {} ground triangles", field.triangles());
@@ -493,6 +501,7 @@ fn load_scene<'scope, 'env>(
                 grass,
                 roadside,
                 echoes: args.roadside,
+                stage_lamps,
             })
         }
     }
@@ -648,7 +657,10 @@ fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
     let base = stage.atmosphere.clone();
     let (country, stage_name, snow) = &args.stage_place;
     let site = relight::site(map, country.as_deref(), stage_name, *snow);
-    let clock = relight::Clock::new(base, bake, site, letter, args.clock, args.relight).physical(args.enhance.lighting);
+    // A night stage's own light is the night's.
+    let night = relight::night_stage(stage_name) || relight::night_stage(name);
+    let start = args.clock.or_else(|| night.then(|| relight::evening_hour(site, relight::NIGHT_STAGE_ELEVATION)));
+    let clock = relight::Clock::new(base, bake, site, letter, start, args.relight).physical(args.enhance.lighting);
     let (atmosphere, day) = clock.atmosphere();
     eprintln!(
         "clock: {:.1} h, sun {:.1} degrees up, bake at {:.1} h ({letter}), light {:.2}, ambient {:.2}",

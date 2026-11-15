@@ -61,7 +61,7 @@ pub(crate) use shadows::RANGE_SHADER;
 use sun_mask::SunMask;
 pub(crate) use textures::dds_texture;
 use uniforms::FrameBinding;
-pub(crate) use uniforms::{LampUniform, MAX_LAMPS};
+pub(crate) use uniforms::{LampUniform, MAX_LAMPS, MAX_STREET};
 pub use views::FrameView;
 
 pub(crate) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -179,6 +179,10 @@ pub struct Renderer {
     skid_marks: Option<crate::skidmarks_pass::SkidPass>,
     /// The game's car shadow decal ([`crate::car_shadow`]), made by the first [`Renderer::set_car_shadow`].
     car_shadow: Option<crate::skidmarks_pass::SkidPass>,
+    /// The stage's lamps ([`Renderer::set_stage_lamps`]): they light the stage at night and at dusk, and their sprites
+    /// glow ([`crate::stage_lamps_pass`]).
+    stage_lamps: Vec<crate::stage_lamps::StageLamp>,
+    lamp_sprites: Option<crate::stage_lamps_pass::GlowPass>,
     /// The particle billboards ([`Renderer::set_particles`]), drawn last in the main view.
     particles: Option<particles::gpu::Pass>,
     /// The windscreen's drops ([`Renderer::set_glass`]), drawn after the particles.
@@ -276,6 +280,14 @@ impl Renderer {
             crate::skidmarks_pass::SkidPass::new(&self.device, &self.queue, SCENE_FORMAT, texture)
         });
         marks.set_quads(&self.device, &mut self.uploads, quads);
+    }
+
+    /// Sets the stage's lamps ([`crate::stage_lamps::take`]): their light and their sprites' glow.
+    pub fn set_stage_lamps(&mut self, lamps: &crate::stage_lamps::StageLamps) {
+        self.stage_lamps = lamps.lamps.clone();
+        self.lamp_sprites = (!lamps.sprites.is_empty()).then(|| {
+            crate::stage_lamps_pass::GlowPass::new(&self.device, &self.queue, SCENE_FORMAT, &lamps.sprites)
+        });
     }
 
     /// Sets our tyre marks to draw from `quads` (`Enhance::marks`, in place of the skid marks).
@@ -437,8 +449,35 @@ impl Renderer {
     /// night, the dusk's share at dusk and none by day (the game lights neither; by day the tail lamps lit the dust
     /// behind the car as a red streak).
     fn air_lamps(&self) -> [LampUniform; MAX_LAMPS] {
-        let dark = if self.atmosphere.night { 1.0 } else { self.atmosphere.relight.map_or(0.0, |r| r.lamps) };
+        let dark = self.lamps_level();
         self.lamps.map(|l| LampUniform { colour: (Vec4::from(l.colour) * dark).to_array(), ..l })
+    }
+
+    /// How lit the lamps are, the car's in the air and the stage's: all at night, the dusk's share at dusk, none by day.
+    fn lamps_level(&self) -> f32 {
+        if self.atmosphere.night {
+            1.0
+        } else {
+            self.atmosphere.relight.map_or(0.0, |r| r.lamps)
+        }
+    }
+
+    /// The stage's lamps for the frame uniform at `eye`: their colour times how lit they are and the distance they fade
+    /// out by, and the [`MAX_STREET`] nearest's places, intensities and axes (`street_sum` in `night.wgsl`).
+    pub(super) fn street_lamps(&self, eye: Vec3) -> ([f32; 4], [[f32; 4]; 2 * MAX_STREET]) {
+        let mut street = [[0.0; 4]; 2 * MAX_STREET];
+        let level = self.lamps_level();
+        if level <= 0.0 || self.stage_lamps.is_empty() {
+            return ([0.0; 4], street);
+        }
+        let mut near: Vec<_> = self.stage_lamps.iter().map(|l| (l.position.distance_squared(eye), l)).collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let reach = near.get(MAX_STREET).map_or(f32::MAX, |(d2, _)| d2.sqrt());
+        for (slot, (_, lamp)) in street.chunks_exact_mut(2).zip(near) {
+            slot[0] = lamp.position.extend(crate::stage_lamps::intensity(lamp)).to_array();
+            slot[1] = lamp.axis.extend(0.0).to_array();
+        }
+        ((crate::stage_lamps::COLOUR * level).extend(reach).to_array(), street)
     }
 
     /// Starts the temporal anti-aliasing's history again with the next frame ([`crate::taa`]): for a cut it cannot

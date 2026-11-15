@@ -171,7 +171,14 @@ pub(super) struct FrameUniform {
     /// ([`SunIn::through`](crate::car::cabin::SunIn::through)). 0 without the cabin light.
     cabin: [f32; 4],
     cabin_seen: [f32; 4],
+    /// The stage's lamps nearest the eye ([`Renderer::street_lamps`]): their colour times how lit they are and `w` the
+    /// eye's distance they fade out by; each lamp's position and intensity, and the way its light falls.
+    street_light: [f32; 4],
+    street: [[f32; 4]; 2 * MAX_STREET],
 }
+
+/// The most stage lamps that light a frame, the nearest the eye ([`Renderer::street_lamps`]).
+pub(crate) const MAX_STREET: usize = 16;
 
 /// The most lamps that light the stage at night ([`Renderer::set_lamps`]).
 pub(crate) const MAX_LAMPS: usize = 8;
@@ -356,6 +363,7 @@ impl Renderer {
         let dirt = self.car_dirt.look(self.enhance.particles, self.wetness);
         // Once: a pass over every mesh's draws (0.035 ms on 580), which the frames took six times.
         let car_bounds = self.car_bounds();
+        let (street_light, street) = self.street_lamps(eye);
         let mut uniforms = [FrameUniform::zeroed(); 3];
         for (index, (slot, (matrix, haze, [start, end], (shadow, ground), anchored, depth))) in uniforms
             .iter_mut()
@@ -441,6 +449,8 @@ impl Renderer {
                 car_dirt: [dirt.colour[0], dirt.colour[1], dirt.colour[2], dirt.sheen],
                 cabin: cabin.0,
                 cabin_seen: cabin.1,
+                street_light,
+                street,
             };
             *slot = uniform;
         }

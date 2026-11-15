@@ -353,6 +353,25 @@ fn horizontal(phi: f64, dec: f64, h: f64) -> (f64, f64) {
     (elevation.to_degrees(), azimuth.to_degrees().rem_euclid(360.0))
 }
 
+/// Whether a stage is built for the night: its name says so (126 Sardian Night, 401 Vinec-Skalsko NIGHT, 466 and 467
+/// Odry snow Night). Their bakes hold no sun to fit (Sardian Night's fits one 80 degrees up), so without a time they
+/// start at [`NIGHT_STAGE_ELEVATION`] in the evening, not at the bake's hour (ours).
+pub fn night_stage(name: &str) -> bool {
+    name.split(|c: char| !c.is_ascii_alphanumeric()).any(|word| word.eq_ignore_ascii_case("night"))
+}
+
+/// The sun's elevation a night stage starts at without a time, degrees (the launcher's Night).
+pub const NIGHT_STAGE_ELEVATION: f32 = -12.0;
+
+/// The local solar hour the sun goes below `elevation` in the evening at `site` ([`site`]); just before midnight
+/// where it never does.
+pub fn evening_hour((latitude, _, day): (f32, f32, f32), elevation: f32) -> f32 {
+    (12 * 60..24 * 60)
+        .map(|m| m as f32 / 60.0)
+        .find(|&hour| solar(latitude, day, hour).0 < elevation)
+        .unwrap_or(24.0 - 1.0 / 60.0)
+}
+
 /// The sun's elevation and compass azimuth (degrees, clockwise from north) at local solar `hour`.
 pub fn solar(latitude: f32, day: f32, hour: f32) -> (f32, f32) {
     let declination = (-23.44f32).to_radians() * (std::f32::consts::TAU / 365.0 * (day + 10.0)).cos();

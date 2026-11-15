@@ -72,6 +72,49 @@ fn lamp_sum(world: vec3<f32>, n: vec3<f32>, two_sided: bool) -> vec3<f32> {
     return sum + REAR_KNEE * rear / (REAR_KNEE + rear);
 }
 
+// The light the stage's own lamps (`stage_lamps.rs`, `frame.street`, ours) give a surface at `world` with normal `n`
+// (`two_sided` for foliage cards), in the lamps' units as `lamp_sum`'s, unshadowed. A lamp with an axis is a street
+// lamp's bowl: its intensity down the axis, weakening to the side (`STREET_SPREAD`, the power of the cosine) and gone
+// above the horizontal of its axis; one without lights every way. The lamps reach `STREET_REACH` metres and fade out
+// toward the eye's distance past which the frame leaves them out (`frame.street_light.w`).
+const STREET_REACH: f32 = 90.0;
+const STREET_SPREAD: f32 = 0.5;
+
+// Whether the stage's lamps are lit (none by day, or on a stage without them).
+fn street_on() -> bool {
+    return frame.street_light.x + frame.street_light.y + frame.street_light.z > 0.0;
+}
+
+fn street_sum(world: vec3<f32>, n: vec3<f32>, two_sided: bool) -> vec3<f32> {
+    if (!street_on()) {
+        return vec3<f32>(0.0);
+    }
+    var sum = 0.0;
+    let cut = frame.street_light.w;
+    for (var i = 0; i < 16; i++) {
+        let lamp = frame.street[2 * i];
+        if (lamp.w == 0.0) {
+            break;
+        }
+        let to = lamp.xyz - world;
+        let d2 = dot(to, to);
+        if (d2 > STREET_REACH * STREET_REACH) {
+            continue;
+        }
+        let toward = to * inverseSqrt(max(d2, 1e-6));
+        let axis = frame.street[2 * i + 1].xyz;
+        var share = 1.0;
+        if (dot(axis, axis) > 0.0) {
+            let c = dot(-toward, axis);
+            share = pow(max(c, 0.0), STREET_SPREAD) * smoothstep(0.0, 0.15, c);
+        }
+        let reach = 1.0 - smoothstep(0.6 * STREET_REACH, STREET_REACH, sqrt(d2));
+        let shown = 1.0 - smoothstep(0.75 * cut, cut, distance(lamp.xyz, frame.eye.xyz));
+        sum += lamp.w * share * reach * shown / (d2 + 1.0) * lamp_facing(n, toward, two_sided);
+    }
+    return frame.street_light.rgb * sum;
+}
+
 // `lamp_sum`'s light `sum` in lux (`own_light`'s, physical): the headlights' dipped hot spot `HEADLIGHT_CD` (an ECE
 // dipped beam's) for `lights::HEADLIGHT` (`HEADLIGHT_UNIT`).
 const HEADLIGHT_CD: f32 = 20000.0;
