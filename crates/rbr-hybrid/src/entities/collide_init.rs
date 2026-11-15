@@ -6,10 +6,10 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::ZERO_VEC4;
 
 use crate::collision::{
-    COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, COLL_EVENT_INIT_FULL, E01_VEC4_COPY_FROM, E01_VEC4_NORMALIZE, E36_ALLOC_EVENT,
-    E37_GRID_COPY, FLOAT3_LENGTH, RAY_CLEAR,
+    COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, COLL_EVENT_INIT_FULL, E01_VEC4_NORMALIZE, E36_ALLOC_EVENT, E37_GRID_COPY,
+    RAY_CLEAR,
 };
-use crate::entities::Op;
+use crate::entities::{Op, MAT_COLLIDE_INIT};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 const SEGMENT_GATE: u32 = 0x4ff070;
@@ -64,7 +64,8 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn copy_from(&mut self, sp: u32, to: u32, from: u32) {
-        self.host.call_at(sp, E01_VEC4_COPY_FROM, to, &[from]);
+        crate::skip_unwritten(self.host, &mut self.mem, sp, &[from]);
+        crate::collision::copy_vec4(self.host, &mut self.mem, sp, to, from);
     }
 
     fn ray_query(&mut self, sp: u32, host: u32, a: u32, b: u32, out: u32) -> u32 {
@@ -114,7 +115,8 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn length(&mut self, sp: u32, vector: u32) -> f32 {
-        self.host.call_at(sp, FLOAT3_LENGTH, vector, &[]).st0 as f32
+        crate::skip_unwritten(self.host, &mut self.mem, sp, &[]);
+        crate::collision::length(self.host, &self.mem, sp, vector)
     }
 }
 
@@ -124,4 +126,23 @@ pub(super) fn collide_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
     let mut calls = CollideCalls { host: ctx.host, mem: ctx.mem.clone() };
     let eax = layout::collide_init(&mut calls, &mut ctx.mem, r.ecx, body, sink, r.esp);
     Ok(Return::void(eax, 12))
+}
+
+/// `E33Mat34::CollideInit` on `this` with `(body, 0, sink)` from a caller, its eax. While the pure host holds the
+/// state, a Rust call at `sp` (its frame on the image below `sp`, as the call places it; none of the call's words, its
+/// binding not entered); elsewhere the call at `sp`. With `residue-audit` the call's words are filled.
+pub(crate) fn collide_init(host: &dyn Host, sp: u32, this: u32, body: u32, sink: u32) -> u32 {
+    let args = [body, 0, sink];
+    if host.typed().is_some() && sp != 0 {
+        let ran = host.with_image(&mut |mem| {
+            crate::skip_unwritten(host, mem, sp, &args);
+            let mut calls = CollideCalls { host, mem: mem.clone() };
+            Some(layout::collide_init(&mut calls, mem, this, body, sink, sp))
+        });
+        if let Some(eax) = ran {
+            host.ran_direct();
+            return eax;
+        }
+    }
+    host.call_at(sp, MAT_COLLIDE_INIT, this, &args).eax
 }

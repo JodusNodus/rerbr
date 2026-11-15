@@ -11,7 +11,7 @@ use rbr_physics::physics_core::layout::ZERO_VEC4;
 use super::RAY_SEEDS;
 use super::{
     COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, E01_VEC4_NORMALIZE, E09_VEC4_SUB, E21_VEC3_ADD, E33_MAKE_EVENT, E37_EDGE_EDGE,
-    E37_EDGE_PAIR, E37_GRID_COPY, MAT_COLLIDE_INIT,
+    E37_EDGE_PAIR, E37_GRID_COPY,
 };
 use super::{COLL_EVENT_INIT_FULL, E36_ALLOC_EVENT};
 use crate::collision::RAY_CLEAR;
@@ -139,7 +139,7 @@ impl GridContactHost for VfD0Calls<'_> {
     }
 
     fn collide_init(&mut self, sp: u32, other: u32, body: u32, list: u32) -> u32 {
-        self.host.call_at(sp, MAT_COLLIDE_INIT, other, &[body, 0, list]).eax
+        crate::entities::collide_init(self.host, sp, other, body, list)
     }
 
     fn transform(&mut self, sp: u32, entity: u32) -> u32 {

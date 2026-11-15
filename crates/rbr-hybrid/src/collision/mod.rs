@@ -235,4 +235,3 @@ const E37_EDGE_PAIR: u32 = 0x4f8560;
 const E37_WALK_5FF0: u32 = 0x4f5ff0;
 const E37_M74A0: u32 = 0x4f74a0;
 const E37_STORE_5570: u32 = 0x4f5570;
-const MAT_COLLIDE_INIT: u32 = 0x51bd30;
