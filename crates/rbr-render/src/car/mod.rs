@@ -247,6 +247,26 @@ pub struct Car {
     pub report: CarReport,
 }
 
+impl Car {
+    /// Gives the car the headlamp type of its `year` (ours, `Enhance::lighting`; [`lights::Headlamp`]): its retail-coloured
+    /// headlights and the lit headlamp parts' glow. A car of no year or a halogen one is unchanged.
+    pub fn set_headlamp_year(&mut self, year: Option<u32>) {
+        let Some(headlamp) = lights::Headlamp::of_year(year) else {
+            return;
+        };
+        if !lights::apply_headlamp(&mut self.lamp_points, headlamp) {
+            return;
+        }
+        let fronts =
+            self.damage.iter().map(|d| d.lamp.is_some_and(|s| s.kind == lights::Kind::Front && s.lit && !s.glass));
+        for (mesh, _) in self.meshes.iter_mut().zip(fronts).filter(|(_, front)| *front) {
+            for shade in mesh.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
+                shade.glow = shade.glow.filter(|glow| glow[3] < 0.0).map(|glow| lights::headlamp_glow(glow, headlamp));
+            }
+        }
+    }
+}
+
 /// The placement of a car at a stage pose (see [`coords::car_to_stage`]). `None` puts the car at the
 /// origin with its front along `-z`.
 pub fn placement_at(pose: Option<Pose>) -> Mat4 {

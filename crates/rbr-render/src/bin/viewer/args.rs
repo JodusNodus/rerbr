@@ -31,6 +31,8 @@ pub struct Args {
     pub car: Option<String>,
     /// `--rsf-car`: an RSF car in slot 5, read in place (`rbr_formats::rsf::select`).
     pub rsf_car: Option<String>,
+    /// The model year of the `--rsf-car` (set from RSF's car data; headlamp type, `Car::set_headlamp_year`).
+    pub car_year: Option<u32>,
     /// A pack car in slot 5, read in place ([`car_pack::Flags`]). The launcher resolves every pack car to these;
     /// `--rsf-car` stays as the developer entry for an RSF install.
     pub pack_car: car_pack::Flags,
@@ -746,6 +748,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         stage_place,
         car,
         rsf_car,
+        car_year: None,
         drive,
         at,
         at_drive,
