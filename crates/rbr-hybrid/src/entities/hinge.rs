@@ -34,6 +34,7 @@ const MSG_NAME: u32 = 0x73d4b0;
 /// The calls `SimF950` makes, at the original's depths: the frame is 16-aligned from the entry esp (`push ebp; and esp,
 /// -16`), and each call enters where the original's pushes put it below that frame.
 struct F950Host<'a> {
+    mem: Mem,
     host: &'a dyn Host,
     frame: u32,
 }
@@ -43,8 +44,15 @@ impl hinge_advance::Calls for F950Host<'_> {
         self.host.call_at(self.frame - 0x48, E43VF6C, this, &[dt.to_bits()]).eax
     }
 
+    /// In a held step `SetDirty`'s one write, the tweak's dirty word (the hinge's headers stay in the image; a held
+    /// solid's word if its table names it), here ([`Host::ran_direct`]); else the host.
     fn mark_dirty(&mut self, at: u32) {
-        self.host.call_at(self.frame - 0x44, SET_DIRTY, at, &[]);
+        if self.host.typed().is_none() {
+            self.host.call_at(self.frame - 0x44, SET_DIRTY, at, &[]);
+            return;
+        }
+        self.host.ran_direct();
+        crate::rigid_body::set_solid_word(self.host, &mut self.mem, at + rbr_physics::ntweak::DIRTY, 1);
     }
 
     fn scale_vector(&mut self, vec: u32, s: f32, out: u32) {
@@ -69,7 +77,7 @@ impl hinge_advance::Calls for F950Host<'_> {
 pub(super) fn sim_f950_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let dt = f32::from_bits(r.stack[0]);
     let frame = aligned_frame(r.esp);
-    let mut calls = F950Host { host: ctx.host, frame };
+    let mut calls = F950Host { mem: ctx.mem.clone(), host: ctx.host, frame };
     let eax = on_solids(ctx, |s| layout::hinge_advance_at(s, r.ecx, dt, frame - 0x30, &mut calls));
     Ok(Return::void(eax, 4))
 }
