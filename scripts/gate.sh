@@ -10,7 +10,8 @@
 #   run's command again (its work files) with --twin typed, aids off and all on, PASS when the twin line reads equal
 #   after each of 84084 steps and both round trips equal, with exit status 0 (aids on: 0, or 1 with no failure but the
 #   recording's); twin-across, the same with --twin across (aids off: held over each step against the default, held
-#   across steps); poison, a release build with rbr-hybrid/poison into target/poison and the drive with it, PASS as
+#   across steps); twin-direct, with --twin mem-direct (aids off: the pure host's direct dispatch, where calls skip
+#   their stack words, against the pure dispatch); poison, a release build with rbr-hybrid/poison into target/poison and the drive with it, PASS as
 #   the standalone check;
 # - with --perf BASE_BIN, after the others: the step's cost of this build against BASE_BIN (scripts/perf-step.sh,
 #   3 runs), no verdict.
@@ -134,6 +135,7 @@ sys.stdout.write("\0".join(c))' "$out/standalone/5/summary.json")
     start twin-typed "${drive[@]}" --twin typed
     start twin-aids "${drive[@]}" --auto-gears on --gear-guard on --neutral-lock on --clutch-help on --twin typed
     start twin-across "${drive[@]}" --twin across
+    start twin-direct "${drive[@]}" --twin mem-direct
 fi
 if [ "$hybrid" = 1 ]; then
     # Every "run B vs run A" line equal, one per snapshot (13), and exit status 0.
@@ -160,6 +162,7 @@ if [ "$typed" = 1 ]; then
     }
     twin_typed() { twin_line "$1" && [ "$2" = 0 ]; }
     twin_across() { twin_line "$1" "$2" Across && [ "$2" = 0 ]; }
+    twin_direct() { twin_line "$1" "$2" MemDirect && [ "$2" = 0 ]; }
     # Aids on, the run differs from the recording: exit 1 passes when none of the report's other failures shows (no
     # stop, the time card and the application state equal; headless/report.rs).
     twin_aids() {
@@ -169,6 +172,7 @@ if [ "$typed" = 1 ]; then
     finish twin-typed twin_typed
     finish twin-aids twin_aids
     finish twin-across twin_across
+    finish twin-direct twin_direct
 fi
 
 if [ -n "$perf" ]; then

@@ -153,7 +153,7 @@ snapshots and viewer playback. Last standalone results (2026-10-20): tanner-coro
 
 Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it; `--hybrid`
 adds the hybrid merge gate below, one process per snapshot, `--typed` the drive's `--twin typed` runs (aids off, on),
-its `--twin across`, the `poison` build's drive, `--perf BASE_BIN` the step's cost):
+its `--twin across` and `--twin mem-direct`, the `poison` build's drive, `--perf BASE_BIN` the step's cost):
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR
