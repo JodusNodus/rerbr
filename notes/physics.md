@@ -215,6 +215,12 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   pure step, `Pure::reset_strut_dampers` is its held reset; `M3D030` runs only in the boot's first step, before the
   car's lift). Residue audit: the words each skipped host call would write, filled with `0xffbadbad`, change nothing
   on drive2 (aids off and on; the tyre step's 17 also with damage on).
+- Trivial callees without a call or its words on the pure host (`rbr_hybrid::trivial`; the emulator keeps the calls):
+  the slot-12 getter 0x519c00 (eax `this`; `E43Vf6C` passes `ComposeA` its three words), the empty hook 0x52f480, the
+  `ret n` stand-ins whose eax no caller reads, `CE36SubBlock::Init` (its port), the counter (`Host::query_counter`).
+  drive2: host calls 1062.8 -> 938.6 a step, instructions -3.2 %. Residue audit (words filled with `0xffbadbad`):
+  traces unchanged aids off and on and damage realistic, `--twin mem-direct` equal; CollideWork's 0x499e90 keeps its
+  return slot written (`skip_call_writing`: read into car+0x14c under the direct dispatch, drive2 step 19211).
 
 ### Per subsystem
 

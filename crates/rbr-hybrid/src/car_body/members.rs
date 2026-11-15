@@ -376,7 +376,7 @@ pub(super) fn body_to_world_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     let [a, b, ..] = r.stack;
     let slot = |mem: &Mem, this: u32| mem.u32(mem.u32(this) + 0x30);
     let own = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, car), car, &[]);
-    let receiver = ctx.host.call(slot(&ctx.mem, body), body, &[]).eax;
+    let receiver = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, body), body, &[]);
     ctx.host.call(entities::MB560, receiver, &[a, own, b]);
     Ok(Return::void(b, 8))
 }
