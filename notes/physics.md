@@ -174,7 +174,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 - Stay on `Mem`: constructors, setup copies, `load` and the stage's load (image construction); code writing at
   computed addresses in the original's stack frames (detector walks, `notify`, `prof_calls`, `collide_init`, detach
   events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (`FilingHost`); NTweak apply and parse; the collision
-  cell grid, links, event pool and free list, grid construction, `brake_wall_contact`.
+  cells' link blocks and links, event pool and free list, grid construction, `brake_wall_contact`.
 - Mem-direct dispatch (`--dispatch direct`, the live default; `pure` is the fact-check's host): a call within the
   `IN_PLACE` subsystems to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) or a binding (`Pure::call_plain`)
   runs as a plain call when it passes exactly the words the callee pops (`Pure::stack_words`); watched emits and tyre
@@ -258,6 +258,17 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `Scale`), `E43Vf6C`, the emits, the detaches' callees. Audit (the skipped words `0xffbadbad`): drive2 PASS, twin
   typed aids off, on and damage realistic, mem-direct equal.
 
+- The cell grid (drive2 508.9 -> 389.8 host calls a step, instructions -1.7 %): `E45_M40C0` reads `LookupTwin`'s
+  link from the held `CellTable` without the call or its words (`collision::held_cell_link`; a cell with no link
+  block yet goes through the binding, which allocates through the stand-in and fills the held slot: 2 in drive2);
+  callers on held state run `E45_M40C0`, `E45_M46A0`, `M_D760X`, `CColGrid::SyncGrid`, `E37GridOps::M6610` and the
+  sample's `CLink::Unlink` (0x47d160) in place (`collision::call_grid`). `SyncGrid` declines only over 127 edges and
+  `M6610` only a one-point source, in place as through the host. Host: `LookupTwin` from the pose step (`E43Vf6C`,
+  1.0 a step: its third word feeds `CCar::AppendA980`). Audit (`residue-audit` fills an in-place call's words with
+  `0xffbd0000 | callee`): drive2 PASS, twin typed aids off, on and damage realistic, mem-direct equal. Poison with
+  `LookupTwin` back on the image stops at step 0 (`cell grid +0x0`). RSF 122 and 104 (autopilot, 30000 steps): poison
+  runs through, output equal to the base's.
+
 ### Per subsystem
 
 Each passes drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
@@ -274,7 +285,7 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 | Engine, `engine_driveline::layout::EngineTyped` (`RefCell`, per word; a word store via `word_of`) | crank, pedal, heat, stall, misfire; radiator, coolant, turbo, boost, dampers, intake, cut flags, torque terms | option block (damage handler's, NGP's wrapper writes it), roll table and seed, `EngineNoise` payload (listeners read it at its address) | `engine_differential`, chain test |
 | Car's own, `car_body::layout::CarState` (field at a time) | control update and kept controls, contact times, value cells (`CarStore::cell`), speeds, respawn, overload, assistance | pointers, parts, damage handler, cell headers (`SetDirty`), `+0xaa0`/`+0xac0`, `+0x1600`/`+0x1610` (hinged bodies read them at their address) | `differential`; `car_body` vectors on `Mem` |
 | Core, `physics_core::layout::Core` (`Cell`) | hit and pass counters, single stepper, substep and step counters, clock, step globals | pointers, the counter's NTweak header, the solver and its event list, entity lists | `differential` |
-| Collision, `collision::layout::CarCollision` | solver counts, contact and offset rows (per block on first touch, `Touched`), car grids' (ids 1-9) hit bytes | rows' composed point `+0x40` (read at its address), body link, grids' other words, props' grids, events, pool, free list | `differential`; `collision_vectors` per call |
+| Collision, `collision::layout::CarCollision` | solver counts, contact and offset rows (per block on first touch, `Touched`), car grids' (ids 1-9) hit bytes, the cell grid's header and slots (`CellTable`: a slot on its first lookup, only filled slots lowered) | rows' composed point `+0x40` (read at its address), body link, grids' other words, props' grids, events, pool, free list, the cells' link blocks and the bodies' cell links | `differential`; `collision_vectors` per call |
 | Definitions, `store::defs::Defs` (read only, watched) | `WheelDef`, strut `Definition`, `TyreDef`, `CarDef`, `vcu::layout::Def`, `DriveDefinition`, `EngineDefinition`, flags word | step-written words (wheel defs `+0x880..+0x900`, tyre setups `+0x204..+0x284`), exhaust and turbo tables (lift cost), hinged and mounted defs (mount point `+0x220`, block `+0x200`), physics def but flags | `store::defs::differential`; a bit flipped in the held engine def fails drive2 |
 | Hinged and mounted bodies' own words, `entities::layout::Hinged`, `physics_core::layout::mounted_body::Mounted` (held with their solid, `CarSolids`: one lookup, `OwnTable`) | limit springs' positions, angle, rate, pose matrices, hinge rotation, refresh copies, pivot outputs, solve value; the mounted body's event-sent flag | owner, link, definition and enable pointers; NTweak headers and dirty words (`SetDirty`); the walks' outputs at their addresses (`Xform8130`'s `+0x5c0`, `MB560`'s `+0x5f0`, `+0x610`: row 15d/e); exclusion sets; the mounted state and scratch objects | `rigid_body::layout::differential` (the hinge's host-free entries); twin over the own words; aids on reaches `StepBig` held once on drive2 |
 | Solids, `rigid_body::layout::Solid` (per solid, held by address) | pose, velocities, acceleration estimates, sleep and window state, scratch, accumulators: car, wheels, hinged and mounted bodies | pointers, flags byte, NTweak headers, scale, state's diagonal and gate, other scratch words | `differential`; twin over every solid held, detached too; shadow survey |
@@ -319,8 +330,11 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
   the tree links (`+0x48` first child, `+0x10` sibling) need link maps before the entity walks (row 15e) run on typed
   nodes.
 - The event pool as a lazy arena (its readers at an address, `MB560`, `collide_init`, detach and the contact loop,
-  need stores first); collision arenas: the cell grid, links, the entity lists as link maps (the sleeping list holds
-  3172-8217 nodes: lazy, image fallback).
+  need stores first); collision arenas: the cells' link blocks (head, tail, count) and the bodies' cell links as a
+  link map (writers `unlink`, `move_to_cell`, `CCar::AppendA980`; readers `NotifyFiltered`, the detectors' cell
+  walks, `E36Collect`, detach, the sample lists of `prof_calls`: each needs a store before the map can hold them),
+  the registration zones' lists, the entity lists as link maps (the sleeping list holds 3172-8217 nodes: lazy,
+  image fallback); `E45_M40C0`/`E45_M46A0` with their outs as values (they run in place on out pointers now).
 - The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
 - State typed across steps on by default (after the standalone and twin read through the gate); `--twin` in the live
   run; more direct calls (the host calls above).
