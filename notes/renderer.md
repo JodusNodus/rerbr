@@ -396,6 +396,17 @@ light). A solar model per rally moves the sun. Below -7 degrees: night (`night.w
 lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Shared bakes with M names (73, 83-89)
 probably fit the wrong hour.
 
+- Stated time of day (2026-11-15; `Atmosphere::stated_time`, `TimeWord::parse`, `relight::stated_hour`): the chosen
+  section's `Comment`, else (no comment) the stage folder's name, read as night, dawn or sunset by whole words
+  (night/noche/nuit/notte/nacht/yö, "dark" alone; dawn/amanecer/aube/alba/sunrise/"start of the day";
+  sunset/atardecer/dusk/crepusculo/tramonto; CamelCase split, `alba` and `noc` not in names; plain morning, noon,
+  evening and weather words ignored). Night starts at 23:00, dawn and sunset where `relight::solar` at the stage's
+  site has the sun 2 degrees up; `Clock::new` gets it as a given start (no `lift`), and `with_start_time` gives the
+  start board the same hour. `--clock` wins; a live command with `--start-time` or `--championship` keeps the bake's
+  hour as before. The viewer prints `clock: H h from the clock|comment|name|bake`. Installed (RSF `Maps/`, checked by
+  `atmosphere::tests::every_installed_comment_with_a_time_word_is_read`): 189 night, 63 dawn, 41 sunset sections
+  (106, 57, 37 stages), 4 stages by name (126, 401, 466, 467, all night); the weather presets alone reach few of
+  them (`--sky` or a weather row names the section: 131 Peklo's `131O_E_lightfog_heavycloud` is night).
 - Variants are one stage under another light: the same geometry (99-100% of vertex positions) and textures but the
   sky, the vertex light, the shadow light maps (`shadow_0.dat`) and the section (2026-10-23, every installed variant).
 - Every stage is relit (`--no-relight` keeps the bake): at `--clock`, else under the bake's own sun at its hour
