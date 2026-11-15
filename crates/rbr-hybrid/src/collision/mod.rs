@@ -16,7 +16,9 @@ mod solver;
 mod vectors;
 
 use crate::entities::{COMPOSE_B, ENTITY_VF118, FETCH_X, NAME_WALK, NODE_OF, PAIR_COMBINE_TWIN, SAMPLE_INDEXED};
-pub(crate) use bodies::{body_box_direct, body_vf_cc_direct, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C};
+pub(crate) use bodies::{
+    body_box_direct, body_vf_cc_direct, held_cell_link, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
+};
 use bodies::{
     body_clear_grid, body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc,
     lookup_twin, move_to_cell, notify_filtered, state_unka44,

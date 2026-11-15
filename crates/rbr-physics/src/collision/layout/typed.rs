@@ -16,6 +16,7 @@
 use std::cell::RefCell;
 use std::ops::Range;
 
+use super::cell_table::CellTable;
 use super::col_grids::{col_grid_at, ColGrid};
 use super::mem_store::open_rows_header;
 use super::solver::{
@@ -316,6 +317,8 @@ pub struct CollisionTyped {
 pub struct CarCollision {
     pub image: CollisionImage,
     pub typed: RefCell<CollisionTyped>,
+    /// The cell grid's table (its slots on first touch).
+    pub cells: CellTable,
 }
 
 impl CarCollision {
@@ -339,7 +342,7 @@ impl CarCollision {
             offset_rows: Touched::default(),
             grids,
         };
-        CarCollision { image, typed: RefCell::new(typed) }
+        CarCollision { image, typed: RefCell::new(typed), cells: CellTable::lift(mem) }
     }
 
     /// As [`CarCollision::lift`] with every row lifted (the round trip's).
@@ -357,6 +360,7 @@ impl CarCollision {
 
     /// Writes the held state back: the counts, the grids' bytes and every lifted row.
     pub fn lower(&self, mem: &mut Mem) {
+        self.cells.lower(mem);
         let t = self.typed.borrow();
         for (k, hits) in t.grids.iter().enumerate() {
             GridHitsObj::hits.store(mem, col_grid_at(k as u32 + 1), *hits);
@@ -377,7 +381,9 @@ impl CarCollision {
 
     /// Every owned byte range, named.
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
-        self.image.owned()
+        let mut owned = self.image.owned();
+        owned.extend(self.cells.owned());
+        owned
     }
 
     /// The held state as a store: its words here, the rest of the image in `mem`.
@@ -713,7 +719,7 @@ pub fn round_trip(mem: &Mem) -> Result<usize, String> {
     let mut out = Mem::new();
     held.lower(&mut out);
     let mut bytes = 0;
-    for (range, name) in held.owned() {
+    for (range, name) in held.image.owned() {
         let len = (range.end - range.start) as usize;
         let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
         if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
@@ -721,7 +727,7 @@ pub fn round_trip(mem: &Mem) -> Result<usize, String> {
         }
         bytes += len;
     }
-    Ok(bytes)
+    Ok(bytes + CellTable::round_trip(mem)?)
 }
 
 /// The held state's host-free entries in a row on `store`, for [`differential`]: the offset rows (two bodies' offsets
@@ -790,8 +796,8 @@ fn entries<S: CollisionStore>(
 /// [`entries`] on the solver and the car at `car` (a body with a grid), per call on `per_call` (every word on the
 /// image) and on the state held over the row on `held` (lifted before, lowered after), two copies of one image;
 /// `scratch` is free memory of both (0x800 bytes). Compares every byte of the solver, the car's grids, the car's
-/// solid words the rows link and move, and the scratch, and what the callers were given: the bytes compared, or the
-/// first that differs.
+/// solid words the rows link and move, and the scratch, and what the callers were given, then the cell grid's lookups
+/// (`cell_table::differential`): the bytes compared, or the first that differs.
 pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) -> Result<usize, String> {
     let image = CollisionImage::of(per_call);
     if image.solver == 0 {
@@ -822,7 +828,7 @@ pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) 
         }
         bytes += len as usize;
     }
-    Ok(bytes)
+    Ok(bytes + super::cell_table::differential(per_call, held, scratch)?)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ pub(in crate::collision) mod body_contacts;
 pub mod body_hosts;
 pub mod body_slots;
 mod cell_grid;
+mod cell_table;
 mod col_grids;
 pub mod collide_hosts;
 pub mod dictionary;
@@ -42,6 +43,7 @@ pub use body::{
 };
 pub use body_contacts::{grid_contacts, pair_contacts};
 pub use cell_grid::{cell_grid_ctor, cell_link_at, move_to_cell, unlink, CellGrid, Link};
+pub use cell_table::{CellLink, CellTable};
 pub(in crate::collision) use col_grids::GRID_TAG;
 pub use col_grids::{
     alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, edge_sample, load_col_grid,

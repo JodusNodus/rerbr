@@ -3,7 +3,7 @@
 use rbr_physics::collision::layout::body_hosts::{BodyResetHost, ClearGridHost, CornerHost};
 use rbr_physics::collision::layout::links::{self, NotifyFilteredHost};
 use rbr_physics::collision::layout::state::StateHost;
-use rbr_physics::collision::layout::{self, Body, Vec4};
+use rbr_physics::collision::layout::{self, Body, CellLink, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 
@@ -49,10 +49,28 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(cell, 0))
 }
 
+/// CCellGrid::LookupTwin (0x4e03b0): thiscall on the grid with `(x, y)`; eax is the point's link. The grid's header and
+/// slots are the held table's while a step holds it ([`Host::typed`]), else the image's.
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [x, y, ..] = r.stack;
-    let link = layout::cell_link_at(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, f32::from_bits(x), f32::from_bits(y));
+    let [x, y, ..] = r.stack.map(f32::from_bits);
+    let mut alloc = Callees(ctx.host);
+    let held =
+        ctx.host.typed().and_then(|t| t.car.collision.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y));
+    let link = held.unwrap_or_else(|| layout::cell_link_at(&mut alloc, &mut ctx.mem, r.ecx, x, y));
     Ok(Return::void(link, 8))
+}
+
+/// The link of the point `(x, y)` on the grid at `grid` from the table a step holds, counted as a run of
+/// `LookupTwin` ([`Host::ran_direct`]): `None` per call, for another grid and for a cell with no link block yet
+/// (the caller calls, and the binding builds it).
+pub(crate) fn held_cell_link(host: &dyn Host, mem: &Mem, grid: u32, x: f32, y: f32) -> Option<u32> {
+    match host.typed()?.car.collision.cells.link_at(mem, grid, x, y)? {
+        CellLink::Link(link) => {
+            host.ran_direct();
+            Some(link)
+        }
+        CellLink::Empty(_) => None,
+    }
 }
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
