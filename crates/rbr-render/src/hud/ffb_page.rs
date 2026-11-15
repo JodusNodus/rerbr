@@ -359,7 +359,7 @@ mod tests {
         assert_eq!(p.value, *SENSITIVITY_RANGE.end());
         assert_eq!(p.nav(Nav::Right), None);
         // Reset: every car's again, once.
-        for _ in 0..4 {
+        for _ in 0..3 {
             p.nav(Nav::Down);
         }
         assert_eq!(p.nav(Nav::Select), Some(Moved::Changed));

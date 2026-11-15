@@ -68,10 +68,12 @@ const CABIN_CUTOFF: f32 = 1000.0;
 /// keeps their crack but takes off the hiss, at [`STONE_GAIN`] so the shower of them stays under the engine.
 const STONE_CUTOFF: f32 = 2500.0;
 const STONE_GAIN: f32 = 0.6;
-/// In the car the grass and the brush (`crate::verge`) take the shell's filter too, at [`VERGE_GAIN`] (ours): they
-/// are hiss (the grass loop has 85 % of its energy above 4 kHz), which the cabin's 1 kHz filter left 21 to 29 dB
-/// under the mix, not to be heard.
-const VERGE_GAIN: f32 = 2.5;
+/// In the car the verge's loops (`crate::verge`) come through the shell duller than the stones, a [`VERGE_CUTOFF`]
+/// low-pass at [`VERGE_GAIN`] (ours): they are hiss (the patter has 78 % of its energy above 5 kHz), of which the
+/// stones' filter left 14 to 18 % above 5 kHz and this one 7 to 9 %; the cabin's 1 kHz filter without the gain left
+/// them 21 to 29 dB under the mix, not to be heard.
+const VERGE_CUTOFF: f32 = 1200.0;
+const VERGE_GAIN: f32 = 3.5;
 /// Time constant of the gain moves, seconds (ours).
 pub(crate) const GAIN_TIME: f32 = 0.01;
 /// The RMS the tyre loops are brought to (ours, -12 dBFS): the retail loops lie 7 dB apart (tarmac rolling -14.9
@@ -619,21 +621,8 @@ impl Mixer {
                 Command::Shot { shot, gain } => self.shot(shot, gain, None),
                 Command::ShotAt { shot, gain, pan } => self.shot(shot, gain, Some(pan)),
                 Command::Effect { shot, gain, pitch, repeat } => self.effect(shot, gain, pitch, repeat),
-                Command::Hit { shot, gain, pitch, distance } => {
-                    // Hits are the body's knocks, the banks without a family; any other shot is not a hit.
-                    let Some((bank, i, place, None)) = self.bank_of(shot) else { continue };
-                    let wave = (!bank.is_empty()).then(|| bank[i % bank.len()].clone());
-                    if let Some(wave) = wave.filter(|_| self.make(shot)) {
-                        // The verge's branch hits come in turn (`crate::verge`) and leave the variation's numbers to
-                        // the rest.
-                        let [vary_pitch, vary_gain] =
-                            if matches!(shot, Shot::Branch(_)) { [1.0; 2] } else { self.vary() };
-                        let (low_pass, cabin) = self.cabin_hit(shot);
-                        let gain = gain * vary_gain * cabin * self.placed_at(place, distance) * self.volumes.shot(shot);
-                        let pitch = pitch * vary_pitch * self.doppler;
-                        self.playing.push(Playing { pan: self.car_pan, pitch, low_pass, ..Playing::new(wave, gain) });
-                    }
-                }
+                Command::Hit { shot, gain, pitch, distance } => self.hit(shot, gain, pitch, distance, self.car_pan),
+                Command::HitAt { shot, gain, pitch, distance, pan } => self.hit(shot, gain, pitch, distance, pan),
                 Command::WheelLoop { wheel, voice, gain, pitch } => {
                     // The rumble plays in the car, without a distance gain. The wetness is a 2D voice on the
                     // software path (`M6cb0`: flags 0x200); ours, as it carries the renderer's water (`tyre::Water`),
@@ -914,6 +903,21 @@ impl Mixer {
         std::mem::replace(&mut self.banks.school, prepared)
     }
 
+    /// A hit `distance` m from the camera on side `pan`: the body's knocks, the banks without a family; any other
+    /// shot is not a hit.
+    fn hit(&mut self, shot: Shot, gain: f32, pitch: f32, distance: f32, pan: f32) {
+        let Some((bank, i, place, None)) = self.bank_of(shot) else { return };
+        let wave = (!bank.is_empty()).then(|| bank[i % bank.len()].clone());
+        if let Some(wave) = wave.filter(|_| self.make(shot)) {
+            // The verge's branch hits come in turn (`crate::verge`) and leave the variation's numbers to the rest.
+            let [vary_pitch, vary_gain] = if matches!(shot, Shot::Branch(_)) { [1.0; 2] } else { self.vary() };
+            let (low_pass, cabin) = self.cabin_hit(shot);
+            let gain = gain * vary_gain * cabin * self.placed_at(place, distance) * self.volumes.shot(shot);
+            let pitch = pitch * vary_pitch * self.doppler;
+            self.playing.push(Playing { pan, pitch, low_pass, ..Playing::new(wave, gain) });
+        }
+    }
+
     /// Swaps in the grind loop's prepared sample, returning what it replaces to drop after releasing the lock.
     pub(crate) fn swap_grind(&mut self, prepared: Arc<Wave>) -> Option<LoopVoice> {
         self.loops.insert(Loop::Grind, LoopVoice { wave: prepared, pitch: 1.0, ..LoopVoice::default() })
@@ -934,15 +938,15 @@ impl Mixer {
             Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind | Loop::WiperMotor => None,
         };
         let placed = place.map(|p| (self.placed(p), self.car_pan));
-        // The wind heard in the car comes through the cabin, as the tyres' roar (ours); the grass, the brush and the
-        // scrape ring the shell as the stones do ([`VERGE_GAIN`]).
-        let cabin = match voice {
-            Loop::Wind => Some(self.cabin()),
-            Loop::Grass | Loop::Brush | Loop::Scrape | Loop::Slide => {
-                Some(self.inside.then(|| OnePole::new(self.rate, STONE_CUTOFF)))
-            }
+        // The wind heard in the car comes through the cabin, as the tyres' roar (ours); the scrape rings the shell as
+        // the stones do, the verge's loops duller ([`VERGE_CUTOFF`]).
+        let cutoff = match voice {
+            Loop::Wind => Some(CABIN_CUTOFF),
+            Loop::Grass | Loop::Brush => Some(VERGE_CUTOFF),
+            Loop::Scrape | Loop::Slide => Some(STONE_CUTOFF),
             _ => None,
         };
+        let cabin = cutoff.map(|c| self.inside.then(|| OnePole::new(self.rate, c)));
         let option = match voice {
             Loop::Engine | Loop::Gearbox | Loop::Diff => self.volumes.engine,
             _ => self.volumes.effects,

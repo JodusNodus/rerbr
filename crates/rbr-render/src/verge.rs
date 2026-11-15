@@ -79,7 +79,7 @@ pub fn touches(roadside: &Roadside, position: Vec3, forward: Vec3) -> [Option<To
             Growth::Bush(density) => (density, false),
             Growth::Branches => (1.0, true),
         };
-        found.push(Touch { id, depth, density, branches });
+        found.push(Touch { id, at: [post.at.x, post.at.y, position.z], depth, density, branches });
     }
     found.sort_by(|a, b| b.depth.total_cmp(&a.depth));
     for (slot, touch) in out.iter_mut().zip(found) {

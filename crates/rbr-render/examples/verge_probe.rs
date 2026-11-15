@@ -1,6 +1,6 @@
 //! The bushes and bendable trees a drive's car body is in (`rbr_render::verge::touches`), for `rbr-sound --verge`.
 //! Usage: `verge_probe STAGE POSES OUT`: `POSES` is `rbr-sound --poses`'s CSV (`step,x,y,z,fx,fy,fz`, physics
-//! frame), `OUT` gets `step,id,depth,density,branches` a contact.
+//! frame), `OUT` gets `step,id,depth,density,branches,x,y,z` a contact.
 
 use std::error::Error;
 use std::fmt::Write as _;
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let data = Data::from_env().ok_or("RBR_DATA is not set")?;
     let roadside = Roadside::load(&data, &stage, None);
     let grown = roadside.posts().iter().filter(|p| p.growth.is_some()).count();
-    let mut csv = String::from("step,id,depth,density,branches\n");
+    let mut csv = String::from("step,id,depth,density,branches,x,y,z\n");
     let (mut steps, mut contacts) = (0, 0);
     for line in std::fs::read_to_string(&poses)?.lines() {
         let Ok(v) = line.split(',').map(str::parse).collect::<Result<Vec<f32>, _>>() else { continue };
@@ -27,7 +27,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         steps += usize::from(touches[0].is_some());
         for t in touches.iter().flatten() {
             contacts += 1;
-            writeln!(csv, "{},{},{:.3},{:.2},{}", step as u32, t.id, t.depth, t.density, u8::from(t.branches))?;
+            let ([x, y, z], branches) = (t.at, u8::from(t.branches));
+            writeln!(csv, "{},{},{:.3},{:.2},{branches},{x:.2},{y:.2},{z:.2}", step as u32, t.id, t.depth, t.density)?;
         }
     }
     std::fs::write(out, csv)?;

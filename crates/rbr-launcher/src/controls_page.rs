@@ -333,8 +333,9 @@ pub struct ControlsPage {
     capture: Option<Capture>,
     /// The page was shown at the first start, for a wheel nothing drives from yet.
     offered: bool,
-    /// The joysticks connected, and when they were last looked for.
-    joysticks: Joysticks,
+    /// The joysticks connected, and when they were last looked for. Opened at the first [`ControlsPage::poll`], on the
+    /// launcher's main thread (`rbr_render::sdl`): not at the page's making, which tests do on parallel threads.
+    joysticks: Option<Joysticks>,
     scanned: Instant,
     /// The wheels whose rotation can be set, as last read, or why the last set failed.
     wheels: Result<Vec<Wheel>, String>,
@@ -349,7 +350,7 @@ impl ControlsPage {
         ControlsPage {
             capture: None,
             offered: false,
-            joysticks: Joysticks::connected(),
+            joysticks: None,
             scanned: Instant::now(),
             wheels: Ok(wheel_rotation::wheels()),
             ffb_status: None,
@@ -364,7 +365,7 @@ impl ControlsPage {
 
     /// Whether a joystick is connected.
     pub fn has_pads(&self) -> bool {
-        !self.joysticks.is_empty()
+        self.joysticks.as_ref().is_some_and(|j| !j.is_empty())
     }
 
     /// Once: whether to show the page, as a joystick is connected and nothing drives from one yet.
@@ -394,20 +395,21 @@ impl ControlsPage {
     /// Reads the joysticks, and looks for new ones unless the viewer is `running`; while a device binding is being
     /// set, the first button pressed or axis moved sets it.
     pub fn poll(&mut self, bindings: &mut Bindings, running: bool) {
+        let joysticks = self.joysticks.get_or_insert_with(Joysticks::connected);
         if self.capture.is_none() && !running && self.scanned.elapsed() >= RESCAN {
-            self.joysticks.rescan();
+            joysticks.rescan();
             self.scanned = Instant::now();
         }
-        self.joysticks.read();
+        joysticks.read();
         let Some(Capture::Pad(action, rest)) = &self.capture else { return };
         let action = *action;
         let steering = action == Action::SteerLeft;
         let threshold = if steering { bindings::STEER_MOVE } else { bindings::PRESS };
         let mut moved = None;
-        for (k, rest) in rest.iter().enumerate().take(self.joysticks.len()) {
-            let (axes, buttons) = self.joysticks.objects(k);
-            let now = values(self.joysticks.state(k), axes, buttons);
-            let device = self.joysticks.device(k);
+        for (k, rest) in rest.iter().enumerate().take(joysticks.len()) {
+            let (axes, buttons) = joysticks.objects(k);
+            let now = values(joysticks.state(k), axes, buttons);
+            let device = joysticks.device(k);
             // The steering takes an axis only.
             let found = now.zip(rest).find(|((object, v), (_, r))| {
                 (!steering || matches!(object, Object::Axis(_))) && (v - r).abs() > threshold
@@ -425,31 +427,33 @@ impl ControlsPage {
 
     /// Each joystick's values now.
     fn pad_rest(&self) -> Vec<Vec<(Object, f32)>> {
-        (0..self.joysticks.len())
+        let Some(joysticks) = &self.joysticks else { return Vec::new() };
+        (0..joysticks.len())
             .map(|k| {
-                let (axes, buttons) = self.joysticks.objects(k);
-                values(self.joysticks.state(k), axes, buttons).collect()
+                let (axes, buttons) = joysticks.objects(k);
+                values(joysticks.state(k), axes, buttons).collect()
             })
             .collect()
     }
 
     /// The value of a device input now, -1..1 for an axis, 0 or 1 for a button.
     fn read(&self, pad: PadInput) -> Option<f32> {
-        let k = (0..self.joysticks.len()).find(|&k| self.joysticks.device(k) == pad.device)?;
-        let (axes, buttons) = self.joysticks.objects(k);
-        values(self.joysticks.state(k), axes, buttons).find(|(o, _)| *o == pad.object).map(|(_, v)| v)
+        let joysticks = self.joysticks.as_ref()?;
+        let k = (0..joysticks.len()).find(|&k| joysticks.device(k) == pad.device)?;
+        let (axes, buttons) = joysticks.objects(k);
+        values(joysticks.state(k), axes, buttons).find(|(o, _)| *o == pad.object).map(|(_, v)| v)
     }
 
     /// The joysticks connected and the names their bindings show ([`short_name`]).
     fn connected(&self) -> Vec<(Device, String)> {
-        (0..self.joysticks.len()).map(|k| (self.joysticks.device(k), short_name(self.joysticks.name(k)))).collect()
+        let Some(joysticks) = &self.joysticks else { return Vec::new() };
+        (0..joysticks.len()).map(|k| (joysticks.device(k), short_name(joysticks.name(k)))).collect()
     }
 
     /// The joysticks connected: name and id.
     fn pads(&self) -> Vec<String> {
-        (0..self.joysticks.len())
-            .map(|k| format!("{} ({})", self.joysticks.name(k), self.joysticks.device(k).format()))
-            .collect()
+        let Some(joysticks) = &self.joysticks else { return Vec::new() };
+        (0..joysticks.len()).map(|k| format!("{} ({})", joysticks.name(k), joysticks.device(k).format())).collect()
     }
 
     #[allow(clippy::too_many_arguments)]

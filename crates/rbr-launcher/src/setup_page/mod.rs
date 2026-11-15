@@ -11,7 +11,7 @@
 //! earlier versions ([`Folders`]); the 1.02 install's `Physics/<car>/Setups/` are not read (made for 1.02's car
 //! ranges, not NGP's). Start
 //! writes the chosen values to `setup-current.lsp` in the player's folder and passes it to `rbr-standalone --setup`,
-//! unless they are the default.
+//! unless they are the default; the drive's replay keeps its own copy (`rbr_recording::replay::setup_path`).
 //!
 //! The game's three save slots per car (`CSetupSaveSlotButtonUI`, `SavedGames/<car>slot<n>_<name>.lsp`,
 //! `rbr_formats::saves::setup_slots`) are not offered; earlier versions' slot files are among the read-only ones. The

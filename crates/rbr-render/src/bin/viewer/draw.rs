@@ -32,15 +32,24 @@ pub fn draw_particles(scene: &mut Scene, renderer: &mut Renderer, view_projectio
     }
 }
 
-/// Draws the glass, crew and car, returning the car's camera for the window's projection. Live play and video
-/// both turn the wheel to the newest physics step, which can be newer than the displayed frame.
-pub fn draw_car(scene: &mut Scene, renderer: &mut Renderer, shown: Shown, look: ChaseLook, fov: f32) -> Option<Lens> {
+/// Draws the glass, crew and car, returning the car's camera for the window's projection. Live play (`lead`) turns
+/// the wheel to the newest physics step, which can be newer than the displayed frame; a replay turns it with the
+/// frame shown, as it draws the car there (its process runs ahead of what is shown, a video's to the drive's end).
+pub fn draw_car(
+    scene: &mut Scene,
+    renderer: &mut Renderer,
+    shown: Shown,
+    look: ChaseLook,
+    fov: f32,
+    lead: bool,
+) -> Option<Lens> {
     let view = shown.car_view();
     if let (Some(playback), Some(glass)) = (&mut scene.playback, &mut scene.glass) {
         glass.draw(renderer, playback, view.interior(), scene.particles.as_ref().map(|p| &p.particles.spray));
     }
     if let (Some(playback), Some(crew)) = (&mut scene.playback, &mut scene.crew) {
-        let steer = scene.live.as_ref().and_then(|live| live.newest_step()).map(|step| step.steering());
+        let steer =
+            scene.live.as_ref().filter(|_| lead).and_then(|live| live.newest_step()).map(|step| step.steering());
         show_crew(crew, playback, view, steer, renderer);
     }
     let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return None };

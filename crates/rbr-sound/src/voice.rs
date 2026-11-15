@@ -153,6 +153,8 @@ pub enum Command {
     Effect { shot: Shot, gain: f32, pitch: f32, repeat: Repeat },
     /// A gravel hit, squeak, bottoming or driveshaft clunk at pitch `pitch`, `distance` m from the listener (at its wheel).
     Hit { shot: Shot, gain: f32, pitch: f32, distance: f32 },
+    /// A hit as [`Command::Hit`] on side `pan` (-1 left to 1 right) in place of the car's (ours, `crate::verge`).
+    HitAt { shot: Shot, gain: f32, pitch: f32, distance: f32, pan: f32 },
     /// A wheel's rumble or wetness loop.
     WheelLoop { wheel: u8, voice: WheelLoop, gain: f32, pitch: f32 },
     /// One of a wheel's two surface voices: its material's normal or skid loop.

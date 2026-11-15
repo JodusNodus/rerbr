@@ -265,6 +265,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   full history kept; `viewer --replay FILE [ARGS...]` watches it again). The file holds the viewer arguments that
   drove and the stepping process's frame log (`rbr_recording::replay`); watching runs the drive's frames again
   from its last start, so a replay needs the same install, setup and profile, else it stops with a digest error.
+  The setup is kept beside the replay (`.rrp.setup`, copied by `rbr-standalone --replay-out` from its `--setup`,
+  read by `--replay` in its place): the header's `--setup` is the launcher's `setup-current.lsp`, which the next
+  drive overwrites, so five of seven drives of 2026-11-15 differed at frame 0 until their setups were rebuilt.
+  Replays from before have no copy and run on `--setup`'s file.
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
   camera key cycles the views, V resets the mouse look, Esc closes. A replay screenshot (`--screenshot PNG
   --at N`) draws the Nth answer headless, the way a live screenshot draws the Nth payload: the replay
