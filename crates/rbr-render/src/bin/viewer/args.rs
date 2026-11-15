@@ -31,6 +31,8 @@ pub struct Args {
     pub car: Option<String>,
     /// `--rsf-car`: an RSF car in slot 5, read in place (`rbr_formats::rsf::select`).
     pub rsf_car: Option<String>,
+    /// `--car-year`, or the `--rsf-car`'s year from RSF's car data: headlamp type, `Car::set_headlamp_year`).
+    pub car_year: Option<u32>,
     /// A pack car in slot 5, read in place ([`car_pack::Flags`]). The launcher resolves every pack car to these;
     /// `--rsf-car` stays as the developer entry for an RSF install.
     pub pack_car: car_pack::Flags,
@@ -241,7 +243,7 @@ pub struct HudOptions {
 /// `--help`'s text.
 pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [STAGE] [OPTIONS] [--live COMMAND...]
   STAGE: track-NN_X (default track-10_O), a RallySimFans stage folder, or the path of its files without the extension
-  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]]
+  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--car-year YEAR]
               --damage ZONE:VALUE,...  --crack CODE:INDEX,...
   drive:      --drive RECORDING  --at STEP  --at-periods N  --at-drive RECORDING  --live COMMAND... (the rest of the line)
               --bindings INI  --ghost FILE  --save-ghost FILE  --best-ghost FILE  --ghost-weather WORDS
@@ -269,6 +271,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut car = None;
     let mut rsf_car = None;
     let mut pack_car = car_pack::Flags::default();
+    let mut car_year = None;
     let mut drive = None;
     let mut at = None;
     let mut live: Option<Vec<String>> = None;
@@ -474,6 +477,10 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 car = Some(name);
             }
             "--rsf-car" => rsf_car = Some(args.next().ok_or("--rsf-car needs a pack or an id")?),
+            "--car-year" => {
+                let value = args.next().ok_or("--car-year needs a year")?;
+                car_year = Some(value.parse().map_err(|_| format!("--car-year: {value} is not a year"))?);
+            }
             flag @ ("--car-pack" | "--car-model" | "--car-bank" | "--car-key") => {
                 let value = args.next().ok_or(format!("{flag} needs a value"))?;
                 assert!(pack_car.take(flag, &value));
@@ -746,6 +753,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         stage_place,
         car,
         rsf_car,
+        car_year,
         drive,
         at,
         at_drive,

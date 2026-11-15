@@ -64,6 +64,14 @@ pub trait DetectorHost {
     ) -> Option<KernelTest> {
         None
     }
+    /// A cell list's first link and a link's next as the step leaves them: the image's unless the host holds them
+    /// (`collision::layout::cell_links`).
+    fn cell_first(&self, mem: &Mem, cell: u32) -> u32 {
+        mem.u32(cell)
+    }
+    fn cell_next(&self, mem: &Mem, node: u32) -> u32 {
+        mem.u32(node)
+    }
 }
 
 /// How the probe kernel's tests of an entity came out ([`DetectorHost::kernel_tests`]): it passes, or it fails and the

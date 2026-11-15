@@ -396,6 +396,17 @@ light). A solar model per rally moves the sun. Below -7 degrees: night (`night.w
 lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Shared bakes with M names (73, 83-89)
 probably fit the wrong hour.
 
+- Stated time of day (2026-11-15; `Atmosphere::stated_time`, `TimeWord::parse`, `relight::stated_hour`): the chosen
+  section's `Comment`, else (no time word there) the stage folder's name, read as night, dawn or sunset by whole words
+  (night/noche/nuit/notte/nacht/yö, "dark" alone; dawn/amanecer/aube/alba/sunrise/"start of the day";
+  sunset/atardecer/dusk/crepusculo/tramonto; CamelCase split, `alba` and `noc` not in names; plain morning, noon,
+  evening and weather words ignored). Night starts at 23:00, dawn and sunset where `relight::solar` at the stage's
+  site has the sun 2 degrees up; `Clock::new` gets it as a given start (no `lift`), and `with_start_time` gives the
+  start board the same hour. `--clock` wins; a live command with `--start-time` or `--championship` keeps the bake's
+  hour as before. The viewer prints `clock: H h from the clock|comment|name|bake`. Installed (RSF `Maps/`, checked by
+  `atmosphere::tests::every_installed_comment_with_a_time_word_is_read`): 189 night, 63 dawn, 41 sunset sections
+  (106, 57, 37 stages), 4 stages by name (126, 401, 466, 467, all night); the weather presets alone reach few of
+  them (`--sky` or a weather row names the section: 131 Peklo's `131O_E_lightfog_heavycloud` is night).
 - Variants are one stage under another light: the same geometry (99-100% of vertex positions) and textures but the
   sky, the vertex light, the shadow light maps (`shadow_0.dat`) and the section (2026-10-23, every installed variant).
 - Every stage is relit (`--no-relight` keeps the bake): at `--clock`, else under the bake's own sun at its hour
@@ -609,6 +620,33 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 - Ours: each kind's light at a luminous intensity (headlight hot spot 20000 cd, tail 8, brake 100, reverse 150); a lamp
   in its state since the drive's first frame is settled, not fading (2026-10-25). The rear lamps shine in a flat band
   after ECE R7.
+- Ours: the headlamp type by car year (`Enhance::lighting` only; `lights::Headlamp`, 2026-11-15, user's decision): a
+  kind 1 lamp whose record colour is the retail 255, 255, 233 takes xenon at 1998-2009 or LED from 2010, both at
+  35000 cd dipped; halogen before 1998 and no year stay as they were (20000 cd); a record with its own colour keeps
+  both. The retail colour stays the halogen as the eye sees it (it already reads about 6000 K), so the newer types
+  are a tint against 3200 K halogen with partial adaptation (D 0.67): retail * (kelvin(T) / kelvin(3200)) ^ 0.33 per
+  channel, brightest 1: xenon (4300 K) (0.83, 0.91, 1.0), LED (5700 K) (0.68, 0.81, 1.0). Absolute 4300 K made the
+  Focus warmer than halogen cars (first try, dropped). Kelvin is Kim et al.'s Planckian-locus fit to linear sRGB; the
+  lit headlamp parts' glow takes the tint and intensity (`Car::set_headlamp_year`). The year comes from `--car-year`
+  (the launcher's catalog car) or `--rsf-car`; added cars store it in `cars.ini` (`year`, from gvrc's list when added
+  and backfilled from it when the list loads; old files read as no year). Night Gabiria fly-by: Focus 2006 7.7 % RMSE,
+  Fabia RS Rally2 12.9, GR Yaris Rally2 17.6, Escort Mk II (1978) 0.00; the 36 reference shots (no year passed) 34
+  byte-identical, M3 E30 fly-by 0.10, GC8 chase 0.001 (brake discs below).
+- Ours: a `brakedisc` part's lit state (`e_brakedisc_*_lit`, on the `brake_lb` box) is the hot disc, not a lamp: it
+  keeps its texture and gets no lamp glow (2026-11-15). It had glowed white at 5000-27000 cd/m2 on all four wheels
+  of the Celica TA64, Fabia RS Rally2, i20 WRC, GR Yaris Rally2, Porsche 911 SC RS, Delta HF 4WD, Focus 2006 and
+  Escort Mk II whenever the brake was on (night Gabiria side view of the Celica, 20 % RMSE against before).
+- Hard cars at night (2026-11-15, Gabiria 22:15 views; `examples/lamp_survey.rs` is scratch, not kept): right: i20 WRC
+  17/20 (lamp as several face blocks: red tails, white reverse, brake bar), Fabia RS Rally2 (red/white tails, both
+  headlamps), Celica TA64 (tail and brake lenses, same vertex count, each follows its own box), Delta HF 4WD
+  (four tail parts, red brake lenses), Focus 2006 (tail and brake share the lens mesh: both glow, brake dominates).
+  Wrong, by cause, not fixed: the Porsche 911 SC RS's tail, brake and reverse lit parts are 4-vertex quads in
+  `CarPaint`, so they glow in the body paint's white, not red; the Escort Mk II's tail glows in a pale texture, and
+  its `lf01`/`rf01` records (low, 0.33 m off centre, always on) light as two extra headlamps, which is the low and
+  central beam origin; the Yaris Rally2's lit tail part is a 3-vertex sliver, so its tail lamps never glow (the brake
+  lens, 660 vertices, does); the Focus 2006's reverse points `_lb` and `_rb` share one position (the car's file) and
+  its front bar follows the tail box at 8 cd; the Celica's `lf`/`rf` records are `Active = false` with no switch box
+  (its wing pods, always on, are the only lit records).
 - Ours: the headlights' light back off the road (`lamp_bounce` in `lamps.wgsl`): two Lambertian patches facing up, 15
   and 55 m ahead; scene +0.15 ms at night (45O chase and cockpit).
 - Tried for the beam's white look (2026-10-25) and dropped: pulling the meter toward the 97th percentile, and local

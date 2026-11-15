@@ -11,6 +11,7 @@ use super::{
     on_solids, unavailable, with_solids, APPEND_CELL, CELL_GRID, COPY16_WALK, DRIVE, INTEGRATE, LOOKUP_TWIN,
     SCRATCH_BELOW_ESP, SIGNALS, STATE_EMIT, WALKER,
 };
+use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// The entity walk's callee entry, below the binding's entry stack pointer `esp`. `CSolid::E43Vf6C` (0x52cc30) makes its
@@ -31,16 +32,20 @@ struct Pose<'a> {
     esp: u32,
 }
 
-/// `CCellGrid::LookupTwin` at `(x, y)`, then `CCar::AppendA980` with the link node at `link_at`: the cell registration.
-pub(super) fn register_cell_at(mem: &Mem, host: &dyn Host, link_at: u32, x: f32, y: f32) {
+/// `CCellGrid::LookupTwin` at `(x, y)`, then `CCar::AppendA980` with the link node at `link_at`: the cell registration
+/// of the binding entered at `esp`, on the held cells while a step holds them (`collision::register_cell_direct`).
+pub(super) fn register_cell_at(mem: &mut Mem, host: &dyn Host, esp: u32, link_at: u32, x: f32, y: f32) {
     let grid = mem.u32(CELL_GRID);
+    if crate::collision::register_cell_direct(host, mem, (esp - 0x1000) & !0xf, grid, link_at, x, y) {
+        return;
+    }
     let hit = host.call(LOOKUP_TWIN, grid, &[x.to_bits(), y.to_bits(), link_at]).eax;
     host.call(APPEND_CELL, hit, &[link_at]);
 }
 
 impl CellHost for Pose<'_> {
     fn register_cell(&mut self, link: u32, x: f32, y: f32) -> Result<(), HostUnavailable> {
-        register_cell_at(&self.mem, self.host, self.this + link, x, y);
+        register_cell_at(&mut self.mem, self.host, self.esp, self.this + link, x, y);
         Ok(())
     }
 }
@@ -55,12 +60,14 @@ impl PoseHost for Pose<'_> {
         let args = [local_at, walker, out_at];
         match crate::trivial(self.host, s30, parent) {
             // ComposeA pops the three words the getter's call leaves: it is passed them.
-            Some(node) => crate::entities::call_op(self.host, 0, COPY16_WALK, node, &args),
+            Some(node) => {
+                crate::entities::op(self.host, 0, node, Op::ComposeA { src: local_at, o2: walker, out: out_at });
+            }
             None => {
                 let node = self.host.call(s30, parent, &args).eax;
-                self.host.call(COPY16_WALK, node, &[])
+                self.host.call(COPY16_WALK, node, &[]);
             }
-        };
+        }
         Vec4::load(&self.mem, out_at)
     }
 
@@ -94,6 +101,7 @@ impl IntegrateHost for Pose<'_> {
     fn emit_state(&mut self, state: &StateSignal) -> Result<(), HostUnavailable> {
         let payload = self.scratch + 0x80;
         self.mem.set_u32(payload, state.owner);
+        crate::fill_residue(self.host, &mut self.mem, payload + 4, 3);
         state.position.store(&mut self.mem, payload + 0x10);
         let q = state.orientation;
         for (k, v) in [q.x, q.y, q.z, q.w].into_iter().enumerate() {

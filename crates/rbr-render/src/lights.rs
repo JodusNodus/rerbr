@@ -325,6 +325,9 @@ pub struct Light {
     pub fade_out: f32,
     /// Red, green and blue, 0 to 1.
     pub colour: [f32; 3],
+    /// Luminous intensity on the lamp's axis, cd: the kind's ([`CANDELA`]), a headlight's by its car's year
+    /// ([`Headlamp`]).
+    pub candela: f32,
     /// `None` when the lamp switches the record. `Some(on)` when it never does, and the record keeps its `Active`
     /// value: `OnCarLight` switches only the first record with the lamp's `Id`, and only when the car has the lamp's
     /// switch box (the extra lamps of the RSF cars' light pods share the headlights' `Id`).
@@ -376,6 +379,7 @@ pub fn lamp_points(settings: &[Section], parts: &[Section], beam: [f32; 3]) -> V
             fade_in: 1.0,
             fade_out: 1.0,
             colour: beam,
+            candela: CANDELA[0],
             fixed: None,
         }));
     }
@@ -425,6 +429,7 @@ fn light(section: &Section) -> Option<Light> {
         fade_in: number("Fade In Time", 1.0),
         fade_out: number("Fade Out Time", 1.0),
         colour: ["Red", "Green", "Blue"].map(|key| number(key, 255.0) / 255.0),
+        candela: CANDELA[kind as usize],
         fixed: None,
     })
 }
@@ -491,6 +496,99 @@ pub struct Lamp {
 /// beam's, which reaches about 60 m; the main beam's axis gets five times it) and the rear lamps' typical ECE values
 /// (R7: tail 4 to 17, stop 60 to 185; R23: reversing 80 to 300).
 const CANDELA: [f32; 4] = [20000.0, 8.0, 100.0, 150.0];
+
+/// A headlamp type by car year (ours, `Enhance::lighting`). The retail record's colour ([`RETAIL_HEADLIGHT`]) stays
+/// the halogen lamp as the eye sees it (it already reads as a white of about 6000 K); the newer types are a tint
+/// against halogen, a black body's colour over a halogen's 3200 K to the power `1 - ADAPTATION` (the eye adapts
+/// partly to the lamp's colour), so xenon reads cooler than halogen and LED cooler still.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Headlamp {
+    /// The colour against halogen's, per channel, brightest channel 1.
+    pub tint: [f32; 3],
+    /// The dipped beam's hot spot, cd.
+    pub candela: f32,
+}
+
+/// How far the eye adapts to a lamp's colour: that share of the colour difference from halogen is not seen.
+const ADAPTATION: f32 = 0.67;
+/// The hot spot of xenon and LED dipped beams, cd: ECE R98 allows up to 140000, and typical ones are well over
+/// halogen's 20000.
+const MODERN_CANDELA: f32 = 35000.0;
+
+impl Headlamp {
+    /// A lamp of `kelvin` colour temperature at [`MODERN_CANDELA`].
+    fn of_kelvin(t: f32) -> Headlamp {
+        let (lamp, halogen) = (kelvin(t), kelvin(3200.0));
+        let tint = [0, 1, 2].map(|i| (lamp[i] / halogen[i]).powf(1.0 - ADAPTATION));
+        Headlamp { tint: normalised(tint), candela: MODERN_CANDELA }
+    }
+
+    /// The type a car of `year` has: xenon (HID) from 1998 (4300 K), LED from 2010 (5700 K); `None` for halogen
+    /// (before 1998) and for no year.
+    pub fn of_year(year: Option<u32>) -> Option<Headlamp> {
+        match year? {
+            ..1998 => None,
+            1998..2010 => Some(Headlamp::of_kelvin(4300.0)),
+            _ => Some(Headlamp::of_kelvin(5700.0)),
+        }
+    }
+
+    /// The colour of a retail-coloured headlight of this type.
+    fn colour(&self) -> [f32; 3] {
+        normalised([0, 1, 2].map(|i| RETAIL_HEADLIGHT[i] * self.tint[i]))
+    }
+}
+
+/// `colour` with its brightest channel 1.
+fn normalised(colour: [f32; 3]) -> [f32; 3] {
+    let top = colour[0].max(colour[1]).max(colour[2]);
+    colour.map(|c| c / top)
+}
+
+/// Linear sRGB of a black body at `t` kelvin (1667 to 25000), brightest channel 1: Kim et al.'s cubic fit of the
+/// Planckian locus's chromaticity, as XYZ at Y = 1.
+const fn kelvin(t: f32) -> [f32; 3] {
+    let x = if t < 4000.0 {
+        -0.266_123_9e9 / (t * t * t) - 0.234_358_9e6 / (t * t) + 0.877_695_6e3 / t + 0.179_910
+    } else {
+        -3.025_846_9e9 / (t * t * t) + 2.107_038e6 / (t * t) + 0.222_634_7e3 / t + 0.240_390
+    };
+    let y = if t < 2222.0 {
+        -1.106_381_4 * x * x * x - 1.348_110_2 * x * x + 2.185_558_3 * x - 0.202_196_83
+    } else if t < 4000.0 {
+        -0.954_947_6 * x * x * x - 1.374_185_9 * x * x + 2.091_37 * x - 0.167_488_67
+    } else {
+        3.081_758 * x * x * x - 5.873_387 * x * x + 3.751_129_9 * x - 0.370_014_83
+    };
+    let (cx, cz) = (x / y, (1.0 - x - y) / y);
+    let r = 3.2406 * cx - 1.5372 - 0.4986 * cz;
+    let g = -0.9689 * cx + 1.8758 + 0.0415 * cz;
+    let b = 0.0557 * cx - 0.2040 + 1.0570 * cz;
+    let top = if r > g { r } else { g };
+    let top = if top > b { top } else { b };
+    [r / top, g / top, b / top]
+}
+
+/// Gives the headlights of `points` whose record is the retail colour (an unchanged default) `headlamp`'s colour and
+/// intensity; a record with its own colour keeps both. Whether any changed.
+pub fn apply_headlamp(points: &mut [LampPoint], headlamp: Headlamp) -> bool {
+    let mut changed = false;
+    for light in points.iter_mut().map(|p| &mut p.light).filter(|l| l.kind == Kind::Front) {
+        if light.colour == RETAIL_HEADLIGHT {
+            (light.colour, light.candela) = (headlamp.colour(), headlamp.candela);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// A lit headlamp part's `glow` ([`Switch::glow`], luminance negative) in `headlamp`'s tint and intensity, so that the
+/// lens and its beam agree.
+pub fn headlamp_glow([r, g, b, luminance]: [f32; 4], headlamp: Headlamp) -> [f32; 4] {
+    let [hr, hg, hb] = headlamp.tint;
+    [r * hr, g * hg, b * hb, luminance * headlamp.candela / CANDELA[0]]
+}
+
 /// The range a lit part's area along its lamp's axis is held in, m2 ([`Switch::glow`]): a lamp's lens is a few
 /// square centimetres to a few tenths of a square metre; outside that the part is not the lens alone (a whole rear
 /// panel) or a sliver, and its luminance would be far off.
@@ -521,12 +619,7 @@ const UNITS_PER_CANDELA: f32 = 3000.0 / 20000.0;
 /// `up` (stage space), at `fade`, a headlight on main beam when `main`. The headlights point along the car, the others
 /// along their normal. Its colour is the record's at the kind's luminous intensity ([`CANDELA`]).
 pub fn lamp(light: &Light, position: Vec3, normal: Vec3, forward: Vec3, up: Vec3, fade: f32, main: bool) -> Lamp {
-    let (candela, beam) = match light.kind {
-        Kind::Front => (CANDELA[0], true),
-        Kind::Tail => (CANDELA[1], false),
-        Kind::Brake => (CANDELA[2], false),
-        Kind::Reverse => (CANDELA[3], false),
-    };
+    let (candela, beam) = (light.candela, light.kind == Kind::Front);
     let forward = if beam { forward } else { normal };
     let colour = Vec3::from(light.colour);
     let luminance = colour.dot(Vec3::new(0.2126, 0.7152, 0.0722)).max(1e-3);
@@ -572,6 +665,73 @@ mod tests {
         assert_eq!(Switch { kind: Kind::Front, ..brake }.glow(0.02)[3], -1_000_000.0);
         // A sliver or a whole panel is held to a lens's size.
         assert_eq!(brake.glow(0.0)[3], 100.0 / LIT_AREA[0]);
+    }
+
+    #[test]
+    fn headlamp_type_follows_the_year() {
+        let (xenon, led) = (Headlamp::of_kelvin(4300.0), Headlamp::of_kelvin(5700.0));
+        assert_eq!(Headlamp::of_year(None), None);
+        assert_eq!(Headlamp::of_year(Some(1997)), None);
+        assert_eq!(Headlamp::of_year(Some(1998)), Some(xenon));
+        assert_eq!(Headlamp::of_year(Some(2009)), Some(xenon));
+        assert_eq!(Headlamp::of_year(Some(2010)), Some(led));
+        assert_eq!(xenon.candela, 35000.0);
+    }
+
+    #[test]
+    fn kelvin_colours_are_warm_to_cool() {
+        let [r, g, b] = kelvin(4300.0);
+        assert_eq!(r, 1.0);
+        assert!((g - 0.70).abs() < 0.03 && (b - 0.45).abs() < 0.03, "{g} {b}");
+        let [r, g, b] = kelvin(5700.0);
+        assert!(r == 1.0 && g > 0.85 && b > 0.78 && b < g, "{r} {g} {b}");
+        let [r, g, b] = kelvin(6500.0);
+        assert!(r.min(g).min(b) > 0.9, "daylight is near white: {r} {g} {b}");
+    }
+
+    #[test]
+    fn newer_headlamps_are_cooler_than_the_retail_halogen() {
+        // The retail colour is yellower in blue than red; each step cools it, the blue gaining on the red.
+        let ratio = |c: [f32; 3]| c[2] / c[0];
+        let halogen = ratio(RETAIL_HEADLIGHT);
+        let xenon = Headlamp::of_kelvin(4300.0);
+        let led = Headlamp::of_kelvin(5700.0);
+        assert!(ratio(xenon.colour()) > halogen, "{:?}", xenon.colour());
+        assert!(ratio(led.colour()) > ratio(xenon.colour()), "{:?}", led.colour());
+        for c in [xenon.colour(), led.colour()] {
+            assert_eq!(c.into_iter().fold(0.0, f32::max), 1.0);
+        }
+        // Partial adaptation: nowhere near the black body's own colour (4300 K is 0.45 in blue).
+        assert!(xenon.colour()[2] / xenon.colour()[0] > 0.9);
+    }
+
+    #[test]
+    fn only_retail_coloured_headlights_take_the_type() {
+        let point = |kind, colour| LampPoint {
+            light: Light {
+                kind,
+                lamp: 0,
+                part: String::new(),
+                fade_in: 1.0,
+                fade_out: 1.0,
+                colour,
+                candela: CANDELA[kind as usize],
+                fixed: None,
+            },
+            position: Vec3::ZERO,
+            normal: Vec3::Z,
+        };
+        let mut points = [
+            point(Kind::Front, RETAIL_HEADLIGHT),
+            point(Kind::Front, [1.0, 0.8, 0.2]),
+            point(Kind::Tail, RETAIL_HEADLIGHT),
+        ];
+        let led = Headlamp::of_kelvin(5700.0);
+        assert!(apply_headlamp(&mut points, led));
+        assert_eq!((points[0].light.colour, points[0].light.candela), (led.colour(), 35000.0));
+        assert_eq!((points[1].light.colour, points[1].light.candela), ([1.0, 0.8, 0.2], 20000.0));
+        assert_eq!((points[2].light.colour, points[2].light.candela), (RETAIL_HEADLIGHT, 8.0));
+        assert!(!apply_headlamp(&mut points[1..2], led));
     }
 
     #[test]

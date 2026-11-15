@@ -26,7 +26,7 @@ use std::cell::Cell;
 
 mod step;
 
-use crate::entities::MB560;
+use crate::entities::Op;
 use crate::pure::TYRE_PARTICLES_EMIT;
 pub use step::wheel_step;
 use step::{finish, ground_probe, refresh, update_strut};
@@ -532,7 +532,7 @@ impl WalkCalls for Walk<'_> {
             None => 0,
         };
         let c = self.scratch + 0x10;
-        crate::entities::call_op(self.host, 0, MB560, walker, &[a, car, c]);
+        crate::entities::op(self.host, 0, walker, Op::Mb560 { a, b: car, c });
         Vec4::load(&self.mem, c)
     }
 }

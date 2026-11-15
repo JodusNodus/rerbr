@@ -37,8 +37,8 @@ pub fn mounted_pull<S: CoreStore>(
     host.walk(frame.walk_sp(), frame.term(), owner, frame.walked());
     let position = store.mounted_position(this);
     let point = store.mount_point(store.mounted_car(this));
-    let gap =
-        Vec4 { x: position.x - point.x, y: position.y - point.y, z: position.z - point.z, w: store.f32(frame.gap_w()) };
+    let w = host.gap_lane().map_or_else(|| store.f32(frame.gap_w()), f32::from_bits);
+    let gap = Vec4 { x: position.x - point.x, y: position.y - point.y, z: position.z - point.z, w };
     Vec3 { x: gap.x, y: gap.y, z: gap.z }.store(store, frame.gap());
     let velocity = mounted_velocity(Vec4::load(store, frame.walked()), gap, store.mounted_linear(this));
     store.set_mount_velocity(this, velocity);

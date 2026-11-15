@@ -3227,7 +3227,7 @@ fn vf98x_matches_original_calls() {
         }
         let mut host = RecordedRespawn { call, next: 0 };
         // The countdown path reads no drive line.
-        layout::run_countdown(&mut mem, &Mem::new(), &mut host, car, ENTRY);
+        layout::run_countdown(&mut mem, &Mem::new(), &mut host, car, ENTRY, None);
         assert_eq!(host.next, call.inner.len(), "Vf98x call {}: records left", call.index);
         check_windows(call, &mem, "CCar::Vf98x");
     }

@@ -10,7 +10,7 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::entities::tree::{
     integrate, name_walk, walk_gated, walk_pre_order, ChildCall, Children, GatedCalls, Integrate, NameWalk, PreOrder,
 };
-use rbr_physics::entities::walk::{self, carry_three_four, Node, Walk as PairOps, Walker};
+use rbr_physics::entities::walk::{self, Node, Walk as PairOps, Walker};
 use rbr_physics::mem::Mem;
 
 use super::frame::{frame_hook_at, FrameOwner};
@@ -45,10 +45,6 @@ const PRE_ORDER_DEPTHS: Depths = depths(12, 16, 0);
 const NAME_DEPTHS: Depths = depths(0, 32, 28);
 /// The name walk's functor object: the original's frame holds it at entry-20 (vtable, then the callback).
 const NAME_FUNCTOR_AT: u32 = 20;
-
-/// `E43PairWalk::MB560`'s one call (`RoutePairThreeFour`): its arguments are pushed below the copy's pushes, so the
-/// callee enters 24 bytes below the entry esp.
-pub(super) const MB560_CALL: u32 = 24;
 
 const NAME_FUNCTOR_VTABLE: u32 = 0x73cbe8; // the name walk's functor object: its vtable (slot 1 is the call) ...
 const NAME_FUNCTOR_CALLBACK: u32 = 0x5194a0; // ... and the callback the functor's call makes
@@ -194,7 +190,7 @@ pub(super) fn name_walk_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 }
 
 /// The pair walk's calls on the original's objects: node reads, the frame hooks (`Vf04..Vf18`) and the walkers
-/// (`E43PairWalk`), through the host. Only `walk` (at `MB560_CALL`) and `copy_vec4` are reached from `MB560`.
+/// (`E43PairWalk`), through the host. The ops' walks in place (`matrices`) reach `walk` and `copy_vec4`.
 pub(super) struct PairWalk<'a> {
     pub(super) mem: &'a mut Mem,
     pub(super) host: &'a dyn Host,
@@ -249,7 +245,7 @@ impl PairOps for PairWalk<'_> {
         }
         // The pure host runs the child walk here, as its binding (`pair_walker`) would, without the call's words: their
         // one reader was the passenger step's walk point, whose lane 3 is `crate::RESIDUE` there.
-        if crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
+        if child_words_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             let mut child = PairWalk { mem: &mut *self.mem, host: self.host, esp: sp, walk_depth: walk_depth(which) };
             return walk::run(&mut child, which, receiver, o2, a, b);
         }
@@ -263,6 +259,12 @@ impl PairOps for PairWalk<'_> {
     fn copy_vec4(&mut self, to: u32, from: u32) {
         copy_vec4(self.host, self.mem, to, from);
     }
+}
+
+/// [`crate::skip_unwritten`] of a child walk's words, from one place for the walk in place and the value carry, so that
+/// the audit's fills carry the same tag on both and the twin compares them.
+pub(super) fn child_words_unwritten(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
+    crate::skip_unwritten(host, mem, sp, args)
 }
 
 /// `layout::copy_vec4` on the solids' store: `from` is a solid's vector at times (`MB560` on the car's position).
@@ -283,26 +285,6 @@ pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
         let word = store.word(from + 4 * k);
         store.set_word(to + 4 * k, word);
     }
-}
-
-/// thiscall `(a, b, c)`: `E43PairWalk::MB560`, which copies 16 bytes from `a` to `c` and walks `r.ecx` against `b` with
-/// `RoutePairThreeFour` (`c` as its `a`, 1 as its `b`). That walk returns its `a` (`c`), which is the original's eax.
-pub(super) fn mb560_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, c, ..] = r.stack;
-    if super::matrices::carried_op(ctx.host, &mut ctx.mem, r.esp, super::MB560, r.ecx, [a, b, c]) {
-        return Ok(Return::void(c, 12));
-    }
-    let mut walk = PairWalk { mem: &mut ctx.mem, host: ctx.host, esp: r.esp, walk_depth: MB560_CALL };
-    carry_three_four(&mut walk, r.ecx, a, b, c);
-    Ok(Return::void(c, 12))
-}
-
-/// thiscall `(a, b)`: `E33Mat34::Combine` (0x51ab90) and its twin `CombineTwin` (0x51ab70), store the pair in `this`
-/// and return `this`.
-pub(super) fn pair_combine_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, ..] = r.stack;
-    let node = ctx.mem.store_pair(r.ecx, a, b);
-    Ok(Return::void(node, 8))
 }
 
 /// The functor's calls: the callee enters below the functor's frame, the argument pushed at entry-4 and the call's

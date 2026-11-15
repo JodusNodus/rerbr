@@ -4,7 +4,8 @@
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{self, passenger_ctor};
 
-use super::{HOST_AT, MB560, PULL, SPRING, SPRING_EAX_AT, TEMPS, WALKER};
+use super::{HOST_AT, PULL, SPRING, SPRING_EAX_AT, TEMPS, WALKER};
+use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `(dt)`: `E45PSmalls::M29E0`.
@@ -48,7 +49,7 @@ impl passenger_ctor::StepHost for StepCalls<'_> {
             self.mem.set_u32(self.temp + 12, lane);
         }
         let walker = self.mem.u32(WALKER);
-        crate::entities::call_op(self.host, 0, MB560, walker, &[self.temp, host, out]);
+        crate::entities::op(self.host, 0, walker, Op::Mb560 { a: self.temp, b: host, c: out });
     }
 
     fn spring(&mut self, this: u32, dt: f32) {

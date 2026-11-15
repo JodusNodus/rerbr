@@ -29,11 +29,12 @@ struct Window<'a> {
     mem: Mem,
     host: &'a dyn Host,
     this: u32,
+    esp: u32,
 }
 
 impl CellHost for Window<'_> {
     fn register_cell(&mut self, link: u32, x: f32, y: f32) -> Result<(), HostUnavailable> {
-        register_cell_at(&self.mem, self.host, self.this + link, x, y);
+        register_cell_at(&mut self.mem, self.host, self.esp, self.this + link, x, y);
         Ok(())
     }
 }
@@ -49,7 +50,7 @@ impl StateHost for Window<'_> {
 
 /// thiscall `(a)`: `CSolid::VfDx`, the back step to fraction `a` of the window. eax is not modelled.
 pub(super) fn back_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Window { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx };
+    let mut calls = Window { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, esp: r.esp };
     let a = f32::from_bits(r.stack[0]);
     on_solids(ctx, |s| layout::solid_back_step(s, &mut calls, r.ecx, a)).map_err(unavailable)?;
     Ok(Return::void(0, 4))
@@ -57,7 +58,7 @@ pub(super) fn back_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(a)`: `CSolid::VfEx`, the rest of the window (`a` seconds of its time). eax is not modelled.
 pub(super) fn advance_rest(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Window { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx };
+    let mut calls = Window { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, esp: r.esp };
     let a = f32::from_bits(r.stack[0]);
     on_solids(ctx, |s| layout::solid_advance_rest(s, &mut calls, r.ecx, a)).map_err(unavailable)?;
     Ok(Return::void(0, 4))
