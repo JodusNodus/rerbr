@@ -412,6 +412,23 @@ rows` and `n - 1` spans of `0x78 + layers * (rows * (0x24 + 0x2c * (cols - 2)) +
 (cols - 1)))` (segment 0x78, particle 0x28, spring 0x20, bend 0xc, pointer 4). Walks are pre-order over children whose
 `S80() != 0`.
 
+Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-hybrid/src/entities/{walks,matrices,frame}.rs`):
+- A node is a frame: the entity itself (`CEntityFrame` 0x73cb64: `+4` parent, `+8` depth, `+0xc` owner) or its old
+  frame (`+0x1c`, `CEntityOldFrame` 0x73cb84, slot 13 `MFc10` 0x519c10). The root is the world frame (`*0x7cbb00`,
+  `WALKER`). A walker climbs the deeper node's parents to equal depth, then both until they meet, calling the frame
+  hooks (slots 1-6) on the way up (One, Three, Five) and down (Two, Four, Six); a frame forwards to its owner's slot
+  0x9c..0xc0 (an old frame picks 0xa4..0xc8 by the owner's gate, slot 0x80). CSolid's: 0x9c `scale_add_rows`, 0xac
+  `transform_body_rows`, 0xb0 `transform_body_rows3` on the rows in place; CEntity's 0x9c/0xa0/0xb0 return `a`.
+- `MB560` (0x51b560, `(a, b, c)`): `a` copied to `c`, carried from `this`'s frame to `b`'s (Three-Four). `ComposeA`
+  (0x51b4c0, `(src, o2, out)`) and `FetchX` (0x51b6c0, on a `{matrix, node}`): One-Two; `ComposeB` (0x51b600):
+  Five-Six; `M51B460`/`M51B500`: `n` blocks, One-Two/Three-Four; `FetchY` (0x51b780): a grid copy and `WB410`'s grid
+  hooks over its box tables; `Combine` (0x51ab90, twin 0x51ab70): the pair `(a, b)` at `this`. eax the output.
+- Inputs: the frames' words and the owners' vtables (image, set at construction), the owners' poses (held solids'
+  through `SolidView`), the rows (`a`, `out`: mostly the caller's frame). No typed state of their own.
+- Residue (audit, the skipped words filled per site): the child walks' words (`skip_call_writing`, `walks.rs`) reach
+  `CPassenger::Step`'s `MB560` source, lane 3 unwritten, copied into car `+0x8ec` (`STALE_CAR`, masked): only that
+  word changes, every step. No reader of the hooks', the identity walks' or the ops' own call words.
+
 ## Scenery
 
 Scenery collision comes from the `.trk` collision meshes (kind `0x16`, loader 0x46e300), not `.col`, emitted at
