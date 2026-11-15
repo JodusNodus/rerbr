@@ -571,7 +571,12 @@ fn tyre_tail_setup(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// destination.
 fn split_on_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [block, v, acc, ..] = r.stack;
-    let eax = on_wheels(ctx, |m| layout::edge_force(m, r.ecx, block, v, acc, r.esp));
+    // The remainder's lane 3 is a frame word the original does not write: `crate::RESIDUE` on the pure host.
+    let residue = crate::residue(ctx.host).map(f32::from_bits);
+    let eax = on_wheels(ctx, |m| {
+        let residue = residue.unwrap_or_else(|| layout::edge_residue(m, r.esp));
+        layout::edge_force(m, r.ecx, block, v, acc, residue)
+    });
     Ok(Return::void(eax, 0x14))
 }
 

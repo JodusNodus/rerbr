@@ -257,7 +257,9 @@ pub(super) fn make_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2, ..] = r.stack;
     let mut calls = MakeEventCalls { host: ctx.host, s: layout::make_event_frame(r.esp) };
     let words = [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2];
-    let eax = on_collision(ctx.host, &mut ctx.mem, |s| layout::make_event_at(&mut calls, s, words, r.esp));
+    // The payload's last word (the event's data[15]) is not written: `crate::RESIDUE` on the pure host.
+    let tail = crate::residue(ctx.host).unwrap_or_else(|| ctx.mem.u32(layout::make_event_tail(r.esp)));
+    let eax = on_collision(ctx.host, &mut ctx.mem, |s| layout::make_event_at(&mut calls, s, words, tail));
     Ok(Return::void(eax, 0))
 }
 

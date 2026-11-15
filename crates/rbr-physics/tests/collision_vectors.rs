@@ -3712,11 +3712,12 @@ fn hit_path_leaves_unit() {
         layout::Vec4 { x: v[0], y: v[1], z: v[2], w: v[3] }.store(&mut mem, at);
     }
     mem.set_u32(stale, 0xdead_beef);
-    assert_eq!(layout::vec4_sub_stale(&mut mem, a, out, b, esp), out);
+    let w = layout::stale_lane(&mem, esp);
+    assert_eq!(layout::vec4_sub_stale(&mut mem, a, out, b, w), out);
     let words = |mem: &Mem| [0, 4, 8, 12].map(|k| mem.u32(out + k));
     let f = |x: f32| x.to_bits();
     assert_eq!(words(&mem), [f(0.5), f(-6.0), f(5.0), 0xdead_beef]);
-    assert_eq!(layout::vec3_add_stale(&mut mem, a, out, b, esp), out);
+    assert_eq!(layout::vec3_add_stale(&mut mem, a, out, b, w), out);
     assert_eq!(words(&mem), [f(1.5), f(10.0), f(3.0), 0xdead_beef]);
 
     layout::Vec4 { x: 3.0, y: 0.0, z: 4.0, w: 10.0 }.store(&mut mem, out);

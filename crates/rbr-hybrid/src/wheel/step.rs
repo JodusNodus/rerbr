@@ -180,6 +180,10 @@ pub fn wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let dt = f32::from_bits(r.stack[0]);
     let mut calls = Step { mem: ctx.mem.clone(), host: ctx.host, wheel: r.ecx };
     let slip = crate::ngp::step_slip(ctx)?;
+    // The frame's `+0x6c` is read before anything writes it (lane 3 of the two matrix rows' copies).
+    if let Some(lane) = crate::residue(ctx.host) {
+        ctx.mem.set_u32(frame + 0x6C, lane);
+    }
     on_wheels(ctx, |m| layout::wheel_step(m, &mut calls, r.ecx, dt, frame, slip));
     Ok(Return::void(0, 4))
 }

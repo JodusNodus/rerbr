@@ -208,13 +208,27 @@ pub(crate) fn skip_unwritten(host: &dyn Host, _mem: &mut Mem, sp: u32, _args: &[
 
 /// The value the game gives a stack word the original reads without anything having written it in the step (residue,
 /// notes/physics.md "Stack residue is behaviour"): 0, which as a float lane is 0.0, so lanewise arithmetic on it makes
-/// no NaN, infinity or denormal.
-pub(crate) const RESIDUE: u32 = 0;
+/// no NaN, infinity or denormal. With the `residue-audit` feature it is a NaN, so that a compared word that depends on
+/// one shows in the drive.
+pub(crate) const RESIDUE: u32 = if cfg!(feature = "residue-audit") { 0xffba_dbad } else { 0 };
 
 /// [`RESIDUE`] on the pure host ([`Host::call_slot_word`]: held and per call, both dispatches, so the twins agree);
 /// `None` on a host that runs the original (the emulator) and in the vectors, where the word is what the stack holds.
+/// With `residue-audit` a site's first read is logged, which shows the sites a drive reaches.
+#[cfg_attr(feature = "residue-audit", track_caller)]
 pub(crate) fn residue(host: &dyn Host) -> Option<u32> {
-    host.call_slot_word().map(|_| RESIDUE)
+    host.call_slot_word()?;
+    #[cfg(feature = "residue-audit")]
+    {
+        static SEEN: std::sync::Mutex<Vec<(&str, u32)>> = std::sync::Mutex::new(Vec::new());
+        let at = std::panic::Location::caller();
+        let mut seen = SEEN.lock().unwrap();
+        if !seen.contains(&(at.file(), at.line())) {
+            seen.push((at.file(), at.line()));
+            eprintln!("residue-audit: first residue read at {at}");
+        }
+    }
+    Some(RESIDUE)
 }
 
 /// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`

@@ -543,7 +543,8 @@ fn edge_force_matches_original_calls() {
         let mut mem = map_windows(c);
         let Window { at: residue_at, .. } =
             c.windows.iter().find(|w| w.index == 6).expect("Unk94d0 record: the stack word");
-        let eax = layout::edge_force(&mut mem, c.args[0], c.args[1], c.args[2], c.args[3], residue_at + 0x18);
+        let residue = layout::edge_residue(&mem, residue_at + 0x18);
+        let eax = layout::edge_force(&mut mem, c.args[0], c.args[1], c.args[2], c.args[3], residue);
         assert_eq!(eax, c.eax, "Unk94d0 call {}: eax", c.index);
         for Window { index: k, at, len: _, before: _, after: post } in &c.windows {
             for (w, bytes) in post.chunks_exact(4).enumerate() {

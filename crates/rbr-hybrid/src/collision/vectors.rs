@@ -130,16 +130,24 @@ pub(super) fn vec4_normalize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     Ok(Return::void(layout::vec4_normalize(&mut ctx.mem, r.ecx), 0))
 }
 
+/// The w lane `E09Vec4::Sub` and `E21Vec3::Add` entered at `esp` store: the unwritten word of their scratch, which is
+/// [`crate::RESIDUE`] on the pure host.
+fn stale_lane(ctx: &Ctx, esp: u32) -> u32 {
+    crate::residue(ctx.host).unwrap_or_else(|| layout::stale_lane(&ctx.mem, esp))
+}
+
 /// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E09Vec4::Sub` (0x465da0). Eax is `out`.
 pub(super) fn vec4_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [out, b, ..] = r.stack;
-    let eax = layout::vec4_sub_stale(&mut ctx.mem, r.ecx, out, b, r.esp);
+    let w = stale_lane(ctx, r.esp);
+    let eax = layout::vec4_sub_stale(&mut ctx.mem, r.ecx, out, b, w);
     Ok(Return::void(eax, 8))
 }
 
 /// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E21Vec3::Add` (0x4a19e0). Eax is `out`.
 pub(super) fn vec3_add(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [out, b, ..] = r.stack;
-    let eax = layout::vec3_add_stale(&mut ctx.mem, r.ecx, out, b, r.esp);
+    let w = stale_lane(ctx, r.esp);
+    let eax = layout::vec3_add_stale(&mut ctx.mem, r.ecx, out, b, w);
     Ok(Return::void(eax, 8))
 }

@@ -196,18 +196,23 @@ pub fn forward_to_car_and_clear<S: WheelStore>(host: &mut impl CarSlotCalls, mem
 /// Where `Unk94d0` reads its remainder's lane 3: this far below its aligned `ebp` (`(sp - 4) & !0xf`).
 const EDGE_RESIDUE: u32 = 0x14;
 
+/// The remainder's lane 3 `Unk94d0` entered at `sp` reads: a word of its frame it does not write.
+pub fn edge_residue<S: WheelStore>(mem: &S, sp: u32) -> f32 {
+    mem.f32(((sp - 4) & !0xF) - EDGE_RESIDUE)
+}
+
 /// `CWheel::Unk94d0` (0x5394d0, thiscall on the wheel; stack `block`, `v`, `acc` and two words it does not read; `ret
 /// 0x14`) entered at `sp`: `axis_force::axis_force` of the velocity at `v` on the edge ray block `block` (its normal and
 /// its `+0x5c` scale), into the accumulator at `acc` and `this+0xe40` (name ours). The frame's temporaries are not
-/// written. Returns eax, the copy's destination.
-pub fn edge_force<S: WheelStore>(mem: &mut S, this: u32, block: u32, v: u32, acc: u32, sp: u32) -> u32 {
+/// written; `residue` is the remainder's lane 3 ([`edge_residue`]). Returns eax, the copy's destination.
+pub fn edge_force<S: WheelStore>(mem: &mut S, this: u32, block: u32, v: u32, acc: u32, residue: f32) -> u32 {
     let input = AxisForceIn {
         axis: Vec4::load(mem, block + RAY_NORMAL),
         scale: mem.f32(block + BLOCK_CLAMP_A),
         probe_direction: Vec4::load(mem, this + PROBE_DIRECTION),
         velocity: Vec4::load(mem, v),
         force: Vec4::load(mem, acc),
-        residue: mem.f32(((sp - 4) & !0xF) - EDGE_RESIDUE),
+        residue,
     };
     let out = axis_force::axis_force(&input);
     out.force.store(mem, acc);

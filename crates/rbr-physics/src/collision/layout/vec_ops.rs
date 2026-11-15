@@ -65,23 +65,21 @@ pub fn vec3_normalize(mem: &mut Mem, this: u32) -> u32 {
 
 /// The fourth lane E09Vec4::Sub and E21Vec3::Add copy to `out`: the last word of their 16-byte scratch, never written
 /// (`push ebp`, the alignment, `sub esp, 0x10`), so the stack word 4 below the aligned frame of the entry esp `esp`.
-fn stale_lane(mem: &Mem, esp: u32) -> u32 {
+pub fn stale_lane(mem: &Mem, esp: u32) -> u32 {
     mem.u32(((esp - 4) & !0xf) - 4)
 }
 
 /// E09Vec4::Sub (0x465da0, thiscall on `a` with `(out, b)`, ret 8): `out = a - b` on x, y and z (`subss`, all read
-/// before `out` is written), w the stale scratch word (`stale_lane`). Returns `out`.
-pub fn vec4_sub_stale(mem: &mut Mem, a: u32, out: u32, b: u32, esp: u32) -> u32 {
-    let w = stale_lane(mem, esp);
+/// before `out` is written), w the stale scratch word `w` (`stale_lane`). Returns `out`.
+pub fn vec4_sub_stale(mem: &mut Mem, a: u32, out: u32, b: u32, w: u32) -> u32 {
     (Vec3::load(mem, a) - Vec3::load(mem, b)).store(mem, out);
     mem.set_u32(out + 0xc, w);
     out
 }
 
 /// E21Vec3::Add (0x4a19e0, thiscall on `a` with `(out, b)`, ret 8): `out = b + a` on x, y and z (`addss` into `b`'s
-/// lane), w the stale scratch word (`stale_lane`). Returns `out`.
-pub fn vec3_add_stale(mem: &mut Mem, a: u32, out: u32, b: u32, esp: u32) -> u32 {
-    let w = stale_lane(mem, esp);
+/// lane), w the stale scratch word `w` (`stale_lane`). Returns `out`.
+pub fn vec3_add_stale(mem: &mut Mem, a: u32, out: u32, b: u32, w: u32) -> u32 {
     (Vec3::load(mem, b) + Vec3::load(mem, a)).store(mem, out);
     mem.set_u32(out + 0xc, w);
     out

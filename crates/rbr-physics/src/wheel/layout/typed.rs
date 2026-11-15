@@ -394,7 +394,8 @@ fn entries<S: WheelStore>(mem: &mut S, this: u32, scratch: u32) -> Vec<[u32; 7]>
     super::table_lerp_pair(&mut c, mem, this, scratch + 0x20, super::WheelTuning::STOCK);
     super::pick_contact(mem, this, this + RAY_EDGE_MINUS, this + RAY_EDGE_PLUS, scratch + 0x30);
     super::spin_cross(&mut c, mem, this, scratch + 0x40);
-    super::edge_force(mem, this, this + RAY_EDGE_PLUS, scratch + 0x40, scratch + 0x50, scratch + 0xF4);
+    let residue = super::edge_residue(mem, scratch + 0xF4);
+    super::edge_force(mem, this, this + RAY_EDGE_PLUS, scratch + 0x40, scratch + 0x50, residue);
     super::edge_forces(&mut c, mem, this, scratch + 0x60, scratch + 0x70, scratch + 0x80);
     c.edge_forces
 }
