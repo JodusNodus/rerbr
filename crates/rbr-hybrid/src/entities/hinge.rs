@@ -18,7 +18,7 @@ use super::{
 };
 use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
-use crate::rigid_body::{on_solids, with_solids, E43VF64, E43VF6C};
+use crate::rigid_body::{held_solids, on_solids, with_solids, E43VF64, E43VF6C};
 use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -30,6 +30,30 @@ pub(super) const SIM_D160: u32 = 0x51d160;
 const MSG_RECURSIVE: u32 = 0x730358;
 const MSG_RANGE: u32 = 0x73032c;
 const MSG_NAME: u32 = 0x73d4b0;
+
+/// The hinged body's own bindings its code calls: run in place on a held body ([`call_hinge`]).
+const HINGE_CALLEES: [u32; 7] = [LIMIT_UPDATE, SIM_D160, SIM_C960, SIM_E1D0, SIM_CFF0, SIM_EA80, SIM_D860];
+
+/// `host.call_at(sp, target, body, args)` from the hinged body `body`'s code when `target` is one of its own bindings
+/// ([`HINGE_CALLEES`]) and its solid is held: run in place ([`Host::call_in_place`]: their state is the held body's, and
+/// their callers read none of the call's words after it; residue audit, notes/physics.md "Store seam"), else through
+/// the host.
+fn call_hinge(host: &dyn Host, sp: u32, target: u32, body: u32, args: &[u32]) -> crate::Called {
+    let held = HINGE_CALLEES.contains(&target) && held_solids(host).is_some_and(|s| s.held(body).is_some());
+    let direct = if held { host.call_in_place(sp, target, body, args) } else { None };
+    direct.unwrap_or_else(|| host.call_at(sp, target, body, args))
+}
+
+/// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` of a held hinged body: its one write, the dirty word
+/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]); per call the host.
+pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, sp: u32, object: u32) {
+    if host.typed().is_none() {
+        host.call_at(sp, SET_DIRTY, object, &[]);
+        return;
+    }
+    host.ran_direct();
+    crate::rigid_body::set_solid_word(host, mem, object + rbr_physics::ntweak::DIRTY, 1);
+}
 
 /// The calls `SimF950` makes, at the original's depths: the frame is 16-aligned from the entry esp (`push ebp; and esp,
 /// -16`), and each call enters where the original's pushes put it below that frame.
@@ -47,12 +71,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     /// In a held step `SetDirty`'s one write, the tweak's dirty word (the hinge's headers stay in the image; a held
     /// solid's word if its table names it), here ([`Host::ran_direct`]); else the host.
     fn mark_dirty(&mut self, at: u32) {
-        if self.host.typed().is_none() {
-            self.host.call_at(self.frame - 0x44, SET_DIRTY, at, &[]);
-            return;
-        }
-        self.host.ran_direct();
-        crate::rigid_body::set_solid_word(self.host, &mut self.mem, at + rbr_physics::ntweak::DIRTY, 1);
+        set_dirty(self.host, &mut self.mem, self.frame - 0x44, at);
     }
 
     fn scale_vector(&mut self, vec: u32, s: f32, out: u32) {
@@ -60,11 +79,11 @@ impl hinge_advance::Calls for F950Host<'_> {
     }
 
     fn apply_stops(&mut self, this: u32) {
-        self.host.call_at(self.frame - 0x44, LIMIT_UPDATE, this, &[]);
+        call_hinge(self.host, self.frame - 0x44, LIMIT_UPDATE, this, &[]);
     }
 
     fn update_pose(&mut self, this: u32) {
-        self.host.call_at(self.frame - 0x44, SIM_D160, this, &[]);
+        call_hinge(self.host, self.frame - 0x44, SIM_D160, this, &[]);
     }
 
     fn emit_state(&mut self, signal: u32, sig: u32) -> u32 {
@@ -236,7 +255,7 @@ impl PoseCalls for D160Host<'_> {
     }
 
     fn update_hinge_rotation(&mut self, body: u32) {
-        self.host.call_at(self.frame - 0x64, SIM_C960, body, &[]);
+        call_hinge(self.host, self.frame - 0x64, SIM_C960, body, &[]);
     }
 
     fn matrix_to_quaternion(&mut self, matrix: u32, out: u32) {
@@ -279,7 +298,7 @@ impl SolveCalls for SolveHost<'_> {
     }
 
     fn update_pivot(&mut self, this: u32) {
-        self.host.call_at(self.frame - 0xb4, SIM_E1D0, this, &[]);
+        call_hinge(self.host, self.frame - 0xb4, SIM_E1D0, this, &[]);
     }
 
     fn solve_terms(&self, this: u32) -> SolveTerms {
@@ -287,11 +306,11 @@ impl SolveCalls for SolveHost<'_> {
     }
 
     fn slip_torque(&mut self, this: u32) -> f32 {
-        self.host.call_at(self.frame - 0xb4, SIM_CFF0, this, &[]).st0 as f32
+        call_hinge(self.host, self.frame - 0xb4, SIM_CFF0, this, &[]).st0 as f32
     }
 
     fn limit_torque_sum(&mut self, this: u32) -> f32 {
-        self.host.call_at(self.frame - 0xb4, SIM_EA80, this, &[]).st0 as f32
+        call_hinge(self.host, self.frame - 0xb4, SIM_EA80, this, &[]).st0 as f32
     }
 
     fn contact_load(&mut self, this: u32, frame: &ContactHandles) -> Option<([f32; 3], [f32; 3])> {
@@ -356,11 +375,11 @@ impl RefreshCalls for EfeHost<'_> {
     }
 
     fn update_pose(&mut self, this: u32) {
-        self.host.call_at(self.frame - 0x44, SIM_D160, this, &[]);
+        call_hinge(self.host, self.frame - 0x44, SIM_D160, this, &[]);
     }
 
     fn offset(&mut self, this: u32, out: u32) -> [f32; 3] {
-        self.host.call_at(self.frame - 0x48, SIM_D860, this, &[out]);
+        call_hinge(self.host, self.frame - 0x48, SIM_D860, this, &[out]);
         [0, 4, 8].map(|k| self.mem.f32(out + k))
     }
 

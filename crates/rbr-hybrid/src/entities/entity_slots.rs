@@ -15,7 +15,6 @@ use rbr_physics::mem::Mem;
 use super::{E90_BUILD, EXCLUSION_TEST, FETCH_X};
 use crate::collision::E01_VEC4_COPY_FROM;
 use crate::rigid_body::on_solids;
-use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 fn entity_echo(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -253,6 +252,7 @@ const LIMIT_FLAG_CALL: u32 = 12;
 
 /// The limit update's call on the limit object (0x52f450).
 struct FlagCall<'a> {
+    mem: Mem,
     host: &'a dyn Host,
     sp: u32,
     object: u32,
@@ -260,14 +260,15 @@ struct FlagCall<'a> {
 
 impl hinge_stops::Calls for FlagCall<'_> {
     fn mark_dirty(&mut self) {
-        self.host.call_at(self.sp, SET_DIRTY, self.object, &[]);
+        super::hinge::set_dirty(self.host, &mut self.mem, self.sp, self.object);
     }
 }
 
 /// thiscall: `CEntity` 0x51f280, the limit update (see `rbr_physics::entities::hinge_stops`). Pops nothing.
 pub(super) fn limit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let host = ctx.host;
-    let mut flag = FlagCall { host, sp: r.esp - LIMIT_FLAG_CALL, object: layout::limit_object(r.ecx) };
+    let mut flag =
+        FlagCall { mem: ctx.mem.clone(), host, sp: r.esp - LIMIT_FLAG_CALL, object: layout::limit_object(r.ecx) };
     let eax = on_solids(ctx, |s| layout::limit_update_at(s, r.ecx, &mut flag));
     Ok(Return::void(eax, 0))
 }
