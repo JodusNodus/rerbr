@@ -106,18 +106,15 @@ impl GatedCalls for Walk<'_> {
             ChildCall::UnknownArgPass(p) => (0x68, Some(p)),
             ChildCall::Integrate(p) => (0x6c, Some(p)),
         };
-        self.host.call_at(
-            self.at(self.depths.call),
-            layout::vtable_target(&self.mem, child, slot),
-            child,
-            arg.as_slice(),
-        );
+        let target = layout::vtable_target(&self.mem, child, slot);
+        crate::wheel::call_wheel(self.host, child, self.at(self.depths.call), target, child, arg.as_slice());
     }
 }
 
 impl Integrate for Walk<'_> {
     fn name_walk_self(&mut self, node: u32) {
-        self.host.call_at(self.at(self.depths.name), layout::vtable_target(&self.mem, node, 0x40), node, &[]);
+        let target = layout::vtable_target(&self.mem, node, 0x40);
+        crate::wheel::call_wheel(self.host, node, self.at(self.depths.name), target, node, &[]);
     }
 }
 
@@ -318,7 +315,7 @@ impl FunctorCalls for Functor<'_> {
     }
 
     fn call(&mut self, callee: u32, this: u32, arg: u32) -> u32 {
-        self.host.call_at(self.esp.wrapping_sub(8), callee, this, &[arg]).eax
+        crate::wheel::call_wheel(self.host, this, self.esp.wrapping_sub(8), callee, this, &[arg]).eax
     }
 }
 

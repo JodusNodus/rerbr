@@ -11,7 +11,10 @@ use rbr_physics::tyre::layout::{self as tyre_layout, entries, TyreView};
 use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
-use super::{on_wheels, Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
+use super::{
+    call_wheel, on_wheels, Libm, BLEND4, M3AB90, M3AC50, M3AFB0, M3B900, M3D460, M3D520, MB560, SCRATCH_BELOW_ESP,
+    UNK9290, UNK96E0, UNK97A0, UNK9900,
+};
 use crate::car_body::on_held_car;
 use crate::collision::{RAY_CLEAR, RAY_SEEDS};
 use crate::entities::BODY_COMPOSE;
@@ -55,7 +58,7 @@ impl layout::RefreshCalls for Refresh<'_> {
 
     fn refresh_solid(&mut self, wheel: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(wheel) + 0x40);
-        self.host.call(target, wheel, &[]).eax
+        call_wheel(self.host, wheel, 0, target, wheel, &[]).eax
     }
 }
 
@@ -82,6 +85,11 @@ impl Ground<'_> {
     fn call(&self, addr: u32, ecx: u32, args: &[u32]) -> u32 {
         self.host.call_direct(self.sp, addr, ecx, args).eax
     }
+
+    /// The wheel's own callee at `addr` on the wheel `this` ([`call_wheel`]).
+    fn wheel(&self, addr: u32, this: u32, args: &[u32]) -> u32 {
+        call_wheel(self.host, this, self.sp, addr, this, args).eax
+    }
 }
 
 impl layout::GroundCalls for Ground<'_> {
@@ -94,7 +102,7 @@ impl layout::GroundCalls for Ground<'_> {
     }
 
     fn table_lerp_pair(&mut self, wheel: u32) {
-        self.call(UNK96E0, wheel, &[]);
+        self.wheel(UNK96E0, wheel, &[]);
     }
 
     fn query_box_faces(&mut self, object: u32, a: u32, b: u32) {
@@ -143,7 +151,7 @@ impl layout::GroundCalls for Ground<'_> {
     }
 
     fn update_ray_block(&mut self, wheel: u32, block: u32, limit: f32, floor: f32) {
-        self.call(0x53D460, wheel, &[block, limit.to_bits(), floor.to_bits()]);
+        self.wheel(M3D460, wheel, &[block, limit.to_bits(), floor.to_bits()]);
     }
 
     fn segment_sweep(&mut self, object: u32, a: u32, b: u32, c: u32, d: u32) -> u32 {
@@ -151,11 +159,11 @@ impl layout::GroundCalls for Ground<'_> {
     }
 
     fn pick_contact(&mut self, wheel: u32, a: u32, b: u32, out: u32) {
-        self.call(0x539290, wheel, &[a, b, out]);
+        self.wheel(UNK9290, wheel, &[a, b, out]);
     }
 
     fn blend_tags(&mut self, wheel: u32, x: u32, y: u32, z: f32) {
-        self.call(0x539900, wheel, &[x, y, z.to_bits()]);
+        self.wheel(UNK9900, wheel, &[x, y, z.to_bits()]);
     }
 
     fn load_binary(&mut self, to: u32, data: u32) {
@@ -221,6 +229,11 @@ impl Step<'_> {
         self.host.call_at(sp, addr, ecx, args).eax
     }
 
+    /// The wheel's own callee at `addr` on the step's wheel `this` ([`call_wheel`]).
+    fn wheel(&self, sp: u32, addr: u32, this: u32, args: &[u32]) -> u32 {
+        call_wheel(self.host, this, sp, addr, this, args).eax
+    }
+
     fn float(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> f32 {
         self.host.call_at(sp, addr, ecx, args).st0 as f32
     }
@@ -239,11 +252,11 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn refresh(&mut self, this: u32, travel: f32, sp: u32) {
-        self.on(sp, 0x53B900, this, &[travel.to_bits()]);
+        self.wheel(sp, M3B900, this, &[travel.to_bits()]);
     }
 
     fn ground_probe(&mut self, this: u32, out: u32, normal: u32, sp: u32) -> u32 {
-        self.on(sp, M3D520, this, &[out, normal])
+        self.wheel(sp, M3D520, this, &[out, normal])
     }
 
     // The vector callees (`collision/vectors.rs`' bindings, which make no call) run here on the pure host, on the
@@ -398,23 +411,23 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn carcass_edges(&mut self, this: u32, axle: u32, hub: u32, plus: u32, minus: u32, sp: u32) {
-        self.on(sp, 0x539180, this, &[axle, hub, plus, minus]);
+        self.wheel(sp, BLEND4, this, &[axle, hub, plus, minus]);
     }
 
     fn edge_forces(&mut self, this: u32, a: u32, b: u32, c: u32, sp: u32) {
-        self.on(sp, UNK97A0, this, &[a, b, c]);
+        self.wheel(sp, UNK97A0, this, &[a, b, c]);
     }
 
     fn deform_top_mount(&mut self, this: u32, sp: u32) {
-        self.on(sp, 0x53AB90, this, &[]);
+        self.wheel(sp, M3AB90, this, &[]);
     }
 
     fn apply_hub_torque(&mut self, this: u32, torque: f32, sp: u32) {
-        self.on(sp, 0x53AC50, this, &[torque.to_bits()]);
+        self.wheel(sp, M3AC50, this, &[torque.to_bits()]);
     }
 
     fn spin_cross(&mut self, this: u32, p: u32, sp: u32) {
-        self.on(sp, 0x53AFB0, this, &[p]);
+        self.wheel(sp, M3AFB0, this, &[p]);
     }
 
     fn emit_tyre_particles(&mut self, multi_tire: u32, sig: u32, sp: u32) {

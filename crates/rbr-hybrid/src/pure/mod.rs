@@ -665,6 +665,21 @@ impl Pure {
         }
     }
 
+    /// [`Host::call_in_place`] on either host: [`Pure::run_bound`] as [`Host::call_at`] enters it, but the call's words.
+    #[inline(always)]
+    fn run_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<Called> {
+        if WATCHED.contains(&addr) {
+            return None;
+        }
+        let slot = self.slot_of(crate::ngp::file_at(self.ngp_base, addr))?;
+        let mut regs = self.call_regs(sp, ecx);
+        self.raw.u32s_into(regs.esp + 4, &mut regs.stack);
+        regs.stack[..args.len()].copy_from_slice(args);
+        Host::ran_direct(self);
+        let r = self.run_bound(slot, addr, &regs, self.lend());
+        Some(Called { eax: r.eax, st0: r.st0.unwrap_or(f64::NAN) })
+    }
+
     /// [`Pure::call_plain`] of the binding in `slot` at `addr`, entered with `regs` but the stack words.
     #[inline(always)]
     fn run_plain(&self, slot: usize, addr: u32, mut regs: Regs, args: &[u32], write: bool) -> Option<Called> {
@@ -966,6 +981,10 @@ impl Host for Pure {
         }
     }
 
+    fn call_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<Called> {
+        self.run_in_place(sp, addr, ecx, args)
+    }
+
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
         let regs = self.call_regs(sp, ecx);
@@ -1029,6 +1048,10 @@ impl Host for Direct {
             Some(called) => called,
             None => self.0.call_host(sp, addr, ecx, args),
         }
+    }
+
+    fn call_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<Called> {
+        self.0.run_in_place(sp, addr, ecx, args)
     }
 
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {

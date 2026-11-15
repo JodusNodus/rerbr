@@ -117,6 +117,20 @@ pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T)
     run(&mut view.with_solids(solids))
 }
 
+/// Whether the host holds the wheel at `this` over a step ([`Host::typed`]).
+pub(crate) fn holds_wheel(host: &dyn Host, this: u32) -> bool {
+    host.typed().is_some_and(|t| t.car.wheels.held(this).is_some())
+}
+
+/// `host.call_at(sp, target, ecx, args)` from the held wheel `wheel`'s code when `target` is one of the wheel's
+/// bindings: run in place ([`Host::call_in_place`]), else through the host. Its callers read none of the call's words
+/// after it (residue audit, notes/physics.md "Store seam").
+pub(crate) fn call_wheel(host: &dyn Host, wheel: u32, sp: u32, target: u32, ecx: u32, args: &[u32]) -> crate::Called {
+    let ours = BINDINGS.iter().any(|b| b.addr == target);
+    let direct = if ours && holds_wheel(host, wheel) { host.call_in_place(sp, target, ecx, args) } else { None };
+    direct.unwrap_or_else(|| host.call_at(sp, target, ecx, args))
+}
+
 /// The field `slot` of the wheel at `this` as a step leaves it at this point: the typed storage's while the host holds
 /// it, else the image's. For the readers outside the wheel's bindings (NGP's engine wrapper and the tyres' thermal
 /// words).
@@ -374,7 +388,7 @@ struct Slots<'a> {
 impl SlotCalls for Slots<'_> {
     fn refresh_solid(&mut self, wheel: u32) {
         let target = self.mem.u32(self.mem.u32(wheel) + 0x40);
-        self.host.call(target, wheel, &[]);
+        call_wheel(self.host, wheel, 0, target, wheel, &[]);
     }
 
     fn walk_children(&mut self, wheel: u32, p: u32) {
@@ -400,7 +414,7 @@ fn pick_contact(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// words below the frame, and the caller reads them there.
 fn blend_tags(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, y, z, ..] = r.stack;
-    let mut calls = Blends { mem: ctx.mem.clone(), host: ctx.host, out: r.esp - SCRATCH_BELOW_ESP };
+    let mut calls = Blends { mem: ctx.mem.clone(), host: ctx.host, wheel: r.ecx, out: r.esp - SCRATCH_BELOW_ESP };
     layout::blend_tags(&mut calls, &mut ctx.mem, r.ecx, x, y, f32::from_bits(z));
     Ok(Return::void(0, 0xC))
 }
@@ -410,6 +424,7 @@ fn blend_tags(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 struct Blends<'a> {
     mem: Mem,
     host: &'a dyn Host,
+    wheel: u32,
     out: u32,
 }
 
@@ -421,7 +436,7 @@ impl BlendCalls for Blends<'_> {
     }
 
     fn blend_materials(&mut self, ops: u32, s1: u32, s2: u32, a: f32, b: f32, z: f32) {
-        self.host.call(BLEND_OPS, ops, &[s1, s2, a.to_bits(), b.to_bits(), z.to_bits()]);
+        call_wheel(self.host, self.wheel, 0, BLEND_OPS, ops, &[s1, s2, a.to_bits(), b.to_bits(), z.to_bits()]);
     }
 }
 
@@ -448,7 +463,7 @@ struct Slot96<'a> {
 impl HookCalls for Slot96<'_> {
     fn step(&mut self, wheel: u32, p: u32) {
         let target = self.mem.u32(self.mem.u32(wheel) + 0x180);
-        self.host.call(target, wheel, &[p]);
+        call_wheel(self.host, wheel, 0, target, wheel, &[p]);
     }
 }
 

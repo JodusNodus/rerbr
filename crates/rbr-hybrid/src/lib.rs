@@ -137,6 +137,14 @@ pub trait Host {
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         self.call_at(sp, addr, ecx, args)
     }
+    /// [`Host::call_at`] of the binding at `addr` run in place: entered as the call enters it, in a frame of its own
+    /// (the calls it leaves the placement of land as through the host) with `args` as its stack words, but none of the
+    /// call's words written, counted as a run ([`Host::ran_direct`]). For a caller on held state that reads none of the
+    /// call's words after it. `None` (nothing ran) on a host that runs the original, for an address with no binding
+    /// and for a watched emit, where the caller calls.
+    fn call_in_place(&self, _sp: u32, _addr: u32, _ecx: u32, _args: &[u32]) -> Option<Called> {
+        None
+    }
     /// [`Host::call_slot_word`] and whether [`skip_call`] writes the skipped call's words (not under the pure host's
     /// direct dispatch, [`pure::Pure::direct`]), in one call for the skipped calls.
     fn skip_word(&self) -> Option<(u32, bool)> {
