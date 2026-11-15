@@ -1,10 +1,11 @@
 //! The typed state held across steps (`Pure::typed_across_steps`) against lifted before and lowered after each step:
 //! two playbacks of one snapshot over its recording's controls, with the between-step runs on the held state
-//! (`notify_a_vector`, the damper reset), equal byte for byte in every region of the image, the stack and the
-//! allocator's blocks every `EVERY` steps (the held side lowered only then, through `Pure::image`), at the end, after a
-//! restore and a step after it. The archive's snapshots are 1.02 ones, where `StepForward` declines (NGP's port; the
-//! run keeps going), so this covers the lift, the runs between steps, the lowers and snapshot and restore; the steps
-//! themselves are the standalone's drive with the switch on. Needs `RBR_SNAPS` and `RBR_RECORDINGS`; skipped without.
+//! (`notify_a_vector`, the damper reset), equal byte for byte in every region of the image, the stack from the entry
+//! slot up and the allocator's blocks every `EVERY` steps (the held side lowered only then, through `Pure::image`), at
+//! the end, after a restore and a step after it. The archive's snapshots are 1.02 ones, where `StepForward` declines
+//! (NGP's port; the run keeps going), so this covers the lift, the runs between steps, the lowers and snapshot and
+//! restore; the steps themselves are the standalone's drive with the switch on. Needs `RBR_SNAPS` and
+//! `RBR_RECORDINGS`; skipped without.
 
 use std::path::PathBuf;
 
@@ -44,11 +45,16 @@ fn first_difference(a: &Mem, b: &Mem, lo: u32, hi: u32) -> Option<u32> {
 
 fn assert_same(snap: &Snapshot, a: &Playback, b: &Playback, when: &str) {
     let h = snap.metadata();
+    // The stack below the step's entry slot is left out: its words are dead between steps, and a run on the held state
+    // leaves out call words a per-call run writes (`Host::call_in_place`).
+    let dead = (h.stack_lo, h.registers.esp - 4);
     let ranges = snap
         .regions()
         .iter()
         .map(|r| (r.base, r.base + r.size))
-        .chain([(h.stack_lo, h.stack_lo + h.stack_len), (ALLOCATOR_HEAP_BASE, ALLOCATOR_HEAP_END)]);
+        .chain([(h.stack_lo, h.stack_lo + h.stack_len), (ALLOCATOR_HEAP_BASE, ALLOCATOR_HEAP_END)])
+        .flat_map(|(lo, hi)| [(lo, hi.min(dead.0)), (lo.max(dead.1), hi)])
+        .filter(|(lo, hi)| lo < hi);
     for (lo, hi) in ranges {
         if let Some(at) = first_difference(a.pure.image(), b.pure.image(), lo, hi) {
             panic!("{when}: the images differ at {at:#x}");
