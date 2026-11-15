@@ -71,8 +71,9 @@ pub use mesh_query::{
     world_axes_overlap, SystemFrame,
 };
 pub(in crate::collision) use mesh_query::{sweep_scratch, SweepScratch};
+pub(in crate::collision) use solver::contact_row_frame;
 pub use solver::ctor_solver;
-pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
+pub use solver::solve_event_frame;
 pub use typed::{
     differential, round_trip, CarCollision, CollisionImage, CollisionTyped, CollisionView, ContactCountObj,
     ContactRowObj, ContactRows, GridHitsObj, OffsetCountObj, OffsetRowObj, RowsHeadObj, Touched,

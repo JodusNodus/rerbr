@@ -227,6 +227,10 @@ pub(super) fn contact_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// E38Ops::M_C1A0 (0x4fc1a0): thiscall on the solver with the event, ret 4; the impulse is the x87 result (eax is a
 /// residue its caller does not read).
 pub(super) fn solve_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    // The relative velocity's lane 3 is not written (`PlaneDiff` stores three lanes); the slip and the impulse take it.
+    if let Some(lane) = crate::residue(ctx.host) {
+        ctx.mem.set_u32(layout::solve_event_frame(r.esp).velocity + 0xc, lane);
+    }
     let impulse = layout::solve_event(&mut Callees(ctx.host), &mut ctx.mem, r.stack[0], r.esp);
     Ok(Return::float(f64::from(impulse), 4))
 }
