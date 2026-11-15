@@ -118,10 +118,23 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   - `E09Vec4::Sub`/`E21Vec3::Add` out.w, `E33MakeEvent`'s data[15] (it stays in the event pool), `M3DD30`'s frame
     lane `+0x6c`: reached every run, reach no car or wheel word (NaN against 0: traces equal). `Unk94d0`'s remainder
     lane: not reached on drive2.
-  - Open: slot-0x74 is CollideWork's 0x499e90 return slot (`skip_call_writing`, the pure host's return word; its
-    reader into car `+0x14c` is not found, it is not `M_C1A0`'s frame); the unwritten payload words listeners read
-    (`Assist8DF0`, `Snap9360`, `Vf6cx`, Mrr, `SimF950`, `CWheel::Vf28`, body state, DampingCollision), the detach
-    locals, the mounted and offset w lanes.
+  - The respawn countdown (`CCar::Vf98x`, `car_body/layout/car_calls.rs`, `run_countdown`): the drive-line sample, the
+    probe and the vote's output (`Sampler54A0`'s `c`) are written in three lanes and read in four (the vote, `Normalize`,
+    the hit's copy, slot 97 `Vf180`: the pose's w, car `+0x14c`); lane 3 of each is `RESIDUE`. This was the reader of
+    CollideWork's 0x499e90 return slot (slot-0x74 of `StepForward`: the direct dispatch left that word, the frame's
+    `0xfeed2000`, where the countdown read it, drive2 step 19211): the call is `skip_unwritten` now, both dispatches. The
+    same stale words differ from the build before (the call word `0xfeed2000`/`2002`, then float lane arithmetic on it):
+    car `+0x8c`, `+0x9c`, `+0x14c`, `+0x33c` and the wheels' `+0x6ec` (`STALE_CAR`, `HEAP_WHEEL`, not compared), from
+    step 19210 on; no other word.
+  - Payload and block words the original never writes, filled `RESIDUE` before the emit or call on the pure host
+    (`fill_residue`): `Assist8DF0`'s seed block `+0`, `+0x1c`, the car step's emit payload word 0 (position, Mrr state),
+    `Snap9360`'s first 16 bytes, `SimF950`'s and the body state's words 1..3, the mounted state's words 1..3,
+    DampingCollision `+0x08`, `+0x40`, the contact hook's offset lane 3, the mounted pull's gap lane 3
+    (`MountedPullHost::gap_lane`). Audit (drive2, aids off, on and `--damage realistic`, trace word by word): the build
+    differs from the normal one only at the stale words above; the normal one equals the build before. `Snap9360`, the
+    mounted pull and step and `Assist8DF0`'s absent-wheel pairs are not reached on drive2.
+  - Still the stack's: the detach locals (`SimFD00`, `StepBig`: the event's unwritten words, the to-world outputs' lane 3;
+    no detach on drive2), `CWheel::Vf28`'s payload (does not run in a pure step), `UpdateMrr`'s block word.
 
 ## Memory and porting rules
 
@@ -239,8 +252,8 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   the slot-12 getter 0x519c00 (eax `this`; `E43Vf6C` passes `ComposeA` its three words), the empty hook 0x52f480, the
   `ret n` stand-ins whose eax no caller reads, `CE36SubBlock::Init` (its port), the counter (`Host::query_counter`).
   drive2: host calls 1062.8 -> 938.6 a step, instructions -3.2 %. Residue audit (words filled with `0xffbadbad`):
-  traces unchanged aids off and on and damage realistic, `--twin mem-direct` equal; CollideWork's 0x499e90 keeps its
-  return slot written (`skip_call_writing`: read into car+0x14c under the direct dispatch, drive2 step 19211).
+  traces unchanged aids off and on and damage realistic, `--twin mem-direct` equal; CollideWork's 0x499e90 is skipped
+  unwritten too (its slot was read by the respawn countdown: "Stack residue is behaviour").
 - Held getters and setters direct (drive2 1062.6 -> 911.5 host calls a step): a solid's gate `CSolid::E43Vf80` from the
   walks and old frames (`rigid_body::solid_gate_direct`); the wheel step's `Fwd6DB0`, `Fwd6DD0`, `Fwd43C0` (held drive),
   `GetA48`, `SetA1C`, `AddADC` (`car_body::on_held_car`); `E43Vf70`/`E43Vf74` from the wheel, the car's drag and the
