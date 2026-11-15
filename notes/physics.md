@@ -103,6 +103,25 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   step); filling the dead stack changes only `STALE_CAR` and `HEAP_WHEEL` words, all from the unwritten word at
   `StepForward`'s slot-0x94 (esp-60 of `E38Ops::M_C1A0`, 0x4fc1a0) and slot-0x74. Not audited: `--dispatch
   direct`, other drives.
+- Residue rule (decision, row 15j): a stack word the original reads without anything having written it in the step
+  is `rbr_hybrid::RESIDUE` (0) on the pure host, held and per call, both dispatches (`residue(host)`; the twins
+  compare every byte, so both sides take it); the emulator and the vectors keep the word their stack holds. 0 because
+  a lane of 0.0 makes no NaN, infinity or denormal in lanewise arithmetic. This changes only words that carry
+  garbage. `residue-audit` builds take a NaN (`0xffbadbad`) and log each site's first read: a compared word that
+  depends on a residue word then differs in the trace. Decided words (drive2 attempt 5, aids off, on and `--damage
+  realistic`, traces word by word against the build before and against the audit build):
+  - `CPassenger::Step`'s walk point, lane 3 (`physics_core/passenger_step.rs`): `MB560` copies it to car `+0x8ec`
+    (`STALE_CAR`), which is 0 in the recording too, so the word now compares equal; no other word changes.
+  - `E38Ops::M_C1A0`'s relative velocity, lane 3 (`collision/solver.rs`; `PlaneDiff` writes three lanes; slot-0x94):
+    the slip and the impulse carry it to car `+0x8c`, `+0x9c`, `+0x14c`, `+0x1cc`, `+0x22c`, `+0x33c`, `+0x34c`,
+    `+0x161c` (`STALE_CAR`) and wheel `+0x6ec` (`HEAP_WHEEL`), nothing else. The pure run's word there was 0 already.
+  - `E09Vec4::Sub`/`E21Vec3::Add` out.w, `E33MakeEvent`'s data[15] (it stays in the event pool), `M3DD30`'s frame
+    lane `+0x6c`: reached every run, reach no car or wheel word (NaN against 0: traces equal). `Unk94d0`'s remainder
+    lane: not reached on drive2.
+  - Open: slot-0x74 is CollideWork's 0x499e90 return slot (`skip_call_writing`, the pure host's return word; its
+    reader into car `+0x14c` is not found, it is not `M_C1A0`'s frame); the unwritten payload words listeners read
+    (`Assist8DF0`, `Snap9360`, `Vf6cx`, Mrr, `SimF950`, `CWheel::Vf28`, body state, DampingCollision), the detach
+    locals, the mounted and offset w lanes.
 
 ## Memory and porting rules
 
@@ -247,9 +266,10 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   calls a step, instructions -3.2 %): callers on held state run `MB560`, `ComposeA`, `ComposeB`, `FetchX`, `FetchY`,
   `WB410`, `Combine`, `M51B460`, `M51B500` in place (`entities::call_op`); `MFc10` is trivial (`this + 0x1c`); the
   walks' frame, solid and CEntity echo hooks, identity walks and `FetchX`'s direct run skip without their words
-  (`skip_unwritten`; feature `residue-audit` fills them with `0xffba0000 | line`). Kept: the child walks' words
-  (`skip_call_writing`, ~260 a step), which feed car `+0x8ec`. Audit: traces equal aids off, on, damage realistic;
-  twin typed (the three) and mem-direct (aids off, on) equal.
+  (`skip_unwritten`; feature `residue-audit` fills them with `0xffba0000 | line`). The child walks' words (~260 a
+  step) fed only the passenger walk point's lane 3, now `RESIDUE` ("Stack residue is behaviour"), and are skipped the
+  same way. Audit: traces equal aids off, on, damage realistic; twin typed (the three) and mem-direct (aids off, on)
+  equal.
 
 - The hinged body's calls of its own bindings run in place on a held body (`entities::hinge::call_hinge`): the limit
   update, `SimD160`, `SimC960`, `SimE1D0`, `SimCFF0`, `SimEA80`, `SimD860` from `SimF950`, `SimEAD0`, `SimD160` and
@@ -448,9 +468,9 @@ Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-hybrid/src/en
   hooks over its box tables; `Combine` (0x51ab90, twin 0x51ab70): the pair `(a, b)` at `this`. eax the output.
 - Inputs: the frames' words and the owners' vtables (image, set at construction), the owners' poses (held solids'
   through `SolidView`), the rows (`a`, `out`: mostly the caller's frame). No typed state of their own.
-- Residue (audit, the skipped words filled per site): the child walks' words (`skip_call_writing`, `walks.rs`) reach
-  `CPassenger::Step`'s `MB560` source, lane 3 unwritten, copied into car `+0x8ec` (`STALE_CAR`, masked): only that
-  word changes, every step. No reader of the hooks', the identity walks' or the ops' own call words.
+- Residue (audit, the skipped words filled per site): the child walks' words reached `CPassenger::Step`'s `MB560`
+  source, lane 3 unwritten, copied into car `+0x8ec`; that lane is `RESIDUE` on the pure host and the words are not
+  written. No reader of the hooks', the identity walks' or the ops' own call words.
 
 ## Scenery
 
