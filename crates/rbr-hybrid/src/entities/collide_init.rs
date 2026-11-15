@@ -80,7 +80,7 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn compose(&mut self, sp: u32, identity: u32, point: u32, transform: u32, out: u32) {
-        self.host.call_at(sp, COPY16_WALK, identity, &[point, transform, out]);
+        crate::entities::call_op(self.host, sp, COPY16_WALK, identity, &[point, transform, out]);
     }
 
     fn alloc_event(&mut self, sp: u32, size: u32) -> u32 {

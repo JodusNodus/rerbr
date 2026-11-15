@@ -226,7 +226,7 @@ impl PairOps for PairWalk<'_> {
         };
         // A `CEntityFrame` hook, run here as its binding (`frame_hook`) would.
         if let Some(hook) = frame_hook_at(target) {
-            if crate::skip_call(self.host, self.mem, sp, &[a, b]) {
+            if crate::skip_unwritten(self.host, self.mem, sp, &[a, b]) {
                 let frame = self.mem.load_entity_frame(at);
                 let mut owner = FrameOwner { mem: &mut *self.mem, host: self.host, esp: sp };
                 rbr_physics::entities::frame::entity_hook(&frame, hook, a, b, &mut owner);
@@ -244,7 +244,7 @@ impl PairOps for PairWalk<'_> {
             which,
             Walker::RoutePairOneTwo | Walker::RoutePairThreeFour | Walker::RoutePairFiveSix | Walker::RoutePairGrids
         );
-        if route && receiver == o2 && crate::skip_call(self.host, self.mem, sp, &[o2, a, b]) {
+        if route && receiver == o2 && crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             return a;
         }
         // The pure host runs the child walk here, as its binding (`pair_walker`) would.

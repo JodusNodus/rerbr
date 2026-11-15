@@ -179,7 +179,7 @@ impl SlipCalls for SlipHost<'_> {
     }
 
     fn carry(&mut self, receiver: u32, a: u32, b: u32, out: u32) -> [f32; 3] {
-        self.host.call_at(self.frame - 0x80, MB560, receiver, &[a, b, out]);
+        crate::entities::call_op(self.host, self.frame - 0x80, MB560, receiver, &[a, b, out]);
         layout::vec3(&self.mem, out)
     }
 
@@ -210,7 +210,7 @@ impl PivotCalls for PivotHost<'_> {
     }
 
     fn carry(&mut self, receiver: u32, a: u32, b: u32, out: u32) -> [f32; 3] {
-        self.host.call_at(self.frame - 0x70, MB560, receiver, &[a, b, out]);
+        crate::entities::call_op(self.host, self.frame - 0x70, MB560, receiver, &[a, b, out]);
         layout::vec3(&self.mem, out)
     }
 
@@ -251,7 +251,7 @@ impl PoseCalls for D160Host<'_> {
     }
 
     fn carry_into_car(&mut self, car: u32, vector: u32, identity: u32, out: u32) {
-        self.host.call_at(self.frame - 0x70, MB560, car, &[vector, identity, out]);
+        crate::entities::call_op(self.host, self.frame - 0x70, MB560, car, &[vector, identity, out]);
     }
 
     fn update_hinge_rotation(&mut self, body: u32) {
@@ -421,11 +421,11 @@ impl CarPathCalls for E4F0Host<'_> {
     }
 
     fn carry_pose(&mut self, x: u32, a: u32, b: u32, c: u32) {
-        self.host.call_at(self.frame - 0x50, COPY16_WALK, x, &[a, b, c]);
+        crate::entities::call_op(self.host, self.frame - 0x50, COPY16_WALK, x, &[a, b, c]);
     }
 
     fn carry(&mut self, x: u32, a: u32, b: u32, c: u32) {
-        self.host.call_at(self.frame - 0x50, MB560, x, &[a, b, c]);
+        crate::entities::call_op(self.host, self.frame - 0x50, MB560, x, &[a, b, c]);
     }
 
     fn car_forward(&mut self, args: [u32; 6]) -> u32 {
@@ -500,7 +500,7 @@ struct DetachHost<'a>(&'a dyn Host);
 
 impl layout::PoseToWorldCalls for DetachHost<'_> {
     fn compose_a(&mut self, _: &mut Mem, sp: u32, car: u32, args: [u32; 3]) {
-        self.0.call_at(sp, COPY16_WALK, car, &args);
+        crate::entities::call_op(self.0, sp, COPY16_WALK, car, &args);
     }
 
     fn quat_mul(&mut self, _: &mut Mem, sp: u32, this: u32, b: u32, out: u32) {
@@ -636,7 +636,7 @@ impl rbr_physics::entities::hinge_offset::OffsetCalls for D860Host<'_> {
         for (k, x) in a.into_iter().enumerate() {
             self.mem.set_f32(a_at + 4 * k as u32, x);
         }
-        self.host.call_at(self.frame - 0x40, MB560, receiver, &[a_at, b, out]);
+        crate::entities::call_op(self.host, self.frame - 0x40, MB560, receiver, &[a_at, b, out]);
         [0, 4, 8].map(|k| self.mem.f32(out + k))
     }
 }

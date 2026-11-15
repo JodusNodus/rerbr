@@ -55,7 +55,7 @@ impl PoseHost for Pose<'_> {
         let args = [local_at, walker, out_at];
         match crate::trivial(self.host, s30, parent) {
             // ComposeA pops the three words the getter's call leaves: it is passed them.
-            Some(node) => self.host.call(COPY16_WALK, node, &args),
+            Some(node) => crate::entities::call_op(self.host, 0, COPY16_WALK, node, &args),
             None => {
                 let node = self.host.call(s30, parent, &args).eax;
                 self.host.call(COPY16_WALK, node, &[])

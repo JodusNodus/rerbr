@@ -44,7 +44,7 @@ impl passenger_ctor::StepHost for StepCalls<'_> {
             self.mem.set_f32(self.temp + 4 * k as u32, value);
         }
         let walker = self.mem.u32(WALKER);
-        self.host.call(MB560, walker, &[self.temp, host, out]);
+        crate::entities::call_op(self.host, 0, MB560, walker, &[self.temp, host, out]);
     }
 
     fn spring(&mut self, this: u32, dt: f32) {

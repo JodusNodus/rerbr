@@ -79,7 +79,7 @@ impl WallQueryHost for WallCorners<'_> {
     }
 
     fn fetch_x(&mut self, sp: u32, corner: u32, out: u32, frame: u32) {
-        self.host.call_at(sp, FETCH_X, corner, &[out, frame]);
+        crate::entities::call_op(self.host, sp, FETCH_X, corner, &[out, frame]);
     }
 
     fn query_box(&mut self, sp: u32, wall: u32, bounds: u32, collector: u32) -> u32 {
@@ -113,7 +113,7 @@ pub(super) fn brake_wall_vf_f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 
 impl WallEndsHost for Callees<'_> {
     fn fetch_x(&mut self, sp: u32, matrix: u32, out: u32, worker: u32) {
-        self.0.call_at(sp, FETCH_X, matrix, &[out, worker]);
+        crate::entities::call_op(self.0, sp, FETCH_X, matrix, &[out, worker]);
     }
 }
 

@@ -27,7 +27,7 @@ impl MountedPullHost for MountedCalls<'_> {
 
     fn walk(&mut self, sp: u32, src: u32, owner: u32, out: u32) {
         let walker = self.mem.u32(WALKER);
-        self.host.call_at(sp, MB560, walker, &[src, owner, out]);
+        crate::entities::call_op(self.host, sp, MB560, walker, &[src, owner, out]);
     }
 }
 

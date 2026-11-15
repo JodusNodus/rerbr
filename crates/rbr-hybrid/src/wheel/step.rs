@@ -301,7 +301,7 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn pair_walk(&mut self, this: u32, a: u32, b: u32, c: u32, sp: u32) {
-        self.on(sp, MB560, this, &[a, b, c]);
+        crate::entities::call_op(self.host, sp, MB560, this, &[a, b, c]);
     }
 
     fn world_compose(&mut self, car: u32, a: u32, b: u32, sp: u32) {

@@ -191,14 +191,32 @@ fn skip_call_with(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], always_
     true
 }
 
+/// [`skip_call`] that writes nothing, for a call whose words no later code reads (residue audit, notes/physics.md
+/// "Store seam"): true on the pure host with a given `sp`. With the `residue-audit` feature it fills the words the
+/// call would write with `0xffba____`, the low half the caller's line, so a reader shows in the drive.
+#[cfg_attr(feature = "residue-audit", track_caller)]
+pub(crate) fn skip_unwritten(host: &dyn Host, _mem: &mut Mem, sp: u32, _args: &[u32]) -> bool {
+    let skip = host.call_slot_word().is_some() && sp != 0;
+    #[cfg(feature = "residue-audit")]
+    if skip {
+        let fill = 0xffba_0000 | (std::panic::Location::caller().line() & 0xffff);
+        for k in 0..=_args.len() as u32 {
+            _mem.set_u32(sp + 4 * k, fill);
+        }
+    }
+    skip
+}
+
 /// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`
-/// from the slot-12 identity getter (`E43PairWalk::MFc00`, 0x519c00, `mov eax, ecx; ret`), 0 from the empty hook
+/// from the slot-12 identity getter (`E43PairWalk::MFc00`, 0x519c00, `mov eax, ecx; ret`), the old frame `this + 0x1c`
+/// from the slot-13 getter (`E43PairWalk::MFc10`, 0x519c10), 0 from the empty hook
 /// (`NTweak::CBase::Unk44`, 0x52f480, `ret`) and the `ret n` stand-ins ([`pure::is_ret`]), whose eax no caller reads.
 /// The words the call would write are left as they are: no later reader reads them (residue audit, notes/physics.md
 /// "Store seam"). `None` for another callee or a host that runs the original (the emulator), which the caller calls.
 pub(crate) fn trivial(host: &dyn Host, target: u32, this: u32) -> Option<u32> {
     let eax = match target {
         entities::NODE_OF => this,
+        entities::OLD_FRAME_OF => rbr_physics::entities::layout::old_frame_of(this),
         ntweak::CBASE_UNK44 => 0,
         _ if pure::is_ret(target) => 0,
         _ => return None,

@@ -43,7 +43,7 @@ struct Vf128xHost<'a>(&'a dyn Host);
 
 impl layout::CarImpulseCalls for Vf128xHost<'_> {
     fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
-        self.0.call_at(sp, COPY16_WALK, this, &[a, car, out]);
+        crate::entities::call_op(self.0, sp, COPY16_WALK, this, &[a, car, out]);
     }
 
     fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
@@ -382,6 +382,6 @@ pub(super) fn body_to_world_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     let slot = |mem: &Mem, this: u32| mem.u32(mem.u32(this) + 0x30);
     let own = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, car), car, &[]);
     let receiver = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, body), body, &[]);
-    ctx.host.call(entities::MB560, receiver, &[a, own, b]);
+    crate::entities::call_op(ctx.host, 0, entities::MB560, receiver, &[a, own, b]);
     Ok(Return::void(b, 8))
 }

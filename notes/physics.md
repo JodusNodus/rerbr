@@ -243,6 +243,13 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `SimF950` (its headers on the image, `set_solid_word`): drive2 787.5 -> 761.3 host calls a step. Host: `CopyCF30`,
   `M3D030`, `E45_M1980` and the boot step's first four (no held state there). Audit as above; poison with one
   site back on the host stops at the held `strut_length_dirty`.
+- The entities' matrix and pair-walk ops (map in "Entities"; drive2 644.6 -> 514.9 host calls, 760.1 -> 559.5 skipped
+  calls a step, instructions -3.2 %): callers on held state run `MB560`, `ComposeA`, `ComposeB`, `FetchX`, `FetchY`,
+  `WB410`, `Combine`, `M51B460`, `M51B500` in place (`entities::call_op`); `MFc10` is trivial (`this + 0x1c`); the
+  walks' frame, solid and CEntity echo hooks, identity walks and `FetchX`'s direct run skip without their words
+  (`skip_unwritten`; feature `residue-audit` fills them with `0xffba0000 | line`). Kept: the child walks' words
+  (`skip_call_writing`, ~260 a step), which feed car `+0x8ec`. Audit: traces equal aids off, on, damage realistic;
+  twin typed (the three) and mem-direct (aids off, on) equal.
 
 - The hinged body's calls of its own bindings run in place on a held body (`entities::hinge::call_hinge`): the limit
   update, `SimD160`, `SimC960`, `SimE1D0`, `SimCFF0`, `SimEA80`, `SimD860` from `SimF950`, `SimEAD0`, `SimD160` and
@@ -427,6 +434,23 @@ its edges (+0x484) `pair` and its vertex count (+0x68d) `edge_count` (`layout::C
 rows` and `n - 1` spans of `0x78 + layers * (rows * (0x24 + 0x2c * (cols - 2)) + 0x24 * (cols - 4 + 4 * (rows - 1) *
 (cols - 1)))` (segment 0x78, particle 0x28, spring 0x20, bend 0xc, pointer 4). Walks are pre-order over children whose
 `S80() != 0`.
+
+Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-hybrid/src/entities/{walks,matrices,frame}.rs`):
+- A node is a frame: the entity itself (`CEntityFrame` 0x73cb64: `+4` parent, `+8` depth, `+0xc` owner) or its old
+  frame (`+0x1c`, `CEntityOldFrame` 0x73cb84, slot 13 `MFc10` 0x519c10). The root is the world frame (`*0x7cbb00`,
+  `WALKER`). A walker climbs the deeper node's parents to equal depth, then both until they meet, calling the frame
+  hooks (slots 1-6) on the way up (One, Three, Five) and down (Two, Four, Six); a frame forwards to its owner's slot
+  0x9c..0xc0 (an old frame picks 0xa4..0xc8 by the owner's gate, slot 0x80). CSolid's: 0x9c `scale_add_rows`, 0xac
+  `transform_body_rows`, 0xb0 `transform_body_rows3` on the rows in place; CEntity's 0x9c/0xa0/0xb0 return `a`.
+- `MB560` (0x51b560, `(a, b, c)`): `a` copied to `c`, carried from `this`'s frame to `b`'s (Three-Four). `ComposeA`
+  (0x51b4c0, `(src, o2, out)`) and `FetchX` (0x51b6c0, on a `{matrix, node}`): One-Two; `ComposeB` (0x51b600):
+  Five-Six; `M51B460`/`M51B500`: `n` blocks, One-Two/Three-Four; `FetchY` (0x51b780): a grid copy and `WB410`'s grid
+  hooks over its box tables; `Combine` (0x51ab90, twin 0x51ab70): the pair `(a, b)` at `this`. eax the output.
+- Inputs: the frames' words and the owners' vtables (image, set at construction), the owners' poses (held solids'
+  through `SolidView`), the rows (`a`, `out`: mostly the caller's frame). No typed state of their own.
+- Residue (audit, the skipped words filled per site): the child walks' words (`skip_call_writing`, `walks.rs`) reach
+  `CPassenger::Step`'s `MB560` source, lane 3 unwritten, copied into car `+0x8ec` (`STALE_CAR`, masked): only that
+  word changes, every step. No reader of the hooks', the identity walks' or the ops' own call words.
 
 ## Scenery
 

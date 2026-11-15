@@ -66,7 +66,7 @@ impl Car<'_> {
     fn walk(&mut self, this: u32, a: Vec3, b: u32) -> Vec3 {
         let (a_at, c_at) = (self.scratch + A, self.scratch + C);
         self.put(a_at, a);
-        self.host.call(MB560, this, &[a_at, b, c_at]);
+        crate::entities::call_op(self.host, 0, MB560, this, &[a_at, b, c_at]);
         self.get(c_at)
     }
 }
@@ -93,7 +93,7 @@ impl FrameWalk for Car<'_> {
 
 impl FrameCompose for Car<'_> {
     fn compose_frames(&mut self, this: u32, a: u32, t: u32, out: u32) -> u32 {
-        self.host.call(COPY16_WALK, this, &[a, t, out]);
+        crate::entities::call_op(self.host, 0, COPY16_WALK, this, &[a, t, out]);
         out
     }
 }

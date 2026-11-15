@@ -5,7 +5,7 @@ use rbr_physics::entities::layout;
 use rbr_physics::entities::store::EntityStore;
 use rbr_physics::mem::Mem;
 
-use super::{FRAME_VF04, FRAME_VF08, FRAME_VF0C, FRAME_VF10, FRAME_VF14};
+use super::{ENTITY_VF9C, ENTITY_VFA0, ENTITY_VFB0, FRAME_VF04, FRAME_VF08, FRAME_VF0C, FRAME_VF10, FRAME_VF14};
 use crate::rigid_body::{held_solids, solid_gate_direct, E43VFAC, E43VFB0};
 use crate::{Ctx, Decline, Host, Regs, Return};
 use rbr_physics::rigid_body::layout::CarSolids;
@@ -49,7 +49,7 @@ impl Owner for FrameOwner<'_> {
         // host, on the solids' store (the owner's matrix and position, and rows that may be a solid's).
         use rbr_physics::rigid_body::layout as solid;
         if matches!(target, SOLID_SCALE_ADD_ROWS | E43VFAC | E43VFB0)
-            && crate::skip_call(self.host, self.mem, sp, &[a, b])
+            && crate::skip_unwritten(self.host, self.mem, sp, &[a, b])
         {
             return match held_solids(self.host) {
                 Some(solids) => {
@@ -58,6 +58,13 @@ impl Owner for FrameOwner<'_> {
                 }
                 None => solid_rows_in_place(self.mem, target, owner, a, b),
             };
+        }
+        // `CEntity::E43Vf9C`, `E43VfA0` and `E43VfB0`, which return `a` (`entity_echo`), likewise.
+        if matches!(target, ENTITY_VF9C | ENTITY_VFA0 | ENTITY_VFB0)
+            && crate::skip_unwritten(self.host, self.mem, sp, &[a, b])
+        {
+            self.host.ran_direct();
+            return rbr_physics::entities::frame::entity_result(owner, a, b);
         }
         self.host.call_at(sp, target, owner, &[a, b]).eax
     }

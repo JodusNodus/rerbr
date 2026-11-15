@@ -93,7 +93,7 @@ impl ClearGridHost for BodyCallees<'_> {
 
 impl CornerHost for BodyCallees<'_> {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32 {
-        self.0.call(FETCH_X, matrix, &[out, worker]).eax
+        crate::entities::call_op(self.0, 0, FETCH_X, matrix, &[out, worker]).eax
     }
 }
 
@@ -167,7 +167,7 @@ impl CornerHost for DirectVfCcCalls<'_> {
             Some(eax) => eax,
             None => {
                 self.direct = false;
-                self.host.call_at(sp, FETCH_X, matrix, &[out, worker]).eax
+                crate::entities::call_op(self.host, sp, FETCH_X, matrix, &[out, worker]).eax
             }
         }
     }

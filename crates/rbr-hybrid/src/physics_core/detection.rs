@@ -68,7 +68,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
-        self.slot(sp, entity, 0x34, &[])
+        crate::call_or_trivial(self.host, sp, vslot(&self.mem, entity, 0x34), entity, &[])
     }
 
     fn entity_box(&mut self, sp: u32, entity: u32, lo: u32, hi: u32) {
