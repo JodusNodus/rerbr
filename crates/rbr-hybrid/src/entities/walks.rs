@@ -15,7 +15,9 @@ use rbr_physics::mem::Mem;
 
 use super::frame::{frame_hook_at, FrameOwner};
 use super::WALK_PRE_ORDER;
+use crate::rigid_body::{held_solids, solid_gate_direct};
 use crate::{Ctx, Decline, Host, Regs, Return};
+use rbr_physics::rigid_body::layout::SolidWords;
 
 /// Where a walk's calls enter, below the binding's entry esp (the return address's slot), as the original's pushes put
 /// them: `gate` for each child's gate, `call` for the child's slot, `name` for the walk's own name call.
@@ -85,7 +87,10 @@ impl Children for Walk<'_> {
     }
 
     fn gated(&mut self, child: u32) -> bool {
-        self.host.call_at(self.at(self.depths.gate), layout::vtable_target(&self.mem, child, 0x80), child, &[]).eax != 0
+        let target = layout::vtable_target(&self.mem, child, 0x80);
+        solid_gate_direct(self.host, &mut self.mem, target, child)
+            .unwrap_or_else(|| self.host.call_at(self.at(self.depths.gate), target, child, &[]).eax)
+            != 0
     }
 }
 
@@ -101,18 +106,15 @@ impl GatedCalls for Walk<'_> {
             ChildCall::UnknownArgPass(p) => (0x68, Some(p)),
             ChildCall::Integrate(p) => (0x6c, Some(p)),
         };
-        self.host.call_at(
-            self.at(self.depths.call),
-            layout::vtable_target(&self.mem, child, slot),
-            child,
-            arg.as_slice(),
-        );
+        let target = layout::vtable_target(&self.mem, child, slot);
+        crate::wheel::call_wheel(self.host, child, self.at(self.depths.call), target, child, arg.as_slice());
     }
 }
 
 impl Integrate for Walk<'_> {
     fn name_walk_self(&mut self, node: u32) {
-        self.host.call_at(self.at(self.depths.name), layout::vtable_target(&self.mem, node, 0x40), node, &[]);
+        let target = layout::vtable_target(&self.mem, node, 0x40);
+        crate::wheel::call_wheel(self.host, node, self.at(self.depths.name), target, node, &[]);
     }
 }
 
@@ -129,7 +131,8 @@ impl PreOrder for Walk<'_> {
 impl NameWalk for Walk<'_> {
     fn state_pass(&mut self, node: u32) {
         let state = node + 0x38;
-        self.host.call_at(self.at(self.depths.name), layout::vtable_target(&self.mem, state, 0x44), state, &[]);
+        let target = layout::vtable_target(&self.mem, state, 0x44);
+        crate::call_or_trivial(self.host, self.at(self.depths.name), target, state, &[]);
     }
 
     fn walk_children_pre(&mut self, node: u32, functor: u32) {
@@ -223,7 +226,7 @@ impl PairOps for PairWalk<'_> {
         };
         // A `CEntityFrame` hook, run here as its binding (`frame_hook`) would.
         if let Some(hook) = frame_hook_at(target) {
-            if crate::skip_call(self.host, self.mem, sp, &[a, b]) {
+            if crate::skip_unwritten(self.host, self.mem, sp, &[a, b]) {
                 let frame = self.mem.load_entity_frame(at);
                 let mut owner = FrameOwner { mem: &mut *self.mem, host: self.host, esp: sp };
                 rbr_physics::entities::frame::entity_hook(&frame, hook, a, b, &mut owner);
@@ -241,11 +244,12 @@ impl PairOps for PairWalk<'_> {
             which,
             Walker::RoutePairOneTwo | Walker::RoutePairThreeFour | Walker::RoutePairFiveSix | Walker::RoutePairGrids
         );
-        if route && receiver == o2 && crate::skip_call(self.host, self.mem, sp, &[o2, a, b]) {
+        if route && receiver == o2 && crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             return a;
         }
-        // The pure host runs the child walk here, as its binding (`pair_walker`) would.
-        if crate::skip_call_writing(self.host, self.mem, sp, &[o2, a, b]) {
+        // The pure host runs the child walk here, as its binding (`pair_walker`) would, without the call's words: their
+        // one reader was the passenger step's walk point, whose lane 3 is `crate::RESIDUE` there.
+        if crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             let mut child = PairWalk { mem: &mut *self.mem, host: self.host, esp: sp, walk_depth: walk_depth(which) };
             return walk::run(&mut child, which, receiver, o2, a, b);
         }
@@ -257,7 +261,27 @@ impl PairOps for PairWalk<'_> {
     }
 
     fn copy_vec4(&mut self, to: u32, from: u32) {
-        layout::copy_vec4(self.mem, to, from);
+        copy_vec4(self.host, self.mem, to, from);
+    }
+}
+
+/// `layout::copy_vec4` on the solids' store: `from` is a solid's vector at times (`MB560` on the car's position).
+pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
+    let Some(solids) = held_solids(host).filter(|s| s.reaches(from, 16) || s.reaches(to, 16)) else {
+        return layout::copy_vec4(mem, to, from);
+    };
+    if solids.read(from).is_some() || solids.read(to).is_some() {
+        host.ran_direct(); // as `not_kept_on_held`
+    }
+    let mut store = solids.view(mem);
+    if to.abs_diff(from) >= 16 {
+        let words = store.words::<4>(from);
+        store.set_words4(to, words);
+        return;
+    }
+    for k in 0..4 {
+        let word = store.word(from + 4 * k);
+        store.set_word(to + 4 * k, word);
     }
 }
 
@@ -265,6 +289,9 @@ impl PairOps for PairWalk<'_> {
 /// `RoutePairThreeFour` (`c` as its `a`, 1 as its `b`). That walk returns its `a` (`c`), which is the original's eax.
 pub(super) fn mb560_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
+    if super::matrices::carried_op(ctx.host, &mut ctx.mem, r.esp, super::MB560, r.ecx, [a, b, c]) {
+        return Ok(Return::void(c, 12));
+    }
     let mut walk = PairWalk { mem: &mut ctx.mem, host: ctx.host, esp: r.esp, walk_depth: MB560_CALL };
     carry_three_four(&mut walk, r.ecx, a, b, c);
     Ok(Return::void(c, 12))
@@ -292,7 +319,7 @@ impl FunctorCalls for Functor<'_> {
     }
 
     fn call(&mut self, callee: u32, this: u32, arg: u32) -> u32 {
-        self.host.call_at(self.esp.wrapping_sub(8), callee, this, &[arg]).eax
+        crate::wheel::call_wheel(self.host, this, self.esp.wrapping_sub(8), callee, this, &[arg]).eax
     }
 }
 
@@ -318,7 +345,7 @@ pub(super) fn mul4_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// Where a walker's child walks enter below its entry esp (the original's pushes for that walker).
-fn walk_depth(which: Walker) -> u32 {
+pub(super) fn walk_depth(which: Walker) -> u32 {
     match which {
         Walker::PairOneTwoShallower | Walker::PairThreeFourShallower | Walker::PairFiveSixShallower => 28,
         Walker::PairGridsShallower => 24,

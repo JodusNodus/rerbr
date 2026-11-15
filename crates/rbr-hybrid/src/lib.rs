@@ -23,6 +23,7 @@ mod probe_cache;
 pub mod pure;
 pub mod rigid_body;
 pub mod spring_damper;
+mod stage;
 pub mod timekeeper;
 pub mod tyre;
 pub mod vcu;
@@ -121,12 +122,28 @@ pub trait Host {
     }
     /// Counts a binding a caller ran itself in place of a call ([`Host::entered`] goes up as for a run).
     fn ran_direct(&self) {}
+    /// A tyre step (`CScratch::Step` or NGP's wrapper) a caller ran itself on the tyre at `scratch` with the time step
+    /// `dt`: the pure host keeps its term as after a run of the binding ([`pure::Pure::take_tyre_terms`]).
+    fn tyre_stepped(&self, _scratch: u32, _dt: f32) {}
+    /// `QueryPerformanceCounter(out)` without its call: the pure host's count into `out` (its stand-in's, the same tick
+    /// sequence) and the eax; `None` on a host that runs the original, whose caller makes the call.
+    fn query_counter(&self, _out: u32) -> Option<u32> {
+        None
+    }
     /// [`Host::call_at`] of a callee whose binding reads its stack words only from `args` (none through `esp`), and
     /// whose caller reads none of the call's words after it. Under the pure host's direct dispatch (B1b) the call
     /// runs as a plain call, without its words on the stack, when `args` are the words the callee pops; elsewhere it
     /// is `call_at`.
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         self.call_at(sp, addr, ecx, args)
+    }
+    /// [`Host::call_at`] of the binding at `addr` run in place: entered as the call enters it, in a frame of its own
+    /// (the calls it leaves the placement of land as through the host) with `args` as its stack words, but none of the
+    /// call's words written, counted as a run ([`Host::ran_direct`]). For a caller on held state that reads none of the
+    /// call's words after it. `None` (nothing ran) on a host that runs the original, for an address with no binding
+    /// and for a watched emit, where the caller calls.
+    fn call_in_place(&self, _sp: u32, _addr: u32, _ecx: u32, _args: &[u32]) -> Option<Called> {
+        None
     }
     /// [`Host::call_slot_word`] and whether [`skip_call`] writes the skipped call's words (not under the pure host's
     /// direct dispatch, [`pure::Pure::direct`]), in one call for the skipped calls.
@@ -137,6 +154,13 @@ pub trait Host {
     /// emulator runs the original fan-out through the signal manager; the pure host keeps the typed payload for the
     /// game, which reads it instead of the manager's words.
     fn emit_damper(&self, _strut: u32, _signal: rbr_physics::spring_damper::DamperSignal) {}
+    /// The typed storage while the pure host holds it over a step ([`pure::Pure::typed`]): the typed subsystems'
+    /// bindings (the struts, the VCU, the tyres, the stage's
+    /// readers) run on it, not on the image's words. `None` elsewhere (the emulator, between
+    /// steps), where the bindings run per call on the image.
+    fn typed(&self) -> Option<std::cell::Ref<'_, rbr_physics::store::typed::Typed>> {
+        None
+    }
 }
 
 /// For a call at `sp` whose callee is known to do nothing more than the caller does itself (a getter, a walk of equal
@@ -148,9 +172,8 @@ pub(crate) fn skip_call(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -
     skip_call_with(host, mem, sp, args, false)
 }
 
-/// [`skip_call`] that writes the words under the direct dispatch too, for a call whose words are read after it: the
-/// child walk a walker runs in place (`entities/walks.rs`: without them `--twin mem-direct` differs at the tanner
-/// drive's first step).
+/// [`skip_call`] that writes the words under the direct dispatch too, for a call whose words are read after it:
+/// CollideWork's telemetry call (`physics_core/detection.rs`).
 pub(crate) fn skip_call_writing(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
     skip_call_with(host, mem, sp, args, true)
 }
@@ -165,6 +188,71 @@ fn skip_call_with(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], always_
         }
     }
     true
+}
+
+/// [`skip_call`] that writes nothing, for a call whose words no later code reads (residue audit, notes/physics.md
+/// "Store seam"): true on the pure host with a given `sp`. With the `residue-audit` feature it fills the words the
+/// call would write with `0xffba____`, the low half the caller's line, so a reader shows in the drive.
+#[cfg_attr(feature = "residue-audit", track_caller)]
+pub(crate) fn skip_unwritten(host: &dyn Host, _mem: &mut Mem, sp: u32, _args: &[u32]) -> bool {
+    let skip = host.call_slot_word().is_some() && sp != 0;
+    #[cfg(feature = "residue-audit")]
+    if skip {
+        let fill = 0xffba_0000 | (std::panic::Location::caller().line() & 0xffff);
+        for k in 0..=_args.len() as u32 {
+            _mem.set_u32(sp + 4 * k, fill);
+        }
+    }
+    skip
+}
+
+/// The value the game gives a stack word the original reads without anything having written it in the step (residue,
+/// notes/physics.md "Stack residue is behaviour"): 0, which as a float lane is 0.0, so lanewise arithmetic on it makes
+/// no NaN, infinity or denormal. With the `residue-audit` feature it is a NaN, so that a compared word that depends on
+/// one shows in the drive.
+pub(crate) const RESIDUE: u32 = if cfg!(feature = "residue-audit") { 0xffba_dbad } else { 0 };
+
+/// [`RESIDUE`] on the pure host ([`Host::call_slot_word`]: held and per call, both dispatches, so the twins agree);
+/// `None` on a host that runs the original (the emulator) and in the vectors, where the word is what the stack holds.
+/// With `residue-audit` a site's first read is logged, which shows the sites a drive reaches.
+#[cfg_attr(feature = "residue-audit", track_caller)]
+pub(crate) fn residue(host: &dyn Host) -> Option<u32> {
+    host.call_slot_word()?;
+    #[cfg(feature = "residue-audit")]
+    {
+        static SEEN: std::sync::Mutex<Vec<(&str, u32)>> = std::sync::Mutex::new(Vec::new());
+        let at = std::panic::Location::caller();
+        let mut seen = SEEN.lock().unwrap();
+        if !seen.contains(&(at.file(), at.line())) {
+            seen.push((at.file(), at.line()));
+            eprintln!("residue-audit: first residue read at {at}");
+        }
+    }
+    Some(RESIDUE)
+}
+
+/// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`
+/// from the slot-12 identity getter (`E43PairWalk::MFc00`, 0x519c00, `mov eax, ecx; ret`), the old frame `this + 0x1c`
+/// from the slot-13 getter (`E43PairWalk::MFc10`, 0x519c10), 0 from the empty hook
+/// (`NTweak::CBase::Unk44`, 0x52f480, `ret`) and the `ret n` stand-ins ([`pure::is_ret`]), whose eax no caller reads.
+/// The words the call would write are left as they are: no later reader reads them (residue audit, notes/physics.md
+/// "Store seam"). `None` for another callee or a host that runs the original (the emulator), which the caller calls.
+pub(crate) fn trivial(host: &dyn Host, target: u32, this: u32) -> Option<u32> {
+    let eax = match target {
+        entities::NODE_OF => this,
+        entities::OLD_FRAME_OF => rbr_physics::entities::layout::old_frame_of(this),
+        ntweak::CBASE_UNK44 => 0,
+        _ if pure::is_ret(target) => 0,
+        _ => return None,
+    };
+    host.call_slot_word()?;
+    host.ran_direct();
+    Some(eax)
+}
+
+/// `host.call_at(sp, target, this, args)`'s eax, or [`trivial`]'s without the call.
+pub(crate) fn call_or_trivial(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> u32 {
+    trivial(host, target, this).unwrap_or_else(|| host.call_at(sp, target, this, args).eax)
 }
 
 /// The frame base of a binding's original after `push ebp; mov ebp, esp; and esp, -16`, from its entry `esp` (the

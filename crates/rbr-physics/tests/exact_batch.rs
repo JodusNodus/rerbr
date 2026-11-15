@@ -76,14 +76,15 @@ fn raycast_entry_copies_the_point_and_runs_the_wall() {
     mem.set_u32(point + 4, 0x4000_0000);
     mem.set_u32(out + 0xc, 0x7777);
     let mut emits = Emits::default();
-    assert_eq!(wall_probe(&mut emits, &mut mem, manager, point, out, tmp), 0);
+    let xy = mem.u32s(point);
+    assert_eq!(wall_probe(&mut emits, &mut mem, manager, xy, out, tmp), 0);
     assert_eq!((mem.u32(tmp), mem.u32(tmp + 4)), (0, 0x4000_0000));
     assert!(emits.0.is_empty());
 
     let wall = BASE + 0x1000;
     mem.set_u32(manager + 4, wall);
     mem.set_u32(wall + 0x214, 1);
-    assert_eq!(wall_probe(&mut emits, &mut mem, manager, point, out, tmp), 0);
+    assert_eq!(wall_probe(&mut emits, &mut mem, manager, xy, out, tmp), 0);
     assert_eq!(mem.u32(wall + 0x214), 0);
     assert!(emits.0.is_empty());
 }

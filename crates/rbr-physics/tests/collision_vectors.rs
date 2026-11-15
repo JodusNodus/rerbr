@@ -8,6 +8,7 @@
 mod common;
 
 use common::{shared_mem, Call, Inner};
+use rbr_physics::collision::layout::CollisionView;
 use rbr_physics::collision::{contact_solver, face_sweep, grid_contact, layout, overlap, triangle};
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::vec::Vec3;
@@ -341,7 +342,7 @@ fn edge_pair_matches_original_calls() {
     replay(E37_EDGE_PAIR, "E37GridOps::EdgePair", u32::MAX, |mem, args| {
         let (grid, words) = args.split_first().expect("EdgePair has its grid");
         let words: [u32; 10] = words.try_into().expect("EdgePair has ten stack words");
-        layout::edge_pair(mem, *grid, words)
+        layout::edge_pair(&mut CollisionView::image(mem), *grid, words)
     });
 }
 
@@ -2582,7 +2583,7 @@ fn ray_object_matches_original_calls() {
             mem.map(window.at, &window.before);
         }
         let mut host = RayReplayHost { inner: &call.inner, next: 0, mem: mem.clone() };
-        let eax = layout::ray_seeds(&mut host, &mut mem, call.args[0]);
+        let eax = layout::ray_seeds(&mut host, &mut CollisionView::image(&mut mem), call.args[0]);
         assert_eq!(eax, call.eax, "E38RaySeeds call {} EAX", call.index);
         assert_eq!(host.next, call.inner.len(), "E38RaySeeds inner calls");
         for window in &call.windows {
@@ -3108,7 +3109,8 @@ impl layout::solver_hosts::SolverHost for SolverReplayHost<'_> {
             let mut host = ComposeFromRecord { mem: mem.clone(), after };
             // The frame global `ComposeA` is called on; the record's replay of the call does not use it.
             mem.map(0x7cbb00, &[0; 4]);
-            let eax = layout::contact_rows(&mut host, &mut mem, solver, body, event, side, SOLVER_STACK);
+            let mut store = CollisionView::image(&mut mem);
+            let eax = layout::contact_rows(&mut host, &mut store, solver, body, event, side, SOLVER_STACK);
             assert_eq!(eax, call.eax & 0xff, "M_BD30 (host call {}) EAX", self.next);
             self.check_after("M_BD30", &mem, call);
             self.ports = Some([checked[0] + 1, checked[1]]);
@@ -3119,7 +3121,7 @@ impl layout::solver_hosts::SolverHost for SolverReplayHost<'_> {
     fn apply_offsets(&mut self, row: u32) {
         if let Some(checked) = self.ports {
             let (mut mem, call) = self.state_before();
-            layout::apply_offsets(&mut mem, row);
+            layout::apply_offsets(&mut CollisionView::image(&mut mem), row);
             self.check_after("E38_004FB890", &mem, call);
             self.ports = Some([checked[0], checked[1] + 1]);
         }
@@ -3138,7 +3140,7 @@ fn e38_solver_passes_match_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     type Pass = fn(&mut SolverReplayHost, &mut Mem, u32) -> u32;
     let passes: [(u32, &str, Pass); 5] = [
-        (0x4fb7f0, "E38_004FB7F0", |_, mem, solver| layout::clear_contact_rows(mem, solver)),
+        (0x4fb7f0, "E38_004FB7F0", |_, mem, solver| layout::clear_contact_rows(&mut CollisionView::image(mem), solver)),
         (0x4fbc20, "E38_004FBC20", |host, mem, solver| {
             layout::refresh_events(host, mem, solver);
             u32::MAX
@@ -3147,7 +3149,9 @@ fn e38_solver_passes_match_original_calls() {
             layout::drain_events(mem, solver).expect("CCollisionEvent events");
             0
         }),
-        (0x4fc590, "E38_004FC590X", |host, mem, solver| layout::correct_penetrations(host, mem, solver)),
+        (0x4fc590, "E38_004FC590X", |host, mem, solver| {
+            layout::correct_penetrations(host, &mut CollisionView::image(mem), solver)
+        }),
         (0x4fca20, "E38_004FCA20", |host, mem, solver| {
             layout::solve_due_events(host, mem, solver);
             u32::MAX
@@ -3213,7 +3217,7 @@ fn e38_contact_rows_and_offsets_match_original_calls() {
             mem: mem.clone(),
             ports: Some([0; 2]),
         };
-        layout::correct_penetrations(&mut host, &mut mem, call.args[0]);
+        layout::correct_penetrations(&mut host, &mut CollisionView::image(&mut mem), call.args[0]);
         let [rows, offsets] = host.ports.unwrap();
         checked = [checked[0] + rows, checked[1] + offsets];
     }
@@ -3492,7 +3496,8 @@ fn body_vf_d0_matches_original_calls() {
         let mut host =
             VfD0ReplayHost { inner: &call.inner, next: 0, mem: mem.clone(), frame, size: 0xe90, events: Vec::new() };
         let [this, matrix, other, list] = call.args[..] else { panic!("VfD0 call {} args", call.index) };
-        let eax = layout::grid_contacts(&mut host, &mut mem, this, matrix, other, list, frame + 0xe94);
+        let mut store = CollisionView::image(&mut mem);
+        let eax = layout::grid_contacts(&mut host, &mut store, this, matrix, other, list, frame + 0xe94);
         assert_eq!(eax, call.eax, "VfD0 call {} eax", call.index);
         assert_eq!(host.next, call.inner.len(), "VfD0 call {} calls", call.index);
         events += call.inner.iter().filter(|inner| inner.addr == 0x4e0d00).count();
@@ -3539,7 +3544,8 @@ fn body_vf_dc_matches_original_calls() {
         let mut host =
             VfD0ReplayHost { inner: &call.inner, next: 0, mem: mem.clone(), frame, size: 0x14e0, events: Vec::new() };
         let [this, a, b, other, _, list] = call.args[..] else { panic!("VfDC call {} args", call.index) };
-        let eax = layout::pair_contacts(&mut host, &mut mem, this, a, b, other, list, frame + 0x14e4);
+        let mut store = CollisionView::image(&mut mem);
+        let eax = layout::pair_contacts(&mut host, &mut store, this, a, b, other, list, frame + 0x14e4);
         assert_eq!(eax, call.eax, "VfDC call {} eax", call.index);
         assert_eq!(host.next, call.inner.len(), "VfDC call {} calls", call.index);
         if call.windows.len() == 4 {
@@ -3706,11 +3712,12 @@ fn hit_path_leaves_unit() {
         layout::Vec4 { x: v[0], y: v[1], z: v[2], w: v[3] }.store(&mut mem, at);
     }
     mem.set_u32(stale, 0xdead_beef);
-    assert_eq!(layout::vec4_sub_stale(&mut mem, a, out, b, esp), out);
+    let w = layout::stale_lane(&mem, esp);
+    assert_eq!(layout::vec4_sub_stale(&mut mem, a, out, b, w), out);
     let words = |mem: &Mem| [0, 4, 8, 12].map(|k| mem.u32(out + k));
     let f = |x: f32| x.to_bits();
     assert_eq!(words(&mem), [f(0.5), f(-6.0), f(5.0), 0xdead_beef]);
-    assert_eq!(layout::vec3_add_stale(&mut mem, a, out, b, esp), out);
+    assert_eq!(layout::vec3_add_stale(&mut mem, a, out, b, w), out);
     assert_eq!(words(&mem), [f(1.5), f(10.0), f(3.0), 0xdead_beef]);
 
     layout::Vec4 { x: 3.0, y: 0.0, z: 4.0, w: 10.0 }.store(&mut mem, out);

@@ -1,7 +1,7 @@
 //! `CDrive`'s lanes, definition and state as the accessors see them.
 
-use crate::engine_driveline::store::EngineStore;
-use crate::store::Raw;
+use crate::mem::Mem;
+use crate::store::{Raw, Value};
 
 /// An NTweak value with a dirty flag: the flag at +8 (set by every write), the value at +0xc.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -32,6 +32,29 @@ impl Lane {
     }
 }
 
+/// As a table field (`object!`) a lane is its two words from the dirty word (`Lane::load` takes the tweak's base).
+impl Value for Lane {
+    const LEN: u32 = 8;
+    fn load(mem: &Mem, at: u32) -> Self {
+        Lane { dirty: mem.u32(at), value: mem.f32(at + 4) }
+    }
+    fn store(self, mem: &mut Mem, at: u32) {
+        mem.set_u32(at, self.dirty);
+        mem.set_f32(at + 4, self.value);
+    }
+    fn word(&self, k: u32) -> Option<u32> {
+        [self.dirty, self.value.to_bits()].get(k as usize).copied()
+    }
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        match k {
+            0 => self.dirty = value,
+            1 => self.value = f32::from_bits(value),
+            _ => return false,
+        }
+        true
+    }
+}
+
 /// The same header as `Lane`, with an integer value (the commanded gear).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct IntLane {
@@ -56,33 +79,44 @@ impl IntLane {
     }
 }
 
-/// The drive's input lanes (`CDrive`). Each field is a `Lane` at the original's offset (given per field).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Drive {
-    /// Throttle input (`Set44A0`), base +0x20.
-    pub throttle_in: Lane,
-    /// Brake input (`Set30`), base +0x30.
-    pub brake_in: Lane,
-    /// Brake torque (`Set30`'s scaled copy of the brake), base +0x64.
-    pub brake_torque: Lane,
-    /// Clutch slip (`Set4820`), base +0x54.
-    pub clutch_slip: Lane,
+/// As a table field, from the dirty word (see [`Lane`]'s).
+impl Value for IntLane {
+    const LEN: u32 = 8;
+    fn load(mem: &Mem, at: u32) -> Self {
+        IntLane { dirty: mem.u32(at), value: mem.u32(at + 4) as i32 }
+    }
+    fn store(self, mem: &mut Mem, at: u32) {
+        mem.set_u32(at, self.dirty);
+        mem.set_u32(at + 4, self.value as u32);
+    }
+    fn word(&self, k: u32) -> Option<u32> {
+        [self.dirty, self.value as u32].get(k as usize).copied()
+    }
+    fn set_word(&mut self, k: u32, value: u32) -> bool {
+        match k {
+            0 => self.dirty = value,
+            1 => self.value = value as i32,
+            _ => return false,
+        }
+        true
+    }
 }
 
-impl Drive {
-    pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
-        mem.load_drive(at)
-    }
-
-    pub fn store<S: EngineStore>(&self, mem: &mut S, at: u32) {
-        mem.store_drive(at, self)
-    }
+/// The drive's input lanes (`CDrive`): the throttle (`Set44A0`), the brake (`Set30`), the brake torque (`Set30`'s scaled
+/// copy of the brake) and the clutch slip (`Set4820`). Offsets in [`super::DriveObj`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Drive {
+    pub throttle_in: Lane,
+    pub brake_in: Lane,
+    pub brake_torque: Lane,
+    pub clutch_slip: Lane,
 }
 
 /// `CDrive`'s object pointers (rbr-recomp `notes/physics/engine-driveline.md` 2) and its definition's members
 /// (rbr-recomp `notes/physics/renames/engine-driveline.csv`).
 pub(super) const DRIVE_DEF_PTR: u32 = 0x04;
 pub(super) const DRIVE_STATE_PTR: u32 = 0x08;
+pub(super) const DRIVE_DAMAGE_PTR: u32 = 0x170;
 pub(super) const DRIVE_DEF_MAX_FOOTBRAKE_PRESSURE: u32 = 0x620;
 pub(super) const DRIVE_DEF_GEAR_COUNT: u32 = 0x654;
 
@@ -96,16 +130,14 @@ pub struct DriveDef {
 }
 
 impl DriveDef {
-    pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
-        mem.load_drive_def(at)
+    /// The definition at `at` (the image's: a step does not write it).
+    pub fn load(mem: &Mem, at: u32) -> Self {
+        DriveDef {
+            max_footbrake_pressure: mem.f32(at + DRIVE_DEF_MAX_FOOTBRAKE_PRESSURE),
+            gear_count: mem.u32(at + DRIVE_DEF_GEAR_COUNT),
+        }
     }
 }
-
-/// `CDrive::CState` members (rbr-recomp `notes/physics/renames/engine-driveline.csv`).
-pub(super) const DRIVE_STATE_ENGINE_SPEED: u32 = 0x45c;
-pub(super) const DRIVE_STATE_GEAR: u32 = 0x54c;
-/// The commanded gear's `IntLane` header (its value is at +0x570).
-pub(super) const DRIVE_STATE_COMMANDED_GEAR_LANE: u32 = 0x564;
 
 /// The drive's state (`CDrive`'s `this+8`, the car's drive state): the fields the accessors read or write.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -121,28 +153,33 @@ pub struct DriveState {
 }
 
 impl DriveState {
-    pub fn load<S: EngineStore>(mem: &S, at: u32) -> Self {
-        mem.load_drive_state(at)
-    }
-
-    pub fn store<S: EngineStore>(&self, mem: &mut S, at: u32) {
-        mem.store_drive_state(at, self)
-    }
-
-    pub fn store_commanded_gear<S: EngineStore>(&self, mem: &mut S, at: u32) {
-        mem.store_commanded_gear(at, self)
+    /// The state at `at` as the image holds it: for the readers between steps (telemetry, the picture).
+    pub fn load(mem: &Mem, at: u32) -> Self {
+        use super::drive_typed::DriveStateObj as S;
+        DriveState {
+            drive_speed_key: S::drive_speed_key.load(mem, at),
+            engine_speed: S::engine_speed.load(mem, at),
+            gear: S::gear.load(mem, at) as i32,
+            commanded_gear: S::commanded.load(mem, at),
+        }
     }
 }
 
-/// Where the drive's two objects are: the definition (`this+4`) and the state (`this+8`).
+/// Where the drive's objects are: the definition (`this+4`), the state (`this+8`) and the damage block (`this+0x170`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DriveObjects {
     pub def: u32,
     pub state: u32,
+    pub damage: u32,
 }
 
 impl DriveObjects {
-    pub fn at<S: EngineStore>(mem: &S, drive: u32) -> Self {
-        mem.drive_objects(drive)
+    /// The pointers of the drive at `drive` (the image's).
+    pub fn at(mem: &Mem, drive: u32) -> Self {
+        DriveObjects {
+            def: mem.u32(drive + DRIVE_DEF_PTR),
+            state: mem.u32(drive + DRIVE_STATE_PTR),
+            damage: mem.u32(drive + DRIVE_DAMAGE_PTR),
+        }
     }
 }

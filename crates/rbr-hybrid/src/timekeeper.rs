@@ -12,6 +12,7 @@ pub mod layout;
 
 use rbr_gameplay::timing::{Checkpoint, CheckpointKind};
 use rbr_physics::physics_core::layout::signal_emit;
+use rbr_physics::physics_core::layout::typed::slot;
 
 use crate::engine_driveline::SIGNALS;
 use crate::{Binding, Ctx, Decline, Regs, Return, SignalCalleesAt};
@@ -48,7 +49,7 @@ fn emit_at<const EMIT: u32>(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 
 /// thiscall `(current*)`: return `finish - start` from the active time card, in the original x87 double format.
 fn diff(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let values = ctx.mem.time_keeper_diff(r.ecx, r.stack[0]);
+    let values = crate::car_body::on_car(ctx, |car| car.time_keeper_diff(r.ecx, r.stack[0]));
     Ok(Return::float(values.end - values.origin, 4))
 }
 
@@ -99,7 +100,8 @@ fn emit(ctx: &mut Ctx, sp: u32, at: u32, cp: &Checkpoint) {
 /// thiscall, `ret 0`: `CTimeKeeper::Update`. eax is the count the original returns.
 fn update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let before = layout::load_keeper(&ctx.mem, r.ecx);
-    let (after, count) = before.update(layout::step(&ctx.mem));
+    let step = crate::physics_core::read_core(ctx.host, &ctx.mem, layout::state(&ctx.mem), slot::step_counter);
+    let (after, count) = before.update(step);
     layout::store_sampling(&mut ctx.mem, r.ecx, &after);
     Ok(Return::void(count, 0))
 }

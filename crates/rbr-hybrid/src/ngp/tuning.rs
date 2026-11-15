@@ -1,15 +1,17 @@
 //! NGP's per-car tuning words in its `.data`, read the way the ports tune themselves.
 
+use rbr_physics::car_body::layout::slot as car_slot;
 use rbr_physics::engine_driveline::layout::EngineTuning;
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::atmosphere::Atmosphere;
 use rbr_physics::ngp::heat::{Airflow, TyreShape, TyreThermal};
 use rbr_physics::tyre::layout::{
-    DEF_CARCASS_RADIUS, DEF_CARCASS_THICKNESS, DEF_DEBUG_ID, DEF_SIDEWALL_HEIGHT, DEF_TREAD_DEPTH, DEF_TREAD_WIDTH,
+    material_word, DEF_CARCASS_RADIUS, DEF_CARCASS_THICKNESS, DEF_DEBUG_ID, DEF_SIDEWALL_HEIGHT, DEF_TREAD_DEPTH,
+    DEF_TREAD_WIDTH,
 };
-use rbr_physics::wheel::layout::{ProbeTuning, WheelTuning};
+use rbr_physics::wheel::layout::{slot, ProbeTuning, WheelTuning};
 
-use crate::{Ctx, Decline};
+use crate::{Ctx, Decline, Host};
 
 use super::address::{at, only, FILE_BASE};
 use super::{data_f32, SPLIT};
@@ -101,20 +103,28 @@ pub(crate) fn tyre_shape(m: &Mem, def: u32) -> TyreShape {
 
 /// What the tyre thermal steps of `scratch` read; they decline on a 1.02 snapshot.
 pub(crate) fn thermal(ctx: &Ctx, scratch: u32) -> Result<TyreThermal, Decline> {
+    thermal_in(ctx.host, &ctx.mem, scratch)
+}
+
+/// [`thermal`] on `host` and `m` (the wheel's direct call of `RelaxCount`).
+pub(crate) fn thermal_in(host: &dyn Host, m: &Mem, scratch: u32) -> Result<TyreThermal, Decline> {
     only()?;
-    let m = &ctx.mem;
+    let data_f32 = |addr| m.f32(at(addr).expect("hooked only with NGP"));
     let (def, wheel) = (m.u32(scratch + 0x10), m.u32(scratch + 0x410));
+    let (in_contact, material) =
+        crate::tyre::read_tyre(host, m, scratch, |t| (t.scratch.in_contact, material_word(&t.scratch, 0x0A)));
     Ok(TyreThermal {
-        air_temperature: data_f32(ctx, 0x1017_1adc),
-        relax_rate: data_f32(ctx, 0x1017_1478),
+        air_temperature: data_f32(0x1017_1adc),
+        relax_rate: data_f32(0x1017_1478),
         shape: tyre_shape(m, def),
         airflow: Airflow {
             // NGP reads the definition's `DebugId` word as the tyre's kind.
             kind: m.u32(def + DEF_DEBUG_ID),
-            spin: m.f32(wheel + 0xea0),
-            car_speed: m.f32(m.u32(wheel + 0x7f4) + 0x15f8),
-            boost: (m.u32(scratch + 0x480) != 0).then(|| m.f32(scratch + 0x1c8)),
-            factors: [data_f32(ctx, 0x1017_1470), data_f32(ctx, 0x1017_1474)],
+            spin: crate::wheel::read_wheel(host, m, wheel, slot::end_spin_rate),
+            car_speed: crate::car_body::read_car(host, m, m.u32(wheel + 0x7f4), car_slot::forward_speed),
+            // The boost is the material block's word 10 (`+0x1c8`) while in contact (`+0x480`).
+            boost: (in_contact != 0).then(|| f32::from_bits(material)),
+            factors: [data_f32(0x1017_1470), data_f32(0x1017_1474)],
         },
     })
 }

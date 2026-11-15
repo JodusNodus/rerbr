@@ -277,15 +277,15 @@ pub fn make_event<S: CollisionStore>(
     event
 }
 
-/// Builds the event through [`make_event`], reading the payload's last word from the builder frame.
+/// Builds the event through [`make_event`]; `stack_tail` is the payload's last word, which the builder frame holds
+/// unwritten (`layout::make_event_tail`).
 pub fn make_event_at<S: CollisionStore>(
     host: &mut impl MakeEventHost<S>,
     store: &mut S,
     words: [u32; 9],
-    sp: u32,
+    stack_tail: u32,
 ) -> u32 {
     let [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2] = words;
     let args = MakeEventArgs { kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2 };
-    let stack_tail = store.u32(layout::make_event_tail(sp));
     make_event(store, args, stack_tail, host)
 }

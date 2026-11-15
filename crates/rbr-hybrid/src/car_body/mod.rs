@@ -2,7 +2,10 @@
 //! are the original's (thiscall `this` in ecx, the stack words `ret` pops). The car's and body's slots, the walks and the
 //! compose calls are the original's: a binding calls them through the host, and a bound callee runs in Rust again.
 
-use crate::{physics_core, Binding};
+use crate::{physics_core, Binding, Ctx, Host};
+use rbr_physics::car_body::layout::{CarView, Slot};
+use rbr_physics::mem::Mem;
+use rbr_physics::store::Value;
 
 mod assist;
 mod car_calls;
@@ -24,6 +27,7 @@ use damage_ops::{
     gearbox_wear, grow_cooling_wear, grow_intercooler_wear, grow_zone, ring_store, set_body_state, zero2f0,
     zone_scaled,
 };
+pub(crate) use members::init_sub_block;
 use members::{
     add_adc, body_to_world_pair, body_vf40x, body_vf80x, car_vf40x, car_vf_d8x, clear480, collide6000, emit_init,
     flow_m566640, flow_m5666b0, forward_speed, fwd18e20, fwd43c0, fwd6db0, fwd6dd0, get_a48, get_b0c, get_b1c,
@@ -40,6 +44,45 @@ use step::{
 pub(crate) const UPDATE_SEED: u32 = 0x4E91F0;
 /// `E37GridOps::AddEdge` (0x4f65b0).
 pub(crate) const ADD_EDGE: u32 = 0x4F65B0;
+
+/// Runs `run` on the car's store: the step's car, its wheels and (with [`crate::pure::Pure::typed_solids`]) its solids
+/// in typed storage while the host holds them ([`Host::typed`]), any other car, and every car per call, on the image
+/// (`layout::CarView`).
+pub(crate) fn on_car<T>(ctx: &mut Ctx, run: impl FnOnce(&mut CarView) -> T) -> T {
+    on_car_in(ctx.host, &mut ctx.mem, run)
+}
+
+/// [`on_car`] on `host` and `mem`.
+fn on_car_in<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CarView) -> T) -> T {
+    let typed = host.typed();
+    let car = typed.as_deref().map(|t| &t.car);
+    let (defs, core) = (typed.as_deref().map(|t| &t.defs), typed.as_deref().map(|t| &t.core));
+    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    let view = CarView::new(mem, car.map(|c| &c.own), car.map(|c| &c.wheels));
+    run(&mut view.with_defs(defs).with_core(core).with_solids(solids))
+}
+
+/// [`on_car`] when the host holds the car at `car`, counted as a run ([`Host::ran_direct`]): a caller's direct call of
+/// one of its members. `None` per call and for another car, where the caller calls the host.
+pub(crate) fn on_held_car<T>(
+    host: &dyn Host,
+    mem: &mut Mem,
+    car: u32,
+    run: impl FnOnce(&mut CarView) -> T,
+) -> Option<T> {
+    if !host.typed().is_some_and(|t| t.car.own.at == car) {
+        return None;
+    }
+    host.ran_direct();
+    Some(on_car_in(host, mem, run))
+}
+
+/// The field `slot` of the car at `car` as a step leaves it at this point: the typed storage's while the host holds it,
+/// else the image's. For the readers outside the car's bindings (NGP's downforce, curve term, engine wrapper and the
+/// tyres' thermal words).
+pub(crate) fn read_car<T: Value>(host: &dyn Host, mem: &Mem, car: u32, slot: Slot<T>) -> T {
+    host.typed().and_then(|t| t.car.own.read(car, slot)).unwrap_or_else(|| T::load(mem, car + slot.at))
+}
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("car_body", addr, name, run)

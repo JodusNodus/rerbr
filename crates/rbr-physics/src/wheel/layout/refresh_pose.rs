@@ -1,12 +1,10 @@
 //! `E51Wheel::M3B900` (0x53b900), the pose refresh, and the CDef words it reads.
 
-use super::fields::{
-    AXLE, DAMAGE_STEERING, DEFORMED_TOP_MOUNT, HUB_POSITION, INV_ARM, INV_RACK, ORIENTATION, STRUT_DIR,
-    TYRE_DEF_HUB_OFFSET, TYRE_SCRATCH, WOBBLED_AXLE,
-};
+use super::fields::{AXLE, DAMAGE_STEERING, HUB_POSITION, ORIENTATION, TYRE_SCRATCH};
 use super::store::WheelStore;
+use super::typed::slot;
+use crate::car_body::layout::slot as car_slot;
 pub use crate::car_body::layout::CURRENT_CAR as CAR_GLOBAL;
-use crate::car_body::store::CarStore;
 use crate::math::quat;
 use crate::math::vec::{Vec3, Vec4};
 pub use crate::physics_core::layout::PHYSICS_GLOBAL as DEBUG_GLOBAL;
@@ -71,49 +69,46 @@ pub trait RefreshCalls {
 /// `E51Wheel::M3B900` (0x53b900) after its prologue calls: the deformed top mount (`M3AB90`) is stored at `+0x570`, the
 /// wobbled axle (`M3A9E0`) at `+0x5f0`, and both are read back here. The sequence is the original's: the stores and host
 /// calls in order. Returns the eax of the final virtual call.
-pub fn refresh<S: WheelStore + CarStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: u32, travel: f32) -> u32 {
+pub fn refresh<S: WheelStore>(mem: &mut S, calls: &mut impl RefreshCalls, this: u32, travel: f32) -> u32 {
     let input = PoseIn {
         travel,
         def: mem.load_suspension_def(this),
         steering_damage: mem.load_damage_f32(this, DAMAGE_STEERING),
-        top_mount: mem.load_at(this, DEFORMED_TOP_MOUNT),
-        axle: mem.load_at(this, WOBBLED_AXLE),
+        top_mount: mem.get(this, slot::deformed_top_mount),
+        axle: mem.get(this, slot::wobbled_axle),
     };
     let def = &input.def;
     let strut = refresh::strut_geometry(&input);
     calls.set_dirty(this + STEERING_ROD_TWEAK);
-    mem.store_f32(this, STEERING_ROD_LENGTH, strut.steering_rod_length);
-    mem.store_u32(this, WISHBONE_COPY, def.wishbone_header[0]);
-    mem.store_u32(this, WISHBONE_COPY + 4, def.wishbone_header[1]);
-    mem.store_u32(this, WISHBONE_COPY + 8, def.wishbone_length.to_bits());
+    mem.set(this, slot::steering_rod_length, strut.steering_rod_length);
+    let wishbone = [def.wishbone_header[0], def.wishbone_header[1], def.wishbone_length.to_bits()];
+    mem.set(this, slot::wishbone_length, wishbone);
     let linkage = refresh::linkage(&input, &strut);
-    let steer_target = if def.is_steered { mem.steer_target(mem.u32(CAR_GLOBAL)) } else { 0.0 };
+    let steer_target = if def.is_steered { mem.car_field(mem.u32(CAR_GLOBAL), car_slot::steer_target) } else { 0.0 };
     let frame = refresh::hub_frame(&input, &strut, &linkage, steer_target, strut.steering_rod_length);
-    mem.store_at(this, HUB_POSITION, frame.hub_position);
+    mem.set_solid_vec4(this + HUB_POSITION, frame.hub_position);
     (Vec3 { x: frame.rotation[0][0], y: frame.rotation[0][1], z: frame.rotation[0][2] }).store(mem, this + AXLE);
     let tyre_def = calls.tyre_def(this + TYRE_SCRATCH);
     let (hub_position, drive_axle_dir) = refresh::place_hub(
-        mem.load_at(this, AXLE),
-        mem.f32(tyre_def + TYRE_DEF_HUB_OFFSET),
+        Vec4::load(mem, this + AXLE),
+        mem.hub_offset_of(tyre_def),
         frame.hub_position,
         def.drive_axle_mount_offset,
         def.drive_axle_joint,
     );
-    mem.store_at(this, HUB_POSITION, hub_position);
-    mem.store_at(this, NEG_KNUCKLE_Z, frame.neg_knuckle_z);
-    mem.store_at(this, STRUT_DIR, frame.strut_dir);
-    mem.store_at(this, TIP, frame.tip);
-    mem.store_at(this, ROD_MOUNT, frame.rod_mount);
-    mem.store_at(this, STEERING_ROD, frame.steering_rod);
-    mem.store_f32(this, INV_ARM, frame.inv_arm);
-    mem.store_f32(this, INV_RACK, frame.inv_rack);
-    mem.store_at(this, DRIVE_AXLE_DIR, drive_axle_dir);
+    mem.set_solid_vec4(this + HUB_POSITION, hub_position);
+    frame.neg_knuckle_z.store(mem, this + NEG_KNUCKLE_Z);
+    mem.set(this, slot::strut_dir, frame.strut_dir);
+    mem.set(this, slot::tip, frame.tip);
+    mem.set(this, slot::rod_mount, frame.rod_mount);
+    mem.set(this, slot::steering_rod, frame.steering_rod);
+    mem.set(this, slot::inv_arm, frame.inv_arm);
+    mem.set(this, slot::inv_rack, frame.inv_rack);
+    mem.set(this, slot::drive_axle_dir, drive_axle_dir);
     if mem.debug_flag() {
-        for (k, axis) in frame.knuckle_axes.into_iter().enumerate() {
-            mem.store_at(this, DEBUG_ROWS + 0x10 * k as u32, axis);
-        }
+        mem.set(this, slot::debug_rows, frame.knuckle_axes);
     }
     let q = quat::to_quat(&frame.rotation);
-    mem.store_at(this, ORIENTATION, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
+    mem.set_solid_vec4(this + ORIENTATION, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
     calls.refresh_solid(this)
 }

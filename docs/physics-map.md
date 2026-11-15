@@ -50,7 +50,8 @@ one loop.
    3. Integrate, per body. For the car, `car_body::step::step_car`: the passenger
       (`physics_core::passenger_step::passenger_step`), the rigid body (`rigid_body::integrate::integrate`:
       velocities, pose, sleep), the brake-wall raycast and its impulse, hinged and mounted parts
-      (`entities::hinge_step`, `physics_core::mounted::mounted_position_step`), the timekeeper and the retire check
+      (`entities::hinge_step`, `physics_core::mounted::mounted_position_step`; their own words typed with their solids,
+      `entities::layout::Hinged`, `physics_core::layout::mounted_body::Mounted`), the timekeeper and the retire check
       (`car_body::retire::check_retire`).
    4. Child walk, right after each body's integrate. For the car, `car_body::controls::step_controls`, in order:
       steering slew and rack; the VCU (`vcu::step::step`); the drive (step 5); the wheels (step 6); the anti-roll
@@ -90,33 +91,34 @@ next step's body pass (derived from the call order, not traced word by word).
 
 | Quantity or concept | Module or file | Main type or fn |
 | --- | --- | --- |
-| Tyre slip | `tyre/slip.rs` | `tyre::slip::compute_slip`, `weigh_models` (sticking against sliding) |
+| Tyre slip | `tyre/slip.rs` | `tyre::slip::compute_slip`, `weigh_models` (sticking against sliding), `tyre::tyres::Tyres` (the tyres' typed state) |
 | Tyre contact patch, normal force | `tyre/contact_patch.rs`, `tyre/solve.rs`, `tyre/forces.rs` | `tyre::contact_patch::contact_patch`, `tyre::forces::solve_forces` |
 | Tyre heat and wear | `tyre/heat.rs`, `tyre/relax.rs`, `ngp/heat.rs` | `tyre::heat::heat_step`, `tyre::relax::relax_sector`, `ngp::heat::TyreThermal` |
 | Grip, friction curve | `tyre/friction_curve.rs`, `tyre/friction_limits.rs`, `tyre/grip.rs`, `ngp/outputs.rs` | `tyre::friction_curve::friction_curve`, `tyre::friction_limits::friction_limits`, `tyre::grip::limit_to_friction_circle`, `ngp::outputs::friction_limits` |
 | Tyre on surface, wetness, inclination | `tyre/surface.rs`, `tyre/soil.rs`, `ngp/inclination.rs` | `tyre::surface::surface_friction`, `tyre::soil::soil_drag`, `ngp::inclination::grip_scale` |
-| Suspension geometry | `wheel/refresh.rs`, `wheel/axes.rs` | `wheel::layout::refresh` |
-| Spring, bump stop, damper | `spring_damper/mod.rs`, `spring_damper/suspension.rs`, `ngp/spring.rs` | `spring_damper::step`, `spring_damper::suspension::Suspension`, `ngp::spring::bump_stop`, `ngp::spring::latch` |
+| Suspension geometry | `wheel/refresh.rs`, `wheel/axes.rs` | `wheel::layout::refresh`, `wheel::layout::Wheel` (the wheels' typed state) |
+| Spring, bump stop, damper | `spring_damper/mod.rs`, `spring_damper/suspension.rs`, `spring_damper/strut.rs`, `ngp/spring.rs` | `spring_damper::step`, `spring_damper::suspension::Suspension`, `spring_damper::strut::Struts` (the typed state), `ngp::spring::bump_stop`, `ngp::spring::latch` |
 | Anti-roll bars | `car_body/roll_bars.rs` | `car_body::roll_bars::update_roll_bars` |
-| Engine torque | `engine_driveline/engine.rs`, `engine_driveline/layout/engine_sim.rs`, `ngp/engine.rs` | `engine_driveline::engine::torque_curve`, `engine_driveline::layout::engine_step`, `ngp::engine::torque` |
+| Engine torque | `engine_driveline/engine.rs`, `engine_driveline/layout/engine_sim.rs`, `ngp/engine.rs` | `engine_driveline::engine::torque_curve`, `engine_driveline::layout::engine_step`, `ngp::engine::torque`, `engine_driveline::layout::EngineTyped` (the engine's typed state), `EngineDefinition` (its definition, held read only) |
 | Starter | `ngp/starter.rs` | `ngp::starter::starter` |
 | Clutch | `engine_driveline/drive_worker.rs`, `ngp/drive.rs`, `vcu/clutch.rs` | `engine_driveline::drive_worker::clutch_torque`, `ngp::drive::clutch_state`, `vcu::clutch::launch_clutch` |
 | Differentials, torque split | `ngp/diff.rs`, `ngp/axle.rs`, `ngp/drive.rs`, `vcu/locks.rs` | `ngp::diff::lock_torques`, `ngp::axle::axle_worker`, `ngp::drive::split_factor`, `vcu::locks::diff_locks` |
-| Gearbox | `engine_driveline/drive.rs`, `engine_driveline/drive_worker.rs` | `engine_driveline::drive::gear_ratio`, `request_gear`, `engine_driveline::drive_worker::gear_logic` |
-| VCU (auto shift, rev cut) | `vcu/` | `vcu::step::step`, `vcu::gear::update`, `vcu::cut::rev_limit_cut` |
+| Gearbox | `engine_driveline/drive.rs`, `engine_driveline/drive_worker.rs` | `engine_driveline::drive::gear_ratio`, `request_gear`, `engine_driveline::drive_worker::gear_logic`, `engine_driveline::layout::DriveTyped` (the drive's typed state) |
+| VCU (auto shift, rev cut) | `vcu/` | `vcu::step::step`, `vcu::gear::update`, `vcu::cut::rev_limit_cut`, `vcu::layout::Unit` (the typed state) |
 | Aero drag | `car_body/drag.rs` | `car_body::drag::apply_drag` |
 | Downforce, air density | `ngp/downforce.rs`, `ngp/atmosphere.rs` | `ngp::downforce::downforce`, `ngp::atmosphere::atmosphere` |
 | Brakes | `ngp/brake.rs`, `engine_driveline/drive.rs` | `ngp::brake::brake_step` (torque, disc temperatures), `engine_driveline::drive::set_brake_in` |
-| Steering | `car_body/controls.rs` | `car_body::controls::step_controls` |
-| Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate` |
+| Steering | `car_body/controls.rs` | `car_body::controls::step_controls`, `car_body::layout::CarState` (the car's own typed state) |
+| Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate`, `rigid_body::layout::Solid` (the solids' typed state, held over the pure step; their readers on its store, `rbr_hybrid::rigid_body::on_solids`) |
 | Gravity | `physics_core/accumulate.rs`, `physics_core/math.rs` | `physics_core::accumulate::accumulate_forces`, `physics_core::math::gravity_force` |
+| Step pacing, physics clock | `physics_core/step.rs`, `physics_core/pacing.rs`, `physics_core/contact_loop.rs` | `physics_core::step::step_forward`, `physics_core::pacing::advance_time`, `physics_core::layout::Core` (the core's typed state: clock, substep counter, pass and hit counters) |
 | Ground surface, materials | `entities/ground.rs`, `entities/material_table.rs`, `ngp/material.rs`, `ngp/tag_blend.rs`, `stage/` | `entities::ground::box_probe`, `entities::material_table::MaterialTable`, `ngp::material::cell`, `ngp::tag_blend::blend`, `wheel::layout::ground_probe` |
-| Stage world (`.col`, `.mat`, `.trk`) | `stage/`, `engine_driveline/drive_line.rs`, `ngp/drive_line.rs` | `stage::layout::load_col`, `ngp::drive_line::project` (drive line) |
-| Collision grid | `collision/cells.rs`, `collision/mesh_grid.rs`, `physics_core/detect.rs`, `load/car_grids.rs` | `collision::mesh_grid::MeshGrid`, `collision::cells::point_cell`, `physics_core::detect::box_cells` |
-| Collision response | `collision/contact_solver.rs`, `collision/solver_pass.rs`, `collision/obb.rs`, `collision/wall.rs` | `collision::contact_solver::normal_impulse`, `friction_impulse`, `collision::obb::obb_contact`, `collision::wall::wall_raycast` |
+| Stage world (`.col`, `.mat`, `.trk`) | `stage/`, `engine_driveline/drive_line.rs`, `ngp/drive_line.rs` | `stage::layout::load_col`, `ngp::drive_line::project` (drive line), `stage::typed::Stage` (what a step reads, typed) |
+| Collision grid | `collision/cells.rs`, `collision/mesh_grid.rs`, `physics_core/detect.rs`, `load/car_grids.rs` | `collision::mesh_grid::MeshGrid`, `collision::cells::point_cell`, `physics_core::detect::box_cells`, `collision::layout::CellTable` (the cell grid's header and slots, typed) |
+| Collision response | `collision/contact_solver.rs`, `collision/solver_pass.rs`, `collision/obb.rs`, `collision/wall.rs` | `collision::contact_solver::normal_impulse`, `friction_impulse`, `collision::obb::obb_contact`, `collision::wall::wall_raycast`, `collision::layout::CarCollision` (the solver's rows and counts and the car's grids' hit bytes, typed) |
 | Damage | `car_body/damage.rs`, `car_body/damage_ops.rs`, `car_body/damage_functors.rs`, `wheel/axes.rs` | `car_body::damage::set_level`, `car_body::damage_ops::level_fractions`, `ngp::engine::damage_factor` |
 | Force feedback | `car_body/steering_ffb.rs`, `ngp/ffb.rs` | `car_body::steering_ffb::filtered_torque`, `ngp::ffb::curve` |
-| Car and setup values from `.lsp` | `load/`, `ntweak/` | `load::physics_file`, `load::setup_file`, `ntweak::plan::plan` |
+| Car and setup values from `.lsp` | `load/`, `ntweak/`, `store/defs.rs` | `load::physics_file`, `load::setup_file`, `ntweak::plan::plan`, `store::defs::Defs` (the definitions a step reads, typed) |
 
 The `.lsp` keys each object reads are in [data/physics-lsp-fields.md](../data/physics-lsp-fields.md) and
 [data/ngp-lsp-keys.md](../data/ngp-lsp-keys.md).
@@ -133,6 +135,7 @@ goes in experimental physics (below).
 | `scripts/rust-vectors.sh <module>` | the recorded and fuzzed calls of the original for one module's ports (`car_body`, `tyre`, `wheel`, `vcu`, ...), including branches no drive reaches; needs `RBR_VECTOR_STORE` |
 | `scripts/gate.sh` | drive2 attempt 5 through `rbr-standalone`: every one of 84084 NGP steps equal to the recording |
 | `scripts/gate.sh --hybrid` | also the hybrid check: each port inside the original's step in the emulator, every "run B vs run A" line equal |
+| `scripts/gate.sh --typed` | also the typed storage a step holds: the drive with it against the per-call path after every step (aids off and on), and with the held words poisoned ([physics.md](../notes/physics.md), "Store seam") |
 
 The hybrid check's snapshots are 1.02's, so ports that hold NGP's behaviour (the step itself, the strut, the tyre,
 the `ngp` functions) decline there and the original runs them: for those, only the standalone drive and their

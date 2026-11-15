@@ -30,7 +30,7 @@ use rbr_physics::rigid_body::layout::{
     transform_body_rows, transform_body_rows3, Body, Def, ParentFrame, Vec4,
 };
 use rbr_physics::rigid_body::layout::{
-    construct_def, construct_state, contact_vote, load_contact, new_def, new_solid, refresh_and_reset,
+    construct_def, construct_state, contact_count, contact_vote, load_contact, new_def, new_solid, refresh_and_reset,
     refresh_state_rotation, scale_add_rows, scratch_reset_after_entity, solid_filing, solid_sleep, walk_children,
     RestHost,
 };
@@ -1002,7 +1002,8 @@ fn vote_matches_original_calls() {
             let this = call.args[0];
             contacts += made.len();
             let mut host = ContactVoteReplay { mem: mem.clone(), this, contacts: made.into_iter() };
-            let eax = contact_vote(&mut mem, this, call.args[1], call.args[2], &mut host)
+            let count = contact_count(&mem, this);
+            let eax = contact_vote(&mut mem, count, call.args[1], call.args[2], &mut host)
                 .expect("Vf81x: the replay answers every call");
             assert_eq!(eax, call.eax, "Vf81x call {}", call.index);
             assert!(host.contacts.next().is_none(), "Vf81x call {}: the port made fewer BigA calls", call.index);

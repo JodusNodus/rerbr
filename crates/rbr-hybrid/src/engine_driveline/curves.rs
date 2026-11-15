@@ -1,18 +1,33 @@
 //! The `E39_*` row and table helpers, `E12_SampleX` and the drive line's lerps and blends.
 
+use crate::stage::on_stage;
 use rbr_physics::engine_driveline::{drive_curve, drive_worker, layout, sim};
 use rbr_physics::mem::Mem;
+use rbr_physics::stage::store::StageStore;
 
-use super::{f, E12_SAMPLE_X};
+use super::{f, held_ring, held_wheel, on_drive, E12_SAMPLE_X};
 use crate::{Ctx, Decline, Regs, Return};
-use rbr_physics::engine_driveline::store::EngineStore;
+use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
+use rbr_physics::store::{Raw, Value};
 
-/// stdcall `(v, p)`, st0: the ring at `p` takes `v`, and the mean is returned.
+/// stdcall `(v, p)`, st0: the ring at `p` takes `v`, and the mean is returned: a held drive's typed ring where `p` is
+/// its, else the image's.
 pub(super) fn ring_average(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let p = r.stack[1];
-    let mut ring = layout::RatioRing::load(&ctx.mem, p);
-    let mean = drive_worker::ring_average(&mut ring, f(r.stack[0]));
-    ring.store(&mut ctx.mem, p);
+    let (v, p) = (f(r.stack[0]), r.stack[1]);
+    let mean = match held_ring(ctx.host, p) {
+        Some(drive) => on_drive(ctx, drive, |d| {
+            let mut ring = d.ratio_ring();
+            let mean = drive_worker::ring_average(&mut ring, v);
+            d.store_ratio_ring(&ring);
+            mean
+        }),
+        None => {
+            let mut ring = layout::RatioRing::load(&ctx.mem, p);
+            let mean = drive_worker::ring_average(&mut ring, v);
+            ring.store(&mut ctx.mem, p);
+            mean
+        }
+    };
     Ok(Return::float(mean as f64, 8))
 }
 
@@ -29,39 +44,56 @@ pub(super) fn unsigned_table_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Dec
     Ok(Return::float(v, 0x14))
 }
 
+/// The curve state at `b` (a wheel's block of a drive state) for `run`, and written back: a held drive's typed wheel,
+/// else the image's.
+fn on_curve_state<T>(ctx: &mut Ctx, b: u32, run: impl FnOnce(&Mem, &mut layout::CurveState) -> T) -> T {
+    match held_wheel(ctx.host, b) {
+        Some((drive, k)) => on_drive(ctx, drive, |d| {
+            let mut state = d.curve_state(k);
+            let out = run(d.mem(), &mut state);
+            d.store_curve_state(k, &state);
+            out
+        }),
+        None => {
+            let mut state = layout::CurveState::load(&ctx.mem, b);
+            let out = run(&ctx.mem, &mut state);
+            state.store(&mut ctx.mem, b);
+            out
+        }
+    }
+}
+
 /// stdcall `(dt, a, b, c, n, s)`, eax: `E39_WorkerF60`, the row `a` and the state `b`; eax is 1 when the counter counted.
 pub(super) fn count_down(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let row = layout::CurveRow::load(&ctx.mem, r.stack[1]);
-    let tables = layout::CurveTables::load(&ctx.mem, r.stack[4]);
-    let block_gain = ctx.mem.curve_gain(r.stack[3]);
-    let mut state = layout::CurveState::load(&ctx.mem, r.stack[2]);
-    let ok = drive_curve::count_down(f(r.stack[0]), &row, &mut state, &tables, block_gain, f(r.stack[5]));
-    state.store(&mut ctx.mem, r.stack[2]);
+    let [dt, a, b, c, n, s, ..] = r.stack;
+    let ok = on_curve_state(ctx, b, |mem, state| {
+        let row = layout::CurveRow::load(mem, a);
+        let tables = layout::CurveTables::load(mem, n);
+        let block_gain = layout::BrakeBlock::gain(mem, c);
+        drive_curve::count_down(f(dt), &row, state, &tables, block_gain, f(s))
+    });
     Ok(Return::void(u32::from(ok), 0x18))
 }
 
 /// stdcall `(dt, b, c, n, s)`, st0: `E39_Worker4060`, the row the block `c` picks in the def `n`.
 pub(super) fn row_value(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [dt, b, c, n, s, ..] = r.stack;
-    let v = row_value_at(&mut ctx.mem, f(dt), b, c, n, f(s));
+    let v = on_curve_state(ctx, b, |mem, state| row_value_of(mem, state, f(dt), c, n, f(s)));
     Ok(Return::float(v, 0x14))
 }
 
-/// `E39_Worker4060` on the state `b`, the block `c` and the def `n`.
-pub(crate) fn row_value_at(mem: &mut Mem, dt: f32, b: u32, c: u32, n: u32, s: f32) -> f64 {
-    let row = layout::CurveRow::load(mem, layout::curve_row_at(n, mem.curve_index(c)));
+/// `E39_Worker4060` on the curve state `state`, the block `c` and the def `n` (read on `mem`).
+pub(crate) fn row_value_of(mem: &Mem, state: &mut layout::CurveState, dt: f32, c: u32, n: u32, s: f32) -> f64 {
+    let row = layout::CurveRow::load(mem, layout::curve_row_at(n, layout::BrakeBlock::row_index(mem, c)));
     let tables = layout::CurveTables::load(mem, n);
-    let block_gain = mem.curve_gain(c);
-    let mut state = layout::CurveState::load(mem, b);
-    let v = drive_curve::row_value(dt, &row, &mut state, &tables, block_gain, s);
-    state.store(mem, b);
-    v
+    let block_gain = layout::BrakeBlock::gain(mem, c);
+    drive_curve::row_value(dt, &row, state, &tables, block_gain, s)
 }
 
 /// stdcall `(x)`, `ret 4`, st0: `E12_SampleX` (0x475ea0), the drive line's value at `x`. The original asserts outside the
 /// table, so the port declines there (before anything is written).
 pub(super) fn e12_sample_x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    match layout::distance_at(&ctx.mem, f32::from_bits(r.stack[0])) {
+    match on_stage(ctx.host, &ctx.mem, |line| layout::distance_at(line, f32::from_bits(r.stack[0]))) {
         Some(st0) => Ok(Return::float(st0 as f64, 4)),
         None => Err(Decline::Unsupported("E12_SampleX outside the table (the original asserts)")),
     }
@@ -79,7 +111,7 @@ pub(super) fn thunk_4f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(idx, t, out*)`.
 pub(super) fn blend_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [idx, t, out, ..] = r.stack;
-    let v = layout::spline_at(&ctx.mem, r.ecx, idx as i32, f(t));
+    let v = on_stage(ctx.host, &ctx.mem, |line| layout::spline_at(line, r.ecx, idx as i32, f(t)));
     v.store(&mut ctx.mem, out);
     Ok(Return::void(0, 0xc))
 }
@@ -87,17 +119,19 @@ pub(super) fn blend_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(i, t, out)`, `ret 0xc`: `CDriveLine::LerpAt` (0x50a920), which jumps into `E11_VecLerp`. Eax is `out`.
 pub(super) fn lerp_at(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [idx, t, out, ..] = r.stack;
-    if idx >= ctx.mem.u32(r.ecx + layout::COUNT_AT) {
+    let v = on_stage(ctx.host, &ctx.mem, |line| {
+        (idx < line.line_count(r.ecx)).then(|| layout::tangent_lerp(line, r.ecx, idx as i32, f(t)))
+    });
+    let Some(v) = v else {
         return Err(Decline::Unsupported("drive line index past its count (LerpAt traps)"));
-    }
-    let v = ctx.mem.lerp_at(r.ecx, idx as i32, f(t));
+    };
     v.store(&mut ctx.mem, out);
     Ok(Return::void(out, 0xc))
 }
 
 /// thiscall `()`, st0.
 pub(super) fn last(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(layout::last_distance(&ctx.mem, r.ecx) as f64, 0))
+    Ok(Return::float(on_stage(ctx.host, &ctx.mem, |line| layout::last_distance(line, r.ecx)) as f64, 0))
 }
 
 /// thiscall `(signal*)`. Declines a count over 10000 (the original traps).
@@ -112,7 +146,7 @@ pub(super) fn set_drive_line(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 /// thiscall `(x, out*)`.
 pub(super) fn clamp_mix(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, out, ..] = r.stack;
-    let v = layout::point_at(&ctx.mem, r.ecx, f(x));
+    let v = on_stage(ctx.host, &ctx.mem, |line| layout::point_at(line, r.ecx, f(x)));
     v.store(&mut ctx.mem, out);
     Ok(Return::void(0, 8))
 }

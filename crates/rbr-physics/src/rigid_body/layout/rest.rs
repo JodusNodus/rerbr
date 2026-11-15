@@ -1,12 +1,12 @@
 //! The solid's rest and window slots: the filing, wake and sleep, and the soften (`E43Vf158`).
 
-use super::sleep_body::Body;
 use super::vtable_target;
 use crate::mem::Mem;
 use crate::physics_core::layout as core_layout;
 use crate::physics_core::layout::Filing;
 use crate::rigid_body::emit::{BodyEvent, SLEEP, WAKE};
 use crate::rigid_body::host::HostUnavailable;
+use crate::rigid_body::store::RigidStore;
 use crate::rigid_body::{self, sleep};
 
 /// The calls `CSolid::E43Vf90` (0x52bf30) and `CSolid::E43Vf94` (0x52c130) make outside the body; `CEntity::E43Vf90`
@@ -28,10 +28,15 @@ pub(super) const ACTIVE: u32 = 0x1DC;
 /// The filing of the solid at `solid` (`core_layout::FilingHost`): its very-soft and active words, `Err` unless its
 /// filing slots are `CSolid`'s. The slots only read the words, so asking them before `WallRel`'s unlink is the same.
 pub fn solid_filing(mem: &Mem, solid: u32) -> Result<Filing, HostUnavailable> {
+    solid_filing_with(mem, solid, |at| mem.u32(at))
+}
+
+/// [`solid_filing`] with the two words read by `word` (a held solid's where a step holds it); the slots are `mem`'s.
+pub fn solid_filing_with(mem: &Mem, solid: u32, word: impl Fn(u32) -> u32) -> Result<Filing, HostUnavailable> {
     if !SOLID_FILING.iter().all(|&(slot, function)| vtable_target(mem, solid, slot) == function) {
         return Err(HostUnavailable);
     }
-    Ok((mem.u32(solid + VERY_SOFT) != 0, mem.u32(solid + ACTIVE) != 0, false))
+    Ok((word(solid + VERY_SOFT) != 0, word(solid + ACTIVE) != 0, false))
 }
 
 /// The body event at `at` (0x50 bytes, `emit::BodyEvent`): the words at +0x8 and +0xc are not the event's (the
@@ -47,25 +52,25 @@ pub fn store_body_event(mem: &mut Mem, at: u32, event: &BodyEvent) {
 
 /// `CSolid::E43Vf90` (0x52bf30, slot 36) on the body at `this`: `sleep::wake_up`, the body's window start (slot 18),
 /// `CEntity::E43Vf90` and the body's wake event (`emit::emit_body_event` on a loaded body).
-pub fn solid_wake(mem: &mut Mem, host: &mut impl RestHost, this: u32) -> Result<(), HostUnavailable> {
-    let mut body = Body::load(mem, this);
+pub fn solid_wake<S: RigidStore>(store: &mut S, host: &mut impl RestHost, this: u32) -> Result<(), HostUnavailable> {
+    let mut body = store.body(this);
     sleep::wake_up(&mut body);
-    body.store(mem, this);
-    host.start_window(mem, this)?;
-    core_layout::refile_entity(mem, host, this)?;
-    let body = Body::load(mem, this);
-    host.emit(mem, &rigid_body::emit::event(&body, WAKE))
+    store.store_body(this, &body);
+    host.start_window(store.mem_mut(), this)?;
+    core_layout::refile_entity(store.mem_mut(), host, this)?;
+    let body = store.body(this);
+    host.emit(store.mem(), &rigid_body::emit::event(&body, WAKE))
 }
 
 /// `CSolid::E43Vf94` (0x52c130, slot 37) on the body at `this`: `sleep::fall_asleep`, then `CEntity::E43Vf94` and the
 /// body's sleep event.
-pub fn solid_sleep(mem: &mut Mem, host: &mut impl RestHost, this: u32) -> Result<(), HostUnavailable> {
-    let mut body = Body::load(mem, this);
+pub fn solid_sleep<S: RigidStore>(store: &mut S, host: &mut impl RestHost, this: u32) -> Result<(), HostUnavailable> {
+    let mut body = store.body(this);
     sleep::fall_asleep(&mut body);
-    body.store(mem, this);
-    core_layout::refile_entity(mem, host, this)?;
-    let body = Body::load(mem, this);
-    host.emit(mem, &rigid_body::emit::event(&body, SLEEP))
+    store.store_body(this, &body);
+    core_layout::refile_entity(store.mem_mut(), host, this)?;
+    let body = store.body(this);
+    host.emit(store.mem(), &rigid_body::emit::event(&body, SLEEP))
 }
 
 /// The calls `CSolid::E43Vf158` makes at the original stack depths: slot 0 on a parentless body, the entity's slot-86
@@ -82,21 +87,21 @@ pub trait VerySoftHost {
 
 /// `CSolid::E43Vf158` (0x52c030, slot 86; name ours, by use): a parentless body becomes very soft and is refiled; both parent branches
 /// clear the armed word and emit the same 0x50-byte event with kind 2. `frame` is `((entry - 4) & !0xf) - 0x64`.
-pub fn solid_soften(
-    mem: &mut Mem,
+pub fn solid_soften<S: RigidStore>(
+    store: &mut S,
     host: &mut impl VerySoftHost,
     this: u32,
     frame: u32,
 ) -> Result<u32, HostUnavailable> {
-    let mut body = Body::load(mem, this);
+    let mut body = store.body(this);
     if body.parent == 0 {
-        host.entity_name(mem, frame - 0x10, this)?;
+        host.entity_name(store.mem(), frame - 0x10, this)?;
         sleep::become_very_soft(&mut body);
     } else {
         body.sleep_armed = 0;
     }
-    body.store(mem, this);
-    host.entity_refile(mem, frame - 0x10, this)?;
-    let body = Body::load(mem, this);
-    host.emit(mem, frame, &rigid_body::emit::event(&body, SLEEP))
+    store.store_body(this, &body);
+    host.entity_refile(store.mem_mut(), frame - 0x10, this)?;
+    let body = store.body(this);
+    host.emit(store.mem_mut(), frame, &rigid_body::emit::event(&body, SLEEP))
 }

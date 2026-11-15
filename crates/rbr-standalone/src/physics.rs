@@ -214,9 +214,9 @@ pub fn boot_playback(
     }
     panic::catch_unwind(AssertUnwindSafe(|| boot::update_a720(&playback.pure, &image)))
         .map_err(|e| format!("the boot's CCar::UpdateA720: {} in {}", why(e.as_ref()), chain(&playback.pure)))?;
-    boot::ngp_init(&mut playback.pure.mem.clone(), &image);
+    boot::ngp_init(&mut playback.pure.image_mut(), &image);
     if let Some(path) = dump {
-        boot::dump(&playback.pure.mem, &image, path).map_err(|e| format!("{}: {e}", path.display()))?;
+        boot::dump(playback.pure.image(), &image, path).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok((playback, image))
 }

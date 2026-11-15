@@ -3,13 +3,38 @@
 use rbr_physics::collision::layout::{self};
 use rbr_physics::math::vec::{clear_vec4, Vec3};
 
-use crate::{Ctx, Decline, Regs, Return};
+use rbr_physics::mem::Mem;
+
+use super::{E01_VEC4_COPY_FROM, FLOAT3_LENGTH};
+use crate::rigid_body::{on_solids, with_solids};
+use crate::{Ctx, Decline, Host, Regs, Return};
+
+/// `E01Vec4::CopyFrom` of `src` to `dst` as a call at `sp` makes it, its eax (`dst`): direct on the pure host
+/// ([`Host::call_slot_word`]), counted as a run ([`Host::ran_direct`]); its binding makes no call and reads nothing of
+/// the stack but its argument, and its callers read none of the call's words (residue audit, notes/physics.md "Store
+/// seam"). Through the host elsewhere.
+pub(crate) fn copy_vec4(host: &dyn Host, mem: &mut Mem, sp: u32, dst: u32, src: u32) -> u32 {
+    if host.call_slot_word().is_none() {
+        return host.call_at(sp, E01_VEC4_COPY_FROM, dst, &[src]).eax;
+    }
+    host.ran_direct();
+    with_solids(host, mem, |s| layout::vec4_copy_from(s, dst, src))
+}
+
+/// `CFloat3::Length` of the vector at `vector` as a call at `sp` returns it, direct on the pure host as [`copy_vec4`].
+pub(crate) fn length(host: &dyn Host, mem: &Mem, sp: u32, vector: u32) -> f32 {
+    if host.call_slot_word().is_none() {
+        return host.call_at(sp, FLOAT3_LENGTH, vector, &[]).st0 as f32;
+    }
+    host.ran_direct();
+    Vec3::load(mem, vector).length3()
+}
 
 /// thiscall on `dst` (`ecx`) with `(src*)`, ret 4: `E01Vec4::CopyFrom` (0x43c5b0), the sixteen bytes of `src` to `dst`.
 /// Eax is `dst`.
 pub(super) fn vec4_copy_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, ..] = r.stack;
-    Ok(Return::void(layout::vec4_copy_from(&mut ctx.mem, r.ecx, src), 4))
+    Ok(Return::void(on_solids(ctx, |s| layout::vec4_copy_from(s, r.ecx, src)), 4))
 }
 
 /// thiscall on the row (`ecx`), no arguments: `E09Vec4::Clear` (0x465d80), the zero row. Eax is the row.
@@ -22,7 +47,7 @@ pub(super) fn vec4_clear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// four lanes. Eax is `out`.
 pub(super) fn float3_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [scale, out, ..] = r.stack;
-    layout::scaled(&mut ctx.mem, r.ecx, out, f32::from_bits(scale));
+    on_solids(ctx, |s| layout::scaled(s, r.ecx, out, f32::from_bits(scale)));
     Ok(Return::void(out, 8))
 }
 
@@ -105,16 +130,24 @@ pub(super) fn vec4_normalize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     Ok(Return::void(layout::vec4_normalize(&mut ctx.mem, r.ecx), 0))
 }
 
+/// The w lane `E09Vec4::Sub` and `E21Vec3::Add` entered at `esp` store: the unwritten word of their scratch, which is
+/// [`crate::RESIDUE`] on the pure host.
+fn stale_lane(ctx: &Ctx, esp: u32) -> u32 {
+    crate::residue(ctx.host).unwrap_or_else(|| layout::stale_lane(&ctx.mem, esp))
+}
+
 /// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E09Vec4::Sub` (0x465da0). Eax is `out`.
 pub(super) fn vec4_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [out, b, ..] = r.stack;
-    let eax = layout::vec4_sub_stale(&mut ctx.mem, r.ecx, out, b, r.esp);
+    let w = stale_lane(ctx, r.esp);
+    let eax = layout::vec4_sub_stale(&mut ctx.mem, r.ecx, out, b, w);
     Ok(Return::void(eax, 8))
 }
 
 /// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E21Vec3::Add` (0x4a19e0). Eax is `out`.
 pub(super) fn vec3_add(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [out, b, ..] = r.stack;
-    let eax = layout::vec3_add_stale(&mut ctx.mem, r.ecx, out, b, r.esp);
+    let w = stale_lane(ctx, r.esp);
+    let eax = layout::vec3_add_stale(&mut ctx.mem, r.ecx, out, b, w);
     Ok(Return::void(eax, 8))
 }

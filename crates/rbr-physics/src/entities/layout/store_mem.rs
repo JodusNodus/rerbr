@@ -5,11 +5,12 @@ use super::entity_slots::EXCL_SET;
 use super::frames::ROOT_IDENTITY;
 use crate::entities::frame::EntityFrame;
 use crate::entities::ground::Contact;
-use crate::entities::store::{EntityStore, SlotLookup};
+use crate::entities::store::EntityStore;
 use crate::entities::transform::Transform;
 use crate::entities::walk::Node;
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
+use crate::rigid_body::layout::SolidWords;
 use crate::stage;
 
 const WALKER_COUNT: u32 = 8;
@@ -32,10 +33,6 @@ const FRAME_OWNER: u32 = 0x0c;
 
 const GRID_COUNT_FIRST: u32 = 0x68D;
 
-const TABLE_SELF: u32 = 0x800;
-const TABLE_COUNT: u32 = 0x804;
-const SLOT_SIZE: u32 = 8;
-
 /// The dummy's centre (+0x94) and half extents (+0xa0), as stored (x, z, y: see `dummy::box_corners`); its span group (+0xb0),
 /// span segment (+0x7c) and post segment (+0x80); and the flag word the segments keep at +0x5c (bit 3, `8`).
 const DUMMY_CENTER: u32 = 0x94;
@@ -55,6 +52,15 @@ const CAR_BODY_SLOTS: u32 = 0x480;
 /// The entity's vtable slot 71 (+0x11c), whose target the query reads.
 const QUERY_SLOT: u32 = 0x11c;
 
+/// Clears the solid's force and then its torque accumulator (`CSolid::E43ClearAcc`), held or on the image. Returns the
+/// torque accumulator's address.
+pub fn clear_solid_accumulators<W: SolidWords + ?Sized>(solids: &mut W, this: u32) -> u32 {
+    for at in [BODY_FORCE, BODY_TORQUE] {
+        solids.set_words4(this + at, [0; 4]);
+    }
+    this + BODY_TORQUE
+}
+
 impl EntityStore for Mem {
     fn identity(&self) -> u32 {
         self.u32(ROOT_IDENTITY)
@@ -73,10 +79,7 @@ impl EntityStore for Mem {
     }
 
     fn clear_accumulators(&mut self, this: u32) -> u32 {
-        for at in [BODY_FORCE, BODY_TORQUE] {
-            self.map(this + at, &[0; 16]);
-        }
-        this + BODY_TORQUE
+        clear_solid_accumulators(self, this)
     }
 
     fn probe_host(&self) -> u32 {
@@ -128,17 +131,6 @@ impl EntityStore for Mem {
 
     fn query_slot_target(&self, entity: u32) -> u32 {
         self.u32(self.u32(entity) + QUERY_SLOT)
-    }
-
-    fn material_slot(&self, table: u32, index: u8) -> SlotLookup {
-        let slots = self.u32(table + TABLE_SELF);
-        if slots == 0 {
-            return SlotLookup::NoTable;
-        }
-        if index as u32 >= self.u32(table + TABLE_COUNT) {
-            return SlotLookup::OutOfRange;
-        }
-        SlotLookup::At(slots + SLOT_SIZE * index as u32)
     }
 
     fn entity_flags(&self) -> (u32, u8) {

@@ -5,14 +5,20 @@ use super::engine_calls::{
     abs_rpm_term, clamp_keep_nan, compliance, exhaust_blend_at, merge_into, pedal_cosine, rev_gate, slot_roll,
     torque_curve,
 };
+use super::engine_definition::{
+    cylinder_count, cylinder_phase, oil_capacity, turbo, HeatDef, InletDef, TurboDef, BACK_PRESSURE_CURVE, BAND_TABLE,
+    BOOST_TABLE, COOLANT_HEAT, CURVE_KNOTS, ENGINE_HEAT_CAPACITY, FLOW_TABLE, FLOW_TABLE_LEN, VE_CURVE,
+};
 use super::engine_objects::{EngineObjects, EngineOptions, EngineOwn, EngineState, EngineTuning, LoadDef};
 
 use crate::engine_driveline::store::EngineStore;
 use crate::engine_driveline::{engine, sim};
 use crate::math::le_or_unordered;
-use crate::ntweak::set_dirty;
+use crate::ntweak::DIRTY;
 use crate::physics_core::layout::{PHYSICS_GLOBAL, SIGNAL_MANAGER};
+use crate::spring_damper::store::DamperBlocks;
 use crate::spring_damper::{self, BlendTerms, UpdateTerms, WeightedValue};
+use crate::store::Raw;
 use crate::{fpu, ngp};
 
 /// `Sim8E20`'s cycle factor (0x73b6f4): 20.371832.
@@ -31,7 +37,7 @@ pub fn intake_entry_update<S: EngineStore>(
 ) -> f64 {
     let objects = EngineObjects::at(mem, this);
     let at = objects.state + 0x88 + 0x38 * x;
-    let key = engine::entry_key(mem.u32(objects.def + 0x108 + 0x40 * x), y);
+    let key = engine::entry_key(cylinder_phase(mem, objects.def, x), y);
     let mut extra = 0.0;
     if key < mem.u32(at) {
         let reset = exhaust_blend_at(mem, this, 0xff, at);
@@ -68,58 +74,57 @@ pub fn engine_step<S: EngineStore>(
     };
     let objects = EngineObjects::at(mem, this);
     let (d, s) = (objects.def, objects.state);
-    set_dirty(mem.mem_mut(), s + 0x228);
+    set_dirty(mem, s + 0x228);
     mem.set_u32(s + 0x234, mem.u32(s + 0x234).wrapping_add(1));
     mem.set_f32(s + 0x184, b);
     mem.set_f32(s + 0x188, mem.f32(s + 0x184) * 0.3 + mem.f32(s + 0x188) * 0.7);
     mem.set_u32(s + 0x30, mem.u32(this + 0x20));
     mem.set_u32(s + 0x2c, mem.u32(s + 0x188));
-    if mem.u32(d + 0x26f8) != 0 {
+    if turbo(mem, d) {
         turbo_energy_step(mem, this, a, tuning);
     }
     let (cycles, delta) = crank_tick(mem, this, a * b);
     mem.set_f32(this + 0x10, delta);
-    let count = mem.u32(d + 0x2698);
+    let count = cylinder_count(mem, d);
     b = 0.0;
     if cycles < 1 {
-        // The entries of the definition (stride 0x40) and of the state (stride 0x38), each the blend of its two rows.
+        // The cylinders' entries in the state (stride 0x38), each the blend of the exhaust rows below and at its key.
         let mut entry_sum = 0.0;
-        let (mut offset, mut at) = (0, 0);
-        for _ in 0..count {
-            let mut row_index = mem.u32(d + 0x108 + offset).wrapping_add(mem.u32(s + 0x17c)) & 0xff;
+        let mut at = 0;
+        for k in 0..count {
+            let mut row_index = cylinder_phase(mem, d, k).wrapping_add(mem.u32(s + 0x17c)) & 0xff;
             mem.set_u32(s + 0x88 + at, row_index);
             if row_index == 0 {
                 row_index = 1;
             }
-            let row = d + row_index * 0x20;
+            let (lower, upper) = (mem.exhaust_row(d, row_index - 1), mem.exhaust_row(d, row_index));
             let zero = mem.f32(s + at + 0x90) == 0.0;
             let upper_base = if zero {
-                mem.f32(row + 0x204) * mem.f32(s + at + 0x9c)
-                    + mem.f32(row + 0x200) * mem.f32(s + at + 0x98)
-                    + mem.f32(s + at + 0x94) * mem.f32(row + 0x1fc)
+                upper[2] * mem.f32(s + at + 0x9c)
+                    + upper[1] * mem.f32(s + at + 0x98)
+                    + mem.f32(s + at + 0x94) * upper[0]
             } else {
-                mem.f32(row + 0x208)
+                upper[3]
             };
             let lower_base = if zero {
-                mem.f32(row + 0x1e4) * mem.f32(s + at + 0x9c)
-                    + mem.f32(row + 0x1e0) * mem.f32(s + at + 0x98)
-                    + mem.f32(s + at + 0x94) * mem.f32(row + 0x1dc)
+                lower[2] * mem.f32(s + at + 0x9c)
+                    + lower[1] * mem.f32(s + at + 0x98)
+                    + mem.f32(s + at + 0x94) * lower[0]
             } else {
-                mem.f32(row + 0x1e8)
+                lower[3]
             };
             let (input7, input9) = (mem.f32(s + at + 0xa4), mem.f32(s + at + 0xac));
             let (input10, input11, input8) = (mem.f32(s + at + 0xb0), mem.f32(s + at + 0xb4), mem.f32(s + at + 0xa8));
-            entry_sum += (((mem.f32(row + 0x218) * input7 + upper_base) * input9
-                + mem.f32(row + 0x210) * input10
-                + mem.f32(row + 0x20c) * input11
-                + mem.f32(row + 0x214) * input8)
-                - ((mem.f32(row + 0x1f8) * input7 + lower_base) * input9
-                    + mem.f32(row + 0x1f0) * input10
-                    + mem.f32(row + 0x1ec) * input11
-                    + mem.f32(row + 0x1f4) * input8))
+            entry_sum += (((upper[7] * input7 + upper_base) * input9
+                + upper[5] * input10
+                + upper[4] * input11
+                + upper[6] * input8)
+                - ((lower[7] * input7 + lower_base) * input9
+                    + lower[5] * input10
+                    + lower[4] * input11
+                    + lower[6] * input8))
                 * CYCLE_FACTOR;
             b = entry_sum;
-            offset += 0x40;
             at += 0x38;
         }
     } else {
@@ -137,11 +142,11 @@ pub fn engine_step<S: EngineStore>(
     let sum = torque + b;
     let signed_sum = mem.f32(s + 0x184) * sum;
     let average = mem.f32(s + 0x210) * 0.95 + sum * 0.050_000_012;
-    set_dirty(mem.mem_mut(), s + 0x204);
+    set_dirty(mem, s + 0x204);
     mem.set_f32(s + 0x210, average);
     let scaled_sum = signed_sum * 0.050_000_012;
     let average = mem.f32(s + 0x220) * 0.95 + scaled_sum;
-    set_dirty(mem.mem_mut(), s + 0x214);
+    set_dirty(mem, s + 0x214);
     mem.set_f32(s + 0x220, average);
 
     let g = mem.u32(PHYSICS_GLOBAL);
@@ -168,6 +173,12 @@ pub fn engine_step<S: EngineStore>(
     sum
 }
 
+/// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `at`, through the store's words (the engine's typed state holds
+/// its dirty words).
+fn set_dirty<S: Raw>(mem: &mut S, at: u32) {
+    mem.set_u32(at + DIRTY, 1);
+}
+
 /// The magnitude as `Sim80D0` takes it (`if (f <= 0) f = 0 - f`).
 fn magnitude(v: f32) -> f32 {
     if v <= 0.0 {
@@ -183,12 +194,13 @@ fn magnitude(v: f32) -> f32 {
 pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning: &EngineTuning) -> u32 {
     let objects = EngineObjects::at(mem, this);
     let (d, s, o) = (objects.def, objects.state, objects.options);
+    let inlet = InletDef::load(mem, d);
     let air = tuning.air;
     let p = s + 0x88 + 0x38 * i;
     mem.set_u32(p, 0);
     mem.set_f32(p + 4, 0.0);
     pedal_cosine(mem, this);
-    if mem.u32(d + 0x26f8) == 0 {
+    if !inlet.turbo {
         Lane { dirty: 1, value: air.pressure }.store(mem, s + 0x1ac);
         Lane { dirty: 1, value: air.temperature }.store(mem, s + 0x19c);
         mem.set_f32(p + 0x28, air.pressure_115);
@@ -198,7 +210,7 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
                 scale: mem.f32(p + 0x18),
                 numerator: 0.0,
                 denominator: mem.f32(p + 0x24) * 4.75,
-                response: mem.f32(d + 0x2650),
+                response: inlet.cylinder_volume,
             };
             spring_damper::solve_numerator(&mut block, 287.0);
             // The original's four-word block is the same four words read as the blend terms.
@@ -208,9 +220,9 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
                 response: block.denominator,
                 scale: block.response,
             };
-            let mut target = EngineStore::load_blend_terms(mem, s + 0x70);
+            let mut target = DamperBlocks::load_blend_terms(mem, s + 0x70);
             spring_damper::combine(&mut target, source, 287.0);
-            EngineStore::store_blend_terms(mem, s + 0x70, target);
+            DamperBlocks::store_blend_terms(mem, s + 0x70, target);
             mem.set_f32(s + 0x1dc, block.numerator);
         }
         mem.set_f32(p + 0x28, mem.f32(s + 0x78) * 1.15);
@@ -222,23 +234,23 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
     mem.set_f32(p + 0x1c, 0.0);
 
     let rate = mem.f32(s + 0x184);
-    let eta = sim::curve_eta(&mem.curve_knots(d + 0x2244, 0x10), rate) as f32;
+    let eta = sim::curve_eta(&mem.curve_knots(d + VE_CURVE, CURVE_KNOTS), rate) as f32;
     let mut flow_lerp = 1.0;
     if 0.01 < magnitude(rate) && 0.001 < eta {
         let speed = magnitude(mem.f32(s + 0x188));
         // x87: the product and its root, stored.
         let root = fpu::round_x87(fpu::round_x87(f64::from(mem.f32(s + 0x1a8)) * 287.0).sqrt()) as f32;
-        let x = ((mem.f32(d + 0x26b8) / speed) * mem.f32(d + 0x26d8) * mem.f32(this + 0x30) * root)
-            / (mem.f32(d + 0x2650) * eta);
-        flow_lerp = sim::table_lerp(&mem.f32_table(d + 0x2654, 0x11), x, 0.0, 2.0) as f32;
+        let x = ((inlet.inlet_flow_coefficient / speed) * inlet.inlet_area * mem.f32(this + 0x30) * root)
+            / (inlet.cylinder_volume * eta);
+        flow_lerp = sim::table_lerp(&mem.f32_table(d + FLOW_TABLE, FLOW_TABLE_LEN), x, 0.0, 2.0) as f32;
     }
     let entry_flow = mem.f32(s + 0x1b8) * (flow_lerp * eta);
     mem.set_f32(p + 0x24, entry_flow);
     Lane { dirty: 1, value: mem.f32(s + 0x1b8) * flow_lerp }.store(mem, s + 0x1cc);
 
     let x87 = fpu::round_x87;
-    let damped = x87(spring_damper::curve(flow_lerp * eta) * f64::from(mem.f32(d + 0x2650))) as f32;
-    let damped = if mem.u32(d + 0x26f8) == 0 {
+    let damped = x87(spring_damper::curve(flow_lerp * eta) * f64::from(inlet.cylinder_volume)) as f32;
+    let damped = if !inlet.turbo {
         damped * air.density
     } else {
         let pf = s + 0x60;
@@ -250,7 +262,7 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
     let torque = if damped == 0.0 {
         0.0
     } else {
-        let q = (mem.f32(d + 0x2650) * entry_flow) / (damped * 287.0);
+        let q = (inlet.cylinder_volume * entry_flow) / (damped * 287.0);
         if q < 0.0 {
             0.0
         } else if 800.0 < q {
@@ -321,10 +333,10 @@ pub fn intake_state_reset<S: EngineStore>(mem: &mut S, this: u32, i: u32, tuning
 pub fn smooth_damper<S: EngineStore>(mem: &mut S, this: u32, abc: [f32; 3], table: u32, dt: f32, block_at: u32) -> f32 {
     let objects = EngineObjects::at(mem, this);
     let table = mem.blend_table(table);
-    let mut block = EngineStore::load_blend_terms(mem, block_at);
+    let mut block = DamperBlocks::load_blend_terms(mem, block_at);
     let mut state = EngineState::load(mem, objects.state);
     let g = engine::smooth_damper(&table, abc[0], abc[1], abc[2], dt, &mut block, &mut state.smoothed);
-    EngineStore::store_blend_terms(mem, block_at, block);
+    DamperBlocks::store_blend_terms(mem, block_at, block);
     state.store(mem, objects.state);
     g
 }
@@ -343,10 +355,10 @@ pub fn solve_damper<S: EngineStore>(
 ) -> f32 {
     let objects = EngineObjects::at(mem, this);
     let table = mem.blend_table(table);
-    let mut block = EngineStore::load_relaxation(mem, block_at);
+    let mut block = DamperBlocks::load_relaxation(mem, block_at);
     let mut state = EngineState::load(mem, objects.state);
     let v = engine::solve_damper(&table, ab[0], ab[1], dt, &mut block, &mut state.solved, tuning.air.pressure);
-    EngineStore::store_relaxation(mem, block_at, block);
+    DamperBlocks::store_relaxation(mem, block_at, block);
     state.store(mem, objects.state);
     v
 }
@@ -361,16 +373,17 @@ pub fn turbo_energy_step<S: EngineStore>(mem: &mut S, this: u32, x: f32, tuning:
     let pressure = air.pressure;
     let objects = EngineObjects::at(mem, this);
     let (d, s, o) = (objects.def, objects.state, objects.options);
-    let mut energy = mem.f32(d + 0x18) * mem.f32(s + 0x5c) * mem.f32(s + 0x5c) * 0.5;
-    let onset = mem.f32(d + 0x48);
+    let turbo = TurboDef::load(mem, d);
+    let mut energy = turbo.inertia * mem.f32(s + 0x5c) * mem.f32(s + 0x5c) * 0.5;
+    let onset = turbo.min_blow_off_pressure;
     let excess = mem.f32(s + 0x68) - mem.f32(s + 0x1d8);
     let (excess_ratio, excess_flow) = if excess <= onset || mem.f32(s + 0x68) <= pressure {
         (0.0, 0.0)
     } else {
-        let excess_ratio = if excess <= mem.f32(d + 0x58) {
-            ((excess - onset) * mem.f32(d + 0x68)) / (mem.f32(d + 0x58) - onset)
+        let excess_ratio = if excess <= turbo.max_blow_off_pressure {
+            ((excess - onset) * turbo.blow_off_coefficient) / (turbo.max_blow_off_pressure - onset)
         } else {
-            mem.f32(d + 0x68)
+            turbo.blow_off_coefficient
         };
         (excess_ratio, (mem.f32(s + 0x68) - pressure) * excess_ratio * 0.05)
     };
@@ -378,7 +391,7 @@ pub fn turbo_energy_step<S: EngineStore>(mem: &mut S, this: u32, x: f32, tuning:
     let gate_flow = if gate == 0.0 || mem.f32(s + 0x68) <= pressure {
         0.0
     } else {
-        mem.f32(d + 0x2718) * gate * (mem.f32(s + 0x68) - pressure) * 0.05
+        turbo.hosing_loss * gate * (mem.f32(s + 0x68) - pressure) * 0.05
     };
     // NGP's `DamperSolve` wrapper (0x10060230) solves against the air pressure instead of the pushed 101300.
     spring_damper::layout::solve(mem, s + 0x60, (excess_flow + gate_flow) * x, pressure, 287.0);
@@ -387,7 +400,7 @@ pub fn turbo_energy_step<S: EngineStore>(mem: &mut S, this: u32, x: f32, tuning:
     mem.set_f32(s + 0x44, excess_flow);
     mem.set_f32(s + 0x48, excess_ratio);
 
-    let eta = sim::curve_eta(&mem.curve_knots(d + 0x2444, 0x10), mem.f32(s + 0x184));
+    let eta = sim::curve_eta(&mem.curve_knots(d + BACK_PRESSURE_CURVE, CURVE_KNOTS), mem.f32(s + 0x184));
     let band_bottom = eta as f32 - tuning.band[0];
     let band_top = fpu::round_x87(eta + f64::from(tuning.band[1])) as f32;
     // NGP's code patch at 0x517ec6 reads the band's level from `+0x78` (1.02: `+0x68`).
@@ -396,23 +409,24 @@ pub fn turbo_energy_step<S: EngineStore>(mem: &mut S, this: u32, x: f32, tuning:
         0.0
     } else {
         let ratio = if level <= band_top {
-            ((level - band_bottom) * mem.f32(d + 0x98)) / (band_top - band_bottom)
+            ((level - band_bottom) * turbo.waste_gate_coefficient) / (band_top - band_bottom)
         } else {
-            mem.f32(d + 0x98)
+            turbo.waste_gate_coefficient
         };
         (mem.f32(s + 0x78) - pressure) * ratio * 0.05
     };
     spring_damper::layout::solve(mem, s + 0x70, band_flow * x, pressure, 287.0);
 
     let rate = mem.f32(s + 0x5c);
-    let smoothed =
-        smooth_damper(mem, this, [rate, mem.f32(s + 0x68) * air.inv_pressure, 293.140_01], d + 0x9c, x, s + 0x60);
-    let solved = solve_damper(mem, this, [rate, mem.f32(s + 0x78) * air.inv_pressure], d + 0xa4, x, s + 0x70, tuning);
+    let boost = [rate, mem.f32(s + 0x68) * air.inv_pressure, 293.140_01];
+    let smoothed = smooth_damper(mem, this, boost, d + BOOST_TABLE, x, s + 0x60);
+    let band = [rate, mem.f32(s + 0x78) * air.inv_pressure];
+    let solved = solve_damper(mem, this, band, d + BAND_TABLE, x, s + 0x70, tuning);
     let rate = mem.f32(s + 0x5c);
-    energy += (solved + smoothed) - (mem.f32(d + 0xc8) * rate * rate + mem.f32(d + 0xb8) * rate) * x;
+    energy += (solved + smoothed) - (turbo.square_friction * rate * rate + turbo.linear_friction * rate) * x;
     if 0.0 < energy {
         // x87: the quotient and the root round to the precision control (53 bits under NGP).
-        let half = fpu::round_x87(f64::from(energy) / f64::from(mem.f32(d + 0x18)));
+        let half = fpu::round_x87(f64::from(energy) / f64::from(turbo.inertia));
         let root = fpu::round_x87((half + half).sqrt()) as f32;
         let root = if root < 0.0 {
             0.0
@@ -436,16 +450,17 @@ pub fn turbo_energy_step<S: EngineStore>(mem: &mut S, this: u32, x: f32, tuning:
 /// `eax` the original leaves: the options block when the gate is off, else the state.
 pub fn overheat_step<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     let objects = EngineObjects::at(mem, this);
-    let (d, s, o) = (objects.def, objects.state, objects.options);
+    let (s, o) = (objects.state, objects.options);
     if mem.u32(o + 0x48) == 0 {
         return o;
     }
+    let cooling = HeatDef::load(mem, objects.def);
     let slot_a = mem.f32(s + 0x1c);
-    let mut t = mem.f32(d + 0x2784) * x;
+    let mut t = cooling.water_pump_flow * x;
     if t > slot_a {
         t = slot_a;
     }
-    let max = mem.f32(d + 0x2764);
+    let max = cooling.coolant_mass_max;
     if t > max {
         t = max;
     }
@@ -462,8 +477,8 @@ pub fn overheat_step<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     };
     mem.set_f32(s + 0x24, mem.f32(s + 0x24) - moved);
     let level = mem.f32(o + 0x54);
-    let a = mem.f32(d + 0x27ac);
-    let q = (mem.f32(d + 0x27bc) - a) * (1.0 - level) + a;
+    let a = cooling.radiator_mass_min;
+    let q = (cooling.radiator_mass_max - a) * (1.0 - level) + a;
     if level == 0.0 || !(mem.f32(s + 0x1c) > q) {
         mem.set_f32(s + 0x40, 0.0);
     } else {
@@ -474,9 +489,9 @@ pub fn overheat_step<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     merge_into(mem, WeightedValue { weight: t, value: m1_value }, s + 0x24);
     merge_into(mem, WeightedValue { weight: moved, value: m2_value }, s + 0x1c);
     mem.set_f32(s + 0x24, clamp_keep_nan(mem.f32(s + 0x24), max));
-    mem.set_f32(s + 0x1c, clamp_keep_nan(mem.f32(s + 0x1c), mem.f32(d + 0x279c)));
+    mem.set_f32(s + 0x1c, clamp_keep_nan(mem.f32(s + 0x1c), cooling.radiator_heat_mass_max));
     let total = mem.f32(this + 0x58) + t;
-    set_dirty(mem.mem_mut(), this + 0x4c);
+    set_dirty(mem, this + 0x4c);
     mem.set_f32(this + 0x58, total);
     s
 }
@@ -535,36 +550,38 @@ pub fn heat_step<S: EngineStore>(
 ) -> u32 {
     let objects = EngineObjects::at(mem, this);
     let (d, s) = (objects.def, objects.state);
+    let cooling = HeatDef::load(mem, d);
     let x87 = fpu::round_x87;
     let mut engine_heat = 0.0;
     let mut radiator_heat = 0.0;
     if 0.001 < mem.f32(s + 0x24) {
-        let g =
-            spring_damper::heat_flow(mem.f32(s + 0x23c), mem.f32(s + 0x28), mem.f32(d + 0x2734), mem.f32(d + 0x2744));
+        let (transfer, area) = (cooling.heat_transfer, cooling.coolant_duct_area);
+        let g = spring_damper::heat_flow(mem.f32(s + 0x23c), mem.f32(s + 0x28), transfer, area);
         engine_heat = x87(g * x as f64) as f32;
-        spring_damper::layout::accumulate_heat_scaled(mem, d + 0x2748, engine_heat, s + 0x24);
+        spring_damper::layout::accumulate_heat_scaled(mem, d + COOLANT_HEAT, engine_heat, s + 0x24);
     }
-    spring_damper::layout::accumulate_heat(mem, d + 0x271c, mem.f32(s + 0x238) - engine_heat, s + 0x23c);
+    let heat = mem.f32(s + 0x238) - engine_heat;
+    spring_damper::layout::accumulate_heat(mem, d + ENGINE_HEAT_CAPACITY, heat, s + 0x23c);
     if 0.001 < mem.f32(s + 0x1c) {
         let car = mem.u32(s + 0xc);
         let start = if car.wrapping_add(0x1b0) == 0 { 0 } else { car + 0x1c0 };
         let u = host.walk_object(car);
         let v = host.transform_point(start, u);
-        let airflow = engine::lateral_term([mem.f32(d + 0x2804), mem.f32(d + 0x2808), mem.f32(d + 0x2800)], v);
-        let travel = engine::travel_fraction(mem.f32(s + 0x1c), mem.f32(d + 0x27ac), mem.f32(d + 0x27bc));
+        let airflow = engine::lateral_term(cooling.airflow_axis, v);
+        let travel = engine::travel_fraction(mem.f32(s + 0x1c), cooling.radiator_mass_min, cooling.radiator_mass_max);
         // NGP retargets this call (0x518a32) to its `DamperStep1` with the air temperature (0x1004d2f0).
-        let (a, c, k) =
-            (mem.f32(s + 0x20), mem.f32(d + 0x27ec) * airflow + mem.f32(d + 0x27dc), travel * mem.f32(d + 0x27cc));
+        let cooling_rate = cooling.velocity_air_cooling * airflow + cooling.base_air_cooling;
+        let (a, c, k) = (mem.f32(s + 0x20), cooling_rate, travel * cooling.radiator_area);
         let g = f64::from(ngp::heat::heat_flow_to_air(a, 293.140_01, c, k, tuning.air.temperature));
         radiator_heat = x87(g * x as f64) as f32;
-        spring_damper::layout::accumulate_heat_scaled(mem, d + 0x2748, -radiator_heat, s + 0x1c);
+        spring_damper::layout::accumulate_heat_scaled(mem, d + COOLANT_HEAT, -radiator_heat, s + 0x1c);
     }
-    if mem.f32(d + 0x2774) < mem.f32(s + 0x28) {
+    if cooling.thermostat_opening < mem.f32(s + 0x28) {
         overheat_step(mem, this, x);
     }
-    let clamped_a = spring_damper::layout::clamp_value(mem, d + 0x2748, s + 0x1c);
+    let clamped_a = spring_damper::layout::clamp_value(mem, d + COOLANT_HEAT, s + 0x1c);
     let inv = 1.0 / x;
-    let clamped_b = spring_damper::layout::clamp_value(mem, d + 0x2748, s + 0x24);
+    let clamped_b = spring_damper::layout::clamp_value(mem, d + COOLANT_HEAT, s + 0x24);
     let sum = x87(clamped_b as f64 + clamped_a as f64);
     mem.set_f32(this + 0x198, x87(sum * inv as f64) as f32);
     mem.set_f32(this + 0x68, inv * mem.f32(s + 0x238));
@@ -584,7 +601,7 @@ pub fn fuel_air_terms<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     let scaled_abs = mem.f32(o + 0x5c) * abs_term;
     compliance(mem, this);
     let p = mem.f32(s + 0x26c) * scaled_abs;
-    set_dirty(mem.mem_mut(), s + 0x250);
+    set_dirty(mem, s + 0x250);
     mem.set_f32(s + 0x25c, p);
     mem.set_f32(s + 0xbc, p / mem.f32(s + 0xb8));
     let sum1 = mem.f32(s + 0xbc) * mem.f32(o + 0xc) + (abs_term - one_minus * scaled_abs);
@@ -597,13 +614,13 @@ pub fn fuel_air_terms<S: EngineStore>(mem: &mut S, this: u32, x: f32) -> u32 {
     let share4 = p / mem.f32(s + 0x160);
     mem.set_f32(s + 0x164, share4);
     let mut total = share4 * mem.f32(o + 0x3c) + sum3;
-    if mem.u32(d + 0x26f8) != 0 {
+    if turbo(mem, d) {
         let extra_share = p / mem.f32(s + 0x80);
         mem.set_f32(s + 0x84, extra_share);
         total += extra_share * mem.f32(o + 0x70);
     }
     if 0.0 < total {
-        let v = mem.f32(o + 0x58) - (total * x) / mem.f32(d + 0x281c);
+        let v = mem.f32(o + 0x58) - (total * x) / oil_capacity(mem, d);
         mem.set_f32(o + 0x58, clamp_keep_nan(v, 1.0));
     }
     mem.set_f32(this + 0x78, abs_term);

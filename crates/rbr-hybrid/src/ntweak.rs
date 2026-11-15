@@ -16,10 +16,13 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("ntweak", addr, name, run)
 }
 
+/// `NTweak::CBase::Unk44`, an empty hook (`ret`): the state slot 0x44 the name walk calls (`crate::trivial`).
+pub const CBASE_UNK44: u32 = 0x52f480;
+
 pub static BINDINGS: [Binding; 6] = [
     bind(0x52f450, "NTweak::CBase::SetDirty", set_dirty),
     bind(0x52f090, "NTweak::CBase::CBase", construct_base),
-    bind(0x52f480, "NTweak::CBase::Unk44", crate::entities::empty_hook_run),
+    bind(CBASE_UNK44, "NTweak::CBase::Unk44", crate::entities::empty_hook_run),
     bind(0x52f0c0, "NTweak::CBase::Parse", parse),
     bind(0x52ec80, "NTweak::CTokenCursor::Tokenize", tokenize),
     bind(0x473a70, "E11_StackAlloc", stack_alloc),

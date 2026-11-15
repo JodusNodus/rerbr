@@ -5,11 +5,12 @@ use rbr_physics::physics_core::layout::{self as core_layout, Filing};
 use rbr_physics::rigid_body::emit::BodyEvent;
 use rbr_physics::rigid_body::host::{CellHost, EntityScratchTailHost, HostUnavailable, StateHost};
 use rbr_physics::rigid_body::layout::{self, Body};
+use rbr_physics::rigid_body::store::RigidStore;
 
 use super::pose::register_cell_at;
 use super::{
-    unavailable, Callees, BODY_EVENT, BODY_EVENT_EMIT, ENTITY_VF158, ENTITY_VF48, SCRATCH_BELOW_ESP, SCRATCH_RESET,
-    SIGNALS,
+    on_solids, solid_word, unavailable, with_solids, Callees, BODY_EVENT, BODY_EVENT_EMIT, ENTITY_VF158, ENTITY_VF48,
+    SCRATCH_BELOW_ESP, SCRATCH_RESET, SIGNALS,
 };
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -17,11 +18,13 @@ use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 /// the gate is positive. The original's result is no value.
 pub(super) fn vf17x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut callees = Callees { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
-    layout::refresh_state_rotation(&mut ctx.mem, r.ecx, &mut callees).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::refresh_state_rotation(s, r.ecx, &mut callees)).map_err(unavailable)?;
     Ok(Return::void(0, 0))
 }
 
-/// The calls the window steps make outside the body (`CellHost`, `StateHost`), as the original makes them.
+/// The calls the window steps make outside the body (`CellHost`, `StateHost`), as the original makes them. The state
+/// refresh stores the body on the solids' store before slot 16 (`Vf16Helper`, or the wheel's `M3B5B0`), which reads it
+/// there.
 struct Window<'a> {
     mem: Mem,
     host: &'a dyn Host,
@@ -37,7 +40,8 @@ impl CellHost for Window<'_> {
 
 impl StateHost for Window<'_> {
     fn refresh_state(&mut self, body: &Body) {
-        body.store(&mut self.mem, self.this);
+        let this = self.this;
+        with_solids(self.host, &mut self.mem, |s| s.store_body(this, body));
         let slot16 = self.mem.u32(self.mem.u32(self.this) + 4 * 16);
         self.host.call(slot16, self.this, &[]);
     }
@@ -47,7 +51,7 @@ impl StateHost for Window<'_> {
 pub(super) fn back_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Window { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx };
     let a = f32::from_bits(r.stack[0]);
-    layout::solid_back_step(&mut ctx.mem, &mut calls, r.ecx, a).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::solid_back_step(s, &mut calls, r.ecx, a)).map_err(unavailable)?;
     Ok(Return::void(0, 4))
 }
 
@@ -55,7 +59,7 @@ pub(super) fn back_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn advance_rest(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Window { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx };
     let a = f32::from_bits(r.stack[0]);
-    layout::solid_advance_rest(&mut ctx.mem, &mut calls, r.ecx, a).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::solid_advance_rest(s, &mut calls, r.ecx, a)).map_err(unavailable)?;
     Ok(Return::void(0, 4))
 }
 
@@ -63,14 +67,14 @@ pub(super) fn advance_rest(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// called at the original's depth), then the window's start. eax is the last copy's destination (+0x2e0).
 pub(super) fn window_start(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     ctx.host.call_at(r.esp - 0x10, ENTITY_VF48, r.ecx, &[]);
-    layout::solid_window_start(&mut ctx.mem, r.ecx);
+    on_solids(ctx, |s| layout::solid_window_start(s, r.ecx));
     Ok(Return::void(r.ecx + 0x2e0, 0))
 }
 
 /// `CSolid::E43Vf90`'s and `E43Vf94`'s calls (`layout::RestHost`): the body's slot 18 (E43Vf90 only) and the event's emit
 /// through the host, and `CEntity::E43Vf90`'s (`E43Vf94`'s) filing from the solid's own slots. `frame` is the original's
 /// frame (`(esp - 4) & !0xf`, less 0x64): the calls enter 0x10 below it (0x14 for the emit, after the event's pointer),
-/// and the event is at +0x14.
+/// and the event is at +0x14. The filing reads the solid's words on the solids' store.
 struct Wake<'a> {
     host: &'a dyn Host,
     frame: u32,
@@ -79,7 +83,7 @@ struct Wake<'a> {
 
 impl core_layout::FilingHost for Wake<'_> {
     fn filing(&mut self, mem: &Mem, object: u32) -> Result<Filing, HostUnavailable> {
-        layout::solid_filing(mem, object)
+        layout::solid_filing_with(mem, object, |at| solid_word(self.host, mem, at))
     }
 }
 
@@ -127,9 +131,9 @@ impl layout::VerySoftHost for Wake<'_> {
 }
 
 /// Declines a body with no parent whose filing slots are not `CSolid`'s (`CEntity::E43Vf90` and `E43Vf94` file it again),
-/// before any write.
+/// before any write. The slots are the image's (the words are not read).
 fn check_filing(ctx: &Ctx, this: u32) -> Result<(), Decline> {
-    if Body::load(&ctx.mem, this).parent == 0 && layout::solid_filing(&ctx.mem, this).is_err() {
+    if ctx.mem.u32(this + layout::PARENT) == 0 && layout::solid_filing_with(&ctx.mem, this, |_| 0).is_err() {
         return Err(Decline::Unsupported("the body's filing slots are not CSolid's"));
     }
     Ok(())
@@ -140,7 +144,7 @@ pub(super) fn e43vf90(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let this = r.ecx;
     check_filing(ctx, this)?;
     let mut wake = Wake { host: ctx.host, frame: aligned_frame(r.esp) - 0x64, eax: 0 };
-    layout::solid_wake(&mut ctx.mem, &mut wake, this).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::solid_wake(s, &mut wake, this)).map_err(unavailable)?;
     Ok(Return::void(wake.eax, 0))
 }
 
@@ -150,7 +154,7 @@ pub(super) fn e43vf94(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let this = r.ecx;
     check_filing(ctx, this)?;
     let mut sleep = Wake { host: ctx.host, frame: aligned_frame(r.esp) - 0x64, eax: 0 };
-    layout::solid_sleep(&mut ctx.mem, &mut sleep, this).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::solid_sleep(s, &mut sleep, this)).map_err(unavailable)?;
     Ok(Return::void(sleep.eax, 0))
 }
 
@@ -160,7 +164,7 @@ pub(super) fn e43vf158(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     check_filing(ctx, this)?;
     let frame = ((r.esp - 4) & !0xF) - 0x64;
     let mut soft = Wake { host: ctx.host, frame, eax: 0 };
-    let eax = layout::solid_soften(&mut ctx.mem, &mut soft, this, frame).map_err(unavailable)?;
+    let eax = on_solids(ctx, |s| layout::solid_soften(s, &mut soft, this, frame)).map_err(unavailable)?;
     Ok(Return::void(eax, 0))
 }
 
@@ -177,7 +181,7 @@ impl EntityScratchTailHost for EntityVf54<'_> {
     fn entity_scratch_tail(&mut self) -> Result<(), HostUnavailable> {
         let object = self.this + 0x5c;
         let slot1 = layout::vtable_target(&self.mem, object, 4);
-        self.host.call_at(self.sp, slot1, object, &[]);
+        crate::call_or_trivial(self.host, self.sp, slot1, object, &[]);
         Ok(())
     }
 }
@@ -191,7 +195,7 @@ pub(super) fn scratch_reset_after_entity(ctx: &mut Ctx, r: &Regs) -> Result<Retu
         return Err(Decline::Unsupported("the scratch's slot 1 is not E47SolidScratch::Vf04"));
     }
     let mut entity = EntityVf54 { host: ctx.host, mem: ctx.mem.clone(), this, sp: r.esp - 8 };
-    layout::scratch_reset_after_entity(&mut ctx.mem, this, &mut entity).map_err(unavailable)?;
+    on_solids(ctx, |s| layout::scratch_reset_after_entity(s, this, &mut entity)).map_err(unavailable)?;
     Ok(Return::void(this + 0x280 + 0x120, 0))
 }
 
@@ -205,11 +209,11 @@ pub(super) fn vf16_helper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// The result is the eax the original returns.
 pub(crate) fn vf16(ctx: &mut Ctx, body: u32, scratch: u32) -> Result<u32, HostUnavailable> {
     let mut callees = Callees { mem: ctx.mem.clone(), host: ctx.host, scratch };
-    layout::refresh_and_reset(&mut ctx.mem, body, &mut callees)
+    on_solids(ctx, |s| layout::refresh_and_reset(s, body, &mut callees))
 }
 
 /// `E47SolidState::Vf17x` (0x529a50) on the state, as the port runs it (its `Mul` as in `vf16`).
 pub(crate) fn vf17x_state(ctx: &mut Ctx, state: u32, scratch: u32) -> Result<(), HostUnavailable> {
     let mut callees = Callees { mem: ctx.mem.clone(), host: ctx.host, scratch };
-    layout::refresh_state_rotation(&mut ctx.mem, state, &mut callees)
+    on_solids(ctx, |s| layout::refresh_state_rotation(s, state, &mut callees))
 }

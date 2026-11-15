@@ -11,7 +11,6 @@ use crate::physics_core::layout::SIGNAL_MANAGER;
 use crate::rigid_body::emit::EmitHost;
 use crate::rigid_body::host::{HostUnavailable, SolidCtorHost};
 use crate::rigid_body::layout::Body;
-use crate::tyre::store::TyreStore;
 use crate::{fpu, ntweak, rigid_body, spring_damper, tyre};
 
 /// `CDef::Unk4C` (0x538b40, vtable slot 19, no arguments): the definition's class name, "DefWheel".
@@ -85,12 +84,12 @@ pub fn refresh_travel<S: WheelStore>(mem: &mut S, this: u32) -> u32 {
 }
 
 /// `E51Wheel::UnkA860` (0x53a860, thiscall, stack words a, b, c; ret 0xc): `a` is the damage record (`this+0x7f0`), `b`
-/// is `SetUnk10` on the strut (0x52da40, `set_rebound_damping`), and `c` is the wear table on the tyre scratch
-/// (`CScratch::Set414`, 0x532490, `store_wear_table`). The asm's order is the port's.
+/// is `SetUnk10` on the strut (0x52da40, `set_fade_pointer`: the strut's fade pair), and `c` is the wear table on the
+/// tyre scratch (`CScratch::Set414`, 0x532490, `store_wear_table`). The asm's order is the port's.
 pub fn tyre_tail_setup(mem: &mut Mem, this: u32, a: u32, b: u32, c: u32) {
     mem.set_u32(this + DAMAGE, a);
-    spring_damper::layout::set_rebound_damping(mem, this + STRUT, b);
-    mem.store_wear_table(this + TYRE_SCRATCH, c);
+    spring_damper::layout::set_fade_pointer(mem, this + STRUT, b);
+    tyre::layout::store_wear_table(mem, this + TYRE_SCRATCH, c);
 }
 
 /// The calls `CWheel::Vf28` (0x53f230) makes that have an effect. Each is the original callee at its address, run at its

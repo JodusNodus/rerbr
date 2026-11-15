@@ -1,5 +1,6 @@
 //! The entities' small virtual slots: `CEntity`, `CDummyObject`, `CGround`, the exclusion test and the limit update.
 
+use crate::stage::on_stage;
 use rbr_physics::entities::dummy;
 use rbr_physics::entities::exclusion::{exclusion_test, ParentTest};
 use rbr_physics::entities::ground;
@@ -13,7 +14,7 @@ use rbr_physics::mem::Mem;
 
 use super::{E90_BUILD, EXCLUSION_TEST, FETCH_X};
 use crate::collision::E01_VEC4_COPY_FROM;
-use crate::vcu::SET_DIRTY;
+use crate::rigid_body::on_solids;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 fn entity_echo(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -115,7 +116,7 @@ struct DummyCallsAt<'a> {
 
 impl DummyCalls for DummyCallsAt<'_> {
     fn fetch_x(&mut self, sp: u32, this: u32, out: u32, arg: u32) {
-        self.host.call_at(sp, FETCH_X, this, &[out, arg]);
+        crate::entities::call_op(self.host, sp, FETCH_X, this, &[out, arg]);
     }
 
     fn group_on_hit(&mut self, sp: u32, group: u32) {
@@ -228,7 +229,7 @@ struct ProbeCallsAt<'a> {
 
 impl ground::ProbeCalls for ProbeCallsAt<'_> {
     fn transform(&mut self, this: u32, out: u32, arg: u32) -> u32 {
-        self.host.call_at(self.frame.fetch_sp, FETCH_X, this, &[out, arg]).eax
+        crate::entities::call_op(self.host, self.frame.fetch_sp, FETCH_X, this, &[out, arg]).eax
     }
 
     fn query(&mut self, host: u32, first: u32, second: u32, out: u32) -> u32 {
@@ -251,6 +252,7 @@ const LIMIT_FLAG_CALL: u32 = 12;
 
 /// The limit update's call on the limit object (0x52f450).
 struct FlagCall<'a> {
+    mem: Mem,
     host: &'a dyn Host,
     sp: u32,
     object: u32,
@@ -258,15 +260,16 @@ struct FlagCall<'a> {
 
 impl hinge_stops::Calls for FlagCall<'_> {
     fn mark_dirty(&mut self) {
-        self.host.call_at(self.sp, SET_DIRTY, self.object, &[]);
+        super::hinge::set_dirty(self.host, &mut self.mem, self.sp, self.object);
     }
 }
 
 /// thiscall: `CEntity` 0x51f280, the limit update (see `rbr_physics::entities::hinge_stops`). Pops nothing.
 pub(super) fn limit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let host = ctx.host;
-    let mut flag = FlagCall { host, sp: r.esp - LIMIT_FLAG_CALL, object: layout::limit_object(r.ecx) };
-    let eax = layout::limit_update_at(&mut ctx.mem, r.ecx, &mut flag);
+    let mut flag =
+        FlagCall { mem: ctx.mem.clone(), host, sp: r.esp - LIMIT_FLAG_CALL, object: layout::limit_object(r.ecx) };
+    let eax = on_solids(ctx, |s| layout::limit_update_at(s, r.ecx, &mut flag));
     Ok(Return::void(eax, 0))
 }
 
@@ -274,7 +277,8 @@ pub(super) fn limit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn sample_indexed_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::ngp::only()?;
     let [index, f, b, ..] = r.stack;
-    let found = layout::sample_indexed(&ctx.mem, r.ecx, index as u8, f32::from_bits(f), f32::from_bits(b));
+    let (f, b) = (f32::from_bits(f), f32::from_bits(b));
+    let found = on_stage(ctx.host, &ctx.mem, |stage| layout::sample_indexed(stage, r.ecx, index as u8, f, b));
     let eax = match found {
         layout::Indexed::Texel(texel) => texel,
         layout::Indexed::NoTable => r.eax & !0xff,
@@ -285,7 +289,7 @@ pub(super) fn sample_indexed_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
 
 /// thiscall, no stack arguments: `CSolid::E43ClearAcc` (0x529e60), the two accumulators cleared.
 pub(super) fn clear_acc_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.clear_accumulators(r.ecx), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::clear_solid_accumulators(s, r.ecx)), 0))
 }
 
 /// thiscall, no stack arguments: `CEntity::E43_InitBD0` (0x519bd0), the walker marks.

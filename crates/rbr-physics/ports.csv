@@ -760,9 +760,9 @@ addr,module,rust_item,test,status
 0x52d710,spring_damper/layout.rs,spring_damper::layout::setup_options_dictionary,spring_damper_vectors::setup_options_dictionary_matches,checked
 0x52d730,spring_damper/layout.rs,spring_damper::layout::definition_dictionary,spring_damper_vectors::definition_dictionary_matches,checked
 0x52d750,spring_damper/layout.rs,spring_damper::layout::construct_definition,spring_damper_vectors::definition_constructor_matches,checked
-0x52d960,spring_damper/layout.rs,spring_damper::layout::clear_unsigned_value,spring_damper_vectors::clear_unsigned_value_matches,checked
+0x52d960,ntweak/layout/mod.rs,ntweak::layout::clear_unsigned_value,spring_damper_vectors::clear_unsigned_value_matches,checked
 0x52d9e0,spring_damper/layout.rs,spring_damper::layout::setup_dictionary,spring_damper_vectors::setup_dictionary_matches,checked
-0x52da40,spring_damper/layout.rs,spring_damper::layout::set_rebound_damping,spring_damper_vectors::set_rebound_damping_matches,checked
+0x52da40,spring_damper/layout.rs,spring_damper::layout::set_fade_pointer,spring_damper_vectors::set_fade_pointer_matches,checked
 0x52da50,spring_damper/layout.rs,spring_damper::layout::construct_state,spring_damper_vectors::state_constructor_matches,checked
 0x52db10,tyre/layout/kernels.rs,tyre::layout::kernels::load_name_object,tyre_vectors::name_object_matches_original_calls,checked
 0x52dbd0,spring_damper/layout.rs,spring_damper::layout::apply_setup,spring_damper_vectors::copy_setup_to_definition_matches,checked
@@ -845,7 +845,7 @@ addr,module,rust_item,test,status
 0x5352a0,tyre/grip.rs,tyre::grip::limit_sticking,tyre_vectors::limit_sticking_matches_original_calls,checked
 0x535310,tyre/patch_forces.rs,tyre::patch_forces::patch_forces,-,partial
 0x535890,tyre/layout/kernels.rs,tyre::layout::kernels::emit_noise,wheel_vectors::emit_noise_matches_original_calls,checked
-0x5358c0,tyre/layout/kernels.rs,tyre::layout::kernels::store_relax_count,-,partial
+0x5358c0,tyre/layout/entries.rs,tyre::layout::entries::relax_and_count,-,partial
 0x5358f0,tyre/contact_patch.rs,tyre::contact_patch::contact_patch,tyre_vectors::contact_patch_matches_original_calls,checked
 0x535d60,tyre/sliding.rs,tyre::sliding::solve_sliding,-,partial
 0x5360c0,tyre/step.rs,tyre::step::step,-,partial

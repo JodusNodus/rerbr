@@ -4,14 +4,15 @@
 use super::fields::{
     BLEND_OPS, DAMAGE_SECTORS_A, DAMAGE_SECTORS_B, DEF, DEF_AXIS_INCLINATION, DEF_INCLINED_AXLE, DEF_MATERIALS,
     DEF_PLATFORM_HEIGHT, DEF_PLATFORM_HEIGHT_HEADER, DEF_STEERING_ROD_LENGTH_HEADER, DEF_STRUT_DIM_Z_KEY,
-    DEF_STRUT_DIM_Z_TWEAK, DEF_TOP_MOUNT_POSITION, LAST_TAG_1, LAST_TAG_2, LAST_WEIGHT, SECTOR_VALUE_A, SECTOR_VALUE_B,
-    SETUP_AXIS_INCLINATION, SETUP_PLATFORM_HEIGHT, SETUP_PLATFORM_HEIGHT_HEADER, SETUP_STEERING_ROD_LENGTH,
-    SETUP_STEERING_ROD_LENGTH_HEADER, SETUP_TOP_MOUNT, SETUP_TOP_MOUNT_POSITION, STATE, STRUT, TYRE_SCRATCH,
+    DEF_STRUT_DIM_Z_TWEAK, DEF_TOP_MOUNT_POSITION, LAST_TAG_1, LAST_TAG_2, LAST_WEIGHT, SETUP_AXIS_INCLINATION,
+    SETUP_PLATFORM_HEIGHT, SETUP_PLATFORM_HEIGHT_HEADER, SETUP_STEERING_ROD_LENGTH, SETUP_STEERING_ROD_LENGTH_HEADER,
+    SETUP_TOP_MOUNT, SETUP_TOP_MOUNT_POSITION, STATE, STRUT, TYRE_SCRATCH,
 };
 use super::host::{BlendCalls, EmbeddedCalls, EmitCalls, SubBlockInit};
 use super::probe::WheelTuning;
 use super::refresh_pose::{DEF_STEERING_ROD_LENGTH, DEF_STRUT_DIM_Z};
 use super::store::WheelStore;
+use super::typed::slot;
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::physics_core::layout::material;
@@ -162,13 +163,13 @@ pub fn table_lerp_pair<S: WheelStore>(
         mem.f32(damage + DAMAGE_SECTORS_A + 4 * next),
         first_weight,
     );
-    mem.set_f32(this + SECTOR_VALUE_A, sector::mix_toward(a, tuning.pose, tuning.weight));
+    let a = sector::mix_toward(a, tuning.pose, tuning.weight);
     let b = sector::interpolate(
         mem.f32(damage + DAMAGE_SECTORS_B + 4 * first),
         mem.f32(damage + DAMAGE_SECTORS_B + 4 * next),
         first_weight,
     );
-    mem.set_f32(this + SECTOR_VALUE_B, sector::mix_toward(b, tuning.pose, 0.0));
+    mem.set(this, slot::sector_values, [a, sector::mix_toward(b, tuning.pose, 0.0)]);
     damage
 }
 

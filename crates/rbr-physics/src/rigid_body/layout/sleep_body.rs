@@ -1,7 +1,9 @@
 //! The body and definition fields the sleep step reads and writes, and the parent frame.
 
 use super::contacts::{HOOK, RING_TAIL};
+use super::mem_store::{quat, set_vec4, vec4, SolidWords};
 use super::rest::{ACTIVE, VERY_SOFT};
+use super::{HeldSolid, Solid};
 use super::{
     ACCEL_ANGULAR_EST, ACCEL_ANGULAR_FILT, ACCEL_LINEAR_EST, ACCEL_LINEAR_FILT, ANGULAR_ACCEL, ANGULAR_VELOCITY,
     DEF_ANGULAR_SLEEP_VELOCITY, DEF_INVERSE_MASS, DEF_LINEAR_SLEEP_VELOCITY, DEF_LOCAL_INVERSE_INERTIA, DEF_SLEEPABLE,
@@ -144,77 +146,194 @@ pub struct Body {
 impl Body {
     /// Reads the body at `this`. The memory must cover the object (0x3d0 bytes).
     pub fn load(mem: &Mem, this: u32) -> Self {
+        Self::read(mem, this)
+    }
+
+    /// Writes the fields back. Only the fields the ports change need to be stored; this writes all of them.
+    pub fn store(&self, mem: &mut Mem, this: u32) {
+        self.write(mem, this)
+    }
+
+    /// [`Body::load`] on a rigid store's words (a held solid's typed state where it holds the word).
+    pub fn read<W: SolidWords + ?Sized>(w: &W, this: u32) -> Self {
+        if let Some(mem) = w.image_ref() {
+            return Self::read_words(mem, this);
+        }
+        match w.held(this) {
+            Some(solid) => Self::from_held(solid, w.mem(), this),
+            None => Self::read_words(w, this),
+        }
+    }
+
+    /// [`Body::read_words`] with the solid held: its typed state's words at once, the rest the image's.
+    fn from_held(s: &HeldSolid, mem: &Mem, this: u32) -> Self {
+        let quat = |[x, y, z, w]: [f32; 4]| Quat { x, y, z, w };
         Body {
-            linear_velocity: Vec4::load(mem, this + LINEAR_VELOCITY),
-            angular_velocity: Vec4::load(mem, this + ANGULAR_VELOCITY),
-            sleep_timer: mem.f32(this + SLEEP_TIMER),
-            sleep_armed: mem.u32(this + 0x274),
-            is_active: mem.u32(this + ACTIVE),
-            orientation: Quat::load(mem, this + ORIENTATION),
-            position: Vec4::load(mem, this + POSITION),
-            progress: mem.f32(this + WINDOW_PROGRESS),
-            start_orientation: Quat::load(mem, this + START_ORIENTATION),
-            start_position: Vec4::load(mem, this + START_POSITION),
-            start_linear_velocity: Vec4::load(mem, this + START_LINEAR_VELOCITY),
-            start_angular_velocity: Vec4::load(mem, this + START_ANGULAR_VELOCITY),
+            linear_velocity: Vec4::from(s.get(Solid::linear_velocity)),
+            angular_velocity: Vec4::from(s.get(Solid::angular_velocity)),
+            sleep_timer: s.get(Solid::sleep_timer),
+            sleep_armed: s.get(Solid::sleep_armed),
+            is_active: s.get(Solid::is_active),
+            orientation: quat(s.get(Solid::orientation)),
+            position: Vec4::from(s.get(Solid::position)),
+            progress: s.get(Solid::progress),
+            start_orientation: quat(s.get(Solid::start_orientation)),
+            start_position: Vec4::from(s.get(Solid::start_position)),
+            start_linear_velocity: Vec4::from(s.get(Solid::start_linear_velocity)),
+            start_angular_velocity: Vec4::from(s.get(Solid::start_angular_velocity)),
             body_flags: mem.u8(this + ENTITY_FLAGS),
             parent: mem.u32(this + PARENT),
-            step_flags: mem.u32(this + STEP_FLAGS),
-            sampled: mem.f32(this + 0x17C),
+            step_flags: s.get(Solid::step_flags),
+            sampled: s.get(Solid::sampled),
             sampled_dirty: mem.u32(this + 0x178),
-            scratch: Vec4::load(mem, this + SCRATCH_ACCUM),
+            scratch: Vec4::from(s.get(Solid::scratch)),
             scratch_scale: mem.f32(this + SCRATCH_SCALE),
-            angular_accel: Vec4::load(mem, this + ANGULAR_ACCEL),
-            linear_accel: Vec4::load(mem, this + LINEAR_ACCEL),
-            prev_angular_velocity: Vec4::load(mem, this + PREV_ANGULAR_VELOCITY),
-            prev_linear_velocity: Vec4::load(mem, this + PREV_LINEAR_VELOCITY),
-            accel_linear_est: Vec4::load(mem, this + ACCEL_LINEAR_EST),
-            accel_angular_est: Vec4::load(mem, this + ACCEL_ANGULAR_EST),
-            accel_linear_filt: Vec4::load(mem, this + ACCEL_LINEAR_FILT),
-            accel_angular_filt: Vec4::load(mem, this + ACCEL_ANGULAR_FILT),
+            angular_accel: Vec4::from(s.get(Solid::angular_accel)),
+            linear_accel: Vec4::from(s.get(Solid::linear_accel)),
+            prev_angular_velocity: Vec4::from(s.get(Solid::prev_angular_velocity)),
+            prev_linear_velocity: Vec4::from(s.get(Solid::prev_linear_velocity)),
+            accel_linear_est: Vec4::from(s.get(Solid::accel_linear_est)),
+            accel_angular_est: Vec4::from(s.get(Solid::accel_angular_est)),
+            accel_linear_filt: Vec4::from(s.get(Solid::accel_linear_filt)),
+            accel_angular_filt: Vec4::from(s.get(Solid::accel_angular_filt)),
             state_owner: mem.u32(this + 0x30),
-            force: Vec4::load(mem, this + FORCE_ACCUM),
+            force: Vec4::from(s.get(Solid::force)),
             tweak_a_dirty: mem.u32(this + 0x1D8),
             tweak_b_dirty: mem.u32(this + 0x1E8),
-            very_soft: mem.u32(this + VERY_SOFT),
+            very_soft: s.get(Solid::very_soft),
             hook: mem.u32(this + HOOK),
             ring_tail: mem.u32(this + RING_TAIL),
         }
     }
 
-    /// Writes the fields back. Only the fields the ports change need to be stored; this writes all of them.
-    pub fn store(&self, mem: &mut Mem, this: u32) {
-        self.linear_velocity.store(mem, this + LINEAR_VELOCITY);
-        self.angular_velocity.store(mem, this + ANGULAR_VELOCITY);
-        mem.set_f32(this + SLEEP_TIMER, self.sleep_timer);
-        mem.set_u32(this + 0x274, self.sleep_armed);
-        mem.set_u32(this + ACTIVE, self.is_active);
-        self.orientation.store(mem, this + ORIENTATION);
-        self.position.store(mem, this + POSITION);
-        mem.set_f32(this + WINDOW_PROGRESS, self.progress);
-        self.start_orientation.store(mem, this + START_ORIENTATION);
-        self.start_position.store(mem, this + START_POSITION);
-        self.start_linear_velocity.store(mem, this + START_LINEAR_VELOCITY);
-        self.start_angular_velocity.store(mem, this + START_ANGULAR_VELOCITY);
+    fn read_words<W: SolidWords + ?Sized>(w: &W, this: u32) -> Self {
+        Body {
+            linear_velocity: vec4(w, this + LINEAR_VELOCITY),
+            angular_velocity: vec4(w, this + ANGULAR_VELOCITY),
+            sleep_timer: f32::from_bits(w.word(this + SLEEP_TIMER)),
+            sleep_armed: w.word(this + 0x274),
+            is_active: w.word(this + ACTIVE),
+            orientation: quat(w, this + ORIENTATION),
+            position: vec4(w, this + POSITION),
+            progress: f32::from_bits(w.word(this + WINDOW_PROGRESS)),
+            start_orientation: quat(w, this + START_ORIENTATION),
+            start_position: vec4(w, this + START_POSITION),
+            start_linear_velocity: vec4(w, this + START_LINEAR_VELOCITY),
+            start_angular_velocity: vec4(w, this + START_ANGULAR_VELOCITY),
+            body_flags: w.u8(this + ENTITY_FLAGS),
+            parent: w.u32(this + PARENT),
+            step_flags: w.word(this + STEP_FLAGS),
+            sampled: f32::from_bits(w.word(this + 0x17C)),
+            sampled_dirty: w.u32(this + 0x178),
+            scratch: vec4(w, this + SCRATCH_ACCUM),
+            scratch_scale: f32::from_bits(w.word(this + SCRATCH_SCALE)),
+            angular_accel: vec4(w, this + ANGULAR_ACCEL),
+            linear_accel: vec4(w, this + LINEAR_ACCEL),
+            prev_angular_velocity: vec4(w, this + PREV_ANGULAR_VELOCITY),
+            prev_linear_velocity: vec4(w, this + PREV_LINEAR_VELOCITY),
+            accel_linear_est: vec4(w, this + ACCEL_LINEAR_EST),
+            accel_angular_est: vec4(w, this + ACCEL_ANGULAR_EST),
+            accel_linear_filt: vec4(w, this + ACCEL_LINEAR_FILT),
+            accel_angular_filt: vec4(w, this + ACCEL_ANGULAR_FILT),
+            state_owner: w.u32(this + 0x30),
+            force: vec4(w, this + FORCE_ACCUM),
+            tweak_a_dirty: w.u32(this + 0x1D8),
+            tweak_b_dirty: w.u32(this + 0x1E8),
+            very_soft: w.word(this + VERY_SOFT),
+            hook: w.u32(this + HOOK),
+            ring_tail: w.u32(this + RING_TAIL),
+        }
+    }
+
+    /// [`Body::store`] on a rigid store's words, in the same order.
+    pub fn write<W: SolidWords + ?Sized>(&self, w: &mut W, this: u32) {
+        if let Some(mem) = w.image() {
+            return self.write_words(mem, this);
+        }
+        match w.held(this).map(|solid| self.store_held(solid)) {
+            Some(()) => self.store_unheld(w.mem_mut(), this),
+            None => self.write_words(w, this),
+        }
+    }
+
+    /// [`Body::write_words`]' words a held solid's typed state holds.
+    fn store_held(&self, s: &HeldSolid) {
+        let vec = |v: Vec4| [v.x, v.y, v.z, v.w];
+        let quat = |q: Quat| [q.x, q.y, q.z, q.w];
+        s.set(Solid::linear_velocity, vec(self.linear_velocity));
+        s.set(Solid::angular_velocity, vec(self.angular_velocity));
+        s.set(Solid::sleep_timer, self.sleep_timer);
+        s.set(Solid::sleep_armed, self.sleep_armed);
+        s.set(Solid::is_active, self.is_active);
+        s.set(Solid::orientation, quat(self.orientation));
+        s.set(Solid::position, vec(self.position));
+        s.set(Solid::progress, self.progress);
+        s.set(Solid::start_orientation, quat(self.start_orientation));
+        s.set(Solid::start_position, vec(self.start_position));
+        s.set(Solid::start_linear_velocity, vec(self.start_linear_velocity));
+        s.set(Solid::start_angular_velocity, vec(self.start_angular_velocity));
+        s.set(Solid::step_flags, self.step_flags);
+        s.set(Solid::sampled, self.sampled);
+        s.set(Solid::scratch, vec(self.scratch));
+        s.set(Solid::angular_accel, vec(self.angular_accel));
+        s.set(Solid::linear_accel, vec(self.linear_accel));
+        s.set(Solid::prev_angular_velocity, vec(self.prev_angular_velocity));
+        s.set(Solid::prev_linear_velocity, vec(self.prev_linear_velocity));
+        s.set(Solid::accel_linear_est, vec(self.accel_linear_est));
+        s.set(Solid::accel_angular_est, vec(self.accel_angular_est));
+        s.set(Solid::accel_linear_filt, vec(self.accel_linear_filt));
+        s.set(Solid::accel_angular_filt, vec(self.accel_angular_filt));
+        s.set(Solid::force, vec(self.force));
+        s.set(Solid::very_soft, self.very_soft);
+    }
+
+    /// [`Body::write_words`]' other words, on the image.
+    fn store_unheld(&self, mem: &mut Mem, this: u32) {
         mem.map(this + ENTITY_FLAGS, &[self.body_flags]);
-        mem.set_u32(this + STEP_FLAGS, self.step_flags);
-        mem.set_f32(this + 0x17C, self.sampled);
         mem.set_u32(this + 0x178, self.sampled_dirty);
-        self.scratch.store(mem, this + SCRATCH_ACCUM);
-        self.angular_accel.store(mem, this + ANGULAR_ACCEL);
-        self.linear_accel.store(mem, this + LINEAR_ACCEL);
-        self.prev_angular_velocity.store(mem, this + PREV_ANGULAR_VELOCITY);
-        self.prev_linear_velocity.store(mem, this + PREV_LINEAR_VELOCITY);
-        self.accel_linear_est.store(mem, this + ACCEL_LINEAR_EST);
-        self.accel_angular_est.store(mem, this + ACCEL_ANGULAR_EST);
-        self.accel_linear_filt.store(mem, this + ACCEL_LINEAR_FILT);
-        self.accel_angular_filt.store(mem, this + ACCEL_ANGULAR_FILT);
         mem.set_u32(this + 0x30, self.state_owner);
-        self.force.store(mem, this + FORCE_ACCUM);
         mem.set_u32(this + 0x1D8, self.tweak_a_dirty);
         mem.set_u32(this + 0x1E8, self.tweak_b_dirty);
-        mem.set_u32(this + VERY_SOFT, self.very_soft);
         mem.set_u32(this + HOOK, self.hook);
         mem.set_u32(this + RING_TAIL, self.ring_tail);
     }
+
+    fn write_words<W: SolidWords + ?Sized>(&self, w: &mut W, this: u32) {
+        set_vec4(w, this + LINEAR_VELOCITY, self.linear_velocity);
+        set_vec4(w, this + ANGULAR_VELOCITY, self.angular_velocity);
+        w.set_word(this + SLEEP_TIMER, self.sleep_timer.to_bits());
+        w.set_word(this + 0x274, self.sleep_armed);
+        w.set_word(this + ACTIVE, self.is_active);
+        set_quat(w, this + ORIENTATION, self.orientation);
+        set_vec4(w, this + POSITION, self.position);
+        w.set_word(this + WINDOW_PROGRESS, self.progress.to_bits());
+        set_quat(w, this + START_ORIENTATION, self.start_orientation);
+        set_vec4(w, this + START_POSITION, self.start_position);
+        set_vec4(w, this + START_LINEAR_VELOCITY, self.start_linear_velocity);
+        set_vec4(w, this + START_ANGULAR_VELOCITY, self.start_angular_velocity);
+        w.mem_mut().map(this + ENTITY_FLAGS, &[self.body_flags]);
+        w.set_word(this + STEP_FLAGS, self.step_flags);
+        w.set_word(this + 0x17C, self.sampled.to_bits());
+        w.set_u32(this + 0x178, self.sampled_dirty);
+        set_vec4(w, this + SCRATCH_ACCUM, self.scratch);
+        set_vec4(w, this + ANGULAR_ACCEL, self.angular_accel);
+        set_vec4(w, this + LINEAR_ACCEL, self.linear_accel);
+        set_vec4(w, this + PREV_ANGULAR_VELOCITY, self.prev_angular_velocity);
+        set_vec4(w, this + PREV_LINEAR_VELOCITY, self.prev_linear_velocity);
+        set_vec4(w, this + ACCEL_LINEAR_EST, self.accel_linear_est);
+        set_vec4(w, this + ACCEL_ANGULAR_EST, self.accel_angular_est);
+        set_vec4(w, this + ACCEL_LINEAR_FILT, self.accel_linear_filt);
+        set_vec4(w, this + ACCEL_ANGULAR_FILT, self.accel_angular_filt);
+        w.set_u32(this + 0x30, self.state_owner);
+        set_vec4(w, this + FORCE_ACCUM, self.force);
+        w.set_u32(this + 0x1D8, self.tweak_a_dirty);
+        w.set_u32(this + 0x1E8, self.tweak_b_dirty);
+        w.set_word(this + VERY_SOFT, self.very_soft);
+        w.set_u32(this + HOOK, self.hook);
+        w.set_u32(this + RING_TAIL, self.ring_tail);
+    }
+}
+
+fn set_quat<W: SolidWords + ?Sized>(w: &mut W, at: u32, q: Quat) {
+    set_vec4(w, at, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
 }

@@ -13,7 +13,6 @@ mod hinge;
 mod matrices;
 mod walks;
 
-use crate::collision::E01_VEC4_COPY_FROM;
 use crate::rigid_body::VF81X;
 use collide_init::{collide_init_run, copy_grid_run};
 use e90::{
@@ -38,8 +37,8 @@ use hinge::{
     sim_e1d0_run, sim_e4f0_run, sim_ea80_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run,
     state_emit_run, step_big_run, SIM_D160, SIM_D860, VF_E070,
 };
+pub(crate) use matrices::{call_op, fetch_x_direct, transform_direct};
 use matrices::{compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run};
-pub(crate) use matrices::{fetch_x_direct, transform_direct};
 use walks::{
     functor_run, grid_hooks_hi_run, grid_hooks_lo_run, integrate_run, mb560_run, mul4_run, name_walk_run, node_of_run,
     pair_combine_run, pair_echo_run, pair_five_six_deeper_run, pair_five_six_run, pair_five_six_shallower_run,
@@ -64,6 +63,7 @@ pub const PAIR_MAB20: u32 = 0x51ab20;
 pub const PAIR_MAB30: u32 = 0x51ab30;
 pub const PAIR_MAB40: u32 = 0x51ab40;
 pub const NODE_OF: u32 = 0x519c00;
+pub const OLD_FRAME_OF: u32 = 0x519c10;
 pub const FUNCTOR_VF04X: u32 = 0x51a120;
 pub const MUL4: u32 = 0x51c8c0;
 pub const PAIR_ONE_TWO_DEEPER: u32 = 0x51afe0;
@@ -241,7 +241,7 @@ pub static BINDINGS: [Binding; 119] = [
     bind(SET_650, "CHingedRigidBody::Set650", set_650_run),
     bind(0x51a440, "CEntity::E43Vf48", vf48),
     bind(EXCLUSION_TEST, "CEntity::E43_ExclF80", exclusion_test_run),
-    bind(0x519c10, "E43PairWalk::MFc10", old_frame_of_run),
+    bind(OLD_FRAME_OF, "E43PairWalk::MFc10", old_frame_of_run),
     bind(ENTITY_VF120, "CEntity::Vf120", vf120_run),
     bind(0x51bb70, "CGround::Vf110", ground_present),
     bind(0x51bb80, "CGround::Vf114", ground_present),

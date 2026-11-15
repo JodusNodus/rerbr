@@ -22,6 +22,15 @@ const EVENT_SENT_AT: u32 = 0x584;
 const OWNER_FLAGS_AT: u32 = 0x60;
 const OWNER_FLAG: u8 = 0x8;
 
+crate::object! {
+    /// The mounted body's own word a step writes (beyond its solid's): the event-sent flag the first step sets. Held
+    /// with the body's solid (`rigid_body::layout::CarSolids`). On the image: the owner, the enable pointer and the
+    /// state it points at, the state and scratch objects (the scratch's words are the rigid body's).
+    pub struct Mounted, size 0x590 {
+        event_sent @ 0x584: u32,
+    }
+}
+
 /// The calls `CtorBig` makes into code outside this port, in the original's order. Each gets the address of the object
 /// it builds, as the original passes it.
 pub trait BodyHost {

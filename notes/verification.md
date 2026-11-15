@@ -152,7 +152,8 @@ snapshots and viewer playback. Last standalone results (2026-10-20): tanner-coro
 | `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
 
 Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it; `--hybrid`
-adds the hybrid merge gate below, one process per snapshot, `--perf BASE_BIN` the step's cost):
+adds the hybrid merge gate below, one process per snapshot, `--typed` the drive's `--twin typed` runs (aids off, on),
+its `--twin across` and `--twin mem-direct`, the `poison` build's drive, `--perf BASE_BIN` the step's cost):
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR

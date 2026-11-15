@@ -2,11 +2,12 @@
 
 use rbr_physics::collision::layout::event_pool::{self as event, PlaneDiffHost};
 use rbr_physics::collision::layout::solver_hosts::{ImpulseHost, SolverHost};
+use rbr_physics::collision::layout::CollisionView;
 use rbr_physics::collision::layout::EventBodyHost;
 use rbr_physics::collision::layout::{self, list};
-use rbr_physics::mem::Mem;
+use rbr_physics::store::Raw;
 
-use super::Callees;
+use super::{on_collision, Callees};
 use super::{COLL_EVENT_INIT_FULL, E36_ALLOC_EVENT};
 use crate::entities::{COPY16_WALK, MB560};
 use crate::rigid_body::OPERATOR_NEW;
@@ -28,7 +29,7 @@ pub(super) fn apply_event_impulse(ctx: &mut Ctx, r: &Regs) -> Result<Return, Dec
 
 /// E38_004FB7F0 (0x4fb7f0): thiscall on the solver; eax is the contact-row count as the asm last read it.
 pub(super) fn clear_contact_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::clear_contact_rows(&mut ctx.mem, r.ecx), 0))
+    Ok(Return::void(on_collision(ctx.host, &mut ctx.mem, |s| layout::clear_contact_rows(s, r.ecx)), 0))
 }
 
 /// E38_004FBC20 (0x4fbc20): thiscall on the solver; eax is a callee's residue, which the caller does not read.
@@ -53,14 +54,14 @@ pub(super) fn drain_events(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// E38_004FC590X (0x4fc590): thiscall on the solver; eax is the offset-row count as the asm last read it.
 pub(super) fn correct_penetrations(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = PenetrationCalls { host: ctx.host, frame: ((r.esp - 4) & !0xF) - 0x80 };
-    let eax = layout::correct_penetrations(&mut calls, &mut ctx.mem, r.ecx);
+    let eax = on_collision(ctx.host, &mut ctx.mem, |s| layout::correct_penetrations(&mut calls, s, r.ecx));
     Ok(Return::void(eax, 0))
 }
 
 /// E38_004FCA20 (0x4fca20): thiscall on the solver; eax is a callee's residue, which no caller reads.
 pub(super) fn solve_due_events(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = DueEventCalls { host: ctx.host, esp: r.esp };
-    layout::solve_due_events(&mut calls, &mut ctx.mem, r.ecx);
+    on_collision(ctx.host, &mut ctx.mem, |s| layout::solve_due_events(&mut calls, s, r.ecx));
     Ok(Return::void(0, 0))
 }
 
@@ -167,15 +168,15 @@ const E37_EMIT_4DC0: u32 = 0x4f4dc0;
 
 impl EventBodyHost for Callees<'_> {
     fn transform(&mut self, sp: u32, target: u32, body: u32) -> u32 {
-        self.0.call_at(sp, target, body, &[]).eax
+        crate::call_or_trivial(self.0, sp, target, body, &[])
     }
 
     fn pair_walk(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32) {
-        self.0.call_at(sp, MB560, event, &[a, b, c]);
+        crate::entities::call_op(self.0, sp, MB560, event, &[a, b, c]);
     }
 
     fn compose(&mut self, sp: u32, frame: u32, point: u32, body: u32, out: u32) {
-        self.0.call_at(sp, COPY16_WALK, frame, &[point, body, out]);
+        crate::entities::call_op(self.0, sp, COPY16_WALK, frame, &[point, body, out]);
     }
 
     fn dot_products(&mut self, sp: u32, target: u32, body: u32, args: [u32; 6]) -> u32 {
@@ -202,13 +203,13 @@ impl ImpulseHost for Callees<'_> {
     }
 
     fn compose(&mut self, sp: u32, frame: u32, point: u32, body: u32, out: u32) {
-        self.0.call_at(sp, COPY16_WALK, frame, &[point, body, out]);
+        crate::entities::call_op(self.0, sp, COPY16_WALK, frame, &[point, body, out]);
     }
 }
 
 /// E38_004FB890 (0x4fb890): thiscall on the offset row, plain ret; eax is a residue no caller reads.
 pub(super) fn apply_offsets(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::apply_offsets(&mut ctx.mem, r.ecx);
+    on_collision(ctx.host, &mut ctx.mem, |s| layout::apply_offsets(s, r.ecx));
     Ok(Return::void(0, 0))
 }
 
@@ -216,13 +217,20 @@ pub(super) fn apply_offsets(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 /// stored.
 pub(super) fn contact_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [body, event, side, ..] = r.stack;
-    let eax = layout::contact_rows(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, body, event, side, r.esp);
+    let host = ctx.host;
+    let eax = on_collision(host, &mut ctx.mem, |s| {
+        layout::contact_rows(&mut Callees(host), s, r.ecx, body, event, side, r.esp)
+    });
     Ok(Return::void(eax, 12))
 }
 
 /// E38Ops::M_C1A0 (0x4fc1a0): thiscall on the solver with the event, ret 4; the impulse is the x87 result (eax is a
 /// residue its caller does not read).
 pub(super) fn solve_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    // The relative velocity's lane 3 is not written (`PlaneDiff` stores three lanes); the slip and the impulse take it.
+    if let Some(lane) = crate::residue(ctx.host) {
+        ctx.mem.set_u32(layout::solve_event_frame(r.esp).velocity + 0xc, lane);
+    }
     let impulse = layout::solve_event(&mut Callees(ctx.host), &mut ctx.mem, r.stack[0], r.esp);
     Ok(Return::float(f64::from(impulse), 4))
 }
@@ -253,7 +261,9 @@ pub(super) fn make_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2, ..] = r.stack;
     let mut calls = MakeEventCalls { host: ctx.host, s: layout::make_event_frame(r.esp) };
     let words = [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2];
-    let eax = layout::make_event_at(&mut calls, &mut ctx.mem, words, r.esp);
+    // The payload's last word (the event's data[15]) is not written: `crate::RESIDUE` on the pure host.
+    let tail = crate::residue(ctx.host).unwrap_or_else(|| ctx.mem.u32(layout::make_event_tail(r.esp)));
+    let eax = on_collision(ctx.host, &mut ctx.mem, |s| layout::make_event_at(&mut calls, s, words, tail));
     Ok(Return::void(eax, 0))
 }
 
@@ -264,9 +274,9 @@ struct MakeEventCalls<'a> {
     s: u32,
 }
 
-impl event::MakeEventHost for MakeEventCalls<'_> {
-    fn body_grid(&mut self, mem: &Mem, body: u32) -> u32 {
-        let target = layout::vtable_slot(mem, body, 0x118);
+impl event::MakeEventHost<CollisionView<'_>> for MakeEventCalls<'_> {
+    fn body_grid(&mut self, mem: &CollisionView, body: u32) -> u32 {
+        let target = layout::vtable_slot(mem.mem(), body, 0x118);
         self.host.call_at(self.s - 4, target, body, &[]).eax
     }
 
@@ -276,7 +286,7 @@ impl event::MakeEventHost for MakeEventCalls<'_> {
 
     fn init_full(
         &mut self,
-        mem: &mut Mem,
+        mem: &mut CollisionView,
         event: u32,
         kind: u32,
         body_a: u32,
@@ -285,7 +295,7 @@ impl event::MakeEventHost for MakeEventCalls<'_> {
         data: &[u32; 16],
     ) -> u32 {
         let payload = layout::make_event_payload(self.s);
-        layout::store_payload(mem, payload, data);
+        layout::store_payload(mem.mem_mut(), payload, data);
         let args = [kind, body_a, aux_a, aux_b, payload, 0];
         self.host.call_at(self.s - 0x1c, COLL_EVENT_INIT_FULL, event, &args).eax
     }

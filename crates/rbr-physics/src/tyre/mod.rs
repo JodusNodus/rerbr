@@ -26,3 +26,4 @@ pub mod state;
 pub mod step;
 pub mod store;
 pub mod surface;
+pub mod tyres;

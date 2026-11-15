@@ -81,7 +81,9 @@ use rbr_gameplay::stage::State;
 #[cfg(test)]
 use rbr_hybrid::pure;
 use rbr_hybrid::pure::{Playback, CAR_BYTES, CAR_PTR};
+use rbr_physics::car_body::layout::CarView;
 use rbr_physics::mem::Mem;
+use rbr_physics::store::typed::Typed;
 use rbr_recording::camera::{Camera, MODE_CHASE, MODE_START_ORBIT};
 use rbr_recording::clock::StepClock;
 use rbr_recording::dash::DSH1;
@@ -299,9 +301,9 @@ impl<'a> Live<'a> {
         self.school.as_ref()
     }
 
-    /// The pure physics' memory after the last step.
+    /// The image after the last step, for a reader between steps ([`rbr_hybrid::pure::Pure::image`]).
     pub fn mem(&self) -> &Mem {
-        &self.playback.pure.mem
+        self.playback.pure.image()
     }
 
     /// NGP's base address in the image.
@@ -354,12 +356,20 @@ impl<'a> Live<'a> {
 
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
     /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`).
+    /// NGP's reads the car's store over the held typed state, without lowering it (it runs after every frame).
     pub fn wheel_force(&self) -> f32 {
-        let mem = &self.playback.pure.mem;
-        match self.ffb_tyres {
-            Some(trail) => crate::tyre_ffb::force(mem, trail),
-            None => rbr_physics::car_body::steering_ffb::force(mem, mem.u32(CAR_PTR)),
+        let pure = &self.playback.pure;
+        if let Some(trail) = self.ffb_tyres {
+            return crate::tyre_ffb::force(pure.image(), trail);
         }
+        let mut mem = pure.unheld_image().clone();
+        let car = mem.u32(CAR_PTR);
+        let force = |mem: &mut Mem, t: Option<&Typed>| {
+            let view = CarView::new(mem, t.map(|t| &t.car.own), t.map(|t| &t.car.wheels));
+            let view = view.with_defs(t.map(|t| &t.defs)).with_solids(t.and_then(|t| t.solids.as_ref()));
+            rbr_physics::car_body::steering_ffb::force(&view, car)
+        };
+        pure.with_held(|t| force(&mut mem, Some(t))).unwrap_or_else(|| force(&mut mem, None))
     }
 
     /// The start clock's time of day at the stage's start, s after midnight (`rbr_gameplay::weather::start_clock`); each
@@ -441,7 +451,11 @@ impl<'a> Live<'a> {
                 ..FrameInput::default()
             },
             Control::Input(input) => FrameInput {
-                raw: poll(&input, &self.playback.pure.mem),
+                raw: {
+                    let pure = &self.playback.pure;
+                    let mem = pure.unheld_image();
+                    pure.with_held(|t| poll(&input, mem, Some(t))).unwrap_or_else(|| poll(&input, mem, None))
+                },
                 help_call: input.flags & CALL_FOR_HELP != 0,
                 acknowledge: input.flags & ACCEPT_MESSAGE != 0,
                 confirm: input.flags & ACCEPT_MESSAGE != 0,
@@ -527,7 +541,7 @@ impl<'a> Live<'a> {
                 track: &self.track,
                 control: &self.control,
             };
-            telemetry.send(&self.playback.pure.mem, &self.game, driving, &frame);
+            telemetry.send(self.playback.pure.image(), &self.game, driving, &frame);
         }
         Ok(substeps)
     }
@@ -546,16 +560,17 @@ impl<'a> Live<'a> {
         // as a typed event and reset its words, so SND1 carries the frame's payloads as the original's signal
         // traffic does.
         let struts = {
-            let mem = &self.playback.pure.mem;
+            // The wheels' pointers are not held: the image is lowered once, after the reset.
+            let mem = self.playback.pure.unheld_image();
             let car = mem.u32(CAR_PTR);
             std::array::from_fn(|k| {
                 mem.u32(car + rbr_recording::sound::CAR_WHEELS + 4 * k as u32) + rbr_recording::sound::WHEEL_STRUT
             })
         };
         self.playback.pure.reset_strut_dampers(struts);
-        let dampers = damper_frame(&self.playback.pure.mem, &self.playback.pure.take_damper_signals());
+        let dampers = damper_frame(self.playback.pure.image(), &self.playback.pure.take_damper_signals());
         self.last = Picture::of(
-            &self.playback.pure.mem,
+            self.playback.pure.image(),
             race_hud(race_clock, self.penalties),
             &splits,
             self.stage.interactive_handle_end,
@@ -602,12 +617,18 @@ enum Control {
 /// filter's cell per channel; the call for help goes to the game's gate instead (`FrameInput::help_call`). NGP's poll
 /// (`0x1003c450`) writes a selected gear as the gear plus one, which its handler takes off again, and with the automatic
 /// gearbox off (the car's +0x8a0) adds its direct gear rule ([`ngp_direct_gears`]) over the gear actions.
-fn poll(input: &Input, mem: &Mem) -> Raw {
+/// The VCU's and the drive's words are `held`'s where it holds them (the typed state held across steps), else `mem`'s.
+fn poll(input: &Input, mem: &Mem, held: Option<&Typed>) -> Raw {
     let flags = u32::from(input.flags & !(CALL_FOR_HELP | ACCEPT_MESSAGE | RETIRE));
     let gear = input.gear.saturating_add(1);
     let car = mem.u32(CAR_PTR);
     // The car's VCU scratch (car +0x850, `0x100420f0`), its +0x50 (`0x1005dd30`).
-    let (flags, gear) = if input.gears_bound == 0 || car == 0 || mem.u32(car + 0x850 + 0x50) != 0 {
+    let scratch = car + 0x850;
+    let vcu_on = || match held.filter(|t| t.car.vcu.is(scratch)) {
+        Some(t) => t.car.vcu.unit.get().scratch.vcu_enabled,
+        None => mem.u32(scratch + 0x50),
+    };
+    let (flags, gear) = if input.gears_bound == 0 || car == 0 || vcu_on() != 0 {
         (flags, gear)
     } else {
         let actions = std::array::from_fn(|k| {
@@ -615,7 +636,12 @@ fn poll(input: &Input, mem: &Mem) -> Raw {
             (input.gears_bound & bit != 0).then_some(if input.gears_held & bit != 0 { 1.0 } else { 0.0 })
         });
         // The gear in use the last sensor data reported: the drive state's +0x54c (car +0x4b0, its +8).
-        ngp_direct_gears(flags, gear, actions, mem.u32(mem.u32(car + 0x4b0 + 8) + 0x54c))
+        let state = mem.u32(car + 0x4b0 + 8);
+        let in_use = match held.filter(|t| t.car.drive.image.state == state) {
+            Some(t) => t.car.drive.typed.borrow().state.gear,
+            None => mem.u32(state + 0x54c),
+        };
+        ngp_direct_gears(flags, gear, actions, in_use)
     };
     Raw {
         flags,

@@ -7,7 +7,6 @@ use std::path::Path;
 
 use rbr_hybrid::pure::{self, CAR_BYTES, CAR_PTR};
 use rbr_physics::mem::Mem;
-use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::TYRE_SCRATCH;
 use rbr_recording::pose;
 use rbr_recording::{read_f32, CONTROL_BYTES, WHEEL_BYTES};
@@ -124,7 +123,7 @@ pub fn front_wheels_header() -> String {
 
 /// A wheel's columns ([`WHEEL_HEADER`]).
 fn wheel(mem: &Mem, wheel: u32, axle: [f32; 3]) -> String {
-    let s = mem.load_frame(wheel + TYRE_SCRATCH).scratch;
+    let s = rbr_physics::tyre::layout::frame_of(mem, wheel + TYRE_SCRATCH).scratch;
     format!(
         " {:.5} {:.5} {:.1} {:.4} {:.4} {:.4} {:.3} {:.1} {:.1} {:.4} {:.3}",
         axle[0],

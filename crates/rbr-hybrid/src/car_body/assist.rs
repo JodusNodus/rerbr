@@ -1,14 +1,17 @@
 //! The driver assists and the retire paths (`rbr_physics::car_body::assist`).
 
+use crate::stage::on_stage;
 use rbr_physics::car_body::assist::{AssistCalls, RetireCalls};
 use rbr_physics::car_body::probe::ProbeCalls;
+use rbr_physics::car_body::store::Cell;
 use rbr_physics::car_body::{self as car};
 use rbr_physics::mem::Mem;
+use rbr_physics::ntweak;
 
 use super::car_calls::{car_calls, Car};
 use super::seed::SLOT_S158;
 use super::step::EMIT_DF0;
-use crate::car_body::UPDATE_SEED;
+use crate::car_body::{on_car, UPDATE_SEED};
 use crate::engine_driveline::SIGNALS;
 use crate::pure::OUTSIDE_ASSISTANCE_EMIT;
 use crate::vcu::SET_DIRTY;
@@ -34,8 +37,16 @@ impl AssistCalls for Car<'_> {
         self.host.call(UPDATE_SEED, car, &[block]);
     }
 
+    /// On the held car `SetDirty`'s one write, the cell header's dirty word (a header stays on the image), here
+    /// ([`Host::ran_direct`]); else the host.
     fn set_dirty(&mut self, state: u32) {
-        self.host.call(SET_DIRTY, state, &[]);
+        let held = self.host.typed().is_some_and(|t| car::layout::cell_at(t.car.own.at, Cell::FfbTorque) == state);
+        if !held {
+            self.host.call(SET_DIRTY, state, &[]);
+            return;
+        }
+        self.host.ran_direct();
+        ntweak::set_dirty(&mut self.mem, state);
     }
 }
 
@@ -62,7 +73,10 @@ const OUTSIDE_EMITTER: u32 = 0xD378;
 pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let car = r.ecx;
     let mut calls = car_calls(ctx, r);
-    let verdict = car::layout::lane_test(&ctx.mem, car, |v| ProbeCalls::to_world(&mut calls, car, v));
+    let image = ctx.mem.clone();
+    let verdict = on_stage(ctx.host, &image, |line| {
+        on_car(ctx, |m| car::layout::lane_test(m, line, car, |v| ProbeCalls::to_world(&mut calls, car, v)))
+    });
     match verdict {
         Some(eax) => Ok(Return::void(eax, 0)),
         None => Err(Decline::Unsupported("LerpAt's count check (the original traps past the count)")),
@@ -73,7 +87,7 @@ pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn assist_8df0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
     let mut calls = car_calls(ctx, r);
-    car::layout::outside_assistance(&mut calls, &mut ctx.mem, r.ecx, r.esp, a, b, c);
+    super::on_car(ctx, |m| car::layout::outside_assistance(&mut calls, m, r.ecx, r.esp, a, b, c));
     Ok(Return::void(0, 12))
 }
 

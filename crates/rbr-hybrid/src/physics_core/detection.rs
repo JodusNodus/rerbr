@@ -7,7 +7,7 @@ use rbr_physics::physics_core::layout::detect_calls::{self as detect, Penetratio
 use rbr_physics::physics_core::layout::detector_hosts::{CollideHost, DetectorHost, KernelTest};
 
 use super::slots::vslot;
-use crate::collision::{BODY_GRID, E01_VEC4_COPY_FROM, E37_GRID_COPY, E45_CELL_QUERY, RAY_CLEAR, RAY_SEEDS};
+use crate::collision::{BODY_GRID, E37_GRID_COPY, E45_CELL_QUERY, RAY_CLEAR, RAY_SEEDS};
 use crate::entities::{EXCLUSION_TEST, WALK_PRE_ORDER};
 use crate::probe_cache::BODY_OVERLAPS;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -64,11 +64,11 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn transform(&mut self, sp: u32, entity: u32) -> u32 {
-        self.slot(sp, entity, 0x30, &[])
+        crate::call_or_trivial(self.host, sp, vslot(&self.mem, entity, 0x30), entity, &[])
     }
 
     fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
-        self.slot(sp, entity, 0x34, &[])
+        crate::call_or_trivial(self.host, sp, vslot(&self.mem, entity, 0x34), entity, &[])
     }
 
     fn entity_box(&mut self, sp: u32, entity: u32, lo: u32, hi: u32) {
@@ -107,7 +107,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn transform_with(&mut self, sp: u32, entity: u32, arg: u32) -> u32 {
-        self.slot(sp, entity, 0x30, &[arg])
+        crate::call_or_trivial(self.host, sp, vslot(&self.mem, entity, 0x30), entity, &[arg])
     }
 
     fn exclusion_test(&mut self, sp: u32, entity: u32, other: u32) -> u32 {
@@ -118,7 +118,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn grid_ops(&mut self, sp: u32, at: u32, grid: u32, frame: u32, other_frame: u32) {
-        self.host.call_at(sp, E37_GRID_COPY, at, &[grid, frame, other_frame]);
+        crate::collision::call_grid(self.host, sp, E37_GRID_COPY, at, &[grid, frame, other_frame]);
     }
 
     fn min_max(&mut self, sp: u32, at: u32, other: u32, lo: u32, hi: u32) {
@@ -130,7 +130,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn cells(&mut self, sp: u32, lo: u32, hi: u32, out: u32) {
-        self.host.call_at(sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
+        crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
     }
 
     fn kernel_tests(&mut self, mem: &mut Mem, frame: u32, node: u32, mask: u32, excluded: u32) -> Option<KernelTest> {
@@ -176,10 +176,16 @@ impl CollideHost for Detectors<'_> {
     }
 
     fn telemetry_events(&mut self, sp: u32, receiver: u32, events: u32) {
-        self.host.call_at(sp, 0x499e70, receiver, &[events]);
+        crate::call_or_trivial(self.host, sp, 0x499e70, receiver, &[events]);
     }
 
     fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
+        // A `ret`, but the slot of its return address is read after it (car+0x14c, `--twin mem-direct` at drive2's step
+        // 19211): written under either dispatch.
+        if crate::skip_call_writing(self.host, &mut self.mem, sp, &[]) {
+            self.host.ran_direct();
+            return;
+        }
         self.host.call_at(sp, 0x499e90, receiver, &[]);
     }
 
@@ -292,7 +298,7 @@ pub(super) fn penetration_check(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decli
 pub(super) fn collide_window(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Detectors::new(ctx);
     let window = f32::from_bits(r.stack[0]);
-    let passes = layout::collide_window(&mut ctx.mem, &mut calls, r.ecx, window, r.esp);
+    let passes = super::on_core(ctx, |core| layout::collide_window(core, &mut calls, r.ecx, window, r.esp));
     Ok(Return::void(passes, 4))
 }
 
@@ -322,8 +328,8 @@ impl PenetrationHost for Penetration<'_> {
         self.host.call_at(self.entry - 8, RAY_SEEDS, seeds, &[]);
     }
 
-    fn copy_vec4(&mut self, _mem: &mut Mem, to: u32, from: u32) {
-        self.host.call_at(self.entry - 0xc, E01_VEC4_COPY_FROM, to, &[from]);
+    fn copy_vec4(&mut self, mem: &mut Mem, to: u32, from: u32) {
+        crate::collision::copy_vec4(self.host, mem, self.entry - 0xc, to, from);
     }
 }
 

@@ -3,12 +3,14 @@
 
 mod copy_and_emit;
 mod ctors;
+mod def;
 mod fields;
 mod host;
 mod probe;
 mod refresh_pose;
 mod step;
 mod store;
+mod typed;
 mod wheel_calls;
 
 pub use copy_and_emit::{
@@ -20,6 +22,7 @@ pub use ctors::{
     new_wheel, refresh_travel, scratch_ctor, select_top_mount, setup_ctor, setup_dictionary, setup_options_dictionary,
     state_ctor, tyre_tail_setup, wheel_ctor, FinishCalls, WHEEL_SIZE,
 };
+pub use def::WheelDef;
 pub use fields::{
     AXLE, BLEND_OPS, BLOCK_BLEND, BLOCK_CLAMP_A, BLOCK_CLAMP_B, BLOCK_DIFF, BLOCK_INPUT, BLOCK_PHASE, BLOCK_TAG_1,
     BLOCK_TAG_2, BLOCK_TOTAL, BLOCK_WEIGHT, CAR, CARCASS_EDGE_MINUS, CARCASS_EDGE_MINUS_COPY, CARCASS_EDGE_PLUS,
@@ -60,8 +63,9 @@ pub use refresh_pose::{
 };
 pub use step::{wheel_step, StepCalls};
 pub use store::WheelStore;
+pub use typed::{differential, round_trip, slot, CarWheels, Slot, Wheel, WheelView};
 pub use wheel_calls::{
     apply_hub_torque, car_frames, carcass_edges, clear_and_forward, deform_top_mount, edge_force, edge_forces,
-    forward_to_car_and_clear, pick_contact, spin_cross, steering_walk, transform_and_copy, update_ray_block,
-    update_strut, wobble_axle,
+    edge_residue, forward_to_car_and_clear, pick_contact, spin_cross, steering_walk, transform_and_copy,
+    update_ray_block, update_strut, wobble_axle,
 };

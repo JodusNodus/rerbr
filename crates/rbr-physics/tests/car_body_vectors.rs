@@ -1144,6 +1144,11 @@ impl StepCalls for RecordedVf6cx<'_> {
         check_input("position emit", self.call.index, 0, inner, &bytes);
     }
 
+    fn drive_engine_speed(&mut self, mem: &mut Mem, drive: u32) -> u32 {
+        let state = rbr_physics::engine_driveline::layout::DriveImage::of(mem, drive).state;
+        rbr_physics::engine_driveline::layout::DriveStateObj::engine_speed.load(mem, state).to_bits()
+    }
+
     fn emit_car_state(&mut self, _mem: &mut Mem, payload: [u32; 3]) {
         let inner = self.record(0x4E8BF0);
         let bytes: Vec<u8> = payload.iter().flat_map(|w| w.to_le_bytes()).collect();
@@ -2699,7 +2704,7 @@ fn lane_test_matches_original_calls() {
     for call in &calls {
         let mem = map_windows(call);
         let mut next = 0;
-        let verdict = layout::lane_test(&mem, call.args[0], |v| {
+        let verdict = layout::lane_test(&mem, &mem, call.args[0], |v| {
             let inner = record_after(call, &mut next, TO_WORLD);
             // The inner windows are renumbered from 0 in the spec's order: the input, then the output.
             assert!(vec3_of(&inner_window(inner, 0).before) == v, "Test7910 call {}: ToWorld input", call.index);
@@ -3221,7 +3226,8 @@ fn vf98x_matches_original_calls() {
             continue;
         }
         let mut host = RecordedRespawn { call, next: 0 };
-        layout::run_countdown(&mut mem, &mut host, car, ENTRY);
+        // The countdown path reads no drive line.
+        layout::run_countdown(&mut mem, &Mem::new(), &mut host, car, ENTRY);
         assert_eq!(host.next, call.inner.len(), "Vf98x call {}: records left", call.index);
         check_windows(call, &mem, "CCar::Vf98x");
     }

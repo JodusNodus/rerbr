@@ -20,9 +20,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{
     ACCEL_ANGULAR_EST, ACCEL_LINEAR_EST, ANGULAR_VELOCITY, LINEAR_VELOCITY, ORIENTATION, POSITION,
 };
-use rbr_physics::spring_damper::store::SpringStore;
+use rbr_physics::spring_damper::layout::StrutImage;
 use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_INNER_AIR_TEMPERATURE};
-use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{STRUT, STRUT_LENGTH, TYRE_SCRATCH};
 use rbr_recording::sound::{CAR_ENGINE, CAR_WHEELS, ENGINE_STATE, WHEEL_STRUT_VELOCITY};
 use rbr_recording::CONTROL_BYTES;
@@ -51,7 +50,8 @@ const CAR_BRAKE_WEAR: u32 = 0xc9c;
 const BRAKE_STRIDE: u32 = 0xc8;
 const BRAKE_WEAR_SCALE: f32 = 6.666_666_5e-8;
 /// The engine state's coolant temperatures, K: the radiator's (+0x20, named by NGP's packet) and the engine's
-/// (+0x28, `coolant_temperature`'s), and the engine's (+0x23c, `rbr-hybrid` `ngp::engine`'s `ENGINE_TEMPERATURE`).
+/// (+0x28, `coolant_temperature`'s), and the engine's (+0x23c, `EngineState::threshold_value`, which NGP's engine
+/// wrapper gives the engine model).
 const ENGINE_RADIATOR_COOLANT: u32 = 0x20;
 const ENGINE_COOLANT: u32 = 0x28;
 const ENGINE_TEMPERATURE: u32 = 0x23c;
@@ -298,22 +298,22 @@ fn suspension(mem: &Mem, car: u32, i: u32) -> Suspension {
     if wheel == 0 {
         return out;
     }
-    let controller = mem.controller(wheel + STRUT);
+    let strut = StrutImage::of(mem, wheel + STRUT).lift(mem);
     out = Suspension {
         spring_deflection: mem.f32(wheel + STRUT_LENGTH),
         rollbar_force: mem.f32(wheel + WHEEL_ROLLBAR_FORCE),
         spring_force: mem.f32(wheel + WHEEL_SPRING_FORCE),
         damper_force: mem.f32(wheel + WHEEL_DAMPER_FORCE),
         strut_force: mem.f32(wheel + WHEEL_STRUT_FORCE),
-        helper_spring_active: controller.mode,
-        damper_damage: mem.fade_state(mem.fade_at(wheel + STRUT)).amount,
+        helper_spring_active: strut.controller.mode,
+        damper_damage: strut.fade.amount,
         piston_velocity: mem.f32(wheel + WHEEL_STRUT_VELOCITY),
         ..out
     };
     let scratch = wheel + TYRE_SCRATCH;
     // The tyre's state, setup, record and wear blocks (the scratch's pointers), all built by the car's load.
     if [0x10, 0x14, 0x410, 0x414].iter().all(|at| mem.u32(scratch + at) != 0) {
-        let frame = mem.load_frame(scratch);
+        let frame = rbr_physics::tyre::layout::frame_of(mem, scratch);
         let state = &frame.state;
         out.tyre = Tyre {
             pressure: state.air_pressure,

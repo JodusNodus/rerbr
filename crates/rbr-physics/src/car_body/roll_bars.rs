@@ -4,15 +4,14 @@
 //! `set_cell`).
 
 use super::accessors::set_cell;
-use super::layout::{self, Real};
-use crate::car_body::store::CarStore;
+use crate::car_body::store::{CarStore, Cell};
 
 /// Updates the force of each anti-roll bar from the travels of its two sides.
 pub fn update_roll_bars<S: CarStore>(mem: &mut S, car: u32) {
     for i in 0..2 {
         let (first, second) = mem.roll_bar_travels(car, i);
         let value = 0.0 - (first - second) * mem.roll_bar_stiffness(car, i);
-        let at = layout::roll_bar_force_at(car, i);
-        set_cell(Real::load(mem, at), value).store(mem, at);
+        let cell = set_cell(mem.cell(car, Cell::RollBar(i, 2)), value);
+        mem.store_cell(car, Cell::RollBar(i, 2), cell);
     }
 }

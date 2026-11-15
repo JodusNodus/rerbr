@@ -104,15 +104,21 @@ pub fn cell_link_at(host: &mut impl AllocHost, mem: &mut Mem, grid: u32, x: f32,
     let slot = cell_grid.cells.wrapping_add(twin.cell.wrapping_mul(4) as u32);
     let mut block = mem.u32(slot);
     if block == 0 {
-        let allocation = host.allocate(0x644);
-        mem.set_u32(allocation, 100);
-        for index in 0..100 {
-            links::cell_link_ctor(mem, allocation + 4 + index * 0x10);
-        }
-        block = allocation + 4;
+        block = new_link_block(host, mem);
         mem.set_u32(slot, block);
     }
     block.wrapping_add(twin.sub_cell.wrapping_mul(0x10) as u32)
+}
+
+/// A cell's new 10x10 link block for `LookupTwin`: the host's allocation (a count word, then 100 links), every link
+/// constructed. Returns the first link.
+pub(super) fn new_link_block(host: &mut impl AllocHost, mem: &mut Mem) -> u32 {
+    let allocation = host.allocate(0x644);
+    mem.set_u32(allocation, 100);
+    for index in 0..100 {
+        links::cell_link_ctor(mem, allocation + 4 + index * 0x10);
+    }
+    allocation + 4
 }
 
 /// The intrusive four-word link used by both E33 body and cell lists.

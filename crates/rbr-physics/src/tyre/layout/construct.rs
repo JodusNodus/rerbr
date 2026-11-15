@@ -3,8 +3,8 @@
 use crate::mem::Mem;
 use crate::physics_core::layout::construct::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
 
-use super::{DEF, STATE, STATE_EFFECTIVE_RADIUS};
-use crate::{ntweak, spring_damper};
+use super::DEF;
+use crate::ntweak;
 
 /// `CopyDefFrom` (0x534760): the setup's words copied into the def, as (def offset, setup offset). Each is one word of
 /// the original's copy, and the records show each word's source. The pairs are the 122 words the original writes.
@@ -135,23 +135,42 @@ const DEF_FROM_SETUP: [(u32, u32); 122] = [
 
 /// `m_state+0x4c`: the effective radius `copy_def_from` stores in the state, m: the constant 0.315 the original stores at
 /// 0x72fca8 (the value the records show).
-const INITIAL_EFFECTIVE_RADIUS: f32 = 0.315;
+pub(super) const INITIAL_EFFECTIVE_RADIUS: f32 = 0.315;
 
-/// `CopyDefFrom(src)` (0x534760, thiscall, one stack word) on the scratch at `this`: the setup block (`src+0x2c`) is
-/// copied into the def (`this+0x10`), the state's copies follow (`this+0x14`), then `DamperUpdateB` runs on the
-/// state's damper terms at `m_state+0x60` with input 287. The copies are bit copies, so NaN words move unchanged.
-pub fn copy_def_from(mem: &mut Mem, this: u32, src: u32) {
-    let (def, state) = (mem.u32(this + DEF), mem.u32(this + STATE));
+/// What `CopyDefFrom` copies into the state, as bit copies: the setup's vertical stiffness (`setup+0x78`) and tread
+/// elasticity (`+0x88`), the def's tread coverage after its copy (`def+0xbc`) and the source's air pressure
+/// (`src+0x28`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SetupCopies {
+    pub vertical_stiffness: f32,
+    pub tread_elasticity: f32,
+    pub tread_coverage: f32,
+    pub air_pressure: f32,
+}
+
+/// `CopyDefFrom(src)` (0x534760)'s copy into the def: the setup block (`src+0x2c`) into the def (`this+0x10`), on the
+/// image (the def is the image's). Returns the words the state copies after it ([`super::entries::adopt_setup`]).
+pub fn copy_setup_into_def(mem: &mut Mem, this: u32, src: u32) -> SetupCopies {
+    let def = mem.u32(this + DEF);
     let setup = mem.u32(src + 0x2C);
     for (dst, from) in DEF_FROM_SETUP {
         mem.set_u32(def + dst, mem.u32(setup + from));
     }
-    mem.set_u32(state + 0x50, mem.u32(setup + 0x78));
-    mem.set_u32(state + 0x54, mem.u32(setup + 0x88));
-    mem.set_u32(state + 0x58, mem.u32(def + 0xBC));
-    mem.set_u32(state + 0x68, mem.u32(src + 0x28));
-    mem.set_f32(state + STATE_EFFECTIVE_RADIUS, INITIAL_EFFECTIVE_RADIUS);
-    spring_damper::layout::solve_scale(mem, state + 0x60, 287.0);
+    SetupCopies {
+        vertical_stiffness: mem.f32(setup + 0x78),
+        tread_elasticity: mem.f32(setup + 0x88),
+        tread_coverage: mem.f32(def + 0xBC),
+        air_pressure: mem.f32(src + 0x28),
+    }
+}
+
+/// `CopyDefFrom(src)` (0x534760, thiscall, one stack word) on the scratch at `this`, per call: the setup block
+/// (`src+0x2c`) is copied into the def (`this+0x10`), the state's copies follow (`this+0x14`), then `DamperUpdateB`
+/// runs on the state's gas terms at `m_state+0x60` with input 287. The copies are bit copies, so NaN words move
+/// unchanged.
+pub fn copy_def_from(mem: &mut Mem, this: u32, src: u32) {
+    let copies = copy_setup_into_def(mem, this, src);
+    super::with_tyre(mem, this, |view, tyre| super::entries::adopt_setup(view, tyre, copies));
 }
 
 /// `CTyre::CDef`'s vtable (`_vftable_`, the first word of the base sub-object).

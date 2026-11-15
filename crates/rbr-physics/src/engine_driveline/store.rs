@@ -1,32 +1,67 @@
-//! The engine's and the drive's store (`crate::store`): the layout's records (`load_*`/`store_*`, which the records'
-//! `load` and `store` forward to) and its table and word readers. `Mem` implements it in `layout/mem_store.rs`.
+//! The engine's and the drive's stores (`crate::store`). [`DriveStore`] is one drive's typed state (its records) and
+//! the words of its objects the original's index arithmetic reaches; `layout/drive_typed.rs` implements it on
+//! `DriveView`, over typed storage or per access on the image. [`EngineStore`] is the engine's records, [`EngineTables`]
+//! the tables and the callers' records at any address; every word store has both (`layout/mem_store.rs`), so the engine's
+//! view (`layout/engine_typed.rs`) serves them from its typed state where it holds the words.
 
 use super::drive_line::DriveLinePoint;
 use super::layout::{
-    BlendKnot, BrakeBlock, CurveInput, CurveKnot, CurveRow, CurveState, CurveTables, Drive, DriveDef, DriveObjects,
-    DriveState, DriveWorker, EngineDef, EngineObjects, EngineOptions, EngineOwn, EngineState, GearBand, GearWork,
-    LaneScale, LoadDef, RatioRing, UnitSplit, WorkerDef,
+    BlendKnot, CurveInput, CurveKnot, CurveState, Drive, DriveDef, DriveObjects, DriveState, DriveWorker, EngineDef,
+    EngineObjects, EngineOptions, EngineOwn, EngineState, GearWork, LoadDef, RatioRing, UnitSplit,
 };
 use super::sim::{BlendRec, Bracket};
-use crate::math::vec::Vec4;
-use crate::spring_damper::store::SpringStore;
-use crate::spring_damper::{BlendTerms, Relaxation};
+use crate::spring_damper::store::DamperBlocks;
+use crate::store::Raw;
 
-pub trait EngineStore: SpringStore {
-    fn load_drive(&self, at: u32) -> Drive;
-    fn store_drive(&mut self, at: u32, value: &Drive);
-    fn load_drive_def(&self, at: u32) -> DriveDef;
-    fn load_drive_state(&self, at: u32) -> DriveState;
-    fn store_drive_state(&mut self, at: u32, value: &DriveState);
-    fn store_commanded_gear(&mut self, at: u32, value: &DriveState);
-    fn drive_objects(&self, drive: u32) -> DriveObjects;
-    /// The row at `at` (see [`curve_row_at`](super::layout::curve_row_at)).
-    fn load_curve_row(&self, at: u32) -> CurveRow;
-    fn load_curve_tables(&self, def: u32) -> CurveTables;
-    fn load_curve_state(&self, at: u32) -> CurveState;
-    fn store_curve_state(&mut self, at: u32, value: &CurveState);
-    fn load_curve_input(&self, at: u32) -> CurveInput;
-    fn load_brake_block(&self, at: u32) -> BrakeBlock;
+/// Which of a drive's objects a word is in: the drive itself or its state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Part {
+    Drive,
+    State,
+}
+
+/// One drive: its records, each load a view of its typed state and each store writing the words the original's
+/// writes. The definition, the damage handler's block and the pointers are the image's (`Raw`).
+pub trait DriveStore: Raw {
+    /// The drive's address (the original's `this`).
+    fn at(&self) -> u32;
+    /// Its definition, state and damage block (the image's pointers).
+    fn objects(&self) -> DriveObjects;
+    /// The definition's fields the accessors read.
+    fn def(&self) -> DriveDef;
+    fn lanes(&self) -> Drive;
+    fn store_lanes(&mut self, value: &Drive);
+    fn state(&self) -> DriveState;
+    fn store_state(&mut self, value: &DriveState);
+    /// Writes the commanded gear's lane alone.
+    fn store_commanded_gear(&mut self, value: &DriveState);
+    /// The worker: the definition, the state, the drive's own words and the damage block.
+    fn worker(&self) -> DriveWorker;
+    fn store_worker(&mut self, value: &DriveWorker);
+    /// The words at the state's gear.
+    fn gear_work(&self) -> GearWork;
+    /// Writes the gear's scale and time step (at the gear `gear_work` read).
+    fn store_gear_work(&mut self, value: &GearWork);
+    fn ratio_ring(&self) -> RatioRing;
+    fn store_ratio_ring(&mut self, value: &RatioRing);
+    /// Wheel `wheel`'s curve state (`wheel < 4`).
+    fn curve_state(&self, wheel: u32) -> CurveState;
+    fn store_curve_state(&mut self, wheel: u32, value: &CurveState);
+    /// The curve workers' input block (the brake torque and the handbrake torque).
+    fn curve_input(&self) -> CurveInput;
+    /// Wheel `wheel`'s latch bound (`wheel < 4`).
+    fn latch_bound(&self, wheel: u32) -> f32;
+    fn store_latch_bound(&mut self, wheel: u32, value: f32);
+    /// The word at `offset` of the drive or its state, wherever the original's index arithmetic puts it (a typed
+    /// state's word, or the image's).
+    fn word(&self, part: Part, offset: u32) -> u32;
+    fn set_word(&mut self, part: Part, offset: u32, value: u32);
+}
+
+/// The engine's records, at the addresses of the engine and its objects (the definition, the state, the option block).
+/// Every word store has them (`layout/mem_store.rs`): a typed engine's view (`EngineView`) routes the words it holds
+/// to its typed state, the rest to the image.
+pub trait EngineStore: DamperBlocks + EngineTables {
     fn engine_objects(&self, engine: u32) -> EngineObjects;
     fn load_load_def(&self, at: u32) -> LoadDef;
     fn load_engine_def(&self, at: u32) -> EngineDef;
@@ -38,29 +73,14 @@ pub trait EngineStore: SpringStore {
     fn load_engine_options(&self, at: u32) -> EngineOptions;
     /// Writes the words the stall roll changes (the stall terms); the rest of the block keeps its bytes.
     fn store_stall_terms(&mut self, at: u32, value: &EngineOptions);
-    /// The band of `gear` (any value, read at the band's offset as the original does).
-    fn load_gear_band(&self, def: u32, gear: u32) -> GearBand;
-    /// The definition at `def`.
-    fn load_worker_def(&self, def: u32) -> WorkerDef;
-    fn load_drive_worker(&self, this: u32) -> DriveWorker;
-    fn store_drive_worker(&mut self, this: u32, value: &DriveWorker);
-    fn load_gear_work(&self, this: u32) -> GearWork;
-    /// Writes the gear's scale and time step (the state's gear is the one `load` read).
-    fn store_gear_work(&mut self, this: u32, value: &GearWork);
-    /// The ring at `at`.
-    fn load_ratio_ring(&self, at: u32) -> RatioRing;
-    fn store_ratio_ring(&mut self, at: u32, value: &RatioRing);
-    fn load_lane_scale(&self, at: u32) -> LaneScale;
+}
+
+/// The tables and records the engine and drive ports read and write at any address: the definitions' curves and
+/// tables, the table manager's words, the stage's drive line, and the records the callers' pointers name. Every word
+/// store has them (`layout/mem_store.rs`).
+pub trait EngineTables: Raw {
     /// Writes the record at `at` (the four words; the rest of the object is left alone).
     fn store_unit_split(&mut self, at: u32, value: &UnitSplit);
-    /// The block's gain that the curve workers scale by.
-    fn curve_gain(&self, block: u32) -> f32;
-    /// The block's row index that `drive_curve::row_value` picks the row by.
-    fn curve_index(&self, block: u32) -> u32;
-    /// The gate word of the drive's damage block that the curve term reads.
-    fn damage_gate(&self, drive: u32) -> u32;
-    /// The float at `at` of wheel `a`'s block of the drive's state.
-    fn wheel_block_f32(&self, drive: u32, a: u32, at: u32) -> f32;
     /// The table manager's word after its header (named by use).
     fn table_manager_word(&self, manager: u32) -> u32;
     /// Entry `idx` of the table the manager points to.
@@ -69,9 +89,6 @@ pub trait EngineStore: SpringStore {
     /// tags of the filled entries are left as they were. The log lines are skipped; a count over 10000 traps in the
     /// original.
     fn store_drive_line(&mut self, this: u32, entries: &[DriveLinePoint]);
-    /// The lerp of the drive line entry `idx`'s tangent and entry `idx + 1`'s, at `t`. The count check is the caller's
-    /// (the original traps past it).
-    fn lerp_at(&self, this: u32, idx: i32, t: f32) -> Vec4;
     /// Row `i` of the definition's exhaust table: eight floats.
     fn exhaust_row(&self, def: u32, i: u32) -> [f32; 8];
     /// The `n` knots of a curve at `at`.
@@ -81,12 +98,6 @@ pub trait EngineStore: SpringStore {
     /// The knots of a two-level blend table at `at`: each outer record has a key and a sub-table, which is read with its
     /// own count.
     fn blend_table(&self, at: u32) -> Vec<BlendKnot>;
-    /// The four words of a `BlendTerms` block at `at`.
-    fn load_blend_terms(&self, at: u32) -> BlendTerms;
-    fn store_blend_terms(&mut self, at: u32, block: BlendTerms);
-    /// The four words of a `Relaxation` block at `at`.
-    fn load_relaxation(&self, at: u32) -> Relaxation;
-    fn store_relaxation(&mut self, at: u32, block: Relaxation);
     /// The four outputs of `find_bracket`, written through the pointers the caller passed (`hi`, `lo` as ints).
     fn store_bracket(&mut self, b: &Bracket, out: [u32; 4]);
     /// `n` consecutive floats at `at`.
@@ -94,8 +105,6 @@ pub trait EngineStore: SpringStore {
     /// The `count` records of a blend table (the argument of `blend_tables`), described at `desc`. The count is the first
     /// table's, and the second table is read with the same count.
     fn blend_records(&self, desc: u32, count: usize) -> Vec<BlendRec>;
-    /// The drive's definition, which the drive setup fills.
-    fn drive_def(&self, drive: u32) -> u32;
     fn load_entry(&self, at: u32) -> DriveLinePoint;
     fn store_entry(&mut self, at: u32, e: DriveLinePoint);
 }

@@ -6,14 +6,15 @@ use rbr_physics::rigid_body::contact::{ContactHost, Impulse, SampleHook};
 use rbr_physics::rigid_body::contact_list::{contact_list_step, Event, ListHost, Record};
 use rbr_physics::rigid_body::force::accumulate_force;
 use rbr_physics::rigid_body::host::{BodyCalls, HostUnavailable};
-use rbr_physics::rigid_body::layout::{self, Body, Vec4};
+use rbr_physics::rigid_body::layout::{self, Vec4};
+use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::rigid_body::vote::ContactVoteHost;
 
-use super::force_pass::{SLOT_RESPONSE, SLOT_S30};
-use super::slots::Flush;
+use super::force_pass::{s30_at, SLOT_RESPONSE};
+use super::slots::{flush_gate, Flush};
 use super::{
-    unavailable, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A, SAMPLE, SCRATCH_BELOW_ESP, SIGNALS,
-    SLOT_SAMPLE_HOOK, WALKER,
+    held_solids, on_solids, unavailable, with_solids, BIG_A, COLLECT_OBJECT, COPY16_WALK, E36_COLLECT, MB560, RETIRE_A,
+    SAMPLE, SCRATCH_BELOW_ESP, SIGNALS, SLOT_SAMPLE_HOOK, WALKER,
 };
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
@@ -30,7 +31,8 @@ struct VoteCalls<'a> {
 
 impl ContactVoteHost for VoteCalls<'_> {
     fn contact(&mut self, k: u32) -> Result<Option<Impulse>, HostUnavailable> {
-        let e = layout::contact_record(&self.mem, self.this, k);
+        let this = self.this;
+        let e = with_solids(self.host, &mut self.mem, |s| layout::contact_record(s, this, k));
         let (a, b) = (self.frame + 0x20, self.frame + 0x30);
         let args = [a, b, self.frame + 0x1c, self.frame + 0x18, e, self.range];
         let hit = self.host.call_at(self.frame - 0x1c, BIG_A, self.this, &args).eax != 0;
@@ -41,10 +43,26 @@ impl ContactVoteHost for VoteCalls<'_> {
 /// thiscall `(a, b, range)`, eax: the contact vote over the body's list (`BigA` per record, at the original's stack).
 pub(super) fn vf81x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, range, ..] = r.stack;
-    let mut calls =
-        VoteCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, frame: aligned_frame(r.esp) - 0x40, range };
-    let eax = layout::contact_vote(&mut ctx.mem, r.ecx, a, b, &mut calls).expect("the host answers every call");
-    Ok(Return::void(eax, 12))
+    Ok(Return::void(contact_vote_at(ctx.host, &mut ctx.mem, r.ecx, r.esp, a, b, range), 12))
+}
+
+/// `Vf81x` on the held solid `this`, entered where a call at `sp` enters (its calls placed from there), counted as a run
+/// ([`Host::ran_direct`]): it reads nothing of the stack but its arguments, and its callers (the force pass's and the
+/// hinge solve's votes) read only its outputs. `None` per call and for another body, where the caller calls the host.
+pub(crate) fn contact_vote_direct(host: &dyn Host, mem: &mut Mem, this: u32, sp: u32, args: [u32; 3]) -> Option<u32> {
+    if !held_solids(host).is_some_and(|s| s.held(this).is_some()) {
+        return None;
+    }
+    host.ran_direct();
+    let [a, b, range] = args;
+    Some(contact_vote_at(host, mem, this, sp, a, b, range))
+}
+
+/// `Vf81x`'s body on `this` entered at `esp` (its calls placed from there).
+fn contact_vote_at(host: &dyn Host, mem: &mut Mem, this: u32, esp: u32, a: u32, b: u32, range: u32) -> u32 {
+    let mut calls = VoteCalls { mem: mem.clone(), host, this, frame: aligned_frame(esp) - 0x40, range };
+    let count = crate::collision::contact_count(host, mem, this);
+    with_solids(host, mem, |s| layout::contact_vote(s, count, a, b, &mut calls)).expect("the host answers every call")
 }
 
 /// `BigA`'s callees at the original's stack: `frame` is its aligned locals after its callee-saves (the frame point at
@@ -72,10 +90,9 @@ impl BodyCalls for ContactCalls<'_> {
     fn transform(&mut self, src: Vec4) -> Vec4 {
         let at = self.frame + 0x60;
         src.store(&mut self.mem, at);
-        let target = layout::vtable_target(&self.mem, self.this, SLOT_S30);
-        let body = self.host.call_at(self.frame - 8, target, self.this, &[self.a]).eax;
+        let body = s30_at(&self.mem, self.host, self.frame - 8, self.this, &[self.a]);
         let walker = self.mem.u32(WALKER);
-        self.host.call_at(self.frame - 0x10, MB560, walker, &[at, body, self.a]);
+        crate::entities::call_op(self.host, self.frame - 0x10, MB560, walker, &[at, body, self.a]);
         Vec4::load(&self.mem, self.a)
     }
 }
@@ -85,7 +102,7 @@ impl ContactHost for ContactCalls<'_> {
     fn compose(&mut self, _vector: Vec4) -> Vec4 {
         let walker = self.mem.u32(WALKER);
         let args = [self.e + 0x40, walker, self.frame + 0x40];
-        self.host.call_at(self.frame - 0x10, COPY16_WALK, self.this, &args);
+        crate::entities::call_op(self.host, self.frame - 0x10, COPY16_WALK, self.this, &args);
         Vec4::load(&self.mem, self.frame + 0x40)
     }
 
@@ -116,7 +133,9 @@ pub(super) fn big_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls =
         ContactCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, frame: aligned_frame(r.esp) - 0x70, e, a };
     let out = layout::ContactOut { force_out: a, torque_out: b, force, depth };
-    let eax = layout::contact_worker(&mut ctx.mem, r.ecx, out, e, f32::from_bits(range), &mut calls)
+    let contact = crate::collision::read_contact(ctx.host, &ctx.mem, e);
+    let range = f32::from_bits(range);
+    let eax = on_solids(ctx, |s| layout::contact_worker(s, r.ecx, out, contact, range, &mut calls))
         .expect("the host answers every call");
     Ok(Return::void(eax, 0x18))
 }
@@ -145,7 +164,7 @@ impl BodyCalls for ListCalls<'_> {
         src.store(&mut self.mem, a);
         let slot12 = self.mem.u32(self.mem.u32(self.this) + 4 * 12);
         self.host.call(slot12, self.this, &[]);
-        self.host.call(MB560, self.mem.u32(WALKER), &[a, self.this, c]);
+        crate::entities::call_op(self.host, 0, MB560, self.mem.u32(WALKER), &[a, self.this, c]);
         Vec4::load(&self.mem, c)
     }
 }
@@ -201,7 +220,7 @@ impl ListCalls<'_> {
 /// thiscall, no stack arguments: the contact list step (`CSolid::BigB`). The list comes from `E36Collect` (collision's
 /// binding, when it is bound); the step's calls on the body go through the original.
 pub(super) fn big_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let body = Body::load(&ctx.mem, r.ecx);
+    let body = on_solids(ctx, |s| s.body(r.ecx));
     let mut calls = ListCalls { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, scratch: r.esp - SCRATCH_BELOW_ESP };
     contact_list_step(&body, &mut calls).map_err(unavailable)?;
     Ok(Return::void(0, 0))
@@ -210,13 +229,11 @@ pub(super) fn big_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(pp)`: the force accumulate (`CSolid::E43Vf70`, slot 28), then the flush under `E43Vf74`'s gate. eax is the
 /// flush's result when it runs, else the app pointer the gate test left.
 pub(super) fn e43vf70(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let app = ctx.mem.u32(APP);
-    let flags = ctx.mem.u32(app + 0x38) | ctx.mem.u32(ctx.mem.u32(app + 0x24) + 0x160f4);
-    let pp = Vec4::load(&ctx.mem, r.stack[0]);
-    let mut body = Body::load(&ctx.mem, r.ecx);
+    let (app, flags) = (ctx.mem.u32(APP), flush_gate(&ctx.mem));
+    let (pp, mut body) = on_solids(ctx, |s| (s.row(r.stack[0]), s.body(r.ecx)));
     let mut flush = Flush { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, eax: None };
     accumulate_force(&mut body, pp, flags, &mut flush).map_err(unavailable)?;
-    body.store(&mut ctx.mem, r.ecx);
+    on_solids(ctx, |s| s.store_body(r.ecx, &body));
     Ok(Return::void(flush.eax.unwrap_or(app), 4))
 }
 

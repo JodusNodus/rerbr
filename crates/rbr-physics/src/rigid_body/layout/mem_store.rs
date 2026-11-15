@@ -1,8 +1,11 @@
-//! The Mem store of the rigid body: the layout's reads and writes behind `RigidStore`.
+//! The rigid body's store: the layout's reads and writes behind `RigidStore`, on every [`SolidWords`] (`Mem`'s on the
+//! image, per call; `SolidView`'s on the held solids, `typed.rs`). The solids' words go through `SolidWords`; the
+//! settings, the rings and the pair are the image's.
 
-use super::contacts::{self, CONTACT_LIST, HALF, HOOK, RING_TAIL};
+use super::contacts::{self, HALF, HOOK, RING_TAIL};
 
 use super::solid_ctor::SOLID_STATE;
+use super::HeldSolid;
 use super::{
     Body, Def, ParentFrame, Vec4, ANGULAR_VELOCITY, CONTACT_LIST_FLAG, DEFINITION, DEF_INVERSE_MASS, DEF_VERY_SOFT,
     ENTITY_FLAGS, LINEAR_VELOCITY, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE, START_ORIENTATION, START_POSITION,
@@ -10,11 +13,11 @@ use super::{
 use crate::math::quat::Quat;
 use crate::math::vec::Vec3;
 use crate::mem::Mem;
-use crate::physics_core::layout as core_layout;
 use crate::physics_core::math::Mat;
-use crate::rigid_body::contact::Input;
+use crate::rigid_body::contact::{Contact, Input};
 use crate::rigid_body::rows::RowFrame;
 use crate::rigid_body::store::{HookPair, Motion, RigidStore, RingHeader, StateRotation};
+use crate::store::Raw;
 
 /// The physics global (`g_1659b70`), whose `+0x24` is the settings object.
 const PHYSICS_GLOBAL: u32 = 0x1659b70;
@@ -32,25 +35,111 @@ const STATE_DIAGONAL: u32 = 0x70;
 const STATE_GATE: u32 = 0x7c;
 const STATE_MATRIX: u32 = 0x30;
 
+/// The solids' words as a rigid store finds them: the image's (`Mem`, per call) or, for a solid held in typed storage,
+/// its typed state's (`SolidView`). Every other word (pointers, flags, settings, rings) is read on the image.
+pub trait SolidWords: Raw {
+    #[inline]
+    fn word(&self, at: u32) -> u32 {
+        self.mem().u32(at)
+    }
+    #[inline]
+    fn set_word(&mut self, at: u32, value: u32) {
+        self.mem_mut().set_u32(at, value)
+    }
+    /// `N` words from `at` (the image's at once where its pages hold them).
+    #[inline]
+    fn words<const N: usize>(&self, at: u32) -> [u32; N] {
+        self.mem().u32s(at)
+    }
+    /// Four words from `at`, written as a vector.
+    #[inline]
+    fn set_words4(&mut self, at: u32, words: [u32; 4]) {
+        Vec4::from(words.map(f32::from_bits)).store(self.mem_mut(), at)
+    }
+    /// The image when it has every word (nothing held), for a caller that reads or writes many at once.
+    #[inline]
+    fn image(&mut self) -> Option<&mut Mem> {
+        None
+    }
+    /// [`SolidWords::image`], to read.
+    #[inline]
+    fn image_ref(&self) -> Option<&Mem> {
+        None
+    }
+    /// The typed state of the solid at `this` while it is held, for a caller that reads or writes a whole body.
+    #[inline]
+    fn held(&self, _this: u32) -> Option<&HeldSolid> {
+        None
+    }
+}
+
+impl SolidWords for Mem {
+    #[inline]
+    fn image(&mut self) -> Option<&mut Mem> {
+        Some(self)
+    }
+    #[inline]
+    fn image_ref(&self) -> Option<&Mem> {
+        Some(self)
+    }
+}
+
+#[inline]
+fn f<W: SolidWords + ?Sized>(w: &W, at: u32) -> f32 {
+    f32::from_bits(w.word(at))
+}
+
+#[inline]
+fn set_f<W: SolidWords + ?Sized>(w: &mut W, at: u32, value: f32) {
+    w.set_word(at, value.to_bits())
+}
+
+#[inline]
+pub(super) fn floats<const N: usize, W: SolidWords + ?Sized>(w: &W, at: u32) -> [f32; N] {
+    w.words::<N>(at).map(f32::from_bits)
+}
+
+#[inline]
+pub(super) fn vec4<W: SolidWords + ?Sized>(w: &W, at: u32) -> Vec4 {
+    Vec4::from(floats::<4, W>(w, at))
+}
+
+#[inline]
+pub(super) fn set_vec4<W: SolidWords + ?Sized>(w: &mut W, at: u32, v: Vec4) {
+    w.set_words4(at, [v.x, v.y, v.z, v.w].map(f32::to_bits));
+}
+
+#[inline]
+fn vec3<W: SolidWords + ?Sized>(w: &W, at: u32) -> Vec3 {
+    let [x, y, z] = floats(w, at);
+    Vec3 { x, y, z }
+}
+
+#[inline]
+pub(super) fn quat<W: SolidWords + ?Sized>(w: &W, at: u32) -> Quat {
+    let [x, y, z, w] = floats(w, at);
+    Quat { x, y, z, w }
+}
+
 fn settings(mem: &Mem) -> u32 {
     mem.u32(mem.u32(PHYSICS_GLOBAL) + 0x24)
 }
 
-impl RigidStore for Mem {
+impl<W: SolidWords> RigidStore for W {
     fn body(&self, this: u32) -> Body {
-        Body::load(self, this)
+        Body::read(self, this)
     }
 
     fn store_body(&mut self, this: u32, body: &Body) {
-        body.store(self, this);
+        body.write(self, this);
     }
 
     fn definition(&self, this: u32) -> Def {
-        Def::load(self, self.u32(this + DEFINITION))
+        Def::load(self.mem(), self.u32(this + DEFINITION))
     }
 
     fn parent_frame(&self, parent: u32) -> ParentFrame {
-        ParentFrame::load(self, parent)
+        ParentFrame::load(self.mem(), parent)
     }
 
     fn def_very_soft(&self, this: u32) -> bool {
@@ -63,85 +152,83 @@ impl RigidStore for Mem {
     }
 
     fn row(&self, at: u32) -> Vec4 {
-        Vec4::load(self, at)
+        vec4(self, at)
     }
 
     fn store_row(&mut self, at: u32, row: Vec4) {
-        row.store(self, at);
+        set_vec4(self, at, row);
     }
 
     fn store_row3(&mut self, at: u32, row: Vec4) {
-        self.set_f32(at, row.x);
-        self.set_f32(at + 4, row.y);
-        self.set_f32(at + 8, row.z);
+        set_f(self, at, row.x);
+        set_f(self, at + 4, row.y);
+        set_f(self, at + 8, row.z);
     }
 
     fn vec3(&self, at: u32) -> Vec3 {
-        Vec3::load(self, at)
+        vec3(self, at)
     }
 
     fn store_vec3(&mut self, at: u32, value: Vec3) {
-        value.store(self, at);
+        set_f(self, at, value.x);
+        set_f(self, at + 4, value.y);
+        set_f(self, at + 8, value.z);
     }
 
     fn row_frame(&self, this: u32) -> RowFrame {
-        RowFrame { m: self.f32s(this + MATRIX), origin: Vec3::load(self, this + POSITION).extend(0.0) }
+        RowFrame { m: floats(self, this + MATRIX), origin: vec3(self, this + POSITION).extend(0.0) }
     }
 
     fn matrix_words(&self, this: u32) -> [f32; 9] {
-        self.f32s(this + MATRIX)
+        floats(self, this + MATRIX)
     }
 
     fn matrix(&self, this: u32) -> Mat {
-        core_layout::mat(self, this + MATRIX)
+        let at = this + MATRIX;
+        Mat { rows: std::array::from_fn(|r| floats(self, at + 12 * r as u32)), extra: f(self, at + 36) }
     }
 
     fn position(&self, this: u32) -> Vec4 {
-        Vec4::load(self, this + POSITION)
+        vec4(self, this + POSITION)
     }
 
     fn motion(&self, this: u32) -> Motion {
         Motion {
-            position: Vec3::load(self, this + POSITION),
-            angular_velocity: Vec3::load(self, this + ANGULAR_VELOCITY),
-            linear_velocity: Vec3::load(self, this + LINEAR_VELOCITY),
+            position: vec3(self, this + POSITION),
+            angular_velocity: vec3(self, this + ANGULAR_VELOCITY),
+            linear_velocity: vec3(self, this + LINEAR_VELOCITY),
         }
     }
 
     fn linear_velocity(&self, this: u32) -> Vec4 {
-        Vec4::load(self, this + LINEAR_VELOCITY)
+        vec4(self, this + LINEAR_VELOCITY)
     }
 
     fn store_linear_velocity(&mut self, this: u32, value: Vec4) {
-        value.store(self, this + LINEAR_VELOCITY);
+        set_vec4(self, this + LINEAR_VELOCITY, value);
     }
 
     fn start_orientation(&self, this: u32) -> Quat {
-        Quat::load(self, this + START_ORIENTATION)
+        quat(self, this + START_ORIENTATION)
     }
 
     fn start_offset(&self, this: u32) -> Vec4 {
-        Vec3::load(self, this + START_POSITION).extend(0.0)
+        vec3(self, this + START_POSITION).extend(0.0)
     }
 
     fn impulse_limits(&self) -> (f32, f32) {
-        let settings = settings(self);
+        let settings = settings(self.mem());
         (self.f32(settings + CLAMP_LIMIT), self.f32(settings + CLAMP_SCALE))
     }
 
-    fn contact_input(&self, this: u32, contact: u32, range: f32) -> Input {
+    fn contact_input(&self, this: u32, contact: Contact, range: f32) -> Input {
         Input {
-            contact: contacts::load_contact(self, contact),
+            contact,
             inverse_mass: RigidStore::inverse_mass(self, this),
-            max_step: self.f32(settings(self) + MAX_TIME_STEP),
+            max_step: self.f32(settings(self.mem()) + MAX_TIME_STEP),
             range,
             sample: self.u32(this + HOOK) != 0 && self.u8(this + ENTITY_FLAGS) & CONTACT_LIST_FLAG != 0,
         }
-    }
-
-    fn contact_count(&self, this: u32) -> Option<u32> {
-        let list = self.u32(this + CONTACT_LIST);
-        (list != 0).then(|| self.u32(list + 4))
     }
 
     fn linear_velocity_at(&self, this: u32) -> u32 {
@@ -165,44 +252,41 @@ impl RigidStore for Mem {
     }
 
     fn ring_header(&self, ring: u32) -> RingHeader {
-        contacts::ring_header(self, ring)
+        contacts::ring_header(self.mem(), ring)
     }
 
     fn store_ring_entry(&mut self, ring: u32, index: u32, words: [u32; 3], src: u32) {
-        contacts::store_ring_entry(self, ring, index, words, src);
+        let vector: [u32; 4] = std::array::from_fn(|k| self.word(src + 4 * k as u32));
+        contacts::store_ring_entry(self.mem_mut(), ring, index, words, vector);
     }
 
     fn store_ring_cursor(&mut self, ring: u32, index: u32, count: u32) {
-        contacts::store_ring_cursor(self, ring, index, count);
+        contacts::store_ring_cursor(self.mem_mut(), ring, index, count);
     }
 
     fn scratch_scale(&self, this: u32) -> f32 {
-        self.f32(this + SCRATCH_SCALE)
+        f(self, this + SCRATCH_SCALE)
     }
 
     fn scratch_accum(&self, this: u32) -> Vec4 {
-        Vec4::load(self, this + SCRATCH_ACCUM)
+        vec4(self, this + SCRATCH_ACCUM)
     }
 
     fn store_scratch_accum(&mut self, this: u32, value: Vec4) {
-        value.store(self, this + SCRATCH_ACCUM);
+        set_vec4(self, this + SCRATCH_ACCUM, value);
     }
 
     fn state_rotation(&self, state: u32) -> StateRotation {
         StateRotation {
-            orientation: Quat::load(self, state + STATE_ORIENTATION),
-            gate: self.f32(state + STATE_GATE),
-            diagonal: [
-                self.f32(state + STATE_DIAGONAL),
-                self.f32(state + STATE_DIAGONAL + 4),
-                self.f32(state + STATE_DIAGONAL + 8),
-            ],
+            orientation: quat(self, state + STATE_ORIENTATION),
+            gate: f(self, state + STATE_GATE),
+            diagonal: floats(self, state + STATE_DIAGONAL),
         }
     }
 
     fn store_state_matrix(&mut self, state: u32, matrix: [f32; 9]) {
         for (k, v) in matrix.into_iter().enumerate() {
-            self.set_f32(state + STATE_MATRIX + 4 * k as u32, v);
+            set_f(self, state + STATE_MATRIX + 4 * k as u32, v);
         }
     }
 }

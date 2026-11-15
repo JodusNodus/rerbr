@@ -8,12 +8,13 @@ use rbr_physics::math::vec::clear_vec4;
 use rbr_physics::mem::Mem;
 
 use super::{
-    Callees, BODY_GRID, E01_VEC4_COPY_FROM, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, FLOAT3_LENGTH, NODE_OF,
-    RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
+    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
 };
 use crate::entities::{COPY_BLOCKS, COPY_BLOCKS_THREE_FOUR, MB560};
 use crate::rigid_body::OPERATOR_NEW;
+use crate::stage::on_stage;
 use crate::{Ctx, Decline, Host, Regs, Return};
+use rbr_physics::entities::layout::{sample_indexed, Indexed};
 
 /// thiscall `(a, b)`, ret 8: `CCollisionMeshOpen::CopyBounds` (0x4fb070), the mesh's lower bound to `a` and upper bound
 /// to `b`. Eax is `b`, the second copy's result.
@@ -65,7 +66,8 @@ pub(super) fn ray_triangle(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// E38RaySeeds (0x4f6550): thiscall on the ray object; eax is the object (its `E09Vec4::Clear` calls return it).
 pub(super) fn ray_seeds(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = RaySeedCalls { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp };
-    Ok(Return::void(layout::ray_seeds(&mut calls, &mut ctx.mem, r.ecx), 0))
+    let eax = super::on_grids(ctx.host, &mut ctx.mem, &[r.ecx], |s| layout::ray_seeds(&mut calls, s, r.ecx));
+    Ok(Return::void(eax, 0))
 }
 
 /// `E38RaySeeds`' `E09Vec4::Clear` calls, at the pure host's placement below its entry `esp`, run here there (the
@@ -105,8 +107,35 @@ pub(super) fn grid_sync(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// record list, or null for the grid's own list); eax is 1 on a hit.
 pub(super) fn grid_ray(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [start, end, out, list, ..] = r.stack;
-    let flag = layout::mesh_ray_query(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, start, end, out, list);
+    let mut samples = Samples { mem: ctx.mem.clone(), host: ctx.host };
+    let flag = layout::mesh_ray_query(&mut samples, &mut ctx.mem, r.ecx, start, end, out, list);
     Ok(Return::void(flag, 16))
+}
+
+/// `M_D760X`'s material table samples (0x520240): direct on the held stage's table, counted as a run (NGP's sampling;
+/// the binding reads nothing of the stack but its arguments, and the ray reads none of the call's words), else
+/// through the host (per call, 1.02, whose binding declines, and a table with no slots, whose eax is the caller's).
+struct Samples<'a> {
+    mem: Mem,
+    host: &'a dyn Host,
+}
+
+impl SampleHost for Samples<'_> {
+    fn sample(&mut self, byte: u32, low: f32, high: f32) -> u32 {
+        if crate::ngp::is_ngp() && self.host.typed().is_some() {
+            let found = on_stage(self.host, &self.mem, |s| sample_indexed(s, SAMPLE_TABLE, byte as u8, low, high));
+            let eax = match found {
+                Indexed::Texel(texel) => Some(texel),
+                Indexed::OutOfRange => Some(0),
+                Indexed::NoTable => None,
+            };
+            if let Some(eax) = eax {
+                self.host.ran_direct();
+                return eax;
+            }
+        }
+        self.host.call(SAMPLE_INDEXED, SAMPLE_TABLE, &[byte, low.to_bits(), high.to_bits()]).eax
+    }
 }
 
 /// thiscall `(origin, end, out)`, ret 0xc: `CCollisionSystem::Vf00` (0x4fe810), the segment query on the system
@@ -165,11 +194,11 @@ pub(super) fn ray_clear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 impl GridSyncHost for Callees<'_> {
     fn copy_transform(&mut self, _: &mut Mem, a: u32, edges: u32, worker: u32, out: u32, count: u32) {
-        self.0.call(COPY_BLOCKS, a, &[edges, worker, out, count]);
+        crate::entities::call_op(self.0, 0, COPY_BLOCKS, a, &[edges, worker, out, count]);
     }
 
-    fn copy_vec4(&mut self, _: &mut Mem, dst: u32, src: u32) {
-        self.0.call(E01_VEC4_COPY_FROM, dst, &[src]);
+    fn copy_vec4(&mut self, mem: &mut Mem, dst: u32, src: u32) {
+        super::copy_vec4(self.0, mem, 0, dst, src);
     }
 }
 
@@ -181,13 +210,7 @@ impl RayHost for Callees<'_> {
 
 impl CellQueryHost for Callees<'_> {
     fn query_cells(&mut self, _mem: &mut Mem, lo: u32, hi: u32, cells: u32) {
-        self.0.call(E45_CELL_QUERY, 0, &[lo, hi, cells]);
-    }
-}
-
-impl SampleHost for Callees<'_> {
-    fn sample(&mut self, byte: u32, low: f32, high: f32) -> u32 {
-        self.0.call(SAMPLE_INDEXED, SAMPLE_TABLE, &[byte, low.to_bits(), high.to_bits()]).eax
+        super::call_grid(self.0, 0, E45_CELL_QUERY, 0, &[lo, hi, cells]);
     }
 }
 
@@ -222,11 +245,11 @@ impl CollectHost for Callees<'_> {
     }
 
     fn query_cells(&mut self, _mem: &mut Mem, sp: u32, lo: u32, hi: u32, cells: u32) {
-        self.0.call_at(sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+        super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
     }
 
-    fn length(&mut self, _mem: &Mem, sp: u32, vector: u32) -> f32 {
-        self.0.call_at(sp, FLOAT3_LENGTH, vector, &[]).st0 as f32
+    fn length(&mut self, mem: &Mem, sp: u32, vector: u32) -> f32 {
+        super::length(self.0, mem, sp, vector)
     }
 }
 
@@ -283,11 +306,11 @@ impl GridOpsHost for GridOps<'_> {
     }
 
     fn copy_blocks_one_two(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32) {
-        self.0.call_at(sp, COPY_BLOCKS, a, &[src, o2, dst, n]);
+        crate::entities::call_op(self.0, sp, COPY_BLOCKS, a, &[src, o2, dst, n]);
     }
 
     fn copy_blocks_three_four(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32) {
-        self.0.call_at(sp, COPY_BLOCKS_THREE_FOUR, a, &[src, o2, dst, n]);
+        crate::entities::call_op(self.0, sp, COPY_BLOCKS_THREE_FOUR, a, &[src, o2, dst, n]);
     }
 }
 
@@ -306,8 +329,11 @@ pub(super) fn grid_add_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 /// with one point (the asm's bounds loop would not end) and no grid with a source.
 pub(super) fn grid_ops_m6610(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, a, b, ..] = r.stack;
-    let eax = layout::copy_grid(&mut GridOps(ctx.host), &mut ctx.mem, r.ecx, src, a, b, r.esp)
-        .ok_or(Decline::Unsupported("a grid with one point, or none with a source"))?;
+    let host = ctx.host;
+    let eax = super::on_grids(host, &mut ctx.mem, &[r.ecx, src], |s| {
+        layout::copy_grid(&mut GridOps(host), s, r.ecx, src, a, b, r.esp)
+    })
+    .ok_or(Decline::Unsupported("a grid with one point, or none with a source"))?;
     Ok(Return::void(eax, 12))
 }
 

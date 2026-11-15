@@ -5,6 +5,7 @@ pub(in crate::collision) mod body_contacts;
 pub mod body_hosts;
 pub mod body_slots;
 mod cell_grid;
+mod cell_table;
 mod col_grids;
 pub mod collide_hosts;
 pub mod dictionary;
@@ -24,6 +25,7 @@ mod solver;
 pub mod solver_hosts;
 pub mod sort;
 pub mod state;
+mod typed;
 mod vec_ops;
 pub mod wall_tree;
 mod walls;
@@ -41,6 +43,7 @@ pub use body::{
 };
 pub use body_contacts::{grid_contacts, pair_contacts};
 pub use cell_grid::{cell_grid_ctor, cell_link_at, move_to_cell, unlink, CellGrid, Link};
+pub use cell_table::{CellLink, CellTable};
 pub(in crate::collision) use col_grids::GRID_TAG;
 pub use col_grids::{
     alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, edge_sample, load_col_grid,
@@ -49,11 +52,11 @@ pub use col_grids::{
 pub(in crate::collision) use entry_box::{obb_input_extents, sphere_input_radius};
 pub use entry_box::{shape_axis, shape_extent, EntryBox, EntryContact};
 pub use events::{
-    apply_event_impulse, init_full, make_event_at, make_event_frame, make_event_payload, prefill_pool,
+    apply_event_impulse, init_full, make_event_at, make_event_frame, make_event_payload, make_event_tail, prefill_pool,
     query_event_bodies, relative_point_velocity, store_payload, EventBodyHost, EVENT_SIZE,
 };
 pub(in crate::collision) use events::{
-    event_impulse_frame, event_query_frame, init_event_sp, make_event_tail, point_velocity_frame, EventQueryFrame,
+    event_impulse_frame, event_query_frame, init_event_sp, point_velocity_frame, EventQueryFrame,
 };
 pub(in crate::collision) use grid_edges::copy_grid_frame;
 pub use grid_edges::{
@@ -70,12 +73,17 @@ pub use mesh_query::{
     world_axes_overlap, SystemFrame,
 };
 pub(in crate::collision) use mesh_query::{sweep_scratch, SweepScratch};
+pub(in crate::collision) use solver::contact_row_frame;
 pub use solver::ctor_solver;
-pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
+pub use solver::solve_event_frame;
+pub use typed::{
+    differential, round_trip, CarCollision, CollisionImage, CollisionTyped, CollisionView, ContactCountObj,
+    ContactRowObj, ContactRows, GridHitsObj, OffsetCountObj, OffsetRowObj, RowsHeadObj, Touched,
+};
 pub use vec_ops::{
-    bounds_union, scaled, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross, vec3_cross_dot,
-    vec3_dot, vec3_normalize, vec3_scale, vec3_sub, vec3_sub_dot, vec4_copy_from, vec4_normalize, vec4_sub_stale,
-    Vec4Pair,
+    bounds_union, scaled, stale_lane, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross,
+    vec3_cross_dot, vec3_dot, vec3_normalize, vec3_scale, vec3_sub, vec3_sub_dot, vec4_copy_from, vec4_normalize,
+    vec4_sub_stale, Vec4Pair,
 };
 pub use walls::{brake_wall_contact, query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
 pub(in crate::collision) use walls::{probe_hits, wall_box_frame, wall_ends_frame};

@@ -1,14 +1,25 @@
 //! `--twin mem` (Phase B): a second playback from the same image, stepped with the
 //! same payloads, and compared with the first after every step: the car and wheel blocks (FRM1's bytes) and every
-//! owned byte of the car's tabled objects (`rbr_physics::store::car_objects`). Both images' tables are checked with
+//! owned byte of the car's and the physics core's tabled objects (`rbr_physics::store::car_objects`,
+//! `rbr_physics::physics_core::layout::core_objects`). Both images' tables are checked with
 //! `lower(lift(image)) == image` first.
 //!
 //! `mem` runs the second side as the first, the Mem path against itself; `mem-direct` runs it with B1's Mem-direct
-//! dispatch ([`rbr_hybrid::pure::Pure::direct`]). B2's typed storage is a further kind of the second side.
+//! dispatch ([`rbr_hybrid::pure::Pure::direct`]); `typed` runs it with the typed subsystems (the struts, the VCU, the
+//! drive, the engine, the tyres, the wheels, the car's own, the physics core) on the image between calls, against the first side's typed storage over each step
+//! ([`rbr_hybrid::pure::Pure::typed`], the default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
+//! stage's queries against the image's (`stage::layout::differential`). Every solid the car has held so far is compared
+//! too (`rigid_body::layout::Solid`'s owned bytes): a mounted body leaves the car's slots when it detaches.
+//! `across` runs the second side with its typed state lifted and lowered around each step, against the first side's
+//! held across steps (`Pure::typed_across_steps`, the default), the proof that holding it across steps changes nothing.
+//!
+//! Both sides' images are read through [`Pure::image`](rbr_hybrid::pure::Pure::image) (the typed state's words
+//! lowered into them first).
 
 use rbr_hybrid::pure::{frame_bytes, word_name, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
-use rbr_physics::store;
+use rbr_physics::rigid_body::layout::{CarSolids, Solid};
+use rbr_physics::store::{self, FieldInfo, Object};
 use rbr_recording::CONTROL_BYTES;
 
 /// What the second side runs.
@@ -19,6 +30,12 @@ pub enum Kind {
     /// The Mem storage on the pure host with the leaf calls of the entity walk, wheel, collision and rigid body run in
     /// place.
     MemDirect,
+    /// The typed subsystems on the image between calls (each call lifts and lowers its own), against the first side's
+    /// typed storage (held over each step or across steps).
+    Typed,
+    /// The typed storage held over each step (lifted before it, lowered after), against the first side's held across
+    /// steps.
+    Across,
 }
 
 impl Kind {
@@ -26,7 +43,9 @@ impl Kind {
         match value {
             "mem" => Ok(Kind::Mem),
             "mem-direct" => Ok(Kind::MemDirect),
-            _ => Err(format!("--twin {value}: mem or mem-direct")),
+            "typed" => Ok(Kind::Typed),
+            "across" => Ok(Kind::Across),
+            _ => Err(format!("--twin {value}: mem, mem-direct, typed or across")),
         }
     }
 }
@@ -37,21 +56,36 @@ pub struct Twin {
     /// Steps compared, and the first one that differed with what differed.
     steps: usize,
     first: Option<(usize, String)>,
+    /// The address and name of every solid the first side's car has had, in the order they appeared.
+    solids: Vec<(u32, &'static str, &'static [FieldInfo])>,
     /// The owned bytes of each side's tables, from the round trip at the start (or its failure).
     round_trip: [Result<usize, String>; 2],
 }
 
 impl Twin {
-    /// The twin of `a` on `b`, a second playback of the same image.
-    pub fn new(kind: Kind, a: &Playback, mut b: Playback) -> Self {
+    /// The twin of `a` on `b`, a second playback of the same image; [`Kind::Across`] has `b` lift and lower around each
+    /// step, against `a` holding its typed state across steps (the default).
+    pub fn new(kind: Kind, a: &Playback, mut b: Playback) -> Result<Self, String> {
+        if kind == Kind::Across && !(a.pure.typed && a.pure.typed_across_steps) {
+            return Err("--twin across needs the first side's typed state held across steps".into());
+        }
+        b.pure.typed_across_steps = a.pure.typed_across_steps && kind != Kind::Across;
         b.pure.direct = kind == Kind::MemDirect;
-        let round_trip = [&a.pure.mem, &b.pure.mem].map(|mem| store::round_trip(mem, &objects(mem)));
+        b.pure.typed = a.pure.typed && kind != Kind::Typed;
+        let round_trip = [a.pure.image(), b.pure.image()].map(|mem| {
+            let bytes = store::round_trip(mem, &objects(mem))?;
+            Ok(bytes + store::typed::round_trip(mem, mem.u32(CAR_PTR))?)
+        });
         for (side, r) in ["first", "second"].iter().zip(&round_trip) {
             eprintln!("twin: lower(lift) of the {side} side's image: {}", Self::round_trip_text(r));
         }
-        let mut twin = Twin { kind, playback: b, steps: 0, first: None, round_trip };
+        match rbr_physics::stage::layout::differential(a.pure.image()) {
+            Ok(bytes) => eprintln!("twin: the typed stage's queries equal the image's, {bytes} bytes"),
+            Err(e) => eprintln!("twin: the typed stage's queries differ from the image's: {e}"),
+        }
+        let mut twin = Twin { kind, playback: b, steps: 0, first: None, solids: Vec::new(), round_trip };
         twin.compare(a, "the start");
-        twin
+        Ok(twin)
     }
 
     /// Steps the second side as the first was stepped, then compares them.
@@ -73,7 +107,14 @@ impl Twin {
         if self.first.is_some() {
             return;
         }
-        if let Some(what) = difference(&a.pure.mem, &self.playback.pure.mem) {
+        let (mem, other) = (a.pure.image(), self.playback.pure.image());
+        for solid in CarSolids::lift(mem, mem.u32(CAR_PTR)).solids {
+            if self.solids.iter().all(|(at, ..)| *at != solid.at) {
+                self.solids.push((solid.at, solid.name, solid.own_fields()));
+            }
+        }
+        let what = difference(mem, other).or_else(|| solid_difference(mem, other, &self.solids));
+        if let Some(what) = what {
             self.first = Some((self.steps, format!("{when}: {what}")));
         }
     }
@@ -89,7 +130,11 @@ impl Twin {
     pub fn summary(&self) -> String {
         let round_trip = Self::round_trip_text;
         let compare = match &self.first {
-            None => format!("{} steps, car, wheels and owned bytes equal after each", self.steps),
+            None => format!(
+                "{} steps, car, wheels, solids ({}) and owned bytes equal after each",
+                self.steps,
+                self.solids.len()
+            ),
             Some((_, what)) => format!("{} steps, first difference at {what}", self.steps),
         };
         format!(
@@ -107,8 +152,11 @@ impl Twin {
     }
 }
 
+/// The car's tabled objects and the physics core's.
 fn objects(mem: &Mem) -> Vec<store::Tabled> {
-    store::car_objects(mem, mem.u32(CAR_PTR))
+    let mut objects = store::car_objects(mem, mem.u32(CAR_PTR));
+    objects.extend(rbr_physics::physics_core::layout::core_objects(mem));
+    objects
 }
 
 /// The first difference between `a` and `b`: a word of the car and wheel blocks, else an owned byte of a tabled object.
@@ -120,5 +168,17 @@ fn difference(a: &Mem, b: &Mem) -> Option<String> {
     }
     objects(a).iter().find_map(|o| {
         o.first_difference(a, b).map(|(field, offset)| format!("{} at {:#010x}: {field} (+{offset:#x})", o.name, o.at))
+    })
+}
+
+/// The first owned byte of a solid in `solids` (its own words too: a hinged or mounted body's) that differs between
+/// `a` and `b`.
+fn solid_difference(a: &Mem, b: &Mem, solids: &[(u32, &str, &[FieldInfo])]) -> Option<String> {
+    solids.iter().find_map(|&(at, name, own)| {
+        Solid::FIELDS.iter().chain(own).find_map(|f| {
+            let (x, y) = (a.read(at + f.at, f.len as usize), b.read(at + f.at, f.len as usize));
+            let offset = x.iter().zip(&y).position(|(p, q)| p != q)?;
+            Some(format!("{name} at {at:#010x}: {} (+{offset:#x})", f.name))
+        })
     })
 }

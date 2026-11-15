@@ -8,10 +8,14 @@ mod common;
 
 use common::Inner;
 use common::{check_st0_nan_tolerant, check_windows, inner_window_at, load, map_windows, shared_windows, Call, Window};
-use rbr_physics::engine_driveline::store::EngineStore;
+use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::engine_driveline::{drive, drive_curve, drive_leaf, drive_worker, engine, layout, sim};
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::vec::Vec4;
+use rbr_physics::mem::Mem;
+use rbr_physics::spring_damper::store::DamperBlocks;
+use rbr_physics::store::defs::{Defs, Held};
+use rbr_physics::store::{Object, Raw, Value};
 
 const PHYSICS_GLOBAL: u32 = 0x0165_9B70;
 const VARIABLE: &str = "RBR_ENGINE_DRIVELINE_VECTORS";
@@ -138,15 +142,40 @@ fn each_call(addr: u32, name: &str, port: impl Fn(&mut rbr_physics::mem::Mem, &C
     common::replay(VARIABLE, addr, name, |call, mem| port(mem, call));
 }
 
+/// Maps zeros at the bytes of `at..at + len` that no window holds.
+fn fill(mem: &mut Mem, at: u32, len: u32) {
+    for a in at..at + len {
+        if mem.try_read(a, 1).is_none() {
+            mem.map(a, &[0]);
+        }
+    }
+}
+
+/// Runs `run` on the drive at `drive` per call (`layout::with_drive`, the path the bindings take on the image). It lifts
+/// the drive's typed state whole, and a record's windows hold what the call reads, so the rest of the drive's and its
+/// state's bytes are mapped as zeros first, which no window compare reads.
+fn on_drive<T>(mem: &mut Mem, drive: u32, run: impl FnOnce(&mut layout::DriveView) -> T) -> T {
+    fill(mem, drive, layout::DriveObj::SIZE);
+    let state = layout::DriveImage::of(mem, drive).state;
+    fill(mem, state, layout::DriveStateObj::SIZE);
+    layout::with_drive(mem, drive, run)
+}
+
+/// The worker of the drive at `this`, per call.
+fn worker(mem: &Mem, this: u32) -> layout::DriveWorker {
+    on_drive(&mut mem.clone(), this, |d| d.worker())
+}
+
 #[test]
 fn set30_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_30, "CDrive::Set30", |mem, call| {
-        let drive_at = call.args[0];
-        let def = layout::DriveDef::load(mem, layout::DriveObjects::at(mem, drive_at).def);
-        let mut d = layout::Drive::load(mem, drive_at);
-        drive::set_brake_in(&mut d, &def, f32::from_bits(call.args[1]));
-        d.store(mem, drive_at);
+        on_drive(mem, call.args[0], |d| {
+            let def = d.def();
+            let mut lanes = d.lanes();
+            drive::set_brake_in(&mut lanes, &def, f32::from_bits(call.args[1]));
+            d.store_lanes(&lanes);
+        });
     });
 }
 
@@ -154,10 +183,11 @@ fn set30_matches_original_calls() {
 fn set44a0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_44A0, "CDrive::Set44A0", |mem, call| {
-        let drive_at = call.args[0];
-        let mut d = layout::Drive::load(mem, drive_at);
-        drive::set_throttle_in(&mut d, f32::from_bits(call.args[1]));
-        d.store(mem, drive_at);
+        on_drive(mem, call.args[0], |d| {
+            let mut lanes = d.lanes();
+            drive::set_throttle_in(&mut lanes, f32::from_bits(call.args[1]));
+            d.store_lanes(&lanes);
+        });
     });
 }
 
@@ -165,10 +195,11 @@ fn set44a0_matches_original_calls() {
 fn set4820_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_4820, "CDrive::Set4820", |mem, call| {
-        let drive_at = call.args[0];
-        let mut d = layout::Drive::load(mem, drive_at);
-        drive::set_clutch_slip(&mut d, f32::from_bits(call.args[1]));
-        d.store(mem, drive_at);
+        on_drive(mem, call.args[0], |d| {
+            let mut lanes = d.lanes();
+            drive::set_clutch_slip(&mut lanes, f32::from_bits(call.args[1]));
+            d.store_lanes(&lanes);
+        });
     });
 }
 
@@ -176,12 +207,12 @@ fn set4820_matches_original_calls() {
 fn set47b0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_47B0, "CDrive::Set47B0", |mem, call| {
-        let drive_at = call.args[0];
-        let objects = layout::DriveObjects::at(mem, drive_at);
-        let def = layout::DriveDef::load(mem, objects.def);
-        let mut state = layout::DriveState::load(mem, objects.state);
-        drive::request_gear(&mut state, def.gear_count, call.args[1] as i32);
-        state.store_commanded_gear(mem, objects.state);
+        on_drive(mem, call.args[0], |d| {
+            let def = d.def();
+            let mut state = d.state();
+            drive::request_gear(&mut state, def.gear_count, call.args[1] as i32);
+            d.store_commanded_gear(&state);
+        });
     });
 }
 
@@ -195,7 +226,7 @@ fn drive_getters_match_original_calls() {
         };
         for call in &calls {
             let mem = map_windows(call);
-            let state = layout::DriveState::load(&mem, layout::DriveObjects::at(&mem, call.args[0]).state);
+            let state = layout::DriveState::load(&mem, layout::DriveImage::of(&mem, call.args[0]).state);
             let st0 = if addr == GET_4520 { drive::engine_speed(&state) } else { drive::drive_speed_key(&state) };
             check_st0_nan_tolerant(call, st0, name);
             check_windows(call, &mem, name);
@@ -203,7 +234,7 @@ fn drive_getters_match_original_calls() {
         eprintln!("{name}: {} calls match", calls.len());
     }
     common::replay(VARIABLE, GET_4530, "CDrive::Get4530", |call, mem| {
-        let state = layout::DriveState::load(mem, layout::DriveObjects::at(mem, call.args[0]).state);
+        let state = layout::DriveState::load(mem, layout::DriveImage::of(mem, call.args[0]).state);
         assert_eq!(drive::gear(&state) as u32, call.eax, "CDrive::Get4530 call {}", call.index);
     });
 }
@@ -351,6 +382,100 @@ fn sim_e660_matches_original_calls() {
         state.store(mem, objects.state);
         check_st0_nan_tolerant(call, st0, "CEngine::SimE660");
     });
+}
+
+/// The engine's entries in a row on the per-call path (the image, `EngineView::image`) and on a held engine and
+/// definition (lifted before the chain, the engine lowered after) leave every byte of the engine, its state, its option block, the definition, the
+/// roll table and the record's windows equal, and give the same results, on every `SimE660` record: the torque sum (the
+/// record's call), the crank tick, the misfire roll, the rev gate, the compliance, the abs-rpm term, the pedal and its
+/// cosine, the cut flags, the slot roll, the torque curve into an intake entry and the exhaust blend of one. The
+/// bytes no window holds are mapped as zeros first (the definition's span its kernels read, the roll table, the seed).
+#[test]
+fn the_typed_engine_over_a_chain_keeps_the_per_call_bytes() {
+    let _pc24 = Precision::Pc24.scope();
+    let Some(calls) = load(VARIABLE, SIM_E660) else {
+        eprintln!("skipping the typed engine's chain: {VARIABLE} not set");
+        return;
+    };
+    type Entry<'e> = &'e dyn Fn(&mut layout::EngineView) -> u32;
+    let tuning = layout::EngineTuning::STOCK;
+    let mut chained = 0;
+    for call in &calls {
+        let this = call.args[0];
+        let a = f32::from_bits(call.args[1]);
+        let mut base = map_windows(call);
+        fill(&mut base, this, layout::EngineObj::SIZE);
+        let objects = layout::EngineObjects::at(&base, this);
+        let regions = [
+            (this, layout::EngineObj::SIZE),
+            (objects.state, layout::EngineStateObj::SIZE),
+            (objects.options, 0x80),
+            (objects.def, 0x2870),
+            (ROLL_TABLE, 0x10),
+        ];
+        for (at, len) in regions {
+            fill(&mut base, at, len);
+        }
+        let seed_at = base.u32(objects.options);
+        fill(&mut base, seed_at, 4);
+        let entry_at = objects.state + 0x88 + 0x38;
+        let entries: [Entry; 12] = [
+            &|e| layout::engine_torque(e, this, a).to_bits(),
+            &|e| {
+                let (cycles, delta) = layout::crank_tick(e, this, a * 600.0);
+                cycles as u32 ^ delta.to_bits()
+            },
+            &|e| {
+                layout::misfire_roll(e, this, a);
+                layout::EngineOwn::load(e, this).misfire_level.to_bits()
+            },
+            &|e| (layout::rev_gate(e, this, &tuning) as f32).to_bits(),
+            &|e| {
+                layout::compliance(e, this);
+                layout::EngineState::load(e, objects.state).compliance_inverse.to_bits()
+            },
+            &|e| layout::abs_rpm_term(e, this).to_bits(),
+            &|e| {
+                let mut own = layout::EngineOwn::load(e, this);
+                engine::set_pedal(&mut own.pedal, 0.5f32.to_bits());
+                own.store(e, this);
+                layout::pedal_cosine(e, this);
+                e.u32(this + 0x30)
+            },
+            &|e| layout::set_cut_flags(e, this, [1, 0, 1, 0]),
+            &|e| layout::slot_roll(e, this, 1),
+            &|e| {
+                layout::torque_curve(e, this, 0.25, entry_at);
+                e.u32(entry_at + 4)
+            },
+            &|e| (layout::exhaust_blend_at(e, this, 3, entry_at) as f32).to_bits(),
+            &|e| layout::engine_torque(e, this, a * 2.0).to_bits(),
+        ];
+        let mut per_call = base.clone();
+        let x: Vec<u32> = entries.iter().map(|entry| entry(&mut layout::EngineView::image(&mut per_call))).collect();
+        let mut typed = base.clone();
+        let held = layout::CarEngine::of(&typed, this);
+        // The definition held too, as a step's typed definitions hold it.
+        let def = Held { at: objects.def, def: layout::EngineDefinition::lift(&typed, objects.def) };
+        let defs = Defs { engine: Some(def), ..Defs::default() };
+        let y: Vec<u32> = {
+            let mut view = held.view(&mut typed).with_defs(Some(&defs));
+            entries.iter().map(|entry| entry(&mut view)).collect()
+        };
+        held.lower(&mut typed);
+        // Compared as bits: a NaN result is the same NaN on both paths.
+        assert_eq!(x, y, "call {}: the entries' results", call.index);
+        let windows = call.windows.iter().map(|w| (w.at, w.len));
+        for (at, len) in windows.chain(regions.map(|(at, len)| (at, len as usize))) {
+            let (p, q) = (per_call.read(at, len), typed.read(at, len));
+            let k = p.iter().zip(&q).position(|(u, v)| u != v);
+            assert!(k.is_none(), "call {}: {at:#x}+{:#x} differs between the storages", call.index, k.unwrap_or(0));
+        }
+        assert_ne!(per_call.read(objects.state, 0x280), base.read(objects.state, 0x280), "call {}", call.index);
+        chained += 1;
+    }
+    assert!(chained > 0, "no SimE660 record");
+    eprintln!("the typed engine's chain: {chained} SimE660 records, every byte equal to the per-call path's");
 }
 
 #[test]
@@ -657,34 +782,25 @@ fn each_worker_st0<R: Into<f64>>(addr: u32, name: &str, port: impl Fn(&mut rbr_p
     eprintln!("{name}: {} calls match", calls.len());
 }
 
-/// Loads the worker of `this` from `mem`, runs `port` on it and writes it back.
-fn with_worker<T>(mem: &mut rbr_physics::mem::Mem, this: u32, port: impl FnOnce(&mut layout::DriveWorker) -> T) -> T {
-    let mut w = layout::DriveWorker::load(mem, this);
-    let out = port(&mut w);
-    w.store(mem, this);
-    out
+/// Runs `port` on the worker of the drive at `this` per call (`layout::with_worker`).
+fn with_worker<T>(mem: &mut Mem, this: u32, port: impl FnOnce(&mut layout::DriveWorker) -> T) -> T {
+    on_drive(mem, this, |d| layout::with_worker(d, port))
 }
 
 /// `with_worker` for the gear workers, which also load the gear's words (written last).
 fn with_gear<T>(
-    mem: &mut rbr_physics::mem::Mem,
+    mem: &mut Mem,
     this: u32,
     port: impl FnOnce(&mut layout::DriveWorker, &mut layout::GearWork) -> T,
 ) -> T {
-    let mut w = layout::DriveWorker::load(mem, this);
-    let mut g = layout::GearWork::load(mem, this);
-    let out = port(&mut w, &mut g);
-    w.store(mem, this);
-    g.store(mem, this);
-    out
+    on_drive(mem, this, |d| layout::with_gear(d, port))
 }
 
 #[test]
 fn m5a10_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_worker_st0(M5A10, "CDrive::M5A10", |mem, call| {
-        let w = layout::DriveWorker::load(mem, call.args[0]);
-        drive_leaf::gear_speed_error(&w, &layout::GearWork::load(mem, call.args[0]))
+        on_drive(mem, call.args[0], |d| drive_leaf::gear_speed_error(&d.worker(), &d.gear_work()))
     });
 }
 
@@ -769,7 +885,7 @@ fn m79b0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_worker_call(M79B0, "CDrive::M79B0", |mem, call| {
         let mut host = GearCalls { inner: &call.inner, next: 0 };
-        let w = layout::DriveWorker::load(mem, call.args[0]);
+        let w = worker(mem, call.args[0]);
         drive_worker::signal_gear_change(&w, &mut host, call.args[1]);
         assert_eq!(host.next, call.inner.len(), "CDrive::M79B0 call {}: external calls", call.index);
     });
@@ -884,9 +1000,9 @@ impl drive_worker::FreeWheelHost for Externals<'_> {
         let call = self.take(STEP3870);
         let n = self.next - 1;
         assert_eq!(call.args, [self.this, i as u32, dt.to_bits()], "E39_Step3870 call {n}: the arguments");
-        let before = layout::DriveWorker::load(&window_mem(&self.base, call, false), self.this);
+        let before = worker(&window_mem(&self.base, call, false), self.this);
         assert_eq!(format!("{w:?}"), format!("{before:?}"), "E39_Step3870 call {n}: the worker it was given");
-        *w = layout::DriveWorker::load(&window_mem(&self.base, call, true), self.this);
+        *w = worker(&window_mem(&self.base, call, true), self.this);
         // The port of the call (`free_wheel_step`) on the worker it was given gives the worker the call left.
         let mut ported = before;
         drive_worker::free_wheel_step(&mut ported, i, dt);
@@ -921,6 +1037,117 @@ fn m96c0_matches_original_calls() {
         let dt = f32::from_bits(call.args[1]);
         with_worker(mem, call.args[0], |w| drive_worker::pair_worker(w, dt));
     });
+}
+
+/// The drive's entries in a row on the per-call path (each access lifts the drive from the image and lowers what it
+/// changes) and on a held drive (lifted before the chain, lowered after) leave every byte of the drive, its state and the
+/// record's windows equal, and give the same results, on every pair-worker record: the pair worker (the record's call),
+/// the setters, the gear request, the wild-index setters and getters, the pair worker's leaves and the gear's words.
+#[test]
+fn the_typed_drive_over_a_chain_keeps_the_per_call_bytes() {
+    let _pc24 = Precision::Pc24.scope();
+    let Some(calls) = load(VARIABLE, M96C0) else {
+        eprintln!("skipping the typed drive's chain: {VARIABLE} not set");
+        return;
+    };
+    type Entry<'e> = &'e dyn Fn(&mut layout::DriveView) -> u32;
+    let mut chained = 0;
+    for call in &calls {
+        let this = call.args[0];
+        let dt = f32::from_bits(call.args[1]);
+        let mut base = worker_mem(call);
+        on_drive(&mut base, this, |_| ());
+        let lanes = |d: &mut layout::DriveView, f: fn(&mut layout::Drive)| {
+            let mut lanes = d.lanes();
+            f(&mut lanes);
+            d.store_lanes(&lanes);
+            0
+        };
+        // The record's own call first, on the words it was recorded with; then the others.
+        let entries: [Entry; 14] = [
+            &|d| {
+                layout::with_worker(d, |w| {
+                    drive_worker::pair_worker(w, dt);
+                    w.own.pair_solution[0].to_bits()
+                })
+            },
+            &|d| lanes(d, |l| drive::set_throttle_in(l, 0.75)),
+            &|d| {
+                let def = d.def();
+                let mut lanes = d.lanes();
+                drive::set_brake_in(&mut lanes, &def, 0.25);
+                d.store_lanes(&lanes);
+                0
+            },
+            &|d| lanes(d, |l| drive::set_clutch_slip(l, 0.5)),
+            &|d| {
+                let def = d.def();
+                let mut state = d.state();
+                drive::request_gear(&mut state, def.gear_count, 1);
+                d.store_commanded_gear(&state);
+                0
+            },
+            &|d| layout::set_wheel_offset_and_bias(d, 1, 2.0, 3.0),
+            &|d| layout::set_diff_lock(d, 1, 0.5),
+            &|d| layout::wheel_prev_force(d, 2).to_bits(),
+            &|d| layout::wheel_slip(d, 3).to_bits(),
+            &|d| {
+                layout::with_worker(d, |w| {
+                    drive_leaf::clutch_flags(w);
+                    w.state.trigger
+                })
+            },
+            &|d| {
+                layout::with_worker(d, |w| {
+                    drive_leaf::pair_clutch_values(w, 1);
+                    w.own.pair_pack[1].to_bits()
+                })
+            },
+            &|d| {
+                layout::with_worker(d, |w| {
+                    drive_leaf::pair_axle_stage(w);
+                    w.state.pending
+                })
+            },
+            &|d| {
+                // The gear's words where they are the drive's (a gear inside the time step table).
+                if !(0..10).contains(&d.state().gear) {
+                    return 0;
+                }
+                layout::with_gear(d, |_, g| g.dt *= 0.5);
+                d.gear_work().dt.to_bits()
+            },
+            &|d| {
+                layout::clear_drive_lanes(d);
+                d.lanes().throttle_in.dirty
+            },
+        ];
+        let mut per_call = base.clone();
+        let a: Vec<u32> = entries.iter().map(|entry| layout::with_drive(&mut per_call, this, |d| entry(d))).collect();
+        let mut typed = base.clone();
+        let held = layout::CarDrive::of(&typed, this);
+        // The definition held too, as a step's typed definitions hold it.
+        let def = layout::DriveObjects::at(&typed, this).def;
+        let lifted = layout::DriveDefinition::lift(&typed, def);
+        let defs = Defs { drive: Some(Held { at: def, def: lifted }), ..Defs::default() };
+        let b: Vec<u32> = {
+            let mut view = held.view(&mut typed).with_defs(Some(&defs));
+            entries.iter().map(|entry| entry(&mut view)).collect()
+        };
+        held.lower(&mut typed);
+        assert_eq!(a, b, "call {}: the entries' results", call.index);
+        let state = layout::DriveImage::of(&base, this).state;
+        let objects = [(this, layout::DriveObj::SIZE as usize), (state, layout::DriveStateObj::SIZE as usize)];
+        for (at, len) in call.windows.iter().map(|w| (w.at, w.len)).chain(objects) {
+            let (x, y) = (per_call.read(at, len), typed.read(at, len));
+            let k = x.iter().zip(&y).position(|(p, q)| p != q);
+            assert!(k.is_none(), "call {}: {at:#x}+{:#x} differs between the storages", call.index, k.unwrap_or(0));
+        }
+        assert_ne!(per_call.read(this, 0x40), base.read(this, 0x40), "call {}: the lanes", call.index);
+        chained += 1;
+    }
+    assert!(chained > 0, "no pair-worker record");
+    eprintln!("the typed drive's chain: {chained} pair-worker records, every byte equal to the per-call path's");
 }
 
 #[test]
@@ -971,7 +1198,7 @@ fn pair_leaves_match_original_calls() {
 fn ratio_ca0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_st0(RATIO_CA0, "E39_RatioCA0", |mem, call| {
-        let mut ring = layout::RatioRing::load(mem, call.args[1]);
+        let mut ring = <layout::RatioRing as Value>::load(mem, call.args[1]);
         let mean = drive_worker::ring_average(&mut ring, f32::from_bits(call.args[0]));
         ring.store(mem, call.args[1]);
         mean
@@ -999,7 +1226,7 @@ fn worker_f60_matches_original_calls() {
     common::replay(VARIABLE, WORKER_F60, "E39_WorkerF60", |call, mem| {
         let row = layout::CurveRow::load(mem, call.args[1]);
         let tables = layout::CurveTables::load(mem, call.args[4]);
-        let block_gain = mem.curve_gain(call.args[3]);
+        let block_gain = layout::BrakeBlock::gain(mem, call.args[3]);
         let mut state = layout::CurveState::load(mem, call.args[2]);
         let ok = drive_curve::count_down(
             f32::from_bits(call.args[0]),
@@ -1018,9 +1245,10 @@ fn worker_f60_matches_original_calls() {
 fn worker_4060_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_st0(WORKER_4060, "E39_Worker4060", |mem, call| {
-        let row = layout::CurveRow::load(mem, layout::curve_row_at(call.args[3], mem.curve_index(call.args[2])));
+        let index = layout::BrakeBlock::row_index(mem, call.args[2]);
+        let row = layout::CurveRow::load(mem, layout::curve_row_at(call.args[3], index));
         let tables = layout::CurveTables::load(mem, call.args[3]);
-        let block_gain = mem.curve_gain(call.args[2]);
+        let block_gain = layout::BrakeBlock::gain(mem, call.args[2]);
         let mut state = layout::CurveState::load(mem, call.args[1]);
         let v = drive_curve::row_value(
             f32::from_bits(call.args[0]),
@@ -1287,7 +1515,8 @@ const SAMPLE_BIG: u32 = 0x50b300;
 fn sample_big_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VARIABLE, SAMPLE_BIG, "CDriveLine::SampleBig", |call, mem| {
-        let got = layout::project_point(mem, call.args[0], call.args[1], f32::from_bits(call.args[2]));
+        let point = mem.f32s(call.args[1]);
+        let got = layout::project_point(mem, call.args[0], point, f32::from_bits(call.args[2]));
         check_st0_nan_tolerant(call, got, "CDriveLine::SampleBig");
     });
 }
@@ -1376,13 +1605,10 @@ fn get_state188_matches_original_calls() {
 fn set_two_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_TWO, "CDrive::SetTwo", |mem, call| {
-        let eax = layout::set_wheel_offset_and_bias(
-            mem,
-            call.args[0],
-            call.args[1],
-            f32::from_bits(call.args[2]),
-            f32::from_bits(call.args[3]),
-        );
+        let [_, a, x, y, ..] = call.args[..] else { panic!("CDrive::SetTwo: arguments") };
+        let eax = on_drive(mem, call.args[0], |d| {
+            layout::set_wheel_offset_and_bias(d, a, f32::from_bits(x), f32::from_bits(y))
+        });
         assert_eq!(eax, call.eax, "CDrive::SetTwo call {}: eax", call.index);
     });
 }
@@ -1391,7 +1617,7 @@ fn set_two_matches_original_calls() {
 fn set4570_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(SET_4570, "CDrive::Set4570", |mem, call| {
-        let eax = layout::set_diff_lock(mem, call.args[0], call.args[1], f32::from_bits(call.args[2]));
+        let eax = on_drive(mem, call.args[0], |d| layout::set_diff_lock(d, call.args[1], f32::from_bits(call.args[2])));
         assert_eq!(eax, call.eax, "CDrive::Set4570 call {}: eax", call.index);
     });
 }
@@ -1399,20 +1625,23 @@ fn set4570_matches_original_calls() {
 #[test]
 fn m6db0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(M6DB0, "CDrive::M6DB0", |mem, call| layout::wheel_prev_force(mem, call.args[0], call.args[1]));
+    each_st0(M6DB0, "CDrive::M6DB0", |mem, call| {
+        on_drive(mem, call.args[0], |d| layout::wheel_prev_force(d, call.args[1]))
+    });
 }
 
 #[test]
 fn m6dd0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    each_st0(M6DD0, "CDrive::M6DD0", |mem, call| layout::wheel_slip(mem, call.args[0], call.args[1]));
+    each_st0(M6DD0, "CDrive::M6DD0", |mem, call| on_drive(mem, call.args[0], |d| layout::wheel_slip(d, call.args[1])));
 }
 
 #[test]
 fn test4840_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     each_call(TEST_4840, "CDrive::Test4840", |mem, call| {
-        let eax = layout::drive_gate(mem, call.args[0]);
+        let image = mem.clone();
+        let eax = layout::drive_gate(mem, call.args[0], |engine| layout::engine_running(&image, engine) != 0);
         assert_eq!(eax, call.eax, "CDrive::Test4840 call {}: eax", call.index);
     });
 }

@@ -34,16 +34,16 @@ impl Seed<'_> {
     }
 }
 
-impl ControlCalls for Seed<'_> {
-    fn read_packet(&mut self, _mem: &mut Mem, obj: u32, seed: u32) {
+impl<S: CarStore> ControlCalls<S> for Seed<'_> {
+    fn read_packet(&mut self, _mem: &mut S, obj: u32, seed: u32) {
         self.host.call_at(self.sp(4), READ_PACKET, obj, &[seed]);
     }
 
-    fn engine_idle(&mut self, _mem: &mut Mem, obj: u32, seed: u32) {
-        self.host.call_at(self.sp(4), NOP_D570, obj, &[seed]);
+    fn engine_idle(&mut self, _mem: &mut S, obj: u32, seed: u32) {
+        crate::call_or_trivial(self.host, self.sp(4), NOP_D570, obj, &[seed]);
     }
 
-    fn drive_control(&mut self, _mem: &mut Mem, obj: u32, seed: u32) {
+    fn drive_control(&mut self, _mem: &mut S, obj: u32, seed: u32) {
         self.host.call_at(self.sp(4), M5970, obj, &[seed]);
     }
 
@@ -87,7 +87,7 @@ pub(super) const SLOT_S158: u32 = 0x158;
 /// last load leaves the new step count in eax.
 pub(super) fn update_seed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Seed { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp };
-    let steps = control::apply_control(&mut calls, &mut ctx.mem, r.ecx, r.stack[0], r.esp - 0x20);
+    let steps = super::on_car(ctx, |m| control::apply_control(&mut calls, m, r.ecx, r.stack[0], r.esp - 0x20));
     Ok(Return::void(steps, 4))
 }
 
@@ -165,7 +165,7 @@ struct Mrr<'a> {
 
 impl WiringCalls for Mrr<'_> {
     fn call(&mut self, callee: u32, this: u32, args: &[u32]) {
-        self.host.call(callee, this, args);
+        crate::call_or_trivial(self.host, 0, callee, this, args);
     }
 
     fn emit(&mut self, obj: u32, pair: [u32; 2]) {

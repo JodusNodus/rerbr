@@ -29,6 +29,7 @@ mod passenger_step;
 mod physics_ctor;
 pub mod prof_calls;
 mod step_forward;
+pub mod typed;
 mod vectors;
 
 pub use collide_work::{advance_contact_bodies, advance_contact_bodies_remainder, collide_window};
@@ -67,6 +68,7 @@ pub use step_forward::{
     step_scratch_events, virtual_target, StepStack, END_STEP_SLOT, INIT_PASS_SLOT, POST_BODIES_SLOT, POST_CONTACT_SLOT,
     PRE_STEP_SLOT, SOLVER_POST_SLOT,
 };
+pub use typed::{core_objects, Core, CoreFields, CoreState, CoreView};
 pub use vectors::{
     accumulate_forces, end_step_word, floats, force_accum, force_scale, inverse_mass, mat, mat_mul, mat_scale_rows,
     point_velocity_at, set_force_accum, set_table_index, set_vec3s, set_vec4s, table_index_hint, takes_part_word,

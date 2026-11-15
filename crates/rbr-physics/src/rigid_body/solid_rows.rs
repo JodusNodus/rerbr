@@ -3,7 +3,7 @@
 
 use super::dot::{self, ResponseInput};
 use super::response::ResponseHost;
-use super::rows::RowFrame;
+use super::rows::{RowFrame, RowKind, RowMap};
 use super::store::RigidStore;
 use super::{impulse, response, rows};
 use crate::math::quat::Quat;
@@ -17,6 +17,25 @@ pub fn transform_body_rows<S: RigidStore>(store: &mut S, this: u32, rows: u32, c
 /// The same round trip with the three-lane transform.
 pub fn transform_body_rows3<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
     update_body_rows(store, this, rows, count, rows::transform_rows3);
+}
+
+/// The body's map of `kind` with the pose it reads now: what the row loops below do to rows that are not the body's
+/// own words, as a value.
+pub fn row_map<S: RigidStore>(store: &S, this: u32, kind: RowKind) -> RowMap {
+    match kind {
+        RowKind::PointsOut => RowMap::PointsOut { matrix: store.matrix(this), origin: store.position(this) },
+        RowKind::PointsIn => RowMap::PointsIn { origin: store.position(this), matrix: store.matrix_words(this) },
+        RowKind::Rows => RowMap::Rows(store.row_frame(this)),
+        RowKind::Rows3 => RowMap::Rows3(store.row_frame(this)),
+        RowKind::StartPointsOut => {
+            RowMap::StartPointsOut { orientation: store.start_orientation(this), offset: store.start_offset(this) }
+        }
+        RowKind::StartPointsIn => {
+            RowMap::StartPointsIn { orientation: store.start_orientation(this), offset: store.start_offset(this) }
+        }
+        RowKind::StartRows => RowMap::StartRows(store.start_orientation(this)),
+        RowKind::StartRows3 => RowMap::StartRows3(store.start_orientation(this)),
+    }
 }
 
 /// Subtracts the body's position from every row, then transforms its first three lanes by the body's matrix. The

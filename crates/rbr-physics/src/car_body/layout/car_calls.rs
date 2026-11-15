@@ -3,23 +3,21 @@
 //! the grid edge, the drive line sample (`Split17C`), the vote probe, the countdown, the respawn pose (`Slot97`) and the
 //! respawn.
 
-use super::car::{
-    roll_bar_cell_at, solid_scratch_at, steer_torque_sum_at, Real, OVERRIDE_TIMER, PARTIAL_CONTACT, WALL_CONTACT, WORLD,
-};
+use super::car::{solid_scratch_at, solid_vec4, store_solid_vec4, WORLD};
 use super::car_parts::FLOW_OBJECT;
 use super::construct::SIGNALS;
 use crate::car_body::assist::{self, AssistCalls, RetireCalls};
 use crate::car_body::edge::EdgeCalls;
 use crate::car_body::scratch_dispatch::ScratchDispatchCalls;
-use crate::car_body::store::CarStore;
+use crate::car_body::store::{CarStore, Cell};
 use crate::car_body::{accessors, edge, scratch_dispatch, steering_ffb};
-use crate::engine_driveline::layout::{spline_at, COUNT_AT};
-use crate::engine_driveline::store::EngineStore;
+use crate::engine_driveline::layout::spline_at;
 use crate::entities::layout::ROOT_IDENTITY;
 use crate::math::quat::{self};
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
 use crate::rigid_body::host::HostUnavailable;
+use crate::stage::store::StageStore;
 use crate::{fpu, ngp, ntweak, rigid_body};
 
 /// The native callees used by `CCar::Vf128x` (0x4e6100): `ComposeA` (the frame compose on `entity`), `Collide6000`
@@ -58,6 +56,13 @@ pub fn car_impulse<S: CarStore>(mem: &mut S, car: u32, args: [u32; 8], frame: u3
 pub trait EdgeProbeCalls {
     fn grid(&mut self, sp: u32, car: u32, target: u32) -> u32;
     fn edge_edge(&mut self, sp: u32, grid: u32, args: [u32; 6]) -> u32;
+    /// The grid's two sample bytes (+0x688, +0x689), read and cleared: the collision's (typed over a step).
+    fn take_grid_hits(&mut self, mem: &mut Mem, grid: u32) -> [u8; 2] {
+        let hits = [mem.u8(grid + 0x688), mem.u8(grid + 0x689)];
+        mem.set_u8(grid + 0x688, 0);
+        mem.set_u8(grid + 0x689, 0);
+        hits
+    }
 }
 
 /// `CCar::Collide6000` (0x4e6000, thiscall, `ret 0xc`): the edge probe along `a`, scaled to length 10 (cleared below
@@ -86,10 +91,9 @@ pub fn edge_probe<S: CarStore>(
     let grid = calls.grid(body - 28, car, target);
     if calls.edge_edge(body - 28, grid, args) != 0 {
         let grid = calls.grid(body - 4, car, target);
-        mem.set_u32(c, u32::from(mem.u8(grid + 0x689)));
-        mem.set_u32(b, u32::from(mem.u8(grid + 0x688)));
-        mem.set_u8(grid + 0x688, 0);
-        mem.set_u8(grid + 0x689, 0);
+        let [first, second] = calls.take_grid_hits(mem.mem_mut(), grid);
+        mem.set_u32(c, u32::from(second));
+        mem.set_u32(b, u32::from(first));
     } else {
         mem.set_u32(c, 0);
         mem.set_u32(b, 0);
@@ -103,27 +107,30 @@ pub fn reset_scratch_and_dispatch<S: CarStore>(
     mem: &mut S,
     car: u32,
 ) -> Result<u32, HostUnavailable> {
-    rigid_body::layout::scratch_reset_after_entity(mem.mem_mut(), car, calls)?;
+    rigid_body::layout::scratch_reset_after_entity(mem, car, calls)?;
     Ok(scratch_dispatch::dispatch_scratch_after_reset(calls, solid_scratch_at(car)))
 }
 
 /// `CCar::Test7910` (0x4e7910, thiscall, no args): the car's position less the drive line's point at its lane (`BlendB`
 /// at the index and fraction of the car's float at +0x17c), with the verdict of `lane_verdict`. `LerpAt` runs in the
-/// original too, its result unused, and traps past the table's count: the port returns `None` there. `to_world` is the car's `ToWorld`.
-pub fn lane_test<S: CarStore + EngineStore>(mem: &S, car: u32, to_world: impl FnOnce(Vec3) -> Vec3) -> Option<u32> {
-    let fv = mem.f32(car + 0x17C);
+/// original too, its result unused, and traps past the table's count: the port returns `None` there. `to_world` is the car's `ToWorld`;
+/// `line` holds the drive line.
+pub fn lane_test<S: CarStore>(
+    mem: &S,
+    line: &impl StageStore,
+    car: u32,
+    to_world: impl FnOnce(Vec3) -> Vec3,
+) -> Option<u32> {
+    let fv = f32::from_bits(mem.drive_line_word(car));
     let i = fpu::trunc_i32(f64::from(fv));
     let t = fv - i as f32;
-    let drive = mem.u32(DRIVE_LINE);
-    if i as u32 >= mem.u32(drive + COUNT_AT) {
+    let drive = line.drive_line();
+    if i as u32 >= line.line_count(drive) {
         return None;
     }
-    let point = spline_at(mem, drive, i, t);
-    let d = Vec3 {
-        x: mem.f32(car + 0x140) - point.x,
-        y: mem.f32(car + 0x144) - point.y,
-        z: mem.f32(car + 0x148) - point.z,
-    };
+    let point = spline_at(line, drive, i, t);
+    let [x, y, z, _] = mem.position_words(car).map(f32::from_bits);
+    let d = Vec3 { x: x - point.x, y: y - point.y, z: z - point.z };
     Some(assist::lane_verdict(d, to_world))
 }
 
@@ -141,16 +148,14 @@ pub fn outside_assistance<S: CarStore>(
     c: u32,
 ) {
     let frame = ((entry - 4) & !0xf) - 0x40;
-    mem.set_u32(car + 0x15E4, b);
-    mem.set_u32(car + OVERRIDE_TIMER, c);
-    for k in 0..4 {
-        mem.set_u32(car + 0x1680 + 4 * k, 0);
-    }
+    mem.set_respawn_countdown(car, f32::from_bits(b));
+    mem.set_override_timer(car, f32::from_bits(c));
+    mem.clear_assistance_block(car);
     if a == 0 {
-        mem.set_u32(car + 0x9F0, 0);
+        mem.set_partial_contact_flag(car, 0);
     } else {
-        let partial = u32::from(1.0 < mem.f32(car + PARTIAL_CONTACT));
-        mem.set_u32(car + 0x9F0, partial);
+        let partial = u32::from(1.0 < mem.partial_contact(car));
+        mem.set_partial_contact_flag(car, partial);
         let code = if partial != 0 { 1 } else { 3 - u32::from(calls.lane_test(car) != 0) };
         mem.set_u32(frame + 0xC, code);
         calls.emit_outside(frame + 0xC);
@@ -160,8 +165,8 @@ pub fn outside_assistance<S: CarStore>(
         mem.set_u32(frame + 0x20 + word, 0);
     }
     calls.apply_control(car, frame + 0x20);
-    calls.set_dirty(car + 0xAE0);
-    mem.set_u32(car + 0xAEC, 0);
+    calls.set_dirty(super::cell_at(car, Cell::FfbTorque));
+    mem.set_cell_value(car, Cell::FfbTorque, 0.0);
 }
 
 /// The two calls in `CCar::Vf158x`: slot 0 on the car (the name getter, `CEntity::Vf00`) and the tail-call to the solid's
@@ -227,14 +232,14 @@ pub fn set_neutral_light<S: CarStore>(mem: &mut S, this: u32, x: u32) -> u32 {
 
 /// `CCar::AddADC(v)` (0x4e6660): the demand cell is dirtied, then `value += v`.
 pub fn add_steer_torque_sum<S: CarStore>(mem: &mut S, car: u32, v: f32) {
-    let at = steer_torque_sum_at(car);
-    accessors::add_steer_torque(Real::load(mem, at), v).store(mem, at);
+    let cell = accessors::add_steer_torque(mem.cell(car, Cell::SteerTorqueSum), v);
+    mem.store_cell(car, Cell::SteerTorqueSum, cell);
 }
 
 /// `CCar::SetA1C(i, j, v)` (0x4e66a0): the matrix cell is dirtied, then set to `v`.
 pub fn set_roll_bar_cell<S: CarStore>(mem: &mut S, car: u32, i: u32, j: u32, v: f32) {
-    let at = roll_bar_cell_at(car, i, j);
-    accessors::set_cell(Real::load(mem, at), v).store(mem, at);
+    let cell = accessors::set_cell(mem.cell(car, Cell::RollBar(i, j)), v);
+    mem.store_cell(car, Cell::RollBar(i, j), cell);
 }
 
 /// `CCar::UpdateFfbTorque` (0x4e7ff0): the filtered steering torque (+0xae0) takes the new value, dirtied.
@@ -247,7 +252,7 @@ pub fn update_ffb_torque<S: CarStore>(mem: &mut S, car: u32) {
         mem.steer_torque_sum(car).value,
         cell.value,
     );
-    accessors::set_cell(cell, v).store(mem, car + 0xAE0);
+    mem.store_cell(car, Cell::FfbTorque, accessors::set_cell(cell, v));
 }
 
 /// `CCar::PushGridEdge` (0x4e7270) on the car: the flag is set after the edge is added, as the asm orders it.
@@ -285,16 +290,16 @@ pub trait CountdownCalls<S = Mem>: VoteCalls<S> {
 /// float at +0x17c (`BlendB`), `b` takes its lerp (`LerpAt`), and `b` is normalized. The index is truncated as
 /// `cvttss2si` does it. `LerpAt` traps past the table's count, so the port returns `None` there. NGP retargets both
 /// calls to its samplers in doubles (`ngp::layout::drive_line`), which write three lanes and don't trap (1.02's `LerpAt` traps
-/// past the table's count).
-pub fn drive_line_sample<S: CarStore + EngineStore>(mem: &mut S, car: u32, a: u32, b: u32) {
-    let fv = mem.f32(car + 0x17C);
+/// past the table's count). `line` holds the drive line.
+pub fn drive_line_sample<S: CarStore>(mem: &mut S, line: &impl StageStore, car: u32, a: u32, b: u32) {
+    let fv = f32::from_bits(mem.drive_line_word(car));
     let i = fpu::trunc_i32(f64::from(fv));
     let t = fv - i as f32;
-    let drive = mem.u32(DRIVE_LINE);
+    let drive = line.drive_line();
     let store3 = |mem: &mut S, at: u32, v: [f32; 3]| (0..3).for_each(|k| mem.set_f32(at + 4 * k, v[k as usize]));
-    let blend = ngp::layout::drive_line::point_at(mem.mem(), drive, i, t);
+    let blend = ngp::layout::drive_line::point_at(line, drive, i, t);
     store3(mem, a, blend);
-    let lerp = ngp::layout::drive_line::tangent_at(mem.mem(), drive, i, t);
+    let lerp = ngp::layout::drive_line::tangent_at(line, drive, i, t);
     store3(mem, b, lerp);
     Vec4::load(mem, b).normalize().store(mem, b);
 }
@@ -305,7 +310,7 @@ pub fn drive_line_sample<S: CarStore + EngineStore>(mem: &mut S, car: u32, a: u3
 pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry: u32, a: u32, b: u32, c: u32) -> u32 {
     let frame = ((entry - 4) & !0xf) - 0x2c;
     let (probe_a, probe_b) = (frame + 0x1c, frame + 0xc);
-    let probe = Vec4::load(mem, a);
+    let probe = solid_vec4(mem, a);
     (Vec4 { z: probe.z + 10.0, ..probe }).store(mem, probe_a);
     (Vec4 { z: probe.z - 10.0, ..probe }).store(mem, probe_b);
     if calls.vote(mem, frame - 20, probe_a, probe_b, c) == 0 {
@@ -319,16 +324,22 @@ pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry
 /// drive line's sample (`Split17C`) is negated, the sampler votes on the probe, and slot 97 takes the voted block (the
 /// probe on a miss) and the sample; then `M6840(1)` and slot 18. Otherwise the countdown falls by the app's tick and is
 /// stored as 0 when it goes negative (NaN stays). Nothing happens for a null car. `entry` is the entry esp; the frame is
-/// aligned as the original's.
-pub fn run_countdown<S: CarStore + EngineStore>(mem: &mut S, calls: &mut impl CountdownCalls<S>, car: u32, entry: u32) {
+/// aligned as the original's. `line` holds the drive line.
+pub fn run_countdown<S: CarStore>(
+    mem: &mut S,
+    line: &impl StageStore,
+    calls: &mut impl CountdownCalls<S>,
+    car: u32,
+    entry: u32,
+) {
     if car == 0 {
         return;
     }
     let frame = ((entry - 4) & !0xf) - 0x7c;
-    let timer = mem.f32(car + 0x15E4);
+    let timer = mem.respawn_countdown(car);
     if timer == 0.0 {
         let (probe, sample, ans, raw) = (frame + 0x1c, frame + 0xc, frame + 0x2c, frame + 0x3c);
-        drive_line_sample(mem, car, probe, sample);
+        drive_line_sample(mem, line, car, probe, sample);
         (Vec4::load(mem, sample).scale(-1.0)).store(mem, sample);
         let hit = vote_probe(mem, calls, frame - 20, probe, ans, raw);
         let sel = if hit != 0 { ans } else { probe };
@@ -339,9 +350,9 @@ pub fn run_countdown<S: CarStore + EngineStore>(mem: &mut S, calls: &mut impl Co
     }
     let tick = mem.f32(mem.u32(mem.u32(WORLD) + 0x24) + 0x1608C);
     let left = timer - tick;
-    mem.set_f32(car + 0x15E4, left);
+    mem.set_respawn_countdown(car, left);
     if left < 0.0 {
-        mem.set_f32(car + 0x15E4, 0.0);
+        mem.set_respawn_countdown(car, 0.0);
     }
 }
 
@@ -370,6 +381,13 @@ pub trait RespawnCalls<S = Mem> {
     fn clear_accumulators(&mut self, mem: &mut S, sp: u32, car: u32);
     fn wake(&mut self, mem: &mut S, sp: u32, car: u32);
     fn emit_respawn(&mut self, mem: &mut S, sp: u32, emitter: u32, payload: u32);
+    /// Clears the body word of the car's pending contact rows at `rows` (the collision solver's: typed over a step).
+    fn clear_contact_rows(&mut self, mem: &mut S, rows: u32)
+    where
+        S: crate::store::Raw,
+    {
+        mem.set_u32(rows, 0);
+    }
 }
 
 /// `CCar::Slot97(sel, sample)` (0x4e5270, thiscall, `ret 8`, the car's slot 97; name ours: the respawn pose). Builds a frame from the sample `s` and
@@ -405,13 +423,13 @@ pub fn respawn_pose<S: CarStore>(
 
     let out = Vec4::load(mem, sel).add_scaled(Vec4::load(mem, frame + 0x30), BASIS_WEIGHT);
     out.store(mem, frame + 0x60);
-    if mem.u32(car + 0x9F0) != 0 {
+    if mem.partial_contact_flag(car) != 0 {
         let scaled = Vec4 { x: s.x * SAMPLE_SCALE, y: s.y * SAMPLE_SCALE, z: s.z * SAMPLE_SCALE, w: 1.0 };
         scaled.store(mem, frame + 0x70);
         let product = quat::mul(mem.load_quat(frame + 0x70), mem.load_quat(frame + 0x50));
         mem.store_quat(frame + 0x50, quat::normalize(product));
         mem.set_f32(frame + 0x68, mem.f32(frame + 0x68) + BASIS_WEIGHT);
-        mem.set_u32(car + 0x9F0, 0);
+        mem.set_partial_contact_flag(car, 0);
     }
     calls.respawn_car(mem, frame - 12, car, frame + 0x60, frame + 0x50);
 }
@@ -425,25 +443,25 @@ pub fn respawn_car<S: CarStore>(mem: &mut S, calls: &mut impl RespawnCalls<S>, c
         return;
     }
     let frame = ((entry - 4) & !0xf) - 0x50;
-    Vec4::load(mem, b).store(mem, car + 0x100);
-    Vec4::load(mem, a).store(mem, car + 0x140);
+    store_solid_vec4(mem, car + 0x100, Vec4::load(mem, b));
+    store_solid_vec4(mem, car + 0x140, Vec4::load(mem, a));
     calls.refresh_rotation(mem, frame - 4, car);
     mem.zero_vec4(frame + 0x20);
     calls.compose_body_into_world(mem, frame - 12, car, frame + 0x20, frame + 0x10);
-    let z = mem.f32(car + 0x148);
-    mem.set_f32(car + 0x148, (z - mem.f32(frame + 0x18)) + z);
+    let z = f32::from_bits(mem.word(car + 0x148));
+    mem.set_word(car + 0x148, ((z - mem.f32(frame + 0x18)) + z).to_bits());
     calls.clear_accumulators(mem, frame - 4, car);
     for at in [0x1C0, 0x190, 0xAA0, 0xAC0] {
         mem.zero_vec4(car + at);
     }
     calls.wake(mem, frame - 4, car);
     Vec4::load(mem, a).store(mem, frame + 0x30);
-    let pending = mem.u32(car + 0x274);
+    let pending = mem.word(car + 0x274);
     if pending != 0 {
-        mem.set_u32(pending, 0);
-        mem.set_u32(car + 0x274, 0);
+        calls.clear_contact_rows(mem, pending);
+        mem.set_word(car + 0x274, 0);
     }
-    mem.set_f32(car + WALL_CONTACT, 0.0);
+    mem.set_wall_contact(car, 0.0);
     let emitter = mem.u32(SIGNALS) + RESPAWN_EMITTER;
     calls.emit_respawn(mem, frame - 8, emitter, frame + 0x30);
 }
@@ -466,8 +484,8 @@ pub trait SnapshotCalls<S = Mem> {
 pub fn snapshot<S: CarStore>(mem: &mut S, calls: &mut impl SnapshotCalls<S>, car: u32, entry: u32) {
     let frame = ((entry - 4) & !0xf) - 0xa0;
     let payload = frame + 0x40;
-    Vec4::load(mem, car + 0x140).store(mem, frame + 0x10);
-    Vec4::load(mem, car + 0x100).store(mem, frame + 0x30);
+    solid_vec4(mem, car + 0x140).store(mem, frame + 0x10);
+    solid_vec4(mem, car + 0x100).store(mem, frame + 0x30);
     mem.zero_vec4(frame + 0x20);
     calls.compose_body_into_world(mem, frame - 12, car, frame + 0x20, frame + 0x10);
     Vec4::load(mem, frame + 0x10).store(mem, payload + 0x10);

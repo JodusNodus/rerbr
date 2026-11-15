@@ -10,6 +10,12 @@ name = "rbr_hybrid"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Check builds only: the pure host poisons the words its typed storage holds over a step (`Pure::typed`).
+poison = ["rbr-physics/poison"]
+# Check builds only: calls skipped without their words fill them with a tag (`skip_unwritten`, the residue audit).
+residue-audit = []
+
 [dependencies]
 rbr-engine = { path = "../rbr-engine" }
 rbr-formats = { path = "../rbr-formats" }

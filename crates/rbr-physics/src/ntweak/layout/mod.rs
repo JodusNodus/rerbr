@@ -52,7 +52,7 @@ pub(crate) const VECTOR_VALUE: u32 = 0x10;
 /// The name word of a tweak header or object, at +4: the name it points at.
 const NAME: u32 = 0x04;
 /// The dirty flag of a tweak header, at +8.
-const DIRTY: u32 = 0x08;
+pub const DIRTY: u32 = 0x08;
 
 /// The dispatch-table slots the walk reads: slot 2 (+8), the parse entry, and slot 5 (+0x14, `Unk14`), the inner-group
 /// entry.
@@ -238,6 +238,12 @@ pub fn construct_unsigned(mem: &mut Mem, at: u32) {
     mem.set_u32(at + NAME, UNSIGNED_NAME);
     mem.set_u32(at + DIRTY, 0);
     mem.set_u32(at + VALUE, 0);
+}
+
+/// `CU32Value::Clear` (0x52d960) on the value at `at`: its word at +4 is 0. The damage reset (`ResetDamage`) calls it on
+/// the damage handler's four wheel damper pairs (+0x3ce4, 8 apart), the struts' fade pairs, whose +4 is the fade amount.
+pub fn clear_unsigned_value(mem: &mut Mem, at: u32) {
+    mem.set_u32(at + 4, 0);
 }
 
 /// `NTweak::CInteger`'s vtable (0x740594) and name word (0x7405e0).

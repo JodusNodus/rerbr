@@ -7,9 +7,10 @@ use rbr_physics::math::quat;
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
-use crate::collision::{BodyCallees, E01_VEC4_COPY_FROM, E37_EDGE_EDGE};
+use super::on_car;
+use crate::collision::{BodyCallees, E37_EDGE_EDGE};
 use crate::entities::COPY16_WALK;
-use crate::rigid_body::VF16_HELPER;
+use crate::rigid_body::{set_solid_word, VF16_HELPER};
 use crate::{engine_driveline, entities, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
 
@@ -31,13 +32,18 @@ impl layout::EdgeProbeCalls for Collide6000Host<'_> {
     fn edge_edge(&mut self, sp: u32, grid: u32, args: [u32; 6]) -> u32 {
         self.0.call_at(sp, E37_EDGE_EDGE, grid, &args).eax
     }
+
+    fn take_grid_hits(&mut self, mem: &mut Mem, grid: u32) -> [u8; 2] {
+        use rbr_physics::collision::store::CollisionStore;
+        crate::collision::on_collision(self.0, mem, |s| s.take_grid_hit_flags(grid)).map(|b| b as u8)
+    }
 }
 
 struct Vf128xHost<'a>(&'a dyn Host);
 
 impl layout::CarImpulseCalls for Vf128xHost<'_> {
     fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
-        self.0.call_at(sp, COPY16_WALK, this, &[a, car, out]);
+        crate::entities::call_op(self.0, sp, COPY16_WALK, this, &[a, car, out]);
     }
 
     fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
@@ -114,7 +120,11 @@ fn helper_then_slot17(ctx: &mut Ctx, r: &Regs, helper: u32, at: u32) -> Result<R
     ctx.host.call(helper, r.ecx, &[]);
     let object = r.ecx + at;
     let slot = ctx.mem.u32(ctx.mem.u32(object) + 0x44);
-    Ok(Return::void(ctx.host.call(slot, object, &[]).eax, 0))
+    let eax = match crate::trivial(ctx.host, slot, object) {
+        Some(_) => r.eax, // an empty hook leaves the caller's
+        None => ctx.host.call(slot, object, &[]).eax,
+    };
+    Ok(Return::void(eax, 0))
 }
 
 /// thiscall `()`: `CCar::Vf40x`, `CSolid::Vf40` and then the slot of the object at `+0xa00`.
@@ -151,7 +161,7 @@ pub(super) fn sort_key(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall: `CCar::Get15F8` returns the float at `this + 0x15f8` in st0.
 pub(super) fn forward_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(f64::from(ctx.mem.forward_speed(r.ecx)), 0))
+    Ok(Return::float(f64::from(on_car(ctx, |m| m.forward_speed(r.ecx))), 0))
 }
 
 /// fastcall: `E60Flow::M5666b0` (0x5666b0), the damage-select word `MotionProbe` asks the flow.
@@ -164,12 +174,18 @@ pub(super) fn flow_m566640(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(ctx.mem.flow_holds(r.ecx), 0))
 }
 
-/// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`.
+/// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`. The matrix may be a held body's and
+/// `out` a solid's orientation (the hinged body's `SimD160`), read and stored held.
 pub(super) fn to_quat(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let out = r.stack[0];
-    let q = quat::to_quat(&ctx.mem.load_mat3(r.ecx));
+    let m = crate::rigid_body::with_solids(ctx.host, &mut ctx.mem, |s| {
+        std::array::from_fn(|row| {
+            std::array::from_fn(|col| rbr_physics::store::Raw::f32(s, r.ecx + 4 * (3 * row + col) as u32))
+        })
+    });
+    let q = quat::to_quat(&m);
     for (k, lane) in [q.x, q.y, q.z, q.w].into_iter().enumerate() {
-        ctx.mem.set_f32(out + 4 * k as u32, lane);
+        set_solid_word(ctx.host, &mut ctx.mem, out + 4 * k as u32, lane.to_bits());
     }
     Ok(Return::void(out, 4))
 }
@@ -199,7 +215,7 @@ pub(super) fn vf24x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `()`: `CCar::Vf54x`, the E47 scratch reset followed by slot 1 of `m_scratch1690`.
 pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = CarVf54 { mem: ctx.mem.clone(), host: ctx.host, car: r.ecx };
-    let eax = layout::reset_scratch_and_dispatch(&mut calls, &mut ctx.mem, r.ecx)
+    let eax = on_car(ctx, |m| layout::reset_scratch_and_dispatch(&mut calls, m, r.ecx))
         .unwrap_or_else(|_| unreachable!("the emulator always answers host calls"));
     Ok(Return::void(eax, 0))
 }
@@ -207,7 +223,7 @@ pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Retu
 /// thiscall `(out*)`: the car's integer surface probe (`MotionProbe`).
 pub(super) fn motion_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Car { mem: ctx.mem.clone(), host: ctx.host, scratch: probe_scratch(r.esp) };
-    let outcome = probe::motion_probe(&mut calls, &ctx.mem, r.ecx);
+    let outcome = on_car(ctx, |m| probe::motion_probe(&mut calls, m, r.ecx));
     ctx.mem.set_u32(r.stack[0], outcome.out());
     Ok(Return::void(outcome.ret(), 4))
 }
@@ -219,37 +235,37 @@ pub(super) fn state_atb(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall: `GetB0C` returns the float at +0xb0c in st0.
 pub(super) fn get_b0c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(ctx.mem.steer_target(r.ecx) as f64, 0))
+    Ok(Return::float(on_car(ctx, |m| m.steer_target(r.ecx)) as f64, 0))
 }
 
 /// thiscall: `GetB1C` returns the float at +0xb1c in st0.
 pub(super) fn get_b1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(ctx.mem.steer_target_rate(r.ecx) as f64, 0))
+    Ok(Return::float(on_car(ctx, |m| m.steer_target_rate(r.ecx)) as f64, 0))
 }
 
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.
 pub(super) fn add_adc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::add_steer_torque_sum(&mut ctx.mem, r.ecx, f32::from_bits(r.stack[0]));
+    on_car(ctx, |m| layout::add_steer_torque_sum(m, r.ecx, f32::from_bits(r.stack[0])));
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(i, j, v)`: `SetA1C` dirties the matrix cell and sets it.
 pub(super) fn set_a1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, v, ..] = r.stack;
-    layout::set_roll_bar_cell(&mut ctx.mem, r.ecx, i, j, f32::from_bits(v));
+    on_car(ctx, |m| layout::set_roll_bar_cell(m, r.ecx, i, j, f32::from_bits(v)));
     Ok(Return::void(0, 12))
 }
 
 /// thiscall: `Damp66D0`, the two anti-roll bars' force cells.
 pub(super) fn update_roll_bars(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    car::roll_bars::update_roll_bars(&mut ctx.mem, r.ecx);
+    on_car(ctx, |m| car::roll_bars::update_roll_bars(m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(i, neg)`: `GetA48`, the lane word at `+0xa48 + 0x40 * i`, negated when `neg` is nonzero; returns it in st0.
 pub(super) fn get_a48(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, neg, ..] = r.stack;
-    let lane = ctx.mem.roll_bar_force(r.ecx, i);
+    let lane = on_car(ctx, |m| m.roll_bar_force(r.ecx, i));
     let value = car::accessors::signed_force(lane, neg != 0);
     Ok(Return::float(value as f64, 8))
 }
@@ -273,7 +289,7 @@ struct StateCallees<'a> {
 impl GridCalls for StateCallees<'_> {
     fn grid(&mut self, owner: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(owner) + 0x30);
-        self.host.call(target, owner, &[]).eax
+        crate::call_or_trivial(self.host, 0, target, owner, &[])
     }
 
     fn clear_grid(&mut self, owner: u32, grid: u32, plus: u32, minus: u32) {
@@ -281,7 +297,7 @@ impl GridCalls for StateCallees<'_> {
     }
 
     fn copy_from(&mut self, dst: u32, src: u32) -> u32 {
-        self.host.call(E01_VEC4_COPY_FROM, dst, &[src]).eax
+        crate::collision::copy_vec4(self.host, &mut self.mem, 0, dst, src)
     }
 }
 
@@ -311,6 +327,17 @@ impl car::body::BodyCalls for BodyCalls<'_> {
         let target = self.mem.u32(self.mem.u32(body));
         self.host.call(target, body, &[]);
     }
+}
+
+/// `NTweak::CE36SubBlock::Init` (0x4f3e80) on `block`, entered at `sp`: on the pure host its port, without the call
+/// (as [`crate::trivial`]: no reader reads the call's words); else the call.
+pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, sp: u32, block: u32) {
+    if host.call_slot_word().is_none() {
+        host.call_at(sp, crate::collision::CE36_SUB_BLOCK_INIT, block, &[]);
+        return;
+    }
+    host.ran_direct();
+    car::light::sub_block_init(mem, block);
 }
 
 /// thiscall `()`: `NTweak::CE36SubBlock::Init` zeroes the sub-block.
@@ -353,8 +380,8 @@ pub(super) fn body_to_world_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     }
     let [a, b, ..] = r.stack;
     let slot = |mem: &Mem, this: u32| mem.u32(mem.u32(this) + 0x30);
-    let own = ctx.host.call(slot(&ctx.mem, car), car, &[]).eax;
-    let receiver = ctx.host.call(slot(&ctx.mem, body), body, &[]).eax;
-    ctx.host.call(entities::MB560, receiver, &[a, own, b]);
+    let own = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, car), car, &[]);
+    let receiver = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, body), body, &[]);
+    crate::entities::call_op(ctx.host, 0, entities::MB560, receiver, &[a, own, b]);
     Ok(Return::void(b, 8))
 }

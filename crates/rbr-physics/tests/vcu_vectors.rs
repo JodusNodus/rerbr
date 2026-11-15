@@ -2,14 +2,19 @@
 //!
 //! Needs a vector file: `.venv/bin/python -I harness/vcu_vectors.py <snapshot> <out>`, then
 //! `RBR_VCU_VECTORS=<out>` (several files separated by `:`). Without the variable the tests are skipped. Each record is one call of
-//! the original with its arguments, the windows before and after, and the x87 return value.
+//! the original with its arguments, the windows before and after, and the x87 return value. The unit's state is read
+//! and written through the per-call store (`layout::with_vcu`), the path the bindings take on the image.
 
 mod common;
 
 use common::{Call, Inner, Window};
+use rbr_physics::engine_driveline::layout::{CarDrive, DriveImage, DriveObj, DriveRef, DriveStateObj};
 use rbr_physics::fpu::Precision;
 use rbr_physics::mem::Mem;
-use rbr_physics::vcu::store::VcuStore;
+use rbr_physics::store::defs::{Defs, Held};
+use rbr_physics::store::Object;
+use rbr_physics::vcu::layout::{ScratchObj, VcuView};
+use rbr_physics::vcu::store::{DriveBlocks, VcuStore};
 use rbr_physics::vcu::{self, layout};
 
 const TABLE_BLEND: u32 = 0x536950;
@@ -48,6 +53,51 @@ fn load(addr: u32) -> Option<Vec<Call>> {
     Some(calls)
 }
 
+/// Maps zeros at the bytes of the object at `at` (`len` bytes) that no window holds.
+fn fill(mem: &mut Mem, at: u32, len: u32) {
+    for a in at..at + len {
+        if mem.try_read(a, 1).is_none() {
+            mem.map(a, &[0]);
+        }
+    }
+}
+
+/// Runs `run` on the unit whose scratch is at `scratch`, on the per-call store. The per-call path lifts the whole unit
+/// (its scratch and its state) and, for the drive's blocks, the whole drive (the drive and its state); a record's
+/// windows hold what the call reads, so the rest of their bytes are mapped as zeros first, which no window compare
+/// reads.
+fn on_unit<T>(mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
+    fill_unit(mem, scratch);
+    layout::with_vcu(mem, scratch, run)
+}
+
+/// The zeros [`on_unit`] maps: the unit's objects and its drive's.
+fn fill_unit(mem: &mut Mem, scratch: u32) {
+    fill(mem, scratch, ScratchObj::SIZE);
+    let state = mem.u32(scratch + ScratchObj::state.at);
+    fill(mem, state, layout::StateObj::SIZE);
+    let drive = ScratchObj::drive.load(mem, scratch);
+    fill(mem, drive, DriveObj::SIZE);
+    let drive_state = DriveImage::of(mem, drive).state;
+    fill(mem, drive_state, DriveStateObj::SIZE);
+}
+
+/// Windows mapped from `call`'s before bytes.
+fn windows(call: &Call) -> Mem {
+    let mut mem = Mem::new();
+    for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
+        mem.map(*at, pre);
+    }
+    mem
+}
+
+/// Every window of `call` as the original left it.
+fn check_windows(mem: &Mem, call: &Call) {
+    for Window { index: k, at, len, before: _, after: post } in &call.windows {
+        assert_eq!(mem.read(*at, *len), *post, "call {} ({}) window {k}", call.index, call.branch);
+    }
+}
+
 /// Replays every recorded call of `addr` through `port`, which gets the call's windows mapped and its
 /// arguments, and returns st0. Checks st0 bit for bit and every window after the call.
 fn replay(addr: u32, name: &str, port: impl Fn(&Mem, &[u32]) -> f64) {
@@ -71,7 +121,7 @@ fn table_blend_matches_original_calls() {
         let [table, x, lo, hi, n] = a[..] else {
             panic!("{} args", a.len());
         };
-        let knots = mem.pedal_map(table, n as i32 as usize);
+        let knots = layout::pedal_map(mem, table, n as i32 as usize);
         vcu::tables::table_blend(&knots, f32::from_bits(x), f32::from_bits(lo), f32::from_bits(hi))
     });
 }
@@ -83,7 +133,7 @@ fn lookup_pair_table_matches_original_calls() {
         let [table, x, n] = a[..] else {
             panic!("{} args", a.len());
         };
-        let knots = mem.speed_map(table, n as usize);
+        let knots = layout::speed_map(mem, table, n as usize);
         vcu::tables::lookup_pair_table(&knots, f32::from_bits(x))
     });
 }
@@ -91,15 +141,16 @@ fn lookup_pair_table_matches_original_calls() {
 #[test]
 fn lock_max_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    replay(LOCK_MAX, "lock_max", |mem, a| {
-        let [this, t1, t2, t3, f] = a[..] else {
-            panic!("{} args", a.len());
+    common::replay_branches("RBR_VCU_VECTORS", LOCK_MAX, "lock_max", |call, mem| {
+        let [this, t1, t2, t3, f] = call.args[..] else {
+            panic!("{} args", call.args.len());
         };
-        let pedals = mem.pedals(this);
-        let throttle = mem.pedal_map(t1, layout::KNOTS);
-        let brake = mem.pedal_map(t2, layout::KNOTS);
-        let speed = mem.speed_map(t3, layout::KNOTS);
-        vcu::locks::lock_max(pedals, &throttle, &brake, &speed, f32::from_bits(f)) as f64
+        let pedals = on_unit(mem, this, |vcu| vcu.scratch().pedals);
+        let throttle = layout::pedal_map(mem, t1, layout::KNOTS);
+        let brake = layout::pedal_map(mem, t2, layout::KNOTS);
+        let speed = layout::speed_map(mem, t3, layout::KNOTS);
+        let st0 = vcu::locks::lock_max(pedals, &throttle, &brake, &speed, f32::from_bits(f)) as f64;
+        assert_eq!(st0.to_bits(), call.st0_bits, "lock_max call {} ({}): st0 {st0}", call.index, call.branch);
     });
 }
 
@@ -114,9 +165,8 @@ fn diff_locks_matches_original_calls() {
             panic!("call {}: {} CDrive::Get4540 calls", call.index, speeds.len());
         };
         let drive_speed = f64::from_bits(speed.st0_bits) as f32;
-        let this = call.args[0];
-        let def = mem.def(mem.u32(this));
-        let locks = vcu::locks::diff_locks(mem.pedals(this), &def, drive_speed);
+        let locks =
+            on_unit(mem, call.args[0], |vcu| vcu::locks::diff_locks(vcu.scratch().pedals, &vcu.def(), drive_speed));
         let sets: Vec<(u32, u32)> =
             call.inner.iter().filter(|f| f.addr == SET_4570).map(|f| (f.args[1], f.args[2])).collect();
         assert_eq!(sets.len(), 3, "call {}: Set4570 calls", call.index);
@@ -147,21 +197,15 @@ fn rev_limit_cut_matches_original_calls() {
     };
     let mut flags_seen = std::collections::BTreeMap::<[u32; 4], usize>::new();
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let this = call.args[0];
+        let mut mem = windows(call);
         let engine_speed = f64::from_bits(inner_one(call, GET_4520).st0_bits) as f32;
-        let def = mem.def(mem.u32(this));
-        let state = mem.state(mem.u32(this + 4));
-        let flags = vcu::cut::rev_limit_cut(engine_speed, &def, &state, 300.0);
+        let (flags, engine) = on_unit(&mut mem, call.args[0], |vcu| {
+            (vcu::cut::rev_limit_cut(engine_speed, &vcu.def(), &vcu.state(), 300.0), vcu.parts().engine)
+        });
         let set = inner_one(call, SET_STATE4);
-        assert_eq!(set.args[0], mem.u32(this + 0x54), "call {}: engine object", call.index);
+        assert_eq!(set.args[0], engine, "call {}: engine object", call.index);
         assert_eq!(set.args[1..], flags, "call {}: SetState4 flags", call.index);
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} window {k}", call.index);
-        }
+        check_windows(&mem, call);
         *flags_seen.entry(flags).or_default() += 1;
     }
     eprintln!("rev_limit_cut: {} calls match, by flags: {flags_seen:?}", calls.len());
@@ -184,33 +228,30 @@ fn gearbox_update_matches_original_calls() {
     };
     let mut seen = std::collections::BTreeMap::<(u32, bool), usize>::new();
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let this = call.args[0];
-        let scratch = mem.scratch(this);
-        let drive_at = mem.u32(scratch.drive + 8);
-        let def = mem.def(scratch.def);
-        let mut state = mem.state(scratch.state);
-        let mut drive = mem.gearbox(drive_at);
-        let input = vcu::gear::Input {
-            launch_enabled: scratch.launch_enabled,
-            vcu_enabled: scratch.vcu_enabled,
-            pedals: scratch.pedals,
-            engine: inner_value(call, GET_4520),
-            speed: inner_value(call, GET_15F8),
-            dt: f32::from_bits(call.args[1]),
-            gear_count: mem.gear_count(scratch.drive),
-            tuning: layout::Tuning::STOCK,
-        };
-        let requested_before = drive.commanded;
-        vcu::gear::update(input, &def, &mut state, &mut drive);
-        mem.store_state(scratch.state, &state);
-        mem.store_gearbox(drive_at, &drive);
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} ({}) window {k}", call.index, call.branch);
-        }
+        let mut mem = windows(call);
+        let (requested_before, drive) = on_unit(&mut mem, call.args[0], |vcu| {
+            let scratch = vcu.scratch();
+            let drive_at = vcu.parts().drive;
+            let def = vcu.def();
+            let mut state = vcu.state();
+            let mut drive = vcu.gearbox(drive_at);
+            let input = vcu::gear::Input {
+                launch_enabled: scratch.launch_enabled,
+                vcu_enabled: scratch.vcu_enabled,
+                pedals: scratch.pedals,
+                engine: inner_value(call, GET_4520),
+                speed: inner_value(call, GET_15F8),
+                dt: f32::from_bits(call.args[1]),
+                gear_count: vcu.gear_count(drive_at),
+                tuning: layout::Tuning::STOCK,
+            };
+            let requested_before = drive.commanded;
+            vcu::gear::update(input, &def, &mut state, &mut drive);
+            vcu.store_state(&state);
+            vcu.store_gearbox(drive_at, &drive);
+            (requested_before, drive)
+        });
+        check_windows(&mem, call);
         *seen.entry((drive.gear, drive.commanded != requested_before)).or_default() += 1;
     }
     eprintln!("gearbox_update: {} calls match, by (gear, requested): {seen:?}", calls.len());
@@ -227,19 +268,20 @@ fn check_slip_matches_original_calls() {
     };
     let mut results = std::collections::BTreeMap::<u32, usize>::new();
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let scratch = mem.scratch(call.args[0]);
-        // window 1 is the drive's sub-object (CDrive+8), the pointer the slip flag lives behind
+        let mut mem = windows(call);
+        // window 1 is the drive's sub-object (CDrive+8), the pointer the slip flag lives behind; the record does not
+        // hold the pointer's word, so it is mapped to the window
         let drive_sub = call.windows.iter().find(|w| w.index == 1).expect("window 1").at;
-        let slip = mem.gearbox(drive_sub).slip;
-        let got = vcu::cut::check_slip(scratch.vcu_enabled, slip, f32::from_bits(call.args[1])) as u32;
-        assert_eq!(got, call.eax, "call {}: CheckSlip", call.index);
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} window {k}", call.index);
+        let drive = mem.u32(call.args[0] + ScratchObj::drive.at);
+        if mem.try_read(drive + 8, 4).is_none() {
+            mem.map(drive + 8, &drive_sub.to_le_bytes());
         }
+        let got = on_unit(&mut mem, call.args[0], |vcu| {
+            let slip = vcu.gearbox(drive).slip;
+            vcu::cut::check_slip(vcu.scratch().vcu_enabled, slip, f32::from_bits(call.args[1])) as u32
+        });
+        assert_eq!(got, call.eax, "call {}: CheckSlip", call.index);
+        check_windows(&mem, call);
         *results.entry(got).or_default() += 1;
     }
     eprintln!("check_slip: {} calls match, by result: {results:?}", calls.len());
@@ -256,23 +298,22 @@ fn launch_clutch_matches_original_calls() {
     };
     let mut sent_counts = std::collections::BTreeMap::<bool, usize>::new();
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let scratch = mem.scratch(call.args[0]);
-        let drive_at = mem.u32(scratch.drive + 8);
-        let def = mem.def(scratch.def);
-        let mut state = mem.state(scratch.state);
-        let drive = mem.gearbox(drive_at);
-        let input = vcu::clutch::Input {
-            launch_mode: scratch.launch_mode,
-            engine: inner_value(call, GET_4520),
-            dt: f32::from_bits(call.args[1]),
-            tuning: vcu::layout::Tuning::STOCK,
-        };
-        let sent = vcu::clutch::launch_clutch(input, &drive, &def, &mut state);
-        mem.store_state(scratch.state, &state);
+        let mut mem = windows(call);
+        let sent = on_unit(&mut mem, call.args[0], |vcu| {
+            let scratch = vcu.scratch();
+            let drive = vcu.gearbox(vcu.parts().drive);
+            let def = vcu.def();
+            let mut state = vcu.state();
+            let input = vcu::clutch::Input {
+                launch_mode: scratch.launch_mode,
+                engine: inner_value(call, GET_4520),
+                dt: f32::from_bits(call.args[1]),
+                tuning: vcu::layout::Tuning::STOCK,
+            };
+            let sent = vcu::clutch::launch_clutch(input, &drive, &def, &mut state);
+            vcu.store_state(&state);
+            sent
+        });
         let set: Vec<&Inner> = call.inner.iter().filter(|f| f.addr == SET_4820).collect();
         match (sent, &set[..]) {
             (None, []) => {}
@@ -281,9 +322,7 @@ fn launch_clutch_matches_original_calls() {
             }
             _ => panic!("call {}: {} Set4820 calls, port sent {sent:?}", call.index, set.len()),
         }
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} window {k}", call.index);
-        }
+        check_windows(&mem, call);
         *sent_counts.entry(sent.is_some()).or_default() += 1;
     }
     eprintln!("launch_clutch: {} calls match, by sent: {sent_counts:?}", calls.len());
@@ -302,46 +341,44 @@ fn flag_dispatch_matches_original_calls() {
     };
     let mut seen = std::collections::BTreeMap::<(u8, bool), usize>::new();
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let scratch = mem.scratch(call.args[0]);
-        let packet = mem.packet(call.args[1]);
-        let drive_at = mem.u32(scratch.drive + 8);
-        let def = mem.def(scratch.def);
-        let mut state = mem.state(scratch.state);
-        let mut drive = mem.gearbox(drive_at);
-        let gear_count = mem.gear_count(scratch.drive);
-        let gears = mem.gear_ratios(scratch.drive);
+        let mut mem = windows(call);
+        let packet = layout::packet(&mem, call.args[1]);
         let (engine, car_speed) = (inner_value(call, GET_4520), inner_value(call, GET_15F8));
-        let gear = drive.gear;
-        let on = vcu::dispatch::flag_dispatch(
-            packet,
-            || {
-                vcu::slip::query_slip(
-                    scratch.slip_gate_rpm,
-                    scratch.slip_gate_speed,
-                    gear,
-                    &gears,
-                    def.rpm_limit,
-                    engine,
-                    car_speed,
-                )
-            },
-            scratch.vcu_enabled,
-            gear_count,
-            &def,
-            &vcu::layout::Tuning::STOCK,
-            &mut state,
-            &mut drive,
-        );
-        mem.store_state(scratch.state, &state);
-        mem.store_gearbox(drive_at, &drive);
+        let on = on_unit(&mut mem, call.args[0], |vcu| {
+            let scratch = vcu.scratch();
+            let drive_at = vcu.parts().drive;
+            let def = vcu.def();
+            let mut state = vcu.state();
+            let mut drive = vcu.gearbox(drive_at);
+            let gear_count = vcu.gear_count(drive_at);
+            let gears = vcu.gear_ratios(drive_at);
+            let gear = drive.gear;
+            let on = vcu::dispatch::flag_dispatch(
+                packet,
+                || {
+                    vcu::slip::query_slip(
+                        scratch.slip_gate_rpm,
+                        scratch.slip_gate_speed,
+                        gear,
+                        &gears,
+                        def.rpm_limit,
+                        engine,
+                        car_speed,
+                    )
+                },
+                scratch.vcu_enabled,
+                gear_count,
+                &def,
+                &vcu::layout::Tuning::STOCK,
+                &mut state,
+                &mut drive,
+            );
+            vcu.store_state(&state);
+            vcu.store_gearbox(drive_at, &drive);
+            on
+        });
         assert_eq!(on as u32, call.eax, "call {}: FlagDispatch return", call.index);
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} window {k}", call.index);
-        }
+        check_windows(&mem, call);
         *seen.entry((packet.flags, on)).or_default() += 1;
     }
     eprintln!("flag_dispatch: {} calls match, by (flags, on): {seen:?}", calls.len());
@@ -353,7 +390,8 @@ fn flag_dispatch_matches_original_calls() {
 fn copy_def_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay("RBR_VCU_VECTORS", COPY_DEF, "copy_def", |call, mem| {
-        vcu::layout::copy_def(mem, call.args[0], call.args[1]);
+        let flags = layout::copy_def(mem, call.args[0], call.args[1]);
+        on_unit(mem, call.args[0], |vcu| layout::copy_flags(vcu, flags));
     });
 }
 
@@ -368,17 +406,15 @@ fn read_packet_matches_original_calls() {
         return;
     };
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
+        let mut mem = windows(call);
         let (scratch, packet) = (call.args[0], call.args[1]);
         let Window { index: _, at: _, len: _, before: entry, after: _ } =
             call.windows.iter().find(|w| w.at == scratch && w.len == 0x60).expect("the scratch window");
         for at in [0x0c, 0x10, 0x14, 0x18, 0x1c] {
             mem.set_u32(scratch + at, 0);
         }
-        vcu::layout::read_packet(&mut mem, scratch, packet);
+        let packet = layout::packet(&mem, packet);
+        on_unit(&mut mem, scratch, |vcu| layout::read_packet(vcu, packet));
         assert_eq!(mem.read(scratch, 0x60), *entry, "call {}: scratch", call.index);
     }
     eprintln!("read_packet: {} calls match", calls.len());
@@ -429,35 +465,33 @@ fn replay_steps(addr: u32, name: &str, port: StepPort) {
             stale += 1;
             continue;
         }
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let scratch = mem.scratch(call.args[0]);
-        let input = vcu::step::Input {
-            dt: f32::from_bits(call.args[1]),
-            engine: inner_value(call, GET_4520),
-            car_speed: inner_value(call, GET_15F8),
-            drive_speed: inner_value(call, GET_4540),
-            gear_count: mem.gear_count(scratch.drive),
-            tuning: vcu::layout::Tuning::STOCK,
-        };
-        let def = mem.def(scratch.def);
-        let mut state = mem.state(scratch.state);
-        let drive_at = mem.u32(scratch.drive + 8);
-        let mut drive = mem.gearbox(drive_at);
-        let mut out = mem.outputs(scratch.drive);
-        let mut sent = Vec::new();
-        port(input, &scratch, &def, &mut state, &mut drive, &mut out, &mut |s| sent.push(send_words(s)));
-        mem.store_state(scratch.state, &state);
-        mem.store_gearbox(drive_at, &drive);
-        mem.store_outputs(scratch.drive, &out);
+        let mut mem = windows(call);
+        let sent = on_unit(&mut mem, call.args[0], |vcu| {
+            let scratch = vcu.scratch();
+            let drive_at = vcu.parts().drive;
+            let input = vcu::step::Input {
+                dt: f32::from_bits(call.args[1]),
+                engine: inner_value(call, GET_4520),
+                car_speed: inner_value(call, GET_15F8),
+                drive_speed: inner_value(call, GET_4540),
+                gear_count: vcu.gear_count(drive_at),
+                tuning: vcu::layout::Tuning::STOCK,
+            };
+            let def = vcu.def();
+            let mut state = vcu.state();
+            let mut drive = vcu.gearbox(drive_at);
+            let mut out = vcu.outputs(drive_at);
+            let mut sent = Vec::new();
+            port(input, &scratch, &def, &mut state, &mut drive, &mut out, &mut |s| sent.push(send_words(s)));
+            vcu.store_state(&state);
+            vcu.store_gearbox(drive_at, &drive);
+            vcu.store_outputs(drive_at, &out);
+            sent
+        });
         let expected: Vec<(u32, Vec<u32>)> =
             call.inner.iter().filter(|f| SENDS.contains(&f.addr)).map(|f| (f.addr, f.args[1..].to_vec())).collect();
         assert_eq!(sent, expected, "call {} ({name}): setter calls", call.index);
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} window {k}", call.index);
-        }
+        check_windows(&mem, call);
     }
     eprintln!("{name}: {} calls match, {stale} older records skipped", calls.len() - stale);
 }
@@ -486,28 +520,129 @@ fn query_slip_matches_original_calls() {
     };
     let mut answers = std::collections::BTreeMap::<bool, usize>::new();
     for call in &calls {
-        let mut mem = Mem::new();
-        for Window { index: _, at, len: _, before: pre, after: _ } in &call.windows {
-            mem.map(*at, pre);
-        }
-        let scratch = mem.scratch(call.args[0]);
-        let gear = mem.gearbox(mem.u32(scratch.drive + 8)).gear;
-        let gears = mem.gear_ratios(scratch.drive);
-        let rpm_limit = mem.def(scratch.def).rpm_limit;
-        let on = vcu::slip::query_slip(
-            scratch.slip_gate_rpm,
-            scratch.slip_gate_speed,
-            gear,
-            &gears,
-            rpm_limit,
-            inner_value(call, GET_4520),
-            inner_value(call, GET_15F8),
-        );
+        let mut mem = windows(call);
+        let on = on_unit(&mut mem, call.args[0], |vcu| {
+            let scratch = vcu.scratch();
+            let drive = vcu.parts().drive;
+            vcu::slip::query_slip(
+                scratch.slip_gate_rpm,
+                scratch.slip_gate_speed,
+                vcu.gearbox(drive).gear,
+                &vcu.gear_ratios(drive),
+                vcu.def().rpm_limit,
+                inner_value(call, GET_4520),
+                inner_value(call, GET_15F8),
+            )
+        });
         assert_eq!(on as u32, call.eax, "call {}: QuerySlip", call.index);
-        for Window { index: k, at, len, before: _, after: post } in &call.windows {
-            assert_eq!(mem.read(*at, *len), *post, "call {} window {k}", call.index);
-        }
+        check_windows(&mem, call);
         *answers.entry(on).or_default() += 1;
     }
     eprintln!("query_slip: {} calls match, by answer: {answers:?}", calls.len());
+}
+
+/// The callees of the entries' sequences: the getters return what the record's did, the setters do nothing (their
+/// writes are not the VCU's).
+struct Recorded<'a>(&'a Call);
+
+impl layout::VcuCalls for Recorded<'_> {
+    fn engine_speed(&mut self, _: u32) -> f32 {
+        inner_value(self.0, GET_4520)
+    }
+    fn lock_speed(&mut self, _: u32) -> f32 {
+        inner_value(self.0, GET_4540)
+    }
+    fn car_speed(&mut self, _: u32) -> f32 {
+        inner_value(self.0, GET_15F8)
+    }
+    fn set_diff_lock(&mut self, _: u32, _: u32, _: f32) -> u32 {
+        0
+    }
+    fn set_clutch_slip(&mut self, _: u32, _: f32) -> u32 {
+        0
+    }
+    fn set_cut_flags(&mut self, _: u32, _: [u32; 4]) -> u32 {
+        0
+    }
+    fn set_engine_pedal(&mut self, _: u32, _: f32) {}
+    fn set_brake_light(&mut self, _: u32, _: bool) {}
+    fn set_neutral_light(&mut self, _: u32, _: bool) {}
+    fn query_slip(&mut self) -> bool {
+        false
+    }
+}
+
+/// The chain on the image between calls (each entry lifts and lowers the unit) and on the typed storage over the whole
+/// chain (the unit and its drive lifted before it, lowered after) leave every byte of the record's windows, the unit's
+/// objects and the drive's equal, on
+/// every Step record.
+#[test]
+fn the_typed_storage_over_a_chain_keeps_the_per_call_bytes() {
+    let _pc24 = Precision::Pc24.scope();
+    let Some(calls) = load(STEP) else {
+        eprintln!("skipping the typed storage's chain: RBR_VCU_VECTORS not set");
+        return;
+    };
+    let mut chained = 0;
+    for call in calls.iter().filter(|call| call.windows.len() >= 7) {
+        let scratch = call.args[0];
+        let mut base = windows(call);
+        on_unit(&mut base, scratch, |_| ());
+        // A packet that sets the gear (flag 4) to the one in use, so the dispatch runs and changes no request.
+        let drive = ScratchObj::drive.load(&base, scratch);
+        let gear = DriveRef::of(&base, None, drive).gearbox(&base).gear;
+        let packet = layout::Packet {
+            pedals: layout::Pedals { throttle: 0.75, brake: 0.25, handbrake: 0.5 },
+            fixed_clutch: 0.5,
+            carried_word: 3,
+            flags: 4,
+            value: gear,
+        };
+        // The entries in a row, as a step makes its VCU calls: the packet, the gear logic, the launch clutch, both
+        // steps, the cut and the locks.
+        let (dt, tuning) = (f32::from_bits(call.args[1]), layout::Tuning::STOCK);
+        let entries: [&dyn Fn(&mut VcuView); 8] = [
+            &|v| layout::read_packet(v, packet),
+            &|v| _ = layout::apply_packet(v, &mut Recorded(call), packet, &tuning),
+            &|v| layout::gearbox_update(v, &mut Recorded(call), dt, tuning),
+            &|v| _ = layout::launch_clutch(v, &mut Recorded(call), dt, tuning),
+            &|v| layout::step(v, &mut Recorded(call), dt, true, tuning),
+            &|v| layout::step(v, &mut Recorded(call), dt, false, tuning),
+            &|v| _ = layout::rev_limit_cut(v, &mut Recorded(call), tuning.cut_margin),
+            &|v| _ = layout::diff_locks(v, &mut Recorded(call)),
+        ];
+        let mut per_call = base.clone();
+        for entry in entries {
+            layout::with_vcu(&mut per_call, scratch, entry);
+        }
+        let mut typed = base.clone();
+        let held = layout::CarVcu::of(&typed, scratch);
+        let held_drive = CarDrive::of(&typed, drive);
+        // The definition held too, as a step's typed definitions hold it.
+        let def = held.image.def;
+        let defs = Defs { vcu: Some(Held { at: def, def: layout::def(&typed, def) }), ..Defs::default() };
+        let mut view = held.view(&mut typed, Some(&held_drive)).with_defs(Some(&defs));
+        for entry in entries {
+            entry(&mut view);
+        }
+        held.lower(&mut typed);
+        held_drive.lower(&mut typed);
+        let state = base.u32(scratch + ScratchObj::state.at);
+        let drive_state = DriveImage::of(&base, drive).state;
+        let objects = [
+            (scratch, ScratchObj::SIZE as usize),
+            (state, layout::StateObj::SIZE as usize),
+            (drive, DriveObj::SIZE as usize),
+            (drive_state, DriveStateObj::SIZE as usize),
+        ];
+        for (at, len) in call.windows.iter().map(|w| (w.at, w.len)).chain(objects) {
+            let (a, b) = (per_call.read(at, len), typed.read(at, len));
+            let k = a.iter().zip(&b).position(|(x, y)| x != y);
+            assert!(k.is_none(), "call {}: {at:#x}+{:#x} differs between the storages", call.index, k.unwrap_or(0));
+        }
+        assert_ne!(per_call.read(scratch, 0x20), base.read(scratch, 0x20), "call {}: the packet", call.index);
+        chained += 1;
+    }
+    assert!(chained > 0, "no Step record with every window");
+    eprintln!("the typed storage's chain: {chained} Step records, every byte equal to the per-call path's");
 }

@@ -14,7 +14,7 @@ use rbr_physics::mem::Mem;
 
 use super::members::{FLOW_OBJECT, M5666B0, SAMPLER_54A0};
 use super::step::SLOT_S8C;
-use crate::car_body::ADD_EDGE;
+use crate::car_body::{on_car, ADD_EDGE};
 use crate::entities::{BODY_COMPOSE, COPY16_WALK, MB560, NODE_OF};
 use crate::rigid_body::VF20_JUMP;
 use crate::{aligned_frame, Called, Ctx, Decline, Host, Regs, Return};
@@ -66,7 +66,7 @@ impl Car<'_> {
     fn walk(&mut self, this: u32, a: Vec3, b: u32) -> Vec3 {
         let (a_at, c_at) = (self.scratch + A, self.scratch + C);
         self.put(a_at, a);
-        self.host.call(MB560, this, &[a_at, b, c_at]);
+        crate::entities::call_op(self.host, 0, MB560, this, &[a_at, b, c_at]);
         self.get(c_at)
     }
 }
@@ -93,7 +93,7 @@ impl FrameWalk for Car<'_> {
 
 impl FrameCompose for Car<'_> {
     fn compose_frames(&mut self, this: u32, a: u32, t: u32, out: u32) -> u32 {
-        self.host.call(COPY16_WALK, this, &[a, t, out]);
+        crate::entities::call_op(self.host, 0, COPY16_WALK, this, &[a, t, out]);
         out
     }
 }
@@ -104,7 +104,7 @@ impl PlacementCalls for Car<'_> {
     }
 
     fn identity(&mut self, car: u32) -> u32 {
-        self.host.call(NODE_OF, car, &[]).eax
+        crate::call_or_trivial(self.host, 0, NODE_OF, car, &[])
     }
 }
 
@@ -131,8 +131,8 @@ impl EdgeCalls for Car<'_> {
     }
 }
 
-impl DragCalls for Car<'_> {
-    fn pre_step(&mut self, _mem: &mut Mem, car: u32) {
+impl<S: CarStore> DragCalls<S> for Car<'_> {
+    fn pre_step(&mut self, _mem: &mut S, car: u32) {
         self.slot(car, SLOT_PRE_STEP, &[]);
     }
 
@@ -141,20 +141,24 @@ impl DragCalls for Car<'_> {
         self.walk(frame, a, car)
     }
 
-    fn drag_force(&mut self, _mem: &mut Mem, car: u32, force: Vec3) {
+    fn drag_force(&mut self, _mem: &mut S, car: u32, force: Vec3) {
         let at = self.scratch + SEND;
         self.put(at, force);
-        self.slot(car, SLOT_FORCE, &[at]);
+        if !crate::rigid_body::accumulate_direct(self.host, &mut self.mem, SLOT_FORCE, car, at) {
+            self.slot(car, SLOT_FORCE, &[at]);
+        }
     }
 
-    fn spin_damping(&mut self, _mem: &mut Mem, car: u32, damping: Vec3) {
+    fn spin_damping(&mut self, _mem: &mut S, car: u32, damping: Vec3) {
         let at = self.scratch + SEND;
         self.put(at, damping);
-        self.slot(car, SLOT_SPIN, &[at]);
+        if !crate::rigid_body::accumulate_direct(self.host, &mut self.mem, SLOT_SPIN, car, at) {
+            self.slot(car, SLOT_SPIN, &[at]);
+        }
     }
 }
 
-impl WallFrictionCalls for Car<'_> {
+impl<S: CarStore> WallFrictionCalls<S> for Car<'_> {
     fn to_world(&mut self, car: u32, v: Vec3) -> Vec3 {
         let (a_at, b_at) = (self.scratch + A, self.scratch + B);
         self.put(a_at, v);
@@ -163,15 +167,15 @@ impl WallFrictionCalls for Car<'_> {
     }
 
     fn walk_vector(&mut self, a: Vec3, car: u32) -> Vec3 {
-        DragCalls::walk_vector(self, a, car)
+        DragCalls::<S>::walk_vector(self, a, car)
     }
 
-    fn wall_force(&mut self, mem: &mut Mem, car: u32, force: Vec3) {
-        DragCalls::drag_force(self, mem, car, force);
+    fn wall_force(&mut self, mem: &mut S, car: u32, force: Vec3) {
+        DragCalls::<S>::drag_force(self, mem, car, force);
     }
 
-    fn wall_torque(&mut self, mem: &mut Mem, car: u32, spin: Vec3) {
-        DragCalls::spin_damping(self, mem, car, spin);
+    fn wall_torque(&mut self, mem: &mut S, car: u32, spin: Vec3) {
+        DragCalls::<S>::spin_damping(self, mem, car, spin);
     }
 }
 
@@ -195,7 +199,7 @@ impl rbr_physics::rigid_body::host::EntityScratchTailHost for CarVf54<'_> {
     fn entity_scratch_tail(&mut self) -> Result<(), rbr_physics::rigid_body::host::HostUnavailable> {
         let entity = self.car + 0x5c;
         let target = self.mem.u32(self.mem.u32(entity) + 4);
-        self.host.call(target, entity, &[]);
+        crate::call_or_trivial(self.host, 0, target, entity, &[]);
         Ok(())
     }
 }
@@ -232,15 +236,17 @@ impl ProbeCalls for Car<'_> {
     }
 }
 
-/// The vector the original's argument points at (lanes 0 to 2).
-fn vec_at(mem: &Mem, at: u32) -> Vec3 {
-    Vec3::load(mem, at)
+/// The vector the original's argument points at (lanes 0 to 2), on the solids' store: a solid's velocities at times
+/// (the detach's).
+fn vec_at(host: &dyn Host, mem: &Mem, at: u32) -> Vec3 {
+    let lane = |k: u32| crate::rigid_body::solid_f32(host, mem, at + 4 * k);
+    Vec3 { x: lane(0), y: lane(1), z: lane(2) }
 }
 
-fn set_vec(mem: &mut Mem, at: u32, v: Vec3) {
-    mem.set_f32(at, v.x);
-    mem.set_f32(at + 4, v.y);
-    mem.set_f32(at + 8, v.z);
+fn set_vec(host: &dyn Host, mem: &mut Mem, at: u32, v: Vec3) {
+    for (k, lane) in [v.x, v.y, v.z].into_iter().enumerate() {
+        crate::rigid_body::set_solid_word(host, mem, at + 4 * k as u32, lane.to_bits());
+    }
 }
 
 /// thiscall `(data*)`: `NTweak::CFloat3::LoadBinary` reads the four words at `data` into `this`; returns `this`.
@@ -261,8 +267,8 @@ pub(super) fn to_world(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
         return Err(Decline::Unsupported("the frame global is unset (the original halts)"));
     }
     let mut calls = car_calls(ctx, r);
-    let v = car::transform::to_world(&mut calls, &ctx.mem, r.ecx, vec_at(&ctx.mem, a));
-    set_vec(&mut ctx.mem, b, v);
+    let v = car::transform::to_world(&mut calls, &ctx.mem, r.ecx, vec_at(ctx.host, &ctx.mem, a));
+    set_vec(ctx.host, &mut ctx.mem, b, v);
     Ok(Return::void(b, 8))
 }
 
@@ -303,21 +309,21 @@ pub(super) fn compose_body_into_world(ctx: &mut Ctx, r: &Regs) -> Result<Return,
 /// thiscall: `CCar::PushGridEdge` (`Update7270`), the grid edge once and the flag.
 pub(super) fn push_grid_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
-    layout::push_grid_edge(&mut calls, &mut ctx.mem, r.ecx);
+    on_car(ctx, |m| layout::push_grid_edge(&mut calls, m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(a)`: `CCar::RefreshEdge` (`Vf20x72D0`); eax is the `Vf20` call's.
 pub(super) fn refresh_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
-    let eax = layout::refresh_edge(&mut calls, &mut ctx.mem, r.ecx, r.stack[0]);
+    let eax = on_car(ctx, |m| layout::refresh_edge(&mut calls, m, r.ecx, r.stack[0]));
     Ok(Return::void(eax, 4))
 }
 
 /// thiscall: `CCar::Sim7AD0`, the wheel aero gust.
 pub(super) fn wall_friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
-    car::wall_friction::wall_friction(&mut calls, &mut ctx.mem, r.ecx);
+    on_car(ctx, |m| car::wall_friction::wall_friction(&mut calls, m, r.ecx));
     Ok(Return::void(0, 0))
 }
 
@@ -325,12 +331,12 @@ pub(super) fn wall_friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 pub(super) fn apply_drag(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
     let factor = crate::ngp::drag_factor(ctx);
-    car::drag::apply_drag(&mut calls, &mut ctx.mem, r.ecx, factor);
+    on_car(ctx, |m| car::drag::apply_drag(&mut calls, m, r.ecx, factor));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall: `CCar::UpdateFfbTorque` (`Hook1FF0`), the filtered steering torque for force feedback.
 pub(super) fn update_ffb_torque(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::update_ffb_torque(&mut ctx.mem, r.ecx);
+    on_car(ctx, |m| layout::update_ffb_torque(m, r.ecx));
     Ok(Return::void(0, 0))
 }

@@ -5,6 +5,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::contact_walk::{self, NodeHost, SolidHost};
 use rbr_physics::physics_core::layout::prof_calls::{EnterHost, ProfHost};
 use rbr_physics::physics_core::layout::{self, physics_object as core_physics};
+use rbr_physics::store::Raw;
 
 use super::slots::vslot;
 use super::UNLINK;
@@ -12,12 +13,12 @@ use crate::pure::QUERY_PERFORMANCE_COUNTER;
 use crate::rigid_body::{VF_DX, VF_EX};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-/// The counter through the import table.
+/// The counter: the pure host's without a call ([`Host::query_counter`]), else through the import table.
 struct Timer<'a>(&'a dyn Host, u32);
 
 impl ProfHost for Timer<'_> {
     fn counter(&mut self, at: u32) -> u32 {
-        self.0.call(self.1, 0, &[at]).eax
+        self.0.query_counter(at).unwrap_or_else(|| self.0.call(self.1, 0, &[at]).eax)
     }
 }
 
@@ -62,7 +63,7 @@ pub(super) fn step_forward_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
         stack.outer_prof_local(),
         |ctx| {
             let mut calls = PhysicsStepCalls { mem: ctx.mem.clone(), host: ctx.host, stack };
-            layout::step_forward(&mut ctx.mem, &mut calls, r.ecx, r.stack[0], r.ebp, stack);
+            super::on_core(ctx, |core| layout::step_forward(core, &mut calls, r.ecx, r.stack[0], r.ebp, stack));
         },
     );
     Ok(Return::void(eax, 4))
@@ -75,36 +76,36 @@ struct PhysicsStepCalls<'a> {
     stack: layout::StepStack,
 }
 
-impl NodeHost for PhysicsStepCalls<'_> {
-    fn force_input(&mut self, mem: &mut Mem, node: u32) {
+impl<S: Raw> NodeHost<S> for PhysicsStepCalls<'_> {
+    fn force_input(&mut self, mem: &mut S, node: u32) {
         let target = layout::virtual_target(mem, node, 0x5c);
         self.host.call_at(self.stack.work_slot_void(), target, node, &[]);
     }
 
-    fn force_to_accel(&mut self, mem: &mut Mem, node: u32) {
+    fn force_to_accel(&mut self, mem: &mut S, node: u32) {
         let target = layout::virtual_target(mem, node, 0x64);
         self.host.call_at(self.stack.work_slot_void(), target, node, &[]);
     }
 
-    fn integrate(&mut self, mem: &mut Mem, node: u32, p: f32) {
-        layout::seed_body_pass_edi(mem, self.stack);
+    fn integrate(&mut self, mem: &mut S, node: u32, p: f32) {
+        layout::seed_body_pass_edi(mem.mem_mut(), self.stack);
         let target = layout::virtual_target(mem, node, 0x6c);
         self.host.call_at(self.stack.work_slot_arg(), target, node, &[p.to_bits()]);
     }
 
-    fn child_walk(&mut self, mem: &mut Mem, node: u32, p: f32) {
+    fn child_walk(&mut self, mem: &mut S, node: u32, p: f32) {
         let target = layout::virtual_target(mem, node, 0x58);
         self.host.call_at(self.stack.work_slot_arg(), target, node, &[p.to_bits()]);
     }
 }
 
-impl core_physics::StepHost for PhysicsStepCalls<'_> {
+impl<S: Raw> core_physics::StepHost<S> for PhysicsStepCalls<'_> {
     fn pre_step(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
         self.host.call_at(entry_sp, target, node, &[dt.to_bits()]);
     }
 
     fn post_bodies(&mut self, entry_sp: u32, target: u32, node: u32, dt: f32) {
-        self.host.call_at(entry_sp, target, node, &[dt.to_bits()]);
+        crate::call_or_trivial(self.host, entry_sp, target, node, &[dt.to_bits()]);
     }
 
     fn init_pass(&mut self, entry_sp: u32, target: u32, node: u32) {
@@ -120,7 +121,7 @@ impl core_physics::StepHost for PhysicsStepCalls<'_> {
     }
 
     fn telemetry_substep(&mut self, entry_sp: u32, receiver: u32, count: u32) {
-        self.host.call_at(entry_sp, 0x499e60, receiver, &[count]);
+        crate::call_or_trivial(self.host, entry_sp, 0x499e60, receiver, &[count]);
     }
 
     fn collide_window(&mut self, entry_sp: u32, physics: u32, window: f32) {
@@ -144,7 +145,7 @@ impl core_physics::StepHost for PhysicsStepCalls<'_> {
             |ctx| {
                 ctx.host.call_at(stack.loop_void(), 0x526cc0, physics, &[]);
                 let events = layout::step_scratch_events(&ctx.mem, physics);
-                ctx.host.call_at(stack.loop_arg(), 0x499e70, telemetry, &[events]);
+                crate::call_or_trivial(ctx.host, stack.loop_arg(), 0x499e70, telemetry, &[events]);
                 layout::seed_penetration_exit(&mut ctx.mem, stack);
             },
         );
@@ -175,7 +176,7 @@ impl core_physics::StepHost for PhysicsStepCalls<'_> {
     }
 
     fn telemetry_after_solve(&mut self, entry_sp: u32, receiver: u32) {
-        self.host.call_at(entry_sp, 0x499e90, receiver, &[]);
+        crate::call_or_trivial(self.host, entry_sp, 0x499e90, receiver, &[]);
     }
 
     fn reset_drive_part(&mut self, entry_sp: u32, drive: u32) {
@@ -243,7 +244,7 @@ pub(super) fn advance_contact_bodies_remainder(ctx: &mut Ctx, r: &Regs) -> Resul
 /// The sample enter's unlink, through the original.
 impl EnterHost for Timer<'_> {
     fn unlink(&mut self, sample: u32) {
-        self.0.call(UNLINK, sample, &[]);
+        crate::collision::call_grid(self.0, 0, UNLINK, sample, &[]);
     }
 }
 

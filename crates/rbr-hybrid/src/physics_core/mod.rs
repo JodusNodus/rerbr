@@ -3,6 +3,10 @@
 
 use crate::entities::{empty_hook_run, EMPTY_HOOK, MB560, STATE_EMIT};
 use crate::Binding;
+use rbr_physics::mem::Mem;
+use rbr_physics::physics_core::layout::typed::Slot;
+use rbr_physics::physics_core::layout::CoreView;
+use rbr_physics::store::Value;
 
 mod detection;
 mod mounted_body;
@@ -42,6 +46,21 @@ const HOST_AT: u32 = 0x14;
 const SPRING_EAX_AT: u32 = 0x70;
 /// The temporaries the walk's point takes, below the entry's return slot (as `rigid_body`'s).
 const TEMPS: u32 = 0x100;
+
+/// Runs `run` on the physics core's store: the typed storage's core and the car's solids while the host holds them
+/// over a step, else every word on the image (the per-call path).
+pub(crate) fn on_core<T>(ctx: &mut crate::Ctx, run: impl FnOnce(&mut CoreView) -> T) -> T {
+    let host = ctx.host;
+    let typed = host.typed();
+    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    run(&mut CoreView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.core)).with_solids(solids))
+}
+
+/// The core's field `slot` of the object at `base` as a step leaves it at this point: the typed storage's while the
+/// host holds it, else the image's. For the readers outside the core's bindings (the time keeper's update).
+pub(crate) fn read_core<T: Value>(host: &dyn crate::Host, mem: &Mem, base: u32, slot: Slot<T>) -> T {
+    host.typed().and_then(|t| t.core.read(base, slot)).unwrap_or_else(|| T::load(mem, base + slot.at))
+}
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("physics_core", addr, name, run)

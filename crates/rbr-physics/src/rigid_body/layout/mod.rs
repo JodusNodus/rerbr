@@ -8,6 +8,7 @@ mod rest;
 mod scratch_state;
 mod sleep_body;
 mod solid_ctor;
+mod typed;
 
 pub use crate::physics_core::layout::vtable_target;
 pub use crate::rigid_body::solid_contacts::{
@@ -25,9 +26,13 @@ pub use crate::rigid_body::solid_window::{
 };
 pub(crate) use contacts::HALF;
 pub use contacts::{
-    contact_record, contact_records, impulse_tail_frame, load_contact, store_event, ImpulseTailFrame, CONTACT_LIST,
+    contact_count, contact_list, contact_record, contact_records, impulse_tail_frame, load_contact, store_event,
+    ImpulseTailFrame, CONTACT_LIST,
 };
-pub use rest::{solid_filing, solid_sleep, solid_soften, solid_wake, store_body_event, RestHost, VerySoftHost};
+pub use mem_store::SolidWords;
+pub use rest::{
+    solid_filing, solid_filing_with, solid_sleep, solid_soften, solid_wake, store_body_event, RestHost, VerySoftHost,
+};
 pub use scratch_state::{
     clear_vec, scratch_reset_after_entity, store_scratch_base_init, store_scratch_reset, walk_children, CELL_LINK,
     SCRATCH_VTABLE,
@@ -37,6 +42,7 @@ pub use solid_ctor::{
     construct_def, construct_solid, construct_state, new_def, new_solid, place_solid, PlaceHost, SolidCtorHost,
     DEF_SIZE, SOLID_SIZE,
 };
+pub use typed::{differential, round_trip, CarSolids, HeldSolid, Solid, SolidView};
 
 /// The `CSolid` members the ports read and write (`notes/physics.md` "Rigid body", which marks the inferred ones).
 pub const ORIENTATION: u32 = 0x100;

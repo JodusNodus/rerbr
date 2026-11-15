@@ -3,10 +3,15 @@
 //! eax is the residue the original leaves where it is an argument or `this` field; elsewhere it is a scratch value
 //! no caller reads, given as 0.
 
-use rbr_physics::spring_damper::{self as sd, layout};
+use rbr_physics::spring_damper as sd;
+use rbr_physics::spring_damper::layout::{self, StrutView};
+use rbr_physics::spring_damper::store::StrutStore;
+use rbr_physics::spring_damper::strut::StrutId;
 
 use crate::engine_driveline::SIGNALS;
-use crate::{Binding, Ctx, Decline, Regs, Return};
+use rbr_physics::mem::Mem;
+
+use crate::{Binding, Ctx, Decline, Host, Regs, Return};
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("spring_damper", addr, name, run)
@@ -41,9 +46,37 @@ fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
+/// Runs `run` on the strut whose controller is `controller` (the original's `ecx`): in the typed storage the host
+/// holds over a step ([`crate::Host::typed`]), else (another car's, or no step holds them) lifted from the image into
+/// a store of its own and lowered after it (the per-call path).
+pub(crate) fn on_strut<T>(ctx: &mut Ctx, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
+    on_strut_in(ctx.host, &mut ctx.mem, controller, run)
+}
+
+/// [`on_strut`] on `host` and `mem`.
+pub(crate) fn on_strut_in<T>(
+    host: &dyn Host,
+    mem: &mut Mem,
+    controller: u32,
+    run: impl FnOnce(&mut StrutView, StrutId) -> T,
+) -> T {
+    if let Some(typed) = host.typed() {
+        let mut struts = typed.car.struts.borrow_mut();
+        if let Some(id) = struts.id_of(controller) {
+            return run(&mut struts.view(mem).with_defs(Some(&typed.defs)), id);
+        }
+    }
+    layout::with_strut(mem, controller, run)
+}
+
+/// Whether the step holds the strut whose controller is `controller`.
+pub(crate) fn holds_strut(host: &dyn Host, controller: u32) -> bool {
+    host.typed().is_some_and(|typed| typed.car.struts.borrow().id_of(controller).is_some())
+}
+
 /// thiscall `()`; eax is the state pointer (`this+8`).
 fn update_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::update_forces(&mut ctx.mem, r.ecx);
+    on_strut(ctx, r.ecx, |store, strut| sd::strut::update_forces(store, strut));
     Ok(Return::void(ctx.mem.u32(r.ecx + 8), 0))
 }
 
@@ -54,25 +87,32 @@ fn reset_outputs(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let signal = ctx.mem.u32(SIGNALS) + 0xc2b8;
     let target = crate::ngp::Call::DamperSignal.address();
     ctx.host.call(target, signal, &[r.ecx + 0x1c]);
-    let emitted = layout::reset_outputs(&mut ctx.mem, r.ecx);
+    let emitted = on_strut(ctx, r.ecx, |store, strut| sd::strut::reset_outputs(store, strut));
     ctx.host.emit_damper(r.ecx, emitted);
     Ok(Return::void(ctx.mem.u32(r.ecx + 8), 0))
 }
 
 /// thiscall `()`: `UpdateForces`, then `ResetOutputs`' reset without the emit. The wheel's setup update
-/// (`E51Wheel::M3D030`) tail-jumps here. eax is the owner wheel's id.
+/// (`E51Wheel::M3D030`) tail-jumps here. eax is the owner wheel's id (the reset signal's).
 fn update_and_reset(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::update_forces(&mut ctx.mem, r.ecx);
-    let _ = layout::reset_outputs(&mut ctx.mem, r.ecx);
-    Ok(Return::void(ctx.mem.u32(r.ecx + 0x1c), 0))
+    let owner_id = on_strut(ctx, r.ecx, |store, strut| {
+        sd::strut::update_forces(store, strut);
+        sd::strut::reset_outputs(store, strut);
+        store.controller(strut).signal.owner_id
+    });
+    Ok(Return::void(owner_id, 0))
 }
 
-/// thiscall `(travel, coordinate, velocity, spring_force*, breakpoint*, damping*)`.
+/// thiscall `(travel, coordinate, velocity, spring_force*, breakpoint*, damping*)`: the three outputs go to the
+/// caller's out pointers.
 fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [travel, coordinate, velocity, spring_force, breakpoint, damping, ..] = r.stack;
-    let args = [r.ecx, travel, coordinate, velocity, spring_force, breakpoint, damping];
     let ngp = crate::ngp::damper_step(&ctx.mem)?;
-    layout::step(&mut ctx.mem, &args, ngp);
+    let input = sd::StepInput { travel: f(travel), coordinate: f(coordinate), velocity: f(velocity) };
+    let out = on_strut(ctx, r.ecx, |store, strut| sd::strut::step(store, strut, input, ngp));
+    ctx.mem.set_f32(spring_force, out.spring_stop_force);
+    ctx.mem.set_f32(breakpoint, out.breakpoint_offset);
+    ctx.mem.set_f32(damping, out.damping_coefficient);
     Ok(Return::void(0, 0x18))
 }
 

@@ -108,7 +108,7 @@ fn definition_constructor_matches() {
 fn clear_unsigned_value_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52d960, |call, mem| {
-        layout::clear_unsigned_value(mem, call.args[0]);
+        rbr_physics::ntweak::layout::clear_unsigned_value(mem, call.args[0]);
         ReturnValue::Ignore
     });
 }
@@ -120,10 +120,10 @@ fn setup_dictionary_matches() {
 }
 
 #[test]
-fn set_rebound_damping_matches() {
+fn set_fade_pointer_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52da40, |call, mem| {
-        layout::set_rebound_damping(mem, call.args[0], call.args[1]);
+        layout::set_fade_pointer(mem, call.args[0], call.args[1]);
         ReturnValue::Ignore
     });
 }
@@ -173,6 +173,12 @@ fn controller_constructor_matches() {
 fn reset_outputs_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e010, |call, mem| {
+        // The record leaves out the fade pair, which the reset neither reads nor writes; the per-call path lifts the
+        // strut whole and lowers it, so the pair is mapped here (the windows checked after are the record's).
+        let fade = layout::ControllerObj::fade.load(mem, call.args[0]);
+        if mem.try_read(fade, 8).is_none() {
+            mem.map(fade, &[0; 8]);
+        }
         layout::reset_outputs(mem, call.args[0]);
         ReturnValue::Ignore
     });

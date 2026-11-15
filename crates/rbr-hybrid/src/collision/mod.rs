@@ -1,6 +1,10 @@
 //! Bindings of the collision ports (`rbr_physics::collision`, exe 0x4e0000-0x4fe000). The ABIs are the original's
 //! (`harness/vector_specs/collision.py`).
 
+use rbr_physics::collision::layout::{CollisionImage, CollisionView};
+use rbr_physics::mem::Mem;
+use rbr_physics::rigid_body::contact::Contact;
+
 use crate::{Binding, Host};
 
 mod bodies;
@@ -12,7 +16,9 @@ mod solver;
 mod vectors;
 
 use crate::entities::{COMPOSE_B, ENTITY_VF118, FETCH_X, NAME_WALK, NODE_OF, PAIR_COMBINE_TWIN, SAMPLE_INDEXED};
-pub(crate) use bodies::{body_box_direct, body_vf_cc_direct, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C};
+pub(crate) use bodies::{
+    body_box_direct, body_vf_cc_direct, held_cell_link, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
+};
 use bodies::{
     body_clear_grid, body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc,
     lookup_twin, move_to_cell, notify_filtered, state_unka44,
@@ -34,6 +40,7 @@ use solver::{
     drain_events, event_count, event_query_bodies, init_full, make_event, min_contact_time, plane_diff, refresh_events,
     solve_due_events, solve_event, solver_add_event, E37_PLANE_DIFF,
 };
+pub(crate) use vectors::{copy_vec4, length};
 use vectors::{
     e33_scaled, float3_length, float3_scale, min_max_a, vec16_max, vec16_min, vec3_add, vec4_clear, vec4_copy_from,
     vec4_normalize, vec4_sub, vec_add_sub, vec_cross, vec_cross_dot, vec_dot, vec_normalize, vec_scale, vec_sub,
@@ -145,6 +152,62 @@ pub static BINDINGS: [Binding; 93] = [
     bind(COLL_EVENT_INIT_FULL, "CCollisionEvent::InitFull", init_full),
     bind(0x4fc9a0, "CCollisionSolver::Vf04", solver_add_event),
 ];
+
+/// Runs `run` on the collision store: the solver's rows and the car's grids' bytes in the typed storage the host holds
+/// over a step ([`Host::typed`]), and the bodies' words in the car's solids when it holds them; else (per call) the
+/// image's.
+pub(crate) fn on_collision<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CollisionView) -> T) -> T {
+    match host.typed() {
+        Some(typed) => run(&mut typed.car.collision.view(mem).with_solids(typed.solids.as_ref())),
+        None => run(&mut CollisionView::image(mem)),
+    }
+}
+
+/// [`on_collision`] for a call on the grid at `grid` (and `src`), whose held words are only a car grid's: the image's
+/// store for any other grid, without the host's lookup (the grid calls are among the step's most frequent).
+fn on_grids<T>(host: &dyn Host, mem: &mut Mem, grids: &[u32], run: impl FnOnce(&mut CollisionView) -> T) -> T {
+    if grids.iter().any(|&g| CollisionImage::is_car_grid(g)) {
+        on_collision(host, mem, run)
+    } else {
+        run(&mut CollisionView::image(mem))
+    }
+}
+
+/// `host.call_at(sp, target, this, args)` of a binding on the cell grid or a collision grid (`E45_M40C0`, `E45_M46A0`,
+/// `M_D760X`, `CColGrid::SyncGrid`, `E37GridOps::M6610`, `CLink::Unlink`) from a caller on held state: run in place
+/// while the pure host holds the state ([`Host::call_in_place`]: the cell table and the grids' hit bytes are the held
+/// ones through their views, the rest is the image's either way, and none of the call's words is read after it:
+/// residue audit, notes/physics.md "Store seam"), else the host call.
+pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
+    let held = host.typed().is_some();
+    held.then(|| host.call_in_place(sp, target, this, args))
+        .flatten()
+        .unwrap_or_else(|| host.call_at(sp, target, this, args))
+}
+
+/// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the
+/// rigid body's contact (`CSolid::BigA`), which reads the solver's rows.
+pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {
+    host.typed()
+        .and_then(|typed| typed.car.collision.contact(mem, at))
+        .unwrap_or_else(|| rbr_physics::rigid_body::layout::load_contact(mem, at))
+}
+
+/// The count of the body's contact list (`None` without one), as a step leaves it at this point: a held solver row's,
+/// else the image's; the list word is the solid's (`rigid_body::solid_word`). For the rigid body's vote.
+pub(crate) fn contact_count(host: &dyn Host, mem: &Mem, body: u32) -> Option<u32> {
+    let list = crate::rigid_body::solid_word(host, mem, body + rbr_physics::rigid_body::layout::CONTACT_LIST);
+    (list != 0).then(|| {
+        host.typed().and_then(|typed| typed.car.collision.row_count(mem, list)).unwrap_or_else(|| mem.u32(list + 4))
+    })
+}
+
+/// Clears the body word of the contact rows at `rows` (the car's respawn): a held solver row's, else on the image.
+pub(crate) fn clear_row_body(host: &dyn Host, mem: &mut Mem, rows: u32) {
+    if !host.typed().is_some_and(|typed| typed.car.collision.clear_row_body(mem, rows)) {
+        mem.set_u32(rows, 0);
+    }
+}
 
 pub(crate) const CSTATE_UNKA44: u32 = 0x4e33e0;
 const E37_WALL_SYNC: u32 = 0x4f7090;

@@ -26,12 +26,12 @@ pub fn step(pure: &Pure, regs: Regs, slot: u32, control: Option<u32>, substeps: 
     // The pure host steps NGP physics only (production entries refuse non-NGP snapshots): the load's settle steps
     // run on the game's thread, at D3D's control word `0x7f`; the race's steps run on NGP's thread, at `0x27f`
     // (`notes/ngp.md`, "x87 precision").
-    let pc53 = app_state(&pure.mem) != LOAD_STATE;
+    let pc53 = app_state(&pure.raw) != LOAD_STATE;
     rbr_physics::fpu::set_precision(if pc53 { Precision::Pc53 } else { Precision::Pc24 });
     if let Some(control) = control {
         emit(pure, regs, slot, control);
     }
-    pure.mem.clone().set_u32(slot + 4, substeps);
+    pure.raw.clone().set_u32(slot + 4, substeps);
     crate::call_memo::new_step();
     pure.enter(STEP_FORWARD, Regs { esp: slot, ..regs })
 }
@@ -40,10 +40,30 @@ pub fn step(pure: &Pure, regs: Regs, slot: u32, control: Option<u32>, substeps: 
 /// the car has no connection on the emit, and NGP's walk of the other listeners reaches no physics (`notes/ngp.md`,
 /// "Controls under NGP").
 pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
-    let at = pure.mem.u32(SIGNALS) + EMIT_OFFSET;
+    let at = pure.raw.u32(SIGNALS) + EMIT_OFFSET;
     let entry = Regs { ecx: at, esp: slot, ..regs };
-    let car = pure.mem.u32(CAR_PTR);
+    let car = pure.raw.u32(CAR_PTR);
     pure.with_frame(EMIT, &entry, || pure.host().call(UPDATE_SEED, car, &[control]));
+}
+
+/// The car's typed state held in typed storage over a step: lifted unless it is held already ([`Pure::lift_typed`]);
+/// when it drops, marked changed and, without [`Pure::typed_across_steps`] (or on a stop), lowered and dropped.
+struct HeldTyped<'a>(&'a Pure);
+
+impl<'a> HeldTyped<'a> {
+    fn lift(pure: &'a Pure) -> Self {
+        pure.lift_typed();
+        HeldTyped(pure)
+    }
+}
+
+impl Drop for HeldTyped<'_> {
+    fn drop(&mut self) {
+        self.0.held_changed();
+        if !self.0.typed_across_steps || std::thread::panicking() {
+            self.0.lower_typed();
+        }
+    }
 }
 
 /// The return address of the driver's `StepForward` call (`replay.py`'s `SENTINEL`).
@@ -90,46 +110,55 @@ impl Playback {
     pub fn traced(snap: &Snapshot, keep_going: bool) -> (Self, Arc<ReadTrace>) {
         let trace = Arc::new(ReadTrace::new(snap));
         let mut playback = Playback::new(snap, keep_going);
-        playback.pure.mem = Mem::with_backend(Arc::new(PureMemory {
-            base: Base::Backend(trace.clone()),
-            heap: playback.pure.heap.clone(),
-        }));
+        let heap = playback.pure.heap.clone();
+        playback.pure.set_image(Mem::with_backend(Arc::new(PureMemory { base: Base::Backend(trace.clone()), heap })));
         playback.pure.trace = Some(trace.clone());
         (playback, trace)
     }
 
     /// [`step`] with the payload `control` (`None` for the snapshot's own step). A stop panics as [`Pure::enter`].
+    /// With [`Pure::typed`] the car's typed state is in typed storage over the step: lifted before it (unless it is held
+    /// already), lowered after it (on a stop too) unless [`Pure::typed_across_steps`] keeps it held; readers between
+    /// steps see it through [`Pure::image`]. The payload and the return slot are the step's own stack words.
     pub fn step(&self, control: Option<&[u8; CONTROL_BYTES]>, substeps: u32) -> Return {
-        let mut mem = self.pure.mem.clone();
+        let mut mem = self.pure.raw.clone();
         let control = control.map(|c| {
             mem.map(self.control_at, c);
             self.control_at
         });
         mem.set_u32(self.slot, SENTINEL);
+        let _typed = HeldTyped::lift(&self.pure);
         step(&self.pure, self.regs, self.slot, control, substeps)
     }
 
     /// `NotifyA`'s vector (`p[4..8]` of `CSigCarToCarInputFilter`): `MB560` of the car's vector at +0x220, as `CCar::Vf28x`
     /// (0x4ea020) walks it before the emit at +0x860. Called between steps, from the step's entry frame, with the walk's
-    /// output in the scratch below it. Read-only on the car; the walk's node hooks store what a step stores.
+    /// output in the scratch below it. Read-only on the car; the walk's node hooks store what a step stores. On the
+    /// typed state when it is held across steps.
     pub fn notify_a_vector(&self) -> [f32; 4] {
         let _run = PureRunGuard::new(&self.pure.run_depth);
-        let mem = self.pure.mem.clone();
+        let mem = self.pure.raw.clone();
         let entry = Regs { esp: self.slot, ..self.regs };
         let scratch = (self.slot - 0x100) & !0xf;
         let (car, frame) = (mem.u32(CAR_PTR), mem.u32(FRAME));
+        // In place (the carry as values, `entities::call_op`): none of the call's words, which the next step's frames
+        // write before any read (residue audit).
         self.pure.with_frame(STEP_FORWARD, &entry, || {
-            self.pure.host().call(MB560, frame, &[car + 0x220, car, scratch]);
+            let args = [car + 0x220, car, scratch];
+            crate::skip_unwritten(self.pure.host(), &mut mem.clone(), (self.slot - 0x1000) & !0xf, &args);
+            crate::entities::call_op(self.pure.host(), 0, MB560, frame, &args);
         });
+        self.pure.held_changed();
         mem.f32s(scratch)
     }
 
     /// Only the `Emit` of [`Playback::step`]: the state a snapshot of the next step holds (`rbr-standalone
-    /// --write-snapshot`).
+    /// --write-snapshot`). On the typed state when it is held across steps.
     pub fn emit(&self, control: &[u8; CONTROL_BYTES]) {
         let _run = PureRunGuard::new(&self.pure.run_depth);
-        self.pure.mem.clone().map(self.control_at, control);
+        self.pure.raw.clone().map(self.control_at, control);
         emit(&self.pure, self.regs, self.slot, self.control_at);
+        self.pure.held_changed();
     }
 }
 

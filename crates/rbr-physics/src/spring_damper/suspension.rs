@@ -1,7 +1,7 @@
 //! Owned suspension state and the complete per-strut update: the definition, the controller, the fade and the
 //! effective damping. The caller supplies travel and current settings; nothing here accesses a memory image or a call
-//! stack. The memory edge (`layout`) loads a `Suspension` from the strut's objects, runs one method, and stores it
-//! back, so every dispatch path (bindings, host calls, pure leaves) runs this code.
+//! stack. A `Suspension` loads from a strut's store (`StrutStore`), runs one method, and stores back, so every
+//! dispatch path (bindings, host calls, pure leaves) runs this code.
 //!
 //! The step mirrors NGP's spring-damper step wrapper: the bump rubber softens the definition for
 //! this calculation alone, the high-speed latch overrides the effective damping and clears its break speed, the
@@ -10,7 +10,7 @@
 //! car's copies capture the pre-step latch state; `Output` carries them as typed values
 //! so the memory edge can store them without reimplementing the logic.
 
-use super::store::SpringStore;
+use super::store::StrutStore;
 use super::{Controller, DamperSignal, Definition, FadeState, NgpStep, SetupValues, State, StepInput, StepOutput};
 use crate::ngp::spring::{bump_stop, latch, rebound_scale, BumpRubber, Latch};
 
@@ -77,31 +77,21 @@ pub struct Suspension {
 }
 
 impl Suspension {
-    /// Loads the strut's owned state from its controller, definition, state and fade objects.
-    pub fn load<S: SpringStore>(mem: &S, controller_at: u32) -> Self {
+    /// Loads the strut's state: its definition, controller, fade and effective damping.
+    pub fn load<S: StrutStore>(store: &S, strut: S::Strut) -> Self {
         Self {
-            definition: mem.definition(mem.definition_at(controller_at)),
-            controller: mem.controller(controller_at),
-            fade: mem.fade_state(mem.fade_at(controller_at)),
-            damping: Damping::from_state(mem.state(mem.state_at(controller_at))),
+            definition: store.definition(strut),
+            controller: store.controller(strut),
+            fade: store.fade(strut),
+            damping: store.damping(strut),
         }
     }
 
-    /// Stores the controller, fade and effective damping. The definition is untouched by the step; `adopt_setup`
-    /// persists through [`store_definition`](Self::store_definition).
-    pub fn store_state<S: SpringStore>(&self, mem: &mut S, controller_at: u32) {
-        mem.store_step_state(controller_at, self.controller);
-        mem.store_fade_state(mem.fade_at(controller_at), self.fade);
-        let mut stored = mem.state(mem.state_at(controller_at));
-        stored.damp_bump_eff = self.damping.bump;
-        stored.damp_rebound_eff = self.damping.rebound;
-        stored.hs_damp_bump_eff = self.damping.high_speed_bump;
-        mem.store_effective_damping(mem.state_at(controller_at), stored);
-    }
-
-    /// Persists the definition fields `adopt_setup` mutates (the nine setup-adopted bodies).
-    pub fn store_definition<S: SpringStore>(&self, mem: &mut S, controller_at: u32) {
-        mem.store_setup_values(mem.definition_at(controller_at), &self.definition);
+    /// Stores the controller, fade and effective damping. The definition is untouched by the step.
+    pub fn store_state<S: StrutStore>(&self, store: &mut S, strut: S::Strut) {
+        store.store_step_state(strut, self.controller);
+        store.store_fade(strut, self.fade);
+        store.store_damping(strut, self.damping);
     }
 
     /// Adopts the nine setup values into the definition. Effective damping is left

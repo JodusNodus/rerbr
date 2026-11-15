@@ -1,7 +1,7 @@
 //! NGP's `CDrive::M5FE0` and `M6260` rewrites (`0x100458c0`, `0x10045b80`; `ngp::drive`) against direct runs of the
 //! original in the emulator (`scripts/ngp-drive-vectors.py` on `cov-rpl11.snap-9520`): 1,500 fuzzed runs each.
 
-use rbr_physics::engine_driveline::layout::with_worker;
+use rbr_physics::engine_driveline::layout::{with_drive, with_worker};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::drive::{wheel_latch, wheel_slip_value};
 
@@ -52,8 +52,8 @@ fn drive_workers_match_original_runs() {
         let split = f32::from_bits(w[2]);
         let x = x as usize;
         match w[0] {
-            0x1004_58c0 => with_worker(&mut mem, THIS, |wk| wheel_slip_value(wk, x, split)),
-            0x1004_5b80 => with_worker(&mut mem, THIS, |wk| wheel_latch(wk, x, split)),
+            0x1004_58c0 => with_drive(&mut mem, THIS, |d| with_worker(d, |wk| wheel_slip_value(wk, x, split))),
+            0x1004_5b80 => with_drive(&mut mem, THIS, |d| with_worker(d, |wk| wheel_latch(wk, x, split))),
             other => panic!("{other:#x}"),
         }
         let got = [

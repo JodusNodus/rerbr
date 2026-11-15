@@ -4,7 +4,10 @@
 //! callees are computed by the ports; `CCar::Get30`, the gear-change signal and `E12_SampleX` are host calls. eax is
 //! given where the original returns a value; elsewhere it is a scratch value no caller reads, given as 0.
 
-use crate::Binding;
+use rbr_physics::engine_driveline::layout::{self, DriveView, EngineView};
+use rbr_physics::mem::Mem;
+
+use crate::{Binding, Ctx, Host};
 
 mod curves;
 mod engine_sim;
@@ -13,7 +16,7 @@ mod workers;
 
 use crate::entities::MB560;
 use crate::rigid_body::WALKER;
-pub(crate) use curves::row_value_at;
+pub(crate) use curves::row_value_of;
 use curves::{
     blend_b, blend_tables, blend_tables_checked, clamp_mix, count_down, curve_eta, e12_sample_x, find_bracket, last,
     lerp_at, ring_average, row_value, set_drive_line, split_unit_fraction, table_lerp, thunk_4f0, unsigned_table_lerp,
@@ -24,8 +27,8 @@ use engine_sim::{
     set_cut_flags, set_options, set_scratch08, sim8610, sim8890, sim8cf0, sim8d90, sim_e970, sim_e9a0, sim_ebb0,
     sim_ee60, slot_roll, smooth_damper, solve_damper, stall_guard, torque_curve, turbo_energy_step, vec_lerp,
 };
-pub(crate) use engine_sim::{engine_running, engine_step};
-pub(crate) use inputs::{clear_lanes, m6db0, m6dd0, set_two};
+pub(crate) use engine_sim::{engine_pedal, engine_running, engine_step};
+pub(crate) use inputs::{clear_lanes, clutch_slip, m6db0, m6dd0, set_two};
 use inputs::{
     copy_row, drive_gate, drive_reset_part, drive_speed_key, emit_gear_change, emit_noise, get_engine_speed, get_gear,
     init_real_lerp, mat4_inverse_transposed, mat4_mul_vec4, mgr_b_entry, mgr_b_field_at, mgr_b_word8, nop_ret4,
@@ -163,4 +166,63 @@ pub static BINDINGS: [Binding; 99] = [
 
 fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
+}
+
+/// Runs `run` on the engine at `engine`: in the typed storage the host holds over a step ([`crate::Host::typed`]), with
+/// the held definitions, else (another car's, or no step holds it) on the image ([`EngineView::image`]). The engine's
+/// readers outside its bindings (NGP's engine wrapper, the drive's gate) and any reader of its words during a step go
+/// through it.
+pub(crate) fn on_engine_in<T>(
+    host: &dyn Host,
+    mem: &mut Mem,
+    engine: u32,
+    run: impl FnOnce(&mut EngineView) -> T,
+) -> T {
+    if let Some(typed) = host.typed() {
+        if typed.car.engine.is(engine) {
+            return run(&mut typed.car.engine.view(mem).with_defs(Some(&typed.defs)));
+        }
+    }
+    run(&mut EngineView::image(mem))
+}
+
+/// [`on_engine_in`] on a binding's memory and host.
+pub(crate) fn on_engine<T>(ctx: &mut Ctx, engine: u32, run: impl FnOnce(&mut EngineView) -> T) -> T {
+    on_engine_in(ctx.host, &mut ctx.mem, engine, run)
+}
+
+/// Runs `run` on the drive at `drive`: in the typed storage the host holds over a step ([`crate::Host::typed`]), else
+/// (another car's, or no step holds it) per access on the image ([`layout::with_drive`]).
+pub(crate) fn on_drive_in<T>(host: &dyn Host, mem: &mut Mem, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
+    if let Some(typed) = host.typed() {
+        if typed.car.drive.is(drive) {
+            return run(&mut typed.car.drive.view(mem).with_defs(Some(&typed.defs)));
+        }
+    }
+    layout::with_drive(mem, drive, run)
+}
+
+/// [`on_drive_in`] on a binding's memory and host.
+pub(crate) fn on_drive<T>(ctx: &mut Ctx, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
+    on_drive_in(ctx.host, &mut ctx.mem, drive, run)
+}
+
+/// The held drive whose wheel block (`Hook4160`'s `a1`, the curve workers' state) is at `at`: the drive and the wheel.
+/// `None` where no step holds a drive, or the block is not one of its wheels'.
+pub(crate) fn held_wheel(host: &dyn Host, at: u32) -> Option<(u32, u32)> {
+    let typed = host.typed()?;
+    let drive = &typed.car.drive;
+    drive.wheel_of(at).map(|k| (drive.image.drive, k))
+}
+
+/// The held drive whose ratio ring (`E39_RatioCA0`'s pointer) is at `at`.
+fn held_ring(host: &dyn Host, at: u32) -> Option<u32> {
+    let typed = host.typed()?;
+    let drive = &typed.car.drive;
+    (layout::ratio_ring_at(drive.image.state) == at).then_some(drive.image.drive)
+}
+
+/// Whether `drive` is the drive a step holds.
+pub(crate) fn is_held(host: &dyn Host, drive: u32) -> bool {
+    host.typed().is_some_and(|typed| typed.car.drive.is(drive))
 }

@@ -4,6 +4,7 @@ use crate::math::vec::Vec3;
 use crate::mem::Mem;
 
 use crate::math::vec::Vec4;
+use crate::rigid_body::layout::SolidWords;
 
 /// E38Vec::M_CD10 (0x4fd10): `out = a - b`. Both inputs are read before the store. Returns `out`.
 pub fn vec3_sub(mem: &mut Mem, a: u32, b: u32, out: u32) -> u32 {
@@ -64,23 +65,21 @@ pub fn vec3_normalize(mem: &mut Mem, this: u32) -> u32 {
 
 /// The fourth lane E09Vec4::Sub and E21Vec3::Add copy to `out`: the last word of their 16-byte scratch, never written
 /// (`push ebp`, the alignment, `sub esp, 0x10`), so the stack word 4 below the aligned frame of the entry esp `esp`.
-fn stale_lane(mem: &Mem, esp: u32) -> u32 {
+pub fn stale_lane(mem: &Mem, esp: u32) -> u32 {
     mem.u32(((esp - 4) & !0xf) - 4)
 }
 
 /// E09Vec4::Sub (0x465da0, thiscall on `a` with `(out, b)`, ret 8): `out = a - b` on x, y and z (`subss`, all read
-/// before `out` is written), w the stale scratch word (`stale_lane`). Returns `out`.
-pub fn vec4_sub_stale(mem: &mut Mem, a: u32, out: u32, b: u32, esp: u32) -> u32 {
-    let w = stale_lane(mem, esp);
+/// before `out` is written), w the stale scratch word `w` (`stale_lane`). Returns `out`.
+pub fn vec4_sub_stale(mem: &mut Mem, a: u32, out: u32, b: u32, w: u32) -> u32 {
     (Vec3::load(mem, a) - Vec3::load(mem, b)).store(mem, out);
     mem.set_u32(out + 0xc, w);
     out
 }
 
 /// E21Vec3::Add (0x4a19e0, thiscall on `a` with `(out, b)`, ret 8): `out = b + a` on x, y and z (`addss` into `b`'s
-/// lane), w the stale scratch word (`stale_lane`). Returns `out`.
-pub fn vec3_add_stale(mem: &mut Mem, a: u32, out: u32, b: u32, esp: u32) -> u32 {
-    let w = stale_lane(mem, esp);
+/// lane), w the stale scratch word `w` (`stale_lane`). Returns `out`.
+pub fn vec3_add_stale(mem: &mut Mem, a: u32, out: u32, b: u32, w: u32) -> u32 {
     (Vec3::load(mem, b) + Vec3::load(mem, a)).store(mem, out);
     mem.set_u32(out + 0xc, w);
     out
@@ -100,9 +99,11 @@ pub fn vec3_scale(mem: &mut Mem, a: u32, scale: f32, out: u32) -> u32 {
 }
 
 /// E01Vec4::CopyFrom (0x43c5b0, thiscall on `dst`, `(src*)`, ret 4): the sixteen bytes at `src` go to `dst`, read whole
-/// before the store (`movups`), so the two may overlap. Returns `dst`.
-pub fn vec4_copy_from(mem: &mut Mem, dst: u32, src: u32) -> u32 {
-    Vec4::load(mem, src).store(mem, dst);
+/// before the store (`movups`), so the two may overlap. Returns `dst`. On the solids' store: a solid's vector at times
+/// (the mounted body's pose update).
+pub fn vec4_copy_from<W: SolidWords + ?Sized>(mem: &mut W, dst: u32, src: u32) -> u32 {
+    let words = mem.words::<4>(src);
+    mem.set_words4(dst, words);
     dst
 }
 
@@ -138,9 +139,11 @@ pub fn bounds_union(mem: &mut Mem, this: u32, src: u32, lo: u32, hi: u32) -> u32
 }
 
 /// E33Vec4::Scaled (0x4e0700): stores the input vector times `scale` at `output`. `this` is the input and the scale is
-/// the second stack word, after the output pointer.
-pub fn scaled(mem: &mut Mem, input: u32, output: u32, scale: f32) {
-    Vec4::load(mem, input).scale(scale).store(mem, output);
+/// the second stack word, after the output pointer. Either vector may be a solid's (`CFloat3::Scale` on the hinged
+/// body's angular velocity): `solids` resolves a held one.
+pub fn scaled<W: SolidWords + ?Sized>(solids: &mut W, input: u32, output: u32, scale: f32) {
+    let v = Vec4::from(solids.words::<4>(input).map(f32::from_bits)).scale(scale);
+    solids.set_words4(output, [v.x, v.y, v.z, v.w].map(f32::to_bits));
 }
 
 impl Vec4Pair {

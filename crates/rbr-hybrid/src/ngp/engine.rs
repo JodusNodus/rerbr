@@ -1,12 +1,13 @@
 //! NGP's starter and engine wrapper.
 
-use rbr_physics::car_body::store::CarStore;
-use rbr_physics::engine_driveline::layout::with_worker;
+use rbr_physics::car_body::layout::slot as car_slot;
+use rbr_physics::engine_driveline::layout::{self, with_worker, EngineObjects, EngineOwn, EngineState};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::engine::{self as ngp_engine, EngineDamage, TorqueIn};
 use rbr_physics::ngp::starter;
 
-use crate::{Ctx, Decline, Regs, Return};
+use crate::engine_driveline::{on_drive_in, on_engine};
+use crate::{Ctx, Decline, Host, Regs, Return};
 
 use super::address::{at, WALL_CLOCK};
 use super::engine_model;
@@ -21,27 +22,29 @@ const STARTER_HELD: u32 = 0x1017_6718;
 
 /// `0x100456c0` (thiscall on the drive, `(dt)`, `ret 4`, st0): NGP's starter (`rbr_physics::ngp::starter`).
 pub(crate) fn starter_binding(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let v = starter_step(&mut ctx.mem, r.ecx, f(r.stack[0]));
+    let v = starter_step(&mut ctx.mem, ctx.host, r.ecx, f(r.stack[0]));
     Ok(Return::float(f64::from(v), 4))
 }
 
 /// `0x100456c0`'s work, timed by simulation time (the hold kept at NGP's stamp, `notes/ngp.md`) or by the wall clock
 /// set for the step (the stamp taken while the gate is clear, as NGP does).
-pub(crate) fn starter_step(m: &mut Mem, drive: u32, dt: f32) -> f32 {
+pub(crate) fn starter_step(m: &mut Mem, host: &dyn Host, drive: u32, dt: f32) -> f32 {
     let held_at = at(STARTER_HELD).expect("hooked only with NGP");
     let kept = u64::from(m.u32(held_at)) | u64::from(m.u32(held_at + 4)) << 32;
     let band = m.f32(at(0x1017_1a98).unwrap());
-    let (v, kept) = with_worker(m, drive, |w| {
-        let gated = w.own.lane_gate != 0;
-        let (held, kept) = match WALL_CLOCK.get() {
-            Some(now) if gated => (now.wrapping_sub(kept), kept),
-            Some(now) => (0, now),
-            None => {
-                let held = starter::sim_held(gated, dt, kept);
-                (held, held)
-            }
-        };
-        (starter::starter(w, dt, band, held), kept)
+    let (v, kept) = on_drive_in(host, m, drive, |d| {
+        with_worker(d, |w| {
+            let gated = w.own.lane_gate != 0;
+            let (held, kept) = match WALL_CLOCK.get() {
+                Some(now) if gated => (now.wrapping_sub(kept), kept),
+                Some(now) => (0, now),
+                None => {
+                    let held = starter::sim_held(gated, dt, kept);
+                    (held, held)
+                }
+            };
+            (starter::starter(w, dt, band, held), kept)
+        })
     });
     m.set_u32(held_at, kept as u32);
     m.set_u32(held_at + 4, (kept >> 32) as u32);
@@ -64,9 +67,6 @@ const TABLE_LOOKUP: u32 = 0x1004_a700;
 const AIR_PRESSURE: u32 = 0x1017_1ad8;
 
 const AIR_TEMPERATURE: u32 = 0x1017_1adc;
-
-/// `CEngine::CState` +0x23c: the 1.02 sim's engine temperature (K, its heat step's, every tenth step).
-const ENGINE_TEMPERATURE: u32 = 0x23c;
 
 /// NGP's own CRT `operator new` (cdecl: size).
 pub(crate) const OPERATOR_NEW: u32 = 0x1011_fe32;
@@ -110,21 +110,28 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     if dies {
         engine_dies(ctx, r.esp, health_at);
     }
-    apply_atmosphere(&mut ctx.mem, car);
+    apply_atmosphere(ctx.host, &mut ctx.mem, car);
     let sim = crate::engine_driveline::engine_step(ctx, r)?;
     let r_value = sim.st0.expect("Sim8E20 returns st0") as f32;
     if !alive || !crate::engine_driveline::engine_running(ctx, engine) {
         return Ok(Return::float(ngp_engine::output(r_value), 8));
     }
+    // The engine's words through its store: the typed engine and definition a step holds.
+    let (throttle, friction_torque, engine_temperature, torque_cut, turbo) = on_engine(ctx, engine, |e| {
+        let objects = EngineObjects::at(e, engine);
+        let state = EngineState::load(e, objects.state);
+        let def = objects.def;
+        let pedal = EngineOwn::load(e, engine).pedal.value;
+        (pedal, state.torque, state.threshold_value, layout::torque_cut(e, def), layout::turbo(e, def))
+    });
     let m = &ctx.mem;
-    let (def, e8) = (m.u32(engine + 4), m.u32(engine + 8));
     let i = TorqueIn {
         speed,
         rev_limit,
-        throttle: m.f32(engine + 0x20),
-        shift_cooldown: m.f32(m.u32(car + 0x854) + 0x64),
-        shift_idle_scale: m.f32(def + 0x283c),
-        stage_enabled: m.u32(def + 0x26f8) != 0,
+        throttle,
+        shift_cooldown: crate::vcu::unit_of(ctx.host, m, car).state.shift_cooldown,
+        shift_idle_scale: torque_cut,
+        stage_enabled: turbo,
         modes,
         has_idle_table: table != 0,
         braking: m.f32(at(0x1017_234c).unwrap()),
@@ -132,7 +139,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         stall_speed: m.f32(at(0x1017_1a9c).unwrap()),
         idle_band: m.f32(at(0x1017_1a98).unwrap()),
         density: m.f32(at(0x1017_1ae0).unwrap()),
-        friction_torque: m.f32(e8 + 0x270),
+        friction_torque,
         damage: EngineDamage {
             parts: [0x8, 0x18, 0x28, 0x38].map(|o| m.f32(health_at + o)),
             damage_a: m.f32(health_at + 0x54),
@@ -152,8 +159,8 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         let input = rbr_engine::Inputs {
             dt,
             speed,
-            wheels: m.wheel_speeds(car),
-            body_speed: m.forward_speed(car),
+            wheels: crate::wheel::wheel_speeds(ctx.host, m, car),
+            body_speed: crate::car_body::read_car(ctx.host, m, car, car_slot::forward_speed),
             throttle: i.throttle,
             shift_cut: i.shift_cooldown > 0.0,
             damage: ngp_engine::damage_factor(&i.damage),
@@ -161,7 +168,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
             temperature: m.f32(at(AIR_TEMPERATURE).unwrap()),
             friction: i.friction_torque,
             stalled,
-            engine_temperature: m.f32(e8 + ENGINE_TEMPERATURE),
+            engine_temperature,
         };
         let v = engine_model::torque(&input).expect("a model is set");
         return Ok(Return::float(f64::from(v), 8));

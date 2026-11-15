@@ -1,17 +1,8 @@
-//! `load_frame` and `store_frame`: the whole tyre step footprint read once and written back, and the table and
-//! segment words they use.
+//! The frame's material copy and tables: the words `Step` copies from the surface material, the table and segment
+//! values the frame entries read, and their index window.
 
-use crate::mem::Mem;
-
-use super::frame_types::Frame;
+use super::frame_types::{Frame, Scratch};
 use crate::tyre::material::Material;
-
-/// Stores `values` as floats starting at `at`.
-pub(super) fn store_floats(mem: &mut Mem, at: u32, values: &[f32]) {
-    for (k, value) in values.iter().enumerate() {
-        mem.set_f32(at + 4 * k as u32, *value);
-    }
-}
 
 /// The material block's copied words, by their word index in the block (the last is word 0x3e, byte +0xf8), in the
 /// order the original copies them.
@@ -21,27 +12,60 @@ pub const WORDS: [u32; 39] = [
     0x3a,
 ];
 
-/// Copies the `CTyreMatData` words into the frame, as `Step` does at `+0x1a0`. Ten of the block's words are scalars of
-/// the scratch (`+0x1e4`, `+0x1e8`, ...): the copy sets those too, so the scalars agree with the block.
+/// The scratch's scalars that are words of the material block (ten of its words: `+0x1e4`, `+0x1e8`, ...), by the
+/// block's word: a dirty word, or a float.
+enum Scalar {
+    Word(fn(&mut Scratch) -> &mut u32),
+    Float(fn(&mut Scratch) -> &mut f32),
+}
+
+/// The scalar at word `i` of the material block (`WORDS[i]`), if there is one.
+fn material_scalar(i: usize) -> Option<Scalar> {
+    use Scalar::{Float, Word};
+    Some(match 0x1A0 + 4 * WORDS[i] {
+        0x1E4 => Word(|s| &mut s.static_friction_dirty),
+        0x1E8 => Float(|s| &mut s.static_friction),
+        0x1F4 => Word(|s| &mut s.kinetic_friction_dirty),
+        0x1F8 => Float(|s| &mut s.kinetic_friction),
+        0x208 => Float(|s| &mut s.static_friction_soil),
+        0x218 => Float(|s| &mut s.kinetic_friction_soil),
+        0x228 => Float(|s| &mut s.sink_factor),
+        0x258 => Float(|s| &mut s.soil_thickness),
+        0x288 => Float(|s| &mut s.water_factor),
+        0x298 => Float(|s| &mut s.rolling_resistance),
+        _ => return None,
+    })
+}
+
+/// Copies the `CTyreMatData` words into the frame, as `Step` does at `+0x1a0`. The copy sets the scalars that are words
+/// of the block too, so the scalars agree with the block.
 pub fn copy_material(f: &mut Frame, m: &Material) {
     let s = &mut f.scratch;
     s.material = *m;
     for (i, word) in m.iter().enumerate() {
-        let v = f32::from_bits(*word);
-        match 0x1A0 + 4 * WORDS[i] {
-            0x1E4 => s.static_friction_dirty = *word,
-            0x1E8 => s.static_friction = v,
-            0x1F4 => s.kinetic_friction_dirty = *word,
-            0x1F8 => s.kinetic_friction = v,
-            0x208 => s.static_friction_soil = v,
-            0x218 => s.kinetic_friction_soil = v,
-            0x228 => s.sink_factor = v,
-            0x258 => s.soil_thickness = v,
-            0x288 => s.water_factor = v,
-            0x298 => s.rolling_resistance = v,
-            _ => {}
+        match material_scalar(i) {
+            Some(Scalar::Word(at)) => *at(s) = *word,
+            Some(Scalar::Float(at)) => *at(s) = f32::from_bits(*word),
+            None => {}
         }
     }
+}
+
+/// The scalars that are words of the material block back into the block's copy, as storing the scratch (the block,
+/// then the scalars) and loading it again leave them.
+pub fn settle_material(s: &mut Scratch) {
+    for i in 0..WORDS.len() {
+        s.material[i] = match material_scalar(i) {
+            Some(Scalar::Word(at)) => *at(s),
+            Some(Scalar::Float(at)) => at(s).to_bits(),
+            None => continue,
+        };
+    }
+}
+
+/// The material block's copied word `word` (`this+0x1a0+4·word`, one of [`WORDS`]) in the scratch's copy.
+pub fn material_word(s: &Scratch, word: u32) -> u32 {
+    s.material[WORDS.iter().position(|&w| w == word).expect("a copied word of the material block")]
 }
 
 /// A table index the frame does not hold: `index` is outside the table's window (`-1`, the word below it, and its `len`

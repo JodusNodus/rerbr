@@ -3,11 +3,11 @@
 use rbr_physics::collision::layout::body_hosts::{BodyResetHost, ClearGridHost, CornerHost};
 use rbr_physics::collision::layout::links::{self, NotifyFilteredHost};
 use rbr_physics::collision::layout::state::StateHost;
-use rbr_physics::collision::layout::{self, Body, Vec4};
+use rbr_physics::collision::layout::{self, Body, CellLink, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 
-use super::{Callees, CSTATE_UNKA44, E01_VEC4_COPY_FROM, E37_WALL_SYNC, FETCH_X, NAME_WALK};
+use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, FETCH_X, NAME_WALK};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// The original callees of `CBody::CState::Unk44`: the owner's slot 12 (thiscall, `+0x30` of its vtable), and the wall
@@ -20,11 +20,11 @@ struct StateCallees<'a> {
 impl StateHost for StateCallees<'_> {
     fn owner_transform(&mut self, owner: u32) -> u32 {
         let slot = self.mem.u32(self.mem.u32(owner) + 0x30);
-        self.host.call(slot, owner, &[]).eax
+        crate::call_or_trivial(self.host, 0, slot, owner, &[])
     }
 
     fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
-        self.host.call(E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
+        super::call_grid(self.host, 0, E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
     }
 }
 
@@ -49,10 +49,29 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(cell, 0))
 }
 
+/// CCellGrid::LookupTwin (0x4e03b0): thiscall on the grid with `(x, y)`; eax is the point's link. The grid's header and
+/// slots are the held table's while a step holds it ([`Host::typed`]), else the image's.
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [x, y, ..] = r.stack;
-    let link = layout::cell_link_at(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, f32::from_bits(x), f32::from_bits(y));
+    let [x, y, ..] = r.stack.map(f32::from_bits);
+    let mut alloc = Callees(ctx.host);
+    let held =
+        ctx.host.typed().and_then(|t| t.car.collision.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y));
+    let link = held.unwrap_or_else(|| layout::cell_link_at(&mut alloc, &mut ctx.mem, r.ecx, x, y));
     Ok(Return::void(link, 8))
+}
+
+/// The link of the point `(x, y)` on the grid at `grid` from the table a step holds, in place of the call at `sp`,
+/// counted as a run of
+/// `LookupTwin` ([`Host::ran_direct`]): `None` per call, for another grid and for a cell with no link block yet
+/// (the caller calls, and the binding builds it).
+pub(crate) fn held_cell_link(host: &dyn Host, mem: &mut Mem, sp: u32, grid: u32, x: f32, y: f32) -> Option<u32> {
+    match host.typed()?.car.collision.cells.link_at(mem, grid, x, y)? {
+        CellLink::Link(link) if crate::skip_unwritten(host, mem, sp, &[x.to_bits(), y.to_bits()]) => {
+            host.ran_direct();
+            Some(link)
+        }
+        _ => None,
+    }
 }
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
@@ -87,13 +106,13 @@ pub(crate) struct BodyCallees<'a>(pub(crate) &'a dyn Host);
 
 impl ClearGridHost for BodyCallees<'_> {
     fn sync_grid(&mut self, grid: u32, source: u32, lower: u32, upper: u32) -> u32 {
-        self.0.call(E37_WALL_SYNC, grid, &[source, lower, upper]).eax
+        super::call_grid(self.0, 0, E37_WALL_SYNC, grid, &[source, lower, upper]).eax
     }
 }
 
 impl CornerHost for BodyCallees<'_> {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32 {
-        self.0.call(FETCH_X, matrix, &[out, worker]).eax
+        crate::entities::call_op(self.0, 0, FETCH_X, matrix, &[out, worker]).eax
     }
 }
 
@@ -167,7 +186,7 @@ impl CornerHost for DirectVfCcCalls<'_> {
             Some(eax) => eax,
             None => {
                 self.direct = false;
-                self.host.call_at(sp, FETCH_X, matrix, &[out, worker]).eax
+                crate::entities::call_op(self.host, sp, FETCH_X, matrix, &[out, worker]).eax
             }
         }
     }
@@ -256,7 +275,7 @@ pub(crate) fn body_box_direct(host: &dyn Host, mem: &mut Mem, sp: u32, body: u32
 pub(super) fn body_vf11c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [lo, hi, ..] = r.stack;
     let (lower, upper) = Body::new(r.ecx).bounds_at();
-    ctx.host.call_at(r.esp - 0xc, E01_VEC4_COPY_FROM, lo, &[lower]);
-    let eax = ctx.host.call_at(r.esp - 0xc, E01_VEC4_COPY_FROM, hi, &[upper]).eax;
+    super::copy_vec4(ctx.host, &mut ctx.mem, r.esp - 0xc, lo, lower);
+    let eax = super::copy_vec4(ctx.host, &mut ctx.mem, r.esp - 0xc, hi, upper);
     Ok(Return::void(eax, 8))
 }

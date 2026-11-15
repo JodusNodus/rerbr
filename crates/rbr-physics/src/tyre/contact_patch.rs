@@ -27,8 +27,7 @@ const MINUS_ONE: f64 = -1.0;
 pub fn contact_patch(f: &mut Frame) -> Option<f32> {
     let round24 = round_x87;
     // The sector of the tread in contact: `trunc((angle + 20π) · 4/π) & 7`.
-    let angle =
-        round24(round24(f64::from(f.scratch.contact_angle) + f64::from(ANGLE_OFFSET)) * f64::from(SECTORS_PER_RAD));
+    let angle = round24(round24(f64::from(f.contact_angle) + f64::from(ANGLE_OFFSET)) * f64::from(SECTORS_PER_RAD));
     let sector = (trunc_i32(angle) & 7) as u32;
     f.scratch.sector = sector;
     f.state.sector = sector;

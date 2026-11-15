@@ -12,7 +12,7 @@ use super::{
 };
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::wall_tree as wall;
-use crate::engine_driveline::store::EngineStore;
+use crate::engine_driveline::store::EngineTables;
 use crate::entities::frame::{Form, Hook, Owner};
 use crate::entities::layout::{construct_entity, store_material_table, EntityArgs};
 use crate::entities::material_table::{MaterialEntry, MaterialTable};

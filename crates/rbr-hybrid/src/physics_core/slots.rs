@@ -11,6 +11,7 @@ use rbr_physics::physics_core::layout::{self, mounted};
 use super::passenger_step::SLOT_24;
 use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, MB560, TEMPS, WALKER};
 use crate::entities::VF5C;
+use crate::rigid_body::{on_solids, solid_word};
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `()`: `CSolid::E43Vf5C`: `CEntity::E43Vf5C` on the solid, then its slot 24.
@@ -20,14 +21,14 @@ pub(crate) fn dispatch_vf5c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::void(ctx.host.call(slot, r.ecx, &[]).eax, 0))
 }
 
-/// thiscall `()`: `CSolid::E43Vf80`, the word at `+0x1dc`.
+/// thiscall `()`: `CSolid::E43Vf80`, the word at `+0x1dc` (on the solids' store).
 pub(super) fn vf80(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.u32(r.ecx + 0x1dc), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::takes_part_word(s, r.ecx)), 0))
 }
 
-/// thiscall `()`: `CSolid::E43Vf8C` (slot 35, `S8C`), the word at `+0x1ec`.
+/// thiscall `()`: `CSolid::E43Vf8C` (slot 35, `S8C`), the word at `+0x1ec` (on the solids' store).
 pub(super) fn vf8c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::end_step_word(&ctx.mem, r.ecx), 0))
+    Ok(Return::void(on_solids(ctx, |s| layout::end_step_word(s, r.ecx)), 0))
 }
 
 /// thiscall `()`: `CEntity::E43Vf88` (slot 34), 0.
@@ -50,7 +51,7 @@ impl layout::FilingHost for EntityVf158<'_> {
         mem: &Mem,
         object: u32,
     ) -> Result<rbr_physics::physics_core::layout::Filing, rbr_physics::rigid_body::host::HostUnavailable> {
-        rbr_physics::rigid_body::layout::solid_filing(mem, object)
+        rbr_physics::rigid_body::layout::solid_filing_with(mem, object, |at| solid_word(self.host, mem, at))
     }
 }
 
@@ -123,19 +124,28 @@ pub(super) fn flag_is_two(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(mounted::flag_is_two(&ctx.mem, r.ecx) as u32, 0))
 }
 
-/// The cell lookups of the box corners: `CCellGrid::LookupTwin(x, y)` on the grid (thiscall, two float words).
-struct Cells<'a>(&'a dyn Host);
+/// The cell lookups of the box corners: `CCellGrid::LookupTwin(x, y)` on the grid (thiscall, two float words), read
+/// from the cell table a step holds without the call (none of the call's words is read after it: residue audit,
+/// notes/physics.md "Store seam"), else the call.
+struct Cells<'a> {
+    mem: Mem,
+    host: &'a dyn Host,
+    /// Where the host places the lookups: below the binding's frame.
+    sp: u32,
+}
 
 impl GridHost for Cells<'_> {
     fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32 {
-        self.0.call_direct(0, LOOKUP_TWIN, grid, &[x.to_bits(), y.to_bits()]).eax
+        crate::collision::held_cell_link(self.host, &mut self.mem, self.sp, grid, x, y)
+            .unwrap_or_else(|| self.host.call_direct(0, LOOKUP_TWIN, grid, &[x.to_bits(), y.to_bits()]).eax)
     }
 }
 
 /// cdecl `(a, b, out)`: `E45_M40C0`, the cells of the box between `a` and `b`.
 pub(super) fn m40c0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, out, ..] = r.stack;
-    detect::box_cells(&mut ctx.mem, &mut Cells(ctx.host), a, b, out);
+    let mut cells = Cells { mem: ctx.mem.clone(), host: ctx.host, sp: (r.esp - 0x1000) & !0xf };
+    detect::box_cells(&mut ctx.mem, &mut cells, a, b, out);
     Ok(Return::void(0, 0))
 }
 
@@ -209,16 +219,18 @@ impl AccumHost for Accum<'_> {
     }
 
     fn point(&mut self, body: u32, out: u32) -> u32 {
-        self.host.call(vslot(&self.mem, body, 0x30), body, &[out]).eax
+        crate::call_or_trivial(self.host, 0, vslot(&self.mem, body, 0x30), body, &[out])
     }
 
     fn walk(&mut self, copy: u32, point: u32, out: u32) {
         let walker = self.mem.u32(WALKER);
-        self.host.call(MB560, walker, &[copy, point, out]);
+        crate::entities::call_op(self.host, 0, MB560, walker, &[copy, point, out]);
     }
 
     fn accumulate(&mut self, body: u32, force: u32) {
-        self.host.call(vslot(&self.mem, body, 0x70), body, &[force]);
+        if !crate::rigid_body::accumulate_direct(self.host, &mut self.mem, 0x70, body, force) {
+            self.host.call(vslot(&self.mem, body, 0x70), body, &[force]);
+        }
     }
 }
 
@@ -226,14 +238,15 @@ impl AccumHost for Accum<'_> {
 pub(super) fn accumulate_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let sentinel = "the physics object's gravity pointer is the original's sentinel (its read is address 0)";
     let mut calls = Accum { mem: ctx.mem.clone(), host: ctx.host };
-    layout::accumulate_forces(&mut ctx.mem, &mut calls, r.ecx, temps(r)).ok_or(Decline::Unsupported(sentinel))?;
+    super::on_core(ctx, |core| layout::accumulate_forces(core, &mut calls, r.ecx, temps(r)))
+        .ok_or(Decline::Unsupported(sentinel))?;
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(point*, out*)`, `ret 8`: `E46_Offset540`, the velocity term of a point on the body.
 pub(super) fn offset_540(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [point, out, ..] = r.stack;
-    layout::point_velocity_at(&mut ctx.mem, r.ecx, point, out);
+    super::on_core(ctx, |core| layout::point_velocity_at(core, r.ecx, point, out));
     // eax: the last cross product's output, the original's local at its aligned frame - 0x20.
     Ok(Return::void(aligned_frame(r.esp) - 0x20, 8))
 }

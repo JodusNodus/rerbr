@@ -8,6 +8,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::signal_emit;
 
 use super::{Callees, FETCH_X};
+use crate::rigid_body::solid_word;
 use crate::{Ctx, Decline, Host, Regs, Return, SignalCallees};
 
 /// CBrakeWall::QueryPoint (0x4e3dc0): thiscall on the wall with the point and the collector; eax is the leaf count's
@@ -52,10 +53,11 @@ pub(super) fn wall_raycast(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// `CBrakeWallManager::RaycastEntry` (0x4e4960): thiscall `(point, out)`; the point's copy is in the original's frame,
-/// 8 bytes below the entry esp.
+/// 8 bytes below the entry esp. The point is the car's position (`car+0x140`), a solid's words.
 pub(super) fn raycast_entry(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [point, out, ..] = r.stack;
-    let eax = layout::wall_probe(&mut WallRaycast::new(ctx), &mut ctx.mem, r.ecx, point, out, r.esp - 8);
+    let xy = [point, point + 4].map(|at| solid_word(ctx.host, &ctx.mem, at));
+    let eax = layout::wall_probe(&mut WallRaycast::new(ctx), &mut ctx.mem, r.ecx, xy, out, r.esp - 8);
     Ok(Return::void(eax, 8))
 }
 
@@ -73,11 +75,11 @@ struct WallCorners<'a> {
 impl WallQueryHost for WallCorners<'_> {
     fn frame(&mut self, sp: u32, wall: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(wall) + 0x30);
-        self.host.call_at(sp, target, wall, &[]).eax
+        crate::call_or_trivial(self.host, sp, target, wall, &[])
     }
 
     fn fetch_x(&mut self, sp: u32, corner: u32, out: u32, frame: u32) {
-        self.host.call_at(sp, FETCH_X, corner, &[out, frame]);
+        crate::entities::call_op(self.host, sp, FETCH_X, corner, &[out, frame]);
     }
 
     fn query_box(&mut self, sp: u32, wall: u32, bounds: u32, collector: u32) -> u32 {
@@ -111,7 +113,7 @@ pub(super) fn brake_wall_vf_f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 
 impl WallEndsHost for Callees<'_> {
     fn fetch_x(&mut self, sp: u32, matrix: u32, out: u32, worker: u32) {
-        self.0.call_at(sp, FETCH_X, matrix, &[out, worker]);
+        crate::entities::call_op(self.0, sp, FETCH_X, matrix, &[out, worker]);
     }
 }
 

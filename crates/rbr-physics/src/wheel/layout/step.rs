@@ -1,22 +1,22 @@
 //! `E51Wheel::M3DD30` (0x53dd30), the wheel step: the ground contact, the strut's spring and the slip.
 
 use super::fields::{
-    AXLE, BLEND_OPS, CAR, CAR_FORCE, CAR_SCRATCH, DAMAGE, DAMAGE_CHANGED, DAMAGE_FACTOR, DAMAGE_STEERING,
-    DAMAGE_TOP_MOUNT_UP, DAMPER_FORCE, DEF, DEF_ANTI_ROLL_BAR_ID, DEF_ANTI_ROLL_BAR_SLOT, DEF_FLAGS, DEF_INVERSE_MASS,
-    DEF_MAX_DEFORM_UP, DEF_PLATFORM_HEIGHT, DEF_TOP_MOUNT, DEF_TOP_MOUNT_DAMAGE_MAX_FORCE,
-    DEF_TOP_MOUNT_DAMAGE_THRESHOLD, END_SPIN_RATE, GROUND_BODY, HUB_POSITION, HUB_VELOCITY, INV_ARM, INV_RACK,
-    LAST_TAG_1, LAST_TAG_2, LAST_WEIGHT, MATRIX_ROW_1, MATRIX_ROW_2, ON_GROUND, PROBE_DIRECTION, ROLL_BAR_FORCE,
-    SPEED_SCALE, SPIN_RATE, SPRING_FORCE, STRUT, STRUT_DIR, STRUT_FORCE, STRUT_INNER_BUMP_POS, STRUT_LENGTH,
-    STRUT_OUTER_BUMP_POS, STRUT_TWEAK, STRUT_VEL, STRUT_VEL_TWEAK, SWEEP_RESIDUE, TYRE_SCRATCH, WHEEL_ANGLE,
-    WHEEL_ANGLE_TWEAK, WHEEL_INDEX, WORLD_AXLE, WORLD_DEF, WORLD_HUB,
+    AXLE, BLEND_OPS, CAR, CAR_FORCE, CAR_SCRATCH, DAMAGE, DAMAGE_FACTOR, DAMAGE_STEERING, DAMAGE_TOP_MOUNT_UP, DEF,
+    DEF_ANTI_ROLL_BAR_ID, DEF_ANTI_ROLL_BAR_SLOT, DEF_FLAGS, DEF_INVERSE_MASS, DEF_MAX_DEFORM_UP, DEF_PLATFORM_HEIGHT,
+    DEF_TOP_MOUNT, DEF_TOP_MOUNT_DAMAGE_MAX_FORCE, DEF_TOP_MOUNT_DAMAGE_THRESHOLD, HUB_POSITION, HUB_VELOCITY,
+    LAST_TAG_1, LAST_TAG_2, LAST_WEIGHT, MATRIX_ROW_1, MATRIX_ROW_2, PROBE_DIRECTION, STRUT, STRUT_INNER_BUMP_POS,
+    STRUT_LENGTH, STRUT_OUTER_BUMP_POS, STRUT_TWEAK, STRUT_VEL_TWEAK, TYRE_SCRATCH, WHEEL_ANGLE, WHEEL_ANGLE_TWEAK,
+    WHEEL_INDEX, WORLD_AXLE, WORLD_DEF, WORLD_HUB,
 };
 use super::refresh_pose::{DEF_IS_STEERED, NEG_KNUCKLE_Z};
 use super::store::WheelStore;
+use super::typed::slot;
 use crate::car_body::layout as car_layout;
 use crate::entities::layout::ROOT_IDENTITY;
 use crate::fpu::round_x87;
 use crate::physics_core::layout::SIGNAL_MANAGER;
 use crate::rigid_body::layout::{ANGULAR_VELOCITY, LINEAR_VELOCITY};
+use crate::spring_damper::{StepInput, StepOutput};
 
 /// The host calls of `wheel_step`, one method per original callee (`car_slot` is the car's vtable slot 12, called with
 /// its arguments left on the stack for `pair_walk`, which pops them as the asm does).
@@ -58,8 +58,9 @@ pub trait StepCalls {
     /// `CSolid::Step76` (0x529c80, `rigid_body::solid_rows::point_velocity`) on the body `body`: the velocity of the point
     /// at `point`, to `out`.
     fn point_velocity(&mut self, body: u32, point: u32, out: u32, sp: u32);
-    /// `CSpringDamper::Step` (0x52e090) on the strut, with its six arguments.
-    fn spring_step(&mut self, strut: u32, args: [u32; 6], sp: u32);
+    /// `CSpringDamper::Step` (0x52e090) on the strut: its three outputs for `input`. The original writes them through its
+    /// last three arguments, `out` in the caller's frame, where the caller stores them again.
+    fn spring_step(&mut self, strut: u32, input: StepInput, out: [u32; 3], sp: u32) -> StepOutput;
     /// `CTyre::CScratch::SetStateField` (0x532470, `tyre::state::set_active`).
     fn set_tyre_active(&mut self, scratch: u32, v: u32, sp: u32);
     /// `CTyre::CScratch::SetState48` (0x533490, `tyre::state::set_penetration_depth`).
@@ -152,17 +153,17 @@ pub fn wheel_step<S: WheelStore>(
 
     // Two rows of the wheel's matrix, each loaded into the frame and copied to a frame slot. Lane 3 of each copy takes
     // the frame's old `+0x6c`, as the asm leaves it.
-    mem.set_u32(f + 0x60, mem.u32(this + MATRIX_ROW_2));
-    mem.set_u32(f + 0x64, mem.u32(this + MATRIX_ROW_2 + 4));
-    mem.set_u32(f + 0x68, mem.u32(this + MATRIX_ROW_2 + 8));
+    mem.set_u32(f + 0x60, mem.solid_u32(this + MATRIX_ROW_2));
+    mem.set_u32(f + 0x64, mem.solid_u32(this + MATRIX_ROW_2 + 4));
+    mem.set_u32(f + 0x68, mem.solid_u32(this + MATRIX_ROW_2 + 8));
     mem.set_u32(f + 0xA0, mem.u32(f + 0x60));
     mem.set_u32(f + 0xA4, mem.u32(f + 0x64));
     mem.set_u32(f + 0xA8, mem.u32(f + 0x68));
     mem.set_u32(f + 0xAC, mem.u32(f + 0x6C));
     calls.copy_vec4(f + 0x160, f + 0xA0, f - 8);
-    mem.set_u32(f + 0x60, mem.u32(this + MATRIX_ROW_1));
-    mem.set_u32(f + 0x64, mem.u32(this + MATRIX_ROW_1 + 4));
-    mem.set_u32(f + 0x68, mem.u32(this + MATRIX_ROW_1 + 8));
+    mem.set_u32(f + 0x60, mem.solid_u32(this + MATRIX_ROW_1));
+    mem.set_u32(f + 0x64, mem.solid_u32(this + MATRIX_ROW_1 + 4));
+    mem.set_u32(f + 0x68, mem.solid_u32(this + MATRIX_ROW_1 + 8));
     mem.set_u32(f + 0xA0, mem.u32(f + 0x60));
     mem.set_u32(f + 0xA4, mem.u32(f + 0x64));
     mem.set_u32(f + 0xA8, mem.u32(f + 0x68));
@@ -177,7 +178,7 @@ pub fn wheel_step<S: WheelStore>(
     calls.copy_vec4(this + WORLD_HUB, f + 0x80, f - 8);
     let wheel_index = mem.u32(this + WHEEL_INDEX);
     let spin = calls.spin_rate(car, wheel_index, f - 8);
-    mem.set_f32(this + SPIN_RATE, spin);
+    mem.set(this, slot::spin_rate, spin);
 
     // The ground probe, when the world's flag is set and it finds a contact.
     let world = mem.u32(car_layout::WORLD);
@@ -191,7 +192,7 @@ pub fn wheel_step<S: WheelStore>(
     if ground != 0 {
         ground_contact(mem, calls, this, dt, f, car);
     } else {
-        mem.set_u32(this + ON_GROUND, 0);
+        mem.set(this, slot::on_ground, 0);
         mem.set_f32(f + 0x34, 0.0);
         calls.clear_vec4(f + 0xD0, f - 4);
         calls.clear_vec4(f + 0x90, f - 4);
@@ -210,7 +211,7 @@ fn car_walk(calls: &mut impl StepCalls, car: u32, a: u32, b: u32, c: u32, sp: u3
 
 /// The branch of `wheel_step` with a ground contact (`M3D520` returned 1): the contact's frame and its force.
 fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: u32, dt: f32, f: u32, car: u32) {
-    mem.set_u32(this + ON_GROUND, 1);
+    mem.set(this, slot::on_ground, 1);
     calls.to_world(car, this + NEG_KNUCKLE_Z, f + 0x1C0, f - 0xC);
     let g = mem.u32(ROOT_IDENTITY);
     car_walk(calls, car, this + HUB_POSITION, g, f + 0xA0, f - 0x10);
@@ -218,10 +219,10 @@ fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: 
     // The car's linear velocity, unless the car is the null object (`car == -0x1b0`).
     let pf = if car.wrapping_add(CAR_LINEAR_VELOCITY_TWEAK) == 0 { 0 } else { car + LINEAR_VELOCITY };
     for k in 0..3 {
-        let v = mem.f32(pf + 4 * k) + mem.f32(f + 0xE0 + 4 * k);
+        let v = mem.solid_f32(pf + 4 * k) + mem.f32(f + 0xE0 + 4 * k);
         mem.set_f32(f + 0xE0 + 4 * k, v);
     }
-    let s = mem.f32(this + STRUT_VEL);
+    let s = mem.get(this, slot::strut_velocity);
     mem.set_f32(f + 0x1C, s);
     for k in 0..4 {
         let v = mem.f32(f + 0x1C0 + 4 * k) * s + mem.f32(f + 0xE0 + 4 * k);
@@ -246,7 +247,7 @@ fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: 
     mem.set_f32(f + 0x264, 0.0);
     mem.set_f32(f + 0x278, 0.0);
     mem.set_f32(f + 0x270, 0.0);
-    let ground_body = mem.u32(this + GROUND_BODY);
+    let ground_body = mem.get(this, slot::ground_body);
     if ground_body != 0 {
         calls.point_velocity(ground_body, f + 0x130, f + 0x1D0, f - 0xC);
         for k in 0..3 {
@@ -258,10 +259,10 @@ fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: 
     }
 
     let args = [
-        mem.u32(this + SPIN_RATE),
+        mem.get(this, slot::spin_rate).to_bits(),
         dt.to_bits(),
-        mem.u32(this + SPEED_SCALE),
-        mem.u32(this + SWEEP_RESIDUE),
+        mem.get(this, slot::speed_scale).to_bits(),
+        mem.get(this, slot::sweep_residue).to_bits(),
         this + BLEND_OPS,
         this + LAST_TAG_1,
         f + 0x140,
@@ -322,7 +323,7 @@ fn ground_contact<S: WheelStore>(mem: &mut S, calls: &mut impl StepCalls, this: 
     mem.set_f32(f + 0x44, v);
     let v = mem.f32(f + 0x48) + mem.f32(f + 0x98);
     mem.set_f32(f + 0x48, v);
-    calls.set_penetration_depth(this + TYRE_SCRATCH, mem.f32(this + SPEED_SCALE), f - 8);
+    calls.set_penetration_depth(this + TYRE_SCRATCH, mem.get(this, slot::speed_scale), f - 8);
 }
 
 /// The common tail of `wheel_step`: the strut's spring, the force and its slip, the car's side forces, the damage, and
@@ -339,20 +340,27 @@ fn spring_and_slip<S: WheelStore>(
 ) {
     let round24 = round_x87;
     let [slip_lo, slip_hi, slip_k] = slip;
-    let y = mem.f32(def + DEF_PLATFORM_HEIGHT) + mem.f32(this + STRUT_LENGTH);
-    let z = mem.u32(this + STRUT_VEL);
-    calls.spring_step(
-        this + STRUT,
-        [mem.u32(this + STRUT_LENGTH), y.to_bits(), z, f + 0x24, f + 0x28, f + 0x30],
-        f - 0x1C,
-    );
+    let y = mem.def_f32(def, DEF_PLATFORM_HEIGHT) + mem.f32(this + STRUT_LENGTH);
+    let input = StepInput {
+        travel: mem.f32(this + STRUT_LENGTH),
+        coordinate: y,
+        velocity: mem.get(this, slot::strut_velocity),
+    };
+    let out = calls.spring_step(this + STRUT, input, [f + 0x24, f + 0x28, f + 0x30], f - 0x1C);
+    mem.set_f32(f + 0x24, out.spring_stop_force);
+    mem.set_f32(f + 0x28, out.breakpoint_offset);
+    mem.set_f32(f + 0x30, out.damping_coefficient);
 
-    let roll_bar =
-        calls.roll_bar_force(car, mem.u32(def + DEF_ANTI_ROLL_BAR_ID), mem.u32(def + DEF_ANTI_ROLL_BAR_SLOT), f - 0xC);
+    let roll_bar = calls.roll_bar_force(
+        car,
+        mem.def_u32(def, DEF_ANTI_ROLL_BAR_ID),
+        mem.def_u32(def, DEF_ANTI_ROLL_BAR_SLOT),
+        f - 0xC,
+    );
     mem.set_f32(f + 0x38, roll_bar);
     let t = mem.f32(f + 0x38) + mem.f32(f + 0x24) + mem.f32(f + 0x28) + mem.f32(f + 0x34);
-    let m = mem.f32(def + DEF_INVERSE_MASS);
-    let num = t * m * dt + mem.f32(this + STRUT_VEL);
+    let m = mem.def_f32(def, DEF_INVERSE_MASS);
+    let num = t * m * dt + mem.get(this, slot::strut_velocity);
     let den = m * mem.f32(f + 0x30) * dt + 1.0;
     let vel = num / den;
     let vel = if -MAX_STRUT_VEL > vel {
@@ -363,7 +371,7 @@ fn spring_and_slip<S: WheelStore>(
         vel
     };
     mem.set_f32(f + 0x1C, vel);
-    let old_vel = mem.f32(this + STRUT_VEL);
+    let old_vel = mem.get(this, slot::strut_velocity);
     let travel = vel * dt + mem.f32(this + STRUT_LENGTH);
     mem.set_f32(f + 0x3C, old_vel);
     mem.set_f32(f + 0x18, travel);
@@ -372,7 +380,7 @@ fn spring_and_slip<S: WheelStore>(
     calls.set_dirty(this + STRUT_VEL_TWEAK, f - 4);
 
     let q = (vel - mem.f32(f + 0x3C)) / dt / m;
-    mem.set_f32(this + STRUT_VEL, vel);
+    mem.set(this, slot::strut_velocity, vel);
     let s = mem.f32(f + 0x34) - q;
     mem.set_f32(f + 0x34, s);
     mem.set_u32(f + 0x3C, this + NEG_KNUCKLE_Z);
@@ -384,15 +392,15 @@ fn spring_and_slip<S: WheelStore>(
     let p = vel * mem.f32(f + 0x30);
     let spring = mem.f32(f + 0x24);
     let breakpoint = mem.f32(f + 0x28);
-    mem.set_f32(this + ROLL_BAR_FORCE, mem.f32(f + 0x38));
-    mem.set_f32(this + SPRING_FORCE, spring);
-    mem.set_f32(this + STRUT_FORCE, s);
+    mem.set(this, slot::roll_bar_force, mem.f32(f + 0x38));
+    mem.set(this, slot::spring_force, spring);
+    mem.set(this, slot::strut_force, s);
     mem.set_f32(f + 0x34, p + spring + breakpoint);
-    mem.set_f32(this + DAMPER_FORCE, p + breakpoint);
+    mem.set(this, slot::damper_force, p + breakpoint);
 
-    let v0 = mem.f32(this + HUB_POSITION) - mem.f32(def + DEF_TOP_MOUNT);
-    let v1 = mem.f32(this + HUB_POSITION + 4) - mem.f32(def + DEF_TOP_MOUNT + 4);
-    let v2 = mem.f32(this + HUB_POSITION + 8) - mem.f32(def + DEF_TOP_MOUNT + 8);
+    let v0 = mem.solid_f32(this + HUB_POSITION) - mem.def_f32(def, DEF_TOP_MOUNT);
+    let v1 = mem.solid_f32(this + HUB_POSITION + 4) - mem.def_f32(def, DEF_TOP_MOUNT + 4);
+    let v2 = mem.solid_f32(this + HUB_POSITION + 8) - mem.def_f32(def, DEF_TOP_MOUNT + 8);
     mem.set_f32(f + 0x110, v0);
     mem.set_f32(f + 0x114, v1);
     mem.set_f32(f + 0x118, v2);
@@ -401,11 +409,10 @@ fn spring_and_slip<S: WheelStore>(
         let v = mem.f32(f + 0xC0 + 4 * k) + mem.f32(f + 0x40 + 4 * k);
         mem.set_f32(f + 0xC0 + 4 * k, v);
     }
-    if mem.u32(def + DEF_IS_STEERED) != 0 {
-        let v = mem.f32(this + STRUT_DIR + 8) * mem.f32(f + 0xC8)
-            + mem.f32(this + STRUT_DIR + 4) * mem.f32(f + 0xC4)
-            + mem.f32(this + STRUT_DIR) * mem.f32(f + 0xC0);
-        let v = v * mem.f32(this + INV_ARM) * mem.f32(this + INV_RACK);
+    if mem.def_u32(def, DEF_IS_STEERED) != 0 {
+        let dir = mem.get(this, slot::strut_dir);
+        let v = dir.z * mem.f32(f + 0xC8) + dir.y * mem.f32(f + 0xC4) + dir.x * mem.f32(f + 0xC0);
+        let v = v * mem.get(this, slot::inv_arm) * mem.get(this, slot::inv_rack);
         calls.add_steer_torque(car, v, f - 8);
     }
     calls.cross(this + HUB_POSITION, f + 0x50, f + 0x100, f - 0xC);
@@ -446,16 +453,16 @@ fn spring_and_slip<S: WheelStore>(
     let damage_on = mem.u32(mem.u32(world + WORLD_DEF) + DEF_FLAGS) & FLAG_DAMAGE != 0;
     if damage_on {
         let v = mem.f32(damage + DAMAGE_FACTOR) * mem.f32(f + 0x34);
-        if v > mem.f32(def + DEF_TOP_MOUNT_DAMAGE_THRESHOLD) {
-            let w = (v - mem.f32(def + DEF_TOP_MOUNT_DAMAGE_THRESHOLD))
-                / (mem.f32(def + DEF_TOP_MOUNT_DAMAGE_MAX_FORCE) - mem.f32(def + DEF_TOP_MOUNT_DAMAGE_THRESHOLD));
+        if v > mem.def_f32(def, DEF_TOP_MOUNT_DAMAGE_THRESHOLD) {
+            let w = (v - mem.def_f32(def, DEF_TOP_MOUNT_DAMAGE_THRESHOLD))
+                / (mem.def_f32(def, DEF_TOP_MOUNT_DAMAGE_MAX_FORCE) - mem.def_f32(def, DEF_TOP_MOUNT_DAMAGE_THRESHOLD));
             let sq = w * w + mem.f32(damage + DAMAGE_TOP_MOUNT_UP);
             mem.set_f32(damage + DAMAGE_TOP_MOUNT_UP, sq);
             if mem.f32(damage + DAMAGE_TOP_MOUNT_UP) > 1.0 {
                 mem.set_f32(damage + DAMAGE_TOP_MOUNT_UP, 1.0);
             }
             calls.deform_top_mount(this, f - 4);
-            mem.set_u32(this + DAMAGE_CHANGED, 1);
+            mem.set(this, slot::damage_changed, 1);
         }
         let v = mem.f32(damage + DAMAGE_FACTOR) * mem.f32(f + 0x7C);
         calls.apply_hub_torque(this, v, f - 8);
@@ -472,16 +479,16 @@ fn spring_and_slip<S: WheelStore>(
                     mem.set_f32(damage + DAMAGE_STEERING, v);
                 }
             }
-            mem.set_u32(this + DAMAGE_CHANGED, 1);
+            mem.set(this, slot::damage_changed, 1);
         }
     }
     calls.set_drive_pair(car, mem.u32(this + WHEEL_INDEX), mem.f32(f + 0x20), mem.f32(f + 0x2C), f - 0x10);
 
-    let v = mem.f32(this + STRUT_LENGTH) - mem.f32(damage + DAMAGE_TOP_MOUNT_UP) * mem.f32(def + DEF_MAX_DEFORM_UP);
+    let v = mem.f32(this + STRUT_LENGTH) - mem.f32(damage + DAMAGE_TOP_MOUNT_UP) * mem.def_f32(def, DEF_MAX_DEFORM_UP);
     calls.set_roll_bar_cell(
         car,
-        mem.u32(def + DEF_ANTI_ROLL_BAR_ID),
-        mem.u32(def + DEF_ANTI_ROLL_BAR_SLOT),
+        mem.def_u32(def, DEF_ANTI_ROLL_BAR_ID),
+        mem.def_u32(def, DEF_ANTI_ROLL_BAR_SLOT),
         v,
         f - 0x10,
     );
@@ -504,7 +511,7 @@ fn spring_and_slip<S: WheelStore>(
     }
     calls.relax_count(this + TYRE_SCRATCH, dt, f - 8);
     let spin = calls.spin_rate(car, mem.u32(this + WHEEL_INDEX), f - 8);
-    mem.set_f32(this + END_SPIN_RATE, spin);
+    mem.set(this, slot::end_spin_rate, spin);
 }
 
 #[cfg(test)]

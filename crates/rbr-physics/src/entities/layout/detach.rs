@@ -1,14 +1,15 @@
 //! A hinged body's impulse on its car (`SimF350`) and the detach of a hinged or mounted body from its car (`SimDA60`,
-//! `SimFD00`, `CMountedRigidBody::StepBig`).
+//! `SimFD00`, `CMountedRigidBody::StepBig`). The detaches run on the solids' store (`SolidWords`): the body's and the
+//! car's pose and velocities are their solids' words, held over a step.
 
 use super::hinge_state::HINGE_OWNER;
-use super::walk_nodes::copy_vec4;
 use crate::entities::layout::ROOT_IDENTITY;
 use crate::entities::{hinge_detach, hinge_impulse};
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
 use crate::physics_core;
 use crate::physics_core::layout::{CELL_GRID_GLOBAL, INIT_PASS_SLOT, POST_CONTACT_SLOT, SIGNAL_MANAGER};
+use crate::rigid_body::layout::SolidWords;
 
 /// The original callees of the impulse (`CHingedRigidBody::SimF350`), at their entry stack pointers.
 pub trait ImpulseCalls {
@@ -23,8 +24,16 @@ pub trait ImpulseCalls {
 /// The owned-car path of `CHingedRigidBody::SimF350` (0x51f350): an impulse at a point changes the hinge rate by its
 /// torque about the hinge axis over the hinge inertia, and its clamped axial part goes to the car; a clamped impulse
 /// breaks the hinge (the link cleared, the body cleared from the car and excluded from it). Host calls and local buffers
-/// use the original's aligned frame base, which is `(entry_esp - 4) & !0xf`.
-pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32, calls: &mut impl ImpulseCalls) {
+/// use the original's aligned frame base, which is `(entry_esp - 4) & !0xf`. On the solids' store: the hinge rate and
+/// the hinge point are the body's held words.
+pub fn apply_impulse_owned<S: SolidWords>(
+    mem: &mut S,
+    this: u32,
+    args: [u32; 8],
+    frame: u32,
+    calls: &mut impl ImpulseCalls,
+) {
+    let load = |mem: &S, at: u32| Vec4::from(mem.words::<4>(at).map(f32::from_bits));
     let car = mem.u32(this + 0x3d0);
     let def = mem.u32(this + 0x34);
     let transformed = frame - 0x50;
@@ -32,9 +41,9 @@ pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32,
 
     let point = args[0];
     let impulse = args[1];
-    let p = Vec4::load(mem, point);
-    let b = Vec4::load(mem, impulse);
-    let origin = Vec4::load(mem, this + 0x5c0);
+    let p = load(mem, point);
+    let b = load(mem, impulse);
+    let origin = load(mem, this + 0x5c0);
     let arm = Vec4 { x: p.x - origin.x, y: p.y - origin.y, z: p.z - origin.z, w: 0.0 };
     let cross = arm.cross3(b);
     for (i, lane) in [arm.x, arm.y, arm.z].into_iter().enumerate() {
@@ -43,15 +52,15 @@ pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32,
     for (i, lane) in [cross.x, cross.y, cross.z].into_iter().enumerate() {
         mem.set_f32(frame - 0x30 + 4 * i as u32, lane);
     }
-    let t = Vec4::load(mem, transformed);
-    let c = Vec3::load(mem, frame - 0x30).extend(0.0);
+    let t = load(mem, transformed);
+    let c = Vec3 { x: mem.f32(frame - 0x30), y: mem.f32(frame - 0x2c), z: mem.f32(frame - 0x28) }.extend(0.0);
     let projection = hinge_impulse::torque_about_axis(t, c);
     let denominator = mem.f32(def + 0x4bc);
     calls.construct(frame - 0x78, frame - 0x10);
     let rate = mem.f32(this + 0x40c) + projection / denominator;
     mem.set_f32(this + 0x40c, rate);
 
-    let dot_impulse = Vec4::load(mem, impulse);
+    let dot_impulse = load(mem, impulse);
     let dot = dot_impulse.z * t.z + dot_impulse.y * t.y;
     let dot = dot + dot_impulse.x * t.x;
     let (dot, clamped) = hinge_impulse::clamp_axial_impulse(dot, mem.f32(0x731d00), mem.f32(0x73d3bc));
@@ -107,13 +116,13 @@ pub trait PoseToWorldCalls {
 
 /// `CHingedRigidBody::SimDA60` (0x51da60): the body's position and orientation go to the world through its car, and the
 /// start pose takes them. `frame` is the original's esp after its prologue, `((entry - 4) & !0xf) - 0x40`.
-pub fn pose_to_world(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl PoseToWorldCalls) {
-    let walker = mem.u32(ROOT_IDENTITY);
-    let car = mem.u32(this + HINGE_OWNER);
-    calls.compose_a(mem, frame - 0x10, car, [this + BODY_POSITION, walker, frame + 0x20]);
+pub fn pose_to_world<S: SolidWords>(mem: &mut S, this: u32, frame: u32, calls: &mut impl PoseToWorldCalls) {
+    let walker = mem.word(ROOT_IDENTITY);
+    let car = mem.word(this + HINGE_OWNER);
+    calls.compose_a(mem.mem_mut(), frame - 0x10, car, [this + BODY_POSITION, walker, frame + 0x20]);
     copy_vec4(mem, this + BODY_POSITION, frame + 0x20);
-    let car = mem.u32(this + HINGE_OWNER);
-    calls.quat_mul(mem, frame - 0xc, car + BODY_ORIENTATION, this + BODY_ORIENTATION, frame + 0x30);
+    let car = mem.word(this + HINGE_OWNER);
+    calls.quat_mul(mem.mem_mut(), frame - 0xc, car + BODY_ORIENTATION, this + BODY_ORIENTATION, frame + 0x30);
     copy_vec4(mem, this + BODY_ORIENTATION, frame + 0x30);
     copy_vec4(mem, this + BODY_START_POSITION, this + BODY_POSITION);
     copy_vec4(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
@@ -149,20 +158,20 @@ pub trait DetachCalls {
 /// and velocities go to the world, it leaves the car's list and is filed again in its cell and the physics state, and the
 /// detach signal and a body event (kind 3, before and after) are emitted. Returns 1 for a detach, else 0. `frame` is the
 /// original's esp after its prologue, `((entry - 4) & !0xf) - 0x90`; the event is at `frame + 0x40`.
-pub fn detach_from_car(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl DetachCalls) -> u32 {
-    if mem.u32(this + BODY_PARENT) == 0 || mem.u32(this + BODY_LINK_LIST) == 0 {
+pub fn detach_from_car<S: SolidWords>(mem: &mut S, this: u32, frame: u32, calls: &mut impl DetachCalls) -> u32 {
+    if mem.word(this + BODY_PARENT) == 0 || mem.word(this + BODY_LINK_LIST) == 0 {
         return 0;
     }
     let event = frame + 0x40;
-    mem.set_u32(event + 4, mem.u32(this + BODY_OWNER_WORD));
-    mem.set_u32(event, 3);
+    mem.set_word(event + 4, mem.word(this + BODY_OWNER_WORD));
+    mem.set_word(event, 3);
     copy_vec4(mem, event + 0x30, this + BODY_POSITION);
     // The original's pointer locals, as it leaves them.
-    mem.set_u32(frame + 0x1c, this + 0xf0);
-    mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
-    mem.set_u32(frame + 0x18, event + 0x40);
+    mem.set_word(frame + 0x1c, this + 0xf0);
+    mem.set_word(frame + 0x14, this + BODY_ORIENTATION);
+    mem.set_word(frame + 0x18, event + 0x40);
     copy_vec4(mem, event + 0x40, this + BODY_ORIENTATION);
-    calls.pose_to_world(mem, frame - 4, this);
+    calls.pose_to_world(mem.mem_mut(), frame - 4, this);
     detach_tail(mem, this, frame, event, frame + 0x10, calls);
     1
 }
@@ -181,27 +190,27 @@ pub trait MountedDetachCalls: DetachCalls + PoseToWorldCalls {
 /// (+0x330, +0x2a0) takes the new pose; then the detach (`detach_tail`). Returns 1 for a detach, else 0. `frame` is the
 /// original's esp after its prologue, `((entry - 4) & !0xf) - 0xb0`; the event is at `frame + 0x60`, the detach payload
 /// at `frame + 0x18`, the composed position at `frame + 0x40` and the turned orientation at `frame + 0x50`.
-pub fn mounted_detach(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl MountedDetachCalls) -> u32 {
-    if mem.u32(this + BODY_PARENT) == 0 || mem.u32(this + BODY_LINK_LIST) == 0 {
+pub fn mounted_detach<S: SolidWords>(mem: &mut S, this: u32, frame: u32, calls: &mut impl MountedDetachCalls) -> u32 {
+    if mem.word(this + BODY_PARENT) == 0 || mem.word(this + BODY_LINK_LIST) == 0 {
         return 0;
     }
     let event = frame + 0x60;
-    mem.set_u32(event, 3);
-    mem.set_u32(event + 4, mem.u32(this + BODY_OWNER_WORD));
+    mem.set_word(event, 3);
+    mem.set_word(event + 4, mem.word(this + BODY_OWNER_WORD));
     copy_vec4(mem, event + 0x30, this + BODY_POSITION);
     // The original's pointer locals, as it leaves them.
-    mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
-    mem.set_u32(frame + 0x1c, event + 0x40);
+    mem.set_word(frame + 0x14, this + BODY_ORIENTATION);
+    mem.set_word(frame + 0x1c, event + 0x40);
     copy_vec4(mem, event + 0x40, this + BODY_ORIENTATION);
-    let car = mem.u32(this + HINGE_OWNER);
-    calls.world_compose(mem, frame - 0xc, car, this + BODY_POSITION, frame + 0x40);
+    let car = mem.word(this + HINGE_OWNER);
+    calls.world_compose(mem.mem_mut(), frame - 0xc, car, this + BODY_POSITION, frame + 0x40);
     copy_vec4(mem, this + BODY_POSITION, frame + 0x40);
-    let car = mem.u32(this + HINGE_OWNER);
-    calls.quat_mul(mem, frame - 0xc, car + BODY_ORIENTATION, this + BODY_ORIENTATION, frame + 0x50);
-    calls.quat_norm(mem, frame - 8, frame + 0x50, this + BODY_ORIENTATION);
+    let car = mem.word(this + HINGE_OWNER);
+    calls.quat_mul(mem.mem_mut(), frame - 0xc, car + BODY_ORIENTATION, this + BODY_ORIENTATION, frame + 0x50);
+    calls.quat_norm(mem.mem_mut(), frame - 8, frame + 0x50, this + BODY_ORIENTATION);
     copy_vec4(mem, this + BODY_START_POSITION, this + BODY_POSITION);
-    mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
-    mem.set_u32(frame + 0x1c, this + BODY_START_ORIENTATION);
+    mem.set_word(frame + 0x14, this + BODY_ORIENTATION);
+    mem.set_word(frame + 0x1c, this + BODY_START_ORIENTATION);
     copy_vec4(mem, this + BODY_START_ORIENTATION, this + BODY_ORIENTATION);
     detach_tail(mem, this, frame, event, frame + 0x18, calls);
     1
@@ -211,43 +220,52 @@ pub fn mounted_detach(mem: &mut Mem, this: u32, frame: u32, calls: &mut impl Mou
 /// body leaves its car's list and is filed again in its cell and the physics state, then the detach signal (its payload
 /// at `sig`) and the body event at `event` (kind 3; its after pose filled here) are emitted. `frame` is the caller's esp
 /// after its prologue: the calls and the locals are at the same depths in both.
-fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls: &mut impl DetachCalls) {
+fn detach_tail<S: SolidWords>(mem: &mut S, this: u32, frame: u32, event: u32, sig: u32, calls: &mut impl DetachCalls) {
     for (at, local) in [(BODY_LINEAR, frame + 0x30), (BODY_ANGULAR, frame + 0x20)] {
-        let car = mem.u32(this + HINGE_OWNER);
-        calls.to_world(mem, frame - 0xc, car, this + at, local);
+        let car = mem.word(this + HINGE_OWNER);
+        calls.to_world(mem.mem_mut(), frame - 0xc, car, this + at, local);
     }
     for (at, local) in [(BODY_LINEAR, frame + 0x30), (BODY_ANGULAR, frame + 0x20)] {
-        let car = mem.u32(this + HINGE_OWNER);
+        let car = mem.word(this + HINGE_OWNER);
         for k in 0..3 {
-            let lane = hinge_detach::world_lane(mem.f32(car + at + 4 * k), mem.f32(local + 4 * k));
-            mem.set_f32(this + at + 4 * k, lane);
+            let lane = hinge_detach::world_lane(
+                f32::from_bits(mem.word(car + at + 4 * k)),
+                f32::from_bits(mem.word(local + 4 * k)),
+            );
+            mem.set_word(this + at + 4 * k, lane.to_bits());
         }
     }
-    calls.slot(mem, frame - 4, this, POST_CONTACT_SLOT);
-    calls.clear_accumulators(mem, frame - 4, this);
-    let list = mem.u32(this + BODY_LINK_LIST);
+    calls.slot(mem.mem_mut(), frame - 4, this, POST_CONTACT_SLOT);
+    calls.clear_accumulators(mem.mem_mut(), frame - 4, this);
+    let list = mem.word(this + BODY_LINK_LIST);
     if list != 0 {
-        mem.set_u32(list + 8, mem.u32(list + 8).wrapping_sub(1));
-        calls.unlink(mem, frame - 4, this + BODY_LINK);
+        mem.set_word(list + 8, mem.word(list + 8).wrapping_sub(1));
+        calls.unlink(mem.mem_mut(), frame - 4, this + BODY_LINK);
     }
-    mem.set_u32(this + BODY_PARENT, 0);
-    mem.set_u32(this + HINGE_OWNER, 0);
-    calls.slot(mem, frame - 4, this, BODY_EVENT_SLOT);
-    calls.init_walker_marks(mem, frame - 4, this);
-    let (x, y) = (mem.u32(this + BODY_POSITION), mem.u32(this + BODY_POSITION + 4));
-    let grid = mem.u32(CELL_GRID_GLOBAL);
-    let cell = calls.cell_link_at(mem, frame - 0xc, grid, x, y);
-    calls.move_to_cell(mem, frame - 0xc, this + BODY_CELL_LINK, cell);
-    let state = mem.u32(physics_core::layout::physics(mem) + PHYSICS_STATE);
-    calls.file_in_state(mem, frame - 8, state, this);
-    let signals = mem.u32(SIGNAL_MANAGER);
-    mem.set_u32(sig, mem.u32(this + BODY_OWNER_WORD));
-    calls.emit_detach(mem, frame - 8, signals + DETACH_SIGNAL, sig);
-    calls.slot(mem, frame - 4, this, INIT_PASS_SLOT);
+    mem.set_word(this + BODY_PARENT, 0);
+    mem.set_word(this + HINGE_OWNER, 0);
+    calls.slot(mem.mem_mut(), frame - 4, this, BODY_EVENT_SLOT);
+    calls.init_walker_marks(mem.mem_mut(), frame - 4, this);
+    let (x, y) = (mem.word(this + BODY_POSITION), mem.word(this + BODY_POSITION + 4));
+    let grid = mem.word(CELL_GRID_GLOBAL);
+    let cell = calls.cell_link_at(mem.mem_mut(), frame - 0xc, grid, x, y);
+    calls.move_to_cell(mem.mem_mut(), frame - 0xc, this + BODY_CELL_LINK, cell);
+    let state = mem.word(physics_core::layout::physics(mem.mem()) + PHYSICS_STATE);
+    calls.file_in_state(mem.mem_mut(), frame - 8, state, this);
+    let signals = mem.word(SIGNAL_MANAGER);
+    mem.set_word(sig, mem.word(this + BODY_OWNER_WORD));
+    calls.emit_detach(mem.mem_mut(), frame - 8, signals + DETACH_SIGNAL, sig);
+    calls.slot(mem.mem_mut(), frame - 4, this, INIT_PASS_SLOT);
     copy_vec4(mem, event + 0x10, this + BODY_POSITION);
-    mem.set_u32(frame + 0x14, this + BODY_ORIENTATION);
-    mem.set_u32(frame + 0x1c, event + 0x20);
+    mem.set_word(frame + 0x14, this + BODY_ORIENTATION);
+    mem.set_word(frame + 0x1c, event + 0x20);
     copy_vec4(mem, event + 0x20, this + BODY_ORIENTATION);
-    let signals = mem.u32(SIGNAL_MANAGER);
-    calls.emit_event(mem, frame - 8, signals + BODY_EVENT_SIGNAL, event);
+    let signals = mem.word(SIGNAL_MANAGER);
+    calls.emit_event(mem.mem_mut(), frame - 8, signals + BODY_EVENT_SIGNAL, event);
+}
+
+/// The 16 bytes at `from` copied to `to` on the solids' store (`E01Vec4` copies, `rep movsd` of four words).
+fn copy_vec4<S: SolidWords>(mem: &mut S, to: u32, from: u32) {
+    let words = mem.words::<4>(from);
+    mem.set_words4(to, words);
 }

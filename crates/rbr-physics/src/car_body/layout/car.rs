@@ -1,17 +1,37 @@
 //! `CCar`'s own words: the `CReal` record, the member offsets, the getters and setters the car-body ports read and
-//! write, the flow and timer words.
+//! write, the flow and timer words. `CarStore` is implemented over `CarFields` (`typed.rs`): the car's typed fields
+//! through it, the solid's words (pose, velocities, accumulators) through `SolidWords`, every other word on the image.
 
 use super::car_parts::{wheel_list_at, TimeKeeperDiff};
 use super::construct::{DEF_DANGEROUS_ACCELERATION, DEF_DRAG_COEFFICIENT, DEF_FRONTAL_AREA};
+use super::typed::{cell_value_slot, slot, CarFields, STEP_MARK_STEERING};
 use crate::car_body::helpers::{self, SurfaceBlend};
 use crate::car_body::links::{Link, LinkRef, Links, List, ListRef};
-use crate::car_body::store::CarStore;
+use crate::car_body::store::{CarStore, Cell};
 use crate::math::quat::Quat;
 use crate::math::vec::{Vec3, Vec4};
 use crate::math::Mat3;
 use crate::mem::Mem;
+use crate::physics_core::layout::typed::slot as core_slot;
 pub use crate::physics_core::layout::PHYSICS_GLOBAL as WORLD;
+use crate::rigid_body::layout::SolidWords;
 use crate::store::Raw;
+
+/// The vector of four words at `at` through the solids' store: a held solid's where its table names them.
+pub(super) fn solid_vec4<S: SolidWords + ?Sized>(s: &S, at: u32) -> Vec4 {
+    Vec4::from(s.words::<4>(at).map(f32::from_bits))
+}
+
+/// Stores the vector at `at` through the solids' store.
+pub(super) fn store_solid_vec4<S: SolidWords + ?Sized>(s: &mut S, at: u32, v: Vec4) {
+    s.set_words4(at, [v.x, v.y, v.z, v.w].map(f32::to_bits));
+}
+
+/// The first three of the four words at `at` through the solids' store.
+fn solid_vec3<S: SolidWords + ?Sized>(s: &S, at: u32) -> Vec3 {
+    let [x, y, z] = s.words::<3>(at).map(f32::from_bits);
+    Vec3 { x, y, z }
+}
 
 /// A `CReal` record (0x10 bytes): the dirty flag at +0x8 (`CBase::SetDirty` writes 1) and the value at +0xc.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -154,11 +174,95 @@ impl Links for Mem {
     }
 }
 
-/// The Mem store: the bodies are the layout's reads and writes.
-impl CarStore for Mem {
+/// Where the CReal of `cell` lives (its dirty flag at `+0x8`, its value at `+0xc`).
+pub fn cell_at(car: u32, cell: Cell) -> u32 {
+    match cell {
+        Cell::SteerSlew => steer_slew_at(car),
+        Cell::SteerTarget => steer_target_at(car),
+        Cell::SteerTargetRate => steer_target_rate_at(car),
+        Cell::SteerTorqueSum => steer_torque_sum_at(car),
+        Cell::FfbTorque => car + 0xae0,
+        Cell::SpeedSum => super::speed_sum_at(car),
+        Cell::RollBar(i, j) => roll_bar_cell_at(car, i, j),
+    }
+}
+
+/// The store: the bodies are the layout's reads and writes, the car's typed fields through `CarFields`.
+impl<S: CarFields> CarStore for S {
+    /// The CReal of `cell`: its dirty flag, a header word, on the image; its value typed when the car holds it (the
+    /// value of a cell the matrix's indices put elsewhere is the image's at its address).
+    fn cell(&self, car: u32, cell: Cell) -> Real {
+        let at = cell_at(car, cell);
+        let value = match cell_value_slot(at.wrapping_sub(car) + 0xc) {
+            Some(s) => self.field(car, s),
+            None => self.f32(at + 0xc),
+        };
+        Real { dirty: self.u32(at + 8), value }
+    }
+
+    fn store_cell(&mut self, car: u32, cell: Cell, v: Real) {
+        self.set_u32(cell_at(car, cell) + 8, v.dirty);
+        self.set_cell_value(car, cell, v.value);
+    }
+
+    fn set_cell_value(&mut self, car: u32, cell: Cell, v: f32) {
+        let at = cell_at(car, cell);
+        match cell_value_slot(at.wrapping_sub(car) + 0xc) {
+            Some(s) => self.set_field(car, s, v),
+            None => self.set_f32(at + 0xc, v),
+        }
+    }
+
+    /// The step counter (+0x950).
+    fn step_count(&self, car: u32) -> u32 {
+        self.field(car, slot::step_count)
+    }
+
+    fn set_step_count(&mut self, car: u32, n: u32) {
+        self.set_field(car, slot::step_count, n);
+    }
+
+    /// The mark's timer word (+0x954 + 4 mark), then its steering (+0x974 + 0x20 mark), as the asm stores them.
+    fn set_step_mark(&mut self, car: u32, mark: u32, timer_word: u32, steering: u32) {
+        let mut timers = self.field(car, slot::step_mark_timers);
+        timers[mark as usize] = timer_word;
+        self.set_field(car, slot::step_mark_timers, timers);
+        self.set_field(car, STEP_MARK_STEERING[mark as usize], steering);
+    }
+
+    /// The steering input (+0x16a4), throttle (+0x1694) and brake (+0x1698) words.
+    fn keep_controls(&mut self, car: u32, steering: u32, throttle: u32, brake: u32) {
+        self.set_field(car, slot::steer_input, f32::from_bits(steering));
+        self.set_field(car, slot::throttle, throttle);
+        self.set_field(car, slot::brake, brake);
+    }
+
+    /// The flag word at +0x9f0.
+    fn partial_contact_flag(&self, car: u32) -> u32 {
+        self.field(car, slot::partial_contact_flag)
+    }
+
+    fn set_partial_contact_flag(&mut self, car: u32, v: u32) {
+        self.set_field(car, slot::partial_contact_flag, v);
+    }
+
+    /// The countdown at +0x15e4.
+    fn respawn_countdown(&self, car: u32) -> f32 {
+        self.field(car, slot::respawn_countdown)
+    }
+
+    fn set_respawn_countdown(&mut self, car: u32, v: f32) {
+        self.set_field(car, slot::respawn_countdown, v);
+    }
+
+    /// The words +0x1680 to +0x168c.
+    fn clear_assistance_block(&mut self, car: u32) {
+        self.set_field(car, slot::assistance_block, [0; 4]);
+    }
+
     /// Reads the matrix of `at` (nine words, row by row).
     fn load_mat3(&self, at: u32) -> Mat3 {
-        std::array::from_fn(|r| std::array::from_fn(|c| self.f32(at + 4 * (3 * r + c) as u32)))
+        std::array::from_fn(|r| std::array::from_fn(|c| f32::from_bits(self.word(at + 4 * (3 * r + c) as u32))))
     }
 
     /// `CCar::Get30` (0x4e67f0): the word at `this + 0x30`, the entity's sort key.
@@ -168,7 +272,7 @@ impl CarStore for Mem {
 
     /// `CCar::Get15F8` (0x4e6770, thiscall, st0): the float at `this + 0x15f8`, the car speed the slip query reads.
     fn forward_speed(&self, car: u32) -> f32 {
-        self.f32(car + 0x15F8)
+        self.field(car, slot::forward_speed)
     }
 
     /// `E60Flow::M5666b0` (0x5666b0, fastcall, `flow` in ecx): the host object's word at `+0x17854` when its first word is
@@ -198,57 +302,57 @@ impl CarStore for Mem {
 
     /// The lane word at `+0xa48 + 0x40 * i` (`CCar::GetA48`). Meaning unknown; the drive calls it with `i` 0 and 1.
     fn roll_bar_force(&self, car: u32, i: u32) -> f32 {
-        self.f32(car + 0xa48 + 0x40 * i)
+        self.cell(car, Cell::RollBar(i, 2)).value
     }
 
     /// The CReal at +0xad0: its value (+0xadc) is the steered wheels' torque sum (`AddADC`; `notes/ngp.md` "Force feedback").
     fn steer_torque_sum(&self, car: u32) -> Real {
-        Real::load(self, car + 0xad0)
+        self.cell(car, Cell::SteerTorqueSum)
     }
 
     /// The CReal at `+0xa1c + 0x10 * (j + 4 * i)` (`CCar::SetA1C`). Meaning unknown.
     fn roll_bar_cell(&self, car: u32, i: u32, j: u32) -> Real {
-        Real::load(self, roll_bar_cell_at(car, i, j))
+        self.cell(car, Cell::RollBar(i, j))
     }
 
     /// The word at +0xb0c (`CCar::GetB0C`): the steering rack position (`notes/ngp.md` "Force feedback").
     fn steer_target(&self, car: u32) -> f32 {
-        self.f32(car + 0xb0c)
+        self.field(car, slot::steer_target)
     }
 
     /// The word at +0xb1c (`CCar::GetB1C`): the rate of `steer_target`, by `notes/physics.md` "Car body".
     fn steer_target_rate(&self, car: u32) -> f32 {
-        self.f32(car + STEER_TARGET_RATE)
+        self.field(car, slot::steer_target_rate)
     }
 
     /// The target the slew moves toward (`m_steerInput`, +0x16a4).
     fn steer_input(&self, car: u32) -> f32 {
-        self.f32(car + STEER_INPUT)
+        self.field(car, slot::steer_input)
     }
 
     /// The setup word at `def + 0x22c`, `MaxSteeringLock` (the value of the key's CReal at `+0x220`).
     fn max_steering_lock(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x22c)
+        self.def_f32(self.def_address(car), 0x22c)
     }
 
     /// The snapshot flag (+0x9e4, `m_snapshotOn`): `StepEngine` calls `Snap9360` while it is set.
     fn snapshot_on(&self, car: u32) -> bool {
-        self.u32(car + SNAPSHOT_ON) != 0
+        self.field(car, slot::snapshot_on) != 0
     }
 
     /// The override timer (+0x1670): while above 0 the filtered steering torque is held at 0 (`CCar::UpdateFfbTorque`).
     fn override_timer(&self, car: u32) -> f32 {
-        self.f32(car + OVERRIDE_TIMER)
+        self.field(car, slot::override_timer)
     }
 
     /// The car speed (+0x15fc), m/s (rbr-recomp `notes/physics/car-body.md` 2a, inferred).
     fn speed(&self, car: u32) -> f32 {
-        self.f32(car + SPEED)
+        self.field(car, slot::speed)
     }
 
     /// The filtered steering torque, which force feedback reads: the CReal at +0xae0 (its value at +0xaec).
     fn ffb_torque(&self, car: u32) -> Real {
-        Real::load(self, car + 0xae0)
+        self.cell(car, Cell::FfbTorque)
     }
 
     /// The car's setup (`CCar::CDef`) address: the pointer at +0x34.
@@ -258,57 +362,55 @@ impl CarStore for Mem {
 
     /// The setup word at `def + 0x23c`, `SteeringRackRatio` (the value of the key's CReal at `+0x230`).
     fn steering_rack_ratio(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x23c)
+        self.def_f32(self.def_address(car), 0x23c)
     }
 
     /// The drag coefficient `Cd` (`def + 0x4490`, `notes/physics.md` "Car body": `DragCoefficient`).
     fn drag_coefficient(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + DEF_DRAG_COEFFICIENT)
+        self.def_f32(self.def_address(car), DEF_DRAG_COEFFICIENT)
     }
 
     /// The frontal area `A` (`def + 0x4480`, `notes/physics.md` "Car body": `FrontArea`).
     fn frontal_area(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + DEF_FRONTAL_AREA)
+        self.def_f32(self.def_address(car), DEF_FRONTAL_AREA)
     }
 
     /// The car's velocity (`CCar::m_velocity`, three lanes at +0x1c0).
     fn velocity(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + VELOCITY)
+        solid_vec3(self, car + VELOCITY)
     }
 
     /// The car's angular velocity (`CCar::m_angularVelocity`, three lanes at +0x190).
     fn angular_velocity(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + ANGULAR_VELOCITY)
+        solid_vec3(self, car + ANGULAR_VELOCITY)
     }
 
     /// The first and fifth lanes of damper `i` (at +0xa28 + 0x40 i and +0x10 more): their difference is its force.
     fn roll_bar_travels(&self, car: u32, i: u32) -> (f32, f32) {
-        let at = car + 0xa28 + 0x40 * i;
-        (self.f32(at), self.f32(at + 0x10))
+        (self.cell(car, Cell::RollBar(i, 0)).value, self.cell(car, Cell::RollBar(i, 1)).value)
     }
 
     /// The setup gain of damper `i` (`def + 0x4460 + 0x10 i`).
     fn roll_bar_stiffness(&self, car: u32, i: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x4460 + 0x10 * i)
+        self.def_f32(self.def_address(car), 0x4460 + 0x10 * i)
     }
 
     /// The three inertia-like words of the def (`def + 0x130 + 4 i`, `CCar::Vf64x`'s divisors; their meaning is open).
     fn local_inverse_inertia(&self, car: u32) -> Vec3 {
-        Vec3::load(self, self.def_address(car) + 0x130)
+        let def = self.def_address(car);
+        let [x, y, z] = [0, 4, 8].map(|k| self.def_f32(def, 0x130 + k));
+        Vec3 { x, y, z }
     }
 
     /// The vector at +0x15d0 (`CCar::Vf64x` blends it; its meaning is open). All four lanes are modelled: the blend runs
     /// `mulps` and `addps` over four lanes, and lane 3 comes from the walk's copy of its input's lane 3.
     fn smoothed_vector(&self, car: u32) -> Vec4 {
-        let [x, y, z, w] = self.f32s(car + 0x15d0);
-        Vec4 { x, y, z, w }
+        self.field(car, slot::smoothed_vector)
     }
 
     /// Stores the four lanes of the vector at +0x15d0 (`smoothed_vector`).
     fn set_smoothed_vector(&mut self, car: u32, v: Vec4) {
-        for (k, x) in [v.x, v.y, v.z, v.w].into_iter().enumerate() {
-            self.set_f32(car + 0x15d0 + 4 * k as u32, x);
-        }
+        self.set_field(car, slot::smoothed_vector, v);
     }
 
     /// The word at +0x16ac (`CCar::Vf64x`): zero or not decides the external call.
@@ -330,17 +432,17 @@ impl CarStore for Mem {
 
     /// The brake-wall penetration (`m_wallPenetration`, +0x166c, m): `Sim7AD0` acts only while it is above 0.
     fn wall_penetration(&self, car: u32) -> f32 {
-        self.f32(car + WALL_PENETRATION)
+        self.field(car, slot::wall_penetration)
     }
 
     /// The vector at +0x370, the seed `E46_Get370` returns (`Sim7AD0`'s `ToWorld` input). S70 adds into it.
     fn force_accumulator(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + 0x370)
+        solid_vec3(self, car + 0x370)
     }
 
     /// The inverse mass (`def + 0x16c`, `notes/physics.md` "Car body"): `Sim7AD0` divides by it.
     fn inverse_mass(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x16c)
+        self.def_f32(self.def_address(car), 0x16c)
     }
 
     /// The gravity (`Sim7AD0`'s gust): the world keeper's vector at `+0x160a0 + 0x10`.
@@ -379,25 +481,20 @@ impl CarStore for Mem {
         self.u32(self.u32(WORLD) + 0x20)
     }
 
-    /// The timer's double (`*(timer card + 0x20)`), which the timekeeper records and the drive line's thunk reads.
+    /// The timer's double (`*(timer card + 0x20)`: the physics clock), which the timekeeper records and the drive line's
+    /// thunk reads.
     fn timer_double(&self) -> f64 {
-        let at = self.timer_card() + 0x20;
-        f64::from_bits(u64::from(self.u32(at)) | u64::from(self.u32(at + 4)) << 32)
+        self.core_field(self.timer_card(), core_slot::elapsed)
     }
 
-    /// The timer card's word at +0x18 (the position payload's last word).
+    /// The timer card's word at +0x18 (the physics substep counter; the position payload's last word).
     fn timer_word(&self) -> u32 {
-        self.u32(self.timer_card() + 0x18)
+        self.core_field(self.timer_card(), core_slot::step_counter)
     }
 
     /// The car's position lanes (`car + 0x140`, four words), the start of the position payload.
     fn position_words(&self, car: u32) -> [u32; 4] {
-        std::array::from_fn(|k| self.u32(car + 0x140 + 4 * k as u32))
-    }
-
-    /// The float at `*(car + 0x4b8) + 0x45c` (the last word of the MrR car state payload, as bits).
-    fn car_state_word(&self, car: u32) -> u32 {
-        self.u32(self.u32(car + 0x4B8) + 0x45C)
+        self.words(car + 0x140)
     }
 
     /// The E39 block (+0x620): its count word (+0x80) and scale (+0x8c) are the sensor payload's words 11 and 12.
@@ -424,7 +521,12 @@ impl CarStore for Mem {
 
     fn time_keeper_diff(&self, keeper: u32, current: u32) -> TimeKeeperDiff {
         let card = self.u32(keeper + 4);
-        let end = if self.u32(card + 0x58) != 0 { self.load_f64(card + 0x50) } else { self.load_f64(current) };
+        // `current` is the address of the physics clock (the core's field) as the step passes it.
+        let end = if self.u32(card + 0x58) != 0 {
+            self.load_f64(card + 0x50)
+        } else {
+            self.core_field(current.wrapping_sub(core_slot::elapsed.at), core_slot::elapsed)
+        };
         TimeKeeperDiff { origin: self.load_f64(card + 0x38), end }
     }
 
@@ -480,52 +582,52 @@ impl CarStore for Mem {
 
     /// The grid flag `m_gridPushed` (+0x16a8): nonzero once the car's edge is in the grid (`PushGridEdge` sets it).
     fn grid_pushed(&self, car: u32) -> bool {
-        self.u32(car + GRID_PUSHED) != 0
+        self.field(car, slot::grid_pushed) != 0
     }
 
     /// Stores the grid flag (`CarStore::grid_pushed`), 1 when set.
     fn set_grid_pushed(&mut self, car: u32, pushed: bool) {
-        self.set_u32(car + GRID_PUSHED, pushed as u32);
+        self.set_field(car, slot::grid_pushed, pushed as u32);
     }
 
     /// The `+0xebc` word of the wheel at +0x470 + 4 i (`Vf6cx` counts the wheels that are on).
     fn wheel_contact(&self, car: u32, i: u32) -> u32 {
-        self.u32(self.u32(car + 0x470 + 4 * i) + 0xEBC)
+        self.wheel_on_ground(self.u32(car + 0x470 + 4 * i))
     }
 
     /// Stores the brake-wall penetration (+0x166c, `m_wallPenetration`).
     fn set_wall_penetration(&mut self, car: u32, v: f32) {
-        self.set_f32(car + WALL_PENETRATION, v);
+        self.set_field(car, slot::wall_penetration, v);
     }
 
     /// The time the wall has been in contact (+0x9ec, `m_tWallContact`).
     fn wall_contact(&self, car: u32) -> f32 {
-        self.f32(car + WALL_CONTACT)
+        self.field(car, slot::wall_contact)
     }
 
     /// Stores the time the wall has been in contact (+0x9ec).
     fn set_wall_contact(&mut self, car: u32, v: f32) {
-        self.set_f32(car + WALL_CONTACT, v);
+        self.set_field(car, slot::wall_contact, v);
     }
 
     /// The partial-contact time (+0x9e8, `m_tPartialContact`): `Vf6cx` adds the step to it.
     fn partial_contact(&self, car: u32) -> f32 {
-        self.f32(car + PARTIAL_CONTACT)
+        self.field(car, slot::partial_contact)
     }
 
     /// Stores the partial-contact time (+0x9e8).
     fn set_partial_contact(&mut self, car: u32, v: f32) {
-        self.set_f32(car + PARTIAL_CONTACT, v);
+        self.set_field(car, slot::partial_contact, v);
     }
 
     /// Stores the override timer (+0x1670, `m_tOverride`).
     fn set_override_timer(&mut self, car: u32, v: f32) {
-        self.set_f32(car + OVERRIDE_TIMER, v);
+        self.set_field(car, slot::override_timer, v);
     }
 
     /// The 50g flag (+0x1668, `m_flag50g`).
     fn overload_flag(&self, car: u32) -> bool {
-        self.u32(car + OVERLOAD_FLAG) != 0
+        self.field(car, slot::overload_flag) != 0
     }
 
     /// The damage handler pointer (+0x9f4): the damage object the car is wired to.
@@ -535,72 +637,71 @@ impl CarStore for Mem {
 
     /// Sets the 50g flag (+0x1668, `m_flag50g`) to 1.
     fn set_overload_flag(&mut self, car: u32) {
-        self.set_u32(car + OVERLOAD_FLAG, 1);
+        self.set_field(car, slot::overload_flag, 1);
     }
 
-    /// Stores the speed before the update (+0x1600, `m_speedPre`).
+    /// Stores the speed before the update (+0x1600, `m_speedPre`), on the image: the hinged bodies read it there
+    /// (`CHingedRigidBody::SimCFF0`, the state's +0xc00).
     fn set_speed_pre(&mut self, car: u32, v: f32) {
         self.set_f32(car + SPEED_PRE, v);
     }
 
     /// Stores the speed (+0x15fc, `m_speed`).
     fn set_speed(&mut self, car: u32, v: f32) {
-        self.set_f32(car + SPEED, v);
+        self.set_field(car, slot::speed, v);
     }
 
     /// Stores the negated y of the walk of the velocity (+0x15f8; its meaning is open).
     fn set_forward_speed(&mut self, car: u32, v: f32) {
-        self.set_f32(car + 0x15F8, v);
+        self.set_field(car, slot::forward_speed, v);
     }
 
-    /// The direction opposite the velocity, four lanes (+0x1610, `m_dirBack`).
+    /// The direction opposite the velocity, four lanes (+0x1610, `m_dirBack`), on the image: the hinged bodies copy it
+    /// by its address (`SimCFF0`'s `E01Vec4::CopyFrom` of the state's +0xc10).
     fn set_dir_back(&mut self, car: u32, v: Vec4) {
-        for (k, x) in [v.x, v.y, v.z, v.w].into_iter().enumerate() {
-            self.set_f32(car + DIR_BACK + 4 * k as u32, x);
-        }
+        v.store(self, car + DIR_BACK);
     }
 
     /// The velocity with its fourth lane (+0x1c0, four lanes; `velocity` is the first three).
     fn velocity4(&self, car: u32) -> Vec4 {
-        let [x, y, z, w] = self.f32s(car + VELOCITY);
-        Vec4 { x, y, z, w }
+        solid_vec4(self, car + VELOCITY)
     }
 
     /// The three words of the def at +0x230, +0x234, +0x238 (`Vf6cx`'s 50g test squares them).
     fn acceleration(&self, car: u32) -> Vec3 {
-        Vec3::load(self, car + 0x230)
+        solid_vec3(self, car + 0x230)
     }
 
     /// The dangerous acceleration (`CDef::m_dangerousAcceleration`, def +0x44b0).
     fn dangerous_acceleration(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + DEF_DANGEROUS_ACCELERATION)
+        self.def_f32(self.def_address(car), DEF_DANGEROUS_ACCELERATION)
     }
 
     /// Whether the force-feedback output is muted: the car's word at +0x1ec (the gate `CSolid::E43Vf8C`, 0x5293e0, returns on).
     fn ffb_muted(&self, car: u32) -> bool {
-        self.u32(car + 0x1EC) != 0
+        self.word(car + 0x1EC) != 0
     }
 
     /// The setup word at `def + 0x44a0`, `MaxFFTorque` (the value of the key's CReal at `+0x4494`), which `FfbNorm`
     /// divides by.
     fn max_ff_torque(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x44A0)
+        self.def_f32(self.def_address(car), 0x44A0)
     }
 
     /// The setup word at `def + 0x24c` (a working name): the gain of the drive's torque term in `Vf6cx`'s position.
     fn eff_wheel_radius(&self, car: u32) -> f32 {
-        self.f32(self.def_address(car) + 0x24C)
+        self.def_f32(self.def_address(car), 0x24C)
     }
 
     /// The word at +0x15f4 (the position's running value, `Vf6cx` and the payload's `* 0.001`).
     fn speed_sum(&self, car: u32) -> f32 {
-        self.f32(car + 0x15F4)
+        self.field(car, slot::speed_sum)
     }
 
     /// Stores the running sum at +0x15f4, dirtied (the `CReal` at +0x15e8).
     fn set_speed_sum(&mut self, car: u32, v: f32) {
-        let at = car + 0x15e8;
-        crate::car_body::accessors::set_cell(Real::load(self, at), v).store(self, at);
+        let cell = crate::car_body::accessors::set_cell(self.cell(car, Cell::SpeedSum), v);
+        self.store_cell(car, Cell::SpeedSum, cell);
     }
 
     /// The hinged body in slot `i` (+0x480 + 4 i), or 0.
@@ -673,7 +774,7 @@ impl CarStore for Mem {
 
     /// The drive line index at +0x17c, the word the drive line's thunk (`0x50a4f0`) takes.
     fn drive_line_word(&self, car: u32) -> u32 {
-        self.u32(car + 0x17C)
+        self.word(car + 0x17C)
     }
 
     /// `E36Triple::MinPick` (0x4f3ec0) on the triple at `at`: the int pair and the float.
@@ -686,14 +787,15 @@ impl CarStore for Mem {
     }
 
     fn load_quat(&self, at: u32) -> Quat {
-        Quat::load(self, at)
+        let Vec4 { x, y, z, w } = solid_vec4(self, at);
+        Quat { x, y, z, w }
     }
 
     fn store_quat(&mut self, at: u32, q: Quat) {
-        q.store(self, at);
+        store_solid_vec4(self, at, Vec4 { x: q.x, y: q.y, z: q.z, w: q.w });
     }
 
     fn zero_vec4(&mut self, at: u32) {
-        Vec4::default().store(self, at);
+        store_solid_vec4(self, at, Vec4::default());
     }
 }

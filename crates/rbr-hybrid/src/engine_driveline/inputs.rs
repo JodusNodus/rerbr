@@ -1,21 +1,27 @@
 //! `CDrive`'s inputs and accessors, the signal emits, the matrix helpers and the forwarded members.
 
+use rbr_physics::engine_driveline::layout::DriveView;
+use rbr_physics::engine_driveline::store::{DriveStore, EngineTables};
 use rbr_physics::engine_driveline::{drive, layout};
-use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::signal_emit;
 
-use super::f;
+use super::{f, is_held, on_drive, on_engine_in};
 use crate::{Ctx, Decline, Regs, Return, SignalCallees};
-use rbr_physics::engine_driveline::store::EngineStore;
 
 /// `ret 4` with no body (0x503860, 0x5043b0): the original does nothing with its argument.
 pub(super) fn nop_ret4(_ctx: &mut Ctx, _r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 4))
 }
 
-/// thiscall, no arguments: clears the two lanes (`layout::clear_lanes`).
+/// thiscall, no arguments: clears the two lanes (`layout::clear_lanes`): a held drive's typed lanes where `this` is its
+/// scratch member, else the image's.
 pub(crate) fn clear_lanes(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::clear_lanes(&mut ctx.mem, r.ecx);
+    let drive = r.ecx.wrapping_sub(layout::DRIVE_SCRATCH);
+    if is_held(ctx.host, drive) {
+        on_drive(ctx, drive, |d| layout::clear_drive_lanes(d));
+    } else {
+        layout::clear_lanes(&mut ctx.mem, r.ecx);
+    }
     Ok(Return::void(0, 0))
 }
 
@@ -46,60 +52,64 @@ pub(super) fn init_real_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 
 /// thiscall `(brake)`.
 pub(super) fn set_brake_in(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mem = &mut ctx.mem;
-    let def = layout::DriveDef::load(mem, layout::DriveObjects::at(mem, r.ecx).def);
-    let mut d = layout::Drive::load(mem, r.ecx);
-    drive::set_brake_in(&mut d, &def, f(r.stack[0]));
-    d.store(mem, r.ecx);
+    on_drive(ctx, r.ecx, |d| {
+        let def = d.def();
+        let mut lanes = d.lanes();
+        drive::set_brake_in(&mut lanes, &def, f(r.stack[0]));
+        d.store_lanes(&lanes);
+    });
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(throttle)`.
 pub(super) fn set_throttle_in(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut d = layout::Drive::load(&ctx.mem, r.ecx);
-    drive::set_throttle_in(&mut d, f(r.stack[0]));
-    d.store(&mut ctx.mem, r.ecx);
+    on_drive(ctx, r.ecx, |d| {
+        let mut lanes = d.lanes();
+        drive::set_throttle_in(&mut lanes, f(r.stack[0]));
+        d.store_lanes(&lanes);
+    });
     Ok(Return::void(0, 4))
 }
 
 /// thiscall `(slip)`.
 pub(super) fn set_clutch_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut d = layout::Drive::load(&ctx.mem, r.ecx);
-    drive::set_clutch_slip(&mut d, f(r.stack[0]));
-    d.store(&mut ctx.mem, r.ecx);
+    on_drive(ctx, r.ecx, |d| clutch_slip(d, f(r.stack[0])));
     Ok(Return::void(0, 4))
+}
+
+/// `CDrive::Set4820`'s body (0x504820) on the drive's store: the clutch slip into its lanes. Also the VCU's direct call.
+pub(crate) fn clutch_slip(d: &mut DriveView, slip: f32) {
+    let mut lanes = d.lanes();
+    drive::set_clutch_slip(&mut lanes, slip);
+    d.store_lanes(&lanes);
 }
 
 /// thiscall `(delta)`.
 pub(super) fn request_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mem = &mut ctx.mem;
-    let objects = layout::DriveObjects::at(mem, r.ecx);
-    let def = layout::DriveDef::load(mem, objects.def);
-    let mut state = layout::DriveState::load(mem, objects.state);
-    drive::request_gear(&mut state, def.gear_count, r.stack[0] as i32);
-    state.store_commanded_gear(mem, objects.state);
+    on_drive(ctx, r.ecx, |d| {
+        let def = d.def();
+        let mut state = d.state();
+        drive::request_gear(&mut state, def.gear_count, r.stack[0] as i32);
+        d.store_commanded_gear(&state);
+    });
     Ok(Return::void(0, 4))
-}
-
-fn drive_state(mem: &Mem, this: u32) -> layout::DriveState {
-    layout::DriveState::load(mem, layout::DriveObjects::at(mem, this).state)
 }
 
 /// thiscall `()`, st0.
 pub(super) fn get_engine_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let st0 = drive::engine_speed(&drive_state(&ctx.mem, r.ecx));
+    let st0 = on_drive(ctx, r.ecx, |d| drive::engine_speed(&d.state()));
     Ok(Return::float(st0 as f64, 0))
 }
 
 /// thiscall `()`, eax.
 pub(super) fn get_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let gear = drive::gear(&drive_state(&ctx.mem, r.ecx));
+    let gear = on_drive(ctx, r.ecx, |d| drive::gear(&d.state()));
     Ok(Return::void(gear as u32, 0))
 }
 
 /// thiscall `()`, st0.
 pub(super) fn drive_speed_key(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let st0 = drive::drive_speed_key(&drive_state(&ctx.mem, r.ecx));
+    let st0 = on_drive(ctx, r.ecx, |d| drive::drive_speed_key(&d.state()));
     Ok(Return::float(st0 as f64, 0))
 }
 
@@ -144,19 +154,20 @@ pub(super) fn mat4_inverse_transposed(ctx: &mut Ctx, r: &Regs) -> Result<Return,
 
 /// thiscall `(a, x, y)`, eax: `a * 0x10` (`layout::set_wheel_offset_and_bias`).
 pub(crate) fn set_two(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::set_wheel_offset_and_bias(&mut ctx.mem, r.ecx, r.stack[0], f(r.stack[1]), f(r.stack[2]));
+    let [a, x, y, ..] = r.stack;
+    let eax = on_drive(ctx, r.ecx, |d| layout::set_wheel_offset_and_bias(d, a, f(x), f(y)));
     Ok(Return::void(eax, 0xc))
 }
 
 /// thiscall `(channel, value)`, eax: the state pointer when disabled, `channel * 0x60` otherwise (`layout::set_diff_lock`).
 pub(super) fn set_diff_lock(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::set_diff_lock(&mut ctx.mem, r.ecx, r.stack[0], f(r.stack[1]));
+    let eax = on_drive(ctx, r.ecx, |d| layout::set_diff_lock(d, r.stack[0], f(r.stack[1])));
     Ok(Return::void(eax, 8))
 }
 
 /// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::wheel_prev_force`).
 pub(crate) fn m6db0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let st0 = layout::wheel_prev_force(&ctx.mem, r.ecx, r.stack[0]);
+    let st0 = on_drive(ctx, r.ecx, |d| layout::wheel_prev_force(d, r.stack[0]));
     Ok(Return::float_with_eax(r.stack[0].wrapping_mul(0xc8), st0 as f64, 4))
 }
 
@@ -164,7 +175,7 @@ pub(crate) fn m6db0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `CScratch::Vf04` (0x502c00, `clear_lanes`); any other target is left to the original.
 pub(super) fn drive_reset_part(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     const SCRATCH_VF04: u32 = 0x502c00;
-    let scratch = r.ecx + 0x10;
+    let scratch = r.ecx + layout::DRIVE_SCRATCH;
     if ctx.mem.u32(ctx.mem.u32(scratch) + 4) != SCRATCH_VF04 {
         return Err(Decline::Unsupported("the scratch member's slot 1 is not Vf04"));
     }
@@ -173,12 +184,14 @@ pub(super) fn drive_reset_part(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 
 /// thiscall `()`, eax: 1 when the drive's gate holds (`layout::drive_gate`).
 pub(super) fn drive_gate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::drive_gate(&ctx.mem, r.ecx), 0))
+    let (host, mut mem) = (ctx.host, ctx.mem.clone());
+    let engine_on = |engine| on_engine_in(host, &mut mem, engine, |e| layout::engine_running(e, engine) != 0);
+    Ok(Return::void(layout::drive_gate(&ctx.mem, r.ecx, engine_on), 0))
 }
 
 /// thiscall `(a)`, st0, eax: `a * 0xc8` (`layout::wheel_slip`).
 pub(crate) fn m6dd0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let st0 = layout::wheel_slip(&ctx.mem, r.ecx, r.stack[0]);
+    let st0 = on_drive(ctx, r.ecx, |d| layout::wheel_slip(d, r.stack[0]));
     Ok(Return::float_with_eax(r.stack[0].wrapping_mul(0xc8), st0 as f64, 4))
 }
 
