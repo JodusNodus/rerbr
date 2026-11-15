@@ -9,7 +9,6 @@
 use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::mem::Mem;
-use rbr_physics::ngp::sign;
 use rbr_physics::tyre::store::TyreStore;
 use rbr_physics::wheel::layout::{INV_ARM, INV_RACK, ON_GROUND, TYRE_SCRATCH};
 
@@ -17,12 +16,19 @@ use rbr_physics::wheel::layout::{INV_ARM, INV_RACK, ON_GROUND, TYRE_SCRATCH};
 /// shorter than its fit's 36-45 mm, as our tyres' pneumatic trail is shorter. `--trace-wheels` takes it.
 pub const SUGGESTED_TRAIL: f32 = 0.025;
 
+/// The contact's forward speed, m/s, the trail has its full length from: below it the torque fades in line with the
+/// speed, so a car at rest gives none. With the bare sign the tyres' resting lateral force (to 630 N a wheel) changed
+/// side with each turn of the contact speed's sign (to 0.05 m/s either way), 0.3-0.8 of a drive's 90th percentile
+/// torque; faded, 0.01-0.03 (the user's eight drives, 2026-11-15).
+const ROLLING_SPEED: f32 = 1.0;
+
 /// The wheel pointers in the car (`car+0x470`): the front pair first.
 const WHEELS: u32 = 0x470;
 
 /// The steering torque from the front tyres with the mechanical trail `trail` (m), in the units of the car's
 /// filtered torque (`CarStore::ffb_torque`). The trail torque has the tyre step's sign, `sgn(v_long) * trail * F_lat`
 /// about the contact's normal, which holds for the mirrored right-hand contact frame; its world vertical part sums.
+/// Below [`ROLLING_SPEED`] the sign is `v_long` over it.
 /// The gain and the rack ratio count by size: a pack's Alpine A110 RGT has both negative, the Fiesta Rally2 both
 /// positive, and NGP's torque has the same sign for the same turn in either.
 pub fn torque(mem: &Mem, trail: f32) -> f32 {
@@ -32,7 +38,8 @@ pub fn torque(mem: &Mem, trail: f32) -> f32 {
         .filter(|&wheel| mem.u32(wheel + ON_GROUND) != 0)
         .map(|wheel| {
             let s = mem.load_frame(wheel + TYRE_SCRATCH).scratch;
-            let moment = sign(s.contact_velocity[1]) as f32 * (s.pneumatic_trail + trail) * s.lateral_force;
+            let rolling = (s.contact_velocity[1] / ROLLING_SPEED).clamp(-1.0, 1.0);
+            let moment = rolling * (s.pneumatic_trail + trail) * s.lateral_force;
             moment * s.contact_frame.normal.z * (mem.f32(wheel + INV_ARM) * mem.f32(wheel + INV_RACK)).abs()
         })
         .sum();

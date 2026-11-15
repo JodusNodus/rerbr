@@ -336,7 +336,8 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
   user drove it 2026-11-13 and preferred it to NGP's. The player's page: `docs/force-feedback.md`. Its `finalFF`
   (shared memory, GT4, MX-5 ND2, A110 S) fits `a Mz + b Fy` of the front tyres with `b / a` 36-45 mm, linear, no lag,
   clipped 1-5 % of the time. Ours: each front tyre on the ground gives `sgn(v_long) (pneumatic trail + MM) F_lat`
-  about the contact normal (the tyre step's sign, right for the mirrored right-hand frame), its world vertical part,
+  about the contact normal (the tyre step's sign, right for the mirrored right-hand frame; below 1 m/s `v_long` in
+  its place, as at rest the sign turned with the contact speed's noise and the wheel shook), its world vertical part,
   times `|inv_arm inv_rack|` and `|SteeringRackRatio|` (the Alpine A110 RGT pack has both negative), through NGP's
   curve, so the sensitivity, linearity (100 % is AC's line) and steering load apply. Read after the step, never
   written; `--trace-wheels` adds `tyres` (at 25 mm) and `aligning` (at 0).
