@@ -178,9 +178,12 @@ pub(super) fn flow_m566640(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `out` a solid's orientation (the hinged body's `SimD160`), read and stored held.
 pub(super) fn to_quat(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let out = r.stack[0];
-    // The matrix may be a held body's (the hinged body's frame matrix, `SimD160`).
-    let at = |k: u32| crate::rigid_body::solid_f32(ctx.host, &ctx.mem, r.ecx + 4 * k);
-    let q = quat::to_quat(&std::array::from_fn(|row| std::array::from_fn(|col| at((3 * row + col) as u32))));
+    let m = crate::rigid_body::with_solids(ctx.host, &mut ctx.mem, |s| {
+        std::array::from_fn(|row| {
+            std::array::from_fn(|col| rbr_physics::store::Raw::f32(s, r.ecx + 4 * (3 * row + col) as u32))
+        })
+    });
+    let q = quat::to_quat(&m);
     for (k, lane) in [q.x, q.y, q.z, q.w].into_iter().enumerate() {
         set_solid_word(ctx.host, &mut ctx.mem, out + 4 * k as u32, lane.to_bits());
     }
