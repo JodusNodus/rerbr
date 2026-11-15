@@ -1,6 +1,8 @@
 //! The wheel's step (`E51Wheel::M3DD30`) and the calls around it: the pose refresh, the ground probe, `CWheel::Vf28`'s
 //! finish and the strut update.
 
+use rbr_physics::car_body::{accessors::signed_force, layout as car_layout, store::CarStore};
+use rbr_physics::engine_driveline::layout::{self as drive_layout, DriveView};
 use rbr_physics::math::vec::{clear_vec4, Vec4};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::store::RigidStore;
@@ -10,6 +12,7 @@ use rbr_physics::tyre::tyres::TyreId;
 use rbr_physics::wheel::layout::{self, CarXform, StrutCalls};
 
 use super::{on_wheels, Libm, M3B900, M3D520, MB560, SCRATCH_BELOW_ESP, UNK96E0, UNK97A0};
+use crate::car_body::on_held_car;
 use crate::collision::{RAY_CLEAR, RAY_SEEDS};
 use crate::entities::BODY_COMPOSE;
 use crate::rigid_body::with_solids;
@@ -202,6 +205,18 @@ impl Step<'_> {
         Some(run(&mut tyres.view(&self.mem).with_defs(Some(&typed.defs)), id))
     }
 
+    /// `run` on the held drive of the car at `car` (`CCar::Fwd6DB0`, `Fwd6DD0` and `Fwd43C0` forward to it), counted as
+    /// a run: the forwarders' bindings read nothing of the stack but their arguments, and the wheel step reads only
+    /// their st0 (`notes/physics.md` "Store seam"). `None` per call, where the host call runs.
+    fn on_drive<T>(&mut self, car: u32, run: impl FnOnce(&mut DriveView) -> T) -> Option<T> {
+        let drive = car_layout::drive_at(car);
+        if !crate::engine_driveline::is_held(self.host, drive) {
+            return None;
+        }
+        self.host.ran_direct();
+        Some(crate::engine_driveline::on_drive_in(self.host, &mut self.mem, drive, run))
+    }
+
     fn on(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> u32 {
         self.host.call_at(sp, addr, ecx, args).eax
     }
@@ -280,28 +295,42 @@ impl layout::StepCalls for Step<'_> {
         self.on(sp, 0x4E68E0, car, &[a, b]);
     }
 
+    // The car's members direct on the held car and drive, else through the host.
     fn spin_rate(&mut self, car: u32, wheel: u32, sp: u32) -> f32 {
-        self.float(sp, 0x4E6600, car, &[wheel])
+        let direct = self.on_drive(car, |d| drive_layout::wheel_prev_force(d, wheel));
+        direct.unwrap_or_else(|| self.float(sp, 0x4E6600, car, &[wheel]))
     }
 
     fn axle_term(&mut self, car: u32, wheel: u32, sp: u32) -> f32 {
-        self.float(sp, 0x4E6610, car, &[wheel])
+        let direct = self.on_drive(car, |d| drive_layout::wheel_slip(d, wheel));
+        direct.unwrap_or_else(|| self.float(sp, 0x4E6610, car, &[wheel]))
     }
 
     fn set_drive_pair(&mut self, car: u32, wheel: u32, a: f32, b: f32, sp: u32) {
-        self.on(sp, 0x4E6620, car, &[wheel, a.to_bits(), b.to_bits()]);
+        if self.on_drive(car, |d| drive_layout::set_wheel_offset_and_bias(d, wheel, a, b)).is_none() {
+            self.on(sp, 0x4E6620, car, &[wheel, a.to_bits(), b.to_bits()]);
+        }
     }
 
     fn roll_bar_force(&mut self, car: u32, id: u32, slot: u32, sp: u32) -> f32 {
-        self.float(sp, 0x4E6730, car, &[id, slot])
+        let direct = on_held_car(self.host, &mut self.mem, car, |m| m.roll_bar_force(car, id));
+        match direct {
+            Some(lane) => signed_force(lane, slot != 0),
+            None => self.float(sp, 0x4E6730, car, &[id, slot]),
+        }
     }
 
     fn add_steer_torque(&mut self, car: u32, v: f32, sp: u32) {
-        self.on(sp, 0x4E6660, car, &[v.to_bits()]);
+        if on_held_car(self.host, &mut self.mem, car, |m| car_layout::add_steer_torque_sum(m, car, v)).is_none() {
+            self.on(sp, 0x4E6660, car, &[v.to_bits()]);
+        }
     }
 
     fn set_roll_bar_cell(&mut self, car: u32, id: u32, slot: u32, v: f32, sp: u32) {
-        self.on(sp, 0x4E66A0, car, &[id, slot, v.to_bits()]);
+        if on_held_car(self.host, &mut self.mem, car, |m| car_layout::set_roll_bar_cell(m, car, id, slot, v)).is_none()
+        {
+            self.on(sp, 0x4E66A0, car, &[id, slot, v.to_bits()]);
+        }
     }
 
     fn init_sub_block(&mut self, this: u32, sp: u32) {
