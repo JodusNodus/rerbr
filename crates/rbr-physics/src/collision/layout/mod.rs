@@ -5,6 +5,7 @@ pub(in crate::collision) mod body_contacts;
 pub mod body_hosts;
 pub mod body_slots;
 mod cell_grid;
+pub mod cell_links;
 mod cell_table;
 mod col_grids;
 pub mod collide_hosts;

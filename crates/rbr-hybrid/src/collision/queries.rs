@@ -3,9 +3,10 @@
 use rbr_physics::collision::layout::entry::CollectHost;
 use rbr_physics::collision::layout::grid_hosts::{AllocHost, GridOpsHost};
 use rbr_physics::collision::layout::solver_hosts::{self, CellQueryHost, RayHost, SampleHost};
-use rbr_physics::collision::layout::{self, Body, GridSyncHost};
+use rbr_physics::collision::layout::{self, Body, CollisionView, GridSyncHost};
 use rbr_physics::math::vec::clear_vec4;
 use rbr_physics::mem::Mem;
+use rbr_physics::store::Raw;
 
 use super::{
     Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
@@ -41,7 +42,10 @@ pub(super) fn collect(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     // The original's frame holds the collect's temporaries, and its callees run below it. The original's body esp:
     // after `push ebp; and esp, -0x10; sub esp, 0xe4` and its three pushes (0x4f3950-0x4f3964).
     let frame = ((r.esp - 4) & !0xF) - 0xF0;
-    let eax = layout::entry::collect(&mut ctx.mem, frame, r.ecx, body, list_out, count_out, &mut Callees(ctx.host));
+    let host = ctx.host;
+    let eax = super::on_collision(host, &mut ctx.mem, |s| {
+        layout::entry::collect(s, frame, r.ecx, body, list_out, count_out, &mut Callees(host))
+    });
     Ok(Return::void(eax, 12))
 }
 
@@ -182,7 +186,10 @@ pub(super) fn node_walk(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// distance). The query's scratch is below the caller's frame, as in the collect's.
 pub(super) fn segment_sweep(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [start, end, out, distance, ..] = r.stack;
-    layout::segment_sweep(&mut Callees(ctx.host), &mut ctx.mem, r.esp - 0x800, start, end, out, distance);
+    let host = ctx.host;
+    super::on_collision(host, &mut ctx.mem, |s| {
+        layout::segment_sweep(&mut Callees(host), s, r.esp - 0x800, start, end, out, distance)
+    });
     Ok(Return::void(0, 16))
 }
 
@@ -213,9 +220,22 @@ impl RayHost for Callees<'_> {
     }
 }
 
-impl CellQueryHost for Callees<'_> {
-    fn query_cells(&mut self, _mem: &mut Mem, lo: u32, hi: u32, cells: u32) {
-        super::call_grid(self.0, 0, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+impl Callees<'_> {
+    /// `E45_M40C0` over the box `lo`..`hi` to `cells`: the held table's cells as values, written here, else the call.
+    fn cell_query(&mut self, store: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
+        let mem = store.mem_mut();
+        match super::box_cells_direct(self.0, mem, sp, lo, hi, cells) {
+            Some(found) => rbr_physics::physics_core::layout::set_cells(mem, cells, found),
+            None => {
+                super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+            }
+        }
+    }
+}
+
+impl CellQueryHost<CollisionView<'_>> for Callees<'_> {
+    fn query_cells(&mut self, store: &mut CollisionView, lo: u32, hi: u32, cells: u32) {
+        self.cell_query(store, 0, lo, hi, cells);
     }
 }
 
@@ -225,8 +245,9 @@ impl AllocHost for Callees<'_> {
     }
 }
 
-impl CollectHost for Callees<'_> {
-    fn virtual_call(&mut self, mem: &mut Mem, sp: u32, target: u32, args: &[u32]) -> u32 {
+impl CollectHost<CollisionView<'_>> for Callees<'_> {
+    fn virtual_call(&mut self, store: &mut CollisionView, sp: u32, target: u32, args: &[u32]) -> u32 {
+        let mem = store.mem_mut();
         // The getters every body in the cells is asked (`CBody::Vf118`, `E43PairWalk::MFc00`) are read here on the
         // pure host.
         if matches!(target, BODY_GRID | ENTITY_VF118 | NODE_OF) && crate::skip_call(self.0, mem, sp, &args[1..]) {
@@ -239,7 +260,8 @@ impl CollectHost for Callees<'_> {
         self.0.call_at(sp, target, args[0], &args[1..]).eax
     }
 
-    fn transform(&mut self, mem: &mut Mem, sp: u32, target: u32, this: u32, a: u32, b: u32, c: u32) {
+    fn transform(&mut self, store: &mut CollisionView, sp: u32, target: u32, this: u32, a: u32, b: u32, c: u32) {
+        let mem = store.mem_mut();
         debug_assert!(target == MB560 || target != 0);
         let host = self.0;
         let run = |mem: &mut Mem| crate::entities::transform_direct(host, mem, sp, target, this, [a, b, c]);
@@ -249,12 +271,12 @@ impl CollectHost for Callees<'_> {
         self.0.call_at(sp, target, this, &[a, b, c]);
     }
 
-    fn query_cells(&mut self, _mem: &mut Mem, sp: u32, lo: u32, hi: u32, cells: u32) {
-        super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+    fn query_cells(&mut self, store: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
+        self.cell_query(store, sp, lo, hi, cells);
     }
 
-    fn length(&mut self, mem: &Mem, sp: u32, vector: u32) -> f32 {
-        super::length(self.0, mem, sp, vector)
+    fn length(&mut self, store: &CollisionView, sp: u32, vector: u32) -> f32 {
+        super::length(self.0, store.mem(), sp, vector)
     }
 }
 

@@ -97,10 +97,15 @@ pub(super) fn replay_is_state2(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 }
 
 /// thiscall `(a)`: `CCar::AppendA980`, the link `a` goes to the front of the car's list (`Unlink` first when it is
-/// linked elsewhere). A null car only unlinks `a` (the asm skips the append).
+/// linked elsewhere). A null car only unlinks `a` (the asm skips the append). The shared code files a body in its grid
+/// cell too: a cell's list is the held lists' while a step holds them (`collision::on_cell_links`).
 pub(super) fn append_a980(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let head = (r.ecx != 0).then(|| ListRef::new(r.ecx));
-    links::append(&mut ctx.mem, head, LinkRef::new(r.stack[0]));
+    let (to, a) = (r.ecx, r.stack[0]);
+    let head = (to != 0).then(|| ListRef::new(to));
+    let held = crate::collision::on_cell_links(ctx.host, &ctx.mem, a, to, |l| links::append(l, head, LinkRef::new(a)));
+    if held.is_none() {
+        links::append(&mut ctx.mem, head, LinkRef::new(a));
+    }
     Ok(Return::void(0, 4))
 }
 

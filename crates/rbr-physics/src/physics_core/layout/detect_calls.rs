@@ -19,12 +19,17 @@ pub trait GridHost {
 
 /// `E45_M40C0` (0x5240c0, cdecl): the cells of the box between the corners at `a` and `b`, written to `out`. The grid
 /// is the cell grid global, and the box is widened when the CDef's flags have `0x2000` (the drive's flags do).
+/// The out-pointer form (the per-call adapter): [`box_cells_of`] written to `out`.
 pub fn box_cells(mem: &mut Mem, host: &mut impl GridHost, a: u32, b: u32, out: u32) {
+    let cells = box_cells_of(mem, host, a, b);
+    layout::set_cells(mem, out, cells);
+}
+
+/// The four cells of the box between the corners at `a` and `b` as values (`E45_M40C0`'s result, the held path's).
+pub fn box_cells_of(mem: &Mem, host: &mut impl GridHost, a: u32, b: u32) -> [u32; 4] {
     let grid = layout::cell_grid(mem);
     let widened = layout::def_flags(mem) & CELL_WIDEN_FLAG != 0;
-    let cells =
-        detect::box_cells(|x, y| host.cell_link_at(grid, x, y), layout::xy(mem, a), layout::xy(mem, b), widened);
-    layout::set_cells(mem, out, cells);
+    detect::box_cells(|x, y| host.cell_link_at(grid, x, y), layout::xy(mem, a), layout::xy(mem, b), widened)
 }
 
 /// The caller's side of the edge test: `E37GridOps::EdgeEdge` on the pair object at `pair` with the corners `a` and `b`
@@ -37,13 +42,29 @@ pub trait EdgeHost {
 /// edge pairs of the list at `list` between the corners `a` and `b`, writes the result object `out`, and returns the
 /// best hit's id (0 when nothing hit). A null list returns 0 before anything is written.
 pub fn sweep_edge_pairs(mem: &mut Mem, host: &mut impl EdgeHost, a: u32, b: u32, list: u32, out: u32) -> u32 {
+    match sweep_edges_of(mem, host, a, b, list) {
+        None => 0,
+        Some(best) => {
+            layout::set_edge_result(mem, out, best);
+            best.map_or(0, |best| best.id)
+        }
+    }
+}
+
+/// The best edge hit of the sweep as a value (`E45_M46A0`'s result): `None` for a null list (nothing written), else
+/// `Some(best)` (`None` inside: nothing hit), which the out-pointer form writes to the result object.
+pub fn sweep_edges_of(
+    mem: &Mem,
+    host: &mut impl EdgeHost,
+    a: u32,
+    b: u32,
+    list: u32,
+) -> Option<Option<detect::EdgeBest>> {
     if list == 0 {
-        return 0;
+        return None;
     }
     let pairs = layout::edge_pairs(mem, list);
-    let best = detect::edge_sweep(|pair| host.edge_edge(pair, a, b), &pairs);
-    layout::set_edge_result(mem, out, best);
-    best.map_or(0, |best| best.id)
+    Some(detect::edge_sweep(|pair| host.edge_edge(pair, a, b), &pairs))
 }
 
 /// The vtable `CL2PenetrationDetector` stores (0x73f5c0).

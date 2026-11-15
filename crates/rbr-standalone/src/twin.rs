@@ -9,7 +9,8 @@
 //! drive, the engine, the tyres, the wheels, the car's own, the physics core) on the image between calls, against the first side's typed storage over each step
 //! ([`rbr_hybrid::pure::Pure::typed`], the default). Both images' typed state is checked with `lower(lift(image)) == image` at the start too, and the typed
 //! stage's queries against the image's (`stage::layout::differential`). Every solid the car has held so far is compared
-//! too (`rigid_body::layout::Solid`'s owned bytes): a mounted body leaves the car's slots when it detaches.
+//! too (`rigid_body::layout::Solid`'s owned bytes): a mounted body leaves the car's slots when it detaches. So is every
+//! cell list and cell link the first side's step has held so far (`collision::layout::cell_links`).
 //! `across` runs the second side with its typed state lifted and lowered around each step, against the first side's
 //! held across steps (`Pure::typed_across_steps`, the default), the proof that holding it across steps changes nothing.
 //!
@@ -58,6 +59,8 @@ pub struct Twin {
     first: Option<(usize, String)>,
     /// The address and name of every solid the first side's car has had, in the order they appeared.
     solids: Vec<(u32, &'static str, &'static [FieldInfo])>,
+    /// Every cell list and cell link record the first side has held, by address.
+    cell_links: std::collections::BTreeSet<u32>,
     /// The owned bytes of each side's tables, from the round trip at the start (or its failure).
     round_trip: [Result<usize, String>; 2],
 }
@@ -83,7 +86,15 @@ impl Twin {
             Ok(bytes) => eprintln!("twin: the typed stage's queries equal the image's, {bytes} bytes"),
             Err(e) => eprintln!("twin: the typed stage's queries differ from the image's: {e}"),
         }
-        let mut twin = Twin { kind, playback: b, steps: 0, first: None, solids: Vec::new(), round_trip };
+        let mut twin = Twin {
+            kind,
+            playback: b,
+            steps: 0,
+            first: None,
+            solids: Vec::new(),
+            cell_links: Default::default(),
+            round_trip,
+        };
         twin.compare(a, "the start");
         Ok(twin)
     }
@@ -113,7 +124,12 @@ impl Twin {
                 self.solids.push((solid.at, solid.name, solid.own_fields()));
             }
         }
-        let what = difference(mem, other).or_else(|| solid_difference(mem, other, &self.solids));
+        if let Some(held) = a.pure.with_held(|t| t.car.collision.links.held()) {
+            self.cell_links.extend(held);
+        }
+        let what = difference(mem, other)
+            .or_else(|| solid_difference(mem, other, &self.solids))
+            .or_else(|| cell_link_difference(mem, other, &self.cell_links));
         if let Some(what) = what {
             self.first = Some((self.steps, format!("{when}: {what}")));
         }
@@ -131,9 +147,10 @@ impl Twin {
         let round_trip = Self::round_trip_text;
         let compare = match &self.first {
             None => format!(
-                "{} steps, car, wheels, solids ({}) and owned bytes equal after each",
+                "{} steps, car, wheels, solids ({}), cell links ({}) and owned bytes equal after each",
                 self.steps,
-                self.solids.len()
+                self.solids.len(),
+                self.cell_links.len()
             ),
             Some((_, what)) => format!("{} steps, first difference at {what}", self.steps),
         };
@@ -168,6 +185,15 @@ fn difference(a: &Mem, b: &Mem) -> Option<String> {
     }
     objects(a).iter().find_map(|o| {
         o.first_difference(a, b).map(|(field, offset)| format!("{} at {:#010x}: {field} (+{offset:#x})", o.name, o.at))
+    })
+}
+
+/// The first cell list or cell link record of `held` (its three list words) that differs between `a` and `b`.
+fn cell_link_difference(a: &Mem, b: &Mem, held: &std::collections::BTreeSet<u32>) -> Option<String> {
+    held.iter().find_map(|&at| {
+        let (x, y) = (a.read(at, 12), b.read(at, 12));
+        let k = x.iter().zip(&y).position(|(p, q)| p != q)?;
+        Some(format!("cell link at {at:#010x} (+{k:#x})"))
     })
 }
 

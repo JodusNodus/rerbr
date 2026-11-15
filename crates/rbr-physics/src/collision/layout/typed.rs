@@ -16,6 +16,7 @@
 use std::cell::RefCell;
 use std::ops::Range;
 
+use super::cell_links::CellLinks;
 use super::cell_table::CellTable;
 use super::col_grids::{col_grid_at, ColGrid};
 use super::mem_store::open_rows_header;
@@ -319,6 +320,8 @@ pub struct CarCollision {
     pub typed: RefCell<CollisionTyped>,
     /// The cell grid's table (its slots on first touch).
     pub cells: CellTable,
+    /// The cells' lists and the bodies' cell links (a record on its first write).
+    pub links: CellLinks,
 }
 
 impl CarCollision {
@@ -342,7 +345,9 @@ impl CarCollision {
             offset_rows: Touched::default(),
             grids,
         };
-        CarCollision { image, typed: RefCell::new(typed), cells: CellTable::lift(mem) }
+        let cells = CellTable::lift(mem);
+        let links = CellLinks::lift(mem, &cells);
+        CarCollision { image, typed: RefCell::new(typed), cells, links }
     }
 
     /// As [`CarCollision::lift`] with every row lifted (the round trip's).
@@ -361,6 +366,7 @@ impl CarCollision {
     /// Writes the held state back: the counts, the grids' bytes and every lifted row.
     pub fn lower(&self, mem: &mut Mem) {
         self.cells.lower(mem);
+        self.links.lower(mem);
         let t = self.typed.borrow();
         for (k, hits) in t.grids.iter().enumerate() {
             GridHitsObj::hits.store(mem, col_grid_at(k as u32 + 1), *hits);
@@ -383,6 +389,7 @@ impl CarCollision {
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         let mut owned = self.image.owned();
         owned.extend(self.cells.owned());
+        owned.extend(self.links.owned());
         owned
     }
 
@@ -440,7 +447,7 @@ impl CarCollision {
 }
 
 /// `f` on `mem` without the poison of a check build (a lift reads the owned words).
-fn on_image<T>(mem: &Mem, f: impl FnOnce(&Mem) -> T) -> T {
+pub(super) fn on_image<T>(mem: &Mem, f: impl FnOnce(&Mem) -> T) -> T {
     #[cfg(feature = "poison")]
     return f(&mem.unpoisoned());
     #[cfg(not(feature = "poison"))]
@@ -498,6 +505,12 @@ impl<'a> CollisionView<'a> {
     #[inline]
     fn grid(&self, grid: u32) -> Option<(&'a CarCollision, usize)> {
         self.held.and_then(|h| Some((h, CollisionImage::grid_index(grid)?)))
+    }
+
+    /// The cells' lists and links held, if any.
+    #[inline]
+    fn links(&self) -> Option<&'a CellLinks> {
+        self.held.map(|h| &h.links)
     }
 
     /// The grid's two sample bytes.
@@ -681,6 +694,14 @@ impl CollisionStore for CollisionView<'_> {
         self.set_hits(grid, bytes);
     }
 
+    fn cell_first(&self, cell: u32) -> u32 {
+        self.links().map_or_else(|| self.mem.u32(cell), |l| l.first(self.mem, cell))
+    }
+
+    fn node_next(&self, node: u32) -> u32 {
+        self.links().map_or_else(|| self.mem.u32(node), |l| l.next(self.mem, node))
+    }
+
     fn copy_grid(&mut self, grid: u32, src: u32) {
         if self.grid(grid).is_none() && self.grid(src).is_none() {
             return CollisionStore::copy_grid(self.mem, grid, src);
@@ -727,7 +748,7 @@ pub fn round_trip(mem: &Mem) -> Result<usize, String> {
         }
         bytes += len;
     }
-    Ok(bytes + CellTable::round_trip(mem)?)
+    Ok(bytes + CellTable::round_trip(mem)? + CellLinks::round_trip(mem)?)
 }
 
 /// The held state's host-free entries in a row on `store`, for [`differential`]: the offset rows (two bodies' offsets
@@ -828,7 +849,8 @@ pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) 
         }
         bytes += len as usize;
     }
-    Ok(bytes + super::cell_table::differential(per_call, held, scratch)?)
+    let bytes = bytes + super::cell_table::differential(per_call, held, scratch)?;
+    Ok(bytes + super::cell_links::differential(per_call, held)?)
 }
 
 #[cfg(test)]

@@ -1,11 +1,13 @@
 //! `CBody`'s own slots and links: the grid, the corners (`VfCC`), `Vf40`, the bounds and the filtered notify.
 
 use rbr_physics::collision::layout::body_hosts::{BodyResetHost, ClearGridHost, CornerHost};
+use rbr_physics::collision::layout::cell_links::{self, HeldLinks};
 use rbr_physics::collision::layout::links::{self, NotifyFilteredHost};
 use rbr_physics::collision::layout::state::StateHost;
 use rbr_physics::collision::layout::{self, Body, CellLink, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
+use rbr_physics::physics_core::layout::detect_calls::{self as detect, GridHost};
 
 use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, NAME_WALK};
 use crate::entities::Op;
@@ -37,16 +39,41 @@ pub(super) fn state_unka44(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0))
 }
 
-/// CBodyLink::Unlink (0x4e0020): thiscall on the link; eax is the pointer the original read last (see
-/// `layout::unlink`).
-pub(super) fn body_link_unlink(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::unlink(&mut ctx.mem, r.ecx), 0))
+/// `run` on the cells' lists a step holds (`CellLinks::view`) when the link at `link` moves between cells' lists
+/// (`to` the list it goes to, 0 for none: `CellLinks::moves`); `None` per call and for any other list, which is the
+/// image's.
+pub(crate) fn on_cell_links<T>(
+    host: &dyn Host,
+    mem: &Mem,
+    link: u32,
+    to: u32,
+    run: impl FnOnce(&mut HeldLinks) -> T,
+) -> Option<T> {
+    let typed = host.typed()?;
+    let links = &typed.car.collision.links;
+    links.moves(mem, link, to).then(|| run(&mut links.view(mem)))
 }
 
-/// cdecl `(link, cell)`: a body's cell link moved to `cell` (`layout::move_to_cell`); eax is the cell.
+/// A cell list's first link or a link's next (the word at `at`) as the step leaves it: the held record's while a step
+/// holds the cells' lists, else the image's.
+pub(crate) fn cell_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
+    host.typed().map_or_else(|| mem.u32(at), |t| t.car.collision.links.next(mem, at))
+}
+
+/// CBodyLink::Unlink (0x4e0020) and the `CLink::Unlink` twin (0x47d160): thiscall on the link; eax is the pointer the
+/// original read last (see `layout::unlink`). A cell's link is the held lists' while a step holds them.
+pub(super) fn body_link_unlink(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    let held = on_cell_links(ctx.host, &ctx.mem, r.ecx, 0, |l| cell_links::unlink(l, r.ecx));
+    Ok(Return::void(held.unwrap_or_else(|| layout::unlink(&mut ctx.mem, r.ecx)), 0))
+}
+
+/// cdecl `(link, cell)`: a body's cell link moved to `cell` (`layout::move_to_cell`), on the held lists while a step
+/// holds them; eax is the cell.
 pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [link, cell, ..] = r.stack;
-    layout::move_to_cell(&mut ctx.mem, link, cell);
+    if on_cell_links(ctx.host, &ctx.mem, link, cell, |l| cell_links::move_to_cell(l, link, cell)).is_none() {
+        layout::move_to_cell(&mut ctx.mem, link, cell);
+    }
     Ok(Return::void(cell, 0))
 }
 
@@ -55,8 +82,10 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, y, ..] = r.stack.map(f32::from_bits);
     let mut alloc = Callees(ctx.host);
-    let held =
-        ctx.host.typed().and_then(|t| t.car.collision.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y));
+    let held = ctx.host.typed().and_then(|t| {
+        let c = &t.car.collision;
+        c.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y, |block| c.links.add_block(block))
+    });
     let link = held.unwrap_or_else(|| layout::cell_link_at(&mut alloc, &mut ctx.mem, r.ecx, x, y));
     Ok(Return::void(link, 8))
 }
@@ -73,6 +102,86 @@ pub(crate) fn held_cell_link(host: &dyn Host, mem: &mut Mem, sp: u32, grid: u32,
         }
         _ => None,
     }
+}
+
+/// The cell registration of the pose and window steps on the cell table and lists a step holds: `CCellGrid::LookupTwin`
+/// on the grid at `grid` at `(x, y)`, then `CCar::AppendA980` of the link at `link` to the point's cell, without the
+/// calls or their words (placed at `sp`: none is read after them, residue audit), counted as two runs. False (nothing
+/// done) per call and for a cell with no link block yet, where the caller calls.
+pub(crate) fn register_cell_direct(
+    host: &dyn Host,
+    mem: &mut Mem,
+    sp: u32,
+    grid: u32,
+    link: u32,
+    x: f32,
+    y: f32,
+) -> bool {
+    let Some(typed) = host.typed() else {
+        return false;
+    };
+    let c = &typed.car.collision;
+    let Some(CellLink::Link(cell)) = c.cells.link_at(mem, grid, x, y) else {
+        return false;
+    };
+    if !c.links.moves(mem, link, cell) || !crate::skip_unwritten(host, mem, sp, &[x.to_bits(), y.to_bits(), link]) {
+        return false;
+    }
+    cell_links::move_to_cell(&mut c.links.view(mem), link, cell);
+    host.ran_direct();
+    host.ran_direct();
+    true
+}
+
+/// `E45_M40C0` (`lo`, `hi`, `out`) entered at `sp` (0: placed by the host) on the cell table a step holds, as values:
+/// the box's four cells (`physics_core::layout::detect_calls::box_cells_of`), each corner's link read from the held
+/// table, without the binding, the lookups or their words (none is read after them: residue audit). The caller writes
+/// the cells to its frame. `None` (nothing done) per call, on a host that runs the original, for another grid and for a
+/// corner whose cell has no link block yet, where the caller calls.
+pub(crate) fn box_cells_direct(
+    host: &dyn Host,
+    mem: &mut Mem,
+    sp: u32,
+    lo: u32,
+    hi: u32,
+    out: u32,
+) -> Option<[u32; 4]> {
+    struct Held<'a> {
+        cells: &'a rbr_physics::collision::layout::CellTable,
+        mem: &'a Mem,
+        found: u32,
+        all: bool,
+    }
+    impl GridHost for Held<'_> {
+        fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32 {
+            match self.cells.link_at(self.mem, grid, x, y) {
+                Some(CellLink::Link(link)) => {
+                    self.found += 1;
+                    link
+                }
+                _ => {
+                    self.all = false;
+                    0
+                }
+            }
+        }
+    }
+    let typed = host.typed()?;
+    host.call_slot_word()?;
+    let mut held = Held { cells: &typed.car.collision.cells, mem, found: 0, all: true };
+    let cells = detect::box_cells_of(mem, &mut held, lo, hi);
+    let (all, found) = (held.all, held.found);
+    if !all {
+        return None;
+    }
+    if sp != 0 {
+        crate::skip_unwritten(host, mem, sp, &[lo, hi, out]);
+    }
+    // Counted as the run of M40C0 and of each lookup, as the in-place calls were.
+    for _ in 0..=found {
+        host.ran_direct();
+    }
+    Some(cells)
 }
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
@@ -218,6 +327,14 @@ struct Notify<'a> {
 }
 
 impl NotifyFilteredHost for Notify<'_> {
+    fn first(&self, mem: &Mem, head: u32) -> u32 {
+        cell_word(self.host, mem, head)
+    }
+
+    fn next(&self, mem: &Mem, link: u32) -> u32 {
+        cell_word(self.host, mem, link)
+    }
+
     fn visit(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32 {
         let target = mem.u32(mem.u32(visitor) + 4);
         // A detector's is run here on the pure host, as the host would run it: the call's words, then the binding

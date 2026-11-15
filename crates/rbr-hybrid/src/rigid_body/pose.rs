@@ -32,16 +32,20 @@ struct Pose<'a> {
     esp: u32,
 }
 
-/// `CCellGrid::LookupTwin` at `(x, y)`, then `CCar::AppendA980` with the link node at `link_at`: the cell registration.
-pub(super) fn register_cell_at(mem: &Mem, host: &dyn Host, link_at: u32, x: f32, y: f32) {
+/// `CCellGrid::LookupTwin` at `(x, y)`, then `CCar::AppendA980` with the link node at `link_at`: the cell registration
+/// of the binding entered at `esp`, on the held cells while a step holds them (`collision::register_cell_direct`).
+pub(super) fn register_cell_at(mem: &mut Mem, host: &dyn Host, esp: u32, link_at: u32, x: f32, y: f32) {
     let grid = mem.u32(CELL_GRID);
+    if crate::collision::register_cell_direct(host, mem, (esp - 0x1000) & !0xf, grid, link_at, x, y) {
+        return;
+    }
     let hit = host.call(LOOKUP_TWIN, grid, &[x.to_bits(), y.to_bits(), link_at]).eax;
     host.call(APPEND_CELL, hit, &[link_at]);
 }
 
 impl CellHost for Pose<'_> {
     fn register_cell(&mut self, link: u32, x: f32, y: f32) -> Result<(), HostUnavailable> {
-        register_cell_at(&self.mem, self.host, self.this + link, x, y);
+        register_cell_at(&mut self.mem, self.host, self.esp, self.this + link, x, y);
         Ok(())
     }
 }
