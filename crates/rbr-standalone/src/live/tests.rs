@@ -680,10 +680,10 @@ fn ngp_control_input_emit_adds_the_direct_gears_with_the_automatic_gearbox_off()
     mem.set_u32(car + 0x850 + 0x50, 0);
     // Third gear (gear word 4) held, all eight bound.
     let input = Input { gears_held: 1 << 4, gears_bound: 0xff, ..Input::default() };
-    let raw = poll(&input, &mem);
+    let raw = poll(&input, &mem, None);
     assert_eq!((raw.flags, raw.gear), (0x04, 5));
     mem.set_u32(car + 0x850 + 0x50, 1);
-    assert_eq!(poll(&input, &mem).flags, 0);
+    assert_eq!(poll(&input, &mem, None).flags, 0);
 }
 
 /// `--live`: an NGP boot on the process's clock runs a frame per 1/720 s step with the newest input, sends a step
