@@ -317,7 +317,7 @@ impl App {
         let car_lens = match &demo {
             // The school demo: the player's car at the replay's pose, the player's camera replaced.
             Some((car, ride)) => draw_demo(&mut self.scene, &mut running.renderer, *ride, car, self.look, fov),
-            None => draw_car(&mut self.scene, &mut running.renderer, self.shown, self.look, fov),
+            None => draw_car(&mut self.scene, &mut running.renderer, self.shown, self.look, fov, !self.replay),
         };
         let lens = match (&mut self.scene.orbit, car_lens) {
             (Some(orbit), _) => {
