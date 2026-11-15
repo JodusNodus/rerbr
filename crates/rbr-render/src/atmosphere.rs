@@ -304,8 +304,8 @@ impl Atmosphere {
                 let section = named.or_else(|| section_name(&sections, track, weather))?;
                 let section = sections.iter().find(|s| s.name == section)?;
                 let mut atmosphere = Atmosphere::from_section(section);
-                // A section without a comment takes the stage's name (the folder's).
-                if section.get("Comment").is_none_or(str::is_empty) {
+                // A section whose comment states no time of day takes the stage's name's (the folder's).
+                if atmosphere.stated_time.is_none() {
                     atmosphere.stated_time = stage_files::folder(name)
                         .and_then(|folder| folder.file_name()?.to_str())
                         .and_then(|folder| TimeWord::parse(folder, true))

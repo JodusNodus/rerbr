@@ -397,7 +397,7 @@ lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Sh
 probably fit the wrong hour.
 
 - Stated time of day (2026-11-15; `Atmosphere::stated_time`, `TimeWord::parse`, `relight::stated_hour`): the chosen
-  section's `Comment`, else (no comment) the stage folder's name, read as night, dawn or sunset by whole words
+  section's `Comment`, else (no time word there) the stage folder's name, read as night, dawn or sunset by whole words
   (night/noche/nuit/notte/nacht/yö, "dark" alone; dawn/amanecer/aube/alba/sunrise/"start of the day";
   sunset/atardecer/dusk/crepusculo/tramonto; CamelCase split, `alba` and `noc` not in names; plain morning, noon,
   evening and weather words ignored). Night starts at 23:00, dawn and sunset where `relight::solar` at the stage's
