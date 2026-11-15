@@ -7,6 +7,7 @@ use rbr_physics::collision::layout::state::StateHost;
 use rbr_physics::collision::layout::{self, Body, CellLink, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
+use rbr_physics::physics_core::layout::detect_calls::{self as detect, GridHost};
 
 use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, FETCH_X, NAME_WALK};
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -129,6 +130,57 @@ pub(crate) fn register_cell_direct(
     host.ran_direct();
     host.ran_direct();
     true
+}
+
+/// `E45_M40C0` (`lo`, `hi`, `out`) entered at `sp` (0: placed by the host) on the cell table a step holds, as values:
+/// the box's four cells (`physics_core::layout::detect_calls::box_cells_of`), each corner's link read from the held
+/// table, without the binding, the lookups or their words (none is read after them: residue audit). The caller writes
+/// the cells to its frame. `None` (nothing done) per call, on a host that runs the original, for another grid and for a
+/// corner whose cell has no link block yet, where the caller calls.
+pub(crate) fn box_cells_direct(
+    host: &dyn Host,
+    mem: &mut Mem,
+    sp: u32,
+    lo: u32,
+    hi: u32,
+    out: u32,
+) -> Option<[u32; 4]> {
+    struct Held<'a> {
+        cells: &'a rbr_physics::collision::layout::CellTable,
+        mem: &'a Mem,
+        found: u32,
+        all: bool,
+    }
+    impl GridHost for Held<'_> {
+        fn cell_link_at(&mut self, grid: u32, x: f32, y: f32) -> u32 {
+            match self.cells.link_at(self.mem, grid, x, y) {
+                Some(CellLink::Link(link)) => {
+                    self.found += 1;
+                    link
+                }
+                _ => {
+                    self.all = false;
+                    0
+                }
+            }
+        }
+    }
+    let typed = host.typed()?;
+    host.call_slot_word()?;
+    let mut held = Held { cells: &typed.car.collision.cells, mem, found: 0, all: true };
+    let cells = detect::box_cells_of(mem, &mut held, lo, hi);
+    let (all, found) = (held.all, held.found);
+    if !all {
+        return None;
+    }
+    if sp != 0 {
+        crate::skip_unwritten(host, mem, sp, &[lo, hi, out]);
+    }
+    // Counted as the run of M40C0 and of each lookup, as the in-place calls were.
+    for _ in 0..=found {
+        host.ran_direct();
+    }
+    Some(cells)
 }
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.

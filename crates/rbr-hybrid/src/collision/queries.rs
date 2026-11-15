@@ -215,9 +215,22 @@ impl RayHost for Callees<'_> {
     }
 }
 
+impl Callees<'_> {
+    /// `E45_M40C0` over the box `lo`..`hi` to `cells`: the held table's cells as values, written here, else the call.
+    fn cell_query(&mut self, store: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
+        let mem = store.mem_mut();
+        match super::box_cells_direct(self.0, mem, sp, lo, hi, cells) {
+            Some(found) => rbr_physics::physics_core::layout::set_cells(mem, cells, found),
+            None => {
+                super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+            }
+        }
+    }
+}
+
 impl CellQueryHost<CollisionView<'_>> for Callees<'_> {
-    fn query_cells(&mut self, _mem: &mut CollisionView, lo: u32, hi: u32, cells: u32) {
-        super::call_grid(self.0, 0, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+    fn query_cells(&mut self, store: &mut CollisionView, lo: u32, hi: u32, cells: u32) {
+        self.cell_query(store, 0, lo, hi, cells);
     }
 }
 
@@ -253,8 +266,8 @@ impl CollectHost<CollisionView<'_>> for Callees<'_> {
         self.0.call_at(sp, target, this, &[a, b, c]);
     }
 
-    fn query_cells(&mut self, _mem: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
-        super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
+    fn query_cells(&mut self, store: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
+        self.cell_query(store, sp, lo, hi, cells);
     }
 
     fn length(&mut self, store: &CollisionView, sp: u32, vector: u32) -> f32 {

@@ -130,7 +130,12 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn cells(&mut self, sp: u32, lo: u32, hi: u32, out: u32) {
-        crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
+        match crate::collision::box_cells_direct(self.host, &mut self.mem, sp, lo, hi, out) {
+            Some(cells) => layout::set_cells(&mut self.mem, out, cells),
+            None => {
+                crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
+            }
+        }
     }
 
     fn kernel_tests(&mut self, mem: &mut Mem, frame: u32, node: u32, mask: u32, excluded: u32) -> Option<KernelTest> {
@@ -155,7 +160,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn notify_filtered(&mut self, sp: u32, cell: u32, detector: u32) {
-        self.host.call_at(sp, NOTIFY_FILTERED, cell, &[detector]);
+        crate::collision::call_grid(self.host, sp, NOTIFY_FILTERED, cell, &[detector]);
     }
 
     fn detect(&mut self, sp: u32, detector: u32, node: u32) {
