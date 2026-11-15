@@ -137,6 +137,11 @@ CMountedRigidBody's table (0x73e62c) had 9 of its 95 slots and its scratch's (0x
 (`StepBig`, 0x522100) stopped the physics with `unbound 0x0`, then, with the first table whole, with `E47_Vf54Helper`
 (0x52b6b0) declining the scratch's zero slot 1 (El Cubilete, live drives, 2026-11-03). drive2 attempt 5 stays physics
 PASS 84084/84084.
+A replay of an El Condor drive (RSF Audi quattro A2, `--tyre 3`, 2026-11-01) differed at frame 0 on the tables alone and
+was equal with the exe mapped: the sweep had not read the tyre class of tyre 3 (`g_e09CloudTable` 0x7c12f0, read as
+tarmac for a gravel tyre) nor the fence types 2 and 5 (`g_fenceTypes` rows, 0x7d81fc, 0x7d8288: columns, rows, height read
+as 0). Merged with `--reads` from that replay (`viewer --replay` on an `exe-reads` build); a replay is a sweep over its
+drive, so replays of other drives would find more.
 Instruction operands are decoded only for captured-memory validation.
 
 ## Store seam
