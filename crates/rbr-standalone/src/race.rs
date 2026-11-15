@@ -116,7 +116,15 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         weather.stage(),
         weather.wet_meshes()
     );
-    let setup = args.setup.as_deref().map(setup_root).transpose()?;
+    // A replay runs on the setup its drive kept beside it (`replay::setup_path`): `--setup`'s file is the launcher's
+    // current setup, which a later drive overwrote. Replays from before the drives kept theirs have `--setup`'s only.
+    let kept = args.replay.as_deref().map(rbr_recording::replay::setup_path).filter(|kept| kept.exists());
+    let setup = kept.as_deref().or(args.setup.as_deref()).map(setup_root).transpose()?;
+    if let Some(replay) = &args.replay_out {
+        if let Err(e) = rbr_recording::replay::keep_setup(replay, args.setup.as_deref()) {
+            eprintln!("rbr-standalone: {}: {e}; the replay keeps no setup", replay.display());
+        }
+    }
     let carried = args.damage_in.as_deref().map(rally::read_damage).transpose()?;
     // The harness's `.auto` fifth and sixth words set 0x1660850 and 0x1660814 before `StartGame`.
     let damage = args.damage.or_else(|| recording.and_then(|r| recorded_word(r, 4)).map(DamageLevel::from_word));
