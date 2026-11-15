@@ -666,7 +666,10 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     if (LAMPS && !camera_anchored() && (night || frame.dusk.w > 0.01)) {
         let has_normal = dot(v.normal, v.normal) > 1e-8;
         let n = select(vec3<f32>(0.0, 1.0, 0.0), normalize(v.normal) * select(-1.0, 1.0, front), has_normal);
-        lamps = lamp_sum(v.world, n, mode.cutout != 0u) + street_sum(v.world, n, mode.cutout != 0u);
+        lamps = lamp_sum(v.world, n, mode.cutout != 0u);
+        if (street_on()) {
+            lamps += street_sum(v.world, n, mode.cutout != 0u);
+        }
     }
     if (own) {
         let lux = lamp_lux(lamps) * frame.day_sun.w / SKY_PI;

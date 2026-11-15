@@ -23,10 +23,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let taken = rbr_render::stage_lamps::take(&mut s);
         let lamps = taken.lamps;
         let cones = lamps.iter().filter(|l| l.axis != glam::Vec3::ZERO).count();
-        println!("{name}: {} lamps ({cones} cones), {} sprite textures, {} sprite triangles", lamps.len(), taken.sprites.len(), taken.sprites.iter().map(|s| s.corners.len() / 3).sum::<usize>());
+        println!(
+            "{name}: {} lamps ({cones} cones), {} sprite textures, {} sprite triangles",
+            lamps.len(),
+            taken.sprites.len(),
+            taken.sprites.iter().map(|s| s.corners.len() / 3).sum::<usize>()
+        );
         let mut by: std::collections::BTreeMap<String, (usize, f32)> = Default::default();
         for l in &lamps {
-            let name = s.texture_names.get(&l.texture).map_or_else(|| format!("{:?}", l.texture), |n| n.file_name.clone());
+            let name =
+                s.texture_names.get(&l.texture).map_or_else(|| format!("{:?}", l.texture), |n| n.file_name.clone());
             let e = by.entry(name).or_default();
             e.0 += 1;
             e.1 = e.1.max(l.size);
@@ -36,7 +42,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         if verbose {
             for l in &lamps {
-                println!("  {:8.1} {:6.1} {:8.1}  axis {:5.2} {:5.2} {:5.2}  size {:4.1}", l.position.x, l.position.y, l.position.z, l.axis.x, l.axis.y, l.axis.z, l.size);
+                println!(
+                    "  {:8.1} {:6.1} {:8.1}  axis {:5.2} {:5.2} {:5.2}  size {:4.1}",
+                    l.position.x, l.position.y, l.position.z, l.axis.x, l.axis.y, l.axis.z, l.size
+                );
             }
         }
     }

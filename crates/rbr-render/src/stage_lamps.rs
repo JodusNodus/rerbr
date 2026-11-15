@@ -166,7 +166,9 @@ pub fn take(stage: &mut Stage) -> StageLamps {
             });
             for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
                 let triangle = [t[0], t[1], t[2]];
-                sprite.corners.extend(triangle.map(|i| (mesh.vertices[i as usize].position, mesh.vertices[i as usize].uv0)));
+                sprite
+                    .corners
+                    .extend(triangle.map(|i| (mesh.vertices[i as usize].position, mesh.vertices[i as usize].uv0)));
                 let Some(lamp) = triangle_lamp(mesh, triangle, shape, texture) else { continue };
                 match found.lamps.iter_mut().find(|l| l.position.distance(lamp.position) < SAME_LAMP) {
                     Some(same) => {
@@ -288,7 +290,9 @@ mod tests {
             draws: Vec::new(),
             sun_cascades: true,
         };
-        let lamp = triangle_lamp(&mesh, [0, 1, 2], shape, TextureRef { set: crate::stage::TextureSet::Stage, index: 0 }).expect("holds the peak");
+        let lamp =
+            triangle_lamp(&mesh, [0, 1, 2], shape, TextureRef { set: crate::stage::TextureSet::Stage, index: 0 })
+                .expect("holds the peak");
         assert!(lamp.position.distance(Vec3::new(0.0, 10.0, 0.0)) < 1e-4, "{lamp:?}");
         assert!(lamp.axis.distance(Vec3::NEG_Y) < 1e-4, "{lamp:?}");
     }

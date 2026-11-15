@@ -228,7 +228,9 @@ fn mipmapped(device: &wgpu::Device, queue: &wgpu::Queue, sprite: &Sprite) -> wgp
             .flat_map(|y| (0..nw).map(move |x| (x, y)))
             .flat_map(|(x, y)| {
                 (0..4).map(move |c| {
-                    ((at(2 * x, 2 * y, c) + at(2 * x + 1, 2 * y, c) + at(2 * x, 2 * y + 1, c)
+                    ((at(2 * x, 2 * y, c)
+                        + at(2 * x + 1, 2 * y, c)
+                        + at(2 * x, 2 * y + 1, c)
                         + at(2 * x + 1, 2 * y + 1, c))
                         / 4) as u8
                 })

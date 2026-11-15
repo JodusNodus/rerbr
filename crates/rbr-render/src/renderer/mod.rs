@@ -285,9 +285,8 @@ impl Renderer {
     /// Sets the stage's lamps ([`crate::stage_lamps::take`]): their light and their sprites' glow.
     pub fn set_stage_lamps(&mut self, lamps: &crate::stage_lamps::StageLamps) {
         self.stage_lamps = lamps.lamps.clone();
-        self.lamp_sprites = (!lamps.sprites.is_empty()).then(|| {
-            crate::stage_lamps_pass::GlowPass::new(&self.device, &self.queue, SCENE_FORMAT, &lamps.sprites)
-        });
+        self.lamp_sprites = (!lamps.sprites.is_empty())
+            .then(|| crate::stage_lamps_pass::GlowPass::new(&self.device, &self.queue, SCENE_FORMAT, &lamps.sprites));
     }
 
     /// Sets our tyre marks to draw from `quads` (`Enhance::marks`, in place of the skid marks).
