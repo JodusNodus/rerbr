@@ -648,10 +648,16 @@ fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
     let base = stage.atmosphere.clone();
     let (country, stage_name, snow) = &args.stage_place;
     let site = relight::site(map, country.as_deref(), stage_name, *snow);
-    let clock = relight::Clock::new(base, bake, site, letter, args.clock, args.relight).physical(args.enhance.lighting);
+    // `--clock` wins, then a championship or start-time command's own clock (the bake's, as before), then the
+    // time of day the section's comment or the stage's name states, else the bake's hour.
+    let own_clock = args.live.as_ref().is_some_and(|c| c.iter().any(|a| a == "--start-time" || a == "--championship"));
+    let stated = base.stated_time.filter(|_| args.clock.is_none() && !own_clock);
+    let start = args.clock.or(stated.map(|(word, _)| relight::stated_hour(word, site)));
+    let clock = relight::Clock::new(base, bake, site, letter, start, args.relight).physical(args.enhance.lighting);
     let (atmosphere, day) = clock.atmosphere();
+    let source = if args.clock.is_some() { "clock" } else { stated.map_or("bake", |(_, from)| from.label()) };
     eprintln!(
-        "clock: {:.1} h, sun {:.1} degrees up, bake at {:.1} h ({letter}), light {:.2}, ambient {:.2}",
+        "clock: {:.1} h from the {source}, sun {:.1} degrees up, bake at {:.1} h ({letter}), light {:.2}, ambient {:.2}",
         clock.start, day.elevation, clock.bake_hour, day.sun, day.ambient
     );
     stage.atmosphere = atmosphere;

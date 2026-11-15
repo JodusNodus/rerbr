@@ -74,6 +74,68 @@ pub struct Atmosphere {
     /// Our rain or snow in place of the section's (`viewer --precipitation`, the launcher's Rain / snow), `None` for the
     /// section's. Presentation only: the road's wetness stays the weather's.
     pub rain: Option<Rain>,
+    /// The time of day the stage's author states in words and where the words are (`TimeWord::parse`): the
+    /// section's `Comment`, else the stage's name. `relight::stated_hour` turns it into the clock's start.
+    pub stated_time: Option<(TimeWord, TimeSource)>,
+}
+
+/// A time of day an author states in words (ours): only these three, since the bake's fitted hour fits plain
+/// morning, noon and evening.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeWord {
+    Night,
+    Dawn,
+    Sunset,
+}
+
+/// Where a [`TimeWord`] was read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeSource {
+    Comment,
+    Name,
+}
+
+impl TimeSource {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Comment => "comment",
+            Self::Name => "name",
+        }
+    }
+}
+
+impl TimeWord {
+    /// The first time-of-day word in `text`, matched case-insensitively on whole words (CamelCase joins like
+    /// `NocheLlovizna` split): the English, Spanish, French, Italian, German, Czech and Finnish words the installed
+    /// `Comment`s and stage names use. "Dark" counts as a lone comment. A stage `name` leaves out `alba` and `noc`,
+    /// which are places there. Weather words and plain morning, noon and evening are ignored.
+    pub fn parse(text: &str, name: bool) -> Option<TimeWord> {
+        let mut split = String::new();
+        let mut last_lower = false;
+        for c in text.chars() {
+            if c.is_uppercase() && last_lower {
+                split.push(' ');
+            }
+            last_lower = c.is_lowercase();
+            split.push(c);
+        }
+        let words: Vec<String> = split
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(|w| w.to_lowercase().replace('ú', "u"))
+            .collect();
+        let found = words.iter().find_map(|w| match w.as_str() {
+            "night" | "noche" | "nuit" | "notte" | "nacht" | "yö" => Some(TimeWord::Night),
+            "noc" if !name => Some(TimeWord::Night),
+            "dawn" | "amanecer" | "aube" | "sunrise" => Some(TimeWord::Dawn),
+            "alba" if !name => Some(TimeWord::Dawn),
+            "sunset" | "atardecer" | "dusk" | "crepusculo" | "tramonto" => Some(TimeWord::Sunset),
+            _ => None,
+        });
+        let start_of_the_day = words.windows(4).any(|w| w == ["start", "of", "the", "day"]);
+        let dark = matches!(words.as_slice(), [w] if matches!(w.as_str(), "dark" | "oscura" | "oscuro"));
+        found.or(start_of_the_day.then_some(TimeWord::Dawn)).or(dark.then_some(TimeWord::Night))
+    }
 }
 
 /// A fog chosen over the section's (ours, `height_fog.rs`): none, or a light or heavy fog under any sky.
@@ -216,6 +278,7 @@ impl Default for Atmosphere {
             fog: None,
             clouds: None,
             rain: None,
+            stated_time: None,
         }
     }
 }
@@ -239,7 +302,16 @@ impl Atmosphere {
             .find_map(|sections| {
                 let named = sky.filter(|sky| sections.iter().any(|s| s.name == *sky)).map(str::to_owned);
                 let section = named.or_else(|| section_name(&sections, track, weather))?;
-                sections.iter().find(|s| s.name == section).map(Atmosphere::from_section)
+                let section = sections.iter().find(|s| s.name == section)?;
+                let mut atmosphere = Atmosphere::from_section(section);
+                // A section without a comment takes the stage's name (the folder's).
+                if section.get("Comment").is_none_or(str::is_empty) {
+                    atmosphere.stated_time = stage_files::folder(name)
+                        .and_then(|folder| folder.file_name()?.to_str())
+                        .and_then(|folder| TimeWord::parse(folder, true))
+                        .map(|word| (word, TimeSource::Name));
+                }
+                Some(atmosphere)
             })
             .unwrap_or_default()
     }
@@ -290,6 +362,10 @@ impl Atmosphere {
             fog: None,
             clouds: None,
             rain: None,
+            stated_time: section
+                .get("Comment")
+                .and_then(|comment| TimeWord::parse(comment, false))
+                .map(|word| (word, TimeSource::Comment)),
         }
     }
 
@@ -445,6 +521,7 @@ fn section_name(sections: &[Section], name: &str, weather: &str) -> Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn sections(text: &str) -> Vec<Section> {
         ini::parse(text).unwrap()
@@ -543,5 +620,89 @@ mod tests {
         assert_eq!(rain.superbowl_fog(), [-6880.0, 2200.0]);
         let clear = Atmosphere { fog_start: 240.0, fog_end: 960.0, superbowl_scale: 0.8, ..clear };
         assert_eq!(clear.superbowl_fog(), [300.0, 1200.0]);
+    }
+
+    #[test]
+    fn time_words_are_whole_words_in_several_languages() {
+        let word = |text| TimeWord::parse(text, false);
+        for (text, expected) in [
+            ("NIGHT/DARK", Some(TimeWord::Night)),
+            ("Noche Despejada", Some(TimeWord::Night)),
+            ("NocheLlovizna-NightLightRain", Some(TimeWord::Night)),
+            ("Nuit", Some(TimeWord::Night)),
+            ("Starry Night", Some(TimeWord::Night)),
+            ("Dark", Some(TimeWord::Night)),
+            ("PINK DAWN", Some(TimeWord::Dawn)),
+            ("Amanecer MuchaLluvia", Some(TimeWord::Dawn)),
+            ("Start of the day", Some(TimeWord::Dawn)),
+            ("Atardecer Lluvia ", Some(TimeWord::Sunset)),
+            ("Sunset", Some(TimeWord::Sunset)),
+            ("Wet Evening", None),
+            ("Manhana Nublado", None),
+            ("MedioDia Despejado", None),
+            ("Rainy morning", None),
+            ("overcast, light fog & snowing", None),
+            ("Dark road", None),
+            ("Nightingale", None),
+        ] {
+            assert_eq!(word(text), expected, "{text}");
+        }
+        assert_eq!(TimeWord::parse("Alba Stage", false), Some(TimeWord::Dawn));
+        assert_eq!(TimeWord::parse("Alba Stage", true), None);
+        assert_eq!(TimeWord::parse("401-Vinec-Skalsko NIGHT", true), Some(TimeWord::Night));
+    }
+
+    /// Every installed `TrackSettings*.ini` comment (`RBR_DATA`'s `Maps/` and `RBR_RSF`'s stage folders): the comments
+    /// naming a night, dawn or sunset in the words the installs use all classify. `--nocapture` lists the counts and
+    /// the comments left unmatched.
+    #[test]
+    fn every_installed_comment_with_a_time_word_is_read() {
+        let roots: Vec<PathBuf> = ["RBR_DATA", "RBR_RSF"]
+            .iter()
+            .filter_map(|var| std::env::var_os(var))
+            .map(|root| PathBuf::from(root).join("Maps"))
+            .collect();
+        if roots.is_empty() {
+            eprintln!("skipping: RBR_DATA and RBR_RSF are not set");
+            return;
+        }
+        let mut files = Vec::new();
+        for root in &roots {
+            for entry in std::fs::read_dir(root).into_iter().flatten().flatten() {
+                let path = entry.path();
+                let inner = if path.is_dir() {
+                    std::fs::read_dir(&path).into_iter().flatten().flatten().map(|e| e.path()).collect()
+                } else {
+                    vec![path]
+                };
+                files.extend(inner.into_iter().filter(|p| {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_lowercase();
+                    name.starts_with("tracksettings") && name.ends_with(".ini")
+                }));
+            }
+        }
+        let (mut counts, mut unmatched) = ([0usize; 3], std::collections::BTreeSet::new());
+        for file in &files {
+            let text = String::from_utf8_lossy(&std::fs::read(file).unwrap()).into_owned();
+            for section in ini::parse(&text).unwrap() {
+                let Some(comment) = section.get("Comment").filter(|c| !c.is_empty()) else { continue };
+                match TimeWord::parse(comment, false) {
+                    Some(word) => counts[word as usize] += 1,
+                    None => {
+                        let lower = comment.to_lowercase();
+                        let says = ["night", "noche", "dawn", "sunset", "atardecer", "amanecer", "dusk", "nuit"];
+                        assert!(!says.iter().any(|w| lower.contains(w)), "{}: {comment}", file.display());
+                        unmatched.insert(comment.to_owned());
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "{} files; sections night {}, dawn {}, sunset {}; unmatched {unmatched:?}",
+            files.len(),
+            counts[0],
+            counts[1],
+            counts[2]
+        );
     }
 }

@@ -10,7 +10,7 @@
 //! The shadow light maps hold the bake's cast shadows, which no relight moves: with the sun's shadows on
 //! (`crate::sun`) they are not used.
 
-use crate::atmosphere::Atmosphere;
+use crate::atmosphere::{Atmosphere, TimeWord};
 use crate::stage::{Anchor, Layer, Mesh, Stage, Vertex};
 use glam::Vec3;
 
@@ -360,6 +360,20 @@ pub fn solar(latitude: f32, day: f32, hour: f32) -> (f32, f32) {
     let elevation = (phi.sin() * declination.sin() + phi.cos() * declination.cos() * h.cos()).asin();
     let azimuth = (-h.sin()).atan2(declination.tan() * phi.cos() - phi.sin() * h.cos());
     (elevation.to_degrees(), azimuth.to_degrees().rem_euclid(360.0))
+}
+
+/// The local solar hour a time-of-day word starts the clock at (ours): night at 23:00, dawn the morning hour and
+/// sunset the evening hour when the sun at `site` ([`site`]) is 2 degrees up (the nearest to it where it never is).
+pub fn stated_hour(word: TimeWord, (latitude, _, day): (f32, f32, f32)) -> f32 {
+    let at_two_degrees = |hours: std::ops::Range<u32>| {
+        let off = |k: &u32| (solar(latitude, day, *k as f32 / 100.0).0 - 2.0).abs();
+        hours.min_by(|a, b| off(a).total_cmp(&off(b))).unwrap_or(1200) as f32 / 100.0
+    };
+    match word {
+        TimeWord::Night => 23.0,
+        TimeWord::Dawn => at_two_degrees(0..1200),
+        TimeWord::Sunset => at_two_degrees(1200..2400),
+    }
 }
 
 /// The light at a clock time ([`Clock::daylight`]).
