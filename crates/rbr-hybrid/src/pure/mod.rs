@@ -426,6 +426,19 @@ impl Pure {
         self.set_stale(false);
     }
 
+    /// Runs `read` on the typed state held across steps, without lowering it; `None` when nothing is held (the image
+    /// holds every word then: [`Pure::unheld_image`]). For readers between steps that run every step.
+    pub fn with_held<R>(&self, read: impl FnOnce(&Typed) -> R) -> Option<R> {
+        self.held.borrow().as_ref().map(read)
+    }
+
+    /// The image without lowering the held state, for a reader between steps of the words the typed state does not
+    /// hold (pointers, headers, definitions): a held word in it may be older than the held state's ([`Pure::with_held`]
+    /// reads those). With the `poison` feature, reading a held word through it while stale panics.
+    pub fn unheld_image(&self) -> &Mem {
+        &self.mem
+    }
+
     /// The image for a writer between steps (a clone sharing its bytes: writes land in the image). With the typed
     /// state held across steps, it is lowered and dropped first, so the next step lifts what the writer left.
     pub fn image_mut(&self) -> Mem {

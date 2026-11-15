@@ -3,6 +3,7 @@
 use rbr_gameplay::control::CarControl;
 use rbr_gameplay::stage::{State, LOAD_SUBSTEPS};
 use rbr_hybrid::pure::{self, Playback, CAR_PTR};
+use rbr_physics::car_body::layout::slot as car_slot;
 use rbr_physics::mem::Mem;
 use rbr_recording::sound::{TyreMax, CAR_WHEELS, WHEEL_TYRE_SCRATCH};
 use rbr_recording::{read_f32, CONTROL_BYTES};
@@ -13,26 +14,45 @@ pub const DRIVELINE_OFFSET: usize = 0x17c;
 const VELOCITY_OFFSET: usize = 0x1c0;
 const POSITION_OFFSET: usize = 0x140;
 const NOTIFY_A_SPEED_OFFSET: usize = 0x15f8;
-/// Keep the same full read footprint as the recording adapter, including its mapped-byte checks.
+/// A recorded car block's length: the words [`recorded_car`] reads.
+#[cfg(test)]
 const SAMPLE_BYTES: usize = NOTIFY_A_SPEED_OFFSET + 4;
 
-pub(super) fn recorded_car(car: &[u8]) -> CarState {
+/// The car's state from its floats at their offsets: a recorded car block's or the live car's (the same conversion).
+fn car_from(f32_at: impl Fn(usize) -> f32) -> CarState {
     CarState {
-        driveline_parameter: read_f32(car, DRIVELINE_OFFSET).expect("car +0x17c"),
-        velocity: std::array::from_fn(|lane| read_f32(car, VELOCITY_OFFSET + 4 * lane).expect("car +0x1c0")),
-        position: std::array::from_fn(|lane| read_f32(car, POSITION_OFFSET + 4 * lane).expect("car +0x140")),
+        driveline_parameter: f32_at(DRIVELINE_OFFSET),
+        velocity: std::array::from_fn(|lane| f32_at(VELOCITY_OFFSET + 4 * lane)),
+        position: std::array::from_fn(|lane| f32_at(POSITION_OFFSET + 4 * lane)),
         // Vf6cx writes -MB560[1] to +0x15f8; NotifyA reads that scalar from p[0].
-        notify_a_speed: read_f32(car, NOTIFY_A_SPEED_OFFSET).expect("car +0x15f8"),
+        notify_a_speed: f32_at(NOTIFY_A_SPEED_OFFSET),
     }
 }
 
-pub(super) fn car_state(playback: &Playback) -> CarState {
-    let mem = playback.pure.image();
-    recorded_car(&mem.read(mem.u32(CAR_PTR), SAMPLE_BYTES))
+pub(super) fn recorded_car(car: &[u8]) -> CarState {
+    car_from(|at| read_f32(car, at).unwrap_or_else(|| panic!("car +{at:#x}")))
 }
 
+/// The car's state as the step left it, without lowering the typed state held across steps: the drive line parameter,
+/// position and velocity are the car's solid's words, +0x15f8 the car's own (`forward_speed`); each is the image's
+/// where nothing holds it.
+pub(super) fn car_state(playback: &Playback) -> CarState {
+    let pure = &playback.pure;
+    let mem = pure.unheld_image();
+    let car = mem.u32(CAR_PTR);
+    let image = |at: usize| mem.f32(car + at as u32);
+    pure.with_held(|t| {
+        car_from(|at| match at {
+            NOTIFY_A_SPEED_OFFSET => t.car.own.read(car, car_slot::forward_speed).unwrap_or_else(|| image(at)),
+            _ => t.solids.as_ref().and_then(|s| s.read(car + at as u32)).map_or_else(|| image(at), f32::from_bits),
+        })
+    })
+    .unwrap_or_else(|| car_from(image))
+}
+
+/// The tyre terms of the last step by wheel: the wheels' pointers are not held, so the image is not lowered.
 pub(super) fn accumulate_tyre_terms(playback: &Playback, tyre_max: &mut TyreMax) {
-    let mem = playback.pure.image();
+    let mem = playback.pure.unheld_image();
     let wheels: [u32; 4] = std::array::from_fn(|k| mem.u32(mem.u32(CAR_PTR) + CAR_WHEELS + 4 * k as u32));
     for (scratch, term) in playback.pure.take_tyre_terms() {
         if let Some(k) = wheels.iter().position(|&w| w != 0 && w + WHEEL_TYRE_SCRATCH == scratch) {
@@ -73,10 +93,17 @@ pub(super) fn drive_line_point(playback: &Playback, distance: f32) -> [f32; 3] {
 /// (`CCar::Test7910` reads it the same way).
 const DRIVE_LINE: u32 = 0x165_9184;
 
-/// The drive state's +0x570 (car +0x4b0, its +8), compared by NGP's live gear handler.
+/// The drive state's +0x570 (car +0x4b0, its +8; the commanded gear's value), compared by NGP's live gear handler:
+/// the held drive's, else the image's.
 pub(super) fn drive_gear(playback: &Playback) -> u32 {
-    let mem = playback.pure.image();
-    mem.u32(mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8) + 0x570)
+    let pure = &playback.pure;
+    let mem = pure.unheld_image();
+    let state = mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8);
+    let held = |t: &rbr_physics::store::typed::Typed| {
+        let drive = &t.car.drive;
+        (drive.image.state == state).then(|| drive.typed.borrow().state.commanded.value as u32)
+    };
+    pure.with_held(held).flatten().unwrap_or_else(|| mem.u32(state + 0x570))
 }
 
 /// The car's engine (`CEngine`, car +0x690): its definition at +4.
