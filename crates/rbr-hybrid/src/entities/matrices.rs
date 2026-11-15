@@ -194,9 +194,14 @@ impl Frames for HeldFrames<'_> {
         let passage = layout::passage(&self.view(), at, hook, &out);
         if matches!(passage, Some(Passage::Points { .. })) {
             // `CCarBody`'s scatter is a call of the walk in place, which writes its words; a later reader of the dead
-            // stack there (the tyre noise payload's word `+0x46c`, drive2 step 3 with the audit's fills) sees them.
+            // stack there (the tyre noise payload's word `+0x46c`, drive2 step 3 with the audit's fills) sees them, so
+            // they are written here too, under either dispatch (the original's own words, not `crate::RESIDUE`).
             let sp = (self.esp - 0x1000) & !0xf;
-            crate::skip_call_writing(self.host, self.mem, sp - 16, &[rows, count]);
+            if let Some(ret) = self.host.call_slot_word() {
+                for (k, word) in [ret, rows, count].into_iter().enumerate() {
+                    self.mem.set_u32(sp - 16 + 4 * k as u32, word);
+                }
+            }
         }
         if matches!(passage, Some(Passage::Body(_))) {
             let owner = self.mem.load_entity_frame(at).owner;
