@@ -231,6 +231,13 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   5 kHz (before 14 to 18 %), centroid 1.6-1.9 kHz (2.4-2.9); from the chase camera 5 to 11 dB lower. Without
   contacts the mix is byte-identical to before. The branch hits count under the sound limit, so `--solo shots`
   with and without the verge differ by the stones too and do not isolate them.
+- Verge, on its side (ours, 2026-11-15, user: from the side it is on; not judged by ear yet): a contact carries
+  its placement's position (`Touch::at`), and the camera hears it on that side as it does the siren (`world::pan`):
+  the loops on the contacts' mean side by their depth and density (`Command::Pan`, kept while they fade), a branch
+  hit on its own (`Command::HitAt`); bushes under the wheels alone play at the car. The same drive with the
+  contacts 1.4 m to a side of the car: in the car the near channel as before and the far one 5 to 8 dB under it,
+  from the chase camera 6 m behind 2 dB (the placement is 13 degrees off the camera's axis). `--verge`'s CSV and
+  `verge_probe` carry `x,y,z`.
 - What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
   along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
   one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of

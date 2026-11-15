@@ -412,9 +412,9 @@ fn log_line(inputs: &Inputs, commands: &[Command], fmod: Option<&rbr_sound::fmod
         .iter()
         .filter_map(|c| match c {
             Command::Shot { shot, gain } => Some(format!("{shot:?}:{gain}")),
-            Command::Effect { shot, gain, pitch, .. } | Command::Hit { shot, gain, pitch, .. } => {
-                Some(format!("{shot:?}:{gain}@{pitch}"))
-            }
+            Command::Effect { shot, gain, pitch, .. }
+            | Command::Hit { shot, gain, pitch, .. }
+            | Command::HitAt { shot, gain, pitch, .. } => Some(format!("{shot:?}:{gain}@{pitch}")),
             Command::Speech(speech) => Some(format!("{speech:?}")),
             Command::StopSpeech => Some("StopSpeech".to_owned()),
             _ => None,
@@ -507,15 +507,15 @@ struct Drive {
 }
 
 /// The body's contacts of a `--verge` CSV (`rbr-render`'s `verge_probe` example), by step: `step,id,depth,density,
-/// branches` a contact.
+/// branches,x,y,z` a contact.
 fn read_verge(path: &Path) -> Result<HashMap<usize, Vec<rbr_sound::verge::Touch>>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut out: HashMap<usize, Vec<rbr_sound::verge::Touch>> = HashMap::new();
     for line in text.lines().skip(1) {
         let v: Vec<f32> =
             line.split(',').map(str::parse).collect::<Result<_, _>>().map_err(|e| format!("{line}: {e}"))?;
-        let [step, id, depth, density, branches] = v[..] else { return Err(format!("{line}: 5 fields")) };
-        let touch = rbr_sound::verge::Touch { id: id as u32, depth, density, branches: branches != 0.0 };
+        let [step, id, depth, density, branches, x, y, z] = v[..] else { return Err(format!("{line}: 8 fields")) };
+        let touch = rbr_sound::verge::Touch { id: id as u32, at: [x, y, z], depth, density, branches: branches != 0.0 };
         out.entry(step as usize).or_default().push(touch);
     }
     Ok(out)

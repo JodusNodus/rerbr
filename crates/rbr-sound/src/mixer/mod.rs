@@ -621,21 +621,8 @@ impl Mixer {
                 Command::Shot { shot, gain } => self.shot(shot, gain, None),
                 Command::ShotAt { shot, gain, pan } => self.shot(shot, gain, Some(pan)),
                 Command::Effect { shot, gain, pitch, repeat } => self.effect(shot, gain, pitch, repeat),
-                Command::Hit { shot, gain, pitch, distance } => {
-                    // Hits are the body's knocks, the banks without a family; any other shot is not a hit.
-                    let Some((bank, i, place, None)) = self.bank_of(shot) else { continue };
-                    let wave = (!bank.is_empty()).then(|| bank[i % bank.len()].clone());
-                    if let Some(wave) = wave.filter(|_| self.make(shot)) {
-                        // The verge's branch hits come in turn (`crate::verge`) and leave the variation's numbers to
-                        // the rest.
-                        let [vary_pitch, vary_gain] =
-                            if matches!(shot, Shot::Branch(_)) { [1.0; 2] } else { self.vary() };
-                        let (low_pass, cabin) = self.cabin_hit(shot);
-                        let gain = gain * vary_gain * cabin * self.placed_at(place, distance) * self.volumes.shot(shot);
-                        let pitch = pitch * vary_pitch * self.doppler;
-                        self.playing.push(Playing { pan: self.car_pan, pitch, low_pass, ..Playing::new(wave, gain) });
-                    }
-                }
+                Command::Hit { shot, gain, pitch, distance } => self.hit(shot, gain, pitch, distance, self.car_pan),
+                Command::HitAt { shot, gain, pitch, distance, pan } => self.hit(shot, gain, pitch, distance, pan),
                 Command::WheelLoop { wheel, voice, gain, pitch } => {
                     // The rumble plays in the car, without a distance gain. The wetness is a 2D voice on the
                     // software path (`M6cb0`: flags 0x200); ours, as it carries the renderer's water (`tyre::Water`),
@@ -914,6 +901,21 @@ impl Mixer {
     /// Swaps in the rally school's prepared samples by id, returning the old ones to drop after releasing the lock.
     pub(crate) fn swap_school(&mut self, prepared: HashMap<u32, Arc<Wave>>) -> HashMap<u32, Arc<Wave>> {
         std::mem::replace(&mut self.banks.school, prepared)
+    }
+
+    /// A hit `distance` m from the camera on side `pan`: the body's knocks, the banks without a family; any other
+    /// shot is not a hit.
+    fn hit(&mut self, shot: Shot, gain: f32, pitch: f32, distance: f32, pan: f32) {
+        let Some((bank, i, place, None)) = self.bank_of(shot) else { return };
+        let wave = (!bank.is_empty()).then(|| bank[i % bank.len()].clone());
+        if let Some(wave) = wave.filter(|_| self.make(shot)) {
+            // The verge's branch hits come in turn (`crate::verge`) and leave the variation's numbers to the rest.
+            let [vary_pitch, vary_gain] = if matches!(shot, Shot::Branch(_)) { [1.0; 2] } else { self.vary() };
+            let (low_pass, cabin) = self.cabin_hit(shot);
+            let gain = gain * vary_gain * cabin * self.placed_at(place, distance) * self.volumes.shot(shot);
+            let pitch = pitch * vary_pitch * self.doppler;
+            self.playing.push(Playing { pan, pitch, low_pass, ..Playing::new(wave, gain) });
+        }
     }
 
     /// Swaps in the grind loop's prepared sample, returning what it replaces to drop after releasing the lock.

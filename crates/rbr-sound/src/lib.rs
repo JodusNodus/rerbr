@@ -185,7 +185,8 @@ impl Models {
             (car_distance, scene.listener),
             || rng.rand(),
         ));
-        out.extend(self.verges.step(sound.speed, car_distance, STEP));
+        let side = |at| world::pan(scene.listener, scene.right, at);
+        out.extend(self.verges.step(sound.speed, car_distance, STEP, side));
         out.extend(self.impacts.step(&inputs.impacts, sound.speed, inside, self.tyres.slide(), || rng.rand()));
         let wheels = std::array::from_fn(|k| tyre::distance(&sound.tyres[k], scene.listener));
         let (suspension, mut calls) = self.suspension.step(sound, inside, wheels, STEP, || rng.rand());
@@ -477,7 +478,7 @@ mod tests {
             (block[0x14], block[0x17], block[9], block[2]) = (1, 1, 15f32.to_bits(), 2f32.to_bits());
         }
         let mut touches = [None; verge::TOUCHES];
-        touches[0] = Some(verge::Touch { id: 3, depth: 0.4, density: 1.0, branches: true });
+        touches[0] = Some(verge::Touch { id: 3, depth: 0.4, density: 1.0, branches: true, ..Default::default() });
         let verge = verge::Verge { touches, ..Default::default() };
         let run = |with: bool| {
             let mut models = Models::new(&bank, Sky::default(), Vec::new());
@@ -501,7 +502,7 @@ mod tests {
         };
         assert!(!stones(&without).is_empty());
         assert_eq!(stones(&without), stones(&with));
-        let branches = with.iter().filter(|c| matches!(c, Command::Hit { shot: voice::Shot::Branch(_), .. })).count();
+        let branches = with.iter().filter(|c| matches!(c, Command::HitAt { shot: voice::Shot::Branch(_), .. })).count();
         assert_eq!(branches, 6);
         let grass = |c: &Command| matches!(c, Command::Loop { voice: voice::Loop::Grass, gain, .. } if *gain > 0.0);
         assert!(with.iter().any(grass) && !without.iter().any(grass));
