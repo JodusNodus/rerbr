@@ -700,6 +700,19 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   linear light; the rippled normal breaks it up. Replaced the fixed brightnesses: the 45O wet flyby's one clipped slab is
   two rippled streaks (clipped 6.6 to 5.4 % of the frame; road crop flicker mean 6.4 to 9.1, the ripples' edges), the
   chase's red haze under the tail lamps is gone (they shine little that steeply down); day wet and dry byte-identical.
+- Stage lamps (ours, 2026-11-16; `stage_lamps.rs`, `stage_lamps_pass.rs`, `stage_lamps.wgsl`, `street_sum` in
+  `night.wgsl`): the night stages bake their street lights as alpha-tested light sprites, drawn as white blobs. A
+  sprite is a world-anchored draw with alpha ref, one texture, no shade or shadow, a name with GLO, SPOT, BULB, LIGHT,
+  LAMP or FLARE, and a soft white alpha (texels with alpha 16 or more have luminance ≥0.8 and grey ≤0.12, 60% below 240,
+  coverage ≤60%; this rejects clouds, fences, signs and smoke). Each triangle's lamp is at the texture's peak alpha,
+  aimed at its alpha centre, or omni for a star. Lamps within 1 m merge. Their sprites leave the stage meshes and
+  are drawn additively, without depth writes, as haze plus a glaring bulb, fogged. The 16 nearest lamps (`MAX_STREET`,
+  fading out before the 17th) light every lit pipeline: 2000 cd times (sprite size / 8 m)², warm white, reach 90 m,
+  a cone of exponent 0.5 for an aimed lamp. They shine at night and by `relight.lamps` at dusk. Frames without stage
+  lamps are byte-identical (the 34 other reference shots). Lamps found: 126 Sardian Night 137, 401 80, 466 138, 467 135,
+  465 Odry snow II 100, 464 29, 141 27, 481 10. 125 Sardian (day) has no sprites. Night Sardian 1080p chase: scene
+  1.92 to 2.20 ms, frame drawn 3.76 to 3.95 ms. Open: wet-road glints, shadows from the stage lamps, the fire
+  lights (`feu`). `examples/stage_lamps.rs MAPS STAGE...` lists a stage's lamps.
 
 ## Damage visuals
 
