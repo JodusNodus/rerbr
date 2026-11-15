@@ -217,7 +217,27 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   encounters in 10 min, 3.6 s in contact, 9 branch hits; the added sound 6 to 18 dB under the mix (one at walking
   pace silent). `rbr-sound --verge CSV` plays the contacts `rbr-render`'s `verge_probe` example finds along
   `--poses`; a replay whose stepping program is gone steps with `--standalone`. No open recording of a vehicle
-  through grass or brush was found. Not judged by ear yet.
+  through grass or brush was found. Not judged by ear yet. Levels, speeds and the in-car filter: the next entry.
+- Verge, quieter and in bursts (ours, 2026-11-15, user: the brush more realistic and lower; not judged by ear yet):
+  both loops play `contacts * (0.4 + 0.6 * burst) * smoothstep(2-30 m/s)`, the patter at 2, the brush at 1. A new
+  contact sets the burst to its density (a tree's 1), which falls with 100 ms to the drag along the body, so a hedge
+  is heard bush by bush; the level rises to 108 km/h (the brush was full from 43 km/h, so a slow push through a
+  bush was the loudest contact). Branch hits at half the gain. In the car the loops take a 1.2 kHz filter at 3.5
+  times (`mixer` `VERGE_CUTOFF`, `VERGE_GAIN`), the hits the stones' filter as before. Sherwood Forest I's first
+  65 s (RSF 367, Lancer Evo II, the user's replay, which differs from the drive after that) with six scripted
+  contacts at 11 to 28 m/s (`--verge`; the loops alone as `--solo loops` with it less without it): in the car 13
+  to 20 dB under the mix (before 5 to 13), each 5 to 11 dB lower (a dense bush at 11 m/s 11, a hedge at 21 m/s 8),
+  the loudest 10 ms 4 to 14 dB under the mix (before from 2 dB over it to 7 under); 7 to 9 % of the energy above
+  5 kHz (before 14 to 18 %), centroid 1.6-1.9 kHz (2.4-2.9); from the chase camera 5 to 11 dB lower. Without
+  contacts the mix is byte-identical to before. The branch hits count under the sound limit, so `--solo shots`
+  with and without the verge differ by the stones too and do not isolate them.
+- Verge, on its side (ours, 2026-11-15, user: from the side it is on; not judged by ear yet): a contact carries
+  its placement's position (`Touch::at`), and the camera hears it on that side as it does the siren (`world::pan`):
+  the loops on the contacts' mean side by their depth and density (`Command::Pan`, kept while they fade), a branch
+  hit on its own (`Command::HitAt`); bushes under the wheels alone play at the car. The same drive with the
+  contacts 1.4 m to a side of the car: in the car the near channel as before and the far one 5 to 8 dB under it,
+  from the chase camera 6 m behind 2 dB (the placement is 13 degrees off the camera's axis). `--verge`'s CSV and
+  `verge_probe` carry `x,y,z`.
 - What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
   along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
   one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of
