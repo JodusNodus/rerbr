@@ -87,6 +87,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     }
 
     fn emit_state(&mut self, signal: u32, sig: u32) -> u32 {
+        crate::fill_residue(self.host, &mut self.mem, sig + 4, 3);
         self.host.call_at(self.frame - 0x48, STATE_EMIT, signal, &[sig]).eax
     }
 }

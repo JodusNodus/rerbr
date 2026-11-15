@@ -221,6 +221,17 @@ pub(crate) fn residue(host: &dyn Host) -> Option<u32> {
     Some(RESIDUE)
 }
 
+/// [`residue`] stored in the `words` words from `at`, the words of a payload or block the original never writes and a
+/// listener may read (nothing on a host that runs the original, which leaves what its stack holds).
+#[cfg_attr(feature = "residue-audit", track_caller)]
+pub(crate) fn fill_residue(host: &dyn Host, mem: &mut Mem, at: u32, words: u32) {
+    if let Some(word) = residue(host) {
+        for k in 0..words {
+            mem.set_u32(at + 4 * k, word);
+        }
+    }
+}
+
 /// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`
 /// from the slot-12 identity getter (`E43PairWalk::MFc00`, 0x519c00, `mov eax, ecx; ret`), the old frame `this + 0x1c`
 /// from the slot-13 getter (`E43PairWalk::MFc10`, 0x519c10), 0 from the empty hook

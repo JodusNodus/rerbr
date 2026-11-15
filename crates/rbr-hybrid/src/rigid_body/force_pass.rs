@@ -257,6 +257,8 @@ impl ListHost for Calls<'_> {
         event.aux.store(&mut self.mem, at + 0x10);
         event.contact.store(&mut self.mem, at + 0x20);
         event.point.store(&mut self.mem, at + 0x30);
+        crate::fill_residue(self.host, &mut self.mem, at + 0x8, 1);
+        crate::fill_residue(self.host, &mut self.mem, at + 0x40, 1);
         let signal = self.mem.u32(SIGNALS) + 0xadc8;
         self.host.call(DAMPING_EMIT, signal, &[at]);
         Ok(())

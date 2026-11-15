@@ -118,6 +118,7 @@ impl ContactHost for ContactCalls<'_> {
         for (k, v) in [h.offset.x, h.offset.y, h.offset.z].into_iter().enumerate() {
             self.mem.set_f32(offset + 4 * k as u32, v);
         }
+        crate::fill_residue(self.host, &mut self.mem, offset + 0xc, 1);
         let hook = self.mem.u32(self.this + 0x3cc);
         let target = layout::vtable_target(&self.mem, hook, SLOT_SAMPLE_HOOK);
         let args =

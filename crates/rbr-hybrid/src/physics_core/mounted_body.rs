@@ -21,6 +21,10 @@ impl MountedPullHost for MountedCalls<'_> {
         self.host.call_at(sp, E43VF64, body, &[]).eax
     }
 
+    fn gap_lane(&mut self) -> Option<u32> {
+        crate::residue(self.host)
+    }
+
     fn world_compose(&mut self, sp: u32, owner: u32, point: u32, out: u32) {
         self.host.call_at(sp, WORLD_COMPOSE, owner, &[point, out]);
     }
@@ -51,6 +55,7 @@ impl MountedStepHost for MountedCalls<'_> {
     }
 
     fn emit_state(&mut self, sp: u32, signal: u32, sig: u32) -> u32 {
+        crate::fill_residue(self.host, &mut self.mem, sig + 4, 3);
         self.host.call_at(sp, STATE_EMIT, signal, &[sig]).eax
     }
 }

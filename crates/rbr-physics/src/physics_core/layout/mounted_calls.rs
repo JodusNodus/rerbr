@@ -11,6 +11,11 @@ pub trait MountedPullHost {
     fn world_compose(&mut self, sp: u32, owner: u32, point: u32, out: u32);
     /// `E43PairWalk::MB560` on the walker: `src` through the owner, into `out`.
     fn walk(&mut self, sp: u32, src: u32, owner: u32, out: u32);
+    /// The value of the gap's lane 3, a frame word the original does not write (`PullFrame::gap_w`): `Some` on the
+    /// pure host (`rbr_hybrid::RESIDUE`), `None` where the frame's word is read.
+    fn gap_lane(&mut self) -> Option<u32> {
+        None
+    }
 }
 
 /// The calls `CMountedRigidBody::Vf6c` makes, each entered at the stack pointer `sp` the original's call has. Each
