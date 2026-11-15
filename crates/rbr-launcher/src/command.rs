@@ -287,6 +287,8 @@ impl ViewerLaunch {
         };
         let mut args: Vec<String> = vec![stage.name.clone(), "--car".into(), folder];
         args.extend(pack_car_args(car));
+        // The year picks the car's headlamp type (the viewer's `Enhance::lighting`).
+        args.extend(car.year.iter().flat_map(|year| ["--car-year".to_owned(), year.to_string()]));
         args.extend(vec![
             "--weather".into(),
             weather.mat_words().1.into(),
