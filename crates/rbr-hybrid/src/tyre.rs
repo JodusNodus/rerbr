@@ -82,13 +82,18 @@ fn frame<T>(r: Result<T, layout::Outside>) -> Result<T, Decline> {
 /// Runs `run` on the tyre whose scratch is at `scratch` and its store: the typed storage's while the host holds the
 /// car's tyres (`Host::typed`), else per call, lifted from the image and lowered after `run` (`layout::with_tyre`).
 pub(crate) fn on_tyre<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> T {
-    if let Some(typed) = ctx.host.typed() {
+    on_tyre_in(ctx.host, &mut ctx.mem, scratch, run)
+}
+
+/// [`on_tyre`] on `host` and `mem`.
+fn on_tyre_in<T>(host: &dyn Host, mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> T {
+    if let Some(typed) = host.typed() {
         let mut tyres = typed.car.tyres.borrow_mut();
         if let Some(id) = tyres.id_of(scratch) {
-            return run(&mut tyres.view(&ctx.mem).with_defs(Some(&typed.defs)), id);
+            return run(&mut tyres.view(mem).with_defs(Some(&typed.defs)), id);
         }
     }
-    layout::with_tyre(&mut ctx.mem, scratch, run)
+    layout::with_tyre(mem, scratch, run)
 }
 
 /// `read` of the tyre whose scratch is at `scratch` as a step leaves it at this point: the typed storage's while the
@@ -419,22 +424,28 @@ fn solve_patch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0))
 }
 
-/// thiscall with 16 stack words (`a` to `p`), `ret 0x40`. The arguments are loaded once, `Step` runs on the tyre, and
-/// its outputs are stored after the tyre.
-pub(crate) fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let ngp = crate::ngp::thermal(ctx, r.ecx)?;
+/// thiscall with 16 stack words (`a` to `p`), `ret 0x40`: [`step_in`].
+fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    step_in(ctx.host, &mut ctx.mem, r.ecx, &r.stack[..16])?;
+    Ok(Return::void(0, 0x40))
+}
+
+/// `Step` on the tyre whose scratch is at `scratch`, with its sixteen stack words `stack`, on `host` and `mem`: the
+/// arguments are loaded once, `Step` runs on the tyre, and its outputs are stored after the tyre.
+pub(crate) fn step_in(host: &dyn Host, mem: &mut Mem, scratch: u32, stack: &[u32]) -> Result<(), Decline> {
+    let ngp = crate::ngp::thermal_in(host, mem, scratch)?;
     // A tyre model also reads the wheel's surface classes (read only).
     let surface = if crate::ngp::tyre_model_set() {
-        rbr_physics::wheel::layout::surface_classes(&ctx.mem, r.ecx)
+        rbr_physics::wheel::layout::surface_classes(mem, scratch)
     } else {
         ([rbr_physics::tyre::model::UNKNOWN_CLASS; 2], 0.0)
     };
-    let (args, ptrs) = layout::load_step(&ctx.mem, &r.stack[..16]);
-    let out = crate::ngp::with_tyre_model(r.ecx, surface, |model| {
-        frame(on_tyre(ctx, r.ecx, |v, t| entries::step(v, t, &args, &ngp, model)))
+    let (args, ptrs) = layout::load_step(mem, stack);
+    let out = crate::ngp::with_tyre_model(scratch, surface, |model| {
+        frame(on_tyre_in(host, mem, scratch, |v, t| entries::step(v, t, &args, &ngp, model)))
     })?;
-    layout::store_step(&mut ctx.mem, &ptrs, &out);
-    Ok(Return::void(0, 0x40))
+    layout::store_step(mem, &ptrs, &out);
+    Ok(())
 }
 
 /// thiscall `()`: the CDef's defaults, the object in eax.

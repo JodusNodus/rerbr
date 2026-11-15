@@ -122,6 +122,9 @@ pub trait Host {
     }
     /// Counts a binding a caller ran itself in place of a call ([`Host::entered`] goes up as for a run).
     fn ran_direct(&self) {}
+    /// A tyre step (`CScratch::Step` or NGP's wrapper) a caller ran itself on the tyre at `scratch` with the time step
+    /// `dt`: the pure host keeps its term as after a run of the binding ([`pure::Pure::take_tyre_terms`]).
+    fn tyre_stepped(&self, _scratch: u32, _dt: f32) {}
     /// [`Host::call_at`] of a callee whose binding reads its stack words only from `args` (none through `esp`), and
     /// whose caller reads none of the call's words after it. Under the pure host's direct dispatch (B1b) the call
     /// runs as a plain call, without its words on the stack, when `args` are the words the callee pops; elsewhere it
