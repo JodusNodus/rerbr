@@ -4,6 +4,7 @@
 //! calls (`harness/vcu_vectors.py --set entities`, `tests/entities_vectors.rs`). The plan and the batch status are in
 //! `entities/README.md` (git 9c28c0b8).
 
+pub mod carry;
 pub mod collide;
 pub mod def;
 pub mod dummy;

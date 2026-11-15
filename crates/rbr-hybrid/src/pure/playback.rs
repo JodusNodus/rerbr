@@ -141,8 +141,12 @@ impl Playback {
         let entry = Regs { esp: self.slot, ..self.regs };
         let scratch = (self.slot - 0x100) & !0xf;
         let (car, frame) = (mem.u32(CAR_PTR), mem.u32(FRAME));
+        // In place (the carry as values, `entities::call_op`): none of the call's words, which the next step's frames
+        // write before any read (residue audit).
         self.pure.with_frame(STEP_FORWARD, &entry, || {
-            self.pure.host().call(MB560, frame, &[car + 0x220, car, scratch]);
+            let args = [car + 0x220, car, scratch];
+            crate::skip_unwritten(self.pure.host(), &mut mem.clone(), (self.slot - 0x1000) & !0xf, &args);
+            crate::entities::call_op(self.pure.host(), 0, MB560, frame, &args);
         });
         self.pure.held_changed();
         mem.f32s(scratch)

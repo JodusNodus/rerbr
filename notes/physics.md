@@ -271,6 +271,21 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   same way. Audit: traces equal aids off, on, damage realistic; twin typed (the three) and mem-direct (aids off, on)
   equal.
 
+- The frame carries as values (row 15d part 2; drive2 508.9 -> 494.1 host calls a step, in-place runs 711.7 -> 673.7,
+  instructions -1.20 %): on held state `MB560`, `ComposeA`, `ComposeB`, `FetchX`, `M51B460` and `M51B500` read their
+  rows once (a held solid's through its view), walk a local copy (`entities::carry` over `walk::run`; each frame's
+  owner map a `rigid_body::rows::RowMap` with the pose read once, `entities::layout::passage` from the frame's and
+  owner's vtables) and store the result where the original wrote it; no hook, gate or owner slot is called (the old
+  frames' through the host before). Back out to the walk in place: a hook, gate or owner slot not in `passage`
+  (`CCarBody::Vf9Cx`, 2.0 a step from `ComposeA`: its gated name getter is the car body's; `CSolid::E43VfBC`), an
+  output on the owner's pose words, overlapping rows, more than 16 rows. Still the bindings' entry (`call_op` runs
+  them in place: its 60 callers pass no memory, 20 leave the placement to the host); the child walks' words are
+  written as in place (`HeldFrames::descend`, to go with `PairWalk::walk`'s). A carry counts as a run only when it
+  touched held words (else the call memo of the E36 collect's transforms stops keeping them: +0.5 % instead).
+  `FetchY`/`WB410` (grids' box tables, not rows) and `Combine` (a pair store) stay in place. The notify vector's
+  `MB560` between steps (`Playback::notify_a_vector`) in place, 1.02 host calls a step. Audit (`residue-audit`, the
+  hooks', gates' and owner slots' words filled): reports equal to the base aids off, on, damage realistic; twin typed
+  and mem-direct equal aids off and on.
 - The hinged body's calls of its own bindings run in place on a held body (`entities::hinge::call_hinge`): the limit
   update, `SimD160`, `SimC960`, `SimE1D0`, `SimCFF0`, `SimEA80`, `SimD860` from `SimF950`, `SimEAD0`, `SimD160` and
   `SimEFE0`; the limit update's `SetDirty` direct (`hinge::set_dirty`, the rate tweak's dirty word on the image).
@@ -482,6 +497,9 @@ Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-hybrid/src/en
   hooks over its box tables; `Combine` (0x51ab90, twin 0x51ab70): the pair `(a, b)` at `this`. eax the output.
 - Inputs: the frames' words and the owners' vtables (image, set at construction), the owners' poses (held solids'
   through `SolidView`), the rows (`a`, `out`: mostly the caller's frame). No typed state of their own.
+- As values on held state (`entities::carry`): the rows a local copy, each frame a `Passage` (unchanged, or the owner
+  body's `RowMap`: 0x9c points out, 0xa0 points in, 0xac rows, 0xb0 three-lane rows, 0xa4..0xb8 the same with the pose
+  at the step's start); a walk's `b` is its row count (the shallower walkers pass 1).
 - Residue (audit, the skipped words filled per site): the child walks' words reached `CPassenger::Step`'s `MB560`
   source, lane 3 unwritten, copied into car `+0x8ec`; that lane is `RESIDUE` on the pure host and the words are not
   written. No reader of the hooks', the identity walks' or the ops' own call words.
