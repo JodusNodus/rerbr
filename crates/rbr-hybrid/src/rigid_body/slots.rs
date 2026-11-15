@@ -3,10 +3,11 @@
 
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{self as core_layout, signal_emit};
+use rbr_physics::rigid_body::force::accumulate_force;
 use rbr_physics::rigid_body::host::HostUnavailable;
 use rbr_physics::rigid_body::impulse::{self, ImpulseHost};
 use rbr_physics::rigid_body::layout::{self, Def, SolidView, Vec4};
-use rbr_physics::rigid_body::scratch::FlushHost;
+use rbr_physics::rigid_body::scratch::{FlushHost, FLUSH_BIT};
 use rbr_physics::rigid_body::sleep;
 use rbr_physics::rigid_body::store::RigidStore;
 use rbr_physics::rigid_body::vote::{probe_ground, Vote, VoteHost};
@@ -14,7 +15,10 @@ use rbr_physics::stage::layout as stage_layout;
 use rbr_physics::store::Raw;
 
 use super::force_pass::{s30_at, vcall_at};
-use super::{on_solids, unavailable, Original, COPY16_WALK, MB560, RING_APPEND, SLOT_HOOK, WALKER};
+use super::{
+    held_solids, on_solids, unavailable, with_solids, Original, COPY16_WALK, E43VF70, E43VF74, MB560, RING_APPEND,
+    SLOT_HOOK, WALKER,
+};
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -201,10 +205,44 @@ impl FlushHost for Flush<'_> {
     }
 }
 
+/// The flush gate of `E43Vf70` and `E43Vf74`: the app's flags (the flush runs with [`FLUSH_BIT`]).
+pub(super) fn flush_gate(mem: &Mem) -> u32 {
+    let app = mem.u32(APP);
+    mem.u32(app + 0x38) | mem.u32(mem.u32(app + 0x24) + 0x160f4)
+}
+
+/// The body's vtable slot at `slot` on the held solid `this` with the vector at `p`, when it is `CSolid::E43Vf70` or
+/// `E43Vf74` (the force or scratch accumulate), run direct and counted as a run ([`Host::ran_direct`]) while the flush
+/// gate is clear: their bindings read nothing of the stack but their argument, and their callers read neither the
+/// call's words nor eax. False per call, for another body or target, or with the flush (the body's slot 0, a call
+/// placed below the callee), where the caller calls the host.
+pub(crate) fn accumulate_direct(host: &dyn Host, mem: &mut Mem, slot: u32, this: u32, p: u32) -> bool {
+    let target = core_layout::vtable_target(mem, this, slot);
+    let gate = flush_gate(mem);
+    if !matches!(target, E43VF70 | E43VF74)
+        || gate & FLUSH_BIT != 0
+        || !held_solids(host).is_some_and(|s| s.held(this).is_some())
+    {
+        return false;
+    }
+    host.ran_direct();
+    let mut flush = Flush { mem: mem.clone(), host, this, eax: None };
+    let done = with_solids(host, mem, |s| {
+        if target == E43VF74 {
+            return layout::scratch_accumulate(s, this, p, gate, &mut flush);
+        }
+        let (pp, mut body) = (s.row(p), s.body(this));
+        accumulate_force(&mut body, pp, gate, &mut flush)?;
+        s.store_body(this, &body);
+        Ok(())
+    });
+    done.expect("the flush gate is clear");
+    true
+}
+
 /// thiscall `(pp)`: the scratch accumulate (`CSolid::E43Vf74`), then the flush when the app's flags have bit 0x4000.
 pub(super) fn e43vf74(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let app = ctx.mem.u32(APP);
-    let flags = ctx.mem.u32(app + 0x38) | ctx.mem.u32(ctx.mem.u32(app + 0x24) + 0x160f4);
+    let flags = flush_gate(&ctx.mem);
     let mut flush = Flush { mem: ctx.mem.clone(), host: ctx.host, this: r.ecx, eax: None };
     on_solids(ctx, |s| layout::scratch_accumulate(s, r.ecx, r.stack[0], flags, &mut flush)).map_err(unavailable)?;
     Ok(Return::void(0, 4))

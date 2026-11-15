@@ -219,7 +219,9 @@ impl AccumHost for Accum<'_> {
     }
 
     fn accumulate(&mut self, body: u32, force: u32) {
-        self.host.call(vslot(&self.mem, body, 0x70), body, &[force]);
+        if !crate::rigid_body::accumulate_direct(self.host, &mut self.mem, 0x70, body, force) {
+            self.host.call(vslot(&self.mem, body, 0x70), body, &[force]);
+        }
     }
 }
 

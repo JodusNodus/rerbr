@@ -151,13 +151,18 @@ impl Calls<'_> {
     }
 }
 
+// The car's accumulates direct on the held car ([`rigid_body::accumulate_direct`]), else through the host.
 impl CarSlotCalls for Calls<'_> {
     fn accumulate_force(&mut self, car: u32, p: u32) {
-        self.slot(car, 0x70, p);
+        if !rigid_body::accumulate_direct(self.host, &mut self.mem, 0x70, car, p) {
+            self.slot(car, 0x70, p);
+        }
     }
 
     fn accumulate_scratch(&mut self, car: u32, p: u32) {
-        self.slot(car, 0x74, p);
+        if !rigid_body::accumulate_direct(self.host, &mut self.mem, 0x74, car, p) {
+            self.slot(car, 0x74, p);
+        }
     }
 }
 

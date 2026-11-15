@@ -221,6 +221,14 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   drive2: host calls 1062.8 -> 938.6 a step, instructions -3.2 %. Residue audit (words filled with `0xffbadbad`):
   traces unchanged aids off and on and damage realistic, `--twin mem-direct` equal; CollideWork's 0x499e90 keeps its
   return slot written (`skip_call_writing`: read into car+0x14c under the direct dispatch, drive2 step 19211).
+- Held getters and setters direct (drive2 1062.6 -> 911.5 host calls a step): a solid's gate `CSolid::E43Vf80` from the
+  walks and old frames (`rigid_body::solid_gate_direct`); the wheel step's `Fwd6DB0`, `Fwd6DD0`, `Fwd43C0` (held drive),
+  `GetA48`, `SetA1C`, `AddADC` (`car_body::on_held_car`); `E43Vf70`/`E43Vf74` from the wheel, the car's drag and the
+  gravity pass while the flush gate is clear (`rigid_body::accumulate_direct`); `Vf81x` from the force pass and the
+  hinge solve at the call's esp (`contact_vote_direct`); `M_D760X`'s material samples on the held stage (NGP; no slots:
+  host). Host: `CWheel::E43Vf20`/`E43Vf6C`'s jumps, `WorldCompose`, `ToWorld` (untyped walks and ops below, whose calls
+  in place would land elsewhere on the stack). Audit as above, also `--damage realistic` and `--twin mem-direct`
+  (`--dispatch direct` is live only).
 
 ### Per subsystem
 

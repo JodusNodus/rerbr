@@ -13,7 +13,9 @@ use super::{
 };
 use crate::entities::{COPY_BLOCKS, COPY_BLOCKS_THREE_FOUR, MB560};
 use crate::rigid_body::OPERATOR_NEW;
+use crate::stage::on_stage;
 use crate::{Ctx, Decline, Host, Regs, Return};
+use rbr_physics::entities::layout::{sample_indexed, Indexed};
 
 /// thiscall `(a, b)`, ret 8: `CCollisionMeshOpen::CopyBounds` (0x4fb070), the mesh's lower bound to `a` and upper bound
 /// to `b`. Eax is `b`, the second copy's result.
@@ -106,8 +108,35 @@ pub(super) fn grid_sync(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// record list, or null for the grid's own list); eax is 1 on a hit.
 pub(super) fn grid_ray(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [start, end, out, list, ..] = r.stack;
-    let flag = layout::mesh_ray_query(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, start, end, out, list);
+    let mut samples = Samples { mem: ctx.mem.clone(), host: ctx.host };
+    let flag = layout::mesh_ray_query(&mut samples, &mut ctx.mem, r.ecx, start, end, out, list);
     Ok(Return::void(flag, 16))
+}
+
+/// `M_D760X`'s material table samples (0x520240): direct on the held stage's table, counted as a run (NGP's sampling;
+/// the binding reads nothing of the stack but its arguments, and the ray reads none of the call's words), else
+/// through the host (per call, 1.02, whose binding declines, and a table with no slots, whose eax is the caller's).
+struct Samples<'a> {
+    mem: Mem,
+    host: &'a dyn Host,
+}
+
+impl SampleHost for Samples<'_> {
+    fn sample(&mut self, byte: u32, low: f32, high: f32) -> u32 {
+        if crate::ngp::is_ngp() && self.host.typed().is_some() {
+            let found = on_stage(self.host, &self.mem, |s| sample_indexed(s, SAMPLE_TABLE, byte as u8, low, high));
+            let eax = match found {
+                Indexed::Texel(texel) => Some(texel),
+                Indexed::OutOfRange => Some(0),
+                Indexed::NoTable => None,
+            };
+            if let Some(eax) = eax {
+                self.host.ran_direct();
+                return eax;
+            }
+        }
+        self.host.call(SAMPLE_INDEXED, SAMPLE_TABLE, &[byte, low.to_bits(), high.to_bits()]).eax
+    }
 }
 
 /// thiscall `(origin, end, out)`, ret 0xc: `CCollisionSystem::Vf00` (0x4fe810), the segment query on the system
@@ -183,12 +212,6 @@ impl RayHost for Callees<'_> {
 impl CellQueryHost for Callees<'_> {
     fn query_cells(&mut self, _mem: &mut Mem, lo: u32, hi: u32, cells: u32) {
         self.0.call(E45_CELL_QUERY, 0, &[lo, hi, cells]);
-    }
-}
-
-impl SampleHost for Callees<'_> {
-    fn sample(&mut self, byte: u32, low: f32, high: f32) -> u32 {
-        self.0.call(SAMPLE_INDEXED, SAMPLE_TABLE, &[byte, low.to_bits(), high.to_bits()]).eax
     }
 }
 

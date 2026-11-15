@@ -4,6 +4,7 @@
 
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::construct::Heap;
+use rbr_physics::physics_core::layout::takes_part_word;
 use rbr_physics::rigid_body::host::{EntityWalkHost, HostUnavailable};
 use rbr_physics::rigid_body::rotation::MulHost;
 
@@ -21,16 +22,17 @@ mod window;
 use crate::collision::CSTATE_UNKA44;
 use crate::engine_driveline::SIGNALS;
 use crate::entities::{COPY16_WALK, INTEGRATE, MB560, NAME_WALK, STATE_EMIT, VF20};
+pub(crate) use contact::contact_vote_direct;
 use contact::{big_a, big_b, e43vf70, vf81x};
 use force_pass::{e43vf64, mounted_vf128, response_run};
 use pose::{e43vf6c, integrate_pose};
 use quats::{quat_mul, quat_norm, quat_normalize, set_from_quat};
+pub(crate) use slots::{accumulate_direct, e43vf138, impulse_run};
 use slots::{
     clamp_velocity_along, damping_emit, e43vf74, e43vfa0, fold_rows, inverse_mass, new_def, quat_diff_rows,
     quat_plus_rows, quat_rows_b8, quat_transform_rows, ring_append, scale_add_rows, state_ctor, step76, step77,
     transform_rows, transform_rows3, vf20_jump, vf24x, vf85,
 };
-pub(crate) use slots::{e43vf138, impulse_run};
 use window::{
     advance_rest, back_step, e43vf158, e43vf90, e43vf94, scratch_reset_after_entity, vf16_helper, vf17x, window_start,
 };
@@ -70,6 +72,17 @@ pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32
     }
 }
 
+/// `CSolid::E43Vf80` (0x5293d0, a solid's gate) when it is `target`, on the held solid `this`: its word at `+0x1dc`
+/// (`takes_part_word`), counted as a run ([`Host::ran_direct`]); its binding reads nothing of the stack, and its callers
+/// read none of the call's words. `None` for another target or body and per call, where the caller calls the host.
+pub(crate) fn solid_gate_direct(host: &dyn Host, mem: &mut Mem, target: u32, this: u32) -> Option<u32> {
+    if target != SOLID_VF80 || !held_solids(host).is_some_and(|s| s.held(this).is_some()) {
+        return None;
+    }
+    host.ran_direct();
+    Some(with_solids(host, mem, |s| takes_part_word(s, this)))
+}
+
 /// The car's solids while the pure host holds them over a step ([`on_solids`]); `None` per call, where a caller on a
 /// hot path keeps its run on `Mem` (`SolidView::image` reads word by word).
 pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
@@ -77,6 +90,7 @@ pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;
+const SOLID_VF80: u32 = 0x5293d0;
 pub const VF20_JUMP: u32 = 0x529200;
 pub const VF16_HELPER: u32 = 0x52b6d0;
 pub const STATE_CTOR: u32 = 0x52d280;

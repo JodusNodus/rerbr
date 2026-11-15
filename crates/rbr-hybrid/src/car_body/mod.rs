@@ -49,13 +49,32 @@ pub(crate) const ADD_EDGE: u32 = 0x4F65B0;
 /// in typed storage while the host holds them ([`Host::typed`]), any other car, and every car per call, on the image
 /// (`layout::CarView`).
 pub(crate) fn on_car<T>(ctx: &mut Ctx, run: impl FnOnce(&mut CarView) -> T) -> T {
-    let host = ctx.host;
+    on_car_in(ctx.host, &mut ctx.mem, run)
+}
+
+/// [`on_car`] on `host` and `mem`.
+fn on_car_in<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CarView) -> T) -> T {
     let typed = host.typed();
     let car = typed.as_deref().map(|t| &t.car);
     let (defs, core) = (typed.as_deref().map(|t| &t.defs), typed.as_deref().map(|t| &t.core));
     let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
-    let view = CarView::new(&mut ctx.mem, car.map(|c| &c.own), car.map(|c| &c.wheels));
+    let view = CarView::new(mem, car.map(|c| &c.own), car.map(|c| &c.wheels));
     run(&mut view.with_defs(defs).with_core(core).with_solids(solids))
+}
+
+/// [`on_car`] when the host holds the car at `car`, counted as a run ([`Host::ran_direct`]): a caller's direct call of
+/// one of its members. `None` per call and for another car, where the caller calls the host.
+pub(crate) fn on_held_car<T>(
+    host: &dyn Host,
+    mem: &mut Mem,
+    car: u32,
+    run: impl FnOnce(&mut CarView) -> T,
+) -> Option<T> {
+    if !host.typed().is_some_and(|t| t.car.own.at == car) {
+        return None;
+    }
+    host.ran_direct();
+    Some(on_car_in(host, mem, run))
 }
 
 /// The field `slot` of the car at `car` as a step leaves it at this point: the typed storage's while the host holds it,

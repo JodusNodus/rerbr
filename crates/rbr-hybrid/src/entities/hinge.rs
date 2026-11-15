@@ -287,8 +287,9 @@ impl SolveCalls for SolveHost<'_> {
     }
 
     fn contact_load(&mut self, this: u32, frame: &ContactHandles) -> Option<([f32; 3], [f32; 3])> {
-        let args = [frame.force, frame.torque, 3.0f32.to_bits()];
-        self.voted = self.host.call_at(self.frame - 0xc0, VF81X, this, &args).eax != 0;
+        let (args, sp) = ([frame.force, frame.torque, 3.0f32.to_bits()], self.frame - 0xc0);
+        let voted = crate::rigid_body::contact_vote_direct(self.host, &mut self.mem, this, sp, args);
+        self.voted = voted.unwrap_or_else(|| self.host.call_at(sp, VF81X, this, &args).eax) != 0;
         self.voted.then(|| (layout::vec3(&self.mem, frame.force), layout::vec3(&self.mem, frame.torque)))
     }
 }
