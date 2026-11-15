@@ -610,13 +610,17 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   in its state since the drive's first frame is settled, not fading (2026-10-25). The rear lamps shine in a flat band
   after ECE R7.
 - Ours: the headlamp type by car year (`Enhance::lighting` only; `lights::Headlamp`, 2026-11-15, user's decision): a
-  kind 1 lamp whose record colour is the retail 255, 255, 233 takes xenon at 1998-2009 (4300 K, 35000 cd dipped) or LED
-  from 2010 (5700 K, 35000 cd); halogen before 1998 and no year stay as they were (20000 cd); a record with its own
-  colour keeps both. Kelvin is Kim et al.'s Planckian-locus fit to linear sRGB; the lit headlamp parts' glow follows
-  (`Car::set_headlamp_year`). The year comes from `--car-year` (the launcher's catalog car, RSF's `cars_data.json`) or
-  `--rsf-car`. Added cars (`cars/cars.ini`, `StoredCar`) carry no year, so they stay halogen until it is stored.
-  Night Gabiria fly-by, Focus 2006 7.7 % RMSE, Fabia RS Rally2 10.4, GR Yaris Rally2 15.3, Escort Mk II (1978) 0.00;
-  the 36 reference shots (no year passed) 34 byte-identical, M3 E30 fly-by 0.10, GC8 chase 0.001 (brake discs below).
+  kind 1 lamp whose record colour is the retail 255, 255, 233 takes xenon at 1998-2009 or LED from 2010, both at
+  35000 cd dipped; halogen before 1998 and no year stay as they were (20000 cd); a record with its own colour keeps
+  both. The retail colour stays the halogen as the eye sees it (it already reads about 6000 K), so the newer types
+  are a tint against 3200 K halogen with partial adaptation (D 0.67): retail * (kelvin(T) / kelvin(3200)) ^ 0.33 per
+  channel, brightest 1: xenon (4300 K) (0.83, 0.91, 1.0), LED (5700 K) (0.68, 0.81, 1.0). Absolute 4300 K made the
+  Focus warmer than halogen cars (first try, dropped). Kelvin is Kim et al.'s Planckian-locus fit to linear sRGB; the
+  lit headlamp parts' glow takes the tint and intensity (`Car::set_headlamp_year`). The year comes from `--car-year`
+  (the launcher's catalog car) or `--rsf-car`; added cars store it in `cars.ini` (`year`, from gvrc's list when added
+  and backfilled from it when the list loads; old files read as no year). Night Gabiria fly-by: Focus 2006 7.7 % RMSE,
+  Fabia RS Rally2 12.9, GR Yaris Rally2 17.6, Escort Mk II (1978) 0.00; the 36 reference shots (no year passed) 34
+  byte-identical, M3 E30 fly-by 0.10, GC8 chase 0.001 (brake discs below).
 - Ours: a `brakedisc` part's lit state (`e_brakedisc_*_lit`, on the `brake_lb` box) is the hot disc, not a lamp: it
   keeps its texture and gets no lamp glow (2026-11-15). It had glowed white at 5000-27000 cd/m2 on all four wheels
   of the Celica TA64, Fabia RS Rally2, i20 WRC, GR Yaris Rally2, Porsche 911 SC RS, Delta HF 4WD, Focus 2006 and

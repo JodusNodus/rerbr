@@ -70,6 +70,11 @@ impl Entry {
         (!group.is_empty()).then_some(group)
     }
 
+    /// Its model year (`year=`), when it is a number.
+    pub fn year(&self) -> Option<u32> {
+        self.year.trim().parse().ok()
+    }
+
     /// Its drive (`4WD`, `FWD`, `RWD`, `AWD`), when it has one.
     pub fn drive_train(&self) -> Option<String> {
         Some(self.trans.trim().to_owned()).filter(|t| !t.is_empty())
@@ -323,6 +328,7 @@ pub fn download_cars(
                 banks,
                 group: entry.group(),
                 drive_train: entry.drive_train(),
+                year: entry.year(),
             }),
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                 added.push(Added { download: entry.name.clone(), result: Err(e) })

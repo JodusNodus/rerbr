@@ -54,6 +54,7 @@ pub struct Download {
     pub banks: Option<PathBuf>,
     pub group: Option<String>,
     pub drive_train: Option<String>,
+    pub year: Option<u32>,
 }
 
 /// An added pack: its car's name, and its model folder or why it has none; or why it was not added.
@@ -217,6 +218,8 @@ pub struct StoredCar {
     pub pack: String,
     pub group: Option<String>,
     pub drive_train: Option<String>,
+    /// The model year (`year`), when the list named one: it picks the headlamp type. Old files lack it.
+    pub year: Option<u32>,
     pub revision: String,
     /// The FMOD bank's name (`AudioFMOD/<audio>.bank`), when it has one.
     pub audio: Option<String>,
@@ -281,6 +284,7 @@ fn stored_car(section: &rbr_formats::ini::Section) -> Result<StoredCar, String> 
         pack,
         group: value("group").filter(|g| !g.is_empty()),
         drive_train: value("drive").filter(|d| !d.is_empty()),
+        year: value("year").and_then(|y| y.trim().parse().ok()),
         revision: value("revision").unwrap_or_default(),
         audio: value("bank").filter(|b| !b.is_empty()),
         model,
@@ -313,6 +317,9 @@ pub fn write_cars(cars_dir: &Path, cars: &[StoredCar]) -> Result<(), Fail> {
         }
         if let Some(drive) = car.drive_train.as_deref() {
             row("drive", drive);
+        }
+        if let Some(year) = car.year {
+            row("year", &year.to_string());
         }
         if !car.revision.is_empty() {
             row("revision", &car.revision);
@@ -368,6 +375,7 @@ fn migrate(cars_dir: &Path) {
                 pack: c.pack.clone(),
                 group: c.group.clone(),
                 drive_train: c.drive_train.clone(),
+                year: c.year,
                 revision: c.revision.clone(),
                 audio: c.audio.clone(),
                 model,
@@ -397,6 +405,10 @@ pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
                 *field = value;
                 changed = true;
             }
+        }
+        if car.year.is_none() && entry.year().is_some() {
+            car.year = entry.year();
+            changed = true;
         }
     }
     if changed {
@@ -516,6 +528,7 @@ fn add_one(
         ),
         None => (download.group.clone(), download.drive_train.clone()),
     };
+    let year = download.year.or_else(|| cars.iter().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder))?.year);
     let row = StoredCar {
         id: 0,
         name: title.clone(),
@@ -525,6 +538,7 @@ fn add_one(
         revision,
         audio: banks.map(|b| b.filename),
         drive_train,
+        year,
     };
     match cars.iter_mut().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)) {
         Some(c) => *c = StoredCar { id: c.id, ..row },
@@ -812,6 +826,7 @@ mod tests {
             banks: None,
             group: None,
             drive_train: None,
+            year: None,
         };
         let mut packs = vec![
             download("Broken - NGP Physics.zip", None),
@@ -889,6 +904,7 @@ mod tests {
                 banks: None,
                 group: None,
                 drive_train: None,
+                year: None,
             }],
             &|_| {},
             &AtomicBool::new(false),
@@ -940,6 +956,7 @@ mod tests {
             banks: Some(downloads_dir.join(format!("Citroen C2 GT S1600{BANKS}"))),
             group: None,
             drive_train: None,
+            year: None,
         }];
         add_downloads(&cars, &downloads, &|_| {}, &AtomicBool::new(false)).unwrap();
 
@@ -972,6 +989,7 @@ mod tests {
             revision: "3 / 2024-12-10".into(),
             audio: None,
             drive_train: drive.map(str::to_owned),
+            year: None,
         };
         let cars = vec![
             car(1, "evo_IX", Some("Group N4"), Some("4WD")),
@@ -992,6 +1010,30 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
+    /// `cars.ini` without a `year` key reads as no year, with the rest unchanged; one with it reads the year and a
+    /// bad value reads as none.
+    #[test]
+    fn the_year_is_optional_in_cars_ini() {
+        let root = crate::test_dir("car-year");
+        let cars_dir = root.join("cars");
+        fs::create_dir_all(&cars_dir).unwrap();
+        let text = "[Old]\nname = Old car\nid = 1\ngroup = Group 4\ndrive = RWD\nmodel = m/m\n\n\
+                    [New]\nname = New car\nid = 2\nyear = 2019\nmodel = m/m\n\n\
+                    [Bad]\nname = Bad car\nid = 3\nyear = soon\nmodel = m/m\n";
+        fs::write(cars_dir.join("cars.ini"), text).unwrap();
+        let found = list(&cars_dir);
+        let by = |pack: &str| found.iter().find(|c| c.pack == pack).unwrap();
+        assert_eq!(
+            (by("Old").year, by("Old").group.as_deref(), by("Old").drive_train.as_deref()),
+            (None, Some("Group 4"), Some("RWD"))
+        );
+        assert_eq!((by("New").year, by("Bad").year), (Some(2019), None));
+        // A year survives a rewrite.
+        write_cars(&cars_dir, &found).unwrap();
+        assert_eq!(list(&cars_dir), found);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
     /// Cars added before the group and drive train that lack them take them from the list's entries: only matching
     /// packs without values change, and the list is not rewritten when nothing changed.
     #[test]
@@ -1007,6 +1049,7 @@ mod tests {
             revision: String::new(),
             audio: None,
             drive_train: drive.map(str::to_owned),
+            year: None,
         };
         write_cars(
             &cars_dir,
@@ -1021,7 +1064,7 @@ mod tests {
         let entry = |pack: &str, cat: &str, trans: &str| crate::gvrc::Entry {
             name: pack.into(),
             cat: cat.into(),
-            year: String::new(),
+            year: "1984".into(),
             pack: pack.into(),
             trans: trans.into(),
             physics: String::new(),
@@ -1040,6 +1083,8 @@ mod tests {
         assert_eq!((group("BMW M1 GrpB").as_deref(), drive("BMW M1 GrpB").as_deref()), (Some("Group B"), Some("RWD")));
         assert_eq!((group("Fiesta").as_deref(), drive("Fiesta").as_deref()), (Some("Group B"), Some("FWD")));
         assert_eq!((group("Ghost").as_deref(), drive("Ghost").as_deref()), (None, None));
+        let year = |pack: &str| found.iter().find(|c| c.pack == pack).unwrap().year;
+        assert_eq!((year("BMW M1 GrpB"), year("evo_IX"), year("Ghost")), (Some(1984), Some(1984), None));
         assert_eq!((group("evo_IX").as_deref(), drive("evo_IX").as_deref()), (Some("WRC 1.6"), Some("4WD")));
         // Nothing left to fill: no rewrite.
         let before = fs::read(cars_dir.join("cars.ini")).unwrap();
