@@ -245,7 +245,7 @@ impl PairOps for PairWalk<'_> {
         }
         // The pure host runs the child walk here, as its binding (`pair_walker`) would, without the call's words: their
         // one reader was the passenger step's walk point, whose lane 3 is `crate::RESIDUE` there.
-        if crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
+        if child_words_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             let mut child = PairWalk { mem: &mut *self.mem, host: self.host, esp: sp, walk_depth: walk_depth(which) };
             return walk::run(&mut child, which, receiver, o2, a, b);
         }
@@ -259,6 +259,12 @@ impl PairOps for PairWalk<'_> {
     fn copy_vec4(&mut self, to: u32, from: u32) {
         copy_vec4(self.host, self.mem, to, from);
     }
+}
+
+/// [`crate::skip_unwritten`] of a child walk's words, from one place for the walk in place and the value carry, so that
+/// the audit's fills carry the same tag on both and the twin compares them.
+pub(super) fn child_words_unwritten(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
+    crate::skip_unwritten(host, mem, sp, args)
 }
 
 /// `layout::copy_vec4` on the solids' store: `from` is a solid's vector at times (`MB560` on the car's position).

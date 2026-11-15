@@ -15,7 +15,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{CarSolids, SolidView, Vec4};
 use rbr_physics::rigid_body::store::RigidStore;
 
-use super::walks::PairWalk;
+use super::walks::{child_words_unwritten, walk_depth, PairWalk};
 use super::{
     COMPOSE_B, COPY16_WALK, COPY_BLOCKS, COPY_BLOCKS_THREE_FOUR, FETCH_X, FETCH_Y, GRID_WALK, MB560, PAIR_COMBINE,
     PAIR_COMBINE_TWIN,
@@ -73,9 +73,10 @@ pub(crate) fn op(host: &dyn Host, sp: u32, this: u32, op: Op) -> u32 {
     let (target, words, len) = op.call_words();
     let args = &words[..len];
     if host.typed().is_some() {
+        let esp = if cfg!(feature = "residue-audit") { host.call_esp(sp) } else { sp };
         let ran = host.with_image(&mut |mem| {
-            crate::skip_unwritten(host, mem, sp, args);
-            run(host, mem, this, op)
+            crate::skip_unwritten(host, mem, esp, args);
+            run(host, mem, esp, this, op)
         });
         if let Some(eax) = ran {
             // Counted as the run it replaces ([`Host::entered`]: a caller that keeps what it read while nothing ran).
@@ -104,20 +105,24 @@ fn in_place_or_call(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u3
 /// (nothing written but `FetchY`'s grid copy, which the walk in place makes again) off held state, or when the value
 /// walk backs out: a frame's hook, gate or owner slot not known (`layout::passage`), a body loop that would read the
 /// output, overlapping rows, more than [`CARRIED_ROWS`] rows, a grid of more than [`GRID_BOXES`] boxes.
-pub(crate) fn run(host: &dyn Host, mem: &mut Mem, this: u32, op: Op) -> Option<u32> {
+pub(crate) fn run(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, op: Op) -> Option<u32> {
     let route = |three_four| [Walker::RoutePairOneTwo, Walker::RoutePairThreeFour][usize::from(three_four)];
     let (eax, done) = match op {
-        Op::Mb560 { a, b, c } => (c, carried(host, mem, Walker::RoutePairThreeFour, (this, b), a, c, 1)),
-        Op::ComposeA { src, o2, out } => (out, carried(host, mem, Walker::RoutePairOneTwo, (this, o2), src, out, 1)),
-        Op::ComposeB { src, o2, out } => (out, carried(host, mem, Walker::RoutePairFiveSix, (this, o2), src, out, 1)),
+        Op::Mb560 { a, b, c } => (c, carried(host, mem, esp, Walker::RoutePairThreeFour, (this, b), a, c, 1)),
+        Op::ComposeA { src, o2, out } => {
+            (out, carried(host, mem, esp, Walker::RoutePairOneTwo, (this, o2), src, out, 1))
+        }
+        Op::ComposeB { src, o2, out } => {
+            (out, carried(host, mem, esp, Walker::RoutePairFiveSix, (this, o2), src, out, 1))
+        }
         Op::FetchX { out, arg } => {
             let t = mem.load_transform(this);
-            (out, carried(host, mem, Walker::RoutePairOneTwo, (t.node, arg), t.matrix, out, 1))
+            (out, carried(host, mem, esp, Walker::RoutePairOneTwo, (t.node, arg), t.matrix, out, 1))
         }
-        Op::FetchY { out, arg } => (out, grid_carried(host, mem, this, out, arg)),
+        Op::FetchY { out, arg } => (out, grid_carried(host, mem, esp, this, out, arg)),
         Op::Combine { a, b, .. } => (mem.store_pair(this, a, b), true),
         Op::CopyBlocks { src, o2, dst, n, three_four } => {
-            (dst, carried(host, mem, route(three_four), (this, o2), src, dst, n))
+            (dst, carried(host, mem, esp, route(three_four), (this, o2), src, dst, n))
         }
     };
     done.then_some(eax)
@@ -127,6 +132,11 @@ pub(crate) fn run(host: &dyn Host, mem: &mut Mem, this: u32, op: Op) -> Option<u
 /// solids'.
 struct HeldFrames<'a> {
     mem: &'a mut Mem,
+    host: &'a dyn Host,
+    /// Where the walk in place would be entered and how far below it a child walk enters, for the words the audit
+    /// fills (the walk's hooks, gates, owner slots and child walks leave theirs unwritten).
+    esp: u32,
+    walk_depth: u32,
     solids: Option<Ref<'a, CarSolids>>,
     out: Range<u32>,
     /// Whether the carry read or wrote a held solid's words (as `not_kept_on_held`).
@@ -164,18 +174,52 @@ impl HeldFrames<'_> {
 }
 
 impl Frames for HeldFrames<'_> {
+    type Mark = (u32, u32);
+
     fn node(&self, at: u32) -> Node {
         self.mem.load_node(at)
     }
 
-    fn passage(&mut self, at: u32, hook: Hook) -> Option<Passage> {
+    fn passage(&mut self, at: u32, hook: Hook, rows: u32, count: u32) -> Option<Passage> {
+        // The hook's call, its gate's and its owner slot's as a walk in place enters them ([`PairWalk::hook`], the
+        // frame hooks' bindings): none of their words is written here (the audit fills them).
+        #[cfg(feature = "residue-audit")]
+        {
+            let sp = (self.esp - 0x1000) & !0xf;
+            crate::skip_unwritten(self.host, self.mem, sp, &[0, 0]);
+            crate::skip_unwritten(self.host, self.mem, sp - 8, &[]);
+            crate::skip_unwritten(self.host, self.mem, sp - 16, &[0, 0]);
+        }
         let out = self.out.clone();
         let passage = layout::passage(&self.view(), at, hook, &out);
+        if matches!(passage, Some(Passage::Points { .. })) {
+            // `CCarBody`'s scatter is a call of the walk in place, which writes its words; a later reader of the dead
+            // stack there (the tyre noise payload's word `+0x46c`, drive2 step 3 with the audit's fills) sees them.
+            let sp = (self.esp - 0x1000) & !0xf;
+            crate::skip_call_writing(self.host, self.mem, sp - 16, &[rows, count]);
+        }
         if matches!(passage, Some(Passage::Body(_))) {
             let owner = self.mem.load_entity_frame(at).owner;
             self.on_held |= self.held(owner + rbr_physics::rigid_body::layout::POSITION);
         }
         passage
+    }
+
+    fn descend(&mut self, which: Walker, receiver: u32, o2: u32, a: u32, b: u32) -> (u32, u32) {
+        let mark = (self.esp, self.walk_depth);
+        let sp = self.esp.wrapping_sub(self.walk_depth);
+        let route = matches!(which, Walker::RoutePairOneTwo | Walker::RoutePairThreeFour | Walker::RoutePairFiveSix);
+        // The child walk's words stay unwritten, as [`PairWalk::walk`] leaves them: their one reader was the passenger
+        // step's walk point, whose lane 3 is `crate::RESIDUE` here (notes/physics.md "Entities", residue).
+        if !(route && receiver == o2) {
+            child_words_unwritten(self.host, self.mem, sp, &[o2, a, b]);
+        }
+        (self.esp, self.walk_depth) = (sp, walk_depth(which));
+        mark
+    }
+
+    fn ascend(&mut self, (esp, walk_depth): (u32, u32)) {
+        (self.esp, self.walk_depth) = (esp, walk_depth);
     }
 }
 
@@ -185,9 +229,11 @@ const CARRIED_ROWS: usize = 16;
 /// The `n` rows at `src` carried from `receiver`'s frame to `o2`'s by the dispatcher `route` and stored at `dst`, as
 /// values (`entities::carry`). False, nothing written, off held state or when the walk backs out ([`run`]). Counted as
 /// a run when it read or wrote a held solid's words ([`Host::ran_direct`]: the call memo sees only the image).
+#[allow(clippy::too_many_arguments)]
 fn carried(
     host: &dyn Host,
     mem: &mut Mem,
+    esp: u32,
     route: Walker,
     (receiver, o2): (u32, u32),
     src: u32,
@@ -198,7 +244,15 @@ fn carried(
     if host.typed().is_none() || n as usize > CARRIED_ROWS || (src != dst && src < dst + len && dst < src + len) {
         return false;
     }
-    let mut frames = HeldFrames { mem, solids: held_solids(host), out: dst..dst + len, on_held: false };
+    let mut frames = HeldFrames {
+        mem,
+        host,
+        esp,
+        walk_depth: WALK_CALL,
+        solids: held_solids(host),
+        out: dst..dst + len,
+        on_held: false,
+    };
     let mut rows = [Vec4::default(); CARRIED_ROWS];
     let rows = &mut rows[..n as usize];
     frames.load(src, rows);
@@ -218,7 +272,7 @@ const GRID_BOXES: usize = ((GRID_SECOND_BOXES - GRID_FIRST_BOXES) / 16) as usize
 /// `FetchY` on the transform `this` as values: the grid copied to `out` (`layout::copy_grid`, as the original's `rep
 /// movsd`), then its box tables read, carried from the transform's node's frame to `arg`'s (`carry_grid`) and stored.
 /// False off held state, for a null or overlapping `out`, more than [`GRID_BOXES`] boxes, or when the walk backs out.
-fn grid_carried(host: &dyn Host, mem: &mut Mem, this: u32, out: u32, arg: u32) -> bool {
+fn grid_carried(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, out: u32, arg: u32) -> bool {
     let t = mem.load_transform(this);
     let overlaps = t.matrix != out && t.matrix < out + GRID_STRIDE && out < t.matrix + GRID_STRIDE;
     if host.typed().is_none() || out == 0 || overlaps {
@@ -229,7 +283,15 @@ fn grid_carried(host: &dyn Host, mem: &mut Mem, this: u32, out: u32, arg: u32) -
     if count > GRID_BOXES {
         return false;
     }
-    let mut frames = HeldFrames { mem, solids: held_solids(host), out: out..out + GRID_STRIDE, on_held: false };
+    let mut frames = HeldFrames {
+        mem,
+        host,
+        esp,
+        walk_depth: WALK_CALL,
+        solids: held_solids(host),
+        out: out..out + GRID_STRIDE,
+        on_held: false,
+    };
     let (mut first, mut second) = ([Vec4::default(); GRID_BOXES], [Vec4::default(); GRID_BOXES]);
     let (first, second) = (&mut first[..count], &mut second[..count]);
     frames.load(out + GRID_FIRST_BOXES, first);
@@ -268,7 +330,7 @@ pub(crate) fn fetch_x_direct(host: &dyn Host, mem: &mut Mem, sp: u32, matrix: u3
 
 /// A binding's run: [`run`] with its stack words, else `in_place` (the walk in the binding's own frame).
 fn bound(ctx: &mut Ctx, r: &Regs, op: Op, pop: u32, in_place: impl FnOnce(&mut PairWalk) -> u32) -> Return {
-    let eax = run(ctx.host, &mut ctx.mem, r.ecx, op).unwrap_or_else(|| {
+    let eax = run(ctx.host, &mut ctx.mem, r.esp, r.ecx, op).unwrap_or_else(|| {
         in_place(&mut PairWalk { mem: &mut ctx.mem, host: ctx.host, esp: r.esp, walk_depth: WALK_CALL })
     });
     Return::void(eax, pop)
@@ -286,7 +348,7 @@ pub(super) fn fetch_x_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// grid walk of the worker against `out`; returns `out`. The walk enters where `FetchX`'s does.
 pub(super) fn fetch_y_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [out, arg, ..] = r.stack;
-    if let Some(eax) = run(ctx.host, &mut ctx.mem, r.ecx, Op::FetchY { out, arg }) {
+    if let Some(eax) = run(ctx.host, &mut ctx.mem, r.esp, r.ecx, Op::FetchY { out, arg }) {
         return Ok(Return::void(eax, 8));
     }
     let t = ctx.mem.load_transform(r.ecx);
@@ -376,7 +438,7 @@ pub(crate) fn transform_direct(
     }
     let [a, b, c] = args;
     let op = if target == MB560 { Op::Mb560 { a, b, c } } else { Op::ComposeA { src: a, o2: b, out: c } };
-    if run(host, mem, this, op).is_some() {
+    if run(host, mem, sp, this, op).is_some() {
         return true;
     }
     if target == MB560 {

@@ -1002,6 +1002,10 @@ impl Host for Pure {
         self.on_image(run)
     }
 
+    fn call_esp(&self, sp: u32) -> u32 {
+        self.call_regs(sp, 0).esp
+    }
+
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
         let regs = self.call_regs(sp, ecx);
@@ -1073,6 +1077,10 @@ impl Host for Direct {
 
     fn with_image(&self, run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
         self.0.on_image(run)
+    }
+
+    fn call_esp(&self, sp: u32) -> u32 {
+        self.0.call_regs(sp, 0).esp
     }
 
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {

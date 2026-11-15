@@ -21,9 +21,14 @@ pub enum Passage {
 
 /// The frames a carry walks: the node reads and what each frame does.
 pub trait Frames {
+    /// What the walk keeps of where it is while it runs a child walk.
+    type Mark;
     fn node(&self, at: u32) -> Node;
     /// What `hook` of the frame at `at` does to the rows; `None` when it is not known.
-    fn passage(&mut self, at: u32, hook: Hook) -> Option<Passage>;
+    fn passage(&mut self, at: u32, hook: Hook, rows: u32, count: u32) -> Option<Passage>;
+    /// A child walk `which` of `receiver` against `o2` with `(a, b)` starts; `ascend` follows it with the mark.
+    fn descend(&mut self, which: Walker, receiver: u32, o2: u32, a: u32, b: u32) -> Self::Mark;
+    fn ascend(&mut self, mark: Self::Mark);
 }
 
 /// Rows the walk passes to the hooks at `at` (the hooks' first argument).
@@ -50,8 +55,9 @@ impl<F: Frames> Walk for Carry<'_, '_, F> {
         if !self.known {
             return;
         }
+        let rows_at = rows;
         let rows = self.tables.iter_mut().find(|t| t.at == rows).and_then(|t| t.rows.get_mut(..count as usize));
-        match (self.frames.passage(at, hook), rows) {
+        match (self.frames.passage(at, hook, rows_at, count), rows) {
             (Some(Passage::Unchanged), Some(_)) => {}
             (Some(Passage::Body(map)), Some(rows)) => map.apply(rows),
             (Some(Passage::Points { base, sub }), Some(rows)) => crate::car_body::body::shift_points(base, rows, sub),
@@ -60,7 +66,10 @@ impl<F: Frames> Walk for Carry<'_, '_, F> {
     }
 
     fn walk(&mut self, which: Walker, receiver: u32, o2: u32, a: u32, b: u32) -> u32 {
-        walk::run(self, which, receiver, o2, a, b)
+        let mark = self.frames.descend(which, receiver, o2, a, b);
+        let result = walk::run(self, which, receiver, o2, a, b);
+        self.frames.ascend(mark);
+        result
     }
 
     /// No walker copies; the callers of a carry read the rows before it.
