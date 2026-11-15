@@ -229,6 +229,14 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   host). Host: `CWheel::E43Vf20`/`E43Vf6C`'s jumps, `WorldCompose`, `ToWorld` (untyped walks and ops below, whose calls
   in place would land elsewhere on the stack). Audit as above, also `--damage realistic` and `--twin mem-direct`
   (`--dispatch direct` is live only).
+- The wheel's own calls in place (drive2 787.3 -> 670.7 host calls a step, instructions -0.85 %): a call of a wheel
+  binding on a held wheel from the wheel's code or the entity walks (`M3B5B0`, `M3D460`, `M3D520`, `M3B900`, `M3AFB0`,
+  `M3AC50`, `Blend4`, `Unk97a0`, `Unk96e0`, `Unk9290`, `Unk9900`, `E50BlendOps::Blend`, Hook's `M3DD30`, `CWheel::E43Vf*`)
+  runs in place (`wheel::call_wheel`, `Host::call_in_place`: its own frame at the call's esp, so the calls it leaves the
+  placement of land as through the host, but none of the call's words); the frame blocks they take stay in the callers'
+  frames on the image. Leaf math direct with values on the pure host (`collision::{copy_vec4, length}`): `Length` from
+  `E36Collect`, `CopyFrom` from `SyncGrid`, `CBody::Vf11C`, the body state, the L2 detector, `SimCFF0`. Audit (the
+  skipped words `0xffbadbad`): drive2 PASS, traces equal aids off, on, damage realistic; twin typed, mem-direct equal.
 
 ### Per subsystem
 
