@@ -16,7 +16,9 @@ mod solver;
 mod vectors;
 
 use crate::entities::{COMPOSE_B, ENTITY_VF118, FETCH_X, NAME_WALK, NODE_OF, PAIR_COMBINE_TWIN, SAMPLE_INDEXED};
-pub(crate) use bodies::{body_box_direct, body_vf_cc_direct, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C};
+pub(crate) use bodies::{
+    body_box_direct, body_vf_cc_direct, held_cell_link, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
+};
 use bodies::{
     body_clear_grid, body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc,
     lookup_twin, move_to_cell, notify_filtered, state_unka44,
@@ -169,6 +171,18 @@ fn on_grids<T>(host: &dyn Host, mem: &mut Mem, grids: &[u32], run: impl FnOnce(&
     } else {
         run(&mut CollisionView::image(mem))
     }
+}
+
+/// `host.call_at(sp, target, this, args)` of a binding on the cell grid or a collision grid (`E45_M40C0`, `E45_M46A0`,
+/// `M_D760X`, `CColGrid::SyncGrid`, `E37GridOps::M6610`, `CLink::Unlink`) from a caller on held state: run in place
+/// while the pure host holds the state ([`Host::call_in_place`]: the cell table and the grids' hit bytes are the held
+/// ones through their views, the rest is the image's either way, and none of the call's words is read after it:
+/// residue audit, notes/physics.md "Store seam"), else the host call.
+pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
+    let held = host.typed().is_some();
+    held.then(|| host.call_in_place(sp, target, this, args))
+        .flatten()
+        .unwrap_or_else(|| host.call_at(sp, target, this, args))
 }
 
 /// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the

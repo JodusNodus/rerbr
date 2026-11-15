@@ -118,7 +118,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn grid_ops(&mut self, sp: u32, at: u32, grid: u32, frame: u32, other_frame: u32) {
-        self.host.call_at(sp, E37_GRID_COPY, at, &[grid, frame, other_frame]);
+        crate::collision::call_grid(self.host, sp, E37_GRID_COPY, at, &[grid, frame, other_frame]);
     }
 
     fn min_max(&mut self, sp: u32, at: u32, other: u32, lo: u32, hi: u32) {
@@ -130,7 +130,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn cells(&mut self, sp: u32, lo: u32, hi: u32, out: u32) {
-        self.host.call_at(sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
+        crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
     }
 
     fn kernel_tests(&mut self, mem: &mut Mem, frame: u32, node: u32, mask: u32, excluded: u32) -> Option<KernelTest> {

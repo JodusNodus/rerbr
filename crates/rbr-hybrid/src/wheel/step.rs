@@ -140,11 +140,11 @@ impl layout::GroundCalls for Ground<'_> {
     }
 
     fn mesh_ray_query(&mut self, object: u32, b: u32, c: u32, d: u32) -> u32 {
-        self.call(0x4FD760, object, &[b, c, d, 0])
+        crate::collision::call_grid(self.host, self.sp, 0x4FD760, object, &[b, c, d, 0]).eax
     }
 
     fn cast_ray(&mut self, world: u32, a: u32, b: u32, list: u32, out: u32) -> u32 {
-        self.call(0x5246A0, world, &[a, b, list, out])
+        crate::collision::call_grid(self.host, self.sp, 0x5246A0, world, &[a, b, list, out]).eax
     }
 
     fn hit_flag(&mut self, hit: u32) -> u32 {

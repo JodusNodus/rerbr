@@ -3,7 +3,7 @@
 use rbr_physics::collision::layout::body_hosts::{BodyResetHost, ClearGridHost, CornerHost};
 use rbr_physics::collision::layout::links::{self, NotifyFilteredHost};
 use rbr_physics::collision::layout::state::StateHost;
-use rbr_physics::collision::layout::{self, Body, Vec4};
+use rbr_physics::collision::layout::{self, Body, CellLink, Vec4};
 use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 
@@ -24,7 +24,7 @@ impl StateHost for StateCallees<'_> {
     }
 
     fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
-        self.host.call(E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
+        super::call_grid(self.host, 0, E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
     }
 }
 
@@ -49,10 +49,29 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(cell, 0))
 }
 
+/// CCellGrid::LookupTwin (0x4e03b0): thiscall on the grid with `(x, y)`; eax is the point's link. The grid's header and
+/// slots are the held table's while a step holds it ([`Host::typed`]), else the image's.
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [x, y, ..] = r.stack;
-    let link = layout::cell_link_at(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, f32::from_bits(x), f32::from_bits(y));
+    let [x, y, ..] = r.stack.map(f32::from_bits);
+    let mut alloc = Callees(ctx.host);
+    let held =
+        ctx.host.typed().and_then(|t| t.car.collision.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y));
+    let link = held.unwrap_or_else(|| layout::cell_link_at(&mut alloc, &mut ctx.mem, r.ecx, x, y));
     Ok(Return::void(link, 8))
+}
+
+/// The link of the point `(x, y)` on the grid at `grid` from the table a step holds, in place of the call at `sp`,
+/// counted as a run of
+/// `LookupTwin` ([`Host::ran_direct`]): `None` per call, for another grid and for a cell with no link block yet
+/// (the caller calls, and the binding builds it).
+pub(crate) fn held_cell_link(host: &dyn Host, mem: &mut Mem, sp: u32, grid: u32, x: f32, y: f32) -> Option<u32> {
+    match host.typed()?.car.collision.cells.link_at(mem, grid, x, y)? {
+        CellLink::Link(link) if crate::skip_unwritten(host, mem, sp, &[x.to_bits(), y.to_bits()]) => {
+            host.ran_direct();
+            Some(link)
+        }
+        _ => None,
+    }
 }
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
@@ -87,7 +106,7 @@ pub(crate) struct BodyCallees<'a>(pub(crate) &'a dyn Host);
 
 impl ClearGridHost for BodyCallees<'_> {
     fn sync_grid(&mut self, grid: u32, source: u32, lower: u32, upper: u32) -> u32 {
-        self.0.call(E37_WALL_SYNC, grid, &[source, lower, upper]).eax
+        super::call_grid(self.0, 0, E37_WALL_SYNC, grid, &[source, lower, upper]).eax
     }
 }
 
