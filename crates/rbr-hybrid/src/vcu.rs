@@ -1,12 +1,12 @@
 //! Bindings of the VCU ports (`rbr_physics::vcu`, exe 0x536880-0x5380a0). The ABIs are the original's
 //! (`harness/vcu_vectors.py` VCU_SPECS: thiscall `this` in ecx, the bytes `ret` pops). Each binding decodes the
-//! registers and runs its entry's sequence (`rbr_physics::vcu::layout`). Accessors and setters on the drive, the
-//! engine and the car run direct on the held state (`VcuCallees`); the lights, the slip query and the per-call path
-//! call the originals through the host (`VcuHost`).
+//! registers and runs its entry's sequence (`rbr_physics::vcu::layout`). The accessors and setters on the drive, the
+//! engine, the car and the lights, and the slip query, run direct on the held state (`VcuCallees`); the per-call path
+//! calls the originals through the host (`VcuHost`).
 
 use std::cell::Ref;
 
-use rbr_physics::car_body::layout::slot as car_slot;
+use rbr_physics::car_body::layout::{self as car_layout, slot as car_slot};
 use rbr_physics::engine_driveline::layout::{self as driveline, DriveView, EngineView};
 use rbr_physics::engine_driveline::{drive, store::DriveStore};
 use rbr_physics::mem::Mem;
@@ -130,10 +130,11 @@ impl VcuCalls for VcuHost<'_> {
 
 /// The VCU's callees on the typed state the host holds over a step: the held drive's, engine's and car's run here, on
 /// their typed state with the values as arguments, each counted as a run ([`Host::ran_direct`]: the call memo keeps no
-/// call around them). They are leaves that read nothing but their arguments, decline nowhere and run at the same
-/// address with or without NGP, and no later code reads the words the host call leaves on the stack (`notes/physics.md`
-/// "Store seam", direct calls). The lights (on the image), the slip query (the VCU's own, at its stack depth) and
-/// another car's callees go through the host ([`VcuHost`]), as everything does on the per-call path.
+/// call around them). They read nothing of the stack but their arguments, decline nowhere and run at the same address
+/// with or without NGP, and no later code reads the words the host call leaves on the stack (`notes/physics.md` "Store
+/// seam", direct calls). The light setters run on the image (their words are no typed state's), the slip query on the
+/// held unit with its getters here. Another car's callees go through the host ([`VcuHost`]), as everything does on the
+/// per-call path.
 pub(crate) struct VcuCallees<'a> {
     host: VcuHost<'a>,
     held: Option<(Ref<'a, Typed>, Mem)>,
@@ -152,6 +153,14 @@ impl VcuCallees<'_> {
         let (typed, mem) = self.held.as_mut().filter(|(t, _)| t.car.engine.is(engine))?;
         self.host.host.ran_direct();
         Some(run(&mut typed.car.engine.view(mem).with_defs(Some(&typed.defs))))
+    }
+
+    /// `run` on the image when the step holds this unit (so `lights` is its car's): the light setters' words (the
+    /// light block, its value headers and change words) are no typed state's, written where the binding writes them.
+    fn lights<T>(&mut self, run: impl FnOnce(&mut Mem) -> T) -> Option<T> {
+        let (_, mem) = self.held.as_mut().filter(|(t, _)| t.car.vcu.is(self.host.scratch))?;
+        self.host.host.ran_direct();
+        Some(run(mem))
     }
 }
 
@@ -197,15 +206,27 @@ impl VcuCalls for VcuCallees<'_> {
     }
 
     fn set_brake_light(&mut self, lights: u32, on: bool) {
-        self.host.set_brake_light(lights, on);
+        if self.lights(|mem| car_layout::set_brake_light(mem, lights, on as u32)).is_none() {
+            self.host.set_brake_light(lights, on);
+        }
     }
 
     fn set_neutral_light(&mut self, lights: u32, on: bool) {
-        self.host.set_neutral_light(lights, on);
+        if self.lights(|mem| car_layout::set_neutral_light(mem, lights, on as u32)).is_none() {
+            self.host.set_neutral_light(lights, on);
+        }
     }
 
+    /// The VCU's own query on the held unit (a second view of its `Cell`, the outer FlagDispatch's still open), its
+    /// getters through `self`, as the binding runs it.
     fn query_slip(&mut self) -> bool {
-        self.host.query_slip()
+        let Some((typed, mem)) = self.held.as_ref().filter(|(t, _)| t.car.vcu.is(self.host.scratch)) else {
+            return self.host.query_slip();
+        };
+        let (typed, mut mem) = (Ref::clone(typed), mem.clone());
+        self.host.host.ran_direct();
+        let view = typed.car.vcu.view(&mut mem, Some(&typed.car.drive)).with_defs(Some(&typed.defs));
+        layout::query_slip(&view, self)
     }
 }
 

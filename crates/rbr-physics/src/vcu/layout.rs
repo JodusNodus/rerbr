@@ -538,8 +538,8 @@ pub fn read_packet<S: VcuStore>(store: &mut S, packet: Packet) {
 }
 
 /// The original functions the VCU's entries call (thiscall each): the drive's, the engine's, the car's and the lights'
-/// accessors and setters, and the slip query. None of their objects is typed, so the bindings make them through the
-/// host; the slip query is the VCU's own, called through the host as the original calls it (its stack words).
+/// accessors and setters, and the slip query (the VCU's own). The bindings run them on the step's held state, else
+/// through the host as the original calls them (`rbr-hybrid`'s `VcuCallees`).
 pub trait VcuCalls {
     /// `CDrive::Get4520`: the engine speed (rad/s).
     fn engine_speed(&mut self, drive: u32) -> f32;
