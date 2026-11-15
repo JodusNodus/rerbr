@@ -1,6 +1,7 @@
 //! A replay (ours): a live drive kept to watch again. The physics is not stored but run again from the drive's
 //! frames, which replay it bit for bit (`crate::realtime`), so a replay plays only on the build, install and setup
-//! that drove it; each frame's digest tells where it does not. All values little-endian:
+//! that drove it; each frame's digest tells where it does not. The setup is kept beside the replay
+//! ([`setup_path`]). All values little-endian:
 //!
 //! ```text
 //! u8  magic[4]   RRP1
@@ -42,6 +43,24 @@ pub fn read_result(replay: &Path) -> std::io::Result<Splits> {
         return Err(invalid("invalid replay result"));
     }
     Splits::from_payload(&bytes[8..])
+}
+
+/// The drive's setup file, kept beside the replay: the header's `--setup` names the launcher's one current setup,
+/// which the next drive overwrites.
+pub fn setup_path(replay: &Path) -> PathBuf {
+    replay.with_extension("rrp.setup")
+}
+
+/// Keeps the drive's `setup` file beside its replay; a drive on the default setup removes an earlier one.
+pub fn keep_setup(replay: &Path, setup: Option<&Path>) -> std::io::Result<()> {
+    let kept = setup_path(replay);
+    match setup {
+        Some(setup) => std::fs::copy(setup, kept).map(|_| ()),
+        None => match std::fs::remove_file(kept) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
+    }
 }
 
 /// Reads only the viewer arguments, leaving `input` at the frame log. Bounds the header before allocating,
@@ -167,6 +186,25 @@ mod tests {
         }
         std::fs::write(result_path(&path), b"SPL1\xff\xff\xff\xff").unwrap();
         assert_eq!(read_result(&path).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_drive_keeps_its_setup_beside_the_replay() {
+        let dir = std::env::temp_dir().join(format!("rerbr-replay-setup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (replay, current) = (dir.join("drive.rrp"), dir.join("setup-current.lsp"));
+        // A drive on the default setup has none to keep, and none to remove.
+        keep_setup(&replay, None).unwrap();
+        std::fs::write(&current, "first").unwrap();
+        keep_setup(&replay, Some(&current)).unwrap();
+        // The next drive overwrites the current setup; the replay's own stays.
+        std::fs::write(&current, "second").unwrap();
+        assert_eq!(setup_path(&replay), dir.join("drive.rrp.setup"));
+        assert_eq!(std::fs::read_to_string(setup_path(&replay)).unwrap(), "first");
+        keep_setup(&replay, None).unwrap();
+        assert!(!setup_path(&replay).exists());
+        assert!(keep_setup(&replay, Some(&dir.join("gone.lsp"))).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
