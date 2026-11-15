@@ -183,7 +183,8 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 ### Typed storage
 
 - `store::typed::Typed`: `car: CarTyped` (`struts`, `vcu`, `drive`, `engine`, `tyres`, `wheels`, `own`, `collision`),
-  `core` (one per world), `stage` (an `Arc`, one per loaded stage), `defs` (read only) and `solids`.
+  `core` (one per world), `stage` (an `Arc`, one per loaded stage), `defs` (read only) and `solids` (with the hinged
+  and mounted bodies' own words).
 - A step holds it (`Pure::typed`, `Pure::typed_solids`, both on by default); the bindings reach it through
   `Host::typed()`. The stage is lifted once (`OnceLock`), the
   definitions every step (setup, respawn and restart write them between steps); neither is lowered.
@@ -243,6 +244,13 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `M3D030`, `E45_M1980` and the boot step's first four (no held state there). Audit as above; poison with one
   site back on the host stops at the held `strut_length_dirty`.
 
+- The hinged body's calls of its own bindings run in place on a held body (`entities::hinge::call_hinge`): the limit
+  update, `SimD160`, `SimC960`, `SimE1D0`, `SimCFF0`, `SimEA80`, `SimD860` from `SimF950`, `SimEAD0`, `SimD160` and
+  `SimEFE0`; the limit update's `SetDirty` direct (`hinge::set_dirty`, the rate tweak's dirty word on the image).
+  Host: `VfE070` (it writes the definition), the walks and ops (`MB560`, `Xform8130`, `BodyCompose`, `ToQuat`,
+  `Scale`), `E43Vf6C`, the emits, the detaches' callees. Audit (the skipped words `0xffbadbad`): drive2 PASS, twin
+  typed aids off, on and damage realistic, mem-direct equal.
+
 ### Per subsystem
 
 Each passes drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
@@ -261,6 +269,7 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 | Core, `physics_core::layout::Core` (`Cell`) | hit and pass counters, single stepper, substep and step counters, clock, step globals | pointers, the counter's NTweak header, the solver and its event list, entity lists | `differential` |
 | Collision, `collision::layout::CarCollision` | solver counts, contact and offset rows (per block on first touch, `Touched`), car grids' (ids 1-9) hit bytes | rows' composed point `+0x40` (read at its address), body link, grids' other words, props' grids, events, pool, free list | `differential`; `collision_vectors` per call |
 | Definitions, `store::defs::Defs` (read only, watched) | `WheelDef`, strut `Definition`, `TyreDef`, `CarDef`, `vcu::layout::Def`, `DriveDefinition`, `EngineDefinition`, flags word | step-written words (wheel defs `+0x880..+0x900`, tyre setups `+0x204..+0x284`), exhaust and turbo tables (lift cost), hinged and mounted defs (mount point `+0x220`, block `+0x200`), physics def but flags | `store::defs::differential`; a bit flipped in the held engine def fails drive2 |
+| Hinged and mounted bodies' own words, `entities::layout::Hinged`, `physics_core::layout::mounted_body::Mounted` (held with their solid, `CarSolids`: one lookup, `OwnTable`) | limit springs' positions, angle, rate, pose matrices, hinge rotation, refresh copies, pivot outputs, solve value; the mounted body's event-sent flag | owner, link, definition and enable pointers; NTweak headers and dirty words (`SetDirty`); the walks' outputs at their addresses (`Xform8130`'s `+0x5c0`, `MB560`'s `+0x5f0`, `+0x610`: row 15d/e); exclusion sets; the mounted state and scratch objects | `rigid_body::layout::differential` (the hinge's host-free entries); twin over the own words; aids on reaches `StepBig` held once on drive2 |
 | Solids, `rigid_body::layout::Solid` (per solid, held by address) | pose, velocities, acceleration estimates, sleep and window state, scratch, accumulators: car, wheels, hinged and mounted bodies | pointers, flags byte, NTweak headers, scale, state's diagonal and gate, other scratch words | `differential`; twin over every solid held, detached too; shadow survey |
 
 ### Rules
@@ -297,6 +306,11 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 
 ### Left
 
+- The entities' per-entity state: the exclusion sets (`[count, members...]` arrays from `E43_ExclA000`, a member
+  removed by `exclusion::remove_exclusion_at` when a hinge breaks; the test reads both sides', props' too) need an
+  arena keyed by entity, lifted on first touch with image fallback; the walker marks (`+0x4`/`+0x20` and serials) and
+  the tree links (`+0x48` first child, `+0x10` sibling) need link maps before the entity walks (row 15e) run on typed
+  nodes.
 - The event pool as a lazy arena (its readers at an address, `MB560`, `collide_init`, detach and the contact loop,
   need stores first); collision arenas: the cell grid, links, the entity lists as link maps (the sleeping list holds
   3172-8217 nodes: lazy, image fallback).
@@ -342,7 +356,9 @@ maps each address). `Xform6870` calls `ComposeA` with no pushes of its own.
 ## Jointed bodies
 
 Hinged model per quantity in `src/entities/hinge_*.rs`, offsets in `layout/`; mounted and passenger in
-`src/physics_core/`. All sizes, offsets and rules in the file docs.
+`src/physics_core/`. All sizes, offsets and rules in the file docs. The bodies' own words a step writes are typed with
+their solids ("Store seam"); the angle's and the rate's NTweak headers sit inside the end stops' window (`+0x3f4..`)
+and the refresh's angle block, so a store of either writes two header words on the image and the value held.
 
 ## Wheel
 

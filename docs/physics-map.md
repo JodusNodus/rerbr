@@ -50,7 +50,8 @@ one loop.
    3. Integrate, per body. For the car, `car_body::step::step_car`: the passenger
       (`physics_core::passenger_step::passenger_step`), the rigid body (`rigid_body::integrate::integrate`:
       velocities, pose, sleep), the brake-wall raycast and its impulse, hinged and mounted parts
-      (`entities::hinge_step`, `physics_core::mounted::mounted_position_step`), the timekeeper and the retire check
+      (`entities::hinge_step`, `physics_core::mounted::mounted_position_step`; their own words typed with their solids,
+      `entities::layout::Hinged`, `physics_core::layout::mounted_body::Mounted`), the timekeeper and the retire check
       (`car_body::retire::check_retire`).
    4. Child walk, right after each body's integrate. For the car, `car_body::controls::step_controls`, in order:
       steering slew and rack; the VCU (`vcu::step::step`); the drive (step 5); the wheels (step 6); the anti-roll
