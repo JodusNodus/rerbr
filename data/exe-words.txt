@@ -219,8 +219,7 @@ strings 007c03dc 8  # the rally script folders (rbr_render::characters, E01Front
 00795e14 00795e1c  # boot
 007c03e0 007c03fc  # boot
 007c12e4 007c12e8  # boot
-007c12ec 007c12f0  # boot
-007c12f4 007c12f8  # boot
+007c12ec 007c12f8  # boot
 007c12fc 007c1300  # boot
 007c1388 007c13e8  # boot
 007c18d4 007c18f4  # boot
@@ -240,7 +239,11 @@ strings 007c03dc 8  # the rally script folders (rbr_render::characters, E01Front
 007cbd90 007cbde0  # boot
 007d81a4 007d81b4  # boot
 007d81c4 007d81cc  # boot
+007d81fc 007d820c  # boot
+007d821c 007d8224  # boot
 007d825c 007d8264  # boot
 007d8274 007d827c  # boot
+007d8288 007d8290  # boot
+007d82a0 007d82a8  # boot
 007eaba8 007eabac  # boot
 007eacc8 007eaccc  # boot
