@@ -207,10 +207,11 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `collision::on_grids`, `rigid_body::{on_solids, with_solids, solid_word, set_solid_word}`.
 - Direct calls between held subsystems: the `*Calls` trait stays the seam; with `Host::typed()` the caller runs the
   callee on the held state with values, else the host. Direct: the VCU's calls of the drive, engine and car
-  (`vcu::VcuCallees`); the wheel's of the tyre's setters, relaxation and tail getters and of the strut (NGP's spring
-  step, `GetName`). Host: lights, `SetDirty`, the VCU's slip query, `Get4540` from the car's step, `ResetOutputs`,
-  `UpdateAndReset`, the tyre step. Residue audit: the words each skipped host call would write, filled with
-  `0xffbadbad`, change nothing on drive2.
+  (`vcu::VcuCallees`), its light setters (on the image: the light block is no typed state's) and its slip query (a
+  second view of the held unit's `Cell`); the car's `Get4540` (step) and `SetDirty` (assist: its one write, the cell
+  header's dirty word, on the image); the wheel's of the tyre's setters, relaxation and tail getters and of the strut
+  (NGP's spring step, `GetName`). Host: `ResetOutputs`, `UpdateAndReset`, the tyre step. Residue audit: the words each
+  skipped host call would write, filled with `0xffbadbad`, change nothing on drive2 (aids off and on).
 
 ### Per subsystem
 

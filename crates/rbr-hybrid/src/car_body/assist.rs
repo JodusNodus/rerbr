@@ -3,8 +3,10 @@
 use crate::stage::on_stage;
 use rbr_physics::car_body::assist::{AssistCalls, RetireCalls};
 use rbr_physics::car_body::probe::ProbeCalls;
+use rbr_physics::car_body::store::Cell;
 use rbr_physics::car_body::{self as car};
 use rbr_physics::mem::Mem;
+use rbr_physics::ntweak;
 
 use super::car_calls::{car_calls, Car};
 use super::seed::SLOT_S158;
@@ -35,8 +37,16 @@ impl AssistCalls for Car<'_> {
         self.host.call(UPDATE_SEED, car, &[block]);
     }
 
+    /// On the held car `SetDirty`'s one write, the cell header's dirty word (a header stays on the image), here
+    /// ([`Host::ran_direct`]); else the host.
     fn set_dirty(&mut self, state: u32) {
-        self.host.call(SET_DIRTY, state, &[]);
+        let held = self.host.typed().is_some_and(|t| car::layout::cell_at(t.car.own.at, Cell::FfbTorque) == state);
+        if !held {
+            self.host.call(SET_DIRTY, state, &[]);
+            return;
+        }
+        self.host.ran_direct();
+        ntweak::set_dirty(&mut self.mem, state);
     }
 }
 

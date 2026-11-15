@@ -312,8 +312,14 @@ impl<S: CarStore> StepCalls<S> for Car<'_> {
         self.host.call(TIMEKEEPER_UPDATE, keeper, &[]).eax
     }
 
-    fn drive_speed(&mut self, _mem: &mut S, drive: u32) -> f32 {
-        self.host.call(GET_4540, drive, &[]).st0 as f32
+    /// `CDrive::Get4540`: direct on the held drive (a leaf on the drive's state, [`Host::ran_direct`]), else the host.
+    fn drive_speed(&mut self, mem: &mut S, drive: u32) -> f32 {
+        use rbr_physics::engine_driveline::{drive, store::DriveStore};
+        if !crate::engine_driveline::is_held(self.host, drive) {
+            return self.host.call(GET_4540, drive, &[]).st0 as f32;
+        }
+        self.host.ran_direct();
+        crate::engine_driveline::on_drive_in(self.host, mem.mem_mut(), drive, |d| drive::drive_speed_key(&d.state()))
     }
 
     fn check_retire(&mut self, _mem: &mut S, car: u32, v: u32) {
