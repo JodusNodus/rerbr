@@ -14,12 +14,23 @@ use crate::{Ctx, Decline, Host, Regs, Return};
 /// `E33Mat34::FetchX`'s walk: the original pushes two saved registers, then `1`, `out` and `arg`.
 const FETCH_X_CALL: u32 = 24;
 
+/// `host.call_at(sp, target, this, args)` of an entities' matrix or pair-walk op (`MB560`, `ComposeA`, `ComposeB`,
+/// `FetchX`, `FetchY`, `Combine`, `M51B460`, `M51B500`, `WB410`) from a caller on held state: run in place while the
+/// pure host holds the state ([`Host::call_in_place`]: the walk's reads of held solids go through their view, none of
+/// the call's words are written; residue audit, notes/physics.md "Store seam"), else the host call. Returns eax.
+pub(crate) fn call_op(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
+    let held = host.typed().is_some();
+    held.then(|| host.call_in_place(sp, target, this, args))
+        .flatten()
+        .unwrap_or_else(|| host.call_at(sp, target, this, args))
+}
+
 /// `E33Mat34::FetchX` (thiscall on `matrix`, `(out, arg)`) entered at `sp`, done here when its walk is of a node and
 /// itself, as the probes' identity walks are: the call's words and its walk's are written as the calls write them
 /// ([`crate::skip_call`]) and the matrix copied; returns `out` (eax). `None` on a host that runs the original, or when
 /// the walk would run (the call's words may then be written: the caller's call writes the same).
 pub(crate) fn fetch_x_direct(host: &dyn Host, mem: &mut Mem, sp: u32, matrix: u32, out: u32, arg: u32) -> Option<u32> {
-    if !crate::skip_call(host, mem, sp, &[out, arg]) {
+    if !crate::skip_unwritten(host, mem, sp, &[out, arg]) {
         return None;
     }
     let t = mem.load_transform(matrix);
@@ -27,7 +38,7 @@ pub(crate) fn fetch_x_direct(host: &dyn Host, mem: &mut Mem, sp: u32, matrix: u3
         return None;
     }
     super::walks::copy_vec4(host, mem, out, t.matrix);
-    crate::skip_call(host, mem, sp.wrapping_sub(FETCH_X_CALL), &[arg, out, 1]);
+    crate::skip_unwritten(host, mem, sp.wrapping_sub(FETCH_X_CALL), &[arg, out, 1]);
     Some(out)
 }
 
@@ -64,7 +75,7 @@ impl transform::GridFetch for GridFetchAt<'_> {
     }
 
     fn grid_walk(&mut self, receiver: u32, o2: u32, a: u32, b: u32) {
-        self.host.call_at(self.sp, GRID_WALK, receiver, &[o2, a, b]);
+        crate::entities::call_op(self.host, self.sp, GRID_WALK, receiver, &[o2, a, b]);
     }
 }
 
@@ -108,7 +119,7 @@ pub(crate) fn transform_direct(
     this: u32,
     args: [u32; 3],
 ) -> bool {
-    if !matches!(target, COPY16_WALK | MB560) || !crate::skip_call(host, mem, sp, &args) {
+    if !matches!(target, COPY16_WALK | MB560) || !crate::skip_unwritten(host, mem, sp, &args) {
         return false;
     }
     let [a, b, c] = args;

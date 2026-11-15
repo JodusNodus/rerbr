@@ -242,6 +242,13 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `SimF950` (its headers on the image, `set_solid_word`): drive2 787.5 -> 761.3 host calls a step. Host: `CopyCF30`,
   `M3D030`, `E45_M1980` and the boot step's first four (no held state there). Audit as above; poison with one
   site back on the host stops at the held `strut_length_dirty`.
+- The entities' matrix and pair-walk ops (map in "Entities"; drive2 644.6 -> 514.9 host calls, 760.1 -> 559.5 skipped
+  calls a step, instructions -3.2 %): callers on held state run `MB560`, `ComposeA`, `ComposeB`, `FetchX`, `FetchY`,
+  `WB410`, `Combine`, `M51B460`, `M51B500` in place (`entities::call_op`); `MFc10` is trivial (`this + 0x1c`); the
+  walks' frame, solid and CEntity echo hooks, identity walks and `FetchX`'s direct run skip without their words
+  (`skip_unwritten`; feature `residue-audit` fills them with `0xffba0000 | line`). Kept: the child walks' words
+  (`skip_call_writing`, ~260 a step), which feed car `+0x8ec`. Audit: traces equal aids off, on, damage realistic;
+  twin typed (the three) and mem-direct (aids off, on) equal.
 
 ### Per subsystem
 

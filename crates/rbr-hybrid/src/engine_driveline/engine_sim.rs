@@ -175,7 +175,7 @@ impl engine::CarWalkHost for Sim8890Calls<'_> {
     /// `a` is the car's velocity (`Sim8E20`'s radiator airflow): `MB560` copies it on the solids' store.
     fn transform_point(&mut self, a: u32, b: u32) -> [f32; 4] {
         let c = self.scratch;
-        self.host.call(MB560, self.mem.u32(WALKER), &[a, b, c]);
+        crate::entities::call_op(self.host, 0, MB560, self.mem.u32(WALKER), &[a, b, c]);
         self.mem.f32s(c)
     }
 }

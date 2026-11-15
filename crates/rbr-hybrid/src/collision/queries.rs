@@ -194,7 +194,7 @@ pub(super) fn ray_clear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 impl GridSyncHost for Callees<'_> {
     fn copy_transform(&mut self, _: &mut Mem, a: u32, edges: u32, worker: u32, out: u32, count: u32) {
-        self.0.call(COPY_BLOCKS, a, &[edges, worker, out, count]);
+        crate::entities::call_op(self.0, 0, COPY_BLOCKS, a, &[edges, worker, out, count]);
     }
 
     fn copy_vec4(&mut self, mem: &mut Mem, dst: u32, src: u32) {
@@ -306,11 +306,11 @@ impl GridOpsHost for GridOps<'_> {
     }
 
     fn copy_blocks_one_two(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32) {
-        self.0.call_at(sp, COPY_BLOCKS, a, &[src, o2, dst, n]);
+        crate::entities::call_op(self.0, sp, COPY_BLOCKS, a, &[src, o2, dst, n]);
     }
 
     fn copy_blocks_three_four(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32) {
-        self.0.call_at(sp, COPY_BLOCKS_THREE_FOUR, a, &[src, o2, dst, n]);
+        crate::entities::call_op(self.0, sp, COPY_BLOCKS_THREE_FOUR, a, &[src, o2, dst, n]);
     }
 }
 

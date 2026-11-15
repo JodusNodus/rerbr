@@ -56,7 +56,13 @@ impl ResponseHost for ResponseCalls<'_> {
     fn compose(&mut self, parent: u32, _point: Vec4) -> Vec4 {
         let output = self.frame + 0x10;
         let walker = self.mem.u32(WALKER);
-        self.host.call_at(self.frame.wrapping_sub(16), COPY16_WALK, walker, &[self.point, parent, output]);
+        crate::entities::call_op(
+            self.host,
+            self.frame.wrapping_sub(16),
+            COPY16_WALK,
+            walker,
+            &[self.point, parent, output],
+        );
         Vec4::load(&self.mem, output)
     }
 
@@ -65,7 +71,7 @@ impl ResponseHost for ResponseCalls<'_> {
         let output = self.frame + 0x30;
         let walker = self.mem.u32(WALKER);
         value.store(&mut self.mem, input);
-        self.host.call_at(self.frame.wrapping_sub(16), MB560, parent, &[input, walker, output]);
+        crate::entities::call_op(self.host, self.frame.wrapping_sub(16), MB560, parent, &[input, walker, output]);
         Vec4::load(&self.mem, output)
     }
 }
@@ -195,7 +201,7 @@ impl BodyCalls for Calls<'_> {
                 let src = self.put(SRC, v);
                 let out = self.temp + DST;
                 let body = s30_at(&self.mem, self.host, 0, self.body, &[out]);
-                self.host.call(MB560, walker, &[src, body, out]);
+                crate::entities::call_op(self.host, 0, MB560, walker, &[src, body, out]);
                 out
             }
             Transforms::Force(k) => {
@@ -205,7 +211,7 @@ impl BodyCalls for Calls<'_> {
                 v.store(&mut self.mem, src);
                 let args = [src, walker, out];
                 let body = s30_at(&self.mem, self.host, self.frame - 0x10, self.body, &args);
-                self.host.call_at(self.frame - 0x10, MB560, body, &args);
+                crate::entities::call_op(self.host, self.frame - 0x10, MB560, body, &args);
                 return with_solids(self.host, &mut self.mem, |s| s.row(out));
             }
         };

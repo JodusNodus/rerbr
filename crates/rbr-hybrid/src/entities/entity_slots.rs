@@ -117,7 +117,7 @@ struct DummyCallsAt<'a> {
 
 impl DummyCalls for DummyCallsAt<'_> {
     fn fetch_x(&mut self, sp: u32, this: u32, out: u32, arg: u32) {
-        self.host.call_at(sp, FETCH_X, this, &[out, arg]);
+        crate::entities::call_op(self.host, sp, FETCH_X, this, &[out, arg]);
     }
 
     fn group_on_hit(&mut self, sp: u32, group: u32) {
@@ -230,7 +230,7 @@ struct ProbeCallsAt<'a> {
 
 impl ground::ProbeCalls for ProbeCallsAt<'_> {
     fn transform(&mut self, this: u32, out: u32, arg: u32) -> u32 {
-        self.host.call_at(self.frame.fetch_sp, FETCH_X, this, &[out, arg]).eax
+        crate::entities::call_op(self.host, self.frame.fetch_sp, FETCH_X, this, &[out, arg]).eax
     }
 
     fn query(&mut self, host: u32, first: u32, second: u32, out: u32) -> u32 {

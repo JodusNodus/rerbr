@@ -92,7 +92,7 @@ impl BodyCalls for ContactCalls<'_> {
         src.store(&mut self.mem, at);
         let body = s30_at(&self.mem, self.host, self.frame - 8, self.this, &[self.a]);
         let walker = self.mem.u32(WALKER);
-        self.host.call_at(self.frame - 0x10, MB560, walker, &[at, body, self.a]);
+        crate::entities::call_op(self.host, self.frame - 0x10, MB560, walker, &[at, body, self.a]);
         Vec4::load(&self.mem, self.a)
     }
 }
@@ -102,7 +102,7 @@ impl ContactHost for ContactCalls<'_> {
     fn compose(&mut self, _vector: Vec4) -> Vec4 {
         let walker = self.mem.u32(WALKER);
         let args = [self.e + 0x40, walker, self.frame + 0x40];
-        self.host.call_at(self.frame - 0x10, COPY16_WALK, self.this, &args);
+        crate::entities::call_op(self.host, self.frame - 0x10, COPY16_WALK, self.this, &args);
         Vec4::load(&self.mem, self.frame + 0x40)
     }
 
@@ -164,7 +164,7 @@ impl BodyCalls for ListCalls<'_> {
         src.store(&mut self.mem, a);
         let slot12 = self.mem.u32(self.mem.u32(self.this) + 4 * 12);
         self.host.call(slot12, self.this, &[]);
-        self.host.call(MB560, self.mem.u32(WALKER), &[a, self.this, c]);
+        crate::entities::call_op(self.host, 0, MB560, self.mem.u32(WALKER), &[a, self.this, c]);
         Vec4::load(&self.mem, c)
     }
 }

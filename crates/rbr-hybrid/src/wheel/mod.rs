@@ -532,7 +532,7 @@ impl WalkCalls for Walk<'_> {
             None => 0,
         };
         let c = self.scratch + 0x10;
-        self.host.call(MB560, walker, &[a, car, c]);
+        crate::entities::call_op(self.host, 0, MB560, walker, &[a, car, c]);
         Vec4::load(&self.mem, c)
     }
 }

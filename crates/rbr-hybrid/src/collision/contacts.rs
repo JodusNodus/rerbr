@@ -46,7 +46,7 @@ const APPEND_SLOT: u32 = 0x4;
 impl D8CallsAt<'_> {
     fn virtual_call(&mut self, object: u32, slot: u32, args: &[u32]) -> u32 {
         let target = layout::vtable_slot(self.mem, object, slot);
-        self.host.call(target, object, args).eax
+        crate::call_or_trivial(self.host, 0, target, object, args)
     }
 }
 
@@ -56,7 +56,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn fetch_y(&mut self, matrix: u32, out: u32, worker: u32) {
-        self.host.call(FETCH_Y, matrix, &[out, worker]);
+        crate::entities::call_op(self.host, 0, FETCH_Y, matrix, &[out, worker]);
     }
 
     fn other_second_transform(&mut self) -> u32 {
@@ -74,7 +74,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn combine(&mut self, out: u32, src: u32, worker: u32) {
-        self.host.call(PAIR_COMBINE, out, &[src, worker]);
+        crate::entities::call_op(self.host, 0, PAIR_COMBINE, out, &[src, worker]);
     }
 
     fn sub_block_init(&mut self, block: u32) {
@@ -91,7 +91,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
 
     fn compose(&mut self, out: u32, payload: u32, worker: u32) {
         let identity = self.mem.u32(layout::IDENTITY_WORKER_SLOT);
-        self.host.call(COPY16_WALK, identity, &[payload, worker, out]);
+        crate::entities::call_op(self.host, 0, COPY16_WALK, identity, &[payload, worker, out]);
     }
 
     fn alloc_event(&mut self) -> u32 {
@@ -168,27 +168,27 @@ impl GridContactHost for VfD0Calls<'_> {
     }
 
     fn fetch_y(&mut self, sp: u32, matrix: u32, out: u32, transform: u32) {
-        self.host.call_at(sp, FETCH_Y, matrix, &[out, transform]);
+        crate::entities::call_op(self.host, sp, FETCH_Y, matrix, &[out, transform]);
     }
 
     fn fetch_x(&mut self, sp: u32, matrix: u32, out: u32, transform: u32) {
-        self.host.call_at(sp, FETCH_X, matrix, &[out, transform]);
+        crate::entities::call_op(self.host, sp, FETCH_X, matrix, &[out, transform]);
     }
 
     fn combine(&mut self, sp: u32, desc: u32, point: u32, transform: u32) {
-        self.host.call_at(sp, PAIR_COMBINE, desc, &[point, transform]);
+        crate::entities::call_op(self.host, sp, PAIR_COMBINE, desc, &[point, transform]);
     }
 
     fn combine_twin(&mut self, sp: u32, desc: u32, point: u32, transform: u32) {
-        self.host.call_at(sp, PAIR_COMBINE_TWIN, desc, &[point, transform]);
+        crate::entities::call_op(self.host, sp, PAIR_COMBINE_TWIN, desc, &[point, transform]);
     }
 
     fn compose(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32) {
-        self.host.call_at(sp, COPY16_WALK, transform, &[point, other, out]);
+        crate::entities::call_op(self.host, sp, COPY16_WALK, transform, &[point, other, out]);
     }
 
     fn compose_normal(&mut self, sp: u32, transform: u32, point: u32, other: u32, out: u32) {
-        self.host.call_at(sp, COMPOSE_B, transform, &[point, other, out]);
+        crate::entities::call_op(self.host, sp, COMPOSE_B, transform, &[point, other, out]);
     }
 
     fn grid_copy(&mut self, sp: u32, grid: u32, src: u32, a: u32, b: u32) {
@@ -239,7 +239,8 @@ impl GridContactHost for VfD0Calls<'_> {
 
 impl PairContactHost for VfD0Calls<'_> {
     fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
-        self.slot(sp, entity, 0x34, &[])
+        let target = self.mem.u32(self.mem.u32(entity) + 0x34);
+        crate::call_or_trivial(self.host, sp, target, entity, &[])
     }
 
     fn edge_pair(&mut self, sp: u32, grid: u32, args: [u32; 10]) -> u32 {
@@ -336,7 +337,7 @@ impl F4CallsAt<'_> {
     /// A thiscall with no arguments on the body's vtable slot `slot`, entered at `sp`.
     fn virtual_call(&mut self, slot: u32, sp: u32) -> u32 {
         let target = layout::vtable_slot(self.mem, self.this, slot);
-        self.host.call_at(sp, target, self.this, &[]).eax
+        crate::call_or_trivial(self.host, sp, target, self.this, &[])
     }
 }
 
@@ -353,7 +354,7 @@ impl BoxEdgeHitCalls for F4CallsAt<'_> {
     }
 
     fn fetch_x(&mut self, matrix: u32, out: u32, t: u32) {
-        self.host.call_at(self.sp - 12, FETCH_X, matrix, &[out, t]);
+        crate::entities::call_op(self.host, self.sp - 12, FETCH_X, matrix, &[out, t]);
     }
 
     fn edge_edge(&mut self, from: u32, to: u32, hit: u32, t: u32, normal: u32, material: u32) -> bool {
@@ -368,11 +369,11 @@ impl BoxEdgeHitCalls for F4CallsAt<'_> {
 
     fn compose(&mut self, transform: u32, point: u32, out: u32) {
         let identity = self.mem.u32(layout::IDENTITY_WORKER_SLOT);
-        self.host.call_at(self.sp - 0x10, COPY16_WALK, transform, &[point, identity, out]);
+        crate::entities::call_op(self.host, self.sp - 0x10, COPY16_WALK, transform, &[point, identity, out]);
     }
 
     fn compose_normal(&mut self, transform: u32, point: u32, out: u32) {
         let identity = self.mem.u32(layout::IDENTITY_WORKER_SLOT);
-        self.host.call_at(self.sp - 0x10, COMPOSE_B, transform, &[point, identity, out]);
+        crate::entities::call_op(self.host, self.sp - 0x10, COMPOSE_B, transform, &[point, identity, out]);
     }
 }

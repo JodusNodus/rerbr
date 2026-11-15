@@ -62,7 +62,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
         v.store(&mut self.mem, src);
         let pose = s30_at(&self.mem, self.host, self.frame - 8, self.body, &[out]);
         let walker = self.mem.u32(WALKER);
-        self.host.call_at(self.frame - 0x10, MB560, walker, &[src, pose, out]);
+        crate::entities::call_op(self.host, self.frame - 0x10, MB560, walker, &[src, pose, out]);
         Vec4::load(&self.mem, out)
     }
 
@@ -73,7 +73,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
         let walker = self.mem.u32(WALKER);
         let args = [src, walker, out];
         let pose = s30_at(&self.mem, self.host, self.frame - 0x10, self.body, &args);
-        self.host.call_at(self.frame - 0x10, MB560, pose, &args);
+        crate::entities::call_op(self.host, self.frame - 0x10, MB560, pose, &args);
         Vec4::load(&self.mem, out)
     }
 }
@@ -84,7 +84,7 @@ impl layout::ImpulseTailCalls<SolidView<'_>> for ImpulseCalls<'_> {
     }
 
     fn compose(&mut self, store: &mut SolidView, sp: u32, point: u32, matrix: u32, out: u32) {
-        self.host.call_at(sp, COPY16_WALK, store.mem().u32(WALKER), &[point, matrix, out]);
+        crate::entities::call_op(self.host, sp, COPY16_WALK, store.mem().u32(WALKER), &[point, matrix, out]);
     }
 
     fn hook(&mut self, store: &mut SolidView, sp: u32, hook: u32, args: [u32; 8]) {

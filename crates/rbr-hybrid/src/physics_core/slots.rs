@@ -215,7 +215,7 @@ impl AccumHost for Accum<'_> {
 
     fn walk(&mut self, copy: u32, point: u32, out: u32) {
         let walker = self.mem.u32(WALKER);
-        self.host.call(MB560, walker, &[copy, point, out]);
+        crate::entities::call_op(self.host, 0, MB560, walker, &[copy, point, out]);
     }
 
     fn accumulate(&mut self, body: u32, force: u32) {
