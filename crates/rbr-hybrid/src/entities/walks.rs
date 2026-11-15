@@ -247,8 +247,9 @@ impl PairOps for PairWalk<'_> {
         if route && receiver == o2 && crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             return a;
         }
-        // The pure host runs the child walk here, as its binding (`pair_walker`) would.
-        if crate::skip_call_writing(self.host, self.mem, sp, &[o2, a, b]) {
+        // The pure host runs the child walk here, as its binding (`pair_walker`) would, without the call's words: their
+        // one reader was the passenger step's walk point, whose lane 3 is `crate::RESIDUE` there.
+        if crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
             let mut child = PairWalk { mem: &mut *self.mem, host: self.host, esp: sp, walk_depth: walk_depth(which) };
             return walk::run(&mut child, which, receiver, o2, a, b);
         }

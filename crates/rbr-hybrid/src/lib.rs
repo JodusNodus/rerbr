@@ -172,9 +172,8 @@ pub(crate) fn skip_call(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -
     skip_call_with(host, mem, sp, args, false)
 }
 
-/// [`skip_call`] that writes the words under the direct dispatch too, for a call whose words are read after it: the
-/// child walk a walker runs in place (`entities/walks.rs`: without them `--twin mem-direct` differs at the tanner
-/// drive's first step).
+/// [`skip_call`] that writes the words under the direct dispatch too, for a call whose words are read after it:
+/// CollideWork's telemetry call (`physics_core/detection.rs`).
 pub(crate) fn skip_call_writing(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
     skip_call_with(host, mem, sp, args, true)
 }
@@ -205,6 +204,17 @@ pub(crate) fn skip_unwritten(host: &dyn Host, _mem: &mut Mem, sp: u32, _args: &[
         }
     }
     skip
+}
+
+/// The value the game gives a stack word the original reads without anything having written it in the step (residue,
+/// notes/physics.md "Stack residue is behaviour"): 0, which as a float lane is 0.0, so lanewise arithmetic on it makes
+/// no NaN, infinity or denormal.
+pub(crate) const RESIDUE: u32 = 0;
+
+/// [`RESIDUE`] on the pure host ([`Host::call_slot_word`]: held and per call, both dispatches, so the twins agree);
+/// `None` on a host that runs the original (the emulator) and in the vectors, where the word is what the stack holds.
+pub(crate) fn residue(host: &dyn Host) -> Option<u32> {
+    host.call_slot_word().map(|_| RESIDUE)
 }
 
 /// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`

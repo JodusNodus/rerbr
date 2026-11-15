@@ -43,6 +43,10 @@ impl passenger_ctor::StepHost for StepCalls<'_> {
         for (k, value) in point.into_iter().enumerate() {
             self.mem.set_f32(self.temp + 4 * k as u32, value);
         }
+        // Lane 3 is not written: the original's holds what its stack held (the walk carries it to car `+0x8ec`).
+        if let Some(lane) = crate::residue(self.host) {
+            self.mem.set_u32(self.temp + 12, lane);
+        }
         let walker = self.mem.u32(WALKER);
         crate::entities::call_op(self.host, 0, MB560, walker, &[self.temp, host, out]);
     }
