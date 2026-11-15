@@ -138,7 +138,16 @@ impl DetectorHost for Detectors<'_> {
         let ret = self.host.call_slot_word()?;
         let host = self.host;
         let corners = || last.and_then(|c| c.for_call(frame - 0xc, frame + 0x28, frame + 0x20, host.entered()));
-        self.kernel.tests(mem, ret, frame, node, (mask, excluded), corners)
+        let next = |mem: &Mem, node| crate::collision::cell_word(host, mem, node);
+        self.kernel.tests(mem, ret, frame, node, (mask, excluded), corners, next)
+    }
+
+    fn cell_first(&self, mem: &Mem, cell: u32) -> u32 {
+        crate::collision::cell_word(self.host, mem, cell)
+    }
+
+    fn cell_next(&self, mem: &Mem, node: u32) -> u32 {
+        crate::collision::cell_word(self.host, mem, node)
     }
 
     fn penetration_ctor(&mut self, sp: u32, at: u32, owner: u32, lo: u32, hi: u32, scale: u32, word: u32) {

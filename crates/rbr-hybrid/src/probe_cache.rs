@@ -41,7 +41,6 @@ enum Stage {
 struct Entry {
     /// 0 for an empty slot.
     node: u32,
-    next: u32,
     entity: u32,
     flags: u32,
     stage: Stage,
@@ -83,8 +82,8 @@ impl KernelCall {
     /// The kernel's tests of the entity at `node` from what is known of it (`DetectorHost::kernel_tests`), in the
     /// kernel frame `frame`, with the pure host's call slot word `ret` and the box test's corners `corners` when its
     /// first call fetched them (`None` before). The entities after it that are known to fail are tested too: their
-    /// tests write the same words, so the words the last of them wrote are written once. `None` when the tests of
-    /// `node` must run.
+    /// tests write the same words, so the words the last of them wrote are written once. A node's next is `next`'s
+    /// (the held cells' lists', which the pages do not see). `None` when the tests of `node` must run.
     pub(crate) fn tests(
         &mut self,
         mem: &mut Mem,
@@ -93,6 +92,7 @@ impl KernelCall {
         start: u32,
         (mask, excluded): (u32, u32),
         corners: impl FnOnce() -> Option<[Vec4; 2]>,
+        next: impl Fn(&Mem, u32) -> u32,
     ) -> Option<KernelTest> {
         let mut corners = Some(corners);
         let mut fetched = None;
@@ -105,13 +105,14 @@ impl KernelCall {
             if node == 0 {
                 break None;
             }
-            let Some(pages) = mem.pages_for(node, 16) else {
+            // The node's body word's (its list words may be held: `next`).
+            let Some(pages) = mem.pages_for(node + 0xc, 4) else {
                 break Some(None);
             };
             let Some(entry) = self.entry(mem, pages, node) else {
                 break Some(None);
             };
-            let (next, stage) = (entry.next, entry.stage);
+            let (next, stage) = (next(mem, node), entry.stage);
             if probe_skips(entry.flags, mask, entry.entity, excluded) {
                 node = next;
                 continue;
@@ -159,22 +160,14 @@ impl KernelCall {
             return Some(&cache.entries[k]);
         }
         cache.entries[k].node = 0;
-        let read = kernel_entity(mem, node)?;
+        let read = kernel_entity(mem, node, |slot| slot == BODY_GRID)?;
         if !read.reads.iter().all(|&at| mem.pages_for(at, 1).is_some()) {
             return None;
         }
         let (n, read_pages) = distinct_pages(read.reads)?;
         let epoch = *self.epoch.get_or_insert_with(|| pages.end_epoch());
-        cache.entries[k] = Entry {
-            node,
-            next: read.next,
-            entity: read.entity,
-            flags: read.flags,
-            stage: stage(&read),
-            epoch,
-            n,
-            pages: read_pages,
-        };
+        cache.entries[k] =
+            Entry { node, entity: read.entity, flags: read.flags, stage: stage(&read), epoch, n, pages: read_pages };
         Some(&cache.entries[k])
     }
 }
