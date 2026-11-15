@@ -64,16 +64,36 @@ impl CellTable {
     }
 
     /// `CCellGrid::LookupTwin` (0x4e03b0) on the held table: the point's link, after lazily building its cell's link
-    /// block in the image and filling the held slot; `None` for a grid that is not the held one.
-    pub fn link_or_build(&self, host: &mut impl AllocHost, mem: &mut Mem, grid: u32, x: f32, y: f32) -> Option<u32> {
+    /// block in the image and filling the held slot (`built` gets the block); `None` for a grid that is not the held
+    /// one.
+    pub fn link_or_build(
+        &self,
+        host: &mut impl AllocHost,
+        mem: &mut Mem,
+        grid: u32,
+        x: f32,
+        y: f32,
+        built: impl FnOnce(u32),
+    ) -> Option<u32> {
         Some(match self.link_at(mem, grid, x, y)? {
             CellLink::Link(link) => link,
             CellLink::Empty(twin) => {
                 let block = new_link_block(host, mem);
                 self.slots.borrow_mut().insert(twin.cell, (block, true));
+                built(block);
                 block.wrapping_add(twin.sub_cell.wrapping_mul(0x10) as u32)
             }
         })
+    }
+
+    /// The link blocks the image's slots point to, in cell order.
+    pub(super) fn blocks(&self, mem: &Mem) -> Vec<u32> {
+        if self.grid == 0 {
+            return Vec::new();
+        }
+        let cells = self.header.rows.wrapping_mul(self.header.columns).max(0) as usize;
+        let words = mem.read(self.slot_at(0), 4 * cells);
+        words.chunks(4).map(|w| u32::from_le_bytes(w.try_into().unwrap())).filter(|&b| b != 0).collect()
     }
 
     /// Writes the slots the lookups filled back to the image.
@@ -168,7 +188,7 @@ pub fn differential(per_call: &mut Mem, held: &mut Mem, scratch: u32) -> Result<
     let (mut a, mut b) = (Bump(scratch), Bump(scratch));
     for &(x, y) in points.iter().chain(&points) {
         let want = super::cell_link_at(&mut a, per_call, grid, x, y);
-        let got = table.link_or_build(&mut b, held, grid, x, y);
+        let got = table.link_or_build(&mut b, held, grid, x, y, |_| ());
         if got != Some(want) {
             return Err(format!("the link at ({x}, {y}): per call {want:#x}, held {got:x?}"));
         }

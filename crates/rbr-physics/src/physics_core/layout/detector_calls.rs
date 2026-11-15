@@ -223,7 +223,7 @@ pub fn kernel_collect(mem: &mut Mem, host: &mut impl DetectorHost, args: KernelA
         if cell == 0 {
             continue;
         }
-        let mut node = mem.u32(cell);
+        let mut node = host.cell_first(mem, cell);
         while node != 0 && mem.u32(out) < PROBE_MAX_HITS {
             let pass = match host.kernel_tests(mem, f, node, mask, excluded) {
                 Some(KernelTest::Fail { next }) => {
@@ -254,19 +254,18 @@ pub fn kernel_collect(mem: &mut Mem, host: &mut impl DetectorHost, args: KernelA
                     host.grid_ops(f - 0x10, record, grid, frame, identity);
                 }
             }
-            node = mem.u32(node);
+            node = host.cell_next(mem, node);
         }
     }
     mem.u32(out) != 0
 }
 
-/// What `E46_Kernel5bd0`'s tests read of the entity at a cell node: the next node, the entity, its flags, its vtable's
+/// What `E46_Kernel5bd0`'s tests read of the entity at a cell node: the entity, its flags, its vtable's
 /// slots 0x118 (the grid getter) and 0xcc (the box test), its body grid (+0x64) and that grid's solid byte, and its body
 /// bounds (+0x80); the addresses read are in `reads`. For a cache of the tests (a host's
 /// [`DetectorHost::kernel_tests`]).
 #[derive(Clone, Copy, Debug)]
 pub struct KernelEntity {
-    pub next: u32,
     pub entity: u32,
     pub flags: u32,
     pub grid_slot: u32,
@@ -279,12 +278,11 @@ pub struct KernelEntity {
 
 /// [`KernelEntity`] of the cell node `node`, read from the pages alone (`Mem::paged_u32`): `None` when a word other
 /// than the grid's or the bounds' is not there. The grid's byte is read when the grid is set, the bounds as they are
-/// there.
-pub fn kernel_entity(mem: &Mem, node: u32) -> Option<KernelEntity> {
+/// there and only for an entity whose grid getter `has_bounds` (a body's: another's words there may be its cell link). The node's next is not read: the cells' lists may be held (`DetectorHost::cell_next`).
+pub fn kernel_entity(mem: &Mem, node: u32, has_bounds: impl Fn(u32) -> bool) -> Option<KernelEntity> {
     use crate::collision::layout::{Vec4, Vec4Pair};
     const BODY_GRID_AT: u32 = 0x64;
     const BODY_BOUNDS_AT: u32 = 0x80;
-    let next = mem.paged_u32(node)?;
     let entity = mem.paged_u32(node + CELL_NODE_ENTITY_AT)?;
     let flags = mem.paged_u32(entity + ENTITY_FLAGS_AT)?;
     let vtable = mem.paged_u32(entity)?;
@@ -297,7 +295,9 @@ pub fn kernel_entity(mem: &Mem, node: u32) -> Option<KernelEntity> {
         _ => (mem.paged_u32(solid_at & !3)? >> (8 * (solid_at % 4))) as u8,
     };
     let mut lanes = [0; 8];
-    let mapped = (0..8).all(|k| mem.paged_u32(entity + BODY_BOUNDS_AT + 4 * k as u32).map(|w| lanes[k] = w).is_some());
+    let bounds_at = if has_bounds(grid_slot) { entity + BODY_BOUNDS_AT } else { entity };
+    let mapped = has_bounds(grid_slot)
+        && (0..8).all(|k| mem.paged_u32(entity + BODY_BOUNDS_AT + 4 * k as u32).map(|w| lanes[k] = w).is_some());
     let bounds = mapped.then_some(lanes).map(|w| {
         let v = |k: usize| Vec4 {
             x: f32::from_bits(w[k]),
@@ -308,7 +308,7 @@ pub fn kernel_entity(mem: &Mem, node: u32) -> Option<KernelEntity> {
         Vec4Pair { lower: v(0), upper: v(4) }
     });
     let reads = [
-        node,
+        node + CELL_NODE_ENTITY_AT,
         node + CELL_NODE_ENTITY_AT,
         entity,
         entity + ENTITY_FLAGS_AT,
@@ -316,10 +316,10 @@ pub fn kernel_entity(mem: &Mem, node: u32) -> Option<KernelEntity> {
         vtable + 0x118,
         vtable + 0xcc,
         if grid == 0 { entity } else { solid_at },
-        entity + BODY_BOUNDS_AT,
-        entity + BODY_BOUNDS_AT + 0x1f,
+        bounds_at,
+        if bounds_at == entity { entity } else { bounds_at + 0x1f },
     ];
-    Some(KernelEntity { next, entity, flags, grid_slot, overlap_slot, grid, solid, bounds, reads })
+    Some(KernelEntity { entity, flags, grid_slot, overlap_slot, grid, solid, bounds, reads })
 }
 
 /// `CL1CollisionDetector::Vf04` (0x526ad0) on the detector at `this` (+4 a float word, +8 a word) with `other`; `entry`

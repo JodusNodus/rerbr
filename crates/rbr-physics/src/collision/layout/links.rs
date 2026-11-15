@@ -5,8 +5,15 @@ use crate::mem::Mem;
 use super::Link;
 
 /// The visitor's slot 1 (`Vf04`) that CBodyLink::NotifyFiltered (0x4e0080) calls on each body.
+/// The list's first link and a link's next are the image's unless the host holds them (`cell_links`).
 pub trait NotifyFilteredHost {
     fn visit(&mut self, mem: &mut Mem, visitor: u32, body: u32) -> u32;
+    fn first(&self, mem: &Mem, head: u32) -> u32 {
+        mem.u32(head)
+    }
+    fn next(&self, mem: &Mem, link: u32) -> u32 {
+        mem.u32(link)
+    }
 }
 
 /// CBodyLink::Head (0x4e0000).
@@ -28,12 +35,12 @@ pub fn cell_link_ctor(mem: &mut Mem, link: u32) -> u32 {
 
 /// CBodyLink::NotifyFiltered (0x4e0080): visit unfiltered, non-null bodies after this head.
 pub fn notify_filtered(mem: &mut Mem, head: u32, visitor: u32, host: &mut impl NotifyFilteredHost) {
-    let mut link = mem.u32(head);
+    let mut link = host.first(mem, head);
     while link != 0 {
         let body = mem.u32(link + 0x0c);
         if body != 0 && mem.u32(body + 0x60) & 0x20 == 0 {
             let _ = host.visit(mem, visitor, body);
         }
-        link = mem.u32(link);
+        link = host.next(mem, link);
     }
 }

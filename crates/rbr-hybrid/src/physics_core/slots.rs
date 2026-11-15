@@ -9,8 +9,8 @@ use rbr_physics::physics_core::layout::AccumHost;
 use rbr_physics::physics_core::layout::{self, mounted};
 
 use super::passenger_step::SLOT_24;
-use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, MB560, TEMPS, WALKER};
-use crate::entities::VF5C;
+use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, TEMPS, WALKER};
+use crate::entities::{Op, VF5C};
 use crate::rigid_body::{on_solids, solid_word};
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -224,7 +224,7 @@ impl AccumHost for Accum<'_> {
 
     fn walk(&mut self, copy: u32, point: u32, out: u32) {
         let walker = self.mem.u32(WALKER);
-        crate::entities::call_op(self.host, 0, MB560, walker, &[copy, point, out]);
+        crate::entities::op(self.host, 0, walker, Op::Mb560 { a: copy, b: point, c: out });
     }
 
     fn accumulate(&mut self, body: u32, force: u32) {

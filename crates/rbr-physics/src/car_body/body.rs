@@ -36,10 +36,12 @@ fn scatter(calls: &mut impl BodyCalls, gate: bool, body: u32, base: Option<Vec3>
         return;
     }
     let base = base.expect("the body's base is null (the original faults)");
-    let apply = |a: f32, b: f32| match op {
-        Op::Sub => a - b,
-        Op::Add => a + b,
-    };
+    shift_points(base, points, op == Op::Sub);
+}
+
+/// `base` subtracted from (`sub`) or added to each point's `x, y, z`; `w` is left.
+pub fn shift_points(base: Vec3, points: &mut [Vec4], sub: bool) {
+    let apply = |a: f32, b: f32| if sub { a - b } else { a + b };
     for p in points.iter_mut() {
         p.x = apply(p.x, base.x);
         p.y = apply(p.y, base.y);

@@ -35,6 +35,7 @@ pub fn row_map<S: RigidStore>(store: &S, this: u32, kind: RowKind) -> RowMap {
         }
         RowKind::StartRows => RowMap::StartRows(store.start_orientation(this)),
         RowKind::StartRows3 => RowMap::StartRows3(store.start_orientation(this)),
+        RowKind::Fold => RowMap::Fold(store.row_frame(this)),
     }
 }
 

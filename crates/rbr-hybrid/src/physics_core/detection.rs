@@ -130,7 +130,12 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn cells(&mut self, sp: u32, lo: u32, hi: u32, out: u32) {
-        crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
+        match crate::collision::box_cells_direct(self.host, &mut self.mem, sp, lo, hi, out) {
+            Some(cells) => layout::set_cells(&mut self.mem, out, cells),
+            None => {
+                crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
+            }
+        }
     }
 
     fn kernel_tests(&mut self, mem: &mut Mem, frame: u32, node: u32, mask: u32, excluded: u32) -> Option<KernelTest> {
@@ -138,7 +143,16 @@ impl DetectorHost for Detectors<'_> {
         let ret = self.host.call_slot_word()?;
         let host = self.host;
         let corners = || last.and_then(|c| c.for_call(frame - 0xc, frame + 0x28, frame + 0x20, host.entered()));
-        self.kernel.tests(mem, ret, frame, node, (mask, excluded), corners)
+        let next = |mem: &Mem, node| crate::collision::cell_word(host, mem, node);
+        self.kernel.tests(mem, ret, frame, node, (mask, excluded), (corners, next))
+    }
+
+    fn cell_first(&self, mem: &Mem, cell: u32) -> u32 {
+        crate::collision::cell_word(self.host, mem, cell)
+    }
+
+    fn cell_next(&self, mem: &Mem, node: u32) -> u32 {
+        crate::collision::cell_word(self.host, mem, node)
     }
 
     fn penetration_ctor(&mut self, sp: u32, at: u32, owner: u32, lo: u32, hi: u32, scale: u32, word: u32) {
@@ -146,7 +160,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn notify_filtered(&mut self, sp: u32, cell: u32, detector: u32) {
-        self.host.call_at(sp, NOTIFY_FILTERED, cell, &[detector]);
+        crate::collision::call_grid(self.host, sp, NOTIFY_FILTERED, cell, &[detector]);
     }
 
     fn detect(&mut self, sp: u32, detector: u32, node: u32) {
@@ -180,9 +194,9 @@ impl CollideHost for Detectors<'_> {
     }
 
     fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
-        // A `ret`, but the slot of its return address is read after it (car+0x14c, `--twin mem-direct` at drive2's step
-        // 19211): written under either dispatch.
-        if crate::skip_call_writing(self.host, &mut self.mem, sp, &[]) {
+        // A `ret`; nothing reads its words after it (the respawn countdown's sample lane 3 that the direct dispatch
+        // left the slot to is `crate::RESIDUE`).
+        if crate::skip_unwritten(self.host, &mut self.mem, sp, &[]) {
             self.host.ran_direct();
             return;
         }

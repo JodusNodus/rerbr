@@ -9,9 +9,9 @@ use rbr_physics::mem::Mem;
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
 use super::on_car;
 use crate::collision::{BodyCallees, E37_EDGE_EDGE};
-use crate::entities::COPY16_WALK;
+use crate::entities::Op;
 use crate::rigid_body::{set_solid_word, VF16_HELPER};
-use crate::{engine_driveline, entities, Ctx, Decline, Host, Regs, Return};
+use crate::{engine_driveline, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
 
 struct Clear480Host<'a>(&'a dyn Host);
@@ -43,7 +43,7 @@ struct Vf128xHost<'a>(&'a dyn Host);
 
 impl layout::CarImpulseCalls for Vf128xHost<'_> {
     fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
-        crate::entities::call_op(self.0, sp, COPY16_WALK, this, &[a, car, out]);
+        crate::entities::op(self.0, sp, this, Op::ComposeA { src: a, o2: car, out });
     }
 
     fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
@@ -382,6 +382,6 @@ pub(super) fn body_to_world_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     let slot = |mem: &Mem, this: u32| mem.u32(mem.u32(this) + 0x30);
     let own = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, car), car, &[]);
     let receiver = crate::call_or_trivial(ctx.host, 0, slot(&ctx.mem, body), body, &[]);
-    crate::entities::call_op(ctx.host, 0, entities::MB560, receiver, &[a, own, b]);
+    crate::entities::op(ctx.host, 0, receiver, Op::Mb560 { a, b: own, c: b });
     Ok(Return::void(b, 8))
 }

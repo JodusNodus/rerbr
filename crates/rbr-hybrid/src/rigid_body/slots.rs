@@ -16,9 +16,9 @@ use rbr_physics::store::Raw;
 
 use super::force_pass::{s30_at, vcall_at};
 use super::{
-    held_solids, on_solids, unavailable, with_solids, Original, COPY16_WALK, E43VF70, E43VF74, MB560, RING_APPEND,
-    SLOT_HOOK, WALKER,
+    held_solids, on_solids, unavailable, with_solids, Original, E43VF70, E43VF74, RING_APPEND, SLOT_HOOK, WALKER,
 };
+use crate::entities::Op;
 use crate::timekeeper::layout::APP;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -62,7 +62,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
         v.store(&mut self.mem, src);
         let pose = s30_at(&self.mem, self.host, self.frame - 8, self.body, &[out]);
         let walker = self.mem.u32(WALKER);
-        crate::entities::call_op(self.host, self.frame - 0x10, MB560, walker, &[src, pose, out]);
+        crate::entities::op(self.host, self.frame - 0x10, walker, Op::Mb560 { a: src, b: pose, c: out });
         Vec4::load(&self.mem, out)
     }
 
@@ -73,7 +73,7 @@ impl ImpulseHost for ImpulseCalls<'_> {
         let walker = self.mem.u32(WALKER);
         let args = [src, walker, out];
         let pose = s30_at(&self.mem, self.host, self.frame - 0x10, self.body, &args);
-        crate::entities::call_op(self.host, self.frame - 0x10, MB560, pose, &args);
+        crate::entities::op(self.host, self.frame - 0x10, pose, Op::Mb560 { a: src, b: walker, c: out });
         Vec4::load(&self.mem, out)
     }
 }
@@ -84,7 +84,7 @@ impl layout::ImpulseTailCalls<SolidView<'_>> for ImpulseCalls<'_> {
     }
 
     fn compose(&mut self, store: &mut SolidView, sp: u32, point: u32, matrix: u32, out: u32) {
-        crate::entities::call_op(self.host, sp, COPY16_WALK, store.mem().u32(WALKER), &[point, matrix, out]);
+        crate::entities::op(self.host, sp, store.mem().u32(WALKER), Op::ComposeA { src: point, o2: matrix, out });
     }
 
     fn hook(&mut self, store: &mut SolidView, sp: u32, hook: u32, args: [u32; 8]) {

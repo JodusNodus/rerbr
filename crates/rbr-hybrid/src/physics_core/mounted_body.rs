@@ -4,9 +4,9 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{self, mounted, mounted_pose};
 use rbr_physics::physics_core::layout::{MountedPullHost, MountedStepHost};
 
-use super::{BODY_EVENT_EMIT, E43VF64, E43VF6C, MB560, STATE_EMIT, WALKER, WORLD_COMPOSE};
+use super::{BODY_EVENT_EMIT, E43VF64, E43VF6C, STATE_EMIT, WALKER, WORLD_COMPOSE};
 use crate::collision::E01_VEC4_COPY_FROM;
-use crate::entities::BODY_COMPOSE;
+use crate::entities::{Op, BODY_COMPOSE};
 use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
@@ -21,13 +21,17 @@ impl MountedPullHost for MountedCalls<'_> {
         self.host.call_at(sp, E43VF64, body, &[]).eax
     }
 
+    fn gap_lane(&mut self) -> Option<u32> {
+        crate::residue(self.host)
+    }
+
     fn world_compose(&mut self, sp: u32, owner: u32, point: u32, out: u32) {
         self.host.call_at(sp, WORLD_COMPOSE, owner, &[point, out]);
     }
 
     fn walk(&mut self, sp: u32, src: u32, owner: u32, out: u32) {
         let walker = self.mem.u32(WALKER);
-        crate::entities::call_op(self.host, sp, MB560, walker, &[src, owner, out]);
+        crate::entities::op(self.host, sp, walker, Op::Mb560 { a: src, b: owner, c: out });
     }
 }
 
@@ -51,6 +55,7 @@ impl MountedStepHost for MountedCalls<'_> {
     }
 
     fn emit_state(&mut self, sp: u32, signal: u32, sig: u32) -> u32 {
+        crate::fill_residue(self.host, &mut self.mem, sig + 4, 3);
         self.host.call_at(sp, STATE_EMIT, signal, &[sig]).eax
     }
 }

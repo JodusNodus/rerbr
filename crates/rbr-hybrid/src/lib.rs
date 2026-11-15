@@ -145,6 +145,16 @@ pub trait Host {
     fn call_in_place(&self, _sp: u32, _addr: u32, _ecx: u32, _args: &[u32]) -> Option<Called> {
         None
     }
+    /// The esp a call at `sp` enters its callee at (0: the host places it), for the words a caller that runs the callee
+    /// itself leaves unwritten (the residue audit's fills).
+    fn call_esp(&self, sp: u32) -> u32 {
+        sp
+    }
+    /// `run` on the image the bindings run on (the pure host's, as [`Host::call_in_place`] lends it), for a caller on
+    /// held state that runs a callee's port itself with values; `None` (nothing ran) on a host that runs the original.
+    fn with_image(&self, _run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
+        None
+    }
     /// [`Host::call_slot_word`] and whether [`skip_call`] writes the skipped call's words (not under the pure host's
     /// direct dispatch, [`pure::Pure::direct`]), in one call for the skipped calls.
     fn skip_word(&self) -> Option<(u32, bool)> {
@@ -169,20 +179,10 @@ pub trait Host {
 /// given `sp`. The pure host's `ran` does not count a skipped call. Under the direct dispatch nothing is written
 /// ([`Host::skip_word`]).
 pub(crate) fn skip_call(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
-    skip_call_with(host, mem, sp, args, false)
-}
-
-/// [`skip_call`] that writes the words under the direct dispatch too, for a call whose words are read after it:
-/// CollideWork's telemetry call (`physics_core/detection.rs`).
-pub(crate) fn skip_call_writing(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
-    skip_call_with(host, mem, sp, args, true)
-}
-
-fn skip_call_with(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], always_write: bool) -> bool {
     let Some((ret, write)) = host.skip_word().filter(|_| sp != 0) else {
         return false;
     };
-    if write || always_write {
+    if write {
         for (k, w) in std::iter::once(ret).chain(args.iter().copied()).enumerate() {
             mem.set_u32(sp + 4 * k as u32, w);
         }
@@ -229,6 +229,17 @@ pub(crate) fn residue(host: &dyn Host) -> Option<u32> {
         }
     }
     Some(RESIDUE)
+}
+
+/// [`residue`] stored in the `words` words from `at`, the words of a payload or block the original never writes and a
+/// listener may read (nothing on a host that runs the original, which leaves what its stack holds).
+#[cfg_attr(feature = "residue-audit", track_caller)]
+pub(crate) fn fill_residue(host: &dyn Host, mem: &mut Mem, at: u32, words: u32) {
+    if let Some(word) = residue(host) {
+        for k in 0..words {
+            mem.set_u32(at + 4 * k, word);
+        }
+    }
 }
 
 /// A trivial callee's result on the pure host ([`Host::call_slot_word`]), for a caller that then makes no call: `this`
