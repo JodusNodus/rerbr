@@ -57,7 +57,7 @@ pub use frames::{construct_entity_frame, construct_frame, ROOT_IDENTITY};
 pub use functor::{call_stored, Calls as FunctorCalls, SLOT16_FORWARD};
 pub use hinge_state::{
     angle_tweak, build_hinge_axes, limit_object, pivot_frame, position_at, rate_tweak, scaled_vector, set_hinge_link,
-    slip_frame, solve_frame, store_walk_vector, vec3,
+    slip_frame, solve_frame, store_walk_vector, vec3, Hinged,
 };
 pub use materials::{build_material_table, fill_ones, sample_indexed, store_material_table};
 pub(crate) use materials::{SLOT_SIZE, TABLE_COUNT, TABLE_SELF};

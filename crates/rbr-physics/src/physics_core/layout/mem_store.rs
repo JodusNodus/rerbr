@@ -384,12 +384,13 @@ impl<S: CoreFields> CoreStore for S {
         self.u32(body + MOUNTED_KEY_AT)
     }
 
+    /// The body's own word, held with its solid (`SolidWords`).
     fn mounted_event_sent(&self, body: u32) -> u32 {
-        self.u32(body + MOUNTED_EVENT_SENT_AT)
+        self.word(body + MOUNTED_EVENT_SENT_AT)
     }
 
     fn set_mounted_event_sent(&mut self, body: u32, value: u32) {
-        self.set_u32(body + MOUNTED_EVENT_SENT_AT, value);
+        self.set_word(body + MOUNTED_EVENT_SENT_AT, value);
     }
 
     fn copy_mounted_rotation(&mut self, body: u32, to: u32) {

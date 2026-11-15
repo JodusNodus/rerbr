@@ -149,6 +149,27 @@ const DBG_HINGE_FLAG: u32 = 0x40_0000;
 /// The state signal's offset from the signal manager.
 const STATE_SIGNAL: u32 = 0xE438;
 
+crate::object! {
+    /// The hinged body's own words a step writes (beyond its solid's; names the model's): the limit springs'
+    /// positions, the angle and the rate (the values of their NTweak reals; the headers, dirty words with them, stay on
+    /// the image), the pose's matrices, the hinge rotation, the refresh's copies, the pivot's outputs and the solve's
+    /// value. Held with the body's solid (`rigid_body::layout::CarSolids`). On the image: the owner, link and definition
+    /// pointers, and the walks' outputs at their addresses (`Xform8130`'s `+0x5c0`, `MB560`'s `+0x5f0` and `+0x610`).
+    pub struct Hinged, size 0x660 {
+        spring_position @ 0x3e8: [f32; 2],
+        angle @ 0x3fc: f32,
+        rate @ 0x40c: f32,
+        orientation_matrix @ 0x550: [f32; 9],
+        frame_matrix @ 0x574: [f32; 9],
+        rotation @ 0x598: [f32; 9],
+        offset_copy @ 0x5d0: [f32; 4],
+        offset_result_copy @ 0x5e0: [f32; 4],
+        point_acceleration @ 0x600: [f32; 3],
+        frame_angular_acceleration @ 0x620: f32,
+        solved @ 0x624: f32,
+    }
+}
+
 /// `CHingedRigidBody::Set650` (0x51da50): stores `link` at `at + 0x650`.
 pub fn set_hinge_link(mem: &mut Mem, at: u32, link: u32) {
     mem.set_u32(at + HINGE_LINK, link);

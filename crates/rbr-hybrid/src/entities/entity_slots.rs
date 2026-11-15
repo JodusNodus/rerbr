@@ -268,7 +268,7 @@ impl hinge_stops::Calls for FlagCall<'_> {
 pub(super) fn limit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let host = ctx.host;
     let mut flag = FlagCall { host, sp: r.esp - LIMIT_FLAG_CALL, object: layout::limit_object(r.ecx) };
-    let eax = layout::limit_update_at(&mut ctx.mem, r.ecx, &mut flag);
+    let eax = on_solids(ctx, |s| layout::limit_update_at(s, r.ecx, &mut flag));
     Ok(Return::void(eax, 0))
 }
 

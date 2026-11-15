@@ -19,7 +19,7 @@
 use rbr_hybrid::pure::{frame_bytes, word_name, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{CarSolids, Solid};
-use rbr_physics::store::{self, Object};
+use rbr_physics::store::{self, FieldInfo, Object};
 use rbr_recording::CONTROL_BYTES;
 
 /// What the second side runs.
@@ -57,7 +57,7 @@ pub struct Twin {
     steps: usize,
     first: Option<(usize, String)>,
     /// The address and name of every solid the first side's car has had, in the order they appeared.
-    solids: Vec<(u32, &'static str)>,
+    solids: Vec<(u32, &'static str, &'static [FieldInfo])>,
     /// The owned bytes of each side's tables, from the round trip at the start (or its failure).
     round_trip: [Result<usize, String>; 2],
 }
@@ -109,8 +109,8 @@ impl Twin {
         }
         let (mem, other) = (a.pure.image(), self.playback.pure.image());
         for solid in CarSolids::lift(mem, mem.u32(CAR_PTR)).solids {
-            if self.solids.iter().all(|(at, _)| *at != solid.at) {
-                self.solids.push((solid.at, solid.name));
+            if self.solids.iter().all(|(at, ..)| *at != solid.at) {
+                self.solids.push((solid.at, solid.name, solid.own_fields()));
             }
         }
         let what = difference(mem, other).or_else(|| solid_difference(mem, other, &self.solids));
@@ -171,10 +171,11 @@ fn difference(a: &Mem, b: &Mem) -> Option<String> {
     })
 }
 
-/// The first owned byte of a solid in `solids` that differs between `a` and `b`.
-fn solid_difference(a: &Mem, b: &Mem, solids: &[(u32, &str)]) -> Option<String> {
-    solids.iter().find_map(|&(at, name)| {
-        Solid::FIELDS.iter().find_map(|f| {
+/// The first owned byte of a solid in `solids` (its own words too: a hinged or mounted body's) that differs between
+/// `a` and `b`.
+fn solid_difference(a: &Mem, b: &Mem, solids: &[(u32, &str, &[FieldInfo])]) -> Option<String> {
+    solids.iter().find_map(|&(at, name, own)| {
+        Solid::FIELDS.iter().chain(own).find_map(|f| {
             let (x, y) = (a.read(at + f.at, f.len as usize), b.read(at + f.at, f.len as usize));
             let offset = x.iter().zip(&y).position(|(p, q)| p != q)?;
             Some(format!("{name} at {at:#010x}: {} (+{offset:#x})", f.name))

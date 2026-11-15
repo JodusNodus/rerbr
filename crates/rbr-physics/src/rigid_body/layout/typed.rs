@@ -11,8 +11,10 @@ use std::ops::Range;
 
 use super::mem_store::SolidWords;
 use crate::car_body::layout::{hinged_slot, mounted_slot, wheel_list_at};
+use crate::entities::layout::Hinged;
 use crate::mem::Mem;
-use crate::store::{Field, Object, Raw, Value};
+use crate::physics_core::layout::mounted_body::Mounted;
+use crate::store::{Field, FieldInfo, Object, Raw, Value};
 
 crate::object! {
     /// The words of a `CSolid` a step writes (names by use, `Body`'s; offsets the solid's). The quaternions and vectors
@@ -92,34 +94,150 @@ fn slot(off: u32) -> Option<usize> {
     (k.is_multiple_of(4) && i < WORDS && NAMED[i]).then_some(i)
 }
 
+/// The words of a body's own past its solid's that its table names (a hinged body's [`Hinged`], a mounted body's
+/// [`Mounted`]), at most [`OWN_WORDS`] from the first: the object's size, its fields and, for each word from the first,
+/// whether a field names it.
+#[derive(Debug)]
+pub struct OwnTable {
+    pub size: u32,
+    pub fields: &'static [FieldInfo],
+    start: u32,
+    named: [bool; OWN_WORDS],
+}
+
+/// The words an own table spans at most.
+const OWN_WORDS: usize = 0x90;
+
+const fn own_table(size: u32, fields: &'static [FieldInfo]) -> OwnTable {
+    let start = fields[0].at;
+    assert!(start >= Solid::SIZE, "a body's own words follow its solid's");
+    let mut named = [false; OWN_WORDS];
+    let mut f = 0;
+    while f < fields.len() {
+        let (at, len) = (fields[f].at, fields[f].len);
+        assert!(at % 4 == 0 && len % 4 == 0 && at + len <= size, "own fields are whole words in the object");
+        let mut w = (at - start) / 4;
+        while w < (at - start + len) / 4 {
+            named[w as usize] = true;
+            w += 1;
+        }
+        f += 1;
+    }
+    OwnTable { size, fields, start, named }
+}
+
+/// The hinged and the mounted body's own tables.
+pub static HINGED_OWN: OwnTable = own_table(Hinged::SIZE, Hinged::FIELDS);
+pub static MOUNTED_OWN: OwnTable = own_table(Mounted::SIZE, Mounted::FIELDS);
+
+impl OwnTable {
+    /// The index of the word at byte `off` of the body, where the table names it.
+    #[inline]
+    fn slot(&self, off: u32) -> Option<usize> {
+        let k = off.wrapping_sub(self.start);
+        let i = (k / 4) as usize;
+        (k.is_multiple_of(4) && i < OWN_WORDS && self.named[i]).then_some(i)
+    }
+
+    /// The runs of named words (word indices `from..to`).
+    fn runs(&self) -> impl Iterator<Item = Range<usize>> + '_ {
+        let mut k = 0;
+        std::iter::from_fn(move || {
+            let from = (k..OWN_WORDS).find(|&i| self.named[i])?;
+            let to = (from..OWN_WORDS).find(|&i| !self.named[i]).unwrap_or(OWN_WORDS);
+            k = to;
+            Some(from..to)
+        })
+    }
+}
+
+/// A body's own words in typed storage, as [`HeldSolid`]'s: the state and the image's copy (named words only).
+#[derive(Clone, Debug)]
+struct HeldOwn {
+    table: &'static OwnTable,
+    words: Cell<[u32; OWN_WORDS]>,
+    lifted: Cell<[u32; OWN_WORDS]>,
+}
+
+impl HeldOwn {
+    /// The named words of the body at `at`, each read from the image (the others are not the body's to read).
+    fn lift(mem: &Mem, at: u32, table: &'static OwnTable) -> Self {
+        let mut words = [0; OWN_WORDS];
+        for run in table.runs() {
+            for k in run {
+                words[k] = mem.u32(at + table.start + 4 * k as u32);
+            }
+        }
+        HeldOwn { table, words: Cell::new(words), lifted: Cell::new(words) }
+    }
+
+    /// As [`HeldSolid::lower`].
+    fn lower(&self, mem: &mut Mem, at: u32, changed: bool) {
+        let (words, image) = (self.words.get(), self.lifted.get());
+        if changed && words == image {
+            return;
+        }
+        for run in self.table.runs() {
+            if !changed || words[run.clone()] != image[run.clone()] {
+                mem.set_u32s(at + self.table.start + 4 * run.start as u32, &words[run]);
+            }
+        }
+        self.lifted.set(words);
+    }
+
+    #[inline]
+    fn cell(&self, off: u32) -> Option<&Cell<u32>> {
+        self.table.slot(off).map(|i| &self.words.as_array_of_cells()[i])
+    }
+}
+
 /// A solid in typed storage: its address, its name and its state, [`Solid`]'s words over the held span (one cell a
 /// word, so a nested run reads and writes the same words; a word the table does not name is read and never used), and
-/// the span as the image holds it (as lifted, then as last lowered: the state stays held across steps).
+/// the span as the image holds it (as lifted, then as last lowered: the state stays held across steps). A hinged or a
+/// mounted body holds its own words too ([`OwnTable`]); `size` is its object's (a solid's, else its own table's).
 #[derive(Clone, Debug)]
 pub struct HeldSolid {
     pub at: u32,
     pub name: &'static str,
+    size: u32,
     words: Cell<[u32; WORDS]>,
     lifted: Cell<[u32; WORDS]>,
+    own: Option<HeldOwn>,
 }
 
 impl PartialEq for HeldSolid {
     fn eq(&self, other: &Self) -> bool {
-        (self.at, self.name, self.words.get()) == (other.at, other.name, other.words.get())
+        let own = |s: &Self| s.own.as_ref().map(|o| o.words.get());
+        (self.at, self.name, self.words.get(), own(self)) == (other.at, other.name, other.words.get(), own(other))
     }
 }
 
 impl HeldSolid {
-    /// The solid at `at`, its span read at once.
-    fn lift(mem: &Mem, at: u32, name: &'static str) -> Self {
+    /// The solid at `at`, its span read at once, and its own words where `own` tables them.
+    fn lift(mem: &Mem, at: u32, name: &'static str, own: Option<&'static OwnTable>) -> Self {
         let lifted = mem.u32s(at + HELD.start);
-        HeldSolid { at, name, words: Cell::new(lifted), lifted: Cell::new(lifted) }
+        let size = own.map_or(Solid::SIZE, |t| t.size);
+        let own = own.map(|t| HeldOwn::lift(mem, at, t));
+        HeldSolid { at, name, size, words: Cell::new(lifted), lifted: Cell::new(lifted), own }
+    }
+
+    /// The fields of the body's own words its table names (none for a solid alone).
+    pub fn own_fields(&self) -> &'static [FieldInfo] {
+        self.own.as_ref().map_or(&[], |o| o.table.fields)
+    }
+
+    /// The object's size: the bytes from `at` whose words this solid resolves.
+    pub fn size(&self) -> u32 {
+        self.size
     }
 
     /// Writes back the named words, each run of them at once; with `changed`, only the runs that differ from the
     /// image's copy (`lifted`): the image still holds the others, since nothing writes a held word on it while the solid
     /// is held (the `poison` check). The copy is then what was written.
     fn lower(&self, mem: &mut Mem, changed: bool) {
+        if let Some(own) = &self.own {
+            own.lower(mem, self.at, changed);
+        }
         let (words, image) = (self.words.get(), self.lifted.get());
         if changed && words == image {
             return;
@@ -138,16 +256,25 @@ impl HeldSolid {
         self.words.as_array_of_cells()
     }
 
-    /// The word at byte `off` of the solid, where its table names it.
+    /// The word at byte `off` of the solid, where its table (or its own) names it.
     #[inline]
     pub fn word(&self, off: u32) -> Option<u32> {
-        slot(off).map(|i| self.cells()[i].get())
+        match slot(off) {
+            Some(i) => Some(self.cells()[i].get()),
+            None => self.own.as_ref()?.cell(off).map(Cell::get),
+        }
     }
 
-    /// Stores the word at byte `off` of the solid; false where its table does not name it.
+    /// Stores the word at byte `off` of the solid; false where its table (or its own) does not name it.
     #[inline]
     pub fn set_word(&self, off: u32, value: u32) -> bool {
-        slot(off).map(|i| self.cells()[i].set(value)).is_some()
+        match slot(off) {
+            Some(i) => {
+                self.cells()[i].set(value);
+                true
+            }
+            None => self.own.as_ref().and_then(|o| o.cell(off)).map(|c| c.set(value)).is_some(),
+        }
     }
 
     /// The field `f` of [`Solid`].
@@ -194,31 +321,39 @@ impl PartialEq for CarSolids {
 impl CarSolids {
     /// The solids of the car at `car`, lifted from the image.
     pub fn lift(mem: &Mem, car: u32) -> Self {
-        let mut found: Vec<(u32, &'static str)> = Vec::with_capacity(12);
-        let mut add = |name: &'static str, at: u32| {
-            if at != 0 && found.iter().all(|&(a, _)| a != at) {
-                found.push((at, name));
+        type Found = (u32, &'static str, Option<&'static OwnTable>);
+        let mut found: Vec<Found> = Vec::with_capacity(12);
+        let mut add = |name: &'static str, at: u32, own: Option<&'static OwnTable>| {
+            if at != 0 && found.iter().all(|&(a, ..)| a != at) {
+                found.push((at, name, own));
             }
         };
-        add("car solid", car);
+        add("car solid", car, None);
         for k in 0..4 {
             add(
                 ["wheel0 solid", "wheel1 solid", "wheel2 solid", "wheel3 solid"][k],
                 mem.u32(wheel_list_at(car, k as u32)),
+                None,
             );
             add(
                 ["hinged0 solid", "hinged1 solid", "hinged2 solid", "hinged3 solid"][k],
                 mem.u32(hinged_slot(car, k as u32)),
+                Some(&HINGED_OWN),
             );
         }
         for k in 0..3 {
-            add(["mounted0 solid", "mounted1 solid", "mounted2 solid"][k], mem.u32(mounted_slot(car, k as u32)));
+            add(
+                ["mounted0 solid", "mounted1 solid", "mounted2 solid"][k],
+                mem.u32(mounted_slot(car, k as u32)),
+                Some(&MOUNTED_OWN),
+            );
         }
-        found.sort_unstable_by_key(|&(at, _)| at);
-        assert!(found.windows(2).all(|w| w[1].0 - w[0].0 >= Solid::SIZE), "two solids overlap");
-        let solids: Vec<HeldSolid> = found.into_iter().map(|(at, name)| HeldSolid::lift(mem, at, name)).collect();
+        found.sort_unstable_by_key(|&(at, ..)| at);
+        let solids: Vec<HeldSolid> =
+            found.into_iter().map(|(at, name, own)| HeldSolid::lift(mem, at, name, own)).collect();
+        assert!(solids.windows(2).all(|w| w[1].at - w[0].at >= w[0].size), "two solids overlap");
         let bounds = match (solids.first(), solids.last()) {
-            (Some(lo), Some(hi)) => lo.at + HELD.start..hi.at + HELD.end,
+            (Some(lo), Some(hi)) => lo.at + HELD.start..hi.at + hi.size,
             _ => 0..0,
         };
         CarSolids { solids, bounds, last: Cell::new(0), gap: Cell::new((0, 0)) }
@@ -235,7 +370,8 @@ impl CarSolids {
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         let field = |s: &HeldSolid| {
             let (at, name) = (s.at, s.name);
-            Solid::FIELDS.iter().map(move |f| (at + f.at..at + f.at + f.len, format!("{name} {}", f.name)))
+            let fields = Solid::FIELDS.iter().chain(s.own_fields());
+            fields.map(move |f| (at + f.at..at + f.at + f.len, format!("{name} {}", f.name)))
         };
         self.solids.iter().flat_map(field).collect()
     }
@@ -250,7 +386,7 @@ impl CarSolids {
         }
         if let Some(s) = self.solids.get(self.last.get()) {
             let off = at.wrapping_sub(s.at);
-            if off < Solid::SIZE {
+            if off < s.size {
                 return Some((s, off));
             }
         }
@@ -266,9 +402,9 @@ impl CarSolids {
     #[inline(never)]
     fn search(&self, at: u32) -> Option<(&HeldSolid, u32)> {
         let next = self.solids.partition_point(|s| s.at <= at);
-        let found = next.checked_sub(1).map(|k| (k, &self.solids[k])).filter(|(_, s)| at - s.at < Solid::SIZE);
+        let found = next.checked_sub(1).map(|k| (k, &self.solids[k])).filter(|(_, s)| at - s.at < s.size);
         let Some((k, s)) = found else {
-            let start = next.checked_sub(1).map_or(self.bounds.start, |k| self.solids[k].at + Solid::SIZE);
+            let start = next.checked_sub(1).map_or(self.bounds.start, |k| self.solids[k].at + self.solids[k].size);
             let end = self.solids.get(next).map_or(self.bounds.end, |s| s.at);
             self.gap.set((start, end));
             return None;
@@ -499,6 +635,25 @@ fn entries<S: crate::rigid_body::store::RigidStore>(store: &mut S, this: u32, sc
     out
 }
 
+/// The hinged body's host-free entries in a row on the body at `this` (`entities::hinge_step`): the rotation block of
+/// its angle, both limits' residuals, their sum and the end stops (their flag call a no-op); the entries' answers.
+fn hinge_entries<S: crate::entities::store::HingeStore>(store: &mut S, this: u32) -> Vec<u32> {
+    use crate::entities::hinge_step as step;
+    struct NoFlag;
+    impl crate::entities::hinge_stops::Calls for NoFlag {
+        fn mark_dirty(&mut self) {}
+    }
+    let block = step::hinge_rotation(store, this);
+    let mut out: Vec<u32> = block.rows.iter().flatten().map(|v| v.to_bits()).collect();
+    for idx in 0..2 {
+        let torque = step::hinge_limit_residual(store, this, idx).torque.to_bits();
+        out.extend([torque as u32, (torque >> 32) as u32]);
+    }
+    out.push(step::hinge_limit_sum(store, this).to_bits());
+    out.push(step::limit_update_at(store, this, &mut NoFlag));
+    out
+}
+
 /// The scratch accumulate's flush, never called (the entries pass no gate bit).
 struct NoFlush;
 
@@ -511,24 +666,31 @@ impl crate::rigid_body::scratch::FlushHost for NoFlush {
 /// The scratch's bytes the entries write.
 const SCRATCH_BYTES: u32 = 0x50;
 
-/// The rigid body's host-free entries ([`entries`]) on each of the car's solids, per call on `per_call` (every word on
-/// the image) and on the solids held in typed storage over the run on `held` (lifted before, lowered after), two
-/// copies of one image; `scratch` is free memory of both. Compares every byte of each solid and the scratch, and the
-/// entries' return words: the bytes compared, or the first that differs.
+/// The rigid body's host-free entries ([`entries`]) on each of the car's solids, and a hinged body's
+/// ([`hinge_entries`]), per call on `per_call` (every word on the image) and on the solids held in typed storage over
+/// the run on `held` (lifted before, lowered after), two copies of one image; `scratch` is free memory of both.
+/// Compares every byte of each body (its whole object) and the scratch, and the entries' return words: the bytes
+/// compared, or the first that differs.
 pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) -> Result<usize, String> {
     let solids = CarSolids::lift(held, car);
     let mut bytes = 0;
     for s in &solids.solids {
-        let a = entries(per_call, s.at, scratch);
-        let b = entries(&mut solids.view(held), s.at, scratch);
+        let mut a = entries(per_call, s.at, scratch);
+        let mut b = entries(&mut solids.view(held), s.at, scratch);
+        if s.own.as_ref().is_some_and(|o| std::ptr::eq(o.table, &HINGED_OWN)) {
+            a.extend(hinge_entries(per_call, s.at));
+            b.extend(hinge_entries(&mut solids.view(held), s.at));
+        }
         if a != b {
             return Err(format!("{}: the entries' returns differ: {a:x?} against {b:x?}", s.name));
         }
         solids.lower(held);
-        for (at, len, what) in [(s.at, Solid::SIZE, "solid"), (scratch, SCRATCH_BYTES, "scratch")] {
+        for (at, len, what) in [(s.at, s.size, "solid"), (scratch, SCRATCH_BYTES, "scratch")] {
             let (want, got) = (per_call.read(at, len as usize), held.read(at, len as usize));
             if let Some(i) = want.iter().zip(&got).position(|(x, y)| x != y) {
-                let field = Solid::field_at(i as u32).filter(|_| what == "solid").map_or("", |f| f.name);
+                let fields = || Solid::FIELDS.iter().chain(s.own_fields());
+                let named = fields().find(|f| (f.at..f.at + f.len).contains(&(i as u32)));
+                let field = named.filter(|_| what == "solid").map_or("", |f| f.name);
                 return Err(format!(
                     "{} {what} +{i:#x} {field} differs: per call {:#04x}, held {:#04x}",
                     s.name, want[i], got[i]
@@ -583,6 +745,36 @@ mod tests {
         for f in Solid::FIELDS {
             assert!(HELD.start <= f.at && f.at + f.len <= HELD.end, "{} outside the held span", f.name);
         }
+        // The own tables: whole words in their span, the object sizes the constructors allocate.
+        crate::store::check_table::<Hinged>();
+        crate::store::check_table::<Mounted>();
+        assert_eq!(Hinged::SIZE, crate::entities::layout::HINGED_SIZE);
+        assert_eq!(Mounted::SIZE, crate::physics_core::layout::mounted_body::BODY_SIZE);
+        for t in [&HINGED_OWN, &MOUNTED_OWN] {
+            let last = t.fields.last().unwrap();
+            assert!(last.at + last.len <= t.start + 4 * OWN_WORDS as u32, "an own table past its span");
+        }
+    }
+
+    /// A hinged body's own words are held with its solid: read and written held, lowered back, the rest the image's.
+    #[test]
+    fn hinged_own_words_are_held_with_the_solid() {
+        let (car, hinged) = (0x10000, 0x20000);
+        let mut mem = Mem::new();
+        mem.map(car, &[0; 0x1d60]);
+        mem.map(hinged, &[0; 0x660]);
+        mem.set_u32(hinged_slot(car, 0), hinged);
+        mem.set_f32(hinged + Hinged::angle.at, 0.5);
+        mem.set_u32(hinged + 0x3f8, 7);
+        let solids = CarSolids::lift(&mem, car);
+        assert_eq!(solids.read(hinged + Hinged::angle.at), Some(0.5f32.to_bits()));
+        assert_eq!(solids.read(hinged + 0x3f8), None, "the angle's dirty word is the image's");
+        assert!(solids.write(hinged + Hinged::solved.at, 2.0f32.to_bits()));
+        assert!(!solids.write(hinged + 0x610, 1), "the walk's output is the image's");
+        assert_eq!(mem.f32(hinged + Hinged::solved.at), 0.0);
+        solids.lower(&mut mem);
+        assert_eq!(mem.f32(hinged + Hinged::solved.at), 2.0);
+        assert!(solids.owned().iter().any(|(r, name)| r.start == hinged + 0x624 && name == "hinged0 solid solved"));
     }
 
     /// A held solid's words are its typed state's, the rest the image's; lower writes them back.

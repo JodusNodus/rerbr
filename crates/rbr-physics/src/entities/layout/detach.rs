@@ -24,8 +24,16 @@ pub trait ImpulseCalls {
 /// The owned-car path of `CHingedRigidBody::SimF350` (0x51f350): an impulse at a point changes the hinge rate by its
 /// torque about the hinge axis over the hinge inertia, and its clamped axial part goes to the car; a clamped impulse
 /// breaks the hinge (the link cleared, the body cleared from the car and excluded from it). Host calls and local buffers
-/// use the original's aligned frame base, which is `(entry_esp - 4) & !0xf`.
-pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32, calls: &mut impl ImpulseCalls) {
+/// use the original's aligned frame base, which is `(entry_esp - 4) & !0xf`. On the solids' store: the hinge rate and
+/// the hinge point are the body's held words.
+pub fn apply_impulse_owned<S: SolidWords>(
+    mem: &mut S,
+    this: u32,
+    args: [u32; 8],
+    frame: u32,
+    calls: &mut impl ImpulseCalls,
+) {
+    let load = |mem: &S, at: u32| Vec4::from(mem.words::<4>(at).map(f32::from_bits));
     let car = mem.u32(this + 0x3d0);
     let def = mem.u32(this + 0x34);
     let transformed = frame - 0x50;
@@ -33,9 +41,9 @@ pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32,
 
     let point = args[0];
     let impulse = args[1];
-    let p = Vec4::load(mem, point);
-    let b = Vec4::load(mem, impulse);
-    let origin = Vec4::load(mem, this + 0x5c0);
+    let p = load(mem, point);
+    let b = load(mem, impulse);
+    let origin = load(mem, this + 0x5c0);
     let arm = Vec4 { x: p.x - origin.x, y: p.y - origin.y, z: p.z - origin.z, w: 0.0 };
     let cross = arm.cross3(b);
     for (i, lane) in [arm.x, arm.y, arm.z].into_iter().enumerate() {
@@ -44,15 +52,15 @@ pub fn apply_impulse_owned(mem: &mut Mem, this: u32, args: [u32; 8], frame: u32,
     for (i, lane) in [cross.x, cross.y, cross.z].into_iter().enumerate() {
         mem.set_f32(frame - 0x30 + 4 * i as u32, lane);
     }
-    let t = Vec4::load(mem, transformed);
-    let c = Vec3::load(mem, frame - 0x30).extend(0.0);
+    let t = load(mem, transformed);
+    let c = Vec3 { x: mem.f32(frame - 0x30), y: mem.f32(frame - 0x2c), z: mem.f32(frame - 0x28) }.extend(0.0);
     let projection = hinge_impulse::torque_about_axis(t, c);
     let denominator = mem.f32(def + 0x4bc);
     calls.construct(frame - 0x78, frame - 0x10);
     let rate = mem.f32(this + 0x40c) + projection / denominator;
     mem.set_f32(this + 0x40c, rate);
 
-    let dot_impulse = Vec4::load(mem, impulse);
+    let dot_impulse = load(mem, impulse);
     let dot = dot_impulse.z * t.z + dot_impulse.y * t.y;
     let dot = dot + dot_impulse.x * t.x;
     let (dot, clamped) = hinge_impulse::clamp_axial_impulse(dot, mem.f32(0x731d00), mem.f32(0x73d3bc));

@@ -130,20 +130,20 @@ pub(super) fn state_emit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 /// thiscall: `CHingedRigidBody::SimC960` (0x51c960), the rotation block from the hinge angle. Its eax is the sine and
 /// cosine's residue, a scratch value no caller reads, so 0.
 pub(super) fn sim_c960_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::hinge_rotation(&mut ctx.mem, r.ecx);
+    on_solids(ctx, |s| layout::hinge_rotation(s, r.ecx));
     Ok(Return::void(0, 0))
 }
 
 /// thiscall `(idx)`: `CHingedRigidBody::SimCF10` (0x51cf10), one limit's residual (st0).
 pub(super) fn sim_cf10_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let step = layout::hinge_limit_residual(&mut ctx.mem, r.ecx, r.stack[0]);
+    let step = on_solids(ctx, |s| layout::hinge_limit_residual(s, r.ecx, r.stack[0]));
     Ok(Return::float(step.torque, 4))
 }
 
 /// thiscall: `CHingedRigidBody::SimEA80` (0x51ea80), the sum of the active limits' residuals (st0). The inner `SimCF10`
 /// calls are the port's own, so they are not made.
 pub(super) fn sim_ea80_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(f64::from(layout::hinge_limit_sum(&mut ctx.mem, r.ecx)), 0))
+    Ok(Return::float(f64::from(on_solids(ctx, |s| layout::hinge_limit_sum(s, r.ecx))), 0))
 }
 
 /// The slip term's calls on the original's objects, at the depths below the frame: `E01Vec4::CopyFrom` (-0x78) and the
@@ -283,7 +283,7 @@ impl SolveCalls for SolveHost<'_> {
     }
 
     fn solve_terms(&self, this: u32) -> SolveTerms {
-        self.mem.solve_terms(this)
+        with_solids(self.host, &mut self.mem.clone(), |s| s.solve_terms(this))
     }
 
     fn slip_torque(&mut self, this: u32) -> f32 {
@@ -308,7 +308,7 @@ impl SolveCalls for SolveHost<'_> {
 pub(super) fn sim_ead0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = SolveHost { mem: ctx.mem.clone(), host: ctx.host, frame, voted: false };
-    let eax = match layout::hinge_solve_at(&mut ctx.mem, r.ecx, frame, &mut calls) {
+    let eax = match on_solids(ctx, |s| layout::hinge_solve_at(s, r.ecx, frame, &mut calls)) {
         Outcome::Linked => ctx.mem.hinge_link(r.ecx),
         Outcome::Unowned { result } => result,
         Outcome::Solved(_) if calls.voted => ctx.mem.hinge_definition(r.ecx),
@@ -472,7 +472,7 @@ pub(super) fn sim_f350_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     }
     let frame = aligned_frame(r.esp);
     let mut calls = F350Host { mem: ctx.mem.clone(), host: ctx.host };
-    layout::apply_impulse_owned(&mut ctx.mem, r.ecx, args, frame, &mut calls);
+    on_solids(ctx, |s| layout::apply_impulse_owned(s, r.ecx, args, frame, &mut calls));
     Ok(Return::void(0, 0x20))
 }
 
@@ -624,7 +624,7 @@ impl rbr_physics::entities::hinge_offset::OffsetCalls for D860Host<'_> {
 
 /// thiscall `(out)`, `ret 4`: `CHingedRigidBody::SimD860` (0x51d860), its vector into `out`; returns `out`.
 pub(super) fn hinge_sim_d860(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let input = ctx.mem.offset_input(r.ecx);
+    let input = on_solids(ctx, |s| s.offset_input(r.ecx));
     let mut calls = D860Host { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp) };
     let v = rbr_physics::entities::hinge_offset::hinge_offset(&mut calls, &input);
     for (k, x) in v.into_iter().enumerate() {
