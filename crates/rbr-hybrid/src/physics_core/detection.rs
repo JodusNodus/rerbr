@@ -180,9 +180,9 @@ impl CollideHost for Detectors<'_> {
     }
 
     fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
-        // A `ret`, but the slot of its return address is read after it (car+0x14c, `--twin mem-direct` at drive2's step
-        // 19211): written under either dispatch.
-        if crate::skip_call_writing(self.host, &mut self.mem, sp, &[]) {
+        // A `ret`; nothing reads its words after it (the respawn countdown's sample lane 3 that the direct dispatch
+        // left the slot to is `crate::RESIDUE`).
+        if crate::skip_unwritten(self.host, &mut self.mem, sp, &[]) {
             self.host.ran_direct();
             return;
         }

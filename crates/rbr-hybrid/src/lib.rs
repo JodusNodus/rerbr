@@ -169,20 +169,10 @@ pub trait Host {
 /// given `sp`. The pure host's `ran` does not count a skipped call. Under the direct dispatch nothing is written
 /// ([`Host::skip_word`]).
 pub(crate) fn skip_call(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
-    skip_call_with(host, mem, sp, args, false)
-}
-
-/// [`skip_call`] that writes the words under the direct dispatch too, for a call whose words are read after it:
-/// CollideWork's telemetry call (`physics_core/detection.rs`).
-pub(crate) fn skip_call_writing(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
-    skip_call_with(host, mem, sp, args, true)
-}
-
-fn skip_call_with(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], always_write: bool) -> bool {
     let Some((ret, write)) = host.skip_word().filter(|_| sp != 0) else {
         return false;
     };
-    if write || always_write {
+    if write {
         for (k, w) in std::iter::once(ret).chain(args.iter().copied()).enumerate() {
             mem.set_u32(sp + 4 * k as u32, w);
         }

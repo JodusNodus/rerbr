@@ -360,7 +360,10 @@ pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     crate::ngp::only()?;
     let mut calls = car_calls(ctx, r);
     let image = ctx.mem.clone();
-    on_stage(ctx.host, &image, |line| on_car(ctx, |m| layout::run_countdown(m, line, &mut calls, r.ecx, r.esp)));
+    let residue = crate::residue(ctx.host);
+    on_stage(ctx.host, &image, |line| {
+        on_car(ctx, |m| layout::run_countdown(m, line, &mut calls, r.ecx, r.esp, residue))
+    });
     Ok(Return::void(0, 0))
 }
 

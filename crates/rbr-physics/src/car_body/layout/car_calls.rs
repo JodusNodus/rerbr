@@ -324,13 +324,17 @@ pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry
 /// drive line's sample (`Split17C`) is negated, the sampler votes on the probe, and slot 97 takes the voted block (the
 /// probe on a miss) and the sample; then `M6840(1)` and slot 18. Otherwise the countdown falls by the app's tick and is
 /// stored as 0 when it goes negative (NaN stays). Nothing happens for a null car. `entry` is the entry esp; the frame is
-/// aligned as the original's. `line` holds the drive line.
+/// aligned as the original's. `line` holds the drive line. Lane 3 of the probe, the sample and the vote's output are
+/// frame words the original does not write (the sampler and the vote store three lanes; the vote, `Normalize`, the
+/// hit's copy and slot 97 read four: the pose's w, car `+0x14c`): `residue`, when given, is stored there first (the
+/// pure host's, notes/physics.md "Stack residue is behaviour").
 pub fn run_countdown<S: CarStore>(
     mem: &mut S,
     line: &impl StageStore,
     calls: &mut impl CountdownCalls<S>,
     car: u32,
     entry: u32,
+    residue: Option<u32>,
 ) {
     if car == 0 {
         return;
@@ -339,6 +343,11 @@ pub fn run_countdown<S: CarStore>(
     let timer = mem.respawn_countdown(car);
     if timer == 0.0 {
         let (probe, sample, ans, raw) = (frame + 0x1c, frame + 0xc, frame + 0x2c, frame + 0x3c);
+        if let Some(lane) = residue {
+            for at in [probe, sample, raw] {
+                mem.set_u32(at + 0xc, lane);
+            }
+        }
         drive_line_sample(mem, line, car, probe, sample);
         (Vec4::load(mem, sample).scale(-1.0)).store(mem, sample);
         let hit = vote_probe(mem, calls, frame - 20, probe, ans, raw);
