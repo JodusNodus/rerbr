@@ -144,13 +144,17 @@ impl<S: CarStore> DragCalls<S> for Car<'_> {
     fn drag_force(&mut self, _mem: &mut S, car: u32, force: Vec3) {
         let at = self.scratch + SEND;
         self.put(at, force);
-        self.slot(car, SLOT_FORCE, &[at]);
+        if !crate::rigid_body::accumulate_direct(self.host, &mut self.mem, SLOT_FORCE, car, at) {
+            self.slot(car, SLOT_FORCE, &[at]);
+        }
     }
 
     fn spin_damping(&mut self, _mem: &mut S, car: u32, damping: Vec3) {
         let at = self.scratch + SEND;
         self.put(at, damping);
-        self.slot(car, SLOT_SPIN, &[at]);
+        if !crate::rigid_body::accumulate_direct(self.host, &mut self.mem, SLOT_SPIN, car, at) {
+            self.slot(car, SLOT_SPIN, &[at]);
+        }
     }
 }
 

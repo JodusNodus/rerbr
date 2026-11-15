@@ -22,16 +22,17 @@ mod window;
 use crate::collision::CSTATE_UNKA44;
 use crate::engine_driveline::SIGNALS;
 use crate::entities::{COPY16_WALK, INTEGRATE, MB560, NAME_WALK, STATE_EMIT, VF20};
+pub(crate) use contact::contact_vote_direct;
 use contact::{big_a, big_b, e43vf70, vf81x};
 use force_pass::{e43vf64, mounted_vf128, response_run};
 use pose::{e43vf6c, integrate_pose};
 use quats::{quat_mul, quat_norm, quat_normalize, set_from_quat};
+pub(crate) use slots::{accumulate_direct, e43vf138, impulse_run};
 use slots::{
     clamp_velocity_along, damping_emit, e43vf74, e43vfa0, fold_rows, inverse_mass, new_def, quat_diff_rows,
     quat_plus_rows, quat_rows_b8, quat_transform_rows, ring_append, scale_add_rows, state_ctor, step76, step77,
     transform_rows, transform_rows3, vf20_jump, vf24x, vf85,
 };
-pub(crate) use slots::{e43vf138, impulse_run};
 use window::{
     advance_rest, back_step, e43vf158, e43vf90, e43vf94, scratch_reset_after_entity, vf16_helper, vf17x, window_start,
 };

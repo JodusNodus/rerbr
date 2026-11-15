@@ -8,6 +8,7 @@ use rbr_physics::rigid_body::layout::{self, Body, Def, Vec4};
 use rbr_physics::rigid_body::response::ResponseHost;
 use rbr_physics::rigid_body::store::RigidStore;
 
+use super::contact_vote_direct;
 use super::slots::impulse_run;
 use super::{
     on_solids, with_solids, COLLECT_OBJECT, COPY16_WALK, DAMPING_EMIT, E36_COLLECT, MB560, RETIRE_A, SIGNALS, VF81X,
@@ -259,8 +260,9 @@ impl ForceHost for Calls<'_> {
     /// `Vf81x (frame+0x10, frame+0x20, 1.0)`.
     fn vote(&mut self) -> Result<Option<(Vec4, Vec4)>, HostUnavailable> {
         let (a, b) = (self.frame + 0x10, self.frame + 0x20);
-        let args = [a, b, 1.0f32.to_bits()];
-        self.voted = self.host.call_at(self.frame - 0x10, VF81X, self.body, &args).eax != 0;
+        let (args, sp) = ([a, b, 1.0f32.to_bits()], self.frame - 0x10);
+        let voted = contact_vote_direct(self.host, &mut self.mem, self.body, sp, args);
+        self.voted = voted.unwrap_or_else(|| self.host.call_at(sp, VF81X, self.body, &args).eax) != 0;
         Ok(self.voted.then(|| (Vec4::load(&self.mem, a), Vec4::load(&self.mem, b))))
     }
 
