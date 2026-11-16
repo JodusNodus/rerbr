@@ -632,19 +632,29 @@ impl Playback {
     /// [`Playback::chase_fov`], or one of `mounts` at the horizontal field of view `fov`, radians, shaken in the view
     /// that takes the seat shake, and turned by the head ([`crate::head`]) there.
     pub fn lens(&self, mounts: &Mounts, view: CarView, look: ChaseLook, fov: f32) -> Lens {
+        // The look-back key turns the views fixed to the car about their eye, as it swings the chase (ours: 1.02 has
+        // no such action, `game_camera`). The bonnet and bumper views also move their eye to the back of the car as
+        // they turn, to look from behind it rather than at its own body.
+        let turn = self.game_chase.look_back();
+        let behind = |lens: Lens| Lens { forward: Quat::from_axis_angle(lens.up, turn) * lens.forward, ..lens };
+        let aft = |mount: Mount| {
+            let back = Vec3::Z * ((mounts.rear - mount.eye.z) * (1.0 - turn.cos()) * 0.5);
+            Mount { eye: mount.eye + back, target: mount.target + back, ..mount }
+        };
         match mounts.of(view) {
             Some(mount) if view.shakes() => {
-                self.head.turned(self.mounted(&mount.shaken(self.sample().shake[CAMERA_SHAKE]), fov))
+                behind(self.head.turned(self.mounted(&mount.shaken(self.sample().shake[CAMERA_SHAKE]), fov)))
             }
             Some(mount) if view == CarView::Bonnet => {
+                let mount = aft(mount);
                 let mut lens = self.mounted(&mount, fov);
                 if let Some(probe) = &self.probe {
                     let swap = |v: Vec3| Vec3::new(v.x, v.z, v.y);
                     lens.eye = swap(crate::game_camera::bonnet_lift(probe, swap(lens.eye), mount.near));
                 }
-                lens
+                behind(lens)
             }
-            Some(mount) => self.mounted(&mount, fov),
+            Some(mount) => behind(self.mounted(&aft(mount), fov)),
             None => match self.game_chase.lens() {
                 Some(lens) => {
                     // The chase follows the frames; it moves on with the car drawn at the newest step.

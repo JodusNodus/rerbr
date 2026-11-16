@@ -374,6 +374,9 @@ pub struct Mounts {
     pub bonnet: Mount,
     pub bumper: Mount,
     pub cockpit: Mount,
+    /// The model's z behind its back: where the bonnet and bumper views' eyes are looking back, [`BUMPER_AHEAD`] past
+    /// the rear of the body (ours).
+    pub rear: f32,
     /// Each view's nudge, by [`CarView::index`] ([`crate::camera_prefs`]). The chase's shift is applied through its
     /// settings ([`crate::game_camera::Settings::nudged`]), not here.
     pub nudges: [Nudge; CarView::ALL.len()],
@@ -420,6 +423,7 @@ impl Mounts {
             bonnet: bonnet_mount(bonnet, exterior),
             bumper: Mount { eye, target: eye + Vec3::NEG_Z, up: Vec3::Y, near: coords::NEAR.min(BUMPER_AHEAD) },
             cockpit: wheel.filter(|_| narrow).map_or(cockpit, |wheel| hub_in_view(cockpit, wheel, &shown(interior))),
+            rear: hi.z + BUMPER_AHEAD,
             nudges: [Nudge::default(); CarView::ALL.len()],
         })
     }

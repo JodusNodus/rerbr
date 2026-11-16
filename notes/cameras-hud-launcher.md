@@ -28,6 +28,11 @@ Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of vi
 (the game's slider stops at 4); the launcher's co-driver "Call ahead" goes to 15 s (the page stopped at 8); choices in `rbr_render::camera_prefs` (`[camera]`,
 `viewer --cameras`).
 
+- Look back (2026-11-16, issue #7): the key's swing (`Follow::look_back`, 0 forward to pi behind) also turns the cockpit,
+  bonnet and bumper views about their eye (`Playback::lens`); until then it turned the chase only, so in the cockpit
+  the key did nothing. The bonnet and bumper eyes also move to the model's back (`Mounts::rear`, `BUMPER_AHEAD` past
+  it; the move follows the swing, half way at a quarter turn) so they look down the road from the rear instead of
+  at the car's own body (the bumper's was its number plate).
 - Whether RSF itself applies `<car>_personal.ini` `[Cam_*]` overrides is not traced (the loader is
   `rbr_render::car::camera_sections`). One looking more than 30 degrees to the side is not taken (the Porsche 911 GT3
   RS (2010) RGT pack ships a `Cam_internal` 60 degrees left; the 43 installed others are within 5, 2026-11-01).
