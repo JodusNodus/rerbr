@@ -382,6 +382,10 @@ come from the retail `audio.dat` (`audio.dat.disabled` in RSF installs).
   Byte-identical: retail sound and the 14 banks without such instruments (DS3 R1 rendered). Byte 28 (1 on the loops
   and most engine one-shots, 0 on gear, ignition and some backfires; inferred FMOD's sync flag) is not read: a
   one-shot plays to its end.
+- FSB5 chunk 14 (Vorbis intra-layers, 2026-11-16): the sample's channels times its value (vgmstream `fsb5.c`). Only
+  the GC8 555 has it (28 in-car recordings, 1 x 4, of 58 banks scanned); read as mono they decoded to noise at up to
+  +40 dB, clipped (in 4 channels the peaks match chunk 13's, 0.60 against 0.59), and its in-car trim went from 0.095
+  to 0.42.
 - Aston's `event:/wind 2` (its only wind) is not played: no daemon slot addresses it (inferred NGP-silent too).
 - `suspension_damage` (56 banks) is never set by the daemon; ours stays 0 (undamaged), which holds 306_maxi_B's
   one wheel bus-vol at -80 dB (inferred).
