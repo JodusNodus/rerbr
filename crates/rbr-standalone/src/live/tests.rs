@@ -906,7 +906,7 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
             assert_eq!(seen.len(), k + 1, "the model's calls by step {k}");
             let torque = seen[k].1;
             let taken = crate::physics::ratio_ring_newest(&live.playback);
-            let want = rbr_physics::engine_driveline::drive_step::ratio_input(rbr_physics::ngp::engine::output(torque));
+            let want = rbr_physics::engine_driveline::drive_step::ratio_input(f64::from(torque));
             assert_eq!(taken.to_bits(), want.to_bits(), "step {k}: the drive took {taken} for {torque} N·m");
         }
         rbr_step::ngp::set_engine_model(None);
