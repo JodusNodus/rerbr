@@ -161,7 +161,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   Refused: RSF `01 a0` headers, a `Key` in `[Map<n>]`, a `.col` not `OC7R`, no complete variant, the same name and
   copied sizes again. Evidence: 120 RSF stage folders added with forced numbers list with their variants, weathers,
   surface, author and length, and load and drive 20 000 steps under `stage-sweep.sh` (24 match the originals' rows);
-  RBR Czech installers: Peklo and Pribram (O variant left out) added, Manukau refused as encrypted.
+  RBR Czech installers: Peklo, Pribram (O variant left out) and Sturec added, Manukau refused as encrypted.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used
