@@ -65,6 +65,8 @@ mod sky_occlusion;
 mod skylight;
 pub mod sound;
 pub mod stage;
+pub mod stage_lamps;
+mod stage_lamps_pass;
 pub mod stage_picture;
 pub mod stage_probe;
 pub mod start_board;

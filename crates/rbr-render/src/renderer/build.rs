@@ -609,6 +609,8 @@ impl Renderer {
             screen_reflection,
             skid_marks: None,
             car_shadow: None,
+            stage_lamps: Vec::new(),
+            lamp_bulbs: None,
             sky,
             depth_size,
             output_size: depth_size,

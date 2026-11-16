@@ -203,10 +203,12 @@ impl Renderer {
                 );
             }
             let day = self.day_light();
+            let street = self.street_lamps(crate::camera::eye(effects_view), crate::effects::AIR_STREET);
             if let Some(effects) = &mut self.effects {
                 let cascades = self.cascades.as_ref();
                 effects.set_inside(!self.outside_view);
                 effects.set_cabin_mask(self.cabin_mask.zip(self.car_body));
+                effects.set_street(street);
                 // Without the shadows the lamps light the dust and the snow unshadowed, as before.
                 let lamp = self.lamp_matrix.filter(|_| self.enhance.lighting);
                 effects.update(&self.queue, effects_view, self.time, size, (&lit, level), cascades, lamp, day);
@@ -685,6 +687,9 @@ impl Renderer {
         if let Some(shadow) = &self.car_shadow {
             shadow.draw(&mut pass, &self.queue, view_projection, light, lamps);
         }
+        if let Some(bulbs) = &self.lamp_bulbs {
+            bulbs.draw(&mut pass, &self.queue, view_projection, size.height, self.lamp_glow());
+        }
         // The main view without reflections ends here; with them, the particles go over the reflections. The mirrors
         // draw the game's particles.
         if let (Some(particles), true) =
@@ -807,6 +812,22 @@ impl Renderer {
     /// When the lamps light the stage: at night and at dusk.
     fn lamps_light(&self) -> bool {
         self.atmosphere.night || self.atmosphere.relight.is_some_and(|r| r.lamps > 0.01)
+    }
+
+    /// The stage's lamps' bulbs' look ([`crate::stage_lamps_pass`]): as lit as the lamps, in the frame's exposure
+    /// (`pre_exposure` in `shader.wgsl`) and fog.
+    fn lamp_glow(&self) -> crate::stage_lamps_pass::Glow {
+        let a = &self.atmosphere;
+        let pre_exposure = match self.day_light() {
+            Some(day) if day.sun[3] > 0.0 => day.sun[3],
+            _ if a.night => crate::skylight::NIGHT_PRE_EXPOSURE,
+            _ => crate::post::DAY_PRE_EXPOSURE,
+        };
+        crate::stage_lamps_pass::Glow {
+            colour: crate::stage_lamps::COLOUR * self.lamps_level(),
+            pre_exposure,
+            fog: a.use_fog.then_some([a.fog_start, a.fog_end]),
+        }
     }
 
     /// The light on the skid marks and the car's shadow decal, whose colours are the game's for the lit ground (ours):

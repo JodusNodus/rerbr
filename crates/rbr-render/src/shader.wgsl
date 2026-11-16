@@ -112,6 +112,11 @@ struct Frame {
     // (`cabin_day_lit`).
     cabin: vec4<f32>,
     cabin_seen: vec4<f32>,
+    // The stage's lamps (`stage_lamps.rs`, `street_sum` in `night.wgsl`, ours): their colour times how lit they are
+    // (0 by day), w the eye's distance past which they are left out (they fade out before it); then each lamp's
+    // position, w its intensity in the lamps' units (0: none), and the way its light falls (zero for every way).
+    street_light: vec4<f32>,
+    street: array<vec4<f32>, 32>,
 }
 
 struct Mode {
@@ -662,6 +667,9 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         let has_normal = dot(v.normal, v.normal) > 1e-8;
         let n = select(vec3<f32>(0.0, 1.0, 0.0), normalize(v.normal) * select(-1.0, 1.0, front), has_normal);
         lamps = lamp_sum(v.world, n, mode.cutout != 0u);
+        if (street_on()) {
+            lamps += street_sum(v.world, n, mode.cutout != 0u);
+        }
     }
     if (own) {
         let lux = lamp_lux(lamps) * frame.day_sun.w / SKY_PI;
@@ -1616,13 +1624,22 @@ fn lit(colour: vec3<f32>, n: vec3<f32>, view: vec3<f32>, sunlit: f32, ambient: v
             let grey = dot(albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
             albedo = max(mix(vec3<f32>(grey), albedo, PAINT_PIGMENT.x), vec3<f32>(0.0)) * PAINT_PIGMENT.y;
         }
-        return pow(albedo * e + highlight * frame.day_sun.rgb * ndl, vec3<f32>(1.0 / 2.2));
+        var linear = albedo * e + highlight * frame.day_sun.rgb * ndl;
+        // The stage's lamps light the car and the characters too (`street_sum`, in lux as the stage takes them).
+        if (street_on()) {
+            linear += albedo * lamp_lux(street_sum(world, n, false)) * frame.day_sun.w / SKY_PI;
+        }
+        return pow(linear, vec3<f32>(1.0 / 2.2));
     }
     let h = normalize(to_sun + view);
     let nh = max(dot(n, h), 1e-3);
     let m2 = max(mode.light.w * mode.light.w, 1e-3);
     let highlight = mode.light.z * exp((1.0 - 1.0 / (nh * nh)) / m2) * step(0.0, ndl) * min(ndl * 4.0, 1.0);
-    return LIGHT_SCALE * (colour * light(n, sunlit, ambient, world) + 4.0 * highlight * frame.diffuse.rgb);
+    var shaded = LIGHT_SCALE * (colour * light(n, sunlit, ambient, world) + 4.0 * highlight * frame.diffuse.rgb);
+    if (street_on()) {
+        shaded += LIGHT_SCALE * colour * NIGHT_ALBEDO * lamp_knee(street_sum(world, n, false));
+    }
+    return shaded;
 }
 
 // The texture's colour's scale to the albedo the day's light takes (ours).

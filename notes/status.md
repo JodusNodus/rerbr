@@ -90,6 +90,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Rain and snow particles | done | - |
 | Windscreen, wipers | partial | crack normal map, camera dirt |
 | Night mode, render enhancements | done (ours) | - |
+| Stage lamps (the night stages' street lights) | partial (ours) | shadows, fire lights ([renderer.md](renderer.md#time-of-day-and-night)) |
 | Cockpit mirrors | done (ours) | set for the driver's eye, not as modelled; the Fiesta Rally2: none found; images not anti-aliased |
 | In-car and chase cameras | done | mode 3 ground probe; chase capture |
 | Start orbit, helicam, seat shake | done | - |

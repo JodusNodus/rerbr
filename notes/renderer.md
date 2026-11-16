@@ -700,6 +700,35 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   linear light; the rippled normal breaks it up. Replaced the fixed brightnesses: the 45O wet flyby's one clipped slab is
   two rippled streaks (clipped 6.6 to 5.4 % of the frame; road crop flicker mean 6.4 to 9.1, the ripples' edges), the
   chase's red haze under the tail lamps is gone (they shine little that steeply down); day wet and dry byte-identical.
+- Stars are points (2026-11-16, user: "too big"; `starry` in `night.wgsl`): a Gaussian of 0.6 px spread
+  (`STAR_PIXELS`, the pixel's size from the grid's screen derivatives) at the old peak brightness. Before, a disc a
+  third of a 0.34-degree cell, 4 to 6 px across at 1080p, every star much alike. A star in 4% of the cells (was 6%; user, 2026-11-16: "a bit less stars"). No reference shot shows stars (401
+  free frame before/after); all byte-identical.
+- Stage lamps (ours, 2026-11-16; `stage_lamps.rs`, `stage_lamps_pass.rs`, `stage_lamps.wgsl`, `street_sum` in
+  `night.wgsl`): the night stages bake their street lights as alpha-tested light sprites, drawn as white blobs. A
+  sprite is a world-anchored draw with alpha ref, one texture, no shade or shadow, a name with GLO, SPOT, BULB, LIGHT,
+  LAMP or FLARE, and a soft white alpha (texels with alpha 16 or more have luminance ≥0.8 and grey ≤0.12, 60% below 240,
+  coverage ≤60%; this rejects clouds, fences, signs and smoke). Each triangle's lamp is at the texture's peak alpha,
+  aimed at its alpha centre, or omni for a star. Lamps within 1 m merge. Their sprites (the game's painted beams) leave the stage
+  meshes and are not drawn (user, 2026-11-16: only the real light). Each lamp shows as a bulb (`stage_lamps_pass`): a
+  soft disc facing the eye, 0.15 m in radius times the lamp's scale, its radius down the axis, at 4000 cd/m2, fogged,
+  at least 1.5 px across. It is drawn 0.5 m toward the eye so the housing does not cut it. The sprites' peak alpha is
+  the quad's top edge against the housing, so a bulb from the texture was hidden or traced the beam. The 16 nearest lamps (`MAX_STREET`,
+  fading out before the 17th) light every lit pipeline: 2000 cd times (sprite size / 8 m)², warm white, reach 90 m,
+  a cone of the cosine's square root for an aimed lamp. They shine at night and by `relight.lamps` at dusk. Frames without stage
+  lamps are byte-identical (the 34 other reference shots). Lamps found: 126 Sardian Night 137, 401 80, 466 138, 467 135,
+  465 Odry snow II 100, 464 29, 141 27, 481 10. 125 Sardian (day) has no sprites. Night Sardian 1080p chase: scene
+  1.92 to 2.20 ms, frame drawn 3.76 to 3.95 ms. Open: shadows from the stage lamps, the fire lights (`feu`).
+  `examples/stage_lamps.rs MAPS STAGE...` lists a stage's lamps.
+- Stage lamps in the wet (2026-11-16; `street_lamp` in `lamps.wgsl`, shared): the wet road mirrors the lamps on
+  screen already (the reflections take the bulbs). `lamp_glint` adds every lamp as the car's, a 0.1 m bowl,
+  at `STREET_GLINT` 0.12 and only on level film (normal y 0.8 to 0.95). At full strength and 0.4 m the overhead
+  lamps' lobes made the near road a sheet whose bloom veiled the frame, and walls took streaks. Rain, mist and
+  particles take the 8 lamps nearest the eye (`effects::AIR_STREET`, faded by the 9th) in `lamps_at`. Wet night
+  Sardian needs the Custom weather (`--set settings.weather=bad --set settings.wetness=wet --set
+  settings.clouds=heavy`): with the stage's own weather the road stays dry. Heavy rain, 1080p chase: rain 2.11 to
+  2.66 ms (3.22 with 16 lamps and `pow`), scene 2.7 to 3.2-3.4 ms. Other reference shots byte-identical; the
+  stage lamps start where the lamps' pipelines do (level above 0.01; below it golden Odry's dust took them).
 
 ## Damage visuals
 

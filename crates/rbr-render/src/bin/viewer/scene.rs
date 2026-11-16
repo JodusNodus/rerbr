@@ -81,6 +81,8 @@ pub struct Scene {
     pub roadside: Option<rbr_render::roadside::Roadside>,
     /// The engine's reflections follow the roadside (not `--no-roadside`).
     pub echoes: bool,
+    /// The stage's lamps (`rbr_render::stage_lamps`).
+    pub stage_lamps: Vec<rbr_render::stage_lamps::StageLamp>,
 }
 
 impl Scene {
@@ -102,6 +104,7 @@ impl Scene {
             let crew: Vec<usize> = self.crew.iter().flat_map(|crew| crew.slots()).collect();
             renderer.set_car(&playback.car_meshes(), &crew);
         }
+        renderer.set_stage_lamps(&self.stage_lamps);
         renderer.set_precipitation(self.precipitation);
         renderer.set_cabin_sun(self.cabin_sun.clone());
         renderer.set_cabin_mask(self.cabin_mask);
@@ -232,6 +235,7 @@ fn load_scene<'scope, 'env>(
                 grass: None,
                 roadside: None,
                 echoes: args.roadside,
+                stage_lamps: Default::default(),
             })
         }
         (stage_name, car_name) => {
@@ -268,6 +272,10 @@ fn load_scene<'scope, 'env>(
             }
             if args.enhance.decals {
                 rbr_render::decals::blend_ground_decals(&mut stage);
+            }
+            let stage_lamps = rbr_render::stage_lamps::take(&mut stage);
+            if !stage_lamps.is_empty() {
+                eprintln!("stage lamps: {}", stage_lamps.len());
             }
             let grass = grass.then(|| rbr_render::grass::add(&mut stage)).flatten().map(|field| {
                 eprintln!("grass: {} ground triangles", field.triangles());
@@ -495,6 +503,7 @@ fn load_scene<'scope, 'env>(
                 grass,
                 roadside,
                 echoes: args.roadside,
+                stage_lamps,
             })
         }
     }

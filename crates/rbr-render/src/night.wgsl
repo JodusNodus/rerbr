@@ -72,6 +72,30 @@ fn lamp_sum(world: vec3<f32>, n: vec3<f32>, two_sided: bool) -> vec3<f32> {
     return sum + REAR_KNEE * rear / (REAR_KNEE + rear);
 }
 
+// Whether the stage's lamps are lit (none by day, or on a stage without them).
+fn street_on() -> bool {
+    return frame.street_light.x + frame.street_light.y + frame.street_light.z > 0.0;
+}
+
+// The light the stage's own lamps (`stage_lamps.rs`, `frame.street`, ours) give a surface at `world` with normal `n`
+// (`two_sided` for foliage cards), in the lamps' units as `lamp_sum`'s, unshadowed (`street_lamp` in `lamps.wgsl`).
+fn street_sum(world: vec3<f32>, n: vec3<f32>, two_sided: bool) -> vec3<f32> {
+    if (!street_on()) {
+        return vec3<f32>(0.0);
+    }
+    var sum = 0.0;
+    for (var i = 0; i < 16; i++) {
+        let lamp = frame.street[2 * i];
+        if (lamp.w == 0.0) {
+            break;
+        }
+        let seen = distance(lamp.xyz, frame.eye.xyz);
+        let light = street_lamp(lamp, frame.street[2 * i + 1].xyz, world, seen, frame.street_light.w);
+        sum += light * lamp_facing(n, normalize(lamp.xyz - world), two_sided);
+    }
+    return frame.street_light.rgb * sum;
+}
+
 // `lamp_sum`'s light `sum` in lux (`own_light`'s, physical): the headlights' dipped hot spot `HEADLIGHT_CD` (an ECE
 // dipped beam's) for `lights::HEADLIGHT` (`HEADLIGHT_UNIT`).
 const HEADLIGHT_CD: f32 = 20000.0;
@@ -154,8 +178,11 @@ fn moon_lit(world: vec3<f32>, n: vec3<f32>, has_normal: bool) -> f32 {
 // (pi times its two widths), so that it carries the light the film mirrors.
 const REFLECTION_SPREAD: f32 = 0.2;
 const REFLECTION_LAMP: f32 = 0.1;
+const STREET_BOWL: f32 = 0.1;
+const STREET_GLINT: f32 = 0.12;
+const STREET_LEVEL: vec2<f32> = vec2<f32>(0.8, 0.95);
 
-fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
+fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32, up: f32) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let across = normalize(vec2<f32>(mirrored.x, mirrored.z) + vec2<f32>(1e-6, 0.0));
     let sine = max(mirrored.y, 0.01);
@@ -167,12 +194,7 @@ fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
         let to = lamp.position.xyz - world;
         let d = length(to);
         let l = to / d;
-        let flat = normalize(vec2<f32>(l.x, l.z) + vec2<f32>(1e-6, 0.0));
-        // The angle between the two directions across, and their difference in elevation.
-        let wide = REFLECTION_SPREAD * sine + REFLECTION_LAMP / d;
-        let side = abs(across.x * flat.y - across.y * flat.x) / wide;
-        let rise = (mirrored.y - l.y) / REFLECTION_SPREAD;
-        let lobe = exp(-side * side - rise * rise) * f32(dot(across, flat) > 0.0) / (PI * wide * REFLECTION_SPREAD);
+        let lobe = glint_lobe(mirrored, across, sine, l, REFLECTION_LAMP / d);
         let beam_lamp = lamp.forward.w != 0.0;
         let toward = select(signal(lamp, -l), beam(lamp, -l), beam_lamp);
         // A tree or a bank between the lamp and the road cuts the headlights' streaks too; the rear lamps stay
@@ -180,7 +202,34 @@ fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
         let reach = select(1.0, lamp_reach(world, vec3<f32>(0.0, 1.0, 0.0), l), beam_lamp);
         sum += lamp_lux(lamp.colour.rgb * toward / (d * d)) * lobe * reach;
     }
+    // The stage's lamps (`street_lamp`), each a bowl `STREET_BOWL` metres across.
+    if (street_on() && up > STREET_LEVEL.x) {
+        var street = 0.0;
+        for (var i = 0; i < 16; i++) {
+            let lamp = frame.street[2 * i];
+            if (lamp.w == 0.0) {
+                break;
+            }
+            let to = lamp.xyz - world;
+            let d = length(to);
+            let seen = distance(lamp.xyz, frame.eye.xyz);
+            let light = street_lamp(lamp, frame.street[2 * i + 1].xyz, world, seen, frame.street_light.w);
+            street += light * glint_lobe(mirrored, across, sine, to / d, STREET_BOWL / d);
+        }
+        sum += lamp_lux(frame.street_light.rgb * street) * STREET_GLINT * smoothstep(STREET_LEVEL.x, STREET_LEVEL.y, up);
+    }
     return capped(sum * f * pre_exposure());
+}
+
+// The share of a lamp along `l` (unit, toward it) in the mirrored direction's lobe (`lamp_glint`), per steradian:
+// `across` the mirrored direction's heading, `sine` its elevation's sine, `size` the lamp's angular size.
+fn glint_lobe(mirrored: vec3<f32>, across: vec2<f32>, sine: f32, l: vec3<f32>, size: f32) -> f32 {
+    let flat = normalize(vec2<f32>(l.x, l.z) + vec2<f32>(1e-6, 0.0));
+    // The angle between the two directions across, and their difference in elevation.
+    let wide = REFLECTION_SPREAD * sine + size;
+    let side = abs(across.x * flat.y - across.y * flat.x) / wide;
+    let rise = (mirrored.y - l.y) / REFLECTION_SPREAD;
+    return exp(-side * side - rise * rise) * f32(dot(across, flat) > 0.0) / (PI * wide * REFLECTION_SPREAD);
 }
 
 // The night sky along `dir`: a dark blue gradient, lighter toward the horizon, stars, and the moon (where the sun
@@ -189,7 +238,7 @@ const NIGHT_ZENITH: vec3<f32> = vec3<f32>(0.015, 0.025, 0.06);
 const NIGHT_HORIZON: vec3<f32> = vec3<f32>(0.0875, 0.105, 0.15);
 // Star cells across a unit direction (about a third of a degree each), and the share of cells with a star.
 const STAR_CELLS: f32 = 170.0;
-const STAR_SHARE: f32 = 0.06;
+const STAR_SHARE: f32 = 0.04;
 
 // With the day's light (`day_on`) the moon's disc is `MOON_LUMINANCE` cd/m2 (a full moon's).
 const MOON_LUMINANCE: f32 = 2500.0;
@@ -222,12 +271,16 @@ fn night_sky(dir: vec3<f32>) -> vec3<f32> {
 }
 
 // `colour` with the stars: one at a hashed spot in some cells of a grid over the directions, fading toward the
-// horizon, twinkling. With the day's light they are `STAR_LUMINANCE` cd/m2 a unit of brightness, added in linear
+// horizon, twinkling. Each is a point, blurred to `STAR_PIXELS` (its spread, pixels) whatever the view's size (was a
+// disc a third of a cell across, 4 to 6 pixels at 1080p). With the day's light they are `STAR_LUMINANCE` cd/m2 a unit of brightness, added in linear
 // light, so that they come out as the twilight sky darkens.
 const STAR_LUMINANCE: f32 = 4.0;
+const STAR_PIXELS: f32 = 0.6;
 
 fn starry(dir: vec3<f32>, colour: vec3<f32>) -> vec3<f32> {
     let p = dir * STAR_CELLS;
+    // A pixel's size in cells (before any branch: the derivatives need every pixel of the quad).
+    let pixel = max(length(dpdx(p)), length(dpdy(p)));
     let cell = floor(p);
     let h = hash(cell);
     if (h >= STAR_SHARE) {
@@ -238,7 +291,7 @@ fn starry(dir: vec3<f32>, colour: vec3<f32>) -> vec3<f32> {
     let brightness = pow(h / STAR_SHARE, 6.0) * 1.6 + 0.08;
     let twinkle = 0.8 + 0.2 * sin(frame.wind.x * (3.0 + 5.0 * hash(cell + 7.0)) + 40.0 * h);
     let tint = mix(vec3<f32>(1.0, 0.85, 0.7), vec3<f32>(0.75, 0.85, 1.0), hash(cell + 91.0));
-    let star = tint * brightness * twinkle * (1.0 - smoothstep(0.0, 0.32, d)) * smoothstep(0.0, 0.15, dir.y);
+    let star = tint * brightness * twinkle * exp(-0.5 * d * d / max(STAR_PIXELS * STAR_PIXELS * pixel * pixel, 1e-6)) * smoothstep(0.0, 0.15, dir.y);
     if (day_on()) {
         return pow(pow(colour, vec3<f32>(2.2)) + star * STAR_LUMINANCE * frame.day_sun.w, vec3<f32>(1.0 / 2.2));
     }

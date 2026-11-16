@@ -179,3 +179,27 @@ fn lamp_shaft(map: texture_depth_2d_array, smp: sampler_comparison, matrix: mat4
 fn lamp_knee(sum: vec3<f32>) -> vec3<f32> {
     return LAMP_KNEE * sum / (LAMP_KNEE + sum);
 }
+
+// A stage lamp's light at `world` (`stage_lamps.rs`, ours), in the lamps' units, before the surface's turn to it:
+// `lamp` its position and w its intensity, `axis` the way it points. A lamp with an axis is a street lamp's bowl: its
+// intensity down the axis, weakening to the side (as the cosine's square root) and gone above the horizontal of its
+// axis; one without (zero) lights every way. The lamps reach `STREET_REACH` metres and fade out by
+// their distance from the eye `seen` toward `cut`, past which the frame leaves them out for nearer ones.
+const STREET_REACH: f32 = 90.0;
+
+fn street_lamp(lamp: vec4<f32>, axis: vec3<f32>, world: vec3<f32>, seen: f32, cut: f32) -> f32 {
+    let to = lamp.xyz - world;
+    let d2 = dot(to, to);
+    if (d2 > STREET_REACH * STREET_REACH) {
+        return 0.0;
+    }
+    let d = sqrt(d2);
+    var share = 1.0;
+    if (dot(axis, axis) > 0.0) {
+        let c = dot(-to, axis) / max(d, 1e-3);
+        share = sqrt(max(c, 0.0)) * smoothstep(0.0, 0.15, c);
+    }
+    let reach = 1.0 - smoothstep(0.6 * STREET_REACH, STREET_REACH, d);
+    let shown = 1.0 - smoothstep(0.75 * cut, cut, seen);
+    return lamp.w * share * reach * shown / (d2 + 1.0);
+}

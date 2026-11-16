@@ -119,7 +119,7 @@ pub(crate) fn conditions(atmosphere: &crate::atmosphere::Atmosphere) -> Conditio
 /// Without the sky's tables the frame's light stands for physical light at a fixed pre-exposure: by day the open
 /// sunlit ground's white (1.93 linear, `OPEN_LIGHT` in `skylight.wgsl`) for 100 000 lux (a white face's luminance is
 /// its illuminance over pi), at night [`NIGHT_PRE_EXPOSURE`].
-const DAY_PRE_EXPOSURE: f32 = 1.93 * std::f32::consts::PI / 100_000.0;
+pub(crate) const DAY_PRE_EXPOSURE: f32 = 1.93 * std::f32::consts::PI / 100_000.0;
 
 /// The time between frames past which the exposure is set outright rather than eased, seconds.
 const JUMP: f32 = 1.0;
