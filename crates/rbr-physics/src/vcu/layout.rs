@@ -539,7 +539,7 @@ pub fn read_packet<S: VcuStore>(store: &mut S, packet: Packet) {
 
 /// The original functions the VCU's entries call (thiscall each): the drive's, the engine's, the car's and the lights'
 /// accessors and setters, and the slip query (the VCU's own). The bindings run them on the step's held state, else
-/// through the host as the original calls them (`rbr-hybrid`'s `VcuCallees`).
+/// through the host as the original calls them (`rbr-step`'s `VcuCallees`).
 pub trait VcuCalls {
     /// `CDrive::Get4520`: the engine speed (rad/s).
     fn engine_speed(&mut self, drive: u32) -> f32;
@@ -564,7 +564,7 @@ pub trait VcuCalls {
 }
 
 // The VCU functions' sequences, one per original entry, generic over the store (moved from the bindings in
-// `rbr-hybrid/src/vcu.rs`, which decode the registers and call these).
+// `rbr-step/src/vcu.rs`, which decode the registers and call these).
 
 /// `E49Proxy::VcuTableBlend (table, x, lo, hi, n)`, st0, for `n` from 2 (the VCU always passes 11): a map of the
 /// definition, read where it is.

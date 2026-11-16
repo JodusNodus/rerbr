@@ -5,10 +5,10 @@ use std::path::Path;
 
 use rbr_gameplay::control::QuantizedControl;
 use rbr_gameplay::markers::MarkerSettings;
-use rbr_hybrid::pure;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::snapshot::Snapshot;
 use rbr_recording::{read_u32, Frame, CONTROL_BYTES, HEADER_BYTES};
+use rbr_step::runner;
 
 use super::*;
 use crate::live::Live;
@@ -60,7 +60,8 @@ impl<'a> Pilot<'a> {
                     QuantizedControl { brake: 255, ..QuantizedControl::default() }
                 } else {
                     // A lesson ends by the school, not the card (lesson 10's map has no finish, its card a finish time).
-                    let finished = live.school().is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
+                    let finished =
+                        live.school().is_none() && runner::time_keeper(live.mem()).card.finish_time.is_some();
                     let (step, sense) = (live.next_step(), sense(last?, live));
                     if step >= *report {
                         *report = step + driver.steps(PILOT_REPORT);
@@ -91,7 +92,7 @@ pub struct Drove {
     pub out: Option<crate::rally::StageOut>,
 }
 
-/// `--aim`'s coast: `steps` frames after `step` (the one the pure step stopped at), each `frame` (the last good step's,
+/// `--aim`'s coast: `steps` frames after `step` (the one the step stopped at), each `frame` (the last good step's,
 /// without its HUD record) with its steps and the control `q` without gear pulses. Returns the frames written.
 fn coast(
     file: &mut impl Write,
@@ -261,7 +262,7 @@ pub fn drive(
     struct ClearBrakeScale;
     impl Drop for ClearBrakeScale {
         fn drop(&mut self) {
-            rbr_hybrid::ngp::set_brake_scale(None);
+            rbr_step::ngp::set_brake_scale(None);
         }
     }
     let _clear = ClearBrakeScale;
@@ -290,7 +291,7 @@ pub fn drive(
         let step = start + k;
         let answer = live.answer(&control)?;
         if live.stopped() {
-            drove.end = format!("the pure step stopped at step {step} (stderr)");
+            drove.end = format!("the step stopped at step {step} (stderr)");
             if let (Some(aim), Some((frame, q))) = (aim, &last) {
                 drove.steps += coast(&mut file, frame, q, word6, step, aim.coast).map_err(failed)?;
                 drove.end += &format!(", then {} steps of its last control", aim.coast);
@@ -316,7 +317,7 @@ pub fn drive(
         let finished = !school
             && measure.circle.is_none()
             && measure.manoeuvre.is_none()
-            && pure::time_keeper(live.mem()).card.finish_time.is_some();
+            && runner::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }
@@ -357,7 +358,7 @@ pub fn drive(
                 sense.wheels[1],
                 sense.wheels[2],
                 sense.wheels[3],
-                mem.ffb_torque(mem.u32(pure::CAR_PTR)).value,
+                mem.ffb_torque(mem.u32(runner::CAR_PTR)).value,
             )
             .map_err(|e| format!("{path}: {e}"))?;
             let (yaw, beta) = yaw_and_sideslip(&sense.pose);
@@ -418,7 +419,7 @@ pub fn drive(
         } else {
             driver.control(step + 1, &sense, finished)
         };
-        rbr_hybrid::ngp::set_brake_scale(driver.brake_scale());
+        rbr_step::ngp::set_brake_scale(driver.brake_scale());
         last = Some((answer[..FRAME_BYTES].to_vec(), q));
         if k % 500 == 0 {
             eprintln!(

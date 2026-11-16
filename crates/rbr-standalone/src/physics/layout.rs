@@ -2,11 +2,11 @@
 
 use rbr_gameplay::control::CarControl;
 use rbr_gameplay::stage::{State, LOAD_SUBSTEPS};
-use rbr_hybrid::pure::{self, Playback, CAR_PTR};
 use rbr_physics::car_body::layout::slot as car_slot;
 use rbr_physics::mem::Mem;
 use rbr_recording::sound::{TyreMax, CAR_WHEELS, WHEEL_TYRE_SCRATCH};
 use rbr_recording::{read_f32, CONTROL_BYTES};
+use rbr_step::runner::{self, Playback, CAR_PTR};
 
 use super::CarState;
 
@@ -37,24 +37,25 @@ pub(super) fn recorded_car(car: &[u8]) -> CarState {
 /// position and velocity are the car's solid's words, +0x15f8 the car's own (`forward_speed`); each is the image's
 /// where nothing holds it.
 pub(super) fn car_state(playback: &Playback) -> CarState {
-    let pure = &playback.pure;
-    let mem = pure.unheld_image();
+    let runner = &playback.runner;
+    let mem = runner.unheld_image();
     let car = mem.u32(CAR_PTR);
     let image = |at: usize| mem.f32(car + at as u32);
-    pure.with_held(|t| {
-        car_from(|at| match at {
-            NOTIFY_A_SPEED_OFFSET => t.car.own.read(car, car_slot::forward_speed).unwrap_or_else(|| image(at)),
-            _ => t.solids.read(car + at as u32).map_or_else(|| image(at), f32::from_bits),
+    runner
+        .with_held(|t| {
+            car_from(|at| match at {
+                NOTIFY_A_SPEED_OFFSET => t.car.own.read(car, car_slot::forward_speed).unwrap_or_else(|| image(at)),
+                _ => t.solids.read(car + at as u32).map_or_else(|| image(at), f32::from_bits),
+            })
         })
-    })
-    .unwrap_or_else(|| car_from(image))
+        .unwrap_or_else(|| car_from(image))
 }
 
 /// The tyre terms of the last step by wheel: the wheels' pointers are not held, so the image is not lowered.
 pub(super) fn accumulate_tyre_terms(playback: &Playback, tyre_max: &mut TyreMax) {
-    let mem = playback.pure.unheld_image();
+    let mem = playback.runner.unheld_image();
     let wheels: [u32; 4] = std::array::from_fn(|k| mem.u32(mem.u32(CAR_PTR) + CAR_WHEELS + 4 * k as u32));
-    for (scratch, term) in playback.pure.take_tyre_terms() {
+    for (scratch, term) in playback.runner.take_tyre_terms() {
         if let Some(k) = wheels.iter().position(|&w| w != 0 && w + WHEEL_TYRE_SCRATCH == scratch) {
             tyre_max.add(k, term);
         }
@@ -63,7 +64,7 @@ pub(super) fn accumulate_tyre_terms(playback: &Playback, tyre_max: &mut TyreMax)
 
 /// The car's wheels' tyres, for a tyre model: each one's scratch with its type's tables, as NGP's car init left them.
 pub(super) fn tyre_wheels(playback: &Playback) -> Vec<rbr_tyre::Wheel> {
-    let mem = playback.pure.image();
+    let mem = playback.runner.image();
     let car = mem.u32(CAR_PTR);
     let wheels = (0..4).map(|k| mem.u32(car + CAR_WHEELS + 4 * k)).filter(|&w| w != 0);
     wheels
@@ -84,7 +85,7 @@ pub(super) fn tyre_wheels(playback: &Playback) -> Vec<rbr_tyre::Wheel> {
 /// `CDriveLine::Sample` (0x50b180) on the physics' drive line (the object 0x1659184 points to) at `distance`: its
 /// xyz.
 pub(super) fn drive_line_point(playback: &Playback, distance: f32) -> [f32; 3] {
-    let mem = playback.pure.image();
+    let mem = playback.runner.image();
     let p = rbr_physics::engine_driveline::layout::sample(mem, mem.u32(DRIVE_LINE), distance);
     [p.x, p.y, p.z]
 }
@@ -96,14 +97,14 @@ const DRIVE_LINE: u32 = 0x165_9184;
 /// The drive state's +0x570 (car +0x4b0, its +8; the commanded gear's value), compared by NGP's live gear handler:
 /// the held drive's, else the image's.
 pub(super) fn drive_gear(playback: &Playback) -> u32 {
-    let pure = &playback.pure;
-    let mem = pure.unheld_image();
+    let runner = &playback.runner;
+    let mem = runner.unheld_image();
     let state = mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8);
     let held = |t: &rbr_physics::store::typed::Typed| {
         let drive = &t.car.drive;
         (drive.image.state == state).then(|| drive.typed.borrow().state.commanded.value as u32)
     };
-    pure.with_held(held).flatten().unwrap_or_else(|| mem.u32(state + 0x570))
+    runner.with_held(held).flatten().unwrap_or_else(|| mem.u32(state + 0x570))
 }
 
 /// The car's engine (`CEngine`, car +0x690): its definition at +4.
@@ -160,13 +161,13 @@ pub fn torque_knots(mem: &Mem, base: u32, car: u32) -> Option<Vec<(f32, f32)>> {
 /// The car's engine as NGP's car init left it, in physical units, for `car`.
 pub(super) fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_engine::Params {
     use rbr_physics::ngp::layout::car_init::Data;
-    let mem = playback.pure.image();
+    let mem = playback.runner.image();
     let car_at = mem.u32(CAR_PTR);
     let def = mem.u32(car_at + CAR_ENGINE_DEF);
     let drive_def = mem.u32(car_at + CAR_DRIVE_DEF);
     let options = mem.u32(SETUP_OPTIONS);
     let rad_s = |rpm: f32| rpm * std::f32::consts::PI / 30.0;
-    let converted = mem.u32(Data { base: playback.pure.ngp_base }.at(NGP_ENGINE_MODES)) & 2 != 0;
+    let converted = mem.u32(Data { base: playback.runner.ngp_base }.at(NGP_ENGINE_MODES)) & 2 != 0;
     // The first knot and those with a positive value, skipping a speed within 1e-9 of the last, as the init's idle
     // table takes them.
     let mut torque_knots: Vec<(f32, f32)> = Vec::new();
@@ -202,14 +203,14 @@ pub(super) fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_en
 pub(super) fn ratio_ring_newest(playback: &Playback) -> f32 {
     use rbr_physics::engine_driveline::layout::{ratio_ring_at, RatioRing};
     use rbr_physics::store::Value;
-    let mem = playback.pure.image();
+    let mem = playback.runner.image();
     let ring = RatioRing::load(mem, ratio_ring_at(mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8)));
     ring.values[ring.index as usize]
 }
 
 /// The state goes where the control emit reads its slot (S2).
 pub(super) fn set_app_state(playback: &Playback, state: State) {
-    pure::set_app_state(&mut playback.pure.image_mut(), state.value());
+    runner::set_app_state(&mut playback.runner.image_mut(), state.value());
 }
 
 /// The 0x20-byte CSigCarControl payload, preserving word 6 when no gear is selected.

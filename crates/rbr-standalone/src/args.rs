@@ -407,10 +407,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--trace-out" => args.trace_out = Some(PathBuf::from(value)),
             "--aero" => {
                 aero = Some(
-                    *rbr_hybrid::ngp::AERO_NAMES
+                    *rbr_step::ngp::AERO_NAMES
                         .iter()
                         .find(|n| **n == value)
-                        .ok_or(format!("--aero {value}: one of {}", rbr_hybrid::ngp::AERO_NAMES.join(", ")))?,
+                        .ok_or(format!("--aero {value}: one of {}", rbr_step::ngp::AERO_NAMES.join(", ")))?,
                 )
             }
             "--tyre-tuning" => {

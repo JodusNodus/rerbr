@@ -6,11 +6,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{def_global, material};
 use rbr_physics::tyre::layout::{Table, WORDS};
 use rbr_physics::wheel::layout::{BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CAR, DEF_MATERIALS, TYRE_SCRATCH};
+use rbr_step::runner::CAR_PTR;
 
 /// The wheel pointers in the car (`car+0x470`, `ngp::layout::car_init::WHEELS`).
 const WHEELS: u32 = 0x470;
@@ -29,7 +29,7 @@ const RECORD_LEN: u32 = 0x600;
 const NGP_FILE_BASE: u32 = 0x1000_0000;
 /// NGP's `.data` in this run's memory (`NGP_DATA` file words at `runtime::BASE`, `boot::NGP_DATA`).
 const NGP_DATA: (u32, usize) = (0x1017_1000 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE, 0x7000);
-/// NGP's per-car thermal words in its `.data` (`rbr_hybrid::ngp::tuning`), as running addresses.
+/// NGP's per-car thermal words in its `.data` (`rbr_step::ngp::tuning`), as running addresses.
 const NGP_AIR: u32 = 0x1017_1adc - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
 const NGP_RELAX: u32 = 0x1017_1478 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
 const NGP_FACTOR0: u32 = 0x1017_1470 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;

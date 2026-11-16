@@ -1,5 +1,5 @@
 //! Engine models (ours, experimental): a model gives the net crank torque in place of NGP's torque formula
-//! (`rbr_physics::ngp::engine::torque`) in NGP's engine wrapper (`rbr_hybrid::ngp::engine`). [`model`] builds one by
+//! (`rbr_physics::ngp::engine::torque`) in NGP's engine wrapper (`rbr_step::ngp::engine`). [`model`] builds one by
 //! name for a car's [`Params`]; the host builds a fresh one at each start, and steps it once per physics step with
 //! that step's [`Inputs`].
 

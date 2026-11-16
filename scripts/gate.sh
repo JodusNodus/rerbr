@@ -2,7 +2,7 @@
 # The physics gate in one command. Builds the release binaries the checks run, then runs these side by side (niced):
 # - standalone: drive2 attempt 5 through rbr-standalone (harness/rsf_compare.py, physics section), PASS when it prints
 #   physics PASS and exits 0 (84084/84084);
-# - poison: a release build with rbr-hybrid/poison into target/poison (a read of a typed-state word from the image
+# - poison: a release build with rbr-step/poison into target/poison (a read of a typed-state word from the image
 #   while a step holds it panics) and the drive with it, PASS as the standalone check;
 # - aids: the drive's command again (its work files) with every driving aid on, the paths drive2 (aids off) does not
 #   reach: PASS on exit status 0, or 1 with no failure but the recording's (no stop, the time card and the application
@@ -72,7 +72,7 @@ trap 'rm -rf "$out"' EXIT
 start standalone "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/drive2" --attempt 5 --sections physics \
     --out "$out/standalone" --keep-work
 poison_run() {
-    cargo build --release -j 8 --target-dir target/poison -p rbr-standalone --features rbr-hybrid/poison &&
+    cargo build --release -j 8 --target-dir target/poison -p rbr-standalone --features rbr-step/poison &&
         "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/drive2" --attempt 5 --sections physics \
             --out "$out/poison" --standalone target/poison/release/rbr-standalone
 }

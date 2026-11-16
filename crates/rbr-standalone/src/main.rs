@@ -1,5 +1,5 @@
 //! The standalone program's first, headless form (milestone S0): the gameplay loop
-//! (`rbr_gameplay::game::Game`) drives the pure Rust physics step (`rbr_hybrid::pure`), with no emulator and no
+//! (`rbr_gameplay::game::Game`) drives the Rust physics step (`rbr_step::runner`), with no emulator and no
 //! original code, from a snapshot's memory image, and the car and the wheels are compared with the recording after
 //! every step.
 //!
@@ -99,15 +99,15 @@
 //! `StepForward` on the snapshot's memory, with the control `Game` emits from the recorded payload. A snapshot at
 //! step 0 (S1) runs everything pure: the load settle's `StepForward(40)` frames, the
 //! camera's go and the countdown, then driving. `Game` gives each application state change to the pure memory
-//! (`PhysicsStep::app_state`, `SetAppState`'s store), so a control emitted while driving reaches the car (S2). The compare is `rbr_hybrid::pure::Compare`'s (at step 0
+//! (`PhysicsStep::app_state`, `SetAppState`'s store), so a control emitted while driving reaches the car (S2). The compare is `rbr_step::runner::Compare`'s (at step 0
 //! `Compare::at_start`). `Game`'s time card and clock are compared with the bound `CTimeKeeper`'s in `Mem` at the boot
-//! and after every step. A call the pure host cannot run stops the snapshot's run, with its step and address; there
+//! and after every step. A call the runner cannot run stops the snapshot's run, with its step and address; there
 //! is no fallback.
 //!
 //! `--read-set DIR` writes `DIR/<snapshot>.reads` per snapshot: the image's bytes the pure steps read before anything
-//! wrote them, with their first reader (`pure::ReadTrace`).
+//! wrote them, with their first reader (`runner::ReadTrace`).
 //!
-//! The physics step is the image's loaded `MaxTimeStep` (`pure::max_time_step`), and the camera's go comes at the
+//! The physics step is the image's loaded `MaxTimeStep` (`runner::max_time_step`), and the camera's go comes at the
 //! first frame after the settle frames (the frame headers' substeps).
 
 use std::panic;

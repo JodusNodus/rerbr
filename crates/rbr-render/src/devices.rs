@@ -120,6 +120,13 @@ impl Joysticks {
         self.list[k].1.state()
     }
 
+    /// Joystick `k`'s axis `axis` where it first reported, -1..1 as [`values`] has it; `None` until it has. Until then
+    /// the state holds a placeholder (the centre), not where the axis is: a device that reports only when something
+    /// changes has no value for an axis nothing has moved.
+    pub fn first(&self, k: usize, axis: u32) -> Option<f32> {
+        self.list[k].1.first(axis).map(axis_value)
+    }
+
     /// Opens the lost joysticks again if they are back (fresh, as a device plugged in again is).
     pub fn reopen(&mut self) {
         if !self.lost.contains(&true) {
@@ -201,6 +208,12 @@ impl Input {
             // A lost device keeps its entries: `Poll` skips the update on a failed `GetDeviceState`.
             if !self.joysticks.lost[k] {
                 self.poll.devices[k + 1].update(self.joysticks.state(k), 0.0);
+                // An axis that has reported reads where it is, not the placeholder the game's settling waits out.
+                for axis in 0..self.joysticks.objects(k).0 {
+                    if self.joysticks.first(k, axis).is_some() {
+                        self.poll.devices[k + 1].settle(axis as usize);
+                    }
+                }
             }
         }
         *pads = [0.0; ACTIONS];
@@ -275,12 +288,16 @@ pub struct Moved {
     pub value: f32,
 }
 
+/// An axis's -1..1 from its dinput value (0..65535).
+fn axis_value(raw: i32) -> f32 {
+    (raw as f32 / 65535.0) * 2.0 - 1.0
+}
+
 /// The objects' values of a joystick's state, -1..1 per axis (dinput's 0..65535), then 0 or 1 per button.
 pub fn values(state: &[u8], axes: u32, buttons: u32) -> impl Iterator<Item = (Target, f32)> + '_ {
     let axis = |k: u32| {
         let at = 4 * k as usize;
-        let raw = state.get(at..at + 4).map_or(32768, |b| i32::from_le_bytes(b.try_into().unwrap()));
-        (raw as f32 / 65535.0) * 2.0 - 1.0
+        axis_value(state.get(at..at + 4).map_or(32768, |b| i32::from_le_bytes(b.try_into().unwrap())))
     };
     let button = move |k: u32| if state.get((4 * axes + k) as usize).is_some_and(|&b| b != 0) { 1.0 } else { 0.0 };
     (0..axes).map(move |k| (Target::Axis(k), axis(k))).chain((0..buttons).map(move |k| (Target::Button(k), button(k))))
@@ -447,6 +464,13 @@ mod evdev {
 
         pub fn state(&self) -> &[u8] {
             &self.state
+        }
+
+        /// The axis's dinput value when it was opened, once it has changed or was read `actual`: what winebus reports
+        /// of it; `None` while it holds the centre.
+        pub fn first(&self, axis: u32) -> Option<i32> {
+            let &(_, min, max, opened, moved) = self.axes.get(axis as usize)?;
+            moved.then(|| wine::axis(wine::sdl_axis(opened, min, max)))
         }
 
         /// Reads the state the game's data format gives now ([`wine::objects`]); `false`, the state kept, when the
@@ -620,6 +644,17 @@ mod sdl {
 
         pub fn state(&self) -> &[u8] {
             &self.state
+        }
+
+        /// The axis's dinput value at its first report (SDL knows it at once for the gamepads it has drivers for);
+        /// `None` until the device has reported it, while the state holds the centre. Linux reads evdev: this is
+        /// compiled there for the test only.
+        #[cfg_attr(target_os = "linux", allow(dead_code))]
+        pub fn first(&self, axis: u32) -> Option<i32> {
+            let mut state = 0;
+            // SAFETY: the handle is open until the drop; `state` is written once.
+            unsafe { SDL_GetJoystickAxisInitialState(self.handle.0, i32::try_from(axis).ok()?, &mut state) }
+                .then(|| wine::axis(i32::from(state)))
         }
 
         /// Takes the state SDL has now; `false`, the state kept, when the joystick is unplugged.

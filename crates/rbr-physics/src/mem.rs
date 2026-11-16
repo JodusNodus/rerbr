@@ -3,7 +3,7 @@
 //! reads more than the trace captured fails the test instead of reading garbage.
 //!
 //! The bytes live in a map by default (`Mem::new`). `Mem::with_backend` puts them somewhere else, such as the
-//! emulator's memory in the hybrid step (`rbr-hybrid`), with the same API. `Mem::with_pages` keeps them in [`Pages`],
+//! memory of the step (`rbr-step`), with the same API. `Mem::with_pages` keeps them in [`Pages`],
 //! which a word access reads and writes directly, without a call through the backend.
 
 use crate::math::quat::Quat;

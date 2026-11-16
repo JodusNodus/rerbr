@@ -48,7 +48,7 @@ same paths.
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |
 | `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces, loose-v1 on soil, to standstill): in development, not released, only `--physics experimental-brush` |
 | `crates/rbr-tyre-lab` | Tyre research (ours, experimental): sweeps of NGP's tyre functions, NGP's surface values, the brush against NGP |
-| `crates/rbr-hybrid` | The game's physics step (the pure host) on the ports and the typed state |
+| `crates/rbr-step` | The game's physics step (the runner) on the ports and the typed state |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
 | `crates/rbr-season` | The championship (ours): built rallies and seasons on any installed stages; the 1.02 AI engine (`ai`), service park, field, tracks, standings, save |
 | `crates/rbr-session` | Sessions (ours): course, format, timing events, lap timing and end rules over the 1.02 loop |
@@ -97,7 +97,7 @@ A Rust batch includes:
 
 - `scripts/rust-check.sh` from the repository root printing PASS, with `RBR_DATA`, `RBR_PATCH` and `RBR_RECORDINGS`
   set in `dev.env` (read via `scripts/dev-env.sh`);
-- for changes to the physics, `rbr-standalone` or `rbr-hybrid`: `scripts/gate.sh` printing PASS (drive2
+- for changes to the physics, `rbr-standalone` or `rbr-step`: `scripts/gate.sh` printing PASS (drive2
   attempt 5 through `harness/rsf_compare.py`, physics PASS 84084/84084, with the poison build and an aids-on run;
   `RBR_NGP_PHYSICS`, `RBR_RSF` set). The recorded drives are the oracle: there is no per-call check against the
   original;

@@ -327,7 +327,7 @@ pub fn vote_probe<S: CarStore>(mem: &mut S, calls: &mut impl VoteCalls<S>, entry
 /// aligned as the original's. `line` holds the drive line. Lane 3 of the probe, the sample and the vote's output are
 /// frame words the original does not write (the sampler and the vote store three lanes; the vote, `Normalize`, the
 /// hit's copy and slot 97 read four: the pose's w, car `+0x14c`): `residue`, when given, is stored there first (the
-/// pure host's, notes/physics.md "Stack residue is behaviour").
+/// runner's, notes/physics.md "Stack residue is behaviour").
 pub fn run_countdown<S: CarStore>(
     mem: &mut S,
     line: &impl StageStore,

@@ -44,7 +44,7 @@ const SINE_HZ: f32 = 0.7;
 const DWELL: f32 = 0.5;
 /// The run's length after its start, s: the metrics look 4 s past the pedal and 1.75 s past the sine dwell's end.
 const RUN: f32 = 4.5;
-/// Full lock as the payload holds it (the largest 8-bit steering, 127 of 127.5: the pure step takes no more).
+/// Full lock as the payload holds it (the largest 8-bit steering, 127 of 127.5: the step takes no more).
 const LOCK: f32 = 127.0 / 127.5;
 /// The ramp steer's longest run, s.
 const RAMP_RUN: f32 = 60.0;

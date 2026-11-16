@@ -14,12 +14,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use rbr_gameplay::ffb::racing_gate;
-use rbr_hybrid::pure;
 use rbr_recording::input::{Input, Payload};
 use rbr_recording::realtime::{
     self, Logged, Message, Step, INPUT, LOGGED_BYTES, LOG_MAGIC, MESSAGE_BYTES, PAUSE, RESTART, RESUME,
 };
 use rbr_recording::{CONTROL_BYTES, STEP_SECONDS};
+use rbr_step::runner;
 
 use super::Live;
 use crate::autopilot::Pilot;
@@ -70,7 +70,7 @@ fn write(out: &mut dyn Write, bytes: &[u8]) -> std::io::Result<()> {
 
 /// The frame's digest after it ran: the log and the `--frames` and `--replay` comparisons check it.
 fn digest(live: &Live) -> u64 {
-    realtime::digest(&pure::frame_bytes(live.playback.pure.image()))
+    realtime::digest(&runner::frame_bytes(live.playback.runner.image()))
 }
 
 /// Reads the viewer's messages into `shared` until the input ends.

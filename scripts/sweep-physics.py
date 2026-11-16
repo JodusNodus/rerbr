@@ -58,7 +58,7 @@ SIM_EXTRA = 120
 UNKNOWN_LENGTH = 25000
 JOBS = 10
 BAD = [  # (kind, regex) over stderr
-    ('physics stop', re.compile(r'declined|unbound|physics stopped|pure step stopped|stopped at step', re.I)),
+    ('physics stop', re.compile(r'declined|unbound|physics stopped|step stopped|stopped at step', re.I)),
     ('panic', re.compile(r'panicked|panic:|RUST_BACKTRACE|stack overflow|attempt to .* overflow|index out of bounds', re.I)),
     ('nan', re.compile(r'\bnan\b|\binf\b', re.I)),
 ]
@@ -253,7 +253,7 @@ def analyse(run, code, wall, stdout, stderr, result):
                 'autopilot gave up' if 'step limit' not in ended else 'step limit')
             if reason == 'autopilot gave up' and info.get('drivable') == 0:
                 reason = 'wrecked (undrivable)'
-            if ended.startswith('the pure step stopped'):
+            if ended.startswith('the step stopped'):
                 reason = 'physics stop'
             problems.append(('no finish', f'{reason}: {ended}'))
         elif not info.get('split1') or not info.get('split2'):

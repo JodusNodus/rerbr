@@ -2307,18 +2307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rbr-hybrid"
-version = "0.1.0"
-dependencies = [
- "rbr-engine",
- "rbr-formats",
- "rbr-gameplay",
- "rbr-physics",
- "rbr-recording",
- "rbr-tyre",
-]
-
-[[package]]
 name = "rbr-launcher"
 version = "0.1.0-alpha.5"
 dependencies = [
@@ -2446,12 +2434,24 @@ dependencies = [
  "rbr-engine",
  "rbr-formats",
  "rbr-gameplay",
- "rbr-hybrid",
  "rbr-physics",
  "rbr-recording",
  "rbr-school",
  "rbr-season",
  "rbr-session",
+ "rbr-step",
+ "rbr-tyre",
+]
+
+[[package]]
+name = "rbr-step"
+version = "0.1.0"
+dependencies = [
+ "rbr-engine",
+ "rbr-formats",
+ "rbr-gameplay",
+ "rbr-physics",
+ "rbr-recording",
  "rbr-tyre",
 ]
 

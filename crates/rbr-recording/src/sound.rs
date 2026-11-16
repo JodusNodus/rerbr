@@ -78,8 +78,8 @@ pub const TYRE_CONTACT: usize = 0x17;
 /// Each wheel's tyre block word 1 over a game frame: `CScratch::FillOutputs` (0x532f10) keeps the largest
 /// `(tread depth + carcass radius - c - state +0x48) / dt` of the frame's tyre steps (`v > max`, so a NaN is not kept),
 /// a step without contact clears the block (0x5360c0's no-contact path), and the wheel's frame finish (`CWheel::Vf28`
-/// 0x53f230, `CScratch::EmitNoise`) sends it and sets it to 0 for the next frame. The terms come from the pure host
-/// (`rbr_hybrid::pure::Pure::take_tyre_terms`).
+/// 0x53f230, `CScratch::EmitNoise`) sends it and sets it to 0 for the next frame. The terms come from the runner
+/// (`rbr_step::runner::Runner::take_tyre_terms`).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TyreMax(pub [f32; 4]);
 

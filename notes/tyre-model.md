@@ -321,7 +321,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 ## In game
 
 - Seam: `rbr_physics::tyre::model` (`ForceInput`, `ForceOutput`, `apply`), asked in `tyre::step` after NGP's sliding
-  solve and the slip phase; `rbr_hybrid::ngp::set_tyre_model` per thread, as the engine's. The model's forces become the
+  solve and the slip phase; `rbr_step::ngp::set_tyre_model` per thread, as the engine's. The model's forces become the
   deflection and torsion `solve_forces` turns back into them (in-game probe: `lateral_force` equals the model's to the
   f32). `solve_forces` takes the model's weight w as an argument: below 2 m/s (NGP's sticking weight > 0) its two
   damping factors and the sliding weight's scale of the trail and of the carcass offset torque become `1 - (1 -
@@ -1916,7 +1916,7 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   Practical Motoring 2016-12); no figures found.
 - The experimental profiles' aero (2026-11-11, user decisions: the brush profile, then `experimental`;
   `Profile::EXPERIMENTAL.aero` is `wings+downforce`, `--aero ngp` gives the files' back; the model in
-  `rbr_hybrid::ngp::aero_model`, its fit in "The files' downforce against these" below). The i20 on material 49 on
+  `rbr_step::ngp::aero_model`, its fit in "The files' downforce against these" below). The i20 on material 49 on
   loose-v1, the files' aero / the profiles': the circles' limit at r 40 / 100 / 200 m 0.86 / 0.95 / 1.11 g at 68 / 112 /
   170 km/h against 0.83 / 0.88 / 0.90 at 67 / 108 / 153 (at NGP's sideways level, the soil force held from 6 m/s; now
   "Gravel's sideways level"), where Finland 2021's p90 of cornering on its cambered road is 1.17 / 1.06 / 0.99 and its
@@ -2900,7 +2900,7 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
   only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
 - Aero with sideslip, a prototype (2026-11-10, `--aero yaw` with an experimental profile, off by default;
-  `rbr_hybrid::ngp::aero_model` on NGP's downforce update): my read of D&R's Figs 10 and 14 (model N at 0 / 15°, 8 /
+  `rbr_step::ngp::aero_model` on NGP's downforce update): my read of D&R's Figs 10 and 14 (model N at 0 / 15°, 8 /
   11 / 14 mm): front lift -1.30 / -0.25, -1.05 / -0.15, -0.85 / +0.05, about linear; rear -1.4, -1.7, -2.0 to -1.8;
   drag 2.85, 3.45, 3.8 to 4.4-4.6 (+54, +30, +21 %). So the front downforce × max(0, 1 - β/17°), the rear NGP's, the
   drag × (1 + 0.35 β/15°) held past 15° (no data there; a guess). `handling.py`, experimental-brush, 140 km/h,
@@ -3530,8 +3530,8 @@ are unchanged and left (Open).
 
 ### A per-wheel ABS in the brake test
 
-- Hook: `rbr_hybrid::ngp::set_brake_scale` (thread-local, `None` by default) multiplies each wheel's pedal pressure
-  (`x + 0x60`) at `brake_step`'s one call site (`rbr-hybrid/src/ngp/steps.rs`). Unset, the read is NGP's: rsf_compare
+- Hook: `rbr_step::ngp::set_brake_scale` (thread-local, `None` by default) multiplies each wheel's pedal pressure
+  (`x + 0x60`) at `brake_step`'s one call site (`rbr-step/src/ngp/steps.rs`). Unset, the read is NGP's: rsf_compare
   drive2/5 physics 84084/84084 and the merge gate equal. Only the autopilot sets it, for one drive (NGP cars only).
 - Controller (`--brake-abs K`, `autopilot::Brake::Abs`): a 0.2 s declutched lift first, whose second half gives each
   wheel's free-rolling |ωR| / v (an ABS learns its rolling radii); then the full pedal, and each step (720 Hz) a

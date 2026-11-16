@@ -18,9 +18,9 @@
 //! the payload's step.
 //!
 //! The first payload is the snapshot's own step, whose control the game had already emitted, so its bytes are not
-//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the pure physics runs
+//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
 //! `StepForward(1)` on the snapshot's memory for each of the frame's substeps, as the headless run does
-//! (`crate::physics::Pure`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
+//! (`crate::physics::Runner`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
 //! viewer's `--live` sends one per 7 ms (1.02's step), which under NGP's 1/720 s step is a frame of 5 or 6 substeps
 //! (the frame clock carries the rest), so every clock the game ticks by the frame's time (the countdown, the camera's
 //! orbit, the race clock, the finish timer) runs at real speed under both. Such a frame's records are the frame's: the
@@ -57,14 +57,14 @@
 //! (20 s) or the end-of-stage marker ends the race. From then on (the application state 9, the end page) no payload is
 //! stepped: each is answered with the last frame, whose split record (SPL1) says the race is over and how it ended.
 //!
-//! A call the pure host cannot run stops the run. The stop goes to stderr once, and from then on every payload is
+//! A call the runner cannot run stops the run. The stop goes to stderr once, and from then on every payload is
 //! answered with the last good frame and HUD, so the car freezes and the viewer stays up. A payload that is not
 //! quantized is a protocol error and ends the run.
 
 use super::picture::{damper_frame, dash, race_hud, split_record, Picture};
 use super::{Live, Pending};
 use crate::boot;
-use crate::physics::{boot_playback, load_substeps, why, Pure, DT};
+use crate::physics::{boot_playback, load_substeps, why, Runner, DT};
 use crate::stage::StageData;
 use rbr_formats::data::Data;
 use rbr_gameplay::filter::Grid;
@@ -74,12 +74,12 @@ use rbr_gameplay::ini::Ini;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::stage::{Stage, State};
 use rbr_gameplay::tick::SETTLE_SUBSTEPS;
-use rbr_hybrid::pure::{self, Playback};
-use rbr_hybrid::timekeeper::layout as keeper_layout;
 use rbr_physics::snapshot::Snapshot;
 use rbr_recording::clock::StepClock;
 use rbr_recording::sound::TyreMax;
 use rbr_recording::CONTROL_BYTES;
+use rbr_step::runner::{self, Playback};
+use rbr_step::timekeeper::layout as keeper_layout;
 use std::panic::{self, AssertUnwindSafe};
 
 /// unless the stage is the rally's last (the season's stage index 5), and its text names the service or the next stage
@@ -108,9 +108,9 @@ impl<'a> Live<'a> {
         let h = snap.metadata();
         let playback = Playback::new(snap, false);
         crate::physics::require_ngp(&playback)?;
-        let dt = pure::max_time_step(snap).unwrap_or(DT);
+        let dt = runner::max_time_step(snap).unwrap_or(DT);
         let game = new_game(Stage::driving(stage.number, stage.car), stage, dt, settings);
-        let settle = load_substeps(playback.pure.image()).div_ceil(SETTLE_SUBSTEPS[0]) * SETTLE_SUBSTEPS[0];
+        let settle = load_substeps(playback.runner.image()).div_ceil(SETTLE_SUBSTEPS[0]) * SETTLE_SUBSTEPS[0];
         Ok(Self::with(playback, game, stage, StepClock { step: dt, settle }, h.step, Some(h.substeps), Vec::new()))
     }
 
@@ -128,9 +128,9 @@ impl<'a> Live<'a> {
         let (playback, image) = boot_playback(data, stage, name, race, None, false)?;
         let built: Vec<String> = image.built.iter().map(|(what, n)| format!("{what} {n}")).collect();
         eprintln!("rbr-standalone: boot built {}", built.join(", "));
-        let dt = keeper_layout::max_time_step(playback.pure.image());
+        let dt = keeper_layout::max_time_step(playback.runner.image());
         let mut game = new_game(
-            Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(playback.pure.image())),
+            Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(playback.runner.image())),
             stage,
             dt,
             settings,
@@ -168,9 +168,9 @@ impl<'a> Live<'a> {
     fn first_picture(playback: &Playback, game: &Game, stage: &StageData, detach: &[(u32, u32)]) -> Picture {
         let splits = split_record(game, stage, None);
         // Before any frame ran no reset has: the memory words stand as the step left them.
-        let dampers = damper_frame(playback.pure.image(), &[]);
+        let dampers = damper_frame(playback.runner.image(), &[]);
         let mut last = Picture::of(
-            playback.pure.image(),
+            playback.runner.image(),
             race_hud(game.race_clock(), 0.0),
             &splits,
             stage.interactive_handle_end,
@@ -182,7 +182,7 @@ impl<'a> Live<'a> {
         // The countdown's frames repeat this one: its dash is the car's as it stands (not an empty record, whose
         // zero battery and engine would light the warnings).
         last.dash =
-            dash(playback.pure.image(), &stage.track, &track, game.markers().keys(), (None, None), &[], 0, None)
+            dash(playback.runner.image(), &stage.track, &track, game.markers().keys(), (None, None), &[], 0, None)
                 .to_bytes();
         last
     }
@@ -197,13 +197,13 @@ impl<'a> Live<'a> {
         detach: Vec<(u32, u32)>,
     ) -> Self {
         let mut playback = playback;
-        playback.pure.keep_tyre_particles = true;
-        playback.pure.take_tyre_particles();
-        playback.pure.take_particle_events();
-        playback.pure.take_engine_fires();
-        playback.pure.take_speech();
-        playback.pure.take_damper_signals();
-        let initial = playback.pure.snapshot();
+        playback.runner.keep_tyre_particles = true;
+        playback.runner.take_tyre_particles();
+        playback.runner.take_particle_events();
+        playback.runner.take_engine_fires();
+        playback.runner.take_speech();
+        playback.runner.take_damper_signals();
+        let initial = playback.runner.snapshot();
         let initial_game = game.clone();
         let last = Self::first_picture(&playback, &game, stage, &detach);
         let track = stage.track_values.clone();
@@ -250,11 +250,11 @@ impl<'a> Live<'a> {
     /// rally choice) stays, but the saves are re-armed (the next finish writes again, against the record as it now
     /// stands) and the start clock is restored to the stage's start.
     pub fn restart(&mut self) {
-        self.playback.pure.restore(&self.initial);
+        self.playback.runner.restore(&self.initial);
         self.game = self.initial_game.clone();
         // The models' state is their own, not in the memory: back to the stage start's, the car's calibration kept.
-        rbr_hybrid::ngp::restart_engine_model();
-        rbr_hybrid::ngp::restart_tyre_model();
+        rbr_step::ngp::restart_engine_model();
+        rbr_step::ngp::restart_tyre_model();
         self.school.clone_from(&self.initial_school);
         self.laps.clone_from(&self.initial_laps);
         self.lap_events.clear();
@@ -268,12 +268,12 @@ impl<'a> Live<'a> {
             saves.rearm();
         }
         self.time_of_day = self.initial_time_of_day;
-        self.playback.pure.take_tyre_particles();
-        self.playback.pure.take_tyre_terms();
-        self.playback.pure.take_particle_events();
-        self.playback.pure.take_engine_fires();
-        self.playback.pure.take_speech();
-        self.playback.pure.take_damper_signals();
+        self.playback.runner.take_tyre_particles();
+        self.playback.runner.take_tyre_terms();
+        self.playback.runner.take_particle_events();
+        self.playback.runner.take_engine_fires();
+        self.playback.runner.take_speech();
+        self.playback.runner.take_damper_signals();
         self.now = self.boot_now;
         self.answered = 0;
         self.waited = 0;
@@ -309,7 +309,7 @@ fn settle(
     go: bool,
     now: f64,
 ) -> Result<u32, String> {
-    let mut physics = Pure {
+    let mut physics = Runner {
         playback,
         trace: None,
         track: &stage.track,
