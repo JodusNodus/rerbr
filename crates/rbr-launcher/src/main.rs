@@ -585,6 +585,8 @@ struct Form {
     start_time: time_of_day::StartTime,
     /// The wiper switch at the start (`viewer --wipers`).
     wipers: Switch,
+    /// A circuit's session length (`rbr-standalone --laps`): its laps, 0 for free practice. Not saved.
+    laps: u32,
     /// The RBR install folder's field, and what the form was loaded from (`install`).
     install_folder: String,
     folder: install::Folder,

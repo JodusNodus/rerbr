@@ -948,6 +948,7 @@ mod tests {
             country: None,
             km: None,
             surface: "gravel",
+            circuit: false,
             problem: None,
         };
         let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };

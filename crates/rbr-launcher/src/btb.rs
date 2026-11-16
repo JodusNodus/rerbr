@@ -23,6 +23,8 @@ pub struct Btb {
     pub km: Option<f32>,
     /// The `rbr-standalone --surface` word, from `track.ini` (the plugin plays gravel when it names none).
     pub surface: &'static str,
+    /// A circuit (`track.ini` `circuit=1`): its line is closed and it plays as laps (`rbr-standalone --laps`).
+    pub circuit: bool,
     /// Why it cannot start.
     pub problem: Option<String>,
 }
@@ -62,6 +64,7 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             author: track.info.author.clone().filter(|a| !a.trim().is_empty()),
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),
+            circuit: track.info.circuit,
             problem: None,
             folder: track.folder.clone(),
         };
@@ -85,6 +88,11 @@ fn synthetic(name: &str, free: impl Fn(u32) -> bool) -> u32 {
 }
 
 impl Form {
+    /// The selected map is a circuit.
+    pub fn selected_circuit(&self) -> bool {
+        self.catalog.maps.get(self.map).and_then(Map::btb).is_some_and(|btb| btb.circuit)
+    }
+
     /// The launch of a BTB `stage`: its files prepared in the player's folder and named in place of the listed folder,
     /// and the BTB stage's arguments for `rbr-standalone`: the surface, and the retail map whose weather rows it
     /// plays. Other stages pass unchanged. `None`, with the status, when the files cannot be built.

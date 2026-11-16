@@ -267,6 +267,7 @@ impl Form {
             perf_log: settings.perf_log.unwrap_or(false),
             start_time: settings.start_time.unwrap_or_default(),
             wipers: settings.wipers.unwrap_or_default(),
+            laps: 3,
             install_folder: settings.install_folder.clone().unwrap_or_default(),
             folder,
             disc_setup: Default::default(),

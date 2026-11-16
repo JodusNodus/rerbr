@@ -103,6 +103,10 @@ impl<'a> Live<'a> {
             }
             return;
         }
+        if self.laps.is_some() {
+            // A circuit session keeps its best lap (`collect_lap_events`), not a stage record: its time is a number of laps.
+            return;
+        }
         let Some(saves) = self.saves.as_mut().filter(|s| end.finished() && !s.written()) else { return };
         let times = [end.end_race.splits[0], end.end_race.splits[1], end.end_race.time];
         match saves.finish(times) {

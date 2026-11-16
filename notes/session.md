@@ -106,8 +106,23 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   ended with cause `Format` (race clock 944.7107 s, the HUD's 1.02 splits 316.98 and 520.30 s are the race clock at the
   ticker's split events, not the laps' sectors: they disagree by seconds, unexplained; the laps' times follow the
   step time and the distances). Two laps: see below.
-- Not yet: records and ghost by `SessionKey` (step 3); the HUD panel, the per-lap ghost and the launcher entry (step 4's
-  rest); the converters write the closed ring (step 6).
+- Two laps (autopilot, `--laps 2`): lap 1 944.4474 s and lap 2 935.3937 s (seam crossed without a stall or a jump back),
+  sectors 314.28 and 515.48 s in lap 2, `Finished` at 1879.84 s after the second lap, `finished=1 cause=Format`.
+- The viewer's side: the live process writes a `LAP1` record after SCH1 on a circuit session
+  (`rbr_recording::laps`: lap, laps, finished, the lap's time, last and best lap, this lap's sector times and the best
+  lap's); `rbr_render::hud::laps` draws the panel (the lap, its time, the sector just passed against the best lap's
+  in green or red, last and best), `Hud::laps` in the model, cleared when the record is absent.
+- A format that times itself gives the result its time: `FormatEnd::FinishedIn(s)` (+ the penalties) is the
+  `EndRace` time, since the HUD's race clock is an f32 that loses seconds over a long session.
+- Best laps (`rbr_session::book`, `lap-records.ini` in the save folder, `[<stage id>]` and
+  `best.<profile> = <car> <lap> <sector>...`): `Saves::lap` offers each completed lap; a best is written at once
+  (not when dry); the next session seeds `LapTiming::seed_best` with it, so the sector gaps and the `best` flag of
+  `TimingEvent::Lap` compare with the stored lap. A circuit session writes no stage record (`pfresult.rst`, profile
+  best) at its end.
+- The launcher: a BTB stage with `circuit = 1` (`Btb::circuit`) shows a Laps row on the Drive page (free practice, 1, 3,
+  5, 10, 20; not saved) and Start passes `--laps`; no ghost arguments for a circuit.
+- Not yet: the per-lap ghost, `SessionKey` and the stage records' own keying (a circuit has the lap book instead); the
+  converters write the closed ring (step 6).
 - Open: the season's pace plan on a closed line (it reads the progress as an open one); per-lap re-arming of the marker keys and the scripted events; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
   keys: the finish must lie past the line so the stage never finishes by itself; the stage's end page and result for a
   `Format` end are the race clock's).

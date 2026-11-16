@@ -371,6 +371,15 @@ impl Form {
 
         section(ui, "Race");
         fields(ui, "race", |ui| {
+            if self.selected_circuit() {
+                ui.label("Laps").on_hover_text("A circuit: a session of laps, or free practice with no end");
+                combo(ui, "laps", FIELD, &mut self.laps, &LAPS, |laps| match laps {
+                    0 => "Free practice".to_owned(),
+                    1 => "1 lap".to_owned(),
+                    n => format!("{n} laps"),
+                });
+                ui.end_row();
+            }
             self.ghost_row(ui);
             ui.end_row();
 
@@ -638,6 +647,9 @@ fn gearbox_label(gearbox: CarBox) -> &'static str {
         CarBox { engagement: Engagement::Dog, .. } => "H-pattern, dog",
     }
 }
+
+/// The Laps row's choices, 0 for free practice.
+const LAPS: [u32; 6] = [0, 1, 3, 5, 10, 20];
 
 /// The Tyre row's choices: the game's tyre, or one of 0 through 6.
 const TYRES: [TyreChoice; 8] = [

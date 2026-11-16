@@ -915,6 +915,7 @@ mod tests {
             country: Some("FI".into()),
             km: None,
             surface: "gravel",
+            circuit: false,
             problem: None,
         };
         let rows = rows_of(&[Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }]);
