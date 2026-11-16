@@ -442,6 +442,11 @@ probably fit the wrong hour.
 - The lamps' light in the air (`light_shafts.wgsl` `fs_beams`): quarter-size ray march at night and dusk (Kulla and
   Fajardo 2012): 1.36 ms at 1080p. The main pass keeps its depth whenever the post pass runs (else the beams marched
   120 m of fog over the cabin).
+- The beams' air follows our fog choice (`light_shafts::air`, 2026-11-16): fog off clears the section's light fog
+  as it clears the mist, never above the section's own air. It had ignored the choice, a white veil over the road
+  ahead (Sardian 3300, Custom weather: 8.8 to 2.2 % of the road area clipped; the damp and wet roads, darker, had
+  raised the exposure further). Tried and dropped: a meter that holds the exposure down by the 95th percentile at
+  night (little once the veil was gone). Damp and wet roads under our beam darken, as they should.
 - The night's light is a moonlit night as the adapted eye sees it: clear, the frame's mean about 11 of 255 from
   40 m up on 44E, falling with cloud cover squared to 0.4 under heavy cloud (2026-10-23: 44E, 45O, 21O, 41M)
   (`night.wgsl`).

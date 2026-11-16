@@ -88,14 +88,22 @@ pub(crate) struct Sun {
 }
 
 /// The air's scattering per metre (ours): under `UseFog` one over the fog's range, [`RAIN_AIR`] of that in a rain
-/// section, else [`CLEAR_AIR`] of it. The march's density floor, and the lamps' beams' air.
+/// section, else [`CLEAR_AIR`] of it. Our fog off clears the section's fog here too, never above the section's own
+/// air, as it does the mist (`height_fog::mist`): the beams had scattered as in the section's light fog, a white veil
+/// over the road ahead.
+/// The march's density floor, and the lamps' beams' air.
 pub(crate) fn air(atmosphere: &Atmosphere) -> f32 {
     let fog = 1.0 / (atmosphere.fog_end - atmosphere.fog_start).max(10.0);
     let rain = atmosphere.section.as_deref().is_some_and(|s| s.contains("rain") && !s.contains("norain"));
-    match (atmosphere.use_fog, rain) {
+    let section = match (atmosphere.use_fog, rain) {
         (false, _) => CLEAR_AIR * fog,
         (true, true) => RAIN_AIR * fog,
         (true, false) => fog,
+    };
+    if atmosphere.fog == Some(crate::atmosphere::Fog::Off) {
+        section.min(CLEAR_AIR * fog)
+    } else {
+        section
     }
 }
 
@@ -407,5 +415,18 @@ mod tests {
         assert_eq!(air(&section("45O_N_heavyrain_heavycloud")), RAIN_AIR / 400.0);
         assert_eq!(air(&section("45O_N_norain_lightcloud")), 1.0 / 400.0);
         assert_eq!(air(&Atmosphere { use_fog: false, ..section("45O_N_heavyrain_heavycloud") }), CLEAR_AIR / 400.0);
+    }
+
+    #[test]
+    fn our_fog_off_clears_the_section_s_fog() {
+        let fogged = Atmosphere {
+            section: Some("126O_E_lightfog_heavycloud".into()),
+            use_fog: true,
+            fog_start: -100.0,
+            fog_end: 300.0,
+            ..Default::default()
+        };
+        assert_eq!(air(&Atmosphere { fog: Some(crate::atmosphere::Fog::Off), ..fogged.clone() }), CLEAR_AIR / 400.0);
+        assert_eq!(air(&fogged), 1.0 / 400.0);
     }
 }
