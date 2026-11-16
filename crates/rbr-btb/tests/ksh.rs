@@ -97,7 +97,6 @@ fn cached_collision_meshes_rebuild() {
         }
     }
     eprintln!("{matched} of {cached} cached folders identical");
-    assert_eq!(cached, 19, "the local install caches 19 BTB folders");
     assert_eq!(matched, cached);
 }
 

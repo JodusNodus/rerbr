@@ -164,7 +164,7 @@ pub fn dls(notes: &[PaceNote]) -> Vec<u8> {
 }
 
 /// The `.lbs` file: the `(2, 11)` start chunk (identity matrix with the spawn translation, the position twice, the
-/// `(0, angleZ, 0)` rotation), then the empty `(2, 10)` visibility and `(1, 0)` geometry chunks. Parses with
+/// `(angleX, angleZ, 0)` rotation), then the empty `(2, 10)` visibility and `(1, 0)` geometry chunks. Parses with
 /// [`rbr_formats::lbs::parse`].
 pub fn lbs(spawn: &Spawn) -> Vec<u8> {
     let translation = [spawn.matrix[12] as f32, spawn.matrix[13] as f32, spawn.matrix[14] as f32];
@@ -179,7 +179,7 @@ pub fn lbs(spawn: &Spawn) -> Vec<u8> {
     for v in translation {
         put_f32(&mut start, v);
     }
-    put_f32(&mut start, 0.0);
+    put_f32(&mut start, spawn.angles[0] as f32);
     put_f32(&mut start, spawn.angles[2] as f32);
     put_f32(&mut start, 0.0);
     let mut out = Vec::with_capacity(144);
