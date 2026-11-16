@@ -4,10 +4,8 @@ use std::io::Write;
 use std::path::Path;
 
 use rbr_gameplay::control::QuantizedControl;
-use rbr_gameplay::markers::MarkerSettings;
 use rbr_physics::car_body::store::CarStore;
-use rbr_physics::snapshot::Snapshot;
-use rbr_recording::{read_u32, Frame, CONTROL_BYTES, HEADER_BYTES};
+use rbr_recording::{read_u32, CONTROL_BYTES, HEADER_BYTES};
 use rbr_step::runner;
 
 use super::*;
@@ -111,24 +109,6 @@ fn coast(
         file.write_all(&frame)?;
     }
     Ok(steps)
-}
-
-/// The start of a snapshot run: the live stepping from the snapshot at `path`, the playback's head (`bytes`, the drive's
-/// recording, up to the snapshot's step) and the snapshot step's recorded control.
-pub fn from_snapshot<'a>(
-    path: &str,
-    bytes: &'a [u8],
-    frames: &[Frame],
-    stage: &'a StageData,
-    settings: MarkerSettings,
-) -> Result<(Live<'a>, &'a [u8], [u8; CONTROL_BYTES]), String> {
-    let snap = Snapshot::open(path).map_err(|e| format!("{path}: {e}"))?;
-    let start = snap.metadata().step;
-    let first = frames
-        .iter()
-        .find(|f| f.pre == start)
-        .ok_or_else(|| format!("{path}: no recorded frame starts at step {start}"))?;
-    Ok((Live::new(&snap, stage, settings).map_err(|e| format!("{path}: {e}"))?, &bytes[..first.offset], first.control))
 }
 
 /// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals

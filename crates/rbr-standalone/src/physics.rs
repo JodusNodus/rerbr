@@ -4,7 +4,6 @@
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
-use std::sync::atomic::Ordering;
 
 use rbr_formats::data::Data;
 use rbr_formats::trk::DriveLineRecord;
@@ -14,7 +13,7 @@ use rbr_gameplay::game::{PhysicsStep, StepSample};
 use rbr_gameplay::markers::TickInput;
 use rbr_gameplay::stage::{Stage, State};
 use rbr_recording::sound::TyreMax;
-use rbr_step::runner::{self, Playback, ReadTrace, Stopped};
+use rbr_step::runner::{self, Playback, Stopped};
 
 use crate::boot;
 use crate::profile::Profile;
@@ -62,18 +61,16 @@ pub fn sample(car: &[u8], track: &[DriveLineRecord]) -> StepSample {
     layout::recorded_car(car).sample(track)
 }
 
-/// The Rust physics on the snapshot's memory.
+/// The Rust physics on the image's memory.
 pub struct Runner<'a> {
     pub playback: &'a Playback,
-    /// Logs the image's bytes the steps read (`--read-set`).
-    pub trace: Option<&'a ReadTrace>,
     pub track: &'a [DriveLineRecord],
-    /// The snapshot's own step: its control was emitted before the snapshot, so it is not emitted again.
+    /// The image's own step: its control was emitted before it, so it is not emitted again.
     pub own_step: bool,
     /// Word 6 of the recorded payload: the original's uninitialised stack word, which `CarControl` leaves out.
     pub word6: u32,
     /// The `StepForward` count of the frame's first substep (the load settle's 40 as the original's one
-    /// `StepForward(40)`; the snapshot's own call). Each later driving substep is one `StepForward(1)`, as
+    /// `StepForward(40)`; the image's own call). Each later driving substep is one `StepForward(1)`, as
     /// `TicPhysicsRecording` runs them; the load's later substeps are inside the first call.
     pub substeps: u32,
     /// The frame's tyre block word 1 (`rbr_recording::sound::TyreMax`), for the live sound record (the terms are kept
@@ -87,14 +84,8 @@ impl PhysicsStep for Runner<'_> {
         // no control on the full replay buffer's step.
         if index == 0 || control.is_some() || self.substeps == 1 {
             let payload = control.filter(|_| !self.own_step).map(|c| payload(&c, self.word6));
-            if let Some(trace) = self.trace {
-                trace.on.store(true, Ordering::Relaxed);
-            }
             let substeps = if index == 0 { self.substeps } else { 1 };
             self.playback.step(payload.as_ref(), substeps);
-            if let Some(trace) = self.trace {
-                trace.on.store(false, Ordering::Relaxed);
-            }
             self.own_step = false;
             layout::accumulate_tyre_terms(self.playback, &mut self.tyre_max);
         }
@@ -210,15 +201,6 @@ pub fn boot_playback(
         boot::dump(playback.runner.image(), &image, path).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok((playback, image))
-}
-
-/// Refuses a snapshot taken without NGP.dll: ReRBR steps NGP physics only.
-pub fn require_ngp(playback: &Playback) -> Result<(), String> {
-    if rbr_step::ngp::runs_ngp(playback.runner.ngp_base) {
-        Ok(())
-    } else {
-        Err("a 1.02 snapshot; ReRBR steps NGP physics only".into())
-    }
 }
 
 /// The running bindings and stand-ins at a stop (`runner::Runner::take_chain`, outermost first) as it prints them:

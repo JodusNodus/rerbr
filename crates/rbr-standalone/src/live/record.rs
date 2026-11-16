@@ -1,6 +1,6 @@
 //! The answer's records after a step: the end page, the race end, the pause menu, the school,
 //! flow and dash records.
-//! Live mode (`rbr-standalone --live --snapshot Y --stage NAME`): the viewer's stepping
+//! Live mode (`rbr-standalone --live --boot --stage NAME`): the viewer's stepping
 //! process, speaking `harness/live.py`'s protocol (`rbr-render`'s `live`). Per 32-byte control payload on stdin it
 //! writes one FRM1 frame, a 32-byte HUD2 record (`rbr_recording::hud`: live.py's HUD1 and the race clock) and a DMG1
 //! record (`rbr_recording::damage`: the damage zones and the last damage event) on stdout, then the tagged records
@@ -14,19 +14,17 @@
 //! menu's (MNU1, `rbr_recording::menu`), what NGP's FMOD block takes from the car (FMB1,
 //! `rbr_recording::sound::FmodBlock`), the damage handler's carried words for the HUD's car status (CDM1,
 //! `rbr_recording::damage::CDM1`), the car's control the last step took (CTL1, `rbr_recording::live::CTL1`), and
-//! last the SCN1 scenery poses: the frame's pre and post count from the snapshot's step, and the car and wheels after
+//! last the SCN1 scenery poses: the frame's pre and post count from the image's step, and the car and wheels after
 //! the payload's step.
 //!
-//! The first payload is the snapshot's own step, whose control the game had already emitted, so its bytes are not
-//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
-//! `StepForward(1)` on the snapshot's memory for each of the frame's substeps, as the headless run does
+//! Each payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
+//! `StepForward(1)` on the image's memory for each of the frame's substeps, as the headless run does
 //! (`crate::physics::Runner`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
 //! viewer's `--live` sends one per 7 ms (1.02's step), which under NGP's 1/720 s step is a frame of 5 or 6 substeps
 //! (the frame clock carries the rest), so every clock the game ticks by the frame's time (the countdown, the camera's
 //! orbit, the race clock, the finish timer) runs at real speed under both. Such a frame's records are the frame's: the
-//! car after its last step, its events, and each wheel's last tyre payload. The game starts
-//! driving: a snapshot taken mid-drive has its load and countdown behind it, and the game's clock and time card do
-//! not feed the physics.
+//! car after its last step, its events, and each wheel's last tyre payload. The game's clock and time card do not
+//! feed the physics.
 //!
 //! `--live --boot --stage NAME --car N` starts from the boot's image instead (`boot::build`, the
 //! stage start): before the first payload the game runs the load settle as the headless boot run does. With the

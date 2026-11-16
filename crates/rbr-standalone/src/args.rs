@@ -101,7 +101,6 @@ pub struct Args {
     pub tyre_image: Option<PathBuf>,
     pub tyre_image_step: Option<u32>,
     pub boot: bool,
-    pub snapshots: Vec<String>,
     /// The stage's name or path (`stage_files`); for a community stage chosen by folder or id, filled in `main` once
     /// the weather picks its variant.
     pub stage: String,
@@ -110,7 +109,6 @@ pub struct Args {
     pub data: PathBuf,
     pub car: Option<u32>,
     pub steps: usize,
-    pub read_set: Option<PathBuf>,
     pub marker_settings: MarkerSettings,
     pub dump_image: Option<PathBuf>,
     pub weather: Option<u32>,
@@ -225,16 +223,15 @@ fn on_off(flag: &str, value: &str) -> Result<bool, String> {
 }
 
 /// `--help`'s text.
-pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snapshot Y [--snapshot Z...] [--steps N] [--data DIR] [--read-set DIR]
-       rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
-       rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
+pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
+       rbr-standalone --live --stage NAME --boot [WEATHER] [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        --physics ngp|experimental|experimental-brush|ngp-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), it with the brush tyre in development (in place of NGP's sliding model), or NGP 7's with the brush tyre, on live, replayed, autopilot and headless runs (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a circuit session (with --boot, a stage whose drive line is closed): --laps N|open
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)]
@@ -339,14 +336,12 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--tyre-image" => args.tyre_image = Some(PathBuf::from(value)),
             "--tyre-image-step" => args.tyre_image_step = Some(parsed("--tyre-image-step", &value)?),
             "--aim" => args.aim = Some(value.parse()?),
-            "--snapshot" => args.snapshots.push(value),
             "--stage" => stage = Some(value),
             "--stage-dir" => stage_dir = Some(PathBuf::from(value)),
             "--rsf-stage" => rsf_stage = Some(parsed("--rsf-stage", &value)?),
             "--rsf-root" => rsf_root = Some(PathBuf::from(value)),
             "--data" => data = Some(PathBuf::from(value)),
             "--car" => args.car = Some(parsed("--car", &value)?),
-            "--read-set" => args.read_set = Some(PathBuf::from(value)),
             "--dump-image" => args.dump_image = Some(PathBuf::from(value)),
             "--steps" => args.steps = parsed("--steps", &value)?,
             "--weather" => args.weather = Some(parsed("--weather", &value)?),
@@ -479,15 +474,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             _ => return Err(format!("unknown argument {flag}")),
         }
     }
-    match (args.live, args.recording.is_some(), args.snapshots.len()) {
-        _ if args.boot && !args.snapshots.is_empty() => return Err("--boot takes no --snapshot".into()),
-        (true, true, _) => return Err("--live takes no --recording".into()),
-        (true, false, 1) => {}
-        (true, false, 0) if args.boot => {}
-        (true, false, _) => return Err("--live takes one --snapshot".into()),
-        (false, false, _) if !(args.boot && args.autopilot.is_some()) => return Err("--recording is required".into()),
-        (false, false, _) => {}
-        (false, true, _) => {}
+    if !args.boot {
+        return Err("--boot is required: ReRBR runs from the boot only".into());
+    }
+    match (args.live, args.recording.is_some()) {
+        (true, true) => return Err("--live takes no --recording".into()),
+        (false, false) if args.autopilot.is_none() => return Err("--recording is required".into()),
+        _ => {}
     }
     if args.rsf_car.is_some() && args.car.is_some() {
         return Err("--rsf-car replaces --car".into());
@@ -496,48 +489,22 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         return Err("--car-pack replaces --car".into());
     }
     args.pack_car.check(args.rsf_car.is_some())?;
-    if args.autopilot.is_some() && (args.live || args.snapshots.len() != usize::from(!args.boot)) {
-        return Err("--autopilot takes one --snapshot or --boot, and no --live".into());
+    if args.autopilot.is_some() && args.live {
+        return Err("--autopilot takes no --live".into());
     }
-    // Flags that only make sense with `--boot`, in the order their errors used to read.
-    for (flag, present) in [("--setup", args.setup.is_some()), ("--ngp-physics", args.ngp_physics.is_some())] {
-        if present && !args.boot {
-            return Err(format!("{flag} needs --boot"));
-        }
-    }
-    if args.boot && args.ngp_physics.is_none() {
+    if args.ngp_physics.is_none() {
         return Err("--boot needs --ngp-physics FILE (NGP's physics.rbz): ReRBR steps NGP physics only".into());
     }
-    for (flag, present) in [
-        ("--rsf-car", args.rsf_car.is_some()),
-        ("--car-pack", args.pack_car.pack.is_some()),
-        ("--ffb-sensitivity", args.ffb_sensitivity.is_some()),
-        ("--head-gasket-durability", args.head_gasket_durability.is_some()),
-        ("--manoeuvre", args.manoeuvre.is_some()),
-        ("--damage-in", args.damage_in.is_some()),
-        ("--championship", skill.is_some()),
-    ] {
-        if present && !args.boot {
-            return Err(format!("{flag} needs --boot"));
-        }
-    }
-    if (args.damage_out.is_some() || args.result_out.is_some()) && args.autopilot.is_none() && !(args.live && args.boot)
-    {
-        return Err("--damage-out and --result-out need --autopilot or --live --boot".into());
+    if (args.damage_out.is_some() || args.result_out.is_some()) && args.autopilot.is_none() && !args.live {
+        return Err("--damage-out and --result-out need --autopilot or --live".into());
     }
     if (championship_damage.is_some() || false_starts.is_some() || args.rally_next.is_some()) && skill.is_none() {
         return Err("--championship-damage, --championship-false-starts and --rally-next need --championship".into());
-    }
-    if args.laps.is_some() && !args.boot {
-        return Err("--laps needs --boot".into());
     }
     if args.laps.is_some() && (args.lesson.is_some() || skill.is_some()) {
         return Err("--laps takes no --school or --championship (a circuit session is a mode of its own)".into());
     }
     if let Some(lesson) = args.lesson {
-        if !args.boot {
-            return Err("--school needs --boot".into());
-        }
         for (flag, present) in [
             ("--championship", skill.is_some()),
             ("--setup", args.setup.is_some()),
@@ -567,8 +534,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         skill,
         damage: championship_damage.unwrap_or(ChampionshipOptions::default().damage),
     });
-    if args.events_out.is_some() && (args.live || !args.boot || args.recording.is_none() || args.autopilot.is_some()) {
-        return Err("--events-out needs --boot and --recording, and no --live or --autopilot".into());
+    if args.events_out.is_some() && (args.live || args.recording.is_none() || args.autopilot.is_some()) {
+        return Err("--events-out needs --recording, and no --live or --autopilot".into());
     }
     if (args.recorded_payload || args.trace_out.is_some())
         && (args.live || args.recording.is_none() || args.autopilot.is_some())
@@ -730,9 +697,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if let Some(problem) = rsf.as_ref().and_then(|s| s.problem.as_ref()) {
         return Err(format!("RSF stage {}: {problem}", rsf.as_ref().map_or(0, |s| s.id)));
     }
-    if rsf.is_some() && stage.is_none() && !args.boot {
-        return Err("--stage-dir and --rsf-stage need --boot (the weather picks the variant)".into());
-    }
     Ok(Args {
         stage: stage.unwrap_or_default(),
         rsf,
@@ -833,18 +797,17 @@ mod tests {
     }
 
     /// The modes' bases: the recording's, the boot's and the live run's.
-    const REC: &str = "--recording R --stage track-54_E --snapshot S --data D";
+    const REC: &str = "--boot --recording R --stage track-54_E --data D --ngp-physics N";
     /// The boot reading the recording (the events run).
     const BOOT_REC: &str = "--boot --recording R --stage track-54_E --data D --ngp-physics N";
     const BOOT: &str = "--boot --stage track-54_E --data D --ngp-physics N --autopilot OUT";
-    const LIVE: &str = "--live --stage track-54_E --snapshot S --data D";
+    const LIVE: &str = "--live --boot --stage track-54_E --data D --ngp-physics N";
 
     fn recording(a: &Args) {
         assert_eq!(a.recording, Some(PathBuf::from("R")));
         assert_eq!(a.stage, "track-54_E");
-        assert_eq!(a.snapshots, ["S"]);
         assert_eq!(a.data, PathBuf::from("D"));
-        assert!(!a.live && !a.boot && !a.recorded_payload);
+        assert!(!a.live && a.boot && !a.recorded_payload);
         assert_eq!(a.steps, 30);
         assert_eq!(a.replay_pace, live::Pace::Clock);
         assert_eq!(a.false_starts, 0);
@@ -861,8 +824,7 @@ mod tests {
     }
 
     fn live(a: &Args) {
-        assert!(a.live && !a.boot);
-        assert_eq!(a.snapshots, ["S"]);
+        assert!(a.live && a.boot);
     }
 
     /// A good command line and its checks on the `Args`.
@@ -1066,7 +1028,7 @@ mod tests {
             }),
             (
                 format!(
-                    "{BOOT} --rsf-car PACK --ffb-sensitivity 90,80,70 --head-gasket-durability 3 --saves SV --profile P --read-set RS --dump-image IMG"
+                    "{BOOT} --rsf-car PACK --ffb-sensitivity 90,80,70 --head-gasket-durability 3 --saves SV --profile P --dump-image IMG"
                 ),
                 |a| {
                     assert_eq!(a.rsf_car.as_deref(), Some("PACK"));
@@ -1074,7 +1036,6 @@ mod tests {
                     assert_eq!(a.head_gasket_durability, Some(3));
                     assert_eq!(a.saves, Some(PathBuf::from("SV")));
                     assert_eq!(a.profile.as_deref(), Some("P"));
-                    assert_eq!(a.read_set, Some(PathBuf::from("RS")));
                     assert_eq!(a.dump_image, Some(PathBuf::from("IMG")));
                 },
             ),
@@ -1086,7 +1047,7 @@ mod tests {
             }
         }
         // `--data` from the environment.
-        match run_str("--recording R --stage track-54_E --snapshot S", Some("ENV")) {
+        match run_str("--boot --recording R --stage track-54_E --ngp-physics N", Some("ENV")) {
             Ok(args) => assert_eq!(args.data, PathBuf::from("ENV")),
             Err(e) => panic!("RBR_DATA fallback: error {e}"),
         }
@@ -1098,8 +1059,11 @@ mod tests {
         let bad: Vec<(String, &str)> = vec![
             ("--car".into(), "--car: no value"),
             ("--warp x".into(), "unknown argument --warp"),
-            ("--recording R --rsf-stage x --snapshot S --data D".into(), "--rsf-stage x"),
-            ("--recording R --rsf-stage 101 --snapshot S --data D".into(), "--rsf-stage needs --rsf-root or RBR_RSF"),
+            ("--boot --recording R --rsf-stage x --ngp-physics N --data D".into(), "--rsf-stage x"),
+            (
+                "--boot --recording R --rsf-stage 101 --ngp-physics N --data D".into(),
+                "--rsf-stage needs --rsf-root or RBR_RSF",
+            ),
             (format!("{REC} --top-speed fast"), "--top-speed fast"),
             (format!("{REC} --steps x"), "--steps x"),
             (format!("{REC} --car x"), "--car x"),
@@ -1162,37 +1126,23 @@ mod tests {
             (format!("{LIVE} --start-time 9"), "--start-time 9: H:MM"),
             (format!("{LIVE} --telemetry-udp 127.0.0.1"), "--telemetry-udp 127.0.0.1: ADDR:PORT"),
             (format!("{BOOT} --telemetry-udp 127.0.0.1:6776"), "--telemetry-udp needs --live"),
-            (format!("{BOOT} --snapshot S"), "--boot takes no --snapshot"),
             (format!("{LIVE} --recording R"), "--live takes no --recording"),
-            ("--live --stage track-54_E --data D".into(), "--live takes one --snapshot"),
-            (format!("{LIVE} --snapshot T"), "--live takes one --snapshot"),
-            ("--stage track-54_E --snapshot S --data D".into(), "--recording is required"),
-            ("--recording R --stage track-54_E --snapshot S".into(), "--data or RBR_DATA is required"),
-            (format!("{LIVE} --autopilot OUT"), "--autopilot takes one --snapshot or --boot, and no --live"),
+            ("--boot --stage track-54_E --data D --ngp-physics N".into(), "--recording is required"),
             (
-                format!("{REC} --autopilot OUT --snapshot T"),
-                "--autopilot takes one --snapshot or --boot, and no --live",
+                "--stage track-54_E --data D --ngp-physics N --recording R".into(),
+                "--boot is required: ReRBR runs from the boot only",
             ),
-            (format!("{REC} --setup SET"), "--setup needs --boot"),
-            (format!("{REC} --ngp-physics N"), "--ngp-physics needs --boot"),
+            ("--boot --recording R --stage track-54_E --ngp-physics N".into(), "--data or RBR_DATA is required"),
+            (format!("{LIVE} --autopilot OUT"), "--autopilot takes no --live"),
             (
                 "--boot --stage track-54_E --data D --autopilot OUT".into(),
                 "--boot needs --ngp-physics FILE (NGP's physics.rbz): ReRBR steps NGP physics only",
             ),
-            (format!("{REC} --rsf-car PACK"), "--rsf-car needs --boot"),
             (format!("{BOOT} --car 5 --rsf-car PACK"), "--rsf-car replaces --car"),
-            (format!("{REC} --ffb-sensitivity 90,80,70"), "--ffb-sensitivity needs --boot"),
-            (format!("{REC} --head-gasket-durability 3"), "--head-gasket-durability needs --boot"),
-            (format!("{REC} --damage-in IN"), "--damage-in needs --boot"),
-            (format!("{REC} --damage-out OUT"), "--damage-out and --result-out need --autopilot or --live --boot"),
+            (format!("{REC} --damage-out OUT"), "--damage-out and --result-out need --autopilot or --live"),
             (
                 format!("{BOOT} --rally-next end"),
                 "--championship-damage, --championship-false-starts and --rally-next need --championship",
-            ),
-            (format!("{REC} --championship rookie"), "--championship needs --boot"),
-            (
-                format!("{REC} --events-out E"),
-                "--events-out needs --boot and --recording, and no --live or --autopilot",
             ),
             (
                 format!("{LIVE} --recorded-payload"),
@@ -1315,7 +1265,7 @@ mod tests {
                 format!("{REC} --autopilot OUT --circle 0,0,40 --aim 1,2"),
                 "--circle takes no --aim (it steers the circle itself)",
             ),
-            ("--recording R --snapshot S --data D".into(), "--stage, --stage-dir or --rsf-stage is required"),
+            ("--boot --recording R --data D --ngp-physics N".into(), "--stage, --stage-dir or --rsf-stage is required"),
             (format!("{REC} --stage-dir DIR"), "give one of --stage, --stage-dir and --rsf-stage"),
         ];
         for (argv, want) in &bad {
@@ -1343,7 +1293,6 @@ mod tests {
             (format!("{school} 2 --stage track-54_E"), "--school 2: lesson's stage is map 83, not track-54_E"),
             (format!("{school} 2 --tyre 4"), "--school takes no --tyre (the lesson sets it)"),
             (format!("{school} 2 --championship rookie"), "--school takes no --championship (the lesson sets it)"),
-            (format!("{REC} --school 2"), "--school needs --boot"),
             (
                 format!("{school} 2 --flat-out"),
                 "--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)",
@@ -1397,14 +1346,8 @@ mod tests {
         let args: Vec<&str> = boot.iter().map(|s| s.as_ref()).collect();
         let parsed = run(&args, None, None).expect("a stage folder with --boot parses");
         assert!(parsed.rsf.is_some() && parsed.stage.is_empty());
-        let no_boot = ["--recording", "R", "--snapshot", "S", "--stage-dir", &dir, "--data", "D"];
-        let args: Vec<&str> = no_boot.iter().map(|s| s.as_ref()).collect();
-        match run(&args, None, None) {
-            Err(e) => assert_eq!(e, "--stage-dir and --rsf-stage need --boot (the weather picks the variant)"),
-            Ok(_) => panic!("a stage folder without --boot parses"),
-        }
         let empty = empty.to_string_lossy().into_owned();
-        let missing_ini = ["--recording", "R", "--snapshot", "S", "--stage-dir", &empty, "--data", "D"];
+        let missing_ini = ["--boot", "--recording", "R", "--ngp-physics", "N", "--stage-dir", &empty, "--data", "D"];
         let args: Vec<&str> = missing_ini.iter().map(|s| s.as_ref()).collect();
         match run(&args, None, None) {
             Err(e) => assert_eq!(e, format!("{empty}: no Tracks<id>.ini")),

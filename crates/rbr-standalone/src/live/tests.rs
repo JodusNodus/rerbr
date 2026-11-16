@@ -255,7 +255,6 @@ fn the_drive_line_point_is_the_stage_s_driveline() {
         live.answer(&Input::default().to_bytes()).unwrap();
         let physics = Runner {
             playback: &live.playback,
-            trace: None,
             track: &live.stage.track,
             own_step: false,
             word6: 0,

@@ -84,7 +84,7 @@ fn setup_root(path: &Path) -> Result<Vec<Node>, String> {
 }
 
 /// The data the run loads (with `--rsf-car`'s model in RSF's slot) and, with `--boot`, the race on `stage`.
-pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Data, Option<boot::Race>), String> {
+pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Data, boot::Race), String> {
     let recording = args.recording.as_deref();
     let surface = args.surface.unwrap_or_else(|| match args.rsf.as_ref() {
         Some(rsf) => rsf.surface.map_or(boot::surface(stage.number), rsf::Surface::name),
@@ -105,9 +105,6 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         }
         None => (data, None),
     };
-    if !args.boot {
-        return Ok((data, None));
-    }
     let (preset, weather) = race_weather(&data, args, stage.number)?;
     let (wear, wetness) = weather.mat_words();
     eprintln!(
@@ -148,7 +145,7 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         (None, Some(lesson)) => race.in_school(lesson),
         (None, None) => race,
     };
-    Ok((data, Some(race)))
+    Ok((data, race))
 }
 
 /// The car's identity for an engine model (`rbr_engine::Car`): a pack car's folder (an RSF car's under

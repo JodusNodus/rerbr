@@ -317,7 +317,7 @@ pub fn shift_points(mem: &Mem, car: u32) -> ShiftPoints {
 
 /// The tagged NSD1 record under NGP: the words NGP's sound patches read (`rbr_recording::sound::NgpSound`).
 pub fn ngp_sound(mem: &Mem) -> Vec<u8> {
-    // A snapshot's NGP.dll where the game loaded it, the boot's at the reference runs' base.
+    // The boot's NGP.dll at the reference runs' base.
     let base = match rbr_step::ngp::base_in(mem) {
         0 => rbr_physics::ngp::layout::runtime::BASE,
         base => base,

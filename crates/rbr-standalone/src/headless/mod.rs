@@ -1,4 +1,4 @@
-//! The headless run (`--recording X` with `--snapshot Y` or `--boot`): the gameplay loop from the recording's first
+//! The headless run (`--recording X --boot`): the gameplay loop from the recording's first
 //! frame, the Rust physics from the image's step, and each step's car and wheels compared with the recording (the
 //! crate's documentation describes the loop and the report).
 
@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rbr_counters::{Counts, Mark};
@@ -18,14 +17,13 @@ use rbr_gameplay::flow::{EndPage, RaceFlow, StageEnd};
 use rbr_gameplay::game::{FrameInput, Game, PhysicsStep, StepSample};
 use rbr_gameplay::ini::Ini;
 use rbr_gameplay::markers::MarkerSettings;
-use rbr_gameplay::race_clock::{AssistSettings, RaceClock};
+use rbr_gameplay::race_clock::RaceClock;
 use rbr_gameplay::result::StageResult;
 use rbr_gameplay::stage::{Stage, State};
 use rbr_gameplay::tick;
-use rbr_physics::snapshot::Snapshot;
 use rbr_recording::sound::TyreMax;
 use rbr_recording::{Frame, CONTROL_BYTES};
-use rbr_step::runner::{self, Compare, Playback, ReadTrace};
+use rbr_step::runner::{self, Compare, Playback};
 use rbr_step::timekeeper::layout as keeper_layout;
 
 use crate::args::Args;
@@ -55,7 +53,7 @@ impl PhysicsStep for Recorded<'_> {
     }
 }
 
-/// One snapshot's run.
+/// One run.
 #[derive(Default)]
 pub struct Run {
     start: u32,
@@ -182,53 +180,14 @@ fn keeper_difference(game: &Game, mem: &rbr_physics::mem::Mem) -> Option<String>
     (!out.is_empty() || ours != bound).then(|| out.join(", "))
 }
 
-/// Where a run's image comes from: a snapshot's file, or the boot (`boot::build`).
-#[derive(Clone, Copy)]
-pub enum Source<'a> {
-    Snapshot(&'a str),
-    Boot(&'a Data, &'a str, &'a boot::Race, Option<&'a Path>),
-}
-
 /// A run's start: the image's playback, its step and that step's `StepForward` count, the compare, the image's step.
 struct Start {
     playback: Playback,
-    trace: Option<Arc<ReadTrace>>,
     step: u32,
     substeps: u32,
     compare: Compare,
     dt: Option<f32>,
     built: Vec<(&'static str, u64)>,
-}
-
-fn snapshot_start(path: &str, frames: &[Frame], mask: &[bool], traced: bool) -> Result<Start, String> {
-    let snap = Snapshot::open(path).map_err(|e| format!("{path}: {e}"))?;
-    let h = snap.metadata();
-    // The recorded frame that ends at the snapshot's step (none at step 0).
-    let first = frames
-        .iter()
-        .position(|f| f.pre == h.step)
-        .ok_or_else(|| format!("{path}: no recorded frame starts at step {}", h.step))?;
-    let compare = match first.checked_sub(1).map(|i| &frames[i]) {
-        Some(before) if before.post == h.step => Compare::new(&snap, mask.to_vec(), before),
-        Some(_) => return Err(format!("{path}: no recorded frame ends at step {}", h.step)),
-        None => Compare::at_start(&snap, mask.to_vec(), frames),
-    };
-    let (playback, trace) = if traced {
-        let (playback, trace) = Playback::traced(&snap, false);
-        (playback, Some(trace))
-    } else {
-        (Playback::new(&snap, false), None)
-    };
-    crate::physics::require_ngp(&playback)?;
-    Ok(Start {
-        playback,
-        trace,
-        step: h.step,
-        substeps: h.substeps,
-        compare,
-        dt: runner::max_time_step(&snap),
-        built: Vec::new(),
-    })
 }
 
 /// The boot's start ([`boot_playback`]); its first `StepForward` count is the first recorded frame's.
@@ -247,7 +206,6 @@ fn boot_start(
     let dt = keeper_layout::max_time_step(mem);
     Ok(Start {
         playback,
-        trace: None,
         step: 0,
         substeps: frames.first().ok_or("the recording has no frames")?.substeps,
         compare,
@@ -258,24 +216,20 @@ fn boot_start(
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
-    source: Source,
+    data: &Data,
+    name: &str,
+    race: &boot::Race,
+    dump: Option<&Path>,
     frames: &[Frame],
     mask: &[bool],
     stage: &StageData,
     steps: usize,
-    read_set: Option<&Path>,
     settings: MarkerSettings,
     hooks: Hooks,
 ) -> Result<Run, String> {
-    let assist = match source {
-        Source::Boot(_, _, race, _) => race.assist_settings(),
-        Source::Snapshot(_) => AssistSettings::QUICK_RACE,
-    };
-    let Start { playback, trace, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
-        match source {
-            Source::Snapshot(path) => snapshot_start(path, frames, mask, read_set.is_some())?,
-            Source::Boot(data, name, race, dump) => boot_start(data, stage, name, race, frames, mask, dump)?,
-        };
+    let assist = race.assist_settings();
+    let Start { playback, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
+        boot_start(data, stage, name, race, frames, mask, dump)?;
     compare.mask_ngp_padding();
     if let Some((profile, car)) = hooks.physics {
         fit_physics(&playback, profile, car)?;
@@ -306,14 +260,10 @@ pub fn run(
     .with_finish_zone(stage.finish_zone);
     game.set_assist_settings(assist);
     // A boot's rally-school lesson listens to the drive (`--school`).
-    let mut school = match source {
-        Source::Boot(_, _, race, _) => race.school(&stage.replay, &stage.school_strings),
-        _ => None,
-    };
+    let mut school = race.school(&stage.replay, &stage.school_strings);
     let mut recorded = Recorded { car: &[], track: &stage.track };
     let mut physics = Runner {
         playback: &playback,
-        trace: trace.as_deref(),
         track: &stage.track,
         own_step: true,
         word6: 0,
@@ -527,9 +477,6 @@ pub fn run(
     out.boot_pointers_kept_at_stop = compare.kept_boot_pointers(playback.runner.image());
     out.boot_pointers_kept_through_driving = boot_pointers_kept_through_driving.map(|kept| kept.into_iter().collect());
     out.allocator_unwritten_reads = playback.runner.allocator_unwritten_reads();
-    if let (Some(dir), Some(trace), Source::Snapshot(path)) = (read_set, &trace, source) {
-        write_read_set(dir, path, trace).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
     Ok(out)
 }
 
@@ -544,21 +491,9 @@ fn flow_end(flow: &RaceFlow, end: &StageEnd, step: u32) -> String {
     )
 }
 
-/// `<dir>/<snapshot file name>.reads`: one line per run of the first reads, `address length reader bytes` (hex).
-fn write_read_set(dir: &Path, snapshot: &str, trace: &ReadTrace) -> std::io::Result<()> {
-    use std::fmt::Write as _;
-    let name = Path::new(snapshot).file_name().unwrap_or_default();
-    let mut text = String::new();
-    for (at, bytes, reader) in trace.first_reads() {
-        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-        writeln!(text, "{at:08x} {:x} {reader:08x} {hex}", bytes.len()).unwrap();
-    }
-    std::fs::write(dir.join(name).with_extension("reads"), text)
-}
-
-/// Runs the recording `recording` from each `--snapshot` (or the boot's `race`) and prints each run's report. Fails
+/// Runs the recording `recording` from the boot's `race` and prints each run's report. Fails
 /// when a run differs from the recording or stops.
-pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::Race>, recording: &Path) -> ExitCode {
+pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: &boot::Race, recording: &Path) -> ExitCode {
     let bytes = match std::fs::read(recording) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -574,39 +509,31 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::
         }
     };
     let mask = runner::static_mask(&frames);
-    let car = crate::race::engine_car(args, race, stage.car);
-    let mut ok = true;
-    let boot = ["boot".to_string()];
-    let sources: &[String] = if args.boot { &boot } else { &args.snapshots };
-    for path in sources {
-        let source = match race {
-            Some(race) => Source::Boot(data, &args.stage, race, args.dump_image.as_deref()),
-            None => Source::Snapshot(path),
+    let car = crate::race::engine_car(args, Some(race), stage.car);
+    let r = run_guarded("the run", || {
+        let extra = match &args.extra_payloads {
+            Some(path) => trace::read_extra(path)?,
+            None => Default::default(),
         };
-        let r = run_guarded("the run", || {
-            let extra = match &args.extra_payloads {
-                Some(path) => trace::read_extra(path)?,
-                None => Default::default(),
-            };
-            let clock = args.wall_clock.as_deref().map(trace::read_wall_clock).transpose()?;
-            let hooks = Hooks {
-                recorded_payload: args.recorded_payload,
-                extra_payloads: Some(&extra),
-                wall_clock: clock.as_ref(),
-                trace_out: args.trace_out.as_deref(),
-                ffb: args.ffb_settings,
-                physics: (!args.physics.is_ngp()).then_some((args.physics, &car)),
-            };
-            run(source, &frames, &mask, stage, args.steps, args.read_set.as_deref(), args.marker_settings, hooks)
-        });
-        match r {
-            Ok(r) => ok &= report(path, &r, args, &mask, stage),
-            Err(e) => {
-                ok = false;
-                println!("{path}: {e}");
-            }
+        let clock = args.wall_clock.as_deref().map(trace::read_wall_clock).transpose()?;
+        let hooks = Hooks {
+            recorded_payload: args.recorded_payload,
+            extra_payloads: Some(&extra),
+            wall_clock: clock.as_ref(),
+            trace_out: args.trace_out.as_deref(),
+            ffb: args.ffb_settings,
+            physics: (!args.physics.is_ngp()).then_some((args.physics, &car)),
+        };
+        let dump = args.dump_image.as_deref();
+        run(data, &args.stage, race, dump, &frames, &mask, stage, args.steps, args.marker_settings, hooks)
+    });
+    let ok = match r {
+        Ok(r) => report("boot", &r, args, &mask, stage),
+        Err(e) => {
+            println!("boot: {e}");
+            false
         }
-    }
+    };
     if ok {
         ExitCode::SUCCESS
     } else {
