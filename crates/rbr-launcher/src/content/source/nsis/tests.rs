@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{self, Write};
 
 use super::*;
 use crate::content::source::open as open_source;
@@ -294,6 +294,28 @@ fn real_installers() {
             let ini_entry = source.entries().iter().find(|e| e.path.join("/") == "Maps/track-8994_O.ini").unwrap();
             assert!(!source.read(ini_entry).unwrap().is_empty());
         }
+        // Every file extracts: an .rbz opens as a zip whose entries read with matching CRCs, any other file is not empty.
+        let dest = crate::test_dir("nsis-extract");
+        let wanted: Vec<_> = source.entries().iter().map(|e| (e.path.clone(), e.path.clone())).collect();
+        source.extract(&wanted, &dest, &mut |_| Ok(())).unwrap_or_else(|e| panic!("{name}: {e}"));
+        for entry in source.entries() {
+            let file = entry.path.iter().fold(dest.clone(), |p, part| p.join(part));
+            let shown = entry.path.join("/");
+            if shown.ends_with(".rbz") {
+                let mut zip = zip::ZipArchive::new(fs::File::open(&file).unwrap())
+                    .unwrap_or_else(|e| panic!("{name}: {shown} is no zip: {e}"));
+                for i in 0..zip.len() {
+                    // Reading to the end checks the CRC.
+                    let mut inner = zip.by_index(i).unwrap_or_else(|e| panic!("{name}: {shown}[{i}]: {e}"));
+                    io::copy(&mut inner, &mut io::sink()).unwrap_or_else(|e| panic!("{name}: {shown}[{i}]: {e}"));
+                }
+            } else {
+                let size = fs::metadata(&file).unwrap_or_else(|e| panic!("{name}: {shown}: {e}")).len();
+                assert!(size > 0 || shown.ends_with(".ini"), "{name}: {shown} is empty");
+            }
+        }
+        fs::remove_dir_all(&dest).unwrap();
+        eprintln!("{name}: extracted {} files in {:?}", wanted.len(), started.elapsed());
         seen += 1;
     }
     assert!(seen > 0, "no .exe in RBR_INSTALLERS");

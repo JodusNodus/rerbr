@@ -28,6 +28,7 @@ use container::UNSUPPORTED;
 use script::Header;
 
 mod container;
+mod inflate;
 mod script;
 #[cfg(test)]
 mod tests;
