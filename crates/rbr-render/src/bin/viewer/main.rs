@@ -72,7 +72,7 @@
 //!
 //! With `--drive` and `--live`, C (`[controls] camera`) cycles the camera views (`rbr_render::views`): cockpit, bonnet, bumper and chase,
 //! and `--view NAME` starts in one (also for `--screenshot`). Holding the look-back key (B by default, `[controls]
-//! look back`; `--look-back` for a screenshot) turns the chase to look behind the car. The chase and the bonnet view
+//! look back`; `--look-back` for a screenshot) turns the view to look behind the car, in every view. The chase and the bonnet view
 //! probe the stage's collision mesh (`rbr_render::stage_probe`). While the rescue helicopter runs its camera replaces
 //! the view and C does nothing. C is the free-fly camera's down key only without a drive, where there are no views.
 //! The bindings (`--bindings`) may move both keys or add a wheel button to them.

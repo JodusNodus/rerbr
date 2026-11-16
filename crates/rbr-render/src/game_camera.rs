@@ -30,7 +30,8 @@
 //! Ours:
 //! - the look-back swing (host `+0x2e0`, `+0x2e8`): 1.02 has no action that sets `+0x2e0` (only the camera's
 //!   constructor writes it), so the swing is dead code in the game. The viewer's look-back key ([`Chase::tic`]'s
-//!   input) drives it;
+//!   input) drives it, and the in-car, bonnet and bumper views turn about their eye by the same swing, the bonnet and
+//!   bumper eyes moving to the car's back ([`Follow::look_back`], `Playback::lens`);
 //! - the eye snaps to its place on the first frame [`Follow`] is shown and when the drive jumps, starting from its place
 //!   without the probes (the game's starts from the origin, host `+0x2a0` zeroed by 0x4868a0, so its first probe from
 //!   the eye crosses the stage). The game snaps while the host's `+0x08` is set: from a mode change until a CH_CAM
@@ -507,6 +508,12 @@ impl Follow {
         self.last = Some((index, now));
     }
 
+    /// How far the look-back swing has turned, radians: 0 forward, pi behind the car (the in-car views turn by it too,
+    /// [`crate::playback::Playback::lens`]).
+    pub fn look_back(&self) -> f32 {
+        self.chase.look_back
+    }
+
     /// The camera at the frame last followed, in stage axes, or `None` before the first. Its `forward` reaches the point
     /// it looks at (not unit): [`crate::playback::Playback::lens`] turns the view about that point.
     pub fn lens(&self) -> Option<Lens> {
@@ -616,6 +623,22 @@ mod tests {
         chase.tic(&car, 0.01, std::f32::consts::PI, false, true, None);
         // At pi the eye is ahead (-y) of the look point.
         assert!(chase.eye.y < car.look_at().y - 4.0, "{:?}", chase.eye);
+    }
+
+    #[test]
+    fn holding_look_back_puts_the_eye_ahead_of_the_car_and_releasing_returns_it() {
+        let car = level_car(Vec3::ZERO);
+        let mut chase = Chase::default();
+        chase.tic(&car, 0.0, 0.0, false, true, None);
+        let behind = chase.eye;
+        for _ in 0..500 {
+            chase.tic(&car, 0.01, 0.0, true, false, None);
+        }
+        assert!(chase.eye.y < car.look_at().y - 4.0, "{:?}", chase.eye);
+        for _ in 0..1000 {
+            chase.tic(&car, 0.01, 0.0, false, false, None);
+        }
+        assert!((chase.eye - behind).length() < 0.5, "{:?} {:?}", chase.eye, behind);
     }
 
     #[test]

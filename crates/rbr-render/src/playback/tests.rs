@@ -115,6 +115,7 @@ fn chase_has_its_own_field_of_view_and_the_views_the_setting() {
         bonnet: mount(Vec3::new(0.0, 0.8, -2.8), 0.08),
         bumper: mount(Vec3::new(0.0, 0.2, -3.4), 0.05),
         cockpit: mount(Vec3::new(0.3, 1.0, -1.2), 0.19),
+        rear: 0.9,
         nudges: Default::default(),
     };
     let fov = 50.0f32.to_radians();
@@ -142,6 +143,7 @@ fn the_chase_field_of_view_is_a_setting() {
         bonnet: Mount { eye: Vec3::ZERO, target: Vec3::NEG_Z, up: Vec3::Y, near: 0.1 },
         bumper: Mount { eye: Vec3::ZERO, target: Vec3::NEG_Z, up: Vec3::Y, near: 0.1 },
         cockpit: Mount { eye: Vec3::ZERO, target: Vec3::NEG_Z, up: Vec3::Y, near: 0.1 },
+        rear: 0.9,
         nudges: Default::default(),
     };
     let fov = |p: &Playback| p.lens(&mounts, CarView::Chase, ChaseLook::default(), 0.5).fov;
