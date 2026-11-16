@@ -9,34 +9,51 @@ use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::detect_calls::{self as detect, GridHost};
 
-use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC, NAME_WALK};
+use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC};
 use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// The original callees of `CBody::CState::Unk44`: the owner's slot 12 (thiscall, `+0x30` of its vtable), and the wall
-/// sync (E37, `CColGrid::SyncGrid`). `mem` reads the owner's vtable.
+/// sync (E37, `CColGrid::SyncGrid`), at `sp` (0: placed by the host). `mem` reads the owner's vtable.
 struct StateCallees<'a> {
     host: &'a dyn Host,
     mem: Mem,
+    sp: u32,
 }
 
 impl StateHost for StateCallees<'_> {
     fn owner_transform(&mut self, owner: u32) -> u32 {
         let slot = self.mem.u32(self.mem.u32(owner) + 0x30);
-        crate::call_or_trivial(self.host, 0, slot, owner, &[])
+        crate::call_or_trivial(self.host, self.sp, slot, owner, &[])
     }
 
     fn sync_grid(&mut self, wall: u32, body: u32, vec_a: u32, vec_b: u32) -> u32 {
-        super::call_grid(self.host, 0, E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
+        super::call_grid(self.host, self.sp, E37_WALL_SYNC, wall, &[body, vec_a, vec_b]).eax
     }
 }
 
 /// thiscall on the state (`ecx`), no arguments: `CBody::CState::Unk44` (0x4e33e0), the wall reset of its two vectors.
 /// Eax is the owner's slot-12 result, or the wall sync's when the owner has a wall.
 pub(super) fn state_unka44(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut host = StateCallees { host: ctx.host, mem: ctx.mem.clone() };
+    let mut host = StateCallees { host: ctx.host, mem: ctx.mem.clone(), sp: 0 };
     let eax = layout::reset_bounds(&mut host, &mut ctx.mem, r.ecx);
     Ok(Return::void(eax, 0))
+}
+
+/// `CBody::CState::Unk44` on `state` as a call at `sp` (0: placed by the host) makes it: on the pure host run here as
+/// its binding runs it, its calls where they land below the call's entry, counted as a run ([`Host::ran_direct`])
+/// without the call's words (none is read after them: residue audit, notes/physics.md "Store seam"); through the host
+/// elsewhere.
+pub(crate) fn reset_state_at(host: &dyn Host, mem: &Mem, sp: u32, state: u32) -> u32 {
+    if host.call_slot_word().is_none() {
+        return host.call_at(sp, CSTATE_UNKA44, state, &[]).eax;
+    }
+    let mut mem = mem.clone();
+    crate::skip_unwritten(host, &mut mem, sp, &[]);
+    host.ran_direct();
+    let below = (host.call_esp(sp) - 0x1000) & !0xf;
+    let mut calls = StateCallees { host, mem: mem.clone(), sp: below };
+    layout::reset_bounds(&mut calls, &mut mem, state)
 }
 
 /// `run` on the cells' lists a step holds (`CellLinks::view`) when the link at `link` moves between cells' lists
@@ -186,7 +203,7 @@ pub(crate) fn box_cells_direct(
 
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
 pub(super) fn body_vf40(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::reset_body(&mut Vf40Callees { host: ctx.host, sp: r.esp }, r.ecx), 0))
+    Ok(Return::void(layout::reset_body(&mut Vf40Callees { host: ctx.host, mem: &ctx.mem, sp: r.esp }, r.ecx), 0))
 }
 
 /// CBody::ClearGrid (0x4e11a0): thiscall on the body with the source and two bound vectors; eax is the grid's wall
@@ -306,16 +323,17 @@ impl CornerHost for DirectVfCcCalls<'_> {
 /// return address and the saved esi, then the tail jump to `CEntity::Vf40` at the entry itself.
 pub(crate) struct Vf40Callees<'a> {
     pub(crate) host: &'a dyn Host,
+    pub(crate) mem: &'a Mem,
     pub(crate) sp: u32,
 }
 
 impl BodyResetHost for Vf40Callees<'_> {
     fn reset_state(&mut self, state: u32) -> u32 {
-        self.host.call_at(self.sp - 8, CSTATE_UNKA44, state, &[]).eax
+        reset_state_at(self.host, self.mem, self.sp - 8, state)
     }
 
     fn reset_entity(&mut self, body: u32) -> u32 {
-        self.host.call_at(self.sp, NAME_WALK, body, &[]).eax
+        crate::entities::walk_at(self.host, self.mem, self.sp, body, crate::entities::EntityWalk::Name)
     }
 }
 

@@ -112,7 +112,16 @@ impl Integrate for Walk<'_> {
 
 impl PreOrder for Walk<'_> {
     fn apply_functor(&mut self, functor: u32, child: u32) {
-        self.host.call_at(self.at(self.depths.call), layout::vtable_target(&self.mem, functor, 0x4), functor, &[child]);
+        let (sp, target) = (self.at(self.depths.call), layout::vtable_target(&self.mem, functor, 0x4));
+        // `CPlainUnaryFunction::Vf04x` runs here on the pure host, as its binding (`functor_run`) runs it, without the
+        // call's words (none is read after them: residue audit, notes/physics.md "Store seam").
+        if target == super::FUNCTOR_VF04X && crate::skip_unwritten(self.host, &mut self.mem, sp, &[child]) {
+            self.host.ran_direct();
+            let esp = self.host.call_esp(sp);
+            call_stored(&mut Functor { mem: self.mem.clone(), host: self.host, esp }, functor, child);
+            return;
+        }
+        self.host.call_at(sp, target, functor, &[child]);
     }
 
     fn descend(&mut self, child: u32, functor: u32) {

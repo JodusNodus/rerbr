@@ -19,7 +19,6 @@ mod quats;
 mod slots;
 mod window;
 
-use crate::collision::CSTATE_UNKA44;
 use crate::engine_driveline::SIGNALS;
 use crate::entities::{EntityWalk, COPY16_WALK, STATE_EMIT};
 pub(crate) use contact::contact_vote_direct;
@@ -252,7 +251,7 @@ impl MulHost for Callees<'_> {
 
 impl rbr_physics::collision::layout::body_hosts::BodyResetHost for Callees<'_> {
     fn reset_state(&mut self, state: u32) -> u32 {
-        self.host.call(CSTATE_UNKA44, state, &[]).eax
+        crate::collision::reset_state_at(self.host, &self.mem, 0, state)
     }
 
     fn reset_entity(&mut self, body: u32) -> u32 {

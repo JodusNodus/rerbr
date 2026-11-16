@@ -84,8 +84,10 @@ struct Ground<'a> {
 }
 
 impl Ground<'_> {
+    /// The callee at `addr`, run in place while the step holds the state ([`crate::collision::call_grid`]): the probe
+    /// reads none of its words after it (residue audit, notes/physics.md "Store seam").
     fn call(&self, addr: u32, ecx: u32, args: &[u32]) -> u32 {
-        self.host.call_direct(self.sp, addr, ecx, args).eax
+        crate::collision::call_grid(self.host, self.sp, addr, ecx, args).eax
     }
 
     /// The wheel's own callee at `addr` on the wheel `this` ([`call_wheel`]).
