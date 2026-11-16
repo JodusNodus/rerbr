@@ -417,6 +417,7 @@ fn sky_direction(p: vec2<f32>, normal: vec3<f32>) -> vec3<f32> {
 // land it stands for, and its terrain next to the stage's far ground showed through it at its own depth (a dark field
 // at 560 Nechanice at 1.4 km took 1.3; 1.1 left it).
 const BACKDROP_BEHIND: f32 = 1.3;
+const BACKDROP_TERRAIN_BEHIND: f32 = 3.0;
 
 fn vertex(input: VertexIn) -> VertexOut {
     let v = placed(input);
@@ -437,7 +438,10 @@ fn vertex(input: VertexIn) -> VertexOut {
     // least `frame.haze.w`, so it never covers the stage the game draws over it (`Renderer::draw_scene`).
     if (frame.haze.w > 0.0) {
         let near = max(distance(v.position, frame.eye.xyz), 1e-3);
-        let pushed = frame.eye.xyz + (v.position - frame.eye.xyz) * max(frame.haze.w / near, BACKDROP_BEHIND);
+        let n = v.normal;
+        let upright = dot(n, n) > 0.0 && abs(n.y) < 0.5 * length(n);
+        let behind = select(BACKDROP_TERRAIN_BEHIND, BACKDROP_BEHIND, upright);
+        let pushed = frame.eye.xyz + (v.position - frame.eye.xyz) * max(frame.haze.w / near, behind);
         out.clip = frame.view_projection * vec4<f32>(pushed, 1.0);
     }
     out.normal = v.normal;

@@ -352,6 +352,13 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
 - Backdrop `(1,3)` (the superbowl): every item drawn whole with the stage's matrix, its scattering depth by
   `Superbowl_Scale`; without `UseFog` its haze is the stage's range over the scale (`Atmosphere::superbowl_fog`), so
   the backdrop next to the road stays clear.
+- Backdrop depth (ours, 2026-11-16; `draw_scene`, `BACKDROP_NEAR`, `BACKDROP_BEHIND` in `shader.wgsl`): drawn after
+  the opaque stage at its own depth, moved along the eye's ray to at least the game's 315 m and 1.3x its distance
+  (upright faces) or 3x (terrain, or no normal); sky domes stay at depth 0. Before, its faces had no depth (the last
+  drawn won) and the stage covered it at any distance: at 560O 1.4 km the far tree-line strip painted a grey slab over
+  the near one and our 3 km stage's far trees showed through it. 1.3x for all left 560's backdrop terrain over the
+  field and 580's teal valley over the far stage. Shots: Gabiria, Sipirkakim, Luceram lose layered pale bands
+  (RMSE 0.009-0.024), 580 0.007, 27 of 36 under 0.002 (7 byte-identical).
 - Height fog with `Enhance::lighting` (`height_fog.rs`): the mist at half `FogEnd` (`heavyfog`), three quarters
   (`lightfog`) or all of it at the low ground, thinning with height; the sky to 100 km. Fogged at its own distance,
   as the stage (an earlier 3 km floor left 122 Bruchsal's tree lines as ghosts and its flat backdrop a pale slab from
