@@ -136,6 +136,18 @@ fn voices_equal(have: &str, wanted: &str) -> bool {
 }
 
 impl CodriverMods {
+    /// The range set the voice calls distances with: the plugin's `DEFAULT_RANGES` when it offers it (any case),
+    /// else its first.
+    pub fn default_ranges(&self) -> String {
+        let default = rbr_sound::custom_codriver::DEFAULT_RANGES;
+        self.ranges
+            .iter()
+            .find(|r| r.eq_ignore_ascii_case(default))
+            .or(self.ranges.first())
+            .map_or(default, |r| r.as_str())
+            .to_owned()
+    }
+
     /// The plugin of the game folder `root`, or `None` without one.
     pub fn scan(root: &str) -> Option<Self> {
         let dir = codriver::plugin_dir(Path::new(root.trim()))?;
@@ -173,11 +185,11 @@ impl CodriverMods {
 pub const ORIGINAL_VOICE: &str = "1.02";
 
 /// The viewer's co-driver mod arguments without the stage notes: the plugin with the voice, style and range set.
-pub fn codriver_base_args(mods: &CodriverMods, voice: Option<&str>, style: &str, ranges: &str) -> Vec<String> {
+pub fn codriver_base_args(mods: &CodriverMods, voice: Option<&str>, style: &str) -> Vec<String> {
     let Some(voice) = mods.voice(voice) else { return Vec::new() };
     ["--codriver-mod", &mods.dir.display().to_string()]
         .into_iter()
-        .chain(["--codriver-voice", &voice, "--codriver-style", style, "--codriver-ranges", ranges])
+        .chain(["--codriver-voice", &voice, "--codriver-style", style, "--codriver-ranges", &mods.default_ranges()])
         .map(str::to_owned)
         .collect()
 }
@@ -673,11 +685,10 @@ impl Form {
             // catalogue names, so the lookup works without an RSF stage list.
             let names = self.stage_note_names(&stage);
             let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-            let mut args =
-                codriver_base_args(mods, self.codriver_voice.as_deref(), &self.codriver_style, &self.codriver_ranges);
-            // The chosen note set's file for the stage (the local pack's or the RSF install's MyPacenotes).
-            if let Some(file) = self.resolve_notes(&refs).filter(|_| !args.is_empty()) {
-                args.extend(["--pacenotes".into(), file.display().to_string()]);
+            let mut args = codriver_base_args(mods, self.codriver_voice.as_deref(), &self.codriver_style);
+            // The notes picked for the stage (the owned packs' or the RSF install's MyPacenotes).
+            if let Some(pick) = self.resolve_notes(&refs).filter(|_| !args.is_empty()) {
+                args.extend(["--pacenotes".into(), pick.file.display().to_string()]);
             }
             viewer_extra.extend(args);
         }
@@ -1448,7 +1459,7 @@ mod tests {
         std::fs::create_dir_all(&plugin).unwrap();
         std::fs::write(plugin.join("PaceNote.ini"), "[SETTINGS]\nsounds=english/steve\n").unwrap();
         let mods = CodriverMods::scan(&tmp.display().to_string()).unwrap();
-        let args = |voice| codriver_base_args(&mods, voice, "Rbr.ini", "Rbr.ini").join(" ");
+        let args = |voice| codriver_base_args(&mods, voice, "Rbr.ini").join(" ");
         let head = format!("--codriver-mod {} --codriver-voice", mods.dir.display());
         let tail = "--codriver-style Rbr.ini --codriver-ranges Rbr.ini";
         assert_eq!(args(None), format!("{head} english/steve {tail}"));
@@ -1730,17 +1741,14 @@ mod tests {
         let defaults = launch(&mut form);
         assert_eq!(value(&defaults, "--codriver-mod"), Some(mods.dir.display().to_string()));
         assert_eq!(value(&defaults, "--codriver-voice"), Some(voice.clone()));
-        // Unset, the install's largest note set plays (LuppisV3 in an RSF install).
-        let largest = form.rsf_note_sets.first().map(|set| set.name.clone()).unwrap_or_default();
-        let notes = rbr_formats::pacenote::notes::my_pacenotes_dir(&rsf)
-            .and_then(|dir| crate::codriver_packs::find_in_set(&dir, &["Tanner"], &largest));
-        assert_eq!(value(&defaults, "--pacenotes"), notes.map(|p| p.display().to_string()));
+        // The notes are picked by themselves: the set covering the most stages (LuppisV3 in an RSF install).
+        let notes = form.resolve_notes(&["Tanner"]);
+        assert_eq!(value(&defaults, "--pacenotes"), notes.map(|p| p.file.display().to_string()));
         let stepping = defaults[defaults.iter().position(|a| a == "--live").unwrap()..].to_vec();
 
         form.codriver_voice = Some(voice.clone());
         form.codriver_style = "Numeric.ini".into();
-        form.codriver_ranges = "Rbr.ini".into();
-        form.my_pacenotes = false;
+        form.note_sources.clear();
         let custom = launch(&mut form);
         assert_eq!(value(&custom, "--codriver-voice"), Some(voice));
         assert_eq!(value(&custom, "--codriver-style").as_deref(), Some("Numeric.ini"));
@@ -1799,23 +1807,24 @@ mod tests {
             map: Some(54),
             ngp_physics: Some(ngp.to_string_lossy().into_owned()),
             codriver_pack: Some("download".into()),
-            notes_pack: Some("notes-download".into()),
             ..Settings::default()
         };
         // The choices persist: written and read back.
         let text = settings.to_text();
-        assert!(text.contains("codriver_pack = download\nnotes_pack = notes-download\n"), "{text}");
+        assert!(text.contains("codriver_pack = download\n"), "{text}");
         assert_eq!(Settings::parse(&text).codriver_pack.as_deref(), Some("download"));
         let mut form = load(&start, settings).unwrap();
         form.read_only = true;
         assert!(form.codriver_mods.is_some());
+        // Only the owned packs: an installed MyPacenotes would out-cover them (LuppisV3).
+        form.note_sources =
+            form.owned_notes.iter().map(|p| codriver_packs::NoteSource::read(&p.dir, Some(&p.name))).collect();
         let args = launch(&mut form);
         let pack = home.join(codriver_packs::VOICES_DIR).join("download");
         assert_eq!(value(&args, "--codriver-mod"), Some(pack.display().to_string()));
         assert_eq!(value(&args, "--codriver-voice").as_deref(), Some("english/steve"));
-        let notes =
-            codriver_packs::find_in_set(&home.join(codriver_packs::NOTES_DIR).join("notes-download"), &["Tanner"], "");
-        assert_eq!(value(&args, "--pacenotes"), notes.map(|p| p.display().to_string()));
+        let notes = home.join(codriver_packs::NOTES_DIR).join("notes-download/Tanner/tanner.ini");
+        assert_eq!(value(&args, "--pacenotes"), Some(notes.display().to_string()));
         assert!(value(&args, "--pacenotes").is_some());
         let stepping = args[args.iter().position(|a| a == "--live").unwrap()..].to_vec();
         assert!(!stepping.iter().any(|a| a == "--codriver-mod" || a == "--pacenotes"));
@@ -1853,10 +1862,10 @@ mod tests {
         form.normalize_codriver();
         assert_eq!(form.codriver_voice, None);
         assert_eq!(form.codriver_style, "Voice.ini");
-        assert_eq!(form.codriver_ranges, "Voice.ini");
         // The pack without a PaceNote.ini speaks its discovered voice, and the normalized choices save.
         let switched = launch(&mut form);
         assert_eq!(value(&switched, "--codriver-voice").as_deref(), Some("other/ann"));
+        assert_eq!(value(&switched, "--codriver-ranges").as_deref(), Some("Voice.ini"));
         form.read_only = false;
         assert!(form.save());
         let saved = std::fs::read_to_string(home.join(SETTINGS_FILE)).unwrap();

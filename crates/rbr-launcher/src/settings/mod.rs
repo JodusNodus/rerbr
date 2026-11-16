@@ -99,19 +99,13 @@ pub struct Settings {
     pub tyres_volume: Option<f32>,
     /// The co-driver calls the pace notes (`viewer --no-codriver` when off).
     pub codriver: Option<bool>,
-    /// The co-driver mod's voice (`1.02` the original co-driver; none: the plugin's), its call style and range set
-    /// (`viewer --codriver-voice`, `--codriver-style`, `--codriver-ranges`).
+    /// The co-driver mod's voice (`1.02` the original co-driver; none: the plugin's) and its call style
+    /// (`viewer --codriver-voice`, `--codriver-style`). The range set is the plugin's default and the stage notes
+    /// are picked by themselves, so neither is saved.
     pub codriver_voice: Option<String>,
     pub codriver_style: Option<String>,
-    pub codriver_ranges: Option<String>,
-    /// The locally owned voice pack (`codriver_packs::VOICES_DIR`) and stage-note pack
-    /// (`codriver_packs::NOTES_DIR`); none each for the game folder's.
+    /// The locally owned voice pack (`codriver_packs::VOICES_DIR`); none for the game folder's.
     pub codriver_pack: Option<String>,
-    pub notes_pack: Option<String>,
-    /// The note set chosen in it (`codriver_packs::NoteSet`); none for its largest.
-    pub notes_set: Option<String>,
-    /// The stage's NGPCarMenu MyPacenotes notes are called (`viewer --pacenotes`); on when unset.
-    pub my_pacenotes: Option<bool>,
     /// The HUD shown (`viewer --no-hud` when off).
     pub hud: Option<bool>,
     /// The speed in mph (`viewer --mph`), else km/h.
@@ -440,11 +434,7 @@ impl Settings {
             codriver: launcher.on_off("codriver"),
             codriver_voice: launcher.word("codriver_voice"),
             codriver_style: launcher.word("codriver_style"),
-            codriver_ranges: launcher.word("codriver_ranges"),
             codriver_pack: launcher.word("codriver_pack"),
-            notes_pack: launcher.word("notes_pack"),
-            notes_set: launcher.get("notes_set"),
-            my_pacenotes: launcher.on_off("my_pacenotes"),
             hud: launcher.on_off("hud"),
             mph: launcher.get("units").and_then(|v| match v.as_str() {
                 "mph" => Some(true),
@@ -560,11 +550,7 @@ impl Settings {
             ("codriver", on_off_text(self.codriver)),
             ("codriver_voice", self.codriver_voice.clone()),
             ("codriver_style", self.codriver_style.clone()),
-            ("codriver_ranges", self.codriver_ranges.clone()),
             ("codriver_pack", self.codriver_pack.clone()),
-            ("notes_pack", self.notes_pack.clone()),
-            ("notes_set", self.notes_set.clone()),
-            ("my_pacenotes", on_off_text(self.my_pacenotes)),
             ("hud", on_off_text(self.hud)),
             ("units", self.mph.map(|v| if v { "mph" } else { "kmh" }.to_owned())),
             ("fps", on_off_text(self.fps)),
@@ -683,11 +669,7 @@ mod tests {
             codriver: Some(false),
             codriver_voice: Some("Janne Laahanen EnNu A".into()),
             codriver_style: Some("Numeric.ini".into()),
-            codriver_ranges: Some("Rbr.ini".into()),
             codriver_pack: Some("luppis".into()),
-            notes_pack: Some("tanner-notes".into()),
-            notes_set: Some(String::new()),
-            my_pacenotes: Some(false),
             hud: Some(false),
             mph: Some(true),
             fps: Some(true),
@@ -838,13 +820,17 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\neffects_volume = -1\n").effects_volume, None);
         assert_eq!(Settings::parse("[launcher]\ntyres_volume = \n").tyres_volume, None);
         assert!(text.contains("codriver = off\ncodriver_voice = Janne Laahanen EnNu A\ncodriver_style = Numeric.ini\n"));
-        assert!(
-            text.contains("codriver_ranges = Rbr.ini\ncodriver_pack = luppis\nnotes_pack = tanner-notes\n"),
-            "{text}"
+        assert!(text.contains("codriver_style = Numeric.ini\ncodriver_pack = luppis\nhud = off\n"), "{text}");
+        assert_eq!(Settings::parse("[launcher]\ncodriver_voice = \n").codriver_voice, None);
+        // The old notes and range keys are no longer read, and so not written back.
+        let old = Settings::parse(
+            "[launcher]\nnotes_pack = tanner-notes\nnotes_set = LuppisV3\nmy_pacenotes = off\ncodriver_ranges = Rbr.ini\n",
         );
-        assert!(text.contains("my_pacenotes = off\nhud = off\n"), "{text}");
-        let unset = Settings::parse("[launcher]\ncodriver_voice = \nmy_pacenotes = maybe\n");
-        assert_eq!((unset.codriver_voice, unset.my_pacenotes), (None, None));
+        assert_eq!(old, Settings::default());
+        let saved = old.to_text();
+        for key in ["notes_pack", "notes_set", "my_pacenotes", "codriver_ranges"] {
+            assert!(!saved.contains(key), "{key}");
+        }
         assert!(text.contains("hud = off\nunits = mph\nfps = on\npace_stack = 2\nwipers = intermittent\n"));
         assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(text.contains("wipers = intermittent\ndials = off\nhud_hide = progress,car\n"), "{text}");
@@ -964,11 +950,7 @@ mod tests {
                 "codriver = off\n",
                 "codriver_voice = Janne Laahanen EnNu A\n",
                 "codriver_style = Numeric.ini\n",
-                "codriver_ranges = Rbr.ini\n",
                 "codriver_pack = luppis\n",
-                "notes_pack = tanner-notes\n",
-                "notes_set = \n",
-                "my_pacenotes = off\n",
                 "hud = off\n",
                 "units = mph\n",
                 "fps = on\n",
@@ -1198,10 +1180,9 @@ mod tests {
             Settings::parse("[launcher]\nghost = me_54.ghc\n").ghost,
             Some(GhostChoice::File("me_54.ghc".into()))
         );
-        // Empty strings are dropped, but the notes set and the NGP DLL keep an empty choice.
+        // Empty strings are dropped.
         assert_eq!(Settings::parse("[launcher]\ncodriver_voice = \n").codriver_voice, None);
         assert_eq!(Settings::parse("[launcher]\ninstall_folder = \n").install_folder, None);
-        assert_eq!(Settings::parse("[launcher]\nnotes_set = \n").notes_set, Some(String::new()));
         // Empty lists are empty; blanks and words that do not parse are skipped.
         assert_eq!(Settings::parse("[launcher]\nrecent_cars = \n").recent_cars, Vec::<String>::new());
         assert_eq!(

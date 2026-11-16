@@ -515,6 +515,7 @@ impl Form {
             }
             None => {}
         }
+        self.codriver_notes_line(ui);
     }
 
     /// Makes map `index` of the catalog the stage, and the most recent pick.

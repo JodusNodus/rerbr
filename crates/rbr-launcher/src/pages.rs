@@ -383,16 +383,8 @@ impl Form {
         let old_car_picks = self.gearboxes.clone();
         let old_folder = self.install_folder.clone();
         let old_recent = (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone());
-        let old_codriver = (
-            self.codriver,
-            self.codriver_voice.clone(),
-            self.codriver_style.clone(),
-            self.codriver_ranges.clone(),
-            self.codriver_pack.clone(),
-            self.notes_pack.clone(),
-            self.my_pacenotes,
-            self.notes_set.clone(),
-        );
+        let old_codriver =
+            (self.codriver, self.codriver_voice.clone(), self.codriver_style.clone(), self.codriver_pack.clone());
         let old_notes = self.notes_inputs();
         let browsers_open = (self.stage_browser.open, self.car_browser.open, self.circuit_browser.open);
         let old_circuit = (self.circuit.map, self.circuit.laps);
@@ -510,7 +502,7 @@ impl Form {
         if self.readiness() != readiness {
             ctx.request_repaint();
         }
-        if old_codriver.4 != self.codriver_pack {
+        if old_codriver.3 != self.codriver_pack {
             // Another voice pack: its voices, styles and range sets, with the choices aligned to what it
             // offers (before the save below, so the aligned choices persist).
             self.rescan_codrivers();
@@ -559,16 +551,7 @@ impl Form {
             || old_folder != self.install_folder
             || old_recent != (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone())
             || old_codriver
-                != (
-                    self.codriver,
-                    self.codriver_voice.clone(),
-                    self.codriver_style.clone(),
-                    self.codriver_ranges.clone(),
-                    self.codriver_pack.clone(),
-                    self.notes_pack.clone(),
-                    self.my_pacenotes,
-                    self.notes_set.clone(),
-                )
+                != (self.codriver, self.codriver_voice.clone(), self.codriver_style.clone(), self.codriver_pack.clone())
         {
             self.save();
         }

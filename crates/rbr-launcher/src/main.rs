@@ -511,21 +511,17 @@ struct Form {
     codriver_mods: Option<command::CodriverMods>,
     /// The locally owned voice pack (`codriver_packs::VOICES_DIR`), or the game folder's plugin when unset.
     codriver_pack: Option<String>,
-    /// The locally owned stage-note pack (`codriver_packs::NOTES_DIR`), or the game folder's notes when unset.
-    notes_pack: Option<String>,
-    /// The note set chosen in that source (`codriver_packs::NoteSet`); unset or gone: the source's largest.
-    notes_set: Option<String>,
-    /// The game folder's MyPacenotes note sets, re-read by `rescan_codrivers`.
-    rsf_note_sets: Vec<codriver_packs::NoteSet>,
+    /// The note files of every notes source (the owned packs, then the game folder's MyPacenotes), re-read by
+    /// `rescan_codrivers`: the stage's notes are picked among them.
+    note_sources: Vec<codriver_packs::NoteSource>,
     /// Whether the game folder holds a Pacenote plugin (offered as a source); refreshed by the rescans, never drawn.
     rsf_plugin: bool,
     /// The game folder's plugin voices, re-read by `rescan_codrivers`: the Co-driver dropdown lists them beside
     /// the owned packs' (no directory reads while drawing).
     rsf_voices: Vec<String>,
-    /// Whether the active plugin's listed styles (and range sets) actually say different things, re-read by
-    /// `rescan_codrivers`: with one distinct result the row hides (the voice decides the words).
+    /// Whether the active plugin's listed styles actually say different things, re-read by `rescan_codrivers`:
+    /// with one distinct result the row hides (the voice decides the words).
     codriver_styles_differ: bool,
-    codriver_ranges_differ: bool,
     /// What the co-driver says on the cached map; recomputed when the map, the notes sources, the co-driver switch
     /// or voice, or an import changes it, never per draw.
     cached_notes_map: u32,
@@ -539,8 +535,6 @@ struct Form {
     codriver_status: Option<Result<String, String>>,
     codriver_voice: Option<String>,
     codriver_style: String,
-    codriver_ranges: String,
-    my_pacenotes: bool,
     /// The quick race's ghost car.
     ghost: GhostChoice,
     /// The menus' sound, once something has played (`None` without an audio device).
