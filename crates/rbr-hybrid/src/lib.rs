@@ -451,7 +451,7 @@ pub(crate) mod tests {
             ("car_body", 99),
             ("collision", 68),
             ("engine_driveline", 32),
-            ("entities", 108),
+            ("entities", 99),
             ("game_log", 1),
             ("graph", 2),
             ("ngp", 21),

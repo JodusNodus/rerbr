@@ -12,7 +12,7 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::math::vec::clear_vec4;
 use rbr_physics::mem::Mem;
 
-use super::{E90_BUILD, EXCLUSION_TEST};
+use super::EXCLUSION_TEST;
 use crate::collision::E01_VEC4_COPY_FROM;
 use crate::entities::Op;
 use crate::rigid_body::on_solids;
@@ -113,6 +113,7 @@ pub(super) fn dummy_vf11c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// The host calls of `CDummyObject::VfCC`: `FetchX` and the hit handler, each entered at the given stack pointer.
 struct DummyCallsAt<'a> {
     host: &'a dyn Host,
+    mem: Mem,
 }
 
 impl DummyCalls for DummyCallsAt<'_> {
@@ -121,7 +122,7 @@ impl DummyCalls for DummyCallsAt<'_> {
     }
 
     fn group_on_hit(&mut self, sp: u32, group: u32) {
-        self.host.call_at(sp, E90_BUILD, group, &[]);
+        super::e90::build(self.host, &mut self.mem, sp, group);
     }
 }
 
@@ -130,7 +131,7 @@ impl DummyCalls for DummyCallsAt<'_> {
 pub(super) fn dummy_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     let frame = aligned_frame(r.esp).wrapping_sub(0x3c);
-    let mut calls = DummyCallsAt { host: ctx.host };
+    let mut calls = DummyCallsAt { host: ctx.host, mem: ctx.mem.clone() };
     layout::dummy_span_test(&mut ctx.mem, r.ecx, a, b, frame, &mut calls);
     Ok(Return::void(0, 8))
 }

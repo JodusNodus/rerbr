@@ -6,23 +6,45 @@ use rbr_physics::mem::Mem;
 
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-struct E90BuildHost<'a>(&'a dyn Host);
+/// A call the host would make at `sp` (0x...) to a binding of ours, taken as a plain call: the call counted as a run and its
+/// words (the return address and `args`) written at the callee's entry esp, which is returned.
+fn enter(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> u32 {
+    host.ran_direct();
+    let esp = host.call_esp(sp);
+    for (k, w) in std::iter::once(crate::pure::CALL_RET).chain(args.iter().copied()).enumerate() {
+        mem.set_u32(esp + 4 * k as u32, w);
+    }
+    esp
+}
+
+struct E90BuildHost<'a> {
+    host: &'a dyn Host,
+    mem: Mem,
+}
 
 impl rbr_physics::entities::layout::FenceGroupCalls for E90BuildHost<'_> {
     fn allocate(&mut self, sp: u32, size: u32) -> u32 {
-        self.0.call_at(sp, 0x70bec2, 0, &[size]).eax
+        self.host.call_at(sp, 0x70bec2, 0, &[size]).eax
     }
 
+    /// `E90SegPool::Init` (0x601270).
     fn init(&mut self, sp: u32, pool: u32, count: u32, mem: u32) -> u32 {
-        self.0.call_at(sp, 0x601270, pool, &[count, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[count, mem]);
+        layout::init_segment_pool(&mut self.mem, pool, count, mem, esp, &mut E90SegPoolHost(self.host))
     }
 
+    /// `CFenceHandler::BuildPost` (0x602fe0).
     fn build_post(&mut self, sp: u32, handler: u32, segment: u32, dummies: u32, mem: u32) -> u32 {
-        self.0.call_at(sp, 0x602fe0, handler, &[segment, dummies, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[segment, dummies, mem]);
+        let mut calls = E90SegmentHost { host: self.host, mem: self.mem.clone() };
+        layout::build_fence_post(&mut self.mem, handler, segment, dummies, mem, esp, &mut calls)
     }
 
+    /// `CFenceHandler::BuildSpan` (0x6029b0).
     fn build_span(&mut self, sp: u32, handler: u32, span: u32, prev: u32, post: u32, dummy: u32, mem: u32) -> u32 {
-        self.0.call_at(sp, 0x6029b0, handler, &[span, prev, post, dummy, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[span, prev, post, dummy, mem]);
+        let mut calls = E90SegmentHost { host: self.host, mem: self.mem.clone() };
+        layout::build_fence_span(&mut self.mem, handler, span, prev, post, dummy, mem, esp, &mut calls)
     }
 }
 
@@ -75,24 +97,31 @@ struct E90SegmentHost<'a> {
 }
 
 impl rbr_physics::entities::layout::FenceSegmentCalls for E90SegmentHost<'_> {
+    /// `E90Seg::Init` (0x605b60).
     fn init(&mut self, sp: u32, segment: u32, dummy: u32) {
-        self.host.call_at(sp, 0x605b60, segment, &[dummy]);
+        let esp = enter(self.host, &mut self.mem, sp, &[dummy]);
+        let mut calls = E90SegInitHost { host: self.host, mem: self.mem.clone() };
+        layout::init_segment(&mut self.mem, segment, dummy, esp, &mut calls);
     }
 
     fn parts_init(&mut self, sp: u32, segment: u32, count: u32, mem: u32) -> u32 {
-        self.host.call_at(sp, 0x6026a0, segment, &[count, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[count, mem]);
+        layout::init_particle_pool(&mut self.mem, segment, count, mem, esp, &mut E90PoolHost(self.host))
     }
 
     fn springs_init(&mut self, sp: u32, segment: u32, count: u32, mem: u32) -> u32 {
-        self.host.call_at(sp, 0x6027a0, segment, &[count, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[count, mem]);
+        layout::init_spring_table(&mut self.mem, segment, count, mem, esp, &mut E90PoolHost(self.host))
     }
 
     fn bends_init(&mut self, sp: u32, segment: u32, count: u32, mem: u32) -> u32 {
-        self.host.call_at(sp, 0x6028b0, segment, &[count, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[count, mem]);
+        layout::init_bend_pool(&mut self.mem, segment, count, mem, esp, &mut E90PoolHost(self.host))
     }
 
     fn pins_init(&mut self, sp: u32, segment: u32, count: u32, mem: u32) -> u32 {
-        self.host.call_at(sp, 0x602930, segment, &[count, mem]).eax
+        let esp = enter(self.host, &mut self.mem, sp, &[count, mem]);
+        layout::init_pin_pool(&mut self.mem, segment, count, mem, esp, &mut E90PoolHost(self.host))
     }
 
     fn add_particle(&mut self, _sp: u32, segment: u32, pos: u32, inv_mass: f32) -> u32 {
@@ -121,36 +150,11 @@ impl rbr_physics::entities::layout::FenceSegmentCalls for E90SegmentHost<'_> {
     }
 }
 
-/// thiscall, no stack arguments: `E90Group::Build` (0x601470). Native allocation keeps the original placement; the
-/// group loop and its segment/dummy links run through the typed layout port.
-pub(super) fn e90_build_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = E90BuildHost(ctx.host);
-    layout::build_fence_group(&mut ctx.mem, r.ecx, r.esp, &mut calls);
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall `(count, block)`: `E90SegPool::Init` (0x601270), its CRT calls at the original's stack positions.
-pub(super) fn e90_seg_pool_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [count, block, ..] = r.stack;
-    let mut calls = E90SegPoolHost(ctx.host);
-    let eax = layout::init_segment_pool(&mut ctx.mem, r.ecx, count, block, r.esp, &mut calls);
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(post, dummy, block)`: `CFenceHandler::BuildPost` (0x602fe0).
-pub(super) fn e90_build_post_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [post, dummy, block, ..] = r.stack;
-    let mut calls = E90SegmentHost { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::build_fence_post(&mut ctx.mem, r.ecx, post, dummy, block, r.esp, &mut calls);
-    Ok(Return::void(eax, 12))
-}
-
-/// thiscall `(span, prev, next, dummy, block)`: `CFenceHandler::BuildSpan` (0x6029b0).
-pub(super) fn e90_build_span_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [span, prev, next, dummy, block, ..] = r.stack;
-    let mut calls = E90SegmentHost { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::build_fence_span(&mut ctx.mem, r.ecx, span, prev, next, dummy, block, r.esp, &mut calls);
-    Ok(Return::void(eax, 20))
+/// `E90Group::Build` (0x601470), called at `sp` as the host would call it. Native allocation keeps the original
+/// placement; the group loop and its segment/dummy links run through the typed layout port.
+pub(super) fn build(host: &dyn Host, mem: &mut Mem, sp: u32, group: u32) {
+    let esp = enter(host, mem, sp, &[]);
+    layout::build_fence_group(mem, group, esp, &mut E90BuildHost { host, mem: mem.clone() });
 }
 
 /// The D3DX normalise is a leaf called with exactly its words: run here as a run counted.
@@ -181,39 +185,4 @@ impl rbr_physics::entities::layout::ClothPoolCalls for E90PoolHost<'_> {
         // `E90_PartCtor` (0x602220) is `mov eax, ecx; ret`, a leaf run without words.
         self.0.ran_direct();
     }
-}
-
-/// thiscall `(dummy)`, `ret 4`: `E90Seg::Init` (0x605b60). The two normalisations go through the D3DX thunk.
-pub(super) fn e90_seg_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = E90SegInitHost { host: ctx.host, mem: ctx.mem.clone() };
-    layout::init_segment(&mut ctx.mem, r.ecx, r.stack[0], r.esp, &mut calls);
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(count, block)`, `ret 8`: `E90PartPool::Init` (0x6026a0). Eax is the cursor.
-pub(super) fn e90_part_pool_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [count, block, ..] = r.stack;
-    let eax = layout::init_particle_pool(&mut ctx.mem, r.ecx, count, block, r.esp, &mut E90PoolHost(ctx.host));
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(count, block)`, `ret 8`: `E90PtrTab::Init` (0x6027a0). Eax is the cursor.
-pub(super) fn e90_ptr_tab_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [count, block, ..] = r.stack;
-    let eax = layout::init_spring_table(&mut ctx.mem, r.ecx, count, block, r.esp, &mut E90PoolHost(ctx.host));
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(count, block)`, `ret 8`: `E90BendPool::Init` (0x6028b0). Eax is the cursor.
-pub(super) fn e90_bend_pool_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [count, block, ..] = r.stack;
-    let eax = layout::init_bend_pool(&mut ctx.mem, r.ecx, count, block, r.esp, &mut E90PoolHost(ctx.host));
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(count, block)`, `ret 8`: `E90PinPool::Init` (0x602930). Eax is the cursor.
-pub(super) fn e90_pin_pool_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [count, block, ..] = r.stack;
-    let eax = layout::init_pin_pool(&mut ctx.mem, r.ecx, count, block, r.esp, &mut E90PoolHost(ctx.host));
-    Ok(Return::void(eax, 8))
 }

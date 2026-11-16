@@ -16,11 +16,7 @@ mod walks;
 use crate::rigid_body::VF81X;
 pub(crate) use collide_init::collide_init;
 use collide_init::collide_init_run;
-use e90::{
-    e90_bend_pool_init_run, e90_build_post_run, e90_build_run, e90_build_span_run, e90_part_pool_init_run,
-    e90_pin_pool_init_run, e90_ptr_tab_init_run, e90_seg_ctor_run, e90_seg_dtor_run, e90_seg_init_run,
-    e90_seg_pool_init_run,
-};
+use e90::{e90_seg_ctor_run, e90_seg_dtor_run};
 use entity_slots::{
     clear_acc_run, dummy_present, dummy_vf11c, dummy_vf_cc, e43_vf_d4, entity_vf140, entity_vf80_run, entity_vf9c_run,
     entity_vf_cc, entity_vf_d0, entity_vf_e8, entity_vf_f0, entity_vfa0_run, entity_vfb0_run, exclusion_test_run,
@@ -120,10 +116,6 @@ pub const SIM_FD00: u32 = 0x51fd00;
 pub const SIM_DA60: u32 = 0x51da60;
 pub const CLEAR_ACC: u32 = 0x529e60;
 pub const INIT_BD0: u32 = 0x519bd0;
-pub const E90_BUILD: u32 = 0x601470;
-pub const E90_SEG_POOL_INIT: u32 = 0x601270;
-pub const E90_BUILD_SPAN: u32 = 0x6029b0;
-pub const E90_BUILD_POST: u32 = 0x602fe0;
 pub const REMOVE_EXCLUSION: u32 = 0x51a060;
 pub const SET_650: u32 = 0x51da50;
 pub(crate) const BODY_COMPOSE: u32 = 0x4e6a30;
@@ -138,7 +130,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("entities", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 108] = [
+pub static BINDINGS: [Binding; 99] = [
     bind(VF58, "CEntity::E43Vf58", vf58),
     bind(VF5C, "CEntity::E43Vf5C", vf5c),
     bind(ENTITY_VF80, "CEntity::E43Vf80", entity_vf80_run),
@@ -222,15 +214,6 @@ pub static BINDINGS: [Binding; 108] = [
     bind(0x522100, "CMountedRigidBody::StepBig", step_big_run),
     bind(CLEAR_ACC, "CSolid::E43ClearAcc (ours)", clear_acc_run),
     bind(INIT_BD0, "CEntity::E43_InitBD0", init_bd0_run),
-    bind(E90_BUILD, "E90Group::Build", e90_build_run),
-    bind(E90_SEG_POOL_INIT, "E90SegPool::Init", e90_seg_pool_init_run),
-    bind(E90_BUILD_SPAN, "CFenceHandler::BuildSpan", e90_build_span_run),
-    bind(E90_BUILD_POST, "CFenceHandler::BuildPost", e90_build_post_run),
-    bind(0x605b60, "E90Seg::Init", e90_seg_init_run),
-    bind(0x6026a0, "E90PartPool::Init", e90_part_pool_init_run),
-    bind(0x6027a0, "E90PtrTab::Init", e90_ptr_tab_init_run),
-    bind(0x6028b0, "E90BendPool::Init", e90_bend_pool_init_run),
-    bind(0x602930, "E90PinPool::Init", e90_pin_pool_init_run),
     bind(REMOVE_EXCLUSION, "CEntity::E43_ExclA060", remove_exclusion_run),
     bind(SIM_EFE0, "CHingedRigidBody::SimEFE0", sim_efe0_run),
     bind(SET_650, "CHingedRigidBody::Set650", set_650_run),
