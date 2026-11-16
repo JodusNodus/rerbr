@@ -144,7 +144,7 @@ pub struct Stage {
 }
 
 /// The extensions a stage variant must have.
-const REQUIRED: [&str; 6] = ["lbs", "col", "trk", "dls", "mat", "ini"];
+pub const REQUIRED: [&str; 6] = ["lbs", "col", "trk", "dls", "mat", "ini"];
 
 impl Stage {
     /// Reads stage folder `folder` (its `Tracks<id>.ini`), with RSF's stage list `list` (by id) when there is one.
@@ -425,17 +425,25 @@ pub fn open(folder: &Path) -> Result<Stage, String> {
 /// Every stage folder under `<root>/Maps` (symlinked ones too), sorted by id: the ones that do not read at all as
 /// `Err` with the folder.
 pub fn scan(root: &Path) -> Vec<Result<Stage, (PathBuf, String)>> {
-    let list = stage_list(root);
-    let Some(maps) = stage_files::in_dir(root, "Maps") else { return Vec::new() };
+    match stage_files::in_dir(root, "Maps") {
+        Some(maps) => scan_maps(&maps, &stage_list(root)),
+        None => Vec::new(),
+    }
+}
+
+/// Every stage folder of the plain maps folder `maps` (hidden ones left out), as [`scan`], with RSF's stage list
+/// `list`: the folder of a game install's `Maps` or the player's own (`<player>/maps`, the launcher's classic stages).
+pub fn scan_maps(maps: &Path, list: &HashMap<u32, ListEntry>) -> Vec<Result<Stage, (PathBuf, String)>> {
     let mut folders: Vec<PathBuf> = std::fs::read_dir(maps)
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
+        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
         .map(|e| e.path())
         .filter(|p| p.is_dir())
         .collect();
     folders.sort();
-    let mut stages: Vec<_> = folders.into_iter().map(|f| Stage::open(&f, &list).map_err(|e| (f, e))).collect();
+    let mut stages: Vec<_> = folders.into_iter().map(|f| Stage::open(&f, list).map_err(|e| (f, e))).collect();
     stages.sort_by_key(|s| s.as_ref().map(|s| s.id).unwrap_or(u32::MAX));
     stages
 }
