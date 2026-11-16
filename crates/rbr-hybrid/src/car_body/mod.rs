@@ -14,26 +14,23 @@ mod members;
 mod seed;
 mod step;
 
-use assist::{assist_8df0, lane_test, retire_a, vf158x};
+use assist::{lane_test, retire_a, vf158x};
 use car_calls::{body_compose, compose_body_into_world, load_binary, refresh_edge, to_world, world_compose};
 use damage_ops::{
     add_damage_functor, cap_word, clear_head_gasket, clear_triple, clear_windshield, damage_impact_scale,
-    damage_level_fractions, damage_ops_init_tables, damage_slot1, damage_test, dmg_7b0, dmg_820, dmg_930, dmg_9a0,
-    dmg_aa0, dmg_b20, dmg_bb0, dmg_cc30, dmg_d020, dmg_d300, drain_word, fail_brake_disc, fail_hub, fail_steering_rod,
+    damage_level_fractions, damage_ops_init_tables, damage_slot1, dmg_7b0, dmg_820, dmg_930, dmg_9a0, dmg_aa0, dmg_b20,
+    dmg_bb0, dmg_cc30, dmg_d020, dmg_d300, drain_word, fail_brake_disc, fail_hub, fail_steering_rod,
     fail_suspension_arm, fail_water_pump, gearbox_wear, grow_cooling_wear, grow_intercooler_wear, grow_zone,
     ring_store, set_body_state, zero2f0,
 };
 pub(crate) use members::init_sub_block;
 use members::{
     add_adc, body_to_world_pair, body_vf40x, body_vf80x, car_vf40x, car_vf_d8x, clear480, collide6000, emit_init,
-    flow_m566640, flow_m5666b0, forward_speed, fwd18e20, fwd43c0, fwd6db0, fwd6dd0, get_a48, light_attach,
-    motion_probe, reset_scratch_and_dispatch, set_a1c, set_brake_light, set_neutral_light, sort_key, state_vf44x,
-    subtract_points, to_quat, vf128x, vf24x,
+    forward_speed, fwd18e20, fwd43c0, fwd6db0, fwd6dd0, get_a48, light_attach, reset_scratch_and_dispatch, set_a1c,
+    set_brake_light, set_neutral_light, sort_key, state_vf44x, subtract_points, to_quat, vf128x, vf24x,
 };
-use seed::{append_a980, replay_is_state2, update_a720, update_seed, wire_damage, EMIT_CAR_INIT};
-use step::{
-    apply_forces, check_retire, emit, respawn_car, run_countdown, s184, snapshot, step_car, step_controls, vote_probe,
-};
+use seed::{append_a980, replay_is_state2, update_a720, update_seed, EMIT_CAR_INIT};
+use step::{apply_forces, emit, respawn_car, run_countdown, s184, step_car, step_controls};
 
 /// `CCar::UpdateSeed` (0x4e91f0), the car's control input: thiscall `(payload)`.
 pub(crate) const UPDATE_SEED: u32 = 0x4E91F0;
@@ -76,15 +73,93 @@ pub(crate) fn read_car<T: Value>(host: &dyn Host, mem: &Mem, car: u32, slot: Slo
     host.typed().car.own.read(car, slot).unwrap_or_else(|| T::load(mem, car + slot.at))
 }
 
+/// What a direct call of a car-body binding's code does as the host's call does: the call's words written at its
+/// entry `esp` (`sp`, or the host's placement for 0: [`Host::call_esp`]) and the run counted ([`Host::ran_direct`]).
+/// Returns that `esp`.
+fn enter(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> u32 {
+    let esp = host.call_esp(sp);
+    for (k, word) in std::iter::once(crate::pure::CALL_RET).chain(args.iter().copied()).enumerate() {
+        mem.set_u32(esp + 4 * k as u32, word);
+    }
+    host.ran_direct();
+    esp
+}
+
+/// [`Host`] seen from a callee run directly ([`enter`]) at `esp`: its calls placed by the host (`sp` 0) land below its
+/// frame as they would from a frame of its own.
+struct Frame<'a> {
+    host: &'a dyn Host,
+    below: u32,
+}
+
+impl<'a> Frame<'a> {
+    fn new(host: &'a dyn Host, esp: u32) -> Self {
+        Frame { host, below: (esp - 0x1000) & !0xf }
+    }
+
+    fn at(&self, sp: u32) -> u32 {
+        if sp == 0 {
+            self.below
+        } else {
+            sp
+        }
+    }
+}
+
+impl Host for Frame<'_> {
+    fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> crate::Called {
+        self.host.call_at(self.at(sp), addr, ecx, args)
+    }
+
+    fn entered(&self) -> u64 {
+        self.host.entered()
+    }
+
+    fn ran_direct(&self) {
+        self.host.ran_direct();
+    }
+
+    fn tyre_stepped(&self, scratch: u32, dt: f32) {
+        self.host.tyre_stepped(scratch, dt);
+    }
+
+    fn query_counter(&self, out: u32) -> u32 {
+        self.host.query_counter(out)
+    }
+
+    fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> crate::Called {
+        self.host.call_direct(self.at(sp), addr, ecx, args)
+    }
+
+    fn call_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<crate::Called> {
+        self.host.call_in_place(self.at(sp), addr, ecx, args)
+    }
+
+    fn call_esp(&self, sp: u32) -> u32 {
+        self.host.call_esp(self.at(sp))
+    }
+
+    fn with_image(&self, run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
+        self.host.with_image(run)
+    }
+
+    fn emit_damper(&self, strut: u32, signal: rbr_physics::spring_damper::DamperSignal) {
+        self.host.emit_damper(strut, signal);
+    }
+
+    fn typed(&self) -> std::cell::Ref<'_, rbr_physics::store::typed::Typed> {
+        self.host.typed()
+    }
+}
+
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("car_body", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 99] = [
+pub static BINDINGS: [Binding; 90] = [
     bind(0x4e58f0, "CCar::Clear480", clear480),
     bind(0x4e6000, "CCar::Collide6000", collide6000),
     bind(0x4e6dd0, "CCar::Vf98x", run_countdown),
-    bind(0x4e54a0, "CCar::Sampler54A0", vote_probe),
     bind(0x4e5270, "CCar::S184", s184),
     bind(0x4e9660, "CCar::Vf180", respawn_car),
     bind(0x4e8830, "CSigRespawn::Emit", emit::<0x738778>),
@@ -96,8 +171,6 @@ pub static BINDINGS: [Binding; 99] = [
     bind(0x4e6620, "CCar::Fwd43C0", fwd43c0),
     bind(0x4e67f0, "CCar::Get30", sort_key),
     bind(0x4e6770, "CCar::Get15F8", forward_speed),
-    bind(0x5666b0, "E60Flow::M5666b0", flow_m5666b0),
-    bind(0x566640, "E60Flow::M566640", flow_m566640),
     bind(0x4e6650, "CCar::Fwd18E20", fwd18e20),
     bind(0x4e7fb0, "CCar::Vf40x", car_vf40x),
     bind(0x4eb7b0, "CCarBody::Vf80x", body_vf80x),
@@ -117,7 +190,6 @@ pub static BINDINGS: [Binding; 99] = [
     bind(0x4e6a30, "CCar::BodyCompose", body_compose),
     bind(0x4e8130, "CCar::Xform8130", compose_body_into_world),
     bind(0x4e72d0, "CCar::RefreshEdge", refresh_edge),
-    bind(0x4e7730, "CCar::MotionProbe", motion_probe),
     bind(0x4e7f90, "CCar::Vf54x", reset_scratch_and_dispatch),
     bind(0x4e8b30, "CSigCarPosition emit", emit::<0x738950>),
     bind(0x4e88f0, "CSigCarStandStill emit", emit::<0x7387e8>),
@@ -125,20 +197,16 @@ pub static BINDINGS: [Binding; 99] = [
     bind(0x4e9020, "CCar::Vf64x", apply_forces),
     bind(0x4ea300, "CCar::Vf6cx", step_car),
     bind(0x4e9930, "CCar::StepEngine", step_controls),
-    bind(0x4e9af0, "CCar::Update9AF0", check_retire),
     bind(0x4ea980, "CCar::AppendA980", append_a980),
     bind(0x4ea720, "CCar::UpdateA720", update_a720),
-    bind(0x4e9c70, "CCar::UpdateMrr", wire_damage),
     bind(0x4e91f0, "CCar::UpdateSeed", update_seed),
     bind(0x4e7910, "CCar::Test7910", lane_test),
-    bind(0x4e8df0, "CCar::Assist8DF0", assist_8df0),
     bind(0x4e5ee0, "CCar::Vf158x", vf158x),
     bind(0x4e8fa0, "E34_RetireA", retire_a),
     bind(0x4e8770, "CSigRetireCar emit", emit::<0x738708>),
     bind(0x4e89b0, "CSigOutsideAssistance emit", emit::<0x738860>),
     bind(0x4e8a70, "CSigCarProblem emit", emit::<0x7388e0>),
     bind(0x499900, "E19IsState2", replay_is_state2),
-    bind(0x4ec0d0, "CCarDamageHandler::Test3B20", damage_test),
     bind(0x4ec140, "CCarDamageHandler::ImpactScale", damage_impact_scale),
     bind(0x4f12a0, "E36DamageOps::Slot1", damage_slot1),
     bind(0x4ef5f0, "E36DamageOps::RingStore", ring_store),
@@ -178,6 +246,5 @@ pub static BINDINGS: [Binding; 99] = [
     bind(EMIT_CAR_INIT, "CMultiSignal1<CSigMrRCarInit>::Emit", emit_init::<EMIT_CAR_INIT>),
     bind(0x4f1e00, "CCarLightSystem::Attach", light_attach),
     bind(0x4e69c0, "CCar::BodyToWorldPair", body_to_world_pair),
-    bind(0x4e9360, "CCar::Snap9360", snapshot),
     bind(0x4e85b0, "CSigCarStateAnimatedReplay emit", emit::<0x7385f8>),
 ];

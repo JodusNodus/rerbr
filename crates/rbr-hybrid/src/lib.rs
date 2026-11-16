@@ -448,7 +448,7 @@ pub(crate) mod tests {
             *counts.entry(binding.subsystem).or_insert(0) += 1;
         }
         let expected = [
-            ("car_body", 99),
+            ("car_body", 90),
             ("collision", 63),
             ("engine_driveline", 32),
             ("entities", 89),
