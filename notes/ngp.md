@@ -69,7 +69,7 @@ refused (`validate`). RSF's 7.5.779 and later releases are checked, then added, 
 One behaviour (NGP's): patched ports hold only the NGP arm with NGP state required; unchanged ports keep
 their 1.02 vectors at `Precision::Pc24`; NGP ports are SSE, exe ports x87 (`tests/ngp_*.rs`). NGP-only bindings
 decline on 1.02 snapshots (`ngp::only()`; vcu-cov.snap-2000 and vcu-arctic-snow.snap-4000 identical with those
-declined). NGP base from the `CCar::CDef` key dict (`Options.ngp_base`, `rust_step.py`; `rbr-hybrid/src/ngp.rs`).
+declined). NGP base from the `CCar::CDef` key dict (`Options.ngp_base`; `rbr-hybrid/src/ngp.rs`).
 
 ## Stepping
 

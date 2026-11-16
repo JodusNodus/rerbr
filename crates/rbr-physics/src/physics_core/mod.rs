@@ -1,8 +1,7 @@
 //! The physics core: the arithmetic of the step (vectors, matrices, force accumulation, the mounted body's motion, the
 //! detectors' gates and the contact loop's step fraction, the passenger's springs, the clock's pacing) and the rules
 //! of the signal dispatch. `layout` holds everything that touches the game's memory and the calls into the original:
-//! the object images, the constructors, the detector and contact walks and their hosts. Each port is checked against
-//! the original's own calls (`harness/vcu_vectors.py --set physics_core`, `tests/physics_core_vectors.rs`).
+//! the object images, the constructors, the detector and contact walks and their hosts.
 
 pub mod accumulate;
 pub mod contact;

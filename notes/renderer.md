@@ -687,8 +687,7 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   kind flag when its table fires (rbr-recomp `RBR_E35_DamageB.cpp`, `RBR_E36_CarLight.h`, `car-lights.md`). The master
   word (`+0xdc` = handler `+0x3c00`) falls in `EngineGate` 0x4ef680 and comes back in `CElectricalDamage::Vf04`
   (the service repair); no repair restores a pair, and `Reset` (`block_reset` 0x4f19b0) sets every word to 1. The six
-  functors, the gate and the reset are ported (`rbr-physics` `car_body`, bound in `bound.csv`) and the hybrid check
-  compares every heap byte, so live play already darkens broken lamps (lit part, beam and light off; `lightglass_*`
+  functors, the gate and the reset are ported (`rbr-physics` `car_body`), checked by the hybrid check (retired since) on every heap byte, so live play already darkens broken lamps (lit part, beam and light off; `lightglass_*`
   with the glass bit; no flares by decision): night Tanner Corolla fly-by and cockpit with a sidecar breaking the
   front-right lamp (the 0xd0d words the standalone sent on tanner-damage) against the whole one.
 - Open: `RenderLights`' second visibility test. Only the fade loop of 0x100158b0 is reconstructed (rbr-recomp

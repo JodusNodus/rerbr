@@ -5,8 +5,7 @@ use super::overlap;
 use super::store::CollisionStore;
 
 /// Calls outside the grid sync. `copy_transform` copies `count` vectors from `edges` to `out` and transforms them
-/// through `worker`; `copy_vec4` copies one vector. Both get the memory the sync works on. Checked by rust_step, and
-/// on the stage's placements (the stage layout's walk).
+/// through `worker`; `copy_vec4` copies one vector. Both get the memory the sync works on.
 pub trait GridSyncHost<S = crate::mem::Mem> {
     fn copy_transform(&mut self, mem: &mut S, a: u32, edges: u32, worker: u32, out: u32, count: u32);
     fn copy_vec4(&mut self, mem: &mut S, dst: u32, src: u32);

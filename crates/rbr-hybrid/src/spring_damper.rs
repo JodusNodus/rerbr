@@ -1,5 +1,5 @@
 //! Bindings of the spring-damper ports (`rbr_physics::spring_damper`, exe 0x52dd70-0x52e8a0). The ABIs are the
-//! original's (`harness/vector_specs/spring_damper.py`): the leaves are cdecl, the `CSpringDamper` methods thiscall.
+//! original's: the leaves are cdecl, the `CSpringDamper` methods thiscall.
 //! eax is the residue the original leaves where it is an argument or `this` field; elsewhere it is a scratch value
 //! no caller reads, given as 0.
 

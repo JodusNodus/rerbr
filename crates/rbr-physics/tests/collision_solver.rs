@@ -1,5 +1,4 @@
-//! The E38 solver passes (0x4fb7f0-0x4fca20) on hand-built solvers, with a host that logs the calls. rust_step checks
-//! the same passes against the original on the drive (`crates/rbr-hybrid/bound.csv`).
+//! The E38 solver passes (0x4fb7f0-0x4fca20) on hand-built solvers, with a host that logs the calls.
 
 mod common;
 

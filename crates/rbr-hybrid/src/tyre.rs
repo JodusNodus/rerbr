@@ -1,5 +1,5 @@
 //! Bindings of the tyre ports (`rbr_physics::tyre`, exe 0x528980 and 0x531ba0-0x535d60). The ABIs are the
-//! original's (`harness/vcu_vectors.py` TYRE specs): the `CScratch` methods are thiscall, `TyreClamp`, `FloorS32`
+//! original's: the `CScratch` methods are thiscall, `TyreClamp`, `FloorS32`
 //! and `TyreFrictionCurve` stdcall, `Locate` cdecl. Their callees are vector and CRT helpers the ports compute
 //! (they write only the caller's stack), so no binding calls the host. eax is given where the original returns
 //! a value; elsewhere it is a scratch value no caller reads, given as 0.

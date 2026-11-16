@@ -1,5 +1,5 @@
-//! Bindings of the collision ports (`rbr_physics::collision`, exe 0x4e0000-0x4fe000). The ABIs are the original's
-//! (`harness/vector_specs/collision.py`).
+//! Bindings of the collision ports (`rbr_physics::collision`, exe 0x4e0000-0x4fe000), with the original's
+//! ABIs.
 
 use rbr_physics::collision::layout::{CollisionImage, CollisionView};
 use rbr_physics::mem::Mem;

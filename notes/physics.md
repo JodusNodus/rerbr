@@ -83,16 +83,8 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   the int64).
 - Constants keep the exe's bit patterns (some pools differ from the literal, e.g. 0x3d4cccd0 for 0.05). A punned
   word (float bits in an int) stays `u32`; build floats with `f32::from_bits`.
-- Default NaN sign: an arm64 host makes `0x7fc00000` where the original wrote `0xffc00000`. Tests accept "NaN for
-  NaN" only at named sites: `tyre_vectors` (`same_words`: solvers, `patch_forces`, `sliding`, `contact_patch`,
-  `solve_forces`, `hold`, `heat_step`, `relax_sector`, `relax`, `friction_curve`, `write_output_block`),
-  `car_body_vectors` (`same_word`: `to_quat`, `steering_ffb`), `entities_solve` (`+0x624`), `entities_slip`,
-  `spring_damper_vectors` (st0 returns, `check_spring_windows`), `engine_driveline_vectors` (`check_st0`,
-  `check_windows_nan`, `sim_e660` for `torque`, which a NaN `load_d` makes NaN: x86_64 writes `0xffc00000` where the
-  record holds `0x7fc00000`), `wheel_vectors` (`edge_force`, sign only). Recorded st0 NaNs carry no sign
-  (`harness/vcu_vectors.py`). `harness/rust_step.py` excludes words NaN in both runs that differ only in bit 31. A
-  new site gets its own entry, never a blanket tolerance. The vector targets pass on arm64 (CI's macOS job) and on
-  x86_64.
+- Default NaN sign: an arm64 host makes `0x7fc00000` where the original wrote `0xffc00000`; a comparison accepts
+  "NaN for NaN" only at a named site, never as a blanket tolerance.
 - Stack residue is behaviour. Callees that leave arguments on the stack feed the next call: the slot-12 identity
   getter (0x519c00, `mov eax, ecx; ret`) keeps its pushes for the following `ComposeA`; `MB560` (0x51b560) and
   `ComposeA` (0x51b4c0) are thiscall `ret 0xc` with three arguments, some callers reuse earlier pushes, and
@@ -235,7 +227,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   Per-step and per-frame readers (`layout::{car_state, accumulate_tyre_terms, drive_gear}`, live `poll`, the wheel force,
   the picture's strut pointers) read `Pure::with_held` or `Pure::unheld_image` and do not lower: drive2 lowers in the
   step 2 -> 0, instructions -5.6 %, 9221 -> 2951 bytes; live one lower per answer (picture, dash, sound stay on `image()`).
-- Per call (the hybrid check's emulator, the vectors, `typed` off) the views run on the image: the struts, VCU, tyres
+- Per call (`typed` off, the twins' other side) the views run on the image: the struts, VCU, tyres
   and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
   field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
   `with_solids` (car, wheel, collision, core); an address a view does not hold (another car, a prop) is the image's.
@@ -369,8 +361,8 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 
 ### Per subsystem
 
-Each passes drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
-hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence" adds the rest.
+Each passed drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
+snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the rest.
 
 | Typed state (storage) | What is typed | On the image, why | Evidence |
 | --- | --- | --- | --- |
@@ -437,7 +429,7 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 - State typed across steps on by default (after the standalone and twin read through the gate); `--twin` in the live
   run; more direct calls (the host calls above).
 - The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
-  game (per call stays for the hybrid check and the vectors).
+  game (the per-call hybrid check and vectors are retired, 2026-11-16: nothing needs the per-call path).
 
 Open decisions, with the defaults taken until decided:
 
@@ -612,11 +604,10 @@ with no declines (253 calls, 2026-10-20).
 ## Coverage gaps
 
 The reference drive (tanner-corolla, damage 1) reaches 792 of 2,651 physics functions; unreached: damage and crash
-paths (wall penetration, retire, detach, `Impulse640`), VCU aids (off on that car; `harness/vcu_vectors.py --fuzz`),
+paths (wall penetration, retire, detach, `Impulse640`), VCU aids (off on that car),
 load and teardown (`tests/load_*.rs`), snow and tarmac data, replay and ghost paths, NTweak menus, about 170
-functions with no callers. Branches no drive reaches get fuzzed direct-call records (`harness/vector_specs/`), else
-the port is `partial` in `ports.csv`. A binding no drive reaches is `identical` in `bound.csv` once its records take
-every conditional jump both ways (`harness/branch_cover.py`), apart from the original's traps: a signal index at or
+functions with no callers. Branches no recorded drive reaches are not checked (the per-call records were retired
+2026-11-16). The original's traps: a signal index at or
 past 0x20 (`CMultiSignal1::Emit`, int3) and a drive-line index at or past the count (`CDriveLine::LerpAt`, int3;
 `Split17C`, `Vf98x`, `Test7910` decline there). Callees a recipe must steer (the vote's miss, slot 36 clearing
 `+0x274` in `Vf180`) return at once without running in a third of the calls (`proofs_respawn.py`).

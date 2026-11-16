@@ -1,5 +1,5 @@
 //! Bindings of the engine and driveline ports (`rbr_physics::engine_driveline`, exe 0x504450-0x50ed70). The ABIs
-//! are the original's (`harness/vector_specs/engine_driveline.py` and `harness/vcu_vectors.py`): the `CDrive`,
+//! are the original's: the `CDrive`,
 //! `CEngine` and `CDriveLine` methods are thiscall, the `E41_*` helpers stdcall. Their vector, CRT and `SetDirty`
 //! callees are computed by the ports; `CCar::Get30`, the gear-change signal and `E12_SampleX` are host calls. eax is
 //! given where the original returns a value; elsewhere it is a scratch value no caller reads, given as 0.

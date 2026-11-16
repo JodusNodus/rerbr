@@ -1,6 +1,5 @@
 //! The entity slots `CEntity::E43VfD4` (0x519ae0) and the dummy's `VfCC` (0x6009b0) and `Vf110` (0x600c80) against a
-//! scripted host: the calls' order, entry stack pointers and arguments, and the stores. The game's own runs are checked
-//! by `harness/rust_step.py` (rbr-hybrid's bound.csv).
+//! scripted host: the calls' order, entry stack pointers and arguments, and the stores.
 
 mod common;
 

@@ -8,7 +8,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 ## Current state (2026-10-19)
 
 - **Physics:** about 930 ported functions (`crates/rbr-physics/ports.csv`), about 660 bindings
-  (`crates/rbr-hybrid/bound.csv`). The pure step runs NGP only (`rbr-standalone --boot` needs `--ngp-physics`; 1.02
+  (`rbr-hybrid`'s `BINDINGS` tables). The per-call hybrid check and the vectors are retired (2026-11-16): the recorded
+  drives are the oracle, and the plan is plain Rust calls on typed state with the image only at the edges. The pure step runs NGP only (`rbr-standalone --boot` needs `--ngp-physics`; 1.02
   snapshots are refused).
 - **Load path:** `rbr-standalone --boot` builds the physics state from the game files, NGP's `physics.rbz` and
   immutable tables read from the player's verified NGP 7.4.778 DLL; no executable code section or patch array is
@@ -20,7 +21,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   RallySimFans hot laps, a fictional AI field, standings, points and a text save ([season.md](season.md)).
 - **Gate matrix:** the NGP gate is drive2 attempt 5 (snow, Ford Focus RS WRC 06, RSF car 55), physics PASS
   84084/84084 (`harness/rsf_compare.py`), and `harness/matrix.py` (NGP playback-made pairs on NGP's four car slots).
-  The 1.02 drives (4 hand-recorded, 35 playback-made) feed only the hybrid check and playback
+  The 1.02 drives (4 hand-recorded, 35 playback-made) feed snapshots and playback
   ([verification.md](verification.md#drives-and-the-gate-matrix)).
 - **NGP 7.4.778:** physics, load path, force feedback and the H-shifter in Rust ([ngp.md](ngp.md)).
 - **Presentation:** renderer, sound, HUD, cameras and launcher in live play; leftovers in the tables below.

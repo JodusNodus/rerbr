@@ -1,6 +1,5 @@
 //! Car body: the car's step, its controls, its roll bars, wall friction, drag, damage and lights, and the typed views
-//! (`layout`) of the car's memory. The original decides the operation order and the NaN behaviour. Each function is
-//! checked against the original's calls (`harness/vector_specs/car_body.py`, `tests/car_body_vectors.rs`).
+//! (`layout`) of the car's memory. The original decides the operation order and the NaN behaviour.
 
 pub mod accessors;
 pub mod assist;

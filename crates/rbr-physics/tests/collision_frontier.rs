@@ -1,6 +1,5 @@
 //! The collision sequences the detectors reach (`E37GridOps::M6610` 0x4f6610, `E34WallVf::VfCC` 0x4e42f0, the solver's
-//! fraction 0x4fc500, `E33Vec4::MinMaxA` 0x4e0ae0) against a scripted host and hand-built memory, every branch. The
-//! game's own runs are checked by `harness/rust_step.py` (rbr-hybrid's bound.csv).
+//! fraction 0x4fc500, `E33Vec4::MinMaxA` 0x4e0ae0) against a scripted host and hand-built memory, every branch.
 
 mod common;
 

@@ -1,6 +1,6 @@
 # Verification
 
-How ReRBR stays bit-exact against the original 1.02 game (the oracle): a plugin records its runs, an x86 emulator replays them, Rust compared per call (vectors), per step (hybrid check), per drive (standalone). Allowed
+How ReRBR stays bit-exact against the original 1.02 game (the oracle): a plugin records its runs, and the Rust step is compared with them per drive (standalone, `scripts/gate.sh`). The per-call hybrid check and the vectors were retired (2026-11-16): a branch no recorded drive reaches is not checked. Allowed
 differences are in `notes/rust-plan.md` ("Done means"); [Masks](#masks) tells where each is applied.
 
 ## Dev setup
@@ -139,8 +139,8 @@ The gate matrix is the NGP drives `rbr-standalone --boot` runs to the end of the
 5 (`rsf/drive2`, snow, Ford Focus RS WRC 06, RSF car 55: 84084/84084) and the NGP playback-made pairs of
 `harness/matrix.py` (NGP's four car slots).
 
-The 1.02 drives below no longer run in `rbr-standalone` (it steps NGP physics only); they feed the hybrid check,
-snapshots and viewer playback. Last standalone results (2026-10-20): tanner-corolla 13000/13000, tanner-damage
+The 1.02 drives below no longer run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and
+viewer playback. Last standalone results (2026-10-20): tanner-corolla 13000/13000, tanner-damage
 12120/12120, tarmac-lancer 20892/20892, arctic-snow 12490/12490.
 
 | Drive | Map, car | Notes |
@@ -151,8 +151,7 @@ snapshots and viewer playback. Last standalone results (2026-10-20): tanner-coro
 | arctic-snow | 13 (`track-13_O`), 6 | snow |
 | `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
 
-Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it; `--hybrid`
-adds the hybrid merge gate below, one process per snapshot, `--typed` the drive's `--twin typed` runs (aids off, on),
+Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it; `--typed` the drive's `--twin typed` runs (aids off, on),
 its `--twin across` and `--twin mem-direct`, the `poison` build's drive, `--perf BASE_BIN` the step's cost):
 
 ```sh
@@ -167,76 +166,9 @@ builds of `rbr-standalone` and `rsf-settings`). Rust binaries run from the local
 `harness/replay.py` runs one `StepForward` of the original from a snapshot in the emulator; usage, stub, table and
 x87-oracle rules are its docstring. `--check` compares the replay with the real call (recording frame plus after-dump).
 
-`harness/live.py` (replay stepped live, FRM1 per control payload) is harness-only: the viewer drives
-`rbr-standalone --live` alone.
-
 ```sh
 python3 -m venv .venv && .venv/bin/pip install unicorn numpy
 .venv/bin/python -I harness/replay.py snap-572.bin --check snap-572-after.bin <name>.bin
-```
-
-## Hybrid check
-
-`harness/rust_step.py` is the main per-step check: run A is the original in the emulator; run B stops at every entry
-`crates/rbr-hybrid` binds (`bound.csv`) and runs the Rust port on the emulator's memory. Mechanics (declining
-bindings, the two stack fills, `classify`'s exclusion rules) are its docstring; allowed stale-stack words are
-[Masks](#masks).
-
-`--recording` also compares both runs with the drive's frame. `--steps N` chains N steps from each snapshot (Emit with
-the recording's control, then `StepForward(1)`). `--each` and `--only ADDR` only locate a divergence.
-
-Run A is cached in `RBR_STEP_CACHE` (default `cache/run-a/` next to the checkout; deletable; `--no-cache` skips it). A
-missing fsin/fcos is modelled and the step reported unverified; on x86_64 new results are measured locally into the cache.
-The local CPU must give the reference CPU's x87 results: an i9-13900HX matches all 141,591 cached results of the
-published cache (test-data v3, 2026-11-01).
-
-Merge gate: all bindings over the nine tanner-corolla snapshots and snapH.snap-1295, and over tanner-damage's contact
-snapshots, 30 steps, every "run B vs run A" line equal (`*[0-9].bin` leaves out the `-after` dumps). These are 1.02
-snapshots, so the ports holding NGP's behaviour decline and the original runs them (20 on vcu-cov.snap-2000, among
-them `StepForward`, `CSpringDamper::Step` and the tyre's): those are checked by the standalone drive alone (a
-damper-velocity change: standalone 7/84084, hybrid 13 of 13 equal; `heat_flow`, bound on both: 0/84084 and 0 of 13):
-
-```sh
-cargo build --release -p rbr-hybrid
-.venv/bin/python -I -B harness/rust_step.py $RBR_SNAPS/vcu-cov.snap-*[0-9].bin $RBR_SNAPS/snapH.snap-1295.bin \
-    --recording $RBR_RECORDINGS/drive-tanner-corolla.bin --steps 30
-.venv/bin/python -I -B harness/rust_step.py $RBR_SNAPS/vcu-tanner-damage.snap-{11820,11827,12000}.bin \
-    --recording $RBR_RECORDINGS/drive-tanner-damage.bin --steps 30
-```
-
-`harness/long_run.py` runs the same rules over a drive's whole chain, one segment per snapshot to the next. It reports
-the first divergence per segment and ends with the worklist. Drives: tanner-corolla, tanner-damage, tarmac-lancer,
-arctic-snow.
-
-```sh
-.venv/bin/python -I -B harness/long_run.py --drive tanner-corolla -j 2 --out /tmp/long-run.md
-.venv/bin/python -I -B harness/long_run.py --drive tanner-corolla --from 2000 --to 2400
-```
-
-## Vectors
-
-Per-call records of the original, replayed by the `crates/rbr-physics` tests. Each holds the arguments, the bytes of
-each window before and after, the return (eax and st0), inner calls to `external` entries, and the branch taken. They
-cover branches no drive reaches, not the main check.
-
-| Source | Use |
-| --- | --- |
-| `harness/vcu_vectors.py SNAPSHOT OUT --set SET [--fuzz SEED]` | every call of the set's functions in one step; `--fuzz` draws inputs, restored on return; `--vcu-on`, `--packets`, `--copy`, `--basic`, `--slip` for VCU paths the drive misses |
-| `harness/direct_calls.py SNAPSHOT OUT --set SET [--addr A] [--count N] [--seed S]` | direct calls from a function's entry, inputs built by the spec's `direct_fuzz` recipe |
-| `harness/branch_cover.py FUNCS SNAPSHOT --set SET --addr A ...` | each conditional jump's two ways over the same direct calls (no records): the check a function's records cover its branches |
-| `harness/record_entities_b4.py` | the `entities_b4` set on load-time dumps |
-| `harness/subtree_tape.py` | struts' calls over N steps (`tests/pure_struts.rs`) |
-| `harness/load_*_refs.py`, `lsp_tokens.py`, `ngp_data_refs.py` | load-time objects cut from snap-0 or entry dumps, committed under `crates/rbr-physics/tests/vectors/` |
-
-Specs per set are in `harness/vector_specs/` ([its README](../harness/vector_specs/README.md)).
-
-Records are not committed. They live in the vector store `RBR_VECTOR_STORE` (maintainers keep one shared store;
-`scripts/fetch-test-data.sh` fetches its published copy, without `dumps/`), one subdirectory per module, named after
-the test's `RBR_<MODULE>_VECTORS` variable (`RBR_ENT_VECTORS` is `entities`).
-
-```sh
-.venv/bin/python -I harness/vcu_vectors.py snap-572.bin out.txt --set vcu --fuzz 1
-scripts/rust-vectors.sh car_body tyre     # named modules; no argument runs every vector target
 ```
 
 ## Masks
@@ -249,15 +181,12 @@ Allowed differences, and where each is applied:
 | Lane 3 of vectors filled from stale stack: car+0x8ec … +0x150c, car+0x1cc; wheel+0x99c, +0x9bc, +0x9dc | `diverge.py` `static_mask` (the C++ gate's mask) |
 | Words ever NaN, inf or \|x\| > 1e20 in the reference | `diverge.py` `static_mask` |
 | Words differing between two reference runs and the count runs (about 170, heap shifts) | `REF.mask`, `diverge.py --mask` |
-| Proven stale-stack words (car+0x161c, 0x22c, 0x32c, 0x38c, 0x15dc, …; wheel+0x73c) | `rust_step.py` `CAR_STATIC`/`STACK_GARBAGE` = `rbr-hybrid/src/pure/compare.rs` `STALE_CAR`/`STALE_WHEEL` |
-| Other stale-stack bytes: two more run As with dead stack read as 00 and 7f; a byte excluded only if its word differed between them at every step it differed in run B | `rust_step.py` `classify`; outside lane 3 it prints a WARNING |
+| Proven stale-stack words (car+0x161c, 0x22c, 0x32c, 0x38c, 0x15dc, …; wheel+0x73c) | `rbr-hybrid/src/pure/compare.rs` `STALE_CAR`/`STALE_WHEEL` |
 | wheel+0x9ac (stack garbage the emulator cannot reproduce) | `RECORDING_GARBAGE`, recording compare only |
 | Frame-loop words car+0x660, +0x670, +0x814 (`CCar::Vf28x` 0x4ea020, once a rendered frame) | `RECORDING_GARBAGE` = `compare.rs` `FRAME_LOOP_CAR`, recording compare only |
 | Heap pointers | counted, not compared |
-| Sign of a default NaN | `rust_step.py` `nan_sign_only` |
 
-A word joins the stale lists only with run-A evidence: the original differs from its own recording, or its stale-stack
-runs differ. Keep the two lists equal.
+A word joins the stale lists only with evidence that the original differs from its own recording.
 
 ## Comparing RSF sessions
 
@@ -332,9 +261,9 @@ physics, 2M-step limit, 443 stage folders of the RSF install):
 
 ## Rust checks
 
-`scripts/rust-check.sh` runs fmt, clippy, tests and vector targets for crates changed since the merge base with
+`scripts/rust-check.sh` runs fmt, clippy and tests for crates changed since the merge base with
 `integration/handoff` (or `main`), plus dependents. It must print `rust-check: PASS` with `RBR_DATA`, `RBR_PATCH` and
-`RBR_RECORDINGS` set. `RUST_CHECK_ALL=1` checks everything; `RUST_CHECK_VECTORS` picks vector modules (`none` skips).
+`RBR_RECORDINGS` set. `RUST_CHECK_ALL=1` checks everything.
 
 ## Measuring cost
 
