@@ -163,6 +163,36 @@ fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<V
     Ok(entries)
 }
 
+/// A stage folder of an RSF install (a dropped folder) gets what RSF's stage list (`rsfdata/cache/stages_data.json`)
+/// says about it and its `Tracks<id>.ini` does not: the surface, length, author and country.
+fn fill_from_rsf_list(src: &dyn Source, stage: &find::Found, entries: &mut Vec<(String, String)>) {
+    let dir = stage.dir.iter().fold(src.path().to_path_buf(), |p, part| p.join(part));
+    let Some(root) = src.is_dir().then(|| rsf::root_of(&dir)).flatten() else { return };
+    let list = rsf::stage_list(root);
+    let Some(row) = list.get(&stage.number) else { return };
+    let surface = row.get("surface_id").and_then(|s| match s.as_str() {
+        "1" => Some("0"),
+        "2" => Some("1"),
+        "3" => Some("2"),
+        _ => None,
+    });
+    let km = row.get("length").and_then(|m| m.parse::<f32>().ok()).map(|m| (m / 1000.0).to_string());
+    let from = [
+        ("StageName", row.get("name").cloned()),
+        ("Surface", surface.map(str::to_owned)),
+        ("Length", km),
+        ("Author", row.get("author").cloned()),
+        ("CountryCode", row.get("short_country").cloned()),
+    ];
+    for (key, value) in from {
+        let missing = !entries.iter().any(|(k, v)| k.eq_ignore_ascii_case(key) && !write::unquoted(v).is_empty());
+        if let (true, Some(value)) = (missing, value.filter(|v| !v.is_empty())) {
+            entries.retain(|(k, _)| !k.eq_ignore_ascii_case(key));
+            entries.push((key.to_owned(), value));
+        }
+    }
+}
+
 /// Every weather section of the source's `TrackSettings*.ini` files and INI writes.
 fn settings_sections(src: &dyn Source, texts: &Texts) -> Vec<Section> {
     let named = |path: &[String]| {
@@ -235,12 +265,12 @@ fn signature_of(dir: &Path) -> Option<Signature> {
     Some(signature(&name, files.into_iter()))
 }
 
-/// The first problem of the files `files` (a stage's, with their paths in the stage folder): a required file missing
-/// for one of the variants.
+/// The variants of the files `files` (a stage's, with their paths in the stage folder), those with a `.lbs` as
+/// `rsf::Stage` has them (RSF stage 368 has a stray `track-368_M.ini`), or the first required file one lacks.
 fn missing(files: &[(&Entry, Vec<String>)], number: u32) -> Result<Vec<char>, Fail> {
     let mut letters: Vec<char> = files
         .iter()
-        .filter(|(_, rel)| rel.len() == 1)
+        .filter(|(_, rel)| rel.len() == 1 && rel[0].to_ascii_lowercase().ends_with(".lbs"))
         .filter_map(|(_, rel)| find::variant_file(&rel[0]).map(|(_, l)| l))
         .collect();
     letters.sort_unstable();
@@ -328,7 +358,8 @@ fn import(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx) -> Re
 /// [`import`], with `label` the stage's name once it is known.
 fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label: &mut String) -> Result<Added, Fail> {
     let (entries, old) = (src.entries(), stage.number);
-    let own = map_entries(src, stage, texts)?;
+    let mut own = map_entries(src, stage, texts)?;
+    fill_from_rsf_list(src, stage, &mut own);
     let get = |key: &str| own.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| write::unquoted(v));
     let fallback = || match stage.dir.last().filter(|_| stage.rsf).and_then(|d| d.split_once('-')) {
         Some((_, name)) => name.to_owned(),
@@ -530,7 +561,7 @@ pub(crate) mod tests {
         stage
     }
 
-    fn add(home: &Path, src: Box<dyn Source>, known: &Known) -> Vec<Outcome> {
+    pub fn add(home: &Path, src: Box<dyn Source>, known: &Known) -> Vec<Outcome> {
         let item = Item { src: &*src, found: Found::new(LABEL) };
         let report = &|_: &crate::job::Progress| {};
         let cancel = AtomicBool::new(false);
@@ -788,5 +819,82 @@ pub(crate) mod tests {
         assert_eq!(names(&dir.join("home/maps")).len(), 1);
         assert!(names(&dir.join("home/maps"))[0].starts_with("10000-"));
         fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod real {
+    use std::collections::HashMap;
+
+    use super::super::Known;
+    use super::tests::*;
+    use super::*;
+    use crate::content::source;
+
+    fn folder_size(dir: &Path) -> u64 {
+        let list = fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok);
+        list.map(|e| e.metadata().map_or(0, |m| m.len())).sum()
+    }
+
+    /// Every unencrypted stage folder of the RSF install `RBR_RSF` (or `RBR_CLASSIC_STAGES` of them, evenly spread, of
+    /// under 600 MB each; `all` takes every one) added with a number of its own forced, into
+    /// `RBR_CLASSIC_OUT/maps` (kept for `scripts/stage-sweep.sh`) or a temporary player folder, and listed in the
+    /// catalog with the variants, weathers and surface it had.
+    #[test]
+    fn rsf_stage_folders_are_added_under_new_numbers_and_listed() {
+        let Some(root) = std::env::var_os("RBR_RSF").map(PathBuf::from) else {
+            eprintln!("skipping: RBR_RSF not set");
+            return;
+        };
+        let all = std::env::var("RBR_CLASSIC_STAGES").is_ok_and(|v| v == "all");
+        let count: usize = std::env::var("RBR_CLASSIC_STAGES").ok().and_then(|v| v.parse().ok()).unwrap_or(6);
+        let list: Vec<_> =
+            rsf::scan(&root).into_iter().filter_map(Result::ok).filter(|s| s.problem.is_none()).collect();
+        let small: Vec<_> = list.iter().filter(|s| all || folder_size(&s.folder) < 600 << 20).collect();
+        assert!(!small.is_empty(), "no stage folder to add in {}", root.display());
+        let step = (small.len() / count.max(1)).max(1);
+        let picked: Vec<_> = small.iter().step_by(step).take(if all { usize::MAX } else { count }).collect();
+        let (out, keep) = match std::env::var_os("RBR_CLASSIC_OUT") {
+            Some(out) => (PathBuf::from(out), true),
+            None => (crate::test_dir("classic-real"), false),
+        };
+        let _ = fs::remove_dir_all(out.join(rbr_btb::player::MAPS));
+        let mut expected: HashMap<u32, &rsf::Stage> = HashMap::new();
+        for stage in &picked {
+            let known = Known { numbers: vec![stage.id], weather: None };
+            let done = add(&out, source::open(&stage.folder).unwrap(), &known);
+            assert!(done.len() == 1 && done[0].ok(), "{}: {done:?}", stage.folder.display());
+            let Some(Goto::Stage(folder)) = &done[0].goto else { panic!("{done:?}") };
+            let number: u32 = folder.split('-').next().unwrap().parse().unwrap();
+            assert!(number >= write::FIRST && expected.insert(number, stage).is_none(), "{folder}");
+        }
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog.add_maps_folder(&out.join(rbr_btb::player::MAPS));
+        assert_eq!(catalog.maps.len(), picked.len());
+        for map in &catalog.maps {
+            let crate::catalog::Origin::Community(added) = &map.origin else { panic!("{:?}", map.number) };
+            let was = expected[&map.number];
+            assert_eq!(added.problem, None, "{}", added.folder.display());
+            assert_eq!(
+                (
+                    &added.variants,
+                    added.weathers.len(),
+                    added.surface,
+                    &added.name,
+                    &added.author,
+                    added.length,
+                    &added.country
+                ),
+                (&was.variants, was.weathers.len(), was.surface, &was.name, &was.author, was.length, &was.country),
+                "{}",
+                was.folder.display()
+            );
+            assert_eq!(added.texture_map().unwrap().pairs().count(), was.texture_map().unwrap().pairs().count());
+            assert_eq!(map.stages.len(), was.variants.len());
+        }
+        eprintln!("added {} stage folders into {}", picked.len(), out.display());
+        if !keep {
+            fs::remove_dir_all(&out).unwrap();
+        }
     }
 }
