@@ -1,5 +1,5 @@
 //! The calls the wheel makes outside itself, one method each (addresses in the docs), and the forwards that only make
-//! them. The host answers with its own memory: the ports, the original's code in the emulator, or a record in the tests.
+//! them. The host answers with its own memory: the ports, or a record in the tests.
 
 use crate::math::vec::Vec4;
 use crate::ntweak;

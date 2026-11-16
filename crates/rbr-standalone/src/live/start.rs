@@ -1,6 +1,6 @@
-//! Starting a live run: from a snapshot ([`Live::new`]) or the boot image ([`Live::boot`]),
+//! Starting a live run: from the boot image ([`Live::boot`]),
 //! the load settle, and restarting it.
-//! Live mode (`rbr-standalone --live --snapshot Y --stage NAME`): the viewer's stepping
+//! Live mode (`rbr-standalone --live --boot --stage NAME`): the viewer's stepping
 //! process, speaking `harness/live.py`'s protocol (`rbr-render`'s `live`). Per 32-byte control payload on stdin it
 //! writes one FRM1 frame, a 32-byte HUD2 record (`rbr_recording::hud`: live.py's HUD1 and the race clock) and a DMG1
 //! record (`rbr_recording::damage`: the damage zones and the last damage event) on stdout, then the tagged records
@@ -14,19 +14,17 @@
 //! menu's (MNU1, `rbr_recording::menu`), what NGP's FMOD block takes from the car (FMB1,
 //! `rbr_recording::sound::FmodBlock`), the damage handler's carried words for the HUD's car status (CDM1,
 //! `rbr_recording::damage::CDM1`), the car's control the last step took (CTL1, `rbr_recording::live::CTL1`), and
-//! last the SCN1 scenery poses: the frame's pre and post count from the snapshot's step, and the car and wheels after
+//! last the SCN1 scenery poses: the frame's pre and post count from the image's step, and the car and wheels after
 //! the payload's step.
 //!
-//! The first payload is the snapshot's own step, whose control the game had already emitted, so its bytes are not
-//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
-//! `StepForward(1)` on the snapshot's memory for each of the frame's substeps, as the headless run does
+//! Each payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
+//! `StepForward(1)` on the image's memory for each of the frame's substeps, as the headless run does
 //! (`crate::physics::Runner`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
 //! viewer's `--live` sends one per 7 ms (1.02's step), which under NGP's 1/720 s step is a frame of 5 or 6 substeps
 //! (the frame clock carries the rest), so every clock the game ticks by the frame's time (the countdown, the camera's
 //! orbit, the race clock, the finish timer) runs at real speed under both. Such a frame's records are the frame's: the
-//! car after its last step, its events, and each wheel's last tyre payload. The game starts
-//! driving: a snapshot taken mid-drive has its load and countdown behind it, and the game's clock and time card do
-//! not feed the physics.
+//! car after its last step, its events, and each wheel's last tyre payload. The game's clock and time card do not
+//! feed the physics.
 //!
 //! `--live --boot --stage NAME --car N` starts from the boot's image instead (`boot::build`, the
 //! stage start): before the first payload the game runs the load settle as the headless boot run does. With the
@@ -64,7 +62,7 @@
 use super::picture::{damper_frame, dash, race_hud, split_record, Picture};
 use super::{Live, Pending};
 use crate::boot;
-use crate::physics::{boot_playback, load_substeps, why, Runner, DT};
+use crate::physics::{boot_playback, load_substeps, why, Runner};
 use crate::stage::StageData;
 use rbr_formats::data::Data;
 use rbr_gameplay::filter::Grid;
@@ -74,11 +72,10 @@ use rbr_gameplay::ini::Ini;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::stage::{Stage, State};
 use rbr_gameplay::tick::SETTLE_SUBSTEPS;
-use rbr_physics::snapshot::Snapshot;
 use rbr_recording::clock::StepClock;
 use rbr_recording::sound::TyreMax;
 use rbr_recording::CONTROL_BYTES;
-use rbr_step::runner::{self, Playback};
+use rbr_step::runner::Playback;
 use rbr_step::timekeeper::layout as keeper_layout;
 use std::panic::{self, AssertUnwindSafe};
 
@@ -104,16 +101,6 @@ impl RallyNext {
 }
 
 impl<'a> Live<'a> {
-    pub fn new(snap: &Snapshot, stage: &'a StageData, settings: MarkerSettings) -> Result<Self, String> {
-        let h = snap.metadata();
-        let playback = Playback::new(snap, false);
-        crate::physics::require_ngp(&playback)?;
-        let dt = runner::max_time_step(snap).unwrap_or(DT);
-        let game = new_game(Stage::driving(stage.number, stage.car), stage, dt, settings);
-        let settle = load_substeps(playback.runner.image()).div_ceil(SETTLE_SUBSTEPS[0]) * SETTLE_SUBSTEPS[0];
-        Ok(Self::with(playback, game, stage, StepClock { step: dt, settle }, h.step, Some(h.substeps), Vec::new()))
-    }
-
     /// The boot's stepping (`--live --boot`): `race` on `name` from the stage start. The load settle runs here, as the
     /// headless boot runs it before its first driving frame. With `camera_go` the camera's start orbit gives the go
     /// during the payloads; without it the go is given here too.
@@ -148,7 +135,7 @@ impl<'a> Live<'a> {
         let now = if go { f64::from(dt) } else { 0.0 };
         let settled = settle(&playback, &mut game, &mut (&mut school, &mut laps), stage, go, now)?;
         let mut live =
-            Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
+            Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, image.detach);
         live.wetness = race.weather.wetness;
         live.now = now;
         live.boot_now = now;
@@ -193,7 +180,6 @@ impl<'a> Live<'a> {
         stage: &'a StageData,
         clock: StepClock,
         start: u32,
-        own_substeps: Option<u32>,
         detach: Vec<(u32, u32)>,
     ) -> Self {
         let mut playback = playback;
@@ -215,7 +201,6 @@ impl<'a> Live<'a> {
             frame_seconds: f64::from(clock.step),
             clock,
             start,
-            own_substeps,
             answered: 0,
             waited: 0,
             last,
@@ -311,7 +296,6 @@ fn settle(
 ) -> Result<u32, String> {
     let mut physics = Runner {
         playback,
-        trace: None,
         track: &stage.track,
         own_step: true,
         word6: 0,

@@ -414,8 +414,7 @@ harness plugin installed), `scripts/ngp-run.sh NAME [SECS]` (`LIVE=1`, `SNAPSHOT
   car, taking only calls from NGP.dll (`harness/matrix.py`: recordings stop past 2 GiB, pairs take 130k).
 - Oracle: `harness/replay.py` runs a whole NGP step bit-exact from a snapshot (UCRT emulated, CRT calls stubbed;
   noise mask on long runs). NGP drives are deterministic in body state.
-- `rbr-standalone --snapshot`/`--live` run NGP snapshots fully ported (launcher drives `ngp-rpl11/20/32/41`,
-  `ngp-fwd41b`, `ngp-rwd41`).
+- `rbr-standalone --snapshot` is retired: ReRBR runs from `--boot` only.
 
 ### Replays
 

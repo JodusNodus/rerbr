@@ -93,7 +93,7 @@ pub fn tyre_tail_setup(mem: &mut Mem, this: u32, a: u32, b: u32, c: u32) {
 }
 
 /// The calls `CWheel::Vf28` (0x53f230) makes that have an effect. Each is the original callee at its address, run at its
-/// entry stack pointer `sp` (the emulator runs an unbound callee, and a bound one runs in Rust).
+/// entry stack pointer `sp`.
 pub trait FinishCalls {
     /// `CSpringDamper::ResetOutputs` (0x52e010) on the strut.
     fn reset_outputs(&mut self, strut: u32, sp: u32);

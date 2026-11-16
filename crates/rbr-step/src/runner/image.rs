@@ -2,7 +2,6 @@
 
 use rbr_gameplay::timing::TimeKeeper;
 use rbr_physics::mem::Mem;
-use rbr_physics::snapshot::Snapshot;
 
 use crate::timekeeper::layout as keeper_layout;
 use rbr_physics::car_body::store::CarStore;
@@ -13,9 +12,6 @@ pub const CAR_PTR: u32 = 0x8ef660;
 pub const CAR_BYTES: usize = 0x1700;
 /// The application root's (`g_1659b70`) time keeper, the one `CCar::Vf6cx` records into.
 const TIME_KEEPER: u32 = 0x40;
-/// The root's physics definition, and its `MaxTimeStep`.
-const DEFINITION: u32 = 0x24;
-const MAX_TIME_STEP: u32 = 0x1608c;
 
 /// `CApplication *` (`DAT_007eac48`), and its state (+0x728): the word `SetAppState` (0x47f370) stores and every
 /// `CMultiSignal1` selects its connection slot by (the signal manager is built on its address).
@@ -44,15 +40,4 @@ pub fn time_keeper(mem: &Mem) -> TimeKeeper {
 /// The physics clock in `mem`: the state's double, which `Record` is given and `StepForward` advances.
 pub fn clock(mem: &Mem) -> f64 {
     mem.timer_double()
-}
-
-/// The loaded physics definition's `MaxTimeStep` (+0x1608c, what `Game::new` takes) in the snapshot's image, or `None`
-/// when the image does not map the root, its definition or the field.
-pub fn max_time_step(snap: &Snapshot) -> Option<f32> {
-    let mapped = |at: u32| snap.regions().iter().any(|r| at >= r.base && at - r.base + 4 <= r.size);
-    let mem = snap.mem();
-    let root = Some(keeper_layout::APP).filter(|&a| mapped(a))?;
-    let at = Some(mem.u32(root) + DEFINITION).filter(|&a| mapped(a))?;
-    Some(mem.u32(at) + MAX_TIME_STEP).filter(|&a| mapped(a))?;
-    Some(keeper_layout::max_time_step(&mem))
 }

@@ -140,16 +140,15 @@ def clean(name):
     subprocess.run(["rm", "-f"] + [os.path.join(RUNS, x) for x in files], check=True)
 
 
-def compared_steps(spec, recording, last_post):
+def compared_steps(recording, last_post):
     """The check's step count: the recording's frames from the start through post `last_post`."""
-    first = 1000 if spec["base"] else 0
     n, d = 0, open(recording, "rb")
     while True:
         h = d.read(20)
         if len(h) < 20:
             break
         m, pre, post, sub, cs = struct.unpack("<5I", h)
-        n += pre >= first and post <= last_post
+        n += post <= last_post
         d.seek(0x20 + cs + 4 * 0xA00, 1)
     return n
 
@@ -157,11 +156,7 @@ def compared_steps(spec, recording, last_post):
 def autopilot(f, spec, out, top):
     args = ["--autopilot", out, "--stage", spec["stage"], "--car", str(spec["car"]), "--steps", str(STEPS),
             "--top-speed", str(top)]
-    if spec["base"]:
-        args += ["--recording", "%s/drive-%s.bin" % (RUNS, spec["base"]),
-                 "--snapshot", "%s/vcu-%s.snap-1000.bin" % (RUNS, spec["base"])]
-    else:
-        args += ["--boot"]
+    args += ["--boot"]
     rc, text = run(f, rust_cmd(args))
     g = re.search(r": from step (\d+), (\d+) steps driven, finish (step (\d+)|not reached), ended by (.*)", text)
     if not g:
@@ -178,11 +173,10 @@ class Check:
     def __init__(self, f, spec, row, end, last_post, csv_path):
         self.f, self.row, self.end, self.csv_path = f, row, end, csv_path
         recording = "%s/drive-%s.bin" % (RUNS, row["name"])
-        steps = compared_steps(spec, recording, last_post)
-        source = ["--snapshot", "%s/vcu-%s.snap-1000.bin" % (RUNS, spec["base"])] if spec["base"] else ["--boot"]
+        steps = compared_steps(recording, last_post)
         # /usr/bin/time records this check's wall time while the group's games continue.
         self.job = start(f, ["/usr/bin/time", "-p"] + rust_cmd(["--recording", recording, "--stage", spec["stage"],
-                                                                 "--steps", str(steps)] + source))
+                                                                 "--steps", str(steps), "--boot"]))
 
     def done(self):
         rc, text = finish(self.f, self.job)
@@ -238,7 +232,7 @@ def prepare_pair(spec, csv_path, reserved_pairs):
     os.makedirs(logs, exist_ok=True)
     f = open(os.path.join(logs, name + ".log"), "a")
     row = dict(stage=spec["stage"], car=car, car_name=CARS[car], surface=surf, weather=spec["weather"], name=name,
-               start="snap-1000 of " + spec["base"] if spec["base"] else "boot", note="", zst_mb="-",
+               start="boot", note="", zst_mb="-",
                wheel_6ec_not_compared="-", lane3_masked="-", check_min="0", games_min="0")
     free = free_gb()
     log(f, "%s: %.0f GB free" % (name, free))
@@ -330,12 +324,11 @@ def parse(line):
     words = line.split()
     stage = words[0]
     if len(words) > 3:
-        sys.exit("%s: the stage start only (no base)" % line)
+        sys.exit("%s: the stage start only" % line)
     if len(words) == 3 and words[2] != "0":
-        sys.exit("%s: the boot has good weather only (no CWeatherDaemon); other weathers need a base" % line)
+        sys.exit("%s: the boot has good weather only (no CWeatherDaemon)" % line)
     m = int(re.fullmatch(r"track-(\d+)_[A-Z]", stage)[1])
-    return dict(stage=stage, map=m, car=int(words[1]), weather=int(words[2]) if len(words) > 2 else 0,
-                base=words[3] if len(words) > 3 else None)
+    return dict(stage=stage, map=m, car=int(words[1]), weather=int(words[2]) if len(words) > 2 else 0)
 
 
 def main():

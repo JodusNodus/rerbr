@@ -1,11 +1,10 @@
 //! Autopilot (`rbr-standalone --autopilot OUT`): a driveline-following controller
-//! that drives the step from a snapshot and writes the controls as a playback (`harness/play.sh`'s
+//! that drives the step from the boot and writes the controls as a playback (`harness/play.sh`'s
 //! `RBRRecompPlayback.bin`), so the original can replay them open-loop.
 //!
-//! The playback is the drive's own recorded frames before the snapshot's step, then one frame per live step
-//! (`live/`): the snapshot's own step with its recorded control, and from the next step on the controller's. Each
+//! The playback has one frame per live step (`live/`). Each
 //! frame holds the run's car and wheels after its step, so the playback is also the Rust run's recording.
-//! From `--boot` the live steps start after the boot's load settle and take a neutral
+//! The live steps start after the boot's load settle and take a neutral
 //! control first; the playback then has no settle frames (the plugin plays single steps only). The race clock's 7 s
 //! start countdown runs over those steps, so the controller holds the car on the handbrake until it is out: a
 //! playback that left before it would take the jump start again wherever it is replayed (`--live --pilot`, the game).
@@ -56,7 +55,7 @@ pub mod pad;
 pub mod race;
 pub mod start;
 
-pub use drive::{drive, from_snapshot, Pilot};
+pub use drive::{drive, Pilot};
 pub use pad::Manoeuvre;
 
 use crate::live::Live;

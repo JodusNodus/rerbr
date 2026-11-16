@@ -312,7 +312,7 @@ pub fn serve_frames<'a>(
             frame.payload = own;
         }
         let (pre, substeps) = live.run(&frame.payload, frame.periods, true)?;
-        // The first frame is the snapshot's own call, whose steps count from the image's.
+        // The first frame is the image's own call, whose steps count from the image's.
         let substeps = if std::mem::take(&mut first) { live.next_step() - live.start } else { substeps };
         if frame.checked() {
             let digest = digest(&live);
