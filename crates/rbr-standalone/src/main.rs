@@ -1,12 +1,11 @@
 //! The standalone program's first, headless form (milestone S0): the gameplay loop
 //! (`rbr_gameplay::game::Game`) drives the Rust physics step (`rbr_step::runner`), with no emulator and no
-//! original code, from a snapshot's memory image, and the car and the wheels are compared with the recording after
+//! original code, from the boot's memory image, and the car and the wheels are compared with the recording after
 //! every step.
 //!
-//! Usage: rbr-standalone --recording X --stage NAME --snapshot Y [--snapshot Z...] [--steps N] [--data DIR] [--read-set DIR]
-//!        rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE] [WEATHER]
-//!        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR]
-//!        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
+//! Usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE] [WEATHER]
+//!        rbr-standalone --live --stage NAME --boot [WEATHER] [--car N] [--data DIR]
+//!        rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
 //!
 //! `--stage` names the recording's stage (`track-54_E`); its `.dls` markers and `.trk` driveline are read from
 //! `DIR/Maps` (default `$RBR_DATA`). The car number is `--car`, else the recording's `.auto` second word, else 0.
@@ -16,8 +15,8 @@
 //! extension (`.../101-Autiovaara II/track-101_O`, which fixes the variant). The weather picks the variant from the
 //! stage's `TrackSettings<id>.ini` (`Season::of_rsf`, ours), and its surface is RSF's (`rsf::Surface`).
 //!
-//! `--boot` starts from the image `boot/` builds from the data (`$RBR_PATCH` gives the 1.02 exe) instead of a
-//! snapshot, at the stage start: the race is a quick race of the
+//! `--boot` (required) starts from the image `boot/` builds from the data (`$RBR_PATCH` gives the 1.02 exe), at the
+//! stage start: the race is a quick race of the
 //! stage's map and the car, on the recording's `.auto` tyre (its fourth word), else the surface's.
 //!
 //! `--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic]` (with `--boot`)
@@ -53,10 +52,10 @@
 //!
 //! `--live` is the viewer's stepping process (`live/`, `rbr_recording::realtime`): the game on this process's clock, a
 //! frame per physics step with the viewer's newest input from stdin, a step record after each and an answer (frame,
-//! HUD and the other records) per 7 ms of game time on stdout, from the snapshot's step on. It takes no recording. Play
+//! HUD and the other records) per 7 ms of game time on stdout, from the stage start on. It takes no recording. Play
 //! it with the viewer, from the repository root (the viewer's `--live` takes the rest of the line as the command):
 //!
-//! `RBR_DATA=<install> target/release/viewer track-54_E --car COROLLA --live target/release/rbr-standalone --live --snapshot /tmp/rbr-snaps/vcu-cov.snap-2000.bin --stage track-54_E`
+//! `RBR_DATA=<install> target/release/viewer track-54_E --car COROLLA --live target/release/rbr-standalone --live --boot --ngp-physics <physics.rbz> --stage track-54_E`
 //!
 //! `--pilot autopilot|RECORDING` (with `--live`) drives the live run itself, for unattended live runs that the viewer
 //! draws as a player's: the autopilot below, once a frame, or the recording's control of each step it feeds (the
@@ -88,24 +87,18 @@
 //! `--wall-clock FILE` (with `--recorded-payload`) times NGP's starter by the recording's clock: records of `u32 pre` and
 //! `u64 us` (an RSF session's STP1).
 //!
-//! `--autopilot OUT` drives from the snapshot with a driveline-following controller (`autopilot/`) for at most `--steps` steps (`--top-speed`: the controller's top speed, m/s) and
-//! writes a playback for `harness/play.sh` to `OUT`: the recording's frames before the snapshot's step, then the live
-//! steps with the controller's controls. With `--boot` it drives from the stage start (`live::Live::boot`, the race as
-//! `--live --boot` takes it), and the playback holds the live steps only. `--aim` drives into a stage point
+//! `--autopilot OUT --boot` drives from the stage start (`live::Live::boot`, the race as `--live --boot` takes it)
+//! with a driveline-following controller (`autopilot/`) for at most `--steps` steps (`--top-speed`: the controller's top speed, m/s) and
+//! writes a playback for `harness/play.sh` to `OUT`, which holds the live steps only. `--aim` drives into a stage point
 //! (`autopilot::Aim`).
 //!
-//! The loop runs from the recording's first frame: up to the snapshot's step, `Game::frame` takes the recorded car as
-//! its physics sample; from the snapshot's step on, each frame's physics substep is a pure
-//! `StepForward` on the snapshot's memory, with the control `Game` emits from the recorded payload. A snapshot at
-//! step 0 (S1) runs everything pure: the load settle's `StepForward(40)` frames, the
-//! camera's go and the countdown, then driving. `Game` gives each application state change to the pure memory
-//! (`PhysicsStep::app_state`, `SetAppState`'s store), so a control emitted while driving reaches the car (S2). The compare is `rbr_step::runner::Compare`'s (at step 0
-//! `Compare::at_start`). `Game`'s time card and clock are compared with the bound `CTimeKeeper`'s in `Mem` at the boot
-//! and after every step. A call the runner cannot run stops the snapshot's run, with its step and address; there
-//! is no fallback.
-//!
-//! `--read-set DIR` writes `DIR/<snapshot>.reads` per snapshot: the image's bytes the pure steps read before anything
-//! wrote them, with their first reader (`runner::ReadTrace`).
+//! The headless run's loop runs from the recording's first frame: from the boot's step 0, each frame's physics substep
+//! is a pure `StepForward` on the image's memory, with the control `Game` emits from the recorded payload. It runs
+//! everything pure: the load settle's `StepForward(40)` frames, the camera's go and the countdown, then driving.
+//! `Game` gives each application state change to the pure memory (`PhysicsStep::app_state`, `SetAppState`'s store),
+//! so a control emitted while driving reaches the car. The compare is `rbr_step::runner::Compare`'s. `Game`'s time
+//! card and clock are compared with the bound `CTimeKeeper`'s in `Mem` at the boot and after every step. A call the
+//! runner cannot run stops the run, with its step and address; there is no fallback.
 //!
 //! The physics step is the image's loaded `MaxTimeStep` (`runner::max_time_step`), and the camera's go comes at the
 //! first frame after the settle frames (the frame headers' substeps).
@@ -118,9 +111,7 @@ use rbr_formats::car_pack;
 use rbr_formats::data::Data;
 use rbr_gameplay::control::QuantizedControl;
 use rbr_gameplay::weather::{self, Season};
-use rbr_physics::snapshot::Snapshot;
 use rbr_recording::replay::Replay;
-use rbr_recording::Frame;
 
 use args::{Args, USAGE};
 use physics::{payload, run_guarded};
@@ -208,7 +199,7 @@ fn run() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Stops and port failures are reported per snapshot (headless) or per answer (live), not by the panic hook.
+    // Stops and port failures are reported per run (headless) or per answer (live), not by the panic hook.
     panic::set_hook(Box::new(|_| {}));
     let (data, race) = match race::race(&args, data, &stage, car) {
         Ok(r) => r,
@@ -218,31 +209,25 @@ fn run() -> ExitCode {
         }
     };
     if args.live {
-        return live(&args, &data, race.as_ref(), &stage);
+        return live(&args, &data, &race, &stage);
     }
     if let Some(out) = &args.autopilot {
-        return autopilot(&args, out, &data, race.as_ref(), &stage);
+        return autopilot(&args, out, &data, &race, &stage);
     }
-    if let (Some(out), Some(race), Some(recording)) = (&args.events_out, &race, recording) {
-        return events(&args, out, &data, race, &stage, recording);
+    if let (Some(out), Some(recording)) = (&args.events_out, recording) {
+        return events(&args, out, &data, &race, &stage, recording);
     }
     let Some(recording) = recording else {
         unreachable!("args() requires a recording unless --live or --autopilot --boot");
     };
-    headless::run_all(&args, &data, &stage, race.as_ref(), recording)
+    headless::run_all(&args, &data, &stage, &race, recording)
 }
 
-/// `--live`: serves the viewer's protocol from the snapshot or the boot (`live/`), then writes the rally's files.
-fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) -> ExitCode {
+/// `--live`: serves the viewer's protocol from the boot (`live/`), then writes the rally's files.
+fn live(args: &Args, data: &Data, race: &boot::Race, stage: &StageData) -> ExitCode {
     let r = run_guarded("the live run", || {
-        let mut live = if let Some(race) = race {
-            live::Live::boot(data, &args.stage, race, stage, args.marker_settings, true)?
-        } else {
-            let path = &args.snapshots[0];
-            let snap = Snapshot::open(path).map_err(|e| format!("{path}: {e}"))?;
-            live::Live::new(&snap, stage, args.marker_settings).map_err(|e| format!("{path}: {e}"))?
-        };
-        live.set_physics(args.physics, race::engine_car(args, race, stage.car))?;
+        let mut live = live::Live::boot(data, &args.stage, race, stage, args.marker_settings, true)?;
+        live.set_physics(args.physics, race::engine_car(args, Some(race), stage.car))?;
         if let Some(trail) = args.ffb_tyres {
             live.set_ffb_tyres(trail);
         }
@@ -252,7 +237,7 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
         }
         // The start board's clock: `--start-time` (a championship stage's from the season, a quick race's time of
         // day), else the time of day by the race's cloud letter (`weather::start_clock`).
-        let cloud_letter = race.and_then(|race| {
+        let cloud_letter = Some(race).and_then(|race| {
             let season = Season::load(data).ok()?;
             Some(season.rows.get(race.weather.row?)?.cloud_letter)
         });
@@ -355,43 +340,18 @@ fn events(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &Stage
     }
 }
 
-/// `--autopilot OUT`: drives from the snapshot or the boot and writes the playback (`autopilot/`).
+/// `--autopilot OUT`: drives from the boot and writes the playback (`autopilot/`).
 /// `--flat-out` holds full throttle without braking for pace measurement (the steering and the gear shifts stay the
 /// controller's); `--brake-from` brakes fully from a speed to a standstill (`--brake-pedal` at a partial pedal,
 /// `--brake-slip` threshold braking at a slip ratio, `--brake-abs` a per-wheel ABS at one, `--brake-hold` on the brake for a while after the stop, `--brake-declutch` with the clutch in, which needs `--clutch-help off`, `--brake-throttle` with a throttle held under the brake);
 /// `--circle` drives a steady-state circle with the target speed ramping up; `--trace-speed FILE` writes each step's
 /// time, speed, pedals, gear and position, the engine speed the gear gives with the clutch engaged (0 in neutral), the
 /// wheels' rim speeds and last the steering's filtered force-feedback torque (`ffb`; `autopilot/drive.rs`).
-fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, stage: &StageData) -> ExitCode {
-    let bytes = match &args.recording {
-        Some(path) if !args.boot => match std::fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                eprintln!("{}: {e}", path.display());
-                return ExitCode::FAILURE;
-            }
-        },
-        _ => vec![],
-    };
-    let frames: Vec<Frame> = match rbr_recording::read_all(&bytes) {
-        Ok(frames) => frames,
-        Err(e) => {
-            match &args.recording {
-                Some(path) => eprintln!("{}: {e}", path.display()),
-                None => eprintln!("{e}"),
-            }
-            return ExitCode::FAILURE;
-        }
-    };
+fn autopilot(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &StageData) -> ExitCode {
     let r = run_guarded("the autopilot", || {
-        let (mut live, head, control) = if let Some(race) = race {
-            let live = live::Live::boot(data, &args.stage, race, stage, args.marker_settings, false)?;
-            let neutral = payload(&QuantizedControl::default().car_control(), 0);
-            (live, &bytes[..], neutral)
-        } else {
-            autopilot::from_snapshot(&args.snapshots[0], &bytes, &frames, stage, args.marker_settings)?
-        };
-        live.set_physics(args.physics, race::engine_car(args, race, stage.car))?;
+        let mut live = live::Live::boot(data, &args.stage, race, stage, args.marker_settings, false)?;
+        let neutral = payload(&QuantizedControl::default().car_control(), 0);
+        live.set_physics(args.physics, race::engine_car(args, Some(race), stage.car))?;
         // With `--saves` the drive runs on to the race's end, which submits the stage record and the personal best as
         // the live drive does.
         if let Some(dir) = &args.saves {
@@ -400,8 +360,8 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
         }
         autopilot::drive(
             live,
-            head,
-            control,
+            &[],
+            neutral,
             stage,
             args.steps as u32,
             args.top_speed,
