@@ -50,6 +50,12 @@ pub(super) struct ModeUniform {
     pub(super) bank: [f32; 4],
 }
 
+/// How near the eye the backdrop is drawn at the least, metres (ours): the game's reach
+/// ([`CELL_REACH`](crate::visibility::CELL_REACH)), within which it draws the stage over the backdrop whatever lies
+/// nearer. Farther out the stage and the backdrop hide each other by their depth: our stage reaches farther than the
+/// game's, and its far trees covered the tree-line strips standing in front of them (560 Nechanice).
+pub(super) const BACKDROP_NEAR: f32 = crate::visibility::CELL_REACH;
+
 /// The frame uniform (`Frame` in `shader.wgsl`): the clip matrix and its inverse, the eye, and the stage's haze and
 /// sky colours ([`Atmosphere`](crate::atmosphere::Atmosphere)).
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -65,7 +71,8 @@ pub(super) struct FrameUniform {
     fog_range: [f32; 4],
     /// `y` how far the camera-anchored draws fade into the sky
     /// ([`Atmosphere::cloud_haze`](crate::atmosphere::Atmosphere::cloud_haze)); `x` 1 when the sky's draw lays the
-    /// volumetric clouds' image over it, 2 their dome; `z` and `w` unused.
+    /// volumetric clouds' image over it, 2 their dome; `w` for the backdrop, how near the eye it is drawn at the least,
+    /// metres ([`BACKDROP_NEAR`]), else 0; `z` unused.
     haze: [f32; 4],
     zenith: [f32; 4],
     /// The direction the sunlight travels, and `w` 1 to draw the sun's glow in the sky.
@@ -380,7 +387,12 @@ impl Renderer {
                 eye: eye.extend(1.0).to_array(),
                 fog_color: a.fog_color.extend(haze).to_array(),
                 fog_range: [start, end, anchored, depth],
-                haze: [if index == 1 { cloud_image } else { 0.0 }, a.cloud_haze(), self.upscale_bias(view), 0.0],
+                haze: [
+                    if index == 1 { cloud_image } else { 0.0 },
+                    a.cloud_haze(),
+                    self.upscale_bias(view),
+                    if index == 2 { BACKDROP_NEAR } else { 0.0 },
+                ],
                 zenith: a.zenith().extend(1.0).to_array(),
                 sun: a.sun_direction.extend(f32::from(u8::from(!overcast))).to_array(),
                 ambient: (a.ambient * a.car_ambient).extend(1.0).to_array(),

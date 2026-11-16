@@ -586,11 +586,16 @@ impl Renderer {
         // The sky lies behind everything, so it is drawn after the opaque meshes, where they left the clear depth (its
         // pipelines' `Equal` test at the viewport's depth 0): the frame is the same as with the sky first, but the
         // pixels they cover are not shaded. It goes in before the first mesh it could show through, one that blends or
-        // writes no depth.
+        // writes no depth. The backdrop (the world-anchored sky faces but a sky dome) goes in last, at its own depth
+        // (`uniforms::BACKDROP_NEAR` at the least), over the sky and what lies farther: its faces hide each other by their
+        // depth, not by their order (560 Nechanice's far tree-line strip painted over its near one), and the stage
+        // within the game's reach is never covered.
         let (sky, shown): (Vec<_>, Vec<_>) = shown
             .into_iter()
             .filter(|(mesh, _)| !(faces_hidden && mesh.anchor == Anchor::Camera))
             .partition(|(mesh, _)| mesh.layer == Layer::Sky);
+        let (backdrop, sky): (Vec<_>, Vec<_>) =
+            sky.into_iter().partition(|(mesh, _)| mesh.anchor == Anchor::World && !mesh.sky_dome);
         let behind = shown
             .iter()
             .position(|(mesh, _)| mesh.draws.iter().any(|draw| draw.pipeline.blend || !draw.pipeline.depth_write))
@@ -677,6 +682,7 @@ impl Renderer {
         pass.draw(0..3, 0..1);
         draw_meshes(&mut pass, &sky, false);
         pass.set_viewport(0.0, 0.0, width, height, 0.0, 1.0);
+        draw_meshes(&mut pass, &backdrop, false);
         draw_meshes(&mut pass, &shown[behind..], false);
         // The marks lie on the ground, so the car's reflection cube shows them too (ours). Each cube face is its own
         // submission, so the marks' view written here is the face's.
