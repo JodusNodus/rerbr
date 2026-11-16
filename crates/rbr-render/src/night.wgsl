@@ -271,12 +271,16 @@ fn night_sky(dir: vec3<f32>) -> vec3<f32> {
 }
 
 // `colour` with the stars: one at a hashed spot in some cells of a grid over the directions, fading toward the
-// horizon, twinkling. With the day's light they are `STAR_LUMINANCE` cd/m2 a unit of brightness, added in linear
+// horizon, twinkling. Each is a point, blurred to `STAR_PIXELS` (its spread, pixels) whatever the view's size (was a
+// disc a third of a cell across, 4 to 6 pixels at 1080p). With the day's light they are `STAR_LUMINANCE` cd/m2 a unit of brightness, added in linear
 // light, so that they come out as the twilight sky darkens.
 const STAR_LUMINANCE: f32 = 4.0;
+const STAR_PIXELS: f32 = 0.6;
 
 fn starry(dir: vec3<f32>, colour: vec3<f32>) -> vec3<f32> {
     let p = dir * STAR_CELLS;
+    // A pixel's size in cells (before any branch: the derivatives need every pixel of the quad).
+    let pixel = max(length(dpdx(p)), length(dpdy(p)));
     let cell = floor(p);
     let h = hash(cell);
     if (h >= STAR_SHARE) {
@@ -287,7 +291,7 @@ fn starry(dir: vec3<f32>, colour: vec3<f32>) -> vec3<f32> {
     let brightness = pow(h / STAR_SHARE, 6.0) * 1.6 + 0.08;
     let twinkle = 0.8 + 0.2 * sin(frame.wind.x * (3.0 + 5.0 * hash(cell + 7.0)) + 40.0 * h);
     let tint = mix(vec3<f32>(1.0, 0.85, 0.7), vec3<f32>(0.75, 0.85, 1.0), hash(cell + 91.0));
-    let star = tint * brightness * twinkle * (1.0 - smoothstep(0.0, 0.32, d)) * smoothstep(0.0, 0.15, dir.y);
+    let star = tint * brightness * twinkle * exp(-0.5 * d * d / max(STAR_PIXELS * STAR_PIXELS * pixel * pixel, 1e-6)) * smoothstep(0.0, 0.15, dir.y);
     if (day_on()) {
         return pow(pow(colour, vec3<f32>(2.2)) + star * STAR_LUMINANCE * frame.day_sun.w, vec3<f32>(1.0 / 2.2));
     }
