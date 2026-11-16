@@ -21,7 +21,7 @@ use crate::entities::{Op, REMOVE_EXCLUSION, SIM_FD00};
 use crate::physics_core::{MOUNTED_VF6C, PASSENGER_STEP};
 use crate::rigid_body::{DRIVE, E43VF6C, E46_IMPULSE640};
 use crate::vcu::GET_4540;
-use crate::{entities, physics_core, vcu, Ctx, Decline, Host, Regs, Return};
+use crate::{physics_core, vcu, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
 
 /// thiscall `(dt)`, `ret 4`: `CCar::StepEngine` (`Hook`), the steering and force-feedback step in its profiler scope. The channel is in the
@@ -47,7 +47,8 @@ impl<S: CarStore> ControlsCalls<S> for Car<'_> {
     }
 
     fn entity_step(&mut self, _mem: &mut S, car: u32, dt: f32) {
-        self.host.call(entities::VF58, car, &[dt.to_bits()]);
+        let walk = crate::entities::EntityWalk::Gated(rbr_physics::entities::tree::ChildCall::CarHook(dt.to_bits()));
+        crate::entities::walk_at(self.host, &self.mem, 0, car, walk);
     }
 
     fn update_ffb_torque(&mut self, mem: &mut S, car: u32) {

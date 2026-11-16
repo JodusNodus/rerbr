@@ -8,8 +8,8 @@ use rbr_physics::rigid_body::pose::{pose_step, PoseHost};
 use rbr_physics::rigid_body::store::RigidStore;
 
 use super::{
-    on_solids, unavailable, with_solids, APPEND_CELL, CELL_GRID, COPY16_WALK, DRIVE, INTEGRATE, LOOKUP_TWIN,
-    SCRATCH_BELOW_ESP, SIGNALS, STATE_EMIT, WALKER,
+    on_solids, unavailable, with_solids, APPEND_CELL, CELL_GRID, COPY16_WALK, DRIVE, LOOKUP_TWIN, SCRATCH_BELOW_ESP,
+    SIGNALS, STATE_EMIT, WALKER,
 };
 use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -86,7 +86,13 @@ impl IntegrateHost for Pose<'_> {
     fn entity_walk(&mut self, body: &Body, dt: f32) -> Body {
         let this = self.this;
         with_solids(self.host, &mut self.mem, |s| s.store_body(this, body));
-        self.host.call_at(walk_sp(self.esp), INTEGRATE, this, &[dt.to_bits()]);
+        crate::entities::walk_at(
+            self.host,
+            &self.mem,
+            walk_sp(self.esp),
+            this,
+            crate::entities::EntityWalk::Integrate(dt.to_bits()),
+        );
         with_solids(self.host, &mut self.mem, |s| s.body(this))
     }
 

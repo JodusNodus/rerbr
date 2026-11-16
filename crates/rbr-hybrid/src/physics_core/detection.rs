@@ -8,7 +8,7 @@ use rbr_physics::physics_core::layout::detector_hosts::{CollideHost, DetectorHos
 
 use super::slots::vslot;
 use crate::collision::{BODY_GRID, E37_GRID_COPY, E45_CELL_QUERY};
-use crate::entities::{EXCLUSION_TEST, WALK_PRE_ORDER};
+use crate::entities::EXCLUSION_TEST;
 use crate::probe_cache::BODY_OVERLAPS;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -168,7 +168,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn walk(&mut self, sp: u32, entity: u32, detector: u32) {
-        self.host.call_at(sp, WALK_PRE_ORDER, entity, &[detector]);
+        crate::entities::walk_at(self.host, &self.mem, sp, entity, crate::entities::EntityWalk::PreOrder(detector));
     }
 
     fn visit_walls(&mut self, sp: u32, physics: u32, detector: u32) {

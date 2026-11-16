@@ -10,13 +10,19 @@ use rbr_physics::physics_core::layout::{self, mounted};
 
 use super::passenger_step::SLOT_24;
 use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, TEMPS, WALKER};
-use crate::entities::{Op, VF5C};
+use crate::entities::Op;
 use crate::rigid_body::{on_solids, solid_word};
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `()`: `CSolid::E43Vf5C`: `CEntity::E43Vf5C` on the solid, then its slot 24.
 pub(crate) fn dispatch_vf5c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    ctx.host.call(VF5C, r.ecx, &[]);
+    crate::entities::walk_at(
+        ctx.host,
+        &ctx.mem,
+        0,
+        r.ecx,
+        crate::entities::EntityWalk::Gated(rbr_physics::entities::tree::ChildCall::Force),
+    );
     let slot = ctx.mem.u32(ctx.mem.u32(r.ecx) + SLOT_24);
     Ok(Return::void(ctx.host.call(slot, r.ecx, &[]).eax, 0))
 }

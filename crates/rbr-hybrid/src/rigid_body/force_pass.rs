@@ -11,7 +11,7 @@ use rbr_physics::rigid_body::store::RigidStore;
 use super::contact_vote_direct;
 use super::slots::impulse_run;
 use super::{on_solids, with_solids, COLLECT_OBJECT, DAMPING_EMIT, E36_COLLECT, RETIRE_A, SIGNALS, VF81X, WALKER};
-use crate::entities::{Op, VF64};
+use crate::entities::Op;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 // The force pass, with its own contact list step (its transforms differ from `BigB`'s).
@@ -98,7 +98,13 @@ pub(super) fn response_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// use the temporaries.
 pub(super) fn e43vf64(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp) - 0x50;
-    ctx.host.call_at(frame - 4, VF64, r.ecx, &[]);
+    crate::entities::walk_at(
+        ctx.host,
+        &ctx.mem,
+        frame - 4,
+        r.ecx,
+        crate::entities::EntityWalk::Gated(rbr_physics::entities::tree::ChildCall::Torque),
+    );
     let def = Def::load(&ctx.mem, ctx.mem.u32(r.ecx + 0x34));
     let mut body = on_solids(ctx, |s| s.body(r.ecx));
     let transforms =

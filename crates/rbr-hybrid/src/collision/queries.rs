@@ -9,7 +9,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::store::Raw;
 
 use super::{
-    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_CLEAR, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
+    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_CLEAR, RAY_SEEDS, SAMPLE_INDEXED,
+    SAMPLE_TABLE,
 };
 use crate::entities::{Op, MB560};
 use crate::rigid_body::OPERATOR_NEW;

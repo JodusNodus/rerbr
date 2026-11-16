@@ -51,7 +51,9 @@ use walks::{
     route_pair_grids_run, route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58, vf5c, vf64,
     walk_pre_order_run,
 };
+pub(crate) use walks::{walk_at, EntityWalk};
 
+pub const VF48: u32 = 0x51a440;
 pub const VF58: u32 = 0x51a250;
 pub const VF5C: u32 = 0x51a290;
 pub const VF64: u32 = 0x51a2c0;
@@ -244,7 +246,7 @@ pub static BINDINGS: [Binding; 119] = [
     bind(REMOVE_EXCLUSION, "CEntity::E43_ExclA060", remove_exclusion_run),
     bind(SIM_EFE0, "CHingedRigidBody::SimEFE0", sim_efe0_run),
     bind(SET_650, "CHingedRigidBody::Set650", set_650_run),
-    bind(0x51a440, "CEntity::E43Vf48", vf48),
+    bind(VF48, "CEntity::E43Vf48", vf48),
     bind(EXCLUSION_TEST, "CEntity::E43_ExclF80", exclusion_test_run),
     bind(OLD_FRAME_OF, "E43PairWalk::MFc10", old_frame_of_run),
     bind(ENTITY_VF120, "CEntity::Vf120", vf120_run),

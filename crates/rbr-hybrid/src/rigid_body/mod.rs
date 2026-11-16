@@ -21,12 +21,13 @@ mod window;
 
 use crate::collision::CSTATE_UNKA44;
 use crate::engine_driveline::SIGNALS;
-use crate::entities::{COPY16_WALK, INTEGRATE, NAME_WALK, STATE_EMIT, VF20};
+use crate::entities::{EntityWalk, COPY16_WALK, STATE_EMIT};
 pub(crate) use contact::contact_vote_direct;
 use contact::{big_a, big_b, e43vf70, vf81x};
 use force_pass::{e43vf64, mounted_vf128, response_run};
 use pose::{e43vf6c, integrate_pose};
 use quats::{quat_mul, quat_norm, quat_normalize, set_from_quat};
+use rbr_physics::entities::tree::ChildCall;
 pub(crate) use slots::{accumulate_direct, e43vf138, impulse_run};
 use slots::{
     clamp_velocity_along, damping_emit, e43vf74, e43vfa0, fold_rows, inverse_mass, new_def, quat_diff_rows,
@@ -126,7 +127,6 @@ pub const VF54_HELPER: u32 = 0x52b6b0;
 /// The original callees the bindings call.
 pub(crate) const OPERATOR_NEW: u32 = 0x70bec2; // operator new (cdecl: size)
 const MUL: u32 = 0x528c20; // E46Mat::Mul (thiscall: the matrix; out, b)
-const ENTITY_VF48: u32 = 0x51a440; // CEntity::E43Vf48 (thiscall: body; its children's slot 18)
 const ENTITY_VF158: u32 = 0x519aa0; // CEntity::E43Vf158 (thiscall: body)
 pub(crate) const LOOKUP_TWIN: u32 = 0x4e03b0; // CCellGrid::LookupTwin (thiscall: the grid; x, y, link)
 const APPEND_CELL: u32 = 0x4ea980; // CCar::AppendA980 (thiscall: the cell; link)
@@ -218,9 +218,12 @@ impl Heap for Original<'_> {
     }
 }
 
-impl EntityWalkHost for Original<'_> {
+/// `CSolid::E43Vf20`'s jump to the entity walk, on the image `mem`.
+struct Walks<'a>(&'a dyn Host, &'a Mem);
+
+impl EntityWalkHost for Walks<'_> {
     fn walk_entity(&mut self, body: u32, arg: u32) -> u32 {
-        self.0.call(VF20, body, &[arg]).eax
+        crate::entities::walk_at(self.0, self.1, 0, body, EntityWalk::Gated(ChildCall::Substep(arg)))
     }
 }
 
@@ -253,7 +256,7 @@ impl rbr_physics::collision::layout::body_hosts::BodyResetHost for Callees<'_> {
     }
 
     fn reset_entity(&mut self, body: u32) -> u32 {
-        self.host.call(NAME_WALK, body, &[]).eax
+        crate::entities::walk_at(self.host, &self.mem, 0, body, EntityWalk::Name)
     }
 }
 
