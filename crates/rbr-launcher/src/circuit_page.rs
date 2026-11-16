@@ -31,6 +31,9 @@ pub struct CircuitPage {
     pub map: Option<u32>,
     /// The session's laps, 0 for free practice.
     pub laps: u32,
+    /// The pace notes (the co-driver's voice, the note symbols and the stack) in the session; off unless asked for: a
+    /// lap is not a stage, and its notes follow the road of a stage.
+    pub pace_notes: bool,
     /// The best laps in the save folder and when they were read.
     book: LapBook,
     read: Option<Instant>,
@@ -78,8 +81,13 @@ pub fn sector_times(best: &BestLap) -> Vec<f32> {
 
 impl CircuitPage {
     /// The page as the settings left it.
-    pub fn from_settings(map: Option<u32>, laps: Option<u32>) -> Self {
-        Self { map, laps: laps.filter(|l| LAPS.contains(l)).unwrap_or(0), ..Self::default() }
+    pub fn from_settings(map: Option<u32>, laps: Option<u32>, pace_notes: Option<bool>) -> Self {
+        Self {
+            map,
+            laps: laps.filter(|l| LAPS.contains(l)).unwrap_or(0),
+            pace_notes: pace_notes.unwrap_or(false),
+            ..Self::default()
+        }
     }
 }
 
@@ -258,6 +266,11 @@ impl Form {
             ui.label("Length").on_hover_text(tip);
             combo(ui, "circuit laps", FIELD, &mut self.circuit.laps, &LAPS, laps_label);
             ui.end_row();
+            let tip = "The co-driver's calls and the note symbols. Off by default on a circuit: the notes follow a \
+                       stage's road, and a lap is driven from memory";
+            ui.label("Pace notes").on_hover_text(tip);
+            ui.checkbox(&mut self.circuit.pace_notes, "Co-driver and note symbols").on_hover_text(tip);
+            ui.end_row();
             self.damage_row(ui);
         });
 
@@ -391,8 +404,9 @@ mod tests {
 
     #[test]
     fn the_page_keeps_a_listed_length_and_starts_on_free_practice_otherwise() {
-        assert_eq!(CircuitPage::from_settings(Some(7), Some(5)).laps, 5);
-        assert_eq!(CircuitPage::from_settings(Some(7), Some(4)).laps, 0);
-        assert_eq!(CircuitPage::from_settings(None, None).map, None);
+        assert_eq!(CircuitPage::from_settings(Some(7), Some(5), None).laps, 5);
+        assert!(!CircuitPage::from_settings(Some(7), Some(5), None).pace_notes, "off by default");
+        assert_eq!(CircuitPage::from_settings(Some(7), Some(4), Some(true)).laps, 0);
+        assert_eq!(CircuitPage::from_settings(None, None, None).map, None);
     }
 }

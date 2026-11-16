@@ -101,17 +101,23 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
 - Nordschleife (local conversion, `~/.local/share/rerbr/converted/.../Nordschleife`, originals in
   `~/.local/share/rerbr/backups/nordschleife-pre-circuit/`): the open 8318-point line closed by 4 points over its 11 m
   gap and rotated to start at the spawn (K20, 50 m in), 8322 points, 20803.22 m; the pace notes shifted by 50 m;
-  start, finish and end moved to 40000 m. Autopilot (NGP car 2, `--top-speed 50`, `--laps 1`): Started at step 1520,
-  sectors at 323.39 s (6966.9 m) and 524.55 s (11533.8 m), lap 944.4474 s (step time), then `Finished` and the race
-  ended with cause `Format` (race clock 944.7107 s, the HUD's 1.02 splits 316.98 and 520.30 s are the race clock at the
-  ticker's split events, not the laps' sectors: they disagree by seconds, unexplained; the laps' times follow the
-  step time and the distances). Two laps: see below.
-- Two laps (autopilot, `--laps 2`): lap 1 944.4474 s and lap 2 935.3937 s (seam crossed without a stall or a jump back),
-  sectors 314.28 and 515.48 s in lap 2, `Finished` at 1879.84 s after the second lap, `finished=1 cause=Format`.
+  start, finish and end moved to 40000 m. Autopilot (NGP car 2, `--top-speed 50`, `--laps 1`): Started at step 6559 (the
+  go: the 7 s start countdown, 5040 steps, runs with the drive already on, `StepView::racing` is the race clock's
+  `running`, and the laps are timed from it; before it the first lap started with the first step and took the
+  countdown), sectors at 316.39 s and 517.55 s, lap 937.4487 s, then `Finished` and the race ended with cause `Format`;
+  the 1.02 ticker's splits (316.98 and 520.30 s, the race clock at its split events) now agree within 3 s with the
+  sectors, which were 7 s apart before the fix. Two laps (before it, so each 7 s longer): lap 1 944.4474 s and lap 2
+  935.3937 s, the seam crossed without a stall or a jump back, `Finished` after the second lap.
 - The viewer's side: the live process writes a `LAP1` record after SCH1 on a circuit session
   (`rbr_recording::laps`: lap, laps, finished, the lap's time, last and best lap, this lap's sector times and the best
-  lap's); `rbr_render::hud::laps` draws the panel (the lap, its time, the sector just passed against the best lap's
-  in green or red, last and best), `Hud::laps` in the model, cleared when the record is absent.
+  lap's) and `rbr_render::hud::laps::clock` turns it into the lap clock, which the stock HUD draws in the clock's place
+  (`stock::top::lap_clock`): the lap ("lap 2 / 3", "finished") over its time, and rows for the sector just passed (the
+  gap to the best lap's in green or amber), the last lap and the best. It replaces the race clock, the ghost-gap and
+  split rows and the stage's progress bar while the record shows a lap (`Hud::laps` in the model, none without the
+  record); before the first lap starts (the countdown) the race clock shows. The Clock part hides it.
+- Pace notes: a circuit session has none unless the Circuit page's Pace notes box is on (off by default, saved as
+  `circuit_notes`): the launcher passes `--no-codriver`, no `--pace-stack` and the `pace` HUD part hidden (over the
+  player's own HUD choices) for a launch from that page.
 - A format that times itself gives the result its time: `FormatEnd::FinishedIn(s)` (+ the penalties) is the
   `EndRace` time, since the HUD's race clock is an f32 that loses seconds over a long session.
 - Best laps (`rbr_session::book`, `lap-records.ini` in the save folder, `[<stage id>]` and

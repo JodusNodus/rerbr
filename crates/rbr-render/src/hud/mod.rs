@@ -399,12 +399,11 @@ impl Overlay {
     }
 }
 
-/// `hud`'s HUD for `readout`, the retire's screens over it, the rally-school's and the circuit's lap panel.
+/// `hud`'s HUD for `readout`, the retire's screens over it, and the rally-school's.
 pub fn paint_readout(ctx: &egui::Context, hud: &mut dyn Hud, readout: &Readout) {
     hud.paint(ctx, readout);
     retire::paint(ctx, &readout.state, readout.splits.as_ref());
     school::paint(ctx, &readout.state);
-    laps::paint(ctx, &readout.state);
 }
 
 #[cfg(test)]

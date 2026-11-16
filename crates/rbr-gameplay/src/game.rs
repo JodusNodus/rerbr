@@ -717,6 +717,7 @@ impl Game {
                 elapsed: event.elapsed,
                 drive_line: rules.drive_line_at().and_then(|d| physics.drive_line_point(d)),
                 app_state: event.stage.state().value(),
+                racing: self.race_clock.running,
             });
         }
         event

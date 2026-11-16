@@ -8,6 +8,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 
+use super::laps;
 use super::layout::Layout;
 use super::{Hud, Part, Readout};
 
@@ -32,6 +33,8 @@ const DIM: Color32 = Color32::from_gray(150);
 /// A lit lamp, the redline and the warnings; the messages and penalties.
 const LAMP_ON: Color32 = Color32::from_rgb(235, 60, 50);
 const ALERT: Color32 = Color32::from_rgb(240, 160, 60);
+/// A sector ahead of the best lap's.
+const AHEAD: Color32 = Color32::from_rgb(90, 210, 110);
 
 /// Our HUD, with the game's pace sprites ([`Stock::new`]; without them the notes are words).
 #[derive(Default)]
@@ -68,6 +71,13 @@ impl Hud for Stock {
         let school = r.state.school.is_some();
         let page = r.splits.as_ref().filter(|record| splits::has_page(record, school));
         part(Part::Clock, &mut || {
+            // A circuit session's lap clock stands in the clock's place, its own rows under it and no split rows.
+            if let Some(lap) = r.state.laps.as_ref().and_then(laps::clock) {
+                if r.parts.shows(Part::Clock) {
+                    top::lap_clock(painter, screen, &lap);
+                }
+                return;
+            }
             let mut at = Pos2::new(screen.min.x + MARGIN, top::clock(painter, screen, r));
             if !r.parts.shows(Part::Splits) {
                 return;

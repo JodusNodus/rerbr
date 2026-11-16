@@ -40,7 +40,8 @@ impl Format for LapRules {
     }
 
     fn after_step(&mut self, step: &StepView) {
-        if let Some(distance) = step.distance {
+        // The laps are timed from the go: before it the car stands on the line with the countdown running.
+        if let (Some(distance), true) = (step.distance, step.racing) {
             self.events.extend(self.timing.step(distance, step.elapsed));
         }
     }
@@ -128,5 +129,29 @@ mod tests {
     fn a_stage_is_not_a_circuit() {
         let stage = Course::PointToPoint { start: 0.0, sectors: vec![], finish: 100.0 };
         assert!(LapRules::new(&stage, EndRule::Open).is_none());
+    }
+
+    /// The laps are timed from the go: steps while the start countdown still runs time nothing, the first step of the
+    /// race starts the first lap.
+    #[test]
+    fn nothing_is_timed_before_the_go() {
+        let course = Course::circuit(1000.0, [400.0]).unwrap();
+        let mut rules = LapRules::new(&course, EndRule::Open).unwrap();
+        rules.start();
+        let step = |racing, elapsed| StepView {
+            sample: StepSample::default(),
+            distance: Some(0.0),
+            elapsed,
+            drive_line: None,
+            app_state: 1,
+            racing,
+        };
+        rules.after_step(&step(false, 1.0));
+        rules.after_step(&step(false, 2.0));
+        assert!(rules.take_events().is_empty());
+        assert_eq!(rules.timing().lap(), None);
+        rules.after_step(&step(true, 7.0));
+        assert_eq!(rules.take_events(), [TimingEvent::Started]);
+        assert_eq!(rules.timing().lap_elapsed(8.0), Some(1.0), "the lap began at the go, not at the first step");
     }
 }

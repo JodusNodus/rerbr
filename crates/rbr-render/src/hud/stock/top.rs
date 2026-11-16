@@ -2,7 +2,8 @@
 
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 
-use super::{caption, digits, ALERT, DIM, MARGIN, PANEL, TEXT};
+use super::{caption, digits, AHEAD, ALERT, DIM, MARGIN, PANEL, TEXT};
+use crate::hud::laps::{LapClock, Tone};
 use crate::hud::{Part, Readout};
 
 /// The clock's width, a row's height under it and the gap between them, points.
@@ -29,6 +30,33 @@ pub fn clock(painter: &Painter, screen: Rect, r: &Readout) -> f32 {
     at.y
 }
 
+/// The lap clock of a circuit session ([`crate::hud::laps::clock`]) in the clock's place: the lap over its time in large
+/// digits and a row each for the sector just passed, the last lap and the best. The top of the space under it.
+pub fn lap_clock(painter: &Painter, screen: Rect, lap: &LapClock) -> f32 {
+    let time = Rect::from_min_size(screen.min + Vec2::splat(MARGIN), Vec2::new(WIDTH, 46.0));
+    fade(painter, time);
+    caption(painter, time.min + Vec2::new(8.0, 4.0), Align2::LEFT_TOP, &lap.title);
+    let at = time.left_bottom() + Vec2::new(8.0, -1.0);
+    digits(painter, at, Align2::LEFT_BOTTOM, &lap.time, FontId::proportional(28.0), TEXT);
+    let mut at = Pos2::new(time.min.x, time.max.y + GAP);
+    for lap_row in &lap.rows {
+        let texts: Vec<(String, Color32)> =
+            lap_row.values.iter().map(|(text, tone)| (text.clone(), colour(*tone))).collect();
+        at.y = row(painter, at, &lap_row.name, &texts);
+    }
+    at.y
+}
+
+/// A value's colour by its tone.
+fn colour(tone: Tone) -> Color32 {
+    match tone {
+        Tone::Normal => TEXT,
+        Tone::Dim => DIM,
+        Tone::Ahead => AHEAD,
+        Tone::Behind => ALERT,
+    }
+}
+
 /// A row under the clock, its top left at `at`: `name` at its left and `texts` from its right edge leftwards, each in
 /// its colour, the first's the stripe's too. The top of the space under it.
 pub fn row(painter: &Painter, at: Pos2, name: &str, texts: &[(String, Color32)]) -> f32 {
@@ -47,7 +75,8 @@ pub fn row(painter: &Painter, at: Pos2, name: &str, texts: &[(String, Color32)])
 /// line with the start, the splits and the car under it.
 pub fn progress(painter: &Painter, screen: Rect, r: &Readout) {
     let s = &r.state;
-    if !r.parts.shows(Part::Progress) || s.helicopter {
+    // A circuit session has no stage to progress along: its lap clock stands in the clock's place.
+    if !r.parts.shows(Part::Progress) || s.helicopter || s.laps.is_some() {
         return;
     }
     let Some((car, splits)) = &s.progress else { return };

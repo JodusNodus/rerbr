@@ -21,6 +21,9 @@ pub struct StepView {
     pub drive_line: Option<[f32; 3]>,
     /// The application state the step ran in.
     pub app_state: u32,
+    /// The race clock runs: the start countdown is over (the car may move before it, with a jump start's penalty,
+    /// but the race has not begun).
+    pub racing: bool,
 }
 
 /// How a format ends the drive.

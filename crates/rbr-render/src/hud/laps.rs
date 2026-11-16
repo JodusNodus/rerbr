@@ -1,23 +1,13 @@
-//! The circuit session's lap panel (ours, `notes/session.md`), from the live lap record (`rbr_recording::laps`): the lap
-//! in progress and its time, the last and best laps, and the sector just passed against the best lap's. A small panel
-//! at the screen's left edge, under the stock HUD's top row.
+//! The circuit session's lap clock (ours, `notes/session.md`), from the live lap record (`rbr_recording::laps`): in a
+//! circuit session the HUD's clock slot shows the lap in progress and its time, with a row for the sector just passed
+//! against the best lap's, the last lap and the best, in place of the race clock, its split rows and the stage's
+//! progress bar (`stock`).
 
-use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 use rbr_recording::laps::Laps;
 
-use super::model::HudView;
-use super::time_label;
+use super::{clock_label, time_label};
 
-const PANEL: Color32 = Color32::from_rgba_premultiplied(10, 10, 12, 190);
-const TEXT: Color32 = Color32::from_gray(235);
-const DIM: Color32 = Color32::from_gray(160);
-const AHEAD: Color32 = Color32::from_rgb(90, 210, 110);
-const BEHIND: Color32 = Color32::from_rgb(230, 90, 80);
-/// The panel's top-left corner from the screen's, and its width.
-const OFFSET: Vec2 = Vec2::new(16.0, 120.0);
-const WIDTH: f32 = 210.0;
-
-/// What a line's colour says.
+/// What a value's colour says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
     Normal,
@@ -26,69 +16,49 @@ pub enum Tone {
     Behind,
 }
 
-/// The panel's lines, from the top: the lap, its time, the sector just passed against the best lap's (none before the
-/// first, or without a best lap to compare), the last and the best lap. Empty before the first lap starts.
-pub fn lines(laps: &Laps) -> Vec<(String, Tone)> {
-    if laps.lap == 0 {
-        return Vec::new();
-    }
-    let mut lines = Vec::new();
-    let title = match (laps.laps, laps.finished) {
-        (_, true) => "FINISHED".to_owned(),
-        (0, false) => format!("LAP {}", laps.lap),
-        (n, false) => format!("LAP {} / {n}", laps.lap),
-    };
-    lines.push((title, Tone::Dim));
-    if !laps.finished {
-        lines.push((time_label(f64::from(laps.elapsed)), Tone::Normal));
-    }
-    if let Some((index, time)) = laps.sectors.last().map(|&time| (laps.sectors.len() - 1, time)) {
-        let mut line = format!("S{} {}", index + 1, time_label(f64::from(time)));
-        let mut tone = Tone::Normal;
-        if let Some(best) = laps.best_sectors.get(index) {
-            let delta = time - best;
-            line += &format!(" {delta:+.2}");
-            tone = if delta <= 0.0 { Tone::Ahead } else { Tone::Behind };
-        }
-        lines.push((line, tone));
-    }
-    if laps.last > 0.0 {
-        lines.push((format!("LAST {}", time_label(f64::from(laps.last))), Tone::Dim));
-    }
-    if laps.best > 0.0 {
-        lines.push((format!("BEST {}", time_label(f64::from(laps.best))), Tone::Dim));
-    }
-    lines
+/// A row under the clock: its name and its values from the right edge leftwards, each in its tone.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    pub name: String,
+    pub values: Vec<(String, Tone)>,
 }
 
-/// Draws the panel over the HUD, on a circuit session.
-pub fn paint(ctx: &egui::Context, state: &HudView) {
-    let Some(laps) = &state.laps else { return };
-    let lines = lines(laps);
-    if lines.is_empty() {
-        return;
+/// The lap clock: its title over the time, and the rows under it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LapClock {
+    pub title: String,
+    pub time: String,
+    pub rows: Vec<Row>,
+}
+
+/// The lap clock of `laps`; `None` before the first lap starts (the stock clock shows until then).
+pub fn clock(laps: &Laps) -> Option<LapClock> {
+    if laps.lap == 0 {
+        return None;
     }
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("laps")));
-    let screen = ctx.content_rect();
-    let height = 12.0 + 22.0 * lines.len() as f32;
-    let panel = Rect::from_min_size(screen.min + OFFSET, Vec2::new(WIDTH, height));
-    painter.rect_filled(panel, 6.0, PANEL);
-    for (k, (text, tone)) in lines.iter().enumerate() {
-        let colour = match tone {
-            Tone::Normal => TEXT,
-            Tone::Dim => DIM,
-            Tone::Ahead => AHEAD,
-            Tone::Behind => BEHIND,
-        };
-        let size = if k == 1 { 22.0 } else { 15.0 };
-        painter.text(
-            Pos2::new(panel.min.x + 10.0, panel.min.y + 6.0 + 22.0 * k as f32),
-            Align2::LEFT_TOP,
-            text,
-            FontId::proportional(size),
-            colour,
-        );
+    let title = match (laps.laps, laps.finished) {
+        (_, true) => "finished".to_owned(),
+        (0, false) => format!("lap {}", laps.lap),
+        (n, false) => format!("lap {} / {n}", laps.lap),
+    };
+    // Once finished the time shown is the last lap's.
+    let time = if laps.finished { clock_label(f64::from(laps.last)) } else { clock_label(f64::from(laps.elapsed)) };
+    let mut rows = Vec::new();
+    if let Some((index, &time)) = laps.sectors.iter().enumerate().next_back() {
+        let mut values = vec![(time_label(f64::from(time)), Tone::Normal)];
+        if let Some(best) = laps.best_sectors.get(index) {
+            let delta = time - best;
+            let tone = if delta <= 0.0 { Tone::Ahead } else { Tone::Behind };
+            values.insert(0, (format!("{delta:+.2}"), tone));
+        }
+        rows.push(Row { name: format!("sector {}", index + 1), values });
     }
+    for (name, time) in [("last lap", laps.last), ("best lap", laps.best)] {
+        if time > 0.0 {
+            rows.push(Row { name: name.to_owned(), values: vec![(time_label(f64::from(time)), Tone::Normal)] });
+        }
+    }
+    Some(LapClock { title, time, rows })
 }
 
 #[cfg(test)]
@@ -108,33 +78,39 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_panel_shows_the_lap_its_time_the_sector_against_the_best_and_the_laps() {
-        let lines = lines(&laps());
-        let text: Vec<&str> = lines.iter().map(|(t, _)| t.as_str()).collect();
-        assert_eq!(text, ["LAP 2 / 3", "1:23.46", "S2 5:01.50 -0.50", "LAST 7:25.25", "BEST 7:20.00"]);
-        assert_eq!(lines[2].1, Tone::Ahead);
+    fn row(clock: &LapClock, name: &str) -> Vec<(String, Tone)> {
+        clock.rows.iter().find(|r| r.name == name).unwrap().values.clone()
     }
 
     #[test]
-    fn a_sector_slower_than_the_best_is_behind_and_one_without_a_best_is_plain() {
+    fn the_clock_shows_the_lap_its_time_the_sector_against_the_best_and_the_laps() {
+        let clock = clock(&laps()).unwrap();
+        assert_eq!((clock.title.as_str(), clock.time.as_str()), ("lap 2 / 3", "01:23.456"));
+        assert_eq!(row(&clock, "sector 2"), [("-0.50".to_owned(), Tone::Ahead), ("5:01.50".to_owned(), Tone::Normal)]);
+        assert_eq!(row(&clock, "last lap"), [("7:25.25".to_owned(), Tone::Normal)]);
+        assert_eq!(row(&clock, "best lap"), [("7:20.00".to_owned(), Tone::Normal)]);
+    }
+
+    #[test]
+    fn a_sector_slower_than_the_best_is_behind_and_one_without_a_best_has_no_gap() {
         let slower = Laps { sectors: vec![151.0], ..laps() };
-        assert_eq!(lines(&slower)[2], ("S1 2:31.00 +2.00".to_owned(), Tone::Behind));
+        assert_eq!(row(&clock(&slower).unwrap(), "sector 1")[0], ("+2.00".to_owned(), Tone::Behind));
         let first = Laps { best_sectors: Vec::new(), ..slower };
-        assert_eq!(lines(&first)[2], ("S1 2:31.00".to_owned(), Tone::Normal));
+        assert_eq!(row(&clock(&first).unwrap(), "sector 1"), [("2:31.00".to_owned(), Tone::Normal)]);
     }
 
     #[test]
-    fn free_practice_has_no_lap_count_and_the_end_says_finished() {
+    fn free_practice_has_no_lap_count_and_the_end_says_finished_with_the_last_lap() {
         let open = Laps { laps: 0, ..laps() };
-        assert_eq!(lines(&open)[0].0, "LAP 2");
-        let done = Laps { finished: true, ..laps() };
-        assert_eq!(lines(&done)[0].0, "FINISHED");
-        assert!(lines(&done).iter().all(|(t, _)| t != "1:23.46"));
+        assert_eq!(clock(&open).unwrap().title, "lap 2");
+        let done = clock(&Laps { finished: true, elapsed: 0.0, ..laps() }).unwrap();
+        assert_eq!((done.title.as_str(), done.time.as_str()), ("finished", "07:25.250"));
     }
 
     #[test]
-    fn nothing_shows_before_the_first_lap() {
-        assert!(lines(&Laps::default()).is_empty());
+    fn nothing_shows_before_the_first_lap_and_no_lap_times_make_no_rows() {
+        assert_eq!(clock(&Laps::default()), None);
+        let first = Laps { lap: 1, elapsed: 2.0, ..Laps::default() };
+        assert!(clock(&first).unwrap().rows.is_empty());
     }
 }

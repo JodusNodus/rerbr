@@ -65,6 +65,8 @@ pub struct Settings {
     /// The Circuit page's circuit (its map number) and session length (`circuit`, `circuit_laps`; 0 laps is free practice).
     pub circuit: Option<u32>,
     pub circuit_laps: Option<u32>,
+    /// The pace notes on the Circuit page (`circuit_notes`; off unless set).
+    pub circuit_notes: Option<bool>,
     /// The last cars (their names) and maps picked, newest first (`recent_cars = A|B`, `recent_maps = 54,129`).
     pub recent_cars: Vec<String>,
     pub recent_maps: Vec<u32>,
@@ -407,6 +409,7 @@ impl Settings {
             map: launcher.number("map"),
             circuit: launcher.number("circuit"),
             circuit_laps: launcher.number("circuit_laps"),
+            circuit_notes: launcher.on_off("circuit_notes"),
             recent_cars: launcher.names("recent_cars"),
             recent_maps: launcher.ids("recent_maps"),
             favourite_cars: launcher.names("favourite_cars"),
@@ -532,6 +535,7 @@ impl Settings {
             ("map", self.map.map(|v| v.to_string())),
             ("circuit", self.circuit.map(|v| v.to_string())),
             ("circuit_laps", self.circuit_laps.map(|v| v.to_string())),
+            ("circuit_notes", on_off_text(self.circuit_notes)),
             ("recent_cars", joined_names(&self.recent_cars)),
             ("recent_maps", joined_ids(&self.recent_maps)),
             ("favourite_cars", joined_names(&self.favourite_cars)),
@@ -659,6 +663,7 @@ mod tests {
             map: Some(54),
             circuit: Some(1654149),
             circuit_laps: Some(3),
+            circuit_notes: Some(true),
             recent_cars: vec!["COROLLA".into(), "Mitsubishi Lancer Evo IX N4".into()],
             recent_maps: vec![54, 129],
             favourite_cars: vec!["XSARA".into(), "Mitsubishi Lancer Evo IX N4".into()],
@@ -818,7 +823,7 @@ mod tests {
         setups.set("XSARA", "tarmac", None);
         assert_eq!(setups, SetupChoices::default());
         assert_eq!(Settings::parse(&text), settings);
-        assert!(text.contains("map = 54\ncircuit = 1654149\ncircuit_laps = 3\nrecent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\nrecent_maps = 54,129\nfavourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\nfavourite_maps = 129,54,300\n"));
+        assert!(text.contains("map = 54\ncircuit = 1654149\ncircuit_laps = 3\ncircuit_notes = on\nrecent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\nrecent_maps = 54,129\nfavourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\nfavourite_maps = 129,54,300\n"));
         assert!(text.contains("fov = 72.5\nchase_fov = 80\nvolume = 0.75\n"), "the game chase's camera page is gone");
         // Any other word is a season row's section, not a preset.
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
@@ -942,6 +947,7 @@ mod tests {
                 "map = 54\n",
                 "circuit = 1654149\n",
                 "circuit_laps = 3\n",
+                "circuit_notes = on\n",
                 "recent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\n",
                 "recent_maps = 54,129\n",
                 "favourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\n",

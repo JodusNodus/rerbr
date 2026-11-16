@@ -184,6 +184,7 @@ mod tests {
             elapsed: 0.0,
             drive_line: None,
             app_state: 1,
+            racing: true,
         }
     }
 

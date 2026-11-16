@@ -668,7 +668,15 @@ impl Form {
             }
             viewer_extra.extend(shifter_args(gearbox, Path::new(&self.game_root())));
         }
-        if let Some(mods) = self.codriver_mods.as_ref().filter(|_| self.codriver) {
+        // A circuit session has no pace notes unless the Circuit page asks for them: no voice, no symbols, no stack.
+        let notes = self.page != crate::pages::Page::Circuit || self.circuit.pace_notes;
+        let codriver = self.codriver && notes;
+        let mut hud = self.hud;
+        if !notes {
+            hud.stack = 0;
+            hud.parts.0[rbr_render::hud::Part::Pace as usize] = false;
+        }
+        if let Some(mods) = self.codriver_mods.as_ref().filter(|_| codriver) {
             // The stage's names for the note lookup: RSF's aliases where there are any, then the launcher's own
             // catalogue names, so the lookup works without an RSF stage list.
             let names = self.stage_note_names(&stage);
@@ -700,8 +708,8 @@ impl Form {
                 effects: self.effects_volume,
                 tyres: self.tyres_volume,
             },
-            codriver: self.codriver,
-            hud: self.hud,
+            codriver,
+            hud,
             graphics: self.graphics,
             wipers: self.wipers,
             standalone: self.paths.standalone.clone(),
@@ -1376,6 +1384,39 @@ mod tests {
         let dir = Path::new("/l/logs");
         assert_eq!(perf_log_args(true, dir), ["--perf-log", "/l/logs"]);
         assert!(perf_log_args(false, dir).is_empty());
+    }
+
+    /// A circuit session starts with no pace notes unless the Circuit page asks for them: no voice, no note symbol, no
+    /// stack; and it passes its laps and no ghost. The Drive page's start keeps them. Needs the same variables.
+    #[test]
+    fn a_circuit_starts_without_pace_notes_unless_asked() {
+        let (Some(data), Some(patch), Some(_), Some(_)) =
+            (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS"), env("RBR_RSF"))
+        else {
+            return;
+        };
+        let here = crate::test_dir("command-circuit-notes");
+        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+        let settings = "[launcher]\nmap = 54\ncodriver = on\npace_stack = 3\nhud_hide = inputs\n";
+        let mut form = load(&start, Settings::parse(settings)).unwrap();
+        form.read_only = true;
+        form.map = form.catalog.map_index(54).unwrap();
+        let args = |form: &mut Form| form.start_args(&mut CrtRand::srand(1)).unwrap();
+        let drive = args(&mut form);
+        assert_eq!(value(&drive, "--pace-stack").as_deref(), Some("3"));
+        assert!(drive.iter().all(|a| a != "--laps"));
+        form.page = crate::pages::Page::Circuit;
+        form.circuit.laps = 3;
+        let circuit = args(&mut form);
+        assert!(circuit.iter().any(|a| a == "--no-codriver"), "no voice");
+        assert_eq!(value(&circuit, "--pace-stack"), None, "no stack");
+        let hidden = value(&circuit, "--hud-hide").unwrap();
+        assert!(hidden.split(',').any(|p| p == "pace") && hidden.contains("inputs"), "{hidden}");
+        assert_eq!(value(&circuit, "--laps").as_deref(), Some("3"));
+        form.circuit.pace_notes = true;
+        let asked = args(&mut form);
+        assert_eq!(value(&asked, "--pace-stack").as_deref(), Some("3"));
+        assert!(asked.iter().all(|a| a != "--no-codriver"));
     }
 
     #[test]
