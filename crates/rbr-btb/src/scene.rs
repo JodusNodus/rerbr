@@ -208,6 +208,10 @@ impl Scene {
         let mut mesh_of: HashMap<String, usize> = HashMap::new();
         let mut placed = Vec::new();
         for object in &objects {
+            // The plugin skips an object whose mesh file the archive lacks (`Anavasi Portarias`'s `obj_242_0`).
+            if !has_entry(&mut zip, &format!("Objects/{}.x", object.file)) {
+                continue;
+            }
             let key = object.file.to_lowercase();
             let mesh = match mesh_of.get(&key) {
                 Some(&mesh) => mesh,
@@ -429,6 +433,11 @@ pub fn place_normal(m: &[f32; 16], n: [f32; 3]) -> [f32; 3] {
     }
 }
 
+/// Whether the archive holds the entry.
+pub fn has_entry<R: Read + std::io::Seek>(zip: &mut rbz::ZipArchive<R>, name: &str) -> bool {
+    rbz::by_name(zip, name).is_ok()
+}
+
 pub fn read_entry<R: Read + std::io::Seek>(zip: &mut rbz::ZipArchive<R>, name: &str) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     rbz::by_name(zip, name)
@@ -577,4 +586,22 @@ fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Re
         indices,
         material: texture.and_then(|t| materials.get(&t.to_lowercase()).copied()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn has_entry_tells_a_missing_mesh_file_from_a_present_one() {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(&mut bytes);
+        writer.start_file("Objects/Here.x", zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(b"x").unwrap();
+        writer.finish().unwrap();
+        let mut zip = rbz::ZipArchive::new(bytes).unwrap();
+        assert!(has_entry(&mut zip, "Objects/here.x"));
+        assert!(!has_entry(&mut zip, "Objects/obj_242_0.x"));
+    }
 }

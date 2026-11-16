@@ -420,6 +420,9 @@ fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
     let mut faces = Vec::new();
     let collides = |o: &&crate::track::Object| o.visible != Some(false) || o.collision_only;
     for object in objects.iter().filter(|o| o.collision_model == Some(0)).filter(collides) {
+        if !scene::has_entry(&mut zip, &format!("Objects/{}.x", object.file)) {
+            continue;
+        }
         let key = object.file.to_lowercase();
         if !meshes.contains_key(&key) {
             let bytes = scene::read_entry(&mut zip, &format!("Objects/{}.x", object.file))?;
