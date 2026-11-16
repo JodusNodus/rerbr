@@ -16,17 +16,12 @@ mod walks;
 use crate::rigid_body::VF81X;
 pub(crate) use collide_init::collide_init;
 use collide_init::collide_init_run;
-use e90::{
-    d3dx_normalize_run, e90_add_bend_run, e90_add_fixed_run, e90_add_particle_run, e90_add_pin_run, e90_add_spring_run,
-    e90_bend_pool_init_run, e90_build_post_run, e90_build_run, e90_build_span_run, e90_part_ctor_run,
-    e90_part_pool_init_run, e90_pin_pool_init_run, e90_ptr_tab_init_run, e90_seg_ctor_run, e90_seg_dtor_run,
-    e90_seg_init_run, e90_seg_pool_init_run,
-};
+use e90::{e90_seg_ctor_run, e90_seg_dtor_run};
 use entity_slots::{
     clear_acc_run, dummy_present, dummy_vf11c, dummy_vf_cc, e43_vf_d4, entity_vf140, entity_vf80_run, entity_vf9c_run,
     entity_vf_cc, entity_vf_d0, entity_vf_e8, entity_vf_f0, entity_vfa0_run, entity_vfb0_run, exclusion_test_run,
-    ground_present, ground_vf_cc, ground_vf_e8, init_bd0_run, limit_run, old_frame_of_run, remove_exclusion_run,
-    sample_indexed_run, vf118, vf120_run, vf_ac,
+    ground_present, ground_vf_cc, ground_vf_e8, old_frame_of_run, remove_exclusion_run, sample_indexed_run, vf118,
+    vf120_run, vf_ac,
 };
 pub(crate) use entity_slots::{empty_hook_run, exclusion_test_direct, ENTITY_VF120};
 use frame::{
@@ -34,9 +29,8 @@ use frame::{
     old_frame_vf08_run, old_frame_vf0c_run, old_frame_vf10_run,
 };
 use hinge::{
-    hinge_sim_d860, hinge_vf_e070, set_650_run, sim_c960_run, sim_cff0_run, sim_d160_run, sim_da60_run, sim_e1d0_run,
-    sim_e4f0_run, sim_ea80_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run, state_emit_run,
-    step_big_run, SIM_D160, SIM_D860, VF_E070,
+    set_650_run, sim_e4f0_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run, state_emit_run,
+    step_big_run,
 };
 use matrices::{
     compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run, mb560_run,
@@ -100,7 +94,6 @@ pub const EMPTY_HOOK: u32 = 0x519b90;
 pub const COPY_BLOCKS: u32 = 0x51b460;
 pub const COPY_BLOCKS_THREE_FOUR: u32 = 0x51b500;
 pub const COPY16_WALK: u32 = 0x51b4c0;
-pub const LIMIT_UPDATE: u32 = 0x51f280;
 pub const SAMPLE_INDEXED: u32 = 0x520240;
 pub const FETCH_X: u32 = 0x51b6c0;
 pub const FETCH_Y: u32 = 0x51b780;
@@ -108,23 +101,13 @@ pub const COMPOSE_B: u32 = 0x51b600;
 const GRID_WALK: u32 = 0x51b410;
 pub const SIM_F950: u32 = 0x51f950;
 pub const STATE_EMIT: u32 = 0x51f700;
-pub const SIM_C960: u32 = 0x51c960;
 pub const SIM_CF10: u32 = 0x51cf10;
-pub const SIM_CFF0: u32 = 0x51cff0;
-pub const SIM_E1D0: u32 = 0x51e1d0;
-pub const SIM_EA80: u32 = 0x51ea80;
 pub const SIM_EAD0: u32 = 0x51ead0;
 pub const SIM_EFE0: u32 = 0x51efe0;
 pub const SIM_E4F0: u32 = 0x51e4f0;
 pub const SIM_F350: u32 = 0x51f350;
 pub const SIM_FD00: u32 = 0x51fd00;
-pub const SIM_DA60: u32 = 0x51da60;
 pub const CLEAR_ACC: u32 = 0x529e60;
-pub const INIT_BD0: u32 = 0x519bd0;
-pub const E90_BUILD: u32 = 0x601470;
-pub const E90_SEG_POOL_INIT: u32 = 0x601270;
-pub const E90_BUILD_SPAN: u32 = 0x6029b0;
-pub const E90_BUILD_POST: u32 = 0x602fe0;
 pub const REMOVE_EXCLUSION: u32 = 0x51a060;
 pub const SET_650: u32 = 0x51da50;
 pub(crate) const BODY_COMPOSE: u32 = 0x4e6a30;
@@ -139,7 +122,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("entities", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 115] = [
+pub static BINDINGS: [Binding; 89] = [
     bind(VF58, "CEntity::E43Vf58", vf58),
     bind(VF5C, "CEntity::E43Vf5C", vf5c),
     bind(ENTITY_VF80, "CEntity::E43Vf80", entity_vf80_run),
@@ -204,41 +187,17 @@ pub static BINDINGS: [Binding; 115] = [
     bind(COPY_BLOCKS, "E43PairWalk::M51B460 (ours)", copy_blocks_run),
     bind(COPY_BLOCKS_THREE_FOUR, "E43PairWalk::M51B500 (ours)", copy_blocks_three_four_run),
     bind(COPY16_WALK, "E33Mat34::M51B4C0 (ours)", copy16_walk_run),
-    bind(LIMIT_UPDATE, "CEntity::M51F280 (ours)", limit_run),
     bind(SAMPLE_INDEXED, "E44MatTable::M520240 (ours)", sample_indexed_run),
     bind(SIM_F950, "CHingedRigidBody::M51F950 (ours)", sim_f950_run),
     bind(STATE_EMIT, "CMultiSignal1<CSigMrRBodyState>::Emit (ours)", state_emit_run),
-    bind(SIM_C960, "CHingedRigidBody::SimC960", sim_c960_run),
-    bind(SIM_CFF0, "CHingedRigidBody::SimCFF0", sim_cff0_run),
-    bind(SIM_D160, "CHingedRigidBody::SimD160", sim_d160_run),
-    bind(SIM_E1D0, "CHingedRigidBody::SimE1D0", sim_e1d0_run),
-    bind(SIM_EA80, "CHingedRigidBody::SimEA80", sim_ea80_run),
     bind(SIM_EAD0, "CHingedRigidBody::SimEAD0", sim_ead0_run),
     bind(SIM_E4F0, "CHingedRigidBody::SimE4F0", sim_e4f0_run),
     // The mounted body's slot 0x138: the same asm as SimE4F0's.
     bind(0x521a50, "CMountedRigidBody::Vf138", sim_e4f0_run),
     bind(SIM_F350, "CHingedRigidBody::SimF350", sim_f350_run),
     bind(SIM_FD00, "CHingedRigidBody::SimFD00", sim_fd00_run),
-    bind(SIM_DA60, "CHingedRigidBody::SimDA60", sim_da60_run),
     bind(0x522100, "CMountedRigidBody::StepBig", step_big_run),
     bind(CLEAR_ACC, "CSolid::E43ClearAcc (ours)", clear_acc_run),
-    bind(INIT_BD0, "CEntity::E43_InitBD0", init_bd0_run),
-    bind(E90_BUILD, "E90Group::Build", e90_build_run),
-    bind(E90_SEG_POOL_INIT, "E90SegPool::Init", e90_seg_pool_init_run),
-    bind(E90_BUILD_SPAN, "CFenceHandler::BuildSpan", e90_build_span_run),
-    bind(E90_BUILD_POST, "CFenceHandler::BuildPost", e90_build_post_run),
-    bind(0x605f30, "E90Seg::AddParticle", e90_add_particle_run),
-    bind(0x605fb0, "E90Seg::AddSpring", e90_add_spring_run),
-    bind(0x606070, "E90Seg::AddFixed", e90_add_fixed_run),
-    bind(0x606090, "E90Seg::AddPin", e90_add_pin_run),
-    bind(0x6060b0, "E90Seg::AddBend", e90_add_bend_run),
-    bind(0x605b60, "E90Seg::Init", e90_seg_init_run),
-    bind(0x6026a0, "E90PartPool::Init", e90_part_pool_init_run),
-    bind(0x6027a0, "E90PtrTab::Init", e90_ptr_tab_init_run),
-    bind(0x6028b0, "E90BendPool::Init", e90_bend_pool_init_run),
-    bind(0x602930, "E90PinPool::Init", e90_pin_pool_init_run),
-    bind(0x602220, "E90_PartCtor", e90_part_ctor_run),
-    bind(0x627235, "_D3DXVec3Normalize@8", d3dx_normalize_run),
     bind(REMOVE_EXCLUSION, "CEntity::E43_ExclA060", remove_exclusion_run),
     bind(SIM_EFE0, "CHingedRigidBody::SimEFE0", sim_efe0_run),
     bind(SET_650, "CHingedRigidBody::Set650", set_650_run),
@@ -252,8 +211,6 @@ pub static BINDINGS: [Binding; 115] = [
     bind(0x51bc70, "CGround::VfCC", ground_vf_cc),
     bind(0x51c6f0, "CGround::VfE8", ground_vf_e8),
     bind(0x51a740, "CEntity::E43VfAC", vf_ac),
-    bind(VF_E070, "CHingedRigidBody::VfE070", hinge_vf_e070),
-    bind(SIM_D860, "CHingedRigidBody::SimD860", hinge_sim_d860),
     bind(0x600ff0, "E90Seg::E90Seg", e90_seg_ctor_run),
     bind(0x601030, "E90Seg::~E90Seg", e90_seg_dtor_run),
 ];

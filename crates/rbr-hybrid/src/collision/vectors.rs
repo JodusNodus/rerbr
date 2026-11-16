@@ -65,19 +65,3 @@ pub(super) fn min_max_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn vec4_normalize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(layout::vec4_normalize(&mut ctx.mem, r.ecx), 0))
 }
-
-/// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E09Vec4::Sub` (0x465da0). Eax is `out`.
-pub(super) fn vec4_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, b, ..] = r.stack;
-    let w = crate::RESIDUE;
-    let eax = layout::vec4_sub_stale(&mut ctx.mem, r.ecx, out, b, w);
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E21Vec3::Add` (0x4a19e0). Eax is `out`.
-pub(super) fn vec3_add(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, b, ..] = r.stack;
-    let w = crate::RESIDUE;
-    let eax = layout::vec3_add_stale(&mut ctx.mem, r.ecx, out, b, w);
-    Ok(Return::void(eax, 8))
-}

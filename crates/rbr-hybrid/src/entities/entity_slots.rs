@@ -12,10 +12,10 @@ use rbr_physics::entities::store::EntityStore;
 use rbr_physics::math::vec::clear_vec4;
 use rbr_physics::mem::Mem;
 
-use super::{E90_BUILD, EXCLUSION_TEST};
+use super::EXCLUSION_TEST;
 use crate::collision::E01_VEC4_COPY_FROM;
 use crate::entities::Op;
-use crate::rigid_body::on_solids;
+use crate::rigid_body::with_solids;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 fn entity_echo(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -113,6 +113,7 @@ pub(super) fn dummy_vf11c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// The host calls of `CDummyObject::VfCC`: `FetchX` and the hit handler, each entered at the given stack pointer.
 struct DummyCallsAt<'a> {
     host: &'a dyn Host,
+    mem: Mem,
 }
 
 impl DummyCalls for DummyCallsAt<'_> {
@@ -121,7 +122,7 @@ impl DummyCalls for DummyCallsAt<'_> {
     }
 
     fn group_on_hit(&mut self, sp: u32, group: u32) {
-        self.host.call_at(sp, E90_BUILD, group, &[]);
+        super::e90::build(self.host, &mut self.mem, sp, group);
     }
 }
 
@@ -130,7 +131,7 @@ impl DummyCalls for DummyCallsAt<'_> {
 pub(super) fn dummy_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     let frame = aligned_frame(r.esp).wrapping_sub(0x3c);
-    let mut calls = DummyCallsAt { host: ctx.host };
+    let mut calls = DummyCallsAt { host: ctx.host, mem: ctx.mem.clone() };
     layout::dummy_span_test(&mut ctx.mem, r.ecx, a, b, frame, &mut calls);
     Ok(Return::void(0, 8))
 }
@@ -261,12 +262,10 @@ impl hinge_stops::Calls for FlagCall<'_> {
     }
 }
 
-/// thiscall: `CEntity` 0x51f280, the limit update (see `rbr_physics::entities::hinge_stops`). Pops nothing.
-pub(super) fn limit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let host = ctx.host;
-    let mut flag = FlagCall { mem: ctx.mem.clone(), host, object: layout::limit_object(r.ecx) };
-    let eax = on_solids(ctx, |s| layout::limit_update_at(s, r.ecx, &mut flag));
-    Ok(Return::void(eax, 0))
+/// `CEntity` 0x51f280, the limit update (see `rbr_physics::entities::hinge_stops`).
+pub(super) fn limit_update(host: &dyn Host, mem: &mut Mem, this: u32) {
+    let mut flag = FlagCall { mem: mem.clone(), host, object: layout::limit_object(this) };
+    with_solids(host, mem, |s| layout::limit_update_at(s, this, &mut flag));
 }
 
 /// thiscall `(index, f, b)`: the material table lookup by index (0x520240). A missing table clears only al of eax.
@@ -283,20 +282,20 @@ pub(super) fn sample_indexed_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decl
     Ok(Return::void(eax, 12))
 }
 
-/// thiscall, no stack arguments: `CSolid::E43ClearAcc` (0x529e60), the two accumulators cleared.
-pub(super) fn clear_acc_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(on_solids(ctx, |s| layout::clear_solid_accumulators(s, r.ecx)), 0))
-}
-
-/// thiscall, no stack arguments: `CEntity::E43_InitBD0` (0x519bd0), the walker marks.
-pub(super) fn init_bd0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::init_walker_marks(&mut ctx.mem, r.ecx), 0))
-}
-
 /// thiscall `(value)`: `CEntity::E43_ExclA060` (0x51a060).
 pub(super) fn remove_exclusion_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     layout::remove_exclusion(&mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(0, 4))
+}
+
+/// `CSolid::E43ClearAcc` (0x529e60), the two accumulators cleared.
+pub(super) fn clear_acc(host: &dyn Host, mem: &mut Mem, this: u32) -> u32 {
+    with_solids(host, mem, |s| layout::clear_solid_accumulators(s, this))
+}
+
+/// thiscall, no stack arguments: `CSolid::E43ClearAcc` (0x529e60).
+pub(super) fn clear_acc_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
+    Ok(Return::void(clear_acc(ctx.host, &mut ctx.mem, r.ecx), 0))
 }
 
 /// thiscall `(a, b)`, `ret 8`: `CEntity::E43VfAC` (0x51a740), returns `a`.

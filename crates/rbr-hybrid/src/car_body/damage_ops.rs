@@ -8,11 +8,6 @@ use super::car_calls::scratch;
 use crate::collision::E01_VEC4_COPY_FROM;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-/// thiscall `()`: the windshield gate on `CCarDamageHandler`.
-pub(super) fn damage_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(damage::drivable(&ctx.mem, r.ecx) as u32, 0))
-}
-
 /// thiscall `(a1..a8)`, `ret 0x20`: `CCarDamageHandler::ImpactScale` (slot 2) calls slot 1 with the length scaled by 0.08.
 pub(super) fn damage_impact_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = ImpactHost { host: ctx.host, sp: r.esp - 0x24 };

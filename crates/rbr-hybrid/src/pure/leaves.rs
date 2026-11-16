@@ -2,7 +2,7 @@
 //! pass no `Ctx` on and use no `esp` (`scripts/pure_leaves.py` lists them from the sources; `leaves_are_bound` checks
 //! the list). The pure host runs a call to one of them as a plain call ([`super::Pure::call_leaf`]).
 
-pub(super) const LEAVES: [u32; 155] = [
+pub(super) const LEAVES: [u32; 139] = [
     0x43c5b0, // E01Vec4::CopyFrom
     0x43c630, // E01VecSetA::Cross
     0x43c6a0, // E01Vec4::Normalize
@@ -20,7 +20,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x4e11e0, // CBody::Vf114
     0x4e11f0, // CBody::Vf118
     0x4e3860, // CBrakeWall::Vf110
-    0x4e3f10, // CBrakeWall::QueryBox
     0x4e41a0, // E34Link10::UnlinkA
     0x4e4c70, // E34Quat::Norm
     0x4e4d10, // E34Quat::ToQuat
@@ -31,7 +30,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x4e67f0, // CCar::Get30
     0x4ea980, // CCar::AppendA980
     0x4eb7b0, // CCarBody::Vf80x
-    0x4ec0d0, // CCarDamageHandler::Test3B20
     0x4ef720, // E36DamageOps::AddFunctor
     0x4f1e00, // CCarLightSystem::Attach
     0x4f1e40, // CCarLightSystem::Set1e40
@@ -40,7 +38,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x4f65b0, // E37GridOps::AddEdge
     0x4f6740, // E38RayClear
     0x4f8280, // E37GridOps::EdgeEdge
-    0x4f8560, // E37GridOps::EdgePair
     0x4fb070, // CCollisionMeshOpen::CopyBounds
     0x4fb0b0, // CCollisionMeshOpen::IsActive
     0x4fb7f0, // E38_004FB7F0
@@ -76,7 +73,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x519a40, // CEntity::E43Vf88
     0x519ac0, // CEntity::Vf118
     0x519b90, // CEntity::EmptyHook (ours)
-    0x519bd0, // CEntity::E43_InitBD0
     0x519c00, // E43PairWalk::MFc00
     0x519c10, // E43PairWalk::MFc10
     0x519d60, // CEntity::Vf114
@@ -96,10 +92,7 @@ pub(super) const LEAVES: [u32; 155] = [
     0x51bb80, // CGround::Vf114
     0x51bc70, // CGround::VfCC
     0x51c8c0, // E44Shell::M51C8C0
-    0x51c960, // CHingedRigidBody::SimC960
     0x51da50, // CHingedRigidBody::Set650
-    0x51e070, // CHingedRigidBody::VfE070
-    0x51ea80, // CHingedRigidBody::SimEA80
     0x520240, // E44MatTable::M520240 (ours)
     0x521910, // E45Smalls::M1910
     0x521920, // E45_M1920
@@ -147,15 +140,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x539290, // CWheel::Unk9290
     0x53a860, // CWheel::UnkA860
     0x53ab90, // E51Wheel::M3AB90
-    0x566640, // E60Flow::M566640
-    0x5666b0, // E60Flow::M5666b0
     0x600b20, // CDummyObject::Vf11C
     0x600c80, // CDummyObject::Vf110
-    0x602220, // E90_PartCtor
-    0x605f30, // E90Seg::AddParticle
-    0x605fb0, // E90Seg::AddSpring
-    0x606070, // E90Seg::AddFixed
-    0x606090, // E90Seg::AddPin
-    0x6060b0, // E90Seg::AddBend
-    0x627235, // _D3DXVec3Normalize@8
 ];

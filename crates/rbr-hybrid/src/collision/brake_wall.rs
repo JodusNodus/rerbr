@@ -68,11 +68,10 @@ impl WallQueryHost for WallCorners<'_> {
     }
 
     fn query_box(&mut self, sp: u32, wall: u32, bounds: u32, collector: u32) -> u32 {
-        self.host.call_at(sp, BRAKE_WALL_QUERY_BOX, wall, &[bounds, collector]).eax
+        crate::enter_leaf(self.host, sp);
+        wall::query_box(&mut self.mem, wall, bounds, collector)
     }
 }
-
-pub(super) const BRAKE_WALL_QUERY_BOX: u32 = 0x4e3f10;
 
 /// CBrakeWall::VfF0's call of the wall's slot 0xe8.
 struct WallSlotE8<'a> {
@@ -117,11 +116,4 @@ pub(super) fn wall_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = WallCorners { mem: ctx.mem.clone(), host: ctx.host };
     let eax = layout::query_wall_box(&mut calls, &mut ctx.mem, r.ecx, a, b, r.esp);
     Ok(Return::void(eax, 8))
-}
-
-/// CBrakeWall::QueryBox (0x4e3f10): thiscall on the wall with the box and the collector, ret 8; eax is the leaf count's
-/// result from `wall::query_box`.
-pub(super) fn brake_wall_query_box(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [bounds, collector, ..] = r.stack;
-    Ok(Return::void(wall::query_box(&mut ctx.mem, r.ecx, bounds, collector), 8))
 }

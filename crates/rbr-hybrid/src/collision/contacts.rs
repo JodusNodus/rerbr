@@ -8,11 +8,10 @@ use rbr_physics::collision::store::CollisionStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::ZERO_VEC4;
 
-use super::{
-    COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, E01_VEC4_NORMALIZE, E09_VEC4_SUB, E21_VEC3_ADD, E33_MAKE_EVENT, E37_EDGE_EDGE,
-    E37_EDGE_PAIR, E37_GRID_COPY,
-};
-use super::{COLL_EVENT_INIT_FULL, E36_ALLOC_EVENT};
+use super::edge::{edge_edge_at, edge_pair_at};
+use super::queries::{sample_a_at, sample_b_at};
+use super::solver::{alloc_event_at, init_full_at, make_event_at};
+use super::E37_GRID_COPY;
 use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -93,16 +92,24 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn alloc_event(&mut self) -> u32 {
-        self.host.call(E36_ALLOC_EVENT, 0, &[layout::EVENT_SIZE]).eax
+        let mem = &mut self.mem.clone();
+        let esp = crate::enter(self.host, mem, 0, &[layout::EVENT_SIZE]);
+        alloc_event_at(self.host, mem, esp, layout::EVENT_SIZE)
     }
 
     fn init_full(&mut self, event: u32, aux: u32, payload: u32) -> u32 {
-        self.host.call(COLL_EVENT_INIT_FULL, event, &[0, self.this, aux, ZERO_VEC4, payload, 0]).eax
+        let mem = &mut self.mem.clone();
+        let args = [0, self.this, aux, ZERO_VEC4, payload, 0];
+        let esp = crate::enter(self.host, mem, 0, &args);
+        init_full_at(self.host, mem, esp, event, args)
     }
 
     fn vertex_sample(&mut self, index: u32, event: u32) {
         let grid = Body::new(self.this).grid(self.mem);
-        self.host.call(COLGRID_SAMPLE_B, grid, &[index, event + 0xa4, event + 0xa8]);
+        let (out_a, out_b) = (event + 0xa4, event + 0xa8);
+        let mem = &mut self.mem.clone();
+        crate::enter(self.host, mem, 0, &[index, out_a, out_b]);
+        sample_b_at(mem, grid, index, out_a, out_b);
     }
 
     fn append(&mut self, event: u32) {
@@ -205,33 +212,40 @@ impl GridContactHost for VfD0Calls<'_> {
         material: u32,
     ) -> u32 {
         let args = [from, to, hit, t, normal, material];
-        self.host.call_at(sp, E37_EDGE_EDGE, grid, &args).eax
+        crate::enter_leaf(self.host, sp);
+        u32::from(edge_edge_at(self.host, &mut self.mem, grid, args))
     }
 
     fn normalize(&mut self, sp: u32, vector: u32) {
-        self.host.call_at(sp, E01_VEC4_NORMALIZE, vector, &[]);
+        crate::enter_leaf(self.host, sp);
+        layout::vec4_normalize(&mut self.mem, vector);
     }
 
     fn add(&mut self, sp: u32, a: u32, out: u32, b: u32) -> u32 {
-        self.host.call_at(sp, E21_VEC3_ADD, a, &[out, b]).eax
+        crate::enter(self.host, &mut self.mem, sp, &[out, b]);
+        layout::vec3_add_stale(&mut self.mem, a, out, b, crate::RESIDUE)
     }
 
     fn sub(&mut self, sp: u32, a: u32, out: u32, b: u32) -> u32 {
-        self.host.call_at(sp, E09_VEC4_SUB, a, &[out, b]).eax
+        crate::enter(self.host, &mut self.mem, sp, &[out, b]);
+        layout::vec4_sub_stale(&mut self.mem, a, out, b, crate::RESIDUE)
     }
 
     fn make_event(&mut self, sp: u32, kind: ContactKind, hit: u32, body: u32, other: u32, at: u32, normal: u32) -> u32 {
         let args = [kind as u32, hit, 0, body, other, at, ZERO_VEC4, normal, 0];
-        self.host.call_at(sp, E33_MAKE_EVENT, 0, &args).eax
+        let esp = crate::enter(self.host, &mut self.mem, sp, &args);
+        make_event_at(self.host, &mut self.mem, esp, args)
     }
 
     fn vertex_sample(&mut self, sp: u32, grid: u32, index: u32, out_a: u32, out_b: u32) {
-        self.host.call_at(sp, COLGRID_SAMPLE_B, grid, &[index, out_a, out_b]);
+        crate::enter(self.host, &mut self.mem, sp, &[index, out_a, out_b]);
+        sample_b_at(&mut self.mem, grid, index, out_a, out_b);
     }
 
     fn edge_sample(&mut self, sp: u32, grid: u32, index: u32, t: f32, out_a: u32, out_b: u32) {
         let args = [index, t.to_bits(), out_a, out_b];
-        self.host.call_at(sp, COLGRID_SAMPLE_A, grid, &args);
+        crate::enter(self.host, &mut self.mem, sp, &args);
+        sample_a_at(&mut self.mem, grid, index, t, out_a, out_b);
     }
 }
 
@@ -242,12 +256,14 @@ impl PairContactHost for VfD0Calls<'_> {
     }
 
     fn edge_pair(&mut self, sp: u32, grid: u32, args: [u32; 10]) -> u32 {
-        self.host.call_at(sp, E37_EDGE_PAIR, grid, &args).eax
+        crate::enter_leaf(self.host, sp);
+        edge_pair_at(self.host, &mut self.mem, grid, args)
     }
 
     fn pair_event(&mut self, sp: u32, hit: u32, t: u32, body: u32, other: u32, at: u32, normal: u32) -> u32 {
         let args = [1, hit, t, body, other, at, ZERO_VEC4, normal, 0];
-        self.host.call_at(sp, E33_MAKE_EVENT, 0, &args).eax
+        let esp = crate::enter(self.host, &mut self.mem, sp, &args);
+        make_event_at(self.host, &mut self.mem, esp, args)
     }
 }
 
@@ -358,7 +374,8 @@ impl BoxEdgeHitCalls for F4CallsAt<'_> {
     fn edge_edge(&mut self, from: u32, to: u32, hit: u32, t: u32, normal: u32, material: u32) -> bool {
         let grid = Body::new(self.this).grid(self.mem);
         let args = [from, to, hit, t, normal, material];
-        self.host.call_at(self.sp - 0x1c, E37_EDGE_EDGE, grid, &args).eax != 0
+        crate::enter_leaf(self.host, self.sp - 0x1c);
+        edge_edge_at(self.host, self.mem, grid, args)
     }
 
     fn store_hit(&mut self, f: u32, g: u32, h: u32) {

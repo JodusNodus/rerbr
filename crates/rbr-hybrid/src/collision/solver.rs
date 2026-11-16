@@ -5,6 +5,7 @@ use rbr_physics::collision::layout::solver_hosts::{ImpulseHost, SolverHost};
 use rbr_physics::collision::layout::CollisionView;
 use rbr_physics::collision::layout::EventBodyHost;
 use rbr_physics::collision::layout::{self, list};
+use rbr_physics::mem::Mem;
 use rbr_physics::store::Raw;
 
 use super::{on_collision, Callees};
@@ -254,15 +255,12 @@ pub(super) fn plane_diff(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 4))
 }
 
-/// cdecl with nine words: `E33MakeEvent` (0x4e0d00). Eax is the event, or 0.
-pub(super) fn make_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2, ..] = r.stack;
-    let mut calls = MakeEventCalls { host: ctx.host, s: layout::make_event_frame(r.esp) };
-    let words = [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2];
+/// `E33MakeEvent` entered at `esp` with its nine words. Eax is the event, or 0.
+pub(super) fn make_event_at(host: &dyn Host, mem: &mut Mem, esp: u32, words: [u32; 9]) -> u32 {
+    let mut calls = MakeEventCalls { host, s: layout::make_event_frame(esp) };
     // The payload's last word (the event's data[15]) is not written: `crate::RESIDUE`.
     let tail = crate::RESIDUE;
-    let eax = on_collision(ctx.host, &mut ctx.mem, |s| layout::make_event_at(&mut calls, s, words, tail));
-    Ok(Return::void(eax, 0))
+    on_collision(host, mem, |s| layout::make_event_at(&mut calls, s, words, tail))
 }
 
 /// E33MakeEvent's calls, at the original's stack pointers below its frame `s`: the bodies' slot 0x118 (4 below),
@@ -299,12 +297,15 @@ impl event::MakeEventHost<CollisionView<'_>> for MakeEventCalls<'_> {
     }
 }
 
-/// cdecl `(size)`: `E36AllocEvent` (0x4f4f10), the pool's head, or `operator new` (a tail jump, at the entry esp) when
-/// the pool is empty.
+/// `E36AllocEvent` entered at `esp`: the pool's head, or `operator new` (a tail jump, at the entry esp) when the pool is
+/// empty.
+pub(super) fn alloc_event_at(host: &dyn Host, mem: &mut Mem, esp: u32, size: u32) -> u32 {
+    event::alloc_event(mem, size, &mut AllocAt { host, sp: esp })
+}
+
+/// cdecl `(size)`: `E36AllocEvent` (0x4f4f10).
 pub(super) fn alloc_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [size, ..] = r.stack;
-    let mut calls = AllocAt { host: ctx.host, sp: r.esp };
-    Ok(Return::void(event::alloc_event(&mut ctx.mem, size, &mut calls), 0))
+    Ok(Return::void(alloc_event_at(ctx.host, &mut ctx.mem, r.esp, r.stack[0]), 0))
 }
 
 struct AllocAt<'a> {
@@ -318,13 +319,17 @@ impl event::AllocEventHost for AllocAt<'_> {
     }
 }
 
+/// `CCollisionEvent::InitFull` on `event` entered at `esp` with `(kind, body, point_a, point_b, payload, tag)`. Eax is
+/// the event.
+pub(super) fn init_full_at(host: &dyn Host, mem: &mut Mem, esp: u32, event: u32, args: [u32; 6]) -> u32 {
+    layout::init_full(&mut Callees(host), mem, event, args, esp)
+}
+
 /// thiscall on the event with `(kind, body, point_a, point_b, payload, tag)`, ret 0x18: `CCollisionEvent::InitFull`
-/// (0x4f50e0). Eax is the event.
+/// (0x4f50e0).
 pub(super) fn init_full(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [kind, body, point_a, point_b, payload, tag, ..] = r.stack;
-    let args = [kind, body, point_a, point_b, payload, tag];
-    let eax = layout::init_full(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, args, r.esp);
-    Ok(Return::void(eax, 0x18))
+    let args = std::array::from_fn(|i| r.stack[i]);
+    Ok(Return::void(init_full_at(ctx.host, &mut ctx.mem, r.esp, r.ecx, args), 0x18))
 }
 
 /// thiscall on the solver with `(event)`, ret 4: `CCollisionSolver::Vf04` (0x4fc9a0), a tail jump to

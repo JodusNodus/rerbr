@@ -7,8 +7,9 @@ use rbr_physics::math::quat;
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
-use super::on_car;
+use super::{on_car, on_car_in, Frame};
 use crate::collision::{BodyCallees, E37_EDGE_EDGE};
+use crate::enter;
 use crate::entities::Op;
 use crate::rigid_body::{set_solid_word, VF16_HELPER};
 use crate::{engine_driveline, Ctx, Decline, Host, Regs, Return};
@@ -39,19 +40,22 @@ impl layout::EdgeProbeCalls for Collide6000Host<'_> {
     }
 }
 
-struct Vf128xHost<'a>(&'a dyn Host);
+struct Vf128xHost<'a> {
+    host: &'a dyn Host,
+    mem: Mem,
+}
 
 impl layout::CarImpulseCalls for Vf128xHost<'_> {
     fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
-        crate::entities::op(self.0, sp, this, Op::ComposeA { src: a, o2: car, out });
+        crate::entities::op(self.host, sp, this, Op::ComposeA { src: a, o2: car, out });
     }
 
     fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
-        self.0.call_at(sp, 0x4e6000, car, &[m, f1, f2]);
+        collide6000_at(self.host, &mut self.mem, sp, car, [m, f1, f2]);
     }
 
     fn solid_impulse(&mut self, sp: u32, car: u32, args: [u32; 8]) {
-        self.0.call_at(sp, crate::rigid_body::E43VF128, car, &args);
+        self.host.call_at(sp, crate::rigid_body::E43VF128, car, &args);
     }
 }
 
@@ -65,15 +69,24 @@ pub(super) fn clear480(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall three words, `ret 0xc`: the edge probe along the vector, the grid's two flags out.
 pub(super) fn collide6000(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
-    let mut calls = Collide6000Host(ctx.host);
-    layout::edge_probe(&mut ctx.mem, r.ecx, a, b, c, r.esp, &mut calls);
+    collide6000_body(ctx.host, &mut ctx.mem, r.esp, r.ecx, [a, b, c]);
     Ok(Return::void(0, 0xc))
+}
+
+fn collide6000_body(host: &dyn Host, mem: &mut Mem, esp: u32, car: u32, [a, b, c]: [u32; 3]) {
+    layout::edge_probe(mem, car, a, b, c, esp, &mut Collide6000Host(host));
+}
+
+/// `Collide6000` on `car` as the host's call at `sp`.
+fn collide6000_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, args: [u32; 3]) {
+    let esp = enter(host, mem, sp, &args);
+    collide6000_body(host, mem, esp, car, args);
 }
 
 /// thiscall eight words, `ret 0x20`: matrix compose, collision probe and solid impulse dispatch.
 pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args: [u32; 8] = r.stack[..8].try_into().expect("Vf128x has eight stack words");
-    let mut calls = Vf128xHost(ctx.host);
+    let mut calls = Vf128xHost { host: ctx.host, mem: ctx.mem.clone() };
     layout::car_impulse(&mut ctx.mem, r.ecx, args, r.esp, &mut calls);
     Ok(Return::void(0, 0x20))
 }
@@ -82,8 +95,6 @@ pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 const DRIVE: u32 = 0x4b0;
 const ENGINE_SIM: u32 = 0x690;
 pub(super) const FLOW_OBJECT: u32 = 0x0165fa90;
-pub(super) const M5666B0: u32 = 0x5666b0;
-pub(super) const SAMPLER_54A0: u32 = 0x4e54a0;
 
 /// `r` with the member as `this`.
 fn member(r: &Regs, offset: u32) -> Regs {
@@ -164,16 +175,6 @@ pub(super) fn forward_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::float(f64::from(on_car(ctx, |m| m.forward_speed(r.ecx))), 0))
 }
 
-/// fastcall: `E60Flow::M5666b0` (0x5666b0), the damage-select word `MotionProbe` asks the flow.
-pub(super) fn flow_m5666b0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.damage_select(r.ecx), 0))
-}
-
-/// thiscall: `E60Flow::M566640` (0x566640), the flow check `Update9AF0` makes: 1 when the flow holds.
-pub(super) fn flow_m566640(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.flow_holds(r.ecx), 0))
-}
-
 /// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`. The matrix may be a held body's and
 /// `out` a solid's orientation (the hinged body's `SimD160`), read and stored held.
 pub(super) fn to_quat(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -220,12 +221,15 @@ pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Retu
     Ok(Return::void(eax, 0))
 }
 
-/// thiscall `(out*)`: the car's integer surface probe (`MotionProbe`).
-pub(super) fn motion_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Car { mem: ctx.mem.clone(), host: ctx.host, scratch: probe_scratch(r.esp) };
-    let outcome = on_car(ctx, |m| probe::motion_probe(&mut calls, m, r.ecx));
-    ctx.mem.set_u32(r.stack[0], outcome.out());
-    Ok(Return::void(outcome.ret(), 4))
+/// `MotionProbe` (0x4e7730, thiscall `(out*)`) on `car`, as the host's call at `sp`: the car's integer surface probe, its
+/// `out` word stored; returns eax.
+pub(super) fn motion_probe_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, out: u32) -> u32 {
+    let esp = enter(host, mem, sp, &[out]);
+    let frame = Frame::new(host, esp);
+    let mut calls = Car { mem: mem.clone(), host: &frame, scratch: probe_scratch(esp) };
+    let outcome = on_car_in(&frame, mem, |m| probe::motion_probe(&mut calls, m, car));
+    mem.set_u32(out, outcome.out());
+    outcome.ret()
 }
 
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.

@@ -8,11 +8,12 @@ use rbr_physics::car_body::{self as car};
 use rbr_physics::mem::Mem;
 use rbr_physics::ntweak;
 
-use super::car_calls::{car_calls, Car};
+use super::car_calls::{car_calls, car_calls_at, Car};
 use super::seed::SLOT_S158;
-use super::step::EMIT_DF0;
-use crate::car_body::{on_car, UPDATE_SEED};
+use super::Frame;
+use crate::car_body::on_car;
 use crate::engine_driveline::SIGNALS;
+use crate::enter;
 use crate::pure::OUTSIDE_ASSISTANCE_EMIT;
 use crate::vcu::SET_DIRTY;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -37,7 +38,7 @@ impl AssistCalls for Car<'_> {
         // The block's words +0 and +0x1c are not written.
         crate::fill_residue(&mut self.mem, block, 1);
         crate::fill_residue(&mut self.mem, block + 0x1c, 1);
-        self.host.call(UPDATE_SEED, car, &[block]);
+        super::seed::update_seed_at(self.host, &mut self.mem, 0, car, block);
     }
 
     /// On the held car `SetDirty`'s one write, the cell header's dirty word (a header stays on the image), here
@@ -62,7 +63,7 @@ impl RetireCalls for Car<'_> {
     }
 
     fn assist(&mut self, car: u32, a: u32, b: u32, c: u32) {
-        self.host.call(EMIT_DF0, car, &[a, b, c]);
+        assist_at(self.host, &mut self.mem, 0, car, [a, b, c]);
     }
 }
 
@@ -86,12 +87,14 @@ pub(super) fn lane_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     }
 }
 
-/// thiscall `(a, b, c)`, `ret 12`: `CCar::Assist8DF0`, the outside-assistance worker (`layout::outside_assistance`).
-pub(super) fn assist_8df0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, c, ..] = r.stack;
-    let mut calls = car_calls(ctx, r);
-    super::on_car(ctx, |m| car::layout::outside_assistance(&mut calls, m, r.ecx, r.esp, a, b, c));
-    Ok(Return::void(0, 12))
+/// `CCar::Assist8DF0` (0x4e8df0, thiscall `(a, b, c)`) on `car`, as the host's call at `sp`: the outside-assistance worker
+/// (`layout::outside_assistance`).
+pub(super) fn assist_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, words: [u32; 3]) {
+    let esp = enter(host, mem, sp, &words);
+    let frame = Frame::new(host, esp);
+    let mut calls = car_calls_at(&frame, mem, esp);
+    let [a, b, c] = words;
+    super::on_car_in(&frame, mem, |m| car::layout::outside_assistance(&mut calls, m, car, esp, a, b, c));
 }
 
 /// thiscall `()`: `CCar::Vf158x` (slot 86), the car's slot 0 then the tail-call into `CSolid::E43Vf158`.
