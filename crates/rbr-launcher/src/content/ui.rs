@@ -368,6 +368,6 @@ mod tests {
     }
 
     fn detect_rar() -> &'static str {
-        crate::content::kind::refused::RAR
+        crate::content::source::refused::RAR
     }
 }

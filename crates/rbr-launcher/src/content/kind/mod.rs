@@ -11,10 +11,11 @@ use crate::job::{Progress, Report};
 
 pub mod btb;
 pub mod car;
+pub mod classic;
 pub mod codriver;
 pub mod disc;
 pub mod ngp;
-pub mod refused;
+pub mod unknown;
 
 /// What a kind found in a source.
 #[derive(Debug, Clone, PartialEq, Eq)]

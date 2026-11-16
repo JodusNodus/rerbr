@@ -139,7 +139,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
   under the Drive page's stage.
 - One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add folder…"
-  in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, plain file) and each kind (`content/kind/`, one module
+  in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, plain file, tried in `SOURCES`) and each kind (`content/kind/`, one module
   each, one line in `content::KINDS`) says whether it is in it; added in one job with a notice on
   every page (✔ where to find it, ⚠ why not). BTB stages (a folder with `track.ini`, `objectlist.ini`, `Objects.zip`,
   `Textures.zip`, several per archive allowed) go to `<files>/tracks/` through a hidden staging folder, no `.exe`/

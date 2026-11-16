@@ -11,7 +11,7 @@ pub struct Zip {
 }
 
 impl Zip {
-    pub fn open(path: PathBuf) -> Result<Zip, Fail> {
+    fn open(path: PathBuf) -> Result<Zip, Fail> {
         let listed = zip_entries(&path).map_err(|e| format!("can't read it: {e}"))?;
         let entries = listed
             .into_iter()
@@ -39,4 +39,9 @@ impl Source for Zip {
     ) -> Result<(), Fail> {
         extract_zip(&self.path, dest, wanted, progress)
     }
+}
+
+pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    let named = path.to_string_lossy().to_ascii_lowercase().ends_with(".zip");
+    named.then(|| Ok(Box::new(Zip::open(path.to_owned())?) as Box<dyn Source>))
 }

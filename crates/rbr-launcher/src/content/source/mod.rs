@@ -1,11 +1,14 @@
 //! What an item is made of: a folder, a zip, a 7z or a plain file, each as one virtual file tree. A kind of content
 //! ([`super::kind`]) reads the tree's names and asks the source to copy out what it wants. One module per container;
-//! [`open`] picks it.
+//! [`open`] tries each in [`SOURCES`], so a container is one module and one line there.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 mod file;
 mod folder;
+pub mod refused;
 mod sevenz;
 mod zip;
 
@@ -18,9 +21,12 @@ pub struct Entry {
     pub size: u64,
 }
 
-/// Why an item cannot be opened.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Refusal(pub String);
+/// A source's try at a path: `None` when the path is not its kind of container, else the opened tree or why it
+/// cannot be opened.
+type Try = fn(&Path) -> Option<Result<Box<dyn Source>, Fail>>;
+
+/// The containers, in the order they are tried; the last takes any file.
+const SOURCES: &[Try] = &[refused::open, folder::open, zip::open, sevenz::open, file::open];
 
 /// Paths to copy: the path in the tree, and the path below the destination.
 pub type Wanted = [(Vec<String>, Vec<String>)];
@@ -46,11 +52,6 @@ pub trait Source {
         dest: &Path,
         progress: &mut dyn FnMut(u64) -> Result<(), Fail>,
     ) -> Result<(), Fail>;
-    /// Facts the container carries beside its files (an installer's writes): none yet.
-    #[allow(dead_code)]
-    fn facts(&self) -> Option<&[(String, String)]> {
-        None
-    }
 }
 
 /// The paths of the entries, `/`-joined.
@@ -58,22 +59,12 @@ pub fn names(source: &dyn Source) -> Vec<String> {
     source.entries().iter().map(|e| e.path.join("/")).collect()
 }
 
-/// Opens `path` as the container its kind says: a folder, a `.zip`, a `.7z`; any other file as a tree of no files.
-pub fn open(path: &Path) -> Result<Box<dyn Source>, Refusal> {
+/// Opens `path` with the first of [`SOURCES`] that takes it, or says why it cannot be opened.
+pub fn open(path: &Path) -> Result<Box<dyn Source>, Fail> {
     if !path.exists() {
-        return Err(Refusal("it doesn't exist".into()));
+        return Err("it doesn't exist".into());
     }
-    let lower = path.to_string_lossy().to_ascii_lowercase();
-    let path: PathBuf = path.to_owned();
-    if path.is_dir() {
-        Ok(Box::new(folder::Folder::open(path)))
-    } else if lower.ends_with(".zip") {
-        Ok(Box::new(zip::Zip::open(path).map_err(Refusal)?))
-    } else if lower.ends_with(".7z") {
-        Ok(Box::new(sevenz::Seven::open(path).map_err(Refusal)?))
-    } else {
-        Ok(Box::new(file::File { path }))
-    }
+    SOURCES.iter().find_map(|source| source(path)).unwrap_or_else(|| Err("not recognised".into()))
 }
 
 /// A tree of names only, for the kinds' tests.
@@ -133,9 +124,11 @@ mod tests {
         assert_eq!(open(&zip).unwrap().entries()[0].path, ["x", "y.txt"]);
         write(&dir.join("RBR.iso"), b"iso");
         assert!(open(&dir.join("RBR.iso")).unwrap().entries().is_empty());
-        assert_eq!(open(&dir.join("none.7z")).err(), Some(Refusal("it doesn't exist".into())));
+        assert_eq!(open(&dir.join("none.7z")).err().as_deref(), Some("it doesn't exist"));
+        write(&dir.join("x.rar"), b"Rar!");
+        assert!(open(&dir.join("x.rar")).err().is_some_and(|r| r.starts_with("RAR archives")));
         write(&dir.join("bad.7z"), b"not a 7z");
-        assert!(open(&dir.join("bad.7z")).err().is_some_and(|r| r.0.starts_with("can't read it")));
+        assert!(open(&dir.join("bad.7z")).err().is_some_and(|r| r.starts_with("can't read it")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

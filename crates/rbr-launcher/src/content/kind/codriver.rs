@@ -1,7 +1,7 @@
 //! Co-drivers and pace notes, through `codriver_packs::import` (which copies what it accepts into `codrivers/` and
 //! `notes/`). Recognised by the entry names (only the names, never the contents).
 
-use super::{btb, refused, Ctx, Found, Item, Kind};
+use super::{btb, classic, Ctx, Found, Item, Kind};
 use crate::codriver_packs::{import, pack_name};
 use crate::content::downloads::{already_added, Owned};
 use crate::content::source::Source;
@@ -44,7 +44,7 @@ impl Kind for Codriver {
             src.entries().iter().filter(|e| !btb::in_stage(&e.path, &stages)).map(|e| e.path.join("/")).collect();
         // A folder of notes is a stage's folders of `.ini` files: any `.ini` two deep, unless it is a classic stage.
         let notes = src.is_dir()
-            && !refused::is_classic(src)
+            && !classic::is_classic(src)
             && src.entries().iter().any(|e| {
                 !btb::in_stage(&e.path, &stages)
                     && e.path.len() >= 2

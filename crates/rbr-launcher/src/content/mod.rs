@@ -32,10 +32,8 @@ const KINDS: &[&dyn Kind] = &[
     &kind::btb::Btb,
     &kind::codriver::Codriver,
     &kind::car::Car,
-    &kind::refused::RAR_FILE,
-    &kind::refused::INSTALLER_FILE,
-    &kind::refused::CLASSIC_STAGE,
-    &kind::refused::ANYTHING_ELSE,
+    &kind::classic::Classic,
+    &kind::unknown::Unknown,
 ];
 
 /// A source's name without its archive end.
@@ -139,7 +137,7 @@ pub fn run(home: &Path, paths: &[PathBuf], report: Report<'_>, cancel: &AtomicBo
     for path in paths {
         match source::open(path) {
             Ok(src) => sources.push(src),
-            Err(source::Refusal(why)) => {
+            Err(why) => {
                 let name =
                     path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
                 outcomes.push(Outcome::failed(&name, "", why));
@@ -193,16 +191,14 @@ mod tests {
 
     #[test]
     fn what_is_refused_and_why() {
-        use kind::refused::{CLASSIC, INSTALLER, RAR, UNKNOWN};
+        use kind::classic::CLASSIC;
+        use kind::unknown::UNKNOWN;
         let why = |name: &str, dir: bool, files: &[&str]| {
             let found = detect(&Fake::new(name, dir, files));
             assert_eq!(found.len(), 1, "{name}");
             assert_eq!(found[0].1.label, "not supported");
             found[0].1.tag
         };
-        assert_eq!(why("stage.rar", false, &[]), RAR);
-        assert_eq!(why("Setup.EXE", false, &[]), INSTALLER);
-        assert_eq!(why("setup.msi", false, &[]), INSTALLER);
         assert_eq!(why("stage.zip", false, &["Maps/track-111_E.lbs", "Maps/Track-111_E.dds"]), CLASSIC);
         assert_eq!(why("stage.zip", false, &["Tracks.ini"]), CLASSIC);
         assert_eq!(why("stage.zip", false, &["x/TrackSettings_111.ini"]), CLASSIC);

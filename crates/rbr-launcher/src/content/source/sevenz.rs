@@ -11,7 +11,7 @@ pub struct Seven {
 }
 
 impl Seven {
-    pub fn open(path: PathBuf) -> Result<Seven, Fail> {
+    fn open(path: PathBuf) -> Result<Seven, Fail> {
         let listed = seven_entries(&path).map_err(|e| format!("can't read it: {e}"))?;
         let entries = listed
             .into_iter()
@@ -39,4 +39,9 @@ impl Source for Seven {
     ) -> Result<(), Fail> {
         extract_seven(&self.path, dest, wanted, progress)
     }
+}
+
+pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    let named = path.to_string_lossy().to_ascii_lowercase().ends_with(".7z");
+    named.then(|| Ok(Box::new(Seven::open(path.to_owned())?) as Box<dyn Source>))
 }

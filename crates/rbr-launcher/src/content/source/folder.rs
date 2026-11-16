@@ -11,7 +11,7 @@ pub struct Folder {
 }
 
 impl Folder {
-    pub fn open(path: PathBuf) -> Folder {
+    fn open(path: PathBuf) -> Folder {
         let entries = crate::codriver_packs::walk(&path)
             .into_iter()
             .map(|(rel, file)| Entry {
@@ -51,4 +51,8 @@ impl Source for Folder {
         }
         Ok(())
     }
+}
+
+pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    path.is_dir().then(|| Ok(Box::new(Folder::open(path.to_owned())) as Box<dyn Source>))
 }

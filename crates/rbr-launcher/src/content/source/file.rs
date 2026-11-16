@@ -21,3 +21,7 @@ impl Source for File {
         Err(format!("{} holds no files to copy", self.path.display()))
     }
 }
+
+pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    Some(Ok(Box::new(File { path: path.to_owned() })))
+}
