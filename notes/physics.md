@@ -204,7 +204,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   computed addresses in the original's stack frames (detector walks, `notify`, `prof_calls`, `collide_init`, detach
   events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (`FilingHost`); NTweak apply and parse; the collision
   event pool and free list, grid construction, `brake_wall_contact`.
-- Mem-direct dispatch (`--dispatch direct`, the live default; `pure` is the fact-check's host): a call within the
+- Mem-direct dispatch (the pure host's only dispatch since 2026-11-16): a call within the
   `IN_PLACE` subsystems to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) or a binding (`Pure::call_plain`)
   runs as a plain call when it passes exactly the words the callee pops (`Pure::stack_words`); watched emits and tyre
   steps stay host calls (`NOT_DIRECT`); `Host::call_direct` skips the words where the callee reads only its arguments.
@@ -214,10 +214,9 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 - `store::typed::Typed`: `car: CarTyped` (`struts`, `vcu`, `drive`, `engine`, `tyres`, `wheels`, `own`, `collision`),
   `core` (one per world), `stage` (an `Arc`, one per loaded stage), `defs` (read only) and `solids` (with the hinged
   and mounted bodies' own words).
-- A step holds it (`Pure::typed`, `Pure::typed_solids`, both on by default); the bindings reach it through
-  `Host::typed()`. The stage is lifted once (`OnceLock`), the
+- A step holds it, solids included; the bindings reach it through `Host::typed()`. The stage is lifted once (`OnceLock`), the
   definitions every step (setup, respawn and restart write them between steps); neither is lowered.
-- Across steps (`Pure::typed_across_steps`, on by default; off, a step lifts before and lowers after): a step lifts only when
+- Across steps: a step lifts only when
   nothing is held and leaves it held (stale); `Pure::image()` lowers a stale state (it stays held), `image_mut()`
   lowers and drops it (the next step lifts the writer's words), `snapshot` lowers, `restore` drops; the runs between
   steps (`notify_a_vector`, `Playback::emit`, `reset_strut_dampers`) run on the held state and mark it stale. A held
@@ -227,7 +226,8 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   Per-step and per-frame readers (`layout::{car_state, accumulate_tyre_terms, drive_gear}`, live `poll`, the wheel force,
   the picture's strut pointers) read `Pure::with_held` or `Pure::unheld_image` and do not lower: drive2 lowers in the
   step 2 -> 0, instructions -5.6 %, 9221 -> 2951 bytes; live one lower per answer (picture, dash, sound stay on `image()`).
-- Per call (`typed` off, the twins' other side) the views run on the image: the struts, VCU, tyres
+- Per call (nothing held: the boot's `CCar::UpdateA720`, which builds what the lift reads, and the runs before the
+  first step) the views run on the image: the struts, VCU, tyres
   and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
   field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
   `with_solids` (car, wheel, collision, core); an address a view does not hold (another car, a prop) is the image's.
@@ -400,12 +400,10 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
 
 ### Checks
 
-- `scripts/gate.sh --typed`: twin-typed and twin-aids (drive2 with `--twin typed`, aids off and on: held against per
-  call after each of 84084 steps, round trips and stage queries equal) and poison (`rbr-hybrid/poison`: held words
-  poisoned, definitions watched, held across steps); twin-across (`--twin across`: held over each step against held
-  across steps); twin-direct (`--twin mem-direct`: the direct dispatch, where calls skip their stack words, against
-  the pure dispatch; residue readers show there first). `--twin mem` checks the `Mem` path the same way. The twin
-  and the recording compare read the images through `Pure::image`.
+- `scripts/gate.sh`: drive2, poison (`rbr-hybrid/poison`: held words poisoned, definitions watched, held across
+  steps) and the drive with every aid on (no stop). The twins (`--twin typed|across|mem|mem-direct`: a second playback
+  per call, per step or on the fact-check dispatch, compared after every step) and the fact-check dispatch were
+  removed with the per-call checks (2026-11-16); the recording compare reads the image through `Pure::image`.
 - `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
   image, the differentials (host-free entries in a row per call against held, every byte); the chain tests
   (`the_typed_*_over_a_chain_keeps_the_per_call_bytes`) over vectors.
@@ -426,10 +424,11 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
   the detach path's `MoveToCell` host call (hinge, on held lists through the binding), and `E45_M40C0`'s frame words
   and `E45_M46A0`'s result object, which the detector and wheel-probe frames read (row 8: the frames as locals).
 - The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
-- State typed across steps on by default (after the standalone and twin read through the gate); `--twin` in the live
-  run; more direct calls (the host calls above).
+- More direct calls (the host calls above).
 - The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
-  game (the per-call hybrid check and vectors are retired, 2026-11-16: nothing needs the per-call path).
+  game. The per-call path's last user is the boot: `CCar::UpdateA720` constructs the fade pairs, setups and frames
+  the lift reads (lifted before it, the struts panic "no fade pair"), so it runs per call until the boot builds the
+  typed state itself.
 
 Open decisions, with the defaults taken until decided:
 

@@ -9,7 +9,6 @@
 //! (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`, `car_body::layout::differential`,
 //! `collision::layout::differential`, `physics_core::layout::typed::differential`); the car's solids' round trip and
 //! their host-free entries per call against held (`rigid_body::layout::{round_trip, differential}`).
-//! The boot images are checked by `rbr-standalone --twin`.
 //!
 //! Usage: round_trip SNAPSHOT...
 

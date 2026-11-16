@@ -19,7 +19,6 @@ use rbr_recording::sound::TyreMax;
 use crate::boot;
 use crate::profile::Profile;
 use crate::stage::StageData;
-use crate::twin::Twin;
 
 /// `PhysicsEngine.MaxTimeStep` of the retail `physics.lsp`, for an image that does not hold the loaded definition.
 pub const DT: f32 = rbr_recording::STEP_SECONDS;
@@ -80,8 +79,6 @@ pub struct Pure<'a> {
     /// The frame's tyre block word 1 (`rbr_recording::sound::TyreMax`), for the live sound record (the terms are kept
     /// with the tyre particles).
     pub tyre_max: TyreMax,
-    /// `--twin`: the second side, stepped with the same payloads and compared after each step.
-    pub twin: Option<&'a mut Twin>,
 }
 
 impl PhysicsStep for Pure<'_> {
@@ -95,9 +92,6 @@ impl PhysicsStep for Pure<'_> {
             }
             let substeps = if index == 0 { self.substeps } else { 1 };
             self.playback.step(payload.as_ref(), substeps);
-            if let Some(twin) = self.twin.as_deref_mut() {
-                twin.step(self.playback, payload.as_ref(), substeps);
-            }
             if let Some(trace) = self.trace {
                 trace.on.store(false, Ordering::Relaxed);
             }
@@ -118,9 +112,6 @@ impl PhysicsStep for Pure<'_> {
     /// The state goes where the control emit reads its slot (S2).
     fn app_state(&mut self, state: State) {
         layout::set_app_state(self.playback, state);
-        if let Some(twin) = self.twin.as_deref_mut() {
-            layout::set_app_state(&twin.playback, state);
-        }
     }
 
     fn drive_gear(&self) -> Option<u32> {

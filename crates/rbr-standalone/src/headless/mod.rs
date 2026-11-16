@@ -32,7 +32,6 @@ use crate::args::Args;
 use crate::boot;
 use crate::physics::{boot_playback, chain, fit_physics, load_substeps, run_guarded, sample, why, Pure, DT};
 use crate::stage::StageData;
-use crate::twin::{self, Twin};
 
 mod report;
 mod trace;
@@ -60,8 +59,6 @@ impl PhysicsStep for Recorded<'_> {
 #[derive(Default)]
 pub struct Run {
     start: u32,
-    /// `--twin`'s summary and whether it held.
-    twin: Option<(String, bool)>,
     /// What the boot built (`--boot`).
     built: Vec<(&'static str, u64)>,
     /// The physics step: the image's `MaxTimeStep`, or [`DT`] when the image has none (`dt_image` false).
@@ -268,7 +265,6 @@ pub fn run(
     steps: usize,
     read_set: Option<&Path>,
     settings: MarkerSettings,
-    twin: Option<twin::Kind>,
     hooks: Hooks,
 ) -> Result<Run, String> {
     let assist = match source {
@@ -280,18 +276,6 @@ pub fn run(
             Source::Snapshot(path) => snapshot_start(path, frames, mask, read_set.is_some())?,
             Source::Boot(data, name, race, dump) => boot_start(data, stage, name, race, frames, mask, dump)?,
         };
-    // The twin's side: the same image again.
-    let mut twin = match twin {
-        Some(kind) => Some(Twin::new(
-            kind,
-            &playback,
-            match source {
-                Source::Snapshot(path) => snapshot_start(path, frames, mask, false)?.playback,
-                Source::Boot(data, name, race, _) => boot_start(data, stage, name, race, frames, mask, None)?.playback,
-            },
-        )?),
-        None => None,
-    };
     compare.mask_ngp_padding();
     if let Some((profile, car)) = hooks.physics {
         fit_physics(&playback, profile, car)?;
@@ -335,7 +319,6 @@ pub fn run(
         word6: 0,
         substeps: 0,
         tyre_max: TyreMax::default(),
-        twin: twin.as_mut(),
     };
     let mut out = Run {
         start,
@@ -544,7 +527,6 @@ pub fn run(
     out.boot_pointers_kept_at_stop = compare.kept_boot_pointers(playback.pure.image());
     out.boot_pointers_kept_through_driving = boot_pointers_kept_through_driving.map(|kept| kept.into_iter().collect());
     out.allocator_unwritten_reads = playback.pure.allocator_unwritten_reads();
-    out.twin = twin.map(|t| (t.summary(), t.equal()));
     if let (Some(dir), Some(trace), Source::Snapshot(path)) = (read_set, &trace, source) {
         write_read_set(dir, path, trace).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
@@ -615,17 +597,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::
                 ffb: args.ffb_settings,
                 physics: (!args.physics.is_ngp()).then_some((args.physics, &car)),
             };
-            run(
-                source,
-                &frames,
-                &mask,
-                stage,
-                args.steps,
-                args.read_set.as_deref(),
-                args.marker_settings,
-                args.twin,
-                hooks,
-            )
+            run(source, &frames, &mask, stage, args.steps, args.read_set.as_deref(), args.marker_settings, hooks)
         });
         match r {
             Ok(r) => ok &= report(path, &r, args, &mask, stage),

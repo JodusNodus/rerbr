@@ -132,8 +132,7 @@ goes in experimental physics (below).
 | Check | Proves |
 | --- | --- |
 | `scripts/rust-check.sh` | fmt, clippy and the tests; must print PASS |
-| `scripts/gate.sh` | drive2 attempt 5 through `rbr-standalone`: every one of 84084 NGP steps equal to the recording |
-| `scripts/gate.sh --typed` | also the typed storage a step holds: the drive with it against the per-call path after every step (aids off and on), and with the held words poisoned ([physics.md](../notes/physics.md), "Store seam") |
+| `scripts/gate.sh` | drive2 attempt 5 through `rbr-standalone`: every one of 84084 NGP steps equal to the recording; the drive with the typed state's words poisoned on the image ([physics.md](../notes/physics.md), "Store seam"); the drive with every aid on runs without a stop |
 
 The recorded drives are the only oracle: there is no per-call check against the original, so a branch no recorded
 drive reaches is not checked ([verification.md](../notes/verification.md)). A new recording is the way to cover one.

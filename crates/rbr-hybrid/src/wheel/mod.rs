@@ -112,7 +112,7 @@ pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T)
     let typed = host.typed();
     let car = typed.as_deref().map(|t| &t.car);
     let defs = typed.as_deref().map(|t| &t.defs);
-    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    let solids = typed.as_deref().map(|t| &t.solids);
     let view = WheelView::new(&mut ctx.mem, car.map(|c| &c.wheels)).with_car(car.map(|c| &c.own)).with_defs(defs);
     run(&mut view.with_solids(solids))
 }

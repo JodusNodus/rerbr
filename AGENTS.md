@@ -97,8 +97,8 @@ A Rust batch includes:
 
 - `scripts/rust-check.sh` from the repository root printing PASS, with `RBR_DATA`, `RBR_PATCH` and `RBR_RECORDINGS`
   set in `dev.env` (read via `scripts/dev-env.sh`);
-- for changes to the physics, `rbr-standalone` or `rbr-hybrid`: `scripts/gate.sh --typed` printing PASS (drive2
-  attempt 5 through `harness/rsf_compare.py`, physics PASS 84084/84084, with the poison build and the twins;
+- for changes to the physics, `rbr-standalone` or `rbr-hybrid`: `scripts/gate.sh` printing PASS (drive2
+  attempt 5 through `harness/rsf_compare.py`, physics PASS 84084/84084, with the poison build and an aids-on run;
   `RBR_NGP_PHYSICS`, `RBR_RSF` set). The recorded drives are the oracle: there is no per-call check against the
   original;
 - for a format: a test that parses every retail file it covers;

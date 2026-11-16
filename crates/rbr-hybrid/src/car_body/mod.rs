@@ -45,7 +45,7 @@ pub(crate) const UPDATE_SEED: u32 = 0x4E91F0;
 /// `E37GridOps::AddEdge` (0x4f65b0).
 pub(crate) const ADD_EDGE: u32 = 0x4F65B0;
 
-/// Runs `run` on the car's store: the step's car, its wheels and (with [`crate::pure::Pure::typed_solids`]) its solids
+/// Runs `run` on the car's store: the step's car, its wheels and its solids
 /// in typed storage while the host holds them ([`Host::typed`]), any other car, and every car per call, on the image
 /// (`layout::CarView`).
 pub(crate) fn on_car<T>(ctx: &mut Ctx, run: impl FnOnce(&mut CarView) -> T) -> T {
@@ -57,7 +57,7 @@ fn on_car_in<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CarView) -
     let typed = host.typed();
     let car = typed.as_deref().map(|t| &t.car);
     let (defs, core) = (typed.as_deref().map(|t| &t.defs), typed.as_deref().map(|t| &t.core));
-    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    let solids = typed.as_deref().map(|t| &t.solids);
     let view = CarView::new(mem, car.map(|c| &c.own), car.map(|c| &c.wheels));
     run(&mut view.with_defs(defs).with_core(core).with_solids(solids))
 }

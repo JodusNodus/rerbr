@@ -52,7 +52,7 @@ const TEMPS: u32 = 0x100;
 pub(crate) fn on_core<T>(ctx: &mut crate::Ctx, run: impl FnOnce(&mut CoreView) -> T) -> T {
     let host = ctx.host;
     let typed = host.typed();
-    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
+    let solids = typed.as_deref().map(|t| &t.solids);
     run(&mut CoreView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.core)).with_solids(solids))
 }
 

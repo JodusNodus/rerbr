@@ -161,7 +161,7 @@ pub static BINDINGS: [Binding; 93] = [
 /// image's.
 pub(crate) fn on_collision<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CollisionView) -> T) -> T {
     match host.typed() {
-        Some(typed) => run(&mut typed.car.collision.view(mem).with_solids(typed.solids.as_ref())),
+        Some(typed) => run(&mut typed.car.collision.view(mem).with_solids(Some(&typed.solids))),
         None => run(&mut CollisionView::image(mem)),
     }
 }

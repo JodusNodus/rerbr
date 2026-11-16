@@ -72,7 +72,7 @@ const CRT_DELETE_ARRAY: u32 = 0x70c27e;
 /// The import table slot of `QueryPerformanceCounter`.
 pub(crate) const QUERY_PERFORMANCE_COUNTER: u32 = 0x729190;
 
-/// The subsystems whose calls, made or taken, [`Pure::direct`] runs in place: the entity walk, the wheel and its tyre,
+/// The subsystems whose calls, made or taken, the pure host runs in place: the entity walk, the wheel and its tyre,
 /// strut and VCU, collision and the rigid body. A call between two others (the physics core, the car body, the
 /// engine, NTweak, NGP) still writes its stack words.
 const IN_PLACE: [&str; 7] = ["entities", "wheel", "tyre", "spring_damper", "vcu", "collision", "rigid-body"];
@@ -163,11 +163,6 @@ pub struct Pure {
     ticks: Cell<u64>,
     /// The read trace `mem` is backed by, told the running binding ([`Playback::traced`]).
     trace: Option<Arc<ReadTrace>>,
-    /// B1's Mem-direct dispatch: a call to a leaf ([`leaves::LEAVES`]) from or of the [`IN_PLACE`] subsystems runs as
-    /// a plain call ([`Pure::call_leaf`]), without the call's words on the stack.
-    pub direct: bool,
-    /// The calls run in place so far ([`Pure::direct_runs`]).
-    direct_runs: Cell<u64>,
     /// Whether each binding of [`bound`] is of an [`IN_PLACE`] subsystem, and whether the running one is.
     in_place_slots: Box<[bool]>,
     in_place_now: Cell<bool>,
@@ -184,20 +179,9 @@ pub struct Pure {
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
     pub ngp_base: u32,
-    /// Whether [`Playback::step`] holds the typed state in typed storage over each step (the default): the car's (the
-    /// struts, the VCU, the tyres), lifted before it and lowered after it, and the stage's, so their bindings run on it
-    /// ([`Host::typed`]); without, they run per call on the image's words.
-    pub typed: bool,
-    /// With [`Pure::typed`]: whether the step holds the car's solids too (the default; every reader of a solid's words
-    /// runs on their store: [`crate::rigid_body::on_solids`], [`crate::rigid_body::solid_word`]). Off, they stay on the
-    /// image.
-    pub typed_solids: bool,
-    /// The typed state while a step holds it ([`Pure::typed`]), and with [`Pure::typed_across_steps`] between steps.
+    /// The typed state from the first step on, held across steps: a step runs on it without a lift, [`Pure::image`]
+    /// lowers it when it changed, [`Pure::image_mut`] lowers and drops it.
     held: RefCell<Option<Typed>>,
-    /// With [`Pure::typed`]: whether the typed state stays held after a step (on by default): the next step runs on it
-    /// without a lift, [`Pure::image`] lowers it when it changed, [`Pure::image_mut`] lowers and drops it. Off, a step
-    /// lifts before and lowers after.
-    pub typed_across_steps: bool,
     /// Whether the held state changed since it was last lowered (a step or a run between steps on it).
     stale: Cell<bool>,
     /// The gate's checks behind `mem` (the `poison` feature).
@@ -251,8 +235,6 @@ impl Pure {
             first_met: RefCell::default(),
             ticks: Cell::new(1 << 40),
             trace: None,
-            direct: false,
-            direct_runs: Cell::new(0),
             in_place_slots: bound().iter().map(|b| IN_PLACE.contains(&b.subsystem)).collect(),
             in_place_now: Cell::new(false),
             stack_words: bound()
@@ -267,10 +249,7 @@ impl Pure {
             keep_tyre_particles: false,
             captures: Watch::default(),
             ngp_base: 0,
-            typed: true,
-            typed_solids: true,
             held: RefCell::default(),
-            typed_across_steps: true,
             stale: Cell::new(false),
             stage: Default::default(),
             #[cfg(feature = "poison")]
@@ -279,7 +258,7 @@ impl Pure {
     }
 
     /// Lifts the car's and the physics core's typed state into typed storage for a step, with the stage's
-    /// ([`Pure::typed`]; nothing without it, without a car, or while it is held already). With the `poison` feature
+    /// (nothing without a car, or while it is held already). With the `poison` feature
     /// the runs' memory has their words poisoned until [`Pure::lower_typed`]. Nothing is held before, so the image
     /// holds every word: the lift and the stage's read it directly.
     pub(crate) fn lift_typed(&self) {
@@ -287,15 +266,11 @@ impl Pure {
             return;
         }
         let car = self.raw.u32(CAR_PTR);
-        if !self.typed || car == 0 {
+        if car == 0 {
             return;
         }
         let stage = self.stage.get_or_init(|| Arc::new(Stage::lift(&self.raw))).clone();
-        let typed = if self.typed_solids {
-            Typed::lift_with_solids(&self.raw, car, stage)
-        } else {
-            Typed::lift(&self.raw, car, stage)
-        };
+        let typed = Typed::lift(&self.raw, car, stage);
         #[cfg(feature = "poison")]
         {
             let owned = typed.owned();
@@ -378,11 +353,6 @@ impl Pure {
         self.set_image(raw);
     }
 
-    /// The calls [`Pure::direct`] ran in place.
-    pub fn direct_runs(&self) -> u64 {
-        self.direct_runs.get()
-    }
-
     /// The tyre-particle payloads emitted since the last call (with [`Pure::keep_tyre_particles`]), in emit order.
     pub fn take_tyre_particles(&self) -> Vec<[u8; TYRE_PARTICLES_BYTES]> {
         self.captures.take_tyre_particles()
@@ -408,7 +378,7 @@ impl Pure {
 
     /// The image for a reader between steps: what the step left, the typed state's words included. Every reader
     /// outside a step goes through this (or [`Pure::image_mut`]) rather than `mem`, so the typed state can stay held
-    /// across steps ([`Pure::typed_across_steps`]): it is lowered into the image first when it changed since the last
+    /// across steps: it is lowered into the image first when it changed since the last
     /// lower (it stays held). Not inside a run. With the `poison` feature, a clone of it read after the next step
     /// panics at a held word until this is called again.
     pub fn image(&self) -> &Mem {
@@ -566,22 +536,18 @@ impl Pure {
     #[inline(always)]
     fn run_bound(&self, slot: usize, addr: u32, regs: &Regs, mem: Mem) -> Return {
         let b = bound()[slot];
-        let outer = self.direct.then(|| self.in_place_now.replace(self.in_place_slots[slot]));
+        let outer = self.in_place_now.replace(self.in_place_slots[slot]);
         let r = self.with_frame(addr, regs, || {
             let mut ctx = Ctx { mem, host: self.host() };
             let r = (b.run)(&mut ctx, regs);
             self.give_back(ctx.mem);
             r
         });
-        if let Some(outer) = outer {
-            self.in_place_now.set(outer);
-        }
+        self.in_place_now.set(outer);
         match r {
             Ok(r) => {
                 self.ran_bound(slot, addr, regs);
-                if self.direct {
-                    self.learn_pop(slot, r.pop);
-                }
+                self.learn_pop(slot, r.pop);
                 r
             }
             Err(Decline::Unsupported(why)) => self.stop(Stop::Declined { addr, caller: self.caller(), why }),
@@ -627,17 +593,13 @@ impl Pure {
         Regs { ecx, esp, ..outer }
     }
 
-    /// The host the bindings get: [`Direct`] under the direct dispatch, else `self`.
+    /// The host the bindings get.
     #[inline(always)]
     fn host(&self) -> &dyn Host {
-        match self.direct {
-            true => Direct::of(self),
-            false => self,
-        }
+        self
     }
 
-    /// [`Host::call_at`] through the host under the direct dispatch, out of line (the fact-check's `call_at` has its
-    /// own copy inline): the call's words written, and its callee entered as [`Pure::enter`] does.
+    /// [`Host::call_at`] through the host, out of line: the call's words written, and its callee entered as [`Pure::enter`] does.
     #[inline(never)]
     fn call_host(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
         let regs = self.call_regs(sp, ecx);
@@ -647,7 +609,7 @@ impl Pure {
         Called { eax: r.eax, st0: r.st0.unwrap_or(f64::NAN) }
     }
 
-    /// The direct dispatch's plain call of `addr` at `sp` (None, nothing changed: the call goes through the host). The
+    /// The plain call of `addr` at `sp` (None, nothing changed: the call goes through the host). The
     /// binding gets `args` as its stack words, and nothing is read back from the stack or counted but
     /// [`Host::entered`]. A leaf ([`leaves::LEAVES`]) of or from the [`IN_PLACE`] subsystems runs so when `args` are the
     /// words it pops ([`Pure::stack_words`]), with nothing written: a caller that passes more may read them after it, or
@@ -694,7 +656,7 @@ impl Pure {
         }
         regs.stack[..args.len()].copy_from_slice(args);
         let run = self.bound[slot].run;
-        let mut ctx = Ctx { mem: self.lend(), host: Direct::of(self) };
+        let mut ctx = Ctx { mem: self.lend(), host: self as &dyn Host };
         let leaf = self.leaf_slots[slot] && (self.in_place_now.get() || self.in_place_slots[slot]);
         let r = if leaf && words == args.len() {
             run(&mut ctx, &regs)
@@ -713,7 +675,6 @@ impl Pure {
         if leaf && words == args.len() {
             self.entered.set(self.entered.get() + 1);
         }
-        self.direct_runs.set(self.direct_runs.get() + 1);
         Some(Called { eax: r.eax, st0: r.st0.unwrap_or(f64::NAN) })
     }
 
@@ -962,7 +923,21 @@ impl std::fmt::Display for Stop {
     }
 }
 
+/// [`Pure`] as its bindings' host: a call runs as a plain call when it can ([`Pure::call_plain`]), and a skipped call
+/// writes nothing.
 impl Host for Pure {
+    fn call_slot_word(&self) -> Option<u32> {
+        Some(CALL_RET)
+    }
+
+    fn skip_word(&self) -> Option<(u32, bool)> {
+        Some((CALL_RET, false))
+    }
+
+    fn entered(&self) -> u64 {
+        self.entered.get()
+    }
+
     fn emit_damper(&self, strut: u32, signal: rbr_physics::spring_damper::DamperSignal) {
         self.captures.push_damper(strut, signal);
     }
@@ -971,16 +946,14 @@ impl Host for Pure {
         Ref::filter_map(self.held.borrow(), Option::as_ref).ok()
     }
 
-    fn call_slot_word(&self) -> Option<u32> {
-        Some(CALL_RET)
-    }
-
-    fn entered(&self) -> u64 {
-        self.entered.get()
-    }
-
     fn ran_direct(&self) {
         self.entered.set(self.entered.get() + 1);
+    }
+
+    fn tyre_stepped(&self, scratch: u32, dt: f32) {
+        if self.keep_tyre_particles {
+            self.captures.push_tyre_term(scratch, tyre_term(self, &self.raw, scratch, dt));
+        }
     }
 
     fn query_counter(&self, out: u32) -> Option<u32> {
@@ -988,9 +961,11 @@ impl Host for Pure {
         Some(self.counter(out).eax)
     }
 
-    fn tyre_stepped(&self, scratch: u32, dt: f32) {
-        if self.keep_tyre_particles {
-            self.captures.push_tyre_term(scratch, tyre_term(self, &self.raw, scratch, dt));
+    fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
+        assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
+        match self.call_plain(sp, addr, ecx, args, true) {
+            Some(called) => called,
+            None => self.call_host(sp, addr, ecx, args),
         }
     }
 
@@ -1006,85 +981,8 @@ impl Host for Pure {
         self.call_regs(sp, 0).esp
     }
 
-    fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
-        assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
-        let regs = self.call_regs(sp, ecx);
-        let mut mem = self.lend();
-        write_call(&mut mem, regs.esp, args);
-        let r = self.enter_with(addr, regs, mem);
-        Called { eax: r.eax, st0: r.st0.unwrap_or(f64::NAN) }
-    }
-}
-
-/// [`Pure`] as its bindings' host under the direct dispatch ([`Pure::direct`], [`Pure::host`]): a call runs as a plain
-/// call when it can ([`Pure::call_plain`]), and a skipped call writes nothing. `Pure`'s own [`Host`] is the
-/// fact-check's, with no branch on the dispatch on its path.
-#[repr(transparent)]
-struct Direct(Pure);
-
-impl Direct {
-    #[inline(always)]
-    fn of(pure: &Pure) -> &Direct {
-        // SAFETY: `Direct` is a `repr(transparent)` wrapper of `Pure`, so the two references have the same layout.
-        unsafe { &*(pure as *const Pure as *const Direct) }
-    }
-}
-
-impl Host for Direct {
-    fn call_slot_word(&self) -> Option<u32> {
-        Some(CALL_RET)
-    }
-
-    fn skip_word(&self) -> Option<(u32, bool)> {
-        Some((CALL_RET, false))
-    }
-
-    fn entered(&self) -> u64 {
-        self.0.entered.get()
-    }
-
-    fn emit_damper(&self, strut: u32, signal: rbr_physics::spring_damper::DamperSignal) {
-        self.0.emit_damper(strut, signal);
-    }
-
-    fn typed(&self) -> Option<Ref<'_, Typed>> {
-        self.0.typed()
-    }
-
-    fn ran_direct(&self) {
-        self.0.entered.set(self.0.entered.get() + 1);
-    }
-
-    fn tyre_stepped(&self, scratch: u32, dt: f32) {
-        self.0.tyre_stepped(scratch, dt);
-    }
-
-    fn query_counter(&self, out: u32) -> Option<u32> {
-        Host::query_counter(&self.0, out)
-    }
-
-    fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
-        assert!(args.len() <= STACK_ARGS, "host call {addr:#x}: too many arguments");
-        match self.0.call_plain(sp, addr, ecx, args, true) {
-            Some(called) => called,
-            None => self.0.call_host(sp, addr, ecx, args),
-        }
-    }
-
-    fn call_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<Called> {
-        self.0.run_in_place(sp, addr, ecx, args)
-    }
-
-    fn with_image(&self, run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
-        self.0.on_image(run)
-    }
-
-    fn call_esp(&self, sp: u32) -> u32 {
-        self.0.call_regs(sp, 0).esp
-    }
-
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
-        match self.0.call_plain(sp, addr, ecx, args, false) {
+        match self.call_plain(sp, addr, ecx, args, false) {
             Some(called) => called,
             None => self.call_at(sp, addr, ecx, args),
         }

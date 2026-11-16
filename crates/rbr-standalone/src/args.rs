@@ -113,8 +113,6 @@ pub struct Args {
     pub read_set: Option<PathBuf>,
     pub marker_settings: MarkerSettings,
     pub dump_image: Option<PathBuf>,
-    /// `--twin KIND` (headless runs): a second playback of the image, compared after every step (`twin.rs`).
-    pub twin: Option<crate::twin::Kind>,
     pub weather: Option<u32>,
     pub tyre: Option<u32>,
     pub wear: Option<u32>,
@@ -141,10 +139,6 @@ pub struct Args {
     pub laps: Option<EndRule>,
     /// `--start-time`: the start board's clock (a championship stage's, or a quick race's time of day), s after midnight.
     pub start_time: Option<f32>,
-    /// `--dispatch direct` (with `--live`, the default): the pure host runs the leaf calls of the entity walk, wheel,
-    /// collision and rigid body in place (B1's Mem-direct dispatch, `notes/physics.md` "Store seam"); `pure`, the fact-check,
-    /// makes every call through the host.
-    pub direct: bool,
     /// `--rally-next`: what follows the championship stage.
     pub rally_next: Option<live::RallyNext>,
     pub auto_gears: Option<bool>,
@@ -232,18 +226,18 @@ fn on_off(flag: &str, value: &str) -> Result<bool, String> {
 
 /// `--help`'s text.
 pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snapshot Y [--snapshot Z...] [--steps N] [--data DIR] [--read-set DIR]
-       rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct|typed|across] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
+       rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --physics ngp|experimental|experimental-brush|ngp-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), it with the brush tyre in development (in place of NGP's sliding model), or NGP 7's with the brush tyre, on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
+       --physics ngp|experimental|experimental-brush|ngp-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), it with the brush tyre in development (in place of NGP's sliding model), or NGP 7's with the brush tyre, on live, replayed, autopilot and headless runs (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a circuit session (with --boot, a stage whose drive line is closed): --laps N|open
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
-       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)]
+       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
        -V, --version prints the version
        -h, --help prints this text";
@@ -255,7 +249,7 @@ pub fn args() -> Result<Args, String> {
 /// `args()` of `argv`: the command line as `Args`.
 fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     // The command line so far; the stage, the data and the championship options are computed below.
-    let mut args = Args { steps: 30, direct: true, ..Args::default() };
+    let mut args = Args { steps: 30, ..Args::default() };
     let mut stage: Option<String> = None;
     let (mut stage_dir, mut rsf_stage): (Option<PathBuf>, Option<u32>) = (None, None);
     let mut rsf_root = std::env::var_os("RBR_RSF").map(PathBuf::from);
@@ -313,13 +307,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                     _ => return Err(format!("--replay-pace {value}: clock or free")),
                 }
             }
-            "--dispatch" => {
-                args.direct = match value.as_str() {
-                    "pure" => false,
-                    "direct" => true,
-                    _ => return Err(format!("--dispatch {value}: pure or direct")),
-                }
-            }
             "--top-speed" => args.top_speed = Some(parsed("--top-speed", &value)?),
             "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
             "--brake-pedal" => args.brake_pedal = Some(fraction("--brake-pedal", &value)?),
@@ -361,7 +348,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--car" => args.car = Some(parsed("--car", &value)?),
             "--read-set" => args.read_set = Some(PathBuf::from(value)),
             "--dump-image" => args.dump_image = Some(PathBuf::from(value)),
-            "--twin" => args.twin = Some(crate::twin::Kind::parse(&value)?),
             "--steps" => args.steps = parsed("--steps", &value)?,
             "--weather" => args.weather = Some(parsed("--weather", &value)?),
             "--tyre" => args.tyre = Some(parsed("--tyre", &value)?),
@@ -607,9 +593,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         }
         args.physics.aero = aero;
     }
-    if args.twin.is_some() && !args.physics.is_ngp() {
-        return Err("--twin takes no --physics experimental (the twin would step the run's models again)".into());
-    }
     if args.pilot.is_some() && !args.live {
         return Err("--pilot needs --live".into());
     }
@@ -851,7 +834,7 @@ mod tests {
 
     /// The modes' bases: the recording's, the boot's and the live run's.
     const REC: &str = "--recording R --stage track-54_E --snapshot S --data D";
-    /// The boot reading the recording (twin runs, the events run).
+    /// The boot reading the recording (the events run).
     const BOOT_REC: &str = "--boot --recording R --stage track-54_E --data D --ngp-physics N";
     const BOOT: &str = "--boot --stage track-54_E --data D --ngp-physics N --autopilot OUT";
     const LIVE: &str = "--live --stage track-54_E --snapshot S --data D";
@@ -861,7 +844,7 @@ mod tests {
         assert_eq!(a.stage, "track-54_E");
         assert_eq!(a.snapshots, ["S"]);
         assert_eq!(a.data, PathBuf::from("D"));
-        assert!(!a.live && !a.boot && !a.recorded_payload && a.direct);
+        assert!(!a.live && !a.boot && !a.recorded_payload);
         assert_eq!(a.steps, 30);
         assert_eq!(a.replay_pace, live::Pace::Clock);
         assert_eq!(a.false_starts, 0);
@@ -1005,7 +988,6 @@ mod tests {
             (format!("{LIVE} --replay F --replay-tyre 300000:ngp"), |a| {
                 assert_eq!(a.replay_tyre, Some((300000, "ngp".to_owned())))
             }),
-            (format!("{BOOT} --dispatch pure"), |a| assert!(!a.direct)),
             (format!("{BOOT} --car 5"), |a| assert_eq!(a.car, Some(5))),
             (format!("{REC} --steps 0"), |a| assert_eq!(a.steps, 0)),
             (
@@ -1055,12 +1037,6 @@ mod tests {
                 assert_eq!(a.marker_settings.callout_distance, 150.0);
                 assert_eq!(a.marker_settings.marker_threshold, 0.5);
             }),
-            (format!("{BOOT_REC} --twin mem"), |a| assert_eq!(a.twin, Some(crate::twin::Kind::Mem))),
-            (format!("{BOOT_REC} --twin mem-direct"), |a| {
-                assert_eq!(a.twin, Some(crate::twin::Kind::MemDirect))
-            }),
-            (format!("{BOOT_REC} --twin typed"), |a| assert_eq!(a.twin, Some(crate::twin::Kind::Typed))),
-            (format!("{BOOT_REC} --twin across"), |a| assert_eq!(a.twin, Some(crate::twin::Kind::Across))),
             (format!("{BOOT} --damage-in IN --damage-out OUT2 --result-out RES"), |a| {
                 assert_eq!(a.damage_in, Some(PathBuf::from("IN")));
                 assert_eq!(a.damage_out, Some(PathBuf::from("OUT2")));
@@ -1135,13 +1111,7 @@ mod tests {
             (format!("{REC} --autopilot OUT --aim 1,2,x"), "--aim 1,2,x"),
             (format!("{LIVE} --callout-distance x"), "--callout-distance x"),
             (format!("{LIVE} --marker-threshold x"), "--marker-threshold x"),
-            (format!("{BOOT_REC} --twin both"), "--twin both: mem, mem-direct, typed or across"),
-            (
-                format!("{BOOT_REC} --twin mem --physics experimental"),
-                "--twin takes no --physics experimental (the twin would step the run's models again)",
-            ),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
-            (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
             (
                 format!("{LIVE} --physics fast"),
                 "--physics fast: one of ngp, experimental, experimental-brush, ngp-brush",

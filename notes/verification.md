@@ -151,8 +151,8 @@ viewer playback. Last standalone results (2026-10-20): tanner-corolla 13000/1300
 | arctic-snow | 13 (`track-13_O`), 6 | snow |
 | `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
 
-Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it; `--typed` the drive's `--twin typed` runs (aids off, on),
-its `--twin across` and `--twin mem-direct`, the `poison` build's drive, `--perf BASE_BIN` the step's cost):
+Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it with the `poison` build's drive and an aids-on drive;
+`--perf BASE_BIN` the step's cost):
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR
@@ -214,7 +214,7 @@ A word joins the stale lists only with evidence that the original differs from i
 
   drive1/drive2 predate GAM1's damage level (`0x1660850`): drive2 on safe (attempt 5 on off parts at 18311), drive1/2 on off with drive2/1's setup (drive1 captured no setup). The original disagrees with itself at the tarmac settle (drive1/2 vs drive2/1 part at step 120), so our tarmac physics and saved-setup load hold; what drive2's tarmac attempts ran is in no file (uncaptured service setup change; `SNAPS=1` would show the definitions). drive1/1's `attempt.txt` names car 88 (RSF's `Cars.ini [Car05]` lag); car 24 matches frame 0 (car 88 parted at step 0, body 34.9 mm high, wheel anchors `wheel+0x140` apart). drive1 lacks STA1 and snapshots, so its parting cause is in state FRM1 does not hold (not the wall clock, head-gasket edit, or a missing control call). Start pose is the original's (`0x46b160`: `(x, z, y + 0.5)`, yaw from HedgeHog `CHH_World::Unk88`, `.lbs` (2,11) position/rotation; zero matrix skipped).
 
-`rbr-standalone --twin mem-direct --extra-payloads` delivers every earlier control payload to both playbacks before stepping; drive2 attempt 5's first extra (pre 20331, compared frame 18850) must reach both sides, else the connection-list pointer at car+0x18 differs. Both fed, all 84084 frames match with no differing car, wheel or owned word.
+`rbr-standalone --extra-payloads` delivers every earlier control payload before stepping; drive2 attempt 5's first extra (pre 20331, compared frame 18850) must reach the playback, else the connection-list pointer at car+0x18 differs.
 
 
 ### Input chain check
@@ -278,7 +278,7 @@ summed over a hybrid CPU's PMUs; needs `perf_event_paranoid` at most 2). Elsewhe
   and an edit outside the step moved it 0.2-0.3 % (likely code layout and inlining), so under 0.5 % is no change.
 - drive2 attempt 5 (13000 steps, i9-13900HX, Linux), `perf/step` (2026-11): the fact-check dispatch with the tracked
   allocator (what `perf-step.sh` measures) 2.53 M instructions, 84 allocations (12.7 KB) per step before, 2.18 M and 27
-  (9.2 KB) after; the direct dispatch with the untracked allocator (the live drive's; `Pure::direct` and
+  (9.2 KB) after; the direct dispatch with the untracked allocator (the live drive's; the direct dispatch and
   `boot_playback(.., false)` in a local build) 2.33 M before, 1.92 M after. Both pass drive2 physics 84084/84084. The
   instruction count is not linear in the code: an extra arm in `Mem::pages_for` stopped `Mem::u32` inlining and cost the
   fact-check 9 %. Cycles moved 30-40 % between runs on a loaded machine, so only instructions count there. Most of the

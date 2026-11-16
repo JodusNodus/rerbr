@@ -125,7 +125,7 @@ pub trait Host {
         None
     }
     /// [`Host::call_at`] of a callee whose binding reads its stack words only from `args` (none through `esp`), and
-    /// whose caller reads none of the call's words after it. Under the pure host's direct dispatch (B1b) the call
+    /// whose caller reads none of the call's words after it. On the pure host the call
     /// runs as a plain call, without its words on the stack, when `args` are the words the callee pops; elsewhere it
     /// is `call_at`.
     fn call_direct(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {
@@ -149,8 +149,8 @@ pub trait Host {
     fn with_image(&self, _run: &mut dyn FnMut(&mut Mem) -> Option<u32>) -> Option<u32> {
         None
     }
-    /// [`Host::call_slot_word`] and whether [`skip_call`] writes the skipped call's words (not under the pure host's
-    /// direct dispatch, [`pure::Pure::direct`]), in one call for the skipped calls.
+    /// [`Host::call_slot_word`] and whether [`skip_call`] writes the skipped call's words (not on the pure host), in one
+    /// call for the skipped calls.
     fn skip_word(&self) -> Option<(u32, bool)> {
         self.call_slot_word().map(|word| (word, true))
     }
@@ -158,7 +158,7 @@ pub trait Host {
     /// emulator runs the original fan-out through the signal manager; the pure host keeps the typed payload for the
     /// game, which reads it instead of the manager's words.
     fn emit_damper(&self, _strut: u32, _signal: rbr_physics::spring_damper::DamperSignal) {}
-    /// The typed storage while the pure host holds it over a step ([`pure::Pure::typed`]): the typed subsystems'
+    /// The typed storage while the pure host holds it over a step: the typed subsystems'
     /// bindings (the struts, the VCU, the tyres, the stage's
     /// readers) run on it, not on the image's words. `None` elsewhere (the emulator, between
     /// steps), where the bindings run per call on the image.
@@ -170,8 +170,7 @@ pub trait Host {
 /// For a call at `sp` whose callee is known to do nothing more than the caller does itself (a getter, a walk of equal
 /// nodes): writes the words `host.call_at(sp, ..)` writes before the callee runs, the return address and `args`, and
 /// returns true, so the caller skips the call; false (nothing written) on a host that runs the original or without a
-/// given `sp`. The pure host's `ran` does not count a skipped call. Under the direct dispatch nothing is written
-/// ([`Host::skip_word`]).
+/// given `sp`. The pure host's `ran` does not count a skipped call, and writes nothing ([`Host::skip_word`]).
 pub(crate) fn skip_call(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
     let Some((ret, write)) = host.skip_word().filter(|_| sp != 0) else {
         return false;
@@ -206,8 +205,8 @@ pub(crate) fn skip_unwritten(host: &dyn Host, _mem: &mut Mem, sp: u32, _args: &[
 /// one shows in the drive.
 pub(crate) const RESIDUE: u32 = if cfg!(feature = "residue-audit") { 0xffba_dbad } else { 0 };
 
-/// [`RESIDUE`] on the pure host ([`Host::call_slot_word`]: held and per call, both dispatches, so the twins agree);
-/// `None` on a host that runs the original (the emulator) and in the vectors, where the word is what the stack holds.
+/// [`RESIDUE`] on the pure host ([`Host::call_slot_word`]); `None` on a test host, where the word is what the stack
+/// holds.
 /// With `residue-audit` a site's first read is logged, which shows the sites a drive reaches.
 #[cfg_attr(feature = "residue-audit", track_caller)]
 pub(crate) fn residue(host: &dyn Host) -> Option<u32> {
@@ -379,7 +378,7 @@ pub struct Binding {
     pub run: BindingFn,
 }
 
-/// One binding entry. The subsystem strings are what [`pure::Pure::direct`] matches on (`IN_PLACE`), so they stay
+/// One binding entry. The subsystem strings are what the pure host matches on (`IN_PLACE`), so they stay
 /// exactly as they are.
 pub const fn bind(subsystem: &'static str, addr: u32, name: &'static str, run: BindingFn) -> Binding {
     Binding { addr, name, subsystem, run }

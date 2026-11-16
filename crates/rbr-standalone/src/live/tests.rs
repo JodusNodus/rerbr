@@ -261,7 +261,6 @@ fn the_drive_line_point_is_the_stage_s_driveline() {
             word6: 0,
             substeps: 1,
             tyre_max: live.pending.tyre_max,
-            twin: None,
         };
         let first = stage.track[0].vectors[0];
         assert_eq!(physics.drive_line_point(0.0), Some([first.x, first.y, first.z]));

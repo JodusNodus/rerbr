@@ -2,28 +2,24 @@
 # The physics gate in one command. Builds the release binaries the checks run, then runs these side by side (niced):
 # - standalone: drive2 attempt 5 through rbr-standalone (harness/rsf_compare.py, physics section), PASS when it prints
 #   physics PASS and exits 0 (84084/84084);
-# - with --typed, the typed storage's checks (notes/physics.md "Store seam"): twin-typed and twin-aids, the standalone
-#   run's command again (its work files) with --twin typed, aids off and all on, PASS when the twin line reads equal
-#   after each of 84084 steps and both round trips equal, with exit status 0 (aids on: 0, or 1 with no failure but the
-#   recording's); twin-across, the same with --twin across (aids off: held over each step against the default, held
-#   across steps); twin-direct, with --twin mem-direct (aids off: the pure host's direct dispatch, where calls skip
-#   their stack words, against the pure dispatch); poison, a release build with rbr-hybrid/poison into target/poison and the drive with it, PASS as
-#   the standalone check;
+# - poison: a release build with rbr-hybrid/poison into target/poison (a read of a typed-state word from the image
+#   while a step holds it panics) and the drive with it, PASS as the standalone check;
+# - aids: the drive's command again (its work files) with every driving aid on, the paths drive2 (aids off) does not
+#   reach: PASS on exit status 0, or 1 with no failure but the recording's (no stop, the time card and the application
+#   state equal; headless/report.rs);
 # - with --perf BASE_BIN, after the others: the step's cost of this build against BASE_BIN (scripts/perf-step.sh,
 #   3 runs), no verdict.
 # Prints one line per check and a final PASS/FAIL (exit 1). A check's full output is in /tmp/gate-<pid>-<name>.txt,
-# kept when it fails. scripts/rust-check.sh stays a separate run (fmt, clippy, tests, vectors).
+# kept when it fails. scripts/rust-check.sh stays a separate run (fmt, clippy, tests).
 # Needs RBR_RECORDINGS, RBR_DATA, RBR_PATCH, RBR_NGP_PHYSICS, RBR_RSF (dev.env). PY is the Python, default this checkout's .venv, else the main checkout's.
-# Usage: scripts/gate.sh [--typed] [--perf BASE_BIN]
+# Usage: scripts/gate.sh [--perf BASE_BIN]
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source scripts/dev-env.sh
-usage='usage: scripts/gate.sh [--typed] [--perf BASE_BIN]'
-typed=0
+usage='usage: scripts/gate.sh [--perf BASE_BIN]'
 perf=""
 while [ $# -gt 0 ]; do
     case $1 in
-    --typed) typed=1 ;;
     --perf) perf=${2:?$usage}; shift ;;
     *) echo "$usage" >&2; exit 2 ;;
     esac
@@ -72,20 +68,15 @@ finish build built
 out=$(mktemp -d /tmp/gate-XXXXXX)
 trap 'rm -rf "$out"' EXIT
 
-# The standalone drive. --typed keeps the drive's work files for the twins and runs the poison build and drive beside
-# it.
-keep=()
-[ "$typed" = 1 ] && keep=(--keep-work)
+# The standalone drive (its work files kept for the aids run) and the poison build and drive beside it.
 start standalone "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/drive2" --attempt 5 --sections physics \
-    --out "$out/standalone" "${keep[@]}"
-if [ "$typed" = 1 ]; then
-    poison_run() {
-        cargo build --release -j 8 --target-dir target/poison -p rbr-standalone --features rbr-hybrid/poison &&
-            "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/drive2" --attempt 5 --sections physics \
-                --out "$out/poison" --standalone target/poison/release/rbr-standalone
-    }
-    start poison poison_run
-fi
+    --out "$out/standalone" --keep-work
+poison_run() {
+    cargo build --release -j 8 --target-dir target/poison -p rbr-standalone --features rbr-hybrid/poison &&
+        "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/drive2" --attempt 5 --sections physics \
+            --out "$out/poison" --standalone target/poison/release/rbr-standalone
+}
+start poison poison_run
 
 # rsf_compare's headline "attempt 5: <stage> | <physics> | ...": the physics column, PASS only with exit status 0.
 standalone() {
@@ -96,45 +87,20 @@ standalone() {
     [ "$2" = 0 ] && [[ $physics == PASS* ]]
 }
 finish standalone standalone
-if [ "$typed" = 1 ]; then
-    # The drive's command from its summary.json, without the trace (output only, 1.4 GB), then with --twin typed; the
-    # aids flags given again override the recording's.
-    mapfile -d '' drive < <("$PY" -I -B -c 'import json, sys
+# The drive's command from its summary.json, without the trace (output only, 1.4 GB); the aids flags given again
+# override the recording's.
+mapfile -d '' drive < <("$PY" -I -B -c 'import json, sys
 c = json.load(open(sys.argv[1]))["physics"]["command"]
 for flag in ("--trace-out", "--ffb-settings"):
     del c[c.index(flag):c.index(flag) + 2]
 sys.stdout.write("\0".join(c))' "$out/standalone/5/summary.json")
-    start twin-typed "${drive[@]}" --twin typed
-    start twin-aids "${drive[@]}" --auto-gears on --gear-guard on --neutral-lock on --clutch-help on --twin typed
-    start twin-across "${drive[@]}" --twin across
-    start twin-direct "${drive[@]}" --twin mem-direct
-fi
-
-if [ "$typed" = 1 ]; then
-    finish poison standalone
-    # The twin's report line "twin KIND: <steps>; lower(lift) first side <...>, second side <...>; ..." (twin.rs),
-    # KIND Typed unless given.
-    twin_line() {
-        local line held="84084 steps, car, wheels, solids (*) and owned bytes equal after each; lower(lift) first side "
-        held+="* owned bytes equal, second side * owned bytes equal;*"
-        line=$(sed -n "s/^  twin ${3:-Typed}: //p" "$1" | head -1)
-        echo "${line:-no twin line}" | cut -d';' -f1-2
-        [[ $line == $held ]]
-    }
-    twin_typed() { twin_line "$1" && [ "$2" = 0 ]; }
-    twin_across() { twin_line "$1" "$2" Across && [ "$2" = 0 ]; }
-    twin_direct() { twin_line "$1" "$2" MemDirect && [ "$2" = 0 ]; }
-    # Aids on, the run differs from the recording: exit 1 passes when none of the report's other failures shows (no
-    # stop, the time card and the application state equal; headless/report.rs).
-    twin_aids() {
-        twin_line "$1" && [ "$2" -le 1 ] &&
-            ! grep -qE "^  (stopped: |Game's time card differs|Game's application state .* differs)" "$1"
-    }
-    finish twin-typed twin_typed
-    finish twin-aids twin_aids
-    finish twin-across twin_across
-    finish twin-direct twin_direct
-fi
+start aids "${drive[@]}" --auto-gears on --gear-guard on --neutral-lock on --clutch-help on
+aids() {
+    grep -om1 "[0-9]* of [0-9]* steps run" "$1" || echo "no run line"
+    [ "$2" -le 1 ] && ! grep -qE "^  (stopped: |Game's time card differs|Game's application state .* differs)" "$1"
+}
+finish poison standalone
+finish aids aids
 
 if [ -n "$perf" ]; then
     # After the others, so the counts run alone. perf-step.sh's last line, "B vs A: instructions ..."; only a run
