@@ -365,7 +365,13 @@ on its own and the drive's joystick are two opens of the wheel (SDL's FIXME in `
 `Wheel` opens the haptic through the wheel's joystick (`SDL_OpenHapticFromJoystick`; SDL keeps one joystick per device
 in a process, which the input thread shares), the haptic devices on their own after; the launcher closes its joysticks
 while the viewer runs (`ControlsPage::release`). The joystick route, forced on Linux, opens the G923 under the haptic
-list's name.
+list's name. Not the cause: alpha.6 on the reporter's G29 failed the same, at `SDL_CreateHapticEffect` ("Haptic error
+Unable to create effect"; SDL's `DI_SetError` drops the HRESULT). Since: `ffb::SHAPES` tries the steering axis
+infinite, then for an hour (SDL passes `length * 1000` µs in a 32-bit `unsigned long`, infinite wraps to
+4294966296 µs), then cartesian {1, 0} for an hour (NGP's direction; its sign on Windows unmeasured), the log naming
+the one taken and each failure; all three create and play on the G923 under Linux. When none takes, Windows logs
+`ffb: DirectInput probe:` (`ffb/dinput_probe.rs`): per force-feedback controller its FF driver GUID, caps, force
+axes, the exclusive acquire, and SDL's and NGP's effects created and started at level 0, each with its HRESULT.
 
 Setup (RSF on cachy: Proton cachyos-11.0 SLR, G923 PS on new-lg4ff `hid-logitech-new`, sysfs `autocenter` 0,
 `gain` 65535, `spring_level`/`damper_level` 30): ours matches RSF's levels in order over the same 10 s of drive2

@@ -31,6 +31,9 @@ use sdl3_sys::joystick::{
     SDL_CloseJoystick, SDL_GetJoystickNameForID, SDL_GetJoysticks, SDL_Joystick, SDL_OpenJoystick,
 };
 
+#[cfg(windows)]
+mod dinput_probe;
+
 /// The surfaces of [`Options::sensitivity`], as its keys name them.
 pub const SURFACES: [&str; 3] = ["gravel", "tarmac", "snow"];
 
@@ -825,6 +828,19 @@ fn level(magnitude: i32) -> i16 {
     (-32768 + (m + MAX_MAGNITUDE) * 65535 / (2 * MAX_MAGNITUDE)) as i16
 }
 
+/// The constant force's shapes, tried in turn until the device takes one (issue #7: a G29 under Windows took none of
+/// the first, "Unable to create effect", and SDL drops DirectInput's result): SDL's steering axis, infinite (measured
+/// on Linux); the same for an hour, as SDL's DirectInput passes `length * 1000` µs in a 32-bit `unsigned long`, which
+/// wraps infinite to 4294966296 µs (the loop restarts the effect at every update); NGP's own direction, cartesian
+/// {1, 0} on the device's force axes (`notes/ngp.md`), for an hour.
+const SHAPES: [(&str, SDL_HapticDirectionType, u32); 3] = [
+    ("steering axis", SDL_HAPTIC_STEERING_AXIS, SDL_HAPTIC_INFINITY),
+    ("steering axis for an hour", SDL_HAPTIC_STEERING_AXIS, HOUR_MS),
+    ("cartesian {1, 0} for an hour", SDL_HAPTIC_CARTESIAN, HOUR_MS),
+];
+
+const HOUR_MS: u32 = 3_600_000;
+
 /// The thread: opens the device, reports its name or the error on `ready`, then updates the effect until stopped.
 fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, String>>) {
     // SAFETY: the SDL calls below run on this thread only, on the haptic handle it opened and closes.
@@ -842,18 +858,40 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
                 return;
             }
         };
-        let mut effect: SDL_HapticEffect = std::mem::zeroed();
-        effect.constant.r#type = SDL_HAPTIC_CONSTANT;
-        effect.constant.direction.r#type = SDL_HAPTIC_STEERING_AXIS;
-        effect.constant.length = SDL_HAPTIC_INFINITY;
-        let id = SDL_CreateHapticEffect(haptic, &effect);
-        if id.0 < 0 || !SDL_RunHapticEffect(haptic, id, 1) {
-            let _ = ready.send(Err(format!("{name}: the constant force: {}", sdl_error())));
+        let mut failed = Vec::new();
+        let mut made = None;
+        for (k, (shape, direction, length)) in SHAPES.into_iter().enumerate() {
+            let mut effect: SDL_HapticEffect = std::mem::zeroed();
+            effect.constant.r#type = SDL_HAPTIC_CONSTANT;
+            effect.constant.direction.r#type = direction;
+            effect.constant.direction.dir[0] = 1;
+            effect.constant.length = length;
+            let id = SDL_CreateHapticEffect(haptic, &effect);
+            if id.0 >= 0 && SDL_RunHapticEffect(haptic, id, 1) {
+                made = Some((effect, id, k));
+                break;
+            }
+            failed.push(format!("{shape}: {}", sdl_error()));
+            if id.0 >= 0 {
+                SDL_DestroyHapticEffect(haptic, id);
+            }
+        }
+        let route = if joystick.is_null() { "on its own" } else { "through its joystick" };
+        let Some((mut effect, id, k)) = made else {
+            let axes = SDL_GetNumHapticAxes(haptic);
             close(haptic, joystick);
             SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
+            #[cfg(windows)]
+            dinput_probe::probe().iter().for_each(|line| eprintln!("ffb: DirectInput probe: {line}"));
+            let _ =
+                ready.send(Err(format!("{name} ({route}, {axes} axes): the constant force: {}", failed.join("; "))));
             return;
-        }
-        let _ = ready.send(Ok(name));
+        };
+        let _ = ready.send(Ok(if k == 0 {
+            name
+        } else {
+            format!("{name} ({route}, {}; {})", SHAPES[k].0, failed.join("; "))
+        }));
         let period = Duration::from_secs_f64(1.0 / f64::from(options.rate.clamp(1, 1000)));
         // The smoothed magnitude and when it was taken; a pause drops it to 0 at once.
         let (mut smoothed, mut then) = (0.0, Instant::now());
