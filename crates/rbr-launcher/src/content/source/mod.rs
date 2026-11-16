@@ -76,33 +76,6 @@ pub fn open(path: &Path) -> Result<Box<dyn Source>, Refusal> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::content::kind::btb::tests::write;
-
-    #[test]
-    fn each_container_lists_its_files_and_a_plain_file_has_none() {
-        let dir = crate::test_dir("content-source");
-        write(&dir.join("f/a/b.txt"), b"abc");
-        let folder = open(&dir.join("f")).unwrap();
-        assert!(folder.is_dir());
-        assert_eq!(folder.entries(), [Entry { path: vec!["a".into(), "b.txt".into()], size: 3 }]);
-        let zip = dir.join("z.zip");
-        let mut w = ::zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
-        w.start_file("x/y.txt", ::zip::write::SimpleFileOptions::default()).unwrap();
-        std::io::Write::write_all(&mut w, b"hi").unwrap();
-        w.finish().unwrap();
-        assert_eq!(open(&zip).unwrap().entries()[0].path, ["x", "y.txt"]);
-        write(&dir.join("RBR.iso"), b"iso");
-        assert!(open(&dir.join("RBR.iso")).unwrap().entries().is_empty());
-        assert_eq!(open(&dir.join("none.7z")).err(), Some(Refusal("it doesn't exist".into())));
-        write(&dir.join("bad.7z"), b"not a 7z");
-        assert!(open(&dir.join("bad.7z")).err().is_some_and(|r| r.0.starts_with("can't read it")));
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-}
-
 /// A tree of names only, for the kinds' tests.
 #[cfg(test)]
 pub struct Fake {
@@ -137,5 +110,32 @@ impl Source for Fake {
 
     fn extract(&self, _: &Wanted, _: &Path, _: &mut dyn FnMut(u64) -> Result<(), Fail>) -> Result<(), Fail> {
         Err("a fake".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::content::kind::btb::tests::write;
+
+    #[test]
+    fn each_container_lists_its_files_and_a_plain_file_has_none() {
+        let dir = crate::test_dir("content-source");
+        write(&dir.join("f/a/b.txt"), b"abc");
+        let folder = open(&dir.join("f")).unwrap();
+        assert!(folder.is_dir());
+        assert_eq!(folder.entries(), [Entry { path: vec!["a".into(), "b.txt".into()], size: 3 }]);
+        let zip = dir.join("z.zip");
+        let mut w = ::zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        w.start_file("x/y.txt", ::zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(&mut w, b"hi").unwrap();
+        w.finish().unwrap();
+        assert_eq!(open(&zip).unwrap().entries()[0].path, ["x", "y.txt"]);
+        write(&dir.join("RBR.iso"), b"iso");
+        assert!(open(&dir.join("RBR.iso")).unwrap().entries().is_empty());
+        assert_eq!(open(&dir.join("none.7z")).err(), Some(Refusal("it doesn't exist".into())));
+        write(&dir.join("bad.7z"), b"not a 7z");
+        assert!(open(&dir.join("bad.7z")).err().is_some_and(|r| r.0.starts_with("can't read it")));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
