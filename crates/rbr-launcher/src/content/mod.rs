@@ -159,7 +159,13 @@ pub fn run(home: &Path, known: &Known, paths: &[PathBuf], report: Report<'_>, ca
     let ctx = Ctx { home, known, report, cancel };
     let mut outcomes = Vec::new();
     let mut sources = Vec::new();
-    for path in paths {
+    let mut items: Vec<PathBuf> = Vec::new();
+    for item in paths.iter().map(|p| source::item(p)) {
+        if !items.contains(&item) {
+            items.push(item);
+        }
+    }
+    for path in &items {
         match source::open(path) {
             Ok(src) => sources.push(src),
             Err(why) => {

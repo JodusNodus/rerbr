@@ -2,9 +2,7 @@
 //! ([`super::kind`]) reads the tree's names and asks the source to copy out what it wants. One module per container;
 //! [`open`] tries each in [`SOURCES`], so a container is one module and one line there.
 
-use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 mod file;
 mod folder;
@@ -87,6 +85,11 @@ pub struct IniWrite {
 /// The paths of the entries, `/`-joined.
 pub fn names(source: &dyn Source) -> Vec<String> {
     source.entries().iter().map(|e| e.path.join("/")).collect()
+}
+
+/// The item `path` belongs to: a split archive's part names its first part, so dropping every part adds it once.
+pub fn item(path: &Path) -> PathBuf {
+    split7z::first_part(path).filter(|first| first.exists()).unwrap_or_else(|| path.to_owned())
 }
 
 /// Opens `path` with the first of [`SOURCES`] that takes it, or says why it cannot be opened.

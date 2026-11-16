@@ -30,6 +30,8 @@ impl Add {
 /// RallySimFans' download of the full set of stages.
 const RSF_URL: &str = "https://www.rallysimfans.hu/rbr/download.php?download=rsfrbr";
 const BTB_URL: &str = "http://btbfin.blogspot.com/";
+/// RBR Czech's stage downloads, in English.
+const RBR_CZ_URL: &str = "https://rbr.onlineracing.cz/index.php?act=download&cat=19&setlng=eng";
 
 impl Form {
     /// Adds `paths` (files and folders) in one background run, unless one runs. While the viewer runs, only says to
@@ -235,6 +237,12 @@ impl Form {
                     "RallySimFans: the full set of stages; install it, then choose its folder as your game folder",
                 ),
                 ("More BTB stages…", BTB_URL, "BTB stages from the community; download one, then add it here"),
+                (
+                    "RBR Czech stages…",
+                    RBR_CZ_URL,
+                    "Stage installers; download one, then add the .exe here (it isn't run). Most stages from before \
+                     mid-2023 work; newer ones are encrypted for RBR Czech's plugin and can't be used",
+                ),
             ];
             for (label, url, tip) in links {
                 if ui.link(label).on_hover_text(tip).clicked() {
