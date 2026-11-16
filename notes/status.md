@@ -7,8 +7,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 
 ## Current state (2026-10-19)
 
-- **Physics:** about 930 ported functions (`crates/rbr-physics/ports.csv`), about 660 bindings
-  (`rbr-hybrid`'s `BINDINGS` tables). The per-call hybrid check and the vectors are retired (2026-11-16): the recorded
+- **Physics:** about 850 ported functions (`crates/rbr-physics/ports.csv`), about 490 bindings
+  (`rbr-hybrid`'s `BINDINGS` tables). The per-call hybrid check and the vectors are retired (2026-11-16), and the bindings no run reaches are removed: the recorded
   drives are the oracle, and the plan is plain Rust calls on typed state with the image only at the edges. The pure step runs NGP only (`rbr-standalone --boot` needs `--ngp-physics`; 1.02
   snapshots are refused).
 - **Load path:** `rbr-standalone --boot` builds the physics state from the game files, NGP's `physics.rbz` and
