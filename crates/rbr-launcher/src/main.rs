@@ -537,6 +537,8 @@ struct Form {
     /// "Import co-driver…" and its last result (`codriver_packs`).
     codriver_job: Option<job::Job<Vec<String>>>,
     codriver_status: Option<Result<String, String>>,
+    /// The recent downloads offered under the pack buttons.
+    recent_packs: codriver_packs::downloads::Recent,
     codriver_voice: Option<String>,
     codriver_style: String,
     codriver_ranges: String,

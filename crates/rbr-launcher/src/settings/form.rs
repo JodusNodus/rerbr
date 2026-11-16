@@ -225,6 +225,7 @@ impl Form {
             owned_notes: crate::codriver_packs::note_packs(&home),
             codriver_job: None,
             codriver_status: None,
+            recent_packs: Default::default(),
             codriver_voice: settings.codriver_voice.clone(),
             codriver_style: settings.codriver_style.clone().unwrap_or_else(|| custom_codriver::DEFAULT_STYLE.into()),
             codriver_ranges: settings.codriver_ranges.clone().unwrap_or_else(|| custom_codriver::DEFAULT_RANGES.into()),

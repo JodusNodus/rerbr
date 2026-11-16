@@ -49,6 +49,8 @@ const SEVEN_Z: &str = ".7z";
 
 type Fail = String;
 
+pub mod downloads;
+mod drop;
 mod import;
 mod scan;
 
@@ -207,8 +209,12 @@ impl Form {
         if self.codriver_job.is_some() || self.child.is_some() {
             return;
         }
-        let home = self.here();
         self.codriver_status = None;
+        if src.to_ascii_lowercase().ends_with(".rar") {
+            self.codriver_status = Some(Err("RAR archives are not supported: extract it and use Add folder…".into()));
+            return;
+        }
+        let home = self.here();
         self.codriver_job = Some(Job::start(move |report, cancel| {
             report(&Progress { step: "Importing co-driver", done: 0, total: 0 });
             import(&home, Path::new(&src), cancel)
@@ -220,7 +226,7 @@ impl Form {
         ui.horizontal_wrapped(|ui| {
             let idle = self.codriver_job.is_none() && self.child.is_none();
             if ui
-                .add_enabled(idle, egui::Button::new("Import folder…"))
+                .add_enabled(idle, egui::Button::new("Add folder…"))
                 .on_hover_text(
                     "Choose an extracted co-driver download, a MyPacenotes folder, or a whole RBR/RSF install to \
                      copy from (only read). ReRBR copies its voices, call styles, distance calls and stage notes \
@@ -233,7 +239,7 @@ impl Form {
                 }
             }
             if ui
-                .add_enabled(idle, egui::Button::new("Import archive…"))
+                .add_enabled(idle, egui::Button::new("Add archive…"))
                 .on_hover_text(
                     "Choose a downloaded .zip/.7z co-driver or note pack. ReRBR copies its voices, call styles, \
                      distance calls and stage notes into your files' folder; the download is not changed.",
