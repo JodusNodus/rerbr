@@ -15,6 +15,8 @@ pub struct StepView {
     pub sample: StepSample,
     /// The driveline parameter's float emit, when it is on the table.
     pub distance: Option<f32>,
+    /// The elapsed time the timekeeper saw in the step, s (the clock's double, which differences make times of).
+    pub elapsed: f64,
     /// The drive line's point at [`Format::drive_line_at`], when the format asked and the host has it.
     pub drive_line: Option<[f32; 3]>,
     /// The application state the step ran in.

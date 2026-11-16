@@ -1,7 +1,7 @@
 //! The timing of a circuit: laps and sectors from the car's distance along a closed drive line.
 //!
 //! The line's seam is the lap line: the distance wraps from the length back to 0 there (the closed-line search of
-//! `notes/session.md`), so a pass of the line is a jump of more than half the length between two steps. Pure: the
+//! `notes/session.md`), so a pass of the line is a jump of more than half the length between two steps. The
 //! caller gives each step's distance and time and gets the events back. Ours, so the passes' times are interpolated
 //! between the two steps (the 1.02 timekeeper's are the step's).
 
@@ -47,10 +47,10 @@ impl LapTiming {
 
     /// One step: the car is `x` metres along the line at time `t` (s). Returns the events it passed, in order. A
     /// step that is not a finite distance, or after the session finished, passes nothing.
-    pub fn step(mut self, x: f32, t: f64) -> (Self, Vec<TimingEvent>) {
+    pub fn step(&mut self, x: f32, t: f64) -> Vec<TimingEvent> {
         let mut events = Vec::new();
         if !x.is_finite() || self.finished {
-            return (self, events);
+            return events;
         }
         if let Some((px, pt)) = self.last {
             let half = self.length * 0.5;
@@ -69,7 +69,7 @@ impl LapTiming {
             }
         }
         self.last = Some((x, t));
-        (self, events)
+        events
     }
 
     fn cross_forward(&mut self, at: f64, events: &mut Vec<TimingEvent>) {
@@ -166,8 +166,7 @@ mod tests {
         let mut t = 0.0;
         while t <= end_t {
             let x = (start as f64 + speed as f64 * t).rem_euclid(LENGTH as f64) as f32;
-            let (next, events) = timing.step(x, t);
-            timing = next;
+            let events = timing.step(x, t);
             all.extend(events.into_iter().map(|e| (t, e)));
             t += dt;
         }
@@ -245,9 +244,7 @@ mod tests {
         let mut events = Vec::new();
         // On the grid, over the line (start), back over it, forward over it again, then ahead to a sector gate.
         for (i, x) in [990.0, 10.0, 990.0, 10.0, 100.0, 300.0].into_iter().enumerate() {
-            let (next, e) = t.step(x, i as f64);
-            t = next;
-            events.extend(e);
+            events.extend(t.step(x, i as f64));
         }
         assert_eq!(events[0], TimingEvent::Started);
         assert!(matches!(events[1], TimingEvent::Sector { lap: 1, index: 0, .. }));
@@ -265,7 +262,8 @@ mod tests {
 
     #[test]
     fn a_step_that_is_not_a_distance_passes_nothing() {
-        let (t, events) = timing(EndRule::Open).step(f32::NAN, 1.0);
+        let mut t = timing(EndRule::Open);
+        let events = t.step(f32::NAN, 1.0);
         assert!(events.is_empty() && t.lap().is_none());
     }
 }

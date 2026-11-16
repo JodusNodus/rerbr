@@ -74,10 +74,14 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
 
 ## State
 
-- Done: `flow::Mode` renamed `FlowMode`. Step 1's data and timing: `rbr-session` has `Course`, `EndRule`,
-  `TimingEvent` (a 1.02 `Checkpoint` converts to one; `SubstepEvent::checkpoint` now carries it out of `Game`) and
-  `LapTiming` (laps, sectors and a one-shot or N-lap or timed end, tested on synthetic drives; pass times are
-  interpolated between steps).
-- Open: the course key's name and file; what the circuit's `Format` needs beyond today's hooks (the step's time, step 4); a circuit's start and
-  end in the 1.02 loop (its timekeeper's finish key must lie past the line so the stage never finishes by itself, and
-  the session ends the drive through the mode's end).
+- Done: `flow::Mode` renamed `FlowMode`; `ModeRules` renamed `Format` (step 2). `rbr-session` has `Course`,
+  `EndRule`, `TimingEvent` (a 1.02 `Checkpoint` converts to one; `SubstepEvent::checkpoint` and `elapsed` carry what the
+  timekeeper saw out of `Game`; `StepView::elapsed` hands the time to formats), `LapTiming` (laps, sectors, one-shot,
+  N-lap or timed end; pass times interpolated between steps) and `LapRules`, the circuit's `Format`. A test runs
+  `Game` + `LapRules` for two laps on a synthetic closed line (distance wrapping at the seam, which the physics does not
+  do yet): `Started`, a sector and a lap each lap, `Finished`, the drive ended with `EndCause::Format`.
+- Not yet: the closed-line wrap in the physics (step 5); records and ghost by `SessionKey` (step 3); the HUD panel,
+  the per-lap ghost and the launcher entry (step 4's rest); the course key and the converters (step 6).
+- Open: the course key's name and file; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
+  keys: the finish must lie past the line so the stage never finishes by itself; the stage's end page and result for a
+  `Format` end are the race clock's).

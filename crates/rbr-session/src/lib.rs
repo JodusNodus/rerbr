@@ -9,9 +9,11 @@
 pub mod course;
 pub mod end;
 pub mod event;
+pub mod format;
 pub mod lap;
 
 pub use course::Course;
 pub use end::EndRule;
 pub use event::TimingEvent;
+pub use format::LapRules;
 pub use lap::LapTiming;

@@ -136,6 +136,8 @@ pub struct SubstepEvent {
     /// The driveline distance at the timekeeper call site, if the sample was
     /// within the stage's driveline table.
     pub distance: Option<f32>,
+    /// The elapsed time the timekeeper saw in the step (the clock's double, before the step advanced it), s.
+    pub elapsed: f64,
     /// The checkpoint the timekeeper passed in the step (`CSigCheckPointTime`): the start, a split or the finish.
     pub checkpoint: Option<Checkpoint>,
     /// The code of the `CSigOutsideAssistance` the step emitted.
@@ -670,6 +672,7 @@ impl Game {
         };
         let distance = driveline::sample_x(&self.driveline_values, sample.driveline_parameter);
         let mut checkpoint = None;
+        let elapsed = self.elapsed;
         if let Some(x) = distance {
             // `Record` is inside Vf6cx and observes the current elapsed time;
             // StepForward advances the clock only after this call returns.
@@ -683,6 +686,7 @@ impl Game {
             stage: self.stage,
             control,
             distance,
+            elapsed,
             checkpoint,
             outside_assistance: sample.outside_assistance,
             retire: sample.retire,
@@ -706,6 +710,7 @@ impl Game {
             rules.after_step(&StepView {
                 sample,
                 distance: event.distance,
+                elapsed: event.elapsed,
                 drive_line: rules.drive_line_at().and_then(|d| physics.drive_line_point(d)),
                 app_state: event.stage.state().value(),
             });

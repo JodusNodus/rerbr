@@ -181,6 +181,7 @@ mod tests {
         StepView {
             sample: StepSample { retire, ..StepSample::default() },
             distance: Some(distance),
+            elapsed: 0.0,
             drive_line: None,
             app_state: 1,
         }
