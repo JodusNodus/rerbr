@@ -225,10 +225,9 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   Per-step and per-frame readers (`layout::{car_state, accumulate_tyre_terms, drive_gear}`, live `poll`, the wheel force,
   the picture's strut pointers) read `Pure::with_held` or `Pure::unheld_image` and do not lower: drive2 lowers in the
   step 2 -> 0, instructions -5.6 %, 9221 -> 2951 bytes; live one lower per answer (picture, dash, sound stay on `image()`).
-- Per call (nothing held: the boot's `CCar::UpdateA720`, which builds what the lift reads, and the runs before the
-  first step) the views run on the image: the struts, VCU, tyres
-  and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
-  field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
+- The bindings always run on typed state (`Host::typed`). The boot's `CCar::UpdateA720` builds what the lift reads
+  (fade pairs, setups, frames), so it runs under `Pure::construct`: each binding frame that asks lifts the typed state
+  and lowers it on the frame's exit (`lift_on_demand`, `release_scoped`). Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
   `with_solids` (car, wheel, collision, core); an address a view does not hold (another car, a prop) is the image's.
 - Readers outside the bindings during a step (NGP's wrappers, the hinged and mounted bodies, `CCar::ToWorld`) use
   `rbr_hybrid`'s accessors: `vcu::unit_of`, `tyre::read_tyre`, `wheel::read_wheel`, `engine_driveline::on_drive_in`,
@@ -404,8 +403,7 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
   per call, per step or on the fact-check dispatch, compared after every step) and the fact-check dispatch were
   removed with the per-call checks (2026-11-16); the recording compare reads the image through `Pure::image`.
 - `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
-  image, the differentials (host-free entries in a row per call against held, every byte); the chain tests
-  (`the_typed_*_over_a_chain_keeps_the_per_call_bytes`) over vectors.
+  image.
 - Shadow survey (instrumented build, not in the tree): held words written through and read from the image, every
   access to one on the poisoned image logged with its bindings, so all unrouted readers at once.
 
@@ -425,8 +423,7 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
 - The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
 - More direct calls (the host calls above).
 - The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
-  game. The per-call path's last user is the boot: `CCar::UpdateA720` constructs the fade pairs, setups and frames
-  the lift reads (lifted before it, the struts panic "no fade pair"), so it runs per call until the boot builds the
+  game. The boot's `CCar::UpdateA720` still constructs on the image (`Pure::construct`) until the boot builds the
   typed state itself.
 
 Open decisions, with the defaults taken until decided:
