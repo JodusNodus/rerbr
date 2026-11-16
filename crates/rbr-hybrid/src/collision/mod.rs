@@ -15,7 +15,8 @@ mod queries;
 mod solver;
 mod vectors;
 
-use crate::entities::{ENTITY_VF118, NAME_WALK, NODE_OF, SAMPLE_INDEXED};
+use crate::entities::{ENTITY_VF118, NODE_OF, SAMPLE_INDEXED};
+pub(crate) use bodies::reset_state_at;
 pub(crate) use bodies::{
     body_box_direct, body_vf_cc_direct, box_cells_direct, cell_word, held_cell_link, on_cell_links,
     register_cell_direct, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
@@ -36,6 +37,7 @@ use queries::{
     grid_sync, mesh_copy_bounds, mesh_is_active, mesh_ray_worklist, node_walk, point_triangle, ray_clear, ray_seeds,
     ray_triangle, seg_test, segment_sweep, segment_test, sphere_box, system_vf00, world_axes_overlap,
 };
+pub(crate) use queries::{ray_clear_at, ray_seeds_at};
 use solver::{
     alloc_event, apply_event_impulse, apply_offsets, clear_contact_rows, contact_rows, correct_penetrations,
     drain_events, event_count, event_query_bodies, init_full, make_event, min_contact_time, plane_diff, refresh_events,

@@ -58,10 +58,6 @@ struct Walk<'a> {
     depths: Depths,
 }
 
-fn walk_of<'a>(ctx: &Ctx<'a>, r: &Regs, depths: Depths) -> Walk<'a> {
-    Walk { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp, depths }
-}
-
 impl Walk<'_> {
     /// The callee-entry stack pointer `depth` below the binding's entry esp (0 when the depth is not recorded).
     fn at(&self, depth: u32) -> u32 {
@@ -116,11 +112,20 @@ impl Integrate for Walk<'_> {
 
 impl PreOrder for Walk<'_> {
     fn apply_functor(&mut self, functor: u32, child: u32) {
-        self.host.call_at(self.at(self.depths.call), layout::vtable_target(&self.mem, functor, 0x4), functor, &[child]);
+        let (sp, target) = (self.at(self.depths.call), layout::vtable_target(&self.mem, functor, 0x4));
+        // `CPlainUnaryFunction::Vf04x` runs here on the pure host, as its binding (`functor_run`) runs it, without the
+        // call's words (none is read after them: residue audit, notes/physics.md "Store seam").
+        if target == super::FUNCTOR_VF04X && crate::skip_unwritten(self.host, &mut self.mem, sp, &[child]) {
+            self.host.ran_direct();
+            let esp = self.host.call_esp(sp);
+            call_stored(&mut Functor { mem: self.mem.clone(), host: self.host, esp }, functor, child);
+            return;
+        }
+        self.host.call_at(sp, target, functor, &[child]);
     }
 
     fn descend(&mut self, child: u32, functor: u32) {
-        self.host.call_at(self.at(self.depths.call), WALK_PRE_ORDER, child, &[functor]);
+        walk_at(self.host, &self.mem, self.at(self.depths.call), child, EntityWalk::PreOrder(functor));
     }
 }
 
@@ -132,61 +137,118 @@ impl NameWalk for Walk<'_> {
     }
 
     fn walk_children_pre(&mut self, node: u32, functor: u32) {
-        self.host.call_at(self.at(self.depths.call), WALK_PRE_ORDER, node, &[functor]);
+        walk_at(self.host, &self.mem, self.at(self.depths.call), node, EntityWalk::PreOrder(functor));
     }
 }
 
-/// The gated walk `call` on `r.ecx`'s children, at `depths`; `pop` is the original's `ret`.
-fn gated(ctx: &mut Ctx, r: &Regs, depths: Depths, call: ChildCall, pop: u32) -> Result<Return, Decline> {
-    walk_gated(&mut walk_of(ctx, r, depths), r.ecx, call);
+/// An entity's walk over its children (`rbr_physics::entities::tree`), as its binding runs it.
+#[derive(Clone, Copy)]
+pub(crate) enum EntityWalk {
+    /// A gated walk: `CEntity::E43Vf20` (`Substep`), `E43Vf48` (`Init`), `E43Vf58` (`CarHook`), `E43Vf5C` (`Force`)
+    /// or `E43Vf64` (`Torque`).
+    Gated(ChildCall),
+    /// `CEntity::E43Vf6C` with `dt`.
+    Integrate(u32),
+    /// `CEntity::E43_Walk1F0` with the functor.
+    PreOrder(u32),
+    /// `CEntity::Vf40`.
+    Name,
+}
+
+impl EntityWalk {
+    /// The binding's address, its stack word and the depths of its calls.
+    fn call(self) -> (u32, Option<u32>, Depths) {
+        match self {
+            EntityWalk::Gated(ChildCall::Substep(p)) => (super::VF20, Some(p), VF20_DEPTHS),
+            EntityWalk::Gated(ChildCall::Init) => (super::VF48, None, VF48_DEPTHS),
+            EntityWalk::Gated(ChildCall::CarHook(p)) => (super::VF58, Some(p), VF58_DEPTHS),
+            EntityWalk::Gated(ChildCall::Force) => (super::VF5C, None, VF5C_DEPTHS),
+            EntityWalk::Gated(ChildCall::Torque) => (super::VF64, None, VF64_DEPTHS),
+            EntityWalk::Gated(call) => unreachable!("no binding walks {call:?}"),
+            EntityWalk::Integrate(dt) => (super::INTEGRATE, Some(dt), INTEGRATE_DEPTHS),
+            EntityWalk::PreOrder(functor) => (WALK_PRE_ORDER, Some(functor), PRE_ORDER_DEPTHS),
+            EntityWalk::Name => (super::NAME_WALK, None, NAME_DEPTHS),
+        }
+    }
+}
+
+/// `walk` of `node` as a call at `sp` (0: placed by the host) makes it: on the pure host run here as its binding
+/// runs it, in a frame at the call's entry, counted as a run ([`Host::ran_direct`]) without the call's words (none is
+/// read after them: residue audit, notes/physics.md "Store seam"); through the host elsewhere. Eax is 0.
+pub(crate) fn walk_at(host: &dyn Host, mem: &Mem, sp: u32, node: u32, walk: EntityWalk) -> u32 {
+    let (addr, arg, _) = walk.call();
+    if host.call_slot_word().is_none() {
+        return host.call_at(sp, addr, node, arg.as_slice()).eax;
+    }
+    let mut mem = mem.clone();
+    crate::skip_unwritten(host, &mut mem, sp, arg.as_slice());
+    host.ran_direct();
+    let esp = host.call_esp(sp);
+    run_walk(host, mem, esp, node, walk);
+    0
+}
+
+/// `walk` of `node` entered at `esp`: the binding's body.
+fn run_walk(host: &dyn Host, mut mem: Mem, esp: u32, node: u32, walk: EntityWalk) {
+    let depths = walk.call().2;
+    match walk {
+        EntityWalk::Gated(call) => walk_gated(&mut Walk { mem, host, esp, depths }, node, call),
+        EntityWalk::Integrate(dt) => integrate(&mut Walk { mem, host, esp, depths }, node, dt),
+        EntityWalk::PreOrder(functor) => walk_pre_order(&mut Walk { mem, host, esp, depths }, node, functor),
+        EntityWalk::Name => {
+            // Its functor object is in the original's frame, at entry-20: the vtable and the callback.
+            let functor = esp - NAME_FUNCTOR_AT;
+            mem.set_u32(functor, NAME_FUNCTOR_VTABLE);
+            mem.set_u32(functor + 4, NAME_FUNCTOR_CALLBACK);
+            name_walk(&mut Walk { mem, host, esp, depths }, node, functor);
+        }
+    }
+}
+
+/// The binding of `walk`, popping `pop`.
+fn walk_run(ctx: &mut Ctx, r: &Regs, walk: EntityWalk, pop: u32) -> Result<Return, Decline> {
+    run_walk(ctx.host, ctx.mem.clone(), r.esp, r.ecx, walk);
     Ok(Return::void(0, pop))
 }
 
 /// thiscall `(p)`: `CEntity::E43Vf58`, each gated child's slot 22 with `p`.
 pub(super) fn vf58(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    gated(ctx, r, VF58_DEPTHS, ChildCall::CarHook(r.stack[0]), 4)
+    walk_run(ctx, r, EntityWalk::Gated(ChildCall::CarHook(r.stack[0])), 4)
 }
 
 /// thiscall: `CEntity::E43Vf48`, each gated child's slot 18.
 pub(super) fn vf48(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    gated(ctx, r, VF48_DEPTHS, ChildCall::Init, 0)
+    walk_run(ctx, r, EntityWalk::Gated(ChildCall::Init), 0)
 }
 
 /// thiscall: `CEntity::E43Vf5C`, each gated child's slot 23.
 pub(super) fn vf5c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    gated(ctx, r, VF5C_DEPTHS, ChildCall::Force, 0)
+    walk_run(ctx, r, EntityWalk::Gated(ChildCall::Force), 0)
 }
 
 /// thiscall: `CEntity::E43Vf64`, each gated child's slot 25.
 pub(super) fn vf64(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    gated(ctx, r, VF64_DEPTHS, ChildCall::Torque, 0)
+    walk_run(ctx, r, EntityWalk::Gated(ChildCall::Torque), 0)
 }
 
 /// thiscall `(p)`: `CEntity::E43Vf20`, each gated child's slot 8 with `p`.
 pub(super) fn vf20(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    gated(ctx, r, VF20_DEPTHS, ChildCall::Substep(r.stack[0]), 4)
+    walk_run(ctx, r, EntityWalk::Gated(ChildCall::Substep(r.stack[0])), 4)
 }
 
 /// thiscall `(dt)`: `CEntity::E43Vf6C`, the object's name walk, then each gated child's slot 27 with `dt`.
 pub(super) fn integrate_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    integrate(&mut walk_of(ctx, r, INTEGRATE_DEPTHS), r.ecx, r.stack[0]);
-    Ok(Return::void(0, 4))
+    walk_run(ctx, r, EntityWalk::Integrate(r.stack[0]), 4)
 }
 
 /// thiscall `(functor)`: `CEntity::E43_Walk1F0`, the pre-order walk with the functor on each gated child.
 pub(super) fn walk_pre_order_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    walk_pre_order(&mut walk_of(ctx, r, PRE_ORDER_DEPTHS), r.ecx, r.stack[0]);
-    Ok(Return::void(0, 4))
+    walk_run(ctx, r, EntityWalk::PreOrder(r.stack[0]), 4)
 }
 
-/// thiscall: `CEntity::Vf40`, the name walk. Its functor object is in the original's frame, at entry-20: the vtable and
-/// the callback.
+/// thiscall: `CEntity::Vf40`, the name walk.
 pub(super) fn name_walk_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let functor = r.esp - NAME_FUNCTOR_AT;
-    ctx.mem.set_u32(functor, NAME_FUNCTOR_VTABLE);
-    ctx.mem.set_u32(functor + 4, NAME_FUNCTOR_CALLBACK);
-    name_walk(&mut walk_of(ctx, r, NAME_DEPTHS), r.ecx, functor);
-    Ok(Return::void(0, 0))
+    walk_run(ctx, r, EntityWalk::Name, 0)
 }
 
 /// The pair walk's calls on the original's objects: node reads, the frame hooks (`Vf04..Vf18`) and the walkers

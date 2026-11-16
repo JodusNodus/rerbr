@@ -9,7 +9,7 @@ use rbr_physics::rigid_body::store::RigidStore;
 
 use super::pose::register_cell_at;
 use super::{
-    on_solids, solid_word, unavailable, with_solids, Callees, BODY_EVENT, BODY_EVENT_EMIT, ENTITY_VF158, ENTITY_VF48,
+    on_solids, solid_word, unavailable, with_solids, Callees, BODY_EVENT, BODY_EVENT_EMIT, ENTITY_VF158,
     SCRATCH_BELOW_ESP, SCRATCH_RESET, SIGNALS,
 };
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
@@ -67,7 +67,13 @@ pub(super) fn advance_rest(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `()`: `CSolid::E43Vf48` (slot 18, `CSolid::S18` in the notes): `CEntity::E43Vf48` on the body (its children,
 /// called at the original's depth), then the window's start. eax is the last copy's destination (+0x2e0).
 pub(super) fn window_start(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    ctx.host.call_at(r.esp - 0x10, ENTITY_VF48, r.ecx, &[]);
+    crate::entities::walk_at(
+        ctx.host,
+        &ctx.mem,
+        r.esp - 0x10,
+        r.ecx,
+        crate::entities::EntityWalk::Gated(rbr_physics::entities::tree::ChildCall::Init),
+    );
     on_solids(ctx, |s| layout::solid_window_start(s, r.ecx));
     Ok(Return::void(r.ecx + 0x2e0, 0))
 }

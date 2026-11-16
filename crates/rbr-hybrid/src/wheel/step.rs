@@ -84,8 +84,10 @@ struct Ground<'a> {
 }
 
 impl Ground<'_> {
+    /// The callee at `addr`, run in place while the step holds the state ([`crate::collision::call_grid`]): the probe
+    /// reads none of its words after it (residue audit, notes/physics.md "Store seam").
     fn call(&self, addr: u32, ecx: u32, args: &[u32]) -> u32 {
-        self.host.call_direct(self.sp, addr, ecx, args).eax
+        crate::collision::call_grid(self.host, self.sp, addr, ecx, args).eax
     }
 
     /// The wheel's own callee at `addr` on the wheel `this` ([`call_wheel`]).
@@ -117,7 +119,7 @@ impl layout::GroundCalls for Ground<'_> {
         if crate::skip_call(self.host, &mut self.mem, self.sp, &[rays, 0x6B0, 8, RAY_SEEDS, RAY_CLEAR]) {
             let sp = (self.sp - 0x1000) & !0xf;
             for i in 0..8 {
-                self.host.call_direct(sp, RAY_SEEDS, rays + i * 0x6B0, &[]);
+                crate::collision::ray_seeds_at(self.host, &mut self.mem, sp, rays + i * 0x6B0);
             }
             return;
         }
@@ -128,7 +130,7 @@ impl layout::GroundCalls for Ground<'_> {
         if crate::skip_call(self.host, &mut self.mem, self.sp, &[rays, 0x6B0, 8, RAY_CLEAR]) {
             let sp = (self.sp - 0x1000) & !0xf;
             for i in (0..8).rev() {
-                self.host.call_direct(sp, RAY_CLEAR, rays + i * 0x6B0, &[]);
+                crate::collision::ray_clear_at(self.host, &mut self.mem, sp, rays + i * 0x6B0);
             }
             return;
         }

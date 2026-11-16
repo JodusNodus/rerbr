@@ -177,7 +177,7 @@ pub(super) fn new_def(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 
 /// thiscall `(arg)`, eax: the slot-8 jump to the entity walk on the body, which pops the argument.
 pub(super) fn vf20_jump(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::walk_children(r.ecx, r.stack[0], &mut Original(ctx.host));
+    let eax = layout::walk_children(r.ecx, r.stack[0], &mut super::Walks(ctx.host, &ctx.mem));
     Ok(Return::void(eax, 4))
 }
 
