@@ -24,6 +24,17 @@ pub struct Joysticks {
     context: imp::Context,
 }
 
+/// The joysticks' subsystem kept started while it lives (SDL counts the starts), for the launcher to start before its
+/// event loop runs: on macOS SDL's start enumerates the HID devices by running the main run loop, which re-enters winit
+/// when that happens in one of its events.
+pub struct Started(#[allow(dead_code)] imp::Context);
+
+impl Started {
+    pub fn start() -> Started {
+        Started(imp::Context::new())
+    }
+}
+
 impl Joysticks {
     /// The joysticks `want` names, as the game sees them, and why each one is not open.
     pub fn open(want: &[Device]) -> (Joysticks, Vec<String>) {

@@ -303,6 +303,7 @@ fn run() -> Result<(), String> {
             form.crash.report = crash::last_crash(&home.join(home::LOGS));
         }
         let folder = settings.install_folder;
+        let _joysticks = rbr_render::devices::Started::start();
         let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
         let mut app = App::new(start, form, folder);
         return event_loop.run_app(&mut app).map_err(|e| e.to_string());
