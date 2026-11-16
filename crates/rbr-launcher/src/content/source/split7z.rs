@@ -86,6 +86,13 @@ impl Source for Split {
     }
 }
 
+/// A part's first part (`mod.7z.003` gives `mod.7z.001`), or `None` when `path` is no part.
+pub fn first_part(path: &Path) -> Option<PathBuf> {
+    let (stem, _) = part_of(path)?;
+    let width = path.extension()?.len();
+    Some(path.with_file_name(format!("{}.{:0width$}", stem.file_name()?.to_str()?, 1)))
+}
+
 pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
     let (stem, _) = part_of(path)?;
     let width = path.extension()?.len();
@@ -124,6 +131,7 @@ mod tests {
         let dir = crate::test_dir("split7z");
         let parts = split(&dir, 3);
         assert_eq!(parts.len(), 3);
+        assert!(parts.iter().all(|p| crate::content::source::item(p) == parts[0]));
         for part in &parts {
             let source = open_source(part).unwrap();
             let mut names = crate::content::source::names(&*source);
