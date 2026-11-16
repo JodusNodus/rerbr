@@ -238,7 +238,7 @@ const NIGHT_ZENITH: vec3<f32> = vec3<f32>(0.015, 0.025, 0.06);
 const NIGHT_HORIZON: vec3<f32> = vec3<f32>(0.0875, 0.105, 0.15);
 // Star cells across a unit direction (about a third of a degree each), and the share of cells with a star.
 const STAR_CELLS: f32 = 170.0;
-const STAR_SHARE: f32 = 0.06;
+const STAR_SHARE: f32 = 0.04;
 
 // With the day's light (`day_on`) the moon's disc is `MOON_LUMINANCE` cd/m2 (a full moon's).
 const MOON_LUMINANCE: f32 = 2500.0;

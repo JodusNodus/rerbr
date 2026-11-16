@@ -702,7 +702,7 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   chase's red haze under the tail lamps is gone (they shine little that steeply down); day wet and dry byte-identical.
 - Stars are points (2026-11-16, user: "too big"; `starry` in `night.wgsl`): a Gaussian of 0.6 px spread
   (`STAR_PIXELS`, the pixel's size from the grid's screen derivatives) at the old peak brightness. Before, a disc a
-  third of a 0.34-degree cell, 4 to 6 px across at 1080p, every star much alike. No reference shot shows stars (401
+  third of a 0.34-degree cell, 4 to 6 px across at 1080p, every star much alike. A star in 4% of the cells (was 6%; user, 2026-11-16: "a bit less stars"). No reference shot shows stars (401
   free frame before/after); all byte-identical.
 - Stage lamps (ours, 2026-11-16; `stage_lamps.rs`, `stage_lamps_pass.rs`, `stage_lamps.wgsl`, `street_sum` in
   `night.wgsl`): the night stages bake their street lights as alpha-tested light sprites, drawn as white blobs. A
