@@ -129,7 +129,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         speed,
         rev_limit,
         throttle,
-        shift_cooldown: crate::vcu::unit_of(ctx.host, m, car).state.shift_cooldown,
+        shift_cooldown: crate::vcu::unit_of(ctx.host, car).state.shift_cooldown,
         shift_idle_scale: torque_cut,
         stage_enabled: turbo,
         modes,

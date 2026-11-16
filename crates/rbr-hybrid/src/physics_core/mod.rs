@@ -51,15 +51,14 @@ const TEMPS: u32 = 0x100;
 /// over a step, else every word on the image (the per-call path).
 pub(crate) fn on_core<T>(ctx: &mut crate::Ctx, run: impl FnOnce(&mut CoreView) -> T) -> T {
     let host = ctx.host;
-    let typed = host.typed();
-    let solids = typed.as_deref().map(|t| &t.solids);
-    run(&mut CoreView::new(&mut ctx.mem, typed.as_deref().map(|t| &t.core)).with_solids(solids))
+    let t = host.typed();
+    run(&mut CoreView::new(&mut ctx.mem, Some(&t.core)).with_solids(Some(&t.solids)))
 }
 
 /// The core's field `slot` of the object at `base` as a step leaves it at this point: the typed storage's while the
 /// host holds it, else the image's. For the readers outside the core's bindings (the time keeper's update).
 pub(crate) fn read_core<T: Value>(host: &dyn crate::Host, mem: &Mem, base: u32, slot: Slot<T>) -> T {
-    host.typed().and_then(|t| t.core.read(base, slot)).unwrap_or_else(|| T::load(mem, base + slot.at))
+    host.typed().core.read(base, slot).unwrap_or_else(|| T::load(mem, base + slot.at))
 }
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {

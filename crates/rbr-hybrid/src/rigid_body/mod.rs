@@ -47,17 +47,13 @@ pub(crate) fn on_solids<T>(ctx: &mut Ctx, run: impl FnOnce(&mut SolidView) -> T)
 /// them, else every word on the image (the per-call path, the boot's). The held solids are
 /// borrowed one word at a time, so `run` may call the host: a nested run reads and writes the same words.
 pub(crate) fn with_solids<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut SolidView) -> T) -> T {
-    let typed = host.typed();
-    match typed.as_deref().map(|t| &t.solids) {
-        Some(solids) => run(&mut solids.view(mem)),
-        None => run(&mut SolidView::image(mem)),
-    }
+    run(&mut host.typed().solids.view(mem))
 }
 
 /// The word at `at` as a step leaves it: a held solid's if one names it, else the image's. For readers of a solid's
 /// words outside the rigid body's bindings.
 pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
-    host.typed().and_then(|t| t.solids.read(at)).unwrap_or_else(|| mem.u32(at))
+    host.typed().solids.read(at).unwrap_or_else(|| mem.u32(at))
 }
 
 /// The f32 at `at` as a step leaves it ([`solid_word`]).
@@ -67,7 +63,7 @@ pub(crate) fn solid_f32(host: &dyn Host, mem: &Mem, at: u32) -> f32 {
 
 /// Stores the word at `at`: into a held solid if one names it, else the image.
 pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32) {
-    if !host.typed().is_some_and(|t| t.solids.write(at, value)) {
+    if !host.typed().solids.write(at, value) {
         mem.set_u32(at, value);
     }
 }
@@ -86,7 +82,7 @@ pub(crate) fn solid_gate_direct(host: &dyn Host, mem: &mut Mem, target: u32, thi
 /// The car's solids while the pure host holds them over a step ([`on_solids`]); `None` per call, where a caller on a
 /// hot path keeps its run on `Mem` (`SolidView::image` reads word by word).
 pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
-    Some(Ref::map(host.typed()?, |t| &t.solids))
+    Some(Ref::map(host.typed(), |t| &t.solids))
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;

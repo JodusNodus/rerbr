@@ -233,35 +233,27 @@ impl VcuCalls for VcuCallees<'_> {
 /// The callees of the VCU binding entered with `r`: direct on the typed state the host holds, else through the host.
 fn calls<'a>(ctx: &Ctx<'a>, r: &Regs) -> VcuCallees<'a> {
     let host = ctx.host;
-    VcuCallees { host: VcuHost { host, esp: r.esp, scratch: r.ecx }, held: host.typed().map(|t| (t, ctx.mem.clone())) }
+    VcuCallees { host: VcuHost { host, esp: r.esp, scratch: r.ecx }, held: Some((host.typed(), ctx.mem.clone())) }
 }
 
 fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
-/// Runs `run` on the unit whose scratch is `scratch` (the original's `ecx`): in the typed storage the host holds over a
-/// step ([`crate::Host::typed`]), else (another car's, or no step holds it) lifted from the image into a store of its
-/// own and lowered after it (the per-call path).
+/// Runs `run` on the unit whose scratch is `scratch` (the original's `ecx`), in the typed storage the host holds
+/// ([`crate::Host::typed`]).
 pub(crate) fn on_vcu<T>(ctx: &mut Ctx, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
-    if let Some(typed) = ctx.host.typed() {
-        if typed.car.vcu.is(scratch) {
-            return run(&mut typed.car.vcu.view(&mut ctx.mem, Some(&typed.car.drive)).with_defs(Some(&typed.defs)));
-        }
-    }
-    layout::with_vcu(&mut ctx.mem, scratch, run)
+    let typed = ctx.host.typed();
+    assert!(typed.car.vcu.is(scratch), "the VCU at {scratch:#x} is not the car's");
+    run(&mut typed.car.vcu.view(&mut ctx.mem, Some(&typed.car.drive)).with_defs(Some(&typed.defs)))
 }
 
-/// The car at `car`'s VCU state as a step leaves it at this point: the typed storage's while the host holds it, else
-/// the image's. For the readers outside the VCU's bindings (NGP's engine and drive wrappers).
-pub(crate) fn unit_of(host: &dyn Host, mem: &Mem, car: u32) -> Unit {
+/// The car at `car`'s VCU state as a step leaves it at this point. For the readers outside the VCU's bindings (NGP's engine and drive wrappers).
+pub(crate) fn unit_of(host: &dyn Host, car: u32) -> Unit {
     let scratch = rbr_physics::car_body::layout::scratch_at(car);
-    if let Some(typed) = host.typed() {
-        if typed.car.vcu.is(scratch) {
-            return typed.car.vcu.unit.get();
-        }
-    }
-    layout::VcuImage::of(mem, scratch).lift(mem)
+    let typed = host.typed();
+    assert!(typed.car.vcu.is(scratch), "the VCU at {scratch:#x} is not the car's");
+    typed.car.vcu.unit.get()
 }
 
 /// stdcall `(table, x, lo, hi, n)`, st0. The VCU always passes 11 knots; the port's index math is checked for
@@ -425,63 +417,5 @@ mod tests {
         assert_eq!(table_blend(&mut ctx, &r), Ok(Return::float(0.625, 0x14)));
         let r = regs(0, &[0x1000, 0, 0, 1f32.to_bits(), 0]);
         assert!(table_blend(&mut ctx, &r).is_err());
-    }
-
-    #[test]
-    fn gearbox_update_requests_an_upshift_above_the_gears_rpm() {
-        // Launch flag on, VCU off: only the rpm rules run. Gear 2 at 500 rad/s is above its 3000 rpm threshold.
-        let (this, def, state, car, drive, drive_def, gears) = (0x1000, 0x2000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000);
-        let host = Script { floats: vec![(GET_4520, drive, 500.0), (GET_15F8, car, 10.0)], ..Script::default() };
-        let mut ctx = Ctx { mem: Mem::new(), host: &host };
-        ctx.mem.map(this, &[0; 0x60]);
-        ctx.mem.set_u32(this, def);
-        ctx.mem.set_u32(this + 4, state);
-        ctx.mem.set_u32(this + 0x40, 1);
-        ctx.mem.set_u32(this + 0x58, drive);
-        ctx.mem.map(def, &[0; 0xcac]);
-        ctx.mem.set_f32(def + 0x18 + 0x20 * 2, 3000.0);
-        ctx.mem.set_f32(def + 0x158, 0.25);
-        ctx.mem.map(state, &[0; 0x6c]);
-        ctx.mem.set_u32(state + 0x68, car);
-        // The drive and its state whole: the drive's blocks are its typed state, lifted per access.
-        ctx.mem.map(drive, &[0; 0x200]);
-        ctx.mem.set_u32(drive + 4, drive_def);
-        ctx.mem.set_u32(drive + 8, gears);
-        ctx.mem.map(drive_def, &[0; 0x658]);
-        ctx.mem.set_u32(drive_def + 0x654, 6);
-        ctx.mem.map(gears, &[0; 0x5c0]);
-        ctx.mem.set_u32(gears + 0x54c, 2);
-        ctx.mem.set_u32(gears + 0x570, 2);
-        assert_eq!(gearbox_update(&mut ctx, &regs(this, &[0.01f32.to_bits()])), Ok(Return::void(0, 4)));
-        let got = rbr_physics::engine_driveline::layout::DriveRef::of(&ctx.mem, None, drive).gearbox(&ctx.mem);
-        assert_eq!((got.gear, got.commanded, got.changed), (2, 3, 1));
-        let got = layout::VcuImage::of(&ctx.mem, this).lift(&ctx.mem).state;
-        assert_eq!((got.shift_lockout, got.shift_cooldown), (0.25, 0.05));
-        assert_eq!(*host.log.borrow(), vec![(GET_4520, drive, vec![]), (GET_15F8, car, vec![])]);
-    }
-
-    #[test]
-    fn rev_limit_cut_sends_the_flags_to_the_engine() {
-        // Engine speed 0: below the limit, no cooldown -> no cut.
-        let host = Script::default();
-        let mut ctx = Ctx { mem: Mem::new(), host: &host };
-        let (this, def, state, engine, drive) = (0x1000, 0x2000, 0x4000, 0x5000, 0x6000);
-        ctx.mem.map(this, &[0; 0x60]);
-        ctx.mem.set_u32(this, def);
-        ctx.mem.set_u32(this + 4, state);
-        ctx.mem.set_u32(this + 0x54, engine);
-        ctx.mem.set_u32(this + 0x58, drive);
-        ctx.mem.map(def, &[0; 0xcac]);
-        ctx.mem.set_f32(def + 0x188, 7000.0);
-        ctx.mem.map(state, &[0; 0x68]);
-        let ret = rev_limit_cut(&mut ctx, &regs(this, &[])).unwrap();
-        assert_eq!(ret, Return::void(0, 0));
-        let log = host.log.borrow();
-        assert_eq!(log[0], (GET_4520, drive, vec![]));
-        assert_eq!(log[1].0, SET_STATE4);
-        assert_eq!(log[1].1, engine);
-        let unit = layout::VcuImage::of(&ctx.mem, this).lift(&ctx.mem);
-        let want = rbr_physics::vcu::cut::rev_limit_cut(0.0, &layout::def(&ctx.mem, def), &unit.state, 300.0);
-        assert_eq!(log[1].2, want);
     }
 }

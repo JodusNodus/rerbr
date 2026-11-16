@@ -54,12 +54,9 @@ pub(crate) fn on_car<T>(ctx: &mut Ctx, run: impl FnOnce(&mut CarView) -> T) -> T
 
 /// [`on_car`] on `host` and `mem`.
 fn on_car_in<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CarView) -> T) -> T {
-    let typed = host.typed();
-    let car = typed.as_deref().map(|t| &t.car);
-    let (defs, core) = (typed.as_deref().map(|t| &t.defs), typed.as_deref().map(|t| &t.core));
-    let solids = typed.as_deref().map(|t| &t.solids);
-    let view = CarView::new(mem, car.map(|c| &c.own), car.map(|c| &c.wheels));
-    run(&mut view.with_defs(defs).with_core(core).with_solids(solids))
+    let t = host.typed();
+    let view = CarView::new(mem, Some(&t.car.own), Some(&t.car.wheels));
+    run(&mut view.with_defs(Some(&t.defs)).with_core(Some(&t.core)).with_solids(Some(&t.solids)))
 }
 
 /// [`on_car`] when the host holds the car at `car`, counted as a run ([`Host::ran_direct`]): a caller's direct call of
@@ -70,7 +67,7 @@ pub(crate) fn on_held_car<T>(
     car: u32,
     run: impl FnOnce(&mut CarView) -> T,
 ) -> Option<T> {
-    if !host.typed().is_some_and(|t| t.car.own.at == car) {
+    if host.typed().car.own.at != car {
         return None;
     }
     host.ran_direct();
@@ -81,7 +78,7 @@ pub(crate) fn on_held_car<T>(
 /// else the image's. For the readers outside the car's bindings (NGP's downforce, curve term, engine wrapper and the
 /// tyres' thermal words).
 pub(crate) fn read_car<T: Value>(host: &dyn Host, mem: &Mem, car: u32, slot: Slot<T>) -> T {
-    host.typed().and_then(|t| t.car.own.read(car, slot)).unwrap_or_else(|| T::load(mem, car + slot.at))
+    host.typed().car.own.read(car, slot).unwrap_or_else(|| T::load(mem, car + slot.at))
 }
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {

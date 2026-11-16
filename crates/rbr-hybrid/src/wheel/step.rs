@@ -102,7 +102,7 @@ impl layout::GroundCalls for Ground<'_> {
         if !goes_direct(self.host, crate::tyre::holds_tyre(self.host, scratch)) {
             self.call(0x5326C0, scratch, &[]);
         }
-        crate::tyre::read_tyre(self.host, &self.mem, scratch, |t| t.state.effective_radius)
+        crate::tyre::read_tyre(self.host, scratch, |t| t.state.effective_radius)
     }
 
     fn table_lerp_pair(&mut self, wheel: u32) {
@@ -208,7 +208,7 @@ impl Step<'_> {
     /// ([`Host::ran_direct`]). Their bindings make no call and read nothing of the stack but their arguments, and the
     /// wheel step reads none of the words the host call leaves below its frame (`notes/physics.md` "Store seam").
     fn on_tyre<T>(&self, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> Option<T> {
-        let typed = self.host.typed()?;
+        let typed = self.host.typed();
         let mut tyres = typed.car.tyres.borrow_mut();
         let id = tyres.id_of(scratch)?;
         self.host.ran_direct();

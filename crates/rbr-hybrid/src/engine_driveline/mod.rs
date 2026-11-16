@@ -167,8 +167,8 @@ fn f(bits: u32) -> f32 {
     f32::from_bits(bits)
 }
 
-/// Runs `run` on the engine at `engine`: in the typed storage the host holds over a step ([`crate::Host::typed`]), with
-/// the held definitions, else (another car's, or no step holds it) on the image ([`EngineView::image`]). The engine's
+/// Runs `run` on the engine at `engine`, in the typed storage the host holds ([`crate::Host::typed`]) with the held
+/// definitions. The engine's
 /// readers outside its bindings (NGP's engine wrapper, the drive's gate) and any reader of its words during a step go
 /// through it.
 pub(crate) fn on_engine_in<T>(
@@ -177,12 +177,9 @@ pub(crate) fn on_engine_in<T>(
     engine: u32,
     run: impl FnOnce(&mut EngineView) -> T,
 ) -> T {
-    if let Some(typed) = host.typed() {
-        if typed.car.engine.is(engine) {
-            return run(&mut typed.car.engine.view(mem).with_defs(Some(&typed.defs)));
-        }
-    }
-    run(&mut EngineView::image(mem))
+    let typed = host.typed();
+    assert!(typed.car.engine.is(engine), "the engine at {engine:#x} is not the car's");
+    run(&mut typed.car.engine.view(mem).with_defs(Some(&typed.defs)))
 }
 
 /// [`on_engine_in`] on a binding's memory and host.
@@ -190,15 +187,11 @@ pub(crate) fn on_engine<T>(ctx: &mut Ctx, engine: u32, run: impl FnOnce(&mut Eng
     on_engine_in(ctx.host, &mut ctx.mem, engine, run)
 }
 
-/// Runs `run` on the drive at `drive`: in the typed storage the host holds over a step ([`crate::Host::typed`]), else
-/// (another car's, or no step holds it) per access on the image ([`layout::with_drive`]).
+/// Runs `run` on the drive at `drive`, in the typed storage the host holds ([`crate::Host::typed`]).
 pub(crate) fn on_drive_in<T>(host: &dyn Host, mem: &mut Mem, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
-    if let Some(typed) = host.typed() {
-        if typed.car.drive.is(drive) {
-            return run(&mut typed.car.drive.view(mem).with_defs(Some(&typed.defs)));
-        }
-    }
-    layout::with_drive(mem, drive, run)
+    let typed = host.typed();
+    assert!(typed.car.drive.is(drive), "the drive at {drive:#x} is not the car's");
+    run(&mut typed.car.drive.view(mem).with_defs(Some(&typed.defs)))
 }
 
 /// [`on_drive_in`] on a binding's memory and host.
@@ -209,19 +202,19 @@ pub(crate) fn on_drive<T>(ctx: &mut Ctx, drive: u32, run: impl FnOnce(&mut Drive
 /// The held drive whose wheel block (`Hook4160`'s `a1`, the curve workers' state) is at `at`: the drive and the wheel.
 /// `None` where no step holds a drive, or the block is not one of its wheels'.
 pub(crate) fn held_wheel(host: &dyn Host, at: u32) -> Option<(u32, u32)> {
-    let typed = host.typed()?;
+    let typed = host.typed();
     let drive = &typed.car.drive;
     drive.wheel_of(at).map(|k| (drive.image.drive, k))
 }
 
 /// The held drive whose ratio ring (`E39_RatioCA0`'s pointer) is at `at`.
 fn held_ring(host: &dyn Host, at: u32) -> Option<u32> {
-    let typed = host.typed()?;
+    let typed = host.typed();
     let drive = &typed.car.drive;
     (layout::ratio_ring_at(drive.image.state) == at).then_some(drive.image.drive)
 }
 
 /// Whether `drive` is the drive a step holds.
 pub(crate) fn is_held(host: &dyn Host, drive: u32) -> bool {
-    host.typed().is_some_and(|typed| typed.car.drive.is(drive))
+    host.typed().car.drive.is(drive)
 }

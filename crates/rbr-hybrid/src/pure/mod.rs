@@ -98,7 +98,7 @@ const SLOT_CACHE: usize = 1024;
 fn tyre_term(host: &dyn Host, mem: &Mem, scratch: u32, dt: f32) -> Option<f32> {
     use rbr_physics::tyre::layout::{sig, DEF, DEF_CARCASS_RADIUS, DEF_TREAD_DEPTH};
     // The tyre's words as the step left them (the held tyre's while the step holds it); the def's are the image's.
-    let (flag, hub, depth) = crate::tyre::read_tyre(host, mem, scratch, |t| {
+    let (flag, hub, depth) = crate::tyre::read_tyre(host, scratch, |t| {
         (t.scratch.signal[sig::FLAG], t.scratch.hub_height, t.state.penetration_depth)
     });
     if flag == 0 {
@@ -184,6 +184,11 @@ pub struct Pure {
     held: RefCell<Option<Typed>>,
     /// Whether the held state changed since it was last lowered (a step or a run between steps on it).
     stale: Cell<bool>,
+    /// Whether the run builds the car ([`Pure::construct`]): a binding that asks for the typed state lifts it for its
+    /// own frame only ([`Pure::scoped`]), so the construction's writes between such bindings land in the image.
+    constructing: Cell<bool>,
+    /// The frame depth whose run lifted the typed state on demand while constructing: its exit lowers and drops it.
+    scoped: Cell<Option<usize>>,
     /// The gate's checks behind `mem` (the `poison` feature).
     #[cfg(feature = "poison")]
     gate: Arc<gate::Gate>,
@@ -251,6 +256,8 @@ impl Pure {
             ngp_base: 0,
             held: RefCell::default(),
             stale: Cell::new(false),
+            constructing: Cell::new(false),
+            scoped: Cell::new(None),
             stage: Default::default(),
             #[cfg(feature = "poison")]
             poisoned: RefCell::default(),
@@ -281,6 +288,43 @@ impl Pure {
             *self.poisoned.borrow_mut() = Some(poisoned);
         }
         *self.held.borrow_mut() = Some(typed);
+    }
+
+    /// The typed state for a binding that asks for it with nothing held, inside a run: lifted as a step lifts it, and
+    /// marked changed. Between steps it stays held as after a step; while constructing ([`Pure::construct`]) only for
+    /// the asking binding's frame.
+    #[cold]
+    #[inline(never)]
+    fn lift_on_demand(&self) {
+        if self.run_depth.load(Ordering::Relaxed) == 0 {
+            return;
+        }
+        self.lift_typed();
+        if self.held.borrow().is_some() {
+            self.set_stale(true);
+            if self.constructing.get() {
+                self.scoped.set(Some(self.frames.borrow().len()));
+            }
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn release_scoped(&self) {
+        self.scoped.set(None);
+        self.lower_typed();
+    }
+
+    /// Runs `build`, a run that constructs the car (the boot's `CCar::UpdateA720`, which writes the pointers and
+    /// definitions the lift reads), with each binding that asks for the typed state on a lift of its own, lowered and
+    /// dropped when its frame exits; nothing is held after it.
+    pub fn construct<R>(&self, build: impl FnOnce() -> R) -> R {
+        self.lower_typed();
+        self.constructing.set(true);
+        let out = build();
+        self.constructing.set(false);
+        self.release_scoped();
+        out
     }
 
     /// Marks the held state changed (after a step, or a run between steps on it), so [`Pure::image`] lowers it.
@@ -848,6 +892,10 @@ impl Pure {
         self.frames.borrow_mut().push((addr, Registers::of(regs)));
         self.tell_trace();
         let out = f();
+        let depth = self.frames.borrow().len();
+        if self.scoped.get() == Some(depth) {
+            self.release_scoped();
+        }
         self.frames.borrow_mut().pop();
         self.tell_trace();
         out
@@ -929,8 +977,12 @@ impl Host for Pure {
         self.captures.push_damper(strut, signal);
     }
 
-    fn typed(&self) -> Option<Ref<'_, Typed>> {
-        Ref::filter_map(self.held.borrow(), Option::as_ref).ok()
+    fn typed(&self) -> Ref<'_, Typed> {
+        if let Ok(typed) = Ref::filter_map(self.held.borrow(), Option::as_ref) {
+            return typed;
+        }
+        self.lift_on_demand();
+        Ref::map(self.held.borrow(), |held| held.as_ref().expect("a run on a car holds its typed state"))
     }
 
     fn ran_direct(&self) {

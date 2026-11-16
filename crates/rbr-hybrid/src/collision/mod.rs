@@ -159,10 +159,8 @@ pub static BINDINGS: [Binding; 93] = [
 /// over a step ([`Host::typed`]), and the bodies' words in the car's solids when it holds them; else (per call) the
 /// image's.
 pub(crate) fn on_collision<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CollisionView) -> T) -> T {
-    match host.typed() {
-        Some(typed) => run(&mut typed.car.collision.view(mem).with_solids(Some(&typed.solids))),
-        None => run(&mut CollisionView::image(mem)),
-    }
+    let typed = host.typed();
+    run(&mut typed.car.collision.view(mem).with_solids(Some(&typed.solids)))
 }
 
 /// [`on_collision`] for a call on the grid at `grid` (and `src`), whose held words are only a car grid's: the image's
@@ -181,17 +179,13 @@ fn on_grids<T>(host: &dyn Host, mem: &mut Mem, grids: &[u32], run: impl FnOnce(&
 /// ones through their views, the rest is the image's either way, and none of the call's words is read after it:
 /// residue audit, notes/physics.md "Store seam"), else the host call.
 pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
-    let held = host.typed().is_some();
-    held.then(|| host.call_in_place(sp, target, this, args))
-        .flatten()
-        .unwrap_or_else(|| host.call_at(sp, target, this, args))
+    host.call_in_place(sp, target, this, args).unwrap_or_else(|| host.call_at(sp, target, this, args))
 }
 
 /// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the
 /// rigid body's contact (`CSolid::BigA`), which reads the solver's rows.
 pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {
-    host.typed()
-        .and_then(|typed| typed.car.collision.contact(mem, at))
+    (host.typed().car.collision.contact(mem, at))
         .unwrap_or_else(|| rbr_physics::rigid_body::layout::load_contact(mem, at))
 }
 
@@ -199,14 +193,12 @@ pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {
 /// else the image's; the list word is the solid's (`rigid_body::solid_word`). For the rigid body's vote.
 pub(crate) fn contact_count(host: &dyn Host, mem: &Mem, body: u32) -> Option<u32> {
     let list = crate::rigid_body::solid_word(host, mem, body + rbr_physics::rigid_body::layout::CONTACT_LIST);
-    (list != 0).then(|| {
-        host.typed().and_then(|typed| typed.car.collision.row_count(mem, list)).unwrap_or_else(|| mem.u32(list + 4))
-    })
+    (list != 0).then(|| host.typed().car.collision.row_count(mem, list).unwrap_or_else(|| mem.u32(list + 4)))
 }
 
 /// Clears the body word of the contact rows at `rows` (the car's respawn): a held solver row's, else on the image.
 pub(crate) fn clear_row_body(host: &dyn Host, mem: &mut Mem, rows: u32) {
-    if !host.typed().is_some_and(|typed| typed.car.collision.clear_row_body(mem, rows)) {
+    if !host.typed().car.collision.clear_row_body(mem, rows) {
         mem.set_u32(rows, 0);
     }
 }

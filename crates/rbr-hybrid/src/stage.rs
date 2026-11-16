@@ -10,5 +10,5 @@ use crate::Host;
 /// Runs `run` on the stage's store: the typed stage while the host holds it, the image for the rest.
 pub(crate) fn on_stage<T>(host: &dyn Host, mem: &Mem, run: impl FnOnce(&StageView) -> T) -> T {
     let typed = host.typed();
-    run(&StageView::new(typed.as_deref().map(|t| &*t.stage), mem))
+    run(&StageView::new(Some(&*typed.stage), mem))
 }

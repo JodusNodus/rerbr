@@ -800,7 +800,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
 /// slot: the setups into the definitions and the car, and the bodies' first frames (`UpdateMrr`). Its callees are
 /// bindings and stand-ins as a step's; one with neither stops it as in a step.
 pub fn update_a720(pure: &Pure, image: &Image) {
-    pure.call_at(image.slot - 0x100, UPDATE_A720, image.car, &[image.seed]);
+    pure.construct(|| pure.call_at(image.slot - 0x100, UPDATE_A720, image.car, &[image.seed]));
 }
 
 /// NGP's per-car init (`car_init::init`) as the race starts, after `UpdateA720`.

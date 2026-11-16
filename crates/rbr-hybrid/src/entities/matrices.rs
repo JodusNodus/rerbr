@@ -71,16 +71,14 @@ impl Op {
 pub(crate) fn op(host: &dyn Host, sp: u32, this: u32, op: Op) -> u32 {
     let (target, words, len) = op.call_words();
     let args = &words[..len];
-    if host.typed().is_some() {
-        let ran = host.with_image(&mut |mem| run(host, mem, sp, this, op));
-        if let Some(eax) = ran {
-            // Counted as the run it replaces ([`Host::entered`]: a caller that keeps what it read while nothing ran).
-            host.ran_direct();
-            return eax;
-        }
-        if let Some(called) = host.call_in_place(sp, target, this, args) {
-            return called.eax;
-        }
+    let ran = host.with_image(&mut |mem| run(host, mem, sp, this, op));
+    if let Some(eax) = ran {
+        // Counted as the run it replaces ([`Host::entered`]: a caller that keeps what it read while nothing ran).
+        host.ran_direct();
+        return eax;
+    }
+    if let Some(called) = host.call_in_place(sp, target, this, args) {
+        return called.eax;
     }
     host.call_at(sp, target, this, args).eax
 }
@@ -88,11 +86,7 @@ pub(crate) fn op(host: &dyn Host, sp: u32, this: u32, op: Op) -> u32 {
 /// `host.call_at(sp, target, this, args)` of a pair walk from a caller on held state: in place while the pure host
 /// holds the state ([`Host::call_in_place`]), else the call.
 fn in_place_or_call(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> u32 {
-    let held = host.typed().is_some();
-    held.then(|| host.call_in_place(sp, target, this, args))
-        .flatten()
-        .unwrap_or_else(|| host.call_at(sp, target, this, args))
-        .eax
+    host.call_in_place(sp, target, this, args).unwrap_or_else(|| host.call_at(sp, target, this, args)).eax
 }
 
 /// `op` on `this` with values on held state, its eax: the rows read once (a held solid's through its view), carried
@@ -227,7 +221,7 @@ fn carried(
     n: u32,
 ) -> bool {
     let len = 16 * n;
-    if host.typed().is_none() || n as usize > CARRIED_ROWS || (src != dst && src < dst + len && dst < src + len) {
+    if n as usize > CARRIED_ROWS || (src != dst && src < dst + len && dst < src + len) {
         return false;
     }
     let mut frames =
@@ -254,7 +248,7 @@ const GRID_BOXES: usize = ((GRID_SECOND_BOXES - GRID_FIRST_BOXES) / 16) as usize
 fn grid_carried(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, out: u32, arg: u32) -> bool {
     let t = mem.load_transform(this);
     let overlaps = t.matrix != out && t.matrix < out + GRID_STRIDE && out < t.matrix + GRID_STRIDE;
-    if host.typed().is_none() || out == 0 || overlaps {
+    if out == 0 || overlaps {
         return false;
     }
     layout::copy_grid(mem, out, t.matrix);

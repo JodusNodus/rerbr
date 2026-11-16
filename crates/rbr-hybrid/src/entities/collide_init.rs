@@ -130,7 +130,7 @@ pub(super) fn collide_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 /// binding not entered); elsewhere the call at `sp`.
 pub(crate) fn collide_init(host: &dyn Host, sp: u32, this: u32, body: u32, sink: u32) -> u32 {
     let args = [body, 0, sink];
-    if host.typed().is_some() && sp != 0 {
+    if sp != 0 {
         let eax = host.with_image(&mut |mem| {
             let mut calls = CollideCalls { host, mem: mem.clone() };
             Some(layout::collide_init(&mut calls, mem, this, body, sink, sp))

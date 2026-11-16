@@ -262,31 +262,3 @@ pub static BINDINGS: [Binding; 119] = [
     bind(0x600ff0, "E90Seg::E90Seg", e90_seg_ctor_run),
     bind(0x601030, "E90Seg::~E90Seg", e90_seg_dtor_run),
 ];
-
-#[cfg(test)]
-mod tests {
-    use super::hinge::sim_e4f0_run;
-    use crate::tests::Script;
-    use crate::{Ctx, Regs, Return};
-    use rbr_physics::mem::Mem;
-
-    /// An unowned hinge returns `E43Vf138`'s eax, the fifth stack word `e` (the asm's `mov eax, [esp+0x20]`, 0x52b9d0),
-    /// through both `SimE4F0` and `CSolid::E43Vf138`'s bindings. `dp` is zero, so no dot product is taken.
-    #[test]
-    fn unowned_e4f0_returns_the_e_pointer() {
-        let host = Script::default();
-        let mut ctx = Ctx { mem: Mem::new(), host: &host };
-        let (this, def) = (0x1000, 0x2000);
-        ctx.mem.map(this, &[0; 0x400]);
-        ctx.mem.set_u32(this + 0x34, def);
-        ctx.mem.map(def, &[0; 0xcac]);
-        for at in [0x3000, 0x3010, 0x3020, 0x3030, 0x3040] {
-            ctx.mem.map(at, &[0; 0x10]);
-        }
-        let mut r = Regs { ecx: this, esp: 0x9000, ..Regs::default() };
-        r.stack[..6].copy_from_slice(&[0x3000, 0x3010, 0x3020, 0, 0x3030, 0x3040]);
-        let want = Ok(Return::void(0x3030, 0x18));
-        assert_eq!(sim_e4f0_run(&mut ctx, &r), want);
-        assert_eq!(crate::rigid_body::e43vf138(&mut ctx, &r), want);
-    }
-}

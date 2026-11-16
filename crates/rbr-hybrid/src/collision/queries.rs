@@ -152,7 +152,7 @@ struct Samples<'a> {
 
 impl SampleHost for Samples<'_> {
     fn sample(&mut self, byte: u32, low: f32, high: f32) -> u32 {
-        if crate::ngp::is_ngp() && self.host.typed().is_some() {
+        if crate::ngp::is_ngp() {
             let found = on_stage(self.host, &self.mem, |s| sample_indexed(s, SAMPLE_TABLE, byte as u8, low, high));
             let eax = match found {
                 Indexed::Texel(texel) => Some(texel),

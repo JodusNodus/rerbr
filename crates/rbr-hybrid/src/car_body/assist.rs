@@ -43,7 +43,7 @@ impl AssistCalls for Car<'_> {
     /// On the held car `SetDirty`'s one write, the cell header's dirty word (a header stays on the image), here
     /// ([`Host::ran_direct`]); else the host.
     fn set_dirty(&mut self, state: u32) {
-        let held = self.host.typed().is_some_and(|t| car::layout::cell_at(t.car.own.at, Cell::FfbTorque) == state);
+        let held = car::layout::cell_at(self.host.typed().car.own.at, Cell::FfbTorque) == state;
         if !held {
             self.host.call(SET_DIRTY, state, &[]);
             return;

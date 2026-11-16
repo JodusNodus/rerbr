@@ -47,8 +47,7 @@ fn f(bits: u32) -> f32 {
 }
 
 /// Runs `run` on the strut whose controller is `controller` (the original's `ecx`): in the typed storage the host
-/// holds over a step ([`crate::Host::typed`]), else (another car's, or no step holds them) lifted from the image into
-/// a store of its own and lowered after it (the per-call path).
+/// holds ([`crate::Host::typed`]).
 pub(crate) fn on_strut<T>(ctx: &mut Ctx, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
     on_strut_in(ctx.host, &mut ctx.mem, controller, run)
 }
@@ -60,18 +59,15 @@ pub(crate) fn on_strut_in<T>(
     controller: u32,
     run: impl FnOnce(&mut StrutView, StrutId) -> T,
 ) -> T {
-    if let Some(typed) = host.typed() {
-        let mut struts = typed.car.struts.borrow_mut();
-        if let Some(id) = struts.id_of(controller) {
-            return run(&mut struts.view(mem).with_defs(Some(&typed.defs)), id);
-        }
-    }
-    layout::with_strut(mem, controller, run)
+    let typed = host.typed();
+    let mut struts = typed.car.struts.borrow_mut();
+    let id = struts.id_of(controller).unwrap_or_else(|| panic!("the strut at {controller:#x} is not the car's"));
+    run(&mut struts.view(mem).with_defs(Some(&typed.defs)), id)
 }
 
 /// Whether the step holds the strut whose controller is `controller`.
 pub(crate) fn holds_strut(host: &dyn Host, controller: u32) -> bool {
-    host.typed().is_some_and(|typed| typed.car.struts.borrow().id_of(controller).is_some())
+    host.typed().car.struts.borrow().id_of(controller).is_some()
 }
 
 /// thiscall `()`; eax is the state pointer (`this+8`).
@@ -210,68 +206,4 @@ fn force(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 fn copy_state_to_def(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     layout::apply_setup(&mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(0, 4))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rbr_physics::mem::Mem;
-    use rbr_physics::spring_damper::DamperSignal;
-    use std::cell::RefCell;
-
-    /// A host that logs its calls and keeps the typed damper events.
-    #[derive(Default)]
-    struct Sink {
-        calls: RefCell<Vec<(u32, u32, Vec<u32>)>>,
-        dampers: RefCell<Vec<(u32, DamperSignal)>>,
-    }
-
-    impl crate::Host for Sink {
-        fn call_at(&self, _sp: u32, addr: u32, ecx: u32, args: &[u32]) -> crate::Called {
-            self.calls.borrow_mut().push((addr, ecx, args.to_vec()));
-            crate::Called { eax: 0, st0: 0.0 }
-        }
-
-        fn emit_damper(&self, strut: u32, signal: DamperSignal) {
-            self.dampers.borrow_mut().push((strut, signal));
-        }
-    }
-
-    #[test]
-    fn reset_outputs_emits_the_typed_payload_and_resets() {
-        let host = Sink::default();
-        let mut mem = Mem::new();
-        let (def, state, fade, strut, wheel) = (0x10000, 0x11000, 0x12000, 0x13000, 0x14000);
-        mem.map(def, &[0; 0x200]);
-        mem.map(state, &[0; 0x100]);
-        mem.map(fade, &[0; 8]);
-        mem.map(strut, &[0; 0x40]);
-        mem.map(wheel, &[0; 0x1000]);
-        mem.map(SIGNALS, &[0; 4]);
-        layout::construct_definition(&mut mem, def);
-        layout::construct_state(&mut mem, state, wheel);
-        layout::construct_controller(&mut mem, strut, def, state);
-        mem.set_u32(SIGNALS, 0x20000);
-        mem.set_u32(wheel + 0xeb4, 0x1234);
-        let old =
-            DamperSignal { owner_id: 0x77, peak_velocity: 1.5, bump_velocity: 0.25, droop_velocity: -0.5, valid: 1 };
-        mem.set_u32(strut + 0x1c, old.owner_id);
-        mem.set_f32(strut + 0x20, old.peak_velocity);
-        mem.set_f32(strut + 0x24, old.bump_velocity);
-        mem.set_f32(strut + 0x28, old.droop_velocity);
-        mem.set_u32(strut + 0x2c, old.valid as u32);
-        let mut ctx = Ctx { mem, host: &host };
-        let ret = reset_outputs(&mut ctx, &Regs { ecx: strut, ..Regs::default() }).unwrap();
-        assert_eq!(ret.eax, state);
-        // The typed event carries the pre-reset payload.
-        assert_eq!(*host.dampers.borrow(), [(strut, old)]);
-        // The signal-manager emit still runs.
-        assert_eq!(*host.calls.borrow(), [(0x52de60, 0x20000 + 0xc2b8, vec![strut + 0x1c])]);
-        // The words are reset to the new owner.
-        assert_eq!(ctx.mem.u32(strut + 0x1c), 0x1234);
-        assert_eq!(ctx.mem.f32(strut + 0x20), 0.0);
-        assert_eq!(ctx.mem.f32(strut + 0x24), 0.0);
-        assert_eq!(ctx.mem.f32(strut + 0x28), 0.0);
-        assert_eq!(ctx.mem.u32(strut + 0x2c), 1);
-    }
 }

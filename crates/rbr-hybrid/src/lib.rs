@@ -139,11 +139,10 @@ pub trait Host {
     /// A damper-signal emit (`CSpringDamper::ResetOutputs`): the strut and the payload the reset emitted. The pure
     /// host keeps the typed payload for the game, which reads it instead of the signal manager's words.
     fn emit_damper(&self, _strut: u32, _signal: rbr_physics::spring_damper::DamperSignal) {}
-    /// The typed storage while the pure host holds it (from the first step on): the typed subsystems' bindings (the
-    /// struts, the VCU, the tyres, the stage's readers) run on it, not on the image's words. `None` before it is lifted
-    /// (the boot's `CCar::UpdateA720`) and on a test host, where the bindings run per call on the image.
-    fn typed(&self) -> Option<std::cell::Ref<'_, rbr_physics::store::typed::Typed>> {
-        None
+    /// The typed storage the bindings run on: the car's, its solids', the physics core's, the stage's and the
+    /// definitions' (the pure host lifts it on demand, [`pure::Pure::construct`]).
+    fn typed(&self) -> std::cell::Ref<'_, rbr_physics::store::typed::Typed> {
+        unimplemented!("a test host holds no typed state")
     }
 }
 

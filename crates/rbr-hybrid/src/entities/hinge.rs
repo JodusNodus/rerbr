@@ -20,7 +20,6 @@ use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
 use crate::entities::Op;
 use crate::rigid_body::{held_solids, on_solids, with_solids, E43VF64, E43VF6C};
-use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// The state signal's slot count (`CMultiSignal1` has 32 slots).
@@ -46,12 +45,8 @@ fn call_hinge(host: &dyn Host, sp: u32, target: u32, body: u32, args: &[u32]) ->
 }
 
 /// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` of a held hinged body: its one write, the dirty word
-/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]); per call the host.
-pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, sp: u32, object: u32) {
-    if host.typed().is_none() {
-        host.call_at(sp, SET_DIRTY, object, &[]);
-        return;
-    }
+/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]).
+pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, object: u32) {
     host.ran_direct();
     crate::rigid_body::set_solid_word(host, mem, object + rbr_physics::ntweak::DIRTY, 1);
 }
@@ -72,7 +67,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     /// In a held step `SetDirty`'s one write, the tweak's dirty word (the hinge's headers stay in the image; a held
     /// solid's word if its table names it), here ([`Host::ran_direct`]); else the host.
     fn mark_dirty(&mut self, at: u32) {
-        set_dirty(self.host, &mut self.mem, self.frame - 0x44, at);
+        set_dirty(self.host, &mut self.mem, at);
     }
 
     fn scale_vector(&mut self, vec: u32, s: f32, out: u32) {

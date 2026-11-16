@@ -109,17 +109,14 @@ pub static BINDINGS: [Binding; 30] = [
 /// definitions and the solids likewise.
 pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T) -> T {
     let host = ctx.host;
-    let typed = host.typed();
-    let car = typed.as_deref().map(|t| &t.car);
-    let defs = typed.as_deref().map(|t| &t.defs);
-    let solids = typed.as_deref().map(|t| &t.solids);
-    let view = WheelView::new(&mut ctx.mem, car.map(|c| &c.wheels)).with_car(car.map(|c| &c.own)).with_defs(defs);
-    run(&mut view.with_solids(solids))
+    let t = host.typed();
+    let view = WheelView::new(&mut ctx.mem, Some(&t.car.wheels)).with_car(Some(&t.car.own)).with_defs(Some(&t.defs));
+    run(&mut view.with_solids(Some(&t.solids)))
 }
 
 /// Whether the host holds the wheel at `this` over a step ([`Host::typed`]).
 pub(crate) fn holds_wheel(host: &dyn Host, this: u32) -> bool {
-    host.typed().is_some_and(|t| t.car.wheels.held(this).is_some())
+    host.typed().car.wheels.held(this).is_some()
 }
 
 /// `host.call_at(sp, target, ecx, args)` from the held wheel `wheel`'s code when `target` is one of the wheel's
@@ -135,14 +132,14 @@ pub(crate) fn call_wheel(host: &dyn Host, wheel: u32, sp: u32, target: u32, ecx:
 /// it, else the image's. For the readers outside the wheel's bindings (NGP's engine wrapper and the tyres' thermal
 /// words).
 pub(crate) fn read_wheel<T: Value>(host: &dyn Host, mem: &Mem, this: u32, slot: Slot<T>) -> T {
-    host.typed().and_then(|t| t.car.wheels.read(this, slot)).unwrap_or_else(|| T::load(mem, this + slot.at))
+    host.typed().car.wheels.read(this, slot).unwrap_or_else(|| T::load(mem, this + slot.at))
 }
 
 /// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` when a held wheel holds its dirty word
 /// (`CarWheels::set_dirty`), counted as a run ([`Host::ran_direct`]): its one write, and its binding reads nothing of
 /// the stack. False per call or for another tweak, where the caller calls the host.
 fn set_dirty_held(host: &dyn Host, object: u32) -> bool {
-    let held = host.typed().is_some_and(|t| t.car.wheels.set_dirty(object));
+    let held = host.typed().car.wheels.set_dirty(object);
     if held {
         host.ran_direct();
     }

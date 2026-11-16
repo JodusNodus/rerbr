@@ -178,15 +178,4 @@ mod tests {
         let payload = (0..5).map(|k| ctx.mem.u32(0x9000 - 0x3c + 4 * k)).collect::<Vec<_>>();
         assert_eq!(payload, [0, 1, (-15.0f32).to_bits(), 0, 1]);
     }
-
-    #[test]
-    fn update_returns_the_count_on_a_sampled_step() {
-        let host = Calls::default();
-        let mut ctx = Ctx { mem: world(43200.0, 43185.0, 150.0), host: &host };
-        ctx.mem.set_u32(0x1040, 1);
-        let r = update(&mut ctx, &record_regs(0.0)).expect("runs");
-        assert_eq!(r.eax, 1);
-        assert_eq!(ctx.mem.u32(0x200c), 1);
-        assert!(host.0.borrow().is_empty());
-    }
 }

@@ -61,7 +61,7 @@ pub(crate) fn on_cell_links<T>(
     to: u32,
     run: impl FnOnce(&mut HeldLinks) -> T,
 ) -> Option<T> {
-    let typed = host.typed()?;
+    let typed = host.typed();
     let links = &typed.car.collision.links;
     links.moves(mem, link, to).then(|| run(&mut links.view(mem)))
 }
@@ -69,7 +69,7 @@ pub(crate) fn on_cell_links<T>(
 /// A cell list's first link or a link's next (the word at `at`) as the step leaves it: the held record's while a step
 /// holds the cells' lists, else the image's.
 pub(crate) fn cell_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
-    host.typed().map_or_else(|| mem.u32(at), |t| t.car.collision.links.next(mem, at))
+    host.typed().car.collision.links.next(mem, at)
 }
 
 /// CBodyLink::Unlink (0x4e0020) and the `CLink::Unlink` twin (0x47d160): thiscall on the link; eax is the pointer the
@@ -94,10 +94,10 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, y, ..] = r.stack.map(f32::from_bits);
     let mut alloc = Callees(ctx.host);
-    let held = ctx.host.typed().and_then(|t| {
-        let c = &t.car.collision;
-        c.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y, |block| c.links.add_block(block))
-    });
+    let t = ctx.host.typed();
+    let c = &t.car.collision;
+    let held = c.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y, |block| c.links.add_block(block));
+    drop(t);
     let link = held.unwrap_or_else(|| layout::cell_link_at(&mut alloc, &mut ctx.mem, r.ecx, x, y));
     Ok(Return::void(link, 8))
 }
@@ -107,7 +107,7 @@ pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `LookupTwin` ([`Host::ran_direct`]): `None` per call, for another grid and for a cell with no link block yet
 /// (the caller calls, and the binding builds it).
 pub(crate) fn held_cell_link(host: &dyn Host, mem: &mut Mem, sp: u32, grid: u32, x: f32, y: f32) -> Option<u32> {
-    match host.typed()?.car.collision.cells.link_at(mem, grid, x, y)? {
+    match host.typed().car.collision.cells.link_at(mem, grid, x, y)? {
         CellLink::Link(link) if sp != 0 => {
             host.ran_direct();
             Some(link)
@@ -129,9 +129,7 @@ pub(crate) fn register_cell_direct(
     x: f32,
     y: f32,
 ) -> bool {
-    let Some(typed) = host.typed() else {
-        return false;
-    };
+    let typed = host.typed();
     let c = &typed.car.collision;
     let Some(CellLink::Link(cell)) = c.cells.link_at(mem, grid, x, y) else {
         return false;
@@ -171,7 +169,7 @@ pub(crate) fn box_cells_direct(host: &dyn Host, mem: &mut Mem, lo: u32, hi: u32)
             }
         }
     }
-    let typed = host.typed()?;
+    let typed = host.typed();
     let mut held = Held { cells: &typed.car.collision.cells, mem, found: 0, all: true };
     let cells = detect::box_cells_of(mem, &mut held, lo, hi);
     let (all, found) = (held.all, held.found);
