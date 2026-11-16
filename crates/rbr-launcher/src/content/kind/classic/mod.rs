@@ -85,12 +85,20 @@ struct Added {
     author: Option<String>,
     folder: String,
     licence: Option<PathBuf>,
+    /// The variants that lack a required file and were not added.
+    left_out: Vec<char>,
 }
 
 impl Added {
     fn outcome(self, source: &str) -> Outcome {
         let by = self.author.map(|a| format!(" by {a}")).unwrap_or_default();
-        let text = format!("Added {} ({LABEL}){by}", self.name);
+        let words: Vec<String> = self.left_out.iter().map(char::to_string).collect();
+        let left = match words.len() {
+            0 => String::new(),
+            1 => format!("; its {} variant is incomplete and was left out", words[0]),
+            _ => format!("; its {} variants are incomplete and were left out", words.join(" and ")),
+        };
+        let text = format!("Added {} ({LABEL}){by}{left}", self.name);
         Outcome::said(source, LABEL, text, Goto::Stage(self.folder)).opening(self.licence).refreshing(Refresh::Stages)
     }
 }
@@ -154,11 +162,8 @@ fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<V
     for w in src.ini_writes() {
         let file = w.file.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
         if (file == "tracks.ini" || find::tracks_number(&file) == Some(n)) && w.section.eq_ignore_ascii_case(&map) {
-            // An empty key and value is the installer deleting the section; never an empty key.
+            // An empty key is a section delete (an installer's uninstall part follows its install part): ignored.
             if w.key.is_empty() {
-                if w.value.is_empty() {
-                    entries.clear();
-                }
                 continue;
             }
             match entries.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(&w.key)) {
@@ -213,9 +218,6 @@ fn settings_sections(src: &dyn Source, texts: &Texts) -> Vec<Section> {
         .collect();
     for w in src.ini_writes().iter().filter(|w| named(&w.file)) {
         if w.key.is_empty() {
-            if w.value.is_empty() {
-                sections.retain(|s| s.name != w.section);
-            }
             continue;
         }
         let at = match sections.iter().position(|s| s.name == w.section) {
@@ -278,9 +280,11 @@ fn signature_of(dir: &Path) -> Option<Signature> {
     Some(signature(&name, files.into_iter()))
 }
 
-/// The variants of the files `files` (a stage's, with their paths in the stage folder), those with a `.lbs` as
-/// `rsf::Stage` has them (RSF stage 368 has a stray `track-368_M.ini`), or the first required file one lacks.
-fn missing(files: &[(&Entry, Vec<String>)], number: u32) -> Result<Vec<char>, Fail> {
+/// The variants of a stage's files (with their paths in the stage folder) that have every required file, and the
+/// letters of those that have a `.lbs` but not all of them (left out). A `.lbs`-less letter is no variant, as for
+/// `rsf::Stage` (RSF stage 368 has a stray `track-368_M.ini`). With no complete variant, the first required file the
+/// most complete one lacks.
+fn variants(files: &[(&Entry, Vec<String>)], number: u32) -> Result<(Vec<char>, Vec<char>), Fail> {
     let mut letters: Vec<char> = files
         .iter()
         .filter(|(_, rel)| rel.len() == 1 && rel[0].to_ascii_lowercase().ends_with(".lbs"))
@@ -289,18 +293,23 @@ fn missing(files: &[(&Entry, Vec<String>)], number: u32) -> Result<Vec<char>, Fa
     letters.sort_unstable();
     letters.dedup();
     let have = |name: &str| files.iter().any(|(_, rel)| rel.len() == 1 && rel[0].eq_ignore_ascii_case(name));
-    if letters.is_empty() {
-        return Err(format!("track-{number}_<letter>.lbs is missing"));
+    let lacking = |letter: char| -> Vec<String> {
+        let names = REQUIRED.iter().map(|ext| format!("track-{number}_{letter}.{ext}"));
+        names.filter(|name| !have(name)).collect()
+    };
+    let (whole, partial): (Vec<char>, Vec<char>) = letters.iter().partition(|&&l| lacking(l).is_empty());
+    if !whole.is_empty() {
+        return Ok((whole, partial));
     }
-    for letter in &letters {
-        for ext in REQUIRED {
-            let name = format!("track-{number}_{letter}.{ext}");
-            if !have(&name) {
-                return Err(format!("{name} is missing"));
-            }
-        }
-    }
-    Ok(letters)
+    let first = letters.iter().map(|&l| lacking(l)).min_by_key(Vec::len).and_then(|l| l.into_iter().next());
+    Err(format!("{} is missing", first.unwrap_or_else(|| format!("track-{number}_<letter>.lbs"))))
+}
+
+/// Whether `rel` (a stage file's path in the stage folder) belongs to variant `letter` of stage `number`.
+fn of_variant(rel: &[String], number: u32, letter: char) -> bool {
+    let name = rel[0].to_ascii_lowercase();
+    let prefix = format!("track-{number}_{}", letter.to_ascii_lowercase());
+    name.strip_prefix(&prefix).is_some_and(|rest| rest.starts_with(['.', '_']))
 }
 
 /// The first four bytes of a file.
@@ -385,8 +394,9 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
     }
     let author = get("Author").map(write::shown).filter(|a| !a.is_empty());
 
-    let files = find::files(entries, stage);
-    let letters = missing(&files, old)?;
+    let mut files = find::files(entries, stage);
+    let (letters, left_out) = variants(&files, old)?;
+    files.retain(|(_, rel)| !left_out.iter().any(|&l| of_variant(rel, old, l)));
     let maps = ctx.home.join(rbr_btb::player::MAPS);
     let existing = folders(&maps);
     let taken = |n: u32| ctx.known.numbers.contains(&n) || existing.iter().any(|(e, _)| *e == n);
@@ -449,6 +459,7 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
     };
     write_text(format!("Tracks{new}.ini"), tracks_ini.text())?;
     let mut weathers = write::own_weathers(&settings_sections(src, texts), old, new);
+    weathers.retain(|w| !left_out.iter().any(|l| w.name[new.to_string().len()..].starts_with(*l)));
     if weathers.is_empty() {
         let retail = ctx.known.weather.as_deref().and_then(|p| fs::read(p).ok()).unwrap_or_default();
         let kind = write::surface_kind(get("Surface"));
@@ -474,7 +485,7 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
         return Err("already added".into());
     }
     fs::rename(&staged, &dest).map_err(|e| read_error(&dest, e))?;
-    Ok(Added { name, author, folder, licence: licence.map(|l| dest.join(l)) })
+    Ok(Added { name, author, folder, licence: licence.map(|l| dest.join(l)), left_out })
 }
 
 #[cfg(test)]
@@ -690,13 +701,13 @@ pub(crate) mod tests {
             .filter(|(k, _)| **k != "Key")
             .map(|(k, v)| ini_write("Maps/Tracks.ini", &format!("Map{id}"), k, v))
             .chain([
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "", ""),
                 ini_write("Maps/Tracks.ini", &format!("Map{id}"), "StageName", "Zaton"),
                 ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Author", "Mihkel Kütt"),
                 ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Surface", "1"),
                 ini_write("Maps/Tracks.ini", &format!("Map{id}"), "SplashScreen", "Maps\\splash.dds"),
                 ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Particles", "Maps\\PS_Zaton"),
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "", "x"),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "", ""),
+                ini_write("Maps/TrackSettings.ini", &format!("{id}M_hazy_clear"), "", ""),
                 ini_write("Maps/TrackSettings.ini", &format!("{id}M_crisp_clear"), "FogEnd", "7"),
                 ini_write("Maps/TrackSettings.ini", &format!("{id}M_hazy_clear"), "FogEnd", "8"),
                 ini_write("Maps/TrackSettings.ini", "9999M_crisp_clear", "FogEnd", "9"),
@@ -820,12 +831,46 @@ pub(crate) mod tests {
         });
         assert_eq!(rbz, format!("Couldn't add Kamenak: {ENCRYPTED}"));
         let missing = refused("missing", &|d| {
-            rsf_stage(d, 9, "OM");
-            fs::remove_file(d.join("9-Kamenak/track-9_M.trk")).unwrap();
+            rsf_stage(d, 9, "O");
+            fs::remove_file(d.join("9-Kamenak/track-9_O.trk")).unwrap();
         });
-        assert_eq!(missing, "Couldn't add Kamenak: track-9_M.trk is missing");
+        assert_eq!(missing, "Couldn't add Kamenak: track-9_O.trk is missing");
         let nothing = refused("nothing", &|d| write(&d.join("Maps/Tracks.ini"), b"[Map1]\r\n"));
         assert!(nothing.starts_with("Couldn't add nothing: no stage in it"), "{nothing}");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_incomplete_variant_is_left_out_and_said() {
+        let dir = crate::test_dir("classic-incomplete");
+        loose_stage(&dir.join("drop"), 94, "M");
+        write(&dir.join("drop/Maps/track-94_O.ini"), b"[x]\n");
+        write(&dir.join("drop/Maps/track-94_O.lbs"), b"lbs1");
+        write(&dir.join("drop/Maps/Tracks.ini"), b"[Map94]\r\nStageName=Stry\r\n");
+        write(
+            &dir.join("drop/Maps/TrackSettings.ini"),
+            b"[94O_crisp_clear]\r\nFogEnd=1\r\n[94M_crisp_clear]\r\nFogEnd=1\r\n",
+        );
+        let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &Known::default());
+        assert_eq!(
+            lines(&done),
+            ["ok Added Stry (classic stage); its O variant is incomplete and was left out"],
+            "{done:?}"
+        );
+        let folder = dir.join("home/maps/94-Stry");
+        assert!(!names(&folder).iter().any(|n| n.to_lowercase().starts_with("track-94_o")), "{:?}", names(&folder));
+        let stage = rsf::open(&folder).unwrap();
+        assert_eq!((stage.variants.clone(), stage.problem.clone()), (vec!['M'], None));
+        assert_eq!(stage.weathers.iter().map(|w| w.section.as_str()).collect::<Vec<_>>(), ["94M_crisp_clear"]);
+        // No complete variant: the most complete one's first missing file.
+        let drop = dir.join("none/Maps");
+        write(&drop.join("track-5_O.lbs"), b"lbs1");
+        write(&drop.join("track-5_O.ini"), b"x");
+        write(&drop.join("track-5_N.lbs"), b"lbs1");
+        write(&drop.join("track-5_N.ini"), b"x");
+        write(&drop.join("track-5_N.col"), b"OC7R");
+        let done = add(&dir.join("home2"), source::open(&dir.join("none")).unwrap(), &Known::default());
+        assert_eq!(lines(&done), ["no Couldn't add none: track-5_N.trk is missing"], "{done:?}");
         fs::remove_dir_all(&dir).unwrap();
     }
 
