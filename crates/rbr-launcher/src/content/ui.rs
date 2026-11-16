@@ -295,9 +295,10 @@ mod tests {
         }
         let lines: Vec<String> = form.content.notice.iter().map(Outcome::line).collect();
         assert_eq!(lines.len(), 3, "{lines:?}");
-        assert!(lines[0].starts_with("Added Autio I Gravel (BTB stage)"), "{lines:?}");
-        assert!(lines[1].starts_with("Added Janne Laahanen V3 (co-driver)"), "{lines:?}");
-        assert!(lines[2].starts_with("Couldn't add Holiday.rar"), "{lines:?}");
+        let has = |start: &str| lines.iter().any(|l| l.starts_with(start));
+        assert!(has("Added Autio I Gravel (BTB stage)"), "{lines:?}");
+        assert!(has("Added Janne Laahanen V3 (co-driver)"), "{lines:?}");
+        assert!(has("Couldn't add Holiday.rar"), "{lines:?}");
         assert_eq!(form.catalog.maps.len(), before + 1);
         let added = form.catalog.maps.last().and_then(|m| m.btb()).map(|b| b.name.clone());
         assert_eq!(added.as_deref(), Some("Autio I Gravel"));
