@@ -2415,6 +2415,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-session"
+version = "0.1.0"
+dependencies = [
+ "rbr-formats",
+ "rbr-gameplay",
+]
+
+[[package]]
 name = "rbr-sound"
 version = "0.1.0"
 dependencies = [

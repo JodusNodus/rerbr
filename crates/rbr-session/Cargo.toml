@@ -1,0 +1,14 @@
+[package]
+name = "rbr-session"
+version = "0.1.0"
+edition = "2021"
+description = "Sessions (ours): courses, formats, timing events, lap timing and end rules over the 1.02 stage loop"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "rbr_session"
+path = "src/lib.rs"
+
+[dependencies]
+rbr-formats = { path = "../rbr-formats" }
+rbr-gameplay = { path = "../rbr-gameplay" }

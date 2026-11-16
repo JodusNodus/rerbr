@@ -1,8 +1,9 @@
 # Sessions (ours, planned)
 
 The layer above the 1.02 stage loop that lets a point-to-point rally stage, a hotlap, a lap race and a school lesson be
-the same kind of thing. Design only: no code beyond the `FlowMode` rename. Code will live in `crates/rbr-session`;
-`rbr-gameplay` keeps the 1.02 loop and becomes the `RallyStage` format's engine.
+the same kind of thing. Code: `crates/rbr-session` (`course`, `end`, `event`, `lap`), on top of `rbr-gameplay`, which keeps the 1.02 loop
+bit-exact and is the `RallyStage` format's engine. `rbr-session` depends on `rbr-gameplay`, not the reverse: the
+`Format` trait's hooks see the step's types (`StepView`, `CarControl`), so it lives in the upper crate.
 
 ## Words
 
@@ -39,10 +40,9 @@ the same kind of thing. Design only: no code beyond the `FlowMode` rename. Code 
 Each step keeps the recordings bit-exact (`scripts/rust-check.sh`, `rsf_compare` physics PASS 84084/84084); the
 existing types are built beside, not rewritten, since `Mode`/timing/ghost types reach 5 crates and 42 `rbr-render` files.
 
-1. Skeleton, no behaviour change: `Course` (`PointToPoint`, `Circuit { laps }`), `TimingEvent` (`Started`,
-   `Sector(i)`, `Lap(n, time)`, `Finished`), `EndRule` (finish key, N laps, free practice, time limit), `SessionKey
-   { stage, kind }`, the `Format` trait. `TimeKeeper` and `RaceFlow` emit `TimingEvent`s through a wrapper; `Game`
-   consumes them.
+1. Skeleton, no behaviour change (done, but for the `Format` trait): `Course`, `TimingEvent`, `EndRule`,
+   `LapTiming`; the timekeeper's checkpoints reach the host as events. `SessionKey { stage, kind }` comes with the
+   records (step 3), the `Format` trait with the school (step 2).
 2. The school onto `Format` (the only `ModeRules` user: the test that the interface is enough).
 3. Records and ghost keyed by `SessionKey`; today's rows are `kind = stage`.
 4. Circuit: lap timing, `EndRule` for N laps and free practice, best lap, sectors, a per-lap ghost, the HUD panel, the
@@ -58,7 +58,26 @@ existing types are built beside, not rewritten, since `Mode`/timing/ghost types 
 - A circuit is marked by an explicit key in the stage (`track.ini` / course key: kind, laps, gates), not detected from
   the line (converters write it).
 
+## Progress value (audit for step 5)
+
+- Written only by the physics' step, from its previous value as the hint: `engine_driveline::layout::project_point`
+  (1.02, `CDriveLine::SampleBig` 0x50b180) and `ngp::drive_line::project` (NGP), each a window of entries around the
+  hint, clamped to 0 and `n - 1`. The seam handling (modular window, wrap) goes in both.
+- Read (as a distance through `driveline::sample_x`, or `dot150`, the speed along the line): the timekeeper
+  (`Game::record_step`), the marker ticker (`Game::tick_markers`), the HUD/telemetry/picture (`rbr-standalone`
+  `live`), the autopilot (its inverse), replay playback, the school's lessons (`ModeRules::drive_line_at`) and the
+  scripted characters (`rbr_render::characters`).
+- Nothing found that reads it in the help-call respawn path (`CSigRespawnRequest` is the physics' reposition); not
+  traced to the end, unverified.
+- On a wrapping line everything keyed by distance and fired once needs re-arming each lap: the marker keys' fired
+  bits (pace notes), the scripted characters' events. The timekeeper is not used for a circuit (`LapTiming`).
+
 ## State
 
-- Done: `flow::Mode` renamed `FlowMode`.
-- Open: the progress-reader audit; the key's name and file; the `Format` trait's exact hooks.
+- Done: `flow::Mode` renamed `FlowMode`. Step 1's data and timing: `rbr-session` has `Course`, `EndRule`,
+  `TimingEvent` (a 1.02 `Checkpoint` converts to one; `SubstepEvent::checkpoint` now carries it out of `Game`) and
+  `LapTiming` (laps, sectors and a one-shot or N-lap or timed end, tested on synthetic drives; pass times are
+  interpolated between steps).
+- Open: the course key's name and file; the `Format` trait's hooks (step 2, with the school); a circuit's start and
+  end in the 1.02 loop (its timekeeper's finish key must lie past the line so the stage never finishes by itself, and
+  the session ends the drive through the mode's end).

@@ -22,7 +22,7 @@ use crate::race_clock::{AssistSettings, ClockEvents, RaceClock};
 use crate::result::{self, StageResult};
 use crate::stage::{Stage, State};
 use crate::tick::{self, FrameClock};
-use crate::timing::{self, TimeCard, TimeKeeper, CLOCK_START};
+use crate::timing::{self, Checkpoint, TimeCard, TimeKeeper, CLOCK_START};
 
 /// Samples the game receives from the input and race hosts for one frame.
 #[derive(Debug, Clone, Copy, Default)]
@@ -136,6 +136,8 @@ pub struct SubstepEvent {
     /// The driveline distance at the timekeeper call site, if the sample was
     /// within the stage's driveline table.
     pub distance: Option<f32>,
+    /// The checkpoint the timekeeper passed in the step (`CSigCheckPointTime`): the start, a split or the finish.
+    pub checkpoint: Option<Checkpoint>,
     /// The code of the `CSigOutsideAssistance` the step emitted.
     pub outside_assistance: Option<u32>,
     /// The code of the `CSigRetireCar` the step emitted.
@@ -667,11 +669,13 @@ impl Game {
             None => sample.notify_a_speed.abs(),
         };
         let distance = driveline::sample_x(&self.driveline_values, sample.driveline_parameter);
+        let mut checkpoint = None;
         if let Some(x) = distance {
             // `Record` is inside Vf6cx and observes the current elapsed time;
             // StepForward advances the clock only after this call returns.
-            let (keeper, _) = self.timekeeper.record(x, self.elapsed, self.max_time_step);
+            let (keeper, passed) = self.timekeeper.record(x, self.elapsed, self.max_time_step);
             self.timekeeper = keeper;
+            checkpoint = passed;
         }
         let pc53 = self.stage.state() != State::Load;
         self.elapsed = timing::advance_time(self.elapsed, self.max_time_step, pc53);
@@ -679,6 +683,7 @@ impl Game {
             stage: self.stage,
             control,
             distance,
+            checkpoint,
             outside_assistance: sample.outside_assistance,
             retire: sample.retire,
         }
