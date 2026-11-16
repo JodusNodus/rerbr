@@ -155,8 +155,8 @@ fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<V
         let file = w.file.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
         if (file == "tracks.ini" || find::tracks_number(&file) == Some(n)) && w.section.eq_ignore_ascii_case(&map) {
             match entries.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(&w.key)) {
-                Some(entry) => entry.1 = w.value.clone(),
-                None => entries.push((w.key.clone(), w.value.clone())),
+                Some(entry) => entry.1 = write::latin1(w.value.as_bytes()),
+                None => entries.push((w.key.clone(), write::latin1(w.value.as_bytes()))),
             }
         }
     }
@@ -188,7 +188,7 @@ fn fill_from_rsf_list(src: &dyn Source, stage: &find::Found, entries: &mut Vec<(
         let missing = !entries.iter().any(|(k, v)| k.eq_ignore_ascii_case(key) && !write::unquoted(v).is_empty());
         if let (true, Some(value)) = (missing, value.filter(|v| !v.is_empty())) {
             entries.retain(|(k, _)| !k.eq_ignore_ascii_case(key));
-            entries.push((key.to_owned(), value));
+            entries.push((key.to_owned(), write::latin1(value.as_bytes())));
         }
     }
 }
@@ -212,7 +212,7 @@ fn settings_sections(src: &dyn Source, texts: &Texts) -> Vec<Section> {
                 sections.len() - 1
             }
         };
-        sections[at].entries.push((w.key.clone(), w.value.clone()));
+        sections[at].entries.push((w.key.clone(), write::latin1(w.value.as_bytes())));
     }
     sections
 }
@@ -414,10 +414,8 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
             .collect(),
     };
 
-    let tracks = Temp::create(&maps, "adding").or_else(|_| {
-        fs::create_dir_all(&maps).map_err(|e| read_error(&maps, e)).and_then(|()| Temp::create(&maps, "adding"))
-    })?;
-    let staged = tracks.0.join(&folder);
+    let temp = Temp::create(&maps, "adding")?;
+    let staged = temp.0.join(&folder);
     let rbz: u64 = files.iter().filter(|(e, _)| find::lower(e).ends_with(".rbz")).map(|(e, _)| e.size).sum();
     let mut count =
         Counter { step: "Adding classic stage", done: 0, total: size + rbz, report: ctx.report, cancel: ctx.cancel };
@@ -675,7 +673,7 @@ pub(crate) mod tests {
     fn installer(dir: &Path, id: u32) -> Box<dyn Source> {
         let writes = ["TrackName", "StageName", "Author", "Surface", "SplashScreen", "Particles", "Key"]
             .iter()
-            .zip(["Maps\\x\\track-8994", "Zaton", "A. Author", "1", "Maps\\splash.dds", "Maps\\PS_Zaton", ""])
+            .zip(["Maps\\x\\track-8994", "Zaton", "Mihkel Kütt", "1", "Maps\\splash.dds", "Maps\\PS_Zaton", ""])
             .filter(|(k, _)| **k != "Key")
             .map(|(k, v)| ini_write("Maps/Tracks.ini", &format!("Map{id}"), k, v))
             .chain([
@@ -694,7 +692,7 @@ pub(crate) mod tests {
         write(&dir.join("drop/Maps/PS_Zaton.ini"), b"[PS]\n");
         let home = dir.join("home");
         let done = add(&home, installer(&dir.join("drop"), 8994), &Known::default());
-        assert_eq!(lines(&done), ["ok Added Zaton (classic stage) by A. Author"], "{done:?}");
+        assert_eq!(lines(&done), ["ok Added Zaton (classic stage) by Mihkel Kütt"], "{done:?}");
         let folder = home.join("maps/8994-Zaton");
         let tracks = fs::read_to_string(folder.join("Tracks8994.ini")).unwrap();
         assert!(
@@ -706,6 +704,7 @@ pub(crate) mod tests {
         assert_eq!(done[0].open, Some(folder.join("Readme.txt")));
         let stage = rsf::open(&folder).unwrap();
         assert_eq!((stage.id, stage.problem.clone(), stage.surface), (8994, None, Some(rsf::Surface::Gravel)));
+        assert_eq!(stage.author.as_deref(), Some("Mihkel Kütt"));
         assert_eq!(
             stage.weathers.iter().map(|w| w.section.as_str()).collect::<Vec<_>>(),
             ["8994M_crisp_clear", "8994M_hazy_clear"]
@@ -895,6 +894,40 @@ mod real {
         eprintln!("added {} stage folders into {}", picked.len(), out.display());
         if !keep {
             fs::remove_dir_all(&out).unwrap();
+        }
+    }
+
+    /// The RBR Czech installers of `RBR_INSTALLERS` (`*.exe`), each added into a temporary player folder: every stage
+    /// is either added and opens, or refused as encrypted. Skips until a source reads `.exe` files.
+    #[test]
+    fn installers_add_or_are_refused_as_encrypted() {
+        let Some(dir) = std::env::var_os("RBR_INSTALLERS").map(PathBuf::from) else {
+            eprintln!("skipping: RBR_INSTALLERS not set");
+            return;
+        };
+        let mut exes: Vec<PathBuf> = fs::read_dir(&dir).unwrap().filter_map(|e| Some(e.ok()?.path())).collect();
+        exes.retain(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")));
+        exes.sort();
+        for exe in exes {
+            let src = match source::open(&exe) {
+                Ok(src) => src,
+                Err(why) if why.starts_with("installers can't be read") => {
+                    eprintln!("skipping {}: {why}", exe.display());
+                    continue;
+                }
+                Err(why) => panic!("{}: {why}", exe.display()),
+            };
+            let home = crate::test_dir("classic-installer");
+            let done = add(&home, src, &Known::default());
+            for outcome in &done {
+                eprintln!("{}: {}", exe.display(), outcome.line());
+                assert!(outcome.ok() || outcome.line().ends_with(ENCRYPTED), "{}: {}", exe.display(), outcome.line());
+            }
+            assert!(!done.is_empty());
+            for stage in rsf::scan_maps(&home.join(rbr_btb::player::MAPS), &Default::default()) {
+                assert_eq!(stage.unwrap().problem, None);
+            }
+            fs::remove_dir_all(&home).unwrap();
         }
     }
 }

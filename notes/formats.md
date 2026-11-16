@@ -319,7 +319,7 @@ the like) merge to their own files. No picker UI.
 `Maps/<id>-<name>/`: `Tracks<id>.ini`, per-variant `track-<id>_<L>.{lbs,col,trk,dls,mat,fnc,ini}` (M N E O S),
 `track-<id>_<L>_textures.rbz` or a loose `_textures/` folder, `TextureFilenameMap<id>.ini`,
 `TrackSettings<id>.ini`, `CustomData/<AnimationPath>/Scripts/`, `PS_*.ini`: layout, surface, weathers and texture
-lookup in `rsf::stages`. Quirks: `.col` cells may share a placeholder, `.mat` may end in a `CMAP` block, `(2,11)`
+lookup in `rsf::stages`. Number in files: only `Tracks<id>.ini` (section, `TrackName`, `SplashScreen`), `TrackSettings<id>.ini` (section prefixes), `TextureFilenameMap<id>.ini` (`track-<id>_` keys and values) and the `.rbz` entry names; no plain `.lbs/.col/.trk/.dls/.mat/.fnc/.lb2` holds a `track-` name, and `track-<id>_<L>.ini` has coincidences only (`Texture<id>`). `Tracks<id>.ini` `Surface`: 0 tarmac, 1 gravel, 2 snow (matches the list's `surface_id` 1, 2, 3 on 208 stages). The launcher's own added stages use this shape in `<player folder>/maps/` ([launcher note](cameras-hud-launcher.md)). Quirks: `.col` cells may share a placeholder, `.mat` may end in a `CMAP` block, `(2,11)`
 matrices are zero. A remap holds sibling stages' requests too (416's has 425's); a stage whose own requests map into
 another folder's encrypted archive is unavailable (432 into 431's, 558 into 557's, 629 and 630 into 588's: they drew
 without those textures). A variant with a missing, unreadable or encrypted file is `rsf::Stage::broken` and its
