@@ -222,7 +222,7 @@ Sequence functions are generic over the trait (`fn step<S: TyreStore>`), never `
 ### Calls between bindings
 
 - `Runner::call_at` runs a callee as a plain call (`Runner::call_plain`) when its binding is a leaf (`runner/leaves.rs`,
-  from `scripts/pure_leaves.py`: no host call, nothing of the stack but its arguments) or passes exactly the words the
+  from `scripts/leaves.py`: no host call, nothing of the stack but its arguments) or passes exactly the words the
   callee pops (`Runner::stack_words`, learned per binding); watched emits and tyre steps always take the host path
   (`NOT_DIRECT`); `Host::call_direct` skips the call's words where the callee reads only its arguments.
 - Callers on held state skip the call's words and sometimes the call itself where no later reader reads them (the

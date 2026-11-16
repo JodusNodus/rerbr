@@ -108,7 +108,7 @@ scripts/rsf-session.sh fetch <name>     # to $RBR_RECORDINGS/rsf/<name>
 | --- | --- |
 | `<n>/physics.bin`, `<n>/session.bin` | attempt n's FRM1 and RSS1 |
 | `<n>/attempt.txt` | plugin tick, RSF car in slot 5 at attempt start (`rsf_car_id`, `rsf_car_physics`, `car_name` from `Cars.ini [Car05]`), `setup=` |
-| `<n>/snap-0.bin`, `<n>/snap-1520.bin` | `SNAPS=1` only: process before the attempt's first step and before step 1520 (first with player control), in the snapshot format `harness/replay.py` and `rbr-standalone --snapshot` read; ~480 MB each in RSF, 0.2-0.8 s to write |
+| `<n>/snap-0.bin`, `<n>/snap-1520.bin` | `SNAPS=1` only: process before the attempt's first step and before step 1520 (first with player control), in the snapshot format `harness/replay.py` reads; ~480 MB each in RSF, 0.2-0.8 s to write |
 | `<n>/files/`, `<n>/setup.lsp` | opened files by lower-case relative path (`session.py --files`); starting setup (`session.py --setup`: last `SavedGames/<pack>/*.lsp` the stage load opened, else the pack's or slot folder's `setups/d_<surface>.lsp`, surface from RSF's `stages_data.json` else the exe map table; a service change is in no file) |
 | `audio.wav`, `audio.txt` | whole session's game output (f32, native rate); `start_unix_ns` (pw-record start, rough baseline), `rate`, `channels`, `node` |
 | `config/` | at session start: `SavedGames/*.acm`, `pf*.rbr`, `RBRControls.ini`, `CarInfo.ini`, `Plugins/NGPCarMenu.ini`, `rsfdata/cache/cars_data.json` (FFB, aids, rotation) |
