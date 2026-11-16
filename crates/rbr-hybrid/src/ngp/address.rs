@@ -155,17 +155,6 @@ pub fn original_for(addr: u32) -> Option<u32> {
     TRAMPOLINES.iter().chain(&EMIT_WRAPPERS).find_map(|&(t, exe)| (t == at).then_some(exe))
 }
 
-/// The trampolines (file addresses) with the exe functions they reach: the emulator binds each where its target is
-/// bound, since it enters the target past the hooked entry.
-pub(crate) fn trampolines() -> impl Iterator<Item = (u32, u32)> {
-    TRAMPOLINES.into_iter()
-}
-
-/// Whether `addr` is an NGP.dll file address.
-pub(crate) fn is_file(addr: u32) -> bool {
-    (FILE_BASE..FILE_BASE + SIZE).contains(&addr)
-}
-
 /// The file address `addr` at the snapshot's base (`None` without NGP).
 pub(crate) fn at(addr: u32) -> Option<u32> {
     let base = BASE.get();

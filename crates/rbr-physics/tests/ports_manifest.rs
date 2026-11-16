@@ -1,11 +1,8 @@
-//! Checks `ports.csv`, the manifest of Rust ports: each row's address is unique and sorted, its module and Rust item
-//! exist in `src/`, and its test exists in `tests/` (`-` for a port that runs NGP's behaviour only and has no
-//! direct-call records: the drive oracle covers it).
+//! Checks `ports.csv`, the manifest of Rust ports: each row's address is unique and sorted, and its module and Rust
+//! item exist in `src/`.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-
-const STATUSES: [&str; 3] = ["checked", "unit", "partial"];
+use std::path::PathBuf;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -27,14 +24,14 @@ fn ports_manifest_matches_source() {
     let text = fs::read_to_string(root().join("ports.csv")).expect("ports.csv");
     assert!(!text.contains('\r'), "ports.csv must use LF line endings");
     let mut lines = text.lines();
-    assert_eq!(lines.next(), Some("addr,module,rust_item,test,status"));
+    assert_eq!(lines.next(), Some("addr,module,rust_item"));
 
     let mut last = None;
     for (n, line) in lines.enumerate() {
         let row = n + 2;
         let fields: Vec<&str> = line.split(',').collect();
-        let [addr, module, item, test, status] = fields[..] else {
-            panic!("ports.csv line {row}: expected 5 fields: {line}");
+        let [addr, module, item] = fields[..] else {
+            panic!("ports.csv line {row}: expected 3 fields: {line}");
         };
 
         let value = u32::from_str_radix(addr.trim_start_matches("0x"), 16)
@@ -42,7 +39,6 @@ fn ports_manifest_matches_source() {
         assert!(last.is_none_or(|prev| prev < value), "ports.csv line {row}: {addr} is not after the row before");
         last = Some(value);
 
-        assert!(STATUSES.contains(&status), "ports.csv line {row}: status {status}");
         assert!(module_text("src", module).is_some(), "ports.csv line {row}: no module src/{module}");
 
         let (path, name) = item.rsplit_once("::").unwrap_or_else(|| panic!("ports.csv line {row}: item {item}"));
@@ -50,13 +46,5 @@ fn ports_manifest_matches_source() {
         let found = module_text("src", &format!("{module_path}.rs"))
             .or_else(|| module_text("src", &format!("{module_path}/mod.rs")));
         assert!(found.is_some_and(|src| defines_fn(&src, name)), "ports.csv line {row}: {item} is not a fn in src/");
-
-        if test == "-" {
-            continue;
-        }
-        let (file, fn_name) = test.split_once("::").unwrap_or_else(|| panic!("ports.csv line {row}: test {test}"));
-        let src = fs::read_to_string(Path::new(&root()).join("tests").join(format!("{file}.rs")))
-            .unwrap_or_else(|_| panic!("ports.csv line {row}: no tests/{file}.rs"));
-        assert!(defines_fn(&src, fn_name), "ports.csv line {row}: no test {test}");
     }
 }

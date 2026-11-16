@@ -2,10 +2,6 @@
 # The physics gate in one command. Builds the release binaries the checks run, then runs these side by side (niced):
 # - standalone: drive2 attempt 5 through rbr-standalone (harness/rsf_compare.py, physics section), PASS when it prints
 #   physics PASS and exits 0 (84084/84084);
-# - with --hybrid, the hybrid check's merge gate (harness/rust_step.py, all bindings, 30 steps from each of the nine
-#   tanner-corolla snapshots, snapH.snap-1295 and tanner-damage's 11820, 11827, 12000, one process per snapshot),
-#   PASS when all 13 "run B vs run A" lines are equal and every run exits 0. The 1.02 snapshots decline the ports that
-#   hold NGP's behaviour (notes/ngp.md), so those are covered by the standalone check alone;
 # - with --typed, the typed storage's checks (notes/physics.md "Store seam"): twin-typed and twin-aids, the standalone
 #   run's command again (its work files) with --twin typed, aids off and all on, PASS when the twin line reads equal
 #   after each of 84084 steps and both round trips equal, with exit status 0 (aids on: 0, or 1 with no failure but the
@@ -17,19 +13,16 @@
 #   3 runs), no verdict.
 # Prints one line per check and a final PASS/FAIL (exit 1). A check's full output is in /tmp/gate-<pid>-<name>.txt,
 # kept when it fails. scripts/rust-check.sh stays a separate run (fmt, clippy, tests, vectors).
-# Needs RBR_RECORDINGS, RBR_DATA, RBR_PATCH, RBR_NGP_PHYSICS, RBR_RSF (dev.env), --hybrid also RBR_SNAPS (default
-# /tmp/rbr-snaps). PY is the Python, default this checkout's .venv, else the main checkout's.
-# Usage: scripts/gate.sh [--hybrid] [--typed] [--perf BASE_BIN]
+# Needs RBR_RECORDINGS, RBR_DATA, RBR_PATCH, RBR_NGP_PHYSICS, RBR_RSF (dev.env). PY is the Python, default this checkout's .venv, else the main checkout's.
+# Usage: scripts/gate.sh [--typed] [--perf BASE_BIN]
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source scripts/dev-env.sh
-usage='usage: scripts/gate.sh [--hybrid] [--typed] [--perf BASE_BIN]'
-hybrid=0
+usage='usage: scripts/gate.sh [--typed] [--perf BASE_BIN]'
 typed=0
 perf=""
 while [ $# -gt 0 ]; do
     case $1 in
-    --hybrid) hybrid=1 ;;
     --typed) typed=1 ;;
     --perf) perf=${2:?$usage}; shift ;;
     *) echo "$usage" >&2; exit 2 ;;
@@ -39,7 +32,6 @@ done
 missing=""
 for v in RBR_RECORDINGS RBR_DATA RBR_PATCH RBR_NGP_PHYSICS RBR_RSF; do [ -n "${!v:-}" ] || missing+=" $v"; done
 [ -z "$missing" ] || { echo "gate: FAIL (unset:$missing; docs/development.md \"Set up\")"; exit 1; }
-snaps=${RBR_SNAPS:-/tmp/rbr-snaps}
 if [ -z "${PY:-}" ]; then
     PY=.venv/bin/python
     [ -x "$PY" ] || PY=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.venv/bin/python
@@ -73,7 +65,6 @@ finish() {
 
 built() { [ "$2" = 0 ] && echo "release" || { tail -1 "$1"; return 1; }; }
 packages=(-p rbr-standalone -p rbr-formats)
-[ "$hybrid" = 1 ] && packages+=(-p rbr-hybrid)
 start build cargo build --release "${packages[@]}"
 finish build built
 [ "$fail" = 0 ] || { echo "gate: FAIL"; exit 1; }
@@ -81,8 +72,8 @@ finish build built
 out=$(mktemp -d /tmp/gate-XXXXXX)
 trap 'rm -rf "$out"' EXIT
 
-# The standalone drive and the hybrid snapshots run side by side, each snapshot its own rust_step.py. --typed keeps
-# the drive's work files for the twins and runs the poison build and drive beside them.
+# The standalone drive. --typed keeps the drive's work files for the twins and runs the poison build and drive beside
+# it.
 keep=()
 [ "$typed" = 1 ] && keep=(--keep-work)
 start standalone "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/drive2" --attempt 5 --sections physics \
@@ -94,25 +85,6 @@ if [ "$typed" = 1 ]; then
                 --out "$out/poison" --standalone target/poison/release/rbr-standalone
     }
     start poison poison_run
-fi
-if [ "$hybrid" = 1 ]; then
-    # rust_step.py SNAPSHOT RECORDING per snapshot in parallel; their reports in snapshot order, the first failing
-    # status as the status.
-    hybrid_run() {
-        local snap n=0 status=0
-        for snap in "$snaps"/vcu-cov.snap-*[0-9].bin "$snaps/snapH.snap-1295.bin" \
-            "$snaps"/vcu-tanner-damage.snap-{11820,11827,12000}.bin; do
-            local drive=tanner-corolla
-            [[ $snap == */vcu-tanner-damage.* ]] && drive=tanner-damage
-            "$PY" -I -B harness/rust_step.py "$snap" --recording "$RBR_RECORDINGS/drive-$drive.bin" --steps 30 \
-                >"$out/hybrid-$n.txt" 2>&1 &
-            n=$((n + 1))
-        done
-        for pid in $(jobs -p); do wait "$pid" || status=1; done
-        for i in $(seq 0 $((n - 1))); do cat "$out/hybrid-$i.txt"; done
-        return $status
-    }
-    start hybrid hybrid_run
 fi
 
 # rsf_compare's headline "attempt 5: <stage> | <physics> | ...": the physics column, PASS only with exit status 0.
@@ -136,17 +108,6 @@ sys.stdout.write("\0".join(c))' "$out/standalone/5/summary.json")
     start twin-aids "${drive[@]}" --auto-gears on --gear-guard on --neutral-lock on --clutch-help on --twin typed
     start twin-across "${drive[@]}" --twin across
     start twin-direct "${drive[@]}" --twin mem-direct
-fi
-if [ "$hybrid" = 1 ]; then
-    # Every "run B vs run A" line equal, one per snapshot (13), and exit status 0.
-    hybrid_verdict() {
-        local lines equal
-        lines=$(grep -c 'run B vs run A' "$1")
-        equal=$(grep -c 'run B vs run A: equal apart from the excluded bytes' "$1")
-        echo "$equal of $lines snapshots equal"
-        [ "$2" = 0 ] && [ "$lines" = 13 ] && [ "$equal" = 13 ]
-    }
-    finish hybrid hybrid_verdict
 fi
 
 if [ "$typed" = 1 ]; then

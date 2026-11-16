@@ -1,19 +1,13 @@
-//! Runs `rbr-physics` ports in place of original functions while the original's `StepForward` runs in the
-//! emulator (`harness/rust_step.py`). The emulator stops at the entry
-//! of a bound function and hands its registers and stack arguments to [`run`]. The binding runs the port on the
-//! emulator's memory (a [`Mem`] with the emulator as its backend), calls back into the emulator for the original
-//! callees the port leaves to its caller, and says what the original's `ret` leaves: eax, the x87 result and the
-//! bytes it pops.
-//!
-//! A binding declines (and the original runs) only before it changes anything. The C ABI is in [`ffi`].
+//! The game's physics step on `rbr-physics` ports: the original's functions as bindings by address, run by the pure
+//! host ([`pure`]) on the memory image and the typed state it holds. A binding gets the call's registers and stack
+//! words, runs the port, makes the original callees its port leaves to its caller through the [`Host`], and says
+//! what the original's `ret` leaves: eax, the x87 result and the bytes it pops.
 
-pub mod book;
 mod call_memo;
 pub mod car_body;
 pub mod collision;
 pub mod engine_driveline;
 pub mod entities;
-pub mod ffi;
 pub mod game_log;
 pub mod graph;
 pub mod ngp;
@@ -522,24 +516,6 @@ pub(crate) mod tests {
             let st0 = self.floats.iter().find(|f| f.0 == addr && f.1 == ecx).map_or(0.0, |f| f.2 as f64);
             Called { eax: 0, st0 }
         }
-    }
-
-    /// `bound.csv` (the hybrid gate's status per binding) lists every binding once.
-    #[test]
-    fn bound_csv_lists_every_binding() {
-        let csv = include_str!("../bound.csv");
-        let mut listed: Vec<(u32, &str)> = csv
-            .lines()
-            .skip(1)
-            .map(|line| {
-                let f: Vec<&str> = line.split(',').collect();
-                (u32::from_str_radix(f[0].trim_start_matches("0x"), 16).unwrap(), f[1])
-            })
-            .collect();
-        let mut bound: Vec<(u32, &str)> = bindings().map(|b| (b.addr, b.name)).collect();
-        listed.sort();
-        bound.sort();
-        assert_eq!(listed, bound);
     }
 
     /// The bindings per subsystem: the pure step's in-place dispatch (`pure::IN_PLACE`) picks them by these names.

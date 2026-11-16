@@ -4,7 +4,7 @@ Usage: .venv/bin/python -I harness/replay.py SNAPSHOT [--check AFTER_SNAPSHOT RE
   SNAPSHOT is a plugin dump (RBR_SNAPSHOT=... harness/play.sh; notes/verification.md), or a load-time
   entry dump (RBRRecompSnapAt-<addr>-<k>.bin, harness/plugin): the call runs from the function's
   entry to its return. --after compares that run with the dump at its return (-after.bin).
-  Run A runs the original code; harness/rust_step.py runs the Rust ports against it.
+  Runs the original code.
   --check compares run A with the real call: the car + wheel bytes of RECORDING's frame for
   it, and every byte run A wrote against AFTER_SNAPSHOT (<name>.snap-<step>-after.bin).
   --after compares the registers and every byte run A wrote against AFTER_SNAPSHOT.
