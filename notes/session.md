@@ -47,9 +47,8 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
 3. Records and ghost keyed by `SessionKey`; today's rows are `kind = stage`.
 4. Circuit: lap timing, `EndRule` for N laps and free practice, best lap, sectors, a per-lap ghost, the HUD panel, the
    launcher entry.
-5. Closed drive line: an opt-in wrap of the search at the seam (`ngp::drive_line::Line` is the seam), on the explicit
-   key below. The only step in physics code: hybrid check. First audit what else reads the progress value (help-call
-   respawn, outside assistance, pace notes, `dot150`), unchecked so far.
+5. Closed drive line (done): NGP's search wraps at the seam on a line marked closed in its data, below. The only
+   step in physics code; the audit is under "Progress value".
 6. Converters (`beamng-rbrbtb`, `assetto-rbrbtb`) write the course key, gates and sectors, the Nordschleife first.
 
 ## Decisions
@@ -80,8 +79,20 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   N-lap or timed end; pass times interpolated between steps) and `LapRules`, the circuit's `Format`. A test runs
   `Game` + `LapRules` for two laps on a synthetic closed line (distance wrapping at the seam, which the physics does not
   do yet): `Started`, a sector and a lap each lap, `Finished`, the drive ended with `EndCause::Format`.
-- Not yet: the closed-line wrap in the physics (step 5); records and ghost by `SessionKey` (step 3); the HUD panel,
+- Step 5, the closed line: a `.trk` drive line whose first record's two words are `trk::CLOSED_LINE_WORDS` ("LOOP",
+  the entry's tag word, which nothing in the original reads) is closed: its last record repeats the first (position and
+  tangent) and `ngp::drive_line::project_closed` runs over its `count - 1` segments, the window and the segment before
+  the car wrapping at the seam (`Line::closed`, `StageStore::line_closed`, the tag read from the image and the typed
+  stage). The progress value then runs `0..count - 1` and comes in at 0 again; the distance (`sample_x`) drops by the
+  lap length at the line. NGP's search only: 1.02's `SampleBig` (`project_point`) is not changed, a closed line under
+  it behaves as an open one. Open lines take the old path untouched. Checks: unit tests on a ring (`ngp::drive_line`),
+  `tests/ngp_closed_line.rs` on the image, `scripts/gate.sh --hybrid --typed` PASS (84084/84084, 13 of 13 snapshots
+  equal, the typed twins equal), vectors ok. No original drive of a closed line exists: its behaviour is ours, checked
+  against the ring only.
+- Not yet: records and ghost by `SessionKey` (step 3); the HUD panel,
   the per-lap ghost and the launcher entry (step 4's rest); the course key and the converters (step 6).
-- Open: the course key's name and file; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
+- Open: the course key (the BTB stage's `driveline.ini` eighth value is the natural carrier of the tag; the converters
+  write the repeated last point); the autopilot and the season's pace plan on a closed line (they read the progress
+  as an open one); per-lap re-arming of the marker keys and the scripted events; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
   keys: the finish must lie past the line so the stage never finishes by itself; the stage's end page and result for a
   `Format` end are the race clock's).

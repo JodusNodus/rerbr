@@ -55,7 +55,8 @@ left every retail stage without particles and skid marks (`skidmarks::for_stage`
 `.trk` (`FUN_0046ed20`): chunks `u32 header_len (8), u32 type, u32 subtype, u32 size, payload`, tiling the file
 (same framing as `.lbs`). Each stage has one `(3,0x14)` and one `(3,0x16)`.
 - `(3,0x14)` driveline (`E09_LoadDriveLine` 0x46a530): u32 count, 32-byte points `{Vec3 position, Vec3 tangent,
-  f32 distance, u16, u16}`, a Hermite spline (z-up); the u16s are unread zeros.
+  f32 distance, u16, u16}`, a Hermite spline (z-up); the u16s are unread zeros in the original (they become the entry's
+  tag word). Ours: the first record's pair `trk::CLOSED_LINE_WORDS` marks a closed line (a circuit's, `notes/session.md`).
 - `(3,0x16)` meshes (0x46e300): NUL name, u32 object kind, u8 material (`.col` surface id), u8 dynamic
   flag, u32 shape (0 none, 1 box = 2 Vec3, 2 sphere =
   Vec3 + f32), vertices, faces (u8 tag `0x00`/`0xff` spectator, three u32 of which the low byte is kept),

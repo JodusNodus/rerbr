@@ -63,6 +63,10 @@ impl StageStore for Mem {
         self.f32(entry_at(line, k).wrapping_add(0x20))
     }
 
+    fn line_tag(&self, line: u32, k: u32) -> u32 {
+        self.u32(entry_at(line, k).wrapping_add(0x24))
+    }
+
     fn material_slot(&self, table: u32, index: u8) -> SlotLookup {
         let slots = self.u32(table + TABLE_SELF);
         if slots == 0 {

@@ -27,6 +27,11 @@ pub struct Vec3 {
     pub z: f32,
 }
 
+/// Ours: the two words of a closed drive line's first record (`DriveLineRecord::unknown_u16`, "LOOP"). The loader keeps
+/// them as the entry's tag word, which nothing in the original reads. A line marked so is a circuit's: its last record
+/// repeats the first (position and tangent), and NGP's search wraps there (`notes/session.md`).
+pub const CLOSED_LINE_WORDS: [u16; 2] = [0x4c4f, 0x4f50];
+
 /// One record from kind `0x14`. The loader (`E09_LoadDriveLine`,
 /// `FUN_0046a530`) reads two vectors, one float and two words, storing the
 /// first word at element `+0xe` and the second at `+0xc`. The two words are

@@ -250,6 +250,16 @@ impl StageStore for StageView<'_> {
         }
     }
 
+    fn line_tag(&self, line: u32, k: u32) -> u32 {
+        match self.point(line, k) {
+            Some(p) => {
+                self.checked(p.tag, |mem| mem.line_tag(line, k));
+                p.tag
+            }
+            None => self.mem.line_tag(line, k),
+        }
+    }
+
     fn material_slot(&self, table: u32, index: u8) -> SlotLookup {
         let Some(m) = self.materials(table) else {
             return self.mem.material_slot(table, index);

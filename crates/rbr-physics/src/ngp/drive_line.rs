@@ -11,6 +11,11 @@ pub type V3 = [f64; 3];
 /// A path of `count` points, each with a position and a tangent.
 pub trait Line {
     fn count(&self) -> u32;
+    /// Ours: the line is closed, its last entry the first's copy, so a search that runs off one end comes in at the
+    /// other ([`project`]). Only NGP's search (and so a circuit) knows closed lines.
+    fn closed(&self) -> bool {
+        false
+    }
     fn position(&self, k: u32) -> V3;
     fn tangent(&self, k: u32) -> V3;
 }
@@ -83,6 +88,9 @@ pub fn project(line: &impl Line, p: [f32; 3], x: f32) -> f32 {
 }
 
 fn project_f64(line: &impl Line, p: V3, x: f64) -> f64 {
+    if line.closed() {
+        return project_closed(line, p, x);
+    }
     let n = line.count();
     if n < 2 || 0.0 > x {
         return 0.0;
@@ -133,7 +141,11 @@ fn project_f64(line: &impl Line, p: V3, x: f64) -> f64 {
         }
     }
 
-    // Bisection on the dot of the offset with the lerped tangent, from [0, 1].
+    f64::from(segment) + bisect(line, p, segment)
+}
+
+/// Bisection on the dot of the offset with the lerped tangent over the segment `segment`, from [0, 1]: the fraction.
+fn bisect(line: &impl Line, p: V3, segment: u32) -> f64 {
     let (t0, t1) = (line.tangent(segment), line.tangent(segment + 1));
     let (mut lo, mut hi) = (0.0f64, 1.0f64);
     let mut mid = 0.0;
@@ -152,5 +164,124 @@ fn project_f64(line: &impl Line, p: V3, x: f64) -> f64 {
             lo = mid;
         }
     }
-    f64::from(segment) + mid
+    mid
+}
+
+/// [`project_f64`] on a closed line (ours, for circuits): its `count - 1` segments go round and the search window wraps
+/// at the seam, so the index runs over `0..count - 1` and comes in at 0 again, where an open line's stops at its end.
+fn project_closed(line: &impl Line, p: V3, x: f64) -> f64 {
+    let n = line.count();
+    if n < 3 {
+        return 0.0;
+    }
+    let period = i64::from(n - 1);
+    let wrap = |i: i64| i.rem_euclid(period) as u32;
+    // A NaN or negative hint starts at 0, a hint past the period (a restart) comes round into it.
+    let x = if x >= 0.0 { x % period as f64 } else { 0.0 };
+    let start = i64::from(trunc_i32(x));
+    let d = sub(point_at(line, x), p);
+    let dist = ((d[1] * d[1] + d[0] * d[0]) + d[2] * d[2]).sqrt();
+    // The window as an open line's, at most half the line either side (all of it).
+    let reach = i64::from(trunc_i32((dist - 6.0) * 0.5).max(1)).min(period / 2);
+
+    // The nearest entry in the window (the first wins a tie).
+    let mut nearest = start - reach;
+    let mut best = squared_distance(p, line.position(wrap(nearest)));
+    for u in start - reach + 1..=start + reach {
+        let dd = squared_distance(p, line.position(wrap(u)));
+        if best > dd {
+            best = dd;
+            nearest = u;
+        }
+    }
+    // A tangent that points back (its dot is negative) steps the segment back one, over the seam if need be.
+    let (q, t) = (line.position(wrap(nearest)), line.tangent(wrap(nearest)));
+    let e = sub(p, q);
+    let segment = if 0.0 > (e[1] * t[1] + e[0] * t[0]) + t[2] * e[2] { nearest - 1 } else { nearest };
+    let segment = wrap(segment);
+    f64::from(segment) + bisect(line, p, segment)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A circle of `SEGMENTS` Hermite segments round the origin, radius 100: entry `SEGMENTS` repeats entry 0.
+    struct Ring {
+        closed: bool,
+    }
+
+    const SEGMENTS: u32 = 200;
+    const STEP: f64 = std::f64::consts::TAU / SEGMENTS as f64;
+
+    impl Line for Ring {
+        fn count(&self) -> u32 {
+            SEGMENTS + 1
+        }
+        fn closed(&self) -> bool {
+            self.closed
+        }
+        fn position(&self, k: u32) -> V3 {
+            let a = f64::from(k) * STEP;
+            [100.0 * a.cos(), 100.0 * a.sin(), 0.0]
+        }
+        fn tangent(&self, k: u32) -> V3 {
+            let a = f64::from(k) * STEP;
+            [-100.0 * STEP * a.sin(), 100.0 * STEP * a.cos(), 0.0]
+        }
+    }
+
+    /// The car's position at `index` (a fractional entry index) on the circle, 3 m outside the line.
+    fn car(index: f64) -> [f32; 3] {
+        let a = index * STEP;
+        [(103.0 * a.cos()) as f32, (103.0 * a.sin()) as f32, 0.0]
+    }
+
+    /// Drives round the circle 1.5 laps from entry 190 in steps of a third of an entry, the hint the last answer, as
+    /// the physics does.
+    fn lap(line: &Ring) -> Vec<f32> {
+        let mut x = 190.0f32;
+        let mut out = Vec::new();
+        for k in 0..(SEGMENTS * 3 / 2 * 3) {
+            x = project(line, car(f64::from(k) / 3.0 + 190.0), x);
+            out.push(x);
+        }
+        out
+    }
+
+    #[test]
+    fn a_closed_line_comes_in_at_the_seam_and_follows_the_car_round() {
+        let line = Ring { closed: true };
+        let drove = lap(&line);
+        let mut wraps = 0;
+        for (k, pair) in drove.windows(2).enumerate() {
+            if pair[1] < pair[0] - SEGMENTS as f32 / 2.0 {
+                wraps += 1;
+            } else {
+                assert!(pair[1] >= pair[0] - 0.05, "step {k} went back: {pair:?}");
+            }
+        }
+        assert_eq!(wraps, 1 + 1, "the seam once a lap: the car starts 190 entries in, 1.5 laps go over it twice");
+        for (k, &x) in drove.iter().enumerate() {
+            let expected = (f64::from(k as u32) / 3.0 + 190.0) % f64::from(SEGMENTS);
+            let off = (f64::from(x) - expected).abs();
+            assert!(off.min(f64::from(SEGMENTS) - off) < 0.02, "step {k}: {x} for {expected}");
+        }
+    }
+
+    #[test]
+    fn an_open_line_stops_at_its_end() {
+        let drove = lap(&Ring { closed: false });
+        // Past the end (entry 200, 30 steps on) the car is round the start, and the answer stays at the end.
+        assert!(drove[40..60].iter().all(|&x| x >= (SEGMENTS - 1) as f32), "{:?}", &drove[..60]);
+    }
+
+    #[test]
+    fn a_closed_line_takes_a_hint_past_its_period_or_below_zero() {
+        let line = Ring { closed: true };
+        let at = |x| project(&line, car(50.0), x);
+        assert!((at(50.0 + SEGMENTS as f32) - 50.0).abs() < 0.02);
+        assert!((at(-3.0) - 50.0).abs() < 0.02);
+        assert!(at(f32::NAN) >= 0.0);
+    }
 }

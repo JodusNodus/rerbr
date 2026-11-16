@@ -21,6 +21,10 @@ impl<S: StageStore + ?Sized> Line for StoreLine<'_, S> {
         self.store.line_count(self.line)
     }
 
+    fn closed(&self) -> bool {
+        self.store.line_closed(self.line)
+    }
+
     fn position(&self, k: u32) -> V3 {
         wide(self.store.line_position(self.line, k))
     }

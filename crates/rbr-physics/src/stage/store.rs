@@ -16,6 +16,14 @@ pub trait StageStore {
     fn line_position(&self, line: u32, k: u32) -> Vec4;
     fn line_tangent(&self, line: u32, k: u32) -> Vec4;
     fn line_distance(&self, line: u32, k: u32) -> f32;
+    /// Entry `k`'s tag word, the one the `.trk`'s two words make (zero in every retail stage).
+    fn line_tag(&self, line: u32, k: u32) -> u32;
+    /// Ours: the drive line is closed (a circuit's), marked by its first entry's tag
+    /// ([`rbr_formats::trk::CLOSED_LINE_WORDS`]) with at least two segments, the last entry the first's copy.
+    fn line_closed(&self, line: u32) -> bool {
+        let [high, low] = rbr_formats::trk::CLOSED_LINE_WORDS;
+        self.line_count(line) >= 3 && self.line_tag(line, 0) == u32::from(high) << 16 | u32::from(low)
+    }
     /// Slot `index` of the material table at `table`.
     fn material_slot(&self, table: u32, index: u8) -> SlotLookup;
     /// The byte at `column`, `row` (16 a row) of the sheet of the material slot at `slot`, 0 when it has none.
