@@ -40,9 +40,9 @@ impl Format for LapRules {
         }
     }
 
-    /// The end rule was met at a pass of the line.
+    /// The end rule was met at a pass of the line: the session's own time is the result's.
     fn frame(&mut self, _dt: f32, _race_time: f32) -> Option<FormatEnd> {
-        self.timing.finished().then_some(FormatEnd::Finished)
+        self.timing.finish_time().map(FormatEnd::FinishedIn)
     }
 }
 
@@ -112,7 +112,10 @@ mod tests {
         assert!(matches!(events.first(), Some(TimingEvent::Started)));
         assert!(matches!(events.last(), Some(TimingEvent::Finished { time }) if (time - 2.0 * lap).abs() < 0.01));
         assert_eq!(events.iter().filter(|e| matches!(e, TimingEvent::Sector { .. })).count(), 2);
-        assert_eq!(game.flow().end().map(|end| end.cause), Some(EndCause::Format));
+        let end = game.flow().end().expect("the drive ended");
+        assert_eq!(end.cause, EndCause::Format);
+        assert!((end.end_race.time - 2.0 * lap).abs() < 0.01, "the result's time is the session's own: {end:?}");
+        assert!(end.finished());
         assert_eq!(game.stage().state(), State::Ended);
     }
 

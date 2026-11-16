@@ -462,8 +462,11 @@ impl RaceFlow {
 
     /// A mode's `CSigEndRace` (the rally school's `Tic570`): finished with the race clock `clock`, or a retire. `None`
     /// when the race is over or a box is up.
-    pub fn format_end(&mut self, clock: &RaceClock, retired: bool) -> Option<StageEnd> {
-        (self.end.is_none() && self.message.is_none()).then(|| self.end_race(EndCause::Format, clock, retired))
+    pub fn format_end(&mut self, clock: &RaceClock, retired: bool, time: Option<f32>) -> Option<StageEnd> {
+        (self.end.is_none() && self.message.is_none()).then(|| {
+            let clock = RaceClock { time: time.unwrap_or(clock.time), ..*clock };
+            self.end_race(EndCause::Format, &clock, retired)
+        })
     }
 
     /// The race is still on: not over, and the finish line not passed. A run that stops at the finish stops here.

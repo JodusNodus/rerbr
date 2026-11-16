@@ -24,9 +24,13 @@ pub struct StepView {
 }
 
 /// How a format ends the drive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FormatEnd {
+    /// Finished, with the race clock's time.
     Finished,
+    /// Finished with the format's own time, s, before the race's penalties: the HUD's race clock is an f32 and loses
+    /// seconds over a long session (a circuit's laps), so a format that times itself gives the result its time.
+    FinishedIn(f32),
     Retired,
 }
 

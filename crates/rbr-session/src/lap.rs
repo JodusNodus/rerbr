@@ -29,7 +29,8 @@ pub struct LapTiming {
     /// The sector times of the lap in progress, and of the best lap so far (since each lap began).
     sector_times: Vec<f32>,
     best_sector_times: Vec<f32>,
-    finished: bool,
+    /// The session's total time once its end rule was met.
+    finish_time: Option<f32>,
 }
 
 impl LapTiming {
@@ -49,7 +50,7 @@ impl LapTiming {
             times: Vec::new(),
             sector_times: Vec::new(),
             best_sector_times: Vec::new(),
-            finished: false,
+            finish_time: None,
         })
     }
 
@@ -63,7 +64,7 @@ impl LapTiming {
     /// step that is not a finite distance, or after the session finished, passes nothing.
     pub fn step(&mut self, x: f32, t: f64) -> Vec<TimingEvent> {
         let mut events = Vec::new();
-        if !x.is_finite() || self.finished {
+        if !x.is_finite() || self.finish_time.is_some() {
             return events;
         }
         if self.start_pending && self.started.is_none() {
@@ -115,7 +116,7 @@ impl LapTiming {
         events.push(TimingEvent::Lap { lap, time });
         let total = (at - started) as f32;
         if self.rule.reached(lap, total) {
-            self.finished = true;
+            self.finish_time = Some(total);
             events.push(TimingEvent::Finished { time: total });
         }
         self.lap_start = at;
@@ -175,12 +176,17 @@ impl LapTiming {
 
     /// Time into the lap in progress at `t`, or `None` before the first pass or once finished.
     pub fn lap_elapsed(&self, t: f64) -> Option<f32> {
-        (self.started.is_some() && !self.finished).then_some((t - self.lap_start) as f32)
+        (self.started.is_some() && !self.finished()).then_some((t - self.lap_start) as f32)
     }
 
     /// The end rule was met.
     pub fn finished(&self) -> bool {
-        self.finished
+        self.finish_time.is_some()
+    }
+
+    /// The session's total time, from the first lap's start to the pass that met the end rule.
+    pub fn finish_time(&self) -> Option<f32> {
+        self.finish_time
     }
 }
 

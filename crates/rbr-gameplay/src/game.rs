@@ -570,7 +570,11 @@ impl Game {
             return None;
         }
         let ended = rules.frame(dt, self.race_clock.time)?;
-        let end = self.flow.format_end(&self.race_clock, ended == FormatEnd::Retired);
+        let time = match ended {
+            FormatEnd::FinishedIn(time) => Some(time + self.penalties),
+            FormatEnd::Finished | FormatEnd::Retired => None,
+        };
+        let end = self.flow.format_end(&self.race_clock, ended == FormatEnd::Retired, time);
         if end.is_some() {
             self.set_race_over(physics);
         }
