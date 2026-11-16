@@ -46,6 +46,11 @@ impl Format for LapRules {
         }
     }
 
+    /// A penalty counts in the lap it is taken in, as in a stage's time.
+    fn penalty(&mut self, seconds: f32) {
+        self.timing.penalise(seconds);
+    }
+
     /// The end rule was met at a pass of the line: the session's own time is the result's.
     fn frame(&mut self, _dt: f32, _race_time: f32) -> Option<FormatEnd> {
         self.timing.finish_time().map(FormatEnd::FinishedIn)
@@ -153,5 +158,25 @@ mod tests {
         rules.after_step(&step(true, 7.0));
         assert_eq!(rules.take_events(), [TimingEvent::Started]);
         assert_eq!(rules.timing().lap_elapsed(8.0), Some(1.0), "the lap began at the go, not at the first step");
+    }
+
+    /// The race clock's penalties reach the lap in progress through the format's hook.
+    #[test]
+    fn a_penalty_the_game_takes_is_in_the_lap() {
+        let course = Course::circuit(1000.0, [400.0]).unwrap();
+        let mut rules = LapRules::new(&course, EndRule::Open).unwrap();
+        rules.start();
+        let step = |elapsed| StepView {
+            sample: StepSample::default(),
+            distance: Some(0.0),
+            elapsed,
+            drive_line: None,
+            app_state: 1,
+            racing: true,
+        };
+        rules.penalty(10.0);
+        rules.after_step(&step(1.0));
+        rules.penalty(10.0);
+        assert_eq!(rules.timing().lap_elapsed(3.0), Some(12.0), "the first before the lap began, the second in it");
     }
 }

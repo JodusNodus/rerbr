@@ -21,6 +21,8 @@ pub struct LapTiming {
     started: Option<f64>,
     /// When the lap in progress began.
     lap_start: f64,
+    /// The penalties taken in the lap in progress, s: part of its time and its sectors'.
+    lap_penalty: f32,
     /// The next sector gate of the lap in progress.
     next_sector: usize,
     /// Passes of the line backwards not yet made good: the car is behind the line by this many.
@@ -46,6 +48,7 @@ impl LapTiming {
             start_pending: false,
             started: None,
             lap_start: 0.0,
+            lap_penalty: 0.0,
             next_sector: 0,
             behind: 0,
             times: Vec::new(),
@@ -70,6 +73,7 @@ impl LapTiming {
         }
         if self.start_pending && self.started.is_none() {
             (self.started, self.lap_start, self.next_sector) = (Some(t), t, 0);
+            self.lap_penalty = 0.0;
             self.sector_times.clear();
             events.push(TimingEvent::Started);
         }
@@ -103,12 +107,13 @@ impl LapTiming {
         let Some(started) = self.started else {
             self.started = Some(at);
             self.lap_start = at;
+            self.lap_penalty = 0.0;
             self.next_sector = 0;
             self.sector_times.clear();
             events.push(TimingEvent::Started);
             return;
         };
-        let time = (at - self.lap_start) as f32;
+        let time = (at - self.lap_start) as f32 + self.lap_penalty;
         let best = self.best().is_none_or(|best| time < best);
         if best {
             self.best = Some((time, self.sector_times.clone()));
@@ -122,6 +127,7 @@ impl LapTiming {
             events.push(TimingEvent::Finished { time: total });
         }
         self.lap_start = at;
+        self.lap_penalty = 0.0;
         self.next_sector = 0;
         self.sector_times.clear();
     }
@@ -139,7 +145,7 @@ impl LapTiming {
         while let Some(&gate) = self.sectors.get(self.next_sector).filter(|&&gate| gate <= to) {
             let frac = if to > from { f64::from((gate.max(from) - from) / (to - from)) } else { 1.0 };
             let at = from_t + (t - from_t) * frac;
-            let time = (at - self.lap_start) as f32;
+            let time = (at - self.lap_start) as f32 + self.lap_penalty;
             events.push(TimingEvent::Sector { lap: self.times.len() as u32 + 1, index: self.next_sector, time });
             self.sector_times.push(time);
             self.next_sector += 1;
@@ -177,6 +183,14 @@ impl LapTiming {
         self.best.as_ref().map(|(time, _)| *time)
     }
 
+    /// A penalty of `seconds` in the lap in progress: it adds to the lap's time and the sectors passed after it (the
+    /// session's total takes the game's penalties itself). Before the first lap starts it is not the lap's.
+    pub fn penalise(&mut self, seconds: f32) {
+        if self.started.is_some() && !self.finished() {
+            self.lap_penalty += seconds;
+        }
+    }
+
     /// The lap in progress (from 1), or `None` before the first pass of the line.
     pub fn lap(&self) -> Option<u32> {
         self.started.map(|_| self.times.len() as u32 + 1)
@@ -184,7 +198,7 @@ impl LapTiming {
 
     /// Time into the lap in progress at `t`, or `None` before the first pass or once finished.
     pub fn lap_elapsed(&self, t: f64) -> Option<f32> {
-        (self.started.is_some() && !self.finished()).then_some((t - self.lap_start) as f32)
+        (self.started.is_some() && !self.finished()).then_some((t - self.lap_start) as f32 + self.lap_penalty)
     }
 
     /// The end rule was met.
@@ -250,6 +264,30 @@ mod tests {
         assert!(matches!(events.last(), Some((_, TimingEvent::Finished { time })) if (time - 20.0).abs() < 1e-3));
         assert_eq!(t.lap_times().len(), 1);
         assert_eq!(events.iter().filter(|(_, e)| matches!(e, TimingEvent::Sector { .. })).count(), 2);
+    }
+
+    /// A penalty counts in the lap it was taken in, with the sectors after it, and not in the next; one before the first
+    /// lap is not any lap's.
+    #[test]
+    fn a_penalty_adds_to_the_lap_it_is_taken_in() {
+        let mut t = timing(EndRule::Open);
+        t.penalise(5.0);
+        t.start_now();
+        // 50 m/s from the line at 0 m: sector gates at 5 and 12 s, laps of 20 s; a 10 s penalty at 8 s.
+        let (mut t, mut events) = drive_from(t, 0.0, 50.0, 0.01, 0.0, 8.0);
+        t.penalise(10.0);
+        assert!((t.lap_elapsed(8.0).unwrap() - 18.0).abs() < 0.02);
+        let (t, later) = drive_from(t, 400.0, 50.0, 0.01, 8.0, 30.0);
+        events.extend(later);
+        let sectors: Vec<f32> = events
+            .iter()
+            .filter_map(|(_, e)| match e {
+                TimingEvent::Sector { lap: 1, time, .. } => Some(*time),
+                _ => None,
+            })
+            .collect();
+        assert!((sectors[0] - 5.0).abs() < 0.02 && (sectors[1] - 22.0).abs() < 0.02, "{sectors:?}");
+        assert!((t.lap_times()[0] - 30.0).abs() < 0.02, "{:?}", t.lap_times());
     }
 
     #[test]

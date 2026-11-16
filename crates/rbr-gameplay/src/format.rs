@@ -49,6 +49,8 @@ pub trait Format {
     }
     /// The step's emits.
     fn after_step(&mut self, _step: &StepView) {}
+    /// The race clock took a penalty of `seconds` (the call for help's, a jump start's) this frame.
+    fn penalty(&mut self, _seconds: f32) {}
     /// A driving frame of `dt` after the marker keys, with the HUD's race time: whether the format ends the drive.
     fn frame(&mut self, _dt: f32, _race_time: f32) -> Option<FormatEnd> {
         None
@@ -77,6 +79,11 @@ impl<R: Format> Format for Option<R> {
             rules.after_step(step);
         }
     }
+    fn penalty(&mut self, seconds: f32) {
+        if let Some(rules) = self {
+            rules.penalty(seconds);
+        }
+    }
     fn frame(&mut self, dt: f32, race_time: f32) -> Option<FormatEnd> {
         self.as_mut()?.frame(dt, race_time)
     }
@@ -94,6 +101,9 @@ impl<R: Format + ?Sized> Format for &mut R {
     }
     fn after_step(&mut self, step: &StepView) {
         (**self).after_step(step);
+    }
+    fn penalty(&mut self, seconds: f32) {
+        (**self).penalty(seconds);
     }
     fn frame(&mut self, dt: f32, race_time: f32) -> Option<FormatEnd> {
         (**self).frame(dt, race_time)
@@ -118,6 +128,10 @@ impl<A: Format, B: Format> Format for (A, B) {
     fn after_step(&mut self, step: &StepView) {
         self.0.after_step(step);
         self.1.after_step(step);
+    }
+    fn penalty(&mut self, seconds: f32) {
+        self.0.penalty(seconds);
+        self.1.penalty(seconds);
     }
     fn frame(&mut self, dt: f32, race_time: f32) -> Option<FormatEnd> {
         let first = self.0.frame(dt, race_time);

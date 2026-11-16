@@ -396,6 +396,10 @@ impl Game {
             &substeps,
             physics,
         );
+        let penalty = clock_events.penalty.unwrap_or(0.0) + clock_events.jump_start.unwrap_or(0.0);
+        if penalty > 0.0 {
+            rules.penalty(penalty);
+        }
         // `E16CamHolder::Tic` is part of the post-tick M004825b0 path; its
         // M0047ca40 event arms the countdown for the next outer frame.
         // With the go timer, `M004825b0`'s state 10 runs the camera (`M8840`) with the frame's `facc`.

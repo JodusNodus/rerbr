@@ -118,6 +118,15 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
 - Pace notes: a circuit session has none unless the Circuit page's Pace notes box is on (off by default, saved as
   `circuit_notes`): the launcher passes `--no-codriver`, no `--pace-stack` and the `pace` HUD part hidden (over the
   player's own HUD choices) for a launch from that page.
+- Recovery on a circuit (Gunma, autopilot 2 laps, then a scripted crash and a call for help; quick-rally flow): a call for
+  help at speed only asks to stop (`MSG_CARSTOP`); a full-throttle crash into the wall stops the car with no retire
+  (safe and realistic damage alike, also 210 s standing still); a call for help standing puts the car back 5 m away on
+  the road, with the damage level's penalty (10 s safe, 35 s realistic). The penalties count in the lap they are
+  taken in (`Format::penalty`, `LapTiming::penalise`: the lap's time and its later sectors, so a helped lap rarely
+  beats the best; the total takes the game's penalties itself): lap 1 368.46 s + lap 2 310.11 s = the result 678.58 s
+  with a 10 s penalty. The off-stage retire (code 4) needs the championship flow (state 3, skill 2 or more), so a
+  circuit session, in the quick-rally flow, never has it; a retire code 1 (an overload, a destroyed car) would still end the
+  session retired. The pause menu's Restart restores the session (lap timing, best lap kept) and replays the countdown.
 - A format that times itself gives the result its time: `FormatEnd::FinishedIn(s)` (+ the penalties) is the
   `EndRace` time, since the HUD's race clock is an f32 that loses seconds over a long session.
 - Best laps (`rbr_session::book`, `lap-records.ini` in the save folder, `[<stage id>]` and
