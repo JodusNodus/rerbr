@@ -862,6 +862,7 @@ impl Form {
                 self.ffb.settings.strength = saved.ffb.settings.strength;
                 if !replay {
                     self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
+                    self.controls.read_last_drive(&self.logs_dir());
                 }
                 self.replays.refresh(&self.here());
             }

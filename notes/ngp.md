@@ -381,7 +381,9 @@ wheel's "Logitech G29 Driving Force Racing Wheel USB"; its joystick is not hapti
 skipped. DirectInput on the wheel (FF driver 920B2620-..., force axis "Wheel axis" 0x1000002): all four effects
 create and start (status playing). So `open_device` now goes on to the next device when one takes no shape, and on
 Windows a device opened on its own is dropped when a joystick that opened before no longer does (its exclusive hold
-against the drive's controls); the log adds each joystick's GUID (its SDL driver) and `SDL_IsGamepad`.
+against the drive's controls); the log adds each joystick's GUID (its SDL driver) and `SDL_IsGamepad`. Confirmed by
+the reporter (2026-11-16): Device set to "Logitech G29 Driving Force Racing Wheel USB" gives force feedback with the
+wheel's controls working, so the wheel opened on its own and the drive's DirectInput joystick share it.
 
 Setup (RSF on cachy: Proton cachyos-11.0 SLR, G923 PS on new-lg4ff `hid-logitech-new`, sysfs `autocenter` 0,
 `gain` 65535, `spring_level`/`damper_level` 30): ours matches RSF's levels in order over the same 10 s of drive2

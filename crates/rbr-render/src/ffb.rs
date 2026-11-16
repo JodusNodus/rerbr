@@ -36,6 +36,11 @@ use sdl3_sys::joystick::{
 #[cfg(windows)]
 mod dinput_probe;
 
+/// The drive log's line for the force feedback's device, before its name ([`Wheel::name`]), and for why there is
+/// none, before the reason; the launcher reads the last drive's back.
+pub const LOG_ON: &str = "viewer: force feedback on ";
+pub const LOG_OFF: &str = "viewer: no force feedback: ";
+
 /// The surfaces of [`Options::sensitivity`], as its keys name them.
 pub const SURFACES: [&str; 3] = ["gravel", "tarmac", "snow"];
 
@@ -1054,8 +1059,8 @@ pub fn picks(part: &str, name: &str) -> bool {
     name.to_lowercase().contains(&part.to_lowercase())
 }
 
-/// The names of the force-feedback devices connected, for the choice of [`Options::device`]. None is opened (SDL's
-/// open sets a wheel's gain and autocentre), so one without a constant force is listed too; a drive says so.
+/// The names of the force-feedback devices connected, each once, for the choice of [`Options::device`]. None is opened
+/// (SDL's open sets a wheel's gain and autocentre), so one without a constant force is listed too; a drive says so.
 pub fn devices() -> Result<Vec<String>, String> {
     // SAFETY: SDL's haptic list is read between this thread's init and quit of the subsystems.
     unsafe {
@@ -1064,7 +1069,13 @@ pub fn devices() -> Result<Vec<String>, String> {
         }
         let haptics = haptics();
         SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
-        Ok(haptics?.into_iter().map(|(_, name)| name).collect())
+        let mut names: Vec<String> = Vec::new();
+        for (_, name) in haptics? {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        Ok(names)
     }
 }
 
