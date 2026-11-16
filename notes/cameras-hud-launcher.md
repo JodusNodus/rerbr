@@ -138,10 +138,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
   under the Drive page's stage.
-- Co-driver packs (user decision 2026-11-16): the Packs row links Luppis's V3 co-driver and pace-note pages, lists up
-  to 5 recent pack-like .zip/.7z in the Downloads folder (30 days, entry names only, scanned on a thread;
-  `codriver_packs/downloads.rs`) with "Add", and a .zip, .7z or folder dropped on the window is added
-  (`codriver_packs/drop.rs`). RAR is not read.
+- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add folder…"
+  in Settings' Add content, are classified from their names (`content/detect.rs`) and added in one job with a notice on
+  every page (✔ where to find it, ⚠ why not). BTB stages (a folder with `track.ini`, `objectlist.ini`, `Objects.zip`,
+  `Textures.zip`, several per archive allowed) go to `<files>/tracks/` through a hidden staging folder, no `.exe`/
+  `.dll`, never over an existing stage; co-drivers and pace notes through `codriver_packs::import`; NGP car pieces
+  (physics, model and banks dropped together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/` and in use;
+  a disc opens the disc setup filled in. Refused with the reason: `.rar`, installers, classic-format stages (not yet),
+  a lone model or banks, anything else. Recent downloads (Downloads, 30 days, 5) list any of these not added yet.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used
