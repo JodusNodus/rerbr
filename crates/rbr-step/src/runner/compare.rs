@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rbr_gameplay::tick::SETTLE_SUBSTEPS;
 use rbr_physics::mem::Mem;
-use rbr_physics::snapshot::Snapshot;
 use rbr_recording::{Frame, CONTROL_BYTES, WHEELS, WHEEL_BYTES};
 
 use super::heap::{ALLOCATOR_HEAP_BASE, ALLOCATOR_HEAP_END};
@@ -220,34 +219,10 @@ fn release_changed_noise(
 }
 
 impl Compare {
-    /// `before` is the recorded frame of the step before the snapshot's.
-    pub fn new(snap: &Snapshot, mask: Vec<bool>, before: &Frame) -> Self {
-        let want = recorded_words(before);
-        let have = frame_words(&snap.mem());
-        let noise =
-            want.iter().zip(&have).enumerate().filter(|(_, (w, h))| w != h).map(|(i, (&w, &h))| (i, (h, w))).collect();
-        let regions: Vec<(u32, u32)> = snap.regions().iter().map(|r| (r.base, r.size)).collect();
-        Compare {
-            mask,
-            stale: stale_mask(),
-            noise,
-            released_noise: BTreeSet::new(),
-            recorded_noise_released: BTreeSet::new(),
-            boot_pointers: BTreeMap::new(),
-            regions,
-        }
-    }
-
-    /// The compare for a snapshot at step 0, which no recorded frame ends at. Its run noise is the words the recorded
-    /// load settle never changes (equal in every settle frame, the frames of `StepForward(40)` calls) where the
-    /// snapshot holds another value. Such a word is noise only while both the pure and recorded values keep their
-    /// step-0 values; once either changes, it is compared with the recording.
-    pub fn at_start(snap: &Snapshot, mask: Vec<bool>, frames: &[Frame]) -> Self {
-        let regions: Vec<(u32, u32)> = snap.regions().iter().map(|r| (r.base, r.size)).collect();
-        Compare::at_start_of(&snap.mem(), regions, mask, frames)
-    }
-
-    /// [`Compare::at_start`] for the image `mem` whose mapped ranges are `regions` (a booted image's).
+    /// The compare for the image `mem` at step 0, which no recorded frame ends at, whose mapped ranges are `regions`. Its run
+    /// noise is the words the recorded load settle never changes (equal in every settle frame, the frames of
+    /// `StepForward(40)` calls) where the image holds another value. Such a word is noise only while both the pure and
+    /// recorded values keep their step-0 values; once either changes, it is compared with the recording.
     pub fn at_start_of(mem: &Mem, regions: Vec<(u32, u32)>, mask: Vec<bool>, frames: &[Frame]) -> Self {
         let settle: Vec<Vec<u32>> =
             frames.iter().take_while(|f| f.substeps == SETTLE_SUBSTEPS[0]).map(recorded_words).collect();

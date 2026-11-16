@@ -1,15 +1,9 @@
-//! A recording's playback on the runner: each step's control emitted, then `StepForward`; and the read trace of a
-//! snapshot run.
+//! A recording's playback on the runner: each step's control emitted, then `StepForward`.
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
-
-use rbr_physics::mem::{Backend, Mem};
-use rbr_physics::snapshot::Snapshot;
+use rbr_physics::mem::Mem;
 use rbr_recording::CONTROL_BYTES;
 
-use super::heap::{Base, RunGuard, RunMemory};
+use super::heap::RunGuard;
 use super::image::{app_state, CAR_PTR, LOAD_STATE};
 use super::{Runner, EMIT, EMIT_OFFSET, SIGNALS, STEP_FORWARD};
 use crate::car_body::UPDATE_SEED;
@@ -17,12 +11,12 @@ use crate::{Regs, Return};
 use rbr_physics::fpu::Precision;
 
 /// One playback step from the call slot `slot` (`StepForward`'s return address slot, `regs` the other registers):
-/// the control at `control` (`None` for the snapshot's own step, whose control was emitted before it) through NGP's
+/// the control at `control` (`None` for the image's own step, whose control was emitted before it) through NGP's
 /// control input ([`emit`]), then `StepForward(1)`; its calls are host calls from `slot`.
 pub fn step(runner: &Runner, regs: Regs, slot: u32, control: Option<u32>, substeps: u32) -> Return {
     let _run = RunGuard::new(&runner.run_depth);
     let _ngp = crate::ngp::Scope::new(runner.ngp_base);
-    // The runner steps NGP physics only (production entries refuse non-NGP snapshots): the load's settle steps
+    // The runner steps NGP physics only (production entries need NGP): the load's settle steps
     // run on the game's thread, at D3D's control word `0x7f`; the race's steps run on NGP's thread, at `0x27f`
     // (`notes/ngp.md`, "x87 precision").
     let pc53 = app_state(&runner.raw) != LOAD_STATE;
@@ -70,8 +64,8 @@ pub const SENTINEL: u32 = 0xfeed_0000;
 
 const FRAME: u32 = rbr_physics::car_body::transform::FRAME;
 
-/// A snapshot's playback, as the retired `rust_step.py` drove it: every step enters `StepForward` from the snapshot's call slot
-/// with its registers, and a step's control payload is written at the bottom of the snapshot's stack.
+/// An image's playback: every step enters `StepForward` from the image's call slot with its registers, and a step's
+/// control payload is written at the bottom of the image's stack.
 pub struct Playback {
     pub runner: Runner,
     regs: Regs,
@@ -80,42 +74,14 @@ pub struct Playback {
 }
 
 impl Playback {
-    pub fn new(snap: &Snapshot, keep_going: bool) -> Self {
-        let h = snap.metadata();
-        let r = h.registers;
-        let slot = r.esp - 4;
-        let regs = Regs {
-            ecx: r.ecx,
-            edx: r.edx,
-            esp: slot,
-            eax: r.eax,
-            ebx: r.ebx,
-            esi: r.esi,
-            edi: r.edi,
-            ebp: r.ebp,
-            stack: Default::default(),
-        };
-        Playback::from_image(snap.mem(), regs, slot, h.stack_lo, keep_going)
-    }
-
-    /// The playback of a memory image built without a snapshot (`rbr-standalone --boot`): `StepForward` entered from
+    /// The playback of a memory image built by the boot (`rbr-standalone --boot`): `StepForward` entered from
     /// `slot` with `regs`, the control payload written at `control_at`.
     pub fn from_image(mem: Mem, regs: Regs, slot: u32, control_at: u32, keep_going: bool) -> Self {
         let ngp_base = crate::ngp::base_in(&mem);
         Playback { runner: Runner { ngp_base, ..Runner::new(mem, keep_going) }, regs, slot, control_at }
     }
 
-    /// [`Playback::new`] on a [`ReadTrace`] of the snapshot's memory.
-    pub fn traced(snap: &Snapshot, keep_going: bool) -> (Self, Arc<ReadTrace>) {
-        let trace = Arc::new(ReadTrace::new(snap));
-        let mut playback = Playback::new(snap, keep_going);
-        let heap = playback.runner.heap.clone();
-        playback.runner.set_image(Mem::with_backend(Arc::new(RunMemory { base: Base::Backend(trace.clone()), heap })));
-        playback.runner.trace = Some(trace.clone());
-        (playback, trace)
-    }
-
-    /// [`step`] with the payload `control` (`None` for the snapshot's own step). A stop panics as [`Runner::enter`].
+    /// [`step`] with the payload `control` (`None` for the image's own step). A stop panics as [`Runner::enter`].
     /// The car's typed state is in typed storage over the step: lifted before it unless it is held already, and held
     /// after it (lowered on a stop); readers between steps see it through [`Runner::image`]. The payload and the return slot are the step's own stack words.
     pub fn step(&self, control: Option<&[u8; CONTROL_BYTES]>, substeps: u32) -> Return {
@@ -150,108 +116,11 @@ impl Playback {
         mem.f32s(scratch)
     }
 
-    /// Only the `Emit` of [`Playback::step`]: the state a snapshot of the next step holds (`rbr-standalone
-    /// --write-snapshot`). On the typed state when it is held across steps.
+    /// Only the `Emit` of [`Playback::step`]: the state the next step starts from. On the typed state when it is held across steps.
     pub fn emit(&self, control: &[u8; CONTROL_BYTES]) {
         let _run = RunGuard::new(&self.runner.run_depth);
         self.runner.raw.clone().map(self.control_at, control);
         emit(&self.runner, self.regs, self.slot, self.control_at);
         self.runner.held_changed();
-    }
-}
-
-/// A snapshot's memory that logs, while `on`, every byte read before anything wrote it (`rbr-standalone
-/// --read-set`): the state the step takes from the image. Writes count whether `on`
-/// or not. Each byte keeps its first reader, the innermost running binding (0: the driver).
-pub struct ReadTrace {
-    inner: Mem,
-    /// The snapshot's regions and stack, `(lo, hi)`: a read outside them fails as the snapshot's own memory does.
-    mapped: Vec<(u64, u64)>,
-    pub on: AtomicBool,
-    pub(super) reader: AtomicU32,
-    log: Mutex<TraceLog>,
-}
-
-#[derive(Default)]
-struct TraceLog {
-    /// Per 4 KiB page, a bit per byte.
-    written: HashMap<u32, Box<[u64; 64]>>,
-    /// The first reads: address to (the image's byte, the reader).
-    read: BTreeMap<u32, (u8, u32)>,
-}
-
-impl ReadTrace {
-    fn new(snap: &Snapshot) -> Self {
-        let h = snap.metadata();
-        let mut mapped: Vec<(u64, u64)> =
-            snap.regions().iter().map(|r| (r.base as u64, r.base as u64 + r.size as u64)).collect();
-        mapped.push((h.stack_lo as u64, h.stack_lo as u64 + h.stack_len as u64));
-        ReadTrace {
-            inner: snap.mem(),
-            mapped,
-            on: AtomicBool::new(false),
-            reader: AtomicU32::new(0),
-            log: Mutex::default(),
-        }
-    }
-
-    fn is_mapped(&self, at: u32, len: usize) -> bool {
-        let (mut at, end) = (at as u64, at as u64 + len as u64);
-        while at < end {
-            match self.mapped.iter().find(|&&(lo, hi)| lo <= at && at < hi) {
-                Some(&(_, hi)) => at = hi,
-                None => return false,
-            }
-        }
-        true
-    }
-
-    /// The first reads, as runs of consecutive addresses with one reader: (address, the image's bytes, reader).
-    pub fn first_reads(&self) -> Vec<(u32, Vec<u8>, u32)> {
-        let log = self.log.lock().unwrap();
-        let mut runs: Vec<(u32, Vec<u8>, u32)> = vec![];
-        for (&at, &(byte, reader)) in &log.read {
-            match runs.last_mut() {
-                Some((lo, bytes, r)) if *r == reader && *lo as u64 + bytes.len() as u64 == at as u64 => {
-                    bytes.push(byte)
-                }
-                _ => runs.push((at, vec![byte], reader)),
-            }
-        }
-        runs
-    }
-}
-
-impl Backend for ReadTrace {
-    fn read(&self, at: u32, out: &mut [u8]) -> bool {
-        if !self.is_mapped(at, out.len()) {
-            return false;
-        }
-        out.copy_from_slice(&self.inner.read(at, out.len()));
-        if self.on.load(Ordering::Relaxed) {
-            let reader = self.reader.load(Ordering::Relaxed);
-            let mut log = self.log.lock().unwrap();
-            for (i, &byte) in out.iter().enumerate() {
-                let a = at + i as u32;
-                let written = log
-                    .written
-                    .get(&(a >> 12))
-                    .is_some_and(|bits| bits[(a as usize & 0xfff) >> 6] >> (a & 63) & 1 != 0);
-                if !written {
-                    log.read.entry(a).or_insert((byte, reader));
-                }
-            }
-        }
-        true
-    }
-
-    fn write(&self, at: u32, bytes: &[u8]) {
-        let mut inner = self.inner.clone();
-        inner.map(at, bytes);
-        let mut log = self.log.lock().unwrap();
-        for i in 0..bytes.len() as u32 {
-            let a = at + i;
-            log.written.entry(a >> 12).or_insert_with(|| Box::new([0; 64]))[(a as usize & 0xfff) >> 6] |= 1 << (a & 63);
-        }
     }
 }

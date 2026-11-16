@@ -43,8 +43,8 @@ pub use compare::{
 };
 use heap::{Base, RunGuard, RunHeap, RunMemory};
 pub use heap::{ALLOCATOR_HEAP_BASE, ALLOCATOR_HEAP_END};
-pub use image::{app_state, clock, max_time_step, set_app_state, time_keeper, CAR_BYTES, CAR_PTR};
-pub use playback::{step, Playback, ReadTrace, SENTINEL};
+pub use image::{app_state, clock, set_app_state, time_keeper, CAR_BYTES, CAR_PTR};
+pub use playback::{step, Playback, SENTINEL};
 pub(crate) use stand_in::is_ret;
 pub use stand_in::{stand_in, StandIn};
 pub(crate) use watch::{Watch, OUTSIDE_ASSISTANCE_EMIT, TYRE_PARTICLES_EMIT, WATCHED};
@@ -161,8 +161,6 @@ pub struct Runner {
     pub first_met: RefCell<BTreeMap<Stop, (usize, u64)>>,
     /// `QueryPerformanceCounter`'s count.
     ticks: Cell<u64>,
-    /// The read trace `mem` is backed by, told the running binding ([`Playback::traced`]).
-    trace: Option<Arc<ReadTrace>>,
     /// Whether each binding of [`bound`] is of an [`IN_PLACE`] subsystem, and whether the running one is.
     in_place_slots: Box<[bool]>,
     in_place_now: Cell<bool>,
@@ -239,7 +237,6 @@ impl Runner {
             ran_moved: RefCell::default(),
             first_met: RefCell::default(),
             ticks: Cell::new(1 << 40),
-            trace: None,
             in_place_slots: bound().iter().map(|b| IN_PLACE.contains(&b.subsystem)).collect(),
             in_place_now: Cell::new(false),
             stack_words: bound()
@@ -895,23 +892,13 @@ impl Runner {
     #[inline(always)]
     pub fn with_frame<T>(&self, addr: u32, regs: &Regs, f: impl FnOnce() -> T) -> T {
         self.frames.borrow_mut().push((addr, Registers::of(regs)));
-        self.tell_trace();
         let out = f();
         let depth = self.frames.borrow().len();
         if self.scoped.get() == Some(depth) {
             self.release_scoped();
         }
         self.frames.borrow_mut().pop();
-        self.tell_trace();
         out
-    }
-
-    #[inline(always)]
-    fn tell_trace(&self) {
-        if let Some(trace) = &self.trace {
-            let reader = self.frames.borrow().last().map_or(0, |f| f.0);
-            trace.reader.store(reader, Ordering::Relaxed);
-        }
     }
 }
 
