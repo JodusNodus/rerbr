@@ -26,9 +26,10 @@ pub struct LapTiming {
     /// Passes of the line backwards not yet made good: the car is behind the line by this many.
     behind: u32,
     times: Vec<f32>,
-    /// The sector times of the lap in progress, and of the best lap so far (since each lap began).
+    /// The sector times of the lap in progress (since the lap began).
     sector_times: Vec<f32>,
-    best_sector_times: Vec<f32>,
+    /// The best lap to beat: the best completed lap, or the one [`Self::seed_best`] gave; with its sector times.
+    best: Option<(f32, Vec<f32>)>,
     /// The session's total time once its end rule was met.
     finish_time: Option<f32>,
 }
@@ -49,7 +50,7 @@ impl LapTiming {
             behind: 0,
             times: Vec::new(),
             sector_times: Vec::new(),
-            best_sector_times: Vec::new(),
+            best: None,
             finish_time: None,
         })
     }
@@ -108,12 +109,13 @@ impl LapTiming {
             return;
         };
         let time = (at - self.lap_start) as f32;
-        if self.best().is_none_or(|best| time < best) {
-            self.best_sector_times = self.sector_times.clone();
+        let best = self.best().is_none_or(|best| time < best);
+        if best {
+            self.best = Some((time, self.sector_times.clone()));
         }
         self.times.push(time);
         let lap = self.times.len() as u32;
-        events.push(TimingEvent::Lap { lap, time });
+        events.push(TimingEvent::Lap { lap, time, best });
         let total = (at - started) as f32;
         if self.rule.reached(lap, total) {
             self.finish_time = Some(total);
@@ -154,9 +156,15 @@ impl LapTiming {
         &self.sector_times
     }
 
-    /// The sector times of the best completed lap.
+    /// The sector times of the best lap.
     pub fn best_sector_times(&self) -> &[f32] {
-        &self.best_sector_times
+        self.best.as_ref().map_or(&[], |(_, sectors)| sectors)
+    }
+
+    /// A best lap from an earlier session to beat (a stored record): the sector gaps and the `best` flag of a
+    /// [`TimingEvent::Lap`] compare with it.
+    pub fn seed_best(&mut self, lap: f32, sectors: Vec<f32>) {
+        self.best = Some((lap, sectors));
     }
 
     /// How the session ends.
@@ -164,9 +172,9 @@ impl LapTiming {
         self.rule
     }
 
-    /// The best completed lap's time.
+    /// The best lap's time: this session's best completed lap, or the seeded one if faster.
     pub fn best(&self) -> Option<f32> {
-        self.times.iter().copied().min_by(f32::total_cmp)
+        self.best.as_ref().map(|(time, _)| *time)
     }
 
     /// The lap in progress (from 1), or `None` before the first pass of the line.
@@ -326,6 +334,18 @@ mod tests {
         assert_eq!(t.best_sector_times().len(), 2);
         assert!((t.best_sector_times()[1] - 12.0).abs() < 1e-3);
         assert_eq!(t.rule(), EndRule::Open);
+    }
+
+    #[test]
+    fn a_seeded_best_is_beaten_only_by_a_faster_lap() {
+        let mut t = timing(EndRule::Open);
+        t.seed_best(10.0, vec![3.0, 6.0]);
+        assert_eq!(t.best(), Some(10.0));
+        assert_eq!(t.best_sector_times(), [3.0, 6.0]);
+        let (t, events) = drive(t, 900.0, 50.0, 0.01, 23.0);
+        let lap = events.iter().find_map(|(_, e)| matches!(e, TimingEvent::Lap { .. }).then_some(*e)).unwrap();
+        assert!(matches!(lap, TimingEvent::Lap { best: false, .. }), "a 22 s lap does not beat 10 s: {lap:?}");
+        assert_eq!(t.best(), Some(10.0));
     }
 
     #[test]

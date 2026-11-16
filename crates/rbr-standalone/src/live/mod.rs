@@ -163,6 +163,8 @@ pub struct Live<'a> {
     /// A circuit session's lap rules (`--laps`), likewise.
     laps: Option<LapRules>,
     initial_laps: Option<LapRules>,
+    /// The lap rules' events since [`Live::take_lap_events`].
+    lap_events: Vec<TimingEvent>,
     /// The rally school's verdict at the drive's end (`race_end`), for the answers' SCH1 record; none before
     /// the end, and [`Live::restart`] clears it.
     school_verdict: Option<u32>,
@@ -316,7 +318,21 @@ impl<'a> Live<'a> {
 
     /// The circuit session's timing events since the last call (the laps' and sectors'), in order.
     pub fn take_lap_events(&mut self) -> Vec<TimingEvent> {
-        self.laps.as_mut().map(LapRules::take_events).unwrap_or_default()
+        std::mem::take(&mut self.lap_events)
+    }
+
+    /// Takes the lap rules' events after a frame: a completed lap that is the best is offered to the best laps.
+    fn collect_lap_events(&mut self) {
+        let Some(laps) = self.laps.as_mut() else { return };
+        let events = laps.take_events();
+        for event in &events {
+            let TimingEvent::Lap { time, best: true, .. } = *event else { continue };
+            let sectors = laps.timing().best_sector_times();
+            if let Some(Err(e)) = self.saves.as_mut().map(|saves| saves.lap(time, sectors)) {
+                eprintln!("the best lap was not saved: {e}");
+            }
+        }
+        self.lap_events.extend(events);
     }
 
     /// The image after the last step, for a reader between steps ([`rbr_hybrid::pure::Pure::image`]).
@@ -363,6 +379,11 @@ impl<'a> Live<'a> {
                 }
             }
             None => saves.set_new_filter(Grid::loaded(&install_filter_ini()).without_wheel_fade().to_profile()),
+        }
+        // A circuit session beats the profile's best lap on this circuit.
+        if let (Some(best), Some(laps)) = (saves.best_lap(), self.laps.as_mut()) {
+            laps.seed_best(best.lap, best.sectors.clone());
+            self.initial_laps.clone_from(&self.laps);
         }
         self.saves = Some(saves);
     }
@@ -487,6 +508,7 @@ impl<'a> Live<'a> {
         }))
         .map_err(|e| self.stop_text(e.as_ref(), runs))?;
         self.pending.tyre_max = physics.tyre_max;
+        self.collect_lap_events();
         self.time_of_day = self.time_of_day.map(|t| t + seconds as f32);
         if events.substeps.is_empty() && events.tick_state == State::Countdown {
             self.waited += 1;

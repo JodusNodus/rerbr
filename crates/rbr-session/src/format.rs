@@ -22,6 +22,11 @@ impl LapRules {
         &self.timing
     }
 
+    /// A stored best lap to beat ([`LapTiming::seed_best`]).
+    pub fn seed_best(&mut self, lap: f32, sectors: Vec<f32>) {
+        self.timing.seed_best(lap, sectors);
+    }
+
     /// The timing events since the last call, in order (the HUD's, the records').
     pub fn take_events(&mut self) -> Vec<TimingEvent> {
         std::mem::take(&mut self.events)

@@ -232,6 +232,7 @@ impl<'a> Live<'a> {
             initial_school: None,
             laps: None,
             initial_laps: None,
+            lap_events: Vec::new(),
             school_verdict: None,
             school_state: None,
             saves: None,
@@ -256,6 +257,13 @@ impl<'a> Live<'a> {
         rbr_hybrid::ngp::restart_tyre_model();
         self.school.clone_from(&self.initial_school);
         self.laps.clone_from(&self.initial_laps);
+        self.lap_events.clear();
+        // The best lap so far, this session's included, is what the restart beats.
+        if let (Some(saves), Some(laps)) = (self.saves.as_ref(), self.laps.as_mut()) {
+            if let Some(best) = saves.best_lap() {
+                laps.seed_best(best.lap, best.sectors.clone());
+            }
+        }
         if let Some(saves) = self.saves.as_mut() {
             saves.rearm();
         }

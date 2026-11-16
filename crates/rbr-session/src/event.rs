@@ -9,8 +9,8 @@ pub enum TimingEvent {
     Started,
     /// A sector gate was passed: `index` counts from 0 in the lap `lap` (from 1), `time` since the lap began.
     Sector { lap: u32, index: usize, time: f32 },
-    /// A lap was completed in `time`.
-    Lap { lap: u32, time: f32 },
+    /// A lap was completed in `time`; `best` when it beat the best so far (the first lap does, without a stored one).
+    Lap { lap: u32, time: f32, best: bool },
     /// The session's end rule was met, `time` since the start.
     Finished { time: f32 },
 }

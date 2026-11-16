@@ -11,12 +11,15 @@ use rbr_formats::times::StageTimes;
 use rbr_gameplay::record::{self, Book, Finish, Update};
 use rbr_recording::splits::{Mark, Standing, Verdict};
 use rbr_school::{lesson, Lesson};
+use rbr_session::{BestLap, LapBook};
 
 /// One stage's records, loaded when the race starts.
 pub struct Saves {
     dir: SaveDir,
     profile: String,
     book: Book,
+    /// The best laps of a circuit session (`rbr_session::book`).
+    laps: LapBook,
     stage: u32,
     car: u32,
     /// The record's row when the race started: what the splits are compared with, whatever the race writes.
@@ -39,7 +42,8 @@ impl Saves {
         };
         let book = Book::load(&dir, &profile, times)?;
         let before = record::stage_row(&book.table, stage);
-        Ok(Self { dir, profile, book, stage, car, before, result: None, dry: false })
+        let laps = LapBook::load(&dir.path).map_err(|e| format!("{}: {e}", rbr_session::book::FILE))?;
+        Ok(Self { dir, profile, book, laps, stage, car, before, result: None, dry: false })
     }
 
     /// The records compared as the race ends, the files not written (a replay).
@@ -58,6 +62,21 @@ impl Saves {
         if let Some(file) = &mut self.book.file {
             file.filter = filter;
         }
+    }
+
+    /// The profile's best lap on this circuit, from the files.
+    pub fn best_lap(&self) -> Option<&BestLap> {
+        self.laps.best(self.stage, &self.profile)
+    }
+
+    /// Offers a completed lap to the best laps and writes the file when it is the best (unless dry). Whether it was.
+    pub fn lap(&mut self, lap: f32, sectors: &[f32]) -> Result<bool, String> {
+        let best = BestLap { car: self.car, lap, sectors: sectors.to_vec() };
+        let kept = self.laps.submit(self.stage, &self.profile, best);
+        if kept && !self.dry {
+            self.laps.save(&self.dir.path).map_err(|e| format!("{}: {e}", rbr_session::book::FILE))?;
+        }
+        Ok(kept)
     }
 
     /// The splits' and the finish's reference times, from the record before the race.
@@ -159,6 +178,25 @@ mod tests {
         saves.finish([50.0, 100.0, 150.0]).unwrap();
         assert_eq!(saves.standing().verdict, Verdict::StageRecord);
         assert!(!dir.join("pfresult.rst").exists() && !dir.join("pfAnn.rbr").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A circuit's best lap is kept per profile in its own file, read again on the next open; a dry run keeps none.
+    #[test]
+    fn the_best_lap_is_kept_for_the_next_session_unless_dry() {
+        let dir = std::env::temp_dir().join(format!("rbr-saves-laps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let open = || Saves::open(&dir, Some("Ann"), &[], 1654149, 2).unwrap();
+        let mut saves = open();
+        assert!(saves.best_lap().is_none());
+        assert!(saves.lap(450.0, &[150.0, 300.0]).unwrap());
+        assert!(!saves.lap(451.0, &[150.0, 300.0]).unwrap());
+        assert!(saves.lap(449.5, &[149.0, 299.0]).unwrap());
+        let best = open().best_lap().cloned().unwrap();
+        assert_eq!((best.car, best.lap, best.sectors), (2, 449.5, vec![149.0, 299.0]));
+        let mut dry = open().dry();
+        assert!(dry.lap(400.0, &[]).unwrap());
+        assert_eq!(open().best_lap().map(|b| b.lap), Some(449.5));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
