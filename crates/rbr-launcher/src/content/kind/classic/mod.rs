@@ -154,6 +154,13 @@ fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<V
     for w in src.ini_writes() {
         let file = w.file.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
         if (file == "tracks.ini" || find::tracks_number(&file) == Some(n)) && w.section.eq_ignore_ascii_case(&map) {
+            // An empty key and value is the installer deleting the section; never an empty key.
+            if w.key.is_empty() {
+                if w.value.is_empty() {
+                    entries.clear();
+                }
+                continue;
+            }
             match entries.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(&w.key)) {
                 Some(entry) => entry.1 = write::latin1(w.value.as_bytes()),
                 None => entries.push((w.key.clone(), write::latin1(w.value.as_bytes()))),
@@ -205,6 +212,12 @@ fn settings_sections(src: &dyn Source, texts: &Texts) -> Vec<Section> {
         .flat_map(|(_, bytes)| write::parse_sections(bytes))
         .collect();
     for w in src.ini_writes().iter().filter(|w| named(&w.file)) {
+        if w.key.is_empty() {
+            if w.value.is_empty() {
+                sections.retain(|s| s.name != w.section);
+            }
+            continue;
+        }
         let at = match sections.iter().position(|s| s.name == w.section) {
             Some(at) => at,
             None => {
@@ -374,13 +387,8 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
 
     let files = find::files(entries, stage);
     let letters = missing(&files, old)?;
-    let new_signature =
-        signature(&name, files.iter().filter(|(_, rel)| rel.len() == 1).map(|(e, rel)| (rel[0].clone(), e.size)));
     let maps = ctx.home.join(rbr_btb::player::MAPS);
     let existing = folders(&maps);
-    if existing.iter().any(|(_, dir)| signature_of(dir).is_some_and(|s| s == new_signature)) {
-        return Err("already added".into());
-    }
     let taken = |n: u32| ctx.known.numbers.contains(&n) || existing.iter().any(|(e, _)| *e == n);
     let new = write::pick_number(old, &taken).ok_or("no free stage number")?;
     let folder = format!("{new}-{}", write::folder_name(&name));
@@ -451,6 +459,11 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
         write_text(format!("TrackSettings{new}.ini"), write::settings_text(&weathers))?;
     }
 
+    // The listed sizes of an installer's files are stored sizes: the copies' own are compared.
+    let copied = signature_of(&staged);
+    if copied.is_some() && existing.iter().any(|(_, dir)| signature_of(dir) == copied) {
+        return Err("already added".into());
+    }
     let opened = rsf::Stage::open(&staged, &Default::default()).map_err(|e| format!("the stage doesn't open: {e}"))?;
     if let Some(problem) = opened.problem {
         return Err(format!("the stage doesn't open: {problem}"));
@@ -677,6 +690,13 @@ pub(crate) mod tests {
             .filter(|(k, _)| **k != "Key")
             .map(|(k, v)| ini_write("Maps/Tracks.ini", &format!("Map{id}"), k, v))
             .chain([
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "", ""),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "StageName", "Zaton"),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Author", "Mihkel Kütt"),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Surface", "1"),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "SplashScreen", "Maps\\splash.dds"),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Particles", "Maps\\PS_Zaton"),
+                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "", "x"),
                 ini_write("Maps/TrackSettings.ini", &format!("{id}M_crisp_clear"), "FogEnd", "7"),
                 ini_write("Maps/TrackSettings.ini", &format!("{id}M_hazy_clear"), "FogEnd", "8"),
                 ini_write("Maps/TrackSettings.ini", "9999M_crisp_clear", "FogEnd", "9"),
