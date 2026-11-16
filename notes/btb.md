@@ -10,8 +10,8 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   `track.ini` (all do, exact lowercase names, no case variants needed).
 - `track.ini` `[INFO]`: name, physics (`gravel` 40, `tarmac` 19, `snow` 12, one `Gravel`), author, version,
   splashscreen (69 folders), date (49), comment, length km; `countrycode`/`surface`/`particles` on a few.
-- `spawn.ini` `[SPAWN]`: `m00..m11` identity, `m15` 0, `angleX`/`angleY` 0 in every folder; the cache carries only
-  `m12/m13/m14` and `angleZ`.
+- `spawn.ini` `[SPAWN]`: `m00..m11` identity, `m15` 0, `angleY` 0 in every folder, `angleX` 0 but for `Circuit ACCT Ivato` (0.0075); the cache carries only
+  `m12/m13/m14`, `angleX` and `angleZ` (the lbs rotation is `(angleX, angleZ, 0)`).
 - `driveline.ini` `[DRIVELINE]`: `count` and that many `K<i>` 8-float points; the eighth value is 0 in every folder.
 - `settings.ini` `[SETTINGS]`: only `sunDirection` (period decimals, comma list); every file carries the same
   commented-out alternatives.
@@ -116,7 +116,14 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
 - Map index (0x10021fa0): the mesh's first material name -> its `materials.ini` section -> the base name of `diffuseTexture`
   -> the first `mat.ini` `[MAP<i>]` whose `texture=` base name matches (case-insensitive). The material has no texture
   when `Textures.zip` lacks the file (Kuri Bush 1 `OBJ_RALLY`, Mattila `Blank_255_255_2555`) or it is a `.png` (Olocau
-  Gatova `texture0.png`, `texture01.png`): then the index is 0.
+  Gatova `texture0.png`, `texture01.png`) or its file name holds a space (`gras laub.dds` of Burgknop reverse, `casas de
+  abajo.dds` of Subida a la Manzana; their caches write 0 where the index would be 143 and 235): then the index is 0.
+- An object whose `.x` is not in `Objects.zip` is skipped (scene and col): `Anavasi Portarias`' `obj_242_0` (a
+  `CollisionModel=0` object) leaves no trace in its cache, and `Sprint Limnis Plastiras`, `SSS Lilaia` miss meshes too.
+- Caches older than their sources are no reference (2026-11): `Burgknop`'s `objectlist.ini` is 11 minutes younger than its
+  cache (col differs), and for 65 of 105 cached folders `pacenotes.ini` is younger than the `dls.dls` (re-saved by the
+  pace note tool: `Burgknop reverse` has 224 notes against 102 cached; `Alakyla SPRINT` has a pair in the other order).
+  `Track::source_newer_than_cache` excuses a mismatch in the tests; a mismatch with older sources still fails.
 - Not reproduced (no case in the 19 caches): the plugin drops a region whose subtree face count differs from the node's
   (`ColSplit` loop), a split that leaves a side empty, a root that is a leaf or a region.
 

@@ -128,6 +128,18 @@ impl Track {
         Ok(Track { folder: folder.to_owned(), name, info, auto_circuit: false })
     }
 
+    /// The first of `sources` edited after `CACHE/<cache>` was written, if any: the cache then describes older
+    /// sources and is no reference for them (`Burgknop`'s objectlist.ini is 11 minutes younger than its cache; the pace
+    /// notes of `Burgknop reverse` a day).
+    pub fn source_newer_than_cache(&self, cache: &str, sources: &[&str]) -> Option<String> {
+        let mtime = |path: PathBuf| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let cached = mtime(self.folder.join("CACHE").join(cache))?;
+        sources
+            .iter()
+            .find(|file| stage_files::in_dir(&self.folder, file).and_then(mtime).is_some_and(|source| source > cached))
+            .map(|file| file.to_string())
+    }
+
     /// The parsed `spawn.ini`.
     pub fn spawn(&self) -> Result<Spawn, String> {
         Spawn::parse(&read_ini(&self.folder, "spawn.ini")?)

@@ -55,6 +55,14 @@ fn built_cols_equal_the_plugin_caches() {
                 same += 1;
                 eprintln!("{}: identical, {} bytes, {:.1?}", track.name, got.len(), start.elapsed());
             }
+            Ok(_)
+                if track
+                    .source_newer_than_cache("col.col", &["objectlist.ini", "materials.ini", "mat.ini"])
+                    .is_some() =>
+            {
+                // The cache describes older sources: no reference.
+                eprintln!("{}: differs, but its sources are newer than the cache (not counted)", track.name);
+            }
             Ok(got) => {
                 eprintln!(
                     "{}: {} ({} against {} bytes)",
