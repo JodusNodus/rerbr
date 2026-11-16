@@ -375,6 +375,13 @@ axes, the exclusive acquire, and SDL's three shapes and NGP's effect created and
 HRESULT. Every drive logs `ffb:` lines: SDL's version, joysticks and haptic devices, the device opened and its
 features, each shape tried, the first update or run failure at once, and every 10 s and at the end the updates, the
 largest magnitude, the failures and (where SDL has `SDL_HAPTIC_STATUS`) how often the effect was playing.
+Test build 1 on the reporter's G29 (LGS 9.02.74, works in RSF): SDL lists three haptic devices, LGS's "G29 Driving
+Force Racing Wheel" twice (one fails "Resetting device", the other opens with 0 axes and takes no shape) before the
+wheel's "Logitech G29 Driving Force Racing Wheel USB"; its joystick is not haptic to SDL, so the joystick route is
+skipped. DirectInput on the wheel (FF driver 920B2620-..., force axis "Wheel axis" 0x1000002): all four effects
+create and start (status playing). So `open_device` now goes on to the next device when one takes no shape, and on
+Windows a device opened on its own is dropped when a joystick that opened before no longer does (its exclusive hold
+against the drive's controls); the log adds each joystick's GUID (its SDL driver) and `SDL_IsGamepad`.
 
 Setup (RSF on cachy: Proton cachyos-11.0 SLR, G923 PS on new-lg4ff `hid-logitech-new`, sysfs `autocenter` 0,
 `gain` 65535, `spring_level`/`damper_level` 30): ours matches RSF's levels in order over the same 10 s of drive2
