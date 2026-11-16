@@ -512,6 +512,7 @@ fn fsb5(fsb: &[u8]) -> Result<Vec<Sample>, Error> {
         let frames = ((bits >> 34) & 0x3fff_ffff) as u32;
         let mut more = bits & 1 == 1;
         let mut vorbis_crc = None;
+        let mut layers = 1;
         while more {
             let head = u32_at(fsb, at).ok_or_else(short)?;
             let size = ((head >> 1) & 0xff_ffff) as usize;
@@ -520,6 +521,9 @@ fn fsb5(fsb: &[u8]) -> Result<Vec<Sample>, Error> {
                 1 => channels = *body.first().ok_or_else(short)?,
                 2 => rate = u32_at(body, 0).ok_or_else(short)?,
                 11 => vorbis_crc = u32_at(body, 0),
+                // Vorbis intra-layers: the stream carries `channels` times this many channels (vgmstream `fsb5.c`;
+                // the GC8 555's in-car recordings, 1 x 4, read as mono decode to noise at up to +40 dB).
+                14 => layers = u32_at(body, 0).ok_or_else(short)?,
                 _ => {}
             }
             more = head & 1 == 1;
@@ -528,6 +532,11 @@ fn fsb5(fsb: &[u8]) -> Result<Vec<Sample>, Error> {
         if rate == 0 {
             return Err(Error("FSB5: a sample rate of 0".to_owned()));
         }
+        let channels = u8::try_from(layers)
+            .ok()
+            .and_then(|l| channels.checked_mul(l))
+            .filter(|&c| c > 0)
+            .ok_or_else(|| Error(format!("FSB5: {channels} channels in {layers} layers")))?;
         offsets.push(offset);
         samples.push(Sample { name: String::new(), rate, channels, frames, vorbis_crc, codec, data: 0..0 });
     }
@@ -856,6 +865,18 @@ mod tests {
         let names = strings(&strings_file()).unwrap();
         assert_eq!(names.get(&[0u8; 16]).map(String::as_str), Some(""));
         assert_eq!(names.len(), 1);
+    }
+
+    #[test]
+    fn vorbis_intra_layers_multiply_the_channels() {
+        let mut fsb = fsb5_file();
+        fsb[0x3c] |= 1;
+        // A type-14 chunk of 4 bytes: 4 layers.
+        fsb.splice(0x44..0x44, [8u8, 0, 0, 28, 4, 0, 0, 0]);
+        fsb[12..16].copy_from_slice(&16u32.to_le_bytes());
+        assert_eq!(fsb5(&fsb).unwrap()[0].channels, 4);
+        fsb[0x48] = 0;
+        assert!(fsb5(&fsb).is_err());
     }
 
     #[test]
