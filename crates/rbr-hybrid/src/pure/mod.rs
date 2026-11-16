@@ -492,9 +492,11 @@ impl Pure {
     }
 
     /// Runs `CSpringDamper::ResetOutputs` on each strut — the wheel frame finish's damper reset, which the physics
-    /// step does not run — and keeps each emitted payload as a typed damper event for the host. On the held struts
-    /// when the typed state is held across steps, else per call on the image.
+    /// step does not run — and keeps each emitted payload as a typed damper event for the host. On the held struts,
+    /// lifted for the call and lowered after it when nothing holds them (before the first step, after a reset).
     pub fn reset_strut_dampers(&self, struts: [u32; 4]) {
+        let held = self.held.borrow().is_some();
+        self.lift_typed();
         let mut mem = self.lend();
         for strut in struts {
             let payload = crate::spring_damper::on_strut_in(self, &mut mem, strut, |s, id| {
@@ -504,6 +506,9 @@ impl Pure {
         }
         self.give_back(mem);
         self.held_changed();
+        if !held {
+            self.lower_typed();
+        }
     }
 
     /// The damper-signal payloads emitted since the last call, in emit order: the strut and its payload.

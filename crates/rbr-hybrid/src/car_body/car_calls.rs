@@ -255,11 +255,6 @@ pub(super) fn load_binary(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(this, 4))
 }
 
-/// thiscall: `E36Triple::MinPick` on the triple at `this`; eax is the int result.
-pub(super) fn dominant_surface(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.dominant_surface(r.ecx) as u32, 0))
-}
-
 /// thiscall `(a, b)`: `CCar::ToWorld` walks the vector at `a` against the world frame into `b`; returns `b`.
 pub(super) fn to_world(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
@@ -306,37 +301,9 @@ pub(super) fn compose_body_into_world(ctx: &mut Ctx, r: &Regs) -> Result<Return,
     Ok(Return::void(b, 8))
 }
 
-/// thiscall: `CCar::PushGridEdge` (`Update7270`), the grid edge once and the flag.
-pub(super) fn push_grid_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    on_car(ctx, |m| layout::push_grid_edge(&mut calls, m, r.ecx));
-    Ok(Return::void(0, 0))
-}
-
 /// thiscall `(a)`: `CCar::RefreshEdge` (`Vf20x72D0`); eax is the `Vf20` call's.
 pub(super) fn refresh_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
     let eax = on_car(ctx, |m| layout::refresh_edge(&mut calls, m, r.ecx, r.stack[0]));
     Ok(Return::void(eax, 4))
-}
-
-/// thiscall: `CCar::Sim7AD0`, the wheel aero gust.
-pub(super) fn wall_friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    on_car(ctx, |m| car::wall_friction::wall_friction(&mut calls, m, r.ecx));
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall: `CCar::Sim7DC0` (`DragAndSpinDamp`).
-pub(super) fn apply_drag(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    let factor = crate::ngp::drag_factor(ctx);
-    on_car(ctx, |m| car::drag::apply_drag(&mut calls, m, r.ecx, factor));
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall: `CCar::UpdateFfbTorque` (`Hook1FF0`), the filtered steering torque for force feedback.
-pub(super) fn update_ffb_torque(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_car(ctx, |m| layout::update_ffb_torque(m, r.ecx));
-    Ok(Return::void(0, 0))
 }

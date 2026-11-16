@@ -24,13 +24,6 @@ pub trait FrameCompose {
     fn compose_frames(&mut self, entity: u32, a: u32, t: u32, out: u32) -> u32;
 }
 
-/// `b = compose(a, body, b)` on the car, and returns `b`. The null check on the body (an assert in the original) is
-/// not ported: the port needs a body.
-pub fn compose_with_body(compose: &mut impl FrameCompose, car: u32, body: u32, a: u32, b: u32) -> u32 {
-    compose.compose_frames(car, a, body, b);
-    b
-}
-
 /// The world frame global, which the original asserts is set (it logs and traps when it is zero).
 fn frame<S: CarStore>(mem: &S) -> u32 {
     let frame = mem.u32(FRAME);

@@ -12,22 +12,6 @@ pub const fn is_active() -> u32 {
     1
 }
 
-/// CBrakeWall::Vf11C (0x4e3870) (name ours): copy the inline root node's horizontal bounds
-/// into two four-lane vectors, preserving the retail store order and W lanes.
-pub fn copy_root_bounds(mem: &mut Mem, wall: u32, lower: u32, upper: u32) {
-    let min_x = mem.f32(wall + 0x64);
-    let min_y = mem.f32(wall + 0x68);
-    let max_x = mem.f32(wall + 0x6c);
-    let max_y = mem.f32(wall + 0x70);
-
-    mem.set_f32(lower + 4, min_y - max_y);
-    mem.set_f32(lower + 8, -999_999.0);
-    mem.set_f32(lower, min_x - max_x);
-    mem.set_f32(upper + 4, max_y + min_y);
-    mem.set_f32(upper + 8, 999_999.0);
-    mem.set_f32(upper, min_x + max_x);
-}
-
 pub use crate::collision::wall::{query_box, query_point, query_xy_box};
 
 /// CBrakeWall::AddCount (0x4e3810): relocate the relative pointers in a

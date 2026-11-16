@@ -97,7 +97,6 @@ pub fn new_state(extra: u32) -> StateImage {
 const SCRATCH_VTABLE: u32 = 0x0073_f794;
 /// The solver a scratch holds at +0x10: a `CCollisionSolver` of `SOLVER_SIZE` bytes, built by its constructor.
 pub const SOLVER_AT: u32 = 0x10;
-pub const SOLVER_SIZE: u32 = 0xc440;
 
 /// The calls `CPhysics::CScratch` makes into code outside this port. The caller runs them against the game memory
 /// (the solver's bytes are theirs to write, so the port neither writes nor checks them).

@@ -251,18 +251,3 @@ pub trait FactoryTable {
     /// Appends `index` to the list of the walker `owner`.
     fn append_index(&mut self, owner: u32, index: u32);
 }
-
-/// Counts the table (the original loops over the count), looks the name at `name` up, appends its
-/// index to `owner` when the name is there, and advances the cursor.
-pub fn lookup_factory_name<T: FactoryTable>(t: &mut T, owner: u32, name: u32, cursor: u32) {
-    let mut n = 0;
-    let mut count = t.count();
-    while n < count {
-        n += 1;
-        count = t.count();
-    }
-    if let Some(index) = t.find(name) {
-        t.append_index(owner, index);
-    }
-    t.advance(cursor);
-}

@@ -2,12 +2,11 @@
 //! sample enters around them.
 
 use rbr_physics::mem::Mem;
-use rbr_physics::physics_core::layout::contact_walk::{self, NodeHost, SolidHost};
+use rbr_physics::physics_core::layout::contact_walk::{NodeHost, SolidHost};
 use rbr_physics::physics_core::layout::prof_calls::{EnterHost, ProfHost};
 use rbr_physics::physics_core::layout::{self, physics_object as core_physics};
 use rbr_physics::store::Raw;
 
-use super::slots::vslot;
 use super::UNLINK;
 use crate::rigid_body::{VF_DX, VF_EX};
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -183,33 +182,6 @@ impl<S: Raw> core_physics::StepHost<S> for PhysicsStepCalls<'_> {
     }
 }
 
-/// The four slot calls `Work5500` makes on a node (the vtable offsets 0x5c, 0x64, 0x6c and 0x58).
-struct Nodes<'a>(&'a dyn Host);
-
-impl NodeHost for Nodes<'_> {
-    fn force_input(&mut self, mem: &mut Mem, node: u32) {
-        self.0.call(vslot(mem, node, 0x5c), node, &[]);
-    }
-
-    fn force_to_accel(&mut self, mem: &mut Mem, node: u32) {
-        self.0.call(vslot(mem, node, 0x64), node, &[]);
-    }
-
-    fn integrate(&mut self, mem: &mut Mem, node: u32, p: f32) {
-        self.0.call(vslot(mem, node, 0x6c), node, &[p.to_bits()]);
-    }
-
-    fn child_walk(&mut self, mem: &mut Mem, node: u32, p: f32) {
-        self.0.call(vslot(mem, node, 0x58), node, &[p.to_bits()]);
-    }
-}
-
-/// thiscall `(p)`: `CPhysics::Work5500`. The trailing walk of the original ends on 0, the eax it leaves.
-pub(super) fn step_bodies(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    contact_walk::step_bodies(&mut ctx.mem, &mut Nodes(ctx.host), r.ecx, f32::from_bits(r.stack[0]));
-    Ok(Return::void(0, 4))
-}
-
 /// The calls the damper workers make on a collision event's solids, on the original: the slot 0x80 of the solid (its
 /// vtable), then `CSolid::VfDx` and `VfEx` with the float.
 struct Solids<'a>(&'a dyn Host);
@@ -245,13 +217,6 @@ impl EnterHost for Timer<'_> {
     fn unlink(&mut self, sample: u32) {
         crate::collision::call_grid(self.0, 0, UNLINK, sample, &[]);
     }
-}
-
-/// thiscall `()`: `E46ProfSample::EnterName(name)`, the sample enter (eax is the counter call's).
-pub(super) fn enter_name(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut timer = Timer(ctx.host);
-    let eax = layout::prof_enter(&mut timer, &mut ctx.mem, r.ecx, r.stack[0]);
-    Ok(Return::void(eax, 4))
 }
 
 /// thiscall `(ptr, name, flag)`: `E46ProfChan::Enter`, the channel's sample enter.

@@ -5,50 +5,6 @@ use crate::fpu::{round_x87, x87_mul_f32 as x87_mul};
 use crate::math::sse;
 use crate::math::vec::Vec3;
 
-/// The scalar triple product `(a x b) . c`. The y and z terms are summed first and the x term added last, as the x87
-/// chain did: `(y*y' + z*z') + x*x'`.
-pub fn triple_product(a: Vec3, b: Vec3, c: Vec3) -> f32 {
-    let cross = a.cross3(b);
-    let yz = cross.y * c.y + cross.z * c.z;
-    yz + cross.x * c.x
-}
-
-/// The unnormalised normal of the triangle `origin`, `b`, `c`: the cross product of `b - origin` and `c - origin`. All
-/// three inputs are read before the result is stored, so a caller may store it over an input.
-pub fn normal_from_vertex(origin: Vec3, b: Vec3, c: Vec3) -> Vec3 {
-    (b - origin).cross3(c - origin)
-}
-
-/// The terms of [`triangle_plane_terms`]: the sum of the three cross products of the first three vertices, and four dot
-/// products. Their physical meaning is not known; the names say how they are computed.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct TriangleTerms {
-    /// `n_ab + (n_bc + n_ca)`, where `n_ab = a x b`, `n_bc = b x c`, `n_ca = c x a`.
-    pub cross_sum: Vec3,
-    /// `point . n_ab`.
-    pub point_dot_ab: f32,
-    /// `point . n_bc`.
-    pub point_dot_bc: f32,
-    /// `point . n_ca`.
-    pub point_dot_ca: f32,
-    /// `c . n_ab`, summed with the y and z terms first.
-    pub c_dot_ab: f32,
-}
-
-/// The cross-product terms of the triangle `a`, `b`, `c` and the dot products of `point` with them.
-pub fn triangle_plane_terms(a: Vec3, b: Vec3, c: Vec3, point: Vec3) -> TriangleTerms {
-    let n_ab = a.cross3(b);
-    let n_bc = b.cross3(c);
-    let n_ca = c.cross3(a);
-    TriangleTerms {
-        cross_sum: n_ab + (n_bc + n_ca),
-        point_dot_ab: point.dot(n_ab),
-        point_dot_bc: point.dot(n_bc),
-        point_dot_ca: point.dot(n_ca),
-        c_dot_ab: c.dot_yz_first(n_ab),
-    }
-}
-
 /// The result of [`segment_triangle`]. A field is written as the test goes, so a miss keeps the fields written before
 /// its exit; unset fields were not written.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

@@ -1,7 +1,5 @@
 //! E33 CColGrid host calls and status helpers; the arithmetic of the cell grid and the samples is `cells`.
 
-use super::ColGrid;
-
 /// Start of the original's 0x6b0-byte collision-grid bank.
 pub const GRID_TABLE_BANK: u32 = 0x008f_7030;
 
@@ -19,25 +17,4 @@ pub trait GridOpsHost {
     fn ray_seeds(&mut self, sp: u32, grid: u32);
     fn copy_blocks_one_two(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32);
     fn copy_blocks_three_four(&mut self, sp: u32, a: u32, src: u32, o2: u32, dst: u32, n: u32);
-}
-
-/// CColGrid::Flag68A (0x4e0820): one when bit 1 of the status byte is clear. The byte's meaning is not known yet.
-pub fn status_flag_bit1_clear(status_flag: u8) -> u32 {
-    u32::from(!(status_flag >> 1) & 1)
-}
-
-/// CColGrid::ReadClear (0x4e0a20) (name ours): returns `(m_unk689, m_unk688)` from the flag bytes `(first, second)`
-/// (+0x688, +0x689) the caller took (clearing them is `ColGrid::take_event_flags`).
-pub fn event_flag_words((first, second): (u8, u8)) -> (u32, u32) {
-    (u32::from(second), u32::from(first))
-}
-
-/// CColGrid::EdgeForA (0x4e0a90) (name ours): the edge (`ColGrid::edge`) named by the first byte of the pair.
-pub fn pair_first_edge(grid: ColGrid, pair: [u8; 6]) -> u32 {
-    grid.edge(u32::from(pair[0]))
-}
-
-/// CColGrid::EdgeForB (0x4e0ab0) (name ours): the edge (`ColGrid::edge`) named by the second byte of the pair.
-pub fn pair_second_edge(grid: ColGrid, pair: [u8; 6]) -> u32 {
-    grid.edge(u32::from(pair[1]))
 }

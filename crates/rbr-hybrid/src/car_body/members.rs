@@ -228,21 +228,6 @@ pub(super) fn motion_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(outcome.ret(), 4))
 }
 
-/// thiscall: `this + 0xa00`, the car's state object (`StateAtb`).
-pub(super) fn state_atb(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::state_address(r.ecx), 0))
-}
-
-/// thiscall: `GetB0C` returns the float at +0xb0c in st0.
-pub(super) fn get_b0c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(on_car(ctx, |m| m.steer_target(r.ecx)) as f64, 0))
-}
-
-/// thiscall: `GetB1C` returns the float at +0xb1c in st0.
-pub(super) fn get_b1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(on_car(ctx, |m| m.steer_target_rate(r.ecx)) as f64, 0))
-}
-
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.
 pub(super) fn add_adc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     on_car(ctx, |m| layout::add_steer_torque_sum(m, r.ecx, f32::from_bits(r.stack[0])));
@@ -254,12 +239,6 @@ pub(super) fn set_a1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, v, ..] = r.stack;
     on_car(ctx, |m| layout::set_roll_bar_cell(m, r.ecx, i, j, f32::from_bits(v)));
     Ok(Return::void(0, 12))
-}
-
-/// thiscall: `Damp66D0`, the two anti-roll bars' force cells.
-pub(super) fn update_roll_bars(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_car(ctx, |m| car::roll_bars::update_roll_bars(m, r.ecx));
-    Ok(Return::void(0, 0))
 }
 
 /// thiscall `(i, neg)`: `GetA48`, the lane word at `+0xa48 + 0x40 * i`, negated when `neg` is nonzero; returns it in st0.
@@ -334,12 +313,6 @@ impl car::body::BodyCalls for BodyCalls<'_> {
 pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, block: u32) {
     host.ran_direct();
     car::light::sub_block_init(mem, block);
-}
-
-/// thiscall `()`: `NTweak::CE36SubBlock::Init` zeroes the sub-block.
-pub(super) fn sub_block_init(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    car::light::sub_block_init(&mut ctx.mem, r.ecx);
-    Ok(Return::void(0, 0))
 }
 
 /// CCar::VfD8x (0x4eaf10): a naked tail jump to CBody::VfD8, so the car's slot 0xd8 takes the body's arguments and eax.

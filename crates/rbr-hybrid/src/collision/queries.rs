@@ -29,13 +29,6 @@ pub(super) fn mesh_is_active(_ctx: &mut Ctx, _r: &Regs) -> Result<Return, Declin
     Ok(Return::void(solver_hosts::mesh_is_active(), 0))
 }
 
-/// thiscall on the E36 object (`ecx`) with `(sphere*, index*)`; eax is the 0 or 1 result.
-pub(super) fn sphere_box(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [sphere, index, ..] = r.stack;
-    let eax = rbr_physics::collision::layout::sphere_box(&mut ctx.mem, r.ecx, sphere, index);
-    Ok(Return::void(eax, 8))
-}
-
 /// thiscall on the E36 object (`ecx`) with `(body, list**, count*)`; eax is the 0 or 1 result.
 pub(super) fn collect(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [body, list_out, count_out, ..] = r.stack;
@@ -47,24 +40,6 @@ pub(super) fn collect(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
         layout::entry::collect(s, frame, r.ecx, body, list_out, count_out, &mut Callees(host))
     });
     Ok(Return::void(eax, 12))
-}
-
-/// thiscall on the SAT box (`ecx`) with `(other_center*, other_extent*)`; eax is 1 when the boxes overlap.
-pub(super) fn world_axes_overlap(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [center, extent, ..] = r.stack;
-    Ok(Return::void(layout::world_axes_overlap(&ctx.mem, r.ecx, center, extent), 8))
-}
-
-/// thiscall on the SAT box (`ecx`) with `(other_center*, other_extent*)`; eax is 1 when the boxes overlap.
-pub(super) fn box_sat_overlap(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [center, extent, ..] = r.stack;
-    Ok(Return::void(layout::box_sat_overlap(&ctx.mem, r.ecx, center, extent), 8))
-}
-
-/// thiscall (`ecx` unused) with `(origin*, direction*, v0*, v1*, v2*, output*)`; eax is 1 on a hit.
-pub(super) fn ray_triangle(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [origin, direction, v0, v1, v2, output, ..] = r.stack;
-    Ok(Return::void(layout::ray_triangle(&mut ctx.mem, origin, direction, v0, v1, v2, output), 24))
 }
 
 /// E38RaySeeds (0x4f6550): thiscall on the ray object; eax is the object (its `E09Vec4::Clear` calls return it).
@@ -192,22 +167,6 @@ impl SampleHost for SystemCallsAt<'_> {
     }
 }
 
-/// thiscall `(origin, direction, root, out)`, ret 0x10: `E38Ops::M_DE40X` (0x4fde40), the mesh ray over the tree
-/// (`layout::mesh_ray_worklist`). Its result is the record at `out`; eax is not modelled.
-pub(super) fn mesh_ray_worklist(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [origin, direction, root, out, ..] = r.stack;
-    layout::mesh_ray_worklist(&mut ctx.mem, r.ecx, origin, direction, root, out);
-    Ok(Return::void(0, 0x10))
-}
-
-/// E38NodeWalk (0x4fdd60): stdcall with three stack words (the query box, the root, and the output); eax is not
-/// modelled.
-pub(super) fn node_walk(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [query, root, out, ..] = r.stack;
-    layout::node_walk(&mut ctx.mem, query, root, out);
-    Ok(Return::void(0, 12))
-}
-
 /// E38SegmentSweep (0x4fad90): stdcall with four stack words (the segment's start and end, the hit tags, and the
 /// distance). The query's scratch is below the caller's frame, as in the collect's.
 pub(super) fn segment_sweep(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -320,13 +279,6 @@ pub(super) fn segment_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, out, ..] = r.stack;
     let eax = layout::segment_test(&mut ctx.mem, r.ecx, a, b, out, r.esp - 0x18);
     Ok(Return::void(eax, 12))
-}
-
-/// `E38Ops::M_E2D0` (0x4fe2d0): thiscall with `(point, v0, v1, v2, out)`, `ret 0x14`; eax is 1 on a hit.
-pub(super) fn point_triangle(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, v0, v1, v2, out, ..] = r.stack;
-    let eax = layout::point_triangle(&mut ctx.mem, point, v0, v1, v2, out);
-    Ok(Return::void(eax, 20))
 }
 
 /// `E38Ops::M_EBC0`'s material table samples (0x520240), at its esp for them (0x8c below its entry).

@@ -16,13 +16,6 @@ const RAY_QUERY: u32 = 0x4fd760; // E38Ops::M_D760X
 const FALLBACK_QUERY: u32 = 0x4febc0; // E38Ops::M_EBC0
 const VEC_LERP: u32 = 0x473c90; // E11_VecLerp
 
-/// thiscall `(from)`, ret 4: `E37GridOps::Copy6770` (0x4f6770), the grid at `from` copied to `this` (nothing when it
-/// is 0); eax is `this`.
-pub(super) fn copy_grid_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::copy_grid(&mut ctx.mem, r.ecx, r.stack[0]);
-    Ok(Return::void(r.ecx, 4))
-}
-
 /// `E33Mat34::CollideInit`'s calls at the original's stack pointers; `mem` reads bodyA's vtable.
 struct CollideCalls<'a> {
     host: &'a dyn Host,

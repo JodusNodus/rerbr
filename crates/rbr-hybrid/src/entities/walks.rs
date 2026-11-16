@@ -459,23 +459,6 @@ pub(super) fn route_pair_grids_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, De
     pair_walker(ctx, r, Walker::RoutePairGrids)
 }
 
-/// stdcall `(node, grids, n)`, ret 0xc: `E37Walk5E40` (hooks One and Three) or `E37Walk5EB0` (Two and Four); eax is
-/// `grids`.
-fn grid_hooks_run(ctx: &mut Ctx, r: &Regs, first: Hook, second: Hook) -> Result<Return, Decline> {
-    let [node, grids, n, ..] = r.stack;
-    let mut pairs = PairWalk { mem: &mut ctx.mem, host: ctx.host, esp: r.esp, walk_depth: 0 };
-    let eax = walk::grid_hooks(&mut pairs, node, grids, n, first, second);
-    Ok(Return::void(eax, 12))
-}
-
-pub(super) fn grid_hooks_lo_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    grid_hooks_run(ctx, r, Hook::One, Hook::Three)
-}
-
-pub(super) fn grid_hooks_hi_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    grid_hooks_run(ctx, r, Hook::Two, Hook::Four)
-}
-
 /// thiscall `(a, b)`: `E43PairWalk::MAB10`, `MAB20`, `MAB30` and `MAB40`, return `a`.
 pub(super) fn pair_echo_run(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(walk::return_first(r.ecx, r.stack[0], r.stack[1]), 8))

@@ -19,13 +19,11 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
 /// `NTweak::CBase::Unk44`, an empty hook (`ret`): the state slot 0x44 the name walk calls (`crate::trivial`).
 pub const CBASE_UNK44: u32 = 0x52f480;
 
-pub static BINDINGS: [Binding; 6] = [
+pub static BINDINGS: [Binding; 4] = [
     bind(0x52f450, "NTweak::CBase::SetDirty", set_dirty),
     bind(0x52f090, "NTweak::CBase::CBase", construct_base),
     bind(CBASE_UNK44, "NTweak::CBase::Unk44", crate::entities::empty_hook_run),
     bind(0x52f0c0, "NTweak::CBase::Parse", parse),
-    bind(0x52ec80, "NTweak::CTokenCursor::Tokenize", tokenize),
-    bind(0x473a70, "E11_StackAlloc", stack_alloc),
 ];
 
 /// The classes `Parse` walks, by vtable (each is a vtable whose slot 2 is `Parse`, named by its RTTI), as the key table
@@ -154,23 +152,6 @@ fn parse(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = host.frame();
     ntweak::parse(&mut ctx.mem, &mut host, frame, this, class, cursor).map_err(|e| Decline::Unsupported(e.0))?;
     Ok(Return::void(0, 4))
-}
-
-/// thiscall `(text, 0)`, eax the cursor: its table of the text's tokens, with `operator new` entered below the four
-/// pushes, `edi` and the argument.
-fn tokenize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let sp = r.esp - 0x1c;
-    let host = ctx.host;
-    ntweak::tokenize(&mut ctx.mem, |_, size| host.call_at(sp, OPERATOR_NEW, 0, &[size]).eax, r.ecx, r.stack[0])
-        .map_err(|e| Decline::Unsupported(e.0))?;
-    Ok(Return::void(r.ecx, 8))
-}
-
-/// cdecl `(size, heap*, align)`, eax the block.
-fn stack_alloc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [size, heap, align, ..] = r.stack;
-    let block = ntweak::stack_alloc(&mut ctx.mem, size, heap, align).map_err(|e| Decline::Unsupported(e.0))?;
-    Ok(Return::void(block, 0))
 }
 
 /// thiscall `()`: `NTweak::CBase::SetDirty`; eax is the caller's.

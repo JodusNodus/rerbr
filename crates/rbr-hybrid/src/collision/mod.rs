@@ -22,20 +22,19 @@ pub(crate) use bodies::{
     register_cell_direct, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
 };
 use bodies::{
-    body_clear_grid, body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc,
-    lookup_twin, move_to_cell, notify_filtered, state_unka44,
+    body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc, lookup_twin,
+    move_to_cell, notify_filtered, state_unka44,
 };
 use brake_wall::{
-    brake_wall_emit, brake_wall_is_active, brake_wall_query_box, brake_wall_query_point, brake_wall_vf_e8,
-    brake_wall_vf_f0, raycast_entry, wall_raycast, wall_vf_cc, BRAKE_WALL_QUERY_BOX,
+    brake_wall_emit, brake_wall_is_active, brake_wall_query_box, brake_wall_vf_e8, brake_wall_vf_f0, raycast_entry,
+    wall_vf_cc, BRAKE_WALL_QUERY_BOX,
 };
 use contacts::{body_vf_d0, body_vf_dc};
 pub(crate) use contacts::{body_vf_d8, body_vf_e8, body_vf_f4};
-use edge::{edge_edge, edge_normal, edge_pair, vec_set_gap, walk_5ff0};
+use edge::{edge_edge, edge_pair};
 use queries::{
-    box_sat_overlap, collect, face_query, grid_add_edge, grid_ops_m6610, grid_ray, grid_sample_a, grid_sample_b,
-    grid_sync, mesh_copy_bounds, mesh_is_active, mesh_ray_worklist, node_walk, point_triangle, ray_clear, ray_seeds,
-    ray_triangle, seg_test, segment_sweep, segment_test, sphere_box, system_vf00, world_axes_overlap,
+    collect, face_query, grid_add_edge, grid_ops_m6610, grid_ray, grid_sample_a, grid_sample_b, grid_sync,
+    mesh_copy_bounds, mesh_is_active, ray_clear, ray_seeds, seg_test, segment_sweep, segment_test, system_vf00,
 };
 pub(crate) use queries::{ray_clear_at, ray_seeds_at};
 use solver::{
@@ -45,9 +44,7 @@ use solver::{
 };
 pub(crate) use vectors::{copy_vec4, length};
 use vectors::{
-    e33_scaled, float3_length, float3_scale, min_max_a, vec16_max, vec16_min, vec3_add, vec4_clear, vec4_copy_from,
-    vec4_normalize, vec4_sub, vec_add_sub, vec_cross, vec_cross_dot, vec_dot, vec_normalize, vec_scale, vec_sub,
-    vec_sub_dot,
+    float3_length, float3_scale, min_max_a, vec3_add, vec4_clear, vec4_copy_from, vec4_normalize, vec4_sub, vec_cross,
 };
 
 pub(crate) const RAY_CLEAR: u32 = 0x4f6740;
@@ -59,50 +56,28 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("collision", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 93] = [
-    bind(0x4f2ce0, "E36SphereBox", sphere_box),
+pub static BINDINGS: [Binding; 68] = [
     bind(0x4f3950, "E36Collect", collect),
-    bind(0x4f5480, "E37Vec16::Min", vec16_min),
-    bind(0x4f54b0, "E37Vec16::Max", vec16_max),
-    bind(0x4e0020, "CBodyLink::Unlink", body_link_unlink),
     bind(0x4faeb0, "CBodyLink::MoveToCell (ours)", move_to_cell),
     bind(0x4f6550, "E38RaySeeds", ray_seeds),
     bind(0x4f6740, "E38RayClear", ray_clear),
     bind(0x4f7090, "CColGrid::SyncGrid", grid_sync),
     bind(0x4fd760, "M_D760X", grid_ray),
-    bind(0x4fde40, "E38Ops::M_DE40X", mesh_ray_worklist),
     bind(0x4fe810, "CCollisionSystem::Vf00", system_vf00),
-    bind(0x4fdd60, "E38NodeWalk", node_walk),
     bind(0x4ff170, "E39_SegTest170", seg_test),
     bind(0x4ff070, "E39_SegTest70", segment_test),
-    bind(0x4fe2d0, "E38Ops::M_E2D0", point_triangle),
     bind(0x4febc0, "E38Ops::M_EBC0", face_query),
-    bind(0x4e4570, "E34WallVf::Raycast", wall_raycast),
     bind(0x4e4960, "CBrakeWallManager::RaycastEntry", raycast_entry),
     bind(0x4e4490, "CMultiSignal1<CSigCarBrakeWallPenetration const &>::Emit", brake_wall_emit),
     bind(0x4fad90, "E38SegmentSweep", segment_sweep),
     bind(0x4e03b0, "CCellGrid::LookupTwin", lookup_twin),
     bind(0x4e1120, "CBody::Vf40", body_vf40),
-    bind(0x4e11a0, "CBody::ClearGrid", body_clear_grid),
     bind(0x4e11f0, "CBody::Vf118", body_grid),
-    bind(0x4e0700, "E33Vec4::Scaled", e33_scaled),
     bind(0x4e1230, "CBody::VfCC", body_vf_cc),
     bind(0x4e3070, "CBody::VfD8", body_vf_d8),
     bind(0x4e2f50, "CBody::VfE8", body_vf_e8),
     bind(0x4e2e90, "CBody::VfF4", body_vf_f4),
     bind(0x4e2850, "CBody::VfDC", body_vf_dc),
-    bind(0x4e3dc0, "CBrakeWall::QueryPoint", brake_wall_query_point),
-    bind(0x4fccb0, "E38Vec::M_CCB0", vec_add_sub),
-    bind(0x4fcd10, "E38Vec::M_CD10", vec_sub),
-    bind(0x4fcd60, "E38Vec::M_CD60", vec_sub_dot),
-    bind(0x4fcee0, "E38Vec::M_CEE0", vec_dot),
-    bind(0x4fcf30, "E38Vec::M_CF30", vec_cross),
-    bind(0x4fcfa0, "E38Vec::M_CFA0", vec_cross_dot),
-    bind(0x4fd030, "E38Vec::M_D030", vec_scale),
-    bind(0x4fd0f0, "E38_004FD0F0", vec_normalize),
-    bind(0x4fd230, "E38Ops::M_D230", world_axes_overlap),
-    bind(0x4fd2c0, "E38Ops::M_D2C0", box_sat_overlap),
-    bind(0x4fd480, "E38Ops::M_D480", ray_triangle),
     bind(0x4fb7f0, "E38_004FB7F0", clear_contact_rows),
     bind(0x4fbc20, "E38_004FBC20", refresh_events),
     bind(0x4fbca0, "E38_004FBCA0", event_count),
@@ -129,9 +104,6 @@ pub static BINDINGS: [Binding; 93] = [
     bind(0x4f6610, "E37GridOps::M6610", grid_ops_m6610),
     bind(E37_EDGE_EDGE, "E37GridOps::EdgeEdge", edge_edge),
     bind(E37_EDGE_PAIR, "E37GridOps::EdgePair", edge_pair),
-    bind(E37_WALK_5FF0, "E37GridOps::Walk5FF0", walk_5ff0),
-    bind(E37_M74A0, "E37GridOps::M74A0", edge_normal),
-    bind(E37_STORE_5570, "E37VecSet::Store5570", vec_set_gap),
     bind(0x4f65b0, "E37GridOps::AddEdge", grid_add_edge),
     bind(0x4e42f0, "E34WallVf::VfCC", wall_vf_cc),
     bind(BRAKE_WALL_QUERY_BOX, "CBrakeWall::QueryBox", brake_wall_query_box),
@@ -225,6 +197,3 @@ pub(crate) const COLGRID_SAMPLE_B: u32 = 0x4e0950;
 pub(crate) const E37_GRID_COPY: u32 = 0x4f6610;
 pub(crate) const E37_EDGE_EDGE: u32 = 0x4f8280;
 const E37_EDGE_PAIR: u32 = 0x4f8560;
-const E37_WALK_5FF0: u32 = 0x4f5ff0;
-const E37_M74A0: u32 = 0x4f74a0;
-const E37_STORE_5570: u32 = 0x4f5570;

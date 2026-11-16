@@ -11,11 +11,6 @@ pub fn sub_block_init<S: CarStore>(mem: &mut S, at: u32) {
     mem.set_f32(at + mem_at::SUB_BLOCK_WEIGHT, 0.0);
 }
 
-/// The address of the light def's static table.
-pub fn def_table() -> u32 {
-    mem_at::DEF_TABLE
-}
-
 /// Sets the four groups of words to 1, in the original's order, then the flag word.
 pub fn block_reset<S: CarStore>(mem: &mut S, block: u32) {
     for group in 0..mem_at::RESET_GROUPS {

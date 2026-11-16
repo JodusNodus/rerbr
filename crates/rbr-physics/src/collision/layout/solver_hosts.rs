@@ -8,11 +8,6 @@ pub fn mesh_is_active() -> u32 {
     1
 }
 
-/// CCollisionSolver::CDef::Unk20 (0x4fb330): the address of the shared solver table.
-pub fn shared_solver_table() -> u32 {
-    0x0165_7890
-}
-
 /// Calls outside E38RaySeeds (0x4f6550): `E09Vec4::Clear` (0x465d80) on the vector at `at`, which returns `at`.
 pub trait RayHost {
     fn vec4_clear(&mut self, at: u32) -> u32;

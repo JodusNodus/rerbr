@@ -58,19 +58,6 @@ impl Mat {
             };
         }
     }
-
-    /// The xyz of each row becomes `M * (x, y, z)` (a column vector); `w` is kept. Each sum is
-    /// `(M[r][1]*y + M[r][2]*z) + M[r][0]*x`, the original's order.
-    pub fn transform_xyz(&self, rows: &mut [Vec4]) {
-        let m = self.rows;
-        for v in rows {
-            let out = |r: usize| (m[r][1] * v.y + m[r][2] * v.z) + m[r][0] * v.x;
-            let (x, y, z) = (out(0), out(1), out(2));
-            v.x = x;
-            v.y = y;
-            v.z = z;
-        }
-    }
 }
 
 /// `force[i] += v[i] * force_scale`, the four lanes. The original adds the product to the force (`v * k + force`), which

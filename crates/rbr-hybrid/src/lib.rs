@@ -448,22 +448,22 @@ pub(crate) mod tests {
             *counts.entry(binding.subsystem).or_insert(0) += 1;
         }
         let expected = [
-            ("car_body", 117),
-            ("collision", 93),
-            ("engine_driveline", 99),
-            ("entities", 119),
+            ("car_body", 99),
+            ("collision", 68),
+            ("engine_driveline", 32),
+            ("entities", 115),
             ("game_log", 1),
             ("graph", 2),
             ("ngp", 21),
-            ("ntweak", 6),
-            ("physics_core", 45),
-            ("rigid-body", 49),
-            ("spring_damper", 22),
+            ("ntweak", 4),
+            ("physics_core", 38),
+            ("rigid-body", 46),
+            ("spring_damper", 4),
             ("timekeeper", 1),
             ("timing", 4),
-            ("tyre", 45),
+            ("tyre", 11),
             ("vcu", 16),
-            ("wheel", 30),
+            ("wheel", 26),
         ];
         assert_eq!(counts.into_iter().collect::<Vec<_>>(), expected);
     }

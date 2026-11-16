@@ -67,13 +67,12 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("wheel", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 30] = [
+pub static BINDINGS: [Binding; 26] = [
     bind(M3D520, "E51Wheel::M3D520", ground_probe),
     bind(E43VF5C, "CWheel::E43Vf5C", forward_to_car_and_clear),
     bind(E43VF58, "CWheel::E43Vf58", hook),
     bind(UNK97A0, "CWheel::Unk97a0", update_sub_objects),
     bind(COPY_CF30, "E51Wheel::CopyCF30", copy_cf30),
-    bind(UNK9660, "CWheel::Unk9660", uint_select),
     bind(UNK96E0, "CWheel::Unk96e0", table_lerp_pair),
     bind(M3B5B0, "E51Wheel::M3B5B0", embedded_dispatch),
     bind(M3D1C0, "E51Wheel::M3D1C0", new_sub_object),
@@ -91,16 +90,13 @@ pub static BINDINGS: [Binding; 30] = [
     bind(UNK9290, "CWheel::Unk9290", pick_contact),
     bind(UNK9900, "CWheel::Unk9900", blend_tags),
     bind(E43VF6C, "CWheel::E43Vf6C", forward_vf6c),
-    bind(M3A9E0, "E51Wheel::M3A9E0", turn_axis),
     bind(M3AB90, "E51Wheel::M3AB90", state_lerp),
     bind(M3AC50, "E51Wheel::M3AC50", set_input),
-    bind(M3AEF0, "E51Wheel::M3AEF0", walk_result),
     bind(M3AFB0, "E51Wheel::M3AFB0", spin_cross),
     bind(M3B900, "E51Wheel::M3B900", refresh),
     bind(M3D030, "E51Wheel::M3D030", update_strut),
     bind(UNKA860, "CWheel::UnkA860", tyre_tail_setup),
     bind(UNK94D0, "CWheel::Unk94d0", split_on_sub),
-    bind(M3B880, "E51Wheel::M3B880", refresh_travel),
     bind(SUB_OBJECT_CTOR, "E51Wheel::Ctor", wheel_ctor),
 ];
 
@@ -288,14 +284,6 @@ fn copy_cf30(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     ctx.mem.set_u32(r.esp + 8, ctx.mem.u32(def + layout::DEF_INCLINED_AXLE + 8));
     ctx.mem.set_u32(r.esp + 0xC, ctx.mem.u32(a + layout::SETUP_AXIS_INCLINATION));
     Ok(Return::void(libm.eax.get(), 0xC))
-}
-
-/// `Unk9660` (thiscall, `p` and `n` on the stack, `ret 8`): the pick is written to `p`, and the wrap count is returned
-/// (name ours).
-fn uint_select(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [p, n, ..] = r.stack;
-    let wraps = layout::pick_sector(&mut ctx.mem, r.ecx, p, n);
-    Ok(Return::void(wraps, 8))
 }
 
 /// `CE36SubBlock::Init` (0x4f3e80, thiscall) as the original calls it from `Unk96e0`.
@@ -490,13 +478,6 @@ impl SolidCalls for Solid<'_> {
     }
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3A9E0`, `layout::wobble_axle` (name ours). eax is the last sine or cosine call's.
-fn turn_axis(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    on_wheels(ctx, |m| layout::wobble_axle(&mut libm, m, r.ecx));
-    Ok(Return::void(libm.eax.get(), 0))
-}
-
 /// thiscall, plain `ret`: `E51Wheel::M3AB90`, `layout::deform_top_mount` (name ours).
 fn state_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     on_wheels(ctx, |m| layout::deform_top_mount(m, r.ecx));
@@ -534,13 +515,6 @@ impl WalkCalls for Walk<'_> {
     }
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3AEF0`, `layout::steering_walk` (name ours).
-fn walk_result(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
-    on_wheels(ctx, |m| layout::steering_walk(&mut walk, m, r.ecx));
-    Ok(Return::void(0, 0))
-}
-
 /// thiscall `(p)`, `ret 4`: `E51Wheel::M3AFB0`, `layout::spin_cross` (name ours).
 fn spin_cross(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
@@ -572,11 +546,6 @@ fn split_on_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let residue = f32::from_bits(crate::RESIDUE);
     let eax = on_wheels(ctx, |m| layout::edge_force(m, r.ecx, block, v, acc, residue));
     Ok(Return::void(eax, 0x14))
-}
-
-/// thiscall, plain `ret`: `E51Wheel::M3B880`, `layout::refresh_travel` (name ours).
-fn refresh_travel(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::refresh_travel(&mut ctx.mem, r.ecx), 0))
 }
 
 /// `CSolid::E43Vf90` (0x52bf30), the owner's wake the constructor calls (directly, 0x20 below its entry).

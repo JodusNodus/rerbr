@@ -12,13 +12,6 @@ use crate::entities::Op;
 use crate::rigid_body::solid_word;
 use crate::{Ctx, Decline, Host, Regs, Return, SignalCallees};
 
-/// CBrakeWall::QueryPoint (0x4e3dc0): thiscall on the wall with the point and the collector; eax is the leaf count's
-/// result from `wall::query_point`.
-pub(super) fn brake_wall_query_point(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, collector, ..] = r.stack;
-    Ok(Return::void(wall::query_point(&mut ctx.mem, r.ecx, point, collector), 8))
-}
-
 /// thiscall `(sig)`: `CMultiSignal1<const CSigCarBrakeWallPenetration&>::Emit` (0x4e4490), the signal template's emit
 /// with the connections through the host (as `E41EngineNoiseSignal::Emit`). A count out of range declines (the original
 /// traps).
@@ -42,15 +35,6 @@ impl RaycastCalls for WallRaycast<'_> {
     fn emit_penetration(&mut self, this: u32, out: u32) {
         self.0.call(self.1, this, &[out]);
     }
-}
-
-/// `E34WallVf::Raycast` (0x4e4570): thiscall on the wall (`ecx`) with `(point, out)`; the leaf list of the query is in
-/// the original's frame, 0x194 bytes below the entry esp.
-pub(super) fn wall_raycast(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, out, ..] = r.stack;
-    let mut calls = WallRaycast::new(ctx);
-    let eax = layout::wall_raycast(&mut calls, &mut ctx.mem, r.ecx, point, out, r.esp - 0x194);
-    Ok(Return::void(eax, 8))
 }
 
 /// `CBrakeWallManager::RaycastEntry` (0x4e4960): thiscall `(point, out)`; the point's copy is in the original's frame,

@@ -372,15 +372,6 @@ pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(a, b)`, `ret 8`: `CCar::Split17C` (0x4e5530). Eax is `b`, the normalized vector (`Normalize` returns it).
-pub(super) fn split_17c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, ..] = r.stack;
-    crate::ngp::only()?;
-    let image = ctx.mem.clone();
-    on_stage(ctx.host, &image, |line| on_car(ctx, |m| layout::drive_line_sample(m, line, r.ecx, a, b)));
-    Ok(Return::void(b, 8))
-}
-
 /// thiscall `(a, b, c)`, `ret 0xc`: `CCar::Sampler54A0` (0x4e54a0). The car is not read; eax is the vote's 1 or 0. The
 /// probe `a` is the car's position for `MotionProbe` (`car + 0x140`): read through the car's store, the held solid's.
 pub(super) fn vote_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -396,13 +387,6 @@ impl<S: CarStore> layout::VoteCalls<S> for Car<'_> {
         let target = mem.u32(mem.u32(obj));
         self.host.call_at(sp, target, obj, &[probe_a, probe_b, raw]).eax
     }
-}
-
-/// thiscall `(v)`, `ret 4`: `CGhostCarManager::SetPlayback` (0x492e90), the respawn signal's receiver of the ghost
-/// manager (`[this + 0x96340] = 1`).
-pub(super) fn ghost_set_playback(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    ctx.mem.set_u32(r.ecx + 0x9_6340, 1);
-    Ok(Return::void(0, 4))
 }
 
 /// thiscall `(sel, sample)`, `ret 8`: `CCar::S184` (0x4e5270), the car's slot 97 (`layout::respawn_pose`).

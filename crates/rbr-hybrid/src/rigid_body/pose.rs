@@ -4,7 +4,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::host::{CellHost, HostUnavailable};
 use rbr_physics::rigid_body::integrate::{integrate, IntegrateHost, StateSignal};
 use rbr_physics::rigid_body::layout::{Body, Def, ParentFrame, Vec4};
-use rbr_physics::rigid_body::pose::{pose_step, PoseHost};
+use rbr_physics::rigid_body::pose::PoseHost;
 use rbr_physics::rigid_body::store::RigidStore;
 
 use super::{
@@ -117,19 +117,6 @@ impl IntegrateHost for Pose<'_> {
         self.host.call(STATE_EMIT, sink, &[payload]);
         Ok(())
     }
-}
-
-/// thiscall `(a, b, c)`: the pose step (`CSolid::VfC8`). `b` takes the position and `c` the orientation. The calls outside
-/// the body go through the original; the body is stored after the step.
-pub(super) fn integrate_pose(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, c, ..] = r.stack;
-    let this = r.ecx;
-    let mut body = on_solids(ctx, |s| s.body(this));
-    let parent = (body.parent != 0).then(|| ParentFrame::load(&ctx.mem, body.parent));
-    let mut calls = Pose { mem: ctx.mem.clone(), host: ctx.host, this, scratch: r.esp - SCRATCH_BELOW_ESP, esp: r.esp };
-    pose_step(&mut body, f32::from_bits(a), b != 0, c != 0, parent, &mut calls).map_err(unavailable)?;
-    on_solids(ctx, |s| s.store_body(this, &body));
-    Ok(Return::void(0, 12))
 }
 
 /// thiscall `(dt)`: the integrator pass (`CSolid::E43Vf6C`). The calls outside the body go through the original; the body

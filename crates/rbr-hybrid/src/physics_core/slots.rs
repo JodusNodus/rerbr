@@ -12,7 +12,7 @@ use super::passenger_step::SLOT_24;
 use super::{E37_EDGE_EDGE, EMPTY_HOOK, LOOKUP_TWIN, TEMPS, WALKER};
 use crate::entities::Op;
 use crate::rigid_body::{on_solids, solid_word};
-use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
+use crate::{Ctx, Decline, Host, Regs, Return};
 
 /// thiscall `()`: `CSolid::E43Vf5C`: `CEntity::E43Vf5C` on the solid, then its slot 24.
 pub(crate) fn dispatch_vf5c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -85,13 +85,6 @@ pub(super) fn unlink_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(layout::unlink_with_eax(&mut ctx.mem, r.ecx, r.eax), 0))
 }
 
-/// thiscall `(item)` on a list: `E34LinkList10::PushItem` (`layout::push_item`); eax is the item.
-pub(super) fn push_item(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let item = r.stack[0];
-    layout::push_item(&mut ctx.mem, r.ecx, item);
-    Ok(Return::void(item, 4))
-}
-
 /// thiscall `(object)` on the state: `CPhysics::CState::RegWall` (`layout::register_entity`). The object's slots are entered
 /// 12 bytes below the entry, as the original's.
 pub(super) fn reg_wall(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -112,12 +105,6 @@ fn temps(r: &Regs) -> u32 {
 /// The virtual slot at vtable offset `offset` of the object at `obj`.
 pub(super) fn vslot(mem: &Mem, obj: u32, offset: u32) -> u32 {
     mem.u32(mem.u32(obj) + offset)
-}
-
-/// thiscall `(tag)` on the manager: `CMaterialManager::Tag520940`, the entry the tag names (eax).
-pub(super) fn tag_520940(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = rbr_physics::physics_core::layout::material::tag_entry(&ctx.mem, r.ecx, r.stack[0]);
-    Ok(Return::void(eax, 4))
 }
 
 /// fastcall `()` on the mounted body: `E45_M1920`, whether its state is 1 (eax 0 or 1).
@@ -187,25 +174,11 @@ pub(super) fn m46a0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(id, 16))
 }
 
-/// thiscall `(dst, n)`: `E46Vec::Add`, adds the vector to the `n` rows at `dst` (eax is `dst`).
-pub(super) fn vec_add(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [dst, n, ..] = r.stack;
-    layout::vec_add(&mut ctx.mem, r.ecx, dst, n);
-    Ok(Return::void(dst, 8))
-}
-
 /// thiscall `(out, b)`: `E46Mat::Mul`, the rows at `b` times the matrix into `out` (eax is `out`).
 pub(super) fn mat_mul(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [out, b, ..] = r.stack;
     layout::mat_mul(&mut ctx.mem, r.ecx, out, b);
     Ok(Return::void(out, 8))
-}
-
-/// thiscall `(dst, n)`: `E46Mat::ScaleRows`, scales the `n` rows at `dst` (eax is `dst`).
-pub(super) fn scale_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [dst, n, ..] = r.stack;
-    layout::mat_scale_rows(&mut ctx.mem, r.ecx, dst, n);
-    Ok(Return::void(dst, 8))
 }
 
 /// The body's calls of `E46_Accum250`: the hook and the point's `S30` through its vtable, the base and the walk (on the
@@ -247,12 +220,4 @@ pub(super) fn accumulate_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decli
     super::on_core(ctx, |core| layout::accumulate_forces(core, &mut calls, r.ecx, temps(r)))
         .ok_or(Decline::Unsupported(sentinel))?;
     Ok(Return::void(0, 0))
-}
-
-/// thiscall `(point*, out*)`, `ret 8`: `E46_Offset540`, the velocity term of a point on the body.
-pub(super) fn offset_540(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, out, ..] = r.stack;
-    super::on_core(ctx, |core| layout::point_velocity_at(core, r.ecx, point, out));
-    // eax: the last cross product's output, the original's local at its aligned frame - 0x20.
-    Ok(Return::void(aligned_frame(r.esp) - 0x20, 8))
 }

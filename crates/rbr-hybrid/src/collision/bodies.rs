@@ -188,14 +188,6 @@ pub(super) fn body_vf40(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(layout::reset_body(&mut Vf40Callees { host: ctx.host, mem: &ctx.mem, sp: r.esp }, r.ecx), 0))
 }
 
-/// CBody::ClearGrid (0x4e11a0): thiscall on the body with the source and two bound vectors; eax is the grid's wall
-/// sync result, or `u32::MAX` when no grid is attached.
-pub(super) fn body_clear_grid(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [source, lower, upper, ..] = r.stack;
-    let flag = layout::clear_grid(&mut BodyCallees(ctx.host), &ctx.mem, r.ecx, source, lower, upper);
-    Ok(Return::void(flag, 12))
-}
-
 /// CBody::Vf118 (0x4e11f0): thiscall on the body; eax is its grid pointer (+0x64).
 pub(super) fn body_grid(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(Body::new(r.ecx).grid(&ctx.mem), 0))

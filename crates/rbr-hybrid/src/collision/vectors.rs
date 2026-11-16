@@ -49,65 +49,9 @@ pub(super) fn float3_length(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::float(f64::from(vector.length3()), 0))
 }
 
-/// thiscall on the 16-byte vector (`ecx`) with the other vector (`other*`); eax is the vector's address.
-pub(super) fn vec16_min(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vec16_min(&mut ctx.mem, r.ecx, r.stack[0]), 4))
-}
-
-/// thiscall, as `vec16_min`, with the lane maxima.
-pub(super) fn vec16_max(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vec16_max(&mut ctx.mem, r.ecx, r.stack[0]), 4))
-}
-
-/// thiscall on the vector `a` (`ecx`) with `(b*, out*)`: `out = a - b`; eax is `out`.
-pub(super) fn vec_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, out, ..] = r.stack;
-    Ok(Return::void(layout::vec3_sub(&mut ctx.mem, r.ecx, b, out), 8))
-}
-
-/// thiscall on the vector `a` (`ecx`) with `(scale, out*)`: `out = a * scale`; eax is `out`.
-pub(super) fn vec_add_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, c, out, ..] = r.stack;
-    Ok(Return::void(layout::vec3_add_sub(&mut ctx.mem, r.ecx, b, c, out), 12))
-}
-
-pub(super) fn vec_sub_dot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, out, d, ..] = r.stack;
-    let dot = layout::vec3_sub_dot(&mut ctx.mem, r.ecx, b, out, d);
-    Ok(Return::float_with_eax(r.ecx, dot as f64, 12))
-}
-
-pub(super) fn vec_cross_dot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, out, d, ..] = r.stack;
-    let dot = layout::vec3_cross_dot(&mut ctx.mem, r.ecx, b, out, d);
-    Ok(Return::float_with_eax(out, dot as f64, 12))
-}
-
-pub(super) fn vec_dot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, ..] = r.stack;
-    let dot = layout::vec3_dot(&ctx.mem, r.ecx, b);
-    Ok(Return::float_with_eax(r.ecx, dot as f64, 4))
-}
-
 pub(super) fn vec_cross(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [b, out, ..] = r.stack;
     Ok(Return::void(layout::vec3_cross(&mut ctx.mem, r.ecx, b, out), 8))
-}
-
-pub(super) fn vec_normalize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vec3_normalize(&mut ctx.mem, r.ecx), 0))
-}
-
-/// thiscall `(out, s)`: `E33Vec4::Scaled` (0x4e0700), `out = this * s` over four lanes. Returns `out` (eax); pops 8.
-pub(super) fn e33_scaled(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, scale, ..] = r.stack;
-    layout::scaled(&mut ctx.mem, r.ecx, out, f32::from_bits(scale));
-    Ok(Return::void(out, 8))
-}
-
-pub(super) fn vec_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [scale, out, ..] = r.stack;
-    Ok(Return::void(layout::vec3_scale(&mut ctx.mem, r.ecx, f32::from_bits(scale), out), 8))
 }
 
 /// E33Vec4::MinMaxA (0x4e0ae0): thiscall on the pair with `(src, lo, hi)`, ret 0xc; eax is `hi`.

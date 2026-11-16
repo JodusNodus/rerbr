@@ -24,8 +24,8 @@ use crate::entities::{EntityWalk, COPY16_WALK, STATE_EMIT};
 pub(crate) use contact::contact_vote_direct;
 use contact::{big_a, big_b, e43vf70, vf81x};
 use force_pass::{e43vf64, mounted_vf128, response_run};
-use pose::{e43vf6c, integrate_pose};
-use quats::{quat_mul, quat_norm, quat_normalize, set_from_quat};
+use pose::e43vf6c;
+use quats::{quat_mul, quat_norm};
 use rbr_physics::entities::tree::ChildCall;
 pub(crate) use slots::{accumulate_direct, e43vf138, impulse_run};
 use slots::{
@@ -151,7 +151,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("rigid-body", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 49] = [
+pub static BINDINGS: [Binding; 46] = [
     bind(NEW_DEF, "CSolid::NewDef", new_def),
     bind(E46_IMPULSE640, "E46Impulse::Impulse640", clamp_velocity_along),
     bind(E43VF13C, "CSolid::E43Vf13C", inverse_mass),
@@ -189,14 +189,11 @@ pub static BINDINGS: [Binding; 49] = [
     bind(0x52ac80, "CSolid::E43Vf9C", scale_add_rows),
     bind(VF81X, "CSolid::Vf81x", vf81x),
     bind(BIG_A, "CSolid::BigA", big_a),
-    bind(VFC8, "CSolid::VfC8", integrate_pose),
     bind(BIG_B, "CSolid::BigB", big_b),
     bind(E43VF6C, "CSolid::E43Vf6C", e43vf6c),
     bind(E43VF70, "CSolid::E43Vf70", e43vf70),
     bind(E43VF64, "CSolid::E43Vf64", e43vf64),
-    bind(0x43c6e0, "E01Mat3::SetFromQuat", set_from_quat),
     bind(0x483dd0, "E15Shell::M83DD0", quat_mul),
-    bind(0x4921a0, "E18_QuatNormalize", quat_normalize),
     bind(0x4e4c70, "E34Quat::Norm", quat_norm),
     bind(STEP76, "CSolid::Step76", step76),
     bind(VF85, "CSolid::Vf85", vf85),
