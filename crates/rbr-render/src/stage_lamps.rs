@@ -4,8 +4,8 @@
 //! (`bulbglo_long`, `spot_long`) or a star about a flare (`flare`). The game draws them alpha-tested, a hard white
 //! shape. Here each sprite is a lamp ([`find`]): at the sprite's brightest point (its texture's peak alpha), pointing
 //! from there along the sprite toward the rest of its light (down a cone; none for a star). At night the lamps light
-//! the stage (`street_sum` in `night.wgsl`) and their sprites are drawn as the light in the air, added to the frame
-//! (`Renderer::set_stage_lamps`), not as the stage's draws.
+//! the stage (`street_sum` in `night.wgsl`), the rain and the particles, and each shows as a bulb
+//! (`stage_lamps_pass`); the sprites, the game's painted beams, are no longer drawn (`Renderer::set_stage_lamps`).
 
 use crate::foliage::test_texels;
 use crate::stage::{Anchor, Mesh, Stage, TextureRef};
@@ -39,9 +39,14 @@ const UNITS_PER_CANDELA: f32 = 3000.0 / 20000.0;
 const STREET_SPRITE: f32 = 8.0;
 const DIMMEST: f32 = 0.02;
 
+/// `lamp`'s size against a street lamp's, 0 to 1 (its sprite's against [`STREET_SPRITE`]).
+pub fn scale(lamp: &StageLamp) -> f32 {
+    (lamp.size / STREET_SPRITE).min(1.0)
+}
+
 /// `lamp`'s intensity down its axis in the lamps' units (`street_sum` in `night.wgsl`).
 pub fn intensity(lamp: &StageLamp) -> f32 {
-    let scale = (lamp.size / STREET_SPRITE).min(1.0);
+    let scale = scale(lamp);
     CANDELA * UNITS_PER_CANDELA * (scale * scale).max(DIMMEST)
 }
 
@@ -114,24 +119,6 @@ fn uv_of(i: usize, width: usize, height: usize) -> Vec2 {
     Vec2::new(((i % width) as f32 + 0.5) / width as f32, ((i / width) as f32 + 0.5) / height as f32)
 }
 
-/// The stage's lamps and their sprites, lifted out of its draws ([`take`]).
-#[derive(Debug, Clone, Default)]
-pub struct StageLamps {
-    pub lamps: Vec<StageLamp>,
-    pub sprites: Vec<Sprite>,
-}
-
-/// One light sprite texture and the triangles drawn with it.
-#[derive(Debug, Clone)]
-pub struct Sprite {
-    /// The texture's texels (the level no wider than 256), RGBA.
-    pub width: u32,
-    pub height: u32,
-    pub rgba: Vec<u8>,
-    /// Three corners a triangle: stage position and texture coordinates.
-    pub corners: Vec<([f32; 3], [f32; 2])>,
-}
-
 /// Words one of which a light sprite texture's file name holds (upper case): `bulbglo_long`, `spot_long`,
 /// `bulbglowneo`, `flare`. White soft cut-outs are other things too: clouds (307's `Clloud`), wire fences
 /// (`FenceW`), road signs, the spectators' camera flashes (`flash`), snowfall.
@@ -139,10 +126,9 @@ const NAMED: [&str; 6] = ["GLO", "SPOT", "BULB", "LIGHT", "LAMP", "FLARE"];
 
 /// Finds the stage's lamps ([`StageLamp`]: one per light sprite, its crossed quads one lamp) and takes their sprites'
 /// draws out of the stage's meshes. The textures must be loaded (`Stage::load_textures`).
-pub fn take(stage: &mut Stage) -> StageLamps {
+pub fn take(stage: &mut Stage) -> Vec<StageLamp> {
     let mut shapes: HashMap<TextureRef, Option<Shape>> = HashMap::new();
-    let mut found = StageLamps::default();
-    let mut sprites: HashMap<TextureRef, Sprite> = HashMap::new();
+    let mut found: Vec<StageLamp> = Vec::new();
     for m in 0..stage.meshes.len() {
         if stage.meshes[m].anchor != Anchor::World {
             continue;
@@ -156,36 +142,21 @@ pub fn take(stage: &mut Stage) -> StageLamps {
                 continue;
             };
             let mesh = &stage.meshes[m];
-            let sprite = sprites.entry(texture).or_insert_with(|| {
-                let (width, mut rgba) = test_texels(stage, texture).expect("a light sprite's texels");
-                let height = (rgba.len() / 4 / width) as u32;
-                // The alpha stretched to its peak, which is the lamp itself (`fs_sprite`).
-                let peak = rgba.chunks_exact(4).map(|t| t[3]).max().unwrap_or(255).max(1);
-                rgba.chunks_exact_mut(4).for_each(|t| t[3] = (u16::from(t[3]) * 255 / u16::from(peak)) as u8);
-                Sprite { width: width as u32, height, rgba, corners: Vec::new() }
-            });
             for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
-                let triangle = [t[0], t[1], t[2]];
-                sprite
-                    .corners
-                    .extend(triangle.map(|i| (mesh.vertices[i as usize].position, mesh.vertices[i as usize].uv0)));
-                let Some(lamp) = triangle_lamp(mesh, triangle, shape, texture) else { continue };
-                match found.lamps.iter_mut().find(|l| l.position.distance(lamp.position) < SAME_LAMP) {
+                let Some(lamp) = triangle_lamp(mesh, [t[0], t[1], t[2]], shape, texture) else { continue };
+                match found.iter_mut().find(|l| l.position.distance(lamp.position) < SAME_LAMP) {
                     Some(same) => {
                         same.size = same.size.max(lamp.size);
                         if same.axis == Vec3::ZERO {
                             same.axis = lamp.axis;
                         }
                     }
-                    None => found.lamps.push(lamp),
+                    None => found.push(lamp),
                 }
             }
         }
         stage.meshes[m].draws = kept;
     }
-    let mut sprites: Vec<_> = sprites.into_iter().collect();
-    sprites.sort_by_key(|(texture, _)| *texture);
-    found.sprites = sprites.into_iter().map(|(_, sprite)| sprite).collect();
     found
 }
 

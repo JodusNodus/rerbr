@@ -687,8 +687,8 @@ impl Renderer {
         if let Some(shadow) = &self.car_shadow {
             shadow.draw(&mut pass, &self.queue, view_projection, light, lamps);
         }
-        if let Some(sprites) = &self.lamp_sprites {
-            sprites.draw(&mut pass, &self.queue, view_projection, self.lamp_glow());
+        if let Some(bulbs) = &self.lamp_bulbs {
+            bulbs.draw(&mut pass, &self.queue, view_projection, size.height, self.lamp_glow());
         }
         // The main view without reflections ends here; with them, the particles go over the reflections. The mirrors
         // draw the game's particles.
@@ -814,7 +814,7 @@ impl Renderer {
         self.atmosphere.night || self.atmosphere.relight.is_some_and(|r| r.lamps > 0.01)
     }
 
-    /// The stage's lamps' sprites' look ([`crate::stage_lamps_pass`]): as lit as the lamps, in the frame's exposure
+    /// The stage's lamps' bulbs' look ([`crate::stage_lamps_pass`]): as lit as the lamps, in the frame's exposure
     /// (`pre_exposure` in `shader.wgsl`) and fog.
     fn lamp_glow(&self) -> crate::stage_lamps_pass::Glow {
         let a = &self.atmosphere;

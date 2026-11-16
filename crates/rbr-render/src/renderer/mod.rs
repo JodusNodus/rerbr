@@ -179,10 +179,10 @@ pub struct Renderer {
     skid_marks: Option<crate::skidmarks_pass::SkidPass>,
     /// The game's car shadow decal ([`crate::car_shadow`]), made by the first [`Renderer::set_car_shadow`].
     car_shadow: Option<crate::skidmarks_pass::SkidPass>,
-    /// The stage's lamps ([`Renderer::set_stage_lamps`]): they light the stage at night and at dusk, and their sprites
+    /// The stage's lamps ([`Renderer::set_stage_lamps`]): they light the stage at night and at dusk, and their bulbs
     /// glow ([`crate::stage_lamps_pass`]).
     stage_lamps: Vec<crate::stage_lamps::StageLamp>,
-    lamp_sprites: Option<crate::stage_lamps_pass::GlowPass>,
+    lamp_bulbs: Option<crate::stage_lamps_pass::BulbPass>,
     /// The particle billboards ([`Renderer::set_particles`]), drawn last in the main view.
     particles: Option<particles::gpu::Pass>,
     /// The windscreen's drops ([`Renderer::set_glass`]), drawn after the particles.
@@ -282,11 +282,11 @@ impl Renderer {
         marks.set_quads(&self.device, &mut self.uploads, quads);
     }
 
-    /// Sets the stage's lamps ([`crate::stage_lamps::take`]): their light and their sprites' glow.
-    pub fn set_stage_lamps(&mut self, lamps: &crate::stage_lamps::StageLamps) {
-        self.stage_lamps = lamps.lamps.clone();
-        self.lamp_sprites = (!lamps.sprites.is_empty())
-            .then(|| crate::stage_lamps_pass::GlowPass::new(&self.device, &self.queue, SCENE_FORMAT, &lamps.sprites));
+    /// Sets the stage's lamps ([`crate::stage_lamps::take`]): their light and their bulbs.
+    pub fn set_stage_lamps(&mut self, lamps: &[crate::stage_lamps::StageLamp]) {
+        self.stage_lamps = lamps.to_vec();
+        self.lamp_bulbs =
+            (!lamps.is_empty()).then(|| crate::stage_lamps_pass::BulbPass::new(&self.device, SCENE_FORMAT, lamps));
     }
 
     /// Sets our tyre marks to draw from `quads` (`Enhance::marks`, in place of the skid marks).

@@ -20,15 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         s.load_textures(maps)?;
-        let taken = rbr_render::stage_lamps::take(&mut s);
-        let lamps = taken.lamps;
+        let lamps = rbr_render::stage_lamps::take(&mut s);
         let cones = lamps.iter().filter(|l| l.axis != glam::Vec3::ZERO).count();
-        println!(
-            "{name}: {} lamps ({cones} cones), {} sprite textures, {} sprite triangles",
-            lamps.len(),
-            taken.sprites.len(),
-            taken.sprites.iter().map(|s| s.corners.len() / 3).sum::<usize>()
-        );
+        println!("{name}: {} lamps ({cones} cones)", lamps.len());
         let mut by: std::collections::BTreeMap<String, (usize, f32)> = Default::default();
         for l in &lamps {
             let name =
