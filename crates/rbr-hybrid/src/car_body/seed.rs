@@ -7,7 +7,8 @@ use rbr_physics::car_body::setup::{self, SetupCalls};
 use rbr_physics::car_body::wiring::{self, WiringCalls};
 use rbr_physics::mem::Mem;
 
-use super::step::{EMIT_DF0, MOTION_PROBE, SLOT_S8C};
+use super::step::SLOT_S8C;
+use super::{enter, Frame};
 use crate::vcu::READ_PACKET;
 use crate::{Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
@@ -61,7 +62,8 @@ impl<S: CarStore> ControlCalls<S> for Seed<'_> {
 
     fn motion_probe(&mut self, car: u32) -> (u32, u32) {
         let out = self.esp + 4;
-        let ret = self.host.call_at(self.sp(4), MOTION_PROBE, car, &[out]).eax;
+        let sp = self.sp(4);
+        let ret = super::members::motion_probe_at(self.host, &mut self.mem, sp, car, out);
         (ret, self.mem.u32(out))
     }
 
@@ -74,7 +76,8 @@ impl<S: CarStore> ControlCalls<S> for Seed<'_> {
     }
 
     fn assist(&mut self, car: u32, words: [u32; 3]) {
-        self.host.call_at(self.sp(12), EMIT_DF0, car, &words);
+        let sp = self.sp(12);
+        super::assist::assist_at(self.host, &mut self.mem, sp, car, words);
     }
 }
 
@@ -86,9 +89,19 @@ pub(super) const SLOT_S158: u32 = 0x158;
 /// thiscall `(p)`, `ret 4`: `CCar::UpdateSeed`, the car's per-step seed (the control emit's connection). The original's
 /// last load leaves the new step count in eax.
 pub(super) fn update_seed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Seed { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp };
-    let steps = super::on_car(ctx, |m| control::apply_control(&mut calls, m, r.ecx, r.stack[0], r.esp - 0x20));
+    let steps = update_seed_body(ctx.host, &mut ctx.mem, r.esp, r.ecx, r.stack[0]);
     Ok(Return::void(steps, 4))
+}
+
+fn update_seed_body(host: &dyn Host, mem: &mut Mem, esp: u32, car: u32, p: u32) -> u32 {
+    let mut calls = Seed { mem: mem.clone(), host, esp };
+    super::on_car_in(host, mem, |m| control::apply_control(&mut calls, m, car, p, esp - 0x20))
+}
+
+/// `UpdateSeed` on `car` as the host's call at `sp`; returns eax.
+pub(super) fn update_seed_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, p: u32) -> u32 {
+    let esp = enter(host, mem, sp, &[p]);
+    update_seed_body(host, mem, esp, car, p)
 }
 
 /// fastcall `(replay)`: `E19IsState2`, 1 when the replay is in its state 2.
@@ -140,11 +153,10 @@ impl SetupCalls for Seeded<'_> {
     }
 
     fn wire_damage(&mut self, car: u32) {
-        self.host.call(UPDATE_MRR, car, &[]);
+        wire_damage_at(self.host, &mut self.mem, 0, car);
     }
 }
 
-const UPDATE_MRR: u32 = 0x4E9C70;
 /// `CMultiSignal1<const CSigMrRCarInit&>::Emit` (0x4e8cb0): the replay manager records the car (not physics).
 pub(super) const EMIT_CAR_INIT: u32 = 0x4E8CB0;
 /// `UpdateMrr`'s locals below its return address: the seed block `UpdateSeed` takes (0x20 bytes) and the emit's pair.
@@ -180,10 +192,12 @@ impl WiringCalls for Mrr<'_> {
     }
 }
 
-/// thiscall `()`: `CCar::UpdateMrr`, the car's wiring to its damage object and its bodies' first frames. The seed block
-/// and the pair are at the original's frame offsets, so the block's unset word is the stack's as in the original.
-pub(super) fn wire_damage(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Mrr { mem: ctx.mem.clone(), host: ctx.host, pair: r.esp - MRR_PAIR };
-    wiring::wire_damage(&mut calls, &mut ctx.mem, r.ecx, r.esp - MRR_BLOCK);
-    Ok(Return::void(0, 0))
+/// `CCar::UpdateMrr` (0x4e9c70, thiscall `()`) on `car`, as the host's call at `sp`: the car's wiring to its damage object
+/// and its bodies' first frames. The seed block and the pair are at the original's frame offsets, so the block's unset
+/// word is the stack's as in the original.
+fn wire_damage_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32) {
+    let esp = enter(host, mem, sp, &[]);
+    let frame = Frame::new(host, esp);
+    let mut calls = Mrr { mem: mem.clone(), host: &frame, pair: esp - MRR_PAIR };
+    wiring::wire_damage(&mut calls, mem, car, esp - MRR_BLOCK);
 }

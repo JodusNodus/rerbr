@@ -7,7 +7,7 @@ use rbr_physics::math::quat;
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
-use super::on_car;
+use super::{enter, on_car, on_car_in, Frame};
 use crate::collision::{BodyCallees, E37_EDGE_EDGE};
 use crate::entities::Op;
 use crate::rigid_body::{set_solid_word, VF16_HELPER};
@@ -82,8 +82,6 @@ pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 const DRIVE: u32 = 0x4b0;
 const ENGINE_SIM: u32 = 0x690;
 pub(super) const FLOW_OBJECT: u32 = 0x0165fa90;
-pub(super) const M5666B0: u32 = 0x5666b0;
-pub(super) const SAMPLER_54A0: u32 = 0x4e54a0;
 
 /// `r` with the member as `this`.
 fn member(r: &Regs, offset: u32) -> Regs {
@@ -164,16 +162,6 @@ pub(super) fn forward_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::float(f64::from(on_car(ctx, |m| m.forward_speed(r.ecx))), 0))
 }
 
-/// fastcall: `E60Flow::M5666b0` (0x5666b0), the damage-select word `MotionProbe` asks the flow.
-pub(super) fn flow_m5666b0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.damage_select(r.ecx), 0))
-}
-
-/// thiscall: `E60Flow::M566640` (0x566640), the flow check `Update9AF0` makes: 1 when the flow holds.
-pub(super) fn flow_m566640(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.flow_holds(r.ecx), 0))
-}
-
 /// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`. The matrix may be a held body's and
 /// `out` a solid's orientation (the hinged body's `SimD160`), read and stored held.
 pub(super) fn to_quat(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -220,12 +208,15 @@ pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Retu
     Ok(Return::void(eax, 0))
 }
 
-/// thiscall `(out*)`: the car's integer surface probe (`MotionProbe`).
-pub(super) fn motion_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Car { mem: ctx.mem.clone(), host: ctx.host, scratch: probe_scratch(r.esp) };
-    let outcome = on_car(ctx, |m| probe::motion_probe(&mut calls, m, r.ecx));
-    ctx.mem.set_u32(r.stack[0], outcome.out());
-    Ok(Return::void(outcome.ret(), 4))
+/// `MotionProbe` (0x4e7730, thiscall `(out*)`) on `car`, as the host's call at `sp`: the car's integer surface probe, its
+/// `out` word stored; returns eax.
+pub(super) fn motion_probe_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, out: u32) -> u32 {
+    let esp = enter(host, mem, sp, &[out]);
+    let frame = Frame::new(host, esp);
+    let mut calls = Car { mem: mem.clone(), host: &frame, scratch: probe_scratch(esp) };
+    let outcome = on_car_in(&frame, mem, |m| probe::motion_probe(&mut calls, m, car));
+    mem.set_u32(out, outcome.out());
+    outcome.ret()
 }
 
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.

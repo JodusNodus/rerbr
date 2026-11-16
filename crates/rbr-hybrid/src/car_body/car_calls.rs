@@ -12,7 +12,7 @@ use rbr_physics::car_body::{self as car, layout};
 use rbr_physics::math::vec::{Vec3, Vec4};
 use rbr_physics::mem::Mem;
 
-use super::members::{FLOW_OBJECT, M5666B0, SAMPLER_54A0};
+use super::members::FLOW_OBJECT;
 use super::step::SLOT_S8C;
 use crate::car_body::{on_car, ADD_EDGE};
 use crate::entities::{Op, BODY_COMPOSE, NODE_OF};
@@ -23,7 +23,12 @@ use rbr_physics::car_body::store::CarStore;
 /// Where the calls' vectors and words go: the free stack below the binding's entry, past the return slot. A nested run
 /// starts 0x1000 below the caller's stack pointer, so it does not reach these.
 pub(super) fn scratch(r: &Regs) -> u32 {
-    (r.esp - 0x100) & !0xf
+    scratch_at(r.esp)
+}
+
+/// [`scratch`] of a binding entered at `esp`.
+pub(super) fn scratch_at(esp: u32) -> u32 {
+    (esp - 0x100) & !0xf
 }
 
 /// Scratch offsets: two vectors for a walk (`A`, `C`), a vector for a send (`SEND`), a second output (`B`), the
@@ -81,7 +86,6 @@ pub(super) const INDEX_LIMIT: u32 = 0x20;
 /// `StepEngine`'s drive step (`CDrive::Step1E0`), the snapshot step (`Snap9360`) and its profiler sample (`g_8ef668`) and
 /// name ("CCar::Hook").
 pub(super) const DRIVE_STEP: u32 = 0x50A1E0;
-pub(super) const SNAP_9360: u32 = 0x4E9360;
 pub(super) const STEP_ENGINE_SAMPLE: u32 = 0x8EF668;
 pub(super) const STEP_ENGINE_NAME: u32 = 0x738AF4;
 
@@ -183,6 +187,11 @@ pub(super) fn car_calls<'a>(ctx: &Ctx<'a>, r: &Regs) -> Car<'a> {
     Car { mem: ctx.mem.clone(), host: ctx.host, scratch: scratch(r) }
 }
 
+/// [`car_calls`] of a binding run directly at `esp` ([`super::enter`]): its calls placed below `esp`.
+pub(super) fn car_calls_at<'a>(host: &'a dyn Host, mem: &Mem, esp: u32) -> Car<'a> {
+    Car { mem: mem.clone(), host, scratch: scratch_at(esp) }
+}
+
 /// MotionProbe's aligned local-frame base: locals begin after its aligned 0x78-byte frame and the saved esi/edi.
 pub(super) fn probe_scratch(entry_esp: u32) -> u32 {
     aligned_frame(entry_esp) - 0x78 - 8
@@ -217,7 +226,9 @@ impl ProbeCalls for Car<'_> {
     }
 
     fn flow_gate(&mut self) -> u32 {
-        self.host.call(M5666B0, self.mem.u32(FLOW_OBJECT), &[]).eax
+        let flow = self.mem.u32(FLOW_OBJECT);
+        super::enter(self.host, &mut self.mem, 0, &[]);
+        self.mem.damage_select(flow)
     }
 
     fn to_world(&mut self, car: u32, v: Vec3) -> Vec3 {
@@ -231,7 +242,7 @@ impl ProbeCalls for Car<'_> {
     fn sample_surface(&mut self, car: u32) -> Sample {
         let big = self.scratch + 0x30;
         let small = self.scratch + 0x40;
-        let found = self.host.call(SAMPLER_54A0, car, &[car + 0x140, big, small]).eax;
+        let found = super::step::vote_probe_at(self.host, &mut self.mem, 0, [car + 0x140, big, small]);
         Sample { found, first: self.mem.u32(big + 0x44), second: self.mem.u32(big + 0x48) }
     }
 }
