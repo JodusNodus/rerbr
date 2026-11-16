@@ -9,6 +9,11 @@
 //! A positive magnitude turns the wheel left (SDL's level on `SDL_HAPTIC_STEERING_AXIS`, measured on a Logitech
 //! G923 under Linux): the force opposes the steering, so it centres the wheel. `inverse` flips it for a wheel that
 //! turns the other way.
+//!
+//! On Windows the haptic is opened through the wheel's joystick ([`open_device`]): DirectInput lets one open of a
+//! force-feedback device take it exclusively, and SDL keeps one joystick per device in a process, which the input
+//! thread's open shares. A haptic opened on its own is a second open of the device (SDL's FIXME in
+//! `SDL_dinputhaptic.c`), and it or the joystick then fails.
 
 use std::collections::BTreeMap;
 use std::ffi::CStr;
@@ -22,6 +27,19 @@ use rbr_gameplay::ffb::{self, Settings, MAX_MAGNITUDE};
 use sdl3_sys::error::SDL_GetError;
 use sdl3_sys::haptic::*;
 use sdl3_sys::init::{SDL_InitSubSystem, SDL_QuitSubSystem, SDL_INIT_HAPTIC, SDL_INIT_JOYSTICK};
+use sdl3_sys::joystick::{
+    SDL_CloseJoystick, SDL_GetJoystickGUIDForID, SDL_GetJoystickNameForID, SDL_GetJoystickProductForID,
+    SDL_GetJoystickTypeForID, SDL_GetJoystickVendorForID, SDL_GetJoysticks, SDL_Joystick, SDL_JoystickID,
+    SDL_OpenJoystick,
+};
+
+#[cfg(windows)]
+mod dinput_probe;
+
+/// The drive log's line for the force feedback's device, before its name ([`Wheel::name`]), and for why there is
+/// none, before the reason; the launcher reads the last drive's back.
+pub const LOG_ON: &str = "viewer: force feedback on ";
+pub const LOG_OFF: &str = "viewer: no force feedback: ";
 
 /// The surfaces of [`Options::sensitivity`], as its keys name them.
 pub const SURFACES: [&str; 3] = ["gravel", "tarmac", "snow"];
@@ -817,6 +835,19 @@ fn level(magnitude: i32) -> i16 {
     (-32768 + (m + MAX_MAGNITUDE) * 65535 / (2 * MAX_MAGNITUDE)) as i16
 }
 
+/// The constant force's shapes, tried in turn until the device takes one (issue #7: a G29 under Windows took none of
+/// the first, "Unable to create effect", and SDL drops DirectInput's result): SDL's steering axis, infinite (measured
+/// on Linux); the same for an hour, as SDL's DirectInput passes `length * 1000` µs in a 32-bit `unsigned long`, which
+/// wraps infinite to 4294966296 µs (the loop restarts the effect at every update); NGP's own direction, cartesian
+/// {1, 0} on the device's force axes (`notes/ngp.md`), for an hour.
+const SHAPES: [(&str, SDL_HapticDirectionType, u32); 3] = [
+    ("steering axis", SDL_HAPTIC_STEERING_AXIS, SDL_HAPTIC_INFINITY),
+    ("steering axis for an hour", SDL_HAPTIC_STEERING_AXIS, HOUR_MS),
+    ("cartesian {1, 0} for an hour", SDL_HAPTIC_CARTESIAN, HOUR_MS),
+];
+
+const HOUR_MS: u32 = 3_600_000;
+
 /// The thread: opens the device, reports its name or the error on `ready`, then updates the effect until stopped.
 fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, String>>) {
     // SAFETY: the SDL calls below run on this thread only, on the haptic handle it opened and closes.
@@ -825,30 +856,46 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
             let _ = ready.send(Err(format!("SDL haptic: {}", sdl_error())));
             return;
         }
-        let device = open_device(options.device.as_deref());
-        let (haptic, name) = match device {
+        log_devices();
+        // On Windows the joysticks that open before the force takes a device: a device opened on its own holds the
+        // wheel exclusively, which must not cost the drive its controls (below).
+        let openable = if cfg!(windows) { openable() } else { Vec::new() };
+        let (haptic, joystick, name, made) = match open_device(options.device.as_deref(), |haptic| make(haptic)) {
             Ok(found) => found,
             Err(e) => {
-                let _ = ready.send(Err(e));
                 SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
+                #[cfg(windows)]
+                dinput_probe::probe().iter().for_each(|line| eprintln!("ffb: DirectInput probe: {line}"));
+                let _ = ready.send(Err(e));
                 return;
             }
         };
-        let mut effect: SDL_HapticEffect = std::mem::zeroed();
-        effect.constant.r#type = SDL_HAPTIC_CONSTANT;
-        effect.constant.direction.r#type = SDL_HAPTIC_STEERING_AXIS;
-        effect.constant.length = SDL_HAPTIC_INFINITY;
-        let id = SDL_CreateHapticEffect(haptic, &effect);
-        if id.0 < 0 || !SDL_RunHapticEffect(haptic, id, 1) {
-            let _ = ready.send(Err(format!("{name}: the constant force: {}", sdl_error())));
-            SDL_CloseHaptic(haptic);
+        let Made { mut effect, id, shape, failed } = made;
+        let lost: Vec<String> = openable
+            .into_iter()
+            .filter_map(|(joystick, name)| opens(joystick).err().map(|e| format!("{name}: {e}")))
+            .collect();
+        if !lost.is_empty() {
+            SDL_StopHapticEffect(haptic, id);
+            SDL_DestroyHapticEffect(haptic, id);
+            close(haptic, joystick);
             SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
+            let _ = ready.send(Err(format!(
+                "{name} holds the wheel and its controls no longer open ({}); off, so the controls keep it",
+                lost.join(", ")
+            )));
             return;
         }
-        let _ = ready.send(Ok(name));
+        let _ = ready.send(Ok(if shape == 0 {
+            name
+        } else {
+            format!("{name} ({}; {})", SHAPES[shape].0, failed.join("; "))
+        }));
+        let features = SDL_GetHapticFeatures(haptic);
         let period = Duration::from_secs_f64(1.0 / f64::from(options.rate.clamp(1, 1000)));
         // The smoothed magnitude and when it was taken; a pause drops it to 0 at once.
         let (mut smoothed, mut then) = (0.0, Instant::now());
+        let mut log = Log::new(features & u32::from(SDL_HAPTIC_STATUS.0) != 0);
         while !shared.stop.load(Ordering::Relaxed) {
             let steering = f32::from_bits(shared.steering.load(Ordering::Relaxed));
             let dt = then.elapsed().as_secs_f32();
@@ -862,15 +909,149 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
                 ffb::dead_zone(smoothed.round() as i32, steering, &options.settings)
             };
             effect.constant.level = level(m);
-            SDL_UpdateHapticEffect(haptic, id, &effect);
-            SDL_RunHapticEffect(haptic, id, 1);
+            let updated = SDL_UpdateHapticEffect(haptic, id, &effect);
+            let update_error = if updated { None } else { Some(sdl_error()) };
+            let ran = SDL_RunHapticEffect(haptic, id, 1);
+            let run_error = if ran { None } else { Some(sdl_error()) };
+            log.update(m, update_error, run_error, || SDL_GetHapticEffectStatus(haptic, id));
             std::thread::sleep(period);
         }
+        log.end();
         SDL_StopHapticEffect(haptic, id);
         SDL_DestroyHapticEffect(haptic, id);
-        SDL_CloseHaptic(haptic);
+        close(haptic, joystick);
         SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
     }
+}
+
+/// The thread's account in the drive's log: the first failure of each kind at once, then every 10 s and at the end
+/// the updates, the largest magnitude, the failures and, where the device tells, how often the effect was playing.
+struct Log {
+    start: Instant,
+    window: Instant,
+    status: bool,
+    total: Counts,
+    counts: Counts,
+    update_error: Option<String>,
+    run_error: Option<String>,
+}
+
+#[derive(Default, Clone, Copy)]
+struct Counts {
+    updates: u64,
+    nonzero: u64,
+    largest: i32,
+    update_failed: u64,
+    run_failed: u64,
+    sampled: u64,
+    playing: u64,
+}
+
+impl Counts {
+    fn add(&mut self, other: &Counts) {
+        self.updates += other.updates;
+        self.nonzero += other.nonzero;
+        self.largest = self.largest.max(other.largest);
+        self.update_failed += other.update_failed;
+        self.run_failed += other.run_failed;
+        self.sampled += other.sampled;
+        self.playing += other.playing;
+    }
+
+    fn show(&self) -> String {
+        let playing =
+            if self.sampled == 0 { String::new() } else { format!(", playing {}/{}", self.playing, self.sampled) };
+        format!(
+            "{} updates, {} not 0, largest |magnitude| {}, update failures {}, run failures {}{playing}",
+            self.updates, self.nonzero, self.largest, self.update_failed, self.run_failed
+        )
+    }
+}
+
+impl Log {
+    const WINDOW: Duration = Duration::from_secs(10);
+
+    fn new(status: bool) -> Log {
+        let now = Instant::now();
+        Log {
+            start: now,
+            window: now,
+            status,
+            total: Counts::default(),
+            counts: Counts::default(),
+            update_error: None,
+            run_error: None,
+        }
+    }
+
+    /// One update at magnitude `m` and what SDL answered; `playing` asks the device, once a second at most.
+    fn update(
+        &mut self,
+        m: i32,
+        update_error: Option<String>,
+        run_error: Option<String>,
+        playing: impl FnOnce() -> bool,
+    ) {
+        let c = &mut self.counts;
+        c.updates += 1;
+        c.nonzero += u64::from(m != 0);
+        c.largest = c.largest.max(m.abs());
+        let at = self.start.elapsed().as_secs_f32();
+        for (error, first, count, what) in [
+            (update_error, &mut self.update_error, &mut c.update_failed, "update"),
+            (run_error, &mut self.run_error, &mut c.run_failed, "run"),
+        ] {
+            if let Some(error) = error {
+                *count += 1;
+                if first.is_none() {
+                    eprintln!("ffb: {at:.1} s: the effect's {what} failed: {error}");
+                    *first = Some(error);
+                }
+            }
+        }
+        if self.status && c.updates % 1000 == 1 {
+            c.sampled += 1;
+            c.playing += u64::from(playing());
+        }
+        if self.window.elapsed() >= Self::WINDOW {
+            eprintln!("ffb: {at:.0} s: {}", self.counts.show());
+            self.total.add(&self.counts);
+            self.counts = Counts::default();
+            self.window = Instant::now();
+        }
+    }
+
+    fn end(mut self) {
+        self.total.add(&self.counts);
+        eprintln!("ffb: the drive's {:.0} s: {}", self.start.elapsed().as_secs_f32(), self.total.show());
+    }
+}
+
+/// SDL's version, joysticks and haptic devices, for the drive's log.
+unsafe fn log_devices() {
+    let v = sdl3_sys::version::SDL_GetVersion();
+    let joysticks: Vec<String> = joysticks()
+        .into_iter()
+        .map(|(id, name)| {
+            let mut guid = [0 as std::ffi::c_char; 33];
+            sdl3_sys::guid::SDL_GUIDToString(SDL_GetJoystickGUIDForID(id), guid.as_mut_ptr(), guid.len() as i32);
+            format!(
+                "{name} ({:04x}:{:04x}, type {}, guid {}, gamepad {})",
+                SDL_GetJoystickVendorForID(id),
+                SDL_GetJoystickProductForID(id),
+                SDL_GetJoystickTypeForID(id).0,
+                CStr::from_ptr(guid.as_ptr()).to_string_lossy(),
+                sdl3_sys::gamepad::SDL_IsGamepad(id)
+            )
+        })
+        .collect();
+    let haptics = haptics().map(|l| l.into_iter().map(|(_, name)| name).collect::<Vec<_>>());
+    eprintln!(
+        "ffb: SDL {}.{}.{}, joysticks {joysticks:?}, haptic devices {haptics:?}",
+        v / 1_000_000,
+        v / 1000 % 1000,
+        v % 1000
+    );
 }
 
 /// Whether a device named `name` is the one `part` (an [`Options::device`]) picks.
@@ -878,8 +1059,8 @@ pub fn picks(part: &str, name: &str) -> bool {
     name.to_lowercase().contains(&part.to_lowercase())
 }
 
-/// The names of the force-feedback devices connected, for the choice of [`Options::device`]. None is opened (SDL's
-/// open sets a wheel's gain and autocentre), so one without a constant force is listed too; a drive says so.
+/// The names of the force-feedback devices connected, each once, for the choice of [`Options::device`]. None is opened
+/// (SDL's open sets a wheel's gain and autocentre), so one without a constant force is listed too; a drive says so.
 pub fn devices() -> Result<Vec<String>, String> {
     // SAFETY: SDL's haptic list is read between this thread's init and quit of the subsystems.
     unsafe {
@@ -888,7 +1069,13 @@ pub fn devices() -> Result<Vec<String>, String> {
         }
         let haptics = haptics();
         SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
-        Ok(haptics?.into_iter().map(|(_, name)| name).collect())
+        let mut names: Vec<String> = Vec::new();
+        for (_, name) in haptics? {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        Ok(names)
     }
 }
 
@@ -910,9 +1097,62 @@ unsafe fn haptics() -> Result<Vec<(SDL_HapticID, String)>, String> {
     Ok(list)
 }
 
-/// The first haptic device with a constant force that `part` [`picks`] (any, without one).
-unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), String> {
+/// The haptic and the joystick it is opened through (null when on its own).
+unsafe fn close(haptic: *mut SDL_Haptic, joystick: *mut SDL_Joystick) {
+    SDL_CloseHaptic(haptic);
+    if !joystick.is_null() {
+        SDL_CloseJoystick(joystick);
+    }
+}
+
+/// The constant force made on a device ([`make`]): the effect, its id, the [`SHAPES`] index it took and the shapes
+/// that failed before.
+struct Made {
+    effect: SDL_HapticEffect,
+    id: SDL_HapticEffectID,
+    shape: usize,
+    failed: Vec<String>,
+}
+
+/// The constant force on `haptic`, running, in the first of [`SHAPES`] it takes; or each shape's failure.
+unsafe fn make(haptic: *mut SDL_Haptic) -> Result<Made, String> {
+    let mut failed = Vec::new();
+    for (k, (shape, direction, length)) in SHAPES.into_iter().enumerate() {
+        let mut effect: SDL_HapticEffect = std::mem::zeroed();
+        effect.constant.r#type = SDL_HAPTIC_CONSTANT;
+        effect.constant.direction.r#type = direction;
+        effect.constant.direction.dir[0] = 1;
+        effect.constant.length = length;
+        let id = SDL_CreateHapticEffect(haptic, &effect);
+        if id.0 >= 0 && SDL_RunHapticEffect(haptic, id, 1) {
+            eprintln!("ffb: {shape}: created (effect {}) and running", id.0);
+            return Ok(Made { effect, id, shape: k, failed });
+        }
+        let step = if id.0 < 0 { "create" } else { "run" };
+        eprintln!("ffb: {shape}: {step}: {}", sdl_error());
+        failed.push(format!("{shape}: {}", sdl_error()));
+        if id.0 >= 0 {
+            SDL_DestroyHapticEffect(haptic, id);
+        }
+    }
+    Err(failed.join("; "))
+}
+
+/// The first haptic device with a constant force that `part` [`picks`] (any, without one) and on which `take` makes
+/// it, with the joystick it is opened through: on Windows the joysticks' own first (the module's note), then the haptic
+/// devices on their own. Every one that fails is passed over (issue #7: with Logitech Gaming Software a G29 lists two
+/// haptic devices of its own before the wheel's, one that cannot reset and one with no axes, which takes no effect).
+unsafe fn open_device<T>(
+    part: Option<&str>,
+    mut take: impl FnMut(*mut SDL_Haptic) -> Result<T, String>,
+) -> Result<(*mut SDL_Haptic, *mut SDL_Joystick, String, T), String> {
     let mut seen = Vec::new();
+    if cfg!(windows) {
+        if let Some(found) = open_joystick_device(part, &mut seen, &mut take) {
+            log_passed(&seen);
+            return Ok(found);
+        }
+    }
     for (id, name) in haptics()? {
         if part.is_some_and(|p| !picks(p, &name)) {
             seen.push(name);
@@ -923,17 +1163,122 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
             seen.push(format!("{name} (cannot open: {})", sdl_error()));
             continue;
         }
-        if SDL_GetHapticFeatures(haptic) & u32::from(SDL_HAPTIC_CONSTANT.0) != 0 {
-            return Ok((haptic, name));
+        if SDL_GetHapticFeatures(haptic) & u32::from(SDL_HAPTIC_CONSTANT.0) == 0 {
+            SDL_CloseHaptic(haptic);
+            seen.push(format!("{name} (no constant force)"));
+            continue;
         }
-        SDL_CloseHaptic(haptic);
-        seen.push(format!("{name} (no constant force)"));
+        log_opened(haptic, &name, "on its own");
+        match take(haptic) {
+            Ok(made) => {
+                log_passed(&seen);
+                return Ok((haptic, std::ptr::null_mut(), name, made));
+            }
+            Err(e) => {
+                SDL_CloseHaptic(haptic);
+                seen.push(format!("{name} (on its own: {e})"));
+            }
+        }
     }
     Err(if seen.is_empty() {
         "no force-feedback device".to_owned()
     } else {
         format!("no force-feedback device fits: {}", seen.join(", "))
     })
+}
+
+/// A haptic device opened, for the drive's log.
+unsafe fn log_opened(haptic: *mut SDL_Haptic, name: &str, route: &str) {
+    eprintln!(
+        "ffb: opened {name} {route}: features {:#x}, {} axes, {} effects, {} playing",
+        SDL_GetHapticFeatures(haptic),
+        SDL_GetNumHapticAxes(haptic),
+        SDL_GetMaxHapticEffects(haptic),
+        SDL_GetMaxHapticEffectsPlaying(haptic)
+    );
+}
+
+/// The devices [`open_device`] passed over before the one it opened, for the drive's log.
+fn log_passed(seen: &[String]) {
+    if !seen.is_empty() {
+        eprintln!("ffb: passed over: {}", seen.join(", "));
+    }
+}
+
+/// The first joystick whose haptic has a constant force and a name `part` picks and on which `take` makes it, opened
+/// through it; the others go to `seen`. A joystick's haptic takes the name of the haptic device's list entry, which
+/// [`devices`] lists.
+unsafe fn open_joystick_device<T>(
+    part: Option<&str>,
+    seen: &mut Vec<String>,
+    take: &mut impl FnMut(*mut SDL_Haptic) -> Result<T, String>,
+) -> Option<(*mut SDL_Haptic, *mut SDL_Joystick, String, T)> {
+    for (id, joystick_name) in joysticks() {
+        let joystick = SDL_OpenJoystick(id);
+        if joystick.is_null() {
+            seen.push(format!("{joystick_name} (cannot open the joystick: {})", sdl_error()));
+            continue;
+        }
+        if !SDL_IsJoystickHaptic(joystick) {
+            seen.push(format!("{joystick_name} (joystick not haptic)"));
+            SDL_CloseJoystick(joystick);
+            continue;
+        }
+        let haptic = SDL_OpenHapticFromJoystick(joystick);
+        if haptic.is_null() {
+            seen.push(format!("{joystick_name} (cannot open its haptic: {})", sdl_error()));
+            SDL_CloseJoystick(joystick);
+            continue;
+        }
+        let raw = SDL_GetHapticName(haptic);
+        let name = if raw.is_null() { String::new() } else { CStr::from_ptr(raw).to_string_lossy().into_owned() };
+        if part.is_some_and(|p| !picks(p, &name)) {
+            seen.push(name);
+        } else if SDL_GetHapticFeatures(haptic) & u32::from(SDL_HAPTIC_CONSTANT.0) == 0 {
+            seen.push(format!("{name} (no constant force)"));
+        } else {
+            log_opened(haptic, &name, "through its joystick");
+            match take(haptic) {
+                Ok(made) => return Some((haptic, joystick, name, made)),
+                Err(e) => seen.push(format!("{name} (through its joystick: {e})")),
+            }
+        }
+        close(haptic, joystick);
+    }
+    None
+}
+
+/// SDL's joysticks, each with its name.
+unsafe fn joysticks() -> Vec<(SDL_JoystickID, String)> {
+    let mut count = 0;
+    let ids = SDL_GetJoysticks(&mut count);
+    if ids.is_null() {
+        return Vec::new();
+    }
+    let list = std::slice::from_raw_parts(ids, usize::try_from(count).unwrap_or(0))
+        .iter()
+        .map(|&id| {
+            let raw = SDL_GetJoystickNameForID(id);
+            (id, if raw.is_null() { String::new() } else { CStr::from_ptr(raw).to_string_lossy().into_owned() })
+        })
+        .collect();
+    sdl3_sys::stdinc::SDL_free(ids.cast());
+    list
+}
+
+/// Whether the joystick opens now, closed again; or SDL's error.
+unsafe fn opens(id: SDL_JoystickID) -> Result<(), String> {
+    let joystick = SDL_OpenJoystick(id);
+    if joystick.is_null() {
+        return Err(sdl_error());
+    }
+    SDL_CloseJoystick(joystick);
+    Ok(())
+}
+
+/// The joysticks that open now.
+unsafe fn openable() -> Vec<(SDL_JoystickID, String)> {
+    joysticks().into_iter().filter(|&(id, _)| opens(id).is_ok()).collect()
 }
 
 #[cfg(test)]

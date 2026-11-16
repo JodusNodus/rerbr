@@ -255,7 +255,10 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
 const SENSITIVITY_HELP: &str = "How much of a car's steering force fits before the wheel maxes out. Higher: lighter, \
      more detail. Lower: heavier, maxes out sooner.";
 const STRENGTH_HELP: &str = "Strength: how heavy the wheel feels, for every car.";
-const DEVICE_HELP: &str = "The wheel the force goes to. First found: the first one with a constant force.";
+const DEVICE_HELP: &str = "The wheel the force goes to. First found tries each device in turn and keeps the first one \
+     that takes the force; one picked by name does the same among the devices with that name. Some drivers list a \
+     wheel more than once (Logitech Gaming Software lists a G29 three times), and only one of them is the wheel: the \
+     line below says which one the last drive used.";
 /// The rows' label column and the live bars' width.
 const ROW_LABEL: f32 = 110.0;
 const BAR: f32 = 110.0;
@@ -344,6 +347,8 @@ pub struct ControlsPage {
     ffb_status: Option<String>,
     /// The force-feedback devices connected when the device list was last opened.
     ffb_devices: Vec<String>,
+    /// The last drive's force feedback: the device it drove, or why there was none ([`last_ffb`]).
+    ffb_last: Option<Result<String, String>>,
 }
 
 impl ControlsPage {
@@ -356,6 +361,14 @@ impl ControlsPage {
             wheels: Ok(wheel_rotation::wheels()),
             ffb_status: None,
             ffb_devices: Vec::new(),
+            ffb_last: None,
+        }
+    }
+
+    /// Reads the force feedback of the last drive that had it from the drive logs in `logs`.
+    pub fn read_last_drive(&mut self, logs: &Path) {
+        if let Some(last) = last_ffb(logs) {
+            self.ffb_last = Some(last);
         }
     }
 
@@ -393,11 +406,24 @@ impl ControlsPage {
         }
     }
 
-    /// Reads the joysticks, and looks for new ones unless the viewer is `running`; while a device binding is being
-    /// set, the first button pressed or axis moved sets it.
+    /// Closes the joysticks for the viewer, which has them to itself while it runs: Windows' DirectInput lets one
+    /// open of a force-feedback wheel take it exclusively (`rbr_render::ffb`). [`ControlsPage::poll`] opens them again
+    /// after.
+    pub fn release(&mut self) {
+        if let Some(joysticks) = &mut self.joysticks {
+            joysticks.close();
+        }
+    }
+
+    /// Reads the joysticks, and looks for new ones; while a device binding is being set, the first button pressed or
+    /// axis moved sets it. While the viewer is `running` they stay closed ([`ControlsPage::release`]).
     pub fn poll(&mut self, bindings: &mut Bindings, running: bool) {
+        if running {
+            self.release();
+            return;
+        }
         let joysticks = self.joysticks.get_or_insert_with(Joysticks::connected);
-        if self.capture.is_none() && !running && self.scanned.elapsed() >= RESCAN {
+        if self.capture.is_none() && self.scanned.elapsed() >= RESCAN {
             joysticks.rescan();
             self.scanned = Instant::now();
         }
@@ -669,6 +695,17 @@ impl ControlsPage {
                     });
                 }
             });
+            match &self.ffb_last {
+                Some(Ok(device)) => {
+                    _ = ui.label(RichText::new(format!("Last drive: on {device}")).color(Color32::GRAY))
+                }
+                Some(Err(why)) => {
+                    let text = "Last drive: no force feedback. If your wheel is listed more than once in Device, pick \
+                                another of its entries.";
+                    _ = ui.label(RichText::new(text).color(Color32::from_rgb(230, 170, 60))).on_hover_text(why);
+                }
+                None => {}
+            }
         });
     }
 }
@@ -803,6 +840,29 @@ fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
     }
 }
 
+/// The force feedback of the newest drive log in `logs` that has it ([`ffb_outcome`]).
+fn last_ffb(logs: &Path) -> Option<Result<String, String>> {
+    let mut drives: Vec<_> = std::fs::read_dir(logs)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("drive-") && n.ends_with(".log"))
+        })
+        .collect();
+    // The names carry the time (`crash::Watch::start`).
+    drives.sort();
+    drives.iter().rev().find_map(|log| ffb_outcome(&String::from_utf8_lossy(&std::fs::read(log).ok()?)))
+}
+
+/// The device a drive log's force feedback went to, or why there was none (`ffb::LOG_ON`, `ffb::LOG_OFF`).
+fn ffb_outcome(log: &str) -> Option<Result<String, String>> {
+    log.lines().rev().find_map(|line| {
+        line.strip_prefix(ffb::LOG_ON)
+            .map(|device| Ok(device.to_owned()))
+            .or_else(|| line.strip_prefix(ffb::LOG_OFF).map(|why| Err(why.to_owned())))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -916,5 +976,16 @@ mod tests {
         assert_eq!(short_name("Thustmaster T500 RS Gear Shift"), "T500 RS Gear Shift");
         assert_eq!(short_name("Logitech"), "Logitech");
         assert_eq!(short_name("Generic USB Joystick"), "Generic USB Joystick");
+    }
+
+    #[test]
+    fn the_last_drive_names_the_force_feedbacks_device_or_why_none() {
+        use super::ffb_outcome;
+        let on = "viewer: pack car x\nffb: steering axis: created (effect 0) and running\n\
+                  viewer: force feedback on Logitech G29 Driving Force Racing Wheel USB\nstep 1520\n";
+        assert_eq!(ffb_outcome(on), Some(Ok("Logitech G29 Driving Force Racing Wheel USB".into())));
+        let off = "viewer: no force feedback: no force-feedback device fits: G29 (no constant force)\n";
+        assert_eq!(ffb_outcome(off), Some(Err("no force-feedback device fits: G29 (no constant force)".into())));
+        assert_eq!(ffb_outcome("viewer: live: 770 drawn frames\n"), None);
     }
 }

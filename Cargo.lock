@@ -2308,7 +2308,7 @@ dependencies = [
 
 [[package]]
 name = "rbr-launcher"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 dependencies = [
  "egui",
  "egui-wgpu",
@@ -2384,6 +2384,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wgpu",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
  "winit",
  "winresource",

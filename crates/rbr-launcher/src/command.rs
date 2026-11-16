@@ -846,6 +846,7 @@ impl Form {
             Ok(log) => _ = command.stderr(log),
             Err(e) => eprintln!("launcher: no drive log: {e}"),
         }
+        self.controls.release();
         match command.spawn() {
             Ok(child) => {
                 self.status = format!("viewer running (pid {})", child.id());
@@ -892,6 +893,7 @@ impl Form {
                 self.ffb.settings.strength = saved.ffb.settings.strength;
                 if !replay {
                     self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
+                    self.controls.read_last_drive(&self.logs_dir());
                 }
                 self.replays.refresh(&self.here());
             }

@@ -305,6 +305,7 @@ impl Form {
         form.stage_browser.restore(&settings.stage_browser);
         form.car_browser.restore(&settings.car_browser);
         form.rescan_codrivers();
+        form.controls.read_last_drive(&form.logs_dir());
         form
     }
 

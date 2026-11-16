@@ -359,6 +359,32 @@ change, update report always via `DIEP_DURATION`, then start); cartesian {1, 0} 
 `FF_AUTOCENTER` 0, per report one EVIOCSFF and one play (two EVIOCSFF on a change: 8523 calls of drive2
 attempt 1).
 
+Windows (2026-11-16, issue #7, hotfix; not run on Windows): DirectInput lets one open of a force-feedback device take
+it exclusively, and SDL's DirectInput joystick takes one exclusively too (`SDL_dinputjoystick.c`), so a haptic opened
+on its own and the drive's joystick are two opens of the wheel (SDL's FIXME in `SDL_dinputhaptic.c`). On Windows
+`Wheel` opens the haptic through the wheel's joystick (`SDL_OpenHapticFromJoystick`; SDL keeps one joystick per device
+in a process, which the input thread shares), the haptic devices on their own after; the launcher closes its joysticks
+while the viewer runs (`ControlsPage::release`). The joystick route, forced on Linux, opens the G923 under the haptic
+list's name. Not the cause: alpha.6 on the reporter's G29 failed the same, at `SDL_CreateHapticEffect` ("Haptic error
+Unable to create effect"; SDL's `DI_SetError` drops the HRESULT). Since: `ffb::SHAPES` tries the steering axis
+infinite, then for an hour (SDL passes `length * 1000` µs in a 32-bit `unsigned long`, infinite wraps to
+4294966296 µs), then cartesian {1, 0} for an hour (NGP's direction; its sign on Windows unmeasured), the log naming
+the one taken and each failure; all three create and play on the G923 under Linux. When none takes, Windows logs
+`ffb: DirectInput probe:` (`ffb/dinput_probe.rs`): per force-feedback controller its FF driver GUID, caps, force
+axes, the exclusive acquire, and SDL's three shapes and NGP's effect created and started at level 0, each with its
+HRESULT. Every drive logs `ffb:` lines: SDL's version, joysticks and haptic devices, the device opened and its
+features, each shape tried, the first update or run failure at once, and every 10 s and at the end the updates, the
+largest magnitude, the failures and (where SDL has `SDL_HAPTIC_STATUS`) how often the effect was playing.
+Test build 1 on the reporter's G29 (LGS 9.02.74, works in RSF): SDL lists three haptic devices, LGS's "G29 Driving
+Force Racing Wheel" twice (one fails "Resetting device", the other opens with 0 axes and takes no shape) before the
+wheel's "Logitech G29 Driving Force Racing Wheel USB"; its joystick is not haptic to SDL, so the joystick route is
+skipped. DirectInput on the wheel (FF driver 920B2620-..., force axis "Wheel axis" 0x1000002): all four effects
+create and start (status playing). So `open_device` now goes on to the next device when one takes no shape, and on
+Windows a device opened on its own is dropped when a joystick that opened before no longer does (its exclusive hold
+against the drive's controls); the log adds each joystick's GUID (its SDL driver) and `SDL_IsGamepad`. Confirmed by
+the reporter (2026-11-16): Device set to "Logitech G29 Driving Force Racing Wheel USB" gives force feedback with the
+wheel's controls working, so the wheel opened on its own and the drive's DirectInput joystick share it.
+
 Setup (RSF on cachy: Proton cachyos-11.0 SLR, G923 PS on new-lg4ff `hid-logitech-new`, sysfs `autocenter` 0,
 `gain` 65535, `spring_level`/`damper_level` 30): ours matches RSF's levels in order over the same 10 s of drive2
 attempt 1 (5779 of 5815; ~1.08 ms sampling); not replicated: duplicate EVIOCSFF on a change, second `FF_GAIN` at
