@@ -52,6 +52,8 @@ type Fail = String;
 /// What the notes summary follows besides the map and the scanned packs: the co-driver switch and the voice.
 pub type NotesInputs = (bool, Option<String>);
 
+pub mod downloads;
+mod drop;
 mod import;
 mod scan;
 
@@ -69,7 +71,8 @@ use scan::{copy_voice, pack_name, walk};
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
-    /// Caches the RSF install's voices and the note files of every source. Marks the notes summary for refresh (it refreshes on draw).
+    /// Caches the RSF install's voices and the note files of every source. Marks the notes summary for refresh (it
+    /// refreshes on draw).
     pub fn rescan_codrivers(&mut self) {
         let home = self.here();
         self.owned_voices = voice_packs(&home);
@@ -183,8 +186,12 @@ impl Form {
         if self.codriver_job.is_some() || self.child.is_some() {
             return;
         }
-        let home = self.here();
         self.codriver_status = None;
+        if src.to_ascii_lowercase().ends_with(".rar") {
+            self.codriver_status = Some(Err("RAR archives are not supported: extract it and use Add folder…".into()));
+            return;
+        }
+        let home = self.here();
         self.codriver_job = Some(Job::start(move |report, cancel| {
             report(&Progress { step: "Importing co-driver", done: 0, total: 0 });
             import(&home, Path::new(&src), cancel)
@@ -196,7 +203,7 @@ impl Form {
         ui.horizontal_wrapped(|ui| {
             let idle = self.codriver_job.is_none() && self.child.is_none();
             if ui
-                .add_enabled(idle, egui::Button::new("Import folder…"))
+                .add_enabled(idle, egui::Button::new("Add folder…"))
                 .on_hover_text(
                     "Choose an extracted co-driver download, a MyPacenotes folder, or a whole RBR/RSF install to \
                      copy from (only read). ReRBR copies its voices, call styles, distance calls and stage notes \
@@ -209,7 +216,7 @@ impl Form {
                 }
             }
             if ui
-                .add_enabled(idle, egui::Button::new("Import archive…"))
+                .add_enabled(idle, egui::Button::new("Add archive…"))
                 .on_hover_text(
                     "Choose a downloaded .zip/.7z co-driver or note pack. ReRBR copies its voices, call styles, \
                      distance calls and stage notes into your files' folder; the download is not changed.",

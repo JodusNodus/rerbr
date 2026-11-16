@@ -483,6 +483,7 @@ impl Form {
             })
         });
         self.crash.ui(ctx);
+        self.codriver_drop(ctx);
         // A dropdown's item picked with Enter or Space: egui closes dropdowns only on a mouse click. The focus goes
         // back to the dropdown (the last control focused outside one).
         let outside = Id::unique("focused outside dropdowns");

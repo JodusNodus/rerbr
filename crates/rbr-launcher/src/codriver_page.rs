@@ -233,11 +233,11 @@ impl Form {
         ui.end_row();
     }
 
-    /// The summary line under the Drive page's stage: small and grey, the same words as the Co-driver section's.
+    /// The summary line under the Drive page's stage: small and grey, the Co-driver section's words without the
+    /// stage's name, which the page shows above it.
     pub fn codriver_notes_line(&mut self, ui: &mut egui::Ui) {
         self.refresh_notes_cache();
-        let prefix = format!("On {}: ", self.notes_summary.stage);
-        self.notes_summary_label(ui, &prefix, true);
+        self.notes_summary_label(ui, "Co-driver: ", true);
     }
 
     /// The notes summary after `prefix`, grey (`small`: in the small text); the note file on hover. Takes a `ui` of
@@ -255,11 +255,51 @@ impl Form {
         }
     }
 
-    /// The Packs row: the import buttons and Manage packs, as before.
+    /// The Packs row: where to get packs, the add buttons, the recent downloads, and Manage packs.
     fn codriver_packs_row(&mut self, ui: &mut egui::Ui) {
         ui.label("Packs");
         ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                let links = [
+                    (
+                        "Get co-drivers…",
+                        "https://luppisrbr.blogspot.com/p/compatible-co-driver-mods-v3.html",
+                        "Luppis's list of V3 co-driver voices: download one, then add it here",
+                    ),
+                    (
+                        "Get pace notes…",
+                        "https://luppisrbr.blogspot.com/p/how-to-install-pacenotes.html",
+                        "Luppis's V3 pace notes (a Dropbox zip): download the V3 pack, then add it here. V3 notes \
+                         go with V3 co-drivers.",
+                    ),
+                ];
+                for (label, url, tip) in links {
+                    if ui.link(label).on_hover_text(tip).clicked() {
+                        crate::crash::open(url.as_ref());
+                    }
+                }
+            });
+            ui.label(
+                egui::RichText::new("The lists are Luppis's; the voices are their authors'.").color(Color32::GRAY),
+            );
             self.import_codriver_ui(ui);
+            let owned = self.owned_voices.iter().map(|p| p.name.clone());
+            let owned: Vec<String> = owned.chain(self.owned_notes.iter().map(|p| p.name.clone())).collect();
+            self.recent_packs.poll(ui.ctx(), owned);
+            let idle = self.codriver_job.is_none() && self.child.is_none();
+            let mut add = None;
+            for path in &self.recent_packs.list {
+                ui.horizontal(|ui| {
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    ui.label(&name).on_hover_text(path.display().to_string());
+                    if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
+                        add = Some(path.to_string_lossy().into_owned());
+                    }
+                });
+            }
+            if let Some(src) = add {
+                self.import_codriver_from(src);
+            }
             egui::CollapsingHeader::new("Manage packs").id_salt("codriver packs").show(ui, |ui| {
                 // No removals while importing or driving.
                 let idle = self.codriver_job.is_none() && self.child.is_none();
@@ -337,7 +377,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use crate::settings::{load, Settings};
-    use crate::{Start, SETTINGS_FILE};
+    use crate::{Form, Start, SETTINGS_FILE};
 
     fn write(path: PathBuf, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -409,15 +449,26 @@ mod tests {
             assert!(!summary.stage.is_empty(), "{summary:?}");
             assert!(summary.text.contains(" calls ") && summary.text.ends_with(")"), "{summary:?}");
             assert!(summary.file.as_ref().is_some_and(|f| f.extension().is_some_and(|e| e == "ini")), "{summary:?}");
-            let rgba = crate::capture::draw(|ctx| {
+            // The recent downloads are scanned on a thread: drawn once, given a moment, then drawn for the shot.
+            let mut section = |ctx: &egui::Context| {
                 ctx.root_ui(|root| {
                     egui::CentralPanel::default().show(root, |ui| {
                         form.codriver_section(ui);
                     })
                 });
-            })
-            .unwrap();
+            };
+            crate::capture::draw(&mut section).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let rgba = crate::capture::draw(&mut section).unwrap();
             crate::capture::write_png(&Path::new(&shots).join(name), &rgba).unwrap();
+            if name == "codriver-local.png" {
+                let hint = crate::capture::draw(|ctx| {
+                    section(ctx);
+                    Form::drop_hint(ctx);
+                })
+                .unwrap();
+                crate::capture::write_png(&Path::new(&shots).join("codriver-drop.png"), &hint).unwrap();
+            }
         }
         let _ = std::fs::remove_dir_all(&root);
     }
