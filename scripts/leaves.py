@@ -1,7 +1,7 @@
 """leaves.py SRC: the bindings whose bodies make no host call, pass no whole Ctx on and use no esp."""
 import re, sys, os
 src = sys.argv[1]
-files = [os.path.join(d, f) for d, _, fs in os.walk(src) for f in fs if f.endswith('.rs') and '/bin' not in d and '/pure' not in d]
+files = [os.path.join(d, f) for d, _, fs in os.walk(src) for f in fs if f.endswith('.rs') and '/bin' not in d and '/runner' not in d]
 consts, bodies, binds = {}, {}, []
 def block(s, i):
     d = 0
