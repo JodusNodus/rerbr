@@ -6,14 +6,14 @@
 //! Where each kind goes (user decision 2026-11-16): BTB stages to `tracks/`; co-drivers and pace notes through
 //! `codriver_packs::import`; NGP car pieces (physics zip, model and sound-bank archives dropped together) as one
 //! `car_packs::Download`; NGP's package to the kept `NGP 7.4.778/` folder, as the Settings download does; a disc image
-//! opens "Set up from the disc…" with the disc filled in. RAR files, installers, classic-format stages and anything
+//! opens "Set up from the disc…" with the disc filled in. RAR files, installers, classic-format stages (into `maps/`, renumbered when their number is taken) and anything
 //! unknown are refused with the reason. A new kind or container is one module and one line below.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use crate::job::Report;
-use kind::{Ctx, Found, Item, Kind};
+use kind::{Ctx, Found, Item, Kind, Known};
 use source::Source;
 
 pub mod downloads;
@@ -91,24 +91,49 @@ pub struct Outcome {
     /// What was added and where to find it, or why not.
     pub result: Result<String, String>,
     pub goto: Option<Goto>,
+    /// A file the notice offers to open (a stage's licence).
+    pub open: Option<PathBuf>,
     pub refresh: Refresh,
 }
 
 impl Outcome {
     pub fn added(source: &str, kind: &'static str, what: &str, place: &str, goto: Goto) -> Outcome {
         let text = format!("Added {what} ({kind}): {place}");
-        Outcome { source: source.to_owned(), kind, result: Ok(text), goto: Some(goto), refresh: Refresh::Nothing }
+        Outcome {
+            source: source.to_owned(),
+            kind,
+            result: Ok(text),
+            goto: Some(goto),
+            open: None,
+            refresh: Refresh::Nothing,
+        }
     }
 
     pub fn failed(source: &str, kind: &'static str, reason: impl Into<String>) -> Outcome {
         let reason = reason.into();
         let reason = if reason.ends_with("cancelled") { "cancelled".to_owned() } else { reason };
-        Outcome { source: source.to_owned(), kind, result: Err(reason), goto: None, refresh: Refresh::Nothing }
+        Outcome {
+            source: source.to_owned(),
+            kind,
+            result: Err(reason),
+            goto: None,
+            open: None,
+            refresh: Refresh::Nothing,
+        }
     }
 
     /// A warning that belongs to no item.
     pub fn warning(text: &str) -> Outcome {
         Outcome::failed("", "", text)
+    }
+
+    /// An outcome that says `text` in full.
+    pub fn said(source: &str, kind: &'static str, text: String, goto: Goto) -> Outcome {
+        Outcome { result: Ok(text), ..Outcome::added(source, kind, "", "", goto) }
+    }
+
+    pub fn opening(self, file: Option<PathBuf>) -> Outcome {
+        Outcome { open: file, ..self }
     }
 
     pub fn refreshing(self, refresh: Refresh) -> Outcome {
@@ -130,8 +155,8 @@ impl Outcome {
 }
 
 /// Adds every item of `paths` to the player's folder `home`, in turn, and says what happened to each.
-pub fn run(home: &Path, paths: &[PathBuf], report: Report<'_>, cancel: &AtomicBool) -> Vec<Outcome> {
-    let ctx = Ctx { home, report, cancel };
+pub fn run(home: &Path, known: &Known, paths: &[PathBuf], report: Report<'_>, cancel: &AtomicBool) -> Vec<Outcome> {
+    let ctx = Ctx { home, known, report, cancel };
     let mut outcomes = Vec::new();
     let mut sources = Vec::new();
     for path in paths {
@@ -191,7 +216,6 @@ mod tests {
 
     #[test]
     fn what_is_refused_and_why() {
-        use kind::classic::CLASSIC;
         use kind::unknown::UNKNOWN;
         let why = |name: &str, dir: bool, files: &[&str]| {
             let found = detect(&Fake::new(name, dir, files));
@@ -199,14 +223,26 @@ mod tests {
             assert_eq!(found[0].1.label, "not supported");
             found[0].1.tag
         };
-        assert_eq!(why("stage.zip", false, &["Maps/track-111_E.lbs", "Maps/Track-111_E.dds"]), CLASSIC);
-        assert_eq!(why("stage.zip", false, &["Tracks.ini"]), CLASSIC);
-        assert_eq!(why("stage.zip", false, &["x/TrackSettings_111.ini"]), CLASSIC);
         assert_eq!(why("holiday.zip", false, &["a.txt"]), UNKNOWN);
         assert_eq!(why("readme.pdf", false, &[]), UNKNOWN);
         assert_eq!(why("folder", true, &["a.txt"]), UNKNOWN);
-        // A classic stage as a folder is not taken for notes.
-        assert_eq!(why("classic", true, &["Maps/track-1.lbs", "Tracks/Tracks.ini", "x/y.ini"]), CLASSIC);
+    }
+
+    #[test]
+    fn classic_stages_are_recognised_complete_or_not() {
+        assert_eq!(
+            labels(&Fake::new("stage.zip", false, &["Maps/track-111_E.lbs", "Maps/Track-111_E.dds"])),
+            ["classic stage"]
+        );
+        assert_eq!(labels(&Fake::new("stage.zip", false, &["Tracks.ini"])), ["classic stage"]);
+        assert_eq!(labels(&Fake::new("stage.zip", false, &["x/TrackSettings_111.ini"])), ["classic stage"]);
+        let two = ["a/Tracks5.ini", "a/track-5_O.lbs", "b/track-6_M.lbs"];
+        assert_eq!(labels(&Fake::new("two", true, &two)), ["classic stages"]);
+        // Not taken for notes.
+        assert_eq!(
+            labels(&Fake::new("classic", true, &["Maps/track-1.lbs", "Tracks/Tracks.ini", "x/y.ini"])),
+            ["classic stage"]
+        );
     }
 
     #[test]
@@ -218,7 +254,7 @@ mod tests {
     }
 
     fn run_all(home: &Path, paths: &[PathBuf]) -> Vec<Outcome> {
-        run(home, paths, &|_| {}, &AtomicBool::new(false))
+        run(home, &Known::default(), paths, &|_| {}, &AtomicBool::new(false))
     }
 
     fn lines(done: &[Outcome]) -> Vec<String> {
@@ -262,7 +298,7 @@ mod tests {
         let again = run_all(&home, &paths[..1]);
         assert_eq!(lines(&again), ["no Couldn't add Autio I Gravel: already added"]);
         // A cancelled run adds nothing.
-        let stopped = run(&home, &paths[..1], &|_| {}, &AtomicBool::new(true));
+        let stopped = run(&home, &Known::default(), &paths[..1], &|_| {}, &AtomicBool::new(true));
         assert!(!stopped[0].ok());
         fs::remove_dir_all(&dir).unwrap();
     }

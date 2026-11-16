@@ -145,8 +145,19 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `Textures.zip`, several per archive allowed) go to `<files>/tracks/` through a hidden staging folder, no `.exe`/
   `.dll`, never over an existing stage; co-drivers and pace notes through `codriver_packs::import`; NGP car pieces
   (physics, model and banks dropped together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/` and in use;
-  a disc opens the disc setup filled in. Refused with the reason: `.rar`, installers, classic-format stages (not yet),
-  a lone model or banks, anything else. Recent downloads (Downloads, 30 days, 5) list any of these not added yet.
+  a disc opens the disc setup filled in; classic-format stages (below) to `<files>/maps/`. Refused with the reason: `.rar`,
+  installers, a lone model or banks, anything else. Recent downloads (Downloads, 30 days, 5) list any of these not added yet.
+- Classic stages added (2026-11-16; `content/kind/classic/`): RSF-shaped folders (`Tracks<id>.ini`) or loose `track-<n>_<L>.*` files
+  (their `[Map<n>]` from a `Tracks.ini` of the tree or an installer's INI writes, weathers from `TrackSettings*.ini` or
+  writes) of any source, several per source, every variant kept. Each is written once into `<files>/maps/<number>-<name>/`
+  (`rsf::scan_maps`, listed after retail, RSF and BTB by `Catalog::add_maps_folder`; a number a listed map has later is
+  left out): the file names, `Tracks<n>.ini` (rebuilt, `TrackName`, `Particles`, `SplashScreen` pointing into the folder),
+  `TrackSettings<n>.ini` (own weathers, else the retail stage's of the same surface), the remap's `track-<n>_` and the
+  `.rbz` entry names (`zip` raw copy, no recompressing), the licence/readme `.txt` and the splash copied (Open licence in
+  the notice). Own number kept when free (not retail, game folder, BTB, added), else the first free from 10 000 (`write::FIRST`;
+  RSF ids reach 1301, BTB's start at 1 000 000). Refused: RSF `01 a0` headers, a `Key` in `[Map<n>]`, a `.col` not `OC7R`,
+  a required file missing, the same name and file sizes again. Evidence: no `track-` string in the 4126 plain binaries of an RSF
+  install; 120 RSF stage folders added with forced numbers list with their variants, weathers, surface, author and length, and all load and drive 20 000 steps under `stage-sweep.sh` (`RBR_RSF` = the player folder); 24 of them give the originals' sweep rows exactly. The launcher starts one with `--stage <folder>/track-<n>_<L>`.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used

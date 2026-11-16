@@ -31,11 +31,12 @@ sevenz-rust2 = { version = "0.24", default-features = false }
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 lzma-rust2 = { version = "0.23", default-features = false, features = ["std"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# A stage's texture archives are copied entry by entry under new names, without recompressing.
+zip = { version = "9.0.1", default-features = false }
 
 [dev-dependencies]
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["compress"] }
 lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "encoder"] }
-zip = { version = "9.0.1", default-features = false }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = { version = "0.1", default-features = false }

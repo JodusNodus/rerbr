@@ -1,7 +1,7 @@
 //! The kinds of content the Add knows, one module each: how to recognise it in a [`Source`], and how to add it. A new
 //! kind is one module here and one line in the registry (`super::KINDS`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::downloads::Owned;
@@ -42,9 +42,19 @@ pub struct Item<'a> {
     pub found: Found,
 }
 
-/// What a kind needs to add: the player's folder, the progress report and the cancel flag.
+/// What the launcher lists, for the kinds that give a thing a number (classic stages).
+#[derive(Debug, Clone, Default)]
+pub struct Known {
+    /// The numbers of the listed maps: the retail ones, the game folder's stages, the player's BTB and added stages.
+    pub numbers: Vec<u32>,
+    /// The game's `Maps/TrackSettings.ini`, whose weathers a stage without its own borrows.
+    pub weather: Option<PathBuf>,
+}
+
+/// What a kind needs to add: the player's folder, what is listed, the progress report and the cancel flag.
 pub struct Ctx<'a> {
     pub home: &'a Path,
+    pub known: &'a Known,
     pub report: Report<'a>,
     pub cancel: &'a AtomicBool,
 }

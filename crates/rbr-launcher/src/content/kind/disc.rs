@@ -19,7 +19,14 @@ impl Kind for Disc {
         let name = item.src.name();
         let text = format!("Disc image {name}: choose where to set it up in Settings > Game folder");
         let goto = Some(Goto::Disc(item.src.path().to_owned()));
-        vec![Outcome { source: name, kind: "disc image", result: Ok(text), goto, refresh: Default::default() }]
+        vec![Outcome {
+            source: name,
+            kind: "disc image",
+            result: Ok(text),
+            goto,
+            open: None,
+            refresh: Default::default(),
+        }]
     }
 
     fn add_all(&self, items: &[Item], ctx: &Ctx) -> Vec<Outcome> {

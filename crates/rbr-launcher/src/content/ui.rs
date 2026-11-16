@@ -3,7 +3,9 @@
 
 use std::path::PathBuf;
 
+use super::kind::Known;
 use super::{downloads, Goto, Outcome, Refresh};
+use crate::catalog::Origin;
 use crate::job::{self, Job};
 use crate::pages::{section, Page, GOOD, WARN};
 use crate::Form;
@@ -43,7 +45,10 @@ impl Form {
         self.content.notice.clear();
         self.content.voices_before = self.owned_voices.iter().map(|p| p.name.clone()).collect();
         let home = self.here();
-        self.content.job = Some(Job::start(move |report, cancel| Ok(super::run(&home, &paths, report, cancel))));
+        let numbers = self.catalog.maps.iter().chain(&self.catalog.unlisted).map(|m| m.number).collect();
+        let known = Known { numbers, weather: Some(self.data.install().join("Maps").join("TrackSettings.ini")) };
+        self.content.job =
+            Some(Job::start(move |report, cancel| Ok(super::run(&home, &known, &paths, report, cancel))));
     }
 
     /// Reads again what a finished run changed.
@@ -65,6 +70,7 @@ impl Form {
         if touched(Refresh::Stages) {
             let tracks = self.here().join(rbr_btb::player::TRACKS);
             self.catalog.add_new_tracks(&tracks);
+            self.catalog.add_maps_folder(&self.here().join(rbr_btb::player::MAPS));
             self.list_maps();
         }
         if added(Refresh::Ngp) {
@@ -90,8 +96,10 @@ impl Form {
         match goto {
             Goto::Settings | Goto::Disc(_) => self.page = Page::Settings,
             Goto::Stage(folder) => {
-                let at = self.catalog.maps.iter().position(|m| {
-                    m.btb().is_some_and(|b| b.folder.file_name().is_some_and(|n| n.to_string_lossy() == *folder))
+                let named = |dir: &std::path::Path| dir.file_name().is_some_and(|n| n.to_string_lossy() == *folder);
+                let at = self.catalog.maps.iter().position(|m| match &m.origin {
+                    Origin::Community(stage) => stage.folder.starts_with(self.here()) && named(&stage.folder),
+                    _ => m.btb().is_some_and(|b| named(&b.folder)),
                 });
                 self.page = Page::Drive;
                 self.stage_browser.open_on(at.unwrap_or(self.map), &self.favourite_maps, None);
@@ -126,6 +134,11 @@ impl Form {
                         }
                     });
                 ui.horizontal(|ui| {
+                    if let Some(file) = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.open.clone()) {
+                        if ui.button("Open the licence").clicked() {
+                            crate::crash::open(file.as_os_str());
+                        }
+                    }
                     let goto = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.goto.clone());
                     match goto {
                         Some(Goto::Stage(folder)) if ui.button("Open the stage picker").clicked() => {
@@ -366,6 +379,92 @@ mod tests {
             Form::drop_hint(ctx);
         })
         .unwrap();
+    }
+
+    /// Classic stages dropped on a loaded launcher: one added (with its author), one refused for its encryption; the
+    /// stage list shows the added one, the notice offers its licence, and Open goes to it. The notice and the stage
+    /// picker drawn to `RBR_SCREENSHOTS/classic`. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`.
+    #[test]
+    fn classic_stages_are_added_listed_and_drawn() {
+        use crate::content::kind::classic::tests::{rsf_stage, variant};
+        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
+        let (Some(data), Some(patch), Some(ngp)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS")) else {
+            eprintln!("skipping: RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
+            return;
+        };
+        let root = crate::test_dir("content-classic");
+        let home = root.join("home");
+        fs::create_dir_all(&home).unwrap();
+        let start = Start {
+            viewer: PathBuf::from("/bin/viewer"),
+            standalone: PathBuf::from("/bin/rbr-standalone"),
+            settings: home.join(SETTINGS_FILE),
+            data: Some(PathBuf::from(&data)),
+            patch: Some(PathBuf::from(&patch)),
+            physics: None,
+        };
+        let mut form = load(&start, Settings { map: Some(54), ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
+        form.read_only = true;
+        let before = form.catalog.maps.len();
+        // Stage 54 is a retail map's number: the first is added as a new number, the second is encrypted.
+        let (one, two) = (root.join("drop/one"), root.join("drop/two"));
+        rsf_stage(&one, 54, "OM");
+        rsf_stage(&two, 8000, "O");
+        write(&two.join("8000-Kamenak/track-8000_O.lbs"), &[0x01, 0xa0, 0, 0, 1]);
+        variant(&root.join("drop/loose/Maps"), 8994, 'M');
+        write(
+            &root.join("drop/loose/Maps/Tracks.ini"),
+            b"[Map8994]\r\nStageName=Loose Gravel\r\nAuthor=Test\r\nSurface=1\r\n",
+        );
+        form.add_content(vec![one.join("54-Kamenak"), two.join("8000-Kamenak"), root.join("drop/loose")]);
+        while form.content.busy() {
+            crate::capture::draw(|ctx| form.content_notice(ctx)).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let lines: Vec<String> = form.content.notice.iter().map(|o| format!("{} {}", o.ok(), o.line())).collect();
+        assert_eq!(
+            lines,
+            [
+                "true Added Kamenak (classic stage) by Miro Kurek",
+                "false Couldn't add Kamenak: this stage is encrypted for the RBR Czech plugin / RallySimFans: it can't be used",
+                "true Added Loose Gravel (classic stage) by Test",
+            ],
+            "{lines:?}"
+        );
+        assert_eq!(form.catalog.maps.len(), before + 2);
+        let added = form.catalog.maps.iter().rev().take(2).map(|m| m.number).collect::<Vec<_>>();
+        assert_eq!(added, [10_000, 8994]);
+        assert!(form.content.notice[0].open.as_ref().is_some_and(|p| p.is_file()));
+        let listed = form.catalog.map(10_000).unwrap();
+        assert!(matches!(&listed.origin, crate::catalog::Origin::Community(s) if s.problem.is_none()));
+        form.content_goto(&Goto::Stage("10000-Kamenak".into()));
+        assert!(form.stage_browser.open && form.page == Page::Drive);
+
+        let Some(shots) = env("RBR_SCREENSHOTS") else {
+            eprintln!("skipping the screenshots: RBR_SCREENSHOTS not set");
+            return;
+        };
+        let shots = Path::new(&shots).join("classic");
+        let page = |ctx: &egui::Context, form: &mut Form| {
+            form.content_notice(ctx);
+            ctx.root_ui(|root| {
+                egui::CentralPanel::default().show(root, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| form.settings_page(ui));
+                })
+            });
+        };
+        form.page = Page::Settings;
+        form.stage_browser.open = false;
+        crate::capture::shot(&shots.join("notice.png"), |ctx| page(ctx, &mut form)).unwrap();
+        form.content_goto(&Goto::Stage("10000-Kamenak".into()));
+        let picker = |ctx: &egui::Context, form: &mut Form| {
+            ctx.root_ui(|root| {
+                egui::CentralPanel::default().show(root, |ui| form.stage_browser_page(ui));
+            });
+        };
+        crate::capture::draw(|ctx| picker(ctx, &mut form)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        crate::capture::shot(&shots.join("stage-picker.png"), |ctx| picker(ctx, &mut form)).unwrap();
     }
 
     fn detect_rar() -> &'static str {
