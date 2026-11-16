@@ -72,45 +72,26 @@ fn lamp_sum(world: vec3<f32>, n: vec3<f32>, two_sided: bool) -> vec3<f32> {
     return sum + REAR_KNEE * rear / (REAR_KNEE + rear);
 }
 
-// The light the stage's own lamps (`stage_lamps.rs`, `frame.street`, ours) give a surface at `world` with normal `n`
-// (`two_sided` for foliage cards), in the lamps' units as `lamp_sum`'s, unshadowed. A lamp with an axis is a street
-// lamp's bowl: its intensity down the axis, weakening to the side (`STREET_SPREAD`, the power of the cosine) and gone
-// above the horizontal of its axis; one without lights every way. The lamps reach `STREET_REACH` metres and fade out
-// toward the eye's distance past which the frame leaves them out (`frame.street_light.w`).
-const STREET_REACH: f32 = 90.0;
-const STREET_SPREAD: f32 = 0.5;
-
 // Whether the stage's lamps are lit (none by day, or on a stage without them).
 fn street_on() -> bool {
     return frame.street_light.x + frame.street_light.y + frame.street_light.z > 0.0;
 }
 
+// The light the stage's own lamps (`stage_lamps.rs`, `frame.street`, ours) give a surface at `world` with normal `n`
+// (`two_sided` for foliage cards), in the lamps' units as `lamp_sum`'s, unshadowed (`street_lamp` in `lamps.wgsl`).
 fn street_sum(world: vec3<f32>, n: vec3<f32>, two_sided: bool) -> vec3<f32> {
     if (!street_on()) {
         return vec3<f32>(0.0);
     }
     var sum = 0.0;
-    let cut = frame.street_light.w;
     for (var i = 0; i < 16; i++) {
         let lamp = frame.street[2 * i];
         if (lamp.w == 0.0) {
             break;
         }
-        let to = lamp.xyz - world;
-        let d2 = dot(to, to);
-        if (d2 > STREET_REACH * STREET_REACH) {
-            continue;
-        }
-        let toward = to * inverseSqrt(max(d2, 1e-6));
-        let axis = frame.street[2 * i + 1].xyz;
-        var share = 1.0;
-        if (dot(axis, axis) > 0.0) {
-            let c = dot(-toward, axis);
-            share = pow(max(c, 0.0), STREET_SPREAD) * smoothstep(0.0, 0.15, c);
-        }
-        let reach = 1.0 - smoothstep(0.6 * STREET_REACH, STREET_REACH, sqrt(d2));
-        let shown = 1.0 - smoothstep(0.75 * cut, cut, distance(lamp.xyz, frame.eye.xyz));
-        sum += lamp.w * share * reach * shown / (d2 + 1.0) * lamp_facing(n, toward, two_sided);
+        let seen = distance(lamp.xyz, frame.eye.xyz);
+        let light = street_lamp(lamp, frame.street[2 * i + 1].xyz, world, seen, frame.street_light.w);
+        sum += light * lamp_facing(n, normalize(lamp.xyz - world), two_sided);
     }
     return frame.street_light.rgb * sum;
 }
@@ -197,8 +178,11 @@ fn moon_lit(world: vec3<f32>, n: vec3<f32>, has_normal: bool) -> f32 {
 // (pi times its two widths), so that it carries the light the film mirrors.
 const REFLECTION_SPREAD: f32 = 0.2;
 const REFLECTION_LAMP: f32 = 0.1;
+const STREET_BOWL: f32 = 0.1;
+const STREET_GLINT: f32 = 0.12;
+const STREET_LEVEL: vec2<f32> = vec2<f32>(0.8, 0.95);
 
-fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
+fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32, up: f32) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let across = normalize(vec2<f32>(mirrored.x, mirrored.z) + vec2<f32>(1e-6, 0.0));
     let sine = max(mirrored.y, 0.01);
@@ -210,12 +194,7 @@ fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
         let to = lamp.position.xyz - world;
         let d = length(to);
         let l = to / d;
-        let flat = normalize(vec2<f32>(l.x, l.z) + vec2<f32>(1e-6, 0.0));
-        // The angle between the two directions across, and their difference in elevation.
-        let wide = REFLECTION_SPREAD * sine + REFLECTION_LAMP / d;
-        let side = abs(across.x * flat.y - across.y * flat.x) / wide;
-        let rise = (mirrored.y - l.y) / REFLECTION_SPREAD;
-        let lobe = exp(-side * side - rise * rise) * f32(dot(across, flat) > 0.0) / (PI * wide * REFLECTION_SPREAD);
+        let lobe = glint_lobe(mirrored, across, sine, l, REFLECTION_LAMP / d);
         let beam_lamp = lamp.forward.w != 0.0;
         let toward = select(signal(lamp, -l), beam(lamp, -l), beam_lamp);
         // A tree or a bank between the lamp and the road cuts the headlights' streaks too; the rear lamps stay
@@ -223,7 +202,34 @@ fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
         let reach = select(1.0, lamp_reach(world, vec3<f32>(0.0, 1.0, 0.0), l), beam_lamp);
         sum += lamp_lux(lamp.colour.rgb * toward / (d * d)) * lobe * reach;
     }
+    // The stage's lamps (`street_lamp`), each a bowl `STREET_BOWL` metres across.
+    if (street_on() && up > STREET_LEVEL.x) {
+        var street = 0.0;
+        for (var i = 0; i < 16; i++) {
+            let lamp = frame.street[2 * i];
+            if (lamp.w == 0.0) {
+                break;
+            }
+            let to = lamp.xyz - world;
+            let d = length(to);
+            let seen = distance(lamp.xyz, frame.eye.xyz);
+            let light = street_lamp(lamp, frame.street[2 * i + 1].xyz, world, seen, frame.street_light.w);
+            street += light * glint_lobe(mirrored, across, sine, to / d, STREET_BOWL / d);
+        }
+        sum += lamp_lux(frame.street_light.rgb * street) * STREET_GLINT * smoothstep(STREET_LEVEL.x, STREET_LEVEL.y, up);
+    }
     return capped(sum * f * pre_exposure());
+}
+
+// The share of a lamp along `l` (unit, toward it) in the mirrored direction's lobe (`lamp_glint`), per steradian:
+// `across` the mirrored direction's heading, `sine` its elevation's sine, `size` the lamp's angular size.
+fn glint_lobe(mirrored: vec3<f32>, across: vec2<f32>, sine: f32, l: vec3<f32>, size: f32) -> f32 {
+    let flat = normalize(vec2<f32>(l.x, l.z) + vec2<f32>(1e-6, 0.0));
+    // The angle between the two directions across, and their difference in elevation.
+    let wide = REFLECTION_SPREAD * sine + size;
+    let side = abs(across.x * flat.y - across.y * flat.x) / wide;
+    let rise = (mirrored.y - l.y) / REFLECTION_SPREAD;
+    return exp(-side * side - rise * rise) * f32(dot(across, flat) > 0.0) / (PI * wide * REFLECTION_SPREAD);
 }
 
 // The night sky along `dir`: a dark blue gradient, lighter toward the horizon, stars, and the moon (where the sun

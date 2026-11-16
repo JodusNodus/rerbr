@@ -711,8 +711,17 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   a cone of exponent 0.5 for an aimed lamp. They shine at night and by `relight.lamps` at dusk. Frames without stage
   lamps are byte-identical (the 34 other reference shots). Lamps found: 126 Sardian Night 137, 401 80, 466 138, 467 135,
   465 Odry snow II 100, 464 29, 141 27, 481 10. 125 Sardian (day) has no sprites. Night Sardian 1080p chase: scene
-  1.92 to 2.20 ms, frame drawn 3.76 to 3.95 ms. Open: wet-road glints, shadows from the stage lamps, the fire
-  lights (`feu`). `examples/stage_lamps.rs MAPS STAGE...` lists a stage's lamps.
+  1.92 to 2.20 ms, frame drawn 3.76 to 3.95 ms. Open: shadows from the stage lamps, the fire lights (`feu`).
+  `examples/stage_lamps.rs MAPS STAGE...` lists a stage's lamps.
+- Stage lamps in the wet (2026-11-16; `street_lamp` in `lamps.wgsl`, shared): the wet road mirrors the lamps on
+  screen already (the reflections take the sprites' glow). `lamp_glint` adds every lamp as the car's, a 0.1 m bowl,
+  at `STREET_GLINT` 0.12 and only on level film (normal y 0.8 to 0.95). At full strength and 0.4 m the overhead
+  lamps' lobes made the near road a sheet whose bloom veiled the frame, and walls took streaks. Rain, mist and
+  particles take the 8 lamps nearest the eye (`effects::AIR_STREET`, faded by the 9th) in `lamps_at`. Wet night
+  Sardian needs the Custom weather (`--set settings.weather=bad --set settings.wetness=wet --set
+  settings.clouds=heavy`): with the stage's own weather the road stays dry. Heavy rain, 1080p chase: rain 2.11 to
+  2.66 ms (3.22 with 16 lamps and `pow`), scene 2.7 to 3.2-3.4 ms. Other reference shots byte-identical; the
+  stage lamps start where the lamps' pipelines do (level above 0.01; below it golden Odry's dust took them).
 
 ## Damage visuals
 

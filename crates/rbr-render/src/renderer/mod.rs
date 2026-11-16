@@ -462,17 +462,20 @@ impl Renderer {
     }
 
     /// The stage's lamps for the frame uniform at `eye`: their colour times how lit they are and the distance they fade
-    /// out by, and the [`MAX_STREET`] nearest's places, intensities and axes (`street_sum` in `night.wgsl`).
-    pub(super) fn street_lamps(&self, eye: Vec3) -> ([f32; 4], [[f32; 4]; 2 * MAX_STREET]) {
+    /// out by, and the `count` (at most [`MAX_STREET`]) nearest's places, intensities and axes (`street_sum` in
+    /// `night.wgsl`).
+    pub(super) fn street_lamps(&self, eye: Vec3, count: usize) -> ([f32; 4], [[f32; 4]; 2 * MAX_STREET]) {
         let mut street = [[0.0; 4]; 2 * MAX_STREET];
         let level = self.lamps_level();
-        if level <= 0.0 || self.stage_lamps.is_empty() {
+        // Below the share the lamps' pipelines start at (`lamps_light`), as the surfaces leave them out.
+        if level <= 0.01 || self.stage_lamps.is_empty() {
             return ([0.0; 4], street);
         }
         let mut near: Vec<_> = self.stage_lamps.iter().map(|l| (l.position.distance_squared(eye), l)).collect();
         near.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let reach = near.get(MAX_STREET).map_or(f32::MAX, |(d2, _)| d2.sqrt());
-        for (slot, (_, lamp)) in street.chunks_exact_mut(2).zip(near) {
+        let count = count.min(MAX_STREET);
+        let reach = near.get(count).map_or(f32::MAX, |(d2, _)| d2.sqrt());
+        for (slot, (_, lamp)) in street.chunks_exact_mut(2).zip(near).take(count) {
             slot[0] = lamp.position.extend(crate::stage_lamps::intensity(lamp)).to_array();
             slot[1] = lamp.axis.extend(0.0).to_array();
         }

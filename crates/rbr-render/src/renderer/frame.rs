@@ -203,10 +203,12 @@ impl Renderer {
                 );
             }
             let day = self.day_light();
+            let street = self.street_lamps(crate::camera::eye(effects_view), crate::effects::AIR_STREET);
             if let Some(effects) = &mut self.effects {
                 let cascades = self.cascades.as_ref();
                 effects.set_inside(!self.outside_view);
                 effects.set_cabin_mask(self.cabin_mask.zip(self.car_body));
+                effects.set_street(street);
                 // Without the shadows the lamps light the dust and the snow unshadowed, as before.
                 let lamp = self.lamp_matrix.filter(|_| self.enhance.lighting);
                 effects.update(&self.queue, effects_view, self.time, size, (&lit, level), cascades, lamp, day);

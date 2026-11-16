@@ -36,9 +36,14 @@ struct Effects {
     // corners, the body's then the room's (`cabin_box[0].w` 1 when set, else the cabin's reach is a sphere).
     cabin_from_stage: mat4x4<f32>,
     cabin_box: array<vec4<f32>, 4>,
+    // The stage's lamps (`street` in `shader.wgsl`'s `Frame`, `effects::AIR_STREET` of them): their colour times how
+    // lit they are, w the eye's distance past which they are left out; each lamp's position and intensity, then its
+    // axis.
+    street_light: vec4<f32>,
+    street: array<vec4<f32>, 32>,
 }
 
-// The light the car's lamps give a point in the air at `world` (0 by day). The headlights' beams past their shadow
+// The light the car's lamps and the stage's give a point in the air at `world` (0 by day). The headlights' beams past their shadow
 // map's casters (`lamp_shaft` in `lamps.wgsl`): things in front of the car throw shadows through the dust and the
 // snow. The lamps other than the headlights' beams (tail, brake, reverse) light it as a soft tinted glow (ours): as
 // if from `AIR_NEAR` metres away at the least, at `AIR_REAR` of their light, so that the dust and the snow right
@@ -74,6 +79,17 @@ fn lamps_at(world: vec3<f32>) -> vec3<f32> {
             rear += lamp_toward(lamp, world) * (d2 + 0.25) / (d2 + AIR_NEAR) * AIR_REAR;
         }
     }
+    // The stage's lamps (`street_lamp`), as the headlights' beams.
+    var street = 0.0;
+    for (var i = 0; i < 16; i++) {
+        let lamp = effects.street[2 * i];
+        if (lamp.w == 0.0) {
+            break;
+        }
+        let seen = distance(lamp.xyz, effects.eye.xyz);
+        street += street_lamp(lamp, effects.street[2 * i + 1].xyz, world, seen, effects.street_light.w);
+    }
+    sum += effects.street_light.rgb * street;
     return sum + AIR_REAR_KNEE * rear / (AIR_REAR_KNEE + rear);
 }
 

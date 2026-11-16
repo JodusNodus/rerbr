@@ -363,7 +363,7 @@ impl Renderer {
         let dirt = self.car_dirt.look(self.enhance.particles, self.wetness);
         // Once: a pass over every mesh's draws (0.035 ms on 580), which the frames took six times.
         let car_bounds = self.car_bounds();
-        let (street_light, street) = self.street_lamps(eye);
+        let (street_light, street) = self.street_lamps(eye, MAX_STREET);
         let mut uniforms = [FrameUniform::zeroed(); 3];
         for (index, (slot, (matrix, haze, [start, end], (shadow, ground), anchored, depth))) in uniforms
             .iter_mut()

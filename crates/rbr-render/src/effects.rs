@@ -7,7 +7,7 @@
 use crate::atmosphere::Atmosphere;
 use crate::particles::cabin::CabinMask;
 use crate::particles::Precipitation;
-use crate::renderer::{depth_binding, LampUniform, DEPTH_FORMAT, MAX_LAMPS};
+use crate::renderer::{depth_binding, LampUniform, DEPTH_FORMAT, MAX_LAMPS, MAX_STREET};
 use crate::sun::Cascades;
 use bytemuck::{bytes_of, Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -23,6 +23,9 @@ pub(crate) fn rain_source() -> String {
 /// Drops or flakes in the near and far layers at full rain or snow (the near count `rain.wgsl`'s `NEAR_COUNT`).
 const NEAR_COUNT: u32 = 56000;
 const FAR_COUNT: u32 = 140000;
+/// The stage's lamps that light the rain, the snow and the particles, the nearest the eye (`lamps_at` in
+/// `effects.wgsl`): they are about the eye, and fewer than the stage's surfaces take (`MAX_STREET`) keep the drops cheap.
+pub(crate) const AIR_STREET: usize = 8;
 /// The eye's velocity follows its motion by this share a frame, for steady streaks (`rain.wgsl`).
 const VELOCITY_SMOOTHING: f32 = 0.5;
 
@@ -47,6 +50,8 @@ struct Uniform {
     day_sky: [f32; 4],
     cabin_from_stage: [[f32; 4]; 4],
     cabin_box: [[f32; 4]; 4],
+    street_light: [f32; 4],
+    street: [[f32; 4]; 2 * MAX_STREET],
 }
 
 pub(crate) struct Effects {
@@ -74,6 +79,8 @@ pub(crate) struct Effects {
     velocity: Vec3,
     /// The car's lamps at night (`Renderer::set_lamps`).
     lamps: [LampUniform; MAX_LAMPS],
+    /// The stage's lamps near the eye (`Renderer::street_lamps`).
+    street: ([f32; 4], [[f32; 4]; 2 * MAX_STREET]),
     /// How far from the eye the cabin reaches, metres: no rain or snow falls inside it (0 outside the car).
     cabin: f32,
     /// The car's shape the in-car view draws no particles in, and the car body's model space to stage space.
@@ -249,6 +256,7 @@ impl Effects {
             last: None,
             velocity: Vec3::ZERO,
             lamps: [LampUniform::default(); MAX_LAMPS],
+            street: ([0.0; 4], [[0.0; 4]; 2 * MAX_STREET]),
             cabin: 0.0,
             cabin_mask: None,
         }
@@ -276,6 +284,11 @@ impl Effects {
     /// The car's lamps, which light the rain, snow and particles at night.
     pub(crate) fn set_lamps(&mut self, lamps: [LampUniform; MAX_LAMPS]) {
         self.lamps = lamps;
+    }
+
+    /// The stage's lamps near the eye, which light them too (`Renderer::street_lamps`).
+    pub(crate) fn set_street(&mut self, street: ([f32; 4], [[f32; 4]; 2 * MAX_STREET])) {
+        self.street = street;
     }
 
     /// Whether the view is from inside the car, whose cabin no rain or snow enters.
@@ -347,6 +360,8 @@ impl Effects {
                 let [[a, b], [c, d]] = [mask.body, mask.room];
                 [a.extend(1.0), b.extend(0.0), c.extend(0.0), d.extend(0.0)].map(|v| v.to_array())
             }),
+            street_light: self.street.0,
+            street: self.street.1,
         };
         queue.write_buffer(&self.uniform, 0, bytes_of(&uniform));
         self.written = uniform;
