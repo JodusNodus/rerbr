@@ -240,7 +240,7 @@ finish() {
     [ -e "$game/RBRRecompRecord-$tick.bin" ] && mv "$game/RBRRecompRecord-$tick.bin" "$run/$n/physics.bin"
     [ -e "$game/RBRRecompSession-$tick.bin" ] && mv "$game/RBRRecompSession-$tick.bin" "$run/$n/session.bin"
     [ -e "$run/.attempt-$tick" ] && mv "$run/.attempt-$tick" "$run/$n/attempt.txt"
-    # its start-state snapshots (before its first step, and before step 1520), for rbr-standalone --snapshot
+    # its start-state snapshots (before its first step, and before step 1520), as data
     for f in "$game"/RBRRecompSnap-"$tick"-*.bin; do
       [ -e "$f" ] && mv "$f" "$run/$n/snap-${f##*-}"
     done
