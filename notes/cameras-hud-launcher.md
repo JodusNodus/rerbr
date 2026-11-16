@@ -183,7 +183,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   arboard brings the `image` crate, egui-winit asks for its image support); before 2026-11-03 paste from other
   programs did not work.
 - Idle and while the viewer runs (2026-11-05): the joysticks are looked for every 2 s in one context
-  (`Joysticks::rescan`: their ids, and they are opened again only when those changed). While the viewer runs the
+  (`Joysticks::rescan`: their ids, and they are opened again only when those changed). From the viewer's start to
+  its exit the launcher's joysticks are closed (2026-11-16, issue #7: Windows' DirectInput gives a force-feedback wheel
+  to one exclusive open, `ngp.md` "Windows"), and opened again by the next rescan. While the viewer runs the
   launcher draws only at 4 Hz (`POLL`: its exit), with no rescan and the car turntable still; otherwise the Drive
   page's turntable redraws at 10 Hz (one turn in 6 s; 20 Hz cost about 6% of a core).
 - Joysticks off Linux (2026-11-12, issue #6; not run on macOS or Windows, the library type-checks for Windows): SDL3's
@@ -281,7 +283,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   control went 2026-11-13: it follows the force-feedback model, `ngp.md` "Linearity"). Device (2026-11-12; `[ffb] device`,
   `ffb::devices`): "first found" (the first with a constant force) or one of SDL's haptic devices by name, listed
   unopened when the list is opened (SDL's init takes 0.11 s with a G923, so not on the page's rescan); one without a
-  constant force is listed too. Not checked by a click: the page's capture draws the list closed.
+  constant force is listed too, each name once (2026-11-17). Not checked by a click: the page's capture draws the list
+  closed. Under it (2026-11-17, issue #7): "Last drive: on NAME", or "Last drive: no force feedback. If your wheel is
+  listed more than once in Device, pick another of its entries." with the reason on hover, from the newest drive log
+  with `ffb::LOG_ON`/`LOG_OFF` (read at the form's load and after each drive). The viewer tries every device a choice
+  fits until one takes the force (`ngp.md` "Windows").
 - The pause menu's Force feedback page (`hud::ffb_page`, with a wheel, once FFB1 says the surface): Sensitivity (the
   car's percentage), "Use suggested (X %)" (sets Sensitivity on the player's select; shown with 20 s of load and a
   suggestion other than the sensitivity; "the most" at 500 %), Strength (every car, 0-100 % by 5, live through

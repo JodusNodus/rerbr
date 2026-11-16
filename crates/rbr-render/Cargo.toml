@@ -68,6 +68,8 @@ winresource = { version = "0.1", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }
+# `ffb::dinput_probe`: DirectInput's interfaces (the version wgpu-hal uses).
+windows = { version = "0.62", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

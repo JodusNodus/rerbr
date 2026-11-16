@@ -93,6 +93,12 @@ impl Joysticks {
         self.list.is_empty()
     }
 
+    /// Closes every joystick, the context kept; the next [`Joysticks::rescan`] opens them again.
+    pub fn close(&mut self) {
+        self.list.clear();
+        self.lost.clear();
+    }
+
     pub fn device(&self, k: usize) -> Device {
         self.list[k].0
     }

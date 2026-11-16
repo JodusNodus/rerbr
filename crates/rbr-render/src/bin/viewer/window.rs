@@ -220,11 +220,11 @@ impl App {
         let wheel =
             scene.live.as_ref().filter(|_| !replay && ffb.settings.enabled).and_then(|_| match ffb::Wheel::open(ffb) {
                 Ok(wheel) => {
-                    eprintln!("viewer: force feedback on {}", wheel.name);
+                    eprintln!("{}{}", ffb::LOG_ON, wheel.name);
                     Some(Arc::new(wheel))
                 }
                 Err(e) => {
-                    eprintln!("viewer: no force feedback: {e}");
+                    eprintln!("{}{e}", ffb::LOG_OFF);
                     None
                 }
             });
