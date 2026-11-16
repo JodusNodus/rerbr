@@ -28,10 +28,13 @@ winit = "0.30"
 futures-executor = "0.3"
 sha2 = "0.10"
 sevenz-rust2 = { version = "0.24", default-features = false }
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+lzma-rust2 = { version = "0.23", default-features = false, features = ["std"] }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["compress"] }
+lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "encoder"] }
 zip = { version = "9.0.1", default-features = false }
 
 [target.'cfg(windows)'.build-dependencies]

@@ -34,6 +34,7 @@ Parsers: `crates/rbr-formats/src/`; retail tests: `crates/rbr-formats/tests/` (`
 | RSF | cars, stages, settings, car/stage lists | `rsf` | `rsf_data.rs` (`RBR_RSF`) | see below |
 | Pacenote plugin | co-driver voices, stage notes | `pacenote::{codriver,notes}` | `rsf_data.rs` (`RBR_RSF`) | [below](#pacenote-plugin) |
 | RBRHUD | cockpit dials | `rbrhud` | `rsf_data.rs` (`RBR_RSF`) | [below](#rbrhud-gauges) |
+| NSIS installers | stage `.exe` (read, never run) | launcher `content/source/nsis/` | `real_installers` (`RBR_INSTALLERS`) | [below](#nsis-installers) |
 
 ## Archives
 
@@ -346,3 +347,19 @@ notes start with `PACENOTES_FILE`/`RANGES_FILE` notes spelling `Rbr.ini` and set
 `ngp` reads the SHA-256-verified NGP 7.4.778 PE32 DLL: `.data`/`.rdata` records and constant setter arguments in
 `.text`, decoded without execution. Complete stage, tyre and key tables have oracle-derived hash checks
 (`tests/ngp.rs`); the 421-file NGP Lisp test resolves keys through the DLL schema. Details: [ngp.md](ngp.md).
+
+## NSIS installers
+
+The launcher's Add reads Nullsoft installers without running them (`crates/rbr-launcher/src/content/source/nsis/`).
+First header: `0xDEADBEEF` + `NullsoftInst` at a 512-byte boundary, then flags, signature, magic, inflated header size, archive size (28 bytes).
+Packing is raw deflate or raw LZMA (5 props bytes, end-marked stream); bzip2 is refused. Solid = one stream of
+`u32 header size, header, (u32 size, bytes)*`, file offsets counted from after the header (Pribram: LZMA 0x5D, dict 2^k); else
+a `u32 size` (bit 31 = packed) per block (Peklo, Sturec, Manukau: deflate). Header: flags, 8 `(offset, count)` blocks (entries =
+2, strings = 3, language tables = 4), entries of 7 u32 (opcode, 6 params). Opcodes used, same in NSIS 2 and 3: 11
+`SetOutPath` (p1 = 1), 20 `File` (p1 name string, p2 data offset), 25 `StrCpy` (var, string), 31 push/pop, 44 `CallInstDLL`
+(nsis7z `Extract`), 48 `WriteINIStr` (section, key, value, file). Strings (entry params are indexes, in units): NSIS 2 ANSI
+codes 252..255 (skip, var, shell, lang) + 2 bytes (Pribram); NSIS 3 ANSI codes 1..4 + 2 bytes; NSIS 3 Unicode codes 1..4 + one
+unit (Manukau); a value is two 7-bit halves with bit 7 set. Variables 0..9, `$R0`..`$R9`, 20.. `CMDLINE INSTDIR OUTDIR
+EXEDIR LANGUAGE TEMP PLUGINSDIR EXEPATH EXEFILE`; the user variables start at 29..32 by version, so the "game folder" variable the stage
+installers keep (registry `InstallPath`) is taken as the root with `$INSTDIR`. A `.7z` unpacked by `nsis7z` is replaced by its files (Manukau: 12 entries, 14 INI writes).
+Non-solid sizes are the stored (packed) sizes.
