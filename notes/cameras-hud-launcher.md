@@ -131,6 +131,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `RBR_RSF` when set, else the game data folder), its plugins and community content with it. A saved `rsf_root`
   is ignored and dropped on save.
 - The co-driver is set up on the Settings page, not per drive (user decision 2026-10-29).
+- Co-driver packs (user decision 2026-11-16): the Packs row links Luppis's V3 co-driver and pace-note pages, lists up to
+  5 recent pack-like .zip/.7z in the Downloads folder (30 days, names read only, scanned on a thread; `codriver_packs/downloads.rs`)
+  with "Add", and a .zip, .7z or folder dropped on the window is added (`codriver_packs/drop.rs`). RAR is not read.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used
