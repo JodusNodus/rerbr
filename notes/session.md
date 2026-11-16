@@ -77,8 +77,8 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   `EndRule`, `TimingEvent` (a 1.02 `Checkpoint` converts to one; `SubstepEvent::checkpoint` and `elapsed` carry what the
   timekeeper saw out of `Game`; `StepView::elapsed` hands the time to formats), `LapTiming` (laps, sectors, one-shot,
   N-lap or timed end; pass times interpolated between steps) and `LapRules`, the circuit's `Format`. A test runs
-  `Game` + `LapRules` for two laps on a synthetic closed line (distance wrapping at the seam, which the physics does not
-  do yet): `Started`, a sector and a lap each lap, `Finished`, the drive ended with `EndCause::Format`.
+  `Game` + `LapRules` for two laps on a synthetic closed line (distance wrapping at the seam, as NGP's search now makes it,
+  from a line marked closed): `Started`, a sector and a lap each lap, `Finished`, the drive ended with `EndCause::Format`.
 - Step 5, the closed line: a `.trk` drive line whose first record's two words are `trk::CLOSED_LINE_WORDS` ("LOOP",
   the entry's tag word, which nothing in the original reads) is closed: its last record repeats the first (position and
   tangent) and `ngp::drive_line::project_closed` runs over its `count - 1` segments, the window and the segment before
