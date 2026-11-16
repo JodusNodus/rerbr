@@ -9,7 +9,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::store::Raw;
 
 use super::{
-    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
+    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_CLEAR, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
 };
 use crate::entities::{Op, MB560};
 use crate::rigid_body::OPERATOR_NEW;
@@ -72,6 +72,43 @@ pub(super) fn ray_seeds(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = RaySeedCalls { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp };
     let eax = super::on_grids(ctx.host, &mut ctx.mem, &[r.ecx], |s| layout::ray_seeds(&mut calls, s, r.ecx));
     Ok(Return::void(eax, 0))
+}
+
+/// `E38RaySeeds` on the ray object `ray` as a call at `sp` (0: placed by the host) makes it: direct on the pure host
+/// ([`Host::call_slot_word`]), counted as a run ([`Host::ran_direct`]), without the call's words or its `Clear`
+/// calls' (none is read after them: residue audit, notes/physics.md "Store seam"). Through the host elsewhere.
+pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
+    /// The two vectors the seeds clear, cleared after them (the words do not overlap).
+    struct Clears([u32; 2], usize);
+    impl RayHost for Clears {
+        fn vec4_clear(&mut self, at: u32) -> u32 {
+            self.0[self.1] = at;
+            self.1 += 1;
+            at
+        }
+    }
+    if host.call_slot_word().is_none() {
+        host.call_at(sp, RAY_SEEDS, ray, &[]);
+        return;
+    }
+    crate::skip_unwritten(host, mem, sp, &[]);
+    host.ran_direct();
+    let mut clears = Clears([0; 2], 0);
+    super::on_grids(host, mem, &[ray], |s| layout::ray_seeds(&mut clears, s, ray));
+    for &at in &clears.0[..clears.1] {
+        clear_vec4().store(mem, at);
+    }
+}
+
+/// `E38RayClear` on the ray object `ray` as a call at `sp` makes it, direct on the pure host as [`ray_seeds_at`].
+pub(crate) fn ray_clear_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
+    if host.call_slot_word().is_none() {
+        host.call_at(sp, RAY_CLEAR, ray, &[]);
+        return;
+    }
+    crate::skip_unwritten(host, mem, sp, &[]);
+    host.ran_direct();
+    layout::ray_clear(mem, ray);
 }
 
 /// `E38RaySeeds`' `E09Vec4::Clear` calls, at the pure host's placement below its entry `esp`, run here there (the

@@ -8,13 +8,11 @@ use rbr_physics::collision::store::CollisionStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::ZERO_VEC4;
 
-use super::RAY_SEEDS;
 use super::{
     COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, E01_VEC4_NORMALIZE, E09_VEC4_SUB, E21_VEC3_ADD, E33_MAKE_EVENT, E37_EDGE_EDGE,
     E37_EDGE_PAIR, E37_GRID_COPY,
 };
 use super::{COLL_EVENT_INIT_FULL, E36_ALLOC_EVENT};
-use crate::collision::RAY_CLEAR;
 use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -52,7 +50,7 @@ impl D8CallsAt<'_> {
 
 impl EdgeHitsCalls for D8CallsAt<'_> {
     fn ray_seeds(&mut self, ray: u32) {
-        self.host.call(RAY_SEEDS, ray, &[]);
+        super::ray_seeds_at(self.host, &mut self.mem.clone(), 0, ray);
     }
 
     fn fetch_y(&mut self, matrix: u32, out: u32, worker: u32) {
@@ -113,7 +111,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn ray_clear(&mut self, ray: u32) {
-        self.host.call(RAY_CLEAR, ray, &[]);
+        super::ray_clear_at(self.host, &mut self.mem.clone(), 0, ray);
     }
 }
 /// CBody::VfD0's calls at the stack pointers the port gives; `mem` reads the entities' vtables.
@@ -131,11 +129,11 @@ impl VfD0Calls<'_> {
 
 impl GridContactHost for VfD0Calls<'_> {
     fn ray_seeds(&mut self, sp: u32, grid: u32) {
-        self.host.call_at(sp, RAY_SEEDS, grid, &[]);
+        super::ray_seeds_at(self.host, &mut self.mem, sp, grid);
     }
 
     fn ray_clear(&mut self, sp: u32, grid: u32) {
-        self.host.call_at(sp, RAY_CLEAR, grid, &[]);
+        super::ray_clear_at(self.host, &mut self.mem, sp, grid);
     }
 
     fn collide_init(&mut self, sp: u32, other: u32, body: u32, list: u32) -> u32 {

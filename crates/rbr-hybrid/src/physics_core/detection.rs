@@ -7,7 +7,7 @@ use rbr_physics::physics_core::layout::detect_calls::{self as detect, Penetratio
 use rbr_physics::physics_core::layout::detector_hosts::{CollideHost, DetectorHost, KernelTest};
 
 use super::slots::vslot;
-use crate::collision::{BODY_GRID, E37_GRID_COPY, E45_CELL_QUERY, RAY_CLEAR, RAY_SEEDS};
+use crate::collision::{BODY_GRID, E37_GRID_COPY, E45_CELL_QUERY};
 use crate::entities::{EXCLUSION_TEST, WALK_PRE_ORDER};
 use crate::probe_cache::BODY_OVERLAPS;
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -126,7 +126,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn ray_clear(&mut self, sp: u32, at: u32) {
-        self.host.call_at(sp, RAY_CLEAR, at, &[]);
+        crate::collision::ray_clear_at(self.host, &mut self.mem, sp, at);
     }
 
     fn cells(&mut self, sp: u32, lo: u32, hi: u32, out: u32) {
@@ -338,8 +338,8 @@ struct Penetration<'a> {
 }
 
 impl PenetrationHost for Penetration<'_> {
-    fn ray_seeds(&mut self, _mem: &mut Mem, seeds: u32) {
-        self.host.call_at(self.entry - 8, RAY_SEEDS, seeds, &[]);
+    fn ray_seeds(&mut self, mem: &mut Mem, seeds: u32) {
+        crate::collision::ray_seeds_at(self.host, mem, self.entry - 8, seeds);
     }
 
     fn copy_vec4(&mut self, mem: &mut Mem, to: u32, from: u32) {

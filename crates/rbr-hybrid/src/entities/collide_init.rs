@@ -7,7 +7,6 @@ use rbr_physics::physics_core::layout::ZERO_VEC4;
 
 use crate::collision::{
     COLGRID_SAMPLE_A, COLGRID_SAMPLE_B, COLL_EVENT_INIT_FULL, E01_VEC4_NORMALIZE, E36_ALLOC_EVENT, E37_GRID_COPY,
-    RAY_CLEAR,
 };
 use crate::entities::{Op, MAT_COLLIDE_INIT};
 use crate::{Ctx, Decline, Host, Regs, Return};
@@ -77,7 +76,7 @@ impl CollideHost for CollideCalls<'_> {
     }
 
     fn ray_clear(&mut self, sp: u32, grid: u32) {
-        self.host.call_at(sp, RAY_CLEAR, grid, &[]);
+        crate::collision::ray_clear_at(self.host, &mut self.mem, sp, grid);
     }
 
     fn compose(&mut self, sp: u32, identity: u32, point: u32, transform: u32, out: u32) {

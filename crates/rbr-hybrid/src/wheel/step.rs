@@ -117,7 +117,7 @@ impl layout::GroundCalls for Ground<'_> {
         if crate::skip_call(self.host, &mut self.mem, self.sp, &[rays, 0x6B0, 8, RAY_SEEDS, RAY_CLEAR]) {
             let sp = (self.sp - 0x1000) & !0xf;
             for i in 0..8 {
-                self.host.call_direct(sp, RAY_SEEDS, rays + i * 0x6B0, &[]);
+                crate::collision::ray_seeds_at(self.host, &mut self.mem, sp, rays + i * 0x6B0);
             }
             return;
         }
@@ -128,7 +128,7 @@ impl layout::GroundCalls for Ground<'_> {
         if crate::skip_call(self.host, &mut self.mem, self.sp, &[rays, 0x6B0, 8, RAY_CLEAR]) {
             let sp = (self.sp - 0x1000) & !0xf;
             for i in (0..8).rev() {
-                self.host.call_direct(sp, RAY_CLEAR, rays + i * 0x6B0, &[]);
+                crate::collision::ray_clear_at(self.host, &mut self.mem, sp, rays + i * 0x6B0);
             }
             return;
         }

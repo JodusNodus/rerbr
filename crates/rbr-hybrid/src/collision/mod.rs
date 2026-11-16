@@ -41,6 +41,7 @@ use solver::{
     drain_events, event_count, event_query_bodies, init_full, make_event, min_contact_time, plane_diff, refresh_events,
     solve_due_events, solve_event, solver_add_event, E37_PLANE_DIFF,
 };
+pub(crate) use queries::{ray_clear_at, ray_seeds_at};
 pub(crate) use vectors::{copy_vec4, length};
 use vectors::{
     e33_scaled, float3_length, float3_scale, min_max_a, vec16_max, vec16_min, vec3_add, vec4_clear, vec4_copy_from,
