@@ -6,8 +6,9 @@
 //! Where each kind goes (user decision 2026-11-16): BTB stages to `tracks/`; co-drivers and pace notes through
 //! `codriver_packs::import`; NGP car pieces (physics zip, model and sound-bank archives dropped together) as one
 //! `car_packs::Download`; NGP's package to the kept `NGP 7.4.778/` folder, as the Settings download does; a disc image
-//! opens "Set up from the disc…" with the disc filled in. RAR files, installers, classic-format stages (into `maps/`, renumbered when their number is taken) and anything
-//! unknown are refused with the reason. A new kind or container is one module and one line below.
+//! opens "Set up from the disc…" with the disc filled in; classic-format stages (loose, RSF-shaped or from an NSIS
+//! installer) to `maps/`, renumbered when their number is taken. RAR files, other installers, encrypted stages and
+//! anything unknown are refused with the reason. A new kind or container is one module and one line below.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
