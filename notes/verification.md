@@ -1,6 +1,6 @@
 # Verification
 
-How ReRBR stays bit-exact against the original 1.02 game (the oracle): a plugin records its runs, and the Rust step is compared with them per drive (standalone, `scripts/gate.sh`). The per-call hybrid check and the vectors were retired (2026-11-16): a branch no recorded drive reaches is not checked. Allowed
+How ReRBR stays bit-exact against the original 1.02 game (the oracle): a plugin records its runs, and the Rust step is compared with them per drive (standalone, `scripts/gate.sh`). A branch no recorded drive reaches is not checked. Allowed
 differences are in `notes/rust-plan.md` ("Done means"); [Masks](#masks) tells where each is applied.
 
 ## Dev setup
@@ -70,7 +70,7 @@ harness/drive-trial.sh <drive> "<numbers>" <tag>             # StartGame numbers
 
 ### Snapshots
 
-A snapshot (`<name>.snap-<step>.bin`, about 200 MB) is every committed readable region of the process, registers, x87 control word, MXCSR and stack, taken before the `StepForward` call starting at the step; a listed step is dumped again after its call (`-after.bin`). Load settle calls at 0, 40, 80 and 120, then every step from 160. They live in `RBR_SNAPS` (default `/tmp/rbr-snaps`); a drive's chain is `vcu-<drive>.snap-<step>.bin` (tanner-corolla: `vcu-cov.snap-*`). The published set (`data/test-data.snapshots`: the four reference chains, snapH, the weather test's step-1000 snapshots, load dumps under `dumps/`) comes with `scripts/fetch-test-data.sh DIR snapshots`, with the x87 cache: union of the maintainers' caches and the run-A caches used (141,591 cases, no conflicts). It holds the merge gate and the tanner-damage contact snapshots; `long_run.py` on the other chains still models some (UNVERIFIED steps, recording still bit-exact; tarmac-lancer 2000-2099, arctic-snow 1500-1599).
+A snapshot (`<name>.snap-<step>.bin`, about 200 MB) is every committed readable region of the process, registers, x87 control word, MXCSR and stack, taken before the `StepForward` call starting at the step; a listed step is dumped again after its call (`-after.bin`). Load settle calls at 0, 40, 80 and 120, then every step from 160. They live in `RBR_SNAPS` (default `/tmp/rbr-snaps`); a drive's chain is `vcu-<drive>.snap-<step>.bin` (tanner-corolla: `vcu-cov.snap-*`). The published set (`data/test-data.snapshots`: the four reference chains, snapH, the weather test's step-1000 snapshots, load dumps under `dumps/`) comes with `scripts/fetch-test-data.sh DIR snapshots`, with the x87 cache: union of the maintainers' caches and the run-A caches used (141,591 cases, no conflicts). They feed `harness/replay.py` ([Step replay](#step-replay)) and the load and snapshot tests.
 
 ### Peek probes
 
@@ -120,15 +120,15 @@ Driverless tests: `start` takes `AUTO="map car weather tyre"`, `PLAYBACK=<FRM1 u
 
 Replay an attempt as `rbr-launcher`'s command does for a pack car: `rbr-standalone --boot --recording <n>/physics.bin --stage track-<map>_<letter> --weather W --tyre T --ngp-physics $RBR_NGP_PHYSICS --rsf-car $RBR_RSF/rsfdata/cars/<pack>` (map, weather, tyre from `GAM1`, the pack from `attempt.txt`; the launcher passes the same car resolved as `--car-pack/--car-model/--car-bank/--car-key`).
 
-Behaviour (2026-10-20, no driver, `AUTO="54 5 0 4"`, Evo IX): 7.5.779 calls the car control input `0x4e91f0` from the same site as 7.4.778, so `HookCarControl` records its controls; RSF's exe differs from 1.02 only in the PE header, the byte at 0x40b225 and appended data, so every plugin patch applies. RSF's NGP sends FFB as SetParameters, Download and Start of one constant force about 600 times a second (none while idle); never SetProperty or GetDeviceData; each device made twice. The RSF launcher left the plugin in place at its start (its "start game" untried). The idle run replays 8459 of 30000 steps equal, departing at step 9941 (first non-zero control: FFB turned the wheel), where `Game`'s control differs from the recorded payload (word 4, steering; open). Not yet seen: a restart's or second stage's rotation (no driver), SetProperty, buffered input.
+Behaviour (no driver, `AUTO="54 5 0 4"`, Evo IX): 7.5.779 calls the car control input `0x4e91f0` from the same site as 7.4.778, so `HookCarControl` records its controls; RSF's exe differs from 1.02 only in the PE header, the byte at 0x40b225 and appended data, so every plugin patch applies. RSF's NGP sends FFB as SetParameters, Download and Start of one constant force about 600 times a second (none while idle); never SetProperty or GetDeviceData; each device made twice. An idle run replays equal until the first non-zero control (FFB turned the wheel), where `Game`'s control differs from the recorded payload (word 4, steering; open). Not seen: a restart's or second stage's rotation (no driver), SetProperty, buffered input.
 
 Polling: the exe feeds the car from NGP's input thread (about 1000 Hz); the car control input runs on the step thread. RBRControls.dll makes its own devices, reads properties and HID (`DeviceIoControl`), bundles SDL (raw input, HIDAPI, XInput, DirectInput); JoyKey sends keys with `SendInput`: `MOD1` counts these, none recorded. Wine's dinput has one vtable per interface whose A methods call the W ones through it, so hooks pass nested calls through (a TLS guard) and record the outer call only. Wine's winedevice holds wheel and shifter as `/dev/input/event*` (winebus's SDL bus); FFB ioctls and writes traced without root by `harness/ffb_trace.sh` (notes/ngp.md "Force feedback").
 
-Force feedback in an `AUTO` start (2026-10-21): NGP 7.5.779's FFB thread (1000 Hz, send at 0x1003c410) sends only to the STEERING action's device with force feedback (exe 0x4c6f70: `[dev+0x29c] > 0`, `[dev+8] & 0x100`). Menus bind the profile's `pf<name>.acm` (`CInputManager::Bind` 0x4ccfb0, from profile load at 0x4539cd); `AUTO` keeps default bindings, steering on the first device (T500 shifter), so EFF1 holds the effect's creation only (snapshot sanity-new4). `FFB=1` writes the newest `SavedGames/pf*.acm` into `RBRRecompFfb.on`, bound at each attempt start with the FFB fix kept in playback. ffb-e5 (det-audi66's playback, `FFB=1`): 38338 SetParameters on the G923 from NGP's thread, all S_OK; FRM1 equal through 31482 with the masks plus `car+0x65c`, `car+0x670` lagging a step at some frames (frame-timed, as `+0x658`/`+0x674`).
+Force feedback in an `AUTO` start: NGP 7.5.779's FFB thread (1000 Hz, send at 0x1003c410) sends only to the STEERING action's device with force feedback (exe 0x4c6f70: `[dev+0x29c] > 0`, `[dev+8] & 0x100`). Menus bind the profile's `pf<name>.acm` (`CInputManager::Bind` 0x4ccfb0, from profile load at 0x4539cd); `AUTO` keeps default bindings, steering on the first device (T500 shifter), so EFF1 holds the effect's creation only (snapshot sanity-new4). `FFB=1` writes the newest `SavedGames/pf*.acm` into `RBRRecompFfb.on`, bound at each attempt start with the FFB fix kept in playback. ffb-e5 (det-audi66's playback, `FFB=1`): 38338 SetParameters on the G923 from NGP's thread, all S_OK; FRM1 equal through 31482 with the masks plus `car+0x65c`, `car+0x670` lagging a step at some frames (frame-timed, as `+0x658`/`+0x674`).
 
 A stage load opens the car pack's three `setups/d_*.lsp`, RSF scans every `rsfdata/Physics/*/setups/`, and its choice is a saved setup opened from `SavedGames/<pack>/` seconds before the first step. Check: struts' effective damping in the first frame (`wheel+0x670` `CSpringDamper::CState` +0xc bump, +0x10 rebound, the setup's values with no fade) matches the picked file in all six drive2 attempts (four saved setups, two defaults).
 
-Determinism and versions (2026-10-20). Masked here: words differing at the first step and constant after (pointers, uninitialised memory), the unused fourth word of 16-byte vectors, and car+0x658, +0x674, +0x814, +0x824, (two runs of the same controls differ in them).
+Determinism and versions. Masked here: words differing at the first step and constant after (pointers, uninitialised memory), the unused fourth word of 16-byte vectors, and car+0x658, +0x674, +0x814, +0x824, (two runs of the same controls differ in them).
 - RSF vs RSF: rsf-drive1 (Evo IX on Tanner from `AUTO`) and its FRM1 played back (rsf-drive2) equal all 38263 steps.
 - RSF vs 7.4.778: with the car pack in slot 5 (`scripts/ngp-install-car.py`) and its model (RSF's `Cars.ini [Car05]` and `Cars/<model>/` copied in), det-audi66's controls (Audi A2, map 66, from `AUTO`) are equal every step the playback drove (40 to 31482; past that the controls ran out and the two plugin builds feed the car differently). 7.5.779 physics equals 7.4.778's on that drive. With the slot's own model (Impreza) the car starts 2-6 cm away.
 - A menu-started drive does not replay from `AUTO`: drive2 attempt 6 vs its `AUTO` controls (same car files, setup) has position equal at step 40, orientation/velocities a few ulp apart, position apart from step 80. No control reaches the car during the load settle (`CTL1` starts at step 1520), so the menu start leaves another state kept in `snap-0.bin`/`snap-1520.bin`. RSF snapshots do not step in `rbr-standalone` yet: first NGP 7.5.779 call unbound.
@@ -139,9 +139,8 @@ The gate matrix is the NGP drives `rbr-standalone --boot` runs to the end of the
 5 (`rsf/drive2`, snow, Ford Focus RS WRC 06, RSF car 55: 84084/84084) and the NGP playback-made pairs of
 `harness/matrix.py` (NGP's four car slots).
 
-The 1.02 drives below no longer run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and
-viewer playback. Last standalone results (2026-10-20): tanner-corolla 13000/13000, tanner-damage
-12120/12120, tarmac-lancer 20892/20892, arctic-snow 12490/12490.
+The 1.02 drives below do not run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and viewer
+playback.
 
 | Drive | Map, car | Notes |
 | --- | --- | --- |
@@ -151,8 +150,11 @@ viewer playback. Last standalone results (2026-10-20): tanner-corolla 13000/1300
 | arctic-snow | 13 (`track-13_O`), 6 | snow |
 | `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
 
-Standalone check for `rbr-standalone` and `rbr-step` changes (`scripts/gate.sh` builds and runs it with the `poison` build's drive and an aids-on drive;
-`--perf BASE_BIN` the step's cost):
+Standalone check for `rbr-standalone` and `rbr-step` changes. `scripts/gate.sh` builds the release binaries and runs
+side by side: this drive (standalone), the same drive on a `rbr-step/poison` build (`target/poison`: a typed-state
+word read from the image while a step holds it panics), and the drive's command again with every driving aid on (the
+paths drive2, aids off, does not reach; PASS on exit status 0, or 1 with no failure but the recording's). `--perf
+BASE_BIN` adds the step's cost against that build, no verdict. The drive:
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR
@@ -163,8 +165,7 @@ builds of `rbr-standalone` and `rsf-settings`). Rust binaries run from the local
 
 ## Step replay
 
-`harness/replay.py` runs one `StepForward` of the original from a snapshot in the emulator; usage, stub, table and
-x87-oracle rules are its docstring. `--check` compares the replay with the real call (recording frame plus after-dump).
+`harness/replay.py` runs one `StepForward` of the original from a snapshot in the Unicorn emulator; usage, stub, table and x87-oracle rules are its docstring. `--check` compares the replay with the real call (recording frame plus after-dump).
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install unicorn numpy
@@ -181,9 +182,10 @@ Allowed differences, and where each is applied:
 | Lane 3 of vectors filled from stale stack: car+0x8ec … +0x150c, car+0x1cc; wheel+0x99c, +0x9bc, +0x9dc | `diverge.py` `static_mask` (the C++ gate's mask) |
 | Words ever NaN, inf or \|x\| > 1e20 in the reference | `diverge.py` `static_mask` |
 | Words differing between two reference runs and the count runs (about 170, heap shifts) | `REF.mask`, `diverge.py --mask` |
-| Proven stale-stack words (car+0x161c, 0x22c, 0x32c, 0x38c, 0x15dc, …; wheel+0x73c) | `rbr-step/src/runner/compare.rs` `STALE_CAR`/`STALE_WHEEL` |
-| wheel+0x9ac (stack garbage the emulator cannot reproduce) | `RECORDING_GARBAGE`, recording compare only |
-| Frame-loop words car+0x660, +0x670, +0x814 (`CCar::Vf28x` 0x4ea020, once a rendered frame) | `RECORDING_GARBAGE` = `compare.rs` `FRAME_LOOP_CAR`, recording compare only |
+| Proven stale-stack words (car+0x161c, 0x22c, 0x32c, 0x38c, 0x15dc, …; wheel+0x73c) | `rbr-step/src/runner/compare.rs` `STALE_CAR`/`STALE_WHEEL` ([physics.md](physics.md#step): residue sites) |
+| wheel+0x9ac (stack garbage in the recording) | `compare.rs` static mask, recording compare only |
+| Frame-loop words car+0x660, +0x670, +0x814 (`CCar::Vf28x` 0x4ea020, once a rendered frame) | `compare.rs` `FRAME_LOOP_CAR`, recording compare only |
+| Wheel+0x6ec (w lane of the contact point, from the never-initialised w of the strut ray's start, +0xa3c: heap residue) | `compare.rs` `HEAP_WHEEL` |
 | Heap pointers | counted, not compared |
 
 A word joins the stale lists only with evidence that the original differs from its own recording.
@@ -199,7 +201,7 @@ A word joins the stale lists only with evidence that the original differs from i
 - Sound, approximate only (rough baseline, no check): `rbr-sound` (chase camera default; NGP payloads at 7 ms) against `audio.wav` by CLK1, `start_unix_ns`, then loudness envelopes; per-second loudness and spectrograms side by side around the attempt only. Holds every played sound (camera, menus). Not run on community stages (retail maps only).
 - `summary.json` `checks` gives each area's expectation, pass/fail and reason (physics, STA1, input, FFB and mapping exact; sound approximate, no verdict). An error, missing record or unrun section is a FAIL with its reason.
 - Not in the session: the driven setup unless `<n>/setup.lsp` (else default boot; `--setup FILE`), race options (gearbox aids; damage before GAM1), game profile (FFB strength/direction), `NGPCarMenu.ini`, `cars_data.json` (per-car rotation).
-- Gate results, 2026-10-21 (drive2: NGP 7.5.779, community cars, setups and aids from the capture):
+- Gate results (drive2: NGP 7.5.779, community cars, setups and aids from the capture):
 
   | Attempt | Physics | FFB / mapping | Input |
   | --- | --- | --- | --- |
@@ -209,8 +211,6 @@ A word joins the stale lists only with evidence that the original differs from i
   | drive1/2 | PASS 103802/103802 `--damage off` (STA1 not recorded); on safe parts at 22803 (impact damage words `car+0x11a8`, `+0x1288..0x1290`) | FFB pass | - |
   | drive1/1 (map 127, car 24) | exact to 66628 `--damage off` (62192 on safe); parts standing, engine stalled (ours 0.002-0.007 rad/s), every FRM1 word equal but frame-loop `car+0x670` | mapping pass | - |
   | e2e4 (`FFB=1 FAST=1`, call QPC) | physics and STA1 (every word) equal to the parting at 31682 | ours every set before the parting; mapping PASS | - |
-
-  Re-ran 2026-11-04 after the launcher's car unification (one car type, resolved pack flags): drive2/5 physics still PASS 84084/84084, exit 0; `--rsf-car 24` and the resolved pack flags drive byte-identical 12000-step autopilot playbacks. Re-ran again after the tightening (`car_pack::Flags`, `--car-model` the `.sgc` path, no `--car-root`): same PASS, same byte-identical playbacks.
 
   drive1/drive2 predate GAM1's damage level (`0x1660850`): drive2 on safe (attempt 5 on off parts at 18311), drive1/2 on off with drive2/1's setup (drive1 captured no setup). The original disagrees with itself at the tarmac settle (drive1/2 vs drive2/1 part at step 120), so our tarmac physics and saved-setup load hold; what drive2's tarmac attempts ran is in no file (uncaptured service setup change; `SNAPS=1` would show the definitions). drive1/1's `attempt.txt` names car 88 (RSF's `Cars.ini [Car05]` lag); car 24 matches frame 0 (car 88 parted at step 0, body 34.9 mm high, wheel anchors `wheel+0x140` apart). drive1 lacks STA1 and snapshots, so its parting cause is in state FRM1 does not hold (not the wall clock, head-gasket edit, or a missing control call). Start pose is the original's (`0x46b160`: `(x, z, y + 0.5)`, yaw from HedgeHog `CHH_World::Unk88`, `.lbs` (2,11) position/rotation; zero matrix skipped).
 
@@ -239,8 +239,7 @@ playback's controls, not the wheel's (CTL1 word 4, steering, differs: e2e2 19183
 
 ## Stage sweep
 
-`scripts/stage-sweep.sh` (docs/development.md). Full-install sweep 2026-11-13 (`c6710f37`, car 5 unless named, NGP
-physics, 2M-step limit, 443 stage folders of the RSF install):
+`scripts/stage-sweep.sh` (docs/development.md). Full-install sweep (car 5 unless named, NGP physics, 2M-step limit, 443 stage folders of the RSF install):
 
 - Load: 417 stages load; the 26 that do not are RSF-encrypted (`.lbs`, or 432's textures in 431's archive). No
   panic, no NaN, no car through the ground on any drive (the lowest, 10.3 m under the driveline, is 641 wet sliding
@@ -256,8 +255,6 @@ physics, 2M-step limit, 443 stage folders of the RSF install):
   and 6; 346 finishes with them. The autopilot steers around the `.trk` heavy props only, not `.col` walls.
 - Stages with a `.lb2` get stuck twice as often (10 of 32 against 58 of 385); the `.lb2` holds only render chunks
   (geometry, object lanes, visibility) and the `.lbs` the interactive objects and start, so physics misses nothing.
-- Fixed on the way: the autopilot learnt a gear's ratio in slides (the DS3 R1 drove RSF 113 in second on the limiter,
-  185 s, now 153 s; `ROLLING`, autopilot `mod.rs`); on weather 0, 343 finished before it.
 
 ## Rust checks
 
@@ -272,19 +269,13 @@ Compare instructions and allocations (`rbr-counters`), not wall time. `rbr-stand
 runs. Instructions and cycles are per thread, no root: macOS `thread_selfcounts`, Linux `perf_event_open` (user space,
 summed over a hybrid CPU's PMUs; needs `perf_event_paranoid` at most 2). Elsewhere they read 0.
 
-- Boot drive (tanner Corolla under 1.02, 13000 steps, M3 Pro; `scripts/perf-step.sh` now measures drive2 attempt 5):
-  2.34 M instructions, 190 allocations (14 KB) per step. Cores busy raises stepping time 60-80 %, instructions under
-  0.1 %; the lowest of 3 runs is the figure, since load only adds. An oversubscribed machine still adds up to 0.15 %,
-  and an edit outside the step moved it 0.2-0.3 % (likely code layout and inlining), so under 0.5 % is no change.
-- drive2 attempt 5 (13000 steps, i9-13900HX, Linux), `perf/step` (2026-11): the fact-check dispatch with the tracked
-  allocator (what `perf-step.sh` measures) 2.53 M instructions, 84 allocations (12.7 KB) per step before, 2.18 M and 27
-  (9.2 KB) after; the direct dispatch with the untracked allocator (the live drive's; the direct dispatch and
-  `boot_playback(.., false)` in a local build) 2.33 M before, 1.92 M after. Both pass drive2 physics 84084/84084. The
-  instruction count is not linear in the code: an extra arm in `Mem::pages_for` stopped `Mem::u32` inlining and cost the
-  fact-check 9 %. Cycles moved 30-40 % between runs on a loaded machine, so only instructions count there. Most of the
-  27 allocations left are the engine's two-level blend tables, loaded as nested vectors on each damper step; then the
-  car body's scatter points, the edge pairs and gameplay's substep list.
-- Viewer, track-54_E start view, 1280x720, `--no-sound`: 4.16 M instructions (0.5 % spread), 462 allocations per frame.
+- Cores busy raises stepping time 60-80 %, instructions under 0.1 %; the lowest of 3 runs is the figure, since load
+  only adds. An oversubscribed machine still adds up to 0.15 %, and an edit outside the step moved it 0.2-0.3 %
+  (code layout and inlining), so under 0.5 % is no change. Cycles move 30-40 % between runs on a loaded machine.
+- `scripts/perf-step.sh` measures drive2 attempt 5 (13000 steps). The count is not linear in the code: an extra arm in
+  `Mem::pages_for` stopped `Mem::u32` inlining and cost 9 %. Most allocations left are the engine's two-level blend
+  tables, loaded as nested vectors on each damper step; then the car body's scatter points, the edge pairs and
+  gameplay's substep list.
 - GPU: `scripts/perf-gpu.py VIEWER_ARGS --frames N` gives GPU ms per pass per frame from Metal System Trace (viewer's
   work only). The GPU clock moves it 30 % between runs (states Minimum to Medium in one run), so it ranks passes; for
   build-to-build changes it needs a template with the performance state fixed (`PERF_GPU_TEMPLATE`, made in

@@ -143,7 +143,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   in development, not released (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's
   Settings page does not offer it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
-  (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
+  (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#exe-data)); the patch's
   `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.
 - 2026-11-01 (user): development runs on one Linux x86_64 PC: no test machine, no ssh; the harness runs the original
   locally under Wine, its folders in `dev.env` ([verification.md](verification.md#dev-setup)).
