@@ -1,4 +1,4 @@
-//! `--boot`: the memory image the pure step starts from, built from the retail files and the exe's `.data`/`.rdata`,
+//! `--boot`: the memory image the step starts from, built from the retail files and the exe's `.data`/`.rdata`,
 //! with no snapshot. The load's objects are made by the load ports
 //! (`rbr_physics::load`, `stage`, `physics_core`, `car_body`, `entities`) in the game's order, their blocks from the
 //! boot's own allocator, zero-filled (decisions O2 and O4). Only the physics' and the gameplay's signal connections are
@@ -8,7 +8,7 @@
 //! the physics definition and the definition registry from the physics files; the car's setups; the physics object
 //! (its state, scratch, time keeper and event pool) and the `.data` words the step reads; the ground; the stage world
 //! (`.col`, `.trk`, `.mat`); the damage host; the car's collision grids; the car's placements (the car, its wheels and
-//! bodies, by their factories); the fence (`.fnc`); the stack. Then `CCar::UpdateA720` runs through its binding on the pure host
+//! bodies, by their factories); the fence (`.fnc`); the stack. Then `CCar::UpdateA720` runs through its binding on the runner
 //! ([`update_a720`]), as the setup's emit runs it in the game.
 //!
 //! The race is a [`Race`] its caller fills, its weather from `rbr_gameplay::weather` (the `.mat` table's words and the
@@ -30,8 +30,6 @@ use rbr_gameplay::race_clock::AssistSettings;
 use rbr_gameplay::race_options::{self, ChampionshipOptions, RaceOptions};
 use rbr_gameplay::timing::TimeKeeper;
 use rbr_gameplay::weather::Weather;
-use rbr_hybrid::pure::Pure;
-use rbr_hybrid::{Host, Regs};
 use rbr_physics::car_body::{self, damage};
 use rbr_physics::collision::layout as collision;
 use rbr_physics::entities;
@@ -44,6 +42,8 @@ use rbr_physics::physics_core::layout::physics_object::def_new_physics;
 use rbr_physics::stage::layout as stage;
 use rbr_school::{Bank, Lesson, SchoolRun};
 use rbr_session::{Course, EndRule, LapRules};
+use rbr_step::runner::Runner;
+use rbr_step::{Host, Regs};
 
 use crate::handles;
 
@@ -360,7 +360,7 @@ const COMPLETE_SETUP: u32 = 0x007E_CD00;
 const SETUP_OPTIONS: u32 = 0x007E_CD04;
 /// The time card's block (`CTimeKeeper::Init`'s).
 const CARD_SIZE: u32 = 0x1E0;
-/// `QueryPerformanceCounter`'s import slot and what the boot puts there: an address nothing maps, which the pure host
+/// `QueryPerformanceCounter`'s import slot and what the boot puts there: an address nothing maps, which the runner
 /// answers by the slot's value.
 const QPC_SLOT: u32 = 0x0072_9190;
 const QPC_STAND_IN: u32 = 0xFEED_3000;
@@ -799,8 +799,8 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
 /// `CCar::UpdateA720(seed)` on the boot's car through its binding, as the setup's emit runs it, from below the step's
 /// slot: the setups into the definitions and the car, and the bodies' first frames (`UpdateMrr`). Its callees are
 /// bindings and stand-ins as a step's; one with neither stops it as in a step.
-pub fn update_a720(pure: &Pure, image: &Image) {
-    pure.construct(|| pure.call_at(image.slot - 0x100, UPDATE_A720, image.car, &[image.seed]));
+pub fn update_a720(runner: &Runner, image: &Image) {
+    runner.construct(|| runner.call_at(image.slot - 0x100, UPDATE_A720, image.car, &[image.seed]));
 }
 
 /// NGP's per-car init (`car_init::init`) as the race starts, after `UpdateA720`.
@@ -824,12 +824,12 @@ pub fn ngp_init(mem: &mut Mem, image: &Image) {
 }
 
 /// `--dump-image FILE` (a dev check, `harness/ngp_init_diff.py`): the image `mem` holds after `UpdateA720`, as records
-/// `base size bytes` (u32 LE each) for the boot's pages and the pure allocator's, and `FILE.blocks`, one boot heap block
+/// `base size bytes` (u32 LE each) for the boot's pages and the runner's allocator's, and `FILE.blocks`, one boot heap block
 /// `address size` (hex) per line.
 pub fn dump(mem: &Mem, image: &Image, path: &std::path::Path) -> std::io::Result<()> {
     use std::fmt::Write as _;
     let mut out = Vec::new();
-    let allocator = (rbr_hybrid::pure::ALLOCATOR_HEAP_BASE..rbr_hybrid::pure::ALLOCATOR_HEAP_END)
+    let allocator = (rbr_step::runner::ALLOCATOR_HEAP_BASE..rbr_step::runner::ALLOCATOR_HEAP_END)
         .step_by(PAGE as usize)
         .map_while(|at| mem.try_read(at, PAGE as usize).map(|_| (at, PAGE)));
     for (base, size) in image.regions.iter().copied().chain(allocator) {

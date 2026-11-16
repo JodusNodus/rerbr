@@ -8,8 +8,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 ## Current state (2026-10-19)
 
 - **Physics:** about 850 ported functions (`crates/rbr-physics/ports.csv`), about 490 bindings
-  (`rbr-hybrid`'s `BINDINGS` tables). The per-call hybrid check and the vectors are retired (2026-11-16), and the bindings no run reaches are removed: the recorded
-  drives are the oracle, and the plan is plain Rust calls on typed state with the image only at the edges. The pure step runs NGP only (`rbr-standalone --boot` needs `--ngp-physics`; 1.02
+  (`rbr-step`'s `BINDINGS` tables). The per-call hybrid check and the vectors are retired (2026-11-16), and the bindings no run reaches are removed: the recorded
+  drives are the oracle, and the plan is plain Rust calls on typed state with the image only at the edges. The step runs NGP only (`rbr-standalone --boot` needs `--ngp-physics`; 1.02
   snapshots are refused).
 - **Load path:** `rbr-standalone --boot` builds the physics state from the game files, NGP's `physics.rbz` and
   immutable tables read from the player's verified NGP 7.4.778 DLL; no executable code section or patch array is
@@ -30,7 +30,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 
 | System | State | Open items |
 | --- | --- | --- |
-| G Physics step (all subsystems) | done: `rbr-physics`, `rbr-hybrid` pure step (NGP only) | NGP gate matrix to every car and surface |
+| G Physics step (all subsystems) | done: `rbr-physics`, `rbr-step` step (NGP only) | NGP gate matrix to every car and surface |
 | G Surfaces, grip, weather tables, tyres | done | - |
 | G Damage model, physical detach | done | - |
 | G Damage level option | done | original runs for levels 0 and 2 |
@@ -153,7 +153,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   NGP and locally installed content). Downloaded packs are copied into ReRBR's user content directories; existing
   RSF content is read in place; player settings, saves and edits always belong to ReRBR.
 - 2026-10-21 (user): ReRBR steps NGP physics only; the viewer and launcher run through `rbr-standalone --boot
-  --ngp-physics`, the oracle is drive2 attempt 5. The 1.02 branches in `rbr-physics`/`rbr-hybrid` and the `Variant`
+  --ngp-physics`, the oracle is drive2 attempt 5. The 1.02 branches in `rbr-physics`/`rbr-step` and the `Variant`
   type are gone: the x87 precision is the thread's (`fpu::precision()`), and the `ngp` flags of gameplay, render,
   recording and standalone went with it (the 1.02 quantizer path is gone with `ControlPath`; a replay entry still
   goes through `NotifyFilt`, as NGP calls the original in replay mode).

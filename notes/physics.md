@@ -96,7 +96,7 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   `StepForward`'s slot-0x94 (esp-60 of `E38Ops::M_C1A0`, 0x4fc1a0) and slot-0x74. Not audited: `--dispatch
   direct`, other drives.
 - Residue rule (decision, row 15j): a stack word the original reads without anything having written it in the step
-  is `rbr_hybrid::RESIDUE` (0), held and per call. 0 because a lane of 0.0 makes no NaN, infinity or denormal in
+  is `rbr_step::RESIDUE` (0), held and per call. 0 because a lane of 0.0 makes no NaN, infinity or denormal in
   lanewise arithmetic. This changes only words that carry garbage. The `residue-audit` feature (removed 2026-11-16
   with the host's per-call answers; in git before it) gave the word a NaN (`0xffbadbad`) and logged each site's first
   read: a compared word that depended on a residue word then differed in the trace. Decided words (drive2 attempt 5, aids off, on and `--damage
@@ -117,7 +117,7 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
     same stale words differ from the build before (the call word `0xfeed2000`/`2002`, then float lane arithmetic on it):
     car `+0x8c`, `+0x9c`, `+0x14c`, `+0x33c` and the wheels' `+0x6ec` (`STALE_CAR`, `HEAP_WHEEL`, not compared), from
     step 19210 on; no other word.
-  - Payload and block words the original never writes, filled `RESIDUE` before the emit or call on the pure host
+  - Payload and block words the original never writes, filled `RESIDUE` before the emit or call on the runner
     (`fill_residue`): `Assist8DF0`'s seed block `+0`, `+0x1c`, the car step's emit payload word 0 (position, Mrr state),
     `Snap9360`'s first 16 bytes, `SimF950`'s and the body state's words 1..3, the mounted state's words 1..3,
     DampingCollision `+0x08`, `+0x40`, the contact hook's offset lane 3, the mounted pull's gap lane 3
@@ -125,7 +125,7 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
     differs from the normal one only at the stale words above; the normal one equals the build before. `Snap9360`, the
     mounted pull and step and `Assist8DF0`'s absent-wheel pairs are not reached on drive2.
   - Still the stack's: the detach locals (`SimFD00`, `StepBig`: the event's unwritten words, the to-world outputs' lane 3;
-    no detach on drive2), `CWheel::Vf28`'s payload (does not run in a pure step), `UpdateMrr`'s block word.
+    no detach on drive2), `CWheel::Vf28`'s payload (does not run in a step), `UpdateMrr`'s block word.
 
 ## Memory and porting rules
 
@@ -203,9 +203,9 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   computed addresses in the original's stack frames (detector walks, `notify`, `prof_calls`, `collide_init`, detach
   events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (`FilingHost`); NTweak apply and parse; the collision
   event pool and free list, grid construction, `brake_wall_contact`.
-- Mem-direct dispatch (the pure host's only dispatch since 2026-11-16): a call within the
-  `IN_PLACE` subsystems to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) or a binding (`Pure::call_plain`)
-  runs as a plain call when it passes exactly the words the callee pops (`Pure::stack_words`); watched emits and tyre
+- Mem-direct dispatch (the runner's only dispatch since 2026-11-16): a call within the
+  `IN_PLACE` subsystems to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) or a binding (`Runner::call_plain`)
+  runs as a plain call when it passes exactly the words the callee pops (`Runner::stack_words`); watched emits and tyre
   steps stay host calls (`NOT_DIRECT`); `Host::call_direct` skips the words where the callee reads only its arguments.
 
 ### Typed storage
@@ -216,21 +216,21 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 - A step holds it, solids included; the bindings reach it through `Host::typed()`. The stage is lifted once (`OnceLock`), the
   definitions every step (setup, respawn and restart write them between steps); neither is lowered.
 - Across steps: a step lifts only when
-  nothing is held and leaves it held (stale); `Pure::image()` lowers a stale state (it stays held), `image_mut()`
+  nothing is held and leaves it held (stale); `Runner::image()` lowers a stale state (it stays held), `image_mut()`
   lowers and drops it (the next step lifts the writer's words), `snapshot` lowers, `restore` drops; the runs between
   steps (`notify_a_vector`, `Playback::emit`, `reset_strut_dampers`) run on the held state and mark it stale. A held
   solid's image copy follows each lower (else a word back at its lifted value stays unlowered: drive2 frame 920).
-  Every reader and writer between steps goes through the gate (`Pure`'s image is private); with `poison` every image
+  Every reader and writer between steps goes through the gate (`Runner`'s image is private); with `poison` every image
   clone panics at a held word while stale. drive2: instructions -0.9 % a step, allocations 26498 -> 9221 bytes a step.
   Per-step and per-frame readers (`layout::{car_state, accumulate_tyre_terms, drive_gear}`, live `poll`, the wheel force,
-  the picture's strut pointers) read `Pure::with_held` or `Pure::unheld_image` and do not lower: drive2 lowers in the
+  the picture's strut pointers) read `Runner::with_held` or `Runner::unheld_image` and do not lower: drive2 lowers in the
   step 2 -> 0, instructions -5.6 %, 9221 -> 2951 bytes; live one lower per answer (picture, dash, sound stay on `image()`).
 - The bindings always run on typed state (`Host::typed`). The boot's `CCar::UpdateA720` builds what the lift reads
-  (fade pairs, setups, frames), so it runs under `Pure::construct`: each binding frame that asks lifts the typed state
+  (fade pairs, setups, frames), so it runs under `Runner::construct`: each binding frame that asks lifts the typed state
   and lowers it on the frame's exit (`lift_on_demand`, `release_scoped`). Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
   `with_solids` (car, wheel, collision, core); an address a view does not hold (another car, a prop) is the image's.
 - Readers outside the bindings during a step (NGP's wrappers, the hinged and mounted bodies, `CCar::ToWorld`) use
-  `rbr_hybrid`'s accessors: `vcu::unit_of`, `tyre::read_tyre`, `wheel::read_wheel`, `engine_driveline::on_drive_in`,
+  `rbr_step`'s accessors: `vcu::unit_of`, `tyre::read_tyre`, `wheel::read_wheel`, `engine_driveline::on_drive_in`,
   `on_engine_in`, `car_body::{on_car, read_car}`, `physics_core::{on_core, read_core}`, `stage::on_stage`,
   `collision::on_grids`, `rigid_body::{on_solids, with_solids, solid_word, set_solid_word}`.
 - Direct calls between held subsystems: the `*Calls` trait stays the seam; with `Host::typed()` the caller runs the
@@ -240,10 +240,10 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   header's dirty word, on the image); the wheel's of the tyre's setters, relaxation and tail getters, of the strut
   (NGP's spring step, `GetName`) and of the tyre step (NGP's wrapper, `ngp::tyre_step`; its term through
   `Host::tyre_stepped`). Host: `ResetOutputs` and `UpdateAndReset` (no held caller: `CWheel::Vf28` never runs in a
-  pure step, `Pure::reset_strut_dampers` is its held reset; `M3D030` runs only in the boot's first step, before the
+  step, `Runner::reset_strut_dampers` is its held reset; `M3D030` runs only in the boot's first step, before the
   car's lift). Residue audit: the words each skipped host call would write, filled with `0xffbadbad`, change nothing
   on drive2 (aids off and on; the tyre step's 17 also with damage on).
-- Trivial callees without a call or its words on the pure host (`rbr_hybrid::trivial`; the emulator keeps the calls):
+- Trivial callees without a call or its words on the runner (`rbr_step::trivial`; the emulator keeps the calls):
   the slot-12 getter 0x519c00 (eax `this`; `E43Vf6C` passes `ComposeA` its three words), the empty hook 0x52f480, the
   `ret n` stand-ins whose eax no caller reads, `CE36SubBlock::Init` (its port), the counter (`Host::query_counter`).
   drive2: host calls 1062.8 -> 938.6 a step, instructions -3.2 %. Residue audit (words filled with `0xffbadbad`):
@@ -262,7 +262,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   `M3AC50`, `Blend4`, `Unk97a0`, `Unk96e0`, `Unk9290`, `Unk9900`, `E50BlendOps::Blend`, Hook's `M3DD30`, `CWheel::E43Vf*`)
   runs in place (`wheel::call_wheel`, `Host::call_in_place`: its own frame at the call's esp, so the calls it leaves the
   placement of land as through the host, but none of the call's words); the frame blocks they take stay in the callers'
-  frames on the image. Leaf math direct with values on the pure host (`collision::{copy_vec4, length}`): `Length` from
+  frames on the image. Leaf math direct with values on the runner (`collision::{copy_vec4, length}`): `Length` from
   `E36Collect`, `CopyFrom` from `SyncGrid`, `CBody::Vf11C`, the body state, the L2 detector, `SimCFF0`. Audit (the
   skipped words `0xffbadbad`): drive2 PASS, traces equal aids off, on, damage realistic; twin typed, mem-direct equal.
 - `SetDirty` (0x52f450: `m_dirty = 1`, nothing else; its readers `IsDirty`/`ClrDirty` are the tweak UI's, not run)
@@ -347,7 +347,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   realistic, across, mem-direct (aids off, on) equal, the twins compare every held record (425 in drive2). Poison with
   the probe cache's `next` or `kernel_entity`'s bounds read back on the image stops at step 0 and 8610.
 - Walks and rays inline (batch 17; drive2 host calls 363.0 -> 165.1 a step, in-place and direct runs 789.5 -> 987.5,
-  instructions -5.5 %): on the pure host the entity tree walks run as Rust calls at the call's entry esp
+  instructions -5.5 %): on the runner the entity tree walks run as Rust calls at the call's entry esp
   (`entities::walk_at`, `EntityWalk::{Gated, Integrate, PreOrder, Name}`: `CEntity::Vf40`, `E43_Walk1F0`, `E43Vf20`,
   `Vf48`, `Vf58`, `Vf5C`, `Vf64`, `Vf6C`), the pre-order walk's functor (`CPlainUnaryFunction::Vf04x`) inline,
   `CBody::CState::Unk44` (`collision::reset_state_at`, its callees placed where its binding's would land),
@@ -355,7 +355,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   contacts, `CollideInit`) and the probe's other callees in place (`Ground::call` through `call_grid`). None of their
   words is read after them (residue audit: drive2 PASS, twins typed and mem-direct equal aids off and on). Stepping
   profile after (gdb samples, drive2): image word access (`mem.rs`, `mem/pages.rs`) ~29 % of the step's self time, the
-  pure host's dispatch ~9 %.
+  runner's dispatch ~9 %.
 
 ### Per subsystem
 
@@ -398,11 +398,11 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
 
 ### Checks
 
-- `scripts/gate.sh`: drive2, poison (`rbr-hybrid/poison`: held words poisoned, definitions watched, held across
+- `scripts/gate.sh`: drive2, poison (`rbr-step/poison`: held words poisoned, definitions watched, held across
   steps) and the drive with every aid on (no stop). The twins (`--twin typed|across|mem|mem-direct`: a second playback
   per call, per step or on the fact-check dispatch, compared after every step) and the fact-check dispatch were
-  removed with the per-call checks (2026-11-16); the recording compare reads the image through `Pure::image`.
-- `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
+  removed with the per-call checks (2026-11-16); the recording compare reads the image through `Runner::image`.
+- `round_trip` (`rbr-step` binary, snapshots): lower∘lift of each object, stage and definition answers against the
   image.
 - Shadow survey (instrumented build, not in the tree): held words written through and read from the image, every
   access to one on the poisoned image logged with its bindings, so all unrouted readers at once.
@@ -422,8 +422,8 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
   and `E45_M46A0`'s result object, which the detector and wheel-probe frames read (row 8: the frames as locals).
 - The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
 - More direct calls (the host calls above).
-- The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
-  game. The boot's `CCar::UpdateA720` still constructs on the image (`Pure::construct`) until the boot builds the
+- The step without its stack-frame image; definitions built from parsed files; the image path removed from the
+  game. The boot's `CCar::UpdateA720` still constructs on the image (`Runner::construct`) until the boot builds the
   typed state itself.
 
 Open decisions, with the defaults taken until decided:
@@ -534,7 +534,7 @@ rows` and `n - 1` spans of `0x78 + layers * (rows * (0x24 + 0x2c * (cols - 2)) +
 (cols - 1)))` (segment 0x78, particle 0x28, spring 0x20, bend 0xc, pointer 4). Walks are pre-order over children whose
 `S80() != 0`.
 
-Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-hybrid/src/entities/{walks,matrices,frame}.rs`):
+Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-step/src/entities/{walks,matrices,frame}.rs`):
 - A node is a frame: the entity itself (`CEntityFrame` 0x73cb64: `+4` parent, `+8` depth, `+0xc` owner) or its old
   frame (`+0x1c`, `CEntityOldFrame` 0x73cb84, slot 13 `MFc10` 0x519c10). The root is the world frame (`*0x7cbb00`,
   `WALKER`). A walker climbs the deeper node's parents to equal depth, then both until they meet, calling the frame
@@ -551,7 +551,7 @@ Matrix and pair-walk ops (`walk.rs`, `transform.rs`; bindings `rbr-hybrid/src/en
   body's `RowMap`: 0x9c points out, 0xa0 points in, 0xac rows, 0xb0 three-lane rows, 0xa4..0xb8 the same with the pose
   at the step's start); a walk's `b` is its row count (the shallower walkers pass 1).
 - Residue (audit, the skipped words filled per site): the child walks' words reached `CPassenger::Step`'s `MB560`
-  source, lane 3 unwritten, copied into car `+0x8ec`; that lane is `RESIDUE` on the pure host and the words are not
+  source, lane 3 unwritten, copied into car `+0x8ec`; that lane is `RESIDUE` on the runner and the words are not
   written. No reader of the hooks', the identity walks' or the ops' own call words.
 
 ## Scenery
@@ -592,7 +592,7 @@ come from rbr-recomp's `scripts/tweak-keys.py`.
 0x530233). The load builds from the reader's items (`ntweak::plan`); the hybrid binding walks the token tables
 (`ntweak::layout::parse`): each group, and each inner or member group again, is cut in place by `Tokenize` into a
 0x4000-byte `operator new` table freed after it; its name and items go to the token heap (`E11_StackAlloc`,
-which logs and traps when full). The class is the object's vtable (RTTI; `CLASSES` in `rbr-hybrid` `ntweak.rs`); the
+which logs and traps when full). The class is the object's vtable (RTTI; `CLASSES` in `rbr-step` `ntweak.rs`); the
 season's two classes have no key table and decline. Five lp-snap0b emit dumps and the h1 setup dump are identical
 with no declines (253 calls, 2026-10-20).
 

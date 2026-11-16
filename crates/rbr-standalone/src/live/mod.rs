@@ -16,9 +16,9 @@
 //! the payload's step.
 //!
 //! The first payload is the snapshot's own step, whose control the game had already emitted, so its bytes are not
-//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the pure physics runs
+//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
 //! `StepForward(1)` on the snapshot's memory for each of the frame's substeps, as the headless run does
-//! (`crate::physics::Pure`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
+//! (`crate::physics::Runner`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
 //! viewer's `--live` sends one per 7 ms (1.02's step), which under NGP's 1/720 s step is a frame of 5 or 6 substeps
 //! (the frame clock carries the rest), so every clock the game ticks by the frame's time (the countdown, the camera's
 //! orbit, the race clock, the finish timer) runs at real speed under both. Such a frame's records are the frame's: the
@@ -55,13 +55,13 @@
 //! (20 s) or the end-of-stage marker ends the race. From then on (the application state 9, the end page) no payload is
 //! stepped: each is answered with the last frame, whose split record (SPL1) says the race is over and how it ended.
 //!
-//! A call the pure host cannot run stops the run. The stop goes to stderr once, and from then on every payload is
+//! A call the runner cannot run stops the run. The stop goes to stderr once, and from then on every payload is
 //! answered with the last good frame and HUD, so the car freezes and the viewer stays up. A payload that is not
 //! quantized is a protocol error and ends the run.
 
 #[cfg(test)]
 use crate::boot;
-use crate::physics::Pure;
+use crate::physics::Runner;
 use crate::saves::Saves;
 use crate::stage::StageData;
 #[cfg(test)]
@@ -78,9 +78,6 @@ use rbr_gameplay::markers::MarkerEvent;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_clock::RaceClock;
 use rbr_gameplay::stage::State;
-#[cfg(test)]
-use rbr_hybrid::pure;
-use rbr_hybrid::pure::{Playback, CAR_BYTES, CAR_PTR};
 use rbr_physics::car_body::layout::CarView;
 use rbr_physics::mem::Mem;
 use rbr_physics::store::typed::Typed;
@@ -102,6 +99,9 @@ use rbr_recording::sound::{TyreMax, SND1};
 use rbr_recording::{CONTROL_BYTES, MAGIC};
 use rbr_school::SchoolRun;
 use rbr_session::{LapRules, TimingEvent};
+#[cfg(test)]
+use rbr_step::runner;
+use rbr_step::runner::{Playback, CAR_BYTES, CAR_PTR};
 use std::panic::{self, AssertUnwindSafe};
 
 mod picture;
@@ -121,7 +121,7 @@ use picture::{
     callouts, damper_frame, last_per_wheel, pace_callouts, particle_events, race_hud, split_record, with_emits, Picture,
 };
 
-/// The snapshot's stepping: the gameplay loop and the pure physics, one substep per payload.
+/// The snapshot's stepping: the gameplay loop and the Rust physics, one substep per payload.
 pub struct Live<'a> {
     playback: Playback,
     game: Game,
@@ -178,7 +178,7 @@ pub struct Live<'a> {
     /// The start clock's time of day at the stage's start: [`Live::restart`] restores it.
     initial_time_of_day: Option<f32>,
     /// The memory at the stage start, after the load settle: an in-process restart writes it back.
-    initial: rbr_hybrid::pure::RunSnapshot,
+    initial: rbr_step::runner::RunSnapshot,
     /// The settled game at the stage start: an in-process restart plays it again.
     initial_game: Game,
     /// The frame clock at the stage start, before the first answer.
@@ -335,14 +335,14 @@ impl<'a> Live<'a> {
         self.lap_events.extend(events);
     }
 
-    /// The image after the last step, for a reader between steps ([`rbr_hybrid::pure::Pure::image`]).
+    /// The image after the last step, for a reader between steps ([`rbr_step::runner::Runner::image`]).
     pub fn mem(&self) -> &Mem {
-        self.playback.pure.image()
+        self.playback.runner.image()
     }
 
     /// NGP's base address in the image.
     pub(crate) fn ngp_base(&self) -> u32 {
-        self.playback.pure.ngp_base
+        self.playback.runner.ngp_base
     }
 
     /// The step clock (CLK1): the physics step and the load settle's steps.
@@ -392,18 +392,18 @@ impl<'a> Live<'a> {
     /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`).
     /// NGP's reads the car's store over the held typed state, without lowering it (it runs after every frame).
     pub fn wheel_force(&self) -> f32 {
-        let pure = &self.playback.pure;
+        let runner = &self.playback.runner;
         if let Some(trail) = self.ffb_tyres {
-            return crate::tyre_ffb::force(pure.image(), trail);
+            return crate::tyre_ffb::force(runner.image(), trail);
         }
-        let mut mem = pure.unheld_image().clone();
+        let mut mem = runner.unheld_image().clone();
         let car = mem.u32(CAR_PTR);
         let force = |mem: &mut Mem, t: Option<&Typed>| {
             let view = CarView::new(mem, t.map(|t| &t.car.own), t.map(|t| &t.car.wheels));
             let view = view.with_defs(t.map(|t| &t.defs)).with_solids(t.map(|t| &t.solids));
             rbr_physics::car_body::steering_ffb::force(&view, car)
         };
-        pure.with_held(|t| force(&mut mem, Some(t))).unwrap_or_else(|| force(&mut mem, None))
+        runner.with_held(|t| force(&mut mem, Some(t))).unwrap_or_else(|| force(&mut mem, None))
     }
 
     /// The start clock's time of day at the stage's start, s after midnight (`rbr_gameplay::weather::start_clock`); each
@@ -444,7 +444,7 @@ impl<'a> Live<'a> {
         self.stopped
     }
 
-    /// One frame: the payload's control through the gameplay loop, and the pure physics on the snapshot's memory.
+    /// One frame: the payload's control through the gameplay loop, and the Rust physics on the snapshot's memory.
     /// Returns the steps it ran: 0 for a frame of the countdown.
     fn step(&mut self, control: Control) -> Result<u32, String> {
         let substeps = self.frame(control)?;
@@ -464,7 +464,7 @@ impl<'a> Live<'a> {
         };
         let seconds = self.frame_seconds * f64::from(periods);
         self.now += seconds;
-        let mut physics = Pure {
+        let mut physics = Runner {
             playback: &self.playback,
             trace: None,
             track: &self.stage.track,
@@ -485,9 +485,9 @@ impl<'a> Live<'a> {
             },
             Control::Input(input) => FrameInput {
                 raw: {
-                    let pure = &self.playback.pure;
-                    let mem = pure.unheld_image();
-                    pure.with_held(|t| poll(&input, mem, Some(t))).unwrap_or_else(|| poll(&input, mem, None))
+                    let runner = &self.playback.runner;
+                    let mem = runner.unheld_image();
+                    runner.with_held(|t| poll(&input, mem, Some(t))).unwrap_or_else(|| poll(&input, mem, None))
                 },
                 help_call: input.flags & CALL_FOR_HELP != 0,
                 acknowledge: input.flags & ACCEPT_MESSAGE != 0,
@@ -496,7 +496,7 @@ impl<'a> Live<'a> {
                 ..FrameInput::default()
             },
         };
-        let runs = self.playback.pure.runs();
+        let runs = self.playback.runner.runs();
         let events = panic::catch_unwind(AssertUnwindSafe(|| {
             self.game.frame_with(self.now, input, &mut physics, &mut (&mut self.school, &mut self.laps))
         }))
@@ -575,7 +575,7 @@ impl<'a> Live<'a> {
                 track: &self.track,
                 control: &self.control,
             };
-            telemetry.send(self.playback.pure.image(), &self.game, driving, &frame);
+            telemetry.send(self.playback.runner.image(), &self.game, driving, &frame);
         }
         Ok(substeps)
     }
@@ -585,7 +585,7 @@ impl<'a> Live<'a> {
     fn picture(&mut self) {
         let pending = std::mem::take(&mut self.pending);
         let Some(race_clock) = pending.race_clock else { return };
-        let mut tyres = self.playback.pure.take_tyre_particles();
+        let mut tyres = self.playback.runner.take_tyre_particles();
         if pending.substeps > 1 {
             tyres = last_per_wheel(tyres);
         }
@@ -595,16 +595,16 @@ impl<'a> Live<'a> {
         // traffic does.
         let struts = {
             // The wheels' pointers are not held: the image is lowered once, after the reset.
-            let mem = self.playback.pure.unheld_image();
+            let mem = self.playback.runner.unheld_image();
             let car = mem.u32(CAR_PTR);
             std::array::from_fn(|k| {
                 mem.u32(car + rbr_recording::sound::CAR_WHEELS + 4 * k as u32) + rbr_recording::sound::WHEEL_STRUT
             })
         };
-        self.playback.pure.reset_strut_dampers(struts);
-        let dampers = damper_frame(self.playback.pure.image(), &self.playback.pure.take_damper_signals());
+        self.playback.runner.reset_strut_dampers(struts);
+        let dampers = damper_frame(self.playback.runner.image(), &self.playback.runner.take_damper_signals());
         self.last = Picture::of(
-            self.playback.pure.image(),
+            self.playback.runner.image(),
             race_hud(race_clock, self.penalties),
             &splits,
             self.stage.interactive_handle_end,
@@ -612,11 +612,12 @@ impl<'a> Live<'a> {
             &self.detach,
             dampers,
         );
-        let pure = &self.playback.pure;
-        self.last.sound = with_emits(&self.last.sound, pure.take_engine_fires(), pure.take_speech(), pending.tyre_max);
+        let runner = &self.playback.runner;
+        self.last.sound =
+            with_emits(&self.last.sound, runner.take_engine_fires(), runner.take_speech(), pending.tyre_max);
         self.last.pace = pacenote::to_bytes(&callouts(&pending.marker_events, self.game.markers()));
-        self.last.events = particle_events(&self.playback.pure);
-        let signals = self.playback.pure.take_hud_signals();
+        self.last.events = particle_events(&self.playback.runner);
+        let signals = self.playback.runner.take_hud_signals();
         let pace = pace_callouts(&pending.marker_events);
         self.last.flow = self.flow_record(&pending.flow);
         self.last.dash = self.dash(signals, &pace);

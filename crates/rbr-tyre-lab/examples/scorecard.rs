@@ -212,9 +212,9 @@ fn main() {
     let halves: Vec<f32> = LOADS.iter().map(|&l| patch_at(&cloud, l, p.patch_length) / 2.0).collect();
     out("n_half_length", exponent(&LOADS, &halves));
     for deg in [2.0f32, 4.0] {
-        let pure = t.mz(fz, deg, 0.0);
+        let runner = t.mz(fz, deg, 0.0);
         for (k, name) in [(-0.05f32, "brake"), (0.05, "drive")] {
-            out(&format!("mz_comb_a{deg}_{name}_k0.05_4k"), t.mz(fz, deg, k) / pure);
+            out(&format!("mz_comb_a{deg}_{name}_k0.05_4k"), t.mz(fz, deg, k) / runner);
         }
     }
 

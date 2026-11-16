@@ -6,7 +6,6 @@ use std::rc::Rc;
 
 use rbr_formats::lsp::Node;
 use rbr_gameplay::timing::TimeKeeper;
-use rbr_hybrid::timekeeper::layout as keeper_layout;
 use rbr_physics::car_body;
 use rbr_physics::collision::layout as collision;
 use rbr_physics::entities;
@@ -17,11 +16,12 @@ use rbr_physics::physics_core::layout::physics_object::PhysicsHost;
 use rbr_physics::physics_core::layout::prof_calls::{EnterHost, ProfHost};
 use rbr_physics::stage::layout::{self as stage, StageHost};
 use rbr_physics::stage::Placement;
+use rbr_step::timekeeper::layout as keeper_layout;
 
 use super::{CARD_SIZE, SCRATCH, SCRATCH_SIZE, SIGNALS};
 
 /// The boot's allocator (decision O2): 16-byte aligned blocks, each zero-filled (O4), from a range no exe section and
-/// no pure-host block uses. Clones share the cursor and the block list.
+/// no runner block uses. Clones share the cursor and the block list.
 #[derive(Clone)]
 pub struct BootHeap {
     pub mem: Mem,

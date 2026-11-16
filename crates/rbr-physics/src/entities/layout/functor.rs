@@ -1,7 +1,7 @@
 //! The unary functors `CPlainUnaryFunction::Vf04x` (0x51a120) and `Vf00x` (0x51a130), the same code: the argument is
 //! pushed, the callback stored at `this+4` is called with `this` in ecx, and the caller pops the argument. The callback
 //! `E43_Tail40` (0x5194a0) is a tail jump to the argument's slot 16, with the argument as `this`; the port makes that
-//! call itself, one frame up, so the pure step has no tail call.
+//! call itself, one frame up, so the step has no tail call.
 
 /// The callback that forwards to its argument's slot 16 (`E43_Tail40`, 0x5194a0).
 pub const SLOT16_FORWARD: u32 = 0x5194a0;

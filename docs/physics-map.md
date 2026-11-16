@@ -27,9 +27,9 @@ chains run at 53-bit precision in the race and 24-bit in the load settle (`fpu::
 ## One step, in order
 
 How a step is reached: `rbr_gameplay::game::Game::frame_with` runs the frame's steps through the
-`rbr_gameplay::game::PhysicsStep` trait; `rbr-standalone` implements it with `Pure` in
-`crates/rbr-standalone/src/physics.rs`, which calls `rbr_hybrid::pure::Playback::step`. From the step entry on, every
-call goes through `rbr_hybrid`'s host to the Rust port bound for it (the `BINDINGS` tables); a call with no port
+`rbr_gameplay::game::PhysicsStep` trait; `rbr-standalone` implements it with `Runner` in
+`crates/rbr-standalone/src/physics.rs`, which calls `rbr_step::runner::Playback::step`. From the step entry on, every
+call goes through `rbr_step`'s host to the Rust port bound for it (the `BINDINGS` tables); a call with no port
 stops the run. So the order below follows the original's calls, spread over the modules each item names, not
 one loop.
 
@@ -109,7 +109,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Downforce, air density | `ngp/downforce.rs`, `ngp/atmosphere.rs` | `ngp::downforce::downforce`, `ngp::atmosphere::atmosphere` |
 | Brakes | `ngp/brake.rs`, `engine_driveline/drive.rs` | `ngp::brake::brake_step` (torque, disc temperatures), `engine_driveline::drive::set_brake_in` |
 | Steering | `car_body/controls.rs` | `car_body::controls::step_controls`, `car_body::layout::CarState` (the car's own typed state) |
-| Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate`, `rigid_body::layout::Solid` (the solids' typed state, held over the pure step; their readers on its store, `rbr_hybrid::rigid_body::on_solids`) |
+| Mass, inertia, integration | `rigid_body/force.rs`, `rigid_body/integrate.rs` | `rigid_body::force::force_pass`, `rigid_body::integrate::integrate`, `rigid_body::layout::Solid` (the solids' typed state, held over the step; their readers on its store, `rbr_step::rigid_body::on_solids`) |
 | Gravity | `physics_core/accumulate.rs`, `physics_core/math.rs` | `physics_core::accumulate::accumulate_forces`, `physics_core::math::gravity_force` |
 | Step pacing, physics clock | `physics_core/step.rs`, `physics_core/pacing.rs`, `physics_core/contact_loop.rs` | `physics_core::step::step_forward`, `physics_core::pacing::advance_time`, `physics_core::layout::Core` (the core's typed state: clock, substep counter, pass and hit counters) |
 | Ground surface, materials | `entities/ground.rs`, `entities/material_table.rs`, `ngp/material.rs`, `ngp/tag_blend.rs`, `stage/` | `entities::ground::box_probe`, `entities::material_table::MaterialTable`, `ngp::material::cell`, `ngp::tag_blend::blend`, `wheel::layout::ground_probe` |
@@ -138,7 +138,7 @@ The recorded drives are the only oracle: there is no per-call check against the 
 drive reaches is not checked ([verification.md](../notes/verification.md)). A new recording is the way to cover one.
 
 Experimental physics, which may differ from NGP, goes outside `rbr-physics`: engine models in `crates/rbr-engine`,
-tyre models in `crates/rbr-tyre`, hooked in through `rbr_hybrid::ngp::set_engine_model`, `set_tyre_model`,
+tyre models in `crates/rbr-tyre`, hooked in through `rbr_step::ngp::set_engine_model`, `set_tyre_model`,
 `set_aero_model` and `set_four_wheel_drive_loss`, and chosen by `--physics` profiles
 (`crates/rbr-standalone/src/profile.rs`). With no model set the code is NGP's. See
 [experimental-physics.md](experimental-physics.md) and [tyre-model.md](tyre-model.md).

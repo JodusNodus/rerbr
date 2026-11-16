@@ -7,7 +7,7 @@
 //!
 //! The words a step writes stay out, on the image: the wheel definitions' `+0x880..+0x900` (the frames `M3A8A0`
 //! writes) and the tyre setups' by-load tables `+0x204..+0x284` (NGP's step wrapper scales them around `Step`). With
-//! the `poison` feature each typed answer is checked against the image's ([`checked`]) and the pure step watches the
+//! the `poison` feature each typed answer is checked against the image's ([`checked`]) and the step watches the
 //! held bytes ([`Defs::watched`], `Mem::watch_writes`): a write into them during a step fails the run.
 
 use std::ops::Range;

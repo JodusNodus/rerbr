@@ -151,7 +151,7 @@ viewer playback. Last standalone results (2026-10-20): tanner-corolla 13000/1300
 | arctic-snow | 13 (`track-13_O`), 6 | snow |
 | `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
 
-Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it with the `poison` build's drive and an aids-on drive;
+Standalone check for `rbr-standalone` and `rbr-step` changes (`scripts/gate.sh` builds and runs it with the `poison` build's drive and an aids-on drive;
 `--perf BASE_BIN` the step's cost):
 
 ```sh
@@ -181,7 +181,7 @@ Allowed differences, and where each is applied:
 | Lane 3 of vectors filled from stale stack: car+0x8ec … +0x150c, car+0x1cc; wheel+0x99c, +0x9bc, +0x9dc | `diverge.py` `static_mask` (the C++ gate's mask) |
 | Words ever NaN, inf or \|x\| > 1e20 in the reference | `diverge.py` `static_mask` |
 | Words differing between two reference runs and the count runs (about 170, heap shifts) | `REF.mask`, `diverge.py --mask` |
-| Proven stale-stack words (car+0x161c, 0x22c, 0x32c, 0x38c, 0x15dc, …; wheel+0x73c) | `rbr-hybrid/src/pure/compare.rs` `STALE_CAR`/`STALE_WHEEL` |
+| Proven stale-stack words (car+0x161c, 0x22c, 0x32c, 0x38c, 0x15dc, …; wheel+0x73c) | `rbr-step/src/runner/compare.rs` `STALE_CAR`/`STALE_WHEEL` |
 | wheel+0x9ac (stack garbage the emulator cannot reproduce) | `RECORDING_GARBAGE`, recording compare only |
 | Frame-loop words car+0x660, +0x670, +0x814 (`CCar::Vf28x` 0x4ea020, once a rendered frame) | `RECORDING_GARBAGE` = `compare.rs` `FRAME_LOOP_CAR`, recording compare only |
 | Heap pointers | counted, not compared |

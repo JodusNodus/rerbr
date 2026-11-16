@@ -1,6 +1,6 @@
 //! The classes the entity layer builds in the game: the vtables, names, sizes and tweak dictionaries of the defs and
 //! objects, and the singleton of the ground. `CHingedRigidBody::CDef` and `CMaterial` give their name and dictionary to
-//! the game's reflection calls (`Vf4c`, `Unk20`), which the hybrid answers from here.
+//! the game's reflection calls (`Vf4c`, `Unk20`), which the bindings answer from here.
 
 pub use crate::ntweak::layout::BASE_VTABLE;
 

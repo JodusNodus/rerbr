@@ -14,11 +14,11 @@ pub struct Profile {
     pub tyre: &'static str,
     /// `--tyre-tuning`: the brush's experimental tuning (`rbr_tyre::Tuning`), the model's in every profile.
     pub tyre_tuning: Tuning,
-    /// The aero model (`rbr_hybrid::ngp::set_aero_model`): `ngp` is NGP's downforce and drag; `--aero` sets another:
+    /// The aero model (`rbr_step::ngp::set_aero_model`): `ngp` is NGP's downforce and drag; `--aero` sets another:
     /// `yaw` takes the front downforce and the drag with the car's sideslip, `wings` adds the drag of the downforce
     /// devices, `downforce` halves the file's downforce, and their sums joined by `+`.
     pub aero: &'static str,
-    /// The four-wheel-drive cars' drivetrain loss, percent (`rbr_hybrid::ngp::set_four_wheel_drive_loss`): `None` is
+    /// The four-wheel-drive cars' drivetrain loss, percent (`rbr_step::ngp::set_four_wheel_drive_loss`): `None` is
     /// the car file's `DriveTrainLoss_NGP` (12).
     pub drive_loss: Option<u32>,
 }
@@ -84,7 +84,7 @@ mod tests {
         assert_eq!(brush.engine, experimental.engine);
         assert!(rbr_tyre::NAMES.contains(&brush.tyre) && brush.tyre != "ngp");
         assert_eq!(brush, Profile { name: brush.name, tyre: brush.tyre, ..experimental }, "the tyre alone differs");
-        assert!(rbr_hybrid::ngp::AERO_NAMES.contains(&experimental.aero) && experimental.aero != "ngp");
+        assert!(rbr_step::ngp::AERO_NAMES.contains(&experimental.aero) && experimental.aero != "ngp");
         assert_eq!((Profile::NGP.drive_loss, experimental.drive_loss), (None, Some(17)));
         let ngp_brush = Profile::named("ngp-brush").unwrap();
         assert!(!ngp_brush.is_ngp());

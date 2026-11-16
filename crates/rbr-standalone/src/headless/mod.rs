@@ -1,5 +1,5 @@
 //! The headless run (`--recording X` with `--snapshot Y` or `--boot`): the gameplay loop from the recording's first
-//! frame, the pure physics from the image's step, and each step's car and wheels compared with the recording (the
+//! frame, the Rust physics from the image's step, and each step's car and wheels compared with the recording (the
 //! crate's documentation describes the loop and the report).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,15 +22,15 @@ use rbr_gameplay::race_clock::{AssistSettings, RaceClock};
 use rbr_gameplay::result::StageResult;
 use rbr_gameplay::stage::{Stage, State};
 use rbr_gameplay::tick;
-use rbr_hybrid::pure::{self, Compare, Playback, ReadTrace};
-use rbr_hybrid::timekeeper::layout as keeper_layout;
 use rbr_physics::snapshot::Snapshot;
 use rbr_recording::sound::TyreMax;
 use rbr_recording::{Frame, CONTROL_BYTES};
+use rbr_step::runner::{self, Compare, Playback, ReadTrace};
+use rbr_step::timekeeper::layout as keeper_layout;
 
 use crate::args::Args;
 use crate::boot;
-use crate::physics::{boot_playback, chain, fit_physics, load_substeps, run_guarded, sample, why, Pure, DT};
+use crate::physics::{boot_playback, chain, fit_physics, load_substeps, run_guarded, sample, why, Runner, DT};
 use crate::stage::StageData;
 
 mod report;
@@ -64,7 +64,7 @@ pub struct Run {
     /// The physics step: the image's `MaxTimeStep`, or [`DT`] when the image has none (`dt_image` false).
     dt: f32,
     dt_image: bool,
-    /// Steps run pure, and of them those whose car and wheels equal the recording.
+    /// Steps run, and of them those whose car and wheels equal the recording.
     pub steps: usize,
     pub equal: usize,
     /// Wall time in the steps' `Game::frame` calls, and in the whole step loop (the steps and the compare).
@@ -72,7 +72,7 @@ pub struct Run {
     looping: Duration,
     /// Instructions, cycles and allocations in the steps' `Game::frame` calls.
     stepping_counts: Counts,
-    /// The bindings the pure host ran in the steps' `Game::frame` calls ([`rbr_hybrid::pure::Pure::runs`]).
+    /// The bindings the runner ran in the steps' `Game::frame` calls ([`rbr_step::runner::Runner::runs`]).
     binding_runs: u64,
     pointers: usize,
     allocator_pointers: usize,
@@ -81,7 +81,7 @@ pub struct Run {
     noise: usize,
     /// Unmasked noise candidates released because either side changed.
     noise_released: usize,
-    /// Noise candidates released because the recording changed while pure kept its start value.
+    /// Noise candidates released because the recording changed while the run kept its start value.
     noise_released_by_recording: Vec<usize>,
     /// Those noise candidates outside the recording's static car-and-wheel mask.
     noise_unmasked: usize,
@@ -103,11 +103,11 @@ pub struct Run {
     boot_pointers_kept_at_stop: Vec<usize>,
     /// The first step that differs: its step and frame words.
     first_diff: Option<(u32, Vec<usize>)>,
-    /// The recording and pure words at the first differing step.
+    /// The recording's and the run's words at the first differing step.
     first_diff_values: Vec<(usize, u32, u32)>,
     /// Every frame word that differs at some step: the first step it differs at and the number of steps.
     differing: BTreeMap<usize, (u32, usize)>,
-    /// The stale-stack words (`pure::stale_mask`) that differ, with the steps each differs at. Counted apart: not failures.
+    /// The stale-stack words (`runner::stale_mask`) that differ, with the steps each differs at. Counted apart: not failures.
     stale: BTreeMap<usize, usize>,
     /// The first step whose emitted control differs from the recorded payload: its step and word.
     control_diff: Option<(u32, usize)>,
@@ -131,7 +131,7 @@ pub struct Run {
 
 #[derive(Default)]
 struct PhaseSummary {
-    /// Recorded frame steps run by the pure host.
+    /// Recorded frame steps run by the runner.
     steps: usize,
     /// Of those, frame states equal to the recording.
     equal: usize,
@@ -160,7 +160,7 @@ impl PhaseSummaries {
 
 /// Where `Game`'s time card and clock differ from the bound keeper's and the physics clock in `mem`, field by field.
 fn keeper_difference(game: &Game, mem: &rbr_physics::mem::Mem) -> Option<String> {
-    let (ours, bound) = (game.time_card(), pure::time_keeper(mem).card);
+    let (ours, bound) = (game.time_card(), runner::time_keeper(mem).card);
     let mut out = vec![];
     let mut field = |name: &str, a: &dyn std::fmt::Debug, b: &dyn std::fmt::Debug| {
         let (a, b) = (format!("{a:?}"), format!("{b:?}"));
@@ -178,7 +178,7 @@ fn keeper_difference(game: &Game, mem: &rbr_physics::mem::Mem) -> Option<String>
     field("origin", &ours.origin, &bound.origin);
     field("finish_time", &ours.finish_time, &bound.finish_time);
     field("hold", &ours.hold, &bound.hold);
-    field("clock", &game.elapsed(), &pure::clock(mem));
+    field("clock", &game.elapsed(), &runner::clock(mem));
     (!out.is_empty() || ours != bound).then(|| out.join(", "))
 }
 
@@ -226,7 +226,7 @@ fn snapshot_start(path: &str, frames: &[Frame], mask: &[bool], traced: bool) -> 
         step: h.step,
         substeps: h.substeps,
         compare,
-        dt: pure::max_time_step(&snap),
+        dt: runner::max_time_step(&snap),
         built: Vec::new(),
     })
 }
@@ -242,7 +242,7 @@ fn boot_start(
     dump: Option<&Path>,
 ) -> Result<Start, String> {
     let (playback, image) = boot_playback(data, stage, name, race, dump, true)?;
-    let mem = playback.pure.image();
+    let mem = playback.runner.image();
     let compare = Compare::at_start_of(mem, image.regions.clone(), mask.to_vec(), frames);
     let dt = keeper_layout::max_time_step(mem);
     Ok(Start {
@@ -281,7 +281,7 @@ pub fn run(
         fit_physics(&playback, profile, car)?;
     }
     let mut trace_out = hooks.trace_out.map(Trace::create).transpose()?;
-    // The first frame the pure physics runs.
+    // The first frame the Rust physics runs.
     let first = frames
         .iter()
         .position(|f| f.pre == start)
@@ -295,7 +295,7 @@ pub fn run(
     let dt = image_dt.unwrap_or(DT);
     let values = stage.track_values.clone();
     let mut game = Game::new(
-        Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(playback.pure.image())),
+        Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(playback.runner.image())),
         Grid::from_settings(&Ini::parse("")),
         &stage.markers,
         values,
@@ -311,7 +311,7 @@ pub fn run(
         _ => None,
     };
     let mut recorded = Recorded { car: &[], track: &stage.track };
-    let mut physics = Pure {
+    let mut physics = Runner {
         playback: &playback,
         trace: trace.as_deref(),
         track: &stage.track,
@@ -326,10 +326,10 @@ pub fn run(
         dt,
         dt_image: image_dt.is_some(),
         noise: compare.noise(),
-        noise_unmasked: compare.kept_words(playback.pure.image()).iter().filter(|&&i| !mask[i]).count(),
-        boot_pointer_candidates: compare.kept_boot_pointers(playback.pure.image()).len(),
+        noise_unmasked: compare.kept_words(playback.runner.image()).iter().filter(|&&i| !mask[i]).count(),
+        boot_pointer_candidates: compare.kept_boot_pointers(playback.runner.image()).len(),
         boot_pointer_candidates_unmasked: compare
-            .kept_boot_pointers(playback.pure.image())
+            .kept_boot_pointers(playback.runner.image())
             .iter()
             .filter(|&&i| !mask[i])
             .count(),
@@ -347,7 +347,7 @@ pub fn run(
         }
         if i == go_frame {
             let go = FrameInput { camera_go: true, ..FrameInput::default() };
-            // Neither frame steps; after the pure boot `Pure` is the physics all the same. The
+            // Neither frame steps; after the boot `Runner` is the physics all the same. The
             // second, where `Tic`'s countdown gives the driving, takes a step's time as in live play: the HUD ticks it
             // in the race state (`M004825b0` 0x4829e5), so the race clocks of both runs agree.
             for (input, frame_time) in [(go, 0.0), (FrameInput::default(), dt)] {
@@ -364,10 +364,10 @@ pub fn run(
                 }
             }
             if start == 0 && i > first {
-                let kept = compare.kept_words(playback.pure.image());
+                let kept = compare.kept_words(playback.runner.image());
                 noise_kept_through_driving = Some(kept.iter().copied().collect());
                 out.noise_kept_after_countdown = Some(kept);
-                let pointers = compare.kept_boot_pointers(playback.pure.image());
+                let pointers = compare.kept_boot_pointers(playback.runner.image());
                 boot_pointers_kept_through_driving = Some(pointers.iter().copied().collect());
                 out.boot_pointers_kept_after_countdown = Some(pointers);
             }
@@ -405,8 +405,8 @@ pub fn run(
             continue;
         }
         if i == first {
-            out.keeper_diff = keeper_difference(&game, playback.pure.image()).map(|d| (None, d));
-            let states = (game.stage().state().value(), pure::app_state(playback.pure.image()));
+            out.keeper_diff = keeper_difference(&game, playback.runner.image()).map(|d| (None, d));
+            let states = (game.stage().state().value(), runner::app_state(playback.runner.image()));
             out.state_diff = (states.0 != states.1).then_some(states);
         }
         if out.steps == steps {
@@ -415,13 +415,13 @@ pub fn run(
         }
         physics.word6 = words[6];
         physics.substeps = if i == first { start_substeps } else { frame.substeps };
-        let runs = playback.pure.runs();
+        let runs = playback.runner.runs();
         let counting = Mark::now();
         let stepping = Instant::now();
         let extra = hooks.extra_payloads.and_then(|e| e.get(&frame.pre)).map_or(&[][..], Vec::as_slice);
-        let mut exact = Exact { pure: &mut physics, words: hooks.recorded_payload.then_some(words), extra };
+        let mut exact = Exact { runner: &mut physics, words: hooks.recorded_payload.then_some(words), extra };
         if let Some(clock) = hooks.wall_clock {
-            rbr_hybrid::ngp::set_wall_clock(clock.get(&frame.pre).copied());
+            rbr_step::ngp::set_wall_clock(clock.get(&frame.pre).copied());
         }
         let events =
             match panic::catch_unwind(AssertUnwindSafe(|| game.frame_with(now, input, &mut exact, &mut school))) {
@@ -432,15 +432,15 @@ pub fn run(
                         frame.pre,
                         frame.substeps,
                         why(e.as_ref()),
-                        chain(&playback.pure),
-                        playback.pure.runs() - runs
+                        chain(&playback.runner),
+                        playback.runner.runs() - runs
                     ));
                     break;
                 }
             };
         out.stepping += stepping.elapsed();
         out.stepping_counts += counting.elapsed();
-        out.binding_runs += playback.pure.runs() - runs;
+        out.binding_runs += playback.runner.runs() - runs;
         out.steps += 1;
         out.assists.extend(events.substeps.iter().filter_map(|s| s.outside_assistance).map(|code| (frame.pre, code)));
         out.penalties.extend(events.clock_events.penalty.map(|p| (frame.pre, p)));
@@ -467,7 +467,7 @@ pub fn run(
         if let Some(word) = control.and_then(|c| c.first_difference(expected)) {
             out.control_diff.get_or_insert((frame.pre, word));
         }
-        let mem = playback.pure.image();
+        let mem = playback.runner.image();
         if out.keeper_diff.is_none() {
             out.keeper_diff = keeper_difference(&game, mem).map(|d| (Some(frame.pre), d));
         }
@@ -490,8 +490,8 @@ pub fn run(
                 phase.equal += 1;
             }
         } else if out.first_diff.is_none() {
-            let want = pure::recorded_words(frame);
-            let have = pure::frame_words(mem);
+            let want = runner::recorded_words(frame);
+            let have = runner::frame_words(mem);
             out.first_diff_values = diff.words.iter().map(|&word| (word, want[word], have[word])).collect();
             out.first_diff = Some((frame.pre, diff.words));
         }
@@ -520,13 +520,13 @@ pub fn run(
     if let Some(trace) = trace_out {
         trace.finish()?;
     }
-    out.noise_kept_at_stop = compare.kept_words(playback.pure.image());
+    out.noise_kept_at_stop = compare.kept_words(playback.runner.image());
     out.noise_released = compare.released_noise_words().len();
     out.noise_released_by_recording = compare.recorded_noise_released_words();
     out.noise_kept_through_driving = noise_kept_through_driving.map(|kept| kept.into_iter().collect());
-    out.boot_pointers_kept_at_stop = compare.kept_boot_pointers(playback.pure.image());
+    out.boot_pointers_kept_at_stop = compare.kept_boot_pointers(playback.runner.image());
     out.boot_pointers_kept_through_driving = boot_pointers_kept_through_driving.map(|kept| kept.into_iter().collect());
-    out.allocator_unwritten_reads = playback.pure.allocator_unwritten_reads();
+    out.allocator_unwritten_reads = playback.runner.allocator_unwritten_reads();
     if let (Some(dir), Some(trace), Source::Snapshot(path)) = (read_set, &trace, source) {
         write_read_set(dir, path, trace).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
@@ -573,7 +573,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::
             return ExitCode::FAILURE;
         }
     };
-    let mask = pure::static_mask(&frames);
+    let mask = runner::static_mask(&frames);
     let car = crate::race::engine_car(args, race, stage.car);
     let mut ok = true;
     let boot = ["boot".to_string()];

@@ -13,8 +13,8 @@ use rbr_gameplay::driveline;
 use rbr_gameplay::game::{PhysicsStep, StepSample};
 use rbr_gameplay::markers::TickInput;
 use rbr_gameplay::stage::{Stage, State};
-use rbr_hybrid::pure::{self, Playback, ReadTrace, Stopped};
 use rbr_recording::sound::TyreMax;
+use rbr_step::runner::{self, Playback, ReadTrace, Stopped};
 
 use crate::boot;
 use crate::profile::Profile;
@@ -62,8 +62,8 @@ pub fn sample(car: &[u8], track: &[DriveLineRecord]) -> StepSample {
     layout::recorded_car(car).sample(track)
 }
 
-/// The pure Rust physics on the snapshot's memory.
-pub struct Pure<'a> {
+/// The Rust physics on the snapshot's memory.
+pub struct Runner<'a> {
     pub playback: &'a Playback,
     /// Logs the image's bytes the steps read (`--read-set`).
     pub trace: Option<&'a ReadTrace>,
@@ -81,7 +81,7 @@ pub struct Pure<'a> {
     pub tyre_max: TyreMax,
 }
 
-impl PhysicsStep for Pure<'_> {
+impl PhysicsStep for Runner<'_> {
     fn step(&mut self, control: Option<CarControl>, index: u32, inside_step: &mut dyn FnMut(StepSample)) {
         // A load settle call's later substeps ran inside its first; a driving substep is its own `StepForward(1)`, with
         // no control on the full replay buffer's step.
@@ -98,13 +98,13 @@ impl PhysicsStep for Pure<'_> {
             self.own_step = false;
             layout::accumulate_tyre_terms(self.playback, &mut self.tyre_max);
         }
-        let (wall_inside, wall_crossed) = self.playback.pure.take_wall_emits();
+        let (wall_inside, wall_crossed) = self.playback.runner.take_wall_emits();
         inside_step(StepSample {
             notify_a_vector: Some(self.playback.notify_a_vector()),
             wall_inside,
             wall_crossed,
-            outside_assistance: self.playback.pure.take_outside_assistance(),
-            retire: self.playback.pure.take_retire(),
+            outside_assistance: self.playback.runner.take_outside_assistance(),
+            retire: self.playback.runner.take_retire(),
             ..layout::car_state(self.playback).sample(self.track)
         });
     }
@@ -127,7 +127,7 @@ impl PhysicsStep for Pure<'_> {
 /// runs on this thread (none for NGP 7's). A car without NGP keeps NGP 7's (said once on stderr).
 pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car) -> Result<(), String> {
     static WITHOUT_NGP: std::sync::Once = std::sync::Once::new();
-    let ngp = rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base);
+    let ngp = rbr_step::ngp::runs_ngp(playback.runner.ngp_base);
     if !ngp && !profile.is_ngp() {
         let name = profile.name;
         WITHOUT_NGP.call_once(|| eprintln!("rbr-standalone: --physics {name}: the car runs without NGP, no effect"));
@@ -137,25 +137,25 @@ pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car)
         "ngp" => None,
         name => rbr_engine::model(name, &layout::engine_params(playback, car.clone()))?,
     };
-    rbr_hybrid::ngp::set_engine_model(engine);
+    rbr_step::ngp::set_engine_model(engine);
     let tyre = match profile.tyre {
         _ if !ngp => None,
         "ngp" => None,
         name => rbr_tyre::model(name, &layout::tyre_wheels(playback), &profile.tyre_tuning)?,
     };
-    rbr_hybrid::ngp::set_tyre_model(tyre);
-    rbr_hybrid::ngp::set_four_wheel_drive_loss(profile.drive_loss.filter(|_| ngp));
-    rbr_hybrid::ngp::set_aero_model(if ngp { profile.aero } else { "ngp" })
+    rbr_step::ngp::set_tyre_model(tyre);
+    rbr_step::ngp::set_four_wheel_drive_loss(profile.drive_loss.filter(|_| ngp));
+    rbr_step::ngp::set_aero_model(if ngp { profile.aero } else { "ngp" })
 }
 
 /// `--replay-tyre`: the tyre model `name` (`rbr_tyre::model`'s names, untuned) fitted afresh to the car in `playback`, in place of
 /// the profile's from this step on (research; a car without NGP keeps NGP 7's).
 pub fn switch_tyre_model(playback: &Playback, name: &str) -> Result<(), String> {
-    let tyre = match rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base) {
+    let tyre = match rbr_step::ngp::runs_ngp(playback.runner.ngp_base) {
         true => rbr_tyre::model(name, &layout::tyre_wheels(playback), &rbr_tyre::Tuning::MODEL)?,
         false => None,
     };
-    rbr_hybrid::ngp::set_tyre_model(tyre);
+    rbr_step::ngp::set_tyre_model(tyre);
     Ok(())
 }
 
@@ -171,7 +171,7 @@ pub fn ratio_ring_newest(playback: &Playback) -> f32 {
     layout::ratio_ring_newest(playback)
 }
 
-/// Why a step's panic stopped the run: the pure host's stop, or a port's own failure.
+/// Why a step's panic stopped the run: the runner's stop, or a port's own failure.
 pub fn why(e: &(dyn Any + Send)) -> String {
     match e.downcast_ref::<Stopped>() {
         Some(Stopped(s)) => s.to_string(),
@@ -186,8 +186,8 @@ pub fn why(e: &(dyn Any + Send)) -> String {
 }
 
 /// The boot's image at step 0 in the application state `Game` starts in, after `CCar::UpdateA720` (written to `dump`
-/// when given), and its playback. Without `track_allocator` the pure allocator's blocks are in the image's pages and
-/// its unwritten reads are not logged ([`rbr_hybrid::pure::Pure::untrack_allocator`]).
+/// when given), and its playback. Without `track_allocator` the runner's allocator's blocks are in the image's pages and
+/// its unwritten reads are not logged ([`rbr_step::runner::Runner::untrack_allocator`]).
 pub fn boot_playback(
     data: &Data,
     stage: &StageData,
@@ -199,32 +199,32 @@ pub fn boot_playback(
     let state = Stage::quick_race(stage.number, stage.car).load_ready().state();
     let image = boot::build(data, name, state.value(), race)?;
     let mut playback = Playback::from_image(image.mem.clone(), image.regs, image.slot, image.control_at, false);
-    playback.pure.ngp_base = image.ngp.base;
+    playback.runner.ngp_base = image.ngp.base;
     if !track_allocator {
-        playback.pure.untrack_allocator();
+        playback.runner.untrack_allocator();
     }
-    panic::catch_unwind(AssertUnwindSafe(|| boot::update_a720(&playback.pure, &image)))
-        .map_err(|e| format!("the boot's CCar::UpdateA720: {} in {}", why(e.as_ref()), chain(&playback.pure)))?;
-    boot::ngp_init(&mut playback.pure.image_mut(), &image);
+    panic::catch_unwind(AssertUnwindSafe(|| boot::update_a720(&playback.runner, &image)))
+        .map_err(|e| format!("the boot's CCar::UpdateA720: {} in {}", why(e.as_ref()), chain(&playback.runner)))?;
+    boot::ngp_init(&mut playback.runner.image_mut(), &image);
     if let Some(path) = dump {
-        boot::dump(playback.pure.image(), &image, path).map_err(|e| format!("{}: {e}", path.display()))?;
+        boot::dump(playback.runner.image(), &image, path).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok((playback, image))
 }
 
 /// Refuses a snapshot taken without NGP.dll: ReRBR steps NGP physics only.
 pub fn require_ngp(playback: &Playback) -> Result<(), String> {
-    if rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base) {
+    if rbr_step::ngp::runs_ngp(playback.runner.ngp_base) {
         Ok(())
     } else {
         Err("a 1.02 snapshot; ReRBR steps NGP physics only".into())
     }
 }
 
-/// The running bindings and stand-ins at a stop (`pure::Pure::take_chain`, outermost first) as it prints them:
+/// The running bindings and stand-ins at a stop (`runner::Runner::take_chain`, outermost first) as it prints them:
 /// `0x4ea720 > 0x4e9800`.
-pub fn chain(pure: &pure::Pure) -> String {
-    pure.take_chain().iter().map(|a| format!("{a:#x}")).collect::<Vec<_>>().join(" > ")
+pub fn chain(runner: &runner::Runner) -> String {
+    runner.take_chain().iter().map(|a| format!("{a:#x}")).collect::<Vec<_>>().join(" > ")
 }
 
 /// Runs `f` on a thread of its own: bindings call each other directly, and a deep step wants more stack than the main

@@ -27,7 +27,7 @@ is 1 when an exact check of the sections run (STA1 aside) is a FAIL.
    physics, the session's force-feedback sensitivities; a session without NGP.dll or without a physics.rbz
    is a FAIL: ReRBR steps NGP physics only), as the launcher's command
    (crates/rbr-launcher/src/command.rs) builds them. The equal steps, the first differing step and its words come
-   from rbr-standalone's report (rbr_hybrid::pure::word_name); the curves from both FRM1s and our trace's .ext.
+   from rbr-standalone's report (rbr_step::runner::word_name); the curves from both FRM1s and our trace's .ext.
    The boot also takes the aids from the recording's car words, [NGP] headGasketDurability, the control input's
    earlier payloads at a step (CTL1, --extra-payloads) and NGP's starter clock (STP1, --wall-clock).
 2. input: `input_check` (rbr-render's bin, `input_check/session.rs`): every car control call (CTL1) against the payload the ported
@@ -72,7 +72,7 @@ CONSTANT_FORCE = "13541c20-8e33-11d0-9ad0-00a0c9a06e35"
 DIEP_GAIN, DIEP_DIRECTION, DIEP_TYPESPECIFICPARAMS = 0x4, 0x40, 0x100
 CAR_SOURCE = "rallysimfans_personal.ini"  # rsf-settings' name of the car's own keys (rsf::settings::Source::Car)
 DRIVING = 1  # rbr_gameplay::stage::State::Driving's value: the racing gate is open (notes/ngp.md "Force feedback")
-# Frame words with a name (crates/rbr-recording/src/pose.rs); the rest keep rbr_hybrid::pure::word_name's car+off.
+# Frame words with a name (crates/rbr-recording/src/pose.rs); the rest keep rbr_step::runner::word_name's car+off.
 CAR_NAMES = {0x100: "orientation", 0x140: "position", 0x17C: "driveline parameter", 0x1C0: "velocity",
              0x15FC: "speed"}
 WHEEL_NAMES = {0x100: "orientation", 0x140: "anchor", 0x5AC: "roll angle", 0x5BC: "strut travel"}

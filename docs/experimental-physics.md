@@ -39,7 +39,7 @@ idle, engine braking, the limiter and the turbo.
 
 ## What NGP's formula does
 
-The engine wrapper in `NGP.dll` (`0x1004b8e0`, ported in `rbr-hybrid/src/ngp/engine.rs` and
+The engine wrapper in `NGP.dll` (`0x1004b8e0`, ported in `rbr-step/src/ngp/engine.rs` and
 `rbr-physics/src/ngp/engine.rs`) returns the crank torque each physics step, 720 times a second. Every RallySimFans
 car uses its idle-model path:
 

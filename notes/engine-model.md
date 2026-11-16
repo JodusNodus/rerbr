@@ -474,7 +474,7 @@ user 2026-11-07). Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-star
 `harness/car_pace.py` from 0.5 m/s. The same runs with the brush (main `0ef55141`) are in `notes/tyre-model.md` ("In
 game").
 
-- The model's torque goes to the drivetrain whole (2026-11-10, user decision; `rbr-hybrid` `engine_wrapper`): NGP's
+- The model's torque goes to the drivetrain whole (2026-11-10, user decision; `rbr-step` `engine_wrapper`): NGP's
   wrapper divides its formula's by 1.05, and the car files carry the makers' crank figures (file = sheet on the Fiesta
   Rally2, Rally3, Rally3 Evo, Rally4 and WRC, Clio Rally3, 208 Rally4; Polo GTI R5's file 5 % over Volkswagen's 272 PS /
   400 N·m; Alpine A110 Rally 440 N·m against Signatech's 500; sources in the doc's "Power delivered"). So the exp engine
@@ -537,7 +537,7 @@ game").
   15.8 kPa, the Golf's fixed idle stop refilling it at about 37 kPa/s, zero crossing at 85 rad/s) and the engine above
   the wheels' speed, the engine rode the wheels to 0. NGP's idle model keeps that torque at or above 0, so its Golf
   idles at 89. Rule, with a model set only (`GearHost::clutch_holds_only_with_capacity`, set from
-  `rbr_hybrid::ngp::engine_model_is_set`): relock only if `|(locked - old) * slip_gain_a / d - a| <= b`, else keep slipping with the word set to the real slip
+  `rbr_step::ngp::engine_model_is_set`): relock only if `|(locked - old) * slip_gain_a / d - a| <= b`, else keep slipping with the word set to the real slip
   direction (`tests/clutch_relock.rs`). Golf now idles 85-89 rad/s through the stop and 106 at a standstill. Shifts
   with a closed pedal (engine above the new gear's speed) now slip at the clutch's capacity instead of snapping: the
   Escort Mk II and Fiesta R2 reach 50 km/h 0.05 and 0.04 s sooner, the Rally2, Celica, Fiat and Golf the same to the
@@ -561,7 +561,7 @@ game").
   0.32 / 0.24 (8-70 % over); the whole torque on the file's aero and loss 0.59 / 0.50 / 0.43 / 0.34 / 0.27 (19-86 %
   over). Both experimental profiles take the aero `wings+downforce` (`notes/tyre-model.md`, "The experimental profiles'
   aero") and, on a four-wheel-drive car, a 17 % loss in place of its file's smaller `DriveTrainLoss_NGP`
-  (`Profile::drive_loss`, `rbr_hybrid::ngp::drive_loss`: NGP's loss, on the positive drive gain only, so not with the
+  (`Profile::drive_loss`, `rbr_step::ngp::drive_loss`: NGP's loss, on the positive drive gain only, so not with the
   throttle shut; the installed 4WD files all carry 12, the 2WD ones 8-10 and keep them, no telemetry of one). At the
   wheels a 4WD car is then 1 % under ngp's (0.83 against 0.88 / 1.05), a 2WD car 5 % over. `experimental`: 0.55 / 0.44 /
   0.34 / 0.25 / 0.16 g (8-16 % over), the fit's wheel power 237-246 kW at 6000-7500 rpm (the real 221-234), the start to

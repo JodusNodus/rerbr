@@ -16,7 +16,7 @@ opt-level = 3
 [profile.release.package.rbr-physics]
 codegen-units = 1
 
-[profile.release.package.rbr-hybrid]
+[profile.release.package.rbr-step]
 codegen-units = 1
 
 # The player's build (`cargo build --profile play`): release with fat LTO, about 3 % faster on the live NGP step, for

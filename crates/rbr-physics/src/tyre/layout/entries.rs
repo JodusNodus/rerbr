@@ -1,5 +1,5 @@
 //! The tyre functions' sequences, one per original entry, generic over the store: each loads the tyre's frame, runs
-//! its model and stores the frame (moved from the bindings in `rbr-hybrid/src/tyre.rs`, which decode the registers,
+//! its model and stores the frame (moved from the bindings in `rbr-step/src/tyre.rs`, which decode the registers,
 //! read the blocks the callers' pointers name, call these, and write the outputs these return through the pointers).
 //! The blocks are the caller's: an output that a pointer into the tyre's own words takes is written after the tyre's
 //! state (on the per-call path, after its lower), as the original leaves it.

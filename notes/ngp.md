@@ -14,13 +14,13 @@ boot reads immutable data from the player's NGP 7.4.778 DLL (`rbr_formats::ngp::
 while empty and blocks Start when missing or unsupported). No plugin instructions run; the standalone maps no exe
 `.text` and applies no executable patches. Named callees select the NGP bindings, typed boot settings
 (`ngp::layout::runtime::Runtime`) the collision copies, damage gate and head-gasket coefficients
-(`rbr-hybrid/src/ngp/`). drive2 attempt 5 is physics PASS 84084/84084 with the DLL inputs and without code bytes.
+(`rbr-step/src/ngp/`). drive2 attempt 5 is physics PASS 84084/84084 with the DLL inputs and without code bytes.
 Cars: NGP's `physics.rbz` (`--ngp-physics`) and community packs (`--rsf-car`, `rbr_formats::rsf`).
 
 ReRBR steps NGP physics only (user decision): `rbr-standalone --boot` needs `--ngp-physics` and refuses a 1.02
 snapshot; the launcher and the viewer's `--live` go through it. The exactness proof is `harness/rsf_compare.py
 $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (84084/84084). The 1.02 behaviour arms are gone from
-`rbr-physics`/`rbr-hybrid`; 1.02 direct-call vectors remain only for functions NGP shares unchanged.
+`rbr-physics`/`rbr-step`; 1.02 direct-call vectors remain only for functions NGP shares unchanged.
 
 ## Package and local data
 
@@ -69,7 +69,7 @@ refused (`validate`). RSF's 7.5.779 and later releases are checked, then added, 
 One behaviour (NGP's): patched ports hold only the NGP arm with NGP state required; unchanged ports keep
 their 1.02 vectors at `Precision::Pc24`; NGP ports are SSE, exe ports x87 (`tests/ngp_*.rs`). NGP-only bindings
 decline on 1.02 snapshots (`ngp::only()`; vcu-cov.snap-2000 and vcu-arctic-snow.snap-4000 identical with those
-declined). NGP base from the `CCar::CDef` key dict (`Options.ngp_base`; `rbr-hybrid/src/ngp.rs`).
+declined). NGP base from the `CCar::CDef` key dict (`Options.ngp_base`; `rbr-step/src/ngp.rs`).
 
 ## Stepping
 
@@ -174,18 +174,18 @@ All 421 NGP files parse with `lsp::parse` unchanged: 153 new `*_NGP` keys, 15 ne
 ## Replacements
 
 Of the 65 retargeted physics calls, 18 are emit wrappers (1.02's fan-out) that run as their 1.02 emits. Each NGP
-target's binding in `rbr-hybrid/src/ngp.rs` names the NGP address, the function it replaces and the Rust port
+target's binding in `rbr-step/src/ngp.rs` names the NGP address, the function it replaces and the Rust port
 (`crates/rbr-physics/src/ngp/`); the exe ports' NGP-changed constants are in each port's docs, and the engine
 direct calls in `crates/rbr-physics/tests/ngp_engine.rs` (`scripts/ngp-engine-vectors.py`).
 
 ### Engine wrapper
 
-Death and idle-table lookup (`1004b8e0`, jmp `0x4e6657`): `rbr-hybrid/src/ngp.rs` (`engine_wrapper`,
+Death and idle-table lookup (`1004b8e0`, jmp `0x4e6657`): `rbr-step/src/ngp.rs` (`engine_wrapper`,
 `engine_dies`), `ngp::engine`. Every car
 has 10-15 idle knots (42 community cars, `physics.rbz` 13-15); 0 and 1 come only from patched snapshots.
 
 Engine model hook (the first part of ReRBR experimental physics (built on NGP 7), `rbr-engine`,
-`notes/engine-model.md`): with a model set on the thread (`rbr_hybrid::ngp::set_engine_model`, `rbr-standalone
+`notes/engine-model.md`): with a model set on the thread (`rbr_step::ngp::set_engine_model`, `rbr-standalone
 --physics experimental`, whose profile names each system's model, `rbr-standalone/src/profile.rs`) the running engine's torque is the model's,
 whole (not over 1.05), in place of `ngp_engine::torque`; wear, death, the ring block, the atmosphere, `Sim8E20` and the not-running
 return stay, and the speed ring moves as NGP's formula moves it (idle model only), giving the model the stall. Inputs:
@@ -193,7 +193,7 @@ air pressure `10171ad8` and temperature `10171adc` (`apply_atmosphere`'s order),
 358-363 on slot 5's idle and rev, new every tenth step). With none set the code is NGP's (rsf_compare drive2/5 84084).
 
 Tyre model hook (the second part, `rbr-tyre`, `notes/tyre-model.md`): with a model set on the thread
-(`rbr_hybrid::ngp::set_tyre_model`), the tyre step (`rbr_physics::tyre::step`) asks it after the slip phase, with
+(`rbr_step::ngp::set_tyre_model`), the tyre step (`rbr_physics::tyre::step`) asks it after the slip phase, with
 NGP's sliding solve already done, and blends its patch forces in by its weight (`rbr_physics::tyre::model::apply`):
 deflection `-(soil + Fy)/(cos·k_lat)` and torsion `-(R·Fx + soil)/k_tors`, so `solve_forces` gives the model's forces;
 trail, phases and friction forces likewise. Below 2 m/s `solve_forces` takes the model's weight and moves its damping
@@ -201,14 +201,14 @@ factors and trail scale toward 1 by it; NGP's hold torque stays. With none set t
 
 Aero and drivetrain loss hooks (ours, both experimental profiles; `notes/engine-model.md`, "Open";
 `notes/tyre-model.md`, "The experimental profiles' aero"): with an aero model set on the thread
-(`rbr_hybrid::ngp::set_aero_model`, `aero_model.rs`) NGP's downforce update takes its factors on the file's downforce,
+(`rbr_step::ngp::set_aero_model`, `aero_model.rs`) NGP's downforce update takes its factors on the file's downforce,
 front and rear, and on the drag; with a loss set (`set_four_wheel_drive_loss`, `drive_loss.rs`) the drive wrapper's
 `after_loss` takes it in place of a four-wheel-drive car's smaller `DriveTrainLoss_NGP` (types 6 and 7, on the positive
 drive gain as NGP's). With none set the code is NGP's (rsf_compare drive2/5 84084).
 
 ### Unreachable guards
 
-The bindings in `rbr-hybrid/src/ngp.rs` keep these as declines:
+The bindings in `rbr-step/src/ngp.rs` keep these as declines:
 
 - another idle-table class: the table's only writer (engine init `0x1004ae53`) always builds vtable `10148930`.
 - speed-ring growth: the ring is written by its static init (`0x100019b2`, map 32, 107 entries), the zeroing
