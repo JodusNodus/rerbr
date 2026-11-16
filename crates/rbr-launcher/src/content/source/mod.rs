@@ -52,6 +52,34 @@ pub trait Source {
         dest: &Path,
         progress: &mut dyn FnMut(u64) -> Result<(), Fail>,
     ) -> Result<(), Fail>;
+    /// One file's bytes: by default copied out through [`Source::extract`] into a temp folder; a source that reads a
+    /// file directly overrides it.
+    #[allow(dead_code)]
+    fn read(&self, entry: &Entry) -> Result<Vec<u8>, Fail> {
+        let temp = crate::job::Temp::create(&std::env::temp_dir(), "read")?;
+        let wanted = [(entry.path.clone(), entry.path.clone())];
+        self.extract(&wanted, &temp.0, &mut |_| Ok(()))?;
+        let file = entry.path.iter().fold(temp.0.clone(), |p, part| p.join(part));
+        std::fs::read(&file).map_err(|e| format!("{}: {e}", entry.path.join("/")))
+    }
+    /// The INI writes the container makes besides its files (an installer's), in script order; none for plain
+    /// containers.
+    #[allow(dead_code)]
+    fn ini_writes(&self) -> &[IniWrite] {
+        &[]
+    }
+}
+
+/// One INI write an installer makes: the file (path parts below the install folder, as ["Maps", "Tracks.ini"]), the
+/// section, the key and the value, with the installer's variables resolved where they are constants; one it cannot
+/// resolve stays as `${name}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct IniWrite {
+    pub file: Vec<String>,
+    pub section: String,
+    pub key: String,
+    pub value: String,
 }
 
 /// The paths of the entries, `/`-joined.
