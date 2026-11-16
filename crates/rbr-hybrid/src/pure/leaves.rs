@@ -2,7 +2,7 @@
 //! pass no `Ctx` on and use no `esp` (`scripts/pure_leaves.py` lists them from the sources; `leaves_are_bound` checks
 //! the list). The pure host runs a call to one of them as a plain call ([`super::Pure::call_leaf`]).
 
-pub(super) const LEAVES: [u32; 148] = [
+pub(super) const LEAVES: [u32; 144] = [
     0x43c5b0, // E01Vec4::CopyFrom
     0x43c630, // E01VecSetA::Cross
     0x43c6a0, // E01Vec4::Normalize
@@ -76,7 +76,6 @@ pub(super) const LEAVES: [u32; 148] = [
     0x519a40, // CEntity::E43Vf88
     0x519ac0, // CEntity::Vf118
     0x519b90, // CEntity::EmptyHook (ours)
-    0x519bd0, // CEntity::E43_InitBD0
     0x519c00, // E43PairWalk::MFc00
     0x519c10, // E43PairWalk::MFc10
     0x519d60, // CEntity::Vf114
@@ -96,10 +95,7 @@ pub(super) const LEAVES: [u32; 148] = [
     0x51bb80, // CGround::Vf114
     0x51bc70, // CGround::VfCC
     0x51c8c0, // E44Shell::M51C8C0
-    0x51c960, // CHingedRigidBody::SimC960
     0x51da50, // CHingedRigidBody::Set650
-    0x51e070, // CHingedRigidBody::VfE070
-    0x51ea80, // CHingedRigidBody::SimEA80
     0x520240, // E44MatTable::M520240 (ours)
     0x521910, // E45Smalls::M1910
     0x521920, // E45_M1920
