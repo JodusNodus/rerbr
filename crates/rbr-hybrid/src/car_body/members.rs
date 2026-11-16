@@ -7,8 +7,9 @@ use rbr_physics::math::quat;
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
-use super::{enter, on_car, on_car_in, Frame};
+use super::{on_car, on_car_in, Frame};
 use crate::collision::{BodyCallees, E37_EDGE_EDGE};
+use crate::enter;
 use crate::entities::Op;
 use crate::rigid_body::{set_solid_word, VF16_HELPER};
 use crate::{engine_driveline, Ctx, Decline, Host, Regs, Return};

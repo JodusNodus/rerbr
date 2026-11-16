@@ -73,18 +73,6 @@ pub(crate) fn read_car<T: Value>(host: &dyn Host, mem: &Mem, car: u32, slot: Slo
     host.typed().car.own.read(car, slot).unwrap_or_else(|| T::load(mem, car + slot.at))
 }
 
-/// What a direct call of a car-body binding's code does as the host's call does: the call's words written at its
-/// entry `esp` (`sp`, or the host's placement for 0: [`Host::call_esp`]) and the run counted ([`Host::ran_direct`]).
-/// Returns that `esp`.
-fn enter(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> u32 {
-    let esp = host.call_esp(sp);
-    for (k, word) in std::iter::once(crate::pure::CALL_RET).chain(args.iter().copied()).enumerate() {
-        mem.set_u32(esp + 4 * k as u32, word);
-    }
-    host.ran_direct();
-    esp
-}
-
 /// [`Host`] seen from a callee run directly ([`enter`]) at `esp`: its calls placed by the host (`sp` 0) land below its
 /// frame as they would from a frame of its own.
 struct Frame<'a> {

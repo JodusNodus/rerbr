@@ -8,7 +8,8 @@ use rbr_physics::car_body::wiring::{self, WiringCalls};
 use rbr_physics::mem::Mem;
 
 use super::step::SLOT_S8C;
-use super::{enter, Frame};
+use super::Frame;
+use crate::enter;
 use crate::vcu::READ_PACKET;
 use crate::{Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;

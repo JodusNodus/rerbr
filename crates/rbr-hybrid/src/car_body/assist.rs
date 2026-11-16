@@ -10,9 +10,10 @@ use rbr_physics::ntweak;
 
 use super::car_calls::{car_calls, car_calls_at, Car};
 use super::seed::SLOT_S158;
-use super::{enter, Frame};
+use super::Frame;
 use crate::car_body::on_car;
 use crate::engine_driveline::SIGNALS;
+use crate::enter;
 use crate::pure::OUTSIDE_ASSISTANCE_EMIT;
 use crate::vcu::SET_DIRTY;
 use crate::{Ctx, Decline, Host, Regs, Return};

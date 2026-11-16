@@ -12,9 +12,10 @@ use rbr_physics::entities::store::HingeStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::{self, layout::SignalHost};
 
-use super::{enter, entity_slots, BODY_COMPOSE, STATE_EMIT, TO_QUAT, VF81X, XFORM_8130};
+use super::{entity_slots, BODY_COMPOSE, STATE_EMIT, TO_QUAT, VF81X, XFORM_8130};
 use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
+use crate::enter;
 use crate::entities::Op;
 use crate::rigid_body::{held_solids, on_solids, with_solids, E43VF64, E43VF6C};
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
@@ -33,8 +34,7 @@ const MSG_NAME: u32 = 0x73d4b0;
 /// else they are, as the host writes them.
 fn enter_hinge(host: &dyn Host, mem: &mut Mem, sp: u32, body: u32, args: &[u32]) -> u32 {
     if held_solids(host).held(body).is_some() {
-        host.ran_direct();
-        host.call_esp(sp)
+        crate::enter_leaf(host, sp)
     } else {
         enter(host, mem, sp, args)
     }

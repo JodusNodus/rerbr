@@ -15,8 +15,9 @@ use rbr_physics::mem::Mem;
 use super::car_calls::{
     car_calls, car_calls_at, Car, C, DRIVE_STEP, INDEX_LIMIT, SEND, SLOT_RECEIVE, STEP_ENGINE_NAME, STEP_ENGINE_SAMPLE,
 };
-use super::{enter, on_car, on_car_in, Frame};
+use super::{on_car, on_car_in, Frame};
 use crate::engine_driveline::{E01LOG, SIGNALS};
+use crate::enter;
 use crate::entities::{Op, REMOVE_EXCLUSION, SIM_FD00};
 use crate::physics_core::{MOUNTED_VF6C, PASSENGER_STEP};
 use crate::rigid_body::{DRIVE, E43VF6C, E46_IMPULSE640};
@@ -477,7 +478,7 @@ impl RetireCheckCalls for Car<'_> {
     }
 
     fn flow_holds(&mut self, obj: u32) -> u32 {
-        super::enter(self.host, &mut self.mem, 0, &[]);
+        crate::enter(self.host, &mut self.mem, 0, &[]);
         self.mem.flow_holds(obj)
     }
 
@@ -496,7 +497,7 @@ impl RetireCheckCalls for Car<'_> {
     }
 
     fn damage_test(&mut self, obj: u32) -> u32 {
-        super::enter(self.host, &mut self.mem, 0, &[]);
+        crate::enter(self.host, &mut self.mem, 0, &[]);
         car::damage::drivable(&self.mem, obj) as u32
     }
 

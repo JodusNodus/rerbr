@@ -227,7 +227,7 @@ impl ProbeCalls for Car<'_> {
 
     fn flow_gate(&mut self) -> u32 {
         let flow = self.mem.u32(FLOW_OBJECT);
-        super::enter(self.host, &mut self.mem, 0, &[]);
+        crate::enter(self.host, &mut self.mem, 0, &[]);
         self.mem.damage_select(flow)
     }
 

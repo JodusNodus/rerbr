@@ -146,21 +146,6 @@ pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: 
     host.call_in_place(sp, target, this, args).unwrap_or_else(|| host.call_at(sp, target, this, args))
 }
 
-/// A call of a binding of this subsystem made as a plain call of its code: counted as a run ([`Host::ran_direct`]) and,
-/// for a binding that is not a leaf, the call's words written at its entry esp as the host writes them (a leaf runs
-/// without: the stack words the callee has are `args`). Returns the entry esp.
-fn enter_direct(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], write: bool) -> u32 {
-    let esp = host.call_esp(sp);
-    if write {
-        mem.set_u32(esp, crate::pure::CALL_RET);
-        for (at, &word) in (esp + 4..).step_by(4).zip(args) {
-            mem.set_u32(at, word);
-        }
-    }
-    host.ran_direct();
-    esp
-}
-
 /// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the
 /// rigid body's contact (`CSolid::BigA`), which reads the solver's rows.
 pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {

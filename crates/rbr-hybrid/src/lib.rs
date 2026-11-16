@@ -159,6 +159,25 @@ pub(crate) fn fill_residue(mem: &mut Mem, at: u32, words: u32) {
     }
 }
 
+/// A binding's code called directly in place of the host call `host.call_at(sp, ..)`: counted as a run
+/// ([`Host::ran_direct`]) and the call's words (the return address and `args`) written at the callee's entry esp as the
+/// host writes them ("Stack residue is behaviour"). Returns that esp.
+pub(crate) fn enter(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> u32 {
+    let esp = host.call_esp(sp);
+    mem.set_u32(esp, pure::CALL_RET);
+    for (at, &word) in (esp + 4..).step_by(4).zip(args) {
+        mem.set_u32(at, word);
+    }
+    host.ran_direct();
+    esp
+}
+
+/// [`enter`] without the call's words: for a leaf, or a caller that reads none of them after it.
+pub(crate) fn enter_leaf(host: &dyn Host, sp: u32) -> u32 {
+    host.ran_direct();
+    host.call_esp(sp)
+}
+
 /// A trivial callee's result, for a caller that then makes no call: `this` from the slot-12 identity getter
 /// (`E43PairWalk::MFc00`, 0x519c00, `mov eax, ecx; ret`), the old frame `this + 0x1c` from the slot-13 getter
 /// (`E43PairWalk::MFc10`, 0x519c10), 0 from the empty hook (`NTweak::CBase::Unk44`, 0x52f480, `ret`) and the `ret n`

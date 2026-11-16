@@ -3,9 +3,7 @@
 //! `E90Group` build and `CollideInit`. This file holds the addresses and the binding table; the bindings are in the
 //! submodules by concern.
 
-use rbr_physics::mem::Mem;
-
-use crate::{Binding, Host};
+use crate::Binding;
 
 mod collide_init;
 mod e90;
@@ -119,17 +117,6 @@ pub(crate) const EXCLUSION_TEST: u32 = 0x519f80;
 pub(crate) const MAT_COLLIDE_INIT: u32 = 0x51bd30;
 
 pub(crate) const ENTITY_VF118: u32 = 0x519ac0;
-
-/// A call the host would make at `sp` to a binding of ours, taken as a plain call: the call counted as a run and its
-/// words (the return address and `args`) written at the callee's entry esp, which is returned.
-pub(super) fn enter(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> u32 {
-    host.ran_direct();
-    let esp = host.call_esp(sp);
-    for (k, w) in std::iter::once(crate::pure::CALL_RET).chain(args.iter().copied()).enumerate() {
-        mem.set_u32(esp + 4 * k as u32, w);
-    }
-    esp
-}
 
 const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("entities", addr, name, run)

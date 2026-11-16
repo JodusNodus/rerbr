@@ -4,7 +4,7 @@ use rbr_physics::entities::layout;
 
 use rbr_physics::mem::Mem;
 
-use super::enter;
+use crate::enter;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
 struct E90BuildHost<'a> {

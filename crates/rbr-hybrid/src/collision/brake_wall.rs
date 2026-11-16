@@ -68,7 +68,7 @@ impl WallQueryHost for WallCorners<'_> {
     }
 
     fn query_box(&mut self, sp: u32, wall: u32, bounds: u32, collector: u32) -> u32 {
-        super::enter_direct(self.host, &mut self.mem, sp, &[bounds, collector], false);
+        crate::enter_leaf(self.host, sp);
         wall::query_box(&mut self.mem, wall, bounds, collector)
     }
 }
