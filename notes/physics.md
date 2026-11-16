@@ -428,7 +428,7 @@ snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the 
 
 Open decisions, with the defaults taken until decided:
 
-- Typed allocations go through the stand-in allocator (`pure/heap.rs`: placement and log) for now.
+- Typed allocations go through the stand-in allocator (`runner/heap.rs`: placement and log) for now.
 - State becomes typed across steps (every presentation reader then reads through a lower).
 - The pure run drops its stack-frame image once direct edges pass the residue audit.
 - Definitions: A now (lifted read only, step-written words moved into state, writes watched), B later (built from
