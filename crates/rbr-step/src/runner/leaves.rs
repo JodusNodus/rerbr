@@ -1,5 +1,5 @@
 //! The bindings that make no host call and read nothing of the stack but their arguments: their bodies call no host,
-//! pass no `Ctx` on and use no `esp` (`scripts/pure_leaves.py` lists them from the sources; `leaves_are_bound` checks
+//! pass no `Ctx` on and use no `esp` (`scripts/leaves.py` lists them from the sources; `leaves_are_bound` checks
 //! the list). The runner runs a call to one of them as a plain call ([`super::Runner::call_leaf`]).
 
 pub(super) const LEAVES: [u32; 139] = [
