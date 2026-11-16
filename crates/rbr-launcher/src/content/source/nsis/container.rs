@@ -89,7 +89,7 @@ pub const UNSUPPORTED: &str = "this installer's format isn't supported";
 fn unpack<R: Read + 'static>(mut r: BufReader<R>) -> Result<Box<dyn Read>, Fail> {
     let peek = r.fill_buf().map_err(|e| e.to_string())?;
     match codec(peek) {
-        Codec::Deflate => Ok(Box::new(flate2::read::DeflateDecoder::new(r))),
+        Codec::Deflate => Ok(Box::new(super::inflate::Inflater::new(r))),
         Codec::Bzip2 => Err(format!("{UNSUPPORTED}: its data is bzip2-compressed")),
         Codec::Lzma { flag } => {
             if flag == Some(1) {

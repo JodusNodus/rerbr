@@ -363,3 +363,4 @@ unit (Manukau); a value is two 7-bit halves with bit 7 set. Variables 0..9, `$R0
 EXEDIR LANGUAGE TEMP PLUGINSDIR EXEPATH EXEFILE`; the user variables start at 29..32 by version, so the "game folder" variable the stage
 installers keep (registry `InstallPath`) is taken as the root with `$INSTDIR`. A `.7z` unpacked by `nsis7z` is replaced by its files (Manukau: 12 entries, 14 INI writes).
 Non-solid sizes are the stored (packed) sizes.
+Deflate stored blocks: Sturec's omit `NLEN` (stored block `00 be 80`, then data at once; the first at byte 98885 of `track-607_O_textures.rbz`'s block, where flate2 stops with "invalid stored block lengths"), Peklo's carry it (`00 28 80 d7 7f`); `nsis/inflate.rs` takes the flavour from the first stored block of each stream (~360 MB/s). Every file of all four installers extracts, each `.rbz` opens as a zip with matching CRCs (`real_installers`).
