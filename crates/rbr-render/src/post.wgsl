@@ -126,9 +126,10 @@ const ROD_RETINA: f32 = 3000.0;
 // part of what it sees, a single exposure cannot, and the lamps' beam on the road at night is several stops over the
 // dark the meter exposes for. Where the frame's broad light, the glare chain's sum of blurs, is exposed more than
 // `LOCAL_FROM` stops over `KEY`, `LOCAL_GIVE` of the excess is taken off the exposure there; the detail within it stays.
-// A day's sky seldom reaches it.
+// A day's sky seldom reaches it. 0.8 since 2026-11-16 (0.6 before): the night beam's patch and the low sun's sky
+// clipped less (Gabiria night chase 3.5 to 2.3% of the frame, Comb I golden 12 to 3%), the frames' means within 3 levels.
 const LOCAL_FROM: f32 = 2.0;
-const LOCAL_GIVE: f32 = 0.6;
+const LOCAL_GIVE: f32 = 0.8;
 // The glare (after Gran Turismo 7, SIGGRAPH 2025 Physically Based Shading course; until 2026-11-05 an even blur of 6%
 // of the frame): the frame's light spread by a camera's diffraction, the Airy pattern of a round aperture, whose light
 // beyond a radius r is J0(x)^2 + J1(x)^2 with x = pi r / (lambda N), about 2 / (pi x) past the first ring. The glare
