@@ -371,7 +371,10 @@ infinite, then for an hour (SDL passes `length * 1000` µs in a 32-bit `unsigned
 4294966296 µs), then cartesian {1, 0} for an hour (NGP's direction; its sign on Windows unmeasured), the log naming
 the one taken and each failure; all three create and play on the G923 under Linux. When none takes, Windows logs
 `ffb: DirectInput probe:` (`ffb/dinput_probe.rs`): per force-feedback controller its FF driver GUID, caps, force
-axes, the exclusive acquire, and SDL's and NGP's effects created and started at level 0, each with its HRESULT.
+axes, the exclusive acquire, and SDL's three shapes and NGP's effect created and started at level 0, each with its
+HRESULT. Every drive logs `ffb:` lines: SDL's version, joysticks and haptic devices, the device opened and its
+features, each shape tried, the first update or run failure at once, and every 10 s and at the end the updates, the
+largest magnitude, the failures and (where SDL has `SDL_HAPTIC_STATUS`) how often the effect was playing.
 
 Setup (RSF on cachy: Proton cachyos-11.0 SLR, G923 PS on new-lg4ff `hid-logitech-new`, sysfs `autocenter` 0,
 `gain` 65535, `spring_level`/`damper_level` 30): ours matches RSF's levels in order over the same 10 s of drive2
