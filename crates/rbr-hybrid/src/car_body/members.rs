@@ -39,19 +39,22 @@ impl layout::EdgeProbeCalls for Collide6000Host<'_> {
     }
 }
 
-struct Vf128xHost<'a>(&'a dyn Host);
+struct Vf128xHost<'a> {
+    host: &'a dyn Host,
+    mem: Mem,
+}
 
 impl layout::CarImpulseCalls for Vf128xHost<'_> {
     fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
-        crate::entities::op(self.0, sp, this, Op::ComposeA { src: a, o2: car, out });
+        crate::entities::op(self.host, sp, this, Op::ComposeA { src: a, o2: car, out });
     }
 
     fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
-        self.0.call_at(sp, 0x4e6000, car, &[m, f1, f2]);
+        collide6000_at(self.host, &mut self.mem, sp, car, [m, f1, f2]);
     }
 
     fn solid_impulse(&mut self, sp: u32, car: u32, args: [u32; 8]) {
-        self.0.call_at(sp, crate::rigid_body::E43VF128, car, &args);
+        self.host.call_at(sp, crate::rigid_body::E43VF128, car, &args);
     }
 }
 
@@ -65,15 +68,24 @@ pub(super) fn clear480(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall three words, `ret 0xc`: the edge probe along the vector, the grid's two flags out.
 pub(super) fn collide6000(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
-    let mut calls = Collide6000Host(ctx.host);
-    layout::edge_probe(&mut ctx.mem, r.ecx, a, b, c, r.esp, &mut calls);
+    collide6000_body(ctx.host, &mut ctx.mem, r.esp, r.ecx, [a, b, c]);
     Ok(Return::void(0, 0xc))
+}
+
+fn collide6000_body(host: &dyn Host, mem: &mut Mem, esp: u32, car: u32, [a, b, c]: [u32; 3]) {
+    layout::edge_probe(mem, car, a, b, c, esp, &mut Collide6000Host(host));
+}
+
+/// `Collide6000` on `car` as the host's call at `sp`.
+fn collide6000_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, args: [u32; 3]) {
+    let esp = enter(host, mem, sp, &args);
+    collide6000_body(host, mem, esp, car, args);
 }
 
 /// thiscall eight words, `ret 0x20`: matrix compose, collision probe and solid impulse dispatch.
 pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args: [u32; 8] = r.stack[..8].try_into().expect("Vf128x has eight stack words");
-    let mut calls = Vf128xHost(ctx.host);
+    let mut calls = Vf128xHost { host: ctx.host, mem: ctx.mem.clone() };
     layout::car_impulse(&mut ctx.mem, r.ecx, args, r.esp, &mut calls);
     Ok(Return::void(0, 0x20))
 }
