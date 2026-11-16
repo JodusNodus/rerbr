@@ -2,7 +2,7 @@
 //! pass no `Ctx` on and use no `esp` (`scripts/pure_leaves.py` lists them from the sources; `leaves_are_bound` checks
 //! the list). The pure host runs a call to one of them as a plain call ([`super::Pure::call_leaf`]).
 
-pub(super) const LEAVES: [u32; 155] = [
+pub(super) const LEAVES: [u32; 148] = [
     0x43c5b0, // E01Vec4::CopyFrom
     0x43c630, // E01VecSetA::Cross
     0x43c6a0, // E01Vec4::Normalize
@@ -151,11 +151,4 @@ pub(super) const LEAVES: [u32; 155] = [
     0x5666b0, // E60Flow::M5666b0
     0x600b20, // CDummyObject::Vf11C
     0x600c80, // CDummyObject::Vf110
-    0x602220, // E90_PartCtor
-    0x605f30, // E90Seg::AddParticle
-    0x605fb0, // E90Seg::AddSpring
-    0x606070, // E90Seg::AddFixed
-    0x606090, // E90Seg::AddPin
-    0x6060b0, // E90Seg::AddBend
-    0x627235, // _D3DXVec3Normalize@8
 ];

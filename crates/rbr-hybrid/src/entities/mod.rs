@@ -17,10 +17,9 @@ use crate::rigid_body::VF81X;
 pub(crate) use collide_init::collide_init;
 use collide_init::collide_init_run;
 use e90::{
-    d3dx_normalize_run, e90_add_bend_run, e90_add_fixed_run, e90_add_particle_run, e90_add_pin_run, e90_add_spring_run,
-    e90_bend_pool_init_run, e90_build_post_run, e90_build_run, e90_build_span_run, e90_part_ctor_run,
-    e90_part_pool_init_run, e90_pin_pool_init_run, e90_ptr_tab_init_run, e90_seg_ctor_run, e90_seg_dtor_run,
-    e90_seg_init_run, e90_seg_pool_init_run,
+    e90_bend_pool_init_run, e90_build_post_run, e90_build_run, e90_build_span_run, e90_part_pool_init_run,
+    e90_pin_pool_init_run, e90_ptr_tab_init_run, e90_seg_ctor_run, e90_seg_dtor_run, e90_seg_init_run,
+    e90_seg_pool_init_run,
 };
 use entity_slots::{
     clear_acc_run, dummy_present, dummy_vf11c, dummy_vf_cc, e43_vf_d4, entity_vf140, entity_vf80_run, entity_vf9c_run,
@@ -139,7 +138,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("entities", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 115] = [
+pub static BINDINGS: [Binding; 108] = [
     bind(VF58, "CEntity::E43Vf58", vf58),
     bind(VF5C, "CEntity::E43Vf5C", vf5c),
     bind(ENTITY_VF80, "CEntity::E43Vf80", entity_vf80_run),
@@ -227,18 +226,11 @@ pub static BINDINGS: [Binding; 115] = [
     bind(E90_SEG_POOL_INIT, "E90SegPool::Init", e90_seg_pool_init_run),
     bind(E90_BUILD_SPAN, "CFenceHandler::BuildSpan", e90_build_span_run),
     bind(E90_BUILD_POST, "CFenceHandler::BuildPost", e90_build_post_run),
-    bind(0x605f30, "E90Seg::AddParticle", e90_add_particle_run),
-    bind(0x605fb0, "E90Seg::AddSpring", e90_add_spring_run),
-    bind(0x606070, "E90Seg::AddFixed", e90_add_fixed_run),
-    bind(0x606090, "E90Seg::AddPin", e90_add_pin_run),
-    bind(0x6060b0, "E90Seg::AddBend", e90_add_bend_run),
     bind(0x605b60, "E90Seg::Init", e90_seg_init_run),
     bind(0x6026a0, "E90PartPool::Init", e90_part_pool_init_run),
     bind(0x6027a0, "E90PtrTab::Init", e90_ptr_tab_init_run),
     bind(0x6028b0, "E90BendPool::Init", e90_bend_pool_init_run),
     bind(0x602930, "E90PinPool::Init", e90_pin_pool_init_run),
-    bind(0x602220, "E90_PartCtor", e90_part_ctor_run),
-    bind(0x627235, "_D3DXVec3Normalize@8", d3dx_normalize_run),
     bind(REMOVE_EXCLUSION, "CEntity::E43_ExclA060", remove_exclusion_run),
     bind(SIM_EFE0, "CHingedRigidBody::SimEFE0", sim_efe0_run),
     bind(SET_650, "CHingedRigidBody::Set650", set_650_run),
