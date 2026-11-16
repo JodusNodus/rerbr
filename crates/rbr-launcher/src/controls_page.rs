@@ -26,10 +26,11 @@ use winit::keyboard::KeyCode;
 
 use crate::catalog::Car;
 
-/// A binding being set: its action, and for a device input every joystick's values when it began.
+/// A binding being set: its action, and for a device input every joystick's values when it began (`None` for an axis
+/// that had not reported yet: it rests where it first does, [`Joysticks::first`]).
 enum Capture {
     Key(Action),
-    Pad(Action, Vec<Vec<(Object, f32)>>),
+    Pad(Action, Vec<Vec<(Object, Option<f32>)>>),
 }
 
 /// The wheel and pedals rows.
@@ -411,11 +412,13 @@ impl ControlsPage {
             let now = values(joysticks.state(k), axes, buttons);
             let device = joysticks.device(k);
             // The steering takes an axis only.
-            let found = now.zip(rest).find(|((object, v), (_, r))| {
-                (!steering || matches!(object, Object::Axis(_))) && (v - r).abs() > threshold
+            let found = now.zip(rest).find_map(|((object, v), &(_, r))| {
+                let r = r.or_else(|| if let Object::Axis(axis) = object { joysticks.first(k, axis) } else { None })?;
+                ((!steering || matches!(object, Object::Axis(_))) && (v - r).abs() > threshold)
+                    .then_some((object, v > r))
             });
-            if let Some(((object, v), (_, r))) = found {
-                moved = Some(Moved { input: PadInput { device, object }, up: v > *r });
+            if let Some((object, up)) = found {
+                moved = Some(Moved { input: PadInput { device, object }, up });
                 break;
             }
         }
@@ -426,12 +429,17 @@ impl ControlsPage {
     }
 
     /// Each joystick's values now.
-    fn pad_rest(&self) -> Vec<Vec<(Object, f32)>> {
+    fn pad_rest(&self) -> Vec<Vec<(Object, Option<f32>)>> {
         let Some(joysticks) = &self.joysticks else { return Vec::new() };
         (0..joysticks.len())
             .map(|k| {
                 let (axes, buttons) = joysticks.objects(k);
-                values(joysticks.state(k), axes, buttons).collect()
+                values(joysticks.state(k), axes, buttons)
+                    .map(|(object, v)| match object {
+                        Object::Axis(axis) => (object, joysticks.first(k, axis).map(|_| v)),
+                        _ => (object, Some(v)),
+                    })
+                    .collect()
             })
             .collect()
     }

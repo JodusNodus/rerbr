@@ -34,6 +34,13 @@ and `poll/wine.rs` (Proton path, G923 lattice, rest values); NGP additions in `c
   The game flips a settling axis's 0 to 1 (pedal pinned until touched), and a released button's or the combined
   axis's part too. Settled axes are unchanged. Tests: `an_inverted_pedal_reads_zero_until_it_has_moved_twice`,
   `invert_leaves_a_button_pedal_alone`.
+- Ours, not the game's: the live poll (`rbr_render::devices::Input`) ends an axis's settling at once when its device has
+  reported it (`Joysticks::first`: SDL's `SDL_GetJoystickAxisInitialState` off Linux, evdev's changed-or-`actual` on
+  it). An unreported axis holds the centre placeholder, which the settling exists to wait out; a device that reports
+  only on change used to need two moves before its first press counted. Test: `a_settled_axis_reads_at_once`.
+- The launcher's capture (`controls_page.rs`) takes an unreported axis's rest from its first report, not the centre
+  placeholder: against the placeholder a pedal resting at an end bound at once, so its invert could come out the wrong
+  way round (a pedal reading 100% at rest). Unverified on a device that reports only on change (no hardware here).
 - NGP version addresses (code states 778's only): 779 polls at 0x10006e70, its direct gears at 0x1003c4d0. The strand
   the 1000 Hz thread posts to is 0x10098270 -> 0x10094200 (not in code).
 - RBRControls (the install's) sets properties and FFB on device instances of its own (MOD1: PRP1 9, DEV1 5, no POL1); the

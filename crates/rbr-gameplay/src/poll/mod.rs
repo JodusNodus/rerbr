@@ -9,7 +9,8 @@
 //!   0x4cad30): an axis is `((raw - min) / (max - min)) * 2 - 1` in f32, a button 1 or 0. A failed poll leaves the
 //!   entries.
 //! - An axis reads 0 until it has moved twice by 0.001 or more since its device was made (`Update`'s counter +0x2c,
-//!   `Bound` 0x4cad20).
+//!   `Bound` 0x4cad20). Ours, not the game's: the live poll ends it at once for an axis its device has reported
+//!   ([`Device::settle`]), as only a placeholder needs waiting out.
 //! - Actions (`E28Svc`, 21 slots; the game binds them from the profile's `.acm`, `E28FileMap::FindRec` 0x4c4b50 and
 //!   `ApplyMaps` 0x4c4ee0; ours from our bindings, [`Poll::bind`]): `GetActionValue` (0x4c2610) negates an axis for THROTTLE, ACCELERATE_AND_BRAKE, BRAKE, HANDBRAKE and
 //!   CLUTCH (`InitImpl` 0x4c28c0), then maps an axis to `(v + 1) / 2` for LEFT, RIGHT, THROTTLE, BRAKE, HANDBRAKE and
@@ -204,6 +205,13 @@ impl Device {
             Target::Button(n) => !e.axis && instance(e.kind) == n,
             _ => false,
         })
+    }
+
+    /// Ends an entry's settling: ours, for an axis the device has reported, whose value is where it is.
+    pub fn settle(&mut self, entry: usize) {
+        if let Some(e) = self.entries.get_mut(entry) {
+            e.moves = 0;
+        }
     }
 
     /// `SInputDeviceImpl::Poll`'s update after a successful `GetDeviceState`; `rate` is `Tic`'s argument.
@@ -479,6 +487,19 @@ mod tests {
         assert_eq!(pedals(&p), (0.0, 0.0), "settled, at rest");
         p.devices[0].update(&state(65535, 65535, 0), 0.0);
         assert_eq!(pedals(&p), (1.0, 1.0), "pressed");
+    }
+
+    #[test]
+    fn a_settled_axis_reads_at_once() {
+        // The device has reported the throttle pedal (resting at raw 0, inverted): it reads from the first poll.
+        let mut p = poll(&[(Z, THROTTLE as u32), (X, STEERING as u32)]);
+        p.invert = Invert { throttle: true, ..Invert::default() };
+        p.devices[0].update(&state(0, 0, 0), 0.0);
+        p.devices[0].settle(1);
+        assert_eq!((p.value(THROTTLE), p.value(STEERING)), (1.0, 0.0), "the steering still settles");
+        assert_eq!(p.tic().channels[1], 0.0, "inverted, at rest");
+        p.devices[0].update(&state(0, 65535, 0), 0.0);
+        assert_eq!(p.tic().channels[1], 1.0, "pressed");
     }
 
     #[test]
