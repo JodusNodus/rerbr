@@ -52,7 +52,7 @@ same paths.
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
 | `crates/rbr-season` | The championship (ours): built rallies and seasons on any installed stages; the 1.02 AI engine (`ai`), service park, field, tracks, standings, save |
 | `crates/rbr-session` | Sessions (ours): course, format, timing events, lap timing and end rules over the 1.02 loop |
-| `crates/rbr-school` | Rally school: lessons, filter bank, verdict, on `rbr_gameplay::mode` |
+| `crates/rbr-school` | Rally school: lessons, filter bank, verdict, on `rbr_gameplay::format` |
 | `crates/rbr-standalone` | The physics program (`--boot`, `--live`) |
 | `crates/rbr-render` | wgpu renderer and the driving window (`viewer`) |
 | `crates/rbr-sound` | Gameplay sound from the SND1 record |

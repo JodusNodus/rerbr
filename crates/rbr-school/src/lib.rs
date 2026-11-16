@@ -1,5 +1,5 @@
 //! The rally school (flow mode 7): the lessons ([`lesson`]), the filter bank their `.dls` stream builds ([`bank`],
-//! [`filter`]), its listeners on the drive ([`step`], fed by [`SchoolRun`] as a [`rbr_gameplay::mode::ModeRules`])
+//! [`filter`]), its listeners on the drive ([`step`], fed by [`SchoolRun`] as a [`rbr_gameplay::format::Format`])
 //! and the verdict ([`judge`]). Ports of `RBR_E19_Filter.cpp` and `RBR_E19_School.cpp` (exe `0x497b10-0x499360`);
 //! where the C++ reconstruction disagrees with the exe, the exe wins, and each function names its deviation.
 //!

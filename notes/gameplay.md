@@ -113,7 +113,7 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 ## Rally school
 
 Mechanics in the `rbr-school` crate (lessons, the `.dls` `Driveline` filter bank, its listeners, `EvalFilters`,
-the awards), a mode on the stage loop: `SchoolRun` is a `rbr_gameplay::mode::ModeRules` the host passes to
+the awards), a format on the stage loop: `SchoolRun` is a `rbr_gameplay::format::Format` the host passes to
 `Game::frame_with` (the start, the control before each substep, the step's emits, `Tic570` each frame). The host
 owns it, and the live hook and the profile write are in `rbr-standalone` (`--school N`, `live::race_end`). Checks:
 `rbr-school/tests/vectors.rs` (direct-call vectors of the bank's methods, records in `gameplay_school/`) and an
@@ -216,7 +216,7 @@ Mechanics in the `rbr-season` crate: `rally` (the `--result-out` file `StageRepo
 1.02 season (`rbr-championship`: season, events queue, byte-exact save) is deleted, in git history. The `rand()` order is the asm's (`ai`); the driver classes' draws are ours (not in code).
 - The launcher owns the built events' rally turns (`championship_page`); each stage is a `rbr-standalone --championship` run
   whose stage rules are flow mode 3's tests in `rbr-gameplay` (`FlowMode::CHAMPIONSHIP`), so it needs no
-  `rbr_gameplay::mode::ModeRules` hook.
+  `rbr_gameplay::format::Format` hook.
 - `rbr_gameplay::car_damage::Rules` (1.02 or NGP) picks the damage objects for the HUD and the service park.
 
 ## Damage

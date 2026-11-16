@@ -1,5 +1,5 @@
 //! A lesson's drive: the filter bank fed from the stage loop as the original's listeners feed it
-//! ([`rbr_gameplay::mode::ModeRules`]), and the verdict at the end.
+//! ([`rbr_gameplay::format::Format`]), and the verdict at the end.
 //!
 //! - Before each driving substep, the control payload (`CSigCarControl`, `E12_Cb::CbF30` 0x476f30) goes to
 //!   [`school_tick`]: its throttle, brake and handbrake words.
@@ -15,7 +15,7 @@
 
 use rbr_gameplay::car_damage::{self, CarriedDamage};
 use rbr_gameplay::control::CarControl;
-use rbr_gameplay::mode::{ModeEnd, ModeRules, StepView};
+use rbr_gameplay::format::{Format, FormatEnd, StepView};
 
 use super::bank::Bank;
 use super::explain::{failure_reasons, Reason};
@@ -101,7 +101,7 @@ impl SchoolRun {
     }
 }
 
-impl ModeRules for SchoolRun {
+impl Format for SchoolRun {
     /// `M5693f0` case 4: the drive starts (`Clear40`, the step counter at 4).
     fn start(&mut self) {
         self.step = DRIVE_STEP;
@@ -147,17 +147,17 @@ impl ModeRules for SchoolRun {
 
     /// `Tic570`: `EndRace`'s emits (a finished `CSigEndRace` each), then a trip latch's retire. The ride
     /// ends as soon as the drive starts, with no judging.
-    fn frame(&mut self, dt: f32, race_time: f32) -> Option<ModeEnd> {
+    fn frame(&mut self, dt: f32, race_time: f32) -> Option<FormatEnd> {
         if self.lesson.ride() {
-            return Some(ModeEnd::Finished);
+            return Some(FormatEnd::Finished);
         }
         let ends = end_race(&mut self.bank, dt, race_time.to_bits());
         let finished = ends.iter().any(|e| matches!(e, SchoolEvent::EndRace { .. }));
         self.events.extend(ends);
         if finished {
-            Some(ModeEnd::Finished)
+            Some(FormatEnd::Finished)
         } else if self.bank.latched_a || self.bank.latched_b {
-            Some(ModeEnd::Retired)
+            Some(FormatEnd::Retired)
         } else {
             None
         }
@@ -195,7 +195,7 @@ mod tests {
         run.after_step(&standing_at(150.0, None));
         assert_eq!(run.frame(0.01, 9.2), None);
         run.after_step(&standing_at(150.0, None));
-        assert_eq!(run.frame(0.01, 9.4), Some(ModeEnd::Finished));
+        assert_eq!(run.frame(0.01, 9.4), Some(FormatEnd::Finished));
         let damage = CarriedDamage::default();
         assert_eq!(run.verdict(9.4, &damage), 3);
         assert_eq!(run.verdict(8.9, &damage), 4);
@@ -225,7 +225,7 @@ mod tests {
         let mut run = SchoolRun::new(Lesson::new(2).unwrap(), stop_box(), Vec::new());
         run.start();
         run.after_step(&standing_at(20.0, Some(1)));
-        assert_eq!(run.frame(0.01, 3.0), Some(ModeEnd::Retired));
+        assert_eq!(run.frame(0.01, 3.0), Some(FormatEnd::Retired));
         assert_eq!(run.verdict(3.0, &CarriedDamage::default()), 0);
     }
 
@@ -233,7 +233,7 @@ mod tests {
     fn the_ride_ends_on_its_first_driving_frame() {
         let mut run = SchoolRun::new(Lesson::new(5).unwrap(), stop_box(), Vec::new());
         run.start();
-        assert_eq!(run.frame(0.01, 0.0), Some(ModeEnd::Finished));
+        assert_eq!(run.frame(0.01, 0.0), Some(FormatEnd::Finished));
         assert_eq!(run.verdict(0.0, &CarriedDamage::default()), 4, "not judged: the award's 4");
     }
 }

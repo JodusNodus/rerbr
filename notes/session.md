@@ -3,7 +3,7 @@
 The layer above the 1.02 stage loop that lets a point-to-point rally stage, a hotlap, a lap race and a school lesson be
 the same kind of thing. Code: `crates/rbr-session` (`course`, `end`, `event`, `lap`), on top of `rbr-gameplay`, which keeps the 1.02 loop
 bit-exact and is the `RallyStage` format's engine. `rbr-session` depends on `rbr-gameplay`, not the reverse: the
-`Format` trait's hooks see the step's types (`StepView`, `CarControl`), so it lives in the upper crate.
+stage loop calls the `Format` trait, so the trait lives in `rbr-gameplay` and the formats of `rbr-session` implement it.
 
 ## Words
 
@@ -19,14 +19,15 @@ bit-exact and is the `RallyStage` format's engine. `rbr-session` depends on `rbr
 - A rally stage is the `RallyStage` format on an open course: today's `TimeKeeper`, `MarkerTicker`, `FinishZone` and
   `RaceFlow`, bit-exact, special-cased nowhere. A hotlap is `Hotlap` on a closed course (or one run on an open one).
 - The championship (`rbr-season`) is a Mode running a sequence of `RallyStage` sessions.
-- `ModeRules` (`rbr-gameplay/src/mode.rs`, observe-only, one user: `rbr-school`) becomes the `Format` trait and goes
-  once the school has moved over.
+- The `Format` trait (was `ModeRules`, `rbr-gameplay/src/format.rs`; `FormatEnd` was `ModeEnd`, `EndCause::Format`
+  was `Mode`) stays in `rbr-gameplay` because the stage loop calls it. Its hooks observe the drive and may end it;
+  `rbr-school`'s `SchoolRun` implements it, the circuit's will from `rbr-session`.
 
 ## Why
 
 - `FlowMode(u32)` is tested by `matches!` (`finish_to_menu`, `camera_go`, `confirm_arms`): our modes would have to
   take numbers in the original's table.
-- `ModeRules` can end a drive but not own timing, finish conditions, HUD readouts or what is saved.
+- `ModeRules` (now `Format`) could end a drive but not own timing, finish conditions, HUD readouts or what is saved.
 - Timing, finish, `RaceFlow` (three splits), `StageResult`, `record.rs` (keyed by stage id) and the ghost are all one
   start, N splits, one finish.
 - Progress is the car's distance along an open drive line (car `+0x17c`, searched in
@@ -38,12 +39,11 @@ bit-exact and is the `RallyStage` format's engine. `rbr-session` depends on `rbr
 ## Plan
 
 Each step keeps the recordings bit-exact (`scripts/rust-check.sh`, `rsf_compare` physics PASS 84084/84084); the
-existing types are built beside, not rewritten, since `Mode`/timing/ghost types reach 5 crates and 42 `rbr-render` files.
+existing types are built beside, not rewritten, since `FlowMode`/timing/ghost types reach 5 crates and 42 `rbr-render` files.
 
-1. Skeleton, no behaviour change (done, but for the `Format` trait): `Course`, `TimingEvent`, `EndRule`,
-   `LapTiming`; the timekeeper's checkpoints reach the host as events. `SessionKey { stage, kind }` comes with the
-   records (step 3), the `Format` trait with the school (step 2).
-2. The school onto `Format` (the only `ModeRules` user: the test that the interface is enough).
+1. Skeleton, no behaviour change (done): `Course`, `TimingEvent`, `EndRule`, `LapTiming`; the timekeeper's
+   checkpoints reach the host as events. `SessionKey { stage, kind }` comes with the records (step 3).
+2. `ModeRules` becomes `Format` (done: a rename; the school was its only user and fits unchanged).
 3. Records and ghost keyed by `SessionKey`; today's rows are `kind = stage`.
 4. Circuit: lap timing, `EndRule` for N laps and free practice, best lap, sectors, a per-lap ghost, the HUD panel, the
    launcher entry.
@@ -65,7 +65,7 @@ existing types are built beside, not rewritten, since `Mode`/timing/ghost types 
   hint, clamped to 0 and `n - 1`. The seam handling (modular window, wrap) goes in both.
 - Read (as a distance through `driveline::sample_x`, or `dot150`, the speed along the line): the timekeeper
   (`Game::record_step`), the marker ticker (`Game::tick_markers`), the HUD/telemetry/picture (`rbr-standalone`
-  `live`), the autopilot (its inverse), replay playback, the school's lessons (`ModeRules::drive_line_at`) and the
+  `live`), the autopilot (its inverse), replay playback, the school's lessons (`Format::drive_line_at`) and the
   scripted characters (`rbr_render::characters`).
 - Nothing found that reads it in the help-call respawn path (`CSigRespawnRequest` is the physics' reposition); not
   traced to the end, unverified.
@@ -78,6 +78,6 @@ existing types are built beside, not rewritten, since `Mode`/timing/ghost types 
   `TimingEvent` (a 1.02 `Checkpoint` converts to one; `SubstepEvent::checkpoint` now carries it out of `Game`) and
   `LapTiming` (laps, sectors and a one-shot or N-lap or timed end, tested on synthetic drives; pass times are
   interpolated between steps).
-- Open: the course key's name and file; the `Format` trait's hooks (step 2, with the school); a circuit's start and
+- Open: the course key's name and file; what the circuit's `Format` needs beyond today's hooks (the step's time, step 4); a circuit's start and
   end in the 1.02 loop (its timekeeper's finish key must lie past the line so the stage never finishes by itself, and
   the session ends the drive through the mode's end).

@@ -16,8 +16,8 @@ use crate::control::{CarControl, QuantizedControl, CALL_FOR_HELP};
 use crate::driveline;
 use crate::filter::{self, Filter, Filtered, Grid, Raw};
 use crate::flow::{FinishZone, FlowEvents, FlowFrame, FlowMode, RaceFlow, StageEnd};
+use crate::format::{Format, FormatEnd, StepView};
 use crate::markers::{MarkerEvent, MarkerSettings, MarkerTicker, TickInput};
-use crate::mode::{ModeEnd, ModeRules, StepView};
 use crate::race_clock::{AssistSettings, ClockEvents, RaceClock};
 use crate::result::{self, StageResult};
 use crate::stage::{Stage, State};
@@ -332,13 +332,13 @@ impl Game {
         self.frame_with(now, input, physics, &mut ())
     }
 
-    /// [`Self::frame`] with a mode's rules listening ([`crate::mode`]).
+    /// [`Self::frame`] with a format's rules listening ([`crate::format`]).
     pub fn frame_with(
         &mut self,
         now: f64,
         input: FrameInput,
         physics: &mut impl PhysicsStep,
-        rules: &mut impl ModeRules,
+        rules: &mut impl Format,
     ) -> FrameEvents {
         let frame = self.clock.frame(now, self.max_time_step);
         self.clock = frame.clock;
@@ -384,12 +384,12 @@ impl Game {
 
         // `Load3b0` ticks the marker keys after the physics substeps (`M004825b0`).
         let marker_events = self.tick_markers();
-        let mode_end = self.tick_mode(frame.facc, physics, rules);
+        let format_end = self.tick_format(frame.facc, physics, rules);
 
         // The HUD's race clock and the race flow: the jump start reaches the clock before its tick.
         let (clock_events, flow_events) = self.tick_race_clock(
             frame.facc,
-            acknowledged.or(zone_end).or(mode_end),
+            acknowledged.or(zone_end).or(format_end),
             &marker_events,
             &substeps,
             physics,
@@ -425,7 +425,7 @@ impl Game {
         state_at_frame_start: State,
         race_host_ready: bool,
         physics: &mut impl PhysicsStep,
-        rules: &mut impl ModeRules,
+        rules: &mut impl Format,
         substeps: &mut Vec<SubstepEvent>,
     ) {
         if state_at_frame_start == State::Setup && race_host_ready {
@@ -453,7 +453,7 @@ impl Game {
         confirm: bool,
         mode: FlowMode,
         physics: &mut impl PhysicsStep,
-        rules: &mut impl ModeRules,
+        rules: &mut impl Format,
     ) {
         if tick_state == State::Countdown && confirm && mode.confirm_arms() {
             self.set_stage(self.stage.confirm(), physics);
@@ -466,9 +466,9 @@ impl Game {
         }
     }
 
-    /// The driving starts: `Tic` sets the player's camera (`M00566390`), ending the start orbit; the mode's rules
+    /// The driving starts: `Tic` sets the player's camera (`M00566390`), ending the start orbit; the format's rules
     /// start.
-    fn drive_started(&mut self, rules: &mut impl ModeRules) {
+    fn drive_started(&mut self, rules: &mut impl Format) {
         if self.start_camera.is_some() {
             self.start_camera = Some(StartCamera::Done);
         }
@@ -483,7 +483,7 @@ impl Game {
         nsteps: u32,
         input: &FrameInput,
         physics: &mut impl PhysicsStep,
-        rules: &mut impl ModeRules,
+        rules: &mut impl Format,
         substeps: &mut Vec<SubstepEvent>,
     ) {
         if tick_state == State::Driving && self.stage.state() == State::Driving {
@@ -561,14 +561,14 @@ impl Game {
         marker_events
     }
 
-    /// The mode's frame in a driving frame of `dt`, after the marker keys, with the HUD's race time; its end
+    /// The format's frame in a driving frame of `dt`, after the marker keys, with the HUD's race time; its end
     /// (`CSigEndRace`) ends the race.
-    fn tick_mode(&mut self, dt: f32, physics: &mut impl PhysicsStep, rules: &mut impl ModeRules) -> Option<StageEnd> {
+    fn tick_format(&mut self, dt: f32, physics: &mut impl PhysicsStep, rules: &mut impl Format) -> Option<StageEnd> {
         if self.stage.state() != State::Driving {
             return None;
         }
         let ended = rules.frame(dt, self.race_clock.time)?;
-        let end = self.flow.mode_end(&self.race_clock, ended == ModeEnd::Retired);
+        let end = self.flow.format_end(&self.race_clock, ended == FormatEnd::Retired);
         if end.is_some() {
             self.set_race_over(physics);
         }
@@ -694,7 +694,7 @@ impl Game {
         physics: &mut impl PhysicsStep,
         control: Option<CarControl>,
         index: u32,
-        rules: &mut impl ModeRules,
+        rules: &mut impl Format,
     ) -> SubstepEvent {
         let mut event = None;
         physics.step(control, index, &mut |sample| {
@@ -907,7 +907,7 @@ mod tests {
         assert_eq!(frame(&mut game, FrameInput::default()).substeps.len(), 1);
     }
 
-    /// A mode's hooks, counted.
+    /// A format's hooks, counted.
     #[derive(Default)]
     struct Counted {
         starts: u32,
@@ -916,7 +916,7 @@ mod tests {
         end_after: Option<u32>,
     }
 
-    impl ModeRules for Counted {
+    impl Format for Counted {
         fn start(&mut self) {
             self.starts += 1;
         }
@@ -926,13 +926,13 @@ mod tests {
         fn after_step(&mut self, _step: &StepView) {
             self.after += 1;
         }
-        fn frame(&mut self, _dt: f32, _race_time: f32) -> Option<ModeEnd> {
-            self.end_after.is_some_and(|n| self.before >= n).then_some(ModeEnd::Finished)
+        fn frame(&mut self, _dt: f32, _race_time: f32) -> Option<FormatEnd> {
+            self.end_after.is_some_and(|n| self.before >= n).then_some(FormatEnd::Finished)
         }
     }
 
     /// In the rally school the brief's confirm starts the drive at once (`Stage::school_start`), ending the orbit
-    /// as the countdown's end does, so the viewer drives the player's view; the mode's rules hear the start, each
+    /// as the countdown's end does, so the viewer drives the player's view; the format's rules hear the start, each
     /// substep and the end they ask for.
     #[test]
     fn the_school_s_confirm_starts_the_drive_and_the_rules_end_it() {
@@ -959,7 +959,7 @@ mod tests {
             now += DT;
             game.frame_with(now, FrameInput::default(), &mut Still, &mut rules);
         }
-        assert_eq!(game.flow().end().map(|end| end.cause), Some(crate::flow::EndCause::Mode));
+        assert_eq!(game.flow().end().map(|end| end.cause), Some(crate::flow::EndCause::Format));
     }
 
     /// The quick race takes no confirm: its go is the camera's.

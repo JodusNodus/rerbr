@@ -232,9 +232,9 @@ pub enum EndCause {
     FinishZone,
     /// Ours: the race was left before its end (the viewer closed, the launcher's rally page): see [`RaceFlow::end_now`].
     Left,
-    /// A mode's rules ([`crate::mode`]): the rally school's `EndRace` (`E12_AnimSet::Tic570` 0x47a570; the stop box,
+    /// A format's rules ([`crate::format`]): the rally school's `EndRace` (`E12_AnimSet::Tic570` 0x47a570; the stop box,
     /// with 0) or a trip latch (the lesson failed or retired, with 1).
-    Mode,
+    Format,
 }
 
 /// The end of the stage: what ended it and the `CSigEndRace` it emitted. The stage result (`result::StageResult`)
@@ -462,8 +462,8 @@ impl RaceFlow {
 
     /// A mode's `CSigEndRace` (the rally school's `Tic570`): finished with the race clock `clock`, or a retire. `None`
     /// when the race is over or a box is up.
-    pub fn mode_end(&mut self, clock: &RaceClock, retired: bool) -> Option<StageEnd> {
-        (self.end.is_none() && self.message.is_none()).then(|| self.end_race(EndCause::Mode, clock, retired))
+    pub fn format_end(&mut self, clock: &RaceClock, retired: bool) -> Option<StageEnd> {
+        (self.end.is_none() && self.message.is_none()).then(|| self.end_race(EndCause::Format, clock, retired))
     }
 
     /// The race is still on: not over, and the finish line not passed. A run that stops at the finish stops here.
