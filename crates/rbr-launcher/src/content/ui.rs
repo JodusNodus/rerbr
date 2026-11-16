@@ -72,7 +72,7 @@ impl Form {
         if touched(Refresh::Stages) {
             let tracks = self.here().join(rbr_btb::player::TRACKS);
             self.catalog.add_new_tracks(&tracks);
-            self.catalog.add_maps_folder(&self.here().join(rbr_btb::player::MAPS));
+            self.catalog.add_classic_stages(&self.here().join(rbr_btb::player::TRACKS));
             self.list_maps();
         }
         if added(Refresh::Ngp) {

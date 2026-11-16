@@ -460,12 +460,14 @@ impl Catalog {
         self.maps.extend(new);
     }
 
-    /// Adds the classic stages the player added, from `dir` (`<player>/maps/<number>-<name>/`, `rbr_formats::rsf`), after
-    /// the maps listed; one already listed stays, and one whose number a listed map has is reported and left out.
-    pub fn add_maps_folder(&mut self, dir: &Path) {
+    /// Adds the classic stages the player added, from `dir` (`<player>/tracks/<number>-<name>/`, `rbr_formats::rsf`;
+    /// the BTB stages beside them are [`Catalog::add_tracks_folder`]'s), after the maps listed; one already listed
+    /// stays, and one whose number a listed map has is reported and left out.
+    pub fn add_classic_stages(&mut self, dir: &Path) {
         for stage in rsf::scan_maps(dir, &Default::default()) {
             let stage = match stage {
                 Ok(stage) => stage,
+                Err((folder, _)) if rbr_btb::track::is_track_folder(&folder) => continue,
                 Err((folder, e)) => {
                     eprintln!("launcher: added stage {}: {e}", folder.display());
                     continue;

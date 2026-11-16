@@ -74,7 +74,8 @@ pub struct Tracks<'a> {
 
 impl Tracks<'_> {
     pub fn text(&self) -> String {
-        let place = format!("Maps\\{}\\", self.folder);
+        // Paths from the player's folder, as RSF's are from its root (`rsf::root_of`).
+        let place = format!("{}\\{}\\", rbr_btb::player::TRACKS, self.folder);
         let mut entries: Vec<(String, String)> = vec![("TrackName".into(), format!("\"{place}track-{}\"", self.new))];
         let set = |entries: &mut Vec<(String, String)>, key: &str, value: Option<String>| match (
             entries.iter().position(|(k, _)| k.eq_ignore_ascii_case(key)),
@@ -197,14 +198,14 @@ mod tests {
         .text();
         assert_eq!(
             text,
-            "[Map10000]\r\nTrackName = \"Maps\\10000-Kamenak\\track-10000\"\r\nParticles = \"Maps\\ps_british\"\r\n\
-             StageName = Kamenak\r\nSurface = 0\r\nSplashScreen = \"Maps\\10000-Kamenak\\s.dds\"\r\n"
+            "[Map10000]\r\nTrackName = \"tracks\\10000-Kamenak\\track-10000\"\r\nParticles = \"Maps\\ps_british\"\r\n\
+             StageName = Kamenak\r\nSurface = 0\r\nSplashScreen = \"tracks\\10000-Kamenak\\s.dds\"\r\n"
         );
         let bare =
             Tracks { entries: &[], new: 7, folder: "7-X", name: "X", particles: Some("PS_X"), splash: None }.text();
         assert_eq!(
             bare,
-            "[Map7]\r\nTrackName = \"Maps\\7-X\\track-7\"\r\nStageName = X\r\nParticles = \"Maps\\7-X\\PS_X\"\r\n"
+            "[Map7]\r\nTrackName = \"tracks\\7-X\\track-7\"\r\nStageName = X\r\nParticles = \"tracks\\7-X\\PS_X\"\r\n"
         );
     }
 

@@ -1,7 +1,7 @@
 //! Classic-format stages: the RSF-shaped stage folders (`Maps/<id>-<name>/` with a `Tracks<id>.ini`) and the loose
 //! ones (`track-<n>_<letter>.*` files, the stage's `[Map<n>]` section of a `Tracks.ini` or an installer's INI write,
 //! its weathers in `TrackSettings*.ini` files or INI writes) of any [`Source`], added once into
-//! `<player folder>/maps/<number>-<name>/`: the RSF stage folder `rbr_formats::rsf::stages` reads, with a number of
+//! `<player folder>/tracks/<number>-<name>/` (beside the BTB stages): the RSF stage folder `rbr_formats::rsf::stages` reads, with a number of
 //! its own when the stage's is taken, so nothing at run time needs a special case. The stage is built in a hidden
 //! folder beside its destination and renamed into place only when it opens: a failure or a cancel leaves nothing.
 //! Refused, with the reason: a stage RallySimFans or the RBR Czech plugin encrypts, one missing a required file, one
@@ -241,9 +241,9 @@ fn find_named<'a>(entries: &'a [Entry], stage: &find::Found, name: &str) -> Opti
     all.into_iter().next()
 }
 
-/// The numbers and names in the player's `maps/`: its folders `<number>-<name>`.
-fn folders(maps: &Path) -> Vec<(u32, PathBuf)> {
-    let list = fs::read_dir(maps).into_iter().flatten().filter_map(Result::ok);
+/// The numbers and names in the player's `tracks/`: its folders `<number>-<name>`.
+fn folders(tracks: &Path) -> Vec<(u32, PathBuf)> {
+    let list = fs::read_dir(tracks).into_iter().flatten().filter_map(Result::ok);
     list.filter_map(|e| {
         let name = e.file_name().to_string_lossy().into_owned();
         Some((name.split_once('-')?.0.parse().ok()?, e.path()))
@@ -371,7 +371,7 @@ fn renumber_contents(staged: &Path, old: u32, new: u32, count: &mut Counter) -> 
     Ok(())
 }
 
-/// Adds the stage `stage` of `src` to the player's `maps/`.
+/// Adds the stage `stage` of `src` to the player's `tracks/`.
 fn import(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx) -> Result<Added, Refused> {
     let mut label = format!("track-{}", stage.number);
     build(src, stage, texts, ctx, &mut label).map_err(|why| Refused { name: label, why })
@@ -397,8 +397,8 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
     let mut files = find::files(entries, stage);
     let (letters, left_out) = variants(&files, old)?;
     files.retain(|(_, rel)| !left_out.iter().any(|&l| of_variant(rel, old, l)));
-    let maps = ctx.home.join(rbr_btb::player::MAPS);
-    let existing = folders(&maps);
+    let tracks = ctx.home.join(rbr_btb::player::TRACKS);
+    let existing = folders(&tracks);
     let taken = |n: u32| ctx.known.numbers.contains(&n) || existing.iter().any(|(e, _)| *e == n);
     let new = write::pick_number(old, &taken).ok_or("no free stage number")?;
     let folder = format!("{new}-{}", write::folder_name(&name));
@@ -432,7 +432,7 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
             .collect(),
     };
 
-    let temp = Temp::create(&maps, "adding")?;
+    let temp = Temp::create(&tracks, "adding")?;
     let staged = temp.0.join(&folder);
     let rbz: u64 = files.iter().filter(|(e, _)| find::lower(e).ends_with(".rbz")).map(|(e, _)| e.size).sum();
     let mut count =
@@ -480,7 +480,7 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
         return Err(format!("the stage doesn't open: {problem}"));
     }
     let licence = licence_of(&staged);
-    let dest = maps.join(&folder);
+    let dest = tracks.join(&folder);
     if dest.exists() {
         return Err("already added".into());
     }
@@ -609,12 +609,12 @@ pub(crate) mod tests {
         let done = add(&home, source::open(&dir.join("drop")).unwrap(), &Known::default());
         assert_eq!(lines(&done), ["ok Added Kamenak (classic stage) by Miro Kurek"], "{done:?}");
         assert_eq!(done[0].goto, Some(Goto::Stage("101-Kamenak".into())));
-        assert_eq!(done[0].open, Some(home.join("maps/101-Kamenak/Track-licence.txt")));
-        let stage = rsf::open(&home.join("maps/101-Kamenak")).unwrap();
+        assert_eq!(done[0].open, Some(home.join("tracks/101-Kamenak/Track-licence.txt")));
+        let stage = rsf::open(&home.join("tracks/101-Kamenak")).unwrap();
         assert_eq!((stage.id, stage.variants.clone(), stage.problem.clone()), (101, vec!['M', 'O'], None));
         assert_eq!(stage.weathers.len(), 2);
-        assert!(names(&home.join("maps")).iter().all(|n| !n.starts_with('.')), "{:?}", names(&home.join("maps")));
-        assert!(!home.join("maps/101-Kamenak/lbsloading.log").exists());
+        assert!(names(&home.join("tracks")).iter().all(|n| !n.starts_with('.')), "{:?}", names(&home.join("tracks")));
+        assert!(!home.join("tracks/101-Kamenak/lbsloading.log").exists());
         // The same stage again.
         let again = add(&home, source::open(&dir.join("drop")).unwrap(), &Known::default());
         assert_eq!(lines(&again), ["no Couldn't add Kamenak: already added"]);
@@ -626,11 +626,11 @@ pub(crate) mod tests {
         let dir = crate::test_dir("classic-renumber");
         rsf_stage(&dir.join("drop"), 101, "OM");
         let home = dir.join("home");
-        write(&home.join("maps/10000-Other/Tracks10000.ini"), b"[Map10000]\r\nStageName=Other\r\n");
+        write(&home.join("tracks/10000-Other/Tracks10000.ini"), b"[Map10000]\r\nStageName=Other\r\n");
         let known = Known { numbers: vec![101], weather: None };
         let done = add(&home, source::open(&dir.join("drop")).unwrap(), &known);
         assert_eq!(lines(&done), ["ok Added Kamenak (classic stage) by Miro Kurek"], "{done:?}");
-        let folder = home.join("maps/10001-Kamenak");
+        let folder = home.join("tracks/10001-Kamenak");
         assert_eq!(done[0].goto, Some(Goto::Stage("10001-Kamenak".into())));
         assert_eq!(
             names(&folder),
@@ -659,8 +659,8 @@ pub(crate) mod tests {
         );
         let text = |f: &str| String::from_utf8(fs::read(folder.join(f)).unwrap()).unwrap();
         let tracks = text("Tracks10001.ini");
-        assert!(tracks.starts_with("[Map10001]\r\nTrackName = \"Maps\\10001-Kamenak\\track-10001\"\r\n"), "{tracks}");
-        assert!(tracks.contains("SplashScreen = \"Maps\\10001-Kamenak\\x.dds\""), "{tracks}");
+        assert!(tracks.starts_with("[Map10001]\r\nTrackName = \"tracks\\10001-Kamenak\\track-10001\"\r\n"), "{tracks}");
+        assert!(tracks.contains("SplashScreen = \"tracks\\10001-Kamenak\\x.dds\""), "{tracks}");
         assert!(!tracks.contains("101"), "{tracks}");
         let settings = text("TrackSettings10001.ini");
         assert!(settings.contains("[10001O_crisp_clear]") && settings.contains("[10001M_crisp_clear]"), "{settings}");
@@ -724,13 +724,13 @@ pub(crate) mod tests {
         let home = dir.join("home");
         let done = add(&home, installer(&dir.join("drop"), 8994), &Known::default());
         assert_eq!(lines(&done), ["ok Added Zaton (classic stage) by Mihkel Kütt"], "{done:?}");
-        let folder = home.join("maps/8994-Zaton");
+        let folder = home.join("tracks/8994-Zaton");
         let tracks = fs::read_to_string(folder.join("Tracks8994.ini")).unwrap();
         assert!(
-            tracks.contains("Particles = \"Maps\\8994-Zaton\\PS_Zaton\"") && tracks.contains("Surface = 1"),
+            tracks.contains("Particles = \"tracks\\8994-Zaton\\PS_Zaton\"") && tracks.contains("Surface = 1"),
             "{tracks}"
         );
-        assert!(tracks.contains("SplashScreen = \"Maps\\8994-Zaton\\splash.dds\""), "{tracks}");
+        assert!(tracks.contains("SplashScreen = \"tracks\\8994-Zaton\\splash.dds\""), "{tracks}");
         assert!(folder.join("splash.dds").is_file() && folder.join("PS_Zaton.ini").is_file());
         assert_eq!(done[0].open, Some(folder.join("Readme.txt")));
         let stage = rsf::open(&folder).unwrap();
@@ -757,7 +757,7 @@ pub(crate) mod tests {
         let known = Known { numbers: vec![77], weather: None };
         let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &known);
         assert_eq!(lines(&done), ["ok Added Seventy (classic stage)"], "{done:?}");
-        let stage = rsf::open(&dir.join("home/maps/10000-Seventy")).unwrap();
+        let stage = rsf::open(&dir.join("home/tracks/10000-Seventy")).unwrap();
         assert_eq!((stage.id, stage.problem.clone(), stage.surface), (10_000, None, Some(rsf::Surface::Snow)));
         assert_eq!(stage.weathers[0].section, "10000E_crisp_clear");
         fs::remove_dir_all(&dir).unwrap();
@@ -773,7 +773,7 @@ pub(crate) mod tests {
         let known = Known { numbers: Vec::new(), weather: Some(dir.join("TrackSettings.ini")) };
         let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &known);
         assert_eq!(lines(&done), ["ok Added Dry (classic stage)"], "{done:?}");
-        let stage = rsf::open(&dir.join("home/maps/8994-Dry")).unwrap();
+        let stage = rsf::open(&dir.join("home/tracks/8994-Dry")).unwrap();
         // Tarmac: the tarmac stage 41's rows of the stage's letters.
         let sections: Vec<&str> = stage.weathers.iter().map(|w| w.section.as_str()).collect();
         assert_eq!(sections, ["8994M_crisp_clear", "8994O_M_lightfog_heavycloud"]);
@@ -788,7 +788,7 @@ pub(crate) mod tests {
         write(&dir.join("drop/Maps/Tracks.ini"), b"[Map8994]\r\nStageName=One\r\n[Map8995]\r\nStageName=Two\r\n");
         let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &Known::default());
         assert_eq!(lines(&done), ["ok Added One (classic stage)", "ok Added Two (classic stage)"], "{done:?}");
-        assert_eq!(names(&dir.join("home/maps")), ["8994-One", "8995-Two"]);
+        assert_eq!(names(&dir.join("home/tracks")), ["8994-One", "8995-Two"]);
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -802,7 +802,7 @@ pub(crate) mod tests {
             let done = add(&home, source::open(&drop).unwrap(), &Known::default());
             assert_eq!(done.len(), 1, "{done:?}");
             assert!(!done[0].ok(), "{done:?}");
-            assert!(names(&home.join("maps")).is_empty(), "{:?}", names(&home.join("maps")));
+            assert!(names(&home.join("tracks")).is_empty(), "{:?}", names(&home.join("tracks")));
             done[0].line()
         };
         let key = refused("key", &|d| {
@@ -857,7 +857,7 @@ pub(crate) mod tests {
             ["ok Added Stry (classic stage); its O variant is incomplete and was left out"],
             "{done:?}"
         );
-        let folder = dir.join("home/maps/94-Stry");
+        let folder = dir.join("home/tracks/94-Stry");
         assert!(!names(&folder).iter().any(|n| n.to_lowercase().starts_with("track-94_o")), "{:?}", names(&folder));
         let stage = rsf::open(&folder).unwrap();
         assert_eq!((stage.variants.clone(), stage.problem.clone()), (vec!['M'], None));
@@ -880,8 +880,8 @@ pub(crate) mod tests {
         loose_stage(&dir.join("drop"), 3_000_000, "O");
         let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &Known::default());
         assert!(done[0].ok(), "{done:?}");
-        assert_eq!(names(&dir.join("home/maps")).len(), 1);
-        assert!(names(&dir.join("home/maps"))[0].starts_with("10000-"));
+        assert_eq!(names(&dir.join("home/tracks")).len(), 1);
+        assert!(names(&dir.join("home/tracks"))[0].starts_with("10000-"));
         fs::remove_dir_all(&dir).unwrap();
     }
 }
@@ -902,7 +902,7 @@ mod real {
 
     /// Every unencrypted stage folder of the RSF install `RBR_RSF` (or `RBR_CLASSIC_STAGES` of them, evenly spread, of
     /// under 600 MB each; `all` takes every one) added with a number of its own forced, into
-    /// `RBR_CLASSIC_OUT/maps` (kept for `scripts/stage-sweep.sh`) or a temporary player folder, and listed in the
+    /// `RBR_CLASSIC_OUT/tracks` (kept for `scripts/stage-sweep.sh`) or a temporary player folder, and listed in the
     /// catalog with the variants, weathers and surface it had.
     #[test]
     fn rsf_stage_folders_are_added_under_new_numbers_and_listed() {
@@ -922,7 +922,7 @@ mod real {
             Some(out) => (PathBuf::from(out), true),
             None => (crate::test_dir("classic-real"), false),
         };
-        let _ = fs::remove_dir_all(out.join(rbr_btb::player::MAPS));
+        let _ = fs::remove_dir_all(out.join(rbr_btb::player::TRACKS));
         let mut expected: HashMap<u32, &rsf::Stage> = HashMap::new();
         for stage in &picked {
             let known = Known { numbers: vec![stage.id], weather: None };
@@ -933,7 +933,7 @@ mod real {
             assert!(number >= write::FIRST && expected.insert(number, stage).is_none(), "{folder}");
         }
         let mut catalog = crate::catalog::Catalog::default();
-        catalog.add_maps_folder(&out.join(rbr_btb::player::MAPS));
+        catalog.add_classic_stages(&out.join(rbr_btb::player::TRACKS));
         assert_eq!(catalog.maps.len(), picked.len());
         for map in &catalog.maps {
             let crate::catalog::Origin::Community(added) = &map.origin else { panic!("{:?}", map.number) };
@@ -989,7 +989,7 @@ mod real {
                 assert!(outcome.ok() || outcome.line().ends_with(ENCRYPTED), "{}: {}", exe.display(), outcome.line());
             }
             assert!(!done.is_empty());
-            for stage in rsf::scan_maps(&home.join(rbr_btb::player::MAPS), &Default::default()) {
+            for stage in rsf::scan_maps(&home.join(rbr_btb::player::TRACKS), &Default::default()) {
                 assert_eq!(stage.unwrap().problem, None);
             }
             fs::remove_dir_all(&home).unwrap();

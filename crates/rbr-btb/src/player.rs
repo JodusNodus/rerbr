@@ -7,12 +7,9 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-/// The folder of the player's own BTB stages in the player's folder: one folder per stage, `tracks/<name>/`.
+/// The folder of the player's own stages in the player's folder, one folder per stage: a BTB stage's `tracks/<name>/`,
+/// or a classic stage the launcher added, `tracks/<number>-<name>/` in the shape of a RallySimFans stage folder.
 pub const TRACKS: &str = "tracks";
-
-/// The folder of the classic stages the launcher added, in the player's folder: `maps/<number>-<name>/`, each in
-/// the shape of a RallySimFans stage folder.
-pub const MAPS: &str = "maps";
 
 /// The player's folder: `$RERBR_HOME`, else the platform's user data folder; `None` without `HOME` (or `APPDATA` on
 /// Windows).

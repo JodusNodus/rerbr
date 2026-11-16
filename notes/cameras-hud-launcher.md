@@ -138,26 +138,30 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
   under the Drive page's stage.
-- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add folder…"
-  in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, plain file, tried in `SOURCES`) and each kind (`content/kind/`, one module
-  each, one line in `content::KINDS`) says whether it is in it; added in one job with a notice on
-  every page (✔ where to find it, ⚠ why not). BTB stages (a folder with `track.ini`, `objectlist.ini`, `Objects.zip`,
-  `Textures.zip`, several per archive allowed) go to `<files>/tracks/` through a hidden staging folder, no `.exe`/
-  `.dll`, never over an existing stage; co-drivers and pace notes through `codriver_packs::import`; NGP car pieces
-  (physics, model and banks dropped together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/` and in use;
-  a disc opens the disc setup filled in; classic-format stages (below) to `<files>/maps/`. Refused with the reason: `.rar`,
-  installers, a lone model or banks, anything else. Recent downloads (Downloads, 30 days, 5) list any of these not added yet.
-- Classic stages added (2026-11-16; `content/kind/classic/`): RSF-shaped folders (`Tracks<id>.ini`) or loose `track-<n>_<L>.*` files
-  (their `[Map<n>]` from a `Tracks.ini` of the tree or an installer's INI writes, weathers from `TrackSettings*.ini` or
-  writes) of any source, several per source, every variant kept. Each is written once into `<files>/maps/<number>-<name>/`
-  (`rsf::scan_maps`, listed after retail, RSF and BTB by `Catalog::add_maps_folder`; a number a listed map has later is
-  left out): the file names, `Tracks<n>.ini` (rebuilt, `TrackName`, `Particles`, `SplashScreen` pointing into the folder),
-  `TrackSettings<n>.ini` (own weathers, else the retail stage's of the same surface), the remap's `track-<n>_` and the
-  `.rbz` entry names (`zip` raw copy, no recompressing), the licence/readme `.txt` and the splash copied (Open licence in
-  the notice). Own number kept when free (not retail, game folder, BTB, added), else the first free from 10 000 (`write::FIRST`;
-  RSF ids reach 1301, BTB's start at 1 000 000). Refused: RSF `01 a0` headers, a `Key` in `[Map<n>]`, a `.col` not `OC7R`,
-  a required file missing, the same name and file sizes again. Evidence: no `track-` string in the 4126 plain binaries of an RSF
-  install; 120 RSF stage folders added with forced numbers list with their variants, weathers, surface, author and length, and all load and drive 20 000 steps under `stage-sweep.sh` (`RBR_RSF` = the player folder); 24 of them give the originals' sweep rows exactly. The launcher starts one with `--stage <folder>/track-<n>_<L>`.
+- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add
+  folder…" in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, split 7z, NSIS
+  installer, plain file, tried in `SOURCES`) and each kind (`content/kind/`, one module each, one line in
+  `content::KINDS`) says whether it is in it; added in one job with a notice on every page (✔ where to find it, ⚠ why
+  not). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
+  stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
+  co-drivers and pace notes through `codriver_packs::import`; NGP car pieces (physics, model and banks dropped
+  together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in.
+  Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. Recent
+  downloads (Downloads, 30 days, 5) list any of these not added yet. Links: RSF's stage download, BTBfin, RBR Czech's
+  stage list (its installers are read, never run).
+- Classic stages (`content/kind/classic/`): RSF-shaped folders (`Tracks<id>.ini`) or loose `track-<n>_<L>.*` files
+  with their `[Map<n>]` and weathers from the tree's inis or an installer's INI writes (empty-key writes, the
+  installers' section deletes, ignored), several per source. Each is written once into
+  `<files>/tracks/<number>-<name>/`, an RSF stage folder (`rsf::scan_maps`, listed by `Catalog::add_classic_stages`
+  beside the BTB stages): renamed files, `Tracks<n>.ini` rebuilt (`Particles`, `SplashScreen` as
+  `tracks\<folder>\…`, resolved from the player folder as RSF's are from its root), `TrackSettings<n>.ini` (own
+  weathers, else a retail stage's of the same surface), the remap's `track-<n>_` and the `.rbz` entry names (raw
+  copy), licence/readme and splash (Open licence in the notice). A variant missing a required file is left out and
+  said. Own number kept when free, else the first free from 10 000 (RSF ids reach 1301, BTB's start at 1 000 000).
+  Refused: RSF `01 a0` headers, a `Key` in `[Map<n>]`, a `.col` not `OC7R`, no complete variant, the same name and
+  copied sizes again. Evidence: 120 RSF stage folders added with forced numbers list with their variants, weathers,
+  surface, author and length, and load and drive 20 000 steps under `stage-sweep.sh` (24 match the originals' rows);
+  RBR Czech installers: Peklo and Pribram (O variant left out) added, Manukau refused as encrypted.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used
