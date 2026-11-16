@@ -219,10 +219,7 @@ pub(super) fn flush_gate(mem: &Mem) -> u32 {
 pub(crate) fn accumulate_direct(host: &dyn Host, mem: &mut Mem, slot: u32, this: u32, p: u32) -> bool {
     let target = core_layout::vtable_target(mem, this, slot);
     let gate = flush_gate(mem);
-    if !matches!(target, E43VF70 | E43VF74)
-        || gate & FLUSH_BIT != 0
-        || !held_solids(host).is_some_and(|s| s.held(this).is_some())
-    {
+    if !matches!(target, E43VF70 | E43VF74) || gate & FLUSH_BIT != 0 || held_solids(host).held(this).is_none() {
         return false;
     }
     host.ran_direct();

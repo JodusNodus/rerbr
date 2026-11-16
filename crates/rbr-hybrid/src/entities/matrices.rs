@@ -125,7 +125,7 @@ struct HeldFrames<'a> {
     /// fills (the walk's hooks, gates, owner slots and child walks leave theirs unwritten).
     esp: u32,
     walk_depth: u32,
-    solids: Option<Ref<'a, CarSolids>>,
+    solids: Ref<'a, CarSolids>,
     out: Range<u32>,
     /// Whether the carry read or wrote a held solid's words (as `not_kept_on_held`).
     on_held: bool,
@@ -133,14 +133,11 @@ struct HeldFrames<'a> {
 
 impl HeldFrames<'_> {
     fn held(&self, at: u32) -> bool {
-        self.solids.as_ref().is_some_and(|s| s.read(at).is_some())
+        self.solids.read(at).is_some()
     }
 
     fn view(&mut self) -> SolidView<'_> {
-        match &self.solids {
-            Some(solids) => solids.view(self.mem),
-            None => SolidView::image(self.mem),
-        }
+        self.solids.view(self.mem)
     }
 
     /// The `n` rows at `at`, read through the solids' view.

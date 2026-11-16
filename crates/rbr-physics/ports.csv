@@ -766,10 +766,10 @@ addr,module,rust_item
 0x52da50,spring_damper/layout.rs,spring_damper::layout::construct_state
 0x52db10,tyre/layout/kernels.rs,tyre::layout::kernels::load_name_object
 0x52dbd0,spring_damper/layout.rs,spring_damper::layout::apply_setup
-0x52dd70,spring_damper/layout.rs,spring_damper::layout::update_forces
+0x52dd70,spring_damper/strut.rs,spring_damper::strut::update_forces
 0x52df20,spring_damper/layout.rs,spring_damper::layout::construct_controller
-0x52e010,spring_damper/layout.rs,spring_damper::layout::reset_outputs
-0x52e090,spring_damper/layout.rs,spring_damper::layout::step
+0x52e010,spring_damper/strut.rs,spring_damper::strut::reset_outputs
+0x52e090,spring_damper/strut.rs,spring_damper::strut::step
 0x52e350,spring_damper/mod.rs,spring_damper::heat_flow
 0x52e370,spring_damper/mod.rs,spring_damper::conduction
 0x52e390,spring_damper/mod.rs,spring_damper::kelvin_to_celsius

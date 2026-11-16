@@ -260,7 +260,7 @@ impl CarEngine {
 
     /// The engine as a store: its state here, the rest of the image in `mem`.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> EngineView<'a> {
-        EngineView { mem, held: Some((self.image, &self.typed)), def: None }
+        EngineView { mem, held: (self.image, &self.typed), def: None }
     }
 
     /// Every owned byte range, named.
@@ -288,21 +288,16 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
 }
 
 /// The engine's stores (`EngineStore`, `EngineTables`, `DamperBlocks`) over a held engine's typed state and the image
-/// ([`CarEngine::view`]), or over the image alone ([`EngineView::image`], per call): each word the held engine's
+/// ([`CarEngine::view`]): each word the held engine's
 /// tables name is its typed state's, each word of a held definition ([`EngineView::with_defs`]) the definition's, every
 /// other the image's.
 pub struct EngineView<'a> {
     mem: &'a mut Mem,
-    held: Option<(EngineImage, &'a RefCell<EngineTyped>)>,
+    held: (EngineImage, &'a RefCell<EngineTyped>),
     def: Option<&'a Held<EngineDefinition>>,
 }
 
 impl<'a> EngineView<'a> {
-    /// The engine's store on the image (per call: no step holds it).
-    pub fn image(mem: &'a mut Mem) -> Self {
-        EngineView { mem, held: None, def: None }
-    }
-
     /// The view with the engine definition `defs` holds read from it (read only: a write goes to the image).
     pub fn with_defs(self, defs: Option<&'a Defs>) -> Self {
         EngineView { def: defs.and_then(|d| d.engine.as_ref()), ..self }
@@ -311,7 +306,7 @@ impl<'a> EngineView<'a> {
     /// The held engine's word at the aligned address `at`, where it holds it.
     #[inline(always)]
     fn engine_word(&self, at: u32) -> Option<u32> {
-        let (image, typed) = self.held?;
+        let (image, typed) = self.held;
         image.word(typed, at)
     }
 
@@ -329,7 +324,8 @@ impl<'a> EngineView<'a> {
     /// Writes the held engine's word at the aligned address `at`; false where it does not hold it.
     #[inline(always)]
     fn set_held_word(&mut self, at: u32, value: u32) -> bool {
-        self.held.is_some_and(|(image, typed)| image.set_word(typed, at, value))
+        let (image, typed) = self.held;
+        image.set_word(typed, at, value)
     }
 }
 
@@ -356,10 +352,8 @@ impl Raw for EngineView<'_> {
     fn u32(&self, at: u32) -> u32 {
         if at & 3 == 0 {
             self.held_word(at).unwrap_or_else(|| self.mem.u32(at))
-        } else if self.held.is_some() || self.def.is_some() {
-            u32::from_le_bytes(std::array::from_fn(|i| self.u8(at.wrapping_add(i as u32))))
         } else {
-            self.mem.u32(at)
+            u32::from_le_bytes(std::array::from_fn(|i| self.u8(at.wrapping_add(i as u32))))
         }
     }
 
@@ -396,12 +390,10 @@ impl Raw for EngineView<'_> {
             if !self.set_held_word(at, value) {
                 self.mem.set_u32(at, value)
             }
-        } else if self.held.is_some() {
+        } else {
             for (i, byte) in value.to_le_bytes().into_iter().enumerate() {
                 self.set_u8(at.wrapping_add(i as u32), byte);
             }
-        } else {
-            self.mem.set_u32(at, value)
         }
     }
 
@@ -427,7 +419,7 @@ impl EngineStore for EngineView<'_> {
     }
 
     fn load_engine_own(&self, engine: u32) -> EngineOwn {
-        match self.held.filter(|(image, _)| image.engine == engine) {
+        match Some(self.held).filter(|(image, _)| image.engine == engine) {
             Some((_, typed)) => {
                 let own = &typed.borrow().own;
                 EngineOwn { pedal: own.pedal, misfire_level: own.misfire_level }
@@ -437,7 +429,7 @@ impl EngineStore for EngineView<'_> {
     }
 
     fn store_engine_own(&mut self, engine: u32, value: &EngineOwn) {
-        match self.held.filter(|(image, _)| image.engine == engine) {
+        match Some(self.held).filter(|(image, _)| image.engine == engine) {
             Some((_, typed)) => {
                 let own = &mut typed.borrow_mut().own;
                 own.pedal = value.pedal;
@@ -448,14 +440,14 @@ impl EngineStore for EngineView<'_> {
     }
 
     fn load_engine_state(&self, at: u32) -> EngineState {
-        match self.held.filter(|(image, _)| image.state == at) {
+        match Some(self.held).filter(|(image, _)| image.state == at) {
             Some((_, typed)) => typed.borrow().state_record(self.mem.f32(at + STATE_MISFIRE_OUT)),
             None => self.mem.load_engine_state(at),
         }
     }
 
     fn store_engine_state(&mut self, at: u32, value: &EngineState) {
-        match self.held.filter(|(image, _)| image.state == at) {
+        match Some(self.held).filter(|(image, _)| image.state == at) {
             Some((_, typed)) => {
                 typed.borrow_mut().set_state_record(value);
                 self.mem.set_f32(at + STATE_MISFIRE_OUT, value.misfire_out);

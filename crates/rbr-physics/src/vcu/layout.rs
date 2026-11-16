@@ -2,7 +2,7 @@
 //! 0xcac bytes), the unit's state (`CState`, 0x68 bytes) and the per-step scratch (`CScratchSim`).
 //! Offsets are the original's (rbr-recomp `notes/physics/renames/vcu.csv`, `notes/physics.md` "VCU"); this file alone
 //! knows them. The unit's typed state ([`Unit`]: the scratch's and the state's changing words) lifts from its image
-//! ([`VcuImage`]) and lowers back; [`VcuView`] is the store over it ([`with_vcu`] per call), with the definition and
+//! ([`VcuImage`]) and lowers back; [`VcuView`] is the store over it, with the definition and
 //! the pointers read on the image and the drive's blocks on the drive's typed state (`engine_driveline::layout`).
 
 use super::store::{DriveBlocks, VcuStore};
@@ -1036,15 +1036,6 @@ impl CarVcu {
     }
 }
 
-/// Runs `run` on the unit whose scratch is at `scratch`, lifted into a store of its own and lowered after it: the
-/// per-call path, on which the image holds the unit between calls.
-pub fn with_vcu<T>(mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut VcuView) -> T) -> T {
-    let one = CarVcu::of(mem, scratch);
-    let out = run(&mut one.view(mem, None));
-    one.lower(mem);
-    out
-}
-
 /// `lower(lift(image))` of the car's VCU into an empty image, compared with `mem` on every owned byte: their count, or
 /// the first byte that differs.
 pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
@@ -1207,22 +1198,5 @@ mod tests {
             }
         }
         assert_eq!(bytes(&VcuImage::of(&b, SCRATCH).lift(&b)), bytes(&unit));
-    }
-
-    #[test]
-    fn the_per_call_store_lowers_what_a_sequence_stores() {
-        let mut mem = image(0);
-        let packet = Packet {
-            pedals: Pedals { throttle: 0.25, brake: 0.5, handbrake: 1.0 },
-            fixed_clutch: 0.75,
-            carried_word: 7,
-            flags: 0,
-            value: 0,
-        };
-        let before = VcuImage::of(&mem, SCRATCH).lift(&mem);
-        with_vcu(&mut mem, SCRATCH, |vcu| read_packet(vcu, packet));
-        let after = VcuImage::of(&mem, SCRATCH).lift(&mem);
-        let want = Scratch { pedals: packet.pedals, fixed_clutch: 0.75, carried_word: 7, ..before.scratch };
-        assert_eq!(bytes(&after), bytes(&Unit { scratch: want, ..before }));
     }
 }

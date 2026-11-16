@@ -39,7 +39,7 @@ const HINGE_CALLEES: [u32; 7] = [LIMIT_UPDATE, SIM_D160, SIM_C960, SIM_E1D0, SIM
 /// their callers read none of the call's words after it; residue audit, notes/physics.md "Store seam"), else through
 /// the host.
 fn call_hinge(host: &dyn Host, sp: u32, target: u32, body: u32, args: &[u32]) -> crate::Called {
-    let held = HINGE_CALLEES.contains(&target) && held_solids(host).is_some_and(|s| s.held(body).is_some());
+    let held = HINGE_CALLEES.contains(&target) && held_solids(host).held(body).is_some();
     let direct = if held { host.call_in_place(sp, target, body, args) } else { None };
     direct.unwrap_or_else(|| host.call_at(sp, target, body, args))
 }

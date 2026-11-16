@@ -51,9 +51,7 @@ pub(super) fn vf81x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// ([`Host::ran_direct`]): it reads nothing of the stack but its arguments, and its callers (the force pass's and the
 /// hinge solve's votes) read only its outputs. `None` per call and for another body, where the caller calls the host.
 pub(crate) fn contact_vote_direct(host: &dyn Host, mem: &mut Mem, this: u32, sp: u32, args: [u32; 3]) -> Option<u32> {
-    if !held_solids(host).is_some_and(|s| s.held(this).is_some()) {
-        return None;
-    }
+    held_solids(host).held(this)?;
     host.ran_direct();
     let [a, b, range] = args;
     Some(contact_vote_at(host, mem, this, sp, a, b, range))

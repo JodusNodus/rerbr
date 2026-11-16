@@ -72,17 +72,16 @@ pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32
 /// (`takes_part_word`), counted as a run ([`Host::ran_direct`]); its binding reads nothing of the stack, and its callers
 /// read none of the call's words. `None` for another target or body and per call, where the caller calls the host.
 pub(crate) fn solid_gate_direct(host: &dyn Host, mem: &mut Mem, target: u32, this: u32) -> Option<u32> {
-    if target != SOLID_VF80 || !held_solids(host).is_some_and(|s| s.held(this).is_some()) {
+    if target != SOLID_VF80 || held_solids(host).held(this).is_none() {
         return None;
     }
     host.ran_direct();
     Some(with_solids(host, mem, |s| takes_part_word(s, this)))
 }
 
-/// The car's solids while the pure host holds them over a step ([`on_solids`]); `None` per call, where a caller on a
-/// hot path keeps its run on `Mem` (`SolidView::image` reads word by word).
-pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
-    Some(Ref::map(host.typed(), |t| &t.solids))
+/// The car's solids the pure host holds ([`on_solids`]).
+pub(crate) fn held_solids(host: &dyn Host) -> Ref<'_, CarSolids> {
+    Ref::map(host.typed(), |t| &t.solids)
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;

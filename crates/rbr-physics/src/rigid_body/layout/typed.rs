@@ -486,22 +486,14 @@ impl CarSolids {
 
     /// The rigid store over `mem` with these solids held.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> SolidView<'a> {
-        SolidView { mem, solids: Some(self) }
+        SolidView { mem, solids: self }
     }
 }
 
-/// The rigid body's store over held solids: a word their tables name is the typed state's, any other the image's;
-/// without solids (`image`) every word is the image's.
+/// The rigid body's store over held solids: a word their tables name is the typed state's, any other the image's.
 pub struct SolidView<'a> {
     mem: &'a mut Mem,
-    solids: Option<&'a CarSolids>,
-}
-
-impl<'a> SolidView<'a> {
-    /// The store with every word on the image (the per-call path).
-    pub fn image(mem: &'a mut Mem) -> Self {
-        SolidView { mem, solids: None }
-    }
+    solids: &'a CarSolids,
 }
 
 /// The view's word accesses resolve a held solid's words too (a pointer a caller passes may point into a solid); the
@@ -544,42 +536,36 @@ impl Raw for SolidView<'_> {
 impl SolidWords for SolidView<'_> {
     #[inline]
     fn image(&mut self) -> Option<&mut Mem> {
-        self.solids.is_none().then_some(&mut *self.mem)
+        None
     }
 
     #[inline]
     fn image_ref(&self) -> Option<&Mem> {
-        self.solids.is_none().then_some(&*self.mem)
+        None
     }
 
     #[inline]
     fn word(&self, at: u32) -> u32 {
-        self.solids.map_or_else(|| self.mem.u32(at), |s| s.word(self.mem, at))
+        self.solids.word(self.mem, at)
     }
 
     #[inline]
     fn set_word(&mut self, at: u32, value: u32) {
-        match self.solids {
-            Some(s) => s.set_word(self.mem, at, value),
-            None => self.mem.set_u32(at, value),
-        }
+        self.solids.set_word(self.mem, at, value)
     }
 
     #[inline]
     fn words<const N: usize>(&self, at: u32) -> [u32; N] {
-        self.solids.map_or_else(|| self.mem.u32s(at), |s| s.words(self.mem, at))
+        self.solids.words(self.mem, at)
     }
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
-        match self.solids {
-            Some(s) => s.set_words4(self.mem, at, words),
-            None => self.mem.set_words4(at, words),
-        }
+        self.solids.set_words4(self.mem, at, words)
     }
     #[inline]
     fn held(&self, this: u32) -> Option<&HeldSolid> {
-        self.solids?.held(this)
+        self.solids.held(this)
     }
 }
 
