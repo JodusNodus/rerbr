@@ -356,6 +356,16 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   is the profiler's sample queue in drive2). Audit (`residue-audit`): drive2 PASS; twin typed aids off, on and damage
   realistic, across, mem-direct (aids off, on) equal, the twins compare every held record (425 in drive2). Poison with
   the probe cache's `next` or `kernel_entity`'s bounds read back on the image stops at step 0 and 8610.
+- Walks and rays inline (batch 17; drive2 host calls 363.0 -> 165.1 a step, in-place and direct runs 789.5 -> 987.5,
+  instructions -5.5 %): on the pure host the entity tree walks run as Rust calls at the call's entry esp
+  (`entities::walk_at`, `EntityWalk::{Gated, Integrate, PreOrder, Name}`: `CEntity::Vf40`, `E43_Walk1F0`, `E43Vf20`,
+  `Vf48`, `Vf58`, `Vf5C`, `Vf64`, `Vf6C`), the pre-order walk's functor (`CPlainUnaryFunction::Vf04x`) inline,
+  `CBody::CState::Unk44` (`collision::reset_state_at`, its callees placed where its binding's would land),
+  `E38RaySeeds`/`E38RayClear` (`collision::{ray_seeds_at, ray_clear_at}`: the probe's eight ray blocks, detectors,
+  contacts, `CollideInit`) and the probe's other callees in place (`Ground::call` through `call_grid`). None of their
+  words is read after them (residue audit: drive2 PASS, twins typed and mem-direct equal aids off and on). Stepping
+  profile after (gdb samples, drive2): image word access (`mem.rs`, `mem/pages.rs`) ~29 % of the step's self time, the
+  pure host's dispatch ~9 %.
 
 ### Per subsystem
 
