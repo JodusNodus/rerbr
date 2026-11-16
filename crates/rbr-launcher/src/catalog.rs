@@ -460,6 +460,31 @@ impl Catalog {
         self.maps.extend(new);
     }
 
+    /// Adds the classic stages the player added, from `dir` (`<player>/maps/<number>-<name>/`, `rbr_formats::rsf`), after
+    /// the maps listed; one already listed stays, and one whose number a listed map has is reported and left out.
+    pub fn add_maps_folder(&mut self, dir: &Path) {
+        for stage in rsf::scan_maps(dir, &Default::default()) {
+            let stage = match stage {
+                Ok(stage) => stage,
+                Err((folder, e)) => {
+                    eprintln!("launcher: added stage {}: {e}", folder.display());
+                    continue;
+                }
+            };
+            let listed = |m: &Map| matches!(&m.origin, Origin::Community(s) if s.folder == stage.folder);
+            if self.maps.iter().any(listed) {
+                continue;
+            }
+            if self.maps.iter().chain(&self.unlisted).any(|m| m.number == stage.id) {
+                eprintln!("launcher: added stage {} has a listed map's number; left out", stage.id);
+                continue;
+            }
+            let stages =
+                stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
+            self.maps.push(Map { number: stage.id, stages, origin: Origin::Community(stage) });
+        }
+    }
+
     /// Replaces the pack cars by those of RSF's cache in the game folder `dir` (none without one; none, with the
     /// reason on stderr, when it doesn't read), then the added cars of `added` (`car_packs::DIR`). A car both have (by pack
     /// folder or name) is the added one: the player downloaded it over RSF's, which is back once it is removed.

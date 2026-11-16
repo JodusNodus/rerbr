@@ -29,10 +29,11 @@ futures-executor = "0.3"
 sha2 = "0.10"
 sevenz-rust2 = { version = "0.24", default-features = false }
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# A stage's texture archives are copied entry by entry under new names, without recompressing.
+zip = { version = "9.0.1", default-features = false }
 
 [dev-dependencies]
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["compress"] }
-zip = { version = "9.0.1", default-features = false }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = { version = "0.1", default-features = false }

@@ -3,7 +3,9 @@
 
 use std::path::PathBuf;
 
+use super::kind::Known;
 use super::{downloads, Goto, Outcome, Refresh};
+use crate::catalog::Origin;
 use crate::job::{self, Job};
 use crate::pages::{section, Page, GOOD, WARN};
 use crate::Form;
@@ -43,7 +45,10 @@ impl Form {
         self.content.notice.clear();
         self.content.voices_before = self.owned_voices.iter().map(|p| p.name.clone()).collect();
         let home = self.here();
-        self.content.job = Some(Job::start(move |report, cancel| Ok(super::run(&home, &paths, report, cancel))));
+        let numbers = self.catalog.maps.iter().chain(&self.catalog.unlisted).map(|m| m.number).collect();
+        let known = Known { numbers, weather: Some(self.data.install().join("Maps").join("TrackSettings.ini")) };
+        self.content.job =
+            Some(Job::start(move |report, cancel| Ok(super::run(&home, &known, &paths, report, cancel))));
     }
 
     /// Reads again what a finished run changed.
@@ -65,6 +70,7 @@ impl Form {
         if touched(Refresh::Stages) {
             let tracks = self.here().join(rbr_btb::player::TRACKS);
             self.catalog.add_new_tracks(&tracks);
+            self.catalog.add_maps_folder(&self.here().join(rbr_btb::player::MAPS));
             self.list_maps();
         }
         if added(Refresh::Ngp) {
@@ -90,8 +96,10 @@ impl Form {
         match goto {
             Goto::Settings | Goto::Disc(_) => self.page = Page::Settings,
             Goto::Stage(folder) => {
-                let at = self.catalog.maps.iter().position(|m| {
-                    m.btb().is_some_and(|b| b.folder.file_name().is_some_and(|n| n.to_string_lossy() == *folder))
+                let named = |dir: &std::path::Path| dir.file_name().is_some_and(|n| n.to_string_lossy() == *folder);
+                let at = self.catalog.maps.iter().position(|m| match &m.origin {
+                    Origin::Community(stage) => stage.folder.starts_with(self.here()) && named(&stage.folder),
+                    _ => m.btb().is_some_and(|b| named(&b.folder)),
                 });
                 self.page = Page::Drive;
                 self.stage_browser.open_on(at.unwrap_or(self.map), &self.favourite_maps, None);
@@ -126,6 +134,11 @@ impl Form {
                         }
                     });
                 ui.horizontal(|ui| {
+                    if let Some(file) = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.open.clone()) {
+                        if ui.button("Open the licence").clicked() {
+                            crate::crash::open(file.as_os_str());
+                        }
+                    }
                     let goto = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.goto.clone());
                     match goto {
                         Some(Goto::Stage(folder)) if ui.button("Open the stage picker").clicked() => {
