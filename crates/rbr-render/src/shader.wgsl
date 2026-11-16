@@ -413,9 +413,10 @@ fn sky_direction(p: vec2<f32>, normal: vec3<f32>) -> vec3<f32> {
     return normalize(d);
 }
 
-// How much farther than it is the backdrop's depth lies (ours): it is the land beyond the stage, laid lower than the
-// land it stands for, and its terrain next to the stage's far ground showed through it at its own depth (a dark field
-// at 560 Nechanice at 1.4 km took 1.3; 1.1 left it).
+// How much farther than it is the backdrop's depth lies (ours): its upright faces (tree lines, panoramas) and its
+// terrain (faces up, or no normal without the lit vertices). The terrain is the land beyond the stage, laid lower than
+// the land it stands for: at its own depth it showed over the stage's far ground (560 Nechanice's field at 1.4 km took
+// 1.3, 1.1 left it; 580's valley took 3).
 const BACKDROP_BEHIND: f32 = 1.3;
 const BACKDROP_TERRAIN_BEHIND: f32 = 3.0;
 
