@@ -74,8 +74,10 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
   16:58) cascades 0.40/2.37/1.38 to 0.28/0.74/0.49 ms, the bench 93/62 to 120/71 fps (avg/1 % low); the road and the
   trees by it keep their shadows, the slopes back from it lose their dapple. 36 reference shots byte-identical
   (2026-11-09).
-- `converted`: the player's folder (the launcher's and converters', one function) and its `converted` BTB root;
-  BeamNG levels convert there with `beamng-stage`, in its own repository (`beamng-rbrbtb`) since 2026-11-09.
+- `tracks`: the player's folder (the launcher's and converters', one function, `player`) and its `tracks` folder,
+  `tracks/<stage>/` with no `RX_CONTENT` level (2026-11-16, was `converted/RX_CONTENT/Tracks`). Any BTB stage dropped
+  there is listed, with a synthetic number (its RSF id needs the install's stage list); the converters write there
+  (`btb-converter`, its own repository, since 2026-11-09).
 - Faces: objects with `CollisionModel=0` and `Visible` not 0, in `objectlist.ini` order, clone by clone (gather 0x10022770); the
   clone count is the `.xform` size / 64 (`ini` `cloneCount` ignored: Crastazza `obj_124_2` has 22 matrices, `cloneCount=5`).
   `Visible=0` objects are absent (Le barrage des gorges `wall39_*`, bounds differ at the root without this).

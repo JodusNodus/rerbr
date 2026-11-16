@@ -1,5 +1,5 @@
 //! BTB (Bob's Track Builder) stages in the launcher (`notes/btb.md` "Playing"): the BTB folders of the RallySimFans
-//! install listed with its stages, and Start preparing the files the stage plays (`rbr_btb::stage`). A BTB stage is a
+//! install and the player's `tracks` folder listed with its stages, and Start preparing the files the stage plays (`rbr_btb::stage`). A BTB stage is a
 //! stage of its own number: its weathers are the rows of the sky map (`rbr_btb::stage::SKY_MAP`) under that number, and
 //! its records and ghosts are kept under it as a community stage's are.
 
@@ -13,7 +13,7 @@ use crate::Form;
 /// A listed BTB stage. The map's number is its RSF id, else a synthetic one no other map has ([`synthetic`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Btb {
-    /// The `RX_CONTENT/Tracks/<folder>/` directory.
+    /// The stage's directory: `RX_CONTENT/Tracks/<folder>/` of the RSF install or `tracks/<folder>/` of the player's.
     pub folder: PathBuf,
     /// `track.ini`'s name, else the folder's.
     pub name: String,
@@ -51,12 +51,25 @@ impl Btb {
 
 /// The BTB stages of the RSF install `root` as maps, the ones whose number `taken` not already.
 pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
-    let ids: std::collections::HashMap<PathBuf, u32> =
-        ids::match_ids(root).0.into_iter().map(|(f, id, _)| (f, id)).collect();
-    let list = rbr_formats::rsf::stage_list(root);
+    let ids = ids::match_ids(root).0.into_iter().map(|(f, id, _)| (f, id)).collect();
+    list(track::scan(root), &ids, &rbr_formats::rsf::stage_list(root), taken)
+}
+
+/// The BTB stages in the folder `dir` (`<dir>/<stage>/`) as maps, the ones whose number `taken` not already. They have
+/// no RSF id: each gets a synthetic number.
+pub fn folder_maps(dir: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
+    list(track::scan_dir(dir), &Default::default(), &Default::default(), taken)
+}
+
+fn list(
+    found: Vec<Result<track::Track, (PathBuf, String)>>,
+    ids: &std::collections::HashMap<PathBuf, u32>,
+    list: &std::collections::HashMap<u32, rbr_formats::rsf::ListEntry>,
+    taken: impl Fn(u32) -> bool,
+) -> Vec<Map> {
     let mut used = Vec::new();
     let mut maps = Vec::new();
-    for found in track::scan(root) {
+    for found in found {
         let Ok(track) = found else { continue };
         let free = |n: u32| !taken(n) && !used.contains(&n);
         let number =

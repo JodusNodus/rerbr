@@ -1,14 +1,14 @@
-//! Where converted stages go (converters such as `beamng-stage`, in its own repository): the [`FOLDER`] in the
-//! player's folder, a second BTB root the launcher lists. The player's folder (the launcher's files: settings, saves,
-//! records) is the platform's user data folder (macOS `~/Library/Application Support/ReRBR`, Windows
+//! The player's folder and its [`TRACKS`] folder: BTB stages dropped there, by hand or by a converter (`btb-converter`,
+//! in its own repository), are listed by the launcher beside the RSF install's. The player's folder (the launcher's
+//! files: settings, saves, records) is the platform's user data folder (macOS `~/Library/Application Support/ReRBR`, Windows
 //! `%APPDATA%\ReRBR`, Linux `$XDG_DATA_HOME/rerbr`, default `~/.local/share/rerbr`), or `$RERBR_HOME`; the launcher
 //! and the converters take it from here.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-/// The converted stages' folder in the player's folder.
-pub const FOLDER: &str = "converted";
+/// The folder of the player's own BTB stages in the player's folder: one folder per stage, `tracks/<name>/`.
+pub const TRACKS: &str = "tracks";
 
 /// The player's folder: `$RERBR_HOME`, else the platform's user data folder; `None` without `HOME` (or `APPDATA` on
 /// Windows).
@@ -16,9 +16,9 @@ pub fn player_folder() -> Option<PathBuf> {
     folder(|key| std::env::var_os(key), std::env::consts::OS)
 }
 
-/// The converted stages' root, `<player folder>/converted`.
-pub fn root() -> Option<PathBuf> {
-    player_folder().map(|p| p.join(FOLDER))
+/// The player's stages, `<player folder>/tracks`.
+pub fn tracks() -> Option<PathBuf> {
+    player_folder().map(|p| p.join(TRACKS))
 }
 
 /// The folder on `os` (`std::env::consts::OS`).

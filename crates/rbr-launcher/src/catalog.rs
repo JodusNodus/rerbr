@@ -442,11 +442,11 @@ impl Catalog {
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
     }
 
-    /// Adds the BTB stages under `root` (`<root>/RX_CONTENT/Tracks/*`): the converted stages in the player's folder
-    /// ([`rbr_btb::converted::FOLDER`]).
-    pub fn add_btb_root(&mut self, root: &Path) {
+    /// Adds the BTB stages in `dir` (`<dir>/<stage>/`): the player's own, in the player's folder
+    /// ([`rbr_btb::player::TRACKS`]).
+    pub fn add_tracks_folder(&mut self, dir: &Path) {
         let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
-        self.maps.extend(crate::btb::maps(root, |n| taken.contains(&n)));
+        self.maps.extend(crate::btb::folder_maps(dir, |n| taken.contains(&n)));
     }
 
     /// Replaces the pack cars by those of RSF's cache in the game folder `dir` (none without one; none, with the

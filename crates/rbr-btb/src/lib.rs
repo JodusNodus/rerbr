@@ -19,10 +19,10 @@ pub enum D3dx {
 pub mod circuit;
 pub mod classic;
 pub mod col;
-pub mod converted;
 pub mod ids;
 pub mod ksh;
 pub mod pad;
+pub mod player;
 pub mod scene;
 pub mod stage;
 pub mod track;

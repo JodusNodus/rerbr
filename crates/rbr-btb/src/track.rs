@@ -197,14 +197,17 @@ pub fn is_track_folder(folder: &Path) -> bool {
 /// Every `RX_CONTENT/Tracks/*` folder under the RSF install `root`: the ones with a `track.ini` open, the rest are
 /// `Err` with the folder. Sorted by folder name.
 pub fn scan(root: &Path) -> Vec<Result<Track, (PathBuf, String)>> {
-    let tracks = stage_files::in_dir(root, "RX_CONTENT\\Tracks");
-    let mut folders: Vec<PathBuf> = tracks
-        .and_then(|t| std::fs::read_dir(t).ok())
+    scan_dir(&stage_files::in_dir(root, "RX_CONTENT\\Tracks").unwrap_or_default())
+}
+
+/// Every folder in `dir` but the hidden ones (a converter's work in progress), one stage each: [`scan`]'s result for a folder that is not an RSF install.
+pub fn scan_dir(dir: &Path) -> Vec<Result<Track, (PathBuf, String)>> {
+    let mut folders: Vec<PathBuf> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.is_dir())
+        .filter(|p| p.is_dir() && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
         .collect();
     folders.sort();
     folders.into_iter().map(|f| Track::open(&f).map_err(|e| (f, e))).collect()
@@ -639,6 +642,26 @@ impl PaceNotes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_of_stages_and_an_rsf_install_list_the_same_stage_folders() {
+        let root = std::env::temp_dir().join(format!("rbr-btb-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let tracks = root.join("RX_CONTENT/Tracks");
+        for name in ["B", "A"] {
+            std::fs::create_dir_all(tracks.join(name)).unwrap();
+            std::fs::write(tracks.join(name).join("track.ini"), "[INFO]\nname=x\n").unwrap();
+        }
+        std::fs::write(tracks.join("stray.txt"), "").unwrap();
+        let names = |found: Vec<Result<Track, (PathBuf, String)>>| -> Vec<PathBuf> {
+            found.into_iter().map(|t| t.map_or_else(|(f, _)| f, |t| t.folder)).collect()
+        };
+        assert_eq!(names(scan(&root)), [tracks.join("A"), tracks.join("B")]);
+        assert_eq!(names(scan_dir(&tracks)), names(scan(&root)));
+        assert!(scan_dir(&root.join("missing")).is_empty());
+        assert!(scan(&root.join("missing")).is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn decimal_commas_and_points_read_as_floats() {

@@ -71,7 +71,7 @@ pub struct Prepared {
 /// stage's retail files). Preparation is safe when several processes start at once on a cold cache: the whole
 /// directory is built under a temporary sibling name and renamed into place, never written in place.
 pub fn prepare(material: u8, maps: &Path) -> Result<Prepared, String> {
-    let home = crate::converted::player_folder().unwrap_or_else(|| std::env::temp_dir().join("rerbr"));
+    let home = crate::player::player_folder().unwrap_or_else(|| std::env::temp_dir().join("rerbr"));
     prepare_in(&home.join("pad"), material, maps)
 }
 

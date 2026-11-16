@@ -98,7 +98,7 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   timekeeper and marker ticker never fire them (the start line's jump start would, with the car past the key).
   The autopilot follows an unrolled copy (`StageData::line`, 3 laps) and maps the wrapping progress onto it
   (`Driver::with_period`).
-- Nordschleife (local conversion, `~/.local/share/rerbr/converted/.../Nordschleife`, originals in
+- Nordschleife (local conversion, `~/.local/share/rerbr/tracks/Nordschleife`, originals in
   `~/.local/share/rerbr/backups/nordschleife-pre-circuit/`): the open 8318-point line closed by 4 points over its 11 m
   gap and rotated to start at the spawn (K20, 50 m in), 8322 points, 20803.22 m; the pace notes shifted by 50 m;
   start, finish and end moved to 40000 m. Autopilot (NGP car 2, `--top-speed 50`, `--laps 1`): Started at step 6559 (the

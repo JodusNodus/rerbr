@@ -198,8 +198,8 @@ impl Form {
             ui.add_space(6.0);
             ui.label(
                 "A circuit is a BTB stage whose track.ini has circuit = 1 and whose drive line is a closed ring, or a \
-                 stage that ends where it starts. Put one in the RallySimFans install's RX_CONTENT/Tracks and it is \
-                 listed here.",
+                 stage that ends where it starts. Put one in ReRBR's tracks folder (or the RallySimFans \
+                 install's RX_CONTENT/Tracks) and it is listed here.",
             );
             return;
         };
