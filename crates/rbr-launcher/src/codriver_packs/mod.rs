@@ -1,5 +1,5 @@
 //! Locally owned co-driver voice packs and stage-note packs, so a complete setup works without RallySimFans:
-//! "Import co-driver…" (the Graphics & sound page) and `launcher --import-codriver SRC` copy downloads into ReRBR's
+//! the launcher's Add (`content`) and `launcher --import-codriver SRC` copy downloads into ReRBR's
 //! own user content directories, where the launcher reads them in place of the RSF install's.
 //!
 //! The general launcher policy (user decision): ReRBR supports both (1) easy reuse of an existing RBR/RSF
@@ -36,24 +36,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rbr_formats::pacenote::codriver;
 use rbr_formats::pacenote::notes;
 
-use crate::job::{Job, Progress};
-use crate::pages::{GOOD, WARN};
 use crate::Form;
 
 /// The folders in the player's folder with the owned packs.
 pub const VOICES_DIR: &str = "codrivers";
 pub const NOTES_DIR: &str = "notes";
 /// The archive suffixes taken as downloads.
-const ZIP: &str = ".zip";
-const SEVEN_Z: &str = ".7z";
+pub(crate) const ZIP: &str = ".zip";
+pub(crate) const SEVEN_Z: &str = ".7z";
 
 type Fail = String;
 
 /// What the notes summary follows besides the map and the scanned packs: the co-driver switch and the voice.
 pub type NotesInputs = (bool, Option<String>);
 
-pub mod downloads;
-mod drop;
 mod import;
 mod scan;
 
@@ -61,13 +57,14 @@ pub use import::{cli, import, remove_notes, remove_voice};
 #[cfg(test)]
 use import::{import_both, import_voice_from, publish, publish_pair, stage};
 #[cfg(test)]
+use scan::copy_voice;
+#[cfg(test)]
 use scan::set_label;
 pub use scan::{
     call_sets_differ, note_packs, pick_notes, voice_packs, NotePack, NoteSource, NotesPick, NotesSummary, VoicePack,
 };
 use scan::{check_voice, is_plugin_dir};
-#[cfg(test)]
-use scan::{copy_voice, pack_name, walk};
+pub(crate) use scan::{pack_name, walk};
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
@@ -177,80 +174,6 @@ impl Form {
         if !mods.styles.contains(&self.codriver_style) {
             self.codriver_style =
                 mods.styles.first().cloned().unwrap_or_else(|| rbr_sound::custom_codriver::DEFAULT_STYLE.into());
-        }
-    }
-
-    /// Starts importing the co-driver download `src` (a folder or archive) on a thread; real progress with a
-    /// working Cancel, and nothing published when cancelled.
-    pub fn import_codriver_from(&mut self, src: String) {
-        if self.codriver_job.is_some() || self.child.is_some() {
-            return;
-        }
-        self.codriver_status = None;
-        if src.to_ascii_lowercase().ends_with(".rar") {
-            self.codriver_status = Some(Err("RAR archives are not supported: extract it and use Add folder…".into()));
-            return;
-        }
-        let home = self.here();
-        self.codriver_job = Some(Job::start(move |report, cancel| {
-            report(&Progress { step: "Importing co-driver", done: 0, total: 0 });
-            import(&home, Path::new(&src), cancel)
-        }));
-    }
-
-    /// Separate folder and archive imports: cancelling one dialog never opens the other.
-    pub fn import_codriver_ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            let idle = self.codriver_job.is_none() && self.child.is_none();
-            if ui
-                .add_enabled(idle, egui::Button::new("Add folder…"))
-                .on_hover_text(
-                    "Choose an extracted co-driver download, a MyPacenotes folder, or a whole RBR/RSF install to \
-                     copy from (only read). ReRBR copies its voices, call styles, distance calls and stage notes \
-                     into your files' folder; the source is not changed.",
-                )
-                .clicked()
-            {
-                if let Some(src) = crate::job::pick_folder("The co-driver download's folder") {
-                    self.import_codriver_from(src);
-                }
-            }
-            if ui
-                .add_enabled(idle, egui::Button::new("Add archive…"))
-                .on_hover_text(
-                    "Choose a downloaded .zip/.7z co-driver or note pack. ReRBR copies its voices, call styles, \
-                     distance calls and stage notes into your files' folder; the download is not changed.",
-                )
-                .clicked()
-            {
-                if let Some(src) = crate::job::pick_file("The co-driver download's .zip/.7z archive") {
-                    self.import_codriver_from(src);
-                }
-            }
-            let Some(job) = &mut self.codriver_job else { return };
-            if let Some(result) = job.ui(ui) {
-                self.codriver_job = None;
-                // What a successful import added drives: its voice pack (its default voice); its notes play by
-                // themselves. No removals run while importing, so the list before the rescan is the one it started with.
-                let before =
-                    result.is_ok().then(|| self.owned_voices.iter().map(|p| p.name.clone()).collect::<Vec<_>>());
-                self.codriver_status = Some(match result {
-                    Err(e) if e.ends_with("cancelled") => Err("Cancelled; nothing was written.".into()),
-                    Ok(lines) => Ok(lines.join(" ")),
-                    Err(e) => Err(e),
-                });
-                self.rescan_codrivers();
-                let Some(voices) = before else { return };
-                let voice = self.owned_voices.iter().find(|p| p.problem.is_none() && !voices.contains(&p.name));
-                if let Some(name) = voice.map(|p| p.name.clone()) {
-                    (self.codriver, self.codriver_pack, self.codriver_voice) = (true, Some(name), None);
-                }
-            }
-        });
-        match &self.codriver_status {
-            Some(Ok(text)) => _ = ui.colored_label(GOOD, format!("✔ {text}")),
-            Some(Err(text)) => _ = ui.colored_label(WARN, format!("⚠ {text}")),
-            None => {}
         }
     }
 }

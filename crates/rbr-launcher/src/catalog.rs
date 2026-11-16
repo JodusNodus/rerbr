@@ -449,6 +449,17 @@ impl Catalog {
         self.maps.extend(crate::btb::folder_maps(dir, |n| taken.contains(&n)));
     }
 
+    /// Adds the BTB stages of `dir` not listed yet (a stage just added), after the maps listed: every position stays.
+    pub fn add_new_tracks(&mut self, dir: &Path) {
+        let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
+        let listed = |folder: &Path| self.maps.iter().any(|m| m.btb().is_some_and(|b| b.folder == folder));
+        let new: Vec<Map> = crate::btb::folder_maps(dir, |n| taken.contains(&n))
+            .into_iter()
+            .filter(|m| m.btb().is_some_and(|b| !listed(&b.folder)))
+            .collect();
+        self.maps.extend(new);
+    }
+
     /// Replaces the pack cars by those of RSF's cache in the game folder `dir` (none without one; none, with the
     /// reason on stderr, when it doesn't read), then the added cars of `added` (`car_packs::DIR`). A car both have (by pack
     /// folder or name) is the added one: the player downloaded it over RSF's, which is back once it is removed.

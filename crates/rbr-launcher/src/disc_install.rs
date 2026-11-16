@@ -706,6 +706,12 @@ pub struct DiscSetup {
 }
 
 impl DiscSetup {
+    /// Opens the panel with `disc` filled in (a dropped `.iso` or folder); nothing is installed until Set up.
+    pub fn set_disc(&mut self, disc: &Path) {
+        self.disc = disc.display().to_string();
+        self.open = true;
+    }
+
     /// The panel, when open; the new game folder once a setup has finished.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<String> {
         if !self.open {

@@ -120,6 +120,9 @@ impl Form {
             })
         });
 
+        // Everything a player downloads: stages, cars, co-drivers, pace notes, NGP.
+        self.add_content_section(ui);
+
         // The co-driver: a general choice, the same for every stage.
         self.codriver_section(ui);
 

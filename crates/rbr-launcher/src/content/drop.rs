@@ -1,35 +1,41 @@
-//! Dropping a co-driver or pace-note download (a .zip, .7z or folder) on the launcher window adds it, as "Add
-//! folder…" and "Add archive…" do.
+//! Dropping files or folders on the launcher window adds them, as the Settings page's Add content does.
 
-use crate::pages::Page;
 use crate::Form;
 
+/// The hint over the window while files hover over it.
+const HINT: &str = "Drop to add stages, cars, co-drivers or pace notes";
+/// What the hint says while the viewer runs.
+const CLOSE_FIRST: &str = "Close the drive first";
+
 impl Form {
-    /// Takes the first file dropped on the window this frame to the Settings page and adds it; draws the hint
-    /// while files hover over the window. Nothing while the viewer runs or an import does.
-    pub fn codriver_drop(&mut self, ctx: &egui::Context) {
+    /// Takes the files dropped on the window this frame and adds them; draws the hint while files hover over the
+    /// window. A drop while the viewer runs says to close it; one while an add runs is ignored.
+    pub fn content_drop(&mut self, ctx: &egui::Context) {
         let (hovering, dropped) = ctx.input(|i| (!i.raw.hovered_files.is_empty(), i.raw.dropped_files.clone()));
-        if self.child.is_some() || self.codriver_job.is_some() {
+        if self.content.busy() {
             return;
         }
         if hovering {
-            Self::drop_hint(ctx);
+            Self::drop_hint_text(ctx, if self.child.is_some() { CLOSE_FIRST } else { HINT });
         }
-        let Some(path) = dropped.first() else { return };
-        let path = path.path().to_path_buf();
-        self.page = Page::Settings;
-        self.import_codriver_from(path.to_string_lossy().into_owned());
+        let paths: Vec<_> = dropped.iter().map(|f| f.path().to_path_buf()).collect();
+        self.add_content(paths);
     }
 
     /// The hint over the window while files hover over it.
+    #[cfg(test)]
     pub fn drop_hint(ctx: &egui::Context) {
+        Self::drop_hint_text(ctx, HINT);
+    }
+
+    fn drop_hint_text(ctx: &egui::Context, text: &str) {
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("drop hint")));
         let screen = ctx.content_rect();
         painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(190));
         painter.text(
             screen.center(),
             egui::Align2::CENTER_CENTER,
-            "Drop to add a co-driver or pace notes",
+            text,
             egui::FontId::proportional(24.0),
             egui::Color32::WHITE,
         );

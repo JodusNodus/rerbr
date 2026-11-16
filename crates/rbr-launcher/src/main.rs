@@ -136,6 +136,7 @@ mod circuit_page;
 mod codriver_packs;
 mod codriver_page;
 mod command;
+mod content;
 mod controls_page;
 mod crash;
 mod disc_install;
@@ -530,11 +531,10 @@ struct Form {
     /// The owned packs, re-read by `rescan_codrivers`.
     owned_voices: Vec<codriver_packs::VoicePack>,
     owned_notes: Vec<codriver_packs::NotePack>,
-    /// "Import co-driver…" and its last result (`codriver_packs`).
-    codriver_job: Option<job::Job<Vec<String>>>,
+    /// The last pack removal's error (`codriver_packs`).
     codriver_status: Option<Result<String, String>>,
-    /// The recent downloads offered under the pack buttons.
-    recent_packs: codriver_packs::downloads::Recent,
+    /// The shared Add (`content`): its run, its notice and the recent downloads.
+    content: content::Add,
     codriver_voice: Option<String>,
     codriver_style: String,
     /// The quick race's ghost car.

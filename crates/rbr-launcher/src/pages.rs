@@ -437,6 +437,8 @@ impl Form {
                 ui.add_space(2.0);
             })
         });
+        // Over the status line, on every page: the Add's progress and result.
+        self.content_notice(ctx);
         // The browsers are a page's body: leaving the page closes them.
         self.stage_browser.open &= match self.stage_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
@@ -483,7 +485,7 @@ impl Form {
             })
         });
         self.crash.ui(ctx);
-        self.codriver_drop(ctx);
+        self.content_drop(ctx);
         // A dropdown's item picked with Enter or Space: egui closes dropdowns only on a mouse click. The focus goes
         // back to the dropdown (the last control focused outside one).
         let outside = Id::unique("focused outside dropdowns");

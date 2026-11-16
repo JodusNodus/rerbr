@@ -320,8 +320,11 @@ impl App {
     pub fn load(&mut self, window: &Window) {
         let settings = read_settings(&self.start.settings);
         self.folder = settings.install_folder.clone().unwrap_or_default();
+        // The Add's notice survives the reload that follows an NGP being added.
+        let notice = self.form.as_mut().map(|f| std::mem::take(&mut f.content.notice));
         match load(&self.start, settings) {
             Ok(mut form) => {
+                form.content.notice = notice.unwrap_or_default();
                 form.set_monitor(window);
                 form.log_missing_programs();
                 form.page = self.form.as_ref().map_or_else(|| form.first_page(), |f| f.page);

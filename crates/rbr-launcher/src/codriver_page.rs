@@ -177,7 +177,7 @@ impl Form {
             }
             // The preview beside the dropdown: the corner ladder and one distance call with this voice. Built
             // on a thread, so the UI never stalls.
-            let idle = self.child.is_none() && self.codriver_job.is_none();
+            let idle = self.child.is_none() && !self.content.busy();
             let preview = ui
                 .add_enabled(idle && !matches!(current, VoiceChoice::Off), egui::Button::new("▶ Preview"))
                 .on_hover_text(
@@ -255,7 +255,7 @@ impl Form {
         }
     }
 
-    /// The Packs row: where to get packs, the add buttons, the recent downloads, and Manage packs.
+    /// The Packs row: where to get packs (adding is the Add content section's), and Manage packs.
     fn codriver_packs_row(&mut self, ui: &mut egui::Ui) {
         ui.label("Packs");
         ui.vertical(|ui| {
@@ -282,27 +282,9 @@ impl Form {
             ui.label(
                 egui::RichText::new("The lists are Luppis's; the voices are their authors'.").color(Color32::GRAY),
             );
-            self.import_codriver_ui(ui);
-            let owned = self.owned_voices.iter().map(|p| p.name.clone());
-            let owned: Vec<String> = owned.chain(self.owned_notes.iter().map(|p| p.name.clone())).collect();
-            self.recent_packs.poll(ui.ctx(), owned);
-            let idle = self.codriver_job.is_none() && self.child.is_none();
-            let mut add = None;
-            for path in &self.recent_packs.list {
-                ui.horizontal(|ui| {
-                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    ui.label(&name).on_hover_text(path.display().to_string());
-                    if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
-                        add = Some(path.to_string_lossy().into_owned());
-                    }
-                });
-            }
-            if let Some(src) = add {
-                self.import_codriver_from(src);
-            }
             egui::CollapsingHeader::new("Manage packs").id_salt("codriver packs").show(ui, |ui| {
                 // No removals while importing or driving.
-                let idle = self.codriver_job.is_none() && self.child.is_none();
+                let idle = !self.content.busy() && self.child.is_none();
                 let mut remove_voice = None;
                 for pack in &self.owned_voices {
                     ui.horizontal(|ui| {
@@ -343,6 +325,9 @@ impl Form {
                 if let Some(pack) = remove_notes {
                     self.codriver_status = crate::codriver_packs::remove_notes(&self.here(), &pack).err().map(Err);
                     self.rescan_codrivers();
+                }
+                if let Some(Err(text)) = &self.codriver_status {
+                    ui.colored_label(WARN, format!("⚠ {text}"));
                 }
             });
         });

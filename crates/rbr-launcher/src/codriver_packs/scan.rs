@@ -78,7 +78,7 @@ pub(super) fn keep_voice(rel: &[&str]) -> bool {
 }
 
 /// A pack name from the source's file or folder name: the archive's stem, else the folder's name, spaces kept.
-pub(super) fn pack_name(src: &Path) -> String {
+pub(crate) fn pack_name(src: &Path) -> String {
     let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let lower = name.to_ascii_lowercase();
     let stem = [ZIP, SEVEN_Z].iter().find_map(|e| lower.ends_with(e).then(|| name[..name.len() - e.len()].to_owned()));
@@ -102,7 +102,7 @@ pub(super) fn free_dir(dir: &Path, name: &str) -> PathBuf {
 
 /// The files below `dir` (relative `/`-separated paths and their absolute paths), sorted. Symlinks are never
 /// followed or copied: a linked directory would loop, and a linked file belongs to its target's pack, not this one.
-pub(super) fn walk(dir: &Path) -> Vec<(String, PathBuf)> {
+pub(crate) fn walk(dir: &Path) -> Vec<(String, PathBuf)> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_owned()];
     while let Some(top) = stack.pop() {
