@@ -15,6 +15,8 @@ pub struct LapTiming {
     rule: EndRule,
     /// The previous step's distance and time.
     last: Option<(f32, f64)>,
+    /// The first lap starts with the next step, wherever the car is ([`Self::start_now`]): a standing start on the line.
+    start_pending: bool,
     /// The time of the first pass of the line, once there was one.
     started: Option<f64>,
     /// When the lap in progress began.
@@ -24,6 +26,9 @@ pub struct LapTiming {
     /// Passes of the line backwards not yet made good: the car is behind the line by this many.
     behind: u32,
     times: Vec<f32>,
+    /// The sector times of the lap in progress, and of the best lap so far (since each lap began).
+    sector_times: Vec<f32>,
+    best_sector_times: Vec<f32>,
     finished: bool,
 }
 
@@ -36,13 +41,22 @@ impl LapTiming {
             sectors: sectors.clone(),
             rule,
             last: None,
+            start_pending: false,
             started: None,
             lap_start: 0.0,
             next_sector: 0,
             behind: 0,
             times: Vec::new(),
+            sector_times: Vec::new(),
+            best_sector_times: Vec::new(),
             finished: false,
         })
+    }
+
+    /// A standing start: the first lap starts with the next step, the car on the line, instead of at the first pass of
+    /// it (a flying start).
+    pub fn start_now(&mut self) {
+        self.start_pending = true;
     }
 
     /// One step: the car is `x` metres along the line at time `t` (s). Returns the events it passed, in order. A
@@ -52,6 +66,12 @@ impl LapTiming {
         if !x.is_finite() || self.finished {
             return events;
         }
+        if self.start_pending && self.started.is_none() {
+            (self.started, self.lap_start, self.next_sector) = (Some(t), t, 0);
+            self.sector_times.clear();
+            events.push(TimingEvent::Started);
+        }
+        self.start_pending = false;
         if let Some((px, pt)) = self.last {
             let half = self.length * 0.5;
             // The stretch of this step that lies in the lap in progress: from the line when the step crossed it.
@@ -82,10 +102,14 @@ impl LapTiming {
             self.started = Some(at);
             self.lap_start = at;
             self.next_sector = 0;
+            self.sector_times.clear();
             events.push(TimingEvent::Started);
             return;
         };
         let time = (at - self.lap_start) as f32;
+        if self.best().is_none_or(|best| time < best) {
+            self.best_sector_times = self.sector_times.clone();
+        }
         self.times.push(time);
         let lap = self.times.len() as u32;
         events.push(TimingEvent::Lap { lap, time });
@@ -96,6 +120,7 @@ impl LapTiming {
         }
         self.lap_start = at;
         self.next_sector = 0;
+        self.sector_times.clear();
     }
 
     /// Backwards over the line: the sectors of the lap behind were all passed.
@@ -113,6 +138,7 @@ impl LapTiming {
             let at = from_t + (t - from_t) * frac;
             let time = (at - self.lap_start) as f32;
             events.push(TimingEvent::Sector { lap: self.times.len() as u32 + 1, index: self.next_sector, time });
+            self.sector_times.push(time);
             self.next_sector += 1;
         }
     }
@@ -120,6 +146,21 @@ impl LapTiming {
     /// The completed laps' times, in order.
     pub fn lap_times(&self) -> &[f32] {
         &self.times
+    }
+
+    /// The sector times of the lap in progress so far, since it began.
+    pub fn sector_times(&self) -> &[f32] {
+        &self.sector_times
+    }
+
+    /// The sector times of the best completed lap.
+    pub fn best_sector_times(&self) -> &[f32] {
+        &self.best_sector_times
+    }
+
+    /// How the session ends.
+    pub fn rule(&self) -> EndRule {
+        self.rule
     }
 
     /// The best completed lap's time.
@@ -155,17 +196,23 @@ mod tests {
 
     /// Drives `timing` at `speed` m/s from `start` metres at time 0 until `end_t`, in steps of `dt`; the distance wraps
     /// at the length. Returns the timer and every event with the step time that produced it.
-    fn drive(
+    fn drive(timing: LapTiming, start: f32, speed: f32, dt: f64, end_t: f64) -> (LapTiming, Vec<(f64, TimingEvent)>) {
+        drive_from(timing, start, speed, dt, 0.0, end_t)
+    }
+
+    /// [`drive`] from time `from_t`, the car at `start` then.
+    fn drive_from(
         mut timing: LapTiming,
         start: f32,
         speed: f32,
         dt: f64,
+        from_t: f64,
         end_t: f64,
     ) -> (LapTiming, Vec<(f64, TimingEvent)>) {
         let mut all = Vec::new();
-        let mut t = 0.0;
+        let mut t = from_t;
         while t <= end_t {
-            let x = (start as f64 + speed as f64 * t).rem_euclid(LENGTH as f64) as f32;
+            let x = (start as f64 + speed as f64 * (t - from_t)).rem_euclid(LENGTH as f64) as f32;
             let events = timing.step(x, t);
             all.extend(events.into_iter().map(|e| (t, e)));
             t += dt;
@@ -177,6 +224,18 @@ mod tests {
     fn only_a_circuit_has_lap_timing() {
         let stage = Course::PointToPoint { start: 0.0, sectors: vec![], finish: 500.0 };
         assert!(LapTiming::new(&stage, EndRule::Open).is_none());
+    }
+
+    #[test]
+    fn a_standing_start_times_the_lap_from_the_line_it_stands_on() {
+        let mut t = timing(EndRule::Laps(1));
+        t.start_now();
+        // From the line at 0 m at 2 s, 50 m/s: the lap is 20 s, the sector gates 5 and 12 s in.
+        let (t, events) = drive_from(t, 0.0, 50.0, 0.01, 2.0, 30.0);
+        assert_eq!(events[0].1, TimingEvent::Started);
+        assert!(matches!(events.last(), Some((_, TimingEvent::Finished { time })) if (time - 20.0).abs() < 1e-3));
+        assert_eq!(t.lap_times().len(), 1);
+        assert_eq!(events.iter().filter(|(_, e)| matches!(e, TimingEvent::Sector { .. })).count(), 2);
     }
 
     #[test]
@@ -250,6 +309,17 @@ mod tests {
         assert!(matches!(events[1], TimingEvent::Sector { lap: 1, index: 0, .. }));
         assert_eq!(events.len(), 2);
         assert!(t.lap_times().is_empty());
+    }
+
+    #[test]
+    fn the_sector_times_follow_the_lap_in_progress_and_the_best_lap() {
+        let (t, _) = drive(timing(EndRule::Open), 900.0, 50.0, 0.01, 31.0);
+        // 31 s: the second lap began at 22 s, its first gate (5 s in) is at 27 s, its second (12 s in) not yet.
+        assert_eq!(t.sector_times().len(), 1);
+        assert!((t.sector_times()[0] - 5.0).abs() < 1e-3);
+        assert_eq!(t.best_sector_times().len(), 2);
+        assert!((t.best_sector_times()[1] - 12.0).abs() < 1e-3);
+        assert_eq!(t.rule(), EndRule::Open);
     }
 
     #[test]

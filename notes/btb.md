@@ -30,6 +30,9 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 - Text files are bytes decoded lossy (non-UTF-8 `track.ini` names exist), sections/keys first-match
   case-insensitive, headers only at line starts: `rbr_formats::ini` gives Windows-identical sections here (no
   indented headers or comments in any folder).
+- `track.ini` `[INFO]` `circuit=1` (ReRBR's own key, which the plugin does not know): the stage is a circuit. Its
+  `driveline.ini` is a closed ring (the last point repeats the first, distance the lap length) and `classic::trk` writes
+  `trk::CLOSED_LINE_WORDS` on the first record; `rbr-standalone --laps` plays it (`notes/session.md`).
 - `Objects.zip`/`Textures.zip`: the `.x` meshes, `.xform` placements and textures ([Meshes](#meshes)).
 
 ## Built files

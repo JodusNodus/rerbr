@@ -127,7 +127,7 @@ fn read_driveline(path: &Path, source: &Source) -> Option<TimedRoad> {
         // is timed as the others are: the spline between the start and the finish.
         Source::Btb(folder) => {
             let track = rbr_btb::track::Track::open(folder).ok()?;
-            let trk = rbr_btb::classic::trk(&track.driveline().ok()?.points, 0, &[]);
+            let trk = rbr_btb::classic::trk(&track.driveline().ok()?.points, false, 0, &[]);
             let notes = track.pace_notes().ok();
             let markers = notes.and_then(|n| markers::parse(&rbr_btb::classic::dls(&n.notes)).ok());
             pace::timed_road(&line(&trk)?, markers.as_ref())

@@ -387,7 +387,31 @@ fn lean(pose: &CarPose) -> f32 {
     (up[0] * forward[1] - up[1] * forward[0]) / length
 }
 
+/// The laps of a circuit's wrapping progress counted off, for the unrolled line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Lap {
+    period: f32,
+    /// The progress of the laps before this one.
+    base: f32,
+    last: f32,
+}
+
+impl Lap {
+    /// `parameter` (wrapped into one lap) on the unrolled line: a drop of over half a lap is the seam crossed forward,
+    /// a rise of over half a lap backward.
+    fn unrolled(&mut self, parameter: f32) -> f32 {
+        if self.last - parameter > self.period / 2.0 {
+            self.base += self.period;
+        } else if parameter - self.last > self.period / 2.0 {
+            self.base = (self.base - self.period).max(0.0);
+        }
+        self.last = parameter;
+        self.base + parameter
+    }
+}
+
 /// What the controller reads after a step.
+#[derive(Clone)]
 pub struct Sense {
     pub pose: CarPose,
     /// `CCar` +0x17c.
@@ -434,6 +458,9 @@ enum Mode {
 /// The controller's state.
 pub struct Driver<'a> {
     track: &'a [DriveLineRecord],
+    /// A circuit's lap in the car's progress values (`CCar` +0x17c, which wraps at the seam), when `track` is its
+    /// unrolled copy ([`Self::with_period`]): the progress of the laps before this one and the last progress seen.
+    lap: Option<Lap>,
     values: Vec<f32>,
     /// The step of the last shift.
     shifted: u32,
@@ -765,6 +792,7 @@ impl<'a> Driver<'a> {
     pub fn new(track: &'a [DriveLineRecord], values: Vec<f32>, top: f32, aim: Option<Aim>) -> Self {
         Self {
             track,
+            lap: None,
             values,
             shifted: 0,
             top,
@@ -1197,8 +1225,21 @@ impl<'a> Driver<'a> {
         );
     }
 
+    /// The driver follows a circuit's unrolled line (`StageData::line`) whose lap is `period` progress units: the
+    /// car's progress wraps at the seam and the driver reads it as running on.
+    pub fn with_period(mut self, period: f32) -> Self {
+        self.lap = Some(Lap { period, base: 0.0, last: 0.0 });
+        self
+    }
+
     /// The control for `step` (emitted before it), from the state after the step before.
     pub fn control(&mut self, step: u32, sense: &Sense, finished: bool) -> QuantizedControl {
+        let Some(lap) = self.lap.as_mut() else { return self.steer(step, sense, finished) };
+        let sense = Sense { parameter: lap.unrolled(sense.parameter), ..sense.clone() };
+        self.steer(step, &sense, finished)
+    }
+
+    fn steer(&mut self, step: u32, sense: &Sense, finished: bool) -> QuantizedControl {
         if sense.held {
             (self.mode, self.slow, self.bogged) = (Mode::Drive, 0, 0);
             return QuantizedControl { brake: 255, ..QuantizedControl::default() };

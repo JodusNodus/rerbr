@@ -29,6 +29,11 @@ impl LapRules {
 }
 
 impl Format for LapRules {
+    /// A standing start: the first lap starts with the first step of the drive.
+    fn start(&mut self) {
+        self.timing.start_now();
+    }
+
     fn after_step(&mut self, step: &StepView) {
         if let Some(distance) = step.distance {
             self.events.extend(self.timing.step(distance, step.elapsed));

@@ -502,6 +502,7 @@ impl Live {
         // The rally-school lesson's screens (SCH1), on a school drive: none clears them; the frame's speech
         // accumulates for the school voice until the viewer takes it.
         self.hud_model.set_school(periods as f32 * rbr_recording::STEP_SECONDS, answer.school.as_ref());
+        self.hud_model.set_laps(answer.laps.as_ref());
         if let Some(school) = &answer.school {
             self.school_stop |= school.stop;
             self.school_speech.extend(school.speech.iter().copied());

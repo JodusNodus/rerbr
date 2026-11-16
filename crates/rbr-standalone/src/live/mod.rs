@@ -101,6 +101,7 @@ use rbr_recording::school::School;
 use rbr_recording::sound::{TyreMax, SND1};
 use rbr_recording::{CONTROL_BYTES, MAGIC};
 use rbr_school::SchoolRun;
+use rbr_session::{LapRules, TimingEvent};
 use std::panic::{self, AssertUnwindSafe};
 
 mod picture;
@@ -159,6 +160,9 @@ pub struct Live<'a> {
     /// ([`Live::restart`]).
     school: Option<SchoolRun>,
     initial_school: Option<SchoolRun>,
+    /// A circuit session's lap rules (`--laps`), likewise.
+    laps: Option<LapRules>,
+    initial_laps: Option<LapRules>,
     /// The rally school's verdict at the drive's end (`race_end`), for the answers' SCH1 record; none before
     /// the end, and [`Live::restart`] clears it.
     school_verdict: Option<u32>,
@@ -245,6 +249,7 @@ impl<'a> Live<'a> {
         let clock = self.clock.record();
         let menu = self.menu().record();
         let school = self.school_record();
+        let laps = self.laps_record();
         let mut out = Vec::new();
         for word in [MAGIC, pre, pre + substeps, substeps, CAR_BYTES as u32] {
             out.extend_from_slice(&word.to_le_bytes());
@@ -271,6 +276,9 @@ impl<'a> Live<'a> {
         out.extend_from_slice(&menu);
         if let Some(school) = school {
             out.extend_from_slice(&school);
+        }
+        if let Some(laps) = laps {
+            out.extend_from_slice(&laps);
         }
         out.extend_from_slice(&self.last.fmod_block);
         out.extend_from_slice(&self.last.carried);
@@ -299,6 +307,16 @@ impl<'a> Live<'a> {
     /// The rally school's lesson, on a lesson's drive.
     pub fn school(&self) -> Option<&SchoolRun> {
         self.school.as_ref()
+    }
+
+    /// The lap rules, on a circuit session's drive.
+    pub fn laps(&self) -> Option<&LapRules> {
+        self.laps.as_ref()
+    }
+
+    /// The circuit session's timing events since the last call (the laps' and sectors'), in order.
+    pub fn take_lap_events(&mut self) -> Vec<TimingEvent> {
+        self.laps.as_mut().map(LapRules::take_events).unwrap_or_default()
     }
 
     /// The image after the last step, for a reader between steps ([`rbr_hybrid::pure::Pure::image`]).
@@ -465,7 +483,7 @@ impl<'a> Live<'a> {
         };
         let runs = self.playback.pure.runs();
         let events = panic::catch_unwind(AssertUnwindSafe(|| {
-            self.game.frame_with(self.now, input, &mut physics, &mut self.school)
+            self.game.frame_with(self.now, input, &mut physics, &mut (&mut self.school, &mut self.laps))
         }))
         .map_err(|e| self.stop_text(e.as_ref(), runs))?;
         self.pending.tyre_max = physics.tyre_max;

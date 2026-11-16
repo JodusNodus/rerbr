@@ -221,6 +221,10 @@ pub struct TrackInfo {
     pub length_km: Option<f64>,
     /// `countrycode`: an ISO code, on a few folders.
     pub country: Option<String>,
+    /// `circuit=1` (ReRBR's own key, which the plugin does not know): the stage is a circuit. Its `driveline.ini` is a
+    /// closed line (the last point repeats the first) and its `.trk` marks the line closed
+    /// (`rbr_formats::trk::CLOSED_LINE_WORDS`, `notes/session.md`).
+    pub circuit: bool,
     /// The whole `[INFO]` section, so unknown keys stay accessible.
     pub entries: RawEntries,
 }
@@ -244,6 +248,7 @@ impl TrackInfo {
             comment: get("comment"),
             length_km: get("length").and_then(|l| l.parse().ok()),
             country: get("countrycode"),
+            circuit: get("circuit").is_some_and(|v| v.trim() == "1"),
             entries: info.entries.clone(),
         })
     }

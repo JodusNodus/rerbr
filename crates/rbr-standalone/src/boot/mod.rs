@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::rc::Rc;
 
+use crate::StageData;
 use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
 use rbr_formats::{car_pack, cars, fnc, lbs, markers, rbz, sgc, stage_files, trk};
@@ -42,6 +43,7 @@ use rbr_physics::physics_core::layout as physics;
 use rbr_physics::physics_core::layout::physics_object::def_new_physics;
 use rbr_physics::stage::layout as stage;
 use rbr_school::{Bank, Lesson, SchoolRun};
+use rbr_session::{Course, EndRule, LapRules};
 
 use crate::handles;
 
@@ -110,6 +112,8 @@ pub struct Race {
     pub championship: Option<ChampionshipOptions>,
     /// A rally school lesson (flow mode 7): the flow's `+0xca4`. None outside the school.
     pub lesson: Option<Lesson>,
+    /// A circuit session (`--laps`, `notes/session.md`): how it ends. None outside one.
+    pub laps: Option<EndRule>,
     /// `QueryPerformanceFrequency` (Wine's in the reference runs).
     pub frequency: u64,
     /// NGP's `physics.rbz` (with its cars in their slots): the physics files come from it, parsed with NGP's keys.
@@ -152,6 +156,7 @@ impl Race {
             flow_mode: FlowMode::QUICK_RALLY.value(),
             championship: None,
             lesson: None,
+            laps: None,
             frequency: 10_000_000,
             setup: None,
             ngp_physics,
@@ -207,6 +212,17 @@ impl Race {
     pub fn school(&self, replay: &rbr_formats::dls::DlsReplayStream, strings: &[u8]) -> Option<SchoolRun> {
         let bank = Bank::from_stream(&Bank::fresh(), replay, 0);
         self.lesson.map(|lesson| SchoolRun::new(lesson, bank, strings.to_vec()))
+    }
+
+    /// A circuit session's rules (`--laps`) on the stage's course; none outside one, and an error for a stage that is
+    /// not a circuit.
+    pub fn circuit(&self, stage: &StageData) -> Result<Option<LapRules>, String> {
+        let Some(rule) = self.laps else { return Ok(None) };
+        let course = Course::load(&stage.markers, &stage.track);
+        LapRules::new(&course, rule).map(Some).ok_or_else(|| {
+            "--laps needs a circuit: a stage whose drive line is marked closed (`circuit = 1` in a BTB track.ini)"
+                .into()
+        })
     }
 
     /// The level `InitQuickRaceDamageHandler` (0x567640) gives the car in this flow mode.

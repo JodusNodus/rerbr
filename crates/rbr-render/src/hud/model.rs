@@ -30,6 +30,7 @@ use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::{level, CarriedDamage, Rules};
 use rbr_recording::dash::{Dash, StackKey};
 use rbr_recording::flow::{Flow, MessageBox};
+use rbr_recording::laps::Laps;
 use rbr_recording::pacenote::Callout;
 use rbr_recording::school::School as SchoolRecord;
 
@@ -282,6 +283,8 @@ pub struct HudView {
     pub service_next: bool,
     /// The rally-school lesson's screens (SCH1), on a school drive.
     pub school: Option<school::State>,
+    /// Where the laps stand (LAP1), on a circuit session.
+    pub laps: Option<Laps>,
     /// The car's damage by group (CDM1), for the car status.
     pub car: Option<CarStatus>,
     /// The car's rev limit and its upshift point in the gear, rpm (SHF1), for the dial.
@@ -383,6 +386,8 @@ pub struct HudModel {
     /// end's reasons resolve through.
     school: Option<(school::State, f32)>,
     school_strings: Option<Strings>,
+    /// The circuit session's laps (LAP1).
+    laps: Option<Laps>,
     /// The custom co-driver's visible notes (`CustomKey`, sorted by distance): the pace stack follows these instead
     /// of DSH1's keys while set.
     custom: Option<Vec<CustomKey>>,
@@ -588,9 +593,15 @@ impl HudModel {
             black: self.tints.1,
             service_next: self.service_next,
             school: self.school.as_ref().map(|(state, _)| state.clone()),
+            laps: self.laps.clone(),
             // The live process's own records, set by the viewer.
             ..HudView::default()
         }
+    }
+
+    /// Takes one answer's lap record (LAP1); `None` (no circuit session) clears the lap panel.
+    pub fn set_laps(&mut self, record: Option<&Laps>) {
+        self.laps = record.cloned();
     }
 
     /// Takes one answer's school record (SCH1) and runs `seconds` of the incident toast's clock: an incident code

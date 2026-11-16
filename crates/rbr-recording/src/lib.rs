@@ -34,6 +34,7 @@ pub mod gearbox;
 pub mod hub;
 pub mod hud;
 pub mod input;
+pub mod laps;
 pub mod live;
 pub mod menu;
 pub mod pacenote;

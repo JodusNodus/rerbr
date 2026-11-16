@@ -20,4 +20,5 @@ rbr-hybrid = { path = "../rbr-hybrid" }
 rbr-physics = { path = "../rbr-physics" }
 rbr-recording = { path = "../rbr-recording" }
 rbr-school = { path = "../rbr-school" }
+rbr-session = { path = "../rbr-session" }
 rbr-tyre = { path = "../rbr-tyre" }

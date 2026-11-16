@@ -89,10 +89,25 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   `tests/ngp_closed_line.rs` on the image, `scripts/gate.sh --hybrid --typed` PASS (84084/84084, 13 of 13 snapshots
   equal, the typed twins equal), vectors ok. No original drive of a closed line exists: its behaviour is ours, checked
   against the ring only.
-- Not yet: records and ghost by `SessionKey` (step 3); the HUD panel,
-  the per-lap ghost and the launcher entry (step 4's rest); the course key and the converters (step 6).
-- Open: the course key (the BTB stage's `driveline.ini` eighth value is the natural carrier of the tag; the converters
-  write the repeated last point); the autopilot and the season's pace plan on a closed line (they read the progress
-  as an open one); per-lap re-arming of the marker keys and the scripted events; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
+- A circuit plays (headless): a BTB stage with `circuit = 1` in its `track.ini` (`TrackInfo::circuit`; `classic::trk`
+  writes the closed words on the first record) whose `driveline.ini` is a closed ring (the last point the first's copy)
+  is a circuit. `rbr-standalone --boot ... --laps N|open` builds `LapRules` from `Course::load(markers, line)` and
+  runs it beside the school's rules (`Format` for `(A, B)` and `&mut R`; `Live::take_lap_events`). The lap line is the
+  spawn: the line starts where the car stands, a standing start (`LapTiming::start_now`, from `Format::start`), the
+  seam is the lap line. The stage's own start, finish and end keys lie far past the lap (40000 m) so the 1.02
+  timekeeper and marker ticker never fire them (the start line's jump start would, with the car past the key).
+  The autopilot follows an unrolled copy (`StageData::line`, 3 laps) and maps the wrapping progress onto it
+  (`Driver::with_period`).
+- Nordschleife (local conversion, `~/.local/share/rerbr/converted/.../Nordschleife`, originals in
+  `~/.local/share/rerbr/backups/nordschleife-pre-circuit/`): the open 8318-point line closed by 4 points over its 11 m
+  gap and rotated to start at the spawn (K20, 50 m in), 8322 points, 20803.22 m; the pace notes shifted by 50 m;
+  start, finish and end moved to 40000 m. Autopilot (NGP car 2, `--top-speed 50`, `--laps 1`): Started at step 1520,
+  sectors at 323.39 s (6966.9 m) and 524.55 s (11533.8 m), lap 944.4474 s (step time), then `Finished` and the race
+  ended with cause `Format` (race clock 944.7107 s, the HUD's 1.02 splits 316.98 and 520.30 s are the race clock at the
+  ticker's split events, not the laps' sectors: they disagree by seconds, unexplained; the laps' times follow the
+  step time and the distances). Two laps: see below.
+- Not yet: records and ghost by `SessionKey` (step 3); the HUD panel, the per-lap ghost and the launcher entry (step 4's
+  rest); the converters write the closed ring (step 6).
+- Open: the season's pace plan on a closed line (it reads the progress as an open one); per-lap re-arming of the marker keys and the scripted events; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
   keys: the finish must lie past the line so the stage never finishes by itself; the stage's end page and result for a
   `Format` end are the race clock's).

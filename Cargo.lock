@@ -2448,6 +2448,7 @@ dependencies = [
  "rbr-recording",
  "rbr-school",
  "rbr-season",
+ "rbr-session",
  "rbr-tyre",
 ]
 

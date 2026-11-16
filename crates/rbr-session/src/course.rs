@@ -1,6 +1,7 @@
 //! The geometry of a session: where its gates lie along the drive line, and whether the line is open or closed.
 
 use rbr_formats::markers::StageMarkers;
+use rbr_formats::trk::{DriveLineRecord, CLOSED_LINE_WORDS};
 
 /// A course's gates, in metres along the drive line.
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +21,18 @@ impl Course {
             start: markers.start().unwrap_or(0.0),
             sectors: markers.splits().collect(),
             finish: markers.finish().unwrap_or(0.0),
+        }
+    }
+
+    /// A stage's course from its `.dls` keys and its `.trk` drive line: a circuit when the line is marked closed
+    /// ([`CLOSED_LINE_WORDS`] on its first record, `notes/session.md`) with a length, its sectors the stage's splits;
+    /// else a stage's.
+    pub fn load(markers: &StageMarkers, line: &[DriveLineRecord]) -> Self {
+        let closed = line.first().is_some_and(|first| first.unknown_u16 == CLOSED_LINE_WORDS);
+        let length = line.last().map_or(0.0, |last| last.value);
+        match closed.then(|| Course::circuit(length, markers.splits())).flatten() {
+            Some(circuit) => circuit,
+            None => Course::stage(markers),
         }
     }
 
@@ -58,6 +71,22 @@ mod tests {
         let course = Course::stage(&keys_from_words(&words));
         assert_eq!(course, Course::PointToPoint { start: 5.0, sectors: vec![100.0], finish: 300.0 });
         assert!(!course.is_circuit());
+    }
+
+    #[test]
+    fn a_marked_line_is_a_circuit_of_its_length_with_the_stage_s_splits() {
+        let words =
+            [TAG_START, 0, 5.0f32.to_bits(), TAG_SPLIT, 0, 100.0f32.to_bits(), TAG_FINISH, 0, 300.0f32.to_bits()];
+        let markers = keys_from_words(&words);
+        let record = |value: f32, unknown_u16| {
+            let v = |x| rbr_formats::trk::Vec3 { x, y: 0.0, z: 0.0 };
+            DriveLineRecord { vectors: [v(value), v(1.0)], value, unknown_u16 }
+        };
+        let line = [record(0.0, CLOSED_LINE_WORDS), record(250.0, [0; 2]), record(500.0, [0; 2])];
+        assert_eq!(Course::load(&markers, &line), Course::Circuit { length: 500.0, sectors: vec![100.0] });
+        let open = [record(0.0, [0; 2]), record(500.0, [0; 2])];
+        assert!(!Course::load(&markers, &open).is_circuit());
+        assert!(!Course::load(&markers, &[]).is_circuit());
     }
 
     #[test]

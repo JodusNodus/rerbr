@@ -33,10 +33,15 @@ impl<'a> Pilot<'a> {
     /// `autopilot` for `live`'s car, or the recording at `path`.
     pub fn new(what: &str, stage: &'a StageData, live: &Live) -> Result<Self, String> {
         if what == "autopilot" {
-            let driver = Driver::new(&stage.track, stage.track_values.clone(), TOP_SPEED, None)
+            let (line, values) = stage.line();
+            let driver = Driver::new(line, values.to_vec(), TOP_SPEED, None)
                 .with_step(live.step_clock().step)
                 .with_limit(rev_limit(live))
                 .with_obstacles(&stage.obstacles);
+            let driver = match stage.period() {
+                Some(period) => driver.with_period(period),
+                None => driver,
+            };
             return Ok(Pilot::Autopilot { driver: Box::new(with_lesson(driver, live, stage)), report: 0 });
         }
         let bytes = std::fs::read(what).map_err(|e| format!("--pilot {what}: {e}"))?;
@@ -193,11 +198,15 @@ pub fn drive(
     let limit = rev_limit(&live);
     eprintln!("autopilot: rev limit {limit} rpm");
     let top = top.unwrap_or(if measure.race.is_some() { race::TOP } else { TOP_SPEED });
-    let mut driver = Driver::new(&stage.track, stage.track_values.clone(), top, aim)
+    let (line, line_values) = stage.line();
+    let mut driver = Driver::new(line, line_values.to_vec(), top, aim)
         .with_step(live.step_clock().step)
         .with_limit(limit)
         .with_obstacles(&stage.obstacles)
         .with_flat_out(measure.flat_out);
+    if let Some(period) = stage.period() {
+        driver = driver.with_period(period);
+    }
     if measure.flat_out && driver.is_ngp() {
         if let Some(curve) = Driver::start_curve(&live) {
             driver = driver.with_start_curve(curve);
@@ -233,15 +242,7 @@ pub fn drive(
         driver = driver.with_brake_from(v);
     }
     if let Some(r) = &measure.race {
-        let line = race::Line::build(
-            &stage.track,
-            &stage.track_values,
-            &r.ground,
-            driver.props(),
-            r.limits,
-            top,
-            &measure.zones,
-        );
+        let line = race::Line::build(line, line_values, &r.ground, driver.props(), r.limits, top, &measure.zones);
         eprintln!("autopilot: {} (--race)", line.summary(r.limits));
         driver = driver.with_race(line);
     }
@@ -308,7 +309,10 @@ pub fn drive(
         }
         // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
         // finish time). A circle run never finishes (it laps the school compound to the step limit).
-        let school = live.school().is_some();
+        let school = live.school().is_some() || live.laps().is_some();
+        for event in live.take_lap_events() {
+            eprintln!("autopilot: step {step}: {event:?}");
+        }
         let finished = !school
             && measure.circle.is_none()
             && measure.manoeuvre.is_none()

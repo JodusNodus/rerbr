@@ -37,11 +37,12 @@ fn chunk(out: &mut Vec<u8>, kind: (u32, u32), payload: &[u8]) {
 }
 
 /// The `(3, 0x14)` driveline chunk plus the `(3, 0x16)` collision chunk (`ksh_count` meshes in `ksh`, the raw
-/// `ksh.ksh` mesh bytes without their count word). Parses with [`rbr_formats::trk::parse`].
-pub fn trk(points: &[DrivelinePoint], ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
+/// `ksh.ksh` mesh bytes without their count word). Parses with [`rbr_formats::trk::parse`]. `closed` marks the line
+/// a circuit's (first record's words [`rbr_formats::trk::CLOSED_LINE_WORDS`], else zero as in every cache).
+pub fn trk(points: &[DrivelinePoint], closed: bool, ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
     let mut driveline = Vec::with_capacity(4 + 32 * points.len());
     put_u32(&mut driveline, points.len() as u32);
-    for p in points {
+    for (k, p) in points.iter().enumerate() {
         for v in p.position {
             put_f32(&mut driveline, v as f32);
         }
@@ -49,8 +50,9 @@ pub fn trk(points: &[DrivelinePoint], ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
             put_f32(&mut driveline, v as f32);
         }
         put_f32(&mut driveline, p.distance as f32);
-        put_u16(&mut driveline, 0);
-        put_u16(&mut driveline, 0);
+        let [high, low] = if closed && k == 0 { rbr_formats::trk::CLOSED_LINE_WORDS } else { [0; 2] };
+        put_u16(&mut driveline, high);
+        put_u16(&mut driveline, low);
     }
     let mut collision = Vec::with_capacity(4 + ksh.len());
     put_u32(&mut collision, ksh_count);
@@ -64,7 +66,7 @@ pub fn trk(points: &[DrivelinePoint], ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
 /// The whole `.trk` of a stage from its own files: the driveline and [`crate::ksh::build`]'s collision meshes.
 pub fn trk_from(track: &Track, d3dx: crate::D3dx) -> Result<Vec<u8>, String> {
     let (count, ksh) = crate::ksh::build(track, d3dx)?;
-    Ok(trk(&track.driveline()?.points, count, &ksh))
+    Ok(trk(&track.driveline()?.points, track.info.circuit, count, &ksh))
 }
 
 /// The 11-character `.mat` entry names, space padded, in file order.
@@ -228,7 +230,20 @@ mod tests {
         assert_eq!(mat(&SurfaceMaps::default()).len(), 4 + 9 * (12 + 4));
         let spawn = Spawn { matrix: [0.0; 16], angles: [0.0; 3] };
         assert_eq!(lbs(&spawn).len(), 144);
-        let file = trk(&[], 0, &[]);
+        let file = trk(&[], false, 0, &[]);
         assert_eq!(file.len(), 16 + 4 + 16 + 4);
+    }
+
+    #[test]
+    fn a_circuit_marks_its_first_record_closed() {
+        let point = |distance| DrivelinePoint { position: [0.0; 3], tangent: [1.0, 0.0, 0.0], distance };
+        let points = [point(0.0), point(2.5), point(5.0)];
+        let words = |closed| {
+            let parsed = rbr_formats::trk::parse(&trk(&points, closed, 0, &[])).unwrap();
+            let rbr_formats::trk::ChunkPayload::DriveLine(line) = &parsed.chunks[0].payload else { panic!() };
+            line.records.iter().map(|r| r.unknown_u16).collect::<Vec<_>>()
+        };
+        assert_eq!(words(true), [rbr_formats::trk::CLOSED_LINE_WORDS, [0; 2], [0; 2]]);
+        assert_eq!(words(false), [[0; 2]; 3]);
     }
 }

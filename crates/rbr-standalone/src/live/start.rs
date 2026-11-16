@@ -68,6 +68,7 @@ use crate::physics::{boot_playback, load_substeps, why, Pure, DT};
 use crate::stage::StageData;
 use rbr_formats::data::Data;
 use rbr_gameplay::filter::Grid;
+use rbr_gameplay::format::Format;
 use rbr_gameplay::game::{FrameInput, Game};
 use rbr_gameplay::ini::Ini;
 use rbr_gameplay::markers::MarkerSettings;
@@ -79,7 +80,6 @@ use rbr_physics::snapshot::Snapshot;
 use rbr_recording::clock::StepClock;
 use rbr_recording::sound::TyreMax;
 use rbr_recording::CONTROL_BYTES;
-use rbr_school::SchoolRun;
 use std::panic::{self, AssertUnwindSafe};
 
 /// unless the stage is the rally's last (the season's stage index 5), and its text names the service or the next stage
@@ -140,12 +140,13 @@ impl<'a> Live<'a> {
         }
         game.set_assist_settings(race.assist_settings());
         let mut school = race.school(&stage.replay, &stage.school_strings);
+        let mut laps = race.circuit(stage)?;
         // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time. A
         // lesson's brief waits for the first payload's confirm (`Stage::school_start`) instead, so its start, and the
         // ride's end at once, run through the answers as on the viewer.
         let go = !camera_go && !game.assist_settings().school();
         let now = if go { f64::from(dt) } else { 0.0 };
-        let settled = settle(&playback, &mut game, &mut school, stage, go, now)?;
+        let settled = settle(&playback, &mut game, &mut (&mut school, &mut laps), stage, go, now)?;
         let mut live =
             Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
         live.wetness = race.weather.wetness;
@@ -153,6 +154,8 @@ impl<'a> Live<'a> {
         live.boot_now = now;
         live.initial_school.clone_from(&school);
         live.school = school;
+        live.initial_laps.clone_from(&laps);
+        live.laps = laps;
         Ok(live)
     }
 
@@ -227,6 +230,8 @@ impl<'a> Live<'a> {
             initial_time_of_day: None,
             school: None,
             initial_school: None,
+            laps: None,
+            initial_laps: None,
             school_verdict: None,
             school_state: None,
             saves: None,
@@ -250,6 +255,7 @@ impl<'a> Live<'a> {
         rbr_hybrid::ngp::restart_engine_model();
         rbr_hybrid::ngp::restart_tyre_model();
         self.school.clone_from(&self.initial_school);
+        self.laps.clone_from(&self.initial_laps);
         if let Some(saves) = self.saves.as_mut() {
             saves.rearm();
         }
@@ -290,7 +296,7 @@ pub(super) fn install_filter_ini() -> Ini {
 fn settle(
     playback: &Playback,
     game: &mut Game,
-    school: &mut Option<SchoolRun>,
+    school: &mut impl Format,
     stage: &StageData,
     go: bool,
     now: f64,

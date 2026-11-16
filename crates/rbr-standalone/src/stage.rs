@@ -34,6 +34,28 @@ pub struct StageData {
     pub school_strings: Vec<u8>,
     /// A BTB stage (`--btb`): the jump start is armed whatever the number.
     pub btb: bool,
+    /// A circuit's drive line unrolled for the autopilot (which follows an open line): [`AUTOPILOT_LAPS`] laps and the
+    /// lap's start once more, with the distances running on. None for an open line.
+    pub(crate) unrolled: Option<(Vec<DriveLineRecord>, Vec<f32>)>,
+}
+
+/// The laps of a closed line the autopilot's unrolled copy holds, plus the lap's start once more.
+const AUTOPILOT_LAPS: usize = 3;
+
+/// A closed line (`rbr_formats::trk::CLOSED_LINE_WORDS` on its first record, the last record the first's copy) run
+/// round `laps` times and to its start once more as one open line: each lap's records but the repeated last, the
+/// distances continuing.
+fn unroll(track: &[DriveLineRecord], laps: usize) -> (Vec<DriveLineRecord>, Vec<f32>) {
+    let lap = &track[..track.len() - 1];
+    let length = track[track.len() - 1].value;
+    let mut records = Vec::with_capacity(lap.len() * laps + 1);
+    for k in 0..laps {
+        records.extend(lap.iter().map(|r| DriveLineRecord { value: r.value + k as f32 * length, ..r.clone() }));
+    }
+    records
+        .push(DriveLineRecord { value: track[track.len() - 1].value + (laps - 1) as f32 * length, ..track[0].clone() });
+    let values = records.iter().map(|r| r.value).collect();
+    (records, values)
 }
 
 /// The stage `stage` (a name or path, `stage_files`) of `data`, with `car` the race's car.
@@ -68,6 +90,8 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         .ok_or_else(|| format!("{stage}.trk: no driveline"))?;
     let obstacles = autopilot::obstacles(&trk);
     let track_values = track.iter().map(|r| r.value).collect();
+    let closed = track.len() > 2 && track[0].unknown_u16 == trk::CLOSED_LINE_WORDS;
+    let unrolled = closed.then(|| unroll(&track, AUTOPILOT_LAPS));
     let (number, _) = stage_files::parts(stage).ok_or_else(|| format!("{stage}: not track-<number>_<variant>"))?;
     let misc = data.resolve("Root/misc.rbz").ok_or("Root/misc.rbz: not found")?;
     let reference = times::read(&misc).map_err(|e| e.to_string())?.into_iter().find(|t| t.stage == number);
@@ -85,10 +109,26 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         replay,
         school_strings,
         btb: false,
+        unrolled,
     })
 }
 
 impl StageData {
+    /// The line the autopilot follows and its distances: the drive line, or a circuit's unrolled copy
+    /// ([`Self::period`] maps the car's wrapping progress onto it).
+    pub fn line(&self) -> (&[DriveLineRecord], &[f32]) {
+        match &self.unrolled {
+            Some((records, values)) => (records, values),
+            None => (&self.track, &self.track_values),
+        }
+    }
+
+    /// The progress period of a closed line (its segments), `None` for an open one: the unrolled copy's lap length in
+    /// the car's progress values (`CCar` +0x17c).
+    pub fn period(&self) -> Option<f32> {
+        self.unrolled.as_ref().map(|_| (self.track.len() - 1) as f32)
+    }
+
     /// The player's stage record and personal best for this stage and car in the save files in `dir` (`saves.rs`).
     pub fn saves(&self, dir: &Path, profile: Option<&str>) -> Result<Saves, String> {
         let times: Vec<StageTimes> = self.reference.into_iter().collect();

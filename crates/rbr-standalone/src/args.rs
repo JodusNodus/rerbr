@@ -6,6 +6,7 @@ use rbr_formats::{car_pack, rsf, stage_files};
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, DriverAids, Skill};
 use rbr_school::Lesson;
+use rbr_session::EndRule;
 
 use crate::profile::Profile;
 use crate::{autopilot, live};
@@ -135,6 +136,9 @@ pub struct Args {
     /// `--school N`: rally school lesson N (flow mode 7) on its map, with car 5 unless `--car`, `--rsf-car` or `--car-pack` gives
     /// another (`boot::Race::in_school`).
     pub lesson: Option<Lesson>,
+    /// `--laps N|open`: the stage is a circuit session (`notes/session.md`) of N laps, or free practice; the stage's
+    /// drive line must be marked closed.
+    pub laps: Option<EndRule>,
     /// `--start-time`: the start board's clock (a championship stage's, or a quick race's time of day), s after midnight.
     pub start_time: Option<f32>,
     /// `--dispatch direct` (with `--live`, the default): the pure host runs the leaf calls of the entity walk, wheel,
@@ -234,6 +238,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        --physics ngp|experimental|experimental-brush|ngp-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), it with the brush tyre in development (in place of NGP's sliding model), or NGP 7's with the brush tyre, on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
+       a circuit session (with --boot, a stage whose drive line is closed): --laps N|open
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
@@ -461,6 +466,14 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                     value.parse().ok().and_then(Lesson::new).ok_or(format!("--school {value}: a lesson, 0 to 16"))?,
                 )
             }
+            "--laps" => {
+                args.laps = Some(match value.as_str() {
+                    "open" => EndRule::Open,
+                    n => EndRule::Laps(
+                        n.parse().ok().filter(|&n| n > 0).ok_or(format!("--laps {n}: N laps (1 or more) or open"))?,
+                    ),
+                })
+            }
             "--start-time" => args.start_time = Some(clock_time(&value).ok_or(format!("--start-time {value}: H:MM"))?),
             "--telemetry-udp" => {
                 use std::net::ToSocketAddrs;
@@ -528,6 +541,12 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if (championship_damage.is_some() || false_starts.is_some() || args.rally_next.is_some()) && skill.is_none() {
         return Err("--championship-damage, --championship-false-starts and --rally-next need --championship".into());
+    }
+    if args.laps.is_some() && !args.boot {
+        return Err("--laps needs --boot".into());
+    }
+    if args.laps.is_some() && (args.lesson.is_some() || skill.is_some()) {
+        return Err("--laps takes no --school or --championship (a circuit session is a mode of its own)".into());
     }
     if let Some(lesson) = args.lesson {
         if !args.boot {

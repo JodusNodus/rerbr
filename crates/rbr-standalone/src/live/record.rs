@@ -69,9 +69,11 @@ use rbr_gameplay::flow::{EndPage, FlowEvents, Message, StageEnd};
 use rbr_gameplay::markers::PaceCallout;
 use rbr_gameplay::stage::State;
 use rbr_recording::flow::{Flow, MessageBox};
+use rbr_recording::laps::Laps;
 use rbr_recording::menu::Menu;
 use rbr_recording::school::{self, School};
 use rbr_school::SchoolEvent;
+use rbr_session::EndRule;
 use std::any::Any;
 
 impl<'a> Live<'a> {
@@ -179,6 +181,30 @@ impl<'a> Live<'a> {
                 stop,
                 speech,
                 reasons,
+            }
+            .record(),
+        )
+    }
+
+    /// The circuit record (LAP1) after SCH1, only for a circuit session: the lap in progress and its time, the last
+    /// and best laps, and the sector times of this lap and of the best.
+    pub(super) fn laps_record(&self) -> Option<Vec<u8>> {
+        let timing = self.laps.as_ref()?.timing();
+        let elapsed = timing.lap_elapsed(self.game.elapsed()).unwrap_or(0.0);
+        Some(
+            Laps {
+                lap: timing.lap().unwrap_or(0),
+                laps: match timing.rule() {
+                    EndRule::Finish => 1,
+                    EndRule::Laps(n) => n,
+                    EndRule::Time(_) | EndRule::Open => 0,
+                },
+                finished: timing.finished(),
+                elapsed,
+                last: timing.lap_times().last().copied().unwrap_or(0.0),
+                best: timing.best().unwrap_or(0.0),
+                sectors: timing.sector_times().to_vec(),
+                best_sectors: timing.best_sector_times().to_vec(),
             }
             .record(),
         )

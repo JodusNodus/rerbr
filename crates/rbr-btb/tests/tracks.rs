@@ -81,7 +81,7 @@ fn cached_builds_match_and_parse() {
         // trk: the driveline chunk from the sources, the collision chunk from the cached `ksh.ksh`.
         let driveline = track.driveline().unwrap();
         let (ksh_count, ksh) = ksh_of(&want_trk);
-        let built_trk = classic::trk(&driveline.points, ksh_count, &ksh);
+        let built_trk = classic::trk(&driveline.points, false, ksh_count, &ksh);
         assert_eq!(built_trk, want_trk, "{}: trk.trk", track.name);
         if ksh.is_empty() {
             assert_eq!(ksh_count, 0, "{}: empty ksh with nonzero count", track.name);
