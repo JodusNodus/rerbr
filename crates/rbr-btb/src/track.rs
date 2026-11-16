@@ -114,6 +114,9 @@ pub struct Track {
     pub name: String,
     /// The parsed `track.ini`.
     pub info: TrackInfo,
+    /// Played as a circuit though its files do not say so ([`crate::circuit`]): its lines come from
+    /// [`Track::stage_lines`] closed, and `info.circuit` is set.
+    pub auto_circuit: bool,
 }
 
 impl Track {
@@ -122,7 +125,7 @@ impl Track {
         let sections = read_ini(folder, "track.ini")?;
         let info = TrackInfo::parse(&sections).ok_or_else(|| format!("{}: no [INFO]", folder.display()))?;
         let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        Ok(Track { folder: folder.to_owned(), name, info })
+        Ok(Track { folder: folder.to_owned(), name, info, auto_circuit: false })
     }
 
     /// The parsed `spawn.ini`.
@@ -133,6 +136,25 @@ impl Track {
     /// The parsed `driveline.ini`: the declared count and the `K<i>` points in index order.
     pub fn driveline(&self) -> Result<Driveline, String> {
         Driveline::parse(&read_ini(&self.folder, "driveline.ini")?)
+    }
+
+    /// The same track played as a circuit ([`crate::circuit`]).
+    pub fn into_auto_circuit(mut self) -> Track {
+        self.auto_circuit = true;
+        self.info.circuit = true;
+        self
+    }
+
+    /// The drive line and the pace notes the stage's files are written from: the folder's, or the closed ring and its
+    /// moved notes when the track plays as a circuit by itself ([`Track::auto_circuit`]).
+    pub fn stage_lines(&self) -> Result<(Vec<DrivelinePoint>, Vec<PaceNote>), String> {
+        let (line, notes) = (self.driveline()?, self.pace_notes()?);
+        if !self.auto_circuit {
+            return Ok((line.points, notes.notes));
+        }
+        let m = self.spawn()?.matrix;
+        // The spawn's axes are the line's, y and z swapped.
+        Ok(crate::circuit::close(&line.points, &notes.notes, [m[12], m[14], m[13]]))
     }
 
     /// The parsed `settings.ini`.

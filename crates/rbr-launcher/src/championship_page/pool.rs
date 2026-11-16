@@ -303,6 +303,7 @@ mod tests {
                 km: None,
                 surface: "gravel",
                 circuit: false,
+                auto: false,
                 problem: None,
             };
             Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }

@@ -121,6 +121,16 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   best) at its end.
 - The launcher: a BTB stage with `circuit = 1` (`Btb::circuit`) shows a Laps row on the Drive page (free practice, 1, 3,
   5, 10, 20; not saved) and Start passes `--laps`; no ghost arguments for a circuit.
+- Circuits found by a scan (`rbr_btb::circuit`): a BTB stage whose drive line ends within 0.2% of its length (3 m at
+  least) of where it starts, heading within 20°, and passes the start nowhere else (a line of several laps would time a
+  partial lap) is a candidate (`is_candidate`). Of the 159 folders of the dev install: Nechanice - Presin, Palvaanjarvi
+  Sprint, SSS Lilaia; Ivato (two laps) and the out-and-back stages are not; the Nordschleife's original (11 m gap) is.
+  `close` makes the circuit from the lines alone: the ring bridged over the gap at 2.5 m, rotated to start at the spawn,
+  the last point the first's copy, the notes shifted with it, the start, finish and end keys at 40000 m
+  (`Track::into_auto_circuit`, `stage_lines`; the stage's files in the player's folder, never the install's). The
+  launcher lists candidates on the Circuit page (a scan on a thread) with "Play as circuit", kept as `circuit_folders`
+  in the settings; "Play as a stage again" undoes it. The Nordschleife's original lines through it: lap 944.52 s on the
+  autopilot against 944.45 s from the hand-made ring.
 - Not yet: the per-lap ghost, `SessionKey` and the stage records' own keying (a circuit has the lap book instead); the
   converters write the closed ring (step 6).
 - Open: the season's pace plan on a closed line (it reads the progress as an open one); per-lap re-arming of the marker keys and the scripted events; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish

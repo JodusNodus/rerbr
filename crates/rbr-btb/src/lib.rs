@@ -16,6 +16,7 @@ pub enum D3dx {
     Wine,
 }
 
+pub mod circuit;
 pub mod classic;
 pub mod col;
 pub mod converted;

@@ -31,6 +31,9 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     ];
     for (page, name) in pages {
         form.page = page;
+        if page == Page::Circuit {
+            form.wait_for_scan(&egui::Context::default());
+        }
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
     }
     // The Controls page whole, its force feedback per car included.

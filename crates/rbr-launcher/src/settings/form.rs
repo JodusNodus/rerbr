@@ -272,7 +272,11 @@ impl Form {
             perf_log: settings.perf_log.unwrap_or(false),
             start_time: settings.start_time.unwrap_or_default(),
             wipers: settings.wipers.unwrap_or_default(),
-            circuit: crate::circuit_page::CircuitPage::from_settings(settings.circuit, settings.circuit_laps),
+            circuit: crate::circuit_page::CircuitPage::from_settings(
+                settings.circuit,
+                settings.circuit_laps,
+                settings.circuit_folders.clone(),
+            ),
             install_folder: settings.install_folder.clone().unwrap_or_default(),
             folder,
             disc_setup: Default::default(),
@@ -300,6 +304,7 @@ impl Form {
             read_only: false,
         };
         form.list_cars();
+        form.apply_circuit_folders();
         form.list_maps();
         form.stage_browser.restore(&settings.stage_browser);
         form.car_browser.restore(&settings.car_browser);
@@ -319,6 +324,7 @@ impl Form {
             map: Some(self.catalog.maps[self.map].number),
             circuit: self.circuit.map,
             circuit_laps: Some(self.circuit.laps),
+            circuit_folders: self.circuit.folders.clone(),
             recent_cars: self.recent_cars.clone(),
             recent_maps: self.recent_maps.clone(),
             favourite_cars: self.favourite_cars.clone(),

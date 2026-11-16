@@ -37,7 +37,12 @@ pub fn stage_name(out: &Path, number: u32) -> String {
 /// of the track folder (half a second to two on each load).
 pub fn prepare(track: &Track, number: u32, maps: &Path, out: &Path) -> Result<String, String> {
     let name = stage_name(out, number);
-    let source = format!("[BTB]\nfolder={}\nstamp={}\n", track.folder.display(), stamp(&track.folder));
+    let source = format!(
+        "[BTB]\nfolder={}\nstamp={}\nauto_circuit={}\n",
+        track.folder.display(),
+        stamp(&track.folder),
+        track.auto_circuit
+    );
     let built = EXTENSIONS.iter().all(|ext| Path::new(&format!("{name}.{ext}")).is_file());
     if built && std::fs::read_to_string(out.join(SOURCE_FILE)).is_ok_and(|text| text == source) {
         return Ok(name);
@@ -48,7 +53,7 @@ pub fn prepare(track: &Track, number: u32, maps: &Path, out: &Path) -> Result<St
         std::fs::write(&path, bytes).map_err(|e| format!("{path}: {e}"))
     };
     write("lbs", classic::lbs(&track.spawn()?))?;
-    write("dls", classic::dls(&track.pace_notes()?.notes))?;
+    write("dls", classic::dls(&track.stage_lines()?.1))?;
     write("mat", classic::mat(&track.surface_maps()?))?;
     write("trk", classic::trk_from(track, crate::D3dx::Windows)?)?;
     write("col", crate::col::build(track)?)?;

@@ -25,6 +25,8 @@ pub struct Btb {
     pub surface: &'static str,
     /// A circuit (`track.ini` `circuit=1`): its line is closed and it plays as laps (`rbr-standalone --laps`).
     pub circuit: bool,
+    /// Played as a circuit at the player's word though its files do not say so (`rbr_btb::circuit`): `circuit` is set too.
+    pub auto: bool,
     /// Why it cannot start.
     pub problem: Option<String>,
 }
@@ -37,7 +39,10 @@ impl Btb {
 
     /// Writes the stage `number`'s files into `home/btb/<folder>/`; the stage name that loads them.
     pub fn prepare(&self, number: u32, maps: &Path, home: &Path) -> Result<String, String> {
-        let track = track::Track::open(&self.folder)?;
+        let mut track = track::Track::open(&self.folder)?;
+        if self.auto {
+            track = track.into_auto_circuit();
+        }
         stage::prepare(&track, number, maps, &home.join("btb").join(&track.name))
     }
 }
@@ -65,6 +70,7 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),
             circuit: track.info.circuit,
+            auto: false,
             problem: None,
             folder: track.folder.clone(),
         };
