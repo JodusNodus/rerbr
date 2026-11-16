@@ -44,7 +44,7 @@ pub fn update_ray_block<S: WheelStore>(mem: &mut S, blk: u32, limit: f32, floor:
 }
 
 // The edge functions: each runs one original function in its order. They read the inputs and store the results between
-// the host calls, as the asm does; the ports they call are pure. The tests and the hybrid binding call these.
+// the host calls, as the asm does; the ports they call are pure. The tests and the binding call these.
 
 /// `Copy100` (0x5390d0): `x` is the car transform (`CCar::Xform6870`, `car_body::transform::compose_with_body`, on the
 /// car) of the tyre's centre, then the orientation is copied to `out`. The asm's test of `this+0xf0` (its address, never

@@ -6,10 +6,10 @@
 //! units NGP's curve takes, so the sensitivity, the linearity (100 %: a line, as AC's) and the steering load read it
 //! as NGP's torque. Reads the tyres' scratch after the step, never writes the memory.
 
-use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::wheel::layout::{INV_ARM, INV_RACK, ON_GROUND, TYRE_SCRATCH};
+use rbr_step::runner::CAR_PTR;
 
 /// The mechanical trail, m, that gives AC EVO's torque by front slip angle on the r40 circle (`notes/ngp.md`):
 /// shorter than its fit's 36-45 mm, as our tyres' pneumatic trail is shorter. `--trace-wheels` takes it.

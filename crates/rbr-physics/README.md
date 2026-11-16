@@ -13,7 +13,7 @@ decompile. [`ngp/heat.rs`](src/ngp/heat.rs) is the reference.
 - Model code (a subsystem's modules outside `layout`) names physical quantities and roles: `carcass_radius`, `spin`,
   `slip_ratio`, `heat_flow_to_air`, `TyreShape`, with units in the docs. Inputs that belong together are a type.
 - No addresses, offsets, original function or class names, calling conventions, registers or `st0` in model code or
-  its docs. They live in `layout`/`layout/` (memory), the `rbr-hybrid` bindings (named after the original's
+  its docs. They live in `layout`/`layout/` (memory), the `rbr-step` bindings (named after the original's
   functions), `ports.csv` (address to Rust item), the tests and the notes.
 - A name says what the evidence shows: a tweak key, the formula's role, units and values. Where the meaning is not
   known, a neutral role name (`blend_weight`) documented as named by use, never `f_1e8` or `w7c`, and no invented
@@ -57,5 +57,5 @@ sorted by address. `tests/ports_manifest.rs` checks that each module and item ex
 
 ## Related crates
 
-- `crates/rbr-hybrid`: the game's physics step on the ports and the typed state.
+- `crates/rbr-step`: the game's physics step on the ports and the typed state.
 - `crates/rbr-standalone`: runs the pure Rust step against a recording (`--boot`).

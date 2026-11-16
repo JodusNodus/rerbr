@@ -1,5 +1,5 @@
 //! What a live answer carries besides the frame: the HUD, damage, particle, sound, pace-note, split, dash, gearbox,
-//! shift-point and scenery records of a step (`super::Live` writes them), read from the pure physics' memory and the game.
+//! shift-point and scenery records of a step (`super::Live` writes them), read from the Rust physics' memory and the game.
 
 use rbr_formats::markers::{MarkerKey, TAG_FINISH, TAG_SPLIT, TAG_START};
 use rbr_formats::times::StageTimes;
@@ -10,7 +10,6 @@ use rbr_gameplay::game::Game;
 use rbr_gameplay::markers::{self, MarkerEvent, MarkerTicker, PaceCallout, FIRED};
 use rbr_gameplay::race_clock::RaceClock;
 use rbr_gameplay::result::Outcome;
-use rbr_hybrid::pure::{self, CAR_BYTES, CAR_PTR};
 use rbr_physics::car_body::steering_ffb;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::entities::store::HingeStore;
@@ -39,6 +38,7 @@ use rbr_recording::sound::{
 };
 use rbr_recording::splits::{Split, Splits};
 use rbr_recording::tyre::{self, Tyre};
+use rbr_step::runner::{self, CAR_BYTES, CAR_PTR};
 
 use crate::saves::Saves;
 use crate::stage::StageData;
@@ -196,7 +196,7 @@ impl Picture {
             }),
         };
         Self {
-            body: pure::frame_bytes(mem),
+            body: runner::frame_bytes(mem),
             hud: hud.to_bytes(),
             damage: damage.to_bytes(),
             tyres: particles::record(tyres),
@@ -217,7 +217,7 @@ impl Picture {
                         mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                     })
                 };
-                if let Some(model) = rbr_hybrid::ngp::engine_model_telemetry() {
+                if let Some(model) = rbr_step::ngp::engine_model_telemetry() {
                     model_turbo(&mut sound, &model);
                 }
                 // The frame's damper payloads: the reset's emitted words, or the memory words where no reset ran.
@@ -318,7 +318,7 @@ pub fn shift_points(mem: &Mem, car: u32) -> ShiftPoints {
 /// The tagged NSD1 record under NGP: the words NGP's sound patches read (`rbr_recording::sound::NgpSound`).
 pub fn ngp_sound(mem: &Mem) -> Vec<u8> {
     // A snapshot's NGP.dll where the game loaded it, the boot's at the reference runs' base.
-    let base = match rbr_hybrid::ngp::base_in(mem) {
+    let base = match rbr_step::ngp::base_in(mem) {
         0 => rbr_physics::ngp::layout::runtime::BASE,
         base => base,
     };
@@ -334,12 +334,12 @@ pub fn ngp_sound(mem: &Mem) -> Vec<u8> {
     out
 }
 
-/// The PEV1 record of a step: the damage, damping and engine-fire emits `pure` kept, then the engine's
+/// The PEV1 record of a step: the damage, damping and engine-fire emits `runner` kept, then the engine's
 /// `CSigEngineNoise` words after the step (`rbr_recording::sound`'s engine state) and the exhaust's inputs (the state's
 /// +0x200 and the engine's +0x188, `particles::EXHAUST`).
-pub fn particle_events(pure: &pure::Pure) -> Vec<u8> {
-    let mut events = pure.take_particle_events();
-    let mem = pure.image();
+pub fn particle_events(runner: &runner::Runner) -> Vec<u8> {
+    let mut events = runner.take_particle_events();
+    let mem = runner.image();
     // The engine is embedded in the car (`rbr_recording::sound`'s reader takes it so too).
     let engine = mem.u32(CAR_PTR) + CAR_ENGINE;
     let state = mem.u32(engine + ENGINE_STATE);

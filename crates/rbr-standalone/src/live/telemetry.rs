@@ -13,7 +13,6 @@ use std::net::{SocketAddr, UdpSocket};
 
 use rbr_gameplay::driveline;
 use rbr_gameplay::game::Game;
-use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::engine_driveline::layout::DriveState;
 use rbr_physics::mem::Mem;
@@ -25,6 +24,7 @@ use rbr_physics::tyre::layout::{STATE as TYRE_STATE, STATE_INNER_AIR_TEMPERATURE
 use rbr_physics::wheel::layout::{STRUT, STRUT_LENGTH, TYRE_SCRATCH};
 use rbr_recording::sound::{CAR_ENGINE, CAR_WHEELS, ENGINE_STATE, WHEEL_STRUT_VELOCITY};
 use rbr_recording::CONTROL_BYTES;
+use rbr_step::runner::CAR_PTR;
 
 use super::picture::{hud_gear, CAR_DRIVE, CAR_DRIVELINE_PARAMETER, DRIVE_STATE, STATE_ENGINE_SPEED};
 

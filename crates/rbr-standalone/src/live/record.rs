@@ -18,9 +18,9 @@
 //! the payload's step.
 //!
 //! The first payload is the snapshot's own step, whose control the game had already emitted, so its bytes are not
-//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the pure physics runs
+//! used. Each later payload is one `Game::frame`: the gameplay loop emits the payload and the Rust physics runs
 //! `StepForward(1)` on the snapshot's memory for each of the frame's substeps, as the headless run does
-//! (`crate::physics::Pure`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
+//! (`crate::physics::Runner`). A payload is one step of wall time (one substep) unless [`Live::pace`] gives it a frame time: the
 //! viewer's `--live` sends one per 7 ms (1.02's step), which under NGP's 1/720 s step is a frame of 5 or 6 substeps
 //! (the frame clock carries the rest), so every clock the game ticks by the frame's time (the countdown, the camera's
 //! orbit, the race clock, the finish timer) runs at real speed under both. Such a frame's records are the frame's: the
@@ -57,7 +57,7 @@
 //! (20 s) or the end-of-stage marker ends the race. From then on (the application state 9, the end page) no payload is
 //! stepped: each is answered with the last frame, whose split record (SPL1) says the race is over and how it ended.
 //!
-//! A call the pure host cannot run stops the run. The stop goes to stderr once, and from then on every payload is
+//! A call the runner cannot run stops the run. The stop goes to stderr once, and from then on every payload is
 //! answered with the last good frame and HUD, so the car freezes and the viewer stays up. A payload that is not
 //! quantized is a protocol error and ends the run.
 
@@ -80,7 +80,7 @@ impl<'a> Live<'a> {
     /// The end page the race's end opens (`CApplication::M00480810`): `Test3B20` on the car as it is now, and the
     /// rally's last stage from `--rally-next`.
     pub(super) fn end_page(&self, end: &StageEnd) -> EndPage {
-        let drivable = rally::drivable(self.playback.pure.image());
+        let drivable = rally::drivable(self.playback.runner.image());
         EndPage::of(self.game.flow().mode(), end, drivable, self.rally_next == RallyNext::End)
     }
 
@@ -91,7 +91,7 @@ impl<'a> Live<'a> {
         eprintln!("step {step}: the race ended: {:?}, {:?}, end page {:#x}", end.cause, end.end_race, page.value());
         if let Some(school) = &self.school {
             // `EvalFilters` on the HUD's time and the car's damage; a lesson's drive keeps no stage record.
-            let damage = rally::stage_out(self.playback.pure.image(), *end, false).damage;
+            let damage = rally::stage_out(self.playback.runner.image(), *end, false).damage;
             let (lesson, verdict) = (school.lesson(), school.verdict(end.end_race.time, &damage));
             eprintln!("step {step}: rally school lesson {} verdict {verdict} of 4", lesson.index());
             self.school_verdict = Some(verdict);
@@ -240,7 +240,7 @@ impl<'a> Live<'a> {
     pub(super) fn dash(&self, signals: (Option<[u32; 2]>, Option<u32>), pace: &[&PaceCallout]) -> Vec<u8> {
         let jumped = self.game.race_clock().jumped;
         dash(
-            self.playback.pure.image(),
+            self.playback.runner.image(),
             &self.stage.track,
             &self.track,
             self.game.markers().keys(),
@@ -258,8 +258,8 @@ impl<'a> Live<'a> {
             "step {}: {} in {}, after {} binding runs of the step",
             self.start + self.answered,
             why(e),
-            chain(&self.playback.pure),
-            self.playback.pure.runs() - runs
+            chain(&self.playback.runner),
+            self.playback.runner.runs() - runs
         )
     }
 }

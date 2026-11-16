@@ -253,7 +253,7 @@ fn the_drive_line_point_is_the_stage_s_driveline() {
     quick_race(|data, stage, race| {
         let mut live = Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), true).unwrap();
         live.answer(&Input::default().to_bytes()).unwrap();
-        let physics = Pure {
+        let physics = Runner {
             playback: &live.playback,
             trace: None,
             track: &live.stage.track,
@@ -510,7 +510,7 @@ fn live_damper_words_reset_each_frame() {
             }
             stepped += 1;
             // The picture reset the words it just emitted.
-            let mem = live.playback.pure.image();
+            let mem = live.playback.runner.image();
             let car = mem.u32(CAR_PTR);
             for k in 0..4 {
                 let wheel = mem.u32(car + rbr_recording::sound::CAR_WHEELS + 4 * k as u32);
@@ -569,7 +569,7 @@ fn live_restart_answers_each_frame_again() {
                 .enumerate()
                 .filter(|(_, (x, y))| x != y)
                 .take(8)
-                .map(|(i, _)| if i < 13 { format!("answer+{i}") } else { pure::word_name(i - 13) })
+                .map(|(i, _)| if i < 13 { format!("answer+{i}") } else { runner::word_name(i - 13) })
                 .collect::<Vec<_>>();
             assert!(diff.is_none(), "frame {k} differs after restart at byte {diff:?}: {names:?}");
         }
@@ -896,7 +896,7 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
         let seen = Seen::default();
         let mut live = boot();
         let governor = Governor { idle: params.idle_speed, top: 0.6 * params.rev_limit, seen: seen.clone() };
-        rbr_hybrid::ngp::set_engine_model(Some(Box::new(governor)));
+        rbr_step::ngp::set_engine_model(Some(Box::new(governor)));
         let throttle = QuantizedControl { throttle: 255, ..QuantizedControl::default() };
         let mut answers = Vec::new();
         for k in 0..n {
@@ -910,7 +910,7 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
             let want = rbr_physics::engine_driveline::drive_step::ratio_input(rbr_physics::ngp::engine::output(torque));
             assert_eq!(taken.to_bits(), want.to_bits(), "step {k}: the drive took {taken} for {torque} N·m");
         }
-        rbr_hybrid::ngp::set_engine_model(None);
+        rbr_step::ngp::set_engine_model(None);
         let seen = seen.lock().unwrap();
         let temperatures: std::collections::BTreeSet<u32> =
             seen.iter().map(|(i, _)| i.engine_temperature.to_bits()).collect();
@@ -986,7 +986,7 @@ fn snd1_s_turbo_words_follow_a_model_and_are_the_engine_s_without_one() {
                 let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
                 let records = records::read_records(&mut &rest[..]).unwrap();
                 let (_, snd) = records.iter().find(|(tag, _)| *tag == rbr_recording::sound::SND1).unwrap();
-                let mem = live.playback.pure.image();
+                let mem = live.playback.runner.image();
                 let state = Sound::read_from(mem.u32(CAR_PTR), |at| {
                     mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                 });
@@ -1004,12 +1004,12 @@ fn snd1_s_turbo_words_follow_a_model_and_are_the_engine_s_without_one() {
         let governor = Governor { idle: params.idle_speed, top: 0.6 * params.rev_limit, seen: Seen::default() };
         let model = rbr_engine::Model::telemetry(&Turbo(Governor { seen: Seen::default(), ..governor }));
         let mut live = boot();
-        rbr_hybrid::ngp::set_engine_model(Some(Box::new(Turbo(governor))));
+        rbr_step::ngp::set_engine_model(Some(Box::new(Turbo(governor))));
         drive(&mut live, &|sent, mut state| {
             super::picture::model_turbo(&mut state, &model);
             assert_eq!(sent.engine, state.engine);
         });
-        rbr_hybrid::ngp::set_engine_model(None);
+        rbr_step::ngp::set_engine_model(None);
     });
 }
 

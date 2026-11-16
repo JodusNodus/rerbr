@@ -5,11 +5,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use rbr_hybrid::pure::{self, CAR_BYTES, CAR_PTR};
 use rbr_physics::mem::Mem;
 use rbr_physics::wheel::layout::TYRE_SCRATCH;
 use rbr_recording::pose;
 use rbr_recording::{read_f32, CONTROL_BYTES, WHEEL_BYTES};
+use rbr_step::runner::{self, CAR_BYTES, CAR_PTR};
 
 use crate::live::Live;
 use crate::physics::DRIVELINE_OFFSET;
@@ -60,10 +60,10 @@ impl ReplayTrace {
     pub fn frame(&mut self, live: &Live, substeps: u32, control: &[u8; CONTROL_BYTES]) -> Result<(), String> {
         let mem = live.mem();
         let word = |i: usize| f32::from_le_bytes(control[4 * i..4 * i + 4].try_into().unwrap());
-        let bytes = pure::frame_bytes(mem);
+        let bytes = runner::frame_bytes(mem);
         let car = &bytes[..CAR_BYTES];
         let pose = pose::car_pose(car).ok_or("the car block is short")?;
-        let card = pure::time_keeper(mem).card;
+        let card = runner::time_keeper(mem).card;
         let step = live.next_step() - 1;
         let first = *self.first.get_or_insert(step);
         let time = f64::from(step - first) * f64::from(live.step_clock().step);
@@ -100,7 +100,7 @@ impl ReplayTrace {
 /// The front wheels' columns (FL FR, each [`WHEEL_HEADER`]'s) after the step: `--trace-wheels` on the autopilot's
 /// trace.
 pub fn front_wheels(mem: &Mem) -> String {
-    let bytes = pure::frame_bytes(mem);
+    let bytes = runner::frame_bytes(mem);
     (0..2)
         .map(|k| {
             let block = &bytes[CAR_BYTES + k * WHEEL_BYTES..CAR_BYTES + (k + 1) * WHEEL_BYTES];

@@ -32,7 +32,7 @@ timing). The only allowed differences are the documented classes, each with its 
 - heap addresses, compared as placement in an allocation log; the standalone's own allocator only counts them;
 - frame-loop words the game writes once per rendered frame outside the step (today car+0x670, `CCar::Vf28x`).
 
-The stale-stack words are one list, `crates/rbr-hybrid/src/pure/compare.rs` (`STALE_CAR`/`STALE_WHEEL`). A word
+The stale-stack words are one list, `crates/rbr-step/src/runner/compare.rs` (`STALE_CAR`/`STALE_WHEEL`). A word
 joins only with evidence that the original differs from its own recording, and
 differing ones are printed apart, never dropped. The gate matrix must cover every car and every surface class
 (gravel, tarmac, snow), plus damage and collisions, before the goal counts as reached.
@@ -43,7 +43,7 @@ differing ones are printed apart, never dropped. The gate matrix must cover ever
 | --- | --- | --- |
 | R | C++ reference exact on tanner-corolla, then frozen (2026-10-15) | rbr-recomp |
 | H | Hybrid step: every Rust port bound into the emulated step (retired 2026-11-16) | `rust_step.py` with all bindings |
-| B | Pure Rust step (`rbr-hybrid/src/pure/`), no emulator | `rbr-standalone` against the recording each step |
+| B | Pure Rust step (`rbr-step/src/runner/`), no emulator | `rbr-standalone` against the recording each step |
 | L | Load path: Rust builds the physics state from the retail files | byte compare with the original's snap-0; `--boot` |
 | G | Gameplay loop in Rust (`crates/rbr-gameplay`) | control payload, stage and time card per step against recordings |
 | S | Standalone program, headless or live in the viewer | the gate matrix, in Rust only |
@@ -57,9 +57,9 @@ Current state: [status.md](status.md).
   replay-manager and DLL listeners do not exist in it. ReRBR replay playback feeds recorded frames to the live loop.
 - Memory the original reads but never writes (uninitialised heap) is zero in the Rust load: filling it with 00, ff or
   7f changes nothing the original computes. The same holds for the car grids' face bytes 4-6.
-- The pure step's `operator new`/`delete` (0x70bec2, 0x70c260) are host stand-ins, not ports; the hybrid keeps the
+- The step's `operator new`/`delete` (0x70bec2, 0x70c260) are host stand-ins, not ports; the hybrid keeps the
   original allocator.
-- `rbr-hybrid` may depend on `rbr-gameplay` (one time keeper: `rbr_gameplay::timing`).
+- `rbr-step` may depend on `rbr-gameplay` (one time keeper: `rbr_gameplay::timing`).
 - The game's app state (CApplication+0x728, the car's control gate) is driven by `Game` through
   `PhysicsStep::app_state`.
 - The C++ physics is frozen: no culprit fixes on new drives, no backports from Rust. Rust is checked against the

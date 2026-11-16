@@ -519,7 +519,7 @@ const WET_SLOPE: u32 = 0x2E0;
 const WEAR_FACTOR: u32 = 0x2F8;
 const CLASSES: usize = 6;
 /// The four by-load tables (stiffnesses and frictions) NGP's step wrapper scales by the surface around `Step` and
-/// restores after it (`rbr_hybrid::ngp::steps::step_wrapper`): a step writes them, so they stay on the image.
+/// restores after it (`rbr_step::ngp::steps::step_wrapper`): a step writes them, so they stay on the image.
 const SCALED: Range<u32> = 0x204..0x284;
 /// The setup's bytes [`TyreDef`] holds: what a step reads (the frame's setup, the hub offset, the surface tables) but
 /// [`SCALED`].

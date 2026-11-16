@@ -139,7 +139,7 @@ pub const REPLAY_STAND_IN_SIZE: u32 = 0x14;
 
 /// The replay manager as the step sees it. The standalone has no replay (decision O1), so this is a stand-in block that
 /// holds only the constructor's state word (idle), and the global points at it. `StepForward` also passes the global to
-/// the replay's listeners, which the pure host skips.
+/// the replay's listeners, which the runner skips.
 pub fn new_replay_stand_in(mem: &mut Mem, host: &mut impl Heap) -> u32 {
     let at = host.alloc(mem, REPLAY_STAND_IN_SIZE);
     mem.set_u32(at + REPLAY_STATE, REPLAY_IDLE);

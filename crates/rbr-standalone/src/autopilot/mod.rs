@@ -1,10 +1,10 @@
 //! Autopilot (`rbr-standalone --autopilot OUT`): a driveline-following controller
-//! that drives the pure step from a snapshot and writes the controls as a playback (`harness/play.sh`'s
+//! that drives the step from a snapshot and writes the controls as a playback (`harness/play.sh`'s
 //! `RBRRecompPlayback.bin`), so the original can replay them open-loop.
 //!
 //! The playback is the drive's own recorded frames before the snapshot's step, then one frame per live step
 //! (`live/`): the snapshot's own step with its recorded control, and from the next step on the controller's. Each
-//! frame holds the pure car and wheels after its step, so the playback is also the Rust run's recording.
+//! frame holds the run's car and wheels after its step, so the playback is also the Rust run's recording.
 //! From `--boot` the live steps start after the boot's load settle and take a neutral
 //! control first; the playback then has no settle frames (the plugin plays single steps only). The race clock's 7 s
 //! start countdown runs over those steps, so the controller holds the car on the handbrake until it is out: a
@@ -44,11 +44,11 @@
 
 use rbr_formats::trk::{DriveLineRecord, Vec3};
 use rbr_gameplay::control::QuantizedControl;
-use rbr_hybrid::pure;
 use rbr_recording::hud::HUD2_BYTES;
 use rbr_recording::pose::{self, CarPose};
 use rbr_recording::sound::FmodBlock;
 use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, STEP_SECONDS, WHEELS, WHEEL_BYTES};
+use rbr_step::runner;
 
 mod drive;
 mod limit;
@@ -200,7 +200,7 @@ const DRIVE_ENGINE_SPEED: u32 = 0x45c;
 const VCU_DEF: u32 = 0x850;
 const VCU_RPM_LIMIT: u32 = 0x188;
 /// An answer's frame (`live/`); the HUD2 record follows it, with the gear as its word 1.
-const FRAME_BYTES: usize = HEADER_BYTES + CONTROL_BYTES + pure::CAR_BYTES + WHEELS * WHEEL_BYTES;
+const FRAME_BYTES: usize = HEADER_BYTES + CONTROL_BYTES + runner::CAR_BYTES + WHEELS * WHEEL_BYTES;
 /// `--aim`: the controller steers at the point instead of the driveline while it is closer than `AIM_RANGE` metres and
 /// ahead; the drive ends `AIM_AFTER` steps after the car first comes within `AIM_HIT` metres of it.
 const AIM_RANGE: f32 = 60.0;
@@ -208,7 +208,7 @@ const AIM_HIT: f32 = 4.0;
 const AIM_AFTER: u32 = 600;
 
 /// `--aim X,Y[,COAST]` (scenery drives): a stage point to drive into, and how many steps to
-/// keep the last control after the pure step stops (the original replays them; the playback's car state then repeats
+/// keep the last control after the step stops (the original replays them; the playback's car state then repeats
 /// the last good step's, which the plugin does not read).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Aim {
@@ -435,14 +435,14 @@ pub(crate) fn sense(answer: &[u8], live: &Live) -> Sense {
     let car = &answer[HEADER_BYTES + CONTROL_BYTES..];
     let hud = &answer[FRAME_BYTES..FRAME_BYTES + HUD2_BYTES];
     let gear = read_u32(hud, 4).expect("HUD gear");
-    let gearbox = crate::live::gearbox(mem, mem.u32(pure::CAR_PTR) + CAR_DRIVE);
+    let gearbox = crate::live::gearbox(mem, mem.u32(runner::CAR_PTR) + CAR_DRIVE);
     Sense {
         pose: pose::car_pose(car).expect("car block"),
         parameter: read_f32(car, DRIVELINE_OFFSET).expect("car +0x17c"),
         gear,
-        engine: mem.f32(mem.u32(mem.u32(pure::CAR_PTR) + DRIVE_STATE) + DRIVE_ENGINE_SPEED),
+        engine: mem.f32(mem.u32(mem.u32(runner::CAR_PTR) + DRIVE_STATE) + DRIVE_ENGINE_SPEED),
         held: (0.0..HELD).contains(&assist),
-        wheels: FmodBlock::read_from(mem.u32(pure::CAR_PTR), |a| mem.u32(a)).wheel_speeds.map(f32::abs),
+        wheels: FmodBlock::read_from(mem.u32(runner::CAR_PTR), |a| mem.u32(a)).wheel_speeds.map(f32::abs),
         geared: u8::try_from(gear).ok().filter(|&g| g >= 2).and_then(|g| gearbox.engine_speed(g)).unwrap_or(0.0),
     }
 }
@@ -699,7 +699,7 @@ pub enum Brake {
     /// `--brake-abs K`: a per-wheel ABS, the full pedal with each wheel's pressure scaled (`scale`, FL FR RL RR, 0-1)
     /// so its slip ratio from free rolling holds near `target` (`ABS_LIFT`, `ABS_BAND`, `ABS_DUMP`, `ABS_APPLY`).
     /// `free` sums each wheel's free-rolling |ωR| / v over the lift, `lift` counts its steps. The scales go to the
-    /// brake step through `rbr_hybrid::ngp::set_brake_scale` (NGP cars only).
+    /// brake step through `rbr_step::ngp::set_brake_scale` (NGP cars only).
     Abs { target: f32, scale: [f32; 4], free: [f32; 4], lift: u32 },
 }
 
@@ -1160,7 +1160,7 @@ impl<'a> Driver<'a> {
     /// The flat-out start's torque curve and gear ratios from `live`'s car (`start::Curve`), if they read.
     pub(crate) fn start_curve(live: &Live) -> Option<start::Curve> {
         let mem = live.mem();
-        let car = mem.u32(pure::CAR_PTR);
+        let car = mem.u32(runner::CAR_PTR);
         let knots = crate::physics::torque_knots(mem, live.ngp_base(), car)?;
         if knots.len() < 2 {
             return None;
@@ -1615,7 +1615,7 @@ impl<'a> Driver<'a> {
 /// The car's rev limit (rpm).
 fn rev_limit(live: &Live) -> f32 {
     let mem = live.mem();
-    mem.f32(mem.u32(mem.u32(pure::CAR_PTR) + VCU_DEF) + VCU_RPM_LIMIT)
+    mem.f32(mem.u32(mem.u32(runner::CAR_PTR) + VCU_DEF) + VCU_RPM_LIMIT)
 }
 
 #[cfg(test)]

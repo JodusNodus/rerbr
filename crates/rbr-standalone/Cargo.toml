@@ -16,7 +16,7 @@ rbr-counters = { path = "../rbr-counters" }
 rbr-engine = { path = "../rbr-engine" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-gameplay = { path = "../rbr-gameplay" }
-rbr-hybrid = { path = "../rbr-hybrid" }
+rbr-step = { path = "../rbr-step" }
 rbr-physics = { path = "../rbr-physics" }
 rbr-recording = { path = "../rbr-recording" }
 rbr-school = { path = "../rbr-school" }

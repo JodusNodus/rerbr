@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rbr_formats::times::StageTimes;
 use rbr_gameplay::result::{Outcome, StageResult};
-use rbr_hybrid::pure;
+use rbr_step::runner;
 
 use super::Run;
 use crate::args::Args;
@@ -39,7 +39,7 @@ fn result_text(result: &StageResult, reference: Option<&StageTimes>) -> String {
     format!("{outcome}, {time}, penalties {:.0} s, splits: {splits}{finish}", result.penalties)
 }
 
-/// Contiguous address ranges for pure allocator bytes read before a caller wrote them.
+/// Contiguous address ranges for runner's allocator bytes read before a caller wrote them.
 pub fn address_ranges(addresses: &[u32]) -> String {
     if addresses.is_empty() {
         return "none".into();
@@ -113,7 +113,7 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
         if r.dt_image { "the image's" } else { "the retail constant" }
     );
     if !r.noise_released_by_recording.is_empty() {
-        let names: Vec<String> = r.noise_released_by_recording.iter().map(|&i| pure::word_name(i)).collect();
+        let names: Vec<String> = r.noise_released_by_recording.iter().map(|&i| runner::word_name(i)).collect();
         println!("  run-noise words newly compared after a recorded value changed while pure held: {}", names.len());
         for words in names.chunks(16) {
             println!("    {}", words.join(", "));
@@ -181,7 +181,7 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
         );
         let mut held_by_object = BTreeMap::<String, usize>::new();
         for &i in through.iter().filter(|&&i| !mask[i]) {
-            let name = pure::word_name(i);
+            let name = runner::word_name(i);
             let object = name.split('+').next().unwrap_or("?").to_string();
             *held_by_object.entry(object).or_default() += 1;
         }
@@ -190,7 +190,7 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
                 held_by_object.iter().map(|(object, n)| format!("{object} {n}")).collect::<Vec<_>>().join(", ");
             println!("  run-noise held unchanged through driving outside the static mask by object: {summary}");
         }
-        let held_words: Vec<String> = through.iter().filter(|&&i| !mask[i]).map(|&i| pure::word_name(i)).collect();
+        let held_words: Vec<String> = through.iter().filter(|&&i| !mask[i]).map(|&i| runner::word_name(i)).collect();
         if !held_words.is_empty() {
             println!(
                 "  run-noise word names held unchanged through driving outside the static mask: {}",
@@ -203,13 +203,13 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
     }
     if let Some((step, bad)) = &r.first_diff {
         ok = false;
-        let names: Vec<String> = bad.iter().take(8).map(|&i| pure::word_name(i)).collect();
+        let names: Vec<String> = bad.iter().take(8).map(|&i| runner::word_name(i)).collect();
         println!("  differs from the recording after step {step}: {} words ({})", bad.len(), names.join(", "));
         let values: Vec<String> = r
             .first_diff_values
             .iter()
             .take(8)
-            .map(|(i, want, have)| format!("{} recording={want:#010x} pure={have:#010x}", pure::word_name(*i)))
+            .map(|(i, want, have)| format!("{} recording={want:#010x} pure={have:#010x}", runner::word_name(*i)))
             .collect();
         if !values.is_empty() {
             println!("  first-difference values: {}", values.join(", "));
@@ -219,13 +219,13 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
         let words: Vec<String> = words
             .iter()
             .take(16)
-            .map(|(&i, &(step, n))| format!("{} (from step {step}, {n} steps)", pure::word_name(i)))
+            .map(|(&i, &(step, n))| format!("{} (from step {step}, {n} steps)", runner::word_name(i)))
             .collect();
         println!("  words that differ at some step: {} ({})", r.differing.len(), words.join(", "));
     }
-    let (padding, stale): (Vec<_>, Vec<_>) = r.stale.iter().partition(|(&i, _)| pure::is_ngp_padding(i));
+    let (padding, stale): (Vec<_>, Vec<_>) = r.stale.iter().partition(|(&i, _)| runner::is_ngp_padding(i));
     let named = |words: Vec<(&usize, &usize)>| -> Vec<String> {
-        words.into_iter().map(|(&i, &n)| format!("{} ({n} steps)", pure::word_name(i))).collect()
+        words.into_iter().map(|(&i, &n)| format!("{} ({n} steps)", runner::word_name(i))).collect()
     };
     if !stale.is_empty() {
         println!(
@@ -235,7 +235,7 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
     }
     if !padding.is_empty() {
         println!(
-            "  masked: lane-3 padding (NGP: the w of the wheel bodies' +0x140 and +0x330, pure::NGP_PADDING_WHEEL): {}",
+            "  masked: lane-3 padding (NGP: the w of the wheel bodies' +0x140 and +0x330, runner::NGP_PADDING_WHEEL): {}",
             named(padding).join(", ")
         );
     }

@@ -118,7 +118,7 @@ physics lives: [physics-map.md](physics-map.md).
 | [`rbr-engine`](../crates/rbr-engine) | engine models in place of NGP's torque formula: the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) | [engine-model.md](../notes/engine-model.md) |
 | [`rbr-tyre`](../crates/rbr-tyre) | tyre models in place of NGP's sliding model of the contact patch: in development, not released (`--physics experimental-brush` only) | [tyre-model.md](../notes/tyre-model.md) |
 | [`rbr-physics`](../crates/rbr-physics) | NGP 7.4.778's physics; `ports.csv` lists the ported functions | [physics.md](../notes/physics.md), [ngp.md](../notes/ngp.md) |
-| [`rbr-hybrid`](../crates/rbr-hybrid) | the game's physics step (the pure host) on the ports and the typed state | [verification.md](../notes/verification.md) |
+| [`rbr-step`](../crates/rbr-step) | the game's physics step (the runner) on the ports and the typed state | [verification.md](../notes/verification.md) |
 | [`rbr-recording`](../crates/rbr-recording) | readers for the recordings, live records and replays | [verification.md](../notes/verification.md) |
 | [`rbr-counters`](../crates/rbr-counters) | instruction and allocation counts per step and frame | [verification.md](../notes/verification.md#measuring-cost) |
 
@@ -168,7 +168,7 @@ Some changes need more:
 | renderer, HUD, cameras, launcher | before and after captures (`viewer --screenshot`, `rerbr --screenshot DIR`); for the renderer the [reference shots](#reference-shots) |
 | sound | a short audio render |
 | a file format | a test that parses every retail file it covers |
-| physics, `rbr-standalone` or `rbr-hybrid` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (physics PASS 84084/84084 and exit status 0), the poison build and the drive with every aid on (`RBR_NGP_PHYSICS` and `RBR_RSF` set); `--perf BASE_BIN` adds the step's cost against another build |
+| physics, `rbr-standalone` or `rbr-step` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (physics PASS 84084/84084 and exit status 0), the poison build and the drive with every aid on (`RBR_NGP_PHYSICS` and `RBR_RSF` set); `--perf BASE_BIN` adds the step's cost against another build |
 
 ## Physics changes
 

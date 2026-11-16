@@ -1,5 +1,5 @@
 //! The drive's curve workers: the unsigned table lerp, the counter step and the row's interpolation. Each is a pure
-//! function of its typed inputs; the rbr-hybrid bindings load and store the words. Their x87 chains round each
+//! function of its typed inputs; the rbr-step bindings load and store the words. Their x87 chains round each
 //! operation to the thread's precision (24 bits in 1.02, 53 under NGP); the lerps return the unrounded result and the
 //! counters truncate it.
 

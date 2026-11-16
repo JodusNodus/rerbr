@@ -1,0 +1,22 @@
+[package]
+name = "rbr-step"
+version = "0.1.0"
+edition = "2021"
+description = "The game's physics step on the rbr-physics ports"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "rbr_step"
+path = "src/lib.rs"
+
+[features]
+# Check builds only: the runner poisons the words its typed storage holds over a step.
+poison = ["rbr-physics/poison"]
+
+[dependencies]
+rbr-engine = { path = "../rbr-engine" }
+rbr-formats = { path = "../rbr-formats" }
+rbr-gameplay = { path = "../rbr-gameplay" }
+rbr-physics = { path = "../rbr-physics" }
+rbr-recording = { path = "../rbr-recording" }
+rbr-tyre = { path = "../rbr-tyre" }

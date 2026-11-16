@@ -12,7 +12,7 @@
 //! minimum under 1.02).
 //! `--extra-payloads FILE` emits the payloads FILE lists for a step before the step's own: the control input's earlier
 //! calls at that step (a call for help's payload, flags 0x10, then the frame's), which FRM1 does not keep.
-//! `--wall-clock FILE` gives NGP's starter the recording's wall clock per step (`rbr_hybrid::ngp::set_wall_clock`).
+//! `--wall-clock FILE` gives NGP's starter the recording's wall clock per step (`rbr_step::ngp::set_wall_clock`).
 
 use std::collections::HashMap;
 use std::fs::File;
@@ -23,14 +23,14 @@ use rbr_gameplay::control::CarControl;
 use rbr_gameplay::ffb;
 use rbr_gameplay::game::{PhysicsStep, StepSample};
 use rbr_gameplay::stage::State;
-use rbr_hybrid::pure::{self, CAR_PTR};
 use rbr_physics::car_body::steering_ffb;
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::mem::Mem;
 use rbr_recording::sound::{FmodBlock, Sound};
 use rbr_recording::{Frame, MAGIC};
+use rbr_step::runner::{self, CAR_PTR};
 
-use crate::physics::{payload, Pure};
+use crate::physics::{payload, Runner};
 
 /// The hooks a headless run takes from the command line.
 #[derive(Default, Clone, Copy)]
@@ -78,10 +78,10 @@ pub fn read_wall_clock(path: &Path) -> Result<WallClock, String> {
         .collect())
 }
 
-/// The pure physics fed `words`, the recorded payload, in place of each control the game emits, after emitting
+/// The Rust physics fed `words`, the recorded payload, in place of each control the game emits, after emitting
 /// `extra`.
 pub struct Exact<'p, 'a> {
-    pub pure: &'p mut Pure<'a>,
+    pub runner: &'p mut Runner<'a>,
     pub words: Option<[u32; 8]>,
     pub extra: &'p [[u8; 0x20]],
 }
@@ -91,18 +91,18 @@ impl PhysicsStep for Exact<'_, '_> {
         let control = control.map(|c| self.words.map_or(c, recorded));
         if control.is_some() {
             for payload in self.extra {
-                self.pure.playback.emit(payload);
+                self.runner.playback.emit(payload);
             }
         }
-        self.pure.step(control, index, inside_step);
+        self.runner.step(control, index, inside_step);
     }
 
     fn app_state(&mut self, state: State) {
-        self.pure.app_state(state);
+        self.runner.app_state(state);
     }
 
     fn drive_gear(&self) -> Option<u32> {
-        self.pure.drive_gear()
+        self.runner.drive_gear()
     }
 }
 
@@ -159,7 +159,7 @@ impl Trace {
     ) -> Result<(), String> {
         let control = control.map_or(frame.control, |c| payload(&c, frame.control_u32s()[6]));
         let steering = f32::from_le_bytes(control[16..20].try_into().unwrap());
-        let body = pure::frame_bytes(mem);
+        let body = runner::frame_bytes(mem);
         let car = mem.u32(CAR_PTR);
         let car_bytes = (body.len() - rbr_recording::WHEELS * rbr_recording::WHEEL_BYTES) as u32;
         let u32_at = |at: u32| mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
