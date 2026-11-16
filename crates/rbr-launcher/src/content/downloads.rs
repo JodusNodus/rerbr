@@ -7,9 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use super::btb::archive_files;
-use super::detect::{self, Kind};
-use crate::codriver_packs::{pack_name, SEVEN_Z, ZIP};
+use super::{detect, source, KINDS};
+use crate::codriver_packs::{SEVEN_Z, ZIP};
 use crate::job::Job;
 
 /// How many archives are offered, and how old they may be.
@@ -119,25 +118,10 @@ fn is_archive(name: &str) -> bool {
     lower.ends_with(ZIP) || lower.ends_with(SEVEN_Z)
 }
 
-/// What the download `name` is for the player, when it is offered alone: its kinds' label. `None`: not offered (not
-/// recognised, a model or sound archive without its physics zip, a disc), or already added (`owned`).
-pub fn offer(name: &str, kinds: &[Kind], owned: &Owned) -> Option<String> {
-    let mut labels = Vec::new();
-    for kind in kinds {
-        let added = match kind {
-            Kind::Stages(stages) => stages.iter().all(|s| owned.stages.contains(&s.name.to_lowercase())),
-            Kind::Codriver => already_added(&pack_name(Path::new(name)), &owned.packs),
-            Kind::Physics => {
-                let car = crate::car_packs::words(&detect::physics_name(name));
-                owned.cars.contains(&car)
-            }
-            Kind::Ngp => owned.ngp,
-            Kind::Model | Kind::Banks | Kind::Disc | Kind::Refused(_) => continue,
-        };
-        if !added {
-            labels.push(kind.label());
-        }
-    }
+/// What the download `src` is for the player, when it is offered alone: its kinds' labels. `None`: not recognised,
+/// not offered alone (a model or sound archive without its physics zip, a disc), or already added (`owned`).
+pub fn offer(src: &dyn source::Source, owned: &Owned) -> Option<String> {
+    let labels: Vec<&str> = detect(src).iter().filter_map(|(at, found)| KINDS[*at].offer(src, found, owned)).collect();
     (!labels.is_empty()).then(|| labels.join(" and "))
 }
 
@@ -154,11 +138,8 @@ pub fn scan(dir: &Path, owned: &Owned) -> Vec<Found> {
     });
     let mut found = Vec::new();
     for (path, _) in recent(files.collect(), SystemTime::now()) {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let Ok(files) = archive_files(&path) else { continue };
-        let entries: Vec<String> = files.iter().map(|(p, _)| p.join("/")).collect();
-        let kinds = detect::classify(&name, false, &entries);
-        if let Some(label) = offer(&name, &kinds, owned) {
+        let Ok(src) = source::open(&path) else { continue };
+        if let Some(label) = offer(&*src, owned) {
             found.push(Found { path, label });
             if found.len() == MAX {
                 break;
@@ -207,21 +188,26 @@ mod tests {
 
     #[test]
     fn what_is_offered_and_what_is_hidden() {
-        use crate::content::detect::StageDir;
-        let stage = Kind::Stages(vec![StageDir { dir: vec![], name: "Lappi".into() }]);
+        use crate::content::source::Fake;
+        let stage = ["Lappi/track.ini", "Lappi/objectlist.ini", "Lappi/Objects.zip", "Lappi/Textures.zip"];
+        let lappi = Fake::new("Lappi.zip", false, &stage);
         let none = Owned::default();
-        assert_eq!(offer("Lappi.zip", std::slice::from_ref(&stage), &none).as_deref(), Some("BTB stage"));
+        assert_eq!(offer(&lappi, &none).as_deref(), Some("BTB stage"));
         let have = Owned { stages: names(&["lappi"]), ..Owned::default() };
-        assert_eq!(offer("Lappi.zip", std::slice::from_ref(&stage), &have), None);
-        let both = [stage, Kind::Codriver];
-        assert_eq!(offer("Luppis.zip", &both, &have).as_deref(), Some("co-driver or pace notes"));
+        assert_eq!(offer(&lappi, &have), None);
+        let mut both = stage.to_vec();
+        both.push("Luppis/PaceNote.ini");
+        let both = Fake::new("Luppis.zip", false, &both);
+        assert_eq!(offer(&both, &have).as_deref(), Some("co-driver or pace notes"));
         let packs = Owned { packs: names(&["Luppis"]), ..have };
-        assert_eq!(offer("Luppis.zip", &both, &packs), None);
+        assert_eq!(offer(&both, &packs), None);
+        let physics = |name: &str| Fake::new(name, false, &["common.lsp"]);
         let car = Owned { cars: names(&["ford fiesta r5"]), ..Owned::default() };
-        assert_eq!(offer("Ford Fiesta R5 - NGP Physics.zip", &[Kind::Physics], &car), None);
-        assert!(offer("Audi - NGP Physics.zip", &[Kind::Physics], &car).is_some());
-        for kind in [Kind::Model, Kind::Banks, Kind::Disc, Kind::Refused("x".into())] {
-            assert_eq!(offer("x.7z", &[kind], &none), None);
-        }
+        assert_eq!(offer(&physics("Ford Fiesta R5 - NGP Physics.zip"), &car), None);
+        assert!(offer(&physics("Audi - NGP Physics.zip"), &car).is_some());
+        let model = Fake::new("x - Model.7z", false, &["Cars/x/x.sgc"]);
+        assert_eq!(offer(&model, &none), None);
+        assert_eq!(offer(&Fake::new("RBR.iso", false, &[]), &none), None);
+        assert_eq!(offer(&Fake::new("a.zip", false, &["a.txt"]), &none), None);
     }
 }

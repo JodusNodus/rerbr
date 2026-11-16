@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use super::{recent, Done, Goto, Outcome};
+use super::{downloads, Goto, Outcome, Refresh};
 use crate::job::{self, Job};
 use crate::pages::{section, Page, GOOD, WARN};
 use crate::Form;
@@ -11,9 +11,9 @@ use crate::Form;
 /// The Add's state: the running job, the last notice, and the recent downloads.
 #[derive(Default)]
 pub struct Add {
-    job: Option<Job<Done>>,
+    job: Option<Job<Vec<Outcome>>>,
     pub notice: Vec<Outcome>,
-    pub recent: recent::Recent,
+    pub recent: downloads::Recent,
     /// The owned voice packs when the run started: a new one becomes the co-driver in use.
     voices_before: Vec<String>,
 }
@@ -47,33 +47,37 @@ impl Form {
     }
 
     /// Reads again what a finished run changed.
-    fn content_done(&mut self, done: Done) {
-        let Done { outcomes, disc, touched } = done;
-        let added = |kind: &str| outcomes.iter().any(|o| o.ok() && o.kind.contains(kind));
-        if touched.codriver {
+    fn content_done(&mut self, outcomes: Vec<Outcome>) {
+        let touched = |r: Refresh| outcomes.iter().any(|o| o.refresh == r);
+        let added = |r: Refresh| outcomes.iter().any(|o| o.refresh == r && o.ok());
+        if touched(Refresh::Codriver) {
             self.rescan_codrivers();
             // A new voice pack drives (its default voice); its notes play by themselves.
             let voices = std::mem::take(&mut self.content.voices_before);
             let new = self.owned_voices.iter().find(|p| p.problem.is_none() && !voices.contains(&p.name));
-            if let Some(name) = new.map(|p| p.name.clone()).filter(|_| added("co-driver")) {
+            if let Some(name) = new.map(|p| p.name.clone()).filter(|_| added(Refresh::Codriver)) {
                 (self.codriver, self.codriver_pack, self.codriver_voice) = (true, Some(name), None);
             }
         }
-        if touched.cars {
+        if touched(Refresh::Cars) {
             self.rescan_cars();
         }
-        if touched.stages {
+        if touched(Refresh::Stages) {
             let tracks = self.here().join(rbr_btb::player::TRACKS);
             self.catalog.add_new_tracks(&tracks);
             self.list_maps();
         }
-        if touched.ngp && added("NGP") {
+        if added(Refresh::Ngp) {
             let to = self.here().join(crate::ngp_install::KEPT);
             self.ngp_dll.path = to.join("NGP.dll").display().to_string();
             self.ngp_physics = to.join("physics.rbz").display().to_string();
             self.save();
             self.reload = true;
         }
+        let disc = outcomes.iter().find_map(|o| match &o.goto {
+            Some(Goto::Disc(disc)) if o.ok() => Some(disc.clone()),
+            _ => None,
+        });
         if let Some(disc) = disc {
             self.disc_setup.set_disc(&disc);
             self.page = Page::Settings;
@@ -84,7 +88,7 @@ impl Form {
     /// Takes the Open button's way.
     fn content_goto(&mut self, goto: &Goto) {
         match goto {
-            Goto::Settings => self.page = Page::Settings,
+            Goto::Settings | Goto::Disc(_) => self.page = Page::Settings,
             Goto::Stage(folder) => {
                 let at = self.catalog.maps.iter().position(|m| {
                     m.btb().is_some_and(|b| b.folder.file_name().is_some_and(|n| n.to_string_lossy() == *folder))
@@ -127,7 +131,9 @@ impl Form {
                         Some(Goto::Stage(folder)) if ui.button("Open the stage picker").clicked() => {
                             open = Some(Goto::Stage(folder))
                         }
-                        Some(Goto::Settings) if page != Page::Settings && ui.button("Open Settings").clicked() => {
+                        Some(Goto::Settings | Goto::Disc(_))
+                            if page != Page::Settings && ui.button("Open Settings").clicked() =>
+                        {
                             open = Some(Goto::Settings)
                         }
                         _ => {}
@@ -141,7 +147,7 @@ impl Form {
             self.content.job = None;
         }
         match finished {
-            Some(Ok(done)) => self.content_done(done),
+            Some(Ok(outcomes)) => self.content_done(outcomes),
             Some(Err(e)) => self.content.notice = vec![Outcome::warning(&format!("Adding stopped: {e}"))],
             None => {}
         }
@@ -154,7 +160,7 @@ impl Form {
     }
 
     /// What the recent downloads list hides: the packs, stages and cars already added.
-    fn owned_content(&self) -> recent::Owned {
+    fn owned_content(&self) -> downloads::Owned {
         let packs = self.owned_voices.iter().map(|p| p.name.clone());
         let packs = packs.chain(self.owned_notes.iter().map(|p| p.name.clone())).collect();
         let tracks = self.here().join(rbr_btb::player::TRACKS);
@@ -165,7 +171,7 @@ impl Form {
             .cars
             .iter()
             .flat_map(|(name, pack)| [crate::car_packs::words(name), crate::car_packs::words(pack)]);
-        recent::Owned { packs, stages, cars: cars.collect(), ngp: self.ngp_revision == Some(778) }
+        downloads::Owned { packs, stages, cars: cars.collect(), ngp: self.ngp_revision == Some(778) }
     }
 
     /// The Settings page's Add content section: the buttons, the recent downloads, and where to get more.
@@ -232,7 +238,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::*;
-    use crate::content::btb::tests::{synthetic_stage, write};
+    use crate::content::kind::btb::tests::{synthetic_stage, write};
     use crate::settings::{load, Settings};
     use crate::{Start, SETTINGS_FILE};
 
@@ -362,6 +368,6 @@ mod tests {
     }
 
     fn detect_rar() -> &'static str {
-        crate::content::detect::RAR
+        crate::content::kind::refused::RAR
     }
 }
