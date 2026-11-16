@@ -22,6 +22,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     let pages = [
         (Page::Drive, "drive"),
+        (Page::Circuit, "circuit"),
         (Page::School, "school"),
         (Page::Replays, "replays"),
         (Page::Controls, "controls"),

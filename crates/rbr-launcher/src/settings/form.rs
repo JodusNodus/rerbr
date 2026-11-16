@@ -114,7 +114,12 @@ impl Form {
     ) -> Form {
         // A saved car not in the list gives way to the most recent one that is, else the first that starts.
         let car = pick_car(&catalog.cars, settings.car.iter().chain(&settings.recent_cars));
-        let default_map = catalog.maps.iter().position(|map| catalog.availability(&season, map).is_ok()).unwrap_or(0);
+        let plays_on_drive = |map: &catalog::Map| !map.btb().is_some_and(|btb| btb.circuit);
+        let default_map = catalog
+            .maps
+            .iter()
+            .position(|map| plays_on_drive(map) && catalog.availability(&season, map).is_ok())
+            .unwrap_or(0);
         let map = settings.map.and_then(|number| catalog.map_index(number)).unwrap_or(default_map);
         let aids = DriverAids::default();
         // A specific row launches like Random with that row; a section that is not this map's falls back to Good.
@@ -267,7 +272,7 @@ impl Form {
             perf_log: settings.perf_log.unwrap_or(false),
             start_time: settings.start_time.unwrap_or_default(),
             wipers: settings.wipers.unwrap_or_default(),
-            laps: 3,
+            circuit: crate::circuit_page::CircuitPage::from_settings(settings.circuit, settings.circuit_laps),
             install_folder: settings.install_folder.clone().unwrap_or_default(),
             folder,
             disc_setup: Default::default(),
@@ -312,6 +317,8 @@ impl Form {
         let settings = Settings {
             car: self.car().map(|c| c.name.clone()),
             map: Some(self.catalog.maps[self.map].number),
+            circuit: self.circuit.map,
+            circuit_laps: Some(self.circuit.laps),
             recent_cars: self.recent_cars.clone(),
             recent_maps: self.recent_maps.clone(),
             favourite_cars: self.favourite_cars.clone(),

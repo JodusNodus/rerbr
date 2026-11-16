@@ -2333,6 +2333,7 @@ dependencies = [
  "rbr-render",
  "rbr-school",
  "rbr-season",
+ "rbr-session",
  "rbr-sound",
  "rustix 1.1.5",
  "sevenz-rust2",

@@ -127,7 +127,7 @@ impl Form {
     }
 
     /// The drive's summary, Start (or Stop) and what blocks it.
-    fn start_area(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn start_area(&mut self, ui: &mut egui::Ui) {
         match self.selection() {
             Ok((stage, weather)) => {
                 let wear = catalog::WEARS[weather.wear.min(2) as usize];
@@ -182,7 +182,7 @@ impl Form {
             if self.catalog.cars.is_empty() {
                 ui.colored_label(WARN, "No cars yet: add some on the Settings page with Download cars…");
             } else {
-                ui.vertical(|ui| self.car_field(ui));
+                ui.vertical(|ui| self.car_field(ui, Target::Drive));
             }
             ui.end_row();
             if self.bindings.shifter.advanced {
@@ -193,19 +193,39 @@ impl Form {
             ui.vertical(|ui| self.stage_field(ui));
             ui.end_row();
 
-            if self.car().is_some() {
-                self.select_setup();
-                let tip =
-                    "Any saved setup of the car, yours and RSF's, the stage surface's first; the pick is kept for \
-                           the car and the surface. Edit… makes and changes them";
-                ui.label("Setup").on_hover_text(tip);
-                if self.setup.choice_ui(ui, FIELD) {
-                    self.page = crate::pages::Page::Setup;
-                }
-                ui.end_row();
-            }
+            self.setup_row(ui);
         });
 
+        self.environment_section(ui);
+
+        self.road_section(ui);
+
+        section(ui, "Race");
+        fields(ui, "race", |ui| {
+            self.ghost_row(ui);
+            ui.end_row();
+
+            self.damage_row(ui);
+        });
+    }
+
+    /// The Setup row, once there is a car: any saved setup of the car, the stage surface's first.
+    pub(crate) fn setup_row(&mut self, ui: &mut egui::Ui) {
+        if self.car().is_none() {
+            return;
+        }
+        self.select_setup();
+        let tip = "Any saved setup of the car, yours and RSF's, the stage surface's first; the pick is kept for \
+                   the car and the surface. Edit… makes and changes them";
+        ui.label("Setup").on_hover_text(tip);
+        if self.setup.choice_ui(ui, FIELD) {
+            self.page = crate::pages::Page::Setup;
+        }
+        ui.end_row();
+    }
+
+    /// The Environment section: the weather, its look and the time of day.
+    pub(crate) fn environment_section(&mut self, ui: &mut egui::Ui) {
         section(ui, "Environment");
         fields(ui, "environment", |ui| {
             // A saved ghost brings its own weather (`E18_ConnGhostMemory::Dispatch`): the wetness and the wear
@@ -321,7 +341,10 @@ impl Form {
                 ui.end_row();
             }
         });
+    }
 
+    /// The Road and tyres section: the road, the tyre and the wipers.
+    pub(crate) fn road_section(&mut self, ui: &mut egui::Ui) {
         section(ui, "Road and tyres");
         fields(ui, "road", |ui| {
             // The Stage weather's wetness, and the good and random weather's wear, are the variant's: not shown.
@@ -368,40 +391,28 @@ impl Form {
             combo(ui, "wipers", FIELD, &mut self.wipers, &Switch::ALL, Switch::name);
             ui.end_row();
         });
+    }
 
-        section(ui, "Race");
-        fields(ui, "race", |ui| {
-            if self.selected_circuit() {
-                ui.label("Laps").on_hover_text("A circuit: a session of laps, or free practice with no end");
-                combo(ui, "laps", FIELD, &mut self.laps, &LAPS, |laps| match laps {
-                    0 => "Free practice".to_owned(),
-                    1 => "1 lap".to_owned(),
-                    n => format!("{n} laps"),
-                });
-                ui.end_row();
-            }
-            self.ghost_row(ui);
-            ui.end_row();
-
-            let penalty = self.options.assist_settings().penalty();
-            let tip = format!("Off, Safe, Reduced or Realistic. Calling for help costs {penalty} s at this level");
-            ui.label("Car damage").on_hover_text(&tip);
-            ui.horizontal(|ui| {
-                let damage = &mut self.options.damage;
-                combo(ui, "damage", 160.0, damage, &DamageLevel::ALL, DamageLevel::label).on_hover_text(&tip);
-                ui.colored_label(Color32::GRAY, format!("help costs {penalty} s"));
-            });
-            ui.end_row();
+    /// The Car damage row, with what calling for help costs.
+    pub(crate) fn damage_row(&mut self, ui: &mut egui::Ui) {
+        let penalty = self.options.assist_settings().penalty();
+        let tip = format!("Off, Safe, Reduced or Realistic. Calling for help costs {penalty} s at this level");
+        ui.label("Car damage").on_hover_text(&tip);
+        ui.horizontal(|ui| {
+            let damage = &mut self.options.damage;
+            combo(ui, "damage", 160.0, damage, &DamageLevel::ALL, DamageLevel::label).on_hover_text(&tip);
+            ui.colored_label(Color32::GRAY, format!("help costs {penalty} s"));
         });
+        ui.end_row();
     }
 
     /// The Car field: the selection, starred if it is a favourite, with Browse…, and the favourites' quick picks under
     /// it. The ones that don't fit go behind "+N", which opens the browser on the favourites.
-    fn car_field(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn car_field(&mut self, ui: &mut egui::Ui, target: Target) {
         let Some(selected) = self.car_browser.row(self.car) else { return };
         let favourite = self.favourite_cars.contains(&selected.name);
         if browser::field_button(ui, favourite, &selected.title, &selected.detail(), FIELD) {
-            self.car_browser.open_on(Target::Drive, self.car, &self.favourite_cars, None);
+            self.car_browser.open_on(target, self.car, &self.favourite_cars, None);
         }
         // The starred cars that can start, in the order starred.
         let starred: Vec<&car_browser::CarRow> =
@@ -415,14 +426,14 @@ impl Form {
             }
             Some(Pick::More) => {
                 let favourites = Some(car_browser::Collection::Favourites);
-                self.car_browser.open_on(Target::Drive, self.car, &self.favourite_cars, favourites);
+                self.car_browser.open_on(target, self.car, &self.favourite_cars, favourites);
             }
             None => {}
         }
     }
 
     /// The advanced H-shifter's gearbox of the car, kept for the car.
-    fn gearbox_row(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn gearbox_row(&mut self, ui: &mut egui::Ui) {
         let Some(car) = self.car().map(|c| c.name.clone()) else { return };
         let tip = "The car's gearbox for the advanced H-shifter, kept for this car. Sequential: the gear up and down \
                    actions, with the game's gearbox aids. H-pattern: the shifter's gears need the clutch or matched \
@@ -438,7 +449,7 @@ impl Form {
     }
 
     /// Makes car `index` of the catalog the car, and the most recent pick.
-    fn choose_car(&mut self, index: usize) {
+    pub(crate) fn choose_car(&mut self, index: usize) {
         self.car = index;
         browser::remember(&mut self.recent_cars, self.catalog.cars[index].name.clone());
     }
@@ -464,6 +475,7 @@ impl Form {
                 match target {
                     Target::Drive => self.choose_car(index),
                     Target::Championship => self.championship.pick_car(index, &self.catalog.cars),
+                    Target::Circuit => self.choose_car(index),
                 }
                 self.car_browser.open = false;
             }
@@ -569,7 +581,7 @@ impl Form {
         match self.stage_browser.ui(ui, env) {
             Some(Action::Choose(index)) => {
                 match self.stage_browser.target {
-                    Target::Drive => self.choose_stage(index),
+                    Target::Drive | Target::Circuit => self.choose_stage(index),
                     Target::Championship => self.championship.pick_stage(self.catalog.maps[index].number),
                 }
                 self.stage_browser.open = false;
@@ -647,9 +659,6 @@ fn gearbox_label(gearbox: CarBox) -> &'static str {
         CarBox { engagement: Engagement::Dog, .. } => "H-pattern, dog",
     }
 }
-
-/// The Laps row's choices, 0 for free practice.
-const LAPS: [u32; 6] = [0, 1, 3, 5, 10, 20];
 
 /// The Tyre row's choices: the game's tyre, or one of 0 through 6.
 const TYRES: [TyreChoice; 8] = [

@@ -137,7 +137,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Keyboard (2026-11-03): Ctrl+1..8 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
+- Keyboard (2026-11-03): Ctrl+1..9 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
   or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
@@ -377,3 +377,11 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 - `[telemetry]` `udp = ADDR:PORT` (Settings page, Telemetry's UDP address; unset off): `rbr-standalone
   --telemetry-udp`, NGP's UDP packet ([ngp.md](ngp.md#udp-telemetry)). A value without a port after its last `:` is
   not read, sent or saved; the field warns while it holds one.
+- Circuit page (`circuit_page.rs`, `notes/session.md`): the Drive page's twin for hotlapping, tab 2. The circuits are the BTB
+  stages with `circuit = 1` (`Btb::circuit`); the Drive page lists them as ones that cannot start ("it plays on the
+  Circuit page"), never takes one as its default, and its Start on one offers "Open Circuit". The page lists the circuits
+  with the profile's best lap, takes the Drive page's car (its own browser `Target::Circuit`), setup, weather, time of
+  day, road and tyre (the page runs them with `Form::map` set to the circuit while it draws, then puts the Drive page's
+  stage back) and adds the session's length (free practice or 1, 3, 5, 10, 20 laps; saved as `circuit`,
+  `circuit_laps`). The best lap card reads `lap-records.ini` in the save folder every two seconds (the drive is another
+  process): the best lap, its sectors' own times and the car. Start passes `--laps` and no ghost arguments.

@@ -563,7 +563,7 @@ impl Form {
         let options = RaceOptions { weather: preset, ..self.options };
         // A circuit is a session of laps (or free practice).
         if self.catalog.map(stage.map).and_then(catalog::Map::btb).is_some_and(|btb| btb.circuit) {
-            let laps = if self.laps == 0 { "open".to_owned() } else { self.laps.to_string() };
+            let laps = if self.circuit.laps == 0 { "open".to_owned() } else { self.circuit.laps.to_string() };
             extra.extend(["--laps".to_owned(), laps]);
         }
         // The quick race drives with the Drive page's setup (read again, a championship may have put its own).

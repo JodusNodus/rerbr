@@ -86,7 +86,7 @@
 //! (an encrypted one) stays listed with the reason. Until saved, the NGP field defaults to `$RBR_NGP_PHYSICS`.
 //!
 //! The tabs follow what the player wants to do (ours, after Content Manager): Drive (car and stage, conditions, race
-//! options, the previews and Start), Championship, School (the rally school's lessons in the Drive page's car), Car
+//! options, the previews and Start), Circuit (laps on a circuit: `circuit_page`), Championship, School (the rally school's lessons in the Drive page's car), Car
 //! setup, Replays (saved drives, playback and video export), Controls, Graphics & sound (window, camera, HUD and pace
 //! notes, sound, the renderer's additions) and Settings (install folder, advanced paths, about). The status line under
 //! every page says what the install lacks (the programs, NGP's archive, a car NGP drives), with its fix
@@ -132,6 +132,7 @@ mod car_browser;
 mod car_packs;
 mod catalog;
 mod championship_page;
+mod circuit_page;
 mod codriver_packs;
 mod codriver_page;
 mod command;
@@ -585,8 +586,8 @@ struct Form {
     start_time: time_of_day::StartTime,
     /// The wiper switch at the start (`viewer --wipers`).
     wipers: Switch,
-    /// A circuit's session length (`rbr-standalone --laps`): its laps, 0 for free practice. Not saved.
-    laps: u32,
+    /// The Circuit page's choices and the best laps it shows.
+    circuit: circuit_page::CircuitPage,
     /// The RBR install folder's field, and what the form was loaded from (`install`).
     install_folder: String,
     folder: install::Folder,
@@ -635,7 +636,13 @@ impl Form {
     fn list_maps(&mut self) {
         let catalog = &self.catalog;
         let rows = (catalog.maps.iter().enumerate())
-            .map(|(i, map)| stage_browser::StageRow::new(i, map, catalog.availability(&self.season, map).err()))
+            .map(|(i, map)| {
+                // A circuit plays on the Circuit page: the Drive page's list shows it as one that cannot start.
+                let problem = catalog.availability(&self.season, map).err().or_else(|| {
+                    map.btb().filter(|btb| btb.circuit).map(|_| "a circuit: it plays on the Circuit page".to_owned())
+                });
+                stage_browser::StageRow::new(i, map, problem)
+            })
             .collect();
         self.stage_browser.set_rows(rows);
     }

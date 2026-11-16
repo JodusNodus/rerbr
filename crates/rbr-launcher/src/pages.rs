@@ -19,6 +19,8 @@ const POLL: Duration = Duration::from_millis(250);
 pub enum Page {
     /// The quick race: car, stage, conditions, the race options and Start.
     Drive,
+    /// A circuit's laps: the circuit, the car, the conditions and the session's length, with the best laps.
+    Circuit,
     Championship,
     /// The rally school's lessons, each on its map in the Drive page's car.
     School,
@@ -34,8 +36,9 @@ pub enum Page {
 
 impl Page {
     /// The tabs, in order.
-    const TABS: [(Page, &'static str); 8] = [
+    const TABS: [(Page, &'static str); 9] = [
         (Page::Drive, "Drive"),
+        (Page::Circuit, "Circuit"),
         (Page::Championship, "Championship"),
         (Page::School, "School"),
         (Page::Setup, "Car setup"),
@@ -45,12 +48,12 @@ impl Page {
         (Page::Settings, "Settings"),
     ];
 
-    /// The page a shortcut opens: Ctrl+1 to Ctrl+8 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next,
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+9 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next,
     /// Ctrl+Shift+Tab or Ctrl+Page Up the one before.
     fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
         use egui::{Key, Modifiers};
-        const NUMBERS: [Key; 8] =
-            [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8];
+        const NUMBERS: [Key; 9] =
+            [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
         let at = Self::TABS.iter().position(|(p, _)| *p == self).unwrap_or(0);
         let by = |n: usize| Self::TABS[(at + n) % Self::TABS.len()].0;
         let shift_ctrl = Modifiers::CTRL | Modifiers::SHIFT;
@@ -174,6 +177,8 @@ pub enum Fix {
     DownloadNgp,
     /// The Settings page with gvrc.de's car list open.
     DownloadCars,
+    /// The Circuit page, for a circuit the Drive page has selected.
+    Circuit,
 }
 
 impl Fix {
@@ -182,6 +187,7 @@ impl Fix {
             Fix::Settings => "Open Settings",
             Fix::DownloadNgp => "Download NGP 7.4.778",
             Fix::DownloadCars => "Download cars…",
+            Fix::Circuit => "Open Circuit",
         }
     }
 }
@@ -271,6 +277,9 @@ impl Form {
             return Some(issue);
         }
         let car = self.car()?;
+        if self.page == Page::Drive && self.is_circuit(self.map) {
+            return Some(Issue { text: "a circuit plays on the Circuit page".into(), fix: Some(Fix::Circuit) });
+        }
         if let Some(reason) = car.unavailable() {
             return Some(Issue { text: format!("{}: {reason}", car.name), fix: None });
         }
@@ -288,6 +297,7 @@ impl Form {
                 self.page = Page::Settings;
                 self.open_car_list();
             }
+            Fix::Circuit => self.page = Page::Circuit,
         }
     }
 
@@ -438,14 +448,17 @@ impl Form {
         self.stage_browser.open &= match self.stage_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
             car_browser::Target::Championship => self.page == Page::Championship,
+            car_browser::Target::Circuit => self.page == Page::Circuit,
         };
         self.car_browser.open &= match self.car_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
             car_browser::Target::Championship => self.page == Page::Championship,
+            car_browser::Target::Circuit => self.page == Page::Circuit,
         };
         ctx.root_ui(|root| {
             egui::CentralPanel::default().show(root, |ui| match self.page {
                 Page::Drive => self.drive_page(ui),
+                Page::Circuit => self.circuit_page(ui),
                 Page::Championship => self.championship_page(ui),
                 Page::School => self.school_page(ui),
                 Page::Replays => self.replays_page(ui),
@@ -632,10 +645,11 @@ mod tests {
         };
         let (ctrl, shift_ctrl) =
             (Modifiers::CTRL | Modifiers::COMMAND, Modifiers::CTRL | Modifiers::COMMAND | Modifiers::SHIFT);
-        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::School));
-        assert_eq!(press(Page::Drive, Key::Num4, ctrl), Some(Page::Setup));
-        assert_eq!(press(Page::Drive, Key::Num8, ctrl), Some(Page::Settings));
-        assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Championship));
+        assert_eq!(press(Page::Drive, Key::Num2, ctrl), Some(Page::Circuit));
+        assert_eq!(press(Page::Drive, Key::Num4, ctrl), Some(Page::School));
+        assert_eq!(press(Page::Drive, Key::Num5, ctrl), Some(Page::Setup));
+        assert_eq!(press(Page::Drive, Key::Num9, ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Circuit));
         assert_eq!(press(Page::Settings, Key::PageDown, ctrl), Some(Page::Drive));
         assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Replays, Key::PageUp, ctrl), Some(Page::Setup));

@@ -356,6 +356,8 @@ pub enum Target {
     Drive,
     /// The car the championship drives (`championship_page`).
     Championship,
+    /// The Circuit page's.
+    Circuit,
 }
 
 #[derive(Default)]
