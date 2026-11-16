@@ -5,27 +5,19 @@ use rbr_physics::math::vec::{clear_vec4, Vec3};
 
 use rbr_physics::mem::Mem;
 
-use super::{E01_VEC4_COPY_FROM, FLOAT3_LENGTH};
 use crate::rigid_body::{on_solids, with_solids};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-/// `E01Vec4::CopyFrom` of `src` to `dst` as a call at `sp` makes it, its eax (`dst`): direct on the pure host
-/// ([`Host::call_slot_word`]), counted as a run ([`Host::ran_direct`]); its binding makes no call and reads nothing of
-/// the stack but its argument, and its callers read none of the call's words (residue audit, notes/physics.md "Store
-/// seam"). Through the host elsewhere.
-pub(crate) fn copy_vec4(host: &dyn Host, mem: &mut Mem, sp: u32, dst: u32, src: u32) -> u32 {
-    if host.call_slot_word().is_none() {
-        return host.call_at(sp, E01_VEC4_COPY_FROM, dst, &[src]).eax;
-    }
+/// `E01Vec4::CopyFrom` of `src` to `dst` as a call makes it, its eax (`dst`), counted as a run ([`Host::ran_direct`]):
+/// its binding makes no call and reads nothing of the stack but its argument, and its callers read none of the call's
+/// words (residue audit, notes/physics.md "Store seam").
+pub(crate) fn copy_vec4(host: &dyn Host, mem: &mut Mem, dst: u32, src: u32) -> u32 {
     host.ran_direct();
     with_solids(host, mem, |s| layout::vec4_copy_from(s, dst, src))
 }
 
-/// `CFloat3::Length` of the vector at `vector` as a call at `sp` returns it, direct on the pure host as [`copy_vec4`].
-pub(crate) fn length(host: &dyn Host, mem: &Mem, sp: u32, vector: u32) -> f32 {
-    if host.call_slot_word().is_none() {
-        return host.call_at(sp, FLOAT3_LENGTH, vector, &[]).st0 as f32;
-    }
+/// `CFloat3::Length` of the vector at `vector` as a call returns it, run here as [`copy_vec4`].
+pub(crate) fn length(host: &dyn Host, mem: &Mem, vector: u32) -> f32 {
     host.ran_direct();
     Vec3::load(mem, vector).length3()
 }
@@ -57,65 +49,9 @@ pub(super) fn float3_length(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::float(f64::from(vector.length3()), 0))
 }
 
-/// thiscall on the 16-byte vector (`ecx`) with the other vector (`other*`); eax is the vector's address.
-pub(super) fn vec16_min(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vec16_min(&mut ctx.mem, r.ecx, r.stack[0]), 4))
-}
-
-/// thiscall, as `vec16_min`, with the lane maxima.
-pub(super) fn vec16_max(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vec16_max(&mut ctx.mem, r.ecx, r.stack[0]), 4))
-}
-
-/// thiscall on the vector `a` (`ecx`) with `(b*, out*)`: `out = a - b`; eax is `out`.
-pub(super) fn vec_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, out, ..] = r.stack;
-    Ok(Return::void(layout::vec3_sub(&mut ctx.mem, r.ecx, b, out), 8))
-}
-
-/// thiscall on the vector `a` (`ecx`) with `(scale, out*)`: `out = a * scale`; eax is `out`.
-pub(super) fn vec_add_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, c, out, ..] = r.stack;
-    Ok(Return::void(layout::vec3_add_sub(&mut ctx.mem, r.ecx, b, c, out), 12))
-}
-
-pub(super) fn vec_sub_dot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, out, d, ..] = r.stack;
-    let dot = layout::vec3_sub_dot(&mut ctx.mem, r.ecx, b, out, d);
-    Ok(Return::float_with_eax(r.ecx, dot as f64, 12))
-}
-
-pub(super) fn vec_cross_dot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, out, d, ..] = r.stack;
-    let dot = layout::vec3_cross_dot(&mut ctx.mem, r.ecx, b, out, d);
-    Ok(Return::float_with_eax(out, dot as f64, 12))
-}
-
-pub(super) fn vec_dot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [b, ..] = r.stack;
-    let dot = layout::vec3_dot(&ctx.mem, r.ecx, b);
-    Ok(Return::float_with_eax(r.ecx, dot as f64, 4))
-}
-
 pub(super) fn vec_cross(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [b, out, ..] = r.stack;
     Ok(Return::void(layout::vec3_cross(&mut ctx.mem, r.ecx, b, out), 8))
-}
-
-pub(super) fn vec_normalize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::vec3_normalize(&mut ctx.mem, r.ecx), 0))
-}
-
-/// thiscall `(out, s)`: `E33Vec4::Scaled` (0x4e0700), `out = this * s` over four lanes. Returns `out` (eax); pops 8.
-pub(super) fn e33_scaled(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, scale, ..] = r.stack;
-    layout::scaled(&mut ctx.mem, r.ecx, out, f32::from_bits(scale));
-    Ok(Return::void(out, 8))
-}
-
-pub(super) fn vec_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [scale, out, ..] = r.stack;
-    Ok(Return::void(layout::vec3_scale(&mut ctx.mem, r.ecx, f32::from_bits(scale), out), 8))
 }
 
 /// E33Vec4::MinMaxA (0x4e0ae0): thiscall on the pair with `(src, lo, hi)`, ret 0xc; eax is `hi`.
@@ -128,26 +64,4 @@ pub(super) fn min_max_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall on the vector (`ecx`), no arguments: `E01Vec4::Normalize` (0x43c6a0), in place. Eax is the vector.
 pub(super) fn vec4_normalize(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(layout::vec4_normalize(&mut ctx.mem, r.ecx), 0))
-}
-
-/// The w lane `E09Vec4::Sub` and `E21Vec3::Add` entered at `esp` store: the unwritten word of their scratch, which is
-/// [`crate::RESIDUE`] on the pure host.
-fn stale_lane(ctx: &Ctx, esp: u32) -> u32 {
-    crate::residue(ctx.host).unwrap_or_else(|| layout::stale_lane(&ctx.mem, esp))
-}
-
-/// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E09Vec4::Sub` (0x465da0). Eax is `out`.
-pub(super) fn vec4_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, b, ..] = r.stack;
-    let w = stale_lane(ctx, r.esp);
-    let eax = layout::vec4_sub_stale(&mut ctx.mem, r.ecx, out, b, w);
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall on `a` (`ecx`) with `(out, b)`, ret 8: `E21Vec3::Add` (0x4a19e0). Eax is `out`.
-pub(super) fn vec3_add(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [out, b, ..] = r.stack;
-    let w = stale_lane(ctx, r.esp);
-    let eax = layout::vec3_add_stale(&mut ctx.mem, r.ecx, out, b, w);
-    Ok(Return::void(eax, 8))
 }

@@ -38,7 +38,7 @@ pub(super) fn refresh(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 4))
 }
 
-/// The original calls `M3B900` makes, through the host (`mem` shares the emulator's memory).
+/// The original calls `M3B900` makes, through the host (`mem` shares the image).
 struct Refresh<'a> {
     mem: Mem,
     host: &'a dyn Host,
@@ -102,7 +102,7 @@ impl layout::GroundCalls for Ground<'_> {
         if !goes_direct(self.host, crate::tyre::holds_tyre(self.host, scratch)) {
             self.call(0x5326C0, scratch, &[]);
         }
-        crate::tyre::read_tyre(self.host, &self.mem, scratch, |t| t.state.effective_radius)
+        crate::tyre::read_tyre(self.host, scratch, |t| t.state.effective_radius)
     }
 
     fn table_lerp_pair(&mut self, wheel: u32) {
@@ -116,10 +116,9 @@ impl layout::GroundCalls for Ground<'_> {
     // The CRT's vector constructor and destructor iterators (the pure host's stand-ins, `Pure::vector_ctor`) run here
     // on the pure host: each element's call is placed as the stand-in places it, below its frame.
     fn ray_blocks_init(&mut self, rays: u32) {
-        if crate::skip_call(self.host, &mut self.mem, self.sp, &[rays, 0x6B0, 8, RAY_SEEDS, RAY_CLEAR]) {
-            let sp = (self.sp - 0x1000) & !0xf;
+        if self.sp != 0 {
             for i in 0..8 {
-                crate::collision::ray_seeds_at(self.host, &mut self.mem, sp, rays + i * 0x6B0);
+                crate::collision::ray_seeds_at(self.host, &mut self.mem, rays + i * 0x6B0);
             }
             return;
         }
@@ -127,10 +126,9 @@ impl layout::GroundCalls for Ground<'_> {
     }
 
     fn ray_blocks_fini(&mut self, rays: u32) {
-        if crate::skip_call(self.host, &mut self.mem, self.sp, &[rays, 0x6B0, 8, RAY_CLEAR]) {
-            let sp = (self.sp - 0x1000) & !0xf;
+        if self.sp != 0 {
             for i in (0..8).rev() {
-                crate::collision::ray_clear_at(self.host, &mut self.mem, sp, rays + i * 0x6B0);
+                crate::collision::ray_clear_at(self.host, &mut self.mem, rays + i * 0x6B0);
             }
             return;
         }
@@ -180,12 +178,10 @@ pub fn wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     // aligned `ebp`, which is the entry's `esp - 4`).
     let frame = ((r.esp - 4) & !0xF) - 0x290;
     let dt = f32::from_bits(r.stack[0]);
-    let mut calls = Step { mem: ctx.mem.clone(), host: ctx.host, wheel: r.ecx };
+    let mut calls = Step { mem: ctx.mem.clone(), host: ctx.host };
     let slip = crate::ngp::step_slip(ctx)?;
     // The frame's `+0x6c` is read before anything writes it (lane 3 of the two matrix rows' copies).
-    if let Some(lane) = crate::residue(ctx.host) {
-        ctx.mem.set_u32(frame + 0x6C, lane);
-    }
+    ctx.mem.set_u32(frame + 0x6C, crate::RESIDUE);
     on_wheels(ctx, |m| layout::wheel_step(m, &mut calls, r.ecx, dt, frame, slip));
     Ok(Return::void(0, 4))
 }
@@ -204,8 +200,6 @@ fn goes_direct(host: &dyn Host, held: bool) -> bool {
 struct Step<'a> {
     mem: Mem,
     host: &'a dyn Host,
-    /// The wheel, in `esi` through the body.
-    wheel: u32,
 }
 
 impl Step<'_> {
@@ -214,7 +208,7 @@ impl Step<'_> {
     /// ([`Host::ran_direct`]). Their bindings make no call and read nothing of the stack but their arguments, and the
     /// wheel step reads none of the words the host call leaves below its frame (`notes/physics.md` "Store seam").
     fn on_tyre<T>(&self, scratch: u32, run: impl FnOnce(&mut TyreView, TyreId) -> T) -> Option<T> {
-        let typed = self.host.typed()?;
+        let typed = self.host.typed();
         let mut tyres = typed.car.tyres.borrow_mut();
         let id = tyres.id_of(scratch)?;
         self.host.ran_direct();
@@ -272,28 +266,28 @@ impl layout::StepCalls for Step<'_> {
     // The vector callees (`collision/vectors.rs`' bindings, which make no call) run here on the pure host, on the
     // solids' store (their pointers may point into a solid: the car's angular velocity, the wheel's position).
     fn clear_vec4(&mut self, at: u32, sp: u32) {
-        if crate::skip_call(self.host, &mut self.mem, sp, &[]) {
+        if sp != 0 {
             return with_solids(self.host, &mut self.mem, |s| s.store_row(at, clear_vec4()));
         }
         self.on(sp, 0x465D80, at, &[]);
     }
 
     fn copy_vec4(&mut self, dst: u32, src: u32, sp: u32) {
-        if crate::skip_call(self.host, &mut self.mem, sp, &[src]) {
+        if sp != 0 {
             return with_solids(self.host, &mut self.mem, |s| s.store_row(dst, s.row(src)));
         }
         self.on(sp, 0x43C5B0, dst, &[src]);
     }
 
     fn cross(&mut self, a: u32, b: u32, out: u32, sp: u32) {
-        if crate::skip_call(self.host, &mut self.mem, sp, &[b, out]) {
+        if sp != 0 {
             return with_solids(self.host, &mut self.mem, |s| s.store_vec3(out, s.vec3(a).cross3(s.vec3(b))));
         }
         self.on(sp, 0x43C630, a, &[b, out]);
     }
 
     fn scale_vec4(&mut self, src: u32, factor: f32, out: u32, sp: u32) {
-        if crate::skip_call(self.host, &mut self.mem, sp, &[factor.to_bits(), out]) {
+        if sp != 0 {
             return with_solids(self.host, &mut self.mem, |s| s.store_row(out, s.row(src).scale(factor)));
         }
         self.on(sp, 0x473CD0, src, &[factor.to_bits(), out]);
@@ -356,8 +350,8 @@ impl layout::StepCalls for Step<'_> {
         }
     }
 
-    fn init_sub_block(&mut self, this: u32, sp: u32) {
-        crate::car_body::init_sub_block(self.host, &mut self.mem, sp, this);
+    fn init_sub_block(&mut self, this: u32, _sp: u32) {
+        crate::car_body::init_sub_block(self.host, &mut self.mem, this);
     }
 
     fn point_velocity(&mut self, body: u32, point: u32, out: u32, sp: u32) {
@@ -442,7 +436,7 @@ impl layout::StepCalls for Step<'_> {
 
     fn emit_tyre_particles(&mut self, multi_tire: u32, sig: u32, sp: u32) {
         // 0x53D0D0, or NGP's 0x1005f8a0, which reads the wheel from esi
-        self.host.call_at_esi(sp, crate::ngp::Call::TyreParticles.address(), multi_tire, self.wheel, &[sig]);
+        self.host.call_at(sp, crate::ngp::Call::TyreParticles.address(), multi_tire, &[sig]);
     }
 }
 

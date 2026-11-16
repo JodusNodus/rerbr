@@ -486,22 +486,14 @@ impl CarSolids {
 
     /// The rigid store over `mem` with these solids held.
     pub fn view<'a>(&'a self, mem: &'a mut Mem) -> SolidView<'a> {
-        SolidView { mem, solids: Some(self) }
+        SolidView { mem, solids: self }
     }
 }
 
-/// The rigid body's store over held solids: a word their tables name is the typed state's, any other the image's;
-/// without solids (`image`) every word is the image's.
+/// The rigid body's store over held solids: a word their tables name is the typed state's, any other the image's.
 pub struct SolidView<'a> {
     mem: &'a mut Mem,
-    solids: Option<&'a CarSolids>,
-}
-
-impl<'a> SolidView<'a> {
-    /// The store with every word on the image (the per-call path).
-    pub fn image(mem: &'a mut Mem) -> Self {
-        SolidView { mem, solids: None }
-    }
+    solids: &'a CarSolids,
 }
 
 /// The view's word accesses resolve a held solid's words too (a pointer a caller passes may point into a solid); the
@@ -544,42 +536,36 @@ impl Raw for SolidView<'_> {
 impl SolidWords for SolidView<'_> {
     #[inline]
     fn image(&mut self) -> Option<&mut Mem> {
-        self.solids.is_none().then_some(&mut *self.mem)
+        None
     }
 
     #[inline]
     fn image_ref(&self) -> Option<&Mem> {
-        self.solids.is_none().then_some(&*self.mem)
+        None
     }
 
     #[inline]
     fn word(&self, at: u32) -> u32 {
-        self.solids.map_or_else(|| self.mem.u32(at), |s| s.word(self.mem, at))
+        self.solids.word(self.mem, at)
     }
 
     #[inline]
     fn set_word(&mut self, at: u32, value: u32) {
-        match self.solids {
-            Some(s) => s.set_word(self.mem, at, value),
-            None => self.mem.set_u32(at, value),
-        }
+        self.solids.set_word(self.mem, at, value)
     }
 
     #[inline]
     fn words<const N: usize>(&self, at: u32) -> [u32; N] {
-        self.solids.map_or_else(|| self.mem.u32s(at), |s| s.words(self.mem, at))
+        self.solids.words(self.mem, at)
     }
 
     #[inline]
     fn set_words4(&mut self, at: u32, words: [u32; 4]) {
-        match self.solids {
-            Some(s) => s.set_words4(self.mem, at, words),
-            None => self.mem.set_words4(at, words),
-        }
+        self.solids.set_words4(self.mem, at, words)
     }
     #[inline]
     fn held(&self, this: u32) -> Option<&HeldSolid> {
-        self.solids?.held(this)
+        self.solids.held(this)
     }
 }
 
@@ -599,105 +585,6 @@ pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
             return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
         }
         bytes += len;
-    }
-    Ok(bytes)
-}
-
-/// The rigid body's host-free entries in a row on the solid at `this`: the window start, the point velocity of its
-/// position, the row transforms, folds and quaternion loops on rows at `scratch` (seeded from its own vectors), the
-/// velocity clamp along its previous angular velocity (a pointer into the solid) and the scratch accumulate; the
-/// entries' return words.
-fn entries<S: crate::rigid_body::store::RigidStore>(store: &mut S, this: u32, scratch: u32) -> Vec<u32> {
-    use super::{solid_window_start, POSITION, PREV_ANGULAR_VELOCITY};
-    use crate::rigid_body::layout as rb;
-    let mut out = Vec::new();
-    solid_window_start(store, this);
-    rb::point_velocity(store, this, this + POSITION, scratch);
-    for (k, from) in [0x190, 0x1c0, 0x230, 0x250].into_iter().enumerate() {
-        let row = store.row(this + from);
-        store.store_row(scratch + 0x10 + 0x10 * k as u32, row);
-    }
-    let rows = scratch + 0x10;
-    rb::transform_body_rows(store, this, rows, 2);
-    rb::transform_body_rows3(store, this, rows + 0x20, 2);
-    out.push(rb::rows_to_body(store, this, rows, 4));
-    rb::fold_body_rows(store, this, rows, 2);
-    rb::fold_body_rows_reordered(store, this, rows + 0x20, 2);
-    rb::quat_plus_body_rows(store, this, rows, 1);
-    rb::quat_diff_body_rows(store, this, rows + 0x10, 1);
-    rb::quat_transform_body_rows(store, this, rows + 0x20, 1);
-    rb::body_rotate_rows(store, this, rows + 0x30, 1);
-    rb::body_fold_rows_by_columns(store, this, rows, 1);
-    rb::body_fold_rows_by_rows(store, this, rows + 0x10, 1);
-    out.push(rb::scale_add_rows(store, this, rows + 0x20, 2));
-    out.push(rb::clamp_velocity_along(store, this, this + PREV_ANGULAR_VELOCITY, 0.5, 0.25));
-    rb::scratch_accumulate(store, this, rows, 0, &mut NoFlush).expect("no flush without the bit");
-    out
-}
-
-/// The hinged body's host-free entries in a row on the body at `this` (`entities::hinge_step`): the rotation block of
-/// its angle, both limits' residuals, their sum and the end stops (their flag call a no-op); the entries' answers.
-fn hinge_entries<S: crate::entities::store::HingeStore>(store: &mut S, this: u32) -> Vec<u32> {
-    use crate::entities::hinge_step as step;
-    struct NoFlag;
-    impl crate::entities::hinge_stops::Calls for NoFlag {
-        fn mark_dirty(&mut self) {}
-    }
-    let block = step::hinge_rotation(store, this);
-    let mut out: Vec<u32> = block.rows.iter().flatten().map(|v| v.to_bits()).collect();
-    for idx in 0..2 {
-        let torque = step::hinge_limit_residual(store, this, idx).torque.to_bits();
-        out.extend([torque as u32, (torque >> 32) as u32]);
-    }
-    out.push(step::hinge_limit_sum(store, this).to_bits());
-    out.push(step::limit_update_at(store, this, &mut NoFlag));
-    out
-}
-
-/// The scratch accumulate's flush, never called (the entries pass no gate bit).
-struct NoFlush;
-
-impl crate::rigid_body::scratch::FlushHost for NoFlush {
-    fn flush(&mut self) -> Result<(), crate::rigid_body::host::HostUnavailable> {
-        unreachable!("the differential's gate has no flush bit")
-    }
-}
-
-/// The scratch's bytes the entries write.
-const SCRATCH_BYTES: u32 = 0x50;
-
-/// The rigid body's host-free entries ([`entries`]) on each of the car's solids, and a hinged body's
-/// ([`hinge_entries`]), per call on `per_call` (every word on the image) and on the solids held in typed storage over
-/// the run on `held` (lifted before, lowered after), two copies of one image; `scratch` is free memory of both.
-/// Compares every byte of each body (its whole object) and the scratch, and the entries' return words: the bytes
-/// compared, or the first that differs.
-pub fn differential(per_call: &mut Mem, held: &mut Mem, car: u32, scratch: u32) -> Result<usize, String> {
-    let solids = CarSolids::lift(held, car);
-    let mut bytes = 0;
-    for s in &solids.solids {
-        let mut a = entries(per_call, s.at, scratch);
-        let mut b = entries(&mut solids.view(held), s.at, scratch);
-        if s.own.as_ref().is_some_and(|o| std::ptr::eq(o.table, &HINGED_OWN)) {
-            a.extend(hinge_entries(per_call, s.at));
-            b.extend(hinge_entries(&mut solids.view(held), s.at));
-        }
-        if a != b {
-            return Err(format!("{}: the entries' returns differ: {a:x?} against {b:x?}", s.name));
-        }
-        solids.lower(held);
-        for (at, len, what) in [(s.at, s.size, "solid"), (scratch, SCRATCH_BYTES, "scratch")] {
-            let (want, got) = (per_call.read(at, len as usize), held.read(at, len as usize));
-            if let Some(i) = want.iter().zip(&got).position(|(x, y)| x != y) {
-                let fields = || Solid::FIELDS.iter().chain(s.own_fields());
-                let named = fields().find(|f| (f.at..f.at + f.len).contains(&(i as u32)));
-                let field = named.filter(|_| what == "solid").map_or("", |f| f.name);
-                return Err(format!(
-                    "{} {what} +{i:#x} {field} differs: per call {:#04x}, held {:#04x}",
-                    s.name, want[i], got[i]
-                ));
-            }
-            bytes += len as usize;
-        }
     }
     Ok(bytes)
 }

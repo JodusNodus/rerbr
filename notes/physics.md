@@ -83,16 +83,8 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   the int64).
 - Constants keep the exe's bit patterns (some pools differ from the literal, e.g. 0x3d4cccd0 for 0.05). A punned
   word (float bits in an int) stays `u32`; build floats with `f32::from_bits`.
-- Default NaN sign: an arm64 host makes `0x7fc00000` where the original wrote `0xffc00000`. Tests accept "NaN for
-  NaN" only at named sites: `tyre_vectors` (`same_words`: solvers, `patch_forces`, `sliding`, `contact_patch`,
-  `solve_forces`, `hold`, `heat_step`, `relax_sector`, `relax`, `friction_curve`, `write_output_block`),
-  `car_body_vectors` (`same_word`: `to_quat`, `steering_ffb`), `entities_solve` (`+0x624`), `entities_slip`,
-  `spring_damper_vectors` (st0 returns, `check_spring_windows`), `engine_driveline_vectors` (`check_st0`,
-  `check_windows_nan`, `sim_e660` for `torque`, which a NaN `load_d` makes NaN: x86_64 writes `0xffc00000` where the
-  record holds `0x7fc00000`), `wheel_vectors` (`edge_force`, sign only). Recorded st0 NaNs carry no sign
-  (`harness/vcu_vectors.py`). `harness/rust_step.py` excludes words NaN in both runs that differ only in bit 31. A
-  new site gets its own entry, never a blanket tolerance. The vector targets pass on arm64 (CI's macOS job) and on
-  x86_64.
+- Default NaN sign: an arm64 host makes `0x7fc00000` where the original wrote `0xffc00000`; a comparison accepts
+  "NaN for NaN" only at a named site, never as a blanket tolerance.
 - Stack residue is behaviour. Callees that leave arguments on the stack feed the next call: the slot-12 identity
   getter (0x519c00, `mov eax, ecx; ret`) keeps its pushes for the following `ComposeA`; `MB560` (0x51b560) and
   `ComposeA` (0x51b4c0) are thiscall `ret 0xc` with three arguments, some callers reuse earlier pushes, and
@@ -104,11 +96,10 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   `StepForward`'s slot-0x94 (esp-60 of `E38Ops::M_C1A0`, 0x4fc1a0) and slot-0x74. Not audited: `--dispatch
   direct`, other drives.
 - Residue rule (decision, row 15j): a stack word the original reads without anything having written it in the step
-  is `rbr_hybrid::RESIDUE` (0) on the pure host, held and per call, both dispatches (`residue(host)`; the twins
-  compare every byte, so both sides take it); the emulator and the vectors keep the word their stack holds. 0 because
-  a lane of 0.0 makes no NaN, infinity or denormal in lanewise arithmetic. This changes only words that carry
-  garbage. `residue-audit` builds take a NaN (`0xffbadbad`) and log each site's first read: a compared word that
-  depends on a residue word then differs in the trace. Decided words (drive2 attempt 5, aids off, on and `--damage
+  is `rbr_hybrid::RESIDUE` (0), held and per call. 0 because a lane of 0.0 makes no NaN, infinity or denormal in
+  lanewise arithmetic. This changes only words that carry garbage. The `residue-audit` feature (removed 2026-11-16
+  with the host's per-call answers; in git before it) gave the word a NaN (`0xffbadbad`) and logged each site's first
+  read: a compared word that depended on a residue word then differed in the trace. Decided words (drive2 attempt 5, aids off, on and `--damage
   realistic`, traces word by word against the build before and against the audit build):
   - `CPassenger::Step`'s walk point, lane 3 (`physics_core/passenger_step.rs`): `MB560` copies it to car `+0x8ec`
     (`STALE_CAR`), which is 0 in the recording too, so the word now compares equal; no other word changes.
@@ -212,7 +203,7 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   computed addresses in the original's stack frames (detector walks, `notify`, `prof_calls`, `collide_init`, detach
   events, `build_hinge_axes`); rigid_body wake, sleep, `Vf158` (`FilingHost`); NTweak apply and parse; the collision
   event pool and free list, grid construction, `brake_wall_contact`.
-- Mem-direct dispatch (`--dispatch direct`, the live default; `pure` is the fact-check's host): a call within the
+- Mem-direct dispatch (the pure host's only dispatch since 2026-11-16): a call within the
   `IN_PLACE` subsystems to a leaf (`pure/leaves.rs`, from `scripts/pure_leaves.py`) or a binding (`Pure::call_plain`)
   runs as a plain call when it passes exactly the words the callee pops (`Pure::stack_words`); watched emits and tyre
   steps stay host calls (`NOT_DIRECT`); `Host::call_direct` skips the words where the callee reads only its arguments.
@@ -222,10 +213,9 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 - `store::typed::Typed`: `car: CarTyped` (`struts`, `vcu`, `drive`, `engine`, `tyres`, `wheels`, `own`, `collision`),
   `core` (one per world), `stage` (an `Arc`, one per loaded stage), `defs` (read only) and `solids` (with the hinged
   and mounted bodies' own words).
-- A step holds it (`Pure::typed`, `Pure::typed_solids`, both on by default); the bindings reach it through
-  `Host::typed()`. The stage is lifted once (`OnceLock`), the
+- A step holds it, solids included; the bindings reach it through `Host::typed()`. The stage is lifted once (`OnceLock`), the
   definitions every step (setup, respawn and restart write them between steps); neither is lowered.
-- Across steps (`Pure::typed_across_steps`, on by default; off, a step lifts before and lowers after): a step lifts only when
+- Across steps: a step lifts only when
   nothing is held and leaves it held (stale); `Pure::image()` lowers a stale state (it stays held), `image_mut()`
   lowers and drops it (the next step lifts the writer's words), `snapshot` lowers, `restore` drops; the runs between
   steps (`notify_a_vector`, `Playback::emit`, `reset_strut_dampers`) run on the held state and mark it stale. A held
@@ -235,9 +225,9 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
   Per-step and per-frame readers (`layout::{car_state, accumulate_tyre_terms, drive_gear}`, live `poll`, the wheel force,
   the picture's strut pointers) read `Pure::with_held` or `Pure::unheld_image` and do not lower: drive2 lowers in the
   step 2 -> 0, instructions -5.6 %, 9221 -> 2951 bytes; live one lower per answer (picture, dash, sound stay on `image()`).
-- Per call (the hybrid check's emulator, the vectors, `typed` off) the views run on the image: the struts, VCU, tyres
-  and drive lift and lower around the call (`with_strut`, `with_vcu`, `with_tyre`, `with_drive`), the rest read each
-  field at its address. Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
+- The bindings always run on typed state (`Host::typed`). The boot's `CCar::UpdateA720` builds what the lift reads
+  (fade pairs, setups, frames), so it runs under `Pure::construct`: each binding frame that asks lifts the typed state
+  and lowers it on the frame's exit (`lift_on_demand`, `release_scoped`). Views compose: `with_defs`, `with_core` (the car's clock, `CarFields: CoreFields`),
   `with_solids` (car, wheel, collision, core); an address a view does not hold (another car, a prop) is the image's.
 - Readers outside the bindings during a step (NGP's wrappers, the hinged and mounted bodies, `CCar::ToWorld`) use
   `rbr_hybrid`'s accessors: `vcu::unit_of`, `tyre::read_tyre`, `wheel::read_wheel`, `engine_driveline::on_drive_in`,
@@ -369,8 +359,8 @@ functions are generic over the trait (`fn step<S: TyreStore>`), never `dyn`.
 
 ### Per subsystem
 
-Each passes drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
-hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence" adds the rest.
+Each passed drive2 attempt 5 held (84084/84084), `--twin typed` (aids off and on), poison, `round_trip` on the 40-43
+snapshots and (until its retirement) the hybrid gate 13/13; "Evidence" adds the rest.
 
 | Typed state (storage) | What is typed | On the image, why | Evidence |
 | --- | --- | --- | --- |
@@ -408,15 +398,12 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
 
 ### Checks
 
-- `scripts/gate.sh --typed`: twin-typed and twin-aids (drive2 with `--twin typed`, aids off and on: held against per
-  call after each of 84084 steps, round trips and stage queries equal) and poison (`rbr-hybrid/poison`: held words
-  poisoned, definitions watched, held across steps); twin-across (`--twin across`: held over each step against held
-  across steps); twin-direct (`--twin mem-direct`: the direct dispatch, where calls skip their stack words, against
-  the pure dispatch; residue readers show there first). `--twin mem` checks the `Mem` path the same way. The twin
-  and the recording compare read the images through `Pure::image`.
+- `scripts/gate.sh`: drive2, poison (`rbr-hybrid/poison`: held words poisoned, definitions watched, held across
+  steps) and the drive with every aid on (no stop). The twins (`--twin typed|across|mem|mem-direct`: a second playback
+  per call, per step or on the fact-check dispatch, compared after every step) and the fact-check dispatch were
+  removed with the per-call checks (2026-11-16); the recording compare reads the image through `Pure::image`.
 - `round_trip` (`rbr-hybrid` binary, snapshots): lower∘lift of each object, stage and definition answers against the
-  image, the differentials (host-free entries in a row per call against held, every byte); the chain tests
-  (`the_typed_*_over_a_chain_keeps_the_per_call_bytes`) over vectors.
+  image.
 - Shadow survey (instrumented build, not in the tree): held words written through and read from the image, every
   access to one on the poisoned image logged with its bindings, so all unrouted readers at once.
 
@@ -434,10 +421,10 @@ hybrid snapshots and the hybrid gate 13/13 (which runs them per call); "Evidence
   the detach path's `MoveToCell` host call (hinge, on held lists through the binding), and `E45_M40C0`'s frame words
   and `E45_M46A0`'s result object, which the detector and wheel-probe frames read (row 8: the frames as locals).
 - The `.col` tree, mesh grids and water meshes; props (lift on wake, lower on sleep).
-- State typed across steps on by default (after the standalone and twin read through the gate); `--twin` in the live
-  run; more direct calls (the host calls above).
+- More direct calls (the host calls above).
 - The pure step without its stack-frame image; definitions built from parsed files; the image path removed from the
-  game (per call stays for the hybrid check and the vectors).
+  game. The boot's `CCar::UpdateA720` still constructs on the image (`Pure::construct`) until the boot builds the
+  typed state itself.
 
 Open decisions, with the defaults taken until decided:
 
@@ -612,11 +599,10 @@ with no declines (253 calls, 2026-10-20).
 ## Coverage gaps
 
 The reference drive (tanner-corolla, damage 1) reaches 792 of 2,651 physics functions; unreached: damage and crash
-paths (wall penetration, retire, detach, `Impulse640`), VCU aids (off on that car; `harness/vcu_vectors.py --fuzz`),
+paths (wall penetration, retire, detach, `Impulse640`), VCU aids (off on that car),
 load and teardown (`tests/load_*.rs`), snow and tarmac data, replay and ghost paths, NTweak menus, about 170
-functions with no callers. Branches no drive reaches get fuzzed direct-call records (`harness/vector_specs/`), else
-the port is `partial` in `ports.csv`. A binding no drive reaches is `identical` in `bound.csv` once its records take
-every conditional jump both ways (`harness/branch_cover.py`), apart from the original's traps: a signal index at or
+functions with no callers. Branches no recorded drive reaches are not checked (the per-call records were retired
+2026-11-16). The original's traps: a signal index at or
 past 0x20 (`CMultiSignal1::Emit`, int3) and a drive-line index at or past the count (`CDriveLine::LerpAt`, int3;
 `Split17C`, `Vf98x`, `Test7910` decline there). Callees a recipe must steer (the vote's miss, slot 36 clearing
 `+0x274` in `Vf180`) return at once without running in a third of the calls (`proofs_respawn.py`).

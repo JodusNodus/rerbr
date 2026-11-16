@@ -105,7 +105,6 @@ fn a_call_with_no_binding_stops_with_its_address_and_caller() {
     // Through a trampoline, the stop is the method it leads to.
     pure.image_mut().set_u32(CONN + 0x14, UNBOUND);
     assert_eq!(stop_of(&pure, TRAMPOLINE, CONN), unbound);
-    assert_eq!(uncovered(pure.image(), TRAMPOLINE, CONN, &[1]), Some(UNBOUND));
 }
 
 #[test]
@@ -136,7 +135,6 @@ fn a_call_runs_below_its_caller_with_the_return_slot_and_arguments() {
     assert_eq!(call(&pure, TRAMPOLINE, CONN, &[0x1234]).eax, CONN);
     let sp = (0x11ff0 - 0x1000) & !0xf;
     assert_eq!((mem.u32(sp), mem.u32(sp + 4)), (CALL_RET, 0x1234));
-    assert_eq!(uncovered(pure.image(), TRAMPOLINE, CONN, &[0x1234]), None);
 }
 
 #[test]

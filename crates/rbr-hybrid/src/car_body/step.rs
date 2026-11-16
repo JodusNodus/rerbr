@@ -13,10 +13,11 @@ use rbr_physics::math::vec::{Vec3, Vec4};
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{
-    car_calls, Car, C, DRIVE_STEP, INDEX_LIMIT, SEND, SLOT_RECEIVE, SNAP_9360, STEP_ENGINE_NAME, STEP_ENGINE_SAMPLE,
+    car_calls, car_calls_at, Car, C, DRIVE_STEP, INDEX_LIMIT, SEND, SLOT_RECEIVE, STEP_ENGINE_NAME, STEP_ENGINE_SAMPLE,
 };
-use super::on_car;
+use super::{on_car, on_car_in, Frame};
 use crate::engine_driveline::{E01LOG, SIGNALS};
+use crate::enter;
 use crate::entities::{Op, REMOVE_EXCLUSION, SIM_FD00};
 use crate::physics_core::{MOUNTED_VF6C, PASSENGER_STEP};
 use crate::rigid_body::{DRIVE, E43VF6C, E46_IMPULSE640};
@@ -56,7 +57,7 @@ impl<S: CarStore> ControlsCalls<S> for Car<'_> {
     }
 
     fn snapshot(&mut self, _mem: &mut S, car: u32) {
-        self.host.call(SNAP_9360, car, &[]);
+        snapshot_at(self.host, &mut self.mem, 0, car);
     }
 }
 
@@ -97,11 +98,18 @@ impl Receive for Receivers<'_> {
     }
 }
 
-/// thiscall, no args, `ret 0`: `CCar::Snap9360` (0x4e9360), the animated replay's car state (`layout::snapshot`).
-pub(super) fn snapshot(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    on_car(ctx, |m| layout::snapshot(m, &mut calls, r.ecx, r.esp));
-    Ok(Return::void(0, 0))
+/// `CCar::Snap9360` (0x4e9360, thiscall, no args), the animated replay's car state (`layout::snapshot`), run on its entry
+/// `esp`.
+fn snapshot_body(host: &dyn Host, mem: &mut Mem, esp: u32, car: u32) {
+    let frame = Frame::new(host, esp);
+    let mut calls = car_calls_at(&frame, mem, esp);
+    on_car_in(&frame, mem, |m| layout::snapshot(m, &mut calls, car, esp));
+}
+
+/// `Snap9360` on `car` as the host's call at `sp`.
+fn snapshot_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32) {
+    let esp = enter(host, mem, sp, &[]);
+    snapshot_body(host, mem, esp, car);
 }
 
 impl<S: CarStore> layout::SnapshotCalls<S> for Car<'_> {
@@ -111,7 +119,7 @@ impl<S: CarStore> layout::SnapshotCalls<S> for Car<'_> {
 
     fn emit_replay_state(&mut self, _mem: &mut S, sp: u32, emitter: u32, payload: u32) {
         // The payload's first 16 bytes are not written.
-        crate::fill_residue(self.host, &mut self.mem, payload, 4);
+        crate::fill_residue(&mut self.mem, payload, 4);
         self.host.call_at(sp, 0x4e85b0, emitter, &[payload]);
     }
 }
@@ -177,7 +185,6 @@ const DRIVE_THUNK: u32 = 0x50A4F0;
 const TIMEKEEPER: u32 = 0x40;
 const TIMEKEEPER_RECORD: u32 = 0x4A0540;
 const TIMEKEEPER_UPDATE: u32 = 0x4A0320;
-const UPDATE_9AF0: u32 = 0x4E9AF0;
 const EMIT_POSITION: u32 = 0x4E8B30;
 const EMIT_MRR: u32 = 0x4E8BF0;
 /// The emitters' offsets on the signal global (the asm's `add ecx, ...`).
@@ -204,7 +211,7 @@ impl Car<'_> {
     fn payload(&mut self, words: &[u32]) -> u32 {
         let at = self.scratch + PAYLOAD;
         // Word 0 is the emitter's pointer slot: not written.
-        crate::fill_residue(self.host, &mut self.mem, at, 1);
+        crate::fill_residue(&mut self.mem, at, 1);
         for (k, word) in words.iter().enumerate() {
             self.mem.set_u32(at + 4 + 4 * k as u32, *word);
         }
@@ -328,7 +335,7 @@ impl<S: CarStore> StepCalls<S> for Car<'_> {
     }
 
     fn check_retire(&mut self, _mem: &mut S, car: u32, v: u32) {
-        self.host.call(UPDATE_9AF0, car, &[v]);
+        check_retire_at(self.host, &mut self.mem, 0, car, v);
     }
 
     fn emit_position(&mut self, mem: &mut S, payload: [u32; 5]) {
@@ -365,29 +372,26 @@ pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     crate::ngp::only()?;
     let mut calls = car_calls(ctx, r);
     let image = ctx.mem.clone();
-    let residue = crate::residue(ctx.host);
+    let residue = Some(crate::RESIDUE);
     on_stage(ctx.host, &image, |line| {
         on_car(ctx, |m| layout::run_countdown(m, line, &mut calls, r.ecx, r.esp, residue))
     });
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(a, b)`, `ret 8`: `CCar::Split17C` (0x4e5530). Eax is `b`, the normalized vector (`Normalize` returns it).
-pub(super) fn split_17c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, ..] = r.stack;
-    crate::ngp::only()?;
-    let image = ctx.mem.clone();
-    on_stage(ctx.host, &image, |line| on_car(ctx, |m| layout::drive_line_sample(m, line, r.ecx, a, b)));
-    Ok(Return::void(b, 8))
+/// `CCar::Sampler54A0` (thiscall `(a, b, c)`, 0x4e54a0), run on its entry `esp`. The car is not read; the result is the
+/// vote's 1 or 0. The probe `a` is the car's position for `MotionProbe` (`car + 0x140`): read through the car's store,
+/// the held solid's.
+fn vote_probe_body(host: &dyn Host, mem: &mut Mem, esp: u32, [a, b, c]: [u32; 3]) -> u32 {
+    let frame = Frame::new(host, esp);
+    let mut calls = car_calls_at(&frame, mem, esp);
+    on_car_in(&frame, mem, |m| layout::vote_probe(m, &mut calls, esp, a, b, c))
 }
 
-/// thiscall `(a, b, c)`, `ret 0xc`: `CCar::Sampler54A0` (0x4e54a0). The car is not read; eax is the vote's 1 or 0. The
-/// probe `a` is the car's position for `MotionProbe` (`car + 0x140`): read through the car's store, the held solid's.
-pub(super) fn vote_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, c, ..] = r.stack;
-    let mut calls = car_calls(ctx, r);
-    let hit = on_car(ctx, |m| layout::vote_probe(m, &mut calls, r.esp, a, b, c));
-    Ok(Return::void(hit, 0xc))
+/// `Sampler54A0` as the host's call at `sp`.
+pub(super) fn vote_probe_at(host: &dyn Host, mem: &mut Mem, sp: u32, args: [u32; 3]) -> u32 {
+    let esp = enter(host, mem, sp, &args);
+    vote_probe_body(host, mem, esp, args)
 }
 
 impl<S: CarStore> layout::VoteCalls<S> for Car<'_> {
@@ -396,13 +400,6 @@ impl<S: CarStore> layout::VoteCalls<S> for Car<'_> {
         let target = mem.u32(mem.u32(obj));
         self.host.call_at(sp, target, obj, &[probe_a, probe_b, raw]).eax
     }
-}
-
-/// thiscall `(v)`, `ret 4`: `CGhostCarManager::SetPlayback` (0x492e90), the respawn signal's receiver of the ghost
-/// manager (`[this + 0x96340] = 1`).
-pub(super) fn ghost_set_playback(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    ctx.mem.set_u32(r.ecx + 0x9_6340, 1);
-    Ok(Return::void(0, 4))
 }
 
 /// thiscall `(sel, sample)`, `ret 8`: `CCar::S184` (0x4e5270), the car's slot 97 (`layout::respawn_pose`).
@@ -481,7 +478,8 @@ impl RetireCheckCalls for Car<'_> {
     }
 
     fn flow_holds(&mut self, obj: u32) -> u32 {
-        self.host.call(FLOW_CHECK, obj, &[]).eax
+        crate::enter(self.host, &mut self.mem, 0, &[]);
+        self.mem.flow_holds(obj)
     }
 
     fn blocked(&mut self, car: u32) -> u32 {
@@ -489,7 +487,7 @@ impl RetireCheckCalls for Car<'_> {
     }
 
     fn assist(&mut self, car: u32, words: [u32; 3]) {
-        self.host.call(EMIT_DF0, car, &words);
+        super::assist::assist_at(self.host, &mut self.mem, 0, car, words);
     }
 
     fn emit_retire(&mut self, obj: u32, code: u32) {
@@ -499,7 +497,8 @@ impl RetireCheckCalls for Car<'_> {
     }
 
     fn damage_test(&mut self, obj: u32) -> u32 {
-        self.host.call(TEST_3B20, obj, &[]).eax
+        crate::enter(self.host, &mut self.mem, 0, &[]);
+        car::damage::drivable(&self.mem, obj) as u32
     }
 
     fn drive_test(&mut self, obj: u32) -> u32 {
@@ -512,7 +511,7 @@ impl RetireCheckCalls for Car<'_> {
 
     fn motion_probe(&mut self, car: u32) -> (u32, u32) {
         let at = self.scratch + SEND;
-        let ret = self.host.call(MOTION_PROBE, car, &[at]).eax;
+        let ret = super::members::motion_probe_at(self.host, &mut self.mem, 0, car, at);
         (ret, self.mem.u32(at))
     }
 
@@ -525,17 +524,19 @@ impl RetireCheckCalls for Car<'_> {
 }
 
 const TIMER_GAP: u32 = 0x4A0290;
-const FLOW_CHECK: u32 = 0x566640;
 pub(super) const SLOT_S8C: u32 = 0x8C;
-pub(super) const EMIT_DF0: u32 = 0x4E8DF0;
-const TEST_3B20: u32 = 0x4EC0D0;
 const TEST_4B0: u32 = 0x504840;
 const TEST_690: u32 = 0x50ECF0;
-pub(super) const MOTION_PROBE: u32 = 0x4E7730;
 
-/// thiscall `(arg)`: `CCar::Update9AF0`, the car's per-step signal emitter.
-pub(super) fn check_retire(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    on_car(ctx, |m| retire::check_retire(&mut calls, m, r.ecx, r.stack[0]));
-    Ok(Return::void(0, 4))
+/// `CCar::Update9AF0` (thiscall `(arg)`), the car's per-step signal emitter, run on its entry `esp`.
+fn check_retire_body(host: &dyn Host, mem: &mut Mem, esp: u32, car: u32, arg: u32) {
+    let frame = Frame::new(host, esp);
+    let mut calls = car_calls_at(&frame, mem, esp);
+    on_car_in(&frame, mem, |m| retire::check_retire(&mut calls, m, car, arg));
+}
+
+/// `Update9AF0` on `car` as the host's call at `sp`.
+fn check_retire_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, arg: u32) {
+    let esp = enter(host, mem, sp, &[arg]);
+    check_retire_body(host, mem, esp, car, arg);
 }

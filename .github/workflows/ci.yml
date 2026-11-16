@@ -1,7 +1,6 @@
 # fmt, clippy and the tests without game data, on macOS, Ubuntu and Windows. Tests that need data skip (docs/development.md).
-# On macOS the tests and the vector targets also run against the published recordings and vector records
-# (scripts/fetch-test-data.sh); the tests that need the retail files still skip. macOS because the runner is arm64,
-# the host the vector tests' NaN rules are written for (notes/physics.md, "Default NaN sign").
+# On macOS the tests also run against the published recordings (scripts/fetch-test-data.sh); the tests that need the
+# retail files still skip.
 name: CI
 on: [push, pull_request]
 
@@ -41,5 +40,3 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets ${{ matrix.features }} -- -D warnings
       - run: cargo test --workspace ${{ matrix.features }}
-      - if: matrix.test-data
-        run: scripts/rust-vectors.sh

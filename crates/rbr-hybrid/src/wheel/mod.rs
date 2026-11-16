@@ -67,13 +67,12 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("wheel", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 30] = [
+pub static BINDINGS: [Binding; 26] = [
     bind(M3D520, "E51Wheel::M3D520", ground_probe),
     bind(E43VF5C, "CWheel::E43Vf5C", forward_to_car_and_clear),
     bind(E43VF58, "CWheel::E43Vf58", hook),
     bind(UNK97A0, "CWheel::Unk97a0", update_sub_objects),
     bind(COPY_CF30, "E51Wheel::CopyCF30", copy_cf30),
-    bind(UNK9660, "CWheel::Unk9660", uint_select),
     bind(UNK96E0, "CWheel::Unk96e0", table_lerp_pair),
     bind(M3B5B0, "E51Wheel::M3B5B0", embedded_dispatch),
     bind(M3D1C0, "E51Wheel::M3D1C0", new_sub_object),
@@ -91,16 +90,13 @@ pub static BINDINGS: [Binding; 30] = [
     bind(UNK9290, "CWheel::Unk9290", pick_contact),
     bind(UNK9900, "CWheel::Unk9900", blend_tags),
     bind(E43VF6C, "CWheel::E43Vf6C", forward_vf6c),
-    bind(M3A9E0, "E51Wheel::M3A9E0", turn_axis),
     bind(M3AB90, "E51Wheel::M3AB90", state_lerp),
     bind(M3AC50, "E51Wheel::M3AC50", set_input),
-    bind(M3AEF0, "E51Wheel::M3AEF0", walk_result),
     bind(M3AFB0, "E51Wheel::M3AFB0", spin_cross),
     bind(M3B900, "E51Wheel::M3B900", refresh),
     bind(M3D030, "E51Wheel::M3D030", update_strut),
     bind(UNKA860, "CWheel::UnkA860", tyre_tail_setup),
     bind(UNK94D0, "CWheel::Unk94d0", split_on_sub),
-    bind(M3B880, "E51Wheel::M3B880", refresh_travel),
     bind(SUB_OBJECT_CTOR, "E51Wheel::Ctor", wheel_ctor),
 ];
 
@@ -109,17 +105,14 @@ pub static BINDINGS: [Binding; 30] = [
 /// definitions and the solids likewise.
 pub(crate) fn on_wheels<T>(ctx: &mut Ctx, run: impl FnOnce(&mut WheelView) -> T) -> T {
     let host = ctx.host;
-    let typed = host.typed();
-    let car = typed.as_deref().map(|t| &t.car);
-    let defs = typed.as_deref().map(|t| &t.defs);
-    let solids = typed.as_deref().and_then(|t| t.solids.as_ref());
-    let view = WheelView::new(&mut ctx.mem, car.map(|c| &c.wheels)).with_car(car.map(|c| &c.own)).with_defs(defs);
-    run(&mut view.with_solids(solids))
+    let t = host.typed();
+    let view = WheelView::new(&mut ctx.mem, Some(&t.car.wheels)).with_car(Some(&t.car.own)).with_defs(Some(&t.defs));
+    run(&mut view.with_solids(Some(&t.solids)))
 }
 
 /// Whether the host holds the wheel at `this` over a step ([`Host::typed`]).
 pub(crate) fn holds_wheel(host: &dyn Host, this: u32) -> bool {
-    host.typed().is_some_and(|t| t.car.wheels.held(this).is_some())
+    host.typed().car.wheels.held(this).is_some()
 }
 
 /// `host.call_at(sp, target, ecx, args)` from the held wheel `wheel`'s code when `target` is one of the wheel's
@@ -135,14 +128,14 @@ pub(crate) fn call_wheel(host: &dyn Host, wheel: u32, sp: u32, target: u32, ecx:
 /// it, else the image's. For the readers outside the wheel's bindings (NGP's engine wrapper and the tyres' thermal
 /// words).
 pub(crate) fn read_wheel<T: Value>(host: &dyn Host, mem: &Mem, this: u32, slot: Slot<T>) -> T {
-    host.typed().and_then(|t| t.car.wheels.read(this, slot)).unwrap_or_else(|| T::load(mem, this + slot.at))
+    host.typed().car.wheels.read(this, slot).unwrap_or_else(|| T::load(mem, this + slot.at))
 }
 
 /// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` when a held wheel holds its dirty word
 /// (`CarWheels::set_dirty`), counted as a run ([`Host::ran_direct`]): its one write, and its binding reads nothing of
 /// the stack. False per call or for another tweak, where the caller calls the host.
 fn set_dirty_held(host: &dyn Host, object: u32) -> bool {
-    let held = host.typed().is_some_and(|t| t.car.wheels.set_dirty(object));
+    let held = host.typed().car.wheels.set_dirty(object);
     if held {
         host.ran_direct();
     }
@@ -162,7 +155,7 @@ pub(crate) fn wheel_speeds(host: &dyn Host, mem: &Mem, car: u32) -> [f32; 4] {
     })
 }
 
-/// The original callees a wheel binding makes: the vtable calls on an object (`mem` shares the emulator's memory).
+/// The original callees a wheel binding makes: the vtable calls on an object (`mem` shares the image).
 struct Calls<'a> {
     mem: Mem,
     host: &'a dyn Host,
@@ -293,14 +286,6 @@ fn copy_cf30(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(libm.eax.get(), 0xC))
 }
 
-/// `Unk9660` (thiscall, `p` and `n` on the stack, `ret 8`): the pick is written to `p`, and the wrap count is returned
-/// (name ours).
-fn uint_select(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [p, n, ..] = r.stack;
-    let wraps = layout::pick_sector(&mut ctx.mem, r.ecx, p, n);
-    Ok(Return::void(wraps, 8))
-}
-
 /// `CE36SubBlock::Init` (0x4f3e80, thiscall) as the original calls it from `Unk96e0`.
 struct Init<'a> {
     host: &'a dyn Host,
@@ -309,7 +294,7 @@ struct Init<'a> {
 
 impl SubBlockInit for Init<'_> {
     fn init_sub_block(&mut self, block: u32) {
-        crate::car_body::init_sub_block(self.host, &mut self.mem, 0, block);
+        crate::car_body::init_sub_block(self.host, &mut self.mem, block);
     }
 }
 
@@ -493,13 +478,6 @@ impl SolidCalls for Solid<'_> {
     }
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3A9E0`, `layout::wobble_axle` (name ours). eax is the last sine or cosine call's.
-fn turn_axis(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut libm = Libm { host: ctx.host, eax: Cell::new(0) };
-    on_wheels(ctx, |m| layout::wobble_axle(&mut libm, m, r.ecx));
-    Ok(Return::void(libm.eax.get(), 0))
-}
-
 /// thiscall, plain `ret`: `E51Wheel::M3AB90`, `layout::deform_top_mount` (name ours).
 fn state_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     on_wheels(ctx, |m| layout::deform_top_mount(m, r.ecx));
@@ -537,13 +515,6 @@ impl WalkCalls for Walk<'_> {
     }
 }
 
-/// thiscall, plain `ret`: `E51Wheel::M3AEF0`, `layout::steering_walk` (name ours).
-fn walk_result(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
-    on_wheels(ctx, |m| layout::steering_walk(&mut walk, m, r.ecx));
-    Ok(Return::void(0, 0))
-}
-
 /// thiscall `(p)`, `ret 4`: `E51Wheel::M3AFB0`, `layout::spin_cross` (name ours).
 fn spin_cross(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut walk = Walk { mem: ctx.mem.clone(), host: ctx.host, scratch: r.esp - SCRATCH_BELOW_ESP };
@@ -571,18 +542,10 @@ fn tyre_tail_setup(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// destination.
 fn split_on_sub(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [block, v, acc, ..] = r.stack;
-    // The remainder's lane 3 is a frame word the original does not write: `crate::RESIDUE` on the pure host.
-    let residue = crate::residue(ctx.host).map(f32::from_bits);
-    let eax = on_wheels(ctx, |m| {
-        let residue = residue.unwrap_or_else(|| layout::edge_residue(m, r.esp));
-        layout::edge_force(m, r.ecx, block, v, acc, residue)
-    });
+    // The remainder's lane 3 is a frame word the original does not write: `crate::RESIDUE`.
+    let residue = f32::from_bits(crate::RESIDUE);
+    let eax = on_wheels(ctx, |m| layout::edge_force(m, r.ecx, block, v, acc, residue));
     Ok(Return::void(eax, 0x14))
-}
-
-/// thiscall, plain `ret`: `E51Wheel::M3B880`, `layout::refresh_travel` (name ours).
-fn refresh_travel(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::refresh_travel(&mut ctx.mem, r.ecx), 0))
 }
 
 /// `CSolid::E43Vf90` (0x52bf30), the owner's wake the constructor calls (directly, 0x20 below its entry).

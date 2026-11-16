@@ -30,36 +30,35 @@ pub struct Typed {
     pub core: Core,
     pub stage: Arc<Stage>,
     pub defs: Defs,
-    /// The car's solids, held when the step asks for them (`lift_with_solids`, the pure step's default): every reader
-    /// of a solid's words at its address runs on the solids' store (`SolidWords`).
-    pub solids: Option<CarSolids>,
+    /// The car's solids: every reader of a solid's words at its address runs on the solids' store (`SolidWords`).
+    pub solids: CarSolids,
 }
 
 impl Typed {
-    /// The car at `car`'s, the physics core's and the definitions' typed state, lifted from the image, on `stage`.
+    /// The car at `car`'s, its solids', the physics core's and the definitions' typed state, lifted from the image, on
+    /// `stage`.
     pub fn lift(mem: &Mem, car: u32, stage: Arc<Stage>) -> Self {
-        Typed { car: CarTyped::lift(mem, car), core: Core::lift(mem), stage, defs: Defs::lift(mem, car), solids: None }
-    }
-
-    /// [`Typed::lift`] with the car's solids held too.
-    pub fn lift_with_solids(mem: &Mem, car: u32, stage: Arc<Stage>) -> Self {
-        Typed { solids: Some(CarSolids::lift(mem, car)), ..Typed::lift(mem, car, stage) }
+        Typed {
+            car: CarTyped::lift(mem, car),
+            core: Core::lift(mem),
+            stage,
+            defs: Defs::lift(mem, car),
+            solids: CarSolids::lift(mem, car),
+        }
     }
 
     /// Writes the car's and the core's state back to the image (the stage's is never written).
     pub fn lower(&self, mem: &mut Mem) {
         self.car.lower(mem);
         self.core.lower(mem);
-        if let Some(solids) = &self.solids {
-            solids.lower(mem);
-        }
+        self.solids.lower(mem);
     }
 
     /// Every owned byte range, named: the car's, the core's and the stage's.
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         let mut owned = self.car.owned();
         owned.extend(self.core.owned());
-        owned.extend(self.solids.iter().flat_map(CarSolids::owned));
+        owned.extend(self.solids.owned());
         owned.extend(self.stage.owned());
         owned
     }

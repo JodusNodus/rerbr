@@ -33,9 +33,6 @@ pub fn state_second_at(states: u32, i: u32) -> u32 {
     states + 4 + 8 * i
 }
 
-/// The static table the light system's def returns.
-pub const DEF_TABLE: u32 = 0x008E_F7B4;
-
 /// The light emitter's offset in the signal manager.
 pub const LIGHT_EMITTER_AT: u32 = 0x9AF0;
 

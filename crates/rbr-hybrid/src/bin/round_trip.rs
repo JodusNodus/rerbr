@@ -5,11 +5,7 @@
 //! `wheel::layout::round_trip`, `car_body::layout::round_trip`, `collision::layout::round_trip`) and of the physics
 //! core's (`physics_core::layout::typed`); the typed stage's bytes and queries against the image's
 //! (`stage::layout::round_trip`, `differential`) and the typed definitions' answers (`store::defs::differential`); the
-//! wheel's, the engine's, the car's, the collision's and the core's entries per call against held
-//! (`wheel::layout::differential`, `engine_driveline::layout::engine_differential`, `car_body::layout::differential`,
-//! `collision::layout::differential`, `physics_core::layout::typed::differential`); the car's solids' round trip and
-//! their host-free entries per call against held (`rigid_body::layout::{round_trip, differential}`).
-//! The boot images are checked by `rbr-standalone --twin`.
+//! car's solids' round trip (`rigid_body::layout::round_trip`).
 //!
 //! Usage: round_trip SNAPSHOT...
 
@@ -86,38 +82,6 @@ fn main() -> ExitCode {
             ("stage", stage::round_trip(&mem), "typed bytes equal to the image's"),
             ("stage queries", stage::differential(&mem), "answer bytes equal to the image's"),
             ("definitions", store::defs::differential(&mem, car), "answer bytes equal to the image's"),
-            (
-                "engine entries",
-                drive::engine_differential(&mut snap.mem(), &mut snap.mem(), car),
-                "bytes equal per call and held",
-            ),
-            (
-                "wheel entries",
-                // The outputs go below the snapshot's stack pointer.
-                wheel::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x400),
-                "bytes equal per call and held",
-            ),
-            (
-                "car entries",
-                car_body::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x400),
-                "bytes equal per call and held",
-            ),
-            (
-                "core entries",
-                // The entries' frames go below the snapshot's stack pointer.
-                core::differential(&mut snap.mem(), &mut snap.mem(), snap.metadata().registers.esp - 0x400),
-                "bytes equal per call and held",
-            ),
-            (
-                "solid entries",
-                rigid::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x400),
-                "bytes equal per call and held",
-            ),
-            (
-                "collision entries",
-                collision::differential(&mut snap.mem(), &mut snap.mem(), car, snap.metadata().registers.esp - 0x1000),
-                "bytes equal per call and held",
-            ),
         ];
         for (name, trip, what) in trips {
             match trip {

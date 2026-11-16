@@ -21,12 +21,6 @@ pub fn head(mem: &Mem, link: u32) -> u32 {
     mem.u32(link)
 }
 
-/// CBodyLink::CBodyLink (0x4e0010), returning the constructor's `this` value.
-pub fn body_link_ctor(mem: &mut Mem, link: u32) -> u32 {
-    Link::default().store(mem, link);
-    link
-}
-
 /// CCellLink::CCellLink (0x4e01d0), returning the constructor's `this` value.
 pub fn cell_link_ctor(mem: &mut Mem, link: u32) -> u32 {
     Link::default().store(mem, link);

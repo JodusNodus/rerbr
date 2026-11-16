@@ -1,6 +1,6 @@
 //! The car's body transform. The original's call is `compose(a, t, b)` on the car, where `t` is the body (its identity
-//! getter) and `b` is the output; the reconstructed C++ passes `b` as the first argument, which the record disproves
-//! (`harness/direct_calls.py`).
+//! getter) and `b` is the output; the reconstructed C++ passes `b` as the first argument, which the original's
+//! recorded calls disproved.
 //!
 //! The four per-step transforms (`to_world`, `world_compose`, `body_to_world_pair`, `body_compose`) follow it: the
 //! identity getters make the car its own entity and the body the entity at the car's body slot, and each walks or
@@ -22,13 +22,6 @@ pub trait FrameWalk {
 pub trait FrameCompose {
     /// `compose(a, t, out)` on the entity `entity`. Returns `out`.
     fn compose_frames(&mut self, entity: u32, a: u32, t: u32, out: u32) -> u32;
-}
-
-/// `b = compose(a, body, b)` on the car, and returns `b`. The null check on the body (an assert in the original) is
-/// not ported: the port needs a body.
-pub fn compose_with_body(compose: &mut impl FrameCompose, car: u32, body: u32, a: u32, b: u32) -> u32 {
-    compose.compose_frames(car, a, body, b);
-    b
 }
 
 /// The world frame global, which the original asserts is set (it logs and traps when it is zero).

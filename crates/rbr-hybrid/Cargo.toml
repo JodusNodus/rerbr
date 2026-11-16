@@ -2,19 +2,16 @@
 name = "rbr-hybrid"
 version = "0.1.0"
 edition = "2021"
-description = "Runs rbr-physics ports in place of original functions inside the emulated StepForward (harness/rust_step.py)"
+description = "The game's physics step on the rbr-physics ports"
 license = "GPL-3.0-or-later"
 
 [lib]
 name = "rbr_hybrid"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
 
 [features]
-# Check builds only: the pure host poisons the words its typed storage holds over a step (`Pure::typed`).
+# Check builds only: the pure host poisons the words its typed storage holds over a step.
 poison = ["rbr-physics/poison"]
-# Check builds only: calls skipped without their words fill them with a tag (`skip_unwritten`, the residue audit).
-residue-audit = []
 
 [dependencies]
 rbr-engine = { path = "../rbr-engine" }

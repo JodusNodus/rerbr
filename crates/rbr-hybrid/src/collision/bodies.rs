@@ -9,7 +9,7 @@ use rbr_physics::collision::overlap;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::detect_calls::{self as detect, GridHost};
 
-use super::{Callees, CSTATE_UNKA44, E37_WALL_SYNC};
+use super::{Callees, E37_WALL_SYNC};
 use crate::entities::Op;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
@@ -40,16 +40,11 @@ pub(super) fn state_unka44(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0))
 }
 
-/// `CBody::CState::Unk44` on `state` as a call at `sp` (0: placed by the host) makes it: on the pure host run here as
-/// its binding runs it, its calls where they land below the call's entry, counted as a run ([`Host::ran_direct`])
-/// without the call's words (none is read after them: residue audit, notes/physics.md "Store seam"); through the host
-/// elsewhere.
+/// `CBody::CState::Unk44` on `state` as a call at `sp` (0: placed by the host) makes it, run here as its binding runs
+/// it, its calls where they land below the call's entry, counted as a run ([`Host::ran_direct`]) without the call's
+/// words (none is read after them: residue audit, notes/physics.md "Store seam").
 pub(crate) fn reset_state_at(host: &dyn Host, mem: &Mem, sp: u32, state: u32) -> u32 {
-    if host.call_slot_word().is_none() {
-        return host.call_at(sp, CSTATE_UNKA44, state, &[]).eax;
-    }
     let mut mem = mem.clone();
-    crate::skip_unwritten(host, &mut mem, sp, &[]);
     host.ran_direct();
     let below = (host.call_esp(sp) - 0x1000) & !0xf;
     let mut calls = StateCallees { host, mem: mem.clone(), sp: below };
@@ -66,7 +61,7 @@ pub(crate) fn on_cell_links<T>(
     to: u32,
     run: impl FnOnce(&mut HeldLinks) -> T,
 ) -> Option<T> {
-    let typed = host.typed()?;
+    let typed = host.typed();
     let links = &typed.car.collision.links;
     links.moves(mem, link, to).then(|| run(&mut links.view(mem)))
 }
@@ -74,7 +69,7 @@ pub(crate) fn on_cell_links<T>(
 /// A cell list's first link or a link's next (the word at `at`) as the step leaves it: the held record's while a step
 /// holds the cells' lists, else the image's.
 pub(crate) fn cell_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
-    host.typed().map_or_else(|| mem.u32(at), |t| t.car.collision.links.next(mem, at))
+    host.typed().car.collision.links.next(mem, at)
 }
 
 /// CBodyLink::Unlink (0x4e0020) and the `CLink::Unlink` twin (0x47d160): thiscall on the link; eax is the pointer the
@@ -99,10 +94,10 @@ pub(super) fn move_to_cell(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [x, y, ..] = r.stack.map(f32::from_bits);
     let mut alloc = Callees(ctx.host);
-    let held = ctx.host.typed().and_then(|t| {
-        let c = &t.car.collision;
-        c.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y, |block| c.links.add_block(block))
-    });
+    let t = ctx.host.typed();
+    let c = &t.car.collision;
+    let held = c.cells.link_or_build(&mut alloc, &mut ctx.mem, r.ecx, x, y, |block| c.links.add_block(block));
+    drop(t);
     let link = held.unwrap_or_else(|| layout::cell_link_at(&mut alloc, &mut ctx.mem, r.ecx, x, y));
     Ok(Return::void(link, 8))
 }
@@ -112,8 +107,8 @@ pub(super) fn lookup_twin(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// `LookupTwin` ([`Host::ran_direct`]): `None` per call, for another grid and for a cell with no link block yet
 /// (the caller calls, and the binding builds it).
 pub(crate) fn held_cell_link(host: &dyn Host, mem: &mut Mem, sp: u32, grid: u32, x: f32, y: f32) -> Option<u32> {
-    match host.typed()?.car.collision.cells.link_at(mem, grid, x, y)? {
-        CellLink::Link(link) if crate::skip_unwritten(host, mem, sp, &[x.to_bits(), y.to_bits()]) => {
+    match host.typed().car.collision.cells.link_at(mem, grid, x, y)? {
+        CellLink::Link(link) if sp != 0 => {
             host.ran_direct();
             Some(link)
         }
@@ -134,14 +129,12 @@ pub(crate) fn register_cell_direct(
     x: f32,
     y: f32,
 ) -> bool {
-    let Some(typed) = host.typed() else {
-        return false;
-    };
+    let typed = host.typed();
     let c = &typed.car.collision;
     let Some(CellLink::Link(cell)) = c.cells.link_at(mem, grid, x, y) else {
         return false;
     };
-    if !c.links.moves(mem, link, cell) || !crate::skip_unwritten(host, mem, sp, &[x.to_bits(), y.to_bits(), link]) {
+    if !c.links.moves(mem, link, cell) || sp == 0 {
         return false;
     }
     cell_links::move_to_cell(&mut c.links.view(mem), link, cell);
@@ -153,16 +146,9 @@ pub(crate) fn register_cell_direct(
 /// `E45_M40C0` (`lo`, `hi`, `out`) entered at `sp` (0: placed by the host) on the cell table a step holds, as values:
 /// the box's four cells (`physics_core::layout::detect_calls::box_cells_of`), each corner's link read from the held
 /// table, without the binding, the lookups or their words (none is read after them: residue audit). The caller writes
-/// the cells to its frame. `None` (nothing done) per call, on a host that runs the original, for another grid and for a
+/// the cells to its frame. `None` (nothing done) per call, for another grid and for a
 /// corner whose cell has no link block yet, where the caller calls.
-pub(crate) fn box_cells_direct(
-    host: &dyn Host,
-    mem: &mut Mem,
-    sp: u32,
-    lo: u32,
-    hi: u32,
-    out: u32,
-) -> Option<[u32; 4]> {
+pub(crate) fn box_cells_direct(host: &dyn Host, mem: &mut Mem, lo: u32, hi: u32) -> Option<[u32; 4]> {
     struct Held<'a> {
         cells: &'a rbr_physics::collision::layout::CellTable,
         mem: &'a Mem,
@@ -183,16 +169,12 @@ pub(crate) fn box_cells_direct(
             }
         }
     }
-    let typed = host.typed()?;
-    host.call_slot_word()?;
+    let typed = host.typed();
     let mut held = Held { cells: &typed.car.collision.cells, mem, found: 0, all: true };
     let cells = detect::box_cells_of(mem, &mut held, lo, hi);
     let (all, found) = (held.all, held.found);
     if !all {
         return None;
-    }
-    if sp != 0 {
-        crate::skip_unwritten(host, mem, sp, &[lo, hi, out]);
     }
     // Counted as the run of M40C0 and of each lookup, as the in-place calls were.
     for _ in 0..=found {
@@ -204,14 +186,6 @@ pub(crate) fn box_cells_direct(
 /// CBody::Vf40 (0x4e1120): thiscall on the body with no arguments; eax is the base walk's result.
 pub(super) fn body_vf40(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(layout::reset_body(&mut Vf40Callees { host: ctx.host, mem: &ctx.mem, sp: r.esp }, r.ecx), 0))
-}
-
-/// CBody::ClearGrid (0x4e11a0): thiscall on the body with the source and two bound vectors; eax is the grid's wall
-/// sync result, or `u32::MAX` when no grid is attached.
-pub(super) fn body_clear_grid(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [source, lower, upper, ..] = r.stack;
-    let flag = layout::clear_grid(&mut BodyCallees(ctx.host), &ctx.mem, r.ecx, source, lower, upper);
-    Ok(Return::void(flag, 12))
 }
 
 /// CBody::Vf118 (0x4e11f0): thiscall on the body; eax is its grid pointer (+0x64).
@@ -227,7 +201,7 @@ pub(super) fn body_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(flag, 8))
 }
 
-/// The original callees of CBody's own methods, run in the emulator: thiscall on the state and on the body, and
+/// The original callees of CBody's own methods, run through the host: thiscall on the state and on the body, and
 /// `E33Mat34::FetchX` on a corner matrix.
 pub(crate) struct BodyCallees<'a>(pub(crate) &'a dyn Host);
 
@@ -244,7 +218,7 @@ impl CornerHost for BodyCallees<'_> {
 }
 
 /// `CBody::VfCC` (thiscall on `body`, `(first, second)`) entered at `sp`, run here (the probes call it on each body
-/// in their cells): the call's words written as the call writes them ([`crate::skip_call`]), then [`body_vf_cc`]'s
+/// in their cells): none of the call's words written, then [`body_vf_cc`]'s
 /// port, its `FetchX` calls placed where the pure host places a call below the entry and done here when they can
 /// ([`crate::entities::fetch_x_direct`]). Returns the flag (eax); `None` (nothing written) on a host that runs the
 /// original.
@@ -261,7 +235,7 @@ pub(crate) fn body_vf_cc_direct(
     second: u32,
     last: &mut Option<VfCcCorners>,
 ) -> Option<u32> {
-    if !crate::skip_call(host, mem, sp, &[first, second]) {
+    if sp == 0 {
         return None;
     }
     let key = (sp, first, second, host.entered());
@@ -358,7 +332,7 @@ impl NotifyFilteredHost for Notify<'_> {
         // A detector's is run here on the pure host, as the host would run it: the call's words, then the binding
         // entered at `sp` (the calls it makes are all placed from its entry).
         if let Some(run) = crate::physics_core::detector_vf04(target) {
-            if crate::skip_call(self.host, mem, self.sp, &[body]) {
+            if self.sp != 0 {
                 self.host.ran_direct();
                 let mut stack = [0; crate::STACK_ARGS];
                 stack[0] = body;
@@ -392,15 +366,14 @@ pub(super) fn body_grid_active(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 pub(crate) const BODY_VF110: u32 = 0x4e11c0;
 pub(crate) const BODY_VF11C: u32 = 0x4e1200;
 
-/// `CBody::Vf11C` (`body_vf11c`) on `body` with `(lo, hi)` entered at `sp`, run here on the pure host, its two copies
-/// too (the calls' words written as the calls write them); false (nothing written) on a host that runs the original.
-pub(crate) fn body_box_direct(host: &dyn Host, mem: &mut Mem, sp: u32, body: u32, lo: u32, hi: u32) -> bool {
-    if !crate::skip_call(host, mem, sp, &[lo, hi]) {
+/// `CBody::Vf11C` (`body_vf11c`) on `body` with `(lo, hi)` entered at `sp`, run here, its two copies too, none of
+/// the calls' words written; false (nothing done) without a given `sp`.
+pub(crate) fn body_box_direct(mem: &mut Mem, sp: u32, body: u32, lo: u32, hi: u32) -> bool {
+    if sp == 0 {
         return false;
     }
     let (lower, upper) = Body::new(body).bounds_at();
     for (to, from) in [(lo, lower), (hi, upper)] {
-        crate::skip_call(host, mem, sp - 0xc, &[from]);
         layout::vec4_copy_from(mem, to, from);
     }
     true
@@ -411,7 +384,7 @@ pub(crate) fn body_box_direct(host: &dyn Host, mem: &mut Mem, sp: u32, body: u32
 pub(super) fn body_vf11c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [lo, hi, ..] = r.stack;
     let (lower, upper) = Body::new(r.ecx).bounds_at();
-    super::copy_vec4(ctx.host, &mut ctx.mem, r.esp - 0xc, lo, lower);
-    let eax = super::copy_vec4(ctx.host, &mut ctx.mem, r.esp - 0xc, hi, upper);
+    super::copy_vec4(ctx.host, &mut ctx.mem, lo, lower);
+    let eax = super::copy_vec4(ctx.host, &mut ctx.mem, hi, upper);
     Ok(Return::void(eax, 8))
 }

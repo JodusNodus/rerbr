@@ -139,7 +139,7 @@ enum Transforms {
     Force(u32),
 }
 
-/// The original callees of `BigB` and the force pass, run in the emulator. `frame` is the pass's aligned locals after its
+/// The original callees of `BigB` and the force pass, run through the host. `frame` is the pass's aligned locals after its
 /// callee-saves (the vote's two vectors at +0x10 and +0x20, the transforms' sources at +0x30 and +0x40); `voted` is set
 /// from a vote hit to the read after its applies. The pass's own transforms' outputs and the reread are the body's
 /// words, on the solids' store.
@@ -260,8 +260,8 @@ impl ListHost for Calls<'_> {
         event.aux.store(&mut self.mem, at + 0x10);
         event.contact.store(&mut self.mem, at + 0x20);
         event.point.store(&mut self.mem, at + 0x30);
-        crate::fill_residue(self.host, &mut self.mem, at + 0x8, 1);
-        crate::fill_residue(self.host, &mut self.mem, at + 0x40, 1);
+        crate::fill_residue(&mut self.mem, at + 0x8, 1);
+        crate::fill_residue(&mut self.mem, at + 0x40, 1);
         let signal = self.mem.u32(SIGNALS) + 0xadc8;
         self.host.call(DAMPING_EMIT, signal, &[at]);
         Ok(())

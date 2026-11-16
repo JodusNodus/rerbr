@@ -1,6 +1,5 @@
 //! E33 collision event creation around the E37 event builder.
 
-use crate::math::sse;
 use crate::mem::Mem;
 
 use super::{BODY_GRID, GRID_TAG};
@@ -51,40 +50,6 @@ pub fn refresh_materials(mem: &mut Mem, event: u32) {
 /// E37Test4B20 (0x4f4b20): test for either of the event's two material flags.
 pub fn is_suppressed(mem: &Mem, event: u32) -> bool {
     mem.u32(event + EVENT_FLAGS) & 0x6000 != 0
-}
-
-/// E37EvOps::Copy80 (0x4f4200) (name ours): copy the partner side's three material words (+0x80, as
-/// `refresh_materials` reads them) to the output.
-pub fn copy_partner_materials(mem: &mut Mem, event: u32, out: u32) {
-    mem.copy(out, event + EVENT_MATERIAL_A, 12);
-}
-
-/// E37EvOps::Cmp15 (0x4f4570) (name ours): 1 when the two events' compared fields are equal (the eight float lanes and
-/// the word at +0x38), as the deduplication compares them.
-pub fn same_contact(mem: &Mem, event: u32, other: u32) -> u32 {
-    const FLOAT_LANES: [u32; 8] = [0, 1, 2, 4, 5, 6, 7, 13];
-    u32::from(
-        FLOAT_LANES.iter().all(|lane| mem.f32(event + lane * 4) == mem.f32(other + lane * 4))
-            && mem.u32(event + 0x38) == mem.u32(other + 0x38),
-    )
-}
-
-/// E37EvOps::PlaneScale (0x4f4190): scale all four output lanes by the event plane dot product.
-pub fn plane_scale(mem: &mut Mem, event: u32, vector: u32) -> u32 {
-    // Retail inlines CFloat3::LoadBinary with the output vector as its receiver.
-    // The reconstructed C++ calls Init70(this+0x70), which would self-copy instead.
-    mem.copy(vector, event + 0x70, 16);
-    let first = sse::mul(mem.f32(event + 0xc8), mem.f32(event + 0x78));
-    let second = sse::mul(mem.f32(event + 0xc4), mem.f32(event + 0x74));
-    let sum = sse::add(first, second);
-    let third = sse::mul(mem.f32(event + 0xc0), mem.f32(event + 0x70));
-    let sum = sse::add(sum, third);
-    let dot = sse::add(sum, mem.f32(event + 0x7c));
-    for lane in 0..4 {
-        let value = sse::mul(dot, mem.f32(vector + lane * 4));
-        mem.set_f32(vector + lane * 4, value);
-    }
-    vector
 }
 
 /// CCollisionEvent::DtorBody (0x4f52c0): demote the vtable, release its count, and unlink its owner.

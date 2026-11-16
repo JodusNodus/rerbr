@@ -82,28 +82,3 @@ pub trait SignalCalls {
     /// The entity pass on the body (named by use: the meaning of the pass is not known).
     fn run_pass(&mut self, body: u32);
 }
-
-/// Emits the hinged body's signals.
-pub fn emit_hinge_state<C: SignalCalls>(calls: &mut C, input: &SignalInput) {
-    calls.walk_frames(input.body);
-    let (position, orientation) = if input.key == 0 || input.owner == 0 {
-        let position = calls.compose_position(input.body, input.hinge_point_bf, input.identity);
-        (position, input.orientation)
-    } else {
-        (input.hinge_point_rf, calls.matrix_to_quaternion(input.orientation_matrix))
-    };
-    calls.emit_solid_state(&SolidGeneralState {
-        key: input.key,
-        position,
-        orientation,
-        linear_velocity: input.linear_velocity,
-        angular_velocity: input.angular_velocity,
-        unit: 1.0,
-    });
-    calls.emit_hinged_state(&HingedBodySignal {
-        body_id: input.body_id,
-        unmoved: u32::from(input.link_flag == 0),
-        angle_delta: input.angle - input.default_angle,
-    });
-    calls.run_pass(input.body);
-}

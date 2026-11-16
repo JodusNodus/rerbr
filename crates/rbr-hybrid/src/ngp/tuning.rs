@@ -112,7 +112,7 @@ pub(crate) fn thermal_in(host: &dyn Host, m: &Mem, scratch: u32) -> Result<TyreT
     let data_f32 = |addr| m.f32(at(addr).expect("hooked only with NGP"));
     let (def, wheel) = (m.u32(scratch + 0x10), m.u32(scratch + 0x410));
     let (in_contact, material) =
-        crate::tyre::read_tyre(host, m, scratch, |t| (t.scratch.in_contact, material_word(&t.scratch, 0x0A)));
+        crate::tyre::read_tyre(host, scratch, |t| (t.scratch.in_contact, material_word(&t.scratch, 0x0A)));
     Ok(TyreThermal {
         air_temperature: data_f32(0x1017_1adc),
         relax_rate: data_f32(0x1017_1478),

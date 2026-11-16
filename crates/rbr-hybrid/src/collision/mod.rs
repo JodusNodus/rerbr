@@ -1,5 +1,5 @@
-//! Bindings of the collision ports (`rbr_physics::collision`, exe 0x4e0000-0x4fe000). The ABIs are the original's
-//! (`harness/vector_specs/collision.py`).
+//! Bindings of the collision ports (`rbr_physics::collision`, exe 0x4e0000-0x4fe000), with the original's
+//! ABIs.
 
 use rbr_physics::collision::layout::{CollisionImage, CollisionView};
 use rbr_physics::mem::Mem;
@@ -22,37 +22,30 @@ pub(crate) use bodies::{
     register_cell_direct, BodyCallees, VfCcCorners, BODY_VF110, BODY_VF11C,
 };
 use bodies::{
-    body_clear_grid, body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc,
-    lookup_twin, move_to_cell, notify_filtered, state_unka44,
+    body_grid, body_grid_active, body_has_grid, body_link_unlink, body_vf11c, body_vf40, body_vf_cc, lookup_twin,
+    move_to_cell, notify_filtered, state_unka44,
 };
 use brake_wall::{
-    brake_wall_emit, brake_wall_is_active, brake_wall_query_box, brake_wall_query_point, brake_wall_vf_e8,
-    brake_wall_vf_f0, raycast_entry, wall_raycast, wall_vf_cc, BRAKE_WALL_QUERY_BOX,
+    brake_wall_emit, brake_wall_is_active, brake_wall_vf_e8, brake_wall_vf_f0, raycast_entry, wall_vf_cc,
 };
 use contacts::{body_vf_d0, body_vf_dc};
 pub(crate) use contacts::{body_vf_d8, body_vf_e8, body_vf_f4};
-use edge::{edge_edge, edge_normal, edge_pair, vec_set_gap, walk_5ff0};
+use edge::edge_edge;
 use queries::{
-    box_sat_overlap, collect, face_query, grid_add_edge, grid_ops_m6610, grid_ray, grid_sample_a, grid_sample_b,
-    grid_sync, mesh_copy_bounds, mesh_is_active, mesh_ray_worklist, node_walk, point_triangle, ray_clear, ray_seeds,
-    ray_triangle, seg_test, segment_sweep, segment_test, sphere_box, system_vf00, world_axes_overlap,
+    collect, face_query, grid_add_edge, grid_ops_m6610, grid_ray, grid_sample_a, grid_sample_b, grid_sync,
+    mesh_copy_bounds, mesh_is_active, ray_clear, ray_seeds, seg_test, segment_sweep, segment_test, system_vf00,
 };
 pub(crate) use queries::{ray_clear_at, ray_seeds_at};
 use solver::{
     alloc_event, apply_event_impulse, apply_offsets, clear_contact_rows, contact_rows, correct_penetrations,
-    drain_events, event_count, event_query_bodies, init_full, make_event, min_contact_time, plane_diff, refresh_events,
+    drain_events, event_count, event_query_bodies, init_full, min_contact_time, plane_diff, refresh_events,
     solve_due_events, solve_event, solver_add_event, E37_PLANE_DIFF,
 };
 pub(crate) use vectors::{copy_vec4, length};
-use vectors::{
-    e33_scaled, float3_length, float3_scale, min_max_a, vec16_max, vec16_min, vec3_add, vec4_clear, vec4_copy_from,
-    vec4_normalize, vec4_sub, vec_add_sub, vec_cross, vec_cross_dot, vec_dot, vec_normalize, vec_scale, vec_sub,
-    vec_sub_dot,
-};
+use vectors::{float3_length, float3_scale, min_max_a, vec4_clear, vec4_copy_from, vec4_normalize, vec_cross};
 
 pub(crate) const RAY_CLEAR: u32 = 0x4f6740;
 pub(crate) const RAY_SEEDS: u32 = 0x4f6550;
-pub(crate) const CE36_SUB_BLOCK_INIT: u32 = 0x4f3e80;
 pub(crate) const E36_ALLOC_EVENT: u32 = 0x4f4f10;
 pub(crate) const COLL_EVENT_INIT_FULL: u32 = 0x4f50e0;
 
@@ -60,50 +53,28 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("collision", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 93] = [
-    bind(0x4f2ce0, "E36SphereBox", sphere_box),
+pub static BINDINGS: [Binding; 63] = [
     bind(0x4f3950, "E36Collect", collect),
-    bind(0x4f5480, "E37Vec16::Min", vec16_min),
-    bind(0x4f54b0, "E37Vec16::Max", vec16_max),
-    bind(0x4e0020, "CBodyLink::Unlink", body_link_unlink),
     bind(0x4faeb0, "CBodyLink::MoveToCell (ours)", move_to_cell),
     bind(0x4f6550, "E38RaySeeds", ray_seeds),
     bind(0x4f6740, "E38RayClear", ray_clear),
     bind(0x4f7090, "CColGrid::SyncGrid", grid_sync),
     bind(0x4fd760, "M_D760X", grid_ray),
-    bind(0x4fde40, "E38Ops::M_DE40X", mesh_ray_worklist),
     bind(0x4fe810, "CCollisionSystem::Vf00", system_vf00),
-    bind(0x4fdd60, "E38NodeWalk", node_walk),
     bind(0x4ff170, "E39_SegTest170", seg_test),
     bind(0x4ff070, "E39_SegTest70", segment_test),
-    bind(0x4fe2d0, "E38Ops::M_E2D0", point_triangle),
     bind(0x4febc0, "E38Ops::M_EBC0", face_query),
-    bind(0x4e4570, "E34WallVf::Raycast", wall_raycast),
     bind(0x4e4960, "CBrakeWallManager::RaycastEntry", raycast_entry),
     bind(0x4e4490, "CMultiSignal1<CSigCarBrakeWallPenetration const &>::Emit", brake_wall_emit),
     bind(0x4fad90, "E38SegmentSweep", segment_sweep),
     bind(0x4e03b0, "CCellGrid::LookupTwin", lookup_twin),
     bind(0x4e1120, "CBody::Vf40", body_vf40),
-    bind(0x4e11a0, "CBody::ClearGrid", body_clear_grid),
     bind(0x4e11f0, "CBody::Vf118", body_grid),
-    bind(0x4e0700, "E33Vec4::Scaled", e33_scaled),
     bind(0x4e1230, "CBody::VfCC", body_vf_cc),
     bind(0x4e3070, "CBody::VfD8", body_vf_d8),
     bind(0x4e2f50, "CBody::VfE8", body_vf_e8),
     bind(0x4e2e90, "CBody::VfF4", body_vf_f4),
     bind(0x4e2850, "CBody::VfDC", body_vf_dc),
-    bind(0x4e3dc0, "CBrakeWall::QueryPoint", brake_wall_query_point),
-    bind(0x4fccb0, "E38Vec::M_CCB0", vec_add_sub),
-    bind(0x4fcd10, "E38Vec::M_CD10", vec_sub),
-    bind(0x4fcd60, "E38Vec::M_CD60", vec_sub_dot),
-    bind(0x4fcee0, "E38Vec::M_CEE0", vec_dot),
-    bind(0x4fcf30, "E38Vec::M_CF30", vec_cross),
-    bind(0x4fcfa0, "E38Vec::M_CFA0", vec_cross_dot),
-    bind(0x4fd030, "E38Vec::M_D030", vec_scale),
-    bind(0x4fd0f0, "E38_004FD0F0", vec_normalize),
-    bind(0x4fd230, "E38Ops::M_D230", world_axes_overlap),
-    bind(0x4fd2c0, "E38Ops::M_D2C0", box_sat_overlap),
-    bind(0x4fd480, "E38Ops::M_D480", ray_triangle),
     bind(0x4fb7f0, "E38_004FB7F0", clear_contact_rows),
     bind(0x4fbc20, "E38_004FBC20", refresh_events),
     bind(0x4fbca0, "E38_004FBCA0", event_count),
@@ -129,13 +100,8 @@ pub static BINDINGS: [Binding; 93] = [
     bind(0x4fc500, "E38_004FC500", min_contact_time),
     bind(0x4f6610, "E37GridOps::M6610", grid_ops_m6610),
     bind(E37_EDGE_EDGE, "E37GridOps::EdgeEdge", edge_edge),
-    bind(E37_EDGE_PAIR, "E37GridOps::EdgePair", edge_pair),
-    bind(E37_WALK_5FF0, "E37GridOps::Walk5FF0", walk_5ff0),
-    bind(E37_M74A0, "E37GridOps::M74A0", edge_normal),
-    bind(E37_STORE_5570, "E37VecSet::Store5570", vec_set_gap),
     bind(0x4f65b0, "E37GridOps::AddEdge", grid_add_edge),
     bind(0x4e42f0, "E34WallVf::VfCC", wall_vf_cc),
-    bind(BRAKE_WALL_QUERY_BOX, "CBrakeWall::QueryBox", brake_wall_query_box),
     bind(BODY_VF11C, "CBody::Vf11C", body_vf11c),
     bind(0x4e1eb0, "CBody::VfD0", body_vf_d0),
     bind(0x4e3970, "CBrakeWall::VfF0", brake_wall_vf_f0),
@@ -146,11 +112,8 @@ pub static BINDINGS: [Binding; 93] = [
     bind(0x4f4390, "E37EvOps::Query4390", event_query_bodies),
     bind(0x4f4dc0, "E37EvOps::Emit4DC0", apply_event_impulse),
     bind(E01_VEC4_NORMALIZE, "E01Vec4::Normalize", vec4_normalize),
-    bind(E09_VEC4_SUB, "E09Vec4::Sub", vec4_sub),
-    bind(E21_VEC3_ADD, "E21Vec3::Add", vec3_add),
     bind(COLGRID_SAMPLE_A, "CColGrid::SampleA", grid_sample_a),
     bind(COLGRID_SAMPLE_B, "CColGrid::SampleB", grid_sample_b),
-    bind(E33_MAKE_EVENT, "E33MakeEvent", make_event),
     bind(E36_ALLOC_EVENT, "E36AllocEvent", alloc_event),
     bind(COLL_EVENT_INIT_FULL, "CCollisionEvent::InitFull", init_full),
     bind(0x4fc9a0, "CCollisionSolver::Vf04", solver_add_event),
@@ -160,10 +123,8 @@ pub static BINDINGS: [Binding; 93] = [
 /// over a step ([`Host::typed`]), and the bodies' words in the car's solids when it holds them; else (per call) the
 /// image's.
 pub(crate) fn on_collision<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut CollisionView) -> T) -> T {
-    match host.typed() {
-        Some(typed) => run(&mut typed.car.collision.view(mem).with_solids(typed.solids.as_ref())),
-        None => run(&mut CollisionView::image(mem)),
-    }
+    let typed = host.typed();
+    run(&mut typed.car.collision.view(mem).with_solids(Some(&typed.solids)))
 }
 
 /// [`on_collision`] for a call on the grid at `grid` (and `src`), whose held words are only a car grid's: the image's
@@ -182,17 +143,13 @@ fn on_grids<T>(host: &dyn Host, mem: &mut Mem, grids: &[u32], run: impl FnOnce(&
 /// ones through their views, the rest is the image's either way, and none of the call's words is read after it:
 /// residue audit, notes/physics.md "Store seam"), else the host call.
 pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
-    let held = host.typed().is_some();
-    held.then(|| host.call_in_place(sp, target, this, args))
-        .flatten()
-        .unwrap_or_else(|| host.call_at(sp, target, this, args))
+    host.call_in_place(sp, target, this, args).unwrap_or_else(|| host.call_at(sp, target, this, args))
 }
 
 /// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the
 /// rigid body's contact (`CSolid::BigA`), which reads the solver's rows.
 pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {
-    host.typed()
-        .and_then(|typed| typed.car.collision.contact(mem, at))
+    (host.typed().car.collision.contact(mem, at))
         .unwrap_or_else(|| rbr_physics::rigid_body::layout::load_contact(mem, at))
 }
 
@@ -200,19 +157,16 @@ pub(crate) fn read_contact(host: &dyn Host, mem: &Mem, at: u32) -> Contact {
 /// else the image's; the list word is the solid's (`rigid_body::solid_word`). For the rigid body's vote.
 pub(crate) fn contact_count(host: &dyn Host, mem: &Mem, body: u32) -> Option<u32> {
     let list = crate::rigid_body::solid_word(host, mem, body + rbr_physics::rigid_body::layout::CONTACT_LIST);
-    (list != 0).then(|| {
-        host.typed().and_then(|typed| typed.car.collision.row_count(mem, list)).unwrap_or_else(|| mem.u32(list + 4))
-    })
+    (list != 0).then(|| host.typed().car.collision.row_count(mem, list).unwrap_or_else(|| mem.u32(list + 4)))
 }
 
 /// Clears the body word of the contact rows at `rows` (the car's respawn): a held solver row's, else on the image.
 pub(crate) fn clear_row_body(host: &dyn Host, mem: &mut Mem, rows: u32) {
-    if !host.typed().is_some_and(|typed| typed.car.collision.clear_row_body(mem, rows)) {
+    if !host.typed().car.collision.clear_row_body(mem, rows) {
         mem.set_u32(rows, 0);
     }
 }
 
-pub(crate) const CSTATE_UNKA44: u32 = 0x4e33e0;
 const E37_WALL_SYNC: u32 = 0x4f7090;
 const E09_VEC4_CLEAR: u32 = 0x465d80;
 pub(crate) const E01_VEC4_COPY_FROM: u32 = 0x43c5b0;
@@ -222,19 +176,12 @@ pub(crate) const E45_CELL_QUERY: u32 = 0x5240c0;
 pub(crate) const FLOAT3_LENGTH: u32 = 0x473b30;
 pub(crate) const BODY_GRID: u32 = 0x4e11f0;
 
-/// The original callees that E36Collect calls, run in the emulator. The virtual slots are thiscall on their owner, the
+/// The original callees that E36Collect calls, run through the host. The virtual slots are thiscall on their owner, the
 /// E45 query is cdecl, and CFloat3::Length returns its result in st0.
 struct Callees<'a>(&'a dyn Host);
 
 pub(crate) const E01_VEC4_NORMALIZE: u32 = 0x43c6a0;
-const E21_VEC3_ADD: u32 = 0x4a19e0;
-const E09_VEC4_SUB: u32 = 0x465da0;
-const E33_MAKE_EVENT: u32 = 0x4e0d00;
 pub(crate) const COLGRID_SAMPLE_A: u32 = 0x4e0840;
 pub(crate) const COLGRID_SAMPLE_B: u32 = 0x4e0950;
 pub(crate) const E37_GRID_COPY: u32 = 0x4f6610;
 pub(crate) const E37_EDGE_EDGE: u32 = 0x4f8280;
-const E37_EDGE_PAIR: u32 = 0x4f8560;
-const E37_WALK_5FF0: u32 = 0x4f5ff0;
-const E37_M74A0: u32 = 0x4f74a0;
-const E37_STORE_5570: u32 = 0x4f5570;

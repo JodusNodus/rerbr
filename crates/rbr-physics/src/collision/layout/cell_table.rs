@@ -155,58 +155,6 @@ impl CellTable {
     }
 }
 
-/// A bump allocator over free memory, for [`differential`].
-struct Bump(u32);
-
-impl AllocHost for Bump {
-    fn allocate(&mut self, bytes: u32) -> u32 {
-        let at = self.0;
-        self.0 += bytes;
-        at
-    }
-}
-
-/// `LookupTwin` at the centre of every cell of a stride over the grid, twice, and of the first cell without a link
-/// block (built into `scratch`, 0x644 free bytes of both), per call on `per_call` and on the table held over the
-/// lookups on `held`, two copies of one image. Compares the links, the header, every slot and the built block: the
-/// bytes compared, or the first difference.
-pub fn differential(per_call: &mut Mem, held: &mut Mem, scratch: u32) -> Result<usize, String> {
-    let table = CellTable::lift(held);
-    if table.grid == 0 {
-        return Ok(0);
-    }
-    let (grid, h) = (table.grid, table.header);
-    let cells = h.rows.wrapping_mul(h.columns).max(0);
-    let centre = |cell: i32| {
-        let (row, column) = (cell / h.columns, cell % h.columns);
-        (h.origin_x + 100.0 * column as f32 + 55.0, h.origin_y + 100.0 * row as f32 + 35.0)
-    };
-    let empty = (0..cells).find(|&cell| per_call.u32(table.slot_at(cell)) == 0);
-    let stride = (cells / 97).max(1) as usize;
-    let filled = (0..cells).step_by(stride).filter(|&cell| per_call.u32(table.slot_at(cell)) != 0);
-    let points: Vec<_> = filled.chain(empty).chain(empty).map(centre).chain([(-1.0e9, 1.0e9)]).collect();
-    let (mut a, mut b) = (Bump(scratch), Bump(scratch));
-    for &(x, y) in points.iter().chain(&points) {
-        let want = super::cell_link_at(&mut a, per_call, grid, x, y);
-        let got = table.link_or_build(&mut b, held, grid, x, y, |_| ());
-        if got != Some(want) {
-            return Err(format!("the link at ({x}, {y}): per call {want:#x}, held {got:x?}"));
-        }
-    }
-    table.lower(held);
-    let mut bytes = 0;
-    let ranges = table.owned().into_iter().chain([(scratch..scratch + 0x644, "link block".to_string())]);
-    for (range, name) in ranges {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (per_call.read(range.start, len), held.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(x, y)| x != y) {
-            return Err(format!("{name} +{k:#x} differs: per call {:#04x}, held {:#04x}", want[k], got[k]));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
-}
-
 /// `f` on `mem` without the poison of a check build (a lift reads the owned words).
 fn on_image<T>(mem: &Mem, f: impl FnOnce(&Mem) -> T) -> T {
     #[cfg(feature = "poison")]

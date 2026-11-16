@@ -87,19 +87,6 @@ pub fn pair_at(handler: u32, k: u32) -> (u32, u32) {
     (handler + PAIRS_AT + 8 * k, handler + PAIRS_AT + 4 + 8 * k)
 }
 
-/// The material lookup: the inner material id word, the world manager's offset in the world, its material table and its
-/// flag word with the flag that enables the lookup.
-pub const MATERIAL_ID_AT: u32 = 0x3E04;
-pub const WORLD_MANAGER_AT: u32 = 0x24;
-pub const MATERIAL_TABLE_AT: u32 = 0x18;
-pub const MANAGER_FLAGS_AT: u32 = 0x160E0;
-pub const MANAGER_MATERIAL_NAMES: u32 = 0x0100_0000;
-
-/// The name pointer of a material entry.
-pub fn material_name_at(entry: u32) -> u32 {
-    entry + 4
-}
-
 /// The functor table: the count word, the entry size and slots, and the function each index of the original's switch
 /// stores (0x4ef720's jump table); `None` where the switch leaves an index out.
 pub const FUNCTOR_COUNT: u32 = 0x80;

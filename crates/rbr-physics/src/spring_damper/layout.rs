@@ -1,11 +1,11 @@
 //! Spring-damper game-memory boundary. This file alone knows object offsets.
 
 use super::store::{DamperBlocks, StrutStore};
-use super::strut::{self, Strut, StrutId, Struts};
+use super::strut::{Strut, StrutId, Struts};
 use super::suspension::Damping;
 use super::{
     BlendTerms, ClampParameters, Controller, DamperSignal, Definition, FadeState, ForceTerms, HeatAccumulator,
-    HeatCapacity, RealValue, Relaxation, SetupValues, StepOutput, UpdateTerms, WeightedValue,
+    HeatCapacity, RealValue, Relaxation, SetupValues, UpdateTerms, WeightedValue,
 };
 use crate::mem::{Block, Mem};
 use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
@@ -240,25 +240,6 @@ fn write_real_body(mem: &mut Mem, at: u32, value: RealValue) {
     mem.set_u32(at, value.label);
     mem.set_u32(at + 8, value.dirty);
     mem.set_f32(at + 12, value.value);
-}
-
-/// `CSpringDamper::UpdateForces` (0x52dd70) on the strut whose controller is at `controller_at`, per call
-/// ([`with_strut`]): [`strut::update_forces`].
-pub fn update_forces(mem: &mut Mem, controller_at: u32) {
-    with_strut(mem, controller_at, |view, id| strut::update_forces(view, id))
-}
-
-/// `CSpringDamper::Step` (0x52e090) on the strut whose controller is at `controller_at`, per call: [`strut::step`],
-/// whose three outputs the caller writes to its out pointers. NGP turned the two jumps that limited the stops'
-/// damping to the force over the speed (at 0x52e22b and 0x52e279) into no-ops, so the port never limits it.
-pub fn step(mem: &mut Mem, controller_at: u32, input: super::StepInput, ngp: super::NgpStep) -> StepOutput {
-    with_strut(mem, controller_at, |view, id| strut::step(view, id, input, ngp))
-}
-
-/// `CSpringDamper::ResetOutputs` (0x52e010) on the strut whose controller is at `controller_at`, per call:
-/// [`strut::reset_outputs`], the emitted payload for the host's typed damper event (the binding runs the emit).
-pub fn reset_outputs(mem: &mut Mem, controller_at: u32) -> DamperSignal {
-    with_strut(mem, controller_at, |view, id| strut::reset_outputs(view, id))
 }
 
 /// CSpringDamper::CSpringDamper initializes its pointers, scratch header, and counters. 0x52df20.
@@ -525,7 +506,7 @@ impl StrutImage {
 }
 
 /// Struts in typed storage: where each lives in the image and its state, by slot ([`StrutId`]). A car's are by wheel
-/// ([`CarStruts::lift`]); the per-call path holds one ([`with_strut`]).
+/// ([`CarStruts::lift`]).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CarStruts {
     pub images: [Option<StrutImage>; 4],
@@ -569,15 +550,6 @@ impl CarStruts {
         let slots = self.images.iter().enumerate().filter_map(|(k, image)| image.map(|image| (k, image)));
         slots.flat_map(|(k, image)| image.owned().map(move |(r, name)| (r, format!("wheel{k} {name}")))).collect()
     }
-}
-
-/// Runs `run` on the strut whose controller is at `controller`, lifted into a store of its own and lowered after it:
-/// the per-call path, on which the image holds the strut between calls.
-pub fn with_strut<T>(mem: &mut Mem, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
-    let mut one = CarStruts::lift_controllers(mem, [Some(controller), None, None, None]);
-    let out = run(&mut one.view(mem), StrutId(0));
-    one.lower(mem);
-    out
 }
 
 /// `lower(lift(image))` of the car's struts into an empty image, compared with `mem` on every owned byte: their count,
@@ -827,6 +799,14 @@ mod tests {
         assert_eq!(StrutImage::of(&b, CONTROLLER).lift(&b), strut);
     }
 
+    /// `run` on the strut at `controller` lifted into a store of its own, lowered after it.
+    fn with_strut<T>(mem: &mut Mem, controller: u32, run: impl FnOnce(&mut StrutView, StrutId) -> T) -> T {
+        let mut one = CarStruts::lift_controllers(mem, [Some(controller), None, None, None]);
+        let out = run(&mut one.view(mem), StrutId(0));
+        one.lower(mem);
+        out
+    }
+
     #[test]
     fn the_reset_emits_the_held_signal_and_takes_its_owner_from_the_image() {
         let mut mem = image(0);
@@ -835,7 +815,10 @@ mod tests {
         mem.map(owner + OWNER_WHEEL_INDEX, &2u32.to_le_bytes());
         let lifted = |mem: &Mem| StrutImage::of(mem, CONTROLLER).lift(mem);
         let held = lifted(&mem);
-        assert_eq!(reset_outputs(&mut mem, CONTROLLER), held.controller.signal);
+        assert_eq!(
+            with_strut(&mut mem, CONTROLLER, |v, id| crate::spring_damper::strut::reset_outputs(v, id)),
+            held.controller.signal
+        );
         let after = lifted(&mem);
         let reset = DamperSignal { owner_id: 2, peak_velocity: 0.0, bump_velocity: 0.0, droop_velocity: 0.0, valid: 1 };
         assert_eq!(after.controller.signal, reset);
@@ -848,6 +831,6 @@ mod tests {
         let mut mem = image(0);
         ControllerObj::fade.store(&mut mem, CONTROLLER, 0);
         assert_eq!(StrutImage::of(&mem, CONTROLLER).owned().count(), 2);
-        update_forces(&mut mem, CONTROLLER);
+        with_strut(&mut mem, CONTROLLER, |v, id| crate::spring_damper::strut::update_forces(v, id));
     }
 }

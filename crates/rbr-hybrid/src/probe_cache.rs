@@ -1,8 +1,7 @@
 //! The probe kernel's entities as last read (`E46_Kernel5bd0`, pure host only). The wheels' probes test each entity
 //! in their cells (most of them static scenery) every step: its flags, grid and bounds are read once, kept with the
 //! pages they were read from, and used while nothing has written those pages since ([`Pages::written_after`]). The
-//! tests' calls write the words the pure host's calls write ([`crate::skip_call`]), so memory ends as the walk leaves
-//! it.
+//! tests' calls write none of their words, as the pure host's skipped calls, so memory ends as the walk leaves it.
 
 use crate::collision::BODY_GRID;
 use crate::entities::ENTITY_VF118;

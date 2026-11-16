@@ -8,11 +8,6 @@ use super::car_calls::scratch;
 use crate::collision::E01_VEC4_COPY_FROM;
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-/// thiscall `()`: the windshield gate on `CCarDamageHandler`.
-pub(super) fn damage_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(damage::drivable(&ctx.mem, r.ecx) as u32, 0))
-}
-
 /// thiscall `(a1..a8)`, `ret 0x20`: `CCarDamageHandler::ImpactScale` (slot 2) calls slot 1 with the length scaled by 0.08.
 pub(super) fn damage_impact_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = ImpactHost { host: ctx.host, sp: r.esp - 0x24 };
@@ -167,41 +162,11 @@ pub(super) fn damage_slot1(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0x20))
 }
 
-/// thiscall `(idx, v)`, `ret 8`: `ZoneScaled`, 1 when a zone was raised.
-pub(super) fn zone_scaled(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [idx, v, ..] = r.stack;
-    let eax = layout::zone_scaled(&mut ctx.mem, r.ecx, idx, f32::from_bits(v));
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(idx, scale, best)`, `ret 0xc`: `ApplyFunctors`, the functors at the original's stack.
-pub(super) fn apply_functors(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [idx, scale, best, ..] = r.stack;
-    let mut calls = DamageHit(ctx.host);
-    let eax = layout::apply_functors(&mut calls, &mut ctx.mem, r.ecx, r.esp, idx, f32::from_bits(scale), best);
-    Ok(Return::void(eax, 0xc))
-}
-
-/// thiscall `(a, b, c, d)`, `ret 0x10`: `EngineGate`, 5 when the gate opens.
-pub(super) fn engine_gate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, ..] = r.stack;
-    let mut calls = DamageHit(ctx.host);
-    let eax = layout::engine_gate(&mut calls, &mut ctx.mem, r.ecx, r.esp, f32::from_bits(a), f32::from_bits(b));
-    Ok(Return::void(eax, 0x10))
-}
-
 /// thiscall `(a, b, c, tag)`, `ret 0x10`: `RingStore`, the speech functor.
 pub(super) fn ring_store(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args = r.stack[..4].try_into().unwrap();
     let eax = layout::ring_store(&mut DamageHit(ctx.host), &mut ctx.mem, r.ecx, r.esp, args);
     Ok(Return::void(eax, 0x10))
-}
-
-/// cdecl `(lo, hi, seed)`: `E35_Rand`, the value in st0 and the quotient in eax.
-pub(super) fn damage_rand(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [lo, hi, seed, ..] = r.stack;
-    let (value, eax) = layout::damage_rand(&mut ctx.mem, f32::from_bits(lo), f32::from_bits(hi), seed);
-    Ok(Return::float_with_eax(eax, value as f64, 0))
 }
 
 /// The calls `E36DamageOps::InitTables` and `Slot4` make to the original signal and vector helpers.
@@ -211,12 +176,6 @@ impl layout::DamageOpsCalls for DamageOps<'_> {
     fn call(&mut self, _mem: &mut Mem, callee: u32, this: u32, args: &[u32]) {
         self.0.call(callee, this, args);
     }
-}
-
-/// thiscall `()`: `E36DamageOps::Ctor`, the fixed handler tables and the E36 zone state.
-pub(super) fn damage_ops_ctor(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let result = layout::construct_damage_ops(&mut ctx.mem, r.ecx);
-    Ok(Return::void(result, 0))
 }
 
 /// thiscall `(index, scale, value, tag)`, `ret 0x10`: append an entry to the selected table.

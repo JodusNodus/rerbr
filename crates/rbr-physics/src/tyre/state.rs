@@ -15,6 +15,3 @@ pub fn set_penetration_depth(f: &mut Frame, height: f32) {
     let outer_radius = f.setup.tread_depth + f.setup.carcass_radius;
     f.state.penetration_depth = if 0.0 < height && outer_radius > height { outer_radius - height } else { 0.0 };
 }
-
-/// Clears the bias: no effect (the original's only work is calls whose result it discards), so nothing is written.
-pub fn clear_bias() {}

@@ -12,46 +12,37 @@ use rbr_physics::entities::store::HingeStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::{self, layout::SignalHost};
 
-use super::{
-    BODY_COMPOSE, CLEAR_ACC, INIT_BD0, LIMIT_UPDATE, SIM_C960, SIM_CFF0, SIM_DA60, SIM_E1D0, SIM_EA80, STATE_EMIT,
-    TO_QUAT, VF81X, XFORM_8130,
-};
+use super::{entity_slots, BODY_COMPOSE, STATE_EMIT, TO_QUAT, VF81X, XFORM_8130};
 use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
+use crate::enter;
 use crate::entities::Op;
 use crate::rigid_body::{held_solids, on_solids, with_solids, E43VF64, E43VF6C};
-use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// The state signal's slot count (`CMultiSignal1` has 32 slots).
 const SIGNAL_SLOTS: u32 = 0x20;
 const SCALE: u32 = 0x473cd0; // CFloat3::Scale
-pub(super) const SIM_D160: u32 = 0x51d160;
 /// The state emit's messages (the recursion and the range log's text, and the function's name).
 const MSG_RECURSIVE: u32 = 0x730358;
 const MSG_RANGE: u32 = 0x73032c;
 const MSG_NAME: u32 = 0x73d4b0;
 
-/// The hinged body's own bindings its code calls: run in place on a held body ([`call_hinge`]).
-const HINGE_CALLEES: [u32; 7] = [LIMIT_UPDATE, SIM_D160, SIM_C960, SIM_E1D0, SIM_CFF0, SIM_EA80, SIM_D860];
-
-/// `host.call_at(sp, target, body, args)` from the hinged body `body`'s code when `target` is one of its own bindings
-/// ([`HINGE_CALLEES`]) and its solid is held: run in place ([`Host::call_in_place`]: their state is the held body's, and
-/// their callers read none of the call's words after it; residue audit, notes/physics.md "Store seam"), else through
-/// the host.
-fn call_hinge(host: &dyn Host, sp: u32, target: u32, body: u32, args: &[u32]) -> crate::Called {
-    let held = HINGE_CALLEES.contains(&target) && held_solids(host).is_some_and(|s| s.held(body).is_some());
-    let direct = if held { host.call_in_place(sp, target, body, args) } else { None };
-    direct.unwrap_or_else(|| host.call_at(sp, target, body, args))
+/// The entry esp of a call at `sp` to one of the hinged body's own functions, taken as a plain call from the hinged
+/// body `body`'s code, counted as a run ([`Host::ran_direct`]). On a held body ([`Host::call_in_place`] before) none of
+/// the call's words are written (their callers read none after it; residue audit, notes/physics.md "Store seam"),
+/// else they are, as the host writes them.
+fn enter_hinge(host: &dyn Host, mem: &mut Mem, sp: u32, body: u32, args: &[u32]) -> u32 {
+    if held_solids(host).held(body).is_some() {
+        crate::enter_leaf(host, sp)
+    } else {
+        enter(host, mem, sp, args)
+    }
 }
 
 /// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` of a held hinged body: its one write, the dirty word
-/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]); per call the host.
-pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, sp: u32, object: u32) {
-    if host.typed().is_none() {
-        host.call_at(sp, SET_DIRTY, object, &[]);
-        return;
-    }
+/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]).
+pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, object: u32) {
     host.ran_direct();
     crate::rigid_body::set_solid_word(host, mem, object + rbr_physics::ntweak::DIRTY, 1);
 }
@@ -72,7 +63,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     /// In a held step `SetDirty`'s one write, the tweak's dirty word (the hinge's headers stay in the image; a held
     /// solid's word if its table names it), here ([`Host::ran_direct`]); else the host.
     fn mark_dirty(&mut self, at: u32) {
-        set_dirty(self.host, &mut self.mem, self.frame - 0x44, at);
+        set_dirty(self.host, &mut self.mem, at);
     }
 
     fn scale_vector(&mut self, vec: u32, s: f32, out: u32) {
@@ -80,15 +71,17 @@ impl hinge_advance::Calls for F950Host<'_> {
     }
 
     fn apply_stops(&mut self, this: u32) {
-        call_hinge(self.host, self.frame - 0x44, LIMIT_UPDATE, this, &[]);
+        enter_hinge(self.host, &mut self.mem, self.frame - 0x44, this, &[]);
+        entity_slots::limit_update(self.host, &mut self.mem, this);
     }
 
     fn update_pose(&mut self, this: u32) {
-        call_hinge(self.host, self.frame - 0x44, SIM_D160, this, &[]);
+        let esp = enter_hinge(self.host, &mut self.mem, self.frame - 0x44, this, &[]);
+        sim_d160(self.host, &mut self.mem, esp, this);
     }
 
     fn emit_state(&mut self, signal: u32, sig: u32) -> u32 {
-        crate::fill_residue(self.host, &mut self.mem, sig + 4, 3);
+        crate::fill_residue(&mut self.mem, sig + 4, 3);
         self.host.call_at(self.frame - 0x48, STATE_EMIT, signal, &[sig]).eax
     }
 }
@@ -148,23 +141,16 @@ pub(super) fn state_emit_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     Ok(Return::void(emit.eax, 4))
 }
 
-/// thiscall: `CHingedRigidBody::SimC960` (0x51c960), the rotation block from the hinge angle. Its eax is the sine and
-/// cosine's residue, a scratch value no caller reads, so 0.
-pub(super) fn sim_c960_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_solids(ctx, |s| layout::hinge_rotation(s, r.ecx));
-    Ok(Return::void(0, 0))
+/// `CHingedRigidBody::SimC960` (0x51c960), the rotation block from the hinge angle. Its eax is the sine and cosine's
+/// residue, a scratch value no caller reads.
+fn sim_c960(host: &dyn Host, mem: &mut Mem, this: u32) {
+    with_solids(host, mem, |s| layout::hinge_rotation(s, this));
 }
 
-/// thiscall `(idx)`: `CHingedRigidBody::SimCF10` (0x51cf10), one limit's residual (st0).
-pub(super) fn sim_cf10_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let step = on_solids(ctx, |s| layout::hinge_limit_residual(s, r.ecx, r.stack[0]));
-    Ok(Return::float(step.torque, 4))
-}
-
-/// thiscall: `CHingedRigidBody::SimEA80` (0x51ea80), the sum of the active limits' residuals (st0). The inner `SimCF10`
-/// calls are the port's own, so they are not made.
-pub(super) fn sim_ea80_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(f64::from(on_solids(ctx, |s| layout::hinge_limit_sum(s, r.ecx))), 0))
+/// `CHingedRigidBody::SimEA80` (0x51ea80), the sum of the active limits' residuals. The inner `SimCF10` calls are the
+/// port's own, so they are not made.
+fn sim_ea80(host: &dyn Host, mem: &mut Mem, this: u32) -> f32 {
+    with_solids(host, mem, |s| layout::hinge_limit_sum(s, this))
 }
 
 /// The slip term's calls on the original's objects, at the depths below the frame: `E01Vec4::CopyFrom` (-0x78) and the
@@ -177,7 +163,7 @@ struct SlipHost<'a> {
 
 impl SlipCalls for SlipHost<'_> {
     fn copy_vector(&mut self, to: u32, from: u32) {
-        crate::collision::copy_vec4(self.host, &mut self.mem, self.frame - 0x78, to, from);
+        crate::collision::copy_vec4(self.host, &mut self.mem, to, from);
     }
 
     fn carry(&mut self, receiver: u32, a: u32, b: u32, out: u32) -> [f32; 3] {
@@ -190,12 +176,11 @@ impl SlipCalls for SlipHost<'_> {
     }
 }
 
-/// thiscall: `CHingedRigidBody::SimCFF0` (0x51cff0), the slip term (st0). Pops nothing.
-pub(super) fn sim_cff0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let frame = aligned_frame(r.esp);
-    let mut calls = SlipHost { mem: ctx.mem.clone(), host: ctx.host, frame };
-    let term = on_solids(ctx, |s| layout::slip_term_at(s, r.ecx, frame, &mut calls));
-    Ok(Return::float(term as f64, 0))
+/// `CHingedRigidBody::SimCFF0` (0x51cff0) entered at `esp`, the slip term.
+fn sim_cff0(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32) -> f32 {
+    let frame = aligned_frame(esp);
+    let mut calls = SlipHost { mem: mem.clone(), host, frame };
+    with_solids(host, mem, |s| layout::slip_term_at(s, this, frame, &mut calls))
 }
 
 /// The pivot's calls on the original's objects, at the depths below the frame: the walks (`MB560`, -0x70) and
@@ -222,12 +207,11 @@ impl PivotCalls for PivotHost<'_> {
     }
 }
 
-/// thiscall: `CHingedRigidBody::SimE1D0` (0x51e1d0), the pivot and settle. Pops nothing.
-pub(super) fn sim_e1d0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let frame = aligned_frame(r.esp);
-    let mut calls = PivotHost { mem: ctx.mem.clone(), host: ctx.host, frame };
-    let eax = on_solids(ctx, |s| layout::pivot_at(s, r.ecx, frame, &mut calls));
-    Ok(Return::void(eax, 0))
+/// `CHingedRigidBody::SimE1D0` (0x51e1d0) entered at `esp`, the pivot and settle.
+fn sim_e1d0(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32) {
+    let frame = aligned_frame(esp);
+    let mut calls = PivotHost { mem: mem.clone(), host, frame };
+    with_solids(host, mem, |s| layout::pivot_at(s, this, frame, &mut calls));
 }
 
 /// `SimD160`'s calls on the original's objects, at the depths below the frame: `CCar::Xform8130` (-0x6c), `MB560`
@@ -257,7 +241,8 @@ impl PoseCalls for D160Host<'_> {
     }
 
     fn update_hinge_rotation(&mut self, body: u32) {
-        call_hinge(self.host, self.frame - 0x64, SIM_C960, body, &[]);
+        enter_hinge(self.host, &mut self.mem, self.frame - 0x64, body, &[]);
+        sim_c960(self.host, &mut self.mem, body);
     }
 
     fn matrix_to_quaternion(&mut self, matrix: u32, out: u32) {
@@ -265,11 +250,10 @@ impl PoseCalls for D160Host<'_> {
     }
 }
 
-/// thiscall: `CHingedRigidBody::SimD160` (0x51d160), the hinge's frame update. Pops nothing.
-pub(super) fn sim_d160_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = D160Host { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp), this: r.ecx };
-    let eax = on_solids(ctx, |s| layout::pose_at(s, r.ecx, &mut calls));
-    Ok(Return::void(eax, 0))
+/// `CHingedRigidBody::SimD160` (0x51d160) entered at `esp`, the hinge's frame update.
+fn sim_d160(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32) {
+    let mut calls = D160Host { mem: mem.clone(), host, frame: aligned_frame(esp), this };
+    with_solids(host, mem, |s| layout::pose_at(s, this, &mut calls));
 }
 
 /// `SimEAD0`'s calls on the original's objects, at the depths below the frame: `SimE1D0`, `SimCFF0` and `SimEA80`
@@ -300,7 +284,8 @@ impl SolveCalls for SolveHost<'_> {
     }
 
     fn update_pivot(&mut self, this: u32) {
-        call_hinge(self.host, self.frame - 0xb4, SIM_E1D0, this, &[]);
+        let esp = enter_hinge(self.host, &mut self.mem, self.frame - 0xb4, this, &[]);
+        sim_e1d0(self.host, &mut self.mem, esp, this);
     }
 
     fn solve_terms(&self, this: u32) -> SolveTerms {
@@ -308,11 +293,13 @@ impl SolveCalls for SolveHost<'_> {
     }
 
     fn slip_torque(&mut self, this: u32) -> f32 {
-        call_hinge(self.host, self.frame - 0xb4, SIM_CFF0, this, &[]).st0 as f32
+        let esp = enter_hinge(self.host, &mut self.mem, self.frame - 0xb4, this, &[]);
+        sim_cff0(self.host, &mut self.mem, esp, this)
     }
 
     fn limit_torque_sum(&mut self, this: u32) -> f32 {
-        call_hinge(self.host, self.frame - 0xb4, SIM_EA80, this, &[]).st0 as f32
+        enter_hinge(self.host, &mut self.mem, self.frame - 0xb4, this, &[]);
+        sim_ea80(self.host, &mut self.mem, this)
     }
 
     fn contact_load(&mut self, this: u32, frame: &ContactHandles) -> Option<([f32; 3], [f32; 3])> {
@@ -348,8 +335,6 @@ struct EfeHost<'a> {
     this: u32,
 }
 
-pub(super) const VF_E070: u32 = 0x51e070;
-pub(super) const SIM_D860: u32 = 0x51d860;
 /// `SimEFE0`'s locals below its frame: `SimD860`'s output and `AddEdge`'s vector.
 const EFE0_D860_OUT: u32 = 0x20;
 const EFE0_EDGE: u32 = 0x10;
@@ -368,8 +353,19 @@ impl RefreshCalls for EfeHost<'_> {
         self.host.call_at(self.frame - 0x44, target, this, &[]);
     }
 
-    fn build_axes(&mut self, this: u32, args: [u32; 6]) {
-        self.host.call_at(self.frame - 0x5c, VF_E070, this, &args);
+    fn build_axes(&mut self, _this: u32, args: [u32; 6]) {
+        // `CHingedRigidBody::VfE070` (0x51e070), a leaf called with exactly its words: no words written.
+        self.host.ran_direct();
+        let [origin, direction, reference, inverse_origin, axes, inverse_axes] = args;
+        let handles = rbr_physics::entities::hinge_axes::AxesHandles {
+            origin,
+            direction,
+            reference,
+            inverse_origin,
+            axes,
+            inverse_axes,
+        };
+        layout::build_hinge_axes(&mut self.mem, &handles);
     }
 
     fn compose_with_car(&mut self, car: u32, a: u32, out: u32) {
@@ -377,11 +373,13 @@ impl RefreshCalls for EfeHost<'_> {
     }
 
     fn update_pose(&mut self, this: u32) {
-        call_hinge(self.host, self.frame - 0x44, SIM_D160, this, &[]);
+        let esp = enter_hinge(self.host, &mut self.mem, self.frame - 0x44, this, &[]);
+        sim_d160(self.host, &mut self.mem, esp, this);
     }
 
     fn offset(&mut self, this: u32, out: u32) -> [f32; 3] {
-        call_hinge(self.host, self.frame - 0x48, SIM_D860, this, &[out]);
+        let esp = enter_hinge(self.host, &mut self.mem, self.frame - 0x48, this, &[out]);
+        sim_d860(self.host, &mut self.mem, esp, this, out);
         [0, 4, 8].map(|k| self.mem.f32(out + k))
     }
 
@@ -464,8 +462,10 @@ impl rbr_physics::entities::layout::ImpulseCalls for F350Host<'_> {
         self.host.call_at(sp, 0x4e58f0, car, &[body]);
     }
 
-    fn exclude(&mut self, sp: u32, body: u32, car: u32) {
-        self.host.call_at(sp, 0x51a060, body, &[car]);
+    fn exclude(&mut self, _sp: u32, body: u32, car: u32) {
+        // `CEntity::E43_ExclA060` (0x51a060), a leaf called with exactly its words: no words written.
+        self.host.ran_direct();
+        layout::remove_exclusion(&mut self.mem, body, car);
     }
 }
 
@@ -497,7 +497,7 @@ pub(super) fn sim_f350_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0x20))
 }
 
-/// The original callees of `SimDA60` and `SimFD00`, in the emulator, at the stack pointers the layout gives.
+/// The original callees of `SimDA60` and `SimFD00`, through the host, at the stack pointers the layout gives.
 struct DetachHost<'a>(&'a dyn Host);
 
 impl layout::PoseToWorldCalls for DetachHost<'_> {
@@ -511,8 +511,9 @@ impl layout::PoseToWorldCalls for DetachHost<'_> {
 }
 
 impl layout::DetachCalls for DetachHost<'_> {
-    fn pose_to_world(&mut self, _: &mut Mem, sp: u32, body: u32) {
-        self.0.call_at(sp, SIM_DA60, body, &[]);
+    fn pose_to_world(&mut self, mem: &mut Mem, sp: u32, body: u32) {
+        let esp = enter(self.0, mem, sp, &[]);
+        sim_da60(self.0, mem, esp, body);
     }
 
     fn to_world(&mut self, _: &mut Mem, sp: u32, car: u32, local: u32, out: u32) {
@@ -524,16 +525,20 @@ impl layout::DetachCalls for DetachHost<'_> {
         self.0.call_at(sp, target, body, &[]);
     }
 
-    fn clear_accumulators(&mut self, _: &mut Mem, sp: u32, body: u32) {
-        self.0.call_at(sp, CLEAR_ACC, body, &[]);
+    fn clear_accumulators(&mut self, mem: &mut Mem, _sp: u32, body: u32) {
+        // `CSolid::E43ClearAcc` (0x529e60), a leaf called with exactly its words: no words written.
+        self.0.ran_direct();
+        entity_slots::clear_acc(self.0, mem, body);
     }
 
     fn unlink(&mut self, _: &mut Mem, sp: u32, link: u32) {
         self.0.call_at(sp, 0x4e41a0, link, &[]);
     }
 
-    fn init_walker_marks(&mut self, _: &mut Mem, sp: u32, body: u32) {
-        self.0.call_at(sp, INIT_BD0, body, &[]);
+    fn init_walker_marks(&mut self, mem: &mut Mem, _sp: u32, body: u32) {
+        // `CEntity::E43_InitBD0` (0x519bd0), a leaf called with exactly its words: no words written.
+        self.0.ran_direct();
+        layout::init_walker_marks(mem, body);
     }
 
     fn cell_link_at(&mut self, _: &mut Mem, sp: u32, grid: u32, x: u32, y: u32) -> u32 {
@@ -584,12 +589,11 @@ pub(super) fn step_big_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0))
 }
 
-/// thiscall, no stack arguments: `CHingedRigidBody::SimDA60` (0x51da60), the body's pose through its car.
-pub(super) fn sim_da60_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let frame = aligned_frame(r.esp) - 0x40;
-    let mut calls = DetachHost(ctx.host);
-    on_solids(ctx, |s| layout::pose_to_world(s, r.ecx, frame, &mut calls));
-    Ok(Return::void(r.ecx + 0x2a0, 0))
+/// `CHingedRigidBody::SimDA60` (0x51da60) entered at `esp`, the body's pose through its car.
+fn sim_da60(host: &dyn Host, mem: &mut Mem, esp: u32, body: u32) {
+    let frame = aligned_frame(esp) - 0x40;
+    let mut calls = DetachHost(host);
+    with_solids(host, mem, |s| layout::pose_to_world(s, body, frame, &mut calls));
 }
 
 /// thiscall: `CHingedRigidBody::SimEFE0` (0x51efe0), the hinged body's frame from its definition. Pops nothing.
@@ -605,23 +609,6 @@ pub(super) fn sim_efe0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn set_650_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     layout::set_hinge_link(&mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(0, 4))
-}
-
-/// thiscall `(a, b, c, d, e, f)`, `ret 0x18`: `CHingedRigidBody::VfE070` (0x51e070, `layout::build_hinge_axes`).
-pub(super) fn hinge_vf_e070(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [a, b, c, d, e, f, ..] = r.stack;
-    layout::build_hinge_axes(
-        &mut ctx.mem,
-        &rbr_physics::entities::hinge_axes::AxesHandles {
-            origin: a,
-            direction: b,
-            reference: c,
-            inverse_origin: d,
-            axes: e,
-            inverse_axes: f,
-        },
-    );
-    Ok(Return::void(0, 0x18))
 }
 
 /// `SimD860`'s walk at the original's frame: its vector at `frame - 0x20`, the output at `frame - 0x10`, the call's
@@ -643,13 +630,12 @@ impl rbr_physics::entities::hinge_offset::OffsetCalls for D860Host<'_> {
     }
 }
 
-/// thiscall `(out)`, `ret 4`: `CHingedRigidBody::SimD860` (0x51d860), its vector into `out`; returns `out`.
-pub(super) fn hinge_sim_d860(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let input = on_solids(ctx, |s| s.offset_input(r.ecx));
-    let mut calls = D860Host { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp) };
+/// `CHingedRigidBody::SimD860` (0x51d860) entered at `esp`, its vector into `out`.
+fn sim_d860(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, out: u32) {
+    let input = with_solids(host, mem, |s| s.offset_input(this));
+    let mut calls = D860Host { mem: mem.clone(), host, frame: aligned_frame(esp) };
     let v = rbr_physics::entities::hinge_offset::hinge_offset(&mut calls, &input);
     for (k, x) in v.into_iter().enumerate() {
-        ctx.mem.set_f32(r.stack[0] + 4 * k as u32, x);
+        mem.set_f32(out + 4 * k as u32, x);
     }
-    Ok(Return::void(r.stack[0], 4))
 }

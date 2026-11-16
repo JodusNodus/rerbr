@@ -39,9 +39,7 @@ impl DetectorHost for Detectors<'_> {
         // A body's (the probes ask each body in their cells twice) is read here.
         // An entity's without a grid (`CEntity::Vf118`) is 0.
         let target = vslot(&self.mem, entity, 0x118);
-        if matches!(target, BODY_GRID | crate::entities::ENTITY_VF118)
-            && crate::skip_call(self.host, &mut self.mem, sp, &[])
-        {
+        if matches!(target, BODY_GRID | crate::entities::ENTITY_VF118) && sp != 0 {
             return match target {
                 BODY_GRID => rbr_physics::collision::layout::Body::new(entity).grid(&self.mem),
                 _ => 0,
@@ -51,9 +49,7 @@ impl DetectorHost for Detectors<'_> {
     }
 
     fn grid_active(&mut self, sp: u32, entity: u32) -> u32 {
-        if vslot(&self.mem, entity, 0x110) == crate::collision::BODY_VF110
-            && crate::skip_call(self.host, &mut self.mem, sp, &[])
-        {
+        if vslot(&self.mem, entity, 0x110) == crate::collision::BODY_VF110 && sp != 0 {
             return rbr_physics::collision::layout::body_grid_active(&self.mem, entity) as u32;
         }
         self.slot(sp, entity, 0x110, &[])
@@ -75,7 +71,7 @@ impl DetectorHost for Detectors<'_> {
         // `CEntity::Vf120`'s jump to a body's `CBody::Vf11C` enters at its own esp, with its words.
         if vslot(&self.mem, entity, 0x120) == crate::entities::ENTITY_VF120
             && vslot(&self.mem, entity, 0x11c) == crate::collision::BODY_VF11C
-            && crate::collision::body_box_direct(self.host, &mut self.mem, sp, entity, lo, hi)
+            && crate::collision::body_box_direct(&mut self.mem, sp, entity, lo, hi)
         {
             return;
         }
@@ -125,12 +121,12 @@ impl DetectorHost for Detectors<'_> {
         self.host.call_at(sp, MIN_MAX, at, &[other, lo, hi]);
     }
 
-    fn ray_clear(&mut self, sp: u32, at: u32) {
-        crate::collision::ray_clear_at(self.host, &mut self.mem, sp, at);
+    fn ray_clear(&mut self, _sp: u32, at: u32) {
+        crate::collision::ray_clear_at(self.host, &mut self.mem, at);
     }
 
     fn cells(&mut self, sp: u32, lo: u32, hi: u32, out: u32) {
-        match crate::collision::box_cells_direct(self.host, &mut self.mem, sp, lo, hi, out) {
+        match crate::collision::box_cells_direct(self.host, &mut self.mem, lo, hi) {
             Some(cells) => layout::set_cells(&mut self.mem, out, cells),
             None => {
                 crate::collision::call_grid(self.host, sp, E45_CELL_QUERY, 0, &[lo, hi, out]);
@@ -140,7 +136,7 @@ impl DetectorHost for Detectors<'_> {
 
     fn kernel_tests(&mut self, mem: &mut Mem, frame: u32, node: u32, mask: u32, excluded: u32) -> Option<KernelTest> {
         let last = self.vf_cc.as_ref()?;
-        let ret = self.host.call_slot_word()?;
+        let ret = crate::pure::CALL_RET;
         let host = self.host;
         let corners = || last.and_then(|c| c.for_call(frame - 0xc, frame + 0x28, frame + 0x20, host.entered()));
         let next = |mem: &Mem, node| crate::collision::cell_word(host, mem, node);
@@ -196,7 +192,7 @@ impl CollideHost for Detectors<'_> {
     fn telemetry_after_solve(&mut self, sp: u32, receiver: u32) {
         // A `ret`; nothing reads its words after it (the respawn countdown's sample lane 3 that the direct dispatch
         // left the slot to is `crate::RESIDUE`).
-        if crate::skip_unwritten(self.host, &mut self.mem, sp, &[]) {
+        if sp != 0 {
             self.host.ran_direct();
             return;
         }
@@ -334,23 +330,22 @@ pub(super) fn run_collision_detectors(ctx: &mut Ctx, r: &Regs) -> Result<Return,
 /// pushed source too.
 struct Penetration<'a> {
     host: &'a dyn Host,
-    entry: u32,
 }
 
 impl PenetrationHost for Penetration<'_> {
     fn ray_seeds(&mut self, mem: &mut Mem, seeds: u32) {
-        crate::collision::ray_seeds_at(self.host, mem, self.entry - 8, seeds);
+        crate::collision::ray_seeds_at(self.host, mem, seeds);
     }
 
     fn copy_vec4(&mut self, mem: &mut Mem, to: u32, from: u32) {
-        crate::collision::copy_vec4(self.host, mem, self.entry - 0xc, to, from);
+        crate::collision::copy_vec4(self.host, mem, to, from);
     }
 }
 
 /// thiscall `(owner, lo, hi, scale, word)`: `CL2PenetrationDetector::Ctor`, eax the detector.
 pub(super) fn penetration_ctor(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [owner, lo, hi, scale, word, ..] = r.stack;
-    let mut calls = Penetration { host: ctx.host, entry: r.esp };
+    let mut calls = Penetration { host: ctx.host };
     let eax = detect::l2_penetration_ctor(&mut ctx.mem, &mut calls, r.ecx, owner, lo, hi, f32::from_bits(scale), word);
     Ok(Return::void(eax, 0x14))
 }

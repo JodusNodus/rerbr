@@ -280,10 +280,6 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
         }
         None => println!("  Game's application state equals the image's at the boot"),
     }
-    if let Some((summary, equal)) = &r.twin {
-        ok &= equal;
-        println!("  {summary}");
-    }
     if let Some(stop) = &r.stop {
         ok = false;
         println!("  stopped: {stop}");

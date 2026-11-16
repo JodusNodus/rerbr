@@ -21,46 +21,6 @@ pub const VEC4_CLEAR: u32 = 0x465D80;
 
 /// The publish step's callees.
 pub mod publish {
-    /// On the drive.
-    pub const DRIVE_UPDATE: u32 = 0x508480;
-    /// On the passenger.
-    pub const PASSENGER_UPDATE: u32 = 0x523210;
-    /// On the engine.
-    pub const ENGINE_UPDATE: u32 = 0x518CF0;
-    /// The light system's update (`light::update`).
-    pub const LIGHTS_UPDATE: u32 = 0x4F2150;
-    /// On the car itself.
-    pub const CAR_UPDATE: u32 = 0x51A3E0;
-    /// The test on each mounted body: true when the body's attach state is 1.
-    pub const MOUNTED_TEST: u32 = 0x521920;
-    /// The mounted body's update, when its test holds.
-    pub const MOUNTED_UPDATE: u32 = 0x522000;
-    /// The ground probe on the car (`rigid_body::vote::probe_ground`): takes the output vector and the distance.
-    pub const PROBE_GROUND: u32 = 0x529D30;
-    /// The car's body frame composed into the world frame (`world_placement::compose_body_into_world`).
-    pub const COMPOSE_BODY_INTO_WORLD: u32 = 0x4E8130;
-    /// On each wheel, with two vectors of the frame.
-    pub const WHEEL_UPDATE: u32 = 0x5390D0;
-    /// The sensor sampler (`sensors::sample_sensors`).
-    pub const SAMPLE_SENSORS: u32 = 0x4E9800;
-    /// The vector walk through the world (`MB560`).
-    pub const WALK_VECTOR: u32 = 0x51B560;
-    /// The car's ground direction (`accessors::ground_direction`): writes a vector into the frame.
-    pub const GROUND_DIRECTION: u32 = 0x4E5CF0;
-    /// Composes a frame with another (`transform::FrameCompose`).
-    pub const COMPOSE_FRAMES: u32 = 0x51B4C0;
-    /// The engine's last update.
-    pub const ENGINE_LAST_UPDATE: u32 = 0x50E9A0;
-
-    /// The signal emits and the offsets of their emitters in the signal manager.
-    pub const STATE_EMIT_A: u32 = 0x4E83F0;
-    pub const STATE_EMIT_A_AT: u32 = 0x2E10;
-    pub const STATE_EMIT_B: u32 = 0x4E8330;
-    pub const STATE_EMIT_B_AT: u32 = 0x29E0;
-    pub const DRIVE_LINE_EMIT: u32 = 0x4E84B0;
-    pub const DRIVE_LINE_EMIT_AT: u32 = 0x51A8;
-    pub const SPEED_EMIT: u32 = 0x4E81B0;
-    pub const SPEED_EMIT_AT: u32 = 0x860;
 
     /// The ground probe's distance, m (named by use: the car passes 5.0).
     pub const PROBE_DISTANCE: f32 = 5.0;

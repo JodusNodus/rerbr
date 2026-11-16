@@ -44,7 +44,7 @@ pub(super) fn car_state(playback: &Playback) -> CarState {
     pure.with_held(|t| {
         car_from(|at| match at {
             NOTIFY_A_SPEED_OFFSET => t.car.own.read(car, car_slot::forward_speed).unwrap_or_else(|| image(at)),
-            _ => t.solids.as_ref().and_then(|s| s.read(car + at as u32)).map_or_else(|| image(at), f32::from_bits),
+            _ => t.solids.read(car + at as u32).map_or_else(|| image(at), f32::from_bits),
         })
     })
     .unwrap_or_else(|| car_from(image))

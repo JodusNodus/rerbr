@@ -1,6 +1,5 @@
-# The snapshots published for the hybrid check, the vector tools and the tests, as they unpack under RBR_SNAPS:
-# the four reference drives' chains (harness/long_run.py; vcu-cov is the merge gate's), snapH (the gate's 1295 and
-# replay.py's --check pairs), the weather test's step-1000 snapshots, and the load dumps (dumps/, from
+# The snapshots published for replay.py and the tests, as they unpack under RBR_SNAPS: the four reference drives'
+# chains, snapH (replay.py's --check pairs), the weather test's step-1000 snapshots, and the load dumps (dumps/, from
 # RBR_VECTOR_STORE/dumps). scripts/pack-test-data.sh packs these with the x87 results cache (replay-fpu-cache.bin).
 snapH.snap-1295-after.bin
 snapH.snap-1295.bin

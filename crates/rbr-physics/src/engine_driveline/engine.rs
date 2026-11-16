@@ -11,8 +11,6 @@ use crate::spring_damper::{self, BlendTerms, Relaxation, UpdateTerms};
 
 /// The gas constant the dampers use (287 J/(kg K), dry air).
 const AIR_GAS_CONSTANT: f32 = 287.0;
-/// The pressure the dampers solve against (101300 Pa, one standard atmosphere).
-pub const STANDARD_PRESSURE: f32 = 101_300.0;
 
 /// The game's random generator: one linear congruential step of `seed`.
 pub fn next_random(seed: u32) -> u32 {

@@ -1,5 +1,5 @@
 //! The small ports of the C++-exact batch: the light setters, the brake-wall raycast entry, the segment test and the
-//! profiler exit. The original's calls are checked by the all-bindings `rust_step` run (`rbr-hybrid/bound.csv`).
+//! profiler exit.
 
 use rbr_physics::car_body::layout::{set_brake_light, set_neutral_light};
 use rbr_physics::collision::layout::wall_tree::RaycastCalls;

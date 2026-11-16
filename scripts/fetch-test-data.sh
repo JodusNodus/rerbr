@@ -2,16 +2,15 @@
 # Downloads the published test data that data/test-data.SHA256SUMS names (docs/development.md "Set up"), checks it and
 # unpacks each part to DIR/<tag>/<part>, then prints its exports (`eval "$(scripts/fetch-test-data.sh DIR)"`):
 #   recordings  RBR_RECORDINGS                       the drives the tests read
-#   vectors     RBR_VECTOR_STORE                     the per-call records
-#   snapshots   RBR_SNAPS, RBR_REPLAY_FPU_CACHE      the hybrid check's and the vector tools' snapshots, the x87 cache
-# PARTS default to recordings and vectors. A part already unpacked is kept; a new tag unpacks next to the old one.
+#   snapshots   RBR_SNAPS, RBR_REPLAY_FPU_CACHE      the snapshots (replay.py, the load tests), the x87 cache
+# PARTS default to recordings. A part already unpacked is kept; a new tag unpacks next to the old one.
 # RBR_TEST_DATA_URL replaces the releases URL (a mirror, or file:// for a set packed here by scripts/pack-test-data.sh).
 # Needs curl, tar and zstd.
 # Usage: scripts/fetch-test-data.sh DIR [PART...]
 set -euo pipefail
 dir=${1:?usage: scripts/fetch-test-data.sh DIR [PART...]}
 shift
-parts=" ${*:-recordings vectors} "
+parts=" ${*:-recordings} "
 sums=$(cd "$(dirname "$0")/.." && pwd)/data/test-data.SHA256SUMS
 url=${RBR_TEST_DATA_URL:-https://github.com/JodusNodus/rerbr/releases/download}
 command -v shasum >/dev/null && sha="shasum -a 256" || sha=sha256sum
@@ -35,7 +34,6 @@ while read -r hash asset; do
     fi
     case $part in
     recordings) echo "export RBR_RECORDINGS=$to" ;;
-    vectors) echo "export RBR_VECTOR_STORE=$to" ;;
     snapshots) echo "export RBR_SNAPS=$to"; echo "export RBR_REPLAY_FPU_CACHE=$to/replay-fpu-cache.bin" ;;
     esac
 done < "$sums"

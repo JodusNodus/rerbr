@@ -12,7 +12,7 @@ use rbr_physics::car_body::{self as car, layout};
 use rbr_physics::math::vec::{Vec3, Vec4};
 use rbr_physics::mem::Mem;
 
-use super::members::{FLOW_OBJECT, M5666B0, SAMPLER_54A0};
+use super::members::FLOW_OBJECT;
 use super::step::SLOT_S8C;
 use crate::car_body::{on_car, ADD_EDGE};
 use crate::entities::{Op, BODY_COMPOSE, NODE_OF};
@@ -21,9 +21,14 @@ use crate::{aligned_frame, Called, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
 
 /// Where the calls' vectors and words go: the free stack below the binding's entry, past the return slot. A nested run
-/// starts 0x1000 below the emulator's stack pointer, so it does not reach these.
+/// starts 0x1000 below the caller's stack pointer, so it does not reach these.
 pub(super) fn scratch(r: &Regs) -> u32 {
-    (r.esp - 0x100) & !0xf
+    scratch_at(r.esp)
+}
+
+/// [`scratch`] of a binding entered at `esp`.
+pub(super) fn scratch_at(esp: u32) -> u32 {
+    (esp - 0x100) & !0xf
 }
 
 /// Scratch offsets: two vectors for a walk (`A`, `C`), a vector for a send (`SEND`), a second output (`B`), the
@@ -36,7 +41,7 @@ const EDGE_IN: u32 = 0x40;
 const EDGE_OUT: u32 = 0x50;
 const M1: u32 = 0x60;
 
-/// The original's callees a car-body binding makes, on the emulator's memory. The walks (`E43PairWalk::MB560`) and the
+/// The original's callees a car-body binding makes, on the image. The walks (`E43PairWalk::MB560`) and the
 /// compose (`FrameCompose`) take their vectors by address: the pure ports' `Vec3` is written to scratch and read back.
 pub(super) struct Car<'a> {
     pub(super) mem: Mem,
@@ -81,7 +86,6 @@ pub(super) const INDEX_LIMIT: u32 = 0x20;
 /// `StepEngine`'s drive step (`CDrive::Step1E0`), the snapshot step (`Snap9360`) and its profiler sample (`g_8ef668`) and
 /// name ("CCar::Hook").
 pub(super) const DRIVE_STEP: u32 = 0x50A1E0;
-pub(super) const SNAP_9360: u32 = 0x4E9360;
 pub(super) const STEP_ENGINE_SAMPLE: u32 = 0x8EF668;
 pub(super) const STEP_ENGINE_NAME: u32 = 0x738AF4;
 
@@ -183,6 +187,11 @@ pub(super) fn car_calls<'a>(ctx: &Ctx<'a>, r: &Regs) -> Car<'a> {
     Car { mem: ctx.mem.clone(), host: ctx.host, scratch: scratch(r) }
 }
 
+/// [`car_calls`] of a binding run directly at `esp` ([`super::enter`]): its calls placed below `esp`.
+pub(super) fn car_calls_at<'a>(host: &'a dyn Host, mem: &Mem, esp: u32) -> Car<'a> {
+    Car { mem: mem.clone(), host, scratch: scratch_at(esp) }
+}
+
 /// MotionProbe's aligned local-frame base: locals begin after its aligned 0x78-byte frame and the saved esi/edi.
 pub(super) fn probe_scratch(entry_esp: u32) -> u32 {
     aligned_frame(entry_esp) - 0x78 - 8
@@ -217,7 +226,9 @@ impl ProbeCalls for Car<'_> {
     }
 
     fn flow_gate(&mut self) -> u32 {
-        self.host.call(M5666B0, self.mem.u32(FLOW_OBJECT), &[]).eax
+        let flow = self.mem.u32(FLOW_OBJECT);
+        crate::enter(self.host, &mut self.mem, 0, &[]);
+        self.mem.damage_select(flow)
     }
 
     fn to_world(&mut self, car: u32, v: Vec3) -> Vec3 {
@@ -231,7 +242,7 @@ impl ProbeCalls for Car<'_> {
     fn sample_surface(&mut self, car: u32) -> Sample {
         let big = self.scratch + 0x30;
         let small = self.scratch + 0x40;
-        let found = self.host.call(SAMPLER_54A0, car, &[car + 0x140, big, small]).eax;
+        let found = super::step::vote_probe_at(self.host, &mut self.mem, 0, [car + 0x140, big, small]);
         Sample { found, first: self.mem.u32(big + 0x44), second: self.mem.u32(big + 0x48) }
     }
 }
@@ -253,11 +264,6 @@ fn set_vec(host: &dyn Host, mem: &mut Mem, at: u32, v: Vec3) {
 pub(super) fn load_binary(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let this = car::tweak::load_binary(&mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(this, 4))
-}
-
-/// thiscall: `E36Triple::MinPick` on the triple at `this`; eax is the int result.
-pub(super) fn dominant_surface(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.dominant_surface(r.ecx) as u32, 0))
 }
 
 /// thiscall `(a, b)`: `CCar::ToWorld` walks the vector at `a` against the world frame into `b`; returns `b`.
@@ -306,37 +312,9 @@ pub(super) fn compose_body_into_world(ctx: &mut Ctx, r: &Regs) -> Result<Return,
     Ok(Return::void(b, 8))
 }
 
-/// thiscall: `CCar::PushGridEdge` (`Update7270`), the grid edge once and the flag.
-pub(super) fn push_grid_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    on_car(ctx, |m| layout::push_grid_edge(&mut calls, m, r.ecx));
-    Ok(Return::void(0, 0))
-}
-
 /// thiscall `(a)`: `CCar::RefreshEdge` (`Vf20x72D0`); eax is the `Vf20` call's.
 pub(super) fn refresh_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = car_calls(ctx, r);
     let eax = on_car(ctx, |m| layout::refresh_edge(&mut calls, m, r.ecx, r.stack[0]));
     Ok(Return::void(eax, 4))
-}
-
-/// thiscall: `CCar::Sim7AD0`, the wheel aero gust.
-pub(super) fn wall_friction(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    on_car(ctx, |m| car::wall_friction::wall_friction(&mut calls, m, r.ecx));
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall: `CCar::Sim7DC0` (`DragAndSpinDamp`).
-pub(super) fn apply_drag(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = car_calls(ctx, r);
-    let factor = crate::ngp::drag_factor(ctx);
-    on_car(ctx, |m| car::drag::apply_drag(&mut calls, m, r.ecx, factor));
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall: `CCar::UpdateFfbTorque` (`Hook1FF0`), the filtered steering torque for force feedback.
-pub(super) fn update_ffb_torque(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_car(ctx, |m| layout::update_ffb_torque(m, r.ecx));
-    Ok(Return::void(0, 0))
 }

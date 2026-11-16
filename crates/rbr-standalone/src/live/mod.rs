@@ -361,11 +361,6 @@ impl<'a> Live<'a> {
         self.frame_seconds = seconds;
     }
 
-    /// `--dispatch direct` (the default) or `pure`: the pure host's Mem-direct dispatch ([`rbr_hybrid::pure::Pure::direct`]).
-    pub fn set_direct(&mut self, on: bool) {
-        self.playback.pure.direct = on;
-    }
-
     /// The player's stage record and personal best (`--saves`), compared in the split record and written at the end.
     /// A profile written at the race's end that had no file holds the install's new-profile grid ([`Grid::loaded`],
     /// the wheel without its speed fade).
@@ -405,7 +400,7 @@ impl<'a> Live<'a> {
         let car = mem.u32(CAR_PTR);
         let force = |mem: &mut Mem, t: Option<&Typed>| {
             let view = CarView::new(mem, t.map(|t| &t.car.own), t.map(|t| &t.car.wheels));
-            let view = view.with_defs(t.map(|t| &t.defs)).with_solids(t.and_then(|t| t.solids.as_ref()));
+            let view = view.with_defs(t.map(|t| &t.defs)).with_solids(t.map(|t| &t.solids));
             rbr_physics::car_body::steering_ffb::force(&view, car)
         };
         pure.with_held(|t| force(&mut mem, Some(t))).unwrap_or_else(|| force(&mut mem, None))
@@ -477,7 +472,6 @@ impl<'a> Live<'a> {
             word6,
             substeps: own.unwrap_or(1),
             tyre_max: self.pending.tyre_max,
-            twin: None,
         };
         // The viewer's call for help goes through the game's gate, as the pause menu's does.
         let input = match control {

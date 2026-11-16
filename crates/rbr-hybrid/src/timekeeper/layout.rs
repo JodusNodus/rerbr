@@ -1,4 +1,4 @@
-//! The time keeper's and the time card's words in the emulator's memory (`src/rbr/RBR_E21.h`; the offsets are the asm's
+//! The time keeper's and the time card's words in the image (`src/rbr/RBR_E21.h`; the offsets are the asm's
 //! of `Record` (0x4a0540), `Update` (0x4a0320) and `Check` (0x4a0450)). The card is read into `rbr_gameplay::timing`'s
 //! typed value and the words the port produced are written back.
 

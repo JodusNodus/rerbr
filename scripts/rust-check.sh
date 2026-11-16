@@ -1,19 +1,16 @@
 #!/bin/bash
-# The Rust checks a report or merge needs, in one run: fmt --check, then clippy -D warnings, the tests and the vector
-# targets against the record store (scripts/rust-vectors.sh) for the crates this change touches and the crates that
-# depend on them. Niced, RUST_CHECK_JOBS cargo jobs (default half the CPUs, at least 4). The test step builds the test
+# The Rust checks a report or merge needs, in one run: fmt --check, then clippy -D warnings and the tests for the
+# crates this change touches and the crates that depend on them. Niced, RUST_CHECK_JOBS cargo jobs (default half the CPUs, at least 4). The test step builds the test
 # targets (--tests: the lib, bins and tests, no examples, which clippy --all-targets checks; the workspace has no doc
 # tests) and runs the binaries side by side, each in its package's directory as cargo test does. Prints one line per
 # check and a final PASS/FAIL; the full output of a failing check is in /tmp/rust-check-<pid>-<name>.txt (per run, so
 # parallel runs by several workers don't overwrite each other).
 # The change is HEAD against its merge base with integration/handoff, or main when there is no integration branch (on
 # that branch itself: against HEAD^1, the merge's first parent), or against RUST_CHECK_BASE. A change to Cargo.toml or Cargo.lock checks every crate.
-# The vector step runs the store modules of the changed rbr-physics module dirs (every module when other rbr-physics
-# files or a dir with no store of its own change); RUST_CHECK_VECTORS="car_body tyre" names them instead, "none" skips
-# them. A base, diff or cargo tree that fails is a FAIL, not an empty change.
-# RUST_CHECK_ALL=1 checks every crate and every vector module (the daily full run).
+# A base, diff or cargo tree that fails is a FAIL, not an empty change.
+# RUST_CHECK_ALL=1 checks every crate (the daily full run).
 # The tests read RBR_DATA, RBR_PATCH, RBR_RECORDINGS and the others in docs/development.md "Set up"; unset, the tests
-# that need them skip, and the first line names them. Without RBR_VECTOR_STORE the vector step is skipped.
+# that need them skip, and the first line names them.
 # When rbr-render is checked, input_check replays every RSF session in $RBR_RECORDINGS/rsf that has a profile and car
 # control calls (notes/verification.md, "Input chain check").
 # Usage: scripts/rust-check.sh
@@ -25,7 +22,6 @@ renice -n 10 $$ >/dev/null # every check niced
 cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)
 jobs=${RUST_CHECK_JOBS:-$((cpus / 2 > 4 ? cpus / 2 : 4))}
 
-store=${RBR_VECTOR_STORE:-}
 
 check() {
     local name=$1
@@ -92,40 +88,10 @@ else
     for crate in $(cut -d' ' -f1 <<<"$dependents" | grep '^rbr-' | sort -u); do crates+=(-p "$crate"); done
 fi
 
-if [ -n "${RUST_CHECK_VECTORS:-}" ]; then
-    vectors=$RUST_CHECK_VECTORS
-elif [ "$all" = 1 ]; then
-    vectors=""
-elif ! grep -q '^crates/rbr-physics/' <<<"$changed"; then
-    vectors=none
-elif grep -qE '^crates/rbr-physics/(Cargo\.toml|src/[a-z_]+\.rs|tests/[a-z_]+/)' <<<"$changed"; then
-    vectors=""
-else
-    # A module dir's name is its store dir; a vector test names its store dir by the RBR_*_VECTORS it reads. A dir
-    # with no store of its own (math, mem, store, ngp, ...) is shared by the modules: every module runs.
-    stores() { grep -ohE '"RBR_[A-Z0-9_]+_VECTORS"' "$@" | tr -d '"' | sed 's/^RBR_//; s/_VECTORS$//' |
-        tr A-Z a-z | sed 's/^ent$/entities/' | sort -u; }
-    known=$(stores crates/rbr-physics/tests/*.rs)
-    dirs=$(sed -n 's|^crates/rbr-physics/src/\([a-z_]*\)/.*|\1|p' <<<"$changed" | sort -u)
-    tests=$(grep -E '^crates/rbr-physics/tests/[a-z_]+\.rs$' <<<"$changed" | while read -r t; do
-        [ -f "$t" ] && echo "$t"; done)
-    if [ -n "$(comm -23 <(echo "$dirs" | sed '/^$/d') <(echo "$known"))" ]; then
-        vectors=""
-    else
-        # shellcheck disable=SC2086 # a list of test files
-        vectors=$( (echo "$dirs"; [ -z "$tests" ] || stores $tests) | sed '/^$/d' | sort -u | tr '\n' ' ')
-        [ -n "$vectors" ] || vectors=none
-    fi
-fi
-
-if [ "$vectors" != none ] && [ -z "$store" ]; then
-    vectors=none
-    echo "vectors: skipped (RBR_VECTOR_STORE unset)"
-fi
 unset_vars=$(for v in RBR_DATA RBR_PATCH RBR_RECORDINGS RBR_NGP_PHYSICS RBR_NGP RBR_RSF RBR_SAVES; do
     [ -n "${!v:-}" ] || echo "$v"; done | paste -sd' ' -)
 [ -z "$unset_vars" ] || echo "unset, their tests skip: $unset_vars"
-echo "scope: ${crates[*]:-no crates} against $(git rev-parse --short "$base"); vectors: ${vectors:-all}"
+echo "scope: ${crates[*]:-no crates} against $(git rev-parse --short "$base")"
 check fmt cargo fmt --all --check
 if [ ${#crates[@]} -gt 0 ]; then
     check clippy cargo clippy -j "$jobs" "${crates[@]}" --all-targets -q -- -D warnings
@@ -143,10 +109,6 @@ input_sessions() {
 if [ -d "${RBR_RECORDINGS:-}/rsf" ] && { [ "$all" = 1 ] || [[ " ${crates[*]} " == *" rbr-render "* ]]; }; then
     export -f input_sessions; export jobs
     check input_check bash -c input_sessions
-fi
-if [ "$vectors" != none ]; then
-    # shellcheck disable=SC2086 # a list of module names
-    check vectors scripts/rust-vectors.sh $vectors
 fi
 
 [ $fail = 0 ] && echo "rust-check: PASS" || echo "rust-check: FAIL"

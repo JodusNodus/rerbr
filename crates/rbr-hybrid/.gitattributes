@@ -1,2 +1,0 @@
-# One row per binding; branches append rows. A duplicate fails bound_csv_lists_every_binding.
-bound.csv merge=union

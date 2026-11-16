@@ -7,8 +7,9 @@ use rbr_physics::math::quat;
 use rbr_physics::mem::Mem;
 
 use super::car_calls::{probe_scratch, scratch, Car, CarVf54};
-use super::on_car;
+use super::{on_car, on_car_in, Frame};
 use crate::collision::{BodyCallees, E37_EDGE_EDGE};
+use crate::enter;
 use crate::entities::Op;
 use crate::rigid_body::{set_solid_word, VF16_HELPER};
 use crate::{engine_driveline, Ctx, Decline, Host, Regs, Return};
@@ -39,19 +40,22 @@ impl layout::EdgeProbeCalls for Collide6000Host<'_> {
     }
 }
 
-struct Vf128xHost<'a>(&'a dyn Host);
+struct Vf128xHost<'a> {
+    host: &'a dyn Host,
+    mem: Mem,
+}
 
 impl layout::CarImpulseCalls for Vf128xHost<'_> {
     fn compose_frames(&mut self, sp: u32, this: u32, a: u32, car: u32, out: u32) {
-        crate::entities::op(self.0, sp, this, Op::ComposeA { src: a, o2: car, out });
+        crate::entities::op(self.host, sp, this, Op::ComposeA { src: a, o2: car, out });
     }
 
     fn edge_probe(&mut self, sp: u32, car: u32, m: u32, f1: u32, f2: u32) {
-        self.0.call_at(sp, 0x4e6000, car, &[m, f1, f2]);
+        collide6000_at(self.host, &mut self.mem, sp, car, [m, f1, f2]);
     }
 
     fn solid_impulse(&mut self, sp: u32, car: u32, args: [u32; 8]) {
-        self.0.call_at(sp, crate::rigid_body::E43VF128, car, &args);
+        self.host.call_at(sp, crate::rigid_body::E43VF128, car, &args);
     }
 }
 
@@ -65,15 +69,24 @@ pub(super) fn clear480(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall three words, `ret 0xc`: the edge probe along the vector, the grid's two flags out.
 pub(super) fn collide6000(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, ..] = r.stack;
-    let mut calls = Collide6000Host(ctx.host);
-    layout::edge_probe(&mut ctx.mem, r.ecx, a, b, c, r.esp, &mut calls);
+    collide6000_body(ctx.host, &mut ctx.mem, r.esp, r.ecx, [a, b, c]);
     Ok(Return::void(0, 0xc))
+}
+
+fn collide6000_body(host: &dyn Host, mem: &mut Mem, esp: u32, car: u32, [a, b, c]: [u32; 3]) {
+    layout::edge_probe(mem, car, a, b, c, esp, &mut Collide6000Host(host));
+}
+
+/// `Collide6000` on `car` as the host's call at `sp`.
+fn collide6000_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, args: [u32; 3]) {
+    let esp = enter(host, mem, sp, &args);
+    collide6000_body(host, mem, esp, car, args);
 }
 
 /// thiscall eight words, `ret 0x20`: matrix compose, collision probe and solid impulse dispatch.
 pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let args: [u32; 8] = r.stack[..8].try_into().expect("Vf128x has eight stack words");
-    let mut calls = Vf128xHost(ctx.host);
+    let mut calls = Vf128xHost { host: ctx.host, mem: ctx.mem.clone() };
     layout::car_impulse(&mut ctx.mem, r.ecx, args, r.esp, &mut calls);
     Ok(Return::void(0, 0x20))
 }
@@ -82,8 +95,6 @@ pub(super) fn vf128x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 const DRIVE: u32 = 0x4b0;
 const ENGINE_SIM: u32 = 0x690;
 pub(super) const FLOW_OBJECT: u32 = 0x0165fa90;
-pub(super) const M5666B0: u32 = 0x5666b0;
-pub(super) const SAMPLER_54A0: u32 = 0x4e54a0;
 
 /// `r` with the member as `this`.
 fn member(r: &Regs, offset: u32) -> Regs {
@@ -164,16 +175,6 @@ pub(super) fn forward_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     Ok(Return::float(f64::from(on_car(ctx, |m| m.forward_speed(r.ecx))), 0))
 }
 
-/// fastcall: `E60Flow::M5666b0` (0x5666b0), the damage-select word `MotionProbe` asks the flow.
-pub(super) fn flow_m5666b0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.damage_select(r.ecx), 0))
-}
-
-/// thiscall: `E60Flow::M566640` (0x566640), the flow check `Update9AF0` makes: 1 when the flow holds.
-pub(super) fn flow_m566640(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(ctx.mem.flow_holds(r.ecx), 0))
-}
-
 /// thiscall `(out*)`: `out = ToQuat(this)`, the 3x3 matrix at `this`; returns `out`. The matrix may be a held body's and
 /// `out` a solid's orientation (the hinged body's `SimD160`), read and stored held.
 pub(super) fn to_quat(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -216,31 +217,19 @@ pub(super) fn vf24x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = CarVf54 { mem: ctx.mem.clone(), host: ctx.host, car: r.ecx };
     let eax = on_car(ctx, |m| layout::reset_scratch_and_dispatch(&mut calls, m, r.ecx))
-        .unwrap_or_else(|_| unreachable!("the emulator always answers host calls"));
+        .unwrap_or_else(|_| unreachable!("the host answers every call"));
     Ok(Return::void(eax, 0))
 }
 
-/// thiscall `(out*)`: the car's integer surface probe (`MotionProbe`).
-pub(super) fn motion_probe(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut calls = Car { mem: ctx.mem.clone(), host: ctx.host, scratch: probe_scratch(r.esp) };
-    let outcome = on_car(ctx, |m| probe::motion_probe(&mut calls, m, r.ecx));
-    ctx.mem.set_u32(r.stack[0], outcome.out());
-    Ok(Return::void(outcome.ret(), 4))
-}
-
-/// thiscall: `this + 0xa00`, the car's state object (`StateAtb`).
-pub(super) fn state_atb(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::state_address(r.ecx), 0))
-}
-
-/// thiscall: `GetB0C` returns the float at +0xb0c in st0.
-pub(super) fn get_b0c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(on_car(ctx, |m| m.steer_target(r.ecx)) as f64, 0))
-}
-
-/// thiscall: `GetB1C` returns the float at +0xb1c in st0.
-pub(super) fn get_b1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::float(on_car(ctx, |m| m.steer_target_rate(r.ecx)) as f64, 0))
+/// `MotionProbe` (0x4e7730, thiscall `(out*)`) on `car`, as the host's call at `sp`: the car's integer surface probe, its
+/// `out` word stored; returns eax.
+pub(super) fn motion_probe_at(host: &dyn Host, mem: &mut Mem, sp: u32, car: u32, out: u32) -> u32 {
+    let esp = enter(host, mem, sp, &[out]);
+    let frame = Frame::new(host, esp);
+    let mut calls = Car { mem: mem.clone(), host: &frame, scratch: probe_scratch(esp) };
+    let outcome = on_car_in(&frame, mem, |m| probe::motion_probe(&mut calls, m, car));
+    mem.set_u32(out, outcome.out());
+    outcome.ret()
 }
 
 /// thiscall `(v)`: `AddADC` dirties the demand cell and adds `v`.
@@ -254,12 +243,6 @@ pub(super) fn set_a1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [i, j, v, ..] = r.stack;
     on_car(ctx, |m| layout::set_roll_bar_cell(m, r.ecx, i, j, f32::from_bits(v)));
     Ok(Return::void(0, 12))
-}
-
-/// thiscall: `Damp66D0`, the two anti-roll bars' force cells.
-pub(super) fn update_roll_bars(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_car(ctx, |m| car::roll_bars::update_roll_bars(m, r.ecx));
-    Ok(Return::void(0, 0))
 }
 
 /// thiscall `(i, neg)`: `GetA48`, the lane word at `+0xa48 + 0x40 * i`, negated when `neg` is nonzero; returns it in st0.
@@ -297,7 +280,7 @@ impl GridCalls for StateCallees<'_> {
     }
 
     fn copy_from(&mut self, dst: u32, src: u32) -> u32 {
-        crate::collision::copy_vec4(self.host, &mut self.mem, 0, dst, src)
+        crate::collision::copy_vec4(self.host, &mut self.mem, dst, src)
     }
 }
 
@@ -329,21 +312,11 @@ impl car::body::BodyCalls for BodyCalls<'_> {
     }
 }
 
-/// `NTweak::CE36SubBlock::Init` (0x4f3e80) on `block`, entered at `sp`: on the pure host its port, without the call
-/// (as [`crate::trivial`]: no reader reads the call's words); else the call.
-pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, sp: u32, block: u32) {
-    if host.call_slot_word().is_none() {
-        host.call_at(sp, crate::collision::CE36_SUB_BLOCK_INIT, block, &[]);
-        return;
-    }
+/// `NTweak::CE36SubBlock::Init` (0x4f3e80) on `block`: its port, without the call (as [`crate::trivial`]: no reader
+/// reads the call's words).
+pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, block: u32) {
     host.ran_direct();
     car::light::sub_block_init(mem, block);
-}
-
-/// thiscall `()`: `NTweak::CE36SubBlock::Init` zeroes the sub-block.
-pub(super) fn sub_block_init(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    car::light::sub_block_init(&mut ctx.mem, r.ecx);
-    Ok(Return::void(0, 0))
 }
 
 /// CCar::VfD8x (0x4eaf10): a naked tail jump to CBody::VfD8, so the car's slot 0xd8 takes the body's arguments and eax.

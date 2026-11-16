@@ -29,8 +29,8 @@ chains run at 53-bit precision in the race and 24-bit in the load settle (`fpu::
 How a step is reached: `rbr_gameplay::game::Game::frame_with` runs the frame's steps through the
 `rbr_gameplay::game::PhysicsStep` trait; `rbr-standalone` implements it with `Pure` in
 `crates/rbr-standalone/src/physics.rs`, which calls `rbr_hybrid::pure::Playback::step`. From the step entry on, every
-call goes through `rbr_hybrid`'s host to the Rust port bound for it (`crates/rbr-hybrid/bound.csv`); a call with no
-port stops the run. So the order below follows the original's calls, spread over the modules each item names, not
+call goes through `rbr_hybrid`'s host to the Rust port bound for it (the `BINDINGS` tables); a call with no port
+stops the run. So the order below follows the original's calls, spread over the modules each item names, not
 one loop.
 
 1. **Controls in.** The step's control payload (throttle, brake, handbrake, clutch, steering, gear, flags:
@@ -131,16 +131,11 @@ goes in experimental physics (below).
 
 | Check | Proves |
 | --- | --- |
-| `scripts/rust-check.sh` | fmt, clippy, the tests (the NGP functions' committed direct-call records under `crates/rbr-physics/tests/vectors/` among them) and the vectors of the touched modules; must print PASS |
-| `scripts/rust-vectors.sh <module>` | the recorded and fuzzed calls of the original for one module's ports (`car_body`, `tyre`, `wheel`, `vcu`, ...), including branches no drive reaches; needs `RBR_VECTOR_STORE` |
-| `scripts/gate.sh` | drive2 attempt 5 through `rbr-standalone`: every one of 84084 NGP steps equal to the recording |
-| `scripts/gate.sh --hybrid` | also the hybrid check: each port inside the original's step in the emulator, every "run B vs run A" line equal |
-| `scripts/gate.sh --typed` | also the typed storage a step holds: the drive with it against the per-call path after every step (aids off and on), and with the held words poisoned ([physics.md](../notes/physics.md), "Store seam") |
+| `scripts/rust-check.sh` | fmt, clippy and the tests; must print PASS |
+| `scripts/gate.sh` | drive2 attempt 5 through `rbr-standalone`: every one of 84084 NGP steps equal to the recording; the drive with the typed state's words poisoned on the image ([physics.md](../notes/physics.md), "Store seam"); the drive with every aid on runs without a stop |
 
-The hybrid check's snapshots are 1.02's, so ports that hold NGP's behaviour (the step itself, the strut, the tyre,
-the `ngp` functions) decline there and the original runs them: for those, only the standalone drive and their
-direct-call records check the change ([verification.md](../notes/verification.md), "Hybrid check"). A branch no
-drive reaches needs fuzzed direct-call records, else the port stays `partial` in `crates/rbr-physics/ports.csv`.
+The recorded drives are the only oracle: there is no per-call check against the original, so a branch no recorded
+drive reaches is not checked ([verification.md](../notes/verification.md)). A new recording is the way to cover one.
 
 Experimental physics, which may differ from NGP, goes outside `rbr-physics`: engine models in `crates/rbr-engine`,
 tyre models in `crates/rbr-tyre`, hooked in through `rbr_hybrid::ngp::set_engine_model`, `set_tyre_model`,

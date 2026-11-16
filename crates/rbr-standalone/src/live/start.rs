@@ -317,7 +317,6 @@ fn settle(
         word6: 0,
         substeps: SETTLE_SUBSTEPS[0],
         tyre_max: TyreMax::default(),
-        twin: None,
     };
     let mut settled = 0;
     panic::catch_unwind(AssertUnwindSafe(|| {

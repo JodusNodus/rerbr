@@ -12,15 +12,8 @@ use crate::entities::Op;
 use crate::rigid_body::solid_word;
 use crate::{Ctx, Decline, Host, Regs, Return, SignalCallees};
 
-/// CBrakeWall::QueryPoint (0x4e3dc0): thiscall on the wall with the point and the collector; eax is the leaf count's
-/// result from `wall::query_point`.
-pub(super) fn brake_wall_query_point(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, collector, ..] = r.stack;
-    Ok(Return::void(wall::query_point(&mut ctx.mem, r.ecx, point, collector), 8))
-}
-
 /// thiscall `(sig)`: `CMultiSignal1<const CSigCarBrakeWallPenetration&>::Emit` (0x4e4490), the signal template's emit
-/// with the connections in the emulator (as `E41EngineNoiseSignal::Emit`). A count out of range declines (the original
+/// with the connections through the host (as `E41EngineNoiseSignal::Emit`). A count out of range declines (the original
 /// traps).
 pub(super) fn brake_wall_emit(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, r.ecx)?;
@@ -42,15 +35,6 @@ impl RaycastCalls for WallRaycast<'_> {
     fn emit_penetration(&mut self, this: u32, out: u32) {
         self.0.call(self.1, this, &[out]);
     }
-}
-
-/// `E34WallVf::Raycast` (0x4e4570): thiscall on the wall (`ecx`) with `(point, out)`; the leaf list of the query is in
-/// the original's frame, 0x194 bytes below the entry esp.
-pub(super) fn wall_raycast(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, out, ..] = r.stack;
-    let mut calls = WallRaycast::new(ctx);
-    let eax = layout::wall_raycast(&mut calls, &mut ctx.mem, r.ecx, point, out, r.esp - 0x194);
-    Ok(Return::void(eax, 8))
 }
 
 /// `CBrakeWallManager::RaycastEntry` (0x4e4960): thiscall `(point, out)`; the point's copy is in the original's frame,
@@ -84,11 +68,10 @@ impl WallQueryHost for WallCorners<'_> {
     }
 
     fn query_box(&mut self, sp: u32, wall: u32, bounds: u32, collector: u32) -> u32 {
-        self.host.call_at(sp, BRAKE_WALL_QUERY_BOX, wall, &[bounds, collector]).eax
+        crate::enter_leaf(self.host, sp);
+        wall::query_box(&mut self.mem, wall, bounds, collector)
     }
 }
-
-pub(super) const BRAKE_WALL_QUERY_BOX: u32 = 0x4e3f10;
 
 /// CBrakeWall::VfF0's call of the wall's slot 0xe8.
 struct WallSlotE8<'a> {
@@ -133,11 +116,4 @@ pub(super) fn wall_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = WallCorners { mem: ctx.mem.clone(), host: ctx.host };
     let eax = layout::query_wall_box(&mut calls, &mut ctx.mem, r.ecx, a, b, r.esp);
     Ok(Return::void(eax, 8))
-}
-
-/// CBrakeWall::QueryBox (0x4e3f10): thiscall on the wall with the box and the collector, ret 8; eax is the leaf count's
-/// result from `wall::query_box`.
-pub(super) fn brake_wall_query_box(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [bounds, collector, ..] = r.stack;
-    Ok(Return::void(wall::query_box(&mut ctx.mem, r.ecx, bounds, collector), 8))
 }

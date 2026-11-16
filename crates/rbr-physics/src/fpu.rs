@@ -154,17 +154,6 @@ pub fn trunc_i32(x: f64) -> i32 {
     }
 }
 
-/// x86 float-to-int in round-to-nearest-even (`cvtss2si`, x87 `fistp` with the default rounding control): NaN and
-/// values outside the i32 range give [`INT_INDEFINITE`].
-pub fn round_i32(x: f64) -> i32 {
-    let r = x.round_ties_even();
-    if (-2147483648.0..=2147483647.0).contains(&r) {
-        r as i32
-    } else {
-        INT_INDEFINITE
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,10 +250,5 @@ mod tests {
         assert_eq!(trunc_i32(f64::INFINITY), INT_INDEFINITE);
         assert_eq!(trunc_i32(2147483648.0), INT_INDEFINITE);
         assert_eq!(trunc_i32(-2147483648.5), -2147483648);
-        assert_eq!(round_i32(2.5), 2);
-        assert_eq!(round_i32(3.5), 4);
-        assert_eq!(round_i32(-2.5), -2);
-        assert_eq!(round_i32(f64::NAN), INT_INDEFINITE);
-        assert_eq!(round_i32(2147483647.6), INT_INDEFINITE);
     }
 }
