@@ -122,40 +122,80 @@ impl Counter<'_> {
 /// The platform's file dialog with `prompt` (`osascript` on macOS, PowerShell on Windows, `zenity` or `kdialog`
 /// elsewhere); `None` when it is cancelled or there is none.
 pub(crate) fn pick_file(prompt: &str) -> Option<String> {
-    dialog(prompt, false)
+    dialog(prompt, Pick::File).into_iter().next()
+}
+
+/// The platform's file dialog with several files to choose; none when it is cancelled or there is none.
+pub(crate) fn pick_files(prompt: &str) -> Vec<String> {
+    dialog(prompt, Pick::Files)
 }
 
 /// The platform's folder dialog with `prompt`; `None` when it is cancelled or there is none.
 pub fn pick_folder(prompt: &str) -> Option<String> {
-    dialog(prompt, true)
+    dialog(prompt, Pick::Folder).into_iter().next()
 }
 
-/// The platform's dialog: a folder's when `folders`, else a file's.
-fn dialog(prompt: &str, folders: bool) -> Option<String> {
-    let run = |program: &str, args: &[&str]| {
-        let out = rbr_render::console::no_window(&mut Command::new(program)).args(args).output().ok()?;
-        let path = String::from_utf8(out.stdout).ok()?.trim().to_owned();
-        (out.status.success() && !path.is_empty()).then_some(path)
-    };
-    if cfg!(target_os = "macos") {
-        let choose = match folders {
-            true => "choose folder",
-            false => "choose file",
+#[derive(Clone, Copy, PartialEq)]
+enum Pick {
+    File,
+    Files,
+    Folder,
+}
+
+/// The platform's dialog: the paths chosen, one per line of its output.
+fn dialog(prompt: &str, pick: Pick) -> Vec<String> {
+    let run = |program: &str, args: &[&str]| -> Vec<String> {
+        let Ok(out) = rbr_render::console::no_window(&mut Command::new(program)).args(args).output() else {
+            return Vec::new();
         };
-        run("osascript", &["-e", &format!("POSIX path of ({choose} with prompt \"{prompt}\")")])
+        let text = String::from_utf8(out.stdout).unwrap_or_default();
+        let lines = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned);
+        if out.status.success() {
+            lines.collect()
+        } else {
+            Vec::new()
+        }
+    };
+    let first = |paths: Vec<String>, other: &dyn Fn() -> Vec<String>| if paths.is_empty() { other() } else { paths };
+    if cfg!(target_os = "macos") {
+        let script = match pick {
+            Pick::Folder => format!("POSIX path of (choose folder with prompt \"{prompt}\")"),
+            Pick::File => format!("POSIX path of (choose file with prompt \"{prompt}\")"),
+            Pick::Files => format!(
+                "set picked to choose file with prompt \"{prompt}\" with multiple selections allowed\n\
+                 set out to \"\"\nrepeat with f in picked\nset out to out & POSIX path of f & linefeed\n\
+                 end repeat\nout"
+            ),
+        };
+        run("osascript", &["-e", &script])
     } else if cfg!(windows) {
-        let script = match folders {
-            true => "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
-                      if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }",
-            false => "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; \
-                      if ($d.ShowDialog() -eq 'OK') { $d.FileName }",
+        let script = match pick {
+            Pick::Folder => {
+                "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
+                 if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }"
+            }
+            Pick::File => {
+                "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; \
+                 if ($d.ShowDialog() -eq 'OK') { $d.FileName }"
+            }
+            Pick::Files => {
+                "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; \
+                 $d.Multiselect = $true; if ($d.ShowDialog() -eq 'OK') { $d.FileNames }"
+            }
         };
         run("powershell", &["-NoProfile", "-Command", script])
-    } else if folders {
-        run("zenity", &["--file-selection", "--directory", &format!("--title={prompt}")])
-            .or_else(|| run("kdialog", &["--getexistingdirectory"]))
     } else {
-        run("zenity", &["--file-selection", &format!("--title={prompt}")])
-            .or_else(|| run("kdialog", &["--getopenfilename"]))
+        let title = format!("--title={prompt}");
+        match pick {
+            Pick::Folder => first(run("zenity", &["--file-selection", "--directory", &title]), &|| {
+                run("kdialog", &["--getexistingdirectory"])
+            }),
+            Pick::File => {
+                first(run("zenity", &["--file-selection", &title]), &|| run("kdialog", &["--getopenfilename"]))
+            }
+            Pick::Files => first(run("zenity", &["--file-selection", "--multiple", "--separator=\n", &title]), &|| {
+                run("kdialog", &["--getopenfilename", "--multiple", "--separate-output"])
+            }),
+        }
     }
 }
