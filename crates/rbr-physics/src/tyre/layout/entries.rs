@@ -7,28 +7,26 @@
 //! An `Outside` leaves the store as it was.
 
 use super::construct::{SetupCopies, INITIAL_EFFECTIVE_RADIUS};
-use super::frame_types::{Frame, Indentation};
+use super::frame_types::Frame;
 use super::kernels::{load_material, load_segment, read_table, store_material, store_segment};
 use super::{
-    apply_heat, apply_inner_air_terms, apply_relax, apply_sector, apply_soil, coefficients_from_words, contact_input,
-    count_relax, heat_input, hold_input, inner_air_terms, limits_input, patch_input, relax_input, rolling_input,
-    sector_input, soil_input, Outside, StepArgs, StepOut,
+    apply_heat, apply_inner_air_terms, apply_relax, apply_sector, apply_soil, count_relax, heat_input, hold_input,
+    inner_air_terms, limits_input, patch_input, relax_input, rolling_input, sector_input, soil_input, Outside,
+    StepArgs, StepOut,
 };
 use crate::math::vec::Vec4;
 use crate::mem::Mem;
 use crate::ngp::heat::TyreThermal;
 use crate::tyre::friction_limits::{FrictionLimits, LimitsInput};
 use crate::tyre::grip::GripInput;
-use crate::tyre::material::Material;
 use crate::tyre::model::Model;
 use crate::tyre::output_block::OutputBlock;
 use crate::tyre::patch_forces::PatchForces;
-use crate::tyre::solve::Contact;
 use crate::tyre::store::TyreStore;
 use crate::tyre::surface::SurfaceFriction;
 use crate::tyre::{
-    contact_frame, contact_patch, forces, friction_curve as curve, friction_limits, grip, heat, hold, locate,
-    noise_signal, output_block, patch_forces, relax, sliding, slip, soil, state, step, surface,
+    contact_patch, forces, friction_curve as curve, friction_limits, grip, heat, hold, locate, noise_signal,
+    output_block, patch_forces, relax, sliding, slip, soil, state, step, surface,
 };
 
 /// Runs a frame model on the tyre: the frame is loaded once, `run` edits it, and it is stored once when `run`
@@ -64,11 +62,6 @@ pub fn hold<S: TyreStore>(store: &mut S, tyre: S::Tyre, dt: f32) -> f64 {
         f.state.hold_direction = out.direction;
         out.torque
     })
-}
-
-/// `CScratch::Align (normal*, axle*)`: whether it aligned.
-pub fn build_contact_frame<S: TyreStore>(store: &mut S, tyre: S::Tyre, normal: Vec4, axle: Vec4) -> bool {
-    on_frame(store, tyre, |f| contact_frame::build(f, normal, axle))
 }
 
 /// `CScratch::ComputeOutputs`'s inputs for the caller's slip `shares` and friction `scales`. The stiffnesses pass
@@ -147,31 +140,6 @@ pub fn soil_drag<S: TyreStore>(store: &mut S, tyre: S::Tyre) {
     on_frame(store, tyre, |f| {
         let out = soil::soil_drag(soil_input(f));
         apply_soil(f, &out);
-    })
-}
-
-/// The contact solvers `(indentation*, forces*, coefficients*, ...)`: the contact from the three blocks (read by the
-/// caller) and the tyre's soil thickness and engaged flags; the flags are stored, the solved contact returned for the
-/// caller to store its indentation and forces.
-pub fn with_contact<S: TyreStore>(
-    store: &mut S,
-    tyre: S::Tyre,
-    blocks: (Indentation, [f32; 3], [f32; 8]),
-    run: impl FnOnce(&mut Contact),
-) -> Contact {
-    let (indentation, [normal_force, carcass_force, tread_force], coefficients) = blocks;
-    on_frame(store, tyre, |f| {
-        let mut contact = Contact {
-            indentation,
-            normal_force,
-            carcass_force,
-            tread_force,
-            ..contact_input(f, coefficients_from_words(coefficients))
-        };
-        run(&mut contact);
-        f.state.tread_engaged = contact.tread_engaged;
-        f.state.carcass_engaged = contact.carcass_engaged;
-        contact
     })
 }
 
@@ -280,11 +248,6 @@ pub fn step<S: TyreStore>(
     tyre_model: Option<Model>,
 ) -> Result<StepOut, Outside> {
     with_frame(store, tyre, |f| step::step(f, args, ngp, tyre_model))
-}
-
-/// `CTyreMatData::CopyFrom (src*)` on the tyre's own material block: the words of `material` copied into it.
-pub fn adopt_material<S: TyreStore>(store: &mut S, tyre: S::Tyre, material: &Material) {
-    on_frame(store, tyre, |f| super::copy_material(f, material))
 }
 
 /// `CScratch::CopyDefFrom`'s state copies after the def's ([`super::copy_setup_into_def`]): the setup's copies, the

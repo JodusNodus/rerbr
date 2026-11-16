@@ -2,37 +2,11 @@
 //! getters of the engine speed, gear and drive speed key. `tests/engine_driveline_vectors.rs` checks each against
 //! recorded calls of the original.
 
-use super::layout::{Drive, DriveDef, DriveState};
-
-/// The throttle input.
-pub fn set_throttle_in(drive: &mut Drive, v: f32) {
-    drive.throttle_in.set(v);
-}
+use super::layout::{Drive, DriveState};
 
 /// The clutch slip (1 = slipping).
 pub fn set_clutch_slip(drive: &mut Drive, v: f32) {
     drive.clutch_slip.set(v);
-}
-
-/// The brake input, and the brake torque it scales into (`def * v`).
-pub fn set_brake_in(drive: &mut Drive, def: &DriveDef, v: f32) {
-    drive.brake_in.set(v);
-    drive.brake_torque.set(def.max_footbrake_pressure * v);
-}
-
-/// The commanded gear moves by `delta` and is clamped to `0..=count - 1`. A negative
-/// sum stores 0. The gear count is `count` (the definition's `NumberOfGears`).
-pub fn request_gear(state: &mut DriveState, count: u32, delta: i32) {
-    let sum = state.commanded_gear.value.wrapping_add(delta);
-    let last = count as i32 - 1;
-    state.commanded_gear.dirty = 1;
-    state.commanded_gear.value = if sum < 0 {
-        0
-    } else if sum <= last {
-        sum
-    } else {
-        last
-    };
 }
 
 /// The engine speed, rad/s.

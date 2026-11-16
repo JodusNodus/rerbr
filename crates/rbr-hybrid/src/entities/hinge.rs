@@ -20,7 +20,6 @@ use crate::car_body::ADD_EDGE;
 use crate::engine_driveline::E01LOG;
 use crate::entities::Op;
 use crate::rigid_body::{held_solids, on_solids, with_solids, E43VF64, E43VF6C};
-use crate::vcu::SET_DIRTY;
 use crate::{aligned_frame, Ctx, Decline, Host, Regs, Return};
 
 /// The state signal's slot count (`CMultiSignal1` has 32 slots).
@@ -40,18 +39,14 @@ const HINGE_CALLEES: [u32; 7] = [LIMIT_UPDATE, SIM_D160, SIM_C960, SIM_E1D0, SIM
 /// their callers read none of the call's words after it; residue audit, notes/physics.md "Store seam"), else through
 /// the host.
 fn call_hinge(host: &dyn Host, sp: u32, target: u32, body: u32, args: &[u32]) -> crate::Called {
-    let held = HINGE_CALLEES.contains(&target) && held_solids(host).is_some_and(|s| s.held(body).is_some());
+    let held = HINGE_CALLEES.contains(&target) && held_solids(host).held(body).is_some();
     let direct = if held { host.call_in_place(sp, target, body, args) } else { None };
     direct.unwrap_or_else(|| host.call_at(sp, target, body, args))
 }
 
 /// `NTweak::CBase::SetDirty` (0x52f450) on the tweak at `object` of a held hinged body: its one write, the dirty word
-/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]); per call the host.
-pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, sp: u32, object: u32) {
-    if host.typed().is_none() {
-        host.call_at(sp, SET_DIRTY, object, &[]);
-        return;
-    }
+/// (the body's NTweak headers stay on the image), here, counted as a run ([`Host::ran_direct`]).
+pub(super) fn set_dirty(host: &dyn Host, mem: &mut Mem, object: u32) {
     host.ran_direct();
     crate::rigid_body::set_solid_word(host, mem, object + rbr_physics::ntweak::DIRTY, 1);
 }
@@ -72,7 +67,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     /// In a held step `SetDirty`'s one write, the tweak's dirty word (the hinge's headers stay in the image; a held
     /// solid's word if its table names it), here ([`Host::ran_direct`]); else the host.
     fn mark_dirty(&mut self, at: u32) {
-        set_dirty(self.host, &mut self.mem, self.frame - 0x44, at);
+        set_dirty(self.host, &mut self.mem, at);
     }
 
     fn scale_vector(&mut self, vec: u32, s: f32, out: u32) {
@@ -88,7 +83,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     }
 
     fn emit_state(&mut self, signal: u32, sig: u32) -> u32 {
-        crate::fill_residue(self.host, &mut self.mem, sig + 4, 3);
+        crate::fill_residue(&mut self.mem, sig + 4, 3);
         self.host.call_at(self.frame - 0x48, STATE_EMIT, signal, &[sig]).eax
     }
 }
@@ -155,12 +150,6 @@ pub(super) fn sim_c960_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(idx)`: `CHingedRigidBody::SimCF10` (0x51cf10), one limit's residual (st0).
-pub(super) fn sim_cf10_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let step = on_solids(ctx, |s| layout::hinge_limit_residual(s, r.ecx, r.stack[0]));
-    Ok(Return::float(step.torque, 4))
-}
-
 /// thiscall: `CHingedRigidBody::SimEA80` (0x51ea80), the sum of the active limits' residuals (st0). The inner `SimCF10`
 /// calls are the port's own, so they are not made.
 pub(super) fn sim_ea80_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -177,7 +166,7 @@ struct SlipHost<'a> {
 
 impl SlipCalls for SlipHost<'_> {
     fn copy_vector(&mut self, to: u32, from: u32) {
-        crate::collision::copy_vec4(self.host, &mut self.mem, self.frame - 0x78, to, from);
+        crate::collision::copy_vec4(self.host, &mut self.mem, to, from);
     }
 
     fn carry(&mut self, receiver: u32, a: u32, b: u32, out: u32) -> [f32; 3] {
@@ -497,7 +486,7 @@ pub(super) fn sim_f350_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0x20))
 }
 
-/// The original callees of `SimDA60` and `SimFD00`, in the emulator, at the stack pointers the layout gives.
+/// The original callees of `SimDA60` and `SimFD00`, through the host, at the stack pointers the layout gives.
 struct DetachHost<'a>(&'a dyn Host);
 
 impl layout::PoseToWorldCalls for DetachHost<'_> {

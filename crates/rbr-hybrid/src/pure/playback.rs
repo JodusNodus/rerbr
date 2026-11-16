@@ -46,7 +46,7 @@ pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
 }
 
 /// The car's typed state held in typed storage over a step: lifted unless it is held already ([`Pure::lift_typed`]);
-/// when it drops, marked changed and, without [`Pure::typed_across_steps`] (or on a stop), lowered and dropped.
+/// when it drops, marked changed and, on a stop, lowered and dropped.
 struct HeldTyped<'a>(&'a Pure);
 
 impl<'a> HeldTyped<'a> {
@@ -59,7 +59,7 @@ impl<'a> HeldTyped<'a> {
 impl Drop for HeldTyped<'_> {
     fn drop(&mut self) {
         self.0.held_changed();
-        if !self.0.typed_across_steps || std::thread::panicking() {
+        if std::thread::panicking() {
             self.0.lower_typed();
         }
     }
@@ -70,7 +70,7 @@ pub const SENTINEL: u32 = 0xfeed_0000;
 
 const FRAME: u32 = rbr_physics::car_body::transform::FRAME;
 
-/// A snapshot's playback, as `rust_step.py` drives it: every step enters `StepForward` from the snapshot's call slot
+/// A snapshot's playback, as the retired `rust_step.py` drove it: every step enters `StepForward` from the snapshot's call slot
 /// with its registers, and a step's control payload is written at the bottom of the snapshot's stack.
 pub struct Playback {
     pub pure: Pure,
@@ -116,9 +116,8 @@ impl Playback {
     }
 
     /// [`step`] with the payload `control` (`None` for the snapshot's own step). A stop panics as [`Pure::enter`].
-    /// With [`Pure::typed`] the car's typed state is in typed storage over the step: lifted before it (unless it is held
-    /// already), lowered after it (on a stop too) unless [`Pure::typed_across_steps`] keeps it held; readers between
-    /// steps see it through [`Pure::image`]. The payload and the return slot are the step's own stack words.
+    /// The car's typed state is in typed storage over the step: lifted before it unless it is held already, and held
+    /// after it (lowered on a stop); readers between steps see it through [`Pure::image`]. The payload and the return slot are the step's own stack words.
     pub fn step(&self, control: Option<&[u8; CONTROL_BYTES]>, substeps: u32) -> Return {
         let mut mem = self.pure.raw.clone();
         let control = control.map(|c| {
@@ -144,7 +143,6 @@ impl Playback {
         // (residue audit).
         self.pure.with_frame(STEP_FORWARD, &entry, || {
             let args = [car + 0x220, car, scratch];
-            crate::skip_unwritten(self.pure.host(), &mut mem.clone(), (self.slot - 0x1000) & !0xf, &args);
             let [a, b, c] = args;
             crate::entities::op(self.pure.host(), 0, frame, crate::entities::Op::Mb560 { a, b, c });
         });

@@ -15,7 +15,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::rigid_body::layout::{CarSolids, SolidView, Vec4};
 use rbr_physics::rigid_body::store::RigidStore;
 
-use super::walks::{child_words_unwritten, walk_depth, PairWalk};
+use super::walks::{walk_depth, PairWalk};
 use super::{
     COMPOSE_B, COPY16_WALK, COPY_BLOCKS, COPY_BLOCKS_THREE_FOUR, FETCH_X, FETCH_Y, GRID_WALK, MB560, PAIR_COMBINE,
     PAIR_COMBINE_TWIN,
@@ -67,25 +67,18 @@ impl Op {
 /// `op` on `this` from a caller, its eax. While the pure host holds the state, a Rust call with values ([`run`]: no
 /// call, none of its words, no frame of its own); when its value walk backs out, its binding in place at `sp`
 /// ([`Host::call_in_place`]: the walk's calls placed as through the host, none of the call's words). Elsewhere (the
-/// emulator, the per-call path) the call at `sp` (0: the host places it). With `residue-audit` the words the call would
-/// write are filled (`skip_unwritten`).
+/// per-call path) the call at `sp` (0: the host places it).
 pub(crate) fn op(host: &dyn Host, sp: u32, this: u32, op: Op) -> u32 {
     let (target, words, len) = op.call_words();
     let args = &words[..len];
-    if host.typed().is_some() {
-        let esp = if cfg!(feature = "residue-audit") { host.call_esp(sp) } else { sp };
-        let ran = host.with_image(&mut |mem| {
-            crate::skip_unwritten(host, mem, esp, args);
-            run(host, mem, esp, this, op)
-        });
-        if let Some(eax) = ran {
-            // Counted as the run it replaces ([`Host::entered`]: a caller that keeps what it read while nothing ran).
-            host.ran_direct();
-            return eax;
-        }
-        if let Some(called) = host.call_in_place(sp, target, this, args) {
-            return called.eax;
-        }
+    let ran = host.with_image(&mut |mem| run(host, mem, sp, this, op));
+    if let Some(eax) = ran {
+        // Counted as the run it replaces ([`Host::entered`]: a caller that keeps what it read while nothing ran).
+        host.ran_direct();
+        return eax;
+    }
+    if let Some(called) = host.call_in_place(sp, target, this, args) {
+        return called.eax;
     }
     host.call_at(sp, target, this, args).eax
 }
@@ -93,11 +86,7 @@ pub(crate) fn op(host: &dyn Host, sp: u32, this: u32, op: Op) -> u32 {
 /// `host.call_at(sp, target, this, args)` of a pair walk from a caller on held state: in place while the pure host
 /// holds the state ([`Host::call_in_place`]), else the call.
 fn in_place_or_call(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> u32 {
-    let held = host.typed().is_some();
-    held.then(|| host.call_in_place(sp, target, this, args))
-        .flatten()
-        .unwrap_or_else(|| host.call_at(sp, target, this, args))
-        .eax
+    host.call_in_place(sp, target, this, args).unwrap_or_else(|| host.call_at(sp, target, this, args)).eax
 }
 
 /// `op` on `this` with values on held state, its eax: the rows read once (a held solid's through its view), carried
@@ -132,12 +121,11 @@ pub(crate) fn run(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, op: Op) -
 /// solids'.
 struct HeldFrames<'a> {
     mem: &'a mut Mem,
-    host: &'a dyn Host,
     /// Where the walk in place would be entered and how far below it a child walk enters, for the words the audit
     /// fills (the walk's hooks, gates, owner slots and child walks leave theirs unwritten).
     esp: u32,
     walk_depth: u32,
-    solids: Option<Ref<'a, CarSolids>>,
+    solids: Ref<'a, CarSolids>,
     out: Range<u32>,
     /// Whether the carry read or wrote a held solid's words (as `not_kept_on_held`).
     on_held: bool,
@@ -145,14 +133,11 @@ struct HeldFrames<'a> {
 
 impl HeldFrames<'_> {
     fn held(&self, at: u32) -> bool {
-        self.solids.as_ref().is_some_and(|s| s.read(at).is_some())
+        self.solids.read(at).is_some()
     }
 
     fn view(&mut self) -> SolidView<'_> {
-        match &self.solids {
-            Some(solids) => solids.view(self.mem),
-            None => SolidView::image(self.mem),
-        }
+        self.solids.view(self.mem)
     }
 
     /// The `n` rows at `at`, read through the solids' view.
@@ -182,25 +167,16 @@ impl Frames for HeldFrames<'_> {
 
     fn passage(&mut self, at: u32, hook: Hook, rows: u32, count: u32) -> Option<Passage> {
         // The hook's call, its gate's and its owner slot's as a walk in place enters them ([`PairWalk::hook`], the
-        // frame hooks' bindings): none of their words is written here (the audit fills them).
-        #[cfg(feature = "residue-audit")]
-        {
-            let sp = (self.esp - 0x1000) & !0xf;
-            crate::skip_unwritten(self.host, self.mem, sp, &[0, 0]);
-            crate::skip_unwritten(self.host, self.mem, sp - 8, &[]);
-            crate::skip_unwritten(self.host, self.mem, sp - 16, &[0, 0]);
-        }
+        // frame hooks' bindings): none of their words is written here.
         let out = self.out.clone();
         let passage = layout::passage(&self.view(), at, hook, &out);
         if matches!(passage, Some(Passage::Points { .. })) {
             // `CCarBody`'s scatter is a call of the walk in place, which writes its words; a later reader of the dead
             // stack there (the tyre noise payload's word `+0x46c`, drive2 step 3 with the audit's fills) sees them, so
-            // they are written here too, under either dispatch (the original's own words, not `crate::RESIDUE`).
+            // they are written here too, (the original's own words, not `crate::RESIDUE`).
             let sp = (self.esp - 0x1000) & !0xf;
-            if let Some(ret) = self.host.call_slot_word() {
-                for (k, word) in [ret, rows, count].into_iter().enumerate() {
-                    self.mem.set_u32(sp - 16 + 4 * k as u32, word);
-                }
+            for (k, word) in [crate::pure::CALL_RET, rows, count].into_iter().enumerate() {
+                self.mem.set_u32(sp - 16 + 4 * k as u32, word);
             }
         }
         if matches!(passage, Some(Passage::Body(_))) {
@@ -210,15 +186,11 @@ impl Frames for HeldFrames<'_> {
         passage
     }
 
-    fn descend(&mut self, which: Walker, receiver: u32, o2: u32, a: u32, b: u32) -> (u32, u32) {
+    fn descend(&mut self, which: Walker, _receiver: u32, _o2: u32, _a: u32, _b: u32) -> (u32, u32) {
         let mark = (self.esp, self.walk_depth);
         let sp = self.esp.wrapping_sub(self.walk_depth);
-        let route = matches!(which, Walker::RoutePairOneTwo | Walker::RoutePairThreeFour | Walker::RoutePairFiveSix);
         // The child walk's words stay unwritten, as [`PairWalk::walk`] leaves them: their one reader was the passenger
         // step's walk point, whose lane 3 is `crate::RESIDUE` here (notes/physics.md "Entities", residue).
-        if !(route && receiver == o2) {
-            child_words_unwritten(self.host, self.mem, sp, &[o2, a, b]);
-        }
         (self.esp, self.walk_depth) = (sp, walk_depth(which));
         mark
     }
@@ -246,18 +218,11 @@ fn carried(
     n: u32,
 ) -> bool {
     let len = 16 * n;
-    if host.typed().is_none() || n as usize > CARRIED_ROWS || (src != dst && src < dst + len && dst < src + len) {
+    if n as usize > CARRIED_ROWS || (src != dst && src < dst + len && dst < src + len) {
         return false;
     }
-    let mut frames = HeldFrames {
-        mem,
-        host,
-        esp,
-        walk_depth: WALK_CALL,
-        solids: held_solids(host),
-        out: dst..dst + len,
-        on_held: false,
-    };
+    let mut frames =
+        HeldFrames { mem, esp, walk_depth: WALK_CALL, solids: held_solids(host), out: dst..dst + len, on_held: false };
     let mut rows = [Vec4::default(); CARRIED_ROWS];
     let rows = &mut rows[..n as usize];
     frames.load(src, rows);
@@ -280,7 +245,7 @@ const GRID_BOXES: usize = ((GRID_SECOND_BOXES - GRID_FIRST_BOXES) / 16) as usize
 fn grid_carried(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, out: u32, arg: u32) -> bool {
     let t = mem.load_transform(this);
     let overlaps = t.matrix != out && t.matrix < out + GRID_STRIDE && out < t.matrix + GRID_STRIDE;
-    if host.typed().is_none() || out == 0 || overlaps {
+    if out == 0 || overlaps {
         return false;
     }
     layout::copy_grid(mem, out, t.matrix);
@@ -290,7 +255,6 @@ fn grid_carried(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, out: u32, a
     }
     let mut frames = HeldFrames {
         mem,
-        host,
         esp,
         walk_depth: WALK_CALL,
         solids: held_solids(host),
@@ -317,11 +281,10 @@ fn grid_carried(host: &dyn Host, mem: &mut Mem, esp: u32, this: u32, out: u32, a
 const WALK_CALL: u32 = 24;
 
 /// `E33Mat34::FetchX` (thiscall on `matrix`, `(out, arg)`) entered at `sp`, done here when its walk is of a node and
-/// itself, as the probes' identity walks are: the call's words and its walk's are written as the calls write them
-/// ([`crate::skip_call`]) and the matrix copied; returns `out` (eax). `None` on a host that runs the original, or when
-/// the walk would run (the call's words may then be written: the caller's call writes the same).
+/// itself, as the probes' identity walks are: none of the call's words or its walk's is written and the matrix
+/// is copied; returns `out` (eax). `None` without a given `sp`, or when the walk would run (the call's words may then be written: the caller's call writes the same).
 pub(crate) fn fetch_x_direct(host: &dyn Host, mem: &mut Mem, sp: u32, matrix: u32, out: u32, arg: u32) -> Option<u32> {
-    if !crate::skip_unwritten(host, mem, sp, &[out, arg]) {
+    if sp == 0 {
         return None;
     }
     let t = mem.load_transform(matrix);
@@ -329,7 +292,6 @@ pub(crate) fn fetch_x_direct(host: &dyn Host, mem: &mut Mem, sp: u32, matrix: u3
         return None;
     }
     super::walks::copy_vec4(host, mem, out, t.matrix);
-    crate::skip_unwritten(host, mem, sp.wrapping_sub(WALK_CALL), &[arg, out, 1]);
     Some(out)
 }
 
@@ -429,7 +391,7 @@ pub(super) fn pair_combine_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 
 /// `E33Mat34::M51B4C0` or `E43PairWalk::MB560` (`target`, thiscall on `this` with `args`) entered at `sp`, run here
 /// on the pure host as their bindings would: as values ([`run`]), else their walks in place ([`PairWalk::walk`]);
-/// false (nothing written) for another target or on a host that runs the original.
+/// false (nothing done) for another target or without a given `sp`.
 pub(crate) fn transform_direct(
     host: &dyn Host,
     mem: &mut Mem,
@@ -438,7 +400,7 @@ pub(crate) fn transform_direct(
     this: u32,
     args: [u32; 3],
 ) -> bool {
-    if !matches!(target, COPY16_WALK | MB560) || !crate::skip_unwritten(host, mem, sp, &args) {
+    if !matches!(target, COPY16_WALK | MB560) || sp == 0 {
         return false;
     }
     let [a, b, c] = args;

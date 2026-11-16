@@ -5,9 +5,8 @@
 //! `signal::emit`), its time decode (`decode_time`, 0x523360) and its spring (`spring`, 0x5229e0) are here; the spring
 //! writes lane 3 from stack garbage, which the port does not reproduce.
 
-use super::signal_emit::{self, SignalHost};
+use super::signal_emit::SignalHost;
 use crate::mem::Mem;
-use crate::ntweak::layout::BASE_VTABLE;
 use crate::physics_core::layout;
 use crate::physics_core::passenger::{self, spring_step, SpringLane};
 
@@ -44,14 +43,6 @@ pub fn construct_def(mem: &mut Mem, host: &mut impl PassengerHost, at: u32) {
     host.unsigned(mem, at + 0xc);
 }
 
-/// `CPassenger::CDef::CtorB` (0x5224a0) on the def at `at`: its base's and tweak's words are demoted (stores only).
-pub fn demote_def(mem: &mut Mem, at: u32) {
-    layout::set_word(mem, at + 0xc, BASE_VTABLE);
-    layout::set_word(mem, at + 0x10, 0);
-    layout::set_word(mem, at, BASE_VTABLE);
-    layout::set_word(mem, at + 4, 0);
-}
-
 /// `CPassenger::CState::CtorB` (0x522550) on the state at `at`: its base, its vptr, its real tweak at +0xc, and ten
 /// cleared vectors. The three arguments are not read.
 pub fn construct_state(mem: &mut Mem, host: &mut impl PassengerHost, at: u32) {
@@ -81,12 +72,6 @@ pub fn construct_body(mem: &mut Mem, host: &mut impl PassengerHost, this: u32, a
 const HOST_AT: u32 = 0x14;
 /// The velocity vector of the spring (`this + 0x30`, three floats).
 const VELOCITY_AT: u32 = 0x30;
-/// The incar shake signal's offset in the signal manager (`g_signalManager + 0xc6e8`).
-const INCAR_SHAKE_AT: u32 = 0xc6e8;
-/// The payload's words copied from the host: (payload word, host offset, count), in the original's order. `Clear6` zeroes
-/// the vectors at +0x10..+0x70 first, so word 24 stays zero; the host's +0xbc goes to word 23.
-const PAYLOAD_FROM_HOST: [(u32, u32, u32); 5] =
-    [(4, 0x90, 4), (8, 0x80, 4), (12, 0x70, 4), (16, 0xa0, 7), (23, 0xbc, 1)];
 /// The time decode's seconds with the fraction (`this + 0x10`).
 const SECONDS_AT: u32 = 0x10;
 
@@ -96,27 +81,6 @@ pub trait ShakeHost: SignalHost {
     fn grid_flag(&mut self, mem: &mut Mem, obj: u32) -> u32;
     /// `E20Clear6::Clear6` (0x49fea0) on the payload at `at`: six vectors cleared.
     fn clear_payload(&mut self, mem: &mut Mem, at: u32);
-}
-
-/// `E45_P33F0` (0x5233f0, ecx): whether the object `obj` is set, that is, it is not null and its `E37Get67C` flag is.
-pub fn grid_flag_set(mem: &mut Mem, host: &mut impl ShakeHost, obj: u32) -> bool {
-    obj != 0 && host.grid_flag(mem, obj) != 0
-}
-
-/// `E45_P3210` (0x523210, ecx = the body `this`): clears the payload at `pay` (`Clear6`), fills it from the body's host
-/// and emits it on the incar shake signal (`signal::emit`, the manager's `+0xc6e8`).
-pub fn incar_shake(mem: &mut Mem, host: &mut impl ShakeHost, this: u32, pay: u32) {
-    host.clear_payload(mem, pay);
-    let body_host = layout::word(mem, this + HOST_AT);
-    layout::set_word(mem, pay, 0);
-    for (word, from, count) in PAYLOAD_FROM_HOST {
-        for k in 0..count {
-            let value = layout::word(mem, body_host + from + 4 * k);
-            layout::set_word(mem, pay + 4 * (word + k), value);
-        }
-    }
-    let signal = layout::signal_manager(mem) + INCAR_SHAKE_AT;
-    signal_emit::emit(mem, host, signal, pay);
 }
 
 /// `E45PSmalls::M3360` (0x523360, thiscall, `v` the double argument): the sign of `v` (+0), then its magnitude split into

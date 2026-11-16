@@ -9,8 +9,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::store::Raw;
 
 use super::{
-    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_CLEAR, RAY_SEEDS, SAMPLE_INDEXED,
-    SAMPLE_TABLE,
+    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
 };
 use crate::entities::{Op, MB560};
 use crate::rigid_body::OPERATOR_NEW;
@@ -30,13 +29,6 @@ pub(super) fn mesh_is_active(_ctx: &mut Ctx, _r: &Regs) -> Result<Return, Declin
     Ok(Return::void(solver_hosts::mesh_is_active(), 0))
 }
 
-/// thiscall on the E36 object (`ecx`) with `(sphere*, index*)`; eax is the 0 or 1 result.
-pub(super) fn sphere_box(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [sphere, index, ..] = r.stack;
-    let eax = rbr_physics::collision::layout::sphere_box(&mut ctx.mem, r.ecx, sphere, index);
-    Ok(Return::void(eax, 8))
-}
-
 /// thiscall on the E36 object (`ecx`) with `(body, list**, count*)`; eax is the 0 or 1 result.
 pub(super) fn collect(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [body, list_out, count_out, ..] = r.stack;
@@ -50,24 +42,6 @@ pub(super) fn collect(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 12))
 }
 
-/// thiscall on the SAT box (`ecx`) with `(other_center*, other_extent*)`; eax is 1 when the boxes overlap.
-pub(super) fn world_axes_overlap(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [center, extent, ..] = r.stack;
-    Ok(Return::void(layout::world_axes_overlap(&ctx.mem, r.ecx, center, extent), 8))
-}
-
-/// thiscall on the SAT box (`ecx`) with `(other_center*, other_extent*)`; eax is 1 when the boxes overlap.
-pub(super) fn box_sat_overlap(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [center, extent, ..] = r.stack;
-    Ok(Return::void(layout::box_sat_overlap(&ctx.mem, r.ecx, center, extent), 8))
-}
-
-/// thiscall (`ecx` unused) with `(origin*, direction*, v0*, v1*, v2*, output*)`; eax is 1 on a hit.
-pub(super) fn ray_triangle(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [origin, direction, v0, v1, v2, output, ..] = r.stack;
-    Ok(Return::void(layout::ray_triangle(&mut ctx.mem, origin, direction, v0, v1, v2, output), 24))
-}
-
 /// E38RaySeeds (0x4f6550): thiscall on the ray object; eax is the object (its `E09Vec4::Clear` calls return it).
 pub(super) fn ray_seeds(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = RaySeedCalls { mem: ctx.mem.clone(), host: ctx.host, esp: r.esp };
@@ -75,10 +49,9 @@ pub(super) fn ray_seeds(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0))
 }
 
-/// `E38RaySeeds` on the ray object `ray` as a call at `sp` (0: placed by the host) makes it: direct on the pure host
-/// ([`Host::call_slot_word`]), counted as a run ([`Host::ran_direct`]), without the call's words or its `Clear`
-/// calls' (none is read after them: residue audit, notes/physics.md "Store seam"). Through the host elsewhere.
-pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
+/// `E38RaySeeds` on the ray object `ray` as a call makes it, counted as a run ([`Host::ran_direct`]), without the call's
+/// words or its `Clear` calls' (none is read after them: residue audit, notes/physics.md "Store seam").
+pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, ray: u32) {
     /// The two vectors the seeds clear, cleared after them (the words do not overlap).
     struct Clears([u32; 2], usize);
     impl RayHost for Clears {
@@ -88,11 +61,6 @@ pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
             at
         }
     }
-    if host.call_slot_word().is_none() {
-        host.call_at(sp, RAY_SEEDS, ray, &[]);
-        return;
-    }
-    crate::skip_unwritten(host, mem, sp, &[]);
     host.ran_direct();
     let mut clears = Clears([0; 2], 0);
     super::on_grids(host, mem, &[ray], |s| layout::ray_seeds(&mut clears, s, ray));
@@ -101,13 +69,8 @@ pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
     }
 }
 
-/// `E38RayClear` on the ray object `ray` as a call at `sp` makes it, direct on the pure host as [`ray_seeds_at`].
-pub(crate) fn ray_clear_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
-    if host.call_slot_word().is_none() {
-        host.call_at(sp, RAY_CLEAR, ray, &[]);
-        return;
-    }
-    crate::skip_unwritten(host, mem, sp, &[]);
+/// `E38RayClear` on the ray object `ray` as a call makes it, as [`ray_seeds_at`].
+pub(crate) fn ray_clear_at(host: &dyn Host, mem: &mut Mem, ray: u32) {
     host.ran_direct();
     layout::ray_clear(mem, ray);
 }
@@ -123,7 +86,7 @@ struct RaySeedCalls<'a> {
 impl RayHost for RaySeedCalls<'_> {
     fn vec4_clear(&mut self, at: u32) -> u32 {
         let sp = (self.esp - 0x1000) & !0xf;
-        if crate::skip_call(self.host, &mut self.mem, sp, &[]) {
+        if sp != 0 {
             clear_vec4().store(&mut self.mem, at);
             return at;
         }
@@ -164,7 +127,7 @@ struct Samples<'a> {
 
 impl SampleHost for Samples<'_> {
     fn sample(&mut self, byte: u32, low: f32, high: f32) -> u32 {
-        if crate::ngp::is_ngp() && self.host.typed().is_some() {
+        if crate::ngp::is_ngp() {
             let found = on_stage(self.host, &self.mem, |s| sample_indexed(s, SAMPLE_TABLE, byte as u8, low, high));
             let eax = match found {
                 Indexed::Texel(texel) => Some(texel),
@@ -190,7 +153,7 @@ pub(super) fn system_vf00(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0xc))
 }
 
-/// The lookups of `CCollisionSystem::Vf00` in the emulator, each at its entry stack pointer in the frame.
+/// The lookups of `CCollisionSystem::Vf00` through the host, each at its entry stack pointer in the frame.
 struct SystemCallsAt<'a> {
     host: &'a dyn Host,
     frame: layout::SystemFrame,
@@ -202,22 +165,6 @@ impl SampleHost for SystemCallsAt<'_> {
             .call_at(self.frame.sample_sp, SAMPLE_INDEXED, SAMPLE_TABLE, &[byte, low.to_bits(), high.to_bits()])
             .eax
     }
-}
-
-/// thiscall `(origin, direction, root, out)`, ret 0x10: `E38Ops::M_DE40X` (0x4fde40), the mesh ray over the tree
-/// (`layout::mesh_ray_worklist`). Its result is the record at `out`; eax is not modelled.
-pub(super) fn mesh_ray_worklist(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [origin, direction, root, out, ..] = r.stack;
-    layout::mesh_ray_worklist(&mut ctx.mem, r.ecx, origin, direction, root, out);
-    Ok(Return::void(0, 0x10))
-}
-
-/// E38NodeWalk (0x4fdd60): stdcall with three stack words (the query box, the root, and the output); eax is not
-/// modelled.
-pub(super) fn node_walk(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [query, root, out, ..] = r.stack;
-    layout::node_walk(&mut ctx.mem, query, root, out);
-    Ok(Return::void(0, 12))
 }
 
 /// E38SegmentSweep (0x4fad90): stdcall with four stack words (the segment's start and end, the hit tags, and the
@@ -248,7 +195,7 @@ impl GridSyncHost for Callees<'_> {
     }
 
     fn copy_vec4(&mut self, mem: &mut Mem, dst: u32, src: u32) {
-        super::copy_vec4(self.0, mem, 0, dst, src);
+        super::copy_vec4(self.0, mem, dst, src);
     }
 }
 
@@ -262,7 +209,7 @@ impl Callees<'_> {
     /// `E45_M40C0` over the box `lo`..`hi` to `cells`: the held table's cells as values, written here, else the call.
     fn cell_query(&mut self, store: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
         let mem = store.mem_mut();
-        match super::box_cells_direct(self.0, mem, sp, lo, hi, cells) {
+        match super::box_cells_direct(self.0, mem, lo, hi) {
             Some(found) => rbr_physics::physics_core::layout::set_cells(mem, cells, found),
             None => {
                 super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
@@ -288,7 +235,7 @@ impl CollectHost<CollisionView<'_>> for Callees<'_> {
         let mem = store.mem_mut();
         // The getters every body in the cells is asked (`CBody::Vf118`, `E43PairWalk::MFc00`) are read here on the
         // pure host.
-        if matches!(target, BODY_GRID | ENTITY_VF118 | NODE_OF) && crate::skip_call(self.0, mem, sp, &args[1..]) {
+        if matches!(target, BODY_GRID | ENTITY_VF118 | NODE_OF) && sp != 0 {
             return match target {
                 BODY_GRID => Body::new(args[0]).grid(mem),
                 ENTITY_VF118 => 0,
@@ -313,8 +260,8 @@ impl CollectHost<CollisionView<'_>> for Callees<'_> {
         self.cell_query(store, sp, lo, hi, cells);
     }
 
-    fn length(&mut self, store: &CollisionView, sp: u32, vector: u32) -> f32 {
-        super::length(self.0, store.mem(), sp, vector)
+    fn length(&mut self, store: &CollisionView, _sp: u32, vector: u32) -> f32 {
+        super::length(self.0, store.mem(), vector)
     }
 }
 
@@ -332,13 +279,6 @@ pub(super) fn segment_test(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, out, ..] = r.stack;
     let eax = layout::segment_test(&mut ctx.mem, r.ecx, a, b, out, r.esp - 0x18);
     Ok(Return::void(eax, 12))
-}
-
-/// `E38Ops::M_E2D0` (0x4fe2d0): thiscall with `(point, v0, v1, v2, out)`, `ret 0x14`; eax is 1 on a hit.
-pub(super) fn point_triangle(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let [point, v0, v1, v2, out, ..] = r.stack;
-    let eax = layout::point_triangle(&mut ctx.mem, point, v0, v1, v2, out);
-    Ok(Return::void(eax, 20))
 }
 
 /// `E38Ops::M_EBC0`'s material table samples (0x520240), at its esp for them (0x8c below its entry).

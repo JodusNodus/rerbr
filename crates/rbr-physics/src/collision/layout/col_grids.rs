@@ -144,12 +144,6 @@ impl ColGrid {
         (mem.u8(self.base + 0x688), mem.u8(self.base + 0x689))
     }
 
-    pub fn take_event_flags(self, mem: &mut Mem) -> (u8, u8) {
-        let flags = self.event_flags(mem);
-        mem.map(self.base + 0x688, &[0, 0]);
-        flags
-    }
-
     /// The status byte at +0x68a. Its meaning is not known yet (`collision/README.md` (git 9c28c0b8)).
     pub fn status_flag(self, mem: &Mem) -> u8 {
         mem.u8(self.base + GRID_STATUS_FLAG)

@@ -26,14 +26,14 @@ timing). The only allowed differences are the documented classes, each with its 
 ([verification.md](verification.md#masks)):
 
 - the sign of a default NaN (x86 negative, arm64 positive), which no comparison or arithmetic can see;
-- words the original fills from uninitialised stack that nothing later reads (`rust_step.py --excluded`);
+- words the original fills from uninitialised stack that nothing later reads;
 - the lane-3 stack residue the gate itself masks (`harness/diverge.py` static mask), read only into other masked
   words;
 - heap addresses, compared as placement in an allocation log; the standalone's own allocator only counts them;
 - frame-loop words the game writes once per rendered frame outside the step (today car+0x670, `CCar::Vf28x`).
 
-The stale-stack words are one list in two places, `harness/rust_step.py` (`CAR_STATIC`/`STACK_GARBAGE`) and
-`crates/rbr-hybrid/src/pure/compare.rs` (`STALE_CAR`/`STALE_WHEEL`). A word joins only with run-A evidence, and
+The stale-stack words are one list, `crates/rbr-hybrid/src/pure/compare.rs` (`STALE_CAR`/`STALE_WHEEL`). A word
+joins only with evidence that the original differs from its own recording, and
 differing ones are printed apart, never dropped. The gate matrix must cover every car and every surface class
 (gravel, tarmac, snow), plus damage and collisions, before the goal counts as reached.
 
@@ -42,7 +42,7 @@ differing ones are printed apart, never dropped. The gate matrix must cover ever
 | | Milestone | Proof |
 | --- | --- | --- |
 | R | C++ reference exact on tanner-corolla, then frozen (2026-10-15) | rbr-recomp |
-| H | Hybrid step: every Rust port bound into the emulated step | `rust_step.py` with all bindings |
+| H | Hybrid step: every Rust port bound into the emulated step (retired 2026-11-16) | `rust_step.py` with all bindings |
 | B | Pure Rust step (`rbr-hybrid/src/pure/`), no emulator | `rbr-standalone` against the recording each step |
 | L | Load path: Rust builds the physics state from the retail files | byte compare with the original's snap-0; `--boot` |
 | G | Gameplay loop in Rust (`crates/rbr-gameplay`) | control payload, stage and time card per step against recordings |

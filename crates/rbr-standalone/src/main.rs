@@ -4,7 +4,7 @@
 //! every step.
 //!
 //! Usage: rbr-standalone --recording X --stage NAME --snapshot Y [--snapshot Z...] [--steps N] [--data DIR] [--read-set DIR]
-//!        rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct|typed|across] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE] [WEATHER]
+//!        rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE] [WEATHER]
 //!        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR]
 //!        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
 //!
@@ -144,7 +144,6 @@ mod rally;
 mod replay_trace;
 mod saves;
 mod stage;
-mod twin;
 mod tyre_ffb;
 mod tyre_probe;
 
@@ -243,7 +242,6 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             let snap = Snapshot::open(path).map_err(|e| format!("{path}: {e}"))?;
             live::Live::new(&snap, stage, args.marker_settings).map_err(|e| format!("{path}: {e}"))?
         };
-        live.set_direct(args.direct);
         live.set_physics(args.physics, race::engine_car(args, race, stage.car))?;
         if let Some(trail) = args.ffb_tyres {
             live.set_ffb_tyres(trail);

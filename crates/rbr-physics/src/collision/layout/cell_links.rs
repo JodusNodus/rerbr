@@ -264,52 +264,6 @@ pub fn move_to_cell(store: &mut impl Links, link: u32, cell: u32) {
     links::append(store, optional(cell).map(ListRef::new), LinkRef::new(link));
 }
 
-/// The list code per call (`cell_grid`'s, on `per_call`) and on the held records (on `held`), two copies of one
-/// image, over a body link in a cell and two cells: moved to another cell, again, back, unlinked (its eax), moved in
-/// once more, each cell's links walked. Compares the walks and eaxes, then every owned byte: the bytes compared, or the
-/// first difference. Ok(0) without a grid or a listed link.
-pub fn differential(per_call: &mut Mem, held: &mut Mem) -> Result<usize, String> {
-    let table = CellTable::lift(held);
-    let links = CellLinks::lift(held, &table);
-    let Some(&link) = links.listed.first() else {
-        return Ok(0);
-    };
-    let home = per_call.u32(link + 8);
-    let blocks = links.blocks.borrow().clone();
-    let other = blocks.iter().map(|&b| b + RECORD * 55).find(|&h| h != home).unwrap_or(home);
-    let walk = |first: &dyn Fn(u32) -> u32, next: &dyn Fn(u32) -> u32, cell: u32| {
-        let mut out = vec![];
-        let mut at = first(cell);
-        while at != 0 && out.len() < 64 {
-            out.push(at);
-            at = next(at);
-        }
-        out
-    };
-    let mut a = vec![];
-    let mut b = vec![];
-    for step in 0..6 {
-        let cell = [other, other, home, 0, home, other][step];
-        if step == 3 {
-            a.push(super::unlink(per_call, link));
-            b.push(unlink(&mut links.view(held), link));
-        } else {
-            super::move_to_cell(per_call, link, cell);
-            move_to_cell(&mut links.view(held), link, cell);
-        }
-        for c in [home, other] {
-            a.extend(walk(&|x| per_call.u32(x), &|x| per_call.u32(x), c));
-            b.extend(walk(&|x| links.first(held, x), &|x| links.next(held, x), c));
-        }
-    }
-    if a != b {
-        let k = a.iter().zip(&b).position(|(x, y)| x != y).unwrap_or(a.len().min(b.len()));
-        return Err(format!("the walks differ at word {k}: per call {:x?}, held {:x?}", a.get(k), b.get(k)));
-    }
-    links.lower(held);
-    compare(per_call, held, &links.owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,13 +290,6 @@ mod tests {
         m.set_u32(0x2008, 0x3020);
         m.set_u32(0x200c, 3);
         m
-    }
-
-    #[test]
-    fn the_held_list_code_writes_the_per_call_bytes() {
-        let (mut a, mut b) = (image(), image());
-        let bytes = differential(&mut a, &mut b).expect("equal");
-        assert_eq!(bytes, (100 + 3) * 12);
     }
 
     #[test]

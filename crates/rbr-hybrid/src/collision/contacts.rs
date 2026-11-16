@@ -26,7 +26,7 @@ pub(crate) fn body_vf_d8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(hit, 0x14))
 }
 
-/// The calls of CBody::VfD8 in the emulator: the original callees at their own stack pointers (the host places them
+/// The calls of CBody::VfD8 through the host: the original callees at their own stack pointers (the host places them
 /// below the frame), and the other body's and this body's virtuals through their vtables.
 struct D8CallsAt<'a> {
     mem: &'a Mem,
@@ -50,7 +50,7 @@ impl D8CallsAt<'_> {
 
 impl EdgeHitsCalls for D8CallsAt<'_> {
     fn ray_seeds(&mut self, ray: u32) {
-        super::ray_seeds_at(self.host, &mut self.mem.clone(), 0, ray);
+        super::ray_seeds_at(self.host, &mut self.mem.clone(), ray);
     }
 
     fn fetch_y(&mut self, matrix: u32, out: u32, worker: u32) {
@@ -76,7 +76,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn sub_block_init(&mut self, block: u32) {
-        crate::car_body::init_sub_block(self.host, &mut self.mem.clone(), 0, block);
+        crate::car_body::init_sub_block(self.host, &mut self.mem.clone(), block);
     }
 
     fn grid_count(&mut self) -> u32 {
@@ -111,7 +111,7 @@ impl EdgeHitsCalls for D8CallsAt<'_> {
     }
 
     fn ray_clear(&mut self, ray: u32) {
-        super::ray_clear_at(self.host, &mut self.mem.clone(), 0, ray);
+        super::ray_clear_at(self.host, &mut self.mem.clone(), ray);
     }
 }
 /// CBody::VfD0's calls at the stack pointers the port gives; `mem` reads the entities' vtables.
@@ -128,12 +128,12 @@ impl VfD0Calls<'_> {
 }
 
 impl GridContactHost for VfD0Calls<'_> {
-    fn ray_seeds(&mut self, sp: u32, grid: u32) {
-        super::ray_seeds_at(self.host, &mut self.mem, sp, grid);
+    fn ray_seeds(&mut self, _sp: u32, grid: u32) {
+        super::ray_seeds_at(self.host, &mut self.mem, grid);
     }
 
-    fn ray_clear(&mut self, sp: u32, grid: u32) {
-        super::ray_clear_at(self.host, &mut self.mem, sp, grid);
+    fn ray_clear(&mut self, _sp: u32, grid: u32) {
+        super::ray_clear_at(self.host, &mut self.mem, grid);
     }
 
     fn collide_init(&mut self, sp: u32, other: u32, body: u32, list: u32) -> u32 {
@@ -282,7 +282,7 @@ pub(crate) fn body_vf_e8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(hit, 0x14))
 }
 
-/// The calls of CBody::VfE8 in the emulator: `VfF4` (slot 0xf4) on this body, entered 0x2c below the entry esp (the
+/// The calls of CBody::VfE8 through the host: `VfF4` (slot 0xf4) on this body, entered 0x2c below the entry esp (the
 /// original pushes its eight arguments after `esi` and `edi`).
 struct E8CallsAt<'a> {
     mem: &'a mut Mem,
@@ -322,7 +322,7 @@ pub(crate) fn body_vf_f4(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(hit, 0x20))
 }
 
-/// The calls of CBody::VfF4 in the emulator, each at the entry stack pointer the original gives its callee (`sp` is
+/// The calls of CBody::VfF4 through the host, each at the entry stack pointer the original gives its callee (`sp` is
 /// the saved-register frame's bottom, `layout::box_edge_hit_sp`).
 struct F4CallsAt<'a> {
     mem: &'a mut Mem,

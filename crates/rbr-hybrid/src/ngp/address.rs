@@ -25,7 +25,7 @@ pub fn set_wall_clock(us: Option<u64>) {
 }
 
 /// NGP.dll's base for the runs on this thread while it lives, the outer one restored on drop. Each host (a pure
-/// playback, the emulator) holds its own base and opens a scope around its runs, so boots on several threads, or in
+/// playback) holds its own base and opens a scope around its runs, so boots on several threads, or in
 /// turn on one thread, don't see each other's.
 pub struct Scope(u32);
 
@@ -153,17 +153,6 @@ const EMIT_WRAPPERS: [(u32, u32); 22] = [
 pub fn original_for(addr: u32) -> Option<u32> {
     let at = file(addr);
     TRAMPOLINES.iter().chain(&EMIT_WRAPPERS).find_map(|&(t, exe)| (t == at).then_some(exe))
-}
-
-/// The trampolines (file addresses) with the exe functions they reach: the emulator binds each where its target is
-/// bound, since it enters the target past the hooked entry.
-pub(crate) fn trampolines() -> impl Iterator<Item = (u32, u32)> {
-    TRAMPOLINES.into_iter()
-}
-
-/// Whether `addr` is an NGP.dll file address.
-pub(crate) fn is_file(addr: u32) -> bool {
-    (FILE_BASE..FILE_BASE + SIZE).contains(&addr)
 }
 
 /// The file address `addr` at the snapshot's base (`None` without NGP).

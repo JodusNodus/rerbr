@@ -25,8 +25,8 @@ pub(crate) fn clear_lanes(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(sig)`: `E41EngineNoiseSignal::Emit` (0x50ef50), the physics core's emit with the connections in the
-/// emulator. A count out of range declines (the original traps).
+/// thiscall `(sig)`: `E41EngineNoiseSignal::Emit` (0x50ef50), the physics core's emit with the connections through the
+/// host. A count out of range declines (the original traps).
 pub(super) fn emit_noise(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, r.ecx)?;
     signal_emit::emit(&mut ctx.mem, &mut SignalCallees(ctx.host, crate::emit_name(0x50ef50)), r.ecx, r.stack[0]);
@@ -40,36 +40,7 @@ pub(super) fn emit_gear_change(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
     Ok(Return::void(0, 4))
 }
 
-/// cdecl `(buf)`, eax: `E41Plain::InitRealLerp` (0x50f010). The three floats are the caller's frame words at the
-/// buffer's +0x10, +0x20 and +0x24 (`stack[4]`, `stack[8]` and `stack[9]`).
-pub(super) fn init_real_lerp(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let buf = r.stack[0];
-    let eax = layout::init_real_lerp(&mut ctx.mem, buf, f(r.stack[4]), f(r.stack[8]), f(r.stack[9]));
-    Ok(Return::void(eax, 0))
-}
-
 // CDrive setters and getters.
-
-/// thiscall `(brake)`.
-pub(super) fn set_brake_in(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_drive(ctx, r.ecx, |d| {
-        let def = d.def();
-        let mut lanes = d.lanes();
-        drive::set_brake_in(&mut lanes, &def, f(r.stack[0]));
-        d.store_lanes(&lanes);
-    });
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(throttle)`.
-pub(super) fn set_throttle_in(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_drive(ctx, r.ecx, |d| {
-        let mut lanes = d.lanes();
-        drive::set_throttle_in(&mut lanes, f(r.stack[0]));
-        d.store_lanes(&lanes);
-    });
-    Ok(Return::void(0, 4))
-}
 
 /// thiscall `(slip)`.
 pub(super) fn set_clutch_slip(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
@@ -84,27 +55,10 @@ pub(crate) fn clutch_slip(d: &mut DriveView, slip: f32) {
     d.store_lanes(&lanes);
 }
 
-/// thiscall `(delta)`.
-pub(super) fn request_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    on_drive(ctx, r.ecx, |d| {
-        let def = d.def();
-        let mut state = d.state();
-        drive::request_gear(&mut state, def.gear_count, r.stack[0] as i32);
-        d.store_commanded_gear(&state);
-    });
-    Ok(Return::void(0, 4))
-}
-
 /// thiscall `()`, st0.
 pub(super) fn get_engine_speed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let st0 = on_drive(ctx, r.ecx, |d| drive::engine_speed(&d.state()));
     Ok(Return::float(st0 as f64, 0))
-}
-
-/// thiscall `()`, eax.
-pub(super) fn get_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let gear = on_drive(ctx, r.ecx, |d| drive::gear(&d.state()));
-    Ok(Return::void(gear as u32, 0))
 }
 
 /// thiscall `()`, st0.
@@ -132,24 +86,6 @@ pub(super) fn mgr_b_field_at(_ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline
 pub(super) fn mat4_mul_vec4(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let eax = layout::mat4_mul_vec4(&mut ctx.mem, r.ecx, r.stack[0], r.stack[1]);
     Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(idx, out)`, eax: copies row `idx` of the table to `out` (`layout::copy_row`).
-pub(super) fn copy_row(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let eax = layout::copy_row(&mut ctx.mem, r.ecx, r.stack[0], r.stack[1]);
-    Ok(Return::void(eax, 8))
-}
-
-/// thiscall `(out)`: the transpose of the matrix at `this` into `out` (`layout::transpose_into`).
-pub(super) fn rows_copy(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::transpose_into(&mut ctx.mem, r.ecx, r.stack[0]);
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(out)`: the inverse of the transposed matrix at `this` into `out` (`layout::mat4_inverse_transposed`).
-pub(super) fn mat4_inverse_transposed(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::mat4_inverse_transposed(&mut ctx.mem, r.ecx, r.stack[0]);
-    Ok(Return::void(0, 4))
 }
 
 /// thiscall `(a, x, y)`, eax: `a * 0x10` (`layout::set_wheel_offset_and_bias`).

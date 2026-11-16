@@ -2,11 +2,6 @@
 
 use crate::math::vec::{Vec3, Vec4};
 
-/// True only when each of the first three lanes is strictly below zero. The fourth lane is not read.
-pub fn all_lanes_negative(value: Vec4) -> bool {
-    value.x < 0.0 && value.y < 0.0 && value.z < 0.0
-}
-
 /// Whether the box from `first_corner` to `second_corner` overlaps the bounds `lower`..`upper`: the first corner must
 /// be strictly below the upper bound and the second strictly above the lower bound on every axis. The corners are
 /// named by use: nothing orders them.

@@ -115,7 +115,7 @@ impl PreOrder for Walk<'_> {
         let (sp, target) = (self.at(self.depths.call), layout::vtable_target(&self.mem, functor, 0x4));
         // `CPlainUnaryFunction::Vf04x` runs here on the pure host, as its binding (`functor_run`) runs it, without the
         // call's words (none is read after them: residue audit, notes/physics.md "Store seam").
-        if target == super::FUNCTOR_VF04X && crate::skip_unwritten(self.host, &mut self.mem, sp, &[child]) {
+        if target == super::FUNCTOR_VF04X && sp != 0 {
             self.host.ran_direct();
             let esp = self.host.call_esp(sp);
             call_stored(&mut Functor { mem: self.mem.clone(), host: self.host, esp }, functor, child);
@@ -172,16 +172,11 @@ impl EntityWalk {
     }
 }
 
-/// `walk` of `node` as a call at `sp` (0: placed by the host) makes it: on the pure host run here as its binding
-/// runs it, in a frame at the call's entry, counted as a run ([`Host::ran_direct`]) without the call's words (none is
-/// read after them: residue audit, notes/physics.md "Store seam"); through the host elsewhere. Eax is 0.
+/// `walk` of `node` as a call at `sp` (0: placed by the host) makes it, run here as its binding runs it, in a frame at
+/// the call's entry, counted as a run ([`Host::ran_direct`]) without the call's words (none is read after them:
+/// residue audit, notes/physics.md "Store seam"). Eax is 0.
 pub(crate) fn walk_at(host: &dyn Host, mem: &Mem, sp: u32, node: u32, walk: EntityWalk) -> u32 {
-    let (addr, arg, _) = walk.call();
-    if host.call_slot_word().is_none() {
-        return host.call_at(sp, addr, node, arg.as_slice()).eax;
-    }
-    let mut mem = mem.clone();
-    crate::skip_unwritten(host, &mut mem, sp, arg.as_slice());
+    let mem = mem.clone();
     host.ran_direct();
     let esp = host.call_esp(sp);
     run_walk(host, mem, esp, node, walk);
@@ -278,13 +273,10 @@ impl PairOps for PairWalk<'_> {
         let target = layout::vtable_target(self.mem, at, 4 * index);
         // The pure host places the call below this walker's entry, as it places a binding's call (the walker may run
         // in place, [`PairWalk::walk`]).
-        let Some(sp) = self.host.call_slot_word().map(|_| (self.esp - 0x1000) & !0xf) else {
-            self.host.call(target, at, &[a, b]);
-            return;
-        };
+        let sp = (self.esp - 0x1000) & !0xf;
         // A `CEntityFrame` hook, run here as its binding (`frame_hook`) would.
         if let Some(hook) = frame_hook_at(target) {
-            if crate::skip_unwritten(self.host, self.mem, sp, &[a, b]) {
+            if sp != 0 {
                 let frame = self.mem.load_entity_frame(at);
                 let mut owner = FrameOwner { mem: &mut *self.mem, host: self.host, esp: sp };
                 rbr_physics::entities::frame::entity_hook(&frame, hook, a, b, &mut owner);
@@ -302,12 +294,12 @@ impl PairOps for PairWalk<'_> {
             which,
             Walker::RoutePairOneTwo | Walker::RoutePairThreeFour | Walker::RoutePairFiveSix | Walker::RoutePairGrids
         );
-        if route && receiver == o2 && crate::skip_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
+        if route && receiver == o2 && sp != 0 {
             return a;
         }
         // The pure host runs the child walk here, as its binding (`pair_walker`) would, without the call's words: their
         // one reader was the passenger step's walk point, whose lane 3 is `crate::RESIDUE` there.
-        if child_words_unwritten(self.host, self.mem, sp, &[o2, a, b]) {
+        if sp != 0 {
             let mut child = PairWalk { mem: &mut *self.mem, host: self.host, esp: sp, walk_depth: walk_depth(which) };
             return walk::run(&mut child, which, receiver, o2, a, b);
         }
@@ -323,17 +315,12 @@ impl PairOps for PairWalk<'_> {
     }
 }
 
-/// [`crate::skip_unwritten`] of a child walk's words, from one place for the walk in place and the value carry, so that
-/// the audit's fills carry the same tag on both and the twin compares them.
-pub(super) fn child_words_unwritten(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32]) -> bool {
-    crate::skip_unwritten(host, mem, sp, args)
-}
-
 /// `layout::copy_vec4` on the solids' store: `from` is a solid's vector at times (`MB560` on the car's position).
 pub(super) fn copy_vec4(host: &dyn Host, mem: &mut Mem, to: u32, from: u32) {
-    let Some(solids) = held_solids(host).filter(|s| s.reaches(from, 16) || s.reaches(to, 16)) else {
+    let solids = held_solids(host);
+    if !solids.reaches(from, 16) && !solids.reaches(to, 16) {
         return layout::copy_vec4(mem, to, from);
-    };
+    }
     if solids.read(from).is_some() || solids.read(to).is_some() {
         host.ran_direct(); // as `not_kept_on_held`
     }
@@ -470,23 +457,6 @@ pub(super) fn pair_grids_shallower_run(ctx: &mut Ctx, r: &Regs) -> Result<Return
 /// `E43PairWalk::WB410`: the dispatcher to the grid walkers (`FetchY`'s grid walk).
 pub(super) fn route_pair_grids_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     pair_walker(ctx, r, Walker::RoutePairGrids)
-}
-
-/// stdcall `(node, grids, n)`, ret 0xc: `E37Walk5E40` (hooks One and Three) or `E37Walk5EB0` (Two and Four); eax is
-/// `grids`.
-fn grid_hooks_run(ctx: &mut Ctx, r: &Regs, first: Hook, second: Hook) -> Result<Return, Decline> {
-    let [node, grids, n, ..] = r.stack;
-    let mut pairs = PairWalk { mem: &mut ctx.mem, host: ctx.host, esp: r.esp, walk_depth: 0 };
-    let eax = walk::grid_hooks(&mut pairs, node, grids, n, first, second);
-    Ok(Return::void(eax, 12))
-}
-
-pub(super) fn grid_hooks_lo_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    grid_hooks_run(ctx, r, Hook::One, Hook::Three)
-}
-
-pub(super) fn grid_hooks_hi_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    grid_hooks_run(ctx, r, Hook::Two, Hook::Four)
 }
 
 /// thiscall `(a, b)`: `E43PairWalk::MAB10`, `MAB20`, `MAB30` and `MAB40`, return `a`.

@@ -16,13 +16,6 @@ const RAY_QUERY: u32 = 0x4fd760; // E38Ops::M_D760X
 const FALLBACK_QUERY: u32 = 0x4febc0; // E38Ops::M_EBC0
 const VEC_LERP: u32 = 0x473c90; // E11_VecLerp
 
-/// thiscall `(from)`, ret 4: `E37GridOps::Copy6770` (0x4f6770), the grid at `from` copied to `this` (nothing when it
-/// is 0); eax is `this`.
-pub(super) fn copy_grid_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    layout::copy_grid(&mut ctx.mem, r.ecx, r.stack[0]);
-    Ok(Return::void(r.ecx, 4))
-}
-
 /// `E33Mat34::CollideInit`'s calls at the original's stack pointers; `mem` reads bodyA's vtable.
 struct CollideCalls<'a> {
     host: &'a dyn Host,
@@ -37,8 +30,8 @@ impl CollideCalls<'_> {
 }
 
 impl CollideHost for CollideCalls<'_> {
-    fn init_block(&mut self, sp: u32, block: u32) {
-        crate::car_body::init_sub_block(self.host, &mut self.mem, sp, block);
+    fn init_block(&mut self, _sp: u32, block: u32) {
+        crate::car_body::init_sub_block(self.host, &mut self.mem, block);
     }
 
     fn gate_boxes(&mut self, sp: u32, body: u32, a: u32, b: u32) {
@@ -62,9 +55,8 @@ impl CollideHost for CollideCalls<'_> {
         crate::collision::call_grid(self.host, sp, E37_GRID_COPY, grid, &[source, transform, identity]);
     }
 
-    fn copy_from(&mut self, sp: u32, to: u32, from: u32) {
-        crate::skip_unwritten(self.host, &mut self.mem, sp, &[from]);
-        crate::collision::copy_vec4(self.host, &mut self.mem, sp, to, from);
+    fn copy_from(&mut self, _sp: u32, to: u32, from: u32) {
+        crate::collision::copy_vec4(self.host, &mut self.mem, to, from);
     }
 
     fn ray_query(&mut self, sp: u32, host: u32, a: u32, b: u32, out: u32) -> u32 {
@@ -75,8 +67,8 @@ impl CollideHost for CollideCalls<'_> {
         self.host.call_at(sp, FALLBACK_QUERY, host, &[a, out, 0]).eax
     }
 
-    fn ray_clear(&mut self, sp: u32, grid: u32) {
-        crate::collision::ray_clear_at(self.host, &mut self.mem, sp, grid);
+    fn ray_clear(&mut self, _sp: u32, grid: u32) {
+        crate::collision::ray_clear_at(self.host, &mut self.mem, grid);
     }
 
     fn compose(&mut self, sp: u32, identity: u32, point: u32, transform: u32, out: u32) {
@@ -113,9 +105,8 @@ impl CollideHost for CollideCalls<'_> {
         self.host.call_at(sp, E01_VEC4_NORMALIZE, vector, &[]);
     }
 
-    fn length(&mut self, sp: u32, vector: u32) -> f32 {
-        crate::skip_unwritten(self.host, &mut self.mem, sp, &[]);
-        crate::collision::length(self.host, &self.mem, sp, vector)
+    fn length(&mut self, _sp: u32, vector: u32) -> f32 {
+        crate::collision::length(self.host, &self.mem, vector)
     }
 }
 
@@ -129,19 +120,16 @@ pub(super) fn collide_init_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 
 /// `E33Mat34::CollideInit` on `this` with `(body, 0, sink)` from a caller, its eax. While the pure host holds the
 /// state, a Rust call at `sp` (its frame on the image below `sp`, as the call places it; none of the call's words, its
-/// binding not entered); elsewhere the call at `sp`. With `residue-audit` the call's words are filled.
+/// binding not entered); elsewhere the call at `sp`.
 pub(crate) fn collide_init(host: &dyn Host, sp: u32, this: u32, body: u32, sink: u32) -> u32 {
     let args = [body, 0, sink];
-    if host.typed().is_some() && sp != 0 {
-        let ran = host.with_image(&mut |mem| {
-            crate::skip_unwritten(host, mem, sp, &args);
+    if sp != 0 {
+        let eax = host.with_image(&mut |mem| {
             let mut calls = CollideCalls { host, mem: mem.clone() };
             Some(layout::collide_init(&mut calls, mem, this, body, sink, sp))
         });
-        if let Some(eax) = ran {
-            host.ran_direct();
-            return eax;
-        }
+        host.ran_direct();
+        return eax.expect("the port runs");
     }
     host.call_at(sp, MAT_COLLIDE_INIT, this, &args).eax
 }

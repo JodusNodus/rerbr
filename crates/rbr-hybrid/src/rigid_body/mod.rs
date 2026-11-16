@@ -24,8 +24,8 @@ use crate::entities::{EntityWalk, COPY16_WALK, STATE_EMIT};
 pub(crate) use contact::contact_vote_direct;
 use contact::{big_a, big_b, e43vf70, vf81x};
 use force_pass::{e43vf64, mounted_vf128, response_run};
-use pose::{e43vf6c, integrate_pose};
-use quats::{quat_mul, quat_norm, quat_normalize, set_from_quat};
+use pose::e43vf6c;
+use quats::{quat_mul, quat_norm};
 use rbr_physics::entities::tree::ChildCall;
 pub(crate) use slots::{accumulate_direct, e43vf138, impulse_run};
 use slots::{
@@ -44,20 +44,16 @@ pub(crate) fn on_solids<T>(ctx: &mut Ctx, run: impl FnOnce(&mut SolidView) -> T)
 }
 
 /// Runs `run` on the rigid store over `mem` with the car's solids as a step leaves them: held while the pure host holds
-/// them ([`crate::pure::Pure::typed_solids`]), else every word on the image (the per-call path). The held solids are
+/// them, else every word on the image (the per-call path, the boot's). The held solids are
 /// borrowed one word at a time, so `run` may call the host: a nested run reads and writes the same words.
 pub(crate) fn with_solids<T>(host: &dyn Host, mem: &mut Mem, run: impl FnOnce(&mut SolidView) -> T) -> T {
-    let typed = host.typed();
-    match typed.as_deref().and_then(|t| t.solids.as_ref()) {
-        Some(solids) => run(&mut solids.view(mem)),
-        None => run(&mut SolidView::image(mem)),
-    }
+    run(&mut host.typed().solids.view(mem))
 }
 
 /// The word at `at` as a step leaves it: a held solid's if one names it, else the image's. For readers of a solid's
 /// words outside the rigid body's bindings.
 pub(crate) fn solid_word(host: &dyn Host, mem: &Mem, at: u32) -> u32 {
-    host.typed().and_then(|t| t.solids.as_ref().and_then(|s| s.read(at))).unwrap_or_else(|| mem.u32(at))
+    host.typed().solids.read(at).unwrap_or_else(|| mem.u32(at))
 }
 
 /// The f32 at `at` as a step leaves it ([`solid_word`]).
@@ -67,7 +63,7 @@ pub(crate) fn solid_f32(host: &dyn Host, mem: &Mem, at: u32) -> f32 {
 
 /// Stores the word at `at`: into a held solid if one names it, else the image.
 pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32) {
-    if !host.typed().is_some_and(|t| t.solids.as_ref().is_some_and(|s| s.write(at, value))) {
+    if !host.typed().solids.write(at, value) {
         mem.set_u32(at, value);
     }
 }
@@ -76,17 +72,16 @@ pub(crate) fn set_solid_word(host: &dyn Host, mem: &mut Mem, at: u32, value: u32
 /// (`takes_part_word`), counted as a run ([`Host::ran_direct`]); its binding reads nothing of the stack, and its callers
 /// read none of the call's words. `None` for another target or body and per call, where the caller calls the host.
 pub(crate) fn solid_gate_direct(host: &dyn Host, mem: &mut Mem, target: u32, this: u32) -> Option<u32> {
-    if target != SOLID_VF80 || !held_solids(host).is_some_and(|s| s.held(this).is_some()) {
+    if target != SOLID_VF80 || held_solids(host).held(this).is_none() {
         return None;
     }
     host.ran_direct();
     Some(with_solids(host, mem, |s| takes_part_word(s, this)))
 }
 
-/// The car's solids while the pure host holds them over a step ([`on_solids`]); `None` per call, where a caller on a
-/// hot path keeps its run on `Mem` (`SolidView::image` reads word by word).
-pub(crate) fn held_solids(host: &dyn Host) -> Option<Ref<'_, CarSolids>> {
-    Ref::filter_map(host.typed()?, |t| t.solids.as_ref()).ok()
+/// The car's solids the pure host holds ([`on_solids`]).
+pub(crate) fn held_solids(host: &dyn Host) -> Ref<'_, CarSolids> {
+    Ref::map(host.typed(), |t| &t.solids)
 }
 
 pub const NEW_DEF: u32 = 0x52b8b0;
@@ -156,7 +151,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("rigid-body", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 49] = [
+pub static BINDINGS: [Binding; 46] = [
     bind(NEW_DEF, "CSolid::NewDef", new_def),
     bind(E46_IMPULSE640, "E46Impulse::Impulse640", clamp_velocity_along),
     bind(E43VF13C, "CSolid::E43Vf13C", inverse_mass),
@@ -194,14 +189,11 @@ pub static BINDINGS: [Binding; 49] = [
     bind(0x52ac80, "CSolid::E43Vf9C", scale_add_rows),
     bind(VF81X, "CSolid::Vf81x", vf81x),
     bind(BIG_A, "CSolid::BigA", big_a),
-    bind(VFC8, "CSolid::VfC8", integrate_pose),
     bind(BIG_B, "CSolid::BigB", big_b),
     bind(E43VF6C, "CSolid::E43Vf6C", e43vf6c),
     bind(E43VF70, "CSolid::E43Vf70", e43vf70),
     bind(E43VF64, "CSolid::E43Vf64", e43vf64),
-    bind(0x43c6e0, "E01Mat3::SetFromQuat", set_from_quat),
     bind(0x483dd0, "E15Shell::M83DD0", quat_mul),
-    bind(0x4921a0, "E18_QuatNormalize", quat_normalize),
     bind(0x4e4c70, "E34Quat::Norm", quat_norm),
     bind(STEP76, "CSolid::Step76", step76),
     bind(VF85, "CSolid::Vf85", vf85),
@@ -226,9 +218,9 @@ impl EntityWalkHost for Walks<'_> {
     }
 }
 
-/// `E46Mat::Mul` and the `CBody::Vf40` callees, in the emulator. The product's operands are written below the stack
+/// `E46Mat::Mul` and the `CBody::Vf40` callees, through the host. The product's operands are written below the stack
 /// (`scratch`), and the original reads and writes them there: the matrix, the diagonal and the output, nine words each.
-/// `mem` is a clone of the binding's memory (an emulator-backed clone writes the emulator).
+/// `mem` is a clone of the binding's memory.
 struct Callees<'a> {
     mem: Mem,
     host: &'a dyn Host,

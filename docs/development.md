@@ -39,9 +39,8 @@ tests.
 | Variable | What | Where from |
 | --- | --- | --- |
 | `RBR_DATA` | the retail 1.0 install, one folder per installer group (`Root/`, `Cars/`, `Maps/`, ...) | your disc (below): `OUT/retail-install` |
-| `RBR_PATCH` | the official 1.02 patch's `Main_group` (tests, the hybrid check and `scripts/gen-exe-data.py`; the program does not need it) | your disc and patch (below): `OUT/Main_group` |
+| `RBR_PATCH` | the official 1.02 patch's `Main_group` (tests and `scripts/gen-exe-data.py`; the program does not need it) | your disc and patch (below): `OUT/Main_group` |
 | `RBR_RECORDINGS` | drives recorded in the original game (`drive-*.bin`) | `scripts/fetch-test-data.sh` (below) |
-| `RBR_VECTOR_STORE` | per-call physics records of the original | the same script |
 | `RBR_NGP_PHYSICS` | an NGP 7.4.778 `physics.rbz` with NGP cars in slots 2, 4, 5 and 6 | below |
 | `RBR_NGP_DLL` | NGP 7.4.778's `Plugins/NGP.dll`, in place of the install's | the NGP package; the reader checks its SHA-256 |
 | `RBR_NGP` | a folder with `7.4.778/physics.rbz` and NGP car `.lsp` files under `cars-rsf/` | the NGP package and the car packs |
@@ -72,11 +71,10 @@ python3 -I scripts/ngp-install-car.py ngp-physics.rbz t_coroll "Toyota_Celica_20
 export RBR_NGP_PHYSICS=$PWD/ngp-physics.rbz
 ```
 
-**Recordings and vectors.** They are release assets; `data/test-data.SHA256SUMS` names the release and checks the
-download (about 345 MB, 5.5 GB unpacked):
+**Recordings.** They are release assets; `data/test-data.SHA256SUMS` names the release and checks the download:
 
 ```sh
-eval "$(scripts/fetch-test-data.sh ~/rerbr-test-data)"   # sets RBR_RECORDINGS, RBR_VECTOR_STORE
+eval "$(scripts/fetch-test-data.sh ~/rerbr-test-data)"   # sets RBR_RECORDINGS
 ```
 
 ## Running it
@@ -120,7 +118,7 @@ physics lives: [physics-map.md](physics-map.md).
 | [`rbr-engine`](../crates/rbr-engine) | engine models in place of NGP's torque formula: the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) | [engine-model.md](../notes/engine-model.md) |
 | [`rbr-tyre`](../crates/rbr-tyre) | tyre models in place of NGP's sliding model of the contact patch: in development, not released (`--physics experimental-brush` only) | [tyre-model.md](../notes/tyre-model.md) |
 | [`rbr-physics`](../crates/rbr-physics) | NGP 7.4.778's physics; `ports.csv` lists the ported functions | [physics.md](../notes/physics.md), [ngp.md](../notes/ngp.md) |
-| [`rbr-hybrid`](../crates/rbr-hybrid) | the pure step, and the bindings that run the ports inside the original's step (`bound.csv`) | [verification.md](../notes/verification.md) |
+| [`rbr-hybrid`](../crates/rbr-hybrid) | the game's physics step (the pure host) on the ports and the typed state | [verification.md](../notes/verification.md) |
 | [`rbr-recording`](../crates/rbr-recording) | readers for the recordings, live records and replays | [verification.md](../notes/verification.md) |
 | [`rbr-counters`](../crates/rbr-counters) | instruction and allocation counts per step and frame | [verification.md](../notes/verification.md#measuring-cost) |
 
@@ -155,15 +153,13 @@ Before a merge, from the repository root:
 scripts/rust-check.sh
 ```
 
-It runs `cargo fmt --check`, clippy with `-D warnings`, the tests and the physics vectors for the crates the change
-touches and the crates that depend on them, then prints PASS or FAIL. `RUST_CHECK_ALL=1` checks every crate.
-`RUST_CHECK_VECTORS=none` skips the vectors, as does an unset `RBR_VECTOR_STORE`. It uses half the CPUs
+It runs `cargo fmt --check`, clippy with `-D warnings` and the tests for the crates the change touches and the crates
+that depend on them, then prints PASS or FAIL. `RUST_CHECK_ALL=1` checks every crate. It uses half the CPUs
 (`RUST_CHECK_JOBS` sets the cargo jobs) and runs the test binaries side by side.
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy and the tests on macOS, Ubuntu and Windows, and on macOS (arm64) the
-published recordings and vectors as well. The retail files are not published, so CI skips the tests that need them;
-run those locally. The vector targets hold on an arm64 host only ([physics.md](../notes/physics.md), "Default NaN
-sign").
+published recordings as well. The retail files are not published, so CI skips the tests that need them; run those
+locally.
 
 Some changes need more:
 
@@ -172,25 +168,21 @@ Some changes need more:
 | renderer, HUD, cameras, launcher | before and after captures (`viewer --screenshot`, `rerbr --screenshot DIR`); for the renderer the [reference shots](#reference-shots) |
 | sound | a short audio render |
 | a file format | a test that parses every retail file it covers |
-| `rbr-standalone` or `rbr-hybrid` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics`, physics PASS 84084/84084 and exit status 0 (`RBR_NGP_PHYSICS` and `RBR_RSF` set) |
-| physics | `scripts/gate.sh --hybrid` (the drive and the hybrid check side by side, about a minute after the build) and the vectors ([Physics changes](#physics-changes)); `--perf BASE_BIN` adds the step's cost against another build |
+| physics, `rbr-standalone` or `rbr-hybrid` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (physics PASS 84084/84084 and exit status 0), the poison build and the drive with every aid on (`RBR_NGP_PHYSICS` and `RBR_RSF` set); `--perf BASE_BIN` adds the step's cost against another build |
 
 ## Physics changes
 
 The original game is the oracle. A plugin in the original (`harness/plugin/`) records every physics step of a drive
-and dumps the game's memory at chosen steps. Three checks compare the Rust physics with those records:
-
-- `rbr-standalone --boot` loads a recorded drive's stage and car from the game files, runs the pure Rust step and
-  compares the car and wheels after every step;
-- the hybrid check (`harness/rust_step.py`) runs one step of the original from a snapshot in an emulator, once as is
-  and once with the Rust ports bound in, and every "run B vs run A" line must read equal;
-- the vectors replay fuzzed per-call records of branches no drive reaches, one test per module.
+and dumps the game's memory at chosen steps. `rbr-standalone --boot` loads a recorded drive's stage and car from the
+game files, runs the Rust step and compares the car and wheels after every step against the recording. There is no
+per-call check against the original: a branch no recorded drive reaches is not checked.
 
 A short list of documented differences is allowed (the default NaN sign, stale stack words the original never reads,
 heap addresses, frame-loop words). [verification.md](../notes/verification.md) has the commands and the masks,
 [physics.md](../notes/physics.md) the float rules.
 
-The hybrid check reads the snapshots and the x87 cache, about 155 MB more (9.2 GB unpacked):
+`harness/replay.py` (one step of the original in an emulator) reads the snapshots and the x87 cache, about 155 MB
+more (9.2 GB unpacked):
 
 ```sh
 eval "$(scripts/fetch-test-data.sh ~/rerbr-test-data snapshots)"   # sets RBR_SNAPS, RBR_REPLAY_FPU_CACHE

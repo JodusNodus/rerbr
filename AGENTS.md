@@ -35,7 +35,7 @@ same paths.
 | ReRBR experimental physics (built on NGP 7): engine models | `notes/engine-model.md` |
 | Tyre model (brush-v1, in development, not released); NGP's tyre as it runs, published targets | `notes/tyre-model.md` |
 | Cameras, HUD, launcher | `notes/cameras-hud-launcher.md` |
-| Harness, recordings, hybrid check, vectors, masks | `notes/verification.md`, `harness/README.md` |
+| Harness, recordings, masks | `notes/verification.md`, `harness/README.md` |
 | Third-party references and licences | `notes/references/README.md` |
 
 ## Important paths
@@ -48,7 +48,7 @@ same paths.
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |
 | `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces, loose-v1 on soil, to standstill): in development, not released, only `--physics experimental-brush` |
 | `crates/rbr-tyre-lab` | Tyre research (ours, experimental): sweeps of NGP's tyre functions, NGP's surface values, the brush against NGP |
-| `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
+| `crates/rbr-hybrid` | The game's physics step (the pure host) on the ports and the typed state |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
 | `crates/rbr-season` | The championship (ours): built rallies and seasons on any installed stages; the 1.02 AI engine (`ai`), service park, field, tracks, standings, save |
 | `crates/rbr-session` | Sessions (ours): course, format, timing events, lap timing and end rules over the 1.02 loop |
@@ -58,11 +58,11 @@ same paths.
 | `crates/rbr-sound` | Gameplay sound from the SND1 record |
 | `crates/rbr-launcher` | The launcher (binary `rerbr`) |
 | `crates/rbr-recording` | Harness recording and live record readers |
-| `harness/` | Plugin, recorder, playback runs, step replay, hybrid check, vector capture |
-| `RBR_RECORDINGS`, `RBR_VECTOR_STORE` | Recorded drives (`drive-*.bin`) and vector records; not in git, published set via `scripts/fetch-test-data.sh` |
+| `harness/` | Plugin, recorder, playback runs, step replay, drive compare |
+| `RBR_RECORDINGS` | Recorded drives (`drive-*.bin`, RSF sessions); not in git, published set via `scripts/fetch-test-data.sh` |
 | `original/` | Original binaries and game data (gitignored, `SHA256SUMS` only) |
 | `data/` | Test data hashes and file lists, generator inputs |
-| `scripts/` | `rust-check.sh`, `rust-vectors.sh`, `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), `school-sweep.sh` (every lesson headless), `stage-sweep.sh` (every RSF stage headless), generators of Rust tables, NGP tools |
+| `scripts/` | `rust-check.sh`, `gate.sh` (the physics gate), `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), `school-sweep.sh` (every lesson headless), `stage-sweep.sh` (every RSF stage headless), generators of Rust tables, NGP tools |
 
 Treat `original/`, `build/` and the recordings as local data. Do not commit their contents.
 
@@ -97,12 +97,10 @@ A Rust batch includes:
 
 - `scripts/rust-check.sh` from the repository root printing PASS, with `RBR_DATA`, `RBR_PATCH` and `RBR_RECORDINGS`
   set in `dev.env` (read via `scripts/dev-env.sh`);
-- for physics ports: the hybrid check (after `cargo build --release -p rbr-hybrid`: `.venv/bin/python -I -B
-  harness/rust_step.py` with every binding over the drive's snapshots and
-  recording) with every "run B vs run A" line equal, and fuzzed direct-call records for branches no drive reaches;
-- for changes to `rbr-standalone` or `rbr-hybrid`: `.venv/bin/python -I -B harness/rsf_compare.py
-  $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR` giving physics PASS 84084/84084 and exit
-  status 0 (release builds of `rbr-standalone` and `rsf-settings`; `RBR_NGP_PHYSICS`, `RBR_RSF` set);
+- for changes to the physics, `rbr-standalone` or `rbr-hybrid`: `scripts/gate.sh` printing PASS (drive2
+  attempt 5 through `harness/rsf_compare.py`, physics PASS 84084/84084, with the poison build and an aids-on run;
+  `RBR_NGP_PHYSICS`, `RBR_RSF` set). The recorded drives are the oracle: there is no per-call check against the
+  original;
 - for a format: a test that parses every retail file it covers;
 - for visible or audible systems: before/after captures or a short audio render;
 - short updates to the area's note for verified layouts and behaviour, and a report listing commits, checks and

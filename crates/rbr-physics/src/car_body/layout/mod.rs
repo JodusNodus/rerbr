@@ -66,6 +66,4 @@ pub use offsets::{
     step_mark_timer_at, tweak_word_at, walk_source_at, BRAKE_AT, CAR_INIT_EMITTER_AT, PARTIAL_CONTACT_FLAG,
     PROBLEM_EMITTER_AT, RETIRE_EMITTER_AT, STAND_STILL_EMITTER_AT, THROTTLE_AT, TWEAK_BLOCK_WORDS,
 };
-pub use typed::{
-    cell_value_slot, differential, round_trip, slot, CarFields, CarOwn, CarState, CarView, Slot, STEP_MARK_STEERING,
-};
+pub use typed::{cell_value_slot, round_trip, slot, CarFields, CarOwn, CarState, CarView, Slot, STEP_MARK_STEERING};

@@ -56,7 +56,7 @@ def static_mask(ref,a,noises):
         _,na,nb=aligned(ref,load(noise))
         mask|=(na!=nb).any(axis=0)
     return mask
-if __name__=="__main__":  # importable for its load() and static_mask() (harness/rust_step.py)
+if __name__=="__main__":  # importable for its load() and static_mask()
   if sys.argv[1]=="--mask":
       ref=load(sys.argv[2])
       static_mask(ref,ref[1],sys.argv[3:]).astype(np.uint8).tofile(sys.argv[2]+".mask")

@@ -222,20 +222,6 @@ pub fn pair_latch(w: &mut DriveWorker, x: usize) {
     w.state.pending = 1;
 }
 
-/// The force of block `k` (the axle's first block index) when its gate is
-/// set: the wheel's weight over the axle's scale, times the term's value, plus half the term's term.
-pub fn block_lane_step(w: &mut DriveWorker, x: usize) {
-    let axle = w.def.axles[x];
-    let k = axle.block_pair[0] as usize;
-    if w.state.blocks[k].gate.value == 0 {
-        return;
-    }
-    let ratio = w.def.wheels[k].weight / axle.scale;
-    let term = w.state.terms[x];
-    let value = ratio * term.value + term.term * 0.5;
-    w.state.blocks[k].force.set(value);
-}
-
 /// Zeroes the force and the gate of block `idx`. Only `block_pair_gate` calls it, when the pack's outputs are zero.
 fn zero_block(w: &mut DriveWorker, idx: usize) {
     w.state.blocks[idx].force.set(0.0);

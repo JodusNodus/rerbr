@@ -2,11 +2,9 @@
 //! functor table and random draws the impact path uses. Offsets are in `layout::damage_handler_at`.
 
 use super::layout::damage_handler_at as at;
-use super::layout::WORLD;
 use super::light;
 use crate::car_body::store::CarStore;
 use crate::mem::Mem;
-use crate::ntweak::layout::NULL_NAME;
 
 /// Sets the damage level: counts the call, stores the level and stores the threshold for it: 0.0 for level 0, 0.2 for 1,
 /// 0.7 for 2, and 1.0 for 3 and any other word (the level compares as unsigned).
@@ -83,22 +81,6 @@ pub fn reset_damage<S: CarStore>(calls: &mut impl ResetDamageCalls<S>, mem: &mut
 pub trait MaterialNameCalls {
     /// The address of the material's entry in the manager's material table.
     fn material_entry(&mut self, table: u32, id: u32) -> u32;
-}
-
-/// The name of the material the handler's inner id selects: when the world's manager has the material-names flag, the
-/// entry's name, or the default string for a null entry. When the flag is clear, returns the manager pointer (the
-/// original's value).
-pub fn material_name<S: CarStore>(calls: &mut impl MaterialNameCalls, mem: &S, handler: u32) -> u32 {
-    let manager = mem.u32(mem.u32(WORLD) + at::WORLD_MANAGER_AT);
-    if mem.u32(manager + at::MANAGER_FLAGS_AT) & at::MANAGER_MATERIAL_NAMES == 0 {
-        return manager;
-    }
-    let tag = calls.material_entry(manager + at::MATERIAL_TABLE_AT, mem.u32(handler + at::MATERIAL_ID_AT));
-    if tag == 0 {
-        NULL_NAME
-    } else {
-        mem.u32(at::material_name_at(tag))
-    }
 }
 
 /// Copies the damage state from `src` into the handler: eight groups of eight (a zone word, then a float, each pair in

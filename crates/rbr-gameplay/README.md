@@ -35,5 +35,4 @@ The championship (the built events, the AI, the service park, the event save) is
 
 `tests/` (most need `RBR_DATA` and `RBR_RECORDINGS`; peeks need `peek/<drive>.bin` and `.peek.bin`):
 `recordings` (payload), `schedule` (frame schedule), `stage_peek`, `timing`, `timing_peek`, `race_clock_peek`,
-`filter_peek`, `filter_vectors` and `marker_vectors` (direct-call records, `harness/vector_specs/`), `ghost`, `setup`, `weather`. Vector records: see
-[harness/README.md](../../harness/README.md).
+`filter_peek`, `ghost`, `setup`, `weather`.

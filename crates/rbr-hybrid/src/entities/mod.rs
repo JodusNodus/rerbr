@@ -15,7 +15,7 @@ mod walks;
 
 use crate::rigid_body::VF81X;
 pub(crate) use collide_init::collide_init;
-use collide_init::{collide_init_run, copy_grid_run};
+use collide_init::collide_init_run;
 use e90::{
     d3dx_normalize_run, e90_add_bend_run, e90_add_fixed_run, e90_add_particle_run, e90_add_pin_run, e90_add_spring_run,
     e90_bend_pool_init_run, e90_build_post_run, e90_build_run, e90_build_span_run, e90_part_ctor_run,
@@ -34,9 +34,9 @@ use frame::{
     old_frame_vf08_run, old_frame_vf0c_run, old_frame_vf10_run,
 };
 use hinge::{
-    hinge_sim_d860, hinge_vf_e070, set_650_run, sim_c960_run, sim_cf10_run, sim_cff0_run, sim_d160_run, sim_da60_run,
-    sim_e1d0_run, sim_e4f0_run, sim_ea80_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run,
-    state_emit_run, step_big_run, SIM_D160, SIM_D860, VF_E070,
+    hinge_sim_d860, hinge_vf_e070, set_650_run, sim_c960_run, sim_cff0_run, sim_d160_run, sim_da60_run, sim_e1d0_run,
+    sim_e4f0_run, sim_ea80_run, sim_ead0_run, sim_efe0_run, sim_f350_run, sim_f950_run, sim_fd00_run, state_emit_run,
+    step_big_run, SIM_D160, SIM_D860, VF_E070,
 };
 use matrices::{
     compose_b_run, copy16_walk_run, copy_blocks_run, copy_blocks_three_four_run, fetch_x_run, fetch_y_run, mb560_run,
@@ -44,12 +44,11 @@ use matrices::{
 };
 pub(crate) use matrices::{fetch_x_direct, op, transform_direct, Op};
 use walks::{
-    functor_run, grid_hooks_hi_run, grid_hooks_lo_run, integrate_run, mul4_run, name_walk_run, node_of_run,
-    pair_echo_run, pair_five_six_deeper_run, pair_five_six_run, pair_five_six_shallower_run, pair_grids_deeper_run,
-    pair_grids_run, pair_grids_shallower_run, pair_one_two_deeper_run, pair_one_two_run, pair_one_two_shallower_run,
-    pair_three_four_deeper_run, pair_three_four_run, pair_three_four_shallower_run, route_pair_five_six_run,
-    route_pair_grids_run, route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58, vf5c, vf64,
-    walk_pre_order_run,
+    functor_run, integrate_run, mul4_run, name_walk_run, node_of_run, pair_echo_run, pair_five_six_deeper_run,
+    pair_five_six_run, pair_five_six_shallower_run, pair_grids_deeper_run, pair_grids_run, pair_grids_shallower_run,
+    pair_one_two_deeper_run, pair_one_two_run, pair_one_two_shallower_run, pair_three_four_deeper_run,
+    pair_three_four_run, pair_three_four_shallower_run, route_pair_five_six_run, route_pair_grids_run,
+    route_pair_one_two_run, route_pair_three_four_run, vf20, vf48, vf58, vf5c, vf64, walk_pre_order_run,
 };
 pub(crate) use walks::{walk_at, EntityWalk};
 
@@ -140,7 +139,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("entities", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 119] = [
+pub static BINDINGS: [Binding; 115] = [
     bind(VF58, "CEntity::E43Vf58", vf58),
     bind(VF5C, "CEntity::E43Vf5C", vf5c),
     bind(ENTITY_VF80, "CEntity::E43Vf80", entity_vf80_run),
@@ -183,8 +182,6 @@ pub static BINDINGS: [Binding; 119] = [
     bind(0x51b280, "E43PairWalk::WB280", pair_grids_deeper_run),
     bind(0x51b2d0, "E43PairWalk::WB2D0", pair_grids_shallower_run),
     bind(0x51b410, "E43PairWalk::WB410", route_pair_grids_run),
-    bind(0x4f5e40, "E37Walk5E40", grid_hooks_lo_run),
-    bind(0x4f5eb0, "E37Walk5EB0", grid_hooks_hi_run),
     bind(PAIR_ONE_TWO_SHALLOWER, "E43PairWalk::WB050", pair_one_two_shallower_run),
     bind(FRAME_VF04, "CEntityFrame::Vf04", frame_vf04_run),
     bind(FRAME_VF08, "CEntityFrame::Vf08", frame_vf08_run),
@@ -212,7 +209,6 @@ pub static BINDINGS: [Binding; 119] = [
     bind(SIM_F950, "CHingedRigidBody::M51F950 (ours)", sim_f950_run),
     bind(STATE_EMIT, "CMultiSignal1<CSigMrRBodyState>::Emit (ours)", state_emit_run),
     bind(SIM_C960, "CHingedRigidBody::SimC960", sim_c960_run),
-    bind(SIM_CF10, "CHingedRigidBody::SimCF10", sim_cf10_run),
     bind(SIM_CFF0, "CHingedRigidBody::SimCFF0", sim_cff0_run),
     bind(SIM_D160, "CHingedRigidBody::SimD160", sim_d160_run),
     bind(SIM_E1D0, "CHingedRigidBody::SimE1D0", sim_e1d0_run),
@@ -253,7 +249,6 @@ pub static BINDINGS: [Binding; 119] = [
     bind(0x51bb70, "CGround::Vf110", ground_present),
     bind(0x51bb80, "CGround::Vf114", ground_present),
     bind(MAT_COLLIDE_INIT, "E33Mat34::CollideInit", collide_init_run),
-    bind(0x4f6770, "E37GridOps::Copy6770", copy_grid_run),
     bind(0x51bc70, "CGround::VfCC", ground_vf_cc),
     bind(0x51c6f0, "CGround::VfE8", ground_vf_e8),
     bind(0x51a740, "CEntity::E43VfAC", vf_ac),
@@ -262,31 +257,3 @@ pub static BINDINGS: [Binding; 119] = [
     bind(0x600ff0, "E90Seg::E90Seg", e90_seg_ctor_run),
     bind(0x601030, "E90Seg::~E90Seg", e90_seg_dtor_run),
 ];
-
-#[cfg(test)]
-mod tests {
-    use super::hinge::sim_e4f0_run;
-    use crate::tests::Script;
-    use crate::{Ctx, Regs, Return};
-    use rbr_physics::mem::Mem;
-
-    /// An unowned hinge returns `E43Vf138`'s eax, the fifth stack word `e` (the asm's `mov eax, [esp+0x20]`, 0x52b9d0),
-    /// through both `SimE4F0` and `CSolid::E43Vf138`'s bindings. `dp` is zero, so no dot product is taken.
-    #[test]
-    fn unowned_e4f0_returns_the_e_pointer() {
-        let host = Script::default();
-        let mut ctx = Ctx { mem: Mem::new(), host: &host };
-        let (this, def) = (0x1000, 0x2000);
-        ctx.mem.map(this, &[0; 0x400]);
-        ctx.mem.set_u32(this + 0x34, def);
-        ctx.mem.map(def, &[0; 0xcac]);
-        for at in [0x3000, 0x3010, 0x3020, 0x3030, 0x3040] {
-            ctx.mem.map(at, &[0; 0x10]);
-        }
-        let mut r = Regs { ecx: this, esp: 0x9000, ..Regs::default() };
-        r.stack[..6].copy_from_slice(&[0x3000, 0x3010, 0x3020, 0, 0x3030, 0x3040]);
-        let want = Ok(Return::void(0x3030, 0x18));
-        assert_eq!(sim_e4f0_run(&mut ctx, &r), want);
-        assert_eq!(crate::rigid_body::e43vf138(&mut ctx, &r), want);
-    }
-}

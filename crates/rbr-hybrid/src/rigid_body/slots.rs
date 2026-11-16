@@ -46,7 +46,7 @@ pub(crate) fn e43vf138(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(e, 0x18))
 }
 
-/// The original callees of `E43Vf128`, in the emulator, at the original's stack: the two transforms (`S30`, the body's
+/// The original callees of `E43Vf128`, through the host, at the original's stack: the two transforms (`S30`, the body's
 /// pose, and `MB560`), then the tail's (`layout::impulse_tail`). `frame` is the original's esp after its prologue.
 struct ImpulseCalls<'a> {
     mem: Mem,
@@ -219,10 +219,7 @@ pub(super) fn flush_gate(mem: &Mem) -> u32 {
 pub(crate) fn accumulate_direct(host: &dyn Host, mem: &mut Mem, slot: u32, this: u32, p: u32) -> bool {
     let target = core_layout::vtable_target(mem, this, slot);
     let gate = flush_gate(mem);
-    if !matches!(target, E43VF70 | E43VF74)
-        || gate & FLUSH_BIT != 0
-        || !held_solids(host).is_some_and(|s| s.held(this).is_some())
-    {
+    if !matches!(target, E43VF70 | E43VF74) || gate & FLUSH_BIT != 0 || held_solids(host).held(this).is_none() {
         return false;
     }
     host.ran_direct();

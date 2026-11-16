@@ -1,6 +1,6 @@
 //! The detector group (`physics_core::detectors` and its `layout` sequences) against a scripted host: the frames and
 //! the entry stack pointers the asm gives (0x5242c0, 0x525a20, 0x525bd0, 0x526ad0, 0x526cc0, 0x526d20), and the pure
-//! parts. The game's own runs are checked by `harness/rust_step.py` (rbr-hybrid's bound.csv).
+//! parts.
 
 use rbr_physics::math::vec::Vec3;
 use rbr_physics::mem::Mem;

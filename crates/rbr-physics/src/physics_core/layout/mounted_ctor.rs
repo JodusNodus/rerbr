@@ -12,8 +12,6 @@ pub const DEF_SIZE: u32 = 0x240;
 const DEF_VTABLE: u32 = 0x0073_e59c;
 /// `CMountedRigidBody::CState`'s vtable (0x73e614), at +0x00.
 const STATE_VTABLE: u32 = 0x0073_e614;
-/// The string `CMountedRigidBody::CDef::Vf4c` returns (0x73e5fc).
-const DEF_STRING: u32 = 0x0073_e5fc;
 
 /// The calls the mounted constructors make into code outside this port, in the original's order. Each gets the
 /// address of the object it builds; the caller's code writes those objects' bytes.
@@ -51,11 +49,6 @@ pub fn construct_state(mem: &mut Mem, at: u32) {
     crate::ntweak::construct_real(mem, at + 0x4);
     crate::ntweak::construct_real(mem, at + 0x14);
     crate::ntweak::construct_real(mem, at + 0x24);
-}
-
-/// `CMountedRigidBody::CDef::Vf4c` (0x521500): the constant string's address.
-pub fn def_string() -> u32 {
-    DEF_STRING
 }
 
 #[cfg(test)]

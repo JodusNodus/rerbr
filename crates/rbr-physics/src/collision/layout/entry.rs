@@ -1,38 +1,5 @@
 //! The collision entry's memory (E36): its accessors and initializer, the collect's transforms and frame.
 
-use crate::mem::Mem;
-
-/// E36Get680 (0x4f2c30) (name ours): the grid's shape record (+0x680, `CollisionStore::collision_shape`).
-pub fn active_shape(mem: &Mem, object: u32) -> u32 {
-    mem.u32(object.wrapping_add(0x680))
-}
-
-/// E36Get68a (0x4f2c40) (name ours): the grid's status bit 2 (+0x68a), a sphere shape record
-/// (`CollisionStore::collision_is_sphere`), as a zero-or-one word.
-pub fn is_sphere(mem: &Mem, object: u32) -> u32 {
-    u32::from((mem.u8(object.wrapping_add(0x68a)) & 4) >> 2)
-}
-
-/// E36CollideInit (0x4f2c50) (name ours): initialize a collision entry's base vectors, matrix, and radii.
-pub fn init_entry(mem: &mut Mem, object: u32) -> u32 {
-    mem.set_f32(object.wrapping_add(0x60), 1.0);
-    mem.set_f32(object.wrapping_add(0x64), 0.0);
-    mem.set_f32(object.wrapping_add(0x68), 0.0);
-    mem.set_f32(object.wrapping_add(0x70), 0.0);
-    mem.set_f32(object.wrapping_add(0x74), 1.0);
-    mem.set_f32(object.wrapping_add(0x78), 0.0);
-    mem.set_f32(object.wrapping_add(0x80), 0.0);
-    mem.set_f32(object.wrapping_add(0x84), 0.0);
-    mem.set_f32(object.wrapping_add(0x88), 1.0);
-    for offset in (0..0x10).step_by(4) {
-        mem.set_u32(object.wrapping_add(offset), 0);
-    }
-    mem.set_f32(object.wrapping_add(0x20), 1.0);
-    mem.set_f32(object.wrapping_add(0x24), 2.2);
-    mem.set_f32(object.wrapping_add(0x28), 0.75);
-    object
-}
-
 /// E36Nop (0x4f2cd0): empty collision callback barrier.
 pub fn nop() {}
 

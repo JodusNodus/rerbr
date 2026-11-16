@@ -2,7 +2,6 @@
 
 use rbr_physics::engine_driveline::drive_step::DriveStepHost;
 use rbr_physics::engine_driveline::drive_worker::{FreeWheelHost, GearHost, MatInverseHost, MatVecHost};
-use rbr_physics::engine_driveline::store::DriveStore;
 use rbr_physics::engine_driveline::{drive_leaf, drive_worker, layout, mat4};
 use rbr_physics::mem::Mem;
 
@@ -31,42 +30,7 @@ pub(super) fn set_lane_scale(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     Ok(Return::void(0, 4))
 }
 
-/// thiscall `()`, st0.
-pub(super) fn gear_speed_error(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let v = on_drive(ctx, r.ecx, |d| drive_leaf::gear_speed_error(&d.worker(), &d.gear_work()));
-    Ok(Return::float(v, 0))
-}
-
-pub(super) fn clutch_values(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let x = r.stack[0] as usize;
-    with_worker(ctx, r.ecx, |w| drive_leaf::clutch_values(w, x));
-    Ok(Return::void(0, 4))
-}
-
-pub(super) fn clutch_flags(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    with_worker(ctx, r.ecx, drive_leaf::clutch_flags);
-    Ok(Return::void(0, 0))
-}
-
-pub(super) fn axle_pair_stages(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    with_worker(ctx, r.ecx, drive_leaf::axle_pair_stages);
-    Ok(Return::void(0, 0))
-}
-
-pub(super) fn block_lane_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let x = r.stack[0] as usize;
-    with_worker(ctx, r.ecx, |w| drive_leaf::block_lane_step(w, x));
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(x)`, eax.
-pub(super) fn block_pair_gate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let x = r.stack[0] as usize;
-    let gate = with_worker(ctx, r.ecx, |w| drive_leaf::block_pair_gate(w, x));
-    Ok(Return::void(u32::from(gate), 4))
-}
-
-/// The wheel worker's external calls, run by the host on the emulator's memory. The port's values are written where the
+/// The wheel worker's external calls, run by the host on the image. The port's values are written where the
 /// original reads them, the original runs, and its results are read back. `Step4990` and `Step3870` are ports.
 struct WheelCalls<'a> {
     mem: Mem,
@@ -139,30 +103,6 @@ fn gear<'a>(ctx: &Ctx<'a>, r: &Regs) -> Gear<'a> {
     Gear { mem: ctx.mem.clone(), host: ctx.host, payload_at: r.esp - 0x10 }
 }
 
-/// thiscall `(x)`.
-pub(super) fn signal_gear_change(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut host = gear(ctx, r);
-    let w = on_drive(ctx, r.ecx, |d| d.worker());
-    drive_worker::signal_gear_change(&w, &mut host, r.stack[0]);
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(dt)`.
-pub(super) fn gear_trim(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut host = gear(ctx, r);
-    let dt = f(r.stack[0]);
-    with_gear(ctx, r.ecx, |w, g| drive_worker::gear_trim(w, g, &mut host, dt));
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(dt)`, eax.
-pub(super) fn gear_band_guard(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut host = gear(ctx, r);
-    let dt = f(r.stack[0]);
-    let changed = with_gear(ctx, r.ecx, |w, g| drive_worker::gear_band_guard(w, g, &mut host, dt));
-    Ok(Return::void(u32::from(changed), 4))
-}
-
 /// thiscall `(dt)`, void.
 pub(super) fn wheel_worker(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut host = wheel_calls(ctx, r);
@@ -170,58 +110,6 @@ pub(super) fn wheel_worker(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let split = crate::ngp::drive_split(ctx)?;
     with_worker(ctx, r.ecx, |w| drive_worker::wheel_worker(w, &mut host, dt, split));
     Ok(Return::void(0, 4))
-}
-
-/// thiscall `()`: the wheels' reset.
-pub(super) fn reset_wheels(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut host = wheel_calls(ctx, r);
-    with_worker(ctx, r.ecx, |w| drive_worker::reset_wheels(w, &mut host));
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall `(dt)`, void: the pair worker.
-pub(super) fn pair_worker(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let dt = f(r.stack[0]);
-    with_worker(ctx, r.ecx, |w| drive_worker::pair_worker(w, dt));
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `()`: the pair worker's reset.
-pub(super) fn reset_pair(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    with_worker(ctx, r.ecx, drive_worker::reset_pair);
-    Ok(Return::void(0, 0))
-}
-
-/// thiscall `(i, dt)`: the free wheel's step.
-pub(super) fn free_wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let (i, dt) = (r.stack[0] as usize, f(r.stack[1]));
-    with_worker(ctx, r.ecx, |w| drive_worker::free_wheel_step(w, i, dt));
-    Ok(Return::void(0, 8))
-}
-
-/// thiscall `(x)`: one of the pair worker's leaves on wheel `x`.
-fn pair_leaf(ctx: &mut Ctx, r: &Regs, leaf: fn(&mut layout::DriveWorker, usize)) -> Result<Return, Decline> {
-    let x = r.stack[0] as usize;
-    with_worker(ctx, r.ecx, |w| leaf(w, x));
-    Ok(Return::void(0, 4))
-}
-
-pub(super) fn pair_clutch_values(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    pair_leaf(ctx, r, drive_leaf::pair_clutch_values)
-}
-
-pub(super) fn pair_slip_value(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    pair_leaf(ctx, r, drive_leaf::pair_slip_value)
-}
-
-pub(super) fn pair_latch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    pair_leaf(ctx, r, drive_leaf::pair_latch)
-}
-
-/// thiscall `()`: the pair worker's axle stage.
-pub(super) fn pair_axle_stage(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    with_worker(ctx, r.ecx, drive_leaf::pair_axle_stage);
-    Ok(Return::void(0, 0))
 }
 
 /// thiscall `(a, out*, b, c, d)`: NGP's rewrite (`0x10047300`) of the clutch-torque worker (`M93A0`), stored at `out`
@@ -308,14 +196,6 @@ pub(super) fn step1e0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = Step1Calls { wheel: wheel_calls(ctx, r), gear: gear(ctx, r), host: ctx.host, this: r.ecx };
     let scale = clutch_scale(ctx);
     on_drive(ctx, r.ecx, |d| layout::step_drive(&mut calls, d, f(r.stack[0]), scale));
-    Ok(Return::void(0, 4))
-}
-
-/// thiscall `(dt)`.
-pub(super) fn gear_logic(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut host = gear(ctx, r);
-    let dt = f(r.stack[0]);
-    with_gear(ctx, r.ecx, |w, g| drive_worker::gear_logic(w, g, &mut host, dt));
     Ok(Return::void(0, 4))
 }
 

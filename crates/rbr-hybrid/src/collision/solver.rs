@@ -228,9 +228,7 @@ pub(super) fn contact_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// residue its caller does not read).
 pub(super) fn solve_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     // The relative velocity's lane 3 is not written (`PlaneDiff` stores three lanes); the slip and the impulse take it.
-    if let Some(lane) = crate::residue(ctx.host) {
-        ctx.mem.set_u32(layout::solve_event_frame(r.esp).velocity + 0xc, lane);
-    }
+    ctx.mem.set_u32(layout::solve_event_frame(r.esp).velocity + 0xc, crate::RESIDUE);
     let impulse = layout::solve_event(&mut Callees(ctx.host), &mut ctx.mem, r.stack[0], r.esp);
     Ok(Return::float(f64::from(impulse), 4))
 }
@@ -261,8 +259,8 @@ pub(super) fn make_event(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2, ..] = r.stack;
     let mut calls = MakeEventCalls { host: ctx.host, s: layout::make_event_frame(r.esp) };
     let words = [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2];
-    // The payload's last word (the event's data[15]) is not written: `crate::RESIDUE` on the pure host.
-    let tail = crate::residue(ctx.host).unwrap_or_else(|| ctx.mem.u32(layout::make_event_tail(r.esp)));
+    // The payload's last word (the event's data[15]) is not written: `crate::RESIDUE`.
+    let tail = crate::RESIDUE;
     let eax = on_collision(ctx.host, &mut ctx.mem, |s| layout::make_event_at(&mut calls, s, words, tail));
     Ok(Return::void(eax, 0))
 }

@@ -1,7 +1,6 @@
 //! Entity layer: the entity frames and matrices, the ground and the hinged-body sims. The ports (`frame`, `ground`,
 //! the `hinge_*` modules and the rest) take and return typed values; `layout` is the only code that reads or writes the
-//! game memory (offsets and stores), as `vcu::layout` is for the VCU. Each function is checked against the recorded
-//! calls (`harness/vcu_vectors.py --set entities`, `tests/entities_vectors.rs`). The plan and the batch status are in
+//! game memory (offsets and stores), as `vcu::layout` is for the VCU. The plan and the batch status are in
 //! `entities/README.md` (git 9c28c0b8).
 
 pub mod carry;

@@ -35,15 +35,15 @@ impl AssistCalls for Car<'_> {
 
     fn apply_control(&mut self, car: u32, block: u32) {
         // The block's words +0 and +0x1c are not written.
-        crate::fill_residue(self.host, &mut self.mem, block, 1);
-        crate::fill_residue(self.host, &mut self.mem, block + 0x1c, 1);
+        crate::fill_residue(&mut self.mem, block, 1);
+        crate::fill_residue(&mut self.mem, block + 0x1c, 1);
         self.host.call(UPDATE_SEED, car, &[block]);
     }
 
     /// On the held car `SetDirty`'s one write, the cell header's dirty word (a header stays on the image), here
     /// ([`Host::ran_direct`]); else the host.
     fn set_dirty(&mut self, state: u32) {
-        let held = self.host.typed().is_some_and(|t| car::layout::cell_at(t.car.own.at, Cell::FfbTorque) == state);
+        let held = car::layout::cell_at(self.host.typed().car.own.at, Cell::FfbTorque) == state;
         if !held {
             self.host.call(SET_DIRTY, state, &[]);
             return;

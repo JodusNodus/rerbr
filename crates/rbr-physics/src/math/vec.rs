@@ -103,11 +103,6 @@ impl Vec3 {
         let reciprocal = super::rsqrt::rsqrt(sum);
         Vec3 { x: sse::mul(self.x, reciprocal), y: sse::mul(self.y, reciprocal), z: sse::mul(self.z, reciprocal) }
     }
-
-    /// The dot product with the y and z terms summed first, `x*x' + (y*y' + z*z')` (x87 order).
-    pub fn dot_yz_first(self, b: Vec3) -> f32 {
-        self.x * b.x + (self.y * b.y + self.z * b.z)
-    }
 }
 
 /// The zero row. The caller stores the four lanes.

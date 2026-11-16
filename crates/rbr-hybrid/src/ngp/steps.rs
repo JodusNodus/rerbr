@@ -129,7 +129,7 @@ pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
         let locks = m.u32(car + 0x850);
         diff::DiffTuning {
             locks: [[0x1b8, 0x268], [0x738, 0x7e8], [0x9f8, 0xaa8]].map(|p| p.map(|o| m.f32(locks + o))),
-            handbrake: crate::vcu::unit_of(ctx.host, m, car).scratch.pedals.handbrake,
+            handbrake: crate::vcu::unit_of(ctx.host, car).scratch.pedals.handbrake,
             handbrake_release: m.f32(locks + 0x198),
             max_torque: [0, 1, 2].map(|g| m.f32(def + 0x58 + 0x60 * g)),
             enabled: [4, 0xc, 0x14].map(|o| m.u32(obj + o)),
@@ -215,7 +215,7 @@ pub(crate) fn curve_term(m: &mut Mem, host: &dyn Host, drive: u32, args: [u32; 5
         return Err(Decline::Unsupported("NGP's settings object is not made yet"));
     }
     let front = u < 2;
-    let handbrake = crate::vcu::unit_of(host, m, car).scratch.pedals.handbrake;
+    let handbrake = crate::vcu::unit_of(host, car).scratch.pedals.handbrake;
     let rear_split =
         diff::diff_types(m.u32(n + 0x640))[0] == 3 && !front && m.f32(m.u32(car + 0x850) + 0x198) >= handbrake;
     // The hook block's words are NGP's per-wheel brake keys (`Brake*_NGP`): ratio +0xec, piston area +0xcc, effective
@@ -309,7 +309,7 @@ pub(crate) fn tyre_step(host: &dyn Host, mem: &mut Mem, scratch: u32, stack: &[u
     let def = m.u32(scratch + 0x10);
     let saved: [u32; 0x20] = m.u32s(def + 0x204);
     let p = stack[4];
-    let k = step_wrapper::speed_factor(crate::tyre::read_tyre(host, m, scratch, |t| t.scratch.speed));
+    let k = step_wrapper::speed_factor(crate::tyre::read_tyre(host, scratch, |t| t.scratch.speed));
     let percent = SurfaceHeatPercent {
         class_2: m.u32(settings + 0xe98),
         class_1: m.u32(settings + 0xea8),
