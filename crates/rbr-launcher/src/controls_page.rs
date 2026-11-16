@@ -391,10 +391,21 @@ impl ControlsPage {
         }
     }
 
-    /// Reads the joysticks, and looks for new ones unless the viewer is `running`; while a device binding is being
-    /// set, the first button pressed or axis moved sets it.
+    /// Closes the joysticks for the viewer, which has them to itself while it runs: Windows' DirectInput lets one
+    /// open of a force-feedback wheel take it exclusively (`rbr_render::ffb`). [`ControlsPage::poll`] opens them again
+    /// after.
+    pub fn release(&mut self) {
+        self.joysticks.close();
+    }
+
+    /// Reads the joysticks, and looks for new ones; while a device binding is being set, the first button pressed or
+    /// axis moved sets it. While the viewer is `running` they stay closed ([`ControlsPage::release`]).
     pub fn poll(&mut self, bindings: &mut Bindings, running: bool) {
-        if self.capture.is_none() && !running && self.scanned.elapsed() >= RESCAN {
+        if running {
+            self.release();
+            return;
+        }
+        if self.capture.is_none() && self.scanned.elapsed() >= RESCAN {
             self.joysticks.rescan();
             self.scanned = Instant::now();
         }

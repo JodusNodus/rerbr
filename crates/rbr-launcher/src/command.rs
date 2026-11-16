@@ -815,6 +815,7 @@ impl Form {
             Ok(log) => _ = command.stderr(log),
             Err(e) => eprintln!("launcher: no drive log: {e}"),
         }
+        self.controls.release();
         match command.spawn() {
             Ok(child) => {
                 self.status = format!("viewer running (pid {})", child.id());

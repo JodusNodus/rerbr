@@ -359,6 +359,14 @@ change, update report always via `DIEP_DURATION`, then start); cartesian {1, 0} 
 `FF_AUTOCENTER` 0, per report one EVIOCSFF and one play (two EVIOCSFF on a change: 8523 calls of drive2
 attempt 1).
 
+Windows (2026-11-16, issue #7, hotfix; not run on Windows): DirectInput lets one open of a force-feedback device take
+it exclusively, and SDL's DirectInput joystick takes one exclusively too (`SDL_dinputjoystick.c`), so a haptic opened
+on its own and the drive's joystick are two opens of the wheel (SDL's FIXME in `SDL_dinputhaptic.c`). On Windows
+`Wheel` opens the haptic through the wheel's joystick (`SDL_OpenHapticFromJoystick`; SDL keeps one joystick per device
+in a process, which the input thread shares), the haptic devices on their own after; the launcher closes its joysticks
+while the viewer runs (`ControlsPage::release`). The joystick route, forced on Linux, opens the G923 under the haptic
+list's name.
+
 Setup (RSF on cachy: Proton cachyos-11.0 SLR, G923 PS on new-lg4ff `hid-logitech-new`, sysfs `autocenter` 0,
 `gain` 65535, `spring_level`/`damper_level` 30): ours matches RSF's levels in order over the same 10 s of drive2
 attempt 1 (5779 of 5815; ~1.08 ms sampling); not replicated: duplicate EVIOCSFF on a change, second `FF_GAIN` at

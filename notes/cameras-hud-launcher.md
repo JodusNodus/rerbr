@@ -147,7 +147,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   arboard brings the `image` crate, egui-winit asks for its image support); before 2026-11-03 paste from other
   programs did not work.
 - Idle and while the viewer runs (2026-11-05): the joysticks are looked for every 2 s in one context
-  (`Joysticks::rescan`: their ids, and they are opened again only when those changed). While the viewer runs the
+  (`Joysticks::rescan`: their ids, and they are opened again only when those changed). From the viewer's start to
+  its exit the launcher's joysticks are closed (2026-11-16, issue #7: Windows' DirectInput gives a force-feedback wheel
+  to one exclusive open, `ngp.md` "Windows"), and opened again by the next rescan. While the viewer runs the
   launcher draws only at 4 Hz (`POLL`: its exit), with no rescan and the car turntable still; otherwise the Drive
   page's turntable redraws at 10 Hz (one turn in 6 s; 20 Hz cost about 6% of a core).
 - Joysticks off Linux (2026-11-12, issue #6; not run on macOS or Windows, the library type-checks for Windows): SDL3's

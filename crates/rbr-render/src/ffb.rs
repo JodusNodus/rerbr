@@ -9,6 +9,11 @@
 //! A positive magnitude turns the wheel left (SDL's level on `SDL_HAPTIC_STEERING_AXIS`, measured on a Logitech
 //! G923 under Linux): the force opposes the steering, so it centres the wheel. `inverse` flips it for a wheel that
 //! turns the other way.
+//!
+//! On Windows the haptic is opened through the wheel's joystick ([`open_device`]): DirectInput lets one open of a
+//! force-feedback device take it exclusively, and SDL keeps one joystick per device in a process, which the input
+//! thread's open shares. A haptic opened on its own is a second open of the device (SDL's FIXME in
+//! `SDL_dinputhaptic.c`), and it or the joystick then fails.
 
 use std::collections::BTreeMap;
 use std::ffi::CStr;
@@ -22,6 +27,9 @@ use rbr_gameplay::ffb::{self, Settings, MAX_MAGNITUDE};
 use sdl3_sys::error::SDL_GetError;
 use sdl3_sys::haptic::*;
 use sdl3_sys::init::{SDL_InitSubSystem, SDL_QuitSubSystem, SDL_INIT_HAPTIC, SDL_INIT_JOYSTICK};
+use sdl3_sys::joystick::{
+    SDL_CloseJoystick, SDL_GetJoystickNameForID, SDL_GetJoysticks, SDL_Joystick, SDL_OpenJoystick,
+};
 
 /// The surfaces of [`Options::sensitivity`], as its keys name them.
 pub const SURFACES: [&str; 3] = ["gravel", "tarmac", "snow"];
@@ -826,7 +834,7 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
             return;
         }
         let device = open_device(options.device.as_deref());
-        let (haptic, name) = match device {
+        let (haptic, joystick, name) = match device {
             Ok(found) => found,
             Err(e) => {
                 let _ = ready.send(Err(e));
@@ -841,7 +849,7 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
         let id = SDL_CreateHapticEffect(haptic, &effect);
         if id.0 < 0 || !SDL_RunHapticEffect(haptic, id, 1) {
             let _ = ready.send(Err(format!("{name}: the constant force: {}", sdl_error())));
-            SDL_CloseHaptic(haptic);
+            close(haptic, joystick);
             SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
             return;
         }
@@ -868,7 +876,7 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
         }
         SDL_StopHapticEffect(haptic, id);
         SDL_DestroyHapticEffect(haptic, id);
-        SDL_CloseHaptic(haptic);
+        close(haptic, joystick);
         SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
     }
 }
@@ -910,9 +918,23 @@ unsafe fn haptics() -> Result<Vec<(SDL_HapticID, String)>, String> {
     Ok(list)
 }
 
-/// The first haptic device with a constant force that `part` [`picks`] (any, without one).
-unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), String> {
+/// The haptic and the joystick it is opened through (null when on its own).
+unsafe fn close(haptic: *mut SDL_Haptic, joystick: *mut SDL_Joystick) {
+    SDL_CloseHaptic(haptic);
+    if !joystick.is_null() {
+        SDL_CloseJoystick(joystick);
+    }
+}
+
+/// The first haptic device with a constant force that `part` [`picks`] (any, without one), and the joystick it is
+/// opened through: on Windows a joystick's own first (the module's note), then the haptic devices on their own.
+unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, *mut SDL_Joystick, String), String> {
     let mut seen = Vec::new();
+    if cfg!(windows) {
+        if let Some(found) = open_joystick_device(part, &mut seen) {
+            return Ok(found);
+        }
+    }
     for (id, name) in haptics()? {
         if part.is_some_and(|p| !picks(p, &name)) {
             seen.push(name);
@@ -924,7 +946,7 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
             continue;
         }
         if SDL_GetHapticFeatures(haptic) & u32::from(SDL_HAPTIC_CONSTANT.0) != 0 {
-            return Ok((haptic, name));
+            return Ok((haptic, std::ptr::null_mut(), name));
         }
         SDL_CloseHaptic(haptic);
         seen.push(format!("{name} (no constant force)"));
@@ -934,6 +956,51 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
     } else {
         format!("no force-feedback device fits: {}", seen.join(", "))
     })
+}
+
+/// The first joystick whose haptic has a constant force and a name `part` picks, opened through it; the others go to
+/// `seen`. A joystick's haptic takes the name of the haptic device's list entry, which [`devices`] lists.
+unsafe fn open_joystick_device(
+    part: Option<&str>,
+    seen: &mut Vec<String>,
+) -> Option<(*mut SDL_Haptic, *mut SDL_Joystick, String)> {
+    let mut count = 0;
+    let ids = SDL_GetJoysticks(&mut count);
+    if ids.is_null() {
+        return None;
+    }
+    let list = std::slice::from_raw_parts(ids, usize::try_from(count).unwrap_or(0)).to_vec();
+    sdl3_sys::stdinc::SDL_free(ids.cast());
+    for id in list {
+        let joystick = SDL_OpenJoystick(id);
+        if joystick.is_null() {
+            let raw = SDL_GetJoystickNameForID(id);
+            let name = if raw.is_null() { String::new() } else { CStr::from_ptr(raw).to_string_lossy().into_owned() };
+            seen.push(format!("{name} (cannot open the joystick: {})", sdl_error()));
+            continue;
+        }
+        if !SDL_IsJoystickHaptic(joystick) {
+            SDL_CloseJoystick(joystick);
+            continue;
+        }
+        let haptic = SDL_OpenHapticFromJoystick(joystick);
+        if haptic.is_null() {
+            seen.push(format!("a joystick's haptic (cannot open: {})", sdl_error()));
+            SDL_CloseJoystick(joystick);
+            continue;
+        }
+        let raw = SDL_GetHapticName(haptic);
+        let name = if raw.is_null() { String::new() } else { CStr::from_ptr(raw).to_string_lossy().into_owned() };
+        if part.is_some_and(|p| !picks(p, &name)) {
+            seen.push(name);
+        } else if SDL_GetHapticFeatures(haptic) & u32::from(SDL_HAPTIC_CONSTANT.0) != 0 {
+            return Some((haptic, joystick, name));
+        } else {
+            seen.push(format!("{name} (no constant force)"));
+        }
+        close(haptic, joystick);
+    }
+    None
 }
 
 #[cfg(test)]
