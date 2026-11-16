@@ -56,8 +56,7 @@ pub use engine_sim::{
     misfire_roll, overheat_step, signal_update, smooth_damper, solve_damper, turbo_energy_step,
 };
 pub use engine_typed::{
-    differential as engine_differential, round_trip as engine_round_trip, CarEngine, EngineImage, EngineObj,
-    EngineStateObj, EngineTyped, EngineView,
+    round_trip as engine_round_trip, CarEngine, EngineImage, EngineObj, EngineStateObj, EngineTyped, EngineView,
 };
 pub use setup::{drive_setup_into_def, link_worker, normalize_gear_rows, select_gear_rows};
 pub use step::step_drive;
