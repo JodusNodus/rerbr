@@ -16,7 +16,7 @@
 //! interpolated from the last sample's pose, so each delta fits its 1/64 m bytes. The order of the car update and
 //! `Accumulate` in one frame is inferred from the frame's call order (rbr-recomp `notes/cameras.md` 1), not traced to the call.
 
-use crate::flow::Mode;
+use crate::flow::FlowMode;
 use rbr_formats::ghost::{Delta, Key, Sample, Stream, DELTA_SCALE, QUAT_SCALE, TIME_SCALE};
 
 /// A car pose: the position (m, the physics frame) and the rotation quaternion `[x, y, z, w]`.
@@ -302,7 +302,7 @@ pub struct Best {
 /// The `clear` argument `CApplication::M00480810` passes `BeginWrite` at a race's end in game mode `mode` (the switch
 /// at 0x480e3c, asm): in the quick rally a retired race clears; in the hot seat modes 4, 5 and 8 nothing clears (a
 /// retired race passes 1800.0 s, `0x72e384`, as its time); every other mode clears, the championship (3) included.
-pub fn clears(mode: Mode, retired: bool) -> bool {
+pub fn clears(mode: FlowMode, retired: bool) -> bool {
     match mode.value() {
         1 => retired,
         4 | 5 | 8 => false,
@@ -370,12 +370,12 @@ mod store_tests {
 
     #[test]
     fn only_a_finished_quick_rally_or_a_hot_seat_race_keeps_its_recording() {
-        assert!(!clears(Mode::QUICK_RALLY, false));
-        assert!(clears(Mode::QUICK_RALLY, true));
+        assert!(!clears(FlowMode::QUICK_RALLY, false));
+        assert!(clears(FlowMode::QUICK_RALLY, true));
         for retired in [false, true] {
-            assert!(clears(Mode::CHAMPIONSHIP, retired));
-            assert!([0, 2, 6, 7, 9].iter().all(|&m| clears(Mode(m), retired)));
-            assert!([4, 5, 8].iter().all(|&m| !clears(Mode(m), retired)));
+            assert!(clears(FlowMode::CHAMPIONSHIP, retired));
+            assert!([0, 2, 6, 7, 9].iter().all(|&m| clears(FlowMode(m), retired)));
+            assert!([4, 5, 8].iter().all(|&m| !clears(FlowMode(m), retired)));
         }
     }
 

@@ -28,20 +28,22 @@ use crate::markers::MarkerEvent;
 use crate::race_clock::{AssistSettings, RaceClock};
 use crate::stage::{Stage, State};
 
-/// The flow word (`*0x165fa90` +0): the game mode. The values the stage race tests; the others are the menus' modes
-/// (2 the Richard Burns Challenge, 4-6 and 8 the multiplayer ones, 9 the season's start), which are out of scope.
+/// The flow word (`*0x165fa90` +0): the original's game mode. The values the stage race tests; the others are the
+/// menus' modes (2 the Richard Burns Challenge, 4-6 and 8 the multiplayer ones, 9 the season's start), which are out
+/// of scope. Not our "mode" (the player-facing product, `notes/session.md`): that is a session layer above, and this
+/// stays the compatibility word the recordings need.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Mode(pub u32);
+pub struct FlowMode(pub u32);
 
-impl Mode {
+impl FlowMode {
     /// 0: no race (the menus).
-    pub const MENU: Mode = Mode(0);
+    pub const MENU: FlowMode = FlowMode(0);
     /// 1: the quick rally, the boot's (`E95_GameStub` and the replay manager set 1).
-    pub const QUICK_RALLY: Mode = Mode(1);
+    pub const QUICK_RALLY: FlowMode = FlowMode(1);
     /// 3: the championship (the season's rally, `E72_Season` sets 3).
-    pub const CHAMPIONSHIP: Mode = Mode(3);
+    pub const CHAMPIONSHIP: FlowMode = FlowMode(3);
     /// 7: the rally school (`0x566240`).
-    pub const SCHOOL: Mode = Mode(7);
+    pub const SCHOOL: FlowMode = FlowMode(7);
 
     pub fn value(self) -> u32 {
         self.0
@@ -55,7 +57,7 @@ impl Mode {
 
     /// `0x566240`: the rally school.
     pub fn school(self) -> bool {
-        self == Mode::SCHOOL
+        self == FlowMode::SCHOOL
     }
 
     /// `E15CamHost::M8840` (0x488840): the start orbit gives the go in modes 1 and 2 only (or in a replay, not
@@ -83,7 +85,7 @@ impl Mode {
 /// (`Update9AF0`), the script box (`E34_RetireA`) and the rally incident read it. The original reads the mode and
 /// level from a saved rally instead when the flow's host (+0xc98) holds one; the reference runs never do.
 pub fn assistance_gate(settings: AssistSettings) -> bool {
-    Mode(settings.mode) != Mode::CHAMPIONSHIP || settings.rally_level < 2
+    FlowMode(settings.mode) != FlowMode::CHAMPIONSHIP || settings.rally_level < 2
 }
 
 /// The finish timer `M573530` arms (HUD +0x2c0, the f32 20.0).
@@ -277,7 +279,7 @@ pub enum EndPage {
 impl EndPage {
     /// The receiver's switch on the flow word (`M00565470`) outside the replay (state 8). `drivable` is `Test3B20` on
     /// the car at the end; `last_stage` is the season's stage index (+0x8e8c) at 5.
-    pub fn of(mode: Mode, end: &StageEnd, drivable: bool, last_stage: bool) -> Self {
+    pub fn of(mode: FlowMode, end: &StageEnd, drivable: bool, last_stage: bool) -> Self {
         let finished = end.finished();
         match mode.0 {
             0 | 1 if finished => EndPage::QuickResult,
@@ -401,8 +403,8 @@ impl RaceFlow {
         }
     }
 
-    pub fn mode(&self) -> Mode {
-        Mode(self.settings.mode)
+    pub fn mode(&self) -> FlowMode {
+        FlowMode(self.settings.mode)
     }
 
     pub fn set_settings(&mut self, settings: AssistSettings) {
@@ -716,24 +718,24 @@ mod tests {
 
     #[test]
     fn m8840_and_m0047f9c0_split_the_go_by_mode() {
-        assert!(Mode::QUICK_RALLY.camera_go() && Mode(2).camera_go());
-        assert!(!Mode::CHAMPIONSHIP.camera_go() && !Mode(4).camera_go() && !Mode::SCHOOL.camera_go());
-        assert!((3..=5).all(|m| Mode(m).confirm_arms()));
-        assert!(![0, 1, 2, 6, 7, 8].iter().any(|&m| Mode(m).confirm_arms()));
+        assert!(FlowMode::QUICK_RALLY.camera_go() && FlowMode(2).camera_go());
+        assert!(!FlowMode::CHAMPIONSHIP.camera_go() && !FlowMode(4).camera_go() && !FlowMode::SCHOOL.camera_go());
+        assert!((3..=5).all(|m| FlowMode(m).confirm_arms()));
+        assert!(![0, 1, 2, 6, 7, 8].iter().any(|&m| FlowMode(m).confirm_arms()));
         // The countdown waits in the modes that arm it, and in the rally school (the brief's confirm).
-        assert!((3..=5).all(|m| Mode(m).start_waits()));
-        assert!(Mode::SCHOOL.start_waits());
-        assert!(![0, 1, 2, 6, 8].iter().any(|&m| Mode(m).start_waits()));
+        assert!((3..=5).all(|m| FlowMode(m).start_waits()));
+        assert!(FlowMode::SCHOOL.start_waits());
+        assert!(![0, 1, 2, 6, 8].iter().any(|&m| FlowMode(m).start_waits()));
     }
 
     #[test]
     fn the_gates_follow_the_modes() {
-        assert!(Mode::QUICK_RALLY.finish_to_menu());
-        assert!(Mode::CHAMPIONSHIP.finish_to_menu());
-        assert!(Mode(8).finish_to_menu());
-        assert!(!Mode::MENU.finish_to_menu());
-        assert!(!Mode::SCHOOL.finish_to_menu());
-        assert!(!Mode(6).finish_to_menu());
+        assert!(FlowMode::QUICK_RALLY.finish_to_menu());
+        assert!(FlowMode::CHAMPIONSHIP.finish_to_menu());
+        assert!(FlowMode(8).finish_to_menu());
+        assert!(!FlowMode::MENU.finish_to_menu());
+        assert!(!FlowMode::SCHOOL.finish_to_menu());
+        assert!(!FlowMode(6).finish_to_menu());
         assert!(assistance_gate(AssistSettings::QUICK_RACE));
         assert!(assistance_gate(AssistSettings { rally_level: 1, ..CHAMPIONSHIP_HARD }));
         assert!(!assistance_gate(CHAMPIONSHIP_HARD));
@@ -742,8 +744,8 @@ mod tests {
     /// The quick race's mode is the boot's flow word: physics reads it, so it must stay 1.
     #[test]
     fn the_quick_race_is_mode_one() {
-        assert_eq!(Mode(AssistSettings::QUICK_RACE.mode), Mode::QUICK_RALLY);
-        assert_eq!(Mode::QUICK_RALLY.value(), 1);
+        assert_eq!(FlowMode(AssistSettings::QUICK_RACE.mode), FlowMode::QUICK_RALLY);
+        assert_eq!(FlowMode::QUICK_RALLY.value(), 1);
     }
 
     #[test]
@@ -892,12 +894,12 @@ mod tests {
         let end =
             |retired| StageEnd { cause: EndCause::Finish, end_race: EndRace { time: 1.0, splits: [0.0; 2], retired } };
         let (done, out) = (end(false), end(true));
-        assert_eq!(EndPage::of(Mode::QUICK_RALLY, &done, false, false), EndPage::QuickResult);
-        assert_eq!(EndPage::of(Mode::QUICK_RALLY, &out, true, false), EndPage::QuickRetired);
-        assert_eq!(EndPage::of(Mode::CHAMPIONSHIP, &done, true, false), EndPage::RallyStandings);
-        assert_eq!(EndPage::of(Mode::CHAMPIONSHIP, &done, false, false), EndPage::RallyWrecked);
-        assert_eq!(EndPage::of(Mode::CHAMPIONSHIP, &done, false, true), EndPage::RallyStandings);
-        assert_eq!(EndPage::of(Mode::CHAMPIONSHIP, &out, true, false), EndPage::RallyRetired);
+        assert_eq!(EndPage::of(FlowMode::QUICK_RALLY, &done, false, false), EndPage::QuickResult);
+        assert_eq!(EndPage::of(FlowMode::QUICK_RALLY, &out, true, false), EndPage::QuickRetired);
+        assert_eq!(EndPage::of(FlowMode::CHAMPIONSHIP, &done, true, false), EndPage::RallyStandings);
+        assert_eq!(EndPage::of(FlowMode::CHAMPIONSHIP, &done, false, false), EndPage::RallyWrecked);
+        assert_eq!(EndPage::of(FlowMode::CHAMPIONSHIP, &done, false, true), EndPage::RallyStandings);
+        assert_eq!(EndPage::of(FlowMode::CHAMPIONSHIP, &out, true, false), EndPage::RallyRetired);
         assert_eq!(
             [EndPage::QuickResult, EndPage::QuickRetired, EndPage::RallyStandings, EndPage::RallyWrecked]
                 .map(EndPage::value),

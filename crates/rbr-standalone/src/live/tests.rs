@@ -220,7 +220,7 @@ fn the_pause_menu_s_retire_ends_the_race_without_a_step() {
     });
 }
 
-/// A championship stage's start (`rbr_gameplay::flow::Mode::confirm_arms`): the start orbit gives no go, and the
+/// A championship stage's start (`rbr_gameplay::flow::FlowMode::confirm_arms`): the start orbit gives no go, and the
 /// countdown waits for the player's confirm, an input payload's `ACCEPT_MESSAGE`; the driving starts 2 s after it.
 #[test]
 fn a_championship_start_waits_for_the_confirm() {

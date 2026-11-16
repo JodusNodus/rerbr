@@ -25,7 +25,7 @@
 //! driving state (the start orbit, the end page), where only Resume, Restart and the exit of page 1 are offered, and
 //! after a championship stage's end `Continue` (back to the launcher, which goes on with the rally).
 
-use crate::flow::Mode;
+use crate::flow::FlowMode;
 
 /// The pause page `FUN_0056c360` opens in the driving state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +38,7 @@ pub enum Page {
 
 impl Page {
     /// `FUN_0056c360`'s switch on the flow word (mode 7's school pages and mode 9's page 4 are out of scope).
-    pub fn of(mode: Mode) -> Page {
+    pub fn of(mode: FlowMode) -> Page {
         match mode.0 {
             3..=5 => Page::Rally,
             _ => Page::Race,
@@ -77,7 +77,7 @@ impl Item {
     }
 
     /// The confirm box the item asks before it acts, by its text key, in `mode`; `None` acts at once.
-    pub fn confirm(self, mode: Mode, over: bool) -> Option<&'static str> {
+    pub fn confirm(self, mode: FlowMode, over: bool) -> Option<&'static str> {
         match self {
             Item::Restart => Some("MSG_RESTART"),
             Item::Retire if Page::of(mode) == Page::Rally => Some("MSG_RET_RALLY"),
@@ -92,7 +92,7 @@ impl Item {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MenuState {
     /// The flow word.
-    pub mode: Mode,
+    pub mode: FlowMode,
     /// The application state is 1 (driving), the state the game opens its pause page in, and no box is up.
     pub driving: bool,
     /// `0x56a620` holds (`Game::help_offered`).
@@ -113,7 +113,7 @@ pub fn items(state: MenuState) -> Vec<(Item, bool)> {
     }
     if state.driving {
         // 0x56a6c0 on page 1 (mode 1 only); page 2 always.
-        out.push((Item::Retire, page == Page::Rally || state.mode == Mode::QUICK_RALLY));
+        out.push((Item::Retire, page == Page::Rally || state.mode == FlowMode::QUICK_RALLY));
     }
     match (page, state.over) {
         (Page::Race, _) => out.push((Item::Exit, true)),
@@ -134,17 +134,17 @@ mod tests {
 
     #[test]
     fn the_page_follows_the_mode() {
-        assert_eq!(Page::of(Mode::QUICK_RALLY), Page::Race);
-        assert_eq!(Page::of(Mode::MENU), Page::Race);
-        assert_eq!(Page::of(Mode::CHAMPIONSHIP), Page::Rally);
-        assert_eq!(Page::of(Mode(4)), Page::Rally);
-        assert_eq!(Page::of(Mode(5)), Page::Rally);
-        assert_eq!(Page::of(Mode(6)), Page::Race);
+        assert_eq!(Page::of(FlowMode::QUICK_RALLY), Page::Race);
+        assert_eq!(Page::of(FlowMode::MENU), Page::Race);
+        assert_eq!(Page::of(FlowMode::CHAMPIONSHIP), Page::Rally);
+        assert_eq!(Page::of(FlowMode(4)), Page::Rally);
+        assert_eq!(Page::of(FlowMode(5)), Page::Rally);
+        assert_eq!(Page::of(FlowMode(6)), Page::Race);
     }
 
     #[test]
     fn a_quick_rally_offers_restart_retire_and_exit() {
-        let racing = MenuState { mode: Mode::QUICK_RALLY, driving: true, help: true, over: false };
+        let racing = MenuState { mode: FlowMode::QUICK_RALLY, driving: true, help: true, over: false };
         assert_eq!(
             items(racing),
             [
@@ -158,18 +158,18 @@ mod tests {
         // The call for help is not drawn while 0x56a620 fails.
         assert_eq!(shown(MenuState { help: false, ..racing }), [Item::Resume, Item::Restart, Item::Retire, Item::Exit]);
         // Page 1 in another mode greys the retire (0x56a6c0).
-        assert!(items(MenuState { mode: Mode(2), ..racing }).contains(&(Item::Retire, false)));
-        assert_eq!(Item::Retire.confirm(Mode::QUICK_RALLY, false), Some("MSG_RET_STAGE"));
-        assert_eq!(Item::Exit.confirm(Mode::QUICK_RALLY, false), Some("MSG_CONFIRM_EXIT"));
-        assert_eq!(Item::Restart.confirm(Mode::QUICK_RALLY, false), Some("MSG_RESTART"));
-        assert_eq!(Item::Resume.confirm(Mode::QUICK_RALLY, false), None);
+        assert!(items(MenuState { mode: FlowMode(2), ..racing }).contains(&(Item::Retire, false)));
+        assert_eq!(Item::Retire.confirm(FlowMode::QUICK_RALLY, false), Some("MSG_RET_STAGE"));
+        assert_eq!(Item::Exit.confirm(FlowMode::QUICK_RALLY, false), Some("MSG_CONFIRM_EXIT"));
+        assert_eq!(Item::Restart.confirm(FlowMode::QUICK_RALLY, false), Some("MSG_RESTART"));
+        assert_eq!(Item::Resume.confirm(FlowMode::QUICK_RALLY, false), None);
     }
 
     #[test]
     fn a_championship_has_no_restart_and_no_exit_while_racing() {
-        let racing = MenuState { mode: Mode::CHAMPIONSHIP, driving: true, help: true, over: false };
+        let racing = MenuState { mode: FlowMode::CHAMPIONSHIP, driving: true, help: true, over: false };
         assert_eq!(items(racing), [(Item::Resume, true), (Item::CallForHelp, true), (Item::Retire, true)]);
-        assert_eq!(Item::Retire.confirm(Mode::CHAMPIONSHIP, false), Some("MSG_RET_RALLY"));
+        assert_eq!(Item::Retire.confirm(FlowMode::CHAMPIONSHIP, false), Some("MSG_RET_RALLY"));
         let over = MenuState { driving: false, help: false, over: true, ..racing };
         assert_eq!(shown(over), [Item::Resume, Item::Continue]);
         let start = MenuState { driving: false, help: false, ..racing };
@@ -178,8 +178,8 @@ mod tests {
 
     #[test]
     fn outside_the_driving_state_there_is_no_help_and_no_retire() {
-        let start = MenuState { mode: Mode::QUICK_RALLY, driving: false, help: true, over: false };
+        let start = MenuState { mode: FlowMode::QUICK_RALLY, driving: false, help: true, over: false };
         assert_eq!(shown(start), [Item::Resume, Item::Restart, Item::Exit]);
-        assert_eq!(Item::Exit.confirm(Mode::QUICK_RALLY, true), None);
+        assert_eq!(Item::Exit.confirm(FlowMode::QUICK_RALLY, true), None);
     }
 }

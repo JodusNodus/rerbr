@@ -2,7 +2,7 @@
 //! The pause menu supplies the mode's rules; continuing returns to the launcher, which saves and advances the season.
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
-use rbr_gameplay::flow::Mode;
+use rbr_gameplay::flow::FlowMode;
 use rbr_gameplay::pause_menu::{self, Item, MenuState};
 use rbr_recording::menu::Menu as Record;
 
@@ -29,14 +29,14 @@ impl ResultsMenu {
         if !record.over {
             return None;
         }
-        let state = MenuState { mode: Mode(record.mode), driving: false, help: false, over: true };
+        let state = MenuState { mode: FlowMode(record.mode), driving: false, help: false, over: true };
         let items = pause_menu::items(state)
             .into_iter()
             .filter_map(|(item, enabled)| {
                 (enabled && matches!(item, Item::Restart | Item::Exit | Item::Continue)).then_some(item)
             })
             .collect();
-        Some(Self { items, selected: 0, school: Mode(record.mode).school() })
+        Some(Self { items, selected: 0, school: FlowMode(record.mode).school() })
     }
 
     pub fn nav(&mut self, nav: Nav) -> Option<Item> {

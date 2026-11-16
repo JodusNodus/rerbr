@@ -9,7 +9,7 @@ use super::camera_page::{self, CameraPage, Moved};
 use super::ffb_page::{self, FfbPage};
 use super::hud_page::{self, HudPage};
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
-use rbr_gameplay::flow::Mode;
+use rbr_gameplay::flow::FlowMode;
 use rbr_gameplay::pause_menu::{self, Item, MenuState};
 use rbr_recording::menu::Menu as Record;
 use winit::keyboard::KeyCode;
@@ -78,7 +78,7 @@ pub enum Outcome {
 /// The open menu: its rows, the selected one, the confirm box that is up and the Camera page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PauseMenu {
-    mode: Mode,
+    mode: FlowMode,
     over: bool,
     items: Vec<(Entry, bool)>,
     selected: usize,
@@ -96,7 +96,7 @@ impl PauseMenu {
     /// starting from `ffb` when there is one.
     pub fn open(record: Record, camera: CameraPage, ffb: Option<FfbPage>) -> PauseMenu {
         let state =
-            MenuState { mode: Mode(record.mode), driving: record.driving, help: record.help, over: record.over };
+            MenuState { mode: FlowMode(record.mode), driving: record.driving, help: record.help, over: record.over };
         let mut items: Vec<_> =
             pause_menu::items(state).into_iter().map(|(item, on)| (Entry::Game(item), on)).collect();
         items.insert(1, (Entry::Camera, true));

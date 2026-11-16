@@ -446,7 +446,7 @@ pub fn best_ghost(
     let (end, retired) = finish.ok_or("the drive did not finish")?;
     let stream = record(samples, clock, Some(end), root, penalties);
     let new = Best { map, time: rbr_gameplay::ghost::end_time(&stream) };
-    let clear = rbr_gameplay::ghost::clears(rbr_gameplay::flow::Mode::QUICK_RALLY, retired);
+    let clear = rbr_gameplay::ghost::clears(rbr_gameplay::flow::FlowMode::QUICK_RALLY, retired);
     if !rbr_gameplay::ghost::replaces(new, clear, stored) {
         return Err(format!("its clock's {:.2} s does not beat it", new.time));
     }

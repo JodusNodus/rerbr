@@ -29,7 +29,7 @@ impl App {
                         .scene
                         .live
                         .as_ref()
-                        .is_some_and(|p| Page::of(rbr_gameplay::flow::Mode(p.menu.mode)) == Page::Race) =>
+                        .is_some_and(|p| Page::of(rbr_gameplay::flow::FlowMode(p.menu.mode)) == Page::Race) =>
                 {
                     self.restart_live()
                 }
@@ -83,7 +83,7 @@ impl App {
             a if a.gear().is_some() => {}
             Action::CallForHelp => self.controls.flags |= live::CALL_FOR_HELP,
             // The game restarts from its pause page 1 only: a championship stage has no restart.
-            Action::Restart if Page::of(rbr_gameplay::flow::Mode(process.menu.mode)) == Page::Race => {
+            Action::Restart if Page::of(rbr_gameplay::flow::FlowMode(process.menu.mode)) == Page::Race => {
                 self.restart_live()
             }
             _ => {}
@@ -91,7 +91,7 @@ impl App {
     }
 
     /// Accepts the race's message box (a retire's) if one is up, or confirms the start of a championship stage
-    /// or a rally-school lesson, whose countdown waits for it (`rbr_gameplay::flow::Mode::start_waits`); whether
+    /// or a rally-school lesson, whose countdown waits for it (`rbr_gameplay::flow::FlowMode::start_waits`); whether
     /// either was. The game's box keeps the menu's input until it is accepted, so the pause, Enter, the gamepad's
     /// South and a click all accept it.
     pub fn accept_message(&mut self) -> bool {
@@ -101,7 +101,8 @@ impl App {
             return true;
         }
         let up = self.scene.live.as_ref().is_some_and(|live| {
-            let waits = rbr_gameplay::flow::Mode(live.menu.mode).start_waits() && !live.menu.driving && !live.menu.over;
+            let waits =
+                rbr_gameplay::flow::FlowMode(live.menu.mode).start_waits() && !live.menu.driving && !live.menu.over;
             live.hud_model.view().message_box.is_some() || waits
         });
         if up {

@@ -15,7 +15,7 @@ use crate::camera_go::StartCamera;
 use crate::control::{CarControl, QuantizedControl, CALL_FOR_HELP};
 use crate::driveline;
 use crate::filter::{self, Filter, Filtered, Grid, Raw};
-use crate::flow::{FinishZone, FlowEvents, FlowFrame, Mode, RaceFlow, StageEnd};
+use crate::flow::{FinishZone, FlowEvents, FlowFrame, FlowMode, RaceFlow, StageEnd};
 use crate::markers::{MarkerEvent, MarkerSettings, MarkerTicker, TickInput};
 use crate::mode::{ModeEnd, ModeRules, StepView};
 use crate::race_clock::{AssistSettings, ClockEvents, RaceClock};
@@ -348,7 +348,7 @@ impl Game {
         // Input poll (`TicFwd`) precedes the application tick, including
         // frames where the app is loading or counting down.
         self.filter.notify(&input.raw);
-        let mode = Mode(self.assist_settings.mode);
+        let mode = FlowMode(self.assist_settings.mode);
         // The school's confirm comes with the input poll (`CSigMenuActivate`), so `Tic` drives in the same frame.
         if mode.school() && input.confirm && self.stage.state() == State::Countdown {
             self.set_stage(self.stage.school_start(), physics);
@@ -449,7 +449,7 @@ impl Game {
         tick_state: State,
         facc: f32,
         confirm: bool,
-        mode: Mode,
+        mode: FlowMode,
         physics: &mut impl PhysicsStep,
         rules: &mut impl ModeRules,
     ) {
@@ -549,7 +549,7 @@ impl Game {
                 marker_input.start_line.application_state = marker_state.value();
                 marker_input.start_line.race_host_result = self.stage.track();
                 marker_input.start_line.jump_start_forced = self.jump_start_forced;
-                marker_input.finish_to_menu = Mode(self.assist_settings.mode).finish_to_menu();
+                marker_input.finish_to_menu = FlowMode(self.assist_settings.mode).finish_to_menu();
                 let ticker = std::mem::replace(&mut self.markers, MarkerTicker::from_keys(Vec::new()));
                 let (next, events) = ticker.tick(marker_input);
                 self.markers = next;

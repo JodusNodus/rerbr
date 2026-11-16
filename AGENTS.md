@@ -31,6 +31,7 @@ same paths.
 | Sound | `notes/sound.md` |
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
 | Championship (ours): built rallies and seasons, pace model, field, standings, save | `notes/season.md` |
+| Sessions (ours, planned): course, format, session, mode; circuit and hotlap; the refactor's plan and state | `notes/session.md` |
 | ReRBR experimental physics (built on NGP 7): engine models | `notes/engine-model.md` |
 | Tyre model (brush-v1, in development, not released); NGP's tyre as it runs, published targets | `notes/tyre-model.md` |
 | Cameras, HUD, launcher | `notes/cameras-hud-launcher.md` |

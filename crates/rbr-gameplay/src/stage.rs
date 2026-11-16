@@ -155,7 +155,7 @@ impl Stage {
     }
 
     /// The player's `CSigMenuActivate` in state 10 where the mode takes it (`CApplication::M0047f9c0` case 10,
-    /// 0x47fc25, [`crate::flow::Mode::confirm_arms`]): an unarmed countdown is armed at 2.0 s.
+    /// 0x47fc25, [`crate::flow::FlowMode::confirm_arms`]): an unarmed countdown is armed at 2.0 s.
     pub fn confirm(self) -> Self {
         match self.state {
             State::Countdown if !self.armed => Self { countdown: CONFIRM_VALUE, armed: true, ..self },

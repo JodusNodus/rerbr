@@ -9,7 +9,7 @@
 //! The mode-10 builder (`M6530`) turns the chase offset by the angle about the up axis, so the camera starts in front
 //! of the car and swings round behind it. The arithmetic is the assembly's (SSE, f32).
 //!
-//! In the other modes (the championship's 3 to 5, [`crate::flow::Mode::camera_go`]) the angle turns at 0.3 rad/s
+//! In the other modes (the championship's 3 to 5, [`crate::flow::FlowMode::camera_go`]) the angle turns at 0.3 rad/s
 //! (`0x72afcc`), wrapped into `[0, 2 pi]` (`0x72f418`), and no go comes: the player's confirm arms the countdown
 //! ([`crate::stage::Stage::confirm`]), and when `Tic` starts the driving it sets the player's camera
 //! (`E59Host90::M00566390`, 0x566390), which ends the orbit. The wrap after the go is not kept: the mode is 1 from then
@@ -40,7 +40,7 @@ impl StartCamera {
     }
 
     /// `M8840`'s mode-10 branch for one frame of `dt` (`facc`) in state 10: the camera after it, and whether it gave
-    /// the go. `gives_go` is the mode's ([`crate::flow::Mode::camera_go`]); without it the orbit turns on.
+    /// the go. `gives_go` is the mode's ([`crate::flow::FlowMode::camera_go`]); without it the orbit turns on.
     pub fn tick(self, dt: f32, gives_go: bool) -> (Self, bool) {
         match self {
             StartCamera::Orbit(angle) if gives_go => {

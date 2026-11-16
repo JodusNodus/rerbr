@@ -14,7 +14,7 @@
 //! `0x1660c70`). New season stores the skill in the season daemon's +0x8e84 (`E13MenuInitA` 0x47c7f0 →
 //! `E60Flow::M566990` → `DaemonInit` 0x5d34b0), which sets the penalty and the assistance gate in mode 3.
 
-use crate::flow::Mode;
+use crate::flow::FlowMode;
 use crate::race_clock::AssistSettings;
 use crate::weather::Preset;
 
@@ -194,7 +194,7 @@ impl ChampionshipOptions {
     /// race's menu, whose `0x1660850` keeps its value but is not read in mode 3.
     pub fn assist_settings(&self, quick: &RaceOptions) -> AssistSettings {
         AssistSettings {
-            mode: Mode::CHAMPIONSHIP.value(),
+            mode: FlowMode::CHAMPIONSHIP.value(),
             rally_level: self.skill.word(),
             level: quick.damage.word(),
             false_starts: 0,
@@ -204,7 +204,7 @@ impl ChampionshipOptions {
 
 /// `InitQuickRaceDamageHandler` (0x567640): the damage level the car gets in flow `mode`. Modes 1, 2, 4 and 5 take the
 /// quick race's `0x1660850`, the championship (3) its `0x1660c70`, the rally school (7) 2, and any other mode 1.
-pub fn damage_level(mode: Mode, quick: DamageLevel, championship: DamageLevel) -> DamageLevel {
+pub fn damage_level(mode: FlowMode, quick: DamageLevel, championship: DamageLevel) -> DamageLevel {
     match mode.value() {
         1 | 2 | 4 | 5 => quick,
         3 => championship,
@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn the_damage_level_follows_the_mode() {
         use DamageLevel::*;
-        let level = |mode| damage_level(Mode(mode), Off, Realistic);
+        let level = |mode| damage_level(FlowMode(mode), Off, Realistic);
         assert_eq!([0, 1, 2, 3, 4, 5, 7, 8].map(level), [Safe, Off, Off, Realistic, Off, Off, Reduced, Safe]);
     }
 

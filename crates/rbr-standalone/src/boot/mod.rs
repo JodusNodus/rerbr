@@ -24,7 +24,7 @@ use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
 use rbr_formats::{car_pack, cars, fnc, lbs, markers, rbz, sgc, stage_files, trk};
 use rbr_gameplay::car_damage::CarriedDamage;
-use rbr_gameplay::flow::Mode;
+use rbr_gameplay::flow::FlowMode;
 use rbr_gameplay::race_clock::AssistSettings;
 use rbr_gameplay::race_options::{self, ChampionshipOptions, RaceOptions};
 use rbr_gameplay::timing::TimeKeeper;
@@ -104,7 +104,7 @@ pub struct Race {
     /// `CWeatherDaemon`'s state after `StartGame`: the `.mat` entry's words (`E11_TyreCond`, 0x46f6c0) and the wet
     /// meshes.
     pub weather: Weather,
-    /// The game flow's mode word (`[0x165fa90]`, `rbr_gameplay::flow::Mode`).
+    /// The game flow's mode word (`[0x165fa90]`, `rbr_gameplay::flow::FlowMode`).
     pub flow_mode: u32,
     /// A championship stage's options (flow mode 3): the season's skill and damage level. None outside one.
     pub championship: Option<ChampionshipOptions>,
@@ -149,7 +149,7 @@ impl Race {
             surface: surface(map),
             options: RaceOptions::default(),
             weather,
-            flow_mode: Mode::QUICK_RALLY.value(),
+            flow_mode: FlowMode::QUICK_RALLY.value(),
             championship: None,
             lesson: None,
             frequency: 10_000_000,
@@ -165,7 +165,7 @@ impl Race {
 
     /// The race as a championship stage: flow mode 3 with the season's options.
     pub fn in_championship(self, options: ChampionshipOptions) -> Race {
-        Race { flow_mode: Mode::CHAMPIONSHIP.value(), championship: Some(options), ..self }
+        Race { flow_mode: FlowMode::CHAMPIONSHIP.value(), championship: Some(options), ..self }
     }
 
     /// The race as a rally school lesson: flow mode 7 on the lesson's map with the lesson's tyre, in the race's car
@@ -176,7 +176,7 @@ impl Race {
             map,
             tyre: lesson.tyre(),
             surface: surface(map),
-            flow_mode: Mode::SCHOOL.value(),
+            flow_mode: FlowMode::SCHOOL.value(),
             lesson: Some(lesson),
             ..self
         }
@@ -212,7 +212,7 @@ impl Race {
     /// The level `InitQuickRaceDamageHandler` (0x567640) gives the car in this flow mode.
     pub fn damage_level(&self) -> u32 {
         let championship = self.championship.unwrap_or_default().damage;
-        race_options::damage_level(Mode(self.flow_mode), self.options.damage, championship).word()
+        race_options::damage_level(FlowMode(self.flow_mode), self.options.damage, championship).word()
     }
 
     /// Where `archive` (a data path) is read from: NGP's `physics.rbz` in its place.
@@ -746,7 +746,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     built.push(("fence posts", fence.groups.iter().map(|g| g.posts.len() as u64).sum()));
     let seed = heap.take(load_layout::SEED_SIZE);
     load_layout::store_seed(&mut mem, seed, complete);
-    if race.flow_mode == Mode::CHAMPIONSHIP.value() {
+    if race.flow_mode == FlowMode::CHAMPIONSHIP.value() {
         // Last, so a quick race's heap stays as it was.
         season_stand_in(&mut mem, &heap, race.championship.unwrap_or_default());
     }
