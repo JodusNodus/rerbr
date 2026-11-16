@@ -356,16 +356,17 @@ notes start with `PACENOTES_FILE`/`RANGES_FILE` notes spelling `Rbr.ini` and set
 ## NSIS installers
 
 The launcher's Add reads Nullsoft installers without running them (`crates/rbr-launcher/src/content/source/nsis/`).
-First header: `0xDEADBEEF` + `NullsoftInst` at a 512-byte boundary, then flags, signature, magic, inflated header size, archive size (28 bytes).
-Packing is raw deflate or raw LZMA (5 props bytes, end-marked stream); bzip2 is refused. Solid = one stream of
-`u32 header size, header, (u32 size, bytes)*`, file offsets counted from after the header (Pribram: LZMA 0x5D, dict 2^k); else
-a `u32 size` (bit 31 = packed) per block (Peklo, Sturec, Manukau: deflate). Header: flags, 8 `(offset, count)` blocks (entries =
-2, strings = 3, language tables = 4), entries of 7 u32 (opcode, 6 params). Opcodes used, same in NSIS 2 and 3: 11
-`SetOutPath` (p1 = 1), 20 `File` (p1 name string, p2 data offset), 25 `StrCpy` (var, string), 31 push/pop, 44 `CallInstDLL`
-(nsis7z `Extract`), 48 `WriteINIStr` (section, key, value, file). Strings (entry params are indexes, in units): NSIS 2 ANSI
-codes 252..255 (skip, var, shell, lang) + 2 bytes (Pribram); NSIS 3 ANSI codes 1..4 + 2 bytes; NSIS 3 Unicode codes 1..4 + one
-unit (Manukau); a value is two 7-bit halves with bit 7 set. Variables 0..9, `$R0`..`$R9`, 20.. `CMDLINE INSTDIR OUTDIR
-EXEDIR LANGUAGE TEMP PLUGINSDIR EXEPATH EXEFILE`; the user variables start at 29..32 by version, so the "game folder" variable the stage
-installers keep (registry `InstallPath`) is taken as the root with `$INSTDIR`. A `.7z` unpacked by `nsis7z` is replaced by its files (Manukau: 12 entries, 14 INI writes).
-Non-solid sizes are the stored (packed) sizes.
-Deflate stored blocks: Sturec's omit `NLEN` (stored block `00 be 80`, then data at once; the first at byte 98885 of `track-607_O_textures.rbz`'s block, where flate2 stops with "invalid stored block lengths"), Peklo's carry it (`00 28 80 d7 7f`); `nsis/inflate.rs` takes the flavour from the first stored block of each stream (~360 MB/s). Every file of all four installers extracts, each `.rbz` opens as a zip with matching CRCs (`real_installers`).
+First header: `EF BE AD DE` + `NullsoftInst` at a 512-byte boundary, then the inflated header size and the archive size
+(28 bytes). Solid: one stream (raw LZMA, 5 props bytes, end-marked; Pribram) of `u32 size, header, (u32 size,
+bytes)*`, file offsets from after the header. Non-solid: a `u32 size` (bit 31 = packed) per block, raw deflate (Peklo,
+Sturec, Manukau); sizes listed are the stored ones. bzip2 is refused. Header: flags, 8 `(offset, count)` blocks
+(entries 2, strings 3, language tables 4), entries of 7 u32 (opcode, 6 params). Opcodes, the same in NSIS 2 and 3: 11
+`SetOutPath`, 20 `File` (p1 name, p2 data offset), 25 `StrCpy`, 31 push/pop, 44 `CallInstDLL` (nsis7z `Extract`), 48
+`WriteINIStr` (section, key, value, file; an empty key is a section delete). String codes: NSIS 2 ANSI 252..255 (skip,
+var, shell, lang) + 2 bytes (Pribram), NSIS 3 1..4 + 2 bytes (ANSI) or one unit (Unicode, Manukau), values two 7-bit
+halves. Variables: 0..9, `$R0`..`$R9`, 20.. `CMDLINE INSTDIR OUTDIR EXEDIR LANGUAGE TEMP PLUGINSDIR ...`; the stage
+installers keep the game folder (registry `InstallPath`) in a user variable, taken as the root with `$INSTDIR`. A `.7z`
+unpacked by `nsis7z` is replaced by its files (Manukau: 12 entries, 14 INI writes). Deflate stored blocks: Sturec's
+omit `NLEN` (`00 be 80` then data, at byte 98885 of `track-607_O_textures.rbz`'s block; flate2 fails there), Peklo's
+carry it (`00 28 80 d7 7f`): `nsis/inflate.rs` takes the flavour from each stream's first stored block. Every file of
+the four installers extracts, each `.rbz` with matching CRCs (`real_installers`, `RBR_INSTALLERS`).
