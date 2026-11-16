@@ -457,6 +457,8 @@ struct Form {
     /// numbers, in the order starred).
     car_browser: car_browser::CarBrowser,
     stage_browser: stage_browser::StageBrowser,
+    /// The circuit browser (the Circuit page's Browse…): the circuits and the stages that look like one.
+    circuit_browser: stage_browser::StageBrowser,
     replays: replay_page::Replays,
     recent_cars: Vec<String>,
     recent_maps: Vec<u32>,
@@ -646,6 +648,7 @@ impl Form {
             })
             .collect();
         self.stage_browser.set_rows(rows);
+        self.list_circuits();
     }
 
     /// Offers the cars NGP's archive drives, keeping the selected ones when they are still there, and fills the car

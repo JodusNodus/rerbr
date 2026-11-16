@@ -394,7 +394,8 @@ impl Form {
             self.notes_set.clone(),
         );
         let old_notes = self.notes_inputs();
-        let browsers_open = (self.stage_browser.open, self.car_browser.open);
+        let browsers_open = (self.stage_browser.open, self.car_browser.open, self.circuit_browser.open);
+        let old_circuit = (self.circuit.map, self.circuit.laps);
         ctx.root_ui(|root| {
             egui::Panel::top("tabs").show(root, |ui| {
                 ui.add_space(6.0);
@@ -450,6 +451,7 @@ impl Form {
             car_browser::Target::Championship => self.page == Page::Championship,
             car_browser::Target::Circuit => self.page == Page::Circuit,
         };
+        self.circuit_browser.open &= self.page == Page::Circuit;
         self.car_browser.open &= match self.car_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
             car_browser::Target::Championship => self.page == Page::Championship,
@@ -519,6 +521,8 @@ impl Form {
         self.invalidate_notes_cache(ctx, old_notes);
         if (browsers_open.0 && !self.stage_browser.open)
             || (browsers_open.1 && !self.car_browser.open)
+            || (browsers_open.2 && !self.circuit_browser.open)
+            || old_circuit != (self.circuit.map, self.circuit.laps)
             || self.bindings != bindings
             || self.ffb != ffb
             || old_selection

@@ -534,8 +534,11 @@ impl Form {
             false => self.ghost.unrecorded(stage.map),
         };
         // A circuit keeps no ghost yet: the ghost is one whole drive against one result (`notes/session.md`).
-        let ghost =
-            if self.selected_circuit() { Vec::new() } else { ghost.viewer_args(&self.records(), stage.map, &words) };
+        let ghost = if self.page == crate::pages::Page::Circuit {
+            Vec::new()
+        } else {
+            ghost.viewer_args(&self.records(), stage.map, &words)
+        };
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
         let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.championship.profile.clone()]].concat();
@@ -562,7 +565,7 @@ impl Form {
         extra.extend(wetness_args);
         let options = RaceOptions { weather: preset, ..self.options };
         // A circuit is a session of laps (or free practice).
-        if self.catalog.map(stage.map).and_then(catalog::Map::btb).is_some_and(|btb| btb.circuit) {
+        if self.page == crate::pages::Page::Circuit {
             let laps = if self.circuit.laps == 0 { "open".to_owned() } else { self.circuit.laps.to_string() };
             extra.extend(["--laps".to_owned(), laps]);
         }

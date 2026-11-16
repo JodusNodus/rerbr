@@ -88,6 +88,16 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         shot(&dir.join(format!("drive-stages-{name}.png")), |ctx| form.screenshot_stages(ctx, collection.clone()))?;
     }
     form.stage_browser.open = false;
+    // The circuit browser, when there are circuits.
+    if let Some(&index) = form.circuits().first() {
+        form.page = Page::Circuit;
+        form.wait_for_scan(&egui::Context::default());
+        fresh_previews(form, &form.catalog.maps[index].clone(), car.as_ref());
+        let position = form.circuit_browser.position(form.catalog.maps[index].number).unwrap_or(0);
+        form.circuit_browser.open_for(crate::car_browser::Target::Circuit, position, &form.favourite_maps);
+        shot(&dir.join("circuit-browser.png"), |ctx| form.ui(ctx))?;
+        form.circuit_browser.open = false;
+    }
     form.page = Page::Setup;
     for (n, area) in rbr_gameplay::setup::Area::ALL.into_iter().enumerate() {
         form.setup.show_area(area);

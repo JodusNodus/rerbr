@@ -1,6 +1,7 @@
 //! The Circuit page: laps on a circuit (`notes/session.md`), the hotlapping twin of the Drive page. The circuits are the
-//! BTB stages marked `circuit = 1` (`btb::Btb::circuit`). It takes the Drive page's car, setup, weather and tyre; what
-//! is its own is the circuit's list with the profile's best laps, the session's length (free practice or N laps) and
+//! BTB stages marked `circuit = 1` (`btb::Btb::circuit`) and the stages that look like one (`rbr_btb::circuit`, found by a
+//! scan), which stay stages on the Drive page too. It takes the Drive page's car, setup, weather and tyre; what
+//! is its own is the circuit picker (the stage picker's, over the circuits), the profile's best laps, the session's length (free practice or N laps) and
 //! the best lap's sector times. Start runs `rbr-standalone --laps` on the circuit and the best laps are kept in the
 //! save folder (`rbr_session::book`).
 
@@ -11,10 +12,11 @@ use rbr_formats::saves::SaveDir;
 use rbr_render::hud::time_label;
 use rbr_session::{BestLap, LapBook};
 
+use crate::browser::{self, Pick};
 use crate::car_browser::Target;
 use crate::catalog::Map;
-use crate::pages::{combo, fields, section, DRIVE_FIELDS, FIELD};
-use crate::stage_browser::SURFACES;
+use crate::pages::{combo, fields, section, DRIVE_FIELDS, FIELD, WARN};
+use crate::stage_browser::{self, Action, Collection, StageRow};
 use crate::Form;
 
 /// The session lengths on offer, 0 for free practice.
@@ -34,8 +36,6 @@ pub struct CircuitPage {
     read: Option<Instant>,
     /// The circuit whose conditions were last checked against the weather rows.
     checked: Option<u32>,
-    /// The BTB folders (their names) played as circuits at the player's word ([`Btb::auto`]).
-    pub folders: Vec<String>,
     /// The BTB stages that look like circuits and are not marked ([`rbr_btb::circuit::is_candidate`]), by map number,
     /// once the scan is done; the scan runs on a thread, started when the page first draws.
     candidates: Vec<u32>,
@@ -78,53 +78,42 @@ pub fn sector_times(best: &BestLap) -> Vec<f32> {
 
 impl CircuitPage {
     /// The page as the settings left it.
-    pub fn from_settings(map: Option<u32>, laps: Option<u32>, folders: Vec<String>) -> Self {
-        Self { map, laps: laps.filter(|l| LAPS.contains(l)).unwrap_or(0), folders, ..Self::default() }
+    pub fn from_settings(map: Option<u32>, laps: Option<u32>) -> Self {
+        Self { map, laps: laps.filter(|l| LAPS.contains(l)).unwrap_or(0), ..Self::default() }
     }
 }
 
 impl Form {
-    /// The catalog's circuits, by their index.
+    /// Whether map `index` plays as laps: a circuit by its files, or a stage the scan found to end where it starts.
+    pub fn plays_as_circuit(&self, index: usize) -> bool {
+        self.catalog.maps.get(index).is_some_and(|m| {
+            m.btb().is_some_and(|btb| btb.circuit) || (m.btb().is_some() && self.circuit.candidates.contains(&m.number))
+        })
+    }
+
+    /// Whether map `index` is a circuit by its files: it plays only on the Circuit page.
+    pub fn is_circuit(&self, index: usize) -> bool {
+        self.catalog.maps.get(index).and_then(Map::btb).is_some_and(|btb| btb.circuit)
+    }
+
+    /// The maps that play as laps, by their index.
     pub fn circuits(&self) -> Vec<usize> {
-        (0..self.catalog.maps.len()).filter(|&i| self.catalog.maps[i].btb().is_some_and(|btb| btb.circuit)).collect()
+        (0..self.catalog.maps.len()).filter(|&i| self.plays_as_circuit(i)).collect()
     }
 
-    /// Marks the BTB stages whose folders the player chose to play as circuits ([`Btb::auto`]).
-    pub fn apply_circuit_folders(&mut self) {
-        for map in &mut self.catalog.maps {
-            if let crate::catalog::Origin::Btb(btb) = &mut map.origin {
-                let chosen =
-                    btb.folder.file_name().is_some_and(|n| self.circuit.folders.iter().any(|f| n == f.as_str()));
-                // A circuit by its own files stays one whatever the list says.
-                if !btb.circuit || btb.auto {
-                    btb.auto = chosen;
-                    btb.circuit = chosen;
-                }
-            }
-        }
-    }
-
-    /// Plays the BTB stage `number` as a circuit, or as a stage again.
-    fn set_auto_circuit(&mut self, number: u32, on: bool) {
-        let Some(name) = self.catalog.map(number).and_then(Map::btb).and_then(|b| b.folder.file_name()) else { return };
-        let name = name.to_string_lossy().into_owned();
-        self.circuit.folders.retain(|f| *f != name);
-        if on {
-            self.circuit.folders.push(name);
-        } else if self.circuit.map == Some(number) {
-            self.circuit.map = None;
-        }
-        self.apply_circuit_folders();
-        self.list_maps();
-    }
-
-    /// For the screenshots: waits for the scan.
-    pub(crate) fn wait_for_scan(&mut self, ctx: &egui::Context) {
-        self.poll_scan(ctx);
-        if let Scan::Running(receive) = &self.circuit.scan {
-            self.circuit.candidates = receive.recv().unwrap_or_default();
-            self.circuit.scan = Scan::Done;
-        }
+    /// Fills the circuit browser with the maps that play as laps.
+    pub fn list_circuits(&mut self) {
+        let rows = self
+            .circuits()
+            .into_iter()
+            .map(|i| {
+                let map = &self.catalog.maps[i];
+                let mut row = StageRow::new(i, map, self.catalog.availability(&self.season, map).err());
+                row.candidate = !self.is_circuit(i);
+                row
+            })
+            .collect();
+        self.circuit_browser.set_rows(rows);
     }
 
     /// Starts the scan for stages that look like circuits, and takes its result when it is done.
@@ -150,19 +139,27 @@ impl Form {
         }
         if let Scan::Running(receive) = &self.circuit.scan {
             match receive.try_recv() {
-                Ok(found) => {
-                    self.circuit.candidates = found;
-                    self.circuit.scan = Scan::Done;
-                }
+                Ok(found) => self.scanned(found),
                 Err(std::sync::mpsc::TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(200)),
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.circuit.scan = Scan::Done,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.scanned(Vec::new()),
             }
         }
     }
 
-    /// Whether map `index` is a circuit: it plays on the Circuit page.
-    pub fn is_circuit(&self, index: usize) -> bool {
-        self.catalog.maps.get(index).and_then(Map::btb).is_some_and(|btb| btb.circuit)
+    /// The scan is done: the stages it found play as laps too.
+    fn scanned(&mut self, found: Vec<u32>) {
+        self.circuit.candidates = found;
+        self.circuit.scan = Scan::Done;
+        self.list_circuits();
+    }
+
+    /// For the screenshots: waits for the scan.
+    pub(crate) fn wait_for_scan(&mut self, ctx: &egui::Context) {
+        self.poll_scan(ctx);
+        if let Scan::Running(receive) = &self.circuit.scan {
+            let found = receive.recv().unwrap_or_default();
+            self.scanned(found);
+        }
     }
 
     /// The best laps, read again when they are stale.
@@ -179,6 +176,9 @@ impl Form {
     /// The page: the circuit, the car, the session and the conditions on the left; the previews, the best lap and Start
     /// on the right.
     pub fn circuit_page(&mut self, ui: &mut egui::Ui) {
+        if self.circuit_browser.open {
+            return self.circuit_browser_page(ui);
+        }
         if self.car_browser.open && self.car_browser.target == Target::Circuit {
             return self.car_browser_page(ui);
         }
@@ -189,10 +189,10 @@ impl Form {
             ui.label(RichText::new("No circuits installed").size(18.0));
             ui.add_space(6.0);
             ui.label(
-                "A circuit is a BTB stage whose track.ini has circuit = 1 and whose drive line is a closed ring. \
-                 Put one in the RallySimFans install's RX_CONTENT/Tracks and it is listed here.",
+                "A circuit is a BTB stage whose track.ini has circuit = 1 and whose drive line is a closed ring, or a \
+                 stage that ends where it starts. Put one in the RallySimFans install's RX_CONTENT/Tracks and it is \
+                 listed here.",
             );
-            self.candidate_list(ui);
             return;
         };
         let index =
@@ -206,15 +206,15 @@ impl Form {
             self.validate_weather_row();
             self.circuit.checked = Some(number);
         }
-        self.circuit_body(ui, &circuits);
+        self.circuit_body(ui);
         self.map = drive_map;
     }
 
-    fn circuit_body(&mut self, ui: &mut egui::Ui, circuits: &[usize]) {
+    fn circuit_body(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(DRIVE_FIELDS);
-                egui::ScrollArea::vertical().id_salt("circuit").show(ui, |ui| self.circuit_fields(ui, circuits));
+                egui::ScrollArea::vertical().id_salt("circuit").show(ui, |ui| self.circuit_fields(ui));
             });
             ui.add_space(20.0);
             ui.vertical(|ui| {
@@ -230,16 +230,12 @@ impl Form {
         });
     }
 
-    fn circuit_fields(&mut self, ui: &mut egui::Ui, circuits: &[usize]) {
-        section(ui, "Circuit");
-        self.circuit_list(ui, circuits);
-        self.candidate_list(ui);
-
-        section(ui, "Car");
+    fn circuit_fields(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Car and circuit");
         fields(ui, "circuit car", |ui| {
             ui.label("Car");
             if self.catalog.cars.is_empty() {
-                ui.colored_label(crate::pages::WARN, "No cars yet: add some on the Settings page with Download cars…");
+                ui.colored_label(WARN, "No cars yet: add some on the Settings page with Download cars…");
             } else {
                 ui.vertical(|ui| self.car_field(ui, Target::Circuit));
             }
@@ -247,6 +243,11 @@ impl Form {
             if self.bindings.shifter.advanced {
                 self.gearbox_row(ui);
             }
+
+            ui.label("Circuit");
+            ui.vertical(|ui| self.circuit_field(ui));
+            ui.end_row();
+
             self.setup_row(ui);
         });
 
@@ -264,64 +265,80 @@ impl Form {
         self.road_section(ui);
     }
 
-    /// The stages that look like circuits and are not marked, each with a button to play it as one.
-    fn candidate_list(&mut self, ui: &mut egui::Ui) {
-        let found: Vec<(u32, String)> = (self.circuit.candidates.iter())
-            .filter_map(|&n| self.catalog.map(n).filter(|m| m.btb().is_some_and(|b| !b.circuit)).map(|m| (n, m.name())))
-            .collect();
-        if found.is_empty() {
-            return;
+    /// The Circuit field, as the Drive page's Stage field: the selection, starred when it is a favourite, with Browse…,
+    /// and the favourites' quick picks under it.
+    fn circuit_field(&mut self, ui: &mut egui::Ui) {
+        let Some(number) = self.circuit.map else { return };
+        let Some(selected) = self.circuit_browser.row_of(number) else { return };
+        let position = self.circuit_browser.position(number).unwrap_or(0);
+        let favourite = self.favourite_maps.contains(&number);
+        if browser::field_button(ui, favourite, &selected.name, &selected.detail(), FIELD) {
+            self.circuit_browser.open_for(Target::Circuit, position, &self.favourite_maps);
         }
-        ui.add_space(6.0);
-        ui.label(RichText::new("Look like circuits").strong());
-        ui.weak("These stages end where they start. Play one as a circuit and it is closed into a ring, with the lap line at the start.");
-        for (number, name) in found {
-            ui.horizontal(|ui| {
-                ui.label(name);
-                if ui.button("Play as circuit").clicked() {
-                    self.set_auto_circuit(number, true);
-                }
-            });
+        let starred: Vec<&StageRow> = self
+            .favourite_maps
+            .iter()
+            .filter_map(|&n| self.circuit_browser.row_of(n))
+            .filter(|r| r.startable())
+            .collect();
+        let chips: Vec<(&str, String, bool)> =
+            starred.iter().map(|r| (r.name.as_str(), r.detail(), r.number == number)).collect();
+        match browser::chips(ui, &chips) {
+            Some(Pick::Chip(n)) => {
+                let number = starred[n].number;
+                self.choose_circuit(number);
+            }
+            Some(Pick::More) => {
+                self.circuit_browser.open_on(position, &self.favourite_maps, Some(Collection::Favourites));
+                self.circuit_browser.target = Target::Circuit;
+            }
+            None => {}
         }
     }
 
-    /// The circuits, one row each: its name, length and surface, and the profile's best lap.
-    fn circuit_list(&mut self, ui: &mut egui::Ui, circuits: &[usize]) {
+    /// Makes the map with `number` the circuit, and the most recent pick.
+    fn choose_circuit(&mut self, number: u32) {
+        self.circuit.map = Some(number);
+        browser::remember(&mut self.recent_maps, number);
+    }
+
+    /// The circuit browser in place of the page's body.
+    fn circuit_browser_page(&mut self, ui: &mut egui::Ui) {
+        let records = self.records();
         let profile = self.championship.profile.clone();
-        let mut undo = None;
-        let rows: Vec<(u32, String, String, Option<f32>, bool)> = circuits
-            .iter()
-            .map(|&i| {
-                let map = &self.catalog.maps[i];
-                let btb = map.btb();
-                let km = btb.and_then(|b| b.km).map(|km| format!("{km:.1} km · ")).unwrap_or_default();
-                let surface = SURFACES[map.surface().min(2) as usize];
-                let best = self.circuit.book.best(map.number, &profile).map(|b| b.lap);
-                (map.number, map.name(), format!("{km}{surface}"), best, btb.is_some_and(|b| b.auto))
-            })
-            .collect();
-        for (number, name, detail, best, auto) in rows {
-            let selected = self.circuit.map == Some(number);
-            let mut label = format!("{name}   {detail}");
-            if let Some(lap) = best {
-                label += &format!("   ·   best {}", time_label(f64::from(lap)));
+        let book = LapBook::load(&SaveDir::new(&records).path).unwrap_or_default();
+        let (catalog, season) = (&self.catalog, &self.season);
+        let facts = |row: &StageRow| {
+            let weather = |preset| {
+                let found = catalog.stage_weather(season, row.number, preset, rbr_gameplay::weather::Draws::default());
+                found.map_or("none".to_owned(), |(_, w)| w.mat_words().1.to_owned())
+            };
+            let best = book.best(row.number, &profile).map_or("none yet".to_owned(), |b| time_label(f64::from(b.lap)));
+            let mut facts = vec![("Best lap", best), ("Weather", weather(rbr_gameplay::weather::Preset::Good))];
+            if row.candidate {
+                facts.push(("Also", "a stage on the Drive page: it ends where it starts".to_owned()));
             }
-            ui.horizontal(|ui| {
-                if ui.selectable_label(selected, label).clicked() {
-                    self.circuit.map = Some(number);
-                }
-                if auto
-                    && ui
-                        .small_button("Play as a stage again")
-                        .on_hover_text("This stage is played as a circuit at your word: its own files do not say so")
-                        .clicked()
-                {
-                    undo = Some(number);
-                }
-            });
-        }
-        if let Some(number) = undo {
-            self.set_auto_circuit(number, false);
+            facts
+        };
+        let env = stage_browser::Env {
+            maps: &self.catalog.maps,
+            favourites: &self.favourite_maps,
+            recent: &self.recent_maps,
+            previews: &mut self.previews,
+            facts: &facts,
+        };
+        match self.circuit_browser.ui(ui, env) {
+            Some(Action::Choose(index)) => {
+                let number = self.catalog.maps[index].number;
+                self.choose_circuit(number);
+                self.circuit_browser.open = false;
+            }
+            Some(Action::Favourite(number)) => match self.favourite_maps.iter().position(|&n| n == number) {
+                Some(at) => drop(self.favourite_maps.remove(at)),
+                None => self.favourite_maps.push(number),
+            },
+            Some(Action::Back) => self.circuit_browser.open = false,
+            None => {}
         }
     }
 
@@ -374,8 +391,8 @@ mod tests {
 
     #[test]
     fn the_page_keeps_a_listed_length_and_starts_on_free_practice_otherwise() {
-        assert_eq!(CircuitPage::from_settings(Some(7), Some(5), Vec::new()).laps, 5);
-        assert_eq!(CircuitPage::from_settings(Some(7), Some(4), Vec::new()).laps, 0);
-        assert_eq!(CircuitPage::from_settings(None, None, Vec::new()).map, None);
+        assert_eq!(CircuitPage::from_settings(Some(7), Some(5)).laps, 5);
+        assert_eq!(CircuitPage::from_settings(Some(7), Some(4)).laps, 0);
+        assert_eq!(CircuitPage::from_settings(None, None).map, None);
     }
 }

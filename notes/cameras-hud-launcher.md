@@ -377,11 +377,14 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 - `[telemetry]` `udp = ADDR:PORT` (Settings page, Telemetry's UDP address; unset off): `rbr-standalone
   --telemetry-udp`, NGP's UDP packet ([ngp.md](ngp.md#udp-telemetry)). A value without a port after its last `:` is
   not read, sent or saved; the field warns while it holds one.
-- Circuit page (`circuit_page.rs`, `notes/session.md`): the Drive page's twin for hotlapping, tab 2. The circuits are the BTB
-  stages with `circuit = 1` (`Btb::circuit`); the Drive page lists them as ones that cannot start ("it plays on the
-  Circuit page"), never takes one as its default, and its Start on one offers "Open Circuit". The page lists the circuits
-  with the profile's best lap, takes the Drive page's car (its own browser `Target::Circuit`), setup, weather, time of
-  day, road and tyre (the page runs them with `Form::map` set to the circuit while it draws, then puts the Drive page's
-  stage back) and adds the session's length (free practice or 1, 3, 5, 10, 20 laps; saved as `circuit`,
-  `circuit_laps`). The best lap card reads `lap-records.ini` in the save folder every two seconds (the drive is another
-  process): the best lap, its sectors' own times and the car. Start passes `--laps` and no ghost arguments.
+- Circuit page (`circuit_page.rs`, `notes/session.md`): the Drive page's twin for hotlapping, tab 2. It lists the BTB
+  stages with `circuit = 1` (`Btb::circuit`, circuits only: the Drive page lists them as ones that cannot start, never
+  takes one as its default, and its Start on one offers "Open Circuit") and the stages a scan on a thread finds to end
+  where they start (`rbr_btb::circuit`), which stay stages on the Drive page too. Its Circuit field is the stage
+  field's: the selection, starred, Browse… into a second `StageBrowser` over those maps ("Choose a circuit", its facts
+  the best lap and the weather) and the favourites' chips (the same `favourite_maps`). It takes the Drive page's car
+  (its own browser `Target::Circuit`), setup, weather, time of day, road and tyre (the page runs them with `Form::map`
+  set to the circuit while it draws, then puts the Drive page's stage back) and adds the session's length (free
+  practice or 1, 3, 5, 10, 20 laps; saved as `circuit`, `circuit_laps`). The best lap card reads `lap-records.ini` in the
+  save folder every two seconds (the drive is another process): the best lap, its sectors' own times and the car. Start
+  (`Form::page == Page::Circuit`) passes `--laps`, no ghost arguments, and prepares a candidate as a ring.

@@ -23,10 +23,9 @@ pub struct Btb {
     pub km: Option<f32>,
     /// The `rbr-standalone --surface` word, from `track.ini` (the plugin plays gravel when it names none).
     pub surface: &'static str,
-    /// A circuit (`track.ini` `circuit=1`): its line is closed and it plays as laps (`rbr-standalone --laps`).
+    /// A circuit by its own files (`track.ini` `circuit=1`): its line is a closed ring and it plays only as laps
+    /// (`rbr-standalone --laps`). A stage that merely looks like one ([`rbr_btb::circuit`]) plays both ways.
     pub circuit: bool,
-    /// Played as a circuit at the player's word though its files do not say so (`rbr_btb::circuit`): `circuit` is set too.
-    pub auto: bool,
     /// Why it cannot start.
     pub problem: Option<String>,
 }
@@ -37,13 +36,16 @@ impl Btb {
         ["gravel", "tarmac", "snow"].iter().position(|s| *s == self.surface).unwrap_or(0) as u32
     }
 
-    /// Writes the stage `number`'s files into `home/btb/<folder>/`; the stage name that loads them.
-    pub fn prepare(&self, number: u32, maps: &Path, home: &Path) -> Result<String, String> {
+    /// Writes the stage `number`'s files into `home/btb/<folder>/`; the stage name that loads them. `as_circuit`
+    /// closes a stage that is not a circuit by its files into a ring, in a folder of its own beside the stage's.
+    pub fn prepare(&self, number: u32, maps: &Path, home: &Path, as_circuit: bool) -> Result<String, String> {
         let mut track = track::Track::open(&self.folder)?;
-        if self.auto {
+        let mut folder = track.name.clone();
+        if as_circuit && !track.info.circuit {
             track = track.into_auto_circuit();
+            folder += " (circuit)";
         }
-        stage::prepare(&track, number, maps, &home.join("btb").join(&track.name))
+        stage::prepare(&track, number, maps, &home.join("btb").join(folder))
     }
 }
 
@@ -70,7 +72,6 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),
             circuit: track.info.circuit,
-            auto: false,
             problem: None,
             folder: track.folder.clone(),
         };
@@ -94,17 +95,17 @@ fn synthetic(name: &str, free: impl Fn(u32) -> bool) -> u32 {
 }
 
 impl Form {
-    /// The selected map is a circuit.
-    pub fn selected_circuit(&self) -> bool {
-        self.catalog.maps.get(self.map).and_then(Map::btb).is_some_and(|btb| btb.circuit)
-    }
-
     /// The launch of a BTB `stage`: its files prepared in the player's folder and named in place of the listed folder,
     /// and the BTB stage's arguments for `rbr-standalone`: the surface, and the retail map whose weather rows it
     /// plays. Other stages pass unchanged. `None`, with the status, when the files cannot be built.
     pub fn btb_launch(&mut self, mut stage: Stage, mut extra: Vec<String>) -> Option<(Stage, Vec<String>)> {
         let Some(btb) = self.catalog.map(stage.map).and_then(Map::btb).cloned() else { return Some((stage, extra)) };
-        match btb.prepare(stage.map, &self.data.install().join("Maps"), &self.here()) {
+        match btb.prepare(
+            stage.map,
+            &self.data.install().join("Maps"),
+            &self.here(),
+            self.page == crate::pages::Page::Circuit,
+        ) {
             Ok(name) => stage.name = name,
             Err(e) => {
                 self.status = format!("{}: {e}", btb.name);

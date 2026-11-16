@@ -109,6 +109,8 @@ pub struct StageRow {
     pub surface: u32,
     /// Why it cannot start.
     pub problem: Option<String>,
+    /// A BTB stage that looks like a circuit and is not marked as one (`rbr_btb::circuit`): the circuit browser's.
+    pub candidate: bool,
     /// What the search matches, lower case.
     haystack: String,
 }
@@ -147,6 +149,7 @@ impl StageRow {
             km,
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
+            candidate: false,
             haystack,
         }
     }
@@ -161,6 +164,9 @@ impl StageRow {
         let mut parts = vec![self.number.to_string()];
         parts.extend(self.km.map(|km| format!("{km:.1} km")));
         parts.push(SURFACES[self.surface as usize].to_owned());
+        if self.candidate {
+            parts.push("looks like a circuit".to_owned());
+        }
         parts.join(" · ")
     }
 
@@ -460,6 +466,19 @@ impl StageBrowser {
         self.rows.get(index)
     }
 
+    /// The position of the stage with `number` in the list (the catalog's position, in the Drive page's browser).
+    pub fn position(&self, number: u32) -> Option<usize> {
+        self.rows.iter().position(|r| r.number == number)
+    }
+
+    /// What the browser is for in the title and the button: "stage" or "circuit".
+    fn noun(&self) -> &'static str {
+        match self.target {
+            crate::car_browser::Target::Circuit => "circuit",
+            _ => "stage",
+        }
+    }
+
     pub fn state(&self) -> crate::browser_state::State {
         if !self.visited {
             return Default::default();
@@ -569,9 +588,11 @@ impl StageBrowser {
         );
 
         let mut random = false;
-        let hint = "Search all stages: name, country, author, map number";
+        let noun = self.noun();
+        let hint = format!("Search all {noun}s: name, country, author, map number");
+        let title = format!("Choose a {noun}");
         let query = &mut self.filter.query;
-        if top_line(ui, "Choose a stage", hint, query, &mut self.focus, &mut random) {
+        if top_line(ui, &title, &hint, query, &mut self.focus, &mut random) {
             action = Some(Action::Back);
         }
         if random {
@@ -722,6 +743,7 @@ impl StageBrowser {
 
     /// The highlighted stage: name, picture, facts, and the buttons.
     fn detail(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
+        let noun = self.noun();
         let row = self.rows.get(self.nav.cursor)?;
         let map = env.maps.get(row.index)?;
         let mut action = None;
@@ -751,7 +773,7 @@ impl StageBrowser {
             if favourite_button(ui, env.favourites.contains(&row.number)).clicked() {
                 action = Some(Action::Favourite(row.number));
             }
-            let go = RichText::new("Choose stage").size(18.0).strong().color(Color32::WHITE);
+            let go = RichText::new(format!("Choose {noun}")).size(18.0).strong().color(Color32::WHITE);
             let go = egui::Button::new(go).fill(ACCENT).min_size(egui::vec2(ui.available_width(), 44.0));
             let go = ui.add_enabled(row.startable(), go).on_hover_text("Enter, or a double click on the stage");
             if go.clicked() {
@@ -916,7 +938,6 @@ mod tests {
             km: None,
             surface: "gravel",
             circuit: false,
-            auto: false,
             problem: None,
         };
         let rows = rows_of(&[Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }]);

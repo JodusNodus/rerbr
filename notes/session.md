@@ -127,10 +127,10 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   Sprint, SSS Lilaia; Ivato (two laps) and the out-and-back stages are not; the Nordschleife's original (11 m gap) is.
   `close` makes the circuit from the lines alone: the ring bridged over the gap at 2.5 m, rotated to start at the spawn,
   the last point the first's copy, the notes shifted with it, the start, finish and end keys at 40000 m
-  (`Track::into_auto_circuit`, `stage_lines`; the stage's files in the player's folder, never the install's). The
-  launcher lists candidates on the Circuit page (a scan on a thread) with "Play as circuit", kept as `circuit_folders`
-  in the settings; "Play as a stage again" undoes it. The Nordschleife's original lines through it: lap 944.52 s on the
-  autopilot against 944.45 s from the hand-made ring.
+  (`Track::into_auto_circuit`, `stage_lines`; written to `btb/<folder> (circuit)/` in the player's folder beside the
+  stage's own, never the install's). A candidate is both: a stage on the Drive page (its files untouched) and a circuit
+  on the Circuit page, where Start prepares the ring. A circuit by its files (`circuit = 1`) is a circuit only. The
+  Nordschleife's original lines through it: lap 944.52 s on the autopilot against 944.45 s from the hand-made ring.
 - Not yet: the per-lap ghost, `SessionKey` and the stage records' own keying (a circuit has the lap book instead); the
   converters write the closed ring (step 6).
 - Open: the season's pace plan on a closed line (it reads the progress as an open one); per-lap re-arming of the marker keys and the scripted events; a circuit's start and end in the 1.02 loop (its timekeeper's start and finish
