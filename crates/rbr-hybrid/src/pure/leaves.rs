@@ -2,7 +2,7 @@
 //! pass no `Ctx` on and use no `esp` (`scripts/pure_leaves.py` lists them from the sources; `leaves_are_bound` checks
 //! the list). The pure host runs a call to one of them as a plain call ([`super::Pure::call_leaf`]).
 
-pub(super) const LEAVES: [u32; 155] = [
+pub(super) const LEAVES: [u32; 153] = [
     0x43c5b0, // E01Vec4::CopyFrom
     0x43c630, // E01VecSetA::Cross
     0x43c6a0, // E01Vec4::Normalize
@@ -20,7 +20,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x4e11e0, // CBody::Vf114
     0x4e11f0, // CBody::Vf118
     0x4e3860, // CBrakeWall::Vf110
-    0x4e3f10, // CBrakeWall::QueryBox
     0x4e41a0, // E34Link10::UnlinkA
     0x4e4c70, // E34Quat::Norm
     0x4e4d10, // E34Quat::ToQuat
@@ -40,7 +39,6 @@ pub(super) const LEAVES: [u32; 155] = [
     0x4f65b0, // E37GridOps::AddEdge
     0x4f6740, // E38RayClear
     0x4f8280, // E37GridOps::EdgeEdge
-    0x4f8560, // E37GridOps::EdgePair
     0x4fb070, // CCollisionMeshOpen::CopyBounds
     0x4fb0b0, // CCollisionMeshOpen::IsActive
     0x4fb7f0, // E38_004FB7F0

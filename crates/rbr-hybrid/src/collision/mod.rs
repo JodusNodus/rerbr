@@ -26,12 +26,11 @@ use bodies::{
     move_to_cell, notify_filtered, state_unka44,
 };
 use brake_wall::{
-    brake_wall_emit, brake_wall_is_active, brake_wall_query_box, brake_wall_vf_e8, brake_wall_vf_f0, raycast_entry,
-    wall_vf_cc, BRAKE_WALL_QUERY_BOX,
+    brake_wall_emit, brake_wall_is_active, brake_wall_vf_e8, brake_wall_vf_f0, raycast_entry, wall_vf_cc,
 };
 use contacts::{body_vf_d0, body_vf_dc};
 pub(crate) use contacts::{body_vf_d8, body_vf_e8, body_vf_f4};
-use edge::{edge_edge, edge_pair};
+use edge::edge_edge;
 use queries::{
     collect, face_query, grid_add_edge, grid_ops_m6610, grid_ray, grid_sample_a, grid_sample_b, grid_sync,
     mesh_copy_bounds, mesh_is_active, ray_clear, ray_seeds, seg_test, segment_sweep, segment_test, system_vf00,
@@ -39,13 +38,11 @@ use queries::{
 pub(crate) use queries::{ray_clear_at, ray_seeds_at};
 use solver::{
     alloc_event, apply_event_impulse, apply_offsets, clear_contact_rows, contact_rows, correct_penetrations,
-    drain_events, event_count, event_query_bodies, init_full, make_event, min_contact_time, plane_diff, refresh_events,
+    drain_events, event_count, event_query_bodies, init_full, min_contact_time, plane_diff, refresh_events,
     solve_due_events, solve_event, solver_add_event, E37_PLANE_DIFF,
 };
 pub(crate) use vectors::{copy_vec4, length};
-use vectors::{
-    float3_length, float3_scale, min_max_a, vec3_add, vec4_clear, vec4_copy_from, vec4_normalize, vec4_sub, vec_cross,
-};
+use vectors::{float3_length, float3_scale, min_max_a, vec4_clear, vec4_copy_from, vec4_normalize, vec_cross};
 
 pub(crate) const RAY_CLEAR: u32 = 0x4f6740;
 pub(crate) const RAY_SEEDS: u32 = 0x4f6550;
@@ -56,7 +53,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("collision", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 68] = [
+pub static BINDINGS: [Binding; 63] = [
     bind(0x4f3950, "E36Collect", collect),
     bind(0x4faeb0, "CBodyLink::MoveToCell (ours)", move_to_cell),
     bind(0x4f6550, "E38RaySeeds", ray_seeds),
@@ -103,10 +100,8 @@ pub static BINDINGS: [Binding; 68] = [
     bind(0x4fc500, "E38_004FC500", min_contact_time),
     bind(0x4f6610, "E37GridOps::M6610", grid_ops_m6610),
     bind(E37_EDGE_EDGE, "E37GridOps::EdgeEdge", edge_edge),
-    bind(E37_EDGE_PAIR, "E37GridOps::EdgePair", edge_pair),
     bind(0x4f65b0, "E37GridOps::AddEdge", grid_add_edge),
     bind(0x4e42f0, "E34WallVf::VfCC", wall_vf_cc),
-    bind(BRAKE_WALL_QUERY_BOX, "CBrakeWall::QueryBox", brake_wall_query_box),
     bind(BODY_VF11C, "CBody::Vf11C", body_vf11c),
     bind(0x4e1eb0, "CBody::VfD0", body_vf_d0),
     bind(0x4e3970, "CBrakeWall::VfF0", brake_wall_vf_f0),
@@ -117,11 +112,8 @@ pub static BINDINGS: [Binding; 68] = [
     bind(0x4f4390, "E37EvOps::Query4390", event_query_bodies),
     bind(0x4f4dc0, "E37EvOps::Emit4DC0", apply_event_impulse),
     bind(E01_VEC4_NORMALIZE, "E01Vec4::Normalize", vec4_normalize),
-    bind(E09_VEC4_SUB, "E09Vec4::Sub", vec4_sub),
-    bind(E21_VEC3_ADD, "E21Vec3::Add", vec3_add),
     bind(COLGRID_SAMPLE_A, "CColGrid::SampleA", grid_sample_a),
     bind(COLGRID_SAMPLE_B, "CColGrid::SampleB", grid_sample_b),
-    bind(E33_MAKE_EVENT, "E33MakeEvent", make_event),
     bind(E36_ALLOC_EVENT, "E36AllocEvent", alloc_event),
     bind(COLL_EVENT_INIT_FULL, "CCollisionEvent::InitFull", init_full),
     bind(0x4fc9a0, "CCollisionSolver::Vf04", solver_add_event),
@@ -152,6 +144,21 @@ fn on_grids<T>(host: &dyn Host, mem: &mut Mem, grids: &[u32], run: impl FnOnce(&
 /// residue audit, notes/physics.md "Store seam"), else the host call.
 pub(crate) fn call_grid(host: &dyn Host, sp: u32, target: u32, this: u32, args: &[u32]) -> crate::Called {
     host.call_in_place(sp, target, this, args).unwrap_or_else(|| host.call_at(sp, target, this, args))
+}
+
+/// A call of a binding of this subsystem made as a plain call of its code: counted as a run ([`Host::ran_direct`]) and,
+/// for a binding that is not a leaf, the call's words written at its entry esp as the host writes them (a leaf runs
+/// without: the stack words the callee has are `args`). Returns the entry esp.
+fn enter_direct(host: &dyn Host, mem: &mut Mem, sp: u32, args: &[u32], write: bool) -> u32 {
+    let esp = host.call_esp(sp);
+    if write {
+        mem.set_u32(esp, crate::pure::CALL_RET);
+        for (at, &word) in (esp + 4..).step_by(4).zip(args) {
+            mem.set_u32(at, word);
+        }
+    }
+    host.ran_direct();
+    esp
 }
 
 /// The contact record at `at` as a step leaves it at this point: a held solver row's, else the image's. For the
@@ -189,11 +196,7 @@ pub(crate) const BODY_GRID: u32 = 0x4e11f0;
 struct Callees<'a>(&'a dyn Host);
 
 pub(crate) const E01_VEC4_NORMALIZE: u32 = 0x43c6a0;
-const E21_VEC3_ADD: u32 = 0x4a19e0;
-const E09_VEC4_SUB: u32 = 0x465da0;
-const E33_MAKE_EVENT: u32 = 0x4e0d00;
 pub(crate) const COLGRID_SAMPLE_A: u32 = 0x4e0840;
 pub(crate) const COLGRID_SAMPLE_B: u32 = 0x4e0950;
 pub(crate) const E37_GRID_COPY: u32 = 0x4f6610;
 pub(crate) const E37_EDGE_EDGE: u32 = 0x4f8280;
-const E37_EDGE_PAIR: u32 = 0x4f8560;

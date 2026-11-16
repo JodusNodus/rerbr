@@ -342,18 +342,29 @@ pub(super) fn grid_ops_m6610(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
     Ok(Return::void(eax, 12))
 }
 
-/// thiscall on the grid with `(index, t, out_1, out_2)`, ret 0x10: `CColGrid::SampleA` (0x4e0840). Eax as the original
-/// leaves it: `out_1`, or 0 (the grid's data word) when the grid has no data.
+/// `CColGrid::SampleA` on `grid` with `(index, t, out_1, out_2)`. Eax as the original leaves it: `out_1`, or 0 (the grid's
+/// data word) when the grid has no data.
+pub(super) fn sample_a_at(mem: &mut Mem, grid: u32, index: u32, t: f32, out_1: u32, out_2: u32) -> u32 {
+    let samples = layout::edge_sample(mem, grid, index as usize, t);
+    store_samples(mem, grid, out_1, out_2, samples)
+}
+
+/// `CColGrid::SampleB` on `grid` with `(index, out_1, out_2)`. Eax as [`sample_a_at`]'s.
+pub(super) fn sample_b_at(mem: &mut Mem, grid: u32, index: u32, out_1: u32, out_2: u32) -> u32 {
+    let samples = layout::vertex_sample(mem, grid, index as usize);
+    store_samples(mem, grid, out_1, out_2, samples)
+}
+
+/// thiscall on the grid with `(index, t, out_1, out_2)`, ret 0x10: `CColGrid::SampleA` (0x4e0840).
 pub(super) fn grid_sample_a(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [index, t, out_1, out_2, ..] = r.stack;
-    let samples = layout::edge_sample(&ctx.mem, r.ecx, index as usize, f32::from_bits(t));
-    Ok(Return::void(store_samples(ctx, r.ecx, out_1, out_2, samples), 0x10))
+    Ok(Return::void(sample_a_at(&mut ctx.mem, r.ecx, index, f32::from_bits(t), out_1, out_2), 0x10))
 }
 
 /// The samples' stores of SampleA and SampleB; returns their eax.
-fn store_samples(ctx: &mut Ctx, grid: u32, out_1: u32, out_2: u32, samples: (u32, u32)) -> u32 {
-    let empty = layout::ColGrid::new(grid).data(&ctx.mem) == 0;
-    layout::store_samples(&mut ctx.mem, out_1, out_2, samples);
+fn store_samples(mem: &mut Mem, grid: u32, out_1: u32, out_2: u32, samples: (u32, u32)) -> u32 {
+    let empty = layout::ColGrid::new(grid).data(mem) == 0;
+    layout::store_samples(mem, out_1, out_2, samples);
     if empty {
         0
     } else {
@@ -361,9 +372,8 @@ fn store_samples(ctx: &mut Ctx, grid: u32, out_1: u32, out_2: u32, samples: (u32
     }
 }
 
-/// thiscall on the grid with `(index, out_1, out_2)`, ret 0xc: `CColGrid::SampleB` (0x4e0950). Eax as SampleA's.
+/// thiscall on the grid with `(index, out_1, out_2)`, ret 0xc: `CColGrid::SampleB` (0x4e0950).
 pub(super) fn grid_sample_b(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [index, out_1, out_2, ..] = r.stack;
-    let samples = layout::vertex_sample(&ctx.mem, r.ecx, index as usize);
-    Ok(Return::void(store_samples(ctx, r.ecx, out_1, out_2, samples), 0xc))
+    Ok(Return::void(sample_b_at(&mut ctx.mem, r.ecx, index, out_1, out_2), 0xc))
 }

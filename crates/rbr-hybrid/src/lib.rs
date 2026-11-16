@@ -449,7 +449,7 @@ pub(crate) mod tests {
         }
         let expected = [
             ("car_body", 99),
-            ("collision", 68),
+            ("collision", 63),
             ("engine_driveline", 32),
             ("entities", 115),
             ("game_log", 1),
