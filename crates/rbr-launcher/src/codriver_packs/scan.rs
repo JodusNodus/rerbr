@@ -1,7 +1,10 @@
 //! The owned packs on disk: listing and validating them ([`voice_packs`], [`note_packs`]).
+use std::cmp::Reverse;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::SystemTime;
 
 use rbr_formats::pacenote::{codriver, notes};
 
@@ -21,13 +24,12 @@ pub struct VoicePack {
     pub problem: Option<String>,
 }
 
-/// A locally owned stage-note pack: its folder, its note files and the note sets they make.
+/// A locally owned stage-note pack: its folder and its note files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NotePack {
     pub name: String,
     pub dir: PathBuf,
     pub files: usize,
-    pub sets: Vec<NoteSet>,
 }
 
 /// A note set's name as shown: its own, or for files named as their stage alone the pack's (the RSF install's:
@@ -40,9 +42,6 @@ pub fn set_label(pack: Option<&str>, set: &str) -> String {
     }
 }
 
-/// The note sets' inputs the summary follows (`Form::notes_inputs`).
-pub type NotesInputs = (Option<String>, Option<String>, bool, bool, Option<String>);
-
 /// What the co-driver says on the selected stage, as the Co-driver section and the Drive page show it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NotesSummary {
@@ -51,19 +50,6 @@ pub struct NotesSummary {
     pub text: String,
     /// The note file played, for the tooltip.
     pub file: Option<PathBuf>,
-    /// The chosen set has no notes for the stage: its own notes play.
-    pub fallback: bool,
-}
-
-/// A set of stage notes in a notes folder (an RSF install's MyPacenotes or an owned pack): the files that add the
-/// same name to their stage's, as `LuppisV3` in `Tanner/Tanner LuppisV3.ini`. The name is empty for files named as
-/// their stage alone (`Tanner/tanner.ini`, `Tanner.ini`). NGPCarMenu's `_default` exports, copies of the stages' own
-/// notes, make no set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NoteSet {
-    pub name: String,
-    /// The stages it has notes for.
-    pub stages: usize,
 }
 
 /// Whether the file name has an audio suffix the voices play.
@@ -272,8 +258,8 @@ pub fn note_packs(home: &Path) -> Vec<NotePack> {
         .into_iter()
         .map(|name| {
             let dir = home.join(NOTES_DIR).join(&name);
-            let (files, sets) = (note_files(&dir).len(), note_sets(&dir));
-            NotePack { name, dir, files, sets }
+            let files = note_files(&dir).len();
+            NotePack { name, dir, files }
         })
         .filter(|p| p.files > 0)
         .collect()
@@ -319,6 +305,7 @@ fn suffixes(stem: &str) -> impl Iterator<Item = &str> {
 }
 
 /// A note INI as a note set's file.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SetFile {
     /// Its stage folder's name, folded.
     stage: String,
@@ -341,7 +328,7 @@ fn set_files(dir: &Path) -> Vec<SetFile> {
         })
         .collect();
     // The stages whose file names each word suffix ends.
-    let mut shared: std::collections::HashMap<String, std::collections::HashSet<String>> = Default::default();
+    let mut shared: HashMap<String, HashSet<String>> = Default::default();
     for (stage, stem, ..) in &named {
         for suffix in suffixes(stem) {
             shared.entry(suffix.to_ascii_lowercase()).or_default().insert(fold(stage));
@@ -366,32 +353,78 @@ fn set_files(dir: &Path) -> Vec<SetFile> {
         .collect()
 }
 
-/// The note sets in the notes folder `dir`, the most stages first (then by name).
-pub fn note_sets(dir: &Path) -> Vec<NoteSet> {
-    let mut pairs: Vec<(String, String, String)> =
-        set_files(dir).into_iter().map(|f| (f.set.to_ascii_lowercase(), f.stage, f.set)).collect();
-    pairs.sort();
-    pairs.dedup_by(|a, b| (&a.0, &a.1) == (&b.0, &b.1));
-    let mut sets: Vec<NoteSet> = Vec::new();
-    for (key, _, name) in pairs {
-        match sets.last_mut() {
-            Some(last) if last.name.eq_ignore_ascii_case(&key) => last.stages += 1,
-            _ => sets.push(NoteSet { name, stages: 1 }),
-        }
-    }
-    sets.sort_by(|a, b| b.stages.cmp(&a.stages).then_with(|| a.name.cmp(&b.name)));
-    sets
+/// A notes folder's note files by set, read once at a rescan (`Form::rescan_codrivers`): an owned pack
+/// (`name` set) or the RSF install's MyPacenotes. A set is what the files add to their stage's name, as `LuppisV3`
+/// in `Tanner/Tanner LuppisV3.ini`; empty for files named as their stage alone (`Tanner/tanner.ini`). NGPCarMenu's
+/// `_default` exports, copies of the stages' own notes, are no files of any set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NoteSource {
+    name: Option<String>,
+    files: Vec<SetFile>,
 }
 
-/// The note file of the set `set` in the notes folder `dir` for the stage called by one of `names` (stage folders
-/// and file stems matched ignoring case, accents and punctuation, as `notes::my_pacenotes`), its highest version
-/// that parses.
-pub fn find_in_set(dir: &Path, names: &[&str], set: &str) -> Option<PathBuf> {
+impl NoteSource {
+    /// The note files below `dir`; `name` is the owned pack's, none for the RSF install's.
+    pub fn read(dir: &Path, name: Option<&str>) -> Self {
+        Self { name: name.map(str::to_owned), files: set_files(dir) }
+    }
+}
+
+/// The notes the co-driver calls on a stage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotesPick {
+    /// The set as shown (`set_label`).
+    pub label: String,
+    pub file: PathBuf,
+}
+
+/// The notes file for the stage called by one of `names` (stage folders and file stems matched ignoring case,
+/// accents and punctuation, as `notes::my_pacenotes`), among the `sources` (owned packs first): the set covering
+/// the most stages over all sources together (ties: one in an owned pack, then by name), in it the highest version,
+/// then an owned pack's, then the newest file. Only files that parse count; `None` when there are none (the stage's
+/// own notes).
+pub fn pick_notes(sources: &[NoteSource], names: &[&str]) -> Option<NotesPick> {
     let wanted: Vec<String> = names.iter().map(|n| fold(n)).filter(|n| !n.is_empty()).collect();
-    let mut found: Vec<SetFile> =
-        set_files(dir).into_iter().filter(|f| f.set.eq_ignore_ascii_case(set) && wanted.contains(&f.stage)).collect();
-    found.sort_by(|a, b| b.version.cmp(&a.version));
-    found.into_iter().map(|f| f.path).find(|path| is_note_file(path))
+    let mut stages: HashMap<String, HashSet<&str>> = HashMap::new();
+    let mut owned_sets: HashSet<String> = HashSet::new();
+    let mut found = Vec::new();
+    for (index, source) in sources.iter().enumerate() {
+        for file in &source.files {
+            let set = file.set.to_ascii_lowercase();
+            stages.entry(set.clone()).or_default().insert(&file.stage);
+            if source.name.is_some() {
+                owned_sets.insert(set.clone());
+            }
+            if wanted.contains(&file.stage) {
+                found.push((set, index, file));
+            }
+        }
+    }
+    let mut found: Vec<_> = found
+        .into_iter()
+        .map(|(set, index, file)| {
+            let modified = fs::metadata(&file.path).and_then(|m| m.modified()).ok();
+            (set, index, file, modified)
+        })
+        .collect();
+    // Best first.
+    found.sort_by(|a, b| {
+        let key = |(set, index, file, modified): &(String, usize, &SetFile, Option<SystemTime>)| {
+            (
+                Reverse(stages[set].len()),
+                Reverse(owned_sets.contains(set)),
+                set.clone(),
+                Reverse(file.version.clone()),
+                Reverse(sources[*index].name.is_some()),
+                Reverse(*modified),
+            )
+        };
+        key(a).cmp(&key(b))
+    });
+    found.into_iter().find(|(.., file, _)| is_note_file(&file.path)).map(|(_, index, file, _)| NotesPick {
+        label: set_label(sources[index].name.as_deref(), &file.set),
+        file: file.path.clone(),
+    })
 }
 
 /// Whether the file parses as a note file.

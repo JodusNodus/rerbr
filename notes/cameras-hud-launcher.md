@@ -131,6 +131,17 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `RBR_RSF` when set, else the game data folder), its plugins and community content with it. A saved `rsf_root`
   is ignored and dropped on save.
 - The co-driver is set up on the Settings page, not per drive (user decision 2026-10-29).
+- The player picks only the voice (and the corner numbers when the styles differ); the stage notes are automatic
+  (user decision 2026-11-16, `codriver_packs::pick_notes`): with a custom voice, over every owned pack and the RSF
+  MyPacenotes, the set covering the most stages (ties: owned pack, then name), in it the highest `_<n>` version,
+  then owned over RSF, then the newest file; none: the stage's own notes. The range set is the plugin's `Rbr.ini`
+  (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
+  The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
+  under the Drive page's stage.
+- Co-driver packs (user decision 2026-11-16): the Packs row links Luppis's V3 co-driver and pace-note pages, lists up
+  to 5 recent pack-like .zip/.7z in the Downloads folder (30 days, entry names only, scanned on a thread;
+  `codriver_packs/downloads.rs`) with "Add", and a .zip, .7z or folder dropped on the window is added
+  (`codriver_packs/drop.rs`). RAR is not read.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used

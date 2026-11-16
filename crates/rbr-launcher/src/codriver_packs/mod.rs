@@ -28,7 +28,7 @@
 
 #[cfg(test)]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -49,15 +49,21 @@ const SEVEN_Z: &str = ".7z";
 
 type Fail = String;
 
+/// What the notes summary follows besides the map and the scanned packs: the co-driver switch and the voice.
+pub type NotesInputs = (bool, Option<String>);
+
+pub mod downloads;
+mod drop;
 mod import;
 mod scan;
 
 pub use import::{cli, import, remove_notes, remove_voice};
 #[cfg(test)]
 use import::{import_both, import_voice_from, publish, publish_pair, stage};
+#[cfg(test)]
+use scan::set_label;
 pub use scan::{
-    call_sets_differ, find_in_set, note_packs, note_sets, set_label, voice_packs, NotePack, NoteSet, NotesInputs,
-    NotesSummary, VoicePack,
+    call_sets_differ, note_packs, pick_notes, voice_packs, NotePack, NoteSource, NotesPick, NotesSummary, VoicePack,
 };
 use scan::{check_voice, is_plugin_dir};
 #[cfg(test)]
@@ -65,7 +71,8 @@ use scan::{copy_voice, pack_name, walk};
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
-    /// Caches the RSF install's voices and note sets. Marks the notes summary for refresh (it refreshes on draw).
+    /// Caches the RSF install's voices and the note files of every source. Marks the notes summary for refresh (it
+    /// refreshes on draw).
     pub fn rescan_codrivers(&mut self) {
         let home = self.here();
         self.owned_voices = voice_packs(&home);
@@ -75,10 +82,12 @@ impl Form {
         let mods = crate::command::CodriverMods::scan(&root);
         self.rsf_plugin = mods.is_some();
         self.rsf_voices = mods.map(|mods| mods.voices).unwrap_or_default();
-        self.rsf_note_sets = notes::my_pacenotes_dir(Path::new(root.trim())).map(|d| note_sets(&d)).unwrap_or_default();
-        (self.codriver_styles_differ, self.codriver_ranges_differ) = match &self.codriver_mods {
-            Some(mods) => call_sets_differ(&mods.dir, &mods.styles, &mods.ranges),
-            None => (false, false),
+        // The owned packs first: they win a tie with the RSF install's MyPacenotes.
+        self.note_sources = self.owned_notes.iter().map(|p| NoteSource::read(&p.dir, Some(&p.name))).collect();
+        self.note_sources.extend(notes::my_pacenotes_dir(Path::new(root.trim())).map(|d| NoteSource::read(&d, None)));
+        self.codriver_styles_differ = match &self.codriver_mods {
+            Some(mods) => call_sets_differ(&mods.dir, &mods.styles, &mods.ranges).0,
+            None => false,
         };
         self.cached_notes_dirty = true;
     }
@@ -98,31 +107,28 @@ impl Form {
         let stage = found.map(|m| m.name()).unwrap_or_default();
         let voice = self.codriver_mods.as_ref().and_then(|m| m.voice(self.codriver_voice.as_deref()));
         let mut summary = NotesSummary { stage, ..NotesSummary::default() };
-        summary.text = match (self.codriver, voice, self.active_set(), names) {
-            (false, ..) => "no co-driver, no notes are called".into(),
-            (true, None, ..) => "the 1.02 co-driver calls the stage's own notes".into(),
-            (true, Some(voice), None, _) | (true, Some(voice), _, None) => {
-                format!("{voice} calls the stage's own notes")
-            }
-            (true, Some(voice), Some(set), Some(names)) => {
-                let label = set_label(self.notes_pack.as_deref(), &set.name);
-                let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-                summary.file = self.resolve_notes(&refs);
-                match summary.file.as_deref().map(notes::read) {
-                    Some(Ok(notes)) if notes.len() == 1 => format!("{voice} calls {label} (1 note)"),
-                    Some(Ok(notes)) => format!("{voice} calls {label} ({} notes)", notes.len()),
-                    _ => {
-                        summary.fallback = true;
-                        format!("{label} has no notes for this stage: {voice} calls the stage's own notes")
+        summary.text = match (self.codriver, voice) {
+            (false, _) => "no co-driver, no notes are called".into(),
+            (true, None) => "the 1.02 co-driver calls the stage's own notes".into(),
+            (true, Some(voice)) => {
+                let refs: Vec<&str> = names.iter().flatten().map(String::as_str).collect();
+                let pick = pick_notes(&self.note_sources, &refs);
+                let count = pick.as_ref().and_then(|p| notes::read(&p.file).ok()).map(|notes| notes.len());
+                match (pick, count) {
+                    (Some(pick), Some(count)) => {
+                        summary.file = Some(pick.file);
+                        let s = if count == 1 { "" } else { "s" };
+                        format!("{voice} calls {} ({count} note{s})", pick.label)
                     }
+                    _ => format!("{voice} calls the stage's own notes"),
                 }
             }
         };
         self.notes_summary = summary;
     }
 
-    /// Marks the summary dirty when its inputs changed since `before` (note pack, note set, notes on, the
-    /// co-driver switch or the voice): it refreshes on the next draw, so repaint for it.
+    /// Marks the summary dirty when the co-driver switch or the voice changed since `before`: it refreshes on the
+    /// next draw, so repaint for it.
     pub fn invalidate_notes_cache(&mut self, ctx: &egui::Context, before: NotesInputs) {
         if before != self.notes_inputs() {
             self.cached_notes_dirty = true;
@@ -132,7 +138,7 @@ impl Form {
 
     /// What the notes summary depends on besides the map and the scanned packs.
     pub fn notes_inputs(&self) -> NotesInputs {
-        (self.notes_pack.clone(), self.notes_set.clone(), self.my_pacenotes, self.codriver, self.codriver_voice.clone())
+        (self.codriver, self.codriver_voice.clone())
     }
 
     /// The active co-driver plugin: the chosen local pack's folder, else the RSF install's. None uses the
@@ -150,36 +156,13 @@ impl Form {
         crate::command::CodriverMods::scan(&self.game_root())
     }
 
-    /// The note sets of the chosen source: the local pack's, else the RSF install's MyPacenotes.
-    pub fn source_sets(&self) -> &[NoteSet] {
-        match self.notes_pack.as_deref() {
-            Some(pack) => self.owned_notes.iter().find(|p| p.name == pack).map_or(&[], |p| p.sets.as_slice()),
-            None => &self.rsf_note_sets,
-        }
+    /// The notes the custom voice calls on the stage with catalogue `names` (see [`pick_notes`]), or `None` for the
+    /// stage's own notes.
+    pub fn resolve_notes(&self, names: &[&str]) -> Option<NotesPick> {
+        pick_notes(&self.note_sources, names)
     }
 
-    /// The note set that plays: the chosen one, else (unset, or gone from the source) the source's largest. None
-    /// for the stages' own notes.
-    pub fn active_set(&self) -> Option<&NoteSet> {
-        if !self.my_pacenotes {
-            return None;
-        }
-        let sets = self.source_sets();
-        let chosen = self.notes_set.as_deref();
-        sets.iter().find(|s| chosen.is_some_and(|c| c.eq_ignore_ascii_case(&s.name))).or(sets.first())
-    }
-
-    /// The note file the active set plays on the stage with catalogue `names`, or `None` for the stage's own notes.
-    pub fn resolve_notes(&self, names: &[&str]) -> Option<PathBuf> {
-        let set = self.active_set()?;
-        let dir = match self.notes_pack.as_deref() {
-            Some(pack) => self.here().join(NOTES_DIR).join(pack),
-            None => notes::my_pacenotes_dir(Path::new(self.game_root().trim()))?,
-        };
-        find_in_set(&dir, names, &set.name)
-    }
-
-    /// Aligns the voice, style and range choices with the newly active plugin after the pack changed: a kept
+    /// Aligns the voice and style choices with the newly active plugin after the pack changed: a kept
     /// choice the new plugin does not offer becomes the plugin's default (an unset voice plays the pack's). The
     /// explicit 1.02 choice stays.
     pub fn normalize_codriver(&mut self) {
@@ -195,10 +178,6 @@ impl Form {
             self.codriver_style =
                 mods.styles.first().cloned().unwrap_or_else(|| rbr_sound::custom_codriver::DEFAULT_STYLE.into());
         }
-        if !mods.ranges.contains(&self.codriver_ranges) {
-            self.codriver_ranges =
-                mods.ranges.first().cloned().unwrap_or_else(|| rbr_sound::custom_codriver::DEFAULT_RANGES.into());
-        }
     }
 
     /// Starts importing the co-driver download `src` (a folder or archive) on a thread; real progress with a
@@ -207,8 +186,12 @@ impl Form {
         if self.codriver_job.is_some() || self.child.is_some() {
             return;
         }
-        let home = self.here();
         self.codriver_status = None;
+        if src.to_ascii_lowercase().ends_with(".rar") {
+            self.codriver_status = Some(Err("RAR archives are not supported: extract it and use Add folder…".into()));
+            return;
+        }
+        let home = self.here();
         self.codriver_job = Some(Job::start(move |report, cancel| {
             report(&Progress { step: "Importing co-driver", done: 0, total: 0 });
             import(&home, Path::new(&src), cancel)
@@ -220,7 +203,7 @@ impl Form {
         ui.horizontal_wrapped(|ui| {
             let idle = self.codriver_job.is_none() && self.child.is_none();
             if ui
-                .add_enabled(idle, egui::Button::new("Import folder…"))
+                .add_enabled(idle, egui::Button::new("Add folder…"))
                 .on_hover_text(
                     "Choose an extracted co-driver download, a MyPacenotes folder, or a whole RBR/RSF install to \
                      copy from (only read). ReRBR copies its voices, call styles, distance calls and stage notes \
@@ -233,7 +216,7 @@ impl Form {
                 }
             }
             if ui
-                .add_enabled(idle, egui::Button::new("Import archive…"))
+                .add_enabled(idle, egui::Button::new("Add archive…"))
                 .on_hover_text(
                     "Choose a downloaded .zip/.7z co-driver or note pack. ReRBR copies its voices, call styles, \
                      distance calls and stage notes into your files' folder; the download is not changed.",
@@ -247,26 +230,20 @@ impl Form {
             let Some(job) = &mut self.codriver_job else { return };
             if let Some(result) = job.ui(ui) {
                 self.codriver_job = None;
-                // What a successful import added drives: its voice pack (its default voice) and its notes. No
-                // removals run while importing, so the lists before the rescan are the ones it started with.
-                let before = result.is_ok().then(|| {
-                    let voices: Vec<String> = self.owned_voices.iter().map(|p| p.name.clone()).collect();
-                    let notes: Vec<String> = self.owned_notes.iter().map(|p| p.name.clone()).collect();
-                    (voices, notes)
-                });
+                // What a successful import added drives: its voice pack (its default voice); its notes play by
+                // themselves. No removals run while importing, so the list before the rescan is the one it started with.
+                let before =
+                    result.is_ok().then(|| self.owned_voices.iter().map(|p| p.name.clone()).collect::<Vec<_>>());
                 self.codriver_status = Some(match result {
                     Err(e) if e.ends_with("cancelled") => Err("Cancelled; nothing was written.".into()),
                     Ok(lines) => Ok(lines.join(" ")),
                     Err(e) => Err(e),
                 });
                 self.rescan_codrivers();
-                let Some((voices, notes)) = before else { return };
+                let Some(voices) = before else { return };
                 let voice = self.owned_voices.iter().find(|p| p.problem.is_none() && !voices.contains(&p.name));
                 if let Some(name) = voice.map(|p| p.name.clone()) {
                     (self.codriver, self.codriver_pack, self.codriver_voice) = (true, Some(name), None);
-                }
-                if let Some(name) = self.owned_notes.iter().find(|p| !notes.contains(&p.name)).map(|p| p.name.clone()) {
-                    (self.my_pacenotes, self.notes_pack, self.notes_set) = (true, Some(name), None);
                 }
             }
         });
@@ -282,6 +259,7 @@ impl Form {
 mod tests {
     use super::*;
     use std::fs::File;
+    use std::path::PathBuf;
 
     fn write(path: &Path, text: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -577,14 +555,29 @@ mod tests {
 
     /// The Tanner notes of any set in `dir`.
     fn tanner(dir: &Path) -> Option<PathBuf> {
-        note_sets(dir).iter().find_map(|set| find_in_set(dir, &["Tanner"], &set.name))
+        pick_notes(&[NoteSource::read(dir, None)], &["Tanner"]).map(|p| p.file)
+    }
+
+    /// A source folder with a note file per `rel`, each a valid note file.
+    fn notes_folder(name: &str, files: &[&str]) -> PathBuf {
+        let dir = crate::test_dir(name);
+        for rel in files {
+            write(&dir.join(rel), "[PACENOTES]\ncount = 1\n\n[P0]\ntype = 16\ndistance = 1.0\nflag = 0\n");
+        }
+        dir
+    }
+
+    /// The picked file below `dir`, for the stage called `stage`.
+    fn picked(sources: &[NoteSource], stage: &str, base: &Path) -> Option<String> {
+        pick_notes(sources, &[stage]).map(|p| p.file.strip_prefix(base).unwrap().display().to_string())
     }
 
     /// A MyPacenotes-like folder (names as in an RSF install): each stage folder's files make the sets named by what
-    /// they add to the stage's name, counted by stage; `_default` exports make none; the highest edited copy plays.
+    /// they add to the stage's name; the set covering the most stages plays, `_default` exports make none, the
+    /// highest edited copy plays.
     #[test]
-    fn note_sets_are_named_after_the_stage() {
-        let dir = crate::test_dir("codriver-sets");
+    fn the_set_covering_the_most_stages_plays() {
+        let dir = notes_folder("codriver-sets", &[]);
         let note = "[PACENOTES]\ncount = 1\n\n[P0]\ntype = 16\ndistance = 1.0\nflag = 0\n";
         for stage in ["Tanner", "Tanner II", "Mlynky"] {
             write(&dir.join(format!("{stage}/{stage} LuppisV3.ini")), note);
@@ -603,22 +596,81 @@ mod tests {
         write(&dir.join("Haguenau 2012/Haugenau 2012 LuppisV3.ini"), note);
         write(&dir.join("Karowa 2009/Karowa 2009 Again LuppisV3_1.ini"), note);
         write(&dir.join("Readme.txt"), "not notes");
-        let sets: Vec<(String, usize)> = note_sets(&dir).into_iter().map(|s| (s.name, s.stages)).collect();
-        assert_eq!(sets, [("LuppisV3".to_owned(), 8), (String::new(), 2), ("Tanner".to_owned(), 1)]);
-        let file =
-            |names: &[&str], set| find_in_set(&dir, names, set).map(|p| p.strip_prefix(&dir).unwrap().to_owned());
-        assert_eq!(file(&["Tanner II"], "luppisv3"), Some(PathBuf::from("Tanner II/Tanner II LuppisV3_1.1.ini")));
-        assert_eq!(file(&["Tanner"], ""), Some(PathBuf::from("Tanner/tanner.ini")));
-        assert_eq!(file(&["Tanner"], "LuppisV3"), Some(PathBuf::from("Tanner/Tanner LuppisV3_2.ini")));
-        assert_eq!(file(&["Kormoran I"], "LuppisV3"), Some(PathBuf::from("Kormoran I/Kormoran I LuppisV3_1.ini")));
-        assert_eq!(file(&["Ul. Rajdowa"], "LuppisV3"), Some(PathBuf::from("Ul. Rajdowa/Ul_ Rajdowa LuppisV3.ini")));
-        assert_eq!(file(&["mlynky"], ""), Some(PathBuf::from("Mlynky.ini")));
-        assert_eq!(file(&["Tanner II"], ""), None);
-        assert_eq!(file(&["Bareyo BTB"], "LuppisV3"), Some(PathBuf::from("Bareyo BTB/Bareyo LuppisV3.ini")));
-        assert_eq!(set_label(None, ""), "MyPacenotes");
+        let sources = [NoteSource::read(&dir, None)];
+        let file = |stage| picked(&sources, stage, &dir);
+        assert_eq!(file("Tanner II").as_deref(), Some("Tanner II/Tanner II LuppisV3_1.1.ini"));
+        assert_eq!(file("Tanner").as_deref(), Some("Tanner/Tanner LuppisV3_2.ini"));
+        assert_eq!(file("Kormoran I").as_deref(), Some("Kormoran I/Kormoran I LuppisV3_1.ini"));
+        assert_eq!(file("Ul. Rajdowa").as_deref(), Some("Ul. Rajdowa/Ul_ Rajdowa LuppisV3.ini"));
+        assert_eq!(file("Bareyo BTB").as_deref(), Some("Bareyo BTB/Bareyo LuppisV3.ini"));
+        // Mlynky has LuppisV3 too; a stage with only a one-off file plays that.
+        assert_eq!(file("mlynky").as_deref(), Some("Mlynky/Mlynky LuppisV3.ini"));
+        write(&dir.join("Zetor/zetor.ini"), note);
+        let sources = [NoteSource::read(&dir, None)];
+        assert_eq!(picked(&sources, "Zetor", &dir).as_deref(), Some("Zetor/zetor.ini"));
+        assert_eq!(pick_notes(&sources, &["Zetor"]).unwrap().label, "MyPacenotes");
+        assert_eq!(picked(&sources, "Nowhere", &dir), None);
         assert_eq!(set_label(Some("pack"), ""), "pack");
         assert_eq!(set_label(Some("pack"), "LuppisV3"), "LuppisV3");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Stage counts add up over the sources; a set in an owned pack wins a tie; no candidate: the stage's own.
+    #[test]
+    fn the_most_stages_win_over_all_sources() {
+        let owned = notes_folder("notes-count-owned", &["Tanner/Tanner Mine.ini", "Other/Other Mine.ini"]);
+        let rsf = notes_folder("notes-count-rsf", &["Tanner/Tanner Big.ini", "A/A Big.ini", "B/B Big.ini"]);
+        let sources = [NoteSource::read(&owned, Some("pack")), NoteSource::read(&rsf, None)];
+        // Big covers three stages, Mine two: a one-off is not preferred.
+        assert_eq!(pick_notes(&sources, &["Tanner"]).unwrap().file, rsf.join("Tanner/Tanner Big.ini"));
+        // Counted over both sources: Mine gains a stage in the RSF install and ties Big at three; owned wins.
+        write(
+            &rsf.join("Third/Third Mine.ini"),
+            "[PACENOTES]\ncount = 1\n\n[P0]\ntype = 16\ndistance = 1.0\nflag = 0\n",
+        );
+        let sources = [NoteSource::read(&owned, Some("pack")), NoteSource::read(&rsf, None)];
+        assert_eq!(pick_notes(&sources, &["Tanner"]).unwrap().file, owned.join("Tanner/Tanner Mine.ini"));
+        assert_eq!(pick_notes(&sources, &["Third"]).unwrap().file, rsf.join("Third/Third Mine.ini"));
+        assert_eq!(pick_notes(&sources, &["Elsewhere"]), None);
+        assert_eq!(pick_notes(&[], &["Tanner"]), None);
+        // A file that does not parse is no candidate.
+        write(&owned.join("Tanner/Tanner Mine.ini"), "not notes");
+        let sources = [NoteSource::read(&owned, Some("pack")), NoteSource::read(&rsf, None)];
+        assert_eq!(pick_notes(&sources, &["Tanner"]).unwrap().file, rsf.join("Tanner/Tanner Big.ini"));
+        fs::remove_dir_all(&owned).unwrap();
+        fs::remove_dir_all(&rsf).unwrap();
+    }
+
+    /// Within the set: the highest version, then an owned pack's file, then the newest.
+    #[test]
+    fn version_then_owned_then_newest_picks_the_file() {
+        let a = notes_folder("notes-pick-a", &["Tanner/Tanner Set.ini", "Tanner/Tanner Set_2.ini"]);
+        let b = notes_folder("notes-pick-b", &["Tanner/Tanner Set.ini"]);
+        let rsf = notes_folder("notes-pick-rsf", &["Tanner/Tanner Set.ini"]);
+        let pick = |sources: &[NoteSource]| pick_notes(sources, &["Tanner"]).unwrap().file;
+        let sources = |list: &[(&PathBuf, Option<&str>)]| -> Vec<NoteSource> {
+            list.iter().map(|(dir, name)| NoteSource::read(dir, *name)).collect()
+        };
+        // A higher version beats the owned pack's unversioned file.
+        assert_eq!(pick(&sources(&[(&b, Some("b")), (&a, Some("a"))])), a.join("Tanner/Tanner Set_2.ini"));
+        // The same version: owned before the RSF install.
+        assert_eq!(pick(&sources(&[(&b, Some("b")), (&rsf, None)])), b.join("Tanner/Tanner Set.ini"));
+        // Two owned packs, the same version: the newest file wins, whatever the pack order.
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let set_modified = |path: PathBuf, time| {
+            fs::File::options().write(true).open(path).unwrap().set_modified(time).unwrap();
+        };
+        let a_file = a.join("Tanner/Tanner Set.ini");
+        let b_file = b.join("Tanner/Tanner Set.ini");
+        fs::remove_file(a.join("Tanner/Tanner Set_2.ini")).unwrap();
+        set_modified(a_file.clone(), then);
+        let both = sources(&[(&a, Some("a")), (&b, Some("b"))]);
+        assert_eq!(pick(&both), b_file);
+        set_modified(a_file.clone(), then + std::time::Duration::from_secs(7200));
+        assert_eq!(pick(&both), a_file);
+        for dir in [a, b, rsf] {
+            fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[test]
