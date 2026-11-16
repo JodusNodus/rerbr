@@ -3,9 +3,10 @@
 use super::enhance::Enhance;
 use super::sun_mask::NORMALS;
 use super::textures::{lit_class, DrawFeatures};
+use super::uniforms::frame_index;
 use super::DEPTH_FORMAT;
 use crate::coords::FRONT_FACE;
-use crate::stage::{DrawState, Vertex};
+use crate::stage::{Anchor, DrawState, Layer, Vertex};
 
 pub(crate) const SHADER: &str = concat!(
     include_str!("../shader.wgsl"),
@@ -52,7 +53,8 @@ pub(super) struct PipelineKey {
     /// The draw's frame uniform ([`frame_index`](super::uniforms::frame_index), `FRAME_KIND` in `shader.wgsl`): the
     /// stage's, the clouds' or the sky faces'. `None` (the prepass) decides at run time.
     frame: Option<usize>,
-    /// A sky draw, drawn behind the rest at depth 0 where the depth is still the clear one (`Renderer::draw_scene`).
+    /// A sky draw, drawn behind the rest at depth 0 where the depth is still the clear one (`Renderer::draw_scene`); the
+    /// backdrop's (the world-anchored sky faces') at their own depth.
     sky: bool,
     pass: DrawPass,
     /// The car's lamps light the stage's draws (`LAMPS` in `shader.wgsl`): only the frames where they are lit take the
@@ -256,7 +258,12 @@ impl Context<'_> {
                 (self.shading(), false, wgpu::CompareFunction::Equal, key.alpha_test, write_mask)
             }
         };
+        // The backdrop lays its depth over what lies farther (`Renderer::draw_scene`); a sky dome, drawn at depth 0, where
+        // the depth is still the clear one.
+        let backdrop = key.sky && key.frame == Some(frame_index(Anchor::World, Layer::Sky));
+        let depth_write = depth_write || backdrop;
         let depth_compare = match key {
+            _ if backdrop => wgpu::CompareFunction::GreaterEqual,
             PipelineKey { sky: true, .. } => wgpu::CompareFunction::Equal,
             PipelineKey { depth_test: true, .. } => depth_compare,
             _ => wgpu::CompareFunction::Always,
