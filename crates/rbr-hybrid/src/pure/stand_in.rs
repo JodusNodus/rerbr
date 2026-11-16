@@ -7,7 +7,6 @@ use super::{
     CRT_COS, CRT_DELETE, CRT_DELETE_ARRAY, CRT_NEW, CRT_NEW_ARRAY, CRT_SIN, QUERY_PERFORMANCE_COUNTER, VECTOR_CTOR,
     VECTOR_DTOR,
 };
-use crate::binding;
 
 /// The listeners the step reaches outside the physics, `(entry, bytes its ret pops)`, which a pure step skips (eax
 /// unchanged): the car and the wheels don't depend on them. rbr-recomp's pure_check skips all of them in a hybrid chain
@@ -76,7 +75,7 @@ const LISTENERS: [(u32, u32); 26] = [
     (0x5662c0, 4), // E60Flow::M5662c0 (the race flow's RetireCar handler: replay flag, rally incident), CSigRetireCar
     // The engine-fire receivers (through the Invoke trampolines 0x5e3f10, 0x4afa70), which NGP's dying engine reaches:
     // E82 particles (`mov [ecx + 0x844], payload`) and CCarSound (`+0x41ab8`, then the speech emit 0x4ae0d0 with 6 and
-    // its sound update 0x4ad1c0). Under NGP's strand they run off the step; in the emulator the inline one reads files.
+    // its sound update 0x4ad1c0). Under NGP's strand they run off the step; in the original the inline one reads files.
     (0x5dd4c0, 4), // E82 particles, CSigEngineFire
     (0x4ae3a0, 4), // CCarSound (the fire's sound and speech), CSigEngineFire
 ];
@@ -279,29 +278,4 @@ fn by_address(mem: &Mem, addr: u32) -> Option<StandIn> {
         _ if Some(addr) == crate::ngp::at(crate::ngp::OPERATOR_NEW) => StandIn::Allocate,
         _ => return None,
     })
-}
-
-/// Where a pure host would stop for a call of `addr` with `ecx` and `args`: the function itself, or the method its
-/// `Invoke` trampolines lead to, or the element function a vector iterator calls, when that has no binding and no
-/// stand-in. `None` when the pure host covers the call (its callees aside). For the emulator's host calls (`ffi`): the
-/// pure step's worklist.
-pub fn uncovered(mem: &Mem, addr: u32, ecx: u32, args: &[u32]) -> Option<u32> {
-    if binding(crate::ngp::file(addr)).is_some() {
-        return None;
-    }
-    if let Some(exe) = crate::ngp::original_for(addr) {
-        return uncovered(mem, exe, ecx, args);
-    }
-    match stand_in(mem, addr) {
-        Some(StandIn::Invoke { method, owner_offset }) => {
-            let offset = owner_offset.map_or(0, |at| mem.u32(ecx + at));
-            uncovered(mem, mem.u32(ecx + method), mem.u32(ecx + 0x10).wrapping_add(offset), args)
-        }
-        Some(StandIn::VectorCtor | StandIn::VectorDtor) => match *args {
-            [ptr, _, count, element, ..] if count as i32 > 0 => uncovered(mem, element, ptr, &[]),
-            _ => None,
-        },
-        Some(_) => None,
-        None => Some(addr),
-    }
 }

@@ -70,7 +70,7 @@ pub const SENTINEL: u32 = 0xfeed_0000;
 
 const FRAME: u32 = rbr_physics::car_body::transform::FRAME;
 
-/// A snapshot's playback, as `rust_step.py` drives it: every step enters `StepForward` from the snapshot's call slot
+/// A snapshot's playback, as the retired `rust_step.py` drove it: every step enters `StepForward` from the snapshot's call slot
 /// with its registers, and a step's control payload is written at the bottom of the snapshot's stack.
 pub struct Playback {
     pub pure: Pure,
@@ -143,7 +143,6 @@ impl Playback {
         // (residue audit).
         self.pure.with_frame(STEP_FORWARD, &entry, || {
             let args = [car + 0x220, car, scratch];
-            crate::skip_unwritten(self.pure.host(), &mut mem.clone(), (self.slot - 0x1000) & !0xf, &args);
             let [a, b, c] = args;
             crate::entities::op(self.pure.host(), 0, frame, crate::entities::Op::Mb560 { a, b, c });
         });

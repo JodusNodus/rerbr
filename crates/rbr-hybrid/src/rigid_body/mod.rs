@@ -226,9 +226,9 @@ impl EntityWalkHost for Walks<'_> {
     }
 }
 
-/// `E46Mat::Mul` and the `CBody::Vf40` callees, in the emulator. The product's operands are written below the stack
+/// `E46Mat::Mul` and the `CBody::Vf40` callees, through the host. The product's operands are written below the stack
 /// (`scratch`), and the original reads and writes them there: the matrix, the diagonal and the output, nine words each.
-/// `mem` is a clone of the binding's memory (an emulator-backed clone writes the emulator).
+/// `mem` is a clone of the binding's memory.
 struct Callees<'a> {
     mem: Mem,
     host: &'a dyn Host,

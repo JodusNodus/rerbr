@@ -30,9 +30,7 @@ impl Owner for FrameOwner<'_> {
         // `CSolid::E43Vf9C`, `E43VfAC` and `E43VfB0` (their bindings in `rigid_body` make no call) run here on the pure
         // host, on the solids' store (the owner's matrix and position, and rows that may be a solid's).
         use rbr_physics::rigid_body::layout as solid;
-        if matches!(target, SOLID_SCALE_ADD_ROWS | E43VFAC | E43VFB0)
-            && crate::skip_unwritten(self.host, self.mem, sp, &[a, b])
-        {
+        if matches!(target, SOLID_SCALE_ADD_ROWS | E43VFAC | E43VFB0) && sp != 0 {
             return match held_solids(self.host) {
                 Some(solids) => {
                     not_kept_on_held(self.host, &solids, owner + solid::POSITION, (0..b).map(|k| a + 16 * k));
@@ -42,9 +40,7 @@ impl Owner for FrameOwner<'_> {
             };
         }
         // `CEntity::E43Vf9C`, `E43VfA0` and `E43VfB0`, which return `a` (`entity_echo`), likewise.
-        if matches!(target, ENTITY_VF9C | ENTITY_VFA0 | ENTITY_VFB0)
-            && crate::skip_unwritten(self.host, self.mem, sp, &[a, b])
-        {
+        if matches!(target, ENTITY_VF9C | ENTITY_VFA0 | ENTITY_VFB0) && sp != 0 {
             self.host.ran_direct();
             return rbr_physics::entities::frame::entity_result(owner, a, b);
         }

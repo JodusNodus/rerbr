@@ -38,7 +38,7 @@ pub static BINDINGS: [Binding; 5] = [
 ];
 
 /// thiscall `(payload*)`, `ret 4`: the `CMultiSignal1::Emit` instance `EMIT` (0x4a0390 or 0x48cd90), the physics core's
-/// emit with the connections in the emulator, each entered where the original's `Invoke` call is (the emit's frame: four
+/// emit with the connections through the host, each entered where the original's `Invoke` call is (the emit's frame: four
 /// pushes and the argument below the entry). A count out of range declines (the original traps).
 fn emit_at<const EMIT: u32>(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, r.ecx)?;

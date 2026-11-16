@@ -111,7 +111,7 @@ impl<S: CarStore> layout::SnapshotCalls<S> for Car<'_> {
 
     fn emit_replay_state(&mut self, _mem: &mut S, sp: u32, emitter: u32, payload: u32) {
         // The payload's first 16 bytes are not written.
-        crate::fill_residue(self.host, &mut self.mem, payload, 4);
+        crate::fill_residue(&mut self.mem, payload, 4);
         self.host.call_at(sp, 0x4e85b0, emitter, &[payload]);
     }
 }
@@ -204,7 +204,7 @@ impl Car<'_> {
     fn payload(&mut self, words: &[u32]) -> u32 {
         let at = self.scratch + PAYLOAD;
         // Word 0 is the emitter's pointer slot: not written.
-        crate::fill_residue(self.host, &mut self.mem, at, 1);
+        crate::fill_residue(&mut self.mem, at, 1);
         for (k, word) in words.iter().enumerate() {
             self.mem.set_u32(at + 4 + 4 * k as u32, *word);
         }
@@ -365,7 +365,7 @@ pub(super) fn run_countdown(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
     crate::ngp::only()?;
     let mut calls = car_calls(ctx, r);
     let image = ctx.mem.clone();
-    let residue = crate::residue(ctx.host);
+    let residue = Some(crate::RESIDUE);
     on_stage(ctx.host, &image, |line| {
         on_car(ctx, |m| layout::run_countdown(m, line, &mut calls, r.ecx, r.esp, residue))
     });

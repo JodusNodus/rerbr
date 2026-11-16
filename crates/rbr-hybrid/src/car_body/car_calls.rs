@@ -21,7 +21,7 @@ use crate::{aligned_frame, Called, Ctx, Decline, Host, Regs, Return};
 use rbr_physics::car_body::store::CarStore;
 
 /// Where the calls' vectors and words go: the free stack below the binding's entry, past the return slot. A nested run
-/// starts 0x1000 below the emulator's stack pointer, so it does not reach these.
+/// starts 0x1000 below the caller's stack pointer, so it does not reach these.
 pub(super) fn scratch(r: &Regs) -> u32 {
     (r.esp - 0x100) & !0xf
 }
@@ -36,7 +36,7 @@ const EDGE_IN: u32 = 0x40;
 const EDGE_OUT: u32 = 0x50;
 const M1: u32 = 0x60;
 
-/// The original's callees a car-body binding makes, on the emulator's memory. The walks (`E43PairWalk::MB560`) and the
+/// The original's callees a car-body binding makes, on the image. The walks (`E43PairWalk::MB560`) and the
 /// compose (`FrameCompose`) take their vectors by address: the pure ports' `Vec3` is written to scratch and read back.
 pub(super) struct Car<'a> {
     pub(super) mem: Mem,

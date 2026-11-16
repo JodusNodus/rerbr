@@ -66,7 +66,7 @@ pub(super) fn block_pair_gate(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline
     Ok(Return::void(u32::from(gate), 4))
 }
 
-/// The wheel worker's external calls, run by the host on the emulator's memory. The port's values are written where the
+/// The wheel worker's external calls, run by the host on the image. The port's values are written where the
 /// original reads them, the original runs, and its results are read back. `Step4990` and `Step3870` are ports.
 struct WheelCalls<'a> {
     mem: Mem,

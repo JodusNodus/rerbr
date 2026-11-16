@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(ret.eax, state);
         // The typed event carries the pre-reset payload.
         assert_eq!(*host.dampers.borrow(), [(strut, old)]);
-        // The signal-manager emit still runs for the emulator's fidelity.
+        // The signal-manager emit still runs.
         assert_eq!(*host.calls.borrow(), [(0x52de60, 0x20000 + 0xc2b8, vec![strut + 0x1c])]);
         // The words are reset to the new owner.
         assert_eq!(ctx.mem.u32(strut + 0x1c), 0x1234);

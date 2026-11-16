@@ -200,8 +200,7 @@ const ENGINE_FIRE_EMIT: u32 = 0x100e_df40;
 /// `0x1004b9b3..0x1004ba5c`, the engine's death in the wrapper whose entry `esp` is `esp`: the health object's alive flag
 /// (`+0x74`) clears, and NGP emits the engine fire with payload 1.0 (the particles' and the car sound's fire, through
 /// their `CSigEngineFire` connections). NGP's code is the emit wrapper's inline (the post on its strand when its
-/// singleton's `+0xd` is set, else the fan-out), so the host runs that wrapper: the original's own code in the
-/// emulator, and in the pure host the 1.02 emit it stands for (`original_for`), which the host shows as an engine fire.
+/// singleton's `+0xd` is set, else the fan-out), so the host runs that wrapper: the 1.02 emit it stands for (`original_for`), which the host shows as an engine fire.
 /// The payload sits where the original keeps it (its `ebp - 0x10`).
 fn engine_dies(ctx: &mut Ctx, esp: u32, health_at: u32) {
     ctx.mem.set_u32(health_at + 0x74, 0);

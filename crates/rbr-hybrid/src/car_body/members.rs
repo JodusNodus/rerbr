@@ -216,7 +216,7 @@ pub(super) fn vf24x(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn reset_scratch_and_dispatch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = CarVf54 { mem: ctx.mem.clone(), host: ctx.host, car: r.ecx };
     let eax = on_car(ctx, |m| layout::reset_scratch_and_dispatch(&mut calls, m, r.ecx))
-        .unwrap_or_else(|_| unreachable!("the emulator always answers host calls"));
+        .unwrap_or_else(|_| unreachable!("the host answers every call"));
     Ok(Return::void(eax, 0))
 }
 
@@ -297,7 +297,7 @@ impl GridCalls for StateCallees<'_> {
     }
 
     fn copy_from(&mut self, dst: u32, src: u32) -> u32 {
-        crate::collision::copy_vec4(self.host, &mut self.mem, 0, dst, src)
+        crate::collision::copy_vec4(self.host, &mut self.mem, dst, src)
     }
 }
 
@@ -329,13 +329,9 @@ impl car::body::BodyCalls for BodyCalls<'_> {
     }
 }
 
-/// `NTweak::CE36SubBlock::Init` (0x4f3e80) on `block`, entered at `sp`: on the pure host its port, without the call
-/// (as [`crate::trivial`]: no reader reads the call's words); else the call.
-pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, sp: u32, block: u32) {
-    if host.call_slot_word().is_none() {
-        host.call_at(sp, crate::collision::CE36_SUB_BLOCK_INIT, block, &[]);
-        return;
-    }
+/// `NTweak::CE36SubBlock::Init` (0x4f3e80) on `block`: its port, without the call (as [`crate::trivial`]: no reader
+/// reads the call's words).
+pub(crate) fn init_sub_block(host: &dyn Host, mem: &mut Mem, block: u32) {
     host.ran_direct();
     car::light::sub_block_init(mem, block);
 }

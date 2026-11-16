@@ -1,4 +1,4 @@
-//! The [`Host`] without the emulator: a host call runs the binding at its
+//! The [`Host`]: a host call runs the binding at its
 //! address on the same [`Mem`], so the bound functions call each other directly. A call to an address with no binding,
 //! or a binding that declines, has no original to fall back to: it stops the run ([`Stop`]), or with `keep_going` is
 //! logged and answers zero, so one run lists every address the pure step still lacks (after the first stop the
@@ -46,17 +46,17 @@ pub use heap::{ALLOCATOR_HEAP_BASE, ALLOCATOR_HEAP_END};
 pub use image::{app_state, clock, max_time_step, set_app_state, time_keeper, CAR_BYTES, CAR_PTR};
 pub use playback::{step, Playback, ReadTrace, SENTINEL};
 pub(crate) use stand_in::is_ret;
-pub use stand_in::{stand_in, uncovered, StandIn};
+pub use stand_in::{stand_in, StandIn};
 pub(crate) use watch::{Watch, OUTSIDE_ASSISTANCE_EMIT, TYRE_PARTICLES_EMIT, WATCHED};
 pub use watch::{PARTICLE_EVENT_BYTES, TYRE_PARTICLES_BYTES};
 
-/// The return address a host call leaves in its callee's slot; never mapped (`CALL_RET` in `rust_step.py`).
+/// The return address a host call leaves in its callee's slot; never mapped (`CALL_RET` in the retired `rust_step.py`).
 pub const CALL_RET: u32 = 0xfeed_2000;
 
 /// `CPhysics::StepForward`.
 pub const STEP_FORWARD: u32 = 0x5273a0;
 /// `CSignalManager::CMultiSignal1<const CSigCarControl&>::Emit`, on the signal at `[SIGNALS] + EMIT_OFFSET`: the
-/// plugin's playback emits each step's recorded control with it before `StepForward(1)` (`rust_step.py`'s `advance`).
+/// plugin's playback emits each step's recorded control with it before `StepForward(1)` (the retired `rust_step.py`'s `advance`).
 pub const EMIT: u32 = 0x48cd90;
 const EMIT_OFFSET: u32 = 0xc90;
 
@@ -585,7 +585,7 @@ impl Pure {
     }
 
     /// The registers of a call at `sp` (0: below the running binding's frame) on `ecx`: the other registers are the
-    /// caller's entry values, as the emulator's nested run keeps them.
+    /// caller's entry values.
     #[inline(always)]
     fn call_regs(&self, sp: u32, ecx: u32) -> Regs {
         let outer = self.frames.borrow().last().map(|f| f.1).unwrap_or_default().regs();
@@ -627,7 +627,7 @@ impl Pure {
         }
     }
 
-    /// [`Host::call_in_place`] on either host: [`Pure::run_bound`] as [`Host::call_at`] enters it, but the call's words.
+    /// [`Host::call_in_place`]: [`Pure::run_bound`] as [`Host::call_at`] enters it, but the call's words.
     #[inline(always)]
     fn run_in_place(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Option<Called> {
         if WATCHED.contains(&addr) {
@@ -637,11 +637,6 @@ impl Pure {
         let mut regs = self.call_regs(sp, ecx);
         self.raw.u32s_into(regs.esp + 4, &mut regs.stack);
         regs.stack[..args.len()].copy_from_slice(args);
-        // The words the call would write, filled so that a reader of them shows in the drive (the low half: the callee).
-        #[cfg(feature = "residue-audit")]
-        for k in 0..=args.len() as u32 {
-            self.raw.clone().set_u32(regs.esp + 4 * k, 0xffbd_0000 | (addr & 0xffff));
-        }
         Host::ran_direct(self);
         let r = self.run_bound(slot, addr, &regs, self.lend());
         Some(Called { eax: r.eax, st0: r.st0.unwrap_or(f64::NAN) })
@@ -926,14 +921,6 @@ impl std::fmt::Display for Stop {
 /// [`Pure`] as its bindings' host: a call runs as a plain call when it can ([`Pure::call_plain`]), and a skipped call
 /// writes nothing.
 impl Host for Pure {
-    fn call_slot_word(&self) -> Option<u32> {
-        Some(CALL_RET)
-    }
-
-    fn skip_word(&self) -> Option<(u32, bool)> {
-        Some((CALL_RET, false))
-    }
-
     fn entered(&self) -> u64 {
         self.entered.get()
     }
@@ -956,9 +943,9 @@ impl Host for Pure {
         }
     }
 
-    fn query_counter(&self, out: u32) -> Option<u32> {
+    fn query_counter(&self, out: u32) -> u32 {
         self.ran_direct();
-        Some(self.counter(out).eax)
+        self.counter(out).eax
     }
 
     fn call_at(&self, sp: u32, addr: u32, ecx: u32, args: &[u32]) -> Called {

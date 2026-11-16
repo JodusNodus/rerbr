@@ -107,7 +107,7 @@ impl IntegrateHost for Pose<'_> {
     fn emit_state(&mut self, state: &StateSignal) -> Result<(), HostUnavailable> {
         let payload = self.scratch + 0x80;
         self.mem.set_u32(payload, state.owner);
-        crate::fill_residue(self.host, &mut self.mem, payload + 4, 3);
+        crate::fill_residue(&mut self.mem, payload + 4, 3);
         state.position.store(&mut self.mem, payload + 0x10);
         let q = state.orientation;
         for (k, v) in [q.x, q.y, q.z, q.w].into_iter().enumerate() {

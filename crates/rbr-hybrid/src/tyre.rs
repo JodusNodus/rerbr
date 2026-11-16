@@ -482,7 +482,7 @@ fn copy_def_from(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// thiscall `(sig)`: `CMultiSignal1<CSigTyreNoise>::Emit` and the other instances of the template (the tire-particle one),
-/// the physics core's emit with the connections in the emulator; `EMIT` is the instance. A count out of range
+/// the physics core's emit with the connections through the host; `EMIT` is the instance. A count out of range
 /// declines (the original traps).
 pub(crate) fn signal_emit<const EMIT: u32>(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, r.ecx)?;

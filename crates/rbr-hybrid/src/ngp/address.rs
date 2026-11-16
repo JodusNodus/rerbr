@@ -25,7 +25,7 @@ pub fn set_wall_clock(us: Option<u64>) {
 }
 
 /// NGP.dll's base for the runs on this thread while it lives, the outer one restored on drop. Each host (a pure
-/// playback, the emulator) holds its own base and opens a scope around its runs, so boots on several threads, or in
+/// playback) holds its own base and opens a scope around its runs, so boots on several threads, or in
 /// turn on one thread, don't see each other's.
 pub struct Scope(u32);
 

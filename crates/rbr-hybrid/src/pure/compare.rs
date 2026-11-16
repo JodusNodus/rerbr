@@ -1,4 +1,4 @@
-//! The car and wheel words of a recording frame and their compare with a run (`rust_step.py`'s masks).
+//! The car and wheel words of a recording frame and their compare with a run (the retired `rust_step.py`'s masks).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -13,16 +13,16 @@ use super::image::{CAR_BYTES, CAR_PTR};
 /// The car and wheel words of a recording frame.
 pub const FRAME_WORDS: usize = (CAR_BYTES + WHEELS * WHEEL_BYTES) / 4;
 
-/// The car's stale-stack words, rust_step.py's `CAR_STATIC` (byte offsets in the car, the same list): the lane-3 words
+/// The car's stale-stack words, the retired rust_step.py's `CAR_STATIC` (byte offsets in the car, the same list): the lane-3 words
 /// (offset 0xc mod 16) the original's own stale-stack runs or its recording differ at, and
 /// 0x15dc, which `CCar::Vf64x` (0x4e9020) blends from 0x38c's lane 3.
 const STALE_CAR: [usize; 23] = [
     0x1cc, 0x8ec, 0x90c, 0x147c, 0x149c, 0x14bc, 0x14cc, 0x14ec, 0x150c, 0x161c, 0x22c, 0x32c, 0x38c, 0x65c, 0x19c,
     0x20c, 0x2ec, 0x34c, 0x8c, 0x9c, 0x14c, 0x33c, 0x15dc,
 ];
-/// A wheel's stale-stack words, rust_step.py's `STACK_GARBAGE` (the lane-3 words of the wheel's vectors).
+/// A wheel's stale-stack words, the retired rust_step.py's `STACK_GARBAGE` (the lane-3 words of the wheel's vectors).
 const STALE_WHEEL: [usize; 4] = [0x99c, 0x9bc, 0x9dc, 0x73c];
-/// The car's frame-loop words, in rust_step.py's `RECORDING_GARBAGE`. `CCar::Vf28x` (0x4ea020) runs once per rendered
+/// The car's frame-loop words, in the retired rust_step.py's `RECORDING_GARBAGE`. `CCar::Vf28x` (0x4ea020) runs once per rendered
 /// frame, outside the physics step; its drive call (0x508480, write at 0x5084ab) writes car+0x660 and car+0x670, and
 /// its engine call (0x518cf0, write at 0x518d26) writes car+0x814. The direct records show +0x660 and +0x814 changing
 /// together.
@@ -64,7 +64,7 @@ pub fn stale_mask() -> Vec<bool> {
 }
 
 /// `diverge.py`'s `static_mask` over frame words (control excluded): frame artifacts and every word that is ever NaN,
-/// infinite or above 1e20 in the recording. Plus wheel+0x9ac (`rust_step.py`'s `RECORDING_GARBAGE`). The stale-stack
+/// infinite or above 1e20 in the recording. Plus wheel+0x9ac (the retired `rust_step.py`'s `RECORDING_GARBAGE`). The stale-stack
 /// words are [`stale_mask`]'s.
 pub fn static_mask(frames: &[Frame]) -> Vec<bool> {
     let mut mask = vec![false; FRAME_WORDS];

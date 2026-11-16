@@ -25,8 +25,8 @@ pub(crate) fn clear_lanes(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0))
 }
 
-/// thiscall `(sig)`: `E41EngineNoiseSignal::Emit` (0x50ef50), the physics core's emit with the connections in the
-/// emulator. A count out of range declines (the original traps).
+/// thiscall `(sig)`: `E41EngineNoiseSignal::Emit` (0x50ef50), the physics core's emit with the connections through the
+/// host. A count out of range declines (the original traps).
 pub(super) fn emit_noise(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, r.ecx)?;
     signal_emit::emit(&mut ctx.mem, &mut SignalCallees(ctx.host, crate::emit_name(0x50ef50)), r.ecx, r.stack[0]);

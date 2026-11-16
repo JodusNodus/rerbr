@@ -364,8 +364,7 @@ fn apply_packet(ctx: &mut Ctx, r: &Regs, packet: rbr_physics::vcu::layout::Packe
 fn set_commanded_gear(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let (drive, value) = (r.ecx, r.stack[0]);
     let sp = r.esp - 12;
-    let skipped =
-        crate::engine_driveline::is_held(ctx.host, drive) && crate::skip_call(ctx.host, &mut ctx.mem, sp, &[]);
+    let skipped = crate::engine_driveline::is_held(ctx.host, drive) && sp != 0;
     if !skipped {
         let request = rbr_physics::engine_driveline::layout::gear_request_at(&ctx.mem, drive);
         ctx.host.call_at(sp, SET_DIRTY, request, &[]);

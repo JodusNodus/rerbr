@@ -96,11 +96,10 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   `StepForward`'s slot-0x94 (esp-60 of `E38Ops::M_C1A0`, 0x4fc1a0) and slot-0x74. Not audited: `--dispatch
   direct`, other drives.
 - Residue rule (decision, row 15j): a stack word the original reads without anything having written it in the step
-  is `rbr_hybrid::RESIDUE` (0) on the pure host, held and per call, both dispatches (`residue(host)`; the twins
-  compare every byte, so both sides take it); the emulator and the vectors keep the word their stack holds. 0 because
-  a lane of 0.0 makes no NaN, infinity or denormal in lanewise arithmetic. This changes only words that carry
-  garbage. `residue-audit` builds take a NaN (`0xffbadbad`) and log each site's first read: a compared word that
-  depends on a residue word then differs in the trace. Decided words (drive2 attempt 5, aids off, on and `--damage
+  is `rbr_hybrid::RESIDUE` (0), held and per call. 0 because a lane of 0.0 makes no NaN, infinity or denormal in
+  lanewise arithmetic. This changes only words that carry garbage. The `residue-audit` feature (removed 2026-11-16
+  with the host's per-call answers; in git before it) gave the word a NaN (`0xffbadbad`) and logged each site's first
+  read: a compared word that depended on a residue word then differed in the trace. Decided words (drive2 attempt 5, aids off, on and `--damage
   realistic`, traces word by word against the build before and against the audit build):
   - `CPassenger::Step`'s walk point, lane 3 (`physics_core/passenger_step.rs`): `MB560` copies it to car `+0x8ec`
     (`STALE_CAR`), which is 0 in the recording too, so the word now compares equal; no other word changes.

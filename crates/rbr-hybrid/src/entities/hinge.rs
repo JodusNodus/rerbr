@@ -88,7 +88,7 @@ impl hinge_advance::Calls for F950Host<'_> {
     }
 
     fn emit_state(&mut self, signal: u32, sig: u32) -> u32 {
-        crate::fill_residue(self.host, &mut self.mem, sig + 4, 3);
+        crate::fill_residue(&mut self.mem, sig + 4, 3);
         self.host.call_at(self.frame - 0x48, STATE_EMIT, signal, &[sig]).eax
     }
 }
@@ -177,7 +177,7 @@ struct SlipHost<'a> {
 
 impl SlipCalls for SlipHost<'_> {
     fn copy_vector(&mut self, to: u32, from: u32) {
-        crate::collision::copy_vec4(self.host, &mut self.mem, self.frame - 0x78, to, from);
+        crate::collision::copy_vec4(self.host, &mut self.mem, to, from);
     }
 
     fn carry(&mut self, receiver: u32, a: u32, b: u32, out: u32) -> [f32; 3] {
@@ -497,7 +497,7 @@ pub(super) fn sim_f350_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 0x20))
 }
 
-/// The original callees of `SimDA60` and `SimFD00`, in the emulator, at the stack pointers the layout gives.
+/// The original callees of `SimDA60` and `SimFD00`, through the host, at the stack pointers the layout gives.
 struct DetachHost<'a>(&'a dyn Host);
 
 impl layout::PoseToWorldCalls for DetachHost<'_> {

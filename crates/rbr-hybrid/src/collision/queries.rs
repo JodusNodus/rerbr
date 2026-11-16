@@ -9,8 +9,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::store::Raw;
 
 use super::{
-    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_CLEAR, RAY_SEEDS, SAMPLE_INDEXED,
-    SAMPLE_TABLE,
+    Callees, BODY_GRID, E09_VEC4_CLEAR, E45_CELL_QUERY, ENTITY_VF118, NODE_OF, RAY_SEEDS, SAMPLE_INDEXED, SAMPLE_TABLE,
 };
 use crate::entities::{Op, MB560};
 use crate::rigid_body::OPERATOR_NEW;
@@ -75,10 +74,9 @@ pub(super) fn ray_seeds(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0))
 }
 
-/// `E38RaySeeds` on the ray object `ray` as a call at `sp` (0: placed by the host) makes it: direct on the pure host
-/// ([`Host::call_slot_word`]), counted as a run ([`Host::ran_direct`]), without the call's words or its `Clear`
-/// calls' (none is read after them: residue audit, notes/physics.md "Store seam"). Through the host elsewhere.
-pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
+/// `E38RaySeeds` on the ray object `ray` as a call makes it, counted as a run ([`Host::ran_direct`]), without the call's
+/// words or its `Clear` calls' (none is read after them: residue audit, notes/physics.md "Store seam").
+pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, ray: u32) {
     /// The two vectors the seeds clear, cleared after them (the words do not overlap).
     struct Clears([u32; 2], usize);
     impl RayHost for Clears {
@@ -88,11 +86,6 @@ pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
             at
         }
     }
-    if host.call_slot_word().is_none() {
-        host.call_at(sp, RAY_SEEDS, ray, &[]);
-        return;
-    }
-    crate::skip_unwritten(host, mem, sp, &[]);
     host.ran_direct();
     let mut clears = Clears([0; 2], 0);
     super::on_grids(host, mem, &[ray], |s| layout::ray_seeds(&mut clears, s, ray));
@@ -101,13 +94,8 @@ pub(crate) fn ray_seeds_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
     }
 }
 
-/// `E38RayClear` on the ray object `ray` as a call at `sp` makes it, direct on the pure host as [`ray_seeds_at`].
-pub(crate) fn ray_clear_at(host: &dyn Host, mem: &mut Mem, sp: u32, ray: u32) {
-    if host.call_slot_word().is_none() {
-        host.call_at(sp, RAY_CLEAR, ray, &[]);
-        return;
-    }
-    crate::skip_unwritten(host, mem, sp, &[]);
+/// `E38RayClear` on the ray object `ray` as a call makes it, as [`ray_seeds_at`].
+pub(crate) fn ray_clear_at(host: &dyn Host, mem: &mut Mem, ray: u32) {
     host.ran_direct();
     layout::ray_clear(mem, ray);
 }
@@ -123,7 +111,7 @@ struct RaySeedCalls<'a> {
 impl RayHost for RaySeedCalls<'_> {
     fn vec4_clear(&mut self, at: u32) -> u32 {
         let sp = (self.esp - 0x1000) & !0xf;
-        if crate::skip_call(self.host, &mut self.mem, sp, &[]) {
+        if sp != 0 {
             clear_vec4().store(&mut self.mem, at);
             return at;
         }
@@ -190,7 +178,7 @@ pub(super) fn system_vf00(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0xc))
 }
 
-/// The lookups of `CCollisionSystem::Vf00` in the emulator, each at its entry stack pointer in the frame.
+/// The lookups of `CCollisionSystem::Vf00` through the host, each at its entry stack pointer in the frame.
 struct SystemCallsAt<'a> {
     host: &'a dyn Host,
     frame: layout::SystemFrame,
@@ -248,7 +236,7 @@ impl GridSyncHost for Callees<'_> {
     }
 
     fn copy_vec4(&mut self, mem: &mut Mem, dst: u32, src: u32) {
-        super::copy_vec4(self.0, mem, 0, dst, src);
+        super::copy_vec4(self.0, mem, dst, src);
     }
 }
 
@@ -262,7 +250,7 @@ impl Callees<'_> {
     /// `E45_M40C0` over the box `lo`..`hi` to `cells`: the held table's cells as values, written here, else the call.
     fn cell_query(&mut self, store: &mut CollisionView, sp: u32, lo: u32, hi: u32, cells: u32) {
         let mem = store.mem_mut();
-        match super::box_cells_direct(self.0, mem, sp, lo, hi, cells) {
+        match super::box_cells_direct(self.0, mem, lo, hi) {
             Some(found) => rbr_physics::physics_core::layout::set_cells(mem, cells, found),
             None => {
                 super::call_grid(self.0, sp, E45_CELL_QUERY, 0, &[lo, hi, cells]);
@@ -288,7 +276,7 @@ impl CollectHost<CollisionView<'_>> for Callees<'_> {
         let mem = store.mem_mut();
         // The getters every body in the cells is asked (`CBody::Vf118`, `E43PairWalk::MFc00`) are read here on the
         // pure host.
-        if matches!(target, BODY_GRID | ENTITY_VF118 | NODE_OF) && crate::skip_call(self.0, mem, sp, &args[1..]) {
+        if matches!(target, BODY_GRID | ENTITY_VF118 | NODE_OF) && sp != 0 {
             return match target {
                 BODY_GRID => Body::new(args[0]).grid(mem),
                 ENTITY_VF118 => 0,
@@ -313,8 +301,8 @@ impl CollectHost<CollisionView<'_>> for Callees<'_> {
         self.cell_query(store, sp, lo, hi, cells);
     }
 
-    fn length(&mut self, store: &CollisionView, sp: u32, vector: u32) -> f32 {
-        super::length(self.0, store.mem(), sp, vector)
+    fn length(&mut self, store: &CollisionView, _sp: u32, vector: u32) -> f32 {
+        super::length(self.0, store.mem(), vector)
     }
 }
 

@@ -52,7 +52,6 @@ use vectors::{
 
 pub(crate) const RAY_CLEAR: u32 = 0x4f6740;
 pub(crate) const RAY_SEEDS: u32 = 0x4f6550;
-pub(crate) const CE36_SUB_BLOCK_INIT: u32 = 0x4f3e80;
 pub(crate) const E36_ALLOC_EVENT: u32 = 0x4f4f10;
 pub(crate) const COLL_EVENT_INIT_FULL: u32 = 0x4f50e0;
 
@@ -212,7 +211,6 @@ pub(crate) fn clear_row_body(host: &dyn Host, mem: &mut Mem, rows: u32) {
     }
 }
 
-pub(crate) const CSTATE_UNKA44: u32 = 0x4e33e0;
 const E37_WALL_SYNC: u32 = 0x4f7090;
 const E09_VEC4_CLEAR: u32 = 0x465d80;
 pub(crate) const E01_VEC4_COPY_FROM: u32 = 0x43c5b0;
@@ -222,7 +220,7 @@ pub(crate) const E45_CELL_QUERY: u32 = 0x5240c0;
 pub(crate) const FLOAT3_LENGTH: u32 = 0x473b30;
 pub(crate) const BODY_GRID: u32 = 0x4e11f0;
 
-/// The original callees that E36Collect calls, run in the emulator. The virtual slots are thiscall on their owner, the
+/// The original callees that E36Collect calls, run through the host. The virtual slots are thiscall on their owner, the
 /// E45 query is cdecl, and CFloat3::Length returns its result in st0.
 struct Callees<'a>(&'a dyn Host);
 

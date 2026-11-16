@@ -80,7 +80,7 @@ fn exclusion_test_at(calls: &mut ParentCalls, mem: &Mem, this: u32, other: u32) 
 /// (`exclusion_test_run`) would, the call's words written as the call writes them; `None` (nothing written) on a host
 /// that runs the original.
 pub(crate) fn exclusion_test_direct(host: &dyn Host, mem: &mut Mem, sp: u32, this: u32, other: u32) -> Option<u32> {
-    if !crate::skip_call(host, mem, sp, &[other]) {
+    if sp == 0 {
         return None;
     }
     let mut calls = ParentCalls { mem: mem.clone(), host, sp: sp - 0x10 };
@@ -221,7 +221,7 @@ pub(super) fn ground_vf_e8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(eax, 0x14))
 }
 
-/// The calls of `CGround::VfE8` in the emulator, each at its entry stack pointer in the frame.
+/// The calls of `CGround::VfE8` through the host, each at its entry stack pointer in the frame.
 struct ProbeCallsAt<'a> {
     mem: Mem,
     host: &'a dyn Host,

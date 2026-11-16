@@ -46,7 +46,7 @@ pub(crate) fn e43vf138(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(e, 0x18))
 }
 
-/// The original callees of `E43Vf128`, in the emulator, at the original's stack: the two transforms (`S30`, the body's
+/// The original callees of `E43Vf128`, through the host, at the original's stack: the two transforms (`S30`, the body's
 /// pose, and `MB560`), then the tail's (`layout::impulse_tail`). `frame` is the original's esp after its prologue.
 struct ImpulseCalls<'a> {
     mem: Mem,

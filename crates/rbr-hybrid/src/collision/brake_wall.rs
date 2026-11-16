@@ -20,7 +20,7 @@ pub(super) fn brake_wall_query_point(ctx: &mut Ctx, r: &Regs) -> Result<Return, 
 }
 
 /// thiscall `(sig)`: `CMultiSignal1<const CSigCarBrakeWallPenetration&>::Emit` (0x4e4490), the signal template's emit
-/// with the connections in the emulator (as `E41EngineNoiseSignal::Emit`). A count out of range declines (the original
+/// with the connections through the host (as `E41EngineNoiseSignal::Emit`). A count out of range declines (the original
 /// traps).
 pub(super) fn brake_wall_emit(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     crate::decline_emit_trap(&ctx.mem, r.ecx)?;

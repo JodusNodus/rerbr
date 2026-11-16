@@ -9,23 +9,22 @@ use rbr_physics::store::Raw;
 
 use super::slots::vslot;
 use super::UNLINK;
-use crate::pure::QUERY_PERFORMANCE_COUNTER;
 use crate::rigid_body::{VF_DX, VF_EX};
 use crate::{Ctx, Decline, Host, Regs, Return};
 
-/// The counter: the pure host's without a call ([`Host::query_counter`]), else through the import table.
-struct Timer<'a>(&'a dyn Host, u32);
+/// The counter: the pure host's without a call ([`Host::query_counter`]).
+struct Timer<'a>(&'a dyn Host);
 
 impl ProfHost for Timer<'_> {
     fn counter(&mut self, at: u32) -> u32 {
-        self.0.query_counter(at).unwrap_or_else(|| self.0.call(self.1, 0, &[at]).eax)
+        self.0.query_counter(at)
     }
 }
 
 /// fastcall `(handle)`: `ProfExit`, which ends in `E46_ProfCore5b0`; eax is the start's high word.
 pub(super) fn prof_exit(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     // The counter goes to the original's 8-byte local below the entry esp.
-    let mut timer = Timer(ctx.host, ctx.mem.u32(QUERY_PERFORMANCE_COUNTER));
+    let mut timer = Timer(ctx.host);
     let eax = layout::prof_exit(&mut timer, &mut ctx.mem, r.ecx, r.esp - 8);
     Ok(Return::void(eax, 0))
 }
@@ -34,7 +33,7 @@ pub(super) fn prof_exit(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// (ecx the channel, the sample and the name on the stack), the body, then `ProfExit(chan)`. `local` is the 8-byte word
 /// the counter goes to (below `ProfExit`'s entry). Returns the eax `ProfExit` leaves, which the function's `ret` keeps.
 pub(crate) fn scope(ctx: &mut Ctx, chan: u32, sample: u32, name: u32, local: u32, body: impl FnOnce(&mut Ctx)) -> u32 {
-    let mut timer = Timer(ctx.host, ctx.mem.u32(QUERY_PERFORMANCE_COUNTER));
+    let mut timer = Timer(ctx.host);
     layout::prof_chan_enter(&mut timer, &mut ctx.mem, chan, sample, name, 0);
     body(ctx);
     layout::prof_exit(&mut timer, &mut ctx.mem, chan, local)
@@ -250,14 +249,14 @@ impl EnterHost for Timer<'_> {
 
 /// thiscall `()`: `E46ProfSample::EnterName(name)`, the sample enter (eax is the counter call's).
 pub(super) fn enter_name(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut timer = Timer(ctx.host, ctx.mem.u32(QUERY_PERFORMANCE_COUNTER));
+    let mut timer = Timer(ctx.host);
     let eax = layout::prof_enter(&mut timer, &mut ctx.mem, r.ecx, r.stack[0]);
     Ok(Return::void(eax, 4))
 }
 
 /// thiscall `(ptr, name, flag)`: `E46ProfChan::Enter`, the channel's sample enter.
 pub(super) fn chan_enter(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let mut timer = Timer(ctx.host, ctx.mem.u32(QUERY_PERFORMANCE_COUNTER));
+    let mut timer = Timer(ctx.host);
     let [ptr, name, flag, ..] = r.stack;
     let eax = layout::prof_chan_enter(&mut timer, &mut ctx.mem, r.ecx, ptr, name, flag);
     Ok(Return::void(eax, 12))
