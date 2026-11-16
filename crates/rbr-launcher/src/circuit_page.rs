@@ -166,7 +166,7 @@ impl Form {
             let tip = "Free practice has no end: drive until you stop. A number of laps ends the session after the \
                        last, with the total time. Your best lap is kept either way";
             ui.label("Length").on_hover_text(tip);
-            combo(ui, "circuit laps", FIELD, &mut self.circuit.laps, &LAPS, |laps| laps_label(laps));
+            combo(ui, "circuit laps", FIELD, &mut self.circuit.laps, &LAPS, laps_label);
             ui.end_row();
             self.damage_row(ui);
         });
