@@ -218,7 +218,6 @@ pub fn top_line(
     focus: &mut bool,
     random: &mut bool,
 ) -> bool {
-    let id = search_id();
     let mut back = false;
     ui.horizontal(|ui| {
         let button = egui::Button::new(egui::RichText::new("⏴ Back").size(14.5)).min_size(egui::vec2(0.0, 30.0));
@@ -226,25 +225,31 @@ pub fn top_line(
         ui.add_space(6.0);
         ui.label(egui::RichText::new(title).size(20.0).strong());
         ui.add_space(18.0);
-        // Typing anywhere searches.
-        let typing = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_))));
-        if (std::mem::take(focus) || typing) && ui.memory(|m| m.focused()) != Some(id) {
-            ui.memory_mut(|m| m.request_focus(id));
-        }
-        ui.add(
-            egui::TextEdit::singleline(query)
-                .id(id)
-                .hint_text(hint)
-                .desired_width(470.0)
-                .min_size(egui::vec2(0.0, 30.0))
-                .align(egui::Align2::LEFT_CENTER),
-        );
+        search_box(ui, hint, query, focus);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let button = egui::Button::new(egui::RichText::new("🎲 Random").size(14.5)).min_size(egui::vec2(0.0, 30.0));
             *random = ui.add(button).on_hover_text("A random pick of the list as filtered").clicked();
         });
     });
     back
+}
+
+/// The search box: it takes focus when `focus` is set, and when the player types with nothing else focused on it.
+pub fn search_box(ui: &mut egui::Ui, hint: &str, query: &mut String, focus: &mut bool) {
+    let id = search_id();
+    // Typing anywhere searches.
+    let typing = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_))));
+    if (std::mem::take(focus) || typing) && ui.memory(|m| m.focused()) != Some(id) {
+        ui.memory_mut(|m| m.request_focus(id));
+    }
+    ui.add(
+        egui::TextEdit::singleline(query)
+            .id(id)
+            .hint_text(hint)
+            .desired_width(470.0)
+            .min_size(egui::vec2(0.0, 30.0))
+            .align(egui::Align2::LEFT_CENTER),
+    );
 }
 
 /// Takes the browser's keys and moves the highlight with the arrow and page keys; the keys.
@@ -301,6 +306,21 @@ pub fn list_rows(
     nav: &mut Nav,
     id: &'static str,
     lines: &[Line],
+    add_contents: impl FnMut(&mut egui::Ui, &mut Nav, std::ops::Range<usize>),
+) {
+    list_rows_with(ui, nav, id, lines, KEYS, add_contents);
+}
+
+/// The keys line under a browser's list.
+pub(crate) const KEYS: &str = "⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back";
+
+/// [`list_rows`] with its own `keys` line.
+pub fn list_rows_with(
+    ui: &mut egui::Ui,
+    nav: &mut Nav,
+    id: &'static str,
+    lines: &[Line],
+    keys: &str,
     mut add_contents: impl FnMut(&mut egui::Ui, &mut Nav, std::ops::Range<usize>),
 ) {
     let height = (ui.available_height() - 34.0).max(ROW * 3.0);
@@ -311,7 +331,7 @@ pub fn list_rows(
     });
     nav.scrolled(&output.inner);
     ui.add_space(10.0);
-    ui.label(egui::RichText::new("⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back").size(12.0).color(DIM));
+    ui.label(egui::RichText::new(keys).size(12.0).color(DIM));
 }
 
 /// A list row's slot: its rect with its click, and the star's click. Not Tab stops: the arrows move through the list.

@@ -223,6 +223,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   pack is the folder holding `common.lsp`; folders beside it are dropped (the Fiesta Rally2 and i20 N Rally2 zips
   carry a stray `<pack> - rev1/`). The original eight (`cat=Original`) are the 2004 retail physics, not NGP's.
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
+- Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back/Random, Esc does nothing) over every map, circuits too; extra collections "Added by you" (folders in `<files>/tracks/`) and "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally stage records are in the game's saves, not shown). "Drive this stage" sets the Rally (or Circuit) stage and opens that page. Remove… deletes only a folder directly in `tracks/` (`remove_added`), then drops the map and relists; records (`lap-records.ini`, `GhostCars/*_<map>.ghc`, saves) stay.
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
 - Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or any saved setup of the car,

@@ -524,7 +524,7 @@ impl Form {
     }
 
     /// Makes map `index` of the catalog the stage, and the most recent pick.
-    fn choose_stage(&mut self, index: usize) {
+    pub(crate) fn choose_stage(&mut self, index: usize) {
         self.map = index;
         browser::remember(&mut self.recent_maps, self.catalog.maps[index].number);
         self.validate_weather_row();

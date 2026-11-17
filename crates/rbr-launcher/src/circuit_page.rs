@@ -310,7 +310,7 @@ impl Form {
     }
 
     /// Makes the map with `number` the circuit, and the most recent pick.
-    fn choose_circuit(&mut self, number: u32) {
+    pub(crate) fn choose_circuit(&mut self, number: u32) {
         self.circuit.map = Some(number);
         browser::remember(&mut self.recent_maps, number);
     }
