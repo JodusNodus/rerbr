@@ -341,6 +341,8 @@ pub struct Env<'a> {
     pub favourites: &'a [String],
     pub recent: &'a [String],
     pub previews: &'a mut Previews,
+    /// The skin chosen for each car, and the import of one.
+    pub skins: &'a mut crate::car_skins::Skins,
     /// The game folder the cars' models are read from.
     pub root: &'a str,
 }
@@ -645,7 +647,9 @@ impl CarBrowser {
         ui.label(RichText::new(&row.title).size(22.0).strong());
         ui.label(RichText::new(&row.group).color(GREY));
         ui.add_space(6.0);
-        env.previews.car_ui(ui, car, env.root);
+        env.previews.car_ui(ui, car, env.skins.choice(car), env.root);
+        ui.add_space(6.0);
+        env.skins.ui(ui, car);
         ui.add_space(6.0);
         egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
             ui.label(RichText::new("Source").color(GREY));

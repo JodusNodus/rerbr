@@ -6,8 +6,8 @@
 //! file. Names are DOS paths matched ignoring case, as in [`cars::resolve`]. See `notes/formats.md` "Shaders and vertex layouts".
 //!
 //! A car from outside the install (an RSF car, [`crate::rsf`]) takes one `Cars.ini` slot ([`Data::with_car`]): its
-//! entry replaces the slot's in [`Data::car_slots`], and `Cars\` paths the install lacks resolve under its root. Its
-//! skin ([`Data::with_skin`]) holds files over the model folder's.
+//! entry replaces the slot's in [`Data::car_slots`], and `Cars\` paths the install lacks resolve under its root. A
+//! car's skin ([`Data::with_skin`], any car's) holds files over its model folder's.
 
 use crate::cars;
 use std::path::{Path, PathBuf};
@@ -18,8 +18,8 @@ pub struct Data {
     install: PathBuf,
     patch: Option<PathBuf>,
     car: Option<(PathBuf, cars::CarEntry)>,
-    /// The car's skin folder (`Cars/<model>/skins/<skin>/`).
-    skin: Option<PathBuf>,
+    /// The model folder a skin dresses (`Cars\\<model>`) and the skin's folder.
+    skin: Option<(String, PathBuf)>,
 }
 
 impl Data {
@@ -32,10 +32,15 @@ impl Data {
         Data { car: Some((root, entry)), ..self }
     }
 
-    /// The data with the [`Data::with_car`] car's skin at `dir`: a file the skin holds at the same path below it
-    /// (`textures/<name>.dds`, `<model>_shader_settings_clear.ini`) replaces the model folder's.
-    pub fn with_skin(self, dir: PathBuf) -> Data {
-        Data { skin: Some(dir), ..self }
+    /// The data with the skin at `dir` over model folder `Cars\<model>`: a file the skin holds at the same path below
+    /// it (`textures/<name>.dds`, `<model>_shader_settings_clear.ini`) replaces the model folder's.
+    pub fn with_skin(self, model: &str, dir: PathBuf) -> Data {
+        Data { skin: Some((format!("Cars\\{model}"), dir)), ..self }
+    }
+
+    /// The data without a skin: the model's own textures.
+    pub fn without_skin(self) -> Data {
+        Data { skin: None, ..self }
     }
 
     /// `Cars.ini`'s `entries` with [`Data::with_car`]'s entry in its slot.
@@ -86,13 +91,12 @@ impl Data {
         self.resolve("Root\\audio.dat").or_else(|| self.resolve("Root\\audio.dat.disabled"))
     }
 
-    /// The skin's file for `dos_path`, a path in the car's model folder.
+    /// The skin's file for `dos_path`, a path in the skinned model folder.
     fn skin_file(&self, dos_path: &str) -> Option<PathBuf> {
-        let (skin, (_, car)) = (self.skin.as_deref()?, self.car.as_ref()?);
-        let model = components(&car.file_name);
-        let folder = &model[..model.len().checked_sub(1)?];
+        let (folder, skin) = self.skin.as_ref()?;
+        let folder = components(folder);
         let path = components(dos_path);
-        let inside = path.len() > folder.len() && path.iter().zip(folder).all(|(a, b)| a.eq_ignore_ascii_case(b));
+        let inside = path.len() > folder.len() && path.iter().zip(&folder).all(|(a, b)| a.eq_ignore_ascii_case(b));
         inside.then(|| cars::resolve(skin, &path[folder.len()..].join("\\")))?
     }
 }
@@ -155,6 +159,16 @@ mod tests {
     }
 
     #[test]
+    fn a_retail_car_takes_a_skin_too() {
+        let install = tree("skin-retail", &[("Cars/IMPREZA03/Textures/body.dds", "car")]);
+        let skin = tree("skin-retail-dir", &[("textures/body.dds", "skin")]);
+        let data = Data::new(&install, None).with_skin("impreza03", skin.clone());
+        let read = |data: &Data| std::fs::read_to_string(data.resolve("Cars\\IMPREZA03\\Textures\\body.dds").unwrap());
+        assert_eq!(read(&data).unwrap(), "skin");
+        assert_eq!(read(&data.without_skin()).unwrap(), "car");
+    }
+
+    #[test]
     fn the_skin_file_wins_in_the_model_folder() {
         let install = tree("skin-install", &[("Cars/Cars.ini", "")]);
         let root = tree(
@@ -169,7 +183,7 @@ mod tests {
         );
         let entry = crate::car_pack::model_entry("Fiesta", "fiesta");
         let data = Data::new(&install, None).with_car(root.clone(), entry);
-        let skinned = data.clone().with_skin(root.join("Cars/Fiesta/skins/Monte"));
+        let skinned = data.clone().with_skin("Fiesta", root.join("Cars/Fiesta/skins/Monte"));
         let read = |data: &Data, path: &str| std::fs::read_to_string(data.resolve(path).expect(path)).unwrap();
         assert_eq!(read(&data, "Cars\\Fiesta\\Textures\\body.dds"), "car");
         assert_eq!(read(&skinned, "Cars\\fiesta\\Textures\\BODY.dds"), "skin");

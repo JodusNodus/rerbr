@@ -667,7 +667,7 @@ pub fn select(data: Data, key: &str, root: Option<&Path>) -> Result<Selected, St
     let retail = cars::parse(&String::from_utf8_lossy(&text)).map_err(|e| e.to_string())?;
     let model = install.model_entry(&car, &retail)?;
     let resolved =
-        car_pack::resolve(data, pack.clone(), model.clone(), install.root.clone(), install.audio_bank(&car))?;
+        car_pack::resolve(data, pack.clone(), model.clone(), install.root.clone(), install.audio_bank(&car), None)?;
     Ok(Selected {
         root: install.root.clone(),
         car,

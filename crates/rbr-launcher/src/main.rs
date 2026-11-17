@@ -130,6 +130,7 @@ mod btb;
 mod capture;
 mod car_browser;
 mod car_packs;
+mod car_skins;
 mod catalog;
 mod championship_page;
 mod circuit_page;
@@ -465,6 +466,8 @@ struct Form {
     recent_maps: Vec<u32>,
     favourite_cars: Vec<String>,
     favourite_maps: Vec<u32>,
+    /// The skin chosen for each car (`car_skins`), and the skin import running or its result.
+    skins: car_skins::Skins,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
     /// The Settings page's UDP telemetry field (`[telemetry]`'s `udp`, `rbr-standalone --telemetry-udp`): sent only

@@ -256,6 +256,9 @@ fn run() -> Result<(), String> {
         args.car.get_or_insert_with(|| resolved.folder().to_owned());
         fmod_bank = resolved.bank;
         data = resolved.data;
+    } else if let (Some(rbr_formats::car_pack::Skin::Dir(dir)), Some(car)) = (&args.pack_car.skin, &args.car) {
+        // A retail car's skin (a pack car's went in with `resolve`).
+        data = data.with_skin(car, dir.clone());
     }
     args.ffb.rotation = args.ffb.rotation_for(args.car_lock);
     if let Some(dir) = &args.perf_log {

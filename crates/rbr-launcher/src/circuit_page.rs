@@ -228,7 +228,7 @@ impl Form {
             ui.vertical(|ui| {
                 let root = self.game_root();
                 if let Some(car) = self.catalog.cars.get(self.car) {
-                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &root);
+                    self.previews.ui(ui, &self.catalog.maps[self.map], car, self.skins.choice(car), &root);
                 }
                 ui.add_space(12.0);
                 self.best_lap_card(ui);

@@ -185,6 +185,15 @@ pub fn selected_skin(root: &Path, folder: &str) -> Option<(String, PathBuf)> {
     dir.is_dir().then_some((skin, dir))
 }
 
+/// The skin a car is drawn with, chosen over RSF's selection (`--car-skin`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Skin {
+    /// The model's own textures (`--car-skin none`), whatever `.rsfconfig` selects.
+    Original,
+    /// The skin's folder: its `textures\` and settings over the model folder's.
+    Dir(PathBuf),
+}
+
 /// Whether `bytes` start like an RSF-protected file (`01 a0 00 00`, `.ini`s `01 a1 00 00`; lead survey of the RSF
 /// stages). We never decrypt them: a car with one is unloadable.
 pub fn encrypted(bytes: &[u8]) -> bool {
@@ -204,6 +213,8 @@ pub struct Flags {
     pub bank: Option<PathBuf>,
     /// The key its setups, camera nudges, FFB sensitivities and ghosts are saved under.
     pub key: Option<String>,
+    /// The skin chosen for the car, a retail car's too: none takes the pack car's from `.rsfconfig`, if any.
+    pub skin: Option<Skin>,
 }
 
 impl Flags {
@@ -214,6 +225,9 @@ impl Flags {
             "--car-model" => self.model = Some(PathBuf::from(value)),
             "--car-bank" => self.bank = Some(PathBuf::from(value)),
             "--car-key" => self.key = Some(value.to_owned()),
+            "--car-skin" => {
+                self.skin = Some(if value == "none" { Skin::Original } else { Skin::Dir(PathBuf::from(value)) })
+            }
             _ => return false,
         }
         true
@@ -241,7 +255,7 @@ impl Flags {
         let pack = self.pack.as_deref().ok_or("--car-pack needs --car-model")?;
         let model = self.model.as_deref().ok_or("--car-pack needs --car-model")?;
         let (root, entry) = model_of(model)?;
-        resolve(data, Pack::open(pack)?, Model { entry, fallback: None }, root, self.bank.clone())
+        resolve(data, Pack::open(pack)?, Model { entry, fallback: None }, root, self.bank.clone(), self.skin.clone())
     }
 
     /// These flags as arguments (the launcher's command, `rbr-sound`'s standalone): the pack, the model, the bank
@@ -259,6 +273,11 @@ impl Flags {
         }
         if let Some(key) = &self.key {
             args.extend(["--car-key".into(), key.clone()]);
+        }
+        match &self.skin {
+            Some(Skin::Original) => args.extend(["--car-skin".into(), "none".into()]),
+            Some(Skin::Dir(dir)) => args.extend(["--car-skin".into(), dir.display().to_string()]),
+            None => {}
         }
         args
     }
@@ -299,22 +318,26 @@ impl Resolved {
 }
 
 /// What a race loads for a pack car: the data with `model` in [`SLOT`] under `model_root` (where its `Cars\` files
-/// resolve), the selected skin over it, and `bank` with its tyres.
+/// resolve), the `chosen` skin over it (else `.rsfconfig`'s), and `bank` with its tyres.
 pub fn resolve(
     data: Data,
     pack: Pack,
     model: Model,
     model_root: PathBuf,
     bank: Option<PathBuf>,
+    chosen: Option<Skin>,
 ) -> Result<Resolved, String> {
     let mut data = data.with_car(model_root.clone(), model.entry.clone());
     let folder = model.entry.file_name.split(['\\', '/']).rev().nth(1).unwrap_or_default();
-    let skin = match model.fallback {
-        None => selected_skin(&model_root, folder),
-        Some(_) => None,
+    let skin = match (&model.fallback, chosen) {
+        (Some(_), _) | (None, Some(Skin::Original)) => None,
+        (None, Some(Skin::Dir(dir))) => {
+            Some((dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), dir))
+        }
+        (None, None) => selected_skin(&model_root, folder),
     };
     if let Some((_, dir)) = &skin {
-        data = data.with_skin(dir.clone());
+        data = data.with_skin(folder, dir.clone());
     }
     Ok(Resolved { pack, model, skin: skin.map(|(name, _)| name), data, bank, tyre_brand: "pirelli" })
 }
@@ -381,7 +404,8 @@ mod tests {
         std::fs::create_dir_all(&pack).unwrap();
         std::fs::create_dir_all(model.parent().unwrap()).unwrap();
         std::fs::write(&model, [0u8; 4]).unwrap();
-        let flags = Flags { pack: Some(pack), model: Some(model), bank: Some(dir.join("evo.bank")), key: None };
+        let flags =
+            Flags { pack: Some(pack), model: Some(model), bank: Some(dir.join("evo.bank")), key: None, skin: None };
         let resolved = flags.resolve(Data::new(&dir, None)).unwrap();
         assert_eq!(resolved.model.entry.index, SLOT as usize);
         assert_eq!(resolved.folder(), "evo");
@@ -389,6 +413,41 @@ mod tests {
         assert_eq!(resolved.data.install(), dir);
         assert!(resolved.data.car_slots(vec![]).iter().any(|e| e.file_name == "Cars\\evo\\evo.sgc"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_chosen_skin_wins_over_rsfconfigs() {
+        let dir = std::env::temp_dir().join(format!("car-pack-skin-{}", std::process::id()));
+        let pack = dir.join("rsfdata").join("cars").join("evo");
+        let model = dir.join("Cars").join("evo").join("evo.sgc");
+        let files = [
+            ("Cars/evo/Textures/body.dds", "own"),
+            ("Cars/evo/.rsfconfig", "[skin]\nfolder = Red\n"),
+            ("Cars/evo/skins/Red/textures/body.dds", "red"),
+            ("Cars/evo/skins/Blue/textures/body.dds", "blue"),
+        ];
+        std::fs::create_dir_all(&pack).unwrap();
+        for (path, text) in files {
+            std::fs::create_dir_all(dir.join(path).parent().unwrap()).unwrap();
+            std::fs::write(dir.join(path), text).unwrap();
+        }
+        let body = |skin: Option<Skin>| {
+            let flags = Flags { pack: Some(pack.clone()), model: Some(model.clone()), skin, ..Flags::default() };
+            let resolved = flags.resolve(Data::new(&dir, None)).unwrap();
+            let file = resolved.data.resolve("Cars\\evo\\Textures\\body.dds").unwrap();
+            (resolved.skin, std::fs::read_to_string(file).unwrap())
+        };
+        assert_eq!(body(None), (Some("Red".into()), "red".into()));
+        assert_eq!(body(Some(Skin::Dir(dir.join("Cars/evo/skins/Blue")))), (Some("Blue".into()), "blue".into()));
+        assert_eq!(body(Some(Skin::Original)), (None, "own".into()));
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let mut flags = Flags::default();
+        assert!(flags.take("--car-skin", "none") && flags.take("--car-skin", "/s/Blue"));
+        assert_eq!(flags.argv(), ["--car-skin", "/s/Blue"]);
+        flags.skin = Some(Skin::Original);
+        assert_eq!(flags.argv(), ["--car-skin", "none"]);
+        assert_eq!(flags.check(false), Ok(()));
     }
 
     #[test]

@@ -189,6 +189,7 @@ impl Form {
             recent_maps: settings.recent_maps.clone(),
             favourite_cars: settings.favourite_cars.clone(),
             favourite_maps: settings.favourite_maps.clone(),
+            skins: crate::car_skins::Skins::new(home.clone(), settings.car_skins.clone()),
             options,
             rand: CrtRand::srand(now.as_secs() as u32),
             weather_row,
@@ -326,6 +327,7 @@ impl Form {
             recent_maps: self.recent_maps.clone(),
             favourite_cars: self.favourite_cars.clone(),
             favourite_maps: self.favourite_maps.clone(),
+            car_skins: self.skins.chosen.clone(),
             stage_browser: self.stage_browser.state(),
             car_browser: self.car_browser.state(),
             weather: Some(match &self.weather_row {

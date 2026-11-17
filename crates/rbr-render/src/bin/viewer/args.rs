@@ -1046,6 +1046,7 @@ mod tests {
                 model: Some(PathBuf::from("/r/Cars/evo/evo.sgc")),
                 bank: Some(PathBuf::from("/r/b.bank")),
                 key: Some("k".into()),
+                skin: None,
             }
         );
         assert!(parse("--car-pack /p").is_err());
