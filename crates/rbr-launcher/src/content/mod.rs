@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use crate::job::Report;
+use crate::pages::Page;
 use kind::{Ctx, Found, Item, Kind, Known};
 use source::Source;
 
@@ -66,10 +67,26 @@ pub fn detect(src: &dyn Source) -> Vec<(usize, Found)> {
 pub enum Goto {
     /// The stage picker, on the stage folder.
     Stage(String),
-    /// The Settings page.
+    /// Content > Cars.
+    Cars,
+    /// Content > Co-drivers.
+    Codrivers,
+    /// Settings > General.
     Settings,
-    /// The Settings page, with the disc setup open on this disc.
+    /// Settings > General, with the disc setup open on this disc.
     Disc(PathBuf),
+}
+
+impl Goto {
+    /// The page the Open button goes to, and its label (`None`: the stage picker's own way).
+    pub fn page(&self) -> Option<(Page, &'static str)> {
+        match self {
+            Goto::Cars => Some((Page::Cars, "Open Cars")),
+            Goto::Codrivers => Some((Page::Codrivers, "Open Co-drivers")),
+            Goto::Settings | Goto::Disc(_) => Some((Page::Settings, "Open Settings")),
+            Goto::Stage(_) => None,
+        }
+    }
 }
 
 /// What a launcher list an outcome changed (or tried to): read again when a run is done.
@@ -289,7 +306,7 @@ mod tests {
         let got = lines(&done);
         let has = |start: &str| got.iter().any(|l| l.starts_with(start));
         assert!(has("ok Added Autio I Gravel (BTB stage): it's in the stage picker"), "{got:?}");
-        assert!(has("ok Added Voice (co-driver): pick it in Settings"), "{got:?}");
+        assert!(has("ok Added Voice (co-driver): pick it in Content > Co-drivers"), "{got:?}");
         assert!(has("no Couldn't add stage.rar: RAR archives can't be read"), "{got:?}");
         assert!(has("no Couldn't add Setup.exe: installers can't be read: extract it with 7-Zip"), "{got:?}");
         assert!(has("no Couldn't add readme.txt: not recognised: ReRBR adds BTB stages"), "{got:?}");

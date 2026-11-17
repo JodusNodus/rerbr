@@ -67,10 +67,12 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     (form.clouds, form.precipitation, form.fog, form.wetness, form.options.weather, form.weather_row) = saved;
     form.weather_adjust = false;
-    // The Settings page with the NGP download's confirmation and gvrc.de's car list open (from a fixed list).
+    // Settings with the NGP download's confirmation, and Get more with gvrc.de's car list open (from a fixed list).
     form.page = Page::Settings;
     form.downloads.screenshot();
     shot(&dir.join("settings-downloads.png"), |ctx| form.ui(ctx))?;
+    form.page = Page::Get;
+    shot_sized(&dir.join("get-downloads.png"), (1100, 1000), |ctx| form.ui(ctx))?;
     form.downloads = Default::default();
     // The Drive page with the car list open on the selection.
     form.page = Page::Drive;

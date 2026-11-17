@@ -177,7 +177,6 @@ impl Form {
             last_pages: [Page::Drive, Page::Cars, Page::Settings],
             cars_page: Default::default(),
             stages_page: Default::default(),
-            get_page: Default::default(),
             setup: SetupPage::new(settings.setups.clone()),
             car,
             map,

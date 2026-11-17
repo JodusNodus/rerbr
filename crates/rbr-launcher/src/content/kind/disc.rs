@@ -17,7 +17,7 @@ impl Kind for Disc {
 
     fn add(&self, item: &Item, _: &Ctx) -> Vec<Outcome> {
         let name = item.src.name();
-        let text = format!("Disc image {name}: choose where to set it up in Settings > Game folder");
+        let text = format!("Disc image {name}: choose where to set it up in Settings > General");
         let goto = Some(Goto::Disc(item.src.path().to_owned()));
         vec![Outcome {
             source: name,

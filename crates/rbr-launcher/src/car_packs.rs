@@ -693,25 +693,6 @@ impl Form {
         }
     }
 
-    /// The added cars, each with Remove.
-    pub fn added_cars_ui(&mut self, ui: &mut egui::Ui) {
-        let mut removed = None;
-        let idle = self.adding.job.is_none() && self.child.is_none();
-        egui::Grid::new("added cars").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-            for (name, pack) in &self.adding.cars {
-                ui.label(name).on_hover_text(pack);
-                if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
-                    removed = Some(pack.clone());
-                }
-                ui.end_row();
-            }
-        });
-        if let Some(pack) = removed {
-            self.adding.status = remove(&self.cars_dir(), &pack).err().map(Err);
-            self.rescan_cars();
-        }
-    }
-
     /// Reads the added cars again, into the lists.
     pub(crate) fn rescan_cars(&mut self) {
         let root = self.game_root();
