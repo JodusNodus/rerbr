@@ -3,9 +3,9 @@
 use crate::Form;
 
 /// The hint over the window while files hover over it.
-const HINT: &str = "Drop to add stages, cars, co-drivers or pace notes";
+const HINT: &str = "Drop to add\nStages, cars, co-drivers, pace notes, or the game disc image (.iso)";
 /// What the hint says while the viewer runs.
-const CLOSE_FIRST: &str = "Close the drive first";
+const CLOSE_FIRST: &str = "Close the drive first\nThen drop again";
 
 impl Form {
     /// Takes the files dropped on the window this frame and adds them; draws the hint while files hover over the
@@ -28,16 +28,34 @@ impl Form {
         Self::drop_hint_text(ctx, HINT);
     }
 
+    /// Dims the window, with a rounded highlighted border inset from its edges, the title and what is accepted.
     fn drop_hint_text(ctx: &egui::Context, text: &str) {
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("drop hint")));
         let screen = ctx.content_rect();
-        painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(190));
+        painter.rect_filled(screen, 0.0, egui::Color32::from_black_alpha(200));
+        let accent = crate::pages::GOOD;
+        painter.rect(
+            screen.shrink(24.0),
+            24.0,
+            accent.gamma_multiply(0.12),
+            egui::Stroke::new(3.0, accent),
+            egui::StrokeKind::Inside,
+        );
+        let (title, line) = text.split_once('\n').unwrap_or((text, ""));
+        let middle = screen.center();
         painter.text(
-            screen.center(),
+            middle - egui::vec2(0.0, 16.0),
             egui::Align2::CENTER_CENTER,
-            text,
-            egui::FontId::proportional(24.0),
+            title,
+            egui::FontId::proportional(44.0),
             egui::Color32::WHITE,
+        );
+        painter.text(
+            middle + egui::vec2(0.0, 28.0),
+            egui::Align2::CENTER_CENTER,
+            line,
+            egui::FontId::proportional(18.0),
+            egui::Color32::GRAY,
         );
     }
 }
