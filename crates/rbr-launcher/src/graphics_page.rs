@@ -366,6 +366,12 @@ impl Form {
             });
             ui.end_row();
 
+            let tip = "Three like screens side by side, the side ones turned towards you, each drawing its own \
+                       view from your seat. The field-of-view sliders set the centre screen's view";
+            ui.label("Triple screens").on_hover_text(tip);
+            ui.checkbox(&mut self.triple, "three screens").on_hover_text(tip);
+            ui.end_row();
+
             let tip = "Draws the 3D view at this share of the window's size, which the temporal anti-aliasing \
                        upscales to it over the frames: faster, for high refresh rates at 1440p and above; the lower, \
                        the softer, and fast-moving edges grow rougher";
@@ -399,24 +405,27 @@ impl Form {
             ui.end_row();
 
             let (label, tip) = present_label(self.present);
-            ui.label("Frame presentation").on_hover_text(tip);
-            ComboBox::from_id_salt("present")
-                .width(FIELD)
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    for &present in Present::OFFERED {
-                        let (label, tip) = present_label(present);
-                        ui.selectable_value(&mut self.present, present, label).on_hover_text(tip);
-                    }
+            ui.label("Frame rate").on_hover_text("How frames reach the display, and the most frames a second drawn");
+            ui.horizontal(|ui| {
+                ComboBox::from_id_salt("present")
+                    .width(FIELD - 120.0)
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        for &present in Present::OFFERED {
+                            let (label, tip) = present_label(present);
+                            ui.selectable_value(&mut self.present, present, label).on_hover_text(tip);
+                        }
+                    })
+                    .response
+                    .on_hover_text(tip);
+                let tip = "The most frames a second the driving window draws. Uncapped with the display's refresh \
+                           rate here keeps the lowest lag without the GPU drawing frames the display never shows";
+                combo(ui, "frame cap", 90.0, &mut self.max_fps, &FRAME_CAPS, |fps| match fps {
+                    0 => "No cap".into(),
+                    fps => cap_label(fps),
                 })
-                .response
                 .on_hover_text(tip);
-            ui.end_row();
-
-            let tip = "The most frames a second the driving window draws. Uncapped with the display's refresh rate \
-                       here keeps the lowest lag without the GPU drawing frames the display never shows";
-            ui.label("Frame cap").on_hover_text(tip);
-            combo(ui, "frame cap", QUALITY_FIELD, &mut self.max_fps, &FRAME_CAPS, cap_label).on_hover_text(tip);
+            });
             ui.end_row();
 
             if rbr_render::present::HDR_OFFERED {
@@ -593,18 +602,13 @@ impl Form {
         }
     }
 
-    /// The Triple screens section: the rig's geometry, the monitors, and the true field of view at the seat.
+    /// The Triple screens section, shown while they are on (the switch is in Display): the rig's geometry, the monitors, and the true field of view at the seat.
     fn triple_fields(&mut self, ui: &mut egui::Ui) {
+        if !self.triple {
+            return;
+        }
         section(ui, "Triple screens");
         fields(ui, "triple", |ui| {
-            let tip = "Three like screens side by side, the side ones turned towards you, each drawing its own \
-                       view from your seat. The field-of-view sliders set the centre screen's view";
-            ui.label("Triple screens").on_hover_text(tip);
-            ui.checkbox(&mut self.triple, "three screens").on_hover_text(tip);
-            ui.end_row();
-            if !self.triple {
-                return;
-            }
             let tip = "Each screen's diagonal";
             ui.label("Screen size").on_hover_text(tip);
             ui.add(
