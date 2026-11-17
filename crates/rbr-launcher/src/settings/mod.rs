@@ -782,6 +782,7 @@ mod tests {
                 "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[ffb_load]\nrsf-24 tarmac = 0,12,340\n\n\
                  [camera]\nview = bonnet\n\
                  rsf-24 chase = 0 0.5 -1\n\n[gearbox]\nFord Escort Mk II = dog\n\n\
+                 [skin]\nevo_IX = Pajari_Monte\nxsara = -\n\n\
                  [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n\n[telemetry]\nudp = 192.168.1.20:6776\n"
             ),
             "{text}"
@@ -1097,6 +1098,10 @@ mod tests {
                 "\n",
                 "[gearbox]\n",
                 "Ford Escort Mk II = dog\n",
+                "\n",
+                "[skin]\n",
+                "evo_IX = Pajari_Monte\n",
+                "xsara = -\n",
                 "\n",
                 "[setup]\n",
                 "gravel Skoda Fabia R5 = fast\n",
