@@ -879,14 +879,16 @@ impl StageBrowser {
                     (_, true, false) => "RallySimFans BTB · experimental",
                     _ => "RallySimFans",
                 };
-                let mut facts = vec![
-                    ("Number", row.number.to_string()),
-                    ("Country", row.country_name().to_owned()),
+                // A BTB stage's number is ours, made up from its folder: not shown.
+                let number = (!row.btb).then(|| ("Number", row.number.to_string()));
+                let country = row.country.is_some().then(|| ("Country", row.country_name().to_owned()));
+                let mut facts: Vec<_> = number.into_iter().chain(country).collect();
+                facts.extend([
                     ("Length", row.km.map_or("unknown".to_owned(), |km| format!("{km:.1} km"))),
                     ("Surface", SURFACES[row.surface as usize].to_owned()),
                     ("Author", row.author.clone().unwrap_or_else(|| "unknown".to_owned())),
                     ("Kind", kind.to_owned()),
-                ];
+                ]);
                 facts.extend((env.facts)(row));
                 egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
                     for (label, value) in facts {
