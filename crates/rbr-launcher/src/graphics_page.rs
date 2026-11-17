@@ -602,7 +602,8 @@ impl Form {
         }
     }
 
-    /// The Triple screens section, shown while they are on (the switch is in Display): the rig's geometry, the monitors, and the true field of view at the seat.
+    /// The Triple screens section, shown while they are on (the switch is in Display): the rig's geometry, the
+    /// monitors, and the true field of view at the seat.
     fn triple_fields(&mut self, ui: &mut egui::Ui) {
         if !self.triple {
             return;

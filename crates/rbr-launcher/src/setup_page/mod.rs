@@ -651,7 +651,7 @@ impl SetupPage {
             }
             if changed {
                 ui.add_space(6.0);
-                ui.colored_label(WARN, "unsaved changes: Save to drive with them");
+                ui.colored_label(WARN, "Unsaved changes");
             }
         });
         if self.naming {

@@ -819,8 +819,8 @@ const HEAD_GASKET_FIX: i32 = 10;
 const HEAD_GASKET_HELP: &str = "RSF's fix: the head gasket wears 10 times slower, so realistic damage no longer kills \
      the engine unexpectedly. Off is NGP's default.";
 
-/// The game's gearbox aids (its English labels, `bstrings.eng`) and "Game defaults". A car with an H-pattern gearbox under the advanced H-shifter drives without the
-/// automatic gearbox and clutch help.
+/// The game's gearbox aids (its English labels, `bstrings.eng`) and "Game defaults". A car with an H-pattern gearbox
+/// under the advanced H-shifter drives without the automatic gearbox and clutch help.
 fn aids_ui(ui: &mut Ui, aids: &mut DriverAids) {
     const H_PATTERN: &str = "; off for a car whose gearbox is H-pattern under the advanced H-shifter";
     egui::Grid::new("aids").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {

@@ -418,7 +418,7 @@ impl Form {
                         if ui.button("No").clicked() || keys.escape {
                             self.replays.confirm_delete = false;
                         }
-                    } else if ui.button("Delete").on_hover_text("Delete").clicked() || delete_key {
+                    } else if ui.button("Delete").on_hover_text("Delete key").clicked() || delete_key {
                         self.replays.confirm_delete = true;
                     }
                 });
