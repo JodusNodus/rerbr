@@ -601,10 +601,6 @@ impl Form {
         ui.label(
             RichText::new(format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]))).size(16.0).strong(),
         );
-        ui.colored_label(
-            Color32::GRAY,
-            "Make and save setups for this car (saved for this stage's surface); pick the one to drive with on the Drive page.",
-        );
         ui.add_space(4.0);
         self.setup.ui(ui);
     }

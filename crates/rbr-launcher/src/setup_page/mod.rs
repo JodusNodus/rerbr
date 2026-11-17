@@ -31,7 +31,7 @@ use rbr_formats::saves::{is_file_name_part, setup_slots, DIR as SAVES};
 use rbr_gameplay::setup::{Area, Bounds, CarSetup, SeasonSetup, Setup, Spec, CAR_FOLDERS};
 
 use crate::catalog::{self, Car};
-use crate::pages::{GOOD, WARN};
+use crate::pages::WARN;
 use crate::settings::SetupChoices;
 
 /// How the lists name the car's default setup.
@@ -252,7 +252,9 @@ pub struct SetupPage {
     opened: Option<String>,
     opened_values: Setup,
     draft: Setup,
+    /// The name field of Save as…, shown while `naming`.
     name: String,
+    naming: bool,
     confirm_delete: bool,
     /// What the editor's values are compared with, and its values.
     compare: Compare,
@@ -280,6 +282,7 @@ impl SetupPage {
             opened_values: Setup::default(),
             draft: Setup::default(),
             name: String::new(),
+            naming: false,
             confirm_delete: false,
             compare: Compare::Default,
             base: Setup::default(),
@@ -414,8 +417,8 @@ impl SetupPage {
             },
             None => self.default_values(),
         };
-        self.name =
-            name.and_then(|id| self.profiles.iter().find(|p| p.id == id)).map_or_else(String::new, |p| p.name.clone());
+        self.name.clear();
+        self.naming = false;
         self.opened = name.map(str::to_owned);
         self.opened_values = values;
         self.draft = values;
@@ -484,25 +487,19 @@ impl SetupPage {
             })
             .inner;
         if let Some(name) = pick {
+            // The Car setup page's editor follows (`header_ui`), asking first when it holds unsaved changes.
             self.drive_with(name.as_deref());
-            // The editor follows, unless it holds unsaved changes.
-            if self.draft == self.opened_values {
-                self.open(name.as_deref());
-            }
         }
         edit
     }
 
-    /// Saves the editor's values as our setup under the name field's name, and drives with it.
-    fn save(&mut self) {
-        let name = match valid_name(&self.name) {
-            Ok(name) => name.to_owned(),
-            Err(e) => {
-                self.status = e;
-                return;
-            }
-        };
-        let Some(path) = self.folders.file(self.surface(), &name) else {
+    /// Saves the editor's values as our setup `name`, and drives with it. A new name (`!overwrite`) never replaces one.
+    fn save(&mut self, name: &str, overwrite: bool) {
+        if !overwrite && self.profiles.iter().any(|p| p.id.eq_ignore_ascii_case(name) && p.source == Source::Own) {
+            self.status = format!("{name} is already a setup of yours: pick it and Save to replace it");
+            return;
+        }
+        let Some(path) = self.folders.file(self.surface(), name) else {
             return;
         };
         let written = path
@@ -514,9 +511,9 @@ impl SetupPage {
             return;
         }
         self.profiles = self.folders.scan(self.surface());
-        self.drive_with(Some(&name));
-        self.open(Some(&name));
-        self.status = format!("saved {name}; the Drive page drives with it");
+        self.drive_with(Some(name));
+        self.open(Some(name));
+        self.status = format!("saved {name}");
     }
 
     /// Deletes our setup the editor opened, and opens the default.
@@ -568,47 +565,68 @@ impl SetupPage {
         });
     }
 
-    /// The setup opened, the one driven with, the name to save under and the buttons.
+    /// The setup picker (the Drive page's choice) and the buttons.
     fn header_ui(&mut self, ui: &mut Ui, car: &CarSetup) {
+        let changed = self.draft != self.opened_values;
+        // The editor follows the picked setup, unless it holds unsaved changes: those ask first.
+        let chosen = self.chosen().map(str::to_owned);
+        let known = chosen.as_ref().is_none_or(|id| self.profiles.iter().any(|p| p.id == *id));
+        let moved = chosen != self.opened && known;
+        if moved && !changed {
+            self.open(chosen.as_deref());
+            self.status.clear();
+        }
         let opened = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.id == *n)).cloned();
         ui.horizontal(|ui| {
-            ui.label("Setup").on_hover_text(format!(
-                "Every setup of this car, the {} ones first; Save keeps it for {0}",
-                self.surface()
-            ));
-            let selected = opened.as_ref().map_or(DEFAULT.to_owned(), Profile::label);
-            if let Some(name) = self.pick_ui(ui, "setup-open", selected, self.opened.clone()) {
-                self.open(name.as_deref());
-                self.status.clear();
+            ui.label("Setup").on_hover_text("The setup you drive with on the Drive page too");
+            let selected = chosen.as_ref().map_or(DEFAULT.to_owned(), |id| {
+                self.profiles.iter().find(|p| p.id == *id).map_or(format!("{id} (missing)"), Profile::label)
+            });
+            if let Some(name) = self.pick_ui(ui, "setup-open", selected, chosen.clone()) {
+                self.drive_with(name.as_deref());
             }
+            ui.colored_label(egui::Color32::GRAY, format!("{} setups", self.surface()));
             if self.season
                 && ui
                     .button("Open the championship's")
-                    .on_hover_text("The values the championship drives with; Save keeps them as a setup")
+                    .on_hover_text("The values the championship drives with; Save as… keeps them as a setup")
                     .clicked()
             {
                 self.draft = self.setup;
             }
-            if self.opened.as_deref() == self.chosen() {
-                ui.label(RichText::new("✔ driving with this").color(GOOD));
-            } else if ui
-                .button("Drive with this")
-                .on_hover_text("Make it the Drive page's setup for this car")
-                .clicked()
-            {
-                let name = self.opened.clone();
-                self.drive_with(name.as_deref());
-            }
         });
+        if moved && changed {
+            ui.horizontal(|ui| {
+                ui.colored_label(WARN, "Unsaved changes to the other setup:");
+                if ui.button("Discard them").clicked() {
+                    self.open(chosen.as_deref());
+                }
+                if ui.button("Keep editing it").on_hover_text("Drive with the setup being edited").clicked() {
+                    let name = self.opened.clone();
+                    self.drive_with(name.as_deref());
+                }
+            });
+        }
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(200.0).hint_text("name to save under"));
-            let replaces =
-                self.profiles.iter().any(|p| p.id.eq_ignore_ascii_case(self.name.trim()) && p.source == Source::Own);
-            let save = if replaces { "Save (replace)" } else { "Save" };
-            if ui.button(save).on_hover_text("Save as your setup and drive with it").clicked() {
-                self.save();
+            let overwrite = match &opened {
+                Some(p) if p.source == Source::Own && p.away.is_none() => Ok(p.name.clone()),
+                Some(_) => Err("Read only, or another surface's: Save as… keeps a copy as yours"),
+                None => Err("The default can't be overwritten: Save as… keeps it as a setup"),
+            };
+            let save = ui.add_enabled(changed && overwrite.is_ok(), egui::Button::new("Save"));
+            let save = match &overwrite {
+                Ok(_) if !changed => save.on_disabled_hover_text("No changes"),
+                Ok(_) => save.on_hover_text("Overwrite this setup"),
+                Err(why) => save.on_disabled_hover_text(*why),
+            };
+            if save.clicked() {
+                if let Ok(name) = overwrite {
+                    self.save(&name, true);
+                }
             }
-            let changed = self.draft != self.opened_values;
+            if ui.button("Save as…").on_hover_text("Keep the values as a new setup of yours").clicked() {
+                self.naming = true;
+            }
             if ui
                 .add_enabled(changed, egui::Button::new("Revert"))
                 .on_hover_text("Back to the values as opened")
@@ -631,18 +649,29 @@ impl SetupPage {
                     self.confirm_delete = true;
                 }
             }
-            let surface = self.surface();
-            let note = match (changed, opened.as_ref().map(|p| (p.source, p.away))) {
-                (true, _) => "unsaved changes: Save to drive with them".to_owned(),
-                (false, Some((_, Some(away)))) => format!("a {away} setup: Save keeps a copy for {surface}"),
-                (false, Some((Source::Own, None))) | (false, None) => String::new(),
-                (false, Some((source, None))) => {
-                    format!("{} setup, read only: Save keeps a copy as yours", source.tag())
-                }
-            };
-            ui.add_space(6.0);
-            ui.colored_label(if changed { WARN } else { egui::Color32::GRAY }, note);
+            if changed {
+                ui.add_space(6.0);
+                ui.colored_label(WARN, "unsaved changes: Save to drive with them");
+            }
         });
+        if self.naming {
+            ui.horizontal(|ui| {
+                let edit = ui
+                    .add(egui::TextEdit::singleline(&mut self.name).desired_width(200.0).hint_text("new setup's name"));
+                let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let name = valid_name(&self.name).map(str::to_owned);
+                let ok = ui.add_enabled(name.is_ok(), egui::Button::new("Save")).clicked() || enter;
+                if let (true, Ok(name)) = (ok, &name) {
+                    self.save(name, false);
+                }
+                if ui.button("Cancel").clicked() {
+                    self.naming = false;
+                }
+                if let Err(why) = &name {
+                    ui.colored_label(egui::Color32::GRAY, why);
+                }
+            });
+        }
         if !self.status.is_empty() {
             ui.label(&self.status);
         }
