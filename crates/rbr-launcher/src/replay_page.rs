@@ -12,7 +12,7 @@ use rbr_recording::{realtime, replay, splits::Splits};
 use crate::settings::{Clouds, Precipitation};
 
 use crate::browser;
-use crate::pages::{combo, section, Choice, WARN};
+use crate::pages::{combo, section, start_button, Choice, WARN};
 use crate::Form;
 
 #[derive(Clone)]
@@ -37,9 +37,11 @@ impl Entry {
     fn read(path: PathBuf) -> Self {
         let modified =
             recorded_time(&path).unwrap_or_else(|| path.metadata().and_then(|m| m.modified()).unwrap_or(UNIX_EPOCH));
-        let header = (|| {
+        // The header's title and conditions are kept when the frames are missing: an aborted drive is still named.
+        let mut args = None;
+        let problem = (|| {
             let mut input = BufReader::new(File::open(&path).map_err(|e| e.to_string())?);
-            let args = replay::read_args(&mut input)?;
+            let args = args.insert(replay::read_args(&mut input)?);
             let mut magic = [0; 4];
             input.read_exact(&mut magic).map_err(|_| "No drive frames saved yet")?;
             if magic != realtime::LOG_MAGIC {
@@ -50,20 +52,36 @@ impl Entry {
             if !args.iter().any(|arg| arg == "--live") {
                 return Err("Missing the saved drive command".into());
             }
-            Ok::<_, String>(args)
-        })();
+            Ok::<_, String>(())
+        })()
+        .err();
         let fallback = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-        let title = header.as_ref().ok().and_then(|args| {
+        let title = args.as_ref().and_then(|args| {
             let viewer = &args[..args.iter().position(|a| a == "--live").unwrap_or(args.len())];
             viewer.windows(2).find(|w| w[0] == "--title").map(|w| w[1].clone())
         });
-        let (conditions, start_time) = header.as_ref().map(|args| conditions(args)).unwrap_or_default();
-        let result = header
-            .as_ref()
-            .ok()
-            .and_then(|_| replay::read_result(&path).ok())
+        let (conditions, start_time) = args.as_deref().map(conditions).unwrap_or_default();
+        let result = problem
+            .is_none()
+            .then(|| replay::read_result(&path).ok())
+            .flatten()
             .filter(|r| r.race_time.is_finite() && r.race_time >= 0.0);
-        Self { path, modified, title: title.unwrap_or(fallback), conditions, start_time, result, problem: header.err() }
+        Self { path, modified, title: title.unwrap_or(fallback), conditions, start_time, result, problem }
+    }
+
+    /// Whether the drive reached the finish line (not retired, not stopped early).
+    fn finished(&self) -> bool {
+        self.result.as_ref().is_some_and(|r| r.finished && !r.retired)
+    }
+
+    /// The row's second line: the stage time and the conditions, without a dangling separator.
+    fn summary(&self) -> String {
+        let time = result_text(self.result.as_ref());
+        if self.conditions.is_empty() {
+            time
+        } else {
+            format!("{time} · {}", self.conditions)
+        }
     }
 }
 
@@ -78,6 +96,9 @@ pub struct Replays {
     selected: Option<PathBuf>,
     directory: Option<PathBuf>,
     query: String,
+    finished_only: bool,
+    /// The Delete button was pressed and waits for Yes or No.
+    confirm_delete: bool,
     output: String,
     size: (u32, u32),
     fps: u32,
@@ -93,6 +114,8 @@ impl Default for Replays {
             selected: None,
             directory: None,
             query: String::new(),
+            finished_only: false,
+            confirm_delete: false,
             output: String::new(),
             size: (1920, 1080),
             fps: 60,
@@ -131,6 +154,20 @@ impl Replays {
         let title = path.as_ref().and_then(|p| self.entries.iter().find(|e| &e.path == p)).map(|e| e.title.as_str());
         self.output = title.map(|t| video_path(&home.join("videos"), t).display().to_string()).unwrap_or_default();
         self.selected = path;
+        self.confirm_delete = false;
+    }
+
+    /// Deletes the replay with its result and setup files, then selects `next`.
+    fn delete(&mut self, path: &Path, next: Option<PathBuf>, home: &Path) {
+        match delete_files(path) {
+            Ok(()) => {
+                self.entries.retain(|e| e.path != path);
+                self.message.clear();
+                self.select(next, home);
+            }
+            Err(e) => self.message = format!("Cannot delete the drive: {e}"),
+        }
+        self.confirm_delete = false;
     }
 
     /// Called by the common child poll instead of advancing a championship for a replay's exit.
@@ -147,6 +184,17 @@ impl Replays {
             };
         }
     }
+}
+
+/// Removes a replay and the files kept beside it (its result and setup); exported videos are not touched.
+fn delete_files(path: &Path) -> std::io::Result<()> {
+    for file in [path.to_path_buf(), replay::result_path(path), replay::setup_path(path)] {
+        match fs::remove_file(file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// A new video's file in `dir` named after the drive's `title` (`Torsby 2018 - Lancer Evo II GrpA.mp4`), numbered
@@ -195,7 +243,7 @@ fn recorded_time(path: &Path) -> Option<SystemTime> {
 }
 
 fn result_text(result: Option<&Splits>) -> String {
-    let Some(result) = result else { return "Time unavailable".into() };
+    let Some(result) = result else { return "No time".into() };
     let time = rbr_render::hud::clock_label(f64::from(result.race_time));
     if result.retired {
         format!("DNF at {time}")
@@ -268,6 +316,7 @@ impl Form {
             if ui.button("Refresh").clicked() {
                 self.replays.refresh(&home);
             }
+            ui.checkbox(&mut self.replays.finished_only, "Finished drives only");
             ui.weak(format!("{} saved drives · ⏶⏷ move · Enter watches", self.replays.entries.len()));
         });
         ui.add_space(8.0);
@@ -280,7 +329,9 @@ impl Form {
         // The arrow and page keys move through the list, Enter watches.
         let query = self.replays.query.to_lowercase();
         let entries = &self.replays.entries;
-        let shown: Vec<usize> = (0..entries.len()).filter(|&k| entries[k].matches(&query)).collect();
+        let shown: Vec<usize> = (0..entries.len())
+            .filter(|&k| entries[k].matches(&query) && (!self.replays.finished_only || entries[k].finished()))
+            .collect();
         let keys = browser::Keys::take(ui);
         let at = shown.iter().position(|&k| Some(&entries[k].path) == self.replays.selected.as_ref());
         let mut chosen = (keys.movement() != 0 && !shown.is_empty()).then(|| {
@@ -288,6 +339,10 @@ impl Form {
             entries[shown[at.map_or(0, |a| (a as isize + keys.movement()).clamp(0, last)) as usize]].path.clone()
         });
         let moved = chosen.is_some();
+        // Delete asks first; it is left to the search box while that has the focus.
+        let delete_key = ui.memory(|m| m.focused().is_none())
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete));
+        let mut delete = false;
         let mut watch = false;
         let mut export = false;
         ui.columns(2, |columns| {
@@ -295,13 +350,7 @@ impl Form {
                 for entry in shown.iter().map(|&k| &self.replays.entries[k]) {
                     let selected = chosen.as_ref().or(self.replays.selected.as_ref()) == Some(&entry.path);
                     let start = entry.start_time.as_ref().map(|t| format!(" · {t} start")).unwrap_or_default();
-                    let label = format!(
-                        "{}\n{} · {}\n{}{start}",
-                        entry.title,
-                        result_text(entry.result.as_ref()),
-                        entry.conditions,
-                        age(entry.modified)
-                    );
+                    let label = format!("{}\n{}\n{}{start}", entry.title, entry.summary(), age(entry.modified));
                     // Not Tab stops: the arrows move through the list.
                     let row = egui::Button::selectable(selected, label)
                         .wrap()
@@ -359,8 +408,20 @@ impl Form {
                     });
                 });
                 let ready = self.child.is_none() && entry.problem.is_none() && self.readiness().is_none();
-                watch = ui.add_enabled(ready, egui::Button::new("Watch replay")).on_hover_text("Enter").clicked()
-                    || (keys.enter && ready);
+                ui.horizontal(|ui| {
+                    let tip = "Enter. Replays use the game files, profile and setup from when you drove.";
+                    watch = ui.add_enabled(ready, start_button("Watch replay")).on_hover_text(tip).clicked()
+                        || (keys.enter && ready);
+                    if self.replays.confirm_delete {
+                        ui.label("Delete this drive?");
+                        delete = ui.button("Yes, delete").clicked() || delete_key;
+                        if ui.button("No").clicked() || keys.escape {
+                            self.replays.confirm_delete = false;
+                        }
+                    } else if ui.button("Delete").on_hover_text("Delete").clicked() || delete_key {
+                        self.replays.confirm_delete = true;
+                    }
+                });
                 ui.weak("Space pauses · R restarts · Esc closes");
                 section(ui, "Export to video");
                 ui.horizontal(|ui| {
@@ -379,7 +440,9 @@ impl Form {
                 let output = Path::new(self.replays.output.trim());
                 let exists = output.exists();
                 let mp4 = output.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mp4"));
-                export = ui.add_enabled(ready && !exists && mp4, egui::Button::new("Export to video")).clicked();
+                ui.horizontal(|ui| {
+                    export = ui.add_enabled(ready && !exists && mp4, egui::Button::new("Export to video")).clicked();
+                });
                 if exists {
                     ui.colored_label(WARN, "That file exists. Choose a new filename.");
                 } else if !mp4 {
@@ -400,10 +463,15 @@ impl Form {
                     }
                 }
                 ui.label(&self.replays.message);
-                ui.add_space(10.0);
-                ui.weak("Replays use the game files, profile and setup from when you drove.");
             });
         });
+        if delete {
+            let next = at.and_then(|a| shown.get(a + 1).or(a.checked_sub(1).and_then(|b| shown.get(b))));
+            let next = next.map(|&k| self.replays.entries[k].path.clone());
+            if let Some(path) = self.replays.selected.clone() {
+                self.replays.delete(&path, next, &home);
+            }
+        }
         if watch || export {
             self.start_replay(export);
         }
@@ -488,7 +556,7 @@ mod tests {
         result.finished = false;
         result.retired = false;
         assert_eq!(result_text(Some(&result)), "Stopped at 06:29.123");
-        assert_eq!(result_text(None), "Time unavailable");
+        assert_eq!(result_text(None), "No time");
         assert_eq!(
             recorded_time(Path::new("1793268612-stage.rrp")),
             recorded_time(Path::new("1793268612000000000-stage.rrp"))
@@ -540,6 +608,44 @@ mod tests {
         browser.refresh(&home);
         assert_eq!(browser.selected, Some(path));
         assert_eq!(browser.output, "my-edit.mp4");
+        fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn deleting_a_drive_removes_its_files_only_and_selects_the_next() {
+        let home = crate::test_dir("replay-delete");
+        let dir = home.join("replays");
+        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(home.join("videos")).unwrap();
+        fs::write(home.join("videos/a.mp4"), b"v").unwrap();
+        for name in ["1-a.rrp", "1-a.rrp.splits", "1-a.rrp.setup", "2-b.rrp"] {
+            fs::write(dir.join(name), b"x").unwrap();
+        }
+        let mut browser = Replays::default();
+        browser.refresh(&home);
+        let (a, b) = (dir.join("1-a.rrp"), dir.join("2-b.rrp"));
+        browser.delete(&a, Some(b.clone()), &home);
+        assert_eq!(browser.selected, Some(b));
+        assert_eq!(browser.entries.len(), 1);
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        assert!(home.join("videos/a.mp4").exists());
+        fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn an_aborted_drive_keeps_its_name_and_has_no_dangling_separator() {
+        let home = crate::test_dir("replay-aborted");
+        let dir = home.join("replays");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("1-track_1_M.rrp");
+        fs::write(&path, replay::header(&["--title", "Lilaia · Car", "--live", "standalone"].map(str::to_owned)))
+            .unwrap();
+        let entry = Entry::read(path);
+        assert_eq!(entry.title, "Lilaia · Car");
+        assert!(entry.problem.is_some() && !entry.finished());
+        assert_eq!(entry.summary(), "No time · Stage defaults");
+        let bare = Entry { conditions: String::new(), ..entry };
+        assert_eq!(bare.summary(), "No time");
         fs::remove_dir_all(home).unwrap();
     }
 }
