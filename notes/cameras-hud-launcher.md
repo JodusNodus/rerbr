@@ -170,8 +170,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Keyboard (2026-11-03): Ctrl+1..9 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
-  or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
+- Three sections (user decision 2026-11-18; `pages::Section`): Drive (Rally, Circuit, Championship, School, Car setup,
+  Replays), Content (Cars, Stages, Co-drivers, Get more) and Settings (General, Controls, Graphics & sound), a row of
+  sections over a row of the section's pages; a section's tab opens the page it was last on (`Form::last_pages`).
+- Keyboard (2026-11-03, sections 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the sections, Ctrl+Tab / Ctrl+Page Down
+  the section's next page, with Shift or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
   (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
