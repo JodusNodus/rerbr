@@ -80,46 +80,32 @@ Development happens mostly on macOS and Linux, so Windows may have more bugs for
      it: press **Done**, then **Open Anyway** in System Settings → Privacy & Security.
    - **Linux** x86_64: `chmod +x` the `.AppImage` and start it. It needs FUSE 2 or 3; without it, add
      `--appimage-extract-and-run`.
-2. **Choose your game folder** at the first start: Richard Burns Rally 1.02 with NGP, a RallySimFans install being
-   the easiest ([below](#your-game-with-ngp)).
-3. **Get NGP 7.4.778** if Settings asks for it: press **Download NGP 7.4.778…**.
-4. Press **Start**.
+2. **Start it** and choose your game folder ([below](#your-game-with-ngp)). The launcher takes it from there.
 
 ### Your game, with NGP
 
-ReRBR plays your own copy of Richard Burns Rally 1.02 with NGP 7. At the first start it asks for your game folder.
-It looks in the usual places and offers the first install with NGP it finds. The folder can be:
+ReRBR plays your own copy of Richard Burns Rally 1.02 with NGP 7. The game folder can be:
 - **A RallySimFans install.** This is the easiest: it has the game, NGP, and the community's cars and stages. The RSF
   installer is a Windows program, so install it on a Windows PC (or under Wine) and copy the whole
   `Richard Burns Rally` folder over.
 - **RBR with the official 1.02 patch and the NGP plugin** from [gvrc.de](https://gvrc.de/NGP.html), copied over the
   same way.
-- **Only the disc, and no Windows at all:** press **Set up from the disc…**. It builds the game folder from the disc
-  image, downloading NGP itself (or taking your copy). See [docs/install-from-disc.md](docs/install-from-disc.md).
+- **Only the disc, and no Windows at all:** the launcher builds the game folder from the disc image
+  ([docs/install-from-disc.md](docs/install-from-disc.md)).
 
-ReRBR requires NGP 7.4.778, the version its physics is verified against. Settings finds the game folder's
-`Plugins/NGP.dll` automatically; if it is missing or another version (RallySimFans ships 7.5.779), press **Download NGP
-7.4.778…**. Its `NGP.dll` and `physics.rbz` go into `NGP 7.4.778/` in your files' folder (below), and the installed
-NGP stays as it is. Or use **Browse…** under Advanced to select the 7.4.778 DLL from your NGP package.
-
-ReRBR only reads the game folder; it never changes it.
+ReRBR requires NGP 7.4.778, the version its physics is verified against (RallySimFans ships 7.5.779). The launcher
+offers to download it when your folder has another version, and leaves the installed one as it is. ReRBR only reads
+the game folder; it never changes it.
 
 ### Your files
 
-Everything ReRBR writes (settings, bindings, saves in the game's formats, ghosts, setups, added cars, co-driver
-packs, replays, videos and logs) goes to one folder, shown on the Settings page:
+Everything ReRBR writes (settings, bindings, saves in the game's formats, ghosts, setups, added cars, co-driver packs,
+replays, videos and logs) goes to one folder:
 
 - macOS: `~/Library/Application Support/ReRBR/`;
 - Linux: `$XDG_DATA_HOME/rerbr/`, by default `~/.local/share/rerbr/`;
 - Windows: `%APPDATA%\ReRBR\`;
 - or `$RERBR_HOME`, if set (for a portable copy).
-
-The launcher works from the keyboard: Ctrl+1 to Ctrl+9 (Cmd on macOS) open its tabs, Tab moves between controls,
-Enter or Space presses them, the arrow keys move through lists, and Enter starts the drive.
-
-Drives are saved in `replays/`. Open the launcher's Replays tab to browse them, watch a drive or export an MP4
-with game audio to `videos/` or another filename. Video export needs ffmpeg on your PATH. Replays need the build,
-game files, profile and setup used for the drive; playback stops if its physics differs.
 
 ### Build from source
 
