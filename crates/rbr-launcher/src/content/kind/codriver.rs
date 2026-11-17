@@ -28,12 +28,12 @@ pub fn looks_like_pack(archive: &str, entries: &[String]) -> bool {
 /// The outcome of an import's result line (`Co-driver <pack>: …`, `Stage notes <pack>: …`).
 fn outcome(source: &str, line: &str) -> Outcome {
     let (kind, rest, place) = match (line.strip_prefix("Co-driver "), line.strip_prefix("Stage notes ")) {
-        (Some(rest), _) => ("co-driver", rest, "pick it in Settings > Co-driver"),
-        (_, Some(rest)) => ("pace notes", rest, "they play with a custom co-driver (Settings > Co-driver)"),
-        _ => ("co-driver", line, "pick it in Settings > Co-driver"),
+        (Some(rest), _) => ("co-driver", rest, "pick it in Content > Co-drivers"),
+        (_, Some(rest)) => ("pace notes", rest, "they play with a custom co-driver (Content > Co-drivers)"),
+        _ => ("co-driver", line, "pick it in Content > Co-drivers"),
     };
     let pack = rest.split(':').next().unwrap_or(rest);
-    Outcome::added(source, kind, pack, place, Goto::Settings).refreshing(Refresh::Codriver)
+    Outcome::added(source, kind, pack, place, Goto::Codrivers).refreshing(Refresh::Codriver)
 }
 
 impl Kind for Codriver {

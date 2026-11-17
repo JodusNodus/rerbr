@@ -72,7 +72,7 @@ impl Kind for Car {
                             Some(_) => "it's in the car picker",
                             None => "it's in the car picker, drawn with a stand-in model until its model is added",
                         };
-                        Outcome::added(&a.download, "NGP car", &car, place, Goto::Settings)
+                        Outcome::added(&a.download, "NGP car", &car, place, Goto::Cars)
                     }
                     Err(e) => Outcome::failed(&a.download, "NGP car", e),
                 })

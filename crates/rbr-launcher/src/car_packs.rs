@@ -588,6 +588,7 @@ pub fn add_downloads(
 }
 
 /// Removes the added car whose pack folder is `pack` from `cars_dir`, and its model when no other car uses it.
+#[allow(dead_code)] // Content > Cars removes added cars
 pub fn remove(cars_dir: &Path, pack: &str) -> Result<(), Fail> {
     let mut cars = list(cars_dir);
     let audio = cars.iter().find(|c| c.pack.eq_ignore_ascii_case(pack)).and_then(|c| c.audio.clone());
@@ -694,6 +695,7 @@ impl Form {
     }
 
     /// The added cars, each with Remove.
+    #[allow(dead_code)] // Content > Cars lists added cars
     pub fn added_cars_ui(&mut self, ui: &mut egui::Ui) {
         let mut removed = None;
         let idle = self.adding.job.is_none() && self.child.is_none();

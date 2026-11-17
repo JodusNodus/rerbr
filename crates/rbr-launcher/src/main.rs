@@ -452,13 +452,11 @@ struct Form {
     page: Page,
     /// The page each section was last on ([`pages::Section::ALL`]'s order): a section's tab opens it again.
     last_pages: [Page; 3],
-    /// Content > Cars, Content > Stages and Content > Get more.
+    /// Content > Cars and Content > Stages.
     #[allow(dead_code)] // until its page keeps state
     cars_page: cars_page::CarsPage,
     #[allow(dead_code)] // until its page keeps state
     stages_page: stages_page::StagesPage,
-    #[allow(dead_code)] // until its page keeps state
-    get_page: get_page::GetPage,
     setup: SetupPage,
     /// The Championship tab (ours).
     championship: championship_page::ChampionshipPage,

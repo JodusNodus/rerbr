@@ -430,6 +430,11 @@ const CARS_TIP: &str = "Lists the NGP cars gvrc.de has, to choose from. ReRBR do
                         and adds them to the cars folder.";
 
 impl Downloads {
+    /// How many cars gvrc.de's list has, once read.
+    pub fn available(&self) -> Option<usize> {
+        self.list.as_ref()?.as_ref().ok().map(|c| c.cars.len())
+    }
+
     /// For `--screenshot`: the NGP confirmation and the car list open with some cars chosen, from a fixed list.
     pub fn screenshot(&mut self) {
         let car = |name: &str, cat: &str, year: &str| Entry {

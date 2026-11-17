@@ -1,5 +1,5 @@
 //! The Add's window side: starting a run, the notice on every page, what a finished run changes in the launcher, and
-//! the Settings page's Add content section.
+//! the Get more page's Ready to add and Add from your computer sections.
 
 use std::path::PathBuf;
 
@@ -26,12 +26,6 @@ impl Add {
         self.job.is_some()
     }
 }
-
-/// RallySimFans' download of the full set of stages.
-const RSF_URL: &str = "https://www.rallysimfans.hu/rbr/download.php?download=rsfrbr";
-const BTB_URL: &str = "http://btbfin.blogspot.com/";
-/// RBR Czech's stage downloads, in English.
-const RBR_CZ_URL: &str = "https://rbr.onlineracing.cz/index.php?act=download&cat=19&setlng=eng";
 
 impl Form {
     /// Adds `paths` (files and folders) in one background run, unless one runs. While the viewer runs, only says to
@@ -96,7 +90,6 @@ impl Form {
     /// Takes the Open button's way.
     fn content_goto(&mut self, goto: &Goto) {
         match goto {
-            Goto::Settings | Goto::Disc(_) => self.page = Page::Settings,
             Goto::Stage(folder) => {
                 let named = |dir: &std::path::Path| dir.file_name().is_some_and(|n| n.to_string_lossy() == *folder);
                 let at = self.catalog.maps.iter().position(|m| match &m.origin {
@@ -106,6 +99,7 @@ impl Form {
                 self.page = Page::Drive;
                 self.stage_browser.open_on(at.unwrap_or(self.map), &self.favourite_maps, None);
             }
+            _ => self.page = goto.page().map_or(self.page, |(page, _)| page),
         }
     }
 
@@ -142,15 +136,9 @@ impl Form {
                         }
                     }
                     let goto = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.goto.clone());
-                    match goto {
-                        Some(Goto::Stage(folder)) if ui.button("Open the stage picker").clicked() => {
-                            open = Some(Goto::Stage(folder))
-                        }
-                        Some(Goto::Settings | Goto::Disc(_))
-                            if page != Page::Settings && ui.button("Open Settings").clicked() =>
-                        {
-                            open = Some(Goto::Settings)
-                        }
+                    match goto.as_ref().map(|g| (g, g.page())) {
+                        Some((Goto::Stage(_), _)) if ui.button("Open the stage picker").clicked() => open = goto,
+                        Some((_, Some((target, label)))) if page != target && ui.button(label).clicked() => open = goto,
                         _ => {}
                     }
                     close = ui.button("Close").clicked();
@@ -189,9 +177,34 @@ impl Form {
         downloads::Owned { packs, stages, cars: cars.collect(), ngp: self.ngp_revision == Some(778) }
     }
 
-    /// The Settings page's Add content section: the buttons, the recent downloads, and where to get more.
-    pub fn add_content_section(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Add content");
+    /// Ready to add: the recent downloads ReRBR recognises, each with what it is and Add; or how they appear.
+    pub fn ready_to_add_ui(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Ready to add");
+        let idle = !self.content.busy() && self.child.is_none();
+        let owned = self.owned_content();
+        self.content.recent.poll(ui.ctx(), owned);
+        let mut add = None;
+        for found in &self.content.recent.list {
+            ui.horizontal(|ui| {
+                let name = found.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                ui.label(&name).on_hover_text(found.path.display().to_string());
+                ui.weak(&found.label);
+                if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
+                    add = Some(found.path.clone());
+                }
+            });
+        }
+        if self.content.recent.list.is_empty() {
+            ui.weak("Downloads from the last 30 days appear here.");
+        }
+        if let Some(path) = add {
+            self.add_content(vec![path]);
+        }
+    }
+
+    /// Add from your computer: files, a folder, and the drop line.
+    pub fn add_from_computer_ui(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Add from your computer");
         let idle = !self.content.busy() && self.child.is_none();
         ui.horizontal_wrapped(|ui| {
             let files = ui.add_enabled(idle, egui::Button::new("Add files…")).on_hover_text(
@@ -213,43 +226,6 @@ impl Form {
             }
             if super::drop::drop_works() {
                 ui.weak("or drop files anywhere on this window");
-            }
-        });
-        let owned = self.owned_content();
-        self.content.recent.poll(ui.ctx(), owned);
-        let mut add = None;
-        for found in &self.content.recent.list {
-            ui.horizontal(|ui| {
-                let name = found.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                ui.label(&name).on_hover_text(found.path.display().to_string());
-                ui.weak(&found.label);
-                if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
-                    add = Some(found.path.clone());
-                }
-            });
-        }
-        if let Some(path) = add {
-            self.add_content(vec![path]);
-        }
-        ui.horizontal_wrapped(|ui| {
-            let links = [
-                (
-                    "Get stages…",
-                    RSF_URL,
-                    "RallySimFans: the full set of stages; install it, then choose its folder as your game folder",
-                ),
-                ("More BTB stages…", BTB_URL, "BTB stages from the community; download one, then add it here"),
-                (
-                    "RBR Czech stages…",
-                    RBR_CZ_URL,
-                    "Stage installers; download one, then add the .exe here (it isn't run). Most stages from before \
-                     mid-2023 work; newer ones are encrypted for RBR Czech's plugin and can't be used",
-                ),
-            ];
-            for (label, url, tip) in links {
-                if ui.link(label).on_hover_text(tip).clicked() {
-                    crate::crash::open(url.as_ref());
-                }
             }
         });
     }
@@ -330,6 +306,17 @@ mod tests {
         // The stage is the stage picker's: Open goes to it.
         form.content_goto(&Goto::Stage("Autio I Gravel".into()));
         assert!(form.stage_browser.open && form.page == Page::Drive);
+        // Each kind goes to its page.
+        for (goto, page) in [
+            (Goto::Cars, Page::Cars),
+            (Goto::Codrivers, Page::Codrivers),
+            (Goto::Settings, Page::Settings),
+            (Goto::Disc("/x.iso".into()), Page::Settings),
+        ] {
+            form.page = Page::Get;
+            form.content_goto(&goto);
+            assert_eq!(form.page, page);
+        }
         // While the viewer runs, a drop only says to close it: checked by the notice text.
         form.content.notice = vec![Outcome::warning("Close the drive first")];
         assert_eq!(form.content.notice[0].line(), "Close the drive first");
@@ -354,7 +341,7 @@ mod tests {
         let section = |ctx: &egui::Context, form: &mut Form| {
             ctx.root_ui(|root| {
                 egui::CentralPanel::default().show(root, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| form.add_content_section(ui));
+                    egui::ScrollArea::vertical().show(ui, |ui| form.get_page(ui));
                 })
             });
         };
@@ -367,7 +354,7 @@ mod tests {
         let ok = |what: &str, kind, place: &str, goto| Outcome::added("x", kind, what, place, goto);
         form.content.notice = vec![
             ok("Autio I Gravel", "BTB stage", "it's in the stage picker", Goto::Stage("Autio I Gravel".into())),
-            ok("Janne Laahanen V3", "co-driver", "pick it in Settings > Co-driver", Goto::Settings),
+            ok("Janne Laahanen V3", "co-driver", "pick it in Content > Co-drivers", Goto::Codrivers),
             Outcome::failed("Holiday.rar", "not supported", detect_rar()),
             Outcome::failed(
                 "Ford Fiesta - Model.7z",
