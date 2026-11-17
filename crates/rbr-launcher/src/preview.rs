@@ -353,11 +353,11 @@ impl Previews {
     }
 
     /// Waits for the stage's preview and the car's frames, which the next draw shows (the `--screenshot` pages).
-    pub fn wait_for(&mut self, map: &Map, car: &Car, root: &str) {
+    pub fn wait_for(&mut self, map: &Map, car: &Car, skin: Option<Skin>, root: &str) {
         self.stage_pending = Some(map.number);
         let _ = self.stage_requests.send(map.clone());
         self.stage_arrived.extend(self.stage_results.recv_timeout(Duration::from_secs(60)));
-        self.request(car, None, &car_key(car, None), root);
+        self.request(car, skin.clone(), &car_key(car, skin.as_ref()), root);
         self.arrived.extend(self.results.recv_timeout(Duration::from_secs(120)));
     }
 }

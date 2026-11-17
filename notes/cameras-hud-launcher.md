@@ -225,6 +225,16 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Car skins (`car_skins.rs`, 2026-11-17): the car browser's detail panel has a Skin box and Import skin…. A skin is a folder
+  of files over the model folder's by path (`textures/*.dds`, shader settings: `Data::with_skin(model, dir)`, retail cars
+  too). Listed: the player's `skins/<car key>/<skin>/` (imported) and a community car's own `Cars/<model>/skins/*`
+  (RSF's, read only); none for a stand-in model. The pick is ours, per car key (`car_skins = key:skin|...`, `none` =
+  the model's own textures); unset leaves RSF's `.rsfconfig` selection (never written) and retail's own textures. It goes
+  to the viewer as `--car-skin DIR|none` (`car_pack::Flags::skin`, wins over `.rsfconfig`; not to `rbr-standalone`) and to
+  the turntable preview. Import takes a `.zip` or `.7z` (RBR Skins Center's, RSF's exports): each shallowest folder holding
+  `textures/` becomes a skin, named for the archive (several in one archive: for their folders); same name replaces.
+  Checked with a channel-swapped retail ZR skin (picker, preview, `viewer --screenshot`) and RSF's Fiesta Rally3
+  `Zasada_Rally3`; no real Skins Center archive yet (links are Mega/Drive, not fetchable here).
 - Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or any saved setup of the car,
   the stage surface's first, then the other surfaces' (labelled), then those of no known surface (user decision
   2026-11-04); the pick is kept per car and surface (`[setup]`, `<surface> <car> = <name>`, `<other surface>/<name>`

@@ -354,6 +354,29 @@ mod tests {
     }
 
     #[test]
+    fn a_community_models_own_skins_are_offered_after_the_imported_ones() {
+        let home = crate::test_dir("skin-model");
+        let root = crate::test_dir("skin-model-root");
+        for dir in
+            [home.join(DIR).join("pack-x").join("Red"), root.join("Cars/x/skins/red"), root.join("Cars/x/skins/Blue")]
+        {
+            fs::create_dir_all(dir).unwrap();
+        }
+        let car = Car {
+            key: "pack-x".into(),
+            physics: Physics::Pack(PathBuf::from("/pack")),
+            model: Ok(car_pack::Model { entry: car_pack::model_entry("x", "x"), fallback: None }),
+            model_path: Some(root.join("Cars/x/x.sgc")),
+            ..Car::default()
+        };
+        let skins = installed(&home, &car);
+        assert_eq!(skins.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["Blue", "Red"]);
+        assert_eq!(skins[1].dir, home.join(DIR).join("pack-x").join("Red"));
+        fs::remove_dir_all(&home).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn a_stand_in_model_offers_no_skins() {
         let home = crate::test_dir("skin-stand-in");
         fs::create_dir_all(home.join(DIR).join("pack-x").join("Red")).unwrap();
