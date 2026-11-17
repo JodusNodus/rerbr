@@ -346,6 +346,10 @@ impl ApplicationHandler for App {
         if self.gfx.is_some() {
             return;
         }
+        #[cfg(all(unix, not(target_vendor = "apple"), not(target_os = "android")))]
+        if winit::platform::wayland::ActiveEventLoopExtWayland::is_wayland(event_loop) {
+            crate::content::drop::no_drop();
+        }
         match Gfx::new(event_loop) {
             Ok(gfx) => {
                 if let Some(form) = &mut self.form {

@@ -1,6 +1,22 @@
 //! Dropping files or folders on the launcher window adds them, as the Settings page's Add content does.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use crate::Form;
+
+/// Whether the window takes dropped files: winit 0.30 has no drag and drop on native Wayland, so there Add content
+/// does not offer it.
+static DROP_WORKS: AtomicBool = AtomicBool::new(true);
+
+/// Marks the window as one that takes no dropped files (native Wayland).
+pub fn no_drop() {
+    DROP_WORKS.store(false, Ordering::Relaxed);
+}
+
+/// Whether files dropped on the window are added.
+pub fn drop_works() -> bool {
+    DROP_WORKS.load(Ordering::Relaxed)
+}
 
 /// The hint over the window while files hover over it.
 const HINT: &str = "Drop to add\nStages, cars, co-drivers, pace notes, or the game disc image (.iso)";

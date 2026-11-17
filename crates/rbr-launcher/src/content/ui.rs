@@ -211,7 +211,9 @@ impl Form {
                     self.add_content(vec![PathBuf::from(path)]);
                 }
             }
-            ui.weak("or drop files anywhere on this window");
+            if super::drop::drop_works() {
+                ui.weak("or drop files anywhere on this window");
+            }
         });
         let owned = self.owned_content();
         self.content.recent.poll(ui.ctx(), owned);

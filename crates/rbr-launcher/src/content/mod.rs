@@ -18,7 +18,7 @@ use kind::{Ctx, Found, Item, Kind, Known};
 use source::Source;
 
 pub mod downloads;
-mod drop;
+pub mod drop;
 pub mod kind;
 pub mod source;
 mod ui;

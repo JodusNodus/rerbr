@@ -138,6 +138,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
   under the Drive page's stage.
+- Dropping files works on X11, Windows and macOS only: winit 0.30 has no drag and drop on native Wayland, so there Add
+  content does not offer it (`content::drop::no_drop`; user decision 2026-11-17, over forcing XWayland).
 - One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add
   folder…" in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, split 7z, NSIS
   installer, plain file, tried in `SOURCES`) and each kind (`content/kind/`, one module each, one line in
