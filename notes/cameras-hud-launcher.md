@@ -398,6 +398,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 
 Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 
+- Car skins (Content > Cars, `cars_page`): `[skin]` holds `<model folder> = <skin>` (`-` the model's own), written when the
+  player picks one in the Skins row; a folder without a line draws RSF's `.rsfconfig` choice. The launcher passes it to the
+  viewer only as `--car-skin` (`car_pack::Flags::skin`, also with `--rsf-car`); the stepping process is not given it, and
+  a skin not installed falls back to RSF's. Checked 2026-11: `viewer --rsf-car Ford_Fiesta_Rally3_ngp6 --car-skin X
+  --screenshot` draws each of that car's three skins and `-` differently. The cars added from gvrc.de keep their model in
+  the files folder's `Cars/<model>/`; of 99 only one has a `skins/` folder (a stray `.rar`, no skin folder).
 - Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `cabin`, `contact`, `grass`, `windscreen`,
   `marks`, `motion_blur` (`--enhance blur`, user decision 2026-11-11: an option, off by default), `wet_roads`, `detail`, `mirrors`; unset takes the Ultra preset. The preset box is not stored: it shows the preset the
   keys match, else Custom; presets leave `marks`, `motion_blur` and the render scale alone (`Quality::over`). A saved `surfaces` (the removed scanned surfaces) is not read.

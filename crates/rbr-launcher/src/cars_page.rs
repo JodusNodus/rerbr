@@ -301,3 +301,38 @@ impl Form {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_skin_is_kept_per_model_folder_and_written_back() {
+        let sections = ini::parse("[skin]\nevo_IX = Pajari_Monte\nxsara = -\n").unwrap();
+        let mut skins = CarSkins::parse(&sections);
+        assert_eq!(skins.get("EVO_ix"), Some("Pajari_Monte"));
+        assert_eq!(skins.get("xsara"), Some(OWN_SKIN));
+        assert_eq!(skins.get("other"), None);
+        skins.set("evo_ix", "Zed");
+        assert_eq!(skins.get("evo_IX"), Some("Zed"));
+        let text = skins.to_text();
+        assert_eq!(CarSkins::parse(&ini::parse(&text).unwrap()), skins);
+        assert_eq!(CarSkins::default().to_text(), "");
+    }
+
+    #[test]
+    fn only_a_pack_car_with_its_own_model_takes_a_skin() {
+        let mut skins = CarSkins::default();
+        skins.set("evo_IX", "Zed");
+        let model = |fallback: Option<String>| {
+            Ok(car_pack::Model { entry: car_pack::model_entry("evo_IX", "evo_IX"), fallback })
+        };
+        let mut car = Car { physics: catalog::Physics::Pack("/p".into()), model: model(None), ..Car::default() };
+        assert_eq!(skins.of(&car).as_deref(), Some("Zed"));
+        car.model = model(Some("stand-in".into()));
+        assert_eq!(skins.of(&car), None);
+        car.physics = catalog::Physics::Archive;
+        car.model = model(None);
+        assert_eq!(skins.of(&car), None);
+    }
+}

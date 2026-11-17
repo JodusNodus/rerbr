@@ -1108,6 +1108,7 @@ mod tests {
         let args = ViewerLaunch {
             stage,
             car,
+            skin: Some("Pajari_Monte".into()),
             weather,
             tyre: 4,
             size: (1280, 720),
@@ -1139,6 +1140,10 @@ mod tests {
             ]
         );
         assert_eq!(value(&args, "--car-key").as_deref(), Some("rsf-24"));
+        // The skin is the viewer's: the stepping process after `--live` does not get it.
+        assert_eq!(args.iter().filter(|a| *a == "--car-skin").count(), 1);
+        assert!(args[..live].contains(&"--car-skin".to_owned()));
+        assert!(!args[live..].contains(&"--car-skin".to_owned()));
         assert!(!args[live..].contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");
         assert!(args[live..].contains(&"--car-pack".to_owned()));
     }
