@@ -230,8 +230,7 @@ pub fn top_line(
     back
 }
 
-/// The search box and the Random button on its right, in a row: the box takes focus when `focus` is set, and when the
-/// player types with nothing else focused on it. Typing anywhere searches. `after` adds to the right of Random.
+/// The search box and the Random button on its right, in a row; `after` adds to the right of Random.
 pub fn search_row(
     ui: &mut egui::Ui,
     hint: &str,
@@ -240,6 +239,17 @@ pub fn search_row(
     random: &mut bool,
     after: impl FnOnce(&mut egui::Ui),
 ) {
+    search_box(ui, hint, query, focus);
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let button = egui::Button::new(egui::RichText::new("🎲 Random").size(14.5)).min_size(egui::vec2(0.0, 30.0));
+        *random = ui.add(button).on_hover_text("A random pick of the list as filtered").clicked();
+        after(ui);
+    });
+}
+
+/// The search box: it takes focus when `focus` is set, and when the player types with nothing else focused on it.
+/// Typing anywhere searches.
+pub fn search_box(ui: &mut egui::Ui, hint: &str, query: &mut String, focus: &mut bool) {
     let id = search_id();
     let typing = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_))));
     if (std::mem::take(focus) || typing) && ui.memory(|m| m.focused()) != Some(id) {
@@ -253,11 +263,6 @@ pub fn search_row(
             .min_size(egui::vec2(0.0, 30.0))
             .align(egui::Align2::LEFT_CENTER),
     );
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let button = egui::Button::new(egui::RichText::new("🎲 Random").size(14.5)).min_size(egui::vec2(0.0, 30.0));
-        *random = ui.add(button).on_hover_text("A random pick of the list as filtered").clicked();
-        after(ui);
-    });
 }
 
 /// Takes the browser's keys and moves the highlight with the arrow and page keys; the keys.
@@ -307,19 +312,11 @@ pub fn random_row(lines: &[Line], startable: impl Fn(usize) -> bool) -> Option<u
     Some(rows[nanos as usize % rows.len()])
 }
 
-/// The list's scrolled rows with the keys' line under them: draws `add_contents` for each visible range (which may
-/// move the highlight through `nav`), then keeps the scrolling; the keys' line keeps its room below.
-pub fn list_rows(
-    ui: &mut egui::Ui,
-    nav: &mut Nav,
-    id: &'static str,
-    lines: &[Line],
-    add_contents: impl FnMut(&mut egui::Ui, &mut Nav, std::ops::Range<usize>),
-) {
-    list_rows_keyed(ui, nav, id, lines, "⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back", add_contents);
-}
+/// The keys line under a browser's list.
+pub(crate) const KEYS: &str = "⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back";
 
-/// [`list_rows`] with its own `keys` line.
+/// The list's scrolled rows with the `keys` line under them: draws `add_contents` for each visible range (which may
+/// move the highlight through `nav`), then keeps the scrolling; the keys' line keeps its room below.
 pub fn list_rows_keyed(
     ui: &mut egui::Ui,
     nav: &mut Nav,

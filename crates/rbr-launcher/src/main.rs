@@ -454,7 +454,6 @@ struct Form {
     last_pages: [Page; 3],
     /// Content > Cars, Content > Stages and Content > Get more.
     cars_page: cars_page::CarsPage,
-    #[allow(dead_code)] // until its page keeps state
     stages_page: stages_page::StagesPage,
     #[allow(dead_code)] // until its page keeps state
     get_page: get_page::GetPage,
@@ -657,6 +656,7 @@ impl Form {
             })
             .collect();
         self.stage_browser.set_rows(rows);
+        self.list_stages_page();
         self.list_circuits();
     }
 

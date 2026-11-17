@@ -688,11 +688,8 @@ impl CarBrowser {
             ui.add_space(10.0);
             ui.label(RichText::new(hint).color(GREY));
         }
-        let keys = if self.page {
-            "⏶⏷ move    Enter drive this car    Ctrl+D favourite"
-        } else {
-            "⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back"
-        };
+        let keys =
+            if self.page { "⏶⏷ move    Enter drive this car    Ctrl+D favourite" } else { crate::browser::KEYS };
         list_rows_keyed(ui, &mut self.nav, "cars", &self.lines, keys, |ui, nav, range| {
             for at in range {
                 let k = match &self.lines[at] {
