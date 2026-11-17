@@ -1038,7 +1038,9 @@ mod tests {
     /// The pack-car flags forward to `car_pack::Flags` (`car_pack` tests their combinations).
     #[test]
     fn pack_car_flags_forward() {
-        let args = parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k --car-skin Monte").unwrap();
+        let args =
+            parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k --car-skin Monte")
+                .unwrap();
         assert_eq!(
             args.pack_car,
             car_pack::Flags {

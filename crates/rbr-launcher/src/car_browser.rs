@@ -12,7 +12,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke};
 
 use crate::browser::{
     block, favourite_button, header_line, items, key_action, list_rows, paint_selection, paint_star, random_row,
-    row_slot, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY, ROW,
+    row_slot, search_row, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY, ROW,
 };
 use crate::catalog::{self, Car};
 use crate::pages::{combo, ACCENT};
@@ -59,7 +59,7 @@ const OTHER: &str = "Other";
 
 /// Where the car comes from, as the detail panel says it: the same car can be both RSF's and added (one key,
 /// [`catalog::pack_key`]), listed twice.
-fn source(car: &Car) -> String {
+pub fn source(car: &Car) -> String {
     match (&car.physics, car.rsf_id) {
         (catalog::Physics::Archive, _) => format!("RBR 1.02, slot {}", car.slot),
         (_, _) if car.added => "Added, in your cars folder".to_owned(),
@@ -137,6 +137,8 @@ pub struct CarRow {
     pub model: Model,
     /// Why it cannot start.
     pub problem: Option<String>,
+    /// A pack the launcher downloaded (`Car::added`).
+    pub added: bool,
     /// What the search matches, lower case.
     haystack: String,
 }
@@ -168,7 +170,20 @@ impl CarRow {
         let (class, rank) = family(group.as_deref());
         let group = group.unwrap_or_else(|| OTHER.to_owned());
         let haystack = format!("{title} {} {group} {class} {source}", car.name).to_lowercase();
-        CarRow { index, name: car.name.clone(), title, group, class, rank, source, drive, model, problem, haystack }
+        CarRow {
+            index,
+            name: car.name.clone(),
+            title,
+            group,
+            class,
+            rank,
+            source,
+            drive,
+            model,
+            problem,
+            added: car.added,
+            haystack,
+        }
     }
 
     pub fn startable(&self) -> bool {
@@ -229,6 +244,8 @@ pub enum Collection {
     /// A class of the sidebar, by name.
     Class(String),
     CannotStart,
+    /// The cars the launcher downloaded (the Cars page only).
+    Added,
 }
 
 /// The list of `collection` for `filter` sorted by `sort`. `favourites` and `recent` are car names, in the order
@@ -298,12 +315,23 @@ pub fn lines(
             let members = (0..rows.len()).filter(|&k| !rows[k].startable()).filter(accepted);
             out.extend(block(None, sorted(members.collect())));
         }
+        Collection::Added => {
+            let (ok, blocked) = split((0..rows.len()).filter(|&k| rows[k].added).filter(accepted).collect());
+            out.extend(block(None, sorted(ok)));
+            out.extend(block(Some("Cannot start"), sorted(blocked)));
+        }
     }
     out
 }
 
-/// The sidebar: the library, then each class with its number of cars that can start, then the cars that cannot.
-fn collections(rows: &[CarRow], favourites: &[String], recent: &[String]) -> Vec<(Collection, String, usize)> {
+/// The sidebar: the library (with the cars added by the launcher when `page` and there are some), then each class with
+/// its number of cars that can start, then the cars that cannot.
+fn collections(
+    rows: &[CarRow],
+    favourites: &[String],
+    recent: &[String],
+    page: bool,
+) -> Vec<(Collection, String, usize)> {
     let known = |names: &[String]| names.iter().filter(|n| rows.iter().any(|r| r.name == **n)).count();
     let startable = rows.iter().filter(|r| r.startable()).count();
     let mut classes: BTreeMap<(usize, &str), usize> = BTreeMap::new();
@@ -315,6 +343,10 @@ fn collections(rows: &[CarRow], favourites: &[String], recent: &[String]) -> Vec
         (Collection::Recent, "Recent".to_owned(), known(recent)),
         (Collection::All, "All cars".to_owned(), startable),
     ];
+    let added = rows.iter().filter(|r| r.added).count();
+    if page && added > 0 {
+        out.push((Collection::Added, "Added by you".to_owned(), added));
+    }
     out.extend(classes.into_iter().map(|((_, name), n)| (Collection::Class(name.to_owned()), name.to_owned(), n)));
     let blocked = rows.len() - startable;
     if blocked > 0 {
@@ -332,10 +364,18 @@ pub enum Action {
     Favourite(String),
     /// Go back without choosing.
     Back,
+    /// Remove the car added by the launcher with this pack folder (the Cars page).
+    Remove(String),
+    /// Draw model folder `.0` with skin `.1` (`--car-skin`'s word; the Cars page).
+    Skin(String, String),
 }
 
 /// What the page gives the browser to draw.
 pub struct Env<'a> {
+    /// The skins the player picked, which the previews draw.
+    pub skins: &'a crate::cars_page::CarSkins,
+    /// The Cars page's own detail panel, in place of the picker's: the row, its car, the previews and the game folder.
+    pub detail: Option<&'a mut Detail<'a>>,
     pub cars: &'a [Car],
     /// Car names: starred in that order, and recently chosen newest first.
     pub favourites: &'a [String],
@@ -344,6 +384,9 @@ pub struct Env<'a> {
     /// The game folder the cars' models are read from.
     pub root: &'a str,
 }
+
+/// A page's own draw of the highlighted car's detail panel ([`Env::detail`]).
+pub type Detail<'a> = dyn FnMut(&mut egui::Ui, &CarRow, &Car, &mut Previews, &str) -> Option<Action> + 'a;
 
 /// What a list was made for.
 type Made = (Collection, Filter, Sort, Vec<String>, Vec<String>);
@@ -363,6 +406,8 @@ pub enum Target {
 #[derive(Default)]
 pub struct CarBrowser {
     pub open: bool,
+    /// The Cars page's browser: no Back, no Esc, its own detail panel and the added cars' collection.
+    page: bool,
     pub target: Target,
     rows: Vec<CarRow>,
     collection: Option<Collection>,
@@ -378,6 +423,11 @@ pub struct CarBrowser {
 }
 
 impl CarBrowser {
+    /// The Content > Cars page's browser.
+    pub fn for_page() -> CarBrowser {
+        CarBrowser { page: true, ..CarBrowser::default() }
+    }
+
     /// Lists the cars of the catalog.
     pub fn set_rows(&mut self, rows: Vec<CarRow>) {
         let state = self.state();
@@ -399,6 +449,7 @@ impl CarBrowser {
             Collection::Recent => "recent".into(),
             Collection::All => "all".into(),
             Collection::CannotStart => "unavailable".into(),
+            Collection::Added => "added".into(),
             Collection::Class(name) => format!("class:{name}"),
         };
         crate::browser_state::State {
@@ -418,6 +469,7 @@ impl CarBrowser {
             "favourites" => Collection::Favourites,
             "recent" => Collection::Recent,
             "unavailable" => Collection::CannotStart,
+            "added" => Collection::Added,
             key if key.starts_with("class:") && self.rows.iter().any(|r| r.class == key[6..]) => {
                 Collection::Class(key[6..].into())
             }
@@ -484,7 +536,11 @@ impl CarBrowser {
 
         let mut random = false;
         let hint = "Search all cars: name, class, RSF number";
-        if top_line(ui, "Choose a car", hint, &mut self.filter.query, &mut self.focus, &mut random) {
+        if self.page {
+            // A page has no Back, and Esc does nothing.
+            action = action.filter(|a| *a != Action::Back);
+            ui.horizontal(|ui| search_row(ui, hint, &mut self.filter.query, &mut self.focus, &mut random));
+        } else if top_line(ui, "Choose a car", hint, &mut self.filter.query, &mut self.focus, &mut random) {
             action = Some(Action::Back);
         }
         if random {
@@ -520,7 +576,7 @@ impl CarBrowser {
 
     /// The collections of the sidebar.
     fn sidebar(&mut self, ui: &mut egui::Ui, env: &Env) {
-        let all = collections(&self.rows, env.favourites, env.recent);
+        let all = collections(&self.rows, env.favourites, env.recent, self.page);
         let current = self.collection.clone().unwrap_or(Collection::All);
         let entries: Vec<SideEntry> = all
             .iter()
@@ -541,7 +597,8 @@ impl CarBrowser {
         egui::ScrollArea::vertical().id_salt("collections").max_height(room).auto_shrink([false, true]).show(
             ui,
             |ui| {
-                if let Some(n) = side_list(ui, &entries, (3, "CLASSES")) {
+                let classes = 3 + all.iter().filter(|(c, ..)| *c == Collection::Added).count();
+                if let Some(n) = side_list(ui, &entries, (classes, "CLASSES")) {
                     self.collection = Some(all[n].0.clone());
                     self.filter.query.clear();
                 }
@@ -572,6 +629,7 @@ impl CarBrowser {
                     Collection::All => "cars".to_owned(),
                     Collection::Class(name) => format!("cars in {name}"),
                     Collection::CannotStart => "cars that cannot start".to_owned(),
+                    Collection::Added => "cars added by you".to_owned(),
                 }
             } else {
                 "found in all cars".to_owned()
@@ -639,13 +697,17 @@ impl CarBrowser {
     fn detail(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
         let row = self.rows.get(self.nav.cursor)?;
         let car = env.cars.get(row.index)?;
+        if let Some(detail) = env.detail.as_mut() {
+            ui.set_width(preview::WIDTH);
+            return detail(ui, row, car, env.previews, env.root);
+        }
         let mut action = None;
         ui.set_width(preview::WIDTH);
         ui.add_space(6.0);
         ui.label(RichText::new(&row.title).size(22.0).strong());
         ui.label(RichText::new(&row.group).color(GREY));
         ui.add_space(6.0);
-        env.previews.car_ui(ui, car, env.root);
+        env.previews.car_ui(ui, car, env.root, env.skins.of(car).as_deref());
         ui.add_space(6.0);
         egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
             ui.label(RichText::new("Source").color(GREY));
@@ -747,6 +809,7 @@ mod tests {
             drive: Some(Drive::Awd),
             model: Model::Own,
             problem: problem.map(str::to_owned),
+            added: false,
             haystack: format!("{name} {group}").to_lowercase(),
         }
     }
@@ -823,7 +886,7 @@ mod tests {
     #[test]
     fn the_sidebar_orders_classes_newest_first() {
         let rows = rows();
-        let all = collections(&rows, &[], &[]);
+        let all = collections(&rows, &[], &[], false);
         let labels: Vec<(&str, usize)> = all.iter().map(|(_, n, count)| (n.as_str(), *count)).collect();
         assert_eq!(
             labels,

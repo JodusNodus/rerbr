@@ -119,7 +119,7 @@ struct CarRequest {
 
 enum CarModel {
     Retail(String),
-    Community { pack: PathBuf, model: rbr_formats::car_pack::Model, root: PathBuf },
+    Community { pack: PathBuf, model: rbr_formats::car_pack::Model, root: PathBuf, skin: Option<String> },
 }
 
 type CarResult = (String, Result<Vec<ColorImage>, String>);
@@ -188,12 +188,12 @@ impl Previews {
     }
 
     /// Draws the stage's and the car's previews, one above the other.
-    pub fn ui(&mut self, ui: &mut egui::Ui, map: &Map, car: &Car, root: &str) {
+    pub fn ui(&mut self, ui: &mut egui::Ui, map: &Map, car: &Car, root: &str, skin: Option<&str>) {
         ui.vertical(|ui| {
             ui.set_width(WIDTH);
             self.stage_ui(ui, map);
             ui.add_space(12.0);
-            self.car_ui(ui, car, root);
+            self.car_ui(ui, car, root, skin);
         });
     }
 
@@ -264,8 +264,8 @@ impl Previews {
     }
 
     /// Draws the car turning (its frames are rendered on a thread of their own).
-    pub fn car_ui(&mut self, ui: &mut egui::Ui, car: &Car, root: &str) {
-        let key = car_key(car);
+    pub fn car_ui(&mut self, ui: &mut egui::Ui, car: &Car, root: &str, skin: Option<&str>) {
+        let key = car_key(car, skin);
         self.arrived.extend(self.results.try_iter());
         for (done, frames) in std::mem::take(&mut self.arrived) {
             if let Err(e) = &frames {
@@ -305,7 +305,7 @@ impl Previews {
                 ui.colored_label(Color32::from_rgb(230, 120, 80), format!("No car model: {e}"));
             }
             _ => {
-                self.request(car, &key, root);
+                self.request(car, &key, root, skin);
                 let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
                 painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
                 let font = egui::FontId::proportional(13.0);
@@ -321,7 +321,7 @@ impl Previews {
     }
 
     /// Asks the worker for the car's frames, once.
-    fn request(&mut self, car: &Car, key: &str, root: &str) {
+    fn request(&mut self, car: &Car, key: &str, root: &str, skin: Option<&str>) {
         if self.pending.as_deref() == Some(key) {
             return;
         }
@@ -341,6 +341,7 @@ impl Previews {
                         .as_deref()
                         .and_then(|p| rbr_formats::car_pack::root_of(p).ok())
                         .unwrap_or_else(|| PathBuf::from(root.trim())),
+                    skin: skin.map(str::to_owned),
                 },
             },
         };
@@ -349,11 +350,11 @@ impl Previews {
     }
 
     /// Waits for the stage's preview and the car's frames, which the next draw shows (the `--screenshot` pages).
-    pub fn wait_for(&mut self, map: &Map, car: &Car, root: &str) {
+    pub fn wait_for(&mut self, map: &Map, car: &Car, root: &str, skin: Option<&str>) {
         self.stage_pending = Some(map.number);
         let _ = self.stage_requests.send(map.clone());
         self.stage_arrived.extend(self.stage_results.recv_timeout(Duration::from_secs(60)));
-        self.request(car, &car_key(car), root);
+        self.request(car, &car_key(car, skin), root, skin);
         self.arrived.extend(self.results.recv_timeout(Duration::from_secs(120)));
     }
 }
@@ -410,12 +411,16 @@ impl StagePictures {
     }
 }
 
-/// A car's frames' key: a pack car's model file, which RSF's and the added copy of one car (one key) may not share.
-fn car_key(car: &Car) -> String {
+/// A car's frames' key: a pack car's model file, which RSF's and the added copy of one car (one key) may not share,
+/// and the skin chosen for it.
+fn car_key(car: &Car, skin: Option<&str>) -> String {
     match &car.physics {
-        catalog::Physics::Pack(_) => {
-            format!("pack {} {}", car.key, car.model_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default())
-        }
+        catalog::Physics::Pack(_) => format!(
+            "pack {} {} {}",
+            car.key,
+            car.model_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
+            skin.unwrap_or_default()
+        ),
         catalog::Physics::Archive => car.name.clone(),
     }
 }
@@ -483,9 +488,10 @@ fn render_car(
     use rbr_render::{camera::Orbit, car as render_car, renderer, stage::Selection};
     let (data, name) = match car {
         CarModel::Retail(name) => (data, name.clone()),
-        CarModel::Community { pack, model, root } => {
+        CarModel::Community { pack, model, root, skin } => {
             let pack = rbr_formats::car_pack::Pack::open(pack)?;
-            let selected = rbr_formats::car_pack::resolve(data, pack, model.clone(), root.clone(), None)?;
+            let selected =
+                rbr_formats::car_pack::resolve(data, pack, model.clone(), root.clone(), None, skin.as_deref())?;
             let name = selected.folder().to_owned();
             (selected.data, name)
         }

@@ -453,7 +453,6 @@ struct Form {
     /// The page each section was last on ([`pages::Section::ALL`]'s order): a section's tab opens it again.
     last_pages: [Page; 3],
     /// Content > Cars, Content > Stages and Content > Get more.
-    #[allow(dead_code)] // until its page keeps state
     cars_page: cars_page::CarsPage,
     #[allow(dead_code)] // until its page keeps state
     stages_page: stages_page::StagesPage,
@@ -480,6 +479,7 @@ struct Form {
     favourite_maps: Vec<u32>,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
+    car_skins: cars_page::CarSkins,
     /// The Settings page's UDP telemetry field (`[telemetry]`'s `udp`, `rbr-standalone --telemetry-udp`): sent only
     /// when `settings::udp_address` reads it, empty for off.
     telemetry_udp: String,
@@ -670,7 +670,9 @@ impl Form {
         let name = self.car().map(|c| c.name.clone());
         self.catalog.offer(&self.ngp_cars);
         self.car = settings::pick_car(&self.catalog.cars, name.iter().chain(&self.recent_cars));
-        let rows = self.catalog.cars.iter().enumerate().map(|(i, car)| car_browser::CarRow::new(i, car)).collect();
+        let rows: Vec<_> =
+            self.catalog.cars.iter().enumerate().map(|(i, car)| car_browser::CarRow::new(i, car)).collect();
+        self.cars_page.browser.set_rows(rows.clone());
         self.car_browser.set_rows(rows);
     }
 

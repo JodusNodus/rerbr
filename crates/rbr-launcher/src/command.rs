@@ -199,6 +199,8 @@ pub fn codriver_base_args(mods: &CodriverMods, voice: Option<&str>, style: &str)
 pub struct ViewerLaunch {
     pub stage: Stage,
     pub car: Car,
+    /// The skin the player picked for the car's model (`--car-skin`, the viewer's only): none when RSF's choice stands.
+    pub skin: Option<String>,
     pub options: RaceOptions,
     pub weather: Weather,
     pub tyre: u32,
@@ -229,6 +231,7 @@ impl Default for ViewerLaunch {
         Self {
             stage: Stage::default(),
             car: Car::default(),
+            skin: None,
             options: RaceOptions::default(),
             weather: Weather {
                 map: 0,
@@ -266,6 +269,7 @@ impl ViewerLaunch {
         let ViewerLaunch {
             stage,
             car,
+            skin,
             options,
             weather,
             tyre,
@@ -298,7 +302,7 @@ impl ViewerLaunch {
             catalog::Physics::Archive => car.name.clone(),
         };
         let mut args: Vec<String> = vec![stage.name.clone(), "--car".into(), folder];
-        args.extend(pack_car_args(car));
+        args.extend(pack_car_args(car, skin.clone()));
         // The year picks the car's headlamp type (the viewer's `Enhance::lighting`).
         args.extend(car.year.iter().flat_map(|year| ["--car-year".to_owned(), year.to_string()]));
         args.extend(vec![
@@ -401,20 +405,21 @@ impl ViewerLaunch {
         if let (None, Some(path)) = (school, setup) {
             args.extend(["--setup".into(), path.display().to_string()]);
         }
-        args.extend(pack_car_args(car));
+        args.extend(pack_car_args(car, None));
         args
     }
 }
 
 /// The flags resolving a pack car in the viewer, `rbr-standalone` and `rbr-sound`: its pack, its model's `.sgc`
-/// path, its bank and its saved key ([`car_pack::Flags`]). Empty for an archive car.
-pub fn pack_car_args(car: &Car) -> Vec<String> {
+/// path, its bank, its saved key and the player's skin (the viewer's; [`car_pack::Flags`]). Empty for an archive car.
+pub fn pack_car_args(car: &Car, skin: Option<String>) -> Vec<String> {
     let catalog::Physics::Pack(pack) = &car.physics else { return Vec::new() };
     rbr_formats::car_pack::Flags {
         pack: Some(pack.clone()),
         model: car.model_path.clone(),
         bank: car.bank.clone(),
         key: Some(car.key.clone()),
+        skin,
     }
     .argv()
 }
@@ -706,6 +711,7 @@ impl Form {
         let mut args = ViewerLaunch {
             stage: stage.clone(),
             car: car.clone(),
+            skin: self.car_skin(car),
             options,
             weather,
             tyre: tyre.unwrap_or(0),

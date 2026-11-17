@@ -118,7 +118,7 @@ impl Form {
             ui.vertical(|ui| {
                 let root = self.game_root();
                 if let Some(car) = self.catalog.cars.get(self.car) {
-                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &root);
+                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &root, self.car_skin(car).as_deref());
                 }
                 ui.add_space(12.0);
                 self.start_area(ui);
@@ -473,6 +473,8 @@ impl Form {
             recent: &self.recent_cars,
             previews: &mut self.previews,
             root: &root,
+            skins: &self.car_skins,
+            detail: None,
         };
         let target = self.car_browser.target;
         match self.car_browser.ui(ui, env) {
@@ -489,7 +491,8 @@ impl Form {
                 None => self.favourite_cars.push(name),
             },
             Some(car_browser::Action::Back) => self.car_browser.open = false,
-            None => {}
+            // The Cars page's.
+            Some(car_browser::Action::Remove(_) | car_browser::Action::Skin(..)) | None => {}
         }
     }
 

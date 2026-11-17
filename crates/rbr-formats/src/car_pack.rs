@@ -422,7 +422,8 @@ mod tests {
         std::fs::create_dir_all(&pack).unwrap();
         std::fs::create_dir_all(model.parent().unwrap()).unwrap();
         std::fs::write(&model, [0u8; 4]).unwrap();
-        let flags = Flags { pack: Some(pack), model: Some(model), bank: Some(dir.join("evo.bank")), ..Flags::default() };
+        let flags =
+            Flags { pack: Some(pack), model: Some(model), bank: Some(dir.join("evo.bank")), ..Flags::default() };
         let resolved = flags.resolve(Data::new(&dir, None)).unwrap();
         assert_eq!(resolved.model.entry.index, SLOT as usize);
         assert_eq!(resolved.folder(), "evo");

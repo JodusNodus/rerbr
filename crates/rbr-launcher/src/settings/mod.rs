@@ -203,6 +203,8 @@ pub struct Settings {
     pub camera: CameraPrefs,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     pub gearboxes: Gearboxes,
+    /// The skin picked for each car model folder (`[skin]`, `cars_page`).
+    pub car_skins: crate::cars_page::CarSkins,
     /// The setup each car drives with on each surface (`[setup]`).
     pub setups: SetupChoices,
     /// NGP's UDP telemetry to `ADDR:PORT` (`[telemetry]`, `udp = 127.0.0.1:6776`; `rbr-standalone --telemetry-udp`);
@@ -513,6 +515,7 @@ impl Settings {
                 camera
             },
             gearboxes: Gearboxes::parse(&sections),
+            car_skins: crate::cars_page::CarSkins::parse(&sections),
             setups: SetupChoices::parse(&sections),
             telemetry_udp: parse_telemetry(&sections),
         }
@@ -621,6 +624,7 @@ impl Settings {
         out.push('\n');
         out.push_str(&self.camera.to_text());
         out.push_str(&self.gearboxes.to_text());
+        out.push_str(&self.car_skins.to_text());
         out.push_str(&self.setups.to_text());
         if let Some(to) = &self.telemetry_udp {
             out.push_str(&format!("\n[{TELEMETRY}]\nudp = {to}\n"));
@@ -732,6 +736,9 @@ mod tests {
                 "Ford Escort Mk II".into(),
                 CarBox { engagement: Engagement::Dog, sequential: false },
             )]),
+            car_skins: crate::cars_page::CarSkins::parse(
+                &ini::parse("[skin]\nevo_IX = Pajari_Monte\nxsara = -\n").unwrap(),
+            ),
             setups: SetupChoices(vec![
                 ("Skoda Fabia R5".into(), "gravel".into(), "fast".into()),
                 ("XSARA".into(), "tarmac".into(), "dry grip".into()),

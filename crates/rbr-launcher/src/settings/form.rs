@@ -184,6 +184,7 @@ impl Form {
             // Filled by `list_cars`.
             car_browser: Default::default(),
             gearboxes: settings.gearboxes.clone(),
+            car_skins: settings.car_skins.clone(),
             telemetry_udp: settings.telemetry_udp.clone().unwrap_or_default(),
             // Filled by `list_maps`.
             stage_browser: Default::default(),
@@ -413,6 +414,7 @@ impl Form {
             ffb_load: viewer.ffb_load,
             camera: viewer.camera,
             gearboxes: self.gearboxes.clone(),
+            car_skins: self.car_skins.clone(),
             setups: self.setup.choices.clone(),
             telemetry_udp: super::udp_address(&self.telemetry_udp).map(str::to_owned),
         };

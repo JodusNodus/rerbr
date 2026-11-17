@@ -218,7 +218,6 @@ pub fn top_line(
     focus: &mut bool,
     random: &mut bool,
 ) -> bool {
-    let id = search_id();
     let mut back = false;
     ui.horizontal(|ui| {
         let button = egui::Button::new(egui::RichText::new("⏴ Back").size(14.5)).min_size(egui::vec2(0.0, 30.0));
@@ -226,25 +225,31 @@ pub fn top_line(
         ui.add_space(6.0);
         ui.label(egui::RichText::new(title).size(20.0).strong());
         ui.add_space(18.0);
-        // Typing anywhere searches.
-        let typing = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_))));
-        if (std::mem::take(focus) || typing) && ui.memory(|m| m.focused()) != Some(id) {
-            ui.memory_mut(|m| m.request_focus(id));
-        }
-        ui.add(
-            egui::TextEdit::singleline(query)
-                .id(id)
-                .hint_text(hint)
-                .desired_width(470.0)
-                .min_size(egui::vec2(0.0, 30.0))
-                .align(egui::Align2::LEFT_CENTER),
-        );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let button = egui::Button::new(egui::RichText::new("🎲 Random").size(14.5)).min_size(egui::vec2(0.0, 30.0));
-            *random = ui.add(button).on_hover_text("A random pick of the list as filtered").clicked();
-        });
+        search_row(ui, hint, query, focus, random);
     });
     back
+}
+
+/// The search box and the Random button on its right, in a row: the box takes focus when `focus` is set, and when the
+/// player types with nothing else focused on it. Typing anywhere searches.
+pub fn search_row(ui: &mut egui::Ui, hint: &str, query: &mut String, focus: &mut bool, random: &mut bool) {
+    let id = search_id();
+    let typing = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_))));
+    if (std::mem::take(focus) || typing) && ui.memory(|m| m.focused()) != Some(id) {
+        ui.memory_mut(|m| m.request_focus(id));
+    }
+    ui.add(
+        egui::TextEdit::singleline(query)
+            .id(id)
+            .hint_text(hint)
+            .desired_width(470.0)
+            .min_size(egui::vec2(0.0, 30.0))
+            .align(egui::Align2::LEFT_CENTER),
+    );
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let button = egui::Button::new(egui::RichText::new("🎲 Random").size(14.5)).min_size(egui::vec2(0.0, 30.0));
+        *random = ui.add(button).on_hover_text("A random pick of the list as filtered").clicked();
+    });
 }
 
 /// Takes the browser's keys and moves the highlight with the arrow and page keys; the keys.
