@@ -107,6 +107,7 @@ pub fn experimental_section(
 ) {
     section(ui, "Experimental");
     fields(ui, "experimental", |ui| {
+        switch(ui, "Force feedback", tyres, "From the tyres", FFB_HELP, FFB_PAGE);
         let (mut engine, mut tyre) = physics.parts();
         switch(ui, "Engine", &mut engine, "ReRBR's engine model, aero and drivetrain", ENGINE_HELP, ENGINE_PAGE);
         switch(ui, "Tyre", &mut tyre, "ReRBR's brush tyre (in development)", TYRE_HELP, TYRE_PAGE);
@@ -121,7 +122,6 @@ pub fn experimental_section(
             ui.weak(NO_RECORDS);
             ui.end_row();
         }
-        switch(ui, "Force feedback", tyres, "From the tyres", FFB_HELP, FFB_PAGE);
     });
 }
 

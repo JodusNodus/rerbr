@@ -87,8 +87,8 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
     });
     ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
     ui.add_enabled_ui(ffb.settings.enabled, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Sensitivity for cars without their own").on_hover_text(SENSITIVITY_HELP);
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Sensitivity (lower = heavier) for cars without their own").on_hover_text(SENSITIVITY_HELP);
             for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
                 ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
                     .on_hover_text(SENSITIVITY_HELP);
@@ -124,78 +124,79 @@ fn ffb_cars_ui(
     settings: &Path,
     read_only: bool,
     ffb_status: &mut Option<String>,
+    search: &mut String,
 ) {
-    heading(ui, "Force feedback per car");
-    ui.add_enabled_ui(on && !read_only, |ui| {
-        ui.label(
-            RichText::new(
-                "Cars listed here use their own sensitivities instead of the ones above, and the pause menu's Force \
-                 feedback page sets them while driving.",
-            )
-            .color(Color32::GRAY),
-        );
-        let mut changed = false;
-        let mut remove: Option<String> = None;
-        for (key, values) in ffb_cars.cars.iter_mut() {
-            ui.horizontal(|ui| {
-                ui.label(car_display(key, cars));
-                for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
-                    let help = match maxed_out(loads, key, k, *value, linearity) {
-                        Some(n) => format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here."),
-                        None => SENSITIVITY_HELP.to_owned(),
-                    };
-                    changed |= ui
-                        .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                        .on_hover_text(help)
-                        .changed();
+    ui.add_space(10.0);
+    let title = RichText::new(format!("Force feedback per car ({})", ffb_cars.cars.len())).size(16.5).strong();
+    egui::CollapsingHeader::new(title).default_open(false).show(ui, |ui| {
+        ui.add_enabled_ui(on && !read_only, |ui| {
+            ui.label("Cars listed here use their own sensitivities instead of the ones above.");
+            ui.add(egui::TextEdit::singleline(&mut *search).hint_text("Search cars"));
+            let search = search.trim().to_lowercase();
+            let mut changed = false;
+            let mut remove: Option<String> = None;
+            for (key, values) in ffb_cars.cars.iter_mut() {
+                let name = car_display(key, cars);
+                if !name.to_lowercase().contains(&search) {
+                    continue;
                 }
-                if ui.small_button("Remove").clicked() {
-                    remove = Some(key.clone());
+                ui.horizontal(|ui| {
+                    ui.label(name);
+                    for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
+                        let help = match maxed_out(loads, key, k, *value, linearity) {
+                            Some(n) => format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here."),
+                            None => SENSITIVITY_HELP.to_owned(),
+                        };
+                        changed |= ui
+                            .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
+                            .on_hover_text(help)
+                            .changed();
+                    }
+                    if ui.small_button("Remove").clicked() {
+                        remove = Some(key.clone());
+                    }
+                });
+            }
+            if let Some(key) = remove {
+                ffb_cars.cars.remove(&key);
+                changed = true;
+            }
+            let selected = cars.get(car);
+            let key = selected.map(|c| c.key.clone());
+            let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
+            ui.horizontal(|ui| {
+                let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
+                if ui
+                    .add_enabled(!listed, egui::Button::new(format!("Add the selected car ({name})")))
+                    .on_hover_text("Lists this car with the sensitivities above")
+                    .clicked()
+                {
+                    if let Some(key) = key.clone() {
+                        ffb_cars.cars.insert(key, global);
+                        changed = true;
+                    }
+                }
+                if ui
+                    .add_enabled(has_rsf_settings(root), egui::Button::new("Import from RSF"))
+                    .on_hover_text(IMPORT_HELP)
+                    .clicked()
+                {
+                    let n = import_ffb_cars(root, cars, global, ffb_cars);
+                    *ffb_status = Some(match n {
+                        1 => "Imported 1 car from RSF.".to_owned(),
+                        n => format!("Imported {n} cars from RSF."),
+                    });
+                    changed |= n > 0;
                 }
             });
-        }
-        if let Some(key) = remove {
-            ffb_cars.cars.remove(&key);
-            changed = true;
-        }
-        let selected = cars.get(car);
-        let key = selected.map(|c| c.key.clone());
-        let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
-        ui.horizontal(|ui| {
-            let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
-            if ui
-                .add_enabled(!listed, egui::Button::new(format!("Add the selected car ({name})")))
-                .on_hover_text("Lists this car with the sensitivities above")
-                .clicked()
-            {
-                if let Some(key) = key.clone() {
-                    ffb_cars.cars.insert(key, global);
-                    changed = true;
-                }
+            ui.label("Hover a value for how often the wheel maxed out; adjust in the pause menu while driving.");
+            if let Some(status) = &*ffb_status {
+                ui.label(status);
             }
-            if ui
-                .add_enabled(has_rsf_settings(root), egui::Button::new("Import from RSF"))
-                .on_hover_text(IMPORT_HELP)
-                .clicked()
-            {
-                let n = import_ffb_cars(root, cars, global, ffb_cars);
-                *ffb_status = Some(match n {
-                    1 => "Imported 1 car from RSF.".to_owned(),
-                    n => format!("Imported {n} cars from RSF."),
-                });
-                changed |= n > 0;
+            if changed {
+                write_ffb_cars(settings, ffb_cars);
             }
         });
-        ui.label(
-            RichText::new("Hover a value for how often the wheel maxed out; adjust in the pause menu while driving.")
-                .color(Color32::GRAY),
-        );
-        if let Some(status) = &*ffb_status {
-            ui.label(RichText::new(status).color(Color32::GRAY));
-        }
-        if changed {
-            write_ffb_cars(settings, ffb_cars);
-        }
     });
 }
 
@@ -345,6 +346,8 @@ pub struct ControlsPage {
     wheels: Result<Vec<Wheel>, String>,
     /// The last "Import from RSF"'s summary.
     ffb_status: Option<String>,
+    /// The per-car force feedback list's search text.
+    ffb_search: String,
     /// The force-feedback devices connected when the device list was last opened.
     ffb_devices: Vec<String>,
     /// The last drive's force feedback: the device it drove, or why there was none ([`last_ffb`]).
@@ -360,6 +363,7 @@ impl ControlsPage {
             scanned: Instant::now(),
             wheels: Ok(wheel_rotation::wheels()),
             ffb_status: None,
+            ffb_search: String::new(),
             ffb_devices: Vec::new(),
             ffb_last: None,
         }
@@ -538,15 +542,18 @@ impl ControlsPage {
                     );
                     shifter_ui(ui, bindings);
                     heading(ui, "Driver aids");
-                    aids_ui(ui, aids, head_gasket);
+                    aids_ui(ui, aids);
+                    heading(ui, "Car");
+                    head_gasket_ui(ui, head_gasket);
                     heading(ui, "Force feedback");
                     ffb_ui(ui, ffb, settings, read_only);
                     self.ffb_device_ui(ui, ffb);
                     let (global, linearity) = (ffb.sensitivity, ffb.linearity());
                     let on = ffb.settings.enabled;
-                    let status = &mut self.ffb_status;
+                    let (status, search) = (&mut self.ffb_status, &mut self.ffb_search);
                     ffb_cars_ui(
                         ui, on, global, linearity, ffb_cars, ffb_load, cars, car, root, settings, read_only, status,
+                        search,
                     );
                 });
             });
@@ -812,10 +819,9 @@ const HEAD_GASKET_FIX: i32 = 10;
 const HEAD_GASKET_HELP: &str = "RSF's fix: the head gasket wears 10 times slower, so realistic damage no longer kills \
      the engine unexpectedly. Off is NGP's default.";
 
-/// The game's gearbox aids (its English labels, `bstrings.eng`) and "Game defaults", then the head gasket fix (NGP's
-/// `headGasketDurability`, 1 off). A car with an H-pattern gearbox under the advanced H-shifter drives without the
+/// The game's gearbox aids (its English labels, `bstrings.eng`) and "Game defaults". A car with an H-pattern gearbox under the advanced H-shifter drives without the
 /// automatic gearbox and clutch help.
-fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
+fn aids_ui(ui: &mut Ui, aids: &mut DriverAids) {
     const H_PATTERN: &str = "; off for a car whose gearbox is H-pattern under the advanced H-shifter";
     egui::Grid::new("aids").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
         let rows = [
@@ -834,6 +840,10 @@ fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
     if ui.small_button("Game defaults").on_hover_text("The game's driver aids").clicked() {
         *aids = DriverAids::default();
     }
+}
+
+/// The head gasket fix (NGP's `headGasketDurability`, 1 off).
+fn head_gasket_ui(ui: &mut Ui, head_gasket: &mut i32) {
     let mut fix = *head_gasket > 1;
     if ui.checkbox(&mut fix, "Head gasket durability fix").on_hover_text(HEAD_GASKET_HELP).changed() {
         *head_gasket = if fix { HEAD_GASKET_FIX } else { 1 };

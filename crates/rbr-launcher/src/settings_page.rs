@@ -132,15 +132,18 @@ impl Form {
         // NGP's UDP telemetry, for dashboards and motion rigs.
         section(ui, "Telemetry");
         fields(ui, "telemetry", |ui| {
-            ui.label("UDP address");
+            ui.label("NGP telemetry");
             ui.horizontal(|ui| {
-                let edit = egui::TextEdit::singleline(&mut self.telemetry_udp).hint_text("127.0.0.1:6776");
-                ui.add(edit.desired_width(220.0));
+                let mut on = !self.telemetry_udp.trim().is_empty();
+                if ui.checkbox(&mut on, "Send NGP telemetry").changed() {
+                    self.telemetry_udp = if on { "127.0.0.1:6776".to_owned() } else { String::new() };
+                }
+                ui.add_enabled_ui(on, |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.telemetry_udp).desired_width(180.0));
+                });
                 match settings::udp_address(&self.telemetry_udp) {
                     Some(to) => _ = ui.weak(format!("Each drive sends NGP's telemetry packet to {to}")),
-                    None if self.telemetry_udp.trim().is_empty() => {
-                        _ = ui.weak("Off: an address (NGP's default is 127.0.0.1:6776) sends NGP's telemetry packet")
-                    }
+                    None if !on => {}
                     None => _ = ui.colored_label(WARN, "Not sent: give an address and a port, ADDR:PORT"),
                 }
             });
