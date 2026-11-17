@@ -358,13 +358,12 @@ impl Form {
     /// The best lap card: the profile's best lap on the circuit, its sectors and the car.
     fn best_lap_card(&self, ui: &mut egui::Ui) {
         let number = self.catalog.maps[self.map].number;
-        let best = self.circuit.book.best(number, &self.championship.profile);
+        let Some(best) = self.circuit.book.best(number, &self.championship.profile) else {
+            ui.weak("No lap yet: your best lap on this circuit is kept here");
+            return;
+        };
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(crate::preview::WIDTH - 20.0);
-            let Some(best) = best else {
-                ui.weak("No lap yet: your best lap on this circuit is kept here");
-                return;
-            };
             ui.horizontal(|ui| {
                 ui.label(RichText::new(time_label(f64::from(best.lap))).size(26.0).strong());
                 ui.weak("best lap");

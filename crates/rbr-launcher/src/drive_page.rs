@@ -151,6 +151,7 @@ impl Form {
             if blocker.is_none() && (start.clicked() || enter) {
                 self.start();
             }
+            no_records_note(ui, !self.drive_physics().keeps_records());
             if let Some(child) = &mut self.child {
                 if ui
                     .add(egui::Button::new(RichText::new("Stop").size(16.0)).min_size(egui::vec2(90.0, 44.0)))
@@ -251,7 +252,9 @@ impl Form {
             ui.end_row();
 
             if custom {
-                ui.label("Look").on_hover_text("Sets the clouds, the rain or snow, the fog and the road's wetness");
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                    ui.label("Look").on_hover_text("Sets the clouds, the rain or snow, the fog and the road's wetness");
+                });
                 ui.vertical(|ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui.set_max_width(FIELD);
@@ -371,7 +374,9 @@ impl Form {
                 ui.end_row();
             } else if self.custom() || self.weather_row.is_some() || self.options.weather == Preset::Bad {
                 ui.label("Road wear").on_hover_text(wear_tip);
-                combo(ui, "wear", FIELD, &mut self.wear, &[0, 1, 2], |wear| catalog::WEARS[wear.min(2) as usize]);
+                combo(ui, "wear", FIELD, &mut self.wear, &[0, 1, 2], |wear| {
+                    sentence(catalog::WEARS[wear.min(2) as usize])
+                });
                 ui.end_row();
             }
 
@@ -388,7 +393,7 @@ impl Form {
                 "The wiper switch at the start; auto follows the rain and the mud on the glass. I steps it while \
                        driving";
             ui.label("Wipers").on_hover_text(tip);
-            combo(ui, "wipers", FIELD, &mut self.wipers, &Switch::ALL, Switch::name);
+            combo(ui, "wipers", FIELD, &mut self.wipers, &Switch::ALL, |switch| sentence(switch.name()));
             ui.end_row();
         });
     }
@@ -691,5 +696,18 @@ impl Form {
                 }
             })
             .response
+    }
+}
+
+/// Our own dropdown words in sentence case: "new" as "New".
+fn sentence(word: &str) -> String {
+    let mut chars = word.chars();
+    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+}
+
+/// Beside a Start that drives: what the experimental physics leaves unsaved, when `shown`.
+pub(crate) fn no_records_note(ui: &mut egui::Ui, shown: bool) {
+    if shown {
+        ui.add(egui::Label::new(RichText::new(format!("⚠ {}", crate::physics::NO_RECORDS)).color(WARN)).wrap());
     }
 }

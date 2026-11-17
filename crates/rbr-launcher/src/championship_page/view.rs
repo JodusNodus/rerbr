@@ -24,6 +24,8 @@ pub struct Env<'a> {
     pub saved: &'a dyn Fn(u32) -> Vec<(String, String)>,
     /// What blocks a stage's launch.
     pub blocker: Option<&'a Issue>,
+    /// Whether the drive runs on physics that keeps no records (`PhysicsProfile::keeps_records`).
+    pub no_records: bool,
     /// A new builder's seed.
     pub seed: u32,
     /// NGP's `physics.rbz`: the archive cars' physics, for the field's pace.

@@ -258,6 +258,7 @@ impl Form {
         let car = self.car().map_or_else(|| "none".to_owned(), car_label);
         let (mut drive, mut to_drive_page) = (None, false);
         {
+            let no_records = !self.drive_physics().keeps_records();
             let school = &mut self.school;
             let grades = school.results(&saves, &profile);
             let grade = |lesson: Lesson| grades[lesson.index() as usize];
@@ -335,6 +336,7 @@ impl Form {
                     if ui.add_enabled(blocker.is_none(), crate::pages::start_button(label)).clicked() {
                         drive = Some(lesson);
                     }
+                    crate::drive_page::no_records_note(ui, no_records);
                     if let Some(issue) = &blocker {
                         ui.colored_label(WARN, &issue.text);
                     }

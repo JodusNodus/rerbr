@@ -221,7 +221,15 @@ impl ChampionshipPage {
         }
         ui.add_space(10.0);
         let go = ui.horizontal(|ui| {
-            ui.add_enabled(!self.driving && env.blocker.is_none(), start_button(&format!("Drive SS{}", stage + 1)))
+            let go =
+                ui.add_enabled(!self.driving && env.blocker.is_none(), start_button(&format!("Drive SS{}", stage + 1)));
+            if env.no_records {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(format!("⚠ {}", crate::physics::NO_RECORDS)).color(WARN))
+                        .wrap(),
+                );
+            }
+            go
         });
         if go.inner.clicked() {
             match self.stage_start(env.here) {

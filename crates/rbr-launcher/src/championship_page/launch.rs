@@ -95,6 +95,7 @@ impl Form {
             car_field: &mut car_field,
             saved: &saved,
             blocker: blocker.as_ref(),
+            no_records: !self.drive_physics().keeps_records(),
             seed,
             archive: Path::new(&archive),
             renamed: &self.catalog.renamed,
