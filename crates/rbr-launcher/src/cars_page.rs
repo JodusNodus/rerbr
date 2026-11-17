@@ -96,6 +96,12 @@ fn skin_list<'a>(cache: &'a mut Option<SkinList>, car: &Car) -> &'a SkinList {
     }))
 }
 
+/// Whether `car`'s model has skins installed (`--screenshot` shows one that does).
+pub fn has_skins(car: &Car) -> bool {
+    let root = car.model_path.as_deref().and_then(|p| car_pack::root_of(p).ok());
+    root.zip(model_folder(car)).is_some_and(|(root, folder)| !car_pack::skins(&root, &folder).is_empty())
+}
+
 /// The folder holding the car's files: its model's.
 fn files_folder(car: &Car, root: &str) -> Option<PathBuf> {
     match &car.model_path {
@@ -128,64 +134,72 @@ struct Panel<'a> {
 fn detail(ui: &mut egui::Ui, p: Panel, previews: &mut Previews, confirm: &mut Option<String>) -> Option<Action> {
     let Panel { row, car, root, skins, picked, favourite, idle } = p;
     let mut action = None;
-    ui.add_space(6.0);
-    ui.label(RichText::new(&row.title).size(22.0).strong());
-    ui.label(RichText::new(&row.group).color(GREY));
-    ui.add_space(6.0);
-    previews.car_ui(ui, car, root, picked.of(car).as_deref());
-    ui.add_space(6.0);
+    // The actions keep their room below; the rest scrolls when the window is short.
+    let below = if added_pack(car).is_some() { 130.0 } else { 100.0 };
     let folder = model_folder(car);
-    egui::Grid::new("car facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-        let label = |ui: &mut egui::Ui, text: &str| ui.label(RichText::new(text).color(GREY));
-        label(ui, "Source");
-        ui.label(car_browser::source(car));
-        ui.end_row();
-        label(ui, "Drive");
-        ui.label(row.drive.map_or("unknown", car_browser::Drive::label));
-        ui.end_row();
-        label(ui, "Model");
-        match &row.model {
-            Model::Own => ui.label("its own"),
-            Model::StandIn(why) => ui.add(egui::Label::new(format!("a stand-in: {why}")).wrap()),
-            Model::Missing => ui.label("none"),
-        };
-        ui.end_row();
-        label(ui, "Files");
-        ui.vertical(|ui| {
-            if let Some(path) = files_folder(car, root) {
-                ui.add(egui::Label::new(path.display().to_string()).truncate());
-                if ui.link("Open folder").clicked() {
-                    crate::crash::open(path.as_os_str());
-                }
-            } else {
-                ui.label("not found");
-            }
-        });
-        ui.end_row();
-        label(ui, "Skins");
-        match (&folder, skins.skins.is_empty()) {
-            (None, _) => ui.label(RichText::new("not used: no model of its own").color(GREY)),
-            (Some(_), true) => ui.label(RichText::new("none installed").color(GREY)),
-            (Some(folder), false) => {
-                // The choice, else RSF's, else the model's own.
-                let current = match picked.get(folder) {
-                    Some(OWN_SKIN) => None,
-                    Some(name) => Some(name.to_owned()),
-                    None => skins.rsf.clone(),
+    egui::ScrollArea::vertical()
+        .max_height((ui.available_height() - below).max(120.0))
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.add_space(6.0);
+            ui.label(RichText::new(&row.title).size(22.0).strong());
+            ui.label(RichText::new(&row.group).color(GREY));
+            ui.add_space(6.0);
+            previews.car_ui(ui, car, root, picked.of(car).as_deref());
+            ui.add_space(6.0);
+            egui::Grid::new("car facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+                let label = |ui: &mut egui::Ui, text: &str| ui.label(RichText::new(text).color(GREY));
+                label(ui, "Source");
+                ui.label(car_browser::source(car));
+                ui.end_row();
+                label(ui, "Drive");
+                ui.label(row.drive.map_or("unknown", car_browser::Drive::label));
+                ui.end_row();
+                label(ui, "Model");
+                match &row.model {
+                    Model::Own => ui.label("its own"),
+                    Model::StandIn(why) => ui.add(egui::Label::new(format!("a stand-in: {why}")).wrap()),
+                    Model::Missing => ui.label("none"),
                 };
-                let mut choice = current.clone();
-                let options: Vec<Option<String>> =
-                    std::iter::once(None).chain(skins.skins.iter().cloned().map(Some)).collect();
-                let response = combo(ui, "skin", 210.0, &mut choice, &options, |s| s.unwrap_or("Model's own".into()));
-                if choice != current {
-                    action = Some(Action::Skin(folder.clone(), choice.unwrap_or_else(|| OWN_SKIN.to_owned())));
-                }
-                response.on_hover_text(format!("{} skins; the drive and the preview use it", skins.skins.len()))
-            }
-        };
-        ui.end_row();
-    });
-    ui.add_space(12.0);
+                ui.end_row();
+                label(ui, "Files");
+                ui.vertical(|ui| {
+                    if let Some(path) = files_folder(car, root) {
+                        ui.add(egui::Label::new(path.display().to_string()).truncate());
+                        if ui.link("Open folder").clicked() {
+                            crate::crash::open(path.as_os_str());
+                        }
+                    } else {
+                        ui.label("not found");
+                    }
+                });
+                ui.end_row();
+                label(ui, "Skins");
+                match (&folder, skins.skins.is_empty()) {
+                    (None, _) => ui.label(RichText::new("not used: no model of its own").color(GREY)),
+                    (Some(_), true) => ui.label(RichText::new("none installed").color(GREY)),
+                    (Some(folder), false) => {
+                        // The choice, else RSF's, else the model's own.
+                        let current = match picked.get(folder) {
+                            Some(OWN_SKIN) => None,
+                            Some(name) => Some(name.to_owned()),
+                            None => skins.rsf.clone(),
+                        };
+                        let mut choice = current.clone();
+                        let options: Vec<Option<String>> =
+                            std::iter::once(None).chain(skins.skins.iter().cloned().map(Some)).collect();
+                        let response =
+                            combo(ui, "skin", 210.0, &mut choice, &options, |s| s.unwrap_or("Model's own".into()));
+                        if choice != current {
+                            action = Some(Action::Skin(folder.clone(), choice.unwrap_or_else(|| OWN_SKIN.to_owned())));
+                        }
+                        response.on_hover_text(format!("{} skins; the drive and the preview use it", skins.skins.len()))
+                    }
+                };
+                ui.end_row();
+            });
+        });
+    ui.add_space(10.0);
     match row.problem.as_deref() {
         None => {
             ui.horizontal(|ui| {
@@ -239,24 +253,12 @@ impl Form {
             ui.horizontal_wrapped(|ui| self.adding_job_ui(ui));
             self.adding_status_ui(ui);
         }
-        ui.horizontal(|ui| {
-            let (cars, added) = (self.catalog.cars.len(), self.adding.cars.len());
-            let line = if added == 0 { format!("{cars} cars") } else { format!("{cars} cars · {added} added by you") };
-            ui.label(RichText::new(line).size(16.0).strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Get more cars…").on_hover_text("gvrc.de's cars, on the Get more page").clicked() {
-                    self.page = Page::Get;
-                    self.open_car_list();
-                }
-            });
-        });
-        ui.add_space(6.0);
-        ui.separator();
         if self.no_cars_yet(ui) {
             return;
         }
         let root = self.game_root();
         let idle = self.can_add_cars();
+        let added = self.adding.cars.len();
         let Form { cars_page, car_skins, favourite_cars, recent_cars, previews, catalog, .. } = &mut *self;
         let CarsPage { browser, skins, confirm } = cars_page;
         let starred: &Vec<String> = favourite_cars;
@@ -265,7 +267,9 @@ impl Form {
             let skins = skin_list(skins, car);
             detail(ui, Panel { row, car, root, skins, picked: car_skins, favourite, idle }, previews, confirm)
         };
+        let cars = catalog.cars.len();
         let env = car_browser::Env {
+            heading: if added == 0 { format!("{cars} cars") } else { format!("{cars} cars · {added} added by you") },
             cars: &catalog.cars,
             favourites: favourite_cars,
             recent: recent_cars,
@@ -283,6 +287,10 @@ impl Form {
                 Some(at) => drop(self.favourite_cars.remove(at)),
                 None => self.favourite_cars.push(name),
             },
+            Some(Action::GetMore) => {
+                self.page = Page::Get;
+                self.open_car_list();
+            }
             Some(Action::Skin(folder, skin)) => self.car_skins.set(&folder, &skin),
             Some(Action::Remove(pack)) => {
                 self.cars_page.confirm = None;

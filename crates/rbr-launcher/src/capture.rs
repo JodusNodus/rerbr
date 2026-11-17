@@ -38,6 +38,16 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         if page == Page::Circuit {
             form.wait_for_scan(&egui::Context::default());
         }
+        if page == Page::Cars {
+            // Drawn once for its list, then the highlighted car's turntable waited for.
+            if let Some(k) = form.catalog.cars.iter().position(crate::cars_page::has_skins) {
+                form.cars_page.browser.show(k);
+            }
+            draw(|ctx| form.ui(ctx))?;
+            if let Some(car) = form.cars_page.browser.highlighted().and_then(|k| form.catalog.cars.get(k)).cloned() {
+                form.previews.wait_for(&map, &car, &form.game_root(), form.car_skin(&car).as_deref());
+            }
+        }
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
     }
     // The Controls page whole, its force feedback per car included.

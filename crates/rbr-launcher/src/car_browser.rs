@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke};
 
 use crate::browser::{
-    block, favourite_button, header_line, items, key_action, list_rows, paint_selection, paint_star, random_row,
+    block, favourite_button, header_line, items, key_action, list_rows_keyed, paint_selection, paint_star, random_row,
     row_slot, search_row, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY, ROW,
 };
 use crate::catalog::{self, Car};
@@ -364,6 +364,8 @@ pub enum Action {
     Favourite(String),
     /// Go back without choosing.
     Back,
+    /// Open the Get more page on gvrc.de's cars (the Cars page).
+    GetMore,
     /// Remove the car added by the launcher with this pack folder (the Cars page).
     Remove(String),
     /// Draw model folder `.0` with skin `.1` (`--car-skin`'s word; the Cars page).
@@ -372,6 +374,8 @@ pub enum Action {
 
 /// What the page gives the browser to draw.
 pub struct Env<'a> {
+    /// The Cars page's line above the search: how many cars.
+    pub heading: String,
     /// The skins the player picked, which the previews draw.
     pub skins: &'a crate::cars_page::CarSkins,
     /// The Cars page's own detail panel, in place of the picker's: the row, its car, the previews and the game folder.
@@ -483,6 +487,16 @@ impl CarBrowser {
         self.made = None;
     }
 
+    /// Highlights the car at this position of the catalog (`--screenshot`).
+    pub fn show(&mut self, index: usize) {
+        self.nav.show(index);
+    }
+
+    /// The highlighted car's position in the catalog.
+    pub fn highlighted(&self) -> Option<usize> {
+        self.rows.get(self.nav.cursor).map(|r| r.index)
+    }
+
     /// The row of the car named `name`.
     pub fn row_of(&self, name: &str) -> Option<&CarRow> {
         self.rows.iter().find(|r| r.name == name)
@@ -539,7 +553,17 @@ impl CarBrowser {
         if self.page {
             // A page has no Back, and Esc does nothing.
             action = action.filter(|a| *a != Action::Back);
-            ui.horizontal(|ui| search_row(ui, hint, &mut self.filter.query, &mut self.focus, &mut random));
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(&env.heading).size(16.0).strong());
+                ui.add_space(12.0);
+                let after = |ui: &mut egui::Ui| {
+                    let button = egui::Button::new(RichText::new("Get more cars…").size(14.5));
+                    if ui.add(button.min_size(egui::vec2(0.0, 30.0))).on_hover_text("gvrc.de's cars").clicked() {
+                        action = Some(Action::GetMore);
+                    }
+                };
+                search_row(ui, hint, &mut self.filter.query, &mut self.focus, &mut random, after);
+            });
         } else if top_line(ui, "Choose a car", hint, &mut self.filter.query, &mut self.focus, &mut random) {
             action = Some(Action::Back);
         }
@@ -664,7 +688,12 @@ impl CarBrowser {
             ui.add_space(10.0);
             ui.label(RichText::new(hint).color(GREY));
         }
-        list_rows(ui, &mut self.nav, "cars", &self.lines, |ui, nav, range| {
+        let keys = if self.page {
+            "⏶⏷ move    Enter drive this car    Ctrl+D favourite"
+        } else {
+            "⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back"
+        };
+        list_rows_keyed(ui, &mut self.nav, "cars", &self.lines, keys, |ui, nav, range| {
             for at in range {
                 let k = match &self.lines[at] {
                     Line::Header(name) => {

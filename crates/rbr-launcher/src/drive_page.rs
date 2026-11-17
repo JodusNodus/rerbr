@@ -473,6 +473,7 @@ impl Form {
             recent: &self.recent_cars,
             previews: &mut self.previews,
             root: &root,
+            heading: String::new(),
             skins: &self.car_skins,
             detail: None,
         };
@@ -492,7 +493,8 @@ impl Form {
             },
             Some(car_browser::Action::Back) => self.car_browser.open = false,
             // The Cars page's.
-            Some(car_browser::Action::Remove(_) | car_browser::Action::Skin(..)) | None => {}
+            Some(car_browser::Action::Remove(_) | car_browser::Action::Skin(..) | car_browser::Action::GetMore)
+            | None => {}
         }
     }
 
