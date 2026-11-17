@@ -243,7 +243,7 @@ pub struct HudOptions {
 /// `--help`'s text.
 pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [STAGE] [OPTIONS] [--live COMMAND...]
   STAGE: track-NN_X (default track-10_O), a RallySimFans stage folder, or the path of its files without the extension
-  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--car-year YEAR]
+  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--car-skin NAME|-] [--car-year YEAR]
               --damage ZONE:VALUE,...  --crack CODE:INDEX,...
   drive:      --drive RECORDING  --at STEP  --at-periods N  --at-drive RECORDING  --live COMMAND... (the rest of the line)
               --bindings INI  --ghost FILE  --save-ghost FILE  --best-ghost FILE  --ghost-weather WORDS
@@ -481,7 +481,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let value = args.next().ok_or("--car-year needs a year")?;
                 car_year = Some(value.parse().map_err(|_| format!("--car-year: {value} is not a year"))?);
             }
-            flag @ ("--car-pack" | "--car-model" | "--car-bank" | "--car-key") => {
+            flag @ ("--car-pack" | "--car-model" | "--car-bank" | "--car-key" | "--car-skin") => {
                 let value = args.next().ok_or(format!("{flag} needs a value"))?;
                 assert!(pack_car.take(flag, &value));
             }
@@ -1038,7 +1038,7 @@ mod tests {
     /// The pack-car flags forward to `car_pack::Flags` (`car_pack` tests their combinations).
     #[test]
     fn pack_car_flags_forward() {
-        let args = parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k").unwrap();
+        let args = parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k --car-skin Monte").unwrap();
         assert_eq!(
             args.pack_car,
             car_pack::Flags {
@@ -1046,6 +1046,7 @@ mod tests {
                 model: Some(PathBuf::from("/r/Cars/evo/evo.sgc")),
                 bank: Some(PathBuf::from("/r/b.bank")),
                 key: Some("k".into()),
+                skin: Some("Monte".into()),
             }
         );
         assert!(parse("--car-pack /p").is_err());

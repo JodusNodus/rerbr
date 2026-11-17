@@ -657,7 +657,7 @@ impl Selected {
 
 /// Car `key` (an id or pack folder of the RSF install `root`) in [`car_pack::SLOT`] of `data`: what RSF would
 /// install, read in place, through [`car_pack::resolve`].
-pub fn select(data: Data, key: &str, root: Option<&Path>) -> Result<Selected, String> {
+pub fn select(data: Data, key: &str, root: Option<&Path>, skin: Option<&str>) -> Result<Selected, String> {
     let root = root.ok_or(format!("{key}: not an id or pack, and no RSF install (RBR_RSF) to find it in"))?;
     let install = Install::open(root)?;
     let car = install.find(key).ok_or(format!("{key}: not an id or pack in {}'s cars.json", root.display()))?.clone();
@@ -667,7 +667,7 @@ pub fn select(data: Data, key: &str, root: Option<&Path>) -> Result<Selected, St
     let retail = cars::parse(&String::from_utf8_lossy(&text)).map_err(|e| e.to_string())?;
     let model = install.model_entry(&car, &retail)?;
     let resolved =
-        car_pack::resolve(data, pack.clone(), model.clone(), install.root.clone(), install.audio_bank(&car))?;
+        car_pack::resolve(data, pack.clone(), model.clone(), install.root.clone(), install.audio_bank(&car), skin)?;
     Ok(Selected {
         root: install.root.clone(),
         car,
@@ -737,14 +737,14 @@ mod tests {
             return;
         };
         let root = Path::new(&root);
-        let fiesta = select(data.clone(), "Ford_Fiesta_Rally3_ngp6", Some(root)).unwrap();
+        let fiesta = select(data.clone(), "Ford_Fiesta_Rally3_ngp6", Some(root), None).unwrap();
         assert_eq!(fiesta.skin.as_deref(), Some("Pajari_Monte"));
         let dir = |path: &str| fiesta.data.resolve(path).unwrap().parent().unwrap().to_owned();
         let skin = cars::resolve(root, "Cars\\Fiesta_rally3\\skins\\Pajari_Monte\\textures").unwrap();
         assert_eq!(dir("Cars\\Fiesta_rally3\\Textures\\Fiesta_rally3_external.dds"), skin);
         let own = cars::resolve(root, "Cars\\Fiesta_rally3\\Textures").unwrap();
         assert_eq!(dir("Cars\\Fiesta_rally3\\Textures\\Fiesta_rally3_internal_parts.dds"), own);
-        let bmw = select(data, "BMW_M3_E30_GrpA_ngp6", Some(root)).unwrap();
+        let bmw = select(data, "BMW_M3_E30_GrpA_ngp6", Some(root), None).unwrap();
         assert_eq!(bmw.skin, None);
     }
 

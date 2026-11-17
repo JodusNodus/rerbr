@@ -1318,6 +1318,7 @@ mod tests {
                 model: Some(PathBuf::from("/R/Cars/evo/evo.sgc")),
                 bank: Some(PathBuf::from("B")),
                 key: Some("rsf-24".into()),
+                skin: None,
             }
         );
         match run_str(&format!("{BOOT} --car-pack P --car-model /R/Cars/evo/evo.sgc --rsf-car X"), None) {
