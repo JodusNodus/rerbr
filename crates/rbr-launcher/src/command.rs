@@ -738,7 +738,7 @@ impl Form {
             marker: self.marker,
             bindings: bindings.map(Path::to_path_buf),
             setup,
-            skin: self.skins.choice(&car),
+            skin: self.skins.choice(car),
             school,
         }
         .args();
