@@ -22,8 +22,18 @@ impl ChampionshipPage {
         );
         ui.add_space(8.0);
         fields(ui, "championship-profile", |ui| {
-            ui.label("Profile").on_hover_text("The championship is saved under this name, one per profile");
-            ui.add_enabled(!self.driving, egui::TextEdit::singleline(env.profile).desired_width(160.0));
+            let tip =
+                "Your name for the saves: one championship is kept per profile, and your best laps on the Circuit \
+                       page. Another name starts a separate set.";
+            ui.label("Profile").on_hover_text(tip);
+            ui.horizontal(|ui| {
+                ui.add_enabled(
+                    !self.driving,
+                    egui::TextEdit::singleline(env.profile).desired_width(160.0).hint_text("Your name"),
+                )
+                .on_hover_text(tip);
+                ui.colored_label(GREY, "saves and best laps are kept under this name");
+            });
             env.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
             ui.end_row();
         });
