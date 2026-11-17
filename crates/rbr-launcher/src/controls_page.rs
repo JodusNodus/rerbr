@@ -88,7 +88,7 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
     ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
     ui.add_enabled_ui(ffb.settings.enabled, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Sensitivity (lower = heavier) for cars without their own").on_hover_text(SENSITIVITY_HELP);
+            ui.label("Sensitivity (lower = heavier)").on_hover_text(SENSITIVITY_HELP);
             for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
                 ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
                     .on_hover_text(SENSITIVITY_HELP);
