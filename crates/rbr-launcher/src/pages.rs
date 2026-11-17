@@ -413,7 +413,12 @@ impl Form {
             })
         });
         let readiness = self.readiness();
+        // Nothing to say, nothing shown.
+        let bar = readiness.is_some() || !self.status.is_empty() || crate::update::available();
         ctx.root_ui(|root| {
+            if !bar {
+                return;
+            }
             egui::Panel::bottom("status").show(root, |ui| {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -428,14 +433,13 @@ impl Form {
                             }
                         }
                         None => {
-                            let text = if self.status.is_empty() { "Ready" } else { &self.status };
-                            ui.colored_label(Color32::GRAY, text);
+                            ui.colored_label(Color32::GRAY, &self.status);
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), crate::update::link);
                 });
                 ui.add_space(2.0);
-            })
+            });
         });
         // Over the status line, on every page: the Add's progress and result.
         self.content_notice(ctx);

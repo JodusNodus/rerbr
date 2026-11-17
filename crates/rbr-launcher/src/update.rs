@@ -22,6 +22,11 @@ pub fn start() {
     });
 }
 
+/// Whether a newer release was found.
+pub fn available() -> bool {
+    NEWER.get().is_some()
+}
+
 /// The link to the newer release's page, when there is one.
 pub fn link(ui: &mut egui::Ui) {
     if let Some(tag) = NEWER.get() {
