@@ -130,6 +130,7 @@ mod btb;
 mod capture;
 mod car_browser;
 mod car_packs;
+mod cars_page;
 mod catalog;
 mod championship_page;
 mod circuit_page;
@@ -137,10 +138,12 @@ mod codriver_packs;
 mod codriver_page;
 mod command;
 mod content;
+mod content_pages;
 mod controls_page;
 mod crash;
 mod disc_install;
 mod drive_page;
+mod get_page;
 mod ghosts;
 mod graphics_page;
 mod gvrc;
@@ -158,6 +161,7 @@ mod settings;
 mod settings_page;
 mod setup_page;
 mod stage_browser;
+mod stages_page;
 mod time_of_day;
 mod update;
 mod upscaler;
@@ -446,6 +450,15 @@ struct Form {
     data: Data,
     season: Season,
     page: Page,
+    /// The page each section was last on ([`pages::Section::ALL`]'s order): a section's tab opens it again.
+    last_pages: [Page; 3],
+    /// Content > Cars, Content > Stages and Content > Get more.
+    #[allow(dead_code)] // until its page keeps state
+    cars_page: cars_page::CarsPage,
+    #[allow(dead_code)] // until its page keeps state
+    stages_page: stages_page::StagesPage,
+    #[allow(dead_code)] // until its page keeps state
+    get_page: get_page::GetPage,
     setup: SetupPage,
     /// The Championship tab (ours).
     championship: championship_page::ChampionshipPage,

@@ -1,5 +1,5 @@
-//! The Settings page: what the player needs to drive, the game folder, the cars, the co-driver, the advanced paths and
-//! the programs.
+//! The Settings section's General page: what the player needs to drive (the game folder, NGP, the cars, the wheel),
+//! the physics, the telemetry, the advanced paths and the programs.
 
 use std::path::PathBuf;
 
@@ -11,8 +11,8 @@ use crate::{catalog, controls_page, install, job, settings, Form};
 
 impl Form {
     /// What the player needs to drive, a row each with its next step beside it: the game folder, NGP, the cars and the
-    /// wheel; below them the co-driver, the physics, the UDP telemetry, the advanced fields (NGP's DLL, the paths that override the folder's parts) and
-    /// the version.
+    /// wheel; below them the physics, the UDP telemetry, the advanced fields (NGP's DLL, the paths that override the
+    /// folder's parts) and the version.
     pub fn settings_page(&mut self, ui: &mut egui::Ui) {
         let running = self.child.is_some();
         // What Start needs, a row each: its heading says whether something still blocks it.
@@ -91,18 +91,12 @@ impl Form {
         fields(ui, "row cars", |ui| {
             tick(ui, "Cars", has_cars, |ui| {
                 ui.label(if has_cars { count.join(", ") } else { "None yet".to_owned() });
-                self.download_cars_button(ui);
+                if ui.button("Get cars…").on_hover_text("gvrc.de's NGP car packs, on Content > Get more").clicked() {
+                    self.page = Page::Get;
+                    self.open_car_list();
+                }
             })
         });
-        if self.has_adding_output() {
-            ui.horizontal_wrapped(|ui| self.adding_job_ui(ui));
-            self.adding_status_ui(ui);
-        }
-        self.download_cars_panel(ui);
-        if !self.adding.cars.is_empty() {
-            let title = format!("Added cars ({})", self.adding.cars.len());
-            egui::CollapsingHeader::new(title).id_salt("added cars").show(ui, |ui| self.added_cars_ui(ui));
-        }
 
         // The wheel.
         let pads = self.controls.has_pads();
@@ -119,12 +113,6 @@ impl Form {
                 }
             })
         });
-
-        // Everything a player downloads: stages, cars, co-drivers, pace notes, NGP.
-        self.add_content_section(ui);
-
-        // The co-driver: a general choice, the same for every stage.
-        self.codriver_section(ui);
 
         // The experimental physics and force feedback every drive runs.
         crate::physics::experimental_section(ui, &mut self.physics, self.session_physics, &mut self.ffb.tyres);

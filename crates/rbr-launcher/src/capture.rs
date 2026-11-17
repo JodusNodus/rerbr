@@ -28,6 +28,10 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         (Page::Controls, "controls"),
         (Page::Graphics, "graphics-sound"),
         (Page::Settings, "settings"),
+        (Page::Cars, "cars"),
+        (Page::Stages, "stages"),
+        (Page::Codrivers, "codrivers"),
+        (Page::Get, "get"),
     ];
     for (page, name) in pages {
         form.page = page;
