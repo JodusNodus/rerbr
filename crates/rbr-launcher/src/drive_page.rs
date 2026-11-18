@@ -461,11 +461,6 @@ impl Form {
 
     /// The car browser in place of the page's body: the Drive page's car, or the car a new season drives.
     pub(crate) fn car_browser_page(&mut self, ui: &mut egui::Ui) {
-        // "Download cars…"'s progress and result are above the browser.
-        if self.has_adding_output() {
-            ui.horizontal_wrapped(|ui| self.adding_job_ui(ui));
-            self.adding_status_ui(ui);
-        }
         let root = self.game_root();
         let env = car_browser::Env {
             cars: &self.catalog.cars,

@@ -599,6 +599,14 @@ impl StageBrowser {
         self.focus = true;
     }
 
+    /// Shows stage `index` (a catalog position) in the list of all stages, with no search.
+    pub fn show_stage(&mut self, index: usize) {
+        self.collection = Collection::All;
+        self.filter.query.clear();
+        self.nav.show(index);
+        self.visited = true;
+    }
+
     /// Makes this the Stages page's browser, on all stages with `selected` (a catalog position) highlighted the first
     /// time.
     pub fn start_page(&mut self, selected: usize) {

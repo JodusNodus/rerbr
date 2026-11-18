@@ -151,10 +151,6 @@ fn detail(
 impl Form {
     /// Every car: its details and skins, the cars added and their removal.
     pub fn cars_page(&mut self, ui: &mut egui::Ui) {
-        if self.has_adding_output() {
-            ui.horizontal_wrapped(|ui| self.adding_job_ui(ui));
-            self.adding_status_ui(ui);
-        }
         if self.no_cars_yet(ui) {
             return;
         }

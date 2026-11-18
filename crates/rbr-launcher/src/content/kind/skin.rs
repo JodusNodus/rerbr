@@ -2,7 +2,7 @@
 //! (a car model's archive and stages hold textures too). The car it dresses: the one whose model folder its path
 //! names (`Cars/<model>/Textures/`), else the one whose model's textures share the most names with it, at least half
 //! of them (a skin replaces a model's textures by name). One model takes it, in every car drawn with it (RSF's and an
-//! added copy); several models, or none, leave it to the car's own Import skin… on Content > Cars.
+//! added copy); several models, or none, leave it to the car's own Import skin… on Cars.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ pub struct Skin;
 const KIND: &str = "car skin";
 
 /// What to do when the car is not known.
-const BY_HAND: &str = "open the car on Content > Cars and use Import skin…";
+const BY_HAND: &str = "open the car in Cars and use Import skin…";
 
 /// A car a skin can dress (`Known::cars`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

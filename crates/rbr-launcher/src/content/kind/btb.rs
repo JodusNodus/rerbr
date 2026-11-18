@@ -81,7 +81,7 @@ impl Kind for Btb {
             match add_stage(item.src, dir, &stage, &tracks, ctx.report, ctx.cancel) {
                 Ok(a) => {
                     let goto = Goto::Stage(a.folder);
-                    Outcome::added(&name, "BTB stage", &a.name, "it's in the stage picker", goto)
+                    Outcome::added(&name, "BTB stage", &a.name, "it's in Stages", goto)
                 }
                 Err(e) => Outcome::failed(&stage, "BTB stage", e),
             }
