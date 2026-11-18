@@ -53,28 +53,13 @@ Ours, not in 1.02: the launcher in place of the game's menus, the season's car (
 and end screens, the force-feedback graph of your steering load per car (pause menu), the wiper switch, the look-back key, the "Best" ghost, night, working mirrors, and the renderer
 additions on the Graphics & sound page, set by a quality preset or one by one. The stage always draws at the game's highest quality.
 
-Left out on purpose: original `.rpl` playback, replay cameras and filters, music, co-driver languages other than
-English, Richard Burns Challenge, hot seat and custom rallies, unlocks (everything is open),
-automatic recovery (H calls for help), TrackIR, EAX and Prologic.
-
 ### Known limitations
 
-- **Car sound.** A car with an FMOD sound bank (its pack's, or gvrc.de's when it has one) plays its own sounds. Other cars
-  use the retail Impreza's sound. Engine reflections are missing and the rain sound is a
-  stand-in.
-- **Keyboard steering on a RallySimFans install** moves at a tenth of the retail speed, as in RSF's own game.
-- **Community cars.** A car whose model isn't installed is drawn as the retail car RSF names as its stand-in. Car-parts
-  options, extra lights and other modder options are not applied; skins are (pick or import one, a `.zip` or `.7z`,
-  on Content > Cars; RSF's selection is the default). Community cars and added cars
-  share one slot: the same ghosts, and the service park repairs them by that slot's rules. Their setups are their
-  own, per car and surface, with RSF's own setups listed too.
 - **Assetto Corsa tracks** are converted, not drawn as AC draws them: surfaces map to RBR's classes, CSP effects, scripts and normal or
   specular maps are skipped, and a track needs its AI line (`ai/fast_lane.ai`) for the route; one without it is listed with the reason.
   A stage on mixed gravel and tarmac gets one tyre model, chosen by the larger share. Pacenotes are generated.
   The converter is experimental, so expect to fix an occasional stage by hand.
 - **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.
-- **BTB stages** (`RX_CONTENT/Tracks` folders of a RallySimFans install) are drawn without bump or specular maps. Each is a stage of its
-  own, with its own records and ghosts; its weathers are retail map 41's (Mont Blanc).
 
 ## Install
 
@@ -91,30 +76,12 @@ Development happens mostly on macOS and Linux, so Windows may have more bugs for
      `--appimage-extract-and-run`.
 2. **Start it** and choose your game folder ([below](#your-game-with-ngp)). The launcher takes it from there.
 
-### Your game, with NGP
+### Your game
 
 ReRBR plays your own copy of Richard Burns Rally 1.02 with NGP 7. The game folder can be:
-- **A RallySimFans install.** This is the easiest: it has the game, NGP, and the community's cars and stages. The RSF
-  installer is a Windows program, so install it on a Windows PC (or under Wine) and copy the whole
-  `Richard Burns Rally` folder over.
-- **RBR with the official 1.02 patch and the NGP plugin** from [gvrc.de](https://gvrc.de/NGP.html), copied over the
-  same way.
+- **A RallySimFans or other RBR install.** This is the easiest: it has the game, NGP, and the community's cars and stages.
 - **Only the disc, and no Windows at all:** the launcher builds the game folder from the disc image
   ([docs/install-from-disc.md](docs/install-from-disc.md)).
-
-ReRBR requires NGP 7.4.778, the version its physics is verified against (RallySimFans ships 7.5.779). The launcher
-offers to download it when your folder has another version, and leaves the installed one as it is. ReRBR only reads
-the game folder; it never changes it.
-
-### Your files
-
-Everything ReRBR writes (settings, bindings, saves in the game's formats, ghosts, setups, added cars, co-driver packs,
-replays, videos and logs) goes to one folder:
-
-- macOS: `~/Library/Application Support/ReRBR/`;
-- Linux: `$XDG_DATA_HOME/rerbr/`, by default `~/.local/share/rerbr/`;
-- Windows: `%APPDATA%\ReRBR\`;
-- or `$RERBR_HOME`, if set (for a portable copy).
 
 ## Contributing
 
