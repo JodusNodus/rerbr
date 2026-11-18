@@ -1745,6 +1745,12 @@ The stage's backdrop textures (those only the sky layer draws, not the clouds) a
 size (`upscale::BACKDROP_MAX`, user's call 2026-11-01): the panorama strips span a whole turn (462 Odry's 4096x512,
 337 Torre Vecchia's `land_mo` 4096x256), so a 4K view of them was magnified about 6x. Textures shared by the backdrop
 and the ground take the ground's 4096.
+A stage whose textures would take over 3 GB of GPU memory upscaled keeps its own (`upscale::STAGE_BUDGET`,
+`stage_size`; user's call 2026-11-18): its car and cockpit are still upscaled. Measured from the DDS headers (the
+upscaled size with a full chain), over the player's 40 BTB stages 13 pass it, converted ones mostly: Crequy 2025's 4008
+textures 2.8 GB would take 9.8 GB (the viewer's own count the same), Thizy 5.8, EBR Sankt Vith 3.1 (many small ones,
+4x); the Nordschleife 2.0, Akagi 0.5. The launcher's Stages page says so (`upscale::folder_size`, from `Textures.zip`:
+it counts files no material uses and the backdrop's at 4096; 0.1 to 0.6 s a large stage, on a thread).
 Not packaged: the download takes Real-ESRGAN v0.2.5.0's release zip (macOS universal, Linux and Windows x86_64; none for ARM Linux) and the
 model's ncnn files from upscayl/custom-models at 500e6a0, each checked by SHA-256.
 

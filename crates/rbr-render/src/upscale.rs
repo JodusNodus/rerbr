@@ -14,6 +14,9 @@
 //! sources run at 4x and are halved. Larger tiles (`-t 1024`) break the output past one tile. The missing textures go
 //! through one run of the binary over a folder (each run costs ~0.2 s to start), and each is encoded while the binary
 //! makes the next.
+//!
+//! A stage whose textures would take more than [`STAGE_BUDGET`] of GPU memory upscaled keeps its own ([`stage_size`]):
+//! the large converted stages (Crequy 2025's 4008 textures, 2.8 GB, would take 9.8 GB, and thousands of first upscales).
 
 use crate::parallel::in_parallel;
 use crate::stage::{Image, Layer, Stage, StageTexture, TextureRef, TextureSet};
@@ -46,6 +49,9 @@ pub const INTERIOR_HEIGHT: u32 = 1800;
 /// The smallest largest side upscaled: below it a texture is a light, a flat colour or a fence tile, with nothing to
 /// sharpen.
 pub const MIN: u32 = 32;
+/// The most GPU memory a stage's textures may take upscaled: past it the stage keeps its own textures, its car and
+/// cockpit are still upscaled (user, 2026-11-18). The retail and most BTB stages take under 1 GB; the Nordschleife 2.6.
+pub const STAGE_BUDGET: u64 = 3 << 30;
 /// The player's folder's subfolder the launcher keeps the upscaler in.
 pub const DIR: &str = "Upscaler";
 /// The upscaler's folder's subfolder with the upscaled textures.
@@ -181,6 +187,52 @@ pub fn stage_textures(stage: &Stage) -> BTreeMap<TextureRef, u32> {
         .filter(|key| stage.texture_names.get(key).is_none_or(|name| name.file_name != crate::grass::TEXTURE))
         .map(|key| (key, if sky.contains(&key) && !rest.contains(&key) { BACKDROP_MAX } else { MAX }))
         .collect()
+}
+
+/// The GPU memory a texture of `width` x `height` in `format` takes with a full mip chain once upscaled to a larger side
+/// of at most `max` (BC7 stays as it is).
+pub fn upscaled_size(width: u32, height: u32, format: Format, max: u32) -> u64 {
+    let side = width.max(height);
+    let s = if format == Format::Bc7 { 1 } else { scale(side, max).unwrap_or(1) } as u64;
+    let eighths = match format {
+        Format::Dxt1 => 4,
+        Format::Rgba8 => 32,
+        Format::Dxt3 | Format::Dxt5 | Format::Bc7 => 8,
+    };
+    (width as u64 * s) * (height as u64 * s) * eighths / 8 * 4 / 3
+}
+
+/// The GPU memory the stage's textures `picks` ([`stage_textures`]) take once upscaled: the measure of
+/// [`STAGE_BUDGET`].
+pub fn stage_size(textures: &BTreeMap<TextureRef, StageTexture>, picks: &BTreeMap<TextureRef, u32>) -> u64 {
+    let size = |(key, max): (&TextureRef, &u32)| {
+        let Some(Image::Dds(bytes)) = textures.get(key)?.image.as_ref() else { return None };
+        let dds = dds::header(bytes).ok()?;
+        Some(upscaled_size(dds.width, dds.height, dds.format, *max))
+    };
+    picks.iter().filter_map(size).sum()
+}
+
+/// What a BTB stage's `Textures.zip` in `folder` would take upscaled, from its `.dds` files' headers: the launcher's
+/// guess of [`stage_size`] (it counts files no material uses, and the backdrop's at [`MAX`]).
+pub fn folder_size(folder: &Path) -> Option<u64> {
+    let path = rbr_formats::stage_files::in_dir(folder, "Textures.zip")?;
+    let mut zip = rbr_formats::rbz::open(&path).ok()?;
+    let mut total = 0;
+    for i in 0..zip.len() {
+        let Ok(file) = zip.by_index(i) else { continue };
+        if !file.name().is_ok_and(|n| n.to_ascii_lowercase().ends_with(".dds")) {
+            continue;
+        }
+        let mut head = Vec::with_capacity(148);
+        if file.take(148).read_to_end(&mut head).is_err() {
+            continue;
+        }
+        if let Ok(dds) = dds::header(&head) {
+            total += upscaled_size(dds.width, dds.height, dds.format, MAX);
+        }
+    }
+    Some(total)
 }
 
 /// A `.dds` file's larger side, `None` where it does not read or is BC7 (left as it is).
@@ -496,6 +548,25 @@ mod tests {
     /// A grey DXT1 file `side` texels square, as `encode` writes it.
     fn file(side: u32) -> Vec<u8> {
         encode(Format::Dxt1, side, side, vec![128; (side * side * 4) as usize])
+    }
+
+    #[test]
+    fn a_stage_is_measured_as_its_textures_would_be_upscaled() {
+        let chain = |bytes: u64| bytes * 4 / 3;
+        assert_eq!(upscaled_size(1024, 1024, Format::Dxt1, MAX), chain(4096 * 4096 / 2), "4x");
+        assert_eq!(upscaled_size(2048, 1024, Format::Dxt5, MAX), chain(4096 * 2048), "2x");
+        assert_eq!(upscaled_size(4096, 512, Format::Dxt5, BACKDROP_MAX), chain(8192 * 1024), "the backdrop's");
+        assert_eq!(upscaled_size(4096, 4096, Format::Dxt5, MAX), chain(4096 * 4096), "as it is");
+        assert_eq!(upscaled_size(16, 16, Format::Rgba8, MAX), chain(16 * 16 * 4), "under MIN");
+        assert_eq!(upscaled_size(1024, 1024, Format::Bc7, MAX), chain(1024 * 1024), "BC7 is left");
+        // Its header alone, as the launcher reads it from a zip.
+        let header = dds::header(&file(256)[..128]).unwrap();
+        assert_eq!((header.width, header.height, header.format), (256, 256, Format::Dxt1));
+        let mut textures = BTreeMap::new();
+        let key = TextureRef { set: TextureSet::Stage, index: 0 };
+        textures.insert(key, StageTexture { request: "a.dds".into(), image: Some(Image::Dds(file(256))) });
+        assert_eq!(stage_size(&textures, &[(key, MAX)].into()), chain(1024 * 1024 / 2));
+        assert_eq!(stage_size(&textures, &BTreeMap::new()), 0);
     }
 
     #[test]

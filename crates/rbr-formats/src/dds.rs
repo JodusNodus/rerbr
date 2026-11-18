@@ -156,9 +156,9 @@ fn u32_at(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
 }
 
-/// Parses a DDS file. The mip chain must follow the header; bytes after it are ignored, as D3DX does (some RSF car
-/// textures hold one level more than their header counts).
-pub fn parse(bytes: &[u8]) -> Result<Dds<'_>, Error> {
+/// A file's header: its size, format, stored mip levels and where the levels start. Reads only the header (128
+/// bytes, 148 with a DX10 one), so a file's first bytes do.
+pub fn header(bytes: &[u8]) -> Result<Header, Error> {
     if bytes.len() < HEADER_LEN {
         return Err(Error::Truncated { len: bytes.len() });
     }
@@ -216,7 +216,24 @@ pub fn parse(bytes: &[u8]) -> Result<Dds<'_>, Error> {
     if mip_count > width.max(height).ilog2() + 1 {
         return Err(Error::Header { what: "mip count" });
     }
+    Ok(Header { width, height, format, mip_count, start })
+}
 
+/// What [`header`] reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Header {
+    pub width: u32,
+    pub height: u32,
+    pub format: Format,
+    pub mip_count: u32,
+    /// Where the first level starts.
+    pub start: usize,
+}
+
+/// Parses a DDS file. The mip chain must follow the header; bytes after it are ignored, as D3DX does (some RSF car
+/// textures hold one level more than their header counts).
+pub fn parse(bytes: &[u8]) -> Result<Dds<'_>, Error> {
+    let Header { width, height, format, mip_count, start } = header(bytes)?;
     let data = &bytes[start..];
     let expected: usize = (0..mip_count)
         .map(|level| level_len(width >> level, height >> level, format))
