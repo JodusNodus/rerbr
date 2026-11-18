@@ -11,6 +11,10 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 - **The original game around it.** Weather, damage, the service park, the championship and the stage records work
   as in RBR 1.02, checked against recordings of the original.
 - **The community's cars and stages.** Any original file format stage and NGP car works out of the box, and community BTB stages work experimentally.
+- **Assetto Corsa tracks become stages.** Drop a track folder, `.zip`, `.7z` or `.rar` on Import and ReRBR converts each
+  layout to a stage, with the road, scenery, trees, surfaces, pacenotes and timing from the AC files. Gravel and tarmac
+  rallies from the AC community work, so the library of stages is far bigger than RBR's own
+  ([how it works](docs/assetto-tracks.md)).
 - **A modern look.** A physically based sky and sun, HDR, sun shadows, rain and dust, a lit
   cockpit, windscreen glass and working mirrors.
 
@@ -64,6 +68,10 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
   on Content > Cars; RSF's selection is the default). Community cars and added cars
   share one slot: the same ghosts, and the service park repairs them by that slot's rules. Their setups are their
   own, per car and surface, with RSF's own setups listed too.
+- **Assetto Corsa tracks** are converted, not drawn as AC draws them: surfaces map to RBR's classes, CSP effects, scripts and normal or
+  specular maps are skipped, and a track needs its AI line (`ai/fast_lane.ai`) for the route; one without it is listed with the reason.
+  A stage on mixed gravel and tarmac gets one tyre model, chosen by the larger share. Pacenotes are generated.
+  The converter is experimental, so expect to fix an occasional stage by hand.
 - **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.
 - **BTB stages** (`RX_CONTENT/Tracks` folders of a RallySimFans install) are drawn without bump or specular maps. Each is a stage of its
   own, with its own records and ghosts; its weathers are retail map 41's (Mont Blanc).
