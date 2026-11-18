@@ -1,5 +1,4 @@
-//! Centre lines: a `DecalRoad`'s nodes as a spline sampled at a fixed step (BeamNG draws AI roads through their nodes;
-//! a centripetal Catmull-Rom curve through them), and the arc length of points projected onto it.
+//! Centre lines: a polyline with its arc length, sampled at a point's arc length, and re-run between two arc lengths.
 
 /// A polyline with its cumulative arc length.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,61 +29,6 @@ impl Line {
 
     pub fn length(&self) -> f64 {
         self.at.last().copied().unwrap_or(0.0)
-    }
-
-    /// The spline through `nodes` (`x, y, z, width`), sampled about every `step` metres; a looped road closes back
-    /// on its first node.
-    pub fn spline(nodes: &[[f64; 4]], looped: bool, step: f64) -> Line {
-        let n = nodes.len();
-        let mut points = Vec::new();
-        let mut width = Vec::new();
-        if n < 2 {
-            return Line::new(nodes.iter().map(|p| [p[0], p[1], p[2]]).collect(), nodes.iter().map(|p| p[3]).collect());
-        }
-        let get = |i: isize| -> [f64; 4] {
-            if looped {
-                nodes[i.rem_euclid(n as isize) as usize]
-            } else {
-                nodes[i.clamp(0, n as isize - 1) as usize]
-            }
-        };
-        let spans = if looped { n } else { n - 1 };
-        for i in 0..spans as isize {
-            let (p0, p1, p2, p3) = (get(i - 1), get(i), get(i + 1), get(i + 2));
-            let xyz = |p: [f64; 4]| [p[0], p[1], p[2]];
-            let len = dist(xyz(p1), xyz(p2));
-            let count = (len / step).ceil().max(1.0) as usize;
-            for k in 0..count {
-                let t = k as f64 / count as f64;
-                points.push(catmull_rom(xyz(p0), xyz(p1), xyz(p2), xyz(p3), t));
-                width.push(p1[3] + (p2[3] - p1[3]) * t);
-            }
-        }
-        let last = if looped { nodes[0] } else { nodes[n - 1] };
-        points.push([last[0], last[1], last[2]]);
-        width.push(last[3]);
-        Line::new(points, width)
-    }
-
-    /// The nearest point of the line to `p`: (arc length, distance).
-    pub fn project(&self, p: [f64; 3]) -> (f64, f64) {
-        let mut best = (0.0, f64::MAX);
-        for i in 1..self.points.len() {
-            let (a, b) = (self.points[i - 1], self.points[i]);
-            let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let len2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
-            let t = if len2 > 0.0 {
-                (((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / len2).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let q = [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t];
-            let d = dist(p, q);
-            if d < best.1 {
-                best = (self.at[i - 1] + (self.at[i] - self.at[i - 1]) * t, d);
-            }
-        }
-        best
     }
 
     /// The point and unit tangent at arc length `s` (clamped).
@@ -125,38 +69,18 @@ impl Line {
     }
 }
 
-/// Centripetal Catmull-Rom between `p1` and `p2`.
-fn catmull_rom(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], p3: [f64; 3], t: f64) -> [f64; 3] {
-    let knot = |a: [f64; 3], b: [f64; 3]| dist(a, b).sqrt().max(1e-6);
-    let t0 = 0.0;
-    let t1 = t0 + knot(p0, p1);
-    let t2 = t1 + knot(p1, p2);
-    let t3 = t2 + knot(p2, p3);
-    let u = t1 + (t2 - t1) * t;
-    let lerp = |a: [f64; 3], b: [f64; 3], ta: f64, tb: f64| -> [f64; 3] {
-        let w = (u - ta) / (tb - ta);
-        std::array::from_fn(|i| a[i] + (b[i] - a[i]) * w)
-    };
-    let a1 = lerp(p0, p1, t0, t1);
-    let a2 = lerp(p1, p2, t1, t2);
-    let a3 = lerp(p2, p3, t2, t3);
-    let b1 = lerp(a1, a2, t0, t2);
-    let b2 = lerp(a2, a3, t1, t3);
-    lerp(b1, b2, t1, t2)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn straight(length: usize) -> Line {
+        Line::new((0..=length).map(|i| [i as f64, 0.0, 0.0]).collect(), vec![8.0; length + 1])
+    }
+
     #[test]
-    fn a_spline_passes_its_nodes_and_measures_its_length() {
-        let nodes = [[0.0, 0.0, 0.0, 8.0], [10.0, 0.0, 0.0, 8.0], [20.0, 0.0, 0.0, 6.0]];
-        let line = Line::spline(&nodes, false, 1.0);
+    fn a_line_measures_its_length_and_stretches_back_and_to_its_end() {
+        let line = straight(20);
         assert!((line.length() - 20.0).abs() < 1e-6);
-        assert!(line.points.contains(&[10.0, 0.0, 0.0]));
-        let (s, d) = line.project([5.0, 1.0, 0.0]);
-        assert!((s - 5.0).abs() < 1e-6 && (d - 1.0).abs() < 1e-6);
         let back = line.stretch(15.0, 10.0, false, 2.5);
         assert_eq!(back.points.len(), 5);
         assert!((back.points[4][0] - 5.0).abs() < 1e-6);
@@ -166,10 +90,9 @@ mod tests {
     }
 
     #[test]
-    fn a_looped_road_wraps() {
-        let nodes = [[0.0, 0.0, 0.0, 1.0], [10.0, 0.0, 0.0, 1.0], [10.0, 10.0, 0.0, 1.0], [0.0, 10.0, 0.0, 1.0]];
-        let line = Line::spline(&nodes, true, 1.0);
-        assert_eq!(line.points.first(), line.points.last());
+    fn a_closed_line_wraps() {
+        let square = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 0.0]];
+        let line = Line::new(square.to_vec(), vec![1.0; 5]);
         let around = line.stretch(line.length() - 1.0, 2.0, true, 1.0);
         assert!(around.points[2][0] < 2.0 && around.points[2][1] < 1.0);
     }

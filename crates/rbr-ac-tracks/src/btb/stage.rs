@@ -1,4 +1,4 @@
-//! Validation and runtime preparation common to both source formats.
+//! Validation and runtime preparation of a converted stage.
 use std::path::Path;
 
 pub const MAX_CELL_VERTICES: usize = 65_536;

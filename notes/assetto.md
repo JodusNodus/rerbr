@@ -493,8 +493,8 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   BeamNG) is no longer used; its AC code, tests and the two stage-checking scripts (`scripts/btb-autopilot.py`,
   `scripts/btb-shots.py`) moved here on 2026-11-18, BeamNG did not.
 - The launcher's Add (`crates/rbr-launcher/src/content/kind/ac.rs`) takes a folder, a zip or a 7z with an AC track:
-  a folder with a KN5 of its own, `ai/fast_lane.ai` and `data/surfaces.ini` (its own or in a layout folder, names
-  ignoring case). It unpacks it without programs and sound banks into a hidden folder in `tracks/`, converts each layout
+  a folder with a KN5 of its own and `data/surfaces.ini` (its own or in a layout folder, names ignoring case; a car
+  has no surfaces). It unpacks it without programs and sound banks into a hidden folder in `tracks/`, converts each layout
   by `import::import` (circuit when the AI line is a closed loop without gates, smoothed road when a collision cell
   overflows) into `AC_<track>` or `AC_<track>_<layout>`, and removes the hidden folder; a cancel stops the conversion
   and leaves nothing behind. A layout the converter cannot take (no AI line, no surfaces) is reported with its reason.
@@ -503,6 +503,15 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 - Get more stages links AC Rally Central's rally list (each track has its author's download, RBR conversions too) and
   assettocorsa.club's track mods. Neither is checked for what its archives hold beyond that; protected KN5s and tracks
   that need CSP to look right convert as far as the readers go.
-- Checked: the synthetic track as a zip (listed, marked, re-add refused, cancel clean), and a real track from its folder
-  (`RBR_ASSETTO=<track folder> cargo test -p rbr-launcher a_real_track`). Not checked by hand in the launcher window,
-  and no archive from either site has been tried.
+- The launcher reads `.rar` too (`rars`, pure Rust, Apache-2.0, read only: RAR 1.3 to 7, one volume, no encryption;
+  a young crate, its README calls it an experiment, but it extracted all six archives below as `unrar` does). Its
+  decoding runs in file order, so progress and Cancel move per file.
+- Checked 2026-11-18, each from the archive through the launcher's Add (`RBR_ASSETTO=<archive or folder> cargo test -p
+  rbr-launcher a_real_track -- --nocapture`), the four last also rendered (no drive): `asw-steppe-rally.zip` (tundra),
+  `pineridgerallyv1_by_ultranewb.7z`, `AC_Monte_Carlo-Stage3-V1_04-TTM.rar`, `Tramo_Ermita_Sant_Antoni_v1.01.rar`
+  (6.1 km) and `simtraxx_pribram_0.7` `.rar` (the `race` layout, imported as a circuit; its three other layouts have no
+  AI line) and `Gunma Cycle Sports Center v1.2.rar` (two of three layouts; `gcsc_full_attack` has no
+  `data/surfaces.ini`). Not converted, with the reason shown: `simtraxx_el_cubilete_0.6.rar` (only `ai/_fast_lane.ai`,
+  AC ignores it) and `zelezniki_forward.rar` (empty `ai` folder). A track without an AI line cannot give a driveline.
+- Also checked: the synthetic track as a zip (listed, marked, re-add refused, cancel clean). Not checked by hand in
+  the launcher window, and neither site's own download links (mega.nz, overtake.gg) were followed from the launcher.

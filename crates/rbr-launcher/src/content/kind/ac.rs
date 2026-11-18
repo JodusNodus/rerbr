@@ -1,5 +1,5 @@
-//! Assetto Corsa tracks: each track folder of a dropped folder or archive (one with a KN5 model of its own, an AI line
-//! `ai/fast_lane.ai` and `data/surfaces.ini`, its own or in a layout folder; names ignoring case) is unpacked into a
+//! Assetto Corsa tracks: each track folder of a dropped folder or archive (one with a KN5 model of its own and a
+//! `data/surfaces.ini`, its own or in a layout folder; names ignoring case) is unpacked into a
 //! hidden folder beside `<player folder>/tracks/` and converted there, a stage for each layout, by `rbr_ac_tracks`
 //! (`notes/assetto.md`). Every path goes through [`crate::archive::safe_folder`] and programs and sound banks are left
 //! out. A stage appears whole or not at all, and a cancel leaves nothing behind. Each stage keeps the converter's
@@ -28,8 +28,9 @@ const KIND: &str = "Assetto Corsa track";
 
 pub struct Ac;
 
-/// The track folders among `entries`: each folder with a `.kn5` of its own, an `ai/fast_lane.ai` and a
-/// `data/surfaces.ini` in it or in a folder of it, the outermost of nested ones.
+/// The track folders among `entries`: each folder with a `.kn5` of its own and a `data/surfaces.ini` in it or in a
+/// folder of it (a car has no surfaces; a track without an AI line is still one, and says what it lacks), the outermost of
+/// nested ones.
 pub fn track_dirs(entries: &[Entry]) -> Vec<Vec<String>> {
     let mut found: Vec<Vec<String>> = Vec::new();
     let mut candidates: Vec<&[String]> = entries
@@ -50,7 +51,7 @@ pub fn track_dirs(entries: &[Entry]) -> Vec<Vec<String>> {
                 rest == file || rest.ends_with(&format!("/{file}"))
             })
         };
-        if has("ai/fast_lane.ai") && has("data/surfaces.ini") {
+        if has("data/surfaces.ini") {
             found.push(dir.to_vec());
         }
     }
@@ -193,10 +194,11 @@ mod tests {
             "f/b/data/surfaces.ini",
         ];
         assert_eq!(dirs(&layouts), ["f"]);
-        // A car has a model and data but no AI line; a track without surfaces or without an AI line is not one.
+        // A car has a model and data but no surfaces; a model alone is not a track. One without an AI line is, and the
+        // conversion says what it lacks.
         assert!(dirs(&["content/cars/x/x.kn5", "content/cars/x/data/car.ini"]).is_empty());
         assert!(dirs(&["t/t.kn5", "t/ai/fast_lane.ai"]).is_empty());
-        assert!(dirs(&["t/t.kn5", "t/data/surfaces.ini"]).is_empty());
+        assert_eq!(dirs(&["t/t.kn5", "t/ai/_fast_lane.ai", "t/data/surfaces.ini"]), ["t"]);
         // Two tracks of a pack, and a sibling's files do not make a folder one.
         assert_eq!(dirs(&["p/a/a.kn5", "p/a/ai/fast_lane.ai", "p/a/data/surfaces.ini", "p/b/b.kn5"]), ["p/a"]);
     }
@@ -271,6 +273,7 @@ mod tests {
         let dir = crate::test_dir("content-ac-real");
         let home = dir.join("home");
         let done = crate::content::run(&home, &Default::default(), &[track], &|_| {}, &AtomicBool::new(false));
+        done.iter().for_each(|o| eprintln!("{}", o.line()));
         assert!(done.iter().all(Outcome::ok), "{done:?}");
         let maps = crate::btb::folder_maps(&home.join("tracks"), |_| false);
         assert!(!maps.is_empty() && maps.iter().all(|m| m.btb().is_some_and(|b| b.ac)));

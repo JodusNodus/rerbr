@@ -1,7 +1,7 @@
-//! Road re-mesh for a converted stage's collision. Some levels build their roads from coarse strips that crease where
+//! Road re-mesh for a converted stage's collision. Some tracks build their roads from coarse strips that crease where
 //! NGP's wheel contact feels it: 2K-Irohazaka's road is cross-sections about 2 m apart with a 0.64° crease at the
 //! median triangle crossing (2.5 times retail's), each crease mostly undone by the next (lag-1 correlation -0.67:
-//! noise and twist, not the road's shape). BeamNG's soft tyres ride over it. Moving the level's vertices onto a smooth
+//! noise and twist, not the road's shape). Moving the level's vertices onto a smooth
 //! surface leaves most of it (0.58°: the creases sit between them), so the band along the driveline is sampled from
 //! the level's collision every [`FINE`] along and on columns across, out to [`HALF`] or the first break across (a
 //! barrier, a ditch), each column is smoothed along the road (a local linear fit under Gaussian weights), and the band
@@ -22,8 +22,6 @@ const COLUMNS: usize = 2 * SIDE + 1;
 /// The band's half width, metres: the whole road wherever the driveline runs on it (the levels' AI road widths, 2.5 to
 /// 5 m, fall short of it).
 const HALF: f64 = 7.0;
-/// Level faces within this plan distance of the driveline can be under the band, metres.
-pub const REACH: f64 = HALF + 2.0;
 /// A section's direction: the chord from this far behind to this far ahead, metres.
 const TANGENT: f64 = 2.5;
 /// The inside of a curve keeps within this share of its radius (further, sections would cross).
@@ -85,11 +83,6 @@ pub struct Surface {
     /// The band's faces, wound like the level's faces they replace, each with the material of the level's face under
     /// its centroid.
     pub triangles: Vec<Triangle>,
-    /// Written sections.
-    pub written: usize,
-    /// Samples taken and those with no surface.
-    pub samples: usize,
-    pub missing: usize,
 }
 
 fn cross(a: [f64; 2], b: [f64; 2]) -> f64 {
@@ -206,7 +199,6 @@ pub fn build(line: &Line, ground: &Grid) -> Surface {
             }
         }
     }
-    let samples = n * COLUMNS;
     let missing = raw.iter().flatten().filter(|r| r.is_none()).count();
 
     // Each column smoothed along the road.
@@ -329,7 +321,7 @@ pub fn build(line: &Line, ground: &Grid) -> Surface {
     for (i, t) in triangles.iter().enumerate() {
         binned(&mut t.pos.iter().map(|p| [p[0], p[1]]), i, &mut faces);
     }
-    Surface { sections, heights, covered, bins, faces, triangles, written: written.len(), samples, missing }
+    Surface { sections, heights, covered, bins, faces, triangles }
 }
 
 impl Surface {
@@ -453,9 +445,6 @@ mod tests {
         let level = twisted();
         let grid = Grid::new(level.iter().collect(), 4.0);
         let surface = build(&line(), &grid);
-        // The columns past the level's edge (4 m) find nothing.
-        let beyond = (0..COLUMNS).filter(|&j| (j as f64 - SIDE as f64).abs() * HALF / SIDE as f64 > 4.0 + 1e-9).count();
-        assert_eq!(surface.missing, beyond * surface.samples / COLUMNS);
         assert!(!surface.triangles.is_empty());
         // Wound like the level's faces (normal down), the level's material.
         let down = level[0].normal()[2] < 0.0;
@@ -490,7 +479,6 @@ mod tests {
         }
         let grid = Grid::new(level.iter().collect(), 4.0);
         let surface = build(&line(), &grid);
-        assert!(surface.missing > 0);
         assert!(surface.triangles.iter().all(|t| {
             t.material == Some(3) && t.pos.iter().all(|p| p[1].abs() <= 2.0 && (p[2] - 0.05 * p[0]).abs() < 0.01)
         }));

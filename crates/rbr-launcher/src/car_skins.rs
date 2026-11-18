@@ -358,7 +358,7 @@ mod tests {
         let dest = root.join("out");
         assert!(import_into(&root.join("None.zip"), &dest).unwrap_err().contains("no textures folder"));
         fs::write(root.join("a.rar"), "Rar!").unwrap();
-        assert!(import_into(&root.join("a.rar"), &dest).unwrap_err().contains("RAR archives can't be read"));
+        assert!(import_into(&root.join("a.rar"), &dest).unwrap_err().contains("can't read it"));
         assert!(!dest.exists());
         fs::remove_dir_all(&root).unwrap();
     }

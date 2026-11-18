@@ -1088,7 +1088,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         );
     }
     write("driveline.ini", dl)?;
-    // Match beamng-stage: the result marker must be within the car's braking run after the finish.
+    // The result marker must be within the car's braking run after the finish.
     // A circuit's start, finish and end keys lie far past the lap so the 1.02 timekeeper never fires them.
     let mut notes = if input.circuit {
         vec![(0x15, 0, FAR), (0x16, 0, FAR + 10.), (0x18, 0, FAR + 20.)]

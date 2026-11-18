@@ -73,6 +73,72 @@ pub fn seven_entries(path: &Path) -> Result<Vec<Entry>, Fail> {
         .collect())
 }
 
+/// The rar's file entries (a rar's names are bytes: invalid UTF-8 is replaced).
+pub fn rar_entries(path: &Path) -> Result<Vec<Entry>, Fail> {
+    let archive = rars::ArchiveReader::read_path(path).map_err(|e| e.to_string())?;
+    Ok(archive
+        .members()
+        .map(|m| {
+            let name = m.meta.name_lossy();
+            Entry { parts: owned_path(&name), name, size: m.meta.unpacked_size, dir: m.meta.is_directory }
+        })
+        .collect())
+}
+
+/// A file being written whose bytes are counted where the extraction can read them.
+struct Counted {
+    out: io::BufWriter<File>,
+    bytes: std::rc::Rc<std::cell::Cell<u64>>,
+}
+
+impl Write for Counted {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.out.write(buf)?;
+        self.bytes.set(self.bytes.get() + n as u64);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.out.flush()
+    }
+}
+
+/// Extracts the rar's `wanted` into `dest`, as [`extract_zip`], but `progress` gets the bytes of each file as the next
+/// one starts (a rar decodes its files in order, solid ones all the way through, so the others are decoded and dropped).
+pub fn extract_rar(
+    src: &Path,
+    dest: &Path,
+    wanted: &[(Vec<String>, Vec<String>)],
+    progress: &mut dyn FnMut(u64) -> Result<(), Fail>,
+) -> Result<(), Fail> {
+    let error = |e: String| format!("{}: {e}", src.display());
+    let archive = rars::ArchiveReader::read_path(src).map_err(|e| error(e.to_string()))?;
+    progress(0)?;
+    let written = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut stopped: Option<Fail> = None;
+    let result = archive.extract_to(None, |meta| {
+        if let Err(e) = progress(written.take()) {
+            stopped = Some(e.clone());
+            return Err(rars::Error::from(io::Error::other(e)));
+        }
+        let wanted = owned_path(&meta.name_lossy()).and_then(|parts| wanted.iter().find(|(from, _)| *from == parts));
+        match wanted.filter(|_| !meta.is_directory) {
+            None => Ok(Box::new(io::sink())),
+            Some((_, to)) => {
+                let path = to.iter().fold(dest.to_owned(), |p, part| p.join(part));
+                fs::create_dir_all(path.parent().unwrap_or(dest))?;
+                let out = io::BufWriter::new(File::create(&path)?);
+                Ok(Box::new(Counted { out, bytes: written.clone() }))
+            }
+        }
+    });
+    match (stopped, result) {
+        (Some(e), _) => Err(e),
+        (None, Err(e)) => Err(error(e.to_string())),
+        (None, Ok(())) => progress(written.take()),
+    }
+}
+
 /// Writes `reader` to `dest`/`parts`, making its folders.
 fn write_file(dest: &Path, parts: &[String], reader: &mut dyn Read) -> io::Result<u64> {
     let path = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));

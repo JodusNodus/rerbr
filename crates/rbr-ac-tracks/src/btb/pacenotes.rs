@@ -1,4 +1,4 @@
-//! Pace notes from a driveline's shape (`notes/beamng.md` "Pace notes"), in the note types 1.02's co-driver voices
+//! Pace notes from a driveline's shape (the converter's own, checked by driving), in the note types 1.02's co-driver voices
 //! (`rbr_gameplay::markers::slot_word_id`): corners graded by their tightest radius, `long` and `tightens` flags,
 //! crests and jumps from the height profile at the speed a car carries there, and a distance key after a note with
 //! room before the next one.

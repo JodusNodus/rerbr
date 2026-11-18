@@ -41,12 +41,9 @@ pub struct Mesh {
     pub active: bool,
     pub visible: bool,
     pub renderable: bool,
-    pub cast_shadows: bool,
-    pub transparent: bool,
     pub material: usize,
     pub lod_in: f32,
     pub lod_out: f32,
-    pub vertex_count: usize,
     pub triangle_count: usize,
     pub vertices: Vec<Vertex>,
     pub triangles: Vec<[u32; 3]>,
@@ -198,9 +195,9 @@ impl<'a> Reader<'a> {
                 }
             }
             2 => {
-                let cast_shadows = self.byte()? != 0;
+                self.byte()?; // casts shadows
                 let visible = self.byte()? != 0;
-                let transparent = self.byte()? != 0;
+                self.byte()?; // transparent
                 let vertex_count = self.count(44)?;
                 let mut vertices = Vec::new();
                 let mut bad_normals = Vec::new();
@@ -292,12 +289,9 @@ impl<'a> Reader<'a> {
                     active,
                     visible,
                     renderable,
-                    cast_shadows,
-                    transparent,
                     material,
                     lod_in,
                     lod_out,
-                    vertex_count,
                     triangle_count: index_count / 3,
                     vertices,
                     triangles,

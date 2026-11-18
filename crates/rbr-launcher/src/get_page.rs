@@ -224,7 +224,7 @@ impl Form {
                 ui.add_space(20.0);
                 self.last_import_ui(ui);
                 ui.add_space(10.0);
-                kit::hint(ui, "RAR archives and installers other than RBR Czech's can't be read: extract them first.");
+                kit::hint(ui, "Installers other than RBR Czech's can't be read: extract them first.");
             });
         });
     }

@@ -6,7 +6,7 @@ redistribute source or converted tracks without their authors' permission.
 
 ## In the launcher
 
-Add the track on Import: drop a track folder, a `.zip` or a `.7z` on the launcher, or pick it in Settings. Tracks
+Add the track on Import: drop a track folder, a `.zip`, `.7z` or `.rar` on the launcher, or pick it in Settings. Tracks
 from the sites linked in Stages > Get more stages (AC Rally Central, Assetto Corsa Club) come as archives. Each layout
 of the track becomes a stage in `tracks/` (`AC_<track>`, or `AC_<track>_<layout>`), listed in Stages as "Added by you ·
 Assetto Corsa import". A track with a closed AI loop and no timing gates becomes a circuit. Conversion takes seconds for a small

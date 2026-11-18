@@ -8,8 +8,8 @@
 //! `car_packs::Download`; NGP's package to the kept `NGP 7.4.778/` folder, as the Settings download does; a disc image
 //! opens "Set up from the disc…" with the disc filled in; an Assetto Corsa track is converted by `rbr_ac_tracks` into a
 //! stage for each layout in `tracks/` (`kind::ac`); classic-format stages (loose, RSF-shaped or from an NSIS
-//! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`). RAR
-//! files, other installers, encrypted stages and anything unknown are refused with the reason. A new kind or container
+//! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`).
+//! Installers (other than RBR Czech's), encrypted stages and anything unknown are refused with the reason. A new kind or container
 //! is one module and one line below.
 
 use std::path::{Path, PathBuf};
@@ -318,7 +318,7 @@ mod tests {
         let has = |start: &str| got.iter().any(|l| l.starts_with(start));
         assert!(has("ok Added Autio I Gravel (BTB stage): it's in Stages"), "{got:?}");
         assert!(has("ok Added Voice (co-driver): pick it in Co-drivers"), "{got:?}");
-        assert!(has("no Couldn't add stage.rar: RAR archives can't be read"), "{got:?}");
+        assert!(has("no Couldn't add stage.rar: can't read it"), "{got:?}");
         assert!(has("no Couldn't add Setup.exe: installers can't be read: extract it with 7-Zip"), "{got:?}");
         assert!(has("no Couldn't add readme.txt: not recognised: ReRBR adds BTB stages"), "{got:?}");
         assert!(has("ok Disc image RBR.iso"), "{got:?}");

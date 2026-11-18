@@ -442,7 +442,7 @@ mod tests {
         form.content.notice = vec![
             ok("Autio I Gravel", "BTB stage", "it's in Stages", Goto::Stage("Autio I Gravel".into())),
             ok("Janne Laahanen V3", "co-driver", "pick it in Co-drivers", Goto::Codrivers),
-            Outcome::failed("Holiday.rar", "not supported", detect_rar()),
+            Outcome::failed("Setup.exe", "not supported", detect_installer()),
             Outcome::failed(
                 "Ford Fiesta - Model.7z",
                 "NGP car",
@@ -605,7 +605,7 @@ mod tests {
         crate::capture::shot(&shots.join("stage-picker.png"), |ctx| picker(ctx, &mut form)).unwrap();
     }
 
-    fn detect_rar() -> &'static str {
-        crate::content::source::refused::RAR
+    fn detect_installer() -> &'static str {
+        crate::content::source::refused::INSTALLER
     }
 }
