@@ -393,9 +393,12 @@ impl Field {
         )
     }
 
-    /// The cards of a tile at its share ([`step_of`]), as many as a tile holds.
+    /// The cards of a tile at its share ([`step_of`]), as many as a tile holds, ranked lowest first: a frame draws only
+    /// those its distance grows ([`Ranks`]).
     fn cards_of(&self, (tile, step): Held, light: &[[Light; 3]]) -> Vec<Card> {
-        self.cards(tile, step as f32 / LADDER, CAPACITY, light)
+        let mut cards = self.cards(tile, step as f32 / LADDER, CAPACITY, light);
+        cards.sort_by(|a, b| a.keep.total_cmp(&b.keep));
+        cards
     }
 
     /// The cards of `tile` ranked under `take` (0 to 1, an even subset: the same cards at any share that holds them),
@@ -556,6 +559,28 @@ fn density(distance: f32) -> f32 {
     0.5f32.powf((distance - FULL_DENSE) / HALVING).min(1.0)
 }
 
+/// The density `grass_density` in `shader.wgsl` takes `distance` metres from the eye: [`density`], flattened over the
+/// last 10 m of [`REACH`] (`GRASS_FADE`).
+fn drawn_density(distance: f32) -> f32 {
+    density(distance) * (1.0 - smoothstep([REACH - 10.0, REACH], distance))
+}
+
+/// The steps of a tile's [`Ranks`].
+const RANKS: usize = 64;
+
+/// How many of a tile's cards (ranked lowest first, [`Field::cards_of`]) rank under each step of [`RANKS`]: `ranks[i]`
+/// those under `i / RANKS`.
+pub(crate) type Ranks = [u16; RANKS + 1];
+
+/// The cards of a tile with `ranks` that the shader grows anywhere `distance` metres or more from the eye: those
+/// ranked under [`GROW_MARGIN`] times the density there (`grass_grown` in `shader.wgsl` shrinks the rest into the
+/// ground), at the step above. A frame draws only those of each tile, by its box's nearest point.
+pub(crate) fn grown_cards(ranks: &Ranks, distance: f32) -> usize {
+    let share = GROW_MARGIN * drawn_density(distance);
+    let step = ((share * RANKS as f32).ceil().max(0.0) as usize).min(RANKS);
+    usize::from(ranks[step])
+}
+
 /// The share of a tile's cards its mesh holds where the density is `density`: that and the [`GROW_MARGIN`] past it, up
 /// to all of them, on the [`LADDER`]'s steps, as a step (1 to 24).
 fn step_of(density: f32) -> u32 {
@@ -601,6 +626,7 @@ struct Done {
     held: Held,
     vertices: Vec<Vertex>,
     bounds: Bounds,
+    ranks: Ranks,
     staged: Option<wgpu::Buffer>,
 }
 
@@ -610,6 +636,7 @@ pub(crate) struct Filled {
     pub(crate) mesh: usize,
     pub(crate) vertices: Vec<Vertex>,
     pub(crate) bounds: Bounds,
+    pub(crate) ranks: Ranks,
     pub(crate) staged: Option<wgpu::Buffer>,
 }
 
@@ -649,8 +676,9 @@ pub(crate) struct Ring {
     done: std::sync::mpsc::Receiver<Done>,
     in_flight: HashSet<Held>,
     ready: Vec<Done>,
-    /// The tiles built with no cards: no mesh holds them, and they are not built again while wanted.
-    bare: HashSet<Held>,
+    /// The tiles built with no cards, and the share: no mesh holds them, and they are not built again while that share
+    /// serves them.
+    bare: HashMap<(i32, i32), u32>,
     last_eye: Option<Vec3>,
     worker: Option<std::thread::JoinHandle<()>>,
     /// The worker's device, for a worker started again.
@@ -684,9 +712,9 @@ fn spawn_worker(
         .name("grass".into())
         .spawn(move || {
             while let Ok(held) = receive.recv() {
-                let (vertices, bounds) = tile_vertices(&background.cards_of(held, &worker_light));
+                let (vertices, bounds, ranks) = tile_vertices(&background.cards_of(held, &worker_light));
                 let staged = device.as_ref().and_then(|device| staged(device, &vertices));
-                if send.send(Done { held, vertices, bounds, staged }).is_err() {
+                if send.send(Done { held, vertices, bounds, ranks, staged }).is_err() {
                     break;
                 }
             }
@@ -714,7 +742,7 @@ impl Ring {
             done,
             in_flight: HashSet::new(),
             ready: Vec::new(),
-            bare: HashSet::new(),
+            bare: HashMap::new(),
             last_eye: None,
             worker,
             device,
@@ -729,12 +757,14 @@ impl Ring {
     }
 
     /// The finished tiles to upload for the eye at `eye`: each tile mesh's index with its first vertices (the ones to
-    /// draw: the rest still hold an earlier tile's) and bounds. The tiles with ground within [`REACH`] of the eye are
-    /// wanted nearest first; tiles about the eye a little ahead along its motion are built early ([`PREFETCH`]).
-    /// Missing tiles within [`SYNC_DISTANCE`] are built on the frame itself, so the near field is steady run to run;
-    /// the worker thread builds the rest. A finished tile takes the smallest mesh that holds its cards, of those
-    /// holding no wanted tile (an early one only a free mesh), and uploads are capped a frame ([`UPLOAD_TILES`],
-    /// [`UPLOAD_BYTES`]); a tile with no mesh to fit waits for one.
+    /// draw: the rest still hold an earlier tile's), their bounds and ranks. The tiles with ground within [`REACH`] of
+    /// the eye are wanted nearest first; tiles about the eye a little ahead along its motion are built early
+    /// ([`PREFETCH`]). A tile keeps the share it holds while that serves it ([`Want`]), so a tile is built again only
+    /// every [`LEAD`] metres or so of driving. Missing tiles within [`SYNC_DISTANCE`] are built on the frame itself, so
+    /// the near field is steady run to run; the worker thread builds the rest. A finished tile takes the smallest mesh
+    /// that holds its cards of those free, holding a tile no longer wanted or holding its own other share (an early one
+    /// only a free mesh): a wanted tile's mesh is drawn until its new share takes its place. Uploads are capped a frame
+    /// ([`UPLOAD_TILES`], [`UPLOAD_BYTES`]); a tile with no mesh to fit waits for one.
     pub(crate) fn update(&mut self, eye: Vec3) -> Vec<Filled> {
         // The worker dying loses its jobs: start another, so the frame only ever loses far tiles for a frame.
         if self.worker.as_ref().is_some_and(|worker| worker.is_finished()) {
@@ -756,45 +786,49 @@ impl Ring {
             (cx - r..=cx + r).flat_map(move |x| (cz - r..=cz + r).map(move |z| (x, z)))
         };
         // A tile's share by its nearest point to the eye, so none of its cards the shader grows is missing.
-        let held = |tile: (i32, i32), at: Vec3| {
-            let d = centre(tile).distance(at.xz());
-            (tile, step_of(density((d - TILE * std::f32::consts::FRAC_1_SQRT_2).max(0.0))))
+        let want = |tile: (i32, i32), at: Vec3| {
+            Want::at(tile, (centre(tile).distance(at.xz()) - TILE * std::f32::consts::FRAC_1_SQRT_2).max(0.0))
         };
         // The drawn tiles: ground within reach of the eye, nearest first.
         let reach = REACH + TILE;
-        let mut wanted: Vec<(Held, f32)> = range(eye, reach)
+        let mut wanted: Vec<(Want, f32)> = range(eye, reach)
             .filter(|tile| self.field.tiles.contains_key(tile))
-            .map(|tile| (held(tile, eye), centre(tile).distance(eye.xz())))
+            .map(|tile| (want(tile, eye), centre(tile).distance(eye.xz())))
             .filter(|&(_, d)| d < reach)
             .collect();
         wanted.sort_by(|a, b| a.1.total_cmp(&b.1));
         // Tiles past the draw reach the eye is heading for: built early, into free meshes only.
-        let mut early: Vec<(Held, f32)> = range(predicted, reach + PREFETCH)
+        let mut early: Vec<(Want, f32)> = range(predicted, reach + PREFETCH)
             .filter(|tile| self.field.tiles.contains_key(tile))
             .filter(|&tile| centre(tile).distance(eye.xz()) >= reach)
-            .map(|tile| (held(tile, predicted), centre(tile).distance(predicted.xz())))
+            .map(|tile| (want(tile, predicted), centre(tile).distance(predicted.xz())))
             .collect();
         early.sort_by(|a, b| a.1.total_cmp(&b.1));
         early.truncate(8);
-        let drawn: HashSet<Held> = wanted.iter().map(|&(h, _)| h).collect();
-        let ahead: HashSet<Held> = early.iter().map(|&(h, _)| h).collect();
-        let kept = |h: &Held| drawn.contains(h) || ahead.contains(h);
-        self.bare.retain(kept);
-        self.ready.retain(|done| kept(&done.held));
-        let built = |ring: &Ring, h: Held| {
-            ring.bare.contains(&h)
-                || ring.in_flight.contains(&h)
-                || ring.ready.iter().any(|done| done.held == h)
-                || ring.slots.iter().any(|s| s.held == Some(h))
+        let drawn: HashSet<(i32, i32)> = wanted.iter().map(|(w, _)| w.tile).collect();
+        let wants: HashMap<(i32, i32), Want> = wanted.iter().chain(&early).map(|&(w, _)| (w.tile, w)).collect();
+        // Whether a tile built at a share serves it now, and whether a tile is wanted at all.
+        let fits = |(tile, step): Held| wants.get(&tile).is_some_and(|w| w.fits(step));
+        let kept = |tile: (i32, i32)| wants.contains_key(&tile);
+        self.bare.retain(|&tile, &mut step| fits((tile, step)));
+        self.ready.retain(|done| fits(done.held));
+        let holding: HashMap<(i32, i32), u32> = self.slots.iter().filter_map(|s| s.held).collect();
+        let held_fits = |tile: (i32, i32)| holding.get(&tile).is_some_and(|&step| fits((tile, step)));
+        let built = |ring: &Ring, tile: (i32, i32)| {
+            held_fits(tile)
+                || ring.bare.contains_key(&tile)
+                || ring.in_flight.iter().any(|&h| h.0 == tile && fits(h))
+                || ring.ready.iter().any(|done| done.held.0 == tile)
         };
         // The drawn tiles first, nearest first, then the early ones.
-        for &(h, dist) in wanted.iter().chain(&early) {
-            if built(self, h) {
+        for &(w, dist) in wanted.iter().chain(&early) {
+            if built(self, w.tile) {
                 continue;
             }
-            if dist < SYNC_DISTANCE && drawn.contains(&h) {
-                let (vertices, bounds) = tile_vertices(&self.field.cards_of(h, &self.light));
-                self.ready.push(Done { held: h, vertices, bounds, staged: None });
+            let h = (w.tile, w.build);
+            if dist < SYNC_DISTANCE && drawn.contains(&w.tile) {
+                let (vertices, bounds, ranks) = tile_vertices(&self.field.cards_of(h, &self.light));
+                self.ready.push(Done { held: h, vertices, bounds, ranks, staged: None });
             } else if self.jobs.as_ref().is_some_and(|jobs| jobs.try_send(h).is_ok()) {
                 self.in_flight.insert(h);
             } else {
@@ -804,7 +838,7 @@ impl Ring {
         }
         for done in self.done.try_iter() {
             self.in_flight.remove(&done.held);
-            if kept(&done.held) {
+            if fits(done.held) {
                 self.ready.push(done);
             }
         }
@@ -812,37 +846,46 @@ impl Ring {
         let distance = |h: Held| centre(h.0).distance(eye.xz());
         let mut ready = std::mem::take(&mut self.ready);
         ready.sort_by(|a, b| {
-            drawn.contains(&b.held).cmp(&drawn.contains(&a.held)).then(distance(a.held).total_cmp(&distance(b.held)))
+            drawn
+                .contains(&b.held.0)
+                .cmp(&drawn.contains(&a.held.0))
+                .then(distance(a.held).total_cmp(&distance(b.held)))
         });
         let mut filled = Vec::new();
         let mut bytes = 0;
         for done in ready {
+            let tile = done.held.0;
+            // A tile whose mesh already serves it takes no other share.
+            if held_fits(tile) {
+                continue;
+            }
             if done.vertices.is_empty() {
-                self.bare.insert(done.held);
+                self.bare.insert(tile, done.held.1);
+                release(&mut self.slots, tile, None, &mut filled);
                 continue;
             }
             let size = done.vertices.len() * size_of::<Vertex>();
             let cards = done.vertices.len() / 4;
-            let early = !drawn.contains(&done.held);
+            let early = !drawn.contains(&tile);
             let slot = self
                 .slots
                 .iter_mut()
-                .filter(|s| s.capacity >= cards && s.held.is_none_or(|h| !early && !kept(&h)))
+                .filter(|s| s.capacity >= cards && s.held.is_none_or(|h| h.0 == tile || (!early && !kept(h.0))))
                 .min_by_key(|s| s.capacity);
             match slot {
                 Some(slot) if filled.len() < UPLOAD_TILES && bytes + size <= UPLOAD_BYTES => {
                     bytes += size;
                     slot.held = Some(done.held);
                     let mesh = slot.mesh;
-                    filled.push(Filled { mesh, vertices: done.vertices, bounds: done.bounds, staged: done.staged });
+                    filled.push(Filled {
+                        mesh,
+                        vertices: done.vertices,
+                        bounds: done.bounds,
+                        ranks: done.ranks,
+                        staged: done.staged,
+                    });
                     // The tile at its other share draws no more.
-                    for other in
-                        self.slots.iter_mut().filter(|s| s.mesh != mesh && s.held.is_some_and(|h| h.0 == done.held.0))
-                    {
-                        other.held = None;
-                        let bounds = Bounds { center: Vec3::ZERO, half_extent: Vec3::ZERO };
-                        filled.push(Filled { mesh: other.mesh, vertices: Vec::new(), bounds, staged: None });
-                    }
+                    release(&mut self.slots, tile, Some(mesh), &mut filled);
                 }
                 _ => self.ready.push(done),
             }
@@ -851,8 +894,45 @@ impl Ring {
     }
 }
 
+/// Empties the meshes holding `tile` but `except`, adding them to `filled` with no cards.
+fn release(slots: &mut [Slot], tile: (i32, i32), except: Option<usize>, filled: &mut Vec<Filled>) {
+    for slot in slots.iter_mut().filter(|s| Some(s.mesh) != except && s.held.is_some_and(|h| h.0 == tile)) {
+        slot.held = None;
+        let bounds = Bounds { center: Vec3::ZERO, half_extent: Vec3::ZERO };
+        filled.push(Filled { mesh: slot.mesh, vertices: Vec::new(), bounds, ranks: [0; RANKS + 1], staged: None });
+    }
+}
+
+/// What a tile within reach wants of its share: at least the one its nearest point needs [`SOON`] nearer (so the worker
+/// has it built before it is short), at most the one it would need 3 [`LEAD`] nearer, and when built again the one it
+/// would need [`LEAD`] nearer. Approaching it is built again about every [`LEAD`] metres, leaving it about every 2; the
+/// frame draws only its cards grown ([`grown_cards`]), so the share held past the one needed costs memory only.
+#[derive(Debug, Clone, Copy)]
+struct Want {
+    tile: (i32, i32),
+    need: u32,
+    most: u32,
+    build: u32,
+}
+
+/// How far ahead of its distance a tile is built, and how far before its share is short it is built again
+/// ([`Want`]), metres.
+const LEAD: f32 = 16.0;
+const SOON: f32 = 4.0;
+
+impl Want {
+    fn at(tile: (i32, i32), near: f32) -> Want {
+        let step = |lead: f32| step_of(density((near - lead).max(0.0)));
+        Want { tile, need: step(SOON), most: step(3.0 * LEAD), build: step(LEAD) }
+    }
+
+    fn fits(self, step: u32) -> bool {
+        (self.need..=self.most).contains(&step)
+    }
+}
+
 /// A tile mesh's first vertices, those of `cards`, and their bounds.
-fn tile_vertices(cards: &[Card]) -> (Vec<Vertex>, Bounds) {
+fn tile_vertices(cards: &[Card]) -> (Vec<Vertex>, Bounds, Ranks) {
     let mut vertices = vec![Vertex::zeroed(); cards.len() * 4];
     let (mut low, mut high) = (Vec3::MAX, Vec3::MIN);
     let margin = Vec2::new(2.0 / (PICTURE.0 * COLUMNS) as f32, 2.0 / (PICTURE.1 * ROWS) as f32);
@@ -892,7 +972,8 @@ fn tile_vertices(cards: &[Card]) -> (Vec<Vertex>, Bounds) {
     if cards.is_empty() {
         (low, high) = (Vec3::ZERO, Vec3::ZERO);
     }
-    (vertices, Bounds { center: (low + high) * 0.5, half_extent: (high - low) * 0.5 })
+    let ranks = std::array::from_fn(|i| cards.partition_point(|card| card.keep < i as f32 / RANKS as f32) as u16);
+    (vertices, Bounds { center: (low + high) * 0.5, half_extent: (high - low) * 0.5 }, ranks)
 }
 
 /// How much grass ground of colour `rgb` (0 to 1) takes, off the road or on the road mesh, by how green or straw its
@@ -1302,6 +1383,34 @@ mod tests {
         assert_eq!(step_of(1.0), LADDER as u32);
         assert_eq!(step_of(0.5), 18);
         assert_eq!(step_of(0.0), 1);
+    }
+
+    #[test]
+    fn a_tile_draws_the_cards_the_shader_grows() {
+        // 100 cards ranked evenly over 0 to 1.
+        let ranks: Ranks = std::array::from_fn(|i| (100 * i).div_ceil(RANKS) as u16);
+        assert_eq!(grown_cards(&ranks, 0.0), 100);
+        // At 75 m the shader grows the cards ranked under 1.5 x 0.5, 75 of them; between steps, up to the step above.
+        assert_eq!(grown_cards(&ranks, 75.0), 75);
+        let grown = (GROW_MARGIN * density(74.0) * 100.0).ceil() as usize;
+        assert!((grown..=grown + 2).contains(&grown_cards(&ranks, 74.0)), "{grown}");
+        assert!(grown_cards(&ranks, 90.0) < grown_cards(&ranks, 80.0));
+        assert_eq!(grown_cards(&ranks, REACH), 0);
+        assert_eq!(grown_cards(&ranks, REACH + 50.0), 0);
+    }
+
+    #[test]
+    fn a_tile_keeps_its_share_until_it_runs_short_or_far_over() {
+        let at = |near: f32| Want::at((0, 0), near);
+        let built = at(90.0).build;
+        // Built a lead ahead: it serves the tile from where it was built to about a lead nearer.
+        assert!(at(90.0).fits(built) && at(80.0).fits(built));
+        assert!(!at(90.0 - LEAD).fits(built));
+        // Leaving, it serves until it holds far more than the tile needs.
+        assert!(at(110.0).fits(built));
+        assert!(!at(90.0 + 3.0 * LEAD).fits(built));
+        // Within full density every share is all of them.
+        assert_eq!((at(10.0).need, at(10.0).most, at(10.0).build), (24, 24, 24));
     }
 
     #[test]

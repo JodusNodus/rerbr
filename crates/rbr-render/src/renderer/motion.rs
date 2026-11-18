@@ -282,7 +282,11 @@ impl Renderer {
                     bound = Some(pack);
                 }
                 let instance = u32::from(mesh.in_car.is_some()) | u32::from(mesh.car) << 1;
-                pass.draw_indexed(draw.indices.clone(), mesh.slot.base_vertex(), instance..instance + 1);
+                pass.draw_indexed(
+                    mesh.indices_seen_from(draw, Some(eye)),
+                    mesh.slot.base_vertex(),
+                    instance..instance + 1,
+                );
             }
         }
     }

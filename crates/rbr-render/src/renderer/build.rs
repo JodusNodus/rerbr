@@ -411,6 +411,7 @@ impl Renderer {
                         sky_dome: false,
                         backdrop_bounds: None,
                         sun_cascades: true,
+                        grass_ranks: None,
                     });
                 }
                 continue;
@@ -477,6 +478,7 @@ impl Renderer {
                     .filter(|_| backdrop && mesh.bounds.is_none())
                     .map(|b| (b.center, b.half_extent)),
                 sun_cascades: mesh.sun_cascades,
+                grass_ranks: None,
             });
         }
 
