@@ -103,7 +103,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         let outcomes = vec![
             ok("Autio I Gravel", "BTB stage", "it's in Stages", Goto::Stage("Autio I Gravel".into())),
             ok("Janne Laahanen V3", "co-driver", "pick it in Co-drivers", Goto::Codrivers),
-            Outcome::failed("Holiday.rar", "not supported", crate::content::source::refused::RAR),
+            Outcome::failed("Setup.exe", "not supported", crate::content::source::refused::INSTALLER),
         ];
         form.content.notice = outcomes.clone();
         form.page = Page::Import;

@@ -77,7 +77,7 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
 - `tracks`: the player's folder (the launcher's and converters', one function, `player`) and its `tracks` folder,
   `tracks/<stage>/` with no `RX_CONTENT` level (2026-11-16, was `converted/RX_CONTENT/Tracks`). Any BTB stage dropped
   there is listed, with a synthetic number (its RSF id needs the install's stage list); the converters write there
-  (`btb-converter`, its own repository, since 2026-11-09).
+  (`rbr-ac-tracks` for Assetto Corsa, [assetto.md](assetto.md); it was `btb-converter`, its own repository, from 2026-11-09 to 2026-11-18).
 - Faces: objects with `CollisionModel=0` and `Visible` not 0, in `objectlist.ini` order, clone by clone (gather 0x10022770); the
   clone count is the `.xform` size / 64 (`ini` `cloneCount` ignored: Crastazza `obj_124_2` has 22 matrices, `cloneCount=5`).
   `Visible=0` objects are absent (Le barrage des gorges `wall39_*`, bounds differ at the root without this).

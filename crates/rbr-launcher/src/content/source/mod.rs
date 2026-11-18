@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 mod file;
 mod folder;
 mod nsis;
+mod rar;
 pub mod refused;
 mod sevenz;
 mod split7z;
@@ -26,7 +27,8 @@ pub struct Entry {
 type Try = fn(&Path) -> Option<Result<Box<dyn Source>, Fail>>;
 
 /// The containers, in the order they are tried; the last takes any file.
-const SOURCES: &[Try] = &[nsis::open, refused::open, folder::open, zip::open, sevenz::open, split7z::open, file::open];
+const SOURCES: &[Try] =
+    &[nsis::open, refused::open, folder::open, zip::open, sevenz::open, rar::open, split7z::open, file::open];
 
 /// Paths to copy: the path in the tree, and the path below the destination.
 pub type Wanted = [(Vec<String>, Vec<String>)];
@@ -159,7 +161,7 @@ mod tests {
         assert!(open(&dir.join("RBR.iso")).unwrap().entries().is_empty());
         assert_eq!(open(&dir.join("none.7z")).err().as_deref(), Some("it doesn't exist"));
         write(&dir.join("x.rar"), b"Rar!");
-        assert!(open(&dir.join("x.rar")).err().is_some_and(|r| r.starts_with("RAR archives")));
+        assert!(open(&dir.join("x.rar")).err().is_some_and(|r| r.starts_with("can't read it")));
         write(&dir.join("bad.7z"), b"not a 7z");
         assert!(open(&dir.join("bad.7z")).err().is_some_and(|r| r.starts_with("can't read it")));
         std::fs::remove_dir_all(&dir).unwrap();
