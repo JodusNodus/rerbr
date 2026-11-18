@@ -1,0 +1,19 @@
+[package]
+name = "rbr-ac-tracks"
+version = "0.1.0"
+edition = "2021"
+description = "Assetto Corsa tracks as BTB stages: the KN5 and AI readers, the shared BTB writer and the import interface"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "rbr_ac_tracks"
+path = "src/lib.rs"
+
+[dependencies]
+rbr-btb = { path = "../rbr-btb" }
+rbr-formats = { path = "../rbr-formats" }
+bcdec_rs = "0.2.1"
+serde_json = "1"
+texpresso = { version = "2.0.2", features = ["rayon"] }
+zip = { version = "9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
