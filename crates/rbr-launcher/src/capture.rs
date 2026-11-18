@@ -163,7 +163,7 @@ pub fn shot(path: &Path, ui: impl FnMut(&egui::Context)) -> Result<(), String> {
 }
 
 /// [`shot`] at `size` (a page taller than [`SIZE`], whole).
-fn shot_sized(path: &Path, size: (u32, u32), ui: impl FnMut(&egui::Context)) -> Result<(), String> {
+pub(crate) fn shot_sized(path: &Path, size: (u32, u32), ui: impl FnMut(&egui::Context)) -> Result<(), String> {
     let rgba = draw_sized(size, ui)?;
     write_png_sized(path, size, &rgba)?;
     eprintln!("launcher: wrote {}", path.display());

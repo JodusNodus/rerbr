@@ -531,10 +531,9 @@ impl Form {
             Page::Drive => return self.drive_page(ui),
             Page::Circuit => return self.circuit_page(ui),
             Page::School => return self.school_page(ui),
+            Page::Championship => return self.championship_page(ui),
+            Page::Setup => return self.setup_page(ui),
             _ => {}
-        }
-        if self.page == Page::Setup {
-            return self.setup_page(ui);
         }
         if self.page.section() == Some(Section::Settings) {
             if let Some(page) = self.settings_header(ui) {
@@ -549,10 +548,8 @@ impl Form {
             if self.page.section() == Some(Section::Settings) { (kit::PAGE_LEFT, kit::PAGE_RIGHT) } else { (14, 4) };
         let margin = egui::Margin { left: side.0, right: side.1, top: 0, bottom: 8 };
         egui::Frame::new().inner_margin(margin).show(ui, |ui| match self.page {
-            Page::Drive | Page::Circuit | Page::School => {}
-            Page::Championship => self.championship_page(ui),
+            Page::Drive | Page::Circuit | Page::School | Page::Championship | Page::Setup => {}
             Page::Replays => self.replays_page(ui),
-            Page::Setup => self.setup_page(ui),
             Page::Controls => {
                 let root = self.game_root();
                 let settings = self.paths.settings.clone();

@@ -49,6 +49,7 @@ mod plan;
 pub mod pool;
 mod results;
 mod running;
+mod table;
 mod view;
 mod words;
 
@@ -144,6 +145,12 @@ pub struct ChampionshipPage {
     pub profile: String,
     /// The bulletins shown in full, not the last few.
     news_all: bool,
+    /// The Abandon confirmation is open.
+    abandoning: bool,
+    /// The standings show the stage's times, not the overall order.
+    stage_times: bool,
+    /// The itinerary strip scrolls to the turn once after the turn changes.
+    strip_at: Option<(usize, usize, u8)>,
     /// The stage whose times the result card shows, picked on the itinerary; none for the last one driven.
     shown: Option<(usize, usize)>,
     pub status: String,
@@ -175,6 +182,9 @@ impl ChampionshipPage {
             practice: false,
             profile: "player".into(),
             news_all: false,
+            abandoning: false,
+            stage_times: false,
+            strip_at: None,
             shown: None,
             status: String::new(),
         }
@@ -546,6 +556,11 @@ fn place_line(event: &Event) -> String {
     }
     if let Some(r) = event.rallies.get(rally) {
         parts.push(r.name.clone());
+    }
+    let in_rally = if event.rallies.len() > 1 { "in the rally" } else { "overall" };
+    if let Some((at, _)) = view::place(&event.rally_standings(rally)).filter(|_| !view::driven(event, rally).is_empty())
+    {
+        parts.push(format!("{} {in_rally}", common::ordinal(at)));
     }
     parts.push(view::step(event));
     parts.join(" · ")

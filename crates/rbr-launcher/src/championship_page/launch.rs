@@ -14,22 +14,27 @@ use super::view::Env;
 use super::{wetness, Request, StageStart};
 use crate::catalog::{self, TyreChoice};
 use crate::command::clock_args;
-use crate::pages::{Issue, FIELD};
+use crate::pages::Issue;
 use crate::settings::wetness_name;
-use crate::{browser, car_browser, Form};
+use crate::{car_browser, Form};
 
 impl Form {
     /// The Championship tab: the presets, the builder and the championship under way. A championship drives its own
     /// car (the Drive page's car follows it).
     pub(crate) fn championship_page(&mut self, ui: &mut egui::Ui) {
-        if self.no_cars_yet(ui) {
+        // The browsers and the no-cars notice are not restyled here: they keep the old pages' padding.
+        let padded = egui::Margin { left: 14, right: 4, top: 14, bottom: 8 };
+        if self.catalog.cars.is_empty() {
+            egui::Frame::new().inner_margin(padded).show(ui, |ui| self.no_cars_yet(ui));
             return;
         }
         if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
-            return self.car_browser_page(ui);
+            egui::Frame::new().inner_margin(padded).show(ui, |ui| self.car_browser_page(ui));
+            return;
         }
         if self.stage_browser.open && self.stage_browser.target == car_browser::Target::Championship {
-            return self.stage_browser_page(ui);
+            egui::Frame::new().inner_margin(padded).show(ui, |ui| self.stage_browser_page(ui));
+            return;
         }
         if self.championship.pool.is_none() {
             let items = super::pool::items(&self.catalog, &self.season);
@@ -75,12 +80,8 @@ impl Form {
         };
         let here = self.here();
         let mut profile = self.championship.profile.clone();
-        let (rows, favourites) = (&self.car_browser, &self.favourite_cars);
-        let mut car_field = |ui: &mut egui::Ui, car: usize| {
-            rows.row(car).is_some_and(|row| {
-                browser::field_button(ui, favourites.contains(&row.name), &row.title, &row.detail(), FIELD)
-            })
-        };
+        let rows = &self.car_browser;
+        let car_title = |car: usize| rows.row(car).map(|row| row.title.clone());
         let setups = &self.setup;
         let saved = |surface| setups.saved_names(surface);
         let seed = rbr_season::seed::seed_from_unix_ms(
@@ -92,7 +93,7 @@ impl Form {
             profile: &mut profile,
             cars: &self.catalog.cars,
             default_car: self.car,
-            car_field: &mut car_field,
+            car_title: &car_title,
             saved: &saved,
             blocker: blocker.as_ref(),
             no_records: !self.drive_physics().keeps_records(),
@@ -100,8 +101,7 @@ impl Form {
             archive: Path::new(&archive),
             renamed: &self.catalog.renamed,
         };
-        let request =
-            egui::ScrollArea::vertical().id_salt("championship").show(ui, |ui| self.championship.ui(ui, env)).inner;
+        let request = self.championship.ui(ui, env);
         self.championship.profile = profile;
         match request {
             Some(Request::Launch(start)) => self.start_championship_stage(start),
@@ -215,8 +215,12 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     let line = "Season · Rally 2 of 6 · Rally of the Lakes · Stage 3 of 6".to_owned();
     form.championship.screenshot_saved(&profile, Some(line));
     shot(&dir.join("championship-saved.png"), |ctx| form.ui(ctx))?;
+    form.championship.abandoning = true;
+    shot(&dir.join("championship-abandon.png"), |ctx| form.ui(ctx))?;
+    form.championship.abandoning = false;
     form.championship.open_builder(Preset::Weekend, &form.catalog.cars, form.car, 20261105);
     shot(&dir.join("championship-builder.png"), |ctx| form.ui(ctx))?;
+    crate::capture::shot_sized(&dir.join("championship-builder-whole.png"), (1280, 1500), |ctx| form.ui(ctx))?;
 
     // A season of two rallies in the Drive page's car and its class's cars.
     let mut event = fixture::fixture_event();
@@ -249,7 +253,9 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     event.turn_done();
     drive(&mut event, 1);
     at(form, &event, "championship-stage")?;
-    drive(&mut event, 1);
+    while !matches!(event.turn, rbr_season::event::Turn::Service { .. }) {
+        drive(&mut event, 1);
+    }
     at(form, &event, "championship-service")?;
     if let Some(path) = damage {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
