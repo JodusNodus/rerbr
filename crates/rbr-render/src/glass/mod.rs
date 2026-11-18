@@ -676,6 +676,7 @@ mod tests {
                 second_texture: false,
                 alpha_ref: None,
                 mip_bias: false,
+                ground: false,
                 cull_back: true,
                 blend,
                 depth_test: true,

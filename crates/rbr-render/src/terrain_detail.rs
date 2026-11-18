@@ -65,7 +65,7 @@ pub(crate) fn window(dds: &dds::Dds) -> Option<[f32; 4]> {
 }
 
 /// Each texture's bank share, 0 to 1 (`terrain_bank` in `terrain_detail.wgsl` weighs by it): how far its steep faces
-/// in the near ground (the biased draws, as texture 0 or 1; past about 32 degrees) lean back rather than stand. A
+/// in the near ground (`DrawState::ground`, as texture 0 or 1; past about 32 degrees) lean back rather than stand. A
 /// ground atlas's steep faces are banks, under 1 % of them within about 12 degrees of vertical (135, Luceram, Sturec);
 /// a facade's, a wall's or a fence's are all that (Sardian's buildings 99 to 100 %); rock between (Sturec 18 to 92 %).
 /// None for a texture on no steep face.
@@ -73,7 +73,7 @@ pub(crate) fn bank_shares(meshes: &[Mesh]) -> BTreeMap<TextureRef, f32> {
     let mut areas: BTreeMap<TextureRef, [f32; 2]> = BTreeMap::new();
     for mesh in meshes {
         let at = |i: u32| Vec3::from(mesh.vertices[i as usize].position);
-        for draw in mesh.draws.iter().filter(|d| d.state.mip_bias) {
+        for draw in mesh.draws.iter().filter(|d| d.state.ground) {
             let (mut steep, mut standing) = (0.0, 0.0);
             for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
                 let face = (at(t[1]) - at(t[0])).cross(at(t[2]) - at(t[0]));

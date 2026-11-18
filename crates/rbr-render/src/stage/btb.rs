@@ -48,6 +48,11 @@ const CUTOUT_REF: u8 = 127;
 const DOME_CLEARANCE: f32 = 50.0;
 /// The driveline points a dome must pass over.
 const DOME_POINTS: usize = 5;
+/// How far, metres, a converted stage's drawn triangle may lie off its collision ground and still be on it
+/// ([`on_ground`]).
+const ON_GROUND: f32 = 0.25;
+/// The triangles of a placement [`on_ground`] samples, at most.
+const GROUND_SAMPLES: usize = 64;
 
 /// Loads the BTB stage `name`: geometry, draws, texture names (no textures yet: [`load_textures`]), start, driveline
 /// and sun.
@@ -97,6 +102,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 second_texture: second.is_some(),
                 alpha_ref,
                 mip_bias: false,
+                ground: false,
                 cull_back: false,
                 blend,
                 depth_test: true,
@@ -115,6 +121,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         })
         .collect();
 
+    // A converted stage (`btb-converter`: Assetto Corsa, BeamNG) collides with meshes of their own (`CollisionOnly`) and
+    // draws none of them: its ground is what lies on them ([`on_ground`]), and its surfaces tell its road.
+    let converted = scene.objects.iter().any(|o| o.collides && !o.visible);
+    let loaded = converted.then(|| super::collision(maps, name, selection)).flatten();
     let sun = scene.sun_direction.map_or(Vec3::new(0.6, -0.6, 0.5).normalize(), Vec3::from).normalize_or_zero();
     let to_sun = -sun;
     let step = scene.driveline.len().div_ceil(DOME_POINTS).max(1);
@@ -136,8 +146,16 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let lod = band(object.lod_in, object.lod_out + reach);
             let vertices = world_vertices(mesh, plan, placement, to_sun);
             let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
+            let collides = match &loaded {
+                Some(collision) => on_ground(&vertices, &mesh.indices, collision),
+                None => object.collides && !converted,
+            };
             for &(layer, state) in &plan.draws {
                 let layer = if dome { Layer::Sky } else { layer };
+                // The opaque faces of the collision ground are the near ground: the terrain detail, the wet film and
+                // the grass field take them.
+                let ground = collides && !dome && !state.blend && state.alpha_ref.is_none();
+                let state = DrawState { ground, ..state };
                 let key = (layer, cell, lod, object.sun_cascades);
                 groups.add(key, state, &vertices, &mesh.indices, centre - half, centre + half);
             }
@@ -155,6 +173,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             scene.objects.len()
         );
     }
+    let driveline: Vec<Vec3> = scene.driveline.iter().map(|&p| Vec3::from(p)).collect();
+    let roads = crate::puddles::roads(&meshes, &driveline);
+    let collision = super::mark_wet_roads(&mut meshes, maps, name, selection, Some(&roads), loaded);
 
     // The sky is the sky map's (`rbr_btb::stage::SKY_MAP`): its section by the row's own words, in the retail
     // `TrackSettings.ini`; without a row, its variant M's pick by the weather.
@@ -174,10 +195,11 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         textures: BTreeMap::new(),
         start_digits: None,
         snow_ground: false,
-        collision: None,
+        collision,
         start,
         atmosphere,
-        driveline: scene.driveline.iter().map(|&p| Vec3::from(p)).collect(),
+        driveline,
+        roads: Some(roads),
         report: {
             report.missing_textures = Vec::new();
             report
@@ -255,6 +277,20 @@ fn roofs(vertices: &[Vertex], indices: &[u32], points: &[Vec3]) -> bool {
         })
     };
     !points.is_empty() && points.iter().all(over)
+}
+
+/// Whether most of the triangles (up to [`GROUND_SAMPLES`] of them, evenly spread) lie on `collision`: within
+/// [`ON_GROUND`] of the collision surface under their centres.
+fn on_ground(vertices: &[Vertex], indices: &[u32], collision: &crate::particles::ground::Ground) -> bool {
+    let triangles = indices.len() / 3;
+    let step = triangles.div_ceil(GROUND_SAMPLES).max(1);
+    let (mut on, mut sampled) = (0, 0);
+    for t in indices.chunks_exact(3).step_by(step) {
+        let [x, y, z] = [0, 1, 2].map(|c| t.iter().map(|&i| vertices[i as usize].position[c]).sum::<f32>() / 3.0);
+        sampled += 1;
+        on += usize::from(collision.below([x, z, y]).is_some_and(|hit| (hit.z - y).abs() < ON_GROUND));
+    }
+    sampled > 0 && 2 * on > sampled
 }
 
 fn local_bounds(mesh: &scene::Mesh) -> (Vec3, Vec3) {
@@ -401,6 +437,7 @@ mod tests {
             second_texture: false,
             alpha_ref: Some(CUTOUT_REF),
             mip_bias: false,
+            ground: false,
             cull_back: false,
             blend: false,
             depth_test: true,

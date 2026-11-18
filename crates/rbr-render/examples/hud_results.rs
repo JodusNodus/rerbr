@@ -34,6 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         start: None,
         atmosphere: Default::default(),
         driveline: Vec::new(),
+        roads: None,
         report: Default::default(),
     };
     let mut renderer = Renderer::new(&gpu, format, &stage, Default::default());

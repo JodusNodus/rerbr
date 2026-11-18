@@ -148,7 +148,8 @@ struct Mode {
     detail: vec4<f32>,
     // A lit lamp's part's glow colour and, in w, its luminance (`stage::Shade::glow`, `lamp_shown`).
     lamp: vec4<f32>,
-    // x and y texture 0's and texture 1's bank shares (`terrain_detail::bank_shares`; `terrain_bank`).
+    // x and y texture 0's and texture 1's bank shares (`terrain_detail::bank_shares`; `terrain_bank`); z 1 for the near
+    // ground (`stage::DrawState::ground`, `detail_draw`).
     bank: vec4<f32>,
 }
 
@@ -169,7 +170,7 @@ fn lit_class() -> u32 {
 }
 
 // The draw's features as its pipeline knows them (`renderer::textures::DrawFeatures`): the water stand-in, a specular
-// map (the roads), a second texture, the near ground's mip bias (its detail). Without `KNOWN` the draw's mode says at
+// map (the roads), a second texture, the near ground (its detail). Without `KNOWN` the draw's mode says at
 // run time. As with `LIT`, the code of the features a pipeline never draws held registers.
 override KNOWN: bool = false;
 override DRAW_WATER: bool = false;
@@ -190,7 +191,7 @@ fn second_draw() -> bool {
 }
 
 fn detail_draw() -> bool {
-    return select(mode.mip_bias != 0.0, DRAW_DETAIL, KNOWN);
+    return select(mode.bank.z != 0.0, DRAW_DETAIL, KNOWN);
 }
 
 // The draw's frame uniform (`renderer::uniforms::frame_index`): 0 the world's (the stage and the car), 1 the
@@ -701,7 +702,7 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     if (wet_road) {
         colour = wet_plus(colour, v);
     }
-    // The near ground (the unlit draws with the mip bias) gets fine detail where its textures are blurred.
+    // The near ground (`stage::DrawState::ground`) gets fine detail where its textures are blurred.
     if (detail_draw()) {
         colour = colour * ground_detail(v.world);
         if (GRASS && mode.cutout == 0u) {

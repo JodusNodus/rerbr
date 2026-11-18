@@ -572,6 +572,7 @@ fn slot_mesh(texture: TextureRef, capacity: usize) -> Mesh {
         second_texture: false,
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
+        ground: false,
         cull_back: false,
         blend: false,
         depth_test: true,

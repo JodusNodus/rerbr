@@ -760,6 +760,7 @@ mod tests {
             second_texture: false,
             alpha_ref: Some(127),
             mip_bias: false,
+            ground: false,
             cull_back: false,
             blend: false,
             depth_test: true,

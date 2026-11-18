@@ -46,7 +46,8 @@ pub(super) struct ModeUniform {
     /// A lit lamp's part's glow colour and luminance (`Shade::glow`, `lamp_shown` in `shader.wgsl`).
     pub(super) lamp: [f32; 4],
     /// `x` and `y` texture 0's and texture 1's bank shares
-    /// ([`terrain_detail::bank_shares`](crate::terrain_detail::bank_shares)).
+    /// ([`terrain_detail::bank_shares`](crate::terrain_detail::bank_shares)), `z` 1 for the near ground
+    /// ([`DrawState::ground`](crate::stage::DrawState::ground)).
     pub(super) bank: [f32; 4],
 }
 

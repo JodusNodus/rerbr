@@ -3,7 +3,7 @@
 //! and along the road's lower edges. The game's own puddle quads (`.col` list A) are not used: only 10 of the 43
 //! retail maps have them (gravel stages, none on tarmac).
 //!
-//! The road is every world-anchored, opaque, unlit draw with the ground's mip bias and a specular map, over all
+//! The road is every world-anchored, opaque, unlit near ground draw (`DrawState::ground`) with a specular map, over all
 //! meshes, since the stage splits it into chunks; measured against the road only (with the terrain about it, the
 //! whole road lay below its banks). Each vertex is compared with the mean height of the
 //! ground vertices in the 3 x 3 cells about it at two scales ([`CELLS`]), measured from the vertex's tangent plane
@@ -17,8 +17,9 @@
 use crate::parallel::in_parallel;
 use crate::particles::ground::{Ground, Hit};
 use crate::stage::{Anchor, Draw, Layer, Mesh, TextureRef, Vertex};
+use glam::{Vec3, Vec3Swizzles};
 use rbr_formats::lsp_keys::{Class, KEYS};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 /// [`Vertex::edge`] of the off-road ground's vertices (ours, the grass field, [`mark_ground`]): the road's edge distance
@@ -33,13 +34,15 @@ const CELLS: [(f32, f32); 2] = [(1.0, 0.6), (4.0, 0.4)];
 /// The depth below the mean, metres, that counts as fully low.
 const DEEP: f32 = 0.08;
 
-/// Whether `draw` of `mesh` is the ground: world-anchored, opaque and unlit, with the ground's mip bias.
+/// Whether `draw` of `mesh` is the ground: world-anchored, opaque and unlit, the near ground ([`DrawState::ground`]).
+///
+/// [`DrawState::ground`]: crate::stage::DrawState::ground
 pub(crate) fn ground(mesh: &Mesh, draw: &Draw) -> bool {
     mesh.anchor == Anchor::World
         && mesh.layer == Layer::Solid
         && draw.state.shade.is_none()
         && draw.state.alpha_ref.is_none()
-        && draw.state.mip_bias
+        && draw.state.ground
 }
 
 /// The share of the wet film a ground of surface `name` takes (ours): tarmac all, gravel and dirt half, the rest
@@ -107,19 +110,22 @@ fn segment_distance(p: [f32; 3], a: [f32; 3], b: [f32; 3]) -> f32 {
     (0..3).map(|c| (ap[c] - t * ab[c]).powi(2)).sum::<f32>().sqrt()
 }
 
-/// A ground triangle: its mesh, its vertex indices, its draw's first texture, its centre's height and the collision hit
-/// under its centre.
+/// A ground triangle: its mesh, its vertex indices, its draw's first texture, its centre's height, the collision hit
+/// under its centre, and whether it may be road ([`ground_triangles`]).
 pub(crate) struct GroundTriangle {
     m: usize,
     t: [usize; 3],
     texture: Option<TextureRef>,
     y: f32,
     hit: Option<Hit>,
+    road: bool,
 }
 
 /// The ground triangles of `meshes`, in order. The hits go over the machine's threads: a large stage has millions of
-/// triangles, each a lookup in the collision grid.
-pub(crate) fn ground_triangles(meshes: &[Mesh], collision: &Ground) -> Vec<GroundTriangle> {
+/// triangles, each a lookup in the collision grid. With `roads` ([`roads`]) only the triangles that look like one of its
+/// textures and lie by its driveline may be road; without, all.
+pub(crate) fn ground_triangles(meshes: &[Mesh], collision: &Ground, roads: Option<&Roads>) -> Vec<GroundTriangle> {
+    let line = roads.map(|roads| Line::new(&roads.driveline));
     let mut found = Vec::new();
     for (m, mesh) in meshes.iter().enumerate() {
         for draw in mesh.draws.iter().filter(|draw| ground(mesh, draw)) {
@@ -129,33 +135,176 @@ pub(crate) fn ground_triangles(meshes: &[Mesh], collision: &Ground) -> Vec<Groun
                     continue;
                 }
                 let centre = [0, 1, 2].map(|c| t.iter().map(|&i| mesh.vertices[i].position[c]).sum::<f32>() / 3.0);
-                found.push((m, t, draw.state.textures[0], centre));
+                let road = match (roads, &line) {
+                    (Some(roads), Some(line)) => {
+                        look(mesh, draw, t).is_some_and(|look| roads.textures.contains(&look))
+                            && line.beside(Vec3::from(centre))
+                    }
+                    _ => true,
+                };
+                found.push((m, t, draw.state.textures[0], centre, road));
             }
         }
     }
-    let hits = in_parallel(&found, |&(.., [x, y, z])| collision.below([x, z, y]));
+    let hits = in_parallel(&found, |&(.., [x, y, z], _)| collision.below([x, z, y]));
     found
         .into_iter()
         .zip(hits)
-        .map(|((m, t, texture, [_, y, _]), hit)| GroundTriangle { m, t, texture, y, hit })
+        .map(|((m, t, texture, [_, y, _], road), hit)| GroundTriangle { m, t, texture, y, hit, road })
         .collect()
+}
+
+/// The texture a ground triangle shows: the second one where it blends in over half (by the vertex alpha), else the
+/// first.
+fn look(mesh: &Mesh, draw: &Draw, t: [usize; 3]) -> Option<TextureRef> {
+    let weight: f32 = t.iter().map(|&i| f32::from(mesh.vertices[i].color[3])).sum::<f32>() / (3.0 * 255.0);
+    match draw.state.textures {
+        [_, Some(second)] if draw.state.second_texture && weight > 0.5 => Some(second),
+        [first, _] => first,
+    }
+}
+
+/// How far the driveline may lie over or under the ground it runs on, metres ([`roads`]), and the road over or under the
+/// driveline beside it ([`Line::beside`]).
+const ROAD_REACH: f32 = 2.0;
+/// How far the road reaches to either side of the driveline, metres ([`Line::beside`]): the driveline is a racing line
+/// (a converted stage's AI line), at times by one edge of the road.
+const ROAD_SIDE: f32 = 10.0;
+/// A texture is the road's when it is under at least this many of the driveline's points ([`roads`]): one is a stray
+/// triangle's.
+const ROAD_POINTS: usize = 2;
+/// A texture is the road's when it is under at least this share of the driveline's points it lies beside (within
+/// [`ROAD_SIDE`]; [`roads`]): the driveline runs on the road, and only past the ground about it.
+const ROAD_SHARE: f32 = 0.15;
+
+/// Where the road is on a stage whose collision surfaces do not tell it from the ground about it (ours; a BTB stage's
+/// terrain is often tarmac to the physics: Cueva Santa's fields are `Tarmac_Fine_Covered`; Coll de la Teixeta, converted,
+/// is all AC's `KRB`, tarmac too): the ground showing one of the road's textures, by the driveline.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Roads {
+    /// What the ground triangle under each of the driveline's points shows ([`look`]), the nearest within
+    /// [`ROAD_REACH`] of its height, under at least [`ROAD_POINTS`] of them. Some stages' roads are tiles of textures
+    /// of their own (Coll de la Teixeta's, baked from AC's layers, each under a few points).
+    pub textures: HashSet<TextureRef>,
+    /// The driveline's points, in stage space.
+    pub driveline: Vec<Vec3>,
+}
+
+/// The driveline's segments by [`Line::CELL`] cells (each in the cells within [`ROAD_SIDE`] of it).
+struct Line<'a> {
+    points: &'a [Vec3],
+    cells: HashMap<(i32, i32), Vec<u32>>,
+}
+
+impl<'a> Line<'a> {
+    const CELL: f32 = 16.0;
+
+    fn new(points: &'a [Vec3]) -> Line<'a> {
+        let mut cells: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for (i, pair) in points.windows(2).enumerate() {
+            let low = cell_of((pair[0].min(pair[1]) - ROAD_SIDE).to_array(), Self::CELL);
+            let high = cell_of((pair[0].max(pair[1]) + ROAD_SIDE).to_array(), Self::CELL);
+            for cell in (low.0..=high.0).flat_map(|x| (low.1..=high.1).map(move |z| (x, z))) {
+                cells.entry(cell).or_default().push(i as u32);
+            }
+        }
+        Line { points, cells }
+    }
+
+    /// Whether `p` lies within [`ROAD_SIDE`] of the driveline across and [`ROAD_REACH`] of its height there.
+    fn beside(&self, p: Vec3) -> bool {
+        let Some(segments) = self.cells.get(&cell_of(p.to_array(), Self::CELL)) else { return false };
+        segments.iter().any(|&i| {
+            let (a, b) = (self.points[i as usize], self.points[i as usize + 1]);
+            let along = b.xz() - a.xz();
+            let t = (p.xz() - a.xz()).dot(along) / along.length_squared().max(1e-6);
+            let at = a.lerp(b, t.clamp(0.0, 1.0));
+            at.xz().distance(p.xz()) < ROAD_SIDE && (p.y - at.y).abs() < ROAD_REACH
+        })
+    }
+}
+
+/// Where the road of `meshes` is ([`Roads`]), by `driveline`.
+pub(crate) fn roads(meshes: &[Mesh], driveline: &[Vec3]) -> Roads {
+    const CELL: f32 = 16.0;
+    let mut points: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+    for (i, p) in driveline.iter().enumerate() {
+        points.entry(cell_of(p.to_array(), CELL)).or_default().push(i as u32);
+    }
+    // Each mesh's (point, height off it, look) for the triangles under a point, and the (point, look) of those beside
+    // it, over the load's threads.
+    let found = in_parallel(meshes, |mesh| {
+        let (mut under, mut beside) = (Vec::new(), HashSet::new());
+        for draw in mesh.draws.iter().filter(|draw| ground(mesh, draw)) {
+            for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
+                let t = [0, 1, 2].map(|k| t[k] as usize);
+                if t.iter().any(|&i| i >= mesh.vertices.len()) {
+                    continue;
+                }
+                let Some(look) = look(mesh, draw, t) else { continue };
+                let corners = t.map(|i| Vec3::from(mesh.vertices[i].position));
+                let centre = (corners[0] + corners[1] + corners[2]) / 3.0;
+                let low = cell_of((corners[0].min(corners[1]).min(corners[2]) - ROAD_SIDE).to_array(), CELL);
+                let high = cell_of((corners[0].max(corners[1]).max(corners[2]) + ROAD_SIDE).to_array(), CELL);
+                for cell in (low.0..=high.0).flat_map(|x| (low.1..=high.1).map(move |z| (x, z))) {
+                    for &i in points.get(&cell).into_iter().flatten() {
+                        let p = driveline[i as usize];
+                        if let Some(y) = crate::sky_dome::height_over(&corners, p.xz()) {
+                            if (y - p.y).abs() < ROAD_REACH {
+                                under.push((i, (y - p.y).abs(), look));
+                                beside.insert((i, look));
+                            }
+                        } else if centre.xz().distance(p.xz()) < ROAD_SIDE && (centre.y - p.y).abs() < ROAD_REACH {
+                            beside.insert((i, look));
+                        }
+                    }
+                }
+            }
+        }
+        (under, beside)
+    });
+    let mut nearest: HashMap<u32, (f32, TextureRef)> = HashMap::new();
+    let mut beside: HashSet<(u32, TextureRef)> = HashSet::new();
+    for (under, near) in found {
+        for (i, off, look) in under {
+            if nearest.get(&i).is_none_or(|&(best, _)| off < best) {
+                nearest.insert(i, (off, look));
+            }
+        }
+        beside.extend(near);
+    }
+    // Per texture, the points it is under and those it lies beside.
+    let mut counts: HashMap<TextureRef, [usize; 2]> = HashMap::new();
+    for &(_, look) in nearest.values() {
+        counts.entry(look).or_default()[0] += 1;
+    }
+    for (_, look) in beside {
+        counts.entry(look).or_default()[1] += 1;
+    }
+    let textures = (counts.into_iter())
+        .filter(|&(_, [under, beside])| under >= ROAD_POINTS && under as f32 >= ROAD_SHARE * beside as f32)
+        .map(|(texture, _)| texture)
+        .collect();
+    Roads { textures, driveline: driveline.to_vec() }
 }
 
 /// The ground vertices of `meshes` with their share of the wet film ([`film_by_name`], [`Vertex::wet`]): the most of
 /// their triangles' (`ground`, [`ground_triangles`]), each by the collision surface under its centre. A road's edge vertices lie on the verge's
 /// surface as often as on the road's; by the vertex, a road two triangles wide was half wet across. Then the road's
 /// edge: an edge of a film triangle that a ground triangle without film shares (by position, over all meshes), and
-/// each film vertex's distance to the nearest ([`Vertex::edge`]).
-pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle]) {
+/// each film vertex's distance to the nearest ([`Vertex::edge`]). With `by_texture` a film triangle takes the share most
+/// of its texture's film triangles have; without, its own: a BTB stage's texture is often an atlas of the road and the
+/// ground about it (Bareyo's road strip is tarmac to the physics, its verges dirt), whose verges took the road's film.
+pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle], by_texture: bool) {
     // Each ground triangle with its texture and the share of the surface under it, and per texture how many film
     // triangles take each share: a stage may tag stretches of its tarmac as gravel (RSF Bois de Bie, 46000 of its 185000
     // road triangles), so a film triangle takes the share most of its texture's film triangles have.
     let mut shares = Vec::new();
     let mut snowy = Vec::new();
     let mut votes: HashMap<Option<TextureRef>, HashMap<u32, u32>> = HashMap::new();
-    for &GroundTriangle { m, t, texture, hit, .. } in ground {
+    for &GroundTriangle { m, t, texture, hit, road, .. } in ground {
         let surface = hit.map_or(0, |hit| hit.surface);
-        let share = FILM.get(surface as usize).copied().unwrap_or(0.0);
+        let share = if road { FILM.get(surface as usize).copied().unwrap_or(0.0) } else { 0.0 };
         if share > 0.0 {
             *votes.entry(texture).or_default().entry(share.to_bits()).or_default() += 1;
         }
@@ -194,7 +343,7 @@ pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle]) {
         }
     }
     for (m, t, texture, share) in shares {
-        let share = if share > 0.0 { most.get(&texture).copied().unwrap_or(share) } else { share };
+        let share = if share > 0.0 && by_texture { most.get(&texture).copied().unwrap_or(share) } else { share };
         for i in t {
             let vertex = &mut meshes[m].vertices[i];
             vertex.wet = vertex.wet.max(share);
@@ -250,13 +399,13 @@ const GROUND_REACH: f32 = 0.6;
 pub(crate) fn mark_ground(meshes: &mut [Mesh], ground: &[GroundTriangle]) -> bool {
     let (mut snow_triangles, mut triangles) = (0, 0);
     let mut marked = Vec::new();
-    for &GroundTriangle { m, t, y, hit, .. } in ground {
+    for &GroundTriangle { m, t, y, hit, road, .. } in ground {
         let Some(hit) = hit else { continue };
         let surface = hit.surface as usize;
         let snow = SNOW.get(surface).copied().unwrap_or(false);
         snow_triangles += usize::from(snow);
         triangles += 1;
-        let road = FILM.get(surface).copied().unwrap_or(0.0) > 0.0 || snow;
+        let road = (road && FILM.get(surface).copied().unwrap_or(0.0) > 0.0) || snow;
         if !road && y - hit.z < GROUND_REACH {
             marked.extend(t.map(|i| (m, i)));
         }
@@ -375,6 +524,71 @@ mod tests {
         assert!(!["Gravel_Fine_Deep_Dry", "Tarmac_Fine_Clean_Wet", "Grass_Soft_Dry"].iter().any(|n| snow_by_name(n)));
         assert!(SNOW.iter().any(|&snow| snow));
         assert!(SNOW.iter().zip(FILM.iter()).all(|(&snow, &film)| !(snow && film > 0.0)));
+    }
+
+    /// A ground mesh of one quad, x and z from `low` to `high` at height `y`, showing `textures` (the second blending in
+    /// by the vertex alpha `weight`).
+    fn quad(low: [f32; 2], high: [f32; 2], y: f32, textures: [Option<u32>; 2], weight: u8) -> Mesh {
+        let corner = |x: f32, z: f32| Vertex {
+            position: [x, y, z],
+            color: [255, 255, 255, weight],
+            ..bytemuck::Zeroable::zeroed()
+        };
+        let state = crate::stage::DrawState {
+            textures: textures.map(|t| t.map(|index| TextureRef { set: crate::stage::TextureSet::Stage, index })),
+            shadow: None,
+            address: [crate::stage::Address::Wrap; 2],
+            second_texture: textures[1].is_some(),
+            alpha_ref: None,
+            mip_bias: false,
+            ground: true,
+            cull_back: false,
+            blend: false,
+            depth_test: true,
+            depth_write: true,
+            shade: None,
+            specular: None,
+        };
+        Mesh {
+            layer: Layer::Solid,
+            anchor: Anchor::World,
+            bounds: None,
+            cell: None,
+            vertices: vec![
+                corner(low[0], low[1]),
+                corner(high[0], low[1]),
+                corner(high[0], high[1]),
+                corner(low[0], high[1]),
+            ],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            draws: vec![Draw { indices: 0..6, state, lod: crate::stage::Lod::Always }],
+            sun_cascades: true,
+        }
+    }
+
+    #[test]
+    fn the_road_is_what_the_driveline_runs_over() {
+        // A road (0) on a field (1) a little below it, a stray patch (2) under one of the driveline's 201 points, a
+        // blended road whose second texture (4) shows over its first (3), and a verge (5) the driveline runs past all
+        // along and onto at three points.
+        let meshes = [
+            quad([-3.0, 0.0], [3.0, 100.0], 0.0, [Some(0), None], 255),
+            quad([-50.0, -10.0], [50.0, 210.0], -0.5, [Some(1), None], 255),
+            quad([-1.0, 49.9], [1.0, 50.1], 0.1, [Some(2), None], 255),
+            quad([-3.0, 100.0], [3.0, 200.0], 0.0, [Some(3), Some(4)], 200),
+            quad([3.0, 0.0], [6.0, 200.0], -0.1, [Some(5), None], 255),
+        ];
+        let x = |i: usize| if (70..73).contains(&i) { 4.5 } else { 0.0 };
+        let driveline: Vec<Vec3> = (0..=200).map(|i| Vec3::new(x(i), 0.3, i as f32)).collect();
+        let roads = roads(&meshes, &driveline);
+        let indices: std::collections::BTreeSet<u32> = roads.textures.iter().map(|t| t.index).collect();
+        assert_eq!(indices, [0, 4].into());
+        // By the driveline: across, along and up.
+        let line = Line::new(&roads.driveline);
+        assert!(line.beside(Vec3::new(9.0, -1.0, 50.0)));
+        assert!(!line.beside(Vec3::new(11.0, 0.0, 50.0)));
+        assert!(!line.beside(Vec3::new(3.0, 3.0, 50.0)));
+        assert!(!line.beside(Vec3::new(0.0, 0.0, 220.0)));
     }
 
     #[test]

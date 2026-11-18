@@ -563,6 +563,7 @@ impl GhostCar {
             second_texture: false,
             alpha_ref: None,
             mip_bias: false,
+            ground: false,
             cull_back: true,
             blend: true,
             depth_test: true,
