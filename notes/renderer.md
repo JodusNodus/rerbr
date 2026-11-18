@@ -1257,7 +1257,9 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   98% of those it calls plants are. Misses: chain-link and wire (mostly named), bare twigs and dry stalks. At 256
   texels the gaps do not show (9% of plants taken). Retail atlases (tiny dry plants, cacti) failed it: only a stage's
   own textures take it, retail stages unchanged. 394's plant pass +1 s of one thread. 34 shots: 7
-  byte-identical (retail 52 among them), the rest within 0.8% RMSE. The main view's sun shadow is worked out once per
+  byte-identical (retail 52 among them), the rest within 0.8% RMSE. Pieces lying flat are no plants (2026-11-18,
+  `foliage::FLAT`: no face steeper than about 26 degrees): a converted AC stage's road paint, cut out, was faded
+  edge-on and vanished under `lighting` (Riudecanyes, before/after shots); retail stages not re-shot. The main view's sun shadow is worked out once per
   pixel before the stage is shaded (PCSS, 3x3 blocker search). Semetin 5.39 to 6.06 ms at 1920x1080 (41M similar,
   2026-10-25). The prepass's normals go to an `Rgb10a2Unorm` target of their own: the prepass 1.0 to 0.52 ms at 1440p
   (4K similar); with TAA, frames differ on 0.3-1% of pixels, mostly by 1/255, dusk and night byte-identical. The first
