@@ -528,12 +528,22 @@ impl Form {
         if self.page == Page::Import {
             return self.import_page(ui);
         }
+        if self.page == Page::Codrivers {
+            return self.codrivers_page(ui);
+        }
         if self.page.section() == Some(Section::Settings) {
             if let Some(page) = self.settings_header(ui) {
                 self.page = page;
             }
         } else {
             ui.add_space(14.0);
+        }
+        // The restyled Settings pages draw their own body (and footer).
+        match self.page {
+            Page::Settings => return self.settings_page(ui),
+            Page::Controls => return self.controls_page(ui),
+            Page::Graphics => return self.graphics_page(ui),
+            _ => {}
         }
         // The pages not yet restyled keep their fixed widths: narrower side padding than the kit's, except under the
         // Settings header, which lines up with it.
@@ -547,33 +557,9 @@ impl Form {
             Page::School => self.school_page(ui),
             Page::Replays => self.replays_page(ui),
             Page::Setup => self.setup_page(ui),
-            Page::Controls => {
-                let root = self.game_root();
-                let settings = self.paths.settings.clone();
-                let (read_only, car) = (self.read_only, self.car);
-                self.controls.ui(
-                    ui,
-                    &mut self.bindings,
-                    &mut self.ffb,
-                    &mut self.options.aids,
-                    &mut self.head_gasket,
-                    &mut self.ffb_cars,
-                    &self.ffb_load,
-                    &self.catalog.cars,
-                    car,
-                    &root,
-                    &settings,
-                    read_only,
-                )
-            }
-            Page::Graphics => self.graphics_page(ui),
             Page::Cars => self.cars_page(ui),
             Page::Stages => self.stages_page(ui),
-            Page::Codrivers => self.codrivers_page(ui),
-            Page::Import => {}
-            Page::Settings => {
-                egui::ScrollArea::vertical().id_salt("settings").show(ui, |ui| self.settings_page(ui));
-            }
+            Page::Import | Page::Codrivers | Page::Settings | Page::Controls | Page::Graphics => {}
         });
     }
 

@@ -128,6 +128,25 @@ impl Rows<'_> {
             .inner
     }
 
+    /// A row with a switch on the right: `label`, and under it `hint` (12, dimmed, wrapping) when there is one. The
+    /// response is the switch's (`changed()` when toggled; hover text goes on it).
+    pub fn switch_row(&mut self, label: &str, hint: Option<&str>, on: &mut bool) -> Response {
+        self.full(|ui| {
+            let text_width = (ui.available_width() - 34.0 - 16.0).max(40.0);
+            ui.allocate_ui_with_layout(Vec2::new(text_width, 0.0), Layout::top_down(Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let margin = Margin::symmetric(0, if hint.is_some() { 8 } else { 0 });
+                Frame::new().inner_margin(margin).show(ui, |ui| {
+                    ui.label(RichText::new(label).color(TEXT_LABEL));
+                    if let Some(hint) = hint {
+                        self::hint(ui, hint);
+                    }
+                });
+            });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| switch(ui, on)).inner
+        })
+    }
+
     /// A hint line under the row above, inside the panel.
     pub fn hint(&mut self, text: &str) {
         self.first = false;

@@ -1,6 +1,6 @@
 //! The Graphics & sound page: the window, the camera, the HUD, the sound and the renderer's quality.
 
-use egui::{Color32, ComboBox, DragValue};
+use egui::{ComboBox, DragValue};
 use rbr_render::camera_prefs;
 use rbr_render::coords;
 use rbr_render::hud::layout::Layout;
@@ -11,7 +11,10 @@ use rbr_render::present::Present;
 use rbr_render::renderer::{Detail, Reflections};
 use rbr_render::triple::Rig;
 
-use crate::pages::{combo, fields, section, Choice, DRIVE_FIELDS, FIELD, WARN};
+use crate::kit;
+use crate::pages::{combo, Choice};
+use crate::settings_page::{label_cell, note, row_tip};
+use crate::theme::WARN;
 use crate::Form;
 
 /// The Quality section's choices: the renderer's additions (`viewer --enhance`), the wet roads (`--enhance wet` and
@@ -47,9 +50,6 @@ impl Default for Graphics {
         DEFAULT_GRAPHICS
     }
 }
-
-/// The width of the Quality section's boxes, beside the left column.
-const QUALITY_FIELD: f32 = 170.0;
 
 /// The wet roads: as in 1.02, or our film and puddles (`--enhance wet`) reflecting the baked stage and sky (low), and
 /// the scenery on screen too, on the wet roads and the water (medium and high, `--reflections`).
@@ -329,86 +329,87 @@ pub const MAX_VOLUME: f32 = 4.0;
 pub const MAX_GROUP_VOLUME: f32 = 2.0;
 
 impl Form {
-    /// The Graphics & sound page: the window, the camera, the HUD and the sound on the left; the renderer's quality on
-    /// the right.
+    /// The Graphics & sound page: the window, the camera and the HUD on the left; the renderer's quality and the sound
+    /// on the right.
     pub fn graphics_page(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical().id_salt("graphics").show(ui, |ui| {
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(DRIVE_FIELDS);
-                    self.view_fields(ui);
+        egui::ScrollArea::vertical().id_salt("graphics").auto_shrink([false, false]).show(ui, |ui| {
+            kit::body(ui, |ui| {
+                ui.columns(2, |columns| {
+                    self.view_fields(&mut columns[0]);
+                    self.quality(&mut columns[1]);
+                    columns[1].add_space(14.0);
+                    self.sound(&mut columns[1]);
                 });
-                ui.add_space(20.0);
-                ui.vertical(|ui| self.quality(ui));
-            });
+            })
         });
     }
 
     fn view_fields(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Display");
-        fields(ui, "display", |ui| {
-            let tip =
-                "Fills the monitor at its own resolution, borderless: the compositor can show the frames directly";
-            ui.label("Fullscreen").on_hover_text(tip);
-            ui.checkbox(&mut self.fullscreen, "at the monitor's resolution").on_hover_text(tip);
-            ui.end_row();
+        kit::group_label(ui, "Display", None);
+        let logs = self.logs_dir().display().to_string();
+        let can_upscale = crate::upscaler::available();
+        kit::panel(ui, |rows| {
+            let tip = "Fills the monitor at its own resolution, borderless: the compositor can show the frames directly";
+            rows.switch_row("Fullscreen at the monitor's resolution", None, &mut self.fullscreen).on_hover_text(tip);
 
-            ui.label("Resolution").on_hover_text("The driving window's size when not fullscreen");
-            ui.add_enabled_ui(!self.fullscreen, |ui| {
-                ComboBox::from_id_salt("size").width(FIELD).height(320.0).selected_text(size_label(self.size)).show_ui(
-                    ui,
-                    |ui| {
-                        for &size in &self.sizes {
-                            ui.selectable_value(&mut self.size, size, size_label(size));
-                        }
-                    },
-                );
+            let fullscreen = self.fullscreen;
+            row_tip(rows, "Resolution", "The driving window's size when not fullscreen", |ui| {
+                ui.add_enabled_ui(!fullscreen, |ui| {
+                    ComboBox::from_id_salt("size").height(320.0).selected_text(size_label(self.size)).show_ui(
+                        ui,
+                        |ui| {
+                            for &size in &self.sizes {
+                                ui.selectable_value(&mut self.size, size, size_label(size));
+                            }
+                        },
+                    );
+                });
             });
-            ui.end_row();
 
             let tip = "Three like screens side by side, the side ones turned towards you, each drawing its own \
                        view from your seat. The field-of-view sliders set the centre screen's view";
-            ui.label("Triple screens").on_hover_text(tip);
-            ui.checkbox(&mut self.triple, "three screens").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Triple screens", None, &mut self.triple).on_hover_text(tip);
 
             let tip = "Draws the 3D view at this share of the window's size, which the temporal anti-aliasing \
                        upscales to it over the frames: faster, for high refresh rates at 1440p and above; the lower, \
                        the softer, and fast-moving edges grow rougher";
-            ui.label("Render scale").on_hover_text(tip);
-            combo(ui, "render scale", QUALITY_FIELD, &mut self.render_scale, &RENDER_SCALES, scale_label)
-                .on_hover_text(tip);
-            ui.end_row();
+            rows.row("Render scale", |ui| {
+                combo(ui, "render scale", None, &mut self.render_scale, &RENDER_SCALES, scale_label).on_hover_text(tip);
+            });
 
             let tip = if self.upscaler {
                 "Upscales the car's and the stage's textures 4x (to at most 4096 texels a side), so the bonnet, the \
                  livery, the cockpit, the gravel and the signs stay sharp up close. The first drive with \
                  a car or on a stage waits while they are made; then they are kept and load at once"
-            } else if crate::upscaler::available() {
+            } else if can_upscale {
                 "Needs the upscaler, about 50 MB: Download upscaler… gets it"
             } else {
                 "Needs the upscaler, which Real-ESRGAN does not build for this platform"
             };
-            ui.label("Textures").on_hover_text(tip);
             if self.upscaler {
-                ui.horizontal_wrapped(|ui| {
-                    ui.checkbox(&mut self.upscale_textures, "upscaled").on_hover_text(tip);
-                    self.upscaler_cache_ui(ui);
+                rows.switch_row("Upscaled textures", None, &mut self.upscale_textures).on_hover_text(tip);
+                rows.full(|ui| ui.horizontal_wrapped(|ui| self.upscaler_cache_ui(ui)).inner);
+            } else if can_upscale {
+                rows.full(|ui| {
+                    label_cell(ui, 130.0, "Upscaled textures").on_hover_text(tip);
+                    ui.vertical(|ui| self.upscaler_download_ui(ui));
                 });
-            } else if crate::upscaler::available() {
-                ui.vertical(|ui| self.upscaler_download_ui(ui));
             } else {
-                ui.add_enabled_ui(false, |ui| ui.checkbox(&mut self.upscale_textures, "upscaled"))
-                    .response
-                    .on_disabled_hover_text(tip);
+                let mut off = false;
+                rows.switch_row("Upscaled textures", Some("Not available on this platform"), &mut off)
+                    .on_hover_text(tip);
             }
-            ui.end_row();
 
             let (label, tip) = present_label(self.present);
-            ui.label("Frame rate").on_hover_text("How frames reach the display, and the most frames a second drawn");
-            ui.horizontal(|ui| {
+            row_tip(rows, "Frame rate", "How frames reach the display, and the most frames a second drawn", |ui| {
+                let tip_cap = "The most frames a second the driving window draws. Uncapped with the display's refresh \
+                               rate here keeps the lowest lag without the GPU drawing frames the display never shows";
+                combo(ui, "frame cap", None, &mut self.max_fps, &FRAME_CAPS, |fps| match fps {
+                    0 => "No cap".into(),
+                    fps => cap_label(fps),
+                })
+                .on_hover_text(tip_cap);
                 ComboBox::from_id_salt("present")
-                    .width(FIELD - 120.0)
                     .selected_text(label)
                     .show_ui(ui, |ui| {
                         for &present in Present::OFFERED {
@@ -418,158 +419,141 @@ impl Form {
                     })
                     .response
                     .on_hover_text(tip);
-                let tip = "The most frames a second the driving window draws. Uncapped with the display's refresh \
-                           rate here keeps the lowest lag without the GPU drawing frames the display never shows";
-                combo(ui, "frame cap", 90.0, &mut self.max_fps, &FRAME_CAPS, |fps| match fps {
-                    0 => "No cap".into(),
-                    fps => cap_label(fps),
-                })
-                .on_hover_text(tip);
             });
-            ui.end_row();
 
             if rbr_render::present::HDR_OFFERED {
                 let tip = "On an HDR display (a Mac's extended dynamic range) the sun, the lamps and their glints \
                            show brighter than its white, as far as it reaches at its brightness; the rest of the \
                            frame and the HUD as without. Elsewhere the window draws as without it";
-                ui.label("HDR").on_hover_text(tip);
-                ui.checkbox(&mut self.hdr, "highlights past the display's white").on_hover_text(tip);
-                ui.end_row();
+                rows.switch_row("HDR", Some("Highlights past the display's white"), &mut self.hdr).on_hover_text(tip);
             }
 
-            ui.label("FPS counter");
-            ui.checkbox(&mut self.hud.fps, "top-right corner");
-            ui.end_row();
+            rows.switch_row("FPS counter, top right", None, &mut self.hud.fps);
 
-            let tip =
-                "Writes how long each frame, each stage on the CPU and each pass on the GPU takes, once a second \
+            let tip = "Writes how long each frame, each stage on the CPU and each pass on the GPU takes, once a second \
                        (a .log to paste in a bug report) and the last 600 frames at the end (a .trace.json for \
                        ui.perfetto.dev). Costs well under 0.2 ms a frame";
-            ui.label("Performance log").on_hover_text(tip);
-            ui.vertical(|ui| {
-                ui.checkbox(&mut self.perf_log, "write one for each drive").on_hover_text(tip);
-                if self.perf_log {
-                    ui.weak(format!("In {}", self.logs_dir().display()));
-                }
-            });
-            ui.end_row();
+            let hint = self.perf_log.then(|| format!("In {logs}"));
+            rows.switch_row("Performance log for each drive", hint.as_deref(), &mut self.perf_log).on_hover_text(tip);
         });
 
         self.triple_fields(ui);
 
-        section(ui, "Camera");
-        fields(ui, "camera", |ui| {
+        ui.add_space(14.0);
+        kit::group_label(ui, "Camera", None);
+        kit::panel(ui, |rows| {
             let tip = "The horizontal field of view of the in-car views and the free camera; the chase view has its \
                        own below. The pause menu's Camera page sets it too";
-            ui.label("Field of view").on_hover_text(tip);
-            ui.add(egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
-                .on_hover_text(tip);
-            ui.end_row();
+            rows.row("Field of view", |ui| {
+                ui.spacing_mut().slider_width = 180.0;
+                ui.add(egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
+                    .on_hover_text(tip);
+            });
 
             let tip = "The horizontal field of view of the chase view (65 by default). The pause menu's Camera page \
                        sets it too";
-            ui.label("Chase field of view").on_hover_text(tip);
-            ui.add(egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
-                .on_hover_text(tip);
-            ui.end_row();
+            rows.row("Chase field of view", |ui| {
+                ui.spacing_mut().slider_width = 180.0;
+                ui.add(egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
+                    .on_hover_text(tip);
+            });
 
+            let mut cockpit = self.cockpit;
             let tip = "The in-car view's head: it keeps the horizon steadier over bumps. Off, the view is fixed to \
                        the car. The pause menu's Camera page sets it too";
-            ui.label("Head motion").on_hover_text(tip);
-            let mut cockpit = self.cockpit;
-            ui.add_enabled(!self.read_only, egui::Checkbox::new(&mut cockpit.head, "in-car view")).on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Head motion in the car", None, &mut cockpit.head).on_hover_text(tip);
 
             let tip = "What the cockpit view shows: the driver's arms on the wheel, the co-driver beside you, and the \
                        car's steering wheel (leave it out when driving with a wheel of your own). The pause menu's \
                        Camera page sets them too";
-            ui.label("Cockpit").on_hover_text(tip);
-            ui.horizontal(|ui| {
-                let choices = [
-                    (&mut cockpit.driver, "Driver's arms"),
-                    (&mut cockpit.codriver, "Co-driver"),
-                    (&mut cockpit.wheel, "Steering wheel"),
-                ];
-                for (on, label) in choices {
-                    ui.add_enabled(!self.read_only, egui::Checkbox::new(on, label)).on_hover_text(tip);
-                }
+            rows.full(|ui| {
+                label_cell(ui, 110.0, "Cockpit shows").on_hover_text(tip);
+                ui.horizontal_wrapped(|ui| {
+                    let choices = [
+                        (&mut cockpit.driver, "Driver's arms"),
+                        (&mut cockpit.codriver, "Co-driver"),
+                        (&mut cockpit.wheel, "Steering wheel"),
+                    ];
+                    for (on, label) in choices {
+                        ui.checkbox(on, label).on_hover_text(tip);
+                    }
+                });
             });
+            if self.read_only {
+                cockpit = self.cockpit;
+            }
             if cockpit != self.cockpit {
                 self.cockpit = cockpit;
                 if let Err(e) = self.edit_camera(|prefs| prefs.cockpit = cockpit) {
                     self.status = e;
                 }
             }
-            ui.end_row();
 
-            ui.label("Cameras");
-            self.camera_row(ui);
-            ui.end_row();
+            rows.row("Cameras", |ui| self.camera_row(ui));
         });
 
-        section(ui, "HUD");
-        fields(ui, "hud", |ui| {
-            ui.label("HUD");
-            ui.checkbox(&mut self.hud.show, "shown");
-            ui.end_row();
+        ui.add_space(14.0);
+        kit::group_label(ui, "HUD", None);
+        kit::panel(ui, |rows| {
+            rows.switch_row("HUD", Some("Shown while driving"), &mut self.hud.show);
 
             let tip = "The countdown, false start, wrong way and the finish and result pages always show with the HUD";
-            ui.label("HUD parts").on_hover_text(tip);
-            ui.add_enabled_ui(self.hud.show, |ui| {
-                ui.vertical(|ui| {
-                    let parts: Vec<_> = Part::ALL.into_iter().zip(PART_TIPS).collect();
-                    for (row, parts) in self.hud.parts.0.chunks_mut(3).zip(parts.chunks(3)) {
-                        ui.horizontal(|ui| {
-                            for (shown, (part, tip)) in row.iter_mut().zip(parts) {
-                                let cell = egui::Layout::left_to_right(egui::Align::Center);
-                                ui.allocate_ui_with_layout(egui::vec2(140.0, 20.0), cell, |ui| {
-                                    ui.set_min_width(140.0);
-                                    ui.checkbox(shown, part.label()).on_hover_text(*tip);
-                                });
-                            }
-                        });
-                    }
+            let show = self.hud.show;
+            rows.full(|ui| {
+                label_cell(ui, 84.0, "Parts").on_hover_text(tip);
+                ui.add_enabled_ui(show, |ui| {
+                    ui.vertical(|ui| {
+                        let parts: Vec<_> = Part::ALL.into_iter().zip(PART_TIPS).collect();
+                        for (row, parts) in self.hud.parts.0.chunks_mut(3).zip(parts.chunks(3)) {
+                            ui.horizontal(|ui| {
+                                for (shown, (part, tip)) in row.iter_mut().zip(parts) {
+                                    let cell = egui::Layout::left_to_right(egui::Align::Center);
+                                    ui.allocate_ui_with_layout(egui::vec2(130.0, 24.0), cell, |ui| {
+                                        ui.set_min_width(130.0);
+                                        ui.checkbox(shown, part.label()).on_hover_text(*tip);
+                                    });
+                                }
+                            });
+                        }
+                    });
                 });
             });
-            ui.end_row();
 
             let tip = "Needles, lights and displays that follow the car in the cockpit, from the RBRHUD gauges in the \
                        RSF install";
-            ui.label("Working dials").on_hover_text(tip);
-            ui.checkbox(&mut self.hud.dials, "RSF cars").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Working dials", Some("RSF cars"), &mut self.hud.dials).on_hover_text(tip);
 
-            ui.label("Speed unit");
-            ui.horizontal(|ui| {
-                ui.radio_value(&mut self.hud.mph, false, "km/h");
-                ui.radio_value(&mut self.hud.mph, true, "mph");
+            rows.row("Speed unit", |ui| {
+                kit::segmented(ui, "speed unit", &mut self.hud.mph, &[(false, "km/h"), (true, "mph")]);
             });
-            ui.end_row();
 
             let tip = "The next notes stacked at the right of the screen (0: none)";
-            ui.label("Shown notes").on_hover_text(tip);
-            ui.add(DragValue::new(&mut self.hud.stack).range(0..=STACK_MAX).prefix("stack ")).on_hover_text(tip);
-            ui.end_row();
+            rows.row("Shown notes", |ui| {
+                ui.add(DragValue::new(&mut self.hud.stack).range(0..=STACK_MAX).prefix("stack ")).on_hover_text(tip);
+            });
         });
+    }
 
-        section(ui, "Sound");
-        fields(ui, "sound", |ui| {
-            ui.label("Volume").on_hover_text("1 is the game's volume");
-            ui.add(egui::Slider::new(&mut self.volume, 0.0..=MAX_VOLUME).max_decimals(2));
-            ui.end_row();
-            ui.label("Engine").on_hover_text("The engine, the gearbox whine, and an FMOD car's whole sound");
-            ui.add(egui::Slider::new(&mut self.engine_volume, 0.0..=MAX_GROUP_VOLUME).max_decimals(2));
-            ui.end_row();
-            ui.label("Co-driver").on_hover_text("The pace notes, the countdown and the damage calls");
-            ui.add(egui::Slider::new(&mut self.codriver_volume, 0.0..=MAX_GROUP_VOLUME).max_decimals(2));
-            ui.end_row();
-            ui.label("Effects").on_hover_text("The turbo, pops, impacts, weather and the rest");
-            ui.add(egui::Slider::new(&mut self.effects_volume, 0.0..=MAX_GROUP_VOLUME).max_decimals(2));
-            ui.end_row();
-            ui.label("Tyres").on_hover_text("Rolling, rumble and gravel");
-            ui.add(egui::Slider::new(&mut self.tyres_volume, 0.0..=MAX_GROUP_VOLUME).max_decimals(2));
-            ui.end_row();
+    /// The Sound group: the master volume and each group's, 1 being the game's.
+    fn sound(&mut self, ui: &mut egui::Ui) {
+        kit::group_label(ui, "Sound", None);
+        kit::panel(ui, |rows| {
+            let list = [
+                ("Volume", "1 is the game's volume", &mut self.volume, MAX_VOLUME),
+                ("Engine", "The engine, the gearbox whine, and an FMOD car's whole sound", &mut self.engine_volume, MAX_GROUP_VOLUME),
+                ("Co-driver", "The pace notes, the countdown and the damage calls", &mut self.codriver_volume, MAX_GROUP_VOLUME),
+                ("Effects", "The turbo, pops, impacts, weather and the rest", &mut self.effects_volume, MAX_GROUP_VOLUME),
+                ("Tyres", "Rolling, rumble and gravel", &mut self.tyres_volume, MAX_GROUP_VOLUME),
+            ];
+            for (label, tip, value, max) in list {
+                row_tip(rows, label, tip, |ui| {
+                    ui.spacing_mut().slider_width = 220.0;
+                    ui.add(egui::Slider::new(value, 0.0..=max).max_decimals(2)).on_hover_text(tip);
+                });
+            }
         });
+        ui.add_space(4.0);
+        kit::hint(ui, "1 is the game's volume; the volume is up to 4, each group up to 2.");
     }
 
     /// The triple-screen rig from the Triple screens section, when triple screens are on (`viewer --triple`).
@@ -608,236 +592,190 @@ impl Form {
         if !self.triple {
             return;
         }
-        section(ui, "Triple screens");
-        fields(ui, "triple", |ui| {
-            let tip = "Each screen's diagonal";
-            ui.label("Screen size").on_hover_text(tip);
-            ui.add(
-                egui::Slider::new(&mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE)
-                    .step_by(1.0)
-                    .fixed_decimals(0)
-                    .suffix(" in"),
-            )
-            .on_hover_text(tip);
-            ui.end_row();
-
-            let tip = "The frame around each screen's image: two of them part neighbouring images";
-            ui.label("Bezel").on_hover_text(tip);
-            ui.add(
-                egui::Slider::new(&mut self.triple_bezel, TRIPLE_BEZEL_RANGE)
-                    .step_by(1.0)
-                    .fixed_decimals(0)
-                    .suffix(" mm"),
-            )
-            .on_hover_text(tip);
-            ui.end_row();
-
-            let tip = "From your eyes to the centre screen";
-            ui.label("Distance").on_hover_text(tip);
-            ui.add(
-                egui::Slider::new(&mut self.triple_distance, TRIPLE_DISTANCE_RANGE)
-                    .step_by(1.0)
-                    .fixed_decimals(0)
-                    .suffix(" cm"),
-            )
-            .on_hover_text(tip);
-            ui.end_row();
+        ui.add_space(14.0);
+        kit::group_label(ui, "Triple screens", None);
+        let aspect = self.screen_aspect();
+        let rig = self.rig();
+        let fov = rig.true_fov(aspect).to_degrees();
+        let auto_degrees = Rig { angle: None, ..rig }.side_angle(aspect).to_degrees();
+        let mut text = format!("{fov:.0}° at this distance");
+        if self.triple_angle.is_none() {
+            text += &format!(", side screens at {:.0}°", rig.side_angle(aspect).to_degrees());
+        }
+        let names = self.monitors.clone();
+        kit::panel(ui, |rows| {
+            let slider = |ui: &mut egui::Ui, value: &mut f32, range, suffix: &str, tip: &str| {
+                ui.spacing_mut().slider_width = 180.0;
+                ui.add(egui::Slider::new(value, range).step_by(1.0).fixed_decimals(0).suffix(suffix))
+                    .on_hover_text(tip);
+            };
+            rows.row("Screen size", |ui| {
+                slider(ui, &mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE, " in", "Each screen's diagonal")
+            });
+            rows.row("Bezel", |ui| {
+                let tip = "The frame around each screen's image: two of them part neighbouring images";
+                slider(ui, &mut self.triple_bezel, TRIPLE_BEZEL_RANGE, " mm", tip)
+            });
+            rows.row("Distance", |ui| {
+                let tip = "From your eyes to the centre screen";
+                slider(ui, &mut self.triple_distance, TRIPLE_DISTANCE_RANGE, " cm", tip)
+            });
 
             let tip = "How far each side screen is turned towards you from the centre screen's plane. Auto faces \
                        their middles at your eyes at this distance";
-            ui.label("Side angle").on_hover_text(tip);
-            let aspect = self.screen_aspect();
-            let auto_degrees = Rig { angle: None, ..self.rig() }.side_angle(aspect).to_degrees();
             let mut auto = self.triple_angle.is_none();
             let mut degrees = self.triple_angle.unwrap_or(auto_degrees);
-            ui.horizontal(|ui| {
+            rows.row("Side angle", |ui| {
+                ui.add_enabled_ui(!auto, |ui| {
+                    slider(ui, &mut degrees, TRIPLE_ANGLE_RANGE, "°", tip);
+                });
                 if ui.checkbox(&mut auto, "Auto").on_hover_text(tip).changed() {
                     self.triple_angle = if auto { None } else { Some(degrees) };
                 }
-                ui.add_enabled_ui(!auto, |ui| {
-                    ui.add(egui::Slider::new(&mut degrees, TRIPLE_ANGLE_RANGE).step_by(1.0).suffix("°"));
-                });
             });
             if !auto {
                 self.triple_angle = Some(degrees);
             }
-            ui.end_row();
 
             let tip = "One borderless fullscreen window a monitor, or one window split in thirds on a spanned \
                        display such as NVIDIA Surround or AMD Eyefinity";
-            ui.label("Displays").on_hover_text(tip);
-            let names = self.monitors.clone();
-            let three = self.triple_monitors.is_some();
-            ui.vertical(|ui| {
-                if ui.radio(!three, "One wide display (Surround / Eyefinity)").on_hover_text(tip).clicked() {
-                    self.triple_monitors = None;
-                }
-                if ui.radio(three, "Three monitors").on_hover_text(tip).clicked() && self.triple_monitors.is_none() {
-                    self.triple_monitors = Some([
-                        names.first().cloned().unwrap_or_default(),
-                        names.get(1).cloned().unwrap_or_default(),
-                        names.get(2).cloned().unwrap_or_default(),
-                    ]);
-                }
-                if let Some(monitors) = &mut self.triple_monitors {
-                    egui::Grid::new("triple monitors").show(ui, |ui| {
-                        for (slot, side) in monitors.iter_mut().zip(["Left", "Centre", "Right"]) {
-                            let mut options = names.clone();
-                            if !slot.is_empty() && !options.contains(slot) {
-                                options.push(slot.clone());
-                            }
-                            ui.label(side);
-                            ComboBox::from_id_salt(("triple monitor", side))
-                                .width(QUALITY_FIELD)
-                                .selected_text(if slot.is_empty() { "Pick one" } else { slot.as_str() })
-                                .show_ui(ui, |ui| {
-                                    for name in &options {
-                                        ui.selectable_value(slot, name.clone(), name);
-                                    }
-                                });
-                            ui.end_row();
-                        }
+            let mut three = self.triple_monitors.is_some();
+            rows.row("Displays", |ui| {
+                let options = [(false, "One wide display (Surround / Eyefinity)"), (true, "Three monitors")];
+                if kit::segmented(ui, "triple displays", &mut three, &options).on_hover_text(tip).changed() {
+                    self.triple_monitors = three.then(|| {
+                        [
+                            names.first().cloned().unwrap_or_default(),
+                            names.get(1).cloned().unwrap_or_default(),
+                            names.get(2).cloned().unwrap_or_default(),
+                        ]
                     });
-                    if names.len() < 3 {
-                        ui.colored_label(WARN, format!("{} of 3 monitors connected", names.len()));
-                    }
                 }
             });
-            ui.end_row();
+            if let Some(monitors) = &mut self.triple_monitors {
+                for (slot, side) in monitors.iter_mut().zip(["Left", "Centre", "Right"]) {
+                    let mut options = names.clone();
+                    if !slot.is_empty() && !options.contains(slot) {
+                        options.push(slot.clone());
+                    }
+                    rows.row(side, |ui| {
+                        ComboBox::from_id_salt(("triple monitor", side))
+                            .selected_text(if slot.is_empty() { "Pick one" } else { slot.as_str() })
+                            .show_ui(ui, |ui| {
+                                for name in &options {
+                                    ui.selectable_value(slot, name.clone(), name);
+                                }
+                            });
+                    });
+                }
+                if names.len() < 3 {
+                    note(rows, WARN, &format!("{} of 3 monitors connected", names.len()));
+                }
+            }
 
-            let rig = self.rig();
             let tip = "The centre screen's horizontal field of view that shows the world at its true size at \
                        this distance";
-            let fov = rig.true_fov(aspect).to_degrees();
-            ui.label("True field of view").on_hover_text(tip);
-            ui.horizontal(|ui| {
-                let mut text = format!("{fov:.0}° at this distance");
-                if self.triple_angle.is_none() {
-                    let side = rig.side_angle(aspect).to_degrees();
-                    text += &format!(", side screens at {side:.0}°");
-                }
-                ui.label(text).on_hover_text(tip);
+            row_tip(rows, "True field of view", tip, |ui| {
                 let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
                 if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
                     self.fov = fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
                 }
             });
-            ui.end_row();
+            rows.hint(&text);
         });
-        if self.triple {
-            ui.colored_label(
-                Color32::GRAY,
-                "The field-of-view sliders set the centre screen's field of view in triple mode.",
-            );
-        }
+        ui.add_space(4.0);
+        kit::hint(ui, "The field-of-view sliders set the centre screen's field of view in triple mode.");
     }
 
     /// The Quality section: the presets, then each choice with its tip on hover.
     fn quality(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Quality");
-        ui.colored_label(
-            Color32::GRAY,
-            "Additions beyond the game's look. The stage always draws at its highest quality; sharp distant textures, \
-             soft decals and flowing water are always on.",
-        );
-        ui.add_space(4.0);
+        kit::group_label(ui, "Quality", None);
         let g = &mut self.graphics;
-        fields(ui, "quality", |ui| {
+        kit::panel(ui, |rows| {
             let tip = "Sets the choices below. Low: the game's look. Medium: all but Lighting, the costliest, Dense \
                        grass, which needs it, and Windscreen. High: all but Ultra detail. Ultra: all. The render scale, tyre marks \
                        and motion blur stay as they are";
-            ui.label("Preset").on_hover_text(tip);
-            ComboBox::from_id_salt("preset")
-                .width(QUALITY_FIELD)
-                .selected_text(Quality::of(*g).map_or("Custom", Quality::label))
-                .show_ui(ui, |ui| {
-                    for preset in Quality::ALL {
-                        if ui.selectable_label(Quality::of(*g) == Some(preset), preset.label()).clicked() {
-                            *g = preset.over(*g);
+            rows.row("Preset", |ui| {
+                ComboBox::from_id_salt("preset")
+                    .selected_text(Quality::of(*g).map_or("Custom", Quality::label))
+                    .show_ui(ui, |ui| {
+                        for preset in Quality::ALL {
+                            if ui.selectable_label(Quality::of(*g) == Some(preset), preset.label()).clicked() {
+                                *g = preset.over(*g);
+                            }
                         }
-                    }
-                })
-                .response
-                .on_hover_text(tip);
-            ui.end_row();
+                    })
+                    .response
+                    .on_hover_text(tip);
+            });
 
             let tip = "A physically based sky and light for the time of day, with moving volumetric clouds, haze and \
                        mist, sun shafts, real-time sun shadows and sunlit foliage, ambient occlusion and bounced light \
                        worked out from the stage when it loads, and reflection probes. The costliest choice: up to \
                        half the frame time on a dry day, and a few seconds longer to load";
-            ui.label("Lighting").on_hover_text(tip);
-            ui.checkbox(&mut g.lighting, "sky, sun and shadows").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Sky, sun and shadows", None, &mut g.lighting).on_hover_text(tip);
 
             let tip = "GPU rain and snow around the car, rings on wet roads, sunlit and soft particles, wheel spray \
                        and smoke, and the car's dirt. Costly in heavy rain (the mirrors draw it too), next to nothing \
                        in the dry";
-            ui.label("Weather effects").on_hover_text(tip);
-            ui.checkbox(&mut g.particles, "rain, snow and particles").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Rain, snow and particles", None, &mut g.particles).on_hover_text(tip);
 
             let tip = "In wet weather, a film of water and puddles on the roads, the ground about them soaked. Low: \
                        they reflect the stage's baked reflections and the sky. Medium and High: also the scenery on \
                        screen, on the wet roads and on rivers and lakes, Medium grainier. Off: the game's wet roads. \
                        Each step up costs more frame time in the rain";
-            ui.label("Wet roads").on_hover_text(tip);
-            combo(ui, "wet roads", QUALITY_FIELD, &mut g.wet_roads, &WetRoads::ALL, WetRoads::label).on_hover_text(tip);
-            ui.end_row();
+            rows.row("Wet roads", |ui| {
+                combo(ui, "wet roads", None, &mut g.wet_roads, &WetRoads::ALL, WetRoads::label).on_hover_text(tip);
+            });
 
             let tip = "In the cockpit: the sun only through the glass, with the roof, pillars and dash shading each \
                        other, darker footwells and corners, a sheen on the dash, and the headlights' glow at night";
-            ui.label("Cabin light").on_hover_text(tip);
-            ui.checkbox(&mut g.cabin, "in the cockpit").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Cockpit light", None, &mut g.cabin).on_hover_text(tip);
 
             let tip = "In the cockpit: the windscreen as real glass, a faint dust film and specks the sun lights up, \
                        wiper scratches and dried water spots, and the dash reflected in it. About 1.5 to 2 ms a frame \
                        (the reflection draws the cabin and the stage behind it once more)";
-            ui.label("Windscreen").on_hover_text(tip);
-            ui.checkbox(&mut g.windscreen, "glass effects").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Windscreen glass effects", None, &mut g.windscreen).on_hover_text(tip);
 
             let tip = "The car's own shape as a soft shadow on the ground and fences under it, in place of the game's \
                        shadow decal";
-            ui.label("Car shadow").on_hover_text(tip);
-            ui.checkbox(&mut g.contact, "soft").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Soft car shadow", None, &mut g.contact).on_hover_text(tip);
 
             let tip = "A field of grass blades over the grassy ground within 20 m of the road, swaying in the wind, \
                        drawn within 50 m of the camera. Needs Lighting. Costly (the sun's shadows draw it too), and \
                        about 150 MB of video memory";
-            ui.label("Dense grass").on_hover_text(tip);
-            ui.checkbox(&mut g.grass, "by the road").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Dense grass by the road", None, &mut g.grass).on_hover_text(tip);
 
             let tip = "Ultra, for strong GPUs: sun shadows at twice the texels (sharper shadows of posts, cables and \
                        trunks) and sharper reflections in the car's paint and the wet roads. 15 to 40 % more frame \
                        time, and 0.5 GB more video memory on long stages";
-            ui.label("Detail").on_hover_text(tip);
-            combo(ui, "detail", QUALITY_FIELD, &mut g.detail, &Detail::ALL, Detail::label).on_hover_text(tip);
-            ui.end_row();
+            rows.row("Detail", |ui| {
+                combo(ui, "detail", None, &mut g.detail, &Detail::ALL, Detail::label).on_hover_text(tip);
+            });
 
             let tip = "In the cockpit: the rear-view and door mirrors show the stage, the car and the cars behind, \
                        redrawn this often (each mirror in turn). Costly in the rain, which they draw too. Off: they \
                        only reflect the sky";
-            ui.label("Mirrors").on_hover_text(tip);
-            combo(ui, "mirrors", QUALITY_FIELD, &mut g.mirrors, &Rate::ALL, mirrors_label).on_hover_text(tip);
-            ui.end_row();
+            rows.row("Mirrors", |ui| {
+                combo(ui, "mirrors", None, &mut g.mirrors, &Rate::ALL, mirrors_label).on_hover_text(tip);
+            });
 
             let tip = "Tyre marks as wide as the tread and swept wider in a slide: ruts with berms in gravel, rubber \
                        on tarmac only when sliding, grooves in snow, flattened grass, longer trails. The presets leave \
                        them as they are";
-            ui.label("Tyre marks").on_hover_text(tip);
-            ui.checkbox(&mut g.marks, "realistic").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Realistic tyre marks", None, &mut g.marks).on_hover_text(tip);
 
             let tip = "Blurs what moves across the screen over a 1/120 s shutter: the road and the verges at speed, \
                        the scenery in a fast turn of the view. The car and the cockpit stay sharp. About 0.1 ms a \
                        frame at 1080p, 0.4 ms at 4K. The presets leave it as it is";
-            ui.label("Motion blur").on_hover_text(tip);
-            ui.checkbox(&mut g.motion_blur, "at speed").on_hover_text(tip);
-            ui.end_row();
+            rows.switch_row("Motion blur at speed", None, &mut g.motion_blur).on_hover_text(tip);
         });
+        ui.add_space(4.0);
+        kit::hint(
+            ui,
+            "Additions beyond the game's look. The stage always draws at its highest quality; sharp distant textures, \
+             soft decals and flowing water are always on.",
+        );
     }
 
     /// The Cameras row: the driving window's camera keys, and "Reset this car's cameras" (its nudges in the
