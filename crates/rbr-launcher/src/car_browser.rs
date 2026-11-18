@@ -386,6 +386,11 @@ pub struct CarBrowser {
 }
 
 impl CarBrowser {
+    /// An added car was removed: its confirmation is done.
+    pub fn removed(&mut self) {
+        self.confirm = None;
+    }
+
     /// The Content > Cars page's browser.
     pub fn for_page() -> CarBrowser {
         CarBrowser { page: true, ..CarBrowser::default() }

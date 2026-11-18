@@ -533,7 +533,12 @@ impl Form {
     /// The Get more cars modal's subtitle: where the list is from and its version.
     pub fn cars_subtitle(&self) -> String {
         match &self.downloads.list {
-            Some(Ok(catalog)) => format!("NGP cars from gvrc.de's car list · version {}", catalog.version),
+            Some(Ok(catalog)) => format!(
+                "NGP cars from gvrc.de's car list · version {} · {} available · {} added",
+                catalog.version,
+                catalog.cars.len(),
+                self.adding.cars.len()
+            ),
             _ => "NGP cars from gvrc.de's car list".into(),
         }
     }

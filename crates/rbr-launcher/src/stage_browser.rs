@@ -654,7 +654,7 @@ impl StageBrowser {
         let noun = self.noun();
         let title = if self.page { "Stages".to_owned() } else { format!("Choose a {noun}") };
         let subtitle = Some(self.heading.as_str()).filter(|h| self.page && !h.is_empty());
-        let get_more = self.page.then_some(("Get more stages…", "gvrc.de's stages"));
+        let get_more = self.page.then_some(("Get more stages…", "Stages from RSF, BTBfin and RBR Czech"));
         let clicks = browser::header(ui, &title, subtitle, get_more);
         if clicks.back {
             action = Some(Action::Back);

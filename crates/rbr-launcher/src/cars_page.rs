@@ -53,7 +53,11 @@ impl Form {
                 self.open_get_more(GetMore::Cars);
             }
             Some(Action::Remove(pack)) => {
-                self.adding.status = crate::car_packs::remove(&self.cars_dir(), &pack).err().map(Err);
+                self.cars_page.browser.removed();
+                // A failed removal shows as a toast, as a finished download does.
+                if let Err(e) = crate::car_packs::remove(&self.cars_dir(), &pack) {
+                    self.content.toast = Some(crate::content::Toast { lines: vec![(false, e)], import: false });
+                }
                 self.rescan_cars();
             }
             Some(Action::Back) | None => {}
