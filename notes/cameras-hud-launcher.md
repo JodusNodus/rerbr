@@ -180,7 +180,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   link; the Cars inspector's Setups › Manage… opens it for that car (`Form::open_car_setup`, `setup_car`) without
   changing the Rally car (user, 2026-11-18). "Get more" is a modal (`Form::get_more`, `GetMore`, `get_page.rs`) over
   Cars (Get more cars… and Get more skins…: RBR Skins Center, user 2026-11-18), Stages or Co-drivers: gvrc.de's
-  list (search, class, Hide added, tick table, added cars greyed but tickable = update; `gvrc.rs`) or the sites' rows,
+  list (search, class, tick table of the cars not added: added ones are always hidden, no Select all shown,
+  user 2026-11-18; `gvrc.rs`) or the sites' rows,
   each pointing to Import. A car download is polled in `Form::content_notice` (drawn every frame), not by the modal:
   closing the modal leaves a progress line above the page bottom and a toast with the result. Import (`import_page`:
   drop zone with Choose files… / Choose folder…, Last import with an Open link per outcome, Clear)
@@ -215,7 +216,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   before (`Page::shortcut`; nothing from Import or Car setup); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
-  (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
+  (`browser::Keys::take`); under a modal the list has no keys, so Esc closes the modal (`browser::list_has_keys`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
   them only on a click). Enter starts a drive only with nothing focused, else it presses the focused control.
 - Errors and crashes (`crash.rs`, user decision 2026-11-03: every error, not only crashes): a drive's viewer and
   `rbr-standalone` write `<files>/logs/drive-<ns>.log` (last 10 kept), copied to the launcher's stderr; the viewer
