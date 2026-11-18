@@ -55,10 +55,18 @@ additions on the Graphics & sound page, set by a quality preset or one by one. T
 
 ### Known limitations
 
-- **Assetto Corsa tracks** are converted, not drawn as AC draws them: surfaces map to RBR's classes, CSP effects, scripts and normal or
-  specular maps are skipped, and a track needs its AI line (`ai/fast_lane.ai`) for the route; one without it is listed with the reason.
-  A stage on mixed gravel and tarmac gets one tyre model, chosen by the larger share. Pacenotes are generated.
-  The converter is experimental, so expect to fix an occasional stage by hand.
+- **Assetto Corsa tracks** are converted into RBR stages, so they don't look or drive exactly as they do in Assetto
+  Corsa ([how it works](docs/assetto-tracks.md)):
+  - *Grip.* Each AC surface becomes the nearest of RBR's surface classes, so grip and bumps come close to AC's but
+    don't match them.
+  - *Looks.* Colour textures are kept. Normal and specular maps, Custom Shaders Patch effects (except its trees),
+    track scripts and animated scenery are left out.
+  - *Route.* The stage follows the track's AI line, `ai/fast_lane.ai`. A layout without one can't be converted, and
+    Import lists it with the reason.
+  - *Tyres.* One tyre model covers the whole stage: gravel if more than half the route is gravel or dirt, otherwise
+    tarmac. On a mixed stage, the shorter part is driven on the wrong tyres.
+  - *Pacenotes.* AC tracks have none, so ReRBR generates them from the route. Drive the stage once to check them.
+  - The converter is experimental, so the occasional stage will need fixing by hand.
 - **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.
 
 ## Install
