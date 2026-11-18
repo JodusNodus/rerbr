@@ -100,7 +100,7 @@ pub struct StageRow {
     pub author: Option<String>,
     /// A 1.02 stage, not a RallySimFans one.
     pub retail: bool,
-    /// A BTB stage (`crate::btb`): listed as experimental.
+    /// A BTB stage (`crate::btb`).
     pub btb: bool,
     pub km: Option<f32>,
     /// 0 gravel, 1 tarmac, 2 snow.
@@ -141,7 +141,7 @@ impl StageRow {
         };
         let origin = match &map.origin {
             Origin::Community(_) => "rsf rallysimfans",
-            Origin::Btb(_) => "rsf btb experimental",
+            Origin::Btb(_) => "rsf btb",
             Origin::Retail => "retail 1.02",
         };
         let place = country.as_deref().map(|c| format!("{c} {}", country_name(c))).unwrap_or_default();
@@ -316,8 +316,6 @@ pub enum Collection {
     /// A country, by its code (`None`: the stages without one).
     Country(Option<String>),
     CannotStart,
-    /// The stages the player added to `<files>/tracks/` (the Stages page's).
-    Added,
     /// The circuits by their files (the Stages page's).
     Circuits,
 }
@@ -386,9 +384,8 @@ pub fn lines(
             out.extend(block(None, ok));
             out.extend(block(Some("Cannot start"), blocked));
         }
-        Collection::Added | Collection::Circuits => {
-            let wanted = |r: &StageRow| if *collection == Collection::Added { r.added } else { r.circuit };
-            let (ok, blocked) = split((0..rows.len()).filter(|&k| wanted(&rows[k])).filter(accepted).collect());
+        Collection::Circuits => {
+            let (ok, blocked) = split((0..rows.len()).filter(|&k| rows[k].circuit).filter(accepted).collect());
             out.extend(block(None, sorted(ok)));
             out.extend(block(Some("Cannot start"), sorted(blocked)));
         }
@@ -519,7 +516,6 @@ impl StageBrowser {
             Collection::Recent => "recent".into(),
             Collection::All => "all".into(),
             Collection::CannotStart => "unavailable".into(),
-            Collection::Added => "added".into(),
             Collection::Circuits => "circuits".into(),
             Collection::Country(code) => format!("country:{}", code.as_deref().unwrap_or("")),
         };
@@ -546,7 +542,6 @@ impl StageBrowser {
             "favourites" => Collection::Favourites,
             "recent" => Collection::Recent,
             "unavailable" => Collection::CannotStart,
-            "added" => Collection::Added,
             "circuits" => Collection::Circuits,
             _ => Collection::All,
         };
@@ -658,12 +653,13 @@ impl StageBrowser {
         let noun = self.noun();
         let title = if self.page { "Stages".to_owned() } else { format!("Choose a {noun}") };
         let subtitle = Some(self.heading.as_str()).filter(|h| self.page && !h.is_empty());
-        let get_more = self.page.then_some(("Get more stages…", "Stages from RSF, BTBfin and RBR Czech"));
+        let get_more: &[_] =
+            if self.page { &[("Get more stages…", "Stages from RSF, BTBfin and RBR Czech")] } else { &[] };
         let clicks = browser::header(ui, &title, subtitle, get_more);
         if clicks.back {
             action = Some(Action::Back);
         }
-        self.get_more |= clicks.get_more;
+        self.get_more |= clicks.get_more.is_some();
         if clicks.random {
             self.random();
         }
@@ -679,13 +675,13 @@ impl StageBrowser {
         }
     }
 
-    /// The scopes of the filter bar: all stages, the favourites, the recent picks, the stages added by you and the
-    /// circuits (the Stages page's, when there are some) and the stages that cannot start (when there are some).
+    /// The scopes of the filter bar: all stages, the favourites, the recent picks, the circuits (the Stages page's, when
+    /// there are some) and the stages that cannot start (when there are some). Added by you is not one: the
+    /// inspector's Source says it.
     fn scopes(&self) -> Vec<(Collection, &'static str)> {
         let mut out =
             vec![(Collection::All, "All"), (Collection::Favourites, "Favourites"), (Collection::Recent, "Recent")];
         for (collection, name, any) in [
-            (Collection::Added, "Added by you", self.rows.iter().any(|r| r.added)),
             (Collection::Circuits, "Circuits", self.rows.iter().any(|r| r.circuit)),
             (Collection::CannotStart, "Cannot start", self.rows.iter().any(|r| !r.startable())),
         ] {
@@ -697,13 +693,12 @@ impl StageBrowser {
     }
 
     /// The scopes' counts for their hover text: the favourites and recent picks that are stages, the stages that can
-    /// start, and the added, circuits and blocked ones.
+    /// start, the circuits and the blocked ones.
     fn scope_counts(&self, favourites: &[u32], recent: &[u32]) -> String {
         let known = |numbers: &[u32]| numbers.iter().filter(|n| self.rows.iter().any(|r| r.number == **n)).count();
         let startable = self.rows.iter().filter(|r| r.startable()).count();
         let mut text = format!("All {startable} · Favourites {} · Recent {}", known(favourites), known(recent));
         for (name, n) in [
-            ("Added by you", self.rows.iter().filter(|r| r.added).count()),
             ("Circuits", self.rows.iter().filter(|r| r.circuit).count()),
             ("Cannot start", self.rows.len() - startable),
         ] {
@@ -958,10 +953,6 @@ fn inspect(
             });
         }
     });
-    if row.btb {
-        ui.add_space(10.0);
-        kit::status_dot(ui, theme::WARN, "BTB stage: experimental.");
-    }
 }
 
 /// The inspector's pinned part: why the stage cannot start, Favourite and the primary button, and the removal of an added
@@ -1469,20 +1460,17 @@ mod tests {
     }
 
     #[test]
-    fn the_stages_page_has_added_and_circuit_collections_and_ignores_escape() {
+    fn the_stages_page_has_a_circuit_collection_and_ignores_escape() {
         let maps = [Map { number: 54, stages: Vec::new(), origin: Origin::Retail }, rsf_map(5), rsf_map(1)];
         let mut rows = rows_of(&maps);
         rows[1].added = true;
-        rows[2].added = true; // cannot start, but removable
         rows[0].circuit = true;
-        let added = lines(&rows, &Collection::Added, &Filter::default(), Sort::Name, &[], &[]);
-        assert_eq!(names(&rows, &added), ["Synthetic 5 Hills", "[Cannot start]", "Synthetic 1 Hills"]);
         let circuits = lines(&rows, &Collection::Circuits, &Filter::default(), Sort::Name, &[], &[]);
         assert_eq!(names(&rows, &circuits), ["Tanner"]);
         let mut browser = StageBrowser::default();
         browser.set_rows(rows);
         let scopes: Vec<&str> = browser.scopes().iter().map(|(_, l)| *l).collect();
-        assert_eq!(scopes, ["All", "Favourites", "Recent", "Added by you", "Circuits", "Cannot start"]);
+        assert_eq!(scopes, ["All", "Favourites", "Recent", "Circuits", "Cannot start"]);
         browser.start_page(1);
         assert_eq!(press(&mut browser, &maps, Key::Escape, Modifiers::NONE), None);
         assert_eq!(press(&mut browser, &maps, Key::Enter, Modifiers::NONE), Some(Action::Choose(1)));

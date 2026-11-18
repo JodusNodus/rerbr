@@ -1,4 +1,5 @@
-//! The Get more modals opened from Cars, Stages and Co-drivers (gvrc.de's car list, the stage sites, Luppis's lists),
+//! The Get more modals opened from Cars, Stages and Co-drivers (gvrc.de's car list, the skin site, the stage sites,
+//! Luppis's lists),
 //! and the Import page (the sidebar's): drop zone and the last import (`content::ui`).
 
 use egui::{Align, Layout, RichText};
@@ -14,6 +15,7 @@ const BTB_URL: &str = "http://btbfin.blogspot.com/";
 /// RBR Czech's stage downloads, in English.
 const RBR_CZ_URL: &str = "https://rbr.onlineracing.cz/index.php?act=download&cat=19&setlng=eng";
 const VOICES_URL: &str = "https://luppisrbr.blogspot.com/p/compatible-co-driver-mods-v3.html";
+const SKINS_URL: &str = "http://rbrskinscenter.free.fr/skins.php";
 const NOTES_URL: &str = "https://luppisrbr.blogspot.com/p/how-to-install-pacenotes.html";
 
 /// A site of a Get more modal: its title, where it is, what it is and what to do after downloading, and its URL.
@@ -61,14 +63,24 @@ const CODRIVER_SITES: [Site; 2] = [
     },
 ];
 
+const SKIN_SITES: [Site; 1] = [Site {
+    title: "RBR Skins Center",
+    host: "rbrskinscenter.free.fr",
+    what: "Liveries for the cars, by car. Download one, then add it on Import: it goes to the car whose model it fits.",
+    url: SKINS_URL,
+}];
+
 const STAGES_WHAT: &str = "Download from one of these sites, then add the files on Import. ReRBR works out what \
                            each one is.";
+const SKINS_WHAT: &str =
+    "Download a skin, then add it on Import, or with Import… in the car's Skin row, and choose it there.";
 const CODRIVERS_WHAT: &str = "Voices and pace notes. The lists are Luppis's; the voices are their authors'.";
 
-/// What the Get more modal offers: gvrc.de's cars, the stage sites or the co-driver links.
+/// What the Get more modal offers: gvrc.de's cars, the skin site, the stage sites or the co-driver links.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GetMore {
     Cars,
+    Skins,
     Stages,
     Codrivers,
 }
@@ -77,6 +89,7 @@ impl GetMore {
     fn title(self) -> &'static str {
         match self {
             GetMore::Cars => "Get more cars",
+            GetMore::Skins => "Get more skins",
             GetMore::Stages => "Get more stages",
             GetMore::Codrivers => "Get more co-drivers",
         }
@@ -112,7 +125,7 @@ impl Form {
     /// Opens the Get more modal over its page (Cars, Stages or Co-drivers).
     pub fn open_get_more(&mut self, what: GetMore) {
         self.page = match what {
-            GetMore::Cars => Page::Cars,
+            GetMore::Cars | GetMore::Skins => Page::Cars,
             GetMore::Stages => Page::Stages,
             GetMore::Codrivers => Page::Codrivers,
         };
@@ -145,8 +158,9 @@ impl Form {
                 }
                 result
             }
-            GetMore::Stages | GetMore::Codrivers => {
+            GetMore::Skins | GetMore::Stages | GetMore::Codrivers => {
                 let (subtitle, sites): (_, &[Site]) = match what {
+                    GetMore::Skins => (SKINS_WHAT, &SKIN_SITES),
                     GetMore::Stages => (STAGES_WHAT, &STAGE_SITES),
                     _ => (CODRIVERS_WHAT, &CODRIVER_SITES),
                 };

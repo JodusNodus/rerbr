@@ -130,14 +130,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - One game folder (user decision 2026-11-04): everything is read from the game folder in use (`Paths::game_root`:
   `RBR_RSF` when set, else the game data folder), its plugins and community content with it. A saved `rsf_root`
   is ignored and dropped on save.
-- The co-driver is set up on the Settings page, not per drive (user decision 2026-10-29).
+- The co-driver is set up on the Co-drivers page, not per drive (user decision 2026-10-29); the drive pages don't show
+  or link it (user, 2026-11-18).
 - The player picks only the voice (and the corner numbers when the styles differ); the stage notes are automatic
   (user decision 2026-11-16, `codriver_packs::pick_notes`): with a custom voice, over every owned pack and the RSF
   MyPacenotes, the set covering the most stages (ties: owned pack, then name), in it the highest `_<n>` version,
   then owned over RSF, then the newest file; none: the stage's own notes. The range set is the plugin's `Rbr.ini`
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
-  The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
-  under the Drive page's stage.
+  The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice.
 - Dropping files works on X11, Windows and macOS only: winit 0.30 has no drag and drop on native Wayland, so there Import
   says "Add files or folders" and does not offer it (`content::drop::no_drop`; user decision 2026-11-17, over forcing XWayland).
 - One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Choose files…"/"Choose
@@ -172,12 +172,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
 - Shell (user decision 2026-11-18, the redesign; `pages.rs`, `sidebar.rs`, `theme.rs`, `kit.rs`): a 220 px sidebar
-  in place of the tab rows and the status bar. Drive (Rally, Circuit, Championship, School, Replays), Library
-  (Cars and Stages with their counts, Co-drivers), a status area (game folder found, Experimental physics, the
+  in place of the tab rows and the status bar. Drive (Rally, Circuit, Championship, School), Library
+  (Cars and Stages with their counts, Co-drivers, Replays (user, 2026-11-18)), a status area (game folder found, Experimental physics, the
   readiness issue with its fix button, the status text, the update link), then Import and Settings. Settings' General, Controls and Graphics & sound are a segmented
   control under the page title; the sidebar item opens the last of them (`Form::last_pages`, indexed by
   `pages::Section`). Car setup is in no group: `Form::open_setup` records the opener (`setup_from`) for its back
-  link. "Get more" is a modal (`Form::get_more`, `GetMore`, `get_page.rs`) over Cars, Stages or Co-drivers: gvrc.de's
+  link; the Cars inspector's Setups › Manage… opens it for that car (`Form::open_car_setup`, `setup_car`) without
+  changing the Rally car (user, 2026-11-18). "Get more" is a modal (`Form::get_more`, `GetMore`, `get_page.rs`) over
+  Cars (Get more cars… and Get more skins…: RBR Skins Center, user 2026-11-18), Stages or Co-drivers: gvrc.de's
   list (search, class, Hide added, tick table, added cars greyed but tickable = update; `gvrc.rs`) or the sites' rows,
   each pointing to Import. A car download is polled in `Form::content_notice` (drawn every frame), not by the modal:
   closing the modal leaves a progress line above the page bottom and a toast with the result. Import (`import_page`:
@@ -189,8 +191,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Rally, Circuit, School (redesign, `drive_page.rs`, `circuit_page.rs`, `school_page.rs`): page header, a pinned footer
   (`Form::launch_footer`: summary, blocker with its fix, experimental note with Change to Settings, Stop while driving,
   Start with the Enter hint), and columns that scroll on their own (`split_columns`, `column`). Rally: Car (card, favourite
-  chips with "+N", Gearbox, Setup with Edit…), Stage (card, chips, Co-driver read-only with a link to Co-drivers, Ghost,
-  Car damage), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and
+  chips with "+N", Gearbox, Setup with Edit…), Stage (card, chips, Ghost, Car damage), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and
   tyres). Circuit: Session (Length, Pace notes, Damage) and Conditions with Road and tyres folded into one row; the best lap
   panel keeps sectors and car. School: both courses in one list (grades as pips, double-click drives), the lesson's brief,
   cone guide, times and Car on the right. The browsers still draw in the old padding (`Form::browser_frame`).
@@ -261,19 +262,19 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
 - Library layout (redesign, 2026-11-18; `browser.rs`): Cars, Stages and Replays are one pattern: `kit::page_header` (count subtitle;
-  Random, Get more…), one filter bar (search, the scope segments All / Favourites / Recent / Added by you / Circuits /
-  Cannot start, shown only when they have rows, then class, drive, sort for cars and surface, country, length, sort for
+  Random, Get more…), one filter bar (search, the scope segments All / Favourites / Recent / Circuits /
+  Cannot start (no "Added by you": user, 2026-11-18; an older save's `added` opens on All), shown only when they have rows, then class, drive, sort for cars and surface, country, length, sort for
   stages; they wrap to a second row under ~1060 px), the list (header row, 33 px rows, a hint bar of the keys that work)
   and a 380 px inspector (`browser::inspector`: scrolling facts, pinned Favourite and primary button). A BTB stage is
-  marked in the inspector only (Source and its note), not in the list (user, 2026-11-18). The class and
+  marked in the inspector's Source only, not in the list, and not called experimental there (user, 2026-11-18). The class and
   country are filters beside the scope (`Filter::class`, `Filter::country`, saved as `class` in `browser_state`); an older
   save's `class:`/`country:` collection restores as the filter. The pickers (Drive, Circuit, Championship) are the same
   browsers with Back, "Choose car/stage" and no Remove. Replays: rows of stage, time, car, conditions, age; the inspector
   has Stage time, Conditions, Recorded (with the stage start), Penalties, Camera (cockpit, bonnet, bumper, chase), Watch, Delete (asks),
   and the export with its MP4 filename.
 - Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back or Random, Esc
-  does nothing) over every map, circuits too, with the collections "Added by you" (folders in `<files>/tracks/`) and
-  "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
+  does nothing) over every map, circuits too, with the collection "Circuits"; the subtitle counts what's added (folders in
+  `<files>/tracks/`); the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
   game's saves, not shown). "Drive this stage" sets the Rally (or Circuit) stage and opens that page. Remove… deletes
   only a folder directly in `tracks/` (`remove_added`), then drops the map and relists; records (`lap-records.ini`,
   `GhostCars/*_<map>.ghc`, saves) stay. With the textures upscaled, a BTB stage over the upscaler's budget says
@@ -466,7 +467,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from the chase camera, the HUD and the start lamps hidden under a "Demonstration · Enter or A: skip" hint, Enter
   or the pad's A skipping without confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera,
   and its end or skip sends the brief's confirm, ending the lesson with its award and the verdict panel.
-- Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
+- Replays, last in Library (`pages::Section::pages`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and
   saved road/cloud/precipitation/fog overrides; details include the stage start time and included penalties. A live

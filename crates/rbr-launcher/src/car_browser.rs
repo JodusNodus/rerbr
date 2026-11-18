@@ -241,8 +241,6 @@ pub enum Collection {
     Recent,
     All,
     CannotStart,
-    /// The cars the launcher downloaded (the Cars page only).
-    Added,
 }
 
 /// The list of `collection` for `filter` sorted by `sort`. `favourites` and `recent` are car names, in the order
@@ -310,11 +308,6 @@ pub fn lines(
             let members = (0..rows.len()).filter(|&k| !rows[k].startable()).filter(accepted);
             out.extend(block(None, sorted(members.collect())));
         }
-        Collection::Added => {
-            let (ok, blocked) = split((0..rows.len()).filter(|&k| rows[k].added).filter(accepted).collect());
-            out.extend(block(None, sorted(ok)));
-            out.extend(block(Some("Cannot start"), sorted(blocked)));
-        }
     }
     out
 }
@@ -330,6 +323,10 @@ pub enum Action {
     Back,
     /// Open the Get more cars dialog (the Cars page).
     GetMore,
+    /// Open the Get more skins dialog (the Cars page).
+    GetMoreSkins,
+    /// Open Car setup for the car at this position of the catalog (the Cars page).
+    Setups(usize),
     /// Remove the car added by the launcher with this pack folder (the Cars page).
     Remove(String),
 }
@@ -419,7 +416,6 @@ impl CarBrowser {
             Collection::Recent => "recent".into(),
             Collection::All => "all".into(),
             Collection::CannotStart => "unavailable".into(),
-            Collection::Added => "added".into(),
         };
         crate::browser_state::State {
             collection: Some(collection),
@@ -441,7 +437,6 @@ impl CarBrowser {
             "favourites" => Collection::Favourites,
             "recent" => Collection::Recent,
             "unavailable" => Collection::CannotStart,
-            "added" => Collection::Added,
             _ => Collection::All,
         });
         let class = Some(state.class.as_str()).filter(|c| !c.is_empty()).or(old_class);
@@ -520,13 +515,16 @@ impl CarBrowser {
             action = action.filter(|a| *a != Action::Back);
         }
         let subtitle = Some(env.heading.as_str()).filter(|h| self.page && !h.is_empty());
-        let (title, get_more) =
-            if self.page { ("Cars", Some(("Get more cars…", "gvrc.de's cars"))) } else { ("Choose a car", None) };
+        let (title, get_more): (_, &[_]) = if self.page {
+            ("Cars", &[("Get more cars…", "gvrc.de's cars"), ("Get more skins…", "RBR Skins Center's skins")])
+        } else {
+            ("Choose a car", &[])
+        };
         let clicks = browser::header(ui, title, subtitle, get_more);
         if clicks.back {
             action = Some(Action::Back);
-        } else if clicks.get_more {
-            action = Some(Action::GetMore);
+        } else if let Some(k) = clicks.get_more {
+            action = Some(if k == 0 { Action::GetMore } else { Action::GetMoreSkins });
         }
         if clicks.random {
             self.random();
@@ -623,15 +621,12 @@ impl CarBrowser {
         }
     }
 
-    /// The scopes of the filter bar: all cars, the favourites, the recent picks, the cars added by you (the page's, when
-    /// there are some) and the cars that cannot start (when there are some).
+    /// The scopes of the filter bar: all cars, the favourites, the recent picks and the cars that cannot start (when
+    /// there are some). Added by you is not one: the inspector's Source says it.
     fn scopes(&self, favourites: &[String], recent: &[String]) -> Vec<(Collection, &'static str)> {
         let _ = (favourites, recent);
         let mut out =
             vec![(Collection::All, "All"), (Collection::Favourites, "Favourites"), (Collection::Recent, "Recent")];
-        if self.page && self.rows.iter().any(|r| r.added) {
-            out.push((Collection::Added, "Added by you"));
-        }
         if self.rows.iter().any(|r| !r.startable()) {
             out.push((Collection::CannotStart, "Cannot start"));
         }
@@ -639,15 +634,11 @@ impl CarBrowser {
     }
 
     /// The scopes' counts for their hover text: the favourites and recent picks that are cars, the cars that can
-    /// start, the cars added and the ones that cannot start.
+    /// start and the ones that cannot start.
     fn scope_counts(&self, favourites: &[String], recent: &[String]) -> String {
         let known = |names: &[String]| names.iter().filter(|n| self.rows.iter().any(|r| r.name == **n)).count();
         let startable = self.rows.iter().filter(|r| r.startable()).count();
         let mut text = format!("All {startable} · Favourites {} · Recent {}", known(favourites), known(recent));
-        let added = self.rows.iter().filter(|r| r.added).count();
-        if self.page && added > 0 {
-            text += &format!(" · Added by you {added}");
-        }
         if startable < self.rows.len() {
             text += &format!(" · Cannot start {}", self.rows.len() - startable);
         }
@@ -665,7 +656,7 @@ impl CarBrowser {
 
     /// The list and the inspector below the filter bar.
     fn body(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
-        let mut action = None;
+        let (mut action, mut setups) = (None, None);
         let selected = self.rows.get(self.nav.cursor).and_then(|row| Some((row.clone(), env.cars.get(row.index)?)));
         let page = self.page;
         let (idle, confirm) = (self.idle, &mut self.confirm);
@@ -675,7 +666,9 @@ impl CarBrowser {
             ui,
             |ui| {
                 if let Some((row, car)) = &selected {
-                    facts(ui, row, car, previews, skins, root);
+                    if facts(ui, row, car, page, previews, skins, root) {
+                        setups = Some(Action::Setups(row.index));
+                    }
                 }
             },
             |ui| {
@@ -685,7 +678,7 @@ impl CarBrowser {
             },
         );
         let chosen = self.list(ui, env.favourites, env.recent);
-        chosen.or(action)
+        chosen.or(action).or(setups)
     }
 
     /// The list with its header row and its hint bar; a car chosen or starred with the mouse.
@@ -788,12 +781,28 @@ fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> Strin
     format!("…{}", chars[chars.len() - keep.unwrap_or(0)..].iter().collect::<String>())
 }
 
-/// The inspector's scrolling part: the car turning, its name and class, and its facts in a panel.
-fn facts(ui: &mut egui::Ui, row: &CarRow, car: &Car, previews: &mut Previews, skins: &mut Skins, root: &str) {
+/// The inspector's scrolling part: the car turning, its name and class, and its facts in a panel, with (the page's) a
+/// link to its setups. Whether that link was clicked.
+fn facts(
+    ui: &mut egui::Ui,
+    row: &CarRow,
+    car: &Car,
+    page: bool,
+    previews: &mut Previews,
+    skins: &mut Skins,
+    root: &str,
+) -> bool {
     previews.car_ui(ui, car, skins.choice(car), root);
     browser::title(ui, &row.title, &row.group);
+    let mut setups = false;
     kit::panel(ui, |rows| {
         skins.rows(rows, car);
+        if page {
+            rows.row("Setups", |ui| {
+                let tip = "Car setup for this car on the Rally stage's surface; the Rally car stays as it is";
+                setups = kit::link(ui, "Manage…").on_hover_text(tip).clicked();
+            });
+        }
         rows.row("Drive", |ui| _ = ui.label(row.drive.map_or("unknown", Drive::label)));
         rows.row("Source", |ui| _ = ui.label(source(car)));
         rows.row("Model", |ui| {
@@ -815,6 +824,7 @@ fn facts(ui: &mut egui::Ui, row: &CarRow, car: &Car, previews: &mut Previews, sk
             None => _ = ui.label("not found"),
         });
     });
+    setups
 }
 
 /// The inspector's pinned part: why the car cannot start, Favourite and the primary button, and the removal of an
@@ -996,7 +1006,7 @@ mod tests {
         let scopes: Vec<&str> = browser.scopes(&[], &[]).iter().map(|(_, l)| *l).collect();
         assert_eq!(scopes, ["All", "Favourites", "Recent", "Cannot start"]);
         browser.rows[0].added = true;
-        assert!(browser.scopes(&[], &[]).iter().any(|(c, _)| *c == Collection::Added));
+        assert_eq!(browser.scopes(&[], &[]).len(), 4, "added cars are no scope");
     }
 
     #[test]

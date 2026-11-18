@@ -176,6 +176,7 @@ impl Form {
             page: Page::Drive,
             last_pages: [Page::Drive, Page::Cars, Page::Settings],
             setup_from: Page::Drive,
+            setup_car: None,
             get_more: None,
             cars_page: Default::default(),
             stages_page: Default::default(),

@@ -216,17 +216,22 @@ impl Nav {
 pub struct HeaderClicks {
     pub back: bool,
     pub random: bool,
-    pub get_more: bool,
+    /// The Get more button clicked, by its place in `header`'s list.
+    pub get_more: Option<usize>,
 }
 
-/// A browser's page header: the title with its subtitle, and on the right Random, "Get more" (a page's: its label and
-/// tooltip) or Back (a picker's).
-pub fn header(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>, get_more: Option<(&str, &str)>) -> HeaderClicks {
+/// A browser's page header: the title with its subtitle, and on the right Random and the "Get more" buttons (a page's:
+/// each its label and tooltip), or Back (a picker's, with none).
+pub fn header(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>, get_more: &[(&str, &str)]) -> HeaderClicks {
     let mut clicks = HeaderClicks::default();
     kit::page_header(ui, title, subtitle, |ui| {
-        match get_more {
-            Some((label, tip)) => clicks.get_more = ui.button(label).on_hover_text(tip).clicked(),
-            None => clicks.back = ui.button("Back").on_hover_text("Back without changing the choice (Esc)").clicked(),
+        if get_more.is_empty() {
+            clicks.back = ui.button("Back").on_hover_text("Back without changing the choice (Esc)").clicked();
+        }
+        for (k, (label, tip)) in get_more.iter().enumerate() {
+            if ui.button(*label).on_hover_text(*tip).clicked() {
+                clicks.get_more = Some(k);
+            }
         }
         clicks.random = ui.button("Random").on_hover_text("A random pick of the list as filtered").clicked();
     });

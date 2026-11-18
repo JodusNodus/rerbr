@@ -37,9 +37,13 @@ impl Section {
                 (Page::Circuit, "Circuit"),
                 (Page::Championship, "Championship"),
                 (Page::School, "School"),
+            ],
+            Section::Library => &[
+                (Page::Cars, "Cars"),
+                (Page::Stages, "Stages"),
+                (Page::Codrivers, "Co-drivers"),
                 (Page::Replays, "Replays"),
             ],
-            Section::Library => &[(Page::Cars, "Cars"), (Page::Stages, "Stages"), (Page::Codrivers, "Co-drivers")],
             Section::Settings => {
                 &[(Page::Settings, "General"), (Page::Controls, "Controls"), (Page::Graphics, "Graphics & sound")]
             }
@@ -546,6 +550,13 @@ impl Form {
             self.setup_from = self.page;
         }
         self.page = Page::Setup;
+        self.setup_car = None;
+    }
+
+    /// Opens Car setup for the catalog's car `index` (the Cars page's), leaving the selected car as it is.
+    pub(crate) fn open_car_setup(&mut self, index: usize) {
+        self.open_setup();
+        self.setup_car = Some(index);
     }
 
     /// The Drive page with the car browser open on `collection` (`--screenshot`).
@@ -581,8 +592,9 @@ impl Form {
         if self.no_cars_yet(ui) {
             return;
         }
-        self.select_setup();
-        let car = self.car().map_or_else(|| "no car".to_owned(), car_label);
+        let index = self.setup_car.unwrap_or(self.car);
+        self.select_setup_of(index);
+        let car = self.catalog.cars.get(index).map_or_else(|| "no car".to_owned(), car_label);
         let subtitle = format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]));
         if self.setup.ui(ui, self.setup_from.name(), &subtitle) {
             self.page = self.setup_from;
@@ -621,9 +633,9 @@ mod tests {
         assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Drive, Key::Num4, ctrl), None);
         assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Circuit));
-        assert_eq!(press(Page::Replays, Key::PageDown, ctrl), Some(Page::Drive));
-        assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Replays));
-        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Codrivers));
+        assert_eq!(press(Page::Replays, Key::PageDown, ctrl), Some(Page::Cars));
+        assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::School));
+        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Replays));
         assert_eq!(press(Page::Setup, Key::Tab, ctrl), None);
         assert_eq!(press(Page::Import, Key::Num2, ctrl), Some(Page::Stages));
         assert_eq!(press(Page::Graphics, Key::Tab, ctrl), Some(Page::Settings));

@@ -458,6 +458,8 @@ struct Form {
     last_pages: [Page; 3],
     /// The page Car setup was opened from, for its back link ([`Form::open_setup`]).
     setup_from: Page,
+    /// The car Car setup shows when opened from the Cars page ([`Form::open_car_setup`]), else the selected car's.
+    setup_car: Option<usize>,
     /// The Get more modal open over the Cars, Stages or Co-drivers page.
     get_more: Option<get_page::GetMore>,
     /// Content > Cars and Content > Stages.
@@ -742,11 +744,16 @@ impl Form {
 
     /// Points the Setup page at the selected car and the map's surface.
     fn select_setup(&mut self) {
+        self.select_setup_of(self.car);
+    }
+
+    /// Points the Setup page at the catalog's car `index` and the map's surface.
+    fn select_setup_of(&mut self, index: usize) {
         let surface = setup_page::SURFACES[self.catalog.maps[self.map].surface() as usize];
         let here = self.here();
         let archive = self.ngp_archive();
         let root = PathBuf::from(self.game_root());
-        if let Some(car) = self.catalog.cars.get(self.car) {
+        if let Some(car) = self.catalog.cars.get(index) {
             self.setup.select(&here, &root, car, Path::new(&archive), surface);
         }
     }
