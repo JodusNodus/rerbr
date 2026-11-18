@@ -7,16 +7,19 @@
 
 use std::time::{Duration, Instant};
 
-use egui::{Color32, RichText};
+use egui::RichText;
 use rbr_formats::saves::SaveDir;
 use rbr_render::hud::time_label;
 use rbr_session::{BestLap, LapBook};
 
-use crate::browser::{self, Pick};
+use crate::browser;
 use crate::car_browser::Target;
 use crate::catalog::Map;
-use crate::pages::{combo, fields, section, DRIVE_FIELDS, FIELD, WARN};
+use crate::drive_page::{card, column, favourite_chips, labelled, split_columns, CardText, Pick, Summary};
+use crate::kit;
+use crate::pages::combo;
 use crate::stage_browser::{self, Action, Collection, StageRow};
+use crate::theme::{self, ERROR, TEXT, TEXT_2, TEXT_3};
 use crate::Form;
 
 /// The session lengths on offer, 0 for free practice.
@@ -43,6 +46,8 @@ pub struct CircuitPage {
     /// once the scan is done; the scan runs on a thread, started when the page first draws.
     candidates: Vec<u32>,
     scan: Scan,
+    /// Road and tyres are open in the Conditions.
+    pub road_open: bool,
 }
 
 /// The scan for candidates.
@@ -185,22 +190,24 @@ impl Form {
     /// on the right.
     pub fn circuit_page(&mut self, ui: &mut egui::Ui) {
         if self.circuit_browser.open {
-            return self.circuit_browser_page(ui);
+            return self.browser_frame(ui, Form::circuit_browser_page);
         }
         if self.car_browser.open && self.car_browser.target == Target::Circuit {
-            return self.car_browser_page(ui);
+            return self.browser_frame(ui, Form::car_browser_page);
         }
         self.poll_scan(ui.ctx());
+        kit::page_header(ui, "Circuit", Some("Lap a closed course. Your best lap is kept per circuit."), |_| {});
         let circuits = self.circuits();
         let Some(&first) = circuits.first() else {
-            ui.add_space(20.0);
-            ui.label(RichText::new("No circuits installed").size(18.0));
-            ui.add_space(6.0);
-            ui.label(
-                "A circuit is a BTB stage whose track.ini has circuit = 1 and whose drive line is a closed ring, or a \
-                 stage that ends where it starts. Put one in ReRBR's tracks folder (or the RallySimFans \
-                 install's RX_CONTENT/Tracks) and it is listed here.",
-            );
+            kit::body(ui, |ui| {
+                ui.label(RichText::new("No circuits installed").size(16.0).color(TEXT));
+                ui.add_space(6.0);
+                ui.label(
+                    "A circuit is a BTB stage whose track.ini has circuit = 1 and whose drive line is a closed ring, \
+                     or a stage that ends where it starts. Put one in ReRBR's tracks folder (or the RallySimFans \
+                     install's RX_CONTENT/Tracks) and it is listed here.",
+                );
+            });
             return;
         };
         let index =
@@ -219,73 +226,72 @@ impl Form {
     }
 
     fn circuit_body(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(DRIVE_FIELDS);
-                egui::ScrollArea::vertical().id_salt("circuit").show(ui, |ui| self.circuit_fields(ui));
+        let number = self.catalog.maps[self.map].number;
+        let car = self.car_browser.row(self.car).map(|r| r.title.clone());
+        let name = self
+            .circuit_browser
+            .row_of(number)
+            .map_or_else(|| self.catalog.maps[self.map].name().to_owned(), |r| r.name.clone());
+        let title = format!("{name} · {}", laps_label(self.circuit.laps));
+        let summary = match self.selection() {
+            Ok((_, weather)) => {
+                let conditions = self.conditions_summary(&weather);
+                let sub = car.map_or(conditions.clone(), |car| format!("{car} · {conditions}"));
+                Summary { title, sub, problem: None }
+            }
+            Err(reason) => Summary { title, sub: String::new(), problem: Some(reason) },
+        };
+        let blocker = self.blocker();
+        if self.launch_footer(ui, "circuit footer", summary, blocker, "Start", Some("↵")) {
+            self.start();
+        }
+        kit::body(ui, |ui| {
+            let rects = split_columns(ui.available_rect_before_wrap(), 3);
+            column(ui, rects[0], "circuit car", |ui| {
+                self.car_column(ui, Target::Circuit);
+                self.car_rows(ui);
             });
-            ui.add_space(20.0);
-            ui.vertical(|ui| {
-                let root = self.game_root();
-                if let Some(car) = self.catalog.cars.get(self.car) {
-                    self.previews.ui(ui, &self.catalog.maps[self.map], car, self.skins.choice(car), &root);
-                }
-                ui.add_space(12.0);
-                self.best_lap_card(ui);
-                ui.add_space(12.0);
-                self.start_area(ui);
+            column(ui, rects[1], "circuit circuit", |ui| self.circuit_column(ui));
+            column(ui, rects[2], "circuit session", |ui| {
+                kit::group_label(ui, "Session", None);
+                kit::panel(ui, |rows| {
+                    let tip =
+                        "Free practice has no end: drive until you stop. A number of laps ends the session after the \
+                               last, with the total time. Your best lap is kept either way";
+                    labelled(rows, "Length", tip, |ui| {
+                        combo(ui, "circuit laps", 140.0, &mut self.circuit.laps, &LAPS, laps_label).on_hover_text(tip);
+                    });
+                    let tip =
+                        "The co-driver's calls and the note symbols. Off by default on a circuit: the notes follow a \
+                               stage's road, and a lap is driven from memory";
+                    labelled(rows, "Pace notes", tip, |ui| {
+                        _ = kit::switch(ui, &mut self.circuit.pace_notes).on_hover_text(tip)
+                    });
+                    self.damage_rows(rows);
+                });
+                self.conditions_column(ui, "Circuit's own", true);
             });
         });
     }
 
-    fn circuit_fields(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Car and circuit");
-        fields(ui, "circuit car", |ui| {
-            ui.label("Car");
-            if self.catalog.cars.is_empty() {
-                ui.colored_label(WARN, "No cars yet: add some on Library > Cars");
-            } else {
-                ui.vertical(|ui| self.car_field(ui, Target::Circuit));
-            }
-            ui.end_row();
-            if self.bindings.shifter.advanced {
-                self.gearbox_row(ui);
-            }
-
-            ui.label("Circuit");
-            ui.vertical(|ui| self.circuit_field(ui));
-            ui.end_row();
-
-            self.setup_row(ui);
-        });
-
-        section(ui, "Session");
-        fields(ui, "circuit session", |ui| {
-            let tip = "Free practice has no end: drive until you stop. A number of laps ends the session after the \
-                       last, with the total time. Your best lap is kept either way";
-            ui.label("Length").on_hover_text(tip);
-            combo(ui, "circuit laps", FIELD, &mut self.circuit.laps, &LAPS, laps_label);
-            ui.end_row();
-            let tip = "The co-driver's calls and the note symbols. Off by default on a circuit: the notes follow a \
-                       stage's road, and a lap is driven from memory";
-            ui.label("Pace notes").on_hover_text(tip);
-            ui.checkbox(&mut self.circuit.pace_notes, "Co-driver and note symbols").on_hover_text(tip);
-            ui.end_row();
-            self.damage_row(ui);
-        });
-
-        self.environment_section(ui);
-        self.road_section(ui);
-    }
-
-    /// The Circuit field, as the Drive page's Stage field: the selection, starred when it is a favourite, with Browse…,
-    /// and the favourites' quick picks under it.
-    fn circuit_field(&mut self, ui: &mut egui::Ui) {
+    /// The Circuit column: its card, the favourites and the best lap.
+    fn circuit_column(&mut self, ui: &mut egui::Ui) {
         let Some(number) = self.circuit.map else { return };
-        let Some(selected) = self.circuit_browser.row_of(number) else { return };
         let position = self.circuit_browser.position(number).unwrap_or(0);
-        let favourite = self.favourite_maps.contains(&number);
-        if browser::field_button(ui, favourite, &selected.name, &selected.detail(), FIELD) {
+        let browse = kit::group_label(ui, "Circuit", Some("Browse circuits"));
+        let Some(selected) = self.circuit_browser.row_of(number) else { return };
+        let (name, favourite) = (selected.name.clone(), self.favourite_maps.contains(&number));
+        let open = card(ui, favourite, &name, |ui, width, radius| {
+            let map = &self.catalog.maps[self.map];
+            match self.previews.stage_picture(ui, map, width, radius) {
+                Some((meta, problem)) => CardText {
+                    meta,
+                    notes: problem.map(|p| (format!("Cannot load: {p}"), ERROR)).into_iter().collect(),
+                },
+                None => CardText::default(),
+            }
+        });
+        if open || browse {
             self.circuit_browser.open_for(Target::Circuit, position, &self.favourite_maps);
         }
         let starred: Vec<&StageRow> = self
@@ -294,19 +300,21 @@ impl Form {
             .filter_map(|&n| self.circuit_browser.row_of(n))
             .filter(|r| r.startable())
             .collect();
-        let chips: Vec<(&str, String, bool)> =
-            starred.iter().map(|r| (r.name.as_str(), r.detail(), r.number == number)).collect();
-        match browser::chips(ui, &chips) {
-            Some(Pick::Chip(n)) => {
-                let number = starred[n].number;
-                self.choose_circuit(number);
-            }
-            Some(Pick::More) => {
+        let chips: Vec<(String, String, bool)> =
+            starred.iter().map(|r| (r.name.clone(), r.detail(), r.number == number)).collect();
+        let picked = favourite_chips(ui, &chips).map(|pick| match pick {
+            Pick::Chip(n) => Some(starred[n].number),
+            Pick::More => None,
+        });
+        match picked {
+            Some(Some(number)) => self.choose_circuit(number),
+            Some(None) => {
                 self.circuit_browser.open_on(position, &self.favourite_maps, Some(Collection::Favourites));
                 self.circuit_browser.target = Target::Circuit;
             }
             None => {}
         }
+        self.best_lap_panel(ui);
     }
 
     /// Makes the map with `number` the circuit, and the most recent pick.
@@ -355,29 +363,32 @@ impl Form {
         }
     }
 
-    /// The best lap card: the profile's best lap on the circuit, its sectors and the car.
-    fn best_lap_card(&self, ui: &mut egui::Ui) {
+    /// The best lap panel: the profile's best lap on the circuit, its sectors and the car.
+    fn best_lap_panel(&self, ui: &mut egui::Ui) {
         let number = self.catalog.maps[self.map].number;
-        let Some(best) = self.circuit.book.best(number, &self.championship.profile) else {
-            ui.weak("No lap yet: your best lap on this circuit is kept here");
-            return;
-        };
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.set_width(crate::preview::WIDTH - 20.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(time_label(f64::from(best.lap))).size(26.0).strong());
-                ui.weak("best lap");
+        let best = self.circuit.book.best(number, &self.championship.profile);
+        kit::panel(ui, |rows| {
+            let Some(best) = best else {
+                rows.row("Best lap", |ui| _ = ui.label(RichText::new("No lap yet").color(TEXT_3)));
+                rows.hint("Your best lap on this circuit is kept here.");
+                return;
+            };
+            rows.row("Best lap", |ui| {
+                ui.label(RichText::new(time_label(f64::from(best.lap))).font(theme::mono(14.0)).color(TEXT));
             });
             let sectors = sector_times(best);
             if sectors.len() > 1 {
-                ui.horizontal_wrapped(|ui| {
-                    for (k, time) in sectors.iter().enumerate() {
-                        ui.colored_label(Color32::GRAY, format!("S{} {}", k + 1, time_label(f64::from(*time))));
-                    }
+                let text: Vec<String> = sectors
+                    .iter()
+                    .enumerate()
+                    .map(|(k, t)| format!("S{} {}", k + 1, time_label(f64::from(*t))))
+                    .collect();
+                rows.row("Sectors", |ui| {
+                    _ = ui.label(RichText::new(text.join(" · ")).font(theme::mono(11.5)).color(TEXT_2))
                 });
             }
             if let Some(car) = self.catalog.cars.iter().find(|c| c.slot == best.car) {
-                ui.weak(format!("in {}", car.name));
+                rows.row("Car", |ui| _ = ui.add(egui::Label::new(RichText::new(&car.name).color(TEXT_2)).truncate()));
             }
         });
     }

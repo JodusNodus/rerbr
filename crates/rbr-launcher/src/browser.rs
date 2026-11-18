@@ -464,61 +464,6 @@ pub fn field_button(ui: &mut egui::Ui, favourite: bool, name: &str, detail: &str
     ui.add(button).clicked()
 }
 
-/// What a click in a row of [`chips`] chose.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pick {
-    /// The chip at this position.
-    Chip(usize),
-    /// The "+N" button for the chips that did not fit.
-    More,
-}
-
-/// The favourites' quick picks under a field: a chip each (its name, its tooltip, whether it is the selection) in one
-/// row. The ones that don't fit go behind "+N".
-pub fn chips(ui: &mut egui::Ui, chips: &[(&str, String, bool)]) -> Option<Pick> {
-    if chips.is_empty() {
-        return None;
-    }
-    let (font, padding) = (FontId::proportional(13.0), ui.spacing().button_padding.x * 2.0 + 4.0);
-    let widths: Vec<f32> = (chips.iter())
-        .map(|(name, ..)| {
-            ui.painter().layout_no_wrap(format!("★ {name}"), font.clone(), Color32::WHITE).size().x + padding
-        })
-        .collect();
-    let gap = 6.0;
-    // How many chips fit, leaving room for the "+N" button when some do not.
-    let room = ui.available_width();
-    let used = |count: usize| widths[..count].iter().sum::<f32>() + gap * count as f32;
-    let shown = if used(widths.len()) <= room {
-        widths.len()
-    } else {
-        (0..widths.len()).rev().find(|&n| used(n) + 44.0 <= room).unwrap_or(0)
-    };
-    let mut picked = None;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = gap;
-        for (n, (name, tip, selected)) in chips[..shown].iter().enumerate() {
-            let mut job = egui::text::LayoutJob::default();
-            let parts = [egui::RichText::new("★ ").size(12.5).color(STAR), egui::RichText::new(*name).size(13.0)];
-            for part in parts {
-                part.append_to(&mut job, ui.style(), egui::FontSelection::Default, egui::Align::Center);
-            }
-            let chip = egui::Button::selectable(*selected, job).corner_radius(11.0).min_size(egui::vec2(0.0, 24.0));
-            if ui.add(chip).on_hover_text(tip).clicked() {
-                picked = Some(Pick::Chip(n));
-            }
-        }
-        if shown < chips.len() {
-            let rest = egui::RichText::new(format!("+{}", chips.len() - shown)).size(13.0);
-            let button = egui::Button::new(rest).corner_radius(11.0).min_size(egui::vec2(0.0, 24.0));
-            if ui.add(button).on_hover_text("More favourites").clicked() {
-                picked = Some(Pick::More);
-            }
-        }
-    });
-    picked
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

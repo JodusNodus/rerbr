@@ -168,6 +168,11 @@ pub fn segmented<T: PartialEq + Clone>(
     options: &[(T, &str)],
 ) -> Response {
     let mut changed = false;
+    // A horizontal inside a right-to-left row lays out right to left: reversed, the segments read in order.
+    let mut order: Vec<&(T, &str)> = options.iter().collect();
+    if ui.layout().prefer_right_to_left() {
+        order.reverse();
+    }
     let mut response = ui
         .push_id(id, |ui| {
             Frame::new()
@@ -177,7 +182,7 @@ pub fn segmented<T: PartialEq + Clone>(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        for (option, label) in options {
+                        for (option, label) in order {
                             let selected = option == value;
                             let font = egui::FontId::new(
                                 12.5,
