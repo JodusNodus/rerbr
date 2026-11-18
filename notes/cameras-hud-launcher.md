@@ -181,6 +181,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   link. "Get more" is a modal (`Form::get_more`, `GetMore`) over Cars, Stages or Co-drivers; Import still has
   today's Get more body. Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for
   ★ ⚠ ▼ ↵. Default window 1280×760.
+- Rally, Circuit, School (redesign, `drive_page.rs`, `circuit_page.rs`, `school_page.rs`): page header, a pinned footer
+  (`Form::launch_footer`: summary, blocker with its fix, experimental note with Change to Settings, Stop while driving,
+  Start with the Enter hint), and columns that scroll on their own (`split_columns`, `column`). Rally: Car (card, favourite
+  chips with "+N", Gearbox, Setup with Edit…), Stage (card, chips, Co-driver read-only with a link to Co-drivers, Ghost,
+  Car damage), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and
+  tyres). Circuit: Session (Length, Pace notes, Damage) and Conditions with Road and tyres folded into one row; the best lap
+  panel keeps sectors and car. School: both courses in one list (grades as pips, double-click drives), the lesson's brief,
+  cone guide, times and Car on the right. The browsers still draw in the old padding (`Form::browser_frame`).
 - Keyboard (2026-11-03, groups 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the Drive, Library and Settings groups at
   the page each was left on, Ctrl+Tab / Ctrl+Page Down the group's next page, with Shift or Ctrl+Page Up the one
   before (`Page::shortcut`; nothing from Import or Car setup); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space

@@ -24,7 +24,10 @@ use rbr_school::Lesson;
 
 use crate::browser::{DIM, GREY, STAR};
 use crate::catalog::car_label;
-use crate::pages::{section, Issue, Page, DRIVE_FIELDS, GOOD, WARN};
+use crate::drive_page::{column, split_columns, Summary};
+use crate::kit;
+use crate::pages::{Issue, Page};
+use crate::theme::{self, white, GOOD, LINE, PANEL, ROW_SELECTED, TEXT, TEXT_2, TEXT_3, TEXT_LIST};
 use crate::Form;
 
 /// The page's state: the English string table, the selected lesson, the lesson times and the player's results.
@@ -141,25 +144,59 @@ fn result_colour(grade: u32) -> Color32 {
     }
 }
 
-/// A grade as four pips, `grade` of them filled in its colour; nothing for a lesson not passed.
-fn grade_pips(ui: &mut egui::Ui, grade: u32) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(4.0 * PIP_STEP, PIP_STEP), egui::Sense::hover());
+/// A grade as four pips in `rect`, `grade` of them filled in its colour; nothing for a lesson not passed.
+fn paint_pips(painter: &egui::Painter, rect: egui::Rect, grade: u32) {
     if grade > 0 {
         let colour = result_colour(grade);
         for k in 0..4u32 {
             let centre = egui::pos2(rect.left() + PIP_STEP * (k as f32 + 0.5), rect.center().y);
             if k < grade {
-                ui.painter().circle_filled(centre, PIP_RADIUS, colour);
+                painter.circle_filled(centre, PIP_RADIUS, colour);
             } else {
-                ui.painter().circle_stroke(centre, PIP_RADIUS, egui::Stroke::new(1.0, DIM));
+                painter.circle_stroke(centre, PIP_RADIUS, egui::Stroke::new(1.0, DIM));
             }
         }
     }
+}
+
+/// A grade as four pips; nothing for a lesson not passed.
+fn grade_pips(ui: &mut egui::Ui, grade: u32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(4.0 * PIP_STEP, PIP_STEP), egui::Sense::hover());
+    paint_pips(ui.painter(), rect, grade);
     response.on_hover_text(result_text(grade))
 }
 
-/// The lesson number column's width (points), so one- and two-digit numbers line their titles up.
-const NUMBER_WIDTH: f32 = 18.0;
+/// A lesson's row of the list: its number, title and grade; the selection is filled.
+fn lesson_row(ui: &mut egui::Ui, number: usize, title: &str, grade: u32, selected: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 29.0), egui::Sense::click());
+    let painter = ui.painter();
+    if selected {
+        painter.rect_filled(rect, 6, ROW_SELECTED);
+    } else if response.hovered() {
+        painter.rect_filled(rect, 6, white(10));
+    }
+    let middle = rect.left_center();
+    painter.text(
+        middle + egui::vec2(10.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        number.to_string(),
+        theme::mono(11.5),
+        TEXT_3,
+    );
+    let colour = if selected { Color32::WHITE } else { TEXT_LIST };
+    let font = egui::FontId::proportional(13.0);
+    painter.text(middle + egui::vec2(42.0, 0.0), egui::Align2::LEFT_CENTER, title, font, colour);
+    let pips = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - 10.0 - 4.0 * PIP_STEP, rect.center().y - PIP_STEP / 2.0),
+        egui::vec2(4.0 * PIP_STEP, PIP_STEP),
+    );
+    paint_pips(painter, pips, grade);
+    if grade > 0 {
+        response.on_hover_text(result_text(grade))
+    } else {
+        response
+    }
+}
 
 /// The pips' spacing and radius (points).
 const PIP_STEP: f32 = 11.0;
@@ -257,92 +294,101 @@ impl Form {
         let blocker = self.school_blocker();
         let car = self.car().map_or_else(|| "none".to_owned(), car_label);
         let (mut drive, mut to_drive_page) = (None, false);
-        {
-            let no_records = !self.drive_physics().keeps_records();
-            let school = &mut self.school;
-            let grades = school.results(&saves, &profile);
-            let grade = |lesson: Lesson| grades[lesson.index() as usize];
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(DRIVE_FIELDS);
-                    egui::ScrollArea::vertical().id_salt("school").show(ui, |ui| {
-                        for first in [Lesson::new(0).unwrap(), Lesson::new(Lesson::FIRST_ADVANCED).unwrap()] {
-                            let (group, key) = group_of(first);
-                            let passed = group_lessons(first).filter(|l| grade(*l) > 0).count();
-                            let total = group_lessons(first).count();
-                            section(ui, &format!("{group}  ·  {passed}/{total} passed"));
-                            ui.colored_label(GREY, school.text(key));
-                            ui.add_space(2.0);
+        let grades = self.school.results(&saves, &profile);
+        let grade = |lesson: Lesson| grades[lesson.index() as usize];
+        let selected = Lesson::new(self.school.selected).unwrap_or(Lesson::new(0).unwrap());
+        kit::page_header(ui, "School", Some("Richard teaches the rally driving skills, one lesson at a time."), |_| {});
+        let summary = {
+            let school = &self.school;
+            let sub = format!(
+                "{} · {} · {}",
+                lesson_label(school.strings.as_ref(), selected),
+                group_of(selected).0,
+                surface_of(selected)
+            );
+            Summary { title: school.text(selected.title_key()), sub, problem: None }
+        };
+        let label = if selected.ride() { "Ride along" } else { "Drive lesson" };
+        if self.launch_footer(ui, "school footer", summary, blocker.clone(), label, None) {
+            drive = Some(selected);
+        }
+        let school = &mut self.school;
+        kit::body(ui, |ui| {
+            let rects = split_columns(ui.available_rect_before_wrap(), 2);
+            column(ui, rects[0], "school list", |ui| {
+                for first in [Lesson::new(0).unwrap(), Lesson::new(Lesson::FIRST_ADVANCED).unwrap()] {
+                    let (group, key) = group_of(first);
+                    let passed = group_lessons(first).filter(|l| grade(*l) > 0).count();
+                    let total = group_lessons(first).count();
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(group).size(12.0).family(theme::medium()).color(TEXT_2));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(RichText::new(format!("{passed} of {total} passed")).size(12.0).color(TEXT_3));
+                        });
+                    });
+                    kit::hint(ui, &school.text(key));
+                    egui::Frame::new()
+                        .fill(PANEL)
+                        .stroke(egui::Stroke::new(1.0, LINE))
+                        .corner_radius(10)
+                        .inner_margin(4)
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.spacing_mut().item_spacing.y = 0.0;
                             for lesson in group_lessons(first) {
                                 let i = lesson.index();
-                                ui.horizontal(|ui| {
-                                    let number = RichText::new((i - group_start(lesson) + 1).to_string()).color(GREY);
-                                    let height = ui.spacing().interact_size.y;
-                                    ui.add_sized([NUMBER_WIDTH, height], egui::Label::new(number));
-                                    let title = school.text(lesson.title_key());
-                                    let item = ui.selectable_value(&mut school.selected, i, title);
-                                    if item.double_clicked() && blocker.is_none() {
-                                        drive = Some(lesson);
-                                    }
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        grade_pips(ui, grade(lesson));
-                                    });
-                                });
+                                let title = school.text(lesson.title_key());
+                                let number = (i - group_start(lesson) + 1) as usize;
+                                let row = lesson_row(ui, number, &title, grade(lesson), school.selected == i);
+                                if row.clicked() {
+                                    school.selected = i;
+                                }
+                                if row.double_clicked() && blocker.is_none() {
+                                    drive = Some(lesson);
+                                }
                             }
+                        });
+                }
+            });
+            column(ui, rects[1], "school detail", |ui| {
+                let lesson = selected;
+                let (instruction, cones) = lesson.brief_keys();
+                let (group, _) = group_of(lesson);
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 3.0;
+                    ui.label(
+                        RichText::new(format!("{} · {group}", lesson_label(school.strings.as_ref(), lesson)))
+                            .size(12.0)
+                            .color(TEXT_2),
+                    );
+                    ui.label(
+                        RichText::new(school.text(lesson.title_key())).size(17.0).family(theme::semibold()).color(TEXT),
+                    );
+                });
+                ui.label(school.text(&instruction));
+                cone_guide(ui, &school.text(&cones));
+                kit::panel(ui, |rows| {
+                    rows.row("Surface", |ui| _ = ui.label(surface_of(lesson)));
+                    let times = school.times(&data, lesson).map_or_else(
+                        || "Untimed".to_owned(),
+                        |(perfect, pass)| format!("pass {}  ·  perfect {}", seconds(pass), seconds(perfect)),
+                    );
+                    rows.row("Times", |ui| _ = ui.label(times));
+                    rows.row("Best", |ui| {
+                        ui.colored_label(result_colour(grade(lesson)), result_text(grade(lesson)));
+                        if grade(lesson) > 0 {
+                            grade_pips(ui, grade(lesson));
                         }
                     });
-                });
-                ui.add_space(20.0);
-                ui.vertical(|ui| {
-                    let lesson = Lesson::new(school.selected).unwrap_or(Lesson::new(0).unwrap());
-                    let (instruction, cones) = lesson.brief_keys();
-                    let (group, _) = group_of(lesson);
-                    ui.colored_label(STAR, format!("{} · {group}", lesson_label(school.strings.as_ref(), lesson)));
-                    ui.label(RichText::new(school.text(lesson.title_key())).size(18.0).strong());
-                    ui.add_space(4.0);
-                    ui.label(school.text(&instruction));
-                    ui.add_space(6.0);
-                    cone_guide(ui, &school.text(&cones));
-                    ui.add_space(8.0);
-                    crate::pages::fields(ui, "school-detail", |ui| {
-                        ui.label("Surface");
-                        ui.label(surface_of(lesson));
-                        ui.end_row();
-                        ui.label("Times");
-                        ui.label(school.times(&data, lesson).map_or_else(
-                            || "Untimed".to_owned(),
-                            |(perfect, pass)| format!("pass {}  ·  perfect {}", seconds(pass), seconds(perfect)),
-                        ));
-                        ui.end_row();
-                        ui.label("Best");
-                        ui.horizontal(|ui| {
-                            if grade(lesson) > 0 {
-                                grade_pips(ui, grade(lesson));
-                            }
-                            ui.colored_label(result_colour(grade(lesson)), result_text(grade(lesson)));
-                        });
-                        ui.end_row();
-                        ui.label("Car");
-                        ui.horizontal(|ui| {
-                            ui.label(&car).on_hover_text("The Drive page's car, on its default setup.");
-                            to_drive_page = ui.link("change").clicked();
-                        });
-                        ui.end_row();
+                    rows.row("Car", |ui| {
+                        to_drive_page = kit::link(ui, "Change").clicked();
+                        ui.add(egui::Label::new(RichText::new(&car).color(TEXT)).truncate())
+                            .on_hover_text("The Rally page's car, on its default setup.");
                     });
-                    ui.add_space(6.0);
-                    ui.colored_label(GREY, lesson_flow(lesson));
-                    ui.add_space(8.0);
-                    let label = if lesson.ride() { "Ride along" } else { "Drive lesson" };
-                    if ui.add_enabled(blocker.is_none(), crate::pages::start_button(label)).clicked() {
-                        drive = Some(lesson);
-                    }
-                    crate::drive_page::no_records_note(ui, no_records);
-                    if let Some(issue) = &blocker {
-                        ui.colored_label(WARN, &issue.text);
-                    }
                 });
+                kit::hint(ui, lesson_flow(lesson));
             });
-        }
+        });
         if to_drive_page {
             self.page = Page::Drive;
         }

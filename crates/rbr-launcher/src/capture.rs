@@ -37,6 +37,15 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         form.page = page;
         if page == Page::Circuit {
             form.wait_for_scan(&egui::Context::default());
+            let circuit = form.circuit.map.and_then(|n| form.catalog.map_index(n)).or(form.circuits().first().copied());
+            if let (Some(index), Some(car)) = (circuit, &car) {
+                form.previews.wait_for(
+                    &form.catalog.maps[index].clone(),
+                    car,
+                    form.skins.choice(car),
+                    &form.game_root(),
+                );
+            }
         }
         if page == Page::Cars {
             // Drawn once for its list, then the highlighted car's turntable waited for.

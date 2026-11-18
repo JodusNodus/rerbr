@@ -233,13 +233,6 @@ impl Form {
         ui.end_row();
     }
 
-    /// The summary line under the Drive page's stage: small and grey, the Co-driver section's words without the
-    /// stage's name, which the page shows above it.
-    pub fn codriver_notes_line(&mut self, ui: &mut egui::Ui) {
-        self.refresh_notes_cache();
-        self.notes_summary_label(ui, "Co-driver: ", true);
-    }
-
     /// The notes summary after `prefix`, grey (`small`: in the small text); the note file on hover. Takes a `ui` of
     /// its own (it sets the width).
     fn notes_summary_label(&self, ui: &mut egui::Ui, prefix: &str, small: bool) -> egui::Response {
