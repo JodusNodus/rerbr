@@ -2,7 +2,6 @@
 //! download does, and then the NGP in use.
 
 use super::{Ctx, Found, Item, Kind};
-use crate::content::downloads::Owned;
 use crate::content::source::{names, Source};
 use crate::content::{Goto, Outcome, Refresh};
 use crate::ngp_install::{self, KEPT, NGP};
@@ -32,9 +31,5 @@ impl Kind for Ngp {
             Err(e) => Outcome::failed(&name, "NGP", e),
         };
         vec![outcome.refreshing(Refresh::Ngp)]
-    }
-
-    fn offer(&self, _: &dyn Source, found: &Found, owned: &Owned) -> Option<&'static str> {
-        (!owned.ngp).then_some(found.label)
     }
 }

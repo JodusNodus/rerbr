@@ -2,8 +2,7 @@
 //! `notes/`). Recognised by the entry names (only the names, never the contents).
 
 use super::{btb, classic, Ctx, Found, Item, Kind};
-use crate::codriver_packs::{import, pack_name};
-use crate::content::downloads::{already_added, Owned};
+use crate::codriver_packs::import;
 use crate::content::source::Source;
 use crate::content::{Goto, Outcome, Refresh};
 
@@ -60,10 +59,6 @@ impl Kind for Codriver {
             Ok(lines) => lines.iter().map(|l| outcome(&name, l)).collect(),
             Err(e) => vec![Outcome::failed(&name, "co-driver", e).refreshing(Refresh::Codriver)],
         }
-    }
-
-    fn offer(&self, src: &dyn Source, found: &Found, owned: &Owned) -> Option<&'static str> {
-        (!already_added(&pack_name(src.path()), &owned.packs)).then_some(found.label)
     }
 }
 

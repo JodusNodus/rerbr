@@ -60,11 +60,11 @@ use import::{import_both, import_voice_from, publish, publish_pair, stage};
 use scan::copy_voice;
 #[cfg(test)]
 use scan::set_label;
+pub(crate) use scan::walk;
 pub use scan::{
     call_sets_differ, note_packs, pick_notes, voice_packs, NotePack, NoteSource, NotesPick, NotesSummary, VoicePack,
 };
 use scan::{check_voice, is_plugin_dir};
-pub(crate) use scan::{pack_name, walk};
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
@@ -221,7 +221,7 @@ mod tests {
         let home = dir.join("home");
         let lines = imported(&home, &src).unwrap();
         assert_eq!(lines.len(), 1, "{lines:?}");
-        let pack = home.join(VOICES_DIR).join(pack_name(&src));
+        let pack = home.join(VOICES_DIR).join(scan::pack_name(&src));
         assert!(pack.join("PaceNote.ini").is_file());
         assert!(pack.join("config/pacenotes/calls.ini").is_file());
         assert!(pack.join("sounds/english/steve/one_left.ogg").is_file());

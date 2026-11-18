@@ -13,7 +13,6 @@ use rbr_btb::track;
 
 use super::{Ctx, Found, Item, Kind};
 use crate::archive::safe_folder;
-use crate::content::downloads::Owned;
 use crate::content::source::{Entry, Source};
 use crate::content::{stem, Goto, Outcome, Refresh};
 use crate::job::{Counter, Report, Temp};
@@ -88,12 +87,6 @@ impl Kind for Btb {
             .refreshing(Refresh::Stages)
         };
         item.found.at.iter().map(added).collect()
-    }
-
-    fn offer(&self, src: &dyn Source, found: &Found, owned: &Owned) -> Option<&'static str> {
-        let name = src.name();
-        let have = |dir: &Vec<String>| owned.stages.contains(&stage_name(&name, dir).to_lowercase());
-        (!found.at.iter().all(have)).then_some(found.label)
     }
 }
 

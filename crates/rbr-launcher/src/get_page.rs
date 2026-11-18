@@ -1,5 +1,5 @@
 //! The Get more modals opened from Cars, Stages and Co-drivers (gvrc.de's car list, the stage sites, Luppis's lists),
-//! and the Import page (the sidebar's): drop zone, recent downloads, and the last import (`content::ui`).
+//! and the Import page (the sidebar's): drop zone and the last import (`content::ui`).
 
 use egui::{Align, Layout, RichText};
 
@@ -177,7 +177,7 @@ impl Form {
         }
     }
 
-    /// The Import page: the drop zone, the recent downloads ReRBR can add, and the last import.
+    /// The Import page: the drop zone and the last import.
     pub fn import_page(&mut self, ui: &mut egui::Ui) {
         kit::page_header(
             ui,
@@ -189,8 +189,6 @@ impl Form {
             egui::ScrollArea::vertical().id_salt("import").auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(680.0);
                 self.drop_zone_ui(ui);
-                ui.add_space(20.0);
-                self.ready_to_add_ui(ui);
                 ui.add_space(20.0);
                 self.last_import_ui(ui);
                 ui.add_space(10.0);
