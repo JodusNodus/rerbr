@@ -49,9 +49,9 @@ impl Form {
                 Some(at) => drop(self.favourite_cars.remove(at)),
                 None => self.favourite_cars.push(name),
             },
-            Some(Action::GetMore) => {
-                self.open_get_more(GetMore::Cars);
-            }
+            Some(Action::GetMore) => self.open_get_more(GetMore::Cars),
+            Some(Action::GetMoreSkins) => self.open_get_more(GetMore::Skins),
+            Some(Action::Setups(index)) => self.open_car_setup(index),
             Some(Action::Remove(pack)) => {
                 self.cars_page.browser.removed();
                 // A failed removal shows as a toast, as a finished download does.

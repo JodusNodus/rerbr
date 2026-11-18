@@ -458,7 +458,7 @@ impl Form {
         }
     }
 
-    /// The Stage column: its card, the favourites, and the race's co-driver, ghost and damage.
+    /// The Stage column: its card, the favourites, and the race's ghost and damage.
     fn stage_column(&mut self, ui: &mut Ui) {
         let count = self.catalog.maps.len();
         let browse = kit::group_label(ui, "Stage", Some(&format!("Browse all {count}")));
@@ -496,23 +496,10 @@ impl Form {
             None => {}
         }
         kit::group_label(ui, "Race", None);
-        let mut to_codrivers = false;
         kit::panel(ui, |rows| {
-            let tip = "Who calls the pace notes is chosen on the Co-drivers page";
-            labelled(rows, "Co-driver", tip, |ui| to_codrivers = kit::link(ui, "Change…").clicked());
             self.ghost_row(rows);
             self.damage_rows(rows);
         });
-        if to_codrivers {
-            self.page = Page::Codrivers;
-        }
-        self.refresh_notes_cache();
-        let note =
-            egui::Label::new(RichText::new(format!("Co-driver: {}", self.notes_summary.text)).size(12.0).color(TEXT_3));
-        let response = ui.add(note.wrap());
-        if let Some(file) = &self.notes_summary.file {
-            response.on_hover_text(file.display().to_string());
-        }
     }
 
     /// The Conditions column: the weather and the time of day, then Road and tyres. `fold` folds Road and tyres
@@ -794,7 +781,13 @@ impl Form {
             },
             Some(car_browser::Action::Back) => self.car_browser.open = false,
             // The Cars page's.
-            Some(car_browser::Action::Remove(_) | car_browser::Action::GetMore) | None => {}
+            Some(
+                car_browser::Action::Remove(_)
+                | car_browser::Action::GetMore
+                | car_browser::Action::GetMoreSkins
+                | car_browser::Action::Setups(_),
+            )
+            | None => {}
         }
     }
 
