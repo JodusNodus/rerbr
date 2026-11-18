@@ -111,10 +111,11 @@ pub(crate) fn labelled<R>(rows: &mut Rows, label: &str, tip: &str, control: impl
 
 /// `rect` split into `n` columns side by side.
 pub(crate) fn split_columns(rect: Rect, n: usize) -> Vec<Rect> {
-    let width = (rect.width() - GAP * (n - 1) as f32) / n as f32;
+    // Whole points, so the columns come out equally wide on screen and their cards' pictures equally tall.
+    let width = ((rect.width() - GAP * (n - 1) as f32) / n as f32).floor();
     (0..n)
         .map(|k| {
-            let left = rect.left() + k as f32 * (width + GAP);
+            let left = (rect.left() + k as f32 * (width + GAP)).round();
             Rect::from_min_max(egui::pos2(left, rect.top()), egui::pos2(left + width, rect.bottom()))
         })
         .collect()
@@ -428,8 +429,8 @@ impl Form {
             if self.bindings.shifter.advanced {
                 self.gearbox_row(rows);
             }
-            let tip = "Any saved setup of the car, yours and RSF's, the stage surface's first; the pick is kept for \
-                       the car and the surface. Edit… makes and changes them";
+            let tip = "Any saved setup of the car, the stage surface's first; the pick is kept for the car and the \
+                       surface. Edit… makes and changes them";
             labelled(rows, "Setup", tip, |ui| {
                 let width = (ui.available_width() - 60.0).clamp(120.0, 230.0);
                 ui.allocate_ui_with_layout(egui::vec2(width, 26.0), Layout::left_to_right(Align::Center), |ui| {

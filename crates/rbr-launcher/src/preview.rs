@@ -34,6 +34,11 @@ pub const WIDTH: f32 = 384.0;
 /// The car turntable: frames per turn, their size and the frame rate shown.
 const FRAMES: usize = 60;
 const CAR_SIZE: [usize; 2] = [384, 216];
+
+/// The height of a car or stage picture `width` wide: the car's shape, in whole points so side by side cards line up.
+fn picture_height(width: f32) -> f32 {
+    (width * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32).round()
+}
 const FPS: f64 = 10.0;
 /// The cars whose frames are kept, and the stages whose pictures are.
 const KEEP: usize = 3;
@@ -222,8 +227,8 @@ impl Previews {
         }
     }
 
-    /// Draws the stage's picture `width` wide (the picture's own shape) with `radius` corners; its few lines and why it
-    /// cannot load, or `None` while the picture is being made.
+    /// Draws the stage's picture `width` wide in the car picture's shape (so the Drive pages' cards line up) with
+    /// `radius` corners; its few lines and why it cannot load, or `None` while the picture is being made.
     pub fn stage_picture(
         &mut self,
         ui: &mut egui::Ui,
@@ -233,7 +238,7 @@ impl Previews {
     ) -> Option<(String, Option<String>)> {
         let arrived: Vec<_> = self.stage_arrived.drain(..).chain(self.stage_results.try_iter()).collect();
         self.take_stages(ui.ctx(), arrived);
-        let height = width * 184.0 / 384.0;
+        let height = picture_height(width);
         let Some((_, preview)) = self.stages.iter().find(|(n, _)| *n == map.number) else {
             if self.stage_pending != Some(map.number) {
                 self.stage_pending = Some(map.number);
@@ -246,12 +251,12 @@ impl Previews {
         };
         match &preview.picture {
             Picture::Image(texture) => {
-                // Centred with its aspect kept (every picture has the retail shape, `stage_picture`).
+                // Filling the frame with its aspect kept, cropped at the sides (the retail shape is wider).
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
                 let size = texture.size_vec2();
-                let fitted = size * (rect.width() / size.x).min(rect.height() / size.y);
-                let image = egui::Image::new(texture).corner_radius(radius);
-                image.paint_at(ui, egui::Rect::from_center_size(rect.center(), fitted));
+                let shown = rect.size() / size / (rect.width() / size.x).max(rect.height() / size.y);
+                let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), shown);
+                egui::Image::new(texture).uv(uv).corner_radius(radius).paint_at(ui, rect);
             }
             Picture::Outline(points) => {
                 let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
@@ -311,7 +316,7 @@ impl Previews {
             self.cars.push_front((done, frames.map(|images| images.into_iter().map(Frame::Image).collect())));
             self.cars.truncate(KEEP);
         }
-        let size = egui::vec2(width, width * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32);
+        let size = egui::vec2(width, picture_height(width));
         let mut error = None;
         match self.cars.iter_mut().find(|(k, _)| *k == key).map(|(_, f)| f) {
             Some(Ok(frames)) if !frames.is_empty() => {
@@ -325,8 +330,10 @@ impl Previews {
                     frames[k] =
                         Frame::Texture(ui.ctx().load_texture(format!("{key} {k}"), image, TextureOptions::LINEAR));
                 }
+                // Stretched to the exact size (the frames have its shape), so it is as tall as a stage's picture.
+                let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
                 if let Frame::Texture(texture) = &frames[k] {
-                    ui.add(egui::Image::new(texture).fit_to_exact_size(size).corner_radius(radius));
+                    egui::Image::new(texture).corner_radius(radius).paint_at(ui, rect);
                 }
                 if !self.still {
                     ui.ctx().request_repaint_after(Duration::from_secs_f64(1.0 / FPS));

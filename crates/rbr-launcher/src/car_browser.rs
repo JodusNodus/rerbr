@@ -187,9 +187,9 @@ impl CarRow {
         self.problem.is_none()
     }
 
-    /// The group and the source, as the Drive page's field shows them.
+    /// The line under the car's name on the Drive pages' card and favourites: its group.
     pub fn detail(&self) -> String {
-        format!("{} · {}", self.group, self.source)
+        self.group.clone()
     }
 
     /// Why it cannot start, shortly.
@@ -561,7 +561,7 @@ impl CarBrowser {
             let room = ui.available_width() - seg - 16.0;
             let one_row = room - drops_width >= 180.0;
             let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(180.0, 300.0);
-            let hint = "Search name, class, RSF no.";
+            let hint = "Search name, class, number";
             ui.horizontal(|ui| {
                 browser::search_box(ui, hint, &mut self.filter.query, &mut self.focus, search);
                 let mut scope = self.collection.clone().unwrap_or(Collection::All);
