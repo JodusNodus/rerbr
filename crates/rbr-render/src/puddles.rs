@@ -122,13 +122,10 @@ pub(crate) struct GroundTriangle {
 }
 
 /// The ground triangles of `meshes`, in order. The hits go over the machine's threads: a large stage has millions of
-/// triangles, each a lookup in the collision grid. With `roads` ([`road_textures`]) only the triangles that look like
-/// one of them may be road; without, all.
-pub(crate) fn ground_triangles(
-    meshes: &[Mesh],
-    collision: &Ground,
-    roads: Option<&HashSet<TextureRef>>,
-) -> Vec<GroundTriangle> {
+/// triangles, each a lookup in the collision grid. With `roads` ([`roads`]) only the triangles that look like one of its
+/// textures and lie by its driveline may be road; without, all.
+pub(crate) fn ground_triangles(meshes: &[Mesh], collision: &Ground, roads: Option<&Roads>) -> Vec<GroundTriangle> {
+    let line = roads.map(|roads| Line::new(&roads.driveline));
     let mut found = Vec::new();
     for (m, mesh) in meshes.iter().enumerate() {
         for draw in mesh.draws.iter().filter(|draw| ground(mesh, draw)) {
@@ -138,7 +135,13 @@ pub(crate) fn ground_triangles(
                     continue;
                 }
                 let centre = [0, 1, 2].map(|c| t.iter().map(|&i| mesh.vertices[i].position[c]).sum::<f32>() / 3.0);
-                let road = roads.is_none_or(|roads| look(mesh, draw, t).is_some_and(|look| roads.contains(&look)));
+                let road = match (roads, &line) {
+                    (Some(roads), Some(line)) => {
+                        look(mesh, draw, t).is_some_and(|look| roads.textures.contains(&look))
+                            && line.beside(Vec3::from(centre))
+                    }
+                    _ => true,
+                };
                 found.push((m, t, draw.state.textures[0], centre, road));
             }
         }
@@ -161,57 +164,128 @@ fn look(mesh: &Mesh, draw: &Draw, t: [usize; 3]) -> Option<TextureRef> {
     }
 }
 
-/// How far the driveline may lie over or under the ground it runs on, metres ([`road_textures`]).
+/// How far the driveline may lie over or under the ground it runs on, metres ([`roads`]), and the road over or under the
+/// driveline beside it ([`Line::beside`]).
 const ROAD_REACH: f32 = 2.0;
-/// A texture is the road's when it is under more than one in this many of the driveline's points ([`road_textures`]):
-/// fewer are the junctions', the bridges' and the stray triangles'.
-const ROAD_POINTS: usize = 50;
+/// How far the road reaches to either side of the driveline, metres ([`Line::beside`]): the driveline is a racing line
+/// (a converted stage's AI line), at times by one edge of the road.
+const ROAD_SIDE: f32 = 10.0;
+/// A texture is the road's when it is under at least this many of the driveline's points ([`roads`]): one is a stray
+/// triangle's.
+const ROAD_POINTS: usize = 2;
+/// A texture is the road's when it is under at least this share of the driveline's points it lies beside (within
+/// [`ROAD_SIDE`]; [`roads`]): the driveline runs on the road, and only past the ground about it.
+const ROAD_SHARE: f32 = 0.15;
 
-/// The textures the road shows, on a stage whose collision surfaces do not tell the road from the ground about it (ours;
-/// a BTB stage's terrain is often tarmac to the physics: Cueva Santa's fields are `Tarmac_Fine_Covered`): what the ground
-/// triangle under each of the driveline's points shows ([`look`]), the nearest within [`ROAD_REACH`] of its height.
-pub(crate) fn road_textures(meshes: &[Mesh], driveline: &[Vec3]) -> HashSet<TextureRef> {
+/// Where the road is on a stage whose collision surfaces do not tell it from the ground about it (ours; a BTB stage's
+/// terrain is often tarmac to the physics: Cueva Santa's fields are `Tarmac_Fine_Covered`; Coll de la Teixeta, converted,
+/// is all AC's `KRB`, tarmac too): the ground showing one of the road's textures, by the driveline.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Roads {
+    /// What the ground triangle under each of the driveline's points shows ([`look`]), the nearest within
+    /// [`ROAD_REACH`] of its height, under at least [`ROAD_POINTS`] of them. Some stages' roads are tiles of textures
+    /// of their own (Coll de la Teixeta's, baked from AC's layers, each under a few points).
+    pub textures: HashSet<TextureRef>,
+    /// The driveline's points, in stage space.
+    pub driveline: Vec<Vec3>,
+}
+
+/// The driveline's segments by [`Line::CELL`] cells (each in the cells within [`ROAD_SIDE`] of it).
+struct Line<'a> {
+    points: &'a [Vec3],
+    cells: HashMap<(i32, i32), Vec<u32>>,
+}
+
+impl<'a> Line<'a> {
     const CELL: f32 = 16.0;
-    let mut points: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
-    for (i, p) in driveline.iter().enumerate() {
-        points.entry(cell_of(p.to_array(), CELL)).or_default().push(i);
+
+    fn new(points: &'a [Vec3]) -> Line<'a> {
+        let mut cells: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for (i, pair) in points.windows(2).enumerate() {
+            let low = cell_of((pair[0].min(pair[1]) - ROAD_SIDE).to_array(), Self::CELL);
+            let high = cell_of((pair[0].max(pair[1]) + ROAD_SIDE).to_array(), Self::CELL);
+            for cell in (low.0..=high.0).flat_map(|x| (low.1..=high.1).map(move |z| (x, z))) {
+                cells.entry(cell).or_default().push(i as u32);
+            }
+        }
+        Line { points, cells }
     }
-    // Each mesh's (point, height off it, look) for the triangles under a point, over the load's threads.
+
+    /// Whether `p` lies within [`ROAD_SIDE`] of the driveline across and [`ROAD_REACH`] of its height there.
+    fn beside(&self, p: Vec3) -> bool {
+        let Some(segments) = self.cells.get(&cell_of(p.to_array(), Self::CELL)) else { return false };
+        segments.iter().any(|&i| {
+            let (a, b) = (self.points[i as usize], self.points[i as usize + 1]);
+            let along = b.xz() - a.xz();
+            let t = (p.xz() - a.xz()).dot(along) / along.length_squared().max(1e-6);
+            let at = a.lerp(b, t.clamp(0.0, 1.0));
+            at.xz().distance(p.xz()) < ROAD_SIDE && (p.y - at.y).abs() < ROAD_REACH
+        })
+    }
+}
+
+/// Where the road of `meshes` is ([`Roads`]), by `driveline`.
+pub(crate) fn roads(meshes: &[Mesh], driveline: &[Vec3]) -> Roads {
+    const CELL: f32 = 16.0;
+    let mut points: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+    for (i, p) in driveline.iter().enumerate() {
+        points.entry(cell_of(p.to_array(), CELL)).or_default().push(i as u32);
+    }
+    // Each mesh's (point, height off it, look) for the triangles under a point, and the (point, look) of those beside
+    // it, over the load's threads.
     let found = in_parallel(meshes, |mesh| {
-        let mut found = Vec::new();
+        let (mut under, mut beside) = (Vec::new(), HashSet::new());
         for draw in mesh.draws.iter().filter(|draw| ground(mesh, draw)) {
             for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
                 let t = [0, 1, 2].map(|k| t[k] as usize);
                 if t.iter().any(|&i| i >= mesh.vertices.len()) {
                     continue;
                 }
+                let Some(look) = look(mesh, draw, t) else { continue };
                 let corners = t.map(|i| Vec3::from(mesh.vertices[i].position));
-                let low = cell_of(corners[0].min(corners[1]).min(corners[2]).to_array(), CELL);
-                let high = cell_of(corners[0].max(corners[1]).max(corners[2]).to_array(), CELL);
+                let centre = (corners[0] + corners[1] + corners[2]) / 3.0;
+                let low = cell_of((corners[0].min(corners[1]).min(corners[2]) - ROAD_SIDE).to_array(), CELL);
+                let high = cell_of((corners[0].max(corners[1]).max(corners[2]) + ROAD_SIDE).to_array(), CELL);
                 for cell in (low.0..=high.0).flat_map(|x| (low.1..=high.1).map(move |z| (x, z))) {
                     for &i in points.get(&cell).into_iter().flatten() {
-                        let p = driveline[i];
-                        let Some(y) = crate::sky_dome::height_over(&corners, p.xz()) else { continue };
-                        if (y - p.y).abs() < ROAD_REACH {
-                            found.push((i, (y - p.y).abs(), look(mesh, draw, t)));
+                        let p = driveline[i as usize];
+                        if let Some(y) = crate::sky_dome::height_over(&corners, p.xz()) {
+                            if (y - p.y).abs() < ROAD_REACH {
+                                under.push((i, (y - p.y).abs(), look));
+                                beside.insert((i, look));
+                            }
+                        } else if centre.xz().distance(p.xz()) < ROAD_SIDE && (centre.y - p.y).abs() < ROAD_REACH {
+                            beside.insert((i, look));
                         }
                     }
                 }
             }
         }
-        found
+        (under, beside)
     });
-    let mut nearest: HashMap<usize, (f32, Option<TextureRef>)> = HashMap::new();
-    for (i, off, look) in found.into_iter().flatten() {
-        if nearest.get(&i).is_none_or(|&(best, _)| off < best) {
-            nearest.insert(i, (off, look));
+    let mut nearest: HashMap<u32, (f32, TextureRef)> = HashMap::new();
+    let mut beside: HashSet<(u32, TextureRef)> = HashSet::new();
+    for (under, near) in found {
+        for (i, off, look) in under {
+            if nearest.get(&i).is_none_or(|&(best, _)| off < best) {
+                nearest.insert(i, (off, look));
+            }
         }
+        beside.extend(near);
     }
-    let mut counts: HashMap<TextureRef, usize> = HashMap::new();
-    for look in nearest.values().filter_map(|&(_, look)| look) {
-        *counts.entry(look).or_default() += 1;
+    // Per texture, the points it is under and those it lies beside.
+    let mut counts: HashMap<TextureRef, [usize; 2]> = HashMap::new();
+    for &(_, look) in nearest.values() {
+        counts.entry(look).or_default()[0] += 1;
     }
-    counts.into_iter().filter(|&(_, n)| n * ROAD_POINTS > driveline.len()).map(|(texture, _)| texture).collect()
+    for (_, look) in beside {
+        counts.entry(look).or_default()[1] += 1;
+    }
+    let textures = (counts.into_iter())
+        .filter(|&(_, [under, beside])| under >= ROAD_POINTS && under as f32 >= ROAD_SHARE * beside as f32)
+        .map(|(texture, _)| texture)
+        .collect();
+    Roads { textures, driveline: driveline.to_vec() }
 }
 
 /// The ground vertices of `meshes` with their share of the wet film ([`film_by_name`], [`Vertex::wet`]): the most of
@@ -494,18 +568,27 @@ mod tests {
 
     #[test]
     fn the_road_is_what_the_driveline_runs_over() {
-        // A road (0) on a field (1) a little below it, a stray patch (2) under one of the driveline's 201 points, and a
-        // blended road whose second texture (4) shows over its first (3).
+        // A road (0) on a field (1) a little below it, a stray patch (2) under one of the driveline's 201 points, a
+        // blended road whose second texture (4) shows over its first (3), and a verge (5) the driveline runs past all
+        // along and onto at three points.
         let meshes = [
             quad([-3.0, 0.0], [3.0, 100.0], 0.0, [Some(0), None], 255),
             quad([-50.0, -10.0], [50.0, 210.0], -0.5, [Some(1), None], 255),
             quad([-1.0, 49.9], [1.0, 50.1], 0.1, [Some(2), None], 255),
             quad([-3.0, 100.0], [3.0, 200.0], 0.0, [Some(3), Some(4)], 200),
+            quad([3.0, 0.0], [6.0, 200.0], -0.1, [Some(5), None], 255),
         ];
-        let driveline: Vec<Vec3> = (0..=200).map(|i| Vec3::new(0.0, 0.3, i as f32)).collect();
-        let roads = road_textures(&meshes, &driveline);
-        let indices: std::collections::BTreeSet<u32> = roads.iter().map(|t| t.index).collect();
+        let x = |i: usize| if (70..73).contains(&i) { 4.5 } else { 0.0 };
+        let driveline: Vec<Vec3> = (0..=200).map(|i| Vec3::new(x(i), 0.3, i as f32)).collect();
+        let roads = roads(&meshes, &driveline);
+        let indices: std::collections::BTreeSet<u32> = roads.textures.iter().map(|t| t.index).collect();
         assert_eq!(indices, [0, 4].into());
+        // By the driveline: across, along and up.
+        let line = Line::new(&roads.driveline);
+        assert!(line.beside(Vec3::new(9.0, -1.0, 50.0)));
+        assert!(!line.beside(Vec3::new(11.0, 0.0, 50.0)));
+        assert!(!line.beside(Vec3::new(3.0, 3.0, 50.0)));
+        assert!(!line.beside(Vec3::new(0.0, 0.0, 220.0)));
     }
 
     #[test]

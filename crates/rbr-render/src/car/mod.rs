@@ -650,7 +650,7 @@ impl Car {
             start: None,
             atmosphere: Default::default(),
             driveline: Vec::new(),
-            road_textures: None,
+            roads: None,
             report: Default::default(),
         };
         (stage, self.report)

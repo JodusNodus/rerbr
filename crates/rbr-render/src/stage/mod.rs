@@ -13,12 +13,13 @@
 use crate::atmosphere::Atmosphere;
 use glam::Vec3;
 use rbr_formats::{ini, lbs, stage_files, stage_textures, trk};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::particles::ground::Ground;
+pub use crate::puddles::Roads;
 
 mod btb;
 mod mesh;
@@ -252,10 +253,9 @@ pub struct Stage {
     /// The driveline's points (`.trk`), in stage space; empty without one. Ours: the renderer bakes its reflection
     /// probes along it (`renderer::probes`).
     pub driveline: Vec<Vec3>,
-    /// The textures the road shows, where the collision surfaces do not tell it from the ground about it (a BTB
-    /// stage's, [`crate::puddles::road_textures`]): only the ground showing one of them takes the wet film. `None`:
-    /// the surfaces tell.
-    pub road_textures: Option<HashSet<TextureRef>>,
+    /// Where the road is, where the collision surfaces do not tell it from the ground about it (a BTB stage's): only
+    /// that ground takes the wet film. `None`: the surfaces tell.
+    pub roads: Option<Roads>,
     pub report: LoadReport,
 }
 
@@ -558,7 +558,7 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
     // The clouds go first: the capture draws them right after the sky dome, before the sky faces and the
     // stage, with no depth test, so everything drawn later covers them (`global_clouds`).
     let sky = selection.sky.and_then(|sky| sky.section(name));
-    let collision = mark_wet_roads(&mut meshes, maps, name, selection, None);
+    let collision = mark_wet_roads(&mut meshes, maps, name, selection, None, None);
     let atmosphere = Atmosphere::load(maps, name, selection.weather.as_str(), sky.as_deref());
     meshes.splice(0..0, global_clouds(maps, selection.weather, atmosphere.cloud_name.as_deref(), &mut report)?);
     meshes.sort_by_key(|mesh| mesh.layer);
@@ -577,25 +577,27 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
         start,
         atmosphere,
         driveline: driveline(maps, name),
-        road_textures: None,
+        roads: None,
         report,
     })
 }
 
 /// Ours: in the wet and the damp the roads take the film by their surface ([`crate::puddles::mark_roads`]); dry, only
 /// the grass field needs them ([`Stage::mark_surfaces`]). Returns the collision ground loaded for it
-/// ([`Stage::collision`]), none when dry. `roads`: [`Stage::road_textures`].
+/// ([`Stage::collision`]), none when dry. `roads`: [`Stage::roads`]; `loaded`: the collision ground when it is
+/// already loaded for `selection`.
 fn mark_wet_roads(
     meshes: &mut [Mesh],
     maps: &Path,
     name: &str,
     selection: Selection,
-    roads: Option<&HashSet<TextureRef>>,
+    roads: Option<&Roads>,
+    loaded: Option<Arc<Ground>>,
 ) -> Option<Arc<Ground>> {
     if selection.weather == Weather::Dry {
-        return None;
+        return loaded;
     }
-    let collision = collision(maps, name, selection);
+    let collision = loaded.or_else(|| collision(maps, name, selection));
     if let Some(marking) = marking(collision.as_ref(), maps, name, selection) {
         let triangles = crate::puddles::ground_triangles(meshes, &marking, roads);
         crate::puddles::mark_roads(meshes, &triangles, roads.is_none());
@@ -630,9 +632,9 @@ impl Stage {
             self.collision = collision(maps, &self.name, self.selection);
         }
         let Some(marking) = marking(self.collision.as_ref(), maps, &self.name, self.selection) else { return };
-        let triangles = crate::puddles::ground_triangles(&self.meshes, &marking, self.road_textures.as_ref());
+        let triangles = crate::puddles::ground_triangles(&self.meshes, &marking, self.roads.as_ref());
         if self.selection.weather == Weather::Dry {
-            crate::puddles::mark_roads(&mut self.meshes, &triangles, self.road_textures.is_none());
+            crate::puddles::mark_roads(&mut self.meshes, &triangles, self.roads.is_none());
         }
         self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
     }

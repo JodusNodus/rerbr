@@ -289,12 +289,18 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - Ground (ours, 2026-11-18): the opaque draws of `CollisionModel=0` objects are the near ground (`DrawState::ground`, a
   retail block's list 1 draws), so the terrain detail, the wet film and the grass field take them; before, none did
   (the ground was found by the mip bias, which BTB draws lack). Retail frames byte-identical (41M, 10O, dry and wet).
-- The film's road (`puddles::road_textures`): the collision surfaces do not tell a BTB road from its ground (Cueva
-  Santa's fields are 53 `Tarmac_Fine_Covered`, 234k of 288k ground triangles), so only ground showing a texture under
-  over 1 in 50 driveline points takes the film (Cueva Santa `road_tarmac001`, `t28`; Crastazza `wb_real_gravel001`).
-  A texture is often an atlas of the road and its verges (Bareyo: road strip 81 `Tarmac_Medium_Covered`, verges 133/141
-  `Dirt`), so a triangle keeps its own surface's share (no vote by texture): Bareyo's dirt verges take half the film, as
-  dirt does elsewhere. Load +0.4 to 1.2 s with the grass on (Crastazza 4.9 to 6.1 s).
+  A converted stage (any `CollisionOnly` object) draws none of its collision: there a placement is ground when over
+  half of up to 64 of its triangles lie within 0.25 m of the collision surface (`btb::on_ground`).
+- The film's road (`puddles::Roads`): the surfaces do not tell a BTB road from its ground (Cueva Santa's fields are 53
+  `Tarmac_Fine_Covered`, 234k of 288k ground triangles; converted Coll de la Teixeta is all AC's `KRB`, 37), so only
+  ground showing a road texture within 10 m across and 2 m up of the driveline takes it. A road texture is under 2 or
+  more driveline points and under at least 0.15 of those it lies within 10 m of: the roads 0.29 to 0.99 (Teixeta's
+  road is 38 baked tiles of 6 to 81 points each), the ground about them 0.02 to 0.06 (Cueva Santa's ditch 32 of 1833,
+  Hokkara's forest 58 of 904). A texture may be an atlas of the road and its verges (Bareyo: road strip 81
+  `Tarmac_Medium_Covered`, verges 133/141 `Dirt`), so a triangle keeps its own surface's share (no vote by texture):
+  Bareyo's dirt verges take half the film, as dirt does elsewhere.
+- Load (320x180, best of 2): +0.5 to 1 s; with the grass field, which BTB stages lacked, +1 to 2.6 s (Crastazza 5.0 to
+  6.2 s, Muracciole 9.7 to 12.3 s).
 - LOD and size: no instancing. Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
   128 m cell (a placement over 150 m half extent is a mesh of its own: the terrain tiles) and by `LODIn`/`LODOut` in 50 m
   steps (`Lod::Band`, the draw's distance from its mesh's bounds centre; a solo placement's `LODOut` counts from its

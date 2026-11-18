@@ -157,8 +157,8 @@ pub struct Object {
     /// Drawn only up to this far (`LODOut`); infinite when the file gives none.
     pub lod_out: f32,
     pub visible: bool,
-    /// Its faces are the collision ground's (`CollisionModel=0`, [`crate::col`]): the stage's ground, its walls and
-    /// its buildings.
+    /// Its faces are the collision ground's (`CollisionModel=0`, drawn or `CollisionOnly`, [`crate::col`]): the
+    /// stage's ground, its walls and its buildings.
     pub collides: bool,
     pub shadow_caster: bool,
     /// Casts into the sun's near cascades (`SunCascades`, ReRBR's own key).
@@ -233,7 +233,7 @@ impl Scene {
                 lod_in: object.lod_in.unwrap_or(0.0) as f32,
                 lod_out: object.lod_out.map_or(f32::INFINITY, |d| d as f32),
                 visible: object.visible.unwrap_or(true),
-                collides: object.collision_model == Some(0),
+                collides: object.collision_model == Some(0) && (object.visible != Some(false) || object.collision_only),
                 shadow_caster: object.shadow_caster.unwrap_or(false),
                 sun_cascades: object.sun_cascades,
             });
