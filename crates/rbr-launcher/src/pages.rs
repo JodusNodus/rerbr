@@ -468,7 +468,7 @@ impl Form {
         let old_paths = self.ngp_physics.clone();
         let old_telemetry = self.telemetry_udp.clone();
         let old_head_gasket = (self.head_gasket, self.physics);
-        let old_car_picks = (self.gearboxes.clone(), self.car_skins.clone());
+        let old_car_picks = (self.gearboxes.clone(), self.skins.chosen.clone());
         let old_folder = self.install_folder.clone();
         let old_recent = (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone());
         let old_codriver =
@@ -621,7 +621,7 @@ impl Form {
             || old_paths != self.ngp_physics.clone()
             || old_telemetry != self.telemetry_udp
             || old_head_gasket != (self.head_gasket, self.physics)
-            || old_car_picks != (self.gearboxes.clone(), self.car_skins.clone())
+            || old_car_picks != (self.gearboxes.clone(), self.skins.chosen.clone())
             || old_graphics
                 != (
                     self.graphics,

@@ -14,6 +14,7 @@ use crate::browser::{
     block, favourite_button, header_line, items, key_action, list_rows_keyed, paint_selection, paint_star, random_row,
     row_slot, search_row, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY, ROW,
 };
+use crate::car_skins::Skins;
 use crate::catalog::{self, Car};
 use crate::pages::{combo, ACCENT};
 use crate::preview::{self, Previews};
@@ -368,29 +369,28 @@ pub enum Action {
     GetMore,
     /// Remove the car added by the launcher with this pack folder (the Cars page).
     Remove(String),
-    /// Draw model folder `.0` with skin `.1` (`--car-skin`'s word; the Cars page).
-    Skin(String, String),
 }
 
 /// What the page gives the browser to draw.
 pub struct Env<'a> {
     /// The Cars page's line above the search: how many cars.
     pub heading: String,
-    /// The skins the player picked, which the previews draw.
-    pub skins: &'a crate::cars_page::CarSkins,
-    /// The Cars page's own detail panel, in place of the picker's: the row, its car, the previews and the game folder.
+    /// The Cars page's own detail panel, in place of the picker's: the row, its car, the previews, the skins and the
+    /// game folder.
     pub detail: Option<&'a mut Detail<'a>>,
     pub cars: &'a [Car],
     /// Car names: starred in that order, and recently chosen newest first.
     pub favourites: &'a [String],
     pub recent: &'a [String],
     pub previews: &'a mut Previews,
+    /// The skin chosen for each car, and the import of one.
+    pub skins: &'a mut Skins,
     /// The game folder the cars' models are read from.
     pub root: &'a str,
 }
 
 /// A page's own draw of the highlighted car's detail panel ([`Env::detail`]).
-pub type Detail<'a> = dyn FnMut(&mut egui::Ui, &CarRow, &Car, &mut Previews, &str) -> Option<Action> + 'a;
+pub type Detail<'a> = dyn FnMut(&mut egui::Ui, &CarRow, &Car, &mut Previews, &mut Skins, &str) -> Option<Action> + 'a;
 
 /// What a list was made for.
 type Made = (Collection, Filter, Sort, Vec<String>, Vec<String>);
@@ -725,7 +725,7 @@ impl CarBrowser {
         let car = env.cars.get(row.index)?;
         if let Some(detail) = env.detail.as_mut() {
             ui.set_width(preview::WIDTH);
-            return detail(ui, row, car, env.previews, env.root);
+            return detail(ui, row, car, env.previews, env.skins, env.root);
         }
         let mut action = None;
         ui.set_width(preview::WIDTH);
@@ -733,7 +733,9 @@ impl CarBrowser {
         ui.label(RichText::new(&row.title).size(22.0).strong());
         ui.label(RichText::new(&row.group).color(GREY));
         ui.add_space(6.0);
-        env.previews.car_ui(ui, car, env.root, env.skins.of(car).as_deref());
+        env.previews.car_ui(ui, car, env.skins.choice(car), env.root);
+        ui.add_space(6.0);
+        env.skins.ui(ui, car);
         ui.add_space(6.0);
         egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
             ui.label(RichText::new("Source").color(GREY));

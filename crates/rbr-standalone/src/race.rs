@@ -69,7 +69,7 @@ pub fn race_weather(data: &Data, args: &Args, map: u32) -> Result<(Preset, Weath
 
 /// `--rsf-car KEY`: the data with the car's model in the pack slot, and its pack with its tyres.
 fn rsf_car(data: Data, key: &str) -> Result<(Data, boot::CarPack), String> {
-    let selected = rsf::select(data, key, std::env::var_os("RBR_RSF").as_deref().map(Path::new), None)?;
+    let selected = rsf::select(data, key, std::env::var_os("RBR_RSF").as_deref().map(Path::new))?;
     eprintln!("{}", selected.describe());
     Ok((selected.data, boot::CarPack { pack: selected.pack, tyre_brand: selected.tyre_brand }))
 }

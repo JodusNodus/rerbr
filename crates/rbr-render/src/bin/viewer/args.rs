@@ -243,7 +243,8 @@ pub struct HudOptions {
 /// `--help`'s text.
 pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [STAGE] [OPTIONS] [--live COMMAND...]
   STAGE: track-NN_X (default track-10_O), a RallySimFans stage folder, or the path of its files without the extension
-  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--car-skin NAME|-] [--car-year YEAR]
+  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--car-skin DIR|none]
+              [--car-year YEAR]
               --damage ZONE:VALUE,...  --crack CODE:INDEX,...
   drive:      --drive RECORDING  --at STEP  --at-periods N  --at-drive RECORDING  --live COMMAND... (the rest of the line)
               --bindings INI  --ghost FILE  --save-ghost FILE  --best-ghost FILE  --ghost-weather WORDS
@@ -1038,9 +1039,12 @@ mod tests {
     /// The pack-car flags forward to `car_pack::Flags` (`car_pack` tests their combinations).
     #[test]
     fn pack_car_flags_forward() {
-        let args =
-            parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k --car-skin Monte")
-                .unwrap();
+        let args = parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k").unwrap();
+        assert_eq!(
+            parse("--car ZR --car-skin /s/Red").unwrap().pack_car.skin,
+            Some(car_pack::Skin::Dir("/s/Red".into()))
+        );
+        assert_eq!(parse("--car-skin none").unwrap().pack_car.skin, Some(car_pack::Skin::Original));
         assert_eq!(
             args.pack_car,
             car_pack::Flags {
@@ -1048,7 +1052,7 @@ mod tests {
                 model: Some(PathBuf::from("/r/Cars/evo/evo.sgc")),
                 bank: Some(PathBuf::from("/r/b.bank")),
                 key: Some("k".into()),
-                skin: Some("Monte".into()),
+                skin: None,
             }
         );
         assert!(parse("--car-pack /p").is_err());

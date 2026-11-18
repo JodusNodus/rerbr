@@ -629,7 +629,7 @@ fn an_rsf_car_boots_and_drives_under_ngp() {
         _ => install.cars.iter().find(|c| install.pack(c).is_ok()).expect("a car with a pack").id.to_string(),
     };
     on_big_stack(move || {
-        let selected = rsf::select(data, &key, Some(&root), None).unwrap();
+        let selected = rsf::select(data, &key, Some(&root)).unwrap();
         let data = selected.data;
         let stage = stage_data(&data, "track-54_E", car_pack::SLOT).unwrap();
         let season = Season::load(&data).unwrap();

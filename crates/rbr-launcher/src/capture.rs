@@ -18,7 +18,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     // The previews are made on their own threads: the Drive page waits for them.
     let (map, car) = (form.catalog.maps[form.map].clone(), form.car().cloned());
     if let Some(car) = &car {
-        form.previews.wait_for(&map, car, &form.game_root(), form.car_skin(car).as_deref());
+        form.previews.wait_for(&map, car, form.skins.choice(car), &form.game_root());
     }
     let pages = [
         (Page::Drive, "drive"),
@@ -40,12 +40,13 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         }
         if page == Page::Cars {
             // Drawn once for its list, then the highlighted car's turntable waited for.
-            if let Some(k) = form.catalog.cars.iter().position(crate::cars_page::has_skins) {
+            let home = form.here();
+            if let Some(k) = form.catalog.cars.iter().position(|c| !crate::car_skins::installed(&home, c).is_empty()) {
                 form.cars_page.browser.show(k);
             }
             draw(|ctx| form.ui(ctx))?;
             if let Some(car) = form.cars_page.browser.highlighted().and_then(|k| form.catalog.cars.get(k)).cloned() {
-                form.previews.wait_for(&map, &car, &form.game_root(), form.car_skin(&car).as_deref());
+                form.previews.wait_for(&map, &car, form.skins.choice(&car), &form.game_root());
             }
         }
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
@@ -134,7 +135,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
 fn fresh_previews(form: &mut Form, map: &crate::catalog::Map, car: Option<&crate::catalog::Car>) {
     form.previews = preview::Previews::new(form.data.clone());
     if let Some(car) = car {
-        form.previews.wait_for(map, car, &form.game_root(), form.car_skin(car).as_deref());
+        form.previews.wait_for(map, car, form.skins.choice(car), &form.game_root());
     }
 }
 

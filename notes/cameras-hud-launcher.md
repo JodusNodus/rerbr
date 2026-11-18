@@ -226,9 +226,27 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   pack is the folder holding `common.lsp`; folders beside it are dropped (the Fiesta Rally2 and i20 N Rally2 zips
   carry a stray `<pack> - rev1/`). The original eight (`cat=Original`) are the 2004 retail physics, not NGP's.
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
-- Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back/Random, Esc does nothing) over every map, circuits too; extra collections "Added by you" (folders in `<files>/tracks/`) and "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally stage records are in the game's saves, not shown). "Drive this stage" sets the Rally (or Circuit) stage and opens that page. Remove… deletes only a folder directly in `tracks/` (`remove_added`), then drops the map and relists; records (`lap-records.ini`, `GhostCars/*_<map>.ghc`, saves) stay.
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back or Random, Esc
+  does nothing) over every map, circuits too, with the collections "Added by you" (folders in `<files>/tracks/`) and
+  "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
+  game's saves, not shown). "Drive this stage" sets the Rally (or Circuit) stage and opens that page. Remove… deletes
+  only a folder directly in `tracks/` (`remove_added`), then drops the map and relists; records (`lap-records.ini`,
+  `GhostCars/*_<map>.ghc`, saves) stay.
+- Car skins (`car_skins.rs`, 2026-11-17): the Skin box and Import skin… sit under the turntable on Content > Cars and
+  in the car picker's detail panel. A skin is a folder
+  of files over the model folder's by path (`textures/*.dds`, shader settings: `Data::with_skin(model, dir)`, retail cars
+  too). Listed: the player's `skins/<car key>/<skin>/` (imported) and a community car's own `Cars/<model>/skins/*`
+  (RSF's, read only); none for a stand-in model. The pick is ours, per car key (`car_skins = key:skin|...`, `none` =
+  the model's own textures); unset leaves RSF's `.rsfconfig` selection (never written) and retail's own textures. It goes
+  to the viewer as `--car-skin DIR|none` (`car_pack::Flags::skin`, wins over `.rsfconfig`; not to `rbr-standalone`) and to
+  the turntable preview. Import takes a `.zip` or `.7z` (RBR Skins Center's, RSF's exports): each shallowest folder holding
+  `textures/` becomes a skin, named for the archive (several in one archive: for their folders); same name replaces.
+  Checked with a channel-swapped retail ZR skin (picker, preview, `viewer --screenshot`) and RSF's Fiesta Rally3
+  `Zasada_Rally3`; no real Skins Center archive yet (links are Mega/Drive, not fetchable here).
+  The cars added from gvrc.de keep their model in the files folder's `Cars/<model>/`; of 99 only one has a `skins/`
+  folder (a stray `.rar`, no skin folder), so they offer imported skins only.
 - Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or any saved setup of the car,
   the stage surface's first, then the other surfaces' (labelled), then those of no known surface (user decision
   2026-11-04); the pick is kept per car and surface (`[setup]`, `<surface> <car> = <name>`, `<other surface>/<name>`
@@ -402,12 +420,6 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 
 Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 
-- Car skins (Content > Cars, `cars_page`): `[skin]` holds `<model folder> = <skin>` (`-` the model's own), written when the
-  player picks one in the Skins row; a folder without a line draws RSF's `.rsfconfig` choice. The launcher passes it to the
-  viewer only as `--car-skin` (`car_pack::Flags::skin`, also with `--rsf-car`); the stepping process is not given it, and
-  a skin not installed falls back to RSF's. Checked 2026-11: `viewer --rsf-car Ford_Fiesta_Rally3_ngp6 --car-skin X
-  --screenshot` draws each of that car's three skins and `-` differently. The cars added from gvrc.de keep their model in
-  the files folder's `Cars/<model>/`; of 99 only one has a `skins/` folder (a stray `.rar`, no skin folder).
 - Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `cabin`, `contact`, `grass`, `windscreen`,
   `marks`, `motion_blur` (`--enhance blur`, user decision 2026-11-11: an option, off by default), `wet_roads`, `detail`, `mirrors`; unset takes the Ultra preset. The preset box is not stored: it shows the preset the
   keys match, else Custom; presets leave `marks`, `motion_blur` and the render scale alone (`Quality::over`). A saved `surfaces` (the removed scanned surfaces) is not read.

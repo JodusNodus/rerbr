@@ -74,6 +74,9 @@ pub struct Settings {
     /// 54,129`).
     pub favourite_cars: Vec<String>,
     pub favourite_maps: Vec<u32>,
+    /// The skin chosen for each car, by its key (`car_skins = pack-evo:Red|IMPREZA03:none`; `none` is the model's own
+    /// textures), as [`crate::car_skins`].
+    pub car_skins: std::collections::BTreeMap<String, String>,
     pub stage_browser: crate::browser_state::State,
     pub car_browser: crate::browser_state::State,
     pub weather: Option<WeatherChoice>,
@@ -203,8 +206,6 @@ pub struct Settings {
     pub camera: CameraPrefs,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     pub gearboxes: Gearboxes,
-    /// The skin picked for each car model folder (`[skin]`, `cars_page`).
-    pub car_skins: crate::cars_page::CarSkins,
     /// The setup each car drives with on each surface (`[setup]`).
     pub setups: SetupChoices,
     /// NGP's UDP telemetry to `ADDR:PORT` (`[telemetry]`, `udp = 127.0.0.1:6776`; `rbr-standalone --telemetry-udp`);
@@ -410,6 +411,7 @@ impl Settings {
             recent_maps: launcher.ids("recent_maps"),
             favourite_cars: launcher.names("favourite_cars"),
             favourite_maps: launcher.ids("favourite_maps"),
+            car_skins: crate::car_skins::parse(launcher.names("car_skins")),
             stage_browser: crate::browser_state::State::read(&sections, "stage_browser"),
             car_browser: crate::browser_state::State::read(&sections, "car_browser"),
             weather: launcher.parsed("weather", WeatherChoice::parse),
@@ -515,7 +517,6 @@ impl Settings {
                 camera
             },
             gearboxes: Gearboxes::parse(&sections),
-            car_skins: crate::cars_page::CarSkins::parse(&sections),
             setups: SetupChoices::parse(&sections),
             telemetry_udp: parse_telemetry(&sections),
         }
@@ -533,6 +534,7 @@ impl Settings {
             ("recent_maps", joined_ids(&self.recent_maps)),
             ("favourite_cars", joined_names(&self.favourite_cars)),
             ("favourite_maps", joined_ids(&self.favourite_maps)),
+            ("car_skins", crate::car_skins::join(&self.car_skins)),
             ("weather", self.weather.as_ref().map(WeatherChoice::to_text)),
             ("wetness", self.wetness.map(wetness_name).map(str::to_owned)),
             ("fog", choice(self.fog)),
@@ -624,7 +626,6 @@ impl Settings {
         out.push('\n');
         out.push_str(&self.camera.to_text());
         out.push_str(&self.gearboxes.to_text());
-        out.push_str(&self.car_skins.to_text());
         out.push_str(&self.setups.to_text());
         if let Some(to) = &self.telemetry_udp {
             out.push_str(&format!("\n[{TELEMETRY}]\nudp = {to}\n"));
@@ -658,6 +659,7 @@ mod tests {
             recent_maps: vec![54, 129],
             favourite_cars: vec!["XSARA".into(), "Mitsubishi Lancer Evo IX N4".into()],
             favourite_maps: vec![129, 54, 300],
+            car_skins: [("IMPREZA03".to_owned(), "none".to_owned()), ("pack-evo".to_owned(), "Red".to_owned())].into(),
             stage_browser: Default::default(),
             car_browser: Default::default(),
             weather: Some(WeatherChoice::Preset(Preset::Bad)),
@@ -736,9 +738,6 @@ mod tests {
                 "Ford Escort Mk II".into(),
                 CarBox { engagement: Engagement::Dog, sequential: false },
             )]),
-            car_skins: crate::cars_page::CarSkins::parse(
-                &ini::parse("[skin]\nevo_IX = Pajari_Monte\nxsara = -\n").unwrap(),
-            ),
             setups: SetupChoices(vec![
                 ("Skoda Fabia R5".into(), "gravel".into(), "fast".into()),
                 ("XSARA".into(), "tarmac".into(), "dry grip".into()),
@@ -782,7 +781,6 @@ mod tests {
                 "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[ffb_load]\nrsf-24 tarmac = 0,12,340\n\n\
                  [camera]\nview = bonnet\n\
                  rsf-24 chase = 0 0.5 -1\n\n[gearbox]\nFord Escort Mk II = dog\n\n\
-                 [skin]\nevo_IX = Pajari_Monte\nxsara = -\n\n\
                  [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n\n[telemetry]\nudp = 192.168.1.20:6776\n"
             ),
             "{text}"
@@ -813,7 +811,7 @@ mod tests {
         setups.set("XSARA", "tarmac", None);
         assert_eq!(setups, SetupChoices::default());
         assert_eq!(Settings::parse(&text), settings);
-        assert!(text.contains("map = 54\ncircuit = 1654149\ncircuit_laps = 3\ncircuit_notes = on\nrecent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\nrecent_maps = 54,129\nfavourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\nfavourite_maps = 129,54,300\n"));
+        assert!(text.contains("map = 54\ncircuit = 1654149\ncircuit_laps = 3\ncircuit_notes = on\nrecent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\nrecent_maps = 54,129\nfavourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\nfavourite_maps = 129,54,300\ncar_skins = IMPREZA03:none|pack-evo:Red\n"));
         assert!(text.contains("fov = 72.5\nchase_fov = 80\nvolume = 0.75\n"), "the game chase's camera page is gone");
         // Any other word is a season row's section, not a preset.
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
@@ -946,6 +944,7 @@ mod tests {
                 "recent_maps = 54,129\n",
                 "favourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\n",
                 "favourite_maps = 129,54,300\n",
+                "car_skins = IMPREZA03:none|pack-evo:Red\n",
                 "weather = bad\n",
                 "wetness = wet\n",
                 "fog = heavy\n",
@@ -1098,10 +1097,6 @@ mod tests {
                 "\n",
                 "[gearbox]\n",
                 "Ford Escort Mk II = dog\n",
-                "\n",
-                "[skin]\n",
-                "evo_IX = Pajari_Monte\n",
-                "xsara = -\n",
                 "\n",
                 "[setup]\n",
                 "gravel Skoda Fabia R5 = fast\n",

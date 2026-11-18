@@ -149,7 +149,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--car" => args.car = Some(value()?),
             "--ngp-physics" => ngp_physics = Some(PathBuf::from(value()?)),
             "--rsf-car" => args.rsf_car = Some(value()?),
-            flag @ ("--car-pack" | "--car-model" | "--car-bank" | "--car-key" | "--car-skin") => {
+            flag @ ("--car-pack" | "--car-model" | "--car-bank" | "--car-key") => {
                 let v = value()?;
                 assert!(args.pack_car.take(flag, &v));
             }
@@ -590,7 +590,7 @@ fn render(args: &Args, data: &Data, drive: Drive) -> Result<(), String> {
         (Some(bank), _) => Some(bank.clone()),
         (None, Some(key)) => {
             let root = std::env::var_os("RBR_RSF").map(PathBuf::from);
-            rbr_formats::rsf::select(data.clone(), key, root.as_deref(), None)?.audio_bank
+            rbr_formats::rsf::select(data.clone(), key, root.as_deref())?.audio_bank
         }
         (None, None) => None,
     };
