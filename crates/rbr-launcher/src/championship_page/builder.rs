@@ -267,7 +267,7 @@ impl ChampionshipPage {
                     combo(ui, "championship-pool", width, &mut config.pool, &pools, |p| match p {
                         StagePool::All => "Every installed stage",
                         StagePool::Retail => "The game's stages",
-                        StagePool::Community => "Community (RSF, BTB)",
+                        StagePool::Community => "Community stages",
                     });
                 });
                 row(rows, "Surface", "", |ui| {

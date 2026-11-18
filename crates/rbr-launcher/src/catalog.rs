@@ -737,7 +737,7 @@ pub fn tyre_label(tyre: u32) -> &'static str {
 
 pub fn map_label(map: &Map) -> String {
     match &map.origin {
-        Origin::Community(stage) => format!("{} {} (RSF)", map.number, stage.name),
+        Origin::Community(stage) => format!("{} {}", map.number, stage.name),
         Origin::Btb(btb) => format!("{} {} (BTB)", map.number, btb.name),
         Origin::Retail => match title(map.number) {
             Some(name) => format!("{} {name}", map.number),
@@ -803,9 +803,7 @@ pub fn car_label(car: &Car) -> String {
     let group = car.group.as_deref().unwrap_or("no group");
     match &car.physics {
         Physics::Pack(_) if car.added => format!("{} ({group}, added)", car.name),
-        Physics::Pack(_) => {
-            format!("{} ({group}, RSF {})", car.name, car.rsf_id.map_or("?".to_owned(), |id| id.to_string()))
-        }
+        Physics::Pack(_) => format!("{} ({group})", car.name),
         Physics::Archive => format!("{} ({})", car.name, car.slot),
     }
 }
