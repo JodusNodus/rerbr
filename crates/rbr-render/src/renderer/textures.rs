@@ -35,6 +35,8 @@ pub(super) struct BindKey {
     second_texture: bool,
     pub(super) alpha_ref: Option<u8>,
     mip_bias: bool,
+    /// The near ground ([`DrawState::ground`]): its terrain detail.
+    ground: bool,
     pub(super) cutout: bool,
     pub(super) shade: Option<Shade>,
     /// The water stand-in's draws, which the shader draws as water.
@@ -48,13 +50,13 @@ pub(super) struct BindKey {
 
 impl BindKey {
     /// What the draw's mode uniform says it is ([`ModeUniform`]): the water stand-in, a draw with a specular map (the
-    /// roads' shine and wet film), a second texture, the near ground's mip bias (its fine detail).
+    /// roads' shine and wet film), a second texture, the near ground (its fine detail).
     pub(super) fn features(&self) -> DrawFeatures {
         DrawFeatures {
             water: self.water,
             specular: self.specular != Source::White && self.shade.is_none(),
             second_texture: self.second_texture,
-            detail: self.mip_bias,
+            detail: self.ground,
         }
     }
 }
@@ -134,6 +136,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         second_texture: state.second_texture,
         alpha_ref: state.alpha_ref,
         mip_bias: state.mip_bias,
+        ground: state.ground,
         cutout: cutout(state),
         shade: state.shade,
         water: state.textures[0].is_some_and(|t| t.set == TextureSet::WaterStandIn),
@@ -229,15 +232,15 @@ pub(super) fn bind_group(
             ]
         }),
         detail: match key.textures[0] {
-            Source::Texture(texture) if key.mip_bias => views.detail.get(&texture).copied().unwrap_or_default(),
+            Source::Texture(texture) if key.ground => views.detail.get(&texture).copied().unwrap_or_default(),
             _ => [0.0; 4],
         },
         bank: {
             let [a, b] = key.textures.map(|source| match source {
-                Source::Texture(texture) if key.mip_bias => views.banks.get(&texture).copied().unwrap_or_default(),
+                Source::Texture(texture) if key.ground => views.banks.get(&texture).copied().unwrap_or_default(),
                 _ => 0.0,
             });
-            [a, b, 0.0, 0.0]
+            [a, b, f32::from(u8::from(key.ground)), 0.0]
         },
     };
     let glow = glow.map_or(&views.white, |g| &g.view);

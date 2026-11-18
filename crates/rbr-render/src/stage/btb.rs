@@ -97,6 +97,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 second_texture: second.is_some(),
                 alpha_ref,
                 mip_bias: false,
+                ground: false,
                 cull_back: false,
                 blend,
                 depth_test: true,
@@ -138,6 +139,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
             for &(layer, state) in &plan.draws {
                 let layer = if dome { Layer::Sky } else { layer };
+                // The opaque faces of the collision ground are the near ground: the terrain detail, the wet film and
+                // the grass field take them.
+                let ground = object.collides && !dome && !state.blend && state.alpha_ref.is_none();
+                let state = DrawState { ground, ..state };
                 let key = (layer, cell, lod, object.sun_cascades);
                 groups.add(key, state, &vertices, &mesh.indices, centre - half, centre + half);
             }
@@ -155,6 +160,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             scene.objects.len()
         );
     }
+    let driveline: Vec<Vec3> = scene.driveline.iter().map(|&p| Vec3::from(p)).collect();
+    let roads = crate::puddles::road_textures(&meshes, &driveline);
+    let collision = super::mark_wet_roads(&mut meshes, maps, name, selection, Some(&roads));
 
     // The sky is the sky map's (`rbr_btb::stage::SKY_MAP`): its section by the row's own words, in the retail
     // `TrackSettings.ini`; without a row, its variant M's pick by the weather.
@@ -174,10 +182,11 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         textures: BTreeMap::new(),
         start_digits: None,
         snow_ground: false,
-        collision: None,
+        collision,
         start,
         atmosphere,
-        driveline: scene.driveline.iter().map(|&p| Vec3::from(p)).collect(),
+        driveline,
+        road_textures: Some(roads),
         report: {
             report.missing_textures = Vec::new();
             report
@@ -401,6 +410,7 @@ mod tests {
             second_texture: false,
             alpha_ref: Some(CUTOUT_REF),
             mip_bias: false,
+            ground: false,
             cull_back: false,
             blend: false,
             depth_test: true,

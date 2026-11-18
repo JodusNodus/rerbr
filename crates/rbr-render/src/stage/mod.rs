@@ -13,7 +13,7 @@
 use crate::atmosphere::Atmosphere;
 use glam::Vec3;
 use rbr_formats::{ini, lbs, stage_files, stage_textures, trk};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -252,6 +252,10 @@ pub struct Stage {
     /// The driveline's points (`.trk`), in stage space; empty without one. Ours: the renderer bakes its reflection
     /// probes along it (`renderer::probes`).
     pub driveline: Vec<Vec3>,
+    /// The textures the road shows, where the collision surfaces do not tell it from the ground about it (a BTB
+    /// stage's, [`crate::puddles::road_textures`]): only the ground showing one of them takes the wet film. `None`:
+    /// the surfaces tell.
+    pub road_textures: Option<HashSet<TextureRef>>,
     pub report: LoadReport,
 }
 
@@ -554,16 +558,7 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
     // The clouds go first: the capture draws them right after the sky dome, before the sky faces and the
     // stage, with no depth test, so everything drawn later covers them (`global_clouds`).
     let sky = selection.sky.and_then(|sky| sky.section(name));
-    // Ours: in the wet and the damp the roads take the film by their surface ([`crate::puddles::mark_roads`]); dry, only
-    // the grass field needs them ([`Stage::mark_surfaces`]).
-    let wet = selection.weather != Weather::Dry;
-    let collision = wet.then(|| collision(maps, name, selection)).flatten();
-    if wet {
-        if let Some(marking) = marking(collision.as_ref(), maps, name, selection) {
-            let triangles = crate::puddles::ground_triangles(&meshes, &marking);
-            crate::puddles::mark_roads(&mut meshes, &triangles);
-        }
-    }
+    let collision = mark_wet_roads(&mut meshes, maps, name, selection, None);
     let atmosphere = Atmosphere::load(maps, name, selection.weather.as_str(), sky.as_deref());
     meshes.splice(0..0, global_clouds(maps, selection.weather, atmosphere.cloud_name.as_deref(), &mut report)?);
     meshes.sort_by_key(|mesh| mesh.layer);
@@ -582,8 +577,30 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
         start,
         atmosphere,
         driveline: driveline(maps, name),
+        road_textures: None,
         report,
     })
+}
+
+/// Ours: in the wet and the damp the roads take the film by their surface ([`crate::puddles::mark_roads`]); dry, only
+/// the grass field needs them ([`Stage::mark_surfaces`]). Returns the collision ground loaded for it
+/// ([`Stage::collision`]), none when dry. `roads`: [`Stage::road_textures`].
+fn mark_wet_roads(
+    meshes: &mut [Mesh],
+    maps: &Path,
+    name: &str,
+    selection: Selection,
+    roads: Option<&HashSet<TextureRef>>,
+) -> Option<Arc<Ground>> {
+    if selection.weather == Weather::Dry {
+        return None;
+    }
+    let collision = collision(maps, name, selection);
+    if let Some(marking) = marking(collision.as_ref(), maps, name, selection) {
+        let triangles = crate::puddles::ground_triangles(meshes, &marking, roads);
+        crate::puddles::mark_roads(meshes, &triangles, roads.is_none());
+    }
+    collision
 }
 
 /// Stage `name`'s collision ground for `selection` ([`Stage::collision`]).
@@ -613,9 +630,9 @@ impl Stage {
             self.collision = collision(maps, &self.name, self.selection);
         }
         let Some(marking) = marking(self.collision.as_ref(), maps, &self.name, self.selection) else { return };
-        let triangles = crate::puddles::ground_triangles(&self.meshes, &marking);
+        let triangles = crate::puddles::ground_triangles(&self.meshes, &marking, self.road_textures.as_ref());
         if self.selection.weather == Weather::Dry {
-            crate::puddles::mark_roads(&mut self.meshes, &triangles);
+            crate::puddles::mark_roads(&mut self.meshes, &triangles, self.road_textures.is_none());
         }
         self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
     }
@@ -664,6 +681,7 @@ fn global_clouds(
                 second_texture: item.texture1.is_some(),
                 alpha_ref: Some(0),
                 mip_bias: false,
+                ground: false,
                 cull_back: false,
                 blend: true,
                 depth_test: false,

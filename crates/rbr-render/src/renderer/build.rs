@@ -436,7 +436,7 @@ impl Renderer {
             let wet_road = |draw: &Draw| {
                 enhance.wet
                     && draw.state.shade.is_none()
-                    && draw.state.mip_bias
+                    && draw.state.ground
                     && mesh.indices[draw.indices.clone()].iter().any(|&i| mesh.vertices[i as usize].wet > 0.0)
             };
             // Whether all of a draw's vertices are the cabin's interior set's (`car::cabin::INTERIOR` and up), or none

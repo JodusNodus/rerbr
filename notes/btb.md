@@ -285,7 +285,16 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   `BTB_Sky` meshes (7 in two tracks; the renderer's sky stays), the 139 meshes whose texture name has no
   `materials.ini` section (Cauterets' `vieuxpylone`, one La Serra), invisible objects. Pirttikulma's own sky
   (`Taivaita\Materials\sky16`, `BTB_Diffuse`) is an ordinary object, a sky dome (below). No wear, light maps,
-  characters, fences or grass for a BTB stage (the stage draws its own objects; map 41's `.fnc` fences are drawn); the weather is the sky map's sections.
+  characters or fences of its own for a BTB stage (the stage draws its own objects; map 41's `.fnc` fences are drawn); the weather is the sky map's sections.
+- Ground (ours, 2026-11-18): the opaque draws of `CollisionModel=0` objects are the near ground (`DrawState::ground`, a
+  retail block's list 1 draws), so the terrain detail, the wet film and the grass field take them; before, none did
+  (the ground was found by the mip bias, which BTB draws lack). Retail frames byte-identical (41M, 10O, dry and wet).
+- The film's road (`puddles::road_textures`): the collision surfaces do not tell a BTB road from its ground (Cueva
+  Santa's fields are 53 `Tarmac_Fine_Covered`, 234k of 288k ground triangles), so only ground showing a texture under
+  over 1 in 50 driveline points takes the film (Cueva Santa `road_tarmac001`, `t28`; Crastazza `wb_real_gravel001`).
+  A texture is often an atlas of the road and its verges (Bareyo: road strip 81 `Tarmac_Medium_Covered`, verges 133/141
+  `Dirt`), so a triangle keeps its own surface's share (no vote by texture): Bareyo's dirt verges take half the film, as
+  dirt does elsewhere. Load +0.4 to 1.2 s with the grass on (Crastazza 4.9 to 6.1 s).
 - LOD and size: no instancing. Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
   128 m cell (a placement over 150 m half extent is a mesh of its own: the terrain tiles) and by `LODIn`/`LODOut` in 50 m
   steps (`Lod::Band`, the draw's distance from its mesh's bounds centre; a solo placement's `LODOut` counts from its

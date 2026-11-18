@@ -158,6 +158,9 @@ pub struct DrawState {
     pub alpha_ref: Option<u8>,
     /// Textures 0 and 1 are sampled with the mip LOD bias [`MIP_MAP_BIAS`] (the shadow light map never is).
     pub mip_bias: bool,
+    /// The near ground (ours): a geometry block's list 1 draws (the biased ones), a BTB stage's ground objects. The
+    /// terrain detail, the wet film and the grass field take it (`crate::puddles::ground`).
+    pub ground: bool,
     /// Cull back faces (`D3DCULL_CCW`).
     pub cull_back: bool,
     /// Alpha blended over the frame.
@@ -396,6 +399,7 @@ pub(super) fn block_mesh(block: &lbs::GeometryBlock, report: &mut LoadReport) ->
                     alpha_ref: None,
                     // List 1 (the render set's list at `+0x94`) is the one `HH_H12D_7500_FillFloat` biases.
                     mip_bias: lod == Lod::Near,
+                    ground: lod == Lod::Near,
                     cull_back: true,
                     blend: false,
                     depth_test: true,
@@ -457,6 +461,7 @@ pub(super) fn object_mesh(item: &lbs::ObjectItem, report: &mut LoadReport) -> Me
         second_texture: false,
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
+        ground: false,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -498,6 +503,7 @@ pub(super) fn interactive_mesh(object: &lbs::InteractiveObject<'_>, report: &mut
             second_texture: false,
             alpha_ref: Some(OBJECT_ALPHA_REF),
             mip_bias: false,
+            ground: false,
             cull_back: false,
             blend: false,
             depth_test: true,
@@ -533,6 +539,7 @@ pub(super) fn face_mesh(item: &lbs::SkyItem, report: &mut LoadReport) -> Mesh {
         second_texture: item.texture1.is_some(),
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
+        ground: false,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -614,6 +621,7 @@ pub(super) fn water_mesh(item: &lbs::SurfaceItem<'_>, report: &mut LoadReport) -
                 second_texture: false,
                 alpha_ref: Some(0),
                 mip_bias: false,
+                ground: false,
                 cull_back: true,
                 blend: true,
                 depth_test: true,
