@@ -196,8 +196,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   cropped at its sides), so the cards line up (user, 2026-11-18). The
   group labels carry no links: a card opens its browser, the Weather segment goes back to the stage's own (user, 2026-11-18). RSF is named only where it tells something (the
   inspectors' Source, encrypted stages, RSF's settings and setups), not on cards, labels or the search hint (user,
-  2026-11-18). Rally: Car (card, favourite
-  chips with "+N", Gearbox, Setup with Edit…), Stage (card, chips, Ghost, Car damage), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and
+  2026-11-18). Rally: Car (card, Gearbox,
+  Setup with Edit…), Stage (card, Ghost, Car damage; no favourites' chips under the cards, user 2026-11-18), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and
   tyres). Circuit: Session (Length, Pace notes, Damage) and Conditions with Road and tyres folded into one row; the best lap
   panel keeps sectors and car. School: both courses in one list (grades as pips, double-click drives), the lesson's brief,
   cone guide, times and Car on the right. The browsers still draw in the old padding (`Form::browser_frame`).
@@ -413,10 +413,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
   `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the
-  keys at its next save). The tab opens on the preset cards (Quick rally, Rally weekend, Short championship, Season, Random; the builder sets rallies, legs and stages), Continue first when
+  keys at its next save). The tab opens on the preset cards (Quick rally, Rally weekend, Short championship, Season; no Random, user 2026-11-18; the builder sets rallies, legs and stages), Continue first when
   `SavedGames/championship-<profile>.txt` exists (carried damage in `.dmg`, the service's late penalty and the tyre in `.ini`:
   `Event` keeps neither). A preset opens the builder (car through the car browser, `Target::Championship`, defaulting to the
-  Drive page's; class = the car's group, only that class's cars fill the field, Field cars leaving models out; length, stage pool, surface, time of day,
+  Drive page's; class = the car's group, only that class's cars fill the field, Field cars leaving models out; length, surface, time of day,
   weather, damage, skill level, team, difficulty Gentle/Club/National/Pro, adaptive, field, seed) beside a live summary
   and Start, the itinerary below (`plan`): the seed's plan, drawn again as the settings change, editable (change a
   stage through the stage browser, `StageBrowser::target` `Championship`, move, remove, add stages, legs and rallies,
@@ -425,7 +425,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   penalty. The Team row (service crew) lists `rbr_season::team::team_offers` over the roster of `ai.ini`/`aidrv.ini`
   (`EventConfig::team`; `Event::crew()` sets the service park's repair times). The AI tables (`ai::load_ai`) are read
   once with the page; when they do not read the builder says so and Start stays off. The pool is every listed,
-  startable map (`pool::items`), its length from the driveline (`.trk` kind 0x14, a BTB folder's `driveline.ini`),
+  startable map (`pool::items`; always every source, no Stages from row, user 2026-11-18: `StagePool::All`,
+  the season crate keeps the others for saves), its length from the driveline (`.trk` kind 0x14, a BTB folder's `driveline.ini`),
   read on a thread and kept in `<files>/cache/drivelines/<map>.line` (path, size, mtime checked); an unreadable
   driveline drops the stage (RSF install 2026-11-05: 687 `.trk`, none encrypted, 209 MB). The event's stage profile
   (`pool::profile`) is `track::profile` over the kept points, `StageProfile::flat` without them. A stage launches like the Drive page's on the map's weather row of the
@@ -510,7 +511,7 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
   takes one as its default, and its Start on one offers "Open Circuit") and the stages a scan on a thread finds to end
   where they start (`rbr_btb::circuit`), which stay stages on the Drive page too. Its Circuit field is the stage
   field's: the selection, starred, Browse… into a second `StageBrowser` over those maps ("Choose a circuit", its facts
-  the best lap and the weather) and the favourites' chips (the same `favourite_maps`). It takes the Drive page's car
+  the best lap and the weather). It takes the Drive page's car
   (its own browser `Target::Circuit`), setup, weather, time of day, road and tyre (the page runs them with `Form::map`
   set to the circuit while it draws, then puts the Drive page's stage back) and adds the session's length (free
   practice or 1, 3, 5, 10, 20 laps; saved as `circuit`, `circuit_laps`). The best lap card reads `lap-records.ini` in the

@@ -473,11 +473,6 @@ fn the_presets_share_the_field_and_differ_in_shape() {
     assert!(championship.restart && !championship.power_stage);
     assert!(weekend.restart && weekend.power_stage);
     assert!(season.restart && season.power_stage);
-    for seed in 0..20 {
-        let c = Preset::Random.config("Rally2", "car", seed);
-        assert_eq!(c.power_stage, c.length.legs > 1, "seed {seed}");
-        assert!(c.length.stages >= 2 * c.length.legs && c.restart, "seed {seed}");
-    }
 }
 
 #[test]

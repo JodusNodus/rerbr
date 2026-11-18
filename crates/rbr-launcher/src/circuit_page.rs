@@ -15,10 +15,10 @@ use rbr_session::{BestLap, LapBook};
 use crate::browser;
 use crate::car_browser::Target;
 use crate::catalog::Map;
-use crate::drive_page::{card, column, favourite_chips, labelled, split_columns, CardText, Pick, Summary};
+use crate::drive_page::{card, column, labelled, split_columns, CardText, Summary};
 use crate::kit;
 use crate::pages::combo;
-use crate::stage_browser::{self, Action, Collection, StageRow};
+use crate::stage_browser::{self, Action, StageRow};
 use crate::theme::{self, ERROR, TEXT, TEXT_2, TEXT_3};
 use crate::Form;
 
@@ -293,26 +293,6 @@ impl Form {
         });
         if open {
             self.circuit_browser.open_for(Target::Circuit, position, &self.favourite_maps);
-        }
-        let starred: Vec<&StageRow> = self
-            .favourite_maps
-            .iter()
-            .filter_map(|&n| self.circuit_browser.row_of(n))
-            .filter(|r| r.startable())
-            .collect();
-        let chips: Vec<(String, String, bool)> =
-            starred.iter().map(|r| (r.name.clone(), r.detail(), r.number == number)).collect();
-        let picked = favourite_chips(ui, &chips).map(|pick| match pick {
-            Pick::Chip(n) => Some(starred[n].number),
-            Pick::More => None,
-        });
-        match picked {
-            Some(Some(number)) => self.choose_circuit(number),
-            Some(None) => {
-                self.circuit_browser.open_on(position, &self.favourite_maps, Some(Collection::Favourites));
-                self.circuit_browser.target = Target::Circuit;
-            }
-            None => {}
         }
         self.best_lap_panel(ui);
     }

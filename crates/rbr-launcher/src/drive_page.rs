@@ -13,7 +13,7 @@ use crate::ghosts::{self, GhostChoice};
 use crate::kit::{self, Rows};
 use crate::pages::{combo, Choice, Issue, Page};
 use crate::settings::{Clouds, Fog, Precipitation, SEQUENTIAL};
-use crate::stage_browser::{self, Action, Collection, StageRow};
+use crate::stage_browser::{self, Action, StageRow};
 use crate::theme::{self, ERROR, LINE, PANEL, TEXT, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
 use crate::time_of_day::{self, StartTime};
 use crate::Form;
@@ -22,8 +22,6 @@ use crate::Form;
 const GAP: f32 = 24.0;
 /// A dropdown's width in a row of a column.
 const DROPDOWN: f32 = 150.0;
-/// The favourites shown as chips; the rest are behind "+N".
-const CHIPS: usize = 4;
 
 /// The Weather combo's choice: a game preset, or one season row of the map (its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,15 +128,6 @@ pub(crate) fn column(ui: &mut Ui, rect: Rect, id: &str, content: impl FnOnce(&mu
     });
 }
 
-/// What a click among the favourite chips chose.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Pick {
-    /// The chip at this position.
-    Chip(usize),
-    /// The "+N" chip for the favourites that are not shown.
-    More,
-}
-
 /// The text under a card's picture.
 #[derive(Default)]
 pub(crate) struct CardText {
@@ -178,36 +167,6 @@ pub(crate) fn card(
     });
     let id = ui.scope_id().with(("card", name));
     ui.interact(shown.response.rect, id, Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
-}
-
-/// The favourites as chips under a card (the first few, then "+N"); the chip or "+N" that was clicked. Each is a
-/// label, its tooltip and whether it is the selection.
-pub(crate) fn favourite_chips(ui: &mut Ui, chips: &[(String, String, bool)]) -> Option<Pick> {
-    if chips.is_empty() {
-        return None;
-    }
-    let mut picked = None;
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-        ui.label(RichText::new("Favourites").size(11.5).color(TEXT_3));
-        for (n, (label, tip, selected)) in chips.iter().take(CHIPS).enumerate() {
-            let short: String = if label.chars().count() > 24 {
-                label.chars().take(23).chain(['…']).collect()
-            } else {
-                label.clone()
-            };
-            if kit::chip(ui, &short, *selected).on_hover_text(tip).clicked() {
-                picked = Some(Pick::Chip(n));
-            }
-        }
-        if chips.len() > CHIPS {
-            let rest = format!("+{}", chips.len() - CHIPS);
-            if kit::chip(ui, &rest, false).on_hover_text("More favourites").clicked() {
-                picked = Some(Pick::More);
-            }
-        }
-    });
-    picked
 }
 
 /// What the footer shows left of the actions.
@@ -397,23 +356,6 @@ impl Form {
         if open {
             self.car_browser.open_on(target, self.car, &self.favourite_cars, None);
         }
-        // The starred cars that can start, in the order starred.
-        let starred: Vec<&car_browser::CarRow> =
-            self.favourite_cars.iter().filter_map(|n| self.car_browser.row_of(n)).filter(|r| r.startable()).collect();
-        let chips: Vec<(String, String, bool)> =
-            starred.iter().map(|r| (r.title.clone(), r.detail(), r.index == self.car)).collect();
-        let picked = favourite_chips(ui, &chips).map(|pick| match pick {
-            Pick::Chip(n) => Some(starred[n].index),
-            Pick::More => None,
-        });
-        match picked {
-            Some(Some(index)) => self.choose_car(index),
-            Some(None) => {
-                let favourites = Some(car_browser::Collection::Favourites);
-                self.car_browser.open_on(target, self.car, &self.favourite_cars, favourites);
-            }
-            None => {}
-        }
     }
 
     /// The gearbox and setup rows of the car.
@@ -474,24 +416,6 @@ impl Form {
         });
         if open {
             self.stage_browser.open_on(self.map, &self.favourite_maps, None);
-        }
-        // The starred stages that can start, in the order starred.
-        let starred: Vec<&StageRow> = self
-            .favourite_maps
-            .iter()
-            .filter_map(|&n| self.stage_browser.row_of(n))
-            .filter(|r| r.startable())
-            .collect();
-        let chips: Vec<(String, String, bool)> =
-            starred.iter().map(|r| (r.name.clone(), r.detail(), r.index == self.map)).collect();
-        let picked = favourite_chips(ui, &chips).map(|pick| match pick {
-            Pick::Chip(n) => Some(starred[n].index),
-            Pick::More => None,
-        });
-        match picked {
-            Some(Some(index)) => self.choose_stage(index),
-            Some(None) => self.stage_browser.open_on(self.map, &self.favourite_maps, Some(Collection::Favourites)),
-            None => {}
         }
         kit::group_label(ui, "Race", None);
         kit::panel(ui, |rows| {

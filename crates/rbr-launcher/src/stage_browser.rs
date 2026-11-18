@@ -171,17 +171,6 @@ impl StageRow {
         self.country.as_deref().map_or("No country", country_name)
     }
 
-    /// The number, length and surface, as the Drive page's field shows them.
-    pub fn detail(&self) -> String {
-        let mut parts = vec![self.number.to_string()];
-        parts.extend(self.km.map(|km| format!("{km:.1} km")));
-        parts.push(SURFACES[self.surface as usize].to_owned());
-        if self.candidate {
-            parts.push("looks like a circuit".to_owned());
-        }
-        parts.join(" · ")
-    }
-
     pub fn startable(&self) -> bool {
         self.problem.is_none()
     }
@@ -1152,7 +1141,7 @@ mod tests {
     fn a_retail_stage_has_its_rallys_country_and_the_game_length() {
         let rows = some();
         assert_eq!(rows[0].country.as_deref(), Some("JP"));
-        assert_eq!(rows[0].detail(), "54 · 3.9 km · Gravel");
+        assert_eq!((rows[0].number, rows[0].km), (54, Some(3.9)));
         assert_eq!(rows[0].country_name(), "Japan");
         assert!(rows[0].retail && rows[0].startable());
         assert_eq!(rows[1].country_name(), "Spain");
