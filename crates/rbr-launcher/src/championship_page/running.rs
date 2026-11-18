@@ -6,7 +6,7 @@ use rbr_gameplay::setup::SeasonSetup;
 use rbr_season::event::{Event, Standing, Turn, POINTS, POWER_POINTS};
 
 use super::cards::*;
-use super::common::{card, card_title, clock, dot, gap, ordinal, park_card, row, text_of};
+use super::common::{card, card_title, clock, gap, ordinal, park_card, row, text_of};
 use super::results::*;
 use super::table::{table, Cell, Col, Line};
 use super::view::*;
@@ -399,11 +399,11 @@ impl ChampionshipPage {
             }
         }
         if self.driving {
-            dot(ui, TEXT_3, "The stage is being driven.");
+            crate::kit::status_dot(ui, TEXT_3, "The stage is being driven.");
         } else if let Some(issue) = env.blocker {
-            dot(ui, WARN, &issue.text);
+            crate::kit::status_dot(ui, WARN, &issue.text);
         } else if refused {
-            dot(ui, WARN, super::launch::CHAMPIONSHIP_NGP_ONLY);
+            crate::kit::status_dot(ui, WARN, super::launch::CHAMPIONSHIP_NGP_ONLY);
         }
         request
     }
@@ -438,7 +438,7 @@ impl ChampionshipPage {
                 }
             }
             if let Some(issue) = env.blocker.filter(|_| !self.driving) {
-                dot(ui, WARN, &issue.text);
+                crate::kit::status_dot(ui, WARN, &issue.text);
             }
         }
         request

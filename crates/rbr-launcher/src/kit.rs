@@ -301,7 +301,8 @@ pub fn tag(ui: &mut Ui, text: &str) -> Response {
 
 /// A 6 px dot and its text (12, wrapping), for a status.
 pub fn status_dot(ui: &mut Ui, color: Color32, text: &str) {
-    ui.horizontal_top(|ui| {
+    // Left to right even in a right-to-left row, so the dot stays before its text.
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let line = ui.text_style_height(&egui::TextStyle::Body);
         let (rect, _) = ui.allocate_exact_size(Vec2::new(6.0, line), Sense::hover());

@@ -45,12 +45,6 @@ pub(super) fn row(rows: &mut Rows, label: &str, tip: &str, control: impl FnOnce(
     });
 }
 
-/// A status dot and its text in a right-to-left layout (the kit's reads left to right: `horizontal` follows the
-/// parent's direction, which would put the dot after its text).
-pub(super) fn dot(ui: &mut Ui, color: Color32, text: &str) {
-    ui.with_layout(Layout::left_to_right(Align::Center), |ui| crate::kit::status_dot(ui, color, text));
-}
-
 /// A card's title.
 pub(crate) fn card_title(ui: &mut Ui, title: &str) {
     ui.label(RichText::new(title).size(14.0).family(crate::theme::semibold()).color(crate::theme::TEXT));

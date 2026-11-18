@@ -448,22 +448,6 @@ pub fn favourite_button(ui: &mut egui::Ui, favourite: bool) -> egui::Response {
     ui.add(button).on_hover_text("Ctrl/Cmd+D")
 }
 
-/// The Drive page's field for a stage or a car: the selection, starred when it is a favourite, with its detail and
-/// Browse… on the right; whether it was pressed.
-pub fn field_button(ui: &mut egui::Ui, favourite: bool, name: &str, detail: &str, width: f32) -> bool {
-    let mut text = egui::text::LayoutJob::default();
-    let parts = [
-        egui::RichText::new("★ ").color(STAR),
-        egui::RichText::new(name),
-        egui::RichText::new(format!("  {detail}")).color(Color32::GRAY),
-    ];
-    for part in parts.into_iter().skip(usize::from(!favourite)) {
-        part.append_to(&mut text, ui.style(), egui::FontSelection::Default, egui::Align::Min);
-    }
-    let button = egui::Button::new(text).right_text("Browse…").truncate().min_size(egui::vec2(width, 0.0));
-    ui.add(button).clicked()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
