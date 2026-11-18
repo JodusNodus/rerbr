@@ -269,6 +269,10 @@ Compare instructions and allocations (`rbr-counters`), not wall time. `rbr-stand
 runs. Instructions and cycles are per thread, no root: macOS `thread_selfcounts`, Linux `perf_event_open` (user space,
 summed over a hybrid CPU's PMUs; needs `perf_event_paranoid` at most 2). Elsewhere they read 0.
 
+- The allocation counts are sharded a thread each, on their own cache lines: one shared pair made the viewer's
+  parallel BTB load (`rbr_btb::scene`) 9 times slower than under the system allocator (Mont Ventoux 26.7 s against
+  3.1 s; sharded 3.4 s).
+
 - Cores busy raises stepping time 60-80 %, instructions under 0.1 %; the lowest of 3 runs is the figure, since load
   only adds. An oversubscribed machine still adds up to 0.15 %, and an edit outside the step moved it 0.2-0.3 %
   (code layout and inlining), so under 0.5 % is no change. Cycles move 30-40 % between runs on a loaded machine.

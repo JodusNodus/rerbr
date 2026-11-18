@@ -250,6 +250,10 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 `stage/btb.rs` builds a `Stage` from it (`stage::load` takes it when the stage's folder passes
 `track::is_track_folder`, i.e. `<RBR_RSF>/RX_CONTENT/Tracks/<folder>/track-<n>_<L>`, or a prepared folder naming its source: [Playing](#playing); `load_textures` likewise).
 
+- Load: `Scene::load` parses the `.x` files on every core, each worker with its own handle on `Objects.zip`. Viewer
+  load to the first frame (warm cache, 32 threads, 2026-11-18): Mont Ventoux (AC, 16,494 files, 1 GB) 30.5 to 6.9 s,
+  Sa Calobra 8.0 to 2.0 s, Pirttikulma 1.1 to 0.7 s; renders bit-identical.
+
 - Frame: `.x` vertices, `.xform` matrices and `spawn.ini` are already in the renderer's stage frame (Direct3D, left-handed,
   y up, placed `p * M`); no transform. The driveline (`z` up) is `(x, z, y)`, as the classic `.trk`'s. Evidence: the
   placement translations of Pirttikulma span x -384..3578, y 0..165, z -2920..2482 and its driveline `K0`/last point
