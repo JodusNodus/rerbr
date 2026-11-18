@@ -9,7 +9,8 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::ops::AddAssign;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Counts {
@@ -41,8 +42,8 @@ impl Mark {
     pub fn now() -> Mark {
         Mark {
             cpu: cpu(),
-            allocations: ALLOCATIONS.load(Ordering::Relaxed),
-            allocated: ALLOCATED.load(Ordering::Relaxed),
+            allocations: total(|s| &s.allocations),
+            allocated: total(|s| &s.allocated),
         }
     }
 
@@ -55,8 +56,8 @@ impl Mark {
         Counts {
             instructions,
             cycles,
-            allocations: ALLOCATIONS.load(Ordering::Relaxed) - self.allocations,
-            allocated: ALLOCATED.load(Ordering::Relaxed) - self.allocated,
+            allocations: total(|s| &s.allocations) - self.allocations,
+            allocated: total(|s| &s.allocated) - self.allocated,
         }
     }
 }
@@ -171,15 +172,50 @@ fn cpu() -> Option<[u64; 2]> {
     None
 }
 
-static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
-static ALLOCATED: AtomicU64 = AtomicU64::new(0);
+/// The allocation counts, in shards a thread each (threads past [`SHARDS`] share), each on its own cache line: one pair
+/// of counters every thread adds to bounces between the cores, and made a load parsing on 32 threads (`rbr-btb`'s
+/// `Scene::load`) 9 times slower.
+const SHARDS: usize = 64;
+
+#[repr(align(128))]
+struct Shard {
+    allocations: AtomicU64,
+    allocated: AtomicU64,
+}
+
+static COUNTS: [Shard; SHARDS] =
+    [const { Shard { allocations: AtomicU64::new(0), allocated: AtomicU64::new(0) } }; SHARDS];
+static THREADS: AtomicUsize = AtomicUsize::new(0);
+
+thread_local! {
+    // Constant, without a destructor: readable from the allocator at any point of the thread's life, the first use
+    // included, and taking no allocation.
+    static SHARD: Cell<usize> = const { Cell::new(usize::MAX) };
+}
+
+/// The calling thread's shard.
+fn shard() -> &'static Shard {
+    let index = SHARD.with(|s| {
+        if s.get() == usize::MAX {
+            s.set(THREADS.fetch_add(1, Ordering::Relaxed) % SHARDS);
+        }
+        s.get()
+    });
+    &COUNTS[index]
+}
+
+/// A count summed over the shards.
+fn total(counter: impl Fn(&Shard) -> &AtomicU64) -> u64 {
+    COUNTS.iter().map(|s| counter(s).load(Ordering::Relaxed)).sum()
+}
 
 /// The system allocator, counting its calls for [`Mark`].
 pub struct Counting;
 
 fn count(bytes: usize) {
-    ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
-    ALLOCATED.fetch_add(bytes as u64, Ordering::Relaxed);
+    let shard = shard();
+    shard.allocations.fetch_add(1, Ordering::Relaxed);
+    shard.allocated.fetch_add(bytes as u64, Ordering::Relaxed);
 }
 
 // SAFETY: every call goes to `System` unchanged.

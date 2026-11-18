@@ -206,8 +206,9 @@ impl Scene {
 
         let objects_zip = rbr_formats::stage_files::in_dir(folder, "Objects.zip")
             .ok_or_else(|| format!("{}: no Objects.zip", folder.display()))?;
-        let mut zip = rbz::open(&objects_zip).map_err(|e| format!("{}: {e}", objects_zip.display()))?;
-        let mut meshes: Vec<Mesh> = Vec::new();
+        let open = || rbz::open(&objects_zip).map_err(|e| format!("{}: {e}", objects_zip.display()));
+        let mut zip = open()?;
+        let mut mesh_files: Vec<&str> = Vec::new();
         let mut mesh_of: HashMap<String, usize> = HashMap::new();
         let mut placed = Vec::new();
         for object in &objects {
@@ -215,16 +216,10 @@ impl Scene {
             if !has_entry(&mut zip, &format!("Objects/{}.x", object.file)) {
                 continue;
             }
-            let key = object.file.to_lowercase();
-            let mesh = match mesh_of.get(&key) {
-                Some(&mesh) => mesh,
-                None => {
-                    let bytes = read_entry(&mut zip, &format!("Objects/{}.x", object.file))?;
-                    meshes.push(mesh_of_x(&object.file, &bytes, &by_name)?);
-                    mesh_of.insert(key, meshes.len() - 1);
-                    meshes.len() - 1
-                }
-            };
+            let mesh = *mesh_of.entry(object.file.to_lowercase()).or_insert_with(|| {
+                mesh_files.push(&object.file);
+                mesh_files.len() - 1
+            });
             let bytes = read_entry(&mut zip, &format!("Objects/{}.xform", object.xform))?;
             let placements = xform::parse(&bytes).map_err(|e| format!("{}.xform: {e}", object.xform))?;
             placed.push(Object {
@@ -238,6 +233,7 @@ impl Scene {
                 sun_cascades: object.sun_cascades,
             });
         }
+        let meshes = parse_meshes(&mesh_files, open, &by_name)?;
 
         let m = spawn.matrix;
         Ok(Scene {
@@ -492,6 +488,34 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         multiplier: find("multiplierTexture"),
         additive: find("additiveTexture"),
     }
+}
+
+/// The meshes of `files` (`Objects/<file>.x`), in order, read and parsed on every core, each worker with its own handle
+/// on the archive from `open`: most of a large stage's load (Mont Ventoux's 16,494 files, 1 GB, take 22 s on one).
+/// The error of the first file that fails.
+fn parse_meshes<R: Read + std::io::Seek>(
+    files: &[&str],
+    open: impl Fn() -> Result<rbz::ZipArchive<R>, String> + Sync,
+    materials: &HashMap<String, usize>,
+) -> Result<Vec<Mesh>, String> {
+    let threads = std::thread::available_parallelism().map_or(4, usize::from).min(files.len()).max(1);
+    let parse = |zip: &mut rbz::ZipArchive<R>, file: &str| {
+        mesh_of_x(file, &read_entry(zip, &format!("Objects/{file}.x"))?, materials)
+    };
+    let mut parsed: Vec<(usize, Result<Mesh, String>)> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|t| {
+                let (open, parse) = (&open, &parse);
+                scope.spawn(move || match open() {
+                    Ok(mut zip) => (t..files.len()).step_by(threads).map(|i| (i, parse(&mut zip, files[i]))).collect(),
+                    Err(e) => vec![(t, Err(e))],
+                })
+            })
+            .collect();
+        workers.into_iter().flat_map(|w| w.join().expect("mesh worker panicked")).collect()
+    });
+    parsed.sort_by_key(|(i, _)| *i);
+    parsed.into_iter().map(|(_, mesh)| mesh).collect()
 }
 
 /// The `.x` file as a [`Mesh`].
