@@ -8,8 +8,8 @@
 //! `#[global_allocator] static ALLOCATOR: rbr_counters::Counting = rbr_counters::Counting;`.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::ops::AddAssign;
 use std::cell::Cell;
+use std::ops::AddAssign;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -40,11 +40,7 @@ pub struct Mark {
 
 impl Mark {
     pub fn now() -> Mark {
-        Mark {
-            cpu: cpu(),
-            allocations: total(|s| &s.allocations),
-            allocated: total(|s| &s.allocated),
-        }
+        Mark { cpu: cpu(), allocations: total(|s| &s.allocations), allocated: total(|s| &s.allocated) }
     }
 
     /// The counts since the mark; instructions and cycles 0 where they can't be read.
