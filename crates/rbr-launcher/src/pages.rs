@@ -528,6 +528,9 @@ impl Form {
         if self.page == Page::Import {
             return self.import_page(ui);
         }
+        if self.page == Page::Setup {
+            return self.setup_page(ui);
+        }
         if self.page.section() == Some(Section::Settings) {
             if let Some(page) = self.settings_header(ui) {
                 self.page = page;
@@ -619,16 +622,11 @@ impl Form {
             return;
         }
         self.select_setup();
-        if kit::link(ui, &format!("‹ {}", self.setup_from.name())).clicked() {
+        let car = self.car().map_or_else(|| "no car".to_owned(), car_label);
+        let subtitle = format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]));
+        if self.setup.ui(ui, self.setup_from.name(), &subtitle) {
             self.page = self.setup_from;
         }
-        ui.add_space(4.0);
-        let car = self.car().map_or_else(|| "no car".to_owned(), car_label);
-        ui.label(
-            RichText::new(format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]))).size(16.0).strong(),
-        );
-        ui.add_space(4.0);
-        self.setup.ui(ui);
     }
 }
 

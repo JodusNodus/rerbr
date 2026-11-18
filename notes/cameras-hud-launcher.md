@@ -276,13 +276,15 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   2026-11-04). Earlier versions' files are listed read only: a pack car's `<files>/SavedGames/<pack>/`, the
   `Physics/<key>/Setups/` of `Car::setup_keys` (its key, an RSF car's `rsf-<id>`, then 5; a retail car its number's), and their slot files
   `SavedGames/<key>slot<n>_*.lsp`. The championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
-- Car setup page layout (`setup_page/`, 2026-11-09, ours): a map of the car from above (`board.rs`) picks the area: a
-  chip per area with its leading values, its count of differing lines and a tooltip on what they mean, leaders to the
-  parts it sets; the parts show values (bar weight = anti-roll stiffness in its range, diff fill = locking torque, disc
-  glow = brake share) and are outlined orange where their own values differ. Every value is compared with a setup the
-  player picks (default, as opened, or a saved one; `Compare`): each track carries the comparison's tick and the stretch
-  to it, the number its signed difference, the left column lists the differing lines (an axle changed alike is one line,
-  a diff map one line) each with its way back, and an area's heading takes all of it back (`values.rs`, a `Field` table
+- Car setup page layout (`setup_page/`, redesign 2026-11-18, ours): three columns under the title (back link to the
+  opener, car · stage) and the setup header (picker, compare-free buttons Save / Save as… / Revert / Default values /
+  Delete…, prompts as before). Left (240): a small overview of the car from above (`board::overview`, parts pick the
+  area; bar weight = anti-roll stiffness, diff fill = locking torque, disc glow = brake share, outlined orange where
+  their own values differ) over the category list (`board::list`: name, leading values, count badge, tooltip on what
+  the values mean). Centre: the selected area's editor, scrolling. Right (260): "Compared with" (default, as opened or
+  a saved setup; `Compare`) and the lines that differ from it, each with ↺ and a click to jump to its area (an axle
+  changed alike is one line, a diff map one line). Each track carries the comparison's tick and the stretch to it, the
+  number its signed difference, an area's "Reset to compared" takes all of it back (`values.rs`, a `Field` table
   per car: spec, range, the wheel's pair). Per-wheel areas edit an axle's two wheels together while they agree (a
   difference always shows both). Diagrams per area (`charts.rs`): spring coil-overs and their front share, the dampers'
   force over wheel speed, each wheel's lean from the front, brake and anti-roll balance bars, the diff maps' lock curves
