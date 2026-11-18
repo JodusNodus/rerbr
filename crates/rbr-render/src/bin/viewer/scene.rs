@@ -132,7 +132,18 @@ pub fn load(args: &Args, data: &Data, progress: &mut dyn FnMut(Step)) -> Result<
     if let Some(dir) = &args.upscale {
         match upscale::Upscaler::find(dir) {
             Some(upscaler) => {
-                let stage_textures = upscale::stage_textures(&scene.stage);
+                let mut stage_textures = upscale::stage_textures(&scene.stage);
+                // A stage too large upscaled keeps its own textures; its car is still upscaled.
+                let size = upscale::stage_size(&scene.stage.textures, &stage_textures);
+                if size > upscale::STAGE_BUDGET {
+                    let gb = |bytes: u64| bytes as f64 / (1u64 << 30) as f64;
+                    eprintln!(
+                        "upscale: the stage's textures would take {:.1} GB upscaled, over {:.0} GB: kept as they are",
+                        gb(size),
+                        gb(upscale::STAGE_BUDGET)
+                    );
+                    stage_textures.clear();
+                }
                 // The in-car view's sharper in a 4K frame, by `--size` (the launcher's choice, fullscreen too).
                 let interior = scene.playback.as_ref().map(|p| p.interior_textures(&scene.stage)).unwrap_or_default();
                 let height = args.size.map_or(720, |(_, height)| height) as f32 * args.render_scale;

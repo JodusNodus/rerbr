@@ -234,7 +234,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
   game's saves, not shown). "Drive this stage" sets the Rally (or Circuit) stage and opens that page. Remove… deletes
   only a folder directly in `tracks/` (`remove_added`), then drops the map and relists; records (`lap-records.ini`,
-  `GhostCars/*_<map>.ghc`, saves) stay.
+  `GhostCars/*_<map>.ghc`, saves) stay. With the textures upscaled, a BTB stage over the upscaler's budget says
+  "Textures: kept as they are: too large to upscale (N GB)" (`stages_page::Sizes`, renderer note).
 - Car skins (`car_skins.rs`, 2026-11-17): the Skin box and Import skin… sit under the turntable on Content > Cars and
   in the car picker's detail panel. A skin is a folder
   of files over the model folder's by path (`textures/*.dds`, shader settings: `Data::with_skin(model, dir)`, retail cars
