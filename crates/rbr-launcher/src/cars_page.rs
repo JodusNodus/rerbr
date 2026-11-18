@@ -21,13 +21,6 @@ impl Default for CarsPage {
 impl Form {
     /// Every car: its details and skins, the cars added and their removal.
     pub fn cars_page(&mut self, ui: &mut egui::Ui) {
-        if self.has_adding_output() {
-            kit::body(ui, |ui| {
-                ui.add_space(8.0);
-                ui.horizontal_wrapped(|ui| self.adding_job_ui(ui));
-                self.adding_status_ui(ui);
-            });
-        }
         if self.catalog.cars.is_empty() {
             kit::body(ui, |ui| _ = self.no_cars_yet(ui));
             return;

@@ -22,6 +22,13 @@ pub struct StagesPage {
     sizes: Sizes,
 }
 
+impl StagesPage {
+    /// Shows stage `index` (a catalog position) in the list.
+    pub fn show_stage(&mut self, index: usize) {
+        self.browser.show_stage(index);
+    }
+}
+
 /// What each BTB stage's textures take upscaled (`upscale::folder_size`), by folder, measured on a thread of its own
 /// when the stage is first shown: a large stage's take up to half a second to read. `None` while measuring.
 #[derive(Default)]

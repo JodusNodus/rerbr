@@ -91,6 +91,25 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     form.get_more = None;
     form.downloads = Default::default();
+    // Import with a last import, and the same result as a toast over Cars.
+    {
+        use crate::content::{Goto, Outcome};
+        let ok = |what: &str, kind, place: &str, goto| Outcome::added("x", kind, what, place, goto);
+        let outcomes = vec![
+            ok("Autio I Gravel", "BTB stage", "it's in Stages", Goto::Stage("Autio I Gravel".into())),
+            ok("Janne Laahanen V3", "co-driver", "pick it in Co-drivers", Goto::Codrivers),
+            Outcome::failed("Holiday.rar", "not supported", crate::content::source::refused::RAR),
+        ];
+        form.content.notice = outcomes.clone();
+        form.page = Page::Import;
+        shot(&dir.join("import-last.png"), |ctx| form.ui(ctx))?;
+        form.page = Page::Cars;
+        form.content.toast =
+            Some(crate::content::Toast { lines: outcomes.iter().map(|o| (o.ok(), o.line())).collect(), import: true });
+        shot(&dir.join("import-toast.png"), |ctx| form.ui(ctx))?;
+        form.content.toast = None;
+        form.content.notice.clear();
+    }
     // The Drive page with the car list open on the selection.
     form.page = Page::Drive;
     fresh_previews(form, &map, car.as_ref());
@@ -196,19 +215,21 @@ fn draw_sized((width, height): (u32, u32), mut ui: impl FnMut(&egui::Context)) -
     let context = egui::Context::default();
     let mut renderer = egui_wgpu::Renderer::new(&device, format, Default::default());
     let screen = egui_wgpu::ScreenDescriptor { size_in_pixels: [width, height], pixels_per_point: 1.0 };
-    let input = || egui::RawInput {
+    // Time moves a second a pass, so fades (a modal's) are done in the last.
+    let input = |pass: f64| egui::RawInput {
+        time: Some(pass),
         screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width as f32, height as f32))),
         ..Default::default()
     };
-    let mut output = context.run_pass(input(), &mut ui);
-    for _ in 0..3 {
+    let mut output = context.run_pass(input(0.0), &mut ui);
+    for pass in 1..=3 {
         for (id, deltas) in &output.textures_delta.set {
             for delta in deltas {
                 renderer.update_texture(&device, &queue, *id, delta);
             }
         }
         output.textures_delta.clear();
-        output = context.run_pass(input(), &mut ui);
+        output = context.run_pass(input(f64::from(pass)), &mut ui);
     }
     for (id, deltas) in &output.textures_delta.set {
         for delta in deltas {

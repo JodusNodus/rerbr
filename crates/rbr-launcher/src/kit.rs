@@ -408,6 +408,34 @@ pub fn modal(
     }
 }
 
+/// A toast: a small card at the bottom right over the page, with a × and `body` (lines, a link). Call it every
+/// frame while it shows; true when its × was clicked.
+pub fn toast(ctx: &egui::Context, id: impl egui::AsIdSalt, body: impl FnOnce(&mut Ui)) -> bool {
+    let mut close = false;
+    egui::Area::new(egui::Id::unique(id))
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::RIGHT_BOTTOM, Vec2::new(-16.0, -16.0))
+        .show(ctx, |ui| {
+            Frame::new()
+                .fill(MODAL)
+                .stroke(line(LINE_MODAL))
+                .corner_radius(10)
+                .inner_margin(Margin { left: 14, right: 10, top: 10, bottom: 10 })
+                .show(ui, |ui| {
+                    ui.set_width(340.0);
+                    ui.horizontal_top(|ui| {
+                        ui.vertical(|ui| {
+                            ui.set_width(ui.available_width() - 30.0);
+                            ui.spacing_mut().item_spacing.y = 4.0;
+                            body(ui);
+                        });
+                        ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = close_button(ui));
+                    });
+                });
+        });
+    close
+}
+
 /// The modal's × (painted, since no embedded font has the glyph in this weight); true when clicked.
 fn close_button(ui: &mut Ui) -> bool {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());

@@ -138,13 +138,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
   under the Drive page's stage.
-- Dropping files works on X11, Windows and macOS only: winit 0.30 has no drag and drop on native Wayland, so there Add
-  content does not offer it (`content::drop::no_drop`; user decision 2026-11-17, over forcing XWayland).
-- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add
-  folder…" in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, split 7z, NSIS
+- Dropping files works on X11, Windows and macOS only: winit 0.30 has no drag and drop on native Wayland, so there Import
+  says "Add files or folders" and does not offer it (`content::drop::no_drop`; user decision 2026-11-17, over forcing XWayland).
+- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Choose files…"/"Choose
+  folder…" on Import, are opened as a file tree (`content/source/`: folder, zip, 7z, split 7z, NSIS
   installer, plain file, tried in `SOURCES`) and each kind (`content/kind/`, one module each, one line in
-  `content::KINDS`) says whether it is in it; added in one job with a notice on every page (✔ where to find it, ⚠ why
-  not). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
+  `content::KINDS`) says whether it is in it; added in one job with its result on Import (✔ where to find it, ⚠ why
+  not; a toast on other pages). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
   stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
   co-drivers and pace notes through `codriver_packs::import`; NGP car pieces (physics, model and banks dropped
   together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
@@ -178,8 +178,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   yet added, scanned every 2 s) and Settings. Settings' General, Controls and Graphics & sound are a segmented
   control under the page title; the sidebar item opens the last of them (`Form::last_pages`, indexed by
   `pages::Section`). Car setup is in no group: `Form::open_setup` records the opener (`setup_from`) for its back
-  link. "Get more" is a modal (`Form::get_more`, `GetMore`) over Cars, Stages or Co-drivers; Import still has
-  today's Get more body. Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for
+  link. "Get more" is a modal (`Form::get_more`, `GetMore`, `get_page.rs`) over Cars, Stages or Co-drivers: gvrc.de's
+  list (search, class, Hide added, tick table, added cars greyed but tickable = update; `gvrc.rs`) or the sites' rows,
+  each pointing to Import. A car download is polled in `Form::content_notice` (drawn every frame), not by the modal:
+  closing the modal leaves a progress line above the page bottom and a toast with the result. Import (`import_page`:
+  drop zone with Choose files… / Choose folder…, Ready to add, Last import with an Open link per outcome, Clear)
+  takes every drop; on another page the result is a toast (`Add::toast`, `kit::toast`) linking to Import. Open in
+  Stages shows the stage in Library › Stages (`StagesPage::show_stage`); a disc opens Settings › General's disc setup.
+  Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for
   ★ ⚠ ▼ ↵. Default window 1280×760.
 - Rally, Circuit, School (redesign, `drive_page.rs`, `circuit_page.rs`, `school_page.rs`): page header, a pinned footer
   (`Form::launch_footer`: summary, blocker with its fix, experimental note with Change to Settings, Stop while driving,

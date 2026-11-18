@@ -1,23 +1,33 @@
-//! The Add's window side: starting a run, the notice on every page, what a finished run changes in the launcher, and
-//! the Get more page's Ready to add and Add from your computer sections.
+//! The Add's window side: starting a run, what a finished run changes in the launcher, its progress line and toast on
+//! every page, and the Import page's drop zone, Ready to add and Last import.
 
 use std::path::PathBuf;
 
+use egui::{Align, Color32, Layout, RichText};
+
 use super::kind::{skin, Known};
 use super::{downloads, Goto, Outcome, Refresh};
-use crate::car_browser::{Collection, Target};
 use crate::car_skins;
 use crate::catalog::Origin;
 use crate::job::{self, Job};
-use crate::pages::{section, Page, GOOD, WARN};
+use crate::kit;
+use crate::pages::Page;
+use crate::theme::*;
 use crate::Form;
 
-/// The Add's state: the running job, the last notice, and the recent downloads.
+/// A small card over any page but Import: lines (ticked or warned) and, for an import, a link to the Import page.
+pub struct Toast {
+    pub lines: Vec<(bool, String)>,
+    pub import: bool,
+}
+
+/// The Add's state: the running job, the last import's outcomes, the recent downloads and the toast.
 #[derive(Default)]
 pub struct Add {
     job: Option<Job<Vec<Outcome>>>,
     pub notice: Vec<Outcome>,
     pub recent: downloads::Recent,
+    pub toast: Option<Toast>,
     /// The owned voice packs when the run started: a new one becomes the co-driver in use.
     voices_before: Vec<String>,
 }
@@ -29,6 +39,9 @@ impl Add {
     }
 }
 
+/// The most lines a toast shows.
+const TOAST_LINES: usize = 4;
+
 impl Form {
     /// Adds `paths` (files and folders) in one background run, unless one runs. While the viewer runs, only says to
     /// close it.
@@ -37,10 +50,11 @@ impl Form {
             return;
         }
         if self.child.is_some() {
-            self.content.notice = vec![Outcome::warning("Close the drive first")];
+            self.show_import(vec![Outcome::warning("Close the drive first")]);
             return;
         }
         self.content.notice.clear();
+        self.content.toast = None;
         self.content.voices_before = self.owned_voices.iter().map(|p| p.name.clone()).collect();
         let home = self.here();
         let numbers = self.catalog.maps.iter().chain(&self.catalog.unlisted).map(|m| m.number).collect();
@@ -48,6 +62,13 @@ impl Form {
         let known = Known { numbers, weather, cars: self.skin_targets() };
         self.content.job =
             Some(Job::start(move |report, cancel| Ok(super::run(&home, &known, &paths, report, cancel))));
+    }
+
+    /// Makes `outcomes` the last import; on any page but Import, a toast says them too.
+    fn show_import(&mut self, outcomes: Vec<Outcome>) {
+        self.content.toast = (self.page != Page::Import)
+            .then(|| Toast { lines: outcomes.iter().map(|o| (o.ok(), o.line())).collect(), import: true });
+        self.content.notice = outcomes;
     }
 
     /// The cars a skin can dress, one per key.
@@ -114,11 +135,11 @@ impl Form {
             self.disc_setup.set_disc(&disc);
             self.page = Page::Settings;
         }
-        self.content.notice = outcomes;
+        self.show_import(outcomes);
     }
 
-    /// Takes the Open button's way.
-    fn content_goto(&mut self, goto: &Goto) {
+    /// Takes an Open link's way.
+    pub(crate) fn content_goto(&mut self, goto: &Goto) {
         match goto {
             Goto::Stage(folder) => {
                 let named = |dir: &std::path::Path| dir.file_name().is_some_and(|n| n.to_string_lossy() == *folder);
@@ -126,78 +147,88 @@ impl Form {
                     Origin::Community(stage) => stage.folder.starts_with(self.here()) && named(&stage.folder),
                     _ => m.btb().is_some_and(|b| named(&b.folder)),
                 });
-                self.page = Page::Drive;
-                self.stage_browser.open_on(at.unwrap_or(self.map), &self.favourite_maps, None);
+                self.page = Page::Stages;
+                self.stages_page.show_stage(at.unwrap_or(self.map));
             }
             Goto::Skin { car, .. } => {
                 self.page = Page::Cars;
                 if let Some(at) = self.catalog.cars.iter().position(|c| c.key == *car) {
                     let browser = &mut self.cars_page.browser;
-                    browser.open_on(Target::Drive, at, &self.favourite_cars, Some(Collection::All));
+                    browser.open_on(
+                        crate::car_browser::Target::Drive,
+                        at,
+                        &self.favourite_cars,
+                        Some(crate::car_browser::Collection::All),
+                    );
                 }
+            }
+            Goto::Disc(disc) => {
+                self.disc_setup.set_disc(disc);
+                self.page = Page::Settings;
             }
             _ => self.page = goto.page().map_or(self.page, |(page, _)| page),
         }
     }
 
-    /// The notice over the status line, on every page: the progress and Cancel while adding, then a line for each
-    /// item with Close, and Open where it helps.
+    /// Runs on every page, every frame: finishes the jobs that ended (the import, the car download), draws the
+    /// progress line of a job whose own place is not showing, and the toast.
+    ///
+    /// A download keeps going when the Get more modal is closed or the page changes: the job is polled here, not
+    /// by the UI that shows it.
     pub fn content_notice(&mut self, ctx: &egui::Context) {
-        if self.content.job.is_none() && self.content.notice.is_empty() {
-            return;
-        }
-        let (mut finished, mut close, mut open) = (None, false, None);
-        let page = self.page;
-        ctx.root_ui(|root| {
-            egui::Panel::bottom("content notice").show(root, |ui| {
-                ui.add_space(4.0);
-                if let Some(job) = &mut self.content.job {
-                    ui.horizontal(|ui| finished = job.ui(ui));
-                    ui.add_space(2.0);
-                    return;
-                }
-                egui::ScrollArea::vertical()
-                    .id_salt("content notice")
-                    .max_height(150.0)
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        for outcome in &self.content.notice {
-                            let (color, tick) = if outcome.ok() { (GOOD, "✔") } else { (WARN, "⚠") };
-                            ui.colored_label(color, format!("{tick} {}", outcome.line()));
-                        }
-                    });
-                ui.horizontal(|ui| {
-                    if let Some(file) = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.open.clone()) {
-                        if ui.button("Open the licence").clicked() {
-                            crate::crash::open(file.as_os_str());
-                        }
-                    }
-                    // An added thing's place, else where to do by hand what failed.
-                    let notice = &self.content.notice;
-                    let goto = notice.iter().filter(|o| o.ok()).chain(notice.iter()).find_map(|o| o.goto.clone());
-                    match goto.as_ref().map(|g| (g, g.page())) {
-                        Some((Goto::Stage(_), _)) if ui.button("Open the stage picker").clicked() => open = goto,
-                        Some((_, Some((target, label)))) if page != target && ui.button(label).clicked() => open = goto,
-                        _ => {}
-                    }
-                    close = ui.button("Close").clicked();
-                });
-                ui.add_space(2.0);
-            });
-        });
-        if finished.is_some() {
+        let finished = self.content.job.as_mut().and_then(Job::result);
+        if self.content.job.is_some() && finished.is_some() {
             self.content.job = None;
         }
         match finished {
             Some(Ok(outcomes)) => self.content_done(outcomes),
-            Some(Err(e)) => self.content.notice = vec![Outcome::warning(&format!("Adding stopped: {e}"))],
+            Some(Err(e)) => self.show_import(vec![Outcome::warning(&format!("Adding stopped: {e}"))]),
             None => {}
         }
-        if let Some(goto) = open {
-            self.content_goto(&goto);
+        self.poll_adding();
+        let import_running = self.content.job.as_ref().filter(|_| self.page != Page::Import);
+        let cars_running = self.adding_running().filter(|_| self.get_more != Some(crate::get_page::GetMore::Cars));
+        if self.content.job.is_some() || cars_running.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
-        if close {
-            self.content.notice.clear();
+        if import_running.is_some() || cars_running.is_some() {
+            ctx.root_ui(|root| {
+                let margin = egui::Margin { left: kit::PAGE_LEFT, right: kit::PAGE_RIGHT, top: 8, bottom: 8 };
+                egui::Panel::bottom("content progress")
+                    .frame(egui::Frame::new().fill(FOOTER).inner_margin(margin))
+                    .show(root, |ui| {
+                        if let Some(job) = import_running {
+                            ui.horizontal(|ui| job.progress_ui(ui));
+                        }
+                        if let Some(job) = cars_running {
+                            ui.horizontal(|ui| job.progress_ui(ui));
+                        }
+                    });
+            });
+        }
+        if self.page == Page::Import {
+            self.content.toast = None;
+        }
+        let Some(toast) = &self.content.toast else { return };
+        let mut to_import = false;
+        let closed = kit::toast(ctx, "content toast", |ui| {
+            for (ok, text) in toast.lines.iter().take(TOAST_LINES) {
+                let (color, tick) = if *ok { (GOOD, "✔") } else { (WARN, "⚠") };
+                let line = RichText::new(format!("{tick} {text}")).size(12.5).color(color);
+                ui.add(egui::Label::new(line).wrap());
+            }
+            if toast.lines.len() > TOAST_LINES {
+                ui.label(RichText::new(format!("and {} more", toast.lines.len() - TOAST_LINES)).color(TEXT_2));
+            }
+            if toast.import {
+                to_import = kit::link(ui, "Open Import").clicked();
+            }
+        });
+        if to_import {
+            self.page = Page::Import;
+        }
+        if closed || to_import {
+            self.content.toast = None;
         }
     }
 
@@ -217,57 +248,142 @@ impl Form {
         downloads::Owned { packs, stages, cars: cars.collect(), skins, ngp: self.ngp_revision == Some(778) }
     }
 
+    /// The drop zone: where to drop, Choose files… and Choose folder…, the progress and Cancel while adding.
+    pub fn drop_zone_ui(&mut self, ui: &mut egui::Ui) {
+        let idle = !self.content.busy() && self.child.is_none();
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 190.0), egui::Sense::hover());
+        let hovering = ui.input(|i| !i.raw.hovered_files.is_empty());
+        let (stroke, fill) = match hovering && super::drop::drop_works() {
+            true => (egui::Stroke::new(1.5, ACCENT), ACCENT.gamma_multiply(0.12)),
+            false => (egui::Stroke::new(1.0, white(36)), Color32::TRANSPARENT),
+        };
+        ui.painter().rect_filled(rect, 10, fill);
+        let corners = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
+        ui.painter().extend(egui::Shape::dashed_line(&corners, stroke, 6.0, 4.0));
+        let mut zone =
+            ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(16.0)).layout(Layout::top_down(Align::Center)));
+        let drop = super::drop::drop_works();
+        zone.add_space(44.0);
+        let title = if drop { "Drop files or folders here" } else { "Add files or folders" };
+        zone.label(RichText::new(title).size(15.0).family(semibold()).color(TEXT));
+        zone.add_space(2.0);
+        let what = "Stages, cars, skins, co-drivers, pace notes, NGP or the game disc";
+        zone.label(RichText::new(what).color(TEXT_2));
+        zone.add_space(14.0);
+        if let Some(job) = &self.content.job {
+            let at = zone.available_width() / 2.0 - 130.0;
+            zone.horizontal(|ui| {
+                ui.add_space(at.max(0.0));
+                job.progress_ui(ui);
+            });
+            return;
+        }
+        let at = zone.available_width() / 2.0 - 128.0;
+        let (mut files, mut folder) = (false, false);
+        zone.horizontal(|ui| {
+            ui.add_space(at.max(0.0));
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let size = egui::vec2(116.0, 30.0);
+            let button = |label| egui::Button::new(label);
+            files = ui
+                .add_enabled(idle, button("Choose files…").min_size(size))
+                .on_hover_text(
+                    "Choose downloads: BTB stages, NGP car packs, car skins, co-drivers, pace notes or NGP. ReRBR \
+                     works out what each is and adds it; the downloads are not changed.",
+                )
+                .clicked();
+            folder = ui
+                .add_enabled(idle, button("Choose folder…").min_size(size))
+                .on_hover_text(
+                    "Choose an extracted download: a stage's folder, a folder of stages, a car skin, a co-driver or a \
+                     pace notes folder, or the disc.",
+                )
+                .clicked();
+        });
+        if self.child.is_some() {
+            zone.add_space(8.0);
+            zone.label(RichText::new("Close the drive first").color(WARN));
+        }
+        if files {
+            let picked = job::pick_files("The downloads to add");
+            self.add_content(picked.into_iter().map(PathBuf::from).collect());
+        }
+        if folder {
+            if let Some(path) = job::pick_folder("The folder to add") {
+                self.add_content(vec![PathBuf::from(path)]);
+            }
+        }
+    }
+
     /// Ready to add: the recent downloads ReRBR recognises, each with what it is and Add; or how they appear.
     pub fn ready_to_add_ui(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Ready to add");
+        kit::group_label(ui, "Ready to add", None);
         let idle = !self.content.busy() && self.child.is_none();
         let owned = self.owned_content();
         self.content.recent.poll(ui.ctx(), owned);
-        let mut add = None;
-        for found in &self.content.recent.list {
-            ui.horizontal(|ui| {
-                let name = found.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                ui.label(&name).on_hover_text(found.path.display().to_string());
-                ui.weak(&found.label);
-                if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
-                    add = Some(found.path.clone());
-                }
-            });
-        }
         if self.content.recent.list.is_empty() {
-            ui.weak("Downloads from the last 30 days appear here.");
+            return kit::hint(ui, "Downloads from the last 30 days appear here.");
         }
+        let mut add = None;
+        kit::panel(ui, |rows| {
+            for found in &self.content.recent.list {
+                rows.full(|ui| {
+                    let name = found.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
+                            add = Some(found.path.clone());
+                        }
+                        ui.label(RichText::new(&found.label).size(12.0).color(TEXT_3));
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            let name = RichText::new(name).color(TEXT_LIST);
+                            ui.add(egui::Label::new(name).truncate()).on_hover_text(found.path.display().to_string());
+                        });
+                    });
+                });
+            }
+        });
         if let Some(path) = add {
             self.add_content(vec![path]);
         }
     }
 
-    /// Add from your computer: files, a folder, and the drop line.
-    pub fn add_from_computer_ui(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Add from your computer");
-        let idle = !self.content.busy() && self.child.is_none();
-        ui.horizontal_wrapped(|ui| {
-            let files = ui.add_enabled(idle, egui::Button::new("Add files…")).on_hover_text(
-                "Choose downloads: BTB stages, NGP car packs, car skins, co-drivers, pace notes or NGP. ReRBR works \
-                 out what each is and adds it; the downloads are not changed.",
-            );
-            if files.clicked() {
-                let picked = job::pick_files("The downloads to add");
-                self.add_content(picked.into_iter().map(PathBuf::from).collect());
-            }
-            let folder = ui.add_enabled(idle, egui::Button::new("Add folder…")).on_hover_text(
-                "Choose an extracted download: a stage's folder, a folder of stages, a car skin, a co-driver or a \
-                 pace notes folder, or the disc.",
-            );
-            if folder.clicked() {
-                if let Some(path) = job::pick_folder("The folder to add") {
-                    self.add_content(vec![PathBuf::from(path)]);
-                }
-            }
-            if super::drop::drop_works() {
-                ui.weak("or drop files anywhere on this window");
+    /// Last import: every outcome with its own Open link, Clear, and what is refused.
+    pub fn last_import_ui(&mut self, ui: &mut egui::Ui) {
+        if self.content.notice.is_empty() {
+            return;
+        }
+        if kit::group_label(ui, "Last import", Some("Clear")) {
+            self.content.notice.clear();
+            return;
+        }
+        let mut open = None;
+        kit::panel(ui, |rows| {
+            for outcome in &self.content.notice {
+                rows.full(|ui| {
+                    let (color, tick) = if outcome.ok() { (GOOD, "✔") } else { (WARN, "⚠") };
+                    ui.label(RichText::new(tick).color(color));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if let Some((_, label)) = outcome.goto.as_ref().and_then(|g| g.page()) {
+                            if kit::link(ui, label).clicked() {
+                                open = outcome.goto.clone();
+                            }
+                        }
+                        if let Some(file) = outcome.open.as_ref().filter(|_| outcome.ok()) {
+                            if kit::link(ui, "Open the licence").clicked() {
+                                crate::crash::open(file.as_os_str());
+                            }
+                        }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            let line = RichText::new(outcome.line()).color(TEXT_LIST);
+                            ui.add(egui::Label::new(line).wrap());
+                        });
+                    });
+                });
             }
         });
+        if let Some(goto) = open {
+            self.content_goto(&goto);
+        }
     }
 }
 
@@ -343,9 +459,9 @@ mod tests {
         assert_eq!(added.as_deref(), Some("Autio I Gravel"));
         assert!(form.owned_voices.iter().any(|p| p.name == "Janne Laahanen V3"));
         assert_eq!(form.codriver_pack.as_deref(), Some("Janne Laahanen V3"));
-        // The stage is the stage picker's: Open goes to it.
+        // The stage is Stages': Open goes to it.
         form.content_goto(&Goto::Stage("Autio I Gravel".into()));
-        assert!(form.stage_browser.open && form.page == Page::Drive);
+        assert_eq!(form.page, Page::Stages);
         // Each kind goes to its page.
         for (goto, page) in [
             (Goto::Cars, Page::Cars),
@@ -381,7 +497,7 @@ mod tests {
         let section = |ctx: &egui::Context, form: &mut Form| {
             ctx.root_ui(|root| {
                 egui::CentralPanel::default().show(root, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| form.get_page(ui));
+                    form.import_page(ui);
                 })
             });
         };
@@ -393,8 +509,8 @@ mod tests {
         // The notice: some added, some not.
         let ok = |what: &str, kind, place: &str, goto| Outcome::added("x", kind, what, place, goto);
         form.content.notice = vec![
-            ok("Autio I Gravel", "BTB stage", "it's in the stage picker", Goto::Stage("Autio I Gravel".into())),
-            ok("Janne Laahanen V3", "co-driver", "pick it in Content > Co-drivers", Goto::Codrivers),
+            ok("Autio I Gravel", "BTB stage", "it's in Stages", Goto::Stage("Autio I Gravel".into())),
+            ok("Janne Laahanen V3", "co-driver", "pick it in Co-drivers", Goto::Codrivers),
             Outcome::failed("Holiday.rar", "not supported", detect_rar()),
             Outcome::failed(
                 "Ford Fiesta - Model.7z",
@@ -419,7 +535,7 @@ mod tests {
     }
 
     /// A skin dropped on a loaded launcher goes to the retail car whose texture names it has, is worn, and Open shows
-    /// that car on Content > Cars. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`.
+    /// that car on Cars. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`.
     #[test]
     fn a_dropped_skin_is_worn_by_its_car() {
         let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
@@ -529,7 +645,7 @@ mod tests {
         let listed = form.catalog.map(10_000).unwrap();
         assert!(matches!(&listed.origin, crate::catalog::Origin::Community(s) if s.problem.is_none()));
         form.content_goto(&Goto::Stage("10000-Kamenak".into()));
-        assert!(form.stage_browser.open && form.page == Page::Drive);
+        assert_eq!(form.page, Page::Stages);
 
         let Some(shots) = env("RBR_SCREENSHOTS") else {
             eprintln!("skipping the screenshots: RBR_SCREENSHOTS not set");
