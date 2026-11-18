@@ -358,6 +358,15 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   writes each stepped frame's car and tyres as text (research, read-only; `replay_trace.rs`; with `--tyre-probe F
   [--tyre-probe-every N]` the tyre frames as the autopilot's probe, `harness/replay_gg.py`). `--replay-tyre STEP:MODEL` (research) runs the replay checked to
   STEP, then fits the tyre model MODEL (`ngp`, `brush`) afresh and runs the drive's inputs on uncompared.
+- Championship layout (redesign, 2026-11-18): one setup screen (presets list left, the builder's Event / Rules / Length panels right,
+  the itinerary editor in a collapsible section, a saved championship as a Continue bar with Abandon… behind a confirmation, the live
+  summary and Start with its blocking reason in the pinned footer; no separate builder view, the first preset is selected on open).
+  A championship under way: header (back link, rally, step, place), a scrolling itinerary strip (tiles per stage and service, your
+  place per stage, click a driven stage for its times), the step's card left (next stage with Position, Start order, Tyres, Setup
+  and Edit… only where a choice is allowed; welcome; service park; Super Rally restart; rally result; championship result),
+  bulletins and calendar under it, the standings right with an Overall / stage-times toggle (`table.rs`, scrolling) and the season
+  points; the step's primary button is the footer's (Drive disabled with the reason when the launch is blocked, the stage is driven
+  or the physics is experimental, which refuses championship stages).
 - Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
   `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the
@@ -394,8 +403,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (surface, length, the player's finish, the winner). `results.rs` reads them (stage times and winners, place changes,
   rivals, finishes, record). The builder's Rules row: Super Rally and Power stage. A bulletins card ("Since your last stage", `Event::bulletins`, the last 8 lines, "Show all" for the rest) sits
   above the standings. The page holds the real `Event` (no seam): `mod.rs` its turns, `words.rs` the settings' words and
-  flags, `view.rs` the screen switch, `builder.rs` the entry and builder, `running.rs` the championship's screens,
-  `cards.rs` its cards, `results.rs` what they read from the results, and `common.rs` the shared cards, places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
+  flags, `view.rs` the screen switch, `builder.rs` the setup screen, `running.rs` the championship's screens,
+  `cards.rs` its cards, `table.rs` the standings' table, `results.rs` what they read from the results, and `common.rs` the shared cards, places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
   (`championship*.png`, `championship-super-rally.png` a weekend's restart; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The built-event test (`a_quick_rally_on_the_real_stages_and_ai_plays_through`, `RBR_DATA`) loads the real `ai.ini`,
   builds a Quick rally on the installed stages and plays every stage at a fixed pace, saved and read back before SS4 to end as the run never saved.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), no longer tagged experimental (user decision

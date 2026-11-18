@@ -525,8 +525,8 @@ impl Form {
     /// The page shown in the central area: the Settings group's header over its page, Import and the rest as they
     /// are (a restyled page draws its own `kit::page_header` and `kit::body`; the others are still wrapped here).
     fn page_ui(&mut self, ui: &mut egui::Ui) {
-        if self.page == Page::Import {
-            return self.import_page(ui);
+        if matches!(self.page, Page::Import | Page::Championship) {
+            return if self.page == Page::Import { self.import_page(ui) } else { self.championship_page(ui) };
         }
         if self.page.section() == Some(Section::Settings) {
             if let Some(page) = self.settings_header(ui) {
@@ -543,7 +543,7 @@ impl Form {
         egui::Frame::new().inner_margin(margin).show(ui, |ui| match self.page {
             Page::Drive => self.drive_page(ui),
             Page::Circuit => self.circuit_page(ui),
-            Page::Championship => self.championship_page(ui),
+            Page::Championship => {}
             Page::School => self.school_page(ui),
             Page::Replays => self.replays_page(ui),
             Page::Setup => self.setup_page(ui),
