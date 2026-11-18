@@ -259,6 +259,8 @@ pub fn lines(
 ) -> Vec<Line> {
     let words: Vec<String> = filter.query.to_lowercase().split_whitespace().map(str::to_owned).collect();
     let accepted = |k: &usize| filter.accepts(&rows[*k]);
+    // A search covers every car whatever the class: only the drive narrows it.
+    let searched = |k: &usize| Filter { class: None, ..filter.clone() }.accepts(&rows[*k]);
     let sorted = |mut members: Vec<usize>| {
         match sort {
             Sort::Name => members.sort_by_cached_key(|&k| (rows[k].title.to_lowercase(), rows[k].index)),
@@ -277,7 +279,7 @@ pub fn lines(
     let mut out = Vec::new();
     if !words.is_empty() {
         let found = (0..rows.len()).filter(|&k| words.iter().all(|w| rows[k].haystack.contains(w.as_str())));
-        let (ok, blocked) = split(found.filter(accepted).collect());
+        let (ok, blocked) = split(found.filter(searched).collect());
         let (starred, rest): (Vec<usize>, Vec<usize>) =
             ok.into_iter().partition(|&k| favourites.contains(&rows[k].name));
         out.extend(block(Some("Favourites"), sorted(starred)));
@@ -475,6 +477,7 @@ impl CarBrowser {
             self.collection =
                 Some(collection.unwrap_or(if favourite { Collection::Favourites } else { Collection::All }));
             self.filter.query.clear();
+            self.filter.class = None;
             self.nav.show(selected);
         } else {
             self.nav.resume();
@@ -544,8 +547,9 @@ impl CarBrowser {
     fn filter_bar(&mut self, ui: &mut egui::Ui, favourites: &[String], recent: &[String]) {
         let scopes = self.scopes(favourites, recent);
         let labels: Vec<&str> = scopes.iter().map(|(_, l)| *l).collect();
+        let startable = |class: &str| self.rows.iter().filter(|r| r.startable() && r.class == class).count();
         let classes: Vec<(Option<String>, String)> = std::iter::once((None, "All classes".to_owned()))
-            .chain(self.classes().into_iter().map(|c| (Some(c.clone()), c)))
+            .chain(self.classes().into_iter().map(|c| (Some(c.clone()), format!("{c}  {}", startable(&c)))))
             .collect();
         let drives: Vec<(Option<Drive>, String)> = std::iter::once((None, "Any drive".to_owned()))
             .chain(Drive::ALL.map(|d| (Some(d), d.label().to_owned())))
@@ -563,7 +567,9 @@ impl CarBrowser {
             ui.horizontal(|ui| {
                 browser::search_box(ui, hint, &mut self.filter.query, &mut self.focus, search);
                 let mut scope = self.collection.clone().unwrap_or(Collection::All);
-                if kit::segmented(ui, "cars scope", &mut scope, &scopes_for(&scopes)).changed() {
+                let counts = self.scope_counts(favourites, recent);
+                let segments = kit::segmented(ui, "cars scope", &mut scope, &scopes_for(&scopes));
+                if segments.on_hover_text(counts).changed() {
                     self.collection = Some(scope);
                     self.filter.query.clear();
                 }
@@ -632,6 +638,22 @@ impl CarBrowser {
         out
     }
 
+    /// The scopes' counts for their hover text: the favourites and recent picks that are cars, the cars that can
+    /// start, the cars added and the ones that cannot start.
+    fn scope_counts(&self, favourites: &[String], recent: &[String]) -> String {
+        let known = |names: &[String]| names.iter().filter(|n| self.rows.iter().any(|r| r.name == **n)).count();
+        let startable = self.rows.iter().filter(|r| r.startable()).count();
+        let mut text = format!("All {startable} · Favourites {} · Recent {}", known(favourites), known(recent));
+        let added = self.rows.iter().filter(|r| r.added).count();
+        if self.page && added > 0 {
+            text += &format!(" · Added by you {added}");
+        }
+        if startable < self.rows.len() {
+            text += &format!(" · Cannot start {}", self.rows.len() - startable);
+        }
+        text
+    }
+
     /// The classes of the cars, newest to oldest.
     fn classes(&self) -> Vec<String> {
         let mut classes: BTreeMap<(usize, &str), ()> = BTreeMap::new();
@@ -671,14 +693,22 @@ impl CarBrowser {
         let mut action = None;
         let collection = self.collection.clone().unwrap_or(Collection::All);
         let count = items(&self.lines).count();
-        let shown = format!("{count} shown");
+        let searching = !self.filter.query.trim().is_empty();
+        let shown = if searching { format!("{count} found in all cars") } else { format!("{count} shown") };
+        // Inside a class every car has the class: the column tells where the car is from instead.
+        let by_source = self.filter.class.is_some() && !searching;
         let verb = if self.page { "Drive" } else { "Choose" };
         let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
         if !self.page {
             keys.push(("Esc", "Back"));
         }
         browser::hint_bar(ui, &shown, &keys, |ui| {
-            browser::list_header(ui, "Name", &WIDTHS, &[("Class", false), ("Model", false), ("Drive", false)]);
+            browser::list_header(
+                ui,
+                "Name",
+                &WIDTHS,
+                &[(if by_source { "From" } else { "Class" }, false), ("Model", false), ("Drive", false)],
+            );
             if count == 0 {
                 let empty = self.filter.query.trim().is_empty();
                 let hint = match &collection {
@@ -706,7 +736,7 @@ impl CarBrowser {
                     let row = &self.rows[k];
                     let (rect, response, star) = row_slot(ui, k);
                     let favourite = favourites.contains(&row.name);
-                    draw_row(ui, rect, row, k == nav.cursor, response.hovered(), favourite);
+                    draw_row(ui, rect, row, by_source, k == nav.cursor, response.hovered(), favourite);
                     let response = match row.problem.as_deref() {
                         Some(problem) => response.on_hover_text(format!("cannot start: {problem}")),
                         None => response,
@@ -840,7 +870,7 @@ fn actions(
 const WIDTHS: [f32; 3] = [110.0, 92.0, 36.0];
 
 /// A car's row: its star, name, class, model and drive; the highlighted one filled.
-fn draw_row(ui: &egui::Ui, rect: Rect, row: &CarRow, cursor: bool, hovered: bool, favourite: bool) {
+fn draw_row(ui: &egui::Ui, rect: Rect, row: &CarRow, by_source: bool, cursor: bool, hovered: bool, favourite: bool) {
     let p = ui.painter();
     let (c, name_right) = browser::columns(rect, &WIDTHS);
     let startable = row.startable();
@@ -849,7 +879,8 @@ fn draw_row(ui: &egui::Ui, rect: Rect, row: &CarRow, cursor: bool, hovered: bool
     let (name_colour, dim) = if startable { (TEXT_LIST, TEXT_2) } else { (TEXT_DISABLED, TEXT_3) };
     let font = FontId::proportional(13.0);
     paint_cell(p, rect, browser::name_x(rect), name_right, &row.title, font.clone(), name_colour);
-    paint_cell(p, rect, c[0], c[1] - 8.0, &row.group, font.clone(), dim);
+    let third = if by_source { &row.source } else { &row.group };
+    paint_cell(p, rect, c[0], c[1] - 8.0, third, font.clone(), dim);
     match (row.reason(), &row.model) {
         (Some(reason), _) => paint_cell(p, rect, c[1], c[2] - 8.0, reason, FontId::proportional(12.0), theme::WARN),
         (None, model) => {

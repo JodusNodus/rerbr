@@ -335,6 +335,8 @@ pub fn lines(
 ) -> Vec<Line> {
     let words: Vec<String> = filter.query.to_lowercase().split_whitespace().map(str::to_owned).collect();
     let accepted = |k: &usize| filter.accepts(&rows[*k]);
+    // A search covers every stage whatever the country: only the surface and the length narrow it.
+    let searched = |k: &usize| Filter { country: None, ..filter.clone() }.accepts(&rows[*k]);
     let sorted = |mut members: Vec<usize>| {
         match sort {
             Sort::Name => members.sort_by_cached_key(|&k| (rows[k].name.to_lowercase(), rows[k].number)),
@@ -354,7 +356,7 @@ pub fn lines(
     let mut out = Vec::new();
     if !words.is_empty() {
         let found = (0..rows.len()).filter(|&k| words.iter().all(|w| rows[k].haystack.contains(w.as_str())));
-        let (ok, blocked) = split(found.filter(accepted).collect());
+        let (ok, blocked) = split(found.filter(searched).collect());
         if sort == Sort::Newest {
             out.extend(block(None, sorted(ok)));
             out.extend(block(Some("Cannot start"), sorted(blocked)));
@@ -579,6 +581,7 @@ impl StageBrowser {
         self.target = crate::car_browser::Target::Drive;
         let favourite = self.rows.get(selected).is_some_and(|r| favourites.contains(&r.number));
         if !self.visited || collection.is_some() {
+            self.filter.country = None;
             self.collection =
                 match collection.unwrap_or(if favourite { Collection::Favourites } else { Collection::All }) {
                     Collection::Country(code) => {
@@ -601,6 +604,7 @@ impl StageBrowser {
     pub fn show_stage(&mut self, index: usize) {
         self.collection = Collection::All;
         self.filter.query.clear();
+        self.filter.country = None;
         self.nav.show(index);
         self.visited = true;
     }
@@ -663,7 +667,7 @@ impl StageBrowser {
         if clicks.random {
             self.random();
         }
-        self.filter_bar(ui, noun);
+        self.filter_bar(ui, noun, env.favourites, env.recent);
         let chosen = self.body(ui, &mut env);
         chosen.or(action)
     }
@@ -692,6 +696,24 @@ impl StageBrowser {
         out
     }
 
+    /// The scopes' counts for their hover text: the favourites and recent picks that are stages, the stages that can
+    /// start, and the added, circuits and blocked ones.
+    fn scope_counts(&self, favourites: &[u32], recent: &[u32]) -> String {
+        let known = |numbers: &[u32]| numbers.iter().filter(|n| self.rows.iter().any(|r| r.number == **n)).count();
+        let startable = self.rows.iter().filter(|r| r.startable()).count();
+        let mut text = format!("All {startable} · Favourites {} · Recent {}", known(favourites), known(recent));
+        for (name, n) in [
+            ("Added by you", self.rows.iter().filter(|r| r.added).count()),
+            ("Circuits", self.rows.iter().filter(|r| r.circuit).count()),
+            ("Cannot start", self.rows.len() - startable),
+        ] {
+            if n > 0 {
+                text += &format!(" · {name} {n}");
+            }
+        }
+        text
+    }
+
     /// The countries of the stages by name, and whether some have none.
     fn countries(&self) -> Vec<(Option<String>, String)> {
         let named: BTreeMap<&str, &str> =
@@ -705,7 +727,7 @@ impl StageBrowser {
     }
 
     /// The search, the scopes and the surface, country, length and sort dropdowns.
-    fn filter_bar(&mut self, ui: &mut egui::Ui, noun: &str) {
+    fn filter_bar(&mut self, ui: &mut egui::Ui, noun: &str, favourites: &[u32], recent: &[u32]) {
         let scopes = self.scopes();
         let labels: Vec<&str> = scopes.iter().map(|(_, l)| *l).collect();
         let scope_options: Vec<(Collection, &str)> = scopes.iter().map(|(c, l)| (c.clone(), *l)).collect();
@@ -713,7 +735,10 @@ impl StageBrowser {
             .chain(SURFACES.iter().enumerate().map(|(n, s)| (Some(n as u32), (*s).to_owned())))
             .collect();
         let countries: Vec<(Option<Option<String>>, String)> = std::iter::once((None, "All countries".to_owned()))
-            .chain(self.countries().into_iter().map(|(code, name)| (Some(code), name)))
+            .chain(self.countries().into_iter().map(|(code, name)| {
+                let n = self.rows.iter().filter(|r| r.startable() && r.country == code).count();
+                (Some(code), format!("{name}  {n}"))
+            }))
             .collect();
         let lengths: Vec<(Length, String)> = Length::ALL.map(|l| (l, l.long_label().to_owned())).to_vec();
         let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
@@ -731,7 +756,8 @@ impl StageBrowser {
             ui.horizontal(|ui| {
                 browser::search_box(ui, &hint, &mut self.filter.query, &mut self.focus, search);
                 let mut scope = self.collection.clone();
-                if kit::segmented(ui, "stages scope", &mut scope, &scope_options).changed() {
+                let counts = self.scope_counts(favourites, recent);
+                if kit::segmented(ui, "stages scope", &mut scope, &scope_options).on_hover_text(counts).changed() {
                     self.collection = scope;
                     self.filter.query.clear();
                 }
@@ -820,7 +846,11 @@ impl StageBrowser {
         let mut action = None;
         let noun = self.noun();
         let count = items(&self.lines).count();
-        let shown = format!("{count} shown");
+        let shown = if self.filter.query.trim().is_empty() {
+            format!("{count} shown")
+        } else {
+            format!("{count} found in all {noun}s")
+        };
         let verb = if self.page { "Drive" } else { "Choose" };
         let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
         if !self.page {
