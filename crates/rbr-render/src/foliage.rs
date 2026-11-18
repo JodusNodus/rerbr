@@ -666,8 +666,12 @@ fn trees<'a>(mesh: &Mesh, plant: impl Fn(&Draw) -> Option<&'a Cut>) -> Trees {
     Trees { of, trees }
 }
 
+/// The least `y` of a flat face's unit normal ([`pieces`]), about 26 degrees off level: banked and sloped road is flat.
+const FLAT: f32 = 0.9;
+
 /// The piece of the plant draws each of `vertices` (of `mesh`) is on, its box, and whether it is a plant's: a
-/// connected piece of the draws `plant` gives a cut-out texture for whose part of it is cut out. `None` off them.
+/// connected piece of the draws `plant` gives a cut-out texture for whose part of it is cut out, with a face steeper
+/// than [`FLAT`]. `None` off them.
 fn pieces<'a>(
     vertices: &[Vertex],
     mesh: &Mesh,
@@ -681,8 +685,8 @@ fn pieces<'a>(
         }
         i
     }
-    // Each vertex's cut-out texture.
-    let mut on = vec![None; vertices.len()];
+    // Each vertex's cut-out texture, and whether a face of it stands up: steeper than [`FLAT`].
+    let (mut on, mut steep) = (vec![None; vertices.len()], vec![false; vertices.len()]);
     for (draw, cut) in mesh.draws.iter().filter_map(|draw| Some((draw, plant(draw)?))) {
         for triangle in mesh.indices[draw.indices.clone()].chunks_exact(3) {
             let [a, b, c] = [0, 1, 2].map(|k| triangle[k] as usize);
@@ -692,15 +696,20 @@ fn pieces<'a>(
             for i in [a, b, c] {
                 on[i] = Some(cut);
             }
+            let [pa, pb, pc] = [a, b, c].map(|i| Vec3::from(vertices[i].position));
+            steep[a] |= (pb - pa).cross(pc - pa).try_normalize().is_some_and(|face| face.y.abs() < FLAT);
             let (ra, rb, rc) = (root(&mut parent, a), root(&mut parent, b), root(&mut parent, c));
             parent[rb] = ra;
             parent[rc] = ra;
         }
     }
-    // Each piece's box and its uv rectangle.
+    // Each piece's box and its uv rectangle, and whether it stands up. A piece lying flat (road paint, a decal on the
+    // ground) is no plant's card whatever its texture: faded edge-on (`plant_faded` in `shader.wgsl`), it vanished.
     let mut span = vec![(Vec3::MAX, Vec3::MIN, [f32::MAX; 2], [f32::MIN; 2]); vertices.len()];
+    let mut upright = vec![false; vertices.len()];
     for i in (0..vertices.len()).filter(|&i| on[i].is_some()) {
         let r = root(&mut parent, i);
+        upright[r] |= steep[i];
         let (p, uv) = (Vec3::from(vertices[i].position), vertices[i].uv0);
         let (low, high, uv_low, uv_high) = &mut span[r];
         (*low, *high) = (low.min(p), high.max(p));
@@ -715,8 +724,8 @@ fn pieces<'a>(
             let cut = on[i]?;
             let r = root(&mut parent, i);
             let (low, high, uv_low, uv_high) = span[r];
-            let cut =
-                *tested.entry((r, std::ptr::from_ref(cut))).or_insert_with(|| cut.plant(uv_low, uv_high, low, high));
+            let cut = upright[r]
+                && *tested.entry((r, std::ptr::from_ref(cut))).or_insert_with(|| cut.plant(uv_low, uv_high, low, high));
             Some((r, low, high, cut))
         })
         .collect()
@@ -724,7 +733,53 @@ fn pieces<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{green, structure, Cut, Marks, DRAWN, GREEN};
+    use super::{green, pieces, structure, Cut, Marks, DRAWN, GREEN};
+    use crate::stage::{Address, Anchor, Draw, DrawState, Layer, Lod, Mesh, Vertex};
+    use bytemuck::Zeroable;
+    use glam::Vec3;
+
+    #[test]
+    fn pieces_lying_flat_are_no_plants() {
+        // A card standing up and a decal on the ground, a little sloped, both of a texture cut out all over.
+        let cut = Cut::new(4, &[true; 16]);
+        let quad = |a: Vec3, u: Vec3, v: Vec3| [a, a + u, a + u + v, a + v];
+        let corners = [
+            quad(Vec3::ZERO, Vec3::X, Vec3::Y),
+            quad(Vec3::new(5.0, 0.0, 0.0), Vec3::new(2.0, 0.3, 0.0), Vec3::new(0.0, 0.0, 0.5)),
+        ];
+        let vertices: Vec<Vertex> = corners
+            .iter()
+            .flatten()
+            .zip([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]].iter().cycle())
+            .map(|(&p, &uv0)| Vertex { position: p.into(), uv0, ..Vertex::zeroed() })
+            .collect();
+        let state = DrawState {
+            textures: [None, None],
+            shadow: None,
+            address: [Address::Wrap; 2],
+            second_texture: false,
+            alpha_ref: Some(127),
+            mip_bias: false,
+            cull_back: false,
+            blend: false,
+            depth_test: true,
+            depth_write: true,
+            shade: None,
+            specular: None,
+        };
+        let mesh = Mesh {
+            layer: Layer::Solid,
+            anchor: Anchor::World,
+            bounds: None,
+            cell: None,
+            indices: vec![0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7],
+            draws: vec![Draw { indices: 0..12, state, lod: Lod::Always }],
+            vertices: vertices.clone(),
+            sun_cascades: true,
+        };
+        let plant: Vec<bool> = pieces(&vertices, &mesh, |_| Some(&cut)).iter().map(|p| p.unwrap().3).collect();
+        assert_eq!(plant, [true, true, true, true, false, false, false, false]);
+    }
 
     #[test]
     fn pieces_by_their_part_of_the_texture() {
