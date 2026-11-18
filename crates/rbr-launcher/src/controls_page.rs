@@ -26,7 +26,7 @@ use winit::keyboard::KeyCode;
 
 use crate::catalog::Car;
 use crate::kit::{self, Rows};
-use crate::settings_page::{label_cell, note, row_tip};
+use crate::settings_page::{label_cell, row_tip};
 use crate::theme::{medium, mono, GOOD, INPUT, LINK, PROGRESS, TEXT, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
 
 /// A binding being set: its action, and for a device input every joystick's values when it began (`None` for an axis
@@ -76,7 +76,7 @@ fn ffb_ui(rows: &mut Rows, ffb: &mut ffb::Options, settings: &Path, read_only: b
             }
         });
     });
-    rows.switch_row("Inverse", None, &mut ffb.settings.inverse);
+    rows.disabled_if(!on, |rows| rows.switch_row("Inverse", None, &mut ffb.settings.inverse));
     rows.row("Smoothing", |ui| {
         ui.add_enabled_ui(on, |ui| {
             // "off" at 0, else the milliseconds; typed in with or without the unit.
@@ -516,6 +516,12 @@ impl ControlsPage {
         (0..joysticks.len()).map(|k| (joysticks.device(k), short_name(joysticks.name(k)))).collect()
     }
 
+    /// The joysticks connected: name and id.
+    fn pads(&self) -> Vec<String> {
+        let Some(joysticks) = &self.joysticks else { return Vec::new() };
+        (0..joysticks.len()).map(|k| format!("{} ({})", joysticks.name(k), joysticks.device(k).format())).collect()
+    }
+
     /// The joysticks connected, by their short names ([`short_name`]).
     pub fn pad_names(&self) -> Vec<String> {
         self.connected().into_iter().map(|(_, name)| name).collect()
@@ -539,7 +545,7 @@ impl ControlsPage {
         settings: &Path,
         read_only: bool,
     ) {
-        let pads = self.pad_names();
+        let pads = self.pads();
         if pads.is_empty() {
             ui.label(
                 RichText::new(
@@ -763,18 +769,25 @@ impl ControlsPage {
                 }
             });
         });
-        if !on {
-            return;
-        }
-        match &self.ffb_last {
-            Some(Ok(device)) => rows.hint(&format!("Last drive: on {device}")),
+        // Greyed while the force feedback is off, as the device list above.
+        let last = match &self.ffb_last {
+            Some(Ok(device)) => Some((format!("Last drive: on {device}"), TEXT_3, None)),
             Some(Err(why)) => {
                 let text = "Last drive: no force feedback. If your wheel is listed more than once in Device, pick \
                             another of its entries.";
-                note(rows, WARN, text);
-                _ = why;
+                Some((text.to_owned(), WARN, Some(why.as_str())))
             }
-            None => {}
+            None => None,
+        };
+        if let Some((text, color, why)) = last {
+            rows.full(|ui| {
+                ui.add_enabled_ui(on, |ui| {
+                    let label = ui.add(egui::Label::new(RichText::new(text).size(12.0).color(color)).wrap());
+                    if let Some(why) = why {
+                        label.on_hover_text(why);
+                    }
+                });
+            });
         }
     }
 }

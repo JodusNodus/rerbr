@@ -91,6 +91,23 @@ impl Rows<'_> {
         self.first = false;
     }
 
+    /// The rows `content` adds, dimmed and inert while `disabled`.
+    pub fn disabled_if<R>(&mut self, disabled: bool, content: impl FnOnce(&mut Rows) -> R) -> R {
+        let first = self.first;
+        let (result, first) = self
+            .ui
+            .scope(|ui| {
+                ui.add_enabled_ui(!disabled, |ui| {
+                    let mut rows = Rows { ui, first };
+                    (content(&mut rows), rows.first)
+                })
+                .inner
+            })
+            .inner;
+        self.first = first;
+        result
+    }
+
     /// A row of ~42 px: `label` on the left (#c9cacd), `control` right-aligned. The control's widgets are added
     /// right to left: the first added is the rightmost.
     pub fn row<R>(&mut self, label: &str, control: impl FnOnce(&mut Ui) -> R) -> R {
@@ -226,6 +243,7 @@ pub fn segmented<T: PartialEq + Clone>(
 
 /// A switch (34×20); the response is `changed()` when toggled.
 pub fn switch(ui: &mut Ui, on: &mut bool) -> Response {
+    // Inert and dimmed (the painter's opacity) in a disabled `Ui`, as egui's own widgets.
     let (rect, mut response) = ui.allocate_exact_size(Vec2::new(34.0, 20.0), Sense::click());
     if response.clicked() {
         *on = !*on;

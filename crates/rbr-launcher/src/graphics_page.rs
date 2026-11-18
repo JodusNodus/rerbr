@@ -398,9 +398,14 @@ impl Form {
                     ui.vertical(|ui| self.upscaler_download_ui(ui));
                 });
             } else {
-                let mut off = false;
-                rows.switch_row("Upscaled textures", Some("Not available on this platform"), &mut off)
-                    .on_hover_text(tip);
+                rows.disabled_if(true, |rows| {
+                    rows.switch_row(
+                        "Upscaled textures",
+                        Some("Not available on this platform"),
+                        &mut self.upscale_textures,
+                    )
+                    .on_disabled_hover_text(tip)
+                });
             }
 
             let (label, tip) = present_label(self.present);
@@ -475,22 +480,27 @@ impl Form {
             let mut cockpit = self.cockpit;
             let tip = "The in-car view's head: it keeps the horizon steadier over bumps. Off, the view is fixed to \
                        the car. The pause menu's Camera page sets it too";
-            rows.switch_row("Head motion in the car", None, &mut cockpit.head).on_hover_text(tip);
+            let read_only = self.read_only;
+            rows.disabled_if(read_only, |rows| {
+                rows.switch_row("Head motion in the car", None, &mut cockpit.head).on_hover_text(tip)
+            });
 
             let tip = "What the cockpit view shows: the driver's arms on the wheel, the co-driver beside you, and the \
                        car's steering wheel (leave it out when driving with a wheel of your own). The pause menu's \
                        Camera page sets them too";
-            rows.full(|ui| {
-                label_cell(ui, 110.0, "Cockpit shows").on_hover_text(tip);
-                ui.horizontal_wrapped(|ui| {
-                    let choices = [
-                        (&mut cockpit.driver, "Driver's arms"),
-                        (&mut cockpit.codriver, "Co-driver"),
-                        (&mut cockpit.wheel, "Steering wheel"),
-                    ];
-                    for (on, label) in choices {
-                        ui.checkbox(on, label).on_hover_text(tip);
-                    }
+            rows.disabled_if(read_only, |rows| {
+                rows.full(|ui| {
+                    label_cell(ui, 110.0, "Cockpit shows").on_hover_text(tip);
+                    ui.horizontal_wrapped(|ui| {
+                        let choices = [
+                            (&mut cockpit.driver, "Driver's arms"),
+                            (&mut cockpit.codriver, "Co-driver"),
+                            (&mut cockpit.wheel, "Steering wheel"),
+                        ];
+                        for (on, label) in choices {
+                            ui.checkbox(on, label).on_hover_text(tip);
+                        }
+                    });
                 });
             });
             if self.read_only {
