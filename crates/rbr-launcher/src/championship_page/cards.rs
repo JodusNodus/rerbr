@@ -69,6 +69,7 @@ pub(super) fn stage_summary(ui: &mut Ui, event: &Event, rally: usize, stage: usi
     let mine = times.iter().position(|(e, _)| e.is_none());
     let best = times.first().map_or(0.0, |t| t.1);
     let mut back = false;
+    ui.label(RichText::new(format!("SS{} · {} result", stage + 1, s.stage.name)).family(medium()).color(TEXT));
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
         let overall = |ui: &mut Ui| {
@@ -106,7 +107,6 @@ pub(super) fn stage_summary(ui: &mut Ui, event: &Event, rally: usize, stage: usi
             back = kit::link(ui, "Latest").clicked();
         }
     });
-    let _ = s;
     back
 }
 
@@ -211,8 +211,14 @@ pub(super) fn strip_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Option<u
                     StageMark::Retired => ("out".to_owned(), WARN),
                     _ => (format!("start {}", clock_hm(s.clock)), TEXT_3),
                 };
+                let driven = !matches!(m, StageMark::Next | StageMark::Later);
                 let galley = clip.layout_no_wrap(line, mono(11.0), color);
                 clip.galley(egui::pos2(left, rect.top() + 64.0), galley, color);
+                if driven {
+                    // The start clock stays once the stage is driven.
+                    let galley = clip.layout_no_wrap(clock_hm(s.clock), mono(11.0), TEXT_3);
+                    clip.galley(egui::pos2(right - galley.size().x, rect.top() + 64.0), galley, TEXT_3);
+                }
                 if scroll && m == StageMark::Next && !matches!(event.turn, Turn::Service { .. }) {
                     response.scroll_to_me(Some(Align::Center));
                 }

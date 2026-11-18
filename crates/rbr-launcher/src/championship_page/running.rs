@@ -33,7 +33,7 @@ impl ChampionshipPage {
             self.view = View::Entry;
             return None;
         }
-        if let Some(asked) = self.footer_ui(ui, &env, &event, rally, &standings) {
+        if let Some(asked) = self.footer_ui(ui, &env, &event, rally) {
             request = Some(asked);
         }
         // The stage picked on the itinerary, else the last one driven while it is news.
@@ -66,8 +66,7 @@ impl ChampionshipPage {
                 let used_left = ui
                     .scope_builder(column(origin.x, left), |ui| {
                         ui.spacing_mut().item_spacing.y = 6.0;
-                        if let Some(asked) = self.left_ui(ui, &env, &event, rally, &standings, points.as_deref(), &news)
-                        {
+                        if let Some(asked) = self.left_ui(ui, &env, &event, &standings, points.as_deref(), &news) {
                             request = Some(asked);
                         }
                     })
@@ -105,7 +104,6 @@ impl ChampionshipPage {
         ui: &mut Ui,
         env: &Env,
         event: &Event,
-        rally: usize,
         standings: &[Standing],
         points: Option<&[Standing]>,
         news: &[String],
@@ -169,7 +167,6 @@ impl ChampionshipPage {
             kit::group_label(ui, "Calendar", None);
             calendar_ui(ui, event);
         }
-        let _ = rally;
         request
     }
 
@@ -300,16 +297,8 @@ impl ChampionshipPage {
 
     /// The pinned footer: the step's summary on the left and its primary button on the right (the park has its
     /// own in its card).
-    fn footer_ui(
-        &mut self,
-        ui: &mut Ui,
-        env: &Env,
-        event: &Event,
-        rally: usize,
-        standings: &[Standing],
-    ) -> Option<Request> {
+    fn footer_ui(&mut self, ui: &mut Ui, env: &Env, event: &Event, rally: usize) -> Option<Request> {
         let mut request = None;
-        let _ = standings;
         if matches!(event.turn, Turn::Service { .. }) && rejoin(event).is_none() {
             return None;
         }
@@ -389,10 +378,12 @@ impl ChampionshipPage {
     /// The footer of the next stage: Drive, and why it cannot be (added right to left).
     fn drive_footer(&mut self, ui: &mut Ui, env: &Env, _rally: usize, stage: usize) -> Option<Request> {
         let mut request = None;
-        let refused = (!env.no_records).then_some(()).is_none();
+        let refused = env.no_records;
         let enabled = !self.driving && env.blocker.is_none() && !refused;
         let go = ui.add_enabled(enabled, kit::primary_button(&format!("Drive SS{}", stage + 1), Some("↵")));
-        if go.clicked() {
+        // Enter on a focused control presses it instead.
+        let enter = ui.memory(|m| m.focused().is_none()) && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if go.clicked() || (enabled && enter) {
             match self.stage_start(env.here) {
                 Ok(start) => request = Some(Request::Launch(start)),
                 Err(e) => self.status = e,
@@ -452,14 +443,14 @@ impl ChampionshipPage {
         let wins = stage_winners(event, rally);
         let mine = wins.iter().filter(|w| **w == Some(None)).count();
         card(ui, |ui| {
-            match (place(lines), retired) {
-                (Some((at, of)), _) => {
-                    let points = lines[at - 1].points;
-                    let text = format!("{} of {of} · {points} points", ordinal(at));
-                    ui.label(RichText::new(text).size(15.0).family(semibold()).color(WARN));
-                }
-                (None, Some(stage)) => card_title(ui, &format!("Out of {name} on SS{}", stage + 1)),
-                (None, None) => card_title(ui, &format!("{name} is over")),
+            match retired {
+                Some(stage) => card_title(ui, &format!("Out of {name} on SS{}", stage + 1)),
+                None => card_title(ui, &format!("{name} is over")),
+            }
+            if let Some((at, of)) = place(lines) {
+                let points = lines[at - 1].points;
+                let text = format!("You finished {} of {of} · {points} points", ordinal(at));
+                ui.label(RichText::new(text).size(15.0).family(semibold()).color(WARN));
             }
             if let Some(line) = title_line(event).filter(|_| rally + 1 < event.rallies.len()) {
                 ui.colored_label(TEXT_2, line);

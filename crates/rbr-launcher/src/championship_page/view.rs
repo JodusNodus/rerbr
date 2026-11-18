@@ -18,8 +18,9 @@ pub struct Env<'a> {
     pub cars: &'a [Car],
     /// The car a new builder starts on (the Drive page's, the last driven).
     pub default_car: usize,
-    /// The title of the catalog's car (the builder's car), if it is listed.
-    pub car_title: &'a dyn Fn(usize) -> Option<String>,
+    /// The catalog's car (the builder's car), if it is listed: its title, its group and source, and whether it is a
+    /// favourite.
+    pub car_info: &'a dyn Fn(usize) -> Option<(String, String, bool)>,
     /// The car's saved setups on a surface (`SetupPage::saved_names`).
     pub saved: &'a dyn Fn(u32) -> Vec<(String, String)>,
     /// What blocks a stage's launch.

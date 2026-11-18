@@ -24,6 +24,11 @@ impl ChampionshipPage {
         let mut request = None;
         if self.config.is_none() {
             self.open_builder(FIRST_PRESET, env.cars, env.default_car, env.seed);
+        } else if self.config == self.applied && self.car != Some(env.default_car) && env.default_car < env.cars.len() {
+            // Untouched since its preset was applied: the builder keeps following the Drive page's car.
+            self.car = None;
+            let preset = self.builder.map_or(FIRST_PRESET, |b| b.preset);
+            self.open_builder(preset, env.cars, env.default_car, env.seed);
         }
         let preset = self.builder.map_or(FIRST_PRESET, |b| b.preset);
         let car = self.car.unwrap_or(env.default_car);
@@ -44,6 +49,7 @@ impl ChampionshipPage {
         kit::page_header(ui, "Championship", Some(subtitle), |ui| {
             let tip = "Your name for the saves: one championship is kept per profile, and your best laps on the \
                        Circuit page. Another name starts a separate set.";
+            kit::hint(ui, "saves and best laps are kept under this name");
             let edit = egui::TextEdit::singleline(env.profile).desired_width(130.0).hint_text("Your name");
             ui.add_enabled(!driving, edit).on_hover_text(tip);
             env.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
@@ -98,7 +104,8 @@ impl ChampionshipPage {
                                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
                             }
                             kit::status_dot(ui, WARN, reason);
-                        } else if saved.is_some() {
+                        }
+                        if saved.is_some() {
                             kit::status_dot(ui, WARN, &format!("Replaces {}'s saved championship", env.profile));
                         }
                         if !status.is_empty() {
@@ -169,7 +176,7 @@ impl ChampionshipPage {
         if abandon {
             self.abandoning = true;
         }
-        if let Some(preset) = picked.filter(|&p| p != preset) {
+        if let Some(preset) = picked {
             self.open_builder(preset, env.cars, env.default_car, env.seed);
         }
         if let Some(stages) = stages.filter(|_| start) {
@@ -206,10 +213,6 @@ impl ChampionshipPage {
                 });
             });
         });
-        if !self.status.is_empty() {
-            ui.add_space(4.0);
-            ui.colored_label(WARN, &self.status);
-        }
     }
 
     /// The setting panels: the event and the rules side by side, then the length and the seed. Whether Browse was
@@ -231,11 +234,27 @@ impl ChampionshipPage {
             let ui = &mut cols[0];
             kit::group_label(ui, "Event", None);
             kit::panel(ui, |rows| {
+                let info = (env.car_info)(car);
                 row(rows, "Car", "", |ui| {
                     browse = kit::link(ui, "Change").clicked();
-                    let name = (env.car_title)(car).unwrap_or_else(|| "no car".to_owned());
-                    ui.add(egui::Label::new(RichText::new(name).color(TEXT)).truncate());
+                    let (name, _, favourite) =
+                        info.clone().unwrap_or_else(|| ("no car".to_owned(), String::new(), false));
+                    let mut job = egui::text::LayoutJob::default();
+                    let font = egui::FontSelection::Default;
+                    if favourite {
+                        RichText::new("★ ").color(crate::browser::STAR).append_to(
+                            &mut job,
+                            ui.style(),
+                            font.clone(),
+                            Align::Min,
+                        );
+                    }
+                    RichText::new(name).color(TEXT).append_to(&mut job, ui.style(), font, Align::Min);
+                    ui.add(egui::Label::new(job).truncate());
                 });
+                if let Some((_, detail, _)) = &info {
+                    rows.hint(detail);
+                }
                 row(rows, "Class", "Only cars of this class fill the field", |ui| {
                     let label = |c: String| if c.is_empty() { "No class".to_owned() } else { c };
                     combo(ui, "championship-class", width, &mut config.class, classes, label);
@@ -265,7 +284,7 @@ impl ChampionshipPage {
                     let all = [Daylight::Day, Daylight::Realistic, Daylight::Night];
                     combo(ui, "championship-daylight", width, &mut config.daylight, &all, |d| match d {
                         Daylight::Day => "Day",
-                        Daylight::Realistic => "Day, ends at dusk",
+                        Daylight::Realistic => "Day, the first day ends at dusk",
                         Daylight::Night => "Night",
                     });
                 });

@@ -120,6 +120,8 @@ pub struct ChampionshipPage {
     pub config: Option<EventConfig>,
     /// The builder's car (the catalog's cars).
     pub car: Option<usize>,
+    /// The settings as the preset gave them: while `config` is still these, the car follows the Drive page's.
+    applied: Option<EventConfig>,
     /// The builder's itinerary: the seed's plan, or the player's own.
     plan: plan::Plan,
     /// Where the stage browser's pick goes in the itinerary.
@@ -184,6 +186,7 @@ impl ChampionshipPage {
             news_all: false,
             abandoning: false,
             stage_times: false,
+            applied: None,
             strip_at: None,
             shown: None,
             status: String::new(),
@@ -233,6 +236,7 @@ impl ChampionshipPage {
         let picked = cars.get(car).cloned().unwrap_or_default();
         self.car = Some(car);
         self.config = Some(preset.config(&class_of(&picked), &picked.key, seed));
+        self.applied = self.config.clone();
         self.builder = Some(Builder { preset });
         self.view = View::Builder;
         self.plan = plan::Plan::default();
@@ -291,7 +295,7 @@ impl ChampionshipPage {
                 event.set_car_factors(&car_pace::factors(&cache, class, &field, cars, archive));
                 self.run = Some(Run { event, damage: None, penalty: 0.0, tyre: 3 });
                 (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
-                self.shown = None;
+                (self.shown, self.stage_times) = (None, false);
                 self.status.clear();
                 self.save(here, profile);
             }
@@ -321,7 +325,7 @@ impl ChampionshipPage {
                 let (penalty, tyre) = (value("penalty").unwrap_or(0.0), value("tyre").map_or(3, |t: f32| t as u32));
                 self.run = Some(Run { event, damage, penalty, tyre });
                 (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
-                self.shown = None;
+                (self.shown, self.stage_times) = (None, false);
                 self.status.clear();
             }
             Err(e) => self.status = format!("The saved championship does not read: {e}"),
@@ -487,7 +491,7 @@ impl ChampionshipPage {
         if player.retired && matches!(run.event.turn, Turn::Service { .. }) {
             run.damage = None;
         }
-        (self.tyre, self.shown) = (None, None);
+        (self.tyre, self.shown, self.stage_times) = (None, None, false);
         self.save(here, profile);
     }
 
@@ -498,7 +502,7 @@ impl ChampionshipPage {
             (run.damage, run.penalty) = (None, 0.0);
         }
         run.event.turn_done();
-        (self.tyre, self.setup, self.shown) = (None, SeasonSetup::Current, None);
+        (self.tyre, self.setup, self.shown, self.stage_times) = (None, SeasonSetup::Current, None, false);
         self.save(here, profile);
     }
 

@@ -81,7 +81,9 @@ impl Form {
         let here = self.here();
         let mut profile = self.championship.profile.clone();
         let rows = &self.car_browser;
-        let car_title = |car: usize| rows.row(car).map(|row| row.title.clone());
+        let favourites = &self.favourite_cars;
+        let car_info =
+            |car: usize| rows.row(car).map(|row| (row.title.clone(), row.detail(), favourites.contains(&row.name)));
         let setups = &self.setup;
         let saved = |surface| setups.saved_names(surface);
         let seed = rbr_season::seed::seed_from_unix_ms(
@@ -93,7 +95,7 @@ impl Form {
             profile: &mut profile,
             cars: &self.catalog.cars,
             default_car: self.car,
-            car_title: &car_title,
+            car_info: &car_info,
             saved: &saved,
             blocker: blocker.as_ref(),
             no_records: !self.drive_physics().keeps_records(),
