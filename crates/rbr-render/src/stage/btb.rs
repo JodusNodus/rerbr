@@ -37,6 +37,11 @@ const CELL: f32 = 128.0;
 const SOLO: f32 = 150.0;
 /// Distances of [`Lod::Band`] are kept to this step, metres.
 const STEP: f32 = 50.0;
+/// How much farther than the source's `LODIn` and `LODOut` a band reaches (ours). A mesh is a 128 m cell of placements,
+/// so it shows all at once: AC conversions' cells came in 60 to 100 px tall at 1080p at their 1000 m cap and authored
+/// 250 to 700 m. Half as far again costs 0.2 to 0.7 ms a frame there (twice, up to 2 ms); both ends, so a stage's
+/// detailed and plain versions of a placement still meet.
+const REACH: f32 = 1.5;
 /// The alpha test of a transparent material's second pass (`AlphaRef` 200, `GREATEREQUAL`): texels at or under this
 /// are dropped.
 const SOLID_REF: u8 = 199;
@@ -310,10 +315,10 @@ fn world_bounds(placement: &[f32; 16], low: Vec3, high: Vec3) -> (Vec3, Vec3) {
     ((min + max) / 2.0, (max - min) / 2.0)
 }
 
-/// The draw distances as a level: none for the whole range.
+/// The draw distances as a level, [`REACH`] times the source's: none for the whole range.
 fn band(near: f32, far: f32) -> Lod {
-    let near = (near / STEP).floor() * STEP;
-    let far = (far / STEP).ceil() * STEP;
+    let near = (REACH * near / STEP).floor() * STEP;
+    let far = (REACH * far / STEP).ceil() * STEP;
     if near <= 0.0 && far >= f32::from(u16::MAX) {
         Lod::Always
     } else {

@@ -307,7 +307,9 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - LOD and size: no instancing. Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
   128 m cell (a placement over 150 m half extent is a mesh of its own: the terrain tiles) and by `LODIn`/`LODOut` in 50 m
   steps (`Lod::Band`, the draw's distance from its mesh's bounds centre; a solo placement's `LODOut` counts from its
-  radius too). `LODOut` is under 500 m for 64775 of 140785 objects across the install, so the band matters. Worst
+  radius too), both ends 1.5 times the source's (`btb::REACH`, 2026-11-18: AC conversions' cells came in whole, 60 to
+  100 px tall at 1080p, at their 1000 m cap; +0.2 to 0.7 ms on Ermita and Pine, Bareyo II and Norrlands Sprinten
+  unchanged). `LODOut` is under 500 m for 64775 of 140785 objects across the install, so the band matters. Worst
   expanded tracks (Transparent drawn twice where the texture has alpha): Kaihuavaara 2022 3.38 M vertices, 2.60 M
   triangles in 7070 meshes (peak 0.85 GB in a viewer screenshot); Stoccareddo II 3.79 M vertices, 1.99 M triangles, 1270
   meshes (peak 1.3 GB); Pirttikulma 1.18 M vertices, 0.74 M triangles. Load to the first frame 5 to 9 s on those. A view
