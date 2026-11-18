@@ -96,7 +96,9 @@ pub fn search_id() -> egui::Id {
 
 /// Whether a list's keys are free: nothing focused but the search box, and no dropdown open.
 pub fn list_has_keys(ui: &egui::Ui) -> bool {
-    ui.memory(|m| m.focused()).is_none_or(|id| id == search_id()) && !egui::Popup::is_any_open(ui.ctx())
+    // Under a modal the keys are the modal's (Esc closes it).
+    ui.memory(|m| m.focused().is_none_or(|id| id == search_id()) && m.is_above_modal_layer(ui.layer_id()))
+        && !egui::Popup::is_any_open(ui.ctx())
 }
 
 /// The highlighted row (its position in the browser's rows) and the list's scrolling.
@@ -558,5 +560,32 @@ mod tests {
         // Esc first leaves the filter, then goes back.
         assert!(!pass(&ctx, Some(Key::Escape), None).0.escape);
         assert!(pass(&ctx, Some(Key::Escape), None).0.escape);
+    }
+
+    #[test]
+    fn esc_closes_a_modal_over_the_list() {
+        let ctx = egui::Context::default();
+        let frame = |key: Option<Key>| {
+            let events = key.map(|key| egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            });
+            let input = egui::RawInput { events: events.into_iter().collect(), ..Default::default() };
+            let (mut keys, mut closed) = (Keys::default(), false);
+            ctx.run_pass(input, |ctx| {
+                ctx.root_ui(|root| {
+                    egui::CentralPanel::default().show(root, |ui| keys = Keys::take(ui));
+                });
+                closed = kit::modal(ctx, "test modal", "Modal", None, |_| {}, |_| {}).closed();
+            })
+            .textures_delta
+            .clear();
+            (keys.escape, closed)
+        };
+        frame(None);
+        assert_eq!(frame(Some(Key::Escape)), (false, true), "the modal has Esc, not the list");
     }
 }

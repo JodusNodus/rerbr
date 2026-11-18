@@ -414,7 +414,6 @@ pub struct Downloads {
     search: String,
     /// The class shown (a car's group); empty: all.
     class: String,
-    hide_added: bool,
     /// The chosen cars' physics links.
     picked: HashSet<String>,
     /// Each download's size (0: not said), asked once the list is read.
@@ -548,17 +547,16 @@ impl Form {
         let Some(Ok(catalog)) = &self.downloads.list else { return CarsFooter::default() };
         let d = &self.downloads;
         let added = self.added_words();
-        let wanted: Vec<Entry> = catalog.cars.iter().filter(|c| d.picked.contains(&c.physics)).cloned().collect();
         let missing: Vec<Entry> =
             catalog.cars.iter().filter(|c| !added.contains(&car_packs::words(&c.name))).cloned().collect();
-        let shown = shown_cars(catalog, d, &added);
+        // Only what the table shows can be chosen: a car added since it was ticked drops out.
+        let wanted: Vec<Entry> = missing.iter().filter(|c| d.picked.contains(&c.physics)).cloned().collect();
         CarsFooter {
             loaded: true,
             busy: !self.can_add_cars(),
             size: size_text(&wanted, d.sizes.as_ref()),
             missing_size: size_text(&missing, d.sizes.as_ref()),
             all_missing: missing.len() == catalog.cars.len(),
-            can_select: shown.iter().any(|c| !d.picked.contains(&c.physics)),
             wanted,
             missing,
         }
@@ -572,20 +570,12 @@ impl Form {
                 let dir = self.cars_dir();
                 self.start_adding(move |report, cancel| download_cars(&dir, &wanted, report, cancel));
             }
-            CarsAction::SelectAll => {
-                let added = self.added_words();
-                if let Some(Ok(catalog)) = &self.downloads.list {
-                    let shown: Vec<String> =
-                        shown_cars(catalog, &self.downloads, &added).iter().map(|c| c.physics.clone()).collect();
-                    self.downloads.picked.extend(shown);
-                }
-            }
             CarsAction::Clear => self.downloads.picked.clear(),
         }
     }
 
     /// The Get more cars modal's body: the list loading or its error, the progress and result of a download, and the
-    /// search, class, Hide added and the table of cars. `import` is set when its Import link is clicked.
+    /// search, class and the table of the cars not added. `import` is set when its Import link is clicked.
     pub fn cars_body(&mut self, ui: &mut egui::Ui, import: &mut bool) {
         if self.downloads.list.is_none() && self.downloads.list_job.is_none() {
             self.downloads.list_job = Some(list_job());
@@ -625,7 +615,7 @@ impl Form {
         }
         let added = self.added_words();
         let mut reload = false;
-        let Downloads { list, search, class, hide_added, picked, sizes, .. } = &mut self.downloads;
+        let Downloads { list, search, class, picked, sizes, .. } = &mut self.downloads;
         match list {
             None => {}
             Some(Err(e)) => {
@@ -636,7 +626,8 @@ impl Form {
             Some(Ok(catalog)) => {
                 let classes: std::collections::BTreeSet<String> =
                     catalog.cars.iter().filter_map(Entry::group).collect();
-                let shown = filter_cars(catalog, search, class, *hide_added, &added);
+                let shown = filter_cars(catalog, search, class, &added);
+                let available = catalog.cars.iter().filter(|c| !added.contains(&car_packs::words(&c.name))).count();
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 10.0;
                     let edit = egui::TextEdit::singleline(search).hint_text("Search car or class");
@@ -650,16 +641,14 @@ impl Form {
                                 ui.selectable_value(class, name.clone(), name);
                             }
                         });
-                    kit::switch(ui, hide_added);
-                    ui.label(egui::RichText::new("Hide added").color(TEXT_LABEL));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         reload = kit::link(ui, "Reload").clicked();
-                        let count = format!("{} of {} cars", shown.len(), catalog.cars.len());
+                        let count = format!("{} of {available} cars", shown.len());
                         ui.label(egui::RichText::new(count).size(12.0).color(TEXT_2));
                     });
                 });
                 ui.add_space(10.0);
-                cars_table(ui, &shown, picked, &added, sizes.as_ref());
+                cars_table(ui, &shown, picked, sizes.as_ref());
                 ui.add_space(8.0);
                 kit::hint(
                     ui,
@@ -683,7 +672,6 @@ pub struct CarsFooter {
     size: Option<String>,
     missing_size: Option<String>,
     all_missing: bool,
-    can_select: bool,
     wanted: Vec<Entry>,
     missing: Vec<Entry>,
 }
@@ -691,12 +679,11 @@ pub struct CarsFooter {
 /// What the footer asked for.
 pub enum CarsAction {
     Download(Vec<Entry>),
-    SelectAll,
     Clear,
 }
 
 /// The footer, right to left: the primary Download, Get all not added, and on the left the choice's count and size
-/// with Select all shown and Clear.
+/// with Clear.
 pub fn cars_footer_ui(foot: &CarsFooter, ui: &mut egui::Ui) -> Option<CarsAction> {
     if !foot.loaded {
         return None;
@@ -724,9 +711,6 @@ pub fn cars_footer_ui(foot: &CarsFooter, ui: &mut egui::Ui) -> Option<CarsAction
             text += &format!(" · {size}");
         }
         ui.label(egui::RichText::new(text).color(TEXT_2));
-        if foot.can_select && kit::link(ui, "Select all shown").clicked() {
-            action = Some(CarsAction::SelectAll);
-        }
         if n > 0 && kit::link(ui, "Clear").clicked() {
             action = Some(CarsAction::Clear);
         }
@@ -734,27 +718,16 @@ pub fn cars_footer_ui(foot: &CarsFooter, ui: &mut egui::Ui) -> Option<CarsAction
     action
 }
 
-/// The cars the search, the class and Hide added leave.
-fn filter_cars<'a>(
-    catalog: &'a Catalog,
-    search: &str,
-    class: &str,
-    hide_added: bool,
-    added: &HashSet<String>,
-) -> Vec<&'a Entry> {
+/// The cars not added that the search and the class leave.
+fn filter_cars<'a>(catalog: &'a Catalog, search: &str, class: &str, added: &HashSet<String>) -> Vec<&'a Entry> {
     let word = search.to_lowercase();
     let has_word = |c: &Entry| {
         word.is_empty()
             || format!("{} {} {}", c.name, c.cat, c.group().unwrap_or_default()).to_lowercase().contains(&word)
     };
     let of_class = |c: &Entry| class.is_empty() || c.group().as_deref() == Some(class);
-    let hidden = |c: &Entry| hide_added && added.contains(&car_packs::words(&c.name));
+    let hidden = |c: &Entry| added.contains(&car_packs::words(&c.name));
     catalog.cars.iter().filter(|c| has_word(c) && of_class(c) && !hidden(c)).collect()
-}
-
-/// [`filter_cars`] with the filters the modal holds.
-fn shown_cars<'a>(catalog: &'a Catalog, d: &Downloads, added: &HashSet<String>) -> Vec<&'a Entry> {
-    filter_cars(catalog, &d.search, &d.class, d.hide_added, added)
 }
 
 /// The table's column starts for a width: car, class, year, drive, and the right edge of size.
@@ -762,15 +735,8 @@ fn columns(width: f32) -> [f32; 5] {
     [40.0, width * 0.46, width * 0.61, width * 0.70, width * 0.88]
 }
 
-/// The table: a header, then a row per car in a scroll area of its own. Ticked rows are tinted, added cars grey but
-/// still tickable (a download replaces the added car: the update).
-fn cars_table(
-    ui: &mut egui::Ui,
-    shown: &[&Entry],
-    picked: &mut HashSet<String>,
-    added: &HashSet<String>,
-    sizes: Option<&HashMap<String, u64>>,
-) {
+/// The table: a header, then a row per car in a scroll area of its own. Ticked rows are tinted.
+fn cars_table(ui: &mut egui::Ui, shown: &[&Entry], picked: &mut HashSet<String>, sizes: Option<&HashMap<String, u64>>) {
     let width = ui.available_width();
     let cols = columns(width);
     let (head, _) = ui.allocate_exact_size(egui::vec2(width, 22.0), egui::Sense::hover());
@@ -790,9 +756,8 @@ fn cars_table(
         ui.spacing_mut().item_spacing.y = 0.0;
         for car in shown {
             let on = picked.contains(&car.physics);
-            let there = added.contains(&car_packs::words(&car.name));
             let size = size_text(std::slice::from_ref(car), sizes).unwrap_or_default();
-            if car_row(ui, car, cols, on, there, &size).clicked() {
+            if car_row(ui, car, cols, on, &size).clicked() {
                 match on {
                     true => picked.remove(&car.physics),
                     false => picked.insert(car.physics.clone()),
@@ -806,8 +771,8 @@ fn cars_table(
     });
 }
 
-/// One car's row (32 px): tick box, name, class, year, drive, size and "Added".
-fn car_row(ui: &mut egui::Ui, car: &Entry, cols: [f32; 5], on: bool, added: bool, size: &str) -> egui::Response {
+/// One car's row (32 px): tick box, name, class, year, drive and size.
+fn car_row(ui: &mut egui::Ui, car: &Entry, cols: [f32; 5], on: bool, size: &str) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 32.0), egui::Sense::click());
     let painter = ui.painter();
     if on {
@@ -825,7 +790,6 @@ fn car_row(ui: &mut egui::Ui, car: &Entry, cols: [f32; 5], on: bool, added: bool
     } else {
         painter.rect_stroke(box_rect, 4, egui::Stroke::new(1.5, CHECK_BORDER), egui::StrokeKind::Inside);
     }
-    let name_color = if added { TEXT_3 } else { TEXT_LIST };
     let at = |x: f32| egui::pos2(rect.left() + x, rect.center().y);
     let name_clip = egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.left() + cols[1] - 8.0, rect.bottom()));
     painter.with_clip_rect(name_clip).text(
@@ -833,26 +797,16 @@ fn car_row(ui: &mut egui::Ui, car: &Entry, cols: [f32; 5], on: bool, added: bool
         egui::Align2::LEFT_CENTER,
         &car.name,
         egui::FontId::proportional(13.0),
-        name_color,
+        TEXT_LIST,
     );
-    let dim = if added { TEXT_3 } else { TEXT_2 };
+    let dim = TEXT_2;
     let group = car.group().unwrap_or_default();
     painter.text(at(cols[1]), egui::Align2::LEFT_CENTER, group, egui::FontId::proportional(12.5), dim);
     let year = car.year().map_or_else(String::new, |y| y.to_string());
     painter.text(at(cols[2]), egui::Align2::LEFT_CENTER, year, mono(11.5), dim);
     painter.text(at(cols[3]), egui::Align2::LEFT_CENTER, car.drive_train().unwrap_or_default(), mono(11.5), dim);
     painter.text(at(cols[4]), egui::Align2::RIGHT_CENTER, size, mono(11.5), dim);
-    if added {
-        painter.text(
-            egui::pos2(rect.right() - 12.0, rect.center().y),
-            egui::Align2::RIGHT_CENTER,
-            "✔ Added",
-            egui::FontId::proportional(12.0),
-            GOOD,
-        );
-    }
-    let tip = if added { "Added already: tick it to download it again (an update)" } else { "Tick to download" };
-    response.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand)
+    response.on_hover_text("Tick to download").on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 #[cfg(test)]
