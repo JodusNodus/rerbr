@@ -215,6 +215,8 @@ pub(crate) struct Summary {
     pub sub: String,
     /// Why there is nothing to drive, in place of `sub`.
     pub problem: Option<String>,
+    /// The title's hover text.
+    pub hover: Option<String>,
 }
 
 /// The experimental physics note in a footer (added right to left: the link first); whether Change was clicked.
@@ -242,7 +244,7 @@ impl Form {
         let mut pressed = false;
         kit::footer(ui, id, |ui| {
             // What blocks the action, with its fix; the last event (`status`) is on the sidebar's status line.
-            if let Some(issue) = blocker.as_ref().filter(|_| self.child.is_none()) {
+            if let Some(issue) = blocker.as_ref().filter(|_| self.child.is_none() || hint.is_none()) {
                 ui.horizontal_wrapped(|ui| {
                     ui.colored_label(WARN, &issue.text);
                     if let Some(fix) = issue.fix {
@@ -278,10 +280,13 @@ impl Form {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 2.0;
-                        ui.add(
+                        let title = ui.add(
                             egui::Label::new(RichText::new(&summary.title).family(theme::medium()).color(TEXT))
                                 .truncate(),
                         );
+                        if let Some(hover) = &summary.hover {
+                            title.on_hover_text(hover);
+                        }
                         match &summary.problem {
                             Some(problem) => {
                                 _ = ui.add(egui::Label::new(RichText::new(problem).size(12.0).color(WARN)).truncate())
@@ -349,10 +354,9 @@ impl Form {
                     parts.push(stage_browser::SURFACES[row.surface as usize].to_owned());
                 }
                 parts.push(self.conditions_summary(&weather));
-                let _ = stage;
-                Summary { title, sub: parts.join(" · "), problem: None }
+                Summary { title, sub: parts.join(" · "), problem: None, hover: Some(stage.name.clone()) }
             }
-            Err(reason) => Summary { title, sub: String::new(), problem: Some(reason) },
+            Err(reason) => Summary { title, sub: String::new(), problem: Some(reason), hover: None },
         }
     }
 

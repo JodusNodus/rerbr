@@ -237,9 +237,9 @@ impl Form {
             Ok((_, weather)) => {
                 let conditions = self.conditions_summary(&weather);
                 let sub = car.map_or(conditions.clone(), |car| format!("{car} · {conditions}"));
-                Summary { title, sub, problem: None }
+                Summary { title, sub, problem: None, hover: None }
             }
-            Err(reason) => Summary { title, sub: String::new(), problem: Some(reason) },
+            Err(reason) => Summary { title, sub: String::new(), problem: Some(reason), hover: None },
         };
         let blocker = self.blocker();
         if self.launch_footer(ui, "circuit footer", summary, blocker, "Start", Some("↵")) {

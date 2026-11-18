@@ -306,7 +306,7 @@ impl Form {
                 group_of(selected).0,
                 surface_of(selected)
             );
-            Summary { title: school.text(selected.title_key()), sub, problem: None }
+            Summary { title: school.text(selected.title_key()), sub, problem: None, hover: None }
         };
         let label = if selected.ride() { "Ride along" } else { "Drive lesson" };
         if self.launch_footer(ui, "school footer", summary, blocker.clone(), label, None) {

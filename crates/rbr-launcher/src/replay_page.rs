@@ -530,20 +530,20 @@ impl Form {
         ui.add_space(12.0);
         let width = ui.available_width();
         ui.allocate_ui_with_layout(egui::vec2(width, 38.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let tip = "Enter. Replays use the game files, profile and setup from when you drove.";
+            watch = browser::drive_button(ui, "Watch replay", ready, tip).clicked() || (keys.enter && ready);
             if self.replays.confirm_delete {
                 delete = ui.button("Yes, delete").clicked() || delete_key;
                 if ui.button("No").clicked() || keys.escape {
                     self.replays.confirm_delete = false;
                 }
                 ui.label(RichText::new("Delete this drive?").color(TEXT_LABEL));
-            } else {
-                if ui.button("Delete").on_hover_text("Delete key").clicked() || delete_key {
-                    self.replays.confirm_delete = true;
-                }
-                let tip = "Enter. Replays use the game files, profile and setup from when you drove.";
-                watch = browser::drive_button(ui, "Watch replay", ready, tip).clicked() || (keys.enter && ready);
+            } else if ui.button("Delete").on_hover_text("Delete key").clicked() || delete_key {
+                self.replays.confirm_delete = true;
             }
         });
+        ui.add_space(4.0);
+        kit::hint(ui, "Space pauses · R restarts · Esc closes");
         ui.add_space(18.0);
         kit::group_label(ui, "Export to video", None);
         kit::panel(ui, |rows| {
