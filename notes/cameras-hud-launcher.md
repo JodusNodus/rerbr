@@ -147,7 +147,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   not). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
   stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
   co-drivers and pace notes through `codriver_packs::import`; NGP car pieces (physics, model and banks dropped
-  together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in.
+  together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
+  car skin to its car (`content/kind/skin.rs`, below).
   Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. Recent
   downloads (Downloads, 30 days, 5) list any of these not added yet. Links: RSF's stage download, BTBfin, RBR Czech's
   stage list (its installers are read, never run).
@@ -241,8 +242,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (RSF's, read only); none for a stand-in model. The pick is ours, per car key (`car_skins = key:skin|...`, `none` =
   the model's own textures); unset leaves RSF's `.rsfconfig` selection (never written) and retail's own textures. It goes
   to the viewer as `--car-skin DIR|none` (`car_pack::Flags::skin`, wins over `.rsfconfig`; not to `rbr-standalone`) and to
-  the turntable preview. Import takes a `.zip` or `.7z` (RBR Skins Center's, RSF's exports): each shallowest folder holding
-  `textures/` becomes a skin, named for the archive (several in one archive: for their folders); same name replaces.
+  the turntable preview. Import takes a `.zip`, `.7z` or folder (RBR Skins Center's, RSF's exports; the Add's sources):
+  each shallowest folder holding `textures/` becomes a skin, named for the archive (several in one archive: for their
+  folders); same name replaces. The Add (2026-11-18, user decision) takes a skin too, when no other kind does (a model
+  archive and stages hold textures): its car is the one whose model folder its path names (`Cars/<model>/`), else the
+  one whose model `Textures` share the most `.dds` names with it (at least half; names are model-prefixed: Fiesta
+  Rally3's `Zasada_Rally3` goes to the Rally3, not the Rally3 Evo), into every car of that model; several models or
+  none: the notice's Open Cars, for the car's own Import skin…. The skin added is chosen, and Open shows its car.
   Checked with a channel-swapped retail ZR skin (picker, preview, `viewer --screenshot`) and RSF's Fiesta Rally3
   `Zasada_Rally3`; no real Skins Center archive yet (links are Mega/Drive, not fetchable here).
   The cars added from gvrc.de keep their model in the files folder's `Cars/<model>/`; of 99 only one has a `skins/`

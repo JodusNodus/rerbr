@@ -7,8 +7,9 @@
 //! `codriver_packs::import`; NGP car pieces (physics zip, model and sound-bank archives dropped together) as one
 //! `car_packs::Download`; NGP's package to the kept `NGP 7.4.778/` folder, as the Settings download does; a disc image
 //! opens "Set up from the disc…" with the disc filled in; classic-format stages (loose, RSF-shaped or from an NSIS
-//! installer) to `tracks/` too, renumbered when their number is taken. RAR files, other installers, encrypted stages and
-//! anything unknown are refused with the reason. A new kind or container is one module and one line below.
+//! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`). RAR
+//! files, other installers, encrypted stages and anything unknown are refused with the reason. A new kind or container
+//! is one module and one line below.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -35,6 +36,7 @@ const KINDS: &[&dyn Kind] = &[
     &kind::codriver::Codriver,
     &kind::car::Car,
     &kind::classic::Classic,
+    &kind::skin::Skin,
     &kind::unknown::Unknown,
 ];
 
@@ -69,6 +71,8 @@ pub enum Goto {
     Stage(String),
     /// Content > Cars.
     Cars,
+    /// Content > Cars on the car with this key, wearing the skin named.
+    Skin { car: String, skin: String },
     /// Content > Co-drivers.
     Codrivers,
     /// Settings > General.
@@ -81,7 +85,7 @@ impl Goto {
     /// The page the Open button goes to, and its label (`None`: the stage picker's own way).
     pub fn page(&self) -> Option<(Page, &'static str)> {
         match self {
-            Goto::Cars => Some((Page::Cars, "Open Cars")),
+            Goto::Cars | Goto::Skin { .. } => Some((Page::Cars, "Open Cars")),
             Goto::Codrivers => Some((Page::Codrivers, "Open Co-drivers")),
             Goto::Settings | Goto::Disc(_) => Some((Page::Settings, "Open Settings")),
             Goto::Stage(_) => None,
@@ -152,6 +156,11 @@ impl Outcome {
 
     pub fn opening(self, file: Option<PathBuf>) -> Outcome {
         Outcome { open: file, ..self }
+    }
+
+    /// An outcome whose Open button goes to `goto`, a failed one's too (where to do it by hand).
+    pub fn going(self, goto: Goto) -> Outcome {
+        Outcome { goto: Some(goto), ..self }
     }
 
     pub fn refreshing(self, refresh: Refresh) -> Outcome {

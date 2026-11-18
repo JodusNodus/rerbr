@@ -627,7 +627,7 @@ pub(crate) mod tests {
         rsf_stage(&dir.join("drop"), 101, "OM");
         let home = dir.join("home");
         write(&home.join("tracks/10000-Other/Tracks10000.ini"), b"[Map10000]\r\nStageName=Other\r\n");
-        let known = Known { numbers: vec![101], weather: None };
+        let known = Known { numbers: vec![101], ..Known::default() };
         let done = add(&home, source::open(&dir.join("drop")).unwrap(), &known);
         assert_eq!(lines(&done), ["ok Added Kamenak (classic stage) by Miro Kurek"], "{done:?}");
         let folder = home.join("tracks/10001-Kamenak");
@@ -754,7 +754,7 @@ pub(crate) mod tests {
             b"[Map5]\r\nStageName=Not this\r\n[Map77]\r\nStageName=Seventy\r\nSurface=2\r\n",
         );
         write(&dir.join("drop/Maps/TrackSettings_77.ini"), b"[77E_crisp_clear]\r\nFogEnd=1\r\n");
-        let known = Known { numbers: vec![77], weather: None };
+        let known = Known { numbers: vec![77], ..Known::default() };
         let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &known);
         assert_eq!(lines(&done), ["ok Added Seventy (classic stage)"], "{done:?}");
         let stage = rsf::open(&dir.join("home/tracks/10000-Seventy")).unwrap();
@@ -770,7 +770,7 @@ pub(crate) mod tests {
         write(&dir.join("drop/Maps/Tracks.ini"), b"[Map8994]\r\nStageName=Dry\r\nSurface=0\r\n");
         let retail = "[41M_crisp_clear]\r\nFogEnd=1\r\n[41O_M_lightfog_heavycloud]\r\nFogEnd=2\r\n[54M_crisp_clear]\r\nFogEnd=3\r\n[54E_crisp_clear]\r\nFogEnd=3\r\n";
         write(&dir.join("TrackSettings.ini"), retail.as_bytes());
-        let known = Known { numbers: Vec::new(), weather: Some(dir.join("TrackSettings.ini")) };
+        let known = Known { weather: Some(dir.join("TrackSettings.ini")), ..Known::default() };
         let done = add(&dir.join("home"), source::open(&dir.join("drop")).unwrap(), &known);
         assert_eq!(lines(&done), ["ok Added Dry (classic stage)"], "{done:?}");
         let stage = rsf::open(&dir.join("home/tracks/8994-Dry")).unwrap();
@@ -925,7 +925,7 @@ mod real {
         let _ = fs::remove_dir_all(out.join(rbr_btb::player::TRACKS));
         let mut expected: HashMap<u32, &rsf::Stage> = HashMap::new();
         for stage in &picked {
-            let known = Known { numbers: vec![stage.id], weather: None };
+            let known = Known { numbers: vec![stage.id], ..Known::default() };
             let done = add(&out, source::open(&stage.folder).unwrap(), &known);
             assert!(done.len() == 1 && done[0].ok(), "{}: {done:?}", stage.folder.display());
             let Some(Goto::Stage(folder)) = &done[0].goto else { panic!("{done:?}") };

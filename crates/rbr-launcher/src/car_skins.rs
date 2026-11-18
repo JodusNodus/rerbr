@@ -1,5 +1,6 @@
-//! Car skins: the ones installed for a car, the one the player chose, and importing a downloaded skin (a `.zip` or
-//! `.7z` from RBR Skins Center and the like).
+//! Car skins: the ones installed for a car, the one the player chose, and importing a downloaded skin (a `.zip`, `.7z`
+//! or folder from RBR Skins Center and the like) by the car's Import skin…, or by the Add for the car it fits
+//! (`content::kind::skin`).
 //!
 //! A skin is a folder of files that replace the model folder's by path: `textures/<name>.dds` and, for some, shader
 //! settings (`rbr_formats::data::Data::with_skin`). A car's skins are the ones imported into the player's folder
@@ -13,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 use rbr_formats::{car_pack, cars};
 
-use crate::archive::{self, Entry};
+use crate::archive;
 use crate::catalog::{Car, Physics};
+use crate::content::source::{self, Source};
 use crate::job::{self, Counter, Job, Report, Temp};
 use crate::pages::{combo, GOOD, WARN};
 
@@ -32,12 +34,36 @@ pub struct Skin {
     pub dir: PathBuf,
 }
 
+/// The model folder a skin dresses (`Cars\\<model>`): a pack car's model's, an archive car's own; none for a stand-in.
+pub fn model_folder(car: &Car) -> Option<String> {
+    let model = car.model.as_ref().ok().filter(|m| m.fallback.is_none())?;
+    match &car.physics {
+        Physics::Pack(_) => model.entry.file_name.split(['\\', '/']).rev().nth(1).map(str::to_owned),
+        Physics::Archive => Some(car.name.clone()),
+    }
+}
+
 /// The folder in the model's own folder with RSF's skins for a community car with its own model.
 fn model_skins(car: &Car) -> Option<PathBuf> {
-    let (Physics::Pack(_), Ok(model)) = (&car.physics, &car.model) else { return None };
+    let Physics::Pack(_) = car.physics else { return None };
     let root = car_pack::root_of(car.model_path.as_deref()?).ok()?;
-    let folder = model.entry.file_name.split(['\\', '/']).rev().nth(1)?;
-    cars::resolve(&root, &format!("Cars\\{folder}\\skins"))
+    cars::resolve(&root, &format!("Cars\\{}\\skins", model_folder(car)?))
+}
+
+/// The model's own `Textures` folder, whose files a skin's replace by name: a pack car's under its model's root, an
+/// archive car's under the game folder `game`.
+pub fn textures_dir(car: &Car, game: &Path) -> Option<PathBuf> {
+    let root = match &car.physics {
+        Physics::Pack(_) => car_pack::root_of(car.model_path.as_deref()?).ok()?,
+        Physics::Archive => game.to_owned(),
+    };
+    cars::resolve(&root, &format!("Cars\\{}\\Textures", model_folder(car)?))
+}
+
+/// The names of the skins imported for any car, lower case: the Add's recent downloads hide those.
+pub fn imported(home: &Path) -> Vec<String> {
+    let cars = fs::read_dir(home.join(DIR)).into_iter().flatten().flatten();
+    cars.flat_map(|car| skins_in(&car.path())).map(|s| s.name.to_lowercase()).collect()
 }
 
 /// The folders in `dir`, by name.
@@ -158,11 +184,12 @@ impl Skins {
         }
     }
 
-    /// Imports `archive` into the car `key`'s skins on a thread of its own.
+    /// Imports `archive` (an archive or a folder) into the car `key`'s skins on a thread of its own.
     fn start(&mut self, archive: PathBuf, key: &str) {
         let dest = self.home.join(DIR).join(key);
         self.status = None;
-        self.job = Some((key.to_owned(), Job::start(move |report, cancel| import(&archive, &dest, report, cancel))));
+        let job = move |report: Report<'_>, cancel: &_| import(&*source::open(&archive)?, &dest, report, cancel);
+        self.job = Some((key.to_owned(), Job::start(job)));
     }
 }
 
@@ -178,7 +205,7 @@ pub fn join(chosen: &BTreeMap<String, String>) -> Option<String> {
 
 /// A skin's folder name from text that is not ours: no separators or the characters the settings and the platforms
 /// keep for themselves.
-fn clean(name: &str) -> String {
+pub fn clean(name: &str) -> String {
     let name: String = name.chars().map(|c| if "|:*?\"<>\\/".contains(c) { '_' } else { c }).collect();
     match archive::safe_folder(&name) {
         Some(name) if !name.eq_ignore_ascii_case(ORIGINAL) => name,
@@ -204,54 +231,43 @@ fn skin_roots(files: &[&[String]]) -> Vec<Vec<String>> {
     roots
 }
 
-/// Imports the skin archive `archive` into `dest` (a car's folder in the skins folder): its skins' names. One skin
-/// takes the archive's name; an archive of several takes each folder's.
+/// The skins in `src` (an archive or a folder), as [`skin_roots`] finds them.
+pub fn roots(src: &dyn Source) -> Vec<Vec<String>> {
+    let parts: Vec<&[String]> = src.entries().iter().map(|e| e.path.as_slice()).collect();
+    skin_roots(&parts)
+}
+
+/// Imports the skins of `src` (an archive or a folder) into `dest` (a car's folder in the skins folder): their names.
+/// One skin takes the source's name; a source of several takes each folder's.
 pub fn import(
-    archive: &Path,
+    src: &dyn Source,
     dest: &Path,
     report: Report<'_>,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<Vec<String>, Fail> {
-    let extension = archive.extension().map(|e| e.to_string_lossy().to_lowercase());
-    let seven = extension.as_deref() == Some("7z");
-    let entries: Vec<Entry> = match extension.as_deref() {
-        Some("zip") => archive::zip_entries(archive)?,
-        Some("7z") => archive::seven_entries(archive)?,
-        _ => return Err(format!("{}: not a .zip or .7z", archive.display())),
-    };
-    let files: Vec<&Entry> = entries.iter().filter(|e| !e.dir && e.parts.is_some()).collect();
-    let parts: Vec<&[String]> = files.iter().filter_map(|e| e.parts.as_deref()).collect();
-    let roots = skin_roots(&parts);
+    let roots = roots(src);
     if roots.is_empty() {
-        return Err(format!("{}: no textures folder in it", archive.display()));
+        return Err(format!("{}: no textures folder in it", src.name()));
     }
-    let stem = archive.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = crate::content::stem(&src.name()).to_owned();
     let name_of = |root: &[String]| match (roots.len(), root.last()) {
         (1, _) | (_, None) => clean(&stem),
         (_, Some(last)) => clean(last),
     };
     let mut names: Vec<String> = roots.iter().map(|r| name_of(r)).collect();
-    let total = files
-        .iter()
-        .filter(|e| e.parts.as_deref().is_some_and(|p| roots.iter().any(|r| p.starts_with(r))))
-        .map(|e| e.size)
-        .sum();
+    let entries = src.entries();
+    let total = entries.iter().filter(|e| roots.iter().any(|r| e.path.starts_with(r))).map(|e| e.size).sum();
     let mut count = Counter { step: "Importing skin", done: 0, total, report, cancel };
     count.add(0)?;
     fs::create_dir_all(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
     for (root, name) in roots.iter().zip(&names) {
-        let wanted: Vec<(Vec<String>, Vec<String>)> = files
+        let wanted: Vec<(Vec<String>, Vec<String>)> = entries
             .iter()
-            .filter_map(|e| e.parts.clone())
-            .filter(|p| p.starts_with(root))
-            .map(|p| (p.clone(), p[root.len()..].to_vec()))
+            .filter(|e| e.path.starts_with(root))
+            .map(|e| (e.path.clone(), e.path[root.len()..].to_vec()))
             .collect();
         let temp = Temp::create(dest, "importing")?;
-        let progress = &mut |n| count.add(n);
-        match seven {
-            true => archive::extract_seven(archive, &temp.0, &wanted, progress)?,
-            false => archive::extract_zip(archive, &temp.0, &wanted, progress)?,
-        }
+        src.extract(&wanted, &temp.0, &mut |n| count.add(n))?;
         let skin = dest.join(name);
         if skin.exists() {
             fs::remove_dir_all(&skin).map_err(|e| format!("{}: {e}", skin.display()))?;
@@ -280,8 +296,8 @@ mod tests {
         zip.finish().unwrap();
     }
 
-    fn import_into(archive: &Path, dest: &Path) -> Result<Vec<String>, Fail> {
-        import(archive, dest, &|_| {}, &AtomicBool::new(false))
+    fn import_into(item: &Path, dest: &Path) -> Result<Vec<String>, Fail> {
+        import(&*source::open(item)?, dest, &|_| {}, &AtomicBool::new(false))
     }
 
     fn names(dir: &Path) -> Vec<String> {
@@ -307,12 +323,17 @@ mod tests {
                     || dest.join(skin).join("textures").join("body.dds").is_file()
             );
         }
-        assert_eq!(names(&dest), ["Car", "Folder", "Red Bull"]);
+        // An extracted skin's folder too.
+        fs::create_dir_all(root.join("Loose/textures")).unwrap();
+        fs::write(root.join("Loose/textures/body.dds"), "dds").unwrap();
+        assert_eq!(import_into(&root.join("Loose"), &dest).unwrap(), ["Loose"]);
+        assert_eq!(fs::read(dest.join("Loose/textures/body.dds")).unwrap(), b"dds");
+        assert_eq!(names(&dest), ["Car", "Folder", "Loose", "Red Bull"]);
         // Importing again replaces the skin.
         zip(&root.join("Red Bull.zip"), &["textures/new.dds"]);
         import_into(&root.join("Red Bull.zip"), &dest).unwrap();
         assert_eq!(fs::read_dir(dest.join("Red Bull")).unwrap().count(), 1);
-        assert_eq!(names(&dest).len(), 3);
+        assert_eq!(names(&dest).len(), 4);
         assert!(fs::read_dir(&dest).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().starts_with('.')));
         fs::remove_dir_all(&root).unwrap();
     }
@@ -338,7 +359,8 @@ mod tests {
         zip(&root.join("None.zip"), &["readme.txt", "../textures/a.dds"]);
         let dest = root.join("out");
         assert!(import_into(&root.join("None.zip"), &dest).unwrap_err().contains("no textures folder"));
-        assert!(import_into(&root.join("a.rar"), &dest).unwrap_err().contains("not a .zip or .7z"));
+        fs::write(root.join("a.rar"), "Rar!").unwrap();
+        assert!(import_into(&root.join("a.rar"), &dest).unwrap_err().contains("RAR archives can't be read"));
         assert!(!dest.exists());
         fs::remove_dir_all(&root).unwrap();
     }
