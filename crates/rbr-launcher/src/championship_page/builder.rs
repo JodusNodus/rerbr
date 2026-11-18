@@ -3,7 +3,7 @@
 
 use egui::{Align, Color32, DragValue, Layout, Margin, RichText, Sense, Slider, Stroke, Ui, Vec2};
 use rbr_formats::saves::is_file_name_part;
-use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, StagePool, Surface, Surfaces, Weather};
+use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, Surface, Surfaces, Weather};
 use rbr_season::team::team_offers;
 
 use super::common::{row, BAD};
@@ -262,14 +262,6 @@ impl ChampionshipPage {
                 row(rows, "Field cars", "The models the AI crews drive; team-mates share one", |ui| {
                     models_menu(ui, env.cars, &config.class, left_out)
                 });
-                row(rows, "Stages from", "", |ui| {
-                    let pools = [StagePool::All, StagePool::Retail, StagePool::Community];
-                    combo(ui, "championship-pool", width, &mut config.pool, &pools, |p| match p {
-                        StagePool::All => "Every installed stage",
-                        StagePool::Retail => "The game's stages",
-                        StagePool::Community => "Community stages",
-                    });
-                });
                 row(rows, "Surface", "", |ui| {
                     let surfaces = [Surface::Gravel, Surface::Tarmac, Surface::Snow].map(Surfaces::Only);
                     let all = [surfaces[0], surfaces[1], surfaces[2], Surfaces::Mixed];
@@ -498,9 +490,6 @@ fn preset_text(preset: Preset) -> (&'static str, &'static str, &'static str) {
             "Six two-day rallies on mixed surfaces with power stages, points after each.",
             "6 rallies · 36 stages",
         ),
-        Preset::Random => {
-            ("Random", "An event drawn from a random seed: its length, stages and weather.", "a surprise")
-        }
     }
 }
 

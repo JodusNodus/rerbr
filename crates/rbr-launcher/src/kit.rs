@@ -322,17 +322,6 @@ pub fn link(ui: &mut Ui, text: &str) -> Response {
     ui.link(RichText::new(text).size(12.5))
 }
 
-/// A quick-pick chip (a favourite); `selected` fills it.
-pub fn chip(ui: &mut Ui, text: &str, selected: bool) -> Response {
-    let font = egui::FontId::new(12.0, egui::FontFamily::Proportional);
-    pill(ui, text, font, Vec2::new(10.0, 3.5), 11, Sense::click(), |r| match (selected, r.hovered()) {
-        (true, _) => (SEGMENT, Color32::WHITE),
-        (false, true) => (BUTTON_HOVER, TEXT),
-        (false, false) => (BUTTON, TEXT_SOFT),
-    })
-    .on_hover_cursor(egui::CursorIcon::PointingHand)
-}
-
 /// A 6 px dot and its text (12, wrapping), for a status.
 pub fn status_dot(ui: &mut Ui, color: Color32, text: &str) {
     // Left to right even in a right-to-left row, so the dot stays before its text.
@@ -486,7 +475,6 @@ mod tests {
                             rows.row("Label", |ui| _ = segmented(ui, "seg", &mut choice, &[(1, "One"), (2, "Two")]));
                             rows.hint("hint");
                             rows.row("Switch", |ui| _ = switch(ui, &mut on));
-                            rows.full(|ui| _ = chip(ui, "chip", true));
                         });
                         status_dot(ui, GOOD, "found");
                     })

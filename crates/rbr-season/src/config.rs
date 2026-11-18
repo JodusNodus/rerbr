@@ -1,7 +1,6 @@
 //! What the player picks for an event, and the presets that fill it.
 
 pub use rbr_formats::rsf::Surface;
-use rbr_gameplay::crt::CrtRand;
 
 /// How long the event is: `rallies` rallies of `stages` stages each, every rally over `legs` legs. One rally is an
 /// event of its own; more make a championship with points after each. A leg is a day: an overnight service ends it,
@@ -119,13 +118,10 @@ pub enum Preset {
     Championship,
     /// Six two-leg rallies of six stages on mixed surfaces with power stages, as a WRC season shortened.
     Season,
-    /// A random event from the seed.
-    Random,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 5] =
-        [Preset::QuickRally, Preset::Weekend, Preset::Championship, Preset::Season, Preset::Random];
+    pub const ALL: [Preset; 4] = [Preset::QuickRally, Preset::Weekend, Preset::Championship, Preset::Season];
 
     /// The preset's settings for `class` and `car`.
     pub fn config(self, class: &str, car: &str, seed: u32) -> EventConfig {
@@ -171,42 +167,6 @@ impl Preset {
                 power_stage: true,
                 ..base
             },
-            // A seeded mix of everything else (length, pool, surfaces, daylight, weather).
-            Preset::Random => {
-                let mut rng = CrtRand::srand(seed);
-                let draw = |rng: &mut CrtRand, n: usize| (rng.draw() as usize) % n;
-                let rallies = match draw(&mut rng, 3) {
-                    0 | 1 => 1,
-                    _ => 3 + draw(&mut rng, 4) as u8,
-                };
-                let legs = 1 + draw(&mut rng, 3) as u8;
-                let stages = 4 + draw(&mut rng, 5) as u8 + 2 * (legs - 1);
-                let length = Length { rallies, legs, stages };
-                let pool = match draw(&mut rng, 3) {
-                    0 => StagePool::Retail,
-                    1 => StagePool::Community,
-                    _ => StagePool::All,
-                };
-                let surfaces = match draw(&mut rng, 4) {
-                    0 => Surfaces::Only(Surface::Tarmac),
-                    1 => Surfaces::Only(Surface::Gravel),
-                    2 => Surfaces::Only(Surface::Snow),
-                    _ => Surfaces::Mixed,
-                };
-                let daylight = match draw(&mut rng, 3) {
-                    0 => Daylight::Day,
-                    1 => Daylight::Realistic,
-                    _ => Daylight::Night,
-                };
-                let weather = match draw(&mut rng, 3) {
-                    0 => Weather::Dry,
-                    1 => Weather::Changeable,
-                    _ => Weather::Wet,
-                };
-                // A WRC-style rally over several legs pays the power stage, a one-day rally does not.
-                let power_stage = legs > 1;
-                EventConfig { length, pool, surfaces, daylight, weather, power_stage, ..base }
-            }
         }
     }
 }
