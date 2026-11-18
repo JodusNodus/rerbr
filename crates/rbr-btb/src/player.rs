@@ -1,6 +1,5 @@
-//! The player's folder and its [`TRACKS`] folder: BTB stages dropped there, by hand or by a converter (`btb-converter`,
-//! in its own repository), are listed by the launcher beside the RSF install's. The player's folder (the launcher's
-//! files: settings, saves, records) is the platform's user data folder (macOS `~/Library/Application Support/ReRBR`, Windows
+//! The player's folder and its [`TRACKS`] folder: BTB stages dropped there, by hand or by a converter (`rbr-ac-tracks`), are listed by the
+//! launcher beside the RSF install's. The player's folder (the launcher's files: settings, saves, records) is the platform's user data folder (macOS `~/Library/Application Support/ReRBR`, Windows
 //! `%APPDATA%\ReRBR`, Linux `$XDG_DATA_HOME/rerbr`, default `~/.local/share/rerbr`), or `$RERBR_HOME`; the launcher
 //! and the converters take it from here.
 

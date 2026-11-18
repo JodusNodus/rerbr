@@ -121,7 +121,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         })
         .collect();
 
-    // A converted stage (`btb-converter`: Assetto Corsa, BeamNG) collides with meshes of their own (`CollisionOnly`) and
+    // A converted stage (`rbr-ac-tracks`: Assetto Corsa; BeamNG's converter alike) collides with meshes of their own (`CollisionOnly`) and
     // draws none of them: its ground is what lies on them ([`on_ground`]), and its surfaces tell its road.
     let converted = scene.objects.iter().any(|o| o.collides && !o.visible);
     let loaded = converted.then(|| super::collision(maps, name, selection)).flatten();

@@ -47,7 +47,7 @@
   change 0.02°, p99 height step 0.5 mm.
 - Full timed route, NGP slot 2, top speed 25 m/s: `finished=1`, `drivable=1`, 668.9072 s, both splits recorded,
   maximum 1.7 m off the driveline. `/tmp/ac-stage-2024-full-drive/` holds the run.
-- The initial result marker 30 m after the finish lay beyond the autopilot's braking stop. Match `beamng-stage`'s
+- The initial result marker 30 m after the finish lay beyond the autopilot's braking stop. Match the BeamNG converter's
   15 m run-off for both layouts. A targeted drive over 2024's final 300 m gives `finished=1`, `cause=Marker`, end
   page `0x10` (`/tmp/ac-stage-2024-finish-drive/`). Timed gates and geometry are unchanged.
 - Installed layouts: `Crequy_2024` and `Crequy_2025` under the player's converted BTB root, with launcher ids
@@ -108,7 +108,7 @@ triggers terminal AI trimming. Format, clippy and 13 tests pass, including all 1
 ## Combined converter and start positions, 2026-11-12
 
 - The source reader now lives at `crates/rbr-ac-tracks/src/assetto`; geometry, texture decoding, mesh writing, road smoothing,
-  pacenotes and stage preparation are shared in `crates/rbr-ac-tracks/src/btb`. The command is `btb-converter ac`.
+  pacenotes and stage preparation are shared in `crates/rbr-ac-tracks/src/btb`. The command is `rbr-ac-tracks ac`.
 - The earlier start captures were stationary: the live log shows 0.0 m/s. The converter had placed the car's
   centre at the AB timing gate. Use `AC_START_0` when it lies 2–50 m behind the gate and within 5 m of the line,
   with height sampled from physical road collision. Otherwise sample the driveline five metres before the gate,
@@ -237,7 +237,7 @@ triggers terminal AI trimming. Format, clippy and 13 tests pass, including all 1
 - Gunma Cycle Sports Center (`pk_gunma_cycle_sports_center`, layout `gcsc_full_attack`) has AB gates 4.4 km apart, but its
   AI line is a closed 5.9 km loop. Converted with `--circuit` as `AC_Gunma_Gunsai_Touge`: a ReRBR circuit whose lap line and
   spawn lie at `AC_AB_START`. The layout has no `data/surfaces.ini`; the one from `gcsc_hot_version_attack` (same physical
-  meshes) was copied into a symlinked temporary track folder. `scripts/autopilot.py --laps 2` drives two laps, 318.4 s and
+  meshes) was copied into a symlinked temporary track folder. `scripts/btb-autopilot.py --laps 2` drives two laps, 318.4 s and
   316.8 s, through the seam (`cause=Format`, max 1.4 m off the driveline, no false start). The layout's own gates and
   countdown placement were not compared.
 - Gunma's grass (`ksMultilayer`, 47,639 triangles) first rendered as flat white-grey patches on the verges although the report
@@ -322,11 +322,11 @@ mirrored road is otherwise identical, and the cause was not investigated. Peyreg
   (log lines, a cancel flag checked per model and per mesh; a cancelled import leaves no stage). Choices made for the player,
   recorded in `Applied`: a missing `AC_AB_*` gate with a closed AI loop becomes a circuit; a collision cell over the limit
   retries once with `--remesh` and a 25 m collision corridor.
-- Thizy through the CLI (`btb-converter import <tracks> --track thizy`): first attempt overflows a cell, the retry gives
+- Thizy through the CLI (`rbr-ac-tracks import <tracks> --track thizy`): first attempt overflows a cell, the retry gives
   509 cells, largest 34,446 vertices, 881,912 collision and 11,158,896 drawn triangles, 18.737 km, spawn from `AC_START_0`;
   73 s in all including the failed attempt. The stage was not driven or rendered.
 - `Input::read_with_ai` still prints its two source warnings (a trimmed AI point, an ignored sector) to stderr.
-- `make check` with `--locked` currently fails before any of this: `Cargo.lock` lacks `windows 0.62.2`, which ReRBR's
+- `make check` (the old repository's) with `--locked` failed before any of this: `Cargo.lock` lacks `windows 0.62.2`, which ReRBR's
   `rbr-school` now needs. The checks above ran with `--offline`.
 
 ### Import speed, 2026-11-16
@@ -359,7 +359,7 @@ mirrored road is otherwise identical, and the cause was not investigated. Peyreg
 ## Fidelity, 2026-11-17
 
 ReRBR draws a BTB material's diffuse only, so AC detail has to be in that texture. Views came from ReRBR's viewer at
-driveline points (`scripts/shots.py`), against the previous build's stage.
+driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 
 - `useDetail` 1 in `ksPerPixelMultiMap` and `_NMDetail` shades `diffuse * lerp(detail(uv * detailUVMultiplier), 1,
   diffuse.a)` on all four channels (the compiled `_ps.fxo` of both). `detail::bake` writes one repeat of the diffuse at the
@@ -487,10 +487,11 @@ driveline points (`scripts/shots.py`), against the previous build's stage.
 
 ## Launcher import (2026-11-18)
 
-- The converter lives in `crates/rbr-ac-tracks` (the readers `assetto`, the writer shared with other converters `btb`,
-  and `import`, the interface the launcher calls); the `btb-converter` repository keeps the command line, BeamNG and the
-  checks that drive a stage (`scripts/autopilot.py`, `scripts/shots.py`). The crate needs only `rbr-btb` and
-  `rbr-formats`, not the renderer.
+- The converter lives in `crates/rbr-ac-tracks` (the readers `assetto`, the writer `btb` and the interface `import`
+  the launcher calls, `cli` for the `rbr-ac-tracks` executable: `ac`, `import`, `prepare`, `probe`). It needs only
+  `rbr-btb` and `rbr-formats`, not the renderer. The standalone `btb-converter` repository (the AC reader's history, and
+  BeamNG) is no longer used; its AC code, tests and the two stage-checking scripts (`scripts/btb-autopilot.py`,
+  `scripts/btb-shots.py`) moved here on 2026-11-18, BeamNG did not.
 - The launcher's Add (`crates/rbr-launcher/src/content/kind/ac.rs`) takes a folder, a zip or a 7z with an AC track:
   a folder with a KN5 of its own, `ai/fast_lane.ai` and `data/surfaces.ini` (its own or in a layout folder, names
   ignoring case). It unpacks it without programs and sound banks into a hidden folder in `tracks/`, converts each layout

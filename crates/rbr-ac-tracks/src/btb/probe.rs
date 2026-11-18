@@ -1,4 +1,4 @@
-//! The collision under the wheel tracks of a prepared stage (`btb-converter prepare --track FOLDER --out DIR --maps DIR`),
+//! The collision under the wheel tracks of a prepared stage (`rbr-ac-tracks prepare --track FOLDER --out DIR --maps DIR`),
 //! as NGP's wheel contact meets it: along the driveline, 0.75 m either side, every 5 cm, the top surface near the last
 //! height. Creases: the change of the face normal where a track crosses from one face to the next (median, 99th
 //! percentile, those over 1° per km), and the lag-1 correlation of the slope changes there (-0.5 or below: a

@@ -4,6 +4,7 @@
 //! repository; `notes/assetto.md` has the verified findings.
 pub mod assetto;
 pub mod btb;
+pub mod cli;
 #[cfg(feature = "fixture")]
 pub mod fixture;
 pub mod import;

@@ -9,6 +9,10 @@ license = "GPL-3.0-or-later"
 name = "rbr_ac_tracks"
 path = "src/lib.rs"
 
+[[bin]]
+name = "rbr-ac-tracks"
+path = "src/main.rs"
+
 [features]
 # A synthetic track for tests (`fixture`), used by this crate's own tests and the launcher's.
 fixture = []
