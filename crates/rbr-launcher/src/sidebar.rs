@@ -1,8 +1,6 @@
 //! The window's shell: the 220 px sidebar (brand, the Drive and Library groups, a status area, Import and
 //! Settings), the Settings group's header and the shortcuts.
 
-use std::time::Duration;
-
 use egui::{Align, Color32, Frame, Id, Layout, Margin, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::kit;
@@ -14,7 +12,7 @@ use crate::Form;
 /// The sidebar's width.
 pub const WIDTH: f32 = 220.0;
 /// How often the sidebar looks for new downloads (the Import badge), while the Import page is not open.
-const SCAN_EVERY: f64 = 2.0;
+const SCAN_EVERY: f64 = 4.0;
 
 /// A sidebar item: its label, and what it shows on the right (a count in mono or a badge); the response is the
 /// whole row's.
@@ -151,7 +149,7 @@ impl Form {
         Frame::new().inner_margin(Margin { left: 10, right: 10, top: 10, bottom: 12 }).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 7.0;
-            if self.paths.data.is_dir() {
+            if self.game_folder_found(ui.ctx()) {
                 kit::status_dot(ui, GOOD, "Game folder found");
             } else {
                 kit::status_dot(ui, ERROR, "Game folder not found");
@@ -179,20 +177,38 @@ impl Form {
         });
     }
 
-    /// Looks for recent downloads every [`SCAN_EVERY`] seconds (every frame while a scan runs; the Import page does
-    /// it itself), for the Import badge.
+    /// Whether the game folder exists: looked up when the folder setting or the page changes and every
+    /// [`SCAN_EVERY`] seconds of a frame drawn anyway, not every frame.
+    fn game_folder_found(&self, ctx: &egui::Context) -> bool {
+        let key = Id::unique("sidebar game folder");
+        let now = ctx.input(|i| i.time);
+        let seen = ctx.data(|d| d.get_temp::<(std::path::PathBuf, Page, f64, bool)>(key));
+        match seen {
+            Some((path, page, at, found)) if path == self.paths.data && page == self.page && now - at < SCAN_EVERY => {
+                found
+            }
+            _ => {
+                let found = self.paths.data.is_dir();
+                ctx.data_mut(|d| d.insert_temp(key, (self.paths.data.clone(), self.page, now, found)));
+                found
+            }
+        }
+    }
+
+    /// Looks for recent downloads, for the Import badge: when the page changes and at most every [`SCAN_EVERY`]
+    /// seconds of a frame drawn anyway (every frame while a scan runs, which asks for its own repaints; the Import
+    /// page does it itself). It asks for no repaint: an idle launcher stays idle.
     fn poll_downloads(&mut self, ctx: &egui::Context) {
         if self.page == Page::Import || self.child.is_some() {
             return;
         }
         let key = Id::unique("sidebar downloads polled");
         let now = ctx.input(|i| i.time);
-        let last = ctx.data(|d| d.get_temp::<f64>(key));
-        if self.content.recent.scanning() || last.is_none_or(|t| now - t >= SCAN_EVERY) {
-            ctx.data_mut(|d| d.insert_temp(key, now));
+        let last = ctx.data(|d| d.get_temp::<(f64, Page)>(key));
+        if self.content.recent.scanning() || last.is_none_or(|(t, page)| page != self.page || now - t >= SCAN_EVERY) {
+            ctx.data_mut(|d| d.insert_temp(key, (now, self.page)));
             let owned = self.owned_content();
             self.content.recent.poll(ctx, owned);
-            ctx.request_repaint_after(Duration::from_secs_f64(SCAN_EVERY));
         }
     }
 

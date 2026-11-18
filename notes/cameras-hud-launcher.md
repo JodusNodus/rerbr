@@ -198,8 +198,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Settings and Co-drivers pages (2026-11-18, the redesign; `settings_page.rs`, `controls_page.rs`, `graphics_page.rs`,
   `codriver_page.rs`): grouped row panels (`kit::panel`, `Rows::row` / `switch_row`), two columns under the Settings
   tabs, each page scrolling (`kit::body`). General: status rows (✔, or ⚠ in the warning colour with its fix button) for
-  the folder, NGP, cars and wheel (named from `ControlsPage::pad_names`); physics is one NGP / ReRBR experimental
-  choice (a saved or `--physics` brush tyre is kept, not offered) and the tyre force feedback switch; Advanced
+  the folder, NGP, cars and wheel (named from `ControlsPage::pad_names`); the Experimental group is main's three switches
+  (force feedback from the tyres, engine, brush tyre), each with its help and "What is this?" link; Advanced
   collapses; the files folder and its Open link are the pinned footer. Controls: every action a row ("Not set" + Bind,
   or the input as a button that rebinds, a live meter, Clear), gears each their own row, aids/head gasket/force
   feedback as switch rows. Graphics & sound: Display, Camera and HUD on the left, Quality and Sound on the right.

@@ -412,6 +412,7 @@ impl Form {
                 self.replays.refresh(&self.here());
             }
             self.page = page;
+            self.get_more = None;
         }
         // Over the page, on every page: the Add's progress and result.
         self.content_notice(ctx);

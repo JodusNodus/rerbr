@@ -2,12 +2,12 @@
 //! brush tyre over it, each switched on its own (`rbr-standalone --physics`); `rerbr --physics NAME` drives one for a
 //! session, unsaved.
 
-use egui::{RichText, Ui};
+use egui::Ui;
 
 use crate::catalog::Car;
 use crate::kit;
 use crate::pages::Choice;
-use crate::theme::{TEXT_3, WARN};
+use crate::theme::WARN;
 
 /// The physics every drive runs (`[launcher] physics`): the Settings page's experimental engine and tyre switches.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -27,6 +27,7 @@ pub enum PhysicsProfile {
 /// Where each experimental switch is explained.
 const DOCS: &str = "https://github.com/JodusNodus/rerbr/blob/main/docs/";
 const ENGINE_PAGE: &str = "experimental-physics.md";
+const TYRE_PAGE: &str = "tyre-model.md";
 const FFB_PAGE: &str = "force-feedback.md";
 
 /// What the experimental physics leaves unsaved, shown beside the choice while it is picked.
@@ -96,40 +97,27 @@ impl Choice for PhysicsProfile {
     }
 }
 
-/// The Settings page's Physics group: one choice, NGP 7's or ReRBR experimental (its engine model, aero and drivetrain;
-/// the brush tyre is not offered, a saved or `--physics` one keeps it), and the force feedback from the tyres
-/// (`tyres`, `[ffb] tyres`) as a switch; each with a link to its page; the session's `rerbr --physics` when it
-/// overrides the choice, and while the experimental physics drives what it leaves unsaved.
+/// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`tyres`,
+/// `[ffb] tyres`), the experimental engine (with its aero and drivetrain) and the brush tyre, each with its help and a
+/// link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
+/// physics drives what it leaves unsaved.
 pub fn experimental_section(
     ui: &mut Ui,
     physics: &mut PhysicsProfile,
     session: Option<PhysicsProfile>,
     tyres: &mut bool,
 ) {
-    kit::group_label(ui, "Physics", None);
+    kit::group_label(ui, "Experimental", None);
     kit::panel(ui, |rows| {
-        let (mut engine, tyre) = physics.parts();
-        rows.row("Physics", |ui| {
-            let options = [(false, "NGP"), (true, "ReRBR experimental")];
-            kit::segmented(ui, "physics", &mut engine, &options).on_hover_text(ENGINE_HELP);
-        });
-        *physics = PhysicsProfile::of_parts(engine, tyre);
-        rows.full(|ui| {
-            ui.horizontal_wrapped(|ui| {
-                let text = if engine {
-                    "ReRBR's engine model, aero and drivetrain."
-                } else {
-                    "NGP 7's, as the original drives."
-                };
-                ui.label(RichText::new(text).size(12.0).color(TEXT_3));
-                if engine {
-                    docs_link(ui, ENGINE_PAGE);
-                }
-            });
-        });
-        rows.switch_row("Force feedback from the tyres", Some("Replaces the game's steering force."), tyres)
-            .on_hover_text(FFB_HELP);
+        let (mut engine, mut tyre) = physics.parts();
+        rows.switch_row("Force feedback", Some("From the tyres"), tyres).on_hover_text(FFB_HELP);
         rows.full(|ui| docs_link(ui, FFB_PAGE));
+        rows.switch_row("Engine", Some("ReRBR's engine model, aero and drivetrain"), &mut engine)
+            .on_hover_text(ENGINE_HELP);
+        rows.full(|ui| docs_link(ui, ENGINE_PAGE));
+        rows.switch_row("Tyre", Some("ReRBR's brush tyre (in development)"), &mut tyre).on_hover_text(TYRE_HELP);
+        rows.full(|ui| docs_link(ui, TYRE_PAGE));
+        *physics = PhysicsProfile::of_parts(engine, tyre);
     });
     ui.add_space(6.0);
     if let Some(session) = session {
@@ -149,6 +137,7 @@ fn docs_link(ui: &mut Ui, page: &str) {
 }
 
 const ENGINE_HELP: &str = "ReRBR's engine model, aero and four-wheel-drive drivetrain loss, in place of NGP 7's.";
+const TYRE_HELP: &str = "ReRBR's brush tyre, in place of NGP 7's. Still in development.";
 const FFB_HELP: &str = "The wheel's force from the front tyres' grip, as Assetto Corsa EVO's, mapped straight: it \
                         goes light as the front lets go. Off: NGP's force and curve. Records are kept either way; the \
                         sensitivity may want a new value.";
