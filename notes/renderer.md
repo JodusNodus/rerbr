@@ -1289,6 +1289,11 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   asphalt. Tried and dropped: alpha from a coarser mip in `fs_sun` (-0.5 ms on cascade 3, changes coverage), cut-out
   casters sorted front to back (no gain). The mirrors draw only the rain's near layer (the far one's drops are under a
   pixel there): 4K Luceram rain cockpit mirrors 0.91 to 0.72 ms, the mirror images unchanged to the eye (2026-10-30).
+- Third cascade coarse on Ultra (2026-11-18, `sun::COARSE`, `Quality::drawn`): drawn at 2048 into its own depth
+  texture and copied up 2x2 into its 4096 layer (`fs_coarse`), its texel (and so the readers' normal offset) and
+  snapping the 2048 ones, so the readers are unchanged. 1080p, its turn's pass: Ermita chase 9.5 to 3.7 ms, cockpit
+  5.8 to 2.6, Pine chase 4.1 to 2.35; shots RMSE 0.004 at most, the change only 45 m out and not seen. `High` the same
+  code path as before.
 - Cascades in turn (2026-11-06, `sun::CascadesDrawn`, `sun::TURNS`): the first every frame, the second every 2nd, the
   third every 4th between the second's; between turns a cascade is read through the matrix it was drawn with while its
   slice's 12 points (corners, near ones also at the near distance) lie 4 texels inside it, else drawn again (cuts, light

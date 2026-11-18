@@ -36,9 +36,14 @@ pub(crate) const FAR: usize = 3;
 pub(crate) const LAMP: usize = 4;
 pub(crate) const WORLD: usize = 5;
 const LAYERS: usize = 6;
+/// The cascade drawn at [`SIZE`] texels on [`Detail::Ultra`] too ([`Quality::drawn`]), and copied up into its layer:
+/// the third, 45 to 150 m out, whose foliage made it the costliest pass at 4096 (10 ms of an AC conversion's frame,
+/// 3.4 ms at 2048), and whose shadows are as far.
+const COARSE: usize = 2;
 
 /// What the sun's maps are drawn at: the texels across each layer, and the soft shadows' search and filter in texels
-/// at most (`sun_mask.wgsl`). [`Detail::Ultra`] doubles the texels (the soft shadows' reach in metres the same).
+/// at most (`sun_mask.wgsl`). [`Detail::Ultra`] doubles the texels (the soft shadows' reach in metres the same), but
+/// for [`COARSE`]'s ([`Quality::drawn`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Quality {
     pub(crate) size: u32,
@@ -53,6 +58,15 @@ impl Quality {
             Quality { size: 2 * SIZE, search_texels: 32.0, soft_texels: 8.0 }
         } else {
             Quality { size: SIZE, search_texels: 16.0, soft_texels: 4.0 }
+        }
+    }
+
+    /// The texels across cascade `index` as drawn: [`SIZE`] at most for [`COARSE`].
+    pub(crate) fn drawn(self, index: usize) -> u32 {
+        if index == COARSE {
+            self.size.min(SIZE)
+        } else {
+            self.size
         }
     }
 }
@@ -93,12 +107,93 @@ pub(crate) struct SunShadow {
     groups: Vec<wgpu::BindGroup>,
     /// For the draws without a cut-out: no fragment stage. Then for those with one: `fs_sun` drops the cut texels.
     pipelines: [wgpu::RenderPipeline; 2],
+    /// Where [`COARSE`] is drawn when it has fewer texels than its layer, and the copy into the layer.
+    coarse: Option<Coarse>,
+}
+
+struct Coarse {
+    view: wgpu::TextureView,
+    group: wgpu::BindGroup,
+    pipeline: wgpu::RenderPipeline,
+}
+
+impl Coarse {
+    fn new(device: &wgpu::Device, size: u32) -> Coarse {
+        let view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("sun shadow (coarse)"),
+                size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: DEPTH_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&Default::default());
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sun shadow (coarse)"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("sun shadow (coarse)"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) }],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sun shadow (coarse)"),
+            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sun shadow (coarse)"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sun shadow (coarse)"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_coarse"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_coarse"),
+                compilation_options: Default::default(),
+                targets: &[],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        Coarse { view, group, pipeline }
+    }
 }
 
 impl SunShadow {
     /// The cascades and the pipeline that draws stage draws (bound with `texture_layout`, the stage's) into them.
     pub(crate) fn new(device: &wgpu::Device, texture_layout: &wgpu::BindGroupLayout, quality: Quality) -> SunShadow {
-        SunShadow::with_layers(device, texture_layout, quality.size, LAYERS)
+        let coarse = (quality.drawn(COARSE) < quality.size).then(|| Coarse::new(device, quality.drawn(COARSE)));
+        SunShadow { coarse, ..SunShadow::with_layers(device, texture_layout, quality.size, LAYERS) }
     }
 
     /// `layers` depth layers of `size` texels across, drawn as the cascades are (the sky's occlusion,
@@ -207,7 +302,7 @@ impl SunShadow {
             })
         };
         let pipelines = [pipeline(None), pipeline(Some("fs_sun"))];
-        SunShadow { view, layers, uniforms, groups, pipelines }
+        SunShadow { view, layers, uniforms, groups, pipelines, coarse: None }
     }
 
     /// Clears cascade `index` and draws into it, through `matrix`, the backdrop's draws (instance 1) moved by `drop`:
@@ -224,17 +319,29 @@ impl SunShadow {
     ) {
         let uniform = Uniform { matrix: matrix.to_cols_array_2d(), drop: drop.extend(0.0).to_array() };
         queue.write_buffer(&self.uniforms[index], 0, bytes_of(&uniform));
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("sun shadow"),
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.layers[index],
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
-                stencil_ops: None,
-            }),
-            ..Default::default()
-        });
-        pass.set_bind_group(0, &self.groups[index], &[]);
-        draw(&mut pass, self.pipelines.each_ref());
+        let coarse = self.coarse.as_ref().filter(|_| index == COARSE);
+        fn begin<'a>(encoder: &'a mut wgpu::CommandEncoder, view: &wgpu::TextureView) -> wgpu::RenderPass<'a> {
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("sun shadow"),
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            })
+        }
+        {
+            let mut pass = begin(encoder, coarse.map_or(&self.layers[index], |coarse| &coarse.view));
+            pass.set_bind_group(0, &self.groups[index], &[]);
+            draw(&mut pass, self.pipelines.each_ref());
+        }
+        if let Some(coarse) = coarse {
+            let mut pass = begin(encoder, &self.layers[index]);
+            pass.set_pipeline(&coarse.pipeline);
+            pass.set_bind_group(0, &coarse.group, &[]);
+            pass.draw(0..3, 0..1);
+        }
     }
 }
 
@@ -296,7 +403,7 @@ pub(crate) fn cascades(views: &[Mat4], sun: Vec3, quality: Quality) -> (Cascades
         }
         let centre = points.iter().copied().sum::<Vec3>() / points.len() as f32;
         let radius = points.iter().map(|p| p.distance(centre)).fold(0.0, f32::max).ceil();
-        let texel = 2.0 * radius / quality.size as f32;
+        let texel = 2.0 * radius / quality.drawn(i) as f32;
         let snapped = light.transform_point3(centre);
         let snapped = Vec3::new((snapped.x / texel).floor() * texel, (snapped.y / texel).floor() * texel, snapped.z);
         let centre = light.inverse().transform_point3(snapped);
@@ -340,8 +447,8 @@ impl CascadesDrawn {
     pub(crate) fn due(&mut self, cascades: &mut Cascades, slices: &Slices, light: Vec3, quality: Quality) -> [bool; 3] {
         let frame = self.frame;
         self.frame = frame.wrapping_add(1);
-        let inside = 1.0 - 2.0 * HELD_MARGIN / quality.size as f32;
         std::array::from_fn(|i| {
+            let inside = 1.0 - 2.0 * HELD_MARGIN / quality.drawn(i) as f32;
             let (every, phase) = TURNS[i];
             let turn = frame % every == phase;
             let kept = self.held[i].filter(|held| {
