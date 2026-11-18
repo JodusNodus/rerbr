@@ -8,6 +8,8 @@ pub struct State {
     pub sort: String,
     pub filter: String,
     pub length: String,
+    /// The class of the car browser, or the country of the stage browser (`-`: none); empty: any.
+    pub class: String,
     pub selected: Option<String>,
     pub scroll: f32,
 }
@@ -22,6 +24,7 @@ impl State {
             sort: value("sort"),
             filter: value("filter"),
             length: value("length"),
+            class: value("class"),
             selected: section.get("selected").filter(|s| !s.is_empty()).map(decode),
             scroll: value("scroll").parse::<f32>().ok().filter(|s| s.is_finite() && *s >= 0.0).unwrap_or(0.0),
         }
@@ -36,6 +39,7 @@ impl State {
             ("sort", self.sort.clone()),
             ("filter", self.filter.clone()),
             ("length", self.length.clone()),
+            ("class", self.class.clone()),
             ("selected", self.selected.clone().unwrap_or_default()),
             ("scroll", self.scroll.to_string()),
         ] {
@@ -80,6 +84,7 @@ mod tests {
             sort: "recent".into(),
             filter: "4WD".into(),
             length: "any".into(),
+            class: "Group A".into(),
             selected: Some("A car".into()),
             scroll: 123.5,
         };

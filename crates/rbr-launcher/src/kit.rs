@@ -232,12 +232,21 @@ pub fn switch(ui: &mut Ui, on: &mut bool) -> Response {
 pub struct PrimaryButton<'a> {
     label: &'a str,
     hint: Option<&'a str>,
+    min_width: f32,
+}
+
+impl PrimaryButton<'_> {
+    /// At least this wide (the default is 132).
+    pub fn min_width(mut self, width: f32) -> Self {
+        self.min_width = width;
+        self
+    }
 }
 
 /// The page's main action: accent, 14/600, at least 132×38, with an optional hint (a key such as "↵") after the
 /// label. Add it with `ui.add` or `ui.add_enabled`.
 pub fn primary_button<'a>(label: &'a str, hint: Option<&'a str>) -> PrimaryButton<'a> {
-    PrimaryButton { label, hint }
+    PrimaryButton { label, hint, min_width: 132.0 }
 }
 
 impl Widget for PrimaryButton<'_> {
@@ -252,7 +261,7 @@ impl Widget for PrimaryButton<'_> {
             )
         });
         let hint_width = hint.as_ref().map_or(0.0, |h| h.size().x + 8.0);
-        let size = Vec2::new((main.size().x + hint_width + 44.0).max(132.0), 38.0);
+        let size = Vec2::new((main.size().x + hint_width + 44.0).max(self.min_width), 38.0);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         if ui.is_rect_visible(rect) {
             let fill = if response.hovered() { ACCENT_HOVER } else { ACCENT };

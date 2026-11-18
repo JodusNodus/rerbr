@@ -222,13 +222,15 @@ impl Previews {
     pub fn stage_ui(&mut self, ui: &mut egui::Ui, map: &Map) {
         let arrived: Vec<_> = self.stage_arrived.drain(..).chain(self.stage_results.try_iter()).collect();
         self.take_stages(ui.ctx(), arrived);
-        let height = WIDTH * 184.0 / 384.0;
+        // A narrower column (the library's inspector) gets the picture's shape at its width.
+        let width = ui.available_width().min(WIDTH);
+        let height = width * 184.0 / 384.0;
         let Some((_, preview)) = self.stages.iter().find(|(n, _)| *n == map.number) else {
             if self.stage_pending != Some(map.number) {
                 self.stage_pending = Some(map.number);
                 let _ = self.stage_requests.send(map.clone());
             }
-            let (rect, painter) = ui.allocate_painter(egui::vec2(WIDTH, height), egui::Sense::hover());
+            let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
             painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
             ui.label("");
             ui.ctx().request_repaint_after(Duration::from_millis(50));
@@ -237,13 +239,13 @@ impl Previews {
         match &preview.picture {
             Picture::Image(texture) => {
                 // Centred with its aspect kept (every picture has the retail shape, `stage_picture`).
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(WIDTH, height), egui::Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
                 let size = texture.size_vec2();
                 let fitted = size * (rect.width() / size.x).min(rect.height() / size.y);
                 egui::Image::new(texture).paint_at(ui, egui::Rect::from_center_size(rect.center(), fitted));
             }
             Picture::Outline(points) => {
-                let (rect, painter) = ui.allocate_painter(egui::vec2(WIDTH, height), egui::Sense::hover());
+                let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
                 painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
                 let area = rect.rect.shrink(12.0);
                 let side = area.width().min(area.height());
@@ -257,7 +259,7 @@ impl Previews {
                 }
             }
             Picture::None => {
-                let (rect, painter) = ui.allocate_painter(egui::vec2(WIDTH, height), egui::Sense::hover());
+                let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
                 painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
             }
         }
@@ -282,7 +284,8 @@ impl Previews {
             self.cars.push_front((done, frames.map(|images| images.into_iter().map(Frame::Image).collect())));
             self.cars.truncate(KEEP);
         }
-        let size = egui::vec2(WIDTH, WIDTH * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32);
+        let width = ui.available_width().min(WIDTH);
+        let size = egui::vec2(width, width * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32);
         match self.cars.iter_mut().find(|(k, _)| *k == key).map(|(_, f)| f) {
             Some(Ok(frames)) if !frames.is_empty() => {
                 if !self.still {

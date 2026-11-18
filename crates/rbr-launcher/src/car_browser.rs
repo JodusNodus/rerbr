@@ -1,30 +1,26 @@
-//! The car browser: the Drive page's body, or the Championship page's, while it is
-//! open. Collections on the left (favourites, recent, all cars, the classes newest to oldest with the 1.02 cars in
-//! their real classes, the cars that cannot start), the list in the middle (a drive filter, sorting, a search over
-//! every car), and the highlighted car turning on the right with its buttons. A car RSF has not downloaded stays in
-//! its class, greyed at the end with the reason, and cannot be chosen. [`lines`] makes the list from the rows and what
-//! the player filtered, apart from any drawing; the keys and the list's plumbing are the stage browser's
-//! (`browser`).
+//! The car browser: the Cars page, or the picker the Drive, Circuit and Championship pages open. A page header, a filter
+//! bar (search, the scopes all / favourites / recent / added / cannot start, class, drive and sort), the list with its
+//! header row and key hints, and the highlighted car's inspector on the right (the car turning, its facts, its buttons).
+//! A car RSF has not downloaded stays in its class, greyed with the reason, and cannot be chosen. [`lines`] makes the
+//! list from the rows and what the player filtered, apart from any drawing; the keys and the list's plumbing are the
+//! stage browser's (`browser`).
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
-use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke};
+use egui::{FontId, Pos2, Rect, RichText};
 
 use crate::browser::{
-    block, favourite_button, header_line, items, key_action, list_rows_keyed, paint_selection, paint_star, random_row,
-    row_slot, search_row, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY, ROW,
+    self, block, drive_button, favourite_button, header_line, items, key_action, list_rows, paint_cell,
+    paint_selection, paint_star, random_row, row_slot, step_nav, Line, Nav,
 };
 use crate::car_skins::Skins;
 use crate::catalog::{self, Car};
-use crate::pages::{combo, ACCENT};
-use crate::preview::{self, Previews};
+use crate::kit;
+use crate::preview::Previews;
+use crate::theme::{self, TEXT, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
 
-const GOOD_DOT: Color32 = Color32::from_rgb(110, 190, 120);
-const STAND_IN_DOT: Color32 = Color32::from_rgb(220, 170, 70);
-const LIST_WIDTH: f32 = 450.0;
-const SIDEBAR_WIDTH: f32 = 176.0;
-
-/// The classes of the sidebar, newest to oldest, with the RSF base groups each takes in (RSF splits some finely).
+/// The classes of the filter bar, newest to oldest, with the RSF base groups each takes in (RSF splits some finely).
 const CLASSES: [(&str, &[&str]); 14] = [
     ("WRC 1.6", &["WRC 1.6"]),
     ("WRC 2.0", &["WRC 2.0"]),
@@ -110,7 +106,7 @@ pub enum Model {
     Missing,
 }
 
-/// The class of the sidebar RSF base group `group` is in, and its place among them.
+/// The class of the filter bar's RSF base group `group` is in, and its place among them.
 fn family(group: Option<&str>) -> (String, usize) {
     let Some(group) = group else { return (OTHER.to_owned(), CLASSES.len() + 1) };
     match CLASSES.iter().position(|(_, groups)| groups.contains(&group)) {
@@ -128,7 +124,7 @@ pub struct CarRow {
     pub name: String,
     /// The name shown: the 1.02 cars' are ours ([`RETAIL`]).
     pub title: String,
-    /// Its group (`Group A7`) and the class of the sidebar it is in (`Group A`), which comes with its place.
+    /// Its group (`Group A7`) and the class of the filter bar it is in (`Group A`), which comes with its place.
     pub group: String,
     pub class: String,
     rank: usize,
@@ -208,11 +204,13 @@ pub struct Filter {
     /// Words that must all be in the car's name, group, class, source or RSF number; they search every car.
     pub query: String,
     pub drive: Option<Drive>,
+    /// A class of the filter bar, by name.
+    pub class: Option<String>,
 }
 
 impl Filter {
     fn accepts(&self, row: &CarRow) -> bool {
-        self.drive.is_none_or(|d| row.drive == Some(d))
+        self.drive.is_none_or(|d| row.drive == Some(d)) && self.class.as_ref().is_none_or(|c| row.class == *c)
     }
 }
 
@@ -236,14 +234,12 @@ impl Sort {
     }
 }
 
-/// A set of cars the sidebar offers.
+/// A set of cars the filter bar's scopes offer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Collection {
     Favourites,
     Recent,
     All,
-    /// A class of the sidebar, by name.
-    Class(String),
     CannotStart,
     /// The cars the launcher downloaded (the Cars page only).
     Added,
@@ -304,12 +300,8 @@ pub fn lines(
             out.extend(block(None, ok));
             out.extend(block(Some("Cannot start"), blocked));
         }
-        Collection::All | Collection::Class(_) => {
-            let wanted = |r: &CarRow| match collection {
-                Collection::Class(name) => r.class == *name,
-                _ => true,
-            };
-            let members = (0..rows.len()).filter(|&k| rows[k].startable() && wanted(&rows[k])).filter(accepted);
+        Collection::All => {
+            let members = (0..rows.len()).filter(|&k| rows[k].startable()).filter(accepted);
             out.extend(block(None, sorted(members.collect())));
         }
         Collection::CannotStart => {
@@ -321,37 +313,6 @@ pub fn lines(
             out.extend(block(None, sorted(ok)));
             out.extend(block(Some("Cannot start"), sorted(blocked)));
         }
-    }
-    out
-}
-
-/// The sidebar: the library (with the cars added by the launcher when `page` and there are some), then each class with
-/// its number of cars that can start, then the cars that cannot.
-fn collections(
-    rows: &[CarRow],
-    favourites: &[String],
-    recent: &[String],
-    page: bool,
-) -> Vec<(Collection, String, usize)> {
-    let known = |names: &[String]| names.iter().filter(|n| rows.iter().any(|r| r.name == **n)).count();
-    let startable = rows.iter().filter(|r| r.startable()).count();
-    let mut classes: BTreeMap<(usize, &str), usize> = BTreeMap::new();
-    for row in rows.iter().filter(|r| r.startable()) {
-        *classes.entry((row.rank, row.class.as_str())).or_default() += 1;
-    }
-    let mut out = vec![
-        (Collection::Favourites, "Favourites".to_owned(), known(favourites)),
-        (Collection::Recent, "Recent".to_owned(), known(recent)),
-        (Collection::All, "All cars".to_owned(), startable),
-    ];
-    let added = rows.iter().filter(|r| r.added).count();
-    if page && added > 0 {
-        out.push((Collection::Added, "Added by you".to_owned(), added));
-    }
-    out.extend(classes.into_iter().map(|((_, name), n)| (Collection::Class(name.to_owned()), name.to_owned(), n)));
-    let blocked = rows.len() - startable;
-    if blocked > 0 {
-        out.push((Collection::CannotStart, "Cannot start".to_owned(), blocked));
     }
     out
 }
@@ -375,8 +336,8 @@ pub enum Action {
 pub struct Env<'a> {
     /// The Cars page's line above the search: how many cars.
     pub heading: String,
-    /// The Cars page's own detail panel, in place of the picker's: the row, its car, the previews, the skins and the
-    /// game folder.
+    /// Unused: the browser draws its own inspector (the pages' literals still set it).
+    #[allow(dead_code)]
     pub detail: Option<&'a mut Detail<'a>>,
     pub cars: &'a [Car],
     /// Car names: starred in that order, and recently chosen newest first.
@@ -410,8 +371,12 @@ pub enum Target {
 #[derive(Default)]
 pub struct CarBrowser {
     pub open: bool,
-    /// The Cars page's browser: no Back, no Esc, its own detail panel and the added cars' collection.
+    /// The Cars page's browser: no Back, no Esc, the added cars' scope and the removal of an added car.
     page: bool,
+    /// Whether cars can be removed now (not while adding or driving): the page sets it.
+    pub idle: bool,
+    /// The pack folder of the added car whose removal waits for its confirmation.
+    confirm: Option<String>,
     pub target: Target,
     rows: Vec<CarRow>,
     collection: Option<Collection>,
@@ -454,7 +419,6 @@ impl CarBrowser {
             Collection::All => "all".into(),
             Collection::CannotStart => "unavailable".into(),
             Collection::Added => "added".into(),
-            Collection::Class(name) => format!("class:{name}"),
         };
         crate::browser_state::State {
             collection: Some(collection),
@@ -462,6 +426,7 @@ impl CarBrowser {
             sort: if self.sort == Sort::Recent { "recent" } else { "name" }.into(),
             filter: self.filter.drive.map(|d| d.label().to_owned()).unwrap_or_default(),
             length: String::new(),
+            class: self.filter.class.clone().unwrap_or_default(),
             selected: self.rows.get(self.nav.cursor).map(|r| r.name.clone()),
             scroll: self.nav.offset(),
         }
@@ -469,17 +434,18 @@ impl CarBrowser {
 
     pub fn restore(&mut self, state: &crate::browser_state::State) {
         let Some(collection) = state.collection.as_deref() else { return };
+        // A class kept as the collection (an older save) is the class dropdown now.
+        let old_class = collection.strip_prefix("class:").filter(|c| self.rows.iter().any(|r| r.class == *c));
         self.collection = Some(match collection {
             "favourites" => Collection::Favourites,
             "recent" => Collection::Recent,
             "unavailable" => Collection::CannotStart,
             "added" => Collection::Added,
-            key if key.starts_with("class:") && self.rows.iter().any(|r| r.class == key[6..]) => {
-                Collection::Class(key[6..].into())
-            }
             _ => Collection::All,
         });
-        self.filter = Filter { query: state.query.clone(), drive: Drive::parse(&state.filter) };
+        let class = Some(state.class.as_str()).filter(|c| !c.is_empty()).or(old_class);
+        let class = class.filter(|c| self.rows.iter().any(|r| r.class == *c)).map(str::to_owned);
+        self.filter = Filter { query: state.query.clone(), drive: Drive::parse(&state.filter), class };
         self.sort = if state.sort == "recent" { Sort::Recent } else { Sort::Name };
         let cursor = self.rows.iter().position(|r| Some(&r.name) == state.selected.as_ref()).unwrap_or(0);
         self.nav.restore(cursor, state.scroll);
@@ -547,48 +513,25 @@ impl CarBrowser {
             |row| Action::Favourite(row.name.clone()),
             Action::Back,
         );
-
-        let mut random = false;
-        let hint = "Search all cars: name, class, RSF number";
         if self.page {
             // A page has no Back, and Esc does nothing.
             action = action.filter(|a| *a != Action::Back);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(&env.heading).size(16.0).strong());
-                ui.add_space(12.0);
-                let after = |ui: &mut egui::Ui| {
-                    let button = egui::Button::new(RichText::new("Get more cars…").size(14.5));
-                    if ui.add(button.min_size(egui::vec2(0.0, 30.0))).on_hover_text("gvrc.de's cars").clicked() {
-                        action = Some(Action::GetMore);
-                    }
-                };
-                search_row(ui, hint, &mut self.filter.query, &mut self.focus, &mut random, after);
-            });
-        } else if top_line(ui, "Choose a car", hint, &mut self.filter.query, &mut self.focus, &mut random) {
-            action = Some(Action::Back);
         }
-        if random {
+        let subtitle = Some(env.heading.as_str()).filter(|h| self.page && !h.is_empty());
+        let (title, get_more) =
+            if self.page { ("Cars", Some(("Get more cars…", "gvrc.de's cars"))) } else { ("Choose a car", None) };
+        let clicks = browser::header(ui, title, subtitle, get_more);
+        if clicks.back {
+            action = Some(Action::Back);
+        } else if clicks.get_more {
+            action = Some(Action::GetMore);
+        }
+        if clicks.random {
             self.random();
         }
-        ui.add_space(8.0);
-        ui.separator();
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(SIDEBAR_WIDTH);
-                self.sidebar(ui, &env);
-            });
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            let chosen = ui.vertical(|ui| self.list(ui, env.favourites, env.recent)).inner;
-            action = chosen.or(action.take());
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            let chosen = ui.vertical(|ui| self.detail(ui, &mut env)).inner;
-            action = chosen.or(action.take());
-        });
-        action
+        self.filter_bar(ui, env.favourites, env.recent);
+        let chosen = self.body(ui, &mut env);
+        chosen.or(action)
     }
 
     /// A random car of the list as filtered becomes the highlighted one.
@@ -598,226 +541,330 @@ impl CarBrowser {
         }
     }
 
-    /// The collections of the sidebar.
-    fn sidebar(&mut self, ui: &mut egui::Ui, env: &Env) {
-        let all = collections(&self.rows, env.favourites, env.recent, self.page);
-        let current = self.collection.clone().unwrap_or(Collection::All);
-        let entries: Vec<SideEntry> = all
-            .iter()
-            .map(|(collection, name, count)| SideEntry {
-                icon: match collection {
-                    Collection::Favourites => "★",
-                    Collection::CannotStart => "⚠",
-                    _ => "",
-                },
-                name,
-                count: *count,
-                selected: current == *collection,
-                grey: *collection == Collection::CannotStart,
-            })
+    /// The search, the scopes and the class, drive and sort dropdowns.
+    fn filter_bar(&mut self, ui: &mut egui::Ui, favourites: &[String], recent: &[String]) {
+        let scopes = self.scopes(favourites, recent);
+        let labels: Vec<&str> = scopes.iter().map(|(_, l)| *l).collect();
+        let classes: Vec<(Option<String>, String)> = std::iter::once((None, "All classes".to_owned()))
+            .chain(self.classes().into_iter().map(|c| (Some(c.clone()), c)))
             .collect();
-        // The classes of a full install do not fit the window's height: the list scrolls, the button stays.
-        let room = (ui.available_height() - 44.0).max(ROW * 3.0);
-        egui::ScrollArea::vertical().id_salt("collections").max_height(room).auto_shrink([false, true]).show(
+        let drives: Vec<(Option<Drive>, String)> = std::iter::once((None, "Any drive".to_owned()))
+            .chain(Drive::ALL.map(|d| (Some(d), d.label().to_owned())))
+            .collect();
+        let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
+        const DROPS: [f32; 3] = [112.0, 84.0, 118.0];
+        let drops_width = DROPS.iter().sum::<f32>() + 3.0 * 8.0 + 3.0 * 20.0;
+        let seg = browser::segmented_width(ui, &labels);
+        let before = (self.filter.clone(), self.sort, self.collection.clone());
+        browser::bar(ui, |ui| {
+            let room = ui.available_width() - seg - 16.0;
+            let one_row = room - drops_width >= 180.0;
+            let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(180.0, 300.0);
+            let hint = "Search name, class or RSF number";
+            ui.horizontal(|ui| {
+                browser::search_box(ui, hint, &mut self.filter.query, &mut self.focus, search);
+                let mut scope = self.collection.clone().unwrap_or(Collection::All);
+                if kit::segmented(ui, "cars scope", &mut scope, &scopes_for(&scopes)).changed() {
+                    self.collection = Some(scope);
+                    self.filter.query.clear();
+                }
+                if one_row {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.dropdowns(ui, &classes, &drives, &sorts, DROPS);
+                    });
+                }
+            });
+            if !one_row {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| self.dropdowns(ui, &classes, &drives, &sorts, DROPS));
+            }
+        });
+        if before != (self.filter.clone(), self.sort, self.collection.clone()) {
+            // Back to the search box, where the arrows move through the list.
+            self.focus = true;
+        }
+    }
+
+    /// The class, drive and sort dropdowns, right to left when in a right-to-left layout (the last is the sort).
+    fn dropdowns(
+        &mut self,
+        ui: &mut egui::Ui,
+        classes: &[(Option<String>, String)],
+        drives: &[(Option<Drive>, String)],
+        sorts: &[(Sort, String)],
+        widths: [f32; 3],
+    ) {
+        let rtl = ui.layout().main_dir() == egui::Direction::RightToLeft;
+        let class_text = self.filter.class.clone().unwrap_or_else(|| "All classes".to_owned());
+        let drive_text = self.filter.drive.map_or("Any drive", Drive::label).to_owned();
+        let sort_text = format!("Sort: {}", self.sort.label());
+        let class = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "cars class", widths[0], &class_text, &mut s.filter.class, classes)
+        };
+        let drive = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "cars drive", widths[1], &drive_text, &mut s.filter.drive, drives)
+        };
+        let sort = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "cars sort", widths[2], &sort_text, &mut s.sort, sorts)
+        };
+        if rtl {
+            sort(self, ui);
+            drive(self, ui);
+            class(self, ui);
+        } else {
+            class(self, ui);
+            drive(self, ui);
+            sort(self, ui);
+        }
+    }
+
+    /// The scopes of the filter bar: all cars, the favourites, the recent picks, the cars added by you (the page's, when
+    /// there are some) and the cars that cannot start (when there are some).
+    fn scopes(&self, favourites: &[String], recent: &[String]) -> Vec<(Collection, &'static str)> {
+        let _ = (favourites, recent);
+        let mut out =
+            vec![(Collection::All, "All"), (Collection::Favourites, "Favourites"), (Collection::Recent, "Recent")];
+        if self.page && self.rows.iter().any(|r| r.added) {
+            out.push((Collection::Added, "Added by you"));
+        }
+        if self.rows.iter().any(|r| !r.startable()) {
+            out.push((Collection::CannotStart, "Cannot start"));
+        }
+        out
+    }
+
+    /// The classes of the cars, newest to oldest.
+    fn classes(&self) -> Vec<String> {
+        let mut classes: BTreeMap<(usize, &str), ()> = BTreeMap::new();
+        for row in &self.rows {
+            classes.insert((row.rank, row.class.as_str()), ());
+        }
+        classes.into_keys().map(|(_, name)| name.to_owned()).collect()
+    }
+
+    /// The list and the inspector below the filter bar.
+    fn body(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
+        let mut action = None;
+        let selected = self.rows.get(self.nav.cursor).and_then(|row| Some((row.clone(), env.cars.get(row.index)?)));
+        let page = self.page;
+        let (idle, confirm) = (self.idle, &mut self.confirm);
+        let favourite = selected.as_ref().is_some_and(|(row, _)| env.favourites.contains(&row.name));
+        let (previews, skins, root) = (&mut *env.previews, &mut *env.skins, env.root);
+        browser::inspector(
             ui,
             |ui| {
-                let classes = 3 + all.iter().filter(|(c, ..)| *c == Collection::Added).count();
-                if let Some(n) = side_list(ui, &entries, (classes, "CLASSES")) {
-                    self.collection = Some(all[n].0.clone());
-                    self.filter.query.clear();
+                if let Some((row, car)) = &selected {
+                    facts(ui, row, car, previews, skins, root);
+                }
+            },
+            |ui| {
+                if let Some((row, car)) = &selected {
+                    action = actions(ui, row, car, page, favourite, idle, confirm);
                 }
             },
         );
-        ui.add_space(8.0);
+        let chosen = self.list(ui, env.favourites, env.recent);
+        chosen.or(action)
     }
 
-    /// The filters, sort, the list and the keys; a car chosen or starred with the mouse.
+    /// The list with its header row and its hint bar; a car chosen or starred with the mouse.
     fn list(&mut self, ui: &mut egui::Ui, favourites: &[String], recent: &[String]) -> Option<Action> {
         let mut action = None;
         let collection = self.collection.clone().unwrap_or(Collection::All);
-        ui.set_width(LIST_WIDTH);
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Drive").color(GREY));
-            ui.selectable_value(&mut self.filter.drive, None, "Any");
-            for drive in Drive::ALL {
-                ui.selectable_value(&mut self.filter.drive, Some(drive), drive.label());
-            }
-        });
         let count = items(&self.lines).count();
-        ui.horizontal(|ui| {
-            let what = if self.filter.query.trim().is_empty() {
-                match &collection {
-                    Collection::Favourites => "favourites".to_owned(),
-                    Collection::Recent => "recent".to_owned(),
-                    Collection::All => "cars".to_owned(),
-                    Collection::Class(name) => format!("cars in {name}"),
-                    Collection::CannotStart => "cars that cannot start".to_owned(),
-                    Collection::Added => "cars added by you".to_owned(),
-                }
-            } else {
-                "found in all cars".to_owned()
-            };
-            ui.label(RichText::new(format!("{count} {what}")).color(GREY));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                combo(ui, "sort", 120.0, &mut self.sort, &Sort::ALL, Sort::label);
-                ui.label(RichText::new("Sort").color(GREY));
-            });
-        });
-        ui.add_space(4.0);
-        let by_class = !matches!(collection, Collection::Class(_)) || !self.filter.query.trim().is_empty();
-        let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 20.0), Sense::hover());
-        let c = columns(rect.left());
-        let small = FontId::proportional(11.5);
-        let y = rect.center().y;
-        let p = ui.painter();
-        p.text(Pos2::new(c[1], y), Align2::LEFT_CENTER, "CAR", small.clone(), GREY);
-        p.text(Pos2::new(c[2], y), Align2::LEFT_CENTER, if by_class { "CLASS" } else { "FROM" }, small.clone(), GREY);
-        p.text(Pos2::new(c[3], y), Align2::LEFT_CENTER, "MODEL", small, GREY);
-        p.hline(rect.x_range(), rect.bottom(), Stroke::new(1.0_f32, Color32::from_gray(60)));
-        ui.add_space(2.0);
-
-        if count == 0 {
-            let empty = self.filter.query.trim().is_empty();
-            let hint = match &collection {
-                Collection::Favourites if empty && favourites.is_empty() => "Click ☆ next to a car to keep it here.",
-                Collection::Recent if empty && recent.is_empty() => "The cars you choose are listed here.",
-                _ => "Nothing matches.",
-            };
-            ui.add_space(10.0);
-            ui.label(RichText::new(hint).color(GREY));
+        let shown = format!("{count} shown");
+        let verb = if self.page { "Drive" } else { "Choose" };
+        let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
+        if !self.page {
+            keys.push(("Esc", "Back"));
         }
-        let keys =
-            if self.page { "⏶⏷ move    Enter drive this car    Ctrl+D favourite" } else { crate::browser::KEYS };
-        list_rows_keyed(ui, &mut self.nav, "cars", &self.lines, keys, |ui, nav, range| {
-            for at in range {
-                let k = match &self.lines[at] {
-                    Line::Header(name) => {
-                        header_line(ui, name);
-                        continue;
+        browser::hint_bar(ui, &shown, &keys, |ui| {
+            browser::list_header(ui, "Name", &WIDTHS, &[("Class", false), ("Model", false), ("Drive", false)]);
+            if count == 0 {
+                let empty = self.filter.query.trim().is_empty();
+                let hint = match &collection {
+                    Collection::Favourites if empty && favourites.is_empty() => {
+                        "Click ☆ next to a car to keep it here."
                     }
-                    Line::Row(k) => *k,
+                    Collection::Recent if empty && recent.is_empty() => "The cars you choose are listed here.",
+                    _ => "Nothing matches.",
                 };
-                let row = &self.rows[k];
-                let (rect, response, star) = row_slot(ui, k);
-                let favourite = favourites.contains(&row.name);
-                draw_row(ui, rect, row, by_class, k == nav.cursor, response.hovered(), favourite);
-                let response = match row.problem.as_deref() {
-                    Some(problem) => response.on_hover_text(format!("cannot start: {problem}")),
-                    None => response,
-                };
-                if star.clicked() {
-                    action = Some(Action::Favourite(row.name.clone()));
-                } else if response.double_clicked() && row.startable() {
-                    action = Some(Action::Choose(row.index));
-                } else if response.clicked() {
-                    nav.point(k);
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.label(RichText::new(hint).color(TEXT_2));
+                });
+            }
+            list_rows(ui, &mut self.nav, "cars", &self.lines, |ui, nav, range| {
+                for at in range {
+                    let k = match &self.lines[at] {
+                        Line::Header(name) => {
+                            header_line(ui, name);
+                            continue;
+                        }
+                        Line::Row(k) => *k,
+                    };
+                    let row = &self.rows[k];
+                    let (rect, response, star) = row_slot(ui, k);
+                    let favourite = favourites.contains(&row.name);
+                    draw_row(ui, rect, row, k == nav.cursor, response.hovered(), favourite);
+                    let response = match row.problem.as_deref() {
+                        Some(problem) => response.on_hover_text(format!("cannot start: {problem}")),
+                        None => response,
+                    };
+                    if star.clicked() {
+                        action = Some(Action::Favourite(row.name.clone()));
+                    } else if response.double_clicked() && row.startable() {
+                        action = Some(Action::Choose(row.index));
+                    } else if response.clicked() {
+                        nav.point(k);
+                    }
                 }
-            }
-        });
-        action
-    }
-
-    /// The highlighted car: its turntable, name, facts and the buttons.
-    fn detail(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
-        let row = self.rows.get(self.nav.cursor)?;
-        let car = env.cars.get(row.index)?;
-        if let Some(detail) = env.detail.as_mut() {
-            ui.set_width(preview::WIDTH);
-            return detail(ui, row, car, env.previews, env.skins, env.root);
-        }
-        let mut action = None;
-        ui.set_width(preview::WIDTH);
-        ui.add_space(6.0);
-        ui.label(RichText::new(&row.title).size(22.0).strong());
-        ui.label(RichText::new(&row.group).color(GREY));
-        ui.add_space(6.0);
-        env.previews.car_ui(ui, car, env.skins.choice(car), env.root);
-        ui.add_space(6.0);
-        env.skins.ui(ui, car);
-        ui.add_space(6.0);
-        egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-            ui.label(RichText::new("Source").color(GREY));
-            ui.label(source(car));
-            ui.end_row();
-            ui.label(RichText::new("Drive").color(GREY));
-            ui.label(row.drive.map_or("unknown", Drive::label));
-            ui.end_row();
-            ui.label(RichText::new("Model").color(GREY));
-            ui.label(match &row.model {
-                Model::Own => "its own".to_owned(),
-                Model::StandIn(_) => "a stand-in".to_owned(),
-                Model::Missing => "none".to_owned(),
             });
-            ui.end_row();
         });
-        ui.add_space(14.0);
-        ui.horizontal(|ui| {
-            if favourite_button(ui, env.favourites.contains(&row.name)).clicked() {
-                action = Some(Action::Favourite(row.name.clone()));
-            }
-            let go = RichText::new("Choose car").size(18.0).strong().color(Color32::WHITE);
-            let go = egui::Button::new(go).fill(ACCENT).min_size(egui::vec2(ui.available_width(), 44.0));
-            let go = ui.add_enabled(row.startable(), go).on_hover_text("Enter, or a double click on the car");
-            if go.clicked() {
-                action = Some(Action::Choose(row.index));
-            }
-        });
-        if let Some(reason) = row.reason() {
-            ui.add_space(6.0);
-            ui.label(RichText::new(format!("Cannot start: {reason}")).color(crate::pages::WARN));
-        }
         action
     }
 }
 
-/// The list's columns: the star, the name, the third (class or source), and the model's dot.
-fn columns(left: f32) -> [f32; 4] {
-    [left + 6.0, left + 30.0, left + 226.0, left + 336.0]
+/// The scopes as the segmented control takes them.
+fn scopes_for<'a>(scopes: &'a [(Collection, &'static str)]) -> Vec<(Collection, &'a str)> {
+    scopes.iter().map(|(c, l)| (c.clone(), *l)).collect()
 }
 
-/// The room the name has before the third column.
-const NAME_WIDTH: f32 = 190.0;
+/// The folder holding the car's files: its model's.
+fn files_folder(car: &Car, root: &str) -> Option<PathBuf> {
+    match &car.model_path {
+        Some(path) => path.parent().map(PathBuf::from),
+        None => rbr_formats::cars::resolve(std::path::Path::new(root.trim()), &format!("Cars\\{}", car.name)),
+    }
+}
 
-/// A car's row: its star, name, class or source, and model; the highlighted one filled.
-fn draw_row(ui: &egui::Ui, rect: Rect, row: &CarRow, by_class: bool, cursor: bool, hovered: bool, favourite: bool) {
-    let p = ui.painter();
-    let c = columns(rect.left());
-    let y = rect.center().y;
-    paint_selection(ui, rect, cursor, hovered);
-    let text = if row.startable() { ui.visuals().strong_text_color() } else { DIM };
-    paint_star(p, Pos2::new(c[0] + 6.0, y), favourite, hovered || cursor);
-    let name = p.layout_no_wrap(row.title.clone(), FontId::proportional(15.0), text);
-    let room = Rect::from_min_max(Pos2::new(c[1], rect.top()), Pos2::new(c[1] + NAME_WIDTH, rect.bottom()));
-    p.with_clip_rect(room).galley(Pos2::new(c[1], y - name.size().y / 2.0), name, text);
-    let third = if by_class { &row.group } else { &row.source };
-    let third_colour = if row.startable() { GREY } else { DIM };
-    let room = Rect::from_min_max(Pos2::new(c[2], rect.top()), Pos2::new(c[3] - 6.0, rect.bottom()));
-    let galley = p.layout_no_wrap(third.clone(), FontId::proportional(13.0), third_colour);
-    p.with_clip_rect(room).galley(Pos2::new(c[2], y - galley.size().y / 2.0), galley, third_colour);
-    let room = Rect::from_min_max(Pos2::new(c[3], rect.top()), rect.right_bottom());
-    match (row.reason(), &row.model) {
-        (Some(reason), _) => {
-            let galley = p.layout_no_wrap(reason.to_owned(), FontId::proportional(12.0), DIM);
-            p.with_clip_rect(room).galley(Pos2::new(c[3], y - galley.size().y / 2.0), galley, DIM);
+/// The pack folder of an added car.
+fn added_pack(car: &Car) -> Option<String> {
+    match &car.physics {
+        catalog::Physics::Pack(path) if car.added => path.file_name().map(|n| n.to_string_lossy().into_owned()),
+        _ => None,
+    }
+}
+
+/// `text` shortened from the left with an ellipsis to fit `width`.
+fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
+    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
+    if fits(text) {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let keep =
+        (0..chars.len()).rev().find(|&n| fits(&format!("…{}", chars[chars.len() - n..].iter().collect::<String>())));
+    format!("…{}", chars[chars.len() - keep.unwrap_or(0)..].iter().collect::<String>())
+}
+
+/// The inspector's scrolling part: the car turning, its name and class, and its facts in a panel.
+fn facts(ui: &mut egui::Ui, row: &CarRow, car: &Car, previews: &mut Previews, skins: &mut Skins, root: &str) {
+    previews.car_ui(ui, car, skins.choice(car), root);
+    browser::title(ui, &row.title, &row.group);
+    kit::panel(ui, |rows| {
+        skins.rows(rows, car);
+        rows.row("Drive", |ui| _ = ui.label(row.drive.map_or("unknown", Drive::label)));
+        rows.row("Source", |ui| _ = ui.label(source(car)));
+        rows.row("Model", |ui| {
+            match &row.model {
+                Model::Own => ui.label("Own model"),
+                Model::StandIn(why) => ui.label("Stand-in model").on_hover_text(why),
+                Model::Missing => ui.label("None"),
+            };
+        });
+        rows.row("Folder", |ui| match files_folder(car, root) {
+            Some(path) => {
+                if kit::link(ui, "Open").on_hover_text("Open the folder").clicked() {
+                    crate::crash::open(path.as_os_str());
+                }
+                let font = theme::mono(11.0);
+                let text = left_truncated(ui, &path.display().to_string(), &font, ui.available_width() - 8.0);
+                ui.label(RichText::new(text).font(font).color(TEXT_2)).on_hover_text(path.display().to_string());
+            }
+            None => _ = ui.label("not found"),
+        });
+    });
+}
+
+/// The inspector's pinned part: why the car cannot start, Favourite and the primary button, and the removal of an
+/// added car (the page's) with its confirmation.
+fn actions(
+    ui: &mut egui::Ui,
+    row: &CarRow,
+    car: &Car,
+    page: bool,
+    favourite: bool,
+    idle: bool,
+    confirm: &mut Option<String>,
+) -> Option<Action> {
+    let mut action = None;
+    if let Some(reason) = row.reason() {
+        kit::status_dot(ui, theme::WARN, &format!("Cannot start: {reason}"));
+        ui.add_space(8.0);
+    }
+    ui.horizontal(|ui| {
+        if favourite_button(ui, favourite).clicked() {
+            action = Some(Action::Favourite(row.name.clone()));
         }
+        let (label, tip) =
+            if page { ("Drive this car", "Enter") } else { ("Choose car", "Enter, or a double click on the car") };
+        if drive_button(ui, label, row.startable(), tip).clicked() {
+            action = Some(Action::Choose(row.index));
+        }
+    });
+    let Some(pack) = added_pack(car).filter(|_| page) else { return action };
+    ui.add_space(10.0);
+    if confirm.as_deref() == Some(pack.as_str()) {
+        ui.label(
+            RichText::new("Remove this car and its model from your files? Nothing in the game folder is touched.")
+                .color(TEXT_2),
+        );
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            let remove = egui::Button::new(RichText::new("Remove").color(theme::ERROR));
+            if ui.add_enabled(idle, remove).clicked() {
+                action = Some(Action::Remove(pack));
+            }
+            if ui.button("Keep it").clicked() {
+                *confirm = None;
+            }
+        });
+    } else if ui.add_enabled(idle, egui::Button::new("Remove…")).on_hover_text("Added by you").clicked() {
+        *confirm = Some(pack);
+    }
+    action
+}
+
+/// The right-aligned columns of the list, widths: class, model, drive.
+const WIDTHS: [f32; 3] = [110.0, 92.0, 36.0];
+
+/// A car's row: its star, name, class, model and drive; the highlighted one filled.
+fn draw_row(ui: &egui::Ui, rect: Rect, row: &CarRow, cursor: bool, hovered: bool, favourite: bool) {
+    let p = ui.painter();
+    let (c, name_right) = browser::columns(rect, &WIDTHS);
+    let startable = row.startable();
+    paint_selection(ui, rect, cursor, hovered);
+    paint_star(p, Pos2::new(rect.left() + 14.0, rect.center().y), favourite, hovered || cursor);
+    let (name_colour, dim) = if startable { (TEXT_LIST, TEXT_2) } else { (TEXT_DISABLED, TEXT_3) };
+    let font = FontId::proportional(13.0);
+    paint_cell(p, rect, browser::name_x(rect), name_right, &row.title, font.clone(), name_colour);
+    paint_cell(p, rect, c[0], c[1] - 8.0, &row.group, font.clone(), dim);
+    match (row.reason(), &row.model) {
+        (Some(reason), _) => paint_cell(p, rect, c[1], c[2] - 8.0, reason, FontId::proportional(12.0), theme::WARN),
         (None, model) => {
             let (dot, word) = match model {
-                Model::Own => (GOOD_DOT, "own model"),
-                Model::StandIn(_) => (STAND_IN_DOT, "stand-in"),
-                Model::Missing => (DIM, "no model"),
+                Model::Own => (theme::GOOD, "Own"),
+                Model::StandIn(_) => (theme::WARN, "Stand-in"),
+                Model::Missing => (TEXT_3, "None"),
             };
-            p.circle_filled(Pos2::new(c[3] + 4.0, y), 4.0, dot);
-            p.with_clip_rect(room).text(
-                Pos2::new(c[3] + 14.0, y),
-                Align2::LEFT_CENTER,
-                word,
-                FontId::proportional(13.0),
-                GREY,
-            );
+            p.circle_filled(Pos2::new(c[1] + 3.0, rect.center().y), 3.0, dot);
+            paint_cell(p, rect, c[1] + 14.0, c[2] - 8.0, word, font, dim);
         }
     }
+    let drive = row.drive.map_or("—", Drive::label);
+    paint_cell(p, rect, c[2], c[2] + WIDTHS[2], drive, theme::mono(11.0), dim);
 }
 
 #[cfg(test)]
@@ -856,8 +903,8 @@ mod tests {
         let mut browser = CarBrowser::default();
         browser.set_rows(rows());
         browser.open_on(Target::Drive, 0, &[], None);
-        browser.collection = Some(Collection::Class("Group A".into()));
-        browser.filter = Filter { query: "gamma".into(), drive: Some(Drive::Awd) };
+        browser.collection = Some(Collection::Favourites);
+        browser.filter = Filter { query: "gamma".into(), drive: Some(Drive::Awd), class: Some("Group A".into()) };
         browser.sort = Sort::Recent;
         browser.nav.restore(3, 90.0);
         browser.refresh(&[], &[]);
@@ -894,8 +941,8 @@ mod tests {
     #[test]
     fn the_a_groups_share_a_class_of_the_cars_that_can_start() {
         let rows = rows();
-        let class = Collection::Class("Group A".into());
-        let found = lines(&rows, &class, &Filter::default(), Sort::Name, &[], &[]);
+        let class = Filter { class: Some("Group A".into()), ..Filter::default() };
+        let found = lines(&rows, &Collection::All, &class, Sort::Name, &[], &[]);
         assert_eq!(names(&rows, &found), ["Gamma", "Zeta"]);
         let blocked = lines(&rows, &Collection::CannotStart, &Filter::default(), Sort::Name, &[], &[]);
         assert_eq!(names(&rows, &blocked), ["Alpha"]);
@@ -912,14 +959,14 @@ mod tests {
     }
 
     #[test]
-    fn the_sidebar_orders_classes_newest_first() {
-        let rows = rows();
-        let all = collections(&rows, &[], &[], false);
-        let labels: Vec<(&str, usize)> = all.iter().map(|(_, n, count)| (n.as_str(), *count)).collect();
-        assert_eq!(
-            labels,
-            [("Favourites", 0), ("Recent", 0), ("All cars", 3), ("WRC 2.0", 1), ("Group A", 2), ("Cannot start", 1)]
-        );
+    fn the_filter_bar_orders_classes_newest_first_and_offers_what_exists() {
+        let mut browser = CarBrowser::for_page();
+        browser.set_rows(rows());
+        assert_eq!(browser.classes(), ["WRC 2.0", "Group A"]);
+        let scopes: Vec<&str> = browser.scopes(&[], &[]).iter().map(|(_, l)| *l).collect();
+        assert_eq!(scopes, ["All", "Favourites", "Recent", "Cannot start"]);
+        browser.rows[0].added = true;
+        assert!(browser.scopes(&[], &[]).iter().any(|(c, _)| *c == Collection::Added));
     }
 
     #[test]

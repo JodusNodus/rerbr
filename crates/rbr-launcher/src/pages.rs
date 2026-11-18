@@ -528,6 +528,13 @@ impl Form {
         if self.page == Page::Import {
             return self.import_page(ui);
         }
+        // The library's pages draw their own header and padding (`browser`).
+        match self.page {
+            Page::Cars => return self.cars_page(ui),
+            Page::Stages => return self.stages_page(ui),
+            Page::Replays => return self.replays_page(ui),
+            _ => {}
+        }
         if self.page.section() == Some(Section::Settings) {
             if let Some(page) = self.settings_header(ui) {
                 self.page = page;
@@ -545,7 +552,7 @@ impl Form {
             Page::Circuit => self.circuit_page(ui),
             Page::Championship => self.championship_page(ui),
             Page::School => self.school_page(ui),
-            Page::Replays => self.replays_page(ui),
+            Page::Replays => {}
             Page::Setup => self.setup_page(ui),
             Page::Controls => {
                 let root = self.game_root();
@@ -567,8 +574,7 @@ impl Form {
                 )
             }
             Page::Graphics => self.graphics_page(ui),
-            Page::Cars => self.cars_page(ui),
-            Page::Stages => self.stages_page(ui),
+            Page::Cars | Page::Stages => {}
             Page::Codrivers => self.codrivers_page(ui),
             Page::Import => {}
             Page::Settings => {

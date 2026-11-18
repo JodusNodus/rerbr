@@ -754,6 +754,7 @@ mod tests {
             sort: "newest".into(),
             filter: "2".into(),
             length: "1".into(),
+            class: "FI".into(),
             selected: Some("621".into()),
             scroll: 720.0,
         };
