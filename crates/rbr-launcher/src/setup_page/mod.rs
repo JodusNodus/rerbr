@@ -26,13 +26,18 @@ mod values;
 use std::path::{Path, PathBuf};
 
 use charts::DIFF;
-use egui::{ComboBox, RichText, Ui};
+use egui::{vec2, Align, ComboBox, Frame, Layout, Margin, RichText, Ui};
 use rbr_formats::saves::{is_file_name_part, setup_slots, DIR as SAVES};
 use rbr_gameplay::setup::{Area, Bounds, CarSetup, SeasonSetup, Setup, Spec, CAR_FOLDERS};
 
 use crate::catalog::{self, Car};
 use crate::pages::WARN;
 use crate::settings::SetupChoices;
+use crate::{kit, theme};
+
+/// The widths of the categories and of the changes beside the editor.
+const LEFT: f32 = 240.0;
+const RIGHT: f32 = 260.0;
 
 /// How the lists name the car's default setup.
 const DEFAULT: &str = "Default setup";
@@ -534,35 +539,61 @@ impl SetupPage {
         self.status = format!("deleted {}", profile.name);
     }
 
-    pub fn ui(&mut self, ui: &mut Ui) {
-        let car = match &self.car {
-            Ok(car) => car.clone(),
-            Err(e) => {
-                ui.colored_label(WARN, format!("no setup for this car: {e}"));
-                return;
+    /// The page: the title with the way back, the setup's header, then the categories (left), the selected one's
+    /// editor and the changes against the compared setup (right). Whether the way back was clicked.
+    pub fn ui(&mut self, ui: &mut Ui, back: &str, subtitle: &str) -> bool {
+        let margin = Margin { left: kit::PAGE_LEFT, right: kit::PAGE_RIGHT, top: 16, bottom: 12 };
+        let mut went = false;
+        Frame::new().inner_margin(margin).show(ui, |ui| {
+            went = kit::link(ui, &format!("‹ {back}")).clicked();
+            ui.add_space(2.0);
+            ui.label(RichText::new("Car setup").font(theme::title()).color(theme::TEXT));
+            ui.add_space(2.0);
+            ui.label(RichText::new(subtitle).color(theme::TEXT_2));
+            ui.add_space(10.0);
+            match self.car.clone() {
+                Ok(car) => self.header_ui(ui, &car),
+                Err(e) => {
+                    ui.colored_label(WARN, format!("no setup for this car: {e}"));
+                }
             }
-        };
-        self.header_ui(ui, &car);
-        ui.separator();
+        });
+        if self.car.is_err() {
+            return went;
+        }
+        let rect = ui.cursor();
+        ui.painter().hline(rect.x_range(), rect.top(), egui::Stroke::new(1.0, theme::LINE_BUTTON));
         let (now, base) = (values::values(&self.draft), values::values(&self.base));
         let lines = values::changes(&self.fields, &base, &now, |i, v| self.show(&self.fields[i].spec, v));
         let differs = board::Differs::of(&self.fields, &base, &now);
         let gear = values::find(&self.fields, "DropGearId").map(|i| self.show(&self.fields[i].spec, now[i]));
         let view = board::View::of(&self.fields, &self.draft, &lines, differs, gear);
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(board::SIZE.x);
-                if let Some(area) = board::ui(ui, self.area, &view) {
-                    self.area = area;
-                }
-                ui.add_space(8.0);
-                self.changes_ui(ui, &lines);
-            });
-            ui.separator();
-            egui::ScrollArea::vertical().id_salt("setup-area").show(ui, |ui| {
+        let side = |left: i8, right: i8| Frame::new().inner_margin(Margin { left, right, top: 12, bottom: 8 });
+        egui::Panel::left("setup-categories").exact_size(LEFT).frame(side(12, 8)).show_separator_line(true).show(
+            ui,
+            |ui| {
+                egui::ScrollArea::vertical().id_salt("setup-categories").auto_shrink([false, false]).show(ui, |ui| {
+                    if let Some(area) = board::overview(ui, self.area, &view) {
+                        self.area = area;
+                    }
+                    ui.add_space(6.0);
+                    if let Some(area) = board::list(ui, self.area, &view) {
+                        self.area = area;
+                    }
+                });
+            },
+        );
+        egui::Panel::right("setup-changes")
+            .exact_size(RIGHT)
+            .frame(side(14, 12))
+            .show_separator_line(true)
+            .show(ui, |ui| self.changes_ui(ui, &lines));
+        egui::CentralPanel::default().frame(side(20, 4)).show(ui, |ui| {
+            egui::ScrollArea::vertical().id_salt("setup-area").auto_shrink([false, false]).show(ui, |ui| {
                 ui.vertical(|ui| self.area_ui(ui));
             });
         });
+        went
     }
 
     /// The setup picker (the Drive page's choice) and the buttons.
@@ -578,14 +609,15 @@ impl SetupPage {
         }
         let opened = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.id == *n)).cloned();
         ui.horizontal(|ui| {
-            ui.label("Setup").on_hover_text("The setup you drive with on the Drive page too");
+            ui.label(RichText::new("Setup").color(theme::TEXT_LABEL))
+                .on_hover_text("The setup you drive with on the Drive page too");
             let selected = chosen.as_ref().map_or(DEFAULT.to_owned(), |id| {
                 self.profiles.iter().find(|p| p.id == *id).map_or(format!("{id} (missing)"), Profile::label)
             });
             if let Some(name) = self.pick_ui(ui, "setup-open", selected, chosen.clone()) {
                 self.drive_with(name.as_deref());
             }
-            ui.colored_label(egui::Color32::GRAY, format!("{} setups", self.surface()));
+            ui.label(RichText::new(format!("{} setups", self.surface())).color(theme::TEXT_2));
             if self.season
                 && ui
                     .button("Open the championship's")
@@ -594,6 +626,54 @@ impl SetupPage {
             {
                 self.draft = self.setup;
             }
+            if changed {
+                ui.colored_label(WARN, "Unsaved changes");
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let overwrite = match &opened {
+                    Some(p) if p.source == Source::Own && p.away.is_none() => Ok(p.name.clone()),
+                    Some(_) => Err("Read only, or another surface's: Save as… keeps a copy as yours"),
+                    None => Err("The default can't be overwritten: Save as… keeps it as a setup"),
+                };
+                let label = RichText::new("Save").color(egui::Color32::WHITE).strong();
+                let button = egui::Button::new(label).fill(theme::ACCENT);
+                let save = ui.add_enabled(changed && overwrite.is_ok(), button);
+                let save = match &overwrite {
+                    Ok(_) if !changed => save.on_disabled_hover_text("No changes"),
+                    Ok(_) => save.on_hover_text("Overwrite this setup"),
+                    Err(why) => save.on_disabled_hover_text(*why),
+                };
+                if save.clicked() {
+                    if let Ok(name) = overwrite {
+                        self.save(&name, true);
+                    }
+                }
+                if ui.button("Save as…").on_hover_text("Keep the values as a new setup of yours").clicked() {
+                    self.naming = true;
+                }
+                if ui
+                    .add_enabled(changed, egui::Button::new("Revert"))
+                    .on_hover_text("Back to the values as opened")
+                    .clicked()
+                {
+                    self.draft = self.opened_values;
+                }
+                if ui.add_enabled(self.draft != car.default, egui::Button::new("Default values")).clicked() {
+                    self.draft = car.default;
+                }
+                if opened.as_ref().is_some_and(|p| p.source == Source::Own) {
+                    if self.confirm_delete {
+                        if ui.button("Keep").clicked() {
+                            self.confirm_delete = false;
+                        }
+                        if ui.button(RichText::new("Delete it").color(WARN)).clicked() {
+                            self.delete();
+                        }
+                    } else if ui.button("Delete…").clicked() {
+                        self.confirm_delete = true;
+                    }
+                }
+            });
         });
         if moved && changed {
             ui.horizontal(|ui| {
@@ -607,53 +687,6 @@ impl SetupPage {
                 }
             });
         }
-        ui.horizontal(|ui| {
-            let overwrite = match &opened {
-                Some(p) if p.source == Source::Own && p.away.is_none() => Ok(p.name.clone()),
-                Some(_) => Err("Read only, or another surface's: Save as… keeps a copy as yours"),
-                None => Err("The default can't be overwritten: Save as… keeps it as a setup"),
-            };
-            let save = ui.add_enabled(changed && overwrite.is_ok(), egui::Button::new("Save"));
-            let save = match &overwrite {
-                Ok(_) if !changed => save.on_disabled_hover_text("No changes"),
-                Ok(_) => save.on_hover_text("Overwrite this setup"),
-                Err(why) => save.on_disabled_hover_text(*why),
-            };
-            if save.clicked() {
-                if let Ok(name) = overwrite {
-                    self.save(&name, true);
-                }
-            }
-            if ui.button("Save as…").on_hover_text("Keep the values as a new setup of yours").clicked() {
-                self.naming = true;
-            }
-            if ui
-                .add_enabled(changed, egui::Button::new("Revert"))
-                .on_hover_text("Back to the values as opened")
-                .clicked()
-            {
-                self.draft = self.opened_values;
-            }
-            if ui.add_enabled(self.draft != car.default, egui::Button::new("Default values")).clicked() {
-                self.draft = car.default;
-            }
-            if opened.as_ref().is_some_and(|p| p.source == Source::Own) {
-                if self.confirm_delete {
-                    if ui.button(RichText::new("Delete it").color(WARN)).clicked() {
-                        self.delete();
-                    }
-                    if ui.button("Keep").clicked() {
-                        self.confirm_delete = false;
-                    }
-                } else if ui.button("Delete…").clicked() {
-                    self.confirm_delete = true;
-                }
-            }
-            if changed {
-                ui.add_space(6.0);
-                ui.colored_label(WARN, "Unsaved changes");
-            }
-        });
         if self.naming {
             ui.horizontal(|ui| {
                 let edit = ui
@@ -668,12 +701,12 @@ impl SetupPage {
                     self.naming = false;
                 }
                 if let Err(why) = &name {
-                    ui.colored_label(egui::Color32::GRAY, why);
+                    ui.colored_label(theme::TEXT_2, why);
                 }
             });
         }
         if !self.status.is_empty() {
-            ui.label(&self.status);
+            ui.label(RichText::new(&self.status).color(theme::TEXT_2));
         }
     }
 
@@ -712,7 +745,7 @@ impl SetupPage {
     /// The comparison's picker and the lines that differ from it, each with its way back.
     fn changes_ui(&mut self, ui: &mut Ui, lines: &[values::Change]) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Compared with").strong()).on_hover_text(
+            ui.label(RichText::new("Compared with").color(theme::TEXT_2)).on_hover_text(
                 "The ticks on the tracks, the dashed curves and the orange marks show this setup's values",
             );
             let selected = match &self.compare {
@@ -721,55 +754,70 @@ impl SetupPage {
                 Compare::Saved(id) => self.profiles.iter().find(|p| p.id == *id).map_or(id.clone(), Profile::label),
             };
             let mut pick = None;
-            ComboBox::from_id_salt("setup-compare").width(200.0).selected_text(selected).show_ui(ui, |ui| {
-                if ui.selectable_label(self.compare == Compare::Default, DEFAULT).clicked() {
-                    pick = Some(Compare::Default);
-                }
-                let opened = ui.selectable_label(self.compare == Compare::Opened, "As opened");
-                if opened.on_hover_text("The opened setup's values before this page's changes").clicked() {
-                    pick = Some(Compare::Opened);
-                }
-                for p in &self.profiles {
-                    let on = self.compare == Compare::Saved(p.id.clone());
-                    if ui.selectable_label(on, p.label()).clicked() {
-                        pick = Some(Compare::Saved(p.id.clone()));
+            ComboBox::from_id_salt("setup-compare").width(ui.available_width() - 8.0).selected_text(selected).show_ui(
+                ui,
+                |ui| {
+                    if ui.selectable_label(self.compare == Compare::Default, DEFAULT).clicked() {
+                        pick = Some(Compare::Default);
                     }
-                }
-            });
+                    let opened = ui.selectable_label(self.compare == Compare::Opened, "As opened");
+                    if opened.on_hover_text("The opened setup's values before this page's changes").clicked() {
+                        pick = Some(Compare::Opened);
+                    }
+                    for p in &self.profiles {
+                        let on = self.compare == Compare::Saved(p.id.clone());
+                        if ui.selectable_label(on, p.label()).clicked() {
+                            pick = Some(Compare::Saved(p.id.clone()));
+                        }
+                    }
+                },
+            );
             if let Some(compare) = pick {
                 self.compare = compare;
                 self.rebase();
             }
         });
+        ui.add_space(6.0);
         if lines.is_empty() {
-            ui.label(RichText::new("No differences.").weak());
+            ui.label(RichText::new("No differences.").color(theme::TEXT_2));
             return;
         }
         let count = if lines.len() == 1 { "1 difference".to_owned() } else { format!("{} differences", lines.len()) };
         ui.label(RichText::new(count).color(DIFF));
+        ui.add_space(4.0);
         let mut back = None;
         egui::ScrollArea::vertical().id_salt("setup-changes").auto_shrink([false, true]).show(ui, |ui| {
-            for (n, line) in lines.iter().enumerate() {
-                ui.horizontal_top(|ui| {
-                    if ui.small_button("↺").on_hover_text("Back to the compared value").clicked() {
-                        back = Some(n);
-                    }
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        let what = ui.add(egui::Label::new(&line.what).sense(egui::Sense::click()));
-                        if what.on_hover_text(format!("Show {}", line.area.name())).clicked() {
-                            self.area = line.area;
-                        }
-                        let text = if line.from.is_empty() {
-                            line.to.clone()
-                        } else {
-                            format!("{}  ⏵  {}", line.from, line.to)
-                        };
-                        ui.label(RichText::new(text).color(DIFF).size(12.0));
+            kit::panel(ui, |rows| {
+                for (n, line) in lines.iter().enumerate() {
+                    rows.full(|ui| {
+                        let width = ui.available_width();
+                        ui.allocate_ui(vec2(width - 42.0, 0.0), |ui| {
+                            ui.set_width(width - 42.0);
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 1.0;
+                                ui.add_space(4.0);
+                                let what = egui::Label::new(RichText::new(&line.what).color(theme::TEXT_LIST));
+                                let what = ui.add(what.sense(egui::Sense::click()));
+                                if what.on_hover_text(format!("Show {}", line.area.name())).clicked() {
+                                    self.area = line.area;
+                                }
+                                let text = if line.from.is_empty() {
+                                    line.to.clone()
+                                } else {
+                                    format!("{} → {}", line.from, line.to)
+                                };
+                                ui.label(RichText::new(text).font(theme::mono(11.0)).color(DIFF));
+                                ui.add_space(4.0);
+                            });
+                        });
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.small_button("↺").on_hover_text("Back to the compared value").clicked() {
+                                back = Some(n);
+                            }
+                        });
                     });
-                });
-                ui.add_space(2.0);
-            }
+                }
+            });
         });
         if let Some(n) = back {
             values::edit(&mut self.draft, &self.base, |now, base| {

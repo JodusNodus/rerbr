@@ -1,7 +1,7 @@
-//! The Car setup page's map of the car: the car from above with the parts each area sets (tyres, coil-overs,
-//! anti-roll bars, brake discs, differentials, gearbox, steering wheel), and a chip per area beside it with its leading
-//! values and how many lines differ from the comparison. The chips and the parts pick the area to edit. The parts
-//! show the values (an anti-roll bar's weight its stiffness, a diff's fill its locking torque, the discs' glow the
+//! The Car setup page's category list (each area's name, its leading values and how many lines differ from the
+//! comparison) and, above it, a small overview of the car from above with the parts each area sets (tyres,
+//! coil-overs, anti-roll bars, brake discs, differentials, gearbox, steering wheel). The list rows and the parts pick
+//! the area to edit. The parts show the values (an anti-roll bar's weight its stiffness, a diff's fill its locking torque, the discs' glow the
 //! brake balance) and are outlined where they differ from the comparison.
 
 use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui};
@@ -9,10 +9,11 @@ use rbr_gameplay::setup::{Area, Setup};
 
 use super::charts::{DIFF, FRONT, REAR};
 use super::values::{find, Change, Field, WHEEL_AREAS};
+use crate::theme;
 
-/// The board's size.
-pub const SIZE: egui::Vec2 = vec2(372.0, 330.0);
-const CHIP: egui::Vec2 = vec2(114.0, 46.0);
+/// The overview's scale against the car's drawn size, and its height.
+const SCALE: f32 = 0.58;
+pub const HEIGHT: f32 = LENGTH * SCALE;
 /// The car's half width and length, its axles' distance from the nose.
 const HALF: f32 = 50.0;
 const LENGTH: f32 = 306.0;
@@ -99,7 +100,7 @@ impl View {
     }
 }
 
-/// What a chip's leading values are.
+/// What a row's leading values are.
 fn legend(area: Area) -> &'static str {
     match area {
         Area::Tyres => "Pressure: front · rear (the left wheels)",
@@ -212,19 +213,7 @@ const PARTS: [Part; 23] = [
     Part::Wheel(3),
 ];
 
-/// The chips (left column top to bottom, then the right), and the part each one points at.
-const CHIPS: [(Area, Part); 8] = [
-    (Area::Tyres, Part::Wheel(0)),
-    (Area::Springs, Part::Coil(0)),
-    (Area::Dampers, Part::Damper(2)),
-    (Area::Geometry, Part::Wheel(2)),
-    (Area::RollBars, Part::Bar(0)),
-    (Area::Gears, Part::Gearbox),
-    (Area::Differentials, Part::Diff(0)),
-    (Area::Brakes, Part::Disc(3)),
-];
-
-/// How the chips name the areas: shorter than [`Area::name`].
+/// How the list names the areas: shorter than [`Area::name`].
 fn short(area: Area) -> &'static str {
     match area {
         Area::RollBars => "Roll bars",
@@ -232,22 +221,19 @@ fn short(area: Area) -> &'static str {
     }
 }
 
-fn index(area: Area) -> usize {
-    Area::ALL.iter().position(|a| *a == area).unwrap_or(0)
-}
-
 /// Where the parts are: `at(x, y)` is `x` px right of the car's centre line and `y` px behind its nose.
 struct Frame {
     origin: Pos2,
+    scale: f32,
 }
 
 impl Frame {
     fn at(&self, x: f32, y: f32) -> Pos2 {
-        self.origin + vec2(x, y)
+        self.origin + vec2(x, y) * self.scale
     }
 
     fn rect(&self, part: Part) -> Rect {
-        let around = |x: f32, y: f32, w: f32, h: f32| Rect::from_center_size(self.at(x, y), vec2(w, h));
+        let around = |x: f32, y: f32, w: f32, h: f32| Rect::from_center_size(self.at(x, y), vec2(w, h) * self.scale);
         let wheel = |w: usize| (if w.is_multiple_of(2) { -1.0 } else { 1.0 }, AXLES[w / 2]);
         match part {
             Part::Wheel(w) => {
@@ -275,22 +261,15 @@ impl Frame {
     }
 }
 
-/// Draws the board; the area picked by a click on its chip or one of its parts.
-pub fn ui(ui: &mut Ui, selected: Area, view: &View) -> Option<Area> {
-    let (rect, response) = ui.allocate_exact_size(SIZE, Sense::click());
+/// Draws the overview; the area picked by a click on one of its parts.
+pub fn overview(ui: &mut Ui, selected: Area, view: &View) -> Option<Area> {
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), HEIGHT), Sense::click());
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
-    let frame = Frame { origin: pos2(rect.center().x, rect.top() + (SIZE.y - LENGTH) / 2.0) };
-    let chip_rect = |n: usize| {
-        let x = if n < 4 { rect.left() } else { rect.right() - CHIP.x };
-        let gap = (SIZE.y - 4.0 * CHIP.y) / 4.0;
-        Rect::from_min_size(pos2(x, rect.top() + gap / 2.0 + (n % 4) as f32 * (CHIP.y + gap)), CHIP)
-    };
-
-    let hovered = response.hover_pos().and_then(|p| {
-        let chip = (0..CHIPS.len()).find(|&n| chip_rect(n).contains(p)).map(|n| CHIPS[n].0);
-        chip.or_else(|| PARTS.iter().find(|&&part| frame.rect(part).expand(2.0).contains(p)).map(|p| p.area()))
-    });
+    let frame = Frame { origin: pos2(rect.center().x, rect.top()), scale: SCALE };
+    let hovered = response
+        .hover_pos()
+        .and_then(|p| PARTS.iter().find(|&&part| frame.rect(part).expand(2.0).contains(p)).map(|p| p.area()));
     // An area's colour while it is picked or under the pointer.
     let lit = |area: Area| {
         if area == selected {
@@ -301,59 +280,52 @@ pub fn ui(ui: &mut Ui, selected: Area, view: &View) -> Option<Area> {
             None
         }
     };
-
-    // The leaders under everything.
-    for (n, (area, part)) in CHIPS.iter().enumerate() {
-        let chip = chip_rect(n);
-        let from = if n < 4 { chip.right_center() } else { chip.left_center() };
-        let to = frame.rect(*part).center();
-        let color = lit(*area).unwrap_or(visuals.weak_text_color().gamma_multiply(0.45));
-        let knee = pos2(from.x + if n < 4 { 8.0 } else { -8.0 }, from.y);
-        painter.add(Shape::line(vec![from, knee, to], Stroke::new(1.0, color)));
-        painter.circle_filled(to, 2.5, color);
-    }
-
     car(&painter, &frame, &visuals, view, &lit);
-
-    for (n, (area, _)) in CHIPS.iter().enumerate() {
-        chip(&painter, chip_rect(n), *area, &visuals, view, *area == selected, Some(*area) == hovered);
-    }
     let picked = response.clicked().then_some(hovered).flatten();
     if let Some(area) = hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        let count = view.counts[index(area)];
-        let differs = match count {
-            0 => String::new(),
-            1 => "\n1 difference from the compared setup".to_owned(),
-            n => format!("\n{n} differences from the compared setup"),
-        };
-        response.on_hover_text(format!("{}\n{}{differs}", area.name(), legend(area)));
+        response.on_hover_text(format!("{}\n{}", area.name(), legend(area)));
     }
     picked
 }
 
-fn chip(painter: &egui::Painter, rect: Rect, area: Area, visuals: &egui::Visuals, view: &View, on: bool, hover: bool) {
-    let fill = if on {
-        visuals.selection.bg_fill
-    } else if hover {
-        visuals.widgets.hovered.weak_bg_fill
-    } else {
-        visuals.faint_bg_color
-    };
-    let stroke = if hover && !on { visuals.widgets.hovered.bg_stroke } else { Stroke::NONE };
-    painter.rect(rect, CornerRadius::same(6), fill, stroke, StrokeKind::Inside);
-    let text = if on { Color32::WHITE } else { visuals.strong_text_color() };
-    let left = rect.left_top() + vec2(8.0, 6.0);
-    painter.text(left, Align2::LEFT_TOP, short(area), FontId::proportional(13.5), text);
-    let weak = if on { Color32::from_gray(215) } else { visuals.weak_text_color() };
-    let summary = &view.summaries[index(area)];
-    painter.text(left + vec2(0.0, 19.0), Align2::LEFT_TOP, summary, FontId::proportional(11.0), weak);
-    let count = view.counts[index(area)];
-    if count > 0 {
-        let at = rect.right_top() + vec2(-11.0, 11.0);
-        painter.circle_filled(at, 8.0, DIFF);
-        painter.text(at, Align2::CENTER_CENTER, count.to_string(), FontId::proportional(11.0), Color32::BLACK);
+/// The category list: a row per area with its name, leading values and the count of lines differing from the
+/// comparison; the area picked by a click.
+pub fn list(ui: &mut Ui, selected: Area, view: &View) -> Option<Area> {
+    let mut picked = None;
+    ui.spacing_mut().item_spacing.y = 2.0;
+    for (n, area) in Area::ALL.into_iter().enumerate() {
+        let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 46.0), Sense::click());
+        let fill = if area == selected {
+            theme::SIDEBAR_SELECTED
+        } else if response.hovered() {
+            theme::white(10)
+        } else {
+            Color32::TRANSPARENT
+        };
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, CornerRadius::same(7), fill);
+        let at = rect.left_top() + vec2(10.0, 7.0);
+        painter.text(at, Align2::LEFT_TOP, short(area), FontId::new(13.0, theme::semibold()), theme::TEXT);
+        painter.text(at + vec2(0.0, 18.0), Align2::LEFT_TOP, &view.summaries[n], theme::mono(11.0), theme::TEXT_2);
+        let count = view.counts[n];
+        if count > 0 {
+            let at = rect.right_center() - vec2(20.0, 0.0);
+            painter.circle_filled(at, 9.0, theme::WARN);
+            let font = FontId::new(11.0, theme::semibold());
+            painter.text(at, Align2::CENTER_CENTER, count.to_string(), font, Color32::BLACK);
+        }
+        let tip = format!("{}\n{}", area.name(), legend(area));
+        let tip = match count {
+            0 => tip,
+            1 => format!("{tip}\n1 difference from the compared setup"),
+            n => format!("{tip}\n{n} differences from the compared setup"),
+        };
+        if response.on_hover_text(tip).clicked() {
+            picked = Some(area);
+        }
     }
+    picked
 }
 
 /// The car from above, nose up. A part is outlined in its area's colour while lit (`lit`), else in [`DIFF`] where
@@ -374,7 +346,7 @@ fn car(
 
     // The body: a nose rounder than the tail, the glasshouse.
     let hull = Rect::from_min_max(at(-HALF + 6.0, 0.0), at(HALF - 6.0, LENGTH));
-    let corners = CornerRadius { nw: 24, ne: 24, sw: 14, se: 14 };
+    let corners = CornerRadius { nw: 14, ne: 14, sw: 8, se: 8 };
     painter.rect(hull, corners, body, visuals.widgets.noninteractive.bg_stroke, StrokeKind::Inside);
     let screen = vec![at(-34.0, 116.0), at(34.0, 116.0), at(30.0, 140.0), at(-30.0, 140.0)];
     painter.add(Shape::convex_polygon(screen, glass, Stroke::NONE));
@@ -416,8 +388,11 @@ fn car(
     // The steering wheel.
     let steer = frame.rect(Part::Steering).center();
     let color = mark(Part::Steering).unwrap_or(Color32::from_gray(150));
-    painter.circle_stroke(steer, 8.0, Stroke::new(2.5, color));
-    painter.line_segment([steer - vec2(8.0, 0.0), steer + vec2(8.0, 0.0)], Stroke::new(1.5, color));
+    painter.circle_stroke(steer, 8.0 * frame.scale, Stroke::new(2.5, color));
+    painter.line_segment(
+        [steer - vec2(8.0, 0.0) * frame.scale, steer + vec2(8.0, 0.0) * frame.scale],
+        Stroke::new(1.5, color),
+    );
 
     // The corners: tyre, disc, coil over damper.
     for w in 0..4 {

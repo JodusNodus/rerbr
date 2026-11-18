@@ -15,7 +15,7 @@ use crate::pages::combo;
 /// A value that is not an axle's.
 const NEUTRAL: Color32 = Color32::from_rgb(150, 205, 170);
 /// A track's width and height.
-const TRACK: egui::Vec2 = vec2(230.0, 18.0);
+const TRACK: egui::Vec2 = vec2(160.0, 18.0);
 /// The width of the rows' names (an axle, a wheel).
 const NAME: f32 = 84.0;
 
@@ -162,7 +162,7 @@ fn title(ui: &mut Ui, field: &Field) {
     let span = format!("{} to {}, step {}{wrap}", unit.show(range.min), unit.show(range.max), unit.show(range.step));
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(spec.label).strong()).on_hover_text(span);
-        ui.label(RichText::new(hint(spec.label)).weak().size(12.0));
+        ui.label(RichText::new(hint(spec.label)).color(crate::theme::TEXT_2).size(12.0));
     });
 }
 
@@ -194,7 +194,7 @@ fn balance(ui: &mut Ui, what: &str, front: f32, base: f32) {
     painter.text(rect.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, front_text, font.clone(), text);
     let rear_text = format!("{:.0} % rear", 100.0 * (1.0 - share));
     painter.text(rect.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, rear_text, font, text);
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(what).weak().size(12.0));
         if differs {
             let delta = format!("{} points front (compared: {:.0} %)", signed(100.0 * (share - base), 1), 100.0 * base);
@@ -214,15 +214,22 @@ impl SetupPage {
         let (now, base) = (values(&self.draft), values(&self.base));
         let inside: Vec<usize> = (0..self.fields.len()).filter(|&i| self.fields[i].spec.area == area).collect();
         ui.horizontal(|ui| {
-            ui.label(RichText::new(area.name()).heading().strong());
+            ui.label(
+                RichText::new(area.name())
+                    .font(egui::FontId::new(16.0, crate::theme::semibold()))
+                    .color(crate::theme::TEXT),
+            );
             if inside.iter().any(|&i| now[i] != base[i]) {
-                let back = ui.button("↺ All back").on_hover_text("This area's values back to the compared setup's");
-                if back.clicked() {
-                    edit(&mut self.draft, &self.base, |now, base| inside.iter().for_each(|&i| now[i] = base[i]));
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let back = crate::kit::link(ui, "Reset to compared")
+                        .on_hover_text("This area's values back to the compared setup's");
+                    if back.clicked() {
+                        edit(&mut self.draft, &self.base, |now, base| inside.iter().for_each(|&i| now[i] = base[i]));
+                    }
+                });
             }
         });
-        ui.label(RichText::new(about(area)).weak());
+        ui.label(RichText::new(about(area)).color(crate::theme::TEXT_2));
         ui.add_space(6.0);
         self.diagram(ui, area);
         ui.add_space(8.0);
@@ -255,14 +262,9 @@ impl SetupPage {
                     let c = &s.corners;
                     share(c[0].spring_stiffness + c[1].spring_stiffness, c[2].spring_stiffness + c[3].spring_stiffness)
                 };
-                ui.horizontal_top(|ui| {
-                    let (now, was) = ([spring(draft, 0), spring(draft, 2)], [spring(base, 0), spring(base, 2)]);
-                    charts::springs(ui, now, was, vec2(320.0, 220.0));
-                    ui.vertical(|ui| {
-                        ui.add_space(30.0);
-                        balance(ui, "Spring rate, front to rear", rate(draft), rate(base));
-                    });
-                });
+                let (now, was) = ([spring(draft, 0), spring(draft, 2)], [spring(base, 0), spring(base, 2)]);
+                charts::springs(ui, now, was, vec2(320.0, 220.0));
+                balance(ui, "Spring rate, front to rear", rate(draft), rate(base));
             }
             Area::Dampers => {
                 let damper = |s: &Setup, w: usize| {
