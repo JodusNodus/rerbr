@@ -1239,6 +1239,14 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   between disjoint pairs on folded tracks. Nordschleife's 256 probes, 81.5 m apart over 20.8 km: fixed 16:58,
   light cloud, Ultra captures across 20 cm at the start/finish and near 12.20 and 12.22 km reduce reflection-sample
   jumps from 76, 25 and 28/255 to 0, 0 and 1/255. Cube count and bake unchanged; four cube reads instead of two.
+  Probe levels (2026-11-18, `probes::Grid`, `shader.wgsl::cell_probe`): a cell holds the nearest probe of each pass of
+  the route within reach (up to 4), a corner takes another pass's only when it is over 4 m closer in height. Simulated
+  on the 41 player stages, points whose blended probes sit over 8 m off the car's height: Irohazaka 176 to 0 of 2024,
+  St Laurent 103 to 0, Sa Calobra 20 to 0, Joux Verte SS7 2024 321 to 42 (88 m spacing), Nordschleife and Ventoux 0.
+  Seen, it hardly matters: on Sa Calobra (dry, 13:00) before/after differ at most 0.28% RMSE (cockpit, 6.8 km), byte
+  for byte elsewhere, where the route passes 7.4 m over itself (9.44 and 9.58 km) included; even probe 0 (9 km off, 600 m
+  lower) everywhere moves the chase frame 0.17%, the cockpit 1.7%. The probes reach the car only blurred and clamped
+  (`surroundings`); by day its paint mirrors the per-frame cube, wet asphalt the sky.
 - Sun: cascades and a far layer to 1 km in place of the baked light maps, leaf translucency (`sun.rs`,
   `foliage.rs`); the characters cast into the cascades, and the car's body and the characters take them (the car
   stays out, its own map shadows it). A plant taller than grass is a crown (`trees`: the retail trees are three wings

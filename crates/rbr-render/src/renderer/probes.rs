@@ -1,7 +1,9 @@
 //! Reflection probes (ours, with [`Enhance::lighting`](super::Enhance::lighting)): cubes of the stage drawn once at
 //! load along the driveline, in place of the surroundings cube drawn around the car every few frames. Each pixel that
 //! reads the surroundings (the car's light, the wet roads, the water's missed rays, the cabin) blends the grid's four
-//! surrounding cell centres' nearest probes (`surrounding` in `shader.wgsl`), continuously across cell boundaries.
+//! surrounding cell centres' probes (`surrounding` in `shader.wgsl`), continuously across cell boundaries. A cell holds
+//! the nearest probe of each pass of the route by it, so where the route runs over or beside itself at another height
+//! (a bridge, stacked hairpins) a point takes the probes of its own level.
 
 use super::frame::View;
 use super::reflection::face_views;
@@ -16,13 +18,18 @@ const SPACING: f32 = 40.0;
 pub(super) const MOST: usize = 256;
 /// How far above the driveline a probe sits, metres: about the car's centre.
 const HEIGHT: f32 = 1.0;
-/// The side of a cell of the grid that names each place's nearest probe, metres.
+/// The side of a cell of the grid that names each place's probes, metres.
 const CELL: f32 = 32.0;
+/// The most passes of the route a cell holds, nearest first.
+const PASSES: usize = 4;
+/// How much closer in height, metres, another pass's probe has to be than the nearest to be taken in its place.
+const LEVEL: f32 = 4.0;
 /// The probes drawn in one submission: a submission waits on the window's frames while the loading screen draws.
 const BATCH: usize = 16;
 
-/// The probes' cube array (6 layers each) and the buffer `shader.wgsl` reads as `Probes`: the grid's corner (x, z)
-/// and cell side, its columns, rows and the count, then each cell centre's nearest probe.
+/// The probes' cube array (6 layers each) and the buffer `shader.wgsl` reads as `Probes`: the grid's corner (x, z),
+/// cell side and [`LEVEL`], its columns, rows, the count and [`PASSES`], then each probe's height (as `f32` bits) and
+/// each cell's probes ([`Grid::cells`]).
 pub(super) struct Probes {
     texture: wgpu::Texture,
     pub(super) view: wgpu::TextureView,
@@ -60,12 +67,12 @@ impl Probes {
             ..Default::default()
         });
         let grid = Grid::of(&points);
-        let header = [grid.origin.x, grid.origin.y, CELL, 0.0];
-        let counts = [grid.columns, grid.rows, points.len() as u32, 0];
+        let header = [grid.origin.x, grid.origin.y, CELL, LEVEL];
+        let counts = [grid.columns, grid.rows, points.len() as u32, PASSES as u32];
+        let mut data: Vec<u32> = points.iter().map(|p| p.y.to_bits()).chain(grid.cells).collect();
         // The struct's size rounds up to its 16-byte alignment.
-        let mut cells = grid.cells;
-        cells.resize(cells.len().next_multiple_of(4), 0);
-        let bytes = [cast_slice(&header), cast_slice(&counts), cast_slice(&cells)].concat();
+        data.resize(data.len().next_multiple_of(4), 0);
+        let bytes = [cast_slice(&header), cast_slice(&counts), cast_slice(&data)].concat();
         let buffer = wgpu::util::DeviceExt::create_buffer_init(
             device,
             &wgpu::util::BufferInitDescriptor {
@@ -173,13 +180,15 @@ fn place(line: &[Vec3], most: usize) -> Vec<Vec3> {
         .collect()
 }
 
-/// A grid of [`CELL`] metres over the probes' ground plan, a cell's width past them: each cell's nearest probe.
+/// A grid of [`CELL`] metres over the probes' ground plan, a cell's width past them: each cell's probes.
 struct Grid {
     /// The corner's x and z.
     origin: Vec2,
     columns: u32,
     rows: u32,
-    /// Row by row from the corner.
+    /// [`PASSES`] a cell, row by row from the corner: the nearest probe of each pass of the route within reach of the
+    /// cell's centre (a probe nearer than both its neighbours along the route), nearest first, the rest repeating the
+    /// nearest.
     cells: Vec<u32>,
 }
 
@@ -190,18 +199,28 @@ impl Grid {
             .iter()
             .fold(None, |b: Option<(Vec2, Vec2)>, &p| Some(b.map_or((p, p), |(low, high)| (low.min(p), high.max(p)))))
         else {
-            return Grid { origin: Vec2::ZERO, columns: 1, rows: 1, cells: vec![0] };
+            return Grid { origin: Vec2::ZERO, columns: 1, rows: 1, cells: vec![0; PASSES] };
         };
         let origin = low - CELL;
         let [columns, rows] = ((high + CELL - origin) / CELL).ceil().as_uvec2().max(glam::UVec2::ONE).to_array();
-        let nearest = |at: Vec2| {
-            (0..plan.len()).min_by(|&a, &b| at.distance_squared(plan[a]).total_cmp(&at.distance_squared(plan[b])))
-        };
+        // A point blends the cells whose centres lie within a diagonal of it, and its own pass's nearest probe lies
+        // within half the spacing along the route, plus a road's width off the driveline.
+        let spacing = points.windows(2).next().map_or(0.0, |w| w[0].distance(w[1]));
+        let reach = CELL * std::f32::consts::SQRT_2 + spacing / 2.0 + 8.0;
         let cells = (0..rows)
             .flat_map(|row| (0..columns).map(move |column| (column, row)))
-            .map(|(column, row)| {
+            .flat_map(|(column, row)| {
                 let at = origin + (Vec2::new(column as f32, row as f32) + 0.5) * CELL;
-                nearest(at).unwrap_or(0) as u32
+                let far: Vec<f32> = plan.iter().map(|p| at.distance(*p)).collect();
+                let nearest = (0..far.len()).min_by(|&a, &b| far[a].total_cmp(&far[b])).unwrap_or(0);
+                let mut passes: Vec<usize> = (0..far.len())
+                    .filter(|&k| k != nearest && far[k] <= reach)
+                    .filter(|&k| (k == 0 || far[k] <= far[k - 1]) && far.get(k + 1).is_none_or(|&next| far[k] <= next))
+                    .collect();
+                passes.sort_by(|&a, &b| far[a].total_cmp(&far[b]));
+                passes.insert(0, nearest);
+                passes.resize(PASSES, nearest);
+                passes.into_iter().map(|k| k as u32)
             })
             .collect();
         Grid { origin, columns, rows, cells }
@@ -230,17 +249,39 @@ mod tests {
     }
 
     #[test]
-    fn each_cell_names_its_nearest_probe() {
+    fn each_cell_names_its_nearest_probe_first() {
         let points = [Vec3::ZERO, Vec3::new(100.0, 0.0, 0.0)];
         let grid = Grid::of(&points);
         assert_eq!(grid.origin, Vec2::splat(-CELL));
         assert_eq!((grid.columns, grid.rows), (6, 2));
         let cell = |x: f32, z: f32| {
             let c = ((Vec2::new(x, z) - grid.origin) / CELL).floor().as_uvec2();
-            grid.cells[(c.y * grid.columns + c.x) as usize]
+            let at = (c.y * grid.columns + c.x) as usize * PASSES;
+            grid.cells[at..at + PASSES].to_vec()
         };
-        assert_eq!(cell(10.0, 0.0), 0);
-        assert_eq!(cell(90.0, 0.0), 1);
-        assert_eq!(Grid::of(&[]).cells, [0]);
+        // One pass: the end probe nearer the other is no pass of its own.
+        assert_eq!(cell(10.0, 0.0), [0; PASSES]);
+        assert_eq!(cell(90.0, 0.0), [1; PASSES]);
+        assert_eq!(Grid::of(&[]).cells, [0; PASSES]);
+    }
+
+    #[test]
+    fn a_cell_holds_each_pass_of_the_route() {
+        // Along x at the ground, round a loop and back over the same line 15 m up, as at a bridge.
+        let line = [
+            Vec3::ZERO,
+            Vec3::new(400.0, 0.0, 0.0),
+            Vec3::new(400.0, 7.5, 200.0),
+            Vec3::new(0.0, 15.0, 200.0),
+            Vec3::new(0.0, 15.0, 0.0),
+            Vec3::new(400.0, 15.0, 0.0),
+        ];
+        let points = place(&line, MOST);
+        let grid = Grid::of(&points);
+        let c = ((Vec2::new(200.0, 0.0) - grid.origin) / CELL).floor().as_uvec2();
+        let at = (c.y * grid.columns + c.x) as usize * PASSES;
+        let heights: Vec<f32> = grid.cells[at..at + 2].iter().map(|&k| points[k as usize].y).collect();
+        assert_eq!(heights.len(), 2);
+        assert!((heights[0] - heights[1]).abs() > 14.0, "{heights:?}");
     }
 }
