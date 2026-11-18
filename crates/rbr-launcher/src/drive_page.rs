@@ -778,7 +778,6 @@ impl Form {
             skins: &mut self.skins,
             root: &root,
             heading: String::new(),
-            detail: None,
         };
         let target = self.car_browser.target;
         match self.car_browser.ui(ui, env) {

@@ -336,9 +336,6 @@ pub enum Action {
 pub struct Env<'a> {
     /// The Cars page's line above the search: how many cars.
     pub heading: String,
-    /// Unused: the browser draws its own inspector (the pages' literals still set it).
-    #[allow(dead_code)]
-    pub detail: Option<&'a mut Detail<'a>>,
     pub cars: &'a [Car],
     /// Car names: starred in that order, and recently chosen newest first.
     pub favourites: &'a [String],
@@ -349,9 +346,6 @@ pub struct Env<'a> {
     /// The game folder the cars' models are read from.
     pub root: &'a str,
 }
-
-/// A page's own draw of the highlighted car's detail panel ([`Env::detail`]).
-pub type Detail<'a> = dyn FnMut(&mut egui::Ui, &CarRow, &Car, &mut Previews, &mut Skins, &str) -> Option<Action> + 'a;
 
 /// What a list was made for.
 type Made = (Collection, Filter, Sort, Vec<String>, Vec<String>);

@@ -46,7 +46,6 @@ impl Form {
             previews,
             root: &root,
             skins,
-            detail: None,
         };
         match browser.ui(ui, env) {
             Some(Action::Choose(index)) => {
