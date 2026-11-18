@@ -171,7 +171,7 @@ pub fn combo<T: Clone + PartialEq, S: Into<String>>(
         .response
 }
 
-pub use crate::theme::{ACCENT, GOOD, WARN};
+pub use crate::theme::{GOOD, WARN};
 
 /// The page's main action (Start, Drive lesson, Drive SS1): [`kit::primary_button`].
 pub fn start_button(label: &str) -> kit::PrimaryButton<'_> {
@@ -533,6 +533,9 @@ impl Form {
             Page::School => return self.school_page(ui),
             Page::Championship => return self.championship_page(ui),
             Page::Setup => return self.setup_page(ui),
+            Page::Cars => return self.cars_page(ui),
+            Page::Stages => return self.stages_page(ui),
+            Page::Replays => return self.replays_page(ui),
             _ => {}
         }
         if self.page.section() == Some(Section::Settings) {
@@ -549,7 +552,7 @@ impl Form {
         let margin = egui::Margin { left: side.0, right: side.1, top: 0, bottom: 8 };
         egui::Frame::new().inner_margin(margin).show(ui, |ui| match self.page {
             Page::Drive | Page::Circuit | Page::School | Page::Championship | Page::Setup => {}
-            Page::Replays => self.replays_page(ui),
+            Page::Replays | Page::Cars | Page::Stages => {}
             Page::Controls => {
                 let root = self.game_root();
                 let settings = self.paths.settings.clone();
@@ -570,8 +573,6 @@ impl Form {
                 )
             }
             Page::Graphics => self.graphics_page(ui),
-            Page::Cars => self.cars_page(ui),
-            Page::Stages => self.stages_page(ui),
             Page::Codrivers => self.codrivers_page(ui),
             Page::Import => {}
             Page::Settings => {

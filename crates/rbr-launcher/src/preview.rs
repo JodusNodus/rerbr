@@ -208,9 +208,10 @@ impl Previews {
         }
     }
 
-    /// Draws the stage's picture and its few lines.
+    /// Draws the stage's picture (at most [`WIDTH`] wide, narrower in a narrower column) and its few lines.
     pub fn stage_ui(&mut self, ui: &mut egui::Ui, map: &Map) {
-        match self.stage_picture(ui, map, WIDTH, CornerRadius::same(4)) {
+        let width = ui.available_width().min(WIDTH);
+        match self.stage_picture(ui, map, width, CornerRadius::same(4)) {
             Some((lines, problem)) => {
                 ui.label(lines);
                 if let Some(problem) = problem {
@@ -276,7 +277,8 @@ impl Previews {
 
     /// Draws the car turning (its frames are rendered on a thread of their own).
     pub fn car_ui(&mut self, ui: &mut egui::Ui, car: &Car, skin: Option<Skin>, root: &str) {
-        if let Some(e) = self.car_picture(ui, car, skin, root, WIDTH, CornerRadius::same(4)) {
+        let width = ui.available_width().min(WIDTH);
+        if let Some(e) = self.car_picture(ui, car, skin, root, width, CornerRadius::same(4)) {
             ui.colored_label(Color32::from_rgb(230, 120, 80), format!("No car model: {e}"));
         }
         if let Ok(model) = &car.model {

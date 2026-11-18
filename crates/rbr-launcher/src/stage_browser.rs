@@ -1,7 +1,7 @@
-//! The Drive page's stage browser: the page's body while it is open. Collections on
-//! the left (favourites, recent, all stages, each country with the 1.02 and the RallySimFans stages together, those
-//! that cannot start), the list in the middle (surface and length filters, sort, search over everything), and the
-//! highlighted stage on the right: its picture, weathers, and the buttons to favourite and choose it.
+//! The stage browser: the Stages page, or the picker the Drive, Circuit and Championship pages open. A page header, a
+//! filter bar (search, the scopes all / favourites / recent / added / circuits / cannot start, surface, country, length
+//! and sort), the list with its header row and key hints, and the highlighted stage's inspector on the right (its
+//! picture, facts and buttons).
 //!
 //! [`lines`] makes the list from the rows and what the player filtered, apart from any drawing. The list draws only its
 //! visible rows, so a full RallySimFans install (about 450 stages) opens and filters at once. A click or the arrow keys
@@ -11,23 +11,21 @@
 
 use std::collections::BTreeMap;
 
-use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke};
+use egui::{Color32, FontId, Pos2, Rect, RichText};
 
 use crate::browser::{
-    block, favourite_button, header_line, items, key_action, list_rows_keyed, paint_selection, paint_star, random_row,
-    row_slot, search_box, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY,
+    self, block, drive_button, favourite_button, header_line, items, key_action, list_rows, paint_cell,
+    paint_selection, paint_star, random_row, row_slot, step_nav, Line, Nav,
 };
 use crate::catalog::{Map, Origin};
-use crate::pages::{combo, ACCENT};
+use crate::kit;
 use crate::preview::{self, Previews};
+use crate::theme::{self, TEXT, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
 
 pub const SURFACES: [&str; 3] = ["Gravel", "Tarmac", "Snow"];
 
 const SURFACE_DOTS: [Color32; 3] =
     [Color32::from_rgb(190, 145, 95), Color32::from_rgb(150, 155, 170), Color32::from_rgb(185, 215, 250)];
-/// The list's width and the sidebar's, points.
-const LIST_WIDTH: f32 = 450.0;
-const SIDEBAR_WIDTH: f32 = 176.0;
 
 /// The ISO country codes RallySimFans gives its stages, and the names the browser shows.
 const COUNTRIES: [(&str, &str); 39] = [
@@ -214,6 +212,14 @@ pub enum Length {
 }
 
 impl Length {
+    /// The word for the filter bar's dropdown.
+    pub fn long_label(self) -> &'static str {
+        match self {
+            Length::Any => "Any length",
+            other => other.label(),
+        }
+    }
+
     pub const ALL: [Length; 5] = [Length::Any, Length::Short, Length::Medium, Length::Long, Length::Longest];
 
     pub fn label(self) -> &'static str {
@@ -246,11 +252,15 @@ pub struct Filter {
     pub query: String,
     pub surface: Option<u32>,
     pub length: Length,
+    /// A country by its code (`Some(None)`: the stages without one).
+    pub country: Option<Option<String>>,
 }
 
 impl Filter {
     fn accepts(&self, row: &StageRow) -> bool {
-        self.surface.is_none_or(|s| row.surface == s) && self.length.contains(row.km)
+        self.surface.is_none_or(|s| row.surface == s)
+            && self.length.contains(row.km)
+            && self.country.as_ref().is_none_or(|c| row.country == *c)
     }
 }
 
@@ -297,7 +307,7 @@ impl Sort {
     }
 }
 
-/// A set of stages the sidebar offers.
+/// A set of stages the filter bar's scopes offer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Collection {
     Favourites,
@@ -396,35 +406,6 @@ pub fn lines(
     out
 }
 
-/// The sidebar: each collection with its number of stages, the countries by name.
-fn collections(rows: &[StageRow], favourites: &[u32], recent: &[u32]) -> Vec<(Collection, String, usize)> {
-    let known = |numbers: &[u32]| numbers.iter().filter(|n| rows.iter().any(|r| r.number == **n)).count();
-    let startable = rows.iter().filter(|r| r.startable()).count();
-    let mut countries: BTreeMap<(String, Option<String>), usize> = BTreeMap::new();
-    for row in rows.iter().filter(|r| r.startable()) {
-        *countries.entry((row.country_name().to_owned(), row.country.clone())).or_default() += 1;
-    }
-    let mut out = vec![
-        (Collection::Favourites, "Favourites".to_owned(), known(favourites)),
-        (Collection::Recent, "Recent".to_owned(), known(recent)),
-        (Collection::All, "All stages".to_owned(), startable),
-    ];
-    for (collection, name, count) in [
-        (Collection::Added, "Added by you", rows.iter().filter(|r| r.added).count()),
-        (Collection::Circuits, "Circuits", rows.iter().filter(|r| r.circuit).count()),
-    ] {
-        if count > 0 {
-            out.push((collection, name.to_owned(), count));
-        }
-    }
-    out.extend(countries.into_iter().map(|((name, code), n)| (Collection::Country(code), name, n)));
-    let blocked = rows.len() - startable;
-    if blocked > 0 {
-        out.push((Collection::CannotStart, "Cannot start".to_owned(), blocked));
-    }
-    out
-}
-
 /// What the browser asks of the Drive page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -471,6 +452,10 @@ pub struct StageBrowser {
     confirm: Option<u32>,
     /// The added stage (its position in the catalog) the player confirmed removing: the page takes it.
     pub removal: Option<usize>,
+    /// The Stages page's subtitle: how many stages, how many added.
+    pub heading: String,
+    /// "Get more stages…" was pressed: the page takes it.
+    pub get_more: bool,
 }
 
 impl Default for StageBrowser {
@@ -490,6 +475,8 @@ impl Default for StageBrowser {
             page: false,
             confirm: None,
             removal: None,
+            heading: String::new(),
+            get_more: false,
         }
     }
 }
@@ -540,6 +527,10 @@ impl StageBrowser {
             sort: self.sort.word().into(),
             filter: self.filter.surface.map(|n| n.to_string()).unwrap_or_default(),
             length: (self.filter.length as usize).to_string(),
+            class: match &self.filter.country {
+                None => String::new(),
+                Some(code) => code.clone().unwrap_or_else(|| "-".to_owned()),
+            },
             selected: self.rows.get(self.nav.cursor).map(|r| r.number.to_string()),
             scroll: self.nav.offset(),
         }
@@ -547,27 +538,27 @@ impl StageBrowser {
 
     pub fn restore(&mut self, state: &crate::browser_state::State) {
         let Some(collection) = state.collection.as_deref() else { return };
+        // A country kept as the collection (an older save) is the country dropdown now.
+        let old_country = collection.strip_prefix("country:").map(|c| (!c.is_empty()).then(|| c.to_owned()));
         self.collection = match collection {
             "favourites" => Collection::Favourites,
             "recent" => Collection::Recent,
             "unavailable" => Collection::CannotStart,
             "added" => Collection::Added,
             "circuits" => Collection::Circuits,
-            key if key.starts_with("country:") => {
-                let code = key[8..].to_owned();
-                let code = (!code.is_empty()).then_some(code);
-                if self.rows.iter().any(|r| r.country == code) {
-                    Collection::Country(code)
-                } else {
-                    Collection::All
-                }
-            }
             _ => Collection::All,
         };
+        let country = match state.class.as_str() {
+            "" => old_country,
+            "-" => Some(None),
+            code => Some(Some(code.to_owned())),
+        };
+        let country = country.filter(|c| self.rows.iter().any(|r| r.country == *c));
         self.filter = Filter {
             query: state.query.clone(),
             surface: state.filter.parse().ok().filter(|n| *n < 3),
             length: state.length.parse::<usize>().ok().and_then(|n| Length::ALL.get(n)).copied().unwrap_or_default(),
+            country,
         };
         self.sort = Sort::from_word(&state.sort);
         let number = state.selected.as_deref().and_then(|s| s.parse::<u32>().ok());
@@ -588,7 +579,14 @@ impl StageBrowser {
         self.target = crate::car_browser::Target::Drive;
         let favourite = self.rows.get(selected).is_some_and(|r| favourites.contains(&r.number));
         if !self.visited || collection.is_some() {
-            self.collection = collection.unwrap_or(if favourite { Collection::Favourites } else { Collection::All });
+            self.collection =
+                match collection.unwrap_or(if favourite { Collection::Favourites } else { Collection::All }) {
+                    Collection::Country(code) => {
+                        self.filter.country = Some(code);
+                        Collection::All
+                    }
+                    other => other,
+                };
             self.filter.query.clear();
             self.nav.show(selected);
         } else {
@@ -641,46 +639,25 @@ impl StageBrowser {
             |row| Action::Favourite(row.number),
             Action::Back,
         );
-
-        let mut random = false;
-        let noun = self.noun();
-        let hint = format!("Search all {noun}s: name, country, author, map number");
-        let title = format!("Choose a {noun}");
-        let query = &mut self.filter.query;
-        if self.page {
+        if self.page && action == Some(Action::Back) {
             // A page: Esc does nothing.
-            if action == Some(Action::Back) {
-                action = None;
-            }
-            search_box(ui, &hint, query, &mut self.focus);
-        } else if top_line(ui, &title, &hint, query, &mut self.focus, &mut random) {
+            action = None;
+        }
+        let noun = self.noun();
+        let title = if self.page { "Stages".to_owned() } else { format!("Choose a {noun}") };
+        let subtitle = Some(self.heading.as_str()).filter(|h| self.page && !h.is_empty());
+        let get_more = self.page.then_some(("Get more stages…", "gvrc.de's stages"));
+        let clicks = browser::header(ui, &title, subtitle, get_more);
+        if clicks.back {
             action = Some(Action::Back);
         }
-        if random {
+        self.get_more |= clicks.get_more;
+        if clicks.random {
             self.random();
         }
-        ui.add_space(8.0);
-        ui.separator();
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(SIDEBAR_WIDTH);
-                // The countries of a full install do not fit the window's height.
-                egui::ScrollArea::vertical().id_salt("collections").auto_shrink([false, false]).show(ui, |ui| {
-                    self.sidebar(ui, env.favourites, env.recent);
-                });
-            });
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            let chosen = ui.vertical(|ui| self.list(ui, env.favourites, env.recent)).inner;
-            action = chosen.or(action);
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            let chosen = ui.vertical(|ui| self.detail(ui, &mut env)).inner;
-            action = chosen.or(action);
-        });
-        action
+        self.filter_bar(ui, noun);
+        let chosen = self.body(ui, &mut env);
+        chosen.or(action)
     }
 
     /// A random stage of the list as filtered becomes the highlighted one.
@@ -690,281 +667,331 @@ impl StageBrowser {
         }
     }
 
-    fn sidebar(&mut self, ui: &mut egui::Ui, favourites: &[u32], recent: &[u32]) {
-        let all = collections(&self.rows, favourites, recent);
-        let entries: Vec<SideEntry> = all
-            .iter()
-            .map(|(collection, name, count)| SideEntry {
-                icon: match collection {
-                    Collection::Favourites => "★",
-                    Collection::Recent
-                    | Collection::All
-                    | Collection::Added
-                    | Collection::Circuits
-                    | Collection::Country(_) => "",
-                    Collection::CannotStart => "⚠",
-                },
-                name,
-                count: *count,
-                selected: self.collection == *collection,
-                grey: *collection == Collection::CannotStart,
-            })
+    /// The scopes of the filter bar: all stages, the favourites, the recent picks, the stages added by you and the
+    /// circuits (the Stages page's, when there are some) and the stages that cannot start (when there are some).
+    fn scopes(&self) -> Vec<(Collection, &'static str)> {
+        let mut out =
+            vec![(Collection::All, "All"), (Collection::Favourites, "Favourites"), (Collection::Recent, "Recent")];
+        for (collection, name, any) in [
+            (Collection::Added, "Added by you", self.rows.iter().any(|r| r.added)),
+            (Collection::Circuits, "Circuits", self.rows.iter().any(|r| r.circuit)),
+            (Collection::CannotStart, "Cannot start", self.rows.iter().any(|r| !r.startable())),
+        ] {
+            if any {
+                out.push((collection, name));
+            }
+        }
+        out
+    }
+
+    /// The countries of the stages by name, and whether some have none.
+    fn countries(&self) -> Vec<(Option<String>, String)> {
+        let named: BTreeMap<&str, &str> =
+            self.rows.iter().filter_map(|r| Some((r.country_name(), r.country.as_deref()?))).collect();
+        let mut out: Vec<(Option<String>, String)> =
+            named.into_iter().map(|(name, code)| (Some(code.to_owned()), name.to_owned())).collect();
+        if self.rows.iter().any(|r| r.country.is_none()) {
+            out.push((None, "No country".to_owned()));
+        }
+        out
+    }
+
+    /// The search, the scopes and the surface, country, length and sort dropdowns.
+    fn filter_bar(&mut self, ui: &mut egui::Ui, noun: &str) {
+        let scopes = self.scopes();
+        let labels: Vec<&str> = scopes.iter().map(|(_, l)| *l).collect();
+        let scope_options: Vec<(Collection, &str)> = scopes.iter().map(|(c, l)| (c.clone(), *l)).collect();
+        let surfaces: Vec<(Option<u32>, String)> = std::iter::once((None, "Any surface".to_owned()))
+            .chain(SURFACES.iter().enumerate().map(|(n, s)| (Some(n as u32), (*s).to_owned())))
             .collect();
-        let first = all.iter().position(|(c, ..)| matches!(c, Collection::Country(_))).unwrap_or(3);
-        if let Some(n) = side_list(ui, &entries, (first, "COUNTRIES")) {
-            self.collection = all[n].0.clone();
-            self.filter.query.clear();
-        }
-    }
-
-    /// The filters, sort, the list and the keys; a stage chosen or starred with the mouse.
-    fn list(&mut self, ui: &mut egui::Ui, favourites: &[u32], recent: &[u32]) -> Option<Action> {
-        let mut action = None;
-        ui.set_width(LIST_WIDTH);
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Surface").color(GREY));
-            ui.selectable_value(&mut self.filter.surface, None, "Any");
-            for (s, name) in SURFACES.into_iter().enumerate() {
-                ui.selectable_value(&mut self.filter.surface, Some(s as u32), name);
-            }
-            ui.add_space(10.0);
-            ui.label(RichText::new("Length").color(GREY));
-            combo(ui, "length", 80.0, &mut self.filter.length, &Length::ALL, Length::label);
-        });
-        let count = items(&self.lines).count();
-        ui.horizontal(|ui| {
-            let what = if self.filter.query.trim().is_empty() {
-                match &self.collection {
-                    Collection::Favourites => "favourites".to_owned(),
-                    Collection::Recent => "recent".to_owned(),
-                    Collection::All => "stages".to_owned(),
-                    Collection::Country(code) => {
-                        format!("stages in {}", code.as_deref().map_or("No country", country_name))
-                    }
-                    Collection::CannotStart => "stages that cannot start".to_owned(),
-                    Collection::Added => "added by you".to_owned(),
-                    Collection::Circuits => "circuits".to_owned(),
+        let countries: Vec<(Option<Option<String>>, String)> = std::iter::once((None, "All countries".to_owned()))
+            .chain(self.countries().into_iter().map(|(code, name)| (Some(code), name)))
+            .collect();
+        let lengths: Vec<(Length, String)> = Length::ALL.map(|l| (l, l.long_label().to_owned())).to_vec();
+        let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
+        const DROPS: [f32; 4] = [104.0, 124.0, 100.0, 128.0];
+        let drops_width = DROPS.iter().sum::<f32>() + 4.0 * 8.0;
+        let seg = browser::segmented_width(ui, &labels);
+        let before = (self.filter.clone(), self.sort, self.collection.clone());
+        let hint = format!("Search {noun}s: name, country, author, number");
+        browser::bar(ui, |ui| {
+            let room = ui.available_width() - seg - 16.0;
+            let one_row = room - drops_width >= 150.0;
+            let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(150.0, 320.0);
+            let drops =
+                |s: &mut Self, ui: &mut egui::Ui| s.dropdowns(ui, (&surfaces, &countries, &lengths, &sorts), DROPS);
+            ui.horizontal(|ui| {
+                browser::search_box(ui, &hint, &mut self.filter.query, &mut self.focus, search);
+                let mut scope = self.collection.clone();
+                if kit::segmented(ui, "stages scope", &mut scope, &scope_options).changed() {
+                    self.collection = scope;
+                    self.filter.query.clear();
                 }
-            } else {
-                "found in all stages".to_owned()
-            };
-            ui.label(RichText::new(format!("{count} {what}")).color(GREY));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                combo(ui, "sort", 140.0, &mut self.sort, &Sort::ALL, Sort::label);
-                ui.label(RichText::new("Sort").color(GREY));
+                if one_row {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| drops(self, ui));
+                }
             });
-        });
-        ui.add_space(4.0);
-        let by_country = !matches!(self.collection, Collection::Country(_)) || !self.filter.query.trim().is_empty();
-        let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 20.0), Sense::hover());
-        let c = columns(rect.left());
-        let small = FontId::proportional(11.5);
-        let y = rect.center().y;
-        let p = ui.painter();
-        p.text(Pos2::new(c[1], y), Align2::LEFT_CENTER, "STAGE", small.clone(), GREY);
-        let third = if by_country { Column::Country } else { Column::Author };
-        p.text(Pos2::new(c[2], y), Align2::LEFT_CENTER, third.label(), small.clone(), GREY);
-        p.text(Pos2::new(c[3], y), Align2::RIGHT_CENTER, "LENGTH", small.clone(), GREY);
-        p.text(Pos2::new(c[4], y), Align2::LEFT_CENTER, "SURFACE", small, GREY);
-        p.hline(rect.x_range(), rect.bottom(), Stroke::new(1.0_f32, Color32::from_gray(60)));
-        ui.add_space(2.0);
-
-        if count == 0 {
-            let hint = match (&self.collection, self.filter.query.trim().is_empty()) {
-                (Collection::Favourites, true) if favourites.is_empty() => "Click ☆ next to a stage to keep it here.",
-                (Collection::Recent, true) if recent.is_empty() => "The stages you choose are listed here.",
-                _ => "Nothing matches.",
-            };
-            ui.add_space(10.0);
-            ui.label(RichText::new(hint).color(GREY));
-        }
-        let keys = if self.page { PAGE_KEYS } else { crate::browser::KEYS };
-        list_rows_keyed(ui, &mut self.nav, "stages", &self.lines, keys, |ui, nav, range| {
-            for at in range {
-                let k = match &self.lines[at] {
-                    Line::Header(name) => {
-                        header_line(ui, name);
-                        continue;
-                    }
-                    Line::Row(k) => *k,
-                };
-                let row = &self.rows[k];
-                let (rect, response, star) = row_slot(ui, k);
-                let favourite = favourites.contains(&row.number);
-                draw_row(ui, rect, row, third, k == nav.cursor, response.hovered(), favourite);
-                let response = match &row.problem {
-                    Some(problem) => response.on_hover_text(format!("cannot start: {problem}")),
-                    None => response,
-                };
-                if star.clicked() {
-                    action = Some(Action::Favourite(row.number));
-                } else if response.double_clicked() && row.startable() {
-                    action = Some(Action::Choose(row.index));
-                } else if response.clicked() {
-                    nav.point(k);
-                }
+            if !one_row {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| drops(self, ui));
             }
         });
-        action
+        if before != (self.filter.clone(), self.sort, self.collection.clone()) {
+            // Back to the search box, where the arrows move through the list.
+            self.focus = true;
+        }
     }
 
-    /// The highlighted stage: name, picture, facts, and the buttons.
-    fn detail(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
-        let noun = self.noun();
-        let row = self.rows.get(self.nav.cursor)?;
-        let map = env.maps.get(row.index)?;
-        if self.page {
-            return self.page_detail(ui, env);
-        }
-        let mut action = None;
-        ui.set_width(preview::WIDTH);
-        ui.add_space(6.0);
-        ui.label(RichText::new(&row.name).size(22.0).strong());
-        let origin = match (row.retail, row.btb) {
-            (true, _) => "RBR 1.02",
-            (false, true) => "RallySimFans BTB · experimental",
-            (false, false) => "RallySimFans",
+    /// The surface, country, length and sort dropdowns, reversed in a right-to-left layout (the sort is the rightmost).
+    fn dropdowns(&mut self, ui: &mut egui::Ui, options: Options, widths: [f32; 4]) {
+        let (surfaces, countries, lengths, sorts) = options;
+        let surface_text = self.filter.surface.map_or("Any surface", |s| SURFACES[s as usize]).to_owned();
+        let country_text = match &self.filter.country {
+            None => "All countries".to_owned(),
+            Some(code) => code.as_deref().map_or("No country", country_name).to_owned(),
         };
-        let mut subtitle = vec![row.country_name().to_owned(), origin.to_owned()];
-        subtitle.extend(row.author.clone());
-        ui.label(RichText::new(subtitle.join(" · ")).color(GREY));
-        ui.add_space(6.0);
-        env.previews.stage_ui(ui, map);
-        ui.add_space(6.0);
-        egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-            for (label, value) in (env.facts)(row) {
-                ui.label(RichText::new(label).color(GREY));
-                ui.label(value);
-                ui.end_row();
-            }
-        });
-        ui.add_space(14.0);
-        ui.horizontal(|ui| {
-            if favourite_button(ui, env.favourites.contains(&row.number)).clicked() {
-                action = Some(Action::Favourite(row.number));
-            }
-            let go = RichText::new(format!("Choose {noun}")).size(18.0).strong().color(Color32::WHITE);
-            let go = egui::Button::new(go).fill(ACCENT).min_size(egui::vec2(ui.available_width(), 44.0));
-            let go = ui.add_enabled(row.startable(), go).on_hover_text("Enter, or a double click on the stage");
-            if go.clicked() {
-                action = Some(Action::Choose(row.index));
-            }
-        });
-        if let Some(problem) = &row.problem {
-            ui.add_space(6.0);
-            ui.label(RichText::new(format!("Cannot start: {problem}")).color(crate::pages::WARN));
+        let length_text = self.filter.length.long_label().to_owned();
+        let sort_text = format!("Sort: {}", self.sort.label());
+        let surface = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "stages surface", widths[0], &surface_text, &mut s.filter.surface, surfaces)
+        };
+        let country = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "stages country", widths[1], &country_text, &mut s.filter.country, countries)
+        };
+        let length = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "stages length", widths[2], &length_text, &mut s.filter.length, lengths)
+        };
+        let sort = |s: &mut Self, ui: &mut egui::Ui| {
+            browser::dropdown(ui, "stages sort", widths[3], &sort_text, &mut s.sort, sorts)
+        };
+        if ui.layout().main_dir() == egui::Direction::RightToLeft {
+            sort(self, ui);
+            length(self, ui);
+            country(self, ui);
+            surface(self, ui);
+        } else {
+            surface(self, ui);
+            country(self, ui);
+            length(self, ui);
+            sort(self, ui);
         }
-        action
     }
-    /// The Stages page's detail: the picture and every fact of the highlighted stage, then what can be done with it.
-    fn page_detail(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
-        let row = self.rows.get(self.nav.cursor)?;
-        let map = env.maps.get(row.index)?;
+
+    /// The list and the inspector below the filter bar.
+    fn body(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
         let mut action = None;
-        ui.set_width(preview::WIDTH);
-        ui.add_space(6.0);
-        ui.label(RichText::new(&row.name).size(22.0).strong());
-        let room = ui.available_height() - if row.added { 110.0 } else { 70.0 };
-        egui::ScrollArea::vertical().id_salt("stage facts").max_height(room).auto_shrink([false, true]).show(
+        let noun = self.noun();
+        let page = self.page;
+        let selected = self.rows.get(self.nav.cursor).and_then(|row| Some((row.clone(), env.maps.get(row.index)?)));
+        let favourite = selected.as_ref().is_some_and(|(row, _)| env.favourites.contains(&row.number));
+        let confirm = &mut self.confirm;
+        let mut removal = None;
+        let (previews, facts) = (&mut *env.previews, env.facts);
+        browser::inspector(
             ui,
             |ui| {
-                env.previews.stage_ui(ui, map);
-                ui.add_space(6.0);
-                let kind = match (row.retail, row.btb, row.added) {
-                    (true, ..) => "RBR 1.02",
-                    (_, true, true) => "Added by you · BTB, experimental",
-                    (_, false, true) => "Added by you",
-                    (_, true, false) => "RallySimFans BTB · experimental",
-                    _ => "RallySimFans",
-                };
-                // A BTB stage's number is ours, made up from its folder: not shown.
-                let number = (!row.btb).then(|| ("Number", row.number.to_string()));
-                let country = row.country.is_some().then(|| ("Country", row.country_name().to_owned()));
-                let mut facts: Vec<_> = number.into_iter().chain(country).collect();
-                facts.extend([
-                    ("Length", row.km.map_or("unknown".to_owned(), |km| format!("{km:.1} km"))),
-                    ("Surface", SURFACES[row.surface as usize].to_owned()),
-                    ("Author", row.author.clone().unwrap_or_else(|| "unknown".to_owned())),
-                    ("Kind", kind.to_owned()),
-                ]);
-                facts.extend((env.facts)(row));
-                egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-                    for (label, value) in facts {
-                        ui.label(RichText::new(label).color(GREY));
-                        ui.label(value);
-                        ui.end_row();
-                    }
-                    if let Some(folder) = &row.folder {
-                        ui.label(RichText::new("Folder").color(GREY));
-                        let name = folder.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-                        ui.horizontal(|ui| {
-                            ui.label(name).on_hover_text(folder.display().to_string());
-                            if ui.link("Open folder").clicked() {
-                                crate::crash::open(folder.as_os_str());
-                            }
-                        });
-                        ui.end_row();
-                    }
-                });
+                if let Some((row, map)) = &selected {
+                    inspect(ui, row, map, previews, facts);
+                }
+            },
+            |ui| {
+                if let Some((row, _)) = &selected {
+                    let (chosen, remove) = actions(ui, row, noun, page, favourite, confirm);
+                    action = chosen;
+                    removal = remove.then_some(row.index);
+                }
             },
         );
-        ui.add_space(10.0);
-        ui.horizontal(|ui| match &row.problem {
-            None => {
-                let label = if row.circuit { "Drive this circuit" } else { "Drive this stage" };
-                if ui.add(crate::pages::start_button(label)).on_hover_text("Enter").clicked() {
-                    action = Some(Action::Choose(row.index));
-                }
-                if favourite_button(ui, env.favourites.contains(&row.number)).clicked() {
-                    action = Some(Action::Favourite(row.number));
-                }
-            }
-            Some(problem) => {
-                ui.label(RichText::new(format!("Cannot start: {problem}")).color(crate::pages::WARN));
-                if favourite_button(ui, env.favourites.contains(&row.number)).clicked() {
-                    action = Some(Action::Favourite(row.number));
-                }
-            }
-        });
-        if row.added {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                if self.confirm != Some(row.number) {
-                    if ui.button("Remove…").on_hover_text("Delete the stage's folder from your files").clicked() {
-                        self.confirm = Some(row.number);
+        self.removal = removal.or(self.removal);
+        let chosen = self.list(ui, env.favourites, env.recent);
+        chosen.or(action)
+    }
+
+    /// The list with its header row and its hint bar; a stage chosen or starred with the mouse.
+    fn list(&mut self, ui: &mut egui::Ui, favourites: &[u32], recent: &[u32]) -> Option<Action> {
+        let mut action = None;
+        let noun = self.noun();
+        let count = items(&self.lines).count();
+        let shown = format!("{count} shown");
+        let verb = if self.page { "Drive" } else { "Choose" };
+        let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
+        if !self.page {
+            keys.push(("Esc", "Back"));
+        }
+        // The author in place of the country within a country.
+        let third = if self.filter.country.is_some() { Column::Author } else { Column::Country };
+        let (collection, empty) = (self.collection.clone(), self.filter.query.trim().is_empty());
+        browser::hint_bar(ui, &shown, &keys, |ui| {
+            let titles = [(third.label(), false), ("Length", true), ("Surface", false)];
+            browser::list_header(ui, "Name", &WIDTHS, &titles);
+            if count == 0 {
+                let hint = match (&collection, empty) {
+                    (Collection::Favourites, true) if favourites.is_empty() => {
+                        format!("Click ☆ next to a {noun} to keep it here.")
                     }
-                    return;
-                }
-                ui.label("Delete its folder? Your records and ghosts on it stay.");
-                let delete = egui::Button::new("Remove").fill(Color32::from_rgb(150, 50, 50));
-                if ui.add(delete).clicked() {
-                    self.removal = Some(row.index);
-                    self.confirm = None;
-                }
-                if ui.button("Cancel").clicked() {
-                    self.confirm = None;
+                    (Collection::Recent, true) if recent.is_empty() => {
+                        format!("The {noun}s you choose are listed here.")
+                    }
+                    _ => "Nothing matches.".to_owned(),
+                };
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(24.0);
+                    ui.label(RichText::new(hint).color(TEXT_2));
+                });
+            }
+            list_rows(ui, &mut self.nav, "stages", &self.lines, |ui, nav, range| {
+                for at in range {
+                    let k = match &self.lines[at] {
+                        Line::Header(name) => {
+                            header_line(ui, name);
+                            continue;
+                        }
+                        Line::Row(k) => *k,
+                    };
+                    let row = &self.rows[k];
+                    let (rect, response, star) = row_slot(ui, k);
+                    let favourite = favourites.contains(&row.number);
+                    draw_row(ui, rect, row, third, k == nav.cursor, response.hovered(), favourite);
+                    let response = match &row.problem {
+                        Some(problem) => response.on_hover_text(format!("cannot start: {problem}")),
+                        None => response,
+                    };
+                    if star.clicked() {
+                        action = Some(Action::Favourite(row.number));
+                    } else if response.double_clicked() && row.startable() {
+                        action = Some(Action::Choose(row.index));
+                    } else if response.clicked() {
+                        nav.point(k);
+                    }
                 }
             });
-        }
-        if self.confirm.is_some_and(|n| n != row.number) {
-            self.confirm = None;
-        }
+        });
         action
     }
 }
 
-/// The list's columns: the star, the name, the third (country or author), the length (its right edge) and the surface.
-fn columns(left: f32) -> [f32; 5] {
-    [left + 6.0, left + 30.0, left + 206.0, left + 366.0, left + 380.0]
+/// The dropdowns' options: surface, country, length, sort.
+type Options<'a> =
+    (&'a [(Option<u32>, String)], &'a [(Option<Option<String>>, String)], &'a [(Length, String)], &'a [(Sort, String)]);
+
+/// What kind of stage it is, as the inspector says it.
+fn kind(row: &StageRow) -> &'static str {
+    match (row.retail, row.btb, row.added) {
+        (true, ..) => "RBR 1.02",
+        (_, true, true) => "Added by you · BTB",
+        (_, false, true) => "Added by you",
+        (_, true, false) => "RallySimFans · BTB",
+        _ => "RallySimFans",
+    }
 }
 
-/// The room the name has before the third column.
-const NAME_WIDTH: f32 = 170.0;
+/// The inspector's scrolling part: the picture, the name with its length and surface, and the facts in a panel.
+fn inspect(
+    ui: &mut egui::Ui,
+    row: &StageRow,
+    map: &Map,
+    previews: &mut Previews,
+    facts: &dyn Fn(&StageRow) -> Vec<(&'static str, String)>,
+) {
+    previews.stage_ui(ui, map);
+    let length = row.km.map_or("unknown length".to_owned(), |km| format!("{km:.1} km"));
+    browser::title(ui, &row.name, &format!("{length} · {}", SURFACES[row.surface as usize]));
+    kit::panel(ui, |rows| {
+        // A BTB stage's number is ours, made up from its folder: not shown.
+        if !row.btb {
+            rows.row("Number", |ui| _ = ui.label(row.number.to_string()));
+        }
+        rows.row("Country", |ui| _ = ui.label(row.country_name()));
+        rows.row("Author", |ui| _ = ui.label(row.author.as_deref().unwrap_or("unknown")));
+        rows.row("Source", |ui| _ = ui.label(kind(row)));
+        for (label, value) in facts(row) {
+            rows.row(label, |ui| _ = ui.add(egui::Label::new(value).wrap()));
+        }
+        if let Some(folder) = &row.folder {
+            rows.row("Folder", |ui| {
+                if kit::link(ui, "Open").on_hover_text("Open the folder").clicked() {
+                    crate::crash::open(folder.as_os_str());
+                }
+                let name = folder.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                let font = theme::mono(11.0);
+                let text = left_truncated(ui, &name, &font, ui.available_width() - 8.0);
+                ui.label(RichText::new(text).font(font).color(TEXT_2)).on_hover_text(folder.display().to_string());
+            });
+        }
+    });
+    if row.btb {
+        ui.add_space(10.0);
+        kit::status_dot(ui, theme::WARN, "BTB stage: experimental.");
+    }
+}
 
-/// The keys line of the Stages page's list.
-const PAGE_KEYS: &str = "⏶⏷ move    Enter drive this stage    Ctrl+D favourite";
+/// The inspector's pinned part: why the stage cannot start, Favourite and the primary button, and the removal of an added
+/// stage (the page's) with its confirmation; what was chosen, and whether the removal was confirmed.
+fn actions(
+    ui: &mut egui::Ui,
+    row: &StageRow,
+    noun: &str,
+    page: bool,
+    favourite: bool,
+    confirm: &mut Option<u32>,
+) -> (Option<Action>, bool) {
+    let mut action = None;
+    if let Some(problem) = &row.problem {
+        kit::status_dot(ui, theme::WARN, &format!("Cannot start: {problem}"));
+        ui.add_space(8.0);
+    }
+    ui.horizontal(|ui| {
+        if favourite_button(ui, favourite).clicked() {
+            action = Some(Action::Favourite(row.number));
+        }
+        let label = match (page, row.circuit) {
+            (true, true) => "Drive this circuit".to_owned(),
+            (true, false) => "Drive this stage".to_owned(),
+            (false, _) => format!("Choose {noun}"),
+        };
+        let tip = if page { "Enter" } else { "Enter, or a double click" };
+        if drive_button(ui, &label, row.startable(), tip).clicked() {
+            action = Some(Action::Choose(row.index));
+        }
+    });
+    let mut removal = false;
+    if page && row.added {
+        ui.add_space(10.0);
+        if *confirm == Some(row.number) {
+            ui.label(RichText::new("Delete its folder? Your records and ghosts on it stay.").color(TEXT_2));
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.add(egui::Button::new(RichText::new("Remove").color(theme::ERROR))).clicked() {
+                    removal = true;
+                    *confirm = None;
+                }
+                if ui.button("Cancel").clicked() {
+                    *confirm = None;
+                }
+            });
+        } else if ui.button("Remove…").on_hover_text("Delete the stage's folder from your files").clicked() {
+            *confirm = Some(row.number);
+        }
+    } else {
+        *confirm = None;
+    }
+    (action, removal)
+}
+
+/// `text` shortened from the left with an ellipsis to fit `width`.
+fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
+    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
+    if fits(text) {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let tail = |n: usize| format!("…{}", chars[chars.len() - n..].iter().collect::<String>());
+    tail((0..chars.len()).rev().find(|&n| fits(&tail(n))).unwrap_or(0))
+}
+
+/// The right-aligned columns of the list, widths: country or author, length, surface.
+const WIDTHS: [f32; 3] = [130.0, 64.0, 84.0];
 
 #[derive(Clone, Copy)]
 enum Column {
@@ -974,60 +1001,51 @@ enum Column {
 impl Column {
     fn label(self) -> &'static str {
         match self {
-            Self::Country => "COUNTRY",
-            Self::Author => "AUTHOR",
+            Self::Country => "Country",
+            Self::Author => "Author",
         }
     }
     fn text(self, row: &StageRow) -> &str {
         match self {
-            Self::Country => row.country_name(),
+            Self::Country => row.country.as_deref().map_or("—", country_name),
             Self::Author => row.author.as_deref().unwrap_or(""),
         }
     }
 }
 
-/// A stage's row: its star, name, country or author, length and surface; the highlighted one filled.
-/// The colour of the experimental tag of a BTB stage's row.
-const EXPERIMENTAL: Color32 = Color32::from_rgb(230, 170, 60);
-
+/// A stage's row: its star, name (with a BTB tag), country or author, length and surface; the highlighted one filled.
 fn draw_row(ui: &egui::Ui, rect: Rect, row: &StageRow, column: Column, cursor: bool, hovered: bool, favourite: bool) {
     let p = ui.painter();
-    let c = columns(rect.left());
-    let y = rect.center().y;
+    let (c, name_right) = browser::columns(rect, &WIDTHS);
+    let startable = row.startable();
     paint_selection(ui, rect, cursor, hovered);
-    let text = if row.startable() { ui.visuals().strong_text_color() } else { DIM };
-    paint_star(p, Pos2::new(c[0] + 6.0, y), favourite, hovered || cursor);
-    let name = p.layout_no_wrap(row.name.clone(), FontId::proportional(15.0), text);
-    let room = Rect::from_min_max(Pos2::new(c[1], rect.top()), Pos2::new(c[1] + NAME_WIDTH, rect.bottom()));
+    paint_star(p, Pos2::new(rect.left() + 14.0, rect.center().y), favourite, hovered || cursor);
+    let (name_colour, dim) = if startable { (TEXT_LIST, TEXT_2) } else { (TEXT_DISABLED, TEXT_3) };
+    let font = FontId::proportional(13.0);
+    let name = p.layout_no_wrap(row.name.clone(), font.clone(), name_colour);
+    let x = browser::name_x(rect);
     let name_width = name.size().x;
-    p.with_clip_rect(room).galley(Pos2::new(c[1], y - name.size().y / 2.0), name, text);
+    paint_cell(p, rect, x, name_right, &row.name, font.clone(), name_colour);
     if row.btb {
-        let at = Pos2::new((c[1] + name_width + 8.0).min(c[1] + NAME_WIDTH), y);
-        p.with_clip_rect(room).text(
-            at,
-            Align2::LEFT_CENTER,
-            "BTB · experimental",
-            FontId::proportional(11.5),
-            EXPERIMENTAL,
-        );
-    }
-    let third = column.text(row);
-    let room = Rect::from_min_max(Pos2::new(c[2], rect.top()), Pos2::new(c[3] - 56.0, rect.bottom()));
-    let third_colour = if row.startable() { GREY } else { DIM };
-    let galley = p.layout_no_wrap(third.to_owned(), FontId::proportional(13.0), third_colour);
-    p.with_clip_rect(room).galley(Pos2::new(c[2], y - galley.size().y / 2.0), galley, third_colour);
-    let km = row.km.map_or(String::new(), |km| format!("{km:.1} km"));
-    p.text(Pos2::new(c[3], y), Align2::RIGHT_CENTER, km, FontId::proportional(13.0), GREY);
-    match &row.problem {
-        Some(problem) => {
-            let room = Rect::from_min_max(Pos2::new(c[4], rect.top()), rect.right_bottom());
-            let galley = p.layout_no_wrap(problem.clone(), FontId::proportional(12.0), DIM);
-            p.with_clip_rect(room).galley(Pos2::new(c[4], y - galley.size().y / 2.0), galley, DIM);
+        let at = x + name_width + 8.0;
+        if at + 30.0 <= name_right {
+            browser::paint_tag(
+                &p.with_clip_rect(Rect::from_min_max(rect.min, Pos2::new(name_right, rect.bottom()))),
+                rect,
+                at,
+                "BTB",
+            );
         }
+    }
+    paint_cell(p, rect, c[0], c[1] - 8.0, column.text(row), font.clone(), dim);
+    let km = row.km.map_or(String::new(), |km| format!("{km:.1} km"));
+    let km = p.layout_no_wrap(km, theme::mono(11.0), dim);
+    p.galley(Pos2::new(c[1] + WIDTHS[1] - km.size().x, rect.center().y - km.size().y / 2.0), km, dim);
+    match &row.problem {
+        Some(problem) => paint_cell(p, rect, c[2], rect.right(), problem, FontId::proportional(12.0), theme::WARN),
         None => {
-            p.circle_filled(Pos2::new(c[4] + 4.0, y), 4.0, SURFACE_DOTS[row.surface as usize]);
-            let font = FontId::proportional(13.0);
-            p.text(Pos2::new(c[4] + 14.0, y), Align2::LEFT_CENTER, SURFACES[row.surface as usize], font, GREY);
+            p.circle_filled(Pos2::new(c[2] + 3.0, rect.center().y), 3.0, SURFACE_DOTS[row.surface as usize]);
+            paint_cell(p, rect, c[2] + 13.0, rect.right(), SURFACES[row.surface as usize], font, dim);
         }
     }
 }
@@ -1148,11 +1166,13 @@ mod tests {
         let Origin::Community(stage) = &mut maps[1].origin else { panic!("synthetic RSF map") };
         stage.country = Some("jp".into());
         let rows = rows_of(&maps);
-        let japan = lines(&rows, &Collection::Country(Some("JP".into())), &Filter::default(), Sort::Name, &[], &[]);
+        let filter = Filter { country: Some(Some("JP".into())), ..Filter::default() };
+        let japan = lines(&rows, &Collection::All, &filter, Sort::Name, &[], &[]);
         assert_eq!(names(&rows, &japan), ["Synthetic 5 Hills", "Tanner"]);
-        let sidebar = collections(&rows, &[], &[]);
-        let japan = sidebar.iter().find(|(c, _, _)| *c == Collection::Country(Some("JP".into()))).unwrap();
-        assert_eq!((japan.1.as_str(), japan.2), ("Japan", 2));
+        let mut browser = StageBrowser::default();
+        browser.set_rows(rows);
+        let japan = browser.countries().into_iter().find(|(code, _)| *code == Some("JP".to_owned()));
+        assert_eq!(japan, Some((Some("JP".to_owned()), "Japan".to_owned())));
     }
 
     #[test]
@@ -1165,7 +1185,6 @@ mod tests {
         let snow = Filter { surface: Some(2), ..Filter::default() };
         let snowy = lines(&rows, &Collection::Favourites, &snow, Sort::Name, &starred, &[]);
         assert_eq!(names(&rows, &snowy), ["Synthetic 8 Forest"]);
-        assert_eq!(collections(&rows, &starred, &[])[0].2, 3);
         // No favourites: an empty list.
         assert!(lines(&rows, &Collection::Favourites, &Filter::default(), Sort::Name, &[], &[]).is_empty());
     }
@@ -1245,8 +1264,13 @@ mod tests {
         let mut browser = StageBrowser::default();
         browser.set_rows(some());
         browser.open_on(1, &[], None);
-        browser.collection = Collection::Country(Some("ES".into()));
-        browser.filter = Filter { query: "synthetic".into(), surface: Some(2), length: Length::Medium };
+        browser.collection = Collection::Recent;
+        browser.filter = Filter {
+            query: "synthetic".into(),
+            surface: Some(2),
+            length: Length::Medium,
+            country: Some(Some("ES".into())),
+        };
         browser.sort = Sort::Newest;
         browser.nav.restore(1, 140.0);
         browser.refresh(&[], &[]);
@@ -1431,10 +1455,10 @@ mod tests {
         assert_eq!(names(&rows, &added), ["Synthetic 5 Hills", "[Cannot start]", "Synthetic 1 Hills"]);
         let circuits = lines(&rows, &Collection::Circuits, &Filter::default(), Sort::Name, &[], &[]);
         assert_eq!(names(&rows, &circuits), ["Tanner"]);
-        let sidebar: Vec<_> = collections(&rows, &[], &[]).into_iter().map(|(_, n, c)| (n, c)).collect();
-        assert!(sidebar.contains(&("Added by you".to_owned(), 2)) && sidebar.contains(&("Circuits".to_owned(), 1)));
         let mut browser = StageBrowser::default();
         browser.set_rows(rows);
+        let scopes: Vec<&str> = browser.scopes().iter().map(|(_, l)| *l).collect();
+        assert_eq!(scopes, ["All", "Favourites", "Recent", "Added by you", "Circuits", "Cannot start"]);
         browser.start_page(1);
         assert_eq!(press(&mut browser, &maps, Key::Escape, Modifiers::NONE), None);
         assert_eq!(press(&mut browser, &maps, Key::Enter, Modifiers::NONE), Some(Action::Choose(1)));

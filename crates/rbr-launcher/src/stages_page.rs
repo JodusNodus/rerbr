@@ -92,20 +92,7 @@ impl Form {
     pub fn stages_page(&mut self, ui: &mut egui::Ui) {
         self.stages_page.browser.start_page(self.map);
         let added = (0..self.catalog.maps.len()).filter(|&i| self.is_added(i)).count();
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(format!("{} stages · {added} added by you", self.catalog.maps.len()))
-                    .size(16.5)
-                    .strong(),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Get more stages…").clicked() {
-                    self.open_get_more(GetMore::Stages);
-                }
-            });
-        });
-        ui.add_space(6.0);
+        self.stages_page.browser.heading = format!("{} stages · {added} added by you", self.catalog.maps.len());
         let records = self.records();
         let profile = self.championship.profile.clone();
         let (catalog, season) = (&self.catalog, &self.season);
@@ -152,6 +139,9 @@ impl Form {
                 None => self.favourite_maps.push(number),
             },
             Some(Action::Back) | None => {}
+        }
+        if std::mem::take(&mut self.stages_page.browser.get_more) {
+            self.open_get_more(GetMore::Stages);
         }
         if let Some(index) = self.stages_page.browser.removal.take() {
             self.remove_stage(index);

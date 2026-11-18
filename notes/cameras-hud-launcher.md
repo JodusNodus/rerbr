@@ -245,6 +245,16 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Library layout (redesign, 2026-11-18; `browser.rs`): Cars, Stages and Replays are one pattern: `kit::page_header` (count subtitle;
+  Random, Get more…), one filter bar (search, the scope segments All / Favourites / Recent / Added by you / Circuits /
+  Cannot start, shown only when they have rows, then class, drive, sort for cars and surface, country, length, sort for
+  stages; they wrap to a second row under ~1060 px), the list (header row, 33 px rows, a hint bar of the keys that work)
+  and a 380 px inspector (`browser::inspector`: scrolling facts, pinned Favourite and primary button). The class and
+  country are filters beside the scope (`Filter::class`, `Filter::country`, saved as `class` in `browser_state`); an older
+  save's `class:`/`country:` collection restores as the filter. The pickers (Drive, Circuit, Championship) are the same
+  browsers with Back, "Choose car/stage" and no Remove. Replays: rows of stage, time, car, conditions, age; the inspector
+  has Stage time, Conditions, Recorded (with the stage start), Penalties, Camera (cockpit, bonnet, bumper, chase), Watch, Delete (asks),
+  and the export with its MP4 filename.
 - Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back or Random, Esc
   does nothing) over every map, circuits too, with the collections "Added by you" (folders in `<files>/tracks/`) and
   "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
