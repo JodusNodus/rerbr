@@ -11,10 +11,10 @@ use crate::Form;
 
 /// The sidebar's width.
 pub const WIDTH: f32 = 220.0;
-/// How often the sidebar looks for new downloads (the Import badge), while the Import page is not open.
-const SCAN_EVERY: f64 = 4.0;
+/// How often the sidebar checks the game folder again, of frames drawn anyway.
+const RECHECK_EVERY: f64 = 4.0;
 
-/// A sidebar item: its label, and what it shows on the right (a count in mono or a badge); the response is the
+/// A sidebar item: its label, and what it shows on the right (a count in mono); the response is the
 /// whole row's.
 fn item(ui: &mut Ui, label: &str, selected: bool, count: Option<String>) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::click());
@@ -32,19 +32,6 @@ fn item(ui: &mut Ui, label: &str, selected: bool, count: Option<String>) -> egui
         painter.text(at, egui::Align2::RIGHT_CENTER, count, mono(11.5), TEXT_3);
     }
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
-}
-
-/// A count badge on the right of an item (Import), accent-coloured.
-fn badge(ui: &mut Ui, row: egui::Rect, n: usize) {
-    let text = n.to_string();
-    let galley = ui.painter().layout_no_wrap(text, egui::FontId::new(11.0, semibold()), Color32::WHITE);
-    let width = (galley.size().x + 10.0).max(18.0);
-    let rect = egui::Rect::from_center_size(
-        egui::pos2(row.right() - 10.0 - width / 2.0, row.center().y),
-        Vec2::new(width, 18.0),
-    );
-    ui.painter().rect_filled(rect, 9, Color32::from_rgb(0x3b, 0x7c, 0xd6));
-    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
 }
 
 /// The group's heading (11.5, medium, dim).
@@ -121,18 +108,8 @@ impl Form {
             if item(ui, "Settings", settings_on, None).on_hover_text(format!("{modifier}+3")).clicked() {
                 *open = Some(self.last_pages[Section::Settings.index()]);
             }
-            self.poll_downloads(ui.ctx());
-            let recent = self.content.recent.list.len();
             let import = item(ui, "Import", self.page == Page::Import, None);
-            if recent > 0 {
-                badge(ui, import.rect, recent);
-            }
-            let tip = if recent > 0 {
-                format!("{recent} recent downloads ReRBR can add")
-            } else {
-                "Add downloads or files".into()
-            };
-            if import.on_hover_text(tip).clicked() {
+            if import.on_hover_text("Add downloads or files").clicked() {
                 *open = Some(Page::Import);
             }
             ui.add_space(5.0);
@@ -178,13 +155,15 @@ impl Form {
     }
 
     /// Whether the game folder exists: looked up when the folder setting or the page changes and every
-    /// [`SCAN_EVERY`] seconds of a frame drawn anyway, not every frame.
+    /// [`RECHECK_EVERY`] seconds of a frame drawn anyway, not every frame.
     fn game_folder_found(&self, ctx: &egui::Context) -> bool {
         let key = Id::unique("sidebar game folder");
         let now = ctx.input(|i| i.time);
         let seen = ctx.data(|d| d.get_temp::<(std::path::PathBuf, Page, f64, bool)>(key));
         match seen {
-            Some((path, page, at, found)) if path == self.paths.data && page == self.page && now - at < SCAN_EVERY => {
+            Some((path, page, at, found))
+                if path == self.paths.data && page == self.page && now - at < RECHECK_EVERY =>
+            {
                 found
             }
             _ => {
@@ -192,23 +171,6 @@ impl Form {
                 ctx.data_mut(|d| d.insert_temp(key, (self.paths.data.clone(), self.page, now, found)));
                 found
             }
-        }
-    }
-
-    /// Looks for recent downloads, for the Import badge: when the page changes and at most every [`SCAN_EVERY`]
-    /// seconds of a frame drawn anyway (every frame while a scan runs, which asks for its own repaints; the Import
-    /// page does it itself). It asks for no repaint: an idle launcher stays idle.
-    fn poll_downloads(&mut self, ctx: &egui::Context) {
-        if self.page == Page::Import || self.child.is_some() {
-            return;
-        }
-        let key = Id::unique("sidebar downloads polled");
-        let now = ctx.input(|i| i.time);
-        let last = ctx.data(|d| d.get_temp::<(f64, Page)>(key));
-        if self.content.recent.scanning() || last.is_none_or(|(t, page)| page != self.page || now - t >= SCAN_EVERY) {
-            ctx.data_mut(|d| d.insert_temp(key, (now, self.page)));
-            let owned = self.owned_content();
-            self.content.recent.poll(ctx, owned);
         }
     }
 

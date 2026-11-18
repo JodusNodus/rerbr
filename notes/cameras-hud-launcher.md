@@ -149,8 +149,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   co-drivers and pace notes through `codriver_packs::import`; NGP car pieces (physics, model and banks dropped
   together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
   car skin to its car (`content/kind/skin.rs`, below).
-  Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. Recent
-  downloads (Downloads, 30 days, 5) list any of these not added yet. Links: RSF's stage download, BTBfin, RBR Czech's
+  Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. The
+  Downloads folder is not scanned (user, 2026-11-18): only what is dropped or chosen is added. Links: RSF's stage download, BTBfin, RBR Czech's
   stage list (its installers are read, never run).
 - Classic stages (`content/kind/classic/`): RSF-shaped folders (`Tracks<id>.ini`) or loose `track-<n>_<L>.*` files
   with their `[Map<n>]` and weathers from the tree's inis or an installer's INI writes (empty-key writes, the
@@ -174,15 +174,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Shell (user decision 2026-11-18, the redesign; `pages.rs`, `sidebar.rs`, `theme.rs`, `kit.rs`): a 220 px sidebar
   in place of the tab rows and the status bar. Drive (Rally, Circuit, Championship, School, Replays), Library
   (Cars and Stages with their counts, Co-drivers), a status area (game folder found, Experimental physics, the
-  readiness issue with its fix button, the status text, the update link), then Import (badge: recent downloads not
-  yet added, scanned every 2 s) and Settings. Settings' General, Controls and Graphics & sound are a segmented
+  readiness issue with its fix button, the status text, the update link), then Import and Settings. Settings' General, Controls and Graphics & sound are a segmented
   control under the page title; the sidebar item opens the last of them (`Form::last_pages`, indexed by
   `pages::Section`). Car setup is in no group: `Form::open_setup` records the opener (`setup_from`) for its back
   link. "Get more" is a modal (`Form::get_more`, `GetMore`, `get_page.rs`) over Cars, Stages or Co-drivers: gvrc.de's
   list (search, class, Hide added, tick table, added cars greyed but tickable = update; `gvrc.rs`) or the sites' rows,
   each pointing to Import. A car download is polled in `Form::content_notice` (drawn every frame), not by the modal:
   closing the modal leaves a progress line above the page bottom and a toast with the result. Import (`import_page`:
-  drop zone with Choose files… / Choose folder…, Ready to add, Last import with an Open link per outcome, Clear)
+  drop zone with Choose files… / Choose folder…, Last import with an Open link per outcome, Clear)
   takes every drop; on another page the result is a toast (`Add::toast`, `kit::toast`) linking to Import. Open in
   Stages shows the stage in Library › Stages (`StagesPage::show_stage`); a disc opens Settings › General's disc setup.
   Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for

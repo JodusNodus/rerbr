@@ -9,9 +9,8 @@ use std::path::PathBuf;
 
 use super::{Ctx, Found, Item, Kind};
 use crate::car_skins;
-use crate::content::downloads::Owned;
 use crate::content::source::{Entry, Source};
-use crate::content::{stem, Goto, Outcome};
+use crate::content::{Goto, Outcome};
 
 pub struct Skin;
 
@@ -134,11 +133,6 @@ impl Kind for Skin {
     fn fallback(&self) -> bool {
         true
     }
-
-    fn offer(&self, src: &dyn Source, found: &Found, owned: &Owned) -> Option<&'static str> {
-        let name = car_skins::clean(stem(&src.name())).to_lowercase();
-        (!owned.skins.contains(&name)).then_some(found.label)
-    }
 }
 
 #[cfg(test)]
@@ -218,12 +212,6 @@ mod tests {
         assert_eq!(done[0].line(), "Added Martini (car skin): the XSARA car wears it now");
         assert_eq!(done[0].goto, Some(Goto::Skin { car: "XSARA".into(), skin: "Martini".into() }));
         assert_eq!(std::fs::read(home.join("skins/XSARA/Martini/textures/xsara_external.dds")).unwrap(), b"skin");
-        // Offered until it is added.
-        let src = crate::content::source::open(&dir.join("drop/Martini")).unwrap();
-        let found = Found::new(KIND);
-        assert_eq!(Skin.offer(&*src, &found, &Owned::default()), Some(KIND));
-        let owned = Owned { skins: car_skins::imported(&home), ..Owned::default() };
-        assert_eq!(Skin.offer(&*src, &found, &owned), None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

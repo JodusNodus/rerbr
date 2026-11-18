@@ -19,7 +19,6 @@ use crate::pages::Page;
 use kind::{Ctx, Found, Item, Kind, Known};
 use source::Source;
 
-pub mod downloads;
 pub mod drop;
 pub mod kind;
 pub mod source;

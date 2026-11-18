@@ -1,12 +1,12 @@
 //! The Add's window side: starting a run, what a finished run changes in the launcher, its progress line and toast on
-//! every page, and the Import page's drop zone, Ready to add and Last import.
+//! every page, and the Import page's drop zone and Last import.
 
 use std::path::PathBuf;
 
 use egui::{Align, Color32, Layout, RichText};
 
 use super::kind::{skin, Known};
-use super::{downloads, Goto, Outcome, Refresh};
+use super::{Goto, Outcome, Refresh};
 use crate::car_skins;
 use crate::catalog::Origin;
 use crate::job::{self, Job};
@@ -21,12 +21,11 @@ pub struct Toast {
     pub import: bool,
 }
 
-/// The Add's state: the running job, the last import's outcomes, the recent downloads and the toast.
+/// The Add's state: the running job, the last import's outcomes and the toast.
 #[derive(Default)]
 pub struct Add {
     job: Option<Job<Vec<Outcome>>>,
     pub notice: Vec<Outcome>,
-    pub recent: downloads::Recent,
     pub toast: Option<Toast>,
     /// The owned voice packs when the run started: a new one becomes the co-driver in use.
     voices_before: Vec<String>,
@@ -232,22 +231,6 @@ impl Form {
         }
     }
 
-    /// What the recent downloads list hides: the packs, stages and cars already added.
-    pub(crate) fn owned_content(&self) -> downloads::Owned {
-        let packs = self.owned_voices.iter().map(|p| p.name.clone());
-        let packs = packs.chain(self.owned_notes.iter().map(|p| p.name.clone())).collect();
-        let tracks = self.here().join(rbr_btb::player::TRACKS);
-        let stages = self.catalog.maps.iter().filter_map(|m| m.btb()).filter(|b| b.folder.starts_with(&tracks));
-        let stages = stages.filter_map(|b| Some(b.folder.file_name()?.to_string_lossy().to_lowercase())).collect();
-        let cars = self
-            .adding
-            .cars
-            .iter()
-            .flat_map(|(name, pack)| [crate::car_packs::words(name), crate::car_packs::words(pack)]);
-        let skins = car_skins::imported(&self.here());
-        downloads::Owned { packs, stages, cars: cars.collect(), skins, ngp: self.ngp_revision == Some(778) }
-    }
-
     /// The drop zone: where to drop, Choose files… and Choose folder…, the progress and Cancel while adding.
     pub fn drop_zone_ui(&mut self, ui: &mut egui::Ui) {
         let idle = !self.content.busy() && self.child.is_none();
@@ -315,38 +298,6 @@ impl Form {
         }
     }
 
-    /// Ready to add: the recent downloads ReRBR recognises, each with what it is and Add; or how they appear.
-    pub fn ready_to_add_ui(&mut self, ui: &mut egui::Ui) {
-        kit::group_label(ui, "Ready to add", None);
-        let idle = !self.content.busy() && self.child.is_none();
-        let owned = self.owned_content();
-        self.content.recent.poll(ui.ctx(), owned);
-        if self.content.recent.list.is_empty() {
-            return kit::hint(ui, "Downloads from the last 30 days appear here.");
-        }
-        let mut add = None;
-        kit::panel(ui, |rows| {
-            for found in &self.content.recent.list {
-                rows.full(|ui| {
-                    let name = found.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.add_enabled(idle, egui::Button::new("Add")).clicked() {
-                            add = Some(found.path.clone());
-                        }
-                        ui.label(RichText::new(&found.label).size(12.0).color(TEXT_3));
-                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                            let name = RichText::new(name).color(TEXT_LIST);
-                            ui.add(egui::Label::new(name).truncate()).on_hover_text(found.path.display().to_string());
-                        });
-                    });
-                });
-            }
-        });
-        if let Some(path) = add {
-            self.add_content(vec![path]);
-        }
-    }
-
     /// Last import: every outcome with its own Open link, Clear, and what is refused.
     pub fn last_import_ui(&mut self, ui: &mut egui::Ui) {
         if self.content.notice.is_empty() {
@@ -396,16 +347,6 @@ mod tests {
     use crate::content::kind::btb::tests::{synthetic_stage, write};
     use crate::settings::{load, Settings};
     use crate::{Start, SETTINGS_FILE};
-
-    fn zip(path: &Path, files: &[(&str, &str)]) {
-        use std::io::Write;
-        let mut zip = zip::ZipWriter::new(fs::File::create(path).unwrap());
-        for (name, text) in files {
-            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
-            zip.write_all(text.as_bytes()).unwrap();
-        }
-        zip.finish().unwrap();
-    }
 
     /// The Add through a loaded launcher: a stage folder and a co-driver folder dropped together are added, the stage
     /// list and the co-drivers read again; and the Add content section, the notice and the drop hint drawn offscreen
@@ -482,15 +423,6 @@ mod tests {
             return;
         };
         let shots = Path::new(&shots).join("content");
-        // Recent downloads of a fixed folder.
-        let downloads = root.join("Downloads");
-        fs::create_dir_all(&downloads).unwrap();
-        let tracks = ["track.ini", "objectlist.ini", "Objects.zip", "Textures.zip"].map(|f| (f, ""));
-        let files: Vec<(String, &str)> = tracks.iter().map(|(f, t)| (format!("Lappi Stage/{f}"), *t)).collect();
-        let files: Vec<(&str, &str)> = files.iter().map(|(f, t)| (f.as_str(), *t)).collect();
-        zip(&downloads.join("Lappi Stage.zip"), &files);
-        zip(&downloads.join("Luppis V3 Notes.zip"), &[("Luppis/PaceNote.ini", "[SETTINGS]")]);
-        form.content.recent.dir = Some(downloads);
         form.page = Page::Settings;
         form.content.notice.clear();
         form.stage_browser.open = false;
@@ -504,7 +436,6 @@ mod tests {
         crate::capture::draw(|ctx| section(ctx, &mut form)).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(500));
         let rgba = crate::capture::draw(|ctx| section(ctx, &mut form)).unwrap();
-        assert_eq!(form.content.recent.list.len(), 2, "{:?}", form.content.recent.list);
         crate::capture::write_png(&shots.join("add-content-section.png"), &rgba).unwrap();
         // The notice: some added, some not.
         let ok = |what: &str, kind, place: &str, goto| Outcome::added("x", kind, what, place, goto);

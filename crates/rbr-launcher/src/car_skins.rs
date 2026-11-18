@@ -61,12 +61,6 @@ pub fn textures_dir(car: &Car, game: &Path) -> Option<PathBuf> {
     cars::resolve(&root, &format!("Cars\\{}\\Textures", model_folder(car)?))
 }
 
-/// The names of the skins imported for any car, lower case: the Add's recent downloads hide those.
-pub fn imported(home: &Path) -> Vec<String> {
-    let cars = fs::read_dir(home.join(DIR)).into_iter().flatten().flatten();
-    cars.flat_map(|car| skins_in(&car.path())).map(|s| s.name.to_lowercase()).collect()
-}
-
 /// The folders in `dir`, by name.
 fn skins_in(dir: &Path) -> Vec<Skin> {
     let Ok(read) = fs::read_dir(dir) else { return Vec::new() };

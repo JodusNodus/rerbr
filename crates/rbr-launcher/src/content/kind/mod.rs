@@ -4,7 +4,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::downloads::Owned;
 use super::source::Source;
 use super::Outcome;
 use crate::job::{Progress, Report};
@@ -91,11 +90,5 @@ pub trait Kind: Sync {
     /// Asked only when no other kind found anything: a refusal, or a skin (a car model and a stage have textures too).
     fn fallback(&self) -> bool {
         false
-    }
-
-    /// The label of the recent downloads list's offer of this source, unless it is owned already or is not offered
-    /// alone.
-    fn offer(&self, _src: &dyn Source, _found: &Found, _owned: &Owned) -> Option<&'static str> {
-        None
     }
 }

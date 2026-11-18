@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use super::{Ctx, Found, Item, Kind};
 use crate::car_packs::{self, strip_end, Download, BANKS, MODEL, PHYSICS};
-use crate::content::downloads::Owned;
 use crate::content::source::Source;
 use crate::content::{stem, Goto, Outcome, Refresh};
 
@@ -83,11 +82,6 @@ impl Kind for Car {
         };
         out.extend(outcomes.into_iter().map(|o| o.refreshing(Refresh::Cars)));
         out
-    }
-
-    fn offer(&self, src: &dyn Source, found: &Found, owned: &Owned) -> Option<&'static str> {
-        let car = car_packs::words(&car_name(&src.name(), PHYSICS));
-        (found.tag == PHYSICS_ROLE && !owned.cars.contains(&car)).then_some(found.label)
     }
 }
 
