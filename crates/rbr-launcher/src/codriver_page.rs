@@ -353,7 +353,9 @@ impl Form {
             self.rescan_codrivers();
         }
         ui.add_space(8.0);
-        if kit::link(ui, "Get more co-drivers…").on_hover_text("Voices and pace notes, on Library > Co-drivers").clicked()
+        if kit::link(ui, "Get more co-drivers…")
+            .on_hover_text("Voices and pace notes, on Library > Co-drivers")
+            .clicked()
         {
             self.open_get_more(GetMore::Codrivers);
         }

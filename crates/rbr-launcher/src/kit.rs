@@ -131,6 +131,8 @@ impl Rows<'_> {
     /// A row with a switch on the right: `label`, and under it `hint` (12, dimmed, wrapping) when there is one. The
     /// response is the switch's (`changed()` when toggled; hover text goes on it).
     pub fn switch_row(&mut self, label: &str, hint: Option<&str>, on: &mut bool) -> Response {
+        let Some(hint) = hint else { return self.row(label, |ui| switch(ui, on)) };
+        let hint = Some(hint);
         self.full(|ui| {
             let text_width = (ui.available_width() - 34.0 - 16.0).max(40.0);
             ui.allocate_ui_with_layout(Vec2::new(text_width, 0.0), Layout::top_down(Align::Min), |ui| {
@@ -196,7 +198,11 @@ pub fn segmented<T: PartialEq + Clone>(
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        for (option, label) in options {
+                        // `ui.horizontal` follows the parent's direction: in a right-to-left row, add them reversed.
+                        let reversed = ui.layout().prefer_right_to_left();
+                        let ordered: Vec<_> =
+                            if reversed { options.iter().rev().collect() } else { options.iter().collect() };
+                        for (option, label) in ordered {
                             let selected = option == value;
                             let font = egui::FontId::new(
                                 12.5,

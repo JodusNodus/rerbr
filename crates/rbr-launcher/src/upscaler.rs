@@ -209,6 +209,12 @@ impl Form {
         }
     }
 
+    /// Whether [`Form::upscaler_cache_ui`] has anything to show: the packing's progress or the textures' size.
+    pub fn upscaler_cache_shown(&self) -> bool {
+        let cache = &self.upscaler_cache;
+        cache.job.is_some() || cache.size.is_some_and(|size| size > 0)
+    }
+
     /// Beside "upscaled": the packing's progress, else the upscaled textures' size and "Clear…" with its
     /// confirmation.
     pub fn upscaler_cache_ui(&mut self, ui: &mut egui::Ui) {

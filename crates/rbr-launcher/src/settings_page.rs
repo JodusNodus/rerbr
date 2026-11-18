@@ -18,6 +18,7 @@ const LABEL: f32 = 84.0;
 /// A label of a fixed `width`, so the rows' next cells line up.
 pub fn label_cell(ui: &mut egui::Ui, width: f32, text: &str) -> egui::Response {
     ui.allocate_ui_with_layout(egui::vec2(width, 18.0), Layout::left_to_right(Align::Center), |ui| {
+        ui.set_min_size(egui::vec2(width, 18.0));
         ui.add(egui::Label::new(RichText::new(text).color(crate::theme::TEXT_LABEL)).truncate())
     })
     .inner
@@ -39,7 +40,13 @@ pub fn note(rows: &mut Rows, color: egui::Color32, text: &str) {
 }
 
 /// A status row: `label`, ✔ or a warning, `what` beside it, and `actions` right-aligned (added right to left).
-fn status_row(rows: &mut Rows, label: &str, ok: bool, what: impl FnOnce(&mut egui::Ui), actions: impl FnOnce(&mut egui::Ui)) {
+fn status_row(
+    rows: &mut Rows,
+    label: &str,
+    ok: bool,
+    what: impl FnOnce(&mut egui::Ui),
+    actions: impl FnOnce(&mut egui::Ui),
+) {
     rows.full(|ui| {
         label_cell(ui, LABEL, label);
         ui.label(RichText::new(if ok { "✔" } else { "⚠" }).color(if ok { GOOD } else { WARN }));
@@ -115,23 +122,24 @@ impl Form {
             rows.full(|ui| {
                 label_cell(ui, LABEL, "Game folder");
                 ui.label(RichText::new("✔").color(GOOD));
-                ui.add_enabled_ui(!running, |ui| {
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("Browse…").clicked() {
-                            if let Some(dir) = job::pick_folder("Your Richard Burns Rally folder") {
-                                self.install_folder = dir;
-                                set = true;
-                            }
+                if running {
+                    ui.disable();
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("Browse…").clicked() {
+                        if let Some(dir) = job::pick_folder("Your Richard Burns Rally folder") {
+                            self.install_folder = dir;
+                            set = true;
                         }
-                        let hint = "the Richard Burns Rally folder, with Cars and Maps";
-                        let edit = ui.add(
-                            egui::TextEdit::singleline(&mut self.install_folder)
-                                .hint_text(hint)
-                                .font(crate::theme::mono(12.0))
-                                .desired_width(ui.available_width()),
-                        );
-                        set |= edit.lost_focus();
-                    });
+                    }
+                    let hint = "the Richard Burns Rally folder, with Cars and Maps";
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut self.install_folder)
+                            .hint_text(hint)
+                            .font(crate::theme::mono(12.0))
+                            .desired_width(ui.available_width()),
+                    );
+                    set |= edit.lost_focus();
                 });
             });
             status_row(
@@ -139,11 +147,14 @@ impl Form {
                 "NGP",
                 ngp_ok,
                 |ui| {
-                    ui.add(egui::Label::new(match (has_ngp, &dll_problem) {
-                        (true, None) => self.ngp_label.as_str(),
-                        (true, Some(problem)) => problem.as_str(),
-                        (false, _) => NO_NGP,
-                    }));
+                    ui.add(
+                        egui::Label::new(match (has_ngp, &dll_problem) {
+                            (true, None) => self.ngp_label.as_str(),
+                            (true, Some(problem)) => problem.as_str(),
+                            (false, _) => NO_NGP,
+                        })
+                        .wrap(),
+                    );
                 },
                 |ui| download = can_download && ui.button("Download NGP 7.4.778…").clicked(),
             );
@@ -154,12 +165,13 @@ impl Form {
                 rows,
                 "Cars",
                 has_cars,
-                |ui| _ = ui.label(if has_cars { count.join(", ") } else { "None yet".to_owned() }),
                 |ui| {
-                    get_cars = ui
-                        .button("Get cars…")
-                        .on_hover_text("gvrc.de's NGP car packs, on Library > Cars")
-                        .clicked()
+                    let text = if has_cars { count.join(", ") } else { "None yet".to_owned() };
+                    ui.add(egui::Label::new(text).wrap());
+                },
+                |ui| {
+                    get_cars =
+                        ui.button("Get cars…").on_hover_text("gvrc.de's NGP car packs, on Library > Cars").clicked()
                 },
             );
             status_row(
@@ -167,11 +179,14 @@ impl Form {
                 "Wheel",
                 !pads || set_up,
                 |ui| {
-                    ui.add(egui::Label::new(match (pads, set_up) {
-                        (false, _) => "None connected: the keyboard drives (its keys are on Controls)".to_owned(),
-                        (true, true) => format!("{names}, bound"),
-                        (true, false) => format!("{names}: connected, not bound yet"),
-                    }));
+                    ui.add(
+                        egui::Label::new(match (pads, set_up) {
+                            (false, _) => "None connected: the keyboard drives (its keys are on Controls)".to_owned(),
+                            (true, true) => format!("{names}, bound"),
+                            (true, false) => format!("{names}: connected, not bound yet"),
+                        })
+                        .wrap(),
+                    );
                 },
                 |ui| {
                     let label = if pads && !set_up { "Bind it on Controls" } else { "Controls…" };

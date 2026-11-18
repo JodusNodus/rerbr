@@ -116,7 +116,11 @@ pub fn experimental_section(
         *physics = PhysicsProfile::of_parts(engine, tyre);
         rows.full(|ui| {
             ui.horizontal_wrapped(|ui| {
-                let text = if engine { "ReRBR's engine model, aero and drivetrain." } else { "NGP 7's, as the original drives." };
+                let text = if engine {
+                    "ReRBR's engine model, aero and drivetrain."
+                } else {
+                    "NGP 7's, as the original drives."
+                };
                 ui.label(RichText::new(text).size(12.0).color(TEXT_3));
                 if engine {
                     docs_link(ui, ENGINE_PAGE);

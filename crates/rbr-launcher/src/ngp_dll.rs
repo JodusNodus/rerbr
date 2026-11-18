@@ -75,25 +75,26 @@ impl Choice {
     pub fn ui(&mut self, rows: &mut crate::kit::Rows, data: &Data, root: &str, enabled: bool) {
         let automatic = Self::automatic(data, root);
         rows.full(|ui| {
-            ui.add_enabled_ui(enabled, |ui| {
-                crate::settings_page::label_cell(ui, 110.0, "NGP.dll");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Browse…").clicked() {
-                        if let Some(path) = crate::job::pick_file("Choose NGP 7.4.778's NGP.dll") {
-                            self.path = path;
-                        }
+            if !enabled {
+                ui.disable();
+            }
+            crate::settings_page::label_cell(ui, 110.0, "NGP.dll");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Browse…").clicked() {
+                    if let Some(path) = crate::job::pick_file("Choose NGP 7.4.778's NGP.dll") {
+                        self.path = path;
                     }
-                    if !self.path.is_empty() && automatic.is_some() && ui.button("Use installed DLL").clicked() {
-                        self.path.clear();
-                    }
-                    let hint = automatic.as_ref().map_or("Choose your NGP.dll".into(), |p| p.display().to_string());
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.path)
-                            .hint_text(hint)
-                            .font(crate::theme::mono(12.0))
-                            .desired_width(ui.available_width()),
-                    );
-                });
+                }
+                if !self.path.is_empty() && automatic.is_some() && ui.button("Use installed DLL").clicked() {
+                    self.path.clear();
+                }
+                let hint = automatic.as_ref().map_or("Choose your NGP.dll".into(), |p| p.display().to_string());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.path)
+                        .hint_text(hint)
+                        .font(crate::theme::mono(12.0))
+                        .desired_width(ui.available_width()),
+                );
             });
         });
         if let Some(problem) = self.problem(data, root) {

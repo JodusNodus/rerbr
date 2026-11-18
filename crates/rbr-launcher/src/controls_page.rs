@@ -27,7 +27,7 @@ use winit::keyboard::KeyCode;
 use crate::catalog::Car;
 use crate::kit::{self, Rows};
 use crate::settings_page::{label_cell, note, row_tip};
-use crate::theme::{mono, medium, GOOD, INPUT, LINK, PROGRESS, TEXT, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
+use crate::theme::{medium, mono, GOOD, INPUT, LINK, PROGRESS, TEXT, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
 
 /// A binding being set: its action, and for a device input every joystick's values when it began (`None` for an axis
 /// that had not reported yet: it rests where it first does, [`Joysticks::first`]).
@@ -69,9 +69,8 @@ fn ffb_ui(rows: &mut Rows, ffb: &mut ffb::Options, settings: &Path, read_only: b
     let on = ffb.settings.enabled;
     rows.row("Strength", |ui| {
         ui.add_enabled_ui(on, |ui| {
-            let strength = ui.add(
-                DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).fixed_decimals(2),
-            );
+            let strength =
+                ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).fixed_decimals(2));
             if strength.on_hover_text(STRENGTH_HELP).changed() && !read_only {
                 write_ffb(settings, "strength", &ffb.settings.strength.to_string());
             }
@@ -292,8 +291,8 @@ const DEVICE_HELP: &str = "The wheel the force goes to. First found tries each d
      line below says which one the last drive used.";
 /// The rows' label column, the input button and the live meter's widths.
 const ROW_LABEL: f32 = 104.0;
-const BUTTON_WIDTH: f32 = 168.0;
-const METER: f32 = 84.0;
+const BUTTON_WIDTH: f32 = 204.0;
+const METER: f32 = 60.0;
 
 /// The other actions a wheel button can drive.
 const BUTTONS: [(Action, &str); 10] = [
@@ -522,12 +521,6 @@ impl ControlsPage {
         self.connected().into_iter().map(|(_, name)| name).collect()
     }
 
-    /// The joysticks connected: name and id.
-    fn pads(&self) -> Vec<String> {
-        let Some(joysticks) = &self.joysticks else { return Vec::new() };
-        (0..joysticks.len()).map(|k| format!("{} ({})", joysticks.name(k), joysticks.device(k).format())).collect()
-    }
-
     /// The page: the connected devices, the wheel, the shifter, the aids and the force feedback in two columns, the
     /// keyboard and "Reset all" under them.
     #[allow(clippy::too_many_arguments)]
@@ -546,7 +539,7 @@ impl ControlsPage {
         settings: &Path,
         read_only: bool,
     ) {
-        let pads = self.pads();
+        let pads = self.pad_names();
         if pads.is_empty() {
             ui.label(
                 RichText::new(
@@ -692,7 +685,9 @@ impl ControlsPage {
                                 }
                                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| match (key, capturing) {
                                     (_, true) => set |= binding_button(ui, "press a key (Esc cancels)", true).clicked(),
-                                    (Some(key), false) => set |= binding_button(ui, bindings::key_name(key), false).clicked(),
+                                    (Some(key), false) => {
+                                        set |= binding_button(ui, bindings::key_name(key), false).clicked()
+                                    }
                                     (None, false) => _ = ui.label(RichText::new("Not set").color(TEXT_3)),
                                 });
                             });

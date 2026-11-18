@@ -349,7 +349,8 @@ impl Form {
         let logs = self.logs_dir().display().to_string();
         let can_upscale = crate::upscaler::available();
         kit::panel(ui, |rows| {
-            let tip = "Fills the monitor at its own resolution, borderless: the compositor can show the frames directly";
+            let tip =
+                "Fills the monitor at its own resolution, borderless: the compositor can show the frames directly";
             rows.switch_row("Fullscreen at the monitor's resolution", None, &mut self.fullscreen).on_hover_text(tip);
 
             let fullscreen = self.fullscreen;
@@ -388,7 +389,9 @@ impl Form {
             };
             if self.upscaler {
                 rows.switch_row("Upscaled textures", None, &mut self.upscale_textures).on_hover_text(tip);
-                rows.full(|ui| ui.horizontal_wrapped(|ui| self.upscaler_cache_ui(ui)).inner);
+                if self.upscaler_cache_shown() {
+                    rows.full(|ui| ui.horizontal_wrapped(|ui| self.upscaler_cache_ui(ui)).inner);
+                }
             } else if can_upscale {
                 rows.full(|ui| {
                     label_cell(ui, 130.0, "Upscaled textures").on_hover_text(tip);
@@ -430,7 +433,8 @@ impl Form {
 
             rows.switch_row("FPS counter, top right", None, &mut self.hud.fps);
 
-            let tip = "Writes how long each frame, each stage on the CPU and each pass on the GPU takes, once a second \
+            let tip =
+                "Writes how long each frame, each stage on the CPU and each pass on the GPU takes, once a second \
                        (a .log to paste in a bug report) and the last 600 frames at the end (a .trace.json for \
                        ui.perfetto.dev). Costs well under 0.2 ms a frame";
             let hint = self.perf_log.then(|| format!("In {logs}"));
@@ -446,16 +450,26 @@ impl Form {
                        own below. The pause menu's Camera page sets it too";
             rows.row("Field of view", |ui| {
                 ui.spacing_mut().slider_width = 180.0;
-                ui.add(egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
-                    .on_hover_text(tip);
+                ui.add(
+                    egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES)
+                        .step_by(1.0)
+                        .fixed_decimals(0)
+                        .suffix("°"),
+                )
+                .on_hover_text(tip);
             });
 
             let tip = "The horizontal field of view of the chase view (65 by default). The pause menu's Camera page \
                        sets it too";
             rows.row("Chase field of view", |ui| {
                 ui.spacing_mut().slider_width = 180.0;
-                ui.add(egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
-                    .on_hover_text(tip);
+                ui.add(
+                    egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES)
+                        .step_by(1.0)
+                        .fixed_decimals(0)
+                        .suffix("°"),
+                )
+                .on_hover_text(tip);
             });
 
             let mut cockpit = self.cockpit;
@@ -504,12 +518,12 @@ impl Form {
                 ui.add_enabled_ui(show, |ui| {
                     ui.vertical(|ui| {
                         let parts: Vec<_> = Part::ALL.into_iter().zip(PART_TIPS).collect();
-                        for (row, parts) in self.hud.parts.0.chunks_mut(3).zip(parts.chunks(3)) {
+                        for (row, parts) in self.hud.parts.0.chunks_mut(2).zip(parts.chunks(2)) {
                             ui.horizontal(|ui| {
                                 for (shown, (part, tip)) in row.iter_mut().zip(parts) {
                                     let cell = egui::Layout::left_to_right(egui::Align::Center);
-                                    ui.allocate_ui_with_layout(egui::vec2(130.0, 24.0), cell, |ui| {
-                                        ui.set_min_width(130.0);
+                                    ui.allocate_ui_with_layout(egui::vec2(150.0, 24.0), cell, |ui| {
+                                        ui.set_min_width(150.0);
                                         ui.checkbox(shown, part.label()).on_hover_text(*tip);
                                     });
                                 }
@@ -540,9 +554,24 @@ impl Form {
         kit::panel(ui, |rows| {
             let list = [
                 ("Volume", "1 is the game's volume", &mut self.volume, MAX_VOLUME),
-                ("Engine", "The engine, the gearbox whine, and an FMOD car's whole sound", &mut self.engine_volume, MAX_GROUP_VOLUME),
-                ("Co-driver", "The pace notes, the countdown and the damage calls", &mut self.codriver_volume, MAX_GROUP_VOLUME),
-                ("Effects", "The turbo, pops, impacts, weather and the rest", &mut self.effects_volume, MAX_GROUP_VOLUME),
+                (
+                    "Engine",
+                    "The engine, the gearbox whine, and an FMOD car's whole sound",
+                    &mut self.engine_volume,
+                    MAX_GROUP_VOLUME,
+                ),
+                (
+                    "Co-driver",
+                    "The pace notes, the countdown and the damage calls",
+                    &mut self.codriver_volume,
+                    MAX_GROUP_VOLUME,
+                ),
+                (
+                    "Effects",
+                    "The turbo, pops, impacts, weather and the rest",
+                    &mut self.effects_volume,
+                    MAX_GROUP_VOLUME,
+                ),
                 ("Tyres", "Rolling, rumble and gravel", &mut self.tyres_volume, MAX_GROUP_VOLUME),
             ];
             for (label, tip, value, max) in list {
@@ -553,7 +582,7 @@ impl Form {
             }
         });
         ui.add_space(4.0);
-        kit::hint(ui, "1 is the game's volume; the volume is up to 4, each group up to 2.");
+        kit::hint(ui, "1 is the game's volume. Volume goes up to 4, each group up to 2.");
     }
 
     /// The triple-screen rig from the Triple screens section, when triple screens are on (`viewer --triple`).
