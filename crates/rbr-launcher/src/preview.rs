@@ -11,8 +11,9 @@
 //! The car: its model turning, rendered by `rbr_render` offscreen, as the game's menus show the car in 3D
 //! (`LoadFrontEndCars` in `RichardBurnsRally.ini`, `CPC_Application::vf04` 0x44c890; the menu loads the car with
 //! `E09_LoadCar` in `CPC_TrackLoaderDaemon::Vf1C` 0x46f330). An RSF car is drawn with the model RSF gives it, its own or
-//! the retail stand-in (`rbr_formats::car_pack::resolve`). The frames are rendered on a thread of their own, once per car, and the last
-//! few cars are kept, so a selection does not stall the window. The stage pictures and drivelines are read on another
+//! the retail stand-in (`rbr_formats::car_pack::resolve`). The frames are rendered on a thread of their own, once per car (the
+//! first one shown as soon as it is made, the turn starting from it once the rest arrive), and the last few cars are
+//! kept, so a selection does not stall the window. The stage pictures and drivelines are read on another
 //! thread, the last [`KEEP_STAGES`] kept, so that browsing the map list does not stall it either.
 
 use std::collections::VecDeque;
@@ -111,6 +112,13 @@ struct StageData {
 /// The car turntable's frames, or why there are none.
 type CarFrames = Result<Vec<Frame>, String>;
 
+/// A car's turntable: its key, frames, and the time it first showed (the turn starts at frame 0 from there).
+struct Turntable {
+    key: String,
+    frames: CarFrames,
+    since: f64,
+}
+
 /// A turntable frame, uploaded once shown.
 enum Frame {
     Image(ColorImage),
@@ -131,7 +139,13 @@ enum CarModel {
     Community { pack: PathBuf, model: rbr_formats::car_pack::Model, root: PathBuf },
 }
 
-type CarResult = (String, Result<Vec<ColorImage>, String>);
+/// What the worker sends for a car: its first frame as soon as it is made, then every frame (`done`), or why it
+/// can't.
+struct CarResult {
+    key: String,
+    frames: Result<Vec<ColorImage>, String>,
+    done: bool,
+}
 
 pub struct Previews {
     data: Data,
@@ -142,7 +156,7 @@ pub struct Previews {
     stage_results: Receiver<(u32, StageData)>,
     /// Stages read whose textures are not made yet.
     stage_arrived: Vec<(u32, StageData)>,
-    cars: VecDeque<(String, CarFrames)>,
+    cars: VecDeque<Turntable>,
     pending: Option<String>,
     /// Rendered cars whose textures are not made yet.
     arrived: Vec<CarResult>,
@@ -305,23 +319,27 @@ impl Previews {
     ) -> Option<String> {
         let key = car_key(car, skin.as_ref());
         self.arrived.extend(self.results.try_iter());
-        for (done, frames) in std::mem::take(&mut self.arrived) {
-            if let Err(e) = &frames {
-                eprintln!("launcher: car preview {done}: {e}");
+        let now = ui.input(|i| i.time);
+        for arrived in std::mem::take(&mut self.arrived) {
+            if let Err(e) = &arrived.frames {
+                eprintln!("launcher: car preview {}: {e}", arrived.key);
             }
-            if self.pending.as_deref() == Some(done.as_str()) {
+            if arrived.done && self.pending.as_deref() == Some(arrived.key.as_str()) {
                 self.pending = None;
             }
-            self.cars.retain(|(k, _)| *k != done);
-            self.cars.push_front((done, frames.map(|images| images.into_iter().map(Frame::Image).collect())));
+            // Every frame replaces the first one, keeping when it first showed.
+            let since = self.cars.iter().find(|t| t.key == arrived.key).map_or(now, |t| t.since);
+            self.cars.retain(|t| t.key != arrived.key);
+            let frames = arrived.frames.map(|images| images.into_iter().map(Frame::Image).collect());
+            self.cars.push_front(Turntable { key: arrived.key, frames, since });
             self.cars.truncate(KEEP);
         }
         let size = egui::vec2(width, picture_height(width));
         let mut error = None;
-        match self.cars.iter_mut().find(|(k, _)| *k == key).map(|(_, f)| f) {
-            Some(Ok(frames)) if !frames.is_empty() => {
+        match self.cars.iter_mut().find(|t| t.key == key).map(|t| (&mut t.frames, t.since)) {
+            Some((Ok(frames), since)) if !frames.is_empty() => {
                 if !self.still {
-                    self.shown = (ui.input(|i| i.time) * FPS) as usize;
+                    self.shown = ((now - since).max(0.0) * FPS) as usize;
                 }
                 let k = self.shown % frames.len();
                 // Each frame is uploaded when first shown, so a new car does not upload its whole turn at once.
@@ -339,7 +357,7 @@ impl Previews {
                     ui.ctx().request_repaint_after(Duration::from_secs_f64(1.0 / FPS));
                 }
             }
-            Some(Err(e)) => {
+            Some((Err(e), _)) => {
                 error = Some(e.clone());
                 let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
                 painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
@@ -365,7 +383,7 @@ impl Previews {
             catalog::Physics::Archive => CarModel::Retail(car.name.clone()),
             catalog::Physics::Pack(pack) => match &car.model {
                 Err(e) => {
-                    self.cars.push_front((key.to_owned(), Err(e.clone())));
+                    self.cars.push_front(Turntable { key: key.to_owned(), frames: Err(e.clone()), since: 0.0 });
                     self.cars.truncate(KEEP);
                     return;
                 }
@@ -390,7 +408,13 @@ impl Previews {
         let _ = self.stage_requests.send(map.clone());
         self.stage_arrived.extend(self.stage_results.recv_timeout(Duration::from_secs(60)));
         self.request(car, skin.clone(), &car_key(car, skin.as_ref()), root);
-        self.arrived.extend(self.results.recv_timeout(Duration::from_secs(120)));
+        while let Ok(arrived) = self.results.recv_timeout(Duration::from_secs(120)) {
+            let done = arrived.done;
+            self.arrived.push(arrived);
+            if done {
+                break;
+            }
+        }
     }
 }
 
@@ -511,8 +535,13 @@ fn car_worker(requests: Receiver<CarRequest>, results: Sender<CarResult>) {
         while let Ok(newer) = requests.try_recv() {
             request = newer;
         }
-        let frames = render_car(&mut gpu, request.data, &request.car, request.skin);
-        if results.send((request.key, frames)).is_err() {
+        let key = request.key;
+        // The first frame shows at once; the worker goes on with the turn.
+        let first = |image: &ColorImage| {
+            _ = results.send(CarResult { key: key.clone(), frames: Ok(vec![image.clone()]), done: false })
+        };
+        let frames = render_car(&mut gpu, request.data, &request.car, request.skin, first);
+        if results.send(CarResult { key, frames, done: true }).is_err() {
             return;
         }
     }
@@ -523,6 +552,7 @@ fn render_car(
     data: Data,
     car: &CarModel,
     skin: Option<Skin>,
+    mut first: impl FnMut(&ColorImage),
 ) -> Result<Vec<ColorImage>, String> {
     use rbr_render::{camera::Orbit, car as render_car, renderer, stage::Selection};
     let (data, name) = match car {
@@ -565,7 +595,11 @@ fn render_car(
             // The game's back buffer has no alpha; the draws leave 0 in it on the number plates (the viewer's
             // `write_png`).
             rgba.chunks_exact_mut(4).for_each(|texel| texel[3] = 255);
-            Ok(ColorImage::from_rgba_unmultiplied(CAR_SIZE, &rgba))
+            let image = ColorImage::from_rgba_unmultiplied(CAR_SIZE, &rgba);
+            if k == 0 {
+                first(&image);
+            }
+            Ok(image)
         })
         .collect()
 }
