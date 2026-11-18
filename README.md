@@ -60,7 +60,8 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
   stand-in.
 - **Keyboard steering on a RallySimFans install** moves at a tenth of the retail speed, as in RSF's own game.
 - **Community cars.** A car whose model isn't installed is drawn as the retail car RSF names as its stand-in. Car-parts
-  options, extra lights and other modder options are not applied; the selected skin is. Community cars and added cars
+  options, extra lights and other modder options are not applied; skins are (pick or import one, a `.zip` or `.7z`,
+  on Content > Cars; RSF's selection is the default). Community cars and added cars
   share one slot: the same ghosts, and the service park repairs them by that slot's rules. Their setups are their
   own, per car and surface, with RSF's own setups listed too.
 - **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.

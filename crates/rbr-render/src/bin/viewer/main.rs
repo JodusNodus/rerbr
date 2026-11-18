@@ -59,7 +59,7 @@
 //!
 //! `--car <name>` (the car's `Cars.ini` folder, for example `XSARA`) puts the car at the stage start.
 //! `--rsf-car <id|pack>` puts an RSF car (an id or pack name of the install `RBR_RSF`) into slot 5 as RSF does, and
-//! makes its model folder the `--car`; `--car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]`
+//! makes its model folder the `--car`; `--car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]` (and `--car-skin DIR|none` for any car)
 //! puts a pack car the launcher resolved (`--car-model` its model's `.sgc` path); give it before `--live`. A live
 //! drive then plays the car's own FMOD bank (`AudioFMOD/<audio>.bank`, `rbr_sound::fmod`) when it has one.
 //! Without a stage the car is shown alone under an orbit camera: drag with the left button to turn
@@ -256,6 +256,9 @@ fn run() -> Result<(), String> {
         args.car.get_or_insert_with(|| resolved.folder().to_owned());
         fmod_bank = resolved.bank;
         data = resolved.data;
+    } else if let (Some(rbr_formats::car_pack::Skin::Dir(dir)), Some(car)) = (&args.pack_car.skin, &args.car) {
+        // A retail car's skin (a pack car's went in with `resolve`).
+        data = data.with_skin(car, dir.clone());
     }
     args.ffb.rotation = args.ffb.rotation_for(args.car_lock);
     if let Some(dir) = &args.perf_log {

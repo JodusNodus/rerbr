@@ -14,8 +14,8 @@ use std::collections::BTreeMap;
 use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke};
 
 use crate::browser::{
-    block, favourite_button, header_line, items, key_action, list_rows, paint_selection, paint_star, random_row,
-    row_slot, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY,
+    block, favourite_button, header_line, items, key_action, list_rows_keyed, paint_selection, paint_star, random_row,
+    row_slot, search_box, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY,
 };
 use crate::catalog::{Map, Origin};
 use crate::pages::{combo, ACCENT};
@@ -111,6 +111,12 @@ pub struct StageRow {
     pub problem: Option<String>,
     /// A BTB stage that looks like a circuit and is not marked as one (`rbr_btb::circuit`): the circuit browser's.
     pub candidate: bool,
+    /// The stage's folder, when it has one of its own (not a retail stage).
+    pub folder: Option<std::path::PathBuf>,
+    /// Added by the player to `<files>/tracks/` and a circuit by its files: set by the Stages page, which has
+    /// collections for them.
+    pub added: bool,
+    pub circuit: bool,
     /// What the search matches, lower case.
     haystack: String,
 }
@@ -130,6 +136,11 @@ impl StageRow {
             ),
         };
         let name = map.name();
+        let folder = match &map.origin {
+            Origin::Community(stage) => Some(stage.folder.clone()),
+            Origin::Btb(btb) => Some(btb.folder.clone()),
+            Origin::Retail => None,
+        };
         let origin = match &map.origin {
             Origin::Community(_) => "rsf rallysimfans",
             Origin::Btb(_) => "rsf btb experimental",
@@ -150,6 +161,9 @@ impl StageRow {
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
             candidate: false,
+            folder,
+            added: false,
+            circuit: false,
             haystack,
         }
     }
@@ -292,6 +306,10 @@ pub enum Collection {
     /// A country, by its code (`None`: the stages without one).
     Country(Option<String>),
     CannotStart,
+    /// The stages the player added to `<files>/tracks/` (the Stages page's).
+    Added,
+    /// The circuits by their files (the Stages page's).
+    Circuits,
 }
 
 /// The list of `collection` for `filter` sorted by `sort`. `favourites` and `recent` are map numbers, in the order
@@ -356,6 +374,12 @@ pub fn lines(
             out.extend(block(None, ok));
             out.extend(block(Some("Cannot start"), blocked));
         }
+        Collection::Added | Collection::Circuits => {
+            let wanted = |r: &StageRow| if *collection == Collection::Added { r.added } else { r.circuit };
+            let (ok, blocked) = split((0..rows.len()).filter(|&k| wanted(&rows[k])).filter(accepted).collect());
+            out.extend(block(None, sorted(ok)));
+            out.extend(block(Some("Cannot start"), sorted(blocked)));
+        }
         Collection::All | Collection::Country(_) => {
             let wanted = |r: &StageRow| match collection {
                 Collection::Country(code) => r.country == *code,
@@ -385,6 +409,14 @@ fn collections(rows: &[StageRow], favourites: &[u32], recent: &[u32]) -> Vec<(Co
         (Collection::Recent, "Recent".to_owned(), known(recent)),
         (Collection::All, "All stages".to_owned(), startable),
     ];
+    for (collection, name, count) in [
+        (Collection::Added, "Added by you", rows.iter().filter(|r| r.added).count()),
+        (Collection::Circuits, "Circuits", rows.iter().filter(|r| r.circuit).count()),
+    ] {
+        if count > 0 {
+            out.push((collection, name.to_owned(), count));
+        }
+    }
     out.extend(countries.into_iter().map(|((name, code), n)| (Collection::Country(code), name, n)));
     let blocked = rows.len() - startable;
     if blocked > 0 {
@@ -433,6 +465,12 @@ pub struct StageBrowser {
     /// Focus the search box on the next draw.
     focus: bool,
     visited: bool,
+    /// The Stages page's browser: a page, not a picker (no Back, no Random), with the stage's facts and its removal.
+    page: bool,
+    /// The added stage (its map number) whose removal is being confirmed.
+    confirm: Option<u32>,
+    /// The added stage (its position in the catalog) the player confirmed removing: the page takes it.
+    pub removal: Option<usize>,
 }
 
 impl Default for StageBrowser {
@@ -449,6 +487,9 @@ impl Default for StageBrowser {
             nav: Nav::default(),
             focus: false,
             visited: false,
+            page: false,
+            confirm: None,
+            removal: None,
         }
     }
 }
@@ -489,6 +530,8 @@ impl StageBrowser {
             Collection::Recent => "recent".into(),
             Collection::All => "all".into(),
             Collection::CannotStart => "unavailable".into(),
+            Collection::Added => "added".into(),
+            Collection::Circuits => "circuits".into(),
             Collection::Country(code) => format!("country:{}", code.as_deref().unwrap_or("")),
         };
         State {
@@ -508,6 +551,8 @@ impl StageBrowser {
             "favourites" => Collection::Favourites,
             "recent" => Collection::Recent,
             "unavailable" => Collection::CannotStart,
+            "added" => Collection::Added,
+            "circuits" => Collection::Circuits,
             key if key.starts_with("country:") => {
                 let code = key[8..].to_owned();
                 let code = (!code.is_empty()).then_some(code);
@@ -554,6 +599,16 @@ impl StageBrowser {
         self.focus = true;
     }
 
+    /// Makes this the Stages page's browser, on all stages with `selected` (a catalog position) highlighted the first
+    /// time.
+    pub fn start_page(&mut self, selected: usize) {
+        self.page = true;
+        if !self.visited {
+            self.nav.show(selected);
+            self.visited = true;
+        }
+    }
+
     /// Opens the browser for `target`, as [`StageBrowser::open_on`].
     pub fn open_for(&mut self, target: crate::car_browser::Target, selected: usize, favourites: &[u32]) {
         self.open_on(selected, favourites, None);
@@ -592,7 +647,13 @@ impl StageBrowser {
         let hint = format!("Search all {noun}s: name, country, author, map number");
         let title = format!("Choose a {noun}");
         let query = &mut self.filter.query;
-        if top_line(ui, &title, &hint, query, &mut self.focus, &mut random) {
+        if self.page {
+            // A page: Esc does nothing.
+            if action == Some(Action::Back) {
+                action = None;
+            }
+            search_box(ui, &hint, query, &mut self.focus);
+        } else if top_line(ui, &title, &hint, query, &mut self.focus, &mut random) {
             action = Some(Action::Back);
         }
         if random {
@@ -636,7 +697,11 @@ impl StageBrowser {
             .map(|(collection, name, count)| SideEntry {
                 icon: match collection {
                     Collection::Favourites => "★",
-                    Collection::Recent | Collection::All | Collection::Country(_) => "",
+                    Collection::Recent
+                    | Collection::All
+                    | Collection::Added
+                    | Collection::Circuits
+                    | Collection::Country(_) => "",
                     Collection::CannotStart => "⚠",
                 },
                 name,
@@ -645,7 +710,8 @@ impl StageBrowser {
                 grey: *collection == Collection::CannotStart,
             })
             .collect();
-        if let Some(n) = side_list(ui, &entries, (3, "COUNTRIES")) {
+        let first = all.iter().position(|(c, ..)| matches!(c, Collection::Country(_))).unwrap_or(3);
+        if let Some(n) = side_list(ui, &entries, (first, "COUNTRIES")) {
             self.collection = all[n].0.clone();
             self.filter.query.clear();
         }
@@ -677,6 +743,8 @@ impl StageBrowser {
                         format!("stages in {}", code.as_deref().map_or("No country", country_name))
                     }
                     Collection::CannotStart => "stages that cannot start".to_owned(),
+                    Collection::Added => "added by you".to_owned(),
+                    Collection::Circuits => "circuits".to_owned(),
                 }
             } else {
                 "found in all stages".to_owned()
@@ -712,7 +780,8 @@ impl StageBrowser {
             ui.add_space(10.0);
             ui.label(RichText::new(hint).color(GREY));
         }
-        list_rows(ui, &mut self.nav, "stages", &self.lines, |ui, nav, range| {
+        let keys = if self.page { PAGE_KEYS } else { crate::browser::KEYS };
+        list_rows_keyed(ui, &mut self.nav, "stages", &self.lines, keys, |ui, nav, range| {
             for at in range {
                 let k = match &self.lines[at] {
                     Line::Header(name) => {
@@ -746,6 +815,9 @@ impl StageBrowser {
         let noun = self.noun();
         let row = self.rows.get(self.nav.cursor)?;
         let map = env.maps.get(row.index)?;
+        if self.page {
+            return self.page_detail(ui, env);
+        }
         let mut action = None;
         ui.set_width(preview::WIDTH);
         ui.add_space(6.0);
@@ -786,6 +858,101 @@ impl StageBrowser {
         }
         action
     }
+    /// The Stages page's detail: the picture and every fact of the highlighted stage, then what can be done with it.
+    fn page_detail(&mut self, ui: &mut egui::Ui, env: &mut Env) -> Option<Action> {
+        let row = self.rows.get(self.nav.cursor)?;
+        let map = env.maps.get(row.index)?;
+        let mut action = None;
+        ui.set_width(preview::WIDTH);
+        ui.add_space(6.0);
+        ui.label(RichText::new(&row.name).size(22.0).strong());
+        let room = ui.available_height() - if row.added { 110.0 } else { 70.0 };
+        egui::ScrollArea::vertical().id_salt("stage facts").max_height(room).auto_shrink([false, true]).show(
+            ui,
+            |ui| {
+                env.previews.stage_ui(ui, map);
+                ui.add_space(6.0);
+                let kind = match (row.retail, row.btb, row.added) {
+                    (true, ..) => "RBR 1.02",
+                    (_, true, true) => "Added by you · BTB, experimental",
+                    (_, false, true) => "Added by you",
+                    (_, true, false) => "RallySimFans BTB · experimental",
+                    _ => "RallySimFans",
+                };
+                // A BTB stage's number is ours, made up from its folder: not shown.
+                let number = (!row.btb).then(|| ("Number", row.number.to_string()));
+                let country = row.country.is_some().then(|| ("Country", row.country_name().to_owned()));
+                let mut facts: Vec<_> = number.into_iter().chain(country).collect();
+                facts.extend([
+                    ("Length", row.km.map_or("unknown".to_owned(), |km| format!("{km:.1} km"))),
+                    ("Surface", SURFACES[row.surface as usize].to_owned()),
+                    ("Author", row.author.clone().unwrap_or_else(|| "unknown".to_owned())),
+                    ("Kind", kind.to_owned()),
+                ]);
+                facts.extend((env.facts)(row));
+                egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+                    for (label, value) in facts {
+                        ui.label(RichText::new(label).color(GREY));
+                        ui.label(value);
+                        ui.end_row();
+                    }
+                    if let Some(folder) = &row.folder {
+                        ui.label(RichText::new("Folder").color(GREY));
+                        let name = folder.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                        ui.horizontal(|ui| {
+                            ui.label(name).on_hover_text(folder.display().to_string());
+                            if ui.link("Open folder").clicked() {
+                                crate::crash::open(folder.as_os_str());
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+            },
+        );
+        ui.add_space(10.0);
+        ui.horizontal(|ui| match &row.problem {
+            None => {
+                let label = if row.circuit { "Drive this circuit" } else { "Drive this stage" };
+                if ui.add(crate::pages::start_button(label)).on_hover_text("Enter").clicked() {
+                    action = Some(Action::Choose(row.index));
+                }
+                if favourite_button(ui, env.favourites.contains(&row.number)).clicked() {
+                    action = Some(Action::Favourite(row.number));
+                }
+            }
+            Some(problem) => {
+                ui.label(RichText::new(format!("Cannot start: {problem}")).color(crate::pages::WARN));
+                if favourite_button(ui, env.favourites.contains(&row.number)).clicked() {
+                    action = Some(Action::Favourite(row.number));
+                }
+            }
+        });
+        if row.added {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if self.confirm != Some(row.number) {
+                    if ui.button("Remove…").on_hover_text("Delete the stage's folder from your files").clicked() {
+                        self.confirm = Some(row.number);
+                    }
+                    return;
+                }
+                ui.label("Delete its folder? Your records and ghosts on it stay.");
+                let delete = egui::Button::new("Remove").fill(Color32::from_rgb(150, 50, 50));
+                if ui.add(delete).clicked() {
+                    self.removal = Some(row.index);
+                    self.confirm = None;
+                }
+                if ui.button("Cancel").clicked() {
+                    self.confirm = None;
+                }
+            });
+        }
+        if self.confirm.is_some_and(|n| n != row.number) {
+            self.confirm = None;
+        }
+        action
+    }
 }
 
 /// The list's columns: the star, the name, the third (country or author), the length (its right edge) and the surface.
@@ -795,6 +962,9 @@ fn columns(left: f32) -> [f32; 5] {
 
 /// The room the name has before the third column.
 const NAME_WIDTH: f32 = 170.0;
+
+/// The keys line of the Stages page's list.
+const PAGE_KEYS: &str = "⏶⏷ move    Enter drive this stage    Ctrl+D favourite";
 
 #[derive(Clone, Copy)]
 enum Column {
@@ -1248,6 +1418,26 @@ mod tests {
         browser.collection = Collection::CannotStart;
         assert_eq!(press(&mut browser, &maps, Key::Enter, Modifiers::NONE), None);
         assert_eq!(browser.nav.cursor, 2);
+    }
+
+    #[test]
+    fn the_stages_page_has_added_and_circuit_collections_and_ignores_escape() {
+        let maps = [Map { number: 54, stages: Vec::new(), origin: Origin::Retail }, rsf_map(5), rsf_map(1)];
+        let mut rows = rows_of(&maps);
+        rows[1].added = true;
+        rows[2].added = true; // cannot start, but removable
+        rows[0].circuit = true;
+        let added = lines(&rows, &Collection::Added, &Filter::default(), Sort::Name, &[], &[]);
+        assert_eq!(names(&rows, &added), ["Synthetic 5 Hills", "[Cannot start]", "Synthetic 1 Hills"]);
+        let circuits = lines(&rows, &Collection::Circuits, &Filter::default(), Sort::Name, &[], &[]);
+        assert_eq!(names(&rows, &circuits), ["Tanner"]);
+        let sidebar: Vec<_> = collections(&rows, &[], &[]).into_iter().map(|(_, n, c)| (n, c)).collect();
+        assert!(sidebar.contains(&("Added by you".to_owned(), 2)) && sidebar.contains(&("Circuits".to_owned(), 1)));
+        let mut browser = StageBrowser::default();
+        browser.set_rows(rows);
+        browser.start_page(1);
+        assert_eq!(press(&mut browser, &maps, Key::Escape, Modifiers::NONE), None);
+        assert_eq!(press(&mut browser, &maps, Key::Enter, Modifiers::NONE), Some(Action::Choose(1)));
     }
 
     /// `RBR_LAUNCHER_SHOTS=DIR`: the big catalog's browser drawn to `DIR/stage-browser-*.png`.

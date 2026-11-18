@@ -228,7 +228,7 @@ impl Form {
             ui.vertical(|ui| {
                 let root = self.game_root();
                 if let Some(car) = self.catalog.cars.get(self.car) {
-                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &root);
+                    self.previews.ui(ui, &self.catalog.maps[self.map], car, self.skins.choice(car), &root);
                 }
                 ui.add_space(12.0);
                 self.best_lap_card(ui);
@@ -243,7 +243,7 @@ impl Form {
         fields(ui, "circuit car", |ui| {
             ui.label("Car");
             if self.catalog.cars.is_empty() {
-                ui.colored_label(WARN, "No cars yet: add some on the Settings page with Download cars…");
+                ui.colored_label(WARN, "No cars yet: add some on Content > Get more");
             } else {
                 ui.vertical(|ui| self.car_field(ui, Target::Circuit));
             }
@@ -310,7 +310,7 @@ impl Form {
     }
 
     /// Makes the map with `number` the circuit, and the most recent pick.
-    fn choose_circuit(&mut self, number: u32) {
+    pub(crate) fn choose_circuit(&mut self, number: u32) {
         self.circuit.map = Some(number);
         browser::remember(&mut self.recent_maps, number);
     }

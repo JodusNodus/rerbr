@@ -14,6 +14,47 @@ use crate::Form;
 /// How often a running viewer is checked for its exit.
 const POLL: Duration = Duration::from_millis(250);
 
+/// The launcher's three sections: driving, the content driven, and the settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    Drive,
+    Content,
+    Settings,
+}
+
+impl Section {
+    /// The sections, in order, with their names.
+    pub const ALL: [(Section, &'static str); 3] =
+        [(Section::Drive, "Drive"), (Section::Content, "Content"), (Section::Settings, "Settings")];
+
+    /// The section's pages, in order, with their names.
+    pub fn pages(self) -> &'static [(Page, &'static str)] {
+        match self {
+            Section::Drive => &[
+                (Page::Drive, "Rally"),
+                (Page::Circuit, "Circuit"),
+                (Page::Championship, "Championship"),
+                (Page::School, "School"),
+                (Page::Setup, "Car setup"),
+                (Page::Replays, "Replays"),
+            ],
+            Section::Content => &[
+                (Page::Cars, "Cars"),
+                (Page::Stages, "Stages"),
+                (Page::Codrivers, "Co-drivers"),
+                (Page::Get, "Get more"),
+            ],
+            Section::Settings => {
+                &[(Page::Settings, "General"), (Page::Controls, "Controls"), (Page::Graphics, "Graphics & sound")]
+            }
+        }
+    }
+
+    fn index(self) -> usize {
+        Self::ALL.iter().position(|(s, _)| *s == self).unwrap_or(0)
+    }
+}
+
 /// The launcher's pages, by what the player wants to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -27,47 +68,47 @@ pub enum Page {
     /// The car setup.
     Setup,
     Replays,
+    /// Every car: its details and skins, the cars added and their removal.
+    Cars,
+    /// Every stage: its details, the stages added and their removal.
+    Stages,
+    /// The co-driver's voice and the pace notes, and their packs.
+    Codrivers,
+    /// Where new content comes from: gvrc.de's cars, the stage sites, the recent downloads and Add.
+    Get,
     Controls,
     /// The window, the camera, the HUD, the pace notes, the sound and the renderer's additions.
     Graphics,
-    /// The install folder, the advanced paths and the programs.
+    /// The install folder, the physics, the telemetry and the advanced paths.
     Settings,
 }
 
 impl Page {
-    /// The tabs, in order.
-    const TABS: [(Page, &'static str); 9] = [
-        (Page::Drive, "Drive"),
-        (Page::Circuit, "Circuit"),
-        (Page::Championship, "Championship"),
-        (Page::School, "School"),
-        (Page::Setup, "Car setup"),
-        (Page::Replays, "Replays"),
-        (Page::Controls, "Controls"),
-        (Page::Graphics, "Graphics & sound"),
-        (Page::Settings, "Settings"),
-    ];
+    /// The section the page is in.
+    pub fn section(self) -> Section {
+        Section::ALL
+            .into_iter()
+            .map(|(s, _)| s)
+            .find(|s| s.pages().iter().any(|(p, _)| *p == self))
+            .unwrap_or(Section::Drive)
+    }
 
-    /// The page a shortcut opens: Ctrl+1 to Ctrl+9 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next,
-    /// Ctrl+Shift+Tab or Ctrl+Page Up the one before.
-    fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+3 (Cmd on macOS) a section (`last`: the page each was left on),
+    /// Ctrl+Tab or Ctrl+Page Down the section's next page, Ctrl+Shift+Tab or Ctrl+Page Up the one before.
+    fn shortcut(self, input: &mut egui::InputState, last: &[Page; 3]) -> Option<Page> {
         use egui::{Key, Modifiers};
-        const NUMBERS: [Key; 9] =
-            [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
-        let at = Self::TABS.iter().position(|(p, _)| *p == self).unwrap_or(0);
-        let by = |n: usize| Self::TABS[(at + n) % Self::TABS.len()].0;
+        const NUMBERS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
+        let pages = self.section().pages();
+        let at = pages.iter().position(|(p, _)| *p == self).unwrap_or(0);
+        let by = |n: usize| pages[(at + n) % pages.len()].0;
         let shift_ctrl = Modifiers::CTRL | Modifiers::SHIFT;
         if input.consume_key(shift_ctrl, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageUp) {
-            return Some(by(Self::TABS.len() - 1));
+            return Some(by(pages.len() - 1));
         }
         if input.consume_key(Modifiers::CTRL, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageDown) {
             return Some(by(1));
         }
-        NUMBERS
-            .iter()
-            .zip(Self::TABS)
-            .find(|(key, _)| input.consume_key(Modifiers::COMMAND, **key))
-            .map(|(_, (p, _))| p)
+        NUMBERS.iter().zip(last).find(|(key, _)| input.consume_key(Modifiers::COMMAND, **key)).map(|(_, p)| *p)
     }
 }
 
@@ -121,6 +162,8 @@ pub fn combo<T: Clone + PartialEq, S: Into<String>>(
 pub const WARN: Color32 = Color32::from_rgb(230, 180, 60);
 pub const GOOD: Color32 = Color32::from_rgb(110, 190, 110);
 pub const ACCENT: Color32 = Color32::from_rgb(40, 120, 70);
+/// A section not shown, in the top row.
+const DIM: Color32 = Color32::from_rgb(140, 140, 140);
 
 /// The launcher's look: readable sizes and roomier spacing than egui's defaults.
 pub(crate) fn theme(ctx: &egui::Context) {
@@ -175,7 +218,7 @@ pub enum Fix {
     Settings,
     /// The Settings page with NGP 7.4.778's download asked (`Form::ask_download_ngp`).
     DownloadNgp,
-    /// The Settings page with gvrc.de's car list open.
+    /// The Get more page with gvrc.de's car list open.
     DownloadCars,
     /// The Circuit page, for a circuit the Drive page has selected.
     Circuit,
@@ -198,7 +241,7 @@ pub const NO_NGP: &str = "This game folder has no NGP; ReRBR needs NGP 7.4.778."
 pub const NGP_WHY: &str = "ReRBR's physics is verified against NGP 7.4.778 only. Its download keeps NGP.dll and \
                            physics.rbz in ReRBR's folder; nothing installed changes.";
 /// What the launcher says without a car NGP drives.
-pub const NO_CARS: &str = "No cars yet. Download cars from gvrc.de's NGP car packs on the Settings page, or \
+pub const NO_CARS: &str = "No cars yet. Download cars from gvrc.de's NGP car packs on Content > Get more, or \
                           choose a game folder with community cars.";
 /// What the player sees when the viewer or `rbr-standalone` is missing; the paths go to the log
 /// ([`Form::log_missing_programs`]).
@@ -294,7 +337,7 @@ impl Form {
                 self.ask_download_ngp();
             }
             Fix::DownloadCars => {
-                self.page = Page::Settings;
+                self.page = Page::Get;
                 self.open_car_list();
             }
             Fix::Circuit => self.page = Page::Circuit,
@@ -302,6 +345,51 @@ impl Form {
     }
 
     /// A game with no cars to drive (just set up from the disc, say) opens on the Settings page's car list.
+    /// The two rows of tabs: the sections, large, and the section's pages under them; the page a click or a shortcut
+    /// opens.
+    fn nav_ui(&mut self, ui: &mut egui::Ui) -> Option<Page> {
+        let section = self.page.section();
+        self.last_pages[section.index()] = self.page;
+        let mut open = ui.input_mut(|i| self.page.shortcut(i, &self.last_pages));
+        let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("ReRBR").size(22.0).strong().color(Color32::WHITE));
+            ui.add_space(28.0);
+            for (n, (s, name)) in Section::ALL.into_iter().enumerate() {
+                let on = s == section;
+                let text = RichText::new(name).size(19.0).color(if on { Color32::WHITE } else { DIM });
+                let response = ui
+                    .add(egui::Button::new(text).frame(false).min_size(egui::vec2(0.0, 30.0)))
+                    .on_hover_text(format!("{modifier}+{}", n + 1));
+                if on {
+                    let r = response.rect;
+                    let bar = egui::Rect::from_min_max(
+                        egui::pos2(r.left(), r.bottom() + 1.0),
+                        egui::pos2(r.right(), r.bottom() + 4.0),
+                    );
+                    ui.painter().rect_filled(bar, 1.5, GOOD);
+                }
+                if response.clicked() {
+                    open = Some(self.last_pages[n]);
+                }
+                ui.add_space(14.0);
+            }
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            for &(page, name) in section.pages() {
+                let tab = egui::Button::selectable(self.page == page, RichText::new(name).size(14.5));
+                let tip = format!("{modifier}+Tab: the next page");
+                if ui.add(tab.min_size(egui::vec2(0.0, 26.0))).on_hover_text(tip).clicked() {
+                    open = Some(page);
+                }
+            }
+        });
+        ui.add_space(6.0);
+        open
+    }
+
     pub fn offer_cars(&mut self) {
         if self.readiness().is_some_and(|issue| issue.fix == Some(Fix::DownloadCars)) {
             self.apply(Fix::DownloadCars);
@@ -380,7 +468,7 @@ impl Form {
         let old_paths = self.ngp_physics.clone();
         let old_telemetry = self.telemetry_udp.clone();
         let old_head_gasket = (self.head_gasket, self.physics);
-        let old_car_picks = self.gearboxes.clone();
+        let old_car_picks = (self.gearboxes.clone(), self.skins.chosen.clone());
         let old_folder = self.install_folder.clone();
         let old_recent = (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone());
         let old_codriver =
@@ -390,26 +478,13 @@ impl Form {
         let old_circuit = (self.circuit.map, self.circuit.laps);
         ctx.root_ui(|root| {
             egui::Panel::top("tabs").show(root, |ui| {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("ReRBR").size(20.0).strong());
-                    ui.add_space(20.0);
-                    let mut open = ui.input_mut(|i| self.page.shortcut(i));
-                    for (n, (page, name)) in Page::TABS.into_iter().enumerate() {
-                        let tab = egui::Button::selectable(self.page == page, RichText::new(name).size(15.5));
-                        let key = format!("{}+{}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }, n + 1);
-                        if ui.add(tab.min_size(egui::vec2(0.0, 28.0))).on_hover_text(key).clicked() {
-                            open = Some(page);
-                        }
+                let open = self.nav_ui(ui);
+                if let Some(page) = open {
+                    if page == Page::Replays {
+                        self.replays.refresh(&self.here());
                     }
-                    if let Some(page) = open {
-                        if page == Page::Replays {
-                            self.replays.refresh(&self.here());
-                        }
-                        self.page = page;
-                    }
-                });
-                ui.add_space(4.0);
+                    self.page = page;
+                }
             })
         });
         let readiness = self.readiness();
@@ -483,6 +558,10 @@ impl Form {
                     )
                 }
                 Page::Graphics => self.graphics_page(ui),
+                Page::Cars => self.cars_page(ui),
+                Page::Stages => self.stages_page(ui),
+                Page::Codrivers => self.codrivers_page(ui),
+                Page::Get => self.get_page(ui),
                 Page::Settings => {
                     egui::ScrollArea::vertical().id_salt("settings").show(ui, |ui| self.settings_page(ui));
                 }
@@ -542,7 +621,7 @@ impl Form {
             || old_paths != self.ngp_physics.clone()
             || old_telemetry != self.telemetry_udp
             || old_head_gasket != (self.head_gasket, self.physics)
-            || old_car_picks != self.gearboxes
+            || old_car_picks != (self.gearboxes.clone(), self.skins.chosen.clone())
             || old_graphics
                 != (
                     self.graphics,
@@ -630,21 +709,33 @@ mod tests {
                 egui::RawInput { events: vec![egui::Event::ModifiersChanged(modifiers), event], ..Default::default() };
             let mut opened = None;
             let ctx = egui::Context::default();
-            ctx.run_pass(input, |ctx| opened = ctx.input_mut(|i| page.shortcut(i))).textures_delta.clear();
+            let last = [Page::School, Page::Stages, Page::Settings];
+            ctx.run_pass(input, |ctx| opened = ctx.input_mut(|i| page.shortcut(i, &last))).textures_delta.clear();
             opened
         };
         let (ctrl, shift_ctrl) =
             (Modifiers::CTRL | Modifiers::COMMAND, Modifiers::CTRL | Modifiers::COMMAND | Modifiers::SHIFT);
-        assert_eq!(press(Page::Drive, Key::Num2, ctrl), Some(Page::Circuit));
-        assert_eq!(press(Page::Drive, Key::Num4, ctrl), Some(Page::School));
-        assert_eq!(press(Page::Drive, Key::Num5, ctrl), Some(Page::Setup));
-        assert_eq!(press(Page::Drive, Key::Num9, ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Drive, Key::Num1, ctrl), Some(Page::School));
+        assert_eq!(press(Page::Drive, Key::Num2, ctrl), Some(Page::Stages));
+        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Drive, Key::Num4, ctrl), None);
         assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Circuit));
-        assert_eq!(press(Page::Settings, Key::PageDown, ctrl), Some(Page::Drive));
-        assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Settings));
-        assert_eq!(press(Page::Replays, Key::PageUp, ctrl), Some(Page::Setup));
+        assert_eq!(press(Page::Replays, Key::PageDown, ctrl), Some(Page::Drive));
+        assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Replays));
+        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Get));
+        assert_eq!(press(Page::Graphics, Key::Tab, ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Drive, Key::Num3, Modifiers::NONE), None);
         assert_eq!(press(Page::Drive, Key::Tab, Modifiers::NONE), None);
+    }
+
+    /// Every page is in one section.
+    #[test]
+    fn every_page_is_in_a_section() {
+        let pages: Vec<Page> = Section::ALL.iter().flat_map(|(s, _)| s.pages().iter().map(|(p, _)| *p)).collect();
+        for &page in &pages {
+            assert_eq!(pages.iter().filter(|p| **p == page).count(), 1, "{page:?}");
+            assert!(page.section().pages().iter().any(|(p, _)| *p == page), "{page:?}");
+        }
     }
 
     /// Every dropdown choice parses back from its settings word, with a label of its own (`settings_round_trip`
@@ -712,7 +803,7 @@ mod tests {
         assert_eq!(page(&no_cars), (Page::Settings, Some((NO_CARS.to_owned(), Some(Fix::DownloadCars)))));
         no_cars.page = Page::Drive;
         no_cars.offer_cars();
-        assert_eq!(no_cars.page, Page::Settings);
+        assert_eq!(no_cars.page, Page::Get);
         std::fs::remove_dir_all(&here).unwrap();
     }
 }

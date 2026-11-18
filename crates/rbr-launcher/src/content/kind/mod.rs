@@ -15,6 +15,7 @@ pub mod classic;
 pub mod codriver;
 pub mod disc;
 pub mod ngp;
+pub mod skin;
 pub mod unknown;
 
 /// What a kind found in a source.
@@ -49,6 +50,8 @@ pub struct Known {
     pub numbers: Vec<u32>,
     /// The game's `Maps/TrackSettings.ini`, whose weathers a stage without its own borrows.
     pub weather: Option<PathBuf>,
+    /// The cars a skin can dress.
+    pub cars: Vec<skin::Target>,
 }
 
 /// What a kind needs to add: the player's folder, what is listed, the progress report and the cancel flag.
@@ -85,7 +88,7 @@ pub trait Kind: Sync {
         items.iter().flat_map(one).collect()
     }
 
-    /// A refusal: asked only when no other kind found anything.
+    /// Asked only when no other kind found anything: a refusal, or a skin (a car model and a stage have textures too).
     fn fallback(&self) -> bool {
         false
     }

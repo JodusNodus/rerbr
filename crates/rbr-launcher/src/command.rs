@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use rbr_formats::car_pack;
 use rbr_formats::pacenote::codriver;
 use rbr_formats::rsf::stage_list;
 use rbr_formats::saves::SaveDir;
@@ -217,6 +218,8 @@ pub struct ViewerLaunch {
     pub marker: MarkerSettings,
     pub bindings: Option<PathBuf>,
     pub setup: Option<PathBuf>,
+    /// The skin chosen for the car (`--car-skin`); none leaves the model's own textures, or RSF's selection.
+    pub skin: Option<car_pack::Skin>,
     /// A rally school lesson (`--school N`): the lesson's tyre, and with car 5 its setup; without `--tyre`,
     /// `--setup`, `--surface`, `--championship` and `--season-row`.
     pub school: Option<Lesson>,
@@ -255,6 +258,7 @@ impl Default for ViewerLaunch {
             marker: MarkerSettings::default(),
             bindings: None,
             setup: None,
+            skin: None,
             school: None,
         }
     }
@@ -283,6 +287,7 @@ impl ViewerLaunch {
             marker,
             bindings,
             setup,
+            skin,
             school,
         } = self;
         // The folder the viewer loads: an archive car's own, a pack car's model folder; then the flags resolving
@@ -298,7 +303,7 @@ impl ViewerLaunch {
             catalog::Physics::Archive => car.name.clone(),
         };
         let mut args: Vec<String> = vec![stage.name.clone(), "--car".into(), folder];
-        args.extend(pack_car_args(car));
+        args.extend(pack_car_args(car, skin.as_ref()));
         // The year picks the car's headlamp type (the viewer's `Enhance::lighting`).
         args.extend(car.year.iter().flat_map(|year| ["--car-year".to_owned(), year.to_string()]));
         args.extend(vec![
@@ -401,20 +406,25 @@ impl ViewerLaunch {
         if let (None, Some(path)) = (school, setup) {
             args.extend(["--setup".into(), path.display().to_string()]);
         }
-        args.extend(pack_car_args(car));
+        args.extend(pack_car_args(car, None));
         args
     }
 }
 
 /// The flags resolving a pack car in the viewer, `rbr-standalone` and `rbr-sound`: its pack, its model's `.sgc`
-/// path, its bank and its saved key ([`car_pack::Flags`]). Empty for an archive car.
-pub fn pack_car_args(car: &Car) -> Vec<String> {
-    let catalog::Physics::Pack(pack) = &car.physics else { return Vec::new() };
-    rbr_formats::car_pack::Flags {
-        pack: Some(pack.clone()),
-        model: car.model_path.clone(),
-        bank: car.bank.clone(),
-        key: Some(car.key.clone()),
+/// path, its bank and its saved key ([`car_pack::Flags`]), and the `skin` chosen for any car: an archive car has
+/// only that.
+pub fn pack_car_args(car: &Car, skin: Option<&car_pack::Skin>) -> Vec<String> {
+    let skin = skin.cloned();
+    match &car.physics {
+        catalog::Physics::Pack(pack) => car_pack::Flags {
+            pack: Some(pack.clone()),
+            model: car.model_path.clone(),
+            bank: car.bank.clone(),
+            key: Some(car.key.clone()),
+            skin,
+        },
+        catalog::Physics::Archive => car_pack::Flags { skin, ..Default::default() },
     }
     .argv()
 }
@@ -728,6 +738,7 @@ impl Form {
             marker: self.marker,
             bindings: bindings.map(Path::to_path_buf),
             setup,
+            skin: self.skins.choice(car),
             school,
         }
         .args();
@@ -1135,6 +1146,19 @@ mod tests {
         assert_eq!(value(&args, "--car-key").as_deref(), Some("rsf-24"));
         assert!(!args[live..].contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");
         assert!(args[live..].contains(&"--car-pack".to_owned()));
+    }
+
+    /// A chosen skin goes to the viewer for any car, not to the physics program, and none sends nothing.
+    #[test]
+    fn the_chosen_skin_goes_to_the_viewer() {
+        let car = Car { slot: 6, name: "COROLLA".into(), key: "COROLLA".into(), ..Car::default() };
+        let launch = |skin| ViewerLaunch { car: car.clone(), skin, ..Default::default() }.args();
+        let (none, dir) = (launch(None), launch(Some(car_pack::Skin::Dir(PathBuf::from("/h/skins/COROLLA/Red")))));
+        assert_eq!(value(&none, "--car-skin"), None);
+        assert_eq!(value(&dir, "--car-skin").as_deref(), Some("/h/skins/COROLLA/Red"));
+        assert_eq!(value(&launch(Some(car_pack::Skin::Original)), "--car-skin").as_deref(), Some("none"));
+        let live = dir.iter().position(|a| a == "--live").unwrap();
+        assert!(!dir[live..].contains(&"--car-skin".to_owned()));
     }
 
     #[test]

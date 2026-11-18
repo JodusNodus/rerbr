@@ -147,7 +147,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   not). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
   stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
   co-drivers and pace notes through `codriver_packs::import`; NGP car pieces (physics, model and banks dropped
-  together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in.
+  together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
+  car skin to its car (`content/kind/skin.rs`, below).
   Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. Recent
   downloads (Downloads, 30 days, 5) list any of these not added yet. Links: RSF's stage download, BTBfin, RBR Czech's
   stage list (its installers are read, never run).
@@ -170,8 +171,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Keyboard (2026-11-03): Ctrl+1..9 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
-  or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
+- Three sections (user decision 2026-11-18; `pages::Section`): Drive (Rally, Circuit, Championship, School, Car setup,
+  Replays), Content (Cars, Stages, Co-drivers, Get more) and Settings (General, Controls, Graphics & sound), a row of
+  sections over a row of the section's pages; a section's tab opens the page it was last on (`Form::last_pages`).
+- Keyboard (2026-11-03, sections 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the sections, Ctrl+Tab / Ctrl+Page Down
+  the section's next page, with Shift or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
   (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
@@ -225,6 +229,30 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back or Random, Esc
+  does nothing) over every map, circuits too, with the collections "Added by you" (folders in `<files>/tracks/`) and
+  "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
+  game's saves, not shown). "Drive this stage" sets the Rally (or Circuit) stage and opens that page. Remove… deletes
+  only a folder directly in `tracks/` (`remove_added`), then drops the map and relists; records (`lap-records.ini`,
+  `GhostCars/*_<map>.ghc`, saves) stay.
+- Car skins (`car_skins.rs`, 2026-11-17): the Skin box and Import skin… sit under the turntable on Content > Cars and
+  in the car picker's detail panel. A skin is a folder
+  of files over the model folder's by path (`textures/*.dds`, shader settings: `Data::with_skin(model, dir)`, retail cars
+  too). Listed: the player's `skins/<car key>/<skin>/` (imported) and a community car's own `Cars/<model>/skins/*`
+  (RSF's, read only); none for a stand-in model. The pick is ours, per car key (`car_skins = key:skin|...`, `none` =
+  the model's own textures); unset leaves RSF's `.rsfconfig` selection (never written) and retail's own textures. It goes
+  to the viewer as `--car-skin DIR|none` (`car_pack::Flags::skin`, wins over `.rsfconfig`; not to `rbr-standalone`) and to
+  the turntable preview. Import takes a `.zip`, `.7z` or folder (RBR Skins Center's, RSF's exports; the Add's sources):
+  each shallowest folder holding `textures/` becomes a skin, named for the archive (several in one archive: for their
+  folders); same name replaces. The Add (2026-11-18, user decision) takes a skin too, when no other kind does (a model
+  archive and stages hold textures): its car is the one whose model folder its path names (`Cars/<model>/`), else the
+  one whose model `Textures` share the most `.dds` names with it (at least half; names are model-prefixed: Fiesta
+  Rally3's `Zasada_Rally3` goes to the Rally3, not the Rally3 Evo), into every car of that model; several models or
+  none: the notice's Open Cars, for the car's own Import skin…. The skin added is chosen, and Open shows its car.
+  Checked with a channel-swapped retail ZR skin (picker, preview, `viewer --screenshot`) and RSF's Fiesta Rally3
+  `Zasada_Rally3`; no real Skins Center archive yet (links are Mega/Drive, not fetchable here).
+  The cars added from gvrc.de keep their model in the files folder's `Cars/<model>/`; of 99 only one has a `skins/`
+  folder (a stray `.rar`, no skin folder), so they offer imported skins only.
 - Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or any saved setup of the car,
   the stage surface's first, then the other surfaces' (labelled), then those of no known surface (user decision
   2026-11-04); the pick is kept per car and surface (`[setup]`, `<surface> <car> = <name>`, `<other surface>/<name>`

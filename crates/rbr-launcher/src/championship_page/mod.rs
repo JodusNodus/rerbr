@@ -37,7 +37,7 @@ use rbr_season::service::{ParkState, ServiceKind, ServicePark};
 
 use crate::catalog::Car;
 
-mod common;
+pub(crate) mod common;
 pub mod fixture;
 pub(crate) mod launch;
 

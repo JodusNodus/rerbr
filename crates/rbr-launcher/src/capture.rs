@@ -18,7 +18,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     // The previews are made on their own threads: the Drive page waits for them.
     let (map, car) = (form.catalog.maps[form.map].clone(), form.car().cloned());
     if let Some(car) = &car {
-        form.previews.wait_for(&map, car, &form.game_root());
+        form.previews.wait_for(&map, car, form.skins.choice(car), &form.game_root());
     }
     let pages = [
         (Page::Drive, "drive"),
@@ -28,11 +28,26 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         (Page::Controls, "controls"),
         (Page::Graphics, "graphics-sound"),
         (Page::Settings, "settings"),
+        (Page::Cars, "cars"),
+        (Page::Stages, "stages"),
+        (Page::Codrivers, "codrivers"),
+        (Page::Get, "get"),
     ];
     for (page, name) in pages {
         form.page = page;
         if page == Page::Circuit {
             form.wait_for_scan(&egui::Context::default());
+        }
+        if page == Page::Cars {
+            // Drawn once for its list, then the highlighted car's turntable waited for.
+            let home = form.here();
+            if let Some(k) = form.catalog.cars.iter().position(|c| !crate::car_skins::installed(&home, c).is_empty()) {
+                form.cars_page.browser.show(k);
+            }
+            draw(|ctx| form.ui(ctx))?;
+            if let Some(car) = form.cars_page.browser.highlighted().and_then(|k| form.catalog.cars.get(k)).cloned() {
+                form.previews.wait_for(&map, &car, form.skins.choice(&car), &form.game_root());
+            }
         }
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
     }
@@ -53,10 +68,12 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     (form.clouds, form.precipitation, form.fog, form.wetness, form.options.weather, form.weather_row) = saved;
     form.weather_adjust = false;
-    // The Settings page with the NGP download's confirmation and gvrc.de's car list open (from a fixed list).
+    // Settings with the NGP download's confirmation, and Get more with gvrc.de's car list open (from a fixed list).
     form.page = Page::Settings;
     form.downloads.screenshot();
     shot(&dir.join("settings-downloads.png"), |ctx| form.ui(ctx))?;
+    form.page = Page::Get;
+    shot_sized(&dir.join("get-downloads.png"), (1100, 1000), |ctx| form.ui(ctx))?;
     form.downloads = Default::default();
     // The Drive page with the car list open on the selection.
     form.page = Page::Drive;
@@ -118,7 +135,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
 fn fresh_previews(form: &mut Form, map: &crate::catalog::Map, car: Option<&crate::catalog::Car>) {
     form.previews = preview::Previews::new(form.data.clone());
     if let Some(car) = car {
-        form.previews.wait_for(map, car, &form.game_root());
+        form.previews.wait_for(map, car, form.skins.choice(car), &form.game_root());
     }
 }
 

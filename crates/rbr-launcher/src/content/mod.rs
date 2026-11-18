@@ -7,13 +7,15 @@
 //! `codriver_packs::import`; NGP car pieces (physics zip, model and sound-bank archives dropped together) as one
 //! `car_packs::Download`; NGP's package to the kept `NGP 7.4.778/` folder, as the Settings download does; a disc image
 //! opens "Set up from the disc…" with the disc filled in; classic-format stages (loose, RSF-shaped or from an NSIS
-//! installer) to `tracks/` too, renumbered when their number is taken. RAR files, other installers, encrypted stages and
-//! anything unknown are refused with the reason. A new kind or container is one module and one line below.
+//! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`). RAR
+//! files, other installers, encrypted stages and anything unknown are refused with the reason. A new kind or container
+//! is one module and one line below.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use crate::job::Report;
+use crate::pages::Page;
 use kind::{Ctx, Found, Item, Kind, Known};
 use source::Source;
 
@@ -34,6 +36,7 @@ const KINDS: &[&dyn Kind] = &[
     &kind::codriver::Codriver,
     &kind::car::Car,
     &kind::classic::Classic,
+    &kind::skin::Skin,
     &kind::unknown::Unknown,
 ];
 
@@ -66,10 +69,28 @@ pub fn detect(src: &dyn Source) -> Vec<(usize, Found)> {
 pub enum Goto {
     /// The stage picker, on the stage folder.
     Stage(String),
-    /// The Settings page.
+    /// Content > Cars.
+    Cars,
+    /// Content > Cars on the car with this key, wearing the skin named.
+    Skin { car: String, skin: String },
+    /// Content > Co-drivers.
+    Codrivers,
+    /// Settings > General.
     Settings,
-    /// The Settings page, with the disc setup open on this disc.
+    /// Settings > General, with the disc setup open on this disc.
     Disc(PathBuf),
+}
+
+impl Goto {
+    /// The page the Open button goes to, and its label (`None`: the stage picker's own way).
+    pub fn page(&self) -> Option<(Page, &'static str)> {
+        match self {
+            Goto::Cars | Goto::Skin { .. } => Some((Page::Cars, "Open Cars")),
+            Goto::Codrivers => Some((Page::Codrivers, "Open Co-drivers")),
+            Goto::Settings | Goto::Disc(_) => Some((Page::Settings, "Open Settings")),
+            Goto::Stage(_) => None,
+        }
+    }
 }
 
 /// What a launcher list an outcome changed (or tried to): read again when a run is done.
@@ -135,6 +156,11 @@ impl Outcome {
 
     pub fn opening(self, file: Option<PathBuf>) -> Outcome {
         Outcome { open: file, ..self }
+    }
+
+    /// An outcome whose Open button goes to `goto`, a failed one's too (where to do it by hand).
+    pub fn going(self, goto: Goto) -> Outcome {
+        Outcome { goto: Some(goto), ..self }
     }
 
     pub fn refreshing(self, refresh: Refresh) -> Outcome {
@@ -289,7 +315,7 @@ mod tests {
         let got = lines(&done);
         let has = |start: &str| got.iter().any(|l| l.starts_with(start));
         assert!(has("ok Added Autio I Gravel (BTB stage): it's in the stage picker"), "{got:?}");
-        assert!(has("ok Added Voice (co-driver): pick it in Settings"), "{got:?}");
+        assert!(has("ok Added Voice (co-driver): pick it in Content > Co-drivers"), "{got:?}");
         assert!(has("no Couldn't add stage.rar: RAR archives can't be read"), "{got:?}");
         assert!(has("no Couldn't add Setup.exe: installers can't be read: extract it with 7-Zip"), "{got:?}");
         assert!(has("no Couldn't add readme.txt: not recognised: ReRBR adds BTB stages"), "{got:?}");

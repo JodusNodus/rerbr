@@ -1,4 +1,4 @@
-//! The Settings page's Co-driver section: the voice and its preview, what the voice calls on the Drive page's stage
+//! The Content > Co-drivers page: the voice and its preview, what the voice calls on the Drive page's stage
 //! (the notes are picked by themselves, `codriver_packs::pick_notes`), the corner numbers, the call timing, and the
 //! owned packs (`codriver_packs`).
 
@@ -6,7 +6,7 @@ use egui::{Color32, ComboBox, DragValue};
 use rbr_sound::preview::{self as codriver_preview, Preview};
 
 use crate::command::ORIGINAL_VOICE;
-use crate::pages::{combo, fields, section, FIELD, GOOD, WARN};
+use crate::pages::{combo, fields, section, Page, FIELD, GOOD, WARN};
 use crate::Form;
 
 /// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
@@ -97,7 +97,7 @@ impl Form {
         )
     }
 
-    /// The Co-driver section: the voice and its preview, what the selected stage gets, the corner numbers (when they
+    /// The page: the voice and its preview, what the selected stage gets, the corner numbers (when they
     /// change anything), the call timing, and the packs.
     pub fn codriver_section(&mut self, ui: &mut egui::Ui) {
         section(ui, "Co-driver");
@@ -127,9 +127,8 @@ impl Form {
                 ui.add(DragValue::new(&mut self.marker.marker_threshold).suffix(" km/h")).on_hover_text(tip);
                 ui.end_row();
             }
-
-            self.codriver_packs_row(ui);
         });
+        self.codriver_packs_ui(ui);
     }
 
     /// The Voice row: who calls the pace notes, with a preview of the corner ladder and one distance call. An
@@ -255,83 +254,66 @@ impl Form {
         }
     }
 
-    /// The Packs row: where to get packs (adding is the Add content section's), and Manage packs.
-    fn codriver_packs_row(&mut self, ui: &mut egui::Ui) {
-        ui.label("Packs");
-        ui.vertical(|ui| {
+    /// The packs: the voices and the pace notes, the ones ReRBR owns with Remove, and the link to Get more.
+    fn codriver_packs_ui(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Packs");
+        // No removals while importing or driving.
+        let idle = !self.content.busy() && self.child.is_none();
+        if self.rsf_plugin && !self.rsf_voices.is_empty() {
+            let n = self.rsf_voices.len();
+            ui.label(format!("RallySimFans install: {n} voice{}, read only", if n == 1 { "" } else { "s" }));
+        }
+        let mut remove_voice = None;
+        for pack in &self.owned_voices {
             ui.horizontal(|ui| {
-                let links = [
-                    (
-                        "Get co-drivers…",
-                        "https://luppisrbr.blogspot.com/p/compatible-co-driver-mods-v3.html",
-                        "Luppis's list of V3 co-driver voices: download one, then add it here",
+                match &pack.problem {
+                    Some(problem) => ui.colored_label(WARN, format!("{}: {problem}", pack.name)),
+                    None => ui.colored_label(
+                        GOOD,
+                        format!(
+                            "✔ {}: {} voices, {} call styles, {} range sets",
+                            pack.name,
+                            pack.voices.len(),
+                            pack.styles.len(),
+                            pack.ranges.len()
+                        ),
                     ),
-                    (
-                        "Get pace notes…",
-                        "https://luppisrbr.blogspot.com/p/how-to-install-pacenotes.html",
-                        "Luppis's V3 pace notes (a Dropbox zip): download the V3 pack, then add it here. V3 notes \
-                         go with V3 co-drivers.",
-                    ),
-                ];
-                for (label, url, tip) in links {
-                    if ui.link(label).on_hover_text(tip).clicked() {
-                        crate::crash::open(url.as_ref());
-                    }
+                };
+                if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
+                    remove_voice = Some(pack.name.clone());
                 }
             });
-            ui.label(
-                egui::RichText::new("The lists are Luppis's; the voices are their authors'.").color(Color32::GRAY),
-            );
-            egui::CollapsingHeader::new("Manage packs").id_salt("codriver packs").show(ui, |ui| {
-                // No removals while importing or driving.
-                let idle = !self.content.busy() && self.child.is_none();
-                let mut remove_voice = None;
-                for pack in &self.owned_voices {
-                    ui.horizontal(|ui| {
-                        match &pack.problem {
-                            Some(problem) => ui.colored_label(WARN, format!("{}: {problem}", pack.name)),
-                            None => ui.colored_label(
-                                GOOD,
-                                format!(
-                                    "✔ {}: {} voices, {} call styles, {} range sets",
-                                    pack.name,
-                                    pack.voices.len(),
-                                    pack.styles.len(),
-                                    pack.ranges.len()
-                                ),
-                            ),
-                        };
-                        if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
-                            remove_voice = Some(pack.name.clone());
-                        }
-                    });
-                }
-                if let Some(pack) = remove_voice {
-                    self.codriver_status = crate::codriver_packs::remove_voice(&self.here(), &pack).err().map(Err);
-                    if self.codriver_pack.as_deref() == Some(&pack) {
-                        self.codriver_pack = None;
-                    }
-                    self.rescan_codrivers();
-                }
-                let mut remove_notes = None;
-                for pack in &self.owned_notes {
-                    ui.horizontal(|ui| {
-                        ui.colored_label(GOOD, format!("✔ {}: {} note files", pack.name, pack.files));
-                        if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
-                            remove_notes = Some(pack.name.clone());
-                        }
-                    });
-                }
-                if let Some(pack) = remove_notes {
-                    self.codriver_status = crate::codriver_packs::remove_notes(&self.here(), &pack).err().map(Err);
-                    self.rescan_codrivers();
-                }
-                if let Some(Err(text)) = &self.codriver_status {
-                    ui.colored_label(WARN, format!("⚠ {text}"));
+        }
+        if let Some(pack) = remove_voice {
+            self.codriver_status = crate::codriver_packs::remove_voice(&self.here(), &pack).err().map(Err);
+            if self.codriver_pack.as_deref() == Some(&pack) {
+                self.codriver_pack = None;
+            }
+            self.rescan_codrivers();
+        }
+        let mut remove_notes = None;
+        for pack in &self.owned_notes {
+            ui.horizontal(|ui| {
+                ui.colored_label(GOOD, format!("✔ {}: {} note files", pack.name, pack.files));
+                if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
+                    remove_notes = Some(pack.name.clone());
                 }
             });
-        });
-        ui.end_row();
+        }
+        if let Some(pack) = remove_notes {
+            self.codriver_status = crate::codriver_packs::remove_notes(&self.here(), &pack).err().map(Err);
+            self.rescan_codrivers();
+        }
+        if self.owned_voices.is_empty() && self.owned_notes.is_empty() {
+            ui.weak("No packs added yet.");
+        }
+        if let Some(Err(text)) = &self.codriver_status {
+            ui.colored_label(WARN, format!("⚠ {text}"));
+        }
+        ui.add_space(6.0);
+        if ui.link("Get more co-drivers…").on_hover_text("Voices and pace notes, on Content > Get more").clicked() {
+            self.page = Page::Get;
+        }
     }
 
     /// Plays the corner ladder and one distance call in the chosen voice through the menus' sound, built on its own

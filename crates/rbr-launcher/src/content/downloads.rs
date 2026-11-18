@@ -60,6 +60,8 @@ pub struct Owned {
     pub stages: Vec<String>,
     /// The cars added, by `car_packs::words`.
     pub cars: Vec<String>,
+    /// The car skins imported, lower case (`car_skins::imported`).
+    pub skins: Vec<String>,
     /// NGP 7.4.778 is in use.
     pub ngp: bool,
 }

@@ -130,6 +130,8 @@ mod btb;
 mod capture;
 mod car_browser;
 mod car_packs;
+mod car_skins;
+mod cars_page;
 mod catalog;
 mod championship_page;
 mod circuit_page;
@@ -137,10 +139,12 @@ mod codriver_packs;
 mod codriver_page;
 mod command;
 mod content;
+mod content_pages;
 mod controls_page;
 mod crash;
 mod disc_install;
 mod drive_page;
+mod get_page;
 mod ghosts;
 mod graphics_page;
 mod gvrc;
@@ -158,6 +162,7 @@ mod settings;
 mod settings_page;
 mod setup_page;
 mod stage_browser;
+mod stages_page;
 mod time_of_day;
 mod update;
 mod upscaler;
@@ -446,6 +451,11 @@ struct Form {
     data: Data,
     season: Season,
     page: Page,
+    /// The page each section was last on ([`pages::Section::ALL`]'s order): a section's tab opens it again.
+    last_pages: [Page; 3],
+    /// Content > Cars and Content > Stages.
+    cars_page: cars_page::CarsPage,
+    stages_page: stages_page::StagesPage,
     setup: SetupPage,
     /// The Championship tab (ours).
     championship: championship_page::ChampionshipPage,
@@ -465,6 +475,8 @@ struct Form {
     recent_maps: Vec<u32>,
     favourite_cars: Vec<String>,
     favourite_maps: Vec<u32>,
+    /// The skin chosen for each car (`car_skins`), and the skin import running or its result.
+    skins: car_skins::Skins,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
     /// The Settings page's UDP telemetry field (`[telemetry]`'s `udp`, `rbr-standalone --telemetry-udp`): sent only
@@ -644,6 +656,7 @@ impl Form {
             })
             .collect();
         self.stage_browser.set_rows(rows);
+        self.list_stages_page();
         self.list_circuits();
     }
 
@@ -657,7 +670,9 @@ impl Form {
         let name = self.car().map(|c| c.name.clone());
         self.catalog.offer(&self.ngp_cars);
         self.car = settings::pick_car(&self.catalog.cars, name.iter().chain(&self.recent_cars));
-        let rows = self.catalog.cars.iter().enumerate().map(|(i, car)| car_browser::CarRow::new(i, car)).collect();
+        let rows: Vec<_> =
+            self.catalog.cars.iter().enumerate().map(|(i, car)| car_browser::CarRow::new(i, car)).collect();
+        self.cars_page.browser.set_rows(rows.clone());
         self.car_browser.set_rows(rows);
     }
 

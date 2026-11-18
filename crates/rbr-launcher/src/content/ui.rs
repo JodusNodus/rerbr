@@ -1,10 +1,12 @@
 //! The Add's window side: starting a run, the notice on every page, what a finished run changes in the launcher, and
-//! the Settings page's Add content section.
+//! the Get more page's Ready to add and Add from your computer sections.
 
 use std::path::PathBuf;
 
-use super::kind::Known;
+use super::kind::{skin, Known};
 use super::{downloads, Goto, Outcome, Refresh};
+use crate::car_browser::{Collection, Target};
+use crate::car_skins;
 use crate::catalog::Origin;
 use crate::job::{self, Job};
 use crate::pages::{section, Page, GOOD, WARN};
@@ -27,12 +29,6 @@ impl Add {
     }
 }
 
-/// RallySimFans' download of the full set of stages.
-const RSF_URL: &str = "https://www.rallysimfans.hu/rbr/download.php?download=rsfrbr";
-const BTB_URL: &str = "http://btbfin.blogspot.com/";
-/// RBR Czech's stage downloads, in English.
-const RBR_CZ_URL: &str = "https://rbr.onlineracing.cz/index.php?act=download&cat=19&setlng=eng";
-
 impl Form {
     /// Adds `paths` (files and folders) in one background run, unless one runs. While the viewer runs, only says to
     /// close it.
@@ -48,9 +44,31 @@ impl Form {
         self.content.voices_before = self.owned_voices.iter().map(|p| p.name.clone()).collect();
         let home = self.here();
         let numbers = self.catalog.maps.iter().chain(&self.catalog.unlisted).map(|m| m.number).collect();
-        let known = Known { numbers, weather: Some(self.data.install().join("Maps").join("TrackSettings.ini")) };
+        let weather = Some(self.data.install().join("Maps").join("TrackSettings.ini"));
+        let known = Known { numbers, weather, cars: self.skin_targets() };
         self.content.job =
             Some(Job::start(move |report, cancel| Ok(super::run(&home, &known, &paths, report, cancel))));
+    }
+
+    /// The cars a skin can dress, one per key.
+    fn skin_targets(&self) -> Vec<skin::Target> {
+        // An archive car is drawn from the game data.
+        let game = self.data.install().to_path_buf();
+        let mut targets: Vec<skin::Target> = Vec::new();
+        for car in &self.catalog.cars {
+            let Some(model) = car_skins::model_folder(car) else { continue };
+            if targets.iter().any(|t| t.key == car.key) {
+                continue;
+            }
+            let title = self.car_browser.row_of(&car.name).map_or_else(|| car.name.clone(), |r| r.title.clone());
+            targets.push(skin::Target {
+                key: car.key.clone(),
+                title,
+                model,
+                textures: car_skins::textures_dir(car, &game),
+            });
+        }
+        targets
     }
 
     /// Reads again what a finished run changed.
@@ -68,6 +86,12 @@ impl Form {
         }
         if touched(Refresh::Cars) {
             self.rescan_cars();
+        }
+        // A skin added is worn.
+        for outcome in outcomes.iter().filter(|o| o.ok()) {
+            if let Some(Goto::Skin { car, skin }) = &outcome.goto {
+                self.skins.chosen.insert(car.clone(), skin.clone());
+            }
         }
         if touched(Refresh::Stages) {
             let tracks = self.here().join(rbr_btb::player::TRACKS);
@@ -96,7 +120,6 @@ impl Form {
     /// Takes the Open button's way.
     fn content_goto(&mut self, goto: &Goto) {
         match goto {
-            Goto::Settings | Goto::Disc(_) => self.page = Page::Settings,
             Goto::Stage(folder) => {
                 let named = |dir: &std::path::Path| dir.file_name().is_some_and(|n| n.to_string_lossy() == *folder);
                 let at = self.catalog.maps.iter().position(|m| match &m.origin {
@@ -106,6 +129,14 @@ impl Form {
                 self.page = Page::Drive;
                 self.stage_browser.open_on(at.unwrap_or(self.map), &self.favourite_maps, None);
             }
+            Goto::Skin { car, .. } => {
+                self.page = Page::Cars;
+                if let Some(at) = self.catalog.cars.iter().position(|c| c.key == *car) {
+                    let browser = &mut self.cars_page.browser;
+                    browser.open_on(Target::Drive, at, &self.favourite_cars, Some(Collection::All));
+                }
+            }
+            _ => self.page = goto.page().map_or(self.page, |(page, _)| page),
         }
     }
 
@@ -141,16 +172,12 @@ impl Form {
                             crate::crash::open(file.as_os_str());
                         }
                     }
-                    let goto = self.content.notice.iter().filter(|o| o.ok()).find_map(|o| o.goto.clone());
-                    match goto {
-                        Some(Goto::Stage(folder)) if ui.button("Open the stage picker").clicked() => {
-                            open = Some(Goto::Stage(folder))
-                        }
-                        Some(Goto::Settings | Goto::Disc(_))
-                            if page != Page::Settings && ui.button("Open Settings").clicked() =>
-                        {
-                            open = Some(Goto::Settings)
-                        }
+                    // An added thing's place, else where to do by hand what failed.
+                    let notice = &self.content.notice;
+                    let goto = notice.iter().filter(|o| o.ok()).chain(notice.iter()).find_map(|o| o.goto.clone());
+                    match goto.as_ref().map(|g| (g, g.page())) {
+                        Some((Goto::Stage(_), _)) if ui.button("Open the stage picker").clicked() => open = goto,
+                        Some((_, Some((target, label)))) if page != target && ui.button(label).clicked() => open = goto,
                         _ => {}
                     }
                     close = ui.button("Close").clicked();
@@ -186,35 +213,14 @@ impl Form {
             .cars
             .iter()
             .flat_map(|(name, pack)| [crate::car_packs::words(name), crate::car_packs::words(pack)]);
-        downloads::Owned { packs, stages, cars: cars.collect(), ngp: self.ngp_revision == Some(778) }
+        let skins = car_skins::imported(&self.here());
+        downloads::Owned { packs, stages, cars: cars.collect(), skins, ngp: self.ngp_revision == Some(778) }
     }
 
-    /// The Settings page's Add content section: the buttons, the recent downloads, and where to get more.
-    pub fn add_content_section(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Add content");
+    /// Ready to add: the recent downloads ReRBR recognises, each with what it is and Add; or how they appear.
+    pub fn ready_to_add_ui(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Ready to add");
         let idle = !self.content.busy() && self.child.is_none();
-        ui.horizontal_wrapped(|ui| {
-            let files = ui.add_enabled(idle, egui::Button::new("Add files…")).on_hover_text(
-                "Choose downloads: BTB stages, NGP car packs, co-drivers, pace notes or NGP. ReRBR works out what \
-                 each is and adds it; the downloads are not changed.",
-            );
-            if files.clicked() {
-                let picked = job::pick_files("The downloads to add");
-                self.add_content(picked.into_iter().map(PathBuf::from).collect());
-            }
-            let folder = ui.add_enabled(idle, egui::Button::new("Add folder…")).on_hover_text(
-                "Choose an extracted download: a stage's folder, a folder of stages, a co-driver or a pace notes \
-                 folder, or the disc.",
-            );
-            if folder.clicked() {
-                if let Some(path) = job::pick_folder("The folder to add") {
-                    self.add_content(vec![PathBuf::from(path)]);
-                }
-            }
-            if super::drop::drop_works() {
-                ui.weak("or drop files anywhere on this window");
-            }
-        });
         let owned = self.owned_content();
         self.content.recent.poll(ui.ctx(), owned);
         let mut add = None;
@@ -228,28 +234,38 @@ impl Form {
                 }
             });
         }
+        if self.content.recent.list.is_empty() {
+            ui.weak("Downloads from the last 30 days appear here.");
+        }
         if let Some(path) = add {
             self.add_content(vec![path]);
         }
+    }
+
+    /// Add from your computer: files, a folder, and the drop line.
+    pub fn add_from_computer_ui(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Add from your computer");
+        let idle = !self.content.busy() && self.child.is_none();
         ui.horizontal_wrapped(|ui| {
-            let links = [
-                (
-                    "Get stages…",
-                    RSF_URL,
-                    "RallySimFans: the full set of stages; install it, then choose its folder as your game folder",
-                ),
-                ("More BTB stages…", BTB_URL, "BTB stages from the community; download one, then add it here"),
-                (
-                    "RBR Czech stages…",
-                    RBR_CZ_URL,
-                    "Stage installers; download one, then add the .exe here (it isn't run). Most stages from before \
-                     mid-2023 work; newer ones are encrypted for RBR Czech's plugin and can't be used",
-                ),
-            ];
-            for (label, url, tip) in links {
-                if ui.link(label).on_hover_text(tip).clicked() {
-                    crate::crash::open(url.as_ref());
+            let files = ui.add_enabled(idle, egui::Button::new("Add files…")).on_hover_text(
+                "Choose downloads: BTB stages, NGP car packs, car skins, co-drivers, pace notes or NGP. ReRBR works \
+                 out what each is and adds it; the downloads are not changed.",
+            );
+            if files.clicked() {
+                let picked = job::pick_files("The downloads to add");
+                self.add_content(picked.into_iter().map(PathBuf::from).collect());
+            }
+            let folder = ui.add_enabled(idle, egui::Button::new("Add folder…")).on_hover_text(
+                "Choose an extracted download: a stage's folder, a folder of stages, a car skin, a co-driver or a \
+                 pace notes folder, or the disc.",
+            );
+            if folder.clicked() {
+                if let Some(path) = job::pick_folder("The folder to add") {
+                    self.add_content(vec![PathBuf::from(path)]);
                 }
+            }
+            if super::drop::drop_works() {
+                ui.weak("or drop files anywhere on this window");
             }
         });
     }
@@ -330,6 +346,17 @@ mod tests {
         // The stage is the stage picker's: Open goes to it.
         form.content_goto(&Goto::Stage("Autio I Gravel".into()));
         assert!(form.stage_browser.open && form.page == Page::Drive);
+        // Each kind goes to its page.
+        for (goto, page) in [
+            (Goto::Cars, Page::Cars),
+            (Goto::Codrivers, Page::Codrivers),
+            (Goto::Settings, Page::Settings),
+            (Goto::Disc("/x.iso".into()), Page::Settings),
+        ] {
+            form.page = Page::Get;
+            form.content_goto(&goto);
+            assert_eq!(form.page, page);
+        }
         // While the viewer runs, a drop only says to close it: checked by the notice text.
         form.content.notice = vec![Outcome::warning("Close the drive first")];
         assert_eq!(form.content.notice[0].line(), "Close the drive first");
@@ -354,7 +381,7 @@ mod tests {
         let section = |ctx: &egui::Context, form: &mut Form| {
             ctx.root_ui(|root| {
                 egui::CentralPanel::default().show(root, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| form.add_content_section(ui));
+                    egui::ScrollArea::vertical().show(ui, |ui| form.get_page(ui));
                 })
             });
         };
@@ -367,7 +394,7 @@ mod tests {
         let ok = |what: &str, kind, place: &str, goto| Outcome::added("x", kind, what, place, goto);
         form.content.notice = vec![
             ok("Autio I Gravel", "BTB stage", "it's in the stage picker", Goto::Stage("Autio I Gravel".into())),
-            ok("Janne Laahanen V3", "co-driver", "pick it in Settings > Co-driver", Goto::Settings),
+            ok("Janne Laahanen V3", "co-driver", "pick it in Content > Co-drivers", Goto::Codrivers),
             Outcome::failed("Holiday.rar", "not supported", detect_rar()),
             Outcome::failed(
                 "Ford Fiesta - Model.7z",
@@ -389,6 +416,60 @@ mod tests {
             Form::drop_hint(ctx);
         })
         .unwrap();
+    }
+
+    /// A skin dropped on a loaded launcher goes to the retail car whose texture names it has, is worn, and Open shows
+    /// that car on Content > Cars. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`.
+    #[test]
+    fn a_dropped_skin_is_worn_by_its_car() {
+        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
+        let (Some(data), Some(patch), Some(ngp)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS")) else {
+            eprintln!("skipping: RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
+            return;
+        };
+        let root = crate::test_dir("content-skin-form");
+        let home = root.join("home");
+        fs::create_dir_all(&home).unwrap();
+        let start = Start {
+            viewer: PathBuf::from("/bin/viewer"),
+            standalone: PathBuf::from("/bin/rbr-standalone"),
+            settings: home.join(SETTINGS_FILE),
+            data: Some(PathBuf::from(&data)),
+            patch: Some(PathBuf::from(&patch)),
+            physics: None,
+        };
+        let mut form = load(&start, Settings { ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
+        form.read_only = true;
+        // A retail car: its key is its model folder, the prefix of its textures.
+        let retail = |t: &skin::Target| t.key == t.model && t.textures.is_some();
+        let target = form.skin_targets().into_iter().find(retail).expect("a retail car");
+        let prefix = format!("{}_external", target.model.to_lowercase());
+        let own: Vec<String> = fs::read_dir(target.textures.as_ref().expect("its textures"))
+            .unwrap()
+            .flatten()
+            .map(|f| f.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.to_lowercase().starts_with(&prefix))
+            .collect();
+        assert!(!own.is_empty());
+        let skin = root.join("drop/Martini");
+        for name in &own {
+            write(&skin.join("textures").join(name), b"skin");
+        }
+        form.add_content(vec![skin]);
+        while form.content.busy() {
+            crate::capture::draw(|ctx| form.content_notice(ctx)).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let lines: Vec<String> = form.content.notice.iter().map(Outcome::line).collect();
+        assert_eq!(lines, [format!("Added Martini (car skin): the {} wears it now", target.title)]);
+        assert_eq!(form.skins.chosen.get(&target.key).map(String::as_str), Some("Martini"));
+        let at = form.catalog.cars.iter().position(|c| c.key == target.key).unwrap();
+        let worn = home.join(car_skins::DIR).join(&target.key).join("Martini");
+        assert_eq!(form.skins.choice(&form.catalog.cars[at]), Some(rbr_formats::car_pack::Skin::Dir(worn)));
+        let goto = form.content.notice[0].goto.clone().unwrap();
+        form.content_goto(&goto);
+        assert_eq!((form.page, form.cars_page.browser.highlighted()), (Page::Cars, Some(at)));
+        fs::remove_dir_all(&root).unwrap();
     }
 
     /// Classic stages dropped on a loaded launcher: one added (with its author), one refused for its encryption; the

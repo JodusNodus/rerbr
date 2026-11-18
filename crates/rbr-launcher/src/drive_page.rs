@@ -118,7 +118,7 @@ impl Form {
             ui.vertical(|ui| {
                 let root = self.game_root();
                 if let Some(car) = self.catalog.cars.get(self.car) {
-                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &root);
+                    self.previews.ui(ui, &self.catalog.maps[self.map], car, self.skins.choice(car), &root);
                 }
                 ui.add_space(12.0);
                 self.start_area(ui);
@@ -472,7 +472,10 @@ impl Form {
             favourites: &self.favourite_cars,
             recent: &self.recent_cars,
             previews: &mut self.previews,
+            skins: &mut self.skins,
             root: &root,
+            heading: String::new(),
+            detail: None,
         };
         let target = self.car_browser.target;
         match self.car_browser.ui(ui, env) {
@@ -489,7 +492,8 @@ impl Form {
                 None => self.favourite_cars.push(name),
             },
             Some(car_browser::Action::Back) => self.car_browser.open = false,
-            None => {}
+            // The Cars page's.
+            Some(car_browser::Action::Remove(_) | car_browser::Action::GetMore) | None => {}
         }
     }
 
@@ -524,7 +528,7 @@ impl Form {
     }
 
     /// Makes map `index` of the catalog the stage, and the most recent pick.
-    fn choose_stage(&mut self, index: usize) {
+    pub(crate) fn choose_stage(&mut self, index: usize) {
         self.map = index;
         browser::remember(&mut self.recent_maps, self.catalog.maps[index].number);
         self.validate_weather_row();
