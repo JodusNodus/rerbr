@@ -259,12 +259,13 @@ var<private> pixel: vec2<i32>;
 @group(0) @binding(17) var<storage, read> probes: Probes;
 
 struct Probes {
-    // x and z of the grid's corner, its cell's side, metres.
+    // x and z of the grid's corner, its cell's side, metres; how much closer in height another pass has to be.
     grid: vec4<f32>,
-    // The grid's columns and rows, the probes' count.
+    // The grid's columns and rows, the probes' count, the passes a cell holds.
     counts: vec4<u32>,
-    // Each cell centre's nearest probe, row by row; blend between centres.
-    cells: array<u32>,
+    // Each probe's height (`f32` bits), then each cell's passes, row by row: the nearest probe of each pass of the
+    // route by the cell's centre, nearest first (`renderer/probes.rs`).
+    data: array<u32>,
 }
 @group(0) @binding(18) var shadow_ranges: texture_2d_array<f32>;
 // The volumetric clouds' shadow map (`renderer::cloud_volume`, ours): each texel how much of the sun a cloud takes
@@ -1837,10 +1838,27 @@ fn surroundings(n: vec3<f32>, at: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(clamp(ambient, vec3<f32>(0.3), vec3<f32>(1.2)), mix(SUN_LEAST, 1.0, smoothstep(SUN_SEEN.x, SUN_SEEN.y, seen)));
 }
 
+// The probe of grid cell `cell` for a point at `height`: the cell's nearest pass, unless another is closer in
+// height by more than `probes.grid.w` (where the route runs over or beside itself at another level).
+fn cell_probe(cell: i32, height: f32) -> i32 {
+    let base = probes.counts.z + u32(cell) * probes.counts.w;
+    var best = probes.data[base];
+    var off = max(abs(bitcast<f32>(probes.data[best]) - height) - probes.grid.w, 0.0);
+    for (var k = 1u; k < probes.counts.w; k++) {
+        let probe = probes.data[base + k];
+        let other = max(abs(bitcast<f32>(probes.data[probe]) - height) - probes.grid.w, 0.0);
+        if (other < off) {
+            best = probe;
+            off = other;
+        }
+    }
+    return i32(best);
+}
+
 // The stage around `at` along `dir`, blurred to the surroundings cube's `level`, through the tone curve: once the
 // probes are baked (`frame.reflection.z`), bilinear between the grid's four surrounding cell centres, each naming
-// its nearest probe (the probes' first level is the cube's second); else the surroundings cube. Shared cell centres
-// keep the blend continuous even where the driveline folds back or meets its start.
+// the probe of `at`'s level (`cell_probe`; the probes' first level is the cube's second); else the surroundings cube.
+// Shared cell centres keep the blend continuous even where the driveline folds back or meets its start.
 fn surrounding(dir: vec3<f32>, level: f32, at: vec3<f32>) -> vec3<f32> {
     if (frame.reflection.z == 0.0) {
         return textureSampleLevel(surroundings_cube, reflection_sampler, dir, level + CUBE_SHIFT).rgb;
@@ -1851,10 +1869,10 @@ fn surrounding(dir: vec3<f32>, level: f32, at: vec3<f32>) -> vec3<f32> {
     let high = min(low + 1, size - 1);
     let blend = fract(grid_at);
     let lod = max(level + CUBE_SHIFT - 1.0, 0.0);
-    let a = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[low.y * size.x + low.x]), lod).rgb;
-    let b = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[low.y * size.x + high.x]), lod).rgb;
-    let c = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[high.y * size.x + low.x]), lod).rgb;
-    let d = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[high.y * size.x + high.x]), lod).rgb;
+    let a = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(low.y * size.x + low.x, at.y), lod).rgb;
+    let b = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(low.y * size.x + high.x, at.y), lod).rgb;
+    let c = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(high.y * size.x + low.x, at.y), lod).rgb;
+    let d = textureSampleLevel(probe_cubes, reflection_sampler, dir, cell_probe(high.y * size.x + high.x, at.y), lod).rgb;
     return mix(mix(a, b, blend.x), mix(c, d, blend.x), blend.y);
 }
 
