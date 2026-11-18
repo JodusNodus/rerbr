@@ -28,6 +28,8 @@ pub struct Btb {
     pub circuit: bool,
     /// Why it cannot start.
     pub problem: Option<String>,
+    /// Converted from an Assetto Corsa track (`rbr_ac_tracks` writes `ac-conversion.json` into the stage's folder).
+    pub ac: bool,
 }
 
 impl Btb {
@@ -86,6 +88,7 @@ fn list(
             surface: stage::surface(&track).unwrap_or("gravel"),
             circuit: track.info.circuit,
             problem: None,
+            ac: track.folder.join(rbr_ac_tracks::assetto::stage::CONVERSION_FILE).is_file(),
             folder: track.folder.clone(),
         };
         let stage = Stage { name: stage::stage_name(&btb.folder, number), map: number, letter: stage::LETTER };

@@ -1,6 +1,6 @@
-//! The synthetic AC track shared by the integration tests.
-#![allow(dead_code)]
-use rbr_ac_tracks::assetto::kn5::IDENTITY;
+//! A synthetic Assetto Corsa track (one layout, `test`) for tests of this crate and of the launcher: a short road with
+//! its timing gates, a spawn helper, an AI line and a hidden wall. Behind the `fixture` feature.
+use crate::assetto::kn5::IDENTITY;
 use std::path::Path;
 
 pub fn word(out: &mut Vec<u8>, n: u32) {
@@ -29,7 +29,7 @@ pub fn fixture(root: &Path) {
     word(&mut out, 0);
     string(&mut out, "unused.dds");
     word(&mut out, 0);
-    let texture = rbr_ac_tracks::btb::textures::flat([0.3, 0.4, 0.5, 1.]);
+    let texture = crate::btb::textures::flat([0.3, 0.4, 0.5, 1.]);
     word(&mut out, 1);
     string(&mut out, "Road.DDS");
     word(&mut out, texture.len() as u32);

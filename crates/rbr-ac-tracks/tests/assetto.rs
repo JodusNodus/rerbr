@@ -5,8 +5,7 @@ use rbr_ac_tracks::assetto::{
 };
 use std::collections::BTreeMap;
 
-mod common;
-use common::{fixture, floats, word};
+use rbr_ac_tracks::fixture::{fixture, floats, word};
 
 #[test]
 fn complete_stage_preserves_axes_geometry_surface_and_timing() {

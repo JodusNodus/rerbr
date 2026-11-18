@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-mod common;
-use common::{floats, word};
+use rbr_ac_tracks::fixture::{floats, word};
 
 fn temp(name: &str) -> PathBuf {
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
@@ -16,7 +15,7 @@ fn temp(name: &str) -> PathBuf {
 /// `content/tracks/<name>` holding the synthetic track's layout `test`.
 fn tracks(root: &Path) -> PathBuf {
     let tracks = root.join("content/tracks");
-    common::fixture(&tracks.join("synthetic"));
+    rbr_ac_tracks::fixture::fixture(&tracks.join("synthetic"));
     tracks
 }
 

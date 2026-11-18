@@ -5,3 +5,5 @@
 pub mod assetto;
 pub mod btb;
 pub mod import;
+#[cfg(feature = "fixture")]
+pub mod fixture;

@@ -10,6 +10,7 @@ name = "rerbr"
 path = "src/main.rs"
 
 [dependencies]
+rbr-ac-tracks = { path = "../rbr-ac-tracks" }
 rbr-btb = { path = "../rbr-btb" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-season = { path = "../rbr-season" }
@@ -35,6 +36,7 @@ ureq = { version = "3", default-features = false, features = ["rustls"] }
 zip = { version = "9.0.1", default-features = false }
 
 [dev-dependencies]
+rbr-ac-tracks = { path = "../rbr-ac-tracks", features = ["fixture"] }
 sevenz-rust2 = { version = "0.24", default-features = false, features = ["compress"] }
 lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "encoder"] }
 

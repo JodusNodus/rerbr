@@ -102,6 +102,8 @@ pub struct StageRow {
     pub retail: bool,
     /// A BTB stage (`crate::btb`).
     pub btb: bool,
+    /// A BTB stage converted from an Assetto Corsa track (`Btb::ac`).
+    pub ac: bool,
     pub km: Option<f32>,
     /// 0 gravel, 1 tarmac, 2 snow.
     pub surface: u32,
@@ -141,6 +143,7 @@ impl StageRow {
         };
         let origin = match &map.origin {
             Origin::Community(_) => "rsf rallysimfans",
+            Origin::Btb(btb) if btb.ac => "assetto corsa ac import",
             Origin::Btb(_) => "rsf btb",
             Origin::Retail => "retail 1.02",
         };
@@ -155,6 +158,7 @@ impl StageRow {
             author,
             retail: matches!(map.origin, Origin::Retail),
             btb: matches!(map.origin, Origin::Btb(_)),
+            ac: map.btb().is_some_and(|btb| btb.ac),
             km,
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
@@ -653,8 +657,11 @@ impl StageBrowser {
         let noun = self.noun();
         let title = if self.page { "Stages".to_owned() } else { format!("Choose a {noun}") };
         let subtitle = Some(self.heading.as_str()).filter(|h| self.page && !h.is_empty());
-        let get_more: &[_] =
-            if self.page { &[("Get more stages…", "Stages from RSF, BTBfin and RBR Czech")] } else { &[] };
+        let get_more: &[_] = if self.page {
+            &[("Get more stages…", "Stages from RSF, BTBfin, RBR Czech and Assetto Corsa sites")]
+        } else {
+            &[]
+        };
         let clicks = browser::header(ui, &title, subtitle, get_more);
         if clicks.back {
             action = Some(Action::Back);
@@ -912,6 +919,7 @@ type Options<'a> =
 fn kind(row: &StageRow) -> &'static str {
     match (row.retail, row.btb, row.added) {
         (true, ..) => "RBR 1.02",
+        _ if row.ac => "Added by you · Assetto Corsa import",
         (_, true, true) => "Added by you · BTB",
         (_, false, true) => "Added by you",
         (_, true, false) => "RallySimFans · BTB",
@@ -1142,6 +1150,7 @@ mod tests {
             surface: "gravel",
             circuit: false,
             problem: None,
+            ac: false,
         };
         let rows = rows_of(&[Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }]);
         assert_eq!(rows[0].country.as_deref(), Some("FI"));

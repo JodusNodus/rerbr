@@ -6,7 +6,8 @@
 //! Where each kind goes (user decision 2026-11-16): BTB stages to `tracks/`; co-drivers and pace notes through
 //! `codriver_packs::import`; NGP car pieces (physics zip, model and sound-bank archives dropped together) as one
 //! `car_packs::Download`; NGP's package to the kept `NGP 7.4.778/` folder, as the Settings download does; a disc image
-//! opens "Set up from the disc…" with the disc filled in; classic-format stages (loose, RSF-shaped or from an NSIS
+//! opens "Set up from the disc…" with the disc filled in; an Assetto Corsa track is converted by `rbr_ac_tracks` into a
+//! stage for each layout in `tracks/` (`kind::ac`); classic-format stages (loose, RSF-shaped or from an NSIS
 //! installer) to `tracks/` too, renumbered when their number is taken; a car skin to the car it fits (`car_skins`). RAR
 //! files, other installers, encrypted stages and anything unknown are refused with the reason. A new kind or container
 //! is one module and one line below.
@@ -32,6 +33,7 @@ const KINDS: &[&dyn Kind] = &[
     &kind::disc::Disc,
     &kind::ngp::Ngp,
     &kind::btb::Btb,
+    &kind::ac::Ac,
     &kind::codriver::Codriver,
     &kind::car::Car,
     &kind::classic::Classic,

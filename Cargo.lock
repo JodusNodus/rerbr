@@ -2272,6 +2272,7 @@ name = "rbr-ac-tracks"
 version = "0.1.0"
 dependencies = [
  "bcdec_rs",
+ "rbr-ac-tracks",
  "rbr-btb",
  "rbr-formats",
  "serde_json",
@@ -2334,6 +2335,7 @@ dependencies = [
  "flate2",
  "futures-executor",
  "lzma-rust2",
+ "rbr-ac-tracks",
  "rbr-btb",
  "rbr-formats",
  "rbr-gameplay",

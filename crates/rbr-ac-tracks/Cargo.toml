@@ -9,6 +9,10 @@ license = "GPL-3.0-or-later"
 name = "rbr_ac_tracks"
 path = "src/lib.rs"
 
+[features]
+# A synthetic track for tests (`fixture`), used by this crate's own tests and the launcher's.
+fixture = []
+
 [dependencies]
 rbr-btb = { path = "../rbr-btb" }
 rbr-formats = { path = "../rbr-formats" }
@@ -17,3 +21,6 @@ serde_json = "1"
 texpresso = { version = "2.0.2", features = ["rayon"] }
 zip = { version = "9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+
+[dev-dependencies]
+rbr-ac-tracks = { path = ".", features = ["fixture"] }

@@ -12,6 +12,10 @@ use crate::Form;
 /// RallySimFans' download of the full set of stages.
 const RSF_URL: &str = "https://www.rallysimfans.hu/rbr/download.php?download=rsfrbr";
 const BTB_URL: &str = "http://btbfin.blogspot.com/";
+/// Assetto Corsa Rally Central's list of rally tracks, each with its author's download.
+const AC_RALLY_URL: &str = "https://acrallycentral.com/tracks_all_rally/";
+/// assettocorsa.club's track mods.
+const AC_CLUB_URL: &str = "https://assettocorsa.club/mods/tracks/";
 /// RBR Czech's stage downloads, in English.
 const RBR_CZ_URL: &str = "https://rbr.onlineracing.cz/index.php?act=download&cat=19&setlng=eng";
 const VOICES_URL: &str = "https://luppisrbr.blogspot.com/p/compatible-co-driver-mods-v3.html";
@@ -26,7 +30,7 @@ struct Site {
     url: &'static str,
 }
 
-const STAGE_SITES: [Site; 3] = [
+const STAGE_SITES: [Site; 5] = [
     Site {
         title: "RallySimFans",
         host: "rallysimfans.hu",
@@ -45,6 +49,20 @@ const STAGE_SITES: [Site; 3] = [
         what: "Stage installers; download one, then add the .exe on Import (it isn't run). Most stages from before \
                mid-2023 work; newer ones are encrypted for RBR Czech's plugin and can't be used.",
         url: RBR_CZ_URL,
+    },
+    Site {
+        title: "AC Rally Central",
+        host: "acrallycentral.com",
+        what: "Assetto Corsa rally tracks, each with its author's download. Download one, then add it on Import: it is \
+               converted to a stage, one for each layout.",
+        url: AC_RALLY_URL,
+    },
+    Site {
+        title: "Assetto Corsa Club",
+        host: "assettocorsa.club",
+        what: "Assetto Corsa track mods, roads and race tracks. Download one, then add it on Import: it is converted to a \
+               stage, one for each layout.",
+        url: AC_CLUB_URL,
     },
 ];
 
