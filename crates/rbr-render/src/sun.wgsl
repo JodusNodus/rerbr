@@ -58,3 +58,19 @@ fn fs_sun(v: Out) {
         discard;
     }
 }
+
+// On `Detail::Ultra` the third cascade is drawn at half the layer's texels (`sun::COARSE`) and copied up into its layer,
+// each drawn texel to 2x2, so its readers see the layer they always did.
+@group(0) @binding(1) var coarse: texture_depth_2d;
+
+// One triangle over the layer.
+@vertex
+fn vs_coarse(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+    let uv = vec2<f32>(f32((index << 1u) & 2u), f32(index & 2u));
+    return vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+}
+
+@fragment
+fn fs_coarse(@builtin(position) at: vec4<f32>) -> @builtin(frag_depth) f32 {
+    return textureLoad(coarse, vec2<i32>(at.xy) / 2, 0);
+}
