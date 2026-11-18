@@ -553,14 +553,14 @@ impl CarBrowser {
             .collect();
         let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
         const DROPS: [f32; 3] = [112.0, 84.0, 118.0];
-        let drops_width = DROPS.iter().sum::<f32>() + 3.0 * 8.0 + 3.0 * 20.0;
+        let drops_width = DROPS.iter().sum::<f32>() + 3.0 * 8.0;
         let seg = browser::segmented_width(ui, &labels);
         let before = (self.filter.clone(), self.sort, self.collection.clone());
         browser::bar(ui, |ui| {
             let room = ui.available_width() - seg - 16.0;
             let one_row = room - drops_width >= 180.0;
             let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(180.0, 300.0);
-            let hint = "Search name, class or RSF number";
+            let hint = "Search name, class, RSF no.";
             ui.horizontal(|ui| {
                 browser::search_box(ui, hint, &mut self.filter.query, &mut self.focus, search);
                 let mut scope = self.collection.clone().unwrap_or(Collection::All);

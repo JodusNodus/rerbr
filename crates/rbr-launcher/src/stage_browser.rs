@@ -710,10 +710,10 @@ impl StageBrowser {
         let lengths: Vec<(Length, String)> = Length::ALL.map(|l| (l, l.long_label().to_owned())).to_vec();
         let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
         const DROPS: [f32; 4] = [104.0, 124.0, 100.0, 128.0];
-        let drops_width = DROPS.iter().sum::<f32>() + 4.0 * 8.0 + 4.0 * 20.0;
+        let drops_width = DROPS.iter().sum::<f32>() + 4.0 * 8.0;
         let seg = browser::segmented_width(ui, &labels);
         let before = (self.filter.clone(), self.sort, self.collection.clone());
-        let hint = format!("Search {noun}s: name, country, author or map number");
+        let hint = format!("Search {noun}s: name, country, author, number");
         browser::bar(ui, |ui| {
             let room = ui.available_width() - seg - 16.0;
             let one_row = room - drops_width >= 150.0;
