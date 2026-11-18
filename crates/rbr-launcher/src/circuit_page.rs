@@ -278,7 +278,7 @@ impl Form {
     fn circuit_column(&mut self, ui: &mut egui::Ui) {
         let Some(number) = self.circuit.map else { return };
         let position = self.circuit_browser.position(number).unwrap_or(0);
-        let browse = kit::group_label(ui, "Circuit", Some("Browse circuits"));
+        kit::group_label(ui, "Circuit", None);
         let Some(selected) = self.circuit_browser.row_of(number) else { return };
         let (name, favourite) = (selected.name.clone(), self.favourite_maps.contains(&number));
         let open = card(ui, favourite, &name, |ui, width, radius| {
@@ -291,7 +291,7 @@ impl Form {
                 None => CardText::default(),
             }
         });
-        if open || browse {
+        if open {
             self.circuit_browser.open_for(Target::Circuit, position, &self.favourite_maps);
         }
         let starred: Vec<&StageRow> = self

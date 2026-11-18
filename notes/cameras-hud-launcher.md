@@ -192,7 +192,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`Form::launch_footer`: summary, blocker with its fix, experimental note with Change to Settings, Stop while driving,
   Start with the Enter hint), and columns that scroll on their own (`split_columns`, whole points wide, `column`).
   The car and stage cards' pictures share the car's 16:9 shape (`preview::picture_height`; a stage's picture is
-  cropped at its sides), so the cards line up (user, 2026-11-18). RSF is named only where it tells something (the
+  cropped at its sides), so the cards line up (user, 2026-11-18). The
+  group labels carry no links: a card opens its browser, the Weather segment goes back to the stage's own (user, 2026-11-18). RSF is named only where it tells something (the
   inspectors' Source, encrypted stages, RSF's settings and setups), not on cards, labels or the search hint (user,
   2026-11-18). Rally: Car (card, favourite
   chips with "+N", Gearbox, Setup with Edit…), Stage (card, chips, Ghost, Car damage), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and

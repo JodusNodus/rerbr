@@ -375,9 +375,7 @@ impl Form {
 
     /// The Car column: its card, the favourites and, with the H-shifter, the gearbox.
     pub(crate) fn car_column(&mut self, ui: &mut Ui, target: Target) {
-        let count = self.catalog.cars.len();
-        let link = (count > 0).then(|| format!("Browse all {count}"));
-        let browse = kit::group_label(ui, "Car", link.as_deref());
+        kit::group_label(ui, "Car", None);
         if self.catalog.cars.is_empty() {
             ui.colored_label(WARN, "No cars yet: add some on Library > Cars with Get more cars…");
             return;
@@ -396,7 +394,7 @@ impl Form {
             }
             CardText { meta: detail, notes }
         });
-        if open || browse {
+        if open {
             self.car_browser.open_on(target, self.car, &self.favourite_cars, None);
         }
         // The starred cars that can start, in the order starred.
@@ -461,8 +459,7 @@ impl Form {
 
     /// The Stage column: its card, the favourites, and the race's ghost and damage.
     fn stage_column(&mut self, ui: &mut Ui) {
-        let count = self.catalog.maps.len();
-        let browse = kit::group_label(ui, "Stage", Some(&format!("Browse all {count}")));
+        kit::group_label(ui, "Stage", None);
         let Some(selected) = self.stage_browser.row(self.map) else { return };
         let (name, favourite) = (selected.name.clone(), self.favourite_maps.contains(&selected.number));
         let open = card(ui, favourite, &name, |ui, width, radius| {
@@ -475,7 +472,7 @@ impl Form {
                 None => CardText::default(),
             }
         });
-        if open || browse {
+        if open {
             self.stage_browser.open_on(self.map, &self.favourite_maps, None);
         }
         // The starred stages that can start, in the order starred.
@@ -506,10 +503,7 @@ impl Form {
     /// The Conditions column: the weather and the time of day, then Road and tyres. `fold` folds Road and tyres
     /// into one row (the Circuit page).
     pub(crate) fn conditions_column(&mut self, ui: &mut Ui, own: &str, fold: bool) {
-        let reset = self.clouds.is_some();
-        if kit::group_label(ui, "Conditions", reset.then(|| format!("Use {}", own.to_lowercase())).as_deref()) {
-            self.clouds = None;
-        }
+        kit::group_label(ui, "Conditions", None);
         kit::panel(ui, |rows| {
             self.conditions_rows(rows, own);
             if fold {
