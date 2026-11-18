@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use egui::{Color32, ComboBox, DragValue, ProgressBar, RichText, Ui};
+use egui::{Align, ComboBox, DragValue, Layout, RichText, Ui};
 use rbr_formats::car_pack::SLOT;
 use rbr_formats::rsf::settings::{personal, Sources};
 use rbr_formats::saves::action_map::Object;
@@ -25,6 +25,9 @@ use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
 
 use crate::catalog::Car;
+use crate::kit::{self, Rows};
+use crate::settings_page::{label_cell, note, row_tip};
+use crate::theme::{medium, mono, GOOD, INPUT, LINK, PROGRESS, TEXT, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
 
 /// A binding being set: its action, and for a device input every joystick's values when it began (`None` for an axis
 /// that had not reported yet: it rests where it first does, [`Joysticks::first`]).
@@ -61,20 +64,24 @@ const RESCAN: Duration = Duration::from_secs(2);
 /// The force feedback: on or off, the strength, the direction, the smoothing and NGP's sensitivity per surface. The
 /// strength and the smoothing are written to the settings file at once, as the pause
 /// menu's Force feedback page does while driving.
-fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut ffb.settings.enabled, "on");
-        ui.add_enabled_ui(ffb.settings.enabled, |ui| {
+fn ffb_ui(rows: &mut Rows, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
+    rows.switch_row("Force feedback", None, &mut ffb.settings.enabled);
+    let on = ffb.settings.enabled;
+    rows.row("Strength", |ui| {
+        ui.add_enabled_ui(on, |ui| {
             let strength =
-                ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
+                ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).fixed_decimals(2));
             if strength.on_hover_text(STRENGTH_HELP).changed() && !read_only {
                 write_ffb(settings, "strength", &ffb.settings.strength.to_string());
             }
-            ui.checkbox(&mut ffb.settings.inverse, "inverse");
+        });
+    });
+    rows.switch_row("Inverse", None, &mut ffb.settings.inverse);
+    rows.row("Smoothing", |ui| {
+        ui.add_enabled_ui(on, |ui| {
             // "off" at 0, else the milliseconds; typed in with or without the unit.
             let smoothing = DragValue::new(&mut ffb.smoothing)
                 .range(ffb::SMOOTHING_RANGE)
-                .prefix("smoothing ")
                 .custom_formatter(|ms, _| if ms == 0.0 { "off".into() } else { format!("{ms} ms") })
                 .custom_parser(|text| match text.trim().trim_end_matches("ms").trim() {
                     "off" => Some(0.0),
@@ -85,14 +92,16 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
             }
         });
     });
-    ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
-    ui.add_enabled_ui(ffb.settings.enabled, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Sensitivity (lower = heavier)").on_hover_text(SENSITIVITY_HELP);
-            for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
-                ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                    .on_hover_text(SENSITIVITY_HELP);
-            }
+    rows.hint(STRENGTH_HELP);
+    rows.full(|ui| {
+        ui.add_enabled_ui(on, |ui| {
+            ui.label(RichText::new("Sensitivity (lower = heavier)").color(TEXT_LABEL)).on_hover_text(SENSITIVITY_HELP);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES).rev() {
+                    ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
+                        .on_hover_text(SENSITIVITY_HELP);
+                }
+            });
         });
     });
 }
@@ -126,73 +135,93 @@ fn ffb_cars_ui(
     ffb_status: &mut Option<String>,
     search: &mut String,
 ) {
-    ui.add_space(10.0);
-    let title = RichText::new(format!("Force feedback per car ({})", ffb_cars.cars.len())).size(16.5).strong();
+    ui.add_space(14.0);
+    let title = RichText::new(format!("Force feedback per car ({})", ffb_cars.cars.len()))
+        .size(12.0)
+        .family(medium())
+        .color(TEXT_2);
     egui::CollapsingHeader::new(title).default_open(false).show(ui, |ui| {
         ui.add_enabled_ui(on && !read_only, |ui| {
-            ui.label("Cars listed here use their own sensitivities instead of the ones above.");
-            ui.add(egui::TextEdit::singleline(&mut *search).hint_text("Search cars"));
-            let search = search.trim().to_lowercase();
+            kit::hint(ui, "Cars listed here use their own sensitivities instead of the ones above.");
+            ui.add_space(4.0);
             let mut changed = false;
-            let mut remove: Option<String> = None;
-            for (key, values) in ffb_cars.cars.iter_mut() {
-                let name = car_display(key, cars);
-                if !name.to_lowercase().contains(&search) {
-                    continue;
-                }
-                ui.horizontal(|ui| {
-                    ui.label(name);
-                    for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
-                        let help = match maxed_out(loads, key, k, *value, linearity) {
-                            Some(n) => format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here."),
-                            None => SENSITIVITY_HELP.to_owned(),
-                        };
-                        changed |= ui
-                            .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                            .on_hover_text(help)
-                            .changed();
+            kit::panel(ui, |rows| {
+                rows.full(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut *search)
+                            .hint_text("Search cars")
+                            .desired_width(ui.available_width()),
+                    );
+                });
+                let search = search.trim().to_lowercase();
+                let mut remove: Option<String> = None;
+                for (key, values) in ffb_cars.cars.iter_mut() {
+                    let name = car_display(key, cars);
+                    if !name.to_lowercase().contains(&search) {
+                        continue;
                     }
-                    if ui.small_button("Remove").clicked() {
-                        remove = Some(key.clone());
+                    rows.full(|ui| {
+                        label_cell(ui, 150.0, &name);
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.small_button("Remove").clicked() {
+                                remove = Some(key.clone());
+                            }
+                            for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate().rev() {
+                                let help = match maxed_out(loads, key, k, *value, linearity) {
+                                    Some(n) => {
+                                        format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here.")
+                                    }
+                                    None => SENSITIVITY_HELP.to_owned(),
+                                };
+                                changed |= ui
+                                    .add(
+                                        DragValue::new(value)
+                                            .range(ffb::SENSITIVITY_RANGE)
+                                            .prefix(format!("{surface} ")),
+                                    )
+                                    .on_hover_text(help)
+                                    .changed();
+                            }
+                        });
+                    });
+                }
+                if let Some(key) = remove {
+                    ffb_cars.cars.remove(&key);
+                    changed = true;
+                }
+                let selected = cars.get(car);
+                let key = selected.map(|c| c.key.clone());
+                let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
+                rows.full(|ui| {
+                    let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
+                    if ui
+                        .add_enabled(!listed, egui::Button::new(format!("Add the selected car ({name})")))
+                        .on_hover_text("Lists this car with the sensitivities above")
+                        .clicked()
+                    {
+                        if let Some(key) = key.clone() {
+                            ffb_cars.cars.insert(key, global);
+                            changed = true;
+                        }
+                    }
+                    if ui
+                        .add_enabled(has_rsf_settings(root), egui::Button::new("Import from RSF"))
+                        .on_hover_text(IMPORT_HELP)
+                        .clicked()
+                    {
+                        let n = import_ffb_cars(root, cars, global, ffb_cars);
+                        *ffb_status = Some(match n {
+                            1 => "Imported 1 car from RSF.".to_owned(),
+                            n => format!("Imported {n} cars from RSF."),
+                        });
+                        changed |= n > 0;
                     }
                 });
-            }
-            if let Some(key) = remove {
-                ffb_cars.cars.remove(&key);
-                changed = true;
-            }
-            let selected = cars.get(car);
-            let key = selected.map(|c| c.key.clone());
-            let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
-            ui.horizontal(|ui| {
-                let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
-                if ui
-                    .add_enabled(!listed, egui::Button::new(format!("Add the selected car ({name})")))
-                    .on_hover_text("Lists this car with the sensitivities above")
-                    .clicked()
-                {
-                    if let Some(key) = key.clone() {
-                        ffb_cars.cars.insert(key, global);
-                        changed = true;
-                    }
-                }
-                if ui
-                    .add_enabled(has_rsf_settings(root), egui::Button::new("Import from RSF"))
-                    .on_hover_text(IMPORT_HELP)
-                    .clicked()
-                {
-                    let n = import_ffb_cars(root, cars, global, ffb_cars);
-                    *ffb_status = Some(match n {
-                        1 => "Imported 1 car from RSF.".to_owned(),
-                        n => format!("Imported {n} cars from RSF."),
-                    });
-                    changed |= n > 0;
+                rows.hint("Hover a value for how often the wheel maxed out; adjust in the pause menu while driving.");
+                if let Some(status) = &*ffb_status {
+                    rows.hint(status);
                 }
             });
-            ui.label("Hover a value for how often the wheel maxed out; adjust in the pause menu while driving.");
-            if let Some(status) = &*ffb_status {
-                ui.label(status);
-            }
             if changed {
                 write_ffb_cars(settings, ffb_cars);
             }
@@ -260,11 +289,10 @@ const DEVICE_HELP: &str = "The wheel the force goes to. First found tries each d
      that takes the force; one picked by name does the same among the devices with that name. Some drivers list a \
      wheel more than once (Logitech Gaming Software lists a G29 three times), and only one of them is the wheel: the \
      line below says which one the last drive used.";
-/// The rows' label column and the live bars' width.
-const ROW_LABEL: f32 = 110.0;
-const BAR: f32 = 110.0;
-/// The width of each of the two columns.
-const COLUMN: f32 = 500.0;
+/// The rows' label column, the input button and the live meter's widths.
+const ROW_LABEL: f32 = 104.0;
+const BUTTON_WIDTH: f32 = 204.0;
+const METER: f32 = 60.0;
 
 /// The other actions a wheel button can drive.
 const BUTTONS: [(Action, &str); 10] = [
@@ -488,12 +516,13 @@ impl ControlsPage {
         (0..joysticks.len()).map(|k| (joysticks.device(k), short_name(joysticks.name(k)))).collect()
     }
 
-    /// The joysticks connected: name and id.
-    fn pads(&self) -> Vec<String> {
-        let Some(joysticks) = &self.joysticks else { return Vec::new() };
-        (0..joysticks.len()).map(|k| format!("{} ({})", joysticks.name(k), joysticks.device(k).format())).collect()
+    /// The joysticks connected, by their short names ([`short_name`]).
+    pub fn pad_names(&self) -> Vec<String> {
+        self.connected().into_iter().map(|(_, name)| name).collect()
     }
 
+    /// The page: the connected devices, the wheel, the shifter, the aids and the force feedback in two columns, the
+    /// keyboard and "Reset all" under them.
     #[allow(clippy::too_many_arguments)]
     pub fn ui(
         &mut self,
@@ -510,160 +539,191 @@ impl ControlsPage {
         settings: &Path,
         read_only: bool,
     ) {
-        let pads = self.pads();
+        let pads = self.pad_names();
         if pads.is_empty() {
             ui.label(
-                "No wheel or gamepad found: connect it and it shows here. Until then the keyboard drives: its keys are \
-                 under Keyboard below.",
+                RichText::new(
+                    "No wheel or gamepad found: connect it and it shows here. Until then the keyboard drives: its keys \
+                     are under Keyboard below.",
+                )
+                .color(TEXT_2),
             );
         } else {
-            ui.label(format!("Connected: {}", pads.join(", ")));
+            kit::status_dot(ui, GOOD, &pads.join(" · "));
         }
-        ui.add_space(10.0);
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(COLUMN);
-                    heading(ui, "Wheel and pedals");
-                    self.pad_rows(ui, bindings, "wheel", WHEEL);
-                    invert_ui(ui, bindings);
-                    self.rotation_ui(ui, ffb);
-                    heading(ui, "Wheel buttons");
-                    self.pad_rows(ui, bindings, "buttons", BUTTONS);
-                });
-                ui.add_space(24.0);
-                ui.vertical(|ui| {
-                    ui.set_width(COLUMN);
-                    heading(ui, "Shifter");
-                    self.pad_rows(ui, bindings, "shifter-rows", SHIFTER);
-                    ui.label(
-                        RichText::new("With gears bound and Neutral not, letting go of the H-shifter selects neutral.")
-                            .color(Color32::GRAY),
-                    );
-                    shifter_ui(ui, bindings);
-                    heading(ui, "Driver aids");
-                    aids_ui(ui, aids);
-                    heading(ui, "Car");
-                    head_gasket_ui(ui, head_gasket);
-                    heading(ui, "Force feedback");
-                    ffb_ui(ui, ffb, settings, read_only);
-                    self.ffb_device_ui(ui, ffb);
-                    let (global, linearity) = (ffb.sensitivity, ffb.linearity());
-                    let on = ffb.settings.enabled;
-                    let (status, search) = (&mut self.ffb_status, &mut self.ffb_search);
-                    ffb_cars_ui(
-                        ui, on, global, linearity, ffb_cars, ffb_load, cars, car, root, settings, read_only, status,
-                        search,
-                    );
-                });
+        ui.add_space(8.0);
+        ui.columns(2, |columns| {
+            let left = &mut columns[0];
+            kit::group_label(left, "Wheel and pedals", None);
+            kit::panel(left, |rows| {
+                self.pad_rows(rows, bindings, WHEEL);
+                invert_ui(rows, bindings);
+                self.rotation_ui(rows, ffb);
             });
-            ui.add_space(8.0);
-            egui::CollapsingHeader::new(RichText::new("Keyboard").size(16.5).strong())
-                .default_open(false)
-                .show(ui, |ui| self.keys_ui(ui, bindings));
-            ui.add_space(8.0);
-            if ui.button("Reset all controls to defaults").clicked() {
-                *bindings = Bindings::default();
-                self.capture = None;
+            left.add_space(14.0);
+            kit::group_label(left, "Wheel buttons", None);
+            kit::panel(left, |rows| self.pad_rows(rows, bindings, BUTTONS));
+
+            let right = &mut columns[1];
+            kit::group_label(right, "Shifter", None);
+            kit::panel(right, |rows| {
+                self.pad_rows(rows, bindings, SHIFTER);
+                shifter_ui(rows, bindings);
+            });
+            right.add_space(4.0);
+            kit::hint(right, "With gears bound and Neutral not, letting go of the H-shifter selects neutral.");
+            right.add_space(14.0);
+            if kit::group_label(right, "Driver aids", Some("Game defaults")) {
+                *aids = DriverAids::default();
             }
+            kit::panel(right, |rows| aids_ui(rows, aids));
+            right.add_space(14.0);
+            kit::group_label(right, "Car", None);
+            kit::panel(right, |rows| head_gasket_ui(rows, head_gasket));
+            right.add_space(14.0);
+            kit::group_label(right, "Force feedback", None);
+            kit::panel(right, |rows| {
+                ffb_ui(rows, ffb, settings, read_only);
+                self.ffb_device_ui(rows, ffb);
+            });
+            let (global, linearity) = (ffb.sensitivity, ffb.linearity());
+            let on = ffb.settings.enabled;
+            let (status, search) = (&mut self.ffb_status, &mut self.ffb_search);
+            ffb_cars_ui(
+                right, on, global, linearity, ffb_cars, ffb_load, cars, car, root, settings, read_only, status, search,
+            );
         });
+        ui.add_space(14.0);
+        egui::CollapsingHeader::new(RichText::new("Keyboard").size(12.0).family(medium()).color(TEXT_2))
+            .default_open(false)
+            .show(ui, |ui| self.keys_ui(ui, bindings));
+        ui.add_space(12.0);
+        if ui.button("Reset all controls to defaults").clicked() {
+            *bindings = Bindings::default();
+            self.capture = None;
+        }
     }
 
     /// A section's device rows.
-    fn pad_rows<const N: usize>(&mut self, ui: &mut Ui, bindings: &mut Bindings, id: &str, rows: [(Action, &str); N]) {
+    fn pad_rows<const N: usize>(&mut self, rows: &mut Rows, bindings: &mut Bindings, list: [(Action, &str); N]) {
         let connected = self.connected();
-        egui::Grid::new(id).num_columns(4).min_col_width(ROW_LABEL).spacing([12.0, 4.0]).show(ui, |ui| {
-            for (action, label) in rows {
-                self.pad_row(ui, bindings, action, label, &connected);
-            }
-        });
+        for (action, label) in list {
+            self.pad_row(rows, bindings, action, label, &connected);
+        }
     }
 
-    /// An action's device row: its input (click to set it; named by `connected`), its live value and a clear.
+    /// An action's device row: its input (click it to set it; named by `connected`) or "Not set", its live value
+    /// and Clear or Bind.
     fn pad_row(
         &mut self,
-        ui: &mut Ui,
+        rows: &mut Rows,
         bindings: &mut Bindings,
         action: Action,
         label: &str,
         connected: &[(Device, String)],
     ) {
-        ui.label(label);
         let binding = bindings.get(action);
-        let text = match &self.capture {
-            Some(Capture::Pad(a, _)) if *a == action => {
-                if action == Action::SteerLeft { "turn the wheel left…" } else { "move it…" }.to_owned()
-            }
-            _ if action == Action::SteerLeft => steering_label(bindings, connected),
-            _ => binding.pad.map_or("-".to_owned(), |p| pad_label(p, connected)),
+        let steering = action == Action::SteerLeft;
+        let capturing = matches!(&self.capture, Some(Capture::Pad(a, _)) if *a == action);
+        let text = if capturing {
+            Some(if steering { "turn the wheel left…" } else { "move it…" }.to_owned())
+        } else if steering {
+            Some(steering_label(bindings, connected)).filter(|t| t != "-")
+        } else {
+            binding.pad.map(|p| pad_label(p, connected))
         };
-        let button = egui::Button::new(text.clone()).truncate().min_size(egui::vec2(190.0, 0.0));
-        if ui.add_sized([190.0, 18.0], button).on_hover_text(text).clicked() {
+        let bound = text.is_some();
+        let live = binding.pad.and_then(|p| self.read(p)).map(|v| live_value(bindings, action, v));
+        let (mut set, mut clear) = (false, false);
+        rows.full(|ui| {
+            label_cell(ui, ROW_LABEL, label);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                clear = bound && !capturing && kit::link(ui, "Clear").clicked();
+                if !bound {
+                    set = kit::link(ui, "Bind").clicked();
+                }
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| match &text {
+                    Some(text) => {
+                        set |= binding_button(ui, text, capturing).clicked();
+                        if !capturing {
+                            meter(ui, live, steering, bound);
+                        }
+                    }
+                    None => _ = ui.label(RichText::new("Not set").color(TEXT_3)),
+                });
+            });
+        });
+        if set {
             self.capture = Some(Capture::Pad(action, self.pad_rest()));
         }
-        match binding.pad.and_then(|p| self.read(p)) {
-            Some(value) => {
-                let value = live_value(bindings, action, value);
-                let bar = match action {
-                    Action::SteerLeft => ProgressBar::new((value + 1.0) / 2.0).text(format!("{value:+.2}")),
-                    _ => ProgressBar::new(value),
-                };
-                ui.add(bar.desired_width(BAR));
-            }
-            None => {
-                ui.add_sized([BAR, 0.0], egui::Label::new(""));
-            }
-        }
-        if ui.small_button("clear").clicked() {
+        if clear {
             bindings.actions[action as usize].pad = None;
-            if action == Action::SteerLeft {
+            if steering {
                 bindings.actions[Action::SteerRight as usize].pad = None;
             }
         }
-        ui.end_row();
     }
 
     /// Each action's key, and a clear.
     fn keys_ui(&mut self, ui: &mut Ui, bindings: &mut Bindings) {
-        egui::Grid::new("keys").num_columns(3).spacing([12.0, 4.0]).show(ui, |ui| {
-            for action in Action::ALL {
-                ui.label(action.name());
-                let text = match self.capture {
-                    Some(Capture::Key(a)) if a == action => "press a key (Esc cancels)",
-                    _ => bindings.get(action).key.map_or("-", bindings::key_name),
-                };
-                if ui.button(text).clicked() {
-                    self.capture = Some(Capture::Key(action));
-                }
-                if ui.small_button("clear").clicked() {
-                    bindings.actions[action as usize].key = None;
-                }
-                ui.end_row();
+        ui.columns(2, |columns| {
+            for (n, column) in columns.iter_mut().enumerate() {
+                kit::panel(column, |rows| {
+                    for (k, action) in Action::ALL.into_iter().enumerate() {
+                        if k * 2 / Action::ALL.len() != n {
+                            continue;
+                        }
+                        let key = bindings.get(action).key;
+                        let capturing = matches!(self.capture, Some(Capture::Key(a)) if a == action);
+                        let (mut set, mut clear) = (false, false);
+                        rows.full(|ui| {
+                            label_cell(ui, 150.0, action.name());
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                clear = key.is_some() && !capturing && kit::link(ui, "Clear").clicked();
+                                if key.is_none() && !capturing {
+                                    set = kit::link(ui, "Bind").clicked();
+                                }
+                                ui.with_layout(Layout::left_to_right(Align::Center), |ui| match (key, capturing) {
+                                    (_, true) => set |= binding_button(ui, "press a key (Esc cancels)", true).clicked(),
+                                    (Some(key), false) => {
+                                        set |= binding_button(ui, bindings::key_name(key), false).clicked()
+                                    }
+                                    (None, false) => _ = ui.label(RichText::new("Not set").color(TEXT_3)),
+                                });
+                            });
+                        });
+                        if set {
+                            self.capture = Some(Capture::Key(action));
+                        }
+                        if clear {
+                            bindings.actions[action as usize].key = None;
+                        }
+                    }
+                });
             }
         });
     }
 
     /// The wheel's lock-to-lock rotation: off, fixed, or per car (each car's own up to the degrees). Set on the wheel
     /// when changed, and by the viewer when a drive starts.
-    fn rotation_ui(&mut self, ui: &mut Ui, ffb: &mut ffb::Options) {
-        ui.horizontal(|ui| {
-            ui.add_sized([ROW_LABEL, 18.0], egui::Label::new("Rotation")).on_hover_text(ROTATION_HELP);
+    fn rotation_ui(&mut self, rows: &mut Rows, ffb: &mut ffb::Options) {
+        row_tip(rows, "Rotation", ROTATION_HELP, |ui| {
             const MODES: [(Option<bool>, &str); 3] = [(None, "off"), (Some(false), "fixed"), (Some(true), "per car")];
             let mut mode = ffb.rotation.map(|_| ffb.rotation_per_car);
-            let name = MODES.iter().find(|(m, _)| *m == mode).map_or("", |(_, n)| n);
+            let mut degrees = ffb.rotation.unwrap_or(900);
             let mut changed = false;
+            if let Some(per_car) = mode {
+                let r = ui.add(DragValue::new(&mut degrees).range(wheel_rotation::DEGREES).speed(5).suffix("°"));
+                changed |= (r.changed() && !r.dragged()) || r.drag_stopped();
+                ui.label(RichText::new(if per_car { "up to" } else { "lock to lock" }).color(TEXT_2));
+                ffb.rotation_per_car = per_car;
+            }
+            let name = MODES.iter().find(|(m, _)| *m == mode).map_or("", |(_, n)| n);
             ComboBox::from_id_salt("rotation").selected_text(name).show_ui(ui, |ui| {
                 for (m, n) in MODES {
                     changed |= ui.selectable_value(&mut mode, m, n).changed();
                 }
             });
-            let mut degrees = ffb.rotation.unwrap_or(900);
-            if let Some(per_car) = mode {
-                ui.label(if per_car { "up to" } else { "lock to lock" });
-                let r = ui.add(DragValue::new(&mut degrees).range(wheel_rotation::DEGREES).speed(5).suffix("°"));
-                changed |= (r.changed() && !r.dragged()) || r.drag_stopped();
-                ffb.rotation_per_car = per_car;
-            }
             ffb.rotation = mode.map(|_| degrees);
             if let Some(degrees) = ffb.rotation.filter(|_| changed) {
                 self.wheels = wheel_rotation::set(degrees);
@@ -674,15 +734,15 @@ impl ControlsPage {
             Ok(wheels) => wheels.iter().map(|w| format!("{}: {}°", w.name, w.degrees)).collect::<Vec<_>>().join(", "),
             Err(e) => e.clone(),
         };
-        ui.label(RichText::new(status).color(Color32::GRAY));
+        rows.hint(&status);
     }
 
     /// Which device gets the force (`ffb::Options::device`): the first found or one by name. The devices are looked
     /// for when the list is opened, not on the page's rescan: SDL takes a tenth of a second over it.
-    fn ffb_device_ui(&mut self, ui: &mut Ui, ffb: &mut ffb::Options) {
-        ui.add_enabled_ui(ffb.settings.enabled, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Device").on_hover_text(DEVICE_HELP);
+    fn ffb_device_ui(&mut self, rows: &mut Rows, ffb: &mut ffb::Options) {
+        let on = ffb.settings.enabled;
+        row_tip(rows, "Device", DEVICE_HELP, |ui| {
+            ui.add_enabled_ui(on, |ui| {
                 let selected = ffb.device.as_deref().unwrap_or("first found").to_owned();
                 let list = ComboBox::from_id_salt("ffb-device").selected_text(selected).show_ui(ui, |ui| {
                     ui.selectable_value(&mut ffb.device, None, "first found");
@@ -702,49 +762,79 @@ impl ControlsPage {
                     });
                 }
             });
-            match &self.ffb_last {
-                Some(Ok(device)) => {
-                    _ = ui.label(RichText::new(format!("Last drive: on {device}")).color(Color32::GRAY))
-                }
-                Some(Err(why)) => {
-                    let text = "Last drive: no force feedback. If your wheel is listed more than once in Device, pick \
-                                another of its entries.";
-                    _ = ui.label(RichText::new(text).color(Color32::from_rgb(230, 170, 60))).on_hover_text(why);
-                }
-                None => {}
-            }
         });
+        if !on {
+            return;
+        }
+        match &self.ffb_last {
+            Some(Ok(device)) => rows.hint(&format!("Last drive: on {device}")),
+            Some(Err(why)) => {
+                let text = "Last drive: no force feedback. If your wheel is listed more than once in Device, pick \
+                            another of its entries.";
+                note(rows, WARN, text);
+                _ = why;
+            }
+            None => {}
+        }
+    }
+}
+
+/// A binding's input as a button (click it to set the binding): mono on the input fill, accent while being set.
+fn binding_button(ui: &mut Ui, text: &str, capturing: bool) -> egui::Response {
+    let color = if capturing { LINK } else { TEXT };
+    let button = egui::Button::new(RichText::new(text).font(mono(11.5)).color(color))
+        .fill(INPUT)
+        .truncate()
+        .min_size(egui::vec2(BUTTON_WIDTH, 24.0));
+    ui.add_sized([BUTTON_WIDTH, 24.0], button).on_hover_text(text)
+}
+
+/// A live meter of an input (the steering from the middle, the rest from the left); an empty track while it has no
+/// reading, nothing on an unbound row.
+fn meter(ui: &mut Ui, value: Option<f32>, steering: bool, bound: bool) {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(METER, 24.0), egui::Sense::hover());
+    if !bound {
+        return;
+    }
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
+    ui.painter().rect_filled(track, 2, INPUT);
+    let Some(value) = value else { return };
+    if steering {
+        let x = track.center().x + value.clamp(-1.0, 1.0) * track.width() / 2.0;
+        let marker = egui::Rect::from_center_size(egui::pos2(x, track.center().y), egui::vec2(4.0, 10.0));
+        ui.painter().rect_filled(marker, 1, PROGRESS);
+        response.on_hover_text(format!("{value:+.2}"));
+    } else {
+        let mut fill = track;
+        fill.set_right(track.left() + track.width() * value.clamp(0.0, 1.0));
+        ui.painter().rect_filled(fill, 2, PROGRESS);
+        response.on_hover_text(format!("{value:.2}"));
     }
 }
 
 /// The pedals' and the steering's inverts (`input.ini`'s `Invert*Axis`), which the set-up sets.
-fn invert_ui(ui: &mut Ui, bindings: &mut Bindings) {
-    ui.horizontal(|ui| {
-        ui.add_sized([ROW_LABEL, 18.0], egui::Label::new("Invert")).on_hover_text(INVERT_HELP);
-        for (action, label) in [
-            (Action::SteerLeft, "steering"),
-            (Action::Throttle, "throttle"),
-            (Action::Brake, "brake"),
-            (Action::Clutch, "clutch"),
-            (Action::Handbrake, "handbrake"),
-        ] {
-            if let Some(flag) = invert_flag(&mut bindings.invert, action) {
-                ui.checkbox(flag, label).on_hover_text(INVERT_HELP);
+fn invert_ui(rows: &mut Rows, bindings: &mut Bindings) {
+    rows.full(|ui| {
+        label_cell(ui, ROW_LABEL, "Invert");
+        ui.horizontal_wrapped(|ui| {
+            for (action, label) in [
+                (Action::SteerLeft, "Steering"),
+                (Action::Throttle, "Throttle"),
+                (Action::Brake, "Brake"),
+                (Action::Clutch, "Clutch"),
+                (Action::Handbrake, "Handbrake"),
+            ] {
+                if let Some(flag) = invert_flag(&mut bindings.invert, action) {
+                    ui.checkbox(flag, label).on_hover_text(INVERT_HELP);
+                }
             }
-        }
-    });
+        });
+    })
 }
 
 /// What the inverts do.
 const INVERT_HELP: &str = "Flips an axis, as RBR's input.ini does: for a pedal that rests at the other end, or a \
      wheel that turns the other way. Binding an axis sets it.";
-
-/// A section's heading, as the other pages have them.
-fn heading(ui: &mut Ui, title: &str) {
-    ui.add_space(10.0);
-    ui.label(RichText::new(title).size(16.5).strong());
-    ui.add_space(2.0);
-}
 
 /// The steering's inputs: the axis once when both are on it, else both ([`pad_label`]).
 fn steering_label(bindings: &Bindings, connected: &[(Device, String)]) -> String {
@@ -793,22 +883,21 @@ const ROTATION_HELP: &str = "How far the wheel turns from lock to lock. The whee
      x 720), up to the degrees. Off leaves the wheel as it is. Linux wheel drivers only (the wheel tools' udev rule \
      must allow it).";
 
-fn shifter_ui(ui: &mut Ui, bindings: &mut Bindings) {
+fn shifter_ui(rows: &mut Rows, bindings: &mut Bindings) {
     let shifter = &mut bindings.shifter;
-    ui.checkbox(&mut shifter.advanced, "Advanced H-shifter: a gear needs the clutch or matched revs").on_hover_text(
-        "With gears 1-6 and reverse bound to the shifter. Off: the gears select at once, as NGP has them. \
-         The Drive page's Gearbox picks each car's: an H-pattern car drives without Clutch Help and the automatic \
-         gearbox, a sequential one (every car until picked) keeps both and shifts as before. The grind plays \
-         RBRControls' Shifter_Error.wav from the RSF folder.",
-    );
+    rows.switch_row("Advanced H-shifter", Some("A gear needs the clutch or matched revs"), &mut shifter.advanced)
+        .on_hover_text(
+            "With gears 1-6 and reverse bound to the shifter. Off: the gears select at once, as NGP has them. \
+             The Drive page's Gearbox picks each car's: an H-pattern car drives without Clutch Help and the \
+             automatic gearbox, a sequential one (every car until picked) keeps both and shifts as before. The \
+             grind plays RBRControls' Shifter_Error.wav from the RSF folder.",
+        );
     if !shifter.advanced {
         return;
     }
-    egui::Grid::new("shifter").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
-        ui.label("Clutch threshold");
+    rows.row("Clutch threshold", |ui| {
         ui.add(egui::Slider::new(&mut shifter.clutch_threshold, 0.0..=0.95))
             .on_hover_text("How far the clutch pedal must be pressed to count as in");
-        ui.end_row();
     });
 }
 
@@ -819,33 +908,25 @@ const HEAD_GASKET_FIX: i32 = 10;
 const HEAD_GASKET_HELP: &str = "RSF's fix: the head gasket wears 10 times slower, so realistic damage no longer kills \
      the engine unexpectedly. Off is NGP's default.";
 
-/// The game's gearbox aids (its English labels, `bstrings.eng`) and "Game defaults". A car with an H-pattern gearbox
-/// under the advanced H-shifter drives without the automatic gearbox and clutch help.
-fn aids_ui(ui: &mut Ui, aids: &mut DriverAids) {
+/// The game's gearbox aids (its English labels, `bstrings.eng`); "Game defaults" is the group's link. A car with an
+/// H-pattern gearbox under the advanced H-shifter drives without the automatic gearbox and clutch help.
+fn aids_ui(rows: &mut Rows, aids: &mut DriverAids) {
     const H_PATTERN: &str = "; off for a car whose gearbox is H-pattern under the advanced H-shifter";
-    egui::Grid::new("aids").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-        let rows = [
-            ("Automatic gearbox", &mut aids.auto_gears, format!("Shifts up and down for you{H_PATTERN}")),
-            ("Gear Protection", &mut aids.gear_guard, "Stops a shift into a gear that would over-rev".into()),
-            ("Neutral Lock", &mut aids.neutral_lock, "Keeps the gearbox from slipping into neutral".into()),
-            ("Clutch Help", &mut aids.clutch_help, format!("Works the clutch for you when you shift{H_PATTERN}")),
-        ];
-        for (n, (label, value, tip)) in rows.into_iter().enumerate() {
-            ui.checkbox(value, label).on_hover_text(tip);
-            if n % 2 == 1 {
-                ui.end_row();
-            }
-        }
-    });
-    if ui.small_button("Game defaults").on_hover_text("The game's driver aids").clicked() {
-        *aids = DriverAids::default();
+    let list = [
+        ("Automatic gearbox", &mut aids.auto_gears, format!("Shifts up and down for you{H_PATTERN}")),
+        ("Gear Protection", &mut aids.gear_guard, "Stops a shift into a gear that would over-rev".into()),
+        ("Neutral Lock", &mut aids.neutral_lock, "Keeps the gearbox from slipping into neutral".into()),
+        ("Clutch Help", &mut aids.clutch_help, format!("Works the clutch for you when you shift{H_PATTERN}")),
+    ];
+    for (label, value, tip) in list {
+        rows.switch_row(label, None, value).on_hover_text(tip);
     }
 }
 
 /// The head gasket fix (NGP's `headGasketDurability`, 1 off).
-fn head_gasket_ui(ui: &mut Ui, head_gasket: &mut i32) {
+fn head_gasket_ui(rows: &mut Rows, head_gasket: &mut i32) {
     let mut fix = *head_gasket > 1;
-    if ui.checkbox(&mut fix, "Head gasket durability fix").on_hover_text(HEAD_GASKET_HELP).changed() {
+    if rows.switch_row("Head gasket durability fix", None, &mut fix).on_hover_text(HEAD_GASKET_HELP).changed() {
         *head_gasket = if fix { HEAD_GASKET_FIX } else { 1 };
     }
 }
@@ -871,6 +952,33 @@ fn ffb_outcome(log: &str) -> Option<Result<String, String>> {
             .map(|device| Ok(device.to_owned()))
             .or_else(|| line.strip_prefix(ffb::LOG_OFF).map(|why| Err(why.to_owned())))
     })
+}
+
+impl crate::Form {
+    /// The Controls page, under the Settings tabs.
+    pub fn controls_page(&mut self, ui: &mut Ui) {
+        let root = self.game_root();
+        let settings = self.paths.settings.clone();
+        let (read_only, car) = (self.read_only, self.car);
+        egui::ScrollArea::vertical().id_salt("controls").auto_shrink([false, false]).show(ui, |ui| {
+            kit::body(ui, |ui| {
+                self.controls.ui(
+                    ui,
+                    &mut self.bindings,
+                    &mut self.ffb,
+                    &mut self.options.aids,
+                    &mut self.head_gasket,
+                    &mut self.ffb_cars,
+                    &self.ffb_load,
+                    &self.catalog.cars,
+                    car,
+                    &root,
+                    &settings,
+                    read_only,
+                )
+            })
+        });
+    }
 }
 
 #[cfg(test)]

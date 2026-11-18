@@ -195,6 +195,16 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   tyres). Circuit: Session (Length, Pace notes, Damage) and Conditions with Road and tyres folded into one row; the best lap
   panel keeps sectors and car. School: both courses in one list (grades as pips, double-click drives), the lesson's brief,
   cone guide, times and Car on the right. The browsers still draw in the old padding (`Form::browser_frame`).
+- Settings and Co-drivers pages (2026-11-18, the redesign; `settings_page.rs`, `controls_page.rs`, `graphics_page.rs`,
+  `codriver_page.rs`): grouped row panels (`kit::panel`, `Rows::row` / `switch_row`), two columns under the Settings
+  tabs, each page scrolling (`kit::body`). General: status rows (✔, or ⚠ in the warning colour with its fix button) for
+  the folder, NGP, cars and wheel (named from `ControlsPage::pad_names`); physics is one NGP / ReRBR experimental
+  choice (a saved or `--physics` brush tyre is kept, not offered) and the tyre force feedback switch; Advanced
+  collapses; the files folder and its Open link are the pinned footer. Controls: every action a row ("Not set" + Bind,
+  or the input as a button that rebinds, a live meter, Clear), gears each their own row, aids/head gasket/force
+  feedback as switch rows. Graphics & sound: Display, Camera and HUD on the left, Quality and Sound on the right.
+  Co-drivers: voice (grouped by source) with Preview, Call ahead with −/+ (0.25 s) beside the 0.05–15 s drag value,
+  the notes summary, installed packs with Remove, and the Get more modal link.
 - Keyboard (2026-11-03, groups 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the Drive, Library and Settings groups at
   the page each was left on, Ctrl+Tab / Ctrl+Page Down the group's next page, with Shift or Ctrl+Page Up the one
   before (`Page::shortcut`; nothing from Import or Car setup); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space

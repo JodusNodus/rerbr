@@ -2,10 +2,12 @@
 //! brush tyre over it, each switched on its own (`rbr-standalone --physics`); `rerbr --physics NAME` drives one for a
 //! session, unsaved.
 
-use egui::Ui;
+use egui::{RichText, Ui};
 
 use crate::catalog::Car;
-use crate::pages::{fields, section, Choice};
+use crate::kit;
+use crate::pages::Choice;
+use crate::theme::{TEXT_3, WARN};
 
 /// The physics every drive runs (`[launcher] physics`): the Settings page's experimental engine and tyre switches.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -25,7 +27,6 @@ pub enum PhysicsProfile {
 /// Where each experimental switch is explained.
 const DOCS: &str = "https://github.com/JodusNodus/rerbr/blob/main/docs/";
 const ENGINE_PAGE: &str = "experimental-physics.md";
-const TYRE_PAGE: &str = "tyre-model.md";
 const FFB_PAGE: &str = "force-feedback.md";
 
 /// What the experimental physics leaves unsaved, shown beside the choice while it is picked.
@@ -95,51 +96,59 @@ impl Choice for PhysicsProfile {
     }
 }
 
-/// The Settings page's Experimental section: a switch each for the experimental engine (with its aero and
-/// drivetrain), the brush tyre and the force feedback from the tyres (`tyres`, `[ffb] tyres`), each with a link to its
-/// page; the session's `rerbr --physics` when it overrides the switches, and while the experimental physics drives
-/// what it leaves unsaved.
+/// The Settings page's Physics group: one choice, NGP 7's or ReRBR experimental (its engine model, aero and drivetrain;
+/// the brush tyre is not offered, a saved or `--physics` one keeps it), and the force feedback from the tyres
+/// (`tyres`, `[ffb] tyres`) as a switch; each with a link to its page; the session's `rerbr --physics` when it
+/// overrides the choice, and while the experimental physics drives what it leaves unsaved.
 pub fn experimental_section(
     ui: &mut Ui,
     physics: &mut PhysicsProfile,
     session: Option<PhysicsProfile>,
     tyres: &mut bool,
 ) {
-    section(ui, "Experimental");
-    fields(ui, "experimental", |ui| {
-        switch(ui, "Force feedback", tyres, "From the tyres", FFB_HELP, FFB_PAGE);
-        let (mut engine, mut tyre) = physics.parts();
-        switch(ui, "Engine", &mut engine, "ReRBR's engine model, aero and drivetrain", ENGINE_HELP, ENGINE_PAGE);
-        switch(ui, "Tyre", &mut tyre, "ReRBR's brush tyre (in development)", TYRE_HELP, TYRE_PAGE);
+    kit::group_label(ui, "Physics", None);
+    kit::panel(ui, |rows| {
+        let (mut engine, tyre) = physics.parts();
+        rows.row("Physics", |ui| {
+            let options = [(false, "NGP"), (true, "ReRBR experimental")];
+            kit::segmented(ui, "physics", &mut engine, &options).on_hover_text(ENGINE_HELP);
+        });
         *physics = PhysicsProfile::of_parts(engine, tyre);
-        if let Some(session) = session {
-            ui.label("");
-            ui.weak(format!("This session: {} (rerbr --physics {})", session.label(), session.name()));
-            ui.end_row();
-        }
-        if !session.unwrap_or(*physics).keeps_records() {
-            ui.label("");
-            ui.weak(NO_RECORDS);
-            ui.end_row();
-        }
+        rows.full(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                let text = if engine {
+                    "ReRBR's engine model, aero and drivetrain."
+                } else {
+                    "NGP 7's, as the original drives."
+                };
+                ui.label(RichText::new(text).size(12.0).color(TEXT_3));
+                if engine {
+                    docs_link(ui, ENGINE_PAGE);
+                }
+            });
+        });
+        rows.switch_row("Force feedback from the tyres", Some("Replaces the game's steering force."), tyres)
+            .on_hover_text(FFB_HELP);
+        rows.full(|ui| docs_link(ui, FFB_PAGE));
     });
+    ui.add_space(6.0);
+    if let Some(session) = session {
+        kit::hint(ui, &format!("This session: {} (rerbr --physics {})", session.label(), session.name()));
+    }
+    if !session.unwrap_or(*physics).keeps_records() {
+        kit::status_dot(ui, WARN, NO_RECORDS);
+    }
 }
 
-/// A row of the section: `label`, the switch `on` with its `text` and `help`, and the link to `page`.
-fn switch(ui: &mut Ui, label: &str, on: &mut bool, text: &str, help: &str, page: &str) {
-    ui.label(label);
-    ui.horizontal(|ui| {
-        ui.checkbox(on, text).on_hover_text(help);
-        let url = format!("{DOCS}{page}");
-        if ui.link("What is this?").on_hover_text(&url).clicked() {
-            crate::crash::open(url.as_ref());
-        }
-    });
-    ui.end_row();
+/// "What is this?", linking to the docs page `page`.
+fn docs_link(ui: &mut Ui, page: &str) {
+    let url = format!("{DOCS}{page}");
+    if kit::link(ui, "What is this?").on_hover_text(&url).clicked() {
+        crate::crash::open(url.as_ref());
+    }
 }
 
 const ENGINE_HELP: &str = "ReRBR's engine model, aero and four-wheel-drive drivetrain loss, in place of NGP 7's.";
-const TYRE_HELP: &str = "ReRBR's brush tyre, in place of NGP 7's. Still in development.";
 const FFB_HELP: &str = "The wheel's force from the front tyres' grip, as Assetto Corsa EVO's, mapped straight: it \
                         goes light as the front lets go. Off: NGP's force and curve. Records are kept either way; the \
                         sensitivity may want a new value.";

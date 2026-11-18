@@ -2,17 +2,44 @@
 //! (the notes are picked by themselves, `codriver_packs::pick_notes`), the corner numbers, the call timing, and the
 //! owned packs (`codriver_packs`).
 
-use egui::{Color32, ComboBox, DragValue};
+use egui::{ComboBox, DragValue, RichText};
 use rbr_sound::preview::{self as codriver_preview, Preview};
 
 use crate::command::ORIGINAL_VOICE;
 use crate::get_page::GetMore;
-use crate::pages::{combo, fields, section, FIELD, GOOD, WARN};
+use crate::kit;
+use crate::pages::combo;
+use crate::settings_page::{note, row_tip};
+use crate::theme::{GOOD, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
 use crate::Form;
 
 /// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
 /// reads usefully (the ranges between notes are metres to a few hundred).
 const CALLOUT_MAX: f32 = 15.0;
+
+/// The widest the page's content gets.
+const PAGE_WIDTH: f32 = 640.0;
+
+/// A pack's row: its name, `line` under it in `color`, and Remove (enabled as `remove` says) when it has one; whether
+/// Remove was clicked.
+fn pack_row(rows: &mut kit::Rows, name: &str, line: &str, color: egui::Color32, remove: Option<bool>) -> bool {
+    rows.full(|ui| {
+        let mut clicked = false;
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.add_space(8.0);
+            ui.label(RichText::new(name).color(TEXT_LABEL));
+            ui.label(RichText::new(line).size(12.0).color(color));
+            ui.add_space(8.0);
+        });
+        if let Some(enabled) = remove {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                clicked = ui.add_enabled(enabled, egui::Button::new("Remove")).clicked();
+            });
+        }
+        clicked
+    })
+}
 
 /// A call style or range set file's stem: without `.ini`.
 fn ini_stem(file: &str) -> &str {
@@ -98,55 +125,90 @@ impl Form {
         )
     }
 
-    /// The page: the voice and its preview, what the selected stage gets, the corner numbers (when they
-    /// change anything), the call timing, and the packs.
+    /// The page: the voice and its preview, the corner numbers (when they change anything), the call timing, what
+    /// the selected stage gets, and the packs.
     pub fn codriver_section(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Co-driver");
-        fields(ui, "codriver", |ui| {
-            self.codriver_voice_row(ui);
-            self.codriver_status_row(ui);
-            let custom = matches!(self.voice_choice(), VoiceChoice::Voice { .. });
-            if let Some(mods) = self.codriver_mods.as_ref().filter(|_| custom) {
-                if self.codriver_styles_differ {
-                    let tip = "How the voice numbers the corners";
-                    Self::call_file_row(ui, "Corner numbers", tip, &mods.styles, &mut self.codriver_style, style_label);
-                }
-            }
-            let tip = "How many seconds before a note the co-driver calls it, at your speed";
-            ui.label("Call ahead").on_hover_text(tip);
-            ui.add(
-                DragValue::new(&mut self.marker.callout_distance).range(0.05..=CALLOUT_MAX).speed(0.05).suffix(" s"),
-            )
-            .on_hover_text(tip);
-            ui.end_row();
+        kit::page_header(ui, "Co-drivers", Some("Who reads your pace notes, and how early."), |_| {});
+        egui::ScrollArea::vertical().id_salt("codrivers").auto_shrink([false, false]).show(ui, |ui| {
+            kit::body(ui, |ui| {
+                ui.set_max_width(PAGE_WIDTH);
+                kit::group_label(ui, "Voice", None);
+                let mut warn = None;
+                kit::panel(ui, |rows| {
+                    warn = self.codriver_voice_row(rows);
+                    let custom = matches!(self.voice_choice(), VoiceChoice::Voice { .. });
+                    if let Some(mods) = self.codriver_mods.as_ref().filter(|_| custom) {
+                        if self.codriver_styles_differ {
+                            let tip = "How the voice numbers the corners";
+                            Self::call_file_row(
+                                rows,
+                                "Corner numbers",
+                                tip,
+                                &mods.styles,
+                                &mut self.codriver_style,
+                                style_label,
+                            );
+                        }
+                    }
+                    let tip = "How many seconds before a note the co-driver calls it, at your speed";
+                    row_tip(rows, "Call ahead", tip, |ui| {
+                        let value = &mut self.marker.callout_distance;
+                        let plus = ui.small_button("+").on_hover_text(tip).clicked();
+                        ui.add(DragValue::new(value).range(0.05..=CALLOUT_MAX).speed(0.05).suffix(" s"))
+                            .on_hover_text(tip);
+                        let minus = ui.small_button("−").on_hover_text(tip).clicked();
+                        *value = (*value + if plus { 0.25 } else { 0.0 } - if minus { 0.25 } else { 0.0 })
+                            .clamp(0.05, CALLOUT_MAX);
+                    });
 
-            // The custom co-driver fires on its own lookahead and never reads the threshold: only the original
-            // voice skips notes below it.
-            if matches!(self.voice_choice(), VoiceChoice::Original) {
-                let tip = "The original co-driver skips a note while the speed is below this";
-                ui.label("Quiet below").on_hover_text(tip);
-                ui.add(DragValue::new(&mut self.marker.marker_threshold).suffix(" km/h")).on_hover_text(tip);
-                ui.end_row();
-            }
+                    // The custom co-driver fires on its own lookahead and never reads the threshold: only the
+                    // original voice skips notes below it.
+                    if matches!(self.voice_choice(), VoiceChoice::Original) {
+                        let tip = "The original co-driver skips a note while the speed is below this";
+                        row_tip(rows, "Quiet below", tip, |ui| {
+                            ui.add(DragValue::new(&mut self.marker.marker_threshold).suffix(" km/h"))
+                                .on_hover_text(tip);
+                        });
+                    }
+                    if let Some(warn) = warn.take() {
+                        note(rows, WARN, &format!("⚠ {warn}: the original voice"));
+                    }
+                });
+                ui.add_space(4.0);
+                self.codriver_status_row(ui);
+                ui.add_space(14.0);
+                self.codriver_packs_ui(ui);
+            })
         });
-        self.codriver_packs_ui(ui);
     }
 
-    /// The Voice row: who calls the pace notes, with a preview of the corner ladder and one distance call. An
-    /// unset voice plays its source's default, so an old settings file still names the voice heard.
-    fn codriver_voice_row(&mut self, ui: &mut egui::Ui) {
+    /// The Co-driver row: who calls the pace notes, with a preview of the corner ladder and one distance call. An
+    /// unset voice plays its source's default, so an old settings file still names the voice heard. A chosen source
+    /// that is gone or broke: why the original voice drives instead.
+    fn codriver_voice_row(&mut self, rows: &mut kit::Rows) -> Option<String> {
         let tip = "Who calls the pace notes: off (no pace notes at all), the original 1.02 co-driver, or a \
                      voice from the RallySimFans install's Pacenote plugin (only read) or a pack copied into \
                      your files' folder. Whether a pack covers every note of a stage varies by pack.";
-        ui.label("Voice").on_hover_text(tip);
         let current = self.voice_choice();
-        ui.horizontal(|ui| {
+        row_tip(rows, "Co-driver", tip, |ui| {
+            // The preview beside the dropdown: the corner ladder and one distance call with this voice. Built
+            // on a thread, so the UI never stalls.
+            let idle = self.child.is_none() && !self.content.busy();
+            let preview = ui
+                .add_enabled(idle && !matches!(current, VoiceChoice::Off), egui::Button::new("▶ Preview"))
+                .on_hover_text(
+                    "Hear the corners, tightest to fastest, and one distance call with this voice and corner \
+                     numbers",
+                );
+            if preview.clicked() {
+                self.preview_codriver();
+            }
             let mut picked = current.clone();
-            ComboBox::from_id_salt("codriver voice").width(FIELD).selected_text(current.label()).show_ui(ui, |ui| {
+            ComboBox::from_id_salt("codriver voice").selected_text(current.label()).show_ui(ui, |ui| {
                 ui.selectable_value(&mut picked, VoiceChoice::Off, "Off");
                 ui.selectable_value(&mut picked, VoiceChoice::Original, "Original (1.02)");
                 if !self.rsf_voices.is_empty() {
-                    ui.label("RallySimFans install");
+                    ui.label(RichText::new("RallySimFans install").color(TEXT_2));
                     for voice in &self.rsf_voices {
                         ui.selectable_value(
                             &mut picked,
@@ -156,7 +218,7 @@ impl Form {
                     }
                 }
                 for pack in self.owned_voices.iter().filter(|p| p.problem.is_none()) {
-                    ui.label(&pack.name);
+                    ui.label(RichText::new(&pack.name).color(TEXT_2));
                     for voice in &pack.voices {
                         let choice = VoiceChoice::Voice { pack: Some(pack.name.clone()), voice: voice.clone() };
                         ui.selectable_value(&mut picked, choice, voice);
@@ -175,109 +237,88 @@ impl Form {
                     (self.codriver, self.codriver_pack, self.codriver_voice) = (true, pack, Some(voice));
                 }
             }
-            // The preview beside the dropdown: the corner ladder and one distance call with this voice. Built
-            // on a thread, so the UI never stalls.
-            let idle = self.child.is_none() && !self.content.busy();
-            let preview = ui
-                .add_enabled(idle && !matches!(current, VoiceChoice::Off), egui::Button::new("▶ Preview"))
-                .on_hover_text(
-                    "Hear the corners, tightest to fastest, and one distance call with this voice and corner \
-                     numbers",
-                );
-            if preview.clicked() {
-                self.preview_codriver();
-            }
         });
-        ui.end_row();
 
-        // A chosen source that is gone or broke: the original voice drives instead.
-        if let VoiceChoice::Voice { pack, .. } = self.voice_choice() {
-            let bad = match pack.as_deref() {
-                Some(pack) => match self.owned_voices.iter().find(|p| p.name == pack) {
-                    Some(found) => found.problem.clone().map(|p| format!("{pack}: {p}")),
-                    None => Some(format!("{pack}: no longer installed")),
-                },
-                None if !self.rsf_plugin => Some("the RallySimFans install has no Pacenote plugin".to_owned()),
-                None => None,
-            };
-            if let Some(warn) = bad {
-                ui.label("");
-                ui.colored_label(WARN, format!("⚠ {warn}: the original voice"));
-                ui.end_row();
-            }
+        let VoiceChoice::Voice { pack, .. } = self.voice_choice() else { return None };
+        match pack.as_deref() {
+            Some(pack) => match self.owned_voices.iter().find(|p| p.name == pack) {
+                Some(found) => found.problem.clone().map(|p| format!("{pack}: {p}")),
+                None => Some(format!("{pack}: no longer installed")),
+            },
+            None if !self.rsf_plugin => Some("the RallySimFans install has no Pacenote plugin".to_owned()),
+            None => None,
         }
     }
 
     /// A Corner numbers row: the plugin's `files` by `label`, language variants left out unless chosen.
     fn call_file_row(
-        ui: &mut egui::Ui,
+        rows: &mut kit::Rows,
         name: &str,
         tip: &str,
         files: &[String],
         chosen: &mut String,
         label: fn(&str) -> String,
     ) {
-        ui.label(name).on_hover_text(tip);
-        let shown: Vec<String> = files.iter().filter(|f| show_call_file(f, chosen)).cloned().collect();
-        combo(ui, name, None, chosen, &shown, |file| label(&file)).on_hover_text(tip);
-        ui.end_row();
+        row_tip(rows, name, tip, |ui| {
+            let shown: Vec<String> = files.iter().filter(|f| show_call_file(f, chosen)).cloned().collect();
+            combo(ui, name, None, chosen, &shown, |file| label(&file)).on_hover_text(tip);
+        });
     }
 
-    /// The summary row: what the co-driver says on the Drive page's stage (the note file on hover), refreshed when
-    /// its inputs change, never scanned per draw.
+    /// The summary under the voice: what the co-driver says on the Drive page's stage (the note file on hover),
+    /// refreshed when its inputs change, never scanned per draw.
     fn codriver_status_row(&mut self, ui: &mut egui::Ui) {
-        ui.label("");
         self.refresh_notes_cache();
-        let prefix = format!("On {}: ", self.notes_summary.stage);
-        ui.vertical(|ui| self.notes_summary_label(ui, &prefix, false));
-        ui.end_row();
-    }
-
-    /// The notes summary after `prefix`, grey (`small`: in the small text); the note file on hover. Takes a `ui` of
-    /// its own (it sets the width).
-    fn notes_summary_label(&self, ui: &mut egui::Ui, prefix: &str, small: bool) -> egui::Response {
         let summary = &self.notes_summary;
-        let text = egui::RichText::new(format!("{prefix}{}", summary.text)).color(Color32::GRAY);
-        let text = if small { text.small() } else { text };
-        // Wrapped at the fields' width: a long line never widens the page's column.
-        ui.set_max_width(FIELD);
-        let response = ui.add(egui::Label::new(text).wrap());
-        match &summary.file {
-            Some(file) => response.on_hover_text(file.display().to_string()),
-            None => response,
+        let text = format!("On {}: {}", summary.stage, summary.text);
+        let response = ui.add(egui::Label::new(RichText::new(text).size(12.0).color(TEXT_3)).wrap());
+        if let Some(file) = &summary.file {
+            response.on_hover_text(file.display().to_string());
         }
     }
 
     /// The packs: the voices and the pace notes, the ones ReRBR owns with Remove, and the link to Get more.
     fn codriver_packs_ui(&mut self, ui: &mut egui::Ui) {
-        section(ui, "Packs");
+        kit::group_label(ui, "Installed packs", None);
         // No removals while importing or driving.
         let idle = !self.content.busy() && self.child.is_none();
-        if self.rsf_plugin && !self.rsf_voices.is_empty() {
-            let n = self.rsf_voices.len();
-            ui.label(format!("RallySimFans install: {n} voice{}, read only", if n == 1 { "" } else { "s" }));
-        }
-        let mut remove_voice = None;
-        for pack in &self.owned_voices {
-            ui.horizontal(|ui| {
-                match &pack.problem {
-                    Some(problem) => ui.colored_label(WARN, format!("{}: {problem}", pack.name)),
-                    None => ui.colored_label(
-                        GOOD,
-                        format!(
-                            "✔ {}: {} voices, {} call styles, {} range sets",
-                            pack.name,
+        let (mut remove_voice, mut remove_notes) = (None, None);
+        kit::panel(ui, |rows| {
+            if self.rsf_plugin && !self.rsf_voices.is_empty() {
+                let n = self.rsf_voices.len();
+                let line = format!("{n} voice{} · read only", if n == 1 { "" } else { "s" });
+                pack_row(rows, "RallySimFans install", &line, TEXT_2, None);
+            }
+            for pack in &self.owned_voices {
+                let removed = match &pack.problem {
+                    Some(problem) => pack_row(rows, &pack.name, problem, WARN, Some(idle)),
+                    None => {
+                        let line = format!(
+                            "✔ {} voices, {} call styles, {} range sets",
                             pack.voices.len(),
                             pack.styles.len(),
                             pack.ranges.len()
-                        ),
-                    ),
+                        );
+                        pack_row(rows, &pack.name, &line, GOOD, Some(idle))
+                    }
                 };
-                if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
+                if removed {
                     remove_voice = Some(pack.name.clone());
                 }
-            });
-        }
+            }
+            for pack in &self.owned_notes {
+                let line = format!("✔ {} note files", pack.files);
+                if pack_row(rows, &pack.name, &line, GOOD, Some(idle)) {
+                    remove_notes = Some(pack.name.clone());
+                }
+            }
+            if self.owned_voices.is_empty() && self.owned_notes.is_empty() {
+                note(rows, TEXT_2, "No packs added yet.");
+            }
+            if let Some(Err(text)) = &self.codriver_status {
+                note(rows, WARN, &format!("⚠ {text}"));
+            }
+        });
         if let Some(pack) = remove_voice {
             self.codriver_status = crate::codriver_packs::remove_voice(&self.here(), &pack).err().map(Err);
             if self.codriver_pack.as_deref() == Some(&pack) {
@@ -285,27 +326,15 @@ impl Form {
             }
             self.rescan_codrivers();
         }
-        let mut remove_notes = None;
-        for pack in &self.owned_notes {
-            ui.horizontal(|ui| {
-                ui.colored_label(GOOD, format!("✔ {}: {} note files", pack.name, pack.files));
-                if ui.add_enabled(idle, egui::Button::new("Remove")).clicked() {
-                    remove_notes = Some(pack.name.clone());
-                }
-            });
-        }
         if let Some(pack) = remove_notes {
             self.codriver_status = crate::codriver_packs::remove_notes(&self.here(), &pack).err().map(Err);
             self.rescan_codrivers();
         }
-        if self.owned_voices.is_empty() && self.owned_notes.is_empty() {
-            ui.weak("No packs added yet.");
-        }
-        if let Some(Err(text)) = &self.codriver_status {
-            ui.colored_label(WARN, format!("⚠ {text}"));
-        }
-        ui.add_space(6.0);
-        if ui.link("Get more co-drivers…").on_hover_text("Voices and pace notes, on Library > Co-drivers").clicked() {
+        ui.add_space(8.0);
+        if kit::link(ui, "Get more co-drivers…")
+            .on_hover_text("Voices and pace notes, on Library > Co-drivers")
+            .clicked()
+        {
             self.open_get_more(GetMore::Codrivers);
         }
     }

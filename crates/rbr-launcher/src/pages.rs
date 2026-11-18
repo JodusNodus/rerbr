@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use egui::{Id, RichText};
+use egui::Id;
 use rbr_sound::menu::MenuPlayer;
 
 use crate::car_browser;
@@ -125,9 +125,6 @@ impl Page {
     }
 }
 
-/// The width of the Drive and Graphics & sound pages' field column, and of a field.
-pub const DRIVE_FIELDS: f32 = 520.0;
-pub const FIELD: f32 = 340.0;
 /// The width of the fields' labels, the same on every section.
 const LABEL: f32 = 130.0;
 /// A dropdown choice: every value offered, its settings word and its label; parsing searches the offered words.
@@ -176,13 +173,6 @@ pub use crate::theme::{GOOD, WARN};
 /// The page's main action (Start, Drive lesson, Drive SS1): [`kit::primary_button`].
 pub fn start_button(label: &str) -> kit::PrimaryButton<'_> {
     kit::primary_button(label, None)
-}
-
-/// A section's heading.
-pub fn section(ui: &mut egui::Ui, title: &str) {
-    ui.add_space(10.0);
-    ui.label(RichText::new(title).size(16.5).strong());
-    ui.add_space(2.0);
 }
 
 /// A section's fields: a label and its field a row, the labels lined up across sections.
@@ -522,63 +512,31 @@ impl Form {
         }
     }
 
-    /// The page shown in the central area: the Settings group's header over its page, Import and the rest as they
-    /// are (a restyled page draws its own `kit::page_header` and `kit::body`; the others are still wrapped here).
+    /// The page shown in the central area; each draws its own header, footer and padding, the Settings group under the
+    /// shared "Settings" title and tabs.
     fn page_ui(&mut self, ui: &mut egui::Ui) {
         match self.page {
-            Page::Import => return self.import_page(ui),
-            // Restyled: each draws its own header, footer and padding.
-            Page::Drive => return self.drive_page(ui),
-            Page::Circuit => return self.circuit_page(ui),
-            Page::School => return self.school_page(ui),
-            Page::Championship => return self.championship_page(ui),
-            Page::Setup => return self.setup_page(ui),
-            Page::Cars => return self.cars_page(ui),
-            Page::Stages => return self.stages_page(ui),
-            Page::Replays => return self.replays_page(ui),
-            _ => {}
-        }
-        if self.page.section() == Some(Section::Settings) {
-            if let Some(page) = self.settings_header(ui) {
-                self.page = page;
-            }
-        } else {
-            ui.add_space(14.0);
-        }
-        // The pages not yet restyled keep their fixed widths: narrower side padding than the kit's, except under the
-        // Settings header, which lines up with it.
-        let side =
-            if self.page.section() == Some(Section::Settings) { (kit::PAGE_LEFT, kit::PAGE_RIGHT) } else { (14, 4) };
-        let margin = egui::Margin { left: side.0, right: side.1, top: 0, bottom: 8 };
-        egui::Frame::new().inner_margin(margin).show(ui, |ui| match self.page {
-            Page::Drive | Page::Circuit | Page::School | Page::Championship | Page::Setup => {}
-            Page::Replays | Page::Cars | Page::Stages => {}
-            Page::Controls => {
-                let root = self.game_root();
-                let settings = self.paths.settings.clone();
-                let (read_only, car) = (self.read_only, self.car);
-                self.controls.ui(
-                    ui,
-                    &mut self.bindings,
-                    &mut self.ffb,
-                    &mut self.options.aids,
-                    &mut self.head_gasket,
-                    &mut self.ffb_cars,
-                    &self.ffb_load,
-                    &self.catalog.cars,
-                    car,
-                    &root,
-                    &settings,
-                    read_only,
-                )
-            }
-            Page::Graphics => self.graphics_page(ui),
+            Page::Drive => self.drive_page(ui),
+            Page::Circuit => self.circuit_page(ui),
+            Page::Championship => self.championship_page(ui),
+            Page::School => self.school_page(ui),
+            Page::Replays => self.replays_page(ui),
+            Page::Setup => self.setup_page(ui),
+            Page::Cars => self.cars_page(ui),
+            Page::Stages => self.stages_page(ui),
             Page::Codrivers => self.codrivers_page(ui),
-            Page::Import => {}
-            Page::Settings => {
-                egui::ScrollArea::vertical().id_salt("settings").show(ui, |ui| self.settings_page(ui));
+            Page::Import => self.import_page(ui),
+            Page::Settings | Page::Controls | Page::Graphics => {
+                if let Some(page) = self.settings_header(ui) {
+                    self.page = page;
+                }
+                match self.page {
+                    Page::Controls => self.controls_page(ui),
+                    Page::Graphics => self.graphics_page(ui),
+                    _ => self.settings_page(ui),
+                }
             }
-        });
+        }
     }
 
     /// Opens the Car setup page, with a back link to the page it was opened from.
