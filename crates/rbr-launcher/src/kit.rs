@@ -5,9 +5,6 @@
 //! A restyled page is `page_header`, then (when it has a primary action) `footer`, then `body` around its content:
 //! the footer must be added before the body, which takes what is left.
 
-// The pages adopt the kit and the tokens one by one: unused ones are not an error until they do.
-#![allow(dead_code)]
-
 use egui::{
     Align, Color32, CornerRadius, Frame, Layout, Margin, Rect, Response, RichText, Sense, Stroke, Ui, Vec2, Widget,
 };
@@ -62,11 +59,6 @@ pub fn group_label(ui: &mut Ui, text: &str, link_text: Option<&str>) -> bool {
 /// A hint under a panel or a field (12, dimmed, wrapping).
 pub fn hint(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(12.0).color(TEXT_3));
-}
-
-/// A table's header cell label (11.5, medium, dimmed).
-pub fn header_text(text: &str) -> RichText {
-    RichText::new(text).size(11.5).family(medium()).color(TEXT_3)
 }
 
 /// The rows of a [`panel`].
@@ -323,12 +315,6 @@ pub fn chip(ui: &mut Ui, text: &str, selected: bool) -> Response {
     .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// A small label such as "BTB".
-pub fn tag(ui: &mut Ui, text: &str) -> Response {
-    let font = egui::FontId::new(10.5, medium());
-    pill(ui, text, font, Vec2::new(5.0, 1.5), 4, Sense::hover(), |_| (white(20), TEXT_2))
-}
-
 /// A 6 px dot and its text (12, wrapping), for a status.
 pub fn status_dot(ui: &mut Ui, color: Color32, text: &str) {
     // Left to right even in a right-to-left row, so the dot stays before its text.
@@ -338,16 +324,6 @@ pub fn status_dot(ui: &mut Ui, color: Color32, text: &str) {
         let (rect, _) = ui.allocate_exact_size(Vec2::new(6.0, line), Sense::hover());
         ui.painter().circle_filled(rect.center(), 3.0, color);
         ui.add(egui::Label::new(RichText::new(text).size(12.0).color(TEXT_2)).wrap());
-    });
-}
-
-/// A row of keyboard hints: each a key (or keys) and what it does, such as `("↵", "Drive")`.
-pub fn key_hints(ui: &mut Ui, hints: &[(&str, &str)]) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 14.0;
-        for (keys, action) in hints {
-            ui.label(RichText::new(format!("{keys} {action}")).size(11.5).color(TEXT_3));
-        }
     });
 }
 
@@ -494,9 +470,7 @@ mod tests {
                             rows.row("Switch", |ui| _ = switch(ui, &mut on));
                             rows.full(|ui| _ = chip(ui, "chip", true));
                         });
-                        tag(ui, "BTB");
                         status_dot(ui, GOOD, "found");
-                        key_hints(ui, &[("↵", "Drive")]);
                     })
                 });
                 assert!(!modal(

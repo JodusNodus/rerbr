@@ -1,9 +1,6 @@
 //! The launcher's look (the redesign's dark theme): colour tokens, the bundled fonts and the egui style built from
 //! them. [`apply`] runs once per egui context; the kit (`kit.rs`) and the pages take colours and fonts from here.
 
-// The pages adopt the kit and the tokens one by one: unused ones are not an error until they do.
-#![allow(dead_code)]
-
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Id, Stroke, TextStyle};
 
 // Surfaces.
