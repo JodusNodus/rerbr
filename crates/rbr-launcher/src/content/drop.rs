@@ -1,11 +1,11 @@
-//! Dropping files or folders on the launcher window adds them, as the Settings page's Add content does.
+//! Dropping files or folders on the launcher window adds them, as the Import page does.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::Form;
 
-/// Whether the window takes dropped files: winit 0.30 has no drag and drop on native Wayland, so there Add content
-/// does not offer it.
+/// Whether the window takes dropped files: winit 0.30 has no drag and drop on native Wayland, so there Import
+/// does not offer it (the Import page says "Add files or folders").
 static DROP_WORKS: AtomicBool = AtomicBool::new(true);
 
 /// Marks the window as one that takes no dropped files (native Wayland).

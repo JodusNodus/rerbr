@@ -175,6 +175,8 @@ impl Form {
             season,
             page: Page::Drive,
             last_pages: [Page::Drive, Page::Cars, Page::Settings],
+            setup_from: Page::Drive,
+            get_more: None,
             cars_page: Default::default(),
             stages_page: Default::default(),
             setup: SetupPage::new(settings.setups.clone()),

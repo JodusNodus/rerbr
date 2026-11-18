@@ -10,8 +10,8 @@ use rbr_season::event::{rally_name, Event, RallyPlan};
 use super::common::card;
 use super::pool::surface_word;
 use super::view::km;
-use crate::browser::GREY;
 use crate::pages::WARN;
+use crate::theme::TEXT_2 as GREY;
 
 /// The settings a plan was drawn for, and the pool's size.
 type Drawn = (Length, StagePool, Surfaces, u32, usize);
@@ -141,10 +141,10 @@ pub fn plan_ui(ui: &mut Ui, plan: &mut Plan, config: &EventConfig, stages: &[Sta
                         ui.colored_label(GREY, km(stage.length));
                         ui.colored_label(GREY, surface_word(stage.surface));
                         ui.horizontal(|ui| {
-                            if ui.add_enabled(k > 0, Button::new("⬆").small()).on_hover_text("Earlier").clicked() {
+                            if ui.add_enabled(k > 0, Button::new("▲").small()).on_hover_text("Earlier").clicked() {
                                 edit = Some(Edit::Up(r, l, k));
                             }
-                            let later = ui.add_enabled(k + 1 < leg.len(), Button::new("⬇").small());
+                            let later = ui.add_enabled(k + 1 < leg.len(), Button::new("▼").small());
                             if later.on_hover_text("Later").clicked() {
                                 edit = Some(Edit::Down(r, l, k));
                             }

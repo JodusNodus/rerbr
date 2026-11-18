@@ -18,8 +18,9 @@ pub struct Env<'a> {
     pub cars: &'a [Car],
     /// The car a new builder starts on (the Drive page's, the last driven).
     pub default_car: usize,
-    /// Draws the builder's car field for the car; whether Browse was clicked.
-    pub car_field: &'a mut dyn FnMut(&mut Ui, usize) -> bool,
+    /// The catalog's car (the builder's car), if it is listed: its title, its group and source, and whether it is a
+    /// favourite.
+    pub car_info: &'a dyn Fn(usize) -> Option<(String, String, bool)>,
     /// The car's saved setups on a surface (`SetupPage::saved_names`).
     pub saved: &'a dyn Fn(u32) -> Vec<(String, String)>,
     /// What blocks a stage's launch.
@@ -118,16 +119,11 @@ pub(super) fn label_class(class: &str) -> &str {
 }
 
 impl ChampionshipPage {
-    /// The page: the presets, the builder or the championship under way.
+    /// The page: the setup (presets and builder) or the championship under way.
     pub fn ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         match self.view {
-            View::Builder if self.config.is_some() => self.builder_ui(ui, env),
             View::Running if self.run.is_some() => self.event_ui(ui, env),
-            _ => {
-                self.view = View::Entry;
-                self.entry_ui(ui, env);
-                None
-            }
+            _ => self.entry_ui(ui, env),
         }
     }
 }

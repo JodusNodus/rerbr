@@ -138,13 +138,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice, and as "Co-driver: ..."
   under the Drive page's stage.
-- Dropping files works on X11, Windows and macOS only: winit 0.30 has no drag and drop on native Wayland, so there Add
-  content does not offer it (`content::drop::no_drop`; user decision 2026-11-17, over forcing XWayland).
-- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Add files…"/"Add
-  folder…" in Settings' Add content, are opened as a file tree (`content/source/`: folder, zip, 7z, split 7z, NSIS
+- Dropping files works on X11, Windows and macOS only: winit 0.30 has no drag and drop on native Wayland, so there Import
+  says "Add files or folders" and does not offer it (`content::drop::no_drop`; user decision 2026-11-17, over forcing XWayland).
+- One Add for downloads (user decision 2026-11-16; `content/`): files dropped on the window, or "Choose files…"/"Choose
+  folder…" on Import, are opened as a file tree (`content/source/`: folder, zip, 7z, split 7z, NSIS
   installer, plain file, tried in `SOURCES`) and each kind (`content/kind/`, one module each, one line in
-  `content::KINDS`) says whether it is in it; added in one job with a notice on every page (✔ where to find it, ⚠ why
-  not). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
+  `content::KINDS`) says whether it is in it; added in one job with its result on Import (✔ where to find it, ⚠ why
+  not; a toast on other pages). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
   stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
   co-drivers and pace notes through `codriver_packs::import`; NGP car pieces (physics, model and banks dropped
   together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
@@ -167,15 +167,47 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   RBR Czech installers: Peklo, Pribram (O variant left out) and Sturec added, Manukau refused as encrypted.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
-  status line offers the download from every page, and with both NGP paths unset a kept copy is used
+  sidebar's status area offers the download from every page, and with both NGP paths unset a kept copy is used
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Three sections (user decision 2026-11-18; `pages::Section`): Drive (Rally, Circuit, Championship, School, Car setup,
-  Replays), Content (Cars, Stages, Co-drivers, Get more) and Settings (General, Controls, Graphics & sound), a row of
-  sections over a row of the section's pages; a section's tab opens the page it was last on (`Form::last_pages`).
-- Keyboard (2026-11-03, sections 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the sections, Ctrl+Tab / Ctrl+Page Down
-  the section's next page, with Shift or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
+- Shell (user decision 2026-11-18, the redesign; `pages.rs`, `sidebar.rs`, `theme.rs`, `kit.rs`): a 220 px sidebar
+  in place of the tab rows and the status bar. Drive (Rally, Circuit, Championship, School, Replays), Library
+  (Cars and Stages with their counts, Co-drivers), a status area (game folder found, Experimental physics, the
+  readiness issue with its fix button, the status text, the update link), then Import (badge: recent downloads not
+  yet added, scanned every 2 s) and Settings. Settings' General, Controls and Graphics & sound are a segmented
+  control under the page title; the sidebar item opens the last of them (`Form::last_pages`, indexed by
+  `pages::Section`). Car setup is in no group: `Form::open_setup` records the opener (`setup_from`) for its back
+  link. "Get more" is a modal (`Form::get_more`, `GetMore`, `get_page.rs`) over Cars, Stages or Co-drivers: gvrc.de's
+  list (search, class, Hide added, tick table, added cars greyed but tickable = update; `gvrc.rs`) or the sites' rows,
+  each pointing to Import. A car download is polled in `Form::content_notice` (drawn every frame), not by the modal:
+  closing the modal leaves a progress line above the page bottom and a toast with the result. Import (`import_page`:
+  drop zone with Choose files… / Choose folder…, Ready to add, Last import with an Open link per outcome, Clear)
+  takes every drop; on another page the result is a toast (`Add::toast`, `kit::toast`) linking to Import. Open in
+  Stages shows the stage in Library › Stages (`StagesPage::show_stage`); a disc opens Settings › General's disc setup.
+  Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for
+  ★ ⚠ ▼ ↵. Default window 1280×760.
+- Rally, Circuit, School (redesign, `drive_page.rs`, `circuit_page.rs`, `school_page.rs`): page header, a pinned footer
+  (`Form::launch_footer`: summary, blocker with its fix, experimental note with Change to Settings, Stop while driving,
+  Start with the Enter hint), and columns that scroll on their own (`split_columns`, `column`). Rally: Car (card, favourite
+  chips with "+N", Gearbox, Setup with Edit…), Stage (card, chips, Co-driver read-only with a link to Co-drivers, Ghost,
+  Car damage), Conditions (Weather Stage's own / Custom, Sky look with Adjust…, Time of day with the sun arc, then Road and
+  tyres). Circuit: Session (Length, Pace notes, Damage) and Conditions with Road and tyres folded into one row; the best lap
+  panel keeps sectors and car. School: both courses in one list (grades as pips, double-click drives), the lesson's brief,
+  cone guide, times and Car on the right. The browsers still draw in the old padding (`Form::browser_frame`).
+- Settings and Co-drivers pages (2026-11-18, the redesign; `settings_page.rs`, `controls_page.rs`, `graphics_page.rs`,
+  `codriver_page.rs`): grouped row panels (`kit::panel`, `Rows::row` / `switch_row`), two columns under the Settings
+  tabs, each page scrolling (`kit::body`). General: status rows (✔, or ⚠ in the warning colour with its fix button) for
+  the folder, NGP, cars and wheel (named from `ControlsPage::pad_names`); the Experimental group is main's three switches
+  (force feedback from the tyres, engine, brush tyre), each with its help and "What is this?" link; Advanced
+  collapses; the files folder and its Open link are the pinned footer. Controls: every action a row ("Not set" + Bind,
+  or the input as a button that rebinds, a live meter, Clear), gears each their own row, aids/head gasket/force
+  feedback as switch rows. Graphics & sound: Display, Camera and HUD on the left, Quality and Sound on the right.
+  Co-drivers: voice (grouped by source) with Preview, Call ahead with −/+ (0.25 s) beside the 0.05–15 s drag value,
+  the notes summary, installed packs with Remove, and the Get more modal link.
+- Keyboard (2026-11-03, groups 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the Drive, Library and Settings groups at
+  the page each was left on, Ctrl+Tab / Ctrl+Page Down the group's next page, with Shift or Ctrl+Page Up the one
+  before (`Page::shortcut`; nothing from Import or Car setup); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
   (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
@@ -211,7 +243,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   gamepad mapping for moves nothing.
 - Update check (`update.rs`, 2026-11-05): one request at the window's start to the GitHub releases API (published
   releases only; `release.yml` makes drafts), the highest `v*` tag above `CARGO_PKG_VERSION` (semver order) shown as
-  a link to its page at the status bar's right. No download, no setting; a failed check shows nothing.
+  a link to its page in the sidebar's status area. No download, no setting; a failed check shows nothing.
 - Stage pictures (Drive page, viewer loading screen; `rbr_render::stage_picture`, 2026-11-03): retail stages show
   the menu bank's (all 384 x 184); community stages show `rsfdata/images/stage_images/<id>.png` (what the RallySimFans menus show,
   1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look
@@ -229,6 +261,17 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Library layout (redesign, 2026-11-18; `browser.rs`): Cars, Stages and Replays are one pattern: `kit::page_header` (count subtitle;
+  Random, Get more…), one filter bar (search, the scope segments All / Favourites / Recent / Added by you / Circuits /
+  Cannot start, shown only when they have rows, then class, drive, sort for cars and surface, country, length, sort for
+  stages; they wrap to a second row under ~1060 px), the list (header row, 33 px rows, a hint bar of the keys that work)
+  and a 380 px inspector (`browser::inspector`: scrolling facts, pinned Favourite and primary button). A BTB stage is
+  marked in the inspector only (Source and its note), not in the list (user, 2026-11-18). The class and
+  country are filters beside the scope (`Filter::class`, `Filter::country`, saved as `class` in `browser_state`); an older
+  save's `class:`/`country:` collection restores as the filter. The pickers (Drive, Circuit, Championship) are the same
+  browsers with Back, "Choose car/stage" and no Remove. Replays: rows of stage, time, car, conditions, age; the inspector
+  has Stage time, Conditions, Recorded (with the stage start), Penalties, Camera (cockpit, bonnet, bumper, chase), Watch, Delete (asks),
+  and the export with its MP4 filename.
 - Content > Stages (`stages_page.rs`): the stage browser as a page (`StageBrowser::start_page`: no Back or Random, Esc
   does nothing) over every map, circuits too, with the collections "Added by you" (folders in `<files>/tracks/`) and
   "Circuits"; the detail has kind, folder (Open folder), weathers and a circuit's best lap (rally records are in the
@@ -268,13 +311,15 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   2026-11-04). Earlier versions' files are listed read only: a pack car's `<files>/SavedGames/<pack>/`, the
   `Physics/<key>/Setups/` of `Car::setup_keys` (its key, an RSF car's `rsf-<id>`, then 5; a retail car its number's), and their slot files
   `SavedGames/<key>slot<n>_*.lsp`. The championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
-- Car setup page layout (`setup_page/`, 2026-11-09, ours): a map of the car from above (`board.rs`) picks the area: a
-  chip per area with its leading values, its count of differing lines and a tooltip on what they mean, leaders to the
-  parts it sets; the parts show values (bar weight = anti-roll stiffness in its range, diff fill = locking torque, disc
-  glow = brake share) and are outlined orange where their own values differ. Every value is compared with a setup the
-  player picks (default, as opened, or a saved one; `Compare`): each track carries the comparison's tick and the stretch
-  to it, the number its signed difference, the left column lists the differing lines (an axle changed alike is one line,
-  a diff map one line) each with its way back, and an area's heading takes all of it back (`values.rs`, a `Field` table
+- Car setup page layout (`setup_page/`, redesign 2026-11-18, ours): three columns under the title (back link to the
+  opener, car · stage) and the setup header (picker, compare-free buttons Save / Save as… / Revert / Default values /
+  Delete…, prompts as before). Left (240): a small overview of the car from above (`board::overview`, parts pick the
+  area; bar weight = anti-roll stiffness, diff fill = locking torque, disc glow = brake share, outlined orange where
+  their own values differ) over the category list (`board::list`: name, leading values, count badge, tooltip on what
+  the values mean). Centre: the selected area's editor, scrolling. Right (260): "Compared with" (default, as opened or
+  a saved setup; `Compare`) and the lines that differ from it, each with ↺ and a click to jump to its area (an axle
+  changed alike is one line, a diff map one line). Each track carries the comparison's tick and the stretch to it, the
+  number its signed difference, an area's "Reset to compared" takes all of it back (`values.rs`, a `Field` table
   per car: spec, range, the wheel's pair). Per-wheel areas edit an axle's two wheels together while they agree (a
   difference always shows both). Diagrams per area (`charts.rs`): spring coil-overs and their front share, the dampers'
   force over wheel speed, each wheel's lean from the front, brake and anti-roll balance bars, the diff maps' lock curves
@@ -350,6 +395,15 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   writes each stepped frame's car and tyres as text (research, read-only; `replay_trace.rs`; with `--tyre-probe F
   [--tyre-probe-every N]` the tyre frames as the autopilot's probe, `harness/replay_gg.py`). `--replay-tyre STEP:MODEL` (research) runs the replay checked to
   STEP, then fits the tyre model MODEL (`ngp`, `brush`) afresh and runs the drive's inputs on uncompared.
+- Championship layout (redesign, 2026-11-18): one setup screen (presets list left, the builder's Event / Rules / Length panels right,
+  the itinerary editor in a collapsible section, a saved championship as a Continue bar with Abandon… behind a confirmation, the live
+  summary and Start with its blocking reason in the pinned footer; no separate builder view, the first preset is selected on open).
+  A championship under way: header (back link, rally, step, place), a scrolling itinerary strip (tiles per stage and service, your
+  place per stage, click a driven stage for its times), the step's card left (next stage with Position, Start order, Tyres, Setup
+  and Edit… only where a choice is allowed; welcome; service park; Super Rally restart; rally result; championship result),
+  bulletins and calendar under it, the standings right with an Overall / stage-times toggle (`table.rs`, scrolling) and the season
+  points; the step's primary button is the footer's (Drive disabled with the reason when the launch is blocked, the stage is driven
+  or the physics is experimental, which refuses championship stages).
 - Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
   `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the
@@ -386,8 +440,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (surface, length, the player's finish, the winner). `results.rs` reads them (stage times and winners, place changes,
   rivals, finishes, record). The builder's Rules row: Super Rally and Power stage. A bulletins card ("Since your last stage", `Event::bulletins`, the last 8 lines, "Show all" for the rest) sits
   above the standings. The page holds the real `Event` (no seam): `mod.rs` its turns, `words.rs` the settings' words and
-  flags, `view.rs` the screen switch, `builder.rs` the entry and builder, `running.rs` the championship's screens,
-  `cards.rs` its cards, `results.rs` what they read from the results, and `common.rs` the shared cards, places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
+  flags, `view.rs` the screen switch, `builder.rs` the setup screen, `running.rs` the championship's screens,
+  `cards.rs` its cards, `table.rs` the standings' table, `results.rs` what they read from the results, and `common.rs` the shared cards, places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
   (`championship*.png`, `championship-super-rally.png` a weekend's restart; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The built-event test (`a_quick_rally_on_the_real_stages_and_ai_plays_through`, `RBR_DATA`) loads the real `ai.ini`,
   builds a Quick rally on the installed stages and plays every stage at a fixed pace, saved and read back before SS4 to end as the run never saved.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), no longer tagged experimental (user decision

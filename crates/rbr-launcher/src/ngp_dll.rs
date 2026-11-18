@@ -70,13 +70,16 @@ impl Choice {
         problem
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, data: &Data, root: &str, enabled: bool) {
+    /// The NGP.dll rows of the Advanced panel: the path (its field, Browse, Use installed DLL) and what is wrong
+    /// with it or what it links to.
+    pub fn ui(&mut self, rows: &mut crate::kit::Rows, data: &Data, root: &str, enabled: bool) {
         let automatic = Self::automatic(data, root);
-        ui.add_enabled_ui(enabled, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("NGP.dll");
-                let hint = automatic.as_ref().map_or("Choose your NGP.dll".into(), |p| p.display().to_string());
-                ui.add(egui::TextEdit::singleline(&mut self.path).hint_text(hint).desired_width(420.0));
+        rows.full(|ui| {
+            if !enabled {
+                ui.disable();
+            }
+            crate::settings_page::label_cell(ui, 110.0, "NGP.dll");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Browse…").clicked() {
                     if let Some(path) = crate::job::pick_file("Choose NGP 7.4.778's NGP.dll") {
                         self.path = path;
@@ -85,14 +88,21 @@ impl Choice {
                 if !self.path.is_empty() && automatic.is_some() && ui.button("Use installed DLL").clicked() {
                     self.path.clear();
                 }
+                let hint = automatic.as_ref().map_or("Choose your NGP.dll".into(), |p| p.display().to_string());
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.path)
+                        .hint_text(hint)
+                        .font(crate::theme::mono(12.0))
+                        .desired_width(ui.available_width()),
+                );
             });
         });
         if let Some(problem) = self.problem(data, root) {
-            ui.colored_label(crate::pages::WARN, problem);
+            crate::settings_page::note(rows, crate::theme::WARN, &problem);
         } else if self.path.trim().is_empty() {
-            ui.label("Linked to your installed NGP.dll. The game folder is read only.");
+            rows.hint("Linked to your installed NGP.dll. The game folder is read only.");
         } else {
-            ui.label("Using your selected NGP 7.4.778 DLL.");
+            rows.hint("Using your selected NGP 7.4.778 DLL.");
         }
     }
 }

@@ -1,33 +1,35 @@
-//! The window's frame: the look, the tabs, the status line and the smaller pages.
+//! The window's frame: the pages and their groups, the shell around them and the smaller pages.
 
 use std::path::Path;
 use std::time::Duration;
 
-use egui::{Color32, Id, RichText};
+use egui::Id;
 use rbr_sound::menu::MenuPlayer;
 
 use crate::car_browser;
 use crate::catalog::{self, car_label};
+use crate::get_page::GetMore;
+use crate::kit;
 
 use crate::Form;
 
 /// How often a running viewer is checked for its exit.
 const POLL: Duration = Duration::from_millis(250);
 
-/// The launcher's three sections: driving, the content driven, and the settings.
+/// The sidebar's groups of pages: driving, the library of content, and the settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Drive,
-    Content,
+    Library,
     Settings,
 }
 
 impl Section {
-    /// The sections, in order, with their names.
+    /// The groups, in order, with their names.
     pub const ALL: [(Section, &'static str); 3] =
-        [(Section::Drive, "Drive"), (Section::Content, "Content"), (Section::Settings, "Settings")];
+        [(Section::Drive, "Drive"), (Section::Library, "Library"), (Section::Settings, "Settings")];
 
-    /// The section's pages, in order, with their names.
+    /// The group's pages, in order, with their names (the Settings group's are its tabs).
     pub fn pages(self) -> &'static [(Page, &'static str)] {
         match self {
             Section::Drive => &[
@@ -35,22 +37,16 @@ impl Section {
                 (Page::Circuit, "Circuit"),
                 (Page::Championship, "Championship"),
                 (Page::School, "School"),
-                (Page::Setup, "Car setup"),
                 (Page::Replays, "Replays"),
             ],
-            Section::Content => &[
-                (Page::Cars, "Cars"),
-                (Page::Stages, "Stages"),
-                (Page::Codrivers, "Co-drivers"),
-                (Page::Get, "Get more"),
-            ],
+            Section::Library => &[(Page::Cars, "Cars"), (Page::Stages, "Stages"), (Page::Codrivers, "Co-drivers")],
             Section::Settings => {
                 &[(Page::Settings, "General"), (Page::Controls, "Controls"), (Page::Graphics, "Graphics & sound")]
             }
         }
     }
 
-    fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         Self::ALL.iter().position(|(s, _)| *s == self).unwrap_or(0)
     }
 }
@@ -65,7 +61,7 @@ pub enum Page {
     Championship,
     /// The rally school's lessons, each on its map in the Drive page's car.
     School,
-    /// The car setup.
+    /// The car setup, opened from a page ([`Form::open_setup`]); in no group.
     Setup,
     Replays,
     /// Every car: its details and skins, the cars added and their removal.
@@ -74,8 +70,8 @@ pub enum Page {
     Stages,
     /// The co-driver's voice and the pace notes, and their packs.
     Codrivers,
-    /// Where new content comes from: gvrc.de's cars, the stage sites, the recent downloads and Add.
-    Get,
+    /// Adding content: the recent downloads and Add (the Get more sites are modals on Cars, Stages and Co-drivers).
+    Import,
     Controls,
     /// The window, the camera, the HUD, the pace notes, the sound and the renderer's additions.
     Graphics,
@@ -84,37 +80,51 @@ pub enum Page {
 }
 
 impl Page {
-    /// The section the page is in.
-    pub fn section(self) -> Section {
-        Section::ALL
-            .into_iter()
-            .map(|(s, _)| s)
-            .find(|s| s.pages().iter().any(|(p, _)| *p == self))
-            .unwrap_or(Section::Drive)
+    /// The group the page is in; none for Import and Car setup.
+    pub fn section(self) -> Option<Section> {
+        Section::ALL.into_iter().map(|(s, _)| s).find(|s| s.pages().iter().any(|(p, _)| *p == self))
     }
 
-    /// The page a shortcut opens: Ctrl+1 to Ctrl+3 (Cmd on macOS) a section (`last`: the page each was left on),
-    /// Ctrl+Tab or Ctrl+Page Down the section's next page, Ctrl+Shift+Tab or Ctrl+Page Up the one before.
-    fn shortcut(self, input: &mut egui::InputState, last: &[Page; 3]) -> Option<Page> {
+    /// The page's name in the sidebar and in back links.
+    pub fn name(self) -> &'static str {
+        match self {
+            Page::Import => "Import",
+            Page::Setup => "Car setup",
+            _ => Section::ALL
+                .into_iter()
+                .flat_map(|(s, _)| s.pages())
+                .find(|(p, _)| *p == self)
+                .map_or("", |(_, name)| name),
+        }
+    }
+
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+3 (Cmd on macOS) a group (`last`: the page each was left on),
+    /// Ctrl+Tab or Ctrl+Page Down the group's next page, Ctrl+Shift+Tab or Ctrl+Page Up the one before (none from
+    /// a page outside the groups).
+    pub(crate) fn shortcut(self, input: &mut egui::InputState, last: &[Page; 3]) -> Option<Page> {
         use egui::{Key, Modifiers};
         const NUMBERS: [Key; 3] = [Key::Num1, Key::Num2, Key::Num3];
-        let pages = self.section().pages();
-        let at = pages.iter().position(|(p, _)| *p == self).unwrap_or(0);
-        let by = |n: usize| pages[(at + n) % pages.len()].0;
         let shift_ctrl = Modifiers::CTRL | Modifiers::SHIFT;
-        if input.consume_key(shift_ctrl, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageUp) {
-            return Some(by(pages.len() - 1));
-        }
-        if input.consume_key(Modifiers::CTRL, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageDown) {
-            return Some(by(1));
+        let within = self.section().map(|s| {
+            let pages = s.pages();
+            let at = pages.iter().position(|(p, _)| *p == self).unwrap_or(0);
+            (pages, at)
+        });
+        let back = input.consume_key(shift_ctrl, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageUp);
+        let next = !back
+            && (input.consume_key(Modifiers::CTRL, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageDown));
+        if let Some((pages, at)) = within {
+            if back {
+                return Some(pages[(at + pages.len() - 1) % pages.len()].0);
+            }
+            if next {
+                return Some(pages[(at + 1) % pages.len()].0);
+            }
         }
         NUMBERS.iter().zip(last).find(|(key, _)| input.consume_key(Modifiers::COMMAND, **key)).map(|(_, p)| *p)
     }
 }
 
-/// The width of the Drive and Graphics & sound pages' field column, and of a field.
-pub const DRIVE_FIELDS: f32 = 520.0;
-pub const FIELD: f32 = 340.0;
 /// The width of the fields' labels, the same on every section.
 const LABEL: f32 = 130.0;
 /// A dropdown choice: every value offered, its settings word and its label; parsing searches the offered words.
@@ -158,45 +168,11 @@ pub fn combo<T: Clone + PartialEq, S: Into<String>>(
         .response
 }
 
-/// What needs attention, what is fine, and the Start button.
-pub const WARN: Color32 = Color32::from_rgb(230, 180, 60);
-pub const GOOD: Color32 = Color32::from_rgb(110, 190, 110);
-pub const ACCENT: Color32 = Color32::from_rgb(40, 120, 70);
-/// A section not shown, in the top row.
-const DIM: Color32 = Color32::from_rgb(140, 140, 140);
+pub use crate::theme::{GOOD, WARN};
 
-/// The launcher's look: readable sizes and roomier spacing than egui's defaults.
-pub(crate) fn theme(ctx: &egui::Context) {
-    ctx.all_styles_mut(|style| {
-        use egui::{FontId, TextStyle};
-        for (text, size) in [
-            (TextStyle::Body, 14.5),
-            (TextStyle::Button, 14.5),
-            (TextStyle::Monospace, 13.5),
-            (TextStyle::Small, 11.5),
-            (TextStyle::Heading, 20.0),
-        ] {
-            let family =
-                if text == TextStyle::Monospace { egui::FontFamily::Monospace } else { egui::FontFamily::Proportional };
-            style.text_styles.insert(text, FontId::new(size, family));
-        }
-        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        style.spacing.button_padding = egui::vec2(8.0, 3.0);
-        style.spacing.interact_size.y = 24.0;
-    });
-}
-
-/// The page's main action (Start, Drive lesson, Drive SS1): large, white on green.
-pub fn start_button(label: &str) -> egui::Button<'static> {
-    let text = RichText::new(label).size(20.0).strong().color(Color32::WHITE);
-    egui::Button::new(text).fill(ACCENT).min_size(egui::vec2(180.0, 44.0))
-}
-
-/// A section's heading.
-pub fn section(ui: &mut egui::Ui, title: &str) {
-    ui.add_space(10.0);
-    ui.label(RichText::new(title).size(16.5).strong());
-    ui.add_space(2.0);
+/// The page's main action (Start, Drive lesson, Drive SS1): [`kit::primary_button`].
+pub fn start_button(label: &str) -> kit::PrimaryButton<'_> {
+    kit::primary_button(label, None)
 }
 
 /// A section's fields: a label and its field a row, the labels lined up across sections.
@@ -218,7 +194,7 @@ pub enum Fix {
     Settings,
     /// The Settings page with NGP 7.4.778's download asked (`Form::ask_download_ngp`).
     DownloadNgp,
-    /// The Get more page with gvrc.de's car list open.
+    /// The Cars page with the Get more cars dialog open on gvrc.de's list.
     DownloadCars,
     /// The Circuit page, for a circuit the Drive page has selected.
     Circuit,
@@ -241,7 +217,7 @@ pub const NO_NGP: &str = "This game folder has no NGP; ReRBR needs NGP 7.4.778."
 pub const NGP_WHY: &str = "ReRBR's physics is verified against NGP 7.4.778 only. Its download keeps NGP.dll and \
                            physics.rbz in ReRBR's folder; nothing installed changes.";
 /// What the launcher says without a car NGP drives.
-pub const NO_CARS: &str = "No cars yet. Download cars from gvrc.de's NGP car packs on Content > Get more, or \
+pub const NO_CARS: &str = "No cars yet. Download cars from gvrc.de's NGP car packs on Library > Cars, or \
                           choose a game folder with community cars.";
 /// What the player sees when the viewer or `rbr-standalone` is missing; the paths go to the log
 /// ([`Form::log_missing_programs`]).
@@ -337,59 +313,13 @@ impl Form {
                 self.ask_download_ngp();
             }
             Fix::DownloadCars => {
-                self.page = Page::Get;
-                self.open_car_list();
+                self.open_get_more(GetMore::Cars);
             }
             Fix::Circuit => self.page = Page::Circuit,
         }
     }
 
-    /// A game with no cars to drive (just set up from the disc, say) opens on the Settings page's car list.
-    /// The two rows of tabs: the sections, large, and the section's pages under them; the page a click or a shortcut
-    /// opens.
-    fn nav_ui(&mut self, ui: &mut egui::Ui) -> Option<Page> {
-        let section = self.page.section();
-        self.last_pages[section.index()] = self.page;
-        let mut open = ui.input_mut(|i| self.page.shortcut(i, &self.last_pages));
-        let modifier = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("ReRBR").size(22.0).strong().color(Color32::WHITE));
-            ui.add_space(28.0);
-            for (n, (s, name)) in Section::ALL.into_iter().enumerate() {
-                let on = s == section;
-                let text = RichText::new(name).size(19.0).color(if on { Color32::WHITE } else { DIM });
-                let response = ui
-                    .add(egui::Button::new(text).frame(false).min_size(egui::vec2(0.0, 30.0)))
-                    .on_hover_text(format!("{modifier}+{}", n + 1));
-                if on {
-                    let r = response.rect;
-                    let bar = egui::Rect::from_min_max(
-                        egui::pos2(r.left(), r.bottom() + 1.0),
-                        egui::pos2(r.right(), r.bottom() + 4.0),
-                    );
-                    ui.painter().rect_filled(bar, 1.5, GOOD);
-                }
-                if response.clicked() {
-                    open = Some(self.last_pages[n]);
-                }
-                ui.add_space(14.0);
-            }
-        });
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            for &(page, name) in section.pages() {
-                let tab = egui::Button::selectable(self.page == page, RichText::new(name).size(14.5));
-                let tip = format!("{modifier}+Tab: the next page");
-                if ui.add(tab.min_size(egui::vec2(0.0, 26.0))).on_hover_text(tip).clicked() {
-                    open = Some(page);
-                }
-            }
-        });
-        ui.add_space(6.0);
-        open
-    }
-
+    /// A game with no cars to drive (just set up from the disc, say) opens the Cars page's gvrc.de list.
     pub fn offer_cars(&mut self) {
         if self.readiness().is_some_and(|issue| issue.fix == Some(Fix::DownloadCars)) {
             self.apply(Fix::DownloadCars);
@@ -421,7 +351,7 @@ impl Form {
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
-        theme(ctx);
+        crate::theme::apply(ctx);
         self.poll();
         let (bindings, ffb) = (self.bindings.clone(), self.ffb.clone());
         let running = self.child.is_some();
@@ -476,47 +406,15 @@ impl Form {
         let old_notes = self.notes_inputs();
         let browsers_open = (self.stage_browser.open, self.car_browser.open, self.circuit_browser.open);
         let old_circuit = (self.circuit.map, self.circuit.laps);
-        ctx.root_ui(|root| {
-            egui::Panel::top("tabs").show(root, |ui| {
-                let open = self.nav_ui(ui);
-                if let Some(page) = open {
-                    if page == Page::Replays {
-                        self.replays.refresh(&self.here());
-                    }
-                    self.page = page;
-                }
-            })
-        });
         let readiness = self.readiness();
-        // Nothing to say, nothing shown.
-        let bar = readiness.is_some() || !self.status.is_empty() || crate::update::available();
-        ctx.root_ui(|root| {
-            if !bar {
-                return;
+        if let Some(page) = self.nav_ui(ctx) {
+            if page == Page::Replays {
+                self.replays.refresh(&self.here());
             }
-            egui::Panel::bottom("status").show(root, |ui| {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    match &readiness {
-                        Some(issue) => {
-                            ui.colored_label(WARN, format!("⚠ {}", issue.text));
-                            // Not on the Settings page, which has the fixes in its rows.
-                            if let Some(fix) = issue.fix.filter(|_| self.page != Page::Settings) {
-                                if ui.button(fix.label()).clicked() {
-                                    self.apply(fix);
-                                }
-                            }
-                        }
-                        None => {
-                            ui.colored_label(Color32::GRAY, &self.status);
-                        }
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), crate::update::link);
-                });
-                ui.add_space(2.0);
-            });
-        });
-        // Over the status line, on every page: the Add's progress and result.
+            self.page = page;
+            self.get_more = None;
+        }
+        // Over the page, on every page: the Add's progress and result.
         self.content_notice(ctx);
         // The browsers are a page's body: leaving the page closes them.
         self.stage_browser.open &= match self.stage_browser.target {
@@ -531,42 +429,11 @@ impl Form {
             car_browser::Target::Circuit => self.page == Page::Circuit,
         };
         ctx.root_ui(|root| {
-            egui::CentralPanel::default().show(root, |ui| match self.page {
-                Page::Drive => self.drive_page(ui),
-                Page::Circuit => self.circuit_page(ui),
-                Page::Championship => self.championship_page(ui),
-                Page::School => self.school_page(ui),
-                Page::Replays => self.replays_page(ui),
-                Page::Setup => self.setup_page(ui),
-                Page::Controls => {
-                    let root = self.game_root();
-                    let settings = self.paths.settings.clone();
-                    let (read_only, car) = (self.read_only, self.car);
-                    self.controls.ui(
-                        ui,
-                        &mut self.bindings,
-                        &mut self.ffb,
-                        &mut self.options.aids,
-                        &mut self.head_gasket,
-                        &mut self.ffb_cars,
-                        &self.ffb_load,
-                        &self.catalog.cars,
-                        car,
-                        &root,
-                        &settings,
-                        read_only,
-                    )
-                }
-                Page::Graphics => self.graphics_page(ui),
-                Page::Cars => self.cars_page(ui),
-                Page::Stages => self.stages_page(ui),
-                Page::Codrivers => self.codrivers_page(ui),
-                Page::Get => self.get_page(ui),
-                Page::Settings => {
-                    egui::ScrollArea::vertical().id_salt("settings").show(ui, |ui| self.settings_page(ui));
-                }
-            })
+            egui::CentralPanel::default()
+                .frame(egui::Frame::new().fill(crate::theme::PAGE))
+                .show(root, |ui| self.page_ui(ui))
         });
+        self.get_more_modal(ctx);
         self.crash.ui(ctx);
         self.content_drop(ctx);
         // A dropdown's item picked with Enter or Space: egui closes dropdowns only on a mouse click. The focus goes
@@ -646,6 +513,41 @@ impl Form {
         }
     }
 
+    /// The page shown in the central area; each draws its own header, footer and padding, the Settings group under the
+    /// shared "Settings" title and tabs.
+    fn page_ui(&mut self, ui: &mut egui::Ui) {
+        match self.page {
+            Page::Drive => self.drive_page(ui),
+            Page::Circuit => self.circuit_page(ui),
+            Page::Championship => self.championship_page(ui),
+            Page::School => self.school_page(ui),
+            Page::Replays => self.replays_page(ui),
+            Page::Setup => self.setup_page(ui),
+            Page::Cars => self.cars_page(ui),
+            Page::Stages => self.stages_page(ui),
+            Page::Codrivers => self.codrivers_page(ui),
+            Page::Import => self.import_page(ui),
+            Page::Settings | Page::Controls | Page::Graphics => {
+                if let Some(page) = self.settings_header(ui) {
+                    self.page = page;
+                }
+                match self.page {
+                    Page::Controls => self.controls_page(ui),
+                    Page::Graphics => self.graphics_page(ui),
+                    _ => self.settings_page(ui),
+                }
+            }
+        }
+    }
+
+    /// Opens the Car setup page, with a back link to the page it was opened from.
+    pub(crate) fn open_setup(&mut self) {
+        if self.page != Page::Setup {
+            self.setup_from = self.page;
+        }
+        self.page = Page::Setup;
+    }
+
     /// The Drive page with the car browser open on `collection` (`--screenshot`).
     pub fn screenshot_cars(&mut self, ctx: &egui::Context, collection: car_browser::Collection) {
         self.stage_browser.open = false;
@@ -681,11 +583,10 @@ impl Form {
         }
         self.select_setup();
         let car = self.car().map_or_else(|| "no car".to_owned(), car_label);
-        ui.label(
-            RichText::new(format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]))).size(16.0).strong(),
-        );
-        ui.add_space(4.0);
-        self.setup.ui(ui);
+        let subtitle = format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]));
+        if self.setup.ui(ui, self.setup_from.name(), &subtitle) {
+            self.page = self.setup_from;
+        }
     }
 }
 
@@ -722,20 +623,24 @@ mod tests {
         assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Circuit));
         assert_eq!(press(Page::Replays, Key::PageDown, ctrl), Some(Page::Drive));
         assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Replays));
-        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Get));
+        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Codrivers));
+        assert_eq!(press(Page::Setup, Key::Tab, ctrl), None);
+        assert_eq!(press(Page::Import, Key::Num2, ctrl), Some(Page::Stages));
         assert_eq!(press(Page::Graphics, Key::Tab, ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Drive, Key::Num3, Modifiers::NONE), None);
         assert_eq!(press(Page::Drive, Key::Tab, Modifiers::NONE), None);
     }
 
-    /// Every page is in one section.
+    /// Every page but Import and Car setup is in one group.
     #[test]
     fn every_page_is_in_a_section() {
         let pages: Vec<Page> = Section::ALL.iter().flat_map(|(s, _)| s.pages().iter().map(|(p, _)| *p)).collect();
         for &page in &pages {
             assert_eq!(pages.iter().filter(|p| **p == page).count(), 1, "{page:?}");
-            assert!(page.section().pages().iter().any(|(p, _)| *p == page), "{page:?}");
+            assert!(page.section().is_some_and(|s| s.pages().iter().any(|(p, _)| *p == page)), "{page:?}");
+            assert!(!page.name().is_empty());
         }
+        assert_eq!((Page::Import.section(), Page::Setup.section()), (None, None));
     }
 
     /// Every dropdown choice parses back from its settings word, with a label of its own (`settings_round_trip`
@@ -803,7 +708,7 @@ mod tests {
         assert_eq!(page(&no_cars), (Page::Settings, Some((NO_CARS.to_owned(), Some(Fix::DownloadCars)))));
         no_cars.page = Page::Drive;
         no_cars.offer_cars();
-        assert_eq!(no_cars.page, Page::Get);
+        assert_eq!((no_cars.page, no_cars.get_more), (Page::Cars, Some(GetMore::Cars)));
         std::fs::remove_dir_all(&here).unwrap();
     }
 }

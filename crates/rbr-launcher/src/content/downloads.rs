@@ -86,6 +86,11 @@ pub struct Recent {
 }
 
 impl Recent {
+    /// Whether a scan of the downloads folder runs.
+    pub fn scanning(&self) -> bool {
+        self.job.is_some()
+    }
+
     /// Starts a scan when `owned` differs from the last scanned and none runs; takes a finished one's list.
     pub fn poll(&mut self, ctx: &egui::Context, owned: Owned) {
         if let Some(result) = self.job.as_mut().and_then(Job::result) {

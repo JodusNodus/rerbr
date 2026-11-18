@@ -3,27 +3,29 @@
 
 use std::path::Path;
 
-use egui::{Color32, RichText, Ui};
+use crate::kit::Rows;
+use crate::theme::TEXT_LABEL;
+use egui::{Align, Color32, Layout, RichText, Ui};
 use rbr_formats::data::Data;
 use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::{CarriedDamage, Rules};
 use rbr_season::service::{self, ParkState, ServicePark};
 
-use crate::browser::{DIM, GREY, STAR};
 use crate::catalog::Car;
 use crate::pages::start_button;
+use crate::theme::{ERROR, LINE, PANEL, TEXT_2 as GREY, TEXT_3 as DIM, WARN as STAR};
 
 /// A severe or lost part.
-pub(crate) const BAD: Color32 = Color32::from_rgb(225, 95, 80);
-/// A card's fill: a shade above the page's.
-pub(super) const CARD: Color32 = Color32::from_gray(32);
+pub(crate) const BAD: Color32 = ERROR;
 
-/// Content in a card: the fill, rounded corners and a margin, the full width.
+/// Content in a card: a panel's fill, border and corners (the kit's) with a margin, the full width, for content that
+/// is not rows.
 pub(crate) fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     egui::Frame::new()
-        .fill(CARD)
-        .corner_radius(6.0)
-        .inner_margin(12.0)
+        .fill(PANEL)
+        .stroke(egui::Stroke::new(1.0, LINE))
+        .corner_radius(10)
+        .inner_margin(egui::Margin::symmetric(14, 12))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             // Left-aligned, not the columns' justified layout: buttons keep their size and text its spacing.
@@ -32,10 +34,21 @@ pub(crate) fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
+/// A settings row with a tooltip on its label: `control` is added right to left.
+pub(super) fn row(rows: &mut Rows, label: &str, tip: &str, control: impl FnOnce(&mut Ui)) {
+    rows.full(|ui| {
+        let text = ui.label(RichText::new(label).color(TEXT_LABEL));
+        if !tip.is_empty() {
+            text.on_hover_text(tip);
+        }
+        ui.with_layout(Layout::right_to_left(Align::Center), control);
+    });
+}
+
 /// A card's title.
 pub(crate) fn card_title(ui: &mut Ui, title: &str) {
-    ui.label(RichText::new(title).size(18.0).strong());
-    ui.add_space(2.0);
+    ui.label(RichText::new(title).size(14.0).family(crate::theme::semibold()).color(crate::theme::TEXT));
+    ui.add_space(3.0);
 }
 
 /// Where a stage stands in a rally: its time once driven, the time charged for it under Super Rally, retired, the

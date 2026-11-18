@@ -5,7 +5,9 @@
 use egui::Ui;
 
 use crate::catalog::Car;
-use crate::pages::{fields, section, Choice};
+use crate::kit;
+use crate::pages::Choice;
+use crate::theme::WARN;
 
 /// The physics every drive runs (`[launcher] physics`): the Settings page's experimental engine and tyre switches.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -95,47 +97,53 @@ impl Choice for PhysicsProfile {
     }
 }
 
-/// The Settings page's Experimental section: a switch each for the experimental engine (with its aero and
-/// drivetrain), the brush tyre and the force feedback from the tyres (`tyres`, `[ffb] tyres`), each with a link to its
-/// page; the session's `rerbr --physics` when it overrides the switches, and while the experimental physics drives
-/// what it leaves unsaved.
+/// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`tyres`,
+/// `[ffb] tyres`), the experimental engine (with its aero and drivetrain) and the brush tyre, each with its help and a
+/// link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
+/// physics drives what it leaves unsaved.
 pub fn experimental_section(
     ui: &mut Ui,
     physics: &mut PhysicsProfile,
     session: Option<PhysicsProfile>,
     tyres: &mut bool,
 ) {
-    section(ui, "Experimental");
-    fields(ui, "experimental", |ui| {
-        switch(ui, "Force feedback", tyres, "From the tyres", FFB_HELP, FFB_PAGE);
+    kit::group_label(ui, "Experimental", None);
+    kit::panel(ui, |rows| {
         let (mut engine, mut tyre) = physics.parts();
-        switch(ui, "Engine", &mut engine, "ReRBR's engine model, aero and drivetrain", ENGINE_HELP, ENGINE_PAGE);
-        switch(ui, "Tyre", &mut tyre, "ReRBR's brush tyre (in development)", TYRE_HELP, TYRE_PAGE);
+        experiment(rows, "Force feedback", "From the tyres", tyres, FFB_HELP, FFB_PAGE);
+        experiment(rows, "Engine", "ReRBR's engine model, aero and drivetrain", &mut engine, ENGINE_HELP, ENGINE_PAGE);
+        experiment(rows, "Tyre", "ReRBR's brush tyre (in development)", &mut tyre, TYRE_HELP, TYRE_PAGE);
         *physics = PhysicsProfile::of_parts(engine, tyre);
-        if let Some(session) = session {
-            ui.label("");
-            ui.weak(format!("This session: {} (rerbr --physics {})", session.label(), session.name()));
-            ui.end_row();
-        }
-        if !session.unwrap_or(*physics).keeps_records() {
-            ui.label("");
-            ui.weak(NO_RECORDS);
-            ui.end_row();
-        }
     });
+    ui.add_space(6.0);
+    if let Some(session) = session {
+        kit::hint(ui, &format!("This session: {} (rerbr --physics {})", session.label(), session.name()));
+    }
+    if !session.unwrap_or(*physics).keeps_records() {
+        kit::status_dot(ui, WARN, NO_RECORDS);
+    }
 }
 
-/// A row of the section: `label`, the switch `on` with its `text` and `help`, and the link to `page`.
-fn switch(ui: &mut Ui, label: &str, on: &mut bool, text: &str, help: &str, page: &str) {
-    ui.label(label);
-    ui.horizontal(|ui| {
-        ui.checkbox(on, text).on_hover_text(help);
-        let url = format!("{DOCS}{page}");
-        if ui.link("What is this?").on_hover_text(&url).clicked() {
-            crate::crash::open(url.as_ref());
-        }
+/// A switch row of the group: `label` over its `hint`, the switch `on` (with `help` on hover) and, left of it,
+/// "What is this?" linking to the docs page `page`.
+fn experiment(rows: &mut kit::Rows, label: &str, hint: &str, on: &mut bool, help: &str, page: &str) {
+    rows.full(|ui| {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(label).color(crate::theme::TEXT_LABEL));
+            kit::hint(ui, hint);
+            ui.add_space(8.0);
+        });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            kit::switch(ui, on).on_hover_text(help);
+            ui.add_space(8.0);
+            let url = format!("{DOCS}{page}");
+            if kit::link(ui, "What is this?").on_hover_text(&url).clicked() {
+                crate::crash::open(url.as_ref());
+            }
+        });
     });
-    ui.end_row();
 }
 
 const ENGINE_HELP: &str = "ReRBR's engine model, aero and four-wheel-drive drivetrain loss, in place of NGP 7's.";
