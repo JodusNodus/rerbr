@@ -1,5 +1,5 @@
 //! A newer release on GitHub: checked once at the start, on its own thread, and shown as a link to its page in the
-//! status bar. Nothing is downloaded; a failed check shows nothing.
+//! sidebar's status area. Nothing is downloaded; a failed check shows nothing.
 
 use std::sync::OnceLock;
 
@@ -20,11 +20,6 @@ pub fn start() {
             Err(e) => eprintln!("launcher: update check: {e}"),
         }
     });
-}
-
-/// Whether a newer release was found.
-pub fn available() -> bool {
-    NEWER.get().is_some()
 }
 
 /// The link to the newer release's page, when there is one.

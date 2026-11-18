@@ -655,29 +655,42 @@ impl Form {
         self.adding.job.is_none() && self.child.is_none()
     }
 
-    /// Whether a job runs or a result waits to be shown.
-    pub fn has_adding_output(&self) -> bool {
-        self.adding.job.is_some() || self.adding.status.is_some()
+    /// The running job, for its progress line.
+    pub fn adding_running(&self) -> Option<&Job<Vec<Added>>> {
+        self.adding.job.as_ref()
     }
 
-    /// The running job's progress and Cancel; when it ends, its result is kept and the lists read again.
-    pub fn adding_job_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(job) = &mut self.adding.job else { return };
-        if let Some(result) = job.ui(ui) {
-            self.adding.job = None;
-            self.adding.status = Some(match result {
-                Err(e) if e.ends_with("cancelled") => Err("Cancelled; the cars added before are kept.".into()),
-                result => result.and_then(|added| summary(&added)),
-            });
-            self.rescan_cars();
+    /// Takes the job's result once it has ended, whether or not anything shows it: its result is kept, the lists are
+    /// read again, and a toast says it unless the Get more cars modal shows it.
+    pub fn poll_adding(&mut self) {
+        let Some(result) = self.adding.job.as_mut().and_then(Job::result) else { return };
+        self.adding.job = None;
+        let status = match result {
+            Err(e) if e.ends_with("cancelled") => Err("Cancelled; the cars added before are kept.".into()),
+            result => result.and_then(|added| summary(&added)),
+        };
+        if self.get_more != Some(crate::get_page::GetMore::Cars) {
+            let line = status.clone().map_or_else(|e| (false, e), |t| (true, t));
+            self.content.toast = Some(crate::content::Toast { lines: vec![line], import: false });
+        }
+        self.adding.status = Some(status);
+        self.rescan_cars();
+    }
+
+    /// The running job's progress and Cancel (the Get more cars modal's; [`Form::poll_adding`] ends it).
+    pub fn adding_job_ui(&self, ui: &mut egui::Ui) {
+        if let Some(job) = &self.adding.job {
+            job.progress_ui(ui);
         }
     }
 
     /// The last result line.
     pub fn adding_status_ui(&self, ui: &mut egui::Ui) {
         match &self.adding.status {
-            Some(Ok(text)) => _ = ui.colored_label(GOOD, format!("✔ {text}")),
-            Some(Err(text)) => _ = ui.colored_label(WARN, format!("⚠ {text}")),
+            Some(Ok(text)) => _ = ui.add(egui::Label::new(egui::RichText::new(format!("✔ {text}")).color(GOOD)).wrap()),
+            Some(Err(text)) => {
+                _ = ui.add(egui::Label::new(egui::RichText::new(format!("⚠ {text}")).color(WARN)).wrap())
+            }
             None => {}
         }
     }

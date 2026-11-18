@@ -9,7 +9,7 @@ use crate::pages::Page;
 use crate::stage_browser::Collection;
 use crate::{preview, Form};
 
-const SIZE: (u32, u32) = (1100, 760);
+const SIZE: (u32, u32) = (1280, 760);
 
 /// Draws the pages to `dir`, and with `rally_damage` (`--screenshot-damage`) the service park on that car.
 pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Result<(), String> {
@@ -31,12 +31,21 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         (Page::Cars, "cars"),
         (Page::Stages, "stages"),
         (Page::Codrivers, "codrivers"),
-        (Page::Get, "get"),
+        (Page::Import, "import"),
     ];
     for (page, name) in pages {
         form.page = page;
         if page == Page::Circuit {
             form.wait_for_scan(&egui::Context::default());
+            let circuit = form.circuit.map.and_then(|n| form.catalog.map_index(n)).or(form.circuits().first().copied());
+            if let (Some(index), Some(car)) = (circuit, &car) {
+                form.previews.wait_for(
+                    &form.catalog.maps[index].clone(),
+                    car,
+                    form.skins.choice(car),
+                    &form.game_root(),
+                );
+            }
         }
         if page == Page::Cars {
             // Drawn once for its list, then the highlighted car's turntable waited for.
@@ -53,10 +62,13 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     // The Controls page whole, its force feedback per car included.
     form.page = Page::Controls;
-    shot_sized(&dir.join("controls-whole.png"), (1180, 1100), |ctx| form.ui(ctx))?;
+    shot_sized(&dir.join("controls-whole.png"), (1280, 1500), |ctx| form.ui(ctx))?;
+    // The Graphics & sound page whole.
+    form.page = Page::Graphics;
+    shot_sized(&dir.join("graphics-whole.png"), (1280, 1500), |ctx| form.ui(ctx))?;
     // The Settings page whole, its physics and telemetry included.
     form.page = Page::Settings;
-    shot_sized(&dir.join("settings-whole.png"), (1100, 1200), |ctx| form.ui(ctx))?;
+    shot_sized(&dir.join("settings-whole.png"), (1280, 1000), |ctx| form.ui(ctx))?;
     // The Drive page with the Custom weather, its controls closed and open.
     let saved =
         (form.clouds, form.precipitation, form.fog, form.wetness, form.options.weather, form.weather_row.clone());
@@ -72,9 +84,35 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     form.page = Page::Settings;
     form.downloads.screenshot();
     shot(&dir.join("settings-downloads.png"), |ctx| form.ui(ctx))?;
-    form.page = Page::Get;
-    shot_sized(&dir.join("get-downloads.png"), (1100, 1000), |ctx| form.ui(ctx))?;
+    form.open_get_more(crate::get_page::GetMore::Cars);
+    shot_sized(&dir.join("get-more-cars.png"), (1280, 1000), |ctx| form.ui(ctx))?;
+    for (what, name) in
+        [(crate::get_page::GetMore::Stages, "stages"), (crate::get_page::GetMore::Codrivers, "codrivers")]
+    {
+        form.open_get_more(what);
+        shot(&dir.join(format!("get-more-{name}.png")), |ctx| form.ui(ctx))?;
+    }
+    form.get_more = None;
     form.downloads = Default::default();
+    // Import with a last import, and the same result as a toast over Cars.
+    {
+        use crate::content::{Goto, Outcome};
+        let ok = |what: &str, kind, place: &str, goto| Outcome::added("x", kind, what, place, goto);
+        let outcomes = vec![
+            ok("Autio I Gravel", "BTB stage", "it's in Stages", Goto::Stage("Autio I Gravel".into())),
+            ok("Janne Laahanen V3", "co-driver", "pick it in Co-drivers", Goto::Codrivers),
+            Outcome::failed("Holiday.rar", "not supported", crate::content::source::refused::RAR),
+        ];
+        form.content.notice = outcomes.clone();
+        form.page = Page::Import;
+        shot(&dir.join("import-last.png"), |ctx| form.ui(ctx))?;
+        form.page = Page::Cars;
+        form.content.toast =
+            Some(crate::content::Toast { lines: outcomes.iter().map(|o| (o.ok(), o.line())).collect(), import: true });
+        shot(&dir.join("import-toast.png"), |ctx| form.ui(ctx))?;
+        form.content.toast = None;
+        form.content.notice.clear();
+    }
     // The Drive page with the car list open on the selection.
     form.page = Page::Drive;
     fresh_previews(form, &map, car.as_ref());
@@ -124,7 +162,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     form.setup.screenshot_changes();
     for (n, area) in rbr_gameplay::setup::Area::ALL.into_iter().enumerate() {
         form.setup.show_area(area);
-        shot_sized(&dir.join(format!("setup-changed-{n}.png")), (1100, 1000), |ctx| form.ui(ctx))?;
+        shot(&dir.join(format!("setup-changed-{n}.png")), |ctx| form.ui(ctx))?;
     }
     // The Championship tab: the presets, the builder and an event's turns (with the damage file's car in its service).
     crate::championship_page::shots(form, dir, rally_damage.as_deref())?;
@@ -147,7 +185,7 @@ pub fn shot(path: &Path, ui: impl FnMut(&egui::Context)) -> Result<(), String> {
 }
 
 /// [`shot`] at `size` (a page taller than [`SIZE`], whole).
-fn shot_sized(path: &Path, size: (u32, u32), ui: impl FnMut(&egui::Context)) -> Result<(), String> {
+pub(crate) fn shot_sized(path: &Path, size: (u32, u32), ui: impl FnMut(&egui::Context)) -> Result<(), String> {
     let rgba = draw_sized(size, ui)?;
     write_png_sized(path, size, &rgba)?;
     eprintln!("launcher: wrote {}", path.display());
@@ -180,19 +218,21 @@ fn draw_sized((width, height): (u32, u32), mut ui: impl FnMut(&egui::Context)) -
     let context = egui::Context::default();
     let mut renderer = egui_wgpu::Renderer::new(&device, format, Default::default());
     let screen = egui_wgpu::ScreenDescriptor { size_in_pixels: [width, height], pixels_per_point: 1.0 };
-    let input = || egui::RawInput {
+    // Time moves a second a pass, so fades (a modal's) are done in the last.
+    let input = |pass: f64| egui::RawInput {
+        time: Some(pass),
         screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width as f32, height as f32))),
         ..Default::default()
     };
-    let mut output = context.run_pass(input(), &mut ui);
-    for _ in 0..3 {
+    let mut output = context.run_pass(input(0.0), &mut ui);
+    for pass in 1..=3 {
         for (id, deltas) in &output.textures_delta.set {
             for delta in deltas {
                 renderer.update_texture(&device, &queue, *id, delta);
             }
         }
         output.textures_delta.clear();
-        output = context.run_pass(input(), &mut ui);
+        output = context.run_pass(input(f64::from(pass)), &mut ui);
     }
     for (id, deltas) in &output.textures_delta.set {
         for delta in deltas {

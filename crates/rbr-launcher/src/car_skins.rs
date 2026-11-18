@@ -18,6 +18,7 @@ use crate::archive;
 use crate::catalog::{Car, Physics};
 use crate::content::source::{self, Source};
 use crate::job::{self, Counter, Job, Report, Temp};
+use crate::kit;
 use crate::pages::{combo, GOOD, WARN};
 
 /// The folder in the player's folder with the imported skins, `skins/<car key>/<skin>/`.
@@ -131,9 +132,9 @@ impl Skins {
         choice(&self.home, car, self.chosen.get(&car.key).map(String::as_str))
     }
 
-    /// The skin picker in the car browser: the skin of `car`, an Import button for a skin archive, and the import's
-    /// progress or result. Nothing for a car without its own model.
-    pub fn ui(&mut self, ui: &mut egui::Ui, car: &Car) {
+    /// The skin rows of the car browser's facts panel: the skin of `car` with an Import button for a skin archive, and
+    /// the import's progress or result. Nothing for a car without its own model.
+    pub fn rows(&mut self, rows: &mut kit::Rows, car: &Car) {
         if !dressable(car) {
             return;
         }
@@ -150,25 +151,27 @@ impl Skins {
             Some(ORIGINAL) => "Original textures".to_owned(),
             Some(name) => name.to_owned(),
         };
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Skin").color(crate::browser::GREY));
-            combo(ui, "car-skin", 190.0, &mut picked, &options, label);
+        rows.row("Skin", |ui| {
             let idle = self.job.is_none();
-            let import = ui.add_enabled(idle, egui::Button::new("Import skin…"));
+            let import = ui.add_enabled(idle, egui::Button::new("Import…"));
             if import.on_hover_text("A .zip or .7z skin, as RBR Skins Center's").clicked() {
                 if let Some(path) = job::pick_file("Choose a skin archive (.zip or .7z)") {
                     self.start(PathBuf::from(path), &car.key);
                 }
             }
+            combo(ui, "car-skin", 120.0, &mut picked, &options, label);
         });
         match picked {
             Some(name) => self.chosen.insert(car.key.clone(), name),
             None => self.chosen.remove(&car.key),
         };
-        let finished = self.job.as_mut().and_then(|(key, job)| {
-            let result = ui.horizontal(|ui| job.ui(ui)).inner?;
-            Some((key.clone(), result))
-        });
+        let finished = match self.job.as_mut() {
+            Some((key, job)) => {
+                let result = rows.full(|ui| job.ui(ui));
+                result.map(|result| (key.clone(), result))
+            }
+            None => None,
+        };
         if let Some((key, result)) = finished {
             self.job = None;
             self.status = Some(result.map(|names| {
@@ -178,8 +181,9 @@ impl Skins {
             }));
         }
         match &self.status {
-            Some(Ok(text)) => _ = ui.colored_label(GOOD, format!("✔ {text}")),
-            Some(Err(text)) => _ = ui.colored_label(WARN, format!("⚠ {text}")),
+            Some(Ok(text)) => rows.full(|ui| _ = ui.colored_label(GOOD, format!("✔ {text}"))),
+            Some(Err(text)) => rows
+                .full(|ui| _ = ui.add(egui::Label::new(egui::RichText::new(format!("⚠ {text}")).color(WARN)).wrap())),
             None => {}
         }
     }

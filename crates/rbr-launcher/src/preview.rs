@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 
-use egui::{Color32, ColorImage, Stroke, TextureHandle, TextureOptions};
+use egui::{Color32, ColorImage, CornerRadius, Stroke, TextureHandle, TextureOptions};
 use rbr_formats::data::Data;
 use rbr_formats::{stage_files, trk};
 use rbr_render::stage_picture::{btb_picture, picture_sprite, rsf_picture, Pictures, Pixels};
@@ -191,16 +191,6 @@ impl Previews {
         }
     }
 
-    /// Draws the stage's and the car's previews, one above the other, the car in its `skin`.
-    pub fn ui(&mut self, ui: &mut egui::Ui, map: &Map, car: &Car, skin: Option<Skin>, root: &str) {
-        ui.vertical(|ui| {
-            ui.set_width(WIDTH);
-            self.stage_ui(ui, map);
-            ui.add_space(12.0);
-            self.car_ui(ui, car, skin, root);
-        });
-    }
-
     /// Makes the textures of the stages the thread has sent.
     fn take_stages(&mut self, ctx: &egui::Context, arrived: impl IntoIterator<Item = (u32, StageData)>) {
         for (number, data) in arrived {
@@ -218,33 +208,54 @@ impl Previews {
         }
     }
 
-    /// Draws the stage's picture and its few lines.
+    /// Draws the stage's picture (at most [`WIDTH`] wide, narrower in a narrower column) and its few lines.
     pub fn stage_ui(&mut self, ui: &mut egui::Ui, map: &Map) {
+        let width = ui.available_width().min(WIDTH);
+        match self.stage_picture(ui, map, width, CornerRadius::same(4)) {
+            Some((lines, problem)) => {
+                ui.label(lines);
+                if let Some(problem) = problem {
+                    ui.colored_label(Color32::from_rgb(230, 120, 80), format!("Cannot load: {problem}"));
+                }
+            }
+            None => _ = ui.label(""),
+        }
+    }
+
+    /// Draws the stage's picture `width` wide (the picture's own shape) with `radius` corners; its few lines and why it
+    /// cannot load, or `None` while the picture is being made.
+    pub fn stage_picture(
+        &mut self,
+        ui: &mut egui::Ui,
+        map: &Map,
+        width: f32,
+        radius: CornerRadius,
+    ) -> Option<(String, Option<String>)> {
         let arrived: Vec<_> = self.stage_arrived.drain(..).chain(self.stage_results.try_iter()).collect();
         self.take_stages(ui.ctx(), arrived);
-        let height = WIDTH * 184.0 / 384.0;
+        let height = width * 184.0 / 384.0;
         let Some((_, preview)) = self.stages.iter().find(|(n, _)| *n == map.number) else {
             if self.stage_pending != Some(map.number) {
                 self.stage_pending = Some(map.number);
                 let _ = self.stage_requests.send(map.clone());
             }
-            let (rect, painter) = ui.allocate_painter(egui::vec2(WIDTH, height), egui::Sense::hover());
-            painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
-            ui.label("");
+            let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
+            painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
             ui.ctx().request_repaint_after(Duration::from_millis(50));
-            return;
+            return None;
         };
         match &preview.picture {
             Picture::Image(texture) => {
                 // Centred with its aspect kept (every picture has the retail shape, `stage_picture`).
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(WIDTH, height), egui::Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
                 let size = texture.size_vec2();
                 let fitted = size * (rect.width() / size.x).min(rect.height() / size.y);
-                egui::Image::new(texture).paint_at(ui, egui::Rect::from_center_size(rect.center(), fitted));
+                let image = egui::Image::new(texture).corner_radius(radius);
+                image.paint_at(ui, egui::Rect::from_center_size(rect.center(), fitted));
             }
             Picture::Outline(points) => {
-                let (rect, painter) = ui.allocate_painter(egui::vec2(WIDTH, height), egui::Sense::hover());
-                painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
+                let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
+                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
                 let area = rect.rect.shrink(12.0);
                 let side = area.width().min(area.height());
                 let origin = area.center() - egui::vec2(side, side) * 0.5;
@@ -257,18 +268,36 @@ impl Previews {
                 }
             }
             Picture::None => {
-                let (rect, painter) = ui.allocate_painter(egui::vec2(WIDTH, height), egui::Sense::hover());
-                painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
+                let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
+                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
             }
         }
-        ui.label(preview.lines.join(" · "));
-        if let Some(problem) = &preview.problem {
-            ui.colored_label(Color32::from_rgb(230, 120, 80), format!("Cannot load: {problem}"));
-        }
+        Some((preview.lines.join(" · "), preview.problem.clone()))
     }
 
     /// Draws the car turning (its frames are rendered on a thread of their own).
     pub fn car_ui(&mut self, ui: &mut egui::Ui, car: &Car, skin: Option<Skin>, root: &str) {
+        let width = ui.available_width().min(WIDTH);
+        if let Some(e) = self.car_picture(ui, car, skin, root, width, CornerRadius::same(4)) {
+            ui.colored_label(Color32::from_rgb(230, 120, 80), format!("No car model: {e}"));
+        }
+        if let Ok(model) = &car.model {
+            if let Some(stand_in) = &model.fallback {
+                ui.label(egui::RichText::new(format!("Stand-in model: {stand_in}")).color(Color32::GRAY));
+            }
+        }
+    }
+
+    /// Draws the car turning `width` wide with `radius` corners; why there is no model, if there is none.
+    pub fn car_picture(
+        &mut self,
+        ui: &mut egui::Ui,
+        car: &Car,
+        skin: Option<Skin>,
+        root: &str,
+        width: f32,
+        radius: CornerRadius,
+    ) -> Option<String> {
         let key = car_key(car, skin.as_ref());
         self.arrived.extend(self.results.try_iter());
         for (done, frames) in std::mem::take(&mut self.arrived) {
@@ -282,7 +311,8 @@ impl Previews {
             self.cars.push_front((done, frames.map(|images| images.into_iter().map(Frame::Image).collect())));
             self.cars.truncate(KEEP);
         }
-        let size = egui::vec2(WIDTH, WIDTH * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32);
+        let size = egui::vec2(width, width * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32);
+        let mut error = None;
         match self.cars.iter_mut().find(|(k, _)| *k == key).map(|(_, f)| f) {
             Some(Ok(frames)) if !frames.is_empty() => {
                 if !self.still {
@@ -296,32 +326,27 @@ impl Previews {
                         Frame::Texture(ui.ctx().load_texture(format!("{key} {k}"), image, TextureOptions::LINEAR));
                 }
                 if let Frame::Texture(texture) = &frames[k] {
-                    ui.add(egui::Image::new(texture).fit_to_exact_size(size));
+                    ui.add(egui::Image::new(texture).fit_to_exact_size(size).corner_radius(radius));
                 }
                 if !self.still {
                     ui.ctx().request_repaint_after(Duration::from_secs_f64(1.0 / FPS));
                 }
             }
             Some(Err(e)) => {
-                let e = e.clone();
+                error = Some(e.clone());
                 let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
-                painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
-                ui.colored_label(Color32::from_rgb(230, 120, 80), format!("No car model: {e}"));
+                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
             }
             _ => {
                 self.request(car, skin, &key, root);
                 let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
-                painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
+                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
                 let font = egui::FontId::proportional(13.0);
                 painter.text(rect.rect.center(), egui::Align2::CENTER_CENTER, "Loading the car…", font, Color32::GRAY);
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
             }
         }
-        if let Ok(model) = &car.model {
-            if let Some(stand_in) = &model.fallback {
-                ui.label(egui::RichText::new(format!("Stand-in model: {stand_in}")).color(Color32::GRAY));
-            }
-        }
+        error
     }
 
     /// Asks the worker for the car's frames, once.

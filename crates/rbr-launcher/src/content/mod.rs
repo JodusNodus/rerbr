@@ -25,7 +25,7 @@ pub mod kind;
 pub mod source;
 mod ui;
 
-pub use ui::Add;
+pub use ui::{Add, Toast};
 
 /// The kinds, in priority order: the ones that are all of a source first, the refusals last (asked only when nothing
 /// else was found).
@@ -67,13 +67,13 @@ pub fn detect(src: &dyn Source) -> Vec<(usize, Found)> {
 /// Where an outcome's Open button goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Goto {
-    /// The stage picker, on the stage folder.
+    /// Library > Stages, on the stage folder.
     Stage(String),
-    /// Content > Cars.
+    /// Library > Cars.
     Cars,
-    /// Content > Cars on the car with this key, wearing the skin named.
+    /// Library > Cars on the car with this key, wearing the skin named.
     Skin { car: String, skin: String },
-    /// Content > Co-drivers.
+    /// Library > Co-drivers.
     Codrivers,
     /// Settings > General.
     Settings,
@@ -82,13 +82,14 @@ pub enum Goto {
 }
 
 impl Goto {
-    /// The page the Open button goes to, and its label (`None`: the stage picker's own way).
+    /// The page the Open link goes to, and its label.
     pub fn page(&self) -> Option<(Page, &'static str)> {
         match self {
             Goto::Cars | Goto::Skin { .. } => Some((Page::Cars, "Open Cars")),
             Goto::Codrivers => Some((Page::Codrivers, "Open Co-drivers")),
-            Goto::Settings | Goto::Disc(_) => Some((Page::Settings, "Open Settings")),
-            Goto::Stage(_) => None,
+            Goto::Settings => Some((Page::Settings, "Open Settings")),
+            Goto::Disc(_) => Some((Page::Settings, "Open disc setup")),
+            Goto::Stage(_) => Some((Page::Stages, "Open in Stages")),
         }
     }
 }
@@ -314,8 +315,8 @@ mod tests {
         let done = run_all(&home, &paths);
         let got = lines(&done);
         let has = |start: &str| got.iter().any(|l| l.starts_with(start));
-        assert!(has("ok Added Autio I Gravel (BTB stage): it's in the stage picker"), "{got:?}");
-        assert!(has("ok Added Voice (co-driver): pick it in Content > Co-drivers"), "{got:?}");
+        assert!(has("ok Added Autio I Gravel (BTB stage): it's in Stages"), "{got:?}");
+        assert!(has("ok Added Voice (co-driver): pick it in Co-drivers"), "{got:?}");
         assert!(has("no Couldn't add stage.rar: RAR archives can't be read"), "{got:?}");
         assert!(has("no Couldn't add Setup.exe: installers can't be read: extract it with 7-Zip"), "{got:?}");
         assert!(has("no Couldn't add readme.txt: not recognised: ReRBR adds BTB stages"), "{got:?}");

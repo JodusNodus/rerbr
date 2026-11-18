@@ -58,14 +58,19 @@ impl<T: Send + 'static> Job<T> {
         Some(self.thread.take()?.join().unwrap_or_else(|_| Err("it stopped unexpectedly".into())))
     }
 
-    /// The spinner, the progress line and Cancel; the result once the work has ended.
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Result<T, Fail>> {
+    /// The spinner, the progress line and Cancel, for work polled elsewhere ([`Job::result`]).
+    pub fn progress_ui(&self, ui: &mut egui::Ui) {
         ui.spinner();
         ui.label(self.progress.lock().unwrap().line());
         if ui.button("Cancel").clicked() {
             self.cancel.store(true, Ordering::Relaxed);
         }
         ui.ctx().request_repaint_after(Duration::from_millis(200));
+    }
+
+    /// The progress ([`Job::progress_ui`]); the result once the work has ended.
+    pub fn ui(&mut self, ui: &mut egui::Ui) -> Option<Result<T, Fail>> {
+        self.progress_ui(ui);
         self.result()
     }
 }
