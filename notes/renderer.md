@@ -1250,7 +1250,7 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
 - Sun: cascades and a far layer to 1 km in place of the baked light maps, leaf translucency (`sun.rs`,
   `foliage.rs`); the characters cast into the cascades, and the car's body and the characters take them (the car
   stays out, its own map shadows it). A plant taller than grass is a crown (`trees`: the retail trees are three wings
-  about 120 degrees apart); its cards fade out edge-on and take their sun from the crown (Beer-Lambert out of its
+  about 120 degrees apart); its cards take their sun from the crown (Beer-Lambert out of its
   ellipsoid). 41M 1080p drawn only 3.93 to 4.11 ms. Tried and dropped (2026-10-26): per-tree tint (snow firs turned
   brown on 10O), leaf-gradient normals, per-pixel crown normals (slight), turned card copies (square tops, darker),
   interior transmission (lost the backlit glow). Vegetation look (2026-10-28; `tuft_*` in `shader.wgsl`, `foliage::with_plants`):
@@ -1267,7 +1267,7 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   own textures take it, retail stages unchanged. 394's plant pass +1 s of one thread. 34 shots: 7
   byte-identical (retail 52 among them), the rest within 0.8% RMSE. Pieces lying flat are no plants (2026-11-18,
   `foliage::FLAT`: no face steeper than about 26 degrees): a converted AC stage's road paint, cut out, was faded
-  edge-on and vanished under `lighting` (Riudecanyes, before/after shots); retail stages not re-shot. The main view's sun shadow is worked out once per
+  edge-on and vanished under `lighting` (Riudecanyes, before/after shots); retail stages not re-shot. The edge-on fade is gone for every stage (2026-11-18, user): converted AC hedges and fences are modelled planes along the road, and faded by the angle they came and went as the car passed (Crequy 2025 at 2.3 km, replay re-rendered with `lighting` off: steady). The main view's sun shadow is worked out once per
   pixel before the stage is shaded (PCSS, 3x3 blocker search). Semetin 5.39 to 6.06 ms at 1920x1080 (41M similar,
   2026-10-25). The prepass's normals go to an `Rgb10a2Unorm` target of their own: the prepass 1.0 to 0.52 ms at 1440p
   (4K similar); with TAA, frames differ on 0.3-1% of pixels, mostly by 1/255, dusk and night byte-identical. The first

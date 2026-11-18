@@ -739,7 +739,6 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         }
     }
     colour = backlit(colour, first.rgb, v.uv0, night, 1.0);
-    alpha = plant_faded(v, alpha);
     if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
         discard;
     }
@@ -1052,7 +1051,6 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         let scraped = LIGHT_SCALE * second.rgb * light(n, sunlit, around.rgb, v.world);
         colour = mix(colour, scraped, clamp(v.color.a * second.a, 0.0, 1.0));
     }
-    alpha = plant_faded(v, alpha);
     if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
         discard;
     }
@@ -1357,28 +1355,12 @@ fn crown_sun_seen(v: VertexOut, under_cloud: f32, r: vec3<f32>) -> f32 {
     return seen * own * mix(world_lit(out, vec3<f32>(0.0)), lit, near);
 }
 
-// A plant card's alpha faded as it turns edge-on to the eye (ours): seen at a grazing angle a card is a stretched
-// stripe, the giveaway of crossed cards. Below `EDGE_ON.x` of the facing it is gone, from `EDGE_ON.y` whole; crossed
-// cards are never both under 0.7, so one of them always shows. The face's own normal, from the position's slopes.
-// A crown's cards are faded whole (`foliage::TREE_CARD`), their strips that are no plant's too.
-const EDGE_ON: vec2<f32> = vec2<f32>(0.2, 0.5);
-
-fn plant_faded(v: VertexOut, alpha: f32) -> f32 {
-    let face = cross(dpdx(v.world), dpdy(v.world));
-    if (mode.cutout == 0u || (v.specular.z <= 0.5 && v.specular.x <= 0.15)) {
-        return alpha;
-    }
-    let to_eye = frame.eye.xyz - v.world;
-    let facing = abs(dot(normalize(face), normalize(to_eye)));
-    return alpha * smoothstep(EDGE_ON.x, EDGE_ON.y, facing);
-}
-
 // The depth prepass of the alpha-tested draws (`renderer::DrawPass`): `fs_main`'s alpha test on the texture's
 // alpha, so that the pixels it keeps are the ones `fs_main` would. The colour, the normal
 // `own_sun_seen` takes, is written only for the sun's mask (`sun_mask.wgsl`).
 @fragment
 fn fs_prepass(v: VertexOut) -> @location(0) vec4<f32> {
-    let alpha = plant_faded(v, textureSampleBias(texture0, texture_sampler, v.uv0, texture_bias()).a);
+    let alpha = textureSampleBias(texture0, texture_sampler, v.uv0, texture_bias()).a;
     if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
         discard;
     }

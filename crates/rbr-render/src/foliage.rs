@@ -522,8 +522,7 @@ fn crown(low: Vec3, high: Vec3) -> bool {
 /// cards); pieces that share a vertex's place across are too (wings that meet on the axis).
 const SAME_AXIS: f32 = 0.3;
 /// `specular[0]` of a crown's cards, its strips that are no plant's included, which plant draws do not use otherwise
-/// (they have no specular map; under 1, the mirrors' mark). `plant_faded` in `shader.wgsl` fades them edge-on,
-/// `crown_sun_seen` shades them.
+/// (they have no specular map; under 1, the mirrors' mark). `crown_sun_seen` in `shader.wgsl` shades them.
 const TREE_CARD: f32 = 0.3;
 
 /// The trees of a mesh's plant draws ([`trees`]).
@@ -704,7 +703,7 @@ fn pieces<'a>(
         }
     }
     // Each piece's box and its uv rectangle, and whether it stands up. A piece lying flat (road paint, a decal on the
-    // ground) is no plant's card whatever its texture: faded edge-on (`plant_faded` in `shader.wgsl`), it vanished.
+    // ground) is no plant's card whatever its texture.
     let mut span = vec![(Vec3::MAX, Vec3::MIN, [f32::MAX; 2], [f32::MIN; 2]); vertices.len()];
     let mut upright = vec![false; vertices.len()];
     for i in (0..vertices.len()).filter(|&i| on[i].is_some()) {
