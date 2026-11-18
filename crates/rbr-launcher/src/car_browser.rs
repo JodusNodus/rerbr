@@ -365,7 +365,7 @@ pub enum Action {
     Favourite(String),
     /// Go back without choosing.
     Back,
-    /// Open the Get more page on gvrc.de's cars (the Cars page).
+    /// Open the Get more cars dialog (the Cars page).
     GetMore,
     /// Remove the car added by the launcher with this pack folder (the Cars page).
     Remove(String),

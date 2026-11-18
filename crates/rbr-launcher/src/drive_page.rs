@@ -181,7 +181,7 @@ impl Form {
         fields(ui, "car and stage", |ui| {
             ui.label("Car");
             if self.catalog.cars.is_empty() {
-                ui.colored_label(WARN, "No cars yet: add some on the Settings page with Download cars…");
+                ui.colored_label(WARN, "No cars yet: add some on Library > Cars with Get more cars…");
             } else {
                 ui.vertical(|ui| self.car_field(ui, Target::Drive));
             }
@@ -220,7 +220,7 @@ impl Form {
                    the car and the surface. Edit… makes and changes them";
         ui.label("Setup").on_hover_text(tip);
         if self.setup.choice_ui(ui, FIELD) {
-            self.page = crate::pages::Page::Setup;
+            self.open_setup();
         }
         ui.end_row();
     }

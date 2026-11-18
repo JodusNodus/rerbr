@@ -527,6 +527,11 @@ impl Form {
         self.downloads.open = true;
     }
 
+    /// Closes gvrc.de's car list.
+    pub fn close_car_list(&mut self) {
+        self.downloads.open = false;
+    }
+
     /// "Download cars…", which opens and closes the list ([`Form::download_cars_panel`]).
     pub fn download_cars_button(&mut self, ui: &mut egui::Ui) {
         let label = if self.downloads.open { "Hide the list" } else { "Download cars…" };

@@ -243,7 +243,7 @@ impl Form {
         fields(ui, "circuit car", |ui| {
             ui.label("Car");
             if self.catalog.cars.is_empty() {
-                ui.colored_label(WARN, "No cars yet: add some on Content > Get more");
+                ui.colored_label(WARN, "No cars yet: add some on Library > Cars");
             } else {
                 ui.vertical(|ui| self.car_field(ui, Target::Circuit));
             }

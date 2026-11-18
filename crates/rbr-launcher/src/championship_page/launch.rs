@@ -105,7 +105,7 @@ impl Form {
         self.championship.profile = profile;
         match request {
             Some(Request::Launch(start)) => self.start_championship_stage(start),
-            Some(Request::Setup) => self.page = crate::pages::Page::Setup,
+            Some(Request::Setup) => self.open_setup(),
             Some(Request::BrowseCar) => {
                 let car = self.championship.car.unwrap_or(self.car);
                 self.car_browser.open_on(car_browser::Target::Championship, car, &self.favourite_cars, None);

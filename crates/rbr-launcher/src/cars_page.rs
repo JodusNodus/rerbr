@@ -9,6 +9,7 @@ use crate::browser::{favourite_button, GREY};
 use crate::car_browser::{self, Action, CarBrowser, CarRow, Model};
 use crate::car_skins::Skins;
 use crate::catalog::{self, Car};
+use crate::get_page::GetMore;
 use crate::pages::{Page, ACCENT, WARN};
 use crate::preview::Previews;
 use crate::Form;
@@ -189,8 +190,7 @@ impl Form {
                 None => self.favourite_cars.push(name),
             },
             Some(Action::GetMore) => {
-                self.page = Page::Get;
-                self.open_car_list();
+                self.open_get_more(GetMore::Cars);
             }
             Some(Action::Remove(pack)) => {
                 self.cars_page.confirm = None;

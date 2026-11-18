@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use egui::Color32;
 
 use crate::disc_install::DiscSetup;
+use crate::get_page::GetMore;
 use crate::pages::{fields, section, Page, GOOD, NGP_WHY, NO_NGP, WARN};
 use crate::{catalog, controls_page, install, job, settings, Form};
 
@@ -91,9 +92,8 @@ impl Form {
         fields(ui, "row cars", |ui| {
             tick(ui, "Cars", has_cars, |ui| {
                 ui.label(if has_cars { count.join(", ") } else { "None yet".to_owned() });
-                if ui.button("Get cars…").on_hover_text("gvrc.de's NGP car packs, on Content > Get more").clicked() {
-                    self.page = Page::Get;
-                    self.open_car_list();
+                if ui.button("Get cars…").on_hover_text("gvrc.de's NGP car packs, on Library > Cars").clicked() {
+                    self.open_get_more(GetMore::Cars);
                 }
             })
         });

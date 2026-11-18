@@ -9,6 +9,7 @@ use rbr_formats::saves::SaveDir;
 use rbr_gameplay::weather::{Draws, Preset};
 use rbr_session::LapBook;
 
+use crate::get_page::GetMore;
 use crate::pages::Page;
 use crate::stage_browser::{self, Action, StageBrowser, StageRow};
 use crate::Form;
@@ -100,7 +101,7 @@ impl Form {
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Get more stages…").clicked() {
-                    self.page = Page::Get;
+                    self.open_get_more(GetMore::Stages);
                 }
             });
         });

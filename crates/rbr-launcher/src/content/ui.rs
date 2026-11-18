@@ -202,7 +202,7 @@ impl Form {
     }
 
     /// What the recent downloads list hides: the packs, stages and cars already added.
-    fn owned_content(&self) -> downloads::Owned {
+    pub(crate) fn owned_content(&self) -> downloads::Owned {
         let packs = self.owned_voices.iter().map(|p| p.name.clone());
         let packs = packs.chain(self.owned_notes.iter().map(|p| p.name.clone())).collect();
         let tracks = self.here().join(rbr_btb::player::TRACKS);
@@ -353,7 +353,7 @@ mod tests {
             (Goto::Settings, Page::Settings),
             (Goto::Disc("/x.iso".into()), Page::Settings),
         ] {
-            form.page = Page::Get;
+            form.page = Page::Import;
             form.content_goto(&goto);
             assert_eq!(form.page, page);
         }

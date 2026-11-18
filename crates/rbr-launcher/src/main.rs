@@ -151,6 +151,7 @@ mod gvrc;
 mod home;
 mod install;
 mod job;
+mod kit;
 mod ngp_dll;
 mod ngp_install;
 mod pages;
@@ -161,8 +162,10 @@ mod school_page;
 mod settings;
 mod settings_page;
 mod setup_page;
+mod sidebar;
 mod stage_browser;
 mod stages_page;
+mod theme;
 mod time_of_day;
 mod update;
 mod upscaler;
@@ -451,8 +454,12 @@ struct Form {
     data: Data,
     season: Season,
     page: Page,
-    /// The page each section was last on ([`pages::Section::ALL`]'s order): a section's tab opens it again.
+    /// The page each sidebar group was last on ([`pages::Section::ALL`]'s order): its shortcut opens it again.
     last_pages: [Page; 3],
+    /// The page Car setup was opened from, for its back link ([`Form::open_setup`]).
+    setup_from: Page,
+    /// The Get more modal open over the Cars, Stages or Co-drivers page.
+    get_more: Option<get_page::GetMore>,
     /// Content > Cars and Content > Stages.
     cars_page: cars_page::CarsPage,
     stages_page: stages_page::StagesPage,

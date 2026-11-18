@@ -9,7 +9,7 @@ use crate::pages::Page;
 use crate::stage_browser::Collection;
 use crate::{preview, Form};
 
-const SIZE: (u32, u32) = (1100, 760);
+const SIZE: (u32, u32) = (1280, 760);
 
 /// Draws the pages to `dir`, and with `rally_damage` (`--screenshot-damage`) the service park on that car.
 pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Result<(), String> {
@@ -31,7 +31,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         (Page::Cars, "cars"),
         (Page::Stages, "stages"),
         (Page::Codrivers, "codrivers"),
-        (Page::Get, "get"),
+        (Page::Import, "import"),
     ];
     for (page, name) in pages {
         form.page = page;
@@ -72,8 +72,15 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     form.page = Page::Settings;
     form.downloads.screenshot();
     shot(&dir.join("settings-downloads.png"), |ctx| form.ui(ctx))?;
-    form.page = Page::Get;
-    shot_sized(&dir.join("get-downloads.png"), (1100, 1000), |ctx| form.ui(ctx))?;
+    form.open_get_more(crate::get_page::GetMore::Cars);
+    shot_sized(&dir.join("get-more-cars.png"), (1280, 1000), |ctx| form.ui(ctx))?;
+    for (what, name) in
+        [(crate::get_page::GetMore::Stages, "stages"), (crate::get_page::GetMore::Codrivers, "codrivers")]
+    {
+        form.open_get_more(what);
+        shot(&dir.join(format!("get-more-{name}.png")), |ctx| form.ui(ctx))?;
+    }
+    form.get_more = None;
     form.downloads = Default::default();
     // The Drive page with the car list open on the selection.
     form.page = Page::Drive;

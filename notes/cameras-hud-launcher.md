@@ -167,15 +167,23 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   RBR Czech installers: Peklo, Pribram (O variant left out) and Sturec added, Manukau refused as encrypted.
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
-  status line offers the download from every page, and with both NGP paths unset a kept copy is used
+  sidebar's status area offers the download from every page, and with both NGP paths unset a kept copy is used
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Three sections (user decision 2026-11-18; `pages::Section`): Drive (Rally, Circuit, Championship, School, Car setup,
-  Replays), Content (Cars, Stages, Co-drivers, Get more) and Settings (General, Controls, Graphics & sound), a row of
-  sections over a row of the section's pages; a section's tab opens the page it was last on (`Form::last_pages`).
-- Keyboard (2026-11-03, sections 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the sections, Ctrl+Tab / Ctrl+Page Down
-  the section's next page, with Shift or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
+- Shell (user decision 2026-11-18, the redesign; `pages.rs`, `sidebar.rs`, `theme.rs`, `kit.rs`): a 220 px sidebar
+  in place of the tab rows and the status bar. Drive (Rally, Circuit, Championship, School, Replays), Library
+  (Cars and Stages with their counts, Co-drivers), a status area (game folder found, Experimental physics, the
+  readiness issue with its fix button, the status text, the update link), then Import (badge: recent downloads not
+  yet added, scanned every 2 s) and Settings. Settings' General, Controls and Graphics & sound are a segmented
+  control under the page title; the sidebar item opens the last of them (`Form::last_pages`, indexed by
+  `pages::Section`). Car setup is in no group: `Form::open_setup` records the opener (`setup_from`) for its back
+  link. "Get more" is a modal (`Form::get_more`, `GetMore`) over Cars, Stages or Co-drivers; Import still has
+  today's Get more body. Geist and Geist Mono are bundled (`assets/fonts`, OFL), egui's fonts stay as fallbacks for
+  ★ ⚠ ▼ ↵. Default window 1280×760.
+- Keyboard (2026-11-03, groups 2026-11-18): Ctrl+1..3 (Cmd on macOS) open the Drive, Library and Settings groups at
+  the page each was left on, Ctrl+Tab / Ctrl+Page Down the group's next page, with Shift or Ctrl+Page Up the one
+  before (`Page::shortcut`; nothing from Import or Car setup); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
   (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
@@ -211,7 +219,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   gamepad mapping for moves nothing.
 - Update check (`update.rs`, 2026-11-05): one request at the window's start to the GitHub releases API (published
   releases only; `release.yml` makes drafts), the highest `v*` tag above `CARGO_PKG_VERSION` (semver order) shown as
-  a link to its page at the status bar's right. No download, no setting; a failed check shows nothing.
+  a link to its page in the sidebar's status area. No download, no setting; a failed check shows nothing.
 - Stage pictures (Drive page, viewer loading screen; `rbr_render::stage_picture`, 2026-11-03): retail stages show
   the menu bank's (all 384 x 184); community stages show `rsfdata/images/stage_images/<id>.png` (what the RallySimFans menus show,
   1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look

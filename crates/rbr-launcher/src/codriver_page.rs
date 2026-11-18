@@ -6,7 +6,8 @@ use egui::{Color32, ComboBox, DragValue};
 use rbr_sound::preview::{self as codriver_preview, Preview};
 
 use crate::command::ORIGINAL_VOICE;
-use crate::pages::{combo, fields, section, Page, FIELD, GOOD, WARN};
+use crate::get_page::GetMore;
+use crate::pages::{combo, fields, section, FIELD, GOOD, WARN};
 use crate::Form;
 
 /// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
@@ -311,8 +312,8 @@ impl Form {
             ui.colored_label(WARN, format!("⚠ {text}"));
         }
         ui.add_space(6.0);
-        if ui.link("Get more co-drivers…").on_hover_text("Voices and pace notes, on Content > Get more").clicked() {
-            self.page = Page::Get;
+        if ui.link("Get more co-drivers…").on_hover_text("Voices and pace notes, on Library > Co-drivers").clicked() {
+            self.open_get_more(GetMore::Codrivers);
         }
     }
 
