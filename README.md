@@ -116,22 +116,6 @@ replays, videos and logs) goes to one folder:
 - Windows: `%APPDATA%\ReRBR\`;
 - or `$RERBR_HOME`, if set (for a portable copy).
 
-### Build from source
-
-You need Rust, through [rustup](https://rustup.rs), and SDL3: `brew install sdl3` on macOS. On Linux, your
-distribution's SDL3 development package (for example `libsdl3-dev`), plus `pkg-config` and the ALSA and udev
-development packages (for example `libasound2-dev` and `libudev-dev`).
-
-```sh
-git clone https://github.com/JodusNodus/rerbr.git
-cd rerbr
-cargo build --release
-target/release/rerbr
-```
-
-This builds three programs in `target/release/`: `rerbr` (the launcher), `viewer` (the driving window) and
-`rbr-standalone` (the physics). Start `rerbr`; it starts the other two.
-
 ## Contributing
 
 Found a bug? [Open an issue](https://github.com/JodusNodus/rerbr/issues/new?template=bug_report.yml). When a drive
