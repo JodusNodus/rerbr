@@ -12,8 +12,8 @@ use std::path::Path;
 pub struct Surfaces {
     pub overrides: BTreeMap<String, u8>,
     pub declared: BTreeSet<String>,
-    /// Per declared key: `FRICTION`, and whether it dirties the tyres (`DIRT_ADDITIVE` over 0).
-    friction: BTreeMap<String, (f64, bool)>,
+    /// Per declared key: `FRICTION`, whether it dirties the tyres (`DIRT_ADDITIVE` over 0), and CSP's `_EXT_SURFACE_TYPE`.
+    friction: BTreeMap<String, (f64, bool, Option<String>)>,
 }
 
 /// AC's `FRICTION` of clean racing asphalt, which RBR's grippiest tarmac (37) stands for.
@@ -33,6 +33,9 @@ const TARMAC: [(u8, f64); 9] = [
 const GRAVEL: [(u8, f64); 3] = [(17, 0.9), (9, 0.885), (1, 0.8725)];
 const DIRT: [(u8, f64); 3] = [(133, 0.84), (141, 0.8), (149, 0.76)];
 const GRASS: [(u8, f64); 3] = [(113, 0.7), (105, 0.675), (97, 0.65)];
+/// The most `FRICTION` a dirtying road can declare and still be gravel: the gravel rallies declare 0.82 to 0.89, tarmac
+/// rallies that dirty the tyres 0.93 and more (Monte Carlo 0.93, St Laurent's gritty patches 0.96).
+const GRAVEL_ROAD: f64 = 0.9;
 
 impl Surfaces {
     pub fn read(path: &Path, overrides: BTreeMap<String, u8>) -> Result<Self, String> {
@@ -43,11 +46,14 @@ impl Surfaces {
             let v = s.get(k)?.trim_start();
             v[..v.find(|c: char| !(c.is_ascii_digit() || ".-+".contains(c))).unwrap_or(v.len())].parse::<f64>().ok()
         };
-        let friction: BTreeMap<String, (f64, bool)> = sections
+        let friction: BTreeMap<String, (f64, bool, Option<String>)> = sections
             .iter()
             .filter(|s| s.name.to_uppercase().starts_with("SURFACE_"))
             .filter_map(|s| Some((s.get("KEY")?.to_uppercase(), s)))
-            .map(|(key, s)| (key, (number(s, "FRICTION").unwrap_or(0.), number(s, "DIRT_ADDITIVE").unwrap_or(0.) > 0.)))
+            .map(|(key, s)| {
+                let kind = s.get("_EXT_SURFACE_TYPE").map(|v| v.trim().to_uppercase());
+                (key, (number(s, "FRICTION").unwrap_or(0.), number(s, "DIRT_ADDITIVE").unwrap_or(0.) > 0., kind))
+            })
             .collect();
         Ok(Self { overrides, declared: friction.keys().cloned().collect(), friction })
     }
@@ -70,13 +76,22 @@ impl Surfaces {
             return id;
         }
         // The share of clean asphalt's grip the track declares for it, where it declares one.
-        let declared = self.friction.get(key).filter(|f| f.0 > 0.).map(|&(f, dirty)| ((f / ASPHALT).min(1.), dirty));
+        let declaration = self.friction.get(key);
+        let declared = declaration.filter(|d| d.0 > 0.).map(|d| ((d.0 / ASPHALT).min(1.), d.1));
         // Of a class, the id whose share of 37's grip is nearest; `or` where the track declares none.
         let nearest = |class: &[(u8, f64)], or: u8| {
             let off = |id: &&(u8, f64)| declared.map_or(0., |(share, _)| (id.1 / TARMAC[0].1 - share).abs());
             declared.and(class.iter().min_by(|a, b| off(a).total_cmp(&off(b)))).map_or(or, |id| id.0)
         };
+        // CSP's own word for the surface comes first, then a road that dirties the tyres and grips like gravel.
+        let kind = declaration.and_then(|d| d.2.as_deref());
+        let gravel_road = declaration.is_some_and(|d| d.1 && d.0 > 0. && d.0 <= GRAVEL_ROAD);
         match key {
+            _ if kind == Some("GRAVEL") => nearest(&GRAVEL, 1),
+            _ if kind == Some("ICE") => 117,
+            _ if kind == Some("GRASS") => nearest(&GRASS, 113),
+            "ROAD" | "ASPHALT" | "TARMAC" | "PIT" if gravel_road => nearest(&GRAVEL, 1),
+            _ if gravel_road && key.starts_with("GRAV") => nearest(&GRAVEL, 1),
             "ROAD" | "ASPHALT" | "TARMAC" | "PIT" => nearest(&TARMAC, 37),
             "KERB" | "CONCRETE" => nearest(&TARMAC, 65),
             "GRASS" => nearest(&GRASS, 113),
@@ -375,8 +390,8 @@ mod tests {
             ("BERM", 0.6, true),
             ("BORDE", 0.89, true),
         ];
-        surfaces.friction = declared.iter().map(|&(key, f, dirty)| (key.to_owned(), (f, dirty))).collect();
-        surfaces.friction.insert("GRASS".into(), (0.85, true));
+        surfaces.friction = declared.iter().map(|&(key, f, dirty)| (key.to_owned(), (f, dirty, None))).collect();
+        surfaces.friction.insert("GRASS".into(), (0.85, true, None));
         assert_eq!(surfaces.id("ROAD", false), 37);
         assert_eq!(surfaces.id("TARMAD", false), 53);
         assert_eq!(surfaces.id("KERB", false), 77);
@@ -387,5 +402,32 @@ mod tests {
         // Not declared: the class's usual id.
         assert_eq!(surfaces.id("CONCRETE", false), 65);
         assert_eq!(surfaces.id("KRB", false), 37);
+    }
+    #[test]
+    fn a_dirtying_road_with_gravel_grip_is_gravel_and_csps_word_wins() {
+        let mut surfaces = Surfaces::default();
+        let declared = [
+            ("ROAD", 0.89, true, None),
+            ("TARMAC", 1.0, false, None),
+            ("GRIT", 0.97, true, None),
+            ("GRAVB", 0.82, true, None),
+            ("GRAVA", 0.84, true, Some("GRAVEL")),
+            ("GRASS", 0.85, true, Some("GRAVEL")),
+            ("SNOW", 0.6, true, Some("ICE")),
+        ];
+        surfaces.friction = declared
+            .iter()
+            .map(|&(key, f, dirty, kind)| (key.to_owned(), (f, dirty, kind.map(str::to_owned))))
+            .collect();
+        assert_eq!(surfaces.id("ROAD", false), 17);
+        assert_eq!(surfaces.id("TARMAC", false), 37);
+        assert_eq!(surfaces.id("GRAVA", false), 17);
+        assert_eq!(surfaces.id("GRAVB", false), 17);
+        assert_eq!(surfaces.id("GRASS", false), 17);
+        assert_eq!(surfaces.id("SNOW", false), 117);
+        // Gritty tarmac that dirties the tyres is still tarmac.
+        assert_eq!(surfaces.id("GRIT", false), 65);
+        surfaces.friction.insert("ROAD".into(), (0.93, true, None));
+        assert_eq!(surfaces.id("ROAD", false), 53);
     }
 }

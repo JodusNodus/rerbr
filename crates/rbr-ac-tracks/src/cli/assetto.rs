@@ -24,7 +24,8 @@ Materials keep diffuse textures and alpha, with multilayer and detail textures b
 are not reproduced.
 --remesh smooths the road collision with the shared BTB road re-mesher.
 A surface's name gives its RBR class and its FRICTION in surfaces.ini the surface of that class nearest in grip
-(0.98 is RBR's grippiest tarmac, 37). --surface overrides one, e.g. ROAD=37.
+(0.98 is RBR's grippiest tarmac, 37). A road that dirties the tyres and declares 0.90 or less, or CSP's
+_EXT_SURFACE_TYPE=GRAVEL, is gravel; `physics=` is gravel when most of the drive is. --surface overrides one, e.g. ROAD=37.
 ";
 
 pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {

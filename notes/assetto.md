@@ -515,3 +515,20 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   AC ignores it) and `zelezniki_forward.rar` (empty `ai` folder). A track without an AI line cannot give a driveline.
 - Also checked: the synthetic track as a zip (listed, marked, re-add refused, cancel clean). Not checked by hand in
   the launcher window, and neither site's own download links (mega.nz, overtake.gg) were followed from the launcher.
+
+## Gravel and `physics=`, 2026-11-18
+
+- Before: every stage was `physics=tarmac`, and a gravel rally's `ROAD` (Pine Ridge, Steppe: `FRICTION` 0.89 with
+  `DIRT_ADDITIVE`) became tarmac 85.
+- Now: CSP's `_EXT_SURFACE_TYPE` in `surfaces.ini` comes first (`GRAVEL` gravel, `ICE` 117, `GRASS` grass; only
+  `dr_pikes/pikes_gravel` of the 2 205 sections in 244 local layouts sets it; `dwrite.dll` also names `UNKNOWN`). Then a
+  `ROAD`, `ASPHALT`, `TARMAC`, `PIT` or `GRAV*` key that dirties the tyres and declares at most 0.90 is gravel (17).
+  Tarmac that dirties tyres declares more (Monte Carlo 0.93, St Laurent's `GRIT` 0.96-0.98) and stays tarmac. The edge
+  is thin: 0.89 and 0.93 are the nearest values seen. Turini's verge `BORDE` (0.89, dirty) stays 85, being no road key.
+- `physics=` is gravel when over half of the driveline's length lies on gravel or dirt ids (1, 9, 17, 133, 141, 149),
+  else tarmac; `ac-conversion.json` records it. Snow is not guessed. One tyre model serves the whole stage, so a mixed
+  stage's minority is driven on the wrong one.
+- Checked: reconverted St Laurent, Sa Calobra, Roure, Riudecanyes: surfaces identical, tarmac. Peyregrosse's `GRAV` 133
+  becomes 17, tarmac. Pine Ridge (`ROAD` gravel to 5.7 km, then `TARMAC`) gravel; Steppe gravel, finished (10.4 km);
+  Pikes gravel finished (19.3 km); Pikes mixed (`GRAVA` 69 %) gravel, finished. `--surface gravel` reaches the physics.
+  Pine Ridge's autopilot stops at 5.98 km in a barrier chicane the straight driveline runs into, with tarmac too.

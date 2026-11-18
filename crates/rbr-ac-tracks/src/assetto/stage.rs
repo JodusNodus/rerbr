@@ -992,12 +992,19 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let ground = Grid::new(collision.iter().collect(), 4.);
     let mut missing = 0;
-    for p in &mut line.points {
+    let mut along = Vec::new();
+    for (i, p) in line.points.iter_mut().enumerate() {
         match ground.ground(p[0], p[1], p[2]).filter(|(z, _)| (*z - p[2]).abs() < 3.) {
-            Some((z, _)) => p[2] = z,
+            Some((z, t)) => {
+                p[2] = z;
+                if let (Some(id), Some(next)) = (t.material, line.at.get(i + 1)) {
+                    along.push((id as u8, next - line.at[i]));
+                }
+            }
             None => missing += 1,
         }
     }
+    let physics = crate::btb::surfaces::physics(along);
     if missing > line.points.len() / 100 {
         return Err(format!("{missing}/{} driveline points have no collision within 3 m", line.points.len()));
     }
@@ -1062,7 +1069,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write("materials.ini", format!("{list}\n{materials}"))?;
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
-    write("track.ini",format!("[INFO]\nname={title}\nphysics=tarmac\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
+    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
     write("settings.ini", "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n".into())?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     for (i, p) in line.points.iter().enumerate() {
@@ -1125,7 +1132,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "runoff_extension_m":runoff_extension,"runoff_m":line.length()-finish,
         "spawn_source":spawn_source,"spawn_before_start_m":spawn_before_start_m,
         "source_repairs":repairs,
-        "surface_triangles":surface_counts,"declared_surface_keys":surfaces.declared,
+        "physics":physics,"surface_triangles":surface_counts,"declared_surface_keys":surfaces.declared,
         "length_m":input.finish-input.start,"ai_start_m":input.start,"ai_finish_m":input.finish,
         "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,

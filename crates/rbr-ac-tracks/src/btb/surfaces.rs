@@ -35,3 +35,33 @@ pub fn weathers(id: u8) -> [u8; 3] {
         [id; 3]
     }
 }
+
+/// The stage's `physics=`: gravel where over half of the drive lies on gravel or dirt, else tarmac. `along` pairs a
+/// surface id with the length of road it covers. (Snow is not guessed: a stage of snow ids is set by hand.)
+pub fn physics(along: impl IntoIterator<Item = (u8, f64)>) -> &'static str {
+    let (mut loose, mut all) = (0., 0.);
+    for (id, length) in along {
+        all += length;
+        if matches!(id, 1 | 9 | 17 | 133 | 141 | 149) {
+            loose += length;
+        }
+    }
+    if loose * 2. > all {
+        "gravel"
+    } else {
+        "tarmac"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stage_is_gravel_when_most_of_its_drive_is_loose() {
+        assert_eq!(physics([(17, 6.), (37, 4.)]), "gravel");
+        assert_eq!(physics([(133, 5.), (37, 5.)]), "tarmac");
+        assert_eq!(physics([(37, 9.), (1, 1.)]), "tarmac");
+        assert_eq!(physics([]), "tarmac");
+    }
+}
