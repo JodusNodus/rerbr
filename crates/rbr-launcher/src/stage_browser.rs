@@ -1021,7 +1021,7 @@ impl Column {
     }
 }
 
-/// A stage's row: its star, name (with a BTB tag), country or author, length and surface; the highlighted one filled.
+/// A stage's row: its star, name, country or author, length and surface; the highlighted one filled.
 fn draw_row(ui: &egui::Ui, rect: Rect, row: &StageRow, column: Column, cursor: bool, hovered: bool, favourite: bool) {
     let p = ui.painter();
     let (c, name_right) = browser::columns(rect, &WIDTHS);
@@ -1030,21 +1030,7 @@ fn draw_row(ui: &egui::Ui, rect: Rect, row: &StageRow, column: Column, cursor: b
     paint_star(p, Pos2::new(rect.left() + 14.0, rect.center().y), favourite, hovered || cursor);
     let (name_colour, dim) = if startable { (TEXT_LIST, TEXT_2) } else { (TEXT_DISABLED, TEXT_3) };
     let font = FontId::proportional(13.0);
-    let name = p.layout_no_wrap(row.name.clone(), font.clone(), name_colour);
-    let x = browser::name_x(rect);
-    let name_width = name.size().x;
-    paint_cell(p, rect, x, name_right, &row.name, font.clone(), name_colour);
-    if row.btb {
-        let at = x + name_width + 8.0;
-        if at + 30.0 <= name_right {
-            browser::paint_tag(
-                &p.with_clip_rect(Rect::from_min_max(rect.min, Pos2::new(name_right, rect.bottom()))),
-                rect,
-                at,
-                "BTB",
-            );
-        }
-    }
+    paint_cell(p, rect, browser::name_x(rect), name_right, &row.name, font.clone(), name_colour);
     paint_cell(p, rect, c[0], c[1] - 8.0, column.text(row), font.clone(), dim);
     let km = row.km.map_or(String::new(), |km| format!("{km:.1} km"));
     let km = p.layout_no_wrap(km, theme::mono(11.0), dim);

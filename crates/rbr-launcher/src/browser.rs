@@ -431,15 +431,6 @@ pub fn paint_cell(painter: &egui::Painter, rect: Rect, x: f32, right: f32, text:
     painter.with_clip_rect(room).galley(at, galley, color);
 }
 
-/// A small label such as "BTB" painted at `x` on the row; its right edge.
-pub fn paint_tag(painter: &egui::Painter, rect: Rect, x: f32, text: &str) -> f32 {
-    let galley = painter.layout_no_wrap(text.to_owned(), FontId::new(10.5, theme::medium()), TEXT_2);
-    let tag = Rect::from_min_size(Pos2::new(x, rect.center().y - 8.0), egui::vec2(galley.size().x + 10.0, 16.0));
-    painter.rect_filled(tag, 4.0, theme::white(20));
-    painter.galley(tag.center() - galley.size() / 2.0, galley, TEXT_2);
-    tag.right()
-}
-
 /// A list row's highlight: filled when it holds the cursor, lighter when hovered.
 pub fn paint_selection(ui: &egui::Ui, rect: Rect, cursor: bool, hovered: bool) {
     if cursor {

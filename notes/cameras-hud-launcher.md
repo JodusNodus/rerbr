@@ -265,7 +265,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   Random, Get more…), one filter bar (search, the scope segments All / Favourites / Recent / Added by you / Circuits /
   Cannot start, shown only when they have rows, then class, drive, sort for cars and surface, country, length, sort for
   stages; they wrap to a second row under ~1060 px), the list (header row, 33 px rows, a hint bar of the keys that work)
-  and a 380 px inspector (`browser::inspector`: scrolling facts, pinned Favourite and primary button). The class and
+  and a 380 px inspector (`browser::inspector`: scrolling facts, pinned Favourite and primary button). A BTB stage is
+  marked in the inspector only (Source and its note), not in the list (user, 2026-11-18). The class and
   country are filters beside the scope (`Filter::class`, `Filter::country`, saved as `class` in `browser_state`); an older
   save's `class:`/`country:` collection restores as the filter. The pickers (Drive, Circuit, Championship) are the same
   browsers with Back, "Choose car/stage" and no Remove. Replays: rows of stage, time, car, conditions, age; the inspector
