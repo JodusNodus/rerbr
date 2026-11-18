@@ -611,7 +611,7 @@ impl Renderer {
         // traced ([`Renderer::draw_car_glass`]): where it covers the stage the frame's depth is the stage's, and a ray
         // that met it there read the glass's colour (the Lancer's red sun strip in the puddles far ahead).
         let glass_later = view == View::Main && inside && self.screen_reflection.is_some();
-        let mut bound = Bound::new(&self.buffers);
+        let mut bound = Bound::new(&self.buffers).seen_from(camera::eye(view_projection));
         pass.set_bind_group(2, self.sun_mask.group(), &[]);
         let mut prepass: Vec<_> = shown
             .iter()
@@ -642,7 +642,7 @@ impl Renderer {
                 wgpu::Operations { load: wgpu::LoadOp::Load, store: depth_store },
             );
             pass.set_bind_group(2, self.sun_mask.group(), &[]);
-            bound = Bound::new(&self.buffers);
+            bound = Bound::new(&self.buffers).seen_from(camera::eye(view_projection));
         }
         // The lit opaque draws (the car's, the characters') go in before the shaded stage draws, whose depth test
         // (`Equal` to the prepass) then fails under them: the ground beneath the car is not shaded to be painted over.
