@@ -480,6 +480,35 @@ pub fn header_line(ui: &mut egui::Ui, name: &str) {
     ui.painter().text(at, Align2::LEFT_BOTTOM, name, FontId::new(11.5, theme::medium()), TEXT_3);
 }
 
+/// `text` shortened from the left with an ellipsis to fit `width`.
+pub fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
+    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
+    if fits(text) {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let tail = |n: usize| format!("…{}", chars[chars.len() - n..].iter().collect::<String>());
+    tail((0..chars.len()).rev().find(|&n| fits(&tail(n))).unwrap_or(0))
+}
+
+/// The key hints of a browser: a page drives (and has no Back), a picker chooses.
+pub fn hint_keys(page: bool) -> Vec<(&'static str, &'static str)> {
+    let mut keys = vec![("↑↓", "Move"), ("↵", if page { "Drive" } else { "Choose" }), ("Ctrl D", "Favourite")];
+    if !page {
+        keys.push(("Esc", "Back"));
+    }
+    keys
+}
+
+/// The line under the list's header row when nothing is listed.
+pub fn empty_hint(ui: &mut egui::Ui, hint: &str) {
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        ui.label(RichText::new(hint).color(TEXT_2));
+    });
+}
+
 /// The inspector's Favourite button: a star and the word, the star lit when a favourite.
 pub fn favourite_button(ui: &mut egui::Ui, favourite: bool) -> egui::Response {
     let (star, colour) = if favourite { ("★", STAR) } else { ("☆", TEXT_2) };

@@ -20,7 +20,7 @@ use crate::browser::{
 use crate::catalog::{Map, Origin};
 use crate::kit;
 use crate::preview::{self, Previews};
-use crate::theme::{self, TEXT, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
+use crate::theme::{self, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
 
 pub const SURFACES: [&str; 3] = ["Gravel", "Tarmac", "Snow"];
 
@@ -842,11 +842,7 @@ impl StageBrowser {
         } else {
             format!("{count} found in all {noun}s")
         };
-        let verb = if self.page { "Drive" } else { "Choose" };
-        let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
-        if !self.page {
-            keys.push(("Esc", "Back"));
-        }
+        let keys = browser::hint_keys(self.page);
         // The author in place of the country within a country.
         let third = if self.filter.country.is_some() { Column::Author } else { Column::Country };
         let (collection, empty) = (self.collection.clone(), self.filter.query.trim().is_empty());
@@ -863,11 +859,7 @@ impl StageBrowser {
                     }
                     _ => "Nothing matches.".to_owned(),
                 };
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(24.0);
-                    ui.label(RichText::new(hint).color(TEXT_2));
-                });
+                browser::empty_hint(ui, &hint);
             }
             list_rows(ui, &mut self.nav, "stages", &self.lines, |ui, nav, range| {
                 for at in range {
@@ -945,7 +937,7 @@ fn inspect(
                 }
                 let name = folder.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
                 let font = theme::mono(11.0);
-                let text = left_truncated(ui, &name, &font, ui.available_width() - 8.0);
+                let text = browser::left_truncated(ui, &name, &font, ui.available_width() - 8.0);
                 ui.label(RichText::new(text).font(font).color(TEXT_2)).on_hover_text(folder.display().to_string());
             });
         }
@@ -1003,17 +995,6 @@ fn actions(
         *confirm = None;
     }
     (action, removal)
-}
-
-/// `text` shortened from the left with an ellipsis to fit `width`.
-fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
-    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
-    if fits(text) {
-        return text.to_owned();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let tail = |n: usize| format!("…{}", chars[chars.len() - n..].iter().collect::<String>());
-    tail((0..chars.len()).rev().find(|&n| fits(&tail(n))).unwrap_or(0))
 }
 
 /// The right-aligned columns of the list, widths: country or author, length, surface.
