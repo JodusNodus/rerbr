@@ -25,7 +25,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 10O_N_hazy_partcloud
 --codriver-mod
@@ -130,7 +130,7 @@ intermittent
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --best-ghost
 <here>/NGP/GhostCars/Best_54.ghc
 --ghost-weather
@@ -230,7 +230,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 10O_N_lightsnow_heavycloud
 --car-gearbox
@@ -331,7 +331,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 33N_crisp_clear
 --codriver-mod
@@ -430,7 +430,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --best-ghost
 <here>/NGP/GhostCars/Best_54.ghc
 --ghost-weather
@@ -539,7 +539,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --best-ghost
 <here>/NGP/GhostCars/Best_129.ghc
 --ghost-weather
@@ -648,7 +648,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
@@ -754,7 +754,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
@@ -863,7 +863,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
@@ -972,7 +972,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
@@ -1081,7 +1081,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
@@ -1190,7 +1190,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
+anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
