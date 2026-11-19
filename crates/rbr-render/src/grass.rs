@@ -562,7 +562,11 @@ impl Field {
                     (size(pick), size((pick * 53.0).fract()));
                 let angle = turn * std::f32::consts::PI;
                 let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
-                let radius = if self.fx.is_some() { width * 0.25 } else { (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS) };
+                let radius = if self.fx.is_some() {
+                    width * 0.4
+                } else {
+                    (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS)
+                };
                 if !self.supported(g, at, radius) {
                     continue;
                 }
