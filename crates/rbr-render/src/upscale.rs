@@ -181,13 +181,7 @@ pub fn stage_textures(stage: &Stage) -> BTreeMap<TextureRef, u32> {
     // A BTB stage's normal maps and highlight maps are data, not pictures: kept as they are.
     let surfaces = stage.meshes.iter().flat_map(|mesh| &mesh.draws).filter_map(|draw| draw.state.surface);
     let maps: BTreeSet<TextureRef> = surfaces
-        .flat_map(|s| {
-            [
-                s.normal.map(|n| n.texture),
-                s.normal.and_then(|n| n.detail).map(|d| d.texture),
-                s.highlight.and_then(|h| h.map),
-            ]
-        })
+        .flat_map(|s| [s.normal.map(|n| n.texture), s.highlight.and_then(|h| h.map)])
         .flatten()
         .filter(|texture| !sky.contains(texture) && !rest.contains(texture))
         .collect();

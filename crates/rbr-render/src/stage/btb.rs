@@ -6,7 +6,7 @@
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
 
-use super::mesh::{Bounds, DetailMap, Draw, DrawState, Highlight, Layer, Lod, Mesh, NormalMap, Surface, Vertex};
+use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Lod, Mesh, NormalMap, Surface, Vertex};
 use super::{
     Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
 };
@@ -105,18 +105,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             // The normal map on `uv0` or, where the lerp does not hold it, `uv1`.
             let uv_bump = has(slots.bump).filter(|&s| s == 0 || !lerp);
             let normal = uv_bump.filter(|_| material.effect.bump && !material.technique.up).and_then(|s| {
-                let map = texture(&material.normal)?;
-                let detail = material.detail.as_ref().and_then(|d| {
-                    let texture = texture(&Some(d.texture.clone()))?;
-                    Some(DetailMap { texture, scale: d.scale, blend: d.blend })
-                });
-                Some(NormalMap {
-                    texture: map,
-                    uv1: s != 0,
-                    doubled: !material.first_uv,
-                    scale: material.bump_scale,
-                    detail,
-                })
+                let texture = texture(&material.normal)?;
+                Some(NormalMap { texture, uv1: s != 0, doubled: !material.first_uv, scale: material.bump_scale })
             });
             // The highlight on the opaque draws only: a cut-out's `specular` marks our plants (`foliage`).
             let colour = material.specular_color;
@@ -205,18 +195,13 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         let vertices: usize = meshes.iter().map(|m| m.vertices.len()).sum();
         let domes = meshes.iter().filter(|m| m.layer == Layer::Sky).count();
         let surfaces = meshes.iter().flat_map(|m| &m.draws).filter_map(|d| d.state.surface.map(|s| (d, s)));
-        let (bumped, detailed, highlit) = surfaces.fold((0, 0, 0), |(b, d, h), (draw, s)| {
-            let n = draw.indices.len() / 3;
-            let detail = s.normal.is_some_and(|n| n.detail.is_some());
-            (
-                b + n * usize::from(s.normal.is_some()),
-                d + n * usize::from(detail),
-                h + n * usize::from(s.highlight.is_some()),
-            )
+        let (bumped, highlit) = surfaces.fold((0, 0), |(b, h), (d, s)| {
+            let n = d.indices.len() / 3;
+            (b + n * usize::from(s.normal.is_some()), h + n * usize::from(s.highlight.is_some()))
         });
         eprintln!(
             "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles \
-             ({bumped} with a normal map, {detailed} of them with a detail normal, {highlit} with a highlight)",
+             ({bumped} with a normal map, {highlit} with a highlight)",
             scene.objects.len()
         );
     }
@@ -288,8 +273,7 @@ struct Plan {
 }
 
 /// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the
-/// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha. The baked AO
-/// of a converted stage starts as the vertex's occlusion ([`crate::sky_occlusion::baked_occlusion`]).
+/// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha.
 fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun: Vec3) -> Vec<Vertex> {
     let uv = |set: Option<usize>, i: usize| {
         set.and_then(|s| mesh.uvs.get(s)).and_then(|uvs| uvs.get(i)).copied().unwrap_or([0.0; 2])
@@ -311,7 +295,7 @@ fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun
                     let [u, v] = uv(Some(s), i);
                     [u, v, 1.0]
                 }),
-                occlusion: mesh.occlusion.get(i).map_or(0.0, |&ao| crate::sky_occlusion::baked_occlusion(ao)),
+                occlusion: 0.0,
                 sky_dir: 0,
                 bounce: [0; 2],
                 wet: 0.0,
