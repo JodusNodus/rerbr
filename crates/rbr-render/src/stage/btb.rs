@@ -8,7 +8,8 @@
 
 use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Lod, Mesh, NormalMap, Surface, Vertex};
 use super::{
-    Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
+    Address, Anchor, Error, GrassFx, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef,
+    TextureSet,
 };
 use crate::atmosphere::Atmosphere;
 use glam::{Vec3, Vec3Swizzles};
@@ -81,6 +82,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         Some(texture)
     };
 
+    // A converted stage's grass atlas, where it ships one: a stage texture like the draws'.
+    let grass_fx = scene.grass.clone().map(|settings| {
+        let texture = texture(&settings.texture);
+        GrassFx { settings, texture }
+    });
+
     // One plan per mesh: the draws it makes, with their layers.
     let mut alphas: HashMap<&str, Alpha> = HashMap::new();
     let plans: Vec<Option<Plan>> = scene
@@ -126,6 +133,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 alpha_ref,
                 mip_bias: false,
                 ground: false,
+                grass: material.grass,
                 cull_back: false,
                 blend,
                 depth_test: true,
@@ -227,6 +235,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         textures: BTreeMap::new(),
         start_digits: None,
         snow_ground: false,
+        grass_fx,
         collision,
         start,
         atmosphere,
@@ -477,6 +486,7 @@ mod tests {
             alpha_ref: Some(CUTOUT_REF),
             mip_bias: false,
             ground: false,
+            grass: false,
             cull_back: false,
             blend: false,
             depth_test: true,

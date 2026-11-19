@@ -370,6 +370,8 @@ pub struct Extras {
     pub highlight: Option<(f32, f32)>,
     /// `ReRbrBumpScale`: the normal map is read at its UV times this ([`uv_multipliers`]).
     pub bump_scale: Option<f32>,
+    /// `ReRbrGrass=1`: CSP's GrassFX grows on this material ([`super::csp::GrassFx`]).
+    pub grass: bool,
 }
 
 /// The sun highlight of an opaque, non-placeholder material that declares `ksSpecular`.
@@ -417,12 +419,24 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     if let Some(scale) = extras.bump_scale.filter(|_| extras.normal.is_some()) {
         let _ = writeln!(out, "ReRbrBumpScale={}", decimal(scale));
     }
+    if extras.grass {
+        out.push_str("ReRbrGrass=1\n");
+    }
     out.push('\n');
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_grass_material_is_marked() {
+        let mut out = String::new();
+        section_with(&mut out, "m", "t.dds", false, &Extras { grass: true, ..Extras::default() });
+        assert!(out.ends_with("ReRbrGrass=1\n\n"));
+        section(&mut out, "n", "t.dds", false);
+        assert_eq!(out.matches("ReRbrGrass").count(), 1);
+    }
+
     #[test]
     fn an_opaque_diffuse_takes_the_normal_maps_cut_out() {
         // A 2x2 diffuse with no cut-out (its alpha is shading); the normal map cuts its left column.

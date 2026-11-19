@@ -1233,6 +1233,14 @@ tiles before its frame. One frame held only the tiles built on it (within `SYNC_
 reference shot showed a bare hillside past that where a drive has the field to 110 m (580 chase, the bank to the
 right). A repeat render is byte-identical; the window and the videos stream as before.
 
+Dense grass on converted stages with GrassFX (2026-11-19, `grass::add`, `Fx`): where a BTB stage's `settings.ini` has
+`[ReRbrGrass]` and a draw carries `DrawState::grass` (`ReRbrGrass=1`), the field takes only those draws (no ground-mark,
+collision or colour test) and places grass where the sharp texel's linear luminance is in `luminance`; with the track's
+atlas the cards' pictures are its pieces (`Fx::piece`, width by the piece's aspect), the atlas drawn grey with mips and
+coverage rebuilt (`grey_atlas`), else our blades. Sa Calobra down, rock view 1600x900, 07:35: scene pass 1.12 to 1.55 ms
+(drawn triangles 351k to 705k: the terrain is now grass ground); retail 41M and a converted stage without `[GRASS_FX]`
+byte-identical to main.
+
 Dense grass placement and size (2026-11-10):
 
 - Placement uses unblurred blended textures before vertex tint, with grassiness at least 0.5 at the root and eight

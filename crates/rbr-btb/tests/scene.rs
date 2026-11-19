@@ -80,6 +80,7 @@ fn rerbr_effect_reads_every_input_on_the_diffuse_uv_set() {
         multiplier: None,
         additive: None,
         bump_scale: [1.0; 2],
+        grass: false,
     };
     let slots = material.uv_slots();
     assert_eq!((slots.bump, slots.specular, slots.lerp), (Some(0), Some(0), None));

@@ -130,6 +130,8 @@ pub struct Material {
     /// ReRBR's `ReRbrBumpScale=u,v`: the normal map is read at its UV set times this. `[1, 1]` where the section has
     /// none.
     pub bump_scale: [f32; 2],
+    /// ReRBR's `ReRbrGrass=1`: the stage's grass ([`Scene::grass`]) grows on this material (converted stages).
+    pub grass: bool,
 }
 
 impl Material {
@@ -207,6 +209,8 @@ pub struct Scene {
     pub driveline: Vec<[f32; 3]>,
     /// `settings.ini` `sunDirection`, the direction the sunlight travels (pointing down).
     pub sun_direction: Option<[f32; 3]>,
+    /// `settings.ini` `[ReRbrGrass]`.
+    pub grass: Option<track::GrassFx>,
     pub materials: Vec<Material>,
     pub meshes: Vec<Mesh>,
     pub objects: Vec<Object>,
@@ -219,7 +223,8 @@ impl Scene {
         let track = Track::open(folder)?;
         let spawn = track.spawn()?;
         let driveline = track.driveline()?;
-        let sun = track.settings()?.sun_direction;
+        let settings = track.settings()?;
+        let (sun, grass) = (settings.sun_direction, settings.grass);
         let objects = track.objects()?;
         let files = TextureFiles::open(folder)?;
         let textures = Textures::list(&files.0)?;
@@ -270,6 +275,7 @@ impl Scene {
                 .map(|p| [p.position[0] as f32, p.position[2] as f32, p.position[1] as f32])
                 .collect(),
             sun_direction: sun.map(|s| s.map(|v| v as f32)),
+            grass,
             materials,
             meshes,
             objects: placed,
@@ -521,6 +527,7 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         multiplier: find("multiplierTexture"),
         additive: find("additiveTexture"),
         bump_scale,
+        grass: m.entry("ReRbrGrass") == Some("1"),
     }
 }
 

@@ -29,6 +29,7 @@ fn mesh(triangles: &[[Vec3; 3]], normal: Vec3, glass: bool) -> Mesh {
                 alpha_ref: None,
                 mip_bias: false,
                 ground: false,
+                grass: false,
                 cull_back: false,
                 blend: false,
                 depth_test: true,

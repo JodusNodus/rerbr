@@ -342,6 +342,10 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   ([assetto.md](assetto.md#normal-maps-and-highlights-2026-11-19)).
 - `ReRbrBumpScale=s` or `=u,v` (ReRBR's own): the normal map is read at its uv times this (`scene::Material::bump_scale`,
   `NormalMap::scale`); written with a decimal point, as `decimal_floats` reads `2,5` as 2.5.
+- `ReRbrGrass=1` (ReRBR's own, a material section) and `settings.ini` `[ReRbrGrass]` (own section; `scene::Material::grass`,
+  `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
+  ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`
+  pieces), in place of its choice by colour; keys in `notes/assetto.md`.
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

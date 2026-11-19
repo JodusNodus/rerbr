@@ -30,6 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         textures: Default::default(),
         start_digits: None,
         snow_ground: false,
+        grass_fx: None,
         collision: None,
         start: None,
         atmosphere: Default::default(),

@@ -242,6 +242,9 @@ pub struct Stage {
     pub start_digits: Option<Vec<u8>>,
     /// The off-road ground is snow's ([`crate::puddles::mark_ground`]); the grass field leaves it bare.
     pub snow_ground: bool,
+    /// A converted stage's grass (Assetto Corsa's `[GRASS_FX]`), grown on its marked materials in place of the grass
+    /// field's choice by colour ([`crate::grass`]).
+    pub grass_fx: Option<GrassFx>,
     /// The collision ground for `selection` (`.col`, and the `.mat` entry for its weather), when marking the surfaces
     /// built it ([`load`] in the wet, [`Stage::mark_surfaces`]), for the particles to take rather than build again
     /// ([`crate::particles::Drawn::load`]).
@@ -257,6 +260,13 @@ pub struct Stage {
     /// that ground takes the wet film. `None`: the surfaces tell.
     pub roads: Option<Roads>,
     pub report: LoadReport,
+}
+
+/// A converted stage's grass: its settings and its atlas's texture, where the stage ships one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GrassFx {
+    pub settings: rbr_btb::track::GrassFx,
+    pub texture: Option<TextureRef>,
 }
 
 /// A texture's name in its set: the track whose archive holds it, the `[TextureInfo]` file name, and
@@ -573,6 +583,7 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
         textures: BTreeMap::new(),
         start_digits: None,
         snow_ground: false,
+        grass_fx: None,
         collision,
         start,
         atmosphere,
@@ -684,6 +695,7 @@ fn global_clouds(
                 alpha_ref: Some(0),
                 mip_bias: false,
                 ground: false,
+                grass: false,
                 cull_back: false,
                 blend: true,
                 depth_test: false,
