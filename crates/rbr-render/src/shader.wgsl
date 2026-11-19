@@ -151,6 +151,11 @@ struct Mode {
     // x and y texture 0's and texture 1's bank shares (`terrain_detail::bank_shares`; `terrain_bank`); z 1 for the near
     // ground (`stage::DrawState::ground`, `detail_draw`).
     bank: vec4<f32>,
+    // x a BTB normal map in `normal_texture`: 0 none, 1 on `uv0`, 2 on `uv1` (`stage::Surface::normal`, `bumped`); y the
+    // slope's scale once z is rebuilt (`stage::NormalMap::doubled`).
+    bump: vec4<f32>,
+    // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
+    highlight: vec4<f32>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -177,6 +182,8 @@ override DRAW_WATER: bool = false;
 override DRAW_SPECULAR: bool = false;
 override DRAW_SECOND: bool = false;
 override DRAW_DETAIL: bool = false;
+override DRAW_BUMP: bool = false;
+override DRAW_HIGHLIGHT: bool = false;
 
 fn water_draw() -> bool {
     return select(mode.water != 0u, DRAW_WATER, KNOWN);
@@ -192,6 +199,14 @@ fn second_draw() -> bool {
 
 fn detail_draw() -> bool {
     return select(mode.bank.z != 0.0, DRAW_DETAIL, KNOWN);
+}
+
+fn bump_draw() -> bool {
+    return select(mode.bump.x != 0.0, DRAW_BUMP, KNOWN);
+}
+
+fn highlight_draw() -> bool {
+    return select(mode.highlight.w != 0.0, DRAW_HIGHLIGHT, KNOWN);
 }
 
 // The draw's frame uniform (`renderer::uniforms::frame_index`): 0 the world's (the stage and the car), 1 the
@@ -281,6 +296,8 @@ struct Probes {
 @group(1) @binding(4) var shadow_texture: texture_2d<f32>;
 @group(1) @binding(5) var specular_texture: texture_2d<f32>;
 @group(1) @binding(6) var glow_texture: texture_2d<f32>;
+// A BTB normal map (`stage::Surface::normal`; 1 white texel elsewhere, unread).
+@group(1) @binding(7) var normal_texture: texture_2d<f32>;
 
 // Textures 0 and 1's mip bias: the draw's, and the upscale's.
 fn texture_bias() -> f32 {
@@ -655,8 +672,16 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         } else {
             sun_seen = own_sun_seen(v, under_cloud);
         }
-        // Lit in linear light (`own_light`), then back to the display colour the rest of the frame works in.
-        colour = pow(own_light(v, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
+        // Lit in linear light (`own_light`), then back to the display colour the rest of the frame works in. A BTB
+        // normal map's normal takes the light; the shadows keep the face's.
+        var lit = v;
+        if (bump_draw()) {
+            lit.normal = bumped(v);
+        }
+        colour = pow(own_light(lit, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
+        if (highlight_draw()) {
+            colour = with_highlight(colour, lit, front, sun_seen);
+        }
     } else {
         colour = relit(v) * surface;
     }
@@ -1886,6 +1911,46 @@ fn environment_reflectance(nv: f32, roughness: f32) -> f32 {
     let a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
     let ab = vec2<f32>(-1.04, 1.04) * a004 + r.zw;
     return min(0.04 * ab.x + ab.y, 1.0);
+}
+
+// A BTB normal map's normal (`stage::Surface::normal`): red and green are x and y, z is rebuilt and the slope scaled,
+// as the `Bump` effects read it, in the frame of the map's uv on screen (Schuler 2013, as `crack_normal`), so the meshes need no
+// tangents: x along u, y along v, the uv's own handedness whatever the mesh's.
+// The map is read and the slopes taken before any branch: both need uniform control flow.
+fn bumped(v: VertexOut) -> vec3<f32> {
+    let uv = select(v.uv0, v.uv1, mode.bump.x > 1.5);
+    let xy = textureSample(normal_texture, texture_sampler, uv).rg * 2.0 - 1.0;
+    let dp1 = dpdx(v.world);
+    let dp2 = dpdy(v.world);
+    let duv1 = dpdx(uv);
+    let duv2 = dpdy(uv);
+    if (dot(v.normal, v.normal) < 1e-8) {
+        return v.normal;
+    }
+    let n = normalize(v.normal);
+    let side2 = cross(dp2, n);
+    let side1 = cross(n, dp1);
+    let t = side2 * duv1.x + side1 * duv2.x;
+    let b = side2 * duv1.y + side1 * duv2.y;
+    let scale = inverseSqrt(max(max(dot(t, t), dot(b, b)), 1e-20));
+    let z = sqrt(max(1.0 - dot(xy, xy), 0.0));
+    let bent = (t * xy.x + b * xy.y) * scale * mode.bump.y + n * z;
+    return select(n, normalize(bent), dot(bent, bent) > 1e-8);
+}
+
+// A BTB `Specular` effect's highlight (`stage::Highlight`): `map * colour * pow(max(0, N.H), power)`, `H` between the
+// eye and the sun, in the sun's light past the shadows, on the side the sun lights, added in linear light.
+fn with_highlight(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -> vec3<f32> {
+    let map = textureSample(specular_texture, texture_sampler, v.specular.xy).rgb;
+    if (dot(v.normal, v.normal) < 1e-8 || sun_seen <= 0.0) {
+        return colour;
+    }
+    let n = normalize(v.normal) * select(-1.0, 1.0, front);
+    let to_sun = -frame.sun.xyz;
+    let nl = dot(n, to_sun);
+    let h = normalize(to_sun + normalize(frame.eye.xyz - v.world));
+    let shine = map * mode.highlight.rgb * pow(max(dot(n, h), 0.0), mode.highlight.w) * smoothstep(0.0, 0.1, nl);
+    return pow(pow(colour, vec3<f32>(2.2)) + frame.day_sun.rgb * shine * sun_seen, vec3<f32>(1.0 / 2.2));
 }
 
 fn with_specular(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -> vec3<f32> {

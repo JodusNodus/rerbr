@@ -766,6 +766,7 @@ mod tests {
             depth_write: true,
             shade: None,
             specular: None,
+            surface: None,
         };
         let mesh = Mesh {
             layer: Layer::Solid,

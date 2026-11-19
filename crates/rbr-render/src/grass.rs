@@ -604,6 +604,7 @@ fn slot_mesh(texture: TextureRef, capacity: usize) -> Mesh {
         depth_write: true,
         shade: None,
         specular: None,
+        surface: None,
     };
     let indices: Vec<u32> = (0..capacity as u32).flat_map(|c| [0, 1, 2, 0, 2, 3].map(|k| c * 4 + k)).collect();
     Mesh {

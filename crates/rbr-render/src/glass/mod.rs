@@ -683,6 +683,7 @@ mod tests {
                 depth_write: !blend,
                 shade,
                 specular: None,
+                surface: None,
             };
             Mesh {
                 layer: Layer::Solid,

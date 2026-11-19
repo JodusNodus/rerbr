@@ -73,6 +73,7 @@ pub(super) fn draw_state(
         depth_write: matches!(pass, Pass::Opaque | Pass::Plastic | Pass::TwoSided),
         shade,
         specular: None,
+        surface: None,
     }
 }
 

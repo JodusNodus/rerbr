@@ -564,3 +564,18 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   of the sweep, 25 m/s), all `finished=1`, `false_start=0`, at most 2.4 m off the driveline: Cabanette up
   552.4 s (`Marker`), down 520.7 s, Gabiria-Legazpi 435.5 s (`Marker`), Legazpi-Gabiria 430.4 s, Prunières-Embrun 1140.5 s, Embrun-Prunières 1159.4 s (these
   four stop short of the result marker, `cause=Left`, finish recorded). Not rendered.
+
+## Normal maps and highlights, 2026-11-19
+
+- `materials.ini` sections keep `effectName=BTB_Diffuse` and the diffuse (other BTB readers draw it unchanged) and add `normalTexture`
+  (`txNormal`, stored like a diffuse, re-encoded as opaque DXT1 where needed), `specularTexture` (`txMaps` red as grey DXT1), `SpecularPower`
+  (`ksSpecularEXP`, at least 1, 4 if missing) and `SpecularColor` (`ksSpecular` three times), and `ReRbrEffect` =
+  `BTB_DiffuseBump`, `BTB_DiffuseSpecular` or `BTB_DiffuseBumpSpecular` (ReRBR's own key, [btb.md](btb.md#drawing)). All inputs are read on the diffuse's UV set 0; the meshes are unchanged.
+- Normal map: per-material sections only, not placeholders, not `Multilayer`, not tile bakes, not tree cards or generated sections; cut-outs may take
+  one. Highlight: opaque non-placeholder materials with `ksSpecular > 0`, per-material and tile bakes; the spec map only per material. Without
+  either the section is today's byte for byte. `ac-conversion.json` counts `normal_mapped_materials` and `highlight_materials`.
+- Sa Calobra down: 18 sections with a normal map, 19 with a highlight (4 both), 0 with a spec map (no highlighted material has `txMaps`);
+  Textures.zip 518.2 MB to 553.8 MB (+5 textures), import 21 s as before, `Objects.zip` byte identical. Rendered at four
+  driveline points (`--enhance all`, 11:00): the rocks (`extrarocks`, 811 k triangles), walls and rails gain their relief
+  (RMSE 4 to 14 of 255 against main); the roads' highlight (`ksSpecular` 1, EXP 15) is a faint sheen, none blown out facing
+  the sun. The new files on main's viewer render byte identical to the old conversion.

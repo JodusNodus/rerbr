@@ -31,8 +31,8 @@ use mesh::{
 use textures::{texture_name, texture_names};
 
 pub use mesh::{
-    Address, Bounds, Draw, DrawState, Image, Layer, Lod, Mesh, Shade, StageTexture, Vertex, CLOSE_DISTANCE, LOD_BAND,
-    LOD_DISTANCE, MIP_MAP_BIAS,
+    Address, Bounds, Draw, DrawState, Highlight, Image, Layer, Lod, Mesh, NormalMap, Shade, StageTexture, Surface,
+    Vertex, CLOSE_DISTANCE, LOD_BAND, LOD_DISTANCE, MIP_MAP_BIAS,
 };
 
 /// Flat RGBA fill for water while its retail texture keys remain unresolved. This is a viewer stand-in,
@@ -690,6 +690,7 @@ fn global_clouds(
                 depth_write: false,
                 shade: None,
                 specular: None,
+                surface: None,
             };
             meshes.push(camera_mesh(&item.buffers, sky_fields(item.flags), Layer::Sky, state, report));
         }

@@ -123,6 +123,9 @@ pub struct TextureBank {
     /// Multilayer materials baked into one texture, and materials whose textures are one-pixel placeholders.
     pub baked: BTreeSet<String>,
     pub placeholders: BTreeSet<String>,
+    /// Sections written with a normal map and with a highlight.
+    pub normal_mapped: usize,
+    pub highlighted: usize,
     pub count: usize,
 }
 
@@ -137,6 +140,8 @@ impl TextureBank {
             simplified: BTreeSet::new(),
             baked: BTreeSet::new(),
             placeholders: BTreeSet::new(),
+            normal_mapped: 0,
+            highlighted: 0,
             count: 0,
         })
     }
@@ -197,38 +202,89 @@ impl TextureBank {
     }
     fn base_diffuse(&mut self, model: &Model, mat: &Material) -> Result<String, String> {
         if let Some(name) = mat.textures.get("txDiffuse") {
-            if let Some(data) = model.textures.get(name).filter(|d| !d.is_empty()) {
-                let extension = if data.starts_with(b"DDS ") {
-                    "dds"
-                } else if data.starts_with(b"\x89PNG") {
-                    "png"
-                } else if data.starts_with(&[0xff, 0xd8]) {
-                    "jpg"
-                } else {
-                    "dds"
-                };
-                // Validate DDS support; decode/re-encode formats the renderer cannot upload directly.
-                let bytes = if extension == "dds" && rbr_formats::dds::parse(data).is_err() {
-                    if let Some((w, h, rgba)) = textures::legacy_dds(data) {
-                        rbr_formats::dds::rgba8_file(w, h, &rgba)
-                    } else {
-                        let (w, h, rgba) =
-                            textures::decode(data).ok_or_else(|| format!("unsupported texture {name}"))?;
-                        textures::encode(true, w, h, rgba)
-                    }
-                } else {
-                    data.clone()
-                };
-                let file = self.put(bytes, extension)?;
-                self.aliases.insert(name.clone(), file.clone());
+            if let Some(file) = self.slot(model, mat, "txDiffuse", true)? {
                 return Ok(file);
-            }
-            if let Some(file) = self.aliases.get(name) {
-                return Ok(file.clone());
             }
             self.missing.insert(format!("{}: {name}", mat.name));
         }
         self.put(textures::flat([0.5, 0.5, 0.5, 1.]), "dds")
+    }
+    /// The texture in `slot`, stored as it is where the renderer can upload it, else decoded and re-encoded (`alpha`
+    /// keeps its alpha channel). `None` where the slot has no texture in the model, or the one it names was stored
+    /// before under that name.
+    fn slot(&mut self, model: &Model, mat: &Material, slot: &str, alpha: bool) -> Result<Option<String>, String> {
+        let Some(name) = mat.textures.get(slot) else { return Ok(None) };
+        let alias = if alpha { name.clone() } else { format!("opaque:{name}") };
+        if let Some(data) = model.textures.get(name).filter(|d| !d.is_empty()) {
+            let extension = if data.starts_with(b"DDS ") {
+                "dds"
+            } else if data.starts_with(b"\x89PNG") {
+                "png"
+            } else if data.starts_with(&[0xff, 0xd8]) {
+                "jpg"
+            } else {
+                "dds"
+            };
+            // Validate DDS support; decode/re-encode formats the renderer cannot upload directly.
+            let bytes = if extension == "dds" && rbr_formats::dds::parse(data).is_err() {
+                if let Some((w, h, rgba)) = textures::legacy_dds(data) {
+                    rbr_formats::dds::rgba8_file(w, h, &rgba)
+                } else {
+                    let (w, h, rgba) = textures::decode(data).ok_or_else(|| format!("unsupported texture {name}"))?;
+                    textures::encode(alpha, w, h, rgba)
+                }
+            } else {
+                data.clone()
+            };
+            let file = self.put(bytes, extension)?;
+            self.aliases.insert(alias, file.clone());
+            return Ok(Some(file));
+        }
+        Ok(self.aliases.get(&alias).cloned())
+    }
+    /// What a material written per material takes besides its diffuse (see [`Extras`]).
+    pub fn extras(&mut self, model: &Model, index: usize) -> Result<Extras, String> {
+        let mat = &model.materials[index];
+        if is_placeholder(model, mat) {
+            return Ok(Extras::default());
+        }
+        let mut extras = Extras { highlight: highlight(mat), ..Extras::default() };
+        let normal = mat.textures.get("txNormal").filter(|_| !mat.shader.contains("Multilayer"));
+        if let Some(name) = normal {
+            // A normal map that cannot be read is no normal map.
+            match self.slot(model, mat, "txNormal", false) {
+                Ok(Some(file)) => extras.normal = Some(file),
+                Ok(None) => _ = self.missing.insert(format!("{}: {name}", mat.name)),
+                Err(_) => _ = self.simplified.insert(format!("{}: {name}", mat.name)),
+            }
+        }
+        if let Some(name) = mat.textures.get("txMaps").filter(|_| extras.highlight.is_some()) {
+            extras.specular = self.share(model, name)?;
+        }
+        self.normal_mapped += usize::from(extras.normal.is_some());
+        self.highlighted += usize::from(extras.highlight.is_some());
+        Ok(extras)
+    }
+    /// The highlight of a material written per tile: the texture is baked, so there is no spec map.
+    pub fn tile_extras(&mut self, model: &Model, index: usize) -> Extras {
+        let mat = &model.materials[index];
+        let highlight = highlight(mat).filter(|_| !is_placeholder(model, mat));
+        self.highlighted += usize::from(highlight.is_some());
+        Extras { highlight, ..Extras::default() }
+    }
+    /// The red channel of a spec map (AC's specular share) as an opaque grey texture.
+    fn share(&mut self, model: &Model, name: &str) -> Result<Option<String>, String> {
+        let alias = format!("share:{name}");
+        if let Some(file) = self.aliases.get(&alias) {
+            return Ok(Some(file.clone()));
+        }
+        let Some((w, h, rgba)) = model.textures.get(name).and_then(|d| textures::decode(d)) else {
+            return Ok(None);
+        };
+        let grey = rgba.chunks_exact(4).flat_map(|t| [t[0], t[0], t[0], 255]).collect();
+        let file = self.put(textures::encode(false, w, h, grey), "dds")?;
+        self.aliases.insert(alias, file.clone());
+        Ok(Some(file))
     }
     pub fn finish(self) -> Result<(), String> {
         self.zip.finish().map(|_| ()).map_err(|e| e.to_string())
@@ -292,9 +348,58 @@ fn placeholder_colour(name: &str) -> [f32; 4] {
     [rgb[0], rgb[1], rgb[2], 1.]
 }
 
+/// What a section carries besides its diffuse, for ReRBR's renderer: files in the textures, and the highlight's
+/// `(ksSpecular, ksSpecularEXP)`.
+#[derive(Default)]
+pub struct Extras {
+    pub normal: Option<String>,
+    pub specular: Option<String>,
+    pub highlight: Option<(f32, f32)>,
+}
+
+/// The sun highlight of an opaque, non-placeholder material that declares `ksSpecular`.
+fn highlight(mat: &Material) -> Option<(f32, f32)> {
+    let specular = mat.property("ksSpecular", 0.);
+    (specular > 0. && !is_transparent(mat)).then(|| (specular, mat.property("ksSpecularEXP", 4.).max(1.)))
+}
+
+/// A float with a decimal point and no exponent: BTB reads a bare `1,1,1` as 1.1 and 1.
+fn decimal(v: f32) -> String {
+    let text = format!("{v:.6}");
+    let text = text.trim_end_matches('0');
+    if text.ends_with('.') {
+        format!("{text}0")
+    } else {
+        text.to_owned()
+    }
+}
+
 pub fn section(out: &mut String, name: &str, texture: &str, transparent: bool) {
+    section_with(out, name, texture, transparent, &Extras::default());
+}
+
+pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bool, extras: &Extras) {
     let technique = if transparent { "Transparent" } else { "Default" };
-    let _ = writeln!(out,"[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\nambient=0.4,0.4,0.4,1.0\nSpecularPower=4\nSpecularColor=0,0,0\ndiffuseTexture={texture}\n");
+    let (power, color) = match extras.highlight {
+        Some((s, p)) => (decimal(p), format!("{0},{0},{0}", decimal(s))),
+        None => ("4".to_owned(), "0,0,0".to_owned()),
+    };
+    let _ = write!(out, "[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\nambient=0.4,0.4,0.4,1.0\nSpecularPower={power}\nSpecularColor={color}\ndiffuseTexture={texture}\n");
+    for (key, file) in [("normalTexture", &extras.normal), ("specularTexture", &extras.specular)] {
+        if let Some(file) = file {
+            let _ = writeln!(out, "{key}={file}");
+        }
+    }
+    let effect = match (extras.normal.is_some(), extras.highlight.is_some()) {
+        (true, true) => Some("BTB_DiffuseBumpSpecular"),
+        (true, false) => Some("BTB_DiffuseBump"),
+        (false, true) => Some("BTB_DiffuseSpecular"),
+        (false, false) => None,
+    };
+    if let Some(effect) = effect {
+        let _ = writeln!(out, "ReRbrEffect={effect}");
+    }
+    out.push('\n');
 }
 
 #[cfg(test)]
@@ -429,5 +534,96 @@ mod tests {
         assert_eq!(surfaces.id("GRIT", false), 65);
         surfaces.friction.insert("ROAD".into(), (0.93, true, None));
         assert_eq!(surfaces.id("ROAD", false), 53);
+    }
+    fn extras_model() -> Model {
+        let dds = |t: [u8; 4]| rbr_formats::dds::rgba8_file(2, 2, &t.repeat(4));
+        Model {
+            version: 6,
+            textures: BTreeMap::from([
+                ("d".to_string(), dds([200, 100, 50, 255])),
+                ("n".to_string(), dds([128, 128, 255, 255])),
+                ("m".to_string(), dds([90, 10, 20, 255])),
+            ]),
+            materials: Vec::new(),
+            meshes: Vec::new(),
+            markers: BTreeMap::new(),
+            dropped_triangles: 0,
+            repaired_uvs: 0,
+            repaired_normals: 0,
+        }
+    }
+    fn extras_of(shader: &str, transparent: bool, slots: &[&str]) -> (String, Extras, usize) {
+        let mut model = extras_model();
+        let mut mat = Material {
+            name: "m".into(),
+            shader: shader.into(),
+            alpha_test: transparent,
+            textures: [("txDiffuse", "d"), ("txNormal", "n"), ("txMaps", "m")]
+                .into_iter()
+                .filter(|(s, _)| *s == "txDiffuse" || slots.contains(s))
+                .map(|(s, n)| (s.into(), n.into()))
+                .collect(),
+            ..Material::default()
+        };
+        mat.properties.insert("ksSpecular".into(), 0.5);
+        mat.properties.insert("ksSpecularEXP".into(), 15.);
+        model.materials.push(mat);
+        let path = std::env::temp_dir().join(format!("ac-extras-{}-{shader}-{transparent}.zip", std::process::id()));
+        let mut bank = TextureBank::new(&path).unwrap();
+        let extras = bank.extras(&model, 0).unwrap();
+        let count = bank.count;
+        bank.finish().unwrap();
+        let _ = std::fs::remove_file(path);
+        let mut out = String::new();
+        section_with(&mut out, "s", "ac_diffuse.dds", transparent, &extras);
+        (out, extras, count)
+    }
+    #[test]
+    fn a_normal_map_and_a_spec_map_with_a_highlight_give_the_full_section() {
+        let (out, extras, count) = extras_of("ksPerPixelNM", false, &["txNormal", "txMaps"]);
+        assert_eq!(count, 2, "a normal map and a share map, both new");
+        assert_eq!(
+            out,
+            format!(
+                "[s]\neffectName=BTB_Diffuse\ntechniqueName=Default\nambient=0.4,0.4,0.4,1.0\nSpecularPower=15.0\nSpecularColor=0.5,0.5,0.5\ndiffuseTexture=ac_diffuse.dds\nnormalTexture={}\nspecularTexture={}\nReRbrEffect=BTB_DiffuseBumpSpecular\n\n",
+                extras.normal.unwrap(),
+                extras.specular.unwrap()
+            )
+        );
+    }
+    #[test]
+    fn a_material_with_neither_feature_keeps_todays_section() {
+        let mut out = String::new();
+        section_with(&mut out, "s", "t.dds", true, &Extras::default());
+        let mut today = String::new();
+        section(&mut today, "s", "t.dds", true);
+        assert_eq!(out, today);
+        assert_eq!(out, "[s]\neffectName=BTB_Diffuse\ntechniqueName=Transparent\nambient=0.4,0.4,0.4,1.0\nSpecularPower=4\nSpecularColor=0,0,0\ndiffuseTexture=t.dds\n\n");
+    }
+    #[test]
+    fn multilayer_gets_no_normal_map_and_transparent_no_highlight() {
+        let (out, extras, _) = extras_of("ksMultilayer_fresnel_nm", false, &["txNormal"]);
+        assert!(extras.normal.is_none() && !out.contains("normalTexture"));
+        assert!(out.contains("ReRbrEffect=BTB_DiffuseSpecular") && !out.contains("specularTexture"));
+        let (out, extras, _) = extras_of("ksPerPixelAT_NM", true, &["txNormal", "txMaps"]);
+        assert!(extras.highlight.is_none() && extras.specular.is_none());
+        assert!(out.contains("normalTexture=") && out.contains("ReRbrEffect=BTB_DiffuseBump\n"));
+        assert!(out.contains("SpecularPower=4\nSpecularColor=0,0,0\n"));
+    }
+    #[test]
+    fn the_highlight_reads_back_through_btbs_decimal_floats() {
+        for (specular, power) in [(1., 15.), (0.5, 4.), (0.004, 120.), (0.00001, 0.5)] {
+            let mut out = String::new();
+            let extras = Extras { highlight: Some((specular, power)), ..Extras::default() };
+            section_with(&mut out, "s", "t.dds", false, &extras);
+            let value = |key: &str| {
+                let line = out.lines().find_map(|l| l.strip_prefix(key)).unwrap();
+                rbr_btb::track::decimal_floats(line)
+            };
+            let colour = value("SpecularColor=");
+            assert_eq!(colour.len(), 3, "{out}");
+            assert!(colour.iter().all(|&c| (c - f64::from(specular)).abs() < 1e-6), "{colour:?}");
+            assert_eq!(value("SpecularPower="), [f64::from(power)]);
+        }
     }
 }

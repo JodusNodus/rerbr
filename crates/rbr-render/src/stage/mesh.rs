@@ -173,6 +173,59 @@ pub struct DrawState {
     pub shade: Option<Shade>,
     /// Specular map, its highlight added to the colour before the shadow light map (slots 6 and 8).
     pub specular: Option<TextureRef>,
+    /// A BTB material's normal map and highlight ([`super::btb`]); `None` elsewhere.
+    pub surface: Option<Surface>,
+}
+
+/// What a BTB `Bump` or `Specular` effect adds to the diffuse (`rbr_btb::scene::Effect`), drawn with the renderer's own
+/// light only (`Enhance::lighting`; the vertex light of the plain draw stays the effects' `0.4 + N.L`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Surface {
+    pub normal: Option<NormalMap>,
+    /// The highlight: `map * colour * pow(max(0, N.H), power)`, the map (white without one) read at the vertex's
+    /// `specular` uv.
+    pub highlight: Option<Highlight>,
+}
+
+/// A BTB normal map. Its tangent frame is its uv's own on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NormalMap {
+    pub texture: TextureRef,
+    /// It reads `uv1`, else `uv0`.
+    pub uv1: bool,
+    /// The slope doubled once z is rebuilt, as BTB's own `Bump` effects do (`bumpNormal.xy * 2.0`); a converted
+    /// stage's map (`ReRbrEffect`) is drawn as authored.
+    pub doubled: bool,
+}
+
+/// A BTB `Specular` effect's highlight (`SpecularColor`, `SpecularPower`, `specularTexture`).
+#[derive(Debug, Clone, Copy)]
+pub struct Highlight {
+    pub colour: [f32; 3],
+    pub power: f32,
+    pub map: Option<TextureRef>,
+}
+
+impl Highlight {
+    fn bits(&self) -> [u32; 4] {
+        let [r, g, b] = self.colour.map(f32::to_bits);
+        [r, g, b, self.power.to_bits()]
+    }
+}
+
+impl PartialEq for Highlight {
+    fn eq(&self, other: &Highlight) -> bool {
+        self.bits() == other.bits() && self.map == other.map
+    }
+}
+
+impl Eq for Highlight {}
+
+impl std::hash::Hash for Highlight {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bits().hash(state);
+        self.map.hash(state);
+    }
 }
 
 /// A car class's lighting constants from `<car>_shader_settings_clear.ini` (`Ka`, `Kd`, `CookTorranceKs`,
@@ -406,6 +459,7 @@ pub(super) fn block_mesh(block: &lbs::GeometryBlock, report: &mut LoadReport) ->
                     depth_write: true,
                     shade: None,
                     specular,
+                    surface: None,
                 },
                 lod,
             });
@@ -468,6 +522,7 @@ pub(super) fn object_mesh(item: &lbs::ObjectItem, report: &mut LoadReport) -> Me
         depth_write: true,
         shade: None,
         specular: None,
+        surface: None,
     };
     let mesh = buffer_mesh(&item.buffers, fields, Layer::Solid, state, report);
     Mesh { bounds: Some(bounds_of(item.bounds)), ..mesh }
@@ -510,6 +565,7 @@ pub(super) fn interactive_mesh(object: &lbs::InteractiveObject<'_>, report: &mut
             depth_write: true,
             shade: None,
             specular: None,
+            surface: None,
         };
         let part = buffer_mesh(&buffers, fields, Layer::Solid, state, report);
         let vertex_base = mesh.vertices.len() as u32;
@@ -546,6 +602,7 @@ pub(super) fn face_mesh(item: &lbs::SkyItem, report: &mut LoadReport) -> Mesh {
         depth_write: false,
         shade: None,
         specular: None,
+        surface: None,
     };
     buffer_mesh(&item.buffers, sky_fields(item.flags), Layer::Sky, state, report)
 }
@@ -628,6 +685,7 @@ pub(super) fn water_mesh(item: &lbs::SurfaceItem<'_>, report: &mut LoadReport) -
                 depth_write: true,
                 shade: None,
                 specular: None,
+                surface: None,
             },
             lod: Lod::Always,
         }]

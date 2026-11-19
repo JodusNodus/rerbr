@@ -3,7 +3,7 @@
 use super::pipelines::cutout;
 use super::uniforms::ModeUniform;
 use super::DEPTH_FORMAT;
-use crate::stage::{Address, DrawState, Shade, TextureRef, TextureSet, MIP_MAP_BIAS};
+use crate::stage::{Address, DrawState, Highlight, Shade, TextureRef, TextureSet, MIP_MAP_BIAS};
 use bytemuck::bytes_of;
 use rbr_formats::dds::{self, Format};
 use std::collections::BTreeMap;
@@ -46,6 +46,12 @@ pub(super) struct BindKey {
     pub(super) specular: Source,
     /// The first texture has an emissive mask ([`Views::glows`]).
     glow: bool,
+    /// A BTB normal map ([`crate::stage::Surface::normal`]; `White` for none or a missing one) and whether it reads `uv1`.
+    normal: Source,
+    normal_uv1: bool,
+    normal_doubled: bool,
+    /// A BTB highlight ([`crate::stage::Surface::highlight`]), its map in the specular binding.
+    highlight: Option<Highlight>,
 }
 
 impl BindKey {
@@ -54,9 +60,11 @@ impl BindKey {
     pub(super) fn features(&self) -> DrawFeatures {
         DrawFeatures {
             water: self.water,
-            specular: self.specular != Source::White && self.shade.is_none(),
+            specular: self.specular != Source::White && self.shade.is_none() && self.highlight.is_none(),
             second_texture: self.second_texture,
             detail: self.ground,
+            bump: self.normal != Source::White,
+            highlight: self.highlight.is_some(),
         }
     }
 }
@@ -69,6 +77,8 @@ pub(super) struct DrawFeatures {
     pub(super) specular: bool,
     pub(super) second_texture: bool,
     pub(super) detail: bool,
+    pub(super) bump: bool,
+    pub(super) highlight: bool,
 }
 
 /// The nine samplers: one per (U mode, V mode) pair.
@@ -124,6 +134,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         Some(_) => missing,
     };
     let first = if state.alpha_ref.is_some() || state.blend { Source::Clear } else { Source::White };
+    let (normal, highlight) = state.surface.map_or((None, None), |s| (s.normal, s.highlight));
     // A missing light map means no shadow.
     let shadow = match state.shadow {
         Some(texture) if loaded.contains_key(&texture) => Source::Texture(texture),
@@ -140,11 +151,15 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         cutout: cutout(state),
         shade: state.shade,
         water: state.textures[0].is_some_and(|t| t.set == TextureSet::WaterStandIn),
-        specular: match state.specular.or(state.shade.and_then(|s| s.dirt)) {
+        specular: match state.specular.or(state.shade.and_then(|s| s.dirt)).or(highlight.and_then(|h| h.map)) {
             Some(texture) if loaded.contains_key(&texture) => Source::Texture(texture),
             _ => Source::White,
         },
         glow: state.textures[0].is_some_and(|t| views.glows.contains_key(&t)),
+        normal: source(normal.map(|n| n.texture), Source::White),
+        normal_uv1: normal.is_some_and(|n| n.uv1),
+        normal_doubled: normal.is_some_and(|n| n.doubled),
+        highlight,
     }
 }
 
@@ -242,6 +257,13 @@ pub(super) fn bind_group(
             });
             [a, b, f32::from(u8::from(key.ground)), 0.0]
         },
+        bump: [
+            if key.normal == Source::White { 0.0 } else { 1.0 + f32::from(u8::from(key.normal_uv1)) },
+            if key.normal_doubled { 2.0 } else { 1.0 },
+            0.0,
+            0.0,
+        ],
+        highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
     };
     let glow = glow.map_or(&views.white, |g| &g.view);
     let mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -269,6 +291,7 @@ pub(super) fn bind_group(
             wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(views.get(key.shadow)) },
             wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(views.get(key.specular)) },
             wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(glow) },
+            wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(views.get(key.normal)) },
         ],
     })
 }
