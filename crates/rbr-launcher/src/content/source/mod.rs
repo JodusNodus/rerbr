@@ -20,6 +20,13 @@ pub struct Entry {
     pub size: u64,
 }
 
+impl Entry {
+    /// The file name, lowercase.
+    pub fn file_lower(&self) -> String {
+        self.path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default()
+    }
+}
+
 /// A source's try at a path: `None` when the path is not its kind of container, else the opened tree or why it
 /// cannot be opened.
 type Try = fn(&Path) -> Option<Result<Box<dyn Source>, Fail>>;

@@ -40,7 +40,7 @@ pub struct Classic;
 /// Whether the source's names look like a classic stage, complete or not.
 pub fn is_classic(src: &dyn Source) -> bool {
     src.entries().iter().any(|e| {
-        let file = find::lower(e);
+        let file = e.file_lower();
         let in_maps = e.path.len() >= 2 && e.path[..e.path.len() - 1].iter().any(|d| d.eq_ignore_ascii_case("maps"));
         (in_maps && file.starts_with("track-"))
             || file == "tracks.ini"
@@ -240,7 +240,7 @@ fn settings_sections(src: &dyn Source, texts: &Texts) -> Vec<Section> {
 /// The first of `names` (ignoring case) that an entry of the source is called, with where it is: the files of the
 /// stage first.
 fn find_named<'a>(entries: &'a [Entry], stage: &find::Found, name: &str) -> Option<&'a Entry> {
-    let called = |e: &&Entry| find::lower(e) == name.to_ascii_lowercase();
+    let called = |e: &&Entry| e.file_lower() == name.to_ascii_lowercase();
     let mut all: Vec<&Entry> = entries.iter().filter(called).collect();
     all.sort_by_key(|e| !in_dir(&e.path, &stage.dir));
     all.into_iter().next()
@@ -437,7 +437,7 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
 
     let temp = Temp::create(&tracks, "adding")?;
     let staged = temp.0.join(&folder);
-    let rbz: u64 = files.iter().filter(|(e, _)| find::lower(e).ends_with(".rbz")).map(|(e, _)| e.size).sum();
+    let rbz: u64 = files.iter().filter(|(e, _)| e.file_lower().ends_with(".rbz")).map(|(e, _)| e.size).sum();
     let mut count =
         Counter { step: "Adding classic stage", done: 0, total: size + rbz, report: ctx.report, cancel: ctx.cancel };
     count.add(0)?;

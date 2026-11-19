@@ -91,7 +91,7 @@ fn names_in(dir: Option<&PathBuf>) -> BTreeSet<String> {
 
 impl Kind for Skin {
     fn detect(&self, src: &dyn Source) -> Option<Found> {
-        let file = |e: &Entry| e.path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
+        let file = Entry::file_lower;
         if src.entries().iter().any(|e| file(e).ends_with(".sgc") || file(e) == "common.lsp") {
             return None;
         }
