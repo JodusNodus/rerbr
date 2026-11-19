@@ -45,7 +45,7 @@ Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 17:30
 
 ### day-sa-calobra-alpine-flyby
 
-Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, 16:30
+Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, 15:00
 
 ![day-sa-calobra-alpine-flyby](day-sa-calobra-alpine-flyby.jpg)
 
