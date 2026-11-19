@@ -9,6 +9,7 @@ use crate::Form;
 static DROP_WORKS: AtomicBool = AtomicBool::new(true);
 
 /// Marks the window as one that takes no dropped files (native Wayland).
+#[cfg(all(unix, not(target_vendor = "apple"), not(target_os = "android")))]
 pub fn no_drop() {
     DROP_WORKS.store(false, Ordering::Relaxed);
 }
