@@ -679,17 +679,18 @@ fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
     let start = args.clock.or(sun.map(|moment| moment.hour(site)));
     let start = start.or(stated.map(|(word, _)| relight::stated_hour(word, site)));
     let mut clock = relight::Clock::new(base, bake, site, letter, start, args.relight).physical(args.enhance.lighting);
-    if sun == Some(relight::Moment::Golden) {
+    if let Some(moment @ (relight::Moment::Best | relight::Moment::Golden)) = sun {
         let started = std::time::Instant::now();
         let sunlit = rbr_render::sunlit::Sunlit::of(stage);
-        let low = sunlit.share(clock.daylight(clock.start).toward);
-        let (hour, share) = clock.golden(|toward| sunlit.share(toward));
+        let found = |toward| sunlit.share(toward);
+        let fixed = sunlit.share(clock.daylight(clock.start).toward);
+        let (hour, share) = if moment == relight::Moment::Best { clock.best(found) } else { clock.golden(found) };
         eprintln!(
-            "golden hour: {:.0}% of the road sunlit at {hour:.2} h, {:.0}% at {:.2} h with the sun {} degrees up ({} ms)",
+            "{} light: {:.0}% of the road sunlit at {hour:.2} h, {:.0}% at {:.2} h with the sun at its fixed place ({} ms)",
+            moment.word(),
             share * 100.0,
-            low * 100.0,
+            fixed * 100.0,
             clock.start,
-            relight::GOLDEN,
             started.elapsed().as_millis()
         );
         clock.start = hour;

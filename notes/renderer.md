@@ -403,13 +403,15 @@ light). A solar model per rally moves the sun. Below -7 degrees: night (`night.w
 lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Shared bakes with M names (73, 83-89)
 probably fit the wrong hour.
 
-- Moments (`--sun dawn|morning|midday|afternoon|golden|dusk|night`, `relight::Moment`; the launcher passes it instead of a
-  clock, `--clock` wins): the sun's elevation, solved on the site's date (`hour_at`). Golden is where the sun reaches the
-  road: `sunlit.rs` (CPU ray test from driveline points every 10 m, 1 m up, against world and backdrop casters, cut-out
-  texels via `foliage::Cut`, grass tiles left out; 0.3-0.8 s) gives the road's sunlit share, and `Clock::golden` takes
-  the lowest sun of 6 to 20 degrees (evening or morning) reaching 40 % of it, else 80 % of the best. The 6-degree sun
-  reached 3-27 % on 532, 450, 462, 580 (now 21-43 % at 11-16 degrees). The viewer resolves it before the build and gives
-  the start board the hour; the replay header keeps `--sun`, so a replay re-solves it. Thresholds are our choice.
+- Moments (`--sun best|golden|midday|dusk|night`, `relight::Moment`; the launcher passes it instead of a clock, `--clock`
+  wins; the launcher's default is best; the settings' old `dawn`, `morning` read as best, `afternoon` as golden). Midday,
+  dusk, night are where the sun stands (`hour_at`). Best and golden are found on the stage: `sunlit.rs` (CPU ray test from
+  driveline points every 10 m, 1 m up, against world and backdrop casters, cut-out texels via `foliage::Cut`, grass tiles
+  left out; 0.3-2 s) gives the road's sunlit share. `Clock::best` takes the sun of 10 to 45 degrees (morning or evening,
+  capped at half the day's highest) reaching the most road; `Clock::golden` the lowest of 6 to 20 degrees reaching 40 %,
+  else 80 % of the best. On 532, 450, 462, 580 the 6-degree sun reached 3-27 %; golden now 21-43 %, best 32-65 %. The
+  viewer resolves it before the build and gives the start board the hour; the replay header keeps `--sun`, so a replay
+  re-solves it. Thresholds and bands are our choice.
 - Stated time of day (2026-11-15; `Atmosphere::stated_time`, `TimeWord::parse`, `relight::stated_hour`): the chosen
   section's `Comment`, else (no time word there) the stage folder's name, read as night, dawn or sunset by whole words
   (night/noche/nuit/notte/nacht/yö, "dark" alone; dawn/amanecer/aube/alba/sunrise/"start of the day";

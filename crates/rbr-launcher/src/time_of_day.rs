@@ -27,18 +27,16 @@ pub use rbr_render::relight::Moment;
 /// A moment's name in the Time of day box.
 fn label(moment: Moment) -> &'static str {
     match moment {
-        Moment::Dawn => "Dawn",
-        Moment::Morning => "Morning",
+        Moment::Best => "Best light",
         Moment::Midday => "Midday",
-        Moment::Afternoon => "Afternoon",
         Moment::Golden => "Golden hour",
         Moment::Dusk => "Dusk",
         Moment::Night => "Night",
     }
 }
 
-/// A moment's clock at `site`, minutes past midnight, as the viewer solves it (`Moment::hour`), but golden hour's: the
-/// viewer finds that on the stage (`relight::Clock::golden`), at the 6-degree sun or later.
+/// A moment's clock at `site`, minutes past midnight, as the viewer solves it (`Moment::hour`), but best light's and
+/// golden hour's: the viewer finds those on the stage (`relight::Clock::best`, `golden`).
 pub fn minutes(moment: Moment, site: Site) -> u32 {
     (moment.hour(site) * 60.0).round() as u32
 }
@@ -51,10 +49,10 @@ pub enum StartTime {
     Baked,
 }
 
-/// Golden hour (user decision).
+/// Best light.
 impl Default for StartTime {
     fn default() -> Self {
-        Self::Moment(Moment::Golden)
+        Self::Moment(Moment::Best)
     }
 }
 
@@ -94,8 +92,14 @@ impl StartTime {
         }
     }
 
-    /// A moment's word or `baked`; anything else (an older launcher's `HH:MM`) is none, the default.
+    /// A moment's word or `baked`; the words of the moments since dropped read as the nearest one (dawn and morning as
+    /// best light, afternoon as golden hour); anything else (an older launcher's `HH:MM`) is none, the default.
     pub fn parse(text: &str) -> Option<Self> {
+        let text = match text {
+            "dawn" | "morning" => "best",
+            "afternoon" => "golden",
+            other => other,
+        };
         Self::all().find(|s| s.to_text() == text)
     }
 }
@@ -155,11 +159,12 @@ mod tests {
             assert!((5.5..relight::GOLDEN).contains(&elevation(Moment::Golden)), "{site:?}");
             assert!((-3.5..-3.0).contains(&elevation(Moment::Dusk)), "{site:?}");
             assert!(elevation(Moment::Night) < relight::NIGHT, "{site:?}");
-            let order = Moment::ALL.map(|m| minutes(m, site));
+            let order =
+                [Moment::Midday, Moment::Best, Moment::Golden, Moment::Dusk, Moment::Night].map(|m| minutes(m, site));
             assert!(order.windows(2).all(|w| w[0] < w[1]), "{site:?}: {order:?}");
         }
         let site = retail[0];
-        assert_eq!(StartTime::default().minutes(site), Some(minutes(Moment::Golden, site)));
+        assert_eq!(StartTime::default().minutes(site), Some(minutes(Moment::Best, site)));
         assert_eq!(StartTime::Baked.minutes(site), None);
     }
 
@@ -168,6 +173,8 @@ mod tests {
         for start in StartTime::all() {
             assert_eq!(StartTime::parse(&start.to_text()), Some(start));
         }
+        assert_eq!(StartTime::parse("morning"), Some(StartTime::Moment(Moment::Best)));
+        assert_eq!(StartTime::parse("afternoon"), Some(StartTime::Moment(Moment::Golden)));
         assert_eq!(StartTime::parse("16:30"), None);
         assert_eq!(StartTime::parse("noon"), None);
     }

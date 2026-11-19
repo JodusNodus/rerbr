@@ -98,8 +98,8 @@ pub struct Args {
     /// (`relight::daylight`); the stage at night (`Atmosphere::night`) once the sun is 6 degrees down. Without it the
     /// stage starts at its bake's sun and hour (`relight::Clock::new`).
     pub clock: Option<f32>,
-    /// `--sun WORD`: the sun where a moment of the day puts it (`relight::Moment`, golden hour where it reaches the
-    /// stage's road, `relight::Clock::golden`); `--clock` over it.
+    /// `--sun WORD`: the sun where a moment of the day puts it (`relight::Moment`, best light and golden hour where the sun reaches the
+    /// stage's road, `relight::Clock::best`); `--clock` over it.
     pub sun: Option<relight::Moment>,
     pub relight: bool,
     /// `--fog off|light|heavy`: our fog over the section's (`Atmosphere::fog`; with `--enhance lighting`).
@@ -261,7 +261,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off  --hdr
               --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
-              --clock HH:MM  --sun dawn|morning|midday|afternoon|golden|dusk|night  --no-relight
+              --clock HH:MM  --sun best|golden|midday|dusk|night  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
               --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages  --hud-show tyres,trace
