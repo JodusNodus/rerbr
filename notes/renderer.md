@@ -511,6 +511,10 @@ probably fit the wrong hour.
   retail only): the game's `road_shine` stays beside it (the gravel's stone detail). Frame
   time ~0 (2026-10-24). On all ground it cost 0.5 ms for a few percent; on leaves the crown normals turned the canopy
   white.
+- BTB roads with `ReRbrSheen` (`Surface::sheen`, `with_sheen`) take the same rough dielectric (`rough_dielectric`) at the material's
+  roughness on the bumped normal, weighted `smoothstep(0.6, 0.9, v.wet.x)` (tarmac) times `SHEEN_STRENGTH` 0.35, in place of the
+  Blinn-Phong highlight there; the viewer marks the roads (`mark_surfaces(maps, grass)`) for it without the grass. Retail output
+  byte-identical (3 reference shots); scene pass +0.04 to 0.07 ms on Roure and Sa Calobra, load +0 to 0.5 s (2026-11-19).
 - The clock's ambient share and tint scale the stage's display colours, so its light is them to the 2.2; day frames
   byte-identical (2026-10-20).
 - The headlights' shadow map has its own layer of the sun's map (`sun::LAMP`), so the lamps cast at dusk too, beside the
