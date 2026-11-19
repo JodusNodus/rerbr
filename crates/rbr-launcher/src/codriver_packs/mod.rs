@@ -490,9 +490,10 @@ mod tests {
         dir
     }
 
-    /// The picked file below `dir`, for the stage called `stage`.
+    /// The picked file below `dir`, for the stage called `stage`, with `/` separators on every platform.
     fn picked(sources: &[NoteSource], stage: &str, base: &Path) -> Option<String> {
-        pick_notes(sources, &[stage]).map(|p| p.file.strip_prefix(base).unwrap().display().to_string())
+        pick_notes(sources, &[stage])
+            .map(|p| p.file.strip_prefix(base).unwrap().display().to_string().replace('\\', "/"))
     }
 
     /// A MyPacenotes-like folder (names as in an RSF install): each stage folder's files make the sets named by what
