@@ -513,7 +513,7 @@ pub(super) fn check_voice(dir: &Path) -> Result<(Vec<String>, Vec<String>), Fail
     if let Some(problem) = voice_problem(&voices, &styles, &ranges) {
         return Err(format!("{}: {problem}", dir.display()));
     }
-    let calls = codriver::load(dir, &styles[0], &ranges[0]).map_err(with_path(&dir))?;
+    let calls = codriver::load(dir, &styles[0], &ranges[0]).map_err(with_path(dir))?;
     if calls.notes.is_empty() && calls.named.is_empty() {
         return Err(format!("{}: {} defines no calls", dir.display(), styles[0]));
     }

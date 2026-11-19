@@ -249,7 +249,7 @@ pub fn import(
     let total = entries.iter().filter(|e| roots.iter().any(|r| e.path.starts_with(r))).map(|e| e.size).sum();
     let mut count = Counter { step: "Importing skin", done: 0, total, report, cancel };
     count.add(0)?;
-    fs::create_dir_all(dest).map_err(with_path(&dest))?;
+    fs::create_dir_all(dest).map_err(with_path(dest))?;
     for (root, name) in roots.iter().zip(&names) {
         let wanted: Vec<(Vec<String>, Vec<String>)> = entries
             .iter()

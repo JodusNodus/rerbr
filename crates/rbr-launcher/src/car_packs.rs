@@ -338,7 +338,7 @@ pub fn write_cars(cars_dir: &Path, cars: &[StoredCar]) -> Result<(), Fail> {
         }
     }
     let (temp, path) = (cars_dir.join(".cars.ini.new"), cars_dir.join("cars.ini"));
-    fs::create_dir_all(cars_dir).map_err(with_path(&cars_dir))?;
+    fs::create_dir_all(cars_dir).map_err(with_path(cars_dir))?;
     fs::write(&temp, text).and_then(|()| fs::rename(&temp, &path)).map_err(with_path(&path))
 }
 
@@ -544,7 +544,7 @@ pub fn add_downloads(
     report: Report<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Added>, Fail> {
-    fs::create_dir_all(cars_dir).map_err(with_path(&cars_dir))?;
+    fs::create_dir_all(cars_dir).map_err(with_path(cars_dir))?;
     // The bytes to write (a download that does not open fails again when it is added).
     let physics = |d: &Download| PhysicsZip::open(&d.physics).map_or(0, |z| z.size);
     let size =

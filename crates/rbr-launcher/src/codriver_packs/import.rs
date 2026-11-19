@@ -270,7 +270,7 @@ fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<St
         true => crate::archive::zip_entries(src),
         false => crate::archive::seven_entries(src),
     }
-    .map_err(with_path(&src))?;
+    .map_err(with_path(src))?;
     // Raw path parts (no wrapper stripped, so a single-stage archive's stage folder keeps its name). Unsafe paths
     // and directory entries are left out.
     let entries: Vec<Vec<String>> = listed.into_iter().filter(|e| !e.dir).filter_map(|e| e.parts).collect();

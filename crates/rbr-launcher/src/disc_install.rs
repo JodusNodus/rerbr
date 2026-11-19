@@ -278,7 +278,7 @@ impl Cabinets<'_> {
         let next = AtomicUsize::new(0);
         let work = || -> Result<(), Fail> {
             while let Some((index, rel, path)) = jobs.get(next.fetch_add(1, Ordering::Relaxed)) {
-                let mut out = Writer::create(path, reporter).map_err(with_path(&path))?;
+                let mut out = Writer::create(path, reporter).map_err(with_path(path))?;
                 let result = self.cab.extract(*index, &mut |n| (self.open)(n), &mut out).and_then(|_| out.flush());
                 result.map_err(|e| {
                     reporter.failed.store(!reporter.cancel.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -328,7 +328,7 @@ impl Disc {
         if path.is_dir() {
             return Ok(Disc::Folder(path.to_owned()));
         }
-        let mut image = BufReader::new(File::open(path).map_err(with_path(&path))?);
+        let mut image = BufReader::new(File::open(path).map_err(with_path(path))?);
         let entries = iso9660::read_tree(&mut image).map_err(|e| {
             format!("{} is not the Richard Burns Rally disc (its .iso or its folder): {e}", path.display())
         })?;
@@ -379,9 +379,9 @@ fn no_root(disc: &Path) -> Fail {
 
 /// The patch's `.exe`: from the zip, or the file.
 fn patch_exe(path: &Path) -> Result<Vec<u8>, Fail> {
-    let file = File::open(path).map_err(with_path(&path))?;
+    let file = File::open(path).map_err(with_path(path))?;
     let Ok(mut zip) = rbz::ZipArchive::new(BufReader::new(file)) else {
-        return fs::read(path).map_err(with_path(&path));
+        return fs::read(path).map_err(with_path(path));
     };
     let exes: Vec<String> = zip
         .file_names()
@@ -393,7 +393,7 @@ fn patch_exe(path: &Path) -> Result<Vec<u8>, Fail> {
         return Err(format!("{} should hold one .exe, the patch; it holds {exes:?}", path.display()));
     };
     let mut bytes = Vec::new();
-    zip.by_name(exe).and_then(|mut f| Ok(f.read_to_end(&mut bytes)?)).map_err(with_path(&path))?;
+    zip.by_name(exe).and_then(|mut f| Ok(f.read_to_end(&mut bytes)?)).map_err(with_path(path))?;
     Ok(bytes)
 }
 
@@ -467,7 +467,7 @@ fn into_new_folder<T>(
             return Err(format!("{} does not exist", path.display()));
         }
     }
-    let out = std::path::absolute(out).map_err(with_path(&out))?;
+    let out = std::path::absolute(out).map_err(with_path(out))?;
     if out.exists() && (!out.is_dir() || fs::read_dir(&out).map_or(true, |mut d| d.next().is_some())) {
         return Err(format!("{} is not empty: choose a new or empty game folder", out.display()));
     }
@@ -524,9 +524,9 @@ pub fn extract_test_data(
             retail.extend(disc_cab.files(group).into_iter().map(|(index, rel)| (index, format!("{name}/{rel}"))));
         }
 
-        fs::create_dir(root).map_err(with_path(&root))?;
-        let mut install = Tree::new(root.join("retail-install")).map_err(with_path(&root))?;
-        let mut main = Tree::new(root.join("Main_group")).map_err(with_path(&root))?;
+        fs::create_dir(root).map_err(with_path(root))?;
+        let mut install = Tree::new(root.join("retail-install")).map_err(with_path(root))?;
+        let mut main = Tree::new(root.join("Main_group")).map_err(with_path(root))?;
         reporter.total = sizes(&retail, &disc_cab.cab) + sizes(&patch_files, &patch_cab.cab);
         reporter.step("Writing the retail install")?;
         disc_cab.extract(&mut install, &retail, reporter)?;
@@ -548,7 +548,7 @@ fn setup(inputs: &Inputs, ngp: &Path, game: &Path, reporter: &mut Reporter) -> R
     let disc = disc_cabinets(&inputs.disc)?;
     let retail = retail_files(&disc, &inputs.disc)?;
 
-    let mut tree = Tree::new(game.to_owned()).map_err(with_path(&game))?;
+    let mut tree = Tree::new(game.to_owned()).map_err(with_path(game))?;
     reporter.total =
         sizes(&retail, &disc.cab) + ngp.iter().map(|(_, b)| b.len() as u64).sum::<u64>() + ngp_physics.len() as u64;
     let mut counts = Counts::default();

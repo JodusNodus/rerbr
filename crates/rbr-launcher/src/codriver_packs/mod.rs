@@ -82,10 +82,8 @@ impl Form {
         // The owned packs first: they win a tie with the RSF install's MyPacenotes.
         self.note_sources = self.owned_notes.iter().map(|p| NoteSource::read(&p.dir, Some(&p.name))).collect();
         self.note_sources.extend(notes::my_pacenotes_dir(Path::new(root.trim())).map(|d| NoteSource::read(&d, None)));
-        self.codriver_styles_differ = match &self.codriver_mods {
-            Some(mods) => call_sets_differ(&mods.dir, &mods.styles, &mods.ranges).0,
-            None => false,
-        };
+        self.codriver_styles_differ =
+            self.codriver_mods.as_ref().is_some_and(|mods| call_sets_differ(&mods.dir, &mods.styles, &mods.ranges).0);
         self.cached_notes_dirty = true;
     }
 

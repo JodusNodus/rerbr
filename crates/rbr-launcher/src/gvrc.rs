@@ -296,7 +296,7 @@ pub fn download_cars(
     report: Report<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Added>, Fail> {
-    fs::create_dir_all(cars_dir).map_err(with_path(&cars_dir))?;
+    fs::create_dir_all(cars_dir).map_err(with_path(cars_dir))?;
     let temp = Temp::create(cars_dir, "downloading")?;
     let agent = agent();
     let urls = links(wanted);
