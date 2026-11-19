@@ -388,10 +388,13 @@ fn weighted_median(mut values: Vec<(f32, usize)>) -> Option<f32> {
     values.sort_by(|a, b| a.0.total_cmp(&b.0));
     let half = values.iter().map(|v| v.1).sum::<usize>().div_ceil(2);
     let mut seen = 0;
-    values.into_iter().find(|v| {
-        seen += v.1;
-        seen >= half
-    }).map(|v| v.0)
+    values
+        .into_iter()
+        .find(|v| {
+            seen += v.1;
+            seen >= half
+        })
+        .map(|v| v.0)
 }
 
 /// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
@@ -411,8 +414,7 @@ pub fn normalise_light(materials: &str, triangles: &BTreeMap<String, usize>) -> 
         }
     }
     let reference = |axis: usize| {
-        let values =
-            sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *triangles.get(s.0)?))).collect();
+        let values = sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *triangles.get(s.0)?))).collect();
         weighted_median(values).filter(|m| *m > 0.)
     };
     let (Some(ambient), Some(diffuse)) = (reference(0), reference(1)) else {
@@ -759,7 +761,11 @@ mod tests {
         let out = normalise_light(&materials, &triangles);
         let light = |name: &str| {
             let at = out.find(&format!("[{name}]")).unwrap();
-            out[at..].lines().take_while(|l| !l.is_empty()).find_map(|l| l.strip_prefix("ReRbrLight=")).map(str::to_owned)
+            out[at..]
+                .lines()
+                .take_while(|l| !l.is_empty())
+                .find_map(|l| l.strip_prefix("ReRbrLight="))
+                .map(str::to_owned)
         };
         // The median is the road's 1.1/0.5 (70 of 80 opaque triangles; the transparent leaf does not count).
         assert_eq!(light("road"), None);

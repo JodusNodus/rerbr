@@ -118,8 +118,11 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 map: texture(&material.specular),
             });
             let light = Light(material.light);
-            let surface = (normal.is_some() || highlight.is_some() || light != Light::NONE)
-                .then_some(Surface { normal, highlight, light });
+            let surface = (normal.is_some() || highlight.is_some() || light != Light::NONE).then_some(Surface {
+                normal,
+                highlight,
+                light,
+            });
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,
