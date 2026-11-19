@@ -14,11 +14,6 @@ use crate::archive::{safe_folder, safe_path};
 use crate::disc_install::with_path;
 use crate::job::Temp;
 
-/// absolute), else NGPCarMenu's default; `None` when disabled or missing.
-fn install_notes_dir(root: &Path) -> Option<PathBuf> {
-    notes::my_pacenotes_dir(root)
-}
-
 /// Imports the folder `src` (a plugin folder, a note folder, a folder with both, or a whole install to copy from)
 /// into `home`: the lines saying what was added.
 fn import_folder(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<String>, Fail> {
@@ -30,14 +25,11 @@ fn import_folder(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<Str
     if src.join("Plugins").is_dir() {
         let plugin = src.join("Plugins").join("Pacenote");
         let voice = is_plugin_dir(&plugin).then(|| plugin.clone());
-        let notes = install_notes_dir(src);
-        return match (voice, notes) {
+        return match (voice, notes::my_pacenotes_dir(src)) {
             (None, None) => Err(format!(
-                "{}: no Pacenote plugin (Plugins/Pacenote) and no stage notes ({}): is it an RBR install?",
-                src.display(),
-                notes::my_pacenotes_dir(src)
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| { "Plugins/NGPCarMenu/MyPacenotes".into() })
+                "{}: no Pacenote plugin (Plugins/Pacenote) and no stage notes (Plugins/NGPCarMenu/MyPacenotes): is it \
+                 an RBR install?",
+                src.display()
             )),
             (Some(plugin), None) => import_voice_from(home, &name, cancel, |d, c| copy_voice(&plugin, d, c)),
             (None, Some(notes)) => import_notes_from(home, &name, &notes, cancel, |d, c| copy_notes(&notes, d, c)),
@@ -120,14 +112,21 @@ pub(super) fn publish_pair(voice: &Staged, notes: &Staged, cancel: &AtomicBool) 
 
 /// The line saying what voice pack published.
 fn voice_line(dest: &Path, styles: &[String], ranges: &[String]) -> String {
-    let pack = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    format!("Co-driver {pack}: {} call styles, {} range sets.", styles.len(), ranges.len())
+    format!("Co-driver {}: {} call styles, {} range sets.", folder_name(dest), styles.len(), ranges.len())
 }
 
 /// The line saying what note pack published.
 fn notes_line(dest: &Path, n: usize) -> String {
-    let pack = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    format!("Stage notes {pack}: {n} files.")
+    format!("Stage notes {}: {n} files.", folder_name(dest))
+}
+
+fn folder_name(dest: &Path) -> std::borrow::Cow<'_, str> {
+    dest.file_name().unwrap_or_default().to_string_lossy()
+}
+
+/// Whether `src` is named as a ZIP (else a 7z).
+fn is_zip(src: &Path) -> bool {
+    src.to_string_lossy().to_ascii_lowercase().ends_with(ZIP)
 }
 
 /// Requires staged notes to hold at least one note file: the files, else what to choose instead.
@@ -267,8 +266,7 @@ fn archive_note_candidates(entries: &[Vec<String>], root: Option<&[String]>) -> 
 /// to a valid voice never rejects it; an archive with no note INIs at all imports its voice alone, and a
 /// notes-only archive with no parseable notes fails loudly. Extraction errors propagate, never swallowed.
 fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<String>, Fail> {
-    let lower = src.to_string_lossy().to_ascii_lowercase();
-    let listed = match lower.ends_with(ZIP) {
+    let listed = match is_zip(src) {
         true => crate::archive::zip_entries(src),
         false => crate::archive::seven_entries(src),
     }
@@ -287,40 +285,33 @@ fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<St
     let extract = |dest: &Path, wanted: &[(Vec<String>, Vec<String>)]| extract_from(src, dest, wanted, cancel);
     let root = archive_plugin_root(&entries);
     let voice: Vec<(Vec<String>, Vec<String>)> = root
-        .clone()
+        .as_deref()
         .map(|root| {
             entries
                 .iter()
-                .filter(|p| p.len() >= root.len() && p[..root.len()] == root[..])
-                .map(|p| p[root.len()..].to_vec())
+                .filter_map(|p| p.strip_prefix(root))
                 .filter(|p| !p.is_empty() && safe_path(&p.join("/")).is_some_and(|s| keep_voice(&s)))
-                .map(|p| {
-                    let mut from = root.clone();
-                    from.extend(p.clone());
-                    (from, p)
-                })
+                .map(|p| ([root, p].concat(), p.to_vec()))
                 .collect()
         })
         .unwrap_or_default();
-    let notes: Vec<Vec<String>> = archive_note_candidates(&entries, root.as_deref());
+    let extract_voice = |d: &Path, _: &AtomicBool| {
+        extract(d, &voice)?;
+        Ok(walk(d).len())
+    };
+    let notes = archive_note_candidates(&entries, root.as_deref());
     match (voice.is_empty(), notes.is_empty()) {
         (true, true) => Err(format!(
             "{}: no co-driver voices, call styles or stage notes in it: is it a co-driver or note pack?",
             src.display()
         )),
-        (false, true) => import_voice_from(home, &name, cancel, |d, _| {
-            extract(d, &voice)?;
-            Ok(walk(d).len())
-        }),
+        (false, true) => import_voice_from(home, &name, cancel, extract_voice),
         (true, false) => import_notes_from(home, &name, src, cancel, |d, _| {
             extract_notes(src, d, &notes, cancel)?;
             Ok(note_files(d).len())
         }),
         (false, false) => {
-            let (v, (styles, ranges)) = stage_voice(home, &name, cancel, |d, _| {
-                extract(d, &voice)?;
-                Ok(walk(d).len())
-            })?;
+            let (v, (styles, ranges)) = stage_voice(home, &name, cancel, extract_voice)?;
             let n = stage(home, NOTES_DIR, &name)?;
             extract_notes(src, &n.staged, &notes, cancel)?;
             if note_files(&n.staged).is_empty() {
@@ -352,7 +343,7 @@ fn extract_from(
     cancel: &AtomicBool,
 ) -> Result<(), Fail> {
     let progress = &mut |_| cancelled(cancel);
-    match src.to_string_lossy().to_ascii_lowercase().ends_with(ZIP) {
+    match is_zip(src) {
         true => crate::archive::extract_zip(src, dest, wanted, progress),
         false => crate::archive::extract_seven(src, dest, wanted, progress),
     }

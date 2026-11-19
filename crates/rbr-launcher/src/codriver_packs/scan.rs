@@ -62,20 +62,13 @@ fn is_audio(name: &str) -> bool {
 /// Whether the relative path (from a plugin's folder) is a co-driver file worth owning: the settings, a config
 /// definition, or voice audio. Everything else (DLLs, executables, editors, pictures) stays out.
 pub(super) fn keep_voice(rel: &[&str]) -> bool {
-    if rel.is_empty() {
-        return false;
-    }
     let lower: Vec<String> = rel.iter().map(|p| p.to_ascii_lowercase()).collect();
-    if lower.len() == 1 && lower[0] == "pacenote.ini" {
-        return true;
+    match (&lower[..], rel.last()) {
+        ([only], _) => only == "pacenote.ini",
+        ([top, .., last], _) if top == "config" => last.ends_with(".ini"),
+        ([top, ..], Some(last)) => top == "sounds" && rel.len() > 2 && is_audio(last),
+        _ => false,
     }
-    if lower[0] == "config" && lower.last().is_some_and(|n| n.ends_with(".ini")) {
-        return true;
-    }
-    if lower[0] == "sounds" && rel.len() > 2 && is_audio(rel[rel.len() - 1]) {
-        return true;
-    }
-    false
 }
 
 /// A pack name from the source's file or folder name: the archive's stem, else the folder's name, spaces kept.
@@ -89,16 +82,11 @@ pub(crate) fn pack_name(src: &Path) -> String {
 /// A free pack folder below `dir` for `name`: `name`, else `name-2`, `name-3`, ... (existing packs are never
 /// overwritten).
 pub(super) fn free_dir(dir: &Path, name: &str) -> PathBuf {
-    if !dir.join(name).exists() {
-        return dir.join(name);
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
     }
-    for n in 2.. {
-        let next = dir.join(format!("{name}-{n}"));
-        if !next.exists() {
-            return next;
-        }
-    }
-    unreachable!()
+    (2..).map(|n| dir.join(format!("{name}-{n}"))).find(|next| !next.exists()).unwrap()
 }
 
 /// The files below `dir` (relative `/`-separated paths and their absolute paths), sorted. Symlinks are never
@@ -138,31 +126,30 @@ pub(super) fn is_plugin_dir(dir: &Path) -> bool {
 /// (notes-only sources reach here too: their stage folders stay where they are, since the note lookup is
 /// recursive). Archive discovery (`archive_plugin_root`) mirrors this list.
 pub(super) fn find_voice_root(dir: &Path) -> Option<PathBuf> {
-    let candidates = voice_root_candidates(dir);
-    candidates.into_iter().find(|c| is_plugin_dir(c))
+    voice_root_candidates(dir).into_iter().find(|c| is_plugin_dir(c))
+}
+
+/// The folders directly in `dir`.
+fn subdirs(dir: &Path) -> Vec<PathBuf> {
+    fs::read_dir(dir)
+        .map(|e| e.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect())
+        .unwrap_or_default()
 }
 
 /// The plugin folders to try below `dir`, in order: itself, the install's, each direct child, each child's
 /// `Pacenote` and `Plugins/Pacenote`, then the same under a single wrapper directory (bounded: two levels).
 fn voice_root_candidates(dir: &Path) -> Vec<PathBuf> {
     let mut out = vec![dir.to_owned(), dir.join("Plugins").join("Pacenote")];
-    let children: Vec<PathBuf> = fs::read_dir(dir)
-        .map(|e| e.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect())
-        .unwrap_or_default();
+    let children = subdirs(dir);
     // A download with the plugin beside the notes (`Pacenote/`, `MyPacenotes/`).
-    for child in &children {
-        out.push(child.clone());
-    }
+    out.extend(children.iter().cloned());
     for child in &children {
         out.push(child.join("Pacenote"));
         out.push(child.join("Plugins").join("Pacenote"));
     }
     // Up to two single wrapper directories down.
     let [child] = &children[..] else { return out };
-    let grandchildren: Vec<PathBuf> = fs::read_dir(child)
-        .map(|e| e.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect())
-        .unwrap_or_default();
-    for grand in &grandchildren {
+    for grand in &subdirs(child) {
         out.push(grand.clone());
         out.push(grand.join("Pacenote"));
         out.push(grand.join("Plugins").join("Pacenote"));
@@ -170,9 +157,9 @@ fn voice_root_candidates(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Whether the text is a note file (the `[PACENOTES]` section with a count).
-fn is_note_text(text: &str) -> bool {
-    notes::parse(text).is_ok()
+/// Whether the bytes are a note file (the `[PACENOTES]` section with a count).
+fn is_note_text(bytes: &[u8]) -> bool {
+    notes::parse(&String::from_utf8_lossy(bytes)).is_ok()
 }
 
 /// The note INI files below `dir` (relative paths), validated by parsing.
@@ -180,7 +167,7 @@ pub(super) fn note_files(dir: &Path) -> Vec<String> {
     walk(dir)
         .into_iter()
         .filter(|(rel, _)| rel.to_ascii_lowercase().ends_with(".ini"))
-        .filter(|(_, path)| fs::read(path).ok().is_some_and(|b| is_note_text(&String::from_utf8_lossy(&b))))
+        .filter(|(_, path)| is_note_file(path))
         .map(|(rel, _)| rel)
         .collect()
 }
@@ -430,7 +417,7 @@ pub fn pick_notes(sources: &[NoteSource], names: &[&str]) -> Option<NotesPick> {
 
 /// Whether the file parses as a note file.
 pub(super) fn is_note_file(path: &Path) -> bool {
-    fs::read(path).ok().is_some_and(|b| is_note_text(&String::from_utf8_lossy(&b)))
+    fs::read(path).ok().is_some_and(|b| is_note_text(&b))
 }
 
 /// A name for matching: lowercase ASCII letters and digits, accented Latin letters as their base letter (as
@@ -461,10 +448,11 @@ fn fold(name: &str) -> String {
     out
 }
 
-/// Writes `bytes` to `to`, making its folders.
-fn copy_file(bytes: &[u8], to: &Path) -> Result<(), Fail> {
-    fs::create_dir_all(to.parent().unwrap_or(to)).map_err(with_path(&to))?;
-    fs::write(to, bytes).map_err(with_path(&to))
+/// Writes `bytes` to `parts` below `dest`, making its folders.
+fn copy_file(bytes: &[u8], dest: &Path, parts: &[&str]) -> Result<(), Fail> {
+    let to = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
+    fs::create_dir_all(to.parent().unwrap_or(&to)).map_err(with_path(&to))?;
+    fs::write(&to, bytes).map_err(with_path(&to))
 }
 
 /// Copies the voice files (see [`keep_voice`]) from the plugin's folder `src` into `dest`, preserving relative
@@ -478,8 +466,7 @@ pub(super) fn copy_voice(src: &Path, dest: &Path, cancel: &AtomicBool) -> Result
             continue;
         }
         let bytes = fs::read(&path).map_err(with_path(&path))?;
-        let to = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
-        copy_file(&bytes, &to)?;
+        copy_file(&bytes, dest, &parts)?;
         n += 1;
     }
     Ok(n)
@@ -497,7 +484,7 @@ pub(super) fn copy_notes(src: &Path, dest: &Path, cancel: &AtomicBool) -> Result
             continue;
         }
         let bytes = fs::read(&path).map_err(with_path(&path))?;
-        if !is_note_text(&String::from_utf8_lossy(&bytes)) {
+        if !is_note_text(&bytes) {
             continue;
         }
         found.push((rel, bytes));
@@ -512,8 +499,7 @@ pub(super) fn copy_notes(src: &Path, dest: &Path, cancel: &AtomicBool) -> Result
             None => rel.clone(),
         };
         let parts = safe_path(&rel).ok_or_else(|| format!("{}: a bad path {rel}", src.display()))?;
-        let to = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
-        copy_file(bytes, &to)?;
+        copy_file(bytes, dest, &parts)?;
         n += 1;
     }
     Ok(n)
