@@ -391,6 +391,10 @@ const SOLO: f32 = 150.;
 const FAR_SHARE: f64 = 1. / 50.;
 /// Nothing past this distance from the course is kept, and far scenery is drawn this far: ReRBR's far plane (`coords::FAR`).
 const FAR_REACH: f64 = 10_000.;
+/// Rings of triangles kept around far scenery: a triangle sharing a vertex with a kept far triangle of its mesh is kept
+/// too, this many times over, so a surface the size test cuts into holes stays whole (its small triangles are the ones
+/// it drops).
+const FAR_RINGS: usize = 3;
 /// Side of the tiles far scenery is grouped in, metres: each is a mesh of its own (over [`SOLO`]).
 const FAR_CELL: f64 = 1024.;
 
@@ -417,6 +421,33 @@ impl Far {
             return false;
         }
         self.points.iter().any(|p| (p[0] - centre[0]).hypot(p[1] - centre[1]) <= reach)
+    }
+    /// Whether a triangle's centre lies within reach of the course.
+    fn near(&self, pos: &[[f64; 3]; 3]) -> bool {
+        let centre = [0, 1].map(|k| (pos[0][k] + pos[1][k] + pos[2][k]) / 3.);
+        self.points.iter().any(|p| (p[0] - centre[0]).hypot(p[1] - centre[1]) <= FAR_REACH)
+    }
+    /// Which of `rest` (a mesh's triangles the size test dropped) join `kept` (those it kept) by sharing a vertex with
+    /// them, or with a triangle that joined, up to [`FAR_RINGS`] rings out, within [`FAR_REACH`].
+    fn connected(&self, kept: &[Triangle], rest: &[Triangle]) -> Vec<bool> {
+        let key = |p: &[f64; 3]| p.map(|c| (c * 1000.).round() as i64);
+        let mut seen: HashSet<[i64; 3]> = kept.iter().flat_map(|t| t.pos.iter().map(key)).collect();
+        let mut joined = vec![false; rest.len()];
+        for _ in 0..FAR_RINGS {
+            let ring: Vec<usize> = (0..rest.len())
+                .filter(|&i| {
+                    !joined[i] && rest[i].pos.iter().any(|p| seen.contains(&key(p))) && self.near(&rest[i].pos)
+                })
+                .collect();
+            if ring.is_empty() {
+                break;
+            }
+            for i in ring {
+                joined[i] = true;
+                seen.extend(rest[i].pos.iter().map(key));
+            }
+        }
+        joined
     }
     fn tile(&self, t: &Triangle, origin: [f64; 2]) -> (i64, i64) {
         let c = |k: usize| (((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / 3. - origin[k]) / FAR_CELL).floor() as i64;
@@ -879,6 +910,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             .collect();
         for mesh in &model.meshes {
             options.control.check()?;
+            let (mut far_kept, mut far_rest) = (Vec::<Triangle>::new(), Vec::<Triangle>::new());
             source_triangles += mesh.triangle_count;
             if mesh.helper {
                 continue;
@@ -919,10 +951,18 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let key = (scenery_tile(&t, origin), mesh.material, lod.0, lod.1, false);
                     builders.entry(key).or_default().add(&t, origin, true);
                 } else if far.keeps(&t.pos) {
-                    let key = (far.tile(&t, origin), mesh.material, lod.0, lod.1, true);
-                    builders.entry(key).or_default().add(&t, origin, true);
-                    far_triangles += 1;
+                    far_kept.push(t);
+                } else {
+                    far_rest.push(t);
                 }
+            }
+            let lod = (mesh.lod_in.to_bits(), mesh.lod_out.to_bits());
+            let joined = far.connected(&far_kept, &far_rest);
+            let rest = far_rest.into_iter().zip(joined).filter_map(|(t, joined)| joined.then_some(t));
+            for t in far_kept.into_iter().chain(rest) {
+                let key = (far.tile(&t, origin), mesh.material, lod.0, lod.1, true);
+                builders.entry(key).or_default().add(&t, origin, true);
+                far_triangles += 1;
             }
         }
         let builders: Vec<_> = builders.into_iter().collect();
@@ -1273,6 +1313,26 @@ mod tests {
         assert!(!far.keeps(&at(1000., 10.)), "a tree card 1 km out");
         assert!(far.keeps(&at(400., 10.)), "a tree card 400 m out");
         assert!(!far.keeps(&at(20_000., 2000.)), "past ReRBR's far plane");
+    }
+    #[test]
+    fn far_scenery_stays_connected_across_small_triangles() {
+        let far = Far::new(&Line::new(vec![[0., 0., 0.], [0., 100., 0.]], vec![6.; 2]), 300.);
+        let tri = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| Triangle {
+            pos: [a, b, c].map(|p| [1000. + p[0], p[1], 0.]),
+            uv: [[0.; 2]; 3],
+            normal: [[0.; 3]; 3],
+            material: None,
+        };
+        // A large triangle with a strip of small ones leading away from it, and a small one elsewhere.
+        let kept = [tri([0., 0.], [100., 0.], [0., 100.])];
+        let rest = [
+            tri([100., 0.], [110., 0.], [100., 5.]),
+            tri([110., 0.], [115., 0.], [110., 5.]),
+            tri([500., 500.], [505., 500.], [500., 505.]),
+        ];
+        assert!(kept.iter().all(|t| far.keeps(&t.pos)) && rest.iter().all(|t| !far.keeps(&t.pos)));
+        assert_eq!(far.connected(&kept, &rest), vec![true, true, false]);
+        assert_eq!(far.connected(&[], &rest), vec![false; 3]);
     }
     #[test]
     fn corridor_keeps_long_triangles_crossing_the_course() {

@@ -437,6 +437,10 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (Sa Calobra 130 k triangles of terrain and sea, La Bollène 67 k of peaks, St Laurent 225 k) and CSP's trees.
 - Far scenery: outside the corridor a triangle is kept where its longest side is at least 1/50 of its distance from the
   course (`Far`), to 10 km, grouped by 1 km tile and drawn to 10 km. 49 k to 183 k triangles (2 to 5 %) a stage.
+  The size test alone cut holes in mountain surfaces (it drops the small triangles inside and keeps the large ones, sky
+  showed on ridges), so a dropped triangle in the same mesh that shares a vertex with a kept far triangle is kept too,
+  `FAR_RINGS` (3) times over (`Far::connected`). Sa Calobra down: far 49 k to 103 k triangles, `Objects.zip` 95.5 to
+  96.8 MB, drawn 1.859 M to 1.912 M; Roure rbcl 177 k to 219 k, 114.3 to 115.1 MB.
 - CSP trees: `extension/*.ini` `[TREES]` `LIST_<n>` names a file in `extension/trees` of `tree:` lines (`pos`, `size`,
   `width`; `configure: size variance`/`angle variance` set ranges for those that follow) of `.bin` files, each a zip of
   `tree.ini` (`HEIGHT`, `WIDTH`, `[SHADING] BRIGHTNESS`, LOD meshes), `.mesh` files (format in `crates/rbr-ac-tracks/src/assetto/trees.rs`,
