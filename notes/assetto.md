@@ -547,3 +547,20 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   install (`la_canyons`, `pacific_coast_hwy`). The `ek_*` tracks of that install carry one-pixel textures, so they
   render grey.
 
+
+## SuperStage tracks, 2026-11-19
+
+- The `ss_*` mods of the local install: Roure, Sa Calobra, St Laurent and La Bollène were already in; added through
+  `rbr-ac-tracks import` (own AI, `--name` each): Cabanette `down`/`up` (`AC_La_Cabanette_Col_de_Braus_Down/Up`,
+  collision cell overflow, so the importer retried with `--remesh --collision-corridor 25`), Gabiria `gl`/`lg`
+  (`AC_Gabiria_Legazpi_2004`, `AC_Legazpi_Gabiria_2004`) and Prunières `pe`/`per` (`AC_Prunieres_Embrun`,
+  `AC_Embrun_Prunieres`). Sa Calobra `freeroam` stays skipped (no timing gates). Without `--name` a multi-layout track
+  is `AC_<layout>`, which for `down` met an existing `AC_down` (Sa Calobra): name them.
+- Gabiria and Prunières carry skinned meshes (`persAnim*`, animated spectators; KN5 node type 3) that stopped the
+  reader. It now reads past them (bone count, bones of name and 64-byte matrix, vertices of 76 bytes, indices, material,
+  12 bytes of layer and level of detail; the node tree of `persSteJus.kn5` ends exactly at its last byte) and draws and
+  collides nothing of them.
+- No missing textures or ground; largest collision cell 65,439 of 65,536 (Cabanette down). Headless dry drives (Toyota GR Yaris Rally2
+  of the sweep, 25 m/s), all `finished=1`, `false_start=0`, at most 2.4 m off the driveline: Cabanette up
+  552.4 s (`Marker`), down 520.7 s, Gabiria-Legazpi 435.5 s (`Marker`), Legazpi-Gabiria 430.4 s, Prunières-Embrun 1140.5 s, Embrun-Prunières 1159.4 s (these
+  four stop short of the result marker, `cause=Left`, finish recorded). Not rendered.
