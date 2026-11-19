@@ -351,7 +351,9 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
 
 - Converted stage haze (ours, 2026-11-19): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
   ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
-  crisp to 0.2 hazy, as `skylight.rs`' words); without it the section's. Sa Calobra at 07:35 with `0.74, 0.68, 0.62` and
+  crisp to 0.2 hazy, as `skylight.rs`' words) and share of the height fog's dawn and dusk mist (`mist`, 0 none to 1,
+  `Atmosphere::mist`); without it the section's. AC imports write `mist=0`: at Sa Calobra 06:45 the mist filled the
+  valley toward the sun with a beige wash where AC shows the terrain. Sa Calobra at 07:35 with `0.74, 0.68, 0.62` and
   0.3: wall-shot sky (202,208,215) top, (212,214,215) horizon against the AC shot's (187,196,211), (208,208,210), the
   distance warm grey where it was blue (`/tmp/atm/v2`). Aerosol 0.4 whitened 13:00's sky.
 - Light-shaft glow (2026-11-19): the glow's 350 m of lit air times its sun lobe made a bright wedge beside Sa Calobra's

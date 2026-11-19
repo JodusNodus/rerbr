@@ -596,6 +596,6 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   and Sa Calobra's drawn triangles) as the greater occlusion with the computed sky occlusion: 0.1 to 1.9, as it mostly agrees
   with it, for +4 % `Objects.zip`. KN5-embedded AO (tangent lengths) is used by none of 589 installed KN5s.
 - Haze (ours, 2026-11-19): every import writes `settings.ini` `[ReRbrAir]` `fog_color=0.74, 0.68, 0.62` and
-  `aerosol=0.2` (`SETTINGS_INI`; see `notes/renderer.md`), so the sky and distance read warm grey instead of map 41's
+  `aerosol=0.2` and `mist=0` (`SETTINGS_INI`; see `notes/renderer.md`), so the sky and distance read warm grey instead of map 41's
   clean blue. Roure rbcl 13:00 stays mild (sky blue in clear gaps, pale only near the horizon). Sa Calobra 07:35 at 0.2:
   wall sky (201,206,211) top, (208,213,218) horizon (0.3: (200,206,212), (210,214,215); AC (187,196,211), (208,208,210)).
