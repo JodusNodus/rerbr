@@ -40,6 +40,8 @@ const BAND: f32 = 20.0;
 /// Clumps (two crossed cards) a square metre on fully grassy ground within [`FULL`] of the driveline, thinning to
 /// [`FAR_SHARE`] of it at [`BAND`].
 const DENSITY: f32 = 40.0;
+/// A converted stage's clumps a square metre: its atlas pieces are tufts of half a metre and more, not our blades.
+const FX_DENSITY: f32 = 5.0;
 const FULL: f32 = 10.0;
 const FAR_SHARE: f32 = 0.4;
 /// The steepest ground that takes grass: the cosine of its slope.
@@ -82,9 +84,9 @@ const WIDTH: [f32; 2] = [1.0, 1.6];
 const MAX_HEIGHT: [f32; 2] = [0.14, 0.20];
 const MAX_WIDTH: f32 = 0.20;
 /// A converted stage's atlas cards: the metres of a cell per unit of CSP's `SHAPE_SIZE`, calibrated on Sa Calobra's
-/// verge (`SHAPE_SIZE` 6.5: a cell about half a metre, its tussocks 0.4 to 0.8 m against the AC shot's boulders), and
+/// verge (`SHAPE_SIZE` 6.5: a cell about 0.9 m, its blades as tall against the boulders as in the AC rock shot), and
 /// the size for a stage that sets none.
-const CELL_PER_SIZE: f32 = 0.08;
+const CELL_PER_SIZE: f32 = 0.14;
 const DEFAULT_SIZE: f32 = 1.5;
 /// How much each clump of an atlas varies in size, either way.
 const CELL_VARY: [f32; 2] = [0.8, 1.2];
@@ -130,11 +132,13 @@ const SATURATION: f32 = 0.85;
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
 /// A converted stage's grass takes the ground's hue (no lean to lush green or straw, [`SATURATION`] lower) and is
-/// brighter against the ground ([`SHADE`] higher; its dense field takes less light): Assetto Corsa's atlas blades are
-/// tinted by the ground and read as brown straw against it (Sa Calobra's verges at a low sun: red over blue 1.3 to 1.4, as bright as the ground or brighter;
-/// at 0.3 and 1.2 they read charcoal).
-const FX_SATURATION: f32 = 0.7;
-const FX_SHADE: f32 = 2.5;
+/// brighter against the ground ([`SHADE`] higher; `shader.wgsl` darkens its roots): Assetto Corsa's atlas blades are
+/// tinted by the ground and read as brown straw against it (Sa Calobra's verges at a low sun: red over blue 1.3 to 1.4;
+/// at 0.3 and 1.2 they read charcoal, at 0.7 and 2.5 khaki).
+const FX_SATURATION: f32 = 0.55;
+/// `specular.z` of a converted stage's cards (ours 1): `shader.wgsl` gives them `FX_GRASS_ROOT` and `FX_GRASS_TIP`.
+const FX_CARD: f32 = 2.0;
+const FX_SHADE: f32 = 2.2;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
@@ -279,6 +283,8 @@ struct Card {
     light: Light,
     /// Its rank in the tile's cards, 0 to 1: drawn where the density reaches it ([`take`], `GRASS_THIN`).
     keep: f32,
+    /// A converted stage's (GrassFX) card: `specular.z` [`FX_CARD`], lit with its own root-to-tip ramp (`FX_GRASS_*`).
+    fx: bool,
 }
 
 /// The light the load computes for a ground vertex, unpacked: how little of the sky it sees
@@ -526,7 +532,7 @@ impl Field {
             let p = g.p;
             let centre = (p[0] + p[1] + p[2]) / 3.0;
             let mut random = Random::at(centre);
-            let wanted = g.area * DENSITY + random.next();
+            let wanted = g.area * if self.fx.is_some() { FX_DENSITY } else { DENSITY } + random.next();
             for _ in 0..wanted as usize {
                 // Every card draws the same numbers whatever it becomes, so the sequence holds across tiles and shares.
                 let [a, b, keep, chance, turn, width, height, pick, lean, lean_turn] = [0; 10].map(|_| random.next());
@@ -598,6 +604,7 @@ impl Field {
                     picture,
                     light: Light::blend(&corners, [1.0 - a - b, a, b]),
                     keep,
+                    fx: converted,
                 };
                 // The other card across it, a little shorter, with another picture of its kind.
                 let crossed = Card {
@@ -1093,7 +1100,7 @@ fn tile_vertices(cards: &[Card]) -> (Vec<Vertex>, Bounds, Ranks) {
                 normal: n.to_array(),
                 // A tuft for the plants' lighting, as `foliage::with_plants` marks grass: its share of height in `wet`
                 // (the foot at [`FOOT`]), the way out across in `uv1`; and its brightness ([`GRASS_MARK`]).
-                specular: [GRASS_MARK + card.bright, 1.0, 1.0],
+                specular: [GRASS_MARK + card.bright, 1.0, if card.fx { FX_CARD } else { 1.0 }],
                 wet: if top { 1.0 } else { FOOT },
                 uv1: (way * side).to_array(),
                 // The top's height, for the wind (`grass_sway` in `shader.wgsl`), and the card's rank (`GRASS_THIN`).
@@ -1524,7 +1531,7 @@ mod tests {
         assert!(rect[0] < 1.0 / 8.0 && rect[3] < 1.0 / 3.0 && cells == [1.0, 1.0]);
         let (rect, cells) = fx.piece(0.75).unwrap();
         assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[2] > 0.3 && cells == [1.2, 3.0]);
-        assert!((fx.cell() - 0.52).abs() < 1e-6);
+        assert!((fx.cell() - 0.91).abs() < 1e-6);
     }
 
     #[test]

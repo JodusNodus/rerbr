@@ -496,11 +496,14 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `SHAPE_TIDY/CUT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
   (Highlands). Row order checked on Sa Calobra's atlas (`3,1,1,2` the heather, `4,1,2,2` the reeds, the top row the
   plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is
-  `SHAPE_SIZE` x 0.08 m (6.5: 0.52 m, calibrated by eye on the AC rock shot's boulders: tussocks 0.4-0.8 m), times the
-  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump; unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at
-  `FX_SATURATION` 0.7 (no lush/straw lean) and `FX_SHADE` 2.5 with the brightness ratio clamp lowered (`FX_BRIGHT`).
-  At 0.3/1.2 (07:35 calibration) the verges read charcoal at 06:45 next to AC's straw: verge luminance 35/33, red over
-  blue 1.16/1.22 (rock/wall views), now 49/51 and 1.31/1.38 against AC's verge 32-59 and 1.29-1.40 (2026-11-19). The support ring is 0.4 of a card's
+  `SHAPE_SIZE` x 0.14 m (6.5: 0.91 m, blade heights matched by eye to the AC rock shot's boulders), times the
+  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump, `FX_DENSITY` 5 clumps a m² (ours 40: at 0.08 m and 40 the verge
+  was a carpet, AC's has separate tufts); unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at `FX_SATURATION`
+  0.55 (no lush/straw lean) and `FX_SHADE` 2.2 with the brightness ratio clamp lowered (`FX_BRIGHT`); the cards carry
+  `specular.z` 2 (`FX_CARD`) and `own_light` ramps them from `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP`
+  (1.2, 1.0, 0.95) at the top. At 0.3/1.2 (07:35 calibration) the verges read charcoal, at 0.7/2.5 with no ramp
+  khaki (green over blue 1.25 against AC's 1.15); now rock view 06:45 `--frames 32` grass 50 / low verge 39 luminance,
+  RGB 55,49,40 against AC's 60,53,45 / 34 (2026-11-19). The support ring is 0.4 of a card's
   width (the meadow's ring halved the cards). Unverified: `SIZE_MULT` as width,height (it may be a min,max scale);
   the atlas grey pass skipped compressed (DXT) atlases until 2026-11-19, so Sa Calobra's had used our blades.
   Sa Calobra down, rock view 07:35 (`/tmp/grassfx/rock.png`, before | after): grey terrain went from a patch of
