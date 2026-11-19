@@ -412,6 +412,9 @@ pub struct GrassFx {
     pub groups: Vec<GrassGroup>,
     /// The ground texel's linear luminance, lowest and highest, that grass grows on.
     pub luminance: [f32; 2],
+    /// CSP's colour mask, `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD`: how green the ground must be, and how far
+    /// toward yellow and red the green may lean; `None` (stages converted before it): no colour test.
+    pub mask: Option<[f32; 2]>,
 }
 
 /// A group of atlas pieces and its weight.
@@ -449,6 +452,10 @@ impl GrassFx {
             [low, high] => [low, high],
             _ => [0.0, f32::INFINITY],
         };
+        let mask = match list("mask")[..] {
+            [main, red] => Some([main, red]),
+            _ => None,
+        };
         let groups = (0..)
             .map_while(|n| find_entry(grass, &format!("group{n}")).map(|_| n))
             .map(|n| GrassGroup {
@@ -474,6 +481,7 @@ impl GrassFx {
             size: number("size", 0.0),
             groups,
             luminance,
+            mask,
         })
     }
 }
@@ -779,13 +787,13 @@ mod tests {
     fn the_grass_section_reads_its_atlas_groups_and_luminance() {
         let ini =
             "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrGrass]\ntexture=a.dds\ngrid=8, 3\nbase=4\nluminance=0.005,0.25\n\
-                   group0=0\ngroup1=2\ngroup1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5,0.6,1.5\nsize=6.5\n";
+                   group0=0\ngroup1=2\ngroup1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5,0.6,1.5\nsize=6.5\nmask=0.3,0.01\n";
         let grass = GrassFx::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!(
             (grass.texture.as_deref(), grass.grid, grass.base, grass.luminance, grass.size),
             (Some("a.dds"), [8, 3], 4.0, [0.005, 0.25], 6.5)
         );
-        assert_eq!(grass.groups.len(), 2);
+        assert_eq!((grass.groups.len(), grass.mask), (2, Some([0.3, 0.01])));
         assert!(grass.groups[0].pieces.is_empty() && grass.groups[1].chance == 2.0);
         assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5, mult: [0.6, 1.5] });
         assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());

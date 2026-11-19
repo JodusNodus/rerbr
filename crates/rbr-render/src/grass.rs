@@ -166,15 +166,28 @@ pub struct Field {
 /// on the marked materials' ground, where its luminance is in range, in place of the choice by colour.
 struct Fx {
     luminance: [f32; 2],
+    /// CSP's colour mask, `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD` ([`Fx::green`]); `None`: luminance only.
+    mask: Option<[f32; 2]>,
     /// The atlas the track ships, its pieces and its size in texels; `None`: our blades.
     atlas: Option<(rbr_btb::track::GrassFx, Vec2)>,
 }
 
 impl Fx {
-    /// Whether ground of colour `rgb` (0 to 1) takes grass: 1 or 0.
-    fn mask(&self, rgb: Vec3) -> f32 {
+    /// Whether ground of colour `rgb` (0 to 1) takes grass, its patches' colour `patch` (the blurred texels, as CSP's
+    /// `MASK_BLUR` blurs): 1 or 0.
+    fn mask(&self, rgb: Vec3, patch: Vec3) -> f32 {
         let l = luminance(rgb);
-        f32::from(u8::from(l >= self.luminance[0] && l <= self.luminance[1]))
+        let green = self.mask.is_none_or(|[main, red]| Fx::green(patch, red) > main);
+        f32::from(u8::from(l >= self.luminance[0] && l <= self.luminance[1] && green))
+    }
+
+    /// How green ground of colour `rgb` (display, 0 to 1) is, as CSP's `MASK_MAIN_THRESHOLD` takes it (ours: CSP
+    /// documents no formula, "how saturated with green, not real saturation, could be more than 1"): in linear light,
+    /// green over the larger of blue and red less `red` (`MASK_RED_THRESHOLD`, leaning the target to yellow and red),
+    /// over the mean. Grey is 0; Sa Calobra's dry verges 0.3, Roure's 0.4 (thresholds 0.0001 and 0.3).
+    fn green(rgb: Vec3, red: f32) -> f32 {
+        let c = rgb.powf(2.2);
+        (c.y - (c.x - red).max(c.z)) / ((c.x + c.y + c.z) / 3.0).max(1e-4)
     }
 
     /// The metres of one atlas cell: CSP's `SHAPE_SIZE` times [`CELL_PER_SIZE`] (unset: [`DEFAULT_SIZE`]).
@@ -461,7 +474,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             stage
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-            (texture, mean, Some(Fx { luminance, atlas: Some((settings, size)) }))
+            (texture, mean, Some(Fx { luminance, mask: settings.mask, atlas: Some((settings, size)) }))
         }
         None => {
             stage.texture_names.insert(
@@ -471,11 +484,11 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             stage
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-            let fx = stage
-                .grass_fx
-                .as_ref()
-                .filter(|_| fx_stage)
-                .map(|fx| Fx { luminance: fx.settings.luminance, atlas: None });
+            let fx = stage.grass_fx.as_ref().filter(|_| fx_stage).map(|fx| Fx {
+                luminance: fx.settings.luminance,
+                mask: fx.settings.mask,
+                atlas: None,
+            });
             (texture, mean, fx)
         }
     };
@@ -490,8 +503,7 @@ impl Field {
         let sample = |g: &Ground| {
             let w = g.weights(q);
             let y = g.p[0].y * w[0] + g.p[1].y * w[1] + g.p[2].y * w[2];
-            (w.iter().all(|&v| v >= -1e-4) && (q.y - y).abs() <= GROUND_REACH)
-                .then(|| self.grassy(g, g.colour(&self.placement, w)))
+            (w.iter().all(|&v| v >= -1e-4) && (q.y - y).abs() <= GROUND_REACH).then(|| self.grassy(g, w))
         };
         sample(root).unwrap_or_else(|| {
             self.tiles
@@ -503,10 +515,11 @@ impl Field {
         })
     }
 
-    /// How much grass ground `g` of colour `rgb` takes ([`green`], or the converted stage's [`Fx::mask`]).
-    fn grassy(&self, g: &Ground, rgb: Vec3) -> f32 {
+    /// How much grass ground `g` takes at weights `w` ([`green`], or the converted stage's [`Fx::mask`]).
+    fn grassy(&self, g: &Ground, w: [f32; 3]) -> f32 {
+        let rgb = g.colour(&self.placement, w);
         match &self.fx {
-            Some(fx) => fx.mask(rgb),
+            Some(fx) => fx.mask(rgb, g.colour(&self.textures, w)),
             None => green(rgb, g.road),
         }
     }
@@ -555,7 +568,7 @@ impl Field {
                 let near = 1.0 - (1.0 - FAR_SHARE) * smoothstep([FULL, BAND], distance);
                 let fade = 1.0 - smoothstep([BAND - 6.0, BAND], distance);
                 let w = [1.0 - a - b, a, b];
-                let vegetation = self.grassy(g, g.colour(&self.placement, w));
+                let vegetation = self.grassy(g, w);
                 if vegetation < COVER || chance >= vegetation * near * fade {
                     continue;
                 }
@@ -1533,9 +1546,20 @@ mod tests {
                 pieces: vec![GrassPiece { cell: [4, 1], size: [2, 2], chance: 1.0, mult: [0.6, 1.5] }],
             }],
             luminance: [0.005, 0.25],
+            mask: Some([0.3, 0.01]),
         };
-        let fx = Fx { luminance: settings.luminance, atlas: Some((settings, Vec2::new(2048.0, 768.0))) };
-        assert_eq!((fx.mask(Vec3::splat(0.5)), fx.mask(Vec3::splat(0.9)), fx.mask(Vec3::ZERO)), (1.0, 0.0, 0.0));
+        let fx = Fx {
+            luminance: settings.luminance,
+            mask: settings.mask,
+            atlas: Some((settings, Vec2::new(2048.0, 768.0))),
+        };
+        // Green enough and in range takes grass; grey asphalt, too bright, black or yellow-brown dirt does not.
+        let (grass, grey, dirt) = (Vec3::new(0.4, 0.5, 0.2), Vec3::splat(0.5), Vec3::new(0.57, 0.51, 0.38));
+        let mask = |c: Vec3| fx.mask(c, c);
+        assert_eq!([grass, grey, Vec3::splat(0.9), Vec3::ZERO, dirt].map(mask), [1.0, 0.0, 0.0, 0.0, 0.0]);
+        // Roure's dry verge passes its threshold; Sa Calobra's its own.
+        assert!(Fx::green(Vec3::new(0.20, 0.20, 0.15), 0.01) > 0.3);
+        assert!(Fx::green(Vec3::new(0.15, 0.14, 0.12), 0.02) > 0.0001);
         // The first half of the weights is the top row's cells, the second the group's piece.
         let (rect, cells) = fx.piece(0.0).unwrap();
         assert!(rect[0] < 1.0 / 8.0 && rect[3] < 1.0 / 3.0 && cells == [1.0, 1.0]);

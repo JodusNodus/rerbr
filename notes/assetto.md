@@ -500,7 +500,10 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   with `group<n>_piece<m>=col,row,w,h,chance[,mw,mh]` (`PIECE_<m>`: cells from 1, row 1 at the bottom of the picture, `PIECE_<m>_CHANCE` default 1, `PIECE_<m>_SIZE_MULT` read as width, height multipliers), `size` (`SHAPE_SIZE`),
   and `luminance=min,max` (`MASK_MIN/MAX_LUMINANCE`). Dense grass (`--enhance grass`) then grows on those materials
   instead of by colour (`grass::add`): where the ground texel's linear luminance is in range, on any facing the
-  ground's normal allows, within the usual 20 m band. Not used: `MASK_MAIN_THRESHOLD`, `MASK_RED_THRESHOLD`,
+  ground's normal allows, within the usual 20 m band. Colour mask (2026-11-20): `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD` (CSP defaults 0.5, 0.05 where unset) go to
+  `[ReRbrGrass] mask=`; the grass grows where the blurred ground colour's greenness `Fx::green` (ours, CSP documents no
+  formula: linear `(g - max(r - red, b)) / mean`) exceeds the main threshold. Gabiria lists its road materials in
+  `GRASS_MATERIALS` and its grey asphalt passed the luminance test alone: the road was a reed bed. Not used:
   `SHAPE_TIDY/CUT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
   (Highlands). Row order checked on Sa Calobra's atlas (`3,1,1,2` the heather, `4,1,2,2` the reeds, the top row the
   plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is

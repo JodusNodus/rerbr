@@ -84,6 +84,9 @@ pub fn unrendered(root: &Path) -> Vec<String> {
     names
 }
 
+/// CSP's `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD` where a track gives none (CSP's GrassFX documentation).
+const MASK_DEFAULT: [f32; 2] = [0.5, 0.05];
+
 /// CSP's GrassFX (`[GRASS_FX]` and `[GRASS_FX_TEXTURE_GROUP_<n>]`) as far as ReRBR's grass uses it: the materials it grows
 /// on, its atlas and the pieces drawn from it, and the luminance range of the ground it grows on.
 #[derive(Debug, Default)]
@@ -125,6 +128,10 @@ impl GrassFx {
         } else if let Some(high) = number(&self.keys, "MASK_MAX_LUMINANCE") {
             let _ = writeln!(out, "luminance=0,{high}");
         }
+        // CSP's defaults where the track sets none: grass on green ground only.
+        let main = number(&self.keys, "MASK_MAIN_THRESHOLD").unwrap_or(MASK_DEFAULT[0]);
+        let red = number(&self.keys, "MASK_RED_THRESHOLD").unwrap_or(MASK_DEFAULT[1]);
+        let _ = writeln!(out, "mask={main},{red}");
         for n in 0..self.groups.keys().next_back().map_or(0, |last| last + 1) {
             let group = self.groups.get(&n).cloned().unwrap_or_default();
             let chance = number(&self.keys, &format!("TEXTURE_GROUP_{n}_CHANCE")).unwrap_or(0.0);
@@ -210,7 +217,7 @@ mod tests {
         std::fs::write(
             dir.join("extension/ext_config.ini"),
             "[GRASS_FX]\nGRASS_MATERIALS = Ter?, rock_cluster\nTEXTURE = mine.dds ; mine\nTEXTURE_GRID = 8, 3\n\
-             TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\nSHAPE_SIZE = 6.5\n\
+             TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\nSHAPE_SIZE = 6.5\nMASK_RED_THRESHOLD = 0.01\n\
              [GRASS_FX_TEXTURE_GROUP_1]\nPIECE_0 = 1, 1\nPIECE_1 = 4, 1, 2, 2\nPIECE_1_CHANCE = 0.5\n\
              PIECE_1_SIZE_MULT = 0.6, 1.5\n",
         )
@@ -221,7 +228,7 @@ mod tests {
         assert!(fx.texture.as_ref().is_some_and(|t| t.ends_with("Mine.DDS")));
         assert_eq!(
             fx.section(Some("ac_00001.dds")),
-            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nsize=6.5\nluminance=0,0.25\ngroup0=0\ngroup1=2\n\
+            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nsize=6.5\nluminance=0,0.25\nmask=0.5,0.01\ngroup0=0\ngroup1=2\n\
              group1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5,0.6,1.5\n"
         );
     }
