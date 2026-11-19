@@ -729,7 +729,8 @@ mod tests {
         let detail = full.detail.unwrap();
         assert_eq!((detail.texture.as_str(), detail.scale, detail.blend), ("d.dds", [50.0; 2], -1.5));
         // A detail layer needs a normal map and its own texture; the bump set needs the ReRBR effect.
-        let no_map = material(&section(&[("ReRbrEffect", "BTB_DiffuseSpecular"), ("ReRbrDetailNormal", "d.dds")]), &textures());
+        let no_map =
+            material(&section(&[("ReRbrEffect", "BTB_DiffuseSpecular"), ("ReRbrDetailNormal", "d.dds")]), &textures());
         assert!(no_map.detail.is_none());
         let missing = material(&section(&[("normalTexture", "n.dds"), ("ReRbrDetailNormal", "x.dds")]), &textures());
         assert!(missing.detail.is_none());
