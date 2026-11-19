@@ -538,7 +538,7 @@ probably fit the wrong hour.
   byte-identical (3 reference shots); scene pass +0.04 to 0.07 ms on Roure and Sa Calobra, load +0 to 0.5 s (2026-11-19).
 - BTB multilayer (`ReRbrLayer*`, `Surface::layers`, `layered` in `shader.wgsl`): the diffuse, mask and four details are bindings 13, 8 and 9..12 of
   the draw's group (separate 2D bindings, not an array: the details differ in size and format; a draw without layers binds the white
-  texel and `DRAW_LAYERS` compiles the code out). Fragment sampled textures: 14 to 20 (`gpu.rs` asks the adapter's limit, past the default 16). Texture
+  texel and `DRAW_LAYERS` compiles the code out). Fragment sampled textures: 14 before, 20 now (`gpu.rs` asks the adapter's limit, past the default 16). Texture
   0 stays the material's bake, which the grass and the ground detail read on the CPU. Details sample at `layer_axis(w, m, off)` with `w` the stage
   `(x, -z)` and `off` the origin's share (f64 on the CPU, `stage::btb::layered`): `w` is split in a multiple of 1/16 and a rest so the
   product with a scale of 100/m stays exact to a texel at 4 km, wrapped to 0..1, with `textureSampleGrad` on the unwrapped gradients (no mip seam).
