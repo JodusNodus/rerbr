@@ -26,8 +26,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::car_packs::{self, Added, Download, BANKS, MODEL, PHYSICS};
-use crate::disc_install::{self, with_path};
-use crate::job::{Counter, Job, Progress, Report, Temp};
+use crate::disc_install;
+use crate::job::{with_path, Counter, Job, Progress, Report, Temp};
 use crate::kit;
 use crate::ngp_install;
 use crate::theme::*;

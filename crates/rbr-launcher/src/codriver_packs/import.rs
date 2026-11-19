@@ -11,7 +11,7 @@ use super::scan::{
 };
 use super::{Fail, NOTES_DIR, SEVEN_Z, VOICES_DIR, ZIP};
 use crate::archive::{safe_folder, safe_path};
-use crate::disc_install::with_path;
+use crate::job::with_path;
 use crate::job::Temp;
 
 /// Imports the folder `src` (a plugin folder, a note folder, a folder with both, or a whole install to copy from)

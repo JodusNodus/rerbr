@@ -23,10 +23,9 @@ use std::sync::atomic::AtomicBool;
 use rbr_formats::car_pack;
 use rbr_formats::rsf;
 
-use crate::archive::safe_folder;
-use crate::disc_install::with_path;
+use crate::archive::{safe_folder, within};
 use crate::gvrc::Entry;
-use crate::job::{Counter, Job, Report, Temp};
+use crate::job::{with_path, Counter, Job, Report, Temp};
 use crate::pages::{GOOD, WARN};
 use crate::Form;
 
@@ -202,11 +201,6 @@ impl Archive {
             .collect();
         crate::archive::extract_seven(&self.path, dest, &wanted, &mut |n| count.add(n))
     }
-}
-
-/// Whether `path` lies below the folder `prefix` (its names ignoring case).
-fn within(path: &[String], prefix: &[String]) -> bool {
-    path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
 /// An added car: its name, its physics pack folder, and what it drives with. Stored in `cars/cars.ini`, one

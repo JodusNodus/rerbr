@@ -13,6 +13,11 @@ use std::time::Duration;
 /// A failed or cancelled job's message.
 type Fail = String;
 
+/// An error's message led by the path it is about.
+pub(crate) fn with_path<E: std::fmt::Display>(path: &Path) -> impl Fn(E) -> String + Copy + '_ {
+    move |e| format!("{}: {e}", path.display())
+}
+
 /// A job's progress report: the step and the bytes written of all.
 pub type Report<'a> = &'a (dyn Fn(&Progress) + Sync);
 

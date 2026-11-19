@@ -10,7 +10,8 @@ use std::sync::atomic::AtomicBool;
 use rbr_formats::rbz;
 
 use crate::archive::open_seven;
-use crate::disc_install::{require, with_folders, with_path, write_to, Reporter};
+use crate::disc_install::{require, with_folders, write_to, Reporter};
+use crate::job::with_path;
 use crate::job::Report;
 
 /// The folder in the player's folder with NGP 7.4.778's `NGP.dll` and `physics.rbz` ([`add_ngp_to`]).

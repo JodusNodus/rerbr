@@ -14,8 +14,8 @@ use std::time::Duration;
 use rbr_ac_tracks::btb::control::Control;
 use rbr_ac_tracks::import::{self, Error, Layout, Request, Status};
 
-use super::{wanted, within, Ctx, Found, Item, Kind};
-use crate::archive::safe_folder;
+use super::{wanted, Ctx, Found, Item, Kind};
+use crate::archive::{safe_folder, within};
 use crate::content::source::{Entry, Source};
 use crate::content::{stem, Goto, Outcome, Refresh};
 use crate::job::{Counter, Temp};

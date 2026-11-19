@@ -10,7 +10,7 @@ use rbr_formats::pacenote::{codriver, notes};
 
 use super::{Fail, NOTES_DIR, SEVEN_Z, VOICES_DIR, ZIP};
 use crate::archive::{safe_folder, safe_path};
-use crate::disc_install::with_path;
+use crate::job::with_path;
 
 /// A locally owned voice pack: its folder (as the plugin's folder) and what it offers, or why it is not ready
 /// (the same validation `check_voice` refuses at activation, so a corrupt pack never shows ready).
@@ -450,7 +450,7 @@ fn fold(name: &str) -> String {
 
 /// Writes `bytes` to `parts` below `dest`, making its folders.
 fn copy_file(bytes: &[u8], dest: &Path, parts: &[&str]) -> Result<(), Fail> {
-    let to = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
+    let to = crate::archive::join(dest, parts);
     fs::create_dir_all(to.parent().unwrap_or(&to)).map_err(with_path(&to))?;
     fs::write(&to, bytes).map_err(with_path(&to))
 }

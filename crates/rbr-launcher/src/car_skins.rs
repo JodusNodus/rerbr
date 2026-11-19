@@ -17,7 +17,7 @@ use rbr_formats::{car_pack, cars};
 use crate::archive;
 use crate::catalog::{Car, Physics};
 use crate::content::source::{self, Source};
-use crate::disc_install::with_path;
+use crate::job::with_path;
 use crate::job::{self, Counter, Job, Report, Temp};
 use crate::kit;
 use crate::pages::{combo, GOOD, WARN};

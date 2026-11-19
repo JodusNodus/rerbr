@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::source::{Entry, Source};
 use super::Outcome;
+use crate::archive::within;
 use crate::job::{Progress, Report};
 
 pub mod ac;
@@ -92,11 +93,6 @@ pub trait Kind: Sync {
     fn fallback(&self) -> bool {
         false
     }
-}
-
-/// Whether `path` is below `prefix` (ignoring case).
-fn within(path: &[String], prefix: &[String]) -> bool {
-    path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
 /// The entries below `dir` whose file ending is not in `skipped` (ignoring case).

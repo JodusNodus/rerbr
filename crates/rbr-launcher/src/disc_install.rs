@@ -22,7 +22,7 @@ use std::sync::Mutex;
 use rbr_formats::installshield::Cabinet;
 use rbr_formats::{installshield, iso9660, rbz};
 
-use crate::job::{Job, Progress, Report, Temp};
+use crate::job::{with_path, Job, Progress, Report, Temp};
 use crate::ngp_install;
 use crate::pages::{GOOD, WARN};
 
@@ -80,11 +80,6 @@ pub struct Counts {
 
 /// A failed or cancelled setup's message.
 type Fail = String;
-
-/// An error's message led by the path it is about.
-pub(crate) fn with_path<E: std::fmt::Display>(path: &Path) -> impl Fn(E) -> String + Copy + '_ {
-    move |e| format!("{}: {e}", path.display())
-}
 
 trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}

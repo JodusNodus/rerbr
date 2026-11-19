@@ -24,8 +24,13 @@ pub fn safe_folder(name: &str) -> Option<String> {
     (!name.is_empty() && !name.starts_with('.') && safe_path(name)?.len() == 1).then(|| name.to_owned())
 }
 
+/// Whether `path` lies below the folder `prefix` (names ignoring case).
+pub fn within(path: &[String], prefix: &[String]) -> bool {
+    path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
+}
+
 /// `base` with the path `parts` below it.
-pub fn join(base: &Path, parts: &[String]) -> PathBuf {
+pub fn join(base: &Path, parts: &[impl AsRef<Path>]) -> PathBuf {
     parts.iter().fold(base.to_owned(), |p, part| p.join(part))
 }
 
