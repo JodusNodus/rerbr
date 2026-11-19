@@ -104,11 +104,9 @@ pub fn enhance_list(graphics: &Graphics) -> String {
     let on = |name: &str| match name {
         "blur" => graphics.motion_blur,
         "cabin" => graphics.cabin,
-        "contact" => graphics.contact,
         "grass" => graphics.grass,
         "windscreen" => graphics.windscreen,
         "lighting" => graphics.lighting,
-        "marks" => graphics.marks,
         "particles" => graphics.particles,
         "wet" => graphics.wet_roads != WetRoads::Off,
         name => ALWAYS_ON.contains(&name),
@@ -1039,7 +1037,7 @@ mod tests {
             fov: 65.0,
             volume: 1.0,
             codriver: true,
-            graphics: Quality::Low.graphics(false),
+            graphics: Quality::Low.graphics(),
             wipers: Switch::Off,
             standalone: PathBuf::from("/b/rbr-standalone"),
             data: PathBuf::from("/d"),
@@ -1120,7 +1118,7 @@ mod tests {
             chase_fov: 65.0,
             volume: 1.0,
             codriver: true,
-            graphics: Quality::Low.graphics(false),
+            graphics: Quality::Low.graphics(),
             wipers: Switch::Off,
             standalone: PathBuf::from("/b/rbr-standalone"),
             data: PathBuf::from("/d"),
@@ -1189,7 +1187,7 @@ mod tests {
                 parts: Parts::hiding("inputs,car").unwrap().with("trace", true).unwrap(),
                 layout: Layout { scale: 125, ..Layout::parse("dash:-40,0").unwrap() },
             },
-            graphics: Quality::Low.graphics(false),
+            graphics: Quality::Low.graphics(),
             wipers: Switch::Continuous,
             standalone: PathBuf::from("/b/rbr-standalone"),
             data: PathBuf::from("/d"),
@@ -1202,7 +1200,7 @@ mod tests {
             args.join(" "),
             "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --chase-fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
              --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hud-hide inputs,car --hud-show trace --hud-scale 125 --hud-layout dash:-40,0 --bindings /l/launcher-settings.ini \
-             --cameras /l/launcher-settings.ini --enhance anisotropy,decals,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
+             --cameras /l/launcher-settings.ini --enhance anisotropy,contact,decals,marks,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
              --stage track-54_O --car 6 --data /d --callout-distance 4 --marker-threshold 25 \
              --damage safe --auto-gears off --gear-guard on --neutral-lock off --clutch-help on --setup /l/setup-current.lsp"
         );
@@ -1222,7 +1220,7 @@ mod tests {
             chase_fov: 65.0,
             volume: 0.5,
             codriver: true,
-            graphics: Graphics { lighting: true, marks: true, ..Quality::Low.graphics(false) },
+            graphics: Graphics { lighting: true, ..Quality::Low.graphics() },
             wipers: Switch::Auto,
             standalone: PathBuf::from("/b/rbr-standalone"),
             data: PathBuf::from("/d"),
@@ -1231,7 +1229,7 @@ mod tests {
         .args()
         .join(" ");
         assert!(args.contains("--boot --weather 1 --wear worn"), "{args}");
-        assert!(args.contains("--enhance anisotropy,decals,lighting,marks,water --live "), "{args}");
+        assert!(args.contains("--enhance anisotropy,contact,decals,lighting,marks,water --live "), "{args}");
         assert!(
             args.ends_with(
                 "--season-row 167 --damage realistic --auto-gears on --gear-guard off --neutral-lock on --clutch-help off"
@@ -1301,7 +1299,7 @@ mod tests {
                 chase_fov: 65.0,
                 volume: 1.0,
                 codriver: true,
-                graphics: Quality::Low.graphics(false),
+                graphics: Quality::Low.graphics(),
                 wipers: Switch::Off,
                 standalone: PathBuf::from("/b/rbr-standalone"),
                 data: PathBuf::from("/d"),
@@ -1557,20 +1555,20 @@ mod tests {
 
     #[test]
     fn the_enhance_list_names_what_the_viewer_takes() {
-        assert_eq!(enhance_list(&Quality::Low.graphics(false)), "anisotropy,decals,water");
+        assert_eq!(enhance_list(&Quality::Low.graphics()), "anisotropy,contact,decals,marks,water");
         assert_eq!(
             enhance_list(&DEFAULT_GRAPHICS),
-            "anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen"
+            "anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen"
         );
-        // Ultra with the tyre marks is every addition.
-        assert_eq!(Enhance::parse(&enhance_list(&Quality::Ultra.graphics(true))), Enhance::parse("all,grass"));
+        // Ultra is every addition.
+        assert_eq!(Enhance::parse(&enhance_list(&Quality::Ultra.graphics())), Enhance::parse("all,grass"));
         for preset in Quality::ALL {
-            assert_eq!(Quality::of(preset.graphics(true)), Some(preset));
+            assert_eq!(Quality::of(preset.graphics()), Some(preset));
         }
         assert_eq!(Quality::of(Graphics { grass: false, ..DEFAULT_GRAPHICS }), None);
         // The motion blur is off until asked for, and no preset's business.
-        let blurred = Graphics { motion_blur: true, ..Quality::Low.graphics(false) };
-        assert_eq!(enhance_list(&blurred), "anisotropy,blur,decals,water");
+        let blurred = Graphics { motion_blur: true, ..Quality::Low.graphics() };
+        assert_eq!(enhance_list(&blurred), "anisotropy,blur,contact,decals,marks,water");
         assert_eq!(Quality::of(blurred), Some(Quality::Low));
         assert!(Quality::High.over(blurred).motion_blur);
     }

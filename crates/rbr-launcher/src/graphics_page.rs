@@ -25,12 +25,9 @@ pub struct Graphics {
     /// Our rain, snow and particles (`particles`).
     pub particles: bool,
     pub cabin: bool,
-    pub contact: bool,
     pub grass: bool,
     /// The windscreen as glass from inside, and the dash reflected in it (`windscreen`).
     pub windscreen: bool,
-    /// Our tyre marks, which no preset changes: free, and off until reviewed in play.
-    pub marks: bool,
     /// The motion blur (`blur`), which no preset changes: a taste, off unless asked for.
     pub motion_blur: bool,
     pub wet_roads: WetRoads,
@@ -38,11 +35,12 @@ pub struct Graphics {
     pub mirrors: Rate,
 }
 
-/// The additions always on, as they cost nothing: 16x anisotropic filtering, the soft decals, the flowing water.
-pub const ALWAYS_ON: [&str; 3] = ["anisotropy", "decals", "water"];
+/// The additions always on, as they cost next to nothing: 16x anisotropic filtering, the soft decals, the flowing
+/// water, the soft car shadow and our tyre marks.
+pub const ALWAYS_ON: [&str; 5] = ["anisotropy", "contact", "decals", "marks", "water"];
 
 /// A new install's choices: the High preset.
-pub const DEFAULT_GRAPHICS: Graphics = Quality::Ultra.graphics(false);
+pub const DEFAULT_GRAPHICS: Graphics = Quality::Ultra.graphics();
 
 impl Default for Graphics {
     /// A new install's choices.
@@ -123,16 +121,14 @@ pub enum Quality {
 impl Quality {
     pub const ALL: [Quality; 4] = [Quality::Low, Quality::Medium, Quality::High, Quality::Ultra];
 
-    /// Its choices, the tyre marks `marks`.
-    pub const fn graphics(self, marks: bool) -> Graphics {
+    /// Its choices.
+    pub const fn graphics(self) -> Graphics {
         let high = Graphics {
             lighting: true,
             particles: true,
             cabin: true,
-            contact: true,
             grass: true,
             windscreen: true,
-            marks,
             motion_blur: false,
             wet_roads: WetRoads::High,
             detail: Detail::High,
@@ -143,7 +139,6 @@ impl Quality {
                 lighting: false,
                 particles: false,
                 cabin: false,
-                contact: false,
                 grass: false,
                 windscreen: false,
                 wet_roads: WetRoads::Off,
@@ -163,9 +158,9 @@ impl Quality {
         }
     }
 
-    /// Its choices over `kept`, whose tyre marks and motion blur stay.
+    /// Its choices over `kept`, whose motion blur stays.
     pub const fn over(self, kept: Graphics) -> Graphics {
-        Graphics { motion_blur: kept.motion_blur, ..self.graphics(kept.marks) }
+        Graphics { motion_blur: kept.motion_blur, ..self.graphics() }
     }
 
     /// The preset `graphics` are, if any.
@@ -732,7 +727,7 @@ impl Form {
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
             let tip = "Sets the choices below. Low: the game's look. Medium: all but Lighting, the costliest, Dense \
-                       grass, which needs it, and Windscreen. High: all but Ultra detail. Ultra: all. The render scale, tyre marks \
+                       grass, which needs it, and Windscreen. High: all but Ultra detail. Ultra: all. The render scale \
                        and motion blur stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
@@ -776,10 +771,6 @@ impl Form {
                        (the reflection draws the cabin and the stage behind it once more)";
             rows.switch_row("Windscreen glass effects", None, &mut g.windscreen).on_hover_text(tip);
 
-            let tip = "The car's own shape as a soft shadow on the ground and fences under it, in place of the game's \
-                       shadow decal";
-            rows.switch_row("Soft car shadow", None, &mut g.contact).on_hover_text(tip);
-
             let tip = "A field of grass blades over the grassy ground within 20 m of the road, swaying in the wind, \
                        drawn within 50 m of the camera. Needs Lighting. Costly (the sun's shadows draw it too), and \
                        about 150 MB of video memory";
@@ -799,11 +790,6 @@ impl Form {
                 combo(ui, "mirrors", None, &mut g.mirrors, &Rate::ALL, mirrors_label).on_hover_text(tip);
             });
 
-            let tip = "Tyre marks as wide as the tread and swept wider in a slide: ruts with berms in gravel, rubber \
-                       on tarmac only when sliding, grooves in snow, flattened grass, longer trails. The presets leave \
-                       them as they are";
-            rows.switch_row("Realistic tyre marks", None, &mut g.marks).on_hover_text(tip);
-
             let tip = "Blurs what moves across the screen over a 1/120 s shutter: the road and the verges at speed, \
                        the scenery in a fast turn of the view. The car and the cockpit stay sharp. About 0.1 ms a \
                        frame at 1080p, 0.4 ms at 4K. The presets leave it as it is";
@@ -813,7 +799,7 @@ impl Form {
         kit::hint(
             ui,
             "Additions beyond the game's look. The stage always draws at its highest quality; sharp distant textures, \
-             soft decals and flowing water are always on.",
+             soft decals, flowing water, the soft car shadow and realistic tyre marks are always on.",
         );
     }
 

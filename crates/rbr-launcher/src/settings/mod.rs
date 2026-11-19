@@ -133,10 +133,8 @@ pub struct Settings {
     pub lighting: Option<bool>,
     pub particles: Option<bool>,
     pub cabin: Option<bool>,
-    pub contact: Option<bool>,
     pub grass: Option<bool>,
     pub windscreen: Option<bool>,
-    pub marks: Option<bool>,
     pub motion_blur: Option<bool>,
     /// One of [`RENDER_SCALES`].
     pub render_scale: Option<u32>,
@@ -467,10 +465,8 @@ impl Settings {
             lighting: launcher.on_off("lighting"),
             particles: launcher.on_off("particles"),
             cabin: launcher.on_off("cabin"),
-            contact: launcher.on_off("contact"),
             grass: launcher.on_off("grass"),
             windscreen: launcher.on_off("windscreen"),
-            marks: launcher.on_off("marks"),
             motion_blur: launcher.on_off("motion_blur"),
             render_scale: launcher.number("render_scale").filter(|v| RENDER_SCALES.contains(v)),
             wet_roads: launcher.choice("wet_roads"),
@@ -603,10 +599,8 @@ impl Settings {
             ("lighting", on_off_text(self.lighting)),
             ("particles", on_off_text(self.particles)),
             ("cabin", on_off_text(self.cabin)),
-            ("contact", on_off_text(self.contact)),
             ("grass", on_off_text(self.grass)),
             ("windscreen", on_off_text(self.windscreen)),
-            ("marks", on_off_text(self.marks)),
             ("motion_blur", on_off_text(self.motion_blur)),
         ] {
             if let Some(v) = value {
@@ -692,10 +686,8 @@ mod tests {
             lighting: Some(false),
             particles: Some(false),
             cabin: Some(false),
-            contact: Some(false),
             grass: Some(true),
             windscreen: Some(false),
-            marks: Some(true),
             motion_blur: Some(true),
             render_scale: Some(75),
             wet_roads: Some(WetRoads::Low),
@@ -847,9 +839,13 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(text.contains("wipers = intermittent\ndials = off\nhud_hide = progress,car\n"), "{text}");
         assert!(
-            text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\nmotion_blur = on\n"),
+            text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ngrass = on\nwindscreen = off\nmotion_blur = on\n"),
             "{text}"
         );
+        // The soft car shadow and the tyre marks are always on: their keys are no longer read, nor written back.
+        let old = Settings::parse("[launcher]\ncontact = off\nmarks = off\n");
+        assert_eq!(old, Settings::default());
+        assert!(!old.to_text().contains("contact") && !old.to_text().contains("marks"));
         assert!(text.contains("start_time = baked\nperf_log = on\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\nperf_log = maybe\n").perf_log, None);
         assert_eq!(Settings::parse("").perf_log, None);
@@ -1007,10 +1003,8 @@ mod tests {
                 "lighting = off\n",
                 "particles = off\n",
                 "cabin = off\n",
-                "contact = off\n",
                 "grass = on\n",
                 "windscreen = off\n",
-                "marks = on\n",
                 "motion_blur = on\n",
                 "\n",
                 "[controls]\n",
