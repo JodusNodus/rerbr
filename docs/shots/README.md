@@ -203,7 +203,7 @@ BMW M3 E30 GrpA, Komarov Snow (RSF 413), flyby view
 
 ### snow-peklo-escort-flyby
 
-Ford Escort Mk II RS Grp4, Peklo Snow (RSF 133), flyby view
+Ford Escort Mk II RS Grp4, Peklo Snow (RSF 133), flyby view, 18:30
 
 ![snow-peklo-escort-flyby](snow-peklo-escort-flyby.jpg)
 

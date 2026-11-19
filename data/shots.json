@@ -287,7 +287,8 @@
   "settings": {
    "weather": "bad"
   },
-  "at": 4980
+  "at": 4980,
+  "clock": "18:30"
  },
  {
   "name": "snow-peklo-gc8-cockpit",
