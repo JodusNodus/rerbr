@@ -1297,6 +1297,14 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
         sky = mix(vec3<f32>(grey), sky, select(TUFT_SKY_TINT, 1.0, ours));
         bounce = bounce + TUFT_GROUND * (sky_unit * 0.5 + sun_unit * max(-frame.sun.y, 0.0) * sun_seen) * (1.0 - height);
         occlusion = mix(GRASS_BASE, 1.0, smoothstep(0.0, GRASS_RISE, height));
+        if (ours && v.specular.z > 1.5) {
+            // A converted stage's GrassFX tufts (`grass::FX_CARD`): taller and sparser than ours, dark at the root and
+            // warm at the tip, as CSP draws them.
+            let ramp = smoothstep(0.0, 1.0, height);
+            occlusion = mix(FX_GRASS_ROOT, 1.0, ramp);
+            sun = sun * mix(vec3<f32>(FX_GRASS_ROOT), FX_GRASS_TIP, ramp);
+            sky = sky * mix(vec3<f32>(1.0), FX_GRASS_TIP, ramp);
+        }
         if (crown) {
             // The sky's and the ground's light, not the sun's, is shut out of a crown's lower and inner parts.
             ambient_occlusion = mix(CROWN_BASE, 1.0, smoothstep(0.0, 0.6, height)) * mix(CROWN_INNER, 1.0, smoothstep(0.2, 1.0, length(crown_at(v))));
@@ -1332,6 +1340,9 @@ const GRASS_WRAP: f32 = 0.3;
 const GRASS_BASE: f32 = 0.6;
 const GRASS_SUN_BASE: vec2<f32> = vec2<f32>(0.4, 0.6);
 const GRASS_RISE: f32 = 0.9;
+// A converted stage's GrassFX tufts: the light at the root, and the tint at the tip (ours).
+const FX_GRASS_ROOT: f32 = 0.25;
+const FX_GRASS_TIP: vec3<f32> = vec3<f32>(1.2, 1.0, 0.95);
 const TUFT_PALE: vec2<f32> = vec2<f32>(0.06, 0.16);
 const TUFT_SNOW: vec2<f32> = vec2<f32>(0.3, 0.5);
 const TUFT_GREEN_MOST: f32 = 0.09;
