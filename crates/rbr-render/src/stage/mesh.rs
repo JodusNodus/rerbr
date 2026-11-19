@@ -71,7 +71,7 @@ pub struct Vertex {
     pub bounce: [u32; 2],
     /// How much of the wet film the ground takes in wet and damp weather (ours, [`crate::puddles::mark_roads`]): by the
     /// collision surface under it, tarmac 1, gravel and dirt 0.5; 0 elsewhere. [`SNOW_MARK`](crate::puddles::SNOW_MARK) on snow
-    /// that takes no film. Dry too for the grass field ([`Stage::mark_surfaces`](super::Stage::mark_surfaces)).
+    /// that takes no film. Dry too for the grass field and a BTB road sheen ([`Stage::mark_surfaces`](super::Stage::mark_surfaces)).
     pub wet: f32,
     /// How far the wet road's edge is from the vertex, metres, up to 8 (ours, [`crate::puddles::mark_roads`]); 0
     /// elsewhere; [`GROUND_MARK`](crate::puddles::GROUND_MARK) on the off-road ground for the grass field
@@ -185,8 +185,31 @@ pub struct Surface {
     /// The highlight: `map * colour * pow(max(0, N.H), power)`, the map (white without one) read at the vertex's
     /// `specular` uv.
     pub highlight: Option<Highlight>,
+    /// The dry road sheen (`ReRbrSheen`): a rough dielectric's sky reflection and sun highlight at this roughness, in
+    /// place of the highlight.
+    pub sheen: Option<Sheen>,
     /// The material's `ReRbrLight` factors on the sky and bounce light and on the sun's (`[1, 1]`: none).
     pub light: Light,
+}
+
+/// A BTB road's dry sheen.
+#[derive(Debug, Clone, Copy)]
+pub struct Sheen {
+    pub roughness: f32,
+}
+
+impl PartialEq for Sheen {
+    fn eq(&self, other: &Sheen) -> bool {
+        self.roughness.to_bits() == other.roughness.to_bits()
+    }
+}
+
+impl Eq for Sheen {}
+
+impl std::hash::Hash for Sheen {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.roughness.to_bits().hash(state);
+    }
 }
 
 /// A BTB material's light factors `[ambient, diffuse]` (`ReRbrLight`), compared by their bits.

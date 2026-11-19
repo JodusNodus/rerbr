@@ -1,5 +1,6 @@
 //! Writes a BTB mesh: a binary DirectX `.x` file (`xof 0303bin 0032`) holding the standard templates it uses and one
-//! top-level `Mesh` with normals, one UV set and a one-material list, as `rbr_btb::xfile` reads BTB's own.
+//! top-level `Mesh` with normals, one UV set (and optionally a second, an `FVFData` block as BTB's own files hold) and a
+//! one-material list, as `rbr_btb::xfile` reads BTB's own.
 
 const NAME: u16 = 1;
 const STRING: u16 = 2;
@@ -22,10 +23,16 @@ pub struct XMesh<'a> {
     pub positions: &'a [[f32; 3]],
     pub normals: &'a [[f32; 3]],
     pub uvs: &'a [[f32; 2]],
+    /// A second UV set per vertex, written as an `FVFData` block (code 258); the file is byte for byte the one-set file
+    /// without it.
+    pub uvs2: Option<&'a [[f32; 2]]>,
     pub triangles: &'a [[u32; 3]],
     /// The material name (`materials.ini` section).
     pub material: &'a str,
 }
+
+/// The `FVFData` code of one further 2-float UV set (`0x102`).
+const FVF_ONE_UV_SET: u32 = 258;
 
 struct Out(Vec<u8>);
 
@@ -160,6 +167,14 @@ pub fn write(mesh: &XMesh) -> Vec<u8> {
         Some("Material"),
     );
 
+    if mesh.uvs2.is_some() {
+        o.template(
+            "FVFData",
+            &[("DWORD", "dwFVF", None), ("DWORD", "nDWords", None), ("DWORD", "data", Some("nDWords"))],
+            None,
+        );
+    }
+
     let faces = |o: &mut Out| {
         let mut v = Vec::with_capacity(1 + mesh.triangles.len() * 4);
         v.push(mesh.triangles.len() as u32);
@@ -186,6 +201,15 @@ pub fn write(mesh: &XMesh) -> Vec<u8> {
     o.ints(&[mesh.uvs.len() as u32]);
     o.floats(mesh.uvs.iter().flatten().copied().collect::<Vec<_>>().into_iter());
     o.token(CBRACE);
+
+    if let Some(uvs) = mesh.uvs2 {
+        o.name("FVFData");
+        o.token(OBRACE);
+        let mut data = vec![FVF_ONE_UV_SET, uvs.len() as u32 * 2];
+        data.extend(uvs.iter().flatten().map(|v| v.to_bits()));
+        o.ints(&data);
+        o.token(CBRACE);
+    }
 
     o.name("MeshMaterialList");
     o.token(OBRACE);
@@ -224,6 +248,7 @@ mod tests {
             positions: &positions,
             normals: &normals,
             uvs: &uvs,
+            uvs2: None,
             triangles: &triangles,
             material: "surf\\asphalt",
         });
@@ -236,5 +261,33 @@ mod tests {
         let materials = mesh.materials.unwrap();
         assert_eq!(materials.face_materials, vec![0, 0]);
         assert_eq!(materials.materials[0].texture.as_deref(), Some("surf\\asphalt"));
+        assert!(mesh.fvf.is_empty());
+    }
+
+    #[test]
+    fn a_second_uv_set_reads_back_as_fvf_data_and_changes_nothing_else() {
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+        let normals = [[0.0, 1.0, 0.0]; 3];
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let second = [[10.5, -2.0], [300.25, 4.0], [0.0, 7.5]];
+        let mesh = |uvs2| XMesh {
+            positions: &positions,
+            normals: &normals,
+            uvs: &uvs,
+            uvs2,
+            triangles: &[[0, 2, 1]],
+            material: "m",
+        };
+        let bytes = write(&mesh(Some(&second)));
+        let file = xfile::parse(&bytes).unwrap();
+        let decoded = xfile::Mesh::decode(file.objects_of_type("Mesh")[0], &file).unwrap();
+        assert_eq!(decoded.uv_sets, vec![uvs.to_vec()]);
+        assert_eq!(decoded.fvf.len(), 1);
+        assert_eq!((decoded.fvf[0].code, decoded.fvf[0].uv_set_count()), (258, 1));
+        let read: Vec<[f32; 2]> =
+            decoded.fvf[0].data.chunks(2).map(|c| [f32::from_bits(c[0]), f32::from_bits(c[1])]).collect();
+        assert_eq!(read, second.to_vec());
+        assert_eq!(decoded.triangles(), vec![[0, 2, 1]]);
+        assert_ne!(bytes, write(&mesh(None)));
     }
 }

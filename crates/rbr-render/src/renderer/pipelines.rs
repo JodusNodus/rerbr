@@ -319,6 +319,7 @@ impl Context<'_> {
                         ("DRAW_DETAIL", f64::from(u8::from(features.detail))),
                         ("DRAW_BUMP", f64::from(u8::from(features.bump))),
                         ("DRAW_HIGHLIGHT", f64::from(u8::from(features.highlight))),
+                        ("DRAW_SHEEN", f64::from(u8::from(features.sheen))),
                         (
                             "SUN_MASK",
                             f64::from(u8::from(

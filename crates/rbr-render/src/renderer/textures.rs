@@ -3,7 +3,7 @@
 use super::pipelines::cutout;
 use super::uniforms::ModeUniform;
 use super::DEPTH_FORMAT;
-use crate::stage::{Address, DrawState, Highlight, Shade, TextureRef, TextureSet, MIP_MAP_BIAS};
+use crate::stage::{Address, DrawState, Highlight, Shade, Sheen, TextureRef, TextureSet, MIP_MAP_BIAS};
 use bytemuck::bytes_of;
 use rbr_formats::dds::{self, Format};
 use std::collections::BTreeMap;
@@ -56,6 +56,8 @@ pub(super) struct BindKey {
     highlight: Option<Highlight>,
     /// The material's light factors' bits ([`crate::stage::Surface::light`]).
     light: [u32; 2],
+    /// A BTB road's dry sheen ([`crate::stage::Surface::sheen`]).
+    sheen: Option<Sheen>,
 }
 
 impl BindKey {
@@ -69,6 +71,7 @@ impl BindKey {
             detail: self.ground,
             bump: self.normal != Source::White,
             highlight: self.highlight.is_some(),
+            sheen: self.sheen.is_some(),
         }
     }
 }
@@ -83,6 +86,7 @@ pub(super) struct DrawFeatures {
     pub(super) detail: bool,
     pub(super) bump: bool,
     pub(super) highlight: bool,
+    pub(super) sheen: bool,
 }
 
 /// The nine samplers: one per (U mode, V mode) pair.
@@ -138,7 +142,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         Some(_) => missing,
     };
     let first = if state.alpha_ref.is_some() || state.blend { Source::Clear } else { Source::White };
-    let (normal, highlight) = state.surface.map_or((None, None), |s| (s.normal, s.highlight));
+    let (normal, highlight, sheen) = state.surface.map_or((None, None, None), |s| (s.normal, s.highlight, s.sheen));
     // A missing light map means no shadow.
     let shadow = match state.shadow {
         Some(texture) if loaded.contains_key(&texture) => Source::Texture(texture),
@@ -166,6 +170,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         normal_scale: normal.map_or([1.0f32; 2], |n| n.scale).map(f32::to_bits),
         highlight,
         light: state.surface.map_or([1.0f32; 2], |s| s.light.0).map(f32::to_bits),
+        sheen,
     }
 }
 
@@ -271,6 +276,7 @@ pub(super) fn bind_group(
         ],
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
         tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), 0.0, 0.0],
+        sheen: [key.sheen.map_or(0.0, |s| s.roughness), 0.0, 0.0, 0.0],
     };
     let glow = glow.map_or(&views.white, |g| &g.view);
     let mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

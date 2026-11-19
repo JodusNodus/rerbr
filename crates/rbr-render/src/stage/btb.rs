@@ -6,7 +6,7 @@
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
 
-use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Light, Lod, Mesh, NormalMap, Surface, Vertex};
+use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex};
 use super::{
     Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
 };
@@ -118,11 +118,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 map: texture(&material.specular),
             });
             let light = Light(material.light);
-            let surface = (normal.is_some() || highlight.is_some() || light != Light::NONE).then_some(Surface {
-                normal,
-                highlight,
-                light,
-            });
+            // The sheen on the opaque draws only (a road is no cut-out).
+            let sheen = material.sheen.filter(|_| opaque).map(|roughness| Sheen { roughness });
+            let surface = (normal.is_some() || highlight.is_some() || sheen.is_some() || light != Light::NONE)
+                .then_some(Surface { normal, highlight, sheen, light });
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,
@@ -200,13 +199,17 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         let vertices: usize = meshes.iter().map(|m| m.vertices.len()).sum();
         let domes = meshes.iter().filter(|m| m.layer == Layer::Sky).count();
         let surfaces = meshes.iter().flat_map(|m| &m.draws).filter_map(|d| d.state.surface.map(|s| (d, s)));
-        let (bumped, highlit) = surfaces.fold((0, 0), |(b, h), (d, s)| {
+        let (bumped, highlit, sheened) = surfaces.fold((0, 0, 0), |(b, h, r), (d, s)| {
             let n = d.indices.len() / 3;
-            (b + n * usize::from(s.normal.is_some()), h + n * usize::from(s.highlight.is_some()))
+            (
+                b + n * usize::from(s.normal.is_some()),
+                h + n * usize::from(s.highlight.is_some()),
+                r + n * usize::from(s.sheen.is_some()),
+            )
         });
         eprintln!(
             "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles \
-             ({bumped} with a normal map, {highlit} with a highlight)",
+             ({bumped} with a normal map, {highlit} with a highlight, {sheened} with a sheen)",
             scene.objects.len()
         );
     }

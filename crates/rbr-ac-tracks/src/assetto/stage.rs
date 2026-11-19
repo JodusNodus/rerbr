@@ -334,6 +334,8 @@ struct Builder {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    /// The source UVs of a per-tile mesh, whose `uvs` are the tile texture's: a second set for the normal map.
+    uvs2: Option<Vec<[f32; 2]>>,
     triangles: Vec<[u32; 3]>,
     vertices: HashMap<[u32; 8], u32>,
     /// The `materials.ini` section it is drawn with.
@@ -386,6 +388,7 @@ impl Builder {
             positions: &self.positions,
             normals: &self.normals,
             uvs: &self.uvs,
+            uvs2: self.uvs2.as_deref(),
             triangles: &self.triangles,
             material,
         })
@@ -622,6 +625,7 @@ fn tile_bakes(model: &kn5::Model, builders: &[(DrawKey, Builder)], origin: [f64;
                                     positions: bake.vertices.iter().map(|&v| b.positions[v as usize]).collect(),
                                     normals: bake.vertices.iter().map(|&v| b.normals[v as usize]).collect(),
                                     uvs: bake.uvs,
+                                    uvs2: Some(bake.vertices.iter().map(|&v| b.uvs[v as usize]).collect()),
                                     triangles: bake.triangles,
                                     ..Builder::default()
                                 };
@@ -956,6 +960,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
                 let extras = bank.tile_extras(&model, mat_index);
+                if !extras.bump_uv {
+                    b.uvs2 = None;
+                }
                 material::section_with(&mut materials, &b.material, &texture, false, &extras);
                 names.push(b.material.clone());
                 drawn.push((key, b));
@@ -1121,7 +1128,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let baked = bank.baked.clone();
     let placeholders = bank.placeholders.clone();
     let missing_names = bank.missing.clone();
-    let (normal_mapped, highlighted) = (bank.normal_mapped, bank.highlighted);
+    let (normal_mapped, highlighted, sheened) = (bank.normal_mapped, bank.highlighted, bank.sheened);
     bank.finish()?;
     let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
     write("objectlist.ini", objects.finish()?)?;
@@ -1188,7 +1195,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let _ = writeln!(spawn, "angleX=0\nangleY=0\nangleZ={}", tangent[0].atan2(tangent[1]));
     write("spawn.ini", spawn)?;
-    let provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
+    let mut provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
         "source_triangles":source_triangles,"drawn_triangles":drawn_triangles,"far_triangles":far_triangles,"csp_trees":tree_count,"csp_tree_triangles":tree_triangles,"collision_triangles":collision_triangles,
         "ai_source":input.ai_source,"reversed_ai":input.reversed_ai,"circuit":input.circuit,"ai_extensions_m":input.ai_extensions,
         "ai_trimmed_points":input.ai_trimmed_points,
@@ -1199,7 +1206,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "length_m":input.finish-input.start,"ai_start_m":input.start,"ai_finish_m":input.finish,
         "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,"normal_mapped_materials":normal_mapped,"highlight_materials":highlighted,
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,
-        "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps and the sun highlight are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
+        "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps, the sun highlight and the roads' dry sheen are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
+    provenance["sheen_materials"] = sheened.into();
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
     options.control.say("validating BTB collision cells");
     let stats = crate::btb::stage::check_cells(folder)?;

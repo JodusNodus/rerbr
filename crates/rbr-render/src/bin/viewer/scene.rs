@@ -255,8 +255,9 @@ fn load_scene<'scope, 'env>(
             progress(Step::Stage);
             let mut stage = stage::load(&maps, name, args.selection).map_err(|e| e.to_string())?;
             let grass = args.enhance.grass && args.enhance.lighting;
-            if grass {
-                stage.mark_surfaces(&maps);
+            // The grass field needs the surfaces marked; so does a converted stage's road sheen (the roads only).
+            if grass || (args.enhance.lighting && stage.has_sheen()) {
+                stage.mark_surfaces(&maps, grass);
             }
             stage.atmosphere.fog = args.fog;
             stage.atmosphere.clouds = args.clouds;
