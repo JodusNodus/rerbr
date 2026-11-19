@@ -141,6 +141,10 @@ const FX_SATURATION: f32 = 0.55;
 /// `specular.z` of a converted stage's cards (ours 1): `shader.wgsl` gives them `FX_GRASS_ROOT` and `FX_GRASS_TIP`.
 const FX_CARD: f32 = 2.0;
 const FX_SHADE: f32 = 2.2;
+/// The most a converted stage's clump's mean linear luminance reaches ([`FX_SHADE`] times the ground's): about grass's
+/// albedo. [`FX_SHADE`] lifts Sa Calobra's dark verges (ground 0.016, clumps 0.035); on Gabiria's pale green verges
+/// (0.21) it made the reeds frost white.
+const FX_ALBEDO: f32 = 0.1;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
@@ -615,7 +619,9 @@ impl Field {
                 // Each clump's cards a little brighter or darker than the ground's.
                 let shade = if converted { FX_SHADE } else { SHADE };
                 let bounds = if converted { FX_BRIGHT } else { BRIGHT };
-                let bright = shade * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
+                let lit = shade * luminance(colour);
+                let lit = if converted { lit.min(FX_ALBEDO) } else { lit };
+                let bright = lit / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
                 let card = Card {
                     at,
                     normal: g.normal,

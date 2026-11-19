@@ -512,7 +512,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   5, Créquy's 0.28 m cells 52, at most 60; our blades 40: at 0.08 m and 40 Sa Calobra's verge was a carpet, AC's has
   separate tufts; a flat 5 left Créquy's verges bare); unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at `FX_SATURATION`
   0.55 (no lush/straw lean) and `FX_SHADE` 2.2 with the brightness ratio clamp lowered (`FX_BRIGHT`); the cards carry
-  `specular.z` 2 (`FX_CARD`) and `own_light` ramps them from `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP`
+  `specular.z` 2 (`FX_CARD`); a clump's mean linear luminance is at most `FX_ALBEDO` 0.1 (2026-11-20: Gabiria's pale verges, 0.21, made frost-white reeds; Créquy's verges darker green, Sa Calobra unchanged) and `own_light` ramps them from `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP`
   (1.2, 1.0, 0.95) at the top. At 0.3/1.2 (07:35 calibration) the verges read charcoal, at 0.7/2.5 with no ramp
   khaki (green over blue 1.25 against AC's 1.15); now rock view 06:45 `--frames 32` grass 50 / low verge 39 luminance,
   RGB 55,49,40 against AC's 60,53,45 / 34 (2026-11-19). The support ring is 0.4 of a card's
