@@ -680,6 +680,7 @@ mod tests {
             triangle_count: 1,
             vertices: vec![corner(0., 0., 0., 0.), corner(40., 0., 1., 0.), corner(0., 10., 0., 1.)],
             triangles: vec![[0, 1, 2]],
+            first: [0.; 3],
         });
         let [u, v] = metres_per_uv(&m, 0);
         assert!((u - 40.).abs() < 1e-9 && (v - 10.).abs() < 1e-9);
