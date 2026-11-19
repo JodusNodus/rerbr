@@ -58,9 +58,9 @@ pub(super) struct BindKey {
     light: [u32; 2],
     /// A BTB road's dry sheen ([`crate::stage::Surface::sheen`]).
     sheen: Option<Sheen>,
-    /// A multilayer material summed per pixel ([`crate::stage::Surface::layers`]) with its mask's and details' textures;
+    /// A multilayer material summed per pixel ([`crate::stage::Surface::layers`]) with its diffuse's, mask's and details' textures;
     /// `None` when any of them did not load.
-    layers: Option<(Layers, [Source; 5])>,
+    layers: Option<(Layers, [Source; 6])>,
 }
 
 impl BindKey {
@@ -179,7 +179,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         layers: state.surface.and_then(|s| s.layers).and_then(|layers| {
             let found = |texture| loaded.contains_key(&texture).then_some(Source::Texture(texture));
             let [r, g, b, a] = layers.details.map(found);
-            Some((layers, [found(layers.mask)?, r?, g?, b?, a?]))
+            Some((layers, [found(layers.diffuse)?, found(layers.mask)?, r?, g?, b?, a?]))
         }),
     }
 }
@@ -268,10 +268,7 @@ pub(super) fn bind_group(
             ]
         }),
         detail: match key.textures[0] {
-            // A multilayer draw's details are its own fine structure.
-            Source::Texture(texture) if key.ground && key.layers.is_none() => {
-                views.detail.get(&texture).copied().unwrap_or_default()
-            }
+            Source::Texture(texture) if key.ground => views.detail.get(&texture).copied().unwrap_or_default(),
             _ => [0.0; 4],
         },
         bank: {
@@ -294,8 +291,8 @@ pub(super) fn bind_group(
         layer_scale: layer_pairs(key.layers.map(|(l, _)| l.scale)),
         layer_offset: layer_pairs(key.layers.map(|(l, _)| l.offset)),
     };
-    // The mask and the four details, or the white texel for a draw without layers.
-    let layer_views = key.layers.map_or([&views.white; 5], |(_, sources)| sources.map(|source| views.get(source)));
+    // The diffuse, the mask and the four details, or the white texel for a draw without layers.
+    let layer_views = key.layers.map_or([&views.white; 6], |(_, sources)| sources.map(|source| views.get(source)));
     let glow = glow.map_or(&views.white, |g| &g.view);
     let mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("draw mode"),
@@ -323,11 +320,12 @@ pub(super) fn bind_group(
             wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(views.get(key.specular)) },
             wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(glow) },
             wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(views.get(key.normal)) },
-            wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(layer_views[0]) },
-            wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(layer_views[1]) },
-            wgpu::BindGroupEntry { binding: 10, resource: wgpu::BindingResource::TextureView(layer_views[2]) },
-            wgpu::BindGroupEntry { binding: 11, resource: wgpu::BindingResource::TextureView(layer_views[3]) },
-            wgpu::BindGroupEntry { binding: 12, resource: wgpu::BindingResource::TextureView(layer_views[4]) },
+            wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(layer_views[1]) },
+            wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(layer_views[2]) },
+            wgpu::BindGroupEntry { binding: 10, resource: wgpu::BindingResource::TextureView(layer_views[3]) },
+            wgpu::BindGroupEntry { binding: 11, resource: wgpu::BindingResource::TextureView(layer_views[4]) },
+            wgpu::BindGroupEntry { binding: 12, resource: wgpu::BindingResource::TextureView(layer_views[5]) },
+            wgpu::BindGroupEntry { binding: 13, resource: wgpu::BindingResource::TextureView(layer_views[0]) },
         ],
     })
 }

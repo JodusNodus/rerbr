@@ -198,9 +198,11 @@ pub struct Surface {
 
 /// An Assetto Corsa multilayer material (`rbr_btb::scene::Layers`): `diffuse * (R*mask.r + G*mask.g + B*mask.b +
 /// A*mask.a) * magic`, with the diffuse and the mask at the mesh's `uv0` and each detail at `scale` times either `uv0`
-/// or AC's world `(x, z)`.
+/// or AC's world `(x, z)`. The draw's own first texture stays the material's bake of that sum, which the grass and the
+/// ground detail read on the CPU.
 #[derive(Debug, Clone, Copy)]
 pub struct Layers {
+    pub diffuse: TextureRef,
     pub mask: TextureRef,
     pub details: [TextureRef; 4],
     /// Details at the world position (else at `uv0`).
@@ -213,13 +215,14 @@ pub struct Layers {
 }
 
 impl Layers {
-    fn bits(&self) -> (TextureRef, [TextureRef; 4], bool, [u32; 17]) {
+    fn bits(&self) -> ([TextureRef; 6], bool, [u32; 17]) {
         let numbers = std::iter::once(self.magic).chain(self.scale.iter().chain(&self.offset).flatten().copied());
         let mut bits = [0; 17];
         for (slot, number) in bits.iter_mut().zip(numbers) {
             *slot = number.to_bits();
         }
-        (self.mask, self.details, self.world, bits)
+        let [a, b, c, d] = self.details;
+        ([self.diffuse, self.mask, a, b, c, d], self.world, bits)
     }
 }
 

@@ -600,12 +600,13 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
             texture_entry(5, TEXTURE),
             texture_entry(6, TEXTURE),
             texture_entry(7, TEXTURE),
-            // A multilayer material's mask and four details (`layered` in `shader.wgsl`).
+            // A multilayer material's mask, four details and diffuse (`layered` in `shader.wgsl`).
             texture_entry(8, TEXTURE),
             texture_entry(9, TEXTURE),
             texture_entry(10, TEXTURE),
             texture_entry(11, TEXTURE),
             texture_entry(12, TEXTURE),
+            texture_entry(13, TEXTURE),
         ],
     });
     [frame_layout, shadow_layout, texture_layout]

@@ -72,6 +72,7 @@ fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Optio
         None => [0.0; 2],
     };
     Layers {
+        diffuse: named(&l.diffuse),
         mask: named(&l.mask),
         details: std::array::from_fn(|i| named(&l.details[i])),
         world: l.world.is_some(),
@@ -123,12 +124,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 return None;
             }
             let lerp = material.effect.vert_lerp && material.second.is_some() && !mesh.blend.is_empty();
-            // A multilayer material drawn per pixel (`ReRbrLayer*`) reads its own diffuse, not the bake of the sum.
+            // A multilayer material drawn per pixel (`ReRbrLayer*`) keeps the bake of the sum as its first texture, which
+            // the grass and the ground detail read.
             let layers = material.layers.as_ref().filter(|_| !material.technique.transparent);
-            let first = match layers {
-                Some(layers) => texture(&Some(layers.diffuse.clone())),
-                None => texture(&material.diffuse),
-            };
+            let first = texture(&material.diffuse);
             let second = if lerp { texture(&material.second) } else { None };
             // Two passes only where the texture is translucent; a cut-out one is alpha tested, an opaque one solid.
             let alpha = match (material.technique.transparent, &material.diffuse) {

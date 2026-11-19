@@ -318,12 +318,13 @@ struct Probes {
 @group(1) @binding(6) var glow_texture: texture_2d<f32>;
 // A BTB normal map (`stage::Surface::normal`; 1 white texel elsewhere, unread).
 @group(1) @binding(7) var normal_texture: texture_2d<f32>;
-// A multilayer material's mask and four details (`stage::Layers`; 1 white texel elsewhere, unread).
+// A multilayer material's mask, four details and diffuse (`stage::Layers`; 1 white texel elsewhere, unread).
 @group(1) @binding(8) var layer_mask: texture_2d<f32>;
 @group(1) @binding(9) var layer_detail0: texture_2d<f32>;
 @group(1) @binding(10) var layer_detail1: texture_2d<f32>;
 @group(1) @binding(11) var layer_detail2: texture_2d<f32>;
 @group(1) @binding(12) var layer_detail3: texture_2d<f32>;
+@group(1) @binding(13) var layer_diffuse: texture_2d<f32>;
 
 // Textures 0 and 1's mip bias: the draw's, and the upscale's.
 fn texture_bias() -> f32 {
@@ -605,7 +606,8 @@ fn layer_axis(w: f32, m: f32, off: f32) -> f32 {
 // A*mask.a) * magicMult` over the display values. The mask is read at the uv; each detail at AC's world (x, z) times its
 // multiplier (the stage's x, and its z negated, with the origin's share in `layer_offset`) or at the uv times its pair,
 // on the gradients of the unwrapped coordinate so the wrap leaves no seam in the mip choice. In uniform control flow.
-fn layered(v: VertexOut, diffuse: vec3<f32>) -> vec3<f32> {
+fn layered(v: VertexOut) -> vec3<f32> {
+    let diffuse = textureSampleBias(layer_diffuse, texture_sampler, v.uv0, texture_bias()).rgb;
     let weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
     let world = mode.layer.x < 1.5;
     let at = select(v.uv0, vec2<f32>(v.world.x, -v.world.z), world);
@@ -657,7 +659,7 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         surface = mix(first.rgb, second.rgb, second.a * v.color.a);
     }
     if (layers_draw()) {
-        surface = layered(v, surface);
+        surface = layered(v);
     }
     // The backdrop (the world-anchored sky faces' frame) gets detail its stretched texture lacks.
     if (!stage_frame() && !camera_anchored()) {
