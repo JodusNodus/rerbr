@@ -80,9 +80,13 @@ fn rerbr_effect_reads_every_input_on_the_diffuse_uv_set() {
         multiplier: None,
         additive: None,
         bump_scale: [1.0; 2],
+        bump_uv: false,
+        sheen: None,
     };
     let slots = material.uv_slots();
     assert_eq!((slots.bump, slots.specular, slots.lerp), (Some(0), Some(0), None));
+    let slots = scene::Material { bump_uv: true, ..material.clone() }.uv_slots();
+    assert_eq!((slots.bump, slots.specular), (Some(1), Some(0)));
     let slots = scene::Material { first_uv: false, ..material }.uv_slots();
     assert_eq!((slots.bump, slots.specular), (Some(1), Some(2)));
 }

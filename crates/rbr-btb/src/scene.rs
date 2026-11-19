@@ -130,6 +130,12 @@ pub struct Material {
     /// ReRBR's `ReRbrBumpScale=u,v`: the normal map is read at its UV set times this. `[1, 1]` where the section has
     /// none.
     pub bump_scale: [f32; 2],
+    /// ReRBR's `ReRbrBumpUv=1`: the normal map reads the mesh's second UV set ([`Mesh::uvs`] entry 1) whatever
+    /// [`Material::first_uv`] says.
+    pub bump_uv: bool,
+    /// ReRBR's `ReRbrSheen=<roughness>`: the opaque road's dry sheen, a rough dielectric's sky reflection and sun
+    /// highlight at this roughness. Only with `ReRbrEffect`.
+    pub sheen: Option<f32>,
 }
 
 impl Material {
@@ -141,7 +147,7 @@ impl Material {
         }
         let first = |slot: Option<usize>| slot.map(|_| 0);
         UvSlots {
-            bump: first(slots.bump),
+            bump: if self.bump_uv { slots.bump.map(|_| 1) } else { first(slots.bump) },
             specular: first(slots.specular),
             multiplier: first(slots.multiplier),
             additive: first(slots.additive),
@@ -521,6 +527,11 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         multiplier: find("multiplierTexture"),
         additive: find("additiveTexture"),
         bump_scale,
+        bump_uv: own.is_some() && m.entry("ReRbrBumpUv").and_then(track::decimal_float) == Some(1.0),
+        sheen: own
+            .and_then(|_| m.entry("ReRbrSheen").and_then(track::decimal_float))
+            .map(|r| r as f32)
+            .filter(|r| r.is_finite() && *r > 0.0),
     }
 }
 
@@ -683,5 +694,33 @@ mod tests {
         assert_eq!(scale(&[]), [1.0; 2]);
         assert_eq!(scale(&[("ReRbrBumpScale", "2000.0,4000.5")]), [2000.0, 4000.5]);
         assert_eq!(scale(&[("ReRbrBumpScale", "3.5")]), [3.5; 2]);
+    }
+
+    #[test]
+    fn the_sheen_and_bump_uv_keys_need_the_rerbr_effect() {
+        let section = |own: bool, entries: &[(&str, &str)]| {
+            let mut entries: Vec<_> = entries.iter().map(|&(k, v)| (k.to_owned(), v.to_owned())).collect();
+            if own {
+                entries.push(("ReRbrEffect".into(), "BTB_Diffuse".into()));
+            }
+            track::Material {
+                name: "m".into(),
+                effect: Some("BTB_Diffuse".into()),
+                technique: None,
+                ambient: Vec::new(),
+                specular_power: None,
+                specular_color: Vec::new(),
+                entries,
+            }
+        };
+        let textures = Textures(Default::default());
+        let read = |own, entries: &[(&str, &str)]| {
+            let m = material(&section(own, entries), &textures);
+            (m.sheen, m.bump_uv)
+        };
+        assert_eq!(read(true, &[]), (None, false));
+        assert_eq!(read(true, &[("ReRbrSheen", "0.75"), ("ReRbrBumpUv", "1")]), (Some(0.75), true));
+        assert_eq!(read(false, &[("ReRbrSheen", "0.75"), ("ReRbrBumpUv", "1")]), (None, false));
+        assert_eq!(read(true, &[("ReRbrSheen", "0.0")]).0, None);
     }
 }
