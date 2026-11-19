@@ -52,11 +52,8 @@ pub fn folder_name(name: &str) -> String {
 
 /// One section as text.
 fn section_text(name: &str, entries: &[(String, String)]) -> String {
-    let mut out = format!("[{name}]\r\n");
-    for (key, value) in entries {
-        out.push_str(&format!("{key} = {value}\r\n"));
-    }
-    out
+    let lines: String = entries.iter().map(|(key, value)| format!("{key} = {value}\r\n")).collect();
+    format!("[{name}]\r\n{lines}")
 }
 
 /// What `Tracks<new>.ini` is made of: the stage's `[Map<old>]` entries, with the place of its files and what it

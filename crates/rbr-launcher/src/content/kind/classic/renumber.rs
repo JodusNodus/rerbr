@@ -48,12 +48,7 @@ pub fn track_references(text: &str, old: u32, new: u32) -> String {
     out
 }
 
-/// A texture archive's entry name, renamed when it starts with `track-<old>_` (either slash).
-pub fn entry_name(name: &str, old: u32, new: u32) -> String {
-    file_name(name, old, new)
-}
-
-/// Copies the zip `from` to `to` with its entries renamed ([`entry_name`]), without recompressing them. Fails when
+/// Copies the zip `from` to `to` with its entries renamed ([`file_name`]), without recompressing them. Fails when
 /// `from` is not a zip.
 pub fn rewrite_zip(
     from: &Path,
@@ -68,7 +63,7 @@ pub fn rewrite_zip(
     for k in 0..input.len() {
         let file = input.by_index_raw(k).map_err(|e| at(&e))?;
         let name = file.name().map_err(|e| at(&e))?.into_owned();
-        let (name, size) = (entry_name(&name, old, new), file.compressed_size());
+        let (name, size) = (file_name(&name, old, new), file.compressed_size());
         out.raw_copy_file_rename(file, name).map_err(|e| at(&e))?;
         progress(size)?;
     }

@@ -1,28 +1,20 @@
-//! A .rar: its files from its listing, copied out by `crate::archive` (RAR 1.3 to 7, one volume, not encrypted).
+//! A .zip, .7z or .rar: its files from its listing, copied out by `crate::archive` (RAR 1.3 to 7, one volume, not
+//! encrypted).
 
 use std::path::{Path, PathBuf};
 
 use super::{Entry, Fail, Source, Wanted};
-use crate::archive::{extract_rar, rar_entries};
+use crate::archive::{self, Entry as Listed};
 
-pub struct Rar {
+type Extract = fn(&Path, &Path, &Wanted, &mut dyn FnMut(u64) -> Result<(), Fail>) -> Result<(), Fail>;
+
+struct Packed {
     path: PathBuf,
     entries: Vec<Entry>,
+    extract: Extract,
 }
 
-impl Rar {
-    fn open(path: PathBuf) -> Result<Rar, Fail> {
-        let listed = rar_entries(&path).map_err(|e| format!("can't read it: {e}"))?;
-        let entries = listed
-            .into_iter()
-            .filter(|e| !e.dir)
-            .filter_map(|e| Some(Entry { path: e.parts?, size: e.size }))
-            .collect();
-        Ok(Rar { path, entries })
-    }
-}
-
-impl Source for Rar {
+impl Source for Packed {
     fn path(&self) -> &Path {
         &self.path
     }
@@ -37,13 +29,39 @@ impl Source for Rar {
         dest: &Path,
         progress: &mut dyn FnMut(u64) -> Result<(), Fail>,
     ) -> Result<(), Fail> {
-        extract_rar(&self.path, dest, wanted, progress)
+        (self.extract)(&self.path, dest, wanted, progress)
     }
 }
 
-pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
-    let named = !path.is_dir() && path.to_string_lossy().to_ascii_lowercase().ends_with(".rar");
-    named.then(|| Ok(Box::new(Rar::open(path.to_owned())?) as Box<dyn Source>))
+/// Opens `path` when it ends in `ending` (ignoring case), listing it with `list`.
+fn open(
+    path: &Path,
+    ending: &str,
+    list: fn(&Path) -> Result<Vec<Listed>, Fail>,
+    extract: Extract,
+) -> Option<Result<Box<dyn Source>, Fail>> {
+    let named = path.to_string_lossy().to_ascii_lowercase().ends_with(ending);
+    named.then(|| {
+        let listed = list(path).map_err(|e| format!("can't read it: {e}"))?;
+        let entries =
+            listed.into_iter().filter(|e| !e.dir).filter_map(|e| Some(Entry { path: e.parts?, size: e.size }));
+        Ok(Box::new(Packed { path: path.to_owned(), entries: entries.collect(), extract }) as Box<dyn Source>)
+    })
+}
+
+pub fn open_zip(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    open(path, ".zip", archive::zip_entries, archive::extract_zip)
+}
+
+pub fn open_seven(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    open(path, ".7z", archive::seven_entries, archive::extract_seven)
+}
+
+pub fn open_rar(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    if path.is_dir() {
+        return None;
+    }
+    open(path, ".rar", archive::rar_entries, archive::extract_rar)
 }
 
 #[cfg(test)]
@@ -59,7 +77,7 @@ mod tests {
             builder.add_bytes(name.as_bytes().to_vec(), bytes.to_vec(), None, None).unwrap();
         }
         std::fs::write(dir.join("t.rar"), builder.to_bytes().unwrap()).unwrap();
-        let source = open(&dir.join("t.rar")).unwrap().unwrap();
+        let source = open_rar(&dir.join("t.rar")).unwrap().unwrap();
         let names: Vec<_> = source.entries().iter().map(|e| e.path.join("/")).collect();
         assert_eq!(names, ["T/a.kn5", "T/data/surfaces.ini", "T/skip.bin"]);
         let wanted = [

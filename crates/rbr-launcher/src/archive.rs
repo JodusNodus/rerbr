@@ -4,7 +4,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rbr_formats::rbz;
 
@@ -22,6 +22,11 @@ pub fn safe_path(name: &str) -> Option<Vec<&str>> {
 pub fn safe_folder(name: &str) -> Option<String> {
     let name = name.trim();
     (!name.is_empty() && !name.starts_with('.') && safe_path(name)?.len() == 1).then(|| name.to_owned())
+}
+
+/// `base` with the path `parts` below it.
+pub fn join(base: &Path, parts: &[String]) -> PathBuf {
+    parts.iter().fold(base.to_owned(), |p, part| p.join(part))
 }
 
 /// [`safe_path`] as owned parts.
@@ -125,7 +130,7 @@ pub fn extract_rar(
         match wanted.filter(|_| !meta.is_directory) {
             None => Ok(Box::new(io::sink())),
             Some((_, to)) => {
-                let path = to.iter().fold(dest.to_owned(), |p, part| p.join(part));
+                let path = join(dest, to);
                 fs::create_dir_all(path.parent().unwrap_or(dest))?;
                 let out = io::BufWriter::new(File::create(&path)?);
                 Ok(Box::new(Counted { out, bytes: written.clone() }))
@@ -141,7 +146,7 @@ pub fn extract_rar(
 
 /// Writes `reader` to `dest`/`parts`, making its folders.
 fn write_file(dest: &Path, parts: &[String], reader: &mut dyn Read) -> io::Result<u64> {
-    let path = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
+    let path = join(dest, parts);
     fs::create_dir_all(path.parent().unwrap_or(dest))?;
     let mut out = io::BufWriter::new(File::create(&path)?);
     let n = io::copy(reader, &mut out)?;

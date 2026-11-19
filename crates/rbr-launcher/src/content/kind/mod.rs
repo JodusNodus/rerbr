@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::source::Source;
+use super::source::{Entry, Source};
 use super::Outcome;
 use crate::job::{Progress, Report};
 
@@ -92,4 +92,16 @@ pub trait Kind: Sync {
     fn fallback(&self) -> bool {
         false
     }
+}
+
+/// Whether `path` is below `prefix` (ignoring case).
+fn within(path: &[String], prefix: &[String]) -> bool {
+    path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
+}
+
+/// The entries below `dir` whose file ending is not in `skipped` (ignoring case).
+fn wanted<'a>(src: &'a dyn Source, dir: &[String], skipped: &[&str]) -> Vec<&'a Entry> {
+    let skip =
+        |name: &String| name.rsplit_once('.').is_some_and(|(_, e)| skipped.iter().any(|s| e.eq_ignore_ascii_case(s)));
+    src.entries().iter().filter(|e| within(&e.path, dir) && !e.path.last().is_some_and(skip)).collect()
 }

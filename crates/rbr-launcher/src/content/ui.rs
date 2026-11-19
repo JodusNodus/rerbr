@@ -116,7 +116,7 @@ impl Form {
         if touched(Refresh::Stages) {
             let tracks = self.here().join(rbr_btb::player::TRACKS);
             self.catalog.add_new_tracks(&tracks);
-            self.catalog.add_classic_stages(&self.here().join(rbr_btb::player::TRACKS));
+            self.catalog.add_classic_stages(&tracks);
             self.list_maps();
         }
         if added(Refresh::Ngp) {
@@ -353,24 +353,9 @@ mod tests {
     /// to `RBR_SCREENSHOTS`. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`.
     #[test]
     fn the_add_reads_the_lists_again_and_draws() {
-        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
-        let (Some(data), Some(patch), Some(ngp)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS")) else {
-            eprintln!("skipping: RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
-            return;
-        };
         let root = crate::test_dir("content-form");
         let home = root.join("home");
-        fs::create_dir_all(&home).unwrap();
-        let start = Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: home.join(SETTINGS_FILE),
-            data: Some(PathBuf::from(&data)),
-            patch: Some(PathBuf::from(&patch)),
-            physics: None,
-        };
-        let mut form = load(&start, Settings { map: Some(54), ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
-        form.read_only = true;
+        let Some(mut form) = launcher(&home, Some(54)) else { return };
         let before = form.catalog.maps.len();
         let stage = root.join("drop/Autio I Gravel");
         synthetic_stage(&stage, "Autio I Gravel");
@@ -385,10 +370,7 @@ mod tests {
         assert!(form.content.busy());
         // A second drop while the first runs is ignored.
         form.add_content(vec![root.join("drop/Holiday.rar")]);
-        while form.content.busy() {
-            crate::capture::draw(|ctx| form.content_notice(ctx)).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        finish(&mut form);
         let lines: Vec<String> = form.content.notice.iter().map(Outcome::line).collect();
         assert_eq!(lines.len(), 3, "{lines:?}");
         let has = |start: &str| lines.iter().any(|l| l.starts_with(start));
@@ -442,24 +424,16 @@ mod tests {
         form.content.notice = vec![
             ok("Autio I Gravel", "BTB stage", "it's in Stages", Goto::Stage("Autio I Gravel".into())),
             ok("Janne Laahanen V3", "co-driver", "pick it in Co-drivers", Goto::Codrivers),
-            Outcome::failed("Setup.exe", "not supported", detect_installer()),
+            Outcome::failed("Setup.exe", "not supported", crate::content::source::refused::INSTALLER),
             Outcome::failed(
                 "Ford Fiesta - Model.7z",
                 "NGP car",
                 "this is a car model/sound; add it together with its NGP Physics zip",
             ),
         ];
-        let page = |ctx: &egui::Context, form: &mut Form| {
-            form.content_notice(ctx);
-            ctx.root_ui(|root| {
-                egui::CentralPanel::default().show(root, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| form.settings_page(ui));
-                })
-            });
-        };
-        crate::capture::shot(&shots.join("notice.png"), |ctx| page(ctx, &mut form)).unwrap();
+        crate::capture::shot(&shots.join("notice.png"), |ctx| settings_page(ctx, &mut form)).unwrap();
         crate::capture::shot(&shots.join("drop-overlay.png"), |ctx| {
-            page(ctx, &mut form);
+            settings_page(ctx, &mut form);
             Form::drop_hint(ctx);
         })
         .unwrap();
@@ -469,24 +443,9 @@ mod tests {
     /// that car on Cars. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`.
     #[test]
     fn a_dropped_skin_is_worn_by_its_car() {
-        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
-        let (Some(data), Some(patch), Some(ngp)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS")) else {
-            eprintln!("skipping: RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
-            return;
-        };
         let root = crate::test_dir("content-skin-form");
         let home = root.join("home");
-        fs::create_dir_all(&home).unwrap();
-        let start = Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: home.join(SETTINGS_FILE),
-            data: Some(PathBuf::from(&data)),
-            patch: Some(PathBuf::from(&patch)),
-            physics: None,
-        };
-        let mut form = load(&start, Settings { ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
-        form.read_only = true;
+        let Some(mut form) = launcher(&home, None) else { return };
         // A retail car: its key is its model folder, the prefix of its textures.
         let retail = |t: &skin::Target| t.key == t.model && t.textures.is_some();
         let target = form.skin_targets().into_iter().find(retail).expect("a retail car");
@@ -503,10 +462,7 @@ mod tests {
             write(&skin.join("textures").join(name), b"skin");
         }
         form.add_content(vec![skin]);
-        while form.content.busy() {
-            crate::capture::draw(|ctx| form.content_notice(ctx)).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        finish(&mut form);
         let lines: Vec<String> = form.content.notice.iter().map(Outcome::line).collect();
         assert_eq!(lines, [format!("Added Martini (car skin): the {} wears it now", target.title)]);
         assert_eq!(form.skins.chosen.get(&target.key).map(String::as_str), Some("Martini"));
@@ -525,24 +481,9 @@ mod tests {
     #[test]
     fn classic_stages_are_added_listed_and_drawn() {
         use crate::content::kind::classic::tests::{rsf_stage, variant};
-        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
-        let (Some(data), Some(patch), Some(ngp)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS")) else {
-            eprintln!("skipping: RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
-            return;
-        };
         let root = crate::test_dir("content-classic");
         let home = root.join("home");
-        fs::create_dir_all(&home).unwrap();
-        let start = Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: home.join(SETTINGS_FILE),
-            data: Some(PathBuf::from(&data)),
-            patch: Some(PathBuf::from(&patch)),
-            physics: None,
-        };
-        let mut form = load(&start, Settings { map: Some(54), ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
-        form.read_only = true;
+        let Some(mut form) = launcher(&home, Some(54)) else { return };
         let before = form.catalog.maps.len();
         // Stage 54 is a retail map's number: the first is added as a new number, the second is encrypted.
         let (one, two) = (root.join("drop/one"), root.join("drop/two"));
@@ -555,10 +496,7 @@ mod tests {
             b"[Map8994]\r\nStageName=Loose Gravel\r\nAuthor=Test\r\nSurface=1\r\n",
         );
         form.add_content(vec![one.join("54-Kamenak"), two.join("8000-Kamenak"), root.join("drop/loose")]);
-        while form.content.busy() {
-            crate::capture::draw(|ctx| form.content_notice(ctx)).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        finish(&mut form);
         let lines: Vec<String> = form.content.notice.iter().map(|o| format!("{} {}", o.ok(), o.line())).collect();
         assert_eq!(
             lines,
@@ -583,17 +521,9 @@ mod tests {
             return;
         };
         let shots = Path::new(&shots).join("classic");
-        let page = |ctx: &egui::Context, form: &mut Form| {
-            form.content_notice(ctx);
-            ctx.root_ui(|root| {
-                egui::CentralPanel::default().show(root, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| form.settings_page(ui));
-                })
-            });
-        };
         form.page = Page::Settings;
         form.stage_browser.open = false;
-        crate::capture::shot(&shots.join("notice.png"), |ctx| page(ctx, &mut form)).unwrap();
+        crate::capture::shot(&shots.join("notice.png"), |ctx| settings_page(ctx, &mut form)).unwrap();
         form.content_goto(&Goto::Stage("10000-Kamenak".into()));
         let picker = |ctx: &egui::Context, form: &mut Form| {
             ctx.root_ui(|root| {
@@ -605,7 +535,45 @@ mod tests {
         crate::capture::shot(&shots.join("stage-picker.png"), |ctx| picker(ctx, &mut form)).unwrap();
     }
 
-    fn detect_installer() -> &'static str {
-        crate::content::source::refused::INSTALLER
+    fn env(key: &str) -> Option<String> {
+        std::env::var_os(key).map(|v| v.to_string_lossy().into_owned())
+    }
+
+    /// A launcher over `home` on the retail data, or `None` (said) when `RBR_DATA`, `RBR_PATCH` or `RBR_NGP_PHYSICS`
+    /// is not set.
+    fn launcher(home: &Path, map: Option<u32>) -> Option<Form> {
+        let (Some(data), Some(patch), Some(ngp)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS")) else {
+            eprintln!("skipping: RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
+            return None;
+        };
+        fs::create_dir_all(home).unwrap();
+        let start = Start {
+            viewer: PathBuf::from("/bin/viewer"),
+            standalone: PathBuf::from("/bin/rbr-standalone"),
+            settings: home.join(SETTINGS_FILE),
+            data: Some(PathBuf::from(&data)),
+            patch: Some(PathBuf::from(&patch)),
+            physics: None,
+        };
+        let mut form = load(&start, Settings { map, ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
+        form.read_only = true;
+        Some(form)
+    }
+
+    /// Draws until the run ends.
+    fn finish(form: &mut Form) {
+        while form.content.busy() {
+            crate::capture::draw(|ctx| form.content_notice(ctx)).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    fn settings_page(ctx: &egui::Context, form: &mut Form) {
+        form.content_notice(ctx);
+        ctx.root_ui(|root| {
+            egui::CentralPanel::default().show(root, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| form.settings_page(ui));
+            })
+        });
     }
 }

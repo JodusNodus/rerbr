@@ -14,7 +14,7 @@ use std::time::Duration;
 use rbr_ac_tracks::btb::control::Control;
 use rbr_ac_tracks::import::{self, Error, Layout, Request, Status};
 
-use super::{Ctx, Found, Item, Kind};
+use super::{wanted, within, Ctx, Found, Item, Kind};
 use crate::archive::safe_folder;
 use crate::content::source::{Entry, Source};
 use crate::content::{stem, Goto, Outcome, Refresh};
@@ -56,15 +56,6 @@ pub fn track_dirs(entries: &[Entry]) -> Vec<Vec<String>> {
         }
     }
     found
-}
-
-/// Whether `path` lies below the folder `prefix` (names ignoring case).
-fn within(path: &[String], prefix: &[String]) -> bool {
-    path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
-}
-
-fn skipped(name: &str) -> bool {
-    name.rsplit_once('.').is_some_and(|(_, e)| SKIPPED.iter().any(|s| e.eq_ignore_ascii_case(s)))
 }
 
 /// The stage folder of a layout: `AC_` and the track's folder, and the layout's name when the track has several.
@@ -121,8 +112,7 @@ impl Kind for Ac {
 /// Unpacks the track folder `dir` of `src` and converts each of its layouts into `tracks`: an outcome for each.
 fn add_track(src: &dyn Source, dir: &[String], track: &str, tracks: &Path, ctx: &Ctx) -> Result<Vec<Outcome>, String> {
     let folder = safe_folder(track).ok_or_else(|| format!("a bad track folder name {track}"))?;
-    let wanted: Vec<&Entry> =
-        src.entries().iter().filter(|e| within(&e.path, dir) && !e.path.last().is_some_and(|f| skipped(f))).collect();
+    let wanted = wanted(src, dir, &SKIPPED);
     let pairs: Vec<(Vec<String>, Vec<String>)> =
         wanted.iter().map(|e| (e.path.clone(), e.path[dir.len()..].to_vec())).collect();
     fs::create_dir_all(tracks).map_err(|e| format!("{}: {e}", tracks.display()))?;

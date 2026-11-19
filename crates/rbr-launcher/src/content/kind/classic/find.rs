@@ -20,10 +20,6 @@ pub struct Found {
     pub rsf: bool,
 }
 
-pub fn lower(entry: &Entry) -> String {
-    entry.path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default()
-}
-
 /// `Tracks<n>.ini`'s number.
 pub fn tracks_number(file: &str) -> Option<u32> {
     let digits = file.to_ascii_lowercase().strip_prefix("tracks")?.strip_suffix(".ini")?.to_owned();
@@ -90,7 +86,7 @@ pub fn files<'a>(entries: &'a [Entry], stage: &Found) -> Vec<(&'a Entry, Vec<Str
             continue;
         }
         let rel = entry.path[stage.dir.len()..].to_vec();
-        let (first, file) = (rel[0].to_ascii_lowercase(), lower(entry));
+        let (first, file) = (rel[0].to_ascii_lowercase(), entry.file_lower());
         let settings = file.starts_with("tracksettings") && file.ends_with(".ini");
         let keep = if stage.rsf {
             !(rel.len() == 1 && (tracks_number(&file).is_some() || settings))
@@ -109,7 +105,7 @@ pub fn meta(entries: &[Entry]) -> Vec<&Entry> {
     entries
         .iter()
         .filter(|e| {
-            let file = lower(e);
+            let file = e.file_lower();
             let ini = file.ends_with(".ini") && (file.starts_with("tracks") || file.starts_with("tracksettings"));
             (ini || file.ends_with(".txt")) && e.size <= 8 << 20
         })

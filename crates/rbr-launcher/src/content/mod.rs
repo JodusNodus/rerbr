@@ -121,29 +121,18 @@ pub struct Outcome {
 }
 
 impl Outcome {
+    fn new(source: &str, kind: &'static str, result: Result<String, String>, goto: Option<Goto>) -> Outcome {
+        Outcome { source: source.to_owned(), kind, result, goto, open: None, refresh: Refresh::Nothing }
+    }
+
     pub fn added(source: &str, kind: &'static str, what: &str, place: &str, goto: Goto) -> Outcome {
-        let text = format!("Added {what} ({kind}): {place}");
-        Outcome {
-            source: source.to_owned(),
-            kind,
-            result: Ok(text),
-            goto: Some(goto),
-            open: None,
-            refresh: Refresh::Nothing,
-        }
+        Outcome::new(source, kind, Ok(format!("Added {what} ({kind}): {place}")), Some(goto))
     }
 
     pub fn failed(source: &str, kind: &'static str, reason: impl Into<String>) -> Outcome {
         let reason = reason.into();
         let reason = if reason.ends_with("cancelled") { "cancelled".to_owned() } else { reason };
-        Outcome {
-            source: source.to_owned(),
-            kind,
-            result: Err(reason),
-            goto: None,
-            open: None,
-            refresh: Refresh::Nothing,
-        }
+        Outcome::new(source, kind, Err(reason), None)
     }
 
     /// A warning that belongs to no item.

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use super::{Ctx, Found, Item, Kind};
 use crate::car_packs::{self, strip_end, Download, BANKS, MODEL, PHYSICS};
-use crate::content::source::Source;
+use crate::content::source::{Entry, Source};
 use crate::content::{stem, Goto, Outcome, Refresh};
 
 pub struct Car;
@@ -23,8 +23,7 @@ fn car_name(file: &str, end: &str) -> String {
 impl Kind for Car {
     fn detect(&self, src: &dyn Source) -> Option<Found> {
         let lower = src.name().to_ascii_lowercase();
-        let file =
-            |e: &crate::content::source::Entry| e.path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
+        let file = Entry::file_lower;
         let any = |test: &dyn Fn(&crate::content::source::Entry) -> bool| src.entries().iter().any(test);
         let (tag, label) = if src.is_dir() {
             return None;

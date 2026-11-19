@@ -8,10 +8,6 @@ pub const INSTALLER: &str = "installers can't be read: extract it with 7-Zip, th
 
 pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
     let name = path.to_string_lossy().to_ascii_lowercase();
-    let ends = |ends: &[&str]| !path.is_dir() && ends.iter().any(|e| name.ends_with(e));
-    if ends(&[".exe", ".msi"]) {
-        Some(Err(INSTALLER.into()))
-    } else {
-        None
-    }
+    let refused = !path.is_dir() && [".exe", ".msi"].iter().any(|e| name.ends_with(e));
+    refused.then(|| Err(INSTALLER.into()))
 }
