@@ -591,6 +591,8 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   area-weighted (m²) median of each over the drawn opaque materials (`material::normalise_light`, after the last
   section), clamped to 0.25..3, omitted within 2% of 1 on both; none for placeholders or materials lacking either.
   Trees as CSP cards keep their own brightness (no key). Sa Calobra down: reference 0.62/0.30 (terrain); road 1.77/1.67, cliff and rocks 1.08/1.07, boulders 0.37/0.25, walls 0.44/0.25.
+  With the sheen (`SHEEN_STRENGTH` 0.25/0.35/0.5, Sa Calobra wall view 07:35) the road reads 43/48/55 against AC's 57–59, so 0.5
+  stays; toward the sun the road is 0.8–1.0x its away-from-sun level.
 - Tried and taken out again (Roure, renders at four driveline points, midday clear, 08:15 low sun and 11:00 overcast; mean change
   of 255 levels): `ksMultilayer_fresnel_nm`'s `txDetailNM` (at the source uv * the pair `detailNMMult`) and the
   `ksPerPixelMultiMap_(AT_)NMDetail` detail layer (`txNormalDetail` at uv * `detailUVMultiplier`, `N + (1 - diffuse.a) *
