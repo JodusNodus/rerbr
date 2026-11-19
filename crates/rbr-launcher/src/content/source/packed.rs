@@ -40,7 +40,7 @@ fn open(
     list: fn(&Path) -> Result<Vec<Listed>, Fail>,
     extract: Extract,
 ) -> Option<Result<Box<dyn Source>, Fail>> {
-    let named = !path.is_dir() && path.to_string_lossy().to_ascii_lowercase().ends_with(ending);
+    let named = path.to_string_lossy().to_ascii_lowercase().ends_with(ending);
     named.then(|| {
         let listed = list(path).map_err(|e| format!("can't read it: {e}"))?;
         let entries =
@@ -58,6 +58,9 @@ pub fn open_seven(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
 }
 
 pub fn open_rar(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {
+    if path.is_dir() {
+        return None;
+    }
     open(path, ".rar", archive::rar_entries, archive::extract_rar)
 }
 
