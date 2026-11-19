@@ -99,7 +99,8 @@ fn single_layout_paths_and_explicit_reversed_ai_follow_ac_conventions() {
     }
     let reverse = root.join("reverse.ai");
     std::fs::write(&reverse, data).unwrap();
-    assert!(Input::read_with_ai(&source, ".", Some(&reverse), false, false).is_err());
+    // Gates that run the other way along the file reverse it without being asked.
+    assert!(Input::read_with_ai(&source, ".", Some(&reverse), false, false).unwrap().reversed_ai);
     let reversed = Input::read_with_ai(&source, ".", Some(&reverse), true, false).unwrap();
     assert!(reversed.reversed_ai);
     assert_eq!(reversed.line.points, input.line.points);
@@ -180,6 +181,29 @@ fn reads_every_kn5_and_both_layouts_of_the_local_track() {
         assert!(input.finish > input.start + 10_000.);
         assert_eq!(input.models.len(), 8);
     }
+}
+
+#[test]
+fn an_ai_line_running_from_the_finish_to_the_start_is_reversed() {
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let source = std::env::temp_dir().join(format!("btb-ac-backwards-{}-{stamp}", std::process::id()));
+    fixture(&source);
+    let forward = Input::read(&source, "test").unwrap();
+    assert!(!forward.reversed_ai);
+    // The same line recorded the other way: records of 20 bytes after a 16-byte header, each numbered in order.
+    let file = source.join("test/ai/fast_lane.ai");
+    let bytes = std::fs::read(&file).unwrap();
+    let mut backwards = bytes[..16].to_vec();
+    for (i, record) in bytes[16..].chunks_exact(20).rev().enumerate() {
+        backwards.extend_from_slice(&record[..16]);
+        backwards.extend_from_slice(&(i as u32).to_le_bytes());
+    }
+    std::fs::write(&file, backwards).unwrap();
+    let input = Input::read(&source, "test").unwrap();
+    assert!(input.reversed_ai);
+    assert!(input.finish > input.start + 50.);
+    assert!((input.finish - input.start - (forward.finish - forward.start)).abs() < 1.);
+    let _ = std::fs::remove_dir_all(source);
 }
 
 #[test]

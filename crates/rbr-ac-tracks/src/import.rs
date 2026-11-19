@@ -151,8 +151,9 @@ pub fn import(request: &Request, control: &Control) -> Result<Imported, Error> {
     control.say(&format!("reading {}", track.display()));
     let (input, circuit) = match Input::read(track, layout) {
         Ok(input) => (input, false),
-        // A loop of AI points with no gates is a circuit; any other failure is the source's.
-        Err(first) if first.starts_with(stage::MISSING_GATE) => {
+        // A loop of AI points with no gates, or gates that do not run along it, is a circuit; any other failure is the
+        // source's.
+        Err(first) if first.starts_with(stage::MISSING_GATE) || first == stage::BACKWARDS_LOOP => {
             let input = Input::read_with_ai(track, layout, None, false, true).map_err(|_| Error::Unsupported(first))?;
             control.say("no timing gates; importing the closed AI loop as a circuit");
             (input, true)
