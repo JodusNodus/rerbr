@@ -317,11 +317,14 @@ const PART_NEAR: f32 = 0.3;
 pub const LENS: u8 = 8;
 /// How near a switched lit part must come to a lamp's point to show it, m ([`bare`]).
 const SHOWN_NEAR: f32 = 0.25;
+/// The least area along the car of a switched lit part that shows its lamp, m² ([`projected_area`]; [`bare`]): the
+/// Yaris Rally2's tail parts are one triangle seen edge on (0).
+pub const SHOWN_AREA: f32 = 1e-4;
 /// How near a lamp face block must come to a bare lamp's point to be its lens, m ([`lens_of`]).
 const LENS_REACH: f32 = 0.15;
 
 /// The lamps of `points` that can light but that no switched lit part of their kind comes near (`lit_parts`: each
-/// such part's kind and vertices, in the points' space). The game shows them by their flare alone, which we do not
+/// such part's kind and vertices, in the points' space, of the parts of at least [`SHOWN_AREA`]). The game shows them by their flare alone, which we do not
 /// draw: a pod or tail lamp with no lit mesh (21 of 50 cars' pods and ramps, the Alpine A110's and Delta HF 4WD's
 /// tails, 2026-11-19), a lit sliver (the Yaris Rally2's tails), a lit strip inside a housing the game always draws
 /// (the Fiesta Rally2's tails). Their lenses glow instead ([`lens_of`]).

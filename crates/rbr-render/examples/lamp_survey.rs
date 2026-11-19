@@ -106,11 +106,15 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
         .iter()
         .zip(&car.damage)
         .filter_map(|(mesh, damage)| {
-            let switch = damage.lamp.filter(|s| s.lit && !s.glass)?;
             let draws: Vec<_> = mesh.draws.iter().filter(|d| d.state.shade.is_some_and(|s| s.glow.is_some())).collect();
-            if draws.is_empty() {
-                return None;
-            }
+            let glow_kind = draws.first()?.state.shade?.glow_kind;
+            let lens = glow_kind & lights::LENS != 0;
+            let switch = damage.lamp.filter(|s| (s.lit || lens) && !s.glass)?;
+            let kind = if lens {
+                KINDS.into_iter().find(|k| k.number() == u32::from(glow_kind & !lights::LENS))?
+            } else {
+                switch.kind
+            };
             let positions: Vec<Vec3> = mesh.vertices.iter().map(|v| Vec3::from(v.position)).collect();
             let centre = positions.iter().sum::<Vec3>() / positions.len().max(1) as f32;
             let glow = draws[0].state.shade.and_then(|s| s.glow)?;
@@ -120,12 +124,12 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
                 texel_colour(car, mesh, &draws)
             };
             Some(Glow {
-                kind: switch.kind,
+                kind,
                 name: mesh_name(car, mesh),
                 vertices: mesh.vertices.len(),
                 area: lights::projected_area(&positions, &mesh.indices, Vec3::Z),
-                steady: switch.steady,
-                lens: draws[0].state.shade.is_some_and(|s| s.glow_kind & lights::LENS != 0),
+                steady: switch.steady || lens,
+                lens,
                 centre,
                 positions,
                 colour,
@@ -166,7 +170,13 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
                 g.centre.x,
                 g.centre.y,
                 g.centre.z,
-                if g.steady { "steady" } else { "switched" },
+                if g.lens {
+                    "lens"
+                } else if g.steady {
+                    "steady"
+                } else {
+                    "switched"
+                },
                 g.vertices,
                 g.area,
             ));
