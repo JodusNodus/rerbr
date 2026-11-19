@@ -1,9 +1,9 @@
 //! Lists each car's lamps as a night drive loads them (`car::load_lit`): per kind, the lamp points that light when
 //! switched on (headlights on main beam, brake pressed, reverse engaged), and the parts that glow, with their size and
 //! colour, then flags what reads as a broken lamp. Usage: `lamp_survey [-v] [CAR...]` (retail folder names, RSF ids).
-//! Flags: `no-light` (no point lights the stage), `no-glow` (no part glows), `past-8` (a lit lamp beyond the
-//! renderer's first eight: no light, and an always-drawn part near only it stays dark), `steady-dark` (an
-//! always-drawn lit part with no lit lamp of its kind among the first eight within 1.5 m), `white` (a tail or brake
+//! Flags: `no-light` (no point lights the stage), `no-glow` (no part glows), `dropped` (light of the kind lost when
+//! the lamps are fitted to the renderer's eight, `lights::fit`), `steady-dark` (an always-drawn lit part with no
+//! fitted lamp of its kind within reach: 1.5 m, 0.3 m for a lens, plus the lamp's spread), `white` (a tail or brake
 //! part whose texels at its triangles' centres are not red; a pale red that the glow drives to white passes), `dim`
 //! (glowing texels under a quarter bright), `same-place` (two lamps of a kind at one point), `bare` (a lit lamp with
 //! no glowing part within 0.25 m: the game shows it by its flare alone, which we do not draw), `wrong-way` (a lamp
@@ -22,6 +22,7 @@ use std::path::PathBuf;
 const KINDS: [Kind; 4] = [Kind::Front, Kind::Tail, Kind::Brake, Kind::Reverse];
 const MAX_LAMPS: usize = 8;
 const LAMP_NEAR: f32 = 1.5;
+const LENS_NEAR: f32 = 0.3;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let data = Data::from_env().ok_or("RBR_DATA is not set")?;
@@ -85,6 +86,7 @@ struct Glow {
     vertices: usize,
     area: f32,
     steady: bool,
+    lens: bool,
     centre: Vec3,
     positions: Vec<Vec3>,
     colour: Option<[f32; 4]>,
@@ -96,7 +98,9 @@ const GLOW_NEAR: f32 = 0.25;
 fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
     let on = Inputs { brake: 1.0, reverse: true, game: None, headlights: Headlights::Main };
     let lit: Vec<_> = car.lamp_points.iter().filter(|p| lights::on(&p.light, on)).collect();
-    let first: Vec<_> = lit.iter().take(MAX_LAMPS).collect();
+    let lamps: Vec<_> =
+        lit.iter().map(|p| lights::lamp(&p.light, p.position, p.normal, Vec3::NEG_Z, Vec3::Y, 1.0, true)).collect();
+    let fitted = lights::fit(&lamps, MAX_LAMPS);
     let glows: Vec<Glow> = car
         .meshes
         .iter()
@@ -121,6 +125,7 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
                 vertices: mesh.vertices.len(),
                 area: lights::projected_area(&positions, &mesh.indices, Vec3::Z),
                 steady: switch.steady,
+                lens: draws[0].state.shade.is_some_and(|s| s.glow_kind & lights::LENS != 0),
                 centre,
                 positions,
                 colour,
@@ -135,7 +140,10 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
     for kind in KINDS {
         let points: Vec<_> = car.lamp_points.iter().filter(|p| p.light.kind == kind).collect();
         let lighting: Vec<_> = lit.iter().filter(|p| p.light.kind == kind).collect();
-        let past: Vec<_> = lit.iter().skip(MAX_LAMPS).filter(|p| p.light.kind == kind).collect();
+        let light =
+            |ls: &[lights::Lamp]| ls.iter().filter(|l| l.kind == kind).map(|l| l.colour.element_sum()).sum::<f32>();
+        let dropped = light(&fitted) < 0.999 * light(&lamps);
+        let merged = lamps.iter().filter(|l| l.kind == kind).count() - fitted.iter().filter(|l| l.kind == kind).count();
         let parts: Vec<_> = glows.iter().filter(|g| g.kind == kind).collect();
         let k = format!("{kind:?}");
         lines.push(format!(
@@ -147,7 +155,7 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
                 .map(|p| format!("{}{}", p.light.part, if p.light.fixed.is_some() { "*" } else { "" }))
                 .collect::<Vec<_>>()
                 .join(" "),
-            if past.is_empty() { String::new() } else { format!(" ({} past 8)", past.len()) }
+            if merged == 0 { String::new() } else { format!(" ({merged} merged or dropped)") }
         ));
         for g in &parts {
             let colour =
@@ -170,10 +178,13 @@ fn survey(car: &Car) -> (Vec<String>, Vec<String>) {
         if parts.is_empty() && needed {
             flags.push(format!("no-glow {k}"));
         }
-        if !past.is_empty() {
-            flags.push(format!("past-8 {k}"));
+        if dropped {
+            flags.push(format!("dropped {k}"));
         }
-        let near = |g: &Glow| first.iter().any(|p| p.light.kind == kind && p.position.distance(g.centre) < LAMP_NEAR);
+        let near = |g: &Glow| {
+            let reach = |l: &lights::Lamp| if g.lens { LENS_NEAR } else { LAMP_NEAR } + l.spread;
+            fitted.iter().any(|l| l.kind == kind && g.positions.iter().any(|v| v.distance(l.position) < reach(l)))
+        };
         if parts.iter().any(|g| g.steady && !near(g)) {
             flags.push(format!("steady-dark {k}"));
         }
