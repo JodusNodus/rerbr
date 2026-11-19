@@ -207,6 +207,8 @@ pub struct Scene {
     pub driveline: Vec<[f32; 3]>,
     /// `settings.ini` `sunDirection`, the direction the sunlight travels (pointing down).
     pub sun_direction: Option<[f32; 3]>,
+    /// `settings.ini` `[ReRbrAir]`.
+    pub air: Option<track::Air>,
     pub materials: Vec<Material>,
     pub meshes: Vec<Mesh>,
     pub objects: Vec<Object>,
@@ -219,7 +221,8 @@ impl Scene {
         let track = Track::open(folder)?;
         let spawn = track.spawn()?;
         let driveline = track.driveline()?;
-        let sun = track.settings()?.sun_direction;
+        let settings = track.settings()?;
+        let (sun, air) = (settings.sun_direction, settings.air);
         let objects = track.objects()?;
         let files = TextureFiles::open(folder)?;
         let textures = Textures::list(&files.0)?;
@@ -270,6 +273,7 @@ impl Scene {
                 .map(|p| [p.position[0] as f32, p.position[2] as f32, p.position[1] as f32])
                 .collect(),
             sun_direction: sun.map(|s| s.map(|v| v as f32)),
+            air,
             materials,
             meshes,
             objects: placed,

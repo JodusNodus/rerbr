@@ -23,7 +23,7 @@ const MARCH_LOBE: f32 = 3.7;
 /// The sunlit air's glow about the sun, added (ours): the sun's colour times this per metre of optical depth, in a
 /// narrow forward lobe (`GLOW_FORWARD` in `light_shafts.wgsl`), through air at least [`GLOW_AIR`] thick per metre, so
 /// that the sun shines through the gaps in the canopy in rays while open air away from the sun is left as it is.
-const MARCH_GLOW: f32 = 0.06;
+const MARCH_GLOW: f32 = 0.03;
 const GLOW_AIR: f32 = 1.0 / 3000.0;
 /// The share of the sky's light the mist scatters (`MIST_SKY` in `sky_lut.wgsl`): under a clear sky, and as the
 /// whole fog.
