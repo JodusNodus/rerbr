@@ -707,7 +707,9 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // tarmac 1, gravel 0.5, snow -1), fading out at the road's edge; it replaces the highlight there.
     if (own && sheen_draw() && !wet_road) {
         let road = smoothstep(0.6, 0.9, v.wet.x) * SHEEN_STRENGTH;
-        colour = mix(colour, with_sheen(base, lit, front, sun_seen), road);
+        if (road > 0.0) {
+            colour = mix(colour, with_sheen(base, lit, front, sun_seen), road);
+        }
     }
     // The game's highlight off the road's specular map: the stones' detail on gravel, so kept beside our reflection.
     // With our light, as strong as the direct light against noon's: none once the sun has set and the moon is down.

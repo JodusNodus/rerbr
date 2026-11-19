@@ -389,6 +389,77 @@ pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle], by_text
     }
 }
 
+/// How far a road's tarmac reaches over the road material the collision calls gravel or dirt for the sheen, metres, and the share it gives it ([`mark_sheen`]).
+const SHOULDER_REACH: f32 = 8.0;
+const SHOULDER_SHEEN: f32 = 1.0;
+/// How far above tarmac, metres, and below it a decal may lie to take its sheen ([`mark_sheen`]).
+const DECAL_REACH: [f32; 2] = [0.5, 0.15];
+
+/// Marks what the BTB road sheen (`Surface::sheen`, `ReRbrSheen`) needs beyond [`mark_roads`], over a road ([`roads`]):
+/// the road material the collision calls gravel or dirt (0.5), within [`SHOULDER_REACH`] of tarmac, takes
+/// [`SHOULDER_SHEEN`] (Roure's shoulders and a repair patch showed dark beside the sheened tarmac), and a draw that is not the ground (a patch,
+/// lane markings, a cut-out or blended decal; they are not on the collision within the ground's reach) takes the
+/// tarmac's 1 where the collision surface under a vertex is tarmac, within [`DECAL_REACH`] and beside the driveline.
+pub(crate) fn mark_sheen(meshes: &mut [Mesh], collision: &Ground, roads: &Roads) {
+    const CELL: f32 = SHOULDER_REACH;
+    let mut tarmac: HashMap<(i32, i32), Vec<[f32; 3]>> = HashMap::new();
+    for mesh in meshes.iter() {
+        for i in ground_vertices(mesh).collect::<HashSet<_>>() {
+            let v = &mesh.vertices[i];
+            if v.wet >= 1.0 {
+                tarmac.entry(cell_of(v.position, CELL)).or_default().push(v.position);
+            }
+        }
+    }
+    let near = |p: [f32; 3]| {
+        let (x, z) = cell_of(p, CELL);
+        (-1..=1)
+            .flat_map(|dx| (-1..=1).map(move |dz| (x + dx, z + dz)))
+            .filter_map(|c| tarmac.get(&c))
+            .flatten()
+            .any(|t| (t[0] - p[0]).hypot(t[2] - p[2]) < SHOULDER_REACH && (t[1] - p[1]).abs() < ROAD_REACH)
+    };
+    let line = Line::new(&roads.driveline);
+    let marks = in_parallel(meshes, |mesh| {
+        let mut marks = HashMap::<usize, f32>::new();
+        for draw in &mesh.draws {
+            let sheen = draw.state.surface.is_some_and(|s| s.sheen.is_some());
+            let on_road = draw.state.textures[0].is_some_and(|t| roads.textures.contains(&t));
+            if !sheen || mesh.anchor != Anchor::World {
+                continue;
+            }
+            for &i in &mesh.indices[draw.indices.clone()] {
+                let Some(v) = mesh.vertices.get(i as usize) else { continue };
+                if marks.contains_key(&(i as usize)) {
+                    continue;
+                }
+                if draw.state.ground {
+                    if on_road && v.wet > 0.0 && v.wet < 1.0 && near(v.position) {
+                        marks.insert(i as usize, SHOULDER_SHEEN.max(v.wet));
+                    }
+                } else if v.wet <= 0.0 && line.beside(Vec3::from(v.position)) {
+                    let [x, y, z] = v.position;
+                    let hit = collision.below([x, z, y]);
+                    let tarmac = hit.is_some_and(|h| {
+                        FILM.get(h.surface as usize) == Some(&1.0)
+                            && y - h.z < DECAL_REACH[0]
+                            && h.z - y < DECAL_REACH[1]
+                    });
+                    if tarmac {
+                        marks.insert(i as usize, 1.0);
+                    }
+                }
+            }
+        }
+        marks
+    });
+    for (mesh, marks) in meshes.iter_mut().zip(marks) {
+        for (i, wet) in marks {
+            mesh.vertices[i].wet = mesh.vertices[i].wet.max(wet);
+        }
+    }
+}
+
 /// How far above the collision surface, metres, a ground triangle's centre may lie and still be the ground itself
 /// (not a wall, a roof or a bridge deck over it).
 const GROUND_REACH: f32 = 0.6;

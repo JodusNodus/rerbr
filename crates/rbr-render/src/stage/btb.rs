@@ -117,8 +117,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 power: material.specular_power.max(1.0),
                 map: texture(&material.specular),
             });
-            // The sheen on the opaque draws too (a road is no cut-out).
-            let sheen = material.sheen.filter(|_| opaque).map(|roughness| Sheen { roughness });
+            // The sheen on cut-out and blended draws too (road patches and markings), not on foliage lit as facing the sky.
+            let sheen = material.sheen.filter(|_| !material.technique.up).map(|roughness| Sheen { roughness });
             let surface = (normal.is_some() || highlight.is_some() || sheen.is_some()).then_some(Surface {
                 normal,
                 highlight,
