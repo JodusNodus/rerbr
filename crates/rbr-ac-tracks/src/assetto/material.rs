@@ -277,7 +277,8 @@ impl TextureBank {
         self.count_extras(&extras);
         Ok(extras)
     }
-    fn count_extras(&mut self, extras: &Extras) {
+    /// Counts a section written with `extras` again: a material's tiles share its [`Extras`].
+    pub fn count_extras(&mut self, extras: &Extras) {
         self.normal_mapped += usize::from(extras.normal.is_some());
         self.highlighted += usize::from(extras.highlight.is_some());
         self.uv_scaled_normals += usize::from(extras.normal.is_some() && extras.bump_scale.is_some());
@@ -438,7 +439,7 @@ fn placeholder_colour(name: &str) -> [f32; 4] {
 
 /// What a section carries besides its diffuse, for ReRBR's renderer: files in the textures, and the highlight's
 /// `(ksSpecular, ksSpecularEXP)`.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Extras {
     pub normal: Option<String>,
     pub specular: Option<String>,
@@ -451,6 +452,7 @@ pub struct Extras {
 }
 
 /// A detail normal layer: a file in the textures, `ReRbrDetailScale` and `ReRbrDetailBlend`.
+#[derive(Clone)]
 pub struct Detail {
     pub texture: String,
     pub scale: [f32; 2],

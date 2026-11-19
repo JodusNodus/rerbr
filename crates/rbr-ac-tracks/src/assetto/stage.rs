@@ -933,6 +933,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         // World-space multilayer ground gets textures per tile, at a density falling off with distance from the road.
         let mut tiles = tile_bakes(&model, &builders, origin, &line);
         let mut names_of = BTreeMap::new();
+        let mut tile_extras = BTreeMap::<usize, material::Extras>::new();
         let mut drawn = Vec::new();
         for (i, (key, mut b)) in builders.into_iter().enumerate() {
             let mat_index = key.1;
@@ -942,7 +943,14 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                let extras = bank.tile_extras(&model, mat_index);
+                // Tiles of one material share its extras (and its normal map's copy).
+                let extras = match tile_extras.get(&mat_index) {
+                    Some(extras) => {
+                        bank.count_extras(extras);
+                        extras.clone()
+                    }
+                    None => tile_extras.entry(mat_index).or_insert_with(|| bank.tile_extras(&model, mat_index)).clone(),
+                };
                 if !extras.bump_uv {
                     b.uvs2 = None;
                 }
