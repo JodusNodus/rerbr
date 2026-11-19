@@ -1213,12 +1213,16 @@ mod tests {
     fn the_surface_and_length_filters_narrow_every_list() {
         let rows = some();
         let list = |filter: Filter| count(&lines(&rows, &Collection::All, &filter, Sort::Name, &[], &[]));
-        assert_eq!(list(Filter { surface: Some(1), ..Filter::default() }), 1);
-        assert_eq!(list(Filter { surface: Some(2), ..Filter::default() }), 2);
-        assert_eq!(list(Filter { length: Length::Short, ..Filter::default() }), 1);
-        assert_eq!(list(Filter { length: Length::Medium, ..Filter::default() }), 1);
-        assert_eq!(list(Filter { length: Length::Long, ..Filter::default() }), 2);
-        assert_eq!(list(Filter { length: Length::Longest, ..Filter::default() }), 0);
+        for (surface, length, n) in [
+            (Some(1), Length::Any, 1),
+            (Some(2), Length::Any, 2),
+            (None, Length::Short, 1),
+            (None, Length::Medium, 1),
+            (None, Length::Long, 2),
+            (None, Length::Longest, 0),
+        ] {
+            assert_eq!(list(Filter { surface, length, ..Filter::default() }), n, "{surface:?} {length:?}");
+        }
         assert!(Length::Short.contains(Some(3.9)) && !Length::Short.contains(None) && Length::Any.contains(None));
     }
 
