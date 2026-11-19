@@ -108,6 +108,8 @@ const FOOT: f32 = 0.0;
 /// only its hue.
 const GRASS_MARK: f32 = 4.0;
 const BRIGHT: [f32; 2] = [0.2, 2.5];
+/// A converted stage's: its atlas is much brighter than its dark ground, so the ratio goes lower.
+const FX_BRIGHT: [f32; 2] = [0.01, 2.5];
 /// The cards' brightness against the ground's: lit as a dense field (`own_light` in `shader.wgsl`), they take less light
 /// than the ground. With the ground between them thatched darker (`thatch` there) the field keeps about the ground's
 /// brightness, the blades lighter than the gaps (RSF Helette 580, Wythop 532, Gabiria 450).
@@ -131,8 +133,8 @@ const LUSH_SHARE: f32 = 0.15;
 /// is darker than the ground ([`SHADE`] lower): Assetto Corsa's atlas blades are tinted by the ground and read as brown
 /// olive against it (Sa Calobra's verge at dawn: blade luminance 0.75 of the ground's, blue over green 0.86 against the
 /// ground's 0.68).
-const FX_SATURATION: f32 = 0.5;
-const FX_SHADE: f32 = 0.45;
+const FX_SATURATION: f32 = 0.3;
+const FX_SHADE: f32 = 1.2;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
@@ -560,7 +562,7 @@ impl Field {
                     (size(pick), size((pick * 53.0).fract()));
                 let angle = turn * std::f32::consts::PI;
                 let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
-                let radius = (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS);
+                let radius = if self.fx.is_some() { width * 0.25 } else { (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS) };
                 if !self.supported(g, at, radius) {
                     continue;
                 }
@@ -579,6 +581,7 @@ impl Field {
                 let lean_angle = lean_turn * std::f32::consts::TAU;
                 // Each clump's cards a little brighter or darker than the ground's.
                 let shade = if converted { FX_SHADE } else { SHADE };
+                let bounds = if converted { FX_BRIGHT } else { BRIGHT };
                 let bright = shade * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
                 let card = Card {
                     at,
@@ -586,7 +589,7 @@ impl Field {
                     across,
                     lean: Vec2::new(lean_angle.cos(), lean_angle.sin()) * lean * LEAN * height,
                     height,
-                    bright: bright.clamp(BRIGHT[0], BRIGHT[1]),
+                    bright: bright.clamp(bounds[0], bounds[1]),
                     hue: [hue.x as u8, hue.y as u8, hue.z as u8],
                     picture,
                     light: Light::blend(&corners, [1.0 - a - b, a, b]),
