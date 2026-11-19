@@ -908,7 +908,7 @@ mod tests {
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::physics::PhysicsProfile;
     use crate::settings::{load, Settings, SEQUENTIAL};
-    use crate::{install, Paths, Start, SETTINGS_FILE};
+    use crate::{install, test_start as start, Paths, Start, SETTINGS_FILE};
     use rbr_formats::data::Data;
     use rbr_gameplay::race_options::{DamageLevel, DriverAids};
     use rbr_gameplay::weather::Season;
@@ -916,18 +916,6 @@ mod tests {
     use rbr_render::hud::Parts;
     use rbr_render::shifter::Engagement;
     use std::path::PathBuf;
-
-    /// The tests' `Start`: the canned viewer and standalone, the scratch `settings` file, and the game folders.
-    fn start(settings: PathBuf, data: Option<PathBuf>, patch: Option<PathBuf>) -> Start {
-        Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings,
-            data,
-            patch,
-            physics: None,
-        }
-    }
 
     /// A non-empty environment variable.
     fn env(key: &str) -> Option<String> {

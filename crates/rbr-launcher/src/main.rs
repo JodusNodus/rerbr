@@ -203,6 +203,13 @@ pub(crate) fn test_dir(name: &str) -> PathBuf {
     dir
 }
 
+/// The tests' `Start`: the canned viewer and standalone, the scratch `settings` file, and the game folders.
+#[cfg(test)]
+pub(crate) fn test_start(settings: PathBuf, data: Option<PathBuf>, patch: Option<PathBuf>) -> Start {
+    let (viewer, standalone) = (PathBuf::from("/bin/viewer"), PathBuf::from("/bin/rbr-standalone"));
+    Start { viewer, standalone, settings, data, patch, physics: None }
+}
+
 const SETTINGS_FILE: &str = "launcher-settings.ini";
 /// The folder in the player's folder with NGP's own `SavedGames/` and `GhostCars/` (ours).
 const NGP_RECORDS: &str = "NGP";

@@ -79,12 +79,11 @@ impl Form {
             kit::body(ui, |ui| {
                 ui.columns(2, |columns| {
                     self.game_column(&mut columns[0]);
-                    let ffb_tyres = &mut self.ffb.tyres;
                     crate::physics::experimental_section(
                         &mut columns[1],
                         &mut self.physics,
                         self.session_physics,
-                        ffb_tyres,
+                        &mut self.ffb.tyres,
                     );
                 });
             })

@@ -362,7 +362,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use crate::settings::{load, Settings};
-    use crate::{Form, Start, SETTINGS_FILE};
+    use crate::{Form, SETTINGS_FILE};
 
     fn write(path: PathBuf, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -403,13 +403,8 @@ mod tests {
         std::fs::create_dir_all(&home).unwrap();
         crate::codriver_packs::import(&home, &download, &std::sync::atomic::AtomicBool::new(false)).unwrap();
         crate::codriver_packs::import(&home, &notes_src, &std::sync::atomic::AtomicBool::new(false)).unwrap();
-        let start_in = |home: &Path| Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: home.join(SETTINGS_FILE),
-            data: Some(PathBuf::from(&data)),
-            patch: Some(PathBuf::from(&patch)),
-            physics: None,
+        let start_in = |home: &Path| {
+            crate::test_start(home.join(SETTINGS_FILE), Some(data.clone().into()), Some(patch.clone().into()))
         };
         // The owned packs drive when chosen, over the game folder's plugin.
         let settings = Settings {
@@ -503,14 +498,7 @@ mod tests {
         let no_cancel = std::sync::atomic::AtomicBool::new(false);
         crate::codriver_packs::import(&home, &download, &no_cancel).unwrap();
         crate::codriver_packs::import(&home, &notes_src, &no_cancel).unwrap();
-        let start = Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: home.join(SETTINGS_FILE),
-            data: Some(PathBuf::from(&data)),
-            patch: Some(PathBuf::from(&patch)),
-            physics: None,
-        };
+        let start = crate::test_start(home.join(SETTINGS_FILE), Some(data.into()), Some(patch.into()));
         let settings = Settings {
             map: Some(54),
             ngp_physics: Some(ngp),

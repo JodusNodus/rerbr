@@ -341,12 +341,12 @@ impl Form {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use super::*;
     use crate::content::kind::btb::tests::{synthetic_stage, write};
     use crate::settings::{load, Settings};
-    use crate::{Start, SETTINGS_FILE};
+    use crate::SETTINGS_FILE;
 
     /// The Add through a loaded launcher: a stage folder and a co-driver folder dropped together are added, the stage
     /// list and the co-drivers read again; and the Add content section, the notice and the drop hint drawn offscreen
@@ -547,14 +547,7 @@ mod tests {
             return None;
         };
         fs::create_dir_all(home).unwrap();
-        let start = Start {
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: home.join(SETTINGS_FILE),
-            data: Some(PathBuf::from(&data)),
-            patch: Some(PathBuf::from(&patch)),
-            physics: None,
-        };
+        let start = crate::test_start(home.join(SETTINGS_FILE), Some(data.into()), Some(patch.into()));
         let mut form = load(&start, Settings { map, ngp_physics: Some(ngp), ..Settings::default() }).unwrap();
         form.read_only = true;
         Some(form)
