@@ -288,7 +288,8 @@ struct Plan {
 }
 
 /// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the
-/// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha.
+/// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha. The baked AO
+/// of a converted stage starts as the vertex's occlusion ([`crate::sky_occlusion::baked_occlusion`]).
 fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun: Vec3) -> Vec<Vertex> {
     let uv = |set: Option<usize>, i: usize| {
         set.and_then(|s| mesh.uvs.get(s)).and_then(|uvs| uvs.get(i)).copied().unwrap_or([0.0; 2])
@@ -310,7 +311,7 @@ fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun
                     let [u, v] = uv(Some(s), i);
                     [u, v, 1.0]
                 }),
-                occlusion: 0.0,
+                occlusion: mesh.occlusion.get(i).map_or(0.0, |&ao| crate::sky_occlusion::baked_occlusion(ao)),
                 sky_dir: 0,
                 bounce: [0; 2],
                 wet: 0.0,

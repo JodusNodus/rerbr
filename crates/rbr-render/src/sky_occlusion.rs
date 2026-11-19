@@ -24,6 +24,19 @@ const BACK: f32 = 600.0;
 /// The tiles' maps drawn at once.
 pub(crate) const BATCH: usize = 8;
 
+/// A converted stage's baked vertex AO (`rbr_btb::scene::Mesh::occlusion`: Custom Shaders Patch's, from Assetto
+/// Corsa tracks; negative for none) as the vertex's starting [`Vertex::occlusion`](crate::stage::Vertex::occlusion):
+/// `1 - ao`, at least 0.001 so that a vertex that has some shows, 0 for none. `finish` in `sky_occlusion.wgsl` keeps
+/// the greater of it and the computed one, so the baked contact shade the sky pass is too coarse for stays and nothing
+/// brightens; past the computed tiles it stands alone. `RERBR_VAO=off` leaves it out, for comparisons.
+pub fn baked_occlusion(ao: f32) -> f32 {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if ao < 0.0 || *OFF.get_or_init(|| std::env::var("RERBR_VAO").is_ok_and(|v| v == "off")) {
+        return 0.0;
+    }
+    (1.0 - ao.min(1.0)).max(0.001)
+}
+
 /// Directions toward the sky ([`spiral`]).
 pub(crate) fn directions() -> Vec<Vec3> {
     spiral(DIRECTIONS)
@@ -128,6 +141,14 @@ impl Tiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn baked_ao_starts_as_its_occlusion() {
+        assert_eq!(baked_occlusion(-1.0), 0.0);
+        assert!((baked_occlusion(0.25) - 0.75).abs() < 1e-6);
+        // Open ground is a vertex that has AO, not one that has none.
+        assert_eq!(baked_occlusion(1.0), 0.001);
+    }
 
     #[test]
     fn the_directions_cover_the_sky_evenly() {

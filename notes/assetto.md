@@ -608,3 +608,24 @@ UV set), `ReRbrDetailNormal`, `ReRbrDetailScale`, `ReRbrDetailBlend` (a detail n
   (`btb-shots.py --enhance all`, 11:00, 1600x900, old against new conversion): Roure's walls, poles, rocks and the sunlit road, Sa
   Calobra's hills gain grain and relief (RMSE 1.4 to 4.5 of 255; 0.4 to 7 % of the pixels change by more than 8); nothing black, no tiling
   error, no sparkle. Not driven.
+
+## CSP vertex ambient occlusion, 2026-11-19
+
+- A `.vao-patch` is a zip (`Config.ini`, one of `Patch_v5.data`, `Patch_v4.data`, `Patch.data`, preferred in that order). Its data is
+  records of u32 name length, name, u32 kind, the mesh's raw KN5 vertex 0 (3 f32; tells equal names apart), u32 vertex count, payload.
+  Kind 1 is one AO value per vertex (used); kind 0 is three (used averaged, legacy only); 2 normals, 3 a secondary set, 4 extra samples
+  (13 bytes each, `@@__EXTRA_AO@`) and `@@` names are stepped over. Components are a byte (v4, v5) or a half (legacy).
+  Written from the writers' sources (CustomTracksBakery, acc-bakeryoptix, newksEditor's reader).
+- Decode (`assetto/vao.rs`): v5 `(b/255)²`, v4 `b/255`, legacy half then `clamp((OPACITY·v + 1 − OPACITY)·BRIGHTNESS, 0, 1)^GAMMA` from
+  `Config.ini` `[LIGHTING]` (defaults 0.85, 1.1, 1: newksEditor's). **Unverified against CSP itself**; the legacy rule is the least sure.
+  KN5-embedded AO (tangent lengths, none of 589 KN5s uses it) and the `ver.<mesh>.*` records after a KN5's node tree are ignored.
+- Where: the layout's `models_<layout>.vao-patch` (`models.vao-patch`), `<kn5 stem>.vao-patch` beside each model, else CSP's
+  `<AC root>/extension/vao-patches/<track folder>.vao-patch`. A mesh matches by name, vertex count and raw vertex 0 (|Δ| < 1e-3), else by
+  name and count when only one fits. `kn5::Mesh::first` keeps vertex 0 untransformed.
+- Output: `btb::geometry::Triangle::ao` (per corner; none is not open) → `Builder` (part of the vertex key, -1 for none) → `XMesh` writes
+  a `DeclData` with one FLOAT1 element, usage COLOR, index 7, value 0..1 or -1, only when a vertex has AO, so stages without AO are byte
+  identical. Tile bakes keep it. `rbr_btb::scene::Mesh::occlusion` reads it. `ac-conversion.json` `vao`: patches (file, version,
+  records, matched), `meshes_with_ao`, `drawn_triangles_with_ao`, `share_of_drawn_triangles` (of all drawn, tree cards included).
+- Measured: Roure rbcl (v5) 237/259 records, 99.3% of drawn triangles; Sa Calobra up (legacy, kind 1 and 0) 248/248, 99.99%
+  (kind 1 alone gave 91% on the first survey). `Objects.zip` +3.7% (114.3 → 118.6 MB) and +4.1% (95.3 → 99.2 MB); import 55 → 44 s
+  and 51 → 29 s (noisy, other load; CPU time +4% on Roure); largest collision cell unchanged. The renderer's use: [renderer.md](renderer.md).

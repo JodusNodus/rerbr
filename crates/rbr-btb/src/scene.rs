@@ -178,6 +178,9 @@ pub struct Mesh {
     pub uvs: Vec<Vec<[f32; 2]>>,
     /// The `VertLerp` weight per vertex, empty when the mesh carries none.
     pub blend: Vec<f32>,
+    /// Baked ambient occlusion per vertex (1 open, 0 shut, negative where the vertex has none), empty when the mesh
+    /// carries none: a FLOAT1 `DeclData` element of usage COLOR, index 7.
+    pub occlusion: Vec<f32>,
     /// Triangle list.
     pub indices: Vec<u32>,
     /// Index into [`Scene::materials`]; `None` when the mesh's material has no `materials.ini` section.
@@ -577,7 +580,7 @@ fn parse_meshes<R: Read + std::io::Seek>(
 }
 
 /// The `.x` file as a [`Mesh`].
-fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Result<Mesh, String> {
+pub fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Result<Mesh, String> {
     let fail = |e: xfile::Error| format!("{name}.x: {e}");
     let file = xfile::parse(bytes).map_err(fail)?;
     let root = *file.objects_of_type("Mesh").first().ok_or_else(|| format!("{name}.x: no Mesh"))?;
@@ -622,6 +625,7 @@ fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Re
     let mut tangents = Vec::new();
     let mut binormals = Vec::new();
     let mut blend = Vec::new();
+    let mut occlusion = Vec::new();
     let mut extra_uvs: Vec<(u32, Vec<[f32; 2]>)> = Vec::new();
     for decl in &mesh.decl {
         let Some(stride) = decl.stride_dwords().filter(|&s| s > 0 && decl.data.len() == s * count) else { continue };
@@ -635,6 +639,7 @@ fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Re
             match (element.usage, element.ty) {
                 (6, 2) => tangents = read(3).iter().map(|v| [v[0], v[1], v[2]]).collect(),
                 (7, 2) => binormals = read(3).iter().map(|v| [v[0], v[1], v[2]]).collect(),
+                (10, 0) if element.usage_index == 7 => occlusion = read(1).iter().map(|v| v[0]).collect(),
                 (1, 0) => blend = read(1).iter().map(|v| v[0]).collect(),
                 (5, 1) => extra_uvs.push((element.usage_index, read(2).iter().map(|v| [v[0], v[1]]).collect())),
                 _ => {}
@@ -669,6 +674,7 @@ fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Re
         binormals,
         uvs,
         blend,
+        occlusion,
         indices,
         material: texture.and_then(|t| materials.get(&t.to_lowercase()).copied()),
     })
