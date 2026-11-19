@@ -40,6 +40,25 @@ pub struct Input {
     pub ai_trimmed_points: usize,
 }
 
+/// The ground under a driveline point within 3 m of its height. A collision mesh may have a gap a few centimetres
+/// wide under the line (Nagao: 36 of 2 526 points, every one with ground within 0.3 m), so the nearest ground within
+/// half a metre stands in for it.
+fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)> {
+    let near = |x: f64, y: f64| ground.ground(x, y, p[2]).filter(|(z, _)| (*z - p[2]).abs() < 3.);
+    near(p[0], p[1]).or_else(|| {
+        [0.1, 0.25, 0.5].into_iter().find_map(|r| {
+            (0..8).find_map(|k| {
+                let a = f64::from(k) * std::f64::consts::FRAC_PI_4;
+                near(p[0] + r * a.cos(), p[1] + r * a.sin())
+            })
+        })
+    })
+}
+
+const BACKWARDS: &str = "finish must follow start by at least 50 m on the AI line";
+/// The same on a closed AI loop, which only a circuit can use.
+pub const BACKWARDS_LOOP: &str = "finish must follow start by at least 50 m on the AI line, a closed loop";
+
 fn relative(value: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(value.replace('\\', "/"));
     if path.components().any(|c| !matches!(c, Component::Normal(_) | Component::CurDir)) || value.contains(':') {
@@ -95,8 +114,25 @@ impl Input {
         Self::read_with_ai(root, layout, None, false, false)
     }
 
-    /// `circuit` makes a closed AI loop one lap of a ReRBR circuit, whatever the source's timing gates.
+    /// `circuit` makes a closed AI loop one lap of a ReRBR circuit, whatever the source's timing gates. An AI line
+    /// that runs from the finish to the start (Akina's uphill layout) is reversed.
     pub fn read_with_ai(
+        root: &Path,
+        layout: &str,
+        ai_file: Option<&Path>,
+        reverse_ai: bool,
+        circuit: bool,
+    ) -> Result<Self, String> {
+        let first = Self::read_as_given(root, layout, ai_file, reverse_ai, circuit);
+        match &first {
+            Err(e) if e == BACKWARDS && !reverse_ai => {
+                Self::read_as_given(root, layout, ai_file, true, circuit).or(first)
+            }
+            _ => first,
+        }
+    }
+
+    fn read_as_given(
         root: &Path,
         layout: &str,
         ai_file: Option<&Path>,
@@ -174,7 +210,8 @@ impl Input {
             (gate("AC_AB_START")?, gate("AC_AB_FINISH")?)
         };
         if finish <= start + 50. {
-            return Err("finish must follow start by at least 50 m on the AI line".into());
+            // On a closed loop the gates say nothing about direction: it is a circuit, not a reversed line.
+            return Err(if ai::close_loop(&line).is_ok() { BACKWARDS_LOOP } else { BACKWARDS }.into());
         }
         let mut splits = Vec::new();
         for i in (1..16).filter(|_| !circuit) {
@@ -732,7 +769,7 @@ fn start_position(input: &Input, line: &Line, start: f64, ground: &Grid<'_>) -> 
     let (gate, forward) = line.sample(start);
     let behind = |p: [f64; 3]| (gate[0] - p[0]) * forward[0] + (gate[1] - p[1]) * forward[1];
     let on_ground = |mut p: [f64; 3], tangent, source| {
-        let (z, _) = ground.ground(p[0], p[1], p[2]).filter(|(z, _)| (*z - p[2]).abs() < 3.)?;
+        let (z, _) = ground_near(ground, p)?;
         p[2] = z;
         Some(Spawn { position: p, tangent, source, before_start: behind(p) })
     };
@@ -994,7 +1031,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut missing = 0;
     let mut along = Vec::new();
     for (i, p) in line.points.iter_mut().enumerate() {
-        match ground.ground(p[0], p[1], p[2]).filter(|(z, _)| (*z - p[2]).abs() < 3.) {
+        match ground_near(&ground, *p) {
             Some((z, t)) => {
                 p[2] = z;
                 if let (Some(id), Some(next)) = (t.material, line.at.get(i + 1)) {
@@ -1012,10 +1049,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     options.control.say(&format!("collision heights set; {missing}/{} points without ground", line.points.len()));
     let spawn_position = if input.circuit {
         let (p, tangent) = line.sample(0.);
-        let (z, _) = ground
-            .ground(p[0], p[1], p[2])
-            .filter(|(z, _)| (*z - p[2]).abs() < 3.)
-            .ok_or("no road under the lap line")?;
+        let (z, _) = ground_near(&ground, p).ok_or("no road under the lap line")?;
         Spawn { position: [p[0], p[1], z], tangent, source: "lap_line", before_start: 0. }
     } else {
         start_position(input, &line, start, &ground)?
@@ -1159,6 +1193,22 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_driveline_point_in_a_small_gap_takes_the_ground_beside_it() {
+        let slab = |x0: f64, x1: f64| Triangle {
+            pos: [[x0, -5., 2.], [x1, -5., 2.], [x0, 5., 2.]],
+            uv: [[0.; 2]; 3],
+            normal: [[0., 0., 1.]; 3],
+            material: Some(37),
+        };
+        // Two triangles whose plan views leave a gap of 0.2 m around x = 0, and no ground at all beyond them.
+        let (left, right) = (slab(-5., -0.1), slab(0.1, 5.));
+        let grid = Grid::new(vec![&left, &right], 4.);
+        assert!(grid.ground(0., 0., 2.).is_none());
+        assert_eq!(ground_near(&grid, [0., 0., 2.]).map(|g| g.0), Some(2.));
+        assert!(ground_near(&grid, [0., 0., 9.]).is_none());
+        assert!(ground_near(&grid, [20., 0., 2.]).is_none());
+    }
     #[test]
     fn finish_runoff_preserves_timing_and_requires_physical_ground() {
         let road = Triangle {

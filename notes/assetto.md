@@ -532,3 +532,18 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   becomes 17, tarmac. Pine Ridge (`ROAD` gravel to 5.7 km, then `TARMAC`) gravel; Steppe gravel, finished (10.4 km);
   Pikes gravel finished (19.3 km); Pikes mixed (`GRAVA` 69 %) gravel, finished. `--surface gravel` reaches the physics.
   Pine Ridge's autopilot stops at 5.98 km in a barrier chicane the straight driveline runs into, with tarmac too.
+
+## Converting the whole local install, 2026-11-18
+
+- A full pass over 221 ready layouts of one install (no heavy 70-100 km ones) found these failures, fixed here:
+  a collision mesh gap of a few centimetres under a driveline point (`ek_*` touge: 25 to 36 points of about 2 500 each
+  with ground within 0.3 m; now the nearest ground within 0.5 m stands in, and a gap under the spawn too); an AI line
+  recorded finish to start (Akina uphill, Tsuchisaka outbound: reversed when that makes the gates follow, but not a
+  closed loop, which imports as a circuit: Nordschleife `touristenfahrten`).
+- Not fixed: `ek_hakone_turnpike` (collision cells over the 1024 slots even at 25 m and with `--remesh`); Pico Veleta
+  (a collision cell of 595 000 vertices: its road mesh has 15 cm triangles, 100 per m2, and `--remesh` writes 3 300
+  faces where 215 000 level faces stay in the densest 200 m cell, cause not found); layouts with no start gate or a gate
+  49 m off the AI line (`ek_usui_circuit`, `haruna`, `ks_drag`, `santa_monica_mtns`, `simtraxx_drazgose`); a damaged
+  install (`la_canyons`, `pacific_coast_hwy`). The `ek_*` tracks of that install carry one-pixel textures, so they
+  render grey.
+
