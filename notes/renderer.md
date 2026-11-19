@@ -403,6 +403,12 @@ light). A solar model per rally moves the sun. Below -7 degrees: night (`night.w
 lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Shared bakes with M names (73, 83-89)
 probably fit the wrong hour.
 
+- Sky cover steps, thinnest to thickest (`atmosphere::Clouds`): clear, dimpled, partly, heavy (the launcher's Clouds box;
+  the old `light` reads as dimpled). Dimpled (`cloud_volume::layer`, `cloud_params.shape.w`) is a few low cumulus (cover
+  0.2) under a thin dimpled layer (`dimpled` in `cloud_volume.wgsl`): altocumulus 3.6 km up, cells of about 380 m from
+  jittered cellular noise (each its own size, merging), patches from the cloud field, optical depth 0.75 at a cell's
+  middle and 0.22 between, lit as a thin sheet (sun forward scattered, so it warms at low sun), between the march and the
+  cirrus. The 800 m broken stratocumulus stays for the section's own `lightcloud` rows. First look, not tuned.
 - Moments (`--sun best|golden|midday|dusk|night`, `relight::Moment`; the launcher passes it instead of a clock, `--clock`
   wins; the launcher's default is best; the settings' old `dawn`, `morning` read as best, `afternoon` as golden). Midday,
   dusk, night are where the sun stands (`hour_at`). Best and golden are found on the stage: `sunlit.rs` (CPU ray test from

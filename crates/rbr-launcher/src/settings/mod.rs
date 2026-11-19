@@ -1133,6 +1133,8 @@ mod tests {
         // Unknown choice words keep the default.
         assert_eq!(Settings::parse("[launcher]\nfog = mist\n").fog, None);
         assert_eq!(Settings::parse("[launcher]\nclouds = storm\n").clouds, None);
+        // The cover `light` was is the dimpled one now.
+        assert_eq!(Settings::parse("[launcher]\nclouds = light\n").clouds, Some(Clouds::Dimpled));
         assert_eq!(Settings::parse("[launcher]\nprecipitation = hail\n").precipitation, None);
         assert_eq!(Settings::parse("[launcher]\nwetness = soaked\n").wetness, None);
         assert_eq!(Settings::parse("[launcher]\ndamage = hard\n").damage, None);

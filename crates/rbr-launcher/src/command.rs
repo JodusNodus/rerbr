@@ -1363,7 +1363,7 @@ mod tests {
             let custom = Settings {
                 weather: Some(WeatherChoice::Row(section.clone())),
                 wetness: Some(wetness),
-                clouds: Some(Clouds::Light),
+                clouds: Some(Clouds::Dimpled),
                 precipitation: Some(Precipitation::Heavy),
                 ..settings.clone()
             };
@@ -1448,12 +1448,12 @@ mod tests {
         assert_eq!(value(&standalone, "--wear").as_deref(), Some("normal"));
         assert_eq!(value(&standalone, "--season-row"), weather.row.map(|row| row.to_string()));
         // The Custom weather takes them all over the bad weather (a wet road).
-        form.clouds = Some(Clouds::Light);
+        form.clouds = Some(Clouds::Dimpled);
         let (_, weather) = form.selection().unwrap();
         let (viewer, standalone) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
         assert_eq!(value(&viewer, "--sky"), weather.section(&form.season));
         assert_eq!(value(&viewer, "--fog").as_deref(), Some("heavy"));
-        assert_eq!(value(&viewer, "--clouds").as_deref(), Some("light"));
+        assert_eq!(value(&viewer, "--clouds").as_deref(), Some("dimpled"));
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("heavy"));
         form.precipitation = Some(Precipitation::Moderate);
         let (viewer, _) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());

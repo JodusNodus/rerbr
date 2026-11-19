@@ -275,6 +275,61 @@ fn cirrus(dir: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(seen * cover, 1.0 - cover);
 }
 
+// A thin, mostly transparent layer of small rounded cells `DIMPLE_HEIGHT` above the eye (altocumulus: the "mackerel
+// sky"), as much as `cloud_params.shape.w`: cellular noise (the distance to the nearest of jittered points, each cell
+// its own size) for the dimples, patches of the cloud field's noise for where it is and where the blue shows between,
+// lit as a thin sheet (the sun forward scattered, thicker cell centres a little darker, and the sky's light). Its light
+// (display colour, times its cover) and how much shows through; it fades out into the haze.
+const DIMPLE_HEIGHT: f32 = 3600.0;
+const DIMPLE_REACH: f32 = 30000.0;
+// A cell's width, metres.
+const DIMPLE_CELL: f32 = 380.0;
+// The optical depth of the thickest cell's middle and of the thin sheet between the cells.
+const DIMPLE_DEPTH: f32 = 0.75;
+const DIMPLE_SHEET: f32 = 0.22;
+
+fn dimple_thickness(q: vec2<f32>) -> f32 {
+    let i = floor(q);
+    let f = fract(q);
+    var thick = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let g = vec2<f32>(f32(x), f32(y));
+            let c = i + g;
+            let o = vec2<f32>(cloud_hash(c), cloud_hash(c + vec2<f32>(37.1, 11.7)));
+            let size = mix(0.55, 0.95, cloud_hash(c + vec2<f32>(5.3, 91.7)));
+            let d = distance(g + o * 0.8 + 0.1, f);
+            thick = max(thick, smoothstep(0.0, 1.0, 1.0 - d / size));
+        }
+    }
+    return thick;
+}
+
+fn dimpled(dir: vec3<f32>) -> vec4<f32> {
+    let amount = cloud_params.shape.w;
+    if (amount <= 0.0 || dir.y < 0.02) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    let t = volume_shell(dir.y, DIMPLE_HEIGHT);
+    let fade = 1.0 - smoothstep(DIMPLE_REACH * 0.4, DIMPLE_REACH, t);
+    let xz = frame.eye.xz + dir.xz * t;
+    let drift = frame.clouds.zw * frame.wind.x * 1.4;
+    var q = (xz - drift) / DIMPLE_CELL;
+    q += (vec2<f32>(cloud_value(q * 0.35), cloud_value(q * 0.35 + vec2<f32>(9.1, 4.7))) - 0.5) * 1.1;
+    let patches = smoothstep(0.28, 0.62, cloud_noise(cloud_at(xz) * 1.7 + vec2<f32>(41.0, 7.0), 3));
+    let thick = dimple_thickness(q);
+    let tau = (DIMPLE_DEPTH * thick + DIMPLE_SHEET) * patches * amount;
+    let cover = (1.0 - exp(-tau)) * fade;
+    if (cover <= 0.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    let mu = dot(dir, -frame.sun.xyz);
+    let light = SKY_PI * frame.day_sun.rgb * (volume_phase(mu, 0.6) + 0.1) * mix(1.0, 0.7, thick) + frame.day_sky.rgb * 1.2;
+    let haze = sky_aerial(dir, t);
+    let seen = sky_display(light) * haze.a + haze.rgb;
+    return vec4<f32>(seen * cover, 1.0 - cover);
+}
+
 // Linear light to the display colours `sky_display` gives the sky's tables.
 fn sky_display(linear: vec3<f32>) -> vec3<f32> {
     return pow(max(linear, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
@@ -290,7 +345,9 @@ fn volume_now(dir: vec3<f32>, pixel: vec2<f32>, held: bool) -> vec4<f32> {
         }
         low /= f32(VOLUME_FIRST);
     }
-    let high = cirrus(dir);
+    let streaks = cirrus(dir);
+    let dimples = dimpled(dir);
+    let high = vec4<f32>(dimples.rgb + dimples.a * streaks.rgb, dimples.a * streaks.a);
     return vec4<f32>(low.rgb + low.a * high.rgb, low.a * high.a);
 }
 

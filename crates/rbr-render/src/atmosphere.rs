@@ -162,8 +162,9 @@ impl Fog {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Clouds {
     Clear,
+    /// A thin, dimpled high layer (altocumulus) over a few low cumulus.
+    Dimpled,
     Partly,
-    Light,
     Heavy,
 }
 
@@ -213,12 +214,12 @@ impl Rain {
 }
 
 impl Clouds {
-    /// `clear`, `partly`, `light` or `heavy`.
+    /// `clear`, `dimpled`, `partly` or `heavy`; `light`, the word of a cover since dropped, reads as `dimpled`.
     pub fn parse(text: &str) -> Option<Clouds> {
         Some(match text {
             "clear" => Clouds::Clear,
+            "dimpled" | "light" => Clouds::Dimpled,
             "partly" => Clouds::Partly,
-            "light" => Clouds::Light,
             "heavy" => Clouds::Heavy,
             _ => return None,
         })
@@ -409,7 +410,7 @@ impl Atmosphere {
     /// `heavycloud` (or [`Atmosphere::clouds`], the same four). The physically based sky greys by it (`skylight.rs`).
     pub fn cloud_cover(&self) -> f32 {
         if let Some(clouds) = self.clouds {
-            return [0.12, 0.42, 0.58, 0.9][clouds as usize];
+            return [0.12, 0.25, 0.42, 0.9][clouds as usize];
         }
         let word = self.section.as_deref().and_then(|s| s.rsplit('_').next()).unwrap_or("");
         match word.to_ascii_lowercase().as_str() {
@@ -441,11 +442,12 @@ impl Atmosphere {
 
     /// How much of the sky the volumetric clouds cover (renderer addition, `Enhance::lighting`; ours), 0 to 1: as much
     /// as the section's cloud face shows (`CloudName`), else by the cloud word ([`Atmosphere::cloud_cover`]);
-    /// [`Atmosphere::clouds`] as the faces of its word, except light, raised to broken cloud (5 to 7 oktas): 0.72 covers
-    /// about 75% of the whole sky (`examples/cloud_survey.rs`), 0.5 covered 45 to 57%, no more than partly's.
+    /// [`Atmosphere::clouds`] as the faces of its word, except heavy, raised to 0.72, which covers about 75% of the
+    /// whole sky (`examples/cloud_survey.rs`; 0.5 covered 45 to 57%, no more than partly's), and dimpled, the few low
+    /// cumulus under its thin layer.
     pub fn cloud_layer(&self) -> f32 {
         if let Some(clouds) = self.clouds {
-            return [0.15, 0.35, 0.72, 0.72][clouds as usize];
+            return [0.15, 0.2, 0.35, 0.72][clouds as usize];
         }
         let face = self.cloud_name.as_deref().unwrap_or("").to_ascii_lowercase();
         let covers = [
