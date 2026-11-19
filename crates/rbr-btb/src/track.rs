@@ -364,6 +364,83 @@ pub struct Settings {
     pub sun_direction: Option<[f64; 3]>,
     /// The whole `[SETTINGS]` section, so unknown keys stay accessible.
     pub entries: RawEntries,
+    /// `[ReRbrGrass]` (ReRBR's own section, which the plugin does not know): a converted stage's grass.
+    pub grass: Option<GrassFx>,
+}
+
+/// A converted stage's grass (`[ReRbrGrass]` of `settings.ini`; Assetto Corsa's `[GRASS_FX]`): the grass grows on the
+/// materials marked `ReRbrGrass=1`, where the ground's luminance is in range, drawn from an atlas of pieces.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GrassFx {
+    /// The atlas's file in `Textures.zip`; `None`: ReRBR's own blades.
+    pub texture: Option<String>,
+    /// The atlas's columns and rows of cells.
+    pub grid: [u32; 2],
+    /// The weight of the default group, the atlas's first row of cells, against the groups'.
+    pub base: f32,
+    pub groups: Vec<GrassGroup>,
+    /// The ground texel's linear luminance, lowest and highest, that grass grows on.
+    pub luminance: [f32; 2],
+}
+
+/// A group of atlas pieces and its weight.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GrassGroup {
+    pub chance: f32,
+    pub pieces: Vec<GrassPiece>,
+}
+
+/// A piece of the atlas: `cell` (column, row, from 1, the first row on top) and `size` in cells, and its weight.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GrassPiece {
+    pub cell: [u32; 2],
+    pub size: [u32; 2],
+    pub chance: f32,
+}
+
+impl GrassFx {
+    fn parse(sections: &[ini::Section]) -> Option<GrassFx> {
+        let grass = find_section(sections, "ReRbrGrass")?;
+        let number =
+            |key: &str, default: f32| find_entry(grass, key).and_then(|v| v.trim().parse().ok()).unwrap_or(default);
+        let list = |key: &str| -> Vec<f32> {
+            find_entry(grass, key)
+                .map(|v| v.split(',').filter_map(|n| n.trim().parse().ok()).collect())
+                .unwrap_or_default()
+        };
+        let grid = match list("grid")[..] {
+            [x, y] if x >= 1.0 && y >= 1.0 => [x as u32, y as u32],
+            _ => [1, 1],
+        };
+        let luminance = match list("luminance")[..] {
+            [low, high] => [low, high],
+            _ => [0.0, f32::INFINITY],
+        };
+        let groups = (0..)
+            .map_while(|n| find_entry(grass, &format!("group{n}")).map(|_| n))
+            .map(|n| GrassGroup {
+                chance: number(&format!("group{n}"), 0.0),
+                pieces: (0..)
+                    .map_while(|m| {
+                        (!list(&format!("group{n}_piece{m}")).is_empty()).then(|| list(&format!("group{n}_piece{m}")))
+                    })
+                    .filter_map(|p| match p[..] {
+                        [x, y, w, h, chance] if x >= 1.0 && y >= 1.0 && w >= 1.0 && h >= 1.0 => {
+                            Some(GrassPiece { cell: [x as u32, y as u32], size: [w as u32, h as u32], chance })
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+            })
+            .collect();
+        Some(GrassFx {
+            texture: find_entry(grass, "texture").map(str::to_owned).filter(|t| !t.is_empty()),
+            grid,
+            base: number("base", 1.0),
+            groups,
+            luminance,
+        })
+    }
 }
 
 impl Settings {
@@ -373,7 +450,7 @@ impl Settings {
             &[x, y, z] => Some([x, y, z]),
             _ => None,
         });
-        Ok(Settings { sun_direction, entries: settings.entries.clone() })
+        Ok(Settings { sun_direction, entries: settings.entries.clone(), grass: GrassFx::parse(sections) })
     }
 }
 
@@ -658,6 +735,22 @@ impl PaceNotes {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_grass_section_reads_its_atlas_groups_and_luminance() {
+        let ini =
+            "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrGrass]\ntexture=a.dds\ngrid=8, 3\nbase=4\nluminance=0.005,0.25\n\
+                   group0=0\ngroup1=2\ngroup1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5\n";
+        let grass = GrassFx::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
+        assert_eq!(
+            (grass.texture.as_deref(), grass.grid, grass.base, grass.luminance),
+            (Some("a.dds"), [8, 3], 4.0, [0.005, 0.25])
+        );
+        assert_eq!(grass.groups.len(), 2);
+        assert!(grass.groups[0].pieces.is_empty() && grass.groups[1].chance == 2.0);
+        assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5 });
+        assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
+    }
+
     use super::*;
 
     #[test]

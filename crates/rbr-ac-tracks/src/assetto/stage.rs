@@ -878,6 +878,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let csp_trees = trees::read(&input.root);
     let hidden = if csp_trees.is_empty() { BTreeMap::new() } else { csp::replaced(&input.root) };
     let unrendered = csp::unrendered(&input.root);
+    let grass_fx = csp::grass_fx(&input.root);
     for (model_index, (path, transform)) in input.models.iter().enumerate() {
         options.control.check()?;
         options.control.say(&format!("reading {}", path.file_name().unwrap().to_string_lossy()));
@@ -959,7 +960,10 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                let extras = bank.tile_extras(&model, mat_index);
+                let extras = material::Extras {
+                    grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&model.materials[mat_index].name)),
+                    ..bank.tile_extras(&model, mat_index)
+                };
                 if !extras.bump_uv {
                     b.uvs2 = None;
                 }
@@ -974,7 +978,10 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let mat = &model.materials[mat_index];
                     let (texture, opaque) = bank.diffuse(&model, mat_index)?;
                     let name = format!("ac\\{model_index}_{mat_index}");
-                    let extras = bank.extras(&model, mat_index)?;
+                    let extras = material::Extras {
+                        grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&mat.name)),
+                        ..bank.extras(&model, mat_index)?
+                    };
                     material::section_with(
                         &mut materials,
                         &name,
@@ -1129,6 +1136,11 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let placeholders = bank.placeholders.clone();
     let missing_names = bank.missing.clone();
     let (normal_mapped, highlighted, sheened) = (bank.normal_mapped, bank.highlighted, bank.sheened);
+    // CSP's grass atlas, where the track ships its own.
+    let grass_atlas = match grass_fx.as_ref().and_then(|g| g.texture.as_ref()) {
+        Some(path) => Some(bank.put(std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?, "dds")?),
+        None => None,
+    };
     bank.finish()?;
     let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
     write("objectlist.ini", objects.finish()?)?;
@@ -1140,7 +1152,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
     write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
-    write("settings.ini", "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n".into())?;
+    let mut settings = String::from("[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n");
+    if let Some(fx) = &grass_fx {
+        settings.push('\n');
+        settings.push_str(&fx.section(grass_atlas.as_deref()));
+    }
+    write("settings.ini", settings)?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     for (i, p) in line.points.iter().enumerate() {
         // A ring's last point repeats its first: neighbours wrap around the seam.

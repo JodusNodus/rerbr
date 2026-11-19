@@ -456,8 +456,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 - Roure's `pines_distant` (the forest on far slopes) kept solid green slabs: its diffuse has alpha under 255 (shading)
   and no texel under 128, so `cut_by_normal` rejected it; it now needs only no texel under half alpha, and runs before
   the `useDetail` bake.
-- Other CSP features in the source tracks' `extension` folders, not used: `[GRASS_FX]` (26 stages; ReRBR's own grass
-  covers part), `[MATERIAL_ADJUSTMENT]` (24, day/night and weather conditions), `[SHADER_REPLACEMENT]`/`[MESH_ADJUSTMENT]`
+- Other CSP features in the source tracks' `extension` folders, not used: `[MATERIAL_ADJUSTMENT]` (24, day/night and weather conditions), `[SHADER_REPLACEMENT]`/`[MESH_ADJUSTMENT]`
   (water, `IS_RENDERABLE=0` hiding meshes on Thizy and Joux Verte, blend modes), `[WRAP_MESHES]` and `[ANIMATED]`
   (windmills and signs, Teixeta, Duesaigues, Riudecanyes), `[SPECTATORS]`, `[LIGHT_SERIES]`, `[PARTICLES_FX]`,
   `[RAIN_FX]`, `[TRACK_MAP]`, scripts (Crequy's turbines).
@@ -480,10 +479,22 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `Background3`, not the `obj_*` props. They are verge strips, `1wall_wall<n>` meshes of `ksPerPixelAT` `randon5bord*`
   textures: a flat strip of grass texture with one cut edge (alpha only along the top), over terrain of another colour,
   so its hard sides show. Whether AC shows the same is unknown (the preview is too small); not changed.
-- `[GRASS_FX]` (26 stages) grows grass at run time on `GRASS_MATERIALS` from a grass atlas; nothing of it is in the
-  stage. ReRBR's own dense grass (viewer `--enhance grass`, the launcher's "Dense grass", default off) places grass by
-  the ground's colour near the driveline on any stage, so no converter work covers it; picking CSP's materials for it
-  would be a ReRBR change.
+- `[GRASS_FX]` (26 stages) grows grass at run time on `GRASS_MATERIALS`; the converter now carries it (2026-11-19,
+  `csp::grass_fx`): the listed materials (wildcards as `MESH_ADJUSTMENT`) get `ReRbrGrass=1` in `materials.ini`, and
+  `settings.ini` gets `[ReRbrGrass]`: `texture` (`TEXTURE` where it names a `.dds` of the track's own `extension`
+  folder, copied into `Textures.zip`; no key or a CSP-bundled file like `grass_fx/highlands.dds`: none, ReRBR's
+  blades), `grid` (`TEXTURE_GRID`), `base` (`TEXTURE_BASE_CHANCE`), `group<n>` (`TEXTURE_GROUP_<n>_CHANCE`, default 0)
+  with `group<n>_piece<m>=col,row,w,h,chance` (`PIECE_<m>`: cells from 1, row 1 on top, `PIECE_<m>_CHANCE` default 1),
+  and `luminance=min,max` (`MASK_MIN/MAX_LUMINANCE`). Dense grass (`--enhance grass`) then grows on those materials
+  instead of by colour (`grass::add`): where the ground texel's linear luminance is in range, on any facing the
+  ground's normal allows, within the usual 20 m band. Not used: `MASK_MAIN_THRESHOLD`, `MASK_RED_THRESHOLD`,
+  `SHAPE_*`, `TEXTURE_GROUP_<n>`'s `SIZE_MULT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
+  (Highlands). Unverified: the atlas's row order (the pieces read best with row 1 on top, but CSP's own may count from
+  the bottom) and the meaning of base (taken as the first row's cells, one each).
+  Sa Calobra down, rock view 07:35 (`/tmp/grassfx/rock.png`, before | after): grey terrain went from a patch of
+  colour-picked grass to olive tufts over the dark ground, none on the white boulders (luminance over 0.25), as the AC
+  shot. Riudecanyes (no `TEXTURE`): our blades on `srfdtl` and `cliffs3`. The atlas is drawn grey (luminance of its
+  texels, mips and cut-out coverage rebuilt) so the ground's hue and brightness colour it, as ours.
 
 ## Launcher import (2026-11-18)
 

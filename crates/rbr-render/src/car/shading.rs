@@ -67,6 +67,7 @@ pub(super) fn draw_state(
         // `CShaderCarBase::Load` sets the diffuse sampler's bias for every class with a diffuse bitmap.
         mip_bias: texture.is_some(),
         ground: false,
+        grass: false,
         cull_back: !matches!(pass, Pass::Plastic | Pass::InteriorGlass | Pass::TwoSided),
         blend,
         depth_test: true,

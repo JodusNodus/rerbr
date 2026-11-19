@@ -84,6 +84,94 @@ pub fn unrendered(root: &Path) -> Vec<String> {
     names
 }
 
+/// CSP's GrassFX (`[GRASS_FX]` and `[GRASS_FX_TEXTURE_GROUP_<n>]`) as far as ReRBR's grass uses it: the materials it grows
+/// on, its atlas and the pieces drawn from it, and the luminance range of the ground it grows on.
+#[derive(Debug, Default)]
+pub struct GrassFx {
+    /// `GRASS_MATERIALS`, lowercase, with `?` and `*` wildcards.
+    pub materials: Vec<String>,
+    /// `TEXTURE` where it names a file of the track's own `extension` folder; `None` for CSP's own atlases and no key.
+    pub texture: Option<std::path::PathBuf>,
+    keys: BTreeMap<String, String>,
+    groups: BTreeMap<u32, BTreeMap<String, String>>,
+}
+
+impl GrassFx {
+    /// Whether `material` (any case) is one the grass grows on.
+    pub fn grows_on(&self, material: &str) -> bool {
+        let material = material.to_lowercase();
+        self.materials.iter().any(|pattern| matches(pattern, &material))
+    }
+
+    /// The stage's `[ReRbrGrass]` section (`settings.ini`), `texture` being the atlas's name in `Textures.zip`.
+    pub fn section(&self, texture: Option<&str>) -> String {
+        use std::fmt::Write;
+        let number = |keys: &BTreeMap<String, String>, key: &str| keys.get(key).and_then(|v| v.parse::<f32>().ok());
+        let mut out = String::from("[ReRbrGrass]\n");
+        if let Some(texture) = texture {
+            let _ = writeln!(out, "texture={texture}");
+            if let Some(grid) = self.keys.get("TEXTURE_GRID") {
+                let _ = writeln!(out, "grid={grid}");
+            }
+        }
+        let _ = writeln!(out, "base={}", number(&self.keys, "TEXTURE_BASE_CHANCE").unwrap_or(1.0));
+        if let (Some(low), Some(high)) =
+            (number(&self.keys, "MASK_MIN_LUMINANCE"), number(&self.keys, "MASK_MAX_LUMINANCE"))
+        {
+            let _ = writeln!(out, "luminance={low},{high}");
+        } else if let Some(high) = number(&self.keys, "MASK_MAX_LUMINANCE") {
+            let _ = writeln!(out, "luminance=0,{high}");
+        }
+        for n in 0..self.groups.keys().next_back().map_or(0, |last| last + 1) {
+            let group = self.groups.get(&n).cloned().unwrap_or_default();
+            let chance = number(&self.keys, &format!("TEXTURE_GROUP_{n}_CHANCE")).unwrap_or(0.0);
+            let _ = writeln!(out, "group{n}={chance}");
+            for (m, piece) in (0..).map_while(|m| group.get(&format!("PIECE_{m}")).map(|p| (m, p))) {
+                let cells: Vec<&str> = piece.split(',').map(str::trim).collect();
+                let cells = match cells[..] {
+                    [x, y] => [x, y, "1", "1"],
+                    [x, y, w, h] => [x, y, w, h],
+                    _ => continue,
+                };
+                let chance = number(&group, &format!("PIECE_{m}_CHANCE")).unwrap_or(1.0);
+                let _ = writeln!(out, "group{n}_piece{m}={},{chance}", cells.join(","));
+            }
+        }
+        out
+    }
+}
+
+/// The track's GrassFX, if it lists materials.
+pub fn grass_fx(root: &Path) -> Option<GrassFx> {
+    let mut fx = GrassFx::default();
+    for text in inis(root) {
+        let mut section = String::new();
+        for line in text.lines().map(str::trim) {
+            if let Some(name) = line.strip_prefix('[') {
+                section = name.split(']').next().unwrap_or("").trim().to_uppercase();
+            } else if let Some((key, value)) = line.split_once('=') {
+                let (key, value) = (key.trim().to_uppercase(), value.split(';').next().unwrap_or("").trim().to_owned());
+                if section == "GRASS_FX" {
+                    fx.keys.insert(key, value);
+                } else if let Some(n) = section.strip_prefix("GRASS_FX_TEXTURE_GROUP_").and_then(|n| n.parse().ok()) {
+                    fx.groups.entry(n).or_default().insert(key, value);
+                }
+            }
+        }
+    }
+    fx.materials =
+        fx.keys.get("GRASS_MATERIALS")?.split(',').map(|m| m.trim().to_lowercase()).filter(|m| !m.is_empty()).collect();
+    if fx.materials.is_empty() {
+        return None;
+    }
+    fx.texture = fx.keys.get("TEXTURE").and_then(|file| {
+        let extension = super::stage::source_path(root, "extension").ok()?;
+        let path = super::stage::source_path(&extension, &file.replace('\\', "/")).ok()?;
+        (path.is_file() && path.extension().is_some_and(|x| x.eq_ignore_ascii_case("dds"))).then_some(path)
+    });
+    Some(fx)
+}
+
 /// Whether `name` (lowercase) matches `pattern`, where `?` is any character and `*` any run of them.
 pub fn matches(pattern: &str, name: &str) -> bool {
     let (p, n): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
@@ -106,6 +194,46 @@ pub fn matches(pattern: &str, name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grass_fx_names_its_materials_atlas_pieces_and_luminance() {
+        let dir = std::env::temp_dir().join(format!("csp-grass-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("extension")).unwrap();
+        std::fs::write(dir.join("extension/Mine.DDS"), b"x").unwrap();
+        std::fs::write(
+            dir.join("extension/ext_config.ini"),
+            "[GRASS_FX]\nGRASS_MATERIALS = Ter?, rock_cluster\nTEXTURE = mine.dds ; mine\nTEXTURE_GRID = 8, 3\n\
+             TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\n\
+             [GRASS_FX_TEXTURE_GROUP_1]\nPIECE_0 = 1, 1\nPIECE_1 = 4, 1, 2, 2\nPIECE_1_CHANCE = 0.5\n",
+        )
+        .unwrap();
+        let fx = grass_fx(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(fx.grows_on("TER0") && fx.grows_on("rock_cluster") && !fx.grows_on("road"));
+        assert!(fx.texture.as_ref().is_some_and(|t| t.ends_with("Mine.DDS")));
+        assert_eq!(
+            fx.section(Some("ac_00001.dds")),
+            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nluminance=0,0.25\ngroup0=0\ngroup1=2\n\
+             group1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5\n"
+        );
+    }
+
+    #[test]
+    fn grass_fx_without_a_file_of_the_track_has_no_atlas() {
+        let dir = std::env::temp_dir().join(format!("csp-grass-none-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("extension")).unwrap();
+        std::fs::write(
+            dir.join("extension/a.ini"),
+            "[GRASS_FX]\nGRASS_MATERIALS = a\nTEXTURE = grass_fx/highlands.dds\n",
+        )
+        .unwrap();
+        let fx = grass_fx(&dir).unwrap();
+        std::fs::write(dir.join("extension/a.ini"), "[GRASS_FX]\nTEXTURE = x.dds\n").unwrap();
+        let none = grass_fx(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(fx.texture.is_none() && none.is_none());
+        assert!(fx.section(None).starts_with("[ReRbrGrass]\nbase=1\n"));
+    }
 
     #[test]
     fn model_replacements_name_the_meshes_to_hide() {

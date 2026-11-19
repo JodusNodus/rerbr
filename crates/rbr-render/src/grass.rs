@@ -137,6 +137,59 @@ pub struct Field {
     line: Line,
     /// The grass texture's mean colour (display).
     mean: Vec3,
+    /// A converted stage's grass, placed on its marked materials.
+    fx: Option<Fx>,
+}
+
+/// A converted stage's GrassFX (Assetto Corsa's `[GRASS_FX]`, [`Stage::grass_fx`]) as the field takes it: grass grows
+/// on the marked materials' ground, where its luminance is in range, in place of the choice by colour.
+struct Fx {
+    luminance: [f32; 2],
+    /// The atlas the track ships, its pieces and its size in texels; `None`: our blades.
+    atlas: Option<(rbr_btb::track::GrassFx, Vec2)>,
+}
+
+impl Fx {
+    /// Whether ground of colour `rgb` (0 to 1) takes grass: 1 or 0.
+    fn mask(&self, rgb: Vec3) -> f32 {
+        let l = luminance(rgb);
+        f32::from(u8::from(l >= self.luminance[0] && l <= self.luminance[1]))
+    }
+
+    /// A card's picture's rectangle (`u0, u1, v0, v1`) and its width over its height, by `pick`: a piece of the atlas
+    /// by the weights of its base (the first row's cells) and groups, then its pieces.
+    fn piece(&self, pick: f32) -> Option<([f32; 4], f32)> {
+        let (atlas, size) = self.atlas.as_ref()?;
+        let [columns, rows] = atlas.grid.map(|n| n as f32);
+        let groups = atlas.groups.iter().filter(|g| !g.pieces.is_empty());
+        let mut at = pick * (atlas.base + groups.clone().map(|g| g.chance).sum::<f32>());
+        let cell = |[x, y]: [u32; 2], [w, h]: [u32; 2]| {
+            let (u0, v0) = ((x - 1) as f32 / columns, (y - 1) as f32 / rows);
+            let (u1, v1) = ((u0 + w as f32 / columns).min(1.0), (v0 + h as f32 / rows).min(1.0));
+            let margin = Vec2::new(2.0, 2.0) / *size;
+            Some((
+                [u0 + margin.x, u1 - margin.x, v0 + margin.y, v1 - margin.y],
+                (w as f32 * size.x / columns) / (h as f32 * size.y / rows),
+            ))
+        };
+        if at < atlas.base {
+            return cell([1 + ((at / atlas.base * columns) as u32).min(atlas.grid[0] - 1), 1], [1, 1]);
+        }
+        at -= atlas.base;
+        for group in groups {
+            if at < group.chance {
+                let mut at = at / group.chance * group.pieces.iter().map(|p| p.chance).sum::<f32>();
+                let piece = group.pieces.iter().find(|p| {
+                    at -= p.chance;
+                    at < 0.0
+                });
+                let piece = piece.unwrap_or(&group.pieces[0]);
+                return cell(piece.cell, piece.size);
+            }
+            at -= group.chance;
+        }
+        cell([1, 1], [1, 1])
+    }
 }
 
 impl Field {
@@ -203,7 +256,8 @@ struct Card {
     height: f32,
     bright: f32,
     hue: [u8; 3],
-    picture: usize,
+    /// Its picture's rectangle in the texture: `u0, u1, v0, v1`.
+    picture: [f32; 4],
     light: Light,
     /// Its rank in the tile's cards, 0 to 1: drawn where the density reaches it ([`take`], `GRASS_THIN`).
     keep: f32,
@@ -266,14 +320,25 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     if stage.snow_ground || stage.driveline.len() < 2 {
         return None;
     }
+    // A converted stage's marked materials: the grass grows on them alone, drawn from the atlas it ships if it loaded.
+    let marked = |m: &Mesh, d: &Draw| {
+        m.anchor == Anchor::World && m.layer == Layer::Solid && d.state.grass && d.state.alpha_ref.is_none()
+    };
+    let fx_stage = stage.grass_fx.is_some() && stage.meshes.iter().any(|m| m.draws.iter().any(|d| marked(m, d)));
+    let grows = |m: &Mesh, d: &Draw| if fx_stage { marked(m, d) } else { puddles::ground(m, d) };
+    let atlas = stage.grass_fx.as_ref().filter(|_| fx_stage).and_then(|fx| {
+        let texture = fx.texture?;
+        let Some(Some(Image::Dds(bytes))) = stage.textures.get(&texture).map(|t| &t.image) else { return None };
+        let (bytes, mean, size) = grey_atlas(bytes)?;
+        Some((texture, bytes, mean, fx.settings.clone(), size))
+    });
     let index = stage.texture_names.keys().chain(stage.textures.keys()).filter(|t| t.set == TextureSet::Stage);
     let texture = TextureRef { set: TextureSet::Stage, index: index.map(|t| t.index + 1).max().unwrap_or(0) };
-    let (bytes, mean) = self::texture();
+    let (bytes, mean) = if atlas.is_some() { (Vec::new(), Vec3::ZERO) } else { self::texture() };
     let line = Line::new(&stage.driveline);
     // The ground draws' textures' texels, made over the load's threads (one after another they took 0.7 s on 580),
     // numbered as the draws below first use them.
-    let ground =
-        stage.meshes.iter().flat_map(|m| m.draws.iter().filter(|d| d.lod != Lod::Far && puddles::ground(m, d)));
+    let ground = stage.meshes.iter().flat_map(|m| m.draws.iter().filter(|d| d.lod != Lod::Far && grows(m, d)));
     let wanted: BTreeSet<TextureRef> = ground
         .flat_map(|d| [d.state.textures[0], d.state.textures[1].filter(|_| d.state.second_texture)])
         .flatten()
@@ -304,14 +369,14 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     let meshes = stage.meshes.iter().enumerate().filter(|(_, m)| m.anchor == Anchor::World && m.layer == Layer::Solid);
     for (index, mesh) in meshes {
         let index = if index < blended { index } else { index + slots };
-        for draw in mesh.draws.iter().filter(|d| d.lod != Lod::Far && puddles::ground(mesh, d)) {
+        for draw in mesh.draws.iter().filter(|d| d.lod != Lod::Far && grows(mesh, d)) {
             let Some(first) = texels(draw.state.textures[0]) else { continue };
             let second = if draw.state.second_texture { texels(draw.state.textures[1]) } else { None };
             for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
                 let corners = [t[0], t[1], t[2]];
                 let v = corners.map(|i| &mesh.vertices[i as usize]);
                 // The off-road ground, or the road mesh, whose shoulders can be grass: its texture says where.
-                if v.iter().any(|v| v.edge != GROUND_MARK && v.wet <= 0.0) {
+                if !fx_stage && v.iter().any(|v| v.edge != GROUND_MARK && v.wet <= 0.0) {
                     continue;
                 }
                 let p = v.map(|v| Vec3::from(v.position));
@@ -323,11 +388,13 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                     continue;
                 }
                 let centre = (p[0] + p[1] + p[2]) / 3.0;
-                if stage.collision.as_ref().is_some_and(|ground| {
-                    ground
-                        .below([centre.x, centre.z, centre.y])
-                        .is_none_or(|hit| (centre.y - hit.z).abs() > GROUND_REACH)
-                }) {
+                if !fx_stage
+                    && stage.collision.as_ref().is_some_and(|ground| {
+                        ground
+                            .below([centre.x, centre.z, centre.y])
+                            .is_none_or(|hit| (centre.y - hit.z).abs() > GROUND_REACH)
+                    })
+                {
                     continue;
                 }
                 let triangle = triangles.len() as u32;
@@ -353,13 +420,34 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             }
         }
     }
+    // The atlas is the stage's own texture; ours is made here.
+    let (texture, mean, fx) = match atlas {
+        Some((texture, bytes, mean, settings, size)) => {
+            let luminance = settings.luminance;
+            stage
+                .textures
+                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
+            (texture, mean, Some(Fx { luminance, atlas: Some((settings, size)) }))
+        }
+        None => {
+            stage.texture_names.insert(
+                texture,
+                TextureName { track: stage.name.clone(), file_name: TEXTURE.to_owned(), ground: false },
+            );
+            stage
+                .textures
+                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
+            let fx = stage
+                .grass_fx
+                .as_ref()
+                .filter(|_| fx_stage)
+                .map(|fx| Fx { luminance: fx.settings.luminance, atlas: None });
+            (texture, mean, fx)
+        }
+    };
     let slots = SLOTS.iter().flat_map(|&(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
     stage.meshes.splice(blended..blended, slots);
-    stage
-        .texture_names
-        .insert(texture, TextureName { track: stage.name.clone(), file_name: TEXTURE.to_owned(), ground: false });
-    stage.textures.insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-    Some(Field { triangles, tiles, textures, placement, line, mean })
+    Some(Field { triangles, tiles, textures, placement, line, mean, fx })
 }
 
 impl Field {
@@ -369,7 +457,7 @@ impl Field {
             let w = g.weights(q);
             let y = g.p[0].y * w[0] + g.p[1].y * w[1] + g.p[2].y * w[2];
             (w.iter().all(|&v| v >= -1e-4) && (q.y - y).abs() <= GROUND_REACH)
-                .then(|| green(g.colour(&self.placement, w), g.road))
+                .then(|| self.grassy(g, g.colour(&self.placement, w)))
         };
         sample(root).unwrap_or_else(|| {
             self.tiles
@@ -379,6 +467,14 @@ impl Field {
                 .find_map(|&i| sample(&self.triangles[i as usize]))
                 .unwrap_or(0.0)
         })
+    }
+
+    /// How much grass ground `g` of colour `rgb` takes ([`green`], or the converted stage's [`Fx::mask`]).
+    fn grassy(&self, g: &Ground, rgb: Vec3) -> f32 {
+        match &self.fx {
+            Some(fx) => fx.mask(rgb),
+            None => green(rgb, g.road),
+        }
     }
 
     /// A small ring over the supporting ground, covering both cards, their lean and their wind movement.
@@ -406,7 +502,6 @@ impl Field {
     fn cards(&self, tile: (i32, i32), take: f32, capacity: usize, light: &[[Light; 3]]) -> Vec<Card> {
         let mut cards = Vec::new();
         let Some(list) = self.tiles.get(&tile) else { return cards };
-        let luma = |c: Vec3| c.powf(2.2).dot(Vec3::new(0.2126, 0.7152, 0.0722));
         for &i in list {
             let g = &self.triangles[i as usize];
             let corners = light.get(i as usize).copied().unwrap_or_default();
@@ -426,7 +521,7 @@ impl Field {
                 let near = 1.0 - (1.0 - FAR_SHARE) * smoothstep([FULL, BAND], distance);
                 let fade = 1.0 - smoothstep([BAND - 6.0, BAND], distance);
                 let w = [1.0 - a - b, a, b];
-                let vegetation = green(g.colour(&self.placement, w), g.road);
+                let vegetation = self.grassy(g, g.colour(&self.placement, w));
                 if vegetation < COVER || chance >= vegetation * near * fade {
                     continue;
                 }
@@ -434,7 +529,12 @@ impl Field {
                 let kind = Kind::pick(pick, tall, dry);
                 let height =
                     (lerp(HEIGHT, height) * tall * kind.height()).min(MAX_HEIGHT[usize::from(kind == Kind::Seeds)]);
-                let width = (height * lerp(WIDTH, width)).min(MAX_WIDTH);
+                let pieces = |pick: f32| match self.fx.as_ref().and_then(|fx| fx.piece((pick * 131.7).fract())) {
+                    Some((rect, aspect)) => (rect, aspect / (WIDTH[0] + WIDTH[1]) * 2.0),
+                    None => (picture_rect(kind.picture(pick)), 1.0),
+                };
+                let ((picture, aspect), (other, _)) = (pieces(pick), pieces((pick * 53.0).fract()));
+                let width = (height * aspect * lerp(WIDTH, width)).min(MAX_WIDTH);
                 let angle = turn * std::f32::consts::PI;
                 let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
                 let radius = (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS);
@@ -450,7 +550,7 @@ impl Field {
                 let hue = (hue / hue.max_element() * 255.0).round().as_uvec3();
                 let lean_angle = lean_turn * std::f32::consts::TAU;
                 // Each clump's cards a little brighter or darker than the ground's.
-                let bright = SHADE * luma(colour) / luma(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
+                let bright = SHADE * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
                 let card = Card {
                     at,
                     normal: g.normal,
@@ -459,17 +559,13 @@ impl Field {
                     height,
                     bright: bright.clamp(BRIGHT[0], BRIGHT[1]),
                     hue: [hue.x as u8, hue.y as u8, hue.z as u8],
-                    picture: kind.picture(pick),
+                    picture,
                     light: Light::blend(&corners, [1.0 - a - b, a, b]),
                     keep,
                 };
                 // The other card across it, a little shorter, with another picture of its kind.
-                let crossed = Card {
-                    across: Vec2::new(-across.y, across.x),
-                    height: height * 0.85,
-                    picture: kind.picture((pick * 53.0).fract()),
-                    ..card
-                };
+                let crossed =
+                    Card { across: Vec2::new(-across.y, across.x), height: height * 0.85, picture: other, ..card };
                 cards.extend([card, crossed]);
                 if cards.len() + 2 > capacity {
                     return cards;
@@ -598,6 +694,7 @@ fn slot_mesh(texture: TextureRef, capacity: usize) -> Mesh {
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
         ground: false,
+        grass: false,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -936,11 +1033,9 @@ impl Want {
 fn tile_vertices(cards: &[Card]) -> (Vec<Vertex>, Bounds, Ranks) {
     let mut vertices = vec![Vertex::zeroed(); cards.len() * 4];
     let (mut low, mut high) = (Vec3::MAX, Vec3::MIN);
-    let margin = Vec2::new(2.0 / (PICTURE.0 * COLUMNS) as f32, 2.0 / (PICTURE.1 * ROWS) as f32);
     for (card, out) in cards.iter().zip(vertices.chunks_exact_mut(4)) {
-        let (column, row) = (card.picture % COLUMNS, card.picture / COLUMNS);
-        let u = [column as f32 / COLUMNS as f32 + margin.x, (column + 1) as f32 / COLUMNS as f32 - margin.x];
-        let v = [row as f32 / ROWS as f32 + margin.y, (row + 1) as f32 / ROWS as f32 - margin.y];
+        let [u0, u1, v0, v1] = card.picture;
+        let (u, v) = ([u0, u1], [v0, v1]);
         let n = card.normal;
         let way = card.across.normalize_or_zero();
         let (occlusion, sky_dir, bounce) = card.light.packed();
@@ -984,6 +1079,48 @@ fn green(rgb: Vec3, road: bool) -> f32 {
     // Green or straw (green over blue) and not earth (red over green) nor stone (grey).
     let [low, high] = GRASSY[usize::from(road)];
     smoothstep([low, high], c.y - c.z - 2.0 * (c.x - c.y - 0.02).max(0.0))
+}
+
+/// The rectangle (`u0, u1, v0, v1`) of our texture's picture number `picture`, a texel in from its edges.
+fn picture_rect(picture: usize) -> [f32; 4] {
+    let margin = Vec2::new(2.0 / (PICTURE.0 * COLUMNS) as f32, 2.0 / (PICTURE.1 * ROWS) as f32);
+    let (column, row) = (picture % COLUMNS, picture / COLUMNS);
+    [
+        column as f32 / COLUMNS as f32 + margin.x,
+        (column + 1) as f32 / COLUMNS as f32 - margin.x,
+        row as f32 / ROWS as f32 + margin.y,
+        (row + 1) as f32 / ROWS as f32 - margin.y,
+    ]
+}
+
+/// A track's grass atlas (`dds`, any format [`dds::to_rgba8`] reads) as our texture is drawn: grey, so the ground's hue
+/// and brightness colour the blades ([`Field::cards`]), with its mip chain and each level's alpha scaled to keep the
+/// top level's cut-out coverage ([`keep_coverage`]). Its bytes, the mean grey (display, weighted by alpha) and its size
+/// in texels.
+fn grey_atlas(dds: &[u8]) -> Option<(Vec<u8>, Vec3, Vec2)> {
+    let rgba = dds::to_rgba8(dds)?;
+    let file = dds::parse(&rgba).ok()?;
+    let level = file.levels().into_iter().next()?;
+    let (width, height) = (level.width as usize, level.height as usize);
+    let mut pixels = level.data.to_vec();
+    let (mut sum, mut weight) = (0.0, 0.0);
+    for t in pixels.chunks_exact_mut(4) {
+        let grey = 0.2126 * f32::from(t[0]) + 0.7152 * f32::from(t[1]) + 0.0722 * f32::from(t[2]);
+        let alpha = f32::from(t[3]) / 255.0;
+        (sum, weight) = (sum + grey / 255.0 * alpha, weight + alpha);
+        t[..3].fill(grey.round() as u8);
+    }
+    let bytes = dds::with_mips(&dds::rgba8_file(width as u32, height as u32, &pixels))?;
+    Some((
+        keep_coverage(bytes, width, height),
+        Vec3::splat(sum / weight.max(1.0)),
+        Vec2::new(width as f32, height as f32),
+    ))
+}
+
+/// The linear luminance of a display colour (0 to 1).
+fn luminance(c: Vec3) -> f32 {
+    c.powf(2.2).dot(Vec3::new(0.2126, 0.7152, 0.0722))
 }
 
 /// The tint of a ground vertex of colour `rgb`, as `own_light` in `shader.wgsl` takes it on the near ground: its hue,
@@ -1307,7 +1444,30 @@ mod tests {
             placement: vec![sharp],
             line: Line::new(&[a, d]),
             mean: Vec3::splat(0.5),
+            fx: None,
         }
+    }
+
+    #[test]
+    fn a_converted_stages_grass_takes_ground_by_luminance_and_pieces_by_weight() {
+        use rbr_btb::track::{GrassFx, GrassGroup, GrassPiece};
+        let settings = GrassFx {
+            texture: None,
+            grid: [8, 3],
+            base: 1.0,
+            groups: vec![GrassGroup {
+                chance: 1.0,
+                pieces: vec![GrassPiece { cell: [4, 1], size: [2, 2], chance: 1.0 }],
+            }],
+            luminance: [0.005, 0.25],
+        };
+        let fx = Fx { luminance: settings.luminance, atlas: Some((settings, Vec2::new(2048.0, 768.0))) };
+        assert_eq!((fx.mask(Vec3::splat(0.5)), fx.mask(Vec3::splat(0.9)), fx.mask(Vec3::ZERO)), (1.0, 0.0, 0.0));
+        // The first half of the weights is the first row's cells, the second the group's piece.
+        let (rect, aspect) = fx.piece(0.0).unwrap();
+        assert!(rect[0] < 1.0 / 8.0 && rect[2] < 1.0 / 3.0 && (aspect - 1.0).abs() < 1e-6);
+        let (rect, aspect) = fx.piece(0.75).unwrap();
+        assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[3] > 0.6 && (aspect - 1.0).abs() < 1e-6);
     }
 
     #[test]
@@ -1340,9 +1500,9 @@ mod tests {
         let field = field(|_, _| [75, 125, 45]);
         let cards = field.cards((0, 0), 1.0, CAPACITY, &[]);
         assert!(cards.len() > 500);
-        assert!(cards.iter().any(|c| c.picture >= 14));
+        assert!(cards.iter().any(|c| c.picture[0] >= 0.5 && c.picture[2] >= 0.75));
         for c in cards {
-            let highest = if c.picture >= 14 { 0.20 } else { 0.14 };
+            let highest = if c.picture[0] >= 0.5 && c.picture[2] >= 0.75 { 0.20 } else { 0.14 };
             assert!(c.height <= highest, "{} > {highest}", c.height);
             assert!(c.across.length() * 2.0 <= 0.200001);
         }

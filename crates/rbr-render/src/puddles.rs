@@ -594,6 +594,7 @@ mod tests {
             alpha_ref: None,
             mip_bias: false,
             ground: true,
+            grass: false,
             cull_back: false,
             blend: false,
             depth_test: true,

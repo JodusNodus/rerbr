@@ -139,6 +139,8 @@ pub struct Material {
     /// ReRBR's `ReRbrSheen=<roughness>`: the opaque road's dry sheen, a rough dielectric's sky reflection and sun
     /// highlight at this roughness. Only with `ReRbrEffect`.
     pub sheen: Option<f32>,
+    /// ReRBR's `ReRbrGrass=1`: the stage's grass ([`Scene::grass`]) grows on this material (converted stages).
+    pub grass: bool,
 }
 
 impl Material {
@@ -216,6 +218,8 @@ pub struct Scene {
     pub driveline: Vec<[f32; 3]>,
     /// `settings.ini` `sunDirection`, the direction the sunlight travels (pointing down).
     pub sun_direction: Option<[f32; 3]>,
+    /// `settings.ini` `[ReRbrGrass]`.
+    pub grass: Option<track::GrassFx>,
     pub materials: Vec<Material>,
     pub meshes: Vec<Mesh>,
     pub objects: Vec<Object>,
@@ -228,7 +232,8 @@ impl Scene {
         let track = Track::open(folder)?;
         let spawn = track.spawn()?;
         let driveline = track.driveline()?;
-        let sun = track.settings()?.sun_direction;
+        let settings = track.settings()?;
+        let (sun, grass) = (settings.sun_direction, settings.grass);
         let objects = track.objects()?;
         let files = TextureFiles::open(folder)?;
         let textures = Textures::list(&files.0)?;
@@ -279,6 +284,7 @@ impl Scene {
                 .map(|p| [p.position[0] as f32, p.position[2] as f32, p.position[1] as f32])
                 .collect(),
             sun_direction: sun.map(|s| s.map(|v| v as f32)),
+            grass,
             materials,
             meshes,
             objects: placed,
@@ -540,6 +546,7 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
             .and_then(|_| m.entry("ReRbrSheen").and_then(track::decimal_float))
             .map(|r| r as f32)
             .filter(|r| r.is_finite() && *r > 0.0),
+        grass: m.entry("ReRbrGrass") == Some("1"),
     }
 }
 

@@ -350,6 +350,10 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   (`scene::Material::sheen`, `Surface::sheen`): the retail roads' rough dielectric (sky reflection, GGX sun) on the
   bumped normal, drawn where the collision surface under the vertex is tarmac (`Vertex::wet`, `puddles::mark_roads`), in
   place of the highlight there. Needs the own light; the viewer marks the roads for it without the grass.
+- `ReRbrGrass=1` (ReRBR's own, a material section) and `settings.ini` `[ReRbrGrass]` (own section; `scene::Material::grass`,
+  `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
+  ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`
+  pieces), in place of its choice by colour; keys in `notes/assetto.md`.
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 
