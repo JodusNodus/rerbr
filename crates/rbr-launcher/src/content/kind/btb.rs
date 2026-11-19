@@ -11,7 +11,7 @@ use std::sync::atomic::AtomicBool;
 
 use rbr_btb::track;
 
-use super::{Ctx, Found, Item, Kind};
+use super::{wanted, within, Ctx, Found, Item, Kind};
 use crate::archive::safe_folder;
 use crate::content::source::{Entry, Source};
 use crate::content::{stem, Goto, Outcome, Refresh};
@@ -91,14 +91,6 @@ impl Kind for Btb {
 }
 
 /// Whether the path lies below the folder `prefix` (names ignoring case).
-fn within(path: &[String], prefix: &[String]) -> bool {
-    path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
-}
-
-fn skipped(name: &str) -> bool {
-    name.rsplit_once('.').is_some_and(|(_, e)| SKIPPED.iter().any(|s| e.eq_ignore_ascii_case(s)))
-}
-
 /// Whether `tracks` already has a stage folder called `name` (ignoring case).
 fn taken(tracks: &Path, name: &str) -> bool {
     fs::read_dir(tracks)
@@ -121,8 +113,7 @@ pub fn add_stage(
     if taken(tracks, &name) {
         return Err("already added".into());
     }
-    let wanted: Vec<&Entry> =
-        src.entries().iter().filter(|e| within(&e.path, dir) && !e.path.last().is_some_and(|f| skipped(f))).collect();
+    let wanted = wanted(src, dir, &SKIPPED);
     let pairs: Vec<(Vec<String>, Vec<String>)> =
         wanted.iter().map(|e| (e.path.clone(), e.path[dir.len()..].to_vec())).collect();
     fs::create_dir_all(tracks).map_err(|e| format!("{}: {e}", tracks.display()))?;
