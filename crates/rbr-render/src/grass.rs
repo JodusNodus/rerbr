@@ -1126,16 +1126,19 @@ fn picture_rect(picture: usize) -> [f32; 4] {
     ]
 }
 
-/// A track's grass atlas (`dds`, any format [`dds::to_rgba8`] reads) as our texture is drawn: grey, so the ground's hue
+/// A track's grass atlas (`dds`: plain 24- or 32-bit, DXT1, DXT3 or DXT5) as our texture is drawn: grey, so the ground's hue
 /// and brightness colour the blades ([`Field::cards`]), with its mip chain and each level's alpha scaled to keep the
 /// top level's cut-out coverage ([`keep_coverage`]). Its bytes, the mean grey (display, weighted by alpha) and its size
 /// in texels.
 fn grey_atlas(dds: &[u8]) -> Option<(Vec<u8>, Vec3, Vec2)> {
-    let rgba = dds::to_rgba8(dds)?;
-    let file = dds::parse(&rgba).ok()?;
+    let plain = dds::to_rgba8(dds);
+    let file = dds::parse(plain.as_deref().unwrap_or(dds)).ok()?;
+    if file.format == dds::Format::Bc7 {
+        return None;
+    }
     let level = file.levels().into_iter().next()?;
     let (width, height) = (level.width as usize, level.height as usize);
-    let mut pixels = level.data.to_vec();
+    let mut pixels = crate::upscale::decompress(file.format, level.data, level.width, level.height);
     let (mut sum, mut weight) = (0.0, 0.0);
     for t in pixels.chunks_exact_mut(4) {
         let grey = 0.2126 * f32::from(t[0]) + 0.7152 * f32::from(t[1]) + 0.0722 * f32::from(t[2]);
@@ -1503,6 +1506,19 @@ mod tests {
         let (rect, cells) = fx.piece(0.75).unwrap();
         assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[2] > 0.3 && cells == [1.2, 3.0]);
         assert!((fx.cell() - 0.52).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_compressed_atlas_is_drawn_grey_with_its_coverage() {
+        let rgba: Vec<u8> = (0..16 * 16).flat_map(|i| [30, 200, 40, if i % 16 < 8 { 255 } else { 0 }]).collect();
+        let file = crate::upscale::encode(dds::Format::Dxt5, 16, 16, rgba);
+        let (bytes, mean, size) = grey_atlas(&file).unwrap();
+        let file = dds::parse(&bytes).unwrap();
+        let level = file.levels()[0];
+        let texels = crate::upscale::decompress(file.format, level.data, level.width, level.height);
+        let opaque = texels.chunks_exact(4).filter(|t| t[3] > 0).collect::<Vec<_>>();
+        assert!(opaque.len() > 100 && opaque.iter().all(|t| t[0].abs_diff(t[1]) < 8 && t[1].abs_diff(t[2]) < 8));
+        assert!(mean.x > 0.4 && mean.x < 0.7 && size == Vec2::new(16.0, 16.0));
     }
 
     #[test]
