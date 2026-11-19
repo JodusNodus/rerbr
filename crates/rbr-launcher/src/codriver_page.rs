@@ -290,19 +290,14 @@ impl Form {
                 pack_row(rows, "RallySimFans install", &line, TEXT_2, None);
             }
             for pack in &self.owned_voices {
-                let removed = match &pack.problem {
-                    Some(problem) => pack_row(rows, &pack.name, problem, WARN, Some(idle)),
+                let (line, color) = match &pack.problem {
+                    Some(problem) => (problem.clone(), WARN),
                     None => {
-                        let line = format!(
-                            "✔ {} voices, {} call styles, {} range sets",
-                            pack.voices.len(),
-                            pack.styles.len(),
-                            pack.ranges.len()
-                        );
-                        pack_row(rows, &pack.name, &line, GOOD, Some(idle))
+                        let counts = (pack.voices.len(), pack.styles.len(), pack.ranges.len());
+                        (format!("✔ {} voices, {} call styles, {} range sets", counts.0, counts.1, counts.2), GOOD)
                     }
                 };
-                if removed {
+                if pack_row(rows, &pack.name, &line, color, Some(idle)) {
                     remove_voice = Some(pack.name.clone());
                 }
             }
@@ -374,6 +369,17 @@ mod tests {
         std::fs::write(&path, text).unwrap();
     }
 
+    /// A voice download with one call, one range and one sound under `root`.
+    fn voice_download(root: &Path) -> PathBuf {
+        let download = root.join("voice");
+        write(download.join("PaceNote.ini"), "[SETTINGS]\nsounds=english/steve\n");
+        write(download.join("config/pacenotes/Rbr.ini"), "[PACKAGE::RBR]\nfile=calls.ini\n");
+        write(download.join("config/pacenotes/calls.ini"), "[PACENOTE::ONE_LEFT]\nid=0\nSounds=1\nSnd0=one_left.ogg\n");
+        write(download.join("config/ranges/Rbr.ini"), "[RANGE::50]\nSounds=1\nSnd0=50_1.ogg\n");
+        write(download.join("sounds/english/steve/one_left.ogg"), "OggS fake");
+        download
+    }
+
     /// The co-driver rows drawn offscreen to `RBR_SCREENSHOTS`: a locally owned voice pack and Tanner notes beside
     /// the game folder's plugin. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF`.
     #[test]
@@ -387,12 +393,7 @@ mod tests {
         };
         let root = crate::test_dir("page-codriver-shots");
         // A voice download and a notes-only download, as imported.
-        let download = root.join("voice");
-        write(download.join("PaceNote.ini"), "[SETTINGS]\nsounds=english/steve\n");
-        write(download.join("config/pacenotes/Rbr.ini"), "[PACKAGE::RBR]\nfile=calls.ini\n");
-        write(download.join("config/pacenotes/calls.ini"), "[PACENOTE::ONE_LEFT]\nid=0\nSounds=1\nSnd0=one_left.ogg\n");
-        write(download.join("config/ranges/Rbr.ini"), "[RANGE::50]\nSounds=1\nSnd0=50_1.ogg\n");
-        write(download.join("sounds/english/steve/one_left.ogg"), "OggS fake");
+        let download = voice_download(&root);
         let notes_src = root.join("notes");
         write(
             notes_src.join("Tanner/tanner.ini"),
@@ -491,12 +492,7 @@ mod tests {
             return;
         };
         let root = crate::test_dir("page-notes-cache");
-        let download = root.join("voice");
-        write(download.join("PaceNote.ini"), "[SETTINGS]\nsounds=english/steve\n");
-        write(download.join("config/pacenotes/Rbr.ini"), "[PACKAGE::RBR]\nfile=calls.ini\n");
-        write(download.join("config/pacenotes/calls.ini"), "[PACENOTE::ONE_LEFT]\nid=0\nSounds=1\nSnd0=one_left.ogg\n");
-        write(download.join("config/ranges/Rbr.ini"), "[RANGE::50]\nSounds=1\nSnd0=50_1.ogg\n");
-        write(download.join("sounds/english/steve/one_left.ogg"), "OggS fake");
+        let download = voice_download(&root);
         let notes_src = root.join("notes");
         let note = "[PACENOTES]\ncount = 2\n\n[P0]\ntype = 16\ndistance = 100.0\nflag = 0\n\n\
                     [P1]\ntype = 3\ndistance = 200.0\nflag = 0\n";

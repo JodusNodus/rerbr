@@ -55,6 +55,16 @@ fn clean(value: f32) -> f32 {
     }
 }
 
+/// [`clean`], and not below 0.
+fn positive(value: f32) -> f32 {
+    clean(value).max(0.0)
+}
+
+/// A comparison's curve, dashed.
+fn ghost(painter: &Painter, points: &[Pos2]) {
+    painter.extend(Shape::dashed_line(points, Stroke::new(1.25, BASE), 5.0, 4.0));
+}
+
 /// A legend entry: its text, colour and whether its line is dashed.
 type Entry<'a> = (&'a str, Color32, bool);
 
@@ -102,13 +112,13 @@ fn axes(painter: &Painter, plot: Rect, zero: Vec2, xs: [String; 3], ys: [String;
 /// The dampers' force over the wheel's speed: bump left of 0 (the slow rate up to `fast_from`, the fast rate past
 /// it), rebound right of 0; front and rear (`[front, rear]`), the comparison's dashed.
 pub fn dampers(ui: &mut Ui, now: [Damper; 2], base: [Damper; 2], size: Vec2) {
-    let positive = |d: Damper| Damper {
-        bump: clean(d.bump).max(0.0),
-        rebound: clean(d.rebound).max(0.0),
-        fast_bump: clean(d.fast_bump).max(0.0),
-        fast_from: clean(d.fast_from).max(0.0),
+    let clamp = |d: Damper| Damper {
+        bump: positive(d.bump),
+        rebound: positive(d.rebound),
+        fast_bump: positive(d.fast_bump),
+        fast_from: positive(d.fast_from),
     };
-    let (now, base) = (now.map(positive), base.map(positive));
+    let (now, base) = (now.map(clamp), base.map(clamp));
     let Some((painter, plot)) = card(ui, size, &AXLES_LEGEND, 42.0, 18.0) else { return };
     let all = || now.iter().chain(&base);
     let xmax = all().map(|d| 2.0 * d.fast_from).fold(0.5_f32, f32::max);
@@ -129,7 +139,7 @@ pub fn dampers(ui: &mut Ui, now: [Damper; 2], base: [Damper; 2], size: Vec2) {
             .collect()
     };
     for d in &base {
-        painter.extend(Shape::dashed_line(&curve(d), Stroke::new(1.25, BASE), 5.0, 4.0));
+        ghost(&painter, &curve(d));
     }
     for (d, colour) in now.iter().zip([FRONT, REAR]) {
         painter.add(Shape::line(curve(d), Stroke::new(2.0, colour)));
@@ -170,13 +180,13 @@ fn coil(x: f32, bottom: f32, length: f32, coils: usize, half: f32) -> Vec<Pos2> 
 /// The front and rear coil-overs side by side, to one scale: the main spring under the helper spring, each coil's
 /// length its free length, the wire's weight its rate; the comparison's outline behind them.
 pub fn springs(ui: &mut Ui, now: [Spring; 2], base: [Spring; 2], size: Vec2) {
-    let positive = |s: Spring| Spring {
-        length: clean(s.length).max(0.0),
-        rate: clean(s.rate).max(0.0),
-        helper_length: clean(s.helper_length).max(0.0),
-        helper_rate: clean(s.helper_rate).max(0.0),
+    let clamp = |s: Spring| Spring {
+        length: positive(s.length),
+        rate: positive(s.rate),
+        helper_length: positive(s.helper_length),
+        helper_rate: positive(s.helper_rate),
     };
-    let (now, base) = (now.map(positive), base.map(positive));
+    let (now, base) = (now.map(clamp), base.map(clamp));
     let Some((painter, plot)) = card(ui, size, &AXLES_LEGEND, 10.0, 36.0) else { return };
     let all = || now.iter().chain(&base);
     let scale = plot.height() / all().map(|s| s.length + s.helper_length).fold(0.1_f32, f32::max);
@@ -306,7 +316,7 @@ pub fn pedal_locks(ui: &mut Ui, map: &mut DiffMap, base: &DiffMap, lock: Range, 
         (0..MAP_POINTS).map(|n| point(plot, n as f32 / (MAP_POINTS - 1) as f32, curve[n])).collect()
     };
     for compared in [&base.throttle, &base.brake] {
-        painter.extend(Shape::dashed_line(&points(compared), Stroke::new(1.25, BASE), 5.0, 4.0));
+        ghost(&painter, &points(compared));
     }
     let torque = clean(torque);
     let mut changed = false;
@@ -328,8 +338,7 @@ pub fn pedal_locks(ui: &mut Ui, map: &mut DiffMap, base: &DiffMap, lock: Range, 
 pub fn speed_locks(ui: &mut Ui, map: &mut DiffMap, base: &DiffMap, factor: Range, size: Vec2) -> bool {
     let legend = [("Lock factor", THROTTLE, false), ("Compared", BASE, true)];
     let Some((painter, plot)) = card(ui, size, &legend, 42.0, 18.0) else { return false };
-    let speed = |v: f32| clean(v).max(0.0);
-    let all = || map.speed.iter().chain(&base.speed).map(|&v| speed(v));
+    let all = || map.speed.iter().chain(&base.speed).map(|&v| positive(v));
     let (lo, hi) = (all().fold(f32::INFINITY, f32::min), all().fold(0.0_f32, f32::max));
     let (lo, hi) = if hi > lo { (lo, hi) } else { (0.0, lo.max(0.0) + 1.0) };
     let kmh = |f: f32| format!("{:.0} km/h", (lo + f * (hi - lo)) * 3.6);
@@ -337,9 +346,9 @@ pub fn speed_locks(ui: &mut Ui, map: &mut DiffMap, base: &DiffMap, factor: Range
     axes(&painter, plot, Vec2::ZERO, [kmh(0.0), kmh(0.5), kmh(1.0)], percent);
     // In the map's order, even where its speeds do not increase.
     let points = |m: &DiffMap| -> Vec<Pos2> {
-        (0..MAP_POINTS).map(|n| point(plot, (speed(m.speed[n]) - lo) / (hi - lo), m.speed_factor[n])).collect()
+        (0..MAP_POINTS).map(|n| point(plot, (positive(m.speed[n]) - lo) / (hi - lo), m.speed_factor[n])).collect()
     };
-    painter.extend(Shape::dashed_line(&points(base), Stroke::new(1.25, BASE), 5.0, 4.0));
+    ghost(&painter, &points(base));
     let line = points(map);
     painter.add(Shape::line(line.clone(), Stroke::new(2.0, THROTTLE)));
     let speeds = map.speed;
@@ -351,7 +360,7 @@ pub fn speed_locks(ui: &mut Ui, map: &mut DiffMap, base: &DiffMap, factor: Range
         colour: THROTTLE,
         salt: "speed",
     };
-    knots(ui, &painter, plot, curve, |n, v| format!("{:.0} km/h: {:.0} %", speed(speeds[n]) * 3.6, v * 100.0))
+    knots(ui, &painter, plot, curve, |n, v| format!("{:.0} km/h: {:.0} %", positive(speeds[n]) * 3.6, v * 100.0))
 }
 
 #[cfg(test)]

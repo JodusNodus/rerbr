@@ -197,13 +197,9 @@ pub mod tests {
             list[i] = base[i];
         }
         assert_eq!(list, base);
-    }
 
-    #[test]
-    fn an_axle_changed_unlike_is_a_line_per_wheel() {
-        let fields = any_car();
+        // An axle changed unlike is a line per wheel.
         let mut now = Setup::default();
-        let base = values(&now);
         now.corners[0].bump = 4000.0;
         now.corners[1].bump = 4500.0;
         let lines = changes(&fields, &base, &values(&now), |_, v| format!("{v}"));
