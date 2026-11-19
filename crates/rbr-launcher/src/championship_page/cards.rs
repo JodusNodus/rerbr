@@ -84,14 +84,15 @@ pub(super) fn stage_summary(ui: &mut Ui, event: &Event, rally: usize, stage: usi
             }
         };
         match mine {
-            Some(0) => {
-                let by = times.get(1).map_or(String::new(), |t| format!(" by {}", seconds(t.1 - best)));
-                ui.label(RichText::new(format!("You won SS{}{by}", stage + 1)).color(STAR));
-                ui.colored_label(DIM, "·");
-                overall(ui);
-            }
             Some(at) => {
-                ui.label(RichText::new(format!("You were {} on SS{}", ordinal(at + 1), stage + 1)).color(STAR));
+                let line = match at {
+                    0 => {
+                        let by = times.get(1).map_or(String::new(), |t| format!(" by {}", seconds(t.1 - best)));
+                        format!("You won SS{}{by}", stage + 1)
+                    }
+                    at => format!("You were {} on SS{}", ordinal(at + 1), stage + 1),
+                };
+                ui.label(RichText::new(line).color(STAR));
                 ui.colored_label(DIM, "·");
                 overall(ui);
             }
@@ -442,11 +443,9 @@ pub(super) fn calendar_ui(ui: &mut Ui, event: &Event) {
                 ui.colored_label(STAR, if current { "▶" } else { "" });
                 ui.label(text(format!("R{}", k + 1)));
                 ui.label(text(r.name.clone()));
-                let mut surfaces: Vec<&str> = r.stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
-                surfaces.dedup();
-                let length: f32 = r.stages.iter().map(|s| s.stage.length).sum();
+                let (surfaces, length) = surfaces_and_length(&r.stages);
                 let stages = format!("{} stages", r.stages.len());
-                ui.colored_label(GREY, format!("{} · {}", surfaces.join(", "), km(length))).on_hover_text(stages);
+                ui.colored_label(GREY, format!("{surfaces} · {}", km(length))).on_hover_text(stages);
                 match rally_finishes(event, k) {
                     Some(finishes) => {
                         match finishes.iter().find(|(e, _)| e.is_none()).map(|(_, f)| *f) {

@@ -6,7 +6,7 @@ use rbr_formats::saves::is_file_name_part;
 use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, Surface, Surfaces, Weather};
 use rbr_season::team::team_offers;
 
-use super::common::{row, BAD};
+use super::common::{panel_frame, row, BAD};
 use super::view::*;
 use super::*;
 use crate::kit;
@@ -190,8 +190,7 @@ impl ChampionshipPage {
     /// A saved championship: where it stands, Abandon… and Continue.
     fn continue_bar(&mut self, ui: &mut Ui, saved: &Result<String, String>, env: &Env, abandon: &mut bool) {
         kit::group_label(ui, "Your championship", None);
-        let frame = egui::Frame::new().fill(PANEL).stroke(Stroke::new(1.0, LINE)).corner_radius(10);
-        frame.inner_margin(Margin::symmetric(14, 10)).show(ui, |ui| {
+        panel_frame().inner_margin(Margin::symmetric(14, 10)).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
@@ -363,8 +362,7 @@ impl ChampionshipPage {
 /// The presets as a list of radio rows; the one clicked.
 fn preset_list(ui: &mut Ui, selected: Preset) -> Option<Preset> {
     let mut clicked = None;
-    let frame = egui::Frame::new().fill(PANEL).stroke(Stroke::new(1.0, LINE)).corner_radius(10);
-    frame.show(ui, |ui| {
+    panel_frame().show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         ui.set_width(ui.available_width());
         let last = Preset::ALL.len() - 1;

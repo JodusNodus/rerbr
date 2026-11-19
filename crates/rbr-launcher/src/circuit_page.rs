@@ -59,7 +59,6 @@ enum Scan {
     Done,
 }
 
-/// The session length in words.
 pub fn laps_label(laps: u32) -> String {
     match laps {
         0 => "Free practice".to_owned(),
@@ -71,21 +70,12 @@ pub fn laps_label(laps: u32) -> String {
 /// The sectors' own times of a lap given by its time at each gate (since the lap began): each gate less the one before,
 /// and the rest of the lap.
 pub fn sector_times(best: &BestLap) -> Vec<f32> {
-    let mut from = 0.0;
-    best.sectors
-        .iter()
-        .copied()
-        .chain([best.lap])
-        .map(|gate| {
-            let time = gate - from;
-            from = gate;
-            time
-        })
-        .collect()
+    let gates = best.sectors.iter().copied().chain([best.lap]);
+    let starts = std::iter::once(0.0).chain(best.sectors.iter().copied());
+    gates.zip(starts).map(|(gate, from)| gate - from).collect()
 }
 
 impl CircuitPage {
-    /// The page as the settings left it.
     pub fn from_settings(map: Option<u32>, laps: Option<u32>, pace_notes: Option<bool>) -> Self {
         Self {
             map,
@@ -109,12 +99,10 @@ impl Form {
         self.catalog.maps.get(index).and_then(Map::btb).is_some_and(|btb| btb.circuit)
     }
 
-    /// The maps that play as laps, by their index.
     pub fn circuits(&self) -> Vec<usize> {
         (0..self.catalog.maps.len()).filter(|&i| self.plays_as_circuit(i)).collect()
     }
 
-    /// Fills the circuit browser with the maps that play as laps.
     pub fn list_circuits(&mut self) {
         let rows = self
             .circuits()
@@ -166,7 +154,6 @@ impl Form {
         self.list_circuits();
     }
 
-    /// For the screenshots: waits for the scan.
     pub(crate) fn wait_for_scan(&mut self, ctx: &egui::Context) {
         self.poll_scan(ctx);
         if let Scan::Running(receive) = &self.circuit.scan {
@@ -175,7 +162,6 @@ impl Form {
         }
     }
 
-    /// The best laps, read again when they are stale.
     fn best_laps(&mut self) -> &LapBook {
         let dir = SaveDir::new(&self.records()).path;
         let page = &mut self.circuit;
@@ -303,7 +289,6 @@ impl Form {
         browser::remember(&mut self.recent_maps, number);
     }
 
-    /// The circuit browser in place of the page's body.
     fn circuit_browser_page(&mut self, ui: &mut egui::Ui) {
         let records = self.records();
         let profile = self.championship.profile.clone();

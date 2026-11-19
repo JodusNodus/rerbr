@@ -22,7 +22,6 @@ impl ChampionshipPage {
     /// The championship under way: the header, the itinerary strip, the next step's card, the standings and the
     /// pinned footer with the step's primary button.
     pub(super) fn event_ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
-        let mut request = None;
         let run = self.run.as_ref()?;
         let event = run.event.clone();
         let rally = rally_of(&event);
@@ -33,9 +32,7 @@ impl ChampionshipPage {
             self.view = View::Entry;
             return None;
         }
-        if let Some(asked) = self.footer_ui(ui, &env, &event, rally) {
-            request = Some(asked);
-        }
+        let mut request = self.footer_ui(ui, &env, &event, rally);
         // The stage picked on the itinerary, else the last one driven while it is news.
         let picked = self.shown.filter(|&(r, s)| r == rally && s < driven(&event, rally).len());
         let key = match event.turn {
@@ -66,9 +63,8 @@ impl ChampionshipPage {
                 let used_left = ui
                     .scope_builder(column(origin.x, left), |ui| {
                         ui.spacing_mut().item_spacing.y = 6.0;
-                        if let Some(asked) = self.left_ui(ui, &env, &event, &standings, points.as_deref(), &news) {
-                            request = Some(asked);
-                        }
+                        request =
+                            self.left_ui(ui, &env, &event, &standings, points.as_deref(), &news).or(request.take());
                     })
                     .response
                     .rect;
@@ -172,10 +168,8 @@ impl ChampionshipPage {
 
     fn welcome_ui(&mut self, ui: &mut Ui, event: &Event, rally: usize) {
         let Some(r) = event.rallies.get(rally) else { return };
-        let length: f32 = r.stages.iter().map(|s| s.stage.length).sum();
+        let (surfaces, length) = surfaces_and_length(&r.stages);
         let services = r.stages.iter().filter(|s| s.service_after.is_some()).count();
-        let mut surfaces: Vec<&str> = r.stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
-        surfaces.dedup();
         let first = r.stages.first().map_or(String::new(), |s| format!(" · SS1 at {}", clock_hm(s.clock)));
         card(ui, |ui| {
             card_title(ui, &format!("Welcome to {}", r.name));
@@ -183,7 +177,7 @@ impl ChampionshipPage {
                 "{} stages · {} · {} · {services} service{}{first}",
                 r.stages.len(),
                 km(length),
-                surfaces.join(", "),
+                surfaces,
                 if services == 1 { "" } else { "s" }
             );
             ui.colored_label(TEXT_2, line);
@@ -214,7 +208,7 @@ impl ChampionshipPage {
         let kind = surface_kind(next.stage.surface);
         let choosing = self.choice_before(rally, stage);
         let tyre = self.next_tyre();
-        let road = self.run.as_ref().and_then(|r| road_line(&r.event, rally, stage));
+        let road = road_line(event, rally, stage);
         let rivals = (stage > 0).then(|| rivals_line(event, rally)).flatten();
         let title = format!("SS{} · {}", stage + 1, next.stage.name);
         let facts = format!(
@@ -235,11 +229,10 @@ impl ChampionshipPage {
                     ui.add_space(9.0);
                 });
             });
-            if let Some(rivals) = rivals {
-                row(rows, "Position", "", |ui| _ = ui.label(RichText::new(rivals).color(TEXT)));
-            }
-            if let Some(road) = road {
-                row(rows, "Start order", "", |ui| _ = ui.label(RichText::new(road).color(TEXT)));
+            for (label, text) in [("Position", rivals), ("Start order", road)] {
+                if let Some(text) = text {
+                    row(rows, label, "", |ui| _ = ui.label(RichText::new(text).color(TEXT)));
+                }
             }
             row(rows, "Tyres", "", |ui| {
                 if choosing {
@@ -360,13 +353,10 @@ impl ChampionshipPage {
             Turn::Service { .. } => ("Super Rally".to_owned(), step(event)),
             Turn::RallyOver { .. } => match event.rallies.get(rally + 1) {
                 Some(next) => {
-                    let length: f32 = next.stages.iter().map(|s| s.stage.length).sum();
-                    let mut surfaces: Vec<&str> =
-                        next.stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
-                    surfaces.dedup();
+                    let (surfaces, length) = surfaces_and_length(&next.stages);
                     (
                         format!("Next: R{} · {}", rally + 2, next.name),
-                        format!("{} · {} · Practice first, not recorded", surfaces.join(", "), km(length)),
+                        format!("{surfaces} · {} · Practice first, not recorded", km(length)),
                     )
                 }
                 None => ("The last rally is over".to_owned(), "On to the final result".to_owned()),

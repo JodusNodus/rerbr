@@ -1,7 +1,7 @@
 //! A table in a panel for the standings and a stage's times: a header, rows of painted cells (numbers in mono), the
 //! player's row lit, scrolling when it is taller than the room.
 
-use egui::{Color32, FontId, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, FontId, Rect, Sense, Ui, Vec2};
 
 use crate::theme::*;
 
@@ -29,12 +29,10 @@ pub(super) struct Cell {
 }
 
 impl Cell {
-    /// A name or a word.
     pub fn text(text: impl Into<String>, color: Color32) -> Cell {
         Cell { text: text.into(), color, mono: false }
     }
 
-    /// A number, a time or a place.
     pub fn num(text: impl Into<String>, color: Color32) -> Cell {
         Cell { text: text.into(), color, mono: true }
     }
@@ -49,8 +47,7 @@ pub(super) struct Line {
 
 /// The table in a panel, its rows scrolling after `max_height` px.
 pub(super) fn table(ui: &mut Ui, id: &str, cols: &[Col], lines: Vec<Line>, max_height: f32) {
-    let frame = egui::Frame::new().fill(PANEL).stroke(Stroke::new(1.0, LINE)).corner_radius(10);
-    frame.inner_margin(egui::Margin::symmetric(4, 6)).show(ui, |ui| {
+    super::common::panel_frame().inner_margin(egui::Margin::symmetric(4, 6)).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         ui.set_width(ui.available_width());
         let total = ui.available_width();

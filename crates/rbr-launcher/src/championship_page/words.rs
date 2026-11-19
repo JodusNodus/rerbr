@@ -6,7 +6,6 @@ use rbr_season::event::Conditions;
 use super::pool;
 use crate::catalog::Car;
 
-/// The difficulty's word.
 pub fn difficulty_word(difficulty: f32) -> &'static str {
     match difficulty {
         d if d < 0.25 => "Gentle",
@@ -54,10 +53,15 @@ pub fn summary(config: &EventConfig, stages: Option<&[StageRef]>) -> String {
         Surfaces::Only(surface) => pool::surface_word(surface).to_owned(),
         Surfaces::Mixed => "mixed surfaces".to_owned(),
     });
+    parts.push(drivers_part(config));
+    parts.join(" · ")
+}
+
+/// "12 Rally2 drivers".
+fn drivers_part(config: &EventConfig) -> String {
     let class = if config.class.is_empty() { String::new() } else { format!("{} ", config.class) };
     let drivers = config.field_size;
-    parts.push(format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" }));
-    parts.join(" · ")
+    format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" })
 }
 
 /// The builder's summary of a plan: "2 rallies · 3 legs · 12 stages · 121 km · gravel · 12 Rally2 drivers".
@@ -79,9 +83,7 @@ pub fn plan_summary(config: &EventConfig, rallies: &[rbr_season::event::RallyPla
         [surface] => pool::surface_word(surface).to_owned(),
         _ => "mixed surfaces".to_owned(),
     });
-    let class = if config.class.is_empty() { String::new() } else { format!("{} ", config.class) };
-    let drivers = config.field_size;
-    parts.push(format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" }));
+    parts.push(drivers_part(config));
     parts.join(" · ")
 }
 
@@ -90,7 +92,6 @@ pub fn class_of(car: &Car) -> String {
     car.group.clone().unwrap_or_default()
 }
 
-/// The classes of `cars`, sorted.
 pub fn classes(cars: &[Car]) -> Vec<String> {
     let mut classes: Vec<String> = cars.iter().filter(|c| c.unavailable().is_none()).map(class_of).collect();
     classes.sort();
@@ -160,7 +161,6 @@ pub fn assistance_note(skill: Skill) -> String {
     }
 }
 
-/// The skill level's word.
 pub fn skill_word(skill: Skill) -> &'static str {
     match skill {
         Skill::Rookie => "Rookie",

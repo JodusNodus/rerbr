@@ -57,18 +57,13 @@ impl SchoolPage {
     }
 
     fn text(&self, key: &str) -> String {
-        self.strings.as_ref().and_then(|s| s.get(key)).unwrap_or(key).to_owned()
+        crate::championship_page::common::text_of(self.strings.as_ref(), key)
     }
 
     /// The lesson's times, read once per map from its `.dls` ([`lesson_times`]).
     fn times(&mut self, data: &Data, lesson: Lesson) -> Option<(f32, f32)> {
         let map = lesson.map();
-        if let Some(cached) = self.times.get(&map) {
-            return *cached;
-        }
-        let times = lesson_times(data, lesson);
-        self.times.insert(map, times);
-        times
+        *self.times.entry(map).or_insert_with(|| lesson_times(data, lesson))
     }
 
     /// The profile's school grades, re-read when the profile or its file changes.
@@ -99,15 +94,12 @@ fn group_of(lesson: Lesson) -> (&'static str, &'static str) {
 /// The lesson's number label: `RSM_LESSON_NRB1`..`NRB6` for the basic lessons, `RSM_LESSON_NRA1`..`NRA11` for the
 /// advanced (the tables have no `A7`, like [`Lesson::brief_keys`]).
 pub fn lesson_label(strings: Option<&Strings>, lesson: Lesson) -> String {
-    let key = if lesson.index() < Lesson::FIRST_ADVANCED {
-        format!("RSM_LESSON_NRB{}", lesson.index() + 1)
-    } else {
-        format!("RSM_LESSON_NRA{}", lesson.index() - Lesson::FIRST_ADVANCED + 1)
-    };
+    let n = lesson.index() - group_start(lesson) + 1;
+    let key = format!("RSM_LESSON_{}{n}", if lesson.index() < Lesson::FIRST_ADVANCED { "NRB" } else { "NRA" });
     strings
         .and_then(|s| s.get(&key))
         .map(|t| t.replace('\n', " ").trim().trim_end_matches('.').to_owned())
-        .unwrap_or_else(|| format!("Lesson {}", lesson.index() - group_start(lesson) + 1))
+        .unwrap_or_else(|| format!("Lesson {n}"))
 }
 
 /// The first lesson of `lesson`'s group.
@@ -281,7 +273,7 @@ fn school_grades(saves: &SaveDir, profile: &str) -> [u32; 17] {
         .ok()
         .and_then(|file| file.current().cloned().or_else(|| file.profiles.list.first().cloned()))
         .map(|entry| entry.school)
-        .unwrap_or([0; 17])
+        .unwrap_or_default()
 }
 
 impl Form {
@@ -414,13 +406,6 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    /// The player's folder's records, for the tests.
-    fn test_records() -> (PathBuf, SaveDir) {
-        let dir = crate::test_dir("school-grades");
-        let saves = SaveDir::new(&dir);
-        (dir, saves)
-    }
-
     #[test]
     fn groups_split_at_the_first_advanced_lesson() {
         assert_eq!(Lesson::FIRST_ADVANCED, 6);
@@ -430,14 +415,6 @@ mod tests {
         assert_eq!(group_of(Lesson::new(16).unwrap()).0, "Advanced");
         assert_eq!(Lesson::new(0).unwrap().brief_keys(), ("B1SI".into(), "B1SA".into()));
         assert_eq!(Lesson::new(16).unwrap().brief_keys(), ("A12SI".into(), "A12SA".into()));
-    }
-
-    #[test]
-    fn result_text_names_the_grades() {
-        assert_eq!(result_text(0), "Not passed");
-        assert_eq!(result_text(1), "Passed 1/4");
-        assert_eq!(result_text(3), "Passed 3/4");
-        assert_eq!(result_text(4), "Perfect");
     }
 
     #[test]
@@ -494,7 +471,7 @@ mod tests {
 
     #[test]
     fn grades_come_from_the_profiles_school_array() {
-        let (_dir, saves) = test_records();
+        let saves = SaveDir::new(&crate::test_dir("school-grades"));
         assert_eq!(school_grades(&saves, "nobody"), [0; 17]);
         let mut file = rbr_formats::saves::profile::ProfileFile::fresh("driver");
         file.profiles.list[0].school[2] = 3;
@@ -502,7 +479,7 @@ mod tests {
         saves.save_profile("driver", &file).unwrap();
         let grades = school_grades(&saves, "driver");
         assert_eq!((grades[2], grades[7], grades[0]), (3, 4, 0));
-        assert_eq!((result_text(grades[2]).as_str(), result_text(grades[7]).as_str()), ("Passed 3/4", "Perfect"));
+        assert_eq!([0, 1, 3, 4].map(result_text), ["Not passed", "Passed 1/4", "Passed 3/4", "Perfect"]);
     }
 
     /// The lesson maps' times from their `.dls` files (`RBR_DATA`): lesson 2 (map 83) 9/10 s, lesson 0 (map 81)

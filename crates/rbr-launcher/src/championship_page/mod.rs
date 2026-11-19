@@ -293,14 +293,18 @@ impl ChampionshipPage {
             Ok(mut event) => {
                 // Each model as quick as its physics, within the class.
                 event.set_car_factors(&car_pace::factors(&cache, class, &field, cars, archive));
-                self.run = Some(Run { event, damage: None, penalty: 0.0, tyre: 3 });
-                (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
-                (self.shown, self.stage_times) = (None, false);
-                self.status.clear();
+                self.run_on(Run { event, damage: None, penalty: 0.0, tyre: 3 });
                 self.save(here, profile);
             }
             Err(e) => self.status = format!("The championship cannot be built: {e}"),
         }
+    }
+
+    fn run_on(&mut self, run: Run) {
+        self.run = Some(run);
+        (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
+        (self.shown, self.stage_times) = (None, false);
+        self.status.clear();
     }
 
     /// Continue: the profile's saved championship, its carried damage and state; its car keys of before
@@ -323,10 +327,7 @@ impl ChampionshipPage {
                     state.lines().find_map(|l| l.strip_prefix(key)?.trim_start().strip_prefix('=')?.trim().parse().ok())
                 };
                 let (penalty, tyre) = (value("penalty").unwrap_or(0.0), value("tyre").map_or(3, |t: f32| t as u32));
-                self.run = Some(Run { event, damage, penalty, tyre });
-                (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
-                (self.shown, self.stage_times) = (None, false);
-                self.status.clear();
+                self.run_on(Run { event, damage, penalty, tyre });
             }
             Err(e) => self.status = format!("The saved championship does not read: {e}"),
         }
@@ -359,7 +360,6 @@ impl ChampionshipPage {
         (self.run, self.view, self.park, self.saved) = (None, View::Entry, None, None);
     }
 
-    /// The itinerary stage of the turn, if it is a stage.
     fn next_stage(&self) -> Option<(usize, usize, &ItineraryStage)> {
         let run = self.run.as_ref()?;
         let Turn::Stage { rally, stage } = run.event.turn else { return None };
