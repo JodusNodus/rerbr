@@ -79,7 +79,13 @@ impl Form {
             kit::body(ui, |ui| {
                 ui.columns(2, |columns| {
                     self.game_column(&mut columns[0]);
-                    self.physics_column(&mut columns[1]);
+                    let ffb_tyres = &mut self.ffb.tyres;
+                    crate::physics::experimental_section(
+                        &mut columns[1],
+                        &mut self.physics,
+                        self.session_physics,
+                        ffb_tyres,
+                    );
                 });
             })
         });
@@ -284,11 +290,6 @@ impl Form {
                      unsaved developer override for it. rerbr --help lists the options.",
                 );
             });
-    }
-
-    /// The right column: the physics and the force feedback from the tyres.
-    fn physics_column(&mut self, ui: &mut egui::Ui) {
-        crate::physics::experimental_section(ui, &mut self.physics, self.session_physics, &mut self.ffb.tyres);
     }
 }
 

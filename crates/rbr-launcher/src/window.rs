@@ -108,10 +108,14 @@ impl Gfx {
         Ok(Gfx { window, surface, device, queue, config, stale, egui, renderer })
     }
 
+    fn configure(&mut self) {
+        self.stale = !rbr_render::present::configure(&self.surface, &self.device, &self.config);
+    }
+
     fn resize(&mut self, width: u32, height: u32) {
         self.config.width = width.max(1);
         self.config.height = height.max(1);
-        self.stale = !rbr_render::present::configure(&self.surface, &self.device, &self.config);
+        self.configure();
     }
 
     /// Runs the form and draws it; returns when egui wants the next frame.
@@ -147,7 +151,7 @@ impl Gfx {
         screen: &egui_wgpu::ScreenDescriptor,
     ) -> Option<Duration> {
         if self.stale {
-            self.stale = !rbr_render::present::configure(&self.surface, &self.device, &self.config);
+            self.configure();
             if self.stale {
                 return Some(Duration::ZERO);
             }
@@ -157,7 +161,7 @@ impl Gfx {
             // Hidden: look again in a while rather than at once.
             rbr_render::present::Acquired::Hidden => return Some(Duration::from_millis(100)),
             rbr_render::present::Acquired::Failed => {
-                self.stale = !rbr_render::present::configure(&self.surface, &self.device, &self.config);
+                self.configure();
                 return Some(Duration::ZERO);
             }
         };

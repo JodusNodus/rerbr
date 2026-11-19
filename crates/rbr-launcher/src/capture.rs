@@ -181,9 +181,7 @@ fn fresh_previews(form: &mut Form, map: &crate::catalog::Map, car: Option<&crate
 
 /// Draws `ui` to the PNG `path`.
 pub fn shot(path: &Path, ui: impl FnMut(&egui::Context)) -> Result<(), String> {
-    write_png(path, &draw(ui)?)?;
-    eprintln!("launcher: wrote {}", path.display());
-    Ok(())
+    shot_sized(path, SIZE, ui)
 }
 
 /// [`shot`] at `size` (a page taller than [`SIZE`], whole).
@@ -227,22 +225,18 @@ fn draw_sized((width, height): (u32, u32), mut ui: impl FnMut(&egui::Context)) -
         ..Default::default()
     };
     let mut output = context.run_pass(input(0.0), &mut ui);
-    for pass in 1..=3 {
+    for pass in 1..=4 {
         for (id, deltas) in &output.textures_delta.set {
             for delta in deltas {
                 renderer.update_texture(&device, &queue, *id, delta);
             }
         }
+        // Applied (egui checks that none are dropped unapplied).
         output.textures_delta.clear();
-        output = context.run_pass(input(f64::from(pass)), &mut ui);
-    }
-    for (id, deltas) in &output.textures_delta.set {
-        for delta in deltas {
-            renderer.update_texture(&device, &queue, *id, delta);
+        if pass < 4 {
+            output = context.run_pass(input(f64::from(pass)), &mut ui);
         }
     }
-    // Applied (egui checks that none are dropped unapplied).
-    output.textures_delta.clear();
     let primitives = context.tessellate(output.shapes, output.pixels_per_point);
     let view = target.create_view(&Default::default());
     let mut encoder = device.create_command_encoder(&Default::default());
@@ -284,6 +278,7 @@ fn draw_sized((width, height): (u32, u32), mut ui: impl FnMut(&egui::Context)) -
 }
 
 /// Writes `rgba` (the capture's size) to `path`, making its folder first.
+#[cfg(test)]
 pub fn write_png(path: &Path, rgba: &[u8]) -> Result<(), String> {
     write_png_sized(path, SIZE, rgba)
 }

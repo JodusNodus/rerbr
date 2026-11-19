@@ -971,9 +971,12 @@ mod tests {
     }
 
     /// A read-only form over the real game files from `text`, with its scratch folder; none unless `RBR_DATA`,
-    /// `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` are set.
-    fn real_form(tag: &str, text: &str) -> Option<(PathBuf, Form)> {
-        let (data, patch, _, _) = (env("RBR_DATA")?, env("RBR_PATCH")?, env("RBR_NGP_PHYSICS")?, env("RBR_RSF")?);
+    /// `RBR_PATCH` and `RBR_RSF` are set, and with `ngp` also `RBR_NGP_PHYSICS`.
+    fn real_form(tag: &str, text: &str, ngp: bool) -> Option<(PathBuf, Form)> {
+        let (data, patch, _) = (env("RBR_DATA")?, env("RBR_PATCH")?, env("RBR_RSF")?);
+        if ngp {
+            env("RBR_NGP_PHYSICS")?;
+        }
         let here = crate::test_dir(tag);
         let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(data)), Some(PathBuf::from(patch)));
         let mut form = load(&start, Settings::parse(text)).unwrap();
@@ -1410,7 +1413,7 @@ mod tests {
     #[test]
     fn a_circuit_starts_without_pace_notes_unless_asked() {
         let settings = "[launcher]\nmap = 54\ncodriver = on\npace_stack = 3\nhud_hide = inputs\n";
-        let Some((_, mut form)) = real_form("command-circuit-notes", settings) else { return };
+        let Some((_, mut form)) = real_form("command-circuit-notes", settings, true) else { return };
         form.map = form.catalog.map_index(54).unwrap();
         let args = |form: &mut Form| form.start_args(&mut CrtRand::srand(1)).unwrap();
         let drive = args(&mut form);
@@ -1432,7 +1435,7 @@ mod tests {
 
     #[test]
     fn a_specific_row_starts_with_its_sky_and_the_overrides() {
-        let Some((here, mut form)) = real_form("command-row-start", "[launcher]\nmap = 54\n") else { return };
+        let Some((here, mut form)) = real_form("command-row-start", "[launcher]\nmap = 54\n", true) else { return };
         form.map = form.catalog.map_index(54).unwrap();
         let rows = {
             let map = &form.catalog.maps[form.map];
@@ -1561,7 +1564,7 @@ mod tests {
     #[test]
     fn the_time_of_day_is_the_quick_races_only() {
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nclouds = partly\nstart_time = night\n";
-        let Some((here, mut form)) = real_form("command-clock", text) else { return };
+        let Some((here, mut form)) = real_form("command-clock", text, false) else { return };
         let quick = launch(&mut form);
         let night = time_of_day::Moment::Night.minutes(time_of_day::site(&form.catalog.maps[form.map]));
         assert_eq!(value(&quick, "--clock"), Some(clock_text(night)));
@@ -1647,7 +1650,7 @@ mod tests {
     fn the_tyres_force_reaches_the_standalone() {
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
         for (tyres, trail) in [(false, None), (true, Some("25".to_owned()))] {
-            let Some((_, mut form)) = real_form("command-ffb-tyres", text) else { return };
+            let Some((_, mut form)) = real_form("command-ffb-tyres", text, false) else { return };
             form.ffb.tyres = tyres;
             let args = launch(&mut form);
             let standalone = standalone_part(&args);
