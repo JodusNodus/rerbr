@@ -86,6 +86,13 @@ pub fn game_length(map: u32) -> Option<f32> {
     Some(metres)
 }
 
+/// An empty dark picture of `size`.
+fn blank(ui: &mut egui::Ui, size: egui::Vec2, radius: CornerRadius) -> (egui::Rect, egui::Painter) {
+    let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
+    painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
+    (rect.rect, painter)
+}
+
 /// What the stage preview draws.
 enum Picture {
     Image(TextureHandle),
@@ -258,8 +265,7 @@ impl Previews {
                 self.stage_pending = Some(map.number);
                 let _ = self.stage_requests.send(map.clone());
             }
-            let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
-            painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
+            blank(ui, egui::vec2(width, height), radius);
             ui.ctx().request_repaint_after(Duration::from_millis(50));
             return None;
         };
@@ -273,9 +279,8 @@ impl Previews {
                 egui::Image::new(texture).uv(uv).corner_radius(radius).paint_at(ui, rect);
             }
             Picture::Outline(points) => {
-                let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
-                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
-                let area = rect.rect.shrink(12.0);
+                let (rect, painter) = blank(ui, egui::vec2(width, height), radius);
+                let area = rect.shrink(12.0);
                 let side = area.width().min(area.height());
                 let origin = area.center() - egui::vec2(side, side) * 0.5;
                 let at = |p: &[f32; 2]| origin + egui::vec2(p[0], p[1]) * side;
@@ -286,10 +291,7 @@ impl Previews {
                     painter.circle_filled(at(finish), 4.0, Color32::from_rgb(220, 70, 70));
                 }
             }
-            Picture::None => {
-                let (rect, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
-                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
-            }
+            Picture::None => _ = blank(ui, egui::vec2(width, height), radius),
         }
         Some((preview.lines.join(" · "), preview.problem.clone()))
     }
@@ -359,15 +361,13 @@ impl Previews {
             }
             Some((Err(e), _)) => {
                 error = Some(e.clone());
-                let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
-                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
+                blank(ui, size, radius);
             }
             _ => {
                 self.request(car, skin, &key, root);
-                let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
-                painter.rect_filled(rect.rect, radius, Color32::from_gray(24));
+                let (rect, painter) = blank(ui, size, radius);
                 let font = egui::FontId::proportional(13.0);
-                painter.text(rect.rect.center(), egui::Align2::CENTER_CENTER, "Loading the car…", font, Color32::GRAY);
+                painter.text(rect.center(), egui::Align2::CENTER_CENTER, "Loading the car…", font, Color32::GRAY);
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
             }
         }
