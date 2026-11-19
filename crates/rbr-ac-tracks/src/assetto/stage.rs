@@ -936,7 +936,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                material::section(&mut materials, &b.material, &texture, false);
+                let extras = bank.tile_extras(&model, mat_index);
+                material::section_with(&mut materials, &b.material, &texture, false, &extras);
                 names.push(b.material.clone());
                 drawn.push((key, b));
                 continue;
@@ -947,7 +948,14 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let mat = &model.materials[mat_index];
                     let (texture, opaque) = bank.diffuse(&model, mat_index)?;
                     let name = format!("ac\\{model_index}_{mat_index}");
-                    material::section(&mut materials, &name, &texture, !opaque && material::is_transparent(mat));
+                    let extras = bank.extras(&model, mat_index)?;
+                    material::section_with(
+                        &mut materials,
+                        &name,
+                        &texture,
+                        !opaque && material::is_transparent(mat),
+                        &extras,
+                    );
                     names.push(name.clone());
                     names_of.insert(mat_index, name.clone());
                     name
@@ -1093,6 +1101,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let baked = bank.baked.clone();
     let placeholders = bank.placeholders.clone();
     let missing_names = bank.missing.clone();
+    let (normal_mapped, highlighted) = (bank.normal_mapped, bank.highlighted);
     bank.finish()?;
     let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
     write("objectlist.ini", objects.finish()?)?;
@@ -1168,9 +1177,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "source_repairs":repairs,
         "physics":physics,"surface_triangles":surface_counts,"declared_surface_keys":surfaces.declared,
         "length_m":input.finish-input.start,"ai_start_m":input.start,"ai_finish_m":input.finish,
-        "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,
+        "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,"normal_mapped_materials":normal_mapped,"highlight_materials":highlighted,
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,
-        "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; normal, specular and reflection maps are not drawn","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
+        "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps and the sun highlight are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
     options.control.say("validating BTB collision cells");
     let stats = crate::btb::stage::check_cells(folder)?;
