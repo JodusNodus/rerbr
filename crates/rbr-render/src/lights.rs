@@ -323,11 +323,11 @@ pub const SHOWN_AREA: f32 = 1e-4;
 /// How near a lamp face block must come to a bare lamp's point to be its lens, m ([`lens_of`]).
 const LENS_REACH: f32 = 0.15;
 
-/// The lamps of `points` that can light but that no switched lit part of their kind comes near (`lit_parts`: each
-/// such part's kind and vertices, in the points' space, of the parts of at least [`SHOWN_AREA`]). The game shows them by their flare alone, which we do not
-/// draw: a pod or tail lamp with no lit mesh (21 of 50 cars' pods and ramps, the Alpine A110's and Delta HF 4WD's
-/// tails, 2026-11-19), a lit sliver (the Yaris Rally2's tails), a lit strip inside a housing the game always draws
-/// (the Fiesta Rally2's tails). Their lenses glow instead ([`lens_of`]).
+/// The lamps of `points` that can light but that no switched lit part of their kind comes near (`lit_parts`: the kind
+/// and vertices, in the points' space, of each such part of at least [`SHOWN_AREA`]). The game shows them by their
+/// flare alone, which we do not draw: a pod or tail lamp with no lit mesh (21 of 50 cars' pods and ramps, the Alpine
+/// A110's and Delta HF 4WD's tails, 2026-11-19), a lit sliver (the Yaris Rally2's tails), a lit strip inside a housing
+/// the game always draws (the Fiesta Rally2's tails). Their lenses glow instead ([`lens_of`]).
 pub fn bare<'a>(points: &'a [LampPoint], lit_parts: &[(Kind, &[Vec3])]) -> Vec<&'a LampPoint> {
     let shown = |point: &LampPoint| {
         lit_parts.iter().any(|(kind, vertices)| {
