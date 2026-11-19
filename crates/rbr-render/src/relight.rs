@@ -376,6 +376,82 @@ pub fn stated_hour(word: TimeWord, (latitude, _, day): (f32, f32, f32)) -> f32 {
     }
 }
 
+/// A moment of the day (ours): where the sun stands, not a clock, so that it looks alike on every site and date. The
+/// sun at an elevation in the morning or the evening, or at its highest ([`Moment::hour`]); golden hour's on a stage
+/// is where the sun reaches its road ([`Clock::golden`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Moment {
+    Dawn,
+    Morning,
+    Midday,
+    Afternoon,
+    Golden,
+    Dusk,
+    Night,
+}
+
+impl Moment {
+    pub const ALL: [Moment; 7] =
+        [Self::Dawn, Self::Morning, Self::Midday, Self::Afternoon, Self::Golden, Self::Dusk, Self::Night];
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Dawn => "dawn",
+            Self::Morning => "morning",
+            Self::Midday => "midday",
+            Self::Afternoon => "afternoon",
+            Self::Golden => "golden",
+            Self::Dusk => "dusk",
+            Self::Night => "night",
+        }
+    }
+
+    pub fn parse(word: &str) -> Option<Moment> {
+        Self::ALL.into_iter().find(|m| m.word() == word)
+    }
+
+    /// The moment's local solar hour at `site` ([`site`]), to the minute. Dawn and dusk are the sun 3 degrees down,
+    /// inside civil twilight; night 12 down, well past [`NIGHT`]; golden hour [`GOLDEN`] up in the evening; morning and
+    /// afternoon half the day's highest sun; midday solar noon. A sun that never climbs as high (golden hour where the
+    /// day's highest sun is low) takes half the highest instead.
+    pub fn hour(self, (latitude, _, day): (f32, f32, f32)) -> f32 {
+        let highest = solar(latitude, day, 12.0).0;
+        let (elevation, morning) = match self {
+            Self::Midday => return 12.0,
+            Self::Dawn => (-3.0, true),
+            Self::Morning => (highest / 2.0, true),
+            Self::Afternoon => (highest / 2.0, false),
+            Self::Golden => (GOLDEN.min(highest / 2.0), false),
+            Self::Dusk => (-3.0, false),
+            Self::Night => (-12.0, false),
+        };
+        hour_at(latitude, day, elevation, morning)
+    }
+}
+
+/// Golden hour's lowest sun, degrees up: low and warm, still clear of dusk for a stage's length.
+pub const GOLDEN: f32 = 6.0;
+/// Golden hour's highest sun, degrees up, where a stage's road is in the shade lower down ([`Clock::golden`]): still
+/// warm (`Clock::daylight` whitens the sun up to 25 degrees).
+const GOLDEN_HIGHEST: f32 = 20.0;
+/// The share of the road golden hour's sun reaches, the lowest sun that reaches as much taken ([`Clock::golden`]).
+const GOLDEN_SUNLIT: f32 = 0.4;
+/// Where no golden-hour sun reaches [`GOLDEN_SUNLIT`] of the road, the share of the most any reaches that the lowest
+/// sun taken reaches: the next suns up add little road and lose the warmth.
+const GOLDEN_OF_MOST: f32 = 0.8;
+
+/// The local solar hour, to the minute, the sun first stands `elevation` degrees up in the morning (`morning`), or
+/// falls under it in the evening, at `latitude` on `day`; midnight, or the minute before it, where it never does.
+pub fn hour_at(latitude: f32, day: f32, elevation: f32, morning: bool) -> f32 {
+    let at = |m: u32| solar(latitude, day, m as f32 / 60.0).0;
+    let found = if morning {
+        (0..12 * 60).find(|&m| at(m) >= elevation)
+    } else {
+        (12 * 60..24 * 60).find(|&m| at(m) < elevation)
+    };
+    found.unwrap_or(if morning { 0 } else { 24 * 60 - 1 }) as f32 / 60.0
+}
+
 /// The light at a clock time ([`Clock::daylight`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Daylight {
@@ -559,6 +635,34 @@ impl Clock {
         a.relight = self.relight.then_some(bake);
         (a, day)
     }
+
+    /// Golden hour on this stage, and the share of its road the sun reaches then (`sunlit`, of the direction toward
+    /// the sun): of the suns from [`GOLDEN`] to [`GOLDEN_HIGHEST`] up, a degree apart, in the evening and the morning
+    /// (each lowered to half the day's highest where it never climbs as high), the lowest that reaches
+    /// [`GOLDEN_SUNLIT`] of the road, or where none does [`GOLDEN_OF_MOST`] of the most any reaches; on the side that
+    /// reaches more (the evening on a tie). On a forest or valley stage the 6-degree sun lights the treetops and leaves
+    /// the road in the shade.
+    pub fn golden(&self, sunlit: impl Fn(Vec3) -> f32) -> (f32, f32) {
+        let half = solar(self.latitude, self.day, 12.0).0 / 2.0;
+        let (low, high) = (GOLDEN.min(half), GOLDEN_HIGHEST.min(half));
+        let suns: Vec<(f32, f32)> = (0..=((high - low).max(0.0) as u32))
+            .map(|k| {
+                let sides = [false, true].map(|morning| {
+                    let hour = hour_at(self.latitude, self.day, low + k as f32, morning);
+                    let (up, compass) = solar(self.latitude, self.day, hour);
+                    (hour, sunlit(toward(self.bake_azimuth - (compass - self.bake_compass), up)))
+                });
+                if sides[1].1 > sides[0].1 {
+                    sides[1]
+                } else {
+                    sides[0]
+                }
+            })
+            .collect();
+        let most = suns.iter().map(|s| s.1).fold(0.0, f32::max);
+        let enough = GOLDEN_SUNLIT.min(GOLDEN_OF_MOST * most);
+        suns.into_iter().find(|s| s.1 >= enough).expect("one sun at the least")
+    }
 }
 
 /// [`Daylight::ambient`] and [`Daylight::tint`] for a sun `elevation` degrees up.
@@ -655,5 +759,33 @@ mod tests {
         let (evening, west) = solar(50.0, 172.0, 17.0);
         assert!(morning > 0.0 && (morning - evening).abs() < 0.5);
         assert!((60.0..120.0).contains(&east) && (240.0..300.0).contains(&west), "{east} {west}");
+    }
+
+    #[test]
+    fn golden_hour_climbs_until_the_sun_reaches_the_road() {
+        let site = site(41, None, "", false);
+        let bake = Relight {
+            bake_sun: toward(0.0, 30.0),
+            strength: 0.4,
+            r: 1.0,
+            open: 1.0,
+            sun: Vec3::ONE,
+            ambient: 1.0,
+            tint: Vec3::ONE,
+            lamps: 0.0,
+        };
+        let clock = Clock::new(Atmosphere::default(), bake, site, 'E', None, true);
+        let up = |toward: Vec3| toward.y.asin().to_degrees();
+        let at = |hour: f32| solar(site.0, site.2, hour).0;
+        // An open stage keeps the 6-degree evening sun.
+        assert_eq!(clock.golden(|_| 1.0), (Moment::Golden.hour(site), 1.0));
+        // A forest whose road the sun reaches from 12 degrees up, more so in the morning.
+        let forest = |toward: Vec3| if up(toward) < 11.5 { 0.1 } else { 0.5 + 0.1 * f32::from(toward.x > 0.0) };
+        let (hour, share) = clock.golden(forest);
+        assert!((at(hour) - 12.0).abs() < 0.3 && share >= GOLDEN_SUNLIT, "{hour} {share}");
+        // A sun that never reaches enough: the lowest reaching most of the best, the highest's.
+        let (hour, share) = clock.golden(|toward| up(toward) / 100.0);
+        let most = GOLDEN_HIGHEST.min(at(12.0) / 2.0) / 100.0;
+        assert!(share >= GOLDEN_OF_MOST * most && share < GOLDEN_OF_MOST * most + 0.011, "{hour} {share}");
     }
 }

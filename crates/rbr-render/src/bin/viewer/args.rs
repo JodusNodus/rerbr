@@ -16,6 +16,7 @@ use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
 use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
+use rbr_render::relight;
 use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
@@ -97,6 +98,9 @@ pub struct Args {
     /// (`relight::daylight`); the stage at night (`Atmosphere::night`) once the sun is 6 degrees down. Without it the
     /// stage starts at its bake's sun and hour (`relight::Clock::new`).
     pub clock: Option<f32>,
+    /// `--sun WORD`: the sun where a moment of the day puts it (`relight::Moment`, golden hour where it reaches the
+    /// stage's road, `relight::Clock::golden`); `--clock` over it.
+    pub sun: Option<relight::Moment>,
     pub relight: bool,
     /// `--fog off|light|heavy`: our fog over the section's (`Atmosphere::fog`; with `--enhance lighting`).
     pub fog: Option<Fog>,
@@ -257,7 +261,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off  --hdr
               --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
-              --clock HH:MM  --no-relight
+              --clock HH:MM  --sun dawn|morning|midday|afternoon|golden|dusk|night  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
               --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages  --hud-show tyres,trace
@@ -303,7 +307,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut anti_aliasing = AntiAliasing::default();
     let mut reflections = Reflections::default();
     let mut detail = Detail::default();
-    let (mut clock, mut relight) = (None, true);
+    let (mut clock, mut sun, mut relight) = (None, None, true);
     let mut fog = None;
     let mut clouds = None;
     let mut precipitation = None;
@@ -555,6 +559,10 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                     .ok_or(format!("--clock {value}: use HH:MM"))?;
                 clock = Some(hour);
             }
+            "--sun" => {
+                let value = args.next().ok_or("--sun needs a moment")?;
+                sun = Some(relight::Moment::parse(&value).ok_or(format!("--sun {value}: use a moment of the day"))?);
+            }
             "--time" => {
                 let value = args.next().ok_or("--time needs seconds")?;
                 time = value.parse().map_err(|e| format!("--time {value}: {e}"))?;
@@ -781,6 +789,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         upscale,
         enhance: Enhance { mirrors, anti_aliasing, reflections, detail, debug_view, ..enhance },
         clock,
+        sun,
         relight,
         fog,
         clouds,
@@ -948,6 +957,13 @@ mod tests {
         // An explicit pace stays.
         let args = parse("track-54_E --screenshot out.png --live foo --replay d.rrp --replay-pace clock").unwrap();
         assert_eq!(args.live.unwrap().iter().filter(|a| *a == "--replay-pace").count(), 1, "no second --replay-pace");
+    }
+
+    #[test]
+    fn the_sun_is_a_moment_of_the_day() {
+        assert_eq!(parse("track-54_E --sun golden").unwrap().sun, Some(relight::Moment::Golden));
+        assert_eq!(parse("track-54_E").unwrap().sun, None);
+        assert!(parse("track-54_E --sun 17:00").is_err());
     }
 
     #[test]

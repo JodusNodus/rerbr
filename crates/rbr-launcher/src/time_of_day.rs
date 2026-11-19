@@ -1,8 +1,10 @@
-//! The Custom weather's Time of day: a moment of the day, solved from where the sun stands on the stage's site and
-//! date (`rbr_render::relight::site`, `solar`; for a stage outside the 1.02 rallies a guess from its country and
+//! The Custom weather's Time of day: a moment of the day (`rbr_render::relight::Moment`), where the sun stands on the
+//! stage's site and date (`relight::site`, `solar`; for a stage outside the 1.02 rallies a guess from its country and
 //! surface), or the bake's sun; and the sun's path drawn for the Drive page. The choice is a moment, never a clock, and
-//! no clock is shown (user decision): the site is a guess for most stages, the moment's light is not. The clock it
-//! gives still goes to the viewer (`--clock`) and the start board (`--start-time`).
+//! no clock is shown (user decision): the site is a guess for most stages, the moment's light is not. The moment goes to
+//! the viewer (`--sun`), which solves its clock, golden hour's on the stage itself (where the sun reaches the road,
+//! `relight::Clock::golden`), and gives it to the start board (`--start-time`). The path's golden-hour tick is the
+//! 6-degree sun's.
 
 use egui::{Color32, Pos2, Sense, Stroke};
 use rbr_render::relight::solar;
@@ -20,73 +22,26 @@ pub fn site(map: &Map) -> Site {
     rbr_render::relight::site(map.sky_map(), country, name, snow)
 }
 
-/// A moment of the day: the sun at an elevation, in the morning or the evening, or at its highest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Moment {
-    Dawn,
-    Morning,
-    Midday,
-    Afternoon,
-    Golden,
-    Dusk,
-    Night,
-}
+pub use rbr_render::relight::Moment;
 
-impl Moment {
-    pub const ALL: [Moment; 7] =
-        [Self::Dawn, Self::Morning, Self::Midday, Self::Afternoon, Self::Golden, Self::Dusk, Self::Night];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Dawn => "Dawn",
-            Self::Morning => "Morning",
-            Self::Midday => "Midday",
-            Self::Afternoon => "Afternoon",
-            Self::Golden => "Golden hour",
-            Self::Dusk => "Dusk",
-            Self::Night => "Night",
-        }
-    }
-
-    fn word(self) -> &'static str {
-        match self {
-            Self::Dawn => "dawn",
-            Self::Morning => "morning",
-            Self::Midday => "midday",
-            Self::Afternoon => "afternoon",
-            Self::Golden => "golden",
-            Self::Dusk => "dusk",
-            Self::Night => "night",
-        }
-    }
-
-    /// The moment's clock at `site`, minutes past midnight (local solar time). Dawn and dusk are the sun 3 degrees
-    /// down, inside civil twilight; night 12 down, well past the renderer's `relight::NIGHT`; golden hour 6 up in the
-    /// evening; morning and afternoon half the day's highest sun; midday solar noon. A sun that never climbs as high
-    /// (golden hour where the day's highest sun is low) takes half the highest instead.
-    pub fn minutes(self, (latitude, _, day): Site) -> u32 {
-        let highest = solar(latitude, day, 12.0).0;
-        let (elevation, morning) = match self {
-            Self::Midday => return 12 * 60,
-            Self::Dawn => (-3.0, true),
-            Self::Morning => (highest / 2.0, true),
-            Self::Afternoon => (highest / 2.0, false),
-            Self::Golden => (GOLDEN.min(highest / 2.0), false),
-            Self::Dusk => (-3.0, false),
-            Self::Night => (-12.0, false),
-        };
-        let at = |m: u32| solar(latitude, day, m as f32 / 60.0).0;
-        let found = if morning {
-            (0..12 * 60).find(|&m| at(m) >= elevation)
-        } else {
-            (12 * 60..24 * 60).find(|&m| at(m) < elevation)
-        };
-        found.unwrap_or(if morning { 0 } else { 24 * 60 - 1 })
+/// A moment's name in the Time of day box.
+fn label(moment: Moment) -> &'static str {
+    match moment {
+        Moment::Dawn => "Dawn",
+        Moment::Morning => "Morning",
+        Moment::Midday => "Midday",
+        Moment::Afternoon => "Afternoon",
+        Moment::Golden => "Golden hour",
+        Moment::Dusk => "Dusk",
+        Moment::Night => "Night",
     }
 }
 
-/// Golden hour's sun, degrees up: low and warm, still clear of dusk for a stage's length.
-const GOLDEN: f32 = 6.0;
+/// A moment's clock at `site`, minutes past midnight, as the viewer solves it (`Moment::hour`), but golden hour's: the
+/// viewer finds that on the stage (`relight::Clock::golden`), at the 6-degree sun or later.
+pub fn minutes(moment: Moment, site: Site) -> u32 {
+    (moment.hour(site) * 60.0).round() as u32
+}
 
 /// The Time of day (`start_time` in the settings): a moment, or the bake's sun (the viewer relights the stage under
 /// it, at its hour; `relight::Clock::new`).
@@ -109,17 +64,25 @@ impl StartTime {
         Moment::ALL.map(Self::Moment).into_iter().chain([Self::Baked])
     }
 
-    /// The clock at `site`, minutes past midnight; none for the bake's sun.
+    /// The clock at `site`, minutes past midnight ([`minutes`]); none for the bake's sun.
     pub fn minutes(self, site: Site) -> Option<u32> {
         match self {
-            Self::Moment(moment) => Some(moment.minutes(site)),
+            Self::Moment(moment) => Some(minutes(moment, site)),
             Self::Baked => None,
+        }
+    }
+
+    /// The viewer's `--sun` arguments: the moment's, none for the bake's sun.
+    pub fn sun_args(self) -> Vec<String> {
+        match self {
+            Self::Moment(moment) => vec!["--sun".into(), moment.word().into()],
+            Self::Baked => Vec::new(),
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Moment(moment) => moment.label(),
+            Self::Moment(moment) => label(moment),
             Self::Baked => "As baked",
         }
     }
@@ -162,7 +125,7 @@ pub fn sun_arc(ui: &mut egui::Ui, width: f32, (latitude, _, day): Site, start: O
         painter.line_segment([pair[0], pair[1]], Stroke::new(1.5, colour));
     }
     for moment in Moment::ALL {
-        let at = point(moment.minutes((latitude, 0.0, day)) as f32);
+        let at = point(minutes(moment, (latitude, 0.0, day)) as f32);
         painter.line_segment([at - egui::vec2(0.0, 3.0), at + egui::vec2(0.0, 3.0)], Stroke::new(1.0, Color32::GRAY));
     }
     if let Some(minutes) = start {
@@ -188,15 +151,15 @@ mod tests {
             relight::site(503, Some("GB"), "Sherwood Forest I Summer", false),
         ];
         for site in retail.into_iter().chain(guessed) {
-            let elevation = |moment: Moment| solar(site.0, site.2, moment.minutes(site) as f32 / 60.0).0;
-            assert!((5.5..GOLDEN).contains(&elevation(Moment::Golden)), "{site:?}");
+            let elevation = |moment: Moment| solar(site.0, site.2, minutes(moment, site) as f32 / 60.0).0;
+            assert!((5.5..relight::GOLDEN).contains(&elevation(Moment::Golden)), "{site:?}");
             assert!((-3.5..-3.0).contains(&elevation(Moment::Dusk)), "{site:?}");
             assert!(elevation(Moment::Night) < relight::NIGHT, "{site:?}");
-            let order = Moment::ALL.map(|m| m.minutes(site));
+            let order = Moment::ALL.map(|m| minutes(m, site));
             assert!(order.windows(2).all(|w| w[0] < w[1]), "{site:?}: {order:?}");
         }
         let site = retail[0];
-        assert_eq!(StartTime::default().minutes(site), Some(Moment::Golden.minutes(site)));
+        assert_eq!(StartTime::default().minutes(site), Some(minutes(Moment::Golden, site)));
         assert_eq!(StartTime::Baked.minutes(site), None);
     }
 

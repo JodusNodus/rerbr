@@ -653,8 +653,8 @@ fn lit(clock: &Option<relight::Clock>) -> bool {
     clock.as_ref().is_some_and(|clock| clock.daylight(clock.start).lamps > 0.0)
 }
 
-/// The stage's light and the clock that moves it on (`rbr_render::relight`): relit at `--clock`'s time, else under the
-/// bake's own sun (`relight::own_sun`). `--no-relight` keeps the baked light.
+/// The stage's light and the clock that moves it on (`rbr_render::relight`): relit at `--clock`'s time or `--sun`'s
+/// moment, else under the bake's own sun (`relight::own_sun`). `--no-relight` keeps the baked light.
 fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
     let bake = relight::fit(stage);
     eprintln!(
@@ -671,14 +671,35 @@ fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
     let base = stage.atmosphere.clone();
     let (country, stage_name, snow) = &args.stage_place;
     let site = relight::site(map, country.as_deref(), stage_name, *snow);
-    // `--clock` wins, then a championship or start-time command's own clock (the bake's, as before), then the
-    // time of day the section's comment or the stage's name states, else the bake's hour.
+    // `--clock` wins, then `--sun`, then a championship or start-time command's own clock (the bake's, as before), then
+    // the time of day the section's comment or the stage's name states, else the bake's hour.
     let own_clock = args.live.as_ref().is_some_and(|c| c.iter().any(|a| a == "--start-time" || a == "--championship"));
-    let stated = base.stated_time.filter(|_| args.clock.is_none() && !own_clock);
-    let start = args.clock.or(stated.map(|(word, _)| relight::stated_hour(word, site)));
-    let clock = relight::Clock::new(base, bake, site, letter, start, args.relight).physical(args.enhance.lighting);
+    let sun = args.sun.filter(|_| args.clock.is_none());
+    let stated = base.stated_time.filter(|_| args.clock.is_none() && sun.is_none() && !own_clock);
+    let start = args.clock.or(sun.map(|moment| moment.hour(site)));
+    let start = start.or(stated.map(|(word, _)| relight::stated_hour(word, site)));
+    let mut clock = relight::Clock::new(base, bake, site, letter, start, args.relight).physical(args.enhance.lighting);
+    if sun == Some(relight::Moment::Golden) {
+        let started = std::time::Instant::now();
+        let sunlit = rbr_render::sunlit::Sunlit::of(stage);
+        let low = sunlit.share(clock.daylight(clock.start).toward);
+        let (hour, share) = clock.golden(|toward| sunlit.share(toward));
+        eprintln!(
+            "golden hour: {:.0}% of the road sunlit at {hour:.2} h, {:.0}% at {:.2} h with the sun {} degrees up ({} ms)",
+            share * 100.0,
+            low * 100.0,
+            clock.start,
+            relight::GOLDEN,
+            started.elapsed().as_millis()
+        );
+        clock.start = hour;
+    }
     let (atmosphere, day) = clock.atmosphere();
-    let source = if args.clock.is_some() { "clock" } else { stated.map_or("bake", |(_, from)| from.label()) };
+    let source = match (args.clock, sun) {
+        (Some(_), _) => "clock",
+        (None, Some(moment)) => moment.word(),
+        (None, None) => stated.map_or("bake", |(_, from)| from.label()),
+    };
     eprintln!(
         "clock: {:.1} h from the {source}, sun {:.1} degrees up, bake at {:.1} h ({letter}), light {:.2}, ambient {:.2}",
         clock.start, day.elevation, clock.bake_hour, day.sun, day.ambient

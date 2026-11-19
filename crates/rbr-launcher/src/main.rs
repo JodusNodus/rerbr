@@ -50,12 +50,12 @@
 //! `--reflections`, `--detail`, `--mirrors`; `graphics_page::Graphics`, one `launcher-settings.ini` key each), by hand
 //! or by preset; the free ones are always on. The game's own quality settings are not offered: the stage always draws
 //! at the highest (user decision).
-//! The Time of day box draws a quick race's stage at a start time on its rally's date (`viewer --clock`, `start_time`
-//! in the settings): the sun, its light and shadows, dusk and night lit by the car's lamps; the start board shows it
-//! (`rbr-standalone --start-time`). The choice is a moment of the day solved on the rally's date (`time_of_day`, with the
-//! sun's path drawn under the box), golden hour by default (user decision), or an exact clock; As baked is the sun the
-//! stage was baked with (the viewer gives the start board its hour), and a championship stage always has it, with the
-//! season's start clock.
+//! The Time of day box draws a quick race's stage at a moment of the day on its rally's date (`viewer --sun`,
+//! `start_time` in the settings): the sun, its light and shadows, dusk and night lit by the car's lamps; the viewer
+//! gives the start board its clock (`rbr-standalone --start-time`). The moment is where the sun stands (`time_of_day`,
+//! with the sun's path drawn under the box), golden hour by default (user decision), which the viewer finds on the
+//! stage, where the sun reaches the road; As baked is the sun the stage was baked with, and a championship stage always
+//! has it, with the season's start clock.
 //! The Wipers box is the wiper switch at the start (`viewer --wipers`: off, intermittent, continuous, or auto by the
 //! weather and the mud on the glass); the wiper key (I by default, in the Controls section) steps it while driving.
 //! The headlight key (L by default) switches the headlights and tail lights off and on: on from the start in the
