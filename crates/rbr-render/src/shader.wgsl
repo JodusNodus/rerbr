@@ -706,7 +706,7 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // The sheen of a BTB road, where the collision surface under the vertex is tarmac (`v.wet`, `puddles::mark_roads`:
     // tarmac 1, gravel 0.5, snow -1), fading out at the road's edge; it replaces the highlight there.
     if (own && sheen_draw() && !wet_road) {
-        let road = smoothstep(0.6, 0.9, v.wet.x);
+        let road = smoothstep(0.6, 0.9, v.wet.x) * SHEEN_STRENGTH;
         colour = mix(colour, with_sheen(base, lit, front, sun_seen), road);
     }
     // The game's highlight off the road's specular map: the stones' detail on gravel, so kept beside our reflection.
@@ -1981,6 +1981,8 @@ fn with_specular(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) ->
     let roughness = ROAD_ROUGHNESS - ROAD_POLISH * polish - DAMP_ROUGHNESS * min(frame.wetness.x * 2.0, 1.0);
     return rough_dielectric(colour, v, normalize(v.normal) * select(-1.0, 1.0, front), roughness, sun_seen);
 }
+
+const SHEEN_STRENGTH: f32 = 0.35;
 
 // A BTB road's dry sheen (`stage::Sheen`, `ReRbrSheen`): the same rough dielectric at the material's roughness, on the
 // bumped normal `v.normal` (`bumped`), damp as the retail roads are.
