@@ -374,31 +374,10 @@ impl Form {
             let live = self.page == Page::Controls && !running;
             ctx.request_repaint_after(if live { Duration::from_millis(30) } else { POLL });
         }
-        let old_selection = (
-            self.map,
-            self.car,
-            self.options,
-            self.weather_row.clone(),
-            self.wetness,
-            self.fog,
-            self.clouds,
-            self.precipitation,
-            self.wear,
-            self.tyre,
-        );
+        let old_selection = self.selection_key();
         let old_setup = self.setup.choices.clone();
         let old_ghost = self.ghost.clone();
-        let old_graphics = (
-            self.graphics,
-            self.render_scale,
-            self.upscale_textures,
-            self.present,
-            self.max_fps,
-            self.fullscreen,
-            self.hdr,
-            self.perf_log,
-            self.start_time,
-        );
+        let old_graphics = self.graphics_key();
         let old_paths = self.ngp_physics.clone();
         let old_telemetry = self.telemetry_udp.clone();
         let old_head_gasket = (self.head_gasket, self.physics);
@@ -421,17 +400,9 @@ impl Form {
         // Over the page, on every page: the Add's progress and result.
         self.content_notice(ctx);
         // The browsers are a page's body: leaving the page closes them.
-        self.stage_browser.open &= match self.stage_browser.target {
-            car_browser::Target::Drive => self.page == Page::Drive,
-            car_browser::Target::Championship => self.page == Page::Championship,
-            car_browser::Target::Circuit => self.page == Page::Circuit,
-        };
+        self.stage_browser.open &= self.shows(self.stage_browser.target);
         self.circuit_browser.open &= self.page == Page::Circuit;
-        self.car_browser.open &= match self.car_browser.target {
-            car_browser::Target::Drive => self.page == Page::Drive,
-            car_browser::Target::Championship => self.page == Page::Championship,
-            car_browser::Target::Circuit => self.page == Page::Circuit,
-        };
+        self.car_browser.open &= self.shows(self.car_browser.target);
         ctx.root_ui(|root| {
             egui::CentralPanel::default()
                 .frame(egui::Frame::new().fill(crate::theme::PAGE))
@@ -474,37 +445,14 @@ impl Form {
             || old_circuit != (self.circuit.map, self.circuit.laps)
             || self.bindings != bindings
             || self.ffb != ffb
-            || old_selection
-                != (
-                    self.map,
-                    self.car,
-                    self.options,
-                    self.weather_row.clone(),
-                    self.wetness,
-                    self.fog,
-                    self.clouds,
-                    self.precipitation,
-                    self.wear,
-                    self.tyre,
-                )
+            || old_selection != self.selection_key()
             || old_setup != self.setup.choices
             || old_ghost != self.ghost
-            || old_paths != self.ngp_physics.clone()
+            || old_paths != self.ngp_physics
             || old_telemetry != self.telemetry_udp
             || old_head_gasket != (self.head_gasket, self.physics)
             || old_car_picks != (self.gearboxes.clone(), self.skins.chosen.clone())
-            || old_graphics
-                != (
-                    self.graphics,
-                    self.render_scale,
-                    self.upscale_textures,
-                    self.present,
-                    self.max_fps,
-                    self.fullscreen,
-                    self.hdr,
-                    self.perf_log,
-                    self.start_time,
-                )
+            || old_graphics != self.graphics_key()
             || old_folder != self.install_folder
             || old_recent != (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone())
             || old_codriver
@@ -515,6 +463,47 @@ impl Form {
         if old_paths != self.ngp_physics {
             self.list_cars();
         }
+    }
+
+    /// Whether the page a browser of `target` belongs to is shown.
+    fn shows(&self, target: car_browser::Target) -> bool {
+        self.page
+            == match target {
+                car_browser::Target::Drive => Page::Drive,
+                car_browser::Target::Championship => Page::Championship,
+                car_browser::Target::Circuit => Page::Circuit,
+            }
+    }
+
+    /// The choices that make up the selection, whose change is saved.
+    fn selection_key(&self) -> impl PartialEq {
+        (
+            self.map,
+            self.car,
+            self.options,
+            self.weather_row.clone(),
+            self.wetness,
+            self.fog,
+            self.clouds,
+            self.precipitation,
+            self.wear,
+            self.tyre,
+        )
+    }
+
+    /// The graphics choices, whose change is saved.
+    fn graphics_key(&self) -> impl PartialEq {
+        (
+            self.graphics,
+            self.render_scale,
+            self.upscale_textures,
+            self.present,
+            self.max_fps,
+            self.fullscreen,
+            self.hdr,
+            self.perf_log,
+            self.start_time,
+        )
     }
 
     /// The page shown in the central area; each draws its own header, footer and padding, the Settings group under the
