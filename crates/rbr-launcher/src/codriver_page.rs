@@ -10,7 +10,7 @@ use crate::get_page::GetMore;
 use crate::kit;
 use crate::pages::combo;
 use crate::settings_page::{note, row_tip};
-use crate::theme::{GOOD, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
+use crate::theme::{GOOD, TEXT_2, TEXT_3, WARN};
 use crate::Form;
 
 /// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
@@ -25,13 +25,7 @@ const PAGE_WIDTH: f32 = 640.0;
 fn pack_row(rows: &mut kit::Rows, name: &str, line: &str, color: egui::Color32, remove: Option<bool>) -> bool {
     rows.full(|ui| {
         let mut clicked = false;
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.add_space(8.0);
-            ui.label(RichText::new(name).color(TEXT_LABEL));
-            ui.label(RichText::new(line).size(12.0).color(color));
-            ui.add_space(8.0);
-        });
+        kit::label_over(ui, name, line, color, 90.0);
         if let Some(enabled) = remove {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 clicked = ui.add_enabled(enabled, egui::Button::new("Remove")).clicked();
@@ -153,10 +147,13 @@ impl Form {
                     let tip = "How many seconds before a note the co-driver calls it, at your speed";
                     row_tip(rows, "Call ahead", tip, |ui| {
                         let value = &mut self.marker.callout_distance;
-                        let plus = ui.small_button("+").on_hover_text(tip).clicked();
+                        let step = |ui: &mut egui::Ui, text| {
+                            ui.add(egui::Button::new(text).min_size(egui::vec2(26.0, 0.0))).on_hover_text(tip).clicked()
+                        };
+                        let plus = step(ui, "+");
                         ui.add(DragValue::new(value).range(0.05..=CALLOUT_MAX).speed(0.05).suffix(" s"))
                             .on_hover_text(tip);
-                        let minus = ui.small_button("−").on_hover_text(tip).clicked();
+                        let minus = step(ui, "−");
                         *value = (*value + if plus { 0.25 } else { 0.0 } - if minus { 0.25 } else { 0.0 })
                             .clamp(0.05, CALLOUT_MAX);
                     });

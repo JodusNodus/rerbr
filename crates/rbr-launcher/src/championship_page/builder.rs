@@ -98,20 +98,19 @@ impl ChampionshipPage {
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     start = ui.add_enabled(blocked.is_none(), kit::primary_button("Start", None)).clicked();
-                    ui.vertical(|ui| {
-                        if let Some(reason) = &blocked {
-                            if progress.is_some() {
-                                ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
-                            }
-                            kit::status_dot(ui, WARN, reason);
+                    ui.add_space(12.0);
+                    if let Some(reason) = &blocked {
+                        if progress.is_some() {
+                            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
                         }
-                        if saved.is_some() {
-                            kit::status_dot(ui, WARN, &format!("Replaces {}'s saved championship", env.profile));
-                        }
-                        if !status.is_empty() {
-                            kit::status_dot(ui, WARN, &status);
-                        }
-                    });
+                        kit::status_dot(ui, WARN, reason);
+                    }
+                    if saved.is_some() {
+                        kit::status_dot(ui, WARN, &format!("Replaces {}'s saved championship", env.profile));
+                    }
+                    if !status.is_empty() {
+                        kit::status_dot(ui, WARN, &status);
+                    }
                 });
             });
         });

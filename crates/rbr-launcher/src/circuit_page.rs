@@ -15,7 +15,7 @@ use rbr_session::{BestLap, LapBook};
 use crate::browser;
 use crate::car_browser::Target;
 use crate::catalog::Map;
-use crate::drive_page::{card, column, labelled, split_columns, CardText, Summary};
+use crate::drive_page::{card, column, labelled, split_columns, CardText, Summary, DROPDOWN};
 use crate::kit;
 use crate::pages::combo;
 use crate::stage_browser::{self, Action, StageRow};
@@ -245,7 +245,8 @@ impl Form {
                         "Free practice has no end: drive until you stop. A number of laps ends the session after the \
                                last, with the total time. Your best lap is kept either way";
                     labelled(rows, "Length", tip, |ui| {
-                        combo(ui, "circuit laps", 140.0, &mut self.circuit.laps, &LAPS, laps_label).on_hover_text(tip);
+                        combo(ui, "circuit laps", DROPDOWN, &mut self.circuit.laps, &LAPS, laps_label)
+                            .on_hover_text(tip);
                     });
                     let tip =
                         "The co-driver's calls and the note symbols. Off by default on a circuit: the notes follow a \

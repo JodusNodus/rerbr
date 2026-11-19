@@ -61,6 +61,19 @@ pub fn hint(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).size(12.0).color(TEXT_3));
 }
 
+/// `label` over `under` (12, `color`, wrapping) with a row's padding above and below, `reserve` px kept free on the
+/// right for the row's controls.
+pub fn label_over(ui: &mut Ui, label: &str, under: &str, color: Color32, reserve: f32) {
+    ui.vertical(|ui| {
+        ui.set_max_width((ui.available_width() - reserve).max(40.0));
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.add_space(8.0);
+        ui.label(RichText::new(label).color(TEXT_LABEL));
+        ui.label(RichText::new(under).size(12.0).color(color));
+        ui.add_space(8.0);
+    });
+}
+
 /// The rows of a [`panel`].
 pub struct Rows<'a> {
     ui: &'a mut Ui,
@@ -142,14 +155,7 @@ impl Rows<'_> {
     pub fn switch_row(&mut self, label: &str, hint: Option<&str>, on: &mut bool) -> Response {
         let Some(hint) = hint else { return self.row(label, |ui| switch(ui, on)) };
         self.full(|ui| {
-            let text_width = (ui.available_width() - 34.0 - 16.0).max(40.0);
-            ui.allocate_ui_with_layout(Vec2::new(text_width, 0.0), Layout::top_down(Align::Min), |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                Frame::new().inner_margin(Margin::symmetric(0, 8)).show(ui, |ui| {
-                    ui.label(RichText::new(label).color(TEXT_LABEL));
-                    self::hint(ui, hint);
-                });
-            });
+            label_over(ui, label, hint, TEXT_3, 34.0 + 16.0);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| switch(ui, on)).inner
         })
     }
@@ -318,15 +324,26 @@ pub fn link(ui: &mut Ui, text: &str) -> Response {
     ui.link(RichText::new(text).size(12.5))
 }
 
-/// A 6 px dot and its text (12, wrapping), for a status.
+/// A 6 px dot and its text (12, wrapping), for a status. In a right-to-left row (a footer's, beside its button) it
+/// takes only its own width, centred on the row.
 pub fn status_dot(ui: &mut Ui, color: Color32, text: &str) {
-    // Left to right even in a right-to-left row, so the dot stays before its text.
-    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
+    let dot = |ui: &mut Ui| {
         let line = ui.text_style_height(&egui::TextStyle::Body);
         let (rect, _) = ui.allocate_exact_size(Vec2::new(6.0, line), Sense::hover());
         ui.painter().circle_filled(rect.center(), 3.0, color);
-        ui.add(egui::Label::new(RichText::new(text).size(12.0).color(TEXT_2)).wrap());
+    };
+    let text = egui::Label::new(RichText::new(text).size(12.0).color(TEXT_2)).wrap();
+    if ui.layout().main_dir() == egui::Direction::RightToLeft {
+        ui.add(text);
+        ui.add_space(8.0 - ui.spacing().item_spacing.x);
+        dot(ui);
+        return;
+    }
+    // Left to right in any other layout, the dot on the first line.
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        dot(ui);
+        ui.add(text);
     });
 }
 

@@ -346,17 +346,10 @@ impl Form {
                 let lesson = selected;
                 let (instruction, cones) = lesson.brief_keys();
                 let (group, _) = group_of(lesson);
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 3.0;
-                    ui.label(
-                        RichText::new(format!("{} · {group}", lesson_label(school.strings.as_ref(), lesson)))
-                            .size(12.0)
-                            .color(TEXT_2),
-                    );
-                    ui.label(
-                        RichText::new(school.text(lesson.title_key())).size(17.0).family(theme::semibold()).color(TEXT),
-                    );
-                });
+                kit::group_label(ui, &format!("{} · {group}", lesson_label(school.strings.as_ref(), lesson)), None);
+                ui.label(
+                    RichText::new(school.text(lesson.title_key())).size(17.0).family(theme::semibold()).color(TEXT),
+                );
                 ui.label(school.text(&instruction));
                 cone_guide(ui, &school.text(&cones));
                 kit::panel(ui, |rows| {

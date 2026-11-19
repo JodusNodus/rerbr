@@ -128,13 +128,7 @@ pub fn experimental_section(
 /// "What is this?" linking to the docs page `page`.
 fn experiment(rows: &mut kit::Rows, label: &str, hint: &str, on: &mut bool, help: &str, page: &str) {
     rows.full(|ui| {
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(label).color(crate::theme::TEXT_LABEL));
-            kit::hint(ui, hint);
-            ui.add_space(8.0);
-        });
+        kit::label_over(ui, label, hint, crate::theme::TEXT_3, 150.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             kit::switch(ui, on).on_hover_text(help);
             ui.add_space(8.0);

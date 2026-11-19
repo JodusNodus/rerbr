@@ -21,7 +21,7 @@ use crate::Form;
 /// The gap between a page's columns.
 const GAP: f32 = 24.0;
 /// A dropdown's width in a row of a column.
-const DROPDOWN: f32 = 150.0;
+pub(crate) const DROPDOWN: f32 = 170.0;
 
 /// The Weather combo's choice: a game preset, or one season row of the map (its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -497,9 +497,8 @@ impl Form {
             let snowy = self.snowy();
             let looks = self.look();
             labelled(rows, "Sky", &tip, |ui| {
-                ui.toggle_value(&mut self.weather_adjust, "Adjust…");
                 let mut picked = None;
-                ComboBox::from_id_salt("sky look").width(110.0).selected_text(looks.unwrap_or("Own mix")).show_ui(
+                ComboBox::from_id_salt("sky look").width(DROPDOWN).selected_text(looks.unwrap_or("Own mix")).show_ui(
                     ui,
                     |ui| {
                         for look in LOOKS {
@@ -510,6 +509,7 @@ impl Form {
                         }
                     },
                 );
+                ui.toggle_value(&mut self.weather_adjust, "Adjust…");
                 if let Some(look) = picked {
                     self.apply_look(look);
                 }
@@ -632,7 +632,7 @@ impl Form {
 
         let default_tyre = self.selection().ok().and_then(|(_, weather)| self.tyre_id(&weather).ok());
         labelled(rows, "Tyres", "Auto takes the game's tyre for the surface and the road's wetness", |ui| {
-            combo(ui, "tyre", 170.0, &mut self.tyre, &TYRES, |tyre| match tyre {
+            combo(ui, "tyre", DROPDOWN, &mut self.tyre, &TYRES, |tyre| match tyre {
                 TyreChoice::Auto => default_tyre
                     .map_or_else(|| "Auto".to_owned(), |tyre| format!("Auto — {}", catalog::tyre_label(tyre))),
                 TyreChoice::Fixed(fixed) => catalog::tyre_label(fixed).to_owned(),
@@ -651,7 +651,7 @@ impl Form {
         let penalty = self.options.assist_settings().penalty();
         let tip = format!("Off, Safe, Reduced or Realistic. Calling for help costs {penalty} s at this level");
         labelled(rows, "Car damage", &tip, |ui| {
-            combo(ui, "damage", 120.0, &mut self.options.damage, &DamageLevel::ALL, DamageLevel::label)
+            combo(ui, "damage", DROPDOWN, &mut self.options.damage, &DamageLevel::ALL, DamageLevel::label)
                 .on_hover_text(&tip);
         });
         rows.hint(&format!("Calling for help costs {penalty} s at this level"));
