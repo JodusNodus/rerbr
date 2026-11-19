@@ -363,6 +363,17 @@ fn highlight(mat: &Material) -> Option<(f32, f32)> {
     (specular > 0. && !is_transparent(mat)).then(|| (specular, mat.property("ksSpecularEXP", 4.).max(1.)))
 }
 
+/// A float with a decimal point and no exponent: BTB reads a bare `1,1,1` as 1.1 and 1.
+fn decimal(v: f32) -> String {
+    let text = format!("{v:.6}");
+    let text = text.trim_end_matches('0');
+    if text.ends_with('.') {
+        format!("{text}0")
+    } else {
+        text.to_owned()
+    }
+}
+
 pub fn section(out: &mut String, name: &str, texture: &str, transparent: bool) {
     section_with(out, name, texture, transparent, &Extras::default());
 }
@@ -370,7 +381,7 @@ pub fn section(out: &mut String, name: &str, texture: &str, transparent: bool) {
 pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bool, extras: &Extras) {
     let technique = if transparent { "Transparent" } else { "Default" };
     let (power, color) = match extras.highlight {
-        Some((s, p)) => (p.to_string(), format!("{s},{s},{s}")),
+        Some((s, p)) => (decimal(p), format!("{0},{0},{0}", decimal(s))),
         None => ("4".to_owned(), "0,0,0".to_owned()),
     };
     let _ = write!(out, "[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\nambient=0.4,0.4,0.4,1.0\nSpecularPower={power}\nSpecularColor={color}\ndiffuseTexture={texture}\n");
@@ -598,5 +609,21 @@ mod tests {
         assert!(extras.highlight.is_none() && extras.specular.is_none());
         assert!(out.contains("normalTexture=") && out.contains("ReRbrEffect=BTB_DiffuseBump\n"));
         assert!(out.contains("SpecularPower=4\nSpecularColor=0,0,0\n"));
+    }
+    #[test]
+    fn the_highlight_reads_back_through_btbs_decimal_floats() {
+        for (specular, power) in [(1., 15.), (0.5, 4.), (0.004, 120.), (0.00001, 0.5)] {
+            let mut out = String::new();
+            let extras = Extras { highlight: Some((specular, power)), ..Extras::default() };
+            section_with(&mut out, "s", "t.dds", false, &extras);
+            let value = |key: &str| {
+                let line = out.lines().find_map(|l| l.strip_prefix(key)).unwrap();
+                rbr_btb::track::decimal_floats(line)
+            };
+            let colour = value("SpecularColor=");
+            assert_eq!(colour.len(), 3, "{out}");
+            assert!(colour.iter().all(|&c| (c - f64::from(specular)).abs() < 1e-6), "{colour:?}");
+            assert_eq!(value("SpecularPower="), [f64::from(power)]);
+        }
     }
 }
