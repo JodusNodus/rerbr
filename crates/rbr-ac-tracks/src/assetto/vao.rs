@@ -88,10 +88,11 @@ pub fn read(path: &Path) -> Result<Patch, String> {
         zip.by_name(name).ok()?.read_to_end(&mut bytes).ok()?;
         Some(bytes)
     };
-    let (version, data) = [(Version::V5, "Patch_v5.data"), (Version::V4, "Patch_v4.data"), (Version::Legacy, "Patch.data")]
-        .into_iter()
-        .find_map(|(v, name)| entry(name).map(|d| (v, d)))
-        .ok_or_else(|| format!("{}: no Patch data", path.display()))?;
+    let (version, data) =
+        [(Version::V5, "Patch_v5.data"), (Version::V4, "Patch_v4.data"), (Version::Legacy, "Patch.data")]
+            .into_iter()
+            .find_map(|(v, name)| entry(name).map(|d| (v, d)))
+            .ok_or_else(|| format!("{}: no Patch data", path.display()))?;
     let config = entry("Config.ini").map(|c| String::from_utf8_lossy(&c).into_owned()).unwrap_or_default();
     let mut patch = parse(&data, version, &config).map_err(|e| format!("{}: {e}", path.display()))?;
     patch.source = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -202,7 +203,11 @@ impl Patch {
             .collect();
         near.iter().copied().find(|r| !r.averaged).or(near.first().copied()).or_else(|| {
             let ones: Vec<&Record> = candidates.iter().copied().filter(|r| !r.averaged).collect();
-            if ones.len() == 1 { ones.first().copied() } else { (candidates.len() == 1).then(|| candidates[0]) }
+            if ones.len() == 1 {
+                ones.first().copied()
+            } else {
+                (candidates.len() == 1).then(|| candidates[0])
+            }
         })
     }
 

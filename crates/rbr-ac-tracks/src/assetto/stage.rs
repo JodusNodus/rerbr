@@ -672,7 +672,8 @@ fn tree_cards(
         let metres = tree.size * proto.height;
         let half = f64::from(proto.radius) * proto.width * tree.size * tree.width;
         let (low, high) = (y + f64::from(proto.low) * metres, y + f64::from(proto.high) * metres);
-        let centre = Triangle { pos: [world(x, y, z); 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None, ao: None };
+        let centre =
+            Triangle { pos: [world(x, y, z); 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None, ao: None };
         let builder = builders.entry((scenery_tile(&centre, origin), material.clone())).or_default();
         for card in 0..trees::CARDS {
             let turn = tree.angle + std::f64::consts::PI * card as f64 / trees::CARDS as f64;
@@ -687,7 +688,8 @@ fn tree_cards(
             ];
             for [p, q, r] in [[a, b, c], [a, c, d]] {
                 let up = [0., 0., 1.];
-                let t = Triangle { pos: [p.0, q.0, r.0], uv: [p.1, q.1, r.1], normal: [up; 3], material: None, ao: None };
+                let t =
+                    Triangle { pos: [p.0, q.0, r.0], uv: [p.1, q.1, r.1], normal: [up; 3], material: None, ao: None };
                 builder.add(&t, origin, true);
             }
         }
@@ -909,9 +911,11 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 continue;
             }
             let record = if visible {
-                patches.iter().enumerate().filter(|(_, f)| f.model.as_ref().is_none_or(|m| m == path)).find_map(
-                    |(i, f)| f.patch.find(&mesh.name, mesh.vertices.len(), mesh.first).map(|r| (i, r)),
-                )
+                patches
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, f)| f.model.as_ref().is_none_or(|m| m == path))
+                    .find_map(|(i, f)| f.patch.find(&mesh.name, mesh.vertices.len(), mesh.first).map(|r| (i, r)))
             } else {
                 None
             };
@@ -1299,7 +1303,13 @@ mod tests {
     }
     #[test]
     fn scenery_tiles_follow_rerbrs_cells_from_the_stage_origin() {
-        let at = |x: f64| Triangle { pos: [[x, 5., 0.]; 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None, ao: None };
+        let at = |x: f64| Triangle {
+            pos: [[x, 5., 0.]; 3],
+            uv: [[0.; 2]; 3],
+            normal: [[0.; 3]; 3],
+            material: None,
+            ao: None,
+        };
         assert_eq!(scenery_tile(&at(1000.), [1000., 0.]), (0, 0));
         assert_eq!(scenery_tile(&at(1127.), [1000., 0.]), (0, 0));
         assert_eq!(scenery_tile(&at(1128.), [1000., 0.]), (1, 0));
