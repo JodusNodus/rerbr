@@ -442,6 +442,14 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   showed on ridges), so a dropped triangle in the same mesh that shares a vertex with a kept far triangle is kept too,
   `FAR_RINGS` (3) times over (`Far::connected`). Sa Calobra down: far 49 k to 103 k triangles, `Objects.zip` 95.5 to
   96.8 MB, drawn 1.859 M to 1.912 M; Roure rbcl 177 k to 219 k, 114.3 to 115.1 MB.
+- Far scenery, whole surfaces (2026-11-19): three rings still left floating crags over Sa Calobra's ridges (rock view,
+  7.34 km), so `Far::connected` now keeps the whole surface joined to a kept far triangle through shared vertices (flood
+  fill), within 10 km. Sa Calobra down far 103 k to 130 k, `Objects.zip` 96.7 to 97.5 MB; Roure rbcl 219 k to 221 k;
+  conversion times unchanged (17 s, 25 s).
+- Corridor meshes without a source range were all cut at `--lod` (1000 m): the valley's terrain and road below the
+  4.8 km wall view dropped out in 128 m cells, a staircase-edged hole showing sky under the far mountain. An opaque
+  corridor mesh is now drawn to its largest box side / `FAR_SHARE` (between `--lod` and 10 km; a full 128 m cell to
+  6.4 km); cut-outs (grass, trees) keep `--lod`. Scene pass at two Sa Calobra views 2.31/1.81 ms to 2.33/1.81 ms.
 - CSP trees: `extension/*.ini` `[TREES]` `LIST_<n>` names a file in `extension/trees` of `tree:` lines (`pos`, `size`,
   `width`; `configure: size variance`/`angle variance` set ranges for those that follow) of `.bin` files, each a zip of
   `tree.ini` (`HEIGHT`, `WIDTH`, `[SHADING] BRIGHTNESS`, LOD meshes), `.mesh` files (format in `crates/rbr-ac-tracks/src/assetto/trees.rs`,

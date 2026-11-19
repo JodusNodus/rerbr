@@ -410,10 +410,6 @@ const SOLO: f32 = 150.;
 const FAR_SHARE: f64 = 1. / 50.;
 /// Nothing past this distance from the course is kept, and far scenery is drawn this far: ReRBR's far plane (`coords::FAR`).
 const FAR_REACH: f64 = 10_000.;
-/// Rings of triangles kept around far scenery: a triangle sharing a vertex with a kept far triangle of its mesh is kept
-/// too, this many times over, so a surface the size test cuts into holes stays whole (its small triangles are the ones
-/// it drops).
-const FAR_RINGS: usize = 3;
 /// Side of the tiles far scenery is grouped in, metres: each is a mesh of its own (over [`SOLO`]).
 const FAR_CELL: f64 = 1024.;
 
@@ -446,24 +442,29 @@ impl Far {
         let centre = [0, 1].map(|k| (pos[0][k] + pos[1][k] + pos[2][k]) / 3.);
         self.points.iter().any(|p| (p[0] - centre[0]).hypot(p[1] - centre[1]) <= FAR_REACH)
     }
-    /// Which of `rest` (a mesh's triangles the size test dropped) join `kept` (those it kept) by sharing a vertex with
-    /// them, or with a triangle that joined, up to [`FAR_RINGS`] rings out, within [`FAR_REACH`].
+    /// Which of `rest` (a mesh's triangles the size test dropped) join `kept` (those it kept): the whole surface
+    /// connected to them through shared vertices, within [`FAR_REACH`]. The size test alone keeps a mountain's large
+    /// triangles and drops its small ones, leaving holes and floating crags; a ring or three around them still did.
     fn connected(&self, kept: &[Triangle], rest: &[Triangle]) -> Vec<bool> {
         let key = |p: &[f64; 3]| p.map(|c| (c * 1000.).round() as i64);
-        let mut seen: HashSet<[i64; 3]> = kept.iter().flat_map(|t| t.pos.iter().map(key)).collect();
-        let mut joined = vec![false; rest.len()];
-        for _ in 0..FAR_RINGS {
-            let ring: Vec<usize> = (0..rest.len())
-                .filter(|&i| {
-                    !joined[i] && rest[i].pos.iter().any(|p| seen.contains(&key(p))) && self.near(&rest[i].pos)
-                })
-                .collect();
-            if ring.is_empty() {
-                break;
+        let mut at: HashMap<[i64; 3], Vec<usize>> = HashMap::new();
+        for (i, t) in rest.iter().enumerate().filter(|(_, t)| self.near(&t.pos)) {
+            for p in &t.pos {
+                at.entry(key(p)).or_default().push(i);
             }
-            for i in ring {
-                joined[i] = true;
-                seen.extend(rest[i].pos.iter().map(key));
+        }
+        let mut joined = vec![false; rest.len()];
+        let mut seen: HashSet<[i64; 3]> = HashSet::new();
+        let mut queue: Vec<[i64; 3]> = kept.iter().flat_map(|t| t.pos.iter().map(key)).collect();
+        while let Some(vertex) = queue.pop() {
+            if !seen.insert(vertex) {
+                continue;
+            }
+            for &i in at.get(&vertex).into_iter().flatten() {
+                if !joined[i] {
+                    joined[i] = true;
+                    queue.extend(rest[i].pos.iter().map(key));
+                }
             }
         }
         joined
@@ -1057,14 +1058,23 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             .map(|((_, _, lod_in, lod_out, _), b)| (bounds(&b.positions), (*lod_in, *lod_out)))
             .collect();
         let mut batch = Vec::new();
-        for (((_, _, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
+        for (((_, mat, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
             drawn_triangles += b.triangles.len();
             *light_areas.entry(b.material.clone()).or_default() += b.area();
             let lod_in = f32::from_bits(lod_in).max(0.);
             let source_lod = f64::from(f32::from_bits(lod_out));
             // A range the source gives is padded; the cap for a mesh without one is only a choice. Far scenery is drawn
-            // as far as ReRBR sees.
-            let cap = if far { FAR_REACH } else { options.lod };
+            // as far as ReRBR sees, and an opaque surface in the corridor as far as its size holds ([`FAR_SHARE`]), so
+            // the terrain and road of the valley below do not drop out in cells past `lod`; cut-outs keep `lod`.
+            let cap = if far {
+                FAR_REACH
+            } else if material::is_transparent(&model.materials[mat]) {
+                options.lod
+            } else {
+                let (low, high) = bounds(&b.positions);
+                let extent = (0..3).map(|k| f64::from(high[k] - low[k])).fold(0., f64::max);
+                (extent / FAR_SHARE).clamp(options.lod, FAR_REACH)
+            };
             let lod_out = if source_lod > lod_in as f64 { source_lod.min(cap) + f64::from(pad) } else { cap };
             let lod_in = (lod_in - pad).max(0.);
             let entries = format!("LODIn={lod_in}\nLODOut={lod_out}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
@@ -1394,16 +1404,18 @@ mod tests {
             normal: [[0.; 3]; 3],
             material: None,
         };
-        // A large triangle with a strip of small ones leading away from it, and a small one elsewhere.
+        // A large triangle with a strip of small ones leading away from it, however long, and a small one elsewhere.
         let kept = [tri([0., 0.], [100., 0.], [0., 100.])];
-        let rest = [
-            tri([100., 0.], [110., 0.], [100., 5.]),
-            tri([110., 0.], [115., 0.], [110., 5.]),
-            tri([500., 500.], [505., 500.], [500., 505.]),
-        ];
+        let strip = (0..20).map(|i| {
+            let x = 100. + 5. * f64::from(i);
+            tri([x, 0.], [x + 5., 0.], [x, 5.])
+        });
+        let rest: Vec<Triangle> = strip.chain([tri([500., 500.], [505., 500.], [500., 505.])]).collect();
         assert!(kept.iter().all(|t| far.keeps(&t.pos)) && rest.iter().all(|t| !far.keeps(&t.pos)));
-        assert_eq!(far.connected(&kept, &rest), vec![true, true, false]);
-        assert_eq!(far.connected(&[], &rest), vec![false; 3]);
+        let mut whole = vec![true; 20];
+        whole.push(false);
+        assert_eq!(far.connected(&kept, &rest), whole);
+        assert_eq!(far.connected(&[], &rest), vec![false; 21]);
     }
     #[test]
     fn corridor_keeps_long_triangles_crossing_the_course() {
