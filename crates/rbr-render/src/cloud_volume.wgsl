@@ -275,34 +275,58 @@ fn cirrus(dir: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(seen * cover, 1.0 - cover);
 }
 
-// A thin, mostly transparent layer of small rounded cells `DIMPLE_HEIGHT` above the eye (altocumulus: the "mackerel
-// sky"), as much as `cloud_params.shape.w`: cellular noise (the distance to the nearest of jittered points, each cell
-// its own size) for the dimples, patches of the cloud field's noise for where it is and where the blue shows between,
-// lit as a thin sheet (the sun forward scattered, thicker cell centres a little darker, and the sky's light). Its light
-// (display colour, times its cover) and how much shows through; it fades out into the haze.
+// A thin, mostly transparent layer of small rounded cloudlets `DIMPLE_HEIGHT` above the eye (altocumulus: the
+// "mackerel sky"), as much as `cloud_params.shape.w`. Soft mounds about jittered points (each its own size and depth,
+// merging where they meet) in a frame turned to the wind: the cloudlets drawn out across it and lined up in rolls that bend
+// and break (undulatus: the rolls lie across the shear), more so in some places than others. Patches of the cloud field's
+// noise say where the layer is: toward a patch's edge the cloudlets shrink and part as the sheet thins. Lit as
+// a thin sheet: the sun forward scattered through it (thin rims glow, thick middles darken toward the sun), each
+// cloudlet's side toward a low sun lit and its far side shaded, and the sky's light. Its light (display colour, times
+// its cover) and how much shows through; the cloudlets blur into an even veil where a pixel spans one (toward the
+// horizon), so they do not shimmer, and the layer fades into the haze.
 const DIMPLE_HEIGHT: f32 = 3600.0;
 const DIMPLE_REACH: f32 = 30000.0;
-// A cell's width, metres.
-const DIMPLE_CELL: f32 = 380.0;
-// The optical depth of the thickest cell's middle and of the thin sheet between the cells.
-const DIMPLE_DEPTH: f32 = 0.75;
-const DIMPLE_SHEET: f32 = 0.22;
+// A cloudlet's widest along the wind and across it (along a roll), metres: about 4 by 5 degrees overhead, 2 at 30
+// degrees up (the atlas' 1 to 5).
+const DIMPLE_CELL: vec2<f32> = vec2<f32>(230.0, 290.0);
+// The optical depth of the thickest cloudlet's middle and of the thin sheet between the cloudlets.
+const DIMPLE_DEPTH: f32 = 0.9;
+const DIMPLE_SHEET: f32 = 0.15;
+// The half-size march's pixel, radians (80 degrees over 640).
+const DIMPLE_PIXEL: f32 = 0.0022;
 
-fn dimple_thickness(q: vec2<f32>) -> f32 {
+struct Dimple {
+    // Thickness, 0 between the cloudlets to 1 at the thickest middle.
+    thick: f32,
+    // Its slope (per cell unit), for the light on the cloudlets' sides.
+    slope: vec2<f32>,
+}
+
+// The cloudlets at `q` (cell units in the wind's frame); `rows` (0 to 1) lines them up in rolls, `grow` scales them.
+fn dimple_thickness(q: vec2<f32>, rows: f32, grow: f32) -> Dimple {
     let i = floor(q);
     let f = fract(q);
-    var thick = 0.0;
+    var sum = 0.0;
+    var slope = vec2<f32>(0.0);
+    // Along the wind (x) the points keep to their row's line, across it they go anywhere.
+    let jitter = vec2<f32>(mix(0.8, 0.2, rows), 0.9);
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
             let g = vec2<f32>(f32(x), f32(y));
             let c = i + g;
             let o = vec2<f32>(cloud_hash(c), cloud_hash(c + vec2<f32>(37.1, 11.7)));
-            let size = mix(0.55, 0.95, cloud_hash(c + vec2<f32>(5.3, 91.7)));
-            let d = distance(g + o * 0.8 + 0.1, f);
-            thick = max(thick, smoothstep(0.0, 1.0, 1.0 - d / size));
+            let size = mix(0.45, 0.95, cloud_hash(c + vec2<f32>(5.3, 91.7))) * grow;
+            let depth = mix(0.5, 1.0, cloud_hash(c + vec2<f32>(71.9, 23.3)));
+            let at = (f - g - 0.5 - (o - 0.5) * jitter) / size;
+            // A soft mound, thin at the rim; neighbours add where they meet, so they merge without a crease.
+            let r = max(1.0 - dot(at, at), 0.0);
+            sum += r * r * depth;
+            slope -= 4.0 * r * depth * at / size;
         }
     }
-    return thick;
+    // Lines between the rolls (across the wind) where the cloudlets keep to rows.
+    let roll = mix(1.0, smoothstep(-1.4, 1.0, cos(6.2832 * (q.x - 0.5))), rows * 0.7);
+    return Dimple(min(sum, 1.0) * roll, slope * roll);
 }
 
 fn dimpled(dir: vec3<f32>) -> vec4<f32> {
@@ -314,17 +338,38 @@ fn dimpled(dir: vec3<f32>) -> vec4<f32> {
     let fade = 1.0 - smoothstep(DIMPLE_REACH * 0.4, DIMPLE_REACH, t);
     let xz = frame.eye.xz + dir.xz * t;
     let drift = frame.clouds.zw * frame.wind.x * 1.4;
-    var q = (xz - drift) / DIMPLE_CELL;
-    q += (vec2<f32>(cloud_value(q * 0.35), cloud_value(q * 0.35 + vec2<f32>(9.1, 4.7))) - 0.5) * 1.1;
-    let patches = smoothstep(0.28, 0.62, cloud_noise(cloud_at(xz) * 1.7 + vec2<f32>(41.0, 7.0), 3));
-    let thick = dimple_thickness(q);
+    let along = normalize(frame.clouds.zw + vec2<f32>(1e-3, 0.0));
+    let across = vec2<f32>(-along.y, along.x);
+    let p = xz - drift;
+    var q = vec2<f32>(dot(p, along), dot(p, across)) / DIMPLE_CELL;
+    // A broad warp that bends the rolls, and a finer one that makes each cloudlet irregular.
+    q += (vec2<f32>(cloud_value(q * 0.08), cloud_value(q * 0.08 + vec2<f32>(9.1, 4.7))) - 0.5) * 3.0;
+    q += (vec2<f32>(cloud_value(q * 0.6 + vec2<f32>(3.3, 1.9)), cloud_value(q * 0.6 + vec2<f32>(7.7, 5.1))) - 0.5) * 0.4;
+    let n = cloud_noise(cloud_at(xz) * 1.7 + vec2<f32>(41.0, 7.0), 3);
+    let patches = smoothstep(0.25, 0.6, n);
+    let rows = smoothstep(0.3, 0.7, cloud_value(q * 0.05 + vec2<f32>(23.0, 61.0)));
+    let cell = dimple_thickness(q, rows, mix(0.75, 1.1, smoothstep(0.3, 0.8, n)));
+    // Where a pixel spans a cloudlet (its footprint on the shell over the cloudlet's width), its mean.
+    let span = t * DIMPLE_PIXEL / max(dir.y, 0.05) / DIMPLE_CELL.x;
+    let detail = 1.0 - smoothstep(0.25, 0.8, span);
+    // Ragged rims: fine noise eats into the thin edges.
+    let rag = (cloud_value(q * 3.1 + vec2<f32>(13.0, 2.0)) - 0.5) * 0.35;
+    let thick = mix(0.3, clamp(cell.thick + rag * (1.0 - cell.thick), 0.0, 1.0), detail);
     let tau = (DIMPLE_DEPTH * thick + DIMPLE_SHEET) * patches * amount;
     let cover = (1.0 - exp(-tau)) * fade;
     if (cover <= 0.0) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    let mu = dot(dir, -frame.sun.xyz);
-    let light = SKY_PI * frame.day_sun.rgb * (volume_phase(mu, 0.6) + 0.1) * mix(1.0, 0.7, thick) + frame.day_sky.rgb * 1.2;
+    let to_sun = -frame.sun.xyz;
+    let mu = dot(dir, to_sun);
+    // The side of a cloudlet toward the sun (it thins toward the sun) lit, the far side shaded, as much as the sun is
+    // low.
+    let sun_q = vec2<f32>(dot(to_sun.xz, along), dot(to_sun.xz, across)) / DIMPLE_CELL;
+    let slope = dot(cell.slope, normalize(sun_q + vec2<f32>(1e-6, 0.0)));
+    let side = clamp(-0.4 * slope, -1.0, 1.0) * length(to_sun.xz) * detail;
+    let forward = volume_phase(mu, 0.6) * exp(-1.2 * tau);
+    let spread = 0.3 * (1.0 + 0.8 * side) * mix(1.0, 0.75, thick);
+    let light = SKY_PI * frame.day_sun.rgb * (forward + spread) + frame.day_sky.rgb * mix(0.9, 0.65, thick);
     let haze = sky_aerial(dir, t);
     let seen = sky_display(light) * haze.a + haze.rgb;
     return vec4<f32>(seen * cover, 1.0 - cover);

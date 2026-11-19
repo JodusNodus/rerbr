@@ -405,10 +405,15 @@ probably fit the wrong hour.
 
 - Sky cover steps, thinnest to thickest (`atmosphere::Clouds`): clear, dimpled, partly, heavy (the launcher's Clouds box;
   the old `light` reads as dimpled). Dimpled (`cloud_volume::layer`, `cloud_params.shape.w`) is a few low cumulus (cover
-  0.2) under a thin dimpled layer (`dimpled` in `cloud_volume.wgsl`): altocumulus 3.6 km up, cells of about 380 m from
-  jittered cellular noise (each its own size, merging), patches from the cloud field, optical depth 0.75 at a cell's
-  middle and 0.22 between, lit as a thin sheet (sun forward scattered, so it warms at low sun), between the march and the
-  cirrus. The 800 m broken stratocumulus stays for the section's own `lightcloud` rows. First look, not tuned.
+  0.2) under a thin dimpled layer (`dimpled` in `cloud_volume.wgsl`): altocumulus 3.6 km up, soft mounds of 230 by
+  290 m (each its own size and depth, merging) turned to the wind, in places lined up in rolls across it (undulatus),
+  bent by a broad warp; patches from the cloud field, where the cloudlets also shrink toward the edges; optical depth 0.9
+  at a mound's middle and 0.15 between; lit as a thin sheet (sun forward scattered through it, each cloudlet's side
+  toward a low sun lit, the far side shaded), between the march and the cirrus. Toward the horizon the cloudlets blur
+  into an even veil once a half-size pixel spans a third of one (no aliasing in stills; motion not checked). From the
+  WMO atlas and descriptions of the mackerel sky: Ac elements 1-5 degrees wide, rows across the shear in undulatus, gaps
+  (perlucidus), thinner translucent edges, at low sun the sunward sides lit. Tuned by eye on Odry and Komarov
+  (2026-11-19). The 800 m broken stratocumulus stays for the section's own `lightcloud` rows.
 - Moments (`--sun best|golden|midday|dusk|night`, `relight::Moment`; the launcher passes it instead of a clock, `--clock`
   wins; the launcher's default is best; the settings' old `dawn`, `morning` read as best, `afternoon` as golden). Midday,
   dusk, night are where the sun stands (`hour_at`). Best and golden are found on the stage: `sunlit.rs` (CPU ray test from
