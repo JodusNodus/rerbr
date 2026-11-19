@@ -815,8 +815,6 @@ impl Form {
             .chain(map.map(catalog::Map::name))
             .chain(catalog::title(stage.map).map(str::to_owned))
             .chain([stage.name.clone()])
-            .collect::<Vec<_>>()
-            .into_iter()
             .fold(Vec::new(), |mut seen: Vec<String>, name| {
                 if !name.is_empty() && !seen.contains(&name) {
                     seen.push(name);
