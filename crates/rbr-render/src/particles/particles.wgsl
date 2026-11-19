@@ -166,6 +166,10 @@ const BOUNCE: f32 = 0.45;
 const SELF_SHADOW: f32 = 0.45;
 const EROSION: f32 = 0.55;
 const SOFT: f32 = 0.6;
+const DUST_FADE_HEIGHT: f32 = 0.5;
+const DUST_FADE_MOST: f32 = 6.0;
+const DUST_LEVEL: vec2<f32> = vec2<f32>(0.95, 0.99);
+const DUST_OUTLINE: f32 = 0.05;
 const WISP_EROSION: f32 = 0.08;
 const WISP_SOFT: f32 = 2.0;
 // Screen size (the puff's radius over its distance) over which the sprite softens, the mip it blurs to, the power
@@ -244,6 +248,15 @@ fn fs_soft(in: Out) -> @location(0) vec4<f32> {
     // Billowing dust softens with its size on screen (`DUST_BLUR`): a large or near puff shows a blurred, thinner rim
     // with its lumps inside, a small distant one keeps its crisp edge.
     let dust_puff = in.additive < -2.5;
+    // The way from the sprite to the stage behind it along the ray, and how level the stage is there (its normal
+    // from the derivatives of where it is, before any discard).
+    let ray = normalize(in.world - effects.eye.xyz);
+    let scene = scene_distance(in.position);
+    let gap = scene - distance(in.world, effects.eye.xyz);
+    let behind = effects.eye.xyz + ray * min(scene, 1e4);
+    let facet = normalize(cross(dpdx(behind), dpdy(behind)));
+    let level = select(facet.y, -facet.y, dot(facet, ray) > 0.0);
+    let outline = fwidth(scene) > DUST_OUTLINE * scene;
     let span = in.radius / max(distance(in.centre, effects.eye.xyz), 0.1);
     let soften = select(0.0, smoothstep(DUST_BLUR.x, DUST_BLUR.y, span), dust_puff);
     let close = select(0.0, 1.0 - smoothstep(DUST_CLOSE.x, DUST_CLOSE.y, distance(in.centre, effects.eye.xyz)), dust_puff);
@@ -278,9 +291,22 @@ fn fs_soft(in: Out) -> @location(0) vec4<f32> {
     // ending in a cut line.
     let lifts = in.additive < -1.5 && !dust;
     let depth = clamp(SOFT * in.radius, 0.05, 1.5) * select(1.0, WISP_SOFT, lifts);
-    let gap = scene_distance(in.position) - distance(in.world, effects.eye.xyz);
     let reach = clamp(gap / depth, 0.0, 1.0);
-    let alpha = visible * select(reach, reach * reach * (3.0 - 2.0 * reach), lifts);
+    // A dust puff fades as a ball (after Umenhoffer, Szirmay-Kalos and Szijarto's spherical billboards, 2006): over its
+    // back half's depth along the ray, its radius at the middle, thinning to `depth` at the rim (its front half would
+    // lie in front of the sprite's plane, which the depth test hides there). Over level ground facing up below its
+    // middle (`DUST_LEVEL`; not across an outline, where the stage's distance jumps by `DUST_OUTLINE` of itself from
+    // pixel to pixel and the normal is noise) it fades over `DUST_FADE_HEIGHT` of its radius in height instead, which a
+    // ray low over the road spans over a long way (at most `DUST_FADE_MOST` radii): a metre along such a ray is a pixel
+    // or two, so the cut where the road meets each sprite's plane was a level line per puff, puffs at different
+    // distances a staircase.
+    let under = behind.y < in.centre.y;
+    let ground = select(0.0, smoothstep(DUST_LEVEL.x, DUST_LEVEL.y, level), under && !outline);
+    let low = min(DUST_FADE_HEIGHT * in.radius / max(abs(ray.y), 1e-3), DUST_FADE_MOST * in.radius);
+    let ball_back = max(in.radius * sqrt(max(1.0 - dot(across, across), 0.0)), depth);
+    let back = max(ball_back, low * ground);
+    let ball = smoothstep(0.0, 1.0, clamp(gap / back, 0.0, 1.0));
+    let alpha = visible * select(select(reach, reach * reach * (3.0 - 2.0 * reach), lifts), ball, dust);
     if (alpha < NEGLIGIBLE) {
         discard;
     }

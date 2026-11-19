@@ -870,6 +870,13 @@ splash never shows on a wet stage.
   fly-by; particles drawn after the resolve, so the frame showed it as the shot did). Particles pass, 1080p ultra:
   Odry chase 0.33 to 0.28 ms, Comb I fly-by 1.98 to 1.77 ms. Tried and dropped: the four taps turned by a golden
   angle a place (speckle), the same in the second cascade (spots a tap's spacing apart, the shafts gone).
+- Dust meets the road softly (2026-11-19, `fs_soft`): a puff fades over its back half's depth (its radius at the
+  middle) and, over level ground facing up below its middle (normal from the stage point's derivatives, `DUST_LEVEL`,
+  not across outlines), over half its radius in height, which a low ray spans over up to 6 radii. Before, a 0.6-radius
+  fade along the ray was a pixel or two at a low camera, so each puff's sprite plane cut a level line: a staircase
+  under the Sipirkakim fly-by plume. RMSE Sipirkakim 0.014, Odry chase 0.012, Gabiria fly-by 0.007, 532 chase 0.002,
+  snow Pian 0. Tried and dropped: a floor of half the puff's screen radius from `fwidth(gap)` (2x2 blocks and thin
+  dust on the tyres, whose steep surfaces read as ground); `abs` of the normal's height (tyre undersides read level).
 - No spray in the cabin (2026-11-01, `fs_soft`): in the in-car views the soft particles fade inside the cabin reach
   (2 to 2.5 m from the eye) as the rain does; the wheels' spray showed through the GC8's footwell gaps (52 rain
   cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical. The eye sphere is now the
