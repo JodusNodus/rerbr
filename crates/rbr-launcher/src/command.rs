@@ -22,7 +22,7 @@ use rbr_sound::mixer::Volumes;
 use crate::catalog::{self, Car, Stage, TyreChoice};
 use crate::graphics_page::{Graphics, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
-use crate::{pages::Choice, time_of_day, Form};
+use crate::{pages::Choice, Form};
 
 /// The mechanical trail of the force from the tyres, mm (`rbr-standalone --ffb-tyres`; its `tyre_ffb::SUGGESTED_TRAIL`,
 /// the one that gives AC EVO's torque by front slip angle).
@@ -552,15 +552,12 @@ impl Form {
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
         let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.championship.profile.clone()]].concat();
-        // The Custom weather's Time of day is the quick race's: the stage is drawn at it and the start board shows
-        // it. The Stage weather and a championship stage keep the stage's own light and the season's start clock.
+        // The Custom weather's Time of day is the quick race's: the viewer draws the stage at it and gives the start
+        // board its clock (`--sun`). The Stage weather and a championship stage keep the stage's own light and the
+        // season's start clock.
         let custom = self.custom();
-        let site = self.catalog.map(stage.map).map(time_of_day::site);
-        let start_time = site.and_then(|site| self.start_time.minutes(site)).filter(|_| custom);
-        if let Some(m) = start_time {
-            extra.extend(["--start-time".to_owned(), format!("{}:{:02}", m / 60, m % 60)]);
-        }
-        let viewer_extra = [ghost, clock_args(start_time)].concat();
+        let sun = if custom { self.start_time.sun_args() } else { Vec::new() };
+        let viewer_extra = [ghost, sun].concat();
         // The Environment: the exact sky of the row or the Custom weather's base, and the Custom weather's fog, clouds,
         // rain and wetness (a ghost keeps its own wetness).
         let (sky_fog, wetness_args) = environment_args(
@@ -1431,7 +1428,7 @@ mod tests {
         form.wetness = Some(2);
         form.fog = Some(Fog::Heavy);
         form.precipitation = Some(Precipitation::Heavy);
-        form.start_time = time_of_day::StartTime::Moment(time_of_day::Moment::Dusk);
+        form.start_time = crate::time_of_day::StartTime::Moment(crate::time_of_day::Moment::Dusk);
         form.wear = 1;
         let split = |args: Vec<String>| {
             let live = args.iter().position(|a| a == "--live").unwrap();
@@ -1442,7 +1439,7 @@ mod tests {
         let (_, weather) = form.selection().unwrap();
         let (viewer, standalone) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
         assert_eq!(value(&viewer, "--sky"), weather.section(&form.season));
-        for flag in ["--fog", "--clouds", "--precipitation", "--clock"] {
+        for flag in ["--fog", "--clouds", "--precipitation", "--sun"] {
             assert_eq!(value(&viewer, flag), None, "{flag}");
         }
         assert_eq!(weather.wetness, 1);
@@ -1462,8 +1459,7 @@ mod tests {
         let (viewer, _) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("moderate"));
         form.precipitation = Some(Precipitation::Heavy);
-        let dusk = time_of_day::Moment::Dusk.minutes(time_of_day::site(&form.catalog.maps[form.map]));
-        assert_eq!(value(&viewer, "--clock"), Some(clock_text(dusk)));
+        assert_eq!(value(&viewer, "--sun").as_deref(), Some("dusk"));
         assert_eq!(value(&viewer, "--weather").as_deref(), Some("wet"));
         assert_eq!(value(&standalone, "--wetness").as_deref(), Some("wet"));
         assert_eq!(value(&standalone, "--weather").as_deref(), Some("2"));
@@ -1544,20 +1540,19 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    /// The Time of day reaches a quick race's viewer and start board, and not a championship stage (`launch_args`,
+    /// The Time of day reaches a quick race's viewer (which gives the start board its clock), and not a championship stage (`launch_args`,
     /// for a plain championship stage), which keeps the stage's own light and the season's start clock.
     #[test]
     fn the_time_of_day_is_the_quick_races_only() {
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nclouds = partly\nstart_time = night\n";
         let Some((here, mut form)) = real_form("command-clock", text, false) else { return };
         let quick = launch(&mut form);
-        let night = time_of_day::Moment::Night.minutes(time_of_day::site(&form.catalog.maps[form.map]));
-        assert_eq!(value(&quick, "--clock"), Some(clock_text(night)));
-        assert_eq!(value(&quick, "--start-time"), Some(format!("{}:{:02}", night / 60, night % 60)));
+        assert_eq!(value(&quick, "--sun").as_deref(), Some("night"));
+        assert!(!quick.iter().any(|a| a == "--clock" || a == "--start-time"), "{quick:?}");
         let (stage, weather) = form.selection().unwrap();
         let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
         let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
-        assert!(!rally.iter().any(|a| a == "--clock" || a == "--start-time"), "{rally:?}");
+        assert!(!rally.iter().any(|a| a == "--sun" || a == "--clock" || a == "--start-time"), "{rally:?}");
         std::fs::remove_dir_all(&here).unwrap();
     }
 

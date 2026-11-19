@@ -5,7 +5,7 @@
                             [--previews DIR [--no-render]] [--gallery FILE] [--diff DIR]
                             [--set KEY=VALUE] [--args STRING] [--cars CAR...] [--rename NEW] [--save]
 
-Each shot is a stage, a car, a `view` (VIEWS), the clock, a launcher selection (weather), viewer arguments and the
+Each shot is a stage, a car, a `view` (VIEWS), the clock or a moment of the day (`sun`, `viewer --sun`), a launcher selection (weather), viewer arguments and the
 drive frame (`at`) the autopilot has reached; the shot is one `viewer --screenshot` of a live run in lockstep, so the same build gives the
 same picture. They serve as README pictures and as the reference for graphics changes: render before and after a
 change, then `--compare` the folders.
@@ -21,7 +21,7 @@ exact command) and DIR/manifest.json (build and tool versions). `--previews DIR`
 (ImageMagick; docs/shots/ holds the committed ones), `--no-render` only converts what --out has. `--gallery FILE`
 writes the markdown page of the shots (docs/shots/README.md). `--compare OLD_DIR` prints each shot's RMSE against an
 earlier render, worst first; with `--diff DIR` it also writes the difference, times 8, as a 1080p JPEG.
-`--set KEY=VALUE` (repeatable; car, view, clock, stage, at, settings.<name>) changes the selected shots for the run
+`--set KEY=VALUE` (repeatable; car, view, clock, sun, stage, at, settings.<name>) changes the selected shots for the run
 (`--save` writes the change back to the shots file), `--args STRING` (repeatable, shell-split) appends viewer
 arguments. `--cars A B` renders each selected shot once per car (as <name>--<slug>) plus a labelled <name>--cars.jpg
 sheet. `--rename NEW` renames the single `--only` shot; with `--save` and `--previews` the old JPEG is deleted.
@@ -117,7 +117,7 @@ def shot_command(build, lines, shot, out, size):
         command.append(viewer[j])
         j += 1
     rest[1] = str(build / 'rbr-standalone')
-    clock = ['--clock', shot['clock']] if 'clock' in shot else []
+    clock = ['--sun', shot['sun']] if 'sun' in shot else ['--clock', shot['clock']] if 'clock' in shot else []
     command += ['--size', size, '--screenshot', str(out)] + COMMON + VIEWS[shot['view']] + clock + shot.get('args', []) + ['--at', str(shot['at'])]
     return env, command + rest + ['--pilot', 'autopilot']
 
@@ -168,7 +168,7 @@ def apply_set(shots, pairs):
         key, eq, value = item.partition('=')
         if not eq or not key:
             sys.exit(f'--set {item!r}: want KEY=VALUE')
-        if key in ('car', 'clock'):
+        if key in ('car', 'clock', 'sun'):
             if not value:
                 sys.exit(f'--set {key}: want a non-empty value')
         elif key == 'view':
@@ -180,12 +180,14 @@ def apply_set(shots, pairs):
             except ValueError:
                 sys.exit(f'--set {item!r}: want an integer for {key}')
         elif not key.startswith('settings.') or len(key) == len('settings.'):
-            sys.exit('--set {!r}: unknown key (want car, view, clock, stage, at, settings.<name>)'.format(key))
+            sys.exit('--set {!r}: unknown key (want car, view, clock, sun, stage, at, settings.<name>)'.format(key))
         for s in shots:
             if key.startswith('settings.'):
                 s.setdefault('settings', {})[key[len('settings.'):]] = value
             else:
                 s[key] = value
+                # A shot's sun is a clock or a moment (`viewer --sun`), not both.
+                s.pop({'clock': 'sun', 'sun': 'clock'}.get(key, ''), None)
 
 
 def apply_args(shots, extras):
@@ -288,7 +290,7 @@ def gallery(shots, names, dest):
         for s in group:
             stage = RETAIL.get(s['stage']) or IMPORTED.get(s['stage']) or names.get(s['stage'], 'stage')
             kind = 'retail' if s['stage'] in RETAIL else 'AC import' if s['stage'] in IMPORTED else 'RSF'
-            clock = f", {s['clock']}" if 'clock' in s else ''
+            clock = f", {s['sun']}" if 'sun' in s else f", {s['clock']}" if 'clock' in s else ''
             lines.append(f"### {s['name']}\n\n{s['car']}, {stage} ({kind} {s['stage']}), {s['view'].split('-')[0]} view{clock}\n\n"
                          f"![{s['name']}]({s['name']}.jpg)\n")
     dest.write_text('\n'.join(lines))
@@ -318,7 +320,7 @@ def main():
     ap.add_argument('--diff', type=Path, metavar='DIR', help='with --compare: write the amplified difference images to DIR')
     ap.add_argument('--compare', type=Path, metavar='OLD_DIR', help='compare --out with an earlier render and exit')
     ap.add_argument('--set', action='append', default=[], metavar='KEY=VALUE',
-                    help='change a shot field (car, view, clock, stage, at, settings.<name>); repeatable')
+                    help='change a shot field (car, view, clock, sun, stage, at, settings.<name>); repeatable')
     ap.add_argument('--args', action='append', default=[], metavar='STRING', help='extra viewer arguments, shell-split; repeatable')
     ap.add_argument('--cars', nargs='+', default=[], metavar='CAR', help='render each shot once per car, plus a <name>--cars.jpg sheet')
     ap.add_argument('--rename', metavar='NEW', help='rename the single --only shot')

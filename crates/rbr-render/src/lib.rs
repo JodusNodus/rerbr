@@ -71,6 +71,7 @@ pub mod stage_picture;
 pub mod stage_probe;
 pub mod start_board;
 mod sun;
+pub mod sunlit;
 mod taa;
 mod terrain_detail;
 pub mod triple;
