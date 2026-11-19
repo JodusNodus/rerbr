@@ -81,6 +81,13 @@ const WIDTH: [f32; 2] = [1.0, 1.6];
 /// Final size limits after the patch and kind scale a card: ordinary grass, seed heads, and width, metres.
 const MAX_HEIGHT: [f32; 2] = [0.14, 0.20];
 const MAX_WIDTH: f32 = 0.20;
+/// A converted stage's atlas cards: the metres of a cell per unit of CSP's `SHAPE_SIZE`, calibrated on Sa Calobra's
+/// verge (`SHAPE_SIZE` 6.5: a cell about half a metre, its tussocks 0.4 to 0.8 m against the AC shot's boulders), and
+/// the size for a stage that sets none.
+const CELL_PER_SIZE: f32 = 0.08;
+const DEFAULT_SIZE: f32 = 1.5;
+/// How much each clump of an atlas varies in size, either way.
+const CELL_VARY: [f32; 2] = [0.8, 1.2];
 /// A tuft needs this much vegetation around its root, metres, even when its cards are smaller.
 const PATCH_RADIUS: f32 = 0.12;
 /// The least grassiness across the footprint: a fixed threshold, so a lucky draw cannot grow in a faint mark.
@@ -101,6 +108,8 @@ const FOOT: f32 = 0.0;
 /// only its hue.
 const GRASS_MARK: f32 = 4.0;
 const BRIGHT: [f32; 2] = [0.2, 2.5];
+/// A converted stage's: its atlas is much brighter than its dark ground, so the ratio goes lower.
+const FX_BRIGHT: [f32; 2] = [0.01, 2.5];
 /// The cards' brightness against the ground's: lit as a dense field (`own_light` in `shader.wgsl`), they take less light
 /// than the ground. With the ground between them thatched darker (`thatch` there) the field keeps about the ground's
 /// brightness, the blades lighter than the gaps (RSF Helette 580, Wythop 532, Gabiria 450).
@@ -120,6 +129,12 @@ const SATURATION: f32 = 0.85;
 /// from its dry patches: the ground's texture is greyed by its earth, the grass on it is green.
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
+/// A converted stage's grass takes the ground's hue as it is (no lean to lush green or straw, [`SATURATION`] lower) and
+/// is darker than the ground ([`SHADE`] lower): Assetto Corsa's atlas blades are tinted by the ground and read as brown
+/// olive against it (Sa Calobra's verge at dawn: blade luminance 0.75 of the ground's, blue over green 0.86 against the
+/// ground's 0.68).
+const FX_SATURATION: f32 = 0.3;
+const FX_SHADE: f32 = 1.2;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
@@ -156,24 +171,27 @@ impl Fx {
         f32::from(u8::from(l >= self.luminance[0] && l <= self.luminance[1]))
     }
 
-    /// A card's picture's rectangle (`u0, u1, v0, v1`) and its width over its height, by `pick`: a piece of the atlas
-    /// by the weights of its base (the first row's cells) and groups, then its pieces.
-    fn piece(&self, pick: f32) -> Option<([f32; 4], f32)> {
+    /// The metres of one atlas cell: CSP's `SHAPE_SIZE` times [`CELL_PER_SIZE`] (unset: [`DEFAULT_SIZE`]).
+    fn cell(&self) -> f32 {
+        let size = self.atlas.as_ref().map_or(0.0, |(a, _)| a.size);
+        CELL_PER_SIZE * if size > 0.0 { size } else { DEFAULT_SIZE }
+    }
+
+    /// A card's picture's rectangle (`u0, u1, v0, v1`) and its width and height in cells (the piece's cells times its
+    /// `SIZE_MULT`), by `pick`: a piece of the atlas by the weights of its base (the top row's cells) and groups, then
+    /// its pieces.
+    fn piece(&self, pick: f32) -> Option<([f32; 4], [f32; 2])> {
         let (atlas, size) = self.atlas.as_ref()?;
         let [columns, rows] = atlas.grid.map(|n| n as f32);
         let groups = atlas.groups.iter().filter(|g| !g.pieces.is_empty());
         let mut at = pick * (atlas.base + groups.clone().map(|g| g.chance).sum::<f32>());
-        let cell = |[x, y]: [u32; 2], [w, h]: [u32; 2]| {
-            let (u0, v0) = ((x - 1) as f32 / columns, (y - 1) as f32 / rows);
-            let (u1, v1) = ((u0 + w as f32 / columns).min(1.0), (v0 + h as f32 / rows).min(1.0));
-            let margin = Vec2::new(2.0, 2.0) / *size;
-            Some((
-                [u0 + margin.x, u1 - margin.x, v0 + margin.y, v1 - margin.y],
-                (w as f32 * size.x / columns) / (h as f32 * size.y / rows),
-            ))
+        let cell = |[x, y]: [u32; 2], [w, h]: [u32; 2], mult: [f32; 2]| {
+            let rect = piece_rect(atlas.grid, [x, y], [w, h], *size);
+            Some((rect, [w as f32 * mult[0], h as f32 * mult[1]]))
         };
         if at < atlas.base {
-            return cell([1 + ((at / atlas.base * columns) as u32).min(atlas.grid[0] - 1), 1], [1, 1]);
+            let column = 1 + ((at / atlas.base * columns) as u32).min(atlas.grid[0] - 1);
+            return cell([column, atlas.grid[1]], [1, 1], [1.0; 2]);
         }
         at -= atlas.base;
         for group in groups {
@@ -184,11 +202,11 @@ impl Fx {
                     at < 0.0
                 });
                 let piece = piece.unwrap_or(&group.pieces[0]);
-                return cell(piece.cell, piece.size);
+                return cell(piece.cell, piece.size, piece.mult);
             }
             at -= group.chance;
         }
-        cell([1, 1], [1, 1])
+        cell([1, rows as u32], [1, 1], [1.0; 2])
     }
 }
 
@@ -527,45 +545,67 @@ impl Field {
                 }
                 let (tall, dry) = patches(at.xz());
                 let kind = Kind::pick(pick, tall, dry);
-                let height =
+                let meadow =
                     (lerp(HEIGHT, height) * tall * kind.height()).min(MAX_HEIGHT[usize::from(kind == Kind::Seeds)]);
-                let pieces = |pick: f32| match self.fx.as_ref().and_then(|fx| fx.piece((pick * 131.7).fract())) {
-                    Some((rect, aspect)) => (rect, aspect / (WIDTH[0] + WIDTH[1]) * 2.0),
-                    None => (picture_rect(kind.picture(pick)), 1.0),
-                };
-                let ((picture, aspect), (other, _)) = (pieces(pick), pieces((pick * 53.0).fract()));
-                let width = (height * aspect * lerp(WIDTH, width)).min(MAX_WIDTH);
+                // A card's picture and size: an atlas piece's cells at the stage's cell size, or our blades' at the meadow's.
+                let size =
+                    |pick: f32| match self.fx.as_ref().and_then(|fx| Some((fx, fx.piece((pick * 131.7).fract())?))) {
+                        Some((fx, (rect, [w, h]))) => {
+                            let unit = fx.cell() * lerp(CELL_VARY, height) * tall;
+                            (rect, unit * w, unit * h)
+                        }
+                        None => {
+                            (picture_rect(kind.picture(pick)), (meadow * lerp(WIDTH, width)).min(MAX_WIDTH), meadow)
+                        }
+                    };
+                let ((picture, width, height), (other, other_width, other_height)) =
+                    (size(pick), size((pick * 53.0).fract()));
                 let angle = turn * std::f32::consts::PI;
                 let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
-                let radius = (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS);
+                let radius = if self.fx.is_some() {
+                    width * 0.4
+                } else {
+                    (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS)
+                };
                 if !self.supported(g, at, radius) {
                     continue;
                 }
                 let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
                 let hue = colour / self.mean;
                 let grey = Vec3::splat(hue.element_sum() / 3.0);
-                let hue = grey.lerp(hue, SATURATION).max(Vec3::splat(0.01));
-                let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
-                let hue = hue.lerp(hue * STRAW, dry * 0.35);
+                let converted = self.fx.is_some();
+                let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
+                let hue = if converted {
+                    hue / hue.max_element()
+                } else {
+                    let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
+                    hue.lerp(hue * STRAW, dry * 0.35)
+                };
                 let hue = (hue / hue.max_element() * 255.0).round().as_uvec3();
                 let lean_angle = lean_turn * std::f32::consts::TAU;
                 // Each clump's cards a little brighter or darker than the ground's.
-                let bright = SHADE * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
+                let shade = if converted { FX_SHADE } else { SHADE };
+                let bounds = if converted { FX_BRIGHT } else { BRIGHT };
+                let bright = shade * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
                 let card = Card {
                     at,
                     normal: g.normal,
                     across,
                     lean: Vec2::new(lean_angle.cos(), lean_angle.sin()) * lean * LEAN * height,
                     height,
-                    bright: bright.clamp(BRIGHT[0], BRIGHT[1]),
+                    bright: bright.clamp(bounds[0], bounds[1]),
                     hue: [hue.x as u8, hue.y as u8, hue.z as u8],
                     picture,
                     light: Light::blend(&corners, [1.0 - a - b, a, b]),
                     keep,
                 };
                 // The other card across it, a little shorter, with another picture of its kind.
-                let crossed =
-                    Card { across: Vec2::new(-across.y, across.x), height: height * 0.85, picture: other, ..card };
+                let crossed = Card {
+                    across: Vec2::new(-across.y, across.x).normalize_or_zero() * other_width * 0.5,
+                    height: other_height * 0.85,
+                    picture: other,
+                    ..card
+                };
                 cards.extend([card, crossed]);
                 if cards.len() + 2 > capacity {
                     return cards;
@@ -1081,6 +1121,18 @@ fn green(rgb: Vec3, road: bool) -> f32 {
     smoothstep([low, high], c.y - c.z - 2.0 * (c.x - c.y - 0.02).max(0.0))
 }
 
+/// The rectangle (`u0, u1, v0, v1`, a texel in from its edges) of an atlas piece: `cell` (column, row from 1, row 1 at
+/// the bottom of the picture, as CSP counts) and `size` in cells, of a `grid` of columns and rows over a texture of
+/// `texels`. The picture's rows run from the top, so the piece's top row is `rows - row - h + 1` from it.
+fn piece_rect(grid: [u32; 2], cell: [u32; 2], size: [u32; 2], texels: Vec2) -> [f32; 4] {
+    let [columns, rows] = grid.map(|n| n as f32);
+    let top = rows - (cell[1] - 1 + size[1]) as f32;
+    let (u0, v0) = ((cell[0] - 1) as f32 / columns, top / rows);
+    let (u1, v1) = (((cell[0] - 1 + size[0]) as f32 / columns).min(1.0), (top + size[1] as f32) / rows);
+    let margin = Vec2::new(2.0, 2.0) / texels;
+    [u0 + margin.x, u1 - margin.x, v0 + margin.y, v1 - margin.y]
+}
+
 /// The rectangle (`u0, u1, v0, v1`) of our texture's picture number `picture`, a texel in from its edges.
 fn picture_rect(picture: usize) -> [f32; 4] {
     let margin = Vec2::new(2.0 / (PICTURE.0 * COLUMNS) as f32, 2.0 / (PICTURE.1 * ROWS) as f32);
@@ -1093,16 +1145,19 @@ fn picture_rect(picture: usize) -> [f32; 4] {
     ]
 }
 
-/// A track's grass atlas (`dds`, any format [`dds::to_rgba8`] reads) as our texture is drawn: grey, so the ground's hue
+/// A track's grass atlas (`dds`: plain 24- or 32-bit, DXT1, DXT3 or DXT5) as our texture is drawn: grey, so the ground's hue
 /// and brightness colour the blades ([`Field::cards`]), with its mip chain and each level's alpha scaled to keep the
 /// top level's cut-out coverage ([`keep_coverage`]). Its bytes, the mean grey (display, weighted by alpha) and its size
 /// in texels.
 fn grey_atlas(dds: &[u8]) -> Option<(Vec<u8>, Vec3, Vec2)> {
-    let rgba = dds::to_rgba8(dds)?;
-    let file = dds::parse(&rgba).ok()?;
+    let plain = dds::to_rgba8(dds);
+    let file = dds::parse(plain.as_deref().unwrap_or(dds)).ok()?;
+    if file.format == dds::Format::Bc7 {
+        return None;
+    }
     let level = file.levels().into_iter().next()?;
     let (width, height) = (level.width as usize, level.height as usize);
-    let mut pixels = level.data.to_vec();
+    let mut pixels = crate::upscale::decompress(file.format, level.data, level.width, level.height);
     let (mut sum, mut weight) = (0.0, 0.0);
     for t in pixels.chunks_exact_mut(4) {
         let grey = 0.2126 * f32::from(t[0]) + 0.7152 * f32::from(t[1]) + 0.0722 * f32::from(t[2]);
@@ -1455,19 +1510,47 @@ mod tests {
             texture: None,
             grid: [8, 3],
             base: 1.0,
+            size: 6.5,
             groups: vec![GrassGroup {
                 chance: 1.0,
-                pieces: vec![GrassPiece { cell: [4, 1], size: [2, 2], chance: 1.0 }],
+                pieces: vec![GrassPiece { cell: [4, 1], size: [2, 2], chance: 1.0, mult: [0.6, 1.5] }],
             }],
             luminance: [0.005, 0.25],
         };
         let fx = Fx { luminance: settings.luminance, atlas: Some((settings, Vec2::new(2048.0, 768.0))) };
         assert_eq!((fx.mask(Vec3::splat(0.5)), fx.mask(Vec3::splat(0.9)), fx.mask(Vec3::ZERO)), (1.0, 0.0, 0.0));
-        // The first half of the weights is the first row's cells, the second the group's piece.
-        let (rect, aspect) = fx.piece(0.0).unwrap();
-        assert!(rect[0] < 1.0 / 8.0 && rect[2] < 1.0 / 3.0 && (aspect - 1.0).abs() < 1e-6);
-        let (rect, aspect) = fx.piece(0.75).unwrap();
-        assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[3] > 0.6 && (aspect - 1.0).abs() < 1e-6);
+        // The first half of the weights is the top row's cells, the second the group's piece.
+        let (rect, cells) = fx.piece(0.0).unwrap();
+        assert!(rect[0] < 1.0 / 8.0 && rect[3] < 1.0 / 3.0 && cells == [1.0, 1.0]);
+        let (rect, cells) = fx.piece(0.75).unwrap();
+        assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[2] > 0.3 && cells == [1.2, 3.0]);
+        assert!((fx.cell() - 0.52).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_compressed_atlas_is_drawn_grey_with_its_coverage() {
+        let rgba: Vec<u8> = (0..16 * 16).flat_map(|i| [30, 200, 40, if i % 16 < 8 { 255 } else { 0 }]).collect();
+        let file = crate::upscale::encode(dds::Format::Dxt5, 16, 16, rgba);
+        let (bytes, mean, size) = grey_atlas(&file).unwrap();
+        let file = dds::parse(&bytes).unwrap();
+        let level = file.levels()[0];
+        let texels = crate::upscale::decompress(file.format, level.data, level.width, level.height);
+        let opaque = texels.chunks_exact(4).filter(|t| t[3] > 0).collect::<Vec<_>>();
+        assert!(opaque.len() > 100 && opaque.iter().all(|t| t[0].abs_diff(t[1]) < 8 && t[1].abs_diff(t[2]) < 8));
+        assert!(mean.x > 0.4 && mean.x < 0.7 && size == Vec2::new(16.0, 16.0));
+    }
+
+    #[test]
+    fn an_atlas_piece_counts_its_rows_from_the_bottom() {
+        // Sa Calobra's atlas (2048 by 768, 8 by 3 cells of 256): the heather `3,1,1,2` is column 3's bottom two rows,
+        // the clumps `1,2,2,1` the middle row's first two cells, the reeds `4,1,2,2` columns 4 and 5's bottom two rows.
+        let texels = Vec2::new(2048.0, 768.0);
+        let pixels = |r: [f32; 4]| [r[0] * 2048.0, r[1] * 2048.0, r[2] * 768.0, r[3] * 768.0];
+        let near = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-3);
+        assert!(near(pixels(piece_rect([8, 3], [3, 1], [1, 2], texels)), [514.0, 766.0, 258.0, 766.0]));
+        assert!(near(pixels(piece_rect([8, 3], [1, 2], [2, 1], texels)), [2.0, 510.0, 258.0, 510.0]));
+        assert!(near(pixels(piece_rect([8, 3], [4, 1], [2, 2], texels)), [770.0, 1278.0, 258.0, 766.0]));
+        assert!(near(pixels(piece_rect([8, 3], [8, 3], [1, 1], texels)), [1794.0, 2046.0, 2.0, 254.0]));
     }
 
     #[test]

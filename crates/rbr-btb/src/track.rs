@@ -378,6 +378,8 @@ pub struct GrassFx {
     pub grid: [u32; 2],
     /// The weight of the default group, the atlas's first row of cells, against the groups'.
     pub base: f32,
+    /// CSP's `SHAPE_SIZE`; 0 when the stage gives none.
+    pub size: f32,
     pub groups: Vec<GrassGroup>,
     /// The ground texel's linear luminance, lowest and highest, that grass grows on.
     pub luminance: [f32; 2],
@@ -390,12 +392,14 @@ pub struct GrassGroup {
     pub pieces: Vec<GrassPiece>,
 }
 
-/// A piece of the atlas: `cell` (column, row, from 1, the first row on top) and `size` in cells, and its weight.
+/// A piece of the atlas: `cell` (column, row, from 1, row 1 at the bottom of the atlas) and `size` in cells, its weight and
+/// its width and height multipliers (`SIZE_MULT`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GrassPiece {
     pub cell: [u32; 2],
     pub size: [u32; 2],
     pub chance: f32,
+    pub mult: [f32; 2],
 }
 
 impl GrassFx {
@@ -425,8 +429,9 @@ impl GrassFx {
                         (!list(&format!("group{n}_piece{m}")).is_empty()).then(|| list(&format!("group{n}_piece{m}")))
                     })
                     .filter_map(|p| match p[..] {
-                        [x, y, w, h, chance] if x >= 1.0 && y >= 1.0 && w >= 1.0 && h >= 1.0 => {
-                            Some(GrassPiece { cell: [x as u32, y as u32], size: [w as u32, h as u32], chance })
+                        [x, y, w, h, chance, ref mult @ ..] if x >= 1.0 && y >= 1.0 && w >= 1.0 && h >= 1.0 => {
+                            let mult = if let [a, b] = mult[..] { [a, b] } else { [1.0; 2] };
+                            Some(GrassPiece { cell: [x as u32, y as u32], size: [w as u32, h as u32], chance, mult })
                         }
                         _ => None,
                     })
@@ -437,6 +442,7 @@ impl GrassFx {
             texture: find_entry(grass, "texture").map(str::to_owned).filter(|t| !t.is_empty()),
             grid,
             base: number("base", 1.0),
+            size: number("size", 0.0),
             groups,
             luminance,
         })
@@ -739,15 +745,15 @@ mod tests {
     fn the_grass_section_reads_its_atlas_groups_and_luminance() {
         let ini =
             "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrGrass]\ntexture=a.dds\ngrid=8, 3\nbase=4\nluminance=0.005,0.25\n\
-                   group0=0\ngroup1=2\ngroup1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5\n";
+                   group0=0\ngroup1=2\ngroup1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5,0.6,1.5\nsize=6.5\n";
         let grass = GrassFx::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!(
-            (grass.texture.as_deref(), grass.grid, grass.base, grass.luminance),
-            (Some("a.dds"), [8, 3], 4.0, [0.005, 0.25])
+            (grass.texture.as_deref(), grass.grid, grass.base, grass.luminance, grass.size),
+            (Some("a.dds"), [8, 3], 4.0, [0.005, 0.25], 6.5)
         );
         assert_eq!(grass.groups.len(), 2);
         assert!(grass.groups[0].pieces.is_empty() && grass.groups[1].chance == 2.0);
-        assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5 });
+        assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5, mult: [0.6, 1.5] });
         assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }
 
