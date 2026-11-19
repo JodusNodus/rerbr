@@ -276,6 +276,11 @@ pub struct Air {
 }
 
 impl Air {
+    /// The section of a `settings.ini`'s text.
+    pub fn from_ini(text: &str) -> Option<Air> {
+        Air::parse(&ini::parse(text).ok()?)
+    }
+
     fn parse(sections: &[ini::Section]) -> Option<Air> {
         let air = find_section(sections, "ReRbrAir")?;
         let fog_color = find_entry(air, "fog_color").and_then(|v| match &decimal_floats(v)[..] {

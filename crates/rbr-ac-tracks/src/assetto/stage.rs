@@ -1115,7 +1115,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
     write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
-    write("settings.ini", "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n".into())?;
+    write("settings.ini", SETTINGS_INI.into())?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     for (i, p) in line.points.iter().enumerate() {
         // A ring's last point repeats its first: neighbours wrap around the seam.
@@ -1201,9 +1201,19 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     })
 }
 
+/// A converted stage's `settings.ini`: the sun, and a mild warm-grey haze (`[ReRbrAir]`, read by `rbr_btb::track::Air`;
+/// aerosol 0.2 is the sky model's hazy end, clear AC days stay clear under it).
+const SETTINGS_INI: &str =
+    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nfog_color=0.74, 0.68, 0.62\naerosol=0.2\n";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_settings_carry_a_mild_warm_grey_haze() {
+        let air = rbr_btb::track::Air::from_ini(SETTINGS_INI).unwrap();
+        assert_eq!((air.fog_color, air.aerosol), (Some([0.74, 0.68, 0.62]), Some(0.2)));
+    }
     #[test]
     fn a_driveline_point_in_a_small_gap_takes_the_ground_beside_it() {
         let slab = |x0: f64, x1: f64| Triangle {
