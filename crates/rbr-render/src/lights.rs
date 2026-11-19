@@ -312,6 +312,40 @@ pub fn lamp_class(class: &str) -> bool {
 /// against the point.
 const PART_NEAR: f32 = 0.3;
 
+/// The flag a lamp's lens ([`lens_of`]) adds to its glow kind (`Shade::glow_kind`, `mode.glow.w`): `lamp_shown` takes
+/// it to its lamp within `LENS_NEAR` (a lens), not `LAMP_NEAR` (a lit part).
+pub const LENS: u8 = 8;
+/// How near a switched lit part must come to a lamp's point to show it, m ([`bare`]).
+const SHOWN_NEAR: f32 = 0.25;
+/// How near a lamp face block must come to a bare lamp's point to be its lens, m ([`lens_of`]).
+const LENS_REACH: f32 = 0.15;
+
+/// The lamps of `points` that can light but that no switched lit part of their kind comes near (`lit_parts`: each
+/// such part's kind and vertices, in the points' space). The game shows them by their flare alone, which we do not
+/// draw: a pod or tail lamp with no lit mesh (21 of 50 cars' pods and ramps, the Alpine A110's and Delta HF 4WD's
+/// tails, 2026-11-19), a lit sliver (the Yaris Rally2's tails), a lit strip inside a housing the game always draws
+/// (the Fiesta Rally2's tails). Their lenses glow instead ([`lens_of`]).
+pub fn bare<'a>(points: &'a [LampPoint], lit_parts: &[(Kind, &[Vec3])]) -> Vec<&'a LampPoint> {
+    let shown = |point: &LampPoint| {
+        lit_parts.iter().any(|(kind, vertices)| {
+            *kind == point.light.kind && vertices.iter().any(|v| v.distance(point.position) < SHOWN_NEAR)
+        })
+    };
+    points.iter().filter(|p| p.light.fixed != Some(false) && !shown(p)).collect()
+}
+
+/// The bare lamp ([`bare`]) a lamp face block the game always draws is the lens of: the nearest that one of its
+/// `vertices` comes within [`LENS_REACH`] of (ours). Its faces then glow while that lamp is lit, as far as
+/// `LENS_NEAR` from a lit lamp of its kind (`lamp_shown`).
+pub fn lens_of<'a>(vertices: &[Vec3], bare: &[&'a LampPoint]) -> Option<&'a LampPoint> {
+    let reach = |point: &LampPoint| vertices.iter().map(|v| v.distance(point.position)).fold(f32::INFINITY, f32::min);
+    bare.iter()
+        .map(|p| (reach(p), *p))
+        .filter(|(d, _)| *d < LENS_REACH)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, p)| p)
+}
+
 /// Whether a part is shown at the stage start. The loader makes a part with `Switch = true` and a non-empty
 /// `SwitchBox` and `Predicate` a `CGeomObjectSwitch` (`FUN_1001fc70`, `FUN_1001fde0`), hidden until its box is set to
 /// its predicate (`FUN_10043090`). `CHH_World`'s vf14 (0x100690a0) sets every box whose name contains `light`, `brake`
@@ -403,7 +437,8 @@ pub fn lamp_points(settings: &[Section], parts: &[Section], beam: [f32; 3]) -> V
             if !forward_tail(&point) {
                 return Some(point);
             }
-            (!headlights.contains(&point.light.part)).then(|| LampPoint { light: point.light.as_headlight(), ..point })
+            (!headlights.contains(&point.light.part))
+                .then(|| LampPoint { light: point.light.into_headlight(), ..point })
         })
         .collect();
     if lacking && !points.iter().any(|p| lights_up(&p.light)) {
@@ -438,7 +473,7 @@ fn forward_tail(point: &LampPoint) -> bool {
 impl Light {
     /// The record as an always-on headlight in its own colour (ours, [`forward_tail`]): switched as the headlights,
     /// at their intensity, `Active` kept.
-    fn as_headlight(self) -> Light {
+    fn into_headlight(self) -> Light {
         Light { kind: Kind::Front, candela: CANDELA[0], fixed: Some(self.fixed.unwrap_or(true)), ..self }
     }
 }

@@ -546,6 +546,7 @@ fn load_set(
             groups.extend(crack_overlays(mesh, window, transform, placement, style));
         }
     }
+    light_lenses(&mut groups, &ranks, &lamp_points, placement);
     let (meshes, damage) = in_draw_order(groups).into_iter().unzip();
 
     for class in &report.base_only_shaders {
@@ -560,6 +561,52 @@ fn load_set(
     }
 
     Ok(Car { name: name.to_owned(), meshes, damage, lamp_points, textures: textures.finish(&mut report), report })
+}
+
+/// Ours: the lamp faces the game always draws at a lamp with no switched lit part (`lights::bare`: the game shows it
+/// by its flare, which we do not draw) glow as its lens while it is lit (`lights::lens_of`, `lights::LENS`): `CarLight`
+/// faces, and `CarGlass` ones but the windows' (the 208 R2's, ADAM R2's and Clio Rally3's pods are a glass lens over
+/// a `CarPaint` bulb, which cannot be told from a housing). `groups` are the car's meshes at `placement`, `ranks`
+/// their shader classes, `points` the lamps in the model.
+fn light_lenses(
+    groups: &mut [(Order, Mesh, MeshDamage)],
+    ranks: &[(String, String)],
+    points: &[LampPoint],
+    placement: Mat4,
+) {
+    let positions = |mesh: &Mesh| mesh.vertices.iter().map(|v| Vec3::from(v.position)).collect::<Vec<_>>();
+    let glows = |mesh: &Mesh| mesh.draws.iter().any(|d| d.state.shade.is_some_and(|s| s.glow.is_some()));
+    let lit: Vec<(lights::Kind, Vec<Vec3>)> = groups
+        .iter()
+        .filter_map(|(_, mesh, damage)| {
+            let switch = damage.lamp.filter(|s| s.lit && !s.glass && !s.steady && glows(mesh))?;
+            Some((switch.kind, positions(mesh)))
+        })
+        .collect();
+    let lit: Vec<(lights::Kind, &[Vec3])> = lit.iter().map(|(kind, vertices)| (*kind, vertices.as_slice())).collect();
+    let placed: Vec<LampPoint> =
+        points.iter().map(|p| LampPoint { position: placement.transform_point3(p.position), ..p.clone() }).collect();
+    let bare = lights::bare(&placed, &lit);
+    let along = placement.transform_vector3(Vec3::Z).normalize_or(Vec3::Z);
+    for (order, mesh, damage) in groups.iter_mut() {
+        let lens =
+            |(class, _): &(String, String)| class == "CarLight" || class == "CarGlass" && damage.window.is_none();
+        if damage.lamp.is_some() || !ranks.get(order.1).is_some_and(lens) {
+            continue;
+        }
+        let vertices = positions(mesh);
+        let Some(point) = lights::lens_of(&vertices, &bare) else {
+            continue;
+        };
+        let switch =
+            lights::Switch { kind: point.light.kind, lamp: point.light.lamp, lit: true, glass: false, steady: true };
+        let glow = switch.glow(lights::projected_area(&vertices, &mesh.indices, along));
+        for shade in mesh.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
+            shade.glow = Some(glow);
+            shade.glow_kind = switch.kind.number() as u8 | lights::LENS;
+        }
+        damage.lamp = Some(switch);
+    }
 }
 
 impl Car {
