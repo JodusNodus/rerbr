@@ -612,8 +612,11 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   area-weighted (m²) median of each over the drawn opaque materials (`material::normalise_light`, after the last
   section), clamped to 0.25..3, omitted within 2% of 1 on both; none for placeholders or materials lacking either.
   Trees as CSP cards keep their own brightness (no key). Sa Calobra down: reference 0.62/0.30 (terrain); road 1.77/1.67, cliff and rocks 1.08/1.07, boulders 0.37/0.25, walls 0.44/0.25.
-  With the sheen (`SHEEN_STRENGTH` 0.25/0.35/0.5, Sa Calobra wall view 07:35) the road reads 43/48/55 against AC's 57–59, so 0.5
-  stays; toward the sun the road is 0.8–1.0x its away-from-sun level.
+  With the sheen (`SHEEN_STRENGTH` 0.25/0.35/0.5, Sa Calobra wall view 07:35) the road reads 43/48/55 against AC's 57–59;
+  toward the sun the road is 0.8–1.0x its away-from-sun level. That 0.5 made up for a sun too high: AC's shots have the
+  sun on the horizon (06:45 here), the foreground in shade. There, with `[ReRbrAir]` `mist=0`, 0.5/0.2/0.1 give rock
+  near road 106/85/65 and wall road 73/64/55 (AC 59/59), the pillar 24 → 38 (AC 41); 0.5 washed the road's texture out
+  toward the sky, so `SHEEN_STRENGTH` 0.1 (2026-11-19). Not re-rendered on Roure.
 - Tried and taken out again (Roure, renders at four driveline points, midday clear, 08:15 low sun and 11:00 overcast; mean change
   of 255 levels): `ksMultilayer_fresnel_nm`'s `txDetailNM` (at the source uv * the pair `detailNMMult`) and the
   `ksPerPixelMultiMap_(AT_)NMDetail` detail layer (`txNormalDetail` at uv * `detailUVMultiplier`, `N + (1 - diffuse.a) *
@@ -637,9 +640,9 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   pixels over 8): midday roure 15.9 / 76 %, sacalobra 9.4 / 36 %; overcast 20.7 / 86 %, 9.6 / 35 %; low sun facing it (17:00) 39.2 / 94 %,
   21.9 / 81 %. About half of it is the auto exposure: a brighter road darkens the frame (top third 5 to 30 % darker). The normal maps add
   1.5 to 5 on top of the sheen alone. Full physical strength read as wet or icy blue on the black converted roads, so the sheen is
-  weighted `SHEEN_STRENGTH` (0.5 after the into-sun calibration). Known: a patch decal lying on the road (Roure 6.5 km) takes no sheen.
+  weighted `SHEEN_STRENGTH` (0.1 after the low-sun calibration). Known: a patch decal lying on the road (Roure 6.5 km) takes no sheen.
 - Road material the collision calls gravel or dirt within 8 m of tarmac takes the tarmac's sheen (`puddles::mark_sheen`): Roure's shoulders showed as a dark band. Not fixed, accepted: Roure's visual-only road pad (6.5 km, over grass collision) and kerb strip (5 km, over wall collision), which carry no tarmac under them; cut-outs and blended decals take no sheen.
-- Into-sun glare (Sa Calobra 07:35, rock and wall recreations): the glare came from the Blinn-Phong highlight (`ksSpecular` 1, EXP 10) staying at 1 - weight under the sheen, not from the retail `with_specular` (which never runs on converted draws: they have a highlight). The sheen now replaces the highlight on tarmac. Road medians (grey of 255; diffuse alone / 0.35 / 0.5 / 1.0): rock near 7 / 88 / 118 / 191, mid 20 / 87 / 114 / 183 (mid/near 0.96 to 0.99, AC's about 1.1); wall near 19 / 42 / 51 / 81 (AC 59). `SHEEN_STRENGTH` 0.5.
+- Into-sun glare (Sa Calobra 07:35, rock and wall recreations): the glare came from the Blinn-Phong highlight (`ksSpecular` 1, EXP 10) staying at 1 - weight under the sheen, not from the retail `with_specular` (which never runs on converted draws: they have a highlight). The sheen now replaces the highlight on tarmac. Road medians (grey of 255; diffuse alone / 0.35 / 0.5 / 1.0): rock near 7 / 88 / 118 / 191, mid 20 / 87 / 114 / 183 (mid/near 0.96 to 0.99, AC's about 1.1); wall near 19 / 42 / 51 / 81 (AC 59). `SHEEN_STRENGTH` 0.5, later 0.1 (above).
 - Haze (ours, 2026-11-19): every import writes `settings.ini` `[ReRbrAir]` `fog_color=0.74, 0.68, 0.62` and
   `aerosol=0.2` (`SETTINGS_INI`; see `notes/renderer.md`), so the sky and distance read warm grey instead of map 41's
   clean blue. Roure rbcl 13:00 stays mild (sky blue in clear gaps, pale only near the horizon). Sa Calobra 07:35 at 0.2:

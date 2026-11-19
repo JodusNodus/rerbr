@@ -1986,7 +1986,7 @@ fn with_specular(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) ->
     return rough_dielectric(colour, v, normalize(v.normal) * select(-1.0, 1.0, front), roughness, sun_seen);
 }
 
-const SHEEN_STRENGTH: f32 = 0.5;
+const SHEEN_STRENGTH: f32 = 0.1;
 
 // A BTB road's dry sheen (`stage::Sheen`, `ReRbrSheen`): the same rough dielectric at the material's roughness, on the
 // bumped normal `v.normal` (`bumped`), damp as the retail roads are.
