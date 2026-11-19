@@ -81,6 +81,11 @@ pub struct Counts {
 /// A failed or cancelled setup's message.
 type Fail = String;
 
+/// An error's message led by the path it is about.
+pub(crate) fn at<E: std::fmt::Display>(path: &Path) -> impl Fn(E) -> String + Copy + '_ {
+    move |e| format!("{}: {e}", path.display())
+}
+
 trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
 
@@ -273,7 +278,7 @@ impl Cabinets<'_> {
         let next = AtomicUsize::new(0);
         let work = || -> Result<(), Fail> {
             while let Some((index, rel, path)) = jobs.get(next.fetch_add(1, Ordering::Relaxed)) {
-                let mut out = Writer::create(path, reporter).map_err(|e| format!("{}: {e}", path.display()))?;
+                let mut out = Writer::create(path, reporter).map_err(at(&path))?;
                 let result = self.cab.extract(*index, &mut |n| (self.open)(n), &mut out).and_then(|_| out.flush());
                 result.map_err(|e| {
                     reporter.failed.store(!reporter.cancel.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -323,7 +328,7 @@ impl Disc {
         if path.is_dir() {
             return Ok(Disc::Folder(path.to_owned()));
         }
-        let mut image = BufReader::new(File::open(path).map_err(|e| format!("{}: {e}", path.display()))?);
+        let mut image = BufReader::new(File::open(path).map_err(at(&path))?);
         let entries = iso9660::read_tree(&mut image).map_err(|e| {
             format!("{} is not the Richard Burns Rally disc (its .iso or its folder): {e}", path.display())
         })?;
@@ -351,7 +356,7 @@ impl Disc {
 /// The disc's cabinets.
 fn disc_cabinets(disc: &Path) -> Result<Cabinets<'static>, Fail> {
     let source = Disc::open(disc)?;
-    let error = |e: io::Error| format!("{}: {e}", disc.display());
+    let error = at(disc);
     let mut hdr = Vec::new();
     source
         .file("data1.hdr")
@@ -368,11 +373,15 @@ fn disc_cabinets(disc: &Path) -> Result<Cabinets<'static>, Fail> {
     Ok(Cabinets { cab, open: Box::new(open) })
 }
 
+fn no_root(disc: &Path) -> Fail {
+    format!("{}: the installer has no Root files: is it the Richard Burns Rally disc?", disc.display())
+}
+
 /// The patch's `.exe`: from the zip, or the file.
 fn patch_exe(path: &Path) -> Result<Vec<u8>, Fail> {
-    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let file = File::open(path).map_err(at(&path))?;
     let Ok(mut zip) = rbz::ZipArchive::new(BufReader::new(file)) else {
-        return fs::read(path).map_err(|e| format!("{}: {e}", path.display()));
+        return fs::read(path).map_err(at(&path));
     };
     let exes: Vec<String> = zip
         .file_names()
@@ -384,9 +393,7 @@ fn patch_exe(path: &Path) -> Result<Vec<u8>, Fail> {
         return Err(format!("{} should hold one .exe, the patch; it holds {exes:?}", path.display()));
     };
     let mut bytes = Vec::new();
-    zip.by_name(exe)
-        .and_then(|mut f| Ok(f.read_to_end(&mut bytes)?))
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    zip.by_name(exe).and_then(|mut f| Ok(f.read_to_end(&mut bytes)?)).map_err(at(&path))?;
     Ok(bytes)
 }
 
@@ -408,7 +415,6 @@ fn patch_cabinets<'a>(path: &Path, exe: &'a [u8]) -> Result<Cabinets<'a>, Fail> 
     Ok(Cabinets { cab, open: Box::new(open) })
 }
 
-/// Removes the temp folder however the work ends.
 /// The free bytes where `dir` is, where the platform tells.
 fn free_bytes(dir: &Path) -> Option<u64> {
     #[cfg(unix)]
@@ -429,9 +435,8 @@ pub fn install(inputs: &Inputs, report: Report<'_>, cancel: &AtomicBool) -> Resu
     let (_download, ngp) = match &inputs.ngp {
         Some(path) => (None, path.clone()),
         None => {
-            let out = std::path::absolute(&inputs.out).map_err(|e| format!("{}: {e}", inputs.out.display()))?;
-            let parent = out.parent().ok_or_else(|| format!("{} has no parent folder", out.display()))?;
-            fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            let out = std::path::absolute(&inputs.out).map_err(at(&inputs.out))?;
+            let parent = make_parent(&out)?;
             let temp = Temp::create(parent, "downloading")?;
             let package = crate::gvrc::download_ngp_package(&temp.0, report, cancel)?;
             (Some(temp), package)
@@ -439,6 +444,13 @@ pub fn install(inputs: &Inputs, report: Report<'_>, cancel: &AtomicBool) -> Resu
     };
     let paths = [&inputs.disc, &ngp];
     into_new_folder(&paths, &inputs.out, report, cancel, |game, reporter| setup(inputs, &ngp, game, reporter))
+}
+
+/// The folder holding `out`, made.
+fn make_parent(out: &Path) -> Result<&Path, Fail> {
+    let parent = out.parent().ok_or_else(|| format!("{} has no parent folder", out.display()))?;
+    fs::create_dir_all(parent).map_err(at(parent))?;
+    Ok(parent)
 }
 
 /// Runs `work` on a folder in a temp folder next to `out` (new or empty), checked that each of `inputs` exists, and
@@ -455,12 +467,11 @@ fn into_new_folder<T>(
             return Err(format!("{} does not exist", path.display()));
         }
     }
-    let out = std::path::absolute(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let out = std::path::absolute(out).map_err(at(&out))?;
     if out.exists() && (!out.is_dir() || fs::read_dir(&out).map_or(true, |mut d| d.next().is_some())) {
         return Err(format!("{} is not empty: choose a new or empty game folder", out.display()));
     }
-    let parent = out.parent().ok_or_else(|| format!("{} has no parent folder", out.display()))?;
-    fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    let parent = make_parent(&out)?;
     if free_bytes(parent).is_some_and(|free| free < FREE_BYTES) {
         return Err(format!(
             "{} needs {} GB free: make room, or choose a game folder on another disk",
@@ -472,9 +483,9 @@ fn into_new_folder<T>(
     let mut reporter = Reporter::new(report, cancel);
     let done = work(&temp.0.join("game"), &mut reporter)?;
     if out.is_dir() {
-        fs::remove_dir(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+        fs::remove_dir(&out).map_err(at(&out))?;
     }
-    fs::rename(temp.0.join("game"), &out).map_err(|e| format!("{}: {e}", out.display()))?;
+    fs::rename(temp.0.join("game"), &out).map_err(at(&out))?;
     Ok(done)
 }
 
@@ -505,10 +516,7 @@ pub fn extract_test_data(
         reporter.step("Reading the retail disc")?;
         let disc_cab = disc_cabinets(&disc)?;
         if !disc_cab.cab.groups.iter().any(|g| g.name.eq_ignore_ascii_case("Root")) {
-            return Err(format!(
-                "{}: the installer has no Root files: is it the Richard Burns Rally disc?",
-                disc.display()
-            ));
+            return Err(no_root(&disc));
         }
         let mut retail = Vec::new();
         for group in &disc_cab.cab.groups {
@@ -516,11 +524,9 @@ pub fn extract_test_data(
             retail.extend(disc_cab.files(group).into_iter().map(|(index, rel)| (index, format!("{name}/{rel}"))));
         }
 
-        fs::create_dir(root).map_err(|e| format!("{}: {e}", root.display()))?;
-        let mut install = Tree::new(root.join("retail-install")).map_err(|e| format!("{}: {e}", root.display()))?;
-        let mut main = Tree::new(root.join("Main_group")).map_err(|e| format!("{}: {e}", root.display()))?;
-        let sizes =
-            |files: &[(usize, String)], cab: &Cabinet| files.iter().map(|&(k, _)| cab.files[k].size).sum::<u64>();
+        fs::create_dir(root).map_err(at(&root))?;
+        let mut install = Tree::new(root.join("retail-install")).map_err(at(&root))?;
+        let mut main = Tree::new(root.join("Main_group")).map_err(at(&root))?;
         reporter.total = sizes(&retail, &disc_cab.cab) + sizes(&patch_files, &patch_cab.cab);
         reporter.step("Writing the retail install")?;
         disc_cab.extract(&mut install, &retail, reporter)?;
@@ -542,8 +548,7 @@ fn setup(inputs: &Inputs, ngp: &Path, game: &Path, reporter: &mut Reporter) -> R
     let disc = disc_cabinets(&inputs.disc)?;
     let retail = retail_files(&disc, &inputs.disc)?;
 
-    let mut tree = Tree::new(game.to_owned()).map_err(|e| format!("{}: {e}", game.display()))?;
-    let sizes = |files: &[(usize, String)], cab: &Cabinet| files.iter().map(|&(k, _)| cab.files[k].size).sum::<u64>();
+    let mut tree = Tree::new(game.to_owned()).map_err(at(&game))?;
     reporter.total =
         sizes(&retail, &disc.cab) + ngp.iter().map(|(_, b)| b.len() as u64).sum::<u64>() + ngp_physics.len() as u64;
     let mut counts = Counts::default();
@@ -560,15 +565,10 @@ fn setup(inputs: &Inputs, ngp: &Path, game: &Path, reporter: &mut Reporter) -> R
     for (rel, bytes) in &ngp {
         write_bytes(&mut tree, rel, bytes, reporter)?;
     }
-    replace_physics_with_ngps(&mut tree, &ngp_physics, reporter)?;
+    // NGP's `physics.rbz` in place of the retail one, as NGP's own install does.
+    write_bytes(&mut tree, "physics.rbz", &ngp_physics, reporter)?;
     counts.ngp = ngp.len() + 1;
     Ok(counts)
-}
-
-/// NGP's `physics.rbz` in place of the retail one, as NGP's own install does. A step of its own: the retail archive
-/// could be kept under another name here.
-fn replace_physics_with_ngps(tree: &mut Tree, physics: &[u8], reporter: &Reporter) -> Result<(), Fail> {
-    write_bytes(tree, "physics.rbz", physics, reporter)
 }
 
 fn write_bytes(tree: &mut Tree, rel: &str, bytes: &[u8], reporter: &Reporter) -> Result<(), Fail> {
@@ -578,10 +578,15 @@ fn write_bytes(tree: &mut Tree, rel: &str, bytes: &[u8], reporter: &Reporter) ->
 
 /// Writes `bytes` to `path`, making its folder.
 pub(crate) fn write_to(path: &Path, bytes: &[u8], reporter: &Reporter) -> Result<(), Fail> {
-    let error = |e: io::Error| format!("{}: {e}", path.display());
+    let error = at(path);
     fs::create_dir_all(path.parent().unwrap_or(path)).map_err(error)?;
     let mut out = Writer::create(path, reporter).map_err(error)?;
     out.write_all(bytes).and_then(|()| out.flush()).map_err(error)
+}
+
+/// The bytes of `files` (index, path) in `cab`.
+fn sizes(files: &[(usize, String)], cab: &Cabinet) -> u64 {
+    files.iter().map(|&(k, _)| cab.files[k].size).sum()
 }
 
 /// The number of distinct paths written.
@@ -600,10 +605,7 @@ fn retail_files(disc: &Cabinets, path: &Path) -> Result<Vec<(usize, String)>, Fa
         .filter(|(name, _)| !name.starts_with('_'))
         .collect();
     if !groups.iter().any(|(name, _)| name.eq_ignore_ascii_case("Root")) {
-        return Err(format!(
-            "{}: the installer has no Root files: is it the Richard Burns Rally disc?",
-            path.display()
-        ));
+        return Err(no_root(path));
     }
     // Root first, the others by name.
     groups.sort_by_key(|(name, _)| (!name.eq_ignore_ascii_case("Root"), name.clone()));

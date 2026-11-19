@@ -26,6 +26,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::car_packs::{self, Added, Download, BANKS, MODEL, PHYSICS};
+use crate::disc_install::at;
 use crate::job::{Counter, Job, Progress, Report, Temp};
 use crate::kit;
 use crate::ngp_install;
@@ -300,7 +301,7 @@ pub fn download_cars(
     report: Report<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Added>, Fail> {
-    fs::create_dir_all(cars_dir).map_err(|e| format!("{}: {e}", cars_dir.display()))?;
+    fs::create_dir_all(cars_dir).map_err(at(&cars_dir))?;
     let temp = Temp::create(cars_dir, "downloading")?;
     let agent = agent();
     let urls = links(wanted);

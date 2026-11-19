@@ -11,6 +11,7 @@ use super::scan::{
 };
 use super::{Fail, NOTES_DIR, SEVEN_Z, VOICES_DIR, ZIP};
 use crate::archive::{safe_folder, safe_path};
+use crate::disc_install::at;
 use crate::job::Temp;
 
 /// absolute), else NGPCarMenu's default; `None` when disabled or missing.
@@ -89,11 +90,11 @@ pub(super) struct Staged {
 /// Stages a pack named `name` below `home/dir`, in a temp folder renamed to a free pack folder on publish.
 pub(super) fn stage(home: &Path, dir: &str, name: &str) -> Result<Staged, Fail> {
     let base = home.join(dir);
-    fs::create_dir_all(&base).map_err(|e| format!("{}: {e}", base.display()))?;
+    fs::create_dir_all(&base).map_err(at(&base))?;
     let dest = free_dir(&base, &safe_folder(name).unwrap_or_else(|| "pack".to_owned()));
     let temp = Temp::create(&base, "import")?;
     let staged = temp.0.join("pack");
-    fs::create_dir(&staged).map_err(|e| format!("{}: {e}", staged.display()))?;
+    fs::create_dir(&staged).map_err(at(&staged))?;
     Ok(Staged { _temp: temp, staged, dest })
 }
 
@@ -101,7 +102,7 @@ pub(super) fn stage(home: &Path, dir: &str, name: &str) -> Result<Staged, Fail> 
 /// cancellation flag immediately before the commit, so a cancel after staging publishes nothing.
 pub(super) fn publish(op: &Staged, cancel: &AtomicBool) -> Result<(), Fail> {
     cancelled(cancel)?;
-    fs::rename(&op.staged, &op.dest).map_err(|e| format!("{}: {e}", op.dest.display()))
+    fs::rename(&op.staged, &op.dest).map_err(at(&op.dest))
 }
 
 /// Publishes a staged voice and note pair: the notes failing (or a cancel between the two renames) removes the
@@ -271,7 +272,7 @@ fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<St
         true => crate::archive::zip_entries(src),
         false => crate::archive::seven_entries(src),
     }
-    .map_err(|e| format!("{}: {e}", src.display()))?;
+    .map_err(at(&src))?;
     // Raw path parts (no wrapper stripped, so a single-stage archive's stage folder keeps its name). Unsafe paths
     // and directory entries are left out.
     let entries: Vec<Vec<String>> = listed.into_iter().filter(|e| !e.dir).filter_map(|e| e.parts).collect();
@@ -388,7 +389,7 @@ fn remove_pack(home: &Path, dir: &str, name: &str) -> Result<(), Fail> {
     let folder = safe_folder(name).ok_or_else(|| format!("a bad pack name {name}"))?;
     let path = home.join(dir).join(folder);
     match path.is_dir() {
-        true => fs::remove_dir_all(&path).map_err(|e| format!("{}: {e}", path.display())),
+        true => fs::remove_dir_all(&path).map_err(at(&path)),
         false => Ok(()),
     }
 }

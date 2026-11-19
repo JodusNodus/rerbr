@@ -17,6 +17,7 @@ use rbr_formats::{car_pack, cars};
 use crate::archive;
 use crate::catalog::{Car, Physics};
 use crate::content::source::{self, Source};
+use crate::disc_install::at;
 use crate::job::{self, Counter, Job, Report, Temp};
 use crate::kit;
 use crate::pages::{combo, GOOD, WARN};
@@ -257,7 +258,7 @@ pub fn import(
     let total = entries.iter().filter(|e| roots.iter().any(|r| e.path.starts_with(r))).map(|e| e.size).sum();
     let mut count = Counter { step: "Importing skin", done: 0, total, report, cancel };
     count.add(0)?;
-    fs::create_dir_all(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    fs::create_dir_all(dest).map_err(at(&dest))?;
     for (root, name) in roots.iter().zip(&names) {
         let wanted: Vec<(Vec<String>, Vec<String>)> = entries
             .iter()
@@ -268,9 +269,9 @@ pub fn import(
         src.extract(&wanted, &temp.0, &mut |n| count.add(n))?;
         let skin = dest.join(name);
         if skin.exists() {
-            fs::remove_dir_all(&skin).map_err(|e| format!("{}: {e}", skin.display()))?;
+            fs::remove_dir_all(&skin).map_err(at(&skin))?;
         }
-        fs::rename(&temp.0, &skin).map_err(|e| format!("{}: {e}", skin.display()))?;
+        fs::rename(&temp.0, &skin).map_err(at(&skin))?;
         // Renamed away: the temp folder's drop finds nothing to remove.
         drop(temp);
     }
