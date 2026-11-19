@@ -2765,8 +2765,8 @@ const SUN_EDGE: f32 = 0.0004;
 // A lit lamp part's luminance (`lamp_shown`): the lamp's light toward the eye (`beam` or `signal`, its share of the
 // axis's intensity) over the part's area seen from there (its area on the axis times the cosine, at least
 // `LAMP_FACING`), at least `LAMP_SIDE` of the axis's (the lens seen from the side still glows); the lamp is the nearest
-// lit one of its kind within `LAMP_NEAR` metres (a lamp's lens, `lights::LENS`, within `LENS_NEAR`), else the axis's
-// luminance.
+// lit one of its kind within `LAMP_NEAR` metres (a lamp's lens, `lights::LENS`, within `LENS_NEAR`) plus the lamp's
+// spread (`Lamp::spread`), else the axis's luminance.
 const LAMP_FACING: f32 = 0.25;
 const LAMP_SIDE: f32 = 0.03;
 const LAMP_NEAR: f32 = 1.5;
@@ -2800,13 +2800,14 @@ fn lamp_shown(texel: vec3<f32>, world: vec3<f32>, to_eye: vec3<f32>) -> vec3<f32
     let lens = mode.glow.w > 8.0;
     let kind = mode.glow.w - select(0.0, 8.0, lens);
     let near = select(LAMP_NEAR, LENS_NEAR, lens);
-    var best = near * near;
+    var best = 1e30;
     var seen = select(1.0, 0.0, kind != 0.0);
     for (var i = 0; i < 8; i++) {
         let lamp = frame.lamps[i];
         let d = world - lamp.position.xyz;
         let other = select((lamp.forward.w != 0.0) != headlight, lamp.up.w != kind, kind != 0.0);
-        if (lamp.position.w == 0.0 || other || dot(d, d) >= best) {
+        let reach = near + lamp.colour.w;
+        if (lamp.position.w == 0.0 || other || dot(d, d) >= min(best, reach * reach)) {
             continue;
         }
         best = dot(d, d);

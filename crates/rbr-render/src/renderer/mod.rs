@@ -432,11 +432,12 @@ impl Renderer {
     }
 
     /// The car's lit lamps, which light the stage at night and at dusk ([`Atmosphere::night`],
-    /// [`crate::relight::Relight::lamps`]); the first [`MAX_LAMPS`].
+    /// [`crate::relight::Relight::lamps`]); at most [`MAX_LAMPS`]
+    /// ([`crate::lights::fit`]).
     pub fn set_lamps(&mut self, lamps: &[Lamp]) {
         self.lamps = [LampUniform::default(); MAX_LAMPS];
-        for (slot, lamp) in self.lamps.iter_mut().zip(lamps) {
-            *slot = LampUniform::of(lamp);
+        for (slot, lamp) in self.lamps.iter_mut().zip(crate::lights::fit(lamps, MAX_LAMPS)) {
+            *slot = LampUniform::of(&lamp);
         }
         let air = self.air_lamps();
         if let Some(effects) = &mut self.effects {

@@ -210,7 +210,7 @@ impl FrameUniform {
 
 /// A lamp (`Lamp` in `lamps.wgsl`): position and `w` 1 when lit, the way it points and `w` 1 for a headlight's dipped
 /// beam, 2 its main beam, the car's up and `w` its kind's number (`lights::Kind::number`), and its colour times its
-/// intensity.
+/// intensity, and in `w` its spread (`Lamp::spread`).
 #[derive(Debug, Clone, Copy, Default, Pod, Zeroable)]
 #[repr(C)]
 pub(crate) struct LampUniform {
@@ -226,7 +226,7 @@ impl LampUniform {
             position: lamp.position.extend(1.0).to_array(),
             forward: lamp.forward.extend(f32::from(u8::from(lamp.beam) + u8::from(lamp.main))).to_array(),
             up: lamp.up.extend(lamp.kind.number() as f32).to_array(),
-            colour: lamp.colour.extend(0.0).to_array(),
+            colour: lamp.colour.extend(lamp.spread).to_array(),
         }
     }
 }
