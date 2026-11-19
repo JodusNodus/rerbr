@@ -115,6 +115,9 @@ impl GrassFx {
             }
         }
         let _ = writeln!(out, "base={}", number(&self.keys, "TEXTURE_BASE_CHANCE").unwrap_or(1.0));
+        if let Some(size) = number(&self.keys, "SHAPE_SIZE") {
+            let _ = writeln!(out, "size={size}");
+        }
         if let (Some(low), Some(high)) =
             (number(&self.keys, "MASK_MIN_LUMINANCE"), number(&self.keys, "MASK_MAX_LUMINANCE"))
         {
@@ -134,7 +137,11 @@ impl GrassFx {
                     _ => continue,
                 };
                 let chance = number(&group, &format!("PIECE_{m}_CHANCE")).unwrap_or(1.0);
-                let _ = writeln!(out, "group{n}_piece{m}={},{chance}", cells.join(","));
+                let mult = group.get(&format!("PIECE_{m}_SIZE_MULT")).map(|v| {
+                    let v: Vec<&str> = v.split(',').map(str::trim).collect();
+                    format!(",{},{}", v[0], v.get(1).unwrap_or(&v[0]))
+                });
+                let _ = writeln!(out, "group{n}_piece{m}={},{chance}{}", cells.join(","), mult.unwrap_or_default());
             }
         }
         out
@@ -203,8 +210,9 @@ mod tests {
         std::fs::write(
             dir.join("extension/ext_config.ini"),
             "[GRASS_FX]\nGRASS_MATERIALS = Ter?, rock_cluster\nTEXTURE = mine.dds ; mine\nTEXTURE_GRID = 8, 3\n\
-             TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\n\
-             [GRASS_FX_TEXTURE_GROUP_1]\nPIECE_0 = 1, 1\nPIECE_1 = 4, 1, 2, 2\nPIECE_1_CHANCE = 0.5\n",
+             TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\nSHAPE_SIZE = 6.5\n\
+             [GRASS_FX_TEXTURE_GROUP_1]\nPIECE_0 = 1, 1\nPIECE_1 = 4, 1, 2, 2\nPIECE_1_CHANCE = 0.5\n\
+             PIECE_1_SIZE_MULT = 0.6, 1.5\n",
         )
         .unwrap();
         let fx = grass_fx(&dir).unwrap();
@@ -213,8 +221,8 @@ mod tests {
         assert!(fx.texture.as_ref().is_some_and(|t| t.ends_with("Mine.DDS")));
         assert_eq!(
             fx.section(Some("ac_00001.dds")),
-            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nluminance=0,0.25\ngroup0=0\ngroup1=2\n\
-             group1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5\n"
+            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nsize=6.5\nluminance=0,0.25\ngroup0=0\ngroup1=2\n\
+             group1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5,0.6,1.5\n"
         );
     }
 

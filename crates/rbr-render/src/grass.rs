@@ -81,6 +81,13 @@ const WIDTH: [f32; 2] = [1.0, 1.6];
 /// Final size limits after the patch and kind scale a card: ordinary grass, seed heads, and width, metres.
 const MAX_HEIGHT: [f32; 2] = [0.14, 0.20];
 const MAX_WIDTH: f32 = 0.20;
+/// A converted stage's atlas cards: the metres of a cell per unit of CSP's `SHAPE_SIZE`, calibrated on Sa Calobra's
+/// verge (`SHAPE_SIZE` 6.5: a cell about half a metre, its tussocks 0.4 to 0.8 m against the AC shot's boulders), and
+/// the size for a stage that sets none.
+const CELL_PER_SIZE: f32 = 0.08;
+const DEFAULT_SIZE: f32 = 1.5;
+/// How much each clump of an atlas varies in size, either way.
+const CELL_VARY: [f32; 2] = [0.8, 1.2];
 /// A tuft needs this much vegetation around its root, metres, even when its cards are smaller.
 const PATCH_RADIUS: f32 = 0.12;
 /// The least grassiness across the footprint: a fixed threshold, so a lucky draw cannot grow in a faint mark.
@@ -156,24 +163,27 @@ impl Fx {
         f32::from(u8::from(l >= self.luminance[0] && l <= self.luminance[1]))
     }
 
-    /// A card's picture's rectangle (`u0, u1, v0, v1`) and its width over its height, by `pick`: a piece of the atlas
-    /// by the weights of its base (the first row's cells) and groups, then its pieces.
-    fn piece(&self, pick: f32) -> Option<([f32; 4], f32)> {
+    /// The metres of one atlas cell: CSP's `SHAPE_SIZE` times [`CELL_PER_SIZE`] (unset: [`DEFAULT_SIZE`]).
+    fn cell(&self) -> f32 {
+        let size = self.atlas.as_ref().map_or(0.0, |(a, _)| a.size);
+        CELL_PER_SIZE * if size > 0.0 { size } else { DEFAULT_SIZE }
+    }
+
+    /// A card's picture's rectangle (`u0, u1, v0, v1`) and its width and height in cells (the piece's cells times its
+    /// `SIZE_MULT`), by `pick`: a piece of the atlas by the weights of its base (the top row's cells) and groups, then
+    /// its pieces.
+    fn piece(&self, pick: f32) -> Option<([f32; 4], [f32; 2])> {
         let (atlas, size) = self.atlas.as_ref()?;
         let [columns, rows] = atlas.grid.map(|n| n as f32);
         let groups = atlas.groups.iter().filter(|g| !g.pieces.is_empty());
         let mut at = pick * (atlas.base + groups.clone().map(|g| g.chance).sum::<f32>());
-        let cell = |[x, y]: [u32; 2], [w, h]: [u32; 2]| {
-            let (u0, v0) = ((x - 1) as f32 / columns, (y - 1) as f32 / rows);
-            let (u1, v1) = ((u0 + w as f32 / columns).min(1.0), (v0 + h as f32 / rows).min(1.0));
-            let margin = Vec2::new(2.0, 2.0) / *size;
-            Some((
-                [u0 + margin.x, u1 - margin.x, v0 + margin.y, v1 - margin.y],
-                (w as f32 * size.x / columns) / (h as f32 * size.y / rows),
-            ))
+        let cell = |[x, y]: [u32; 2], [w, h]: [u32; 2], mult: [f32; 2]| {
+            let rect = piece_rect(atlas.grid, [x, y], [w, h], *size);
+            Some((rect, [w as f32 * mult[0], h as f32 * mult[1]]))
         };
         if at < atlas.base {
-            return cell([1 + ((at / atlas.base * columns) as u32).min(atlas.grid[0] - 1), 1], [1, 1]);
+            let column = 1 + ((at / atlas.base * columns) as u32).min(atlas.grid[0] - 1);
+            return cell([column, atlas.grid[1]], [1, 1], [1.0; 2]);
         }
         at -= atlas.base;
         for group in groups {
@@ -184,11 +194,11 @@ impl Fx {
                     at < 0.0
                 });
                 let piece = piece.unwrap_or(&group.pieces[0]);
-                return cell(piece.cell, piece.size);
+                return cell(piece.cell, piece.size, piece.mult);
             }
             at -= group.chance;
         }
-        cell([1, 1], [1, 1])
+        cell([1, rows as u32], [1, 1], [1.0; 2])
     }
 }
 
@@ -527,14 +537,21 @@ impl Field {
                 }
                 let (tall, dry) = patches(at.xz());
                 let kind = Kind::pick(pick, tall, dry);
-                let height =
+                let meadow =
                     (lerp(HEIGHT, height) * tall * kind.height()).min(MAX_HEIGHT[usize::from(kind == Kind::Seeds)]);
-                let pieces = |pick: f32| match self.fx.as_ref().and_then(|fx| fx.piece((pick * 131.7).fract())) {
-                    Some((rect, aspect)) => (rect, aspect / (WIDTH[0] + WIDTH[1]) * 2.0),
-                    None => (picture_rect(kind.picture(pick)), 1.0),
-                };
-                let ((picture, aspect), (other, _)) = (pieces(pick), pieces((pick * 53.0).fract()));
-                let width = (height * aspect * lerp(WIDTH, width)).min(MAX_WIDTH);
+                // A card's picture and size: an atlas piece's cells at the stage's cell size, or our blades' at the meadow's.
+                let size =
+                    |pick: f32| match self.fx.as_ref().and_then(|fx| Some((fx, fx.piece((pick * 131.7).fract())?))) {
+                        Some((fx, (rect, [w, h]))) => {
+                            let unit = fx.cell() * lerp(CELL_VARY, height) * tall;
+                            (rect, unit * w, unit * h)
+                        }
+                        None => {
+                            (picture_rect(kind.picture(pick)), (meadow * lerp(WIDTH, width)).min(MAX_WIDTH), meadow)
+                        }
+                    };
+                let ((picture, width, height), (other, other_width, other_height)) =
+                    (size(pick), size((pick * 53.0).fract()));
                 let angle = turn * std::f32::consts::PI;
                 let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
                 let radius = (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS);
@@ -564,8 +581,12 @@ impl Field {
                     keep,
                 };
                 // The other card across it, a little shorter, with another picture of its kind.
-                let crossed =
-                    Card { across: Vec2::new(-across.y, across.x), height: height * 0.85, picture: other, ..card };
+                let crossed = Card {
+                    across: Vec2::new(-across.y, across.x).normalize_or_zero() * other_width * 0.5,
+                    height: other_height * 0.85,
+                    picture: other,
+                    ..card
+                };
                 cards.extend([card, crossed]);
                 if cards.len() + 2 > capacity {
                     return cards;
@@ -1081,6 +1102,18 @@ fn green(rgb: Vec3, road: bool) -> f32 {
     smoothstep([low, high], c.y - c.z - 2.0 * (c.x - c.y - 0.02).max(0.0))
 }
 
+/// The rectangle (`u0, u1, v0, v1`, a texel in from its edges) of an atlas piece: `cell` (column, row from 1, row 1 at
+/// the bottom of the picture, as CSP counts) and `size` in cells, of a `grid` of columns and rows over a texture of
+/// `texels`. The picture's rows run from the top, so the piece's top row is `rows - row - h + 1` from it.
+fn piece_rect(grid: [u32; 2], cell: [u32; 2], size: [u32; 2], texels: Vec2) -> [f32; 4] {
+    let [columns, rows] = grid.map(|n| n as f32);
+    let top = rows - (cell[1] - 1 + size[1]) as f32;
+    let (u0, v0) = ((cell[0] - 1) as f32 / columns, top / rows);
+    let (u1, v1) = (((cell[0] - 1 + size[0]) as f32 / columns).min(1.0), (top + size[1] as f32) / rows);
+    let margin = Vec2::new(2.0, 2.0) / texels;
+    [u0 + margin.x, u1 - margin.x, v0 + margin.y, v1 - margin.y]
+}
+
 /// The rectangle (`u0, u1, v0, v1`) of our texture's picture number `picture`, a texel in from its edges.
 fn picture_rect(picture: usize) -> [f32; 4] {
     let margin = Vec2::new(2.0 / (PICTURE.0 * COLUMNS) as f32, 2.0 / (PICTURE.1 * ROWS) as f32);
@@ -1455,19 +1488,34 @@ mod tests {
             texture: None,
             grid: [8, 3],
             base: 1.0,
+            size: 6.5,
             groups: vec![GrassGroup {
                 chance: 1.0,
-                pieces: vec![GrassPiece { cell: [4, 1], size: [2, 2], chance: 1.0 }],
+                pieces: vec![GrassPiece { cell: [4, 1], size: [2, 2], chance: 1.0, mult: [0.6, 1.5] }],
             }],
             luminance: [0.005, 0.25],
         };
         let fx = Fx { luminance: settings.luminance, atlas: Some((settings, Vec2::new(2048.0, 768.0))) };
         assert_eq!((fx.mask(Vec3::splat(0.5)), fx.mask(Vec3::splat(0.9)), fx.mask(Vec3::ZERO)), (1.0, 0.0, 0.0));
-        // The first half of the weights is the first row's cells, the second the group's piece.
-        let (rect, aspect) = fx.piece(0.0).unwrap();
-        assert!(rect[0] < 1.0 / 8.0 && rect[2] < 1.0 / 3.0 && (aspect - 1.0).abs() < 1e-6);
-        let (rect, aspect) = fx.piece(0.75).unwrap();
-        assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[3] > 0.6 && (aspect - 1.0).abs() < 1e-6);
+        // The first half of the weights is the top row's cells, the second the group's piece.
+        let (rect, cells) = fx.piece(0.0).unwrap();
+        assert!(rect[0] < 1.0 / 8.0 && rect[3] < 1.0 / 3.0 && cells == [1.0, 1.0]);
+        let (rect, cells) = fx.piece(0.75).unwrap();
+        assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[2] > 0.3 && cells == [1.2, 3.0]);
+        assert!((fx.cell() - 0.52).abs() < 1e-6);
+    }
+
+    #[test]
+    fn an_atlas_piece_counts_its_rows_from_the_bottom() {
+        // Sa Calobra's atlas (2048 by 768, 8 by 3 cells of 256): the heather `3,1,1,2` is column 3's bottom two rows,
+        // the clumps `1,2,2,1` the middle row's first two cells, the reeds `4,1,2,2` columns 4 and 5's bottom two rows.
+        let texels = Vec2::new(2048.0, 768.0);
+        let pixels = |r: [f32; 4]| [r[0] * 2048.0, r[1] * 2048.0, r[2] * 768.0, r[3] * 768.0];
+        let near = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-3);
+        assert!(near(pixels(piece_rect([8, 3], [3, 1], [1, 2], texels)), [514.0, 766.0, 258.0, 766.0]));
+        assert!(near(pixels(piece_rect([8, 3], [1, 2], [2, 1], texels)), [2.0, 510.0, 258.0, 510.0]));
+        assert!(near(pixels(piece_rect([8, 3], [4, 1], [2, 2], texels)), [770.0, 1278.0, 258.0, 766.0]));
+        assert!(near(pixels(piece_rect([8, 3], [8, 3], [1, 1], texels)), [1794.0, 2046.0, 2.0, 254.0]));
     }
 
     #[test]
