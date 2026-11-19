@@ -211,10 +211,26 @@ pub struct DetailMap {
     pub blend: f32,
 }
 
+/// A [`NormalMap`] as bits, for equality and hashing.
+#[derive(PartialEq, Eq, Hash)]
+struct NormalBits {
+    texture: TextureRef,
+    uv1: bool,
+    doubled: bool,
+    scale: [u32; 2],
+    detail: Option<(TextureRef, [u32; 3])>,
+}
+
 impl NormalMap {
-    fn bits(&self) -> (TextureRef, bool, bool, [u32; 2], Option<(TextureRef, [u32; 3])>) {
+    fn bits(&self) -> NormalBits {
         let detail = self.detail.map(|d| (d.texture, [d.scale[0].to_bits(), d.scale[1].to_bits(), d.blend.to_bits()]));
-        (self.texture, self.uv1, self.doubled, self.scale.map(f32::to_bits), detail)
+        NormalBits {
+            texture: self.texture,
+            uv1: self.uv1,
+            doubled: self.doubled,
+            scale: self.scale.map(f32::to_bits),
+            detail,
+        }
     }
 }
 
