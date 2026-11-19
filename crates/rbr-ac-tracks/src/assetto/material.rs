@@ -517,8 +517,14 @@ fn light(mat: &Material) -> Option<[f32; 2]> {
     Some(both.map(|v| *v).map(|v| v.max(0.)))
 }
 
-/// Factors below this or above that are the most `ReRbrLight` moves a material.
-const LIGHT_RANGE: (f32, f32) = (0.25, 3.0);
+/// AC's shaders light in display (gamma) values, ReRBR's in linear light: a `ksAmbient`/`ksDiffuse` ratio `r` is
+/// `r^LIGHT_GAMMA` of ReRBR's light. Without it Sa Calobra's pale boulders (`extrarocks`, ratio 0.37/0.2 on a texture
+/// 2.8 times the terrain's) read cream where AC draws them as grey as the ground.
+const LIGHT_GAMMA: f32 = 2.2;
+/// Factors below this or above that are the most `ReRbrLight` moves a material, in linear light. The top is low: Sa
+/// Calobra's road (1.77/1.67, 3.5/3.1 linear) read 1.5 times AC's against its ground; at 2 it is 1.1 (AC's road 59,
+/// ours 65 and 53 at the rock and wall views, 06:45).
+const LIGHT_RANGE: (f32, f32) = (0.05, 2.0);
 
 /// The weighted median of `(value, weight)` pairs.
 fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
@@ -535,8 +541,8 @@ fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
 }
 
 /// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
-/// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws. A factor within
-/// 2% of 1 for both drops the line.
+/// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws, to
+/// [`LIGHT_GAMMA`] in linear light. A factor within 2% of 1 for both drops the line.
 pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String {
     let mut sections = Vec::<(&str, bool, Option<[f32; 2]>)>::new();
     for line in materials.lines() {
@@ -565,7 +571,8 @@ pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String
         }
         if line.starts_with("ReRbrLight=") {
             let raw = sections[at - 1].2.unwrap_or([ambient, diffuse]);
-            let f = [raw[0] / ambient, raw[1] / diffuse].map(|v| v.clamp(LIGHT_RANGE.0, LIGHT_RANGE.1));
+            let f =
+                [raw[0] / ambient, raw[1] / diffuse].map(|v| v.powf(LIGHT_GAMMA).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1));
             if f.iter().any(|v| (v - 1.).abs() > 0.02) {
                 let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
             }
@@ -1111,8 +1118,9 @@ mod tests {
         // The median is the road's 1.1/0.5 (70 of 80 opaque triangles; the transparent leaf does not count).
         assert_eq!(light("road"), None);
         assert_eq!(light("same"), None);
-        assert_eq!(light("rock").as_deref(), Some("0.25,0.25"));
-        assert_eq!(light("leaf").as_deref(), Some("0.272727,0.25"));
+        // Ratios to 2.2 (linear light), clamped: rock 0.2/0.12 and leaf 0.27/0.2 to the floor but the leaf's ambient.
+        assert_eq!(light("rock").as_deref(), Some("0.05,0.05"));
+        assert_eq!(light("leaf").as_deref(), Some("0.057359,0.05"));
         assert_eq!(light("plain"), None);
         // Without any opaque material to reference nothing is written.
         let none = normalise_light(&section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"), &triangles);
