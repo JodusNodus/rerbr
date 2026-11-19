@@ -23,9 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let survey = CloudSurvey::new(&gpu);
     let mut csv = std::fs::File::create(out.join("coverage.csv"))?;
     writeln!(csv, "preset,section,position,time,control,low_visible,low_opaque,low_mean,cirrus_visible,cirrus_opaque,cirrus_mean,total_visible,total_opaque,total_mean,horizon_opaque")?;
-    for (name, clouds) in
-        [("clear", Clouds::Clear), ("dimpled", Clouds::Dimpled), ("partly", Clouds::Partly), ("heavy", Clouds::Heavy)]
-    {
+    for (name, clouds) in [
+        ("clear", Clouds::Clear),
+        ("dimpled", Clouds::Dimpled),
+        ("partly", Clouds::Partly),
+        ("broken", Clouds::Broken),
+        ("heavy", Clouds::Heavy),
+    ] {
         let mut coverage = Vec::new();
         let mut horizon_coverage = Vec::new();
         for (seed, section) in
