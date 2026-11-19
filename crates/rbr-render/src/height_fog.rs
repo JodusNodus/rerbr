@@ -85,7 +85,7 @@ fn mist(a: &Atmosphere) -> (f32, f32) {
     let dawn = if a.fog == Some(Fog::Off) {
         0.0
     } else {
-        smooth(MIST_LOW - 4.0, MIST_LOW, elevation) * (1.0 - smooth(low, high, elevation))
+        smooth(MIST_LOW - 4.0, MIST_LOW, elevation) * (1.0 - smooth(low, high, elevation)) * a.mist.unwrap_or(1.0)
     };
     let day = if section.contains("hazy") { DAY_HAZE.0 * HAZY } else { DAY_HAZE.0 };
     // Blended in density (the inverse of the visibility) and in scale height.
@@ -182,6 +182,8 @@ mod tests {
         // The morning's mist lasts longer.
         let morning = at(&Atmosphere { solar_hour: Some(7.0), ..clear(8.0) });
         assert!(morning[0] > midway[0] && morning[0] <= dawn[0]);
+        // A stage's `[ReRbrAir]` `mist=0` leaves the day's haze at dawn.
+        assert_eq!(at(&Atmosphere { mist: Some(0.0), ..clear(1.0) }), noon);
         // None at night, nor without ground.
         assert_eq!(at(&Atmosphere { night: true, ..clear(1.0) }), [0.0; 4]);
         assert_eq!(uniform(&clear(1.0), None, Vec3::ZERO), [0.0; 4]);
