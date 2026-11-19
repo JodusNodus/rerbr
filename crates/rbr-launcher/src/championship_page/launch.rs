@@ -24,16 +24,17 @@ impl Form {
     pub(crate) fn championship_page(&mut self, ui: &mut egui::Ui) {
         // The browsers and the no-cars notice are not restyled here: they keep the old pages' padding.
         let padded = egui::Margin { left: 14, right: 4, top: 14, bottom: 8 };
-        if self.catalog.cars.is_empty() {
-            egui::Frame::new().inner_margin(padded).show(ui, |ui| self.no_cars_yet(ui));
-            return;
-        }
-        if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
-            egui::Frame::new().inner_margin(padded).show(ui, |ui| self.car_browser_page(ui));
-            return;
-        }
-        if self.stage_browser.open && self.stage_browser.target == car_browser::Target::Championship {
-            egui::Frame::new().inner_margin(padded).show(ui, |ui| self.stage_browser_page(ui));
+        let browser: Option<fn(&mut Form, &mut egui::Ui)> = if self.catalog.cars.is_empty() {
+            Some(|form, ui| _ = form.no_cars_yet(ui))
+        } else if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
+            Some(Form::car_browser_page)
+        } else if self.stage_browser.open && self.stage_browser.target == car_browser::Target::Championship {
+            Some(Form::stage_browser_page)
+        } else {
+            None
+        };
+        if let Some(page) = browser {
+            egui::Frame::new().inner_margin(padded).show(ui, |ui| page(self, ui));
             return;
         }
         if self.championship.pool.is_none() {

@@ -54,10 +54,15 @@ pub fn summary(config: &EventConfig, stages: Option<&[StageRef]>) -> String {
         Surfaces::Only(surface) => pool::surface_word(surface).to_owned(),
         Surfaces::Mixed => "mixed surfaces".to_owned(),
     });
+    parts.push(drivers_part(config));
+    parts.join(" · ")
+}
+
+/// "12 Rally2 drivers".
+fn drivers_part(config: &EventConfig) -> String {
     let class = if config.class.is_empty() { String::new() } else { format!("{} ", config.class) };
     let drivers = config.field_size;
-    parts.push(format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" }));
-    parts.join(" · ")
+    format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" })
 }
 
 /// The builder's summary of a plan: "2 rallies · 3 legs · 12 stages · 121 km · gravel · 12 Rally2 drivers".
@@ -79,9 +84,7 @@ pub fn plan_summary(config: &EventConfig, rallies: &[rbr_season::event::RallyPla
         [surface] => pool::surface_word(surface).to_owned(),
         _ => "mixed surfaces".to_owned(),
     });
-    let class = if config.class.is_empty() { String::new() } else { format!("{} ", config.class) };
-    let drivers = config.field_size;
-    parts.push(format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" }));
+    parts.push(drivers_part(config));
     parts.join(" · ")
 }
 

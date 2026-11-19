@@ -72,8 +72,7 @@ pub(super) fn driven(event: &Event, rally: usize) -> &[(Option<PlayerResult>, Ve
 
 /// The player's place in the standings and their size, while the player has a total.
 pub(super) fn place(lines: &[Standing]) -> Option<(usize, usize)> {
-    let at = lines.iter().position(|l| l.entrant.is_none())?;
-    lines[at].total.map(|_| (at + 1, lines.len()))
+    results::rivals(lines).map(|r| (r.place, lines.len()))
 }
 
 /// A driver's name: the field's, "You" for the player.
@@ -104,6 +103,13 @@ pub(super) fn road_word(conditions: Conditions) -> &'static str {
         Conditions::Damp => "damp",
         Conditions::Wet => "wet",
     }
+}
+
+/// A rally's surfaces in order ("gravel, tarmac") and its length in metres.
+pub(super) fn surfaces_and_length(stages: &[rbr_season::event::ItineraryStage]) -> (String, f32) {
+    let mut surfaces: Vec<&str> = stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
+    surfaces.dedup();
+    (surfaces.join(", "), stages.iter().map(|s| s.stage.length).sum())
 }
 
 pub(super) fn km(metres: f32) -> String {

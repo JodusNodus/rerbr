@@ -18,13 +18,15 @@ use crate::theme::{ERROR, LINE, PANEL, TEXT_2 as GREY, TEXT_3 as DIM, WARN as ST
 /// A severe or lost part.
 pub(crate) const BAD: Color32 = ERROR;
 
+/// A panel's fill, border and corners.
+pub(super) fn panel_frame() -> egui::Frame {
+    egui::Frame::new().fill(PANEL).stroke(egui::Stroke::new(1.0, LINE)).corner_radius(10)
+}
+
 /// Content in a card: a panel's fill, border and corners (the kit's) with a margin, the full width, for content that
 /// is not rows.
 pub(crate) fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    egui::Frame::new()
-        .fill(PANEL)
-        .stroke(egui::Stroke::new(1.0, LINE))
-        .corner_radius(10)
+    panel_frame()
         .inner_margin(egui::Margin::symmetric(14, 12))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());

@@ -55,6 +55,11 @@ fn the_summary_reads_the_event_at_a_glance() {
     assert_eq!(clock_hm(20.5), "20:30");
 }
 
+fn car(key: &str, group: &str) -> Car {
+    let model = rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None };
+    Car { key: key.into(), group: Some(group.into()), model: Ok(model), ..Car::default() }
+}
+
 /// A page on the fixture AI with a pool of the fixture's stages.
 fn page(here: &Path) -> ChampionshipPage {
     page_on(here, Preset::QuickRally)
@@ -64,12 +69,7 @@ fn page(here: &Path) -> ChampionshipPage {
 fn page_on(here: &Path, preset: Preset) -> ChampionshipPage {
     let mut page = ChampionshipPage::new(&Data::new(here.join("data"), None));
     page.ai = Ok(fixture::ai());
-    let cars = [Car {
-        key: "rsf-1".into(),
-        group: Some("Rally2".into()),
-        model: Ok(rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None }),
-        ..Car::default()
-    }];
+    let cars = [car("rsf-1", "Rally2")];
     page.open_builder(preset, &cars, 0, 3);
     page.start_event(here, "tester", &cars, &fixture::stages(), Path::new(""));
     page
@@ -304,10 +304,7 @@ fn the_players_own_itinerary_and_field_models_start_the_championship() {
     let here = crate::test_dir("championship-own-plan");
     let mut page = ChampionshipPage::new(&Data::new(here.join("data"), None));
     page.ai = Ok(fixture::ai());
-    let model =
-        || Ok(rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None });
-    let car = |key: &str| Car { key: key.into(), group: Some("Rally2".into()), model: model(), ..Car::default() };
-    let cars = [car("rsf-1"), car("rsf-2"), car("rsf-3")];
+    let cars = ["rsf-1", "rsf-2", "rsf-3"].map(|key| car(key, "Rally2"));
     page.open_builder(Preset::QuickRally, &cars, 0, 3);
     let stages = fixture::stages();
     page.pool = Some(Pool::Ready(stages.clone()));
@@ -332,14 +329,8 @@ fn the_players_own_itinerary_and_field_models_start_the_championship() {
 /// A car RSF and the added cars both have is one key, so one model of the field.
 #[test]
 fn a_car_listed_twice_is_one_model_of_the_field() {
-    let car = |name: &str, key: &str| Car {
-        name: name.into(),
-        key: key.into(),
-        group: Some("Group B".into()),
-        model: Ok(rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None }),
-        ..Car::default()
-    };
+    let named = |name: &str, key: &str| Car { name: name.into(), ..car(key, "Group B") };
     let cars =
-        [car("Audi quattro A2 GrpB", "pack-a2"), car("Audi quattro A2 group B", "pack-a2"), car("M1", "pack-m1")];
+        [named("Audi quattro A2 GrpB", "pack-a2"), named("Audi quattro A2 group B", "pack-a2"), named("M1", "pack-m1")];
     assert_eq!(super::words::class_cars(&cars, "Group B"), ["pack-a2", "pack-m1"]);
 }

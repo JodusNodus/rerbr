@@ -442,11 +442,9 @@ pub(super) fn calendar_ui(ui: &mut Ui, event: &Event) {
                 ui.colored_label(STAR, if current { "▶" } else { "" });
                 ui.label(text(format!("R{}", k + 1)));
                 ui.label(text(r.name.clone()));
-                let mut surfaces: Vec<&str> = r.stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
-                surfaces.dedup();
-                let length: f32 = r.stages.iter().map(|s| s.stage.length).sum();
+                let (surfaces, length) = surfaces_and_length(&r.stages);
                 let stages = format!("{} stages", r.stages.len());
-                ui.colored_label(GREY, format!("{} · {}", surfaces.join(", "), km(length))).on_hover_text(stages);
+                ui.colored_label(GREY, format!("{surfaces} · {}", km(length))).on_hover_text(stages);
                 match rally_finishes(event, k) {
                     Some(finishes) => {
                         match finishes.iter().find(|(e, _)| e.is_none()).map(|(_, f)| *f) {

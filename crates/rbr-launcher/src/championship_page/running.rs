@@ -168,10 +168,8 @@ impl ChampionshipPage {
 
     fn welcome_ui(&mut self, ui: &mut Ui, event: &Event, rally: usize) {
         let Some(r) = event.rallies.get(rally) else { return };
-        let length: f32 = r.stages.iter().map(|s| s.stage.length).sum();
+        let (surfaces, length) = surfaces_and_length(&r.stages);
         let services = r.stages.iter().filter(|s| s.service_after.is_some()).count();
-        let mut surfaces: Vec<&str> = r.stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
-        surfaces.dedup();
         let first = r.stages.first().map_or(String::new(), |s| format!(" · SS1 at {}", clock_hm(s.clock)));
         card(ui, |ui| {
             card_title(ui, &format!("Welcome to {}", r.name));
@@ -179,7 +177,7 @@ impl ChampionshipPage {
                 "{} stages · {} · {} · {services} service{}{first}",
                 r.stages.len(),
                 km(length),
-                surfaces.join(", "),
+                surfaces,
                 if services == 1 { "" } else { "s" }
             );
             ui.colored_label(TEXT_2, line);
@@ -356,13 +354,10 @@ impl ChampionshipPage {
             Turn::Service { .. } => ("Super Rally".to_owned(), step(event)),
             Turn::RallyOver { .. } => match event.rallies.get(rally + 1) {
                 Some(next) => {
-                    let length: f32 = next.stages.iter().map(|s| s.stage.length).sum();
-                    let mut surfaces: Vec<&str> =
-                        next.stages.iter().map(|s| pool::surface_word(s.stage.surface)).collect();
-                    surfaces.dedup();
+                    let (surfaces, length) = surfaces_and_length(&next.stages);
                     (
                         format!("Next: R{} · {}", rally + 2, next.name),
-                        format!("{} · {} · Practice first, not recorded", surfaces.join(", "), km(length)),
+                        format!("{surfaces} · {} · Practice first, not recorded", km(length)),
                     )
                 }
                 None => ("The last rally is over".to_owned(), "On to the final result".to_owned()),
