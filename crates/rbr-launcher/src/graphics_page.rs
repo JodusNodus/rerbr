@@ -196,7 +196,6 @@ fn scale_label(percent: u32) -> String {
     }
 }
 
-/// A detail choice's label.
 /// A mirrors' rate's label.
 fn mirrors_label(rate: Rate) -> &'static str {
     match rate {
@@ -266,6 +265,12 @@ fn screen_aspect(whole: (u32, u32), per_monitor: bool) -> f32 {
         true => aspect,
         false => aspect / 3.0,
     }
+}
+
+/// A whole-number slider with its unit `suffix` and hover `tip`.
+fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, suffix: &str, tip: &str) {
+    ui.spacing_mut().slider_width = 180.0;
+    ui.add(egui::Slider::new(value, range).step_by(1.0).fixed_decimals(0).suffix(suffix)).on_hover_text(tip);
 }
 
 /// A frame cap's label.
@@ -453,29 +458,11 @@ impl Form {
         kit::panel(ui, |rows| {
             let tip = "The horizontal field of view of the in-car views and the free camera; the chase view has its \
                        own below. The pause menu's Camera page sets it too";
-            rows.row("Field of view", |ui| {
-                ui.spacing_mut().slider_width = 180.0;
-                ui.add(
-                    egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES)
-                        .step_by(1.0)
-                        .fixed_decimals(0)
-                        .suffix("°"),
-                )
-                .on_hover_text(tip);
-            });
+            rows.row("Field of view", |ui| slider(ui, &mut self.fov, coords::FOV_RANGE_DEGREES, "°", tip));
 
             let tip = "The horizontal field of view of the chase view (65 by default). The pause menu's Camera page \
                        sets it too";
-            rows.row("Chase field of view", |ui| {
-                ui.spacing_mut().slider_width = 180.0;
-                ui.add(
-                    egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES)
-                        .step_by(1.0)
-                        .fixed_decimals(0)
-                        .suffix("°"),
-                )
-                .on_hover_text(tip);
-            });
+            rows.row("Chase field of view", |ui| slider(ui, &mut self.chase_fov, coords::FOV_RANGE_DEGREES, "°", tip));
 
             let mut cockpit = self.cockpit;
             let tip = "The in-car view's head: it keeps the horizon steadier over bumps. Off, the view is fixed to \
@@ -643,11 +630,6 @@ impl Form {
         }
         let names = self.monitors.clone();
         kit::panel(ui, |rows| {
-            let slider = |ui: &mut egui::Ui, value: &mut f32, range, suffix: &str, tip: &str| {
-                ui.spacing_mut().slider_width = 180.0;
-                ui.add(egui::Slider::new(value, range).step_by(1.0).fixed_decimals(0).suffix(suffix))
-                    .on_hover_text(tip);
-            };
             rows.row("Screen size", |ui| {
                 slider(ui, &mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE, " in", "Each screen's diagonal")
             });

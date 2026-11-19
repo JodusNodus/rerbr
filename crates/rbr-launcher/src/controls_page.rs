@@ -640,25 +640,8 @@ impl ControlsPage {
         };
         let bound = text.is_some();
         let live = binding.pad.and_then(|p| self.read(p)).map(|v| live_value(bindings, action, v));
-        let (mut set, mut clear) = (false, false);
-        rows.full(|ui| {
-            label_cell(ui, ROW_LABEL, label);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                clear = bound && !capturing && kit::link(ui, "Clear").clicked();
-                if !bound {
-                    set = kit::link(ui, "Bind").clicked();
-                }
-                ui.with_layout(Layout::left_to_right(Align::Center), |ui| match &text {
-                    Some(text) => {
-                        set |= binding_button(ui, text, capturing).clicked();
-                        if !capturing {
-                            meter(ui, live, steering, bound);
-                        }
-                    }
-                    None => _ = ui.label(RichText::new("Not set").color(TEXT_3)),
-                });
-            });
-        });
+        let (set, clear) =
+            binding_row(rows, ROW_LABEL, label, text.as_deref(), capturing, |ui| meter(ui, live, steering, bound));
         if set {
             self.capture = Some(Capture::Pad(action, self.pad_rest()));
         }
@@ -681,23 +664,9 @@ impl ControlsPage {
                         }
                         let key = bindings.get(action).key;
                         let capturing = matches!(self.capture, Some(Capture::Key(a)) if a == action);
-                        let (mut set, mut clear) = (false, false);
-                        rows.full(|ui| {
-                            label_cell(ui, 150.0, action.name());
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                clear = key.is_some() && !capturing && kit::link(ui, "Clear").clicked();
-                                if key.is_none() && !capturing {
-                                    set = kit::link(ui, "Bind").clicked();
-                                }
-                                ui.with_layout(Layout::left_to_right(Align::Center), |ui| match (key, capturing) {
-                                    (_, true) => set |= binding_button(ui, "press a key (Esc cancels)", true).clicked(),
-                                    (Some(key), false) => {
-                                        set |= binding_button(ui, bindings::key_name(key), false).clicked()
-                                    }
-                                    (None, false) => _ = ui.label(RichText::new("Not set").color(TEXT_3)),
-                                });
-                            });
-                        });
+                        let text =
+                            if capturing { Some("press a key (Esc cancels)") } else { key.map(bindings::key_name) };
+                        let (set, clear) = binding_row(rows, 150.0, action.name(), text, capturing, |_| {});
                         if set {
                             self.capture = Some(Capture::Key(action));
                         }
@@ -802,6 +771,39 @@ fn binding_button(ui: &mut Ui, text: &str, capturing: bool) -> egui::Response {
     ui.add_sized([BUTTON_WIDTH, 24.0], button).on_hover_text(text)
 }
 
+/// A binding's row: `label`, then `text` as the input button (or "Not set") with `after` beside it unless being set,
+/// and Clear or Bind at the right. Returns whether the binding is to be set and whether to be cleared.
+fn binding_row(
+    rows: &mut Rows,
+    width: f32,
+    label: &str,
+    text: Option<&str>,
+    capturing: bool,
+    after: impl FnOnce(&mut Ui),
+) -> (bool, bool) {
+    let bound = text.is_some();
+    let (mut set, mut clear) = (false, false);
+    rows.full(|ui| {
+        label_cell(ui, width, label);
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            clear = bound && !capturing && kit::link(ui, "Clear").clicked();
+            if !bound {
+                set = kit::link(ui, "Bind").clicked();
+            }
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| match text {
+                Some(text) => {
+                    set |= binding_button(ui, text, capturing).clicked();
+                    if !capturing {
+                        after(ui);
+                    }
+                }
+                None => _ = ui.label(RichText::new("Not set").color(TEXT_3)),
+            });
+        });
+    });
+    (set, clear)
+}
+
 /// A live meter of an input (the steering from the middle, the rest from the left); an empty track while it has no
 /// reading, nothing on an unbound row.
 fn meter(ui: &mut Ui, value: Option<f32>, steering: bool, bound: bool) {
@@ -830,13 +832,7 @@ fn invert_ui(rows: &mut Rows, bindings: &mut Bindings) {
     rows.full(|ui| {
         label_cell(ui, ROW_LABEL, "Invert");
         ui.horizontal_wrapped(|ui| {
-            for (action, label) in [
-                (Action::SteerLeft, "Steering"),
-                (Action::Throttle, "Throttle"),
-                (Action::Brake, "Brake"),
-                (Action::Clutch, "Clutch"),
-                (Action::Handbrake, "Handbrake"),
-            ] {
+            for (action, label) in WHEEL {
                 if let Some(flag) = invert_flag(&mut bindings.invert, action) {
                     ui.checkbox(flag, label).on_hover_text(INVERT_HELP);
                 }
