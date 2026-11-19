@@ -11,8 +11,8 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 - **The original game around it.** Weather, damage, the service park, the championship and the stage records work
   as in RBR 1.02, checked against recordings of the original.
 - **The community's cars and stages.** Any original file format stage and NGP car works out of the box, and community BTB stages work experimentally.
-- **Assetto Corsa tracks become stages.** Drop a track folder, `.zip`, `.7z` or `.rar` on Import and ReRBR converts each
-  layout to a stage, with the road, scenery, trees, surfaces, pacenotes and timing from the AC files. Gravel and tarmac
+- **Assetto Corsa tracks become stages.** Drop a track folder, `.zip`, `.7z` or `.rar` on Import and ReRBR imports each
+  layout as a stage, with the road, scenery, trees, surfaces, pacenotes and timing from the AC files. Gravel and tarmac
   rallies from the AC community work, so the library of stages is far bigger than RBR's own
   ([how it works](docs/assetto-tracks.md)).
 - **A modern look.** A physically based sky and sun, HDR, sun shadows, rain and dust, a lit
@@ -45,7 +45,7 @@ The whole set of 40: [docs/shots](docs/shots/README.md).
 
 ## Status
 
-Works today: every retail stage, the community stages (BTB stages experimentally, and Assetto Corsa tracks converted on Import, [docs/assetto-tracks.md](docs/assetto-tracks.md)), the quick race and the championship, the rally school, NGP physics with the
+Works today: every retail stage, the community stages (BTB stages experimentally, and Assetto Corsa tracks imported with ReRBR, [docs/assetto-tracks.md](docs/assetto-tracks.md)), the quick race and the championship, the rally school, NGP physics with the
 community cars, the HUD and pace notes, the co-driver, sound, wheels and force feedback. Drives are saved as
 ReRBR replays (`.rrp`), with playback and video export from the Replays tab.
 
@@ -59,18 +59,18 @@ additions on the Graphics & sound page, set by a quality preset or one by one. T
 
 ### Known limitations
 
-- **Assetto Corsa tracks** are converted into RBR stages, so they don't look or drive exactly as they do in Assetto
+- **Assetto Corsa tracks** are imported as RBR stages, so they don't look or drive exactly as they do in Assetto
   Corsa ([how it works](docs/assetto-tracks.md)):
   - *Grip.* Each AC surface becomes the nearest of RBR's surface classes, so grip and bumps come close to AC's but
     don't match them.
   - *Looks.* Colour textures are kept. Normal and specular maps, Custom Shaders Patch effects (except its trees),
     track scripts and animated scenery are left out.
-  - *Route.* The stage follows the track's AI line, `ai/fast_lane.ai`. A layout without one can't be converted, and
+  - *Route.* The stage follows the track's AI line, `ai/fast_lane.ai`. A layout without one can't be imported, and
     Import lists it with the reason.
   - *Tyres.* One tyre model covers the whole stage: gravel if more than half the route is gravel or dirt, otherwise
     tarmac. On a mixed stage, the shorter part is driven on the wrong tyres.
   - *Pacenotes.* AC tracks have none, so ReRBR generates them from the route. Drive the stage once to check them.
-  - The converter is experimental, so the occasional stage will need fixing by hand.
+  - The Import is experimental, so the occasional stage will need fixing by hand.
 - **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.
 
 ## Install
