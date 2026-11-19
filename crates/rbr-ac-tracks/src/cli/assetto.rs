@@ -20,8 +20,8 @@ Requires KN5 v5/6, AI v7 and AC_AB_START/FINISH timing markers, unless --circuit
 lap line and spawn at AC_AB_START when it lies on the loop, else at the AI line's first point. The source's finish
 and sector gates are ignored and the splits are thirds.
 --replace only replaces an existing rbr-ac-tracks ac output. Source game files are read in place.
-Materials keep diffuse textures and alpha, with multilayer and detail textures baked in; normal maps and the sun
-highlight are written for ReRBR's renderer; CSP scripts are not reproduced.
+Materials keep diffuse textures and alpha, with multilayer and detail textures baked in; normal maps, the sun
+highlight and the roads' dry sheen are written for ReRBR's renderer; CSP scripts are not reproduced.
 --remesh smooths the road collision with the shared BTB road re-mesher.
 A surface's name gives its RBR class and its FRICTION in surfaces.ini the surface of that class nearest in grip
 (0.98 is RBR's grippiest tarmac, 37). A road that dirties the tyres and declares 0.90 or less, or CSP's
