@@ -579,3 +579,32 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   driveline points (`--enhance all`, 11:00): the rocks (`extrarocks`, 811 k triangles), walls and rails gain their relief
   (RMSE 4 to 14 of 255 against main); the roads' highlight (`ksSpecular` 1, EXP 15) is a faint sheen, none blown out facing
   the sun. The new files on main's viewer render byte identical to the old conversion.
+
+## UV-scaled and detail normal maps, 2026-11-19
+
+Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled). ReRBR-only keys in `materials.ini` (old readers ignore
+them, [btb.md](btb.md#drawing)): `ReRbrBumpScale=u,v` (the normal map is read at its uv times this), `ReRbrBumpUv=1` (at the mesh's second
+UV set), `ReRbrDetailNormal`, `ReRbrDetailScale`, `ReRbrDetailBlend` (a detail normal layer over the map). Written with a decimal point
+(`50.0,50.0`; `decimal_floats` reads `50,50` as 50.5).
+
+- `ksPerPixelNM_UVMult` (19 tracks, 2.0 M triangles): diffuse at uv * (1 + `diffuseMult`), `txNormal` at uv * (1 + `normalMult`). The
+  triangles' UVs are scaled by the first (`stage.rs`) and `ReRbrBumpScale` is the quotient, both components. Not for a placeholder diffuse.
+- `ksMultilayer_fresnel_nm` (58 tracks, 22.2 M triangles): its only normal map is `txDetailNM` at the source uv * the pair `detailNMMult`
+  (`kn5::Material::pairs`; the scalar is 0). `normalTexture` is that file as it is, `ReRbrBumpScale` the pair; not for a one-pixel PNG or a (0, 0)
+  pair. A material's own bake keeps the source uv on set 0; a per-tile mesh (`tile_bakes`) has the tile's uv there, so it also carries the source uv as a
+  second set (`btb::mesh::XMesh::uvs2`, an `FVFData` block of code 258 `rbr_btb::scene` already reads; files without it are byte identical) and its
+  section says `ReRbrBumpUv=1`. `ksMultilayer_objsp_nm4` (per-layer normal maps, one track) is left out.
+- `ksPerPixelMultiMap_NMDetail` (40 tracks, 12.1 M) and `_AT_NMDetail` (0.17 M) with `useDetail`, `detailUVMultiplier` > 0, `detailNormalBlend` != 0
+  and a readable `txNormalDetail` that is not a pixel: `normalTexture` is `txNormal` re-encoded (DXT5) with the layer's mask as its alpha, `1 -` the
+  diffuse's alpha resampled on the normal map's texels (`AT`: 255); a missing or one-pixel `txNormal` is a flat (128, 128, 255) map at the diffuse's
+  size, 2048 at most. `ReRbrDetailNormal` is `txNormalDetail` as it is, scale (`detailUVMultiplier`, same twice), blend `detailNormalBlend`
+  (-1.5 to 4). The colour detail ([Fidelity](#fidelity-2026-11-17)) keeps the UVs, so the two line up. Detail normals are mostly under 5 mm a texel:
+  far finer than a bake, so they are read at run time.
+- `ac-conversion.json` counts `uv_scaled_normal_maps` (sections whose map has a `ReRbrBumpScale`) and `detail_normal_maps` next to
+  `normal_mapped_materials` (every section with a map, tile sections included).
+- Roure Downhill (`rbcl`): 398 sections with a normal map (365 with a scale, 354 of them tile sections with the second set, 7 with a detail layer);
+  Textures.zip 522.3 MB to 623.5 MB, `Objects.zip` 114.30 to 114.36 MB, import 25.6 s to 31.2 s (the DXT5 masks). Sa Calobra Downhill: 597 (579
+  scaled, 0 detail); Textures.zip 553.8 MB to 579.0 MB, `Objects.zip` 95.5 to 96.2 MB, import 20.5 s to 26.4 s. Rendered at driveline points
+  (`btb-shots.py --enhance all`, 11:00, 1600x900, old against new conversion): Roure's walls, poles, rocks and the sunlit road, Sa
+  Calobra's hills gain grain and relief (RMSE 1.4 to 4.5 of 255; 0.4 to 7 % of the pixels change by more than 8); nothing black, no tiling
+  error, no sparkle. Not driven.
