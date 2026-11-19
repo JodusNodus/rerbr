@@ -130,6 +130,13 @@ const ROD_RETINA: f32 = 3000.0;
 // clipped less (Gabiria night chase 3.5 to 2.3% of the frame, Comb I golden 12 to 3%), the frames' means within 3 levels.
 const LOCAL_FROM: f32 = 2.0;
 const LOCAL_GIVE: f32 = 0.8;
+// Against the night's headlights (ours, 2026-11-19): with the adapting light's EV100 under `LOCAL_NIGHT.x` the local
+// exposure starts at 1 stop and takes 0.9 of the excess, fading to the day's values by `LOCAL_NIGHT.y`. At the day's
+// values the beam's white wall hid the road (Luceram rain and Sardian cockpits, 3.5 and 6.8 % of the windscreen
+// clipped; 0.3 and 2.5 % now), but the same values dimmed the golden hour's sky and glow (RMSE 8-10 % on four shots).
+const LOCAL_NIGHT: vec2<f32> = vec2<f32>(6.0, 10.0);
+const LOCAL_NIGHT_FROM: f32 = 1.0;
+const LOCAL_NIGHT_GIVE: f32 = 0.9;
 // The glare (after Gran Turismo 7, SIGGRAPH 2025 Physically Based Shading course; until 2026-11-05 an even blur of 6%
 // of the frame): the frame's light spread by a camera's diffraction, the Airy pattern of a round aperture, whose light
 // beyond a radius r is J0(x)^2 + J1(x)^2 with x = pi r / (lambda N), about 2 / (pi x) past the first ring. The glare
@@ -615,7 +622,11 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     lit = rod_vision(lit / pre) * pre / exposure.white;
     // Local exposure (`LOCAL_FROM`).
     let broad = log2(max(bloomed.a / LEVELS * exposed, 1e-9) / KEY);
-    let linear = max(lit * exposed * exp2(-LOCAL_GIVE * max(broad - LOCAL_FROM, 0.0)), vec3<f32>(0.0));
+    let ev100 = log2(max(exposure.adapting, 1e-6) * 100.0 / CALIBRATION);
+    let night = 1.0 - smoothstep(LOCAL_NIGHT.x, LOCAL_NIGHT.y, ev100);
+    let begin = mix(LOCAL_FROM, LOCAL_NIGHT_FROM, night);
+    let give = mix(LOCAL_GIVE, LOCAL_NIGHT_GIVE, night);
+    let linear = max(lit * exposed * exp2(-give * max(broad - begin, 0.0)), vec3<f32>(0.0));
     let d = display();
     let c = gt7(linear, d);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));

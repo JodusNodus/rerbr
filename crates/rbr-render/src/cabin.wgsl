@@ -51,6 +51,11 @@ const CABIN_SUN_BOUNCE: f32 = 0.6;
 // day's light (`cabin_day_lit`) the lamps' bounce (`lamp_bounce`).
 const CABIN_BOUNCE: f32 = 0.00004;
 
+// The headlights' bounce in the lit cabin (`cabin_irradiance`) over the physical value (ours, 2026-11-19): the road's
+// light through the glass on a dash of albedo 0.05 is about 0.002 cd/m2, black on screen (the dash, wheel and doors
+// had no form at night); 40 times that shows them as dark shapes (8 only as outlines). Night and dusk only.
+const CABIN_LAMP_LIGHT: f32 = 40.0;
+
 // The interior's ambient scale (rgb, `around` in `shade`) and its sunlit share (a), with the car's shadow `shadowed`,
 // the cloud's `under_cloud` and the outside view's light `outside` (`surroundings`) there.
 fn cabin_light(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec4<f32> {
@@ -231,7 +236,7 @@ fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_c
         for (var i = 0; i < 8; i++) {
             bounce += lamp_bounce(frame.lamps[i], v.world, n, false);
         }
-        e += level * sky * lamp_lux(bounce) * frame.day_sun.w / SKY_PI;
+        e += CABIN_LAMP_LIGHT * level * sky * lamp_lux(bounce) * frame.day_sun.w / SKY_PI;
     }
     if (mode.fresnel.z != 0.0) {
         let open = frame.day_sky.rgb * open_sky_light(n, n) * outside.rgb + frame.day_sun.rgb * max(dot(n, to_sun), 0.0) * (1.0 - shadowed) * outside.a * cloud;
