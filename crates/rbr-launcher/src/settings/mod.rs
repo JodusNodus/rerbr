@@ -132,7 +132,6 @@ pub struct Settings {
     /// The Quality section's switches ([`Graphics`]), each kept under its name.
     pub lighting: Option<bool>,
     pub particles: Option<bool>,
-    pub cabin: Option<bool>,
     pub grass: Option<bool>,
     pub windscreen: Option<bool>,
     pub motion_blur: Option<bool>,
@@ -464,7 +463,6 @@ impl Settings {
             wipers: launcher.parsed("wipers", Switch::parse),
             lighting: launcher.on_off("lighting"),
             particles: launcher.on_off("particles"),
-            cabin: launcher.on_off("cabin"),
             grass: launcher.on_off("grass"),
             windscreen: launcher.on_off("windscreen"),
             motion_blur: launcher.on_off("motion_blur"),
@@ -598,7 +596,6 @@ impl Settings {
             ("perf_log", on_off_text(self.perf_log)),
             ("lighting", on_off_text(self.lighting)),
             ("particles", on_off_text(self.particles)),
-            ("cabin", on_off_text(self.cabin)),
             ("grass", on_off_text(self.grass)),
             ("windscreen", on_off_text(self.windscreen)),
             ("motion_blur", on_off_text(self.motion_blur)),
@@ -685,7 +682,6 @@ mod tests {
             wipers: Some(Switch::Intermittent),
             lighting: Some(false),
             particles: Some(false),
-            cabin: Some(false),
             grass: Some(true),
             windscreen: Some(false),
             motion_blur: Some(true),
@@ -839,13 +835,16 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(text.contains("wipers = intermittent\ndials = off\nhud_hide = progress,car\n"), "{text}");
         assert!(
-            text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ngrass = on\nwindscreen = off\nmotion_blur = on\n"),
+            text.contains(
+                "perf_log = on\nlighting = off\nparticles = off\ngrass = on\nwindscreen = off\nmotion_blur = on\n"
+            ),
             "{text}"
         );
-        // The soft car shadow and the tyre marks are always on: their keys are no longer read, nor written back.
-        let old = Settings::parse("[launcher]\ncontact = off\nmarks = off\n");
+        // The soft car shadow and the tyre marks are always on and the cockpit light follows the lighting: their keys
+        // are no longer read, nor written back.
+        let old = Settings::parse("[launcher]\ncontact = off\nmarks = off\ncabin = off\n");
         assert_eq!(old, Settings::default());
-        assert!(!old.to_text().contains("contact") && !old.to_text().contains("marks"));
+        assert!(["contact", "marks", "cabin"].iter().all(|key| !old.to_text().contains(key)));
         assert!(text.contains("start_time = baked\nperf_log = on\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\nperf_log = maybe\n").perf_log, None);
         assert_eq!(Settings::parse("").perf_log, None);
@@ -1002,7 +1001,6 @@ mod tests {
                 "perf_log = on\n",
                 "lighting = off\n",
                 "particles = off\n",
-                "cabin = off\n",
                 "grass = on\n",
                 "windscreen = off\n",
                 "motion_blur = on\n",

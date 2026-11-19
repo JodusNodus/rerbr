@@ -246,7 +246,6 @@ impl Form {
             graphics: Graphics {
                 lighting: settings.lighting.unwrap_or(DEFAULT_GRAPHICS.lighting),
                 particles: settings.particles.unwrap_or(DEFAULT_GRAPHICS.particles),
-                cabin: settings.cabin.unwrap_or(DEFAULT_GRAPHICS.cabin),
                 grass: settings.grass.unwrap_or(DEFAULT_GRAPHICS.grass),
                 windscreen: settings.windscreen.unwrap_or(DEFAULT_GRAPHICS.windscreen),
                 motion_blur: settings.motion_blur.unwrap_or(DEFAULT_GRAPHICS.motion_blur),
@@ -365,7 +364,6 @@ impl Form {
             hud_layout: Some(self.hud.layout),
             lighting: Some(self.graphics.lighting),
             particles: Some(self.graphics.particles),
-            cabin: Some(self.graphics.cabin),
             grass: Some(self.graphics.grass),
             windscreen: Some(self.graphics.windscreen),
             motion_blur: Some(self.graphics.motion_blur),

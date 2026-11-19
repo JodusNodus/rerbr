@@ -24,7 +24,6 @@ pub struct Graphics {
     pub lighting: bool,
     /// Our rain, snow and particles (`particles`).
     pub particles: bool,
-    pub cabin: bool,
     pub grass: bool,
     /// The windscreen as glass from inside, and the dash reflected in it (`windscreen`).
     pub windscreen: bool,
@@ -126,7 +125,6 @@ impl Quality {
         let high = Graphics {
             lighting: true,
             particles: true,
-            cabin: true,
             grass: true,
             windscreen: true,
             motion_blur: false,
@@ -138,7 +136,6 @@ impl Quality {
             Quality::Low => Graphics {
                 lighting: false,
                 particles: false,
-                cabin: false,
                 grass: false,
                 windscreen: false,
                 wet_roads: WetRoads::Off,
@@ -725,8 +722,8 @@ impl Form {
         kit::group_label(ui, "Quality", None);
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
-            let tip = "Sets the choices below. Low: the game's look. Medium: all but Lighting, the costliest, Dense \
-                       grass, which needs it, and Windscreen. High: all but Sharper shadows and reflections. Ultra: all. The render scale \
+            let tip = "Sets the choices below. Low: the game's look. Medium: all but Sky, sun and shadows, the costliest, \
+                       Dense grass, which needs it, and Windscreen. High: all but Sharper shadows and reflections. Ultra: all. The render scale \
                        and motion blur stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
@@ -744,9 +741,11 @@ impl Form {
 
             let tip = "A physically based sky and light for the time of day, with moving volumetric clouds, haze and \
                        mist, sun shafts, real-time sun shadows and sunlit foliage, ambient occlusion and bounced light \
-                       worked out from the stage when it loads, and reflection probes. The costliest choice: up to \
+                       worked out from the stage when it loads, and reflection probes. In the cockpit, the sun only through \
+                       the glass, the roof, pillars and dash shading each other, darker footwells and corners, a sheen \
+                       on the dash, and the headlights' glow at night. The costliest choice: up to \
                        half the frame time on a dry day, and a few seconds longer to load";
-            rows.switch_row("Sky, sun and shadows", None, &mut g.lighting).on_hover_text(tip);
+            rows.switch_row("Sky, sun, shadows and cockpit light", None, &mut g.lighting).on_hover_text(tip);
 
             let tip = "GPU rain and snow around the car, rings on wet roads, sunlit and soft particles, wheel spray \
                        and smoke, and the car's dirt. Costly in heavy rain (the mirrors draw it too), next to nothing \
@@ -760,10 +759,6 @@ impl Form {
             rows.row("Wet roads", |ui| {
                 combo(ui, "wet roads", None, &mut g.wet_roads, &WetRoads::ALL, WetRoads::label).on_hover_text(tip);
             });
-
-            let tip = "In the cockpit: the sun only through the glass, with the roof, pillars and dash shading each \
-                       other, darker footwells and corners, a sheen on the dash, and the headlights' glow at night";
-            rows.switch_row("Cockpit light", None, &mut g.cabin).on_hover_text(tip);
 
             let tip = "In the cockpit: the windscreen as real glass, a faint dust film and specks the sun lights up, \
                        wiper scratches and dried water spots, and the dash reflected in it. About 1.5 to 2 ms a frame \

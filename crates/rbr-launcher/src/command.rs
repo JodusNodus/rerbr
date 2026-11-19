@@ -103,10 +103,9 @@ pub fn render_scale_args(percent: u32) -> Vec<String> {
 pub fn enhance_list(graphics: &Graphics) -> String {
     let on = |name: &str| match name {
         "blur" => graphics.motion_blur,
-        "cabin" => graphics.cabin,
         "grass" => graphics.grass,
         "windscreen" => graphics.windscreen,
-        "lighting" => graphics.lighting,
+        "cabin" | "lighting" => graphics.lighting,
         "particles" => graphics.particles,
         "wet" => graphics.wet_roads != WetRoads::Off,
         name => ALWAYS_ON.contains(&name),
@@ -1229,7 +1228,7 @@ mod tests {
         .args()
         .join(" ");
         assert!(args.contains("--boot --weather 1 --wear worn"), "{args}");
-        assert!(args.contains("--enhance anisotropy,contact,decals,lighting,marks,water --live "), "{args}");
+        assert!(args.contains("--enhance anisotropy,cabin,contact,decals,lighting,marks,water --live "), "{args}");
         assert!(
             args.ends_with(
                 "--season-row 167 --damage realistic --auto-gears on --gear-guard off --neutral-lock on --clutch-help off"
