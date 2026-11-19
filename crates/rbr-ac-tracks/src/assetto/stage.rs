@@ -1,6 +1,6 @@
 //! AC point-to-point course to an exported BTB stage. Mesh files use AC's Direct3D axes;
 //! physics/driveline files use `(x,z,y)`, matching the BTB loader's axis swap.
-use crate::assetto::{ai, csp, kn5, material, multilayer, trees, vao};
+use crate::assetto::{ai, csp, kn5, material, multilayer, trees};
 use crate::btb::{
     control::Control,
     geometry::{Grid, Triangle},
@@ -334,12 +334,8 @@ struct Builder {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
-    /// The source UVs of a per-tile mesh, whose `uvs` are the tile texture's: a second set for the normal map.
-    uvs2: Option<Vec<[f32; 2]>>,
     triangles: Vec<[u32; 3]>,
-    /// Baked occlusion per vertex, negative where there is none.
-    ao: Vec<f32>,
-    vertices: HashMap<[u32; 9], u32>,
+    vertices: HashMap<[u32; 8], u32>,
     /// The `materials.ini` section it is drawn with.
     material: String,
 }
@@ -355,15 +351,13 @@ impl Builder {
                 [0., 1., 0.]
             };
             let uv = if visible { triangle.uv[k] } else { [0.; 2] };
-            let ao = triangle.ao.map_or(-1., |ao| ao[k]);
-            let key = [position[0], position[1], position[2], normal[0], normal[1], normal[2], uv[0], uv[1], ao]
+            let key = [position[0], position[1], position[2], normal[0], normal[1], normal[2], uv[0], uv[1]]
                 .map(f32::to_bits);
             *self.vertices.entry(key).or_insert_with(|| {
                 let id = self.positions.len() as u32;
                 self.positions.push(position);
                 self.normals.push(normal);
                 self.uvs.push(uv);
-                self.ao.push(ao);
                 id
             })
         });
@@ -376,9 +370,7 @@ impl Builder {
             positions: &self.positions,
             normals: &self.normals,
             uvs: &self.uvs,
-            uvs2: self.uvs2.as_deref(),
             triangles: &self.triangles,
-            occlusion: if self.ao.iter().any(|&a| a >= 0.) { &self.ao } else { &[] },
             material,
         })
     }
@@ -614,8 +606,6 @@ fn tile_bakes(model: &kn5::Model, builders: &[(DrawKey, Builder)], origin: [f64;
                                     positions: bake.vertices.iter().map(|&v| b.positions[v as usize]).collect(),
                                     normals: bake.vertices.iter().map(|&v| b.normals[v as usize]).collect(),
                                     uvs: bake.uvs,
-                                    uvs2: Some(bake.vertices.iter().map(|&v| b.uvs[v as usize]).collect()),
-                                    ao: bake.vertices.iter().map(|&v| b.ao[v as usize]).collect(),
                                     triangles: bake.triangles,
                                     ..Builder::default()
                                 };
@@ -676,8 +666,7 @@ fn tree_cards(
         let metres = tree.size * proto.height;
         let half = f64::from(proto.radius) * proto.width * tree.size * tree.width;
         let (low, high) = (y + f64::from(proto.low) * metres, y + f64::from(proto.high) * metres);
-        let centre =
-            Triangle { pos: [world(x, y, z); 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None, ao: None };
+        let centre = Triangle { pos: [world(x, y, z); 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None };
         let builder = builders.entry((scenery_tile(&centre, origin), material.clone())).or_default();
         for card in 0..trees::CARDS {
             let turn = tree.angle + std::f64::consts::PI * card as f64 / trees::CARDS as f64;
@@ -692,8 +681,7 @@ fn tree_cards(
             ];
             for [p, q, r] in [[a, b, c], [a, c, d]] {
                 let up = [0., 0., 1.];
-                let t =
-                    Triangle { pos: [p.0, q.0, r.0], uv: [p.1, q.1, r.1], normal: [up; 3], material: None, ao: None };
+                let t = Triangle { pos: [p.0, q.0, r.0], uv: [p.1, q.1, r.1], normal: [up; 3], material: None };
                 builder.add(&t, origin, true);
             }
         }
@@ -869,14 +857,6 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let csp_trees = trees::read(&input.root);
     let hidden = if csp_trees.is_empty() { BTreeMap::new() } else { csp::replaced(&input.root) };
     let unrendered = csp::unrendered(&input.root);
-    let model_paths: Vec<PathBuf> = input.models.iter().map(|(p, _)| p.clone()).collect();
-    let (patches, patch_problems) = vao::discover(&input.root, &input.layout, &model_paths);
-    for problem in &patch_problems {
-        options.control.say(&format!("vao patch skipped: {problem}"));
-    }
-    let mut vao_used = HashSet::<(usize, usize)>::new();
-    let mut vao_meshes = 0;
-    let mut vao_triangles = 0;
     for (model_index, (path, transform)) in input.models.iter().enumerate() {
         options.control.check()?;
         options.control.say(&format!("reading {}", path.file_name().unwrap().to_string_lossy()));
@@ -916,29 +896,14 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             }
             // `ksPerPixelNM_UVMult` reads its diffuse at the UV times `1 + diffuseMult`.
             let uv_scale = material::uv_multipliers(&model, &model.materials[mesh.material]).map_or(1., |m| m[0]);
-            let record = if visible {
-                patches
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, f)| f.model.as_ref().is_none_or(|m| m == path))
-                    .find_map(|(i, f)| f.patch.find(&mesh.name, mesh.vertices.len(), mesh.first).map(|r| (i, r)))
-            } else {
-                None
-            };
-            if let Some((i, r)) = record {
-                vao_used.insert((i, std::ptr::from_ref(r) as usize));
-                vao_meshes += 1;
-            }
             for face in &mesh.triangles {
                 // AC's frame is right handed and BTB's mesh frame left handed: the reflection reverses the winding.
-                let corners = [face[0], face[2], face[1]];
-                let vertices = corners.map(|i| mesh.vertices[i as usize]);
+                let vertices = [face[0], face[2], face[1]].map(|i| mesh.vertices[i as usize]);
                 let t = Triangle {
                     pos: vertices.map(|v| ai::world(v.position)),
                     uv: vertices.map(|v| v.uv.map(|c| c * uv_scale)),
                     normal: vertices.map(|v| [v.normal[0], -v.normal[2], v.normal[1]]),
                     material: None,
-                    ao: record.map(|(_, r)| corners.map(|i| r.ao[i as usize])),
                 };
                 if let Some(key) = physical.as_deref().filter(|_| collide.contains(&t.pos)) {
                     let steep = t.normal()[2].abs() < 0.3;
@@ -964,7 +929,6 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         // World-space multilayer ground gets textures per tile, at a density falling off with distance from the road.
         let mut tiles = tile_bakes(&model, &builders, origin, &line);
         let mut names_of = BTreeMap::new();
-        let mut tile_extras = BTreeMap::<usize, material::Extras>::new();
         let mut drawn = Vec::new();
         for (i, (key, mut b)) in builders.into_iter().enumerate() {
             let mat_index = key.1;
@@ -974,17 +938,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                // Tiles of one material share its extras (and its normal map's copy).
-                let extras = match tile_extras.get(&mat_index) {
-                    Some(extras) => {
-                        bank.count_extras(extras);
-                        extras.clone()
-                    }
-                    None => tile_extras.entry(mat_index).or_insert_with(|| bank.tile_extras(&model, mat_index)).clone(),
-                };
-                if !extras.bump_uv {
-                    b.uvs2 = None;
-                }
+                let extras = bank.tile_extras(&model, mat_index);
                 material::section_with(&mut materials, &b.material, &texture, false, &extras);
                 names.push(b.material.clone());
                 drawn.push((key, b));
@@ -1019,7 +973,6 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         let mut batch = Vec::new();
         for (((_, _, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
             drawn_triangles += b.triangles.len();
-            vao_triangles += b.triangles.iter().filter(|t| t.iter().all(|&i| b.ao[i as usize] >= 0.)).count();
             let lod_in = f32::from_bits(lod_in).max(0.);
             let source_lod = f64::from(f32::from_bits(lod_out));
             // A range the source gives is padded; the cap for a mesh without one is only a choice. Far scenery is drawn
@@ -1151,7 +1104,6 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let placeholders = bank.placeholders.clone();
     let missing_names = bank.missing.clone();
     let (normal_mapped, highlighted) = (bank.normal_mapped, bank.highlighted);
-    let (uv_scaled_normals, detail_normals) = (bank.uv_scaled_normals, bank.detail_normals);
     bank.finish()?;
     let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
     write("objectlist.ini", objects.finish()?)?;
@@ -1218,18 +1170,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let _ = writeln!(spawn, "angleX=0\nangleY=0\nangleZ={}", tangent[0].atan2(tangent[1]));
     write("spawn.ini", spawn)?;
-    let vao_report: Vec<_> = patches
-        .iter()
-        .enumerate()
-        .map(|(i, f)| {
-            let matched = vao_used.iter().filter(|(p, _)| *p == i).count();
-            serde_json::json!({"file":f.patch.source,"model":f.model.as_ref().and_then(|m| m.file_name()).map(|n| n.to_string_lossy()),
-                "version":f.patch.version.name(),"records":f.patch.record_count(),"matched_records":matched})
-        })
-        .collect();
-    let vao_json = serde_json::json!({"patches":vao_report,"meshes_with_ao":vao_meshes,"drawn_triangles_with_ao":vao_triangles,
-        "share_of_drawn_triangles":if drawn_triangles > 0 { vao_triangles as f64 / drawn_triangles as f64 } else { 0. }});
-    let mut provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
+    let provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
         "source_triangles":source_triangles,"drawn_triangles":drawn_triangles,"far_triangles":far_triangles,"csp_trees":tree_count,"csp_tree_triangles":tree_triangles,"collision_triangles":collision_triangles,
         "ai_source":input.ai_source,"reversed_ai":input.reversed_ai,"circuit":input.circuit,"ai_extensions_m":input.ai_extensions,
         "ai_trimmed_points":input.ai_trimmed_points,
@@ -1241,9 +1182,6 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,"normal_mapped_materials":normal_mapped,"highlight_materials":highlighted,
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,
         "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps and the sun highlight are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
-    provenance["uv_scaled_normal_maps"] = uv_scaled_normals.into();
-    provenance["detail_normal_maps"] = detail_normals.into();
-    provenance["vao"] = vao_json;
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
     options.control.say("validating BTB collision cells");
     let stats = crate::btb::stage::check_cells(folder)?;
@@ -1273,7 +1211,6 @@ mod tests {
             uv: [[0.; 2]; 3],
             normal: [[0., 0., 1.]; 3],
             material: Some(37),
-            ao: None,
         };
         // Two triangles whose plan views leave a gap of 0.2 m around x = 0, and no ground at all beyond them.
         let (left, right) = (slab(-5., -0.1), slab(0.1, 5.));
@@ -1290,7 +1227,6 @@ mod tests {
             uv: [[0.; 2]; 3],
             normal: [[0.; 3]; 3],
             material: Some(37),
-            ao: None,
         };
         let ground = Grid::new(vec![&road], 4.);
         let original = Line::new(vec![[0., 0., 0.], [0., 100., 0.]], vec![6.; 2]);
@@ -1323,13 +1259,7 @@ mod tests {
     }
     #[test]
     fn scenery_tiles_follow_rerbrs_cells_from_the_stage_origin() {
-        let at = |x: f64| Triangle {
-            pos: [[x, 5., 0.]; 3],
-            uv: [[0.; 2]; 3],
-            normal: [[0.; 3]; 3],
-            material: None,
-            ao: None,
-        };
+        let at = |x: f64| Triangle { pos: [[x, 5., 0.]; 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None };
         assert_eq!(scenery_tile(&at(1000.), [1000., 0.]), (0, 0));
         assert_eq!(scenery_tile(&at(1127.), [1000., 0.]), (0, 0));
         assert_eq!(scenery_tile(&at(1128.), [1000., 0.]), (1, 0));

@@ -9,8 +9,6 @@ pub struct Triangle {
     pub normal: [[f32; 3]; 3],
     /// Source material index, or an RBR surface id after surface mapping.
     pub material: Option<u32>,
-    /// Baked vertex ambient occlusion per corner (1 open, 0 shut); `None` when the source has none, which is not "open".
-    pub ao: Option<[f32; 3]>,
 }
 
 impl Triangle {
@@ -109,7 +107,6 @@ mod tests {
             uv: [[0.0; 2]; 3],
             normal: [[0.0; 3]; 3],
             material: None,
-            ao: None,
         };
         assert!((t.height_at(5.0, 0.0).unwrap() - 1.5).abs() < 1e-9);
         assert!(t.height_at(6.0, 6.0).is_none());

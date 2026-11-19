@@ -580,52 +580,18 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (RMSE 4 to 14 of 255 against main); the roads' highlight (`ksSpecular` 1, EXP 15) is a faint sheen, none blown out facing
   the sun. The new files on main's viewer render byte identical to the old conversion.
 
-## UV-scaled and detail normal maps, 2026-11-19
+## UV multipliers; detail normals and CSP vertex AO tried, 2026-11-19
 
-Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled). ReRBR-only keys in `materials.ini` (old readers ignore
-them, [btb.md](btb.md#drawing)): `ReRbrBumpScale=u,v` (the normal map is read at its uv times this), `ReRbrBumpUv=1` (at the mesh's second
-UV set), `ReRbrDetailNormal`, `ReRbrDetailScale`, `ReRbrDetailBlend` (a detail normal layer over the map). Written with a decimal point
-(`50.0,50.0`; `decimal_floats` reads `50,50` as 50.5).
+Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled with vkd3d-compiler).
 
-- `ksPerPixelNM_UVMult` (19 tracks, 2.0 M triangles): diffuse at uv * (1 + `diffuseMult`), `txNormal` at uv * (1 + `normalMult`). The
-  triangles' UVs are scaled by the first (`stage.rs`) and `ReRbrBumpScale` is the quotient, both components. Not for a placeholder diffuse.
-- `ksMultilayer_fresnel_nm` (58 tracks, 22.2 M triangles): its only normal map is `txDetailNM` at the source uv * the pair `detailNMMult`
-  (`kn5::Material::pairs`; the scalar is 0). `normalTexture` is that file as it is, `ReRbrBumpScale` the pair; not for a one-pixel PNG or a (0, 0)
-  pair. A material's own bake keeps the source uv on set 0; a per-tile mesh (`tile_bakes`) has the tile's uv there, so it also carries the source uv as a
-  second set (`btb::mesh::XMesh::uvs2`, an `FVFData` block of code 258 `rbr_btb::scene` already reads; files without it are byte identical) and its
-  section says `ReRbrBumpUv=1`. `ksMultilayer_objsp_nm4` (per-layer normal maps, one track) is left out.
-- `ksPerPixelMultiMap_NMDetail` (40 tracks, 12.1 M) and `_AT_NMDetail` (0.17 M) with `useDetail`, `detailUVMultiplier` > 0, `detailNormalBlend` != 0
-  and a readable `txNormalDetail` that is not a pixel: `normalTexture` is `txNormal` re-encoded (DXT5) with the layer's mask as its alpha, `1 -` the
-  diffuse's alpha resampled on the normal map's texels (`AT`: 255); a missing or one-pixel `txNormal` is a flat (128, 128, 255) map at the diffuse's
-  size, 2048 at most. `ReRbrDetailNormal` is `txNormalDetail` as it is, scale (`detailUVMultiplier`, same twice), blend `detailNormalBlend`
-  (-1.5 to 4). The colour detail ([Fidelity](#fidelity-2026-11-17)) keeps the UVs, so the two line up. Detail normals are mostly under 5 mm a texel:
-  far finer than a bake, so they are read at run time.
-- `ac-conversion.json` counts `uv_scaled_normal_maps` (sections whose map has a `ReRbrBumpScale`) and `detail_normal_maps` next to
-  `normal_mapped_materials` (every section with a map, tile sections included).
-- Roure Downhill (`rbcl`): 398 sections with a normal map (365 with a scale, 354 of them tile sections with the second set, 7 with a detail layer);
-  Textures.zip 522.3 MB to 623.5 MB, `Objects.zip` 114.30 to 114.36 MB, import 25.6 s to 31.2 s (the DXT5 masks). Sa Calobra Downhill: 597 (579
-  scaled, 0 detail); Textures.zip 553.8 MB to 579.0 MB, `Objects.zip` 95.5 to 96.2 MB, import 20.5 s to 26.4 s. Rendered at driveline points
-  (`btb-shots.py --enhance all`, 11:00, 1600x900, old against new conversion): Roure's walls, poles, rocks and the sunlit road, Sa
-  Calobra's hills gain grain and relief (RMSE 1.4 to 4.5 of 255; 0.4 to 7 % of the pixels change by more than 8); nothing black, no tiling
-  error, no sparkle. Not driven.
-
-## CSP vertex ambient occlusion, 2026-11-19
-
-- A `.vao-patch` is a zip (`Config.ini`, one of `Patch_v5.data`, `Patch_v4.data`, `Patch.data`, preferred in that order). Its data is
-  records of u32 name length, name, u32 kind, the mesh's raw KN5 vertex 0 (3 f32; tells equal names apart), u32 vertex count, payload.
-  Kind 1 is one AO value per vertex (used); kind 0 is three (used averaged, legacy only); 2 normals, 3 a secondary set, 4 extra samples
-  (13 bytes each, `@@__EXTRA_AO@`) and `@@` names are stepped over. Components are a byte (v4, v5) or a half (legacy).
-  Written from the writers' sources (CustomTracksBakery, acc-bakeryoptix, newksEditor's reader).
-- Decode (`assetto/vao.rs`): v5 `(b/255)²`, v4 `b/255`, legacy half then `clamp((OPACITY·v + 1 − OPACITY)·BRIGHTNESS, 0, 1)^GAMMA` from
-  `Config.ini` `[LIGHTING]` (defaults 0.85, 1.1, 1: newksEditor's). **Unverified against CSP itself**; the legacy rule is the least sure.
-  KN5-embedded AO (tangent lengths, none of 589 KN5s uses it) and the `ver.<mesh>.*` records after a KN5's node tree are ignored.
-- Where: the layout's `models_<layout>.vao-patch` (`models.vao-patch`), `<kn5 stem>.vao-patch` beside each model, else CSP's
-  `<AC root>/extension/vao-patches/<track folder>.vao-patch`. A mesh matches by name, vertex count and raw vertex 0 (|Δ| < 1e-3), else by
-  name and count when only one fits. `kn5::Mesh::first` keeps vertex 0 untransformed.
-- Output: `btb::geometry::Triangle::ao` (per corner; none is not open) → `Builder` (part of the vertex key, -1 for none) → `XMesh` writes
-  a `DeclData` with one FLOAT1 element, usage COLOR, index 7, value 0..1 or -1, only when a vertex has AO, so stages without AO are byte
-  identical. Tile bakes keep it. `rbr_btb::scene::Mesh::occlusion` reads it. `ac-conversion.json` `vao`: patches (file, version,
-  records, matched), `meshes_with_ao`, `drawn_triangles_with_ao`, `share_of_drawn_triangles` (of all drawn, tree cards included).
-- Measured: Roure rbcl (v5) 237/259 records, 99.3% of drawn triangles; Sa Calobra up (legacy, kind 1 and 0) 248/248, 99.99%
-  (kind 1 alone gave 91% on the first survey). `Objects.zip` +3.7% (114.3 → 118.6 MB) and +4.1% (95.3 → 99.2 MB); import 55 → 44 s
-  and 51 → 29 s (noisy, other load; CPU time +4% on Roure); largest collision cell unchanged. The renderer's use: [renderer.md](renderer.md).
+- `ksPerPixelNM_UVMult` (19 installed tracks, 2.0 M triangles) reads its diffuse at uv * (1 + `diffuseMult`) and `txNormal` at
+  uv * (1 + `normalMult`). The triangles' UVs carry the first (`stage.rs`, `material::uv_multipliers`) and the section
+  `ReRbrBumpScale` the ratio ([btb.md](btb.md)). Not for a placeholder diffuse.
+- Tried and taken out again (Roure, renders at four driveline points, midday clear, 08:15 low sun and 11:00 overcast; mean change
+  of 255 levels): `ksMultilayer_fresnel_nm`'s `txDetailNM` (at the source uv * the pair `detailNMMult`) and the
+  `ksPerPixelMultiMap_(AT_)NMDetail` detail layer (`txNormalDetail` at uv * `detailUVMultiplier`, `N + (1 - diffuse.a) *
+  detailNormalBlend * (D - N)`) drawn at runtime: 0.1 to 4.5, the road's millimetre detail flat at chase distance (in AC
+  it feeds the sheen and fresnel), for +100 MB of Roure textures. CSP's vertex AO (`.vao-patch`: zip, records of name, kind,
+  raw vertex 0, count, a byte per vertex in v4/v5 (v5 `(b/255)^2`), halves in the legacy `Patch.data`; matched 99 % of Roure's
+  and Sa Calobra's drawn triangles) as the greater occlusion with the computed sky occlusion: 0.1 to 1.9, as it mostly agrees
+  with it, for +4 % `Objects.zip`. KN5-embedded AO (tangent lengths) is used by none of 589 installed KN5s.

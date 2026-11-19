@@ -93,7 +93,7 @@ mod tests {
         if (x > 0.) != faces_road {
             pos.swap(1, 2);
         }
-        Triangle { pos, uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], ao: None, material: Some(64) }
+        Triangle { pos, uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: Some(64) }
     }
 
     #[test]

@@ -1,6 +1,5 @@
 //! Writes a BTB mesh: a binary DirectX `.x` file (`xof 0303bin 0032`) holding the standard templates it uses and one
-//! top-level `Mesh` with normals, one UV set (and optionally a second, an `FVFData` block as BTB's own files hold) and a
-//! one-material list, as `rbr_btb::xfile` reads BTB's own.
+//! top-level `Mesh` with normals, one UV set and a one-material list, as `rbr_btb::xfile` reads BTB's own.
 
 const NAME: u16 = 1;
 const STRING: u16 = 2;
@@ -18,27 +17,15 @@ const FLOAT: u16 = 42;
 const LPSTR: u16 = 49;
 const ARRAY: u16 = 52;
 
-/// The `DeclData` element of the baked occlusion: usage `D3DDECLUSAGE_COLOR`, index 7 (`rbr_btb::scene` reads it).
-pub const OCCLUSION_USAGE: u32 = 10;
-pub const OCCLUSION_INDEX: u32 = 7;
-
 /// A mesh to write: triangles over per-vertex positions, normals and UVs, one texture.
 pub struct XMesh<'a> {
     pub positions: &'a [[f32; 3]],
     pub normals: &'a [[f32; 3]],
     pub uvs: &'a [[f32; 2]],
-    /// A second UV set per vertex, written as an `FVFData` block (code 258); the file is byte for byte the one-set file
-    /// without it.
-    pub uvs2: Option<&'a [[f32; 2]]>,
     pub triangles: &'a [[u32; 3]],
-    /// Baked ambient occlusion per vertex (1 open, 0 shut, -1 none), written when any vertex has some; else empty.
-    pub occlusion: &'a [f32],
     /// The material name (`materials.ini` section).
     pub material: &'a str,
 }
-
-/// The `FVFData` code of one further 2-float UV set (`0x102`).
-const FVF_ONE_UV_SET: u32 = 258;
 
 struct Out(Vec<u8>);
 
@@ -163,28 +150,6 @@ pub fn write(mesh: &XMesh) -> Vec<u8> {
         Some("..."),
     );
     o.template("TextureFilename", &[("STRING", "filename", None)], None);
-    if !mesh.occlusion.is_empty() {
-        o.template(
-            "VertexElement",
-            &[
-                ("DWORD", "Type", None),
-                ("DWORD", "Method", None),
-                ("DWORD", "Usage", None),
-                ("DWORD", "UsageIndex", None),
-            ],
-            None,
-        );
-        o.template(
-            "DeclData",
-            &[
-                ("DWORD", "nElements", None),
-                ("VertexElement", "Elements", Some("nElements")),
-                ("DWORD", "nDWords", None),
-                ("DWORD", "data", Some("nDWords")),
-            ],
-            None,
-        );
-    }
     o.template(
         "MeshMaterialList",
         &[
@@ -194,14 +159,6 @@ pub fn write(mesh: &XMesh) -> Vec<u8> {
         ],
         Some("Material"),
     );
-
-    if mesh.uvs2.is_some() {
-        o.template(
-            "FVFData",
-            &[("DWORD", "dwFVF", None), ("DWORD", "nDWords", None), ("DWORD", "data", Some("nDWords"))],
-            None,
-        );
-    }
 
     let faces = |o: &mut Out| {
         let mut v = Vec::with_capacity(1 + mesh.triangles.len() * 4);
@@ -229,25 +186,6 @@ pub fn write(mesh: &XMesh) -> Vec<u8> {
     o.ints(&[mesh.uvs.len() as u32]);
     o.floats(mesh.uvs.iter().flatten().copied().collect::<Vec<_>>().into_iter());
     o.token(CBRACE);
-
-    if let Some(uvs) = mesh.uvs2 {
-        o.name("FVFData");
-        o.token(OBRACE);
-        let mut data = vec![FVF_ONE_UV_SET, uvs.len() as u32 * 2];
-        data.extend(uvs.iter().flatten().map(|v| v.to_bits()));
-        o.ints(&data);
-        o.token(CBRACE);
-    }
-
-    if !mesh.occlusion.is_empty() {
-        o.name("DeclData");
-        o.token(OBRACE);
-        // One FLOAT1 element, usage COLOR index 7; the float's bits are the DWORD.
-        let mut v = vec![1, 0, 0, OCCLUSION_USAGE, OCCLUSION_INDEX, mesh.occlusion.len() as u32];
-        v.extend(mesh.occlusion.iter().map(|a| a.to_bits()));
-        o.ints(&v);
-        o.token(CBRACE);
-    }
 
     o.name("MeshMaterialList");
     o.token(OBRACE);
@@ -286,9 +224,7 @@ mod tests {
             positions: &positions,
             normals: &normals,
             uvs: &uvs,
-            uvs2: None,
             triangles: &triangles,
-            occlusion: &[],
             material: "surf\\asphalt",
         });
         let file = xfile::parse(&bytes).unwrap();
@@ -300,53 +236,5 @@ mod tests {
         let materials = mesh.materials.unwrap();
         assert_eq!(materials.face_materials, vec![0, 0]);
         assert_eq!(materials.materials[0].texture.as_deref(), Some("surf\\asphalt"));
-        assert!(mesh.fvf.is_empty());
-    }
-
-    #[test]
-    fn a_second_uv_set_reads_back_as_fvf_data_and_changes_nothing_else() {
-        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
-        let normals = [[0.0, 1.0, 0.0]; 3];
-        let uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
-        let second = [[10.5, -2.0], [300.25, 4.0], [0.0, 7.5]];
-        let mesh = |uvs2| XMesh {
-            positions: &positions,
-            normals: &normals,
-            uvs: &uvs,
-            uvs2,
-            triangles: &[[0, 2, 1]],
-            occlusion: &[],
-            material: "m",
-        };
-        let bytes = write(&mesh(Some(&second)));
-        let file = xfile::parse(&bytes).unwrap();
-        let decoded = xfile::Mesh::decode(file.objects_of_type("Mesh")[0], &file).unwrap();
-        assert_eq!(decoded.uv_sets, vec![uvs.to_vec()]);
-        assert_eq!(decoded.fvf.len(), 1);
-        assert_eq!((decoded.fvf[0].code, decoded.fvf[0].uv_set_count()), (258, 1));
-        let read: Vec<[f32; 2]> =
-            decoded.fvf[0].data.chunks(2).map(|c| [f32::from_bits(c[0]), f32::from_bits(c[1])]).collect();
-        assert_eq!(read, second.to_vec());
-        assert_eq!(decoded.triangles(), vec![[0, 2, 1]]);
-        assert_ne!(bytes, write(&mesh(None)));
-    }
-
-    #[test]
-    fn the_scene_reads_the_occlusion_back() {
-        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
-        let occlusion = [1.0, 0.25, -1.0];
-        let bytes = write(&XMesh {
-            positions: &positions,
-            normals: &[[0.0, 1.0, 0.0]; 3],
-            uvs: &[[0.0; 2]; 3],
-            uvs2: None,
-            triangles: &[[0, 1, 2]],
-            occlusion: &occlusion,
-            material: "m",
-        });
-        let materials = std::collections::HashMap::new();
-        let mesh = rbr_btb::scene::mesh_of_x("m", &bytes, &materials).unwrap();
-        assert_eq!(mesh.occlusion, occlusion.to_vec());
-        assert_eq!(mesh.positions, positions.to_vec());
     }
 }

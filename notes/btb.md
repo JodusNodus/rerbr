@@ -340,13 +340,8 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   `effectName`, every input on UV set 0, no tangent streams; a converted stage's normal map and highlight under a plain
   `BTB_Diffuse` (`scene::Material::first_uv`), the slope as authored. Written by `rbr-ac-tracks`
   ([assetto.md](assetto.md#normal-maps-and-highlights-2026-11-19)).
-- Bump scale, bump set and detail normals (ours, 2026-11-19, same keys' rules as `ReRbrEffect`): `ReRbrBumpScale=u,v` reads the normal map at
-  its uv times this (`NormalMap::scale`; default 1, 1); `ReRbrBumpUv=1` reads it from the mesh's second UV set whatever `ReRbrEffect`'s first-set
-  rule says (`Material::uv_slots`; a mesh without a second set gets no map); `ReRbrDetailNormal`, `ReRbrDetailScale`, `ReRbrDetailBlend` add a
-  detail layer, valid only with a normal map (`DetailMap`, texture binding 8, `DRAW_BUMP_DETAIL`): `bumped` reads it at the map's uv times its scale
-  and bends `N` as AC's `ksPerPixelMultiMap_NMDetail` does (`D = N*dn.z + B'*dn.x + T'*dn.y`, `B' = N x T`, `T' = N x B'`, `T` the map's u direction,
-  `N += w*(D - N)`, `w` the map's alpha times the blend). All reads precede the branches. The upscaler leaves the detail map alone, and
-  `RBR_BTB_STATS` counts the triangles with a detail layer. [assetto.md](assetto.md#uv-scaled-and-detail-normal-maps-2026-11-19) writes them.
+- `ReRbrBumpScale=s` or `=u,v` (ReRBR's own): the normal map is read at its uv times this (`scene::Material::bump_scale`,
+  `NormalMap::scale`); written with a decimal point, as `decimal_floats` reads `2,5` as 2.5.
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

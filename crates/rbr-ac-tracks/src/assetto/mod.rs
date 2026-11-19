@@ -6,5 +6,4 @@ pub mod material;
 pub mod multilayer;
 pub mod stage;
 pub mod trees;
-pub mod vao;
 pub mod walls;

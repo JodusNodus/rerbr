@@ -277,7 +277,7 @@ pub fn build(line: &Line, ground: &Grid) -> Surface {
             let plan = |p: [f64; 3]| [p[0], p[1]];
             let area = |t: [[f64; 3]; 3]| cross(sub(plan(t[1]), plan(t[0])), sub(plan(t[2]), plan(t[0])));
             let unit = |t: [[f64; 3]; 3]| {
-                Triangle { pos: t, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], ao: None, material: None }.normal()
+                Triangle { pos: t, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], material: None }.normal()
             };
             let dot = |u: [f64; 3], v: [f64; 3]| u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
             let one = [[a0, b0, b1], [a0, b1, a1]];
@@ -290,7 +290,7 @@ pub fn build(line: &Line, ground: &Grid) -> Surface {
                 let c = [0, 1, 2].map(|k| (t[0][k] + t[1][k] + t[2][k]) / 3.0);
                 let material = ground.ground(c[0], c[1], c[2]).and_then(|(_, t)| t.material);
                 let pos = if down { [t[0], t[2], t[1]] } else { t };
-                let mut t = Triangle { pos, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], material, ao: None };
+                let mut t = Triangle { pos, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], material };
                 t.normal = [t.normal().map(|v| v as f32); 3];
                 triangles.push(t);
             }
@@ -428,7 +428,7 @@ mod tests {
                     (k as f64 * 2.0 - 10.0, k as f64 * 2.0 - 8.0, m as f64 * 2.0 - 4.0, m as f64 * 2.0 - 2.0);
                 let p = |x: f64, y: f64| [x, y, height(x, y)];
                 for pos in [[p(x0, y0), p(x1, y1), p(x1, y0)], [p(x0, y0), p(x0, y1), p(x1, y1)]] {
-                    out.push(Triangle { pos, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], ao: None, material: Some(3) });
+                    out.push(Triangle { pos, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], material: Some(3) });
                 }
             }
         }
@@ -473,7 +473,7 @@ mod tests {
             let (x0, x1) = (k as f64 * 2.0 - 10.0, k as f64 * 2.0 - 8.0);
             for (y0, y1) in [(-4.0, -2.0), (2.0, 4.0)] {
                 for pos in [[p(x0, y0), p(x1, y1), p(x1, y0)], [p(x0, y0), p(x0, y1), p(x1, y1)]] {
-                    level.push(Triangle { pos, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], ao: None, material: Some(4) });
+                    level.push(Triangle { pos, uv: [[0.0; 2]; 3], normal: [[0.0; 3]; 3], material: Some(4) });
                 }
             }
         }

@@ -127,23 +127,9 @@ pub struct Material {
     pub specular: Option<String>,
     pub multiplier: Option<String>,
     pub additive: Option<String>,
-    /// ReRBR's `ReRbrBumpScale`: the normal map is read at its UV set times this. `[1, 1]` where the section has none.
+    /// ReRBR's `ReRbrBumpScale=u,v`: the normal map is read at its UV set times this. `[1, 1]` where the section has
+    /// none.
     pub bump_scale: [f32; 2],
-    /// ReRBR's `ReRbrBumpUv=1`: the normal map reads the mesh's second UV set ([`Mesh::uvs`] entry 1) whatever
-    /// [`Material::first_uv`] says.
-    pub bump_uv: bool,
-    /// ReRBR's `ReRbrDetailNormal`, `ReRbrDetailScale` and `ReRbrDetailBlend`: a detail normal layer over the normal
-    /// map; only with a normal map.
-    pub detail: Option<DetailNormal>,
-}
-
-/// A detail normal layer: its texture, read at the normal map's UVs times `scale`, blended in by the normal map's alpha
-/// times `blend` (AC's `ksPerPixelMultiMap_NMDetail`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct DetailNormal {
-    pub texture: String,
-    pub scale: [f32; 2],
-    pub blend: f32,
 }
 
 impl Material {
@@ -155,7 +141,7 @@ impl Material {
         }
         let first = |slot: Option<usize>| slot.map(|_| 0);
         UvSlots {
-            bump: if self.bump_uv { slots.bump.map(|_| 1) } else { first(slots.bump) },
+            bump: first(slots.bump),
             specular: first(slots.specular),
             multiplier: first(slots.multiplier),
             additive: first(slots.additive),
@@ -178,9 +164,6 @@ pub struct Mesh {
     pub uvs: Vec<Vec<[f32; 2]>>,
     /// The `VertLerp` weight per vertex, empty when the mesh carries none.
     pub blend: Vec<f32>,
-    /// Baked ambient occlusion per vertex (1 open, 0 shut, negative where the vertex has none), empty when the mesh
-    /// carries none: a FLOAT1 `DeclData` element of usage COLOR, index 7.
-    pub occlusion: Vec<f32>,
     /// Triangle list.
     pub indices: Vec<u32>,
     /// Index into [`Scene::materials`]; `None` when the mesh's material has no `materials.ini` section.
@@ -519,19 +502,11 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
     let color = |i: usize| m.specular_color.get(i).copied().unwrap_or(0.0) as f32;
     let own = m.entry("ReRbrEffect");
     // `u,v` or one number for both; anything else is the default.
-    let pair = |key: &str, default: [f32; 2]| match m.entry(key).map(track::decimal_floats).as_deref() {
+    let bump_scale = match m.entry("ReRbrBumpScale").map(track::decimal_floats).as_deref() {
         Some(&[u, v]) => [u as f32, v as f32],
         Some(&[s]) => [s as f32; 2],
-        _ => default,
+        _ => [1.0; 2],
     };
-    let normal = find("normalTexture");
-    let detail = normal.as_ref().and_then(|_| {
-        Some(DetailNormal {
-            texture: m.entry("ReRbrDetailNormal").and_then(|path| textures.find(path))?,
-            scale: pair("ReRbrDetailScale", [1.0; 2]),
-            blend: m.entry("ReRbrDetailBlend").and_then(track::decimal_float).unwrap_or(1.0) as f32,
-        })
-    });
     Material {
         name: m.name.clone(),
         effect: Effect::parse(own.or(m.effect.as_deref())),
@@ -541,13 +516,11 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         specular_color: [color(0), color(1), color(2)],
         diffuse: find("diffuseTexture"),
         second: find("secondDiffuseTexture"),
-        normal,
+        normal: find("normalTexture"),
         specular: find("specularTexture"),
         multiplier: find("multiplierTexture"),
         additive: find("additiveTexture"),
-        bump_scale: pair("ReRbrBumpScale", [1.0; 2]),
-        bump_uv: own.is_some() && m.entry("ReRbrBumpUv").and_then(track::decimal_float) == Some(1.0),
-        detail,
+        bump_scale,
     }
 }
 
@@ -580,7 +553,7 @@ fn parse_meshes<R: Read + std::io::Seek>(
 }
 
 /// The `.x` file as a [`Mesh`].
-pub fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Result<Mesh, String> {
+fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -> Result<Mesh, String> {
     let fail = |e: xfile::Error| format!("{name}.x: {e}");
     let file = xfile::parse(bytes).map_err(fail)?;
     let root = *file.objects_of_type("Mesh").first().ok_or_else(|| format!("{name}.x: no Mesh"))?;
@@ -625,7 +598,6 @@ pub fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -
     let mut tangents = Vec::new();
     let mut binormals = Vec::new();
     let mut blend = Vec::new();
-    let mut occlusion = Vec::new();
     let mut extra_uvs: Vec<(u32, Vec<[f32; 2]>)> = Vec::new();
     for decl in &mesh.decl {
         let Some(stride) = decl.stride_dwords().filter(|&s| s > 0 && decl.data.len() == s * count) else { continue };
@@ -639,7 +611,6 @@ pub fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -
             match (element.usage, element.ty) {
                 (6, 2) => tangents = read(3).iter().map(|v| [v[0], v[1], v[2]]).collect(),
                 (7, 2) => binormals = read(3).iter().map(|v| [v[0], v[1], v[2]]).collect(),
-                (10, 0) if element.usage_index == 7 => occlusion = read(1).iter().map(|v| v[0]).collect(),
                 (1, 0) => blend = read(1).iter().map(|v| v[0]).collect(),
                 (5, 1) => extra_uvs.push((element.usage_index, read(2).iter().map(|v| [v[0], v[1]]).collect())),
                 _ => {}
@@ -674,7 +645,6 @@ pub fn mesh_of_x(name: &str, bytes: &[u8], materials: &HashMap<String, usize>) -
         binormals,
         uvs,
         blend,
-        occlusion,
         indices,
         material: texture.and_then(|t| materials.get(&t.to_lowercase()).copied()),
     })
@@ -697,8 +667,9 @@ mod tests {
         assert!(!has_entry(&mut zip, "Objects/obj_242_0.x"));
     }
 
-    fn section(entries: &[(&str, &str)]) -> track::Material {
-        track::Material {
+    #[test]
+    fn the_bump_scale_reads_a_pair_one_number_or_its_default() {
+        let section = |entries: &[(&str, &str)]| track::Material {
             name: "m".into(),
             effect: Some("BTB_Diffuse".into()),
             technique: None,
@@ -706,41 +677,11 @@ mod tests {
             specular_power: None,
             specular_color: Vec::new(),
             entries: entries.iter().map(|&(k, v)| (k.to_owned(), v.to_owned())).collect(),
-        }
-    }
-
-    fn textures() -> Textures {
-        Textures(["n.dds", "d.dds"].map(|f| (f.to_owned(), f.to_owned())).into())
-    }
-
-    #[test]
-    fn the_bump_and_detail_keys_read_with_their_defaults() {
-        let plain = material(&section(&[("normalTexture", "n.dds"), ("ReRbrEffect", "BTB_DiffuseBump")]), &textures());
-        assert_eq!((plain.bump_scale, plain.bump_uv, plain.detail.is_some()), ([1.0; 2], false, false));
-        assert_eq!(plain.uv_slots().bump, Some(0));
-        let full = material(
-            &section(&[
-                ("normalTexture", "n.dds"),
-                ("ReRbrEffect", "BTB_DiffuseBump"),
-                ("ReRbrBumpScale", "2000.0,4000.5"),
-                ("ReRbrBumpUv", "1"),
-                ("ReRbrDetailNormal", "d.dds"),
-                ("ReRbrDetailScale", "50.0,50.0"),
-                ("ReRbrDetailBlend", "-1.5"),
-            ]),
-            &textures(),
-        );
-        assert_eq!(full.bump_scale, [2000.0, 4000.5]);
-        assert_eq!(full.uv_slots().bump, Some(1));
-        let detail = full.detail.unwrap();
-        assert_eq!((detail.texture.as_str(), detail.scale, detail.blend), ("d.dds", [50.0; 2], -1.5));
-        // A detail layer needs a normal map and its own texture; the bump set needs the ReRBR effect.
-        let no_map =
-            material(&section(&[("ReRbrEffect", "BTB_DiffuseSpecular"), ("ReRbrDetailNormal", "d.dds")]), &textures());
-        assert!(no_map.detail.is_none());
-        let missing = material(&section(&[("normalTexture", "n.dds"), ("ReRbrDetailNormal", "x.dds")]), &textures());
-        assert!(missing.detail.is_none());
-        let foreign = material(&section(&[("normalTexture", "n.dds"), ("ReRbrBumpUv", "1")]), &textures());
-        assert!(!foreign.bump_uv);
+        };
+        let textures = Textures(Default::default());
+        let scale = |entries: &[(&str, &str)]| material(&section(entries), &textures).bump_scale;
+        assert_eq!(scale(&[]), [1.0; 2]);
+        assert_eq!(scale(&[("ReRbrBumpScale", "2000.0,4000.5")]), [2000.0, 4000.5]);
+        assert_eq!(scale(&[("ReRbrBumpScale", "3.5")]), [3.5; 2]);
     }
 }
