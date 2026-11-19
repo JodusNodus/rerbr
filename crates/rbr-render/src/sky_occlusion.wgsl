@@ -97,7 +97,9 @@ fn finish(@builtin(global_invocation_id) id: vec3<u32>) {
     let sum = sums[i];
     let total = totals[i];
     if (total > 0.0) {
-        vertices[i * STRIDE + OCCLUSION] = bitcast<u32>(1.0 - sum.w / total);
+        // The vertex's occlusion so far is the stage's baked one (`baked_occlusion`, 0 for none): the greater stays.
+        let baked = word(i * STRIDE + OCCLUSION);
+        vertices[i * STRIDE + OCCLUSION] = bitcast<u32>(max(1.0 - sum.w / total, baked));
     }
     if (dot(sum.xyz, sum.xyz) > 1e-12) {
         vertices[i * STRIDE + SKY_DIR] = packed_direction(normalize(sum.xyz));

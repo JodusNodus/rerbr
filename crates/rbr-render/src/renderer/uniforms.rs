@@ -50,8 +50,12 @@ pub(super) struct ModeUniform {
     /// ([`DrawState::ground`](crate::stage::DrawState::ground)).
     pub(super) bank: [f32; 4],
     /// `x` a BTB normal map in `normal_texture`: 0 none, 1 on `uv0`, 2 on `uv1` ([`crate::stage::Surface::normal`]);
-    /// `y` its slope's scale once z is rebuilt ([`crate::stage::NormalMap::doubled`]).
+    /// `y` its slope's scale once z is rebuilt ([`crate::stage::NormalMap::doubled`]), `zw` the uv scale it is read at
+    /// ([`crate::stage::NormalMap::scale`]).
     pub(super) bump: [f32; 4],
+    /// The detail normal layer in `detail_normal_texture` ([`crate::stage::DetailMap`]): `xy` the uv scale, `z` the
+    /// blend, `w` 1 for on.
+    pub(super) bump_detail: [f32; 4],
     /// A BTB highlight's colour and power, zero for none ([`crate::stage::Highlight`]).
     pub(super) highlight: [f32; 4],
 }

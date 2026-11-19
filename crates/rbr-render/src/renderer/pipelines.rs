@@ -318,6 +318,7 @@ impl Context<'_> {
                         ("DRAW_SECOND", f64::from(u8::from(features.second_texture))),
                         ("DRAW_DETAIL", f64::from(u8::from(features.detail))),
                         ("DRAW_BUMP", f64::from(u8::from(features.bump))),
+                        ("DRAW_BUMP_DETAIL", f64::from(u8::from(features.bump_detail))),
                         ("DRAW_HIGHLIGHT", f64::from(u8::from(features.highlight))),
                         (
                             "SUN_MASK",
@@ -598,6 +599,7 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
             texture_entry(5, TEXTURE),
             texture_entry(6, TEXTURE),
             texture_entry(7, TEXTURE),
+            texture_entry(8, TEXTURE),
         ],
     });
     [frame_layout, shadow_layout, texture_layout]

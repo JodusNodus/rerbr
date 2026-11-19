@@ -47,6 +47,8 @@ pub struct Mesh {
     pub triangle_count: usize,
     pub vertices: Vec<Vertex>,
     pub triangles: Vec<[u32; 3]>,
+    /// The first vertex's position as stored, before the node transform (what a `.vao-patch` identifies a mesh by).
+    pub first: [f32; 3],
 }
 
 #[derive(Debug)]
@@ -201,10 +203,14 @@ impl<'a> Reader<'a> {
                 let vertex_count = self.count(44)?;
                 let mut vertices = Vec::new();
                 let mut bad_normals = Vec::new();
+                let mut first = [0.; 3];
                 if geometry {
                     vertices.reserve(vertex_count);
                     for _ in 0..vertex_count {
                         let p = self.raw_vector::<3>()?;
+                        if vertices.is_empty() {
+                            first = p;
+                        }
                         let n = self.raw_vector::<3>()?;
                         let mut uv = self.raw_vector::<2>()?;
                         if !uv.iter().all(|v| v.is_finite()) {
@@ -295,6 +301,7 @@ impl<'a> Reader<'a> {
                     triangle_count: index_count / 3,
                     vertices,
                     triangles,
+                    first,
                 });
             }
             3 => {
