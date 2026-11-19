@@ -276,15 +276,14 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().is_some_and(|a| a == "--version" || a == "-V") {
-        println!("rerbr {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-    if args.first().is_some_and(|a| a == "--install-from-disc") {
-        return disc_install::cli(&args[1..]);
-    }
-    if args.first().is_some_and(|a| a == "--extract-test-data") {
-        return disc_install::test_data_cli(&args[1..]);
+    match args.first().map(String::as_str) {
+        Some("--version" | "-V") => {
+            println!("rerbr {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Some("--install-from-disc") => return disc_install::cli(&args[1..]),
+        Some("--extract-test-data") => return disc_install::test_data_cli(&args[1..]),
+        _ => {}
     }
     let here = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
     let home = home::dir(&here);
@@ -293,14 +292,11 @@ fn run() -> Result<(), String> {
     if _made {
         rbr_render::console::log_to(&home.join(rbr_render::console::LOG_FILE));
     }
-    if args.first().is_some_and(|a| a == "--download-ngp") {
-        return gvrc::ngp_cli(&home, &args[1..]);
-    }
-    if args.first().is_some_and(|a| a == "--download-cars") {
-        return gvrc::cars_cli(&home.join(car_packs::DIR), &args[1..]);
-    }
-    if args.first().is_some_and(|a| a == "--import-codriver") {
-        return codriver_packs::cli(&home, &args[1..]);
+    match args.first().map(String::as_str) {
+        Some("--download-ngp") => return gvrc::ngp_cli(&home, &args[1..]),
+        Some("--download-cars") => return gvrc::cars_cli(&home.join(car_packs::DIR), &args[1..]),
+        Some("--import-codriver") => return codriver_packs::cli(&home, &args[1..]),
+        _ => {}
     }
     let (start, list, command, screenshot, rally_damage) = parse_args(std::env::args().skip(1), &here, &home)?;
     let settings = read_settings(&start.settings);

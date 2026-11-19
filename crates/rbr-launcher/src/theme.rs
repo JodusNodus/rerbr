@@ -146,35 +146,21 @@ fn visuals() -> egui::Visuals {
     v.weak_text_color = Some(TEXT_2);
     v.selection.bg_fill = ROW_SELECTED;
     v.selection.stroke = stroke(Color32::WHITE);
-    let round = CornerRadius::same(6);
     let w = &mut v.widgets;
-    w.noninteractive.bg_fill = PANEL;
-    w.noninteractive.weak_bg_fill = PANEL;
-    w.noninteractive.bg_stroke = stroke(LINE);
-    w.noninteractive.fg_stroke = stroke(TEXT);
-    w.noninteractive.corner_radius = round;
-    w.inactive.bg_fill = BUTTON;
-    w.inactive.weak_bg_fill = BUTTON;
-    w.inactive.bg_stroke = stroke(LINE_BUTTON);
-    w.inactive.fg_stroke = stroke(TEXT);
-    w.inactive.corner_radius = round;
-    w.hovered.bg_fill = BUTTON_HOVER;
-    w.hovered.weak_bg_fill = BUTTON_HOVER;
-    w.hovered.bg_stroke = stroke(LINE_HOVER);
-    w.hovered.fg_stroke = stroke(Color32::WHITE);
-    w.hovered.corner_radius = round;
+    for (state, fill, line, fg) in [
+        (&mut w.noninteractive, PANEL, LINE, TEXT),
+        (&mut w.inactive, BUTTON, LINE_BUTTON, TEXT),
+        (&mut w.hovered, BUTTON_HOVER, LINE_HOVER, Color32::WHITE),
+        (&mut w.active, SEGMENT, LINE_HOVER, Color32::WHITE),
+        (&mut w.open, BUTTON_HOVER, LINE_HOVER, Color32::WHITE),
+    ] {
+        (state.bg_fill, state.weak_bg_fill) = (fill, fill);
+        state.bg_stroke = stroke(line);
+        state.fg_stroke = stroke(fg);
+        state.corner_radius = CornerRadius::same(6);
+    }
     w.hovered.expansion = 0.0;
-    w.active.bg_fill = SEGMENT;
-    w.active.weak_bg_fill = SEGMENT;
-    w.active.bg_stroke = stroke(LINE_HOVER);
-    w.active.fg_stroke = stroke(Color32::WHITE);
-    w.active.corner_radius = round;
     w.active.expansion = 0.0;
-    w.open.bg_fill = BUTTON_HOVER;
-    w.open.weak_bg_fill = BUTTON_HOVER;
-    w.open.bg_stroke = stroke(LINE_HOVER);
-    w.open.fg_stroke = stroke(Color32::WHITE);
-    w.open.corner_radius = round;
     v
 }
 

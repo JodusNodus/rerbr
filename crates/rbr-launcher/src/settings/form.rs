@@ -147,16 +147,7 @@ impl Form {
             },
         };
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-        let wear = settings.wear.unwrap_or(0).min(2);
-        let tyre = settings.tyre.unwrap_or(TyreChoice::Auto);
         let size = settings.size.unwrap_or(DEFAULT_SIZE);
-        let fov = settings.fov.unwrap_or(coords::FOV_DEGREES);
-        let chase_fov = settings.chase_fov.unwrap_or(CHASE_FOV_DEGREES);
-        let volume = settings.volume.unwrap_or(1.0);
-        let engine_volume = settings.engine_volume.unwrap_or(1.0);
-        let codriver_volume = settings.codriver_volume.unwrap_or(1.0);
-        let effects_volume = settings.effects_volume.unwrap_or(1.0);
-        let tyres_volume = settings.tyres_volume.unwrap_or(1.0);
         let defaults = MarkerSettings::default();
         let marker = MarkerSettings {
             callout_distance: settings.callout_distance.unwrap_or(defaults.callout_distance),
@@ -204,18 +195,18 @@ impl Form {
             clouds: settings.clouds,
             precipitation: settings.precipitation,
             weather_adjust: false,
-            wear,
-            tyre,
+            wear: settings.wear.unwrap_or(0).min(2),
+            tyre: settings.tyre.unwrap_or(TyreChoice::Auto),
             size,
             sizes: vec![size],
-            fov,
-            chase_fov,
+            fov: settings.fov.unwrap_or(coords::FOV_DEGREES),
+            chase_fov: settings.chase_fov.unwrap_or(CHASE_FOV_DEGREES),
             cockpit: settings.camera.cockpit,
-            volume,
-            engine_volume,
-            codriver_volume,
-            effects_volume,
-            tyres_volume,
+            volume: settings.volume.unwrap_or(1.0),
+            engine_volume: settings.engine_volume.unwrap_or(1.0),
+            codriver_volume: settings.codriver_volume.unwrap_or(1.0),
+            effects_volume: settings.effects_volume.unwrap_or(1.0),
+            tyres_volume: settings.tyres_volume.unwrap_or(1.0),
             codriver: settings.codriver.unwrap_or(true),
             codriver_mods: crate::command::CodriverMods::scan(&game_root),
             codriver_pack: settings.codriver_pack.clone(),
@@ -429,8 +420,6 @@ impl Form {
 mod tests {
     use super::*;
 
-    /// NGP 7.4.778's kept copy (with the real DLL: `RBR_NGP_DLL`, or the data's) fills both NGP paths while
-    /// neither is set.
     /// Saved FFB sensitivities and camera nudges follow a car to its new key; one already there stays.
     #[test]
     fn saved_car_settings_move_to_the_new_keys() {
@@ -444,6 +433,8 @@ mod tests {
         assert_eq!(settings.camera.cars.keys().collect::<Vec<_>>(), ["pack-a"]);
     }
 
+    /// NGP 7.4.778's kept copy (with the real DLL: `RBR_NGP_DLL`, or the data's) fills both NGP paths while
+    /// neither is set.
     #[test]
     fn a_kept_ngp_fills_unset_paths() {
         let data = Data::from_env().unwrap_or_else(|| Data::new("", None));

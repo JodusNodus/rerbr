@@ -46,25 +46,16 @@ pub fn environment_args(
     wetness: Option<u32>,
     ghosted: bool,
 ) -> (Vec<String>, Vec<String>) {
-    let mut viewer = Vec::new();
-    if let Some(section) = section {
-        viewer.extend(["--sky".to_owned(), section]);
-    }
-    if let Some(fog) = fog {
-        viewer.extend(["--fog".to_owned(), fog.name().to_owned()]);
-    }
-    if let Some(clouds) = clouds {
-        viewer.extend(["--clouds".to_owned(), clouds.name().to_owned()]);
-    }
-    if let Some(precipitation) = precipitation {
-        viewer.extend(["--precipitation".to_owned(), precipitation.name().to_owned()]);
-    }
-    let mut standalone = Vec::new();
-    if !ghosted {
-        if let Some(wetness) = wetness {
-            standalone.extend(["--wetness".to_owned(), wetness_name(wetness).to_owned()]);
-        }
-    }
+    let flags = [
+        ("--sky", section),
+        ("--fog", fog.map(|v| v.name().to_owned())),
+        ("--clouds", clouds.map(|v| v.name().to_owned())),
+        ("--precipitation", precipitation.map(|v| v.name().to_owned())),
+    ];
+    let viewer = flags.into_iter().filter_map(|(flag, v)| Some([flag.to_owned(), v?])).flatten().collect();
+    let standalone = wetness
+        .filter(|_| !ghosted)
+        .map_or_else(Vec::new, |wetness| vec!["--wetness".to_owned(), wetness_name(wetness).to_owned()]);
     (viewer, standalone)
 }
 
@@ -824,8 +815,6 @@ impl Form {
             .chain(map.map(catalog::Map::name))
             .chain(catalog::title(stage.map).map(str::to_owned))
             .chain([stage.name.clone()])
-            .collect::<Vec<_>>()
-            .into_iter()
             .fold(Vec::new(), |mut seen: Vec<String>, name| {
                 if !name.is_empty() && !seen.contains(&name) {
                     seen.push(name);
@@ -960,6 +949,41 @@ mod tests {
         form.start_args(&mut CrtRand::srand(1234)).unwrap()
     }
 
+    /// A launch with the fields every argument test shares; the tests set the rest.
+    fn base() -> ViewerLaunch {
+        ViewerLaunch {
+            size: (1280, 720),
+            fov: 65.0,
+            chase_fov: 65.0,
+            volume: 1.0,
+            codriver: true,
+            graphics: Quality::Low.graphics(false),
+            wipers: Switch::Off,
+            standalone: PathBuf::from("/b/rbr-standalone"),
+            data: PathBuf::from("/d"),
+            ..Default::default()
+        }
+    }
+
+    /// The arguments after `--live`, for `rbr-standalone`.
+    fn standalone_part(args: &[String]) -> &[String] {
+        &args[args.iter().position(|a| a == "--live").unwrap()..]
+    }
+
+    /// A read-only form over the real game files from `text`, with its scratch folder; none unless `RBR_DATA`,
+    /// `RBR_PATCH` and `RBR_RSF` are set, and with `ngp` also `RBR_NGP_PHYSICS`.
+    fn real_form(tag: &str, text: &str, ngp: bool) -> Option<(PathBuf, Form)> {
+        let (data, patch, _) = (env("RBR_DATA")?, env("RBR_PATCH")?, env("RBR_RSF")?);
+        if ngp {
+            env("RBR_NGP_PHYSICS")?;
+        }
+        let here = crate::test_dir(tag);
+        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(data)), Some(PathBuf::from(patch)));
+        let mut form = load(&start, Settings::parse(text)).unwrap();
+        form.read_only = true;
+        Some((here, form))
+    }
+
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
@@ -1035,20 +1059,12 @@ mod tests {
             options: RaceOptions { weather: Preset::Good, ..RaceOptions::default() },
             weather,
             tyre: lesson.tyre(),
-            size: (1280, 720),
-            fov: 65.0,
-            volume: 1.0,
-            codriver: true,
-            graphics: Quality::Low.graphics(false),
-            wipers: Switch::Off,
-            standalone: PathBuf::from("/b/rbr-standalone"),
-            data: PathBuf::from("/d"),
             school: Some(lesson),
-            ..Default::default()
+            ..base()
         }
         .args();
-        let live = args.iter().position(|a| a == "--live").unwrap();
-        let (viewer, standalone) = (&args[..live], &args[live..]);
+        let standalone = standalone_part(&args);
+        let viewer = &args[..args.len() - standalone.len()];
         assert_eq!(viewer[1..3], ["--car", "IMPREZA03"]);
         assert_eq!(value(standalone, "--school"), Some("2".into()));
         assert_eq!(value(standalone, "--stage"), Some("track-83_M".into()));
@@ -1082,8 +1098,7 @@ mod tests {
             ..Default::default()
         }
         .args();
-        let live = args.iter().position(|a| a == "--live").unwrap();
-        let standalone = &args[live..];
+        let standalone = standalone_part(&args);
         assert_eq!(value(standalone, "--car-pack"), Some("/rsf/rsfdata/cars/evo".into()));
         assert_eq!(value(standalone, "--school"), Some("2".into()));
         for refused in ["--car", "--tyre", "--setup"] {
@@ -1115,21 +1130,11 @@ mod tests {
             car,
             weather,
             tyre: 4,
-            size: (1280, 720),
-            fov: 65.0,
-            chase_fov: 65.0,
-            volume: 1.0,
-            codriver: true,
-            graphics: Quality::Low.graphics(false),
-            wipers: Switch::Off,
-            standalone: PathBuf::from("/b/rbr-standalone"),
-            data: PathBuf::from("/d"),
             bindings: Some(PathBuf::from("/l/launcher-settings.ini")),
             setup: Some(PathBuf::from("/l/setup-current.lsp")),
-            ..Default::default()
+            ..base()
         }
         .args();
-        let live = args.iter().position(|a| a == "--live").unwrap();
         assert_eq!(
             args[1..9],
             [
@@ -1144,8 +1149,9 @@ mod tests {
             ]
         );
         assert_eq!(value(&args, "--car-key").as_deref(), Some("rsf-24"));
-        assert!(!args[live..].contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");
-        assert!(args[live..].contains(&"--car-pack".to_owned()));
+        let standalone = standalone_part(&args);
+        assert!(!standalone.contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");
+        assert!(standalone.contains(&"--car-pack".to_owned()));
     }
 
     /// A chosen skin goes to the viewer for any car, not to the physics program, and none sends nothing.
@@ -1157,8 +1163,7 @@ mod tests {
         assert_eq!(value(&none, "--car-skin"), None);
         assert_eq!(value(&dir, "--car-skin").as_deref(), Some("/h/skins/COROLLA/Red"));
         assert_eq!(value(&launch(Some(car_pack::Skin::Original)), "--car-skin").as_deref(), Some("none"));
-        let live = dir.iter().position(|a| a == "--live").unwrap();
-        assert!(!dir[live..].contains(&"--car-skin".to_owned()));
+        assert!(!standalone_part(&dir).contains(&"--car-skin".to_owned()));
     }
 
     #[test]
@@ -1217,16 +1222,10 @@ mod tests {
             options,
             weather,
             tyre: 5,
-            size: (1280, 720),
-            fov: 65.0,
-            chase_fov: 65.0,
             volume: 0.5,
-            codriver: true,
             graphics: Graphics { lighting: true, marks: true, ..Quality::Low.graphics(false) },
             wipers: Switch::Auto,
-            standalone: PathBuf::from("/b/rbr-standalone"),
-            data: PathBuf::from("/d"),
-            ..Default::default()
+            ..base()
         }
         .args()
         .join(" ");
@@ -1291,23 +1290,9 @@ mod tests {
             wear: 1,
         };
         let word = |wetness| {
-            let args = ViewerLaunch {
-                stage: stage.clone(),
-                car: car.clone(),
-                weather: weather(wetness),
-                tyre: 3,
-                size: (1280, 720),
-                fov: 65.0,
-                chase_fov: 65.0,
-                volume: 1.0,
-                codriver: true,
-                graphics: Quality::Low.graphics(false),
-                wipers: Switch::Off,
-                standalone: PathBuf::from("/b/rbr-standalone"),
-                data: PathBuf::from("/d"),
-                ..Default::default()
-            }
-            .args();
+            let args =
+                ViewerLaunch { stage: stage.clone(), car: car.clone(), weather: weather(wetness), tyre: 3, ..base() }
+                    .args();
             let at = args.iter().position(|a| a == "--weather").unwrap();
             args[at + 1].clone()
         };
@@ -1427,16 +1412,8 @@ mod tests {
     /// stack; and it passes its laps and no ghost. The Drive page's start keeps them. Needs the same variables.
     #[test]
     fn a_circuit_starts_without_pace_notes_unless_asked() {
-        let (Some(data), Some(patch), Some(_), Some(_)) =
-            (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS"), env("RBR_RSF"))
-        else {
-            return;
-        };
-        let here = crate::test_dir("command-circuit-notes");
-        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
         let settings = "[launcher]\nmap = 54\ncodriver = on\npace_stack = 3\nhud_hide = inputs\n";
-        let mut form = load(&start, Settings::parse(settings)).unwrap();
-        form.read_only = true;
+        let Some((_, mut form)) = real_form("command-circuit-notes", settings, true) else { return };
         form.map = form.catalog.map_index(54).unwrap();
         let args = |form: &mut Form| form.start_args(&mut CrtRand::srand(1)).unwrap();
         let drive = args(&mut form);
@@ -1458,15 +1435,7 @@ mod tests {
 
     #[test]
     fn a_specific_row_starts_with_its_sky_and_the_overrides() {
-        let (Some(data), Some(patch), Some(_), Some(_)) =
-            (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS"), env("RBR_RSF"))
-        else {
-            return;
-        };
-        let here = crate::test_dir("command-row-start");
-        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
-        let mut form = load(&start, Settings::parse("[launcher]\nmap = 54\n")).unwrap();
-        form.read_only = true;
+        let Some((here, mut form)) = real_form("command-row-start", "[launcher]\nmap = 54\n", true) else { return };
         form.map = form.catalog.map_index(54).unwrap();
         let rows = {
             let map = &form.catalog.maps[form.map];
@@ -1594,15 +1563,9 @@ mod tests {
     /// for a plain championship stage), which keeps the stage's own light and the season's start clock.
     #[test]
     fn the_time_of_day_is_the_quick_races_only() {
-        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
-            return;
-        };
-        let here = crate::test_dir("command-clock");
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nclouds = partly\nstart_time = night\n";
-        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
-        let mut form = load(&start, Settings::parse(text)).unwrap();
-        form.read_only = true;
-        let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
+        let Some((here, mut form)) = real_form("command-clock", text, false) else { return };
+        let quick = launch(&mut form);
         let night = time_of_day::Moment::Night.minutes(time_of_day::site(&form.catalog.maps[form.map]));
         assert_eq!(value(&quick, "--clock"), Some(clock_text(night)));
         assert_eq!(value(&quick, "--start-time"), Some(format!("{}:{:02}", night / 60, night % 60)));
@@ -1685,20 +1648,14 @@ mod tests {
     /// has none.
     #[test]
     fn the_tyres_force_reaches_the_standalone() {
-        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
-            return;
-        };
-        let here = crate::test_dir("command-ffb-tyres");
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
-        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
         for (tyres, trail) in [(false, None), (true, Some("25".to_owned()))] {
-            let mut form = load(&start, Settings::parse(text)).unwrap();
-            form.read_only = true;
+            let Some((_, mut form)) = real_form("command-ffb-tyres", text, false) else { return };
             form.ffb.tyres = tyres;
             let args = launch(&mut form);
-            let live = args.iter().position(|a| a == "--live").unwrap();
-            assert_eq!(value(&args[live..], "--ffb-tyres"), trail, "{args:?}");
-            assert_eq!(value(&args[..live], "--ffb-tyres"), None, "{args:?}");
+            let standalone = standalone_part(&args);
+            assert_eq!(value(standalone, "--ffb-tyres"), trail, "{args:?}");
+            assert_eq!(value(&args[..args.len() - standalone.len()], "--ffb-tyres"), None, "{args:?}");
         }
     }
 

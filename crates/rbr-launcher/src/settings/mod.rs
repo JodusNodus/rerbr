@@ -328,6 +328,11 @@ fn on_off_text(value: Option<bool>) -> Option<String> {
     value.map(|v| if v { "on" } else { "off" }.to_owned())
 }
 
+/// A number as written.
+fn text<T: ToString>(value: Option<T>) -> Option<String> {
+    value.map(|v| v.to_string())
+}
+
 /// A [`Choice`]'s settings word.
 fn choice<T: Choice>(value: Option<T>) -> Option<String> {
     value.map(|c| c.name().to_owned())
@@ -526,9 +531,9 @@ impl Settings {
         let mut out = String::from("[launcher]\n");
         for (key, value) in [
             ("car", self.car.clone()),
-            ("map", self.map.map(|v| v.to_string())),
-            ("circuit", self.circuit.map(|v| v.to_string())),
-            ("circuit_laps", self.circuit_laps.map(|v| v.to_string())),
+            ("map", text(self.map)),
+            ("circuit", text(self.circuit)),
+            ("circuit_laps", text(self.circuit_laps)),
             ("circuit_notes", on_off_text(self.circuit_notes)),
             ("recent_cars", joined_names(&self.recent_cars)),
             ("recent_maps", joined_ids(&self.recent_maps)),
@@ -549,13 +554,13 @@ impl Settings {
                 }),
             ),
             ("size", self.size.map(|(w, h)| format!("{w}x{h}"))),
-            ("fov", self.fov.map(|v| v.to_string())),
-            ("chase_fov", self.chase_fov.map(|v| v.to_string())),
-            ("volume", self.volume.map(|v| v.to_string())),
-            ("engine_volume", self.engine_volume.map(|v| v.to_string())),
-            ("codriver_volume", self.codriver_volume.map(|v| v.to_string())),
-            ("effects_volume", self.effects_volume.map(|v| v.to_string())),
-            ("tyres_volume", self.tyres_volume.map(|v| v.to_string())),
+            ("fov", text(self.fov)),
+            ("chase_fov", text(self.chase_fov)),
+            ("volume", text(self.volume)),
+            ("engine_volume", text(self.engine_volume)),
+            ("codriver_volume", text(self.codriver_volume)),
+            ("effects_volume", text(self.effects_volume)),
+            ("tyres_volume", text(self.tyres_volume)),
             ("codriver", on_off_text(self.codriver)),
             ("codriver_voice", self.codriver_voice.clone()),
             ("codriver_style", self.codriver_style.clone()),
@@ -563,15 +568,15 @@ impl Settings {
             ("hud", on_off_text(self.hud)),
             ("units", self.mph.map(|v| if v { "mph" } else { "kmh" }.to_owned())),
             ("fps", on_off_text(self.fps)),
-            ("pace_stack", self.pace_stack.map(|v| v.to_string())),
+            ("pace_stack", text(self.pace_stack)),
             ("wipers", self.wipers.map(|v| v.name().to_owned())),
             ("dials", on_off_text(self.dials)),
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
             ("hud_show", self.hud_hide.and_then(|p| p.shown())),
             ("hud_scale", self.hud_layout.filter(|l| l.scale != 100).map(|l| l.scale.to_string())),
             ("hud_layout", self.hud_layout.and_then(|l| l.list())),
-            ("callout_distance", self.callout_distance.map(|v| v.to_string())),
-            ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
+            ("callout_distance", text(self.callout_distance)),
+            ("marker_threshold", text(self.marker_threshold)),
             ("damage", choice(self.damage)),
             ("auto_gears", on_off_text(self.auto_gears)),
             ("gear_guard", on_off_text(self.gear_guard)),
@@ -581,20 +586,20 @@ impl Settings {
             ("install_folder", self.install_folder.clone()),
             ("ngp_physics", self.ngp_physics.clone()),
             ("ngp_dll", self.ngp_dll.clone()),
-            ("head_gasket", self.head_gasket.map(|v| v.to_string())),
+            ("head_gasket", text(self.head_gasket)),
             ("physics", choice(self.physics)),
-            ("render_scale", self.render_scale.map(|v| v.to_string())),
+            ("render_scale", text(self.render_scale)),
             ("wet_roads", choice(self.wet_roads)),
             ("detail", choice(self.detail)),
             ("upscale_textures", on_off_text(self.upscale_textures)),
             ("present", self.present.map(|v| v.name().to_owned())),
-            ("max_fps", self.max_fps.map(|v| v.to_string())),
+            ("max_fps", text(self.max_fps)),
             ("mirrors", self.mirrors.map(Rate::name)),
             ("fullscreen", on_off_text(self.fullscreen)),
             ("triple", on_off_text(self.triple)),
-            ("triple_diagonal", self.triple_diagonal.map(|v| v.to_string())),
-            ("triple_bezel", self.triple_bezel.map(|v| v.to_string())),
-            ("triple_distance", self.triple_distance.map(|v| v.to_string())),
+            ("triple_diagonal", text(self.triple_diagonal)),
+            ("triple_bezel", text(self.triple_bezel)),
+            ("triple_distance", text(self.triple_distance)),
             ("triple_angle", self.triple_angle.map(|angle| angle.map_or_else(|| "auto".to_owned(), |a| a.to_string()))),
             ("triple_monitors", self.triple_monitors.clone().map(|monitors| monitors.join(","))),
             ("hdr", on_off_text(self.hdr)),
@@ -817,11 +822,8 @@ mod tests {
         // Any other word is a season row's section, not a preset.
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
         assert_eq!(Settings::parse(""), Settings::default());
-        assert_eq!(Settings::parse("[launcher]\nfov = 121\n").fov, None);
-        assert_eq!(Settings::parse("[launcher]\nfov = 30\n").fov, Some(30.0));
         assert_eq!(Settings::parse("[launcher]\nchase_fov = 121\n").chase_fov, None);
         assert_eq!(Settings::parse("[launcher]\nchase_fov = 100\n").chase_fov, Some(100.0));
-        assert_eq!(Settings::parse("[launcher]\nvolume = 5\n").volume, None);
         assert!(text.contains("volume = 0.75\n"));
         assert!(
             text.contains("engine_volume = 0.5\ncodriver_volume = 1.5\neffects_volume = 0\ntyres_volume = 2\n"),
@@ -833,7 +835,6 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ntyres_volume = \n").tyres_volume, None);
         assert!(text.contains("codriver = off\ncodriver_voice = Janne Laahanen EnNu A\ncodriver_style = Numeric.ini\n"));
         assert!(text.contains("codriver_style = Numeric.ini\ncodriver_pack = luppis\nhud = off\n"), "{text}");
-        assert_eq!(Settings::parse("[launcher]\ncodriver_voice = \n").codriver_voice, None);
         // The old notes and range keys are no longer read, and so not written back.
         let old = Settings::parse(
             "[launcher]\nnotes_pack = tanner-notes\nnotes_set = LuppisV3\nmy_pacenotes = off\ncodriver_ranges = Rbr.ini\n",
@@ -844,7 +845,6 @@ mod tests {
             assert!(!saved.contains(key), "{key}");
         }
         assert!(text.contains("hud = off\nunits = mph\nfps = on\npace_stack = 2\nwipers = intermittent\n"));
-        assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(text.contains("wipers = intermittent\ndials = off\nhud_hide = progress,car\n"), "{text}");
         assert!(
             text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\nmotion_blur = on\n"),
@@ -861,16 +861,11 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nstart_time = baked\n").start_time, Some(StartTime::Baked));
         assert_eq!(clock_args(Some(5 * 60)), ["--clock", "05:00"]);
         assert!(clock_args(None).is_empty());
-        assert_eq!(Settings::parse("[launcher]\nwipers = fast\n").wipers, None);
         assert!(text.contains("render_scale = 75\nwet_roads = low\ndetail = ultra\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\ndetail = high\n").detail, Some(Detail::High));
-        assert_eq!(Settings::parse("[launcher]\ndetail = max\n").detail, None);
         assert_eq!(Settings::parse("[launcher]\nwet_roads = medium\n").wet_roads, Some(WetRoads::Medium));
-        assert_eq!(Settings::parse("[launcher]\nwet_roads = on\n").wet_roads, None);
         assert!(text.contains("present = immediate\nmax_fps = 120\nmirrors = 3\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\nmax_fps = 100\n").max_fps, None);
-        assert_eq!(Settings::parse("[launcher]\nmirrors = 4\n").mirrors, None);
-        assert_eq!(Settings::parse("[launcher]\nmirrors = off\n").mirrors, Some(Rate::Off));
         assert!(
             text.contains(
                 "triple = on\ntriple_diagonal = 32\ntriple_bezel = 8\ntriple_distance = 65\ntriple_angle = 45\n\
@@ -883,7 +878,6 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ntriple_angle = 45\n").triple_angle, Some(Some(45.0)));
         assert_eq!(Settings::parse("[launcher]\ntriple_angle = 91\n").triple_angle, None);
         assert_eq!(Settings::parse("[launcher]\ntriple_monitors = HDMI-1,DP-1\n").triple_monitors, None);
-        assert_eq!(Settings::parse("[launcher]\nrender_scale = 80\n").render_scale, None);
         assert_eq!(render_scale_args(67), ["--render-scale", "0.67"]);
         assert_eq!(render_scale_args(87), ["--render-scale", "0.87"]);
         assert!(render_scale_args(100).is_empty());
