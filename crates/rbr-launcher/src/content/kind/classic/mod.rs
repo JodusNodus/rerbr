@@ -124,6 +124,16 @@ fn read_texts(src: &dyn Source) -> Result<Texts, Fail> {
         .collect()
 }
 
+/// The file name of `path`, lowercase.
+fn file_lower(path: &[String]) -> String {
+    path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default()
+}
+
+/// Whether `file` (lowercase) is the `Tracks.ini` or the `Tracks<n>.ini`.
+fn is_tracks_ini(file: &str, n: u32) -> bool {
+    file == "tracks.ini" || find::tracks_number(file) == Some(n)
+}
+
 fn dir_of(path: &[String]) -> &[String] {
     path.split_last().map_or(&[], |(_, d)| d)
 }
@@ -136,13 +146,8 @@ fn in_dir(path: &[String], dir: &[String]) -> bool {
 /// installer's INI writes over them; empty when nothing has one. An encrypted `Tracks<n>.ini` is refused.
 fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<Vec<(String, String)>, Fail> {
     let (n, map) = (stage.number, format!("Map{}", stage.number));
-    let mut files: Vec<&(Vec<String>, Vec<u8>)> = texts
-        .iter()
-        .filter(|(path, _)| {
-            let file = path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
-            file == "tracks.ini" || find::tracks_number(&file) == Some(n)
-        })
-        .collect();
+    let mut files: Vec<&(Vec<String>, Vec<u8>)> =
+        texts.iter().filter(|(path, _)| is_tracks_ini(&file_lower(path), n)).collect();
     files.sort_by_key(|(path, _)| !in_dir(path, &stage.dir));
     let mut entries: Option<Vec<(String, String)>> = None;
     for (path, bytes) in files {
@@ -160,8 +165,7 @@ fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<V
     }
     let mut entries = entries.unwrap_or_default();
     for w in src.ini_writes() {
-        let file = w.file.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
-        if (file == "tracks.ini" || find::tracks_number(&file) == Some(n)) && w.section.eq_ignore_ascii_case(&map) {
+        if is_tracks_ini(&file_lower(&w.file), n) && w.section.eq_ignore_ascii_case(&map) {
             // An empty key is a section delete (an installer's uninstall part follows its install part): ignored.
             if w.key.is_empty() {
                 continue;
@@ -208,7 +212,7 @@ fn fill_from_rsf_list(src: &dyn Source, stage: &find::Found, entries: &mut Vec<(
 /// Every weather section of the source's `TrackSettings*.ini` files and INI writes.
 fn settings_sections(src: &dyn Source, texts: &Texts) -> Vec<Section> {
     let named = |path: &[String]| {
-        let file = path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default();
+        let file = file_lower(path);
         file.starts_with("tracksettings") && file.ends_with(".ini")
     };
     let mut sections: Vec<Section> = texts
@@ -425,11 +429,9 @@ fn build(src: &dyn Source, stage: &find::Found, texts: &Texts, ctx: &Ctx, label:
     });
     let loose_texts: Vec<(&String, &Vec<u8>)> = match stage.rsf {
         true => Vec::new(),
-        false => texts
-            .iter()
-            .filter(|(p, _)| p.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default().ends_with(".txt"))
-            .map(|(p, b)| (p.last().unwrap(), b))
-            .collect(),
+        false => {
+            texts.iter().filter(|(p, _)| file_lower(p).ends_with(".txt")).map(|(p, b)| (p.last().unwrap(), b)).collect()
+        }
     };
 
     let temp = Temp::create(&tracks, "adding")?;
@@ -695,24 +697,21 @@ pub(crate) mod tests {
     }
 
     fn installer(dir: &Path, id: u32) -> Box<dyn Source> {
-        let writes = ["TrackName", "StageName", "Author", "Surface", "SplashScreen", "Particles", "Key"]
-            .iter()
-            .zip(["Maps\\x\\track-8994", "Zaton", "Mihkel Kütt", "1", "Maps\\splash.dds", "Maps\\PS_Zaton", ""])
-            .filter(|(k, _)| **k != "Key")
-            .map(|(k, v)| ini_write("Maps/Tracks.ini", &format!("Map{id}"), k, v))
-            .chain([
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "StageName", "Zaton"),
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Author", "Mihkel Kütt"),
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Surface", "1"),
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "SplashScreen", "Maps\\splash.dds"),
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "Particles", "Maps\\PS_Zaton"),
-                ini_write("Maps/Tracks.ini", &format!("Map{id}"), "", ""),
-                ini_write("Maps/TrackSettings.ini", &format!("{id}M_hazy_clear"), "", ""),
-                ini_write("Maps/TrackSettings.ini", &format!("{id}M_crisp_clear"), "FogEnd", "7"),
-                ini_write("Maps/TrackSettings.ini", &format!("{id}M_hazy_clear"), "FogEnd", "8"),
-                ini_write("Maps/TrackSettings.ini", "9999M_crisp_clear", "FogEnd", "9"),
-            ])
-            .collect();
+        let map = |key, value| ini_write("Maps/Tracks.ini", &format!("Map{id}"), key, value);
+        let settings = |section: &str, key, value| ini_write("Maps/TrackSettings.ini", section, key, value);
+        let writes = vec![
+            map("TrackName", "Maps\\x\\track-8994"),
+            map("StageName", "Zaton"),
+            map("Author", "Mihkel Kütt"),
+            map("Surface", "1"),
+            map("SplashScreen", "Maps\\splash.dds"),
+            map("Particles", "Maps\\PS_Zaton"),
+            map("", ""),
+            settings(&format!("{id}M_hazy_clear"), "", ""),
+            settings(&format!("{id}M_crisp_clear"), "FogEnd", "7"),
+            settings(&format!("{id}M_hazy_clear"), "FogEnd", "8"),
+            settings("9999M_crisp_clear", "FogEnd", "9"),
+        ];
         Box::new(Writes(source::open(dir).unwrap(), writes))
     }
 
