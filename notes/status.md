@@ -81,7 +81,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Stage, sky, car rendering | done | - |
 | HUD, messages, dash lamps, pace-note symbols, units | done | result page from a real finish |
 | RBRHUD working dials | done | oil, tyre health fixed; `Damage` unverified |
-| Particles | partial | soft edges; rates against a capture |
+| Particles | partial | rates against a capture |
 | Skid marks | done | - |
 | Car lights | partial | recordings without live data infer brake only (the gear and lamp words are heap; a replay's sidecar covers reverse and damage) |
 | Deformation, cracks, detached parts, dirt | partial | door-detach crash drive (the renderer hangs/detaches doors by DOR1/DET1; no natural detach found yet) |
@@ -116,7 +116,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 2. Extend the NGP gate matrix ([verification.md](verification.md#drives-and-the-gate-matrix)) to whole stages for
    every car and surface class, with damage and collisions.
 3. Community stages and cars: the FMOD leftovers, encrypted stages.
-4. Presentation leftovers: particle edges, door detach, windscreen cracks, game captures to compare.
+4. Presentation leftovers: door detach, windscreen cracks, game captures to compare.
 
 ## Decisions
 
