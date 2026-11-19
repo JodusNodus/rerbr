@@ -17,6 +17,7 @@ use rbr_formats::{car_pack, cars};
 use crate::archive;
 use crate::catalog::{Car, Physics};
 use crate::content::source::{self, Source};
+use crate::disc_install::with_path;
 use crate::job::{self, Counter, Job, Report, Temp};
 use crate::kit;
 use crate::pages::{combo, GOOD, WARN};
@@ -72,10 +73,7 @@ fn skins_in(dir: &Path) -> Vec<Skin> {
 
 /// Whether skins can dress the car: a stand-in model is another car's, so its skins are not offered.
 pub fn dressable(car: &Car) -> bool {
-    match &car.model {
-        Ok(model) => model.fallback.is_none(),
-        Err(_) => false,
-    }
+    car.model.as_ref().is_ok_and(|model| model.fallback.is_none())
 }
 
 /// The skins installed for `car` under the player's folder `home`, by name: its imported ones, then the model's own
@@ -159,13 +157,7 @@ impl Skins {
             Some(name) => self.chosen.insert(car.key.clone(), name),
             None => self.chosen.remove(&car.key),
         };
-        let finished = match self.job.as_mut() {
-            Some((key, job)) => {
-                let result = rows.full(|ui| job.ui(ui));
-                result.map(|result| (key.clone(), result))
-            }
-            None => None,
-        };
+        let finished = self.job.as_mut().and_then(|(key, job)| Some((key.clone(), rows.full(|ui| job.ui(ui))?)));
         if let Some((key, result)) = finished {
             self.job = None;
             self.status = Some(result.map(|names| {
@@ -257,7 +249,7 @@ pub fn import(
     let total = entries.iter().filter(|e| roots.iter().any(|r| e.path.starts_with(r))).map(|e| e.size).sum();
     let mut count = Counter { step: "Importing skin", done: 0, total, report, cancel };
     count.add(0)?;
-    fs::create_dir_all(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    fs::create_dir_all(dest).map_err(with_path(dest))?;
     for (root, name) in roots.iter().zip(&names) {
         let wanted: Vec<(Vec<String>, Vec<String>)> = entries
             .iter()
@@ -268,9 +260,9 @@ pub fn import(
         src.extract(&wanted, &temp.0, &mut |n| count.add(n))?;
         let skin = dest.join(name);
         if skin.exists() {
-            fs::remove_dir_all(&skin).map_err(|e| format!("{}: {e}", skin.display()))?;
+            fs::remove_dir_all(&skin).map_err(with_path(&skin))?;
         }
-        fs::rename(&temp.0, &skin).map_err(|e| format!("{}: {e}", skin.display()))?;
+        fs::rename(&temp.0, &skin).map_err(with_path(&skin))?;
         // Renamed away: the temp folder's drop finds nothing to remove.
         drop(temp);
     }

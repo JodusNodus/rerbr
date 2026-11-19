@@ -17,7 +17,6 @@
 //! the packs and adds them through [`add_downloads`].
 
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
@@ -25,6 +24,7 @@ use rbr_formats::car_pack;
 use rbr_formats::rsf;
 
 use crate::archive::safe_folder;
+use crate::disc_install::with_path;
 use crate::gvrc::Entry;
 use crate::job::{Counter, Job, Report, Temp};
 use crate::pages::{GOOD, WARN};
@@ -101,7 +101,7 @@ impl PhysicsZip {
     /// the `<pack>/` folder holding `common.lsp` (as RSF's `rsfdata/cars/<pack>.zip`). Folders beside that one are
     /// left out: gvrc.de's Fiesta Rally2 and i20 N Rally2 add a `<pack> - rev1/` holding only an old about file.
     fn open(path: &Path) -> Result<PhysicsZip, Fail> {
-        let error = |e: String| format!("{}: {e}", path.display());
+        let error = with_path(path);
         let mut files = Vec::new();
         for entry in crate::archive::zip_entries(path).map_err(error)? {
             let parts = entry.parts.ok_or_else(|| error(format!("a bad entry path {}", entry.name)))?;
@@ -159,7 +159,7 @@ impl Archive {
     /// The `.7z` at `path` whose main file ends `end` and lies `depth` or more names deep: the one nearest the top,
     /// then by name.
     fn open(path: &Path, end: &str, depth: usize, missing: &str) -> Result<Archive, Fail> {
-        let error = |e: String| format!("{}: {e}", path.display());
+        let error = with_path(path);
         let listed = crate::archive::seven_entries(path).map_err(error)?;
         let main = |name: &str| {
             let name = name.to_lowercase();
@@ -192,7 +192,7 @@ impl Archive {
 
     /// Unpacks the folder into `dest`.
     fn extract(&self, dest: &Path, count: &mut Counter) -> Result<(), Fail> {
-        let listed = crate::archive::seven_entries(&self.path).map_err(|e| format!("{}: {e}", self.path.display()))?;
+        let listed = crate::archive::seven_entries(&self.path).map_err(with_path(&self.path))?;
         let wanted: Vec<(Vec<String>, Vec<String>)> = listed
             .into_iter()
             .filter(|e| !e.dir)
@@ -338,8 +338,8 @@ pub fn write_cars(cars_dir: &Path, cars: &[StoredCar]) -> Result<(), Fail> {
         }
     }
     let (temp, path) = (cars_dir.join(".cars.ini.new"), cars_dir.join("cars.ini"));
-    fs::create_dir_all(cars_dir).map_err(|e| format!("{}: {e}", cars_dir.display()))?;
-    fs::write(&temp, text).and_then(|()| fs::rename(&temp, &path)).map_err(|e| format!("{}: {e}", path.display()))
+    fs::create_dir_all(cars_dir).map_err(with_path(cars_dir))?;
+    fs::write(&temp, text).and_then(|()| fs::rename(&temp, &path)).map_err(with_path(&path))
 }
 
 /// The model folders in `cars/Cars/`.
@@ -419,7 +419,7 @@ pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
 
 /// Moves the `.bank` files in the folder `from` into `to`, replacing those of the same name.
 fn move_banks(from: &Path, to: &Path) -> Result<(), Fail> {
-    let error = |e: io::Error| format!("{}: {e}", to.display());
+    let error = with_path(to);
     fs::create_dir_all(to).map_err(error)?;
     for entry in fs::read_dir(from).map_err(error)? {
         let entry = entry.map_err(error)?;
@@ -433,7 +433,7 @@ fn move_banks(from: &Path, to: &Path) -> Result<(), Fail> {
 
 /// Moves the folder `from` to `to`, replacing what is there.
 fn replace(from: &Path, to: &Path) -> Result<(), Fail> {
-    let error = |e: io::Error| format!("{}: {e}", to.display());
+    let error = with_path(to);
     if to.exists() {
         fs::remove_dir_all(to).map_err(error)?;
     }
@@ -469,7 +469,6 @@ fn add_one(
     let about = pack.about().unwrap_or_default();
     let title = pack.title().filter(|t| !t.is_empty()).unwrap_or_else(|| physics.folder.replace('_', " "));
     let revision = about_value(&about, &["revision"]).unwrap_or_default().to_owned();
-    let next = |ids: &mut dyn Iterator<Item = u32>| ids.max().map_or(1, |m| m + 1);
     let stored = match &model {
         Some(archive) => {
             let folder = archive.folder()?;
@@ -487,30 +486,20 @@ fn add_one(
             // A model added before, else the retail stand-in.
             let download_name = download.physics.file_name().and_then(|n| strip_end(n.to_str()?, PHYSICS));
             let credit = about_value(&about, &["3D model", "model"]).unwrap_or_default();
-            let mut real: Vec<&StoredModel> = cars
+            let mut real: Vec<(&str, &str, &StoredModel)> = cars
                 .iter()
                 .filter_map(|c| match &c.model {
-                    StoredModel::Files { folder, .. } if cars_dir.join("Cars").join(folder).is_dir() => Some(&c.model),
+                    StoredModel::Files { folder, name, .. } if cars_dir.join("Cars").join(folder).is_dir() => {
+                        Some((folder.as_str(), name.as_str(), &c.model))
+                    }
                     _ => None,
                 })
                 .collect();
-            real.sort_by_key(|m| match m {
-                StoredModel::Files { folder, .. } => folder.clone(),
-                StoredModel::StandIn { .. } => String::new(),
-            });
-            real.dedup_by_key(|m| match m {
-                StoredModel::Files { folder, .. } => folder.clone(),
-                StoredModel::StandIn { .. } => String::new(),
-            });
-            let names: Vec<&str> = real
-                .iter()
-                .map(|m| match m {
-                    StoredModel::Files { name, .. } => name.as_str(),
-                    StoredModel::StandIn { .. } => "",
-                })
-                .collect();
+            real.sort_by_key(|r| r.0);
+            real.dedup_by_key(|r| r.0);
+            let names: Vec<&str> = real.iter().map(|r| r.1).collect();
             match pick_model(&[download_name.unwrap_or_default(), &title, credit], &names) {
-                Some(k) => real[k].clone(),
+                Some(k) => real[k].2.clone(),
                 None => StoredModel::StandIn { slot: STAND_IN },
             }
         }
@@ -521,37 +510,29 @@ fn add_one(
     }
     replace(&staged, &cars_dir.join("rsfdata").join("cars").join(&physics.folder))?;
     // A re-add without metadata keeps the car's own group and drive train.
-    let (group, drive_train) = match cars.iter().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)) {
-        Some(known) => (
-            download.group.clone().or_else(|| known.group.clone()),
-            download.drive_train.clone().or_else(|| known.drive_train.clone()),
-        ),
-        None => (download.group.clone(), download.drive_train.clone()),
-    };
-    let year = download.year.or_else(|| cars.iter().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder))?.year);
+    let known = cars.iter().position(|c| c.pack.eq_ignore_ascii_case(&physics.folder));
+    let (known_group, known_drive, known_year) =
+        known.map_or((None, None, None), |k| (cars[k].group.clone(), cars[k].drive_train.clone(), cars[k].year));
     let row = StoredCar {
-        id: 0,
+        id: known.map_or_else(|| cars.iter().map(|c| c.id).max().map_or(1, |m| m + 1), |k| cars[k].id),
         name: title.clone(),
         pack: physics.folder.clone(),
-        group,
+        group: download.group.clone().or(known_group),
         model: stored,
         revision,
         audio: banks.map(|b| b.filename),
-        drive_train,
-        year,
+        drive_train: download.drive_train.clone().or(known_drive),
+        year: download.year.or(known_year),
     };
-    match cars.iter_mut().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)) {
-        Some(c) => *c = StoredCar { id: c.id, ..row },
-        None => {
-            let id = next(&mut cars.iter().map(|c| c.id));
-            cars.push(StoredCar { id, ..row });
-        }
+    let folder = match &row.model {
+        StoredModel::Files { folder, .. } => Some(folder.clone()),
+        StoredModel::StandIn { .. } => None,
+    };
+    match known {
+        Some(k) => cars[k] = row,
+        None => cars.push(row),
     }
     write_cars(cars_dir, cars)?;
-    let folder = match &cars.iter().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)).map(|c| &c.model) {
-        Some(StoredModel::Files { folder, .. }) => Some(folder.clone()),
-        _ => None,
-    };
     Ok((title, folder.filter(|f| cars_dir.join("Cars").join(f).is_dir())))
 }
 
@@ -563,7 +544,7 @@ pub fn add_downloads(
     report: Report<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Added>, Fail> {
-    fs::create_dir_all(cars_dir).map_err(|e| format!("{}: {e}", cars_dir.display()))?;
+    fs::create_dir_all(cars_dir).map_err(with_path(cars_dir))?;
     // The bytes to write (a download that does not open fails again when it is added).
     let physics = |d: &Download| PhysicsZip::open(&d.physics).map_or(0, |z| z.size);
     let size =
@@ -604,7 +585,7 @@ pub fn remove(cars_dir: &Path, pack: &str) -> Result<(), Fail> {
     let folder = safe_folder(pack).ok_or(format!("a bad pack folder name {pack}"))?;
     let path = cars_dir.join("rsfdata").join("cars").join(folder);
     match path.exists() {
-        true => fs::remove_dir_all(&path).map_err(|e| format!("{}: {e}", path.display())),
+        true => fs::remove_dir_all(&path).map_err(with_path(&path)),
         false => Ok(()),
     }
 }
@@ -723,6 +704,21 @@ mod tests {
     use std::io::Write;
 
     use crate::archive::{safe_folder, safe_path};
+
+    /// A car with model `m/m` and the given group, drive train and revision.
+    fn stored_car_of(id: u32, pack: &str, group: Option<&str>, drive: Option<&str>, revision: &str) -> StoredCar {
+        StoredCar {
+            id,
+            name: format!("{pack} car"),
+            pack: pack.into(),
+            group: group.map(str::to_owned),
+            model: StoredModel::Files { folder: "m".into(), file: "m".into(), name: "m".into() },
+            revision: revision.into(),
+            audio: None,
+            drive_train: drive.map(str::to_owned),
+            year: None,
+        }
+    }
 
     #[test]
     fn models_are_picked_by_their_names_start() {
@@ -974,17 +970,7 @@ mod tests {
     fn group_and_drive_survive_a_rewrite() {
         let root = crate::test_dir("car-groups");
         let cars_dir = root.join("cars");
-        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| StoredCar {
-            id,
-            name: format!("{pack} car"),
-            pack: pack.into(),
-            group: group.map(str::to_owned),
-            model: StoredModel::Files { folder: "m".into(), file: "m".into(), name: "m".into() },
-            revision: "3 / 2024-12-10".into(),
-            audio: None,
-            drive_train: drive.map(str::to_owned),
-            year: None,
-        };
+        let car = |id, pack: &str, group, drive| stored_car_of(id, pack, group, drive, "3 / 2024-12-10");
         let cars = vec![
             car(1, "evo_IX", Some("Group N4"), Some("4WD")),
             car(2, "quattro", Some("Group B"), Some("AWD with torque split")),
@@ -1034,17 +1020,7 @@ mod tests {
     fn missing_groups_and_drives_are_backfilled_from_the_list() {
         let root = crate::test_dir("car-backfill");
         let cars_dir = root.join("cars");
-        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| StoredCar {
-            id,
-            name: format!("{pack} car"),
-            pack: pack.into(),
-            group: group.map(str::to_owned),
-            model: StoredModel::Files { folder: "m".into(), file: "m".into(), name: "m".into() },
-            revision: String::new(),
-            audio: None,
-            drive_train: drive.map(str::to_owned),
-            year: None,
-        };
+        let car = |id, pack: &str, group, drive| stored_car_of(id, pack, group, drive, "");
         write_cars(
             &cars_dir,
             &[
@@ -1061,9 +1037,7 @@ mod tests {
             year: "1984".into(),
             pack: pack.into(),
             trans: trans.into(),
-            physics: String::new(),
-            model: None,
-            banks: None,
+            ..Default::default()
         };
         let entries = vec![
             entry("bmw m1 grpb", "Group B", "RWD"),

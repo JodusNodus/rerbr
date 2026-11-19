@@ -26,6 +26,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::car_packs::{self, Added, Download, BANKS, MODEL, PHYSICS};
+use crate::disc_install::{self, with_path};
 use crate::job::{Counter, Job, Progress, Report, Temp};
 use crate::kit;
 use crate::ngp_install;
@@ -43,7 +44,7 @@ type Fail = String;
 
 /// A car of the list: its name, category and year, its physics pack's folder (`physics`, the added pack's folder)
 /// and its drive (`trans`), its physics pack, its model and its sound banks, as links.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Entry {
     pub name: String,
     pub cat: String,
@@ -208,27 +209,27 @@ pub(crate) fn size_of(agent: &ureq::Agent, url: &str) -> u64 {
 
 /// Downloads `url` to the file `dest`.
 pub(crate) fn fetch(agent: &ureq::Agent, url: &str, dest: &Path, count: &mut Counter) -> Result<(), Fail> {
-    let error = |e: String| format!("{}: {e}", file_name(url).unwrap_or_else(|| url.to_owned()));
-    let mut response = agent.get(url).call().map_err(|e| error(e.to_string()))?;
-    fs::create_dir_all(dest.parent().unwrap_or(dest)).map_err(|e| error(e.to_string()))?;
-    let mut out = File::create(dest).map_err(|e| error(e.to_string()))?;
+    let error = |e: &dyn std::fmt::Display| format!("{}: {e}", file_name(url).unwrap_or_else(|| url.to_owned()));
+    let mut response = agent.get(url).call().map_err(|e| error(&e))?;
+    fs::create_dir_all(dest.parent().unwrap_or(dest)).map_err(|e| error(&e))?;
+    let mut out = File::create(dest).map_err(|e| error(&e))?;
     let mut reader = response.body_mut().as_reader().take(MAX_BYTES);
     let mut buffer = vec![0; 64 << 10];
     loop {
-        let n = reader.read(&mut buffer).map_err(|e| error(e.to_string()))?;
+        let n = reader.read(&mut buffer).map_err(|e| error(&e))?;
         if n == 0 {
             break;
         }
-        out.write_all(&buffer[..n]).map_err(|e| error(e.to_string()))?;
+        out.write_all(&buffer[..n]).map_err(|e| error(&e))?;
         count.add(n as u64)?;
     }
-    out.flush().map_err(|e| error(e.to_string()))
+    out.flush().map_err(|e| error(&e))
 }
 
-/// Downloads NGP's package (named by the list at `list`) into the folder `dir`: its path.
-fn download_package_from(list: &str, dir: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<PathBuf, Fail> {
+/// Downloads NGP's package into the folder `dir`: its path (for `disc_install`'s setup, which reads it).
+pub fn download_ngp_package(dir: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<PathBuf, Fail> {
     report(&Progress { step: "Reading the car list", ..Progress::default() });
-    let url = read_list(list)?.ngp.ok_or("gvrc.de's list names no NGP package")?;
+    let url = read_list(LIST_URL)?.ngp.ok_or("gvrc.de's list names no NGP package")?;
     let package = dir.join(file_name(&url).ok_or("a bad NGP link")?);
     let agent = agent();
     let mut count = Counter { step: "Downloading NGP", done: 0, total: size_of(&agent, &url), report, cancel };
@@ -237,15 +238,10 @@ fn download_package_from(list: &str, dir: &Path, report: Report<'_>, cancel: &At
     Ok(package)
 }
 
-/// Downloads NGP's package into the folder `dir`: its path (for `disc_install`'s setup, which reads it).
-pub fn download_ngp_package(dir: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<PathBuf, Fail> {
-    download_package_from(LIST_URL, dir, report, cancel)
-}
-
 /// Downloads NGP's package into a temp folder beside `to` and writes only its `NGP.dll` and `physics.rbz` into `to`.
 fn download_ngp_to(to: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<(), Fail> {
     let temp = Temp::create(to.parent().unwrap_or(Path::new(".")), "downloading")?;
-    let package = download_package_from(LIST_URL, &temp.0, report, cancel)?;
+    let package = download_ngp_package(&temp.0, report, cancel)?;
     ngp_install::add_ngp_to(&package, to, report, cancel)
 }
 
@@ -300,7 +296,7 @@ pub fn download_cars(
     report: Report<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Added>, Fail> {
-    fs::create_dir_all(cars_dir).map_err(|e| format!("{}: {e}", cars_dir.display()))?;
+    fs::create_dir_all(cars_dir).map_err(with_path(cars_dir))?;
     let temp = Temp::create(cars_dir, "downloading")?;
     let agent = agent();
     let urls = links(wanted);
@@ -354,16 +350,8 @@ pub fn ngp_cli(home: &Path, args: &[String]) -> Result<(), String> {
     if !args.is_empty() {
         return Err("usage: rerbr --download-ngp".into());
     }
-    let step = std::sync::Mutex::new("");
-    let report = move |p: &Progress| {
-        let mut step = step.lock().unwrap();
-        if p.step != *step {
-            *step = p.step;
-            println!("{}…", p.step);
-        }
-    };
     let to = home.join(ngp_install::KEPT);
-    download_ngp_to(&to, &report, &AtomicBool::new(false))?;
+    download_ngp_to(&to, &disc_install::print_steps(), &AtomicBool::new(false))?;
     println!("NGP 7.4.778's NGP.dll and physics.rbz saved in {}", to.display());
     Ok(())
 }
@@ -435,8 +423,7 @@ impl Downloads {
             pack: name.into(),
             trans: "4WD".into(),
             physics: format!("https://gvrc.de/ngp/physics/{name} - NGP Physics.zip"),
-            model: None,
-            banks: None,
+            ..Entry::default()
         };
         let cars = vec![
             car("Audi Sport quattro GrpB", "Group B", "1985"),
@@ -835,13 +822,10 @@ mod tests {
     fn the_download_size_counts_each_file_once() {
         let car = |physics: &str, model: &str| Entry {
             name: physics.into(),
-            cat: String::new(),
-            year: String::new(),
             pack: physics.into(),
-            trans: String::new(),
             physics: physics.into(),
             model: Some(model.into()),
-            banks: None,
+            ..Entry::default()
         };
         let cars = [car("a", "m"), car("b", "m")];
         let sizes: HashMap<String, u64> =
@@ -974,8 +958,7 @@ mod tests {
             pack: "Ghost Car".into(),
             trans: "4WD".into(),
             physics: format!("{base}/Ghost%20Car%20-%20NGP%20Physics.zip"),
-            model: None,
-            banks: None,
+            ..Entry::default()
         };
         // The links are not gvrc.de's: `file_name` is empty, the download still fails by its 404.
         let added = download_cars(&dir, std::slice::from_ref(&car), &|_| {}, &AtomicBool::new(false)).unwrap();
@@ -995,12 +978,9 @@ mod tests {
         let entry = |cat: &str, trans: &str| Entry {
             name: "x".into(),
             cat: cat.into(),
-            year: String::new(),
             pack: "x".into(),
             trans: trans.into(),
-            physics: String::new(),
-            model: None,
-            banks: None,
+            ..Entry::default()
         };
         let group = |cat: &str| entry(cat, "").group();
         for (cat, want) in [
