@@ -1248,13 +1248,12 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   change (same frame within 1/255, 2026-10-20); under a clear sky the ground haze hides 70% no nearer than 7.7, 4.6 or
   2.3 km (Koschmieder visibility 25, 15, 7.5 km; 2026-10-27), the day's mist 95% at 33 km.
 - Baked AO of converted stages (2026-11-19; Assetto Corsa's CSP vertex AO, `rbr_btb::scene::Mesh::occlusion`, [assetto.md](assetto.md)): `stage/btb.rs`
-  starts each vertex's `occlusion` as `1 - AO` (at least 0.001, 0 where the vertex has none) and `sky_occlusion.wgsl` `finish` combines it with
-  the computed one, `RERBR_VAO` = `off` (ignore), `max` (default: the greater occlusion), `replace` (baked where present) or `scaled` (`max` with
-  the stage's AO scaled so its 95th percentile is open); outside the 1 km tiles the baked value stands alone. Roure (v5) and Sa Calobra
-  (legacy) at 4 and 3 driveline points, 1280x720, `--enhance lighting`, mean absolute grey difference from `off`: `max` 0.0-1.5 of 255,
-  `replace` 1.0-3.0, `scaled` 0.0-0.5. `max` keeps the contact darkening the sky pass lacks (under the rocks, road under an overhang, walls) and
-  never brightens; `replace` also lightens what the computed pass shades and shifts the shade bluer; `scaled` is close to `off`. Looked at, not
-  measured against AC. Shots in /tmp/vao-shots (not kept).
+  starts each vertex's `occlusion` as `1 - AO` (`sky_occlusion::baked_occlusion`: at least 0.001, 0 where the vertex has none) and
+  `sky_occlusion.wgsl` `finish` keeps the greater of it and the computed one; past the 1 km tiles the baked value stands alone. `RERBR_VAO=off`
+  leaves it out. Roure (v5) and Sa Calobra (legacy) at 4 and 3 driveline points, 1280x720, `--enhance lighting`: mean absolute grey difference
+  from off 0.0-1.5 of 255; it adds the contact shade the sky pass is too coarse for (rocks at the road edge, road under an overhang, walls) and
+  never brightens. Taking the baked value in place of the computed one (1.0-3.0) lightened what the computed pass shades and turned the shade
+  bluer; scaling the baked AO so its 95th percentile is open was close to off. Looked at, not measured against AC.
 - Probes, occlusion, bounce, contact: reflection probes (`renderer/probes.rs`) along the driveline replace both
   per-frame cubes (headless 117 to 256 probes in 0.44 to 1.43 s, up to 67 MB). 41M 1080p drawn only 21.4 to 20.3 ms
   wet, 10.3 to 8.2 ms dry; additions off unchanged byte for byte (2026-10-25). Ambient occlusion from the stage's

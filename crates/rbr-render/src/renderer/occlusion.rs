@@ -100,13 +100,13 @@ pub(super) fn bake(
             .zip(masks)
             .map(|((b, (sums, totals)), mask)| {
                 let mut entries = vec![
-                    wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
                     wgpu::BindGroupEntry { binding: 5, resource: b.vertices.as_entire_binding() },
                     wgpu::BindGroupEntry { binding: 6, resource: sums.as_entire_binding() },
                     wgpu::BindGroupEntry { binding: 7, resource: totals.as_entire_binding() },
                 ];
                 if all {
                     entries.extend([
+                        wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
                         wgpu::BindGroupEntry { binding: 1, resource: matrices.as_entire_binding() },
                         wgpu::BindGroupEntry { binding: 2, resource: map_of.as_entire_binding() },
                         wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&maps.view) },
@@ -165,7 +165,7 @@ pub(super) fn bake(
             let p = Params {
                 toward: toward.extend(1.5 * texel).to_array(),
                 grid: [tiles.origin.x, tiles.origin.y, TILE, tiles.columns as f32],
-                counts: [tiles.rows, u32::from(backdrop_run), sky_occlusion::Baked::get().shader_mode(), 0],
+                counts: [tiles.rows, u32::from(backdrop_run), 0, 0],
             };
             queue.write_buffer(&params, 0, bytemuck::bytes_of(&p));
             queue.write_buffer(&matrices, 0, cast_slice(&batch_matrices.map(|m| m.to_cols_array_2d())));

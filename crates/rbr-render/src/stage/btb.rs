@@ -155,8 +155,6 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     let to_sun = -sun;
     let step = scene.driveline.len().div_ceil(DOME_POINTS).max(1);
     let dome_points: Vec<Vec3> = scene.driveline.iter().step_by(step).map(|&p| Vec3::from(p)).collect();
-    let baked = crate::sky_occlusion::Baked::get();
-    let open_ao = baked.open_ao(scene.meshes.iter().flat_map(|m| m.occlusion.iter().copied()));
     let mut groups = Groups::default();
     for object in scene.objects.iter().filter(|o| o.visible) {
         let Some(plan) = &plans[object.mesh] else { continue };
@@ -172,7 +170,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             };
             let reach = if solo { half.length() } else { 0.0 };
             let lod = band(object.lod_in, object.lod_out + reach);
-            let vertices = world_vertices(mesh, plan, placement, to_sun, (baked, open_ao));
+            let vertices = world_vertices(mesh, plan, placement, to_sun);
             let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
             let collides = match &loaded {
                 Some(collision) => on_ground(&vertices, &mesh.indices, collision),
@@ -276,14 +274,8 @@ struct Plan {
 
 /// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the
 /// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha. The baked AO
-/// of a converted stage starts as the vertex's occlusion ([`crate::sky_occlusion::Baked`]).
-fn world_vertices(
-    mesh: &scene::Mesh,
-    plan: &Plan,
-    placement: &[f32; 16],
-    to_sun: Vec3,
-    (baked, open_ao): (crate::sky_occlusion::Baked, f32),
-) -> Vec<Vertex> {
+/// of a converted stage starts as the vertex's occlusion ([`crate::sky_occlusion::baked_occlusion`]).
+fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun: Vec3) -> Vec<Vertex> {
     let uv = |set: Option<usize>, i: usize| {
         set.and_then(|s| mesh.uvs.get(s)).and_then(|uvs| uvs.get(i)).copied().unwrap_or([0.0; 2])
     };
@@ -304,7 +296,7 @@ fn world_vertices(
                     let [u, v] = uv(Some(s), i);
                     [u, v, 1.0]
                 }),
-                occlusion: mesh.occlusion.get(i).map_or(0.0, |&ao| baked.start(ao, open_ao)),
+                occlusion: mesh.occlusion.get(i).map_or(0.0, |&ao| crate::sky_occlusion::baked_occlusion(ao)),
                 sky_dir: 0,
                 bounce: [0; 2],
                 wet: 0.0,

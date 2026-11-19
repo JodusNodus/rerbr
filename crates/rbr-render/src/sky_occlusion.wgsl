@@ -9,8 +9,7 @@ struct Params {
     toward: vec4<f32>,
     // The tiles' grid: x and y its corner (stage x and z), z the tile's side, w its columns.
     grid: vec4<f32>,
-    // x the grid's rows of tiles, y 1 in the run over the backdrop's vertices (against the backdrop alone), else 0, z
-    // 1 for `finish` to take a vertex's baked occlusion in place of the computed one where it has any.
+    // x the grid's rows of tiles, y 1 in the run over the backdrop's vertices (against the backdrop alone), else 0.
     counts: vec4<u32>,
 }
 
@@ -98,13 +97,9 @@ fn finish(@builtin(global_invocation_id) id: vec3<u32>) {
     let sum = sums[i];
     let total = totals[i];
     if (total > 0.0) {
-        // The vertex's occlusion so far is the baked one (the stage's own, 0 for none).
+        // The vertex's occlusion so far is the stage's baked one (`baked_occlusion`, 0 for none): the greater stays.
         let baked = word(i * STRIDE + OCCLUSION);
-        var occlusion = max(1.0 - sum.w / total, baked);
-        if (params.counts.z == 1u && baked > 0.0) {
-            occlusion = baked;
-        }
-        vertices[i * STRIDE + OCCLUSION] = bitcast<u32>(occlusion);
+        vertices[i * STRIDE + OCCLUSION] = bitcast<u32>(max(1.0 - sum.w / total, baked));
     }
     if (dot(sum.xyz, sum.xyz) > 1e-12) {
         vertices[i * STRIDE + SKY_DIR] = packed_direction(normalize(sum.xyz));
