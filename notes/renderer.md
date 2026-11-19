@@ -1505,6 +1505,8 @@ search, PCSS as the cascades), taps a texel apart, at most 9 a side and the rang
 apart over 3 mm texels drew a 1 cm grid of steps where the sun came through the glass (208 binnacle, 19:30). 580 208
 chase RMSE under 1 %; cost not measured.
 
+Night cabin (ours, 2026-11-19, `CABIN_LAMP_LIGHT`): the headlights' bounce in the lit cabin (`cabin_irradiance`) is 40 times its physical value, since the physical one left the dash, wheel and doors black (the road's 1 to 5 lux through the glass on albedo 0.05 is about 0.002 cd/m2). 8 times showed outlines only. Night Luceram 131 and Sardian Clio cockpits: the dash, wheel, door card and headliner read as dark shapes; the windscreen's mean brightness 82.0 to 80.6 and 111.2 to 109.1 (the cabin counts at 1/5 in the outside's meter), clipped 3.8 to 3.5 % and 7.0 to 6.8 %; Gabiria day cockpit byte-identical. Not checked: dusk, main beam, light dashes. Raising `CABIN_BOUNCE` (the lighting-off path's) changes nothing here.
+
 The stage's shadow in the cabin (2026-11-11, `cabin_stage_lit`): a box of the first cascade's texels `CABIN_PENUMBRA`
 (6 cm) to each side, 1 to 4 texels by the map's detail, in `texel_filter`'s taps for any width (k + 1 bilinear taps a
 side for 2k + 1 texels, no gaps). The one filtered compare of before drew a tree's shadow on the dash and the door as
