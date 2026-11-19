@@ -54,6 +54,8 @@ pub(super) struct BindKey {
     normal_scale: [u32; 2],
     /// A BTB highlight ([`crate::stage::Surface::highlight`]), its map in the specular binding.
     highlight: Option<Highlight>,
+    /// The material's light factors' bits ([`crate::stage::Surface::light`]).
+    light: [u32; 2],
 }
 
 impl BindKey {
@@ -163,6 +165,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         normal_doubled: normal.is_some_and(|n| n.doubled),
         normal_scale: normal.map_or([1.0f32; 2], |n| n.scale).map(f32::to_bits),
         highlight,
+        light: state.surface.map_or([1.0f32; 2], |s| s.light.0).map(f32::to_bits),
     }
 }
 
@@ -267,6 +270,7 @@ pub(super) fn bind_group(
             f32::from_bits(key.normal_scale[1]),
         ],
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
+        tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), 0.0, 0.0],
     };
     let glow = glow.map_or(&views.white, |g| &g.view);
     let mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

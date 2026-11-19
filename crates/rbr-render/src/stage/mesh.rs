@@ -185,6 +185,33 @@ pub struct Surface {
     /// The highlight: `map * colour * pow(max(0, N.H), power)`, the map (white without one) read at the vertex's
     /// `specular` uv.
     pub highlight: Option<Highlight>,
+    /// The material's `ReRbrLight` factors on the sky and bounce light and on the sun's (`[1, 1]`: none).
+    pub light: Light,
+}
+
+/// A BTB material's light factors `[ambient, diffuse]` (`ReRbrLight`), compared by their bits.
+#[derive(Debug, Clone, Copy)]
+pub struct Light(pub [f32; 2]);
+
+impl Light {
+    pub const NONE: Light = Light([1.0; 2]);
+    fn bits(&self) -> [u32; 2] {
+        self.0.map(f32::to_bits)
+    }
+}
+
+impl PartialEq for Light {
+    fn eq(&self, other: &Light) -> bool {
+        self.bits() == other.bits()
+    }
+}
+
+impl Eq for Light {}
+
+impl std::hash::Hash for Light {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bits().hash(state);
+    }
 }
 
 /// A BTB normal map. Its tangent frame is its uv's own on screen.

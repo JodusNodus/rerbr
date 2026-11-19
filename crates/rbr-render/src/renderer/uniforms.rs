@@ -55,6 +55,8 @@ pub(super) struct ModeUniform {
     pub(super) bump: [f32; 4],
     /// A BTB highlight's colour and power, zero for none ([`crate::stage::Highlight`]).
     pub(super) highlight: [f32; 4],
+    /// `xy` a BTB material's light factors on the sky and bounce light and on the sun's ([`crate::stage::Light`]).
+    pub(super) tint: [f32; 4],
 }
 
 /// How near the eye the backdrop is drawn at the least, metres (ours): the game's reach

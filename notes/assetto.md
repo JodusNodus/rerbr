@@ -383,7 +383,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   Zete 104 to 293 MB; Sa Calobra down 221 to 197 MB. Riudecanyes probes as before and autopilot finishes (1103.6 s,
   `false_start=0`). Sa Calobra, Glava Zete and Mont Ventoux were rendered, not driven.
 - Left as AC has them: cliff faces stretched at their base by their own UVs, and world `(x,z)` multilayer detail smeared
-  down steep verges. Missing against AC: normal and specular maps, and per-material `ksAmbient`/`ksDiffuse`.
+  down steep verges. Per-material `ksAmbient`/`ksDiffuse` are the `ReRbrLight` factors (below).
 - Reinstall, 2026-11-18: the 30 installed AC stages other than Ebisu were converted again with the options from their
   `ac-conversion.json` (`--remesh --collision-corridor 25` where remeshed, `--circuit` for Gunma); previous folders are in
   the player's `backups/pre-fidelity-20261118`. Installed AC stages 16 to 25 GB. Ebisu was left: its install predates
@@ -396,7 +396,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   rocks are its `Background` multilayer, whose detail B is the 32 MB satellite photo of its diffuse repeated every 5 m, and
   the stretched cliffs (Porto–Piana, Puech Arnal, La Bollène's tunnel) are the source's UVs; both are unchanged from the
   first conversions. Porto–Piana's trees and road carry `ksAmbient`/`ksDiffuse` near 0.12 against 0.2 elsewhere: AC draws
-  them darker, ReRBR ignores the materials' `ambient`, and this is not reproduced.
+  them darker; `ReRbrLight` now carries the ratio to the stage's reference.
 - Reinstalled with `56366a8`: the same 30 stages, 27 GB (previous install not kept; the pre-fidelity folders remain in the
   backup). Riudecanyes 2022 835 MB and 15 s, La Bollène Original 588 MB, Sa Calobra downhill 602 MB, CréQuy 2025 3.3 GB and
   54 s. La Bollène Original (750.1 s) and Turini Gallego (259.9 s) finish headless with `false_start=0`.
@@ -587,6 +587,12 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
 - `ksPerPixelNM_UVMult` (19 installed tracks, 2.0 M triangles) reads its diffuse at uv * (1 + `diffuseMult`) and `txNormal` at
   uv * (1 + `normalMult`). The triangles' UVs carry the first (`stage.rs`, `material::uv_multipliers`) and the section
   `ReRbrBumpScale` the ratio ([btb.md](btb.md)). Not for a placeholder diffuse.
+- `ReRbrLight=<ambient>,<diffuse>` (2026-11-19): `ksAmbient`/`ksDiffuse` relative to the reference, the
+  triangle-weighted median of each over the drawn opaque materials (`material::normalise_light`, after the last
+  section), clamped to 0.25..3, omitted within 2% of 1 on both; none for placeholders or materials lacking either.
+  Trees as CSP cards keep their own brightness (no key). Sa Calobra down: reference 0.275/0.06 (the walls); road 3/3
+  (clamped from 4.0/8.3), terrain 2.2–2.5/3 (clamped), boulders 0.84/1.0. Where the reference is a dark material most
+  of the stage clamps at 3, so the factor is a relative brightness, not AC's absolute level.
 - Tried and taken out again (Roure, renders at four driveline points, midday clear, 08:15 low sun and 11:00 overcast; mean change
   of 255 levels): `ksMultilayer_fresnel_nm`'s `txDetailNM` (at the source uv * the pair `detailNMMult`) and the
   `ksPerPixelMultiMap_(AT_)NMDetail` detail layer (`txNormalDetail` at uv * `detailUVMultiplier`, `N + (1 - diffuse.a) *

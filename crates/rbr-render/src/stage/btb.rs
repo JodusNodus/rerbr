@@ -6,7 +6,7 @@
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
 
-use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Lod, Mesh, NormalMap, Surface, Vertex};
+use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Light, Lod, Mesh, NormalMap, Surface, Vertex};
 use super::{
     Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
 };
@@ -117,7 +117,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 power: material.specular_power.max(1.0),
                 map: texture(&material.specular),
             });
-            let surface = (normal.is_some() || highlight.is_some()).then_some(Surface { normal, highlight });
+            let light = Light(material.light);
+            let surface = (normal.is_some() || highlight.is_some() || light != Light::NONE)
+                .then_some(Surface { normal, highlight, light });
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,

@@ -157,6 +157,8 @@ struct Mode {
     bump: vec4<f32>,
     // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
     highlight: vec4<f32>,
+    // xy a BTB material's factors on the sky and bounce light and on the sun's (`stage::Light`, `own_light`); 1 for none.
+    tint: vec4<f32>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -684,7 +686,7 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             colour = with_highlight(colour, lit, front, sun_seen);
         }
     } else {
-        colour = relit(v) * surface;
+        colour = relit(v) * surface * (0.5 * (mode.tint.x + mode.tint.y));
     }
     // Our wet road (`wet_plus`), with the puddles' addition in wet and damp weather where the surface takes it.
     let wet = WATER_PLUS && frame.enhance.z != 0.0 && frame.wetness.x > 0.0;
@@ -1231,7 +1233,7 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
     if (SUN_MASK) {
         contact = textureLoad(sun_contact, pixel / 2, 0).r;
     }
-    return pow(hue, vec3<f32>(2.2)) * (((sky + bounce) * ambient_occlusion * contact * (1.0 + through) + sun) * occlusion);
+    return pow(hue, vec3<f32>(2.2)) * (((sky + bounce) * (ambient_occlusion * contact * (1.0 + through) * mode.tint.x) + sun * mode.tint.y) * occlusion);
 }
 
 // A grass tuft's or low bush's pixel (`foliage::with_plants`: `specular.y` 1, `wet` its share of height, `uv1` the way

@@ -849,6 +849,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut materials = String::new();
     let mut names = Vec::new();
     let mut drawn_triangles = 0;
+    let mut light_triangles = BTreeMap::<String, usize>::new();
     let mut source_triangles = 0;
     let mut surface_counts = BTreeMap::<String, usize>::new();
     let mut repairs = Vec::new();
@@ -973,6 +974,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         let mut batch = Vec::new();
         for (((_, _, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
             drawn_triangles += b.triangles.len();
+            *light_triangles.entry(b.material.clone()).or_default() += b.triangles.len();
             let lod_in = f32::from_bits(lod_in).max(0.);
             let source_lod = f64::from(f32::from_bits(lod_out));
             // A range the source gives is padded; the cap for a mesh without one is only a choice. Far scenery is drawn
@@ -1111,7 +1113,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     for (i, n) in names.iter().enumerate() {
         let _ = writeln!(list, "MAT_{i}={n}");
     }
-    write("materials.ini", format!("{list}\n{materials}"))?;
+    write("materials.ini", format!("{list}\n{}", material::normalise_light(&materials, &light_triangles)))?;
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
     write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;

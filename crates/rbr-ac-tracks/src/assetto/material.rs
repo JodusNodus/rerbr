@@ -248,7 +248,7 @@ impl TextureBank {
         if is_placeholder(model, mat) {
             return Ok(Extras::default());
         }
-        let mut extras = Extras { highlight: highlight(mat), ..Extras::default() };
+        let mut extras = Extras { highlight: highlight(mat), light: light(mat), ..Extras::default() };
         let normal = mat.textures.get("txNormal").filter(|_| !mat.shader.contains("Multilayer"));
         if let Some(name) = normal {
             // A normal map that cannot be read is no normal map.
@@ -274,7 +274,7 @@ impl TextureBank {
         let mat = &model.materials[index];
         let highlight = highlight(mat).filter(|_| !is_placeholder(model, mat));
         self.highlighted += usize::from(highlight.is_some());
-        Extras { highlight, ..Extras::default() }
+        Extras { highlight, light: light(mat).filter(|_| !is_placeholder(model, mat)), ..Extras::default() }
     }
     /// The red channel of a spec map (AC's specular share) as an opaque grey texture.
     fn share(&mut self, model: &Model, name: &str) -> Result<Option<String>, String> {
@@ -370,6 +370,72 @@ pub struct Extras {
     pub highlight: Option<(f32, f32)>,
     /// `ReRbrBumpScale`: the normal map is read at its UV times this ([`uv_multipliers`]).
     pub bump_scale: Option<f32>,
+    /// `(ksAmbient, ksDiffuse)` as the material gives them; [`normalise_light`] turns them into `ReRbrLight`.
+    pub light: Option<[f32; 2]>,
+}
+
+/// `(ksAmbient, ksDiffuse)` of a material that declares both.
+fn light(mat: &Material) -> Option<[f32; 2]> {
+    let both = [mat.properties.get("ksAmbient")?, mat.properties.get("ksDiffuse")?];
+    Some(both.map(|v| *v).map(|v| v.max(0.)))
+}
+
+/// Factors below this or above that are the most `ReRbrLight` moves a material.
+const LIGHT_RANGE: (f32, f32) = (0.25, 3.0);
+
+/// The weighted median of `(value, weight)` pairs.
+fn weighted_median(mut values: Vec<(f32, usize)>) -> Option<f32> {
+    values.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let half = values.iter().map(|v| v.1).sum::<usize>().div_ceil(2);
+    let mut seen = 0;
+    values.into_iter().find(|v| {
+        seen += v.1;
+        seen >= half
+    }).map(|v| v.0)
+}
+
+/// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
+/// track's reference: the median of each over the drawn opaque materials, by `triangles` per section. A factor within
+/// 2% of 1 for both drops the line.
+pub fn normalise_light(materials: &str, triangles: &BTreeMap<String, usize>) -> String {
+    let mut sections = Vec::<(&str, bool, Option<[f32; 2]>)>::new();
+    for line in materials.lines() {
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            sections.push((name, false, None));
+        } else if let Some(last) = sections.last_mut() {
+            last.1 |= line == "techniqueName=Default";
+            if let Some(v) = line.strip_prefix("ReRbrLight=") {
+                let v: Vec<f32> = v.split(',').filter_map(|n| n.parse().ok()).collect();
+                last.2 = <[f32; 2]>::try_from(v).ok();
+            }
+        }
+    }
+    let reference = |axis: usize| {
+        let values =
+            sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *triangles.get(s.0)?))).collect();
+        weighted_median(values).filter(|m| *m > 0.)
+    };
+    let (Some(ambient), Some(diffuse)) = (reference(0), reference(1)) else {
+        return materials.lines().filter(|l| !l.starts_with("ReRbrLight=")).map(|l| format!("{l}\n")).collect();
+    };
+    let mut out = String::new();
+    let mut at = 0;
+    for line in materials.lines() {
+        if line.starts_with('[') {
+            at += 1;
+        }
+        if line.starts_with("ReRbrLight=") {
+            let raw = sections[at - 1].2.unwrap_or([ambient, diffuse]);
+            let f = [raw[0] / ambient, raw[1] / diffuse].map(|v| v.clamp(LIGHT_RANGE.0, LIGHT_RANGE.1));
+            if f.iter().any(|v| (v - 1.).abs() > 0.02) {
+                let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 /// The sun highlight of an opaque, non-placeholder material that declares `ksSpecular`.
@@ -416,6 +482,9 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     }
     if let Some(scale) = extras.bump_scale.filter(|_| extras.normal.is_some()) {
         let _ = writeln!(out, "ReRbrBumpScale={}", decimal(scale));
+    }
+    if let Some([ambient, diffuse]) = extras.light {
+        let _ = writeln!(out, "ReRbrLight={},{}", decimal(ambient), decimal(diffuse));
     }
     out.push('\n');
 }
@@ -669,5 +738,37 @@ mod tests {
             assert!(colour.iter().all(|&c| (c - f64::from(specular)).abs() < 1e-6), "{colour:?}");
             assert_eq!(value("SpecularPower="), [f64::from(power)]);
         }
+    }
+
+    #[test]
+    fn light_is_written_relative_to_the_weighted_median_and_clamped() {
+        let section = |name: &str, technique: &str, light: &str| {
+            format!("[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\n{light}diffuseTexture=t.dds\n\n")
+        };
+        let materials = [
+            section("road", "Default", "ReRbrLight=1.1,0.5\n"),
+            section("rock", "Default", "ReRbrLight=0.22,0.06\n"),
+            section("same", "Default", "ReRbrLight=1.1,0.5\n"),
+            section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"),
+            section("plain", "Default", ""),
+        ]
+        .concat();
+        let triangles = BTreeMap::from(
+            [("road", 60), ("rock", 10), ("same", 10), ("leaf", 1000), ("plain", 5)].map(|(k, v)| (k.to_owned(), v)),
+        );
+        let out = normalise_light(&materials, &triangles);
+        let light = |name: &str| {
+            let at = out.find(&format!("[{name}]")).unwrap();
+            out[at..].lines().take_while(|l| !l.is_empty()).find_map(|l| l.strip_prefix("ReRbrLight=")).map(str::to_owned)
+        };
+        // The median is the road's 1.1/0.5 (70 of 80 opaque triangles; the transparent leaf does not count).
+        assert_eq!(light("road"), None);
+        assert_eq!(light("same"), None);
+        assert_eq!(light("rock").as_deref(), Some("0.25,0.25"));
+        assert_eq!(light("leaf").as_deref(), Some("0.272727,0.25"));
+        assert_eq!(light("plain"), None);
+        // Without any opaque material to reference nothing is written.
+        let none = normalise_light(&section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"), &triangles);
+        assert!(!none.contains("ReRbrLight"));
     }
 }

@@ -342,6 +342,8 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   ([assetto.md](assetto.md#normal-maps-and-highlights-2026-11-19)).
 - `ReRbrBumpScale=s` or `=u,v` (ReRBR's own): the normal map is read at its uv times this (`scene::Material::bump_scale`,
   `NormalMap::scale`); written with a decimal point, as `decimal_floats` reads `2,5` as 2.5.
+- `ReRbrLight=a,d` (ReRBR's own): factors on the sky and bounce light and on the sun's (`scene::Material::light`, default
+  `1,1`; `stage::Light`, `mode.tint`, `own_light`). The plain path takes their mean. Retail stages have no key.
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

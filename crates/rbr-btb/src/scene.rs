@@ -130,6 +130,9 @@ pub struct Material {
     /// ReRBR's `ReRbrBumpScale=u,v`: the normal map is read at its UV set times this. `[1, 1]` where the section has
     /// none.
     pub bump_scale: [f32; 2],
+    /// ReRBR's `ReRbrLight=ambient,diffuse`: factors on the sky and bounce light, and on the sun's. `[1, 1]` where the
+    /// section has none.
+    pub light: [f32; 2],
 }
 
 impl Material {
@@ -507,6 +510,10 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         Some(&[s]) => [s as f32; 2],
         _ => [1.0; 2],
     };
+    let light = match m.entry("ReRbrLight").map(track::decimal_floats).as_deref() {
+        Some(&[a, d]) => [a as f32, d as f32],
+        _ => [1.0; 2],
+    };
     Material {
         name: m.name.clone(),
         effect: Effect::parse(own.or(m.effect.as_deref())),
@@ -521,6 +528,7 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         multiplier: find("multiplierTexture"),
         additive: find("additiveTexture"),
         bump_scale,
+        light,
     }
 }
 
@@ -683,5 +691,23 @@ mod tests {
         assert_eq!(scale(&[]), [1.0; 2]);
         assert_eq!(scale(&[("ReRbrBumpScale", "2000.0,4000.5")]), [2000.0, 4000.5]);
         assert_eq!(scale(&[("ReRbrBumpScale", "3.5")]), [3.5; 2]);
+    }
+
+    #[test]
+    fn the_light_factors_read_a_pair_or_default_to_one() {
+        let section = |entries: &[(&str, &str)]| track::Material {
+            name: "m".into(),
+            effect: Some("BTB_Diffuse".into()),
+            technique: None,
+            ambient: Vec::new(),
+            specular_power: None,
+            specular_color: Vec::new(),
+            entries: entries.iter().map(|&(k, v)| (k.to_owned(), v.to_owned())).collect(),
+        };
+        let textures = Textures(Default::default());
+        let light = |entries: &[(&str, &str)]| material(&section(entries), &textures).light;
+        assert_eq!(light(&[]), [1.0; 2]);
+        assert_eq!(light(&[("ReRbrLight", "0.5,1.5")]), [0.5, 1.5]);
+        assert_eq!(light(&[("ReRbrLight", "0.5")]), [1.0; 2]);
     }
 }
