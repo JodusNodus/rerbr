@@ -46,25 +46,16 @@ pub fn environment_args(
     wetness: Option<u32>,
     ghosted: bool,
 ) -> (Vec<String>, Vec<String>) {
-    let mut viewer = Vec::new();
-    if let Some(section) = section {
-        viewer.extend(["--sky".to_owned(), section]);
-    }
-    if let Some(fog) = fog {
-        viewer.extend(["--fog".to_owned(), fog.name().to_owned()]);
-    }
-    if let Some(clouds) = clouds {
-        viewer.extend(["--clouds".to_owned(), clouds.name().to_owned()]);
-    }
-    if let Some(precipitation) = precipitation {
-        viewer.extend(["--precipitation".to_owned(), precipitation.name().to_owned()]);
-    }
-    let mut standalone = Vec::new();
-    if !ghosted {
-        if let Some(wetness) = wetness {
-            standalone.extend(["--wetness".to_owned(), wetness_name(wetness).to_owned()]);
-        }
-    }
+    let flags = [
+        ("--sky", section),
+        ("--fog", fog.map(|v| v.name().to_owned())),
+        ("--clouds", clouds.map(|v| v.name().to_owned())),
+        ("--precipitation", precipitation.map(|v| v.name().to_owned())),
+    ];
+    let viewer = flags.into_iter().filter_map(|(flag, v)| Some([flag.to_owned(), v?])).flatten().collect();
+    let standalone = wetness
+        .filter(|_| !ghosted)
+        .map_or_else(Vec::new, |wetness| vec!["--wetness".to_owned(), wetness_name(wetness).to_owned()]);
     (viewer, standalone)
 }
 

@@ -328,6 +328,11 @@ fn on_off_text(value: Option<bool>) -> Option<String> {
     value.map(|v| if v { "on" } else { "off" }.to_owned())
 }
 
+/// A number as written.
+fn text<T: ToString>(value: Option<T>) -> Option<String> {
+    value.map(|v| v.to_string())
+}
+
 /// A [`Choice`]'s settings word.
 fn choice<T: Choice>(value: Option<T>) -> Option<String> {
     value.map(|c| c.name().to_owned())
@@ -526,9 +531,9 @@ impl Settings {
         let mut out = String::from("[launcher]\n");
         for (key, value) in [
             ("car", self.car.clone()),
-            ("map", self.map.map(|v| v.to_string())),
-            ("circuit", self.circuit.map(|v| v.to_string())),
-            ("circuit_laps", self.circuit_laps.map(|v| v.to_string())),
+            ("map", text(self.map)),
+            ("circuit", text(self.circuit)),
+            ("circuit_laps", text(self.circuit_laps)),
             ("circuit_notes", on_off_text(self.circuit_notes)),
             ("recent_cars", joined_names(&self.recent_cars)),
             ("recent_maps", joined_ids(&self.recent_maps)),
@@ -549,13 +554,13 @@ impl Settings {
                 }),
             ),
             ("size", self.size.map(|(w, h)| format!("{w}x{h}"))),
-            ("fov", self.fov.map(|v| v.to_string())),
-            ("chase_fov", self.chase_fov.map(|v| v.to_string())),
-            ("volume", self.volume.map(|v| v.to_string())),
-            ("engine_volume", self.engine_volume.map(|v| v.to_string())),
-            ("codriver_volume", self.codriver_volume.map(|v| v.to_string())),
-            ("effects_volume", self.effects_volume.map(|v| v.to_string())),
-            ("tyres_volume", self.tyres_volume.map(|v| v.to_string())),
+            ("fov", text(self.fov)),
+            ("chase_fov", text(self.chase_fov)),
+            ("volume", text(self.volume)),
+            ("engine_volume", text(self.engine_volume)),
+            ("codriver_volume", text(self.codriver_volume)),
+            ("effects_volume", text(self.effects_volume)),
+            ("tyres_volume", text(self.tyres_volume)),
             ("codriver", on_off_text(self.codriver)),
             ("codriver_voice", self.codriver_voice.clone()),
             ("codriver_style", self.codriver_style.clone()),
@@ -563,15 +568,15 @@ impl Settings {
             ("hud", on_off_text(self.hud)),
             ("units", self.mph.map(|v| if v { "mph" } else { "kmh" }.to_owned())),
             ("fps", on_off_text(self.fps)),
-            ("pace_stack", self.pace_stack.map(|v| v.to_string())),
+            ("pace_stack", text(self.pace_stack)),
             ("wipers", self.wipers.map(|v| v.name().to_owned())),
             ("dials", on_off_text(self.dials)),
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
             ("hud_show", self.hud_hide.and_then(|p| p.shown())),
             ("hud_scale", self.hud_layout.filter(|l| l.scale != 100).map(|l| l.scale.to_string())),
             ("hud_layout", self.hud_layout.and_then(|l| l.list())),
-            ("callout_distance", self.callout_distance.map(|v| v.to_string())),
-            ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
+            ("callout_distance", text(self.callout_distance)),
+            ("marker_threshold", text(self.marker_threshold)),
             ("damage", choice(self.damage)),
             ("auto_gears", on_off_text(self.auto_gears)),
             ("gear_guard", on_off_text(self.gear_guard)),
@@ -581,20 +586,20 @@ impl Settings {
             ("install_folder", self.install_folder.clone()),
             ("ngp_physics", self.ngp_physics.clone()),
             ("ngp_dll", self.ngp_dll.clone()),
-            ("head_gasket", self.head_gasket.map(|v| v.to_string())),
+            ("head_gasket", text(self.head_gasket)),
             ("physics", choice(self.physics)),
-            ("render_scale", self.render_scale.map(|v| v.to_string())),
+            ("render_scale", text(self.render_scale)),
             ("wet_roads", choice(self.wet_roads)),
             ("detail", choice(self.detail)),
             ("upscale_textures", on_off_text(self.upscale_textures)),
             ("present", self.present.map(|v| v.name().to_owned())),
-            ("max_fps", self.max_fps.map(|v| v.to_string())),
+            ("max_fps", text(self.max_fps)),
             ("mirrors", self.mirrors.map(Rate::name)),
             ("fullscreen", on_off_text(self.fullscreen)),
             ("triple", on_off_text(self.triple)),
-            ("triple_diagonal", self.triple_diagonal.map(|v| v.to_string())),
-            ("triple_bezel", self.triple_bezel.map(|v| v.to_string())),
-            ("triple_distance", self.triple_distance.map(|v| v.to_string())),
+            ("triple_diagonal", text(self.triple_diagonal)),
+            ("triple_bezel", text(self.triple_bezel)),
+            ("triple_distance", text(self.triple_distance)),
             ("triple_angle", self.triple_angle.map(|angle| angle.map_or_else(|| "auto".to_owned(), |a| a.to_string()))),
             ("triple_monitors", self.triple_monitors.clone().map(|monitors| monitors.join(","))),
             ("hdr", on_off_text(self.hdr)),
