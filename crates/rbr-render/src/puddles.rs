@@ -389,6 +389,58 @@ pub(crate) fn mark_roads(meshes: &mut [Mesh], ground: &[GroundTriangle], by_text
     }
 }
 
+/// How far a road's tarmac reaches over the road material the collision calls gravel or dirt for the sheen, metres.
+const SHOULDER_REACH: f32 = 8.0;
+
+/// Marks what the BTB road sheen (`Surface::sheen`, `ReRbrSheen`) needs beyond [`mark_roads`], over a road ([`roads`]):
+/// the road material (a texture of `roads`) the collision calls gravel or dirt (0.5), within [`SHOULDER_REACH`] of
+/// tarmac, takes the tarmac's 1 (Roure's shoulders showed as a dark band beside the sheened tarmac).
+pub(crate) fn mark_sheen(meshes: &mut [Mesh], roads: &Roads) {
+    const CELL: f32 = SHOULDER_REACH;
+    let mut tarmac: HashMap<(i32, i32), Vec<[f32; 3]>> = HashMap::new();
+    for mesh in meshes.iter() {
+        for i in ground_vertices(mesh).collect::<HashSet<_>>() {
+            let v = &mesh.vertices[i];
+            if v.wet >= 1.0 {
+                tarmac.entry(cell_of(v.position, CELL)).or_default().push(v.position);
+            }
+        }
+    }
+    let near = |p: [f32; 3]| {
+        let (x, z) = cell_of(p, CELL);
+        (-1..=1)
+            .flat_map(|dx| (-1..=1).map(move |dz| (x + dx, z + dz)))
+            .filter_map(|c| tarmac.get(&c))
+            .flatten()
+            .any(|t| (t[0] - p[0]).hypot(t[2] - p[2]) < SHOULDER_REACH && (t[1] - p[1]).abs() < ROAD_REACH)
+    };
+    let marks = in_parallel(meshes, |mesh| {
+        let mut marks = HashMap::<usize, f32>::new();
+        for draw in &mesh.draws {
+            let sheen = draw.state.surface.is_some_and(|s| s.sheen.is_some());
+            let on_road = draw.state.textures[0].is_some_and(|t| roads.textures.contains(&t));
+            if !sheen || mesh.anchor != Anchor::World {
+                continue;
+            }
+            for &i in &mesh.indices[draw.indices.clone()] {
+                let Some(v) = mesh.vertices.get(i as usize) else { continue };
+                if marks.contains_key(&(i as usize)) {
+                    continue;
+                }
+                if draw.state.ground && on_road && v.wet > 0.0 && v.wet < 1.0 && near(v.position) {
+                    marks.insert(i as usize, 1.0);
+                }
+            }
+        }
+        marks
+    });
+    for (mesh, marks) in meshes.iter_mut().zip(marks) {
+        for (i, wet) in marks {
+            mesh.vertices[i].wet = mesh.vertices[i].wet.max(wet);
+        }
+    }
+}
+
 /// How far above the collision surface, metres, a ground triangle's centre may lie and still be the ground itself
 /// (not a wall, a roof or a bridge deck over it).
 const GROUND_REACH: f32 = 0.6;
@@ -542,6 +594,7 @@ mod tests {
             alpha_ref: None,
             mip_bias: false,
             ground: true,
+            grass: false,
             cull_back: false,
             blend: false,
             depth_test: true,

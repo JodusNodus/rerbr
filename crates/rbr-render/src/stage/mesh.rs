@@ -71,7 +71,7 @@ pub struct Vertex {
     pub bounce: [u32; 2],
     /// How much of the wet film the ground takes in wet and damp weather (ours, [`crate::puddles::mark_roads`]): by the
     /// collision surface under it, tarmac 1, gravel and dirt 0.5; 0 elsewhere. [`SNOW_MARK`](crate::puddles::SNOW_MARK) on snow
-    /// that takes no film. Dry too for the grass field ([`Stage::mark_surfaces`](super::Stage::mark_surfaces)).
+    /// that takes no film. Dry too for the grass field and a BTB road sheen ([`Stage::mark_surfaces`](super::Stage::mark_surfaces)).
     pub wet: f32,
     /// How far the wet road's edge is from the vertex, metres, up to 8 (ours, [`crate::puddles::mark_roads`]); 0
     /// elsewhere; [`GROUND_MARK`](crate::puddles::GROUND_MARK) on the off-road ground for the grass field
@@ -161,6 +161,8 @@ pub struct DrawState {
     /// The near ground (ours): a geometry block's list 1 draws (the biased ones), a BTB stage's ground objects. The
     /// terrain detail, the wet film and the grass field take it (`crate::puddles::ground`).
     pub ground: bool,
+    /// A BTB material the stage's grass grows on (`ReRbrGrass`, [`crate::grass`]); `false` elsewhere.
+    pub grass: bool,
     /// Cull back faces (`D3DCULL_CCW`).
     pub cull_back: bool,
     /// Alpha blended over the frame.
@@ -185,6 +187,102 @@ pub struct Surface {
     /// The highlight: `map * colour * pow(max(0, N.H), power)`, the map (white without one) read at the vertex's
     /// `specular` uv.
     pub highlight: Option<Highlight>,
+    /// The dry road sheen (`ReRbrSheen`): a rough dielectric's sky reflection and sun highlight at this roughness, in
+    /// place of the highlight.
+    pub sheen: Option<Sheen>,
+    /// The material's `ReRbrLight` factors on the sky and bounce light and on the sun's (`[1, 1]`: none).
+    pub light: Light,
+    /// A multilayer material summed per pixel (`ReRbrLayer*`); its diffuse is the draw's first texture.
+    pub layers: Option<Layers>,
+}
+
+/// An Assetto Corsa multilayer material (`rbr_btb::scene::Layers`): `diffuse * (R*mask.r + G*mask.g + B*mask.b +
+/// A*mask.a) * magic`, with the diffuse and the mask at the mesh's `uv0` and each detail at `scale` times either `uv0`
+/// or AC's world `(x, z)`. The draw's own first texture stays the material's bake of that sum, which the grass and the
+/// ground detail read on the CPU.
+#[derive(Debug, Clone, Copy)]
+pub struct Layers {
+    pub diffuse: TextureRef,
+    pub mask: TextureRef,
+    pub details: [TextureRef; 4],
+    /// Details at the world position (else at `uv0`).
+    pub world: bool,
+    pub magic: f32,
+    /// Each detail's `(u, v)` multiplier.
+    pub scale: [[f32; 2]; 4],
+    /// Each detail's offset in texture units, the stage origin's share (`world`), in `0..1`.
+    pub offset: [[f32; 2]; 4],
+}
+
+impl Layers {
+    fn bits(&self) -> ([TextureRef; 6], bool, [u32; 17]) {
+        let numbers = std::iter::once(self.magic).chain(self.scale.iter().chain(&self.offset).flatten().copied());
+        let mut bits = [0; 17];
+        for (slot, number) in bits.iter_mut().zip(numbers) {
+            *slot = number.to_bits();
+        }
+        let [a, b, c, d] = self.details;
+        ([self.diffuse, self.mask, a, b, c, d], self.world, bits)
+    }
+}
+
+impl PartialEq for Layers {
+    fn eq(&self, other: &Layers) -> bool {
+        self.bits() == other.bits()
+    }
+}
+
+impl Eq for Layers {}
+
+impl std::hash::Hash for Layers {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bits().hash(state);
+    }
+}
+
+/// A BTB road's dry sheen.
+#[derive(Debug, Clone, Copy)]
+pub struct Sheen {
+    pub roughness: f32,
+}
+
+impl PartialEq for Sheen {
+    fn eq(&self, other: &Sheen) -> bool {
+        self.roughness.to_bits() == other.roughness.to_bits()
+    }
+}
+
+impl Eq for Sheen {}
+
+impl std::hash::Hash for Sheen {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.roughness.to_bits().hash(state);
+    }
+}
+
+/// A BTB material's light factors `[ambient, diffuse]` (`ReRbrLight`), compared by their bits.
+#[derive(Debug, Clone, Copy)]
+pub struct Light(pub [f32; 2]);
+
+impl Light {
+    pub const NONE: Light = Light([1.0; 2]);
+    fn bits(&self) -> [u32; 2] {
+        self.0.map(f32::to_bits)
+    }
+}
+
+impl PartialEq for Light {
+    fn eq(&self, other: &Light) -> bool {
+        self.bits() == other.bits()
+    }
+}
+
+impl Eq for Light {}
+
+impl std::hash::Hash for Light {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bits().hash(state);
+    }
 }
 
 /// A BTB normal map. Its tangent frame is its uv's own on screen.
@@ -475,6 +573,7 @@ pub(super) fn block_mesh(block: &lbs::GeometryBlock, report: &mut LoadReport) ->
                     // List 1 (the render set's list at `+0x94`) is the one `HH_H12D_7500_FillFloat` biases.
                     mip_bias: lod == Lod::Near,
                     ground: lod == Lod::Near,
+                    grass: false,
                     cull_back: true,
                     blend: false,
                     depth_test: true,
@@ -538,6 +637,7 @@ pub(super) fn object_mesh(item: &lbs::ObjectItem, report: &mut LoadReport) -> Me
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
         ground: false,
+        grass: false,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -581,6 +681,7 @@ pub(super) fn interactive_mesh(object: &lbs::InteractiveObject<'_>, report: &mut
             alpha_ref: Some(OBJECT_ALPHA_REF),
             mip_bias: false,
             ground: false,
+            grass: false,
             cull_back: false,
             blend: false,
             depth_test: true,
@@ -618,6 +719,7 @@ pub(super) fn face_mesh(item: &lbs::SkyItem, report: &mut LoadReport) -> Mesh {
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
         ground: false,
+        grass: false,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -701,6 +803,7 @@ pub(super) fn water_mesh(item: &lbs::SurfaceItem<'_>, report: &mut LoadReport) -
                 alpha_ref: Some(0),
                 mip_bias: false,
                 ground: false,
+                grass: false,
                 cull_back: true,
                 blend: true,
                 depth_test: true,

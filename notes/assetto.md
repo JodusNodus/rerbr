@@ -22,7 +22,8 @@
 - CréQuy's `objects.kn5` has X8R8G8B8 DDS textures without an alpha mask, such as `Blank_20_20_22.dds`.
   Convert these from their channel masks to RGBA8; an unused fourth byte is not alpha.
 - Base diffuse and alpha are retained. `ksMultilayer*` materials are baked into one texture
-  ([Multilayer](#multilayer-and-placeholder-textures-2026-11-16)), world-space ones per drawn tile, and `useDetail`
+  ([Multilayer](#multilayer-and-placeholder-textures-2026-11-16)), drawn per pixel by ReRBR's renderer where it reads `ReRbrLayer*`
+  ([Multilayer at render time](#multilayer-at-render-time-2026-11-19)), else world-space ones per drawn tile, and `useDetail`
   materials with their detail ([Fidelity](#fidelity-2026-11-17)). Normal and reflection shading, lighting factors, CSP
   scripts and runtime model replacements remain unsupported. Conversion reports list simplified shader kinds and missing
   textures.
@@ -383,7 +384,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   Zete 104 to 293 MB; Sa Calobra down 221 to 197 MB. Riudecanyes probes as before and autopilot finishes (1103.6 s,
   `false_start=0`). Sa Calobra, Glava Zete and Mont Ventoux were rendered, not driven.
 - Left as AC has them: cliff faces stretched at their base by their own UVs, and world `(x,z)` multilayer detail smeared
-  down steep verges. Missing against AC: normal and specular maps, and per-material `ksAmbient`/`ksDiffuse`.
+  down steep verges. Per-material `ksAmbient`/`ksDiffuse` are the `ReRbrLight` factors (below).
 - Reinstall, 2026-11-18: the 30 installed AC stages other than Ebisu were converted again with the options from their
   `ac-conversion.json` (`--remesh --collision-corridor 25` where remeshed, `--circuit` for Gunma); previous folders are in
   the player's `backups/pre-fidelity-20261118`. Installed AC stages 16 to 25 GB. Ebisu was left: its install predates
@@ -396,7 +397,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   rocks are its `Background` multilayer, whose detail B is the 32 MB satellite photo of its diffuse repeated every 5 m, and
   the stretched cliffs (Porto–Piana, Puech Arnal, La Bollène's tunnel) are the source's UVs; both are unchanged from the
   first conversions. Porto–Piana's trees and road carry `ksAmbient`/`ksDiffuse` near 0.12 against 0.2 elsewhere: AC draws
-  them darker, ReRBR ignores the materials' `ambient`, and this is not reproduced.
+  them darker; `ReRbrLight` now carries the ratio to the stage's reference.
 - Reinstalled with `56366a8`: the same 30 stages, 27 GB (previous install not kept; the pre-fidelity folders remain in the
   backup). Riudecanyes 2022 835 MB and 15 s, La Bollène Original 588 MB, Sa Calobra downhill 602 MB, CréQuy 2025 3.3 GB and
   54 s. La Bollène Original (750.1 s) and Turini Gallego (259.9 s) finish headless with `false_start=0`.
@@ -437,6 +438,18 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (Sa Calobra 130 k triangles of terrain and sea, La Bollène 67 k of peaks, St Laurent 225 k) and CSP's trees.
 - Far scenery: outside the corridor a triangle is kept where its longest side is at least 1/50 of its distance from the
   course (`Far`), to 10 km, grouped by 1 km tile and drawn to 10 km. 49 k to 183 k triangles (2 to 5 %) a stage.
+  The size test alone cut holes in mountain surfaces (it drops the small triangles inside and keeps the large ones, sky
+  showed on ridges), so a dropped triangle in the same mesh that shares a vertex with a kept far triangle is kept too,
+  `FAR_RINGS` (3) times over (`Far::connected`). Sa Calobra down: far 49 k to 103 k triangles, `Objects.zip` 95.5 to
+  96.8 MB, drawn 1.859 M to 1.912 M; Roure rbcl 177 k to 219 k, 114.3 to 115.1 MB.
+- Far scenery, whole surfaces (2026-11-19): three rings still left floating crags over Sa Calobra's ridges (rock view,
+  7.34 km), so `Far::connected` now keeps the whole surface joined to a kept far triangle through shared vertices (flood
+  fill), within 10 km. Sa Calobra down far 103 k to 130 k, `Objects.zip` 96.7 to 97.5 MB; Roure rbcl 219 k to 221 k;
+  conversion times unchanged (17 s, 25 s).
+- Corridor meshes without a source range were all cut at `--lod` (1000 m): the valley's terrain and road below the
+  4.8 km wall view dropped out in 128 m cells, a staircase-edged hole showing sky under the far mountain. An opaque
+  corridor mesh is now drawn to its largest box side / `FAR_SHARE` (between `--lod` and 10 km; a full 128 m cell to
+  6.4 km); cut-outs (grass, trees) keep `--lod`. Scene pass at two Sa Calobra views 2.31/1.81 ms to 2.33/1.81 ms.
 - CSP trees: `extension/*.ini` `[TREES]` `LIST_<n>` names a file in `extension/trees` of `tree:` lines (`pos`, `size`,
   `width`; `configure: size variance`/`angle variance` set ranges for those that follow) of `.bin` files, each a zip of
   `tree.ini` (`HEIGHT`, `WIDTH`, `[SHADING] BRIGHTNESS`, LOD meshes), `.mesh` files (format in `crates/rbr-ac-tracks/src/assetto/trees.rs`,
@@ -456,8 +469,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 - Roure's `pines_distant` (the forest on far slopes) kept solid green slabs: its diffuse has alpha under 255 (shading)
   and no texel under 128, so `cut_by_normal` rejected it; it now needs only no texel under half alpha, and runs before
   the `useDetail` bake.
-- Other CSP features in the source tracks' `extension` folders, not used: `[GRASS_FX]` (26 stages; ReRBR's own grass
-  covers part), `[MATERIAL_ADJUSTMENT]` (24, day/night and weather conditions), `[SHADER_REPLACEMENT]`/`[MESH_ADJUSTMENT]`
+- Other CSP features in the source tracks' `extension` folders, not used: `[MATERIAL_ADJUSTMENT]` (24, day/night and weather conditions), `[SHADER_REPLACEMENT]`/`[MESH_ADJUSTMENT]`
   (water, `IS_RENDERABLE=0` hiding meshes on Thizy and Joux Verte, blend modes), `[WRAP_MESHES]` and `[ANIMATED]`
   (windmills and signs, Teixeta, Duesaigues, Riudecanyes), `[SPECTATORS]`, `[LIGHT_SERIES]`, `[PARTICLES_FX]`,
   `[RAIN_FX]`, `[TRACK_MAP]`, scripts (Crequy's turbines).
@@ -480,10 +492,32 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `Background3`, not the `obj_*` props. They are verge strips, `1wall_wall<n>` meshes of `ksPerPixelAT` `randon5bord*`
   textures: a flat strip of grass texture with one cut edge (alpha only along the top), over terrain of another colour,
   so its hard sides show. Whether AC shows the same is unknown (the preview is too small); not changed.
-- `[GRASS_FX]` (26 stages) grows grass at run time on `GRASS_MATERIALS` from a grass atlas; nothing of it is in the
-  stage. ReRBR's own dense grass (viewer `--enhance grass`, the launcher's "Dense grass", default off) places grass by
-  the ground's colour near the driveline on any stage, so no converter work covers it; picking CSP's materials for it
-  would be a ReRBR change.
+- `[GRASS_FX]` (26 stages) grows grass at run time on `GRASS_MATERIALS`; the converter now carries it (2026-11-19,
+  `csp::grass_fx`): the listed materials (wildcards as `MESH_ADJUSTMENT`) get `ReRbrGrass=1` in `materials.ini`, and
+  `settings.ini` gets `[ReRbrGrass]`: `texture` (`TEXTURE` where it names a `.dds` of the track's own `extension`
+  folder, copied into `Textures.zip`; no key or a CSP-bundled file like `grass_fx/highlands.dds`: none, ReRBR's
+  blades), `grid` (`TEXTURE_GRID`), `base` (`TEXTURE_BASE_CHANCE`), `group<n>` (`TEXTURE_GROUP_<n>_CHANCE`, default 0)
+  with `group<n>_piece<m>=col,row,w,h,chance[,mw,mh]` (`PIECE_<m>`: cells from 1, row 1 at the bottom of the picture, `PIECE_<m>_CHANCE` default 1, `PIECE_<m>_SIZE_MULT` read as width, height multipliers), `size` (`SHAPE_SIZE`),
+  and `luminance=min,max` (`MASK_MIN/MAX_LUMINANCE`). Dense grass (`--enhance grass`) then grows on those materials
+  instead of by colour (`grass::add`): where the ground texel's linear luminance is in range, on any facing the
+  ground's normal allows, within the usual 20 m band. Not used: `MASK_MAIN_THRESHOLD`, `MASK_RED_THRESHOLD`,
+  `SHAPE_TIDY/CUT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
+  (Highlands). Row order checked on Sa Calobra's atlas (`3,1,1,2` the heather, `4,1,2,2` the reeds, the top row the
+  plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is
+  `SHAPE_SIZE` x 0.14 m (6.5: 0.91 m, blade heights matched by eye to the AC rock shot's boulders), times the
+  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump, `FX_DENSITY` 5 clumps a m² (ours 40: at 0.08 m and 40 the verge
+  was a carpet, AC's has separate tufts); unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at `FX_SATURATION`
+  0.55 (no lush/straw lean) and `FX_SHADE` 2.2 with the brightness ratio clamp lowered (`FX_BRIGHT`); the cards carry
+  `specular.z` 2 (`FX_CARD`) and `own_light` ramps them from `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP`
+  (1.2, 1.0, 0.95) at the top. At 0.3/1.2 (07:35 calibration) the verges read charcoal, at 0.7/2.5 with no ramp
+  khaki (green over blue 1.25 against AC's 1.15); now rock view 06:45 `--frames 32` grass 50 / low verge 39 luminance,
+  RGB 55,49,40 against AC's 60,53,45 / 34 (2026-11-19). The support ring is 0.4 of a card's
+  width (the meadow's ring halved the cards). Unverified: `SIZE_MULT` as width,height (it may be a min,max scale);
+  the atlas grey pass skipped compressed (DXT) atlases until 2026-11-19, so Sa Calobra's had used our blades.
+  Sa Calobra down, rock view 07:35 (`/tmp/grassfx/rock.png`, before | after): grey terrain went from a patch of
+  colour-picked grass to olive tufts over the dark ground, none on the white boulders (luminance over 0.25), as the AC
+  shot. Riudecanyes (no `TEXTURE`): our blades on `srfdtl` and `cliffs3`. The atlas is drawn grey (luminance of its
+  texels, mips and cut-out coverage rebuilt) so the ground's hue and brightness colour it, as ours.
 
 ## Launcher import (2026-11-18)
 
@@ -571,7 +605,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (`txNormal`, stored like a diffuse, re-encoded as opaque DXT1 where needed), `specularTexture` (`txMaps` red as grey DXT1), `SpecularPower`
   (`ksSpecularEXP`, at least 1, 4 if missing) and `SpecularColor` (`ksSpecular` three times), and `ReRbrEffect` =
   `BTB_DiffuseBump`, `BTB_DiffuseSpecular` or `BTB_DiffuseBumpSpecular` (ReRBR's own key, [btb.md](btb.md#drawing)). All inputs are read on the diffuse's UV set 0; the meshes are unchanged.
-- Normal map: per-material sections only, not placeholders, not `Multilayer`, not tile bakes, not tree cards or generated sections; cut-outs may take
+- Normal map: per-material sections only, not placeholders, not `Multilayer` (but `fresnel_nm`'s `txDetailNM`, below), not tile bakes, not tree cards or generated sections; cut-outs may take
   one. Highlight: opaque non-placeholder materials with `ksSpecular > 0`, per-material and tile bakes; the spec map only per material. Without
   either the section is today's byte for byte. `ac-conversion.json` counts `normal_mapped_materials` and `highlight_materials`.
 - Sa Calobra down: 18 sections with a normal map, 19 with a highlight (4 both), 0 with a spec map (no highlighted material has `txMaps`);
@@ -587,6 +621,18 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
 - `ksPerPixelNM_UVMult` (19 installed tracks, 2.0 M triangles) reads its diffuse at uv * (1 + `diffuseMult`) and `txNormal` at
   uv * (1 + `normalMult`). The triangles' UVs carry the first (`stage.rs`, `material::uv_multipliers`) and the section
   `ReRbrBumpScale` the ratio ([btb.md](btb.md)). Not for a placeholder diffuse.
+- `ReRbrLight=<ambient>,<diffuse>` (2026-11-19): `ksAmbient`/`ksDiffuse` relative to the reference, the
+  area-weighted (m²) median of each over the drawn opaque materials (`material::normalise_light`, after the last
+  section), to the power 2.2 (AC lights display values, ReRBR linear light) and clamped to 0.05..2, omitted within 2% of 1
+  on both; none for placeholders or materials lacking either. Before the power (0.25..3 clamp) Sa Calobra's boulders
+  read cream (texture 2.8x the terrain's); with it, 06:45 rock/wall views: boulders 60-63 (AC 56-79), road 65/53 (AC 59),
+  verge grass 52 (AC 31-59); with a top of 5 the road read 83/67 (2026-11-19).
+  Trees as CSP cards keep their own brightness (no key). Sa Calobra down: reference 0.62/0.30 (terrain); road 1.77/1.67, cliff and rocks 1.08/1.07, boulders 0.37/0.25, walls 0.44/0.25.
+  With the sheen (`SHEEN_STRENGTH` 0.25/0.35/0.5, Sa Calobra wall view 07:35) the road reads 43/48/55 against AC's 57–59;
+  toward the sun the road is 0.8–1.0x its away-from-sun level. That 0.5 made up for a sun too high: AC's shots have the
+  sun on the horizon (06:45 here), the foreground in shade. There, with `[ReRbrAir]` `mist=0`, 0.5/0.2/0.1 give rock
+  near road 106/85/65 and wall road 73/64/55 (AC 59/59), the pillar 24 → 38 (AC 41); 0.5 washed the road's texture out
+  toward the sky, so `SHEEN_STRENGTH` 0.1 (2026-11-19). Not re-rendered on Roure.
 - Tried and taken out again (Roure, renders at four driveline points, midday clear, 08:15 low sun and 11:00 overcast; mean change
   of 255 levels): `ksMultilayer_fresnel_nm`'s `txDetailNM` (at the source uv * the pair `detailNMMult`) and the
   `ksPerPixelMultiMap_(AT_)NMDetail` detail layer (`txNormalDetail` at uv * `detailUVMultiplier`, `N + (1 - diffuse.a) *
@@ -595,3 +641,44 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   raw vertex 0, count, a byte per vertex in v4/v5 (v5 `(b/255)^2`), halves in the legacy `Patch.data`; matched 99 % of Roure's
   and Sa Calobra's drawn triangles) as the greater occlusion with the computed sky occlusion: 0.1 to 1.9, as it mostly agrees
   with it, for +4 % `Objects.zip`. KN5-embedded AO (tangent lengths) is used by none of 589 installed KN5s.
+
+## Dry road sheen and the road normal map, 2026-11-19
+
+- `ReRbrSheen=<roughness>` ([btb.md](btb.md)) on every opaque, non-placeholder, non-foliage material (tile sections too): GGX
+  `alpha = sqrt(2 / (n + 2))` from `ksSpecularEXP`, roughness `sqrt(alpha)` clamped to 0.45..0.85, 0.75 where `ksSpecular` <= 0
+  or n < 1. AC's fresnelC/EXP/max are not read (inconsistent author tuning: C=0 EXP=0 max=0.7 is a constant 70% mirror).
+  Which part is road is the renderer's (`Vertex::wet`, tarmac collision surface under the vertex; the physical meshes live in
+  `phys.kn5`, apart from the visible ones, so no name or material join works in the converter). Roure 395 sections, Sa Calobra 606.
+- `ksMultilayer_fresnel_nm`'s `txDetailNM` is back as the section's normal map at the source uv times `detailNMMult` (`ReRbrBumpScale=u,v`);
+  tile bakes carry the source uv as a second UV set (`ReRbrBumpUv=1`, `FVFData`). Not back: the NMDetail layer, the mask re-encode, CSP AO.
+  Textures.zip Roure 499 to 544 MB, Sa Calobra 529 to 553 MB; 365 and 579 sections gain a normal map.
+- Roure and Sa Calobra at four driveline points each, `--enhance all`, 1600x900, main against this (mean absolute grey change of 255 / share of
+  pixels over 8): midday roure 15.9 / 76 %, sacalobra 9.4 / 36 %; overcast 20.7 / 86 %, 9.6 / 35 %; low sun facing it (17:00) 39.2 / 94 %,
+  21.9 / 81 %. About half of it is the auto exposure: a brighter road darkens the frame (top third 5 to 30 % darker). The normal maps add
+  1.5 to 5 on top of the sheen alone. Full physical strength read as wet or icy blue on the black converted roads, so the sheen is
+  weighted `SHEEN_STRENGTH` (0.1 after the low-sun calibration). Known: a patch decal lying on the road (Roure 6.5 km) takes no sheen.
+- Road material the collision calls gravel or dirt within 8 m of tarmac takes the tarmac's sheen (`puddles::mark_sheen`): Roure's shoulders showed as a dark band. Not fixed, accepted: Roure's visual-only road pad (6.5 km, over grass collision) and kerb strip (5 km, over wall collision), which carry no tarmac under them; cut-outs and blended decals take no sheen.
+- Into-sun glare (Sa Calobra 07:35, rock and wall recreations): the glare came from the Blinn-Phong highlight (`ksSpecular` 1, EXP 10) staying at 1 - weight under the sheen, not from the retail `with_specular` (which never runs on converted draws: they have a highlight). The sheen now replaces the highlight on tarmac. Road medians (grey of 255; diffuse alone / 0.35 / 0.5 / 1.0): rock near 7 / 88 / 118 / 191, mid 20 / 87 / 114 / 183 (mid/near 0.96 to 0.99, AC's about 1.1); wall near 19 / 42 / 51 / 81 (AC 59). `SHEEN_STRENGTH` 0.5, later 0.1 (above).
+- Haze (ours, 2026-11-19): every import writes `settings.ini` `[ReRbrAir]` `fog_color=0.74, 0.68, 0.62` and
+  `aerosol=0.2` and `mist=0` (`SETTINGS_INI`; see `notes/renderer.md`), so the sky and distance read warm grey instead of map 41's
+  clean blue. Roure rbcl 13:00 stays mild (sky blue in clear gaps, pale only near the horizon). Sa Calobra 07:35 at 0.2:
+  wall sky (201,206,211) top, (208,213,218) horizon (0.3: (200,206,212), (210,214,215); AC (187,196,211), (208,208,210)).
+
+## Multilayer at render time, 2026-11-19
+
+- `ksMultilayer*` materials whose diffuse and mask fit `multilayer::LIMIT` are drawn by the renderer: `TextureBank::layers` stores the
+  diffuse, the mask and the four details under their own names (`slot`; shared details once, by name) and `section_with` writes
+  `ReRbrLayerDiffuse`, `ReRbrLayerMask`, `ReRbrLayerDetail=a,b,c,d`, `ReRbrLayerScale` (eight numbers: each detail's `(u, v)`; the
+  scalar `multX` twice for world space, the `_objsp` pair otherwise), `ReRbrLayerMagic` and, for world space, `ReRbrLayerWorld=ox,oz`
+  (the converter's `origin`, six decimals; absent for `_objsp`: details at `uv * pair`). Keys in [btb.md](btb.md); they need `ReRbrEffect`
+  (`BTB_Diffuse` is written for them). `diffuseTexture` is still the material's bake, the fallback for a reader without the keys.
+- Such materials get no tile bakes (`tile_bakes` takes the set), so meshes keep their source UVs: the normal map is `txDetailNM` at the
+  source uv times `detailNMMult` as for any per-material section (no `ReRbrBumpUv`, no `uvs2`). `ac-conversion.json`:
+  `multilayer_per_pixel_materials`.
+- Sa Calobra down (`/tmp` conversions, release binary): `Textures.zip` 581.1 to 422.4 MB (603 to 62 textures: no tile textures),
+  `Objects.zip` 97.5 to 96.7 MB (no chart copies of vertices), import 22.5 s to 17.0 s. Roure rbcl: `Textures.zip` 572.4 to 698.5 MB (354 tile
+  textures gone, the raw 22 MB diffuses, masks and details added), 25 s as before, 15 materials per pixel.
+- Rendered (Sa Calobra 06:45, `--enhance all,grass`, 1600x900, `scripts`-style views over the driveline at 7340 m and 4800 m): near road grey 64.1 / 8.0
+  (mean / standard deviation) to 63.8 / 8.2 and 46.1 / 21.3 to 46.7 / 20.6 (AC's 59 / 11): the grain is now the detail textures' structure
+  (cracks, patches) at any distance; the large-scale colour matches the tile bakes (blurred-grey correlation 0.95 to 0.999), so the world
+  offsets are AC's. Roure rbcl 12:00 at 750 m and 3750 m along: no visible regression.

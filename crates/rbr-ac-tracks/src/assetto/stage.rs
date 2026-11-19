@@ -334,12 +334,30 @@ struct Builder {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    /// The source UVs of a per-tile mesh, whose `uvs` are the tile texture's: a second set for the normal map.
+    uvs2: Option<Vec<[f32; 2]>>,
     triangles: Vec<[u32; 3]>,
     vertices: HashMap<[u32; 8], u32>,
     /// The `materials.ini` section it is drawn with.
     material: String,
 }
 impl Builder {
+    /// The surface it draws, m².
+    fn area(&self) -> f64 {
+        let at = |i: u32| self.positions[i as usize].map(f64::from);
+        self.triangles
+            .iter()
+            .map(|t| {
+                let [a, b, c] = t.map(at);
+                let (u, v) = (
+                    std::array::from_fn::<f64, 3, _>(|k| b[k] - a[k]),
+                    std::array::from_fn::<f64, 3, _>(|k| c[k] - a[k]),
+                );
+                let cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+                0.5 * cross.iter().map(|c| c * c).sum::<f64>().sqrt()
+            })
+            .sum()
+    }
     fn add(&mut self, triangle: &Triangle, origin: [f64; 2], visible: bool) {
         let indices = std::array::from_fn(|k| {
             let p = triangle.pos[k];
@@ -370,6 +388,7 @@ impl Builder {
             positions: &self.positions,
             normals: &self.normals,
             uvs: &self.uvs,
+            uvs2: self.uvs2.as_deref(),
             triangles: &self.triangles,
             material,
         })
@@ -417,6 +436,38 @@ impl Far {
             return false;
         }
         self.points.iter().any(|p| (p[0] - centre[0]).hypot(p[1] - centre[1]) <= reach)
+    }
+    /// Whether a triangle's centre lies within reach of the course.
+    fn near(&self, pos: &[[f64; 3]; 3]) -> bool {
+        let centre = [0, 1].map(|k| (pos[0][k] + pos[1][k] + pos[2][k]) / 3.);
+        self.points.iter().any(|p| (p[0] - centre[0]).hypot(p[1] - centre[1]) <= FAR_REACH)
+    }
+    /// Which of `rest` (a mesh's triangles the size test dropped) join `kept` (those it kept): the whole surface
+    /// connected to them through shared vertices, within [`FAR_REACH`]. The size test alone keeps a mountain's large
+    /// triangles and drops its small ones, leaving holes and floating crags; a ring or three around them still did.
+    fn connected(&self, kept: &[Triangle], rest: &[Triangle]) -> Vec<bool> {
+        let key = |p: &[f64; 3]| p.map(|c| (c * 1000.).round() as i64);
+        let mut at: HashMap<[i64; 3], Vec<usize>> = HashMap::new();
+        for (i, t) in rest.iter().enumerate().filter(|(_, t)| self.near(&t.pos)) {
+            for p in &t.pos {
+                at.entry(key(p)).or_default().push(i);
+            }
+        }
+        let mut joined = vec![false; rest.len()];
+        let mut seen: HashSet<[i64; 3]> = HashSet::new();
+        let mut queue: Vec<[i64; 3]> = kept.iter().flat_map(|t| t.pos.iter().map(key)).collect();
+        while let Some(vertex) = queue.pop() {
+            if !seen.insert(vertex) {
+                continue;
+            }
+            for &i in at.get(&vertex).into_iter().flatten() {
+                if !joined[i] {
+                    joined[i] = true;
+                    queue.extend(rest[i].pos.iter().map(key));
+                }
+            }
+        }
+        joined
     }
     fn tile(&self, t: &Triangle, origin: [f64; 2]) -> (i64, i64) {
         let c = |k: usize| (((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / 3. - origin[k]) / FAR_CELL).floor() as i64;
@@ -551,12 +602,21 @@ fn texel_metres(distance: f64) -> f64 {
 }
 
 /// The tile textures of the builders whose material is world-space multilayer (`multilayer::bake_tile`), as DXT1
-/// files with the meshes drawn with them, baked on every core; `None` for the others, a tile that does not fit and a
-/// tile whose material bake is already as fine.
-fn tile_bakes(model: &kn5::Model, builders: &[(DrawKey, Builder)], origin: [f64; 2], line: &Line) -> Vec<Option<Tile>> {
+/// files with the meshes drawn with them, baked on every core; `None` for the others, the materials the renderer sums per
+/// pixel (`drawn_per_pixel`, [`material::Layers`]), a tile that does not fit and a tile whose material bake is already
+/// as fine.
+fn tile_bakes(
+    model: &kn5::Model,
+    builders: &[(DrawKey, Builder)],
+    origin: [f64; 2],
+    line: &Line,
+    drawn_per_pixel: &BTreeSet<usize>,
+) -> Vec<Option<Tile>> {
     let mut layers = BTreeMap::new();
     for ((_, mat, ..), _) in builders {
-        layers.entry(*mat).or_insert_with(|| multilayer::Layers::new(model, *mat));
+        layers
+            .entry(*mat)
+            .or_insert_with(|| multilayer::Layers::new(model, *mat).filter(|_| !drawn_per_pixel.contains(mat)));
     }
     // Far scenery keeps its material's own texture.
     let jobs: Vec<usize> =
@@ -606,6 +666,7 @@ fn tile_bakes(model: &kn5::Model, builders: &[(DrawKey, Builder)], origin: [f64;
                                     positions: bake.vertices.iter().map(|&v| b.positions[v as usize]).collect(),
                                     normals: bake.vertices.iter().map(|&v| b.normals[v as usize]).collect(),
                                     uvs: bake.uvs,
+                                    uvs2: Some(bake.vertices.iter().map(|&v| b.uvs[v as usize]).collect()),
                                     triangles: bake.triangles,
                                     ..Builder::default()
                                 };
@@ -846,9 +907,11 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut collision = Vec::<Triangle>::new();
     let mut objects = Objects::new(&folder.join("Objects.zip"))?;
     let mut bank = material::TextureBank::new(&folder.join("Textures.zip"))?;
+    bank.origin = origin;
     let mut materials = String::new();
     let mut names = Vec::new();
     let mut drawn_triangles = 0;
+    let mut light_areas = BTreeMap::<String, f64>::new();
     let mut source_triangles = 0;
     let mut surface_counts = BTreeMap::<String, usize>::new();
     let mut repairs = Vec::new();
@@ -857,6 +920,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let csp_trees = trees::read(&input.root);
     let hidden = if csp_trees.is_empty() { BTreeMap::new() } else { csp::replaced(&input.root) };
     let unrendered = csp::unrendered(&input.root);
+    let grass_fx = csp::grass_fx(&input.root);
     for (model_index, (path, transform)) in input.models.iter().enumerate() {
         options.control.check()?;
         options.control.say(&format!("reading {}", path.file_name().unwrap().to_string_lossy()));
@@ -879,6 +943,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             .collect();
         for mesh in &model.meshes {
             options.control.check()?;
+            let (mut far_kept, mut far_rest) = (Vec::<Triangle>::new(), Vec::<Triangle>::new());
             source_triangles += mesh.triangle_count;
             if mesh.helper {
                 continue;
@@ -919,15 +984,28 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let key = (scenery_tile(&t, origin), mesh.material, lod.0, lod.1, false);
                     builders.entry(key).or_default().add(&t, origin, true);
                 } else if far.keeps(&t.pos) {
-                    let key = (far.tile(&t, origin), mesh.material, lod.0, lod.1, true);
-                    builders.entry(key).or_default().add(&t, origin, true);
-                    far_triangles += 1;
+                    far_kept.push(t);
+                } else {
+                    far_rest.push(t);
                 }
+            }
+            let lod = (mesh.lod_in.to_bits(), mesh.lod_out.to_bits());
+            let joined = far.connected(&far_kept, &far_rest);
+            let rest = far_rest.into_iter().zip(joined).filter_map(|(t, joined)| joined.then_some(t));
+            for t in far_kept.into_iter().chain(rest) {
+                let key = (far.tile(&t, origin), mesh.material, lod.0, lod.1, true);
+                builders.entry(key).or_default().add(&t, origin, true);
+                far_triangles += 1;
             }
         }
         let builders: Vec<_> = builders.into_iter().collect();
         // World-space multilayer ground gets textures per tile, at a density falling off with distance from the road.
-        let mut tiles = tile_bakes(&model, &builders, origin, &line);
+        let per_pixel: BTreeSet<usize> = builders
+            .iter()
+            .map(|((_, mat, ..), _)| *mat)
+            .filter(|&mat| bank.layers(&model, &model.materials[mat]).is_some())
+            .collect();
+        let mut tiles = tile_bakes(&model, &builders, origin, &line, &per_pixel);
         let mut names_of = BTreeMap::new();
         let mut drawn = Vec::new();
         for (i, (key, mut b)) in builders.into_iter().enumerate() {
@@ -938,7 +1016,13 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                let extras = bank.tile_extras(&model, mat_index);
+                let extras = material::Extras {
+                    grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&model.materials[mat_index].name)),
+                    ..bank.tile_extras(&model, mat_index)
+                };
+                if !extras.bump_uv {
+                    b.uvs2 = None;
+                }
                 material::section_with(&mut materials, &b.material, &texture, false, &extras);
                 names.push(b.material.clone());
                 drawn.push((key, b));
@@ -950,7 +1034,10 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let mat = &model.materials[mat_index];
                     let (texture, opaque) = bank.diffuse(&model, mat_index)?;
                     let name = format!("ac\\{model_index}_{mat_index}");
-                    let extras = bank.extras(&model, mat_index)?;
+                    let extras = material::Extras {
+                        grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&mat.name)),
+                        ..bank.extras(&model, mat_index)?
+                    };
                     material::section_with(
                         &mut materials,
                         &name,
@@ -971,13 +1058,23 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             .map(|((_, _, lod_in, lod_out, _), b)| (bounds(&b.positions), (*lod_in, *lod_out)))
             .collect();
         let mut batch = Vec::new();
-        for (((_, _, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
+        for (((_, mat, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
             drawn_triangles += b.triangles.len();
+            *light_areas.entry(b.material.clone()).or_default() += b.area();
             let lod_in = f32::from_bits(lod_in).max(0.);
             let source_lod = f64::from(f32::from_bits(lod_out));
             // A range the source gives is padded; the cap for a mesh without one is only a choice. Far scenery is drawn
-            // as far as ReRBR sees.
-            let cap = if far { FAR_REACH } else { options.lod };
+            // as far as ReRBR sees, and an opaque surface in the corridor as far as its size holds ([`FAR_SHARE`]), so
+            // the terrain and road of the valley below do not drop out in cells past `lod`; cut-outs keep `lod`.
+            let cap = if far {
+                FAR_REACH
+            } else if material::is_transparent(&model.materials[mat]) {
+                options.lod
+            } else {
+                let (low, high) = bounds(&b.positions);
+                let extent = (0..3).map(|k| f64::from(high[k] - low[k])).fold(0., f64::max);
+                (extent / FAR_SHARE).clamp(options.lod, FAR_REACH)
+            };
             let lod_out = if source_lod > lod_in as f64 { source_lod.min(cap) + f64::from(pad) } else { cap };
             let lod_in = (lod_in - pad).max(0.);
             let entries = format!("LODIn={lod_in}\nLODOut={lod_out}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
@@ -1103,7 +1200,13 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let baked = bank.baked.clone();
     let placeholders = bank.placeholders.clone();
     let missing_names = bank.missing.clone();
-    let (normal_mapped, highlighted) = (bank.normal_mapped, bank.highlighted);
+    let (normal_mapped, highlighted, sheened, layered) =
+        (bank.normal_mapped, bank.highlighted, bank.sheened, bank.layered);
+    // CSP's grass atlas, where the track ships its own.
+    let grass_atlas = match grass_fx.as_ref().and_then(|g| g.texture.as_ref()) {
+        Some(path) => Some(bank.put(std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?, "dds")?),
+        None => None,
+    };
     bank.finish()?;
     let write = |file: &str, text: String| std::fs::write(folder.join(file), text).map_err(|e| format!("{file}: {e}"));
     write("objectlist.ini", objects.finish()?)?;
@@ -1111,11 +1214,16 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     for (i, n) in names.iter().enumerate() {
         let _ = writeln!(list, "MAT_{i}={n}");
     }
-    write("materials.ini", format!("{list}\n{materials}"))?;
+    write("materials.ini", format!("{list}\n{}", material::normalise_light(&materials, &light_areas)))?;
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
     write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
-    write("settings.ini", "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n".into())?;
+    let mut settings = String::from(SETTINGS_INI);
+    if let Some(fx) = &grass_fx {
+        settings.push('\n');
+        settings.push_str(&fx.section(grass_atlas.as_deref()));
+    }
+    write("settings.ini", settings)?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     for (i, p) in line.points.iter().enumerate() {
         // A ring's last point repeats its first: neighbours wrap around the seam.
@@ -1170,7 +1278,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let _ = writeln!(spawn, "angleX=0\nangleY=0\nangleZ={}", tangent[0].atan2(tangent[1]));
     write("spawn.ini", spawn)?;
-    let provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
+    let mut provenance = serde_json::json!({"source":input.root,"layout":input.layout,"origin":origin,
         "source_triangles":source_triangles,"drawn_triangles":drawn_triangles,"far_triangles":far_triangles,"csp_trees":tree_count,"csp_tree_triangles":tree_triangles,"collision_triangles":collision_triangles,
         "ai_source":input.ai_source,"reversed_ai":input.reversed_ai,"circuit":input.circuit,"ai_extensions_m":input.ai_extensions,
         "ai_trimmed_points":input.ai_trimmed_points,
@@ -1181,7 +1289,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "length_m":input.finish-input.start,"ai_start_m":input.start,"ai_finish_m":input.finish,
         "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,"normal_mapped_materials":normal_mapped,"highlight_materials":highlighted,
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,
-        "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps and the sun highlight are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
+        "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps, the sun highlight and the roads' dry sheen are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
+    provenance["sheen_materials"] = sheened.into();
+    provenance["multilayer_per_pixel_materials"] = layered.into();
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
     options.control.say("validating BTB collision cells");
     let stats = crate::btb::stage::check_cells(folder)?;
@@ -1201,9 +1311,20 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     })
 }
 
+/// A converted stage's `settings.ini`: the sun, and a mild warm-grey haze (`[ReRbrAir]`, read by `rbr_btb::track::Air`;
+/// aerosol 0.2 is the sky model's hazy end, clear AC days stay clear under it) without our dawn and dusk valley mist,
+/// which AC does not have.
+const SETTINGS_INI: &str =
+    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nfog_color=0.74, 0.68, 0.62\naerosol=0.2\nmist=0\n";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_settings_carry_a_mild_warm_grey_haze() {
+        let air = rbr_btb::track::Air::from_ini(SETTINGS_INI).unwrap();
+        assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.74, 0.68, 0.62]), Some(0.2), Some(0.0)));
+    }
     #[test]
     fn a_driveline_point_in_a_small_gap_takes_the_ground_beside_it() {
         let slab = |x0: f64, x1: f64| Triangle {
@@ -1273,6 +1394,28 @@ mod tests {
         assert!(!far.keeps(&at(1000., 10.)), "a tree card 1 km out");
         assert!(far.keeps(&at(400., 10.)), "a tree card 400 m out");
         assert!(!far.keeps(&at(20_000., 2000.)), "past ReRBR's far plane");
+    }
+    #[test]
+    fn far_scenery_stays_connected_across_small_triangles() {
+        let far = Far::new(&Line::new(vec![[0., 0., 0.], [0., 100., 0.]], vec![6.; 2]), 300.);
+        let tri = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| Triangle {
+            pos: [a, b, c].map(|p| [1000. + p[0], p[1], 0.]),
+            uv: [[0.; 2]; 3],
+            normal: [[0.; 3]; 3],
+            material: None,
+        };
+        // A large triangle with a strip of small ones leading away from it, however long, and a small one elsewhere.
+        let kept = [tri([0., 0.], [100., 0.], [0., 100.])];
+        let strip = (0..20).map(|i| {
+            let x = 100. + 5. * f64::from(i);
+            tri([x, 0.], [x + 5., 0.], [x, 5.])
+        });
+        let rest: Vec<Triangle> = strip.chain([tri([500., 500.], [505., 500.], [500., 505.])]).collect();
+        assert!(kept.iter().all(|t| far.keeps(&t.pos)) && rest.iter().all(|t| !far.keeps(&t.pos)));
+        let mut whole = vec![true; 20];
+        whole.push(false);
+        assert_eq!(far.connected(&kept, &rest), whole);
+        assert_eq!(far.connected(&[], &rest), vec![false; 21]);
     }
     #[test]
     fn corridor_keeps_long_triangles_crossing_the_course() {

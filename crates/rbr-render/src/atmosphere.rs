@@ -59,6 +59,10 @@ pub struct Atmosphere {
     /// The sun's true elevation, degrees, when a clock sets it (`relight::Clock`; `sun_direction` stays at least 2
     /// degrees up): the physically based sky's twilight (`skylight.rs`).
     pub sun_elevation: Option<f32>,
+    /// The clear sky's aerosol optical depth in place of the section's word's (a converted stage's `[ReRbrAir]`).
+    pub aerosol: Option<f32>,
+    /// The share of the height fog's dawn and dusk mist (`height_fog.rs`; a converted stage's `[ReRbrAir]`), else all.
+    pub mist: Option<f32>,
     /// The moon's place and phase when a clock sets it with the physical light (`relight::Clock`; `sun_direction` is
     /// then from the moon), else a full moon opposite the sun.
     pub moon: Option<crate::relight::Moon>,
@@ -277,6 +281,8 @@ impl Default for Atmosphere {
             skybox_saturation: 0.45,
             night: false,
             sun_elevation: None,
+            aerosol: None,
+            mist: None,
             moon: None,
             solar_hour: None,
             relight: None,
@@ -361,6 +367,8 @@ impl Atmosphere {
             skybox_saturation: number("SkyboxSaturation", base.skybox_saturation),
             night: false,
             sun_elevation: None,
+            aerosol: None,
+            mist: None,
             moon: None,
             solar_hour: None,
             relight: None,

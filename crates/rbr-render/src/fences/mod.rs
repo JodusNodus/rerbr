@@ -271,6 +271,7 @@ fn mesh(line: &Line) -> Mesh {
             alpha_ref: Some(OBJECT_ALPHA_REF),
             mip_bias: false,
             ground: false,
+            grass: false,
             cull_back: false,
             blend: false,
             depth_test: true,

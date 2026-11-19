@@ -349,6 +349,18 @@ height fog over any section; `--clouds` and `--precipitation` put any sky over a
 range, at least 600 m without `UseFog` (retail 69's light fog, stages 71 and 45's rows at 25..215 m hid the stage in a
 white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled clouds and tone curve are ours.
 
+- Converted stage haze (ours, 2026-11-19): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
+  ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
+  crisp to 0.2 hazy, as `skylight.rs`' words) and share of the height fog's dawn and dusk mist (`mist`, 0 none to 1,
+  `Atmosphere::mist`); without it the section's. AC imports write `mist=0`: at Sa Calobra 06:45 the mist filled the
+  valley toward the sun with a beige wash where AC shows the terrain. Sa Calobra at 07:35 with `0.74, 0.68, 0.62` and
+  0.3: wall-shot sky (202,208,215) top, (212,214,215) horizon against the AC shot's (187,196,211), (208,208,210), the
+  distance warm grey where it was blue (`/tmp/atm/v2`). Aerosol 0.4 whitened 13:00's sky.
+- Light-shaft glow (2026-11-19): the glow's 350 m of lit air times its sun lobe made a bright wedge beside Sa Calobra's
+  big rock at 07:35, ending in a straight edge where the rock's shadow left the ray (the gate `GLOW_SHADE` saturated
+  at a quarter of the ray in shade). Now `GLOW_SHADE` 0.8 (the gate ramps over most of the ray) and `MARCH_GLOW` 0.03:
+  the wedge is soft rays. Retail stages: 10O, 54E byte-identical in 18 probe frames; 41M, 54E 13:00 differ by RMSE
+  0.0003-0.0019.
 - Backdrop `(1,3)` (the superbowl): every item drawn whole with the stage's matrix, its scattering depth by
   `Superbowl_Scale`; without `UseFog` its haze is the stage's range over the scale (`Atmosphere::superbowl_fog`), so
   the backdrop next to the road stays clear.
@@ -537,6 +549,18 @@ probably fit the wrong hour.
   retail only): the game's `road_shine` stays beside it (the gravel's stone detail). Frame
   time ~0 (2026-10-24). On all ground it cost 0.5 ms for a few percent; on leaves the crown normals turned the canopy
   white.
+- BTB roads with `ReRbrSheen` (`Surface::sheen`, `with_sheen`) take the same rough dielectric (`rough_dielectric`) at the material's
+  roughness on the bumped normal, weighted `smoothstep(0.6, 0.9, v.wet.x)` (tarmac), `SHEEN_STRENGTH` 0.1 of the way from the diffuse to the reflection, in place of the
+  Blinn-Phong highlight there; the viewer marks the roads (`mark_surfaces(maps, grass)`) for it without the grass. Retail output
+  byte-identical (3 reference shots); scene pass +0.04 to 0.07 ms on Roure and Sa Calobra, load +0 to 0.5 s (2026-11-19).
+- BTB multilayer (`ReRbrLayer*`, `Surface::layers`, `layered` in `shader.wgsl`): the diffuse, mask and four details are bindings 13, 8 and 9..12 of
+  the draw's group (separate 2D bindings, not an array: the details differ in size and format; a draw without layers binds the white
+  texel and `DRAW_LAYERS` compiles the code out). Fragment sampled textures: 14 before, 20 now (`gpu.rs` asks the adapter's limit, past the default 16). Texture
+  0 stays the material's bake, which the grass and the ground detail read on the CPU. Details sample at `layer_axis(w, m, off)` with `w` the stage
+  `(x, -z)` and `off` the origin's share (f64 on the CPU, `stage::btb::layered`): `w` is split in a multiple of 1/16 and a rest so the
+  product with a scale of 100/m stays exact to a texel at 4 km, wrapped to 0..1, with `textureSampleGrad` on the unwrapped gradients (no mip seam).
+  Sa Calobra scene pass (1600x900, `--profile`, 3 runs): road and rock view 1.89 ms before (and 1.91 ms for the new viewer on a stage without the keys,
+  whose picture is byte-identical to the old viewer's, as is retail `track-10_O`) to 2.00 ms; road view 1.55 to 1.63 ms.
 - The clock's ambient share and tint scale the stage's display colours, so its light is them to the 2.2; day frames
   byte-identical (2026-10-20).
 - The headlights' shadow map has its own layer of the sun's map (`sun::LAMP`), so the lamps cast at dusk too, beside the
@@ -1258,6 +1282,14 @@ Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --
 tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every
 reference shot showed a bare hillside past that where a drive has the field to 110 m (580 chase, the bank to the
 right). A repeat render is byte-identical; the window and the videos stream as before.
+
+Dense grass on converted stages with GrassFX (2026-11-19, `grass::add`, `Fx`): where a BTB stage's `settings.ini` has
+`[ReRbrGrass]` and a draw carries `DrawState::grass` (`ReRbrGrass=1`), the field takes only those draws (no ground-mark,
+collision or colour test) and places grass where the sharp texel's linear luminance is in `luminance`; with the track's
+atlas the cards' pictures are its pieces (`Fx::piece`, width by the piece's aspect), the atlas drawn grey with mips and
+coverage rebuilt (`grey_atlas`), else our blades. Sa Calobra down, rock view 1600x900, 07:35: scene pass 1.12 to 1.55 ms
+(drawn triangles 351k to 705k: the terrain is now grass ground); retail 41M and a converted stage without `[GRASS_FX]`
+byte-identical to main.
 
 Dense grass placement and size (2026-11-10):
 

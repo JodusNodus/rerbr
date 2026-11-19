@@ -187,13 +187,14 @@ pub(crate) fn sky_uniform(atmosphere: &Atmosphere) -> Option<SkyUniform> {
         .moon
         .map_or(flat * elevation.to_radians().cos() + Vec3::Y * elevation.to_radians().sin(), |m| m.to_sun);
     let words = atmosphere.section.as_deref().unwrap_or("").to_ascii_lowercase();
-    let (aerosol, haze_height, clear) = if words.contains("crisp") {
+    let (word_aerosol, haze_height, clear) = if words.contains("crisp") {
         (AEROSOL_DEPTH[0], 0.15, CLEAR_REACH[0])
     } else if words.contains("hazy") {
         (AEROSOL_DEPTH[2], 0.3, CLEAR_REACH[2])
     } else {
         (AEROSOL_DEPTH[1], 0.2, CLEAR_REACH[1])
     };
+    let aerosol = atmosphere.aerosol.unwrap_or(word_aerosol);
     // The ground haze: what the fog hides at `FogEnd` along the ground (at least `CLEAR_REACH` under a clear sky, or
     // with our fog off), in the fog's hue.
     let fogged = atmosphere.use_fog && atmosphere.fog != Some(crate::atmosphere::Fog::Off);

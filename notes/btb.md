@@ -342,6 +342,25 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   ([assetto.md](assetto.md#normal-maps-and-highlights-2026-11-19)).
 - `ReRbrBumpScale=s` or `=u,v` (ReRBR's own): the normal map is read at its uv times this (`scene::Material::bump_scale`,
   `NormalMap::scale`); written with a decimal point, as `decimal_floats` reads `2,5` as 2.5.
+- `ReRbrLight=a,d` (ReRBR's own): factors on the sky and bounce light and on the sun's (`scene::Material::light`, default
+  `1,1`; `stage::Light`, `mode.tint`, `own_light`). The plain path takes their mean. Retail stages have no key.
+- `ReRbrBumpUv=1` (ReRBR's own, with `ReRbrEffect`): the normal map reads the mesh's second UV set (`scene::Material::bump_uv`;
+  an `FVFData` block, `XMesh::uvs2`), for per-tile meshes whose UV set 0 is the tile texture's.
+- `ReRbrSheen=<roughness>` (ReRBR's own, with `ReRbrEffect`; decimal point): the material's dry road sheen
+  (`scene::Material::sheen`, `Surface::sheen`): the retail roads' rough dielectric (sky reflection, GGX sun) on the
+  bumped normal, drawn where the collision surface under the vertex is tarmac (`Vertex::wet`, `puddles::mark_roads`), in
+  place of the highlight there. Needs the own light; the viewer marks the roads for it without the grass.
+- `ReRbrLayerDiffuse`, `ReRbrLayerMask` (file names), `ReRbrLayerDetail=a,b,c,d` (four names), `ReRbrLayerScale=` (eight numbers, the
+  `(u, v)` multiplier of each detail, decimal points), `ReRbrLayerMagic=` and, for details in world space,
+  `ReRbrLayerWorld=ox,oz` (ReRBR's own, with `ReRbrEffect`; `scene::Layers`, `stage::Layers`, `layered` in `shader.wgsl`): an Assetto Corsa
+  multilayer material the renderer sums per pixel, `diffuse * (R*mask.r + G*mask.g + B*mask.b + A*mask.a) * magic` in display
+  values, the diffuse and mask at `uv0`, each detail at AC's world `(x, z) * scale` (`x` = stage x + `ox`, `z` = -(stage z +
+  `oz`)) or, without `ReRbrLayerWorld`, at `uv0 * scale`. `diffuseTexture` stays the bake of the same sum (the first texture:
+  the grass and ground detail read it; a reader without these keys draws it). Ignored unless every file is in `Textures.zip`.
+- `ReRbrGrass=1` (ReRBR's own, a material section) and `settings.ini` `[ReRbrGrass]` (own section; `scene::Material::grass`,
+  `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
+  ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`
+  pieces), in place of its choice by colour; keys in `notes/assetto.md`.
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

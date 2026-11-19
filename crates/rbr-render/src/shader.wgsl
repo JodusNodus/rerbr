@@ -157,6 +157,15 @@ struct Mode {
     bump: vec4<f32>,
     // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
     highlight: vec4<f32>,
+    // xy a BTB material's factors on the sky and bounce light and on the sun's (`stage::Light`, `own_light`); 1 for none.
+    tint: vec4<f32>,
+    // A BTB road's dry sheen: x its roughness, zero for none (`stage::Sheen`, `with_sheen`).
+    sheen: vec4<f32>,
+    // A multilayer material (`stage::Layers`, `layered`): x 0 none, 1 details at the world position, 2 at the uv; y magicMult.
+    layer: vec4<f32>,
+    // The details' (u, v) multipliers and offsets: layers R and G in the first vector, B and A in the second.
+    layer_scale: array<vec4<f32>, 2>,
+    layer_offset: array<vec4<f32>, 2>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -185,6 +194,8 @@ override DRAW_SECOND: bool = false;
 override DRAW_DETAIL: bool = false;
 override DRAW_BUMP: bool = false;
 override DRAW_HIGHLIGHT: bool = false;
+override DRAW_SHEEN: bool = false;
+override DRAW_LAYERS: bool = false;
 
 fn water_draw() -> bool {
     return select(mode.water != 0u, DRAW_WATER, KNOWN);
@@ -208,6 +219,14 @@ fn bump_draw() -> bool {
 
 fn highlight_draw() -> bool {
     return select(mode.highlight.w != 0.0, DRAW_HIGHLIGHT, KNOWN);
+}
+
+fn sheen_draw() -> bool {
+    return select(mode.sheen.x != 0.0, DRAW_SHEEN, KNOWN);
+}
+
+fn layers_draw() -> bool {
+    return select(mode.layer.x != 0.0, DRAW_LAYERS, KNOWN);
 }
 
 // The draw's frame uniform (`renderer::uniforms::frame_index`): 0 the world's (the stage and the car), 1 the
@@ -299,6 +318,13 @@ struct Probes {
 @group(1) @binding(6) var glow_texture: texture_2d<f32>;
 // A BTB normal map (`stage::Surface::normal`; 1 white texel elsewhere, unread).
 @group(1) @binding(7) var normal_texture: texture_2d<f32>;
+// A multilayer material's mask, four details and diffuse (`stage::Layers`; 1 white texel elsewhere, unread).
+@group(1) @binding(8) var layer_mask: texture_2d<f32>;
+@group(1) @binding(9) var layer_detail0: texture_2d<f32>;
+@group(1) @binding(10) var layer_detail1: texture_2d<f32>;
+@group(1) @binding(11) var layer_detail2: texture_2d<f32>;
+@group(1) @binding(12) var layer_detail3: texture_2d<f32>;
+@group(1) @binding(13) var layer_diffuse: texture_2d<f32>;
 
 // Textures 0 and 1's mip bias: the draw's, and the upscale's.
 fn texture_bias() -> f32 {
@@ -565,6 +591,48 @@ fn is_fence(v: VertexOut) -> bool {
     return mode.cutout != 0u && !specular_draw() && abs(v.specular.x - FENCE) < 0.025;
 }
 
+// One axis of a multilayer detail's coordinate, `w * m + off` wrapped to 0..1. `w` is a position that reaches kilometres
+// and `m` tens to hundreds per metre, so the product loses texels to f32: `w` is split into `a`, a multiple of 1/16
+// whose products with the integer and the first eight bits of the fraction of `m` are exact, and the remainder `b`.
+fn layer_axis(w: f32, m: f32, off: f32) -> f32 {
+    let mi = floor(m);
+    let mf = floor((m - mi) * 256.0) / 256.0;
+    let a = floor(w * 16.0) / 16.0;
+    let b = w - a;
+    return fract(fract(a * mi) + fract(a * mf) + a * (m - mi - mf) + b * m + off);
+}
+
+// A multilayer material's colour, as `multilayer::bake` sums it: `diffuse * (R*mask.r + G*mask.g + B*mask.b +
+// A*mask.a) * magicMult` over the display values. The mask is read at the uv; each detail at AC's world (x, z) times its
+// multiplier (the stage's x, and its z negated, with the origin's share in `layer_offset`) or at the uv times its pair,
+// on the gradients of the unwrapped coordinate so the wrap leaves no seam in the mip choice. In uniform control flow.
+fn layered(v: VertexOut) -> vec3<f32> {
+    let diffuse = textureSampleBias(layer_diffuse, texture_sampler, v.uv0, texture_bias()).rgb;
+    let weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
+    let world = mode.layer.x < 1.5;
+    let at = select(v.uv0, vec2<f32>(v.world.x, -v.world.z), world);
+    let ddx = select(dpdx(v.uv0), dpdx(at), world) * exp2(texture_bias());
+    let ddy = select(dpdy(v.uv0), dpdy(at), world) * exp2(texture_bias());
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < 4u; i++) {
+        let scale = select(mode.layer_scale[i / 2u].xy, mode.layer_scale[i / 2u].zw, (i & 1u) == 1u);
+        let off = select(mode.layer_offset[i / 2u].xy, mode.layer_offset[i / 2u].zw, (i & 1u) == 1u);
+        var uv = at * scale;
+        if (world) {
+            uv = vec2<f32>(layer_axis(at.x, scale.x, off.x), layer_axis(at.y, scale.y, off.y));
+        }
+        var texel: vec3<f32>;
+        switch (i) {
+            case 0u: { texel = textureSampleGrad(layer_detail0, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            case 1u: { texel = textureSampleGrad(layer_detail1, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            case 2u: { texel = textureSampleGrad(layer_detail2, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            default: { texel = textureSampleGrad(layer_detail3, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+        }
+        sum += texel * weights[i];
+    }
+    return clamp(diffuse * sum * mode.layer.y, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 // A stage draw's colour (`lit_class` 0: the stage, its props and characters' cards), with `under_cloud` of the sun taken
 // by a cloud.
 fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
@@ -589,6 +657,9 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     if (second_draw()) {
         second = textureSampleBias(texture1, texture_sampler, v.uv1, texture_bias());
         surface = mix(first.rgb, second.rgb, second.a * v.color.a);
+    }
+    if (layers_draw()) {
+        surface = layered(v);
     }
     // The backdrop (the world-anchored sky faces' frame) gets detail its stretched texture lacks.
     if (!stage_frame() && !camera_anchored()) {
@@ -660,6 +731,10 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     }
     var sun_seen = 1.0;
     var colour: vec3<f32>;
+    // The colour before the highlight, which a sheen replaces.
+    var base = vec3<f32>(0.0);
+    // The vertex with a BTB normal map's normal, which the light and the road's sheen take.
+    var lit = v;
     if (own) {
         // The sun's or, once it is down, the moon's share past the shadows; a crown's own leaves shade it softly,
         // rather than its cards each other (`crown_sun_seen`). Only the one taken is worked out (both cost a shadow
@@ -675,22 +750,30 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         }
         // Lit in linear light (`own_light`), then back to the display colour the rest of the frame works in. A BTB
         // normal map's normal takes the light; the shadows keep the face's.
-        var lit = v;
         if (bump_draw()) {
             lit.normal = bumped(v);
         }
         colour = pow(own_light(lit, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
+        base = colour;
         if (highlight_draw()) {
             colour = with_highlight(colour, lit, front, sun_seen);
         }
     } else {
-        colour = relit(v) * surface;
+        colour = relit(v) * surface * (0.5 * (mode.tint.x + mode.tint.y));
     }
     // Our wet road (`wet_plus`), with the puddles' addition in wet and damp weather where the surface takes it.
     let wet = WATER_PLUS && frame.enhance.z != 0.0 && frame.wetness.x > 0.0;
     let wet_road = wet && detail_draw() && v.wet.x > 0.0;
     if (own && specular_draw() && !wet_road) {
         colour = with_specular(colour, v, front, sun_seen);
+    }
+    // The sheen of a BTB road, where the collision surface under the vertex is tarmac (`v.wet`, `puddles::mark_roads`:
+    // tarmac 1, gravel 0.5, snow -1), fading out at the road's edge; it replaces the highlight there.
+    if (own && sheen_draw() && !wet_road) {
+        let road = smoothstep(0.6, 0.9, v.wet.x);
+        if (road > 0.0) {
+            colour = mix(colour, mix(base, with_sheen(base, lit, front, sun_seen), SHEEN_STRENGTH), road);
+        }
     }
     // The game's highlight off the road's specular map: the stones' detail on gravel, so kept beside our reflection.
     // With our light, as strong as the direct light against noon's: none once the sun has set and the moon is down.
@@ -1214,6 +1297,14 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
         sky = mix(vec3<f32>(grey), sky, select(TUFT_SKY_TINT, 1.0, ours));
         bounce = bounce + TUFT_GROUND * (sky_unit * 0.5 + sun_unit * max(-frame.sun.y, 0.0) * sun_seen) * (1.0 - height);
         occlusion = mix(GRASS_BASE, 1.0, smoothstep(0.0, GRASS_RISE, height));
+        if (ours && v.specular.z > 1.5) {
+            // A converted stage's GrassFX tufts (`grass::FX_CARD`): taller and sparser than ours, dark at the root and
+            // warm at the tip, as CSP draws them.
+            let ramp = smoothstep(0.0, 1.0, height);
+            occlusion = mix(FX_GRASS_ROOT, 1.0, ramp);
+            sun = sun * mix(vec3<f32>(FX_GRASS_ROOT), FX_GRASS_TIP, ramp);
+            sky = sky * mix(vec3<f32>(1.0), FX_GRASS_TIP, ramp);
+        }
         if (crown) {
             // The sky's and the ground's light, not the sun's, is shut out of a crown's lower and inner parts.
             ambient_occlusion = mix(CROWN_BASE, 1.0, smoothstep(0.0, 0.6, height)) * mix(CROWN_INNER, 1.0, smoothstep(0.2, 1.0, length(crown_at(v))));
@@ -1231,7 +1322,7 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
     if (SUN_MASK) {
         contact = textureLoad(sun_contact, pixel / 2, 0).r;
     }
-    return pow(hue, vec3<f32>(2.2)) * (((sky + bounce) * ambient_occlusion * contact * (1.0 + through) + sun) * occlusion);
+    return pow(hue, vec3<f32>(2.2)) * (((sky + bounce) * (ambient_occlusion * contact * (1.0 + through) * mode.tint.x) + sun * mode.tint.y) * occlusion);
 }
 
 // A grass tuft's or low bush's pixel (`foliage::with_plants`: `specular.y` 1, `wet` its share of height, `uv1` the way
@@ -1249,6 +1340,9 @@ const GRASS_WRAP: f32 = 0.3;
 const GRASS_BASE: f32 = 0.6;
 const GRASS_SUN_BASE: vec2<f32> = vec2<f32>(0.4, 0.6);
 const GRASS_RISE: f32 = 0.9;
+// A converted stage's GrassFX tufts: the light at the root, and the tint at the tip (ours).
+const FX_GRASS_ROOT: f32 = 0.25;
+const FX_GRASS_TIP: vec3<f32> = vec3<f32>(1.2, 1.0, 0.95);
 const TUFT_PALE: vec2<f32> = vec2<f32>(0.06, 0.16);
 const TUFT_SNOW: vec2<f32> = vec2<f32>(0.3, 0.5);
 const TUFT_GREEN_MOST: f32 = 0.09;
@@ -1955,14 +2049,30 @@ fn with_highlight(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -
 }
 
 fn with_specular(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -> vec3<f32> {
+    // The maps' texels run about 0 to 0.25.
+    let map = dot(textureSample(specular_texture, texture_sampler, v.specular.xy).rgb, vec3<f32>(0.333));
     if (dot(v.normal, v.normal) < 1e-8) {
         return colour;
     }
-    let n = normalize(v.normal) * select(-1.0, 1.0, front);
-    // The maps' texels run about 0 to 0.25.
-    let map = dot(textureSample(specular_texture, texture_sampler, v.specular.xy).rgb, vec3<f32>(0.333));
     let polish = clamp(map * 4.0 * v.specular.z, 0.0, 1.0);
     let roughness = ROAD_ROUGHNESS - ROAD_POLISH * polish - DAMP_ROUGHNESS * min(frame.wetness.x * 2.0, 1.0);
+    return rough_dielectric(colour, v, normalize(v.normal) * select(-1.0, 1.0, front), roughness, sun_seen);
+}
+
+const SHEEN_STRENGTH: f32 = 0.1;
+
+// A BTB road's dry sheen (`stage::Sheen`, `ReRbrSheen`): the same rough dielectric at the material's roughness, on the
+// bumped normal `v.normal` (`bumped`), damp as the retail roads are.
+fn with_sheen(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -> vec3<f32> {
+    if (dot(v.normal, v.normal) < 1e-8) {
+        return colour;
+    }
+    let roughness = mode.sheen.x - DAMP_ROUGHNESS * min(frame.wetness.x * 2.0, 1.0);
+    return rough_dielectric(colour, v, normalize(v.normal) * select(-1.0, 1.0, front), roughness, sun_seen);
+}
+
+// The body of both: the sky's reflection and the sun's GGX highlight of a dielectric of `roughness`, facing `n`.
+fn rough_dielectric(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, roughness: f32, sun_seen: f32) -> vec3<f32> {
     let view = normalize(frame.eye.xyz - v.world);
     let nv = max(dot(n, view), 1e-3);
     let reflectance = environment_reflectance(nv, roughness);

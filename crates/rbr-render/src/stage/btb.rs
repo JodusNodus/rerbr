@@ -6,9 +6,12 @@
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
 
-use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Lod, Mesh, NormalMap, Surface, Vertex};
+use super::mesh::{
+    Bounds, Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex,
+};
 use super::{
-    Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
+    Address, Anchor, Error, GrassFx, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef,
+    TextureSet,
 };
 use crate::atmosphere::Atmosphere;
 use glam::{Vec3, Vec3Swizzles};
@@ -56,6 +59,29 @@ const DOME_POINTS: usize = 5;
 /// How far, metres, a converted stage's drawn triangle may lie off its collision ground and still be on it
 /// ([`on_ground`]).
 const ON_GROUND: f32 = 0.25;
+/// A multilayer material's textures and numbers for the shader. In world space each detail's offset is the stage origin's
+/// share of `(x, z) * scale` (AC's `x` is the stage's plus the origin's, its `z` the stage's negated, less the origin's), kept
+/// as the fraction the texture repeats at so that the shader's `f32` holds it.
+fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Option<TextureRef>) -> Layers {
+    let mut named = |name: &String| texture(&Some(name.clone())).expect("a name gives a texture");
+    let offset = |i: usize| match l.world {
+        Some([x, z]) => {
+            [(x * f64::from(l.scale[i][0])).rem_euclid(1.0), (-z * f64::from(l.scale[i][1])).rem_euclid(1.0)]
+                .map(|o| o as f32)
+        }
+        None => [0.0; 2],
+    };
+    Layers {
+        diffuse: named(&l.diffuse),
+        mask: named(&l.mask),
+        details: std::array::from_fn(|i| named(&l.details[i])),
+        world: l.world.is_some(),
+        magic: l.magic,
+        scale: l.scale,
+        offset: std::array::from_fn(offset),
+    }
+}
+
 /// The triangles of a placement [`on_ground`] samples, at most.
 const GROUND_SAMPLES: usize = 64;
 
@@ -81,6 +107,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         Some(texture)
     };
 
+    // A converted stage's grass atlas, where it ships one: a stage texture like the draws'.
+    let grass_fx = scene.grass.clone().map(|settings| {
+        let texture = texture(&settings.texture);
+        GrassFx { settings, texture }
+    });
+
     // One plan per mesh: the draws it makes, with their layers.
     let mut alphas: HashMap<&str, Alpha> = HashMap::new();
     let plans: Vec<Option<Plan>> = scene
@@ -92,6 +124,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 return None;
             }
             let lerp = material.effect.vert_lerp && material.second.is_some() && !mesh.blend.is_empty();
+            // A multilayer material drawn per pixel (`ReRbrLayer*`) keeps the bake of the sum as its first texture, which
+            // the grass and the ground detail read.
+            let layers = material.layers.as_ref().filter(|_| !material.technique.transparent);
             let first = texture(&material.diffuse);
             let second = if lerp { texture(&material.second) } else { None };
             // Two passes only where the texture is translucent; a cut-out one is alpha tested, an opaque one solid.
@@ -117,7 +152,16 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 power: material.specular_power.max(1.0),
                 map: texture(&material.specular),
             });
-            let surface = (normal.is_some() || highlight.is_some()).then_some(Surface { normal, highlight });
+            let light = Light(material.light);
+            // The sheen on the opaque draws only (a road is no cut-out).
+            let sheen = material.sheen.filter(|_| opaque).map(|roughness| Sheen { roughness });
+            let layers = layers.map(|l| layered(l, &mut texture));
+            let surface = (normal.is_some()
+                || highlight.is_some()
+                || sheen.is_some()
+                || layers.is_some()
+                || light != Light::NONE)
+                .then_some(Surface { normal, highlight, sheen, light, layers });
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,
@@ -126,6 +170,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 alpha_ref,
                 mip_bias: false,
                 ground: false,
+                grass: material.grass,
                 cull_back: false,
                 blend,
                 depth_test: true,
@@ -195,13 +240,17 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         let vertices: usize = meshes.iter().map(|m| m.vertices.len()).sum();
         let domes = meshes.iter().filter(|m| m.layer == Layer::Sky).count();
         let surfaces = meshes.iter().flat_map(|m| &m.draws).filter_map(|d| d.state.surface.map(|s| (d, s)));
-        let (bumped, highlit) = surfaces.fold((0, 0), |(b, h), (d, s)| {
+        let (bumped, highlit, sheened) = surfaces.fold((0, 0, 0), |(b, h, r), (d, s)| {
             let n = d.indices.len() / 3;
-            (b + n * usize::from(s.normal.is_some()), h + n * usize::from(s.highlight.is_some()))
+            (
+                b + n * usize::from(s.normal.is_some()),
+                h + n * usize::from(s.highlight.is_some()),
+                r + n * usize::from(s.sheen.is_some()),
+            )
         });
         eprintln!(
             "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles \
-             ({bumped} with a normal map, {highlit} with a highlight)",
+             ({bumped} with a normal map, {highlit} with a highlight, {sheened} with a sheen)",
             scene.objects.len()
         );
     }
@@ -216,6 +265,13 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     if scene.sun_direction.is_some() {
         atmosphere.sun_direction = sun;
     }
+    if let Some(air) = scene.air {
+        if let Some(c) = air.fog_color {
+            atmosphere.fog_color = Vec3::from(c);
+        }
+        atmosphere.aerosol = air.aerosol;
+        atmosphere.mist = air.mist;
+    }
     let (yaw, position) = (scene.spawn.yaw, Vec3::from(scene.spawn.position));
     let start = Some(Pose { position, forward: Vec3::new(yaw.sin(), 0.0, yaw.cos()) });
     Ok(Stage {
@@ -227,6 +283,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         textures: BTreeMap::new(),
         start_digits: None,
         snow_ground: false,
+        grass_fx,
         collision,
         start,
         atmosphere,
@@ -477,6 +534,7 @@ mod tests {
             alpha_ref: Some(CUTOUT_REF),
             mip_bias: false,
             ground: false,
+            grass: false,
             cull_back: false,
             blend: false,
             depth_test: true,
@@ -496,5 +554,32 @@ mod tests {
         let meshes = groups.finish();
         let casting: Vec<(bool, usize)> = meshes.iter().map(|m| (m.sun_cascades, m.indices.len() / 3)).collect();
         assert_eq!(casting, [(true, 2), (false, 2), (true, 1)]);
+    }
+
+    #[test]
+    fn a_world_layer_keeps_the_origins_share_of_each_detail_as_a_fraction() {
+        let names = |n: &str| n.to_owned();
+        let layers = scene::Layers {
+            diffuse: names("d"),
+            mask: names("m"),
+            details: ["a", "b", "c", "d"].map(names),
+            scale: [[0.02, 0.02], [0.5, 0.25], [0.0, 0.0], [4.0, 8.0]],
+            magic: 1.5,
+            world: Some([-231.0, -563.0]),
+        };
+        let mut next = 0;
+        let mut texture = |file: &Option<String>| {
+            file.as_ref()?;
+            next += 1;
+            Some(TextureRef::stage(next))
+        };
+        let world = layered(&layers, &mut texture);
+        // AC's x is the stage's plus the origin's, its z the stage's negated less the origin's.
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-5;
+        assert!(near(world.offset[0][0], 0.38) && near(world.offset[0][1], 0.26), "{:?}", world.offset[0]);
+        assert!(near(world.offset[1][0], 0.5) && near(world.offset[1][1], 0.75), "{:?}", world.offset[1]);
+        assert_eq!((world.offset[2], world.offset[3]), ([0.0; 2], [0.0; 2]));
+        let uv = layered(&scene::Layers { world: None, ..layers }, &mut texture);
+        assert!(uv.offset.iter().all(|o| *o == [0.0; 2]) && !uv.world);
     }
 }

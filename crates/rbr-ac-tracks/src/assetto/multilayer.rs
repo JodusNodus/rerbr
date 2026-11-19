@@ -12,10 +12,10 @@ use crate::btb::textures::{self, Image};
 
 /// Bakes above this size on either side are not made; the base diffuse is kept. The renderer takes what the GPU does
 /// (ReRBR's largest stage texture is 16384 px) and the bake needs `4 * width * height` bytes for each map it holds.
-const LIMIT: u32 = 16384;
+pub(super) const LIMIT: u32 = 16384;
 
 const LAYERS: [&str; 4] = ["txDetailR", "txDetailG", "txDetailB", "txDetailA"];
-const MULTIPLIERS: [&str; 4] = ["multR", "multG", "multB", "multA"];
+pub(super) const MULTIPLIERS: [&str; 4] = ["multR", "multG", "multB", "multA"];
 
 /// Average horizontal metres per unit of `u` and of `v` over the faces using material `index`, weighted by UV area.
 pub fn metres_per_uv(model: &Model, index: usize) -> [f64; 2] {

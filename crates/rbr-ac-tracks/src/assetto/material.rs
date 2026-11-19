@@ -118,6 +118,10 @@ pub struct TextureBank {
     /// Hash buckets retain output filenames; a hash match is checked against the written payload.
     seen: BTreeMap<(u64, usize), TextureBucket>,
     aliases: BTreeMap<String, String>,
+    /// The file a model's texture was stored as, by name, alpha and size: a material read twice stores nothing twice.
+    stored: BTreeMap<(String, bool, usize), String>,
+    /// The pixel size of textures [`TextureBank::layers`] has looked at, by name and byte size.
+    sizes: BTreeMap<(String, usize), Option<(u32, u32)>>,
     pub missing: BTreeSet<String>,
     pub simplified: BTreeSet<String>,
     /// Multilayer materials baked into one texture, and materials whose textures are one-pixel placeholders.
@@ -126,7 +130,13 @@ pub struct TextureBank {
     /// Sections written with a normal map and with a highlight.
     pub normal_mapped: usize,
     pub highlighted: usize,
+    /// Sections written with a dry road sheen.
+    pub sheened: usize,
+    /// Sections written to be drawn as multilayer at render time ([`Layers`]).
+    pub layered: usize,
     pub count: usize,
+    /// The stage's origin `[x, z]` in AC's frame ([`Layers::world`]); the stage's `(x, z)` is AC's `(x - origin[0], -z - origin[1])`.
+    pub origin: [f64; 2],
 }
 
 impl TextureBank {
@@ -136,13 +146,18 @@ impl TextureBank {
             zip: zip::ZipWriter::new(file),
             seen: BTreeMap::new(),
             aliases: BTreeMap::new(),
+            stored: BTreeMap::new(),
+            sizes: BTreeMap::new(),
             missing: BTreeSet::new(),
             simplified: BTreeSet::new(),
             baked: BTreeSet::new(),
             placeholders: BTreeSet::new(),
             normal_mapped: 0,
             highlighted: 0,
+            sheened: 0,
+            layered: 0,
             count: 0,
+            origin: [0.; 2],
         })
     }
     pub fn put(&mut self, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
@@ -216,6 +231,10 @@ impl TextureBank {
         let Some(name) = mat.textures.get(slot) else { return Ok(None) };
         let alias = if alpha { name.clone() } else { format!("opaque:{name}") };
         if let Some(data) = model.textures.get(name).filter(|d| !d.is_empty()) {
+            let key = (name.clone(), alpha, data.len());
+            if let Some(file) = self.stored.get(&key) {
+                return Ok(Some(file.clone()));
+            }
             let extension = if data.starts_with(b"DDS ") {
                 "dds"
             } else if data.starts_with(b"\x89PNG") {
@@ -238,6 +257,7 @@ impl TextureBank {
             };
             let file = self.put(bytes, extension)?;
             self.aliases.insert(alias, file.clone());
+            self.stored.insert(key, file.clone());
             return Ok(Some(file));
         }
         Ok(self.aliases.get(&alias).cloned())
@@ -248,7 +268,8 @@ impl TextureBank {
         if is_placeholder(model, mat) {
             return Ok(Extras::default());
         }
-        let mut extras = Extras { highlight: highlight(mat), ..Extras::default() };
+        let mut extras =
+            Extras { highlight: highlight(mat), sheen: sheen(mat), light: light(mat), ..Extras::default() };
         let normal = mat.textures.get("txNormal").filter(|_| !mat.shader.contains("Multilayer"));
         if let Some(name) = normal {
             // A normal map that cannot be read is no normal map.
@@ -260,21 +281,107 @@ impl TextureBank {
         }
         // `ksPerPixelNM_UVMult`: the UVs carry the diffuse's multiplier, the map reads them at the ratio of the two.
         if let Some([diffuse, normal]) = uv_multipliers(model, mat).filter(|_| extras.normal.is_some()) {
-            extras.bump_scale = Some(normal / diffuse);
+            extras.bump_scale = Some([normal / diffuse; 2]);
         }
+        self.detail_map(model, mat, &mut extras);
         if let Some(name) = mat.textures.get("txMaps").filter(|_| extras.highlight.is_some()) {
             extras.specular = self.share(model, name)?;
         }
-        self.normal_mapped += usize::from(extras.normal.is_some());
-        self.highlighted += usize::from(extras.highlight.is_some());
+        extras.layers = self.layers(model, mat);
+        self.count(&extras);
         Ok(extras)
     }
-    /// The highlight of a material written per tile: the texture is baked, so there is no spec map.
+    /// The multilayer material's own textures and numbers, for the renderer to sum per pixel ([`Layers`]); `None` for
+    /// another shader, a placeholder diffuse, a missing or unreadable texture, and one past [`multilayer::LIMIT`] (which
+    /// [`multilayer::bake`] leaves out too). The textures are stored under their own names, so materials sharing a
+    /// detail texture share its file.
+    pub fn layers(&mut self, model: &Model, mat: &Material) -> Option<Layers> {
+        if !mat.shader.contains("Multilayer") || is_placeholder(model, mat) {
+            return None;
+        }
+        for slot in ["txDiffuse", "txMask"] {
+            let name = mat.textures.get(slot)?;
+            let data = model.textures.get(name).filter(|d| !d.is_empty())?;
+            let (w, h) =
+                (*self.sizes.entry((name.clone(), data.len())).or_insert_with(|| {
+                    match rbr_formats::dds::parse(data) {
+                        Ok(dds) => Some((dds.width, dds.height)),
+                        Err(_) => textures::decode(data).map(|(w, h, _)| (w, h)),
+                    }
+                }))?;
+            if w > multilayer::LIMIT || h > multilayer::LIMIT {
+                return None;
+            }
+        }
+        let objsp = mat.shader.contains("objsp");
+        let scale: [[f32; 2]; 4] = std::array::from_fn(|i| {
+            let key = multilayer::MULTIPLIERS[i];
+            let pair = if objsp { mat.pairs.get(key).copied().unwrap_or([0.; 2]) } else { [mat.property(key, 0.); 2] };
+            pair.map(|m| if m.is_finite() && m >= 0. { m } else { 0. })
+        });
+        // The mask's alpha is the fourth layer's weight.
+        let slots = [
+            ("txDiffuse", false),
+            ("txMask", true),
+            ("txDetailR", false),
+            ("txDetailG", false),
+            ("txDetailB", false),
+            ("txDetailA", false),
+        ];
+        let mut files = Vec::new();
+        for (slot, alpha) in slots {
+            files.push(self.slot(model, mat, slot, alpha).ok()??);
+        }
+        let mut files = files.into_iter();
+        let mut next = || files.next().unwrap();
+        let (diffuse, mask) = (next(), next());
+        Some(Layers {
+            diffuse,
+            mask,
+            details: std::array::from_fn(|_| next()),
+            scale,
+            magic: mat.property("magicMult", 1.),
+            world: (!objsp).then_some(self.origin),
+        })
+    }
+    fn count(&mut self, extras: &Extras) {
+        self.normal_mapped += usize::from(extras.normal.is_some());
+        self.highlighted += usize::from(extras.highlight.is_some());
+        self.sheened += usize::from(extras.sheen.is_some());
+        self.layered += usize::from(extras.layers.is_some());
+    }
+    /// `ksMultilayer_fresnel_nm`'s only normal map, `txDetailNM`, read at the source UV times the pair `detailNMMult`
+    /// (the scalar is always 0): the normal map of `extras`, on the UV set 0 the material's bake takes.
+    fn detail_map(&mut self, model: &Model, mat: &Material, extras: &mut Extras) {
+        let Some(&scale) = mat.pairs.get("detailNMMult").filter(|p| p.iter().all(|c| c.is_finite() && *c >= 0.)) else {
+            return;
+        };
+        let Some(name) = mat.textures.get("txDetailNM") else { return };
+        if mat.shader != "ksMultilayer_fresnel_nm" || scale == [0.; 2] || is_one_pixel(model, name) {
+            return;
+        }
+        match self.slot(model, mat, "txDetailNM", false) {
+            Ok(Some(file)) => {
+                extras.normal = Some(file);
+                extras.bump_scale = Some(scale);
+            }
+            Ok(None) => _ = self.missing.insert(format!("{}: {name}", mat.name)),
+            Err(_) => _ = self.simplified.insert(format!("{}: {name}", mat.name)),
+        }
+    }
+    /// What a material written per tile takes: its highlight and sheen, and `txDetailNM`; the texture is baked, so
+    /// there is no spec map, and the tile's UV set 0 is its own, so the normal map reads the source UV on the
+    /// mesh's second set.
     pub fn tile_extras(&mut self, model: &Model, index: usize) -> Extras {
         let mat = &model.materials[index];
-        let highlight = highlight(mat).filter(|_| !is_placeholder(model, mat));
-        self.highlighted += usize::from(highlight.is_some());
-        Extras { highlight, ..Extras::default() }
+        let mut extras = Extras::default();
+        if !is_placeholder(model, mat) {
+            extras = Extras { highlight: highlight(mat), sheen: sheen(mat), light: light(mat), ..extras };
+            self.detail_map(model, mat, &mut extras);
+            extras.bump_uv = extras.normal.is_some();
+        }
+        self.count(&extras);
+        extras
     }
     /// The red channel of a spec map (AC's specular share) as an opaque grey texture.
     fn share(&mut self, model: &Model, name: &str) -> Result<Option<String>, String> {
@@ -297,7 +404,12 @@ impl TextureBank {
 
 /// Whether the diffuse texture is a one-pixel PNG: some track exports strip their textures to those.
 pub fn is_placeholder(model: &Model, mat: &Material) -> bool {
-    mat.textures.get("txDiffuse").and_then(|n| model.textures.get(n)).is_some_and(|d| {
+    mat.textures.get("txDiffuse").is_some_and(|n| is_one_pixel(model, n))
+}
+
+/// Whether the model's texture `name` is a one-pixel PNG.
+fn is_one_pixel(model: &Model, name: &str) -> bool {
+    model.textures.get(name).is_some_and(|d| {
         d.len() <= 512 && d.starts_with(b"\x89PNG") && textures::decode(d).is_some_and(|(w, h, _)| w * h == 1)
     })
 }
@@ -368,9 +480,127 @@ pub struct Extras {
     pub normal: Option<String>,
     pub specular: Option<String>,
     pub highlight: Option<(f32, f32)>,
-    /// `ReRbrBumpScale`: the normal map is read at its UV times this ([`uv_multipliers`]).
-    pub bump_scale: Option<f32>,
+    /// `ReRbrBumpScale`: the normal map is read at its UV times this ([`uv_multipliers`], `detailNMMult`).
+    pub bump_scale: Option<[f32; 2]>,
+    /// `ReRbrBumpUv`: the normal map reads the mesh's second UV set.
+    pub bump_uv: bool,
+    /// `ReRbrSheen`: the dry road sheen's roughness ([`sheen`]).
+    pub sheen: Option<f32>,
+    /// `(ksAmbient, ksDiffuse)` as the material gives them; [`normalise_light`] turns them into `ReRbrLight`.
+    pub light: Option<[f32; 2]>,
+    /// `ReRbrGrass=1`: CSP's GrassFX grows on this material ([`super::csp::GrassFx`]).
+    pub grass: bool,
+    /// `ReRbrLayer*`: the renderer sums a multilayer material per pixel.
+    pub layers: Option<Layers>,
 }
+
+/// A multilayer material for the renderer to draw per pixel (`ReRbrLayer*` keys), as `diffuse * (R*mask.r + G*mask.g
+/// + B*mask.b + A*mask.a) * magicMult` ([`multilayer`]); the section's `diffuseTexture` stays the bake of the same sum.
+/// The diffuse and the mask are read at the mesh's UV; each detail at `uv * scale` ([`Layers::world`] `None`, the
+/// `_objsp` shaders) or at AC's world `(x, z) * scale`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Layers {
+    /// The stored names of the diffuse, the mask and the details R, G, B and A.
+    pub diffuse: String,
+    pub mask: String,
+    pub details: [String; 4],
+    /// Each detail's `(u, v)` multiplier, the same on both axes for world space.
+    pub scale: [[f32; 2]; 4],
+    pub magic: f32,
+    /// The stage's origin `[x, z]`: the details are read at world space, AC's `(x, z) = (stage x + origin[0], -(stage z + origin[1]))`.
+    pub world: Option<[f64; 2]>,
+}
+
+/// `(ksAmbient, ksDiffuse)` of a material that declares both.
+fn light(mat: &Material) -> Option<[f32; 2]> {
+    let both = [mat.properties.get("ksAmbient")?, mat.properties.get("ksDiffuse")?];
+    Some(both.map(|v| *v).map(|v| v.max(0.)))
+}
+
+/// AC's shaders light in display (gamma) values, ReRBR's in linear light: a `ksAmbient`/`ksDiffuse` ratio `r` is
+/// `r^LIGHT_GAMMA` of ReRBR's light. Without it Sa Calobra's pale boulders (`extrarocks`, ratio 0.37/0.2 on a texture
+/// 2.8 times the terrain's) read cream where AC draws them as grey as the ground.
+const LIGHT_GAMMA: f32 = 2.2;
+/// Factors below this or above that are the most `ReRbrLight` moves a material, in linear light. The top is low: Sa
+/// Calobra's road (1.77/1.67, 3.5/3.1 linear) read 1.5 times AC's against its ground; at 2 it is 1.1 (AC's road 59,
+/// ours 65 and 53 at the rock and wall views, 06:45).
+const LIGHT_RANGE: (f32, f32) = (0.05, 2.0);
+
+/// The weighted median of `(value, weight)` pairs.
+fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
+    values.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let half = values.iter().map(|v| v.1).sum::<f64>() / 2.0;
+    let mut seen = 0.0;
+    values
+        .into_iter()
+        .find(|v| {
+            seen += v.1;
+            seen >= half
+        })
+        .map(|v| v.0)
+}
+
+/// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
+/// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws, to
+/// [`LIGHT_GAMMA`] in linear light. A factor within 2% of 1 for both drops the line.
+pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String {
+    let mut sections = Vec::<(&str, bool, Option<[f32; 2]>)>::new();
+    for line in materials.lines() {
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            sections.push((name, false, None));
+        } else if let Some(last) = sections.last_mut() {
+            last.1 |= line == "techniqueName=Default";
+            if let Some(v) = line.strip_prefix("ReRbrLight=") {
+                let v: Vec<f32> = v.split(',').filter_map(|n| n.parse().ok()).collect();
+                last.2 = <[f32; 2]>::try_from(v).ok();
+            }
+        }
+    }
+    let reference = |axis: usize| {
+        let values = sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *areas.get(s.0)?))).collect();
+        weighted_median(values).filter(|m| *m > 0.)
+    };
+    let (Some(ambient), Some(diffuse)) = (reference(0), reference(1)) else {
+        return materials.lines().filter(|l| !l.starts_with("ReRbrLight=")).map(|l| format!("{l}\n")).collect();
+    };
+    let mut out = String::new();
+    let mut at = 0;
+    for line in materials.lines() {
+        if line.starts_with('[') {
+            at += 1;
+        }
+        if line.starts_with("ReRbrLight=") {
+            let raw = sections[at - 1].2.unwrap_or([ambient, diffuse]);
+            let f =
+                [raw[0] / ambient, raw[1] / diffuse].map(|v| v.powf(LIGHT_GAMMA).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1));
+            if f.iter().any(|v| (v - 1.).abs() > 0.02) {
+                let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// The roughness of the dry sheen of a material, `None` for a cut-out, blended or foliage one. The renderer draws it
+/// only where the collision surface under the vertex is tarmac. From AC's Blinn-Phong exponent `n`: GGX `alpha = sqrt(2 / (n + 2))`, roughness `sqrt(alpha)` in
+/// 0.45 to 0.85; a material without `ksSpecular` or with `n < 1` takes [`ROAD_ROUGHNESS`]. AC's own fresnel values are
+/// author tuning and not read.
+pub fn sheen(mat: &Material) -> Option<f32> {
+    if is_transparent(mat) || mat.shader.contains("Grass") {
+        return None;
+    }
+    let (specular, n) = (mat.property("ksSpecular", 0.), mat.property("ksSpecularEXP", 0.));
+    if specular <= 0. || n < 1. {
+        return Some(ROAD_ROUGHNESS);
+    }
+    Some((2. / (n + 2.)).sqrt().sqrt().clamp(0.45, 0.85))
+}
+
+/// The sheen roughness of a road without a usable `ksSpecularEXP`.
+const ROAD_ROUGHNESS: f32 = 0.75;
 
 /// The sun highlight of an opaque, non-placeholder material that declares `ksSpecular`.
 fn highlight(mat: &Material) -> Option<(f32, f32)> {
@@ -409,13 +639,37 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
         (true, true) => Some("BTB_DiffuseBumpSpecular"),
         (true, false) => Some("BTB_DiffuseBump"),
         (false, true) => Some("BTB_DiffuseSpecular"),
-        (false, false) => None,
+        (false, false) => (extras.sheen.is_some() || extras.layers.is_some()).then_some("BTB_Diffuse"),
     };
     if let Some(effect) = effect {
         let _ = writeln!(out, "ReRbrEffect={effect}");
     }
-    if let Some(scale) = extras.bump_scale.filter(|_| extras.normal.is_some()) {
-        let _ = writeln!(out, "ReRbrBumpScale={}", decimal(scale));
+    if extras.normal.is_some() {
+        if let Some([u, v]) = extras.bump_scale {
+            let _ = writeln!(out, "ReRbrBumpScale={},{}", decimal(u), decimal(v));
+        }
+        if extras.bump_uv {
+            let _ = writeln!(out, "ReRbrBumpUv=1");
+        }
+    }
+    if let Some(roughness) = extras.sheen {
+        let _ = writeln!(out, "ReRbrSheen={}", decimal(roughness));
+    }
+    if let Some([ambient, diffuse]) = extras.light {
+        let _ = writeln!(out, "ReRbrLight={},{}", decimal(ambient), decimal(diffuse));
+    }
+    if extras.grass {
+        out.push_str("ReRbrGrass=1\n");
+    }
+    if let Some(layers) = &extras.layers {
+        let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
+        let _ = writeln!(out, "ReRbrLayerDiffuse={}\nReRbrLayerMask={}", layers.diffuse, layers.mask);
+        let _ = writeln!(out, "ReRbrLayerDetail={}", layers.details.join(","));
+        let _ = writeln!(out, "ReRbrLayerScale={}", list(&mut layers.scale.iter().flatten().map(|m| decimal(*m))));
+        let _ = writeln!(out, "ReRbrLayerMagic={}", decimal(layers.magic));
+        if let Some([x, z]) = layers.world {
+            let _ = writeln!(out, "ReRbrLayerWorld={x:.6},{z:.6}");
+        }
     }
     out.push('\n');
 }
@@ -423,6 +677,15 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_grass_material_is_marked() {
+        let mut out = String::new();
+        section_with(&mut out, "m", "t.dds", false, &Extras { grass: true, ..Extras::default() });
+        assert!(out.ends_with("ReRbrGrass=1\n\n"));
+        section(&mut out, "n", "t.dds", false);
+        assert_eq!(out.matches("ReRbrGrass").count(), 1);
+    }
+
     #[test]
     fn an_opaque_diffuse_takes_the_normal_maps_cut_out() {
         // A 2x2 diffuse with no cut-out (its alpha is shading); the normal map cuts its left column.
@@ -603,7 +866,7 @@ mod tests {
         assert_eq!(
             out,
             format!(
-                "[s]\neffectName=BTB_Diffuse\ntechniqueName=Default\nambient=0.4,0.4,0.4,1.0\nSpecularPower=15.0\nSpecularColor=0.5,0.5,0.5\ndiffuseTexture=ac_diffuse.dds\nnormalTexture={}\nspecularTexture={}\nReRbrEffect=BTB_DiffuseBumpSpecular\n\n",
+                "[s]\neffectName=BTB_Diffuse\ntechniqueName=Default\nambient=0.4,0.4,0.4,1.0\nSpecularPower=15.0\nSpecularColor=0.5,0.5,0.5\ndiffuseTexture=ac_diffuse.dds\nnormalTexture={}\nspecularTexture={}\nReRbrEffect=BTB_DiffuseBumpSpecular\nReRbrSheen=0.58566\n\n",
                 extras.normal.unwrap(),
                 extras.specular.unwrap()
             )
@@ -629,11 +892,11 @@ mod tests {
         let (scaled, plain) = (bank.extras(&model, 0).unwrap(), bank.extras(&model, 1).unwrap());
         bank.finish().unwrap();
         let _ = std::fs::remove_file(path);
-        assert_eq!((scaled.bump_scale, plain.bump_scale), (Some(0.375), None));
+        assert_eq!((scaled.bump_scale, plain.bump_scale), (Some([0.375; 2]), None));
         let mut out = String::new();
         section_with(&mut out, "s", "d.dds", false, &scaled);
         let line = out.lines().find_map(|l| l.strip_prefix("ReRbrBumpScale=")).unwrap();
-        assert_eq!(rbr_btb::track::decimal_floats(line), vec![0.375]);
+        assert_eq!(rbr_btb::track::decimal_floats(line), vec![0.375, 0.375]);
     }
     #[test]
     fn a_material_with_neither_feature_keeps_todays_section() {
@@ -654,6 +917,161 @@ mod tests {
         assert!(out.contains("normalTexture=") && out.contains("ReRbrEffect=BTB_DiffuseBump\n"));
         assert!(out.contains("SpecularPower=4\nSpecularColor=0,0,0\n"));
     }
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\xdacd`\xf8_\x0f\0\x02\x87\x01\x80\xebG\xba\x92\0\0\0\0IEND\xaeB`\x82";
+    fn bank_for(name: &str) -> (TextureBank, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!("ac-{name}-{}.zip", std::process::id()));
+        (TextureBank::new(&path).unwrap(), path)
+    }
+    fn multilayer_nm(pair: [f32; 2], detail: &str) -> Model {
+        let mut model = extras_model();
+        model.textures.insert("p".into(), PNG.to_vec());
+        let mat = Material {
+            name: "m".into(),
+            shader: "ksMultilayer_fresnel_nm".into(),
+            textures: [("txDiffuse", "d"), ("txDetailNM", detail)].map(|(s, n)| (s.into(), n.into())).into(),
+            pairs: BTreeMap::from([("detailNMMult".to_owned(), pair)]),
+            ..Material::default()
+        };
+        model.materials.push(mat);
+        model
+    }
+    fn layered(shader: &str) -> (String, Extras) {
+        let mut model = extras_model();
+        for (name, texel) in [("a", [1, 2, 3, 255]), ("b", [4, 5, 6, 255])] {
+            model.textures.insert(name.into(), rbr_formats::dds::rgba8_file(2, 2, &texel.repeat(4)));
+        }
+        // Detail R and B share a texture, as Sa Calobra's layers do.
+        let textures = [
+            ("txDiffuse", "d"),
+            ("txMask", "m"),
+            ("txDetailR", "a"),
+            ("txDetailG", "b"),
+            ("txDetailB", "a"),
+            ("txDetailA", "b"),
+        ];
+        let mut mat = Material {
+            name: "m".into(),
+            shader: shader.into(),
+            textures: textures.map(|(s, n)| (s.into(), n.into())).into(),
+            ..Material::default()
+        };
+        mat.properties.insert("magicMult".into(), 1.5);
+        for (i, key) in multilayer::MULTIPLIERS.iter().enumerate() {
+            mat.properties.insert((*key).into(), 0.5 + i as f32);
+            mat.pairs.insert((*key).into(), [10. * (i + 1) as f32, 0.25]);
+        }
+        model.materials.push(mat);
+        let (mut bank, path) = bank_for(&format!("layers-{shader}"));
+        bank.origin = [-1234.5, 20.25];
+        let extras = bank.extras(&model, 0).unwrap();
+        let (layered, count) = (bank.layered, bank.count);
+        bank.finish().unwrap();
+        let _ = std::fs::remove_file(path);
+        assert_eq!((layered, count), (1, 4), "diffuse, mask and two shared details are stored once");
+        let mut out = String::new();
+        section_with(&mut out, "s", "bake.dds", false, &extras);
+        (out, extras)
+    }
+    #[test]
+    fn world_space_multilayer_writes_its_textures_scales_and_origin() {
+        let (out, extras) = layered("ksMultilayer_fresnel_nm");
+        let layers = extras.layers.unwrap();
+        assert_eq!(layers.details[0], layers.details[2]);
+        assert_eq!(layers.scale, [[0.5; 2], [1.5; 2], [2.5; 2], [3.5; 2]]);
+        let value = |key: &str| out.lines().find_map(|l| l.strip_prefix(key)).unwrap().to_owned();
+        assert!(out.contains("diffuseTexture=bake.dds\nReRbrEffect=BTB_Diffuse\n"), "{out}");
+        assert_eq!(value("ReRbrLayerMask="), layers.mask);
+        assert_eq!(value("ReRbrLayerDetail="), layers.details.join(","));
+        assert_eq!(
+            rbr_btb::track::decimal_floats(&value("ReRbrLayerScale=")),
+            [0.5, 0.5, 1.5, 1.5, 2.5, 2.5, 3.5, 3.5]
+        );
+        assert_eq!(rbr_btb::track::decimal_floats(&value("ReRbrLayerMagic=")), [1.5]);
+        assert_eq!(rbr_btb::track::decimal_floats(&value("ReRbrLayerWorld=")), [-1234.5, 20.25]);
+    }
+    #[test]
+    fn an_objsp_multilayer_reads_its_pairs_at_the_uv_and_has_no_world() {
+        let (out, extras) = layered("ksMultilayer_objsp");
+        assert_eq!(extras.layers.unwrap().scale[1], [20., 0.25]);
+        assert!(
+            out.contains("ReRbrLayerScale=10.0,0.25,20.0,0.25,30.0,0.25,40.0,0.25\n")
+                && !out.contains("ReRbrLayerWorld")
+        );
+    }
+    #[test]
+    fn multilayers_detail_normal_map_is_its_normal_map_at_the_pair() {
+        let model = multilayer_nm([2000., 4000.5], "n");
+        let (mut bank, path) = bank_for("detailnm");
+        let extras = bank.extras(&model, 0).unwrap();
+        assert!(extras.normal.is_some() && !extras.bump_uv);
+        let mut out = String::new();
+        section_with(&mut out, "s", "d.dds", false, &extras);
+        assert!(out.contains("ReRbrEffect=BTB_DiffuseBump\nReRbrBumpScale=2000.0,4000.5\n"), "{out}");
+        assert!(!out.contains("ReRbrBumpUv"));
+        // A tile reads it on the source UV.
+        let tile = bank.tile_extras(&model, 0);
+        let mut out = String::new();
+        section_with(&mut out, "s", "d.dds", false, &tile);
+        assert!(out.contains("ReRbrBumpScale=2000.0,4000.5\nReRbrBumpUv=1\n"), "{out}");
+        // A one-pixel map and a (0, 0) pair give none.
+        for (pair, name) in [([2., 2.], "p"), ([0., 0.], "n")] {
+            let model = multilayer_nm(pair, name);
+            assert!(bank.extras(&model, 0).unwrap().normal.is_none(), "{pair:?} {name}");
+        }
+        bank.finish().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+    #[test]
+    fn a_materials_sheen_comes_from_its_exponent() {
+        let mat = |shader: &str, specular: f32, exp: f32, alpha: bool| {
+            let mut m = Material { name: "m".into(), shader: shader.into(), alpha_test: alpha, ..Material::default() };
+            m.properties.insert("ksSpecular".into(), specular);
+            m.properties.insert("ksSpecularEXP".into(), exp);
+            m
+        };
+        let rough = |n: f32| sheen(&mat("ksPerPixel", 1., n, false));
+        // n 15: alpha 0.343, roughness 0.586; a low n clamps to 0.85, a high one to 0.45.
+        assert!((rough(15.).unwrap() - (2f32 / 17.).sqrt().sqrt()).abs() < 1e-6);
+        assert_eq!((rough(1.5), rough(5000.)), (Some(0.85), Some(0.45)));
+        // No ksSpecular or a tiny exponent: the default.
+        assert_eq!(sheen(&mat("ksPerPixel", 0., 50., false)), Some(ROAD_ROUGHNESS));
+        assert_eq!(rough(0.5), Some(ROAD_ROUGHNESS));
+        // A cut-out, foliage.
+        assert_eq!(sheen(&mat("ksPerPixelAT", 1., 15., true)), None);
+        assert_eq!(sheen(&mat("ksTree", 1., 15., false)), None);
+        assert_eq!(sheen(&mat("ksGrass", 1., 15., false)), None);
+    }
+    #[test]
+    fn sheen_is_written_and_read_back_for_opaque_materials_and_not_placeholders() {
+        let mut model = extras_model();
+        model.textures.insert("p".into(), PNG.to_vec());
+        let mat = |diffuse: &str, shader: &str, alpha: bool| Material {
+            name: "m".into(),
+            shader: shader.into(),
+            alpha_test: alpha,
+            textures: BTreeMap::from([("txDiffuse".to_owned(), diffuse.to_owned())]),
+            ..Material::default()
+        };
+        model.materials = vec![
+            mat("d", "ksPerPixel", false),
+            mat("p", "ksPerPixel", false),
+            mat("d", "ksPerPixelAT", true),
+            mat("d", "ksGrass", false),
+        ];
+        let (mut bank, path) = bank_for("sheen");
+        let marked: Vec<_> = (0..4).map(|i| bank.extras(&model, i).unwrap().sheen).collect();
+        assert_eq!(marked, [Some(ROAD_ROUGHNESS), None, None, None]);
+        assert_eq!(bank.tile_extras(&model, 0).sheen, Some(ROAD_ROUGHNESS));
+        assert_eq!(bank.sheened, 2);
+        let extras = bank.extras(&model, 0).unwrap();
+        let mut out = String::new();
+        section_with(&mut out, "s", "d.dds", false, &extras);
+        assert!(out.contains("ReRbrEffect=BTB_Diffuse\nReRbrSheen=0.75\n"), "{out}");
+        let line = out.lines().find_map(|l| l.strip_prefix("ReRbrSheen=")).unwrap();
+        assert_eq!(rbr_btb::track::decimal_floats(line), vec![0.75]);
+        bank.finish().unwrap();
+        let _ = std::fs::remove_file(path);
+    }
     #[test]
     fn the_highlight_reads_back_through_btbs_decimal_floats() {
         for (specular, power) in [(1., 15.), (0.5, 4.), (0.004, 120.), (0.00001, 0.5)] {
@@ -669,5 +1087,43 @@ mod tests {
             assert!(colour.iter().all(|&c| (c - f64::from(specular)).abs() < 1e-6), "{colour:?}");
             assert_eq!(value("SpecularPower="), [f64::from(power)]);
         }
+    }
+
+    #[test]
+    fn light_is_written_relative_to_the_weighted_median_and_clamped() {
+        let section = |name: &str, technique: &str, light: &str| {
+            format!("[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\n{light}diffuseTexture=t.dds\n\n")
+        };
+        let materials = [
+            section("road", "Default", "ReRbrLight=1.1,0.5\n"),
+            section("rock", "Default", "ReRbrLight=0.22,0.06\n"),
+            section("same", "Default", "ReRbrLight=1.1,0.5\n"),
+            section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"),
+            section("plain", "Default", ""),
+        ]
+        .concat();
+        let triangles = BTreeMap::from(
+            [("road", 60.), ("rock", 10.), ("same", 10.), ("leaf", 1000.), ("plain", 5.)]
+                .map(|(k, v)| (k.to_owned(), v)),
+        );
+        let out = normalise_light(&materials, &triangles);
+        let light = |name: &str| {
+            let at = out.find(&format!("[{name}]")).unwrap();
+            out[at..]
+                .lines()
+                .take_while(|l| !l.is_empty())
+                .find_map(|l| l.strip_prefix("ReRbrLight="))
+                .map(str::to_owned)
+        };
+        // The median is the road's 1.1/0.5 (70 of 80 opaque triangles; the transparent leaf does not count).
+        assert_eq!(light("road"), None);
+        assert_eq!(light("same"), None);
+        // Ratios to 2.2 (linear light), clamped: rock 0.2/0.12 and leaf 0.27/0.2 to the floor but the leaf's ambient.
+        assert_eq!(light("rock").as_deref(), Some("0.05,0.05"));
+        assert_eq!(light("leaf").as_deref(), Some("0.057359,0.05"));
+        assert_eq!(light("plain"), None);
+        // Without any opaque material to reference nothing is written.
+        let none = normalise_light(&section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"), &triangles);
+        assert!(!none.contains("ReRbrLight"));
     }
 }
