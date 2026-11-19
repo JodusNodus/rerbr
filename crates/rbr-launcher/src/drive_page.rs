@@ -224,13 +224,11 @@ impl Form {
                 pressed = blocker.is_none() && (button.clicked() || enter);
                 let stop = egui::Button::new(RichText::new("Stop").size(14.0)).min_size(egui::vec2(80.0, 38.0));
                 if hint.is_some() && self.child.is_some() && ui.add(stop).clicked() {
-                    {
-                        // Our own child: the viewer, which ends its stepping process with it.
-                        if let Some(child) = &mut self.child {
-                            let _ = child.kill();
-                        }
-                        self.crash.stopped = true;
+                    // Our own child: the viewer, which ends its stepping process with it.
+                    if let Some(child) = &mut self.child {
+                        let _ = child.kill();
                     }
+                    self.crash.stopped = true;
                 }
                 ui.add_space(12.0);
                 if note && experimental_note(ui, "Experimental physics: results aren't saved") {
@@ -247,16 +245,11 @@ impl Form {
                         if let Some(hover) = &summary.hover {
                             title.on_hover_text(hover);
                         }
-                        match &summary.problem {
-                            Some(problem) => {
-                                _ = ui.add(egui::Label::new(RichText::new(problem).size(12.0).color(WARN)).truncate())
-                            }
-                            None => {
-                                _ = ui.add(
-                                    egui::Label::new(RichText::new(&summary.sub).size(12.0).color(TEXT_2)).truncate(),
-                                )
-                            }
+                        let (text, color) = match &summary.problem {
+                            Some(problem) => (problem, WARN),
+                            None => (&summary.sub, TEXT_2),
                         };
+                        ui.add(egui::Label::new(RichText::new(text).size(12.0).color(color)).truncate());
                     });
                 });
             });
@@ -622,9 +615,7 @@ impl Form {
             labelled(rows, "Wetness", tip, |ui| {
                 kit::segmented(ui, "wetness", &mut wetness, &[(0, "Dry"), (1, "Damp"), (2, "Wet")]);
             });
-            if Some(wetness) != self.wetness {
-                self.wetness = Some(wetness);
-            }
+            self.wetness = Some(wetness);
         }
 
         // A specific row, the bad weather and the Custom weather take the chosen wear.
@@ -688,9 +679,8 @@ impl Form {
         match self.car_browser.ui(ui, env) {
             Some(car_browser::Action::Choose(index)) => {
                 match target {
-                    Target::Drive => self.choose_car(index),
+                    Target::Drive | Target::Circuit => self.choose_car(index),
                     Target::Championship => self.championship.pick_car(index, &self.catalog.cars),
-                    Target::Circuit => self.choose_car(index),
                 }
                 self.car_browser.open = false;
             }
@@ -806,7 +796,7 @@ impl Form {
         let tip = "Best: race the fastest finished drive on this stage, replaced when you beat it";
         let choices: Vec<GhostChoice> = [GhostChoice::Off, GhostChoice::Best]
             .into_iter()
-            .chain(ghosts::ghost_files(&self.records(), map).into_iter().map(GhostChoice::File))
+            .chain(ghosts::ghost_files(&records, map).into_iter().map(GhostChoice::File))
             .collect();
         labelled(rows, "Ghost", tip, |ui| {
             combo(ui, "ghost", DROPDOWN, &mut self.ghost, &choices, ghost_label).on_hover_text(tip);
