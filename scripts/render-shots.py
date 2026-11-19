@@ -11,7 +11,9 @@ same picture. They serve as README pictures and as the reference for graphics ch
 change, then `--compare` the folders.
 
 Needs the release `rerbr`, `viewer` and `rbr-standalone` (`cargo build --release`), the game install (RBR_DATA, or
-the launcher settings' install folder) with NGP and the RallySimFans stages and cars the shots name, and, for the
+the launcher settings' install folder) with NGP and the RallySimFans stages and cars the shots name (and the four Assetto Corsa
+tracks of the `golden-akina`, `golden-nordschleife`, `day-sa-calobra` and `fog-crequy` shots, imported with
+`rbr-ac-tracks import` under their default folder names), and, for the
 same textures as the committed list was made with, the upscaler (`Upscaler/` in the files folder). The player's
 launcher-settings.ini is only read (its install folder and NGP paths); the rest comes from `SETTINGS` below, in a
 temporary files folder, so a player's own options do not change a shot. Writes DIR/<name>.png, DIR/<name>.log (the
@@ -258,6 +260,9 @@ GROUPS = [('day', 'Day'), ('golden', 'Golden hour'), ('rain', 'Rain'), ('fog', '
 
 
 RETAIL = {52: 'Sipirkakim'}  # the retail stages the list uses; the Maps folder names only the RSF ones
+# Assetto Corsa tracks imported with their default folder names (`rbr-ac-tracks import`, the launcher's Import): the
+# number the launcher gives a BTB folder is a hash of its name, so these hold on any install that imported them.
+IMPORTED = {1290447: 'Akina Uphill', 1333662: 'Nordschleife', 1282190: 'Sa Calobra', 1126035: 'Crequy'}
 
 
 def stage_names(install):
@@ -281,8 +286,8 @@ def gallery(shots, names, dest):
         group = [s for s in shots if s['name'].split('-')[0] == prefix]
         lines += [f'## {title}\n'] if group else []
         for s in group:
-            stage = RETAIL.get(s['stage']) or names.get(s['stage'], 'stage')
-            kind = 'retail' if s['stage'] in RETAIL else 'RSF'
+            stage = RETAIL.get(s['stage']) or IMPORTED.get(s['stage']) or names.get(s['stage'], 'stage')
+            kind = 'retail' if s['stage'] in RETAIL else 'AC import' if s['stage'] in IMPORTED else 'RSF'
             clock = f", {s['clock']}" if 'clock' in s else ''
             lines.append(f"### {s['name']}\n\n{s['car']}, {stage} ({kind} {s['stage']}), {s['view'].split('-')[0]} view{clock}\n\n"
                          f"![{s['name']}]({s['name']}.jpg)\n")

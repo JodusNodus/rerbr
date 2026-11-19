@@ -36,8 +36,12 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 | Fiat 131 Abarth Group 4 (model by DMRally74), Luceram Col Saint Roch (stage by Casgra11) | Renault Clio Rally3 (model by DMRally74), Komarov Snow (stage by Miro Kurek, Myra43 & Napa RBR Cup) |
 | ![The cockpit of a Ford Fiesta Rally2 on Luceram Col Saint Roch in the morning sun, the road ahead seen through the windscreen](docs/shots/day-luceram-fiesta-cockpit.jpg) | ![A Ford Escort Mk II RS Group 4 on a village lane in the morning mist on Semetin 2009](docs/shots/fog-semetin-escort-chase.jpg) |
 | Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Luceram Col Saint Roch (stage by Casgra11) | Ford Escort Mk II RS Group 4 (model by Ha3aP, fixed by WorkerBee), Semetin 2009 (stage by Vasek Sourek) |
+| ![An Alpine A110 Rally RGT on Akina Uphill at dusk, the headlights lighting the guardrail and a road sign](docs/shots/golden-akina-alpine-chase.jpg) | ![A BMW M3 E30 Group A in the evening sun on the Nordschleife, pines and grandstands behind](docs/shots/golden-nordschleife-m3-flyby.jpg) |
+| Alpine A110 Rally RGT (model by DMRally74), Akina Uphill (Assetto Corsa track by Project Kaido, converted) | BMW M3 E30 Group A (model by Atiwrc), Nordschleife (Assetto Corsa track, converted) |
+| ![An Alpine A110 Rally RGT on a Sa Calobra hairpin above the sea, mountains behind](docs/shots/day-sa-calobra-alpine-flyby.jpg) | ![A Toyota GR Yaris Rally2 on Crequy in the morning fog, low sun through the trees](docs/shots/fog-crequy-yaris-chase.jpg) |
+| Alpine A110 Rally RGT (model by DMRally74), Sa Calobra (Assetto Corsa track by SuperStage, converted) | Toyota GR Yaris Rally2 (model by Ha3aP), Crequy (Assetto Corsa track by JCRR, converted) |
 
-The whole set of 36: [docs/shots](docs/shots/README.md).
+The whole set of 40: [docs/shots](docs/shots/README.md).
 
 ## Status
 
