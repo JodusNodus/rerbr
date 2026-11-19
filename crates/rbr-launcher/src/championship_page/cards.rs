@@ -84,14 +84,15 @@ pub(super) fn stage_summary(ui: &mut Ui, event: &Event, rally: usize, stage: usi
             }
         };
         match mine {
-            Some(0) => {
-                let by = times.get(1).map_or(String::new(), |t| format!(" by {}", seconds(t.1 - best)));
-                ui.label(RichText::new(format!("You won SS{}{by}", stage + 1)).color(STAR));
-                ui.colored_label(DIM, "·");
-                overall(ui);
-            }
             Some(at) => {
-                ui.label(RichText::new(format!("You were {} on SS{}", ordinal(at + 1), stage + 1)).color(STAR));
+                let line = match at {
+                    0 => {
+                        let by = times.get(1).map_or(String::new(), |t| format!(" by {}", seconds(t.1 - best)));
+                        format!("You won SS{}{by}", stage + 1)
+                    }
+                    at => format!("You were {} on SS{}", ordinal(at + 1), stage + 1),
+                };
+                ui.label(RichText::new(line).color(STAR));
                 ui.colored_label(DIM, "·");
                 overall(ui);
             }

@@ -208,7 +208,7 @@ impl ChampionshipPage {
         let kind = surface_kind(next.stage.surface);
         let choosing = self.choice_before(rally, stage);
         let tyre = self.next_tyre();
-        let road = self.run.as_ref().and_then(|r| road_line(&r.event, rally, stage));
+        let road = road_line(event, rally, stage);
         let rivals = (stage > 0).then(|| rivals_line(event, rally)).flatten();
         let title = format!("SS{} · {}", stage + 1, next.stage.name);
         let facts = format!(
@@ -229,11 +229,10 @@ impl ChampionshipPage {
                     ui.add_space(9.0);
                 });
             });
-            if let Some(rivals) = rivals {
-                row(rows, "Position", "", |ui| _ = ui.label(RichText::new(rivals).color(TEXT)));
-            }
-            if let Some(road) = road {
-                row(rows, "Start order", "", |ui| _ = ui.label(RichText::new(road).color(TEXT)));
+            for (label, text) in [("Position", rivals), ("Start order", road)] {
+                if let Some(text) = text {
+                    row(rows, label, "", |ui| _ = ui.label(RichText::new(text).color(TEXT)));
+                }
             }
             row(rows, "Tyres", "", |ui| {
                 if choosing {

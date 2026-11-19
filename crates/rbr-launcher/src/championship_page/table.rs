@@ -29,12 +29,10 @@ pub(super) struct Cell {
 }
 
 impl Cell {
-    /// A name or a word.
     pub fn text(text: impl Into<String>, color: Color32) -> Cell {
         Cell { text: text.into(), color, mono: false }
     }
 
-    /// A number, a time or a place.
     pub fn num(text: impl Into<String>, color: Color32) -> Cell {
         Cell { text: text.into(), color, mono: true }
     }

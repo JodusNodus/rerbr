@@ -80,7 +80,6 @@ pub(super) fn driver(event: &Event, entrant: Option<usize>) -> String {
     entrant.and_then(|e| event.field.get(e)).map_or("You".to_owned(), |e| e.name.clone())
 }
 
-/// A catalog car key's name.
 pub(super) fn car_name(cars: &[Car], key: &str) -> String {
     cars.iter().find(|c| c.key == key).map_or(key.to_owned(), |c| c.name.clone())
 }

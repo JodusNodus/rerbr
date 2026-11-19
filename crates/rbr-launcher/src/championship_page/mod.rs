@@ -300,7 +300,6 @@ impl ChampionshipPage {
         }
     }
 
-    /// Shows `run` from its turn, with nothing picked.
     fn run_on(&mut self, run: Run) {
         self.run = Some(run);
         (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
@@ -361,7 +360,6 @@ impl ChampionshipPage {
         (self.run, self.view, self.park, self.saved) = (None, View::Entry, None, None);
     }
 
-    /// The itinerary stage of the turn, if it is a stage.
     fn next_stage(&self) -> Option<(usize, usize, &ItineraryStage)> {
         let run = self.run.as_ref()?;
         let Turn::Stage { rally, stage } = run.event.turn else { return None };

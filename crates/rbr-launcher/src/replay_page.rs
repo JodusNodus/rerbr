@@ -306,7 +306,6 @@ fn split_title(title: &str) -> (&str, &str) {
     title.split_once(" · ").unwrap_or((title, ""))
 }
 
-/// A camera's name for the dropdown.
 fn camera_label(view: &str) -> String {
     let mut chars = view.chars();
     chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
@@ -321,7 +320,6 @@ fn time_colour(entry: &Entry) -> egui::Color32 {
     }
 }
 
-/// The penalties line of a drive.
 fn penalties_text(result: Option<&Splits>) -> String {
     match result.filter(|r| r.penalties > 0.0 && r.penalties.is_finite()) {
         Some(result) => format!("{} included", rbr_render::hud::clock_label(f64::from(result.penalties))),

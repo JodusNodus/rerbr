@@ -47,7 +47,6 @@ pub(super) fn row(rows: &mut Rows, label: &str, tip: &str, control: impl FnOnce(
     });
 }
 
-/// A card's title.
 pub(crate) fn card_title(ui: &mut Ui, title: &str) {
     ui.label(RichText::new(title).size(14.0).family(crate::theme::semibold()).color(crate::theme::TEXT));
     ui.add_space(3.0);

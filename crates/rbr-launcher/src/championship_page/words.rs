@@ -6,7 +6,6 @@ use rbr_season::event::Conditions;
 use super::pool;
 use crate::catalog::Car;
 
-/// The difficulty's word.
 pub fn difficulty_word(difficulty: f32) -> &'static str {
     match difficulty {
         d if d < 0.25 => "Gentle",
@@ -93,7 +92,6 @@ pub fn class_of(car: &Car) -> String {
     car.group.clone().unwrap_or_default()
 }
 
-/// The classes of `cars`, sorted.
 pub fn classes(cars: &[Car]) -> Vec<String> {
     let mut classes: Vec<String> = cars.iter().filter(|c| c.unavailable().is_none()).map(class_of).collect();
     classes.sort();
@@ -163,7 +161,6 @@ pub fn assistance_note(skill: Skill) -> String {
     }
 }
 
-/// The skill level's word.
 pub fn skill_word(skill: Skill) -> &'static str {
     match skill {
         Skill::Rookie => "Rookie",
