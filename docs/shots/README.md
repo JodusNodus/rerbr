@@ -119,7 +119,7 @@ Alpine A110 Rally RGT, Akina Uphill (AC import 1290447), chase view, 18:15
 
 ### golden-nordschleife-m3-flyby
 
-BMW M3 E30 GrpA, Nordschleife (AC import 1333662), flyby view, 17:30
+BMW M3 E30 GrpA, Nordschleife (AC import 1333662), flyby view, 10:00
 
 ![golden-nordschleife-m3-flyby](golden-nordschleife-m3-flyby.jpg)
 
