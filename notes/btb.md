@@ -350,6 +350,13 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   (`scene::Material::sheen`, `Surface::sheen`): the retail roads' rough dielectric (sky reflection, GGX sun) on the
   bumped normal, drawn where the collision surface under the vertex is tarmac (`Vertex::wet`, `puddles::mark_roads`), in
   place of the highlight there. Needs the own light; the viewer marks the roads for it without the grass.
+- `ReRbrLayerDiffuse`, `ReRbrLayerMask` (file names), `ReRbrLayerDetail=a,b,c,d` (four names), `ReRbrLayerScale=` (eight numbers, the
+  `(u, v)` multiplier of each detail, decimal points), `ReRbrLayerMagic=` and, for details in world space,
+  `ReRbrLayerWorld=ox,oz` (ReRBR's own, with `ReRbrEffect`; `scene::Layers`, `stage::Layers`, `layered` in `shader.wgsl`): an Assetto Corsa
+  multilayer material the renderer sums per pixel, `diffuse * (R*mask.r + G*mask.g + B*mask.b + A*mask.a) * magic` in display
+  values, the diffuse and mask at `uv0`, each detail at AC's world `(x, z) * scale` (`x` = stage x + `ox`, `z` = -(stage z +
+  `oz`)) or, without `ReRbrLayerWorld`, at `uv0 * scale`. `diffuseTexture` stays the bake of the same sum (the first texture:
+  the grass and ground detail read it; a reader without these keys draws it). Ignored unless every file is in `Textures.zip`.
 - `ReRbrGrass=1` (ReRBR's own, a material section) and `settings.ini` `[ReRbrGrass]` (own section; `scene::Material::grass`,
   `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
   ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`

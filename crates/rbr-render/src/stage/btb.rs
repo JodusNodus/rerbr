@@ -555,4 +555,31 @@ mod tests {
         let casting: Vec<(bool, usize)> = meshes.iter().map(|m| (m.sun_cascades, m.indices.len() / 3)).collect();
         assert_eq!(casting, [(true, 2), (false, 2), (true, 1)]);
     }
+
+    #[test]
+    fn a_world_layer_keeps_the_origins_share_of_each_detail_as_a_fraction() {
+        let names = |n: &str| n.to_owned();
+        let layers = scene::Layers {
+            diffuse: names("d"),
+            mask: names("m"),
+            details: ["a", "b", "c", "d"].map(names),
+            scale: [[0.02, 0.02], [0.5, 0.25], [0.0, 0.0], [4.0, 8.0]],
+            magic: 1.5,
+            world: Some([-231.0, -563.0]),
+        };
+        let mut next = 0;
+        let mut texture = |file: &Option<String>| {
+            file.as_ref()?;
+            next += 1;
+            Some(TextureRef::stage(next))
+        };
+        let world = layered(&layers, &mut texture);
+        // AC's x is the stage's plus the origin's, its z the stage's negated less the origin's.
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-5;
+        assert!(near(world.offset[0][0], 0.38) && near(world.offset[0][1], 0.26), "{:?}", world.offset[0]);
+        assert!(near(world.offset[1][0], 0.5) && near(world.offset[1][1], 0.75), "{:?}", world.offset[1]);
+        assert_eq!((world.offset[2], world.offset[3]), ([0.0; 2], [0.0; 2]));
+        let uv = layered(&scene::Layers { world: None, ..layers }, &mut texture);
+        assert!(uv.offset.iter().all(|o| *o == [0.0; 2]) && !uv.world);
+    }
 }

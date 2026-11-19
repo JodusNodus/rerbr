@@ -22,7 +22,8 @@
 - CréQuy's `objects.kn5` has X8R8G8B8 DDS textures without an alpha mask, such as `Blank_20_20_22.dds`.
   Convert these from their channel masks to RGBA8; an unused fourth byte is not alpha.
 - Base diffuse and alpha are retained. `ksMultilayer*` materials are baked into one texture
-  ([Multilayer](#multilayer-and-placeholder-textures-2026-11-16)), world-space ones per drawn tile, and `useDetail`
+  ([Multilayer](#multilayer-and-placeholder-textures-2026-11-16)), drawn per pixel by ReRBR's renderer where it reads `ReRbrLayer*`
+  ([Multilayer at render time](#multilayer-at-render-time-2026-11-19)), else world-space ones per drawn tile, and `useDetail`
   materials with their detail ([Fidelity](#fidelity-2026-11-17)). Normal and reflection shading, lighting factors, CSP
   scripts and runtime model replacements remain unsupported. Conversion reports list simplified shader kinds and missing
   textures.
@@ -592,7 +593,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (`txNormal`, stored like a diffuse, re-encoded as opaque DXT1 where needed), `specularTexture` (`txMaps` red as grey DXT1), `SpecularPower`
   (`ksSpecularEXP`, at least 1, 4 if missing) and `SpecularColor` (`ksSpecular` three times), and `ReRbrEffect` =
   `BTB_DiffuseBump`, `BTB_DiffuseSpecular` or `BTB_DiffuseBumpSpecular` (ReRBR's own key, [btb.md](btb.md#drawing)). All inputs are read on the diffuse's UV set 0; the meshes are unchanged.
-- Normal map: per-material sections only, not placeholders, not `Multilayer`, not tile bakes, not tree cards or generated sections; cut-outs may take
+- Normal map: per-material sections only, not placeholders, not `Multilayer` (but `fresnel_nm`'s `txDetailNM`, below), not tile bakes, not tree cards or generated sections; cut-outs may take
   one. Highlight: opaque non-placeholder materials with `ksSpecular > 0`, per-material and tile bakes; the spec map only per material. Without
   either the section is today's byte for byte. `ac-conversion.json` counts `normal_mapped_materials` and `highlight_materials`.
 - Sa Calobra down: 18 sections with a normal map, 19 with a highlight (4 both), 0 with a spec map (no highlighted material has `txMaps`);
@@ -647,3 +648,22 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   `aerosol=0.2` and `mist=0` (`SETTINGS_INI`; see `notes/renderer.md`), so the sky and distance read warm grey instead of map 41's
   clean blue. Roure rbcl 13:00 stays mild (sky blue in clear gaps, pale only near the horizon). Sa Calobra 07:35 at 0.2:
   wall sky (201,206,211) top, (208,213,218) horizon (0.3: (200,206,212), (210,214,215); AC (187,196,211), (208,208,210)).
+
+## Multilayer at render time, 2026-11-19
+
+- `ksMultilayer*` materials whose diffuse and mask fit `multilayer::LIMIT` are drawn by the renderer: `TextureBank::layers` stores the
+  diffuse, the mask and the four details under their own names (`slot`; shared details once, by name) and `section_with` writes
+  `ReRbrLayerDiffuse`, `ReRbrLayerMask`, `ReRbrLayerDetail=a,b,c,d`, `ReRbrLayerScale` (eight numbers: each detail's `(u, v)`; the
+  scalar `multX` twice for world space, the `_objsp` pair otherwise), `ReRbrLayerMagic` and, for world space, `ReRbrLayerWorld=ox,oz`
+  (the converter's `origin`, six decimals; absent for `_objsp`: details at `uv * pair`). Keys in [btb.md](btb.md); they need `ReRbrEffect`
+  (`BTB_Diffuse` is written for them). `diffuseTexture` is still the material's bake, the fallback for a reader without the keys.
+- Such materials get no tile bakes (`tile_bakes` takes the set), so meshes keep their source UVs: the normal map is `txDetailNM` at the
+  source uv times `detailNMMult` as for any per-material section (no `ReRbrBumpUv`, no `uvs2`). `ac-conversion.json`:
+  `multilayer_per_pixel_materials`.
+- Sa Calobra down (`/tmp` conversions, release binary): `Textures.zip` 581.1 to 422.4 MB (603 to 62 textures: no tile textures),
+  `Objects.zip` 97.5 to 96.7 MB (no chart copies of vertices), import 22.5 s to 17.0 s. Roure rbcl: `Textures.zip` 572.4 to 698.5 MB (354 tile
+  textures gone, the raw 22 MB diffuses, masks and details added), 25 s as before, 15 materials per pixel.
+- Rendered (Sa Calobra 06:45, `--enhance all,grass`, 1600x900, `scripts`-style views over the driveline at 7340 m and 4800 m): near road grey 64.1 / 8.0
+  (mean / standard deviation) to 63.8 / 8.2 and 46.1 / 21.3 to 46.7 / 20.6 (AC's 59 / 11): the grain is now the detail textures' structure
+  (cracks, patches) at any distance; the large-scale colour matches the tile bakes (blurred-grey correlation 0.95 to 0.999), so the world
+  offsets are AC's. Roure rbcl 12:00 at 750 m and 3750 m along: no visible regression.

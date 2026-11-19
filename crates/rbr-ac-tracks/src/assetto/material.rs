@@ -118,6 +118,10 @@ pub struct TextureBank {
     /// Hash buckets retain output filenames; a hash match is checked against the written payload.
     seen: BTreeMap<(u64, usize), TextureBucket>,
     aliases: BTreeMap<String, String>,
+    /// The file a model's texture was stored as, by name, alpha and size: a material read twice stores nothing twice.
+    stored: BTreeMap<(String, bool, usize), String>,
+    /// The pixel size of textures [`TextureBank::layers`] has looked at, by name and byte size.
+    sizes: BTreeMap<(String, usize), Option<(u32, u32)>>,
     pub missing: BTreeSet<String>,
     pub simplified: BTreeSet<String>,
     /// Multilayer materials baked into one texture, and materials whose textures are one-pixel placeholders.
@@ -142,6 +146,8 @@ impl TextureBank {
             zip: zip::ZipWriter::new(file),
             seen: BTreeMap::new(),
             aliases: BTreeMap::new(),
+            stored: BTreeMap::new(),
+            sizes: BTreeMap::new(),
             missing: BTreeSet::new(),
             simplified: BTreeSet::new(),
             baked: BTreeSet::new(),
@@ -225,6 +231,10 @@ impl TextureBank {
         let Some(name) = mat.textures.get(slot) else { return Ok(None) };
         let alias = if alpha { name.clone() } else { format!("opaque:{name}") };
         if let Some(data) = model.textures.get(name).filter(|d| !d.is_empty()) {
+            let key = (name.clone(), alpha, data.len());
+            if let Some(file) = self.stored.get(&key) {
+                return Ok(Some(file.clone()));
+            }
             let extension = if data.starts_with(b"DDS ") {
                 "dds"
             } else if data.starts_with(b"\x89PNG") {
@@ -247,6 +257,7 @@ impl TextureBank {
             };
             let file = self.put(bytes, extension)?;
             self.aliases.insert(alias, file.clone());
+            self.stored.insert(key, file.clone());
             return Ok(Some(file));
         }
         Ok(self.aliases.get(&alias).cloned())
@@ -288,16 +299,20 @@ impl TextureBank {
         if !mat.shader.contains("Multilayer") || is_placeholder(model, mat) {
             return None;
         }
-        let fits = |slot: &str| {
-            let data = model.textures.get(mat.textures.get(slot)?).filter(|d| !d.is_empty())?;
-            let (w, h) = match rbr_formats::dds::parse(data) {
-                Ok(dds) => (dds.width, dds.height),
-                Err(_) => textures::decode(data).map(|(w, h, _)| (w, h))?,
-            };
-            (w <= multilayer::LIMIT && h <= multilayer::LIMIT).then_some(())
-        };
-        fits("txDiffuse")?;
-        fits("txMask")?;
+        for slot in ["txDiffuse", "txMask"] {
+            let name = mat.textures.get(slot)?;
+            let data = model.textures.get(name).filter(|d| !d.is_empty())?;
+            let (w, h) =
+                (*self.sizes.entry((name.clone(), data.len())).or_insert_with(|| {
+                    match rbr_formats::dds::parse(data) {
+                        Ok(dds) => Some((dds.width, dds.height)),
+                        Err(_) => textures::decode(data).map(|(w, h, _)| (w, h)),
+                    }
+                }))?;
+            if w > multilayer::LIMIT || h > multilayer::LIMIT {
+                return None;
+            }
+        }
         let objsp = mat.shader.contains("objsp");
         let scale: [[f32; 2]; 4] = std::array::from_fn(|i| {
             let key = multilayer::MULTIPLIERS[i];

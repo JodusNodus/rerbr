@@ -536,6 +536,14 @@ probably fit the wrong hour.
   roughness on the bumped normal, weighted `smoothstep(0.6, 0.9, v.wet.x)` (tarmac), `SHEEN_STRENGTH` 0.1 of the way from the diffuse to the reflection, in place of the
   Blinn-Phong highlight there; the viewer marks the roads (`mark_surfaces(maps, grass)`) for it without the grass. Retail output
   byte-identical (3 reference shots); scene pass +0.04 to 0.07 ms on Roure and Sa Calobra, load +0 to 0.5 s (2026-11-19).
+- BTB multilayer (`ReRbrLayer*`, `Surface::layers`, `layered` in `shader.wgsl`): the diffuse, mask and four details are bindings 13, 8 and 9..12 of
+  the draw's group (separate 2D bindings, not an array: the details differ in size and format; a draw without layers binds the white
+  texel and `DRAW_LAYERS` compiles the code out). Fragment sampled textures: 14 to 20 (`gpu.rs` asks the adapter's limit, past the default 16). Texture
+  0 stays the material's bake, which the grass and the ground detail read on the CPU. Details sample at `layer_axis(w, m, off)` with `w` the stage
+  `(x, -z)` and `off` the origin's share (f64 on the CPU, `stage::btb::layered`): `w` is split in a multiple of 1/16 and a rest so the
+  product with a scale of 100/m stays exact to a texel at 4 km, wrapped to 0..1, with `textureSampleGrad` on the unwrapped gradients (no mip seam).
+  Sa Calobra scene pass (1600x900, `--profile`, 3 runs): road and rock view 1.89 ms before (and 1.91 ms for the new viewer on a stage without the keys,
+  whose picture is byte-identical to the old viewer's, as is retail `track-10_O`) to 2.00 ms; road view 1.55 to 1.63 ms.
 - The clock's ambient share and tint scale the stage's display colours, so its light is them to the 2.2; day frames
   byte-identical (2026-10-20).
 - The headlights' shadow map has its own layer of the sun's map (`sun::LAMP`), so the lamps cast at dusk too, beside the
