@@ -873,8 +873,6 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             repairs.push(serde_json::json!({"file":path.file_name().unwrap().to_string_lossy(),"dropped_triangles":model.dropped_triangles,"repaired_uvs":model.repaired_uvs,"repaired_normals":model.repaired_normals}));
         }
         let mut builders = BTreeMap::<DrawKey, Builder>::new();
-        // The materials drawn on a mesh that is also a tarmac-class surface: the road, its kerbs and concrete.
-        let roads = material::road_materials(&model, &surfaces);
         let replaced = path.file_name().and_then(|n| hidden.get(&n.to_string_lossy().to_lowercase()));
         // Leaves, decals and glass whose texture was stripped would be opaque shards, and AC never draws some: leave
         // them out.
@@ -944,7 +942,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                let extras = bank.tile_extras(&model, mat_index, roads.contains(&mat_index));
+                let extras = bank.tile_extras(&model, mat_index);
                 if !extras.bump_uv {
                     b.uvs2 = None;
                 }
@@ -959,7 +957,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let mat = &model.materials[mat_index];
                     let (texture, opaque) = bank.diffuse(&model, mat_index)?;
                     let name = format!("ac\\{model_index}_{mat_index}");
-                    let extras = bank.extras(&model, mat_index, roads.contains(&mat_index))?;
+                    let extras = bank.extras(&model, mat_index)?;
                     material::section_with(
                         &mut materials,
                         &name,

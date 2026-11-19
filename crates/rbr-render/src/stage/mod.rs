@@ -625,9 +625,9 @@ pub(crate) fn marking(
 impl Stage {
     /// Marks the roads in dry weather too (in the wet and the damp [`load`] has; kept out of the dry load without the
     /// grass: about a second more on the larger stages, 621), then the off-road ground ([`crate::puddles::mark_ground`]),
-    /// for the grass field (`Enhance::grass`, [`crate::grass`]). One load of the collision ground and one lookup of the
+    /// for the grass field (`Enhance::grass`, [`crate::grass`]: `grass`) or a BTB road sheen ([`Stage::has_sheen`]: the roads only). One load of the collision ground and one lookup of the
     /// surface under each ground triangle for both: each its own took 0.6 s more on 580.
-    pub fn mark_surfaces(&mut self, maps: &Path) {
+    pub fn mark_surfaces(&mut self, maps: &Path, grass: bool) {
         if self.collision.is_none() {
             self.collision = collision(maps, &self.name, self.selection);
         }
@@ -636,7 +636,14 @@ impl Stage {
         if self.selection.weather == Weather::Dry {
             crate::puddles::mark_roads(&mut self.meshes, &triangles, self.roads.is_none());
         }
-        self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
+        if grass {
+            self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
+        }
+    }
+
+    /// Whether a draw has a BTB road sheen ([`Surface::sheen`]), which needs the roads marked ([`Stage::mark_surfaces`]).
+    pub fn has_sheen(&self) -> bool {
+        self.meshes.iter().flat_map(|m| &m.draws).any(|d| d.state.surface.is_some_and(|s| s.sheen.is_some()))
     }
 }
 

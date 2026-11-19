@@ -667,6 +667,8 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     }
     var sun_seen = 1.0;
     var colour: vec3<f32>;
+    // The colour before the highlight, which a sheen replaces.
+    var base = vec3<f32>(0.0);
     // The vertex with a BTB normal map's normal, which the light and the road's sheen take.
     var lit = v;
     if (own) {
@@ -688,8 +690,8 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             lit.normal = bumped(v);
         }
         colour = pow(own_light(lit, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
-        // The sheen's sun is the highlight's replacement.
-        if (highlight_draw() && !sheen_draw()) {
+        base = colour;
+        if (highlight_draw()) {
             colour = with_highlight(colour, lit, front, sun_seen);
         }
     } else {
@@ -701,8 +703,11 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     if (own && specular_draw() && !wet_road) {
         colour = with_specular(colour, v, front, sun_seen);
     }
+    // The sheen of a BTB road, where the collision surface under the vertex is tarmac (`v.wet`, `puddles::mark_roads`:
+    // tarmac 1, gravel 0.5, snow -1), fading out at the road's edge; it replaces the highlight there.
     if (own && sheen_draw() && !wet_road) {
-        colour = with_sheen(colour, lit, front, sun_seen);
+        let road = smoothstep(0.6, 0.9, v.wet.x);
+        colour = mix(colour, with_sheen(base, lit, front, sun_seen), road);
     }
     // The game's highlight off the road's specular map: the stones' detail on gravel, so kept beside our reflection.
     // With our light, as strong as the direct light against noon's: none once the sun has set and the moon is down.
