@@ -10,7 +10,7 @@ use rbr_formats::pacenote::{codriver, notes};
 
 use super::{Fail, NOTES_DIR, SEVEN_Z, VOICES_DIR, ZIP};
 use crate::archive::{safe_folder, safe_path};
-use crate::disc_install::at;
+use crate::disc_install::with_path;
 
 /// A locally owned voice pack: its folder (as the plugin's folder) and what it offers, or why it is not ready
 /// (the same validation `check_voice` refuses at activation, so a corrupt pack never shows ready).
@@ -463,8 +463,8 @@ fn fold(name: &str) -> String {
 
 /// Writes `bytes` to `to`, making its folders.
 fn copy_file(bytes: &[u8], to: &Path) -> Result<(), Fail> {
-    fs::create_dir_all(to.parent().unwrap_or(to)).map_err(at(&to))?;
-    fs::write(to, bytes).map_err(at(&to))
+    fs::create_dir_all(to.parent().unwrap_or(to)).map_err(with_path(&to))?;
+    fs::write(to, bytes).map_err(with_path(&to))
 }
 
 /// Copies the voice files (see [`keep_voice`]) from the plugin's folder `src` into `dest`, preserving relative
@@ -477,7 +477,7 @@ pub(super) fn copy_voice(src: &Path, dest: &Path, cancel: &AtomicBool) -> Result
         if !keep_voice(&parts) {
             continue;
         }
-        let bytes = fs::read(&path).map_err(at(&path))?;
+        let bytes = fs::read(&path).map_err(with_path(&path))?;
         let to = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
         copy_file(&bytes, &to)?;
         n += 1;
@@ -496,7 +496,7 @@ pub(super) fn copy_notes(src: &Path, dest: &Path, cancel: &AtomicBool) -> Result
         if !rel.to_ascii_lowercase().ends_with(".ini") {
             continue;
         }
-        let bytes = fs::read(&path).map_err(at(&path))?;
+        let bytes = fs::read(&path).map_err(with_path(&path))?;
         if !is_note_text(&String::from_utf8_lossy(&bytes)) {
             continue;
         }
@@ -527,7 +527,7 @@ pub(super) fn check_voice(dir: &Path) -> Result<(Vec<String>, Vec<String>), Fail
     if let Some(problem) = voice_problem(&voices, &styles, &ranges) {
         return Err(format!("{}: {problem}", dir.display()));
     }
-    let calls = codriver::load(dir, &styles[0], &ranges[0]).map_err(at(&dir))?;
+    let calls = codriver::load(dir, &styles[0], &ranges[0]).map_err(with_path(&dir))?;
     if calls.notes.is_empty() && calls.named.is_empty() {
         return Err(format!("{}: {} defines no calls", dir.display(), styles[0]));
     }

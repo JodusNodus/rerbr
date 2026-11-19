@@ -24,7 +24,7 @@ use rbr_formats::car_pack;
 use rbr_formats::rsf;
 
 use crate::archive::safe_folder;
-use crate::disc_install::at;
+use crate::disc_install::with_path;
 use crate::gvrc::Entry;
 use crate::job::{Counter, Job, Report, Temp};
 use crate::pages::{GOOD, WARN};
@@ -101,7 +101,7 @@ impl PhysicsZip {
     /// the `<pack>/` folder holding `common.lsp` (as RSF's `rsfdata/cars/<pack>.zip`). Folders beside that one are
     /// left out: gvrc.de's Fiesta Rally2 and i20 N Rally2 add a `<pack> - rev1/` holding only an old about file.
     fn open(path: &Path) -> Result<PhysicsZip, Fail> {
-        let error = at(path);
+        let error = with_path(path);
         let mut files = Vec::new();
         for entry in crate::archive::zip_entries(path).map_err(error)? {
             let parts = entry.parts.ok_or_else(|| error(format!("a bad entry path {}", entry.name)))?;
@@ -159,7 +159,7 @@ impl Archive {
     /// The `.7z` at `path` whose main file ends `end` and lies `depth` or more names deep: the one nearest the top,
     /// then by name.
     fn open(path: &Path, end: &str, depth: usize, missing: &str) -> Result<Archive, Fail> {
-        let error = at(path);
+        let error = with_path(path);
         let listed = crate::archive::seven_entries(path).map_err(error)?;
         let main = |name: &str| {
             let name = name.to_lowercase();
@@ -192,7 +192,7 @@ impl Archive {
 
     /// Unpacks the folder into `dest`.
     fn extract(&self, dest: &Path, count: &mut Counter) -> Result<(), Fail> {
-        let listed = crate::archive::seven_entries(&self.path).map_err(at(&self.path))?;
+        let listed = crate::archive::seven_entries(&self.path).map_err(with_path(&self.path))?;
         let wanted: Vec<(Vec<String>, Vec<String>)> = listed
             .into_iter()
             .filter(|e| !e.dir)
@@ -338,8 +338,8 @@ pub fn write_cars(cars_dir: &Path, cars: &[StoredCar]) -> Result<(), Fail> {
         }
     }
     let (temp, path) = (cars_dir.join(".cars.ini.new"), cars_dir.join("cars.ini"));
-    fs::create_dir_all(cars_dir).map_err(at(&cars_dir))?;
-    fs::write(&temp, text).and_then(|()| fs::rename(&temp, &path)).map_err(at(&path))
+    fs::create_dir_all(cars_dir).map_err(with_path(&cars_dir))?;
+    fs::write(&temp, text).and_then(|()| fs::rename(&temp, &path)).map_err(with_path(&path))
 }
 
 /// The model folders in `cars/Cars/`.
@@ -419,7 +419,7 @@ pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
 
 /// Moves the `.bank` files in the folder `from` into `to`, replacing those of the same name.
 fn move_banks(from: &Path, to: &Path) -> Result<(), Fail> {
-    let error = at(to);
+    let error = with_path(to);
     fs::create_dir_all(to).map_err(error)?;
     for entry in fs::read_dir(from).map_err(error)? {
         let entry = entry.map_err(error)?;
@@ -433,7 +433,7 @@ fn move_banks(from: &Path, to: &Path) -> Result<(), Fail> {
 
 /// Moves the folder `from` to `to`, replacing what is there.
 fn replace(from: &Path, to: &Path) -> Result<(), Fail> {
-    let error = at(to);
+    let error = with_path(to);
     if to.exists() {
         fs::remove_dir_all(to).map_err(error)?;
     }
@@ -544,7 +544,7 @@ pub fn add_downloads(
     report: Report<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Added>, Fail> {
-    fs::create_dir_all(cars_dir).map_err(at(&cars_dir))?;
+    fs::create_dir_all(cars_dir).map_err(with_path(&cars_dir))?;
     // The bytes to write (a download that does not open fails again when it is added).
     let physics = |d: &Download| PhysicsZip::open(&d.physics).map_or(0, |z| z.size);
     let size =
@@ -585,7 +585,7 @@ pub fn remove(cars_dir: &Path, pack: &str) -> Result<(), Fail> {
     let folder = safe_folder(pack).ok_or(format!("a bad pack folder name {pack}"))?;
     let path = cars_dir.join("rsfdata").join("cars").join(folder);
     match path.exists() {
-        true => fs::remove_dir_all(&path).map_err(at(&path)),
+        true => fs::remove_dir_all(&path).map_err(with_path(&path)),
         false => Ok(()),
     }
 }
@@ -1037,9 +1037,7 @@ mod tests {
             year: "1984".into(),
             pack: pack.into(),
             trans: trans.into(),
-            physics: String::new(),
-            model: None,
-            banks: None,
+            ..Default::default()
         };
         let entries = vec![
             entry("bmw m1 grpb", "Group B", "RWD"),

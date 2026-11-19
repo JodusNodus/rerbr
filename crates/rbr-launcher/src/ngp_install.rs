@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicBool;
 use rbr_formats::rbz;
 
 use crate::archive::open_seven;
-use crate::disc_install::{at, require, with_folders, write_to, Reporter};
+use crate::disc_install::{require, with_folders, with_path, write_to, Reporter};
 use crate::job::Report;
 
 /// The folder in the player's folder with NGP 7.4.778's `NGP.dll` and `physics.rbz` ([`add_ngp_to`]).
@@ -42,7 +42,7 @@ type NgpFiles = (Vec<(String, Vec<u8>)>, Vec<String>);
 /// NGP's files and folders: from the `.7z`, or the folder.
 fn ngp_files(path: &Path) -> Result<NgpFiles, Fail> {
     let (mut files, mut dirs) = (Vec::new(), Vec::new());
-    let error = at(path);
+    let error = with_path(path);
     if path.is_dir() {
         let mut stack = vec![(path.to_owned(), String::new())];
         while let Some((dir, rel)) = stack.pop() {
