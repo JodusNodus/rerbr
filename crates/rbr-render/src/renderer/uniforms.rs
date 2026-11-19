@@ -49,6 +49,11 @@ pub(super) struct ModeUniform {
     /// ([`terrain_detail::bank_shares`](crate::terrain_detail::bank_shares)), `z` 1 for the near ground
     /// ([`DrawState::ground`](crate::stage::DrawState::ground)).
     pub(super) bank: [f32; 4],
+    /// `x` a BTB normal map in `normal_texture`: 0 none, 1 on `uv0`, 2 on `uv1` ([`crate::stage::Surface::normal`]);
+    /// `y` its slope's scale once z is rebuilt ([`crate::stage::NormalMap::doubled`]).
+    pub(super) bump: [f32; 4],
+    /// A BTB highlight's colour and power, zero for none ([`crate::stage::Highlight`]).
+    pub(super) highlight: [f32; 4],
 }
 
 /// How near the eye the backdrop is drawn at the least, metres (ours): the game's reach

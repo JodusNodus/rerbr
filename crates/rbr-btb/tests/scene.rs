@@ -65,6 +65,28 @@ fn placing_follows_the_row_vector_convention() {
 }
 
 #[test]
+fn rerbr_effect_reads_every_input_on_the_diffuse_uv_set() {
+    let material = scene::Material {
+        name: String::new(),
+        effect: scene::Effect::parse(Some("BTB_DiffuseBumpSpecular")),
+        first_uv: true,
+        technique: scene::Technique::default(),
+        specular_power: 4.0,
+        specular_color: [0.0; 3],
+        diffuse: None,
+        second: None,
+        normal: None,
+        specular: None,
+        multiplier: None,
+        additive: None,
+    };
+    let slots = material.uv_slots();
+    assert_eq!((slots.bump, slots.specular, slots.lerp), (Some(0), Some(0), None));
+    let slots = scene::Material { first_uv: false, ..material }.uv_slots();
+    assert_eq!((slots.bump, slots.specular), (Some(1), Some(2)));
+}
+
+#[test]
 fn effects_and_techniques_parse_from_their_names() {
     let e = scene::Effect::parse(Some("BTB_DiffuseBumpSpecularVertLerp"));
     assert!(e.bump && e.specular && e.vert_lerp && !e.multiply_add && !e.sky);

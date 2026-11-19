@@ -6,7 +6,7 @@
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
 
-use super::mesh::{Bounds, Draw, DrawState, Layer, Lod, Mesh, Vertex};
+use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Lod, Mesh, NormalMap, Surface, Vertex};
 use super::{
     Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
 };
@@ -100,6 +100,24 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 (true, None) => Alpha::Translucent,
                 (true, Some(file)) => *alphas.entry(file).or_insert_with(|| scene.texture_alpha(file)),
             };
+            let slots = material.uv_slots();
+            let has = |slot: Option<usize>| slot.filter(|&s| s < mesh.uvs.len());
+            // The normal map on `uv0` or, where the lerp does not hold it, `uv1`.
+            let uv_bump = has(slots.bump).filter(|&s| s == 0 || !lerp);
+            let normal = uv_bump.filter(|_| material.effect.bump && !material.technique.up).and_then(|s| {
+                let texture = texture(&material.normal)?;
+                Some(NormalMap { texture, uv1: s != 0, doubled: !material.first_uv })
+            });
+            // The highlight on the opaque draws only: a cut-out's `specular` marks our plants (`foliage`).
+            let colour = material.specular_color;
+            let opaque = matches!(alpha, Alpha::Opaque);
+            let uv_specular = has(slots.specular).filter(|_| material.effect.specular && opaque);
+            let highlight = uv_specular.filter(|_| colour.iter().any(|&c| c > 0.0)).map(|_| Highlight {
+                colour,
+                power: material.specular_power.max(1.0),
+                map: texture(&material.specular),
+            });
+            let surface = (normal.is_some() || highlight.is_some()).then_some(Surface { normal, highlight });
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,
@@ -114,6 +132,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 depth_write: !blend,
                 shade: None,
                 specular: None,
+                surface,
             };
             let draws = match alpha {
                 Alpha::Translucent => {
@@ -122,7 +141,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 Alpha::Cutout => vec![(Layer::Solid, state(Some(CUTOUT_REF), false))],
                 Alpha::Opaque => vec![(Layer::Solid, state(None, false))],
             };
-            Some(Plan { draws, lerp, up: material.technique.up, uv_lerp: material.effect.uv_slots().lerp })
+            let uv_bump = uv_bump.filter(|&s| normal.is_some() && s != 0);
+            let uv_specular = uv_specular.filter(|_| highlight.is_some());
+            Some(Plan { draws, lerp, up: material.technique.up, uv_lerp: slots.lerp, uv_bump, uv_specular })
         })
         .collect();
 
@@ -173,8 +194,14 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     if std::env::var_os("RBR_BTB_STATS").is_some() {
         let vertices: usize = meshes.iter().map(|m| m.vertices.len()).sum();
         let domes = meshes.iter().filter(|m| m.layer == Layer::Sky).count();
+        let surfaces = meshes.iter().flat_map(|m| &m.draws).filter_map(|d| d.state.surface.map(|s| (d, s)));
+        let (bumped, highlit) = surfaces.fold((0, 0), |(b, h), (d, s)| {
+            let n = d.indices.len() / 3;
+            (b + n * usize::from(s.normal.is_some()), h + n * usize::from(s.highlight.is_some()))
+        });
         eprintln!(
-            "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles",
+            "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles \
+             ({bumped} with a normal map, {highlit} with a highlight)",
             scene.objects.len()
         );
     }
@@ -239,6 +266,10 @@ struct Plan {
     /// `Up` technique: every normal is +y.
     up: bool,
     uv_lerp: Option<usize>,
+    /// The normal map's UV set where it is not set 0, in `uv1`.
+    uv_bump: Option<usize>,
+    /// The highlight's map's UV set, in `specular`'s uv, with strength 1.
+    uv_specular: Option<usize>,
 }
 
 /// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the
@@ -257,10 +288,13 @@ fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun
                 position: scene::place_point(placement, mesh.positions[i]),
                 color: [shade, shade, shade, (weight * 255.0).round() as u8],
                 uv0: uv(Some(0), i),
-                uv1: if plan.lerp { uv(plan.uv_lerp, i) } else { [0.0; 2] },
+                uv1: if plan.lerp { uv(plan.uv_lerp, i) } else { plan.uv_bump.map_or([0.0; 2], |s| uv(Some(s), i)) },
                 uv2: [0.0; 2],
                 normal,
-                specular: [0.0; 3],
+                specular: plan.uv_specular.map_or([0.0; 3], |s| {
+                    let [u, v] = uv(Some(s), i);
+                    [u, v, 1.0]
+                }),
                 occlusion: 0.0,
                 sky_dir: 0,
                 bounce: [0; 2],
@@ -449,6 +483,7 @@ mod tests {
             depth_write: true,
             shade: None,
             specular: None,
+            surface: None,
         };
         let vertices = [bytemuck::Zeroable::zeroed(); 3];
         let lod = band(0.0, 500.0);

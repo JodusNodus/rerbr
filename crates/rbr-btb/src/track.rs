@@ -522,6 +522,11 @@ pub struct Material {
 impl Material {
     /// The first `*Texture` entry named `key`.
     pub fn texture(&self, key: &str) -> Option<&str> {
+        self.entry(key)
+    }
+
+    /// The first entry named `key`, ignoring case.
+    pub fn entry(&self, key: &str) -> Option<&str> {
         self.entries.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.as_str())
     }
 }

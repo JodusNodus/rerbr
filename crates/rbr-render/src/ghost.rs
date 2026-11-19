@@ -570,6 +570,7 @@ impl GhostCar {
             depth_write: false,
             shade: None,
             specular: None,
+            surface: None,
         };
         let first = stage.meshes.len();
         for mesh in &mut ghost.meshes {

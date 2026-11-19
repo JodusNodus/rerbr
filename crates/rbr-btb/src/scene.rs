@@ -110,7 +110,11 @@ impl Technique {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Material {
     pub name: String,
+    /// `effectName`, or `ReRbrEffect` (ReRBR's own key, which the plugin does not know: a converted stage's normal map
+    /// and highlight under a plain `BTB_Diffuse`) where the section has it.
     pub effect: Effect,
+    /// The effect is `ReRbrEffect`'s: every input reads the diffuse's UV set, and the mesh carries no tangent frame.
+    pub first_uv: bool,
     pub technique: Technique,
     /// `ambient` is 0.4 in every folder, and the effects use that constant; the file's value is not carried.
     pub specular_power: f32,
@@ -123,6 +127,24 @@ pub struct Material {
     pub specular: Option<String>,
     pub multiplier: Option<String>,
     pub additive: Option<String>,
+}
+
+impl Material {
+    /// The UV set each of the effect's inputs reads: [`Effect::uv_slots`], or set 0 for all with `ReRbrEffect`.
+    pub fn uv_slots(&self) -> UvSlots {
+        let slots = self.effect.uv_slots();
+        if !self.first_uv {
+            return slots;
+        }
+        let first = |slot: Option<usize>| slot.map(|_| 0);
+        UvSlots {
+            bump: first(slots.bump),
+            specular: first(slots.specular),
+            multiplier: first(slots.multiplier),
+            additive: first(slots.additive),
+            lerp: first(slots.lerp),
+        }
+    }
 }
 
 /// One `.x` file's geometry, vertices unique per position-and-normal pair.
@@ -475,9 +497,11 @@ impl Textures {
 fn material(m: &track::Material, textures: &Textures) -> Material {
     let find = |key: &str| m.texture(key).and_then(|path| textures.find(path));
     let color = |i: usize| m.specular_color.get(i).copied().unwrap_or(0.0) as f32;
+    let own = m.entry("ReRbrEffect");
     Material {
         name: m.name.clone(),
-        effect: Effect::parse(m.effect.as_deref()),
+        effect: Effect::parse(own.or(m.effect.as_deref())),
+        first_uv: own.is_some(),
         technique: Technique::parse(m.technique.as_deref()),
         specular_power: m.specular_power.unwrap_or(4.0) as f32,
         specular_color: [color(0), color(1), color(2)],

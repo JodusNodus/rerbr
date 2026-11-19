@@ -284,8 +284,8 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   the renderer's dome test (`sky_dome`, here passing over the driveline: the terrain runs past the dome's edge) then
   leaves it out of the shadows, the sky's occlusion and, under `Enhance::lighting`, the frame. Drawn as the stage, it
   roofed it: the ground went black under `lighting`.
-  Approximated: `MultiplyAdd` draws its diffuse (the multiplier/additive UV sets cannot share a draw's two texture slots),
-  `Specular` has no highlight, `Bump` has no normal map (the renderer's stage draws have neither path). Not drawn:
+  Approximated: `MultiplyAdd` draws its diffuse (the multiplier/additive UV sets cannot share a draw's two texture slots);
+  `Bump` and `Specular` only under our lighting (below). Not drawn:
   `BTB_Sky` meshes (7 in two tracks; the renderer's sky stays), the 139 meshes whose texture name has no
   `materials.ini` section (Cauterets' `vieuxpylone`, one La Serra), invisible objects. Pirttikulma's own sky
   (`Taivaita\Materials\sky16`, `BTB_Diffuse`) is an ordinary object, a sky dome (below). No wear, light maps,
@@ -326,7 +326,21 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - Pictures: `stage_picture::btb_picture`, RSF's `rsfdata/images/stage_images/<id>.png` for the stage's id, else
   `track.ini` `splashscreen`, else the folder's first `.jpg`/`.png` (76 of the install's 159 folders show one; the 83 without, of the 87 added 2026-11-12, hold no picture); the
   launcher's preview, else `driveline.ini` from above; the viewer's loading screen.
-- Open: no tangent-space bump or specular; `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
+- Bump and highlight (ours, 2026-11-19; with `Enhance::lighting` only, the plain draw keeps the vertex `0.4 + N.L`): a
+  `Bump` material's `normalTexture` gives the normal per pixel (`bumped` in `shader.wgsl`: red and green x and y, z rebuilt,
+  the slope doubled as the `.fx` does, `bumpNormal.xy * 2.0`) in the frame of its uv on screen (Schuler 2013), not the
+  mesh's `DeclData` tangents (no vertex room); it lights the sky, sun and lamps, the shadows keep the face's normal. On
+  `uv1`, so not where the lerp holds it with another set. A `Specular` material's opaque draws add
+  `specularTexture * SpecularColor * pow(max(0, N.H), SpecularPower)` in the sun's light past the shadows
+  (`with_highlight`; map uv in the vertex `specular`, which on a cut-out marks our plants, so not there). Only the effect
+  turns it on: Crastazza writes `SpecularColor` 0.86 on its plain `BTB_Diffuse` materials. Across the install 1412
+  materials are `Bump`, 778 `Specular`. Mattila's own normal maps are near flat (stddev 4 to 10 of 255 about 127):
+  310,749 bumped triangles, 346 pixels of 0.9 M changed at 1280x720. The maps are kept out of the upscaler.
+- `ReRbrEffect=<effect>` (ReRBR's own key, which the plugin does not know): the effect ReRBR draws in place of
+  `effectName`, every input on UV set 0, no tangent streams; a converted stage's normal map and highlight under a plain
+  `BTB_Diffuse` (`scene::Material::first_uv`), the slope as authored. Written by `rbr-ac-tracks`
+  ([assetto.md](assetto.md#normal-maps-and-highlights-2026-11-19)).
+- Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 
 ## The flat pad

@@ -35,6 +35,7 @@ fn mesh(triangles: &[[Vec3; 3]], normal: Vec3, glass: bool) -> Mesh {
                 depth_write: true,
                 shade: glass.then(|| Shade { glass: true, ..Shade::default() }),
                 specular: None,
+                surface: None,
             },
             lod: Lod::Always,
         }],

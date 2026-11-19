@@ -178,12 +178,19 @@ pub fn stage_textures(stage: &Stage) -> BTreeMap<TextureRef, u32> {
         meshes.flat_map(|mesh| &mesh.draws).flat_map(|draw| draw.state.textures.into_iter().flatten()).collect()
     };
     let (sky, rest) = (drawn(true), drawn(false));
+    // A BTB stage's normal maps and highlight maps are data, not pictures: kept as they are.
+    let surfaces = stage.meshes.iter().flat_map(|mesh| &mesh.draws).filter_map(|draw| draw.state.surface);
+    let maps: BTreeSet<TextureRef> = surfaces
+        .flat_map(|s| [s.normal.map(|n| n.texture), s.highlight.and_then(|h| h.map)])
+        .flatten()
+        .filter(|texture| !sky.contains(texture) && !rest.contains(texture))
+        .collect();
     let start_board = stage.start_board();
     stage
         .textures
         .keys()
         .copied()
-        .filter(|&key| key.set == TextureSet::Stage && Some(key) != start_board)
+        .filter(|&key| key.set == TextureSet::Stage && Some(key) != start_board && !maps.contains(&key))
         .filter(|key| stage.texture_names.get(key).is_none_or(|name| name.file_name != crate::grass::TEXTURE))
         .map(|key| (key, if sky.contains(&key) && !rest.contains(&key) { BACKDROP_MAX } else { MAX }))
         .collect()

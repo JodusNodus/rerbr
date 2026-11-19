@@ -697,5 +697,6 @@ fn draw_state(texture: Option<TextureRef>, opacity: bool) -> DrawState {
         depth_write: true,
         shade: Some(SHADE),
         specular: None,
+        surface: None,
     }
 }
