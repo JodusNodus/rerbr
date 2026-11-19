@@ -24,6 +24,65 @@ const BACK: f32 = 600.0;
 /// The tiles' maps drawn at once.
 pub(crate) const BATCH: usize = 8;
 
+/// How a converted stage's baked vertex AO (`rbr_btb::scene::Mesh::occlusion`: Custom Shaders Patch's, from Assetto
+/// Corsa tracks) joins the computed occlusion, picked by the environment variable `RERBR_VAO` for the comparison
+/// (default `max`): `off` ignores it, `max` takes the greater occlusion of the two, `replace` the baked one where a
+/// vertex has it, `scaled` is `max` with the baked AO first scaled so that its 95th percentile over the stage counts as
+/// open (the bakers tune it darker than the sky seen).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Baked {
+    Off,
+    Max,
+    Replace,
+    Scaled,
+}
+
+impl Baked {
+    pub fn get() -> Baked {
+        static MODE: std::sync::OnceLock<Baked> = std::sync::OnceLock::new();
+        *MODE.get_or_init(|| match std::env::var("RERBR_VAO").as_deref() {
+            Ok("off") => Baked::Off,
+            Ok("replace") => Baked::Replace,
+            Ok("scaled") => Baked::Scaled,
+            _ => Baked::Max,
+        })
+    }
+
+    /// The value `sky_occlusion.wgsl`'s `finish` takes as its mode: 1 replaces.
+    pub(crate) fn shader_mode(self) -> u32 {
+        u32::from(self == Baked::Replace)
+    }
+
+    /// The AO that counts as open: the 95th percentile of `values` (the non-negative ones) for `scaled`, else 1.
+    pub fn open_ao(self, values: impl Iterator<Item = f32>) -> f32 {
+        const BINS: usize = 1024;
+        if self != Baked::Scaled {
+            return 1.0;
+        }
+        let mut histogram = vec![0usize; BINS];
+        let mut total = 0;
+        for v in values.filter(|v| *v >= 0.0) {
+            histogram[((v.min(1.0) * (BINS - 1) as f32).round() as usize).min(BINS - 1)] += 1;
+            total += 1;
+        }
+        let mut below = 0;
+        let bin = histogram.iter().position(|&n| {
+            below += n;
+            below * 20 >= total * 19
+        });
+        bin.map_or(1.0, |b| (b as f32 / (BINS - 1) as f32).max(0.05))
+    }
+
+    /// The vertex's starting [`Vertex::occlusion`](crate::stage::Vertex::occlusion) for the baked `ao` (negative for
+    /// none) with `open` the AO that counts as open: 0 for none; else at least 0.001, so a vertex that has some shows.
+    pub fn start(self, ao: f32, open: f32) -> f32 {
+        if self == Baked::Off || ao < 0.0 {
+            return 0.0;
+        }
+        (1.0 - (ao / open).min(1.0)).max(0.001)
+    }
+}
+
 /// Directions toward the sky ([`spiral`]).
 pub(crate) fn directions() -> Vec<Vec3> {
     spiral(DIRECTIONS)
@@ -128,6 +187,20 @@ impl Tiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn baked_ao_starts_as_its_occlusion_and_scales_to_the_95th_percentile() {
+        assert_eq!(Baked::Max.start(-1.0, 1.0), 0.0);
+        assert_eq!(Baked::Off.start(0.2, 1.0), 0.0);
+        assert!((Baked::Max.start(0.25, 1.0) - 0.75).abs() < 1e-6);
+        // Open ground is a vertex that has AO, not one that has none.
+        assert_eq!(Baked::Max.start(1.0, 1.0), 0.001);
+        let values: Vec<f32> = (0..=100).map(|i| i as f32 / 200.0).collect();
+        let open = Baked::Scaled.open_ao(values.iter().copied().chain([-1.0; 50]));
+        assert!((open - 0.475).abs() < 0.01, "{open}");
+        assert_eq!(Baked::Max.open_ao(values.into_iter()), 1.0);
+        assert_eq!(Baked::Scaled.start(open, open), 0.001);
+    }
 
     #[test]
     fn the_directions_cover_the_sky_evenly() {
