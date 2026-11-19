@@ -398,6 +398,7 @@ fn load_scene<'scope, 'env>(
                         }
                         loaded.set_mirrors(mirrors.unwrap_or_default());
                         loaded.set_lamp_points(lamp_points);
+                        loaded.headlights = rbr_render::lights::Headlights::at_start(lit(&day_clock));
                         if let Some(zones) = &args.damage {
                             loaded.set_damage(zones);
                         }

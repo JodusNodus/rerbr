@@ -599,7 +599,10 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 - Flares (`InitLights` 0x10016fd0, `RenderLights` 0x100158b0; `lights.rs`): `<car>_settings.ini` `LightN`, key
   `kind * 4 + i`; additive quad 0.2 m toward the eye, alpha `facing * fade * 114.75`. Only the first record of a key
   with a `Switch = true` part switches. Ours: the headlight key (L) steps main beam, dipped, off (with the tail
-  lights). Ours: no flare is drawn (user, 2026-10-31: the Clio Rally3's sat over and outboard of its lamps).
+  lights and the records it never switches, the pods' extra lamps: `lights::on`). A drive starts on main beam
+  where the lamps light the stage (the pods' test, sun below `relight::LAMPS_FROM` at the start; the sun does not
+  move in a stage), else off (`Headlights::at_start`, 2026-11-19, user). Ours: no flare is drawn (user, 2026-10-31:
+  the Clio Rally3's sat over and outboard of its lamps).
 - Ours: the lamps show as their lit parts at their real luminance (2026-11-05; `Switch::glow`, `lamp_shown` in
   `shader.wgsl`): the kind's intensity (`CANDELA`: dipped hot spot 20000 cd, tail 8, brake 100, reverse 150) over the
   part's area along the car's axis (held within 0.002-0.1 m2), toward the eye by the nearest lit lamp's beam or signal
