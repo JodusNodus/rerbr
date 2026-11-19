@@ -274,6 +274,12 @@ pub struct Map {
 }
 
 impl Map {
+    /// The map of a RallySimFans stage folder: its variants as the stages.
+    fn community_stage(stage: rsf::Stage) -> Map {
+        let stages = stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
+        Map { number: stage.id, stages, origin: Origin::Community(stage) }
+    }
+
     /// The community stage, when the map is one's.
     pub fn community(&self) -> Option<&rsf::Stage> {
         match &self.origin {
@@ -434,24 +440,22 @@ impl Catalog {
                 eprintln!("launcher: RSF stage {} has a retail map's number; left out", stage.id);
                 continue;
             }
-            let stages =
-                stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
-            self.maps.push(Map { number: stage.id, stages, origin: Origin::Community(stage) });
+            self.maps.push(Map::community_stage(stage));
         }
-        let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
+        let taken = self.taken();
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
     }
 
     /// Adds the BTB stages in `dir` (`<dir>/<stage>/`): the player's own, in the player's folder
     /// ([`rbr_btb::player::TRACKS`]).
     pub fn add_tracks_folder(&mut self, dir: &Path) {
-        let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
+        let taken = self.taken();
         self.maps.extend(crate::btb::folder_maps(dir, |n| taken.contains(&n)));
     }
 
     /// Adds the BTB stages of `dir` not listed yet (a stage just added), after the maps listed: every position stays.
     pub fn add_new_tracks(&mut self, dir: &Path) {
-        let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
+        let taken = self.taken();
         let listed = |folder: &Path| self.maps.iter().any(|m| m.btb().is_some_and(|b| b.folder == folder));
         let new: Vec<Map> = crate::btb::folder_maps(dir, |n| taken.contains(&n))
             .into_iter()
@@ -481,9 +485,7 @@ impl Catalog {
                 eprintln!("launcher: added stage {} has a listed map's number; left out", stage.id);
                 continue;
             }
-            let stages =
-                stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
-            self.maps.push(Map { number: stage.id, stages, origin: Origin::Community(stage) });
+            self.maps.push(Map::community_stage(stage));
         }
     }
 
@@ -531,6 +533,11 @@ impl Catalog {
     /// Offers the cars NGP drives, with the archive's NGP slots `ngp_cars` ([`ngp_offered`]).
     pub fn offer(&mut self, ngp_cars: &[u32]) {
         self.cars = ngp_offered(&self.all_cars, ngp_cars);
+    }
+
+    /// The numbers of the maps, listed or not.
+    fn taken(&self) -> Vec<u32> {
+        self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect()
     }
 
     /// The installed map with `number`, listed or not.
@@ -646,6 +653,11 @@ pub fn surface_kind(map: u32) -> u32 {
     }
 }
 
+/// The letter of a variant or cloud number (M, N, E, O, S), `?` past them.
+fn variant_letter(n: u32) -> char {
+    ['M', 'N', 'E', 'O', 'S'].get(n as usize).copied().unwrap_or('?')
+}
+
 /// A season row's weather word, as the Drive page labels it.
 fn preset_word(preset: u32) -> &'static str {
     match preset {
@@ -681,14 +693,14 @@ fn time_word(cloud_letter: u32) -> String {
         0 => "morning".to_owned(),
         1 => "noon".to_owned(),
         2 => "evening".to_owned(),
-        letter => ['M', 'N', 'E', 'O', 'S'].get(letter as usize).copied().unwrap_or('?').to_string(),
+        letter => variant_letter(letter).to_string(),
     }
 }
 
 /// A season row's Drive page label from its words, e.g. "Heavy fog, heavy cloud, morning (O)": the weather word,
 /// the cloud, the time of day from the cloud letter and the track variant letter.
 pub fn row_label(row: &weather::Row) -> String {
-    let variant = ['M', 'N', 'E', 'O', 'S'].get(row.letter as usize).copied().unwrap_or('?');
+    let variant = variant_letter(row.letter);
     format!("{}, {}, {} ({variant})", preset_word(row.preset), cloud_word(row.cloud), time_word(row.cloud_letter))
 }
 

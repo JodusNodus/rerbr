@@ -5,7 +5,7 @@
 //! list from the rows and what the player filtered, apart from any drawing; the keys and the list's plumbing are the
 //! stage browser's (`browser`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use egui::{FontId, Pos2, Rect, RichText};
@@ -18,7 +18,7 @@ use crate::car_skins::Skins;
 use crate::catalog::{self, Car};
 use crate::kit;
 use crate::preview::Previews;
-use crate::theme::{self, TEXT, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
+use crate::theme::{self, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
 
 /// The classes of the filter bar, newest to oldest, with the RSF base groups each takes in (RSF splits some finely).
 const CLASSES: [(&str, &[&str]); 14] = [
@@ -543,7 +543,7 @@ impl CarBrowser {
 
     /// The search, the scopes and the class, drive and sort dropdowns.
     fn filter_bar(&mut self, ui: &mut egui::Ui, favourites: &[String], recent: &[String]) {
-        let scopes = self.scopes(favourites, recent);
+        let scopes = self.scopes();
         let labels: Vec<&str> = scopes.iter().map(|(_, l)| *l).collect();
         let startable = |class: &str| self.rows.iter().filter(|r| r.startable() && r.class == class).count();
         let classes: Vec<(Option<String>, String)> = std::iter::once((None, "All classes".to_owned()))
@@ -554,41 +554,30 @@ impl CarBrowser {
             .collect();
         let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
         const DROPS: [f32; 3] = [112.0, 84.0, 118.0];
-        let drops_width = DROPS.iter().sum::<f32>() + 3.0 * 8.0;
-        let seg = browser::segmented_width(ui, &labels);
+        let sizes = (browser::segmented_width(ui, &labels), DROPS.iter().sum::<f32>() + 3.0 * 8.0, (180.0, 300.0));
         let before = (self.filter.clone(), self.sort, self.collection.clone());
-        browser::bar(ui, |ui| {
-            let room = ui.available_width() - seg - 16.0;
-            let one_row = room - drops_width >= 180.0;
-            let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(180.0, 300.0);
-            let hint = "Search name, class, number";
-            ui.horizontal(|ui| {
-                browser::search_box(ui, hint, &mut self.filter.query, &mut self.focus, search);
-                let mut scope = self.collection.clone().unwrap_or(Collection::All);
-                let counts = self.scope_counts(favourites, recent);
-                let segments = kit::segmented(ui, "cars scope", &mut scope, &scopes_for(&scopes));
-                if segments.on_hover_text(counts).changed() {
-                    self.collection = Some(scope);
-                    self.filter.query.clear();
+        let counts = self.scope_counts(favourites, recent);
+        browser::filter_bar(
+            ui,
+            self,
+            sizes,
+            |s, ui, width| {
+                browser::search_box(ui, "Search name, class, number", &mut s.filter.query, &mut s.focus, width);
+                let mut scope = s.collection.clone().unwrap_or(Collection::All);
+                if kit::segmented(ui, "cars scope", &mut scope, &scopes).on_hover_text(counts).changed() {
+                    s.collection = Some(scope);
+                    s.filter.query.clear();
                 }
-                if one_row {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.dropdowns(ui, &classes, &drives, &sorts, DROPS);
-                    });
-                }
-            });
-            if !one_row {
-                ui.add_space(8.0);
-                ui.horizontal(|ui| self.dropdowns(ui, &classes, &drives, &sorts, DROPS));
-            }
-        });
+            },
+            |s, ui| s.dropdowns(ui, &classes, &drives, &sorts, DROPS),
+        );
         if before != (self.filter.clone(), self.sort, self.collection.clone()) {
             // Back to the search box, where the arrows move through the list.
             self.focus = true;
         }
     }
 
-    /// The class, drive and sort dropdowns, right to left when in a right-to-left layout (the last is the sort).
+    /// The class, drive and sort dropdowns.
     fn dropdowns(
         &mut self,
         ui: &mut egui::Ui,
@@ -597,7 +586,6 @@ impl CarBrowser {
         sorts: &[(Sort, String)],
         widths: [f32; 3],
     ) {
-        let rtl = ui.layout().main_dir() == egui::Direction::RightToLeft;
         let class_text = self.filter.class.clone().unwrap_or_else(|| "All classes".to_owned());
         let drive_text = self.filter.drive.map_or("Any drive", Drive::label).to_owned();
         let sort_text = format!("Sort: {}", self.sort.label());
@@ -610,21 +598,12 @@ impl CarBrowser {
         let sort = |s: &mut Self, ui: &mut egui::Ui| {
             browser::dropdown(ui, "cars sort", widths[2], &sort_text, &mut s.sort, sorts)
         };
-        if rtl {
-            sort(self, ui);
-            drive(self, ui);
-            class(self, ui);
-        } else {
-            class(self, ui);
-            drive(self, ui);
-            sort(self, ui);
-        }
+        browser::in_order(ui, self, &[&class, &drive, &sort]);
     }
 
     /// The scopes of the filter bar: all cars, the favourites, the recent picks and the cars that cannot start (when
     /// there are some). Added by you is not one: the inspector's Source says it.
-    fn scopes(&self, favourites: &[String], recent: &[String]) -> Vec<(Collection, &'static str)> {
-        let _ = (favourites, recent);
+    fn scopes(&self) -> Vec<(Collection, &'static str)> {
         let mut out =
             vec![(Collection::All, "All"), (Collection::Favourites, "Favourites"), (Collection::Recent, "Recent")];
         if self.rows.iter().any(|r| !r.startable()) {
@@ -647,11 +626,8 @@ impl CarBrowser {
 
     /// The classes of the cars, newest to oldest.
     fn classes(&self) -> Vec<String> {
-        let mut classes: BTreeMap<(usize, &str), ()> = BTreeMap::new();
-        for row in &self.rows {
-            classes.insert((row.rank, row.class.as_str()), ());
-        }
-        classes.into_keys().map(|(_, name)| name.to_owned()).collect()
+        let classes: BTreeSet<(usize, &str)> = self.rows.iter().map(|r| (r.rank, r.class.as_str())).collect();
+        classes.into_iter().map(|(_, name)| name.to_owned()).collect()
     }
 
     /// The list and the inspector below the filter bar.
@@ -690,11 +666,7 @@ impl CarBrowser {
         let shown = if searching { format!("{count} found in all cars") } else { format!("{count} shown") };
         // Inside a class every car has the class: the column tells where the car is from instead.
         let by_source = self.filter.class.is_some() && !searching;
-        let verb = if self.page { "Drive" } else { "Choose" };
-        let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
-        if !self.page {
-            keys.push(("Esc", "Back"));
-        }
+        let keys = browser::hint_keys(self.page);
         browser::hint_bar(ui, &shown, &keys, |ui| {
             browser::list_header(
                 ui,
@@ -711,11 +683,7 @@ impl CarBrowser {
                     Collection::Recent if empty && recent.is_empty() => "The cars you choose are listed here.",
                     _ => "Nothing matches.",
                 };
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(24.0);
-                    ui.label(RichText::new(hint).color(TEXT_2));
-                });
+                browser::empty_hint(ui, hint);
             }
             list_rows(ui, &mut self.nav, "cars", &self.lines, |ui, nav, range| {
                 for at in range {
@@ -748,11 +716,6 @@ impl CarBrowser {
     }
 }
 
-/// The scopes as the segmented control takes them.
-fn scopes_for<'a>(scopes: &'a [(Collection, &'static str)]) -> Vec<(Collection, &'a str)> {
-    scopes.iter().map(|(c, l)| (c.clone(), *l)).collect()
-}
-
 /// The folder holding the car's files: its model's.
 fn files_folder(car: &Car, root: &str) -> Option<PathBuf> {
     match &car.model_path {
@@ -767,18 +730,6 @@ fn added_pack(car: &Car) -> Option<String> {
         catalog::Physics::Pack(path) if car.added => path.file_name().map(|n| n.to_string_lossy().into_owned()),
         _ => None,
     }
-}
-
-/// `text` shortened from the left with an ellipsis to fit `width`.
-fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
-    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
-    if fits(text) {
-        return text.to_owned();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let keep =
-        (0..chars.len()).rev().find(|&n| fits(&format!("…{}", chars[chars.len() - n..].iter().collect::<String>())));
-    format!("…{}", chars[chars.len() - keep.unwrap_or(0)..].iter().collect::<String>())
 }
 
 /// The inspector's scrolling part: the car turning, its name and class, and its facts in a panel, with (the page's) a
@@ -818,7 +769,7 @@ fn facts(
                     crate::crash::open(path.as_os_str());
                 }
                 let font = theme::mono(11.0);
-                let text = left_truncated(ui, &path.display().to_string(), &font, ui.available_width() - 8.0);
+                let text = browser::left_truncated(ui, &path.display().to_string(), &font, ui.available_width() - 8.0);
                 ui.label(RichText::new(text).font(font).color(TEXT_2)).on_hover_text(path.display().to_string());
             }
             None => _ = ui.label("not found"),
@@ -1003,10 +954,10 @@ mod tests {
         let mut browser = CarBrowser::for_page();
         browser.set_rows(rows());
         assert_eq!(browser.classes(), ["WRC 2.0", "Group A"]);
-        let scopes: Vec<&str> = browser.scopes(&[], &[]).iter().map(|(_, l)| *l).collect();
+        let scopes: Vec<&str> = browser.scopes().iter().map(|(_, l)| *l).collect();
         assert_eq!(scopes, ["All", "Favourites", "Recent", "Cannot start"]);
         browser.rows[0].added = true;
-        assert_eq!(browser.scopes(&[], &[]).len(), 4, "added cars are no scope");
+        assert_eq!(browser.scopes().len(), 4, "added cars are no scope");
     }
 
     #[test]

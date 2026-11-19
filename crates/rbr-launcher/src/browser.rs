@@ -270,6 +270,44 @@ pub fn dropdown<T: Clone + PartialEq>(
     });
 }
 
+/// A part of a bar drawn with the browser's state.
+type Part<'a, S> = &'a dyn Fn(&mut S, &mut egui::Ui);
+
+/// Runs the dropdowns `parts` left to right, or right to left in a right-to-left layout.
+pub fn in_order<S>(ui: &mut egui::Ui, state: &mut S, parts: &[Part<S>]) {
+    if ui.layout().main_dir() == egui::Direction::RightToLeft {
+        parts.iter().rev().for_each(|part| part(state, ui));
+    } else {
+        parts.iter().for_each(|part| part(state, ui));
+    }
+}
+
+/// The filter bar's layout: `lead` draws the search box (given its width, clamped to `search`) and the scopes, then
+/// the `drops` (`drops_width` wide) follow on the same row when they fit, else on a row below.
+pub fn filter_bar<S>(
+    ui: &mut egui::Ui,
+    state: &mut S,
+    (seg, drops_width, search): (f32, f32, (f32, f32)),
+    lead: impl FnOnce(&mut S, &mut egui::Ui, f32),
+    drops: impl Fn(&mut S, &mut egui::Ui),
+) {
+    bar(ui, |ui| {
+        let room = ui.available_width() - seg - 16.0;
+        let one_row = room - drops_width >= search.0;
+        let width = (if one_row { room - drops_width - 8.0 } else { room }).clamp(search.0, search.1);
+        ui.horizontal(|ui| {
+            lead(state, ui, width);
+            if one_row {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| drops(state, ui));
+            }
+        });
+        if !one_row {
+            ui.add_space(8.0);
+            ui.horizontal(|ui| drops(state, ui));
+        }
+    });
+}
+
 /// The search box: it takes focus when `focus` is set, and when the player types with nothing else focused on it.
 /// Typing anywhere searches.
 pub fn search_box(ui: &mut egui::Ui, hint: &str, query: &mut String, focus: &mut bool, width: f32) {
@@ -478,6 +516,35 @@ pub fn header_line(ui: &mut egui::Ui, name: &str) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW), Sense::hover());
     let at = rect.left_bottom() + egui::vec2(INSET + 22.0, -6.0);
     ui.painter().text(at, Align2::LEFT_BOTTOM, name, FontId::new(11.5, theme::medium()), TEXT_3);
+}
+
+/// `text` shortened from the left with an ellipsis to fit `width`.
+pub fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
+    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
+    if fits(text) {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let tail = |n: usize| format!("…{}", chars[chars.len() - n..].iter().collect::<String>());
+    tail((0..chars.len()).rev().find(|&n| fits(&tail(n))).unwrap_or(0))
+}
+
+/// The key hints of a browser: a page drives (and has no Back), a picker chooses.
+pub fn hint_keys(page: bool) -> Vec<(&'static str, &'static str)> {
+    let mut keys = vec![("↑↓", "Move"), ("↵", if page { "Drive" } else { "Choose" }), ("Ctrl D", "Favourite")];
+    if !page {
+        keys.push(("Esc", "Back"));
+    }
+    keys
+}
+
+/// The line under the list's header row when nothing is listed.
+pub fn empty_hint(ui: &mut egui::Ui, hint: &str) {
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        ui.add_space(24.0);
+        ui.label(RichText::new(hint).color(TEXT_2));
+    });
 }
 
 /// The inspector's Favourite button: a star and the word, the star lit when a favourite.

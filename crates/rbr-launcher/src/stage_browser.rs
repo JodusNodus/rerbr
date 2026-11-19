@@ -20,7 +20,7 @@ use crate::browser::{
 use crate::catalog::{Map, Origin};
 use crate::kit;
 use crate::preview::{self, Previews};
-use crate::theme::{self, TEXT, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
+use crate::theme::{self, TEXT_2, TEXT_3, TEXT_DISABLED, TEXT_LIST};
 
 pub const SURFACES: [&str; 3] = ["Gravel", "Tarmac", "Snow"];
 
@@ -734,40 +734,31 @@ impl StageBrowser {
         let lengths: Vec<(Length, String)> = Length::ALL.map(|l| (l, l.long_label().to_owned())).to_vec();
         let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
         const DROPS: [f32; 4] = [104.0, 124.0, 100.0, 128.0];
-        let drops_width = DROPS.iter().sum::<f32>() + 4.0 * 8.0;
-        let seg = browser::segmented_width(ui, &labels);
+        let sizes = (browser::segmented_width(ui, &labels), DROPS.iter().sum::<f32>() + 4.0 * 8.0, (150.0, 320.0));
         let before = (self.filter.clone(), self.sort, self.collection.clone());
         let hint = format!("Search {noun}s: name, country, author, number");
-        browser::bar(ui, |ui| {
-            let room = ui.available_width() - seg - 16.0;
-            let one_row = room - drops_width >= 150.0;
-            let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(150.0, 320.0);
-            let drops =
-                |s: &mut Self, ui: &mut egui::Ui| s.dropdowns(ui, (&surfaces, &countries, &lengths, &sorts), DROPS);
-            ui.horizontal(|ui| {
-                browser::search_box(ui, &hint, &mut self.filter.query, &mut self.focus, search);
-                let mut scope = self.collection.clone();
-                let counts = self.scope_counts(favourites, recent);
+        let counts = self.scope_counts(favourites, recent);
+        browser::filter_bar(
+            ui,
+            self,
+            sizes,
+            |s, ui, width| {
+                browser::search_box(ui, &hint, &mut s.filter.query, &mut s.focus, width);
+                let mut scope = s.collection.clone();
                 if kit::segmented(ui, "stages scope", &mut scope, &scope_options).on_hover_text(counts).changed() {
-                    self.collection = scope;
-                    self.filter.query.clear();
+                    s.collection = scope;
+                    s.filter.query.clear();
                 }
-                if one_row {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| drops(self, ui));
-                }
-            });
-            if !one_row {
-                ui.add_space(8.0);
-                ui.horizontal(|ui| drops(self, ui));
-            }
-        });
+            },
+            |s, ui| s.dropdowns(ui, (&surfaces, &countries, &lengths, &sorts), DROPS),
+        );
         if before != (self.filter.clone(), self.sort, self.collection.clone()) {
             // Back to the search box, where the arrows move through the list.
             self.focus = true;
         }
     }
 
-    /// The surface, country, length and sort dropdowns, reversed in a right-to-left layout (the sort is the rightmost).
+    /// The surface, country, length and sort dropdowns.
     fn dropdowns(&mut self, ui: &mut egui::Ui, options: Options, widths: [f32; 4]) {
         let (surfaces, countries, lengths, sorts) = options;
         let surface_text = self.filter.surface.map_or("Any surface", |s| SURFACES[s as usize]).to_owned();
@@ -789,17 +780,7 @@ impl StageBrowser {
         let sort = |s: &mut Self, ui: &mut egui::Ui| {
             browser::dropdown(ui, "stages sort", widths[3], &sort_text, &mut s.sort, sorts)
         };
-        if ui.layout().main_dir() == egui::Direction::RightToLeft {
-            sort(self, ui);
-            length(self, ui);
-            country(self, ui);
-            surface(self, ui);
-        } else {
-            surface(self, ui);
-            country(self, ui);
-            length(self, ui);
-            sort(self, ui);
-        }
+        browser::in_order(ui, self, &[&surface, &country, &length, &sort]);
     }
 
     /// The list and the inspector below the filter bar.
@@ -842,11 +823,7 @@ impl StageBrowser {
         } else {
             format!("{count} found in all {noun}s")
         };
-        let verb = if self.page { "Drive" } else { "Choose" };
-        let mut keys = vec![("↑↓", "Move"), ("↵", verb), ("Ctrl D", "Favourite")];
-        if !self.page {
-            keys.push(("Esc", "Back"));
-        }
+        let keys = browser::hint_keys(self.page);
         // The author in place of the country within a country.
         let third = if self.filter.country.is_some() { Column::Author } else { Column::Country };
         let (collection, empty) = (self.collection.clone(), self.filter.query.trim().is_empty());
@@ -863,11 +840,7 @@ impl StageBrowser {
                     }
                     _ => "Nothing matches.".to_owned(),
                 };
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(24.0);
-                    ui.label(RichText::new(hint).color(TEXT_2));
-                });
+                browser::empty_hint(ui, &hint);
             }
             list_rows(ui, &mut self.nav, "stages", &self.lines, |ui, nav, range| {
                 for at in range {
@@ -945,7 +918,7 @@ fn inspect(
                 }
                 let name = folder.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
                 let font = theme::mono(11.0);
-                let text = left_truncated(ui, &name, &font, ui.available_width() - 8.0);
+                let text = browser::left_truncated(ui, &name, &font, ui.available_width() - 8.0);
                 ui.label(RichText::new(text).font(font).color(TEXT_2)).on_hover_text(folder.display().to_string());
             });
         }
@@ -1003,17 +976,6 @@ fn actions(
         *confirm = None;
     }
     (action, removal)
-}
-
-/// `text` shortened from the left with an ellipsis to fit `width`.
-fn left_truncated(ui: &egui::Ui, text: &str, font: &FontId, width: f32) -> String {
-    let fits = |t: &str| ui.painter().layout_no_wrap(t.to_owned(), font.clone(), TEXT).size().x <= width;
-    if fits(text) {
-        return text.to_owned();
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let tail = |n: usize| format!("…{}", chars[chars.len() - n..].iter().collect::<String>());
-    tail((0..chars.len()).rev().find(|&n| fits(&tail(n))).unwrap_or(0))
 }
 
 /// The right-aligned columns of the list, widths: country or author, length, surface.
@@ -1251,12 +1213,16 @@ mod tests {
     fn the_surface_and_length_filters_narrow_every_list() {
         let rows = some();
         let list = |filter: Filter| count(&lines(&rows, &Collection::All, &filter, Sort::Name, &[], &[]));
-        assert_eq!(list(Filter { surface: Some(1), ..Filter::default() }), 1);
-        assert_eq!(list(Filter { surface: Some(2), ..Filter::default() }), 2);
-        assert_eq!(list(Filter { length: Length::Short, ..Filter::default() }), 1);
-        assert_eq!(list(Filter { length: Length::Medium, ..Filter::default() }), 1);
-        assert_eq!(list(Filter { length: Length::Long, ..Filter::default() }), 2);
-        assert_eq!(list(Filter { length: Length::Longest, ..Filter::default() }), 0);
+        for (surface, length, n) in [
+            (Some(1), Length::Any, 1),
+            (Some(2), Length::Any, 2),
+            (None, Length::Short, 1),
+            (None, Length::Medium, 1),
+            (None, Length::Long, 2),
+            (None, Length::Longest, 0),
+        ] {
+            assert_eq!(list(Filter { surface, length, ..Filter::default() }), n, "{surface:?} {length:?}");
+        }
         assert!(Length::Short.contains(Some(3.9)) && !Length::Short.contains(None) && Length::Any.contains(None));
     }
 
