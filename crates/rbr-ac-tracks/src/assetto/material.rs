@@ -511,8 +511,14 @@ pub struct Layers {
     pub world: Option<[f64; 2]>,
 }
 
-/// `(ksAmbient, ksDiffuse)` of a material that declares both.
+/// `(ksAmbient, ksDiffuse)` of a material that declares both; none for AC's foliage shaders (`ksTree`, `ksGrass`),
+/// which light their cards their own way and which ReRBR lights as plants: St Jean - St Laurent's distant forest
+/// (`treeDistant`, 0.29/0.055 against a ground of about 0.5) went from green pines to a dark smear, its crowns (`treeTop`,
+/// 0/0.8) to ambient 0.05 and sun 2.
 fn light(mat: &Material) -> Option<[f32; 2]> {
+    if matches!(mat.shader.as_str(), "ksTree" | "ksGrass") {
+        return None;
+    }
     let both = [mat.properties.get("ksAmbient")?, mat.properties.get("ksDiffuse")?];
     Some(both.map(|v| *v).map(|v| v.max(0.)))
 }
@@ -1087,6 +1093,19 @@ mod tests {
             assert!(colour.iter().all(|&c| (c - f64::from(specular)).abs() < 1e-6), "{colour:?}");
             assert_eq!(value("SpecularPower="), [f64::from(power)]);
         }
+    }
+
+    #[test]
+    fn foliage_shaders_take_no_light_factors() {
+        let mat = |shader: &str| Material {
+            shader: shader.into(),
+            properties: [("ksAmbient".to_owned(), 0.0), ("ksDiffuse".to_owned(), 0.8)].into(),
+            ..Material::default()
+        };
+        assert_eq!(
+            [mat("ksTree"), mat("ksGrass"), mat("ksPerPixel")].map(|m| light(&m)),
+            [None, None, Some([0.0, 0.8])]
+        );
     }
 
     #[test]
