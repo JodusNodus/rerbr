@@ -514,6 +514,9 @@ pub struct Lamp {
     pub colour: Vec3,
     pub beam: bool,
     pub main: bool,
+    /// Metres: how far the farthest lamp merged into this one ([`fit`]) lies from its position, plus that lamp's own
+    /// spread; 0 for a single lamp.
+    pub spread: f32,
 }
 
 /// Each kind's luminous intensity on its axis, candela (ours): the headlights' dipped beam's hot spot (an ECE dipped
@@ -648,7 +651,52 @@ pub fn lamp(light: &Light, position: Vec3, normal: Vec3, forward: Vec3, up: Vec3
     let colour = Vec3::from(light.colour);
     let luminance = colour.dot(Vec3::new(0.2126, 0.7152, 0.0722)).max(1e-3);
     let colour = colour / luminance * candela * UNITS_PER_CANDELA * fade;
-    Lamp { kind: light.kind, position, forward, up, colour, beam, main: beam && main }
+    Lamp { kind: light.kind, position, forward, up, colour, beam, main: beam && main, spread: 0.0 }
+}
+
+fn intensity(lamp: &Lamp) -> f32 {
+    lamp.colour.dot(Vec3::new(0.2126, 0.7152, 0.0722))
+}
+
+/// `a` and `b` as one lamp: the summed colour at the mean position weighted by intensity, the first's way of pointing
+/// for a beam, else the sum of both, and the spread reaching the farther member.
+fn merged(a: &Lamp, b: &Lamp) -> Lamp {
+    let (wa, wb) = (intensity(a), intensity(b));
+    let position =
+        if wa + wb > 0.0 { (a.position * wa + b.position * wb) / (wa + wb) } else { (a.position + b.position) / 2.0 };
+    let sum = a.forward + b.forward;
+    let forward = if a.beam || sum.length_squared() < 1e-6 { a.forward } else { sum.normalize() };
+    let reach = |l: &Lamp| l.position.distance(position) + l.spread;
+    Lamp { position, forward, colour: a.colour + b.colour, spread: reach(a).max(reach(b)), ..*a }
+}
+
+/// At most `max` of `lamps` for the shaders, which take [`crate::renderer::MAX_LAMPS`] (ours): a car has more lit
+/// lamps than that (a light pod bar, the bumper lamps, the tail and brake lights together), and the ones past the
+/// last slot lit nothing, parts beside them stayed dark. The closest pair of one kind, beam and main merges first, so
+/// pods sitting close together become fewer lamps of the summed light (at their mean position, [`Lamp::spread`] the
+/// reach of the merge); only when no such pair remains is the weakest lamp dropped. Order stays, a merged lamp in the
+/// earlier one's place.
+pub fn fit(lamps: &[Lamp], max: usize) -> Vec<Lamp> {
+    let mut lamps = lamps.to_vec();
+    while lamps.len() > max {
+        let mut pair: Option<(usize, usize, f32)> = None;
+        for (i, a) in lamps.iter().enumerate() {
+            for (j, b) in lamps.iter().enumerate().skip(i + 1) {
+                let d = a.position.distance_squared(b.position);
+                if (a.kind, a.beam, a.main) == (b.kind, b.beam, b.main) && pair.is_none_or(|(_, _, best)| d < best) {
+                    pair = Some((i, j, d));
+                }
+            }
+        }
+        if let Some((i, j, _)) = pair {
+            lamps[i] = merged(&lamps[i], &lamps[j]);
+            lamps.remove(j);
+        } else {
+            let weakest = (0..lamps.len()).min_by(|&a, &b| intensity(&lamps[a]).total_cmp(&intensity(&lamps[b])));
+            lamps.remove(weakest.unwrap_or(0));
+        }
+    }
+    lamps
 }
 
 #[cfg(test)]
@@ -658,6 +706,60 @@ mod tests {
 
     fn sections(text: &str) -> Vec<Section> {
         ini::parse(text).expect("ini")
+    }
+
+    fn test_lamp(kind: Kind, x: f32, red: f32) -> Lamp {
+        let beam = kind == Kind::Front;
+        Lamp {
+            kind,
+            position: Vec3::new(x, 0.0, 0.0),
+            forward: Vec3::NEG_Z,
+            up: Vec3::Y,
+            colour: Vec3::new(red, 0.0, 0.0),
+            beam,
+            main: beam,
+            spread: 0.0,
+        }
+    }
+
+    #[test]
+    fn fit_leaves_up_to_max_lamps_unchanged() {
+        let lamps: Vec<Lamp> = (0..8).map(|i| test_lamp(Kind::Front, i as f32 * 0.1, 1.0)).collect();
+        assert_eq!(fit(&lamps, 8), lamps);
+    }
+
+    #[test]
+    fn fit_merges_the_closest_pods_and_keeps_the_tail_and_brake_lamps() {
+        let mut lamps = vec![test_lamp(Kind::Front, -1.0, 10.0), test_lamp(Kind::Front, 1.0, 10.0)];
+        lamps.extend([-0.285, -0.095, 0.095, 0.285].map(|x| test_lamp(Kind::Front, x, 1.0)));
+        lamps.extend([test_lamp(Kind::Tail, -0.7, 1.0), test_lamp(Kind::Tail, 0.7, 1.0)]);
+        lamps.extend([test_lamp(Kind::Brake, -0.7, 1.0), test_lamp(Kind::Brake, 0.7, 1.0)]);
+        let fitted = fit(&lamps, 8);
+        assert_eq!(fitted.len(), 8);
+        // The pods 0.19 m apart are all equally close: the first pair merges, at its mean, spread half the gap.
+        assert_eq!(fitted[2].colour, Vec3::new(2.0, 0.0, 0.0));
+        assert!((fitted[2].position.x + 0.19).abs() < 1e-6);
+        assert!((fitted[2].spread - 0.095).abs() < 1e-6);
+        assert_eq!(fitted[0], lamps[0]);
+        assert_eq!(fitted[1], lamps[1]);
+        let count = |kind| fitted.iter().filter(|l| l.kind == kind).count();
+        assert_eq!((count(Kind::Tail), count(Kind::Brake), count(Kind::Front)), (2, 2, 4));
+        let total = |ls: &[Lamp]| ls.iter().filter(|l| l.kind == Kind::Front).map(|l| l.colour.x).sum::<f32>();
+        assert_eq!(total(&fitted), total(&lamps));
+    }
+
+    #[test]
+    fn fit_drops_the_weakest_when_no_lamps_can_merge() {
+        let kinds = [Kind::Front, Kind::Tail, Kind::Brake, Kind::Reverse];
+        let mut lamps: Vec<Lamp> =
+            kinds.iter().enumerate().map(|(i, &k)| test_lamp(k, i as f32, 5.0 + i as f32)).collect();
+        lamps.push(test_lamp(Kind::Front, 9.0, 1.0));
+        let mut dipped = test_lamp(Kind::Front, 8.0, 2.0);
+        dipped.main = false;
+        lamps.push(dipped);
+        let fitted = fit(&lamps, 4);
+        assert_eq!(fitted.len(), 4);
+        assert!(fitted.iter().all(|l| l.colour.x >= 5.0), "{fitted:?}");
     }
 
     #[test]

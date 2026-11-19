@@ -603,6 +603,9 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   where the lamps light the stage (the pods' test, sun below `relight::LAMPS_FROM` at the start; the sun does not
   move in a stage), else off (`Headlights::at_start`, 2026-11-19, user). Ours: no flare is drawn (user, 2026-10-31:
   the Clio Rally3's sat over and outboard of its lamps).
+- The shaders take 8 lamps (`MAX_LAMPS`); `lights::fit` (2026-11-19) merges the closest pair of one kind, beam and
+  main until 8 are left (summed colour, intensity-weighted position, `Lamp::spread` in `colour.w` widens `lamp_shown`'s
+  `LAMP_NEAR`), and drops the weakest only when none can merge. Before, lamps past the 8th lit nothing.
 - Ours: the lamps show as their lit parts at their real luminance (2026-11-05; `Switch::glow`, `lamp_shown` in
   `shader.wgsl`): the kind's intensity (`CANDELA`: dipped hot spot 20000 cd, tail 8, brake 100, reverse 150) over the
   part's area along the car's axis (held within 0.002-0.1 m2), toward the eye by the nearest lit lamp's beam or signal

@@ -3,7 +3,7 @@
 // headlight's beam, and the light it gives a surface.
 
 // One lamp (`LampUniform` in `renderer/uniforms.rs`): xyz its position, w 1 when lit; the way it points, w 1 for a headlight's
-// dipped beam, 2 its main beam; the car's up; its colour times its intensity.
+// dipped beam, 2 its main beam; the car's up; its colour times its intensity, and in w its spread (`lights::Lamp::spread`, metres).
 struct Lamp {
     position: vec4<f32>,
     forward: vec4<f32>,
