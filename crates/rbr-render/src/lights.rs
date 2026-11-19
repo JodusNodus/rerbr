@@ -946,6 +946,31 @@ mod tests {
     }
 
     #[test]
+    fn lamps_with_no_switched_lit_part_take_the_lens_at_them() {
+        let point = |part: &str, x: f32, fixed| LampPoint {
+            light: Light {
+                kind: Kind::Front,
+                lamp: 0,
+                part: part.to_owned(),
+                fade_in: 1.0,
+                fade_out: 1.0,
+                colour: RETAIL_HEADLIGHT,
+                candela: CANDELA[0],
+                fixed,
+            },
+            position: Vec3::new(x, 0.0, 0.0),
+            normal: Vec3::NEG_Z,
+        };
+        let points = [point("pod", 0.0, Some(true)), point("lf", 1.0, None), point("unlit", 2.0, Some(false))];
+        let headlamp = [Vec3::new(1.05, 0.0, 0.0)];
+        let bare = bare(&points, &[(Kind::Front, &headlamp), (Kind::Tail, &[Vec3::ZERO])]);
+        assert_eq!(bare.iter().map(|p| p.light.part.as_str()).collect::<Vec<_>>(), ["pod"], "a tail part shows no pod");
+        let lens = lens_of(&[Vec3::new(0.1, 0.0, 0.0), Vec3::new(0.5, 0.0, 0.0)], &bare);
+        assert_eq!(lens.map(|p| p.light.part.as_str()), Some("pod"));
+        assert_eq!(lens_of(&[Vec3::new(0.3, 0.0, 0.0)], &bare), None, "too far from the pod");
+    }
+
+    #[test]
     fn lamp_classes_are_the_lens_and_reflector() {
         assert!(["CarLight", "CarGlass", "CarPlastic"].into_iter().all(lamp_class));
         assert!(!["CarPaint", "CarChrome", "CarIntGlass"].into_iter().any(lamp_class));
