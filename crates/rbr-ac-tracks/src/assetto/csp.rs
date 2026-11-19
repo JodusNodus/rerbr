@@ -2,6 +2,12 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
+/// An ini value without its comment: CSP takes `;` and `//` (Embrun–Prunières' `PIECE_0 = 1,1 // daisy`).
+fn uncommented(value: &str) -> &str {
+    let end = [value.find(';'), value.find("//")].into_iter().flatten().min().unwrap_or(value.len());
+    value[..end].trim()
+}
+
 /// The text of each `extension/*.ini` file, in order.
 pub(super) fn inis(root: &Path) -> Vec<String> {
     let Ok(dir) = super::stage::source_path(root, "extension") else { return Vec::new() };
@@ -34,7 +40,7 @@ pub fn replaced(root: &Path) -> BTreeMap<String, HashSet<String>> {
                 flush(&mut file, &mut hide, active);
                 active = line.to_uppercase().starts_with("[MODEL_REPLACEMENT");
             } else if let Some((key, value)) = line.split_once('=').filter(|_| active) {
-                let value = value.split(';').next().unwrap_or("").trim();
+                let value = uncommented(value);
                 match key.trim().to_uppercase().as_str() {
                     "FILE" => file = value.to_owned(),
                     "HIDE" => hide.extend(value.split(',').map(|n| n.trim().to_lowercase()).filter(|n| !n.is_empty())),
@@ -67,7 +73,7 @@ pub fn unrendered(root: &Path) -> Vec<String> {
                 section = upper.starts_with("[MESH_ADJUSTMENT") || upper.starts_with("[MESH_ADJUSTEMENT");
                 (hide, active, always) = (false, true, true);
             } else if let Some((key, value)) = line.split_once('=').filter(|_| section) {
-                let value = value.split(';').next().unwrap_or("").trim();
+                let value = uncommented(value);
                 match key.trim().to_uppercase().as_str() {
                     "MESHES" => meshes.extend(
                         value.split(',').map(|n| n.trim().to_lowercase()).filter(|n| !n.is_empty() && !n.contains(':')),
@@ -164,7 +170,7 @@ pub fn grass_fx(root: &Path) -> Option<GrassFx> {
             if let Some(name) = line.strip_prefix('[') {
                 section = name.split(']').next().unwrap_or("").trim().to_uppercase();
             } else if let Some((key, value)) = line.split_once('=') {
-                let (key, value) = (key.trim().to_uppercase(), value.split(';').next().unwrap_or("").trim().to_owned());
+                let (key, value) = (key.trim().to_uppercase(), uncommented(value).to_owned());
                 if section == "GRASS_FX" {
                     fx.keys.insert(key, value);
                 } else if let Some(n) = section.strip_prefix("GRASS_FX_TEXTURE_GROUP_").and_then(|n| n.parse().ok()) {
@@ -219,7 +225,7 @@ mod tests {
             "[GRASS_FX]\nGRASS_MATERIALS = Ter?, rock_cluster\nTEXTURE = mine.dds ; mine\nTEXTURE_GRID = 8, 3\n\
              TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\nSHAPE_SIZE = 6.5\nMASK_RED_THRESHOLD = 0.01\n\
              [GRASS_FX_TEXTURE_GROUP_1]\nPIECE_0 = 1, 1\nPIECE_1 = 4, 1, 2, 2\nPIECE_1_CHANCE = 0.5\n\
-             PIECE_1_SIZE_MULT = 0.6, 1.5\n",
+             PIECE_1_SIZE_MULT = 0.6, 1.5 // tall\n",
         )
         .unwrap();
         let fx = grass_fx(&dir).unwrap();
