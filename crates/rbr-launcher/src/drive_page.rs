@@ -60,11 +60,11 @@ impl Look {
 const LOOKS: [Look; 7] = [
     look(["Sunny"; 2], Clouds::Clear, Precipitation::None, Fog::Off, 0),
     look(["Fair"; 2], Clouds::Partly, Precipitation::None, Fog::Off, 0),
-    look(["Cloudy"; 2], Clouds::Light, Precipitation::None, Fog::Off, 0),
+    look(["Cloudy"; 2], Clouds::Broken, Precipitation::None, Fog::Off, 0),
     look(["Overcast"; 2], Clouds::Heavy, Precipitation::None, Fog::Off, 0),
     look(["Drizzle", "Flurries"], Clouds::Heavy, Precipitation::Light, Fog::Light, 1),
     look(["Rain", "Snow"], Clouds::Heavy, Precipitation::Heavy, Fog::Off, 2),
-    look(["Foggy"; 2], Clouds::Light, Precipitation::None, Fog::Heavy, 1),
+    look(["Foggy"; 2], Clouds::Broken, Precipitation::None, Fog::Heavy, 1),
 ];
 
 impl Form {

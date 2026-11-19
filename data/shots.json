@@ -354,11 +354,11 @@
   "car": "Audi quattro A2 GrpB",
   "view": "flyby",
   "settings": {
-   "clouds": "partly",
+   "clouds": "dimpled",
    "wetness": "wet",
    "precipitation": "none"
   },
-  "clock": "18:00",
+  "clock": "06:00",
   "at": 11448,
   "args": [
    "--fov",
@@ -400,7 +400,10 @@
   "car": "Alpine A110 Rally RGT",
   "view": "flyby",
   "clock": "15:00",
-  "at": 6699
+  "at": 6699,
+  "settings": {
+   "clouds": "dimpled"
+  }
  },
  {
   "name": "fog-crequy-yaris-chase",
