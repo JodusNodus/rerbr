@@ -90,7 +90,6 @@ impl Kind for Btb {
     }
 }
 
-/// Whether the path lies below the folder `prefix` (names ignoring case).
 /// Whether `tracks` already has a stage folder called `name` (ignoring case).
 fn taken(tracks: &Path, name: &str) -> bool {
     fs::read_dir(tracks)

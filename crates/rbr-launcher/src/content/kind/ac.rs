@@ -58,7 +58,6 @@ pub fn track_dirs(entries: &[Entry]) -> Vec<Vec<String>> {
     found
 }
 
-/// Whether `path` lies below the folder `prefix` (names ignoring case).
 /// The stage folder of a layout: `AC_` and the track's folder, and the layout's name when the track has several.
 fn stage_folder(track: &str, layout: &str) -> Option<String> {
     safe_folder(&match layout {
