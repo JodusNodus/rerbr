@@ -127,6 +127,12 @@ const SATURATION: f32 = 0.85;
 /// from its dry patches: the ground's texture is greyed by its earth, the grass on it is green.
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
+/// A converted stage's grass takes the ground's hue as it is (no lean to lush green or straw, [`SATURATION`] lower) and
+/// is darker than the ground ([`SHADE`] lower): Assetto Corsa's atlas blades are tinted by the ground and read as brown
+/// olive against it (Sa Calobra's verge at dawn: blade luminance 0.75 of the ground's, blue over green 0.86 against the
+/// ground's 0.68).
+const FX_SATURATION: f32 = 0.5;
+const FX_SHADE: f32 = 0.45;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
@@ -561,13 +567,19 @@ impl Field {
                 let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
                 let hue = colour / self.mean;
                 let grey = Vec3::splat(hue.element_sum() / 3.0);
-                let hue = grey.lerp(hue, SATURATION).max(Vec3::splat(0.01));
-                let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
-                let hue = hue.lerp(hue * STRAW, dry * 0.35);
+                let converted = self.fx.is_some();
+                let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
+                let hue = if converted {
+                    hue / hue.max_element()
+                } else {
+                    let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
+                    hue.lerp(hue * STRAW, dry * 0.35)
+                };
                 let hue = (hue / hue.max_element() * 255.0).round().as_uvec3();
                 let lean_angle = lean_turn * std::f32::consts::TAU;
                 // Each clump's cards a little brighter or darker than the ground's.
-                let bright = SHADE * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
+                let shade = if converted { FX_SHADE } else { SHADE };
+                let bright = shade * luminance(colour) / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
                 let card = Card {
                     at,
                     normal: g.normal,
