@@ -603,6 +603,9 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   where the lamps light the stage (the pods' test, sun below `relight::LAMPS_FROM` at the start; the sun does not
   move in a stage), else off (`Headlights::at_start`, 2026-11-19, user). Ours: no flare is drawn (user, 2026-10-31:
   the Clio Rally3's sat over and outboard of its lamps).
+- The shaders take 8 lamps (`MAX_LAMPS`); `lights::fit` (2026-11-19) merges the closest pair of one kind, beam and
+  main until 8 are left (summed colour, intensity-weighted position, `Lamp::spread` in `colour.w` widens `lamp_shown`'s
+  `LAMP_NEAR`), and drops the weakest only when none can merge. Before, lamps past the 8th lit nothing.
 - Ours: the lamps show as their lit parts at their real luminance (2026-11-05; `Switch::glow`, `lamp_shown` in
   `shader.wgsl`): the kind's intensity (`CANDELA`: dipped hot spot 20000 cd, tail 8, brake 100, reverse 150) over the
   part's area along the car's axis (held within 0.002-0.1 m2), toward the eye by the nearest lit lamp's beam or signal
@@ -619,7 +622,8 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   actually realistic"). Headlamps of 42 installed cars now glow from the front, by day too (M3 E30's dipped outer
   lamps, Fiesta Rally2's units; day Gabiria M3 and golden Luceram Fiesta fly-bys 1.9 and 1.6 % RMSE, night front
   views a white glare). Tail and brake ones glow in the records'
-  red (`LAMP_RED`), not their texture's: the GC8's brake parts are white reflectors, the M3 E30's and 911 SC's lit
+  red (`LAMP_RED`), not their texture's (those taken by name since 2026-10-31, every one since 2026-11-19): the GC8's
+  brake parts are white reflectors, pale red lit textures shone white at the lamps' luminance, the M3 E30's and 911 SC's lit
   textures light the indicator. 43 installed cars had dark tail lamps (night Sardian M3 chase); the GC8 brakes red
   (rain Sipirkakim chase 0.6 % RMSE), other reference shots byte-identical.
 - Ours: a `_lit` part the game always draws (shown from the start, on no lamp's box: installed `Switch = false`, or a
@@ -663,10 +667,35 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   Wrong, by cause, not fixed: the Porsche 911 SC RS's tail, brake and reverse lit parts are 4-vertex quads in
   `CarPaint`, so they glow in the body paint's white, not red; the Escort Mk II's tail glows in a pale texture, and
   its `lf01`/`rf01` records (low, 0.33 m off centre, always on) light as two extra headlamps, which is the low and
-  central beam origin; the Yaris Rally2's lit tail part is a 3-vertex sliver, so its tail lamps never glow (the brake
-  lens, 660 vertices, does); the Focus 2006's reverse points `_lb` and `_rb` share one position (the car's file) and
+  central beam origin; the Yaris Rally2's lit tail part is a 3-vertex sliver (its brake lens, 660 vertices, now
+  glows for the tail too: the fixes below); the Focus 2006's reverse points `_lb` and `_rb` share one position (the car's file) and
   its front bar follows the tail box at 8 cd; the Celica's `lf`/`rf` records are `Active = false` with no switch box
   (its wing pods, always on, are the only lit records).
+- Broken lamps by cause (2026-11-19, `examples/lamp_survey.rs` over the 50 cars with their own model, night Gabiria
+  chase and fly-by shots of 18): (1) bare lamps, lit with no switched lit part at them, which the game shows by their
+  flare alone: dark pods and ramps on 21 cars (DS3 R1, Delta HF 4WD, 306 Maxi, Fiesta R5, Rally3, Rally4, WRC 2014
+  and 2019, 208 R2 and Rally4, Clio Rally3 and R3, ADAM R2, Evo X...; the DS3's extralights option only adds the
+  points), dark tails on the Alpine A110, Fiesta WRC 2014, Delta HF 4WD and Yaris Rally2 (its lit tail a 3-vertex
+  sliver), the lit strip hidden in an always-drawn housing on the Fiesta Rally2; (2) pale lit tail textures the glow
+  drove to white: Escort Mk II, Fiesta Rally3, 306 Maxi, 911 SC RS, Impreza N14, Celica ST185; (3) forward lamps on
+  tail records (kind 3, always on in the game; 255, 255, 100 or 233): the Escort Cosworth's headlamps and pods threw
+  no beam and glowed red, the 306 Maxi's pods, the C2 S1600's headlamps again; (4) `MAX_LAMPS` 8 taken in record
+  order: 41 cars lost pod beams, the Escort Cosworth its bumper lamps, the Fiesta Rally3, Clio R3 and Golf II their
+  tail light, more while braking (lamps off drop out of the list). Retail cars all right.
+- Fixes (ours, 2026-11-19, user: all four, lenses rather than flares): (1) the always-drawn `CarLight` faces, and
+  `CarGlass` ones but the windows', within 0.15 m of a bare lamp's point (`lights::bare`, `lights::lens_of`,
+  `car::light_lenses`) glow as its lens while it is lit, matched within `LENS_NEAR` 0.3 m (`lights::LENS` on the glow
+  kind); at a tail or brake lamp the other one's unlit faces too (the Delta's brake faces lie on its tail glass), not
+  the reverse lamp's (clear: 7 cars' glowed red); a switched lit part under `lights::SHOWN_AREA` 1 cm² along the car
+  shows no lamp (Yaris Rally2 0.03 cm², Clio Rally3 tails 0.6 cm²); (2) every tail and brake part glows `LAMP_RED`; (3)
+  a forward-facing tail record is an always-on headlight in its colour at the headlights' intensity, dropped where a
+  headlight record has its point (`lights::forward_tail`). Seen at night: Alpine A110, Fiesta Rally2, Delta HF 4WD,
+  Yaris Rally2, Clio Rally3 tails red; Escort Mk II, 306 Maxi tails red, not white; Escort Cosworth's headlamps and
+  pods white with a beam; DS3 R1's pods. A lens mesh may span the car (the Alpine's and Clio Rally3's, 4 m): only its
+  faces within `LENS_NEAR` glow, at the luminance of `LIT_AREA`'s largest area. Still bare (survey): lamps drawn in
+  body classes (ADAM R2's pods, 208 R2's and Rally4's bumper lamps: `CarPaint` bulbs, not told from a housing),
+  points off their mesh (Clio Rally3's pods), the Fiesta WRC 2014's tails (no lamp faces at them), no brake part on
+  the Evo II (the 306 Maxi's brake glows through its unlit tail faces, so by day only). The Delta's four centre pods have no lamp record (dark in the game too).
 - Ours: the headlights' light back off the road (`lamp_bounce` in `lamps.wgsl`): two Lambertian patches facing up, 15
   and 55 m ahead; scene +0.15 ms at night (45O chase and cockpit).
 - Tried for the beam's white look (2026-10-25) and dropped: pulling the meter toward the 97th percentile, and local
