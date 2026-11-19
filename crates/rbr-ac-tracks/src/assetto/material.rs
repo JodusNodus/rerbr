@@ -128,7 +128,11 @@ pub struct TextureBank {
     pub highlighted: usize,
     /// Sections written with a dry road sheen.
     pub sheened: usize,
+    /// Sections written to be drawn as multilayer at render time ([`Layers`]).
+    pub layered: usize,
     pub count: usize,
+    /// The stage's origin `[x, z]` in AC's frame ([`Layers::world`]); the stage's `(x, z)` is AC's `(x - origin[0], -z - origin[1])`.
+    pub origin: [f64; 2],
 }
 
 impl TextureBank {
@@ -145,7 +149,9 @@ impl TextureBank {
             normal_mapped: 0,
             highlighted: 0,
             sheened: 0,
+            layered: 0,
             count: 0,
+            origin: [0.; 2],
         })
     }
     pub fn put(&mut self, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
@@ -270,13 +276,64 @@ impl TextureBank {
         if let Some(name) = mat.textures.get("txMaps").filter(|_| extras.highlight.is_some()) {
             extras.specular = self.share(model, name)?;
         }
+        extras.layers = self.layers(model, mat);
         self.count(&extras);
         Ok(extras)
+    }
+    /// The multilayer material's own textures and numbers, for the renderer to sum per pixel ([`Layers`]); `None` for
+    /// another shader, a placeholder diffuse, a missing or unreadable texture, and one past [`multilayer::LIMIT`] (which
+    /// [`multilayer::bake`] leaves out too). The textures are stored under their own names, so materials sharing a
+    /// detail texture share its file.
+    pub fn layers(&mut self, model: &Model, mat: &Material) -> Option<Layers> {
+        if !mat.shader.contains("Multilayer") || is_placeholder(model, mat) {
+            return None;
+        }
+        let fits = |slot: &str| {
+            let data = model.textures.get(mat.textures.get(slot)?).filter(|d| !d.is_empty())?;
+            let (w, h) = match rbr_formats::dds::parse(data) {
+                Ok(dds) => (dds.width, dds.height),
+                Err(_) => textures::decode(data).map(|(w, h, _)| (w, h))?,
+            };
+            (w <= multilayer::LIMIT && h <= multilayer::LIMIT).then_some(())
+        };
+        fits("txDiffuse")?;
+        fits("txMask")?;
+        let objsp = mat.shader.contains("objsp");
+        let scale: [[f32; 2]; 4] = std::array::from_fn(|i| {
+            let key = multilayer::MULTIPLIERS[i];
+            let pair = if objsp { mat.pairs.get(key).copied().unwrap_or([0.; 2]) } else { [mat.property(key, 0.); 2] };
+            pair.map(|m| if m.is_finite() && m >= 0. { m } else { 0. })
+        });
+        // The mask's alpha is the fourth layer's weight.
+        let slots = [
+            ("txDiffuse", false),
+            ("txMask", true),
+            ("txDetailR", false),
+            ("txDetailG", false),
+            ("txDetailB", false),
+            ("txDetailA", false),
+        ];
+        let mut files = Vec::new();
+        for (slot, alpha) in slots {
+            files.push(self.slot(model, mat, slot, alpha).ok()??);
+        }
+        let mut files = files.into_iter();
+        let mut next = || files.next().unwrap();
+        let (diffuse, mask) = (next(), next());
+        Some(Layers {
+            diffuse,
+            mask,
+            details: std::array::from_fn(|_| next()),
+            scale,
+            magic: mat.property("magicMult", 1.),
+            world: (!objsp).then_some(self.origin),
+        })
     }
     fn count(&mut self, extras: &Extras) {
         self.normal_mapped += usize::from(extras.normal.is_some());
         self.highlighted += usize::from(extras.highlight.is_some());
         self.sheened += usize::from(extras.sheen.is_some());
+        self.layered += usize::from(extras.layers.is_some());
     }
     /// `ksMultilayer_fresnel_nm`'s only normal map, `txDetailNM`, read at the source UV times the pair `detailNMMult`
     /// (the scalar is always 0): the normal map of `extras`, on the UV set 0 the material's bake takes.
@@ -418,6 +475,25 @@ pub struct Extras {
     pub light: Option<[f32; 2]>,
     /// `ReRbrGrass=1`: CSP's GrassFX grows on this material ([`super::csp::GrassFx`]).
     pub grass: bool,
+    /// `ReRbrLayer*`: the renderer sums a multilayer material per pixel.
+    pub layers: Option<Layers>,
+}
+
+/// A multilayer material for the renderer to draw per pixel (`ReRbrLayer*` keys), as `diffuse * (R*mask.r + G*mask.g
+/// + B*mask.b + A*mask.a) * magicMult` ([`multilayer`]); the section's `diffuseTexture` stays the bake of the same sum.
+/// The diffuse and the mask are read at the mesh's UV; each detail at `uv * scale` ([`Layers::world`] `None`, the
+/// `_objsp` shaders) or at AC's world `(x, z) * scale`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Layers {
+    /// The stored names of the diffuse, the mask and the details R, G, B and A.
+    pub diffuse: String,
+    pub mask: String,
+    pub details: [String; 4],
+    /// Each detail's `(u, v)` multiplier, the same on both axes for world space.
+    pub scale: [[f32; 2]; 4],
+    pub magic: f32,
+    /// The stage's origin `[x, z]`: the details are read at world space, AC's `(x, z) = (stage x + origin[0], -(stage z + origin[1]))`.
+    pub world: Option<[f64; 2]>,
 }
 
 /// `(ksAmbient, ksDiffuse)` of a material that declares both.
@@ -541,7 +617,7 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
         (true, true) => Some("BTB_DiffuseBumpSpecular"),
         (true, false) => Some("BTB_DiffuseBump"),
         (false, true) => Some("BTB_DiffuseSpecular"),
-        (false, false) => extras.sheen.map(|_| "BTB_Diffuse"),
+        (false, false) => (extras.sheen.is_some() || extras.layers.is_some()).then_some("BTB_Diffuse"),
     };
     if let Some(effect) = effect {
         let _ = writeln!(out, "ReRbrEffect={effect}");
@@ -562,6 +638,16 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     }
     if extras.grass {
         out.push_str("ReRbrGrass=1\n");
+    }
+    if let Some(layers) = &extras.layers {
+        let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
+        let _ = writeln!(out, "ReRbrLayerDiffuse={}\nReRbrLayerMask={}", layers.diffuse, layers.mask);
+        let _ = writeln!(out, "ReRbrLayerDetail={}", layers.details.join(","));
+        let _ = writeln!(out, "ReRbrLayerScale={}", list(&mut layers.scale.iter().flatten().map(|m| decimal(*m))));
+        let _ = writeln!(out, "ReRbrLayerMagic={}", decimal(layers.magic));
+        if let Some([x, z]) = layers.world {
+            let _ = writeln!(out, "ReRbrLayerWorld={x:.6},{z:.6}");
+        }
     }
     out.push('\n');
 }
@@ -826,6 +912,69 @@ mod tests {
         };
         model.materials.push(mat);
         model
+    }
+    fn layered(shader: &str) -> (String, Extras) {
+        let mut model = extras_model();
+        for (name, texel) in [("a", [1, 2, 3, 255]), ("b", [4, 5, 6, 255])] {
+            model.textures.insert(name.into(), rbr_formats::dds::rgba8_file(2, 2, &texel.repeat(4)));
+        }
+        // Detail R and B share a texture, as Sa Calobra's layers do.
+        let textures = [
+            ("txDiffuse", "d"),
+            ("txMask", "m"),
+            ("txDetailR", "a"),
+            ("txDetailG", "b"),
+            ("txDetailB", "a"),
+            ("txDetailA", "b"),
+        ];
+        let mut mat = Material {
+            name: "m".into(),
+            shader: shader.into(),
+            textures: textures.map(|(s, n)| (s.into(), n.into())).into(),
+            ..Material::default()
+        };
+        mat.properties.insert("magicMult".into(), 1.5);
+        for (i, key) in multilayer::MULTIPLIERS.iter().enumerate() {
+            mat.properties.insert((*key).into(), 0.5 + i as f32);
+            mat.pairs.insert((*key).into(), [10. * (i + 1) as f32, 0.25]);
+        }
+        model.materials.push(mat);
+        let (mut bank, path) = bank_for(&format!("layers-{shader}"));
+        bank.origin = [-1234.5, 20.25];
+        let extras = bank.extras(&model, 0).unwrap();
+        let (layered, count) = (bank.layered, bank.count);
+        bank.finish().unwrap();
+        let _ = std::fs::remove_file(path);
+        assert_eq!((layered, count), (1, 4), "diffuse, mask and two shared details are stored once");
+        let mut out = String::new();
+        section_with(&mut out, "s", "bake.dds", false, &extras);
+        (out, extras)
+    }
+    #[test]
+    fn world_space_multilayer_writes_its_textures_scales_and_origin() {
+        let (out, extras) = layered("ksMultilayer_fresnel_nm");
+        let layers = extras.layers.unwrap();
+        assert_eq!(layers.details[0], layers.details[2]);
+        assert_eq!(layers.scale, [[0.5; 2], [1.5; 2], [2.5; 2], [3.5; 2]]);
+        let value = |key: &str| out.lines().find_map(|l| l.strip_prefix(key)).unwrap().to_owned();
+        assert!(out.contains("diffuseTexture=bake.dds\nReRbrEffect=BTB_Diffuse\n"), "{out}");
+        assert_eq!(value("ReRbrLayerMask="), layers.mask);
+        assert_eq!(value("ReRbrLayerDetail="), layers.details.join(","));
+        assert_eq!(
+            rbr_btb::track::decimal_floats(&value("ReRbrLayerScale=")),
+            [0.5, 0.5, 1.5, 1.5, 2.5, 2.5, 3.5, 3.5]
+        );
+        assert_eq!(rbr_btb::track::decimal_floats(&value("ReRbrLayerMagic=")), [1.5]);
+        assert_eq!(rbr_btb::track::decimal_floats(&value("ReRbrLayerWorld=")), [-1234.5, 20.25]);
+    }
+    #[test]
+    fn an_objsp_multilayer_reads_its_pairs_at_the_uv_and_has_no_world() {
+        let (out, extras) = layered("ksMultilayer_objsp");
+        assert_eq!(extras.layers.unwrap().scale[1], [20., 0.25]);
+        assert!(
+            out.contains("ReRbrLayerScale=10.0,0.25,20.0,0.25,30.0,0.25,40.0,0.25\n")
+                && !out.contains("ReRbrLayerWorld")
+        );
     }
     #[test]
     fn multilayers_detail_normal_map_is_its_normal_map_at_the_pair() {

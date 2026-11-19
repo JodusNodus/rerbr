@@ -141,6 +141,26 @@ pub struct Material {
     pub sheen: Option<f32>,
     /// ReRBR's `ReRbrGrass=1`: the stage's grass ([`Scene::grass`]) grows on this material (converted stages).
     pub grass: bool,
+    /// ReRBR's `ReRbrLayer*` keys: the material is a multilayer sum the renderer works out per pixel. Only with
+    /// `ReRbrEffect`, and only when every texture is in the archive.
+    pub layers: Option<Layers>,
+}
+
+/// `diffuse * (R*mask.r + G*mask.g + B*mask.b + A*mask.a) * magic`, the sum of Assetto Corsa's `ksMultilayer` shaders
+/// (the section's `diffuseTexture` is a bake of it, for what does not read these keys). The diffuse and the mask are
+/// read at the mesh's UV set 0.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layers {
+    /// The `Textures.zip` file names of the diffuse, the mask and the details for the mask's R, G, B and A.
+    pub diffuse: String,
+    pub mask: String,
+    pub details: [String; 4],
+    /// Each detail's `(u, v)` multiplier.
+    pub scale: [[f32; 2]; 4],
+    pub magic: f32,
+    /// `ReRbrLayerWorld=x,z`, the stage's origin in AC's frame: each detail is read at AC's `(x, z) * scale`, with
+    /// `x = stage x + origin x` and `z = -(stage z + origin z)`. `None`: at the UV set 0 times `scale`.
+    pub world: Option<[f64; 2]>,
 }
 
 impl Material {
@@ -530,6 +550,7 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
         _ => [1.0; 2],
     };
     Material {
+        layers: own.and_then(|_| layers(m, textures)),
         name: m.name.clone(),
         effect: Effect::parse(own.or(m.effect.as_deref())),
         first_uv: own.is_some(),
@@ -551,6 +572,31 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
             .filter(|r| r.is_finite() && *r > 0.0),
         grass: m.entry("ReRbrGrass") == Some("1"),
     }
+}
+
+/// The `ReRbrLayer*` keys of `m`: `None` unless the diffuse, the mask and the four details are in the archive and the
+/// scales are eight finite numbers, none negative.
+fn layers(m: &track::Material, textures: &Textures) -> Option<Layers> {
+    let file = |name: &str| textures.find(m.entry(name)?);
+    let details: Vec<String> =
+        m.entry("ReRbrLayerDetail")?.split(',').map(|n| textures.find(n.trim())).collect::<Option<_>>()?;
+    let scale = track::decimal_floats(m.entry("ReRbrLayerScale")?);
+    if scale.len() != 8 || scale.iter().any(|s| !s.is_finite() || *s < 0.0) {
+        return None;
+    }
+    let world = m.entry("ReRbrLayerWorld").map(track::decimal_floats);
+    Some(Layers {
+        diffuse: file("ReRbrLayerDiffuse")?,
+        mask: file("ReRbrLayerMask")?,
+        details: details.try_into().ok()?,
+        scale: std::array::from_fn(|i| [scale[2 * i] as f32, scale[2 * i + 1] as f32]),
+        magic: m.entry("ReRbrLayerMagic").and_then(track::decimal_float).map_or(1.0, |v| v as f32),
+        world: match world.as_deref() {
+            None => None,
+            Some(&[x, z]) => Some([x, z]),
+            Some(_) => return None,
+        },
+    })
 }
 
 /// The meshes of `files` (`Objects/<file>.x`), in order, read and parsed on every core, each worker with its own handle
@@ -758,5 +804,45 @@ mod tests {
         assert_eq!(read(true, &[("ReRbrSheen", "0.75"), ("ReRbrBumpUv", "1")]), (Some(0.75), true));
         assert_eq!(read(false, &[("ReRbrSheen", "0.75"), ("ReRbrBumpUv", "1")]), (None, false));
         assert_eq!(read(true, &[("ReRbrSheen", "0.0")]).0, None);
+    }
+
+    #[test]
+    fn the_layer_keys_need_the_rerbr_effect_and_every_texture() {
+        let section = |own: bool, extra: &[(&str, &str)]| {
+            let mut entries: Vec<(String, String)> = [
+                ("ReRbrLayerDiffuse", "d.dds"),
+                ("ReRbrLayerMask", "M.dds"),
+                ("ReRbrLayerDetail", "a.dds,b.dds,a.dds,c.dds"),
+                ("ReRbrLayerScale", "1.0,1.0,2.5,2.5,0.0,0.0,4.0,8.0"),
+                ("ReRbrLayerMagic", "1.5"),
+            ]
+            .iter()
+            .chain(extra)
+            .map(|&(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+            if own {
+                entries.push(("ReRbrEffect".into(), "BTB_Diffuse".into()));
+            }
+            track::Material {
+                name: "m".into(),
+                effect: Some("BTB_Diffuse".into()),
+                technique: None,
+                ambient: Vec::new(),
+                specular_power: None,
+                specular_color: Vec::new(),
+                entries,
+            }
+        };
+        let names = ["d.dds", "m.dds", "a.dds", "b.dds", "c.dds"];
+        let textures = Textures(names.iter().map(|n| (n.to_string(), n.to_string())).collect());
+        let uv = material(&section(true, &[]), &textures).layers.unwrap();
+        assert_eq!((uv.mask.as_str(), uv.details[2].as_str(), uv.magic, uv.world), ("m.dds", "a.dds", 1.5, None));
+        assert_eq!(uv.scale, [[1.0, 1.0], [2.5, 2.5], [0.0, 0.0], [4.0, 8.0]]);
+        let world = material(&section(true, &[("ReRbrLayerWorld", "-1234.5,20.25")]), &textures).layers.unwrap();
+        assert_eq!(world.world, Some([-1234.5, 20.25]));
+        assert!(material(&section(false, &[]), &textures).layers.is_none(), "needs ReRbrEffect");
+        let missing = Textures(names[..4].iter().map(|n| (n.to_string(), n.to_string())).collect());
+        assert!(material(&section(true, &[]), &missing).layers.is_none(), "a detail is not in the archive");
+        assert!(material(&section(true, &[("ReRbrLayerWorld", "1.0")]), &textures).layers.is_none());
     }
 }

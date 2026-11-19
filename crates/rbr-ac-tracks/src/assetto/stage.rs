@@ -601,12 +601,21 @@ fn texel_metres(distance: f64) -> f64 {
 }
 
 /// The tile textures of the builders whose material is world-space multilayer (`multilayer::bake_tile`), as DXT1
-/// files with the meshes drawn with them, baked on every core; `None` for the others, a tile that does not fit and a
-/// tile whose material bake is already as fine.
-fn tile_bakes(model: &kn5::Model, builders: &[(DrawKey, Builder)], origin: [f64; 2], line: &Line) -> Vec<Option<Tile>> {
+/// files with the meshes drawn with them, baked on every core; `None` for the others, the materials the renderer sums per
+/// pixel (`drawn_per_pixel`, [`material::Layers`]), a tile that does not fit and a tile whose material bake is already
+/// as fine.
+fn tile_bakes(
+    model: &kn5::Model,
+    builders: &[(DrawKey, Builder)],
+    origin: [f64; 2],
+    line: &Line,
+    drawn_per_pixel: &BTreeSet<usize>,
+) -> Vec<Option<Tile>> {
     let mut layers = BTreeMap::new();
     for ((_, mat, ..), _) in builders {
-        layers.entry(*mat).or_insert_with(|| multilayer::Layers::new(model, *mat));
+        layers
+            .entry(*mat)
+            .or_insert_with(|| multilayer::Layers::new(model, *mat).filter(|_| !drawn_per_pixel.contains(mat)));
     }
     // Far scenery keeps its material's own texture.
     let jobs: Vec<usize> =
@@ -897,6 +906,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut collision = Vec::<Triangle>::new();
     let mut objects = Objects::new(&folder.join("Objects.zip"))?;
     let mut bank = material::TextureBank::new(&folder.join("Textures.zip"))?;
+    bank.origin = origin;
     let mut materials = String::new();
     let mut names = Vec::new();
     let mut drawn_triangles = 0;
@@ -989,7 +999,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         }
         let builders: Vec<_> = builders.into_iter().collect();
         // World-space multilayer ground gets textures per tile, at a density falling off with distance from the road.
-        let mut tiles = tile_bakes(&model, &builders, origin, &line);
+        let per_pixel: BTreeSet<usize> = builders
+            .iter()
+            .map(|((_, mat, ..), _)| *mat)
+            .filter(|&mat| bank.layers(&model, &model.materials[mat]).is_some())
+            .collect();
+        let mut tiles = tile_bakes(&model, &builders, origin, &line, &per_pixel);
         let mut names_of = BTreeMap::new();
         let mut drawn = Vec::new();
         for (i, (key, mut b)) in builders.into_iter().enumerate() {
@@ -1175,7 +1190,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let baked = bank.baked.clone();
     let placeholders = bank.placeholders.clone();
     let missing_names = bank.missing.clone();
-    let (normal_mapped, highlighted, sheened) = (bank.normal_mapped, bank.highlighted, bank.sheened);
+    let (normal_mapped, highlighted, sheened, layered) =
+        (bank.normal_mapped, bank.highlighted, bank.sheened, bank.layered);
     // CSP's grass atlas, where the track ships its own.
     let grass_atlas = match grass_fx.as_ref().and_then(|g| g.texture.as_ref()) {
         Some(path) => Some(bank.put(std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?, "dds")?),
@@ -1265,6 +1281,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,
         "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps, the sun highlight and the roads' dry sheen are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
     provenance["sheen_materials"] = sheened.into();
+    provenance["multilayer_per_pixel_materials"] = layered.into();
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
     options.control.say("validating BTB collision cells");
     let stats = crate::btb::stage::check_cells(folder)?;

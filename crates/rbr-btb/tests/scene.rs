@@ -84,6 +84,7 @@ fn rerbr_effect_reads_every_input_on_the_diffuse_uv_set() {
         bump_uv: false,
         sheen: None,
         grass: false,
+        layers: None,
     };
     let slots = material.uv_slots();
     assert_eq!((slots.bump, slots.specular, slots.lerp), (Some(0), Some(0), None));
