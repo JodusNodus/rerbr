@@ -506,8 +506,9 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is
   `SHAPE_SIZE` x 0.08 m (6.5: 0.52 m, calibrated by eye on the AC rock shot's boulders: tussocks 0.4-0.8 m), times the
   piece's cells and `SIZE_MULT`, 0.8-1.2 per clump; unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at
-  `FX_SATURATION` 0.3 (no lush/straw lean) and `FX_SHADE` 1.2 with the brightness ratio clamp lowered (`FX_BRIGHT`):
-  Sa Calobra dawn blade mean 39/34/26 against AC's 41/34/30 (ground 50/44/30). The support ring is 0.4 of a card's
+  `FX_SATURATION` 0.7 (no lush/straw lean) and `FX_SHADE` 2.5 with the brightness ratio clamp lowered (`FX_BRIGHT`).
+  At 0.3/1.2 (07:35 calibration) the verges read charcoal at 06:45 next to AC's straw: verge luminance 35/33, red over
+  blue 1.16/1.22 (rock/wall views), now 49/51 and 1.31/1.38 against AC's verge 32-59 and 1.29-1.40 (2026-11-19). The support ring is 0.4 of a card's
   width (the meadow's ring halved the cards). Unverified: `SIZE_MULT` as width,height (it may be a min,max scale);
   the atlas grey pass skipped compressed (DXT) atlases until 2026-11-19, so Sa Calobra's had used our blades.
   Sa Calobra down, rock view 07:35 (`/tmp/grassfx/rock.png`, before | after): grey terrain went from a patch of

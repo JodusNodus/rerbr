@@ -129,12 +129,12 @@ const SATURATION: f32 = 0.85;
 /// from its dry patches: the ground's texture is greyed by its earth, the grass on it is green.
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
-/// A converted stage's grass takes the ground's hue as it is (no lean to lush green or straw, [`SATURATION`] lower) and
-/// is darker than the ground ([`SHADE`] lower): Assetto Corsa's atlas blades are tinted by the ground and read as brown
-/// olive against it (Sa Calobra's verge at dawn: blade luminance 0.75 of the ground's, blue over green 0.86 against the
-/// ground's 0.68).
-const FX_SATURATION: f32 = 0.3;
-const FX_SHADE: f32 = 1.2;
+/// A converted stage's grass takes the ground's hue (no lean to lush green or straw, [`SATURATION`] lower) and is
+/// brighter against the ground ([`SHADE`] higher; its dense field takes less light): Assetto Corsa's atlas blades are
+/// tinted by the ground and read as brown straw against it (Sa Calobra's verges at a low sun: red over blue 1.3 to 1.4, as bright as the ground or brighter;
+/// at 0.3 and 1.2 they read charcoal).
+const FX_SATURATION: f32 = 0.7;
+const FX_SHADE: f32 = 2.5;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
