@@ -1,6 +1,6 @@
 # Reference shots
 
-JPEGs of the 36 shots of [`data/shots.json`](../../data/shots.json), made by
+JPEGs of the 40 shots of [`data/shots.json`](../../data/shots.json), made by
 `scripts/render-shots.py` (every enhancement on, the autopilot driving). Regenerate them with
 `scripts/render-shots.py --previews docs/shots --gallery docs/shots/README.md`; the graphics workflow is in
 [development.md](../development.md#reference-shots).
@@ -42,6 +42,12 @@ Ford Fiesta Rally2, Luceram Col Saint Roch (RSF 417), cockpit view, 08:30
 Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 17:30
 
 ![day-pirttikulma-quattro-cockpit](day-pirttikulma-quattro-cockpit.jpg)
+
+### day-sa-calobra-alpine-flyby
+
+Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, 16:30
+
+![day-sa-calobra-alpine-flyby](day-sa-calobra-alpine-flyby.jpg)
 
 ## Golden hour
 
@@ -104,6 +110,18 @@ Toyota GR Yaris Rally2, Falstone II (RSF 103), flyby view, 17:20
 Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 18:00
 
 ![golden-pengonpohja-quattro-flyby](golden-pengonpohja-quattro-flyby.jpg)
+
+### golden-akina-alpine-chase
+
+Alpine A110 Rally RGT, Akina Uphill (AC import 1290447), chase view, 18:15
+
+![golden-akina-alpine-chase](golden-akina-alpine-chase.jpg)
+
+### golden-nordschleife-m3-flyby
+
+BMW M3 E30 GrpA, Nordschleife (AC import 1333662), flyby view, 17:30
+
+![golden-nordschleife-m3-flyby](golden-nordschleife-m3-flyby.jpg)
 
 ## Rain
 
@@ -168,6 +186,12 @@ Renault Clio Rally3, Odry (RSF 462), chase view, 07:30
 Ford Escort Mk II RS Grp4, Semetin 2009 (RSF 176), chase view, 07:00
 
 ![fog-semetin-escort-chase](fog-semetin-escort-chase.jpg)
+
+### fog-crequy-yaris-chase
+
+Toyota GR Yaris Rally2, Crequy (AC import 1126035), chase view, 07:30
+
+![fog-crequy-yaris-chase](fog-crequy-yaris-chase.jpg)
 
 ## Snow
 

@@ -388,5 +388,41 @@
   },
   "clock": "17:30",
   "at": 2238
+ },
+ {
+  "name": "golden-akina-alpine-chase",
+  "stage": 1290447,
+  "car": "Alpine A110 Rally RGT",
+  "view": "chase",
+  "clock": "18:15",
+  "at": 641
+ },
+ {
+  "name": "golden-nordschleife-m3-flyby",
+  "stage": 1333662,
+  "car": "BMW M3 E30 GrpA",
+  "view": "flyby",
+  "clock": "17:30",
+  "at": 10500
+ },
+ {
+  "name": "day-sa-calobra-alpine-flyby",
+  "stage": 1282190,
+  "car": "Alpine A110 Rally RGT",
+  "view": "flyby",
+  "clock": "16:30",
+  "at": 6699
+ },
+ {
+  "name": "fog-crequy-yaris-chase",
+  "stage": 1126035,
+  "car": "Toyota GR Yaris Rally2",
+  "view": "chase",
+  "clock": "07:30",
+  "args": [
+   "--fog",
+   "light"
+  ],
+  "at": 11000
  }
 ]
