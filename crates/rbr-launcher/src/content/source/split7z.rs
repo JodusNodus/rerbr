@@ -52,7 +52,7 @@ impl Split {
         }
         io::Write::flush(&mut out).map_err(|e| e.to_string())?;
         drop(out);
-        let inner = super::sevenz::open(&joined).ok_or("not recognised")??;
+        let inner = super::packed::open_seven(&joined).ok_or("not recognised")??;
         Ok(Split { path: path.to_owned(), inner, _temp: temp })
     }
 }

@@ -7,11 +7,9 @@ use std::path::{Path, PathBuf};
 mod file;
 mod folder;
 mod nsis;
-mod rar;
+mod packed;
 pub mod refused;
-mod sevenz;
 mod split7z;
-mod zip;
 
 type Fail = String;
 
@@ -27,8 +25,16 @@ pub struct Entry {
 type Try = fn(&Path) -> Option<Result<Box<dyn Source>, Fail>>;
 
 /// The containers, in the order they are tried; the last takes any file.
-const SOURCES: &[Try] =
-    &[nsis::open, refused::open, folder::open, zip::open, sevenz::open, rar::open, split7z::open, file::open];
+const SOURCES: &[Try] = &[
+    nsis::open,
+    refused::open,
+    folder::open,
+    packed::open_zip,
+    packed::open_seven,
+    packed::open_rar,
+    split7z::open,
+    file::open,
+];
 
 /// Paths to copy: the path in the tree, and the path below the destination.
 pub type Wanted = [(Vec<String>, Vec<String>)];

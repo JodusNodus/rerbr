@@ -107,7 +107,7 @@ impl Nsis {
         let mut nested = Vec::new();
         for (n, (i, extract)) in archives.iter().enumerate() {
             let file = temp.0.join(format!("{n}.7z"));
-            let source = super::sevenz::open(&file)
+            let source = super::packed::open_seven(&file)
                 .and_then(Result::ok)
                 .ok_or_else(|| format!("{UNSUPPORTED}: its archive {} can't be read", items[*i].path.join("/")))?;
             nested.push(Nested { into: extract.into.clone(), source });
