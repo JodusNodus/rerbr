@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{Entry, Fail, Source, Wanted};
+use crate::archive::join;
 
 pub struct Folder {
     path: PathBuf,
@@ -43,8 +44,8 @@ impl Source for Folder {
         progress: &mut dyn FnMut(u64) -> Result<(), Fail>,
     ) -> Result<(), Fail> {
         for (from, to) in wanted {
-            let source = from.iter().fold(self.path.clone(), |p, part| p.join(part));
-            let target = to.iter().fold(dest.to_owned(), |p, part| p.join(part));
+            let source = join(&self.path, from);
+            let target = join(dest, to);
             fs::create_dir_all(target.parent().unwrap_or(dest)).map_err(|e| format!("{}: {e}", target.display()))?;
             let n = fs::copy(&source, &target).map_err(|e| format!("{}: {e}", source.display()))?;
             progress(n)?;

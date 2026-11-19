@@ -20,6 +20,7 @@ use rbr_formats::rsf::{self, REQUIRED};
 use rbr_formats::stage_files;
 
 use super::{Ctx, Found, Item, Kind};
+use crate::archive::join;
 use crate::content::source::{Entry, Source};
 use crate::content::{Goto, Outcome, Refresh};
 use crate::job::{Counter, Temp};
@@ -118,7 +119,7 @@ fn read_texts(src: &dyn Source) -> Result<Texts, Fail> {
     metas
         .iter()
         .map(|e| {
-            let file = e.path.iter().fold(temp.0.clone(), |p, part| p.join(part));
+            let file = join(&temp.0, &e.path);
             Ok((e.path.clone(), fs::read(&file).map_err(|err| format!("{}: {err}", e.path.join("/")))?))
         })
         .collect()
@@ -182,7 +183,7 @@ fn map_entries(src: &dyn Source, stage: &find::Found, texts: &Texts) -> Result<V
 /// A stage folder of an RSF install (a dropped folder) gets what RSF's stage list (`rsfdata/cache/stages_data.json`)
 /// says about it and its `Tracks<id>.ini` does not: the surface, length, author and country.
 fn fill_from_rsf_list(src: &dyn Source, stage: &find::Found, entries: &mut Vec<(String, String)>) {
-    let dir = stage.dir.iter().fold(src.path().to_path_buf(), |p, part| p.join(part));
+    let dir = join(src.path(), &stage.dir);
     let Some(root) = src.is_dir().then(|| rsf::root_of(&dir)).flatten() else { return };
     let list = rsf::stage_list(root);
     let Some(row) = list.get(&stage.number) else { return };

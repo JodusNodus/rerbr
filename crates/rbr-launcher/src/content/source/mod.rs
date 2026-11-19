@@ -67,7 +67,7 @@ pub trait Source {
         let temp = crate::job::Temp::create(&std::env::temp_dir(), "read")?;
         let wanted = [(entry.path.clone(), entry.path.clone())];
         self.extract(&wanted, &temp.0, &mut |_| Ok(()))?;
-        let file = entry.path.iter().fold(temp.0.clone(), |p, part| p.join(part));
+        let file = crate::archive::join(&temp.0, &entry.path);
         std::fs::read(&file).map_err(|e| format!("{}: {e}", entry.path.join("/")))
     }
     /// The INI writes the container makes besides its files (an installer's), in script order; none for plain

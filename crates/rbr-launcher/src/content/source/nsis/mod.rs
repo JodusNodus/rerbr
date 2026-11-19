@@ -8,7 +8,7 @@
 //!   plugin's `Extract`/`ExtractWithDetails`.
 //!
 //! A `.7z` the script unpacks with `nsis7z` is taken out of the installer into a temp file and opened with the
-//! plain 7z source ([`super::sevenz`]); its files appear in the folder the extract runs in, in place of the archive.
+//! plain 7z source ([`super::packed`]); its files appear in the folder the extract runs in, in place of the archive.
 //! Files written to `$PLUGINSDIR`, `$TEMP` or any other place the walk cannot resolve are left out.
 //!
 //! An INI write with an empty key and value is the script deleting the section (`DeleteINISec`), as NSIS itself stores it.
@@ -22,6 +22,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use super::{Entry, Fail, IniWrite, Source, Wanted};
+use crate::archive::join;
 use crate::job::Temp;
 use container::Container;
 use container::UNSUPPORTED;
@@ -57,7 +58,7 @@ pub struct Nsis {
 }
 
 fn write_to(dest: &Path, parts: &[String], reader: &mut dyn Read) -> Result<u64, Fail> {
-    let path = parts.iter().fold(dest.to_owned(), |p, part| p.join(part));
+    let path = join(dest, parts);
     let error = |e: io::Error| format!("{}: {e}", parts.join("/"));
     fs::create_dir_all(path.parent().unwrap_or(dest)).map_err(error)?;
     let mut out = io::BufWriter::new(fs::File::create(&path).map_err(error)?);
@@ -196,10 +197,6 @@ impl Source for Nsis {
             .ok_or_else(|| format!("{}: not in {}", entry.path.join("/"), self.path.display()))?;
         n.source.read(&Entry { path: entry.path[n.into.len()..].to_vec(), size: entry.size })
     }
-}
-
-fn join(dest: &Path, parts: &[String]) -> PathBuf {
-    parts.iter().fold(dest.to_owned(), |p, part| p.join(part))
 }
 
 pub fn open(path: &Path) -> Option<Result<Box<dyn Source>, Fail>> {

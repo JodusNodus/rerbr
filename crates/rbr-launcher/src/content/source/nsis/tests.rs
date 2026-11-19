@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use super::*;
-use crate::content::source::open as open_source;
+use crate::content::source::{names, open as open_source};
 
 #[derive(Clone, Copy, Debug)]
 enum Pack {
@@ -96,11 +96,11 @@ const B: &[u8] = b"file B: textures";
 /// File ..\..\evil.txt.
 fn installer(unicode: bool, solid: bool, pack_with: Pack, seven: &[u8]) -> Vec<u8> {
     let mut s = Strings::new(unicode);
-    let files: [(&[u8], u32); 5] = [(A, 0), (b"plugin", 0), (seven, 0), (B, 0), (b"evil", 0)];
+    let files: [&[u8]; 5] = [A, b"plugin", seven, B, b"evil"];
     // File offsets: each file is a block of 4 bytes of size and its (packed) bytes.
     let mut blocks = Vec::new();
     let mut offsets = Vec::new();
-    for (bytes, _) in files {
+    for bytes in files {
         offsets.push(blocks.len() as u32);
         if solid {
             blocks.extend((bytes.len() as u32).to_le_bytes());
@@ -176,10 +176,6 @@ fn installer(unicode: bool, solid: bool, pack_with: Pack, seven: &[u8]) -> Vec<u
         exe.extend(blocks);
     }
     exe
-}
-
-fn names(source: &dyn Source) -> Vec<String> {
-    crate::content::source::names(source)
 }
 
 #[test]
@@ -299,7 +295,7 @@ fn real_installers() {
         let wanted: Vec<_> = source.entries().iter().map(|e| (e.path.clone(), e.path.clone())).collect();
         source.extract(&wanted, &dest, &mut |_| Ok(())).unwrap_or_else(|e| panic!("{name}: {e}"));
         for entry in source.entries() {
-            let file = entry.path.iter().fold(dest.clone(), |p, part| p.join(part));
+            let file = crate::archive::join(&dest, &entry.path);
             let shown = entry.path.join("/");
             if shown.ends_with(".rbz") {
                 let mut zip = zip::ZipArchive::new(fs::File::open(&file).unwrap())
