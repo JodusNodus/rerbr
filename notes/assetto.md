@@ -484,13 +484,19 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `settings.ini` gets `[ReRbrGrass]`: `texture` (`TEXTURE` where it names a `.dds` of the track's own `extension`
   folder, copied into `Textures.zip`; no key or a CSP-bundled file like `grass_fx/highlands.dds`: none, ReRBR's
   blades), `grid` (`TEXTURE_GRID`), `base` (`TEXTURE_BASE_CHANCE`), `group<n>` (`TEXTURE_GROUP_<n>_CHANCE`, default 0)
-  with `group<n>_piece<m>=col,row,w,h,chance` (`PIECE_<m>`: cells from 1, row 1 on top, `PIECE_<m>_CHANCE` default 1),
+  with `group<n>_piece<m>=col,row,w,h,chance[,mw,mh]` (`PIECE_<m>`: cells from 1, row 1 at the bottom of the picture, `PIECE_<m>_CHANCE` default 1, `PIECE_<m>_SIZE_MULT` read as width, height multipliers), `size` (`SHAPE_SIZE`),
   and `luminance=min,max` (`MASK_MIN/MAX_LUMINANCE`). Dense grass (`--enhance grass`) then grows on those materials
   instead of by colour (`grass::add`): where the ground texel's linear luminance is in range, on any facing the
   ground's normal allows, within the usual 20 m band. Not used: `MASK_MAIN_THRESHOLD`, `MASK_RED_THRESHOLD`,
-  `SHAPE_*`, `TEXTURE_GROUP_<n>`'s `SIZE_MULT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
-  (Highlands). Unverified: the atlas's row order (the pieces read best with row 1 on top, but CSP's own may count from
-  the bottom) and the meaning of base (taken as the first row's cells, one each).
+  `SHAPE_TIDY/CUT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
+  (Highlands). Row order checked on Sa Calobra's atlas (`3,1,1,2` the heather, `4,1,2,2` the reeds, the top row the
+  plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is
+  `SHAPE_SIZE` x 0.08 m (6.5: 0.52 m, calibrated by eye on the AC rock shot's boulders: tussocks 0.4-0.8 m), times the
+  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump; unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at
+  `FX_SATURATION` 0.3 (no lush/straw lean) and `FX_SHADE` 1.2 with the brightness ratio clamp lowered (`FX_BRIGHT`):
+  Sa Calobra dawn blade mean 39/34/26 against AC's 41/34/30 (ground 50/44/30). The support ring is 0.4 of a card's
+  width (the meadow's ring halved the cards). Unverified: `SIZE_MULT` as width,height (it may be a min,max scale);
+  the atlas grey pass skipped compressed (DXT) atlases until 2026-11-19, so Sa Calobra's had used our blades.
   Sa Calobra down, rock view 07:35 (`/tmp/grassfx/rock.png`, before | after): grey terrain went from a patch of
   colour-picked grass to olive tufts over the dark ground, none on the white boulders (luminance over 0.25), as the AC
   shot. Riudecanyes (no `TEXTURE`): our blades on `srfdtl` and `cliffs3`. The atlas is drawn grey (luminance of its
