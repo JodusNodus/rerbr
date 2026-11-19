@@ -6,7 +6,9 @@
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
 
-use super::mesh::{Bounds, Draw, DrawState, Highlight, Layer, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex};
+use super::mesh::{
+    Bounds, Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex,
+};
 use super::{
     Address, Anchor, Error, GrassFx, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef,
     TextureSet,
@@ -57,6 +59,28 @@ const DOME_POINTS: usize = 5;
 /// How far, metres, a converted stage's drawn triangle may lie off its collision ground and still be on it
 /// ([`on_ground`]).
 const ON_GROUND: f32 = 0.25;
+/// A multilayer material's textures and numbers for the shader. In world space each detail's offset is the stage origin's
+/// share of `(x, z) * scale` (AC's `x` is the stage's plus the origin's, its `z` the stage's negated, less the origin's), kept
+/// as the fraction the texture repeats at so that the shader's `f32` holds it.
+fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Option<TextureRef>) -> Layers {
+    let mut named = |name: &String| texture(&Some(name.clone())).expect("a name gives a texture");
+    let offset = |i: usize| match l.world {
+        Some([x, z]) => {
+            [(x * f64::from(l.scale[i][0])).rem_euclid(1.0), (-z * f64::from(l.scale[i][1])).rem_euclid(1.0)]
+                .map(|o| o as f32)
+        }
+        None => [0.0; 2],
+    };
+    Layers {
+        mask: named(&l.mask),
+        details: std::array::from_fn(|i| named(&l.details[i])),
+        world: l.world.is_some(),
+        magic: l.magic,
+        scale: l.scale,
+        offset: std::array::from_fn(offset),
+    }
+}
+
 /// The triangles of a placement [`on_ground`] samples, at most.
 const GROUND_SAMPLES: usize = 64;
 
@@ -99,7 +123,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 return None;
             }
             let lerp = material.effect.vert_lerp && material.second.is_some() && !mesh.blend.is_empty();
-            let first = texture(&material.diffuse);
+            // A multilayer material drawn per pixel (`ReRbrLayer*`) reads its own diffuse, not the bake of the sum.
+            let layers = material.layers.as_ref().filter(|_| !material.technique.transparent);
+            let first = match layers {
+                Some(layers) => texture(&Some(layers.diffuse.clone())),
+                None => texture(&material.diffuse),
+            };
             let second = if lerp { texture(&material.second) } else { None };
             // Two passes only where the texture is translucent; a cut-out one is alpha tested, an opaque one solid.
             let alpha = match (material.technique.transparent, &material.diffuse) {
@@ -127,8 +156,13 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let light = Light(material.light);
             // The sheen on the opaque draws only (a road is no cut-out).
             let sheen = material.sheen.filter(|_| opaque).map(|roughness| Sheen { roughness });
-            let surface = (normal.is_some() || highlight.is_some() || sheen.is_some() || light != Light::NONE)
-                .then_some(Surface { normal, highlight, sheen, light });
+            let layers = layers.map(|l| layered(l, &mut texture));
+            let surface = (normal.is_some()
+                || highlight.is_some()
+                || sheen.is_some()
+                || layers.is_some()
+                || light != Light::NONE)
+                .then_some(Surface { normal, highlight, sheen, light, layers });
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,

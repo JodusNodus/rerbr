@@ -192,6 +192,49 @@ pub struct Surface {
     pub sheen: Option<Sheen>,
     /// The material's `ReRbrLight` factors on the sky and bounce light and on the sun's (`[1, 1]`: none).
     pub light: Light,
+    /// A multilayer material summed per pixel (`ReRbrLayer*`); its diffuse is the draw's first texture.
+    pub layers: Option<Layers>,
+}
+
+/// An Assetto Corsa multilayer material (`rbr_btb::scene::Layers`): `diffuse * (R*mask.r + G*mask.g + B*mask.b +
+/// A*mask.a) * magic`, with the diffuse and the mask at the mesh's `uv0` and each detail at `scale` times either `uv0`
+/// or AC's world `(x, z)`.
+#[derive(Debug, Clone, Copy)]
+pub struct Layers {
+    pub mask: TextureRef,
+    pub details: [TextureRef; 4],
+    /// Details at the world position (else at `uv0`).
+    pub world: bool,
+    pub magic: f32,
+    /// Each detail's `(u, v)` multiplier.
+    pub scale: [[f32; 2]; 4],
+    /// Each detail's offset in texture units, the stage origin's share (`world`), in `0..1`.
+    pub offset: [[f32; 2]; 4],
+}
+
+impl Layers {
+    fn bits(&self) -> (TextureRef, [TextureRef; 4], bool, [u32; 17]) {
+        let numbers = std::iter::once(self.magic).chain(self.scale.iter().chain(&self.offset).flatten().copied());
+        let mut bits = [0; 17];
+        for (slot, number) in bits.iter_mut().zip(numbers) {
+            *slot = number.to_bits();
+        }
+        (self.mask, self.details, self.world, bits)
+    }
+}
+
+impl PartialEq for Layers {
+    fn eq(&self, other: &Layers) -> bool {
+        self.bits() == other.bits()
+    }
+}
+
+impl Eq for Layers {}
+
+impl std::hash::Hash for Layers {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bits().hash(state);
+    }
 }
 
 /// A BTB road's dry sheen.

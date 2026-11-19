@@ -59,6 +59,12 @@ pub(super) struct ModeUniform {
     pub(super) tint: [f32; 4],
     /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]).
     pub(super) sheen: [f32; 4],
+    /// `x` a multilayer material ([`crate::stage::Layers`]): 0 none, 1 details at the world position, 2 at the uv; `y` its
+    /// `magicMult`.
+    pub(super) layer: [f32; 4],
+    /// The details' `(u, v)` multipliers and offsets: layers R and G, then B and A.
+    pub(super) layer_scale: [[f32; 4]; 2],
+    pub(super) layer_offset: [[f32; 4]; 2],
 }
 
 /// How near the eye the backdrop is drawn at the least, metres (ours): the game's reach

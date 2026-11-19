@@ -31,8 +31,8 @@ use mesh::{
 use textures::{texture_name, texture_names};
 
 pub use mesh::{
-    Address, Bounds, Draw, DrawState, Highlight, Image, Layer, Light, Lod, Mesh, NormalMap, Shade, Sheen, StageTexture,
-    Surface, Vertex, CLOSE_DISTANCE, LOD_BAND, LOD_DISTANCE, MIP_MAP_BIAS,
+    Address, Bounds, Draw, DrawState, Highlight, Image, Layer, Layers, Light, Lod, Mesh, NormalMap, Shade, Sheen,
+    StageTexture, Surface, Vertex, CLOSE_DISTANCE, LOD_BAND, LOD_DISTANCE, MIP_MAP_BIAS,
 };
 
 /// Flat RGBA fill for water while its retail texture keys remain unresolved. This is a viewer stand-in,

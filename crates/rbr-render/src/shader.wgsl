@@ -161,6 +161,11 @@ struct Mode {
     tint: vec4<f32>,
     // A BTB road's dry sheen: x its roughness, zero for none (`stage::Sheen`, `with_sheen`).
     sheen: vec4<f32>,
+    // A multilayer material (`stage::Layers`, `layered`): x 0 none, 1 details at the world position, 2 at the uv; y magicMult.
+    layer: vec4<f32>,
+    // The details' (u, v) multipliers and offsets: layers R and G in the first vector, B and A in the second.
+    layer_scale: array<vec4<f32>, 2>,
+    layer_offset: array<vec4<f32>, 2>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -190,6 +195,7 @@ override DRAW_DETAIL: bool = false;
 override DRAW_BUMP: bool = false;
 override DRAW_HIGHLIGHT: bool = false;
 override DRAW_SHEEN: bool = false;
+override DRAW_LAYERS: bool = false;
 
 fn water_draw() -> bool {
     return select(mode.water != 0u, DRAW_WATER, KNOWN);
@@ -217,6 +223,10 @@ fn highlight_draw() -> bool {
 
 fn sheen_draw() -> bool {
     return select(mode.sheen.x != 0.0, DRAW_SHEEN, KNOWN);
+}
+
+fn layers_draw() -> bool {
+    return select(mode.layer.x != 0.0, DRAW_LAYERS, KNOWN);
 }
 
 // The draw's frame uniform (`renderer::uniforms::frame_index`): 0 the world's (the stage and the car), 1 the
@@ -308,6 +318,12 @@ struct Probes {
 @group(1) @binding(6) var glow_texture: texture_2d<f32>;
 // A BTB normal map (`stage::Surface::normal`; 1 white texel elsewhere, unread).
 @group(1) @binding(7) var normal_texture: texture_2d<f32>;
+// A multilayer material's mask and four details (`stage::Layers`; 1 white texel elsewhere, unread).
+@group(1) @binding(8) var layer_mask: texture_2d<f32>;
+@group(1) @binding(9) var layer_detail0: texture_2d<f32>;
+@group(1) @binding(10) var layer_detail1: texture_2d<f32>;
+@group(1) @binding(11) var layer_detail2: texture_2d<f32>;
+@group(1) @binding(12) var layer_detail3: texture_2d<f32>;
 
 // Textures 0 and 1's mip bias: the draw's, and the upscale's.
 fn texture_bias() -> f32 {
@@ -574,6 +590,47 @@ fn is_fence(v: VertexOut) -> bool {
     return mode.cutout != 0u && !specular_draw() && abs(v.specular.x - FENCE) < 0.025;
 }
 
+// One axis of a multilayer detail's coordinate, `w * m + off` wrapped to 0..1. `w` is a position that reaches kilometres
+// and `m` tens to hundreds per metre, so the product loses texels to f32: `w` is split into `a`, a multiple of 1/16
+// whose products with the integer and the first eight bits of the fraction of `m` are exact, and the remainder `b`.
+fn layer_axis(w: f32, m: f32, off: f32) -> f32 {
+    let mi = floor(m);
+    let mf = floor((m - mi) * 256.0) / 256.0;
+    let a = floor(w * 16.0) / 16.0;
+    let b = w - a;
+    return fract(fract(a * mi) + fract(a * mf) + a * (m - mi - mf) + b * m + off);
+}
+
+// A multilayer material's colour, as `multilayer::bake` sums it: `diffuse * (R*mask.r + G*mask.g + B*mask.b +
+// A*mask.a) * magicMult` over the display values. The mask is read at the uv; each detail at AC's world (x, z) times its
+// multiplier (the stage's x, and its z negated, with the origin's share in `layer_offset`) or at the uv times its pair,
+// on the gradients of the unwrapped coordinate so the wrap leaves no seam in the mip choice. In uniform control flow.
+fn layered(v: VertexOut, diffuse: vec3<f32>) -> vec3<f32> {
+    let weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
+    let world = mode.layer.x < 1.5;
+    let at = select(v.uv0, vec2<f32>(v.world.x, -v.world.z), world);
+    let ddx = select(dpdx(v.uv0), dpdx(at), world) * exp2(texture_bias());
+    let ddy = select(dpdy(v.uv0), dpdy(at), world) * exp2(texture_bias());
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < 4u; i++) {
+        let scale = select(mode.layer_scale[i / 2u].xy, mode.layer_scale[i / 2u].zw, (i & 1u) == 1u);
+        let off = select(mode.layer_offset[i / 2u].xy, mode.layer_offset[i / 2u].zw, (i & 1u) == 1u);
+        var uv = at * scale;
+        if (world) {
+            uv = vec2<f32>(layer_axis(at.x, scale.x, off.x), layer_axis(at.y, scale.y, off.y));
+        }
+        var texel: vec3<f32>;
+        switch (i) {
+            case 0u: { texel = textureSampleGrad(layer_detail0, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            case 1u: { texel = textureSampleGrad(layer_detail1, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            case 2u: { texel = textureSampleGrad(layer_detail2, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            default: { texel = textureSampleGrad(layer_detail3, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+        }
+        sum += texel * weights[i];
+    }
+    return clamp(diffuse * sum * mode.layer.y, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 // A stage draw's colour (`lit_class` 0: the stage, its props and characters' cards), with `under_cloud` of the sun taken
 // by a cloud.
 fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
@@ -598,6 +655,9 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     if (second_draw()) {
         second = textureSampleBias(texture1, texture_sampler, v.uv1, texture_bias());
         surface = mix(first.rgb, second.rgb, second.a * v.color.a);
+    }
+    if (layers_draw()) {
+        surface = layered(v, surface);
     }
     // The backdrop (the world-anchored sky faces' frame) gets detail its stretched texture lacks.
     if (!stage_frame() && !camera_anchored()) {

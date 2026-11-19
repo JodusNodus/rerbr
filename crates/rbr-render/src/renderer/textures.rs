@@ -3,7 +3,7 @@
 use super::pipelines::cutout;
 use super::uniforms::ModeUniform;
 use super::DEPTH_FORMAT;
-use crate::stage::{Address, DrawState, Highlight, Shade, Sheen, TextureRef, TextureSet, MIP_MAP_BIAS};
+use crate::stage::{Address, DrawState, Highlight, Layers, Shade, Sheen, TextureRef, TextureSet, MIP_MAP_BIAS};
 use bytemuck::bytes_of;
 use rbr_formats::dds::{self, Format};
 use std::collections::BTreeMap;
@@ -58,6 +58,9 @@ pub(super) struct BindKey {
     light: [u32; 2],
     /// A BTB road's dry sheen ([`crate::stage::Surface::sheen`]).
     sheen: Option<Sheen>,
+    /// A multilayer material summed per pixel ([`crate::stage::Surface::layers`]) with its mask's and details' textures;
+    /// `None` when any of them did not load.
+    layers: Option<(Layers, [Source; 5])>,
 }
 
 impl BindKey {
@@ -72,6 +75,7 @@ impl BindKey {
             bump: self.normal != Source::White,
             highlight: self.highlight.is_some(),
             sheen: self.sheen.is_some(),
+            layers: self.layers.is_some(),
         }
     }
 }
@@ -87,6 +91,7 @@ pub(super) struct DrawFeatures {
     pub(super) bump: bool,
     pub(super) highlight: bool,
     pub(super) sheen: bool,
+    pub(super) layers: bool,
 }
 
 /// The nine samplers: one per (U mode, V mode) pair.
@@ -171,6 +176,11 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         highlight,
         light: state.surface.map_or([1.0f32; 2], |s| s.light.0).map(f32::to_bits),
         sheen,
+        layers: state.surface.and_then(|s| s.layers).and_then(|layers| {
+            let found = |texture| loaded.contains_key(&texture).then_some(Source::Texture(texture));
+            let [r, g, b, a] = layers.details.map(found);
+            Some((layers, [found(layers.mask)?, r?, g?, b?, a?]))
+        }),
     }
 }
 
@@ -258,7 +268,10 @@ pub(super) fn bind_group(
             ]
         }),
         detail: match key.textures[0] {
-            Source::Texture(texture) if key.ground => views.detail.get(&texture).copied().unwrap_or_default(),
+            // A multilayer draw's details are its own fine structure.
+            Source::Texture(texture) if key.ground && key.layers.is_none() => {
+                views.detail.get(&texture).copied().unwrap_or_default()
+            }
             _ => [0.0; 4],
         },
         bank: {
@@ -277,7 +290,12 @@ pub(super) fn bind_group(
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
         tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), 0.0, 0.0],
         sheen: [key.sheen.map_or(0.0, |s| s.roughness), 0.0, 0.0, 0.0],
+        layer: key.layers.map_or([0.0; 4], |(l, _)| [if l.world { 1.0 } else { 2.0 }, l.magic, 0.0, 0.0]),
+        layer_scale: layer_pairs(key.layers.map(|(l, _)| l.scale)),
+        layer_offset: layer_pairs(key.layers.map(|(l, _)| l.offset)),
     };
+    // The mask and the four details, or the white texel for a draw without layers.
+    let layer_views = key.layers.map_or([&views.white; 5], |(_, sources)| sources.map(|source| views.get(source)));
     let glow = glow.map_or(&views.white, |g| &g.view);
     let mode_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("draw mode"),
@@ -305,8 +323,19 @@ pub(super) fn bind_group(
             wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(views.get(key.specular)) },
             wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(glow) },
             wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(views.get(key.normal)) },
+            wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(layer_views[0]) },
+            wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(layer_views[1]) },
+            wgpu::BindGroupEntry { binding: 10, resource: wgpu::BindingResource::TextureView(layer_views[2]) },
+            wgpu::BindGroupEntry { binding: 11, resource: wgpu::BindingResource::TextureView(layer_views[3]) },
+            wgpu::BindGroupEntry { binding: 12, resource: wgpu::BindingResource::TextureView(layer_views[4]) },
         ],
     })
+}
+
+/// Four `(u, v)` pairs as the two vectors the mode uniform holds (zero for none).
+fn layer_pairs(pairs: Option<[[f32; 2]; 4]>) -> [[f32; 4]; 2] {
+    let [a, b, c, d] = pairs.unwrap_or_default();
+    [[a[0], a[1], b[0], b[1]], [c[0], c[1], d[0], d[1]]]
 }
 
 /// A 1x1 texture of one colour.
