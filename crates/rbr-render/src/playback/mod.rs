@@ -187,7 +187,7 @@ pub struct Playback {
     pub reverse: bool,
     /// The game's lamps by the frame they changed at ([`Playback::set_lamps`]); empty for a recording.
     lamps: std::collections::BTreeMap<usize, Lamps>,
-    /// The headlight key's setting (ours).
+    /// The headlight key's setting (ours; the viewer starts it at [`lights::Headlights::at_start`]).
     pub headlights: lights::Headlights,
     /// Per detachable part ([`detach::PARTS`]), its placement once the physics has detached it.
     detached: [Option<Detach>; detach::PARTS.len()],
@@ -812,7 +812,7 @@ impl Playback {
             .iter()
             .filter_map(|point| {
                 let light = &point.light;
-                let on_at = |i| light.fixed.unwrap_or_else(|| lights::lit(light.kind, light.lamp, self.inputs(i)));
+                let on_at = |i| lights::on(light, self.inputs(i));
                 // A second past the longest fade, so that a lamp steady for a while reads as settled (`since_switch`).
                 let horizon = f64::from(light.fade_in.max(light.fade_out)) + 1.0;
                 let since = lights::since_switch(self.time(), index, |i| self.start_of(i), on_at, horizon);
@@ -878,7 +878,7 @@ impl Playback {
             .iter()
             .filter_map(|point| {
                 let light = &point.light;
-                let on_at = |i| light.fixed.unwrap_or_else(|| lights::lit(light.kind, light.lamp, self.inputs(i)));
+                let on_at = |i| lights::on(light, self.inputs(i));
                 let horizon = f64::from(light.fade_in.max(light.fade_out)) + 1.0;
                 let since = lights::since_switch(self.time(), index, |i| self.start_of(i), on_at, horizon);
                 let fade = lights::fade(light, on_at(index), since)?;

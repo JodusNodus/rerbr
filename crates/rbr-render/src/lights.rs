@@ -124,7 +124,7 @@ pub struct Inputs {
 }
 
 /// The headlight key's settings, in the order it steps them (ours: 1.02 has the headlights always on): main beam,
-/// dipped beam, and the headlights and tail lights off.
+/// dipped beam, and the headlights and tail lights off. A drive starts at [`Headlights::at_start`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Headlights {
     #[default]
@@ -134,6 +134,16 @@ pub enum Headlights {
 }
 
 impl Headlights {
+    /// The setting a drive starts at: main beam when the lamps light the stage (`dark`, the sun below
+    /// `relight::LAMPS_FROM`, as for the light pods), else off.
+    pub fn at_start(dark: bool) -> Headlights {
+        if dark {
+            Headlights::Main
+        } else {
+            Headlights::Off
+        }
+    }
+
     pub fn next(self) -> Headlights {
         match self {
             Headlights::Main => Headlights::Dipped,
@@ -151,9 +161,23 @@ impl Headlights {
     }
 }
 
+/// Whether the headlight key has put out the lamps of `kind`: the headlights and tail lights.
+fn switched_off(kind: Kind, inputs: Inputs) -> bool {
+    inputs.headlights == Headlights::Off && matches!(kind, Kind::Front | Kind::Tail)
+}
+
+/// Whether `light`'s lamp is lit with `inputs`. A record the game never switches keeps its `Active` value, but the
+/// headlight key's off puts out a front or tail one too (ours: the light pods' extra lamps).
+pub fn on(light: &Light, inputs: Inputs) -> bool {
+    match light.fixed {
+        Some(active) => active && !switched_off(light.kind, inputs),
+        None => lit(light.kind, light.lamp, inputs),
+    }
+}
+
 /// Whether lamp `lamp` of `kind` is lit with `inputs`.
 pub fn lit(kind: Kind, lamp: u32, inputs: Inputs) -> bool {
-    if inputs.headlights == Headlights::Off && matches!(kind, Kind::Front | Kind::Tail) {
+    if switched_off(kind, inputs) {
         return false;
     }
     if let Some(game) = inputs.game {
@@ -766,6 +790,13 @@ mod tests {
     }
 
     #[test]
+    fn the_headlights_start_on_only_in_the_dark() {
+        assert_eq!(Headlights::at_start(true), Headlights::Main);
+        assert_eq!(Headlights::at_start(false), Headlights::Off);
+        assert_eq!(Headlights::Off.next(), Headlights::Main, "by day the key turns them on");
+    }
+
+    #[test]
     fn switch_parts_follow_their_box_and_predicate() {
         let parts = sections(
             "[e_light_lf_lit]\r\nSwitch = true\r\nSwitchBox = light_lf\r\nPredicate = on\r\n\
@@ -918,6 +949,12 @@ mod tests {
             ],
             "the empty Id is read and skipped, and the reading stops at the missing Light5"
         );
+        let lit_with = |headlights| {
+            let inputs = Inputs { headlights, ..Inputs::default() };
+            points.iter().map(|p| on(&p.light, inputs)).collect::<Vec<_>>()
+        };
+        assert_eq!(lit_with(Headlights::Main), [true, true, true, false]);
+        assert_eq!(lit_with(Headlights::Off), [false; 4], "the headlight key puts the pods out too");
     }
 
     #[test]
