@@ -100,8 +100,8 @@ impl Choice for Detail {
     }
     fn label(self) -> &'static str {
         match self {
-            Detail::High => "High",
-            Detail::Ultra => "Ultra",
+            Detail::High => "Off",
+            Detail::Ultra => "Sharper shadows and reflections",
         }
     }
 }
@@ -191,7 +191,6 @@ fn scale_label(percent: u32) -> String {
     }
 }
 
-/// A detail choice's label.
 /// A mirrors' rate's label.
 fn mirrors_label(rate: Rate) -> &'static str {
     match rate {
@@ -727,7 +726,7 @@ impl Form {
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
             let tip = "Sets the choices below. Low: the game's look. Medium: all but Lighting, the costliest, Dense \
-                       grass, which needs it, and Windscreen. High: all but Ultra detail. Ultra: all. The render scale \
+                       grass, which needs it, and Windscreen. High: all but Sharper shadows and reflections. Ultra: all. The render scale \
                        and motion blur stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
@@ -776,12 +775,13 @@ impl Form {
                        about 150 MB of video memory";
             rows.switch_row("Dense grass by the road", None, &mut g.grass).on_hover_text(tip);
 
-            let tip = "Ultra, for strong GPUs: sun shadows at twice the texels (sharper shadows of posts, cables and \
-                       trunks) and sharper reflections in the car's paint and the wet roads. 15 to 40 % more frame \
-                       time, and 0.5 GB more video memory on long stages";
-            rows.row("Detail", |ui| {
-                combo(ui, "detail", None, &mut g.detail, &Detail::ALL, Detail::label).on_hover_text(tip);
-            });
+            let tip = "For strong GPUs: sun shadows at twice the texels (sharper shadows of posts, cables and \
+                       trunks) and sharper reflections in the car's paint and the wet roads. Needs Sky, sun and \
+                       shadows for the shadows. 15 to 40 % more frame time, and 0.5 GB more video memory on long \
+                       stages";
+            let mut sharp = g.detail == Detail::Ultra;
+            rows.switch_row("Sharper shadows and reflections", None, &mut sharp).on_hover_text(tip);
+            g.detail = if sharp { Detail::Ultra } else { Detail::High };
 
             let tip = "In the cockpit: the rear-view and door mirrors show the stage, the car and the cars behind, \
                        redrawn this often (each mirror in turn). Costly in the rain, which they draw too. Off: they \

@@ -489,7 +489,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 
 - Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `cabin`, `grass`, `windscreen`,
-  `motion_blur` (`--enhance blur`, user decision 2026-11-11: an option, off by default), `wet_roads`, `detail`, `mirrors`; unset takes the Ultra preset. The preset box is not stored: it shows the preset the
+  `motion_blur` (`--enhance blur`, user decision 2026-11-11: an option, off by default), `wet_roads`, `detail` (`high`, or `ultra` for the Graphics page's "Sharper shadows and reflections" switch), `mirrors`; unset takes the Ultra preset. The preset box is not stored: it shows the preset the
   keys match, else Custom; presets leave `motion_blur` and the render scale alone (`Quality::over`). `contact` and `marks` are always on (`ALWAYS_ON`, user decision 2026-11-19); their saved keys are not read. A saved `surfaces` (the removed scanned surfaces) is not read.
 - `perf_log` defaults off; on, the viewer logs with `viewer --perf-log <files folder>/logs` (`home::LOGS`, shown on the Graphics page).
 - `present` (`viewer --present`) defaults to mailbox, vsync on macOS: Metal has vsync or immediate only, so the launcher
