@@ -667,6 +667,18 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   lens, 660 vertices, does); the Focus 2006's reverse points `_lb` and `_rb` share one position (the car's file) and
   its front bar follows the tail box at 8 cd; the Celica's `lf`/`rf` records are `Active = false` with no switch box
   (its wing pods, always on, are the only lit records).
+- Broken lamps by cause (2026-11-19, `examples/lamp_survey.rs` over the 50 cars with their own model, and night
+  Gabiria chase and fly-by shots of 18; not fixed): (1) bare lamps, lit with no lit mesh at them, which the game shows
+  by their flare alone: dark pods and ramps on 21 cars (DS3 R1, Delta HF 4WD, 306 Maxi, Fiesta R5, Rally3, Rally4,
+  WRC 2014 and 2019, 208 R2 and Rally4, Clio Rally3 and R3, ADAM R2, Evo X...; the DS3's extralights option only adds
+  the points), dark tails on the Alpine A110, Fiesta WRC 2014, Delta HF 4WD and Yaris Rally2 (its lit tail a
+  3-vertex sliver), the lit strip hidden in an always-drawn housing on the Fiesta Rally2, no brake part on the Evo II
+  and 306 Maxi; (2) pale lit tail textures that the glow drives to white: Escort Mk II, Fiesta Rally3, 306 Maxi, 911
+  SC RS, Impreza N14, Celica ST185 (only parts taken by name glow `LAMP_RED`); (3) forward lamps on tail records
+  (kind 3, always on in the game): the Escort Cosworth's headlamps and pods throw no beam and glow red, the C2
+  S1600's and 306 Maxi's duplicates; (4) `MAX_LAMPS` 8 taken in record order: 41 cars lose pod beams, the Escort
+  Cosworth its bumper lamps, the Fiesta Rally3, Clio R3 and Golf II their tail light, more while braking (lamps off
+  drop out of the list). Retail cars all right.
 - Ours: the headlights' light back off the road (`lamp_bounce` in `lamps.wgsl`): two Lambertian patches facing up, 15
   and 55 m ahead; scene +0.15 ms at night (45O chase and cockpit).
 - Tried for the beam's white look (2026-10-25) and dropped: pulling the meter toward the 97th percentile, and local
