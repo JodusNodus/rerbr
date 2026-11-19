@@ -55,6 +55,8 @@ pub(super) struct ModeUniform {
     pub(super) bump: [f32; 4],
     /// A BTB highlight's colour and power, zero for none ([`crate::stage::Highlight`]).
     pub(super) highlight: [f32; 4],
+    /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]).
+    pub(super) sheen: [f32; 4],
 }
 
 /// How near the eye the backdrop is drawn at the least, metres (ours): the game's reach

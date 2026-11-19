@@ -157,6 +157,8 @@ struct Mode {
     bump: vec4<f32>,
     // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
     highlight: vec4<f32>,
+    // A BTB road's dry sheen: x its roughness, zero for none (`stage::Sheen`, `with_sheen`).
+    sheen: vec4<f32>,
 }
 
 // False for a pipeline whose draws have no alpha test (`renderer::PipelineKey::alpha_test`): its shader then has no
@@ -185,6 +187,7 @@ override DRAW_SECOND: bool = false;
 override DRAW_DETAIL: bool = false;
 override DRAW_BUMP: bool = false;
 override DRAW_HIGHLIGHT: bool = false;
+override DRAW_SHEEN: bool = false;
 
 fn water_draw() -> bool {
     return select(mode.water != 0u, DRAW_WATER, KNOWN);
@@ -208,6 +211,10 @@ fn bump_draw() -> bool {
 
 fn highlight_draw() -> bool {
     return select(mode.highlight.w != 0.0, DRAW_HIGHLIGHT, KNOWN);
+}
+
+fn sheen_draw() -> bool {
+    return select(mode.sheen.x != 0.0, DRAW_SHEEN, KNOWN);
 }
 
 // The draw's frame uniform (`renderer::uniforms::frame_index`): 0 the world's (the stage and the car), 1 the
@@ -660,6 +667,8 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     }
     var sun_seen = 1.0;
     var colour: vec3<f32>;
+    // The vertex with a BTB normal map's normal, which the light and the road's sheen take.
+    var lit = v;
     if (own) {
         // The sun's or, once it is down, the moon's share past the shadows; a crown's own leaves shade it softly,
         // rather than its cards each other (`crown_sun_seen`). Only the one taken is worked out (both cost a shadow
@@ -675,12 +684,12 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         }
         // Lit in linear light (`own_light`), then back to the display colour the rest of the frame works in. A BTB
         // normal map's normal takes the light; the shadows keep the face's.
-        var lit = v;
         if (bump_draw()) {
             lit.normal = bumped(v);
         }
         colour = pow(own_light(lit, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
-        if (highlight_draw()) {
+        // The sheen's sun is the highlight's replacement.
+        if (highlight_draw() && !sheen_draw()) {
             colour = with_highlight(colour, lit, front, sun_seen);
         }
     } else {
@@ -691,6 +700,9 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     let wet_road = wet && detail_draw() && v.wet.x > 0.0;
     if (own && specular_draw() && !wet_road) {
         colour = with_specular(colour, v, front, sun_seen);
+    }
+    if (own && sheen_draw() && !wet_road) {
+        colour = with_sheen(colour, lit, front, sun_seen);
     }
     // The game's highlight off the road's specular map: the stones' detail on gravel, so kept beside our reflection.
     // With our light, as strong as the direct light against noon's: none once the sun has set and the moon is down.
@@ -1955,14 +1967,28 @@ fn with_highlight(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -
 }
 
 fn with_specular(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -> vec3<f32> {
+    // The maps' texels run about 0 to 0.25.
+    let map = dot(textureSample(specular_texture, texture_sampler, v.specular.xy).rgb, vec3<f32>(0.333));
     if (dot(v.normal, v.normal) < 1e-8) {
         return colour;
     }
-    let n = normalize(v.normal) * select(-1.0, 1.0, front);
-    // The maps' texels run about 0 to 0.25.
-    let map = dot(textureSample(specular_texture, texture_sampler, v.specular.xy).rgb, vec3<f32>(0.333));
     let polish = clamp(map * 4.0 * v.specular.z, 0.0, 1.0);
     let roughness = ROAD_ROUGHNESS - ROAD_POLISH * polish - DAMP_ROUGHNESS * min(frame.wetness.x * 2.0, 1.0);
+    return rough_dielectric(colour, v, normalize(v.normal) * select(-1.0, 1.0, front), roughness, sun_seen);
+}
+
+// A BTB road's dry sheen (`stage::Sheen`, `ReRbrSheen`): the same rough dielectric at the material's roughness, on the
+// bumped normal `v.normal` (`bumped`), damp as the retail roads are.
+fn with_sheen(colour: vec3<f32>, v: VertexOut, front: bool, sun_seen: f32) -> vec3<f32> {
+    if (dot(v.normal, v.normal) < 1e-8) {
+        return colour;
+    }
+    let roughness = mode.sheen.x - DAMP_ROUGHNESS * min(frame.wetness.x * 2.0, 1.0);
+    return rough_dielectric(colour, v, normalize(v.normal) * select(-1.0, 1.0, front), roughness, sun_seen);
+}
+
+// The body of both: the sky's reflection and the sun's GGX highlight of a dielectric of `roughness`, facing `n`.
+fn rough_dielectric(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, roughness: f32, sun_seen: f32) -> vec3<f32> {
     let view = normalize(frame.eye.xyz - v.world);
     let nv = max(dot(n, view), 1e-3);
     let reflectance = environment_reflectance(nv, roughness);

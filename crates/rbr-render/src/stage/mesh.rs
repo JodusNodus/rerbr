@@ -185,6 +185,29 @@ pub struct Surface {
     /// The highlight: `map * colour * pow(max(0, N.H), power)`, the map (white without one) read at the vertex's
     /// `specular` uv.
     pub highlight: Option<Highlight>,
+    /// The dry road sheen (`ReRbrSheen`): a rough dielectric's sky reflection and sun highlight at this roughness, in
+    /// place of the highlight.
+    pub sheen: Option<Sheen>,
+}
+
+/// A BTB road's dry sheen.
+#[derive(Debug, Clone, Copy)]
+pub struct Sheen {
+    pub roughness: f32,
+}
+
+impl PartialEq for Sheen {
+    fn eq(&self, other: &Sheen) -> bool {
+        self.roughness.to_bits() == other.roughness.to_bits()
+    }
+}
+
+impl Eq for Sheen {}
+
+impl std::hash::Hash for Sheen {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.roughness.to_bits().hash(state);
+    }
 }
 
 /// A BTB normal map. Its tangent frame is its uv's own on screen.
