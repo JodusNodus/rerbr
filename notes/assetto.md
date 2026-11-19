@@ -575,4 +575,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   one. Highlight: opaque non-placeholder materials with `ksSpecular > 0`, per-material and tile bakes; the spec map only per material. Without
   either the section is today's byte for byte. `ac-conversion.json` counts `normal_mapped_materials` and `highlight_materials`.
 - Sa Calobra down: 18 sections with a normal map, 19 with a highlight (4 both), 0 with a spec map (no highlighted material has `txMaps`);
-  Textures.zip 518.2 MB to 553.8 MB (+5 textures).
+  Textures.zip 518.2 MB to 553.8 MB (+5 textures), import 21 s as before, `Objects.zip` byte identical. Rendered at four
+  driveline points (`--enhance all`, 11:00): the rocks (`extrarocks`, 811 k triangles), walls and rails gain their relief
+  (RMSE 4 to 14 of 255 against main); the roads' highlight (`ksSpecular` 1, EXP 15) is a faint sheen, none blown out facing
+  the sun. The new files on main's viewer render byte identical to the old conversion.
