@@ -1192,7 +1192,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
     write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
-    let mut settings = String::from("[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n");
+    let mut settings = String::from(SETTINGS_INI);
     if let Some(fx) = &grass_fx {
         settings.push('\n');
         settings.push_str(&fx.section(grass_atlas.as_deref()));
@@ -1284,9 +1284,19 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     })
 }
 
+/// A converted stage's `settings.ini`: the sun, and a mild warm-grey haze (`[ReRbrAir]`, read by `rbr_btb::track::Air`;
+/// aerosol 0.2 is the sky model's hazy end, clear AC days stay clear under it).
+const SETTINGS_INI: &str =
+    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nfog_color=0.74, 0.68, 0.62\naerosol=0.2\n";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_settings_carry_a_mild_warm_grey_haze() {
+        let air = rbr_btb::track::Air::from_ini(SETTINGS_INI).unwrap();
+        assert_eq!((air.fog_color, air.aerosol), (Some([0.74, 0.68, 0.62]), Some(0.2)));
+    }
     #[test]
     fn a_driveline_point_in_a_small_gap_takes_the_ground_beside_it() {
         let slab = |x0: f64, x1: f64| Triangle {

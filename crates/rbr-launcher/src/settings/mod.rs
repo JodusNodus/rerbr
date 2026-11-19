@@ -850,8 +850,8 @@ mod tests {
         assert_eq!(Settings::parse("").perf_log, None);
         assert_eq!(Settings::parse("[launcher]\nstart_time = 16:30\n").start_time, None);
         assert_eq!(
-            Settings::parse("[launcher]\nstart_time = golden\n").start_time,
-            Some(StartTime::Moment(crate::time_of_day::Moment::Golden))
+            Settings::parse("[launcher]\nstart_time = best\n").start_time,
+            Some(StartTime::Moment(crate::time_of_day::Moment::Best))
         );
         assert_eq!(Settings::parse("[launcher]\nstart_time = baked\n").start_time, Some(StartTime::Baked));
         assert_eq!(clock_args(Some(5 * 60)), ["--clock", "05:00"]);

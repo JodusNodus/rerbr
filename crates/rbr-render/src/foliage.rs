@@ -96,6 +96,11 @@ impl Cut {
                     .is_some_and(|marks| marks.structure(height, across)))
     }
 
+    /// Whether the texel at `uv` is cut out (the texture repeats).
+    pub(crate) fn clear_at(&self, uv: [f32; 2]) -> bool {
+        self.under(uv, uv)
+    }
+
     /// Whether the texels under the uv rectangle `low` to `high` are cut out (the texture repeats).
     fn under(&self, low: [f32; 2], high: [f32; 2]) -> bool {
         // Each axis's texels, at most the texture's size, as their one or two runs within one copy of it.

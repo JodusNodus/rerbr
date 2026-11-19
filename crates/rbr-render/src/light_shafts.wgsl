@@ -68,7 +68,7 @@ const MARCH_PHASE_CAP: f32 = 4.0;
 // outline with glow, while the gap beside it, open to the sky, stayed dark.
 const GLOW_FORWARD: f32 = 0.85;
 const GLOW_REACH: f32 = 350.0;
-const GLOW_SHADE: f32 = 0.25;
+const GLOW_SHADE: f32 = 0.8;
 const GLOW_BEYOND: i32 = 8;
 // The far layer's depth bias (its depth spans 3500 m: about 2 m).
 const FAR_BIAS: f32 = 0.0005;

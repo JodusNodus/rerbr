@@ -232,6 +232,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     if scene.sun_direction.is_some() {
         atmosphere.sun_direction = sun;
     }
+    if let Some(air) = scene.air {
+        if let Some(c) = air.fog_color {
+            atmosphere.fog_color = Vec3::from(c);
+        }
+        atmosphere.aerosol = air.aerosol;
+    }
     let (yaw, position) = (scene.spawn.yaw, Vec3::from(scene.spawn.position));
     let start = Some(Pose { position, forward: Vec3::new(yaw.sin(), 0.0, yaw.cos()) });
     Ok(Stage {

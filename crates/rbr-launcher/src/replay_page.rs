@@ -278,7 +278,10 @@ fn conditions(args: &[String]) -> (String, Option<String>) {
     if let Some(fog) = value(viewer, "--fog").filter(|v| v != "off") {
         parts.push(format!("{fog} fog"));
     }
-    let start = value(viewer, "--clock").or_else(|| value(command, "--start-time"));
+    let sun = || {
+        value(viewer, "--sun").and_then(|word| crate::time_of_day::StartTime::parse(&word)).map(|s| s.label().into())
+    };
+    let start = value(viewer, "--clock").or_else(sun).or_else(|| value(command, "--start-time"));
     (if parts.is_empty() { "Stage defaults".into() } else { parts.join(" · ") }, start)
 }
 
@@ -658,6 +661,8 @@ mod tests {
         assert_eq!(conditions(&[]), ("Stage defaults".into(), None));
         let args = ["--live", "standalone", "--wetness", "damp", "--start-time", "08:00"].map(str::to_owned);
         assert_eq!(conditions(&args), ("Damp road".into(), Some("08:00".into())));
+        let args = ["--sun", "golden", "--live", "standalone"].map(str::to_owned);
+        assert_eq!(conditions(&args), ("Stage defaults".into(), Some("Golden hour".into())));
     }
 
     #[test]

@@ -349,6 +349,16 @@ height fog over any section; `--clouds` and `--precipitation` put any sky over a
 range, at least 600 m without `UseFog` (retail 69's light fog, stages 71 and 45's rows at 25..215 m hid the stage in a
 white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled clouds and tone curve are ours.
 
+- Converted stage haze (ours, 2026-11-19): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
+  ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
+  crisp to 0.2 hazy, as `skylight.rs`' words); without it the section's. Sa Calobra at 07:35 with `0.74, 0.68, 0.62` and
+  0.3: wall-shot sky (202,208,215) top, (212,214,215) horizon against the AC shot's (187,196,211), (208,208,210), the
+  distance warm grey where it was blue (`/tmp/atm/v2`). Aerosol 0.4 whitened 13:00's sky.
+- Light-shaft glow (2026-11-19): the glow's 350 m of lit air times its sun lobe made a bright wedge beside Sa Calobra's
+  big rock at 07:35, ending in a straight edge where the rock's shadow left the ray (the gate `GLOW_SHADE` saturated
+  at a quarter of the ray in shade). Now `GLOW_SHADE` 0.8 (the gate ramps over most of the ray) and `MARCH_GLOW` 0.03:
+  the wedge is soft rays. Retail stages: 10O, 54E byte-identical in 18 probe frames; 41M, 54E 13:00 differ by RMSE
+  0.0003-0.0019.
 - Backdrop `(1,3)` (the superbowl): every item drawn whole with the stage's matrix, its scattering depth by
   `Superbowl_Scale`; without `UseFog` its haze is the stage's range over the scale (`Atmosphere::superbowl_fog`), so
   the backdrop next to the road stays clear.
@@ -403,6 +413,15 @@ light). A solar model per rally moves the sun. Below -7 degrees: night (`night.w
 lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Shared bakes with M names (73, 83-89)
 probably fit the wrong hour.
 
+- Moments (`--sun best|golden|midday|dusk|night`, `relight::Moment`; the launcher passes it instead of a clock, `--clock`
+  wins; the launcher's default is best; the settings' old `dawn`, `morning` read as best, `afternoon` as golden). Midday,
+  dusk, night are where the sun stands (`hour_at`). Best and golden are found on the stage: `sunlit.rs` (CPU ray test from
+  driveline points every 10 m, 1 m up, against world and backdrop casters, cut-out texels via `foliage::Cut`, grass tiles
+  left out; 0.3-2 s) gives the road's sunlit share. `Clock::best` takes the sun of 10 to 45 degrees (morning or evening,
+  capped at half the day's highest) reaching the most road; `Clock::golden` the lowest of 6 to 20 degrees reaching 40 %,
+  else 80 % of the best. On 532, 450, 462, 580 the 6-degree sun reached 3-27 %; golden now 21-43 %, best 32-65 %. The
+  viewer resolves it before the build and gives the start board the hour; the replay header keeps `--sun`, so a replay
+  re-solves it. Thresholds and bands are our choice.
 - Stated time of day (2026-11-15; `Atmosphere::stated_time`, `TimeWord::parse`, `relight::stated_hour`): the chosen
   section's `Comment`, else (no time word there) the stage folder's name, read as night, dawn or sunset by whole words
   (night/noche/nuit/notte/nacht/yö, "dark" alone; dawn/amanecer/aube/alba/sunrise/"start of the day";

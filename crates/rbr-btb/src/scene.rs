@@ -220,6 +220,8 @@ pub struct Scene {
     pub sun_direction: Option<[f32; 3]>,
     /// `settings.ini` `[ReRbrGrass]`.
     pub grass: Option<track::GrassFx>,
+    /// `settings.ini` `[ReRbrAir]`.
+    pub air: Option<track::Air>,
     pub materials: Vec<Material>,
     pub meshes: Vec<Mesh>,
     pub objects: Vec<Object>,
@@ -233,7 +235,7 @@ impl Scene {
         let spawn = track.spawn()?;
         let driveline = track.driveline()?;
         let settings = track.settings()?;
-        let (sun, grass) = (settings.sun_direction, settings.grass);
+        let (sun, grass, air) = (settings.sun_direction, settings.grass, settings.air);
         let objects = track.objects()?;
         let files = TextureFiles::open(folder)?;
         let textures = Textures::list(&files.0)?;
@@ -285,6 +287,7 @@ impl Scene {
                 .collect(),
             sun_direction: sun.map(|s| s.map(|v| v as f32)),
             grass,
+            air,
             materials,
             meshes,
             objects: placed,
