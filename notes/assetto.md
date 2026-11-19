@@ -547,3 +547,15 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   install (`la_canyons`, `pacific_coast_hwy`). The `ek_*` tracks of that install carry one-pixel textures, so they
   render grey.
 
+
+## Normal maps and highlights, 2026-11-19
+
+- `materials.ini` sections keep `effectName=BTB_Diffuse` and the diffuse (other BTB readers draw it unchanged) and add ReRBR's own keys: `normalTexture`
+  (`txNormal`, stored like a diffuse, re-encoded as opaque DXT1 where needed), `specularTexture` (`txMaps` red as grey DXT1), `SpecularPower`
+  (`ksSpecularEXP`, at least 1, 4 if missing) and `SpecularColor` (`ksSpecular` three times), and `ReRbrEffect` =
+  `BTB_DiffuseBump`, `BTB_DiffuseSpecular` or `BTB_DiffuseBumpSpecular`. All inputs are read on the diffuse's UV set 0; the meshes are unchanged.
+- Normal map: per-material sections only, not placeholders, not `Multilayer`, not tile bakes, not tree cards or generated sections; cut-outs may take
+  one. Highlight: opaque non-placeholder materials with `ksSpecular > 0`, per-material and tile bakes; the spec map only per material. Without
+  either the section is today's byte for byte. `ac-conversion.json` counts `normal_mapped_materials` and `highlight_materials`.
+- Sa Calobra down: 18 sections with a normal map, 19 with a highlight (4 both), 0 with a spec map (no highlighted material has `txMaps`);
+  Textures.zip 518.2 MB to 553.8 MB (+5 textures).
