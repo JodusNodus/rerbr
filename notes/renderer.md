@@ -473,7 +473,9 @@ probably fit the wrong hour.
   (45O, 2026-10-23: -6.4 degrees 5.0 lux, -9.9 0.07, -13.3 0.006; frame mean 92 at 17:30 to 14 by 18:25, holding to
   23:00). Rod vision (`rod_vision`): moonlit ground turns blue with dim greens and reds kept, the headlit road stays
   neutral, by day at most 1/255; the meter bins luminance from -14 to 18 EV (in pre-exposed units twilight went
-  black).
+  black). At half strength since 2026-11-19 (`ROD_STRENGTH`, Filament's `nightAdaptation`; user's pick of 1, 0.5
+  and 0): in full the night Gabiria chase's dark ground read violet (dark pixels' saturation 0.75, now 0.57; 0
+  leaves the moon's warm brown, 0.35). Night shots' means +0.3 to +3.5 levels; other shots RMSE under 0.002.
 - With the day's light the lit draws outside the car shade as the stage (`day_lit` in `shader.wgsl`): linear albedo,
   Lambert under the day's sky, sun and ground maps, plus the sun's highlight; paint and glass reflect by Schlick's
   F0 0.04. The game's Ka, Kd, Fresnel limits and `LIGHT_SCALE` are off that path (they put the car at a fifth of the
@@ -870,6 +872,13 @@ splash never shows on a wet stage.
   fly-by; particles drawn after the resolve, so the frame showed it as the shot did). Particles pass, 1080p ultra:
   Odry chase 0.33 to 0.28 ms, Comb I fly-by 1.98 to 1.77 ms. Tried and dropped: the four taps turned by a golden
   angle a place (speckle), the same in the second cascade (spots a tap's spacing apart, the shafts gone).
+- Dust meets the road softly (2026-11-19, `fs_soft`): a puff fades over its back half's depth (its radius at the
+  middle) and, over level ground facing up below its middle (normal from the stage point's derivatives, `DUST_LEVEL`,
+  not across outlines), over half its radius in height, which a low ray spans over up to 6 radii. Before, a 0.6-radius
+  fade along the ray was a pixel or two at a low camera, so each puff's sprite plane cut a level line: a staircase
+  under the Sipirkakim fly-by plume. RMSE Sipirkakim 0.014, Odry chase 0.012, Gabiria fly-by 0.007, 532 chase 0.002,
+  snow Pian 0. Tried and dropped: a floor of half the puff's screen radius from `fwidth(gap)` (2x2 blocks and thin
+  dust on the tyres, whose steep surfaces read as ground); `abs` of the normal's height (tyre undersides read level).
 - No spray in the cabin (2026-11-01, `fs_soft`): in the in-car views the soft particles fade inside the cabin reach
   (2 to 2.5 m from the eye) as the rain does; the wheels' spray showed through the GC8's footwell gaps (52 rain
   cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical. The eye sphere is now the
