@@ -71,17 +71,9 @@ pub fn laps_label(laps: u32) -> String {
 /// The sectors' own times of a lap given by its time at each gate (since the lap began): each gate less the one before,
 /// and the rest of the lap.
 pub fn sector_times(best: &BestLap) -> Vec<f32> {
-    let mut from = 0.0;
-    best.sectors
-        .iter()
-        .copied()
-        .chain([best.lap])
-        .map(|gate| {
-            let time = gate - from;
-            from = gate;
-            time
-        })
-        .collect()
+    let gates = best.sectors.iter().copied().chain([best.lap]);
+    let starts = std::iter::once(0.0).chain(best.sectors.iter().copied());
+    gates.zip(starts).map(|(gate, from)| gate - from).collect()
 }
 
 impl CircuitPage {

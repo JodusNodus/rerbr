@@ -22,7 +22,6 @@ impl ChampionshipPage {
     /// The championship under way: the header, the itinerary strip, the next step's card, the standings and the
     /// pinned footer with the step's primary button.
     pub(super) fn event_ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
-        let mut request = None;
         let run = self.run.as_ref()?;
         let event = run.event.clone();
         let rally = rally_of(&event);
@@ -33,9 +32,7 @@ impl ChampionshipPage {
             self.view = View::Entry;
             return None;
         }
-        if let Some(asked) = self.footer_ui(ui, &env, &event, rally) {
-            request = Some(asked);
-        }
+        let mut request = self.footer_ui(ui, &env, &event, rally);
         // The stage picked on the itinerary, else the last one driven while it is news.
         let picked = self.shown.filter(|&(r, s)| r == rally && s < driven(&event, rally).len());
         let key = match event.turn {
@@ -66,9 +63,8 @@ impl ChampionshipPage {
                 let used_left = ui
                     .scope_builder(column(origin.x, left), |ui| {
                         ui.spacing_mut().item_spacing.y = 6.0;
-                        if let Some(asked) = self.left_ui(ui, &env, &event, &standings, points.as_deref(), &news) {
-                            request = Some(asked);
-                        }
+                        request =
+                            self.left_ui(ui, &env, &event, &standings, points.as_deref(), &news).or(request.take());
                     })
                     .response
                     .rect;

@@ -99,15 +99,12 @@ fn group_of(lesson: Lesson) -> (&'static str, &'static str) {
 /// The lesson's number label: `RSM_LESSON_NRB1`..`NRB6` for the basic lessons, `RSM_LESSON_NRA1`..`NRA11` for the
 /// advanced (the tables have no `A7`, like [`Lesson::brief_keys`]).
 pub fn lesson_label(strings: Option<&Strings>, lesson: Lesson) -> String {
-    let key = if lesson.index() < Lesson::FIRST_ADVANCED {
-        format!("RSM_LESSON_NRB{}", lesson.index() + 1)
-    } else {
-        format!("RSM_LESSON_NRA{}", lesson.index() - Lesson::FIRST_ADVANCED + 1)
-    };
+    let n = lesson.index() - group_start(lesson) + 1;
+    let key = format!("RSM_LESSON_{}{n}", if lesson.index() < Lesson::FIRST_ADVANCED { "NRB" } else { "NRA" });
     strings
         .and_then(|s| s.get(&key))
         .map(|t| t.replace('\n', " ").trim().trim_end_matches('.').to_owned())
-        .unwrap_or_else(|| format!("Lesson {}", lesson.index() - group_start(lesson) + 1))
+        .unwrap_or_else(|| format!("Lesson {n}"))
 }
 
 /// The first lesson of `lesson`'s group.
@@ -281,7 +278,7 @@ fn school_grades(saves: &SaveDir, profile: &str) -> [u32; 17] {
         .ok()
         .and_then(|file| file.current().cloned().or_else(|| file.profiles.list.first().cloned()))
         .map(|entry| entry.school)
-        .unwrap_or([0; 17])
+        .unwrap_or_default()
 }
 
 impl Form {

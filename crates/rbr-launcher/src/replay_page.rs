@@ -717,7 +717,6 @@ mod tests {
         assert_eq!(entry.result, Some(result));
         assert!(browser.entries.iter().find(|e| e.problem.is_some()).unwrap().result.is_none());
         assert!(entry.problem.is_none());
-        assert!(browser.entries.iter().any(|e| e.problem.is_some()));
         browser.select(Some(path.clone()), &home);
         browser.output = "my-edit.mp4".into();
         browser.refresh(&home);
