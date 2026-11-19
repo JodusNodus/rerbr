@@ -611,4 +611,4 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   21.9 / 81 %. About half of it is the auto exposure: a brighter road darkens the frame (top third 5 to 30 % darker). The normal maps add
   1.5 to 5 on top of the sheen alone. Full physical strength read as wet or icy blue on the black converted roads, so the sheen is
   weighted `SHEEN_STRENGTH` 0.35. Known: a patch decal lying on the road (Roure 6.5 km) takes no sheen.
-
+- Road material the collision calls gravel or dirt within 8 m of tarmac takes the tarmac's sheen (`puddles::mark_sheen`): Roure's shoulders showed as a dark band. Not fixed, accepted: Roure's visual-only road pad (6.5 km, over grass collision) and kerb strip (5 km, over wall collision), which carry no tarmac under them; cut-outs and blended decals take no sheen.

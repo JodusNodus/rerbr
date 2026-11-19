@@ -415,13 +415,12 @@ pub struct Extras {
     pub sheen: Option<f32>,
 }
 
-/// The roughness of the dry sheen of a material, `None` for foliage (cut-outs and blended decals keep it: a road patch or
-/// lane markings). The renderer draws it
+/// The roughness of the dry sheen of a material, `None` for a cut-out, blended or foliage one. The renderer draws it
 /// only where the collision surface under the vertex is tarmac. From AC's Blinn-Phong exponent `n`: GGX `alpha = sqrt(2 / (n + 2))`, roughness `sqrt(alpha)` in
 /// 0.45 to 0.85; a material without `ksSpecular` or with `n < 1` takes [`ROAD_ROUGHNESS`]. AC's own fresnel values are
 /// author tuning and not read.
 pub fn sheen(mat: &Material) -> Option<f32> {
-    if mat.shader == "ksTree" || mat.shader.contains("Grass") {
+    if is_transparent(mat) || mat.shader.contains("Grass") {
         return None;
     }
     let (specular, n) = (mat.property("ksSpecular", 0.), mat.property("ksSpecularEXP", 0.));
@@ -780,8 +779,8 @@ mod tests {
         // No ksSpecular or a tiny exponent: the default.
         assert_eq!(sheen(&mat("ksPerPixel", 0., 50., false)), Some(ROAD_ROUGHNESS));
         assert_eq!(rough(0.5), Some(ROAD_ROUGHNESS));
-        // Foliage.
-        assert!(sheen(&mat("ksPerPixelAT", 1., 15., true)).is_some(), "a cut-out decal keeps it");
+        // A cut-out, foliage.
+        assert_eq!(sheen(&mat("ksPerPixelAT", 1., 15., true)), None);
         assert_eq!(sheen(&mat("ksTree", 1., 15., false)), None);
         assert_eq!(sheen(&mat("ksGrass", 1., 15., false)), None);
     }
@@ -799,7 +798,7 @@ mod tests {
         model.materials = vec![
             mat("d", "ksPerPixel", false),
             mat("p", "ksPerPixel", false),
-            mat("d", "ksTree", true),
+            mat("d", "ksPerPixelAT", true),
             mat("d", "ksGrass", false),
         ];
         let (mut bank, path) = bank_for("sheen");

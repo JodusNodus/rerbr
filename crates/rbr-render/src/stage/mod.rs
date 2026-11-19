@@ -601,16 +601,16 @@ fn mark_wet_roads(
     if let Some(marking) = marking(collision.as_ref(), maps, name, selection) {
         let triangles = crate::puddles::ground_triangles(meshes, &marking, roads);
         crate::puddles::mark_roads(meshes, &triangles, roads.is_none());
-        mark_sheen(meshes, &marking, roads);
+        mark_sheen(meshes, roads);
     }
     collision
 }
 
 /// The sheen's own marks ([`crate::puddles::mark_sheen`]) on a converted stage with a sheen draw.
-fn mark_sheen(meshes: &mut [Mesh], collision: &Ground, roads: Option<&Roads>) {
+fn mark_sheen(meshes: &mut [Mesh], roads: Option<&Roads>) {
     let sheen = |m: &Mesh| m.draws.iter().any(|d| d.state.surface.is_some_and(|s| s.sheen.is_some()));
     if let Some(roads) = roads.filter(|_| meshes.iter().any(sheen)) {
-        crate::puddles::mark_sheen(meshes, collision, roads);
+        crate::puddles::mark_sheen(meshes, roads);
     }
 }
 
@@ -644,7 +644,7 @@ impl Stage {
         let triangles = crate::puddles::ground_triangles(&self.meshes, &marking, self.roads.as_ref());
         if self.selection.weather == Weather::Dry {
             crate::puddles::mark_roads(&mut self.meshes, &triangles, self.roads.is_none());
-            mark_sheen(&mut self.meshes, &marking, self.roads.as_ref());
+            mark_sheen(&mut self.meshes, self.roads.as_ref());
         }
         if grass {
             self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
