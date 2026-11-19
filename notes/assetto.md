@@ -505,8 +505,9 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (Highlands). Row order checked on Sa Calobra's atlas (`3,1,1,2` the heather, `4,1,2,2` the reeds, the top row the
   plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is
   `SHAPE_SIZE` x 0.14 m (6.5: 0.91 m, blade heights matched by eye to the AC rock shot's boulders), times the
-  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump, `FX_DENSITY` 5 clumps a m² (ours 40: at 0.08 m and 40 the verge
-  was a carpet, AC's has separate tufts); unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at `FX_SATURATION`
+  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump, clumps a m² `FX_COVER` 4.1 over the cell's area (Sa Calobra
+  5, Créquy's 0.28 m cells 52, at most 60; our blades 40: at 0.08 m and 40 Sa Calobra's verge was a carpet, AC's has
+  separate tufts; a flat 5 left Créquy's verges bare); unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at `FX_SATURATION`
   0.55 (no lush/straw lean) and `FX_SHADE` 2.2 with the brightness ratio clamp lowered (`FX_BRIGHT`); the cards carry
   `specular.z` 2 (`FX_CARD`) and `own_light` ramps them from `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP`
   (1.2, 1.0, 0.95) at the top. At 0.3/1.2 (07:35 calibration) the verges read charcoal, at 0.7/2.5 with no ramp
@@ -682,3 +683,14 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   (mean / standard deviation) to 63.8 / 8.2 and 46.1 / 21.3 to 46.7 / 20.6 (AC's 59 / 11): the grain is now the detail textures' structure
   (cracks, patches) at any distance; the large-scale colour matches the tile bakes (blurred-grey correlation 0.95 to 0.999), so the world
   offsets are AC's. Roure rbcl 12:00 at 750 m and 3750 m along: no visible regression.
+
+## Reinstall with the AC look work, 2026-11-19
+
+- The 40 installed AC stages but Gunma (source gone) converted again from `e593a603` with the options of their
+  `ac-conversion.json` (`--remesh --collision-corridor 25` where remeshed, `--circuit` for Nordschleife and Ebisu,
+  `--reverse-ai` for Akina): 7 min, three at a time. Driveline, pacenotes, spawn, `track.ini` and collision identical
+  on all but Ebisu, now a circuit (`lap_line` spawn, 34 pacenotes); drawn triangles up with the far surfaces (Sa
+  Calobra 1.86 to 1.94 M). Sizes: Riudecanyes 2022 844 to 307 MB, Nordschleife 1278 to 539 MB (multilayer drawn, not
+  baked), Roure 429 to 815 MB. Former folders in the player's `backups/pre-ac-look-20261119` (34 GB).
+- Shots: `render-shots.py` must run without `RBR_DATA` from `dev.env` (the bare retail install): the launcher passes it
+  as `--data`, and RSF cars' liveries and lamp textures then go missing (white Yaris, no tail lights).

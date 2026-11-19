@@ -40,8 +40,10 @@ const BAND: f32 = 20.0;
 /// Clumps (two crossed cards) a square metre on fully grassy ground within [`FULL`] of the driveline, thinning to
 /// [`FAR_SHARE`] of it at [`BAND`].
 const DENSITY: f32 = 40.0;
-/// A converted stage's clumps a square metre: its atlas pieces are tufts of half a metre and more, not our blades.
-const FX_DENSITY: f32 = 5.0;
+/// A converted stage's atlas clumps a square metre times its cell's area ([`Fx::density`]): smaller cells, more clumps,
+/// the same cover. Calibrated on Sa Calobra (cell 0.91 m: 5 clumps a square metre, separate tufts as in the AC shot);
+/// Créquy's 0.28 m cells take 52, near our [`DENSITY`].
+const FX_COVER: f32 = 4.1;
 const FULL: f32 = 10.0;
 const FAR_SHARE: f32 = 0.4;
 /// The steepest ground that takes grass: the cosine of its slope.
@@ -179,6 +181,14 @@ impl Fx {
     fn cell(&self) -> f32 {
         let size = self.atlas.as_ref().map_or(0.0, |(a, _)| a.size);
         CELL_PER_SIZE * if size > 0.0 { size } else { DEFAULT_SIZE }
+    }
+
+    /// Clumps a square metre: [`FX_COVER`] cells' worth with an atlas (at most [`DENSITY`] and a half), else ours.
+    fn density(&self) -> f32 {
+        match self.atlas {
+            Some(_) => (FX_COVER / self.cell().powi(2)).min(DENSITY * 1.5),
+            None => DENSITY,
+        }
     }
 
     /// A card's picture's rectangle (`u0, u1, v0, v1`) and its width and height in cells (the piece's cells times its
@@ -532,7 +542,7 @@ impl Field {
             let p = g.p;
             let centre = (p[0] + p[1] + p[2]) / 3.0;
             let mut random = Random::at(centre);
-            let wanted = g.area * if self.fx.is_some() { FX_DENSITY } else { DENSITY } + random.next();
+            let wanted = g.area * self.fx.as_ref().map_or(DENSITY, Fx::density) + random.next();
             for _ in 0..wanted as usize {
                 // Every card draws the same numbers whatever it becomes, so the sequence holds across tiles and shares.
                 let [a, b, keep, chance, turn, width, height, pick, lean, lean_turn] = [0; 10].map(|_| random.next());
