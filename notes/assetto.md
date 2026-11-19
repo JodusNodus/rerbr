@@ -548,12 +548,29 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   render grey.
 
 
+## SuperStage tracks, 2026-11-19
+
+- The `ss_*` mods of the local install: Roure, Sa Calobra, St Laurent and La Bollène were already in; added through
+  `rbr-ac-tracks import` (own AI, `--name` each): Cabanette `down`/`up` (`AC_La_Cabanette_Col_de_Braus_Down/Up`,
+  collision cell overflow, so the importer retried with `--remesh --collision-corridor 25`), Gabiria `gl`/`lg`
+  (`AC_Gabiria_Legazpi_2004`, `AC_Legazpi_Gabiria_2004`) and Prunières `pe`/`per` (`AC_Prunieres_Embrun`,
+  `AC_Embrun_Prunieres`). Sa Calobra `freeroam` stays skipped (no timing gates). Without `--name` a multi-layout track
+  is `AC_<layout>`, which for `down` met an existing `AC_down` (Sa Calobra): name them.
+- Gabiria and Prunières carry skinned meshes (`persAnim*`, animated spectators; KN5 node type 3) that stopped the
+  reader. It now reads past them (bone count, bones of name and 64-byte matrix, vertices of 76 bytes, indices, material,
+  12 bytes of layer and level of detail; the node tree of `persSteJus.kn5` ends exactly at its last byte) and draws and
+  collides nothing of them.
+- No missing textures or ground; largest collision cell 65,439 of 65,536 (Cabanette down). Headless dry drives (Toyota GR Yaris Rally2
+  of the sweep, 25 m/s), all `finished=1`, `false_start=0`, at most 2.4 m off the driveline: Cabanette up
+  552.4 s (`Marker`), down 520.7 s, Gabiria-Legazpi 435.5 s (`Marker`), Legazpi-Gabiria 430.4 s, Prunières-Embrun 1140.5 s, Embrun-Prunières 1159.4 s (these
+  four stop short of the result marker, `cause=Left`, finish recorded). Not rendered.
+
 ## Normal maps and highlights, 2026-11-19
 
-- `materials.ini` sections keep `effectName=BTB_Diffuse` and the diffuse (other BTB readers draw it unchanged) and add ReRBR's own keys: `normalTexture`
+- `materials.ini` sections keep `effectName=BTB_Diffuse` and the diffuse (other BTB readers draw it unchanged) and add `normalTexture`
   (`txNormal`, stored like a diffuse, re-encoded as opaque DXT1 where needed), `specularTexture` (`txMaps` red as grey DXT1), `SpecularPower`
   (`ksSpecularEXP`, at least 1, 4 if missing) and `SpecularColor` (`ksSpecular` three times), and `ReRbrEffect` =
-  `BTB_DiffuseBump`, `BTB_DiffuseSpecular` or `BTB_DiffuseBumpSpecular`. All inputs are read on the diffuse's UV set 0; the meshes are unchanged.
+  `BTB_DiffuseBump`, `BTB_DiffuseSpecular` or `BTB_DiffuseBumpSpecular` (ReRBR's own key, [btb.md](btb.md#drawing)). All inputs are read on the diffuse's UV set 0; the meshes are unchanged.
 - Normal map: per-material sections only, not placeholders, not `Multilayer`, not tile bakes, not tree cards or generated sections; cut-outs may take
   one. Highlight: opaque non-placeholder materials with `ksSpecular > 0`, per-material and tile bakes; the spec map only per material. Without
   either the section is today's byte for byte. `ac-conversion.json` counts `normal_mapped_materials` and `highlight_materials`.

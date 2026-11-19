@@ -297,7 +297,18 @@ impl<'a> Reader<'a> {
                     triangles,
                 });
             }
-            3 => return Err(format!("skinned track mesh {name} is not supported")),
+            3 => {
+                // Skinned meshes are animated people and props; they are read past and not drawn or collided.
+                self.take(3)?; // casts shadows, visible, transparent
+                for _ in 0..self.count(68)? {
+                    self.string()?;
+                    self.take(64)?; // bone matrix
+                }
+                let vertices = self.count(76)?;
+                self.take(vertices * 76)?;
+                let indices = self.count(2)?;
+                self.take(indices * 2 + 4 + 12)?; // material, then layer and level of detail
+            }
             _ => {
                 return Err(format!(
                     "unsupported KN5 node type {kind} ({name}); protected/new-format files are not supported"
@@ -400,6 +411,29 @@ mod tests {
         assert!(parse(&data, true, true, &IDENTITY).unwrap().meshes.is_empty());
         data.extend(b"ver.mesh");
         assert!(parse(&data, true, true, &IDENTITY).unwrap().meshes.is_empty());
+    }
+    #[test]
+    fn skinned_meshes_are_read_past() {
+        let node = |data: &mut Vec<u8>, kind: u8, name: &[u8], children: u8| {
+            data.extend([kind, 0, 0, 0, name.len() as u8, 0, 0, 0]);
+            data.extend(name);
+            data.extend([children, 0, 0, 0, 1]);
+        };
+        let mut data = b"sc6969\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0".to_vec();
+        node(&mut data, 1, b"root", 2);
+        data.extend(IDENTITY.iter().flat_map(|v| v.to_le_bytes()));
+        node(&mut data, 3, b"person", 0);
+        data.extend([0, 1, 0]); // flags
+        data.extend([1, 0, 0, 0, 1, 0, 0, 0, b'b']); // one bone named "b"
+        data.extend([0; 64]); // its matrix
+        data.extend([1, 0, 0, 0]); // one vertex
+        data.extend([0; 76]);
+        data.extend([3, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // three indices
+        data.extend([0; 4 + 12]); // material, layer and level of detail
+        node(&mut data, 1, b"AC_AB_START", 0);
+        data.extend(IDENTITY.iter().flat_map(|v| v.to_le_bytes()));
+        let model = parse(&data, true, true, &IDENTITY).unwrap();
+        assert!(model.meshes.is_empty() && model.markers.contains_key("AC_AB_START"));
     }
     #[test]
     fn truncated_and_protected_files_return_errors() {
