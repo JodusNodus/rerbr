@@ -21,7 +21,7 @@ use rbr_formats::stage_files;
 
 use super::{Ctx, Found, Item, Kind};
 use crate::archive::join;
-use crate::content::source::{Entry, Source};
+use crate::content::source::{file_lower, Entry, Source};
 use crate::content::{Goto, Outcome, Refresh};
 use crate::job::{Counter, Temp};
 
@@ -123,11 +123,6 @@ fn read_texts(src: &dyn Source) -> Result<Texts, Fail> {
             Ok((e.path.clone(), fs::read(&file).map_err(|err| format!("{}: {err}", e.path.join("/")))?))
         })
         .collect()
-}
-
-/// The file name of `path`, lowercase.
-fn file_lower(path: &[String]) -> String {
-    path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default()
 }
 
 /// Whether `file` (lowercase) is the `Tracks.ini` or the `Tracks<n>.ini`.

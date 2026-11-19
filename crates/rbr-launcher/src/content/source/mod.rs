@@ -20,10 +20,14 @@ pub struct Entry {
     pub size: u64,
 }
 
+/// The file name of `path`, lowercase.
+pub fn file_lower(path: &[String]) -> String {
+    path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default()
+}
+
 impl Entry {
-    /// The file name, lowercase.
     pub fn file_lower(&self) -> String {
-        self.path.last().map(|f| f.to_ascii_lowercase()).unwrap_or_default()
+        file_lower(&self.path)
     }
 }
 
