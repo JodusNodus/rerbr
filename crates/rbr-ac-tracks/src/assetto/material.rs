@@ -384,10 +384,10 @@ fn light(mat: &Material) -> Option<[f32; 2]> {
 const LIGHT_RANGE: (f32, f32) = (0.25, 3.0);
 
 /// The weighted median of `(value, weight)` pairs.
-fn weighted_median(mut values: Vec<(f32, usize)>) -> Option<f32> {
+fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
     values.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let half = values.iter().map(|v| v.1).sum::<usize>().div_ceil(2);
-    let mut seen = 0;
+    let half = values.iter().map(|v| v.1).sum::<f64>() / 2.0;
+    let mut seen = 0.0;
     values
         .into_iter()
         .find(|v| {
@@ -398,9 +398,9 @@ fn weighted_median(mut values: Vec<(f32, usize)>) -> Option<f32> {
 }
 
 /// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
-/// track's reference: the median of each over the drawn opaque materials, by `triangles` per section. A factor within
+/// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws. A factor within
 /// 2% of 1 for both drops the line.
-pub fn normalise_light(materials: &str, triangles: &BTreeMap<String, usize>) -> String {
+pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String {
     let mut sections = Vec::<(&str, bool, Option<[f32; 2]>)>::new();
     for line in materials.lines() {
         if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
@@ -414,7 +414,7 @@ pub fn normalise_light(materials: &str, triangles: &BTreeMap<String, usize>) -> 
         }
     }
     let reference = |axis: usize| {
-        let values = sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *triangles.get(s.0)?))).collect();
+        let values = sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *areas.get(s.0)?))).collect();
         weighted_median(values).filter(|m| *m > 0.)
     };
     let (Some(ambient), Some(diffuse)) = (reference(0), reference(1)) else {
@@ -756,7 +756,8 @@ mod tests {
         ]
         .concat();
         let triangles = BTreeMap::from(
-            [("road", 60), ("rock", 10), ("same", 10), ("leaf", 1000), ("plain", 5)].map(|(k, v)| (k.to_owned(), v)),
+            [("road", 60.), ("rock", 10.), ("same", 10.), ("leaf", 1000.), ("plain", 5.)]
+                .map(|(k, v)| (k.to_owned(), v)),
         );
         let out = normalise_light(&materials, &triangles);
         let light = |name: &str| {

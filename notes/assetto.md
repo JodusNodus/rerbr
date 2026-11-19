@@ -588,11 +588,9 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   uv * (1 + `normalMult`). The triangles' UVs carry the first (`stage.rs`, `material::uv_multipliers`) and the section
   `ReRbrBumpScale` the ratio ([btb.md](btb.md)). Not for a placeholder diffuse.
 - `ReRbrLight=<ambient>,<diffuse>` (2026-11-19): `ksAmbient`/`ksDiffuse` relative to the reference, the
-  triangle-weighted median of each over the drawn opaque materials (`material::normalise_light`, after the last
+  area-weighted (m²) median of each over the drawn opaque materials (`material::normalise_light`, after the last
   section), clamped to 0.25..3, omitted within 2% of 1 on both; none for placeholders or materials lacking either.
-  Trees as CSP cards keep their own brightness (no key). Sa Calobra down: reference 0.275/0.06 (the walls); road 3/3
-  (clamped from 4.0/8.3), terrain 2.2–2.5/3 (clamped), boulders 0.84/1.0. Where the reference is a dark material most
-  of the stage clamps at 3, so the factor is a relative brightness, not AC's absolute level.
+  Trees as CSP cards keep their own brightness (no key). Sa Calobra down: reference 0.62/0.30 (terrain); road 1.77/1.67, cliff and rocks 1.08/1.07, boulders 0.37/0.25, walls 0.44/0.25.
 - Tried and taken out again (Roure, renders at four driveline points, midday clear, 08:15 low sun and 11:00 overcast; mean change
   of 255 levels): `ksMultilayer_fresnel_nm`'s `txDetailNM` (at the source uv * the pair `detailNMMult`) and the
   `ksPerPixelMultiMap_(AT_)NMDetail` detail layer (`txNormalDetail` at uv * `detailUVMultiplier`, `N + (1 - diffuse.a) *
