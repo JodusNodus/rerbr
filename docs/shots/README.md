@@ -1,6 +1,6 @@
 # Reference shots
 
-JPEGs of the 40 shots of [`data/shots.json`](../../data/shots.json), made by
+JPEGs of the 39 shots of [`data/shots.json`](../../data/shots.json), made by
 `scripts/render-shots.py` (every enhancement on, the autopilot driving). Regenerate them with
 `scripts/render-shots.py --previews docs/shots --gallery docs/shots/README.md`; the graphics workflow is in
 [development.md](../development.md#reference-shots).
@@ -59,7 +59,7 @@ Renault Clio Rally3, Wythop I (RSF 532), cockpit view, 18:30
 
 ### golden-532-fiesta-chase
 
-Ford Fiesta Rally2, Wythop I (RSF 532), chase view, 18:30
+Ford Fiesta Rally2, Wythop I (RSF 532), chase view, 10:00
 
 ![golden-532-fiesta-chase](golden-532-fiesta-chase.jpg)
 
@@ -95,7 +95,7 @@ Ford Fiesta Rally2, Luceram Col Saint Roch (RSF 417), flyby view, 18:45
 
 ### golden-odry-gc8-chase
 
-Subaru Impreza GC8 555 GrpA, Odry (RSF 462), chase view, 18:30
+Subaru Impreza GC8 555 GrpA, Odry (RSF 462), chase view, 16:30
 
 ![golden-odry-gc8-chase](golden-odry-gc8-chase.jpg)
 
@@ -174,12 +174,6 @@ BMW M3 E30 GrpA, Gabiria Legazpi (RSF 450), cockpit view, 07:30
 Subaru Impreza GC8 555 GrpA, Luceram Col Saint Roch (RSF 417), chase view, 07:30
 
 ![fog-luceram-gc8-chase](fog-luceram-gc8-chase.jpg)
-
-### fog-odry-clio-chase
-
-Renault Clio Rally3, Odry (RSF 462), chase view, 07:30
-
-![fog-odry-clio-chase](fog-odry-clio-chase.jpg)
 
 ### fog-semetin-escort-chase
 

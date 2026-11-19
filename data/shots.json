@@ -104,18 +104,6 @@
   "at": 7422
  },
  {
-  "name": "fog-odry-clio-chase",
-  "stage": 462,
-  "car": "Renault Clio Rally3",
-  "view": "chase",
-  "clock": "07:30",
-  "args": [
-   "--fog",
-   "heavy"
-  ],
-  "at": 6053
- },
- {
   "name": "fog-semetin-escort-chase",
   "stage": 176,
   "car": "Ford Escort Mk II RS Grp4",
@@ -140,7 +128,7 @@
   "stage": 532,
   "car": "Ford Fiesta Rally2",
   "view": "chase",
-  "clock": "18:30",
+  "clock": "10:00",
   "at": 4809
  },
  {
@@ -191,7 +179,7 @@
   "stage": 462,
   "car": "Subaru Impreza GC8 555 GrpA",
   "view": "chase",
-  "clock": "18:30",
+  "clock": "16:30",
   "at": 6104
  },
  {
