@@ -188,7 +188,7 @@ pub struct Surface {
 }
 
 /// A BTB normal map. Its tangent frame is its uv's own on screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub struct NormalMap {
     pub texture: TextureRef,
     /// It reads `uv1`, else `uv0`.
@@ -196,6 +196,40 @@ pub struct NormalMap {
     /// The slope doubled once z is rebuilt, as BTB's own `Bump` effects do (`bumpNormal.xy * 2.0`); a converted
     /// stage's map (`ReRbrEffect`) is drawn as authored.
     pub doubled: bool,
+    /// The map is read at its uv times this (`ReRbrBumpScale`; AC's UV multipliers).
+    pub scale: [f32; 2],
+    /// A detail normal layer over the map.
+    pub detail: Option<DetailMap>,
+}
+
+/// A detail normal layer (`ReRbrDetailNormal`; AC's `ksPerPixelMultiMap_NMDetail`): read at the normal map's uv times
+/// `scale`, blended in by the normal map's alpha times `blend`.
+#[derive(Debug, Clone, Copy)]
+pub struct DetailMap {
+    pub texture: TextureRef,
+    pub scale: [f32; 2],
+    pub blend: f32,
+}
+
+impl NormalMap {
+    fn bits(&self) -> (TextureRef, bool, bool, [u32; 2], Option<(TextureRef, [u32; 3])>) {
+        let detail = self.detail.map(|d| (d.texture, [d.scale[0].to_bits(), d.scale[1].to_bits(), d.blend.to_bits()]));
+        (self.texture, self.uv1, self.doubled, self.scale.map(f32::to_bits), detail)
+    }
+}
+
+impl PartialEq for NormalMap {
+    fn eq(&self, other: &NormalMap) -> bool {
+        self.bits() == other.bits()
+    }
+}
+
+impl Eq for NormalMap {}
+
+impl std::hash::Hash for NormalMap {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bits().hash(state);
+    }
 }
 
 /// A BTB `Specular` effect's highlight (`SpecularColor`, `SpecularPower`, `specularTexture`).
@@ -832,5 +866,23 @@ mod tests {
     #[test]
     fn address_modes_follow_the_slot_values() {
         assert_eq!([address(1), address(2), address(3)], [Address::Wrap, Address::Mirror, Address::Clamp]);
+    }
+
+    #[test]
+    fn normal_maps_compare_and_hash_by_their_scales_bits() {
+        use std::hash::{BuildHasher, RandomState};
+        let map = NormalMap {
+            texture: TextureRef::stage(0),
+            uv1: false,
+            doubled: false,
+            scale: [2.0, 4.0],
+            detail: Some(DetailMap { texture: TextureRef::stage(1), scale: [50.0; 2], blend: 1.5 }),
+        };
+        let state = RandomState::new();
+        assert_eq!(map, map);
+        assert_eq!(state.hash_one(map), state.hash_one(map));
+        assert_ne!(map, NormalMap { scale: [2.0, 4.5], ..map });
+        assert_ne!(map, NormalMap { detail: None, ..map });
+        assert_ne!(NormalMap { scale: [0.0; 2], ..map }, NormalMap { scale: [-0.0, 0.0], ..map });
     }
 }

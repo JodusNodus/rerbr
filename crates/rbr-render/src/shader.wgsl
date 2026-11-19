@@ -152,8 +152,11 @@ struct Mode {
     // ground (`stage::DrawState::ground`, `detail_draw`).
     bank: vec4<f32>,
     // x a BTB normal map in `normal_texture`: 0 none, 1 on `uv0`, 2 on `uv1` (`stage::Surface::normal`, `bumped`); y the
-    // slope's scale once z is rebuilt (`stage::NormalMap::doubled`).
+    // slope's scale once z is rebuilt (`stage::NormalMap::doubled`), zw the uv scale the map is read at
+    // (`stage::NormalMap::scale`).
     bump: vec4<f32>,
+    // The detail normal layer in `detail_normal_texture` (`stage::DetailMap`): xy its uv scale, z its blend, w 1 for on.
+    bump_detail: vec4<f32>,
     // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
     highlight: vec4<f32>,
 }
@@ -183,6 +186,7 @@ override DRAW_SPECULAR: bool = false;
 override DRAW_SECOND: bool = false;
 override DRAW_DETAIL: bool = false;
 override DRAW_BUMP: bool = false;
+override DRAW_BUMP_DETAIL: bool = false;
 override DRAW_HIGHLIGHT: bool = false;
 
 fn water_draw() -> bool {
@@ -203,6 +207,10 @@ fn detail_draw() -> bool {
 
 fn bump_draw() -> bool {
     return select(mode.bump.x != 0.0, DRAW_BUMP, KNOWN);
+}
+
+fn bump_detail_draw() -> bool {
+    return select(mode.bump_detail.w != 0.0, DRAW_BUMP_DETAIL, KNOWN);
 }
 
 fn highlight_draw() -> bool {
@@ -298,6 +306,8 @@ struct Probes {
 @group(1) @binding(6) var glow_texture: texture_2d<f32>;
 // A BTB normal map (`stage::Surface::normal`; 1 white texel elsewhere, unread).
 @group(1) @binding(7) var normal_texture: texture_2d<f32>;
+// Its detail normal layer (`stage::NormalMap::detail`; 1 white texel elsewhere, unread).
+@group(1) @binding(8) var detail_normal_texture: texture_2d<f32>;
 
 // Textures 0 and 1's mip bias: the draw's, and the upscale's.
 fn texture_bias() -> f32 {
@@ -1916,10 +1926,19 @@ fn environment_reflectance(nv: f32, roughness: f32) -> f32 {
 // A BTB normal map's normal (`stage::Surface::normal`): red and green are x and y, z is rebuilt and the slope scaled,
 // as the `Bump` effects read it, in the frame of the map's uv on screen (Schuler 2013, as `crack_normal`), so the meshes need no
 // tangents: x along u, y along v, the uv's own handedness whatever the mesh's.
-// The map is read and the slopes taken before any branch: both need uniform control flow.
+// The map (and the detail layer) is read and the slopes taken before any branch on the geometry: both need uniform
+// control flow.
+// With a detail layer (`stage::DetailMap`) the normal is bent toward the detail's as AC's `ksPerPixelMultiMap_NMDetail`
+// does: `D = N * dn.z + B' * dn.x + T' * dn.y` with `B' = N x T`, `T' = N x B'`, `T` the map's u direction, the detail
+// read at the map's uv times its scale, then `N + w * (D - N)` with `w` the map's alpha times the layer's blend.
 fn bumped(v: VertexOut) -> vec3<f32> {
-    let uv = select(v.uv0, v.uv1, mode.bump.x > 1.5);
-    let xy = textureSample(normal_texture, texture_sampler, uv).rg * 2.0 - 1.0;
+    let uv = select(v.uv0, v.uv1, mode.bump.x > 1.5) * mode.bump.zw;
+    let map = textureSample(normal_texture, texture_sampler, uv);
+    var detail = vec3<f32>(0.0, 0.0, 1.0);
+    if (bump_detail_draw()) {
+        detail = textureSample(detail_normal_texture, texture_sampler, uv * mode.bump_detail.xy).xyz * 2.0 - 1.0;
+    }
+    let xy = map.rg * 2.0 - 1.0;
     let dp1 = dpdx(v.world);
     let dp2 = dpdy(v.world);
     let duv1 = dpdx(uv);
@@ -1932,10 +1951,19 @@ fn bumped(v: VertexOut) -> vec3<f32> {
     let side1 = cross(n, dp1);
     let t = side2 * duv1.x + side1 * duv2.x;
     let b = side2 * duv1.y + side1 * duv2.y;
-    let scale = inverseSqrt(max(max(dot(t, t), dot(b, b)), 1e-20));
+    let t2 = dot(t, t);
+    let scale = inverseSqrt(max(max(t2, dot(b, b)), 1e-20));
     let z = sqrt(max(1.0 - dot(xy, xy), 0.0));
     let bent = (t * xy.x + b * xy.y) * scale * mode.bump.y + n * z;
-    return select(n, normalize(bent), dot(bent, bent) > 1e-8);
+    let base = select(n, normalize(bent), dot(bent, bent) > 1e-8);
+    if (bump_detail_draw() && t2 > 1e-20) {
+        let bt = cross(base, t * inverseSqrt(t2));
+        let tt = cross(base, bt);
+        let d = base * detail.z + bt * detail.x + tt * detail.y;
+        let mixed = base + (map.a * mode.bump_detail.z) * (select(base, normalize(d), dot(d, d) > 1e-8) - base);
+        return select(base, normalize(mixed), dot(mixed, mixed) > 1e-8);
+    }
+    return base;
 }
 
 // A BTB `Specular` effect's highlight (`stage::Highlight`): `map * colour * pow(max(0, N.H), power)`, `H` between the

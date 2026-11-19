@@ -50,6 +50,11 @@ pub(super) struct BindKey {
     normal: Source,
     normal_uv1: bool,
     normal_doubled: bool,
+    /// The normal map's uv scale and its detail layer ([`crate::stage::NormalMap::detail`]; `White` for none or a missing
+    /// one): the texture, then the scale's and the blend's bits.
+    normal_scale: [u32; 2],
+    detail: Source,
+    detail_layer: [u32; 3],
     /// A BTB highlight ([`crate::stage::Surface::highlight`]), its map in the specular binding.
     highlight: Option<Highlight>,
 }
@@ -64,6 +69,7 @@ impl BindKey {
             second_texture: self.second_texture,
             detail: self.ground,
             bump: self.normal != Source::White,
+            bump_detail: self.normal != Source::White && self.detail != Source::White,
             highlight: self.highlight.is_some(),
         }
     }
@@ -78,6 +84,7 @@ pub(super) struct DrawFeatures {
     pub(super) second_texture: bool,
     pub(super) detail: bool,
     pub(super) bump: bool,
+    pub(super) bump_detail: bool,
     pub(super) highlight: bool,
 }
 
@@ -159,6 +166,12 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         normal: source(normal.map(|n| n.texture), Source::White),
         normal_uv1: normal.is_some_and(|n| n.uv1),
         normal_doubled: normal.is_some_and(|n| n.doubled),
+        normal_scale: normal.map_or([1.0f32; 2], |n| n.scale).map(f32::to_bits),
+        detail: source(normal.and_then(|n| n.detail).map(|d| d.texture), Source::White),
+        detail_layer: normal
+            .and_then(|n| n.detail)
+            .map_or([0.0f32; 3], |d| [d.scale[0], d.scale[1], d.blend])
+            .map(f32::to_bits),
         highlight,
     }
 }
@@ -260,9 +273,15 @@ pub(super) fn bind_group(
         bump: [
             if key.normal == Source::White { 0.0 } else { 1.0 + f32::from(u8::from(key.normal_uv1)) },
             if key.normal_doubled { 2.0 } else { 1.0 },
-            0.0,
-            0.0,
+            f32::from_bits(key.normal_scale[0]),
+            f32::from_bits(key.normal_scale[1]),
         ],
+        bump_detail: if features.bump_detail {
+            let [u, v, blend] = key.detail_layer.map(f32::from_bits);
+            [u, v, blend, 1.0]
+        } else {
+            [0.0; 4]
+        },
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
     };
     let glow = glow.map_or(&views.white, |g| &g.view);
@@ -292,6 +311,7 @@ pub(super) fn bind_group(
             wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(views.get(key.specular)) },
             wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(glow) },
             wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(views.get(key.normal)) },
+            wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(views.get(key.detail)) },
         ],
     })
 }
