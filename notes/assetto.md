@@ -595,3 +595,20 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   raw vertex 0, count, a byte per vertex in v4/v5 (v5 `(b/255)^2`), halves in the legacy `Patch.data`; matched 99 % of Roure's
   and Sa Calobra's drawn triangles) as the greater occlusion with the computed sky occlusion: 0.1 to 1.9, as it mostly agrees
   with it, for +4 % `Objects.zip`. KN5-embedded AO (tangent lengths) is used by none of 589 installed KN5s.
+
+## Dry road sheen and the road normal map, 2026-11-19
+
+- `ReRbrSheen=<roughness>` ([btb.md](btb.md)) on every opaque, non-placeholder, non-foliage material (tile sections too): GGX
+  `alpha = sqrt(2 / (n + 2))` from `ksSpecularEXP`, roughness `sqrt(alpha)` clamped to 0.45..0.85, 0.75 where `ksSpecular` <= 0
+  or n < 1. AC's fresnelC/EXP/max are not read (inconsistent author tuning: C=0 EXP=0 max=0.7 is a constant 70% mirror).
+  Which part is road is the renderer's (`Vertex::wet`, tarmac collision surface under the vertex; the physical meshes live in
+  `phys.kn5`, apart from the visible ones, so no name or material join works in the converter). Roure 395 sections, Sa Calobra 606.
+- `ksMultilayer_fresnel_nm`'s `txDetailNM` is back as the section's normal map at the source uv times `detailNMMult` (`ReRbrBumpScale=u,v`);
+  tile bakes carry the source uv as a second UV set (`ReRbrBumpUv=1`, `FVFData`). Not back: the NMDetail layer, the mask re-encode, CSP AO.
+  Textures.zip Roure 499 to 544 MB, Sa Calobra 529 to 553 MB; 365 and 579 sections gain a normal map.
+- Roure and Sa Calobra at four driveline points each, `--enhance all`, 1600x900, main against this (mean absolute grey change of 255 / share of
+  pixels over 8): midday roure 15.9 / 76 %, sacalobra 9.4 / 36 %; overcast 20.7 / 86 %, 9.6 / 35 %; low sun facing it (17:00) 39.2 / 94 %,
+  21.9 / 81 %. About half of it is the auto exposure: a brighter road darkens the frame (top third 5 to 30 % darker). The normal maps add
+  1.5 to 5 on top of the sheen alone. Full physical strength read as wet or icy blue on the black converted roads, so the sheen is
+  weighted `SHEEN_STRENGTH` 0.35. Known: a patch decal lying on the road (Roure 6.5 km) takes no sheen.
+
