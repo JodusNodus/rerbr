@@ -403,12 +403,14 @@ light). A solar model per rally moves the sun. Below -7 degrees: night (`night.w
 lamps as main or dipped beams with a shadow map, stars, wet-road lamp glints. Shared bakes with M names (73, 83-89)
 probably fit the wrong hour.
 
-- Sky cover steps, thinnest to thickest (`atmosphere::Clouds`): clear, dimpled, partly, heavy (the launcher's Clouds box;
-  the old `light` reads as dimpled). Dimpled (`cloud_volume::layer`, `cloud_params.shape.w`) is a few low cumulus (cover
-  0.2) under a thin dimpled layer (`dimpled` in `cloud_volume.wgsl`): altocumulus 3.6 km up, cells of about 380 m from
-  jittered cellular noise (each its own size, merging), patches from the cloud field, optical depth 0.75 at a cell's
-  middle and 0.22 between, lit as a thin sheet (sun forward scattered, so it warms at low sun), between the march and the
-  cirrus. The 800 m broken stratocumulus stays for the section's own `lightcloud` rows. First look, not tuned.
+- Sky cover steps, thinnest to thickest (`atmosphere::Clouds`): clear, dimpled, partly, broken, heavy (the launcher's
+  Clouds box; the old `light` reads as broken, the same look). Survey (2026-11-19, `cloud_survey`, opaque over the upper
+  sky, 4 fields x 3 eyes): clear 14 % (few), dimpled 18 %, partly 47 % (scattered), broken 77 % (5-7 oktas), heavy 97 %
+  (overcast). The survey reads the marched layer and the cirrus only, not the dimpled sheet (`dimpled` in
+  `cloud_volume.wgsl`, `cloud_params.shape.w`), so dimpled's 18 % is its few low cumulus (cover 0.2) alone: the sheet's
+  own cover is not measured. The sheet is altocumulus 3.6 km up, cells of about 380 m from jittered cellular noise
+  (each its own size, merging), patches from the cloud field, optical depth 0.75 at a cell's middle and 0.22 between,
+  lit as a thin sheet (sun forward scattered, so it warms at low sun), between the march and the cirrus. First look.
 - Moments (`--sun best|golden|midday|dusk|night`, `relight::Moment`; the launcher passes it instead of a clock, `--clock`
   wins; the launcher's default is best; the settings' old `dawn`, `morning` read as best, `afternoon` as golden). Midday,
   dusk, night are where the sun stands (`hour_at`). Best and golden are found on the stage: `sunlit.rs` (CPU ray test from
@@ -1393,7 +1395,7 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   [SECONDS]`): opacity > 0.5 over the whole upper hemisphere, equal solid angle, before exposure and terrain, 4 fields
   x 3 eyes x drift 0/900/1800 s. Clear 12-14% (FEW, 1-2 oktas), Partly 47-51% (SCT; NWS partly cloudy 3/8-5/8),
   Heavy 95-97% (OVC). Light at 0.5 gave 45-57%, no more than Partly; at 0.72 it gives 70-81% (BKN, 5-7 oktas), so
-  `Clouds::Light` is 0.72. The `us_clouded` face keeps 0.5 (stage defaults unchanged). Light's shots against the RSF
+  `Clouds::Light` (now `Broken`) is 0.72. The `us_clouded` face keeps 0.5 (stage defaults unchanged). Light's shots against the RSF
   install: Luceram 0.56/255 RMS, Falstone 11.7/255 (less direct sun).
 - Merge (2026-10-27): the four names are no longer accepted (`--enhance sky` is an unknown name); `LIGHTING` is the one
   pipeline override (was `SKY_LUT`, `CONTACT`, `PROBES`; `SUN_MASK` stays apart, it needs the pass). The 2D cloud layer

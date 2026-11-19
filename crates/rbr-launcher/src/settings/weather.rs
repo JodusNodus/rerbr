@@ -49,11 +49,12 @@ pub enum Clouds {
     Clear,
     Dimpled,
     Partly,
+    Broken,
     Heavy,
 }
 
 impl Clouds {
-    pub const ALL: [Clouds; 4] = [Clouds::Clear, Clouds::Dimpled, Clouds::Partly, Clouds::Heavy];
+    pub const ALL: [Clouds; 5] = [Clouds::Clear, Clouds::Dimpled, Clouds::Partly, Clouds::Broken, Clouds::Heavy];
 }
 
 /// Our rain or snow over the stage (`viewer --precipitation`), not the game's; the road's wetness stays separate.
@@ -91,14 +92,14 @@ impl Choice for Fog {
 impl Choice for Clouds {
     const ALL: &[Self] = &Clouds::ALL;
     fn name(self) -> &'static str {
-        ["clear", "dimpled", "partly", "heavy"][self as usize]
+        ["clear", "dimpled", "partly", "broken", "heavy"][self as usize]
     }
     fn label(self) -> &'static str {
-        ["Clear", "Dimpled clouds", "Partly cloudy", "Overcast"][self as usize]
+        ["Clear", "Dimpled clouds", "Partly cloudy", "Broken clouds", "Overcast"][self as usize]
     }
-    /// `light`, the word of the cover this one replaced, reads as dimpled.
+    /// `light`, the word the broken cover had, still reads as it.
     fn parse(text: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|c| c.name() == if text == "light" { "dimpled" } else { text })
+        Self::ALL.iter().copied().find(|c| c.name() == if text == "light" { "broken" } else { text })
     }
 }
 
