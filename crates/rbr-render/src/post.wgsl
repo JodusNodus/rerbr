@@ -122,6 +122,10 @@ const ROD_SHIFT: mat3x3<f32> = mat3x3<f32>(
     vec3<f32>(0.010507, -0.011333, 0.061863),
 );
 const ROD_RETINA: f32 = 3000.0;
+// The share of the rods' shift applied (Filament's `nightAdaptation`, 0 to 1, off by default there). In full the
+// shift grows as the light falls: moonlit grey at 0.001 cd/m2 came out saturation 0.79 blue, the night Gabiria chase's
+// dark ground violet (dark pixels' saturation 0.75; 0.57 at half, 0.35 without, which leaves the moon's warm colour).
+const ROD_STRENGTH: f32 = 0.5;
 // Local exposure (`fs_composite`; as Unreal's local exposure lowers the highlights' contrast): the eye adapts to each
 // part of what it sees, a single exposure cannot, and the lamps' beam on the road at night is several stops over the
 // dark the meter exposes for. Where the frame's broad light, the glare chain's sum of blurs, is exposed more than
@@ -433,7 +437,7 @@ var<workgroup> counts: array<u32, ZONE_BINS>;
 fn rod_vision(c: vec3<f32>) -> vec3<f32> {
     let q = max(c * ROD_RETINA, vec3<f32>(0.0)) * LMSR;
     let gain = inverseSqrt(1.0 + 0.33 / CONE_MAX * (q.xyz + ROD_INPUT * q.w));
-    return c + ROD_SHIFT * (gain * q.w) / ROD_RETINA;
+    return c + ROD_STRENGTH * ROD_SHIFT * (gain * q.w) / ROD_RETINA;
 }
 
 // The exposure compensation curve (`KEY`'s scale) for an adapting luminance `l`, cd/m2.
