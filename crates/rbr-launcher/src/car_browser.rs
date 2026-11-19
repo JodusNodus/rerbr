@@ -554,41 +554,30 @@ impl CarBrowser {
             .collect();
         let sorts: Vec<(Sort, String)> = Sort::ALL.map(|s| (s, s.label().to_owned())).to_vec();
         const DROPS: [f32; 3] = [112.0, 84.0, 118.0];
-        let drops_width = DROPS.iter().sum::<f32>() + 3.0 * 8.0;
-        let seg = browser::segmented_width(ui, &labels);
+        let sizes = (browser::segmented_width(ui, &labels), DROPS.iter().sum::<f32>() + 3.0 * 8.0, (180.0, 300.0));
         let before = (self.filter.clone(), self.sort, self.collection.clone());
-        browser::bar(ui, |ui| {
-            let room = ui.available_width() - seg - 16.0;
-            let one_row = room - drops_width >= 180.0;
-            let search = (if one_row { room - drops_width - 8.0 } else { room }).clamp(180.0, 300.0);
-            let hint = "Search name, class, number";
-            ui.horizontal(|ui| {
-                browser::search_box(ui, hint, &mut self.filter.query, &mut self.focus, search);
-                let mut scope = self.collection.clone().unwrap_or(Collection::All);
-                let counts = self.scope_counts(favourites, recent);
-                let segments = kit::segmented(ui, "cars scope", &mut scope, &scopes);
-                if segments.on_hover_text(counts).changed() {
-                    self.collection = Some(scope);
-                    self.filter.query.clear();
+        let counts = self.scope_counts(favourites, recent);
+        browser::filter_bar(
+            ui,
+            self,
+            sizes,
+            |s, ui, width| {
+                browser::search_box(ui, "Search name, class, number", &mut s.filter.query, &mut s.focus, width);
+                let mut scope = s.collection.clone().unwrap_or(Collection::All);
+                if kit::segmented(ui, "cars scope", &mut scope, &scopes).on_hover_text(counts).changed() {
+                    s.collection = Some(scope);
+                    s.filter.query.clear();
                 }
-                if one_row {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.dropdowns(ui, &classes, &drives, &sorts, DROPS);
-                    });
-                }
-            });
-            if !one_row {
-                ui.add_space(8.0);
-                ui.horizontal(|ui| self.dropdowns(ui, &classes, &drives, &sorts, DROPS));
-            }
-        });
+            },
+            |s, ui| s.dropdowns(ui, &classes, &drives, &sorts, DROPS),
+        );
         if before != (self.filter.clone(), self.sort, self.collection.clone()) {
             // Back to the search box, where the arrows move through the list.
             self.focus = true;
         }
     }
 
-    /// The class, drive and sort dropdowns, right to left when in a right-to-left layout (the last is the sort).
+    /// The class, drive and sort dropdowns.
     fn dropdowns(
         &mut self,
         ui: &mut egui::Ui,
@@ -597,7 +586,6 @@ impl CarBrowser {
         sorts: &[(Sort, String)],
         widths: [f32; 3],
     ) {
-        let rtl = ui.layout().main_dir() == egui::Direction::RightToLeft;
         let class_text = self.filter.class.clone().unwrap_or_else(|| "All classes".to_owned());
         let drive_text = self.filter.drive.map_or("Any drive", Drive::label).to_owned();
         let sort_text = format!("Sort: {}", self.sort.label());
@@ -610,15 +598,7 @@ impl CarBrowser {
         let sort = |s: &mut Self, ui: &mut egui::Ui| {
             browser::dropdown(ui, "cars sort", widths[2], &sort_text, &mut s.sort, sorts)
         };
-        if rtl {
-            sort(self, ui);
-            drive(self, ui);
-            class(self, ui);
-        } else {
-            class(self, ui);
-            drive(self, ui);
-            sort(self, ui);
-        }
+        browser::in_order(ui, self, &[&class, &drive, &sort]);
     }
 
     /// The scopes of the filter bar: all cars, the favourites, the recent picks and the cars that cannot start (when

@@ -270,6 +270,44 @@ pub fn dropdown<T: Clone + PartialEq>(
     });
 }
 
+/// A part of a bar drawn with the browser's state.
+type Part<'a, S> = &'a dyn Fn(&mut S, &mut egui::Ui);
+
+/// Runs the dropdowns `parts` left to right, or right to left in a right-to-left layout.
+pub fn in_order<S>(ui: &mut egui::Ui, state: &mut S, parts: &[Part<S>]) {
+    if ui.layout().main_dir() == egui::Direction::RightToLeft {
+        parts.iter().rev().for_each(|part| part(state, ui));
+    } else {
+        parts.iter().for_each(|part| part(state, ui));
+    }
+}
+
+/// The filter bar's layout: `lead` draws the search box (given its width, clamped to `search`) and the scopes, then
+/// the `drops` (`drops_width` wide) follow on the same row when they fit, else on a row below.
+pub fn filter_bar<S>(
+    ui: &mut egui::Ui,
+    state: &mut S,
+    (seg, drops_width, search): (f32, f32, (f32, f32)),
+    lead: impl FnOnce(&mut S, &mut egui::Ui, f32),
+    drops: impl Fn(&mut S, &mut egui::Ui),
+) {
+    bar(ui, |ui| {
+        let room = ui.available_width() - seg - 16.0;
+        let one_row = room - drops_width >= search.0;
+        let width = (if one_row { room - drops_width - 8.0 } else { room }).clamp(search.0, search.1);
+        ui.horizontal(|ui| {
+            lead(state, ui, width);
+            if one_row {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| drops(state, ui));
+            }
+        });
+        if !one_row {
+            ui.add_space(8.0);
+            ui.horizontal(|ui| drops(state, ui));
+        }
+    });
+}
+
 /// The search box: it takes focus when `focus` is set, and when the player types with nothing else focused on it.
 /// Typing anywhere searches.
 pub fn search_box(ui: &mut egui::Ui, hint: &str, query: &mut String, focus: &mut bool, width: f32) {
