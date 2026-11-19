@@ -414,8 +414,10 @@ probably fit the wrong hour.
   across it (undulatus), bent by a broad warp; patches from the cloud field, where the cloudlets also shrink toward the
   edges; optical depth 0.9 at a mound's middle and 0.15 between; lit as a thin sheet (sun forward scattered through it,
   each cloudlet's side toward a low sun lit, the far side shaded), between the march and the cirrus. Toward the horizon
-  the cloudlets blur into an even veil once a half-size pixel spans a third of one (no aliasing in stills; motion not
-  checked). From the WMO atlas and descriptions of the mackerel sky: Ac elements 1-5 degrees wide, rows across the shear
+  the cloudlets blur into an even veil as a texel (the angle to the march's or dome's neighbouring texel) spans a quarter
+  to 0.8 of one, and the sheet fades out from 24 to 60 km (`VOLUME_REACH`): at 1080p and 45 degrees across, cloudlets
+  above about 13 degrees, streaks down to about 4 (no aliasing in stills; motion not checked). A fixed 0.0022 rad texel
+  and a 30 km reach left the sheet only above about 20 degrees, out of most chase and flyby shots. From the WMO atlas and descriptions of the mackerel sky: Ac elements 1-5 degrees wide, rows across the shear
   in undulatus, gaps (perlucidus), thinner translucent edges, at low sun the sunward sides lit. Tuned by eye on Odry and
   Komarov (2026-11-19).
 - Moments (`--sun best|golden|midday|dusk|night`, `relight::Moment`; the launcher passes it instead of a clock, `--clock`

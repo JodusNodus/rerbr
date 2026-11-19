@@ -282,18 +282,18 @@ fn cirrus(dir: vec3<f32>) -> vec4<f32> {
 // noise say where the layer is: toward a patch's edge the cloudlets shrink and part as the sheet thins. Lit as
 // a thin sheet: the sun forward scattered through it (thin rims glow, thick middles darken toward the sun), each
 // cloudlet's side toward a low sun lit and its far side shaded, and the sky's light. Its light (display colour, times
-// its cover) and how much shows through; the cloudlets blur into an even veil where a pixel spans one (toward the
-// horizon), so they do not shimmer, and the layer fades into the haze.
+// its cover) and how much shows through; the cloudlets blur into an even veil where a pixel (`pixel`, the angle between
+// neighbouring pixels of the drawn view or dome) spans one (toward the horizon), so they do not shimmer, and the layer
+// fades into the haze as far out as the march reaches: at 3.6 km a real altocumulus sheet shows down to a few degrees
+// over the horizon, drawn into streaks.
 const DIMPLE_HEIGHT: f32 = 3600.0;
-const DIMPLE_REACH: f32 = 30000.0;
+const DIMPLE_REACH: f32 = VOLUME_REACH;
 // A cloudlet's widest along the wind and across it (along a roll), metres: about 4 by 5 degrees overhead, 2 at 30
 // degrees up (the atlas' 1 to 5).
 const DIMPLE_CELL: vec2<f32> = vec2<f32>(230.0, 290.0);
 // The optical depth of the thickest cloudlet's middle and of the thin sheet between the cloudlets.
 const DIMPLE_DEPTH: f32 = 0.9;
 const DIMPLE_SHEET: f32 = 0.15;
-// The half-size march's pixel, radians (80 degrees over 640).
-const DIMPLE_PIXEL: f32 = 0.0022;
 
 struct Dimple {
     // Thickness, 0 between the cloudlets to 1 at the thickest middle.
@@ -329,7 +329,7 @@ fn dimple_thickness(q: vec2<f32>, rows: f32, grow: f32) -> Dimple {
     return Dimple(min(sum, 1.0) * roll, slope * roll);
 }
 
-fn dimpled(dir: vec3<f32>) -> vec4<f32> {
+fn dimpled(dir: vec3<f32>, pixel: f32) -> vec4<f32> {
     let amount = cloud_params.shape.w;
     if (amount <= 0.0 || dir.y < 0.02) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
@@ -350,7 +350,7 @@ fn dimpled(dir: vec3<f32>) -> vec4<f32> {
     let rows = smoothstep(0.3, 0.7, cloud_value(q * 0.05 + vec2<f32>(23.0, 61.0)));
     let cell = dimple_thickness(q, rows, mix(0.75, 1.1, smoothstep(0.3, 0.8, n)));
     // Where a pixel spans a cloudlet (its footprint on the shell over the cloudlet's width), its mean.
-    let span = t * DIMPLE_PIXEL / max(dir.y, 0.05) / DIMPLE_CELL.x;
+    let span = t * pixel / max(dir.y, 0.05) / DIMPLE_CELL.x;
     let detail = 1.0 - smoothstep(0.25, 0.8, span);
     // Ragged rims: fine noise eats into the thin edges.
     let rag = (cloud_value(q * 3.1 + vec2<f32>(13.0, 2.0)) - 0.5) * 0.35;
@@ -382,7 +382,7 @@ fn sky_display(linear: vec3<f32>) -> vec3<f32> {
 
 // The clouds along `dir` under the cirrus: one march into a history that holds the direction (`held`), else
 // `VOLUME_FIRST`.
-fn volume_now(dir: vec3<f32>, pixel: vec2<f32>, held: bool) -> vec4<f32> {
+fn volume_now(dir: vec3<f32>, pixel: vec2<f32>, held: bool, angle: f32) -> vec4<f32> {
     var low = volume_march(dir, pixel, 0.0);
     if (!held) {
         for (var k = 1; k < VOLUME_FIRST; k++) {
@@ -391,7 +391,7 @@ fn volume_now(dir: vec3<f32>, pixel: vec2<f32>, held: bool) -> vec4<f32> {
         low /= f32(VOLUME_FIRST);
     }
     let streaks = cirrus(dir);
-    let dimples = dimpled(dir);
+    let dimples = dimpled(dir, angle);
     let high = vec4<f32>(dimples.rgb + dimples.a * streaks.rgb, dimples.a * streaks.a);
     return vec4<f32>(low.rgb + low.a * high.rgb, low.a * high.a);
 }
@@ -405,9 +405,10 @@ fn volume_blend() -> f32 {
 // the texel (the prepass's depth) it keeps the last frame's, so that the clouds are there when it moves off them.
 @fragment
 fn fs_cloud_march(v: SkyOut) -> @location(0) vec4<f32> {
-    let far = frame.inverse_view_projection * vec4<f32>(v.ndc, 0.0, 1.0);
-    let near = frame.inverse_view_projection * vec4<f32>(v.ndc, 1.0, 1.0);
-    let dir = normalize(far.xyz / far.w - near.xyz / near.w);
+    let dir = march_dir(v.ndc);
+    // The angle to the neighbouring texels (the history is the march's size), for the dimpled layer's detail.
+    let step = 2.0 / vec2<f32>(textureDimensions(cloud_history));
+    let angle = max(distance(dir, march_dir(v.ndc + vec2<f32>(step.x, 0.0))), distance(dir, march_dir(v.ndc + vec2<f32>(0.0, step.y))));
     var history = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     var known = false;
     if (cloud_params.state.y != 0.0) {
@@ -424,8 +425,15 @@ fn fs_cloud_march(v: SkyOut) -> @location(0) vec4<f32> {
     if (known && cloud_params.state.z != 0.0 && textureLoad(scene_depth, min(full, vec2<i32>(textureDimensions(scene_depth)) - 1), 0) > 0.0) {
         return history;
     }
-    let now = volume_now(dir, v.clip.xy, known);
+    let now = volume_now(dir, v.clip.xy, known, angle);
     return select(now, mix(history, now, volume_blend()), known);
+}
+
+// The view's direction through clip point `ndc`.
+fn march_dir(ndc: vec2<f32>) -> vec3<f32> {
+    let far = frame.inverse_view_projection * vec4<f32>(ndc, 0.0, 1.0);
+    let near = frame.inverse_view_projection * vec4<f32>(ndc, 1.0, 1.0);
+    return normalize(far.xyz / far.w - near.xyz / near.w);
 }
 
 // The dome's texture coordinates (0 to 1) of an upward direction: the upper hemisphere's octahedral map, turned 45
@@ -475,9 +483,13 @@ fn fs_cloud_shadow(v: SkyOut) -> @location(0) f32 {
 // blended into the last frame's.
 @fragment
 fn fs_cloud_dome(v: SkyOut) -> @location(0) vec4<f32> {
-    let dir = cloud_dome_dir(vec2<f32>(v.ndc.x, -v.ndc.y));
+    let q = vec2<f32>(v.ndc.x, -v.ndc.y);
+    let dir = cloud_dome_dir(q);
+    // The angle to the neighbouring texels (the history is the dome's size), for the dimpled layer's detail.
+    let step = 2.0 / vec2<f32>(textureDimensions(cloud_history));
+    let angle = max(distance(dir, cloud_dome_dir(q + vec2<f32>(step.x, 0.0))), distance(dir, cloud_dome_dir(q + vec2<f32>(0.0, step.y))));
     let held = cloud_params.state.y != 0.0;
-    let now = volume_now(dir, v.clip.xy, held);
+    let now = volume_now(dir, v.clip.xy, held, angle);
     if (!held) {
         return now;
     }
