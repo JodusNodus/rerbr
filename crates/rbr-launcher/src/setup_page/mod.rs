@@ -468,26 +468,10 @@ impl SetupPage {
             return false;
         }
         let chosen = self.chosen().map(str::to_owned);
-        let selected = match &chosen {
-            Some(name) => {
-                self.profiles.iter().find(|p| p.id == *name).map_or(format!("{name} (missing)"), Profile::label)
-            }
-            None => DEFAULT.to_owned(),
-        };
         let mut pick = None;
         let edit = ui
             .horizontal(|ui| {
-                let combo = ComboBox::from_id_salt("drive-setup").width(width - 70.0).selected_text(selected);
-                combo.show_ui(ui, |ui| {
-                    if ui.selectable_label(chosen.is_none(), DEFAULT).clicked() {
-                        pick = Some(None);
-                    }
-                    for p in &self.profiles {
-                        if ui.selectable_label(chosen.as_deref() == Some(&p.id), p.label()).clicked() {
-                            pick = Some(Some(p.id.clone()));
-                        }
-                    }
-                });
+                pick = self.pick_ui(ui, "drive-setup", width - 70.0, &chosen);
                 ui.button("Edit…").on_hover_text("Make, change and save setups on the Car setup page").clicked()
             })
             .inner;
@@ -611,10 +595,7 @@ impl SetupPage {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Setup").color(theme::TEXT_LABEL))
                 .on_hover_text("The setup you drive with on the Drive page too");
-            let selected = chosen.as_ref().map_or(DEFAULT.to_owned(), |id| {
-                self.profiles.iter().find(|p| p.id == *id).map_or(format!("{id} (missing)"), Profile::label)
-            });
-            if let Some(name) = self.pick_ui(ui, "setup-open", selected, chosen.clone()) {
+            if let Some(name) = self.pick_ui(ui, "setup-open", 220.0, &chosen) {
                 self.drive_with(name.as_deref());
             }
             ui.label(RichText::new(format!("{} setups", self.surface())).color(theme::TEXT_2));
@@ -711,9 +692,12 @@ impl SetupPage {
     }
 
     /// A list of the default and the saved setups, `chosen` marked; the one picked (`Some(None)` the default).
-    fn pick_ui(&self, ui: &mut Ui, id: &str, selected: String, chosen: Option<String>) -> Option<Option<String>> {
+    fn pick_ui(&self, ui: &mut Ui, id: &str, width: f32, chosen: &Option<String>) -> Option<Option<String>> {
+        let selected = chosen.as_ref().map_or(DEFAULT.to_owned(), |id| {
+            self.profiles.iter().find(|p| p.id == *id).map_or(format!("{id} (missing)"), Profile::label)
+        });
         let mut pick = None;
-        ComboBox::from_id_salt(id).width(220.0).selected_text(selected).show_ui(ui, |ui| {
+        ComboBox::from_id_salt(id).width(width).selected_text(selected).show_ui(ui, |ui| {
             if ui.selectable_label(chosen.is_none(), DEFAULT).clicked() {
                 pick = Some(None);
             }
