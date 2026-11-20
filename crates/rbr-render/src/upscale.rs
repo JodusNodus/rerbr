@@ -424,19 +424,32 @@ fn bc(format: Format) -> texpresso::Format {
     match format {
         Format::Dxt1 => texpresso::Format::Bc1,
         Format::Dxt3 => texpresso::Format::Bc2,
-        // Plain RGBA (community stages' and cars') is packed as DXT5, which keeps its alpha. BC7 is never decoded or
-        // encoded here ([`larger_side`], [`with_block_mips`] leave it as it is).
+        // Plain RGBA (community stages' and cars') is packed as DXT5, which keeps its alpha. BC7 is never encoded here
+        // ([`larger_side`], [`with_block_mips`] leave it as it is); [`decompress`] decodes it with bcdec.
         Format::Dxt5 | Format::Rgba8 | Format::Bc7 => texpresso::Format::Bc3,
     }
 }
 
 /// A `.dds` level's texels as RGBA8.
 pub fn decompress(format: Format, data: &[u8], width: u32, height: u32) -> Vec<u8> {
-    if format == Format::Rgba8 {
-        return data.to_vec();
+    let (w, h) = (width as usize, height as usize);
+    let mut rgba = vec![0; w * h * 4];
+    match format {
+        Format::Rgba8 => return data.to_vec(),
+        Format::Bc7 => {
+            let across = w.div_ceil(4);
+            let mut texels = [0u8; 64];
+            for (k, block) in data.chunks_exact(16).take(across * h.div_ceil(4)).enumerate() {
+                bcdec_rs::bc7(block, &mut texels, 16);
+                let (x, y) = (k % across * 4, k / across * 4);
+                for row in 0..4.min(h - y) {
+                    let n = 4.min(w - x) * 4;
+                    rgba[((y + row) * w + x) * 4..][..n].copy_from_slice(&texels[row * 16..][..n]);
+                }
+            }
+        }
+        _ => bc(format).decompress(data, w, h, &mut rgba),
     }
-    let mut rgba = vec![0; (width * height * 4) as usize];
-    bc(format).decompress(data, width as usize, height as usize, &mut rgba);
     rgba
 }
 
@@ -551,6 +564,22 @@ pub fn read_png(path: &Path) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bc7_level_decompresses() {
+        // Mode 6 (bit 6 set), both endpoints (127, 0, 127, 127) with p-bits 1: every texel (255, 1, 255, 255); a 6 by
+        // 5 level takes its 2 by 2 blocks' texels within it.
+        let mut value: u128 = 1 << 6;
+        let mut at = 7;
+        for c in [127u128, 0, 127, 127] {
+            value |= (c | c << 7) << at;
+            at += 14;
+        }
+        value |= 0b11 << at;
+        let data = value.to_le_bytes().repeat(4);
+        let texels = decompress(Format::Bc7, &data, 6, 5);
+        assert!(texels.len() == 6 * 5 * 4 && texels.chunks(4).all(|t| t == [255, 1, 255, 255]));
+    }
 
     /// A grey DXT1 file `side` texels square, as `encode` writes it.
     fn file(side: u32) -> Vec<u8> {

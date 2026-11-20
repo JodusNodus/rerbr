@@ -424,8 +424,8 @@ pub struct GrassGroup {
     pub pieces: Vec<GrassPiece>,
 }
 
-/// A piece of the atlas: `cell` (column, row, from 1, row 1 at the bottom of the atlas) and `size` in cells, its weight and
-/// its width and height multipliers (`SIZE_MULT`).
+/// A piece of the atlas: `cell` (column from 1, row from 0 at the top, as CSP counts) and `size` in cells, its weight and
+/// its drawn width and height in cells (`SIZE_MULT`, which overrides the default of its size).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GrassPiece {
     pub cell: [u32; 2],
@@ -465,8 +465,8 @@ impl GrassFx {
                         (!list(&format!("group{n}_piece{m}")).is_empty()).then(|| list(&format!("group{n}_piece{m}")))
                     })
                     .filter_map(|p| match p[..] {
-                        [x, y, w, h, chance, ref mult @ ..] if x >= 1.0 && y >= 1.0 && w >= 1.0 && h >= 1.0 => {
-                            let mult = if let [a, b] = mult[..] { [a, b] } else { [1.0; 2] };
+                        [x, y, w, h, chance, ref mult @ ..] if x >= 1.0 && y >= 0.0 && w >= 1.0 && h >= 1.0 => {
+                            let mult = if let [a, b] = mult[..] { [a, b] } else { [w, h] };
                             Some(GrassPiece { cell: [x as u32, y as u32], size: [w as u32, h as u32], chance, mult })
                         }
                         _ => None,
@@ -795,6 +795,8 @@ mod tests {
         );
         assert_eq!((grass.groups.len(), grass.mask), (2, Some([0.3, 0.01])));
         assert!(grass.groups[0].pieces.is_empty() && grass.groups[1].chance == 2.0);
+        // A piece without `SIZE_MULT` is drawn its size in cells.
+        assert_eq!(grass.groups[1].pieces[0], GrassPiece { cell: [1, 1], size: [1, 1], chance: 1.0, mult: [1.0, 1.0] });
         assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5, mult: [0.6, 1.5] });
         assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }

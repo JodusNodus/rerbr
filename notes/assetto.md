@@ -497,7 +497,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `settings.ini` gets `[ReRbrGrass]`: `texture` (`TEXTURE` where it names a `.dds` of the track's own `extension`
   folder, copied into `Textures.zip`; no key or a CSP-bundled file like `grass_fx/highlands.dds`: none, ReRBR's
   blades), `grid` (`TEXTURE_GRID`), `base` (`TEXTURE_BASE_CHANCE`), `group<n>` (`TEXTURE_GROUP_<n>_CHANCE`, default 0)
-  with `group<n>_piece<m>=col,row,w,h,chance[,mw,mh]` (`PIECE_<m>`: cells from 1, row 1 at the bottom of the picture, `PIECE_<m>_CHANCE` default 1, `PIECE_<m>_SIZE_MULT` read as width, height multipliers), `size` (`SHAPE_SIZE`),
+  with `group<n>_piece<m>=col,row,w,h,chance[,mw,mh]` (`PIECE_<m>`: column from 1, row from 0 at the top as CSP's wiki has it, `PIECE_<m>_CHANCE` default 1, `PIECE_<m>_SIZE_MULT` the drawn size in cells, default the piece's size), `size` (`SHAPE_SIZE`),
   and `luminance=min,max` (`MASK_MIN/MAX_LUMINANCE`). Dense grass (`--enhance grass`) then grows on those materials
   instead of by colour (`grass::add`): where the ground texel's linear luminance is in range, on any facing the
   ground's normal allows, within the usual 20 m band. Colour mask (2026-11-20): `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD` (CSP defaults 0.5, 0.05 where unset) go to
@@ -505,23 +505,23 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   formula: linear `(g - max(r - red, b)) / mean`) exceeds the main threshold. Gabiria lists its road materials in
   `GRASS_MATERIALS` and its grey asphalt passed the luminance test alone: the road was a reed bed. Not used:
   `SHAPE_TIDY/CUT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
-  (Highlands). Row order checked on Sa Calobra's atlas (`3,1,1,2` the heather, `4,1,2,2` the reeds, the top row the
-  plain grass, which `base` takes one cell each; test `an_atlas_piece_counts_its_rows_from_the_bottom`). Size: a cell is
-  `SHAPE_SIZE` x 0.14 m (6.5: 0.91 m, blade heights matched by eye to the AC rock shot's boulders), times the
-  piece's cells and `SIZE_MULT`, 0.8-1.2 per clump, clumps a m² `FX_COVER` 4.1 over the cell's area (Sa Calobra
-  5, Créquy's 0.28 m cells 52, at most 60; our blades 40: at 0.08 m and 40 Sa Calobra's verge was a carpet, AC's has
-  separate tufts; a flat 5 left Créquy's verges bare); unset `SHAPE_SIZE` takes 1.5. Colour: the ground's hue at `FX_SATURATION`
-  0.55 (no lush/straw lean) and `FX_SHADE` 2.2 with the brightness ratio clamp lowered (`FX_BRIGHT`); the cards carry
-  `specular.z` 2 (`FX_CARD`); a clump's mean linear luminance is at most `FX_ALBEDO` 0.1 (2026-11-20: Gabiria's pale verges, 0.21, made frost-white reeds; Créquy's verges darker green, Sa Calobra unchanged) and `own_light` ramps them from `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP`
-  (1.2, 1.0, 0.95) at the top. At 0.3/1.2 (07:35 calibration) the verges read charcoal, at 0.7/2.5 with no ramp
-  khaki (green over blue 1.25 against AC's 1.15); now rock view 06:45 `--frames 32` grass 50 / low verge 39 luminance,
-  RGB 55,49,40 against AC's 60,53,45 / 34 (2026-11-19). The support ring is 0.4 of a card's
-  width (the meadow's ring halved the cards). Unverified: `SIZE_MULT` as width,height (it may be a min,max scale);
-  the atlas grey pass skipped compressed (DXT) atlases until 2026-11-19, so Sa Calobra's had used our blades.
-  Sa Calobra down, rock view 07:35 (`/tmp/grassfx/rock.png`, before | after): grey terrain went from a patch of
-  colour-picked grass to olive tufts over the dark ground, none on the white boulders (luminance over 0.25), as the AC
-  shot. Riudecanyes (no `TEXTURE`): our blades on `srfdtl` and `cliffs3`. The atlas is drawn grey (luminance of its
-  texels, mips and cut-out coverage rebuilt) so the ground's hue and brightness colour it, as ours.
+  (Highlands). Calibrated against CSP itself (2026-11-20: AC + CSP booted under Proton, a Lua app puts the camera at
+  the render poses and screenshots; Prunières, Sa Calobra, Gabiria, Roure side by side with ours):
+  - Atlas: loaded as shipped (DXT, BC7 via `bcdec_rs`: Prunières' `super_grass.dds` is BC7 and fell back to our blades),
+    colours kept, mips and cut-out coverage rebuilt. Row 0 the base grass (Sa Calobra: `3,1,1,2` heather, `4,1,2,2`
+    reeds; test `an_atlas_piece_counts_its_rows_from_the_top_from_0`). Group pieces take `FX_PIECE_SHARE` 0.25 of their
+    chance and grow only past 12-25 m (`FX_PIECE_NEAR`), as CSP spawns them from its third pass, the base grass nearer.
+  - Colour: CSP's marker blades (pure green) take the ground's colour, their green the brightness; other texels keep
+    their own. The shader splits each filtered texel linearly (green above max(r, b) the blades', the rest its own):
+    a threshold on the ratio drew Prunières' base grass lime, its green and dry blades interleaved so filtered texels
+    mix both. Blades: the ground's hue at `FX_SATURATION` 0.5 leaned 0.4 to olive (0.8, 1, 0.4), linear albedo
+    `FX_ALBEDO` 0.07, `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP` at the top.
+  - Size: a cell is 0.18 m x sqrt(`SHAPE_SIZE`) (6.5: 0.46 m; linear in size made Prunières' 9.5 weeds 5 m tall),
+    0.8-1.2 per clump; clumps a m² `FX_COVER` 4.1 over the cell's area, at most 60; unset `SHAPE_SIZE` 1.5.
+  - Mask: grows where `Fx::green` exceeds `MASK_MAIN_THRESHOLD` x 0.4 (`FX_MASK_SCALE`: at 1x Prunières, 0.75, was
+    bare where CSP has grass); none on a converted stage's road mesh (wet-marked), so Gabiria's asphalt stays clear.
+  - Open: CSP's Prunières grass is sparser and shorter than ours and its road edge strip is held off by
+    `OCCLUDING_MATERIALS`, which we skip; CSP's distant fog is bluer.
 
 ## Launcher import (2026-11-18)
 

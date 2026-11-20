@@ -2408,6 +2408,7 @@ dependencies = [
 name = "rbr-render"
 version = "0.1.0"
 dependencies = [
+ "bcdec_rs",
  "block2 0.6.2",
  "bytemuck",
  "egui",

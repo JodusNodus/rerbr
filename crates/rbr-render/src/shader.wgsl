@@ -477,7 +477,10 @@ fn vertex(input: VertexIn) -> VertexOut {
     out.world = v.position;
     if (is_grass_top(v)) {
         // Shrunk into the ground past the density where it stands and at the far edge of the grass.
-        let height = v.uv2.x * grass_grown(distance(v.position, frame.eye.xyz), v.uv2.y);
+        let d = distance(v.position, frame.eye.xyz);
+        // A converted stage's group pieces (`grass::FX_PIECE`) grow only away from the eye.
+        let piece = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
+        let height = v.uv2.x * grass_grown(d, v.uv2.y) * piece;
         out.world = v.position + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
         out.clip = frame.view_projection * vec4<f32>(out.world, 1.0);
     }
@@ -523,6 +526,9 @@ const GRASS_FADE: vec2<f32> = vec2<f32>(100.0, 110.0);
 // `keep` (`grass::Card::keep`) is full height under the density and shrinks into the ground up to `.z` times it
 // (`grass::GROW_MARGIN`).
 const GRASS_THIN: vec3<f32> = vec3<f32>(50.0, 25.0, 1.5);
+// The metres from the eye over which a converted stage's group pieces grow in (`grass::FX_PIECE`): CSP draws its base
+// grass nearer and the pieces from its third generation pass on.
+const FX_PIECE_NEAR: vec2<f32> = vec2<f32>(12.0, 25.0);
 
 fn grass_density(d: f32) -> f32 {
     return min(exp2((GRASS_THIN.x - d) / GRASS_THIN.y), 1.0) * (1.0 - smoothstep(GRASS_FADE.x, GRASS_FADE.y, d));
@@ -707,7 +713,18 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     var albedo = pow(surface, vec3<f32>(2.2));
     if (own) {
         albedo = albedo_remap(albedo);
-        if (is_tuft(v) && v.specular.x > GRASS_MARK) {
+        if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
+            // A converted stage's atlas cards (`grass::FX_CARD`), as CSP draws them: its bright green blades (red and
+            // blue nought) take the ground's colour under them, their green the brightness; its other texels (dry
+            // blades, flowers) keep their own, the card's hue (`own_light`) taken back off them. The filtered texel
+            // mixes both (Prunières' base grass interleaves green and dry blades), so it is split linearly: the green
+            // above its red and blue is the blades', the rest its own.
+            let linear = pow(surface, vec3<f32>(2.2));
+            let green = max(linear.g - max(linear.r, linear.b), 0.0);
+            let blades = albedo_remap(vec3<f32>(green)) * (v.specular.x - GRASS_MARK);
+            let rest = albedo_remap(linear - vec3<f32>(0.0, green, 0.0));
+            albedo = blades + rest / max(pow(baked_hue(v.color.rgb), vec3<f32>(2.2)), vec3<f32>(0.01));
+        } else if (is_tuft(v) && v.specular.x > GRASS_MARK) {
             // Our grass cards (`grass.rs`) take the ground's brightness under them.
             albedo = albedo * (v.specular.x - GRASS_MARK);
         } else if (is_tuft(v)) {
