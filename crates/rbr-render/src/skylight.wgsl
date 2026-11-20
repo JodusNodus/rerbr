@@ -365,9 +365,13 @@ fn cs_aerial(@builtin(global_invocation_id) id: vec3<u32>) {
     let phase_m = mie_phase(nu);
     // Under an overcast sky the haze is lit by the deck and the ground under it, not by the sun: the overcast sky's
     // light (`overcast_light`) averaged over the sphere, the deck's half `6 E / (7 pi)`, the ground's its albedo times
-    // `E / pi`.
+    // `E / pi`. Once the sun is down, the clear sky's twilight (`scale.y`, without the moon's direct light that
+    // `scale.w` then holds) fading out by the night's start (`relight::NIGHT`, 7 degrees down), where the night sky's
+    // light (`moonlit`) takes over: held, the twilight table lit the haze far brighter than the night's stage.
     let overcast = sky.shape.w != 0.0;
-    let around = 0.5 * (6.0 / 7.0 + sky.ground.rgb) * OVERCAST_SHARE * light_out.scale.w / PI;
+    let twilight = light_out.scale.y * smoothstep(-0.122, 0.0, sky.to_sun.y);
+    let day = select(light_out.scale.w, twilight, sky.to_sun.y < 0.0);
+    let around = 0.5 * (6.0 / 7.0 + sky.ground.rgb) * OVERCAST_SHARE * day / PI;
     var light = vec3<f32>(0.0);
     var transmittance = vec3<f32>(1.0);
     var t = 0.0;
