@@ -531,6 +531,13 @@ const LIGHT_GAMMA: f32 = 2.2;
 /// Calobra's road (1.77/1.67, 3.5/3.1 linear) read 1.5 times AC's against its ground; at 2 it is 1.1 (AC's road 59,
 /// ours 65 and 53 at the rock and wall views, 06:45).
 const LIGHT_RANGE: (f32, f32) = (0.05, 2.0);
+/// The highest `(ksAmbient, ksDiffuse)` reference of the installed tracks drawn as AC draws them: Col de Braus's ambient
+/// 0.95 and Gabiria's and the Nordschleife's diffuse 0.35 (40 stages, 2026-11-20). AC lights `ks` absolutely, so a
+/// track whose reference is higher (Prunières-Embrun's 1.6/1.2, dark textures under high `ks`: its terrain 0.03 of
+/// display white before the light) is lit that much brighter overall: its factors and range take
+/// `(reference / most)^LIGHT_GAMMA`, 3.2/15 there, which brings its terrain from near black to about Sa Calobra's
+/// ground. Below it the reference stays the track's own.
+const REFERENCE_MOST: [f32; 2] = [0.95, 0.35];
 
 /// The weighted median of `(value, weight)` pairs.
 fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
@@ -548,7 +555,8 @@ fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
 
 /// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
 /// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws, to
-/// [`LIGHT_GAMMA`] in linear light. A factor within 2% of 1 for both drops the line.
+/// [`LIGHT_GAMMA`] in linear light, times the gain of a reference above [`REFERENCE_MOST`]. A factor within 2% of 1
+/// for both drops the line.
 pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String {
     let mut sections = Vec::<(&str, bool, Option<[f32; 2]>)>::new();
     for line in materials.lines() {
@@ -569,6 +577,8 @@ pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String
     let (Some(ambient), Some(diffuse)) = (reference(0), reference(1)) else {
         return materials.lines().filter(|l| !l.starts_with("ReRbrLight=")).map(|l| format!("{l}\n")).collect();
     };
+    let reference = [ambient, diffuse];
+    let gain: [f32; 2] = std::array::from_fn(|i| (reference[i] / REFERENCE_MOST[i]).max(1.).powf(LIGHT_GAMMA));
     let mut out = String::new();
     let mut at = 0;
     for line in materials.lines() {
@@ -576,9 +586,10 @@ pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String
             at += 1;
         }
         if line.starts_with("ReRbrLight=") {
-            let raw = sections[at - 1].2.unwrap_or([ambient, diffuse]);
-            let f =
-                [raw[0] / ambient, raw[1] / diffuse].map(|v| v.powf(LIGHT_GAMMA).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1));
+            let raw = sections[at - 1].2.unwrap_or(reference);
+            let f: [f32; 2] = std::array::from_fn(|i| {
+                ((raw[i] / reference[i]).powf(LIGHT_GAMMA) * gain[i]).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1 * gain[i])
+            });
             if f.iter().any(|v| (v - 1.).abs() > 0.02) {
                 let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
             }
@@ -1114,10 +1125,10 @@ mod tests {
             format!("[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\n{light}diffuseTexture=t.dds\n\n")
         };
         let materials = [
-            section("road", "Default", "ReRbrLight=1.1,0.5\n"),
-            section("rock", "Default", "ReRbrLight=0.22,0.06\n"),
-            section("same", "Default", "ReRbrLight=1.1,0.5\n"),
-            section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"),
+            section("road", "Default", "ReRbrLight=0.55,0.25\n"),
+            section("rock", "Default", "ReRbrLight=0.11,0.03\n"),
+            section("same", "Default", "ReRbrLight=0.55,0.25\n"),
+            section("leaf", "Transparent", "ReRbrLight=0.15,0.05\n"),
             section("plain", "Default", ""),
         ]
         .concat();
@@ -1134,7 +1145,7 @@ mod tests {
                 .find_map(|l| l.strip_prefix("ReRbrLight="))
                 .map(str::to_owned)
         };
-        // The median is the road's 1.1/0.5 (70 of 80 opaque triangles; the transparent leaf does not count).
+        // The median is the road's 0.55/0.25 (70 of 80 opaque triangles; the transparent leaf does not count).
         assert_eq!(light("road"), None);
         assert_eq!(light("same"), None);
         // Ratios to 2.2 (linear light), clamped: rock 0.2/0.12 and leaf 0.27/0.2 to the floor but the leaf's ambient.
@@ -1142,7 +1153,27 @@ mod tests {
         assert_eq!(light("leaf").as_deref(), Some("0.057359,0.05"));
         assert_eq!(light("plain"), None);
         // Without any opaque material to reference nothing is written.
-        let none = normalise_light(&section("leaf", "Transparent", "ReRbrLight=0.3,0.1\n"), &triangles);
+        let none = normalise_light(&section("leaf", "Transparent", "ReRbrLight=0.15,0.05\n"), &triangles);
         assert!(!none.contains("ReRbrLight"));
+        // A reference above `REFERENCE_MOST` (1.9/0.7, twice it) lights the whole track 2^2.2 brighter, its range too:
+        // the road at the gain, the rock (0.0016/0.0007 of it) at the floor, a ratio of 2 at 4 times the top.
+        let bright = [
+            section("road", "Default", "ReRbrLight=1.9,0.7\n"),
+            section("rock", "Default", "ReRbrLight=0.1,0.05\n"),
+            section("same", "Default", "ReRbrLight=3.8,1.4\n"),
+        ]
+        .concat();
+        let out = normalise_light(&bright, &triangles);
+        let light = |name: &str| {
+            let at = out.find(&format!("[{name}]")).unwrap();
+            out[at..]
+                .lines()
+                .take_while(|l| !l.is_empty())
+                .find_map(|l| l.strip_prefix("ReRbrLight="))
+                .map(str::to_owned)
+        };
+        assert_eq!(light("road").as_deref(), Some("4.594794,4.594794"));
+        assert_eq!(light("rock").as_deref(), Some("0.05,0.05"));
+        assert_eq!(light("same").as_deref(), Some("9.189588,9.189588"));
     }
 }
