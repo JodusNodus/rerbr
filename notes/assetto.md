@@ -437,7 +437,8 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   the other layouts' share of a combined file (Teixeta). The real losses were the horizon past the 300 m draw corridor
   (Sa Calobra 130 k triangles of terrain and sea, La Bollène 67 k of peaks, St Laurent 225 k) and CSP's trees.
 - Far scenery: outside the corridor a triangle is kept where its longest side is at least 1/50 of its distance from the
-  course (`Far`), to 10 km, grouped by 1 km tile and drawn to 10 km. 49 k to 183 k triangles (2 to 5 %) a stage.
+  course (`Far`), to 10 km, grouped by 1 km tile and drawn to 10 km. (Until 2026-11-20 the renderer's cells still cut it
+  at 3 km; see `notes/renderer.md`.) 49 k to 183 k triangles (2 to 5 %) a stage.
   The size test alone cut holes in mountain surfaces (it drops the small triangles inside and keeps the large ones, sky
   showed on ridges), so a dropped triangle in the same mesh that shares a vertex with a kept far triangle is kept too,
   `FAR_RINGS` (3) times over (`Far::connected`). Sa Calobra down: far 49 k to 103 k triangles, `Objects.zip` 95.5 to

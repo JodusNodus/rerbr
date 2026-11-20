@@ -524,11 +524,15 @@ impl Groups {
                     center: (group.low + group.high) / 2.0,
                     half_extent: (group.high - group.low) / 2.0,
                 });
+                // A mesh whose own range reaches past the game's cells (`visibility::DRAW_REACH`) is culled by that range
+                // alone: a converted stage's far scenery, kept to the far plane (Joux Verte's mountains 3.6 km off).
+                let far_scenery =
+                    matches!(group.lod, Lod::Band { far, .. } if f32::from(far) > crate::visibility::DRAW_REACH);
                 Mesh {
                     layer: group.layer,
                     anchor: Anchor::World,
                     bounds,
-                    cell: bounds,
+                    cell: bounds.filter(|_| !far_scenery),
                     vertices: group.vertices,
                     indices,
                     draws,
