@@ -181,11 +181,13 @@ impl Input {
         reverse_ai: bool,
         circuit: bool,
     ) -> Result<Self, String> {
-        let first = Self::read_as_given(root, layout, ai_file, reverse_ai, circuit);
+        let first = Self::read_as_given(root, layout, ai_file, reverse_ai, false, circuit);
         match &first {
             Err(e) if e == BACKWARDS && !reverse_ai => {
-                Self::read_as_given(root, layout, ai_file, true, circuit).or(first)
+                Self::read_as_given(root, layout, ai_file, true, false, circuit).or(first)
             }
+            // A line reversed on request runs from the finish gate to the start gate: the gates swap roles.
+            Err(e) if e == BACKWARDS => Self::read_as_given(root, layout, ai_file, true, true, circuit).or(first),
             _ => first,
         }
     }
@@ -195,6 +197,7 @@ impl Input {
         layout: &str,
         ai_file: Option<&Path>,
         reverse_ai: bool,
+        swap_gates: bool,
         circuit: bool,
     ) -> Result<Self, String> {
         let layout = if layout.is_empty() { "." } else { layout };
@@ -242,7 +245,9 @@ impl Input {
         if circuit {
             line = ai::close_loop(&line)?;
         }
-        for (i, name) in ["AC_AB_START", "AC_AB_FINISH"].into_iter().enumerate().filter(|_| !circuit) {
+        let (first_gate, last_gate) =
+            if swap_gates { ("AC_AB_FINISH", "AC_AB_START") } else { ("AC_AB_START", "AC_AB_FINISH") };
+        for (i, name) in [first_gate, last_gate].into_iter().enumerate().filter(|_| !circuit) {
             if let (Some(a), Some(b)) = (markers.get(&format!("{name}_L")), markers.get(&format!("{name}_R"))) {
                 let p = ai::world(std::array::from_fn(|k| (a[12 + k] + b[12 + k]) * 0.5));
                 ai_extensions[i] = ai::cover_endpoint(&mut line, p, i == 0);
@@ -262,10 +267,10 @@ impl Input {
         };
         let (start, finish) = if circuit {
             // The lap line is the source's start gate when it lies on the loop, else the AI line's first point.
-            let start = gate("AC_AB_START").unwrap_or(0.);
+            let start = gate(first_gate).unwrap_or(0.);
             (start, start + line.length())
         } else {
-            (gate("AC_AB_START")?, gate("AC_AB_FINISH")?)
+            (gate(first_gate)?, gate(last_gate)?)
         };
         if finish <= start + 50. {
             // On a closed loop the gates say nothing about direction: it is a circuit, not a reversed line.

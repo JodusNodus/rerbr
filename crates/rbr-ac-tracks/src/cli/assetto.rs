@@ -15,7 +15,8 @@ Convert your local copy of a point-to-point Assetto Corsa track to a BTB stage f
 Output defaults to the player's tracks/AC_<layout> folder; --out DIR writes DIR/<name>.
 Without --layout, reads models.ini or the track's same-named KN5 and root AI/data/ui folders.
 Requires KN5 v5/6, AI v7 and AC_AB_START/FINISH timing markers, unless --circuit.
---ai-file supplies an existing AI line, e.g. another layout's. --reverse-ai reverses it before gate checks.
+--ai-file supplies an existing AI line, e.g. another layout's. --reverse-ai reverses it before gate checks;
+a layout whose gates then run finish to start gets them swapped (driven the other way).
 --circuit writes a closed AI loop (ends within 5 m) as a ReRBR circuit: `circuit=1`, a closed driveline ring, and the
 lap line and spawn at AC_AB_START when it lies on the loop, else at the AI line's first point. The source's finish
 and sector gates are ignored and the splits are thirds.

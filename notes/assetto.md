@@ -759,3 +759,10 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   Not `<digits>_*.png`: that is a BTB id (`ids::splash_id`). Checked on Steppe Rally (`tundra`) through
   `rbr-ac-tracks import` and `rerbr --screenshot` (`drive-stars.png`, driveline before, AC's preview after).
   Stages converted before keep the driveline until converted again.
+- Reversed layouts (2026-11-20): `--reverse-ai` on a layout whose gates follow the AI line used to stop with "finish
+  must follow start" (only a line recorded finish to start was reversed, by itself). When the reversed line still has the
+  finish gate before the start gate, `Input::read_with_ai` now reads it again with the two gates swapped, so the stage
+  runs the other way. Joux Verte SS7 2020 reversed (20.2 km, the chalet hairpins uphill):
+  `rbr-ac-tracks ac --track <joux_verte_2020_2024> --layout joux_verte_SS7_2020 --name AC_Joux_Verte_SS7_2020_reverse
+  --reverse-ai --remesh --collision-corridor 25`, launcher id 1996319; `track.ini`'s name takes ` [reverse]` by hand (it
+  would otherwise equal the forward layout's). The `day-joux-verte-celica-chase` reference shot is on it.
