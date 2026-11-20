@@ -10,8 +10,8 @@ use super::mesh::{
     Bounds, Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex,
 };
 use super::{
-    Address, Anchor, Error, GrassFx, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef,
-    TextureSet,
+    Address, Anchor, Error, GrassFx, GrassOccluder, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName,
+    TextureRef, TextureSet,
 };
 use crate::atmosphere::Atmosphere;
 use glam::{Vec3, Vec3Swizzles};
@@ -108,9 +108,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     };
 
     // A converted stage's grass atlas, where it ships one: a stage texture like the draws'.
-    let grass_fx = scene.grass.clone().map(|settings| {
+    let mut grass_fx = scene.grass.clone().map(|settings| {
         let texture = texture(&settings.texture);
-        GrassFx { settings, texture }
+        GrassFx { settings, texture, occluders: Vec::new() }
     });
 
     // One plan per mesh: the draws it makes, with their layers.
@@ -170,7 +170,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 alpha_ref,
                 mip_bias: false,
                 ground: false,
-                grass: material.grass,
+                grass: material.grass == scene::Grass::Grows,
                 cull_back: false,
                 blend,
                 depth_test: true,
@@ -188,7 +188,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             };
             let uv_bump = uv_bump.filter(|&s| normal.is_some() && s != 0);
             let uv_specular = uv_specular.filter(|_| highlight.is_some());
-            Some(Plan { draws, lerp, up: material.technique.up, uv_lerp: slots.lerp, uv_bump, uv_specular })
+            let hides = match material.grass {
+                scene::Grass::Hides => Some(None),
+                scene::Grass::HidesAlpha => Some(first),
+                _ => None,
+            };
+            Some(Plan { draws, lerp, up: material.technique.up, uv_lerp: slots.lerp, uv_bump, uv_specular, hides })
         })
         .collect();
 
@@ -216,6 +221,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let reach = if solo { half.length() } else { 0.0 };
             let lod = band(object.lod_in, object.lod_out + reach);
             let vertices = world_vertices(mesh, plan, placement, to_sun);
+            if let (Some(texture), Some(fx)) = (plan.hides, grass_fx.as_mut()) {
+                fx.occluders.extend(mesh.indices.chunks_exact(3).map(|t| {
+                    let v = [t[0], t[1], t[2]].map(|i| &vertices[i as usize]);
+                    GrassOccluder { p: v.map(|v| Vec3::from(v.position)), uv: v.map(|v| v.uv0), texture }
+                }));
+            }
             let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
             let collides = match &loaded {
                 Some(collision) => on_ground(&vertices, &mesh.indices, collision),
@@ -327,6 +338,8 @@ struct Plan {
     uv_bump: Option<usize>,
     /// The highlight's map's UV set, in `specular`'s uv, with strength 1.
     uv_specular: Option<usize>,
+    /// The grass grows nowhere under the mesh ([`GrassOccluder`]): `Some(texture)` under its opaque texels alone.
+    hides: Option<Option<TextureRef>>,
 }
 
 /// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the

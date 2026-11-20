@@ -415,8 +415,8 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 - Compared against each track's `ui/preview.png` (elevated renders over the tightest hairpins, `--clouds clear`). Roure's
   pines were solid green slabs: `pines`, `pines_distant` and `scots_pine_leaves` (`ksPerPixelMultiMap_AT`) have DXT1
   diffuses without alpha and their cut-out in the BC7 normal map's alpha (71-86 % under half). An alpha-tested material
-  whose diffuse is opaque and whose normal map's alpha cuts now takes that alpha (`material::cut_by_normal`). Of the
-  122 source KN5s of the installed tracks only Roure's do this.
+  whose diffuse is opaque and whose normal map's alpha cuts now takes that alpha (`material::cut_by_normal`).
+  Superseded 2026-11-20 by the shader's rule (below).
 - An alpha-tested material with `ksAlphaRef` over 1 (CSP's alpha reference; 1.0 is the common default) is never drawn
   and is left out (`material::is_never_drawn`): Roure's `pinesTT` (10000, the pines' shadow caster, drawn with the
   normal map as its colour), its vehicles' `_glExt` glass (2) and Glava Zete's `SenkaKola` car-shadow decals (2).
@@ -469,6 +469,14 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 - Roure's `pines_distant` (the forest on far slopes) kept solid green slabs: its diffuse has alpha under 255 (shading)
   and no texel under 128, so `cut_by_normal` rejected it; it now needs only no texel under half alpha, and runs before
   the `useDetail` bake.
+- Alpha by shader (2026-11-20, disassembly of `system/shaders/win/*_ps.fxo` with vkd3d-compiler): `ksPerPixelMultiMap_AT`
+  and `_AT_NMDetail` output `txNormal.a` as their alpha; their diffuse's alpha only masks the detail
+  (`diffuse * lerp(detail, 1, diffuse.a)`). `ksPerPixelAT` and `_AT_NM` output the diffuse's. Every
+  `ksPerPixelMultiMap_AT*` material now takes the normal map's alpha over its detail bake (`material::alpha_from_normal`);
+  the heuristic missed Prunières' road edges (`roadEdge_tar`/`_gra`, diffuse alpha 0 throughout: never drawn) and
+  `shale_transp`. Open: Prunières' white edge line (`roadMarkings`, 5 mm above the edges and after them in node order)
+  now goes under the edges in places: our blended draws follow mesh order, not AC's node order, and do not write depth
+  (AC's `depthMode 0` blends do).
 - Other CSP features in the source tracks' `extension` folders, not used: `[MATERIAL_ADJUSTMENT]` (24, day/night and weather conditions), `[SHADER_REPLACEMENT]`/`[MESH_ADJUSTMENT]`
   (water, `IS_RENDERABLE=0` hiding meshes on Thizy and Joux Verte, blend modes), `[WRAP_MESHES]` and `[ANIMATED]`
   (windmills and signs, Teixeta, Duesaigues, Riudecanyes), `[SPECTATORS]`, `[LIGHT_SERIES]`, `[PARTICLES_FX]`,
@@ -504,7 +512,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `[ReRbrGrass] mask=`; the grass grows where the blurred ground colour's greenness `Fx::green` (ours, CSP documents no
   formula: linear `(g - max(r - red, b)) / mean`) exceeds the main threshold. Gabiria lists its road materials in
   `GRASS_MATERIALS` and its grey asphalt passed the luminance test alone: the road was a reed bed. Not used:
-  `SHAPE_TIDY/CUT`, `OCCLUDING_MATERIALS`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
+  `SHAPE_TIDY/CUT`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
   (Highlands). Calibrated against CSP itself (2026-11-20: AC + CSP booted under Proton, a Lua app puts the camera at
   the render poses and screenshots; Prunières, Sa Calobra, Gabiria, Roure side by side with ours):
   - Atlas: loaded as shipped (DXT, BC7 via `bcdec_rs`: Prunières' `super_grass.dds` is BC7 and fell back to our blades),
@@ -520,8 +528,13 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     0.8-1.2 per clump; clumps a m² `FX_COVER` 4.1 over the cell's area, at most 60; unset `SHAPE_SIZE` 1.5.
   - Mask: grows where `Fx::green` exceeds `MASK_MAIN_THRESHOLD` x 0.4 (`FX_MASK_SCALE`: at 1x Prunières, 0.75, was
     bare where CSP has grass); none on a converted stage's road mesh (wet-marked), so Gabiria's asphalt stays clear.
-  - Open: CSP's Prunières grass is sparser and shorter than ours and its road edge strip is held off by
-    `OCCLUDING_MATERIALS`, which we skip; CSP's distant fog is bluer.
+  - Occluders: `OCCLUDING_MATERIALS` go to `ReRbrGrass=hide`, `_ALPHA` to `hide-alpha` (30 installed AC tracks set
+    them); the loader keeps their world triangles near the road and the grass grows in no 0.25 m cell (CSP's
+    `MAP_STEP`) whose centre one covers, from above, where its texel is at least half opaque for `hide-alpha`
+    (`grass::hidden`). Prunières' road edges needed their alpha first (normal-map alpha, above): the grass now stops
+    at the gravel shoulders as in CSP's shots.
+  - Open: CSP's Prunières grass is sparser and shorter than ours (CSP's density also follows the player's GrassFX
+    `QUALITY`, Medium on the reference install); CSP's distant fog is bluer.
 
 ## Launcher import (2026-11-18)
 

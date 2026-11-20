@@ -11,6 +11,7 @@ use crate::btb::{
 };
 use kn5::{Matrix, IDENTITY};
 use rbr_btb::circuit::FAR;
+use rbr_btb::scene::Grass;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::Write;
@@ -1076,7 +1077,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
                 let extras = material::Extras {
-                    grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&model.materials[mat_index].name)),
+                    grass: grass_fx.as_ref().map_or(Grass::None, |g| g.role(&model.materials[mat_index].name)),
                     ..bank.tile_extras(&model, mat_index)
                 };
                 if !extras.bump_uv {
@@ -1094,7 +1095,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     let (texture, opaque, gain) = bank.diffuse(&model, mat_index)?;
                     let name = format!("ac\\{model_index}_{mat_index}");
                     let extras = material::Extras {
-                        grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&mat.name)),
+                        grass: grass_fx.as_ref().map_or(Grass::None, |g| g.role(&mat.name)),
                         ..bank.extras(&model, mat_index)?
                     }
                     .stored_at(gain);

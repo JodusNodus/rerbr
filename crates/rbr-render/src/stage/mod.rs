@@ -262,10 +262,21 @@ pub struct Stage {
     pub report: LoadReport,
 }
 
-/// A converted stage's grass: its settings and its atlas's texture, where the stage ships one.
+/// A converted stage's grass: its settings, its atlas's texture, where the stage ships one, and the triangles it grows
+/// nowhere under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GrassFx {
     pub settings: rbr_btb::track::GrassFx,
+    pub texture: Option<TextureRef>,
+    pub occluders: Vec<GrassOccluder>,
+}
+
+/// A world triangle of a material the grass grows nowhere under (CSP's `OCCLUDING_MATERIALS`): `texture`, where only
+/// its opaque texels hide it (`OCCLUDING_MATERIALS_ALPHA`), read at `uv`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GrassOccluder {
+    pub p: [Vec3; 3],
+    pub uv: [[f32; 2]; 3],
     pub texture: Option<TextureRef>,
 }
 

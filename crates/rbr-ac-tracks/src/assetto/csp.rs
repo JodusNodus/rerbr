@@ -2,6 +2,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
+use rbr_btb::scene::Grass;
+
 /// An ini value without its comment: CSP takes `;` and `//` (Embrun–Prunières' `PIECE_0 = 1,1 // daisy`).
 fn uncommented(value: &str) -> &str {
     let end = [value.find(';'), value.find("//")].into_iter().flatten().min().unwrap_or(value.len());
@@ -94,11 +96,14 @@ pub fn unrendered(root: &Path) -> Vec<String> {
 const MASK_DEFAULT: [f32; 2] = [0.5, 0.05];
 
 /// CSP's GrassFX (`[GRASS_FX]` and `[GRASS_FX_TEXTURE_GROUP_<n>]`) as far as ReRBR's grass uses it: the materials it grows
-/// on, its atlas and the pieces drawn from it, and the luminance range of the ground it grows on.
+/// on and those it hides under, its atlas and the pieces drawn from it, and the luminance range of the ground it grows on.
 #[derive(Debug, Default)]
 pub struct GrassFx {
     /// `GRASS_MATERIALS`, lowercase, with `?` and `*` wildcards.
     pub materials: Vec<String>,
+    /// `OCCLUDING_MATERIALS` and `OCCLUDING_MATERIALS_ALPHA` alike: the grass grows nowhere under them (the second:
+    /// under their opaque texels).
+    pub occluding: [Vec<String>; 2],
     /// `TEXTURE` where it names a file of the track's own `extension` folder; `None` for CSP's own atlases and no key.
     pub texture: Option<std::path::PathBuf>,
     keys: BTreeMap<String, String>,
@@ -106,10 +111,19 @@ pub struct GrassFx {
 }
 
 impl GrassFx {
-    /// Whether `material` (any case) is one the grass grows on.
-    pub fn grows_on(&self, material: &str) -> bool {
+    /// What the grass does on `material` (any case): grows on it, hides under it (an occluder first) or neither.
+    pub fn role(&self, material: &str) -> Grass {
         let material = material.to_lowercase();
-        self.materials.iter().any(|pattern| matches(pattern, &material))
+        let any = |patterns: &[String]| patterns.iter().any(|pattern| matches(pattern, &material));
+        if any(&self.occluding[1]) {
+            Grass::HidesAlpha
+        } else if any(&self.occluding[0]) {
+            Grass::Hides
+        } else if any(&self.materials) {
+            Grass::Grows
+        } else {
+            Grass::None
+        }
     }
 
     /// The stage's `[ReRbrGrass]` section (`settings.ini`), `texture` being the atlas's name in `Textures.zip`.
@@ -179,8 +193,12 @@ pub fn grass_fx(root: &Path) -> Option<GrassFx> {
             }
         }
     }
-    fx.materials =
-        fx.keys.get("GRASS_MATERIALS")?.split(',').map(|m| m.trim().to_lowercase()).filter(|m| !m.is_empty()).collect();
+    let list = |key: &str| -> Vec<String> {
+        let value = fx.keys.get(key).map_or("", String::as_str);
+        value.split(',').map(|m| m.trim().to_lowercase()).filter(|m| !m.is_empty()).collect()
+    };
+    fx.materials = list("GRASS_MATERIALS");
+    fx.occluding = [list("OCCLUDING_MATERIALS"), list("OCCLUDING_MATERIALS_ALPHA")];
     if fx.materials.is_empty() {
         return None;
     }
@@ -222,7 +240,7 @@ mod tests {
         std::fs::write(dir.join("extension/Mine.DDS"), b"x").unwrap();
         std::fs::write(
             dir.join("extension/ext_config.ini"),
-            "[GRASS_FX]\nGRASS_MATERIALS = Ter?, rock_cluster\nTEXTURE = mine.dds ; mine\nTEXTURE_GRID = 8, 3\n\
+            "[GRASS_FX]\nGRASS_MATERIALS = Ter?, rock_cluster\nOCCLUDING_MATERIALS = shale, ter9\nOCCLUDING_MATERIALS_ALPHA = roadEdge_*\nTEXTURE = mine.dds ; mine\nTEXTURE_GRID = 8, 3\n\
              TEXTURE_BASE_CHANCE = 4.0\nTEXTURE_GROUP_1_CHANCE = 2\nMASK_MAX_LUMINANCE = 0.25\nSHAPE_SIZE = 6.5\nMASK_RED_THRESHOLD = 0.01\n\
              [GRASS_FX_TEXTURE_GROUP_1]\nPIECE_0 = 1, 1\nPIECE_1 = 4, 1, 2, 2\nPIECE_1_CHANCE = 0.5\n\
              PIECE_1_SIZE_MULT = 0.6, 1.5 // tall\n",
@@ -230,7 +248,11 @@ mod tests {
         .unwrap();
         let fx = grass_fx(&dir).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
-        assert!(fx.grows_on("TER0") && fx.grows_on("rock_cluster") && !fx.grows_on("road"));
+        assert_eq!(["TER0", "rock_cluster", "road"].map(|m| fx.role(m)), [Grass::Grows, Grass::Grows, Grass::None]);
+        assert_eq!(
+            ["Shale", "ter9", "roadEdge_tar"].map(|m| fx.role(m)),
+            [Grass::Hides, Grass::Hides, Grass::HidesAlpha]
+        );
         assert!(fx.texture.as_ref().is_some_and(|t| t.ends_with("Mine.DDS")));
         assert_eq!(
             fx.section(Some("ac_00001.dds")),

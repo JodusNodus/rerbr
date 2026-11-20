@@ -139,11 +139,23 @@ pub struct Material {
     /// ReRBR's `ReRbrSheen=<roughness>`: the opaque road's dry sheen, a rough dielectric's sky reflection and sun
     /// highlight at this roughness. Only with `ReRbrEffect`.
     pub sheen: Option<f32>,
-    /// ReRBR's `ReRbrGrass=1`: the stage's grass ([`Scene::grass`]) grows on this material (converted stages).
-    pub grass: bool,
+    /// ReRBR's `ReRbrGrass`: what the stage's grass ([`Scene::grass`]) does on this material (converted stages).
+    pub grass: Grass,
     /// ReRBR's `ReRbrLayer*` keys: the material is a multilayer sum the renderer works out per pixel. Only with
     /// `ReRbrEffect`, and only when every texture is in the archive.
     pub layers: Option<Layers>,
+}
+
+/// ReRBR's `ReRbrGrass` (converted stages, CSP's GrassFX): `1` the grass grows on the material (`GRASS_MATERIALS`),
+/// `hide` it grows nowhere under it (`OCCLUDING_MATERIALS`), `hide-alpha` nowhere under its opaque texels
+/// (`OCCLUDING_MATERIALS_ALPHA`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Grass {
+    #[default]
+    None,
+    Grows,
+    Hides,
+    HidesAlpha,
 }
 
 /// `diffuse * (R*mask.r + G*mask.g + B*mask.b + A*mask.a) * magic`, the sum of Assetto Corsa's `ksMultilayer` shaders
@@ -570,7 +582,12 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
             .and_then(|_| m.entry("ReRbrSheen").and_then(track::decimal_float))
             .map(|r| r as f32)
             .filter(|r| r.is_finite() && *r > 0.0),
-        grass: m.entry("ReRbrGrass") == Some("1"),
+        grass: match m.entry("ReRbrGrass") {
+            Some("1") => Grass::Grows,
+            Some("hide") => Grass::Hides,
+            Some("hide-alpha") => Grass::HidesAlpha,
+            _ => Grass::None,
+        },
     }
 }
 

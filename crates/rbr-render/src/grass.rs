@@ -24,8 +24,8 @@ use crate::parallel::in_parallel;
 use crate::particles::wheel_spray::ground::smoothstep;
 use crate::puddles::{self, GROUND_MARK};
 use crate::stage::{
-    Address, Anchor, Bounds, Draw, DrawState, Image, Layer, Lod, Mesh, Stage, StageTexture, TextureName, TextureRef,
-    TextureSet, Vertex, OBJECT_ALPHA_REF,
+    Address, Anchor, Bounds, Draw, DrawState, GrassOccluder, Image, Layer, Lod, Mesh, Stage, StageTexture, TextureName,
+    TextureRef, TextureSet, Vertex, OBJECT_ALPHA_REF,
 };
 use bytemuck::Zeroable;
 use glam::{Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
@@ -184,6 +184,8 @@ struct Fx {
     mask: Option<[f32; 2]>,
     /// The atlas the track ships, its pieces and its size in texels; `None`: our blades.
     atlas: Option<(rbr_btb::track::GrassFx, Vec2)>,
+    /// The cells ([`HIDE_STEP`] square) under its occluders ([`hidden`]).
+    hidden: HashSet<(i32, i32)>,
 }
 
 impl Fx {
@@ -390,6 +392,12 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     };
     let fx_stage = stage.grass_fx.is_some() && stage.meshes.iter().any(|m| m.draws.iter().any(|d| marked(m, d)));
     let grows = |m: &Mesh, d: &Draw| if fx_stage { marked(m, d) } else { puddles::ground(m, d) };
+    let line = Line::new(&stage.driveline);
+    let hidden = stage
+        .grass_fx
+        .as_ref()
+        .filter(|_| fx_stage)
+        .map(|fx| hidden(&fx.occluders, &line, |t| Texels::sharp(stage, t)));
     let atlas = stage.grass_fx.as_ref().filter(|_| fx_stage).and_then(|fx| {
         let texture = fx.texture?;
         let Some(Some(Image::Dds(bytes))) = stage.textures.get(&texture).map(|t| &t.image) else { return None };
@@ -399,7 +407,6 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     let index = stage.texture_names.keys().chain(stage.textures.keys()).filter(|t| t.set == TextureSet::Stage);
     let texture = TextureRef { set: TextureSet::Stage, index: index.map(|t| t.index + 1).max().unwrap_or(0) };
     let (bytes, mean) = if atlas.is_some() { (Vec::new(), Vec3::ZERO) } else { self::texture() };
-    let line = Line::new(&stage.driveline);
     // The ground draws' textures' texels, made over the load's threads (one after another they took 0.7 s on 580),
     // numbered as the draws below first use them.
     let ground = stage.meshes.iter().flat_map(|m| m.draws.iter().filter(|d| d.lod != Lod::Far && grows(m, d)));
@@ -496,7 +503,8 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             stage
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-            (texture, mean, Some(Fx { luminance, mask: settings.mask, atlas: Some((settings, size)) }))
+            let hidden = hidden.unwrap_or_default();
+            (texture, mean, Some(Fx { luminance, mask: settings.mask, atlas: Some((settings, size)), hidden }))
         }
         None => {
             stage.texture_names.insert(
@@ -510,6 +518,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                 luminance: fx.settings.luminance,
                 mask: fx.settings.mask,
                 atlas: None,
+                hidden: hidden.unwrap_or_default(),
             });
             (texture, mean, fx)
         }
@@ -541,6 +550,7 @@ impl Field {
     fn grassy(&self, g: &Ground, w: [f32; 3]) -> f32 {
         let rgb = g.colour(&self.placement, w);
         match &self.fx {
+            Some(fx) if fx.hidden.contains(&hide_cell((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz())) => 0.0,
             Some(fx) => fx.mask(rgb, g.colour(&self.textures, w)),
             None => green(rgb, g.road),
         }
@@ -1236,6 +1246,58 @@ fn track_atlas(dds: &[u8]) -> Option<(Vec<u8>, Vec3, Vec2)> {
     ))
 }
 
+/// The metres of a cell of a converted stage's [`hidden`] ground: CSP's GrassFX `MAP_STEP`.
+const HIDE_STEP: f32 = 0.25;
+
+/// The [`HIDE_STEP`] cell holding `xz`.
+fn hide_cell(xz: Vec2) -> (i32, i32) {
+    let cell = (xz / HIDE_STEP).floor();
+    (cell.x as i32, cell.y as i32)
+}
+
+/// The cells a converted stage's grass grows nowhere in, as CSP's GrassFX hides it under `OCCLUDING_MATERIALS` (seen
+/// from above, whatever their height): those whose centre an occluder near the road covers, and where it reads its
+/// texture (`OCCLUDING_MATERIALS_ALPHA`, Prunières' road edges, its `texels`) only under texels at least half opaque.
+fn hidden(
+    occluders: &[GrassOccluder],
+    line: &Line,
+    mut texels_of: impl FnMut(TextureRef) -> Option<Texels>,
+) -> HashSet<(i32, i32)> {
+    let mut texels: HashMap<TextureRef, Option<Texels>> = HashMap::new();
+    let mut cells = HashSet::new();
+    for o in occluders {
+        let (low, high) = (o.p[0].min(o.p[1]).min(o.p[2]), o.p[0].max(o.p[1]).max(o.p[2]));
+        if line.distance(((low + high) * 0.5).xz()) - (high - low).xz().length() * 0.5 > BAND {
+            continue;
+        }
+        let alpha = o.texture.and_then(|t| texels.entry(t).or_insert_with(|| texels_of(t)).as_ref());
+        let [a, b, c] = o.p.map(|p| p.xz());
+        let area = (b - a).perp_dot(c - a);
+        if area.abs() < 1e-8 {
+            continue;
+        }
+        let ((x0, z0), (x1, z1)) = (hide_cell(low.xz()), hide_cell(high.xz()));
+        for x in x0..=x1 {
+            for z in z0..=z1 {
+                let q = (Vec2::new(x as f32, z as f32) + 0.5) * HIDE_STEP;
+                let (wb, wc) = ((q - a).perp_dot(c - a) / area, (b - a).perp_dot(q - a) / area);
+                let w = [1.0 - wb - wc, wb, wc];
+                if w.iter().any(|&w| w < 0.0) {
+                    continue;
+                }
+                let opaque = alpha.is_none_or(|texels| {
+                    let uv = o.uv.map(Vec2::from);
+                    texels.at(uv[0] * w[0] + uv[1] * w[1] + uv[2] * w[2]).w >= 0.5
+                });
+                if opaque {
+                    cells.insert((x, z));
+                }
+            }
+        }
+    }
+    cells
+}
+
 /// The linear luminance of a display colour (0 to 1).
 fn luminance(c: Vec3) -> f32 {
     c.powf(2.2).dot(Vec3::new(0.2126, 0.7152, 0.0722))
@@ -1585,6 +1647,7 @@ mod tests {
             luminance: settings.luminance,
             mask: settings.mask,
             atlas: Some((settings, Vec2::new(2048.0, 768.0))),
+            hidden: HashSet::new(),
         };
         // Green enough and in range takes grass; grey asphalt, too bright, black or yellow-brown dirt does not.
         let (grass, grey, dirt) = (Vec3::new(0.4, 0.5, 0.2), Vec3::splat(0.5), Vec3::new(0.57, 0.51, 0.38));
@@ -1615,6 +1678,32 @@ mod tests {
         let (left, right) = (&texels[4 * 16 * 8..][..4], &texels[(16 * 8 + 12) * 4..][..4]);
         assert!(left[0] < 10 && left[1] > 180 && left[2] < 10 && right[0] > 160 && right[2] < 110);
         assert!((mean.x - 200.0 / 255.0).abs() < 0.03 && size == Vec2::new(16.0, 16.0));
+    }
+
+    #[test]
+    fn occluders_hide_the_ground_under_them_and_by_alpha_under_their_opaque_texels() {
+        let line = Line::new(&[Vec3::new(0.0, 0.0, -10.0), Vec3::new(0.0, 0.0, 10.0)]);
+        // A 1 m square of two triangles at x 2-3, z 0-1, its texture's left half opaque.
+        let square = |texture| {
+            let ([a, b, c, d], uv) = (
+                [[2.0, 0.0], [3.0, 0.0], [3.0, 1.0], [2.0, 1.0]].map(|[x, z]| Vec3::new(x, 0.5, z)),
+                [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            );
+            [
+                GrassOccluder { p: [a, b, c], uv: [uv[0], uv[1], uv[2]], texture },
+                GrassOccluder { p: [a, c, d], uv: [uv[0], uv[2], uv[3]], texture },
+            ]
+        };
+        let half = || {
+            let rgba = (0..4).flat_map(|x| [0, 0, 0, if x < 2 { 255 } else { 0 }]).collect();
+            Some(Texels { width: 4, height: 1, rgba })
+        };
+        let solid = hidden(&square(None), &line, |_| None);
+        assert_eq!(solid.len(), 16);
+        assert!(solid.contains(&hide_cell(Vec2::new(2.1, 0.1))) && !solid.contains(&hide_cell(Vec2::new(1.9, 0.1))));
+        let alpha = hidden(&square(Some(TextureRef { set: TextureSet::Stage, index: 0 })), &line, |_| half());
+        assert_eq!(alpha.len(), 8);
+        assert!(alpha.contains(&hide_cell(Vec2::new(2.1, 0.5))) && !alpha.contains(&hide_cell(Vec2::new(2.9, 0.5))));
     }
 
     #[test]

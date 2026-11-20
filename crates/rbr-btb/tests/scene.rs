@@ -83,7 +83,7 @@ fn rerbr_effect_reads_every_input_on_the_diffuse_uv_set() {
         light: [1.0; 2],
         bump_uv: false,
         sheen: None,
-        grass: false,
+        grass: scene::Grass::None,
         layers: None,
     };
     let slots = material.uv_slots();

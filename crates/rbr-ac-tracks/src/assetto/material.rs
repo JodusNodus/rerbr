@@ -188,10 +188,16 @@ impl TextureBank {
         if let Some(file) = self.stub(model, mat)? {
             return Ok((file, true, 1.));
         }
-        // Before the detail bake, which would keep the diffuse's alpha: Roure's `pines_distant` has both.
         let multilayer = mat.shader.contains("Multilayer");
-        if let Some(bytes) = cut_by_normal(model, mat).filter(|_| !multilayer) {
-            return Ok((self.put(bytes, "dds")?, false, 1.));
+        if alpha_from_normal(mat) {
+            // The detail baked first, under the diffuse's alpha (Roure's `pines_distant` has both).
+            let baked = detail::bake(model, index);
+            if let Some(bytes) = cut_by_normal(model, mat, baked.clone()) {
+                if baked.is_some() {
+                    self.baked.insert(mat.shader.clone());
+                }
+                return Ok((self.put(bytes, "dds")?, false, 1.));
+            }
         }
         if multilayer {
             let metres = if mat.shader.contains("objsp") { [1.; 2] } else { multilayer::metres_per_uv(model, index) };
@@ -441,21 +447,26 @@ pub fn is_never_drawn(mat: &Material) -> bool {
     is_transparent(mat) && mat.property("ksAlphaRef", 0.) > 1.
 }
 
-/// The diffuse of an alpha-tested material with the normal map's alpha, as a DXT5 `.dds`, where no diffuse texel is
-/// under half alpha and the normal map's are: Roure's pines keep their cut-out there. `None` otherwise.
-fn cut_by_normal(model: &Model, mat: &Material) -> Option<Vec<u8>> {
-    if !is_transparent(mat) {
+/// Whether AC's shader takes the material's alpha from its normal map: `ksPerPixelMultiMap_AT` and `_AT_NMDetail`
+/// write `txNormal.a` (their disassembly; the diffuse's alpha only masks the detail), `ksPerPixelAT` and `_AT_NM` the
+/// diffuse's.
+fn alpha_from_normal(mat: &Material) -> bool {
+    mat.shader.starts_with("ksPerPixelMultiMap_AT")
+}
+
+/// The diffuse (`colour`, else the material's own) of a material whose alpha AC takes from its normal map
+/// ([`alpha_from_normal`]) with that alpha, as a DXT5 `.dds`: Roure's pines and Prunières' road edges (diffuse alpha
+/// 0) keep their cut-out. `None` for other materials or without a normal map.
+fn cut_by_normal(model: &Model, mat: &Material, colour: Option<textures::Image>) -> Option<Vec<u8>> {
+    if !alpha_from_normal(mat) {
         return None;
     }
     let decode = |slot: &str| textures::decode(model.textures.get(mat.textures.get(slot)?)?);
     let (w, h, normal) = decode("txNormal")?;
-    if normal.chunks_exact(4).all(|t| t[3] >= 128) {
-        return None;
-    }
-    let diffuse = decode("txDiffuse")?;
-    if diffuse.2.chunks_exact(4).any(|t| t[3] < 128) {
-        return None;
-    }
+    let diffuse = match colour {
+        Some(colour) => colour,
+        None => decode("txDiffuse")?,
+    };
     let opacity = normal.chunks_exact(4).flat_map(|t| [t[3]; 4]).collect();
     Some(textures::merge(Some(diffuse), [1.; 4], &(w, h, opacity)))
 }
@@ -498,8 +509,8 @@ pub struct Extras {
     /// `ksAmbient + ksDiffuse` of a foliage shader's material ([`foliage_light`]); [`normalise_light`] turns it into
     /// `ReRbrLight` against the track's foliage.
     pub foliage: Option<f32>,
-    /// `ReRbrGrass=1`: CSP's GrassFX grows on this material ([`super::csp::GrassFx`]).
-    pub grass: bool,
+    /// `ReRbrGrass`: what CSP's GrassFX does on this material ([`super::csp::GrassFx::role`]).
+    pub grass: rbr_btb::scene::Grass,
     /// `ReRbrLayer*`: the renderer sums a multilayer material per pixel.
     pub layers: Option<Layers>,
     /// The gain its diffuse was stored at ([`Extras::stored_at`]): a third `ReRbrLight` value that
@@ -747,8 +758,11 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     if let Some(sum) = extras.foliage {
         let _ = writeln!(out, "ReRbrFoliage={}", decimal(sum));
     }
-    if extras.grass {
-        out.push_str("ReRbrGrass=1\n");
+    match extras.grass {
+        rbr_btb::scene::Grass::None => {}
+        rbr_btb::scene::Grass::Grows => out.push_str("ReRbrGrass=1\n"),
+        rbr_btb::scene::Grass::Hides => out.push_str("ReRbrGrass=hide\n"),
+        rbr_btb::scene::Grass::HidesAlpha => out.push_str("ReRbrGrass=hide-alpha\n"),
     }
     if let Some(layers) = &extras.layers {
         let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
@@ -769,15 +783,21 @@ mod tests {
     #[test]
     fn a_grass_material_is_marked() {
         let mut out = String::new();
-        section_with(&mut out, "m", "t.dds", false, &Extras { grass: true, ..Extras::default() });
+        section_with(
+            &mut out,
+            "m",
+            "t.dds",
+            false,
+            &Extras { grass: rbr_btb::scene::Grass::Grows, ..Extras::default() },
+        );
         assert!(out.ends_with("ReRbrGrass=1\n\n"));
         section(&mut out, "n", "t.dds", false);
         assert_eq!(out.matches("ReRbrGrass").count(), 1);
     }
 
     #[test]
-    fn an_opaque_diffuse_takes_the_normal_maps_cut_out() {
-        // A 2x2 diffuse with no cut-out (its alpha is shading); the normal map cuts its left column.
+    fn a_multimap_at_material_takes_its_alpha_from_its_normal_map() {
+        // A 2x2 diffuse (its alpha masks the detail); the normal map cuts its left column.
         let dds = |texels: [[u8; 4]; 4]| rbr_formats::dds::rgba8_file(2, 2, &texels.concat());
         let normal = dds([[128, 128, 255, 0], [128, 128, 255, 255], [128, 128, 255, 0], [128, 128, 255, 255]]);
         let model = Model {
@@ -799,11 +819,15 @@ mod tests {
             textures: [("txDiffuse", "d"), ("txNormal", normal)].map(|(s, n)| (s.into(), n.into())).into(),
             ..Material::default()
         };
-        let bytes = cut_by_normal(&model, &on("ksPerPixelMultiMap_AT", "n")).unwrap();
-        let (_, _, rgba) = textures::decode(&bytes).unwrap();
-        assert_eq!(rgba.chunks_exact(4).map(|t| t[3]).collect::<Vec<_>>(), [0, 255, 0, 255]);
-        assert!(cut_by_normal(&model, &on("ksPerPixelMultiMap", "n")).is_none(), "not alpha tested");
-        assert!(cut_by_normal(&model, &on("ksPerPixelMultiMap_AT", "solid")).is_none(), "the normal map cuts nothing");
+        let alpha =
+            |bytes: Vec<u8>| textures::decode(&bytes).unwrap().2.chunks_exact(4).map(|t| t[3]).collect::<Vec<_>>();
+        assert_eq!(alpha(cut_by_normal(&model, &on("ksPerPixelMultiMap_AT", "n"), None).unwrap()), [0, 255, 0, 255]);
+        // Prunières' road edges: the diffuse's alpha is 0 throughout, the normal map's still cuts.
+        let clear = Some((2, 2, [200, 100, 50, 0].repeat(4)));
+        assert_eq!(alpha(cut_by_normal(&model, &on("ksPerPixelMultiMap_AT", "n"), clear).unwrap()), [0, 255, 0, 255]);
+        assert_eq!(alpha(cut_by_normal(&model, &on("ksPerPixelMultiMap_AT", "solid"), None).unwrap()), [255; 4]);
+        assert!(cut_by_normal(&model, &on("ksPerPixelMultiMap", "n"), None).is_none(), "not alpha tested");
+        assert!(cut_by_normal(&model, &on("ksPerPixelAT_NM", "n"), None).is_none(), "the diffuse's alpha");
         let mut never = on("ksTree", "n");
         never.properties.insert("ksAlphaRef".into(), 10000.);
         assert!(is_never_drawn(&never));
