@@ -431,6 +431,9 @@ pub struct GrassFx {
     /// CSP's colour mask, `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD`: how green the ground must be, and how far
     /// toward yellow and red the green may lean; `None` (stages converted before it): no colour test.
     pub mask: Option<[f32; 2]>,
+    /// Its profiles from 1 (`[ReRbrGrass<n>]`, CSP's configurations as its adjustments blend them in on some meshes):
+    /// this grass with the `base`, `size`, `luminance`, `mask` and group chances each gives, and no profiles.
+    pub profiles: Vec<GrassFx>,
 }
 
 /// A group of atlas pieces and its weight.
@@ -453,6 +456,34 @@ pub struct GrassPiece {
 impl GrassFx {
     fn parse(sections: &[ini::Section]) -> Option<GrassFx> {
         let grass = find_section(sections, "ReRbrGrass")?;
+        let mut fx = GrassFx::parse_section(grass);
+        fx.profiles = (1..)
+            .map_while(|n| find_section(sections, &format!("ReRbrGrass{n}")))
+            .map(|profile| fx.profile(profile))
+            .collect();
+        Some(fx)
+    }
+
+    /// This grass with what `section` (`[ReRbrGrass<n>]`) gives.
+    fn profile(&self, section: &ini::Section) -> GrassFx {
+        let given = GrassFx::parse_section(section);
+        let has = |key: &str| find_entry(section, key).is_some();
+        let mut groups = self.groups.clone();
+        for (group, profile) in groups.iter_mut().zip(&given.groups) {
+            group.chance = profile.chance;
+        }
+        GrassFx {
+            base: if has("base") { given.base } else { self.base },
+            size: if has("size") { given.size } else { self.size },
+            luminance: if has("luminance") { given.luminance } else { self.luminance },
+            mask: given.mask.or(self.mask),
+            groups,
+            profiles: Vec::new(),
+            ..self.clone()
+        }
+    }
+
+    fn parse_section(grass: &ini::Section) -> GrassFx {
         let number =
             |key: &str, default: f32| find_entry(grass, key).and_then(|v| v.trim().parse().ok()).unwrap_or(default);
         let list = |key: &str| -> Vec<f32> {
@@ -490,7 +521,7 @@ impl GrassFx {
                     .collect(),
             })
             .collect();
-        Some(GrassFx {
+        GrassFx {
             texture: find_entry(grass, "texture").map(str::to_owned).filter(|t| !t.is_empty()),
             grid,
             base: number("base", 1.0),
@@ -498,7 +529,8 @@ impl GrassFx {
             groups,
             luminance,
             mask,
-        })
+            profiles: Vec::new(),
+        }
     }
 }
 
@@ -815,6 +847,15 @@ mod tests {
         assert_eq!(grass.groups[1].pieces[0], GrassPiece { cell: [1, 1], size: [1, 1], chance: 1.0, mult: [1.0, 1.0] });
         assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5, mult: [0.6, 1.5] });
         assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
+        // A profile gives its numbers and keeps the rest.
+        let ini = format!("{ini}\n[ReRbrGrass1]\nbase=1\nmask=-0.05,0.01\ngroup0=0\ngroup1=0.5\n");
+        let grass = GrassFx::parse(&rbr_formats::ini::parse(&ini).unwrap()).unwrap();
+        let profile = &grass.profiles[..];
+        assert_eq!(
+            (profile.len(), profile[0].base, profile[0].size, profile[0].mask),
+            (1, 1.0, 6.5, Some([-0.05, 0.01]))
+        );
+        assert_eq!((profile[0].groups[1].chance, profile[0].groups[1].pieces.len()), (0.5, 2));
     }
 
     use super::*;

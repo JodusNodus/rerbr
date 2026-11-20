@@ -153,7 +153,8 @@ pub struct Material {
 pub enum Grass {
     #[default]
     None,
-    Grows,
+    /// At a profile: 0 the stage's, `n` its `[ReRbrGrass<n>]` (`ReRbrGrassProfile=<n>`; CSP's GrassFX adjustments).
+    Grows(u8),
     Hides,
     HidesAlpha,
 }
@@ -583,7 +584,7 @@ fn material(m: &track::Material, textures: &Textures) -> Material {
             .map(|r| r as f32)
             .filter(|r| r.is_finite() && *r > 0.0),
         grass: match m.entry("ReRbrGrass") {
-            Some("1") => Grass::Grows,
+            Some("1") => Grass::Grows(m.entry("ReRbrGrassProfile").and_then(|p| p.trim().parse().ok()).unwrap_or(0)),
             Some("hide") => Grass::Hides,
             Some("hide-alpha") => Grass::HidesAlpha,
             _ => Grass::None,

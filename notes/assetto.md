@@ -514,8 +514,7 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `[ReRbrGrass] mask=`; the grass grows where the blurred ground colour's greenness `Fx::green` (ours, CSP documents no
   formula: linear `(g - max(r - red, b)) / mean`) exceeds the main threshold. Gabiria lists its road materials in
   `GRASS_MATERIALS` and its grey asphalt passed the luminance test alone: the road was a reed bed. Not used:
-  `SHAPE_TIDY/CUT`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
-  (Highlands). Wildcards (2026-11-20, `csp::matches`): `?` is any run of characters, as CSP's own notes in
+  `SHAPE_TIDY/CUT`, `SHAPE_WIDTH`, adjustments' local areas (`@ = GrassFX_ExtraArea`) and `FADE` (Highlands). Wildcards (2026-11-20, `csp::matches`): `?` is any run of characters, as CSP's own notes in
   `extension/config` say ("matches with any number of symbols"), not one character: Joux Verte's `?talus?` marked 21
   materials and its embankments grew no grass; now 497 (`MESH_ADJUSTMENT` names alike). Stages need converting again. Calibrated against CSP itself (2026-11-20: AC + CSP booted under Proton, a Lua app puts the camera at
   the render poses and screenshots; Prunières, Sa Calobra, Gabiria, Roure side by side with ours):
@@ -554,6 +553,17 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     (about 10,10,6 against CSP's olive), and the banks at 001.643 and 018.072 stay dark in the same sun (ambient,
     not the sun). The near white bank ground (004.929, 008.215 at 13:00) is sunlit ground under the 36-degree sun; in
     shade or under CSP's sun it is dark olive.
+  - Configurations (2026-11-21, `GrassFx::profile`): `[GRASS_FX_CONFIGURATION_A..D]` and the
+    `[GRASS_FX_ADJUSTMENT_...]` that blend them in (28 AC tracks here) become profiles: `[ReRbrGrass<n>]` in
+    `settings.ini` with `base`, `size`, `luminance`, `mask` and `group<n>` (the stage's, lerped toward each
+    configuration by its `MAP` weight in turn; keys a configuration leaves out keep the stage's; a `5, 4.0` pair by its
+    mean), and `ReRbrGrassProfile=<n>` on the material, split per profile (`ac\<model>_<mat>_g<n>`). A mesh takes the
+    last adjustment whose `MATERIALS` or `MESHES` match (either: Joux Verte's first names talus meshes with a material
+    none has); one naming neither applies by its rectangle (`CENTER`, `SIZE` whole, `ANGLE` degrees, sign unchecked),
+    per triangle. Effect small where measured: Joux Verte 8 of 501 grass materials, about 17 spots, none in the
+    reference view (profile 1 banks get flowers and grow on duller ground); Akina's A (mask 0.01) on all its grass
+    changes under 50 pixels in four views (no atlas: our blades, and its banks already pass the default mask).
+    Stages need converting again.
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.

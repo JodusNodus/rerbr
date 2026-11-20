@@ -728,7 +728,7 @@ fn global_clouds(
                 alpha_ref: Some(0),
                 mip_bias: false,
                 ground: false,
-                grass: false,
+                grass: None,
                 cull_back: false,
                 blend: true,
                 depth_test: false,

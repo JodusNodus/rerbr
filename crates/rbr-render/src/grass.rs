@@ -171,8 +171,8 @@ pub struct Field {
     line: Line,
     /// The grass texture's mean colour (display).
     mean: Vec3,
-    /// A converted stage's grass, placed on its marked materials.
-    fx: Option<Fx>,
+    /// A converted stage's grass, placed on its marked materials, by profile (the stage's first; empty elsewhere).
+    fx: Vec<Fx>,
 }
 
 /// A converted stage's GrassFX (Assetto Corsa's `[GRASS_FX]`, [`Stage::grass_fx`]) as the field takes it: grass grows
@@ -183,11 +183,25 @@ struct Fx {
     mask: Option<[f32; 2]>,
     /// The atlas the track ships, its pieces and its size in texels; `None`: our blades.
     atlas: Option<(rbr_btb::track::GrassFx, Vec2)>,
-    /// The cells ([`HIDE_STEP`] square) under its occluders ([`hidden`]).
-    hidden: HashSet<(i32, i32)>,
+    /// The cells ([`HIDE_STEP`] square) under its occluders ([`hidden`]), shared by the profiles.
+    hidden: Arc<HashSet<(i32, i32)>>,
 }
 
 impl Fx {
+    /// The stage's grass and its profiles ([`GrassFx::profiles`](rbr_btb::track::GrassFx::profiles)), with the atlas
+    /// of `size` texels or our blades.
+    fn profiles(settings: &rbr_btb::track::GrassFx, size: Option<Vec2>, hidden: Arc<HashSet<(i32, i32)>>) -> Vec<Fx> {
+        std::iter::once(settings)
+            .chain(&settings.profiles)
+            .map(|p| Fx {
+                luminance: p.luminance,
+                mask: p.mask,
+                atlas: size.map(|size| (p.clone(), size)),
+                hidden: hidden.clone(),
+            })
+            .collect()
+    }
+
     /// Whether ground of colour `rgb` (0 to 1) takes grass, its patches' colour `patch` (the blurred texels, as CSP's
     /// `MASK_BLUR` blurs): 1 or 0.
     fn mask(&self, rgb: Vec3, patch: Vec3) -> f32 {
@@ -276,6 +290,8 @@ struct Ground {
     alpha: [f32; 3],
     hue: [Vec3; 3],
     road: bool,
+    /// The grass profile of its material ([`Field::fx`]).
+    profile: u8,
     first: u32,
     second: Option<u32>,
     normal: Vec3,
@@ -387,7 +403,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     }
     // A converted stage's marked materials: the grass grows on them alone, drawn from the atlas it ships if it loaded.
     let marked = |m: &Mesh, d: &Draw| {
-        m.anchor == Anchor::World && m.layer == Layer::Solid && d.state.grass && d.state.alpha_ref.is_none()
+        m.anchor == Anchor::World && m.layer == Layer::Solid && d.state.grass.is_some() && d.state.alpha_ref.is_none()
     };
     let fx_stage = stage.grass_fx.is_some() && stage.meshes.iter().any(|m| m.draws.iter().any(|d| marked(m, d)));
     let grows = |m: &Mesh, d: &Draw| if fx_stage { marked(m, d) } else { puddles::ground(m, d) };
@@ -480,6 +496,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                     alpha: v.map(|v| f32::from(v.color[3]) / 255.0),
                     hue: v.map(|v| tint(v.color)),
                     road: v.iter().any(|v| v.wet > 0.0),
+                    profile: draw.state.grass.unwrap_or(0),
                     first,
                     second,
                     normal,
@@ -498,12 +515,10 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     // The atlas is the stage's own texture; ours is made here.
     let (texture, mean, fx) = match atlas {
         Some((texture, bytes, mean, settings, size)) => {
-            let luminance = settings.luminance;
             stage
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-            let hidden = hidden.unwrap_or_default();
-            (texture, mean, Some(Fx { luminance, mask: settings.mask, atlas: Some((settings, size)), hidden }))
+            (texture, mean, Fx::profiles(&settings, Some(size), Arc::new(hidden.unwrap_or_default())))
         }
         None => {
             stage.texture_names.insert(
@@ -513,13 +528,9 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             stage
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-            let fx = stage.grass_fx.as_ref().filter(|_| fx_stage).map(|fx| Fx {
-                luminance: fx.settings.luminance,
-                mask: fx.settings.mask,
-                atlas: None,
-                hidden: hidden.unwrap_or_default(),
-            });
-            (texture, mean, fx)
+            let fx = stage.grass_fx.as_ref().filter(|_| fx_stage);
+            let fx = fx.map(|fx| Fx::profiles(&fx.settings, None, Arc::new(hidden.unwrap_or_default())));
+            (texture, mean, fx.unwrap_or_default())
         }
     };
     let slots = SLOTS.iter().flat_map(|&(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
@@ -528,6 +539,11 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
 }
 
 impl Field {
+    /// The converted stage's grass on ground `g`, at its profile.
+    fn fx(&self, g: &Ground) -> Option<&Fx> {
+        self.fx.get(usize::from(g.profile)).or(self.fx.first())
+    }
+
     /// Untinted vegetation on the actual ground at `q`; try the root's triangle before its neighbours.
     fn vegetation(&self, root: &Ground, q: Vec3) -> f32 {
         let sample = |g: &Ground| {
@@ -548,7 +564,7 @@ impl Field {
     /// How much grass ground `g` takes at weights `w` ([`green`], or the converted stage's [`Fx::mask`]).
     fn grassy(&self, g: &Ground, w: [f32; 3]) -> f32 {
         let rgb = g.colour(&self.placement, w);
-        match &self.fx {
+        match self.fx(g) {
             Some(fx) if fx.hidden.contains(&hide_cell((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz())) => 0.0,
             Some(fx) => fx.mask(rgb, g.colour(&self.textures, w)),
             None => green(rgb, g.road),
@@ -586,7 +602,7 @@ impl Field {
             let p = g.p;
             let centre = (p[0] + p[1] + p[2]) / 3.0;
             let mut random = Random::at(centre);
-            let wanted = g.area * self.fx.as_ref().map_or(DENSITY, Fx::density) + random.next();
+            let wanted = g.area * self.fx(g).map_or(DENSITY, Fx::density) + random.next();
             for _ in 0..wanted as usize {
                 // Every card draws the same numbers whatever it becomes, so the sequence holds across tiles and shares.
                 let [a, b, keep, chance, turn, width, height, pick, lean, lean_turn] = [0; 10].map(|_| random.next());
@@ -608,11 +624,7 @@ impl Field {
                 let meadow =
                     (lerp(HEIGHT, height) * tall * kind.height()).min(MAX_HEIGHT[usize::from(kind == Kind::Seeds)]);
                 // A card's picture and size: an atlas piece's cells at the stage's cell size, or our blades' at the meadow's.
-                let size = |pick: f32| match self
-                    .fx
-                    .as_ref()
-                    .and_then(|fx| Some((fx, fx.piece((pick * 131.7).fract())?)))
-                {
+                let size = |pick: f32| match self.fx(g).and_then(|fx| Some((fx, fx.piece((pick * 131.7).fract())?))) {
                     Some((fx, (rect, [w, h], piece))) => {
                         let unit = fx.cell() * lerp(CELL_VARY, height) * tall.sqrt();
                         (rect, unit * w, unit * h, piece)
@@ -625,7 +637,7 @@ impl Field {
                     (size(pick), size((pick * 53.0).fract()));
                 let angle = turn * std::f32::consts::PI;
                 let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
-                let radius = if self.fx.is_some() {
+                let radius = if !self.fx.is_empty() {
                     width * 0.4
                 } else {
                     (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS)
@@ -636,7 +648,7 @@ impl Field {
                 let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
                 let hue = colour / self.mean;
                 let grey = Vec3::splat(hue.element_sum() / 3.0);
-                let converted = self.fx.is_some();
+                let converted = !self.fx.is_empty();
                 let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
                 let hue = if converted {
                     (hue / hue.max_element()).lerp(FX_OLIVE, FX_OLIVE_SHARE)
@@ -800,7 +812,7 @@ fn slot_mesh(texture: TextureRef, capacity: usize) -> Mesh {
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
         ground: false,
-        grass: false,
+        grass: None,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -1608,6 +1620,7 @@ mod tests {
             alpha: [1.0; 3],
             hue: [Vec3::ONE; 3],
             road: true,
+            profile: 0,
             first: 0,
             second: None,
             normal: Vec3::Y,
@@ -1623,14 +1636,14 @@ mod tests {
             placement: vec![sharp],
             line: Line::new(&[a, d]),
             mean: Vec3::splat(0.5),
-            fx: None,
+            fx: Vec::new(),
         }
     }
 
     #[test]
     fn a_converted_stages_grass_takes_ground_by_luminance_and_pieces_by_weight() {
         use rbr_btb::track::{GrassFx, GrassGroup, GrassPiece};
-        let settings = GrassFx {
+        let mut settings = GrassFx {
             texture: None,
             grid: [8, 3],
             base: 1.0,
@@ -1641,13 +1654,15 @@ mod tests {
             }],
             luminance: [0.005, 0.25],
             mask: Some([0.3, 0.01]),
+            profiles: Vec::new(),
         };
-        let fx = Fx {
-            luminance: settings.luminance,
-            mask: settings.mask,
-            atlas: Some((settings, Vec2::new(2048.0, 768.0))),
-            hidden: HashSet::new(),
-        };
+        settings.profiles = vec![GrassFx { base: 0.0, mask: Some([-0.05, 0.01]), ..settings.clone() }];
+        let profiles = Fx::profiles(&settings, Some(Vec2::new(2048.0, 768.0)), Arc::default());
+        let fx = &profiles[0];
+        // A profile takes its own mask and weights: Joux Verte's configuration grows grass on dull ground too.
+        let dull = Vec3::new(0.46, 0.47, 0.42);
+        assert_eq!((profiles.len(), fx.mask(dull, dull), profiles[1].mask(dull, dull)), (2, 0.0, 1.0));
+        assert!(profiles[1].piece(0.0).is_some_and(|(_, _, piece)| piece));
         // Green enough and in range takes grass; grey asphalt, too bright, black or yellow-brown dirt does not.
         let (grass, grey, dirt) = (Vec3::new(0.4, 0.5, 0.2), Vec3::splat(0.5), Vec3::new(0.57, 0.51, 0.38));
         let mask = |c: Vec3| fx.mask(c, c);
