@@ -359,7 +359,8 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   `Atmosphere::mist`); without it the section's. AC imports write `mist=0`: at Sa Calobra 06:45 the mist filled the
   valley toward the sun with a beige wash where AC shows the terrain. Sa Calobra at 07:35 with `0.74, 0.68, 0.62` and
   0.3: wall-shot sky (202,208,215) top, (212,214,215) horizon against the AC shot's (187,196,211), (208,208,210), the
-  distance warm grey where it was blue (`/tmp/atm/v2`). Aerosol 0.4 whitened 13:00's sky.
+  distance warm grey where it was blue (`/tmp/atm/v2`). Aerosol 0.4 whitened 13:00's sky. AC imports write a crisp blue
+  haze since 2026-11-20 (`notes/assetto.md`).
 - Light-shaft glow (2026-11-19): the glow's 350 m of lit air times its sun lobe made a bright wedge beside Sa Calobra's
   big rock at 07:35, ending in a straight edge where the rock's shadow left the ray (the gate `GLOW_SHADE` saturated
   at a quarter of the ray in shade). Now `GLOW_SHADE` 0.8 (the gate ramps over most of the ray) and `MARCH_GLOW` 0.03:
@@ -1438,6 +1439,15 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   night views pixel-identical. The gallery is regenerated with both lighting fixes.
   Reference-shot choices (2026-11-10): Pengonpohja's quattro fly-by uses Partly cloudy at 18:00 with wet roads and
   no rain; Comb I's Yaris fly-by uses Clear at 05:45, sun 5.8 degrees up, for warm side light and backlit dust.
+- Sunlight scattered by cloud (2026-11-20, `skylight.wgsl` `sky_light_table`): the cover's overcast part of the sky's
+  light is the clear sky's plus `CLOUD_SCATTER` (0.5) of the sun's on up-facing ground per share of cover past the
+  clear sky's (`CLEAR_COVER` 0.12); before, it kept the clear sky's light, so broken cloud's shade was as dark as a clear
+  sky's (Joux Verte grass lit over shade 5.9 in display values, CSP's road 1.4, the acrallycentral shot 1.3 to 1.7).
+  Clear byte-identical; 13:00 start views, before and after (luma p5/p50/p95; RMSE of 255): 41_M partly 2/62/205 to
+  3/68/197 (9.1), broken 2/62/205 to 4/72/194 (12.7); 54_E partly 4/52/122 to 5/58/131 (7.9), broken 4/52/121 to
+  5/60/135 (10.2); 10_O 1.7, 2.6. Found alongside, not changed: against CSP the converted stages' remaining gap is
+  global contrast (CSP's middle half of luma 71 to 86 at Sa Calobra 13:00, ours 44 to 75; the shot's p25/p75 0.54,
+  ours 0.39), which three times the sky's light does not close (it lifts the whole frame through the exposure).
   Partly's 0.35 is a weather-noise threshold input, not measured sky coverage; choosing a preset also changes the
   cloud field's seed and layer shape. Pengonpohja's approved view has cloud opacity above 0.5 on 97.5% of sampled
   visible sky pixels (raw transmittance diagnostic, top 500 rows, 2026-11-10), median opacity 1; all those pixels

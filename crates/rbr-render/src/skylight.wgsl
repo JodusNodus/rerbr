@@ -411,14 +411,22 @@ fn sky_light_table(dir: vec3<f32>) -> vec3<f32> {
     let elevation = asin(clamp(dir.y, -1.0, 1.0));
     let v = 0.5 + 0.5 * sign(elevation) * sqrt(abs(elevation) / (0.5 * PI));
     let clear = textureSampleLevel(skyview_lut, lut_sampler, vec2<f32>(azimuth / PI, v), 0.0).rgb;
-    // Cloud cover greys and flattens the sky toward an overcast of the same light (CIE overcast: (1 + 2 up) / 3 of the
-    // zenith); `light_out.scale.y` is the clear sky's up-facing irradiance.
+    // Cloud cover greys and flattens the sky toward an overcast (CIE overcast: (1 + 2 up) / 3 of the zenith) of the
+    // clear sky's light (`light_out.scale.y`, up-facing) and the sunlight its clouds scatter down: `CLOUD_SCATTER` of
+    // the sun's on up-facing ground (`scale.w - scale.y`) per share of cover past the clear sky's.
     let cover = sky.level.y * 0.75;
     if (cover <= 0.0) {
         return clear;
     }
-    return mix(clear, cie_overcast(dir, light_out.scale.y), cover);
+    let scattered = CLOUD_SCATTER * max(sky.level.y - CLEAR_COVER, 0.0) * (light_out.scale.w - light_out.scale.y);
+    return mix(clear, cie_overcast(dir, light_out.scale.y + scattered / cover), cover);
 }
+
+// The sunlight broken cloud scatters down, as a share of the sun's on up-facing ground per share of cover, and the clear
+// sky's cover, which scatters none (`Atmosphere::cloud_cover`). Sunlit cumulus brightens the shade: with the sun out
+// under broken cloud the diffuse share of the day's light is about twice the clear sky's (ours).
+const CLOUD_SCATTER: f32 = 0.5;
+const CLEAR_COVER: f32 = 0.12;
 
 // The CIE standard overcast sky (Moon and Spencer 1942) giving up-facing ground `e` (table units): `(1 + 2 up) / 3` of
 // its zenith's luminance, grey, and below the horizon the ground it lights.
