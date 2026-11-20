@@ -125,7 +125,7 @@ physics lives: [physics-map.md](physics-map.md).
 
 | Path | What |
 | --- | --- |
-| `scripts/` | `rust-check.sh`, `gate.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `stage-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
+| `scripts/` | `rust-check.sh`, `gate.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `weather-sheet.py`, `bench.py`, `school-sweep.sh`, `stage-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
 | `harness/` | records and replays the original game for the physics checks ([README](../harness/README.md)) |
 | `data/` | test data hashes and file lists, the reference shot list, generator inputs |
 | `docs/` | this guide, the install guide, the reference shots and clips |
@@ -214,6 +214,10 @@ For a graphics change:
 3. `--out NEW --compare BASE --diff DIFFS` prints each shot's RMSE and writes a diff image for each changed one.
 4. When the change is wanted, update the committed JPEGs: `--out NEW --no-render --previews docs/shots --gallery
    docs/shots/README.md`.
+
+For a change to the sky, clouds, haze, rain or exposure, `scripts/weather-sheet.py` renders one view with the sky in
+frame under every cloud cover, moment of the day and rain the launcher offers (100 pictures, one sheet per moment);
+`--doc docs/weather` updates the committed [weather reference](weather/README.md).
 
 Compare renders made on one machine. GPUs and C libraries round differently: a Mac and an AMD desktop differ by 2-3
 of 255 on average, at foliage edges and dust. The PNGs are game content and stay out of git; `data/shots.json` and

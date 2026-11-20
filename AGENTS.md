@@ -64,7 +64,7 @@ same paths.
 | `RBR_RECORDINGS` | Recorded drives (`drive-*.bin`, RSF sessions); not in git, published set via `scripts/fetch-test-data.sh` |
 | `original/` | Original binaries and game data (gitignored, `SHA256SUMS` only) |
 | `data/` | Test data hashes and file lists, generator inputs |
-| `scripts/` | `rust-check.sh`, `gate.sh` (the physics gate), `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), `school-sweep.sh` (every lesson headless), `stage-sweep.sh` (every RSF stage headless), generators of Rust tables, NGP tools |
+| `scripts/` | `rust-check.sh`, `gate.sh` (the physics gate), `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `weather-sheet.py` (weather reference, `docs/weather/`), `bench.py` (worst-case frame rate), `school-sweep.sh` (every lesson headless), `stage-sweep.sh` (every RSF stage headless), generators of Rust tables, NGP tools |
 
 Treat `original/`, `build/` and the recordings as local data. Do not commit their contents.
 
