@@ -1,6 +1,6 @@
 # Reference shots
 
-JPEGs of the 39 shots of [`data/shots.json`](../../data/shots.json), made by
+JPEGs of the 40 shots of [`data/shots.json`](../../data/shots.json), made by
 `scripts/render-shots.py` (every enhancement on, the autopilot driving). Regenerate them with
 `scripts/render-shots.py --previews docs/shots --gallery docs/shots/README.md`; the graphics workflow is in
 [development.md](../development.md#reference-shots).
@@ -48,6 +48,12 @@ Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 17:30
 Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, 15:00
 
 ![day-sa-calobra-alpine-flyby](day-sa-calobra-alpine-flyby.jpg)
+
+### day-joux-verte-celica-chase
+
+Toyota Celica 2000GT-FOUR RC (ST185) Group A, Joux Verte SS7 reversed (AC import 1996319), chase view, 08:00
+
+![day-joux-verte-celica-chase](day-joux-verte-celica-chase.jpg)
 
 ## Golden hour
 
