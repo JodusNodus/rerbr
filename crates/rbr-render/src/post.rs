@@ -40,6 +40,9 @@ pub(crate) struct Post {
     sharpen: f32,
     /// An HDR display's headroom over its SDR white ([`Post::set_headroom`]).
     headroom: f32,
+    /// `RBR_METER_EV`: the scene taken as metered at this EV100 every frame, so that frames differing in part (the
+    /// grass on and off) are exposed alike for comparison; 0 (unset) metered.
+    fixed_ev: f32,
     /// The resolved frame.
     pub(crate) scene: wgpu::TextureView,
     targets: Targets,
@@ -79,6 +82,8 @@ struct Meter {
     sharpen: f32,
     /// An HDR display's headroom (`HDR` in `post.wgsl`).
     headroom: f32,
+    /// `x`: [`Post::fixed_ev`], 0 metered.
+    fixed: [f32; 4],
 }
 
 /// What the frame's conditions do to the post pass ([`conditions`]).
@@ -308,6 +313,7 @@ impl Post {
             metered: None,
             sharpen: if sharpen { TAA_SHARPEN } else { 0.0 },
             headroom: 1.0,
+            fixed_ev: std::env::var("RBR_METER_EV").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             scene,
             targets,
             shafts,
@@ -364,6 +370,7 @@ impl Post {
             saturation: conditions.saturation,
             sharpen: self.sharpen,
             headroom: self.headroom,
+            fixed: [self.fixed_ev, 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.meter_settings, 0, bytemuck::bytes_of(&settings));
         let t = &self.targets;

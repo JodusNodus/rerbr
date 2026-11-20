@@ -41,9 +41,9 @@ const BAND: f32 = 20.0;
 /// [`FAR_SHARE`] of it at [`BAND`].
 const DENSITY: f32 = 40.0;
 /// A converted stage's atlas clumps a square metre times its cell's area ([`Fx::density`]): smaller cells, more clumps,
-/// the same cover. Calibrated on Sa Calobra (cell 0.91 m: 5 clumps a square metre, separate tufts as in the AC shot);
-/// Créquy's 0.28 m cells take 52, near our [`DENSITY`].
-const FX_COVER: f32 = 4.1;
+/// the same cover. Measured against CSP with its grass off and on at our poses (`notes/assetto.md`): the share of the
+/// frame the grass covers came to 0.9, 1.6 and 1.1 times CSP's on Prunières, Sa Calobra and Gabiria.
+const FX_COVER: f32 = 0.8;
 const FULL: f32 = 10.0;
 const FAR_SHARE: f32 = 0.4;
 /// The steepest ground that takes grass: the cosine of its slope.
@@ -86,9 +86,9 @@ const WIDTH: [f32; 2] = [1.0, 1.6];
 const MAX_HEIGHT: [f32; 2] = [0.14, 0.20];
 const MAX_WIDTH: f32 = 0.20;
 /// A converted stage's atlas cards: the metres of a cell per square root of CSP's `SHAPE_SIZE`, and the size for a stage
-/// that sets none. Calibrated on CSP's own pictures at our poses (`notes/assetto.md`): its grass stands about 0.3 to
-/// 0.4 m on Prunières (9.5) and Sa Calobra (6.5) and about 0.25 m on Gabiria (3), so not in proportion to the size.
-const CELL_PER_SIZE: f32 = 0.18;
+/// that sets none: the square root, as CSP's grass stands about 0.3 to 0.4 m on Prunières (9.5) and Sa Calobra (6.5) and
+/// about 0.25 m on Gabiria (3); the scale with [`FX_COVER`] (`notes/assetto.md`).
+const CELL_PER_SIZE: f32 = 0.15;
 const DEFAULT_SIZE: f32 = 1.5;
 /// CSP's `MASK_MAIN_THRESHOLD` against our measure of green ([`Fx::green`]): its own pictures cover about as much of
 /// Prunières' (0.75) and Roure's (0.3) verges as ours does at this share of the threshold.
@@ -140,12 +140,11 @@ const SATURATION: f32 = 0.85;
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
 /// A converted stage's green blades' hue: the ground's at [`FX_SATURATION`], leaned by [`FX_OLIVE_SHARE`] to
-/// [`FX_OLIVE`] ([`FX_ALBEDO`] their brightness; `shader.wgsl` darkens their roots). CSP's pictures show them olive on
-/// Prunières' olive ground, on Sa Calobra's and Roure's warm grey and on Gabiria's straw (ours side by side,
-/// `notes/assetto.md`).
+/// [`FX_OLIVE`] ([`FX_ALBEDO`] their brightness; `shader.wgsl` darkens their roots). CSP's grass's blue over green
+/// measures 0.70 to 0.79 on the four stages; the lean puts ours at 0.71 to 0.86 (none: 0.71 to 0.91; 0.4: 0.64 to 0.79).
 const FX_SATURATION: f32 = 0.5;
 const FX_OLIVE: Vec3 = Vec3::new(0.8, 1.0, 0.4);
-const FX_OLIVE_SHARE: f32 = 0.4;
+const FX_OLIVE_SHARE: f32 = 0.15;
 /// `specular.z` of a converted stage's cards (ours 1): `shader.wgsl` gives them `FX_GRASS_ROOT` and `FX_GRASS_TIP`.
 const FX_CARD: f32 = 2.0;
 /// `specular.z` of a converted stage's group pieces (flowers, weeds): `shader.wgsl` grows them only past `FX_PIECE_NEAR`
@@ -1661,7 +1660,7 @@ mod tests {
         assert!(rect[0] < 1.0 / 8.0 && rect[3] < 1.0 / 3.0 && cells == [1.0, 1.0] && !piece);
         let (rect, cells, piece) = fx.piece(0.9).unwrap();
         assert!(rect[0] > 3.0 / 8.0 && rect[1] < 5.0 / 8.0 && rect[2] > 0.3 && cells == [0.6, 1.5] && piece);
-        assert!((fx.cell() - 0.18 * 6.5f32.sqrt()).abs() < 1e-6);
+        assert!((fx.cell() - CELL_PER_SIZE * 6.5f32.sqrt()).abs() < 1e-6);
     }
 
     #[test]

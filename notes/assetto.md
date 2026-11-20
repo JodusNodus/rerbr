@@ -534,8 +534,20 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     `MAP_STEP`) whose centre one covers, from above, where its texel is at least half opaque for `hide-alpha`
     (`grass::hidden`). Prunières' road edges needed their alpha first (normal-map alpha, above): the grass now stops
     at the gravel shoulders as in CSP's shots.
-  - Open: CSP's Prunières grass is sparser and shorter than ours (CSP's density also follows the player's GrassFX
-    `QUALITY`, Medium on the reference install); CSP's distant fog is bluer.
+  - Grass-only measure (2026-11-20): CSP shot with GrassFX on and off (`cfg/extension/grass_fx.ini` `[BASIC]
+    ENABLED=0` for the run), ours with `--enhance all,grass` and `all` at a fixed exposure (`RBR_METER_EV=11`: our eye
+    adapts to the frame, which the grass moves, and the grass-off frame moved everywhere). The pixels that change are
+    the grass: its share of the frame, its colour against the ground it covers, its blue over green. CSP at its
+    `QUALITY` Medium (the reference install). Before / after (`FX_COVER` 4.1 to 0.8, `CELL_PER_SIZE` 0.18 to 0.15,
+    `FX_OLIVE_SHARE` 0.4 to 0.15), share of the frame against CSP's: Prunières 0.159 / 0.086 (CSP 0.099), Sa Calobra
+    0.253 / 0.123 (0.077), Gabiria 0.086 / 0.068 (0.061), Roure 0.071 / 0.072 (0.014, ours counts bushes that move
+    between the two frames); blue over green 0.64-0.79 / 0.71-0.86 (CSP 0.70-0.79). Halving the clumps alone cut the
+    share by a sixth: what the grass covers is its height in view more than its count.
+  - Grass against ground brightness is not comparable yet: on three of Prunières' poses CSP's bank is sunlit and ours
+    in full shadow at the same 13:00 (the converted stage's `sunDirection` against AC's sun, not checked), and the
+    sparser grass shows a pale, near white ground on Prunières' banks (already a strip at the road edge before) where
+    CSP's is olive.
+  - Open: CSP's distant fog is bluer.
 
 ## Launcher import (2026-11-18)
 

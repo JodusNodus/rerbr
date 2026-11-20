@@ -34,6 +34,8 @@ struct Meter {
     // The weather's grade (`post::Conditions`): `x` the metered exposure's scale, `y` the saturation's; `z` the
     // sharpening (`sharpened`); `w` an HDR display's headroom (`HDR`).
     grade: vec4<f32>,
+    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered.
+    fixed: vec4<f32>,
 }
 
 @group(1) @binding(1) var<storage, read> exposure: Exposure;
@@ -492,7 +494,8 @@ fn cs_meter(@builtin(local_invocation_index) index: u32) {
     if (index != 0u) {
         return;
     }
-    let outside = aimed(metered(0u).x);
+    let light = select(metered(0u).x, log2(exp2(meter.fixed.x) * CALIBRATION / 100.0), meter.fixed.x > 0.0);
+    let outside = aimed(light);
     let held = outside.x;
     let aim = outside.y;
     // Without the cabin in view (or outside the car) the cabin's follows the outside's.
