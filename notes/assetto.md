@@ -711,3 +711,13 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   baked), Roure 429 to 815 MB. Former folders in the player's `backups/pre-ac-look-20261119` (34 GB).
 - Shots: `render-shots.py` must run without `RBR_DATA` from `dev.env` (the bare retail install): the launcher passes it
   as `--data`, and RSF cars' liveries and lamp textures then go missing (white Yaris, no tail lights).
+- 2026-11-20, from `render/ac-grass-mask` (`6091bd98`..): all 40 converted again into a staging folder; only
+  `settings.ini` (35, the GrassFX `mask`) and `materials.ini` (34, `ksTree`/`ksGrass` without `ReRbrLight`) differed
+  and were copied in, the former in `backups/pre-grass-mask-20261120`. That build predated `bfb50f18`, so Prunières'
+  pieces kept their `//` comments until its two layouts were installed again with the light gain and the bake gain
+  (`materials.ini`, `settings.ini`, `Textures.zip`; `backups/pre-light-gain-20261120`, `pre-bake-gain-20261120`).
+  Converting Gabiria, the Nordschleife, Col de Braus, Sa Calobra and St Jean with those gave identical files.
+- `track.ini` takes `countrycode` from `ui_track.json`'s `country` (`stage::country_code`, English names to ISO):
+  the launcher shows the country and `relight::site` places the sun in its region (default 48 N, 8 E before).
+  Montenegro (Glava Zete) is `ME`, in neither table, so its site stays the default. The geotags are not read: half
+  the installed tracks give `lat`/`lon` placeholders, the rest five notations.

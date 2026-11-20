@@ -31,6 +31,8 @@ pub struct Input {
     pub splits: Vec<f64>,
     pub title: String,
     pub author: String,
+    /// `ui_track.json`'s `country` as an ISO code ([`country_code`]), for `track.ini`'s `countrycode`.
+    pub country: Option<&'static str>,
     pub ai_source: PathBuf,
     pub reversed_ai: bool,
     /// Gates invented from a closed AI loop rather than read from the source.
@@ -53,6 +55,59 @@ fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)
             })
         })
     })
+}
+
+/// The ISO code of an Assetto Corsa track's `country` (an English name, as Kunos's and the mods' `ui_track.json` give
+/// it), for the launcher's country and the sun's site (`relight::site`); `None` for a name not listed.
+fn country_code(name: &str) -> Option<&'static str> {
+    const CODES: [(&str, &str); 44] = [
+        ("argentina", "AR"),
+        ("australia", "AU"),
+        ("austria", "AT"),
+        ("belgium", "BE"),
+        ("brazil", "BR"),
+        ("canada", "CA"),
+        ("china", "CN"),
+        ("croatia", "HR"),
+        ("cyprus", "CY"),
+        ("czech republic", "CZ"),
+        ("czechia", "CZ"),
+        ("england", "GB"),
+        ("estonia", "EE"),
+        ("finland", "FI"),
+        ("france", "FR"),
+        ("germany", "DE"),
+        ("great britain", "GB"),
+        ("greece", "GR"),
+        ("hungary", "HU"),
+        ("ireland", "IE"),
+        ("italy", "IT"),
+        ("japan", "JP"),
+        ("kenya", "KE"),
+        ("latvia", "LV"),
+        ("lithuania", "LT"),
+        ("mexico", "MX"),
+        ("monaco", "MC"),
+        ("montenegro", "ME"),
+        ("netherlands", "NL"),
+        ("new zealand", "NZ"),
+        ("norway", "NO"),
+        ("poland", "PL"),
+        ("portugal", "PT"),
+        ("romania", "RO"),
+        ("scotland", "GB"),
+        ("slovakia", "SK"),
+        ("slovenia", "SI"),
+        ("spain", "ES"),
+        ("sweden", "SE"),
+        ("switzerland", "CH"),
+        ("uk", "GB"),
+        ("united kingdom", "GB"),
+        ("united states", "US"),
+        ("usa", "US"),
+    ];
+    let name = name.trim().to_lowercase();
+    CODES.iter().find(|(n, _)| *n == name).map(|(_, code)| *code)
 }
 
 const BACKWARDS: &str = "finish must follow start by at least 50 m on the AI line";
@@ -249,6 +304,7 @@ impl Input {
             })
             .unwrap_or("unknown")
             .replace(['\n', '\r'], " ");
+        let country = metadata.as_ref().and_then(|m| m["country"].as_str()).and_then(country_code);
         Ok(Self {
             root,
             layout: layout.into(),
@@ -260,6 +316,7 @@ impl Input {
             splits,
             title,
             author,
+            country,
             ai_source,
             reversed_ai: reverse_ai,
             circuit,
@@ -1218,7 +1275,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write("materials.ini", format!("{list}\n{}", material::normalise_light(&materials, &light_areas)))?;
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
-    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}",input.author,(input.finish-input.start)/1000.,if input.circuit{"circuit=1\n"}else{""}))?;
+    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}{}",input.author,(input.finish-input.start)/1000.,input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default(),if input.circuit{"circuit=1\n"}else{""}))?;
     let mut settings = String::from(SETTINGS_INI);
     if let Some(fx) = &grass_fx {
         settings.push('\n');
@@ -1321,6 +1378,13 @@ const SETTINGS_INI: &str =
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_track_country_is_its_iso_code() {
+        assert_eq!(
+            ["Spain", " france ", "USA", "Montenegro", "Atlantis", ""].map(country_code),
+            [Some("ES"), Some("FR"), Some("US"), Some("ME"), None, None]
+        );
+    }
     #[test]
     fn the_settings_carry_a_mild_warm_grey_haze() {
         let air = rbr_btb::track::Air::from_ini(SETTINGS_INI).unwrap();
