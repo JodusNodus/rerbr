@@ -422,7 +422,8 @@ probably fit the wrong hour.
 
 - Sky cover steps, thinnest to thickest (`atmosphere::Clouds`): clear, dimpled, partly, broken, heavy (the launcher's
   Clouds box; the old `light` reads as broken, the same look). Survey (2026-11-19, `cloud_survey`, opaque over the upper
-  sky, 4 fields x 3 eyes): clear 14 % (few), dimpled 18 %, partly 47 % (scattered), broken 77 % (5-7 oktas), heavy 97 %
+  sky, 4 fields x 3 eyes): clear 14 % (few; chosen, 0 % since 2026-11-20: `cloud_layer` 0, the cirrus' veil alone, the
+  sections' own clear rows keep their face's 0.15), dimpled 18 %, partly 47 % (scattered), broken 77 % (5-7 oktas), heavy 97 %
   (overcast). The survey reads the marched layer and the cirrus only, not the dimpled sheet, so dimpled's 18 % is its
   few low cumulus (cover 0.2) alone: the sheet's own cover is not measured. The 800 m broken stratocumulus is `broken`
   and the section's own `lightcloud` rows.

@@ -77,9 +77,10 @@ fn fs_cloud_weather(v: SkyOut) -> @location(0) vec4<f32> {
     if (frame.sun.w == 0.0) {
         return vec4<f32>(mix(0.5, 1.0, smoothstep(0.25, 0.75, n)), veil, 0.0, 1.0);
     }
-    // Lowered for the clouds' cut (`VOLUME_COVER`): the same share of the sky covered.
+    // Lowered for the clouds' cut (`VOLUME_COVER`): the same share of the sky covered; none at no cover.
     let threshold = mix(0.58, 0.12, frame.clouds.x);
-    return vec4<f32>(smoothstep(threshold - 0.12, threshold + 0.3, n), veil, 0.0, 1.0);
+    let cloud = smoothstep(threshold - 0.12, threshold + 0.3, n) * smoothstep(0.0, 0.05, frame.clouds.x);
+    return vec4<f32>(cloud, veil, 0.0, 1.0);
 }
 
 // The distance along `dir` (its `y` the sine of its elevation) from the eye to the shell `height` above it.

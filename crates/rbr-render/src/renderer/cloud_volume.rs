@@ -59,10 +59,11 @@ pub(super) fn drift(a: &Atmosphere) -> ([f32; 2], [f32; 2]) {
 
 /// The clouds' layer by the sky's cover (ours): its base over the eye and thickness (metres), the cirrus' cover and
 /// the overcast deck's light (`cloud_params.layer`), and the shapes' tile (metres) and lowest and highest tops
-/// (`cloud_params.shape`). A clear sky has small fair-weather cumulus under a veil of cirrus; a partly cloudy one
-/// cumulus, the thickest towering; a dimpled sky (`Clouds::Dimpled`) a few low cumulus under a thin layer of small cells
-/// (`dimpled`, `shape.w`); broken cloud (`Clouds::Broken`, the section's `lightcloud` rows: cover over 0.45) a lower,
-/// flatter stratocumulus; an overcast sky a closed deck, lower, thicker and darker as it rains.
+/// (`cloud_params.shape`). A clear sky has small fair-weather cumulus (none when chosen, `Atmosphere::cloud_layer`)
+/// under a veil of cirrus; a partly cloudy one cumulus, the thickest towering; a dimpled sky (`Clouds::Dimpled`) a few
+/// low cumulus under a thin layer of small cells (`dimpled`, `shape.w`); broken cloud (`Clouds::Broken`, the section's
+/// `lightcloud` rows: cover over 0.45) a lower, flatter stratocumulus; an overcast sky a closed deck, lower, thicker and
+/// darker as it rains.
 fn layer(a: &Atmosphere) -> ([f32; 4], [f32; 4]) {
     let rain = a.precipitation();
     let cover = a.cloud_cover();
