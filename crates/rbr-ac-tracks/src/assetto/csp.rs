@@ -210,17 +210,18 @@ pub fn grass_fx(root: &Path) -> Option<GrassFx> {
     Some(fx)
 }
 
-/// Whether `name` (lowercase) matches `pattern`, where `?` is any character and `*` any run of them.
+/// Whether `name` (lowercase) matches `pattern`, where `?` and `*` are any run of characters: CSP's filters take `?`
+/// as "any number of symbols" (its own `extension/config` notes), so Joux Verte's `?talus?` is every embankment.
 pub fn matches(pattern: &str, name: &str) -> bool {
     let (p, n): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
     let mut row = vec![false; n.len() + 1];
     row[0] = true;
     for c in p {
-        let mut next = vec![c == '*' && row[0]; n.len() + 1];
+        let any = c == '*' || c == '?';
+        let mut next = vec![any && row[0]; n.len() + 1];
         for j in 0..n.len() {
             next[j + 1] = match c {
-                '*' => next[j] || row[j + 1],
-                '?' => row[j],
+                '*' | '?' => next[j] || row[j + 1],
                 c => row[j] && n[j] == c,
             };
         }
@@ -306,6 +307,7 @@ mod tests {
         let names = unrendered(&dir);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(names, ["obj1", "obj4_?"]);
-        assert!(matches("obj4_?", "obj4_a") && !matches("obj4_?", "obj4_ab") && matches("*_lod550m", "x_lod550m"));
+        assert!(matches("obj4_?", "obj4_a") && matches("obj4_?", "obj4_ab") && matches("?_lod550m", "x_lod550m"));
+        assert!(matches("?talus?", "talus_d1apep3_01") && matches("obj4_?", "obj4_") && !matches("obj4_?", "obj5_a"));
     }
 }

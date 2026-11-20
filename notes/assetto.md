@@ -515,7 +515,9 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   formula: linear `(g - max(r - red, b)) / mean`) exceeds the main threshold. Gabiria lists its road materials in
   `GRASS_MATERIALS` and its grey asphalt passed the luminance test alone: the road was a reed bed. Not used:
   `SHAPE_TIDY/CUT`, `[GRASS_FX_CONFIGURATION_*]`/`ADJUSTMENT`
-  (Highlands). Calibrated against CSP itself (2026-11-20: AC + CSP booted under Proton, a Lua app puts the camera at
+  (Highlands). Wildcards (2026-11-20, `csp::matches`): `?` is any run of characters, as CSP's own notes in
+  `extension/config` say ("matches with any number of symbols"), not one character: Joux Verte's `?talus?` marked 21
+  materials and its embankments grew no grass; now 497 (`MESH_ADJUSTMENT` names alike). Stages need converting again. Calibrated against CSP itself (2026-11-20: AC + CSP booted under Proton, a Lua app puts the camera at
   the render poses and screenshots; Prunières, Sa Calobra, Gabiria, Roure side by side with ours):
   - Atlas: loaded as shipped (DXT, BC7 via `bcdec_rs`: Prunières' `super_grass.dds` is BC7 and fell back to our blades),
     colours kept, mips and cut-out coverage rebuilt. Row 0 the base grass (Sa Calobra: `3,1,1,2` heather, `4,1,2,2`
