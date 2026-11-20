@@ -1482,6 +1482,14 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   trees' black texels (opaque, in the textures) read lifted there and the pines' luma p90/p10 is 2.4 to 4.6 against
   ours 7 to 10; this is the global contrast gap above. On the backlit slopes CSP's grass over its road is 0.65, ours
   0.37 (overcast 0.69 and 0.60).
+- Round crowns, no X-card seam (2026-11-20, `foliage.rs` `with_plants`, `shader.wgsl` `crown_radii`): a crown's
+  ellipsoid is round across (one radius, the wider of x and z) and the shader estimates that radius from whichever
+  screen derivative runs across, so crossed cards at any heading put a point at the same place in the crown; each wing
+  had its own width before, and a light seam where two wings cross (Joux Verte's spruces split down the middle).
+  Retail clear 13:00 and 17:30 starts: RMSE at most 1.3% (54_O 13:00). Tried, not kept: the normal and the sun's depth
+  from the point of the ellipsoid the eye sees (one volume from any side) turned backlit spruces near black, CSP's are
+  mid olive (the texels deep in a crown are what light it); a per-pixel, per-frame dithered alpha cut on crowns for TAA
+  came out more ragged at the edges than the fixed cut.
 - Cloud bases unlit by the ground (2026-11-20, `cloud_volume.wgsl` `volume_march`): a sunlit cloud's ambient is the
   sky's light from above only, diffused down by `1 / (1 + VOLUME_DIFFUSION depth to_sun.y)` (the light march's depth,
   `to_sun.y` at least 0.2). The former bounce (albedo 0.15 times the sun's and sky's light) lit a broken deck's bases

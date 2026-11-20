@@ -1441,20 +1441,18 @@ fn crown_at(v: VertexOut) -> vec3<f32> {
 }
 
 // The crown's half extents at the pixel, metres: the world position's slopes over the crown position's, which are
-// affine in each other; a card along an axis gives the other's from its own.
+// affine in each other. The crown is round across (`foliage::with_plants`), so a card at any heading gives its radius
+// across from the slope along it, and the same as the other wings' do.
 fn crown_radii(v: VertexOut) -> vec3<f32> {
     let q1 = dpdx(crown_at(v));
     let q2 = dpdy(crown_at(v));
     let p1 = dpdx(v.world);
     let p2 = dpdy(v.world);
-    let first = abs(q1) > abs(q2);
-    let q = select(q2, q1, first);
-    let p = select(p2, p1, first);
-    var r = abs(p / select(q, vec3<f32>(1.0), abs(q) < vec3<f32>(1e-6)));
-    let has = abs(q) >= vec3<f32>(1e-6);
-    r.x = select(r.z, r.x, has.x);
-    r.z = select(r.x, r.z, has.z);
-    return max(r, vec3<f32>(0.1));
+    let first = length(q1.xz) > length(q2.xz);
+    let across = length(select(p2.xz, p1.xz, first)) / max(length(select(q2.xz, q1.xz, first)), 1e-6);
+    let upright = abs(q1.y) > abs(q2.y);
+    let up = abs(select(p2.y, p1.y, upright)) / max(abs(select(q2.y, q1.y, upright)), 1e-6);
+    return max(vec3<f32>(across, up, across), vec3<f32>(0.1));
 }
 
 // The share of the sun a crown's pixel gets (ours), in place of `own_sun_seen`: its own leaves by how deep it lies
