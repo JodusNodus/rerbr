@@ -181,32 +181,34 @@ impl TextureBank {
     }
     /// The output texture of material `index`. Multilayer materials are baked ([`multilayer`]); a texture that is only
     /// a one-pixel placeholder (some track exports strip theirs) becomes an opaque colour guessed from the material
-    /// name, and `opaque` says so. Anything else keeps its diffuse map.
-    pub fn diffuse(&mut self, model: &Model, index: usize) -> Result<(String, bool), String> {
+    /// name, and `opaque` says so. Anything else keeps its diffuse map. The gain is a dark bake's
+    /// ([`multilayer::bake`]), which [`Extras::stored_at`] takes back; 1 for the rest.
+    pub fn diffuse(&mut self, model: &Model, index: usize) -> Result<(String, bool, f32), String> {
         let mat = &model.materials[index];
         if let Some(file) = self.stub(model, mat)? {
-            return Ok((file, true));
+            return Ok((file, true, 1.));
         }
         // Before the detail bake, which would keep the diffuse's alpha: Roure's `pines_distant` has both.
         let multilayer = mat.shader.contains("Multilayer");
         if let Some(bytes) = cut_by_normal(model, mat).filter(|_| !multilayer) {
-            return Ok((self.put(bytes, "dds")?, false));
+            return Ok((self.put(bytes, "dds")?, false, 1.));
         }
         if multilayer {
             let metres = if mat.shader.contains("objsp") { [1.; 2] } else { multilayer::metres_per_uv(model, index) };
-            if let Some((w, h, rgba)) = multilayer::bake(model, index, metres) {
+            // Only where `ReRbrLight` can take the gain back.
+            if let Some(((w, h, rgba), gain)) = multilayer::bake(model, index, metres, light(mat).is_some()) {
                 self.baked.insert(mat.shader.clone());
-                return Ok((self.put(textures::encode(false, w, h, rgba), "dds")?, false));
+                return Ok((self.put(textures::encode(false, w, h, rgba), "dds")?, false, gain));
             }
             self.simplified.insert(mat.shader.clone());
         } else if mat.property("useDetail", 0.) > 0. {
             if let Some((w, h, rgba)) = detail::bake(model, index) {
                 self.baked.insert(mat.shader.clone());
-                return Ok((self.put(textures::encode(is_transparent(mat), w, h, rgba), "dds")?, false));
+                return Ok((self.put(textures::encode(is_transparent(mat), w, h, rgba), "dds")?, false, 1.));
             }
             self.simplified.insert(mat.shader.clone());
         }
-        Ok((self.base_diffuse(model, mat)?, false))
+        Ok((self.base_diffuse(model, mat)?, false, 1.))
     }
     fn stub(&mut self, model: &Model, mat: &Material) -> Result<Option<String>, String> {
         if !is_placeholder(model, mat) {
@@ -492,6 +494,23 @@ pub struct Extras {
     pub grass: bool,
     /// `ReRbrLayer*`: the renderer sums a multilayer material per pixel.
     pub layers: Option<Layers>,
+    /// The gain its diffuse was stored at ([`Extras::stored_at`]): a third `ReRbrLight` value that
+    /// [`normalise_light`] divides out.
+    pub stored_gain: Option<f32>,
+}
+
+impl Extras {
+    /// These extras for a diffuse stored `gain` times brighter (a dark bake, [`multilayer::bake`]): the per-pixel sum
+    /// takes it too (`magicMult`), the light its inverse.
+    pub fn stored_at(mut self, gain: f32) -> Self {
+        if gain != 1. && self.light.is_some() {
+            if let Some(layers) = &mut self.layers {
+                layers.magic *= gain;
+            }
+            self.stored_gain = Some(gain);
+        }
+        self
+    }
 }
 
 /// A multilayer material for the renderer to draw per pixel (`ReRbrLayer*` keys), as `diffuse * (R*mask.r + G*mask.g
@@ -555,18 +574,22 @@ fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
 
 /// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
 /// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws, to
-/// [`LIGHT_GAMMA`] in linear light, times the gain of a reference above [`REFERENCE_MOST`]. A factor within 2% of 1
-/// for both drops the line.
+/// [`LIGHT_GAMMA`] in linear light, times the gain of a reference above [`REFERENCE_MOST`], over a third value's
+/// ([`Extras::stored_gain`]) to the same power. A factor within 2% of 1 for both drops the line.
 pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String {
-    let mut sections = Vec::<(&str, bool, Option<[f32; 2]>)>::new();
+    let mut sections = Vec::<(&str, bool, Option<[f32; 2]>, f32)>::new();
     for line in materials.lines() {
         if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-            sections.push((name, false, None));
+            sections.push((name, false, None, 1.));
         } else if let Some(last) = sections.last_mut() {
             last.1 |= line == "techniqueName=Default";
             if let Some(v) = line.strip_prefix("ReRbrLight=") {
                 let v: Vec<f32> = v.split(',').filter_map(|n| n.parse().ok()).collect();
-                last.2 = <[f32; 2]>::try_from(v).ok();
+                (last.2, last.3) = match v[..] {
+                    [a, d] => (Some([a, d]), 1.),
+                    [a, d, stored] => (Some([a, d]), stored),
+                    _ => (None, 1.),
+                };
             }
         }
     }
@@ -586,9 +609,10 @@ pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String
             at += 1;
         }
         if line.starts_with("ReRbrLight=") {
-            let raw = sections[at - 1].2.unwrap_or(reference);
+            let (raw, stored) = (sections[at - 1].2.unwrap_or(reference), sections[at - 1].3.powf(LIGHT_GAMMA));
             let f: [f32; 2] = std::array::from_fn(|i| {
                 ((raw[i] / reference[i]).powf(LIGHT_GAMMA) * gain[i]).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1 * gain[i])
+                    / stored
             });
             if f.iter().any(|v| (v - 1.).abs() > 0.02) {
                 let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
@@ -673,7 +697,8 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
         let _ = writeln!(out, "ReRbrSheen={}", decimal(roughness));
     }
     if let Some([ambient, diffuse]) = extras.light {
-        let _ = writeln!(out, "ReRbrLight={},{}", decimal(ambient), decimal(diffuse));
+        let gain = extras.stored_gain.map(|g| format!(",{}", decimal(g))).unwrap_or_default();
+        let _ = writeln!(out, "ReRbrLight={},{}{gain}", decimal(ambient), decimal(diffuse));
     }
     if extras.grass {
         out.push_str("ReRbrGrass=1\n");
@@ -1161,6 +1186,7 @@ mod tests {
             section("road", "Default", "ReRbrLight=1.9,0.7\n"),
             section("rock", "Default", "ReRbrLight=0.1,0.05\n"),
             section("same", "Default", "ReRbrLight=3.8,1.4\n"),
+            section("stored", "Default", "ReRbrLight=1.9,0.7,2.0\n"),
         ]
         .concat();
         let out = normalise_light(&bright, &triangles);
@@ -1175,5 +1201,7 @@ mod tests {
         assert_eq!(light("road").as_deref(), Some("4.594794,4.594794"));
         assert_eq!(light("rock").as_deref(), Some("0.05,0.05"));
         assert_eq!(light("same").as_deref(), Some("9.189588,9.189588"));
+        // A diffuse stored twice as bright takes 2^2.2 of it back: the road's gain over it is 1.
+        assert_eq!(light("stored"), None);
     }
 }

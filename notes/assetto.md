@@ -640,9 +640,12 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   about 0.43 in the used UV islands; `_objsp`'s formula is that of the others, from `ksMultilayer_objsp_ps.fxo`), so
   it set the reference, 38 of 70 materials sat at the floor and the terrain drew near black. Gain 3.2/15: in sun it is
   about half Sa Calobra's ground (AC's tex x ks says 0.7), in shade about a quarter (AC 0.4); the boulders and
-  buildings come off the floor's white. Its bakes stay dark (display 0.02–0.04), so DXT1 (5-6-5 bits) gives the far
-  terrain purple and green blotches; a bake gain (bake and `ReRbrLayerMagic` up, `ReRbrLight` down) would fix it but
-  moves the GrassFX luminance test (`luminance=0.001,0.5` there), not done. Sa Calobra down: reference 0.62/0.30 (terrain); road 1.77/1.67, cliff and rocks 1.08/1.07, boulders 0.37/0.25, walls 0.44/0.25.
+  buildings come off the floor's white (estimates from tex x ks, not measured against AC). Its terrain bakes (display
+  mean 0.02) gave purple and green blotches in 8 bits and DXT1's 5-6-5 once lit 15 times; a bake darker than 0.03 is
+  stored up to 8 times brighter (`multilayer::BAKE_DARK`), `ReRbrLayerMagic` times the gain and a third `ReRbrLight`
+  value its inverse to 2.2 (`Extras::stored_at`): the hillside reads as AC's sum does (yellow-green field, grey rock).
+  No other installed stage has a bake that dark (next: 0.04–0.05, Prunières' road and St Jean; Sa Calobra 0.08), so
+  their files are unchanged; a stored gain moves what the GrassFX colour and luminance tests see. Sa Calobra down: reference 0.62/0.30 (terrain); road 1.77/1.67, cliff and rocks 1.08/1.07, boulders 0.37/0.25, walls 0.44/0.25.
   With the sheen (`SHEEN_STRENGTH` 0.25/0.35/0.5, Sa Calobra wall view 07:35) the road reads 43/48/55 against AC's 57–59;
   toward the sun the road is 0.8–1.0x its away-from-sun level. That 0.5 made up for a sun too high: AC's shots have the
   sun on the horizon (06:45 here), the foreground in shade. There, with `[ReRbrAir]` `mist=0`, 0.5/0.2/0.1 give rock

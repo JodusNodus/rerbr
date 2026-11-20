@@ -1032,12 +1032,13 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 Some(name) => String::clone(name),
                 None => {
                     let mat = &model.materials[mat_index];
-                    let (texture, opaque) = bank.diffuse(&model, mat_index)?;
+                    let (texture, opaque, gain) = bank.diffuse(&model, mat_index)?;
                     let name = format!("ac\\{model_index}_{mat_index}");
                     let extras = material::Extras {
                         grass: grass_fx.as_ref().is_some_and(|g| g.grows_on(&mat.name)),
                         ..bank.extras(&model, mat_index)?
-                    };
+                    }
+                    .stored_at(gain);
                     material::section_with(
                         &mut materials,
                         &name,

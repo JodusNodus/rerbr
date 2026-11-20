@@ -92,8 +92,35 @@ pub(super) fn fit(mut image: Image, target: [f64; 2]) -> Image {
     image
 }
 
-/// The baked diffuse of a multilayer material, or `None` when a texture is missing or too large.
-pub fn bake(model: &Model, index: usize, metres: [f64; 2]) -> Option<Image> {
+/// A bake whose mean (display, over its non-black texels) is below [`BAKE_DARK`] is stored brighter, at
+/// [`BAKE_LEVEL`] by up to [`BAKE_GAIN_MOST`] and never past 0.9 at its 99th percentile; its `ReRbrLayerMagic` takes the
+/// gain and its `ReRbrLight` the inverse ([`super::material::normalise_light`]). Prunières–Embrun's terrain sums to
+/// 0.02 (details of 0.07–0.11 under mask weights summing 0.43): 8 bits and DXT1's 5-6-5 left a few levels a channel,
+/// drawn as purple and green blotches once its light brought it up. The next darkest of the 40 installed stages' bakes
+/// are its road's and St Jean's at 0.04–0.05 (Sa Calobra's 0.08), left as they are: a stored gain moves what the
+/// GrassFX colour and luminance tests see.
+const BAKE_DARK: f32 = 0.03;
+const BAKE_LEVEL: f32 = 0.25;
+const BAKE_GAIN_MOST: f32 = 8.;
+
+/// The gain [`BAKE_LEVEL`] takes for the display values `colours`, 1 unless they are darker than [`BAKE_DARK`].
+fn bake_gain(colours: &[[f32; 3]]) -> f32 {
+    let mut lit: Vec<f32> = colours.iter().map(|c| c[0].max(c[1]).max(c[2])).filter(|&v| v > 0.).collect();
+    if lit.is_empty() {
+        return 1.;
+    }
+    let mean = colours.iter().map(|c| (c[0] + c[1] + c[2]) / 3.).sum::<f32>() / lit.len() as f32;
+    if mean >= BAKE_DARK {
+        return 1.;
+    }
+    let at = (lit.len() - 1) * 99 / 100;
+    let high = *lit.select_nth_unstable_by(at, f32::total_cmp).1;
+    (BAKE_LEVEL / mean).min(0.9 / high).clamp(1., BAKE_GAIN_MOST)
+}
+
+/// The baked diffuse of a multilayer material and the gain it was stored at ([`BAKE_LEVEL`], 1 unless `brighten`), or
+/// `None` when a texture is missing or too large.
+pub fn bake(model: &Model, index: usize, metres: [f64; 2], brighten: bool) -> Option<(Image, f32)> {
     let mat = &model.materials[index];
     let (diffuse, mask) = (texture(model, mat, "txDiffuse")?, texture(model, mat, "txMask")?);
     let (width, height) = (diffuse.0.max(mask.0), diffuse.1.max(mask.1));
@@ -107,16 +134,16 @@ pub fn bake(model: &Model, index: usize, metres: [f64; 2]) -> Option<Image> {
         let target = [f64::from(width) / t[0].max(1e-9), f64::from(height) / t[1].max(1e-9)];
         details.push(fit(texture(model, mat, slot)?, target));
     }
-    let mut rgba = vec![255u8; width as usize * height as usize * 4];
+    let mut colours = vec![[0f32; 3]; width as usize * height as usize];
     let threads = std::thread::available_parallelism().map_or(4, usize::from);
     let rows = (height as usize).div_ceil(threads);
     std::thread::scope(|scope| {
-        for (n, chunk) in rgba.chunks_mut(rows * width as usize * 4).enumerate() {
+        for (n, chunk) in colours.chunks_mut(rows * width as usize).enumerate() {
             let (diffuse, mask, details, tiles) = (&diffuse, &mask, &details, &tiles);
             scope.spawn(move || {
-                for (r, row) in chunk.chunks_mut(width as usize * 4).enumerate() {
+                for (r, row) in chunk.chunks_mut(width as usize).enumerate() {
                     let v = ((n * rows + r) as f64 + 0.5) / f64::from(height);
-                    for (x, out) in row.chunks_mut(4).enumerate() {
+                    for (x, out) in row.iter_mut().enumerate() {
                         let u = (x as f64 + 0.5) / f64::from(width);
                         let (base, weights) = (sample(diffuse, u, v, false), sample(mask, u, v, false));
                         let mut color = [0f32; 3];
@@ -131,15 +158,16 @@ pub fn bake(model: &Model, index: usize, metres: [f64; 2]) -> Option<Image> {
                                 color[k] += s[k] * weight / 255.;
                             }
                         }
-                        for k in 0..3 {
-                            out[k] = (base[k] * color[k] / 255. * magic).clamp(0., 255.).round() as u8;
-                        }
+                        *out = std::array::from_fn(|k| base[k] * color[k] / 65025. * magic);
                     }
                 }
             });
         }
     });
-    Some((width, height, rgba))
+    let gain = if brighten { bake_gain(&colours) } else { 1. };
+    let byte = |v: f32| (v * gain * 255.).clamp(0., 255.).round() as u8;
+    let rgba = colours.iter().flat_map(|&[r, g, b]| [byte(r), byte(g), byte(b), 255]).collect();
+    Some(((width, height, rgba), gain))
 }
 
 /// A tile bake has at most this many texels (2 MB as DXT1) and this long a side (a road tile 128 m long at 1.6 cm).
@@ -647,20 +675,37 @@ mod tests {
     #[test]
     fn the_baked_colour_is_diffuse_times_the_mask_weighted_details_times_magic() {
         // Half red detail, half green detail: (50, 50, 0), times the diffuse over 255, times 0.5.
-        let (w, h, rgba) = bake(&model("ksMultilayer", [128, 128, 0, 0]), 0, [1.; 2]).unwrap();
+        let ((w, h, rgba), _) = bake(&model("ksMultilayer", [128, 128, 0, 0]), 0, [1.; 2], false).unwrap();
         assert_eq!((w, h), (2, 2));
         let expected = [200. * 50.2 / 255. * 0.5, 100. * 50.2 / 255. * 0.5, 0.];
         for (got, want) in rgba[..3].iter().zip(expected) {
             assert!((f32::from(*got) - want).abs() <= 1., "{rgba:?}");
         }
         assert_eq!(rgba[3], 255);
+        // Not dark enough to be brightened (mean 0.039); at half the mask's weight it is, by the most.
+        let ((_, _, same), gain) = bake(&model("ksMultilayer", [128, 128, 0, 0]), 0, [1.; 2], true).unwrap();
+        assert_eq!((same, gain), (rgba.clone(), 1.));
+        let ((_, _, bright), gain) = bake(&model("ksMultilayer", [64, 64, 0, 0]), 0, [1.; 2], true).unwrap();
+        assert_eq!(gain, BAKE_GAIN_MOST);
+        assert!((f32::from(bright[0]) - expected[0] / 2. * gain).abs() <= 1.5, "{bright:?}");
+    }
+
+    #[test]
+    fn a_dark_bake_is_brightened_to_its_level_short_of_white() {
+        assert_eq!(bake_gain(&[[0.05; 3], [0.; 3]]), 1.);
+        assert!((bake_gain(&[[0.025; 3], [0.; 3]]) - 8.).abs() < 1e-5);
+        assert_eq!(bake_gain(&[[0.01; 3]]), BAKE_GAIN_MOST);
+        // Two texels of a hundred at 0.3 keep the gain to 3; one may clip.
+        let mut colours = vec![[0.02; 3]; 98];
+        colours.extend([[0.3; 3]; 2]);
+        assert!((bake_gain(&colours) - 3.).abs() < 1e-5);
     }
 
     #[test]
     fn a_missing_detail_keeps_the_base_diffuse() {
         let mut m = model("ksMultilayer", [255, 0, 0, 0]);
         m.textures.remove("g");
-        assert!(bake(&m, 0, [1.; 2]).is_none());
+        assert!(bake(&m, 0, [1.; 2], false).is_none());
     }
 
     #[test]
