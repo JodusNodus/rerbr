@@ -363,6 +363,11 @@ fn cs_aerial(@builtin(global_invocation_id) id: vec3<u32>) {
     let nu = dot(dir, sun);
     let phase_r = rayleigh_phase(nu);
     let phase_m = mie_phase(nu);
+    // Under an overcast sky the haze is lit by the deck and the ground under it, not by the sun: the overcast sky's
+    // light (`overcast_light`) averaged over the sphere, the deck's half `6 E / (7 pi)`, the ground's its albedo times
+    // `E / pi`.
+    let overcast = sky.shape.w != 0.0;
+    let around = 0.5 * (6.0 / 7.0 + sky.ground.rgb) * OVERCAST_SHARE * light_out.scale.w / PI;
     var light = vec3<f32>(0.0);
     var transmittance = vec3<f32>(1.0);
     var t = 0.0;
@@ -376,8 +381,11 @@ fn cs_aerial(@builtin(global_invocation_id) id: vec3<u32>) {
             let rr = sqrt(r * r + tm * tm + 2.0 * r * dir.y * tm);
             let mu_sun_here = clamp((r * sun.y + tm * nu) / rr, -1.0, 1.0);
             let m = medium(rr);
-            let s = sunlight_at(rr, mu_sun_here) * (m.rayleigh * phase_r + m.mie * phase_m)
+            var s = sunlight_at(rr, mu_sun_here) * (m.rayleigh * phase_r + m.mie * phase_m)
                 + multiscatter(rr, mu_sun_here) * (m.rayleigh + m.mie);
+            if (overcast) {
+                s = around * (m.rayleigh + m.mie);
+            }
             let step_t = exp(-m.extinction * span);
             light += transmittance * (s - s * step_t) / max(m.extinction, vec3<f32>(1e-6));
             transmittance *= step_t;

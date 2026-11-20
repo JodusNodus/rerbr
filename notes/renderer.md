@@ -1458,6 +1458,15 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   5/60/135 (10.2); 10_O 1.7, 2.6. Found alongside, not changed: against CSP the converted stages' remaining gap is
   global contrast (CSP's middle half of luma 71 to 86 at Sa Calobra 13:00, ours 44 to 75; the shot's p25/p75 0.54,
   ours 0.39), which three times the sky's light does not close (it lifts the whole frame through the exposure).
+- Overcast haze and deck (2026-11-20, `skylight.wgsl` `cs_aerial`, `cloud_volume.wgsl` `volume_overcast_angle`): under
+  an overcast sky the aerial table's haze is lit by the overcast sky's light averaged over the sphere (deck half
+  `6 E / (7 pi)`, ground half albedo times `E / pi`, `E` = `OVERCAST_SHARE` of the clear light), as the sky view and the
+  stage's light already were (`overcast_light`); before it kept the clear sky's sun and its forward Mie glow, about four
+  times the overcast's light, so the haze over the deck and far terrain was pale and warm toward the hidden sun. The deck's
+  light leaves its base as the CIE sky's, `3/7 (1 + 2 sin elevation)`. Joux Verte, heavy, view 25 degrees up: deck top
+  rows 161 to 158, near the horizon 155 to 120 (brighter overhead now, as the CIE sky), mean colour 161/161/166 to
+  134/137/143. Retail `--clouds heavy` 13:00 starts (luma p95): 21_O 221 to 185, 61_O 202 to 143, 54_O RMSE 3.4, 41_O
+  and 10_O unchanged (no open sky).
 - Cloud bases unlit by the ground (2026-11-20, `cloud_volume.wgsl` `volume_march`): a sunlit cloud's ambient is the
   sky's light from above only, diffused down by `1 / (1 + VOLUME_DIFFUSION depth to_sun.y)` (the light march's depth,
   `to_sun.y` at least 0.2). The former bounce (albedo 0.15 times the sun's and sky's light) lit a broken deck's bases

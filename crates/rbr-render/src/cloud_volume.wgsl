@@ -238,9 +238,17 @@ fn volume_march(dir: vec3<f32>, pixel: vec2<f32>, shift: f32) -> vec4<f32> {
     // The haze between the eye and the clouds, and far off their fading into the sky's.
     let d = distance_sum / max(weight_sum, 1e-6);
     let haze = sky_aerial(dir, d);
-    let seen = sky_display(light / cover) * haze.a + haze.rgb;
+    let shown = light / cover * select(volume_overcast_angle(dir), 1.0, sunlit);
+    let seen = sky_display(shown) * haze.a + haze.rgb;
     let faded = cover * (1.0 - smoothstep(VOLUME_FADE, VOLUME_REACH, d));
     return vec4<f32>(seen * faded, 1.0 - faded);
+}
+
+// The overcast deck's light leaves its base as the CIE overcast sky's that lights the ground (`cie_overcast` in
+// `skylight.wgsl`, the diffusion through a thick layer): `(1 + 2 sin)` of the elevation over 3, about its mean,
+// 9/7 overhead and 3/7 at the horizon.
+fn volume_overcast_angle(dir: vec3<f32>) -> f32 {
+    return 3.0 / 7.0 * (1.0 + 2.0 * max(dir.y, 0.0));
 }
 
 // Thin cirrus `CIRRUS_HEIGHT` above the eye, as much as `cloud_params.layer.z`: the cloud field's noise drawn out into
