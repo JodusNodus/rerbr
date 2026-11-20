@@ -474,9 +474,10 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   (`diffuse * lerp(detail, 1, diffuse.a)`). `ksPerPixelAT` and `_AT_NM` output the diffuse's. Every
   `ksPerPixelMultiMap_AT*` material now takes the normal map's alpha over its detail bake (`material::alpha_from_normal`);
   the heuristic missed Prunières' road edges (`roadEdge_tar`/`_gra`, diffuse alpha 0 throughout: never drawn) and
-  `shale_transp`. Open: Prunières' white edge line (`roadMarkings`, 5 mm above the edges and after them in node order)
-  now goes under the edges in places: our blended draws follow mesh order, not AC's node order, and do not write depth
-  (AC's `depthMode 0` blends do).
+  `shale_transp`. Open: on Prunières' first CSP pose (per 1.643 km) the white edge line, painted in the road's
+  multilayer (no `roadMarkings` there), lies about a metre inside the asphalt with tar beyond in CSP; ours had it at the
+  grass and the edge decal now covers it. Not the draw order (blended meshes ordered by source material: no pixel
+  changed) nor the alpha's orientation (merged alpha correlates 1.0 with the normal map's).
 - Other CSP features in the source tracks' `extension` folders, not used: `[MATERIAL_ADJUSTMENT]` (24, day/night and weather conditions), `[SHADER_REPLACEMENT]`/`[MESH_ADJUSTMENT]`
   (water, `IS_RENDERABLE=0` hiding meshes on Thizy and Joux Verte, blend modes), `[WRAP_MESHES]` and `[ANIMATED]`
   (windmills and signs, Teixeta, Duesaigues, Riudecanyes), `[SPECTATORS]`, `[LIGHT_SERIES]`, `[PARTICLES_FX]`,
