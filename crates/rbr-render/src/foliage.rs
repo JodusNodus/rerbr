@@ -410,7 +410,10 @@ pub(crate) fn with_plants<'a>(
             let y = low.y + (high.y - low.y) * CROWN_CENTRE;
             let axis = tree.axis(y);
             let centre = Vec3::new(axis.x, y, axis.y);
-            let radii = ((high - low) * 0.5).max(Vec3::splat(0.1));
+            // Round across: one radius for x and z, so that the shader finds it on a card at any heading
+            // (`crown_radii`); the wings' own widths gave each wing its own ellipsoid, and a seam where they cross.
+            let half = ((high - low) * 0.5).max(Vec3::splat(0.1));
+            let radii = Vec3::new(half.x.max(half.z), half.y, half.x.max(half.z));
             let out = ((Vec3::from(v.position) - centre) / radii).normalize_or(Vec3::Y);
             let before = Vec3::from(v.normal).normalize_or(Vec3::Y);
             v.normal = (out * (1.0 - CROWN_UP) + before * CROWN_UP).normalize_or(Vec3::Y).to_array();
