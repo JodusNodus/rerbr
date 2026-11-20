@@ -380,6 +380,12 @@ NaN. `SimE010` sets a cut flag when `x <= limit` or unordered. `Sim8E20` (0x518e
 `CDriveLine::Sample` (0x50b180): the first entry from 1 whose distance is above `d` (`comiss`+`ja`, so NaN finds
 none) gives `BlendB` at `(d - d0) / (d1 - d0)`; otherwise the last entry's position (`this - 0x20` when empty).
 The `test eax,eax` after a hit is dead (`k >= 1`, direct-call branch cover).
+The table holds 10000 entries (count at `+0x75310`, block 0x75330; retail's longest line is map 61's 1711) and the
+original traps past them. Ours, 2026-11-20: a longer line carries on after the count (entry 10000 at `+0x75320`,
+`entry_at` for indices below 2^20, so wrapped negative ones address as before), filled to one entry past its count,
+in a block the boot sizes from the `.trk` (`block_size`); 10000 or fewer are laid out and filled as before (gate PASS
+84084/84084, poison and aids). Portugal SS2 (37.1 km, 14,841 points at 2.5 m) finishes headless at 12 m/s (3201.9 s,
+`cause=Marker`). The arc position is an f32 index: past 16,384 points its fraction halves to 2^-9.
 The drive's `+0x170` and the engine's `+0x48` (the option block) point at the damage handler's drive and engine
 blocks (`+0x3a18`, `+0x3aac`: `layout::DriveDamage`, `EngineOptions`; rbr-recomp `notes/physics/damage.md` 1a).
 
