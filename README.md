@@ -39,7 +39,7 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 | ![An Alpine A110 Rally RGT on a Sa Calobra hairpin above the sea, mountains behind](docs/shots/day-sa-calobra-alpine-flyby.jpg) | ![A Toyota GR Yaris Rally2 on Crequy in the morning fog, low sun through the trees](docs/shots/fog-crequy-yaris-chase.jpg) |
 | Alpine A110 Rally RGT (model by DMRally74), Sa Calobra (Assetto Corsa track by SuperStage, imported with ReRBR) | Toyota GR Yaris Rally2 (model by Ha3aP), Crequy (Assetto Corsa track by JCRR, imported with ReRBR) |
 
-The whole set of 40: [docs/shots](docs/shots/README.md).
+The whole set of 37: [docs/shots](docs/shots/README.md).
 
 ## Status
 

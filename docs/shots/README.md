@@ -1,17 +1,11 @@
 # Reference shots
 
-JPEGs of the 40 shots of [`data/shots.json`](../../data/shots.json), made by
+JPEGs of the 37 shots of [`data/shots.json`](../../data/shots.json), made by
 `scripts/render-shots.py` (every enhancement on, the autopilot driving). Regenerate them with
 `scripts/render-shots.py --previews docs/shots --gallery docs/shots/README.md`; the graphics workflow is in
 [development.md](../development.md#reference-shots).
 
 ## Day
-
-### day-gabiria-131-cockpit
-
-Fiat 131 Abarth Grp4, Gabiria Legazpi (RSF 450), cockpit view, 17:00
-
-![day-gabiria-131-cockpit](day-gabiria-131-cockpit.jpg)
 
 ### day-gabiria-m3-flyby
 
@@ -92,12 +86,6 @@ Ford Escort Mk II RS Grp4, Gabiria Legazpi (RSF 450), chase view, 19:00
 Renault Clio Rally3, Komarov Snow (RSF 413), chase view, 19:00
 
 ![golden-komarov-clio-chase](golden-komarov-clio-chase.jpg)
-
-### golden-luceram-fiesta-flyby
-
-Ford Fiesta Rally2, Luceram Col Saint Roch (RSF 417), flyby view, 18:45
-
-![golden-luceram-fiesta-flyby](golden-luceram-fiesta-flyby.jpg)
 
 ### golden-odry-gc8-chase
 
@@ -224,12 +212,6 @@ Subaru Impreza GC8 555 GrpA, Peklo Snow (RSF 133), cockpit view
 Ford Fiesta Rally2, Pian del Colle Snow (RSF 420), chase view
 
 ![snow-pian-fiesta-chase](snow-pian-fiesta-chase.jpg)
-
-### snow-sturec-208-chase
-
-Peugeot 208 Rally4, Sturec snow (RSF 386), chase view
-
-![snow-sturec-208-chase](snow-sturec-208-chase.jpg)
 
 ## Night
 

@@ -1,13 +1,5 @@
 [
  {
-  "name": "day-gabiria-131-cockpit",
-  "stage": 450,
-  "car": "Fiat 131 Abarth Grp4",
-  "view": "cockpit-clean",
-  "clock": "17:00",
-  "at": 5821
- },
- {
   "name": "day-gabiria-m3-flyby",
   "stage": 450,
   "car": "BMW M3 E30 GrpA",
@@ -165,14 +157,6 @@
   "view": "chase",
   "clock": "19:00",
   "at": 5243
- },
- {
-  "name": "golden-luceram-fiesta-flyby",
-  "stage": 417,
-  "car": "Ford Fiesta Rally2",
-  "view": "flyby",
-  "clock": "18:45",
-  "at": 6308
  },
  {
   "name": "golden-odry-gc8-chase",
@@ -337,16 +321,6 @@
    "heavy"
   ],
   "at": 5140
- },
- {
-  "name": "snow-sturec-208-chase",
-  "stage": 386,
-  "car": "Peugeot 208 Rally4",
-  "view": "chase",
-  "settings": {
-   "weather": "bad"
-  },
-  "at": 6006
  },
  {
   "name": "golden-pengonpohja-quattro-flyby",
