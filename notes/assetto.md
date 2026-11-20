@@ -631,15 +631,22 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   on both; none for placeholders or materials lacking either. Before the power (0.25..3 clamp) Sa Calobra's boulders
   read cream (texture 2.8x the terrain's); with it, 06:45 rock/wall views: boulders 60-63 (AC 56-79), road 65/53 (AC 59),
   verge grass 52 (AC 31-59); with a top of 5 the road read 83/67 (2026-11-19).
-  Trees as CSP cards keep their own brightness (no key), as do AC's foliage shaders `ksTree` and `ksGrass` (2026-11-20:
-  St Jean - St Laurent's `treeDistant`, 0.29/0.055, made its distant forest a dark smear). A reference above
-  `REFERENCE_MOST` 0.95/0.35 (the highest of the 40 installed stages: Col de Braus's ambient, Gabiria's and the
-  Nordschleife's diffuse) lights the whole track `(reference / most)^2.2` brighter, range included (2026-11-20): AC
-  lights `ks` absolutely. Only Prunières–Embrun (both layouts) is above it, at 1.6/1.2: its terrain
+  Trees as CSP cards keep their own brightness (no key). AC's foliage shaders `ksTree` and `ksGrass` light by `ks` as
+  the others do (`ksTree_ps.fxo`: `tex * (ksAmbient * ambient * hemi + ksDiffuse * sun * NdotL)`), but against the
+  ground's reference St Jean - St Laurent's `treeDistant` (0.29/0.055) made its distant forest a dark smear, so they
+  keep their own brightness too, darkened only against the track's foliage (2026-11-20): `ReRbrFoliage=<ksAmbient +
+  ksDiffuse>` becomes `ReRbrLight=f,f`, `f = (sum / median)^2.2` over the foliage sections by area, 0.05..1. Authors
+  darken a pale part of a shared tree atlas this way: Prunières–Embrun's `bushGreen` (0.065/0.05 on `treeA_albedo`,
+  the trees about 0.25/0.15) drew as pale yellow-white balls at 1, olive at 0.068. A reference above
+  `REFERENCE_MOST` 0.65/0.35 (the highest of the 40 installed stages: St Jean's ambient, Gabiria's and the
+  Nordschleife's diffuse; Col de Braus's is 0.25/0.20, its satellite ground plane, not the 0.95 once read) lights the
+  whole track `(reference / most)^2.2` brighter, range included (2026-11-20): AC lights `ks` absolutely. Only
+  Prunières–Embrun (both layouts) is above it, at 1.6/1.2: its terrain
   (`ksMultilayer_objsp`, 1.4/1.2) is `terrainLink_albedo` (0.48) times details of 0.07–0.11 display (mask weights summing
   about 0.43 in the used UV islands; `_objsp`'s formula is that of the others, from `ksMultilayer_objsp_ps.fxo`), so
-  it set the reference, 38 of 70 materials sat at the floor and the terrain drew near black. Gain 3.2/15: in sun it is
-  about half Sa Calobra's ground (AC's tex x ks says 0.7), in shade about a quarter (AC 0.4); the boulders and
+  it set the reference, 38 of 70 materials sat at the floor and the terrain drew near black. Gain 7.2/15, about what
+  measuring it against Sa Calobra's terrain (0.62/0.30) gives (8/21); with the 0.95 cap's 3.2 the shade was a quarter
+  of Sa Calobra's (AC's tex x ks says about half), shaded rock 6.7 of 255, now 10.2 (13:00); the boulders and
   buildings come off the floor's white (estimates from tex x ks, not measured against AC). Its terrain bakes (display
   mean 0.02) gave purple and green blotches in 8 bits and DXT1's 5-6-5 once lit 15 times; a bake darker than 0.03 is
   stored up to 8 times brighter (`multilayer::BAKE_DARK`), `ReRbrLayerMagic` times the gain and a third `ReRbrLight`

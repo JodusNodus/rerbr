@@ -270,8 +270,13 @@ impl TextureBank {
         if is_placeholder(model, mat) {
             return Ok(Extras::default());
         }
-        let mut extras =
-            Extras { highlight: highlight(mat), sheen: sheen(mat), light: light(mat), ..Extras::default() };
+        let mut extras = Extras {
+            highlight: highlight(mat),
+            sheen: sheen(mat),
+            light: light(mat),
+            foliage: foliage_light(mat),
+            ..Extras::default()
+        };
         let normal = mat.textures.get("txNormal").filter(|_| !mat.shader.contains("Multilayer"));
         if let Some(name) = normal {
             // A normal map that cannot be read is no normal map.
@@ -490,6 +495,9 @@ pub struct Extras {
     pub sheen: Option<f32>,
     /// `(ksAmbient, ksDiffuse)` as the material gives them; [`normalise_light`] turns them into `ReRbrLight`.
     pub light: Option<[f32; 2]>,
+    /// `ksAmbient + ksDiffuse` of a foliage shader's material ([`foliage_light`]); [`normalise_light`] turns it into
+    /// `ReRbrLight` against the track's foliage.
+    pub foliage: Option<f32>,
     /// `ReRbrGrass=1`: CSP's GrassFX grows on this material ([`super::csp::GrassFx`]).
     pub grass: bool,
     /// `ReRbrLayer*`: the renderer sums a multilayer material per pixel.
@@ -530,16 +538,32 @@ pub struct Layers {
     pub world: Option<[f64; 2]>,
 }
 
-/// `(ksAmbient, ksDiffuse)` of a material that declares both; none for AC's foliage shaders (`ksTree`, `ksGrass`),
-/// which light their cards their own way and which ReRBR lights as plants: St Jean - St Laurent's distant forest
-/// (`treeDistant`, 0.29/0.055 against a ground of about 0.5) went from green pines to a dark smear, its crowns (`treeTop`,
-/// 0/0.8) to ambient 0.05 and sun 2.
+/// AC's foliage shaders. They light by `ks` as the others do (`ksTree_ps.fxo`: `tex * (ksAmbient * ambient * hemi +
+/// ksDiffuse * sun * NdotL)`), but against the ground's reference St Jean - St Laurent's distant forest (`treeDistant`,
+/// 0.29/0.055 against a ground of about 0.65/0.34) went from green pines to a dark smear, its crowns (`treeTop`, 0/0.8)
+/// to ambient 0.05 and sun 2. So the foliage keeps its own brightness ([`foliage_light`]).
+fn foliage(mat: &Material) -> bool {
+    matches!(mat.shader.as_str(), "ksTree" | "ksGrass")
+}
+
+/// `(ksAmbient, ksDiffuse)` of a material that declares both, but foliage ([`foliage`]).
 fn light(mat: &Material) -> Option<[f32; 2]> {
-    if matches!(mat.shader.as_str(), "ksTree" | "ksGrass") {
+    if foliage(mat) {
         return None;
     }
     let both = [mat.properties.get("ksAmbient")?, mat.properties.get("ksDiffuse")?];
     Some(both.map(|v| *v).map(|v| v.max(0.)))
+}
+
+/// `ksAmbient + ksDiffuse` of a foliage material ([`foliage`]). Authors darken a pale part of a shared tree atlas by
+/// its `ks`: Prunières–Embrun's `bushGreen` (0.065/0.05, the trees about 0.25/0.15 on the same `treeA_albedo`) drew
+/// pale yellow without it. [`normalise_light`] darkens such a material against the track's foliage, never brightens
+/// one (St Jean's `treeTop`).
+fn foliage_light(mat: &Material) -> Option<f32> {
+    if !foliage(mat) {
+        return None;
+    }
+    Some(mat.properties.get("ksAmbient")?.max(0.) + mat.properties.get("ksDiffuse")?.max(0.))
 }
 
 /// AC's shaders light in display (gamma) values, ReRBR's in linear light: a `ksAmbient`/`ksDiffuse` ratio `r` is
@@ -550,13 +574,13 @@ const LIGHT_GAMMA: f32 = 2.2;
 /// Calobra's road (1.77/1.67, 3.5/3.1 linear) read 1.5 times AC's against its ground; at 2 it is 1.1 (AC's road 59,
 /// ours 65 and 53 at the rock and wall views, 06:45).
 const LIGHT_RANGE: (f32, f32) = (0.05, 2.0);
-/// The highest `(ksAmbient, ksDiffuse)` reference of the installed tracks drawn as AC draws them: Col de Braus's ambient
-/// 0.95 and Gabiria's and the Nordschleife's diffuse 0.35 (40 stages, 2026-11-20). AC lights `ks` absolutely, so a
-/// track whose reference is higher (Prunières-Embrun's 1.6/1.2, dark textures under high `ks`: its terrain 0.03 of
-/// display white before the light) is lit that much brighter overall: its factors and range take
-/// `(reference / most)^LIGHT_GAMMA`, 3.2/15 there, which brings its terrain from near black to about Sa Calobra's
-/// ground. Below it the reference stays the track's own.
-const REFERENCE_MOST: [f32; 2] = [0.95, 0.35];
+/// The highest `(ksAmbient, ksDiffuse)` reference of the installed tracks drawn as AC draws them: St Jean - St
+/// Laurent's ambient 0.65 (its 0.65/0.34, Sa Calobra's 0.62/0.30, the same author's dark textures under high `ks`) and
+/// Gabiria's and the Nordschleife's diffuse 0.35 (40 stages, 2026-11-20). AC lights `ks` absolutely, so a track whose
+/// reference is higher (Prunières-Embrun's 1.6/1.2: its terrain 0.03 of display white before the light) is lit that
+/// much brighter overall: its factors and range take `(reference / most)^LIGHT_GAMMA`, 7.2/15 there, about what Sa
+/// Calobra's terrain gives (8/21). Below it the reference stays the track's own.
+const REFERENCE_MOST: [f32; 2] = [0.65, 0.35];
 
 /// The weighted median of `(value, weight)` pairs.
 fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
@@ -575,52 +599,72 @@ fn weighted_median(mut values: Vec<(f32, f64)>) -> Option<f32> {
 /// Rewrites the `ReRbrLight=<ksAmbient>,<ksDiffuse>` lines [`section_with`] wrote into factors relative to the
 /// track's reference: the median of each over the drawn opaque materials, by the `areas` (m²) each section draws, to
 /// [`LIGHT_GAMMA`] in linear light, times the gain of a reference above [`REFERENCE_MOST`], over a third value's
-/// ([`Extras::stored_gain`]) to the same power. A factor within 2% of 1 for both drops the line.
+/// ([`Extras::stored_gain`]) to the same power. The `ReRbrFoliage=<sum>` lines become `ReRbrLight` the same way
+/// against the median of the foliage's, at most 1. A factor within 2% of 1 for both drops the line.
 pub fn normalise_light(materials: &str, areas: &BTreeMap<String, f64>) -> String {
-    let mut sections = Vec::<(&str, bool, Option<[f32; 2]>, f32)>::new();
+    /// A section's light lines as [`section_with`] wrote them.
+    #[derive(Default)]
+    struct Lit<'a> {
+        name: &'a str,
+        opaque: bool,
+        light: Option<[f32; 2]>,
+        stored: Option<f32>,
+        foliage: Option<f32>,
+    }
+    let mut sections = Vec::<Lit>::new();
     for line in materials.lines() {
         if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-            sections.push((name, false, None, 1.));
+            sections.push(Lit { name, ..Lit::default() });
         } else if let Some(last) = sections.last_mut() {
-            last.1 |= line == "techniqueName=Default";
+            last.opaque |= line == "techniqueName=Default";
             if let Some(v) = line.strip_prefix("ReRbrLight=") {
                 let v: Vec<f32> = v.split(',').filter_map(|n| n.parse().ok()).collect();
-                (last.2, last.3) = match v[..] {
-                    [a, d] => (Some([a, d]), 1.),
-                    [a, d, stored] => (Some([a, d]), stored),
-                    _ => (None, 1.),
+                (last.light, last.stored) = match v[..] {
+                    [a, d] => (Some([a, d]), None),
+                    [a, d, stored] => (Some([a, d]), Some(stored)),
+                    _ => (None, None),
                 };
+            }
+            if let Some(v) = line.strip_prefix("ReRbrFoliage=") {
+                last.foliage = v.parse().ok();
             }
         }
     }
-    let reference = |axis: usize| {
-        let values = sections.iter().filter(|s| s.1).filter_map(|s| Some((s.2?[axis], *areas.get(s.0)?))).collect();
-        weighted_median(values).filter(|m| *m > 0.)
+    let median = |value: &dyn Fn(&Lit) -> Option<f32>| {
+        weighted_median(sections.iter().filter_map(|s| Some((value(s)?, *areas.get(s.name)?))).collect())
+            .filter(|m| *m > 0.)
     };
-    let (Some(ambient), Some(diffuse)) = (reference(0), reference(1)) else {
-        return materials.lines().filter(|l| !l.starts_with("ReRbrLight=")).map(|l| format!("{l}\n")).collect();
-    };
-    let reference = [ambient, diffuse];
-    let gain: [f32; 2] = std::array::from_fn(|i| (reference[i] / REFERENCE_MOST[i]).max(1.).powf(LIGHT_GAMMA));
+    let opaque = |axis: usize| median(&|s| s.light.filter(|_| s.opaque).map(|light| light[axis]));
+    let reference = opaque(0).zip(opaque(1)).map(|(ambient, diffuse)| [ambient, diffuse]);
+    let foliage = median(&|s| s.foliage);
     let mut out = String::new();
     let mut at = 0;
     for line in materials.lines() {
         if line.starts_with('[') {
             at += 1;
         }
-        if line.starts_with("ReRbrLight=") {
-            let (raw, stored) = (sections[at - 1].2.unwrap_or(reference), sections[at - 1].3.powf(LIGHT_GAMMA));
-            let f: [f32; 2] = std::array::from_fn(|i| {
-                ((raw[i] / reference[i]).powf(LIGHT_GAMMA) * gain[i]).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1 * gain[i])
-                    / stored
-            });
-            if f.iter().any(|v| (v - 1.).abs() > 0.02) {
-                let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
-            }
+        let factors: Option<[f32; 2]> = if line.starts_with("ReRbrLight=") {
+            let lit = &sections[at - 1];
+            reference.map(|reference| {
+                let stored = lit.stored.unwrap_or(1.).powf(LIGHT_GAMMA);
+                let raw = lit.light.unwrap_or(reference);
+                std::array::from_fn(|i| {
+                    let gain = (reference[i] / REFERENCE_MOST[i]).max(1.).powf(LIGHT_GAMMA);
+                    ((raw[i] / reference[i]).powf(LIGHT_GAMMA) * gain).clamp(LIGHT_RANGE.0, LIGHT_RANGE.1 * gain)
+                        / stored
+                })
+            })
+        } else if line.starts_with("ReRbrFoliage=") {
+            let sum = sections[at - 1].foliage;
+            sum.zip(foliage).map(|(sum, foliage)| [(sum / foliage).powf(LIGHT_GAMMA).clamp(LIGHT_RANGE.0, 1.); 2])
+        } else {
+            out.push_str(line);
+            out.push('\n');
             continue;
+        };
+        if let Some(f) = factors.filter(|f| f.iter().any(|v| (v - 1.).abs() > 0.02)) {
+            let _ = writeln!(out, "ReRbrLight={},{}", decimal(f[0]), decimal(f[1]));
         }
-        out.push_str(line);
-        out.push('\n');
     }
     out
 }
@@ -699,6 +743,9 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     if let Some([ambient, diffuse]) = extras.light {
         let gain = extras.stored_gain.map(|g| format!(",{}", decimal(g))).unwrap_or_default();
         let _ = writeln!(out, "ReRbrLight={},{}{gain}", decimal(ambient), decimal(diffuse));
+    }
+    if let Some(sum) = extras.foliage {
+        let _ = writeln!(out, "ReRbrFoliage={}", decimal(sum));
     }
     if extras.grass {
         out.push_str("ReRbrGrass=1\n");
@@ -1132,16 +1179,31 @@ mod tests {
     }
 
     #[test]
-    fn foliage_shaders_take_no_light_factors() {
+    fn foliage_shaders_take_their_light_against_the_foliage() {
         let mat = |shader: &str| Material {
             shader: shader.into(),
             properties: [("ksAmbient".to_owned(), 0.0), ("ksDiffuse".to_owned(), 0.8)].into(),
             ..Material::default()
         };
         assert_eq!(
-            [mat("ksTree"), mat("ksGrass"), mat("ksPerPixel")].map(|m| light(&m)),
-            [None, None, Some([0.0, 0.8])]
+            [mat("ksTree"), mat("ksGrass"), mat("ksPerPixel")].map(|m| (light(&m), foliage_light(&m))),
+            [(None, Some(0.8)), (None, Some(0.8)), (Some([0.0, 0.8]), None)]
         );
+        let section = |name: &str, light: &str| {
+            format!("[{name}]\neffectName=BTB_Diffuse\ntechniqueName=Transparent\n{light}diffuseTexture=t.dds\n\n")
+        };
+        let materials = [
+            section("tree", "ReRbrFoliage=0.4\n"),
+            section("bush", "ReRbrFoliage=0.1\n"),
+            section("crown", "ReRbrFoliage=0.8\n"),
+        ]
+        .concat();
+        let areas = BTreeMap::from([("tree", 50.), ("bush", 10.), ("crown", 10.)].map(|(k, v)| (k.to_owned(), v)));
+        let out = normalise_light(&materials, &areas);
+        assert!(!out.contains("ReRbrFoliage"));
+        // Against the trees' 0.4, with no opaque reference: the bush at 0.25^2.2, the crown not brightened.
+        assert_eq!(out.matches("ReRbrLight=").count(), 1);
+        assert!(out.contains("[bush]\neffectName=BTB_Diffuse\ntechniqueName=Transparent\nReRbrLight=0.05,0.05\n"));
     }
 
     #[test]
@@ -1180,13 +1242,13 @@ mod tests {
         // Without any opaque material to reference nothing is written.
         let none = normalise_light(&section("leaf", "Transparent", "ReRbrLight=0.15,0.05\n"), &triangles);
         assert!(!none.contains("ReRbrLight"));
-        // A reference above `REFERENCE_MOST` (1.9/0.7, twice it) lights the whole track 2^2.2 brighter, its range too:
+        // A reference above `REFERENCE_MOST` (1.3/0.7, twice it) lights the whole track 2^2.2 brighter, its range too:
         // the road at the gain, the rock (0.0016/0.0007 of it) at the floor, a ratio of 2 at 4 times the top.
         let bright = [
-            section("road", "Default", "ReRbrLight=1.9,0.7\n"),
-            section("rock", "Default", "ReRbrLight=0.1,0.05\n"),
-            section("same", "Default", "ReRbrLight=3.8,1.4\n"),
-            section("stored", "Default", "ReRbrLight=1.9,0.7,2.0\n"),
+            section("road", "Default", "ReRbrLight=1.3,0.7\n"),
+            section("rock", "Default", "ReRbrLight=0.07,0.05\n"),
+            section("same", "Default", "ReRbrLight=2.6,1.4\n"),
+            section("stored", "Default", "ReRbrLight=1.3,0.7,2.0\n"),
         ]
         .concat();
         let out = normalise_light(&bright, &triangles);
