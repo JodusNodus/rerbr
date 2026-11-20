@@ -545,8 +545,8 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     share by a sixth: what the grass covers is its height in view more than its count.
   - The sun was the difference (2026-11-20): CSP's at Prunières stands 59.7 up at compass 227.3 (its fallback site,
     the track has no geotags: `ac.getTrackCoordinatesDeg` 0 N 139.7 E, Tokyo time, today's date, 13:00), ours 36 up
-    from the south-southwest (a BTB stage's site is map 41's, Mont Blanc in October, `rbr_btb::stage::SKY_MAP`, never
-    above 39 that day). Under CSP's sun (`RBR_SUN_AT=59.7,227.3`) the tree shadows on the road at 004.929 fall as CSP's,
+    from the south-southwest (a BTB stage's site was then map 41's, Mont Blanc in October, never above 39 that day;
+    now France in April, 52.9 at 13:00). Under CSP's sun (`RBR_SUN_AT=59.7,227.3`) the tree shadows on the road at 004.929 fall as CSP's,
     and grass over ground goes from 4.19 to 2.70 (CSP 1.72), cover 0.079. Left: our ground under the grass is darker
     (about 10,10,6 against CSP's olive), and the banks at 001.643 and 018.072 stay dark in the same sun (ambient,
     not the sun). The near white bank ground (004.929, 008.215 at 13:00) is sunlit ground under the 36-degree sun; in
@@ -757,9 +757,14 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   (`materials.ini`, `settings.ini`, `Textures.zip`; `backups/pre-light-gain-20261120`, `pre-bake-gain-20261120`).
   Converting Gabiria, the Nordschleife, Col de Braus, Sa Calobra and St Jean with those gave identical files.
 - `track.ini` takes `countrycode` from `ui_track.json`'s `country` (`stage::country_code`, English names to ISO):
-  the launcher shows the country and `relight::site` places the sun in its region (default 48 N, 8 E before).
-  Montenegro (Glava Zete) is `ME`, in neither table, so its site stays the default. The geotags are not read: half
-  the installed tracks give `lat`/`lon` placeholders, the rest five notations.
+  the launcher shows the country and `relight::site` places the sun in its region. Montenegro (Glava Zete) is `ME`,
+  in neither table, so its site is the default 48 N, 8 E. Until 2026-11-20 every BTB stage's site was map 41's
+  (Mont Blanc, October), whatever its country.
+- `track.ini` `latitude`, `longitude` (ours, 2026-11-20) from the geotags (`stage::place`: degrees, minutes,
+  seconds and N/S/E/W, or signed degrees; `["lat", "lon"]` and `["", ""]` give none): the sun's site wins over the
+  country, as CSP places its sun. Of the 98 installed tracks, 42 give coordinates; the Kunos tracks, Prunières, Roure and
+  the Akagi set none. Two are wrong at source and kept, as CSP keeps them: Pico Veleta at 7 N (37 N), one of
+  `simtraxx_puy`'s layouts at 0.74 E (0.74 W).
 - `ui/<layout>/preview.png` (`ui/preview.png` for one layout), AC's menu picture, is copied as `preview.png` and named
   in `track.ini`'s `splashscreen`, so the launcher's stage card shows it (`btb_picture`) instead of the driveline.
   Not `<digits>_*.png`: that is a BTB id (`ids::splash_id`). Checked on Steppe Rally (`tundra`) through

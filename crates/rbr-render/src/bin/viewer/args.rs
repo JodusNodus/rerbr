@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 
 pub struct Args {
     pub stage: Option<String>,
-    /// A stage folder's country code, name and whether it is a snow stage, where the clock places it
-    /// (`relight::site`).
-    pub stage_place: (Option<String>, String, bool),
+    /// A stage folder's latitude and longitude when it states them, country code, name and whether it is a snow
+    /// stage, where the clock places it (`relight::site`).
+    pub stage_place: (Option<(f32, f32)>, Option<String>, String, bool),
     pub car: Option<String>,
     /// `--rsf-car`: an RSF car in slot 5, read in place (`rbr_formats::rsf::select`).
     pub rsf_car: Option<String>,
@@ -742,7 +742,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     }
     pack_car.check(rsf_car.is_some())?;
     // A stage folder (RallySimFans, `rbr_formats::rsf`): its default variant. One it cannot load (encrypted) says why.
-    let mut stage_place = (None, String::new(), false);
+    let mut stage_place = (None, None, String::new(), false);
     let stage = match stage {
         Some(dir) if Path::new(&dir).is_dir() => {
             let rsf = rbr_formats::rsf::open(Path::new(&dir))?;
@@ -750,11 +750,19 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 return Err(format!("RSF stage {}: {problem}", rsf.id));
             }
             let letter = rsf.default_variant().ok_or(format!("{dir}: no stage variant"))?;
-            stage_place = (rsf.country.clone(), rsf.name.clone(), rsf.surface == Some(rbr_formats::rsf::Surface::Snow));
+            stage_place =
+                (None, rsf.country.clone(), rsf.name.clone(), rsf.surface == Some(rbr_formats::rsf::Surface::Snow));
             Some(rsf.stage(letter))
         }
         stage => stage,
     };
+    // A BTB stage (a prepared `track-<n>_M`): its folder's `track.ini`.
+    if let Some(track) = stage.as_deref().and_then(rbr_render::stage::btb_track) {
+        let name = Some(track.info.name.trim()).filter(|n| !n.is_empty()).unwrap_or(&track.name).to_owned();
+        let snow = rbr_btb::stage::surface(&track) == Some("snow");
+        stage_place =
+            (track.info.place.map(|[lat, lon]| (lat as f32, lon as f32)), track.info.country.clone(), name, snow);
+    }
     // The force from the tyres is the stepping process's (`rbr-standalone --ffb-tyres`): the wheel maps it as a line.
     ffb_options.tyres = live.as_ref().is_some_and(|c: &Vec<String>| c.iter().any(|a| a == "--ffb-tyres"));
     Ok(Args {

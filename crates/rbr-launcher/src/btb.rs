@@ -20,6 +20,8 @@ pub struct Btb {
     pub author: Option<String>,
     /// The country's code, upper case: `track.ini`'s `countrycode`, else the RSF stage list's `short_country` under the stage's id.
     pub country: Option<String>,
+    /// `track.ini`'s `latitude` and `longitude`, when it gives them (a converted stage whose source has geotags).
+    pub place: Option<(f32, f32)>,
     pub km: Option<f32>,
     /// The `rbr-standalone --surface` word, from `track.ini` (the plugin plays gravel when it names none).
     pub surface: &'static str,
@@ -83,6 +85,7 @@ fn list(
         let btb = Btb {
             name,
             country: country.map(|c| c.trim().to_uppercase()).filter(|c| !c.is_empty()),
+            place: track.info.place.map(|[lat, lon]| (lat as f32, lon as f32)),
             author: track.info.author.clone().filter(|a| !a.trim().is_empty()),
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),

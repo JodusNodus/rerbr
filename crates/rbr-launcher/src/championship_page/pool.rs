@@ -300,6 +300,7 @@ mod tests {
                 name: "Hokkara".into(),
                 author: None,
                 country: country.map(str::to_owned),
+                place: None,
                 km: None,
                 surface: "gravel",
                 circuit: false,

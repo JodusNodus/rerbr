@@ -296,8 +296,8 @@ impl Map {
         }
     }
 
-    /// The retail map whose presentation the map takes (`rbr_render::relight::site`): a BTB stage's is
-    /// `rbr_btb::stage::SKY_MAP`, any other map's its own number.
+    /// The retail map whose presentation the map takes (its weathers): a BTB stage's is `rbr_btb::stage::SKY_MAP`, any
+    /// other map's its own number.
     pub fn sky_map(&self) -> u32 {
         match self.origin {
             Origin::Btb(_) => rbr_btb::stage::SKY_MAP,
@@ -994,6 +994,7 @@ mod tests {
             name: "Hokkara".into(),
             author: None,
             country: None,
+            place: None,
             km: None,
             surface: "gravel",
             circuit: false,

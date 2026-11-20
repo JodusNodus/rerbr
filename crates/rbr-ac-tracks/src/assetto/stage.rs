@@ -34,6 +34,8 @@ pub struct Input {
     pub author: String,
     /// `ui_track.json`'s `country` as an ISO code ([`country_code`]), for `track.ini`'s `countrycode`.
     pub country: Option<&'static str>,
+    /// `ui_track.json`'s `geotags` as latitude and longitude ([`place`]), for `track.ini`'s `latitude` and `longitude`.
+    pub place: Option<[f64; 2]>,
     /// `ui/<layout>/preview.png`, the picture Assetto Corsa's menu shows, copied as `track.ini`'s `splashscreen`.
     pub preview: Option<PathBuf>,
     pub ai_source: PathBuf,
@@ -58,6 +60,29 @@ fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)
             })
         })
     })
+}
+
+/// The latitude and longitude of an Assetto Corsa track's `geotags` (`["37° 54′ 12″ N", "13° 49′ 52″ E"]`, or plain
+/// signed degrees), as CSP places its sun; `None` where they are empty or not coordinates (`["lat", "lon"]`).
+fn place(geotags: &serde_json::Value) -> Option<[f64; 2]> {
+    let degrees = |tag: &serde_json::Value| {
+        let text = tag.as_str().map_or_else(|| tag.as_f64().map(|n| n.to_string()), |s| Some(s.to_owned()))?;
+        let numbers: Vec<f64> =
+            text.split(|c: char| !(c.is_ascii_digit() || c == '.')).filter_map(|n| n.parse().ok()).collect();
+        let value: f64 = numbers.iter().zip([1., 60., 3600.]).map(|(n, per)| n / per).sum();
+        let west_or_south = text
+            .split(|c: char| !c.is_alphabetic())
+            .any(|w| w.eq_ignore_ascii_case("S") || w.eq_ignore_ascii_case("W"));
+        let negative = west_or_south || text.trim_start().starts_with('-');
+        (1..=3).contains(&numbers.len()).then_some(if negative { -value } else { value })
+    };
+    match geotags.as_array()?.as_slice() {
+        [lat, lon, ..] => match (degrees(lat)?, degrees(lon)?) {
+            (lat, lon) if lat.abs() <= 90. && lon.abs() <= 180. => Some([lat, lon]),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// The ISO code of an Assetto Corsa track's `country` (an English name, as Kunos's and the mods' `ui_track.json` give
@@ -310,6 +335,7 @@ impl Input {
             .unwrap_or("unknown")
             .replace(['\n', '\r'], " ");
         let country = metadata.as_ref().and_then(|m| m["country"].as_str()).and_then(country_code);
+        let place = metadata.as_ref().and_then(|m| place(&m["geotags"]));
         let preview = source_path(&root, &format!("ui/{layout}/preview.png")).ok().filter(|p| p.is_file());
         Ok(Self {
             root,
@@ -323,6 +349,7 @@ impl Input {
             title,
             author,
             country,
+            place,
             preview,
             ai_source,
             reversed_ai: reverse_ai,
@@ -1290,7 +1317,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         None => "",
     };
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
-    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{splash}{}{}",input.author,(input.finish-input.start)/1000.,input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default(),if input.circuit{"circuit=1\n"}else{""}))?;
+    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{splash}{}{}",input.author,(input.finish-input.start)/1000.,input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default()+&input.place.map(|[lat, lon]| format!("latitude={lat:.4}\nlongitude={lon:.4}\n")).unwrap_or_default(),if input.circuit{"circuit=1\n"}else{""}))?;
     let mut settings = String::from(SETTINGS_INI);
     if let Some(fx) = &grass_fx {
         settings.push('\n');
@@ -1393,6 +1420,16 @@ const SETTINGS_INI: &str =
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_track_place_is_its_geotags_in_degrees() {
+        let place = |tags: serde_json::Value| place(&tags).map(|p| p.map(|d| (d * 1e4).round() / 1e4));
+        assert_eq!(place(serde_json::json!(["37° 54′ 12″ N", "13° 49′ 52″ E"])), Some([37.9033, 13.8311]));
+        assert_eq!(place(serde_json::json!(["38° 50′ 00″ N", "104° 49′ 18″ W"])), Some([38.8333, -104.8217]));
+        assert_eq!(place(serde_json::json!(["-33.5", "151.25"])), Some([-33.5, 151.25]));
+        for junk in [serde_json::json!(["lat", "lon"]), serde_json::json!(["", ""]), serde_json::json!([])] {
+            assert_eq!(place(junk), None);
+        }
+    }
     #[test]
     fn a_track_country_is_its_iso_code() {
         assert_eq!(

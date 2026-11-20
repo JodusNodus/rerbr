@@ -1097,6 +1097,7 @@ mod tests {
             name: "Hokkara".into(),
             author: None,
             country: Some("FI".into()),
+            place: None,
             km: None,
             surface: "gravel",
             circuit: false,

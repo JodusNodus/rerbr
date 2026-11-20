@@ -212,11 +212,12 @@ impl Ground {
 
 /// A stage's place and date: latitude (degrees north), longitude (degrees east, for the moon: [`lunar`]) and day of the
 /// year, for the sun's and the moon's paths (ours, not from the game). The 1.02 rallies by the map's number
-/// (`Maps/Tracks.ini` `Particles`): the real rallies' regions and seasons. Any other stage is a guess: its country's
-/// rally region ([`COUNTRIES`], `country` an ISO code as RallySimFans gives it), on a midsummer day of its hemisphere
-/// when its `name` says Summer, a winter day when it says Winter or is a `snow` stage, else near an equinox (spring in
-/// the north, autumn in the south), where day and night are even.
-pub fn site(map: u32, country: Option<&str>, name: &str, snow: bool) -> (f32, f32, f32) {
+/// (`Maps/Tracks.ini` `Particles`): the real rallies' regions and seasons. Any other stage (BTB stages included) lies
+/// `at` its own latitude and longitude when it states them (a converted stage's `track.ini`), else at a guess: its
+/// country's rally region ([`COUNTRIES`], `country` an ISO code as RallySimFans gives it); on a midsummer day of its
+/// hemisphere when its `name` says Summer, a winter day when it says Winter or is a `snow` stage, else near an equinox
+/// (spring in the north, autumn in the south), where day and night are even.
+pub fn site(map: u32, at: Option<(f32, f32)>, country: Option<&str>, name: &str, snow: bool) -> (f32, f32, f32) {
     match map {
         10..=19 | 93..=98 => return (61.0, 25.0, 40.0), // arctic, February
         20..=29 | 71..=79 | 82..=89 => return (52.0, -3.5, 320.0), // british, November
@@ -227,7 +228,7 @@ pub fn site(map: u32, country: Option<&str>, name: &str, snow: bool) -> (f32, f3
         _ => {}
     }
     let place = country.and_then(|code| COUNTRIES.iter().find(|(c, _)| c.eq_ignore_ascii_case(code)));
-    let (latitude, longitude) = place.map_or((48.0, 8.0), |&(_, at)| at);
+    let (latitude, longitude) = at.unwrap_or_else(|| place.map_or((48.0, 8.0), |&(_, at)| at));
     let says = |season: &str| name.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case(season));
     let south = latitude < 0.0;
     let day = if says("summer") {
@@ -799,7 +800,7 @@ mod tests {
             lamps: 0.0,
         };
         let base = Atmosphere { north: Some(Vec3::Z), ..Atmosphere::default() };
-        let clock = Clock::new(base, bake, site(0, Some("FR"), "", false), 'O', None, true);
+        let clock = Clock::new(base, bake, site(0, None, Some("FR"), "", false), 'O', None, true);
         assert!(clock.bake_hour < 12.0, "{}", clock.bake_hour);
         let toward = |hour: f32| clock.daylight(hour).toward;
         // Noon's sun stands in the south (-z), the morning's in the east (+x), the evening's in the west.
@@ -811,7 +812,7 @@ mod tests {
 
     #[test]
     fn golden_hour_climbs_until_the_sun_reaches_the_road() {
-        let site = site(41, None, "", false);
+        let site = site(41, None, None, "", false);
         let bake = Relight {
             bake_sun: toward(0.0, 30.0),
             strength: 0.4,
@@ -839,7 +840,7 @@ mod tests {
 
     #[test]
     fn best_light_is_the_sun_that_reaches_the_most_road() {
-        let site = site(41, None, "", false);
+        let site = site(41, None, None, "", false);
         let bake = Relight {
             bake_sun: toward(0.0, 30.0),
             strength: 0.4,

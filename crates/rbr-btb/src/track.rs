@@ -262,6 +262,9 @@ pub struct TrackInfo {
     /// closed line (the last point repeats the first) and its `.trk` marks the line closed
     /// (`rbr_formats::trk::CLOSED_LINE_WORDS`, `notes/session.md`).
     pub circuit: bool,
+    /// `latitude` and `longitude` (ReRBR's own keys, degrees north and east): where the stage lies, when its source says
+    /// (an Assetto Corsa track's geotags).
+    pub place: Option<[f64; 2]>,
     /// The whole `[INFO]` section, so unknown keys stay accessible.
     pub entries: RawEntries,
 }
@@ -322,6 +325,10 @@ impl TrackInfo {
             length_km: get("length").and_then(|l| l.parse().ok()),
             country: get("countrycode"),
             circuit: get("circuit").is_some_and(|v| v.trim() == "1"),
+            place: match [get("latitude"), get("longitude")].map(|v| v.and_then(|v| v.trim().parse::<f64>().ok())) {
+                [Some(lat), Some(lon)] => Some([lat, lon]),
+                _ => None,
+            },
             entries: info.entries.clone(),
         })
     }
@@ -811,6 +818,13 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn the_info_section_reads_the_place_when_both_coordinates_are_given() {
+        let place = |text: &str| TrackInfo::parse(&rbr_formats::ini::parse(text).unwrap()).unwrap().place;
+        assert_eq!(place("[INFO]\nname=a\nlatitude=37.9033\nlongitude=-104.8217\n"), Some([37.9033, -104.8217]));
+        assert_eq!(place("[INFO]\nname=a\nlatitude=37.9\n"), None);
+    }
 
     #[test]
     fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {

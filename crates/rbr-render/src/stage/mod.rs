@@ -332,14 +332,19 @@ pub fn map_number(stage: &str) -> Option<u32> {
     stage_files::parts(stage).map(|(map, _)| map)
 }
 
-/// The retail map whose presentation (the sky's sections, the wind, the particles' map entry, the time of day's site)
-/// a stage takes: a BTB stage's is `rbr_btb::stage::SKY_MAP`, any other stage's its own number.
+/// The retail map whose presentation (the sky's sections, the wind, the particles' map entry) a stage takes: a BTB
+/// stage's is `rbr_btb::stage::SKY_MAP`, any other stage's its own number. A BTB stage's site is its own ([`btb_track`]).
 pub fn sky_map(stage: &str) -> Option<u32> {
     if btb::is_btb(stage) {
         Some(rbr_btb::stage::SKY_MAP)
     } else {
         map_number(stage)
     }
+}
+
+/// The BTB stage folder of `stage` and its `track.ini`, when it is a BTB stage's: its place and country for the clock.
+pub fn btb_track(stage: &str) -> Option<rbr_btb::track::Track> {
+    btb::track(stage)
 }
 
 /// What loading skipped or could not find. Counts only: loading never stops on bad data.

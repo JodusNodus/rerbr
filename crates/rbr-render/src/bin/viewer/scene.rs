@@ -670,8 +670,8 @@ fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
     let (map, letter) = clock_stage(name);
     let letter = stage.atmosphere.section.as_deref().map_or(letter, section_letter);
     let base = stage.atmosphere.clone();
-    let (country, stage_name, snow) = &args.stage_place;
-    let site = relight::site(map, country.as_deref(), stage_name, *snow);
+    let (at, country, stage_name, snow) = &args.stage_place;
+    let site = relight::site(map, *at, country.as_deref(), stage_name, *snow);
     // `--clock` wins, then `--sun`, then a championship or start-time command's own clock (the bake's, as before), then
     // the time of day the section's comment or the stage's name states, else the bake's hour.
     let own_clock = args.live.as_ref().is_some_and(|c| c.iter().any(|a| a == "--start-time" || a == "--championship"));
@@ -902,11 +902,12 @@ fn report_car(report: &CarReport) {
     }
 }
 
-/// The map number (its sky map's, [`rbr_render::stage::sky_map`]) and variant letter of `track-NN_X` (0 and `O`
-/// otherwise).
+/// The map number and variant letter of `track-NN_X` (0 and `O` otherwise; 0 for a BTB stage, which lies where its
+/// own files say: `Args::stage_place`).
 fn clock_stage(name: &str) -> (u32, char) {
     let letter = rbr_formats::stage_files::parts(name).map_or('O', |(_, letter)| letter);
-    (rbr_render::stage::sky_map(name).unwrap_or(0), letter)
+    let btb = rbr_render::stage::btb_track(name).is_some();
+    (if btb { 0 } else { rbr_render::stage::map_number(name).unwrap_or(0) }, letter)
 }
 
 /// The bake's letter of a `TrackSettings.ini` section: `54E_crisp_clear` is `E`, `54O_E_norain_lightcloud` is `E`.

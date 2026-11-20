@@ -32,6 +32,11 @@ pub(super) fn is_btb(name: &str) -> bool {
     source(name).is_some()
 }
 
+/// The BTB stage folder of stage `name` and its `track.ini`, when it is a BTB stage's.
+pub(super) fn track(name: &str) -> Option<rbr_btb::track::Track> {
+    rbr_btb::track::Track::open(&source(name)?).ok()
+}
+
 /// The `ambient` of every BTB material (`materials.ini`, 0.4 in all folders): the light's floor.
 const AMBIENT: f32 = 0.4;
 /// Side of the cells small placements are grouped by, metres.
