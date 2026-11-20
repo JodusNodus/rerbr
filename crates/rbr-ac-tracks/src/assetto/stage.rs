@@ -288,8 +288,10 @@ impl Input {
             splits = vec![start + (finish - start) / 3., start + 2. * (finish - start) / 3.];
         }
         let metadata_path = source_path(&root, &format!("ui/{layout}/ui_track.json")).ok();
+        // Read lossily: Kunos's Nordschleife files carry a Latin-1 degree sign.
         let metadata = metadata_path
-            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|p| std::fs::read(p).ok())
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
             .and_then(|t| serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok());
         let fallback_title =
             if layout == "." { root.file_name().unwrap().to_string_lossy().into_owned() } else { layout.to_owned() };
