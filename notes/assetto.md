@@ -721,6 +721,14 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   `aerosol=0.2` and `mist=0` (`SETTINGS_INI`; see `notes/renderer.md`), so the sky and distance read warm grey instead of map 41's
   clean blue. Roure rbcl 13:00 stays mild (sky blue in clear gaps, pale only near the horizon). Sa Calobra 07:35 at 0.2:
   wall sky (201,206,211) top, (208,213,218) horizon (0.3: (200,206,212), (210,214,215); AC (187,196,211), (208,208,210)).
+- Haze, crisp blue (2026-11-20, in place of the above): `fog_color=0.55, 0.64, 0.80`, `aerosol=0.05`. At 0.2 Joux Verte's
+  mountain (3.8 km, texture olive (82,85,64)) drew near white (160,165,158), its shaded cap flat grey (110..153) with no
+  texture, where CSP and the acrallycentral shot draw it blue-grey (123,129,143): the aerosol and the crisp section's ground
+  haze put about 100 levels of white over it; the hue alone moved it little. Against CSP at the same pose and sun (mountain
+  over slope / cap over slope): CSP 1.58 / 1.88 (cap blue), ours 2.41 / 2.28 at 0.2, 2.34 / 1.90 (cap blue) now; the sunlit
+  face stays brighter, CSP's clouds keeping the sun off it. Sky top (173,180,191), shot (168,180,208), was (186,188,187).
+  Sa Calobra's CSP skies are blue too: 13:00 corner (151,184,209), ours (188,208,238) at 0.2, (166,204,250) now; at 07:35
+  the near-white sky turns blue. CSP's season adjustments (Joux Verte's `MATERIAL_ADJUSTMENT_0..6`) barely change its frame.
 
 ## Multilayer at render time, 2026-11-19
 
