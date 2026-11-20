@@ -2,7 +2,7 @@
 //! reads and writes at the records' addresses. The tables are on every word store, so the engine's view
 //! (`super::engine_typed::EngineView`) reads its typed state where it holds the words; its records are its own.
 
-use super::drive_line::{entry_at, COUNT_AT, MAX_ENTRIES};
+use super::drive_line::{entries_held, entry_at, COUNT_AT};
 use super::drive_objects::Lane;
 use super::engine_definition::EXHAUST_ROWS;
 use super::engine_objects::{
@@ -158,17 +158,16 @@ impl<R: Raw> EngineTables for R {
         self.u32(manager + 0xc).wrapping_add(idx.wrapping_mul(20))
     }
 
-    /// `SetDriveLine`'s stores: the entries, the count, and entries `n..10000` with zero `q` and `v` and `s = -1`. The
-    /// tags of the filled entries are left as they were. The log lines are skipped; a count over 10000 traps in the
-    /// original.
+    /// `SetDriveLine`'s stores: the entries, the count, and the held entries past `n` (`entries_held`) with zero `q`
+    /// and `v` and `s = -1`. The tags of the filled entries are left as they were. The log lines are skipped; a count
+    /// over 10000 traps in the original, and is a longer line here (ours, `layout::drive_line`).
     fn store_drive_line(&mut self, this: u32, entries: &[DriveLinePoint]) {
         let n = entries.len() as u32;
-        assert!(n <= MAX_ENTRIES, "more than 10000 drive-line entries");
         for (k, e) in (0..).zip(entries) {
             self.store_entry(entry_at(this, k), *e);
         }
         self.set_u32(this + COUNT_AT, n);
-        for k in n..MAX_ENTRIES {
+        for k in n..entries_held(n) {
             let at = entry_at(this, k);
             Vec4::default().store(self, at);
             Vec4::default().store(self, at + 0x10);

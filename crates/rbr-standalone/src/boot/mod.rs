@@ -278,6 +278,16 @@ fn interactive_handles(lbs: &lbs::Lbs) -> HashMap<u32, u32> {
         .collect()
 }
 
+/// The drive line's block (`CreateDriveLine`'s) for the `.trk`'s drive line: the original's, or larger for a line
+/// over its 10000 entries (ours).
+fn drive_line_size(track: &trk::TrkFile) -> u32 {
+    let count = track.chunks.iter().filter_map(|c| match &c.payload {
+        trk::ChunkPayload::DriveLine(d) => Some(d.records.len() as u32),
+        _ => None,
+    });
+    rbr_physics::engine_driveline::layout::block_size(count.max().unwrap_or(0))
+}
+
 /// The car's start pose (0x46b160): the `.lbs` start location's `(x, z, y + 0.5)` (z up), turned about z by
 /// `pi - yaw`, the quaternion `(0, 0, sin, cos)` of the half angle from the x87's `fsin` and `fcos`.
 fn start_pose(start: &lbs::StartLocation) -> ([f32; 3], [f32; 4]) {
@@ -366,8 +376,6 @@ const QPC_SLOT: u32 = 0x0072_9190;
 const QPC_STAND_IN: u32 = 0xFEED_3000;
 /// The track state (its `.mat` image word at +0x148).
 const TRACK_STATE_SIZE: u32 = 0x150;
-/// The drive line's block (`CreateDriveLine`'s).
-const DRIVE_LINE_SIZE: u32 = 0x75330;
 /// Free memory for the original's temporaries (the placements, `SyncGrid`'s vertices, the fire mesh's descriptor).
 const SCRATCH: u32 = 0x0030_0000;
 const SCRATCH_SIZE: u32 = 0x1_0000;
@@ -621,10 +629,10 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
 
     // The stage world: the cell grid an earlier `E45_MD60` built (no wall yet), the `.col`, the `.trk` (the drive line,
     // the meshes and their placements) and the `.mat`.
-    let drive_line = heap.take(DRIVE_LINE_SIZE);
-    mem.set_u32(stage::DRIVE_LINE, drive_line);
     let track =
         trk::parse(&stage_files::read(data, stage_name, "trk")?).map_err(|e| format!("{stage_name}.trk: {e:?}"))?;
+    let drive_line = heap.take(drive_line_size(&track));
+    mem.set_u32(stage::DRIVE_LINE, drive_line);
     let mesh_capacity: usize = track
         .chunks
         .iter()
