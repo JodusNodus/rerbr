@@ -85,9 +85,9 @@ pub trait EngineTables: Raw {
     fn table_manager_word(&self, manager: u32) -> u32;
     /// Entry `idx` of the table the manager points to.
     fn table_manager_entry(&self, manager: u32, idx: u32) -> u32;
-    /// The drive line's stores: the entries, the count, and entries `n..10000` with zero position and tangent and distance -1. The
-    /// tags of the filled entries are left as they were. The log lines are skipped; a count over 10000 traps in the
-    /// original.
+    /// The drive line's stores: the entries, the count, and the held entries past `n` (`layout::entries_held`: up to
+    /// 10000, or one past a longer line, ours) with zero position and tangent and distance -1. The tags of the filled
+    /// entries are left as they were. The log lines are skipped; a count over 10000 traps in the original.
     fn store_drive_line(&mut self, this: u32, entries: &[DriveLinePoint]);
     /// Row `i` of the definition's exhaust table: eight floats.
     fn exhaust_row(&self, def: u32, i: u32) -> [f32; 8];

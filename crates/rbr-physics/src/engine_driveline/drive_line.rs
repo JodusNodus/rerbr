@@ -4,7 +4,7 @@
 use crate::fpu;
 use crate::math::vec::Vec4;
 
-/// The table's capacity in control points.
+/// The original table's capacity in control points (a longer line is ours, `layout::drive_line`).
 pub const MAX_POINTS: u32 = 10000;
 
 const ZERO: Vec4 = Vec4 { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };

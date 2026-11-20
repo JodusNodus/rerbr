@@ -1,7 +1,8 @@
 //! The typed stage's image side ([`crate::stage::typed`]): its lift from the image after the load, its owned bytes,
 //! and [`StageView`], the stage's store over it. Nothing lowers it: the step only reads these tables.
 //!
-//! The drive line is the table `DRIVE_LINE` names, entries and count (`line + 0x10 .. line + COUNT_AT + 4`); the
+//! The drive line is the table `DRIVE_LINE` names, entries and count (`line + 0x10 .. line + COUNT_AT + 4`, and a longer
+//! line's entries past the count, `engine_driveline::layout::drive_line`); the
 //! material table is `MATERIAL_TABLE`'s slots, slot address and count, with the 256 bytes of each sheet a slot names.
 //! A read the typed stage does not hold (an index past the table, another table's address, a sheet the image did not
 //! have) reads the image, which a step leaves as the load did.
@@ -10,7 +11,7 @@ use std::ops::Range;
 
 use super::{DRIVE_LINE, MATERIAL_TABLE};
 use crate::engine_driveline::drive_line::DriveLinePoint;
-use crate::engine_driveline::layout::{COUNT_AT, MAX_ENTRIES};
+use crate::engine_driveline::layout::{entries_held, entry_at, COUNT_AT, MAX_ENTRIES};
 use crate::entities::layout::{SLOT_SIZE, TABLE_COUNT, TABLE_SELF};
 use crate::entities::material_table::MaterialSlot;
 use crate::entities::store::SlotLookup;
@@ -44,10 +45,21 @@ fn vec4_bytes(v: Vec4) -> impl Iterator<Item = u8> {
     [v.x, v.y, v.z, v.w].into_iter().flat_map(|f| f.to_le_bytes())
 }
 
+/// A longer line's entries past the count (ours), for a table of `count` entries at `line`.
+fn overflow(line: u32, count: u32) -> Option<Range<u32>> {
+    let held = entries_held(count);
+    (held > MAX_ENTRIES).then(|| entry_at(line, MAX_ENTRIES)..entry_at(line, held))
+}
+
 /// The drive line at `line`, from the image, if the image holds its table.
 fn lift_line(mem: &Mem, line: u32) -> Option<DriveLine> {
     let bytes = mem.try_read(line.checked_add(LINE_START)?, (LINE_END - LINE_START) as usize)?;
-    let entries = bytes[..MAX_ENTRIES as usize * ENTRY_BYTES]
+    let count = word(&bytes, (COUNT_AT - LINE_START) as usize);
+    let mut table = bytes[..MAX_ENTRIES as usize * ENTRY_BYTES].to_vec();
+    if let Some(range) = overflow(line, count) {
+        table.extend(mem.try_read(range.start, (range.end - range.start) as usize)?);
+    }
+    let entries = table
         .chunks_exact(ENTRY_BYTES)
         .map(|e| LineEntry {
             point: DriveLinePoint {
@@ -59,20 +71,19 @@ fn lift_line(mem: &Mem, line: u32) -> Option<DriveLine> {
             spare: [word(e, 0x28), word(e, 0x2c)],
         })
         .collect();
-    Some(DriveLine { entries, count: word(&bytes, (COUNT_AT - LINE_START) as usize) })
+    Some(DriveLine { entries, count })
 }
 
-/// The drive line's typed bytes, in the image's order from `line + LINE_START`.
-fn line_bytes(line: &DriveLine) -> Vec<u8> {
-    let mut out = Vec::with_capacity((LINE_END - LINE_START) as usize);
-    for e in line.entries.iter() {
+/// The entries' typed bytes, in the image's order.
+fn entry_bytes(entries: &[LineEntry]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(entries.len() * ENTRY_BYTES);
+    for e in entries {
         let p = &e.point;
         out.extend(vec4_bytes(p.position).chain(vec4_bytes(p.tangent)));
         for w in [p.distance.to_bits(), p.tag, e.spare[0], e.spare[1]] {
             out.extend(w.to_le_bytes());
         }
     }
-    out.extend(line.count.to_le_bytes());
     out
 }
 
@@ -115,8 +126,19 @@ impl Stage {
     fn parts(&self, bytes: bool) -> Vec<(Range<u32>, String, Vec<u8>)> {
         let mut out = Vec::new();
         if let Some((at, line)) = &self.line {
-            let typed = if bytes { line_bytes(line) } else { Vec::new() };
+            let (table, past) = line.entries.split_at(MAX_ENTRIES as usize);
+            let typed = if bytes {
+                let mut typed = entry_bytes(table);
+                typed.extend(line.count.to_le_bytes());
+                typed
+            } else {
+                Vec::new()
+            };
             out.push((at + LINE_START..at + LINE_END, "drive line".to_string(), typed));
+            if let Some(range) = overflow(*at, line.count) {
+                let typed = if bytes { entry_bytes(past) } else { Vec::new() };
+                out.push((range, "drive line past entry 10000".to_string(), typed));
+            }
         }
         if let Some((at, m)) = &self.materials {
             let typed = if bytes { materials_bytes(m) } else { Vec::new() };
@@ -296,7 +318,7 @@ pub fn differential(mem: &Mem) -> Result<usize, String> {
     if let Some((line, _)) = &stage.line {
         let line = *line;
         same(&|| "drive line count".into(), &[view.line_count(line)], &[mem.line_count(line)])?;
-        for k in 0..MAX_ENTRIES {
+        for k in 0..entries_held(mem.line_count(line)) {
             let what = || format!("drive line entry {k}");
             same(&what, &bits(view.line_position(line, k)), &bits(mem.line_position(line, k)))?;
             same(&what, &bits(view.line_tangent(line, k)), &bits(mem.line_tangent(line, k)))?;
@@ -369,6 +391,37 @@ mod tests {
         assert_eq!(view.line_distance(0x10_0000, 2), 20.0);
         assert_eq!(view.material_texel(MATERIAL_TABLE + 8, 1, 2), 255 - 33);
         assert_eq!(view.material_slot(MATERIAL_TABLE, 2), SlotLookup::OutOfRange);
+    }
+
+    #[test]
+    fn a_line_over_10000_entries_carries_on_past_the_count() {
+        use crate::engine_driveline::layout::{block_size, last_distance, sample};
+        let n = 12_000;
+        let line = 0x10_0000;
+        let mut mem = Mem::new();
+        mem.map(line, &vec![0; block_size(n) as usize]);
+        mem.set_u32(DRIVE_LINE, line);
+        let points: Vec<_> = (0..n)
+            .map(|k| DriveLinePoint {
+                position: Vec4 { x: 2.5 * k as f32, y: 0.0, z: 0.0, w: 0.0 },
+                tangent: Vec4 { x: 2.5, y: 0.0, z: 0.0, w: 0.0 },
+                distance: 2.5 * k as f32,
+                tag: 0,
+            })
+            .collect();
+        mem.store_drive_line(line, &points);
+        assert_eq!(mem.line_count(line), n);
+        assert_eq!(mem.line_distance(line, n), -1.0, "the entry past a long line is filled as the original's are");
+        assert_eq!(last_distance(&mem, line), 2.5 * (n - 1) as f32);
+        assert_eq!(sample(&mem, line, 27_501.25).x, 27_501.25);
+
+        let held = 10_000 * ENTRY_BYTES + 4 + (n as usize + 1 - 10_000) * ENTRY_BYTES;
+        assert_eq!(round_trip(&mem), Ok(held));
+        differential(&mem).unwrap();
+        let stage = Stage::lift(&mem);
+        assert_eq!(stage.view(&mem).line_distance(line, 11_000), 27_500.0);
+        let names: Vec<_> = stage.owned().into_iter().map(|(_, name)| name).collect();
+        assert_eq!(names, ["drive line", "drive line past entry 10000"]);
     }
 
     #[test]

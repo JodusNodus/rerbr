@@ -36,8 +36,8 @@ pub use drive_calls::{
 };
 pub use drive_def::{DriveDefinition, DRIVE_DEF_BYTES};
 pub use drive_line::{
-    entry_at, forward_distance_at, last_distance, point_at, sample, set_drive_line, spline_at, tangent_lerp, COUNT_AT,
-    MAX_ENTRIES, STRIDE,
+    block_size, entries_held, entry_at, forward_distance_at, last_distance, point_at, sample, set_drive_line,
+    spline_at, tangent_lerp, COUNT_AT, MAX_ENTRIES, STRIDE,
 };
 pub use drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane};
 pub use drive_typed::{
