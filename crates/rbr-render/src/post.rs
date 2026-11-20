@@ -13,7 +13,7 @@ const LEVELS: u32 = 6;
 /// MSAA 422, TAA 201, TAA sharpened 355).
 const TAA_SHARPEN: f32 = 1.0;
 
-pub(crate) const SHADER: &str = include_str!("post.wgsl");
+pub(crate) const SHADER: &str = concat!(include_str!("post.wgsl"), include_str!("volume_shadow.wgsl"));
 
 pub(crate) struct Post {
     source_layout: wgpu::BindGroupLayout,
@@ -43,6 +43,8 @@ pub(crate) struct Post {
     /// `RBR_METER_EV`: the scene taken as metered at this EV100 every frame, so that frames differing in part (the
     /// grass on and off) are exposed alike for comparison; 0 (unset) metered.
     fixed_ev: f32,
+    /// The volumetric clouds' shadow map (`CloudVolume::shadow_map`), which the meter reads ([`Sunlit`]).
+    clouds: wgpu::TextureView,
     /// The resolved frame.
     pub(crate) scene: wgpu::TextureView,
     targets: Targets,
@@ -60,14 +62,15 @@ struct Targets {
     /// The light shafts the composite adds (linear light, a quarter of the frame's size; 1x1 without them).
     shafts: wgpu::TextureView,
     /// `cs_histogram`'s and `cs_meter`'s: the frame and its sampler (the frame alone for `cs_meter`, its height), then the depth, the
-    /// exposure, the settings and the bins.
+    /// exposure, the settings, the bins and the clouds' shadow map.
     meter: [[wgpu::BindGroup; 2]; 2],
 }
 
 /// The metering's grid, in `cs_histogram`'s workgroups (`METER_GRID` in `post.wgsl` over 16), and its bins, the
-/// outside's then the cabin's (`ZONE_BINS`).
+/// outside's then the cabin's (`ZONE_BINS`), then the ground's points and their sunlit share (`METER_SLOTS`).
 const METER_GROUPS: (u32, u32) = (8, 4);
 const ZONE_BINS: u64 = 256;
+const METER_SLOTS: u64 = ZONE_BINS + 2;
 
 /// `cs_meter`'s and `fs_composite`'s settings (`Meter` in `post.wgsl`).
 #[repr(C)]
@@ -84,6 +87,25 @@ struct Meter {
     headroom: f32,
     /// `x`: [`Post::fixed_ev`], 0 metered.
     fixed: [f32; 4],
+    /// [`Sunlit`]: the view's inverse, the clouds' shadow map's parameters, the way to the sun and the sunny offset.
+    inverse: [[f32; 4]; 4],
+    clouds: [f32; 4],
+    to_sun: [f32; 4],
+}
+
+/// What the meter needs to tell how much of the ground in view the sun lights through the clouds (`cs_histogram`,
+/// `cs_meter`), and the sunny day's exposure offset it scales by that share: a view in a cloud's shadow is exposed for
+/// the cloud's light. The default (no offset) meters as without it.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Sunlit {
+    /// Stops down on a fully sunlit view ([`SUN_EXPOSURE`] times [`DayLight::sun_share`](crate::skylight::DayLight::sun_share)).
+    pub stops: f32,
+    /// The view's inverse view-projection (reversed depth).
+    pub inverse: glam::Mat4,
+    /// The clouds' shadow map's parameters (`cloud_volume::shadow_params`; zero without the map: all sunlit).
+    pub clouds: [f32; 4],
+    /// Toward the sun.
+    pub to_sun: glam::Vec3,
 }
 
 /// What the frame's conditions do to the post pass ([`conditions`]).
@@ -106,7 +128,7 @@ const OVERCAST_SATURATION: f32 = 0.15;
 
 /// How many stops darker a sunlit day is exposed under our sun lighting (`Enhance::lighting`, ours; times
 /// [`DayLight::sun_share`](crate::skylight::DayLight::sun_share), so cloud, twilight and night keep the meter's
-/// exposure). The metered mean of a forest scene puts sunlit grass at about 195 of 255 on screen, a photo's 120 to 140.
+/// exposure, and times the share of the ground in view the clouds leave sunlit, [`Sunlit`]). The metered mean of a forest scene puts sunlit grass at about 195 of 255 on screen, a photo's 120 to 140.
 pub(crate) const SUN_EXPOSURE: f32 = 1.5;
 
 /// The post pass's [`Conditions`] for `atmosphere`: the exposure lower by [`WET_EXPOSURE`] times the
@@ -141,7 +163,7 @@ pub(crate) fn cabin_depth(view_projection: glam::Mat4) -> f32 {
 }
 
 impl Post {
-    /// The post pass into targets of `format`, for frames of `size` and the frame's `depth`; with
+    /// The post pass into targets of `format`, for frames of `size`, the frame's `depth` and the clouds' shadow map; with
     /// `shafts`, the composite adds [`Post::shafts`]; with `sharpen`, it sharpens the scene by [`TAA_SHARPEN`] (the
     /// temporal resolve's blur); with `debug_view`, the composite passes the cabin's debug grey through (`DEBUG_VIEW`
     /// in `post.wgsl`). A target of [`HDR_FORMAT`](crate::present::HDR_FORMAT) is an HDR display's (`HDR`).
@@ -149,7 +171,7 @@ impl Post {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         size: (u32, u32),
-        depth: &wgpu::TextureView,
+        (depth, clouds): (&wgpu::TextureView, &wgpu::TextureView),
         shafts: bool,
         sharpen: bool,
         debug_view: u32,
@@ -285,7 +307,7 @@ impl Post {
             layout: &glare_layout,
             entries: &[wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() }],
         });
-        let histogram = buffer("histogram", ZONE_BINS * 4, wgpu::BufferUsages::STORAGE);
+        let histogram = buffer("histogram", METER_SLOTS * 4, wgpu::BufferUsages::STORAGE);
         let meter_settings =
             buffer("meter", size_of::<Meter>() as u64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
         let (scene, targets) = targets(
@@ -294,7 +316,7 @@ impl Post {
             &sampler,
             [&exposure, &meter_settings, &histogram],
             &meter,
-            depth,
+            (depth, clouds),
             size,
             shafts,
         );
@@ -314,6 +336,7 @@ impl Post {
             sharpen: if sharpen { TAA_SHARPEN } else { 0.0 },
             headroom: 1.0,
             fixed_ev: std::env::var("RBR_METER_EV").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0),
+            clouds: clouds.clone(),
             scene,
             targets,
             shafts,
@@ -329,7 +352,7 @@ impl Post {
             &self.sampler,
             [&self.exposure, &self.meter_settings, &self.histogram],
             &self.meter,
-            depth,
+            (depth, &self.clouds),
             size,
             self.shafts,
         );
@@ -348,7 +371,8 @@ impl Post {
     /// Writes the frame in [`Post::scene`] into `target`, all of it, or keeping the rest, into its part `viewport` (x,
     /// y, width and height in pixels: a spanned display's third, `crate::triple`); its exposure eased from the last frame's
     /// to `time` (seconds: a later view of the same frame keeps the first's); `cabin_depth` in the in-car view
-    /// ([`cabin_depth`]), else 0; graded by the frame's `conditions`.
+    /// ([`cabin_depth`]), else 0; graded by the frame's `conditions`, its sunny offset by the view's `sunlit` share.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         &mut self,
         queue: &wgpu::Queue,
@@ -357,6 +381,7 @@ impl Post {
         time: f32,
         cabin_depth: f32,
         conditions: Conditions,
+        sunlit: Sunlit,
     ) {
         let step = self.metered.map_or(-1.0, |last| time - last);
         self.metered = Some(time);
@@ -371,6 +396,9 @@ impl Post {
             sharpen: self.sharpen,
             headroom: self.headroom,
             fixed: [self.fixed_ev, 0.0, 0.0, 0.0],
+            inverse: sunlit.inverse.to_cols_array_2d(),
+            clouds: sunlit.clouds,
+            to_sun: sunlit.to_sun.extend(sunlit.stops).to_array(),
         };
         queue.write_buffer(&self.meter_settings, 0, bytemuck::bytes_of(&settings));
         let t = &self.targets;
@@ -444,7 +472,7 @@ fn targets(
     sampler: &wgpu::Sampler,
     [exposure, meter_settings, histogram]: [&wgpu::Buffer; 3],
     [binning, metering]: &[wgpu::ComputePipeline; 2],
-    depth: &wgpu::TextureView,
+    (depth, clouds): (&wgpu::TextureView, &wgpu::TextureView),
     (width, height): (u32, u32),
     shafts: bool,
 ) -> (wgpu::TextureView, Targets) {
@@ -503,6 +531,7 @@ fn targets(
                     wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
                     settings.clone(),
                     bins.clone(),
+                    wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(clouds) },
                 ],
             ),
         ],

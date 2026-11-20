@@ -541,7 +541,7 @@ impl Renderer {
             &device,
             output_format,
             depth_size,
-            &depth_view,
+            (&depth_view, cloud_volume.shadow_map()),
             enhance.lighting,
             taa,
             enhance.debug_view.code(),

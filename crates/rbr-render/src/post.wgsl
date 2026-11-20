@@ -36,6 +36,12 @@ struct Meter {
     grade: vec4<f32>,
     // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered.
     fixed: vec4<f32>,
+    // What tells the share of the view the sun lights (`post::Sunlit`): the view's inverse, the clouds' shadow map's
+    // parameters (`volume_shadow`; zero without the map), the way to the sun and, in `w`, the sunny day's exposure
+    // offset, stops (`SUN_EXPOSURE` times the day's sun share), which `cs_meter` takes times that share.
+    inverse: mat4x4<f32>,
+    clouds: vec4<f32>,
+    to_sun: vec4<f32>,
 }
 
 @group(1) @binding(1) var<storage, read> exposure: Exposure;
@@ -62,14 +68,19 @@ override HDR: bool = false;
 @group(1) @binding(2) var meter_depth: texture_depth_2d;
 @group(1) @binding(3) var<storage, read_write> meter_exposure: Exposure;
 @group(1) @binding(4) var<uniform> meter: Meter;
-@group(1) @binding(5) var<storage, read_write> meter_histogram: array<atomic<u32>, ZONE_BINS>;
+@group(1) @binding(5) var<storage, read_write> meter_histogram: array<atomic<u32>, METER_SLOTS>;
+// The volumetric clouds' shadow map (`renderer::cloud_volume`), for the sunlit share of the view (`cs_histogram`).
+@group(1) @binding(6) var meter_clouds: texture_2d<f32>;
 
 // The glare chain's levels (`post::LEVELS`); `fs_glare_up` sums them.
 const LEVELS: f32 = 6.0;
 // The metering (`cs_histogram`, `cs_meter`): the scene's luminance (cd/m2, its light over the pre-exposure) on a grid
 // of `METER_GRID` points binned by its log2 in `BINS` bins from `EV_LOW` over `EV_SPAN` stops (starlit ground to the
 // sunlit sky); the mean of the bins between the `PERCENTILES` (the darkest shadows and the
-// brightest highlights dropped) is the frame's light, each point counting `WEIGHT`.
+// brightest highlights dropped) is the frame's light, each point counting `WEIGHT`, the sky's `SKY_WEIGHT` of it (ours,
+// 2026-11-20: as a camera's matrix metering, the ground is exposed, not the sky; counted in full, a third of the frame
+// in broken cloud put Joux Verte's ground at 17 of 255 against the CSP shot's 68, and the exposure swung with the view's
+// pitch). The ground's points also count how much of them the clouds leave sunlit (`SUNLIT`, `cs_meter`).
 // In the in-car view the cabin (nearer than `Meter::cabin_depth`) is metered apart too, as the eye adapts to the dash
 // when it looks there (user's call, 2026-10-31; was one exposure with the cabin at half the outside's weight): the
 // outside's light counts the outside's points `IN_CAR_WEIGHT.x` and the cabin's `.y` (a fifth: the outside exposed
@@ -80,10 +91,15 @@ const LEVELS: f32 = 6.0;
 const METER_GRID: vec2<u32> = vec2<u32>(128u, 64u);
 const BINS: u32 = 128u;
 const ZONE_BINS: u32 = 2u * BINS;
+// The histogram's bins, then the ground's points and their sunlit share, in `SUNLIT`ths.
+const METER_SLOTS: u32 = ZONE_BINS + 2u;
+const SUNLIT: f32 = 255.0;
 const EV_LOW: f32 = -14.0;
 const EV_SPAN: f32 = 32.0;
 const PERCENTILES: vec2<f32> = vec2<f32>(0.1, 0.9);
 const WEIGHT: u32 = 2u;
+// The sky's points' weight against the ground's, in quarters.
+const SKY_WEIGHT: u32 = 1u;
 const IN_CAR_WEIGHT: vec2<u32> = vec2<u32>(5u, 1u);
 const CABIN_STOPS: f32 = 2.5;
 // The cabin's lift tapers off over what is this share of `KEY` at the outside's exposure (ours, 2026-11-13): the sun on
@@ -414,12 +430,18 @@ fn fs_glare_up(v: Out) -> @location(0) vec4<f32> {
 }
 
 var<workgroup> histogram: array<atomic<u32>, ZONE_BINS>;
+var<workgroup> ground_points: atomic<u32>;
+var<workgroup> sunlit_points: atomic<u32>;
 
 // Bins the scene's light (`source`) into `meter_histogram`: a workgroup for each 16x16 of the grid's points, each
 // binning its own before adding them in.
 @compute @workgroup_size(16, 16)
 fn cs_histogram(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocation_index) index: u32) {
     atomicStore(&histogram[index], 0u);
+    if (index == 0u) {
+        atomicStore(&ground_points, 0u);
+        atomicStore(&sunlit_points, 0u);
+    }
     workgroupBarrier();
     if (all(id.xy < METER_GRID)) {
         let uv = (vec2<f32>(id.xy) + 0.5) / vec2<f32>(METER_GRID);
@@ -428,15 +450,27 @@ fn cs_histogram(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_inv
         let depth = textureLoad(meter_depth, vec2<i32>(uv * vec2<f32>(textureDimensions(meter_depth))), 0);
         let in_car = meter.cabin_depth > 0.0;
         let cabin = in_car && depth > meter.cabin_depth;
-        atomicAdd(&histogram[bin], select(WEIGHT, select(IN_CAR_WEIGHT.x, IN_CAR_WEIGHT.y, cabin), in_car));
+        let sky = depth <= 0.0;
+        let weight = select(WEIGHT, select(IN_CAR_WEIGHT.x, IN_CAR_WEIGHT.y, cabin), in_car) * select(4u, SKY_WEIGHT, sky);
+        atomicAdd(&histogram[bin], weight);
         if (cabin) {
             atomicAdd(&histogram[BINS + bin], WEIGHT);
+        }
+        if (!sky && !cabin && meter.to_sun.y > 0.05) {
+            let clip = meter.inverse * vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
+            let shadow = volume_shadow(meter_clouds, linear_sampler, meter.clouds, clip.xyz / clip.w, meter.to_sun.xyz);
+            atomicAdd(&ground_points, u32(SUNLIT));
+            atomicAdd(&sunlit_points, u32(round((1.0 - shadow) * SUNLIT)));
         }
     }
     workgroupBarrier();
     let count = atomicLoad(&histogram[index]);
     if (count != 0u) {
         atomicAdd(&meter_histogram[index], count);
+    }
+    if (index == 0u) {
+        atomicAdd(&meter_histogram[ZONE_BINS], atomicLoad(&ground_points));
+        atomicAdd(&meter_histogram[ZONE_BINS + 1u], atomicLoad(&sunlit_points));
     }
 }
 
@@ -494,13 +528,18 @@ fn cs_meter(@builtin(local_invocation_index) index: u32) {
     if (index != 0u) {
         return;
     }
+    // The sunny day's offset, times the share of the ground in view the clouds leave sunlit (all of it without the
+    // clouds' map or ground in view): a view in a cloud's shadow is exposed as the cloud's light, not the sun's.
+    let ground = f32(atomicExchange(&meter_histogram[ZONE_BINS], 0u));
+    let sunlit = f32(atomicExchange(&meter_histogram[ZONE_BINS + 1u], 0u));
+    let sunny = exp2(-meter.to_sun.w * select(1.0, sunlit / ground, ground > 0.0));
     let light = select(metered(0u).x, log2(exp2(meter.fixed.x) * CALIBRATION / 100.0), meter.fixed.x > 0.0);
     let outside = aimed(light);
     let held = outside.x;
-    let aim = outside.y;
+    let aim = outside.y * sunny;
     // Without the cabin in view (or outside the car) the cabin's follows the outside's.
     let inside = metered(BINS);
-    let cabin = select(aim, aimed(inside.x).y, inside.y > 0.0);
+    let cabin = select(aim, aimed(inside.x).y * sunny, inside.y > 0.0);
     let last = meter_exposure.value;
     if (meter.snap != 0.0 || !(last > 0.0) || !(meter_exposure.adapting > 0.0) || !(meter_exposure.cabin > 0.0)) {
         meter_exposure.value = aim;

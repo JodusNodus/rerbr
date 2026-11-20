@@ -339,18 +339,25 @@ impl Renderer {
         }
         let cabin_depth = if self.outside_view { 0.0 } else { crate::post::cabin_depth(view_projection) };
         let mut conditions = crate::post::conditions(&self.atmosphere);
+        let mut sunlit = crate::post::Sunlit::default();
         // With the sky's tables the stage's light is physical, pre-exposed by theirs.
         if let Some(day) = self.day_light() {
             conditions.pre_exposure = day.sun[3];
-            // A sunlit day under our sun lighting is exposed `SUN_EXPOSURE` stops down.
+            // A sunlit day under our sun lighting is exposed `SUN_EXPOSURE` stops down, as much as the clouds leave
+            // the ground in view sunlit (`cs_meter`).
             if self.enhance.lighting {
                 let share = day.sun_share(-self.atmosphere.sun_direction.y);
-                conditions.exposure *= (-crate::post::SUN_EXPOSURE * share).exp2();
+                sunlit = crate::post::Sunlit {
+                    stops: crate::post::SUN_EXPOSURE * share,
+                    inverse: view_projection.inverse(),
+                    clouds: self.shadow_params.get(),
+                    to_sun: -self.atmosphere.sun_direction,
+                };
             }
         }
         let t = mark(&mut profiler, encoder);
         let viewport = frame_view.at.map(|(x, y)| [x, y, output.0, output.1]);
-        self.post.draw(&self.queue, encoder, (target, viewport), self.time, cabin_depth, conditions);
+        self.post.draw(&self.queue, encoder, (target, viewport), self.time, cabin_depth, conditions, sunlit);
         span(&mut profiler, encoder, "post (bloom, tone)", t);
         self.profiler = profiler;
         stats

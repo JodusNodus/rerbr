@@ -1439,6 +1439,15 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   night views pixel-identical. The gallery is regenerated with both lighting fixes.
   Reference-shot choices (2026-11-10): Pengonpohja's quattro fly-by uses Partly cloudy at 18:00 with wet roads and
   no rain; Comb I's Yaris fly-by uses Clear at 05:45, sun 5.8 degrees up, for warm side light and backlit dust.
+- Metering the ground, and the sunny offset by the sunlit ground (2026-11-20, `post.wgsl` `cs_histogram`, `cs_meter`,
+  `post::Sunlit`): the sky's points count `SKY_WEIGHT` (a quarter) of the ground's, as a camera's matrix metering; and
+  `SUN_EXPOSURE` (1.5 stops down on a sunny day) is taken times the share of the ground points in view the clouds' shadow
+  map leaves sunlit (each point's world position from the depth), so a view in a cloud's shadow is exposed for the
+  cloud's light. Before, a view in a cloud's shadow kept the sunny offset and a third of the frame in bright cloud
+  pulled the ground down: Joux Verte, broken cloud, the view pitched up: ground luma median 17 to 63 (the CSP shot 68),
+  sky 134 to 203; the shot view 46 to 80; clear and sunlit 50 to 53. Retail 13:00 start views (luma p5/p50/p95): 41_M
+  clear, partly, broken unchanged (RMSE 0 to 0.05); 54_E clear 4/55/157 to 5/58/162, partly 5/58/131 to 14/98/189
+  (its view in cloud shadow), broken 5/60/135 to 14/99/191; 10_O (half the frame hazy sky) 31/74/153 to 47/104/171.
 - Sunlight scattered by cloud (2026-11-20, `skylight.wgsl` `sky_light_table`): the cover's overcast part of the sky's
   light is the clear sky's plus `CLOUD_SCATTER` (0.5) of the sun's on up-facing ground per share of cover past the
   clear sky's (`CLEAR_COVER` 0.12); before, it kept the clear sky's light, so broken cloud's shade was as dark as a clear
