@@ -422,9 +422,9 @@
   "stage": 1996319,
   "car": "Toyota Celica 2000GT-FOUR RC (ST185) Group A",
   "view": "chase",
-  "clock": "08:00",
+  "sun": "best",
   "settings": {
-   "clouds": "broken"
+   "clouds": "partly"
   },
   "args": [
    "--camera",

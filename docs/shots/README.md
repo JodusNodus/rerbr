@@ -51,7 +51,7 @@ Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, 15:00
 
 ### day-joux-verte-celica-chase
 
-Toyota Celica 2000GT-FOUR RC (ST185) Group A, Joux Verte SS7 reversed (AC import 1996319), chase view, 08:00
+Toyota Celica 2000GT-FOUR RC (ST185) Group A, Joux Verte SS7 reversed (AC import 1996319), chase view, best
 
 ![day-joux-verte-celica-chase](day-joux-verte-celica-chase.jpg)
 
