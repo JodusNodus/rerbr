@@ -264,7 +264,10 @@ GROUPS = [('day', 'Day'), ('golden', 'Golden hour'), ('rain', 'Rain'), ('fog', '
 RETAIL = {52: 'Sipirkakim'}  # the retail stages the list uses; the Maps folder names only the RSF ones
 # Assetto Corsa tracks imported with their default folder names (`rbr-ac-tracks import`, the launcher's Import): the
 # number the launcher gives a BTB folder is a hash of its name, so these hold on any install that imported them.
-IMPORTED = {1290447: 'Akina Uphill', 1333662: 'Nordschleife', 1282190: 'Sa Calobra', 1126035: 'Crequy'}
+# 1996319 is the exception: Joux Verte's SS7 run the other way, `ac --reverse-ai --name AC_Joux_Verte_SS7_2020_reverse`
+# (notes/assetto.md).
+IMPORTED = {1290447: 'Akina Uphill', 1333662: 'Nordschleife', 1282190: 'Sa Calobra', 1126035: 'Crequy',
+            1996319: 'Joux Verte SS7 reversed'}
 
 
 def stage_names(install):

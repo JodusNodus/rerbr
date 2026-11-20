@@ -416,5 +416,26 @@
    "light"
   ],
   "at": 11000
+ },
+ {
+  "name": "day-joux-verte-celica-chase",
+  "stage": 1996319,
+  "car": "Toyota Celica 2000GT-FOUR RC (ST185) Group A",
+  "view": "chase",
+  "clock": "08:00",
+  "settings": {
+   "clouds": "broken"
+  },
+  "args": [
+   "--camera",
+   "1226.6,119.0,94.8,23.0,-3.4,-75.3",
+   "--fov",
+   "44",
+   "--sky",
+   "41M_crisp_partcloud",
+   "--precipitation",
+   "none"
+  ],
+  "at": 105700
  }
 ]
