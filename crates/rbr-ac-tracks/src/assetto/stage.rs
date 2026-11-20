@@ -33,6 +33,8 @@ pub struct Input {
     pub author: String,
     /// `ui_track.json`'s `country` as an ISO code ([`country_code`]), for `track.ini`'s `countrycode`.
     pub country: Option<&'static str>,
+    /// `ui/<layout>/preview.png`, the picture Assetto Corsa's menu shows, copied as `track.ini`'s `splashscreen`.
+    pub preview: Option<PathBuf>,
     pub ai_source: PathBuf,
     pub reversed_ai: bool,
     /// Gates invented from a closed AI loop rather than read from the source.
@@ -305,6 +307,7 @@ impl Input {
             .unwrap_or("unknown")
             .replace(['\n', '\r'], " ");
         let country = metadata.as_ref().and_then(|m| m["country"].as_str()).and_then(country_code);
+        let preview = source_path(&root, &format!("ui/{layout}/preview.png")).ok().filter(|p| p.is_file());
         Ok(Self {
             root,
             layout: layout.into(),
@@ -317,6 +320,7 @@ impl Input {
             title,
             author,
             country,
+            preview,
             ai_source,
             reversed_ai: reverse_ai,
             circuit,
@@ -1274,8 +1278,16 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     write("materials.ini", format!("{list}\n{}", material::normalise_light(&materials, &light_areas)))?;
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
+    // No `<digits>_` name: that is a BTB id (`rbr_btb::ids::splash_id`).
+    let splash = match &input.preview {
+        Some(path) => {
+            std::fs::copy(path, folder.join("preview.png")).map_err(|e| format!("{}: {e}", path.display()))?;
+            "splashscreen=preview.png\n"
+        }
+        None => "",
+    };
     let title = if input.layout == "." { input.title.clone() } else { format!("{} [{}]", input.title, input.layout) };
-    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{}{}",input.author,(input.finish-input.start)/1000.,input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default(),if input.circuit{"circuit=1\n"}else{""}))?;
+    write("track.ini",format!("[INFO]\nname={title}\nphysics={physics}\nauthor={}\nversion=AC local conversion\nlength={:.3}\ncomment=Converted locally by ac-stage\n{splash}{}{}",input.author,(input.finish-input.start)/1000.,input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default(),if input.circuit{"circuit=1\n"}else{""}))?;
     let mut settings = String::from(SETTINGS_INI);
     if let Some(fx) = &grass_fx {
         settings.push('\n');

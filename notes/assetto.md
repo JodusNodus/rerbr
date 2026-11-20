@@ -721,3 +721,8 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   the launcher shows the country and `relight::site` places the sun in its region (default 48 N, 8 E before).
   Montenegro (Glava Zete) is `ME`, in neither table, so its site stays the default. The geotags are not read: half
   the installed tracks give `lat`/`lon` placeholders, the rest five notations.
+- `ui/<layout>/preview.png` (`ui/preview.png` for one layout), AC's menu picture, is copied as `preview.png` and named
+  in `track.ini`'s `splashscreen`, so the launcher's stage card shows it (`btb_picture`) instead of the driveline.
+  Not `<digits>_*.png`: that is a BTB id (`ids::splash_id`). Checked on Steppe Rally (`tundra`) through
+  `rbr-ac-tracks import` and `rerbr --screenshot` (`drive-stars.png`, driveline before, AC's preview after).
+  Stages converted before keep the driveline until converted again.

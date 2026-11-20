@@ -45,6 +45,9 @@ fn discovery_lists_layouts_and_what_they_lack() {
 fn imports_a_layout_and_reports_progress() {
     let root = temp("import");
     let tracks = tracks(&root);
+    let preview = tracks.join("synthetic/ui/test/preview.png");
+    std::fs::create_dir_all(preview.parent().unwrap()).unwrap();
+    std::fs::write(&preview, b"picture").unwrap();
     let lines = Arc::new(Mutex::new(Vec::new()));
     let log = lines.clone();
     let control = Control::new(move |line| log.lock().unwrap().push(line.to_owned()), Arc::default());
@@ -53,7 +56,10 @@ fn imports_a_layout_and_reports_progress() {
     assert_eq!(imported.folder, root.join("out/AC_test"));
     assert!(!imported.applied.circuit && !imported.applied.remesh);
     assert!(imported.report.drawn_triangles > 0);
-    assert!(rbr_btb::track::Track::open(&imported.folder).is_ok());
+    let track = rbr_btb::track::Track::open(&imported.folder).unwrap();
+    // The layout's menu picture is the stage's splash screen.
+    assert_eq!(track.info.splashscreen.as_deref(), Some("preview.png"));
+    assert_eq!(std::fs::read(imported.folder.join("preview.png")).unwrap(), b"picture");
     assert!(lines.lock().unwrap().iter().any(|l| l.contains("spawn from")));
     // A second import needs --replace, and never replaces a folder the converter did not write.
     assert!(import::import(&request, &control).is_err());
