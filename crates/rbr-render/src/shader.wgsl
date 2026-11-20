@@ -1300,18 +1300,19 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
         var through_tint = leaf / max(max(leaf.r, max(leaf.g, leaf.b)), 1e-3);
         var tip = mix(vec3<f32>(1.0), GRASS_TIP, smoothstep(0.5, 1.0, height));
         if (crown) {
-            // Only the crown's inside is shaded from the sun, not its lit surface; the light through its leaves is
-            // straw-tinted.
+            // Only the crown's inside is shaded from the sun, not its lit surface; little of the sun comes through its
+            // leaves (`CROWN_TRANSMIT`).
             shade = mix(CROWN_INNER, 1.0, smoothstep(0.2, 0.9, length(crown_at(v))));
             tip = vec3<f32>(1.0);
-            through_tint = TUFT_STRAW;
         }
-        sun = sun_unit * (wrapped + TUFT_TRANSMIT * behind * through_tint) * sun_seen * shade * tip;
-        // The sky's light is near neutral on the stage's plants (their grey-green textures read bluish under a blue
-        // sky; our grass has the ground's hue), and the sunlit ground around a plant sends its warm light up from below.
+        let transmit = select(TUFT_TRANSMIT, CROWN_TRANSMIT, crown);
+        sun = sun_unit * (wrapped + transmit * behind * through_tint) * sun_seen * shade * tip;
+        // The sky's light is near neutral on the stage's tufts (their grey-green textures read bluish under a blue
+        // sky; our grass has the ground's hue, a crown the sky's), and the sunlit ground around a plant sends its warm
+        // light up from below.
         let ours = tuft && v.specular.x > GRASS_MARK;
         let grey = dot(sky, vec3<f32>(0.2126, 0.7152, 0.0722));
-        sky = mix(vec3<f32>(grey), sky, select(TUFT_SKY_TINT, 1.0, ours));
+        sky = mix(vec3<f32>(grey), sky, select(TUFT_SKY_TINT, 1.0, ours || crown));
         bounce = bounce + TUFT_GROUND * (sky_unit * 0.5 + sun_unit * max(-frame.sun.y, 0.0) * sun_seen) * (1.0 - height);
         occlusion = mix(GRASS_BASE, 1.0, smoothstep(0.0, GRASS_RISE, height));
         if (ours && v.specular.z > 1.5) {
@@ -1346,7 +1347,7 @@ fn own_light(v: VertexOut, sun_seen: f32, under_cloud: f32) -> vec3<f32> {
 // out across), lit as vegetation rather than as a flat card (ours), as our grass is (`GRASS_*`). The straw tint on its
 // pale texels (the retail textures are a grey-green with no straw in them; not the snow's), its green leaves no brighter
 // than `TUFT_GREEN_MOST`, a normal that turns out of the tuft by `TUFT_BEND` at the tip, its transmission behind
-// `TUFT_TRANSMIT`, the sky's colour kept `TUFT_SKY_TINT` (a crown's too; our grass keeps all of it), and the ground's
+// `TUFT_TRANSMIT`, the sky's colour kept `TUFT_SKY_TINT` (a crown and our grass keep all of it), and the ground's
 // `TUFT_GROUND` returned from below.
 const TUFT_STRAW: vec3<f32> = vec3<f32>(1.07, 1.03, 0.9);
 // `specular.x` of our grass cards past this is their brightness (`grass::GRASS_MARK`); a tuft's sunlit tips' lift,
@@ -1371,6 +1372,9 @@ const CROWN_SHRUB: vec2<f32> = vec2<f32>(1.0, 3.0);
 const CROWN_BASE: f32 = 0.75;
 const CROWN_WRAP: f32 = 0.25;
 const CROWN_INNER: f32 = 0.7;
+// A crown's sun through its leaves, behind (a tuft's is `TUFT_TRANSMIT`): at 0.35 and straw-tinted, Joux Verte's
+// backlit spruces glowed lime and yellow where CSP draws them olive (`notes/renderer.md`, 2026-11-20).
+const CROWN_TRANSMIT: f32 = 0.1;
 const TUFT_GROUND: vec3<f32> = vec3<f32>(0.3, 0.24, 0.14);
 
 fn is_tuft(v: VertexOut) -> bool {

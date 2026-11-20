@@ -1471,6 +1471,17 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   direct light) fading out by `relight::NIGHT`: held, it lit an overcast night's haze to sky luma 140 over a black
   stage (the weather reference's night row, `docs/weather/`); now 5 (before the change 15, the clear sky's twilight
   in-scatter); dusk unchanged (147 to 144).
+- Crowns against CSP (2026-11-20, `shader.wgsl` `own_light`): a crown's sun through its leaves is `CROWN_TRANSMIT`
+  (0.1, the leaf's neutral tint; was the tufts' 0.35, straw-tinted) and it keeps the sky's colour (was 0.4 of it).
+  Measured on lossless AC + CSP captures at the Joux Verte shot and tree poses (`sol_01_clear`, `sol_06_overcast`,
+  seasons off) with CSP's own sun from the probe (`ac.getSim().lightDirection`: 29.8 degrees up, compass 188.3 on the
+  north-stated stage; the astronomical 9.7 / 226.9 used before is not what CSP draws at `SUN_ANGLE` 42.4): backlit
+  spruces glowed lime and yellow where CSP's are olive. Pine blue over green 0.46 to 0.51 (CSP 0.67) and 0.56 to 0.60
+  (0.71). Retail clear 13:00 and 17:30 starts (41_M, 10_O, 54_O, 21_O, 61_O): RMSE at most 1.4% (21_O 13:00, backlit
+  firs a little darker and bluer). Found, not changed: CSP's frame has no black (luma p1 0.06, ours 0.008), so photo
+  trees' black texels (opaque, in the textures) read lifted there and the pines' luma p90/p10 is 2.4 to 4.6 against
+  ours 7 to 10; this is the global contrast gap above. On the backlit slopes CSP's grass over its road is 0.65, ours
+  0.37 (overcast 0.69 and 0.60).
 - Cloud bases unlit by the ground (2026-11-20, `cloud_volume.wgsl` `volume_march`): a sunlit cloud's ambient is the
   sky's light from above only, diffused down by `1 / (1 + VOLUME_DIFFUSION depth to_sun.y)` (the light march's depth,
   `to_sun.y` at least 0.2). The former bounce (albedo 0.15 times the sun's and sky's light) lit a broken deck's bases
