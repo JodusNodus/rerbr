@@ -7,8 +7,8 @@
 // drawn each frame into a map around the eye (`fs_cloud_weather`); their shapes from tiling 3D noise
 // (`cloud_noise.wgsl`), after Schneider's Horizon Zero Dawn clouds (2015). Lit by the day's sun through the cloud toward
 // it (Beer, with Wrenninge's octaves for the light scattered more than once, as Hillaire's Frostbite clouds, 2016) and a
-// two-lobed Henyey-Greenstein phase, and by the day's sky above and the lit ground below, in the renderer's linear light
-// (`frame.day_sun`, `frame.day_sky`); under an overcast sky a closed deck, lit from above through it
+// two-lobed Henyey-Greenstein phase, and by the day's sky above, in the renderer's linear light (`frame.day_sun`,
+// `frame.day_sky`); under an overcast sky a closed deck, lit from above through it
 // (`volume_overcast`); then the haze between them and the eye (`sky_aerial`). Each frame marches from a
 // jittered start and blends into the last frame's clouds along the same direction (`cloud_params.previous`), so the
 // noise of the few steps settles over about ten frames. With the sky's tables, by night lit by the moon and the night
@@ -184,8 +184,6 @@ fn volume_march(dir: vec3<f32>, pixel: vec2<f32>, shift: f32) -> vec4<f32> {
     let toward = select(vec3<f32>(0.0, 1.0, 0.0), to_sun, sunlit);
     let sun = SKY_PI * frame.day_sun.rgb;
     let sky_above = frame.day_sky.rgb;
-    // The ground's light under the clouds: its albedo (about 0.15) times the sun's and the sky's on it.
-    let ground = 0.15 * (frame.day_sun.rgb * max(to_sun.y, 0.0) + frame.day_sky.rgb);
     let step = (end - start) / f32(VOLUME_STEPS);
     var t = start + step * fract(volume_jitter(pixel, cloud_params.state.x) + shift);
     var light = vec3<f32>(0.0);
@@ -211,7 +209,14 @@ fn volume_march(dir: vec3<f32>, pixel: vec2<f32>, shift: f32) -> vec4<f32> {
             var source = sky_above * volume_overcast(depth);
             if (sunlit) {
                 let height = clamp(h / thickness, 0.0, 1.0);
-                let ambient = mix(ground, sky_above, height) * mix(0.5, 1.0, height);
+                // The sky's light from above, diffused down through the cloud over it as the overcast's
+                // (`volume_overcast`), over the depth toward the sun brought to the vertical; none from the ground
+                // below, which under a cloud lies mostly in its shadow. Lit by the sunlit ground (albedo 0.15), and the
+                // sky's light unattenuated, a broken deck's bases came out nearly as bright as the sky between them, a
+                // flat pale sheet (Joux Verte's deck 6 to 25 degrees up, luma p10/p50/p90 199/204/213, now 161/188/210;
+                // the CSP shot's 149/177/197).
+                let buried = 1.0 / (1.0 + VOLUME_DIFFUSION * depth * max(toward.y, 0.2));
+                let ambient = sky_above * buried * height * mix(0.5, 1.0, height);
                 source = sun * volume_sun(depth, mu) + ambient;
             }
             let lost = exp(-sigma * step);

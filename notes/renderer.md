@@ -1457,6 +1457,14 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   5/60/135 (10.2); 10_O 1.7, 2.6. Found alongside, not changed: against CSP the converted stages' remaining gap is
   global contrast (CSP's middle half of luma 71 to 86 at Sa Calobra 13:00, ours 44 to 75; the shot's p25/p75 0.54,
   ours 0.39), which three times the sky's light does not close (it lifts the whole frame through the exposure).
+- Cloud bases unlit by the ground (2026-11-20, `cloud_volume.wgsl` `volume_march`): a sunlit cloud's ambient is the
+  sky's light from above only, diffused down by `1 / (1 + VOLUME_DIFFUSION depth to_sun.y)` (the light march's depth,
+  `to_sun.y` at least 0.2). The former bounce (albedo 0.15 times the sun's and sky's light) lit a broken deck's bases
+  nearly as bright as the sky between them: the clouds' light goes to display values before the haze is added, so even a
+  few percent of the sky's light lifts a dark base far (sky_above times 0 to 0.1 to 1: deck luma 108 to 191 to 214).
+  Joux Verte, broken, 13:00, the deck 6 to 25 degrees up (luma p10/p50/p90): 199/204/213 to 161/188/210, the CSP shot
+  149/177/197; partly's cumulus bases 156/178/209 to 92/167/209. Retail 13:00 start views show little sky: unchanged
+  but 54_E partly p95 189 to 182.
   Partly's 0.35 is a weather-noise threshold input, not measured sky coverage; choosing a preset also changes the
   cloud field's seed and layer shape. Pengonpohja's approved view has cloud opacity above 0.5 on 97.5% of sampled
   visible sky pixels (raw transmittance diagnostic, top 500 rows, 2026-11-10), median opacity 1; all those pixels
