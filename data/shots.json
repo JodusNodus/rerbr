@@ -373,11 +373,17 @@
   "stage": 1282190,
   "car": "Alpine A110 Rally RGT",
   "view": "flyby",
-  "clock": "15:00",
-  "at": 6699,
+  "sun": "best",
   "settings": {
    "clouds": "dimpled"
-  }
+  },
+  "args": [
+   "--fov",
+   "60",
+   "--flyby",
+   "-30,-35,25"
+  ],
+  "at": 3800
  },
  {
   "name": "fog-crequy-yaris-chase",
