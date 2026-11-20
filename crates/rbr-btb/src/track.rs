@@ -266,14 +266,16 @@ pub struct TrackInfo {
     pub entries: RawEntries,
 }
 
-/// A converted stage's haze (`[ReRbrAir]` of `settings.ini`): the hue of the ground haze (`fog_color`, display
+/// A converted stage's air (`[ReRbrAir]` of `settings.ini`): the hue of the ground haze (`fog_color`, display
 /// colour), the clear sky's aerosol optical depth (`aerosol`, 0.05 crisp to 0.2 hazy), each over the sky
-/// section's own, and the share of the dawn and dusk valley mist (`mist`, 0 none to 1 the section's).
+/// section's own, the share of the dawn and dusk valley mist (`mist`, 0 none to 1 the section's), and the stage's
+/// north (`north`, a horizontal direction in the stage's frame), which a stage of the plugin's never states.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Air {
     pub fog_color: Option<[f32; 3]>,
     pub aerosol: Option<f32>,
     pub mist: Option<f32>,
+    pub north: Option<[f32; 3]>,
 }
 
 impl Air {
@@ -284,12 +286,19 @@ impl Air {
 
     fn parse(sections: &[ini::Section]) -> Option<Air> {
         let air = find_section(sections, "ReRbrAir")?;
-        let fog_color = find_entry(air, "fog_color").and_then(|v| match &decimal_floats(v)[..] {
-            &[r, g, b] => Some([r as f32, g as f32, b as f32]),
-            _ => None,
-        });
+        let triple = |key| {
+            find_entry(air, key).and_then(|v| match &decimal_floats(v)[..] {
+                &[x, y, z] => Some([x as f32, y as f32, z as f32]),
+                _ => None,
+            })
+        };
         let number = |key| find_entry(air, key).and_then(|v| v.trim().parse().ok());
-        Some(Air { fog_color, aerosol: number("aerosol"), mist: number("mist") })
+        Some(Air {
+            fog_color: triple("fog_color"),
+            aerosol: number("aerosol"),
+            mist: number("mist"),
+            north: triple("north"),
+        })
     }
 }
 
@@ -804,10 +813,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_air_section_reads_the_haze_hue_aerosol_and_mist() {
-        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\n";
+    fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {
+        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nnorth=0, 0, 1\n";
         let air = Air::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.7, 0.6, 0.5]), Some(0.3), Some(0.5)));
+        assert_eq!(air.north, Some([0.0, 0.0, 1.0]));
         assert!(Air::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }
 

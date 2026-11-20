@@ -1386,9 +1386,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
 
 /// A converted stage's `settings.ini`: the sun, and a mild warm-grey haze (`[ReRbrAir]`, read by `rbr_btb::track::Air`;
 /// aerosol 0.2 is the sky model's hazy end, clear AC days stay clear under it) without our dawn and dusk valley mist,
-/// which AC does not have.
+/// which AC does not have. North is the stage's +z: AC's -z (`ai::world`), as CSP's compass gives it.
 const SETTINGS_INI: &str =
-    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nfog_color=0.74, 0.68, 0.62\naerosol=0.2\nmist=0\n";
+    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nfog_color=0.74, 0.68, 0.62\naerosol=0.2\nmist=0\nnorth=0, 0, 1\n";
 
 #[cfg(test)]
 mod tests {
@@ -1401,9 +1401,10 @@ mod tests {
         );
     }
     #[test]
-    fn the_settings_carry_a_mild_warm_grey_haze() {
+    fn the_settings_carry_a_mild_warm_grey_haze_and_north() {
         let air = rbr_btb::track::Air::from_ini(SETTINGS_INI).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.74, 0.68, 0.62]), Some(0.2), Some(0.0)));
+        assert_eq!(air.north, Some([0.0, 0.0, 1.0]));
     }
     #[test]
     fn a_driveline_point_in_a_small_gap_takes_the_ground_beside_it() {

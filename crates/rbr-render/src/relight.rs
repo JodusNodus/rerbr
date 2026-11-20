@@ -496,9 +496,12 @@ pub const PHYSICAL_NIGHT: f32 = -18.0;
 pub const MOON_FROM: f32 = -1.0;
 
 /// A stage's clock: its rally's sun path ([`site`], [`solar`]) anchored to the bake, and the atmosphere it lights.
-/// The moon follows its own path from the same anchor ([`lunar`]). Stage north is not known, so the bake's hour is where the path reaches the bake's elevation, in the morning for the
-/// `M` variants, the afternoon for `E` and nearest noon otherwise (the letter is the section's: `54O_E` is `E`), and
-/// the sun turns from the bake's direction as the compass azimuth turns from that hour. Started without a time, the
+/// The moon follows its own path from the same anchor ([`lunar`]). A stage of the plugin's does not state its north, so
+/// the bake's hour is where the path reaches the bake's elevation, in the morning for the `M` variants, the afternoon
+/// for `E` and nearest noon otherwise (the letter is the section's: `54O_E` is `E`), and the sun turns from the bake's
+/// direction as the compass azimuth turns from that hour. A stage that states it (`Atmosphere::north`, the converted
+/// stages) puts the bake's sun at its own compass azimuth, the morning's half or the afternoon's, so the path keeps to
+/// the stage's compass. Started without a time, the
 /// clock starts at the bake's hour with the sun lifted to the bake's own elevation (`lift`), so that it draws the
 /// bake's sun where the rally's path never climbs as high (the British bakes). Ours throughout.
 #[derive(Debug, Clone)]
@@ -543,6 +546,11 @@ impl Clock {
     ) -> Clock {
         let (latitude, longitude, day) = site;
         let bake_elevation = bake.bake_sun.y.asin().to_degrees();
+        let bake_azimuth = azimuth(bake.bake_sun);
+        // Compass azimuth runs clockwise from north, `azimuth` from +x toward +z: a sun at compass `c` stands at
+        // `north - c`, and its morning's half is the east's.
+        let stated = base.north.map(|north| (azimuth(north) - bake_azimuth).rem_euclid(360.0));
+        let letter = stated.map_or(letter, |compass| if compass < 180.0 { 'M' } else { 'E' });
         let side = |h: &f32| match letter {
             'M' => *h <= 12.0,
             'E' => *h >= 12.0,
@@ -561,8 +569,8 @@ impl Clock {
             longitude,
             day,
             bake_hour,
-            bake_azimuth: azimuth(bake.bake_sun),
-            bake_compass: solar(latitude, day, bake_hour).1,
+            bake_azimuth,
+            bake_compass: stated.unwrap_or(solar(latitude, day, bake_hour).1),
             bake,
             relight,
             base,
@@ -693,6 +701,11 @@ fn toward(az: f32, el: f32) -> Vec3 {
     Vec3::new(el.cos() * az.cos(), el.sin(), el.cos() * az.sin())
 }
 
+/// Toward a sun `elevation` degrees up at `compass` degrees (clockwise from north) on a stage whose north is `north`.
+pub fn compass_sun(north: Vec3, elevation: f32, compass: f32) -> Vec3 {
+    toward(azimuth(north) - compass, elevation)
+}
+
 /// The azimuth of `toward`'s direction, degrees.
 fn azimuth(dir: Vec3) -> f32 {
     dir.z.atan2(dir.x).to_degrees()
@@ -770,6 +783,30 @@ mod tests {
         let (evening, west) = solar(50.0, 172.0, 17.0);
         assert!(morning > 0.0 && (morning - evening).abs() < 0.5);
         assert!((60.0..120.0).contains(&east) && (240.0..300.0).contains(&west), "{east} {west}");
+    }
+
+    #[test]
+    fn a_stage_that_states_its_north_keeps_the_sun_path_to_its_compass() {
+        // A converted stage's bake: the sun 30 degrees up toward +x and a little -z (compass 102, a morning's), north +z.
+        let bake = Relight {
+            bake_sun: Vec3::new(0.843359, 0.503774, -0.186968),
+            strength: 0.4,
+            r: 1.0,
+            open: 1.0,
+            sun: Vec3::ONE,
+            ambient: 1.0,
+            tint: Vec3::ONE,
+            lamps: 0.0,
+        };
+        let base = Atmosphere { north: Some(Vec3::Z), ..Atmosphere::default() };
+        let clock = Clock::new(base, bake, site(0, Some("FR"), "", false), 'O', None, true);
+        assert!(clock.bake_hour < 12.0, "{}", clock.bake_hour);
+        let toward = |hour: f32| clock.daylight(hour).toward;
+        // Noon's sun stands in the south (-z), the morning's in the east (+x), the evening's in the west.
+        assert!(toward(12.0).z < -0.5 && toward(12.0).x.abs() < 0.01, "{}", toward(12.0));
+        assert!(toward(8.0).x > 0.5 && toward(16.0).x < -0.5, "{} {}", toward(8.0), toward(16.0));
+        let (up, compass) = (clock.daylight(15.0).elevation, solar(46.0, 110.0, 15.0).1);
+        assert!(toward(15.0).distance(compass_sun(Vec3::Z, up, compass)) < 1e-4);
     }
 
     #[test]

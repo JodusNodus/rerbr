@@ -282,6 +282,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         }
         atmosphere.aerosol = air.aerosol;
         atmosphere.mist = air.mist;
+        atmosphere.north = air.north.map(Vec3::from);
     }
     let (yaw, position) = (scene.spawn.yaw, Vec3::from(scene.spawn.position));
     let start = Some(Pose { position, forward: Vec3::new(yaw.sin(), 0.0, yaw.cos()) });

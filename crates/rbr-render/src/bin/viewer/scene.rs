@@ -696,7 +696,20 @@ fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
         );
         clock.start = hour;
     }
-    let (atmosphere, day) = clock.atmosphere();
+    let (mut atmosphere, day) = clock.atmosphere();
+    // A fixed sun for comparisons against another renderer's frames (`RBR_SUN_AT=elevation,compass`, degrees), on a
+    // stage that states its north: the light stays the clock's.
+    let fixed = std::env::var("RBR_SUN_AT").ok().and_then(|v| {
+        match v.split(',').map(|n| n.trim().parse::<f32>()).collect::<Result<Vec<_>, _>>() {
+            Ok(at) if at.len() == 2 => Some((at[0], at[1])),
+            _ => None,
+        }
+    });
+    if let (Some((up, compass)), Some(north)) = (fixed, atmosphere.north) {
+        atmosphere.sun_direction = -relight::compass_sun(north, up, compass);
+        atmosphere.sun_elevation = Some(up);
+        eprintln!("clock: sun fixed at {up:.1} degrees up, compass {compass:.1} (RBR_SUN_AT)");
+    }
     let source = match (args.clock, sun) {
         (Some(_), _) => "clock",
         (None, Some(moment)) => moment.word(),

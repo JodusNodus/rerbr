@@ -441,6 +441,12 @@ probably fit the wrong hour.
   else 80 % of the best. On 532, 450, 462, 580 the 6-degree sun reached 3-27 %; golden now 21-43 %, best 32-65 %. The
   viewer resolves it before the build and gives the start board the hour; the replay header keeps `--sun`, so a replay
   re-solves it. Thresholds and bands are our choice.
+- Stated north (ours, 2026-11-20; `Atmosphere::north`, `settings.ini` `[ReRbrAir]` `north=0, 0, 1`, spaced commas: BTB
+  reads `0,0,1` as decimal commas): a stage that states it has its bake sun's compass from it (east half the morning's),
+  so `Clock` turns the sun as `north - compass`, whatever the letter. Without it (the plugin's stages) the bake hour is
+  the letter's side at the bake's elevation: converted stages, prepared as `_M` with a compass-102 bake sun, were 4
+  degrees off at 46 N and 26 at 62 N, and would be about 150 as `E`. `RBR_SUN_AT=elevation,compass` (viewer, a stage
+  with north) fixes the drawn sun for comparisons with another renderer; the light stays the clock's.
 - Stated time of day (2026-11-15; `Atmosphere::stated_time`, `TimeWord::parse`, `relight::stated_hour`): the chosen
   section's `Comment`, else (no time word there) the stage folder's name, read as night, dawn or sunset by whole words
   (night/noche/nuit/notte/nacht/yö, "dark" alone; dawn/amanecer/aube/alba/sunrise/"start of the day";

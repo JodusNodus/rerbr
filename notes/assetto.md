@@ -543,10 +543,16 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     0.253 / 0.123 (0.077), Gabiria 0.086 / 0.068 (0.061), Roure 0.071 / 0.072 (0.014, ours counts bushes that move
     between the two frames); blue over green 0.64-0.79 / 0.71-0.86 (CSP 0.70-0.79). Halving the clumps alone cut the
     share by a sixth: what the grass covers is its height in view more than its count.
-  - Grass against ground brightness is not comparable yet: on three of Prunières' poses CSP's bank is sunlit and ours
-    in full shadow at the same 13:00 (the converted stage's `sunDirection` against AC's sun, not checked), and the
-    sparser grass shows a pale, near white ground on Prunières' banks (already a strip at the road edge before) where
-    CSP's is olive.
+  - The sun was the difference (2026-11-20): CSP's at Prunières stands 59.7 up at compass 227.3 (its fallback site,
+    the track has no geotags: `ac.getTrackCoordinatesDeg` 0 N 139.7 E, Tokyo time, today's date, 13:00), ours 36 up
+    from the south-southwest (a BTB stage's site is map 41's, Mont Blanc in October, `rbr_btb::stage::SKY_MAP`, never
+    above 39 that day). Under CSP's sun (`RBR_SUN_AT=59.7,227.3`) the tree shadows on the road at 004.929 fall as CSP's,
+    and grass over ground goes from 4.19 to 2.70 (CSP 1.72), cover 0.079. Left: our ground under the grass is darker
+    (about 10,10,6 against CSP's olive), and the banks at 001.643 and 018.072 stay dark in the same sun (ambient,
+    not the sun). The near white bank ground (004.929, 008.215 at 13:00) is sunlit ground under the 36-degree sun; in
+    shade or under CSP's sun it is dark olive.
+  - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
+    every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.
 
 ## Launcher import (2026-11-18)

@@ -63,6 +63,9 @@ pub struct Atmosphere {
     pub aerosol: Option<f32>,
     /// The share of the height fog's dawn and dusk mist (`height_fog.rs`; a converted stage's `[ReRbrAir]`), else all.
     pub mist: Option<f32>,
+    /// Toward the stage's north, when the stage states it (a converted stage's `[ReRbrAir]`): the clock's sun path
+    /// turns from it (`relight::Clock`), else from the bake's sun.
+    pub north: Option<Vec3>,
     /// The moon's place and phase when a clock sets it with the physical light (`relight::Clock`; `sun_direction` is
     /// then from the moon), else a full moon opposite the sun.
     pub moon: Option<crate::relight::Moon>,
@@ -283,6 +286,7 @@ impl Default for Atmosphere {
             sun_elevation: None,
             aerosol: None,
             mist: None,
+            north: None,
             moon: None,
             solar_hour: None,
             relight: None,
@@ -369,6 +373,7 @@ impl Atmosphere {
             sun_elevation: None,
             aerosol: None,
             mist: None,
+            north: None,
             moon: None,
             solar_hour: None,
             relight: None,
