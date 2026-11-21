@@ -144,7 +144,7 @@ impl Renderer {
         let lamps_light = self.lamps_light();
         self.lamp_matrix = self.sun.as_ref().filter(|_| lamps_light).and_then(|_| self.lamp_shadow_matrix());
         if first {
-            self.stream_grass(eye);
+            self.stream_grass(eye, camera::forward(view_projection));
         }
         let mut profiler = self.profiler.take();
         let drop = sun::backdrop_drop(self.shadow_light());
