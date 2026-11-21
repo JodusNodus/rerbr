@@ -24,7 +24,7 @@ pub struct Graphics {
     pub lighting: bool,
     /// Our rain, snow and particles (`particles`).
     pub particles: bool,
-    pub grass: bool,
+    pub grass: Grass,
     /// The windscreen as glass from inside, and the dash reflected in it (`windscreen`).
     pub windscreen: bool,
     /// The motion blur (`blur`), which no preset changes: a taste, off unless asked for.
@@ -45,6 +45,33 @@ impl Default for Graphics {
     /// A new install's choices.
     fn default() -> Self {
         DEFAULT_GRAPHICS
+    }
+}
+
+/// Our grass by the road (`--enhance grass-light` or `grass`, [`rbr_render::grass::Level`]): none, light (half the
+/// clumps, to 80 m) or dense (all of them, to 150 m). Drawn only with the lighting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Grass {
+    Off,
+    Light,
+    Dense,
+}
+
+impl Choice for Grass {
+    const ALL: &[Self] = &[Grass::Dense, Grass::Light, Grass::Off];
+    fn name(self) -> &'static str {
+        match self {
+            Grass::Off => "off",
+            Grass::Light => "light",
+            Grass::Dense => "dense",
+        }
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Grass::Off => "Off",
+            Grass::Light => "Light",
+            Grass::Dense => "Dense",
+        }
     }
 }
 
@@ -125,7 +152,7 @@ impl Quality {
         let high = Graphics {
             lighting: true,
             particles: true,
-            grass: true,
+            grass: Grass::Light,
             windscreen: true,
             motion_blur: false,
             wet_roads: WetRoads::High,
@@ -136,7 +163,7 @@ impl Quality {
             Quality::Low => Graphics {
                 lighting: false,
                 particles: false,
-                grass: false,
+                grass: Grass::Off,
                 windscreen: false,
                 wet_roads: WetRoads::Off,
                 mirrors: Rate::Off,
@@ -144,14 +171,14 @@ impl Quality {
             },
             Quality::Medium => Graphics {
                 lighting: false,
-                grass: false,
+                grass: Grass::Off,
                 windscreen: false,
                 wet_roads: WetRoads::Medium,
                 mirrors: Rate::Every(3),
                 ..high
             },
             Quality::High => high,
-            Quality::Ultra => Graphics { detail: Detail::Ultra, ..high },
+            Quality::Ultra => Graphics { detail: Detail::Ultra, grass: Grass::Dense, ..high },
         }
     }
 
@@ -706,7 +733,8 @@ impl Form {
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
             let tip = "Sets the choices below. Low: the game's look. Medium: all but Sky, sun and shadows, the costliest, \
-                       Dense grass, which needs it, and Windscreen. High: all but Sharper shadows and reflections. Ultra: all. The render scale \
+                       Grass by the road, which needs them, and Windscreen. High: all but Sharper shadows and reflections, \
+                       with light grass. Ultra: all, with dense grass. The render scale \
                        and motion blur stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
@@ -748,10 +776,16 @@ impl Form {
                        (the reflection draws the cabin and the stage behind it once more)";
             rows.switch_row("Windscreen glass effects", None, &mut g.windscreen).on_hover_text(tip);
 
-            let tip = "A field of grass blades over the grassy ground within 20 m of the road, swaying in the wind, \
-                       drawn within 50 m of the camera. Needs Lighting. Costly (the sun's shadows draw it too), and \
-                       about 150 MB of video memory";
-            rows.switch_row("Dense grass by the road", None, &mut g.grass).on_hover_text(tip);
+            let tip = "A field of grass blades over the grassy ground within 20 m of the road, swaying in the wind. \
+                       Light: half the blades, full within 30 m of the camera and thinning out to 80 m; about 0.4 GB \
+                       of video memory. Dense: all of them, full within 70 m and thinning out to 150 m; about 0.8 GB. \
+                       Needs Sky, sun and shadows. Costly, Dense the most";
+            let lit = g.lighting;
+            rows.row("Grass by the road", |ui| {
+                ui.add_enabled_ui(lit, |ui| combo(ui, "grass", None, &mut g.grass, Grass::ALL, Grass::label)).inner
+            })
+            .on_hover_text(tip)
+            .on_disabled_hover_text(tip);
 
             let tip = "For strong GPUs: sun shadows at twice the texels (sharper shadows of posts, cables and \
                        trunks) and sharper reflections in the car's paint and the wet roads. Needs Sky, sun and \

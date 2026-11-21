@@ -204,14 +204,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let truth = match truth {
         true if s.grass_fx.is_some() => {
-            let truth = rbr_render::grass::add(&mut s.clone());
+            let truth = rbr_render::grass::add(&mut s.clone(), rbr_render::grass::Level::Dense);
             s.grass_fx = None;
             truth
         }
         true => return Err("--truth: the stage has no GrassFX".into()),
         false => None,
     };
-    let field = rbr_render::grass::add(&mut s).ok_or("no grass field (a snow stage?)")?;
+    let field =
+        rbr_render::grass::add(&mut s, rbr_render::grass::Level::Dense).ok_or("no grass field (a snow stage?)")?;
     eprintln!("{name}: {} ground triangles in the field, {} seen from above", field.triangles(), tris.len());
     let mut report = field.report.clone();
     report.sort_by(|a, b| b.area.total_cmp(&a.area));

@@ -47,9 +47,9 @@ pub(super) struct GpuMesh {
     /// Casts into the sun's near cascades ([`Mesh::sun_cascades`]); the far layer, the lamps' and the bakes take it
     /// either way.
     pub(super) sun_cascades: bool,
-    /// For a grass tile mesh holding a tile, how many of its cards rank under each step ([`crate::grass::Ranks`]): a
-    /// view draws only those its distance grows ([`GpuMesh::indices_seen_from`]).
-    pub(super) grass_ranks: Option<Box<crate::grass::Ranks>>,
+    /// For a grass tile mesh holding a tile, how many of its cards rank under each step ([`crate::grass::Ranks`]), and
+    /// the grass's level: a view draws only those its distance grows ([`GpuMesh::indices_seen_from`]).
+    pub(super) grass_ranks: Option<(Box<crate::grass::Ranks>, crate::grass::Level)>,
 }
 
 impl GpuMesh {
@@ -71,11 +71,11 @@ impl GpuMesh {
     /// The indices of `draw` that a view from `eye` draws: a grass tile's cards the shader grows anywhere in its box
     /// (`grass::grown_cards`, by the box's nearest point), every one for the rest.
     pub(super) fn indices_seen_from(&self, draw: &GpuDraw, eye: Option<Vec3>) -> Range<u32> {
-        let (Some(ranks), Some((centre, half)), Some(eye)) = (&self.grass_ranks, self.bounds, eye) else {
+        let (Some((ranks, level)), Some((centre, half)), Some(eye)) = (&self.grass_ranks, self.bounds, eye) else {
             return draw.indices.clone();
         };
         let nearest = ((eye - centre).abs() - half).max(Vec3::ZERO).length();
-        let cards = crate::grass::grown_cards(ranks, nearest) as u32;
+        let cards = crate::grass::grown_cards(ranks, *level, nearest) as u32;
         draw.indices.start..draw.indices.end.min(draw.indices.start + cards * 6)
     }
 
@@ -492,7 +492,7 @@ impl Renderer {
                     None => {}
                 }
                 mesh.bounds = Some((bounds.center, bounds.half_extent));
-                mesh.grass_ranks = Some(Box::new(ranks));
+                mesh.grass_ranks = Some((Box::new(ranks), ring.level()));
                 // Only the tile's cards are drawn: past them the mesh holds an earlier tile's.
                 for draw in &mut mesh.draws {
                     draw.indices.end = draw.indices.start + (vertices.len() / 4 * 6) as u32;

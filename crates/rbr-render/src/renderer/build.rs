@@ -262,7 +262,7 @@ impl Renderer {
             vertex: vertex_entry(enhance),
             water_plus: enhance.water || enhance.wet,
             cabin: enhance.cabin,
-            grass: enhance.grass,
+            grass: enhance.grass.is_some(),
             lighting: enhance.lighting,
             debug_view: enhance.debug_view.code(),
             cube_shift: u32::from(ultra),

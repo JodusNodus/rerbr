@@ -42,7 +42,7 @@ SCENE = {
 # Every graphics option at its most, the frame rate uncapped, silent; the launcher's keys over render-shots' SETTINGS.
 MOST = {
     'detail': 'ultra', 'wet_roads': 'high', 'mirrors': '1', 'render_scale': '100', 'upscale_textures': 'on',
-    'lighting': 'on', 'particles': 'on', 'surfaces': 'on', 'cabin': 'on', 'contact': 'on', 'grass': 'on',
+    'lighting': 'on', 'particles': 'on', 'surfaces': 'on', 'cabin': 'on', 'contact': 'on', 'grass': 'dense',
     'windscreen': 'on', 'marks': 'on', 'dials': 'on', 'hud': 'on', 'fps': 'off', 'present': 'immediate',
     'perf_log': 'off', 'volume': '0',
 }

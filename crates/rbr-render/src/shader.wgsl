@@ -118,6 +118,9 @@ struct Frame {
     // position, w its intensity in the lamps' units (0: none), and the way its light falls (zero for every way).
     street_light: vec4<f32>,
     street: array<vec4<f32>, 32>,
+    // Our grass's profile (`grass::Level::uniform`, `grass_density`): its share near the eye, the metres it stays full
+    // within, those by which it has thinned to none.
+    grass: vec4<f32>,
 }
 
 struct Mode {
@@ -520,25 +523,23 @@ fn is_grass_top(v: VertexIn) -> bool {
 // `GRASS_SWAY` of its height, in gusts that cross the field as a slow wave (`GRASS_GUST`: its metres per radian and
 // radians a second), with a quicker flutter of its own (`GRASS_FLUTTER`), dipping the top a little as it bows.
 const GRASS_WIND: vec2<f32> = vec2<f32>(0.8, 0.6);
-// The distances from the eye, metres, over which our grass's cards flatten into the ground and drawing ends
-// (`grass::REACH`), and the ground under it fades its thatch (`thatch`).
-const GRASS_FADE: vec2<f32> = vec2<f32>(100.0, 110.0);
-// The grass is full within `GRASS_THIN.x` metres of the eye, then halves every `.y` (`grass::density`); a card of rank
-// `keep` (`grass::Card::keep`) is full height under the density and shrinks into the ground up to `.z` times it
-// (`grass::GROW_MARGIN`).
-const GRASS_THIN: vec3<f32> = vec3<f32>(50.0, 25.0, 1.5);
+// A card of rank `keep` (`grass::Card::keep`) is full height under the density and shrinks into the ground up to
+// `GRASS_MARGIN` times it (`grass::GROW_MARGIN`).
+const GRASS_MARGIN: f32 = 1.5;
 // The metres from the eye over which a converted stage's group pieces grow in (`grass::FX_PIECE`): CSP draws its base
 // grass nearer and the pieces from its third generation pass on.
 const FX_PIECE_NEAR: vec2<f32> = vec2<f32>(12.0, 25.0);
 
+// The grass's density `d` metres from the eye (`grass::density`): `frame.grass.x` within `.y` metres, thinning smoothly
+// to none at `.z`, where drawing ends; the ground under it fades its thatch (`thatch`) the same.
 fn grass_density(d: f32) -> f32 {
-    return min(exp2((GRASS_THIN.x - d) / GRASS_THIN.y), 1.0) * (1.0 - smoothstep(GRASS_FADE.x, GRASS_FADE.y, d));
+    return frame.grass.x * (1.0 - smoothstep(frame.grass.y, frame.grass.z, d));
 }
 
 // How grown a card of rank `keep` is `d` metres from the eye, 0 to 1.
 fn grass_grown(d: f32, keep: f32) -> f32 {
     let density = grass_density(d);
-    return 1.0 - smoothstep(density, density * GRASS_THIN.z, keep);
+    return 1.0 - smoothstep(density, density * GRASS_MARGIN, keep);
 }
 const GRASS_SWAY: f32 = 0.22;
 const GRASS_GUST: vec2<f32> = vec2<f32>(2.5, 1.4);
