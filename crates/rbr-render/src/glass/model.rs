@@ -119,8 +119,9 @@ pub const PAUSE: f32 = 2.0;
 /// Light rain at or below this intensity wipes now and then (ours): drizzle (`Rain::Light`, 0.5); moderate (0.75)
 /// and heavy rain wipe continuously, snow always does.
 pub const DRIZZLE_MOST: f32 = 0.6;
-/// The specks of mud from which the automatic wipers clear the dry glass (ours).
-pub const MUD_WIPE: usize = 600;
+/// The specks of mud from which the automatic wipers clear the dry glass (ours: at 600, about 1 % of a windscreen,
+/// they came on while the glass still looked clean; below [`MOST`], which the glass keeps at most).
+pub const MUD_WIPE: usize = 1500;
 
 /// The wiper switch (ours: the launcher's setting and the wiper key; the 1.02 control is not traced).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
