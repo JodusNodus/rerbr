@@ -810,8 +810,11 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   on all but Ebisu, now a circuit (`lap_line` spawn, 34 pacenotes); drawn triangles up with the far surfaces (Sa
   Calobra 1.86 to 1.94 M). Sizes: Riudecanyes 2022 844 to 307 MB, Nordschleife 1278 to 539 MB (multilayer drawn, not
   baked), Roure 429 to 815 MB. Former folders in the player's `backups/pre-ac-look-20261119` (34 GB).
-- Shots: `render-shots.py` must run without `RBR_DATA` from `dev.env` (the bare retail install): the launcher passes it
-  as `--data`, and RSF cars' liveries and lamp textures then go missing (white Yaris, no tail lights).
+- Shots: with `RBR_DATA` from `dev.env` (the bare retail install) the launcher passes it as `--data`, and RSF cars'
+  liveries and lamp textures go missing (white Yaris, no tail lights; the viewer still logs 0 missing textures). Since
+  2026-11-21 `render-shots.py` (and `bench.py`, `weather-sheet.py` through it) leaves `dev.env`'s folders out of the
+  launcher's and the programs' environment (`DEV_FOLDERS`): a shell that sourced `dev-env.sh` gave the 11-20 refresh
+  its white Yaris on Créquy.
 - 2026-11-20, from `render/ac-grass-mask` (`6091bd98`..): all 40 converted again into a staging folder; only
   `settings.ini` (35, the GrassFX `mask`) and `materials.ini` (34, `ksTree`/`ksGrass` without `ReRbrLight`) differed
   and were copied in, the former in `backups/pre-grass-mask-20261120`. That build predated `bfb50f18`, so Prunières'

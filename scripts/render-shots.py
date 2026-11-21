@@ -10,8 +10,8 @@ drive frame (`at`) the autopilot has reached; the shot is one `viewer --screensh
 same picture. They serve as README pictures and as the reference for graphics changes: render before and after a
 change, then `--compare` the folders.
 
-Needs the release `rerbr`, `viewer` and `rbr-standalone` (`cargo build --release`), the game install (RBR_DATA, or
-the launcher settings' install folder) with NGP and the RallySimFans stages and cars the shots name (and the four Assetto Corsa
+Needs the release `rerbr`, `viewer` and `rbr-standalone` (`cargo build --release`), the game install (the launcher
+settings' install folder; `dev.env`'s folders, RBR_DATA among them, are left out: `DEV_FOLDERS`) with NGP and the RallySimFans stages and cars the shots name (and the four Assetto Corsa
 tracks of the `golden-akina`, `golden-nordschleife`, `day-sa-calobra` and `fog-crequy` shots, imported with
 `rbr-ac-tracks import` under their default folder names), and, for the
 same textures as the committed list was made with, the upscaler (`Upscaler/` in the files folder). The player's
@@ -39,6 +39,16 @@ SETTINGS = {
 }
 # Copied from the player's settings: where the game and NGP are.
 KEEP = ('install_folder', 'ngp_physics', 'ngp_dll', 'rsf_root')
+# The development folders of `dev.env` (dev.env.example), left out of the launcher's and the programs' environment: the
+# launcher takes RBR_DATA over the install folder, and a shell that sourced `scripts/dev-env.sh` (as the checks do)
+# then drew the bare retail install's data, the pack cars without their liveries (a white Yaris).
+DEV_FOLDERS = ('RBR_DATA', 'RBR_PATCH', 'RBR_RECORDINGS', 'RBR_VECTOR_STORE', 'RBR_NGP_PHYSICS', 'RBR_RSF',
+               'RBR_NGP_DLL', 'RBR_DEV', 'RBR_PROTON')
+
+
+def player_env():
+    """This process's environment without the development folders ([`DEV_FOLDERS`])."""
+    return {k: v for k, v in os.environ.items() if k not in DEV_FOLDERS}
 # The most the renderer draws: `all` leaves out the grass.
 COMMON = ['--no-hud', '--enhance', 'all,grass', '--detail', 'ultra', '--anti-aliasing', 'taa', '--reflections', 'high',
           '--at-periods', '5']
@@ -86,7 +96,7 @@ def launcher_command(build, home, shot, size):
     keys = {k: v for k, v in read_keys(home / 'launcher-settings.ini').items() if k in KEEP}
     keys.update(SETTINGS, size=size, car=shot['car'], map=str(shot['stage']), **shot.get('settings', {}))
     (tmp / 'launcher-settings.ini').write_text('[launcher]\n' + ''.join(f'{k} = {v}\n' for k, v in keys.items()))
-    done = subprocess.run([build / 'rerbr', '--command'], env={**os.environ, 'RERBR_HOME': str(tmp)},
+    done = subprocess.run([build / 'rerbr', '--command'], env={**player_env(), 'RERBR_HOME': str(tmp)},
                           capture_output=True, text=True)
     if done.returncode:
         shutil.rmtree(tmp)
@@ -96,7 +106,7 @@ def launcher_command(build, home, shot, size):
 
 def split_command(lines):
     """(environment, command) of the launcher's lines: its variables, then the program and its arguments."""
-    env, i = dict(os.environ), 0
+    env, i = player_env(), 0
     while '=' in lines[i] and not lines[i].startswith('/'):
         k, v = lines[i].split('=', 1)
         env[k], i = v, i + 1
