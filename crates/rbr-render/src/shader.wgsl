@@ -2481,7 +2481,8 @@ fn thatch(colour: vec3<f32>, v: VertexOut, face: vec3<f32>) -> vec3<f32> {
 // Where the field no longer covers the ground (`grass_cover`: in its fade and past its reach), the ground takes the
 // field's look instead of the thatch's, so the grass seems to go on (ours): brightness and saturation against the
 // ground's. Measured past the near field of six reference shots, blades and thatch against the bare ground: luminance
-// 0.91 to 1.09 (median 0.99), saturation 1.04 to 1.13 (median 1.075).
+// 0.91 to 1.09 (median 0.99), saturation 1.04 to 1.13 (median 1.075); the grass test's partial weights dilute the
+// saturation here (1.08 left the median at 1.05), so 1.15, from that step.
 const FIELD: vec2<f32> = vec2<f32>(1.0, 1.15);
 
 // `grass::vegetation`: how much ground of colour `rgb` looks like vegetation, green or dry: its hue from orange-yellow

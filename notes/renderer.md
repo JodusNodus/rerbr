@@ -1317,7 +1317,8 @@ until 158 m off, and the one worker built every bare tile again at each share st
   4x, none by 240 m; `CLOSE_DISTANCE` 248 m. Bounds padded for the widest card.
 - Far ground: where the field stops covering it (`grass_cover`), grassy ground takes the field's look, `FIELD` brightness
   1.0 and saturation 1.15 of the ground's (blades and thatch against bare ground past the near field of six shots:
-  luminance 0.91-1.09, median 0.99; saturation median 1.075), out to the near ground's 600 m.
+  luminance 0.91-1.09, median 0.99; saturation median 1.075; 1.08 left it 1.05, 1.15 extrapolated, not measured), out
+  to the near ground's 600 m.
 - Streaming: a tile behind the eye counts 3x its distance along the view (`BEHIND`, `camera::forward`); no more tiles
   with cards than meshes, nearest first; with none free a drawn tile takes the farthest tile's mesh more than 16 m
   farther; a leaving tile keeps its share; built again at the share 16 m or a quarter of its distance nearer, the nearer
