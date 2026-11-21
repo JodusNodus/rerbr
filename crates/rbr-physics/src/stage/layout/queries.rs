@@ -1,5 +1,4 @@
-//! The stage's reads on the image: the collision-system selection for a boot or for the original's captured memory,
-//! and `Mem`'s [`StageStore`].
+//! The stage's reads on the image: the collision-system selection, and `Mem`'s [`StageStore`].
 
 use super::DRIVE_LINE;
 use crate::engine_driveline::layout::{entry_at, COUNT_AT};
@@ -11,7 +10,8 @@ use crate::ngp::layout::material::SLOT_DATA;
 use crate::ngp::material::SIDE;
 use crate::stage::store::StageStore;
 
-/// Readers of NGP's first collision-system copy. Each snapshot operand identifies its original reader.
+/// Readers of NGP's first collision-system copy (in the original, the operands NGP patches at 0x51bda4, 0x51c726,
+/// 0x4e54e8, 0x529d5a and 0x53d5e0).
 #[derive(Clone, Copy)]
 pub enum CollisionQuery {
     EntityCollision,
@@ -22,23 +22,12 @@ pub enum CollisionQuery {
 }
 
 impl CollisionQuery {
-    /// The collision system the query's reader uses: NGP's first copy, which a boot's runtime holds (no image word),
-    /// or in a snapshot the system the reader's patched instruction operand names.
+    /// The collision system the query's reader uses: NGP's first copy, which the boot's runtime holds, else 1.02's.
     pub fn system(self, mem: &Mem) -> u32 {
-        if let Some(runtime) = mem.ngp_runtime() {
-            return runtime.collision_systems[0];
+        match mem.ngp_runtime() {
+            Some(runtime) => runtime.collision_systems[0],
+            None => mem.u32(super::COLLISION_SYSTEM),
         }
-        // Validation snapshots contain the patched instruction operands; vector records contain only data.
-        let operand = match self {
-            CollisionQuery::EntityCollision => 0x51bda4,
-            CollisionQuery::GroundProbe => 0x51c726,
-            CollisionQuery::CarProbe => 0x4e54e8,
-            CollisionQuery::BodyProbe => 0x529d5a,
-            CollisionQuery::WheelProbe => 0x53d5e0,
-        };
-        let mut word = [0; 4];
-        let at = if mem.try_read_into(operand, &mut word) { u32::from_le_bytes(word) } else { super::COLLISION_SYSTEM };
-        mem.u32(at)
     }
 }
 

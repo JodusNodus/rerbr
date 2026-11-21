@@ -222,12 +222,12 @@ pub fn payload(control: &CarControl, word6: u32) -> [u8; CONTROL_BYTES] {
     out
 }
 
-/// The NGP boot's load budget, or the countdown captured in a validation snapshot's instruction at 0x482bc0.
+/// The load budget: NGP's on the boot's image (its runtime), else 1.02's.
 pub fn load_substeps(mem: &Mem) -> u32 {
-    if mem.ngp_runtime().is_some() {
-        return rbr_gameplay::stage::NGP_LOAD_SUBSTEPS;
+    match mem.ngp_runtime() {
+        Some(_) => rbr_gameplay::stage::NGP_LOAD_SUBSTEPS,
+        None => LOAD_SUBSTEPS,
     }
-    mem.try_read(0x48_2bc0, 4).map_or(LOAD_SUBSTEPS, |b| u32::from_le_bytes(b.try_into().unwrap()))
 }
 
 #[cfg(test)]
@@ -237,13 +237,10 @@ mod tests {
     #[test]
     fn boot_uses_the_ngp_load_budget_without_executable_code() {
         use rbr_physics::ngp::layout::runtime::Runtime;
-        let mut mem = Mem::new();
-        assert_eq!(load_substeps(&mem), LOAD_SUBSTEPS);
-        mem.set_u32(0x482bc0, rbr_gameplay::stage::NGP_LOAD_SUBSTEPS);
-        assert_eq!(load_substeps(&mem), 1500);
+        assert_eq!(load_substeps(&Mem::new()), LOAD_SUBSTEPS);
         let mut boot = Mem::new();
         boot.set_ngp_runtime(Runtime::new([0; 3], 1));
-        assert_eq!(load_substeps(&boot), load_substeps(&mem));
+        assert_eq!(load_substeps(&boot), 1500);
     }
 
     #[test]

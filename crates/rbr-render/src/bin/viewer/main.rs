@@ -85,7 +85,7 @@
 //! `--live <command>` (with `--car` and a stage; the rest of the line is the command) drives the car by keyboard
 //! and gamepad, with the physics stepped by the command (`rbr-standalone --live`, see `rbr_render::live`). Default keys:
 //! Up throttle, Down brake, Left and Right steer, Space handbrake, A gear up, Z gear down, R starts over from the
-//! snapshot; no clutch key, no direct gear (an H-shifter's reverse, neutral and gears 1 to 6) and no gamepad inputs. `--bindings <ini>` (before `--live`) reads other keys and gamepad
+//! first step; no clutch key, no direct gear (an H-shifter's reverse, neutral and gears 1 to 6) and no gamepad inputs. `--bindings <ini>` (before `--live`) reads other keys and gamepad
 //! inputs from the file's `[controls]` section (`rbr_render::bindings`; the launcher passes its
 //! `launcher-settings.ini`), and the wheel's force feedback from its `[ffb]` section (`rbr_render::ffb`; on unless
 //! `enabled = 0`, through the first SDL haptic device with a constant force). With `h-shifter = advanced` in that
@@ -93,7 +93,7 @@
 //! synchro|dog|sequential` is the car's gearbox (synchro without it), a sequential one leaving it off and the direct
 //! gears unused, so the gear up and down actions shift (the launcher's per-car choice), and `--grind-sound WAV` the
 //! grind it plays (RBRControls' `Shifter_Error.wav`; silent without).
-//! With `--screenshot`, the first frame (the snapshot's step) is drawn, or with `--at N` the frame N payloads later (no keys
+//! With `--screenshot`, the first frame (the image's step) is drawn, or with `--at N` the frame N payloads later (no keys
 //! pressed). From the stage start (`rbr-standalone --live --boot`), the game's start orbit replaces the view until the
 //! go (`rbr_render::views::start_orbit`). The live drive plays the car's sound
 //! (`rbr_sound`, from the live process's SND1 records; `rbr-standalone` writes them) on the default audio output, with

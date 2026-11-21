@@ -1,4 +1,4 @@
-//! The runner's memory: the snapshot's bytes plus the CRT allocator stand-in's heap, in a range no snapshot maps.
+//! The runner's memory: the image's bytes plus the CRT allocator stand-in's heap, in a range the image doesn't map.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -6,9 +6,8 @@ use std::sync::{Arc, Mutex};
 
 use rbr_physics::mem::{Backend, Mem, Pages};
 
-/// Pure-run allocations live in a range no snapshot maps. The 3 step-0, 9 vcu-cov, snapH, and 2 impact snapshot
-/// maps were checked before choosing this 8 MiB window. Its high end stays below the snapshots' 0x7ffe0000 shared
-/// user-data region.
+/// Pure-run allocations live in an 8 MiB window the game's memory doesn't map (checked on the original's memory at the
+/// time). Its high end stays below Windows' 0x7ffe0000 shared user-data region.
 pub const ALLOCATOR_HEAP_BASE: u32 = 0x7f00_0000;
 pub const ALLOCATOR_HEAP_END: u32 = 0x7f80_0000;
 

@@ -41,22 +41,22 @@ impl Drop for Scope {
     }
 }
 
-/// Whether the snapshot with NGP.dll at `base` runs NGP (`base` 0 is without it: a 1.02 snapshot).
+/// Whether the image with NGP.dll at `base` runs NGP (`base` 0 is without it: 1.02).
 pub fn runs_ngp(base: u32) -> bool {
     base != 0
 }
 
-/// Whether the running snapshot runs NGP.
+/// Whether the running image runs NGP.
 pub(crate) fn is_ngp() -> bool {
     runs_ngp(BASE.get())
 }
 
-/// Declines on a 1.02 snapshot: the port is NGP's behaviour of a function NGP patches, so the original runs there.
+/// Declines without NGP: the port is NGP's behaviour of a function NGP patches, so 1.02's port runs there.
 pub(crate) fn only() -> Result<(), Decline> {
     if is_ngp() {
         Ok(())
     } else {
-        Err(Decline::Unsupported("the port is NGP's; the snapshot runs 1.02"))
+        Err(Decline::Unsupported("the port is NGP's; the image runs 1.02"))
     }
 }
 
@@ -155,7 +155,7 @@ pub fn original_for(addr: u32) -> Option<u32> {
     TRAMPOLINES.iter().chain(&EMIT_WRAPPERS).find_map(|&(t, exe)| (t == at).then_some(exe))
 }
 
-/// The file address `addr` at the snapshot's base (`None` without NGP).
+/// The file address `addr` at the image's base (`None` without NGP).
 pub(crate) fn at(addr: u32) -> Option<u32> {
     let base = BASE.get();
     (base != 0).then(|| addr - FILE_BASE + base)

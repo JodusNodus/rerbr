@@ -259,7 +259,7 @@ pub fn build_fence_post(
         block = block.wrapping_add(4);
     } else {
         // This path asks the native allocator for storage. The entry remains deliberately unbound when the pure
-        // runtime has no allocator stand-in; group-build snapshots always provide the shared block.
+        // runtime has no allocator stand-in; the boot always provides the shared block.
         mem.set_u8(post + 0x28, 0);
         mem.set_u32(post + 0x2c, 0);
     }

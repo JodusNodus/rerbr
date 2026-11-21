@@ -3,6 +3,12 @@
 # `$VAR` expanded. A variable already set in the environment wins over the file. dev.env.example lists the keys.
 # shellcheck shell=bash
 
+# Another shell (zsh) has no BASH_SOURCE, so it would miss dev.env and export the defaults instead.
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "scripts/dev-env.sh: source it from bash (bash -c 'source scripts/dev-env.sh; ...')" >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 _dev_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 _dev_file=$_dev_root/dev.env
 if [[ ! -f $_dev_file ]]; then

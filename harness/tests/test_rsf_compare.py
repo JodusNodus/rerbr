@@ -351,7 +351,7 @@ class Parsing(unittest.TestCase):
         idat = d[d.index(b"IDAT") + 4:d.index(b"IEND") - 8]
         self.assertEqual((w, h, len(zlib.decompress(idat))), (40, 10, 10 * (1 + 40 * 3)))
         text = ("boot: from step 0, 3000 of 3000 steps run (Game::frame + pure physics), 2900 equal to the recording, "
-                "1 snapshot pointer words\n  differs from the recording after step 1777: 3 words (car+0x144, "
+                "1 relocated pointer words\n  differs from the recording after step 1777: 3 words (car+0x144, "
                 "wheel2+0x5bc, car+0x1c0)\n  words that differ at some step: 40 (car+0x144 (from step 1777, 3 steps))\n"
                 "  stopped: the recording ends\n")
         r = rc.parse_report(text)

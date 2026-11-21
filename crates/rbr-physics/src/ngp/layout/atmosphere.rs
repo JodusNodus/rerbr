@@ -3,7 +3,7 @@
 use crate::mem::Mem;
 use crate::ngp::atmosphere::AtmosphereConstants;
 
-/// Read from a live snapshot or the boot's DLL mapping at `base`.
+/// Read from the boot's DLL mapping at `base`.
 pub fn constants(mem: &Mem, base: u32) -> AtmosphereConstants {
     let at = |address: u32| base + (address - 0x1000_0000);
     let f = |address| mem.f32(at(address));

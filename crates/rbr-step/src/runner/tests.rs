@@ -39,7 +39,7 @@ fn code_stand_ins_match_the_exe() {
     }
 }
 
-/// Memory shared by its clones, as a snapshot's is.
+/// Memory shared by its clones, as an image's is.
 #[derive(Default)]
 struct Shared(Mutex<BTreeMap<u32, u8>>);
 

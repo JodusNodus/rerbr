@@ -1,6 +1,6 @@
 //! Bindings of NGP.dll's own functions (`rbr_physics::ngp`, `notes/ngp.md`). NGP.dll is relocated in a running game,
-//! so its bindings are listed at file addresses (base `0x10000000`) and hooked at the snapshot's base, which the
-//! harness passes at install ([`Scope`]; 0 for a 1.02 snapshot, where they aren't hooked).
+//! so its bindings are listed at file addresses (base `0x10000000`) and hooked at the image's base, which the
+//! runner sets for each run ([`Scope`]; 0 without NGP, where they aren't hooked).
 
 mod address;
 mod aero_model;

@@ -86,7 +86,7 @@ impl Stage {
         Self { state: State::Setup, track, car, load_left: 0, countdown: 0.0, armed: false }
     }
 
-    /// The race under way (state 1), for a boot from a snapshot taken mid-drive: the load and the countdown are over
+    /// The race under way (state 1), for a start mid-drive: the load and the countdown are over
     /// before it, so none runs.
     pub fn driving(track: u32, car: u32) -> Self {
         Self { state: State::Driving, track, car, load_left: 0, countdown: 0.0, armed: false }

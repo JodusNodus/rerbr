@@ -96,7 +96,7 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
         println!("{path}: built {}", built.join(", "));
     }
     println!(
-        "{path}: from step {}, {} of {} steps run (Game::frame + pure physics), {} equal to the recording, {} snapshot pointer words, {} allocator placement words, {} run-noise candidates ({} released, {} newly compared while pure held its start value, {} held at stop; {} outside the static mask at start), {} allocator bytes read before caller write, dt {} ({})",
+        "{path}: from step {}, {} of {} steps run (Game::frame + pure physics), {} equal to the recording, {} relocated pointer words, {} allocator placement words, {} run-noise candidates ({} released, {} newly compared while pure held its start value, {} held at stop; {} outside the static mask at start), {} allocator bytes read before caller write, dt {} ({})",
         r.start,
         r.steps,
         args.steps,
@@ -172,7 +172,7 @@ pub fn report(path: &str, r: &Run, args: &Args, mask: &[bool], stage: &StageData
         let after_pointers = r.boot_pointers_kept_after_countdown.as_deref().unwrap_or_default();
         let through_pointers = r.boot_pointers_kept_through_driving.as_deref().unwrap_or_default();
         println!(
-            "  relocated boot pointers: {} candidates ({} outside the static mask); after countdown: {} still at snapshot addresses; at stop: {}; held through every driving step run: {}",
+            "  relocated boot pointers: {} candidates ({} outside the static mask); after countdown: {} still at image addresses; at stop: {}; held through every driving step run: {}",
             r.boot_pointer_candidates,
             r.boot_pointer_candidates_unmasked,
             after_pointers.len(),

@@ -344,7 +344,7 @@ impl Live {
         Drive::parse_with(frame, self.clock).map(|drive| drive.with_hub_offsets(self.hub_offsets))
     }
 
-    /// Waits for the frame of the first step (the snapshot's own call; its controls are not used).
+    /// Waits for the frame of the first step (the image's own call; its controls are not used).
     pub fn first_frame(&mut self) -> Result<Vec<u8>, String> {
         let frame = if self.lockstep {
             self.step_payload(&Controls::default().payload())?

@@ -133,7 +133,7 @@ pub fn word_name(i: usize) -> String {
     }
 }
 
-/// `rust_step.py`'s compare of run A against the recording: words that differ between the snapshot and the recording
+/// `rust_step.py`'s compare of run A against the recording: words that differ between the image and the recording
 /// before the first step are noise, and so are the [`static_mask`]'s; a word that is a 4-aligned mapped address here
 /// and a 4-aligned user address in the recording is a pointer, counted, not compared.
 pub struct Compare {
@@ -152,7 +152,7 @@ pub struct Compare {
     regions: Vec<(u32, u32)>,
 }
 
-/// One step's compare: the differing frame words, the snapshot pointer words, the stand-in placement words, and the
+/// One step's compare: the differing frame words, the relocated pointer words, the stand-in placement words, and the
 /// stale-stack words that differ (not failures).
 pub struct Diff {
     pub words: Vec<usize>,
@@ -161,7 +161,7 @@ pub struct Diff {
     pub stale: Vec<usize>,
 }
 
-/// Whether the snapshot's address and recording's address are a relocated pointer pair.
+/// Whether the image's address and the recording's address are a relocated pointer pair.
 fn is_relocated_pointer(have: u32, want: u32, regions: &[(u32, u32)]) -> bool {
     let mapped = regions.iter().any(|&(base, size)| base <= have && have - base < size);
     let allocator = (ALLOCATOR_HEAP_BASE..ALLOCATOR_HEAP_END).contains(&have);
@@ -244,7 +244,7 @@ impl Compare {
         self.noise.len()
     }
 
-    /// The boot-noise candidates that still hold their step-0 snapshot value.
+    /// The boot-noise candidates that still hold their step-0 value.
     /// A changed word is compared with the recording from then on.
     pub fn kept_words(&self, mem: &Mem) -> Vec<usize> {
         let have = frame_words(mem);
@@ -271,7 +271,7 @@ impl Compare {
         self.recorded_noise_released.iter().copied().filter(|&i| !self.mask[i]).collect()
     }
 
-    /// Boot-time relocated pointers that still hold their snapshot address.
+    /// Boot-time relocated pointers that still hold their image address.
     pub fn kept_boot_pointers(&self, mem: &Mem) -> Vec<usize> {
         let have = frame_words(mem);
         self.boot_pointers.iter().filter_map(|(&i, &value)| (have[i] == value).then_some(i)).collect()

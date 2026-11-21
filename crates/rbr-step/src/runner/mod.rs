@@ -9,7 +9,7 @@
 //! `QueryPerformanceCounter`, and the listeners the car does not depend on (in the exe by address, in the DLLs by
 //! their code).
 //!
-//! The stack is the snapshot's, in `Mem`: a call with `sp == 0` runs its callee from `(esp - 0x1000) & !0xf` below the
+//! The stack is the image's, in `Mem`: a call with `sp == 0` runs its callee from `(esp - 0x1000) & !0xf` below the
 //! running binding's entry, as the bridge does, with the return address `CALL_RET` and the arguments written there.
 
 use leaves::LEAVES;
@@ -126,7 +126,7 @@ pub struct RunSnapshot {
     heap: RunHeap,
 }
 
-/// Runs bindings on `mem`, which must share its bytes with its clones (a backend's, as `Snapshot::mem` gives).
+/// Runs bindings on `mem`, which must share its bytes with its clones (a backend's).
 pub struct Runner {
     /// The image the runs read and write (their clones share its bytes: [`Runner::lend`]). Between steps the code here
     /// reaches it through [`Runner::image`] and [`Runner::image_mut`] only.

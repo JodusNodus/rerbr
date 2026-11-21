@@ -38,14 +38,14 @@ pub(crate) fn clutch_scale(ctx: &Ctx) -> f32 {
     }
 }
 
-/// Per-car damage thresholds. The boot supplies the gate directly; snapshots retain it in the patched immediate
-/// at 0x4f13a7. The impact threshold is NGP's data word 0x1017130c.
+/// Per-car damage thresholds. The boot's runtime holds the gate (NGP patches it into the immediate at 0x4f13a7). The
+/// impact threshold is NGP's data word 0x1017130c.
 pub(crate) fn damage_tuning(ctx: &Ctx) -> rbr_physics::car_body::damage::DamageTuning {
     if at(FILE_BASE).is_none() {
         return rbr_physics::car_body::damage::DamageTuning::STOCK;
     }
     rbr_physics::car_body::damage::DamageTuning {
-        engine_gate_limit: ctx.mem.ngp_runtime().map_or_else(|| ctx.mem.f32(0x004f_13a7), |r| r.damage_gate_limit()),
+        engine_gate_limit: ctx.mem.ngp_runtime().expect("an NGP image has the boot's runtime").damage_gate_limit(),
         emit_impact: data_f32(ctx, 0x1017_130c),
     }
 }
@@ -101,7 +101,7 @@ pub(crate) fn tyre_shape(m: &Mem, def: u32) -> TyreShape {
     }
 }
 
-/// What the tyre thermal steps of `scratch` read; they decline on a 1.02 snapshot.
+/// What the tyre thermal steps of `scratch` read; they decline without NGP.
 pub(crate) fn thermal(ctx: &Ctx, scratch: u32) -> Result<TyreThermal, Decline> {
     thermal_in(ctx.host, &ctx.mem, scratch)
 }
@@ -129,10 +129,10 @@ pub(crate) fn thermal_in(host: &dyn Host, m: &Mem, scratch: u32) -> Result<TyreT
     })
 }
 
-/// NGP's edits to 1.02's `CSpringDamper::Step` (0x52e090) with its per-car fade words; declines on a 1.02 snapshot.
+/// NGP's edits to 1.02's `CSpringDamper::Step` (0x52e090) with its per-car fade words; declines without NGP.
 pub(crate) fn damper_step(mem: &Mem) -> Result<rbr_physics::spring_damper::NgpStep, Decline> {
     let word =
-        |addr| at(addr).map(|a| mem.f32(a)).ok_or(Decline::Unsupported("the port is NGP's; the snapshot runs 1.02"));
+        |addr| at(addr).map(|a| mem.f32(a)).ok_or(Decline::Unsupported("the port is NGP's; the image runs 1.02"));
     Ok(rbr_physics::spring_damper::NgpStep { fade_threshold: word(0x1017_2ca8)?, fade_scale: word(0x1017_2cac)? })
 }
 

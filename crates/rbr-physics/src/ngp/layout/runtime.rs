@@ -1,5 +1,4 @@
-//! Standalone settings that the original NGP stores in patched executable instructions.
-//! Snapshot adapters can still decode those instructions; a boot supplies these values directly.
+//! Standalone settings that the original NGP stores in patched executable instructions; the boot supplies them.
 
 use std::sync::OnceLock;
 

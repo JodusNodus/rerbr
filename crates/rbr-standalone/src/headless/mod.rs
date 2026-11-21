@@ -85,7 +85,7 @@ pub struct Run {
     noise_unmasked: usize,
     /// Per-phase frame comparisons and physics work.
     phases: PhaseSummaries,
-    /// Boot-noise candidates still holding the snapshot value after the synthetic countdown frames.
+    /// Boot-noise candidates still holding the image's value after the synthetic countdown frames.
     noise_kept_after_countdown: Option<Vec<usize>>,
     /// Relocated boot pointers are reported apart from run noise.
     boot_pointer_candidates: usize,
@@ -93,11 +93,11 @@ pub struct Run {
     boot_pointers_kept_after_countdown: Option<Vec<usize>>,
     /// Boot-noise candidates kept unchanged on every driving frame after the countdown.
     noise_kept_through_driving: Option<Vec<usize>>,
-    /// Boot pointers still holding their relocated snapshot addresses through every driving frame.
+    /// Boot pointers still holding their relocated image addresses through every driving frame.
     boot_pointers_kept_through_driving: Option<Vec<usize>>,
-    /// Boot-noise candidates still holding the snapshot value when the run stopped.
+    /// Boot-noise candidates still holding the image's value when the run stopped.
     noise_kept_at_stop: Vec<usize>,
-    /// Boot pointers still holding their relocated snapshot addresses when the run stopped.
+    /// Boot pointers still holding their relocated image addresses when the run stopped.
     boot_pointers_kept_at_stop: Vec<usize>,
     /// The first step that differs: its step and frame words.
     first_diff: Option<(u32, Vec<usize>)>,
