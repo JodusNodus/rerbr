@@ -43,9 +43,10 @@ const BAND: f32 = 20.0;
 /// [`FAR_SHARE`] of it at [`BAND`].
 const DENSITY: f32 = 40.0;
 /// A converted stage's atlas clumps a square metre times its cell's area ([`Fx::density`]): smaller cells, more clumps,
-/// the same cover. Measured against CSP with its grass off and on at our poses (`notes/assetto.md`): the share of the
-/// frame the grass covers came to 0.9, 1.6 and 1.1 times CSP's on Prunières, Sa Calobra and Gabiria.
-const FX_COVER: f32 = 0.8;
+/// the same cover. Four times the cover CSP's pictures measure (0.8: 0.9, 1.6 and 1.1 times CSP's share of the frame on
+/// Prunières, Sa Calobra and Gabiria), as a look (ours): at CSP's the clumps stand apart as tufts over the dark ground,
+/// overlapping they read as a field (`notes/assetto.md`).
+const FX_COVER: f32 = 3.2;
 const FULL: f32 = 10.0;
 const FAR_SHARE: f32 = 0.4;
 /// The steepest ground that takes grass: the cosine of its slope.
@@ -89,8 +90,9 @@ const MAX_HEIGHT: [f32; 2] = [0.14, 0.20];
 const MAX_WIDTH: f32 = 0.20;
 /// A converted stage's atlas cards: the metres of a cell per square root of CSP's `SHAPE_SIZE`, and the size for a stage
 /// that sets none: the square root, as CSP's grass stands about 0.3 to 0.4 m on Prunières (9.5) and Sa Calobra (6.5) and
-/// about 0.25 m on Gabiria (3); the scale with [`FX_COVER`] (`notes/assetto.md`).
-const CELL_PER_SIZE: f32 = 0.15;
+/// about 0.25 m on Gabiria (3), at 0.15 (`notes/assetto.md`); smaller (ours), so that the denser clumps make a sward
+/// rather than a hedge, with [`FX_WIDEN`] and [`CELL_VARY`] and the patches' tallness for the size.
+const CELL_PER_SIZE: f32 = 0.09;
 const DEFAULT_SIZE: f32 = 1.5;
 /// CSP's `MASK_MAIN_THRESHOLD` against our measure of green ([`Fx::green`]): its own pictures cover about as much of
 /// Prunières' (0.75) and Roure's (0.3) verges as ours does at this share of the threshold.
@@ -98,8 +100,10 @@ const FX_MASK_SCALE: f32 = 0.4;
 /// A converted stage's group pieces (flowers, weeds) against the weights the stage gives them: CSP spawns them only in
 /// its sparser far passes, so its pictures show them much rarer than the weights (Sa Calobra's 4 to 2 would be a third).
 const FX_PIECE_SHARE: f32 = 0.25;
-/// How much each clump of an atlas varies in size, either way.
-const CELL_VARY: [f32; 2] = [0.8, 1.2];
+/// How much each clump of an atlas varies in size, either way, and the width of its cards against their cell's: wide
+/// enough that neighbours overlap.
+const CELL_VARY: [f32; 2] = [0.55, 1.35];
+const FX_WIDEN: f32 = 1.8;
 /// A tuft needs this much vegetation around its root, metres, even when its cards are smaller.
 const PATCH_RADIUS: f32 = 0.12;
 /// The least grassiness across the footprint: a fixed threshold, so a lucky draw cannot grow in a faint mark.
@@ -147,11 +151,13 @@ const SATURATION: f32 = 0.85;
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
 /// A converted stage's green blades' hue: the ground's at [`FX_SATURATION`], leaned by [`FX_OLIVE_SHARE`] to
-/// [`FX_OLIVE`] ([`FX_ALBEDO`] their brightness; `shader.wgsl` darkens their roots). CSP's grass's blue over green
-/// measures 0.70 to 0.79 on the four stages; the lean puts ours at 0.71 to 0.86 (none: 0.71 to 0.91; 0.4: 0.64 to 0.79).
-const FX_SATURATION: f32 = 0.5;
-const FX_OLIVE: Vec3 = Vec3::new(0.8, 1.0, 0.4);
-const FX_OLIVE_SHARE: f32 = 0.15;
+/// [`FX_OLIVE`] ([`FX_ALBEDO`] their brightness; `shader.wgsl` darkens their roots), and towards [`STRAW`] by
+/// [`FX_DRY_SHARE`] in the dry patches ([`patches`]). Chosen by eye over the test set (ours: realism, not CSP's
+/// numbers): the ground's hue at half saturation and a light lean read as grey-white on Sa Calobra and Prunières.
+const FX_SATURATION: f32 = 0.8;
+const FX_OLIVE: Vec3 = Vec3::new(0.85, 1.0, 0.35);
+const FX_OLIVE_SHARE: f32 = 0.4;
+const FX_DRY_SHARE: f32 = 0.6;
 /// `specular.z` of a converted stage's cards (ours 1): `shader.wgsl` gives them `FX_GRASS_ROOT` and `FX_GRASS_TIP`.
 const FX_CARD: f32 = 2.0;
 /// `specular.z` of a converted stage's group pieces (flowers, weeds): `shader.wgsl` grows them only past `FX_PIECE_NEAR`
@@ -159,8 +165,9 @@ const FX_CARD: f32 = 2.0;
 const FX_PIECE: f32 = 3.0;
 /// A converted stage's green blades' mean linear albedo, whatever the ground's brightness: CSP takes the ground's colour
 /// for them and the atlas's green for their brightness, and its pictures show them a light olive over Prunières' and
-/// Sa Calobra's dark ground (`notes/assetto.md`).
-const FX_ALBEDO: f32 = 0.07;
+/// Sa Calobra's dark ground (`notes/assetto.md`); a little darker than the 0.07 that matched, as the dense field shows
+/// far more of them.
+const FX_ALBEDO: f32 = 0.055;
 /// The tint of dry grass, on the ground's hue, in the driest patches.
 const STRAW: Vec3 = Vec3::new(1.12, 1.0, 0.72);
 /// The texture's pictures: [`COLUMNS`] by [`ROWS`], each [`PICTURE`] texels (about a card's shape). The first eight
@@ -239,10 +246,11 @@ impl Fx {
         CELL_PER_SIZE * if size > 0.0 { size } else { DEFAULT_SIZE }.sqrt()
     }
 
-    /// Clumps a square metre: [`FX_COVER`] cells' worth with an atlas (at most [`DENSITY`] and a half), else ours.
+    /// Clumps a square metre: [`FX_COVER`] cells' worth with an atlas (at most a fifth over [`DENSITY`], which
+    /// [`CAPACITY`] holds), else ours.
     fn density(&self) -> f32 {
         match self.atlas {
-            Some(_) => (FX_COVER / self.cell().powi(2)).min(DENSITY * 1.5),
+            Some(_) => (FX_COVER / self.cell().powi(2)).min(DENSITY * 1.2),
             None => DENSITY,
         }
     }
@@ -794,8 +802,9 @@ impl Field {
                 // A card's picture and size: an atlas piece's cells at the stage's cell size, or our blades' at the meadow's.
                 let size = |pick: f32| match self.fx(g).and_then(|fx| Some((fx, fx.piece((pick * 131.7).fract())?))) {
                     Some((fx, (rect, [w, h], piece))) => {
-                        let unit = fx.cell() * lerp(CELL_VARY, height) * tall.sqrt();
-                        (rect, unit * w, unit * h, piece)
+                        // The patch's tallness in full (squared: 0.3 to 2.25), so the field rises and falls in patches.
+                        let unit = fx.cell() * lerp(CELL_VARY, height) * tall * tall;
+                        (rect, unit * w * FX_WIDEN, unit * h, piece)
                     }
                     None => {
                         (picture_rect(kind.picture(pick)), (meadow * lerp(WIDTH, width)).min(MAX_WIDTH), meadow, false)
@@ -819,7 +828,9 @@ impl Field {
                 let converted = !self.fx.is_empty();
                 let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
                 let hue = if converted {
-                    (hue / hue.max_element()).lerp(FX_OLIVE, FX_OLIVE_SHARE)
+                    (hue / hue.max_element())
+                        .lerp(FX_OLIVE, FX_OLIVE_SHARE)
+                        .lerp(STRAW / STRAW.max_element(), dry * FX_DRY_SHARE)
                 } else {
                     let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
                     hue.lerp(hue * STRAW, dry * 0.35)

@@ -158,6 +158,7 @@ struct Mode {
     // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
     highlight: vec4<f32>,
     // xy a BTB material's factors on the sky and bounce light and on the sun's (`stage::Light`, `own_light`); 1 for none.
+    // z 1 for a converted stage's grass ground (`stage::DrawState::grass`, `grass_warmed`).
     tint: vec4<f32>,
     // A BTB road's dry sheen: x its roughness, zero for none (`stage::Sheen`, `with_sheen`).
     sheen: vec4<f32>,
@@ -713,17 +714,29 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     var albedo = pow(surface, vec3<f32>(2.2));
     if (own) {
         albedo = albedo_remap(albedo);
+        if (mode.tint.z != 0.0) {
+            albedo = grass_warmed(albedo);
+        }
         if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
             // A converted stage's atlas cards (`grass::FX_CARD`), as CSP draws them: its bright green blades (red and
             // blue nought) take the ground's colour under them, their green the brightness; its other texels (dry
             // blades, flowers) keep their own, the card's hue (`own_light`) taken back off them. The filtered texel
             // mixes both (Prunières' base grass interleaves green and dry blades), so it is split linearly: the green
-            // above its red and blue is the blades', the rest its own.
+            // above its red and blue is the blades', the rest its own. On the base cards (not the pieces: their flowers
+            // keep their colours) a look of ours: the rest of a green blade (its grey) takes the card's hue at
+            // `FX_BLADE_BODY`, as it read near white, and a texel whose red and blue both pass its green (Prunières'
+            // purple dry blades, lilac under our light) is drawn as straw (`FX_STRAW`) at its brightness.
             let linear = pow(surface, vec3<f32>(2.2));
             let green = max(linear.g - max(linear.r, linear.b), 0.0);
             let blades = albedo_remap(vec3<f32>(green)) * (v.specular.x - GRASS_MARK);
-            let rest = albedo_remap(linear - vec3<f32>(0.0, green, 0.0));
-            albedo = blades + rest / max(pow(baked_hue(v.color.rgb), vec3<f32>(2.2)), vec3<f32>(0.01));
+            var rest = albedo_remap(linear - vec3<f32>(0.0, green, 0.0));
+            var own_share = vec3<f32>(1.0) / max(pow(baked_hue(v.color.rgb), vec3<f32>(2.2)), vec3<f32>(0.01));
+            if (v.specular.z < 2.5) {
+                let straw = FX_STRAW * dot(rest, vec3<f32>(0.2126, 0.7152, 0.0722));
+                rest = mix(rest, straw, smoothstep(-0.05, 0.0, min(linear.r, linear.b) - linear.g));
+                own_share = mix(own_share, vec3<f32>(FX_BLADE_BODY), smoothstep(0.0, 0.05, green));
+            }
+            albedo = blades + rest * own_share;
         } else if (is_tuft(v) && v.specular.x > GRASS_MARK) {
             // Our grass cards (`grass.rs`) take the ground's brightness under them.
             albedo = albedo * (v.specular.x - GRASS_MARK);
@@ -1358,9 +1371,14 @@ const GRASS_WRAP: f32 = 0.3;
 const GRASS_BASE: f32 = 0.6;
 const GRASS_SUN_BASE: vec2<f32> = vec2<f32>(0.4, 0.6);
 const GRASS_RISE: f32 = 0.9;
-// A converted stage's GrassFX tufts: the light at the root, and the tint at the tip (ours).
-const FX_GRASS_ROOT: f32 = 0.25;
+// A converted stage's GrassFX tufts: the light at the root (the dense field's roots near black at 0.25), and the tint
+// at the tip (ours).
+const FX_GRASS_ROOT: f32 = 0.45;
 const FX_GRASS_TIP: vec3<f32> = vec3<f32>(1.2, 1.0, 0.95);
+// A converted stage's base cards (ours): the straw its dry texels are drawn as (luminance 1.5), and the share of its
+// brightness a green blade's grey keeps when it takes the card's hue.
+const FX_STRAW: vec3<f32> = vec3<f32>(1.35, 1.0, 0.55) / 1.042 * 1.5;
+const FX_BLADE_BODY: f32 = 0.8;
 const TUFT_PALE: vec2<f32> = vec2<f32>(0.06, 0.16);
 const TUFT_SNOW: vec2<f32> = vec2<f32>(0.3, 0.5);
 const TUFT_GREEN_MOST: f32 = 0.09;
