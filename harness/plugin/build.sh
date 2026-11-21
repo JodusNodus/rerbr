@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build Plugins/RBRRecompHarness.dll with MSVC 7.1 under Wine ($RBR_TOOLCHAIN/msvc71), else with clang-cl and lld-link
-# (crt/: the C runtime declarations, msvcrt.dll and the system DLLs through import libraries from crt/*.def); with
+# (crt/: the C runtime declarations; msvcrt.dll, ntdll.dll for the compiler helpers msvcrt lacks under Wine, and the
+# system DLLs through import libraries from crt/*.def); with
 # --install, copy it as the harness plugin every play.sh run installs ($RBR_HARNESS_PLUGIN).
 set -euo pipefail
 source "$(dirname "$0")/../../scripts/dev-env.sh"
@@ -20,7 +21,7 @@ else
   for tool in clang-cl lld-link llvm-dlltool; do
     command -v "$tool" >/dev/null || { echo "No MSVC 7.1 at $toolchain/msvc71 and no $tool" >&2; exit 1; }
   done
-  for lib in kernel32 user32 msvcrt; do
+  for lib in kernel32 user32 msvcrt ntdll; do
     llvm-dlltool -m i386 -k -d "harness/plugin/crt/$lib.def" -l "build/harness/$lib.lib"
   done
   cc=(clang-cl --target=i686-pc-windows-msvc /nologo /O2 /MD /GR- /GS- /EHs-c- /Zc:sizedDealloc- -X
@@ -28,7 +29,7 @@ else
   "${cc[@]}" /c build/harness/RBRRecompHarness.cpp /Fobuild/harness/RBRRecompHarness.obj
   "${cc[@]}" /c harness/plugin/crt/fltused.cpp /Fobuild/harness/fltused.obj
   lld-link /nologo /dll /machine:x86 /nodefaultlib /entry:DllMain@12 /out:build/harness/RBRRecompHarness.dll \
-    build/harness/RBRRecompHarness.obj build/harness/fltused.obj build/harness/{kernel32,user32,msvcrt}.lib
+    build/harness/RBRRecompHarness.obj build/harness/fltused.obj build/harness/{kernel32,user32,msvcrt,ntdll}.lib
 fi
 if [ "${1:-}" = "--install" ]; then
   # play.sh copies it into the slot at the start of each run
