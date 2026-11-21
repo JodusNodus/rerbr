@@ -5,15 +5,14 @@
 # PLAYBACK (a local RBRRecompPlayback.bin, e.g. from scripts/ngp-synth-playback.py) its controls drive the car
 # and the game quits by itself after the last one (killed after SECS if it hasn't). With DUMP=1 the exe and NGP.dll
 # images are dumped (scripts/ngp-dump.py) to $RBR_NGP_RUNS/NAME.dump/ after SECS (idle runs only).
-# SNAPSHOT="1520 2300" dumps the process at those steps (RBRRecompSnapshot.txt, as harness/play.sh's RBR_SNAPSHOT)
-# to NAME.snap-<step>[-after].bin. PEEK=<local probe file> reads pointer probes after every step
+# PEEK=<local probe file> reads pointer probes after every step
 # (RBRRecompPeek.txt, notes/verification.md) to NAME.peek.bin.
 # The recording goes to $RBR_NGP_RUNS/NAME.bin (outside $RBR_RUNS, which play.sh prunes).
 # AUTO="map car weather tyre" picks another stage start (default "54 6 0 4": Tanner, slot-6 car). REPLAY=<name> plays
 # Replays/<name> in the install instead (RBRRecompReplay.txt); the game is killed after SECS. LIVE=1: a person
 # drives: no auto-start (pick the stage in the menus, which loads the profile's controller bindings), the recording runs
 # until the game is quit (or SECS, default 3600).
-# Usage: [AUTO=...|REPLAY=name|LIVE=1] [PLAYBACK=file] [DUMP=1] [SNAPSHOT=steps] [PEEK=file] scripts/ngp-run.sh NAME [SECS]
+# Usage: [AUTO=...|REPLAY=name|LIVE=1] [PLAYBACK=file] [DUMP=1] [PEEK=file] scripts/ngp-run.sh NAME [SECS]
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/dev-env.sh"
 game=${RBR_NGP_GAME:?set RBR_NGP_GAME to the NGP install (notes/ngp.md)}
@@ -26,9 +25,6 @@ secs=75; [ -n "${PLAYBACK:-}" ] && secs=600; [ "$live" = 1 ] && secs=3600
 secs=${2:-$secs}
 [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "bad run name" >&2; exit 1; }
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-snap=${SNAPSHOT:-}
-[[ "$snap" =~ ^[0-9\ ]*$ ]] || { echo "bad SNAPSHOT" >&2; exit 1; }
-snaps=$(echo $snap | tr ' ' ,); snaps=${snaps:--}
 peek=0 auto=${AUTO:-54 6 0 4}
 [[ "$auto" =~ ^[0-9]+(\ [0-9]+){3,5}$ ]] || { echo "bad AUTO" >&2; exit 1; }
 replay=${REPLAY:-}
@@ -63,7 +59,6 @@ idle || { echo "the NGP prefix has processes (the user's game?); not starting" >
 cd "$game"
 rm -f RBRRecompRecord-*.bin RBRRecompSnapshot.txt RBRRecompSnap-*.bin RBRRecompPeek-*.bin
 [ "$peek" = 1 ] || rm -f RBRRecompPeek.txt
-[ "$snaps" = - ] || echo "${snaps//,/ }" > RBRRecompSnapshot.txt
 rm -f RBRRecompPlayback.bin
 [ -z "${PLAYBACK:-}" ] || cp "$runs/.stage-$name.playback" RBRRecompPlayback.bin
 [ "$peek" = 1 ] && mv "$runs/.stage-$name.peek" RBRRecompPeek.txt
@@ -86,7 +81,6 @@ stop
 idle || echo "NGP prefix processes without our token remain (not ours; left alone)" >&2
 rm -f RBRRecompAuto.txt RBRRecompReplay.txt RBRRecompRecord.on RBRRecompPlayback.bin RBRRecompSnapshot.txt RBRRecompPeek.txt
 for f in RBRRecompPeek-*.bin; do [ -e "$f" ] && mv "$f" "$runs/$name.peek.bin"; done
-for f in RBRRecompSnap-*.bin; do [ -e "$f" ] || continue; s=${f#RBRRecompSnap-}; mv "$f" "$runs/$name.snap-${s%.bin}.bin"; done
 mv RBRRecompRecord-*.bin "$runs/$name.bin"
 cp RBRRecompHarness.log "$runs/$name.harness.log"
 ls -la "$runs/$name.bin"

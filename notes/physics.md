@@ -270,7 +270,7 @@ Sequence functions are generic over the trait (`fn step<S: TyreStore>`), never `
 
 ### Per subsystem
 
-Evidence for every row: drive2 attempt 5 held (84084/84084), the poison build, and `round_trip` on the snapshots.
+Evidence for every row: drive2 attempt 5 held (84084/84084), the poison build (and `round_trip` on the snapshots, retired).
 
 | Typed state (storage) | What is typed | On the image, why |
 | --- | --- | --- |
@@ -310,8 +310,6 @@ Evidence for every row: drive2 attempt 5 held (84084/84084), the poison build, a
 
 - `scripts/gate.sh`: drive2 attempt 5, the poison build (`rbr-step/poison`: held words poisoned, definitions watched,
   held across steps) and the drive with every aid on ([verification.md](verification.md#drives-and-the-gate-matrix)).
-- `round_trip` (`rbr-step` binary, snapshots): lower∘lift of each object, stage and definition answers against the
-  image.
 
 ## Physics core
 

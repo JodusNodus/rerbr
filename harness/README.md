@@ -2,17 +2,16 @@
 
 Records and replays the original 1.02 game for the exactness checks. How it fits together, commands and masks:
 [notes/verification.md](../notes/verification.md). Python tools run with `.venv/bin/python -I -B` (unicorn, numpy);
-each script's docstring holds its usage. The replay runs on the published snapshots and recordings
-(`scripts/fetch-test-data.sh DIR recordings snapshots`); the ones that record or play the
+each script's docstring holds its usage. The tests run on the published recordings
+(`scripts/fetch-test-data.sh DIR recordings`); the ones that record or play the
 original (`play.sh`, `record.sh`, `slots.sh`, `matrix.py`, `apitrace.sh`) need this PC's game installs (`dev.env`:
 `RBR_GAME`/`RBR_PREFIX`, `RBR_NGP_GAME`/`RBR_NGP_PREFIX`). Harness Python runs locally with
-`.venv/bin/python -I -B harness/...`; the x87 oracle builds
-`harness/replay-fpu.c` locally with gcc into `build/replay-fpu/`.
+`.venv/bin/python -I -B harness/...`.
 
 | Path | What |
 | --- | --- |
-| `plugin/` | `RBRRecompHarness.dll`: recorder, playback, snapshots, peeks, early stop (`build.sh [--install]`) |
-| `play.sh` | one unattended playback run in a free slot locally (`RBR_DRIVE`, `RBR_SNAPSHOT`, `RBR_PEEK`, ...); the transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's plugin |
+| `plugin/` | `RBRRecompHarness.dll`: recorder, playback, snapshots (written, not read), peeks, early stop (`build.sh [--install]`) |
+| `play.sh` | one unattended playback run in a free slot locally (`RBR_DRIVE`, `RBR_PEEK`, ...); the transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's plugin |
 | `record.sh` | record a live drive by hand |
 | `v1-drive.sh` | make a drive from another drive's controls on another stage and car |
 | `drive-trial.sh` | find the StartGame numbers of a menu-started drive |
@@ -33,12 +32,7 @@ original (`play.sh`, `record.sh`, `slots.sh`, `matrix.py`, `apitrace.sh`) need t
 | `tyre_scorecard.py` | the tyre physics against the published targets (`data/tyre-targets.csv`) per physics profile: PASS/MISS table, `--json`, `--compare A B`, `--quick` ([tyre-model.md](../notes/tyre-model.md#scorecard)) |
 | `diverge.py` | first differing step between two recordings; `--mask` writes the noise mask |
 | `session.py` | RSS1 session files of an RSF session (`scripts/rsf-session.sh`): reader and summary; the format is its docstring ([verification.md](../notes/verification.md#rsf-sessions)) |
-| `replay.py` | one `StepForward` of the original in the emulator from a snapshot |
-| `replay-approx.c`, `replay-fpu.c`, `.py` | the CPU's rsqrtss/rcpss tables (`crates/rbr-physics/data/rsqrt.bin`, `rcp.bin`) and x87 oracle for the emulator |
-| `load_*_refs.py`, `ngp_data_refs.py` | load-path reference vectors cut from dumps |
-| `compose_load.py` | write the Rust load's objects over a snapshot |
-| `ngp_init_diff.py` | diffs an NGP `--boot` image against NGP reference vectors |
-| `snapshot_reference.py` | snapshot view for the Rust parity test |
+| `replay-approx.c` | the CPU's rsqrtss/rcpss tables (`crates/rbr-physics/data/rsqrt.bin`, `rcp.bin`) |
 | `apitrace.sh` | D3D9 capture of a playback run |
 | `ffb_trace.sh`, `.c`, `.py` | the wheel's force feedback at its evdev device locally (LD_PRELOAD, no root): RSF, Proton's dinput replaying NGP's calls (`probes/ffb_replay.c`) and ours (`rbr-render` example `ffb_play`); summary, level comparison, per-step pairing and timing |
 | `probes/` | DirectInput test programs and peek configs |

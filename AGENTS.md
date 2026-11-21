@@ -60,7 +60,7 @@ same paths.
 | `crates/rbr-sound` | Gameplay sound from the SND1 record |
 | `crates/rbr-launcher` | The launcher (binary `rerbr`) |
 | `crates/rbr-recording` | Harness recording and live record readers |
-| `harness/` | Plugin, recorder, playback runs, step replay, drive compare |
+| `harness/` | Plugin, recorder, playback runs, drive compare |
 | `RBR_RECORDINGS` | Recorded drives (`drive-*.bin`, RSF sessions); not in git, published set via `scripts/fetch-test-data.sh` |
 | `original/` | Original binaries and game data (gitignored, `SHA256SUMS` only) |
 | `data/` | Test data hashes and file lists, generator inputs |

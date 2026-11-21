@@ -1,5 +1,5 @@
 """Loads the development environment into os.environ as the shell scripts get it: runs scripts/dev-env.sh (dev.env and
-the folders' defaults) once and adds what it exports. Imported by replay.py, so by every script that imports it."""
+the folders' defaults) once and adds what it exports."""
 import os
 import subprocess
 

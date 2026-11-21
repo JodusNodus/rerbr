@@ -17,12 +17,12 @@ from `RBR_DEV` (`~/rerbr-dev`). All values are absolute paths. The original runs
 | `RBR_RSF_PREFIX` | the Wine prefix `RBR_RSF`'s game runs in |
 | `RBR_PROTON` | `PROTONPATH` `umu-run` starts the games with |
 | `RBR_TOOLCHAIN` | MSVC 7.1 (`msvc71/`) and its Wine prefix (`wineprefix/`) for the plugin build, per rbr-recomp's `notes/toolchain.md`; without it `harness/plugin/build.sh` builds with clang-cl and lld-link against msvcrt.dll (`harness/plugin/crt/`; not yet compared with an MSVC build's recordings) |
-| `RBR_RUNS`, `RBR_NGP_RUNS`, `RBR_RSF_RUNS` | recordings, playbacks, snapshots and run outputs |
+| `RBR_RUNS`, `RBR_NGP_RUNS`, `RBR_RSF_RUNS` | recordings, playbacks and run outputs |
 | `RBR_HARNESS_PLUGIN`, `RBR_RSF_PLUGIN` | the harness DLL (`RBRRecompHarness.dll`) `play.sh` installs, rsf-session's plugin build |
 | `RBR_APITRACE`, `RBR_FFB_TRACE` | capture outputs |
 | `RBR_BUSY` | optional `pgrep` pattern other processes `matrix.py` waits for |
 
-`RBR_ORIG_EXE` names the 1.02 exe (default `$RBR_PATCH/RichardBurnsRally_SSE.exe`), `RBR_SNAPS` the snapshots (default `/tmp/rbr-snaps`). `harness/slots.sh [N]` copies the install into parallel slots (default 4).
+`RBR_ORIG_EXE` names the 1.02 exe (default `$RBR_PATCH/RichardBurnsRally_SSE.exe`). `harness/slots.sh [N]` copies the install into parallel slots (default 4).
 
 ### The original binaries
 
@@ -45,12 +45,11 @@ One file in the game folder, written by `harness/play.sh` from an environment va
 | `RBRRecompSession.on` | (rsf-session.sh) | per stage attempt: FRM1 plus RSS1 session file `RBRRecompSession-<tick>.bin` ([RSF sessions](#rsf-sessions)) |
 | `RBRRecompPlayback.bin` | `RBR_DRIVE` | play recorded controls back, 8 steps per frame; quit 2 s after the last; recorded too |
 | `RBRRecompAuto.txt` | `RBR_DRIVE` | start the stage without menus: `map car weather tyre [damage [transmission]]` (damage at 0x1660850, transmission at 0x1660814) |
-| `RBRRecompSnapshot.txt` | `RBR_SNAPSHOT="40 572"` | dump the process before the listed steps' calls and after ([Snapshots](#snapshots)) |
 | `RBRRecompPeek.txt` | `RBR_PEEK=<file>` | pointer probes after each step ([Peek probes](#peek-probes)) |
 | `RBRRecompEarlyStop.txt` | `RBR_EARLYSTOP` | quit at the first step differing from a reference ([Early stop](#early-stop)) |
 | `RBRRecompCamera.txt` etc. | `RBR_CAMERA`, `RBR_VOLUMES`, `RBR_POPS`, `RBR_FPS` | sound captures: camera mode, volumes, pop logs, frame-rate cap |
 
-The transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's copy of the plugin (run from rbr-recomp, `harness/README.md` there); this repo only reads their dumps (`harness/replay.py` runs the entry dumps, the Rust load tests compare them).
+The transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's copy of the plugin (run from rbr-recomp, `harness/README.md` there); this repo reads none of their dumps. The plugin still writes snapshots (`RBRRecompSnapshot.txt`, `RBRRecompSessionSnaps.on`); no script sets them and nothing reads them.
 
 ## Recordings
 
@@ -66,11 +65,7 @@ harness/v1-drive.sh v1-<stage>-<car> "<map car weather tyre damage trans>"   # a
 harness/drive-trial.sh <drive> "<numbers>" <tag>             # StartGame numbers for a menu-started drive
 ```
 
-`v1-drive.sh` also snapshots step 1000, mid-stage and the largest speed drop, and checks the snapshot run equals the drive. The references and noise mask of `drive-setup.sh` (count runs) need rbr-recomp. `harness/matrix.py` runs stage × car pairs end to end (Rust autopilot, the original twice, `rbr-standalone --boot`; `--ngp` on the NGP install).
-
-### Snapshots
-
-A snapshot (`<name>.snap-<step>.bin`, about 200 MB) is every committed readable region of the process, registers, x87 control word, MXCSR and stack, taken before the `StepForward` call starting at the step; a listed step is dumped again after its call (`-after.bin`). Load settle calls at 0, 40, 80 and 120, then every step from 160. They live in `RBR_SNAPS` (default `/tmp/rbr-snaps`); a drive's chain is `vcu-<drive>.snap-<step>.bin` (tanner-corolla: `vcu-cov.snap-*`). The published set (`data/test-data.snapshots`: the four reference chains, snapH, the weather test's step-1000 snapshots, load dumps under `dumps/`) comes with `scripts/fetch-test-data.sh DIR snapshots`, with the x87 cache: union of the maintainers' caches and the run-A caches used (141,591 cases, no conflicts). They feed `harness/replay.py` ([Step replay](#step-replay)) and the load and snapshot tests.
+The references and noise mask of `drive-setup.sh` (count runs) need rbr-recomp. `harness/matrix.py` runs stage × car pairs end to end (Rust autopilot, the original twice, `rbr-standalone --boot`; `--ngp` on the NGP install).
 
 ### Peek probes
 
@@ -108,7 +103,6 @@ scripts/rsf-session.sh fetch <name>     # to $RBR_RECORDINGS/rsf/<name>
 | --- | --- |
 | `<n>/physics.bin`, `<n>/session.bin` | attempt n's FRM1 and RSS1 |
 | `<n>/attempt.txt` | plugin tick, RSF car in slot 5 at attempt start (`rsf_car_id`, `rsf_car_physics`, `car_name` from `Cars.ini [Car05]`), `setup=` |
-| `<n>/snap-0.bin`, `<n>/snap-1520.bin` | `SNAPS=1` only: process before the attempt's first step and before step 1520 (first with player control), in the snapshot format `harness/replay.py` reads; ~480 MB each in RSF, 0.2-0.8 s to write |
 | `<n>/files/`, `<n>/setup.lsp` | opened files by lower-case relative path (`session.py --files`); starting setup (`session.py --setup`: last `SavedGames/<pack>/*.lsp` the stage load opened, else the pack's or slot folder's `setups/d_<surface>.lsp`, surface from RSF's `stages_data.json` else the exe map table; a service change is in no file) |
 | `audio.wav`, `audio.txt` | whole session's game output (f32, native rate); `start_unix_ns` (pw-record start, rough baseline), `rate`, `channels`, `node` |
 | `config/` | at session start: `SavedGames/*.acm`, `pf*.rbr`, `RBRControls.ini`, `CarInfo.ini`, `Plugins/NGPCarMenu.ini`, `rsfdata/cache/cars_data.json` (FFB, aids, rotation) |
@@ -160,16 +154,16 @@ rsf-test1 and rsf-test2 (map 54, Evo IX N4; out of the gate, PASS 32623/32623 an
 never passes 0.3 m/s. An `AUTO` start loads slot 5's car from `Physics/s_i2003` (where RSF copies the chosen pack) with
 `Cars.ini [Car05]`'s model: a model without its pack hangs the load. RSF's own stages (map 176) hang an `AUTO` start.
 
-The 1.02 drives below do not run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and viewer
+The 1.02 drives below do not run in `rbr-standalone` (it steps NGP physics only); they feed viewer
 playback.
 
 | Drive | Map, car | Notes |
 | --- | --- | --- |
 | tanner-corolla | 54 (`track-54_E`), 6 Corolla | reference; weather 0, tyre 4 |
-| tanner-damage | 54, 6 | damage snapshots 11827, 12071 |
+| tanner-damage | 54, 6 | damage at steps 11827, 12071 |
 | tarmac-lancer | 41 (`track-41_M`), 3 | rescue reset at step 20415 |
 | arctic-snow | 13 (`track-13_O`), 6 | snow |
-| `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
+| `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step runs, V7 from the boot |
 
 Standalone check for `rbr-standalone` and `rbr-step` changes. `scripts/gate.sh` builds the release binaries and runs
 side by side: this drive (standalone), the same drive on a `rbr-step/poison` build (`target/poison`: a typed-state
@@ -184,15 +178,6 @@ other three recorded drives above (`tarmac`: drive1/2 with `--damage off --setup
 
 It must print physics PASS 84084/84084 and exit 0, as only when every exact check of the run sections passes (release
 builds of `rbr-standalone` and `rsf-settings`). Rust binaries run from the local `target/release/` with the local `RBR_DATA`/`RBR_PATCH`.
-
-## Step replay
-
-`harness/replay.py` runs one `StepForward` of the original from a snapshot in the Unicorn emulator; usage, stub, table and x87-oracle rules are its docstring. `--check` compares the replay with the real call (recording frame plus after-dump).
-
-```sh
-python3 -m venv .venv && .venv/bin/pip install unicorn numpy
-.venv/bin/python -I harness/replay.py snap-572.bin --check snap-572-after.bin <name>.bin
-```
 
 ## Masks
 

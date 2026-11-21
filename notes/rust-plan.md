@@ -44,10 +44,10 @@ differing ones are printed apart, never dropped. The gate matrix must cover ever
 | R | C++ reference exact on tanner-corolla, then frozen (2026-10-15) | rbr-recomp |
 | H | Hybrid step: every Rust port bound into the emulated step (retired 2026-11-16) | `rust_step.py` with all bindings |
 | B | Pure Rust step (`rbr-step/src/runner/`), no emulator | `rbr-standalone` against the recording each step |
-| L | Load path: Rust builds the physics state from the retail files | byte compare with the original's snap-0; `--boot` |
+| L | Load path: Rust builds the physics state from the retail files | `--boot` (byte-compared with the original's snap-0 while snapshots lasted) |
 | G | Gameplay loop in Rust (`crates/rbr-gameplay`) | control payload, stage and time card per step against recordings |
 | S | Standalone program, headless or live in the viewer | the gate matrix, in Rust only |
-| V | Gate matrix covers every car and surface class | recordings and snapshots |
+| V | Gate matrix covers every car and surface class | recordings |
 
 Current state: [status.md](status.md).
 
@@ -74,7 +74,7 @@ Current state: [status.md](status.md).
 
 | Area | Approach |
 | --- | --- |
-| Physics and the gameplay loop | Behaviour-exact against the original's recordings and snapshots. |
+| Physics and the gameplay loop | Behaviour-exact against the original's recordings. |
 | Data formats | Specs in [formats.md](formats.md), parsers in `rbr-formats`, each tested on every retail file. Exe and HedgeHog3D code is read to resolve fields, not matched. |
 | Rendering | Every stage and car drawn with all its shapes and textures in the right place, through the renderer's own material description. The original shaders are read for what their inputs mean, not ported. |
 | Sound | Behaviour from the game's data and signals; may sound better than the original. |
