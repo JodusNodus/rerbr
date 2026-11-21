@@ -271,8 +271,8 @@ watch() {
     [ "$f" = Plugins/RBRRecompHarness.dll ] && continue  # a test install's own copy is put back at the end
     [ ! -e "$game/$f" ] || { echo "$game/$f exists (an earlier session not ended?)" >"$run/.failed"; exit 1; }
   done
-  if ls "$game" | grep -q '^RBRRecomp\(Record\|Session\|Snap\)-'; then
-    echo "$game has RBRRecompRecord/Session/Snap files (an earlier session not ended?)" >"$run/.failed"; exit 1
+  if ls "$game" | grep -q '^RBRRecomp\(Record\|Session\)-'; then
+    echo "$game has RBRRecompRecord/Session files (an earlier session not ended?)" >"$run/.failed"; exit 1
   fi
   [ -z "$(game_pids)" ] || { echo "the game already runs: quit it, then start the session" >"$run/.failed"; exit 1; }
   : >"$run/.manifest"
