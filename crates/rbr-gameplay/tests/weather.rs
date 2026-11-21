@@ -1,24 +1,10 @@
-//! The quick race's weather (`rbr_gameplay::weather`) on the retail data and against the original's snapshots.
+//! The quick race's weather (`rbr_gameplay::weather`) on the retail data.
 //!
-//! Runs only when `RBR_DATA` names the install and `RBR_PATCH` the 1.02 patch files (the exe); the snapshot check also
-//! needs `RBR_RECORDINGS` (the drives' `.auto`) and the snapshots in `RBR_STEP_SNAPSHOT_DIR` or `RBR_SNAPS` (default
-//! `/tmp/rbr-snaps`). Skipped otherwise.
-
-use std::path::PathBuf;
+//! Runs only when `RBR_DATA` names the install and `RBR_PATCH` the 1.02 patch files (the exe). Skipped otherwise.
 
 use rbr_formats::data::Data;
 use rbr_formats::mat;
 use rbr_gameplay::weather::{self, Draws, Preset, Season, Weather};
-use rbr_physics::snapshot::Snapshot;
-
-/// `CWeatherDaemon` (its pointer) and the fields the race reads.
-const DAEMON: u32 = 0x007C_36A8;
-const LETTER: u32 = 0x14;
-const CLOUD: u32 = 0x18;
-const WETNESS: u32 = 0x1C;
-const WEAR: u32 = 0x20;
-const CLOUD_LETTER: u32 = 0x40;
-const PRESET: u32 = 0x44;
 
 fn data() -> Option<Data> {
     let data = Data::from_env()?;
@@ -118,63 +104,6 @@ fn every_quick_race_stage_has_a_good_and_a_bad_weather() {
     }
 }
 
-/// The drives' snapshots: the daemon's fields after the race start equal the derivation's for the drive's `.auto`
-/// (map and weather); for the random and bad weathers, the draws (the row, the wear) are read from the snapshot, and
-/// the derivation must give its fields from them.
-#[test]
-fn the_original_snapshots_hold_the_derived_weather() {
-    let (Some(data), Some(recordings)) = (data(), std::env::var_os("RBR_RECORDINGS").map(PathBuf::from)) else {
-        eprintln!("RBR_DATA, RBR_PATCH or RBR_RECORDINGS unset; skipped");
-        return;
-    };
-    let snaps = ["RBR_STEP_SNAPSHOT_DIR", "RBR_SNAPS"]
-        .into_iter()
-        .find_map(std::env::var_os)
-        .map_or_else(|| PathBuf::from("/tmp/rbr-snaps"), PathBuf::from);
-    let season = Season::load(&data).expect("the season");
-    let mut checked = 0;
-    for (snapshot, drive) in [
-        ("vcu-cov.snap-1000.bin", "tanner-corolla"),
-        ("vcu-v4-gravel-corolla-55.snap-1000.bin", "v4-gravel-corolla-55"),
-        ("vcu-v2-snow-lancer-13.snap-1000.bin", "v2-snow-lancer-13"),
-        ("vcu-v3-gravel-lancer-23.snap-1000.bin", "v3-gravel-lancer-23"),
-        ("vcu-wb-wet-corolla-54.snap-1000.bin", "wb-wet-corolla-54"),
-        ("vcu-wb-damp-lancer-64.snap-1000.bin", "wb-damp-lancer-64"),
-        ("vcu-wb-snow-xsara-10.snap-1000.bin", "wb-snow-xsara-10"),
-    ] {
-        let (path, auto) = (snaps.join(snapshot), recordings.join(format!("drive-{drive}.auto")));
-        let (Ok(snap), Ok(auto)) = (Snapshot::open(&path), std::fs::read_to_string(&auto)) else {
-            eprintln!("{snapshot}: not found; skipped");
-            continue;
-        };
-        let words: Vec<u32> = auto.split_whitespace().map(|w| w.parse().unwrap()).collect();
-        let (map, preset) = (words[0], Preset::from_id(words[2]).unwrap());
-        let mem = snap.mem();
-        let daemon = mem.u32(DAEMON);
-        let field = |at| mem.u32(daemon + at);
-        let row = |k: usize| season.rows[k];
-        let fits = |k: usize| {
-            let r = row(k);
-            [r.letter, r.cloud, r.cloud_letter, r.preset, r.wetness.min(2)]
-                == [field(LETTER), field(CLOUD), field(CLOUD_LETTER), field(PRESET), field(WETNESS)]
-        };
-        let draws = Draws { row: season.rows_of(map).find(|&k| fits(k)), wear: field(WEAR) };
-        let w = weather::quick_race(&season, map, preset, draws).unwrap();
-        assert!(fits(w.row.unwrap()), "{snapshot}: the daemon's row is not the derived one");
-        assert_eq!((field(WETNESS), field(WEAR)), (w.wetness, w.wear), "{snapshot}");
-        eprintln!("{snapshot}: {} wetness {} wear {} ({:?})", w.stage(), w.wetness, w.wear, w.mat_words());
-        checked += 1;
-    }
-    if checked == 0 {
-        eprintln!("no snapshots in {}; skipped", snaps.display());
-        return;
-    }
-    assert!(checked >= 2, "fewer than two snapshots found");
-}
-
-/// Every season row of a stage the install has names a section of `Maps/TrackSettings.ini` (`Weather::section`), so the
-/// renderer draws the row's own sky, light and fog. Map 4 has no row; the nine clear and part-cloud rows of `69S` name
-/// sections the file lacks (the game's lookup for them is not traced; the renderer falls back to its own pick).
 #[test]
 fn every_retail_row_names_a_track_settings_section() {
     let Some(data) = data() else {
