@@ -42,7 +42,7 @@ KEEP = ('install_folder', 'ngp_physics', 'ngp_dll', 'rsf_root')
 # The development folders of `dev.env` (dev.env.example), left out of the launcher's and the programs' environment: the
 # launcher takes RBR_DATA over the install folder, and a shell that sourced `scripts/dev-env.sh` (as the checks do)
 # then drew the bare retail install's data, the pack cars without their liveries (a white Yaris).
-DEV_FOLDERS = ('RBR_DATA', 'RBR_PATCH', 'RBR_RECORDINGS', 'RBR_VECTOR_STORE', 'RBR_NGP_PHYSICS', 'RBR_RSF',
+DEV_FOLDERS = ('RBR_DATA', 'RBR_PATCH', 'RBR_RECORDINGS', 'RBR_NGP_PHYSICS', 'RBR_RSF',
                'RBR_NGP_DLL', 'RBR_DEV', 'RBR_PROTON')
 
 
