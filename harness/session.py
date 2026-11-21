@@ -1,6 +1,7 @@
 """session.py FILE...: summary of RSS1 session files (record counts per tag, devices, effects, callers, files, step
 range, time span). session.py --files DIR FILE: write the FIL1 files' contents to DIR (by lower-case relative path).
 session.py --setup FILE [STAGES_JSON]: the setup the attempt's car started on, as a path under files/.
+session.py --strip IN OUT: IN for publishing (`strip`): each FIL1's contents but the player's own files as their sha256.
 Importable: read(path) -> Session (header and records, each record's payload parsed per tag; an unknown tag's payload
 is kept as "raw" bytes).
 
@@ -40,7 +41,8 @@ payload. Every payload starts with u64 QPC (QueryPerformanceCounter) and u32 thr
         holds the attempt's totals)
   OPN1  u32 access, u32 opened, u32 n + n bytes path: a .lsp or .acm file opened by a module in the game folder
   FIL1  u32 n + n bytes path, u32 n + n bytes contents (at most 1 MiB): an .acm's when opened, and at the start of an
-        attempt the .lsp files its stage load opened
+        attempt the .lsp files its stage load opened. In a published session (`strip`) the game's and the car packs'
+        files hold b"sha256:" and their digest in hex instead
   END1  end of the stage attempt
 
 Device numbers count the devices the plugin has seen in the process, effect numbers the effects it has created.
@@ -281,11 +283,66 @@ def file_name(path):
     return "/".join(p for p in parts if p not in ("", ".", ".."))
 
 
+STRIPPED = b"sha256:"
+
+
+def stripped(contents):
+    """Whether FIL1 contents are a published session's digest (`strip`) rather than the file's."""
+    return len(contents) == len(STRIPPED) + 64 and contents.startswith(STRIPPED)
+
+
+def digest(contents):
+    """The sha256 (hex) of the file FIL1 contents stand for."""
+    import hashlib
+    return contents[len(STRIPPED):].decode() if stripped(contents) else hashlib.sha256(contents).hexdigest()
+
+
+def file_digests(s):
+    """Each FIL1's file_name() and digest() (the last of a path wins)."""
+    return {file_name(f["path"]): digest(f["contents"]) for f in s.tagged("FIL1")}
+
+
+def kept(name):
+    """FIL1 files a published session keeps whole: the player's own (saved setups, controller profiles)."""
+    return name.startswith("savedgames/") or name.endswith(".acm")
+
+
+def strip(src, dst):
+    """src's RSS1 written to dst with each FIL1's contents, but kept() files', replaced by b"sha256:" and the digest in
+    hex: the game's and the car packs' files are not published, and a run takes them from the install, checked against
+    the digest. The other records are copied byte for byte. Returns the FIL1 records stripped."""
+    data = open(src, "rb").read()
+    if data[:4] != b"RSS1":
+        raise ValueError("%s: not an RSS1 file" % src)
+    out, at, n = bytearray(data[:16]), 16, 0
+    while at + 8 <= len(data):
+        tag, size = struct.unpack_from("<4sI", data, at)
+        if at + 8 + size > len(data):  # cut off at the end (a killed game): as it is, read() drops it
+            break
+        payload = data[at + 8:at + 8 + size]
+        if tag == b"FIL1":
+            r = Reader(payload, 12)
+            path, contents = r.blob(), r.blob()
+            if not kept(file_name(path.decode("latin-1"))) and not stripped(contents):
+                contents = STRIPPED + digest(contents).encode()
+                payload = payload[:12] + struct.pack("<I", len(path)) + path + struct.pack("<I", len(contents)) + contents
+                n += 1
+        out += struct.pack("<4sI", tag, len(payload)) + payload
+        at += 8 + size
+    out += data[at:]
+    with open(dst, "wb") as f:
+        f.write(out)
+    return n
+
+
 def write_files(s, out):
-    """Each FIL1's contents to out/<file_name(path)> (the last of a path wins); the names written."""
+    """Each FIL1's contents to out/<file_name(path)> (the last of a path wins; a published session's stripped files are
+    left out); the names written."""
     import os
     names = []
     for f in s.tagged("FIL1"):
+        if stripped(f["contents"]):
+            continue
         name = file_name(f["path"])
         os.makedirs(os.path.dirname(os.path.join(out, name)), exist_ok=True)
         with open(os.path.join(out, name), "wb") as w:
@@ -346,6 +403,9 @@ if __name__ == "__main__":
     if sys.argv[1] == "--files":
         for path in sys.argv[3:]:
             print("\n".join(write_files(read(path), sys.argv[2])))
+        sys.exit()
+    if sys.argv[1] == "--strip":
+        print("%d files stripped" % strip(sys.argv[2], sys.argv[3]))
         sys.exit()
     if sys.argv[1] == "--setup":
         print(setup_file(read(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else None) or "")

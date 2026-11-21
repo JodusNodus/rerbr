@@ -156,6 +156,36 @@ class Parsing(unittest.TestCase):
         w.save(self.path)
         self.assertEqual(rc.loaded_pack(rss.read(self.path)), "Evo_IX_ngp6")
 
+    def test_a_published_session_takes_the_packs_files_from_the_install(self):
+        def fil(w, qpc, path, contents):
+            w.record("FIL1", qpc, struct.pack("<I", len(path)) + path + struct.pack("<I", len(contents)) + contents)
+
+        pack_setup, own_setup = b"pack setup\n", b"my setup\n"
+        w = Writer()
+        fil(w, 1000, b"physics\\s_i2003\\setups\\d_gravel.lsp", pack_setup)
+        fil(w, 1100, b"SavedGames\\Evo_IX_ngp6\\a.lsp", own_setup)
+        w.stp(2000, 0, 40, 40)
+        w.save(self.path)
+        published = self.path + ".published"
+        self.assertEqual(rss.strip(self.path, published), 1)
+        full, s = rss.read(self.path), rss.read(published)
+        self.assertEqual(rss.file_digests(full), rss.file_digests(s))
+        self.assertEqual([r["tag"] for r in full.records], [r["tag"] for r in s.records])
+        out = tempfile.mkdtemp()
+        self.assertEqual(rss.write_files(s, out), ["savedgames/evo_ix_ngp6/a.lsp"])
+        # The slot folder's file comes from the pack's own folder in the install, by its digest.
+        rsf = tempfile.mkdtemp()
+        os.makedirs(os.path.join(rsf, "rsfdata", "cars", "Evo_IX_ngp6", "setups"))
+        found = os.path.join(rsf, "rsfdata", "cars", "Evo_IX_ngp6", "setups", "d_gravel.lsp")
+        with mock.patch.dict(os.environ, {"RBR_RSF": rsf}):
+            with open(found, "wb") as f:
+                f.write(pack_setup)
+            self.assertEqual(rc.install_file("physics/s_i2003/setups/d_gravel.lsp", s, "evo_ix_ngp6"), found)
+            with open(found, "wb") as f:
+                f.write(b"changed\n")
+            with self.assertRaises(rc.Failure):
+                rc.install_file("physics/s_i2003/setups/d_gravel.lsp", s, "evo_ix_ngp6")
+
     def test_the_diep_flags_and_the_gain(self):
         w = Writer()
         w.eff(1000, 3, 1, 0, guid=CONSTANT)

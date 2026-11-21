@@ -1,5 +1,8 @@
 # The recordings the tests read, relative to RBR_RECORDINGS: scripts/pack-test-data.sh packs these. A test that reads
 # another recording adds it here, and the next release carries it; with RBR_RECORDINGS set, a missing one fails.
+# rsf/: the RSF sessions scripts/gate.sh runs, without the car packs' and the game's files (session.bin packed through
+# harness/session.py --strip; no files/, and setup.lsp only where it is the player's saved setup): rsf_compare.py takes
+# those from RBR_RSF, checked against the session's sha256.
 drive-arctic-snow.auto
 drive-arctic-snow.bin
 drive-rcv-help-corolla-34.bin
@@ -28,3 +31,36 @@ peek/h1-tanner-corolla.peek.bin
 peek/rcv-help-corolla-34.peek.bin
 peek/rcv-retire-impreza00-45.peek.bin
 peek/rcv-stuck-206-64.peek.bin
+rsf/drive2/meta.txt
+rsf/drive2/1/setup.lsp
+rsf/drive2/5/attempt.txt
+rsf/drive2/5/physics.bin
+rsf/drive2/5/session.bin
+rsf/drive1/meta.txt
+rsf/drive1/2/attempt.txt
+rsf/drive1/2/physics.bin
+rsf/drive1/2/session.bin
+rsf/ngp-pair1/meta.txt
+rsf/ngp-pair1/1/attempt.txt
+rsf/ngp-pair1/1/physics.bin
+rsf/ngp-pair1/1/session.bin
+rsf/ap-fwd-gravel/meta.txt
+rsf/ap-fwd-gravel/1/attempt.txt
+rsf/ap-fwd-gravel/1/physics.bin
+rsf/ap-fwd-gravel/1/session.bin
+rsf/ap-rwd-gravel/meta.txt
+rsf/ap-rwd-gravel/1/attempt.txt
+rsf/ap-rwd-gravel/1/physics.bin
+rsf/ap-rwd-gravel/1/session.bin
+rsf/ap-fwd-fast/meta.txt
+rsf/ap-fwd-fast/1/attempt.txt
+rsf/ap-fwd-fast/1/physics.bin
+rsf/ap-fwd-fast/1/session.bin
+rsf/ap-awd-wet/meta.txt
+rsf/ap-awd-wet/1/attempt.txt
+rsf/ap-awd-wet/1/physics.bin
+rsf/ap-awd-wet/1/session.bin
+rsf/ap-rwd-wet/meta.txt
+rsf/ap-rwd-wet/1/attempt.txt
+rsf/ap-rwd-wet/1/physics.bin
+rsf/ap-rwd-wet/1/session.bin

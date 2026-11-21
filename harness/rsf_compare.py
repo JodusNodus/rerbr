@@ -438,6 +438,8 @@ def race_flags(game, meta, opts, attempt, s):
     else:
         notes.append("damage level: the boot's default (safe); this session does not record it (--damage)")
     setup = opts.setup or next((p for p in [os.path.join(attempt, "setup.lsp")] if os.path.exists(p)), None)
+    if not setup and named.get("setup"):  # a published session: the setup from the install, checked
+        setup = install_file(named["setup"], s, pack or named_pack)
     if setup:
         flags += ["--setup", setup]
     else:
@@ -487,6 +489,36 @@ def surface_of(map_id):
     return rss.SURFACES.index(rss.surface(map_id, path))
 
 
+def install_path(rel):
+    """RBR_RSF/rel in the install's own case (the session's names are lower case), or None."""
+    here = os.environ.get("RBR_RSF", "")
+    for part in [p for p in rel.replace("\\", "/").split("/") if p]:
+        names = {n.lower(): n for n in os.listdir(here)} if os.path.isdir(here) else {}
+        if part.lower() not in names:
+            return None
+        here = os.path.join(here, names[part.lower()])
+    return here
+
+
+def install_file(name, s, pack):
+    """The install's copy of the session file `name` (session.file_name; a published session holds only its digest,
+    session.strip): RBR_RSF's file of that name, or for the car slot's folder (`physics/<slot>/`, where RSF copies the
+    chosen car) the pack's own (`rsfdata/cars/<pack>/`), whichever has the session's digest. A Failure when none has."""
+    import hashlib
+    want = rss.file_digests(s).get(name)
+    if not want:
+        raise Failure("the session holds no copy or digest of %s" % name)
+    rel = name[name.index("rsfdata/"):] if "rsfdata/" in name else name
+    slot = re.fullmatch(r"physics/[^/]+/(.+)", rel)
+    candidates = [rel] + (["rsfdata/cars/%s/%s" % (pack, slot.group(1))] if slot and pack else [])
+    for c in candidates:
+        path = install_path(c)
+        if path and os.path.isfile(path) and hashlib.sha256(open(path, "rb").read()).hexdigest() == want:
+            return path
+    raise Failure("%s: no file in RBR_RSF (%s) has the recorded sha256 %s (the car pack changed since?)" % (
+        name, ", ".join(candidates), want))
+
+
 def car_sensitivity(attempt, loaded=None):
     """The car's ForceFeedbackSensitivity_NGP (S before the ini's percentage) and the file it came from: the RSF
     pack's common.lsp the attempt loaded (<n>/files), else RBR_RSF's; 100 (physics.lsp's) without one. The pack is
@@ -499,13 +531,9 @@ def car_sensitivity(attempt, loaded=None):
         for root, _, files in os.walk(os.path.join(attempt, "files")):
             if root.lower().replace("\\", "/").endswith(pack) and "common.lsp" in files:
                 candidates.append(os.path.join(root, "common.lsp"))
-        rsf = os.environ.get("RBR_RSF", "")
-        parts = [p for p in pack.split("/") if p]
-        here = rsf
-        for part in parts:  # the install's own case
-            names = {n.lower(): n for n in os.listdir(here)} if os.path.isdir(here) else {}
-            here = os.path.join(here, names.get(part, part))
-        candidates.append(os.path.join(here, "common.lsp"))
+        here = install_path(pack)
+        if here:
+            candidates.append(os.path.join(here, "common.lsp"))
     for path in candidates:
         if os.path.exists(path):
             m = re.search(r"ForceFeedbackSensitivity_NGP\s+([-0-9.eE]+)", open(path, errors="replace").read())
