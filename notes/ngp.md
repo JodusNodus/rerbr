@@ -88,7 +88,7 @@ declined). NGP base from the `CCar::CDef` key dict (`Options.ngp_base`; `rbr-ste
 Race steps run on NGP's thread at Windows' default control word `0x27f` (53 bits); vanilla runs at `0x7f` (24 bits,
 D3D9). The load's settle runs on the game thread at 24 bits (`ngp-cw11`). `rbr_physics::fpu` holds the precision as
 thread-local state (`fpu::set_precision`, scoped `Precision::scope` / `with_precision`; PC=53 until set); the pure
-host sets it from the app state, the emulator from the snapshot (`RBR_REPLAY_FCW` overrides; a 1.02 snapshot runs
+host sets it from the app state, the retired emulator took it from the snapshot (a 1.02 snapshot ran
 at PC=24). At 53 bits an x87 chain rounds once at its store and st0 returns stay doubles, so such ports take a
 53-bit path (`fpu::round_x87`). Files still rounding to 24 bits unconditionally are fixed as runs reach them.
 
@@ -134,7 +134,7 @@ All in `rbr-standalone --boot --ngp-physics`:
    (`crates/rbr-physics/tests/load_defs.rs`, `RBR_NGP_PHYSICS`, `RBR_NGP_LOAD`).
 2. Per-car init and `.data` fill (`ngp::layout::car_init`: `0x1003f5b0`, listener `0x100f06b0`, tyre copy
    `0x100f1690`; heap idle table `0x101767e8` and speed ring `0x101767b0`; damage push `0x4f13a6` to 11000 x `r`;
-   maps `EngineType_NGP` 11 to 1). Check: `harness/ngp_init_diff.py IMAGE ngp-data/load40`.
+   maps `EngineType_NGP` 11 to 1). Checked word for word against an NGP run's load dump (the tool, `ngp_init_diff.py`, is retired).
 3. Not ported: the car CRC check (anti-tamper, not a load result): CRCs the loaded values (`0x100e88e0` mode 1,
    `0x10041810`) against `CarId` (car def `+0x44d0`), on a mismatch sets the drive def's gear count `+0x654` to 3;
    the frame listener `0x100f1780` then calls `abort()` (`0x100ef4b0`) in gear `>= +0x654` above `40 + rand() % 20`
@@ -441,14 +441,14 @@ and packs carry no gearbox type.
 ## Test install and recordings
 
 A separate NGP 7.4.778 install on this PC (vanilla 1.02 plus NGP under Wine, `RBR_NGP_GAME`/`RBR_NGP_PREFIX`;
-harness plugin installed), `scripts/ngp-run.sh NAME [SECS]` (`LIVE=1`, `SNAPSHOT=`, `REPLAY=`). Slots
+harness plugin installed), `scripts/ngp-run.sh NAME [SECS]` (`LIVE=1`, `REPLAY=`). Slots
 (`scripts/ngp-install-car.py`): 2 BMW M3 E30 (RWD), 4 Fiesta Rally4 (FWD), 5 Fiesta Rally3 (AWD), 6 Celica ST185
 (AWD, centre diff type 5). Profile `pfMULLIGATAWNY` (`ClutchHelp 1`). Runs are kept in `$RBR_NGP_RUNS`.
 
 - Harness NGP mode (`HookCarControl`): with NGP loaded the recorder and playback hook `0x4e91f0` for the player's
   car, taking only calls from NGP.dll (`harness/matrix.py`: recordings stop past 2 GiB, pairs take 130k).
-- Oracle: `harness/replay.py` runs a whole NGP step bit-exact from a snapshot (UCRT emulated, CRT calls stubbed;
-  noise mask on long runs). NGP drives are deterministic in body state.
+- Oracle: the recorded-drive gate. (`replay.py`, retired, ran a whole NGP step bit-exact from a snapshot: UCRT
+  emulated, CRT calls stubbed; noise mask on long runs.) NGP drives are deterministic in body state.
 - `rbr-standalone --snapshot` is retired: ReRBR runs from `--boot` only.
 
 ### Replays
