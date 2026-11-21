@@ -183,20 +183,8 @@ A short list of documented differences is allowed (the default NaN sign, stale s
 heap addresses, frame-loop words). [verification.md](../notes/verification.md) has the commands and the masks,
 [physics.md](../notes/physics.md) the float rules.
 
-`harness/replay.py` (one step of the original in an emulator) reads the snapshots and the x87 cache, about 155 MB
-more (9.2 GB unpacked):
-
-```sh
-eval "$(scripts/fetch-test-data.sh ~/rerbr-test-data snapshots)"   # sets RBR_SNAPS, RBR_REPLAY_FPU_CACHE
-```
-
-The x87 cache holds the CPU's results for the transcendentals (`fsin`, `fcos`, ...), measured on the machine the
-recordings ran on. A run that needs a case the cache lacks reports those steps UNVERIFIED; name them in the pull
-request and the maintainers measure and publish them.
-
-The maintainers make new recordings and snapshots, running the original under Wine
+The maintainers make new recordings, running the original under Wine
 ([verification.md](../notes/verification.md#dev-setup)), and pack a release set with `scripts/pack-test-data.sh`.
-NGP's snapshots hold NGP's code and are not published.
 
 The C++98 reconstruction of the 1.02 binaries, used for the ports, lives in the frozen rbr-recomp repository with
 every note as of the split under the same paths. Paths under `src/`, `symbols/` and `types/` in comments refer to it.
