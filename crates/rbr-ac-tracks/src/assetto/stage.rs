@@ -1429,12 +1429,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     })
 }
 
-/// A converted stage's `settings.ini`: the sun, and a crisp blue haze (`[ReRbrAir]`, read by `rbr_btb::track::Air`;
-/// aerosol 0.05, the sky model's crisp end: at 0.2 Joux Verte's mountain 3.8 km off drew near white where CSP draws it
-/// blue-grey) without our dawn and dusk valley mist, which AC does not have. North is the stage's +z: AC's -z
+/// A converted stage's `settings.ini`: the sun, and its air (`[ReRbrAir]`, read by `rbr_btb::track::Air`): the
+/// renderer's own haze (no `fog_color` or `aerosol`: its clear day is the crisp blue one these keys once set on AC
+/// stages alone), without our dawn and dusk valley mist, which AC does not have. North is the stage's +z: AC's -z
 /// (`ai::world`), as CSP's compass gives it.
 const SETTINGS_INI: &str =
-    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nfog_color=0.55, 0.64, 0.80\naerosol=0.05\nmist=0\nnorth=0, 0, 1\n";
+    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nnorth=0, 0, 1\n";
 
 #[cfg(test)]
 mod tests {
@@ -1457,9 +1457,9 @@ mod tests {
         );
     }
     #[test]
-    fn the_settings_carry_a_crisp_blue_haze_and_north() {
+    fn the_settings_leave_the_haze_to_the_renderer_and_carry_north() {
         let air = rbr_btb::track::Air::from_ini(SETTINGS_INI).unwrap();
-        assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.55, 0.64, 0.80]), Some(0.05), Some(0.0)));
+        assert_eq!((air.fog_color, air.aerosol, air.mist), (None, None, Some(0.0)));
         assert_eq!(air.north, Some([0.0, 0.0, 1.0]));
     }
     #[test]

@@ -270,8 +270,8 @@ pub struct TrackInfo {
 }
 
 /// A converted stage's air (`[ReRbrAir]` of `settings.ini`): the hue of the ground haze (`fog_color`, display
-/// colour), the clear sky's aerosol optical depth (`aerosol`, 0.05 crisp to 0.2 hazy), each over the sky
-/// section's own, the share of the dawn and dusk valley mist (`mist`, 0 none to 1 the section's), and the stage's
+/// colour) and the aerosol optical depth (`aerosol`, 0.05 crisp to 0.2 hazy) of its clear days, each over the
+/// renderer's own (`skylight::CLEAR_AIR` in `rbr-render`; the converter no longer writes them), the share of the dawn and dusk valley mist (`mist`, 0 none to 1 the section's), and the stage's
 /// north (`north`, a horizontal direction in the stage's frame), which a stage of the plugin's never states.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Air {

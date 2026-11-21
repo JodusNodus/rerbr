@@ -353,7 +353,14 @@ height fog over any section; `--clouds` and `--precipitation` put any sky over a
 range, at least 600 m without `UseFog` (retail 69's light fog, stages 71 and 45's rows at 25..215 m hid the stage in a
 white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled clouds and tone curve are ours.
 
-- Converted stage haze (ours, 2026-11-19): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
+- One air for every stage (ours, 2026-11-21, `skylight::Air`): under the physically based sky the haze no longer
+  takes the section's fog colour, its `FogEnd` on a clear day or the plain word's thicker aerosol. Clear days (any
+  section not `hazy`, overcast or raining) take the crisp blue air calibrated on Joux Verte against a photograph
+  (aerosol 0.05, hue (0.55, 0.64, 0.80), 7.7 km; `notes/assetto.md`), overcast or rain a grey one (0.1, 4.6 km),
+  `hazy` sections a hazy one (0.2, 2.3 km); a fogged section keeps its `FogEnd` as the reach, in a grey hue. A
+  converted stage's `[ReRbrAir]` `fog_color` and `aerosol` replace the clear day's only (they overrode every weather);
+  the converter no longer writes them. The linear fog (lighting off) and our dawn and dusk mist are unchanged.
+- Converted stage haze (ours, 2026-11-19, superseded in part by the above): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
   ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
   crisp to 0.2 hazy, as `skylight.rs`' words) and share of the height fog's dawn and dusk mist (`mist`, 0 none to 1,
   `Atmosphere::mist`); without it the section's. AC imports write `mist=0`: at Sa Calobra 06:45 the mist filled the

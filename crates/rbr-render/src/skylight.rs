@@ -3,11 +3,10 @@
 //! (`sky_lut.wgsl`) for the sky's light, the haze between the eye and the stage, the sunlight's colour, and the sky's
 //! irradiance and blurred reflection for the lit draws (image-based light).
 //!
-//! The air is ours, from the stage's `TrackSettings.ini` section ([`Atmosphere`]): the game's own scattering values
-//! (`Rayleigh_Multiplier`, `Mie_Multiplier`, `Turbidity`) drive shaders that are not reproduced, and most are 0.001 or
-//! 0. Clear air (Rayleigh, ozone and an aerosol as dense as the section's `crisp` or `hazy` word says) and a ground
-//! haze as dense as the section's fog: it hides [`FOG_COVER`] of the stage at `FogEnd` (under a clear sky no nearer
-//! than [`CLEAR_REACH`]), as the renderer's earlier aerial perspective did, in the fog's hue. Under an overcast sky ([`Atmosphere::overcast`]) the sky is the cloud
+//! The air is ours, the same on every stage ([`Air`]): the game's own scattering values (`Rayleigh_Multiplier`,
+//! `Mie_Multiplier`, `Turbidity`) drive shaders that are not reproduced, and most are 0.001 or 0. The section
+//! ([`Atmosphere`]) only picks the weather's air: Rayleigh, ozone, an aerosol and a ground haze that hides
+//! [`FOG_COVER`] of the stage at the air's reach, or under the section's fog at its `FogEnd`. Under an overcast sky ([`Atmosphere::overcast`]) the sky is the cloud
 //! deck's, the CIE overcast sky letting through a quarter of the clear sky's light. Night keeps the night sky (`night.wgsl`).
 //!
 //! The tables also give the day's light on the stage, and the gain that brings it and the sky to the renderer's light
@@ -35,18 +34,34 @@ const CUBE_LEVELS: u32 = 6;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 pub(crate) const SHADER: &str = include_str!("skylight.wgsl");
 
-/// The share of the stage the ground haze hides at `FogEnd` (before the section's `haze` cap; `Atmosphere::haze`).
+/// The share of the stage the ground haze hides at its reach (before the section's `haze` cap; `Atmosphere::haze`).
 pub(crate) const FOG_COVER: f32 = 0.7;
-/// Under a clear sky the ground haze hides [`FOG_COVER`] no nearer than this, km, for `crisp`, plain and `hazy`
-/// sections: their `FogEnd` (about 1 km) is the game's linear fog, which its scattering shaders replace there, and as
-/// a visibility it hid the backdrop's hills in a white wall (ours).
-const CLEAR_REACH: [f32; 3] = [7.7, 4.6, 2.3];
+/// The air a stage is drawn with: the aerosol's optical depth (clean to hazy continental air at 550 nm; Hillaire's
+/// Earth, 0.005, left the sky's light under half the measured share of the day's, about 15 to 20 percent at noon, and
+/// the low sun half again too bright), the ground haze's hue (display colour), the distance at which it hides
+/// [`FOG_COVER`], km, and its scale height, km.
+struct Air {
+    aerosol: f32,
+    hue: Vec3,
+    reach: f32,
+    height: f32,
+}
+
+/// Ours on every stage, in place of the sections' fog colours, `FogEnd` and weather words (2026-11-21): the clear day
+/// as Joux Verte's mountain against a photograph (`notes/assetto.md`: a warm grey at aerosol 0.2 drew it near white,
+/// this blue-grey within 15 levels of the photograph); the other two as the `crisp` and `hazy` words' were before. A
+/// converted stage's `[ReRbrAir]` replaces the clear day's aerosol and hue ([`Atmosphere::aerosol`],
+/// [`Atmosphere::haze_hue`]).
+const CLEAR_AIR: Air = Air { aerosol: 0.05, hue: Vec3::new(0.55, 0.64, 0.80), reach: 7.7, height: 0.15 };
+/// Under an overcast sky or rain.
+const GREY_AIR: Air = Air { aerosol: 0.1, hue: Vec3::new(0.68, 0.71, 0.76), reach: 4.6, height: 0.2 };
+/// Under the `hazy` sections.
+const HAZY_AIR: Air = Air { aerosol: 0.2, hue: Vec3::new(0.74, 0.74, 0.74), reach: 2.3, height: 0.3 };
+/// The hue of the section's fog (its `FogEnd` its reach), whatever its colour.
+const FOG_HUE: Vec3 = Vec3::new(0.72, 0.74, 0.77);
 /// Air (Rayleigh) scattering at sea level per km, and its scale height (Hillaire 2020).
 const RAYLEIGH: [f32; 4] = [5.802e-3, 13.558e-3, 33.1e-3, 8.0];
-/// The clear sky's aerosol (Mie): its optical depth for the `crisp`, plain and `hazy` sections (clean to hazy
-/// continental air at 550 nm; Hillaire's Earth, 0.005, left the sky's light under half the measured share of the day's,
-/// about 15 to 20 percent at noon, and the low sun half again too bright), its scale height, km, and its anisotropy.
-const AEROSOL_DEPTH: [f32; 3] = [0.05, 0.1, 0.2];
+/// The aerosol's (Mie) scale height, km, and its anisotropy.
 const AEROSOL_HEIGHT: f32 = 1.2;
 const MIE_G: f32 = 0.7;
 
@@ -187,22 +202,26 @@ pub(crate) fn sky_uniform(atmosphere: &Atmosphere) -> Option<SkyUniform> {
         .moon
         .map_or(flat * elevation.to_radians().cos() + Vec3::Y * elevation.to_radians().sin(), |m| m.to_sun);
     let words = atmosphere.section.as_deref().unwrap_or("").to_ascii_lowercase();
-    let (word_aerosol, haze_height, clear) = if words.contains("crisp") {
-        (AEROSOL_DEPTH[0], 0.15, CLEAR_REACH[0])
-    } else if words.contains("hazy") {
-        (AEROSOL_DEPTH[2], 0.3, CLEAR_REACH[2])
+    let (air, clear) = if words.contains("hazy") {
+        (&HAZY_AIR, false)
+    } else if atmosphere.overcast() || atmosphere.precipitation() > 0.0 {
+        (&GREY_AIR, false)
     } else {
-        (AEROSOL_DEPTH[1], 0.2, CLEAR_REACH[1])
+        (&CLEAR_AIR, true)
     };
-    let aerosol = atmosphere.aerosol.unwrap_or(word_aerosol);
-    // The ground haze: what the fog hides at `FogEnd` along the ground (at least `CLEAR_REACH` under a clear sky, or
-    // with our fog off), in the fog's hue.
+    let aerosol = atmosphere.aerosol.filter(|_| clear).unwrap_or(air.aerosol);
+    // The ground haze: what it hides at the air's reach along the ground, or under the section's fog (unless ours is
+    // off) at its `FogEnd`.
     let fogged = atmosphere.use_fog && atmosphere.fog != Some(crate::atmosphere::Fog::Off);
-    let fog_end = (atmosphere.fog_end * 0.001).max(if fogged { 0.05 } else { clear });
-    let along = (-(1.0 - FOG_COVER).ln() / fog_end).clamp(0.0, 8.0);
-    let fog = atmosphere.fog_color.max(Vec3::splat(1e-3)).powf(2.2);
-    let hue = fog / luminance(fog);
-    let haze = hue * along * (EYE_HEIGHT / haze_height).exp();
+    let (reach, hue) = if fogged {
+        ((atmosphere.fog_end * 0.001).max(0.05), FOG_HUE)
+    } else {
+        (air.reach, atmosphere.haze_hue.filter(|_| clear).unwrap_or(air.hue))
+    };
+    let haze_height = air.height;
+    let along = (-(1.0 - FOG_COVER).ln() / reach).clamp(0.0, 8.0);
+    let hue = hue.max(Vec3::splat(1e-3)).powf(2.2);
+    let haze = hue / luminance(hue) * along * (EYE_HEIGHT / haze_height).exp();
     let snow = words.contains("snow") || section_map(&words).is_some_and(|map| (10..20).contains(&map));
     let albedo = if snow { 0.6 } else { 0.2 };
     let (moon, night_sky) = moon_light(atmosphere);
@@ -458,19 +477,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_haze_follows_the_fog() {
+    fn the_air_is_ours_and_the_fog_sets_only_its_reach() {
         let clear = Atmosphere { section: Some("54E_crisp_clear".into()), fog_end: 975.0, ..Atmosphere::default() };
-        let far = Atmosphere { fog_end: 80_000.0, ..clear.clone() };
-        let near = Atmosphere { fog_end: 300.0, ..clear.clone() };
-        let [haze, far_haze, near_haze] = [&clear, &far, &near].map(|a| sky_uniform(a).unwrap().haze);
-        // Under a clear sky the fog's end sets the haze only past `CLEAR_REACH`; its hue is the fog's (blue for the
-        // clear sections' fog).
-        assert!(haze[1] > 3.0 * far_haze[1]);
-        assert_eq!(near_haze, haze);
-        assert!(far_haze[2] > far_haze[0]);
-        // `crisp` keeps a thinner haze layer than `hazy`.
-        let hazy = Atmosphere { section: Some("54E_hazy_clear".into()), ..clear };
-        assert!(sky_uniform(&hazy).unwrap().haze[3] > far_haze[3]);
+        let plain = Atmosphere { section: Some("54E_clear".into()), fog_end: 80_000.0, ..clear.clone() };
+        let warm = Atmosphere { fog_color: Vec3::new(0.9, 0.6, 0.3), ..clear.clone() };
+        let [haze, plain_haze, warm_haze] = [&clear, &plain, &warm].map(|a| sky_uniform(a).unwrap().haze);
+        // Without fog neither the section's `FogEnd`, its fog colour nor a plain word moves the clear day's blue haze.
+        assert_eq!(plain_haze, haze);
+        assert_eq!(warm_haze, haze);
+        assert!(haze[2] > haze[0]);
+        // Fog: the section's `FogEnd` its reach, grey.
+        let fog = sky_uniform(&Atmosphere { use_fog: true, fog_end: 300.0, ..warm.clone() }).unwrap().haze;
+        assert!(fog[1] > 10.0 * haze[1]);
+        assert!(fog[0] < fog[2]);
+        // `hazy` keeps a thicker, deeper haze and aerosol; a converted stage's air only on a clear day.
+        let hazy = Atmosphere { section: Some("54E_hazy_clear".into()), ..clear.clone() };
+        let [hazy_sky, clear_sky] = [&hazy, &clear].map(|a| sky_uniform(a).unwrap());
+        assert!(hazy_sky.haze[3] > haze[3] && hazy_sky.mie[0] > clear_sky.mie[0]);
+        let stage = |a: &Atmosphere| Atmosphere { aerosol: Some(0.3), ..a.clone() };
+        assert!(sky_uniform(&stage(&clear)).unwrap().mie[0] > clear_sky.mie[0]);
+        assert_eq!(sky_uniform(&stage(&hazy)).unwrap().mie, hazy_sky.mie);
     }
 
     #[test]

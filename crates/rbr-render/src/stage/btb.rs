@@ -285,9 +285,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         atmosphere.sun_direction = sun;
     }
     if let Some(air) = scene.air {
-        if let Some(c) = air.fog_color {
-            atmosphere.fog_color = Vec3::from(c);
-        }
+        atmosphere.haze_hue = air.fog_color.map(Vec3::from);
         atmosphere.aerosol = air.aerosol;
         atmosphere.mist = air.mist;
         atmosphere.north = air.north.map(Vec3::from);
