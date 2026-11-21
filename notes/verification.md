@@ -110,6 +110,8 @@ scripts/rsf-session.sh fetch <name>     # to $RBR_RECORDINGS/rsf/<name>
 | `meta.txt` | `before.`/`after.` keys: date, RSF launcher and NGP.dll versions, sha256 of NGP.dll and exe, plugin commit, `RichardBurnsRally.ini [NGP]`, `RBRControls.ini`, driven cars' `steeringrotation`, `forcefeedbacksensitivity*` (`rallysimfans_personal.ini [car<id>]`, those keys only), wheel/shifter driver and lg4ff `range`, `autocenter`, `gain` |
 | `harness.log`, `watch.log` | plugin log, session's |
 
+Published sessions (`data/test-data.recordings`, `rsf/`): `session.bin` through `session.py --strip` (each FIL1 but the player's saved setups and `.acm` holds `sha256:<hex>`), no `files/`, `setup.lsp` only when a saved setup; `rsf_compare.py` takes a missing setup from `RBR_RSF` by `attempt.txt`'s `setup=`, or for `physics/<slot>/` from the pack's own folder, whichever matches the digest (`install_file`).
+
 Driverless tests: `start` takes `AUTO="map car weather tyre [damage [transmission]]"`, `PLAYBACK=<FRM1 under the home>`, `FAST=N`; `scripts/rsf-autopilot.sh` runs one with an RSF car (below). A clang-cl plugin before the `CallEmit` fix recorded the player's live controls (zeros) in a playback's FRM1 in place of the fed ones: clang inlined the asm call and lost the control pointer.
 
 Replay an attempt as `rbr-launcher`'s command does for a pack car: `rbr-standalone --boot --recording <n>/physics.bin --stage track-<map>_<letter> --weather W --tyre T --ngp-physics $RBR_NGP_PHYSICS --rsf-car $RBR_RSF/rsfdata/cars/<pack>` (map, weather, tyre from `GAM1`, the pack from `attempt.txt`; the launcher passes the same car resolved as `--car-pack/--car-model/--car-bank/--car-key`).

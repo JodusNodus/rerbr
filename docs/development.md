@@ -77,6 +77,10 @@ export RBR_NGP_PHYSICS=$PWD/ngp-physics.rbz
 eval "$(scripts/fetch-test-data.sh ~/rerbr-test-data)"   # sets RBR_RECORDINGS
 ```
 
+They include the RSF sessions `scripts/gate.sh` runs (`rsf/`), without the game's and the car packs' files: their
+`session.bin` holds those files' sha256 (`harness/session.py --strip`), and `rsf_compare.py` takes the setups from your
+RallySimFans install (`RBR_RSF`), failing on a file whose hash differs (a car pack updated since).
+
 ## Running it
 
 `cargo build --release && target/release/rerbr` builds the three programs a player needs and starts the launcher:
