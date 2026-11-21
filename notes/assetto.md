@@ -573,8 +573,9 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     The minimum cuts half of Joux's banks in CSP, yet their texture's linear luminance passes it 96%: CSP tests
     something darker. Texture x `ksDiffuse` fitted Joux (0.44 kept) and Sa Calobra but not Akina: at a sunlit verge
     of `haruna_gras513` (`ksDiffuse` 0.2) lifting the minimum changed nothing (0.063 / 0.059), at a shaded bank of the
-    same material it doubled the cover (0.023 / 0.042), and ours under that rule kept 0.005 of the frame. Open: CSP
-    likely tests the lit ground (shade under the minimum), unprobed.
+    same material it doubled the cover (0.023 / 0.042), and ours under that rule kept 0.005 of the frame. Not the sun:
+    its grass stands in the same places at 15:39 and 10:20 (overlap 0.72, cover 0.077 / 0.081) though the shadows
+    moved. Open: what CSP's luminance reads (perhaps the texture region; our Prunières ground is darker than CSP's).
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.
