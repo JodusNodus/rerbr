@@ -28,6 +28,9 @@ use crate::{pages::Choice, Form};
 /// the one that gives AC EVO's torque by front slip angle).
 const TYRES_TRAIL_MM: &str = "25";
 
+/// The weight of the braking and drive pull added to the force from the tyres (`rbr-standalone --ffb-pull`).
+const PULL_WEIGHT: &str = "1";
+
 /// The viewer's `--clock` arguments for a start time, none for the stage's own light.
 pub fn clock_args(start: Option<u32>) -> Vec<String> {
     start.map_or_else(Vec::new, |minutes| vec!["--clock".into(), clock_text(minutes)])
@@ -790,6 +793,9 @@ impl Form {
         args.extend(self.drive_physics().args(car));
         if self.ffb.tyres {
             args.extend(["--ffb-tyres".to_owned(), TYRES_TRAIL_MM.to_owned()]);
+            if self.ffb.pull {
+                args.extend(["--ffb-pull".to_owned(), PULL_WEIGHT.to_owned()]);
+            }
         } else if self.ffb.rack {
             args.push("--ffb-rack".to_owned());
         }
@@ -1627,8 +1633,9 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail, NGP's unfiltered
-    /// torque as `--ffb-rack` (the tyres' first if both are set); off, the command has neither.
+    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail and the pull's
+    /// weight (the pull only with it), NGP's unfiltered torque as `--ffb-rack` (the tyres' first if both are set);
+    /// off, the command has neither.
     #[test]
     fn the_tyres_force_reaches_the_standalone() {
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
@@ -1640,11 +1647,12 @@ mod tests {
             (true, true, tyres_on, false),
         ] {
             let Some((_, mut form)) = real_form("command-ffb-tyres", text, false) else { return };
-            (form.ffb.tyres, form.ffb.rack) = (tyres, rack);
+            (form.ffb.tyres, form.ffb.rack, form.ffb.pull) = (tyres, rack, true);
             let args = launch(&mut form);
             let standalone = standalone_part(&args);
             assert_eq!(value(standalone, "--ffb-tyres"), trail, "{args:?}");
             assert_eq!(standalone.iter().any(|a| a == "--ffb-rack"), rack_arg, "{args:?}");
+            assert_eq!(value(standalone, "--ffb-pull"), trail.as_ref().map(|_| "1".to_owned()), "{args:?}");
             let viewer = &args[..args.len() - standalone.len()];
             assert_eq!(value(viewer, "--ffb-tyres"), None, "{args:?}");
             assert!(!viewer.iter().any(|a| a == "--ffb-rack"), "{args:?}");
