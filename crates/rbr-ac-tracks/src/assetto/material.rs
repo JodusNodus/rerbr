@@ -760,7 +760,10 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     }
     match extras.grass {
         rbr_btb::scene::Grass::None => {}
-        rbr_btb::scene::Grass::Grows => out.push_str("ReRbrGrass=1\n"),
+        rbr_btb::scene::Grass::Grows(0) => out.push_str("ReRbrGrass=1\n"),
+        rbr_btb::scene::Grass::Grows(p) => {
+            let _ = writeln!(out, "ReRbrGrass=1\nReRbrGrassProfile={p}");
+        }
         rbr_btb::scene::Grass::Hides => out.push_str("ReRbrGrass=hide\n"),
         rbr_btb::scene::Grass::HidesAlpha => out.push_str("ReRbrGrass=hide-alpha\n"),
     }
@@ -788,9 +791,18 @@ mod tests {
             "m",
             "t.dds",
             false,
-            &Extras { grass: rbr_btb::scene::Grass::Grows, ..Extras::default() },
+            &Extras { grass: rbr_btb::scene::Grass::Grows(0), ..Extras::default() },
         );
         assert!(out.ends_with("ReRbrGrass=1\n\n"));
+        let mut profiled = String::new();
+        section_with(
+            &mut profiled,
+            "m",
+            "t.dds",
+            false,
+            &Extras { grass: rbr_btb::scene::Grass::Grows(2), ..Extras::default() },
+        );
+        assert!(profiled.ends_with("ReRbrGrass=1\nReRbrGrassProfile=2\n\n"));
         section(&mut out, "n", "t.dds", false);
         assert_eq!(out.matches("ReRbrGrass").count(), 1);
     }

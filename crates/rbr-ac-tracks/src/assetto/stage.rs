@@ -685,9 +685,9 @@ fn archive(name: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(zip.finish().map_err(|e| e.to_string())?.into_inner())
 }
 
-/// A drawn mesh's tile, source material and LOD range bits.
-/// A drawn mesh's tile, material, source `LODIn` and `LODOut`, and whether it is far scenery ([`Far`]).
-type DrawKey = ((i64, i64), usize, u32, u32, bool);
+/// A drawn mesh's tile, material, source `LODIn` and `LODOut`, whether it is far scenery ([`Far`]), and its grass profile
+/// ([`csp::GrassFx::profile`], 0 where the grass does not grow on it).
+type DrawKey = ((i64, i64), usize, u32, u32, bool, u8);
 
 /// A tile's bake as a DDS file, and the builder drawn with it.
 type Tile = (Vec<u8>, Builder);
@@ -1055,6 +1055,10 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             if physical.is_none() && !visible {
                 continue;
             }
+            // The grass profile where each of its triangles stands (CSP's GrassFX adjustments).
+            let mat_name = &model.materials[mesh.material].name;
+            let profile = grass_fx.as_ref().filter(|g| matches!(g.role(mat_name), Grass::Grows(_)));
+            let profile = profile.map(|g| g.profile(mat_name, &mesh.name));
             // `ksPerPixelNM_UVMult` reads its diffuse at the UV times `1 + diffuseMult`.
             let uv_scale = material::uv_multipliers(&model, &model.materials[mesh.material]).map_or(1., |m| m[0]);
             for face in &mesh.triangles {
@@ -1077,7 +1081,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 }
                 let lod = (mesh.lod_in.to_bits(), mesh.lod_out.to_bits());
                 if draw.contains(&t.pos) {
-                    let key = (scenery_tile(&t, origin), mesh.material, lod.0, lod.1, false);
+                    let centre = |k: usize| vertices.iter().map(|v| v.position[k]).sum::<f32>() / 3.0;
+                    let profile = profile.as_ref().map_or(0, |at| at([centre(0), centre(2)]));
+                    let key = (scenery_tile(&t, origin), mesh.material, lod.0, lod.1, false, profile);
                     builders.entry(key).or_default().add(&t, origin, true);
                 } else if far.keeps(&t.pos) {
                     far_kept.push(t);
@@ -1089,7 +1095,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             let joined = far.connected(&far_kept, &far_rest);
             let rest = far_rest.into_iter().zip(joined).filter_map(|(t, joined)| joined.then_some(t));
             for t in far_kept.into_iter().chain(rest) {
-                let key = (far.tile(&t, origin), mesh.material, lod.0, lod.1, true);
+                // No grass grows on far scenery: the stage's profile.
+                let key = (far.tile(&t, origin), mesh.material, lod.0, lod.1, true, 0);
                 builders.entry(key).or_default().add(&t, origin, true);
                 far_triangles += 1;
             }
@@ -1105,7 +1112,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         let mut names_of = BTreeMap::new();
         let mut drawn = Vec::new();
         for (i, (key, mut b)) in builders.into_iter().enumerate() {
-            let mat_index = key.1;
+            let (mat_index, profile) = (key.1, key.5);
+            // The grass's role on the material, at the mesh's profile.
+            let grass = |name: &str| match grass_fx.as_ref().map_or(Grass::None, |g| g.role(name)) {
+                Grass::Grows(_) => Grass::Grows(profile),
+                role => role,
+            };
             if let Some((bytes, baked)) = tiles[i].take() {
                 bank.baked.insert(model.materials[mat_index].shader.clone());
                 let texture = bank.put(bytes, "dds")?;
@@ -1113,7 +1125,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
                 let extras = material::Extras {
-                    grass: grass_fx.as_ref().map_or(Grass::None, |g| g.role(&model.materials[mat_index].name)),
+                    grass: grass(&model.materials[mat_index].name),
                     ..bank.tile_extras(&model, mat_index)
                 };
                 if !extras.bump_uv {
@@ -1124,17 +1136,18 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 drawn.push((key, b));
                 continue;
             }
-            b.material = match names_of.get(&mat_index) {
+            b.material = match names_of.get(&(mat_index, profile)) {
                 Some(name) => String::clone(name),
                 None => {
                     let mat = &model.materials[mat_index];
                     let (texture, opaque, gain) = bank.diffuse(&model, mat_index)?;
-                    let name = format!("ac\\{model_index}_{mat_index}");
-                    let extras = material::Extras {
-                        grass: grass_fx.as_ref().map_or(Grass::None, |g| g.role(&mat.name)),
-                        ..bank.extras(&model, mat_index)?
-                    }
-                    .stored_at(gain);
+                    // A grass profile other than the stage's is a material of its own.
+                    let name = match profile {
+                        0 => format!("ac\\{model_index}_{mat_index}"),
+                        p => format!("ac\\{model_index}_{mat_index}_g{p}"),
+                    };
+                    let extras =
+                        material::Extras { grass: grass(&mat.name), ..bank.extras(&model, mat_index)? }.stored_at(gain);
                     material::section_with(
                         &mut materials,
                         &name,
@@ -1143,7 +1156,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         &extras,
                     );
                     names.push(name.clone());
-                    names_of.insert(mat_index, name.clone());
+                    names_of.insert((mat_index, profile), name.clone());
                     name
                 }
             };
@@ -1152,10 +1165,10 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         let builders = drawn;
         let boxes: Vec<_> = builders
             .iter()
-            .map(|((_, _, lod_in, lod_out, _), b)| (bounds(&b.positions), (*lod_in, *lod_out)))
+            .map(|((_, _, lod_in, lod_out, ..), b)| (bounds(&b.positions), (*lod_in, *lod_out)))
             .collect();
         let mut batch = Vec::new();
-        for (((_, mat, lod_in, lod_out, far), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
+        for (((_, mat, lod_in, lod_out, far, _), mut b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
             drawn_triangles += b.triangles.len();
             *light_areas.entry(b.material.clone()).or_default() += b.area();
             let lod_in = f32::from_bits(lod_in).max(0.);

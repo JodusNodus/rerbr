@@ -161,8 +161,9 @@ pub struct DrawState {
     /// The near ground (ours): a geometry block's list 1 draws (the biased ones), a BTB stage's ground objects. The
     /// terrain detail, the wet film and the grass field take it (`crate::puddles::ground`).
     pub ground: bool,
-    /// A BTB material the stage's grass grows on (`ReRbrGrass`, [`crate::grass`]); `false` elsewhere.
-    pub grass: bool,
+    /// A BTB material the stage's grass grows on (`ReRbrGrass`, [`crate::grass`]), at its profile (0 the stage's, `n`
+    /// its `n`th, `rbr_btb::track::GrassFx::profiles`); `None` elsewhere.
+    pub grass: Option<u8>,
     /// Cull back faces (`D3DCULL_CCW`).
     pub cull_back: bool,
     /// Alpha blended over the frame.
@@ -573,7 +574,7 @@ pub(super) fn block_mesh(block: &lbs::GeometryBlock, report: &mut LoadReport) ->
                     // List 1 (the render set's list at `+0x94`) is the one `HH_H12D_7500_FillFloat` biases.
                     mip_bias: lod == Lod::Near,
                     ground: lod == Lod::Near,
-                    grass: false,
+                    grass: None,
                     cull_back: true,
                     blend: false,
                     depth_test: true,
@@ -637,7 +638,7 @@ pub(super) fn object_mesh(item: &lbs::ObjectItem, report: &mut LoadReport) -> Me
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
         ground: false,
-        grass: false,
+        grass: None,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -681,7 +682,7 @@ pub(super) fn interactive_mesh(object: &lbs::InteractiveObject<'_>, report: &mut
             alpha_ref: Some(OBJECT_ALPHA_REF),
             mip_bias: false,
             ground: false,
-            grass: false,
+            grass: None,
             cull_back: false,
             blend: false,
             depth_test: true,
@@ -719,7 +720,7 @@ pub(super) fn face_mesh(item: &lbs::SkyItem, report: &mut LoadReport) -> Mesh {
         alpha_ref: Some(OBJECT_ALPHA_REF),
         mip_bias: false,
         ground: false,
-        grass: false,
+        grass: None,
         cull_back: false,
         blend: false,
         depth_test: true,
@@ -803,7 +804,7 @@ pub(super) fn water_mesh(item: &lbs::SurfaceItem<'_>, report: &mut LoadReport) -
                 alpha_ref: Some(0),
                 mip_bias: false,
                 ground: false,
-                grass: false,
+                grass: None,
                 cull_back: true,
                 blend: true,
                 depth_test: true,

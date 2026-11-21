@@ -691,7 +691,7 @@ fn draw_state(texture: Option<TextureRef>, opacity: bool) -> DrawState {
         alpha_ref: opacity.then_some(ALPHA_REF),
         mip_bias: false,
         ground: false,
-        grass: false,
+        grass: None,
         cull_back: !opacity,
         blend: false,
         depth_test: true,
