@@ -2,7 +2,7 @@
 // target (`graded` in `shader.wgsl`). A glare chain halves it (`fs_glare_first`, `fs_glare_down`, the 13-tap filter of
 // Jimenez 2014, each level weighted by a camera's diffraction) and adds the levels back up (`fs_glare_up`, a 3x3 tent);
 // `cs_histogram` bins the scene's light and `cs_meter` sets the exposure from the histogram, eased over time as an eye
-// adapts; `fs_composite` adds the glare, exposes, and applies Gran Turismo 7's tone mapping (`gt7`; sharpening first
+// adapts; `fs_composite` adds the glare, exposes, and applies the tone mapping (`tone_curve`; sharpening first
 // under TAA, `sharpened`).
 
 @group(0) @binding(0) var source: texture_2d<f32>;
@@ -109,7 +109,7 @@ const CABIN_STOPS: f32 = 2.5;
 const CABIN_TAPER: f32 = 0.1;
 // The exposure, as Unreal's and BeamNG's auto exposure: the metered light, back in luminance (over the pre-exposure),
 // as EV100 (ISO 100, the calibration constant `CALIBRATION`), held within `EV100_RANGE`, is exposed to `KEY`, middle
-// grey in GT7's frame buffer units (`gt7`), shifted by the exposure compensation curve (`compensation`). The curve is
+// grey before the tone curve's scale (`TONE_SCALE`), shifted by the exposure compensation curve (`compensation`). The curve is
 // Krawczyk, Myszkowski and Seidel's (2005) key value against the adapting luminance, relative to a sunny scene's
 // (EV100 15): dim scenes are drawn darker, as a dim scene looks darker to the adapted eye (twilight 1 to 3 EV down, a
 // moonlit night about 4.5). `KEY` 0.3681 is where GT7's curve shows middle grey at 0.415 of white, as AgX, the curve
@@ -182,8 +182,8 @@ const GLARE_APERTURE: vec2<f32> = vec2<f32>(1.4, 22.0);
 const PI: f32 = 3.14159265;
 // The glare chain: the most a tap reads, renderer units (`LIGHT_CAP` in `shader.wgsl`, the most a light source is drawn
 // at; only against a stray infinity). The local exposure's broad light takes the frame's light at most
-// `BROAD_OVER_WHITE` times the display's white, exposed (`GLARE_WHITE`, where `gt7` reaches white, 3.3 stops over
-// `KEY`): with the light sources' full light the local exposure darkened all about them (the car's rear and the glare
+// `BROAD_OVER_WHITE` times the display's white, exposed (`GLARE_WHITE`, where the GT7 curve before reached white, 3.3
+// stops over `KEY`; kept): with the light sources' full light the local exposure darkened all about them (the car's rear and the glare
 // under its tail lamps), and at white the night beam on the road burnt out (45O chase 23:00: 3.7% of the frame clipped,
 // 2.4% at 8).
 const CHAIN_CAP: f32 = 30000.0;
@@ -192,109 +192,42 @@ const BROAD_OVER_WHITE: f32 = 8.0;
 // How fast the exposure follows the frame, per second: faster down into a bright frame than up into a dark one.
 const ADAPT_SPEED: vec2<f32> = vec2<f32>(3.0, 1.2);
 
-// Gran Turismo 7's tone mapping (Polyphony Digital, SIGGRAPH 2025 Physically Based Shading course, and their MIT sample
-// `gt7_tone_mapping.cpp` 1.0, ICtCp mode; `notes/references/gt7-tone-mapping`). Its curve (`gt7_curve`: a toe up
-// to `GT7_MID`, linear to `GT7_LINEAR` of the peak, then a shoulder converging on the peak) maps each channel; the
-// mapped colour's intensity in ICtCp with the input's chroma, faded out between `GT7_FADE` of the peak's intensity,
-// goes back to RGB, and the two blend by `GT7_BLEND`. It works in linear Rec.2020 in GT's frame buffer units, 1 for
-// 100 cd/m2 (`GT7_UNIT`), and an SDR display's white is its 250 cd/m2 paper white (`GT7_PEAK`); the exposure (`KEY`) puts
-// light in those units. It reaches white about 3.3 stops over middle grey (AgX 0.92 of white at 4 stops); its highlights
-// keep their hue and lose their chroma only near white. Chosen over AgX on the lighting sheet (user, 2026-11-05).
-const GT7_PEAK: f32 = 2.5;
-const GT7_UNIT: f32 = 100.0;
-const GT7_ALPHA: f32 = 0.25;
-const GT7_MID: f32 = 0.538;
-const GT7_LINEAR: f32 = 0.444;
-const GT7_TOE: f32 = 1.28;
-const GT7_BLEND: f32 = 0.6;
-const GT7_FADE: vec2<f32> = vec2<f32>(0.98, 1.16);
-// The peak's ICtCp intensity: a grey's L, M and S are its own, so its PQ code, `pq(GT7_PEAK)`.
-const GT7_PEAK_INTENSITY: f32 = 0.6025592;
-// SMPTE ST 2084 (PQ): m1, m2; c1, c2, c3.
-const PQ_M: vec2<f32> = vec2<f32>(0.1593017578125, 78.84375);
-const PQ_C: vec3<f32> = vec3<f32>(0.8359375, 18.8515625, 18.6875);
-// The matrices below are written by rows, as published, and applied as `v * m`. Rec.709 to Rec.2020 and back
-// (ITU-R BT.2087, from the primaries); Rec.2020 to LMS, PQ-coded LMS to ICtCp, and back (ITU-T T.302; the sample's).
-const REC709_TO_2020: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(0.6274039, 0.3292830, 0.0433131),
-    vec3<f32>(0.0690973, 0.9195404, 0.0113623),
-    vec3<f32>(0.0163914, 0.0880133, 0.8955953),
-);
-const REC2020_TO_709: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(1.6604910, -0.5876411, -0.0728499),
-    vec3<f32>(-0.1245505, 1.1328999, -0.0083494),
-    vec3<f32>(-0.0181508, -0.1005789, 1.1187297),
-);
-const TO_LMS: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(0.412109375, 0.52392578125, 0.06396484375),
-    vec3<f32>(0.166748046875, 0.720458984375, 0.11279296875),
-    vec3<f32>(0.024169921875, 0.075439453125, 0.900390625),
-);
-const TO_ICTCP: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(0.5, 0.5, 0.0),
-    vec3<f32>(1.61376953125, -3.323486328125, 1.709716796875),
-    vec3<f32>(4.378173828125, -4.24560546875, -0.132568359375),
-);
-const FROM_ICTCP: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(1.0, 0.00860904, 0.11103),
-    vec3<f32>(1.0, -0.00860904, -0.11103),
-    vec3<f32>(1.0, 0.560031, -0.320627),
-);
-const FROM_LMS: mat3x3<f32> = mat3x3<f32>(
-    vec3<f32>(3.43661, -2.50645, 0.0698454),
-    vec3<f32>(-0.79133, 1.9836, -0.192271),
-    vec3<f32>(-0.0259499, -0.0989137, 1.12486),
-);
+// The tone mapping: Natural Mod Filter 42.1's (Assetto Corsa, Pure's custom tone map; used as is, user's decision
+// 2026-11-21, `notes/renderer.md`). Uchimura's curve (2017, "HDR theory and practice", GT Sport's) maps each channel:
+// a toe below `TONE_M`, linear to `TONE_L` of the way to the peak, then a shoulder converging on the peak. Then a
+// vibrance in display light: below `VIBRANCE_MAX` saturation a colour gains `VIBRANCE` of its distance from grey, less
+// as it nears it, and above it loses `DESATURATE` of its excess. The exposed light is scaled by `TONE_SCALE` first, so
+// middle grey (`KEY`) shows at 0.415 of white, as the GT7 curve before it showed it.
+const TONE_M: f32 = 0.1;
+const TONE_L: f32 = 0.3;
+const TONE_SCALE: f32 = 0.3904755;
+const VIBRANCE: f32 = 0.25;
+const VIBRANCE_MAX: f32 = 0.35;
+const DESATURATE: f32 = 0.2;
 
-// GT's frame buffer light to PQ code values.
-fn pq(v: vec3<f32>) -> vec3<f32> {
-    let y = pow(max(v, vec3<f32>(0.0)) * (GT7_UNIT / 10000.0), vec3<f32>(PQ_M.x));
-    return pow((PQ_C.x + PQ_C.y * y) / (1.0 + PQ_C.z * y), vec3<f32>(PQ_M.y));
+// Uchimura's curve peaking at `peak`. With the filter's contrast 1, black 1 and no pedestal (`a`, `c`, `b`) its toe and
+// linear part are both `x`, so it is `x` up to the shoulder, then an exponential converging on the peak.
+fn uchimura(x: vec3<f32>, peak: f32) -> vec3<f32> {
+    let shoulder = TONE_M + (peak - TONE_M) * TONE_L;
+    let curve = peak - (peak - shoulder) * exp(-(x - shoulder) / (peak - shoulder));
+    return select(x, curve, x >= vec3<f32>(shoulder));
 }
 
-// PQ code values to GT's frame buffer light.
-fn pq_light(n: vec3<f32>) -> vec3<f32> {
-    let p = pow(clamp(n, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / PQ_M.y));
-    let l = pow(max(p - PQ_C.x, vec3<f32>(0.0)) / (PQ_C.y - PQ_C.z * p), vec3<f32>(1.0 / PQ_M.x));
-    return l * (10000.0 / GT7_UNIT);
-}
-
-fn ictcp(rgb: vec3<f32>) -> vec3<f32> {
-    return pq(rgb * TO_LMS) * TO_ICTCP;
-}
-
-fn from_ictcp(i: vec3<f32>) -> vec3<f32> {
-    return max(pq_light(i * FROM_ICTCP) * FROM_LMS, vec3<f32>(0.0));
-}
-
-fn gt7_curve(x: vec3<f32>, peak: f32) -> vec3<f32> {
-    let k = (GT7_LINEAR - 1.0) / (GT7_ALPHA - 1.0);
-    let v = max(x, vec3<f32>(0.0));
-    let toe = GT7_MID * pow(v / GT7_MID, vec3<f32>(GT7_TOE));
-    let below = mix(toe, v, smoothstep(vec3<f32>(0.0), vec3<f32>(GT7_MID), v));
-    let shoulder = peak * (GT7_LINEAR + k) - peak * k * exp((GT7_LINEAR - v / peak) / k);
-    return select(shoulder, below, v < vec3<f32>(GT7_LINEAR * peak));
-}
-
-// What the display shows (`display`): the tone curve's peak, frame buffer units, and its ICtCp intensity; the brightest
-// display value over the SDR white, and sRGB-coded.
+// What the display shows (`display`): the brightest display value over the SDR white, linear and sRGB-coded.
 struct Display {
-    peak: f32,
-    intensity: f32,
     headroom: f32,
     top: f32,
 }
 
-// An SDR display shows up to the paper white. An HDR display (`HDR`) shows the paper white at its SDR white, as GT7's
-// SDR mode, and its highlights up to its headroom: the curve peaks there, as GT7's HDR mode peaks at the display's
-// luminance, so the mid-tones stay as on an SDR display.
+// An SDR display shows up to the paper white. An HDR display (`HDR`) shows the paper white at its SDR white and its
+// highlights up to its headroom: the curve peaks there and its linear part reaches further, so the mid-tones stay as
+// on an SDR display.
 fn display() -> Display {
     if (!HDR) {
-        return Display(GT7_PEAK, GT7_PEAK_INTENSITY, 1.0, 1.0);
+        return Display(1.0, 1.0);
     }
     let headroom = max(meter.grade.w, 1.0);
-    let peak = GT7_PEAK * headroom;
-    return Display(peak, pq(vec3<f32>(peak)).x, headroom, srgb(vec3<f32>(headroom)).x);
+    return Display(headroom, srgb(vec3<f32>(headroom)).x);
 }
 
 // The sRGB transfer function, continued past 1 for an HDR display's extended-range sRGB.
@@ -302,32 +235,15 @@ fn srgb(shown: vec3<f32>) -> vec3<f32> {
     return select(1.055 * pow(shown, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * shown, shown <= vec3<f32>(0.0031308));
 }
 
-// A near-primary light far past white whitens straight from its hue (ours): the curve maps each channel, so a red
-// lamp's core, whose Rec.2020 green (0.07 of its red) clips well before its blue (0.02), went orange. Its least channel
-// rises to its middle one from the curve's linear part (`GT7_LINEAR` of the peak) to `WHITEN_FULL` peaks, so the
-// lamp stays red to some 4 times white, then shades to pink and white. A hue with a strong second channel (an amber
-// lamp's, `WHITEN_PRIMARY`) keeps the curve's.
-const WHITEN_FULL: f32 = 4.0;
-const WHITEN_PRIMARY: vec2<f32> = vec2<f32>(0.15, 0.4);
-
-fn whitened(rgb: vec3<f32>, peak: f32) -> vec3<f32> {
-    let high = max(rgb.r, max(rgb.g, rgb.b));
-    let low = min(rgb.r, min(rgb.g, rgb.b));
-    let mid = rgb.r + rgb.g + rgb.b - high - low;
-    let primary = 1.0 - smoothstep(WHITEN_PRIMARY.x, WHITEN_PRIMARY.y, mid / max(high, 1e-6));
-    let over = smoothstep(GT7_LINEAR * peak, WHITEN_FULL * peak, high);
-    return max(rgb, vec3<f32>(mix(low, mid, primary * over)));
-}
-
 // Display values for the exposed linear Rec.709 light: the mapped light over the paper white, sRGB-coded.
-fn gt7(linear: vec3<f32>, d: Display) -> vec3<f32> {
-    let rgb = whitened(linear * REC709_TO_2020, d.peak);
-    let skewed = gt7_curve(rgb, d.peak);
-    let ucs = ictcp(rgb);
-    let chroma = 1.0 - smoothstep(GT7_FADE.x, GT7_FADE.y, ucs.x / d.intensity);
-    let scaled = from_ictcp(vec3<f32>(ictcp(skewed).x, ucs.yz * chroma));
-    let mapped = min(mix(skewed, scaled, GT7_BLEND), vec3<f32>(d.peak)) / GT7_PEAK;
-    return srgb(clamp(mapped * REC2020_TO_709, vec3<f32>(0.0), vec3<f32>(d.headroom)));
+fn tone_curve(linear: vec3<f32>, d: Display) -> vec3<f32> {
+    let rgb = uchimura(max(linear * TONE_SCALE, vec3<f32>(0.0)), d.headroom);
+    let grey = (rgb.r + rgb.g + rgb.b) / 3.0;
+    let high = max(rgb.r, max(rgb.g, rgb.b));
+    let saturation = (high - min(rgb.r, min(rgb.g, rgb.b))) / max(high, 1e-4);
+    let gain = mix(VIBRANCE * (1.0 - saturation), DESATURATE * (VIBRANCE_MAX - saturation),
+        smoothstep(-0.1, 0.1, saturation - VIBRANCE_MAX));
+    return srgb(clamp(mix(vec3<f32>(grey), rgb, 1.0 + gain), vec3<f32>(0.0), vec3<f32>(d.headroom)));
 }
 
 struct Out {
@@ -674,7 +590,7 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     let give = mix(LOCAL_GIVE, LOCAL_NIGHT_GIVE, night);
     let linear = max(lit * exposed * exp2(-give * max(broad - begin, 0.0)), vec3<f32>(0.0));
     let d = display();
-    let c = gt7(linear, d);
+    let c = tone_curve(linear, d);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));
     return vec4<f32>(clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(d.top)), 1.0);
 }
