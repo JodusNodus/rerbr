@@ -107,7 +107,7 @@ Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 06:00
 
 ### golden-akina-alpine-chase
 
-Alpine A110 Rally RGT, Akina Uphill (AC import 1290447), chase view, 18:15
+Alpine A110 Rally RGT, Akina Uphill (AC import 1290447), chase view, 19:15
 
 ![golden-akina-alpine-chase](golden-akina-alpine-chase.jpg)
 
