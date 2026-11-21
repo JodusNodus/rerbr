@@ -25,7 +25,7 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 | ![An Audi quattro A2 Group B on a wet Pengonpohja in the low evening sun, light through the pines and a puddle by the road, seen from a wide fly-by camera](docs/shots/golden-pengonpohja-quattro-flyby.jpg) | ![The cockpit of an Audi quattro A2 Group B passing a sunlit red barn on Pirttikulma in the afternoon, the road ahead through the windscreen](docs/shots/day-pirttikulma-quattro-cockpit.jpg) |
 | Audi quattro A2 Group B (model by Shenshee), Pengonpohja (stage by Justup & BTBfin) | Audi quattro A2 Group B (model by Shenshee), Pirttikulma (stage by Justup & BTBfin) |
 | ![A Toyota Celica ST185 Group A climbing the hairpins below the chalet on Joux Verte, spruces, spectators and the mountains behind](docs/shots/day-joux-verte-celica-chase.jpg) | ![A Toyota GR Yaris Rally2 in fog on Comb I](docs/shots/fog-621-yaris-chase.jpg) |
-| Toyota Celica 2000GT-FOUR RC (ST185) Group A (model by gonzo_kool & kazuma_NARU), Joux Verte SS7 reversed (Assetto Corsa track by JCRR, imported with ReRBR) | Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) |
+| Toyota Celica 2000GT-FOUR RC (ST185) Group A (model by gonzo_kool & kazuma_NARU), Joux Verte SS7 reversed (Assetto Corsa track by JCRR) | Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) |
 | ![A Ford Escort Mk II RS Group 4 on a snowy Peklo Snow](docs/shots/snow-peklo-escort-flyby.jpg) | ![A Ford Fiesta Rally2 at night on Gabiria Legazpi, the headlights lighting the road and the spectators](docs/shots/night-gabiria-fiesta-chase.jpg) |
 | Ford Escort Mk II RS Group 4 (model by Ha3aP, fixed by WorkerBee), Peklo Snow (stage by Miro Kurek) | Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Gabiria Legazpi (stage by Jan Kaderabek & Lorenzo Clerici) |
 | ![A Toyota GR Yaris Rally2 throwing up golden backlit dust in the morning sun on Comb I](docs/shots/golden-621-yaris-flyby.jpg) | ![A Toyota GR Yaris Rally2 splashing through the puddles of a wet Falstone II in the low evening sun, seen from a wide fly-by camera](docs/shots/golden-falstone-yaris-flyby.jpg) |
@@ -35,9 +35,9 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 | ![The cockpit of a Ford Fiesta Rally2 on Luceram Col Saint Roch in the morning sun, the road ahead seen through the windscreen](docs/shots/day-luceram-fiesta-cockpit.jpg) | ![A Ford Escort Mk II RS Group 4 on a village lane in the morning mist on Semetin 2009](docs/shots/fog-semetin-escort-chase.jpg) |
 | Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Luceram Col Saint Roch (stage by Casgra11) | Ford Escort Mk II RS Group 4 (model by Ha3aP, fixed by WorkerBee), Semetin 2009 (stage by Vasek Sourek) |
 | ![An Alpine A110 Rally RGT on Akina Uphill at dusk, guardrails, road signs and the forest behind](docs/shots/golden-akina-alpine-chase.jpg) | ![A BMW M3 E30 Group A in the evening sun on the Nordschleife, pines and grandstands behind](docs/shots/golden-nordschleife-m3-flyby.jpg) |
-| Alpine A110 Rally RGT (model by DMRally74), Akina Uphill (Assetto Corsa track by Project Kaido, imported with ReRBR) | BMW M3 E30 Group A (model by Atiwrc), Nordschleife (Assetto Corsa track, imported with ReRBR) |
+| Alpine A110 Rally RGT (model by DMRally74), Akina Uphill (Assetto Corsa track by Project Kaido) | BMW M3 E30 Group A (model by Atiwrc), Nordschleife (Assetto Corsa track) |
 | ![An Alpine A110 Rally RGT on a Sa Calobra hairpin above the sea, mountains behind](docs/shots/day-sa-calobra-alpine-flyby.jpg) | ![A Toyota GR Yaris Rally2 on Crequy in the morning fog, low sun through the trees](docs/shots/fog-crequy-yaris-chase.jpg) |
-| Alpine A110 Rally RGT (model by DMRally74), Sa Calobra (Assetto Corsa track by SuperStage, imported with ReRBR) | Toyota GR Yaris Rally2 (model by Ha3aP), Crequy (Assetto Corsa track by JCRR, imported with ReRBR) |
+| Alpine A110 Rally RGT (model by DMRally74), Sa Calobra (Assetto Corsa track by SuperStage) | Toyota GR Yaris Rally2 (model by Ha3aP), Crequy (Assetto Corsa track by JCRR) |
 
 The whole set of 37: [docs/shots](docs/shots/README.md).
 
