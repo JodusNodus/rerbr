@@ -78,8 +78,8 @@ pub(in crate::collision) use solver::contact_row_frame;
 pub use solver::ctor_solver;
 pub use solver::solve_event_frame;
 pub use typed::{
-    CarCollision, CollisionImage, CollisionTyped, CollisionView, ContactCountObj, ContactRowObj,
-    ContactRows, GridHitsObj, OffsetCountObj, OffsetRowObj, RowsHeadObj, Touched,
+    CarCollision, CollisionImage, CollisionTyped, CollisionView, ContactCountObj, ContactRowObj, ContactRows,
+    GridHitsObj, OffsetCountObj, OffsetRowObj, RowsHeadObj, Touched,
 };
 pub use vec_ops::{
     bounds_union, scaled, stale_lane, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross,

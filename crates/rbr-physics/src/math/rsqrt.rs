@@ -1,6 +1,6 @@
 //! `rsqrtss` as the reference CPU computes it. The instruction is an approximation with a 12-bit table, not the
 //! IEEE square root. `data/rsqrt.bin` is the table the reference CPU gives (made by `harness/replay-approx.c`,
-//! which measured it on that CPU). `harness/replay.py`'s `hw_rsqrt` is the same model.
+//! which measured it on that CPU).
 
 const TABLE_BYTES: &[u8] = include_bytes!("../../data/rsqrt.bin");
 

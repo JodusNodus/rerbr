@@ -1,6 +1,5 @@
 //! Load-time bindings: `NTweak::CBase::Parse` (0x52f0c0) on the token tables (`rbr_physics::ntweak::parse`), with
-//! `CTokenCursor::Tokenize` (0x52ec80) and the token heap's `E11_StackAlloc` (0x473a70). They run from load-time entry
-//! dumps (`RBR_SNAPAT`), not from step snapshots. The calls `Parse` leaves to the objects (an `Unk14` other than
+//! `CTokenCursor::Tokenize` (0x52ec80) and the token heap's `E11_StackAlloc` (0x473a70). The calls `Parse` leaves to the objects (an `Unk14` other than
 //! `CBase`'s, a member object's `Parse`, slot 17) and `operator new`/`delete` run through the host at the original's
 //! stack.
 

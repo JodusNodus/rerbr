@@ -833,7 +833,7 @@ impl Runner {
         Return::void(eax, 0x10)
     }
 
-    /// `QueryPerformanceCounter(out)`, stdcall: as `replay.py`'s stub, a counter that starts at 2^40 and goes up by
+    /// `QueryPerformanceCounter(out)`, stdcall: a counter that starts at 2^40 and goes up by
     /// 1000 a call (only the profiler reads it).
     fn counter(&self, out: u32) -> Return {
         let ticks = self.ticks.get() + 1000;

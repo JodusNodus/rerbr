@@ -173,4 +173,3 @@ pub fn checked<T: PartialEq + std::fmt::Debug>(typed: T, _image: impl FnOnce() -
     }
     typed
 }
-

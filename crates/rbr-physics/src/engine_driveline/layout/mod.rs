@@ -41,8 +41,8 @@ pub use drive_line::{
 };
 pub use drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane};
 pub use drive_typed::{
-    gear_request_at, wheel_at, with_drive, CarDrive, DriveImage, DriveObj, DriveRef,
-    DriveStateObj, DriveTyped, DriveView, WheelObj,
+    gear_request_at, wheel_at, with_drive, CarDrive, DriveImage, DriveObj, DriveRef, DriveStateObj, DriveTyped,
+    DriveView, WheelObj,
 };
 pub use engine_calls::{
     abs_rpm_term, boost_pressure, compliance, coolant_temperature, discarded_temperatures, engine_running,
@@ -55,9 +55,7 @@ pub use engine_sim::{
     crank_tick, engine_step, engine_torque, fuel_air_terms, heat_step, intake_entry_update, intake_state_reset,
     misfire_roll, overheat_step, signal_update, smooth_damper, solve_damper, turbo_energy_step,
 };
-pub use engine_typed::{
-    CarEngine, EngineImage, EngineObj, EngineStateObj, EngineTyped, EngineView,
-};
+pub use engine_typed::{CarEngine, EngineImage, EngineObj, EngineStateObj, EngineTyped, EngineView};
 pub use setup::{drive_setup_into_def, link_worker, normalize_gear_rows, select_gear_rows};
 pub use step::step_drive;
 pub use tables::{BlendKnot, CurveKnot, UnitSplit};

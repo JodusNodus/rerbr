@@ -1,7 +1,7 @@
 //! The stage world built from the retail files, as the load builds it (`rbr_physics::stage`), against the game's: the
 //! Tanner stage (`Maps/track-54_E`) of the Corolla gravel run.
 //!
-//! The vectors (`vectors/load-stage-world.txt`, cut by `harness/load_stage_refs.py` from the run's snap-0) hold the
+//! The vectors (`vectors/load-stage-world.txt`, cut from the run's load dump, now retired) hold the
 //! objects at the game's addresses: the collision system's fields and its relocated `.col` image, the brake wall and
 //! its manager's word, the cell grid with its table's count and nonzero cells, the mesh array, its 33 water meshes and
 //! the link blocks they hang in, the E44 material table, the `.mat` image and the track state's word for it, the
@@ -32,7 +32,7 @@
 //!   that was its head (objects go in at the head), the last placement's next word in the entity list, that list's tail
 //!   and count, and the later solid.
 //!
-//! `RBR_STAGE_REFS` names another run's vectors (`harness/load_stage_refs.py` on its snap-0) to use instead. With
+//! `RBR_STAGE_REFS` names another run's vectors (cut from its load dump) to use instead. With
 //! `RBR_LOAD_OUT` the build is written as a patch for `harness/compose_load.py` (`common/patch.rs`); the entity lists
 //! the stage leaves alone are classed as other load code's there.
 

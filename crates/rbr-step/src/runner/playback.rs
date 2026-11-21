@@ -59,7 +59,7 @@ impl Drop for HeldTyped<'_> {
     }
 }
 
-/// The return address of the driver's `StepForward` call (`replay.py`'s `SENTINEL`).
+/// The return address of the driver's `StepForward` call.
 pub const SENTINEL: u32 = 0xfeed_0000;
 
 const FRAME: u32 = rbr_physics::car_body::transform::FRAME;

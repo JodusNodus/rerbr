@@ -1,7 +1,7 @@
 //! The left-front spring-damper definition built from scratch, as the load builds it, against the game's.
 //!
-//! `vectors/load-spring-def.txt` holds the definition (0x11c bytes) and its name from the snap-0 dump of a Corolla
-//! gravel run (`harness/load_refs.py`). The game's load constructs the definition (0x52d750), applies the
+//! `vectors/load-spring-def.txt` holds the definition (0x11c bytes) and its name from the load dump of a Corolla
+//! gravel run (the dumps are retired). The game's load constructs the definition (0x52d750), applies the
 //! `SpringDamper` group of `Physics/t_coroll/gravel.lsp`'s `CAR_WHEEL_LF` (`NTweak::CBase::Parse`), then the setup
 //! layer copies nine values of `setups/d_gravel.lsp`'s `SpringDamperLF` into it (0x52dbd0). This test does the same
 //! with the ports, reading the vtables from the retail exe. Runs only when `RBR_DATA` and `RBR_PATCH` are set.

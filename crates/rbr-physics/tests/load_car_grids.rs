@@ -5,7 +5,7 @@
 //! by their `vecHingePoint_BF` (`Physics/<car>/common.lsp`, the hinged body of the same name as the collision body;
 //! `CHingedRigidBody::SimEFE0` -> `E37GridOps::AddEdge`).
 //!
-//! The vectors (`vectors/load-car-grids.txt`, cut by `harness/load_car_grid_refs.py`) hold per run the grid vertices
+//! The vectors (`vectors/load-car-grids.txt`, cut from the original's load dumps, now retired) hold per run the grid vertices
 //! at UpdateA720's entry (as emitted), and at snap-0 every byte of grids 1-9, each descriptor and the blocks it points
 //! to (the maps as digests). The runs: lcb1-bodies and h1-tanner-corolla (the Corolla) and one short run per other car
 //! (`snaps/lg2/lg2-car<N>`, Tanner, tanner-corolla's first controls). The heap gives the game's blocks in the loader's

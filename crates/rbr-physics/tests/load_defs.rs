@@ -304,7 +304,7 @@ impl Heap for Host {
     }
 }
 
-/// The kinds of the registry's definitions that `load_registry_refs.py` cuts (the car's and the wheels' are cut with
+/// The kinds of the registry's definitions the vectors hold (the car's and the wheels' come with
 /// their owners).
 const REGISTRY_KINDS: [&str; 5] = ["solid_def", "ground_def", "car_body_def", "hinged_def", "mounted_def"];
 
