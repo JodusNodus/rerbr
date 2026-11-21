@@ -2,7 +2,6 @@
 # Downloads the published test data that data/test-data.SHA256SUMS names (docs/development.md "Set up"), checks it and
 # unpacks each part to DIR/<tag>/<part>, then prints its exports (`eval "$(scripts/fetch-test-data.sh DIR)"`):
 #   recordings  RBR_RECORDINGS                       the drives the tests read
-#   snapshots   RBR_SNAPS, RBR_REPLAY_FPU_CACHE      the snapshots (replay.py, the load tests), the x87 cache
 # PARTS default to recordings. A part already unpacked is kept; a new tag unpacks next to the old one.
 # RBR_TEST_DATA_URL replaces the releases URL (a mirror, or file:// for a set packed here by scripts/pack-test-data.sh).
 # Needs curl, tar and zstd.
@@ -34,6 +33,5 @@ while read -r hash asset; do
     fi
     case $part in
     recordings) echo "export RBR_RECORDINGS=$to" ;;
-    snapshots) echo "export RBR_SNAPS=$to"; echo "export RBR_REPLAY_FPU_CACHE=$to/replay-fpu-cache.bin" ;;
     esac
 done < "$sums"

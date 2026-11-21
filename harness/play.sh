@@ -18,10 +18,6 @@
 #   (harness/plugin/build.sh --install).
 #   RBR_PEEK=<local file> copies a probe list into the slot and saves the plugin's
 #   RBRRecompPeek-<tick>.bin as $RBR_RUNS/<name>.peek.bin.
-#   RBR_SNAPSHOT="40 572" lists steps to snapshot (RBRRecompSnapshot.txt): before the step call
-#   starting at each listed step and the call after it the plugin dumps the process
-#   (harness/replay.py), and again right after a listed step's call; kept as
-#   $RBR_RUNS/<name>.snap-<step>.bin and <name>.snap-<step>-after.bin.
 #   RBR_WRITEWATCH=1 arms one-word write watches for 0x01660b74/0x01660b80 and logs the marker-tick reads through frame 5000.
 #   RBR_WATCHLIST=<local file> (with RBR_WRITEWATCH=1) replaces those watches: the file lists up to 4 hex word addresses
 #   (one per line) and optionally "steps N" to quit at step N; each hit logs whether it came inside StepForward.
@@ -63,11 +59,7 @@ name=$1
 drive=${RBR_DRIVE:-tanner-corolla}
 [[ "$drive" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "bad RBR_DRIVE" >&2; exit 1; }
 peek=${RBR_PEEK:-}
-snap=${RBR_SNAPSHOT:-}
 writewatch=${RBR_WRITEWATCH:-0}
-snaparg=${snap// /,}
-[ -n "$snaparg" ] || snaparg=-
-[[ "$snap" =~ ^[0-9\ ]*$ ]] || { echo "bad RBR_SNAPSHOT" >&2; exit 1; }
 [[ "$writewatch" = 0 || "$writewatch" = 1 ]] || { echo "bad RBR_WRITEWATCH" >&2; exit 1; }
 watchlist=${RBR_WATCHLIST:-}
 [ -z "$watchlist" ] || [ "$writewatch" = 1 ] || { echo "RBR_WATCHLIST needs RBR_WRITEWATCH=1" >&2; exit 1; }
@@ -102,10 +94,10 @@ drive_pb=$runs/drive-$drive.playback.bin; drive_au=$runs/drive-$drive.auto
 cmp -s "$drive_pb" RBRRecompPlayback.bin || cp "$drive_pb" RBRRecompPlayback.bin
 cmp -s "$drive_au" RBRRecompAuto.txt || cp "$drive_au" RBRRecompAuto.txt
 # Recordings are ~195 MB per full run: drop those older than 6 h (user, 2026-10-14). The
-# references (ref*, drive-*: the recorded drives), step-replay snapshots and every log stay.
+# references (ref*, drive-*: the recorded drives) and every log stay.
 if [ "$writewatch" != 1 ]; then
   find "$runs" -maxdepth 1 -type f -name '*.bin' -mmin +360 ! -name 'ref*' ! -name 'drive-*' \
-    ! -name 'y24-drive-meta.bin' ! -name '*.snap-*' -delete
+    ! -name 'y24-drive-meta.bin' -delete
 fi
 test -f RBRRecompPlayback.bin && test -f RBRRecompAuto.txt
 ! pgrep -f "[${game_dir:0:1}]${game_dir:1}/RichardBurnsRally_SSE.exe" >/dev/null
@@ -115,7 +107,6 @@ rm -f RBRRecompRecord-*.bin RBRRecompHarness.log RBRRecompPeek.txt RBRRecompPeek
   RBRRecompPops.txt RBRRecompFps.txt
 touch RBRRecompRecord.on
 if [ "$writewatch" = 1 ]; then touch RBRRecompWriteWatch.on; fi
-if [ "$snaparg" != - ]; then echo "${snaparg//,/ }" > RBRRecompSnapshot.txt; fi
 if [ -n "$peek" ]; then cp "$peek" "$game_dir/RBRRecompPeek.txt"; fi
 if [ -n "${RBR_FASTFORWARD:-}" ]; then
   [[ "$RBR_FASTFORWARD" =~ ^[0-9]+$ ]] || { echo "bad RBR_FASTFORWARD" >&2; exit 1; }
@@ -163,11 +154,6 @@ fi
 rm -f RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompFastForward.txt RBRRecompCamera.txt RBRRecompVolumes.txt \
   RBRRecompPops.txt RBRRecompFps.txt
 rm -f RBRRecompWriteWatch.on
-for f in RBRRecompSnap-*.bin; do
-  [ -e "$f" ] || continue
-  step=${f#RBRRecompSnap-}; mv "$f" "$runs/$name.snap-${step%.bin}.bin"
-  ls -la "$runs/$name.snap-${step%.bin}.bin"
-done
 rm -f RBRRecompSnapshot.txt
 echo "slot: $game_dir"
 ls -la "$runs/$name.bin"

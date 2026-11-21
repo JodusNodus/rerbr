@@ -22,8 +22,7 @@
 # without a driver: AUTO="map car weather tyre" adds RBRRecompAuto.txt (a stage start), PLAYBACK=<file>
 # RBRRecompPlayback.bin (its controls drive; the game quits after them), FAST=N RBRRecompFastForward.txt,
 # FFB=1 RBRRecompFfb.on (binds the newest SavedGames/pf*.acm, as the menus would, so force feedback reaches the
-# wheel in an AUTO start, playback too; FFB=<name> binds pf<name>.acm), SNAPS=1 RBRRecompSessionSnaps.on (each
-# attempt's start-state snapshots, about 960 MB).
+# wheel in an AUTO start, playback too; FFB=<name> binds pf<name>.acm).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/dev-env.sh"
 game=${RBR_RSF:?set RBR_RSF to the RSF install (notes/verification.md)}
@@ -71,7 +70,6 @@ added=(Plugins/RBRRecompHarness.dll RBRRecompRecord.on RBRRecompSession.on)
 [ -n "$playback" ] && added+=(RBRRecompPlayback.bin)
 [ -n "$fast" ] && added+=(RBRRecompFastForward.txt)
 [ -n "${FFB:-}" ] && added+=(RBRRecompFfb.on)
-[ -n "${SNAPS:-}" ] && added+=(RBRRecompSessionSnaps.on)
 
 # The game's processes: RichardBurnsRally_SSE.exe in any case (the RSF launcher starts X:\...\richardburnsrally_sse.exe)
 # in this install's prefix (umu sets .../pfx/).
@@ -240,10 +238,6 @@ finish() {
     [ -e "$game/RBRRecompRecord-$tick.bin" ] && mv "$game/RBRRecompRecord-$tick.bin" "$run/$n/physics.bin"
     [ -e "$game/RBRRecompSession-$tick.bin" ] && mv "$game/RBRRecompSession-$tick.bin" "$run/$n/session.bin"
     [ -e "$run/.attempt-$tick" ] && mv "$run/.attempt-$tick" "$run/$n/attempt.txt"
-    # its start-state snapshots (before its first step, and before step 1520), as data
-    for f in "$game"/RBRRecompSnap-"$tick"-*.bin; do
-      [ -e "$f" ] && mv "$f" "$run/$n/snap-${f##*-}"
-    done
     # the files the attempt's stage load opened; setup.lsp the setup its car started on (session.py --setup)
     if [ -e "$run/$n/session.bin" ]; then
       python3 -I -B "$plugin/session.py" --files "$run/$n/files" "$run/$n/session.bin" >/dev/null 2>>"$run/watch.log"
@@ -301,9 +295,6 @@ watch() {
   if [ -n "${FFB:-}" ]; then
     if [ "$FFB" = 1 ]; then acm=$(cd "$game" && ls -t SavedGames/pf*.acm | head -n 1); else acm=SavedGames/pf$FFB.acm; fi
     echo "./$acm" >"$game/RBRRecompFfb.on"; echo "added RBRRecompFfb.on" >>"$run/.manifest"
-  fi
-  if [ -n "${SNAPS:-}" ]; then
-    touch "$game/RBRRecompSessionSnaps.on"; echo "added RBRRecompSessionSnaps.on" >>"$run/.manifest"
   fi
   # the settings that decide bindings, FFB, aids and rotation: the controller profiles and the game profiles (the .acm
   # the game loads is also in the session files, OPN1 and FIL1), RBRControls' files, NGPCarMenu.ini, RSF's car data
