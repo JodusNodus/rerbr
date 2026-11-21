@@ -3,7 +3,9 @@
 //!
 //! The ground within [`BAND`] of the driveline (the off-road ground, [`crate::puddles::mark_ground`], and the road mesh,
 //! whose shoulders can be grass) gets clumps of two crossed cards of grass blades drawn here ([`texture`]), up to
-//! [`DENSITY`] a square metre where its untinted textures are green or straw ([`green`]) across the clump's footprint.
+//! [`DENSITY`] a square metre where its untinted textures are green or straw ([`green`]) across the clump's footprint,
+//! or, off the road, look like vegetation at all, dry or green ([`vegetation`]), as far as the collision under the ground
+//! and its texture's name and collision say grass ([`prior`]).
 //! Small marks and cracks get none; samples across triangle edges take the neighbouring ground. Each card takes the ground's
 //! hue, a little greener, and brightness under it ([`GRASS_MARK`]); noise patches make the field taller or shorter,
 //! lusher or drier ([`patches`]), the cards lean a little and the shader sways their tops in the wind (`grass_sway`).
@@ -130,6 +132,11 @@ const SHADE: f32 = 0.9;
 const GRASSY: [[f32; 2]; 2] = [[0.02, 0.07], [0.05, 0.11]];
 /// The texels each side the ground's texture is averaged over for the grass ([`blur`]).
 const BLUR: usize = 3;
+/// How far each side, metres, the ground's texture is averaged for [`vegetation`]: its patches, not its grains (a
+/// meadow photo's straw and soil grains, 30 cm across on RSF Gabiria, speckled the field), nor its neighbours (a road
+/// atlas's gravel lane, Bareyo's, took its fields' grass at a fixed blur); at most [`PATCH_BLUR`] texels.
+const PATCH: f32 = 0.6;
+const PATCH_BLUR: usize = 24;
 /// The share of the ground's baked vertex tint its colour keeps (`GROUND_HUE` in `shader.wgsl`).
 const GROUND_HUE: f32 = 0.3;
 /// The grass's saturation against the ground's hue under it: a little less, as its lighting (the sun through the
@@ -167,12 +174,18 @@ pub struct Field {
     triangles: Vec<Ground>,
     tiles: HashMap<(i32, i32), Vec<u32>>,
     textures: Vec<Texels>,
+    /// The same, averaged over their patches ([`PATCH_BLUR`]), for [`vegetation`].
+    patches: Vec<Texels>,
     placement: Vec<Texels>,
     line: Line,
     /// The grass texture's mean colour (display).
     mean: Vec3,
     /// A converted stage's grass, placed on its marked materials, by profile (the stage's first; empty elsewhere).
     fx: Vec<Fx>,
+    /// Its ground textures (surveys).
+    pub report: Vec<TextureReport>,
+    /// The stage texture of each of [`Field::textures`].
+    texture_refs: Vec<TextureRef>,
 }
 
 /// A converted stage's GrassFX (Assetto Corsa's `[GRASS_FX]`, [`Stage::grass_fx`]) as the field takes it: grass grows
@@ -278,6 +291,106 @@ impl Field {
     pub(crate) fn corners(&self) -> impl Iterator<Item = (usize, [u32; 3])> + '_ {
         self.triangles.iter().map(|g| g.corners)
     }
+
+    /// The field's highest ground at `xz` seen from above (surveys: `examples/grass_strip.rs`).
+    pub fn probe(&self, xz: Vec2) -> Option<Probe> {
+        let q = Vec3::new(xz.x, 0.0, xz.y);
+        let (g, w, height) = self
+            .tiles
+            .get(&tile_of(q))?
+            .iter()
+            .filter_map(|&i| {
+                let g = &self.triangles[i as usize];
+                let w = g.weights(q);
+                w.iter().all(|&v| v >= -1e-4).then(|| (g, w, g.p[0].y * w[0] + g.p[1].y * w[1] + g.p[2].y * w[2]))
+            })
+            .max_by(|a, b| a.2.total_cmp(&b.2))?;
+        let grassy = self.grassy(g, w);
+        let grows = grassy >= COVER && self.supported(g, Vec3::new(xz.x, height, xz.y), PATCH_RADIUS);
+        Some(Probe { height, grassy, grows, prior: g.prior, texture: self.texture_refs.get(g.first as usize).copied() })
+    }
+}
+
+/// The collision classes a ground texture's triangles lie on ([`surface_class`]).
+pub const SURFACE_CLASSES: [&str; 7] = ["grass", "rough", "gravel", "dirt", "tarmac", "other", "none"];
+
+/// The class of collision surface `id` in [`SURFACE_CLASSES`]: none where no collision lies under the ground.
+fn surface_class(id: Option<u32>) -> usize {
+    use crate::particles::wheel_spray::ground::{material, Kind};
+    let Some(id) = id else { return 6 };
+    if matches!(id, 0x81 | 0x82 | 0x89 | 0x8a) {
+        return 1;
+    }
+    match material(id).kind {
+        Kind::Grass => 0,
+        Kind::Gravel => 2,
+        Kind::Dirt => 3,
+        Kind::Tarmac => 4,
+        _ => 5,
+    }
+}
+
+/// A ground texture's area in the field's band and its share on each collision class.
+#[derive(Default)]
+struct Evidence {
+    area: f32,
+    surfaces: [f32; 7],
+}
+
+/// What a ground texture looks like, over its texels ([`Texels::sharp`]).
+#[derive(Clone, Copy, Debug)]
+pub struct Looks {
+    /// Mean display colour.
+    pub mean: [f32; 3],
+    /// Share of texels green or straw enough for grass ([`green`] at [`COVER`]).
+    pub green: f32,
+    /// Share of nearly grey texels.
+    pub grey: f32,
+}
+
+impl Looks {
+    fn of(t: &Texels) -> Looks {
+        let n = (t.width * t.height).max(1);
+        let rgb =
+            |i: usize| Vec3::new(t.rgba[i * 4].into(), t.rgba[i * 4 + 1].into(), t.rgba[i * 4 + 2].into()) / 255.0;
+        let (mut mean, mut green_n, mut grey_n) = (Vec3::ZERO, 0, 0);
+        for i in 0..n {
+            let c = rgb(i);
+            mean += c;
+            green_n += usize::from(self::green(c, false) >= COVER);
+            grey_n += usize::from(c.max_element() - c.min_element() < 0.06);
+        }
+        let n = n as f32;
+        Looks { mean: (mean / n).into(), green: green_n as f32 / n, grey: grey_n as f32 / n }
+    }
+}
+
+/// A ground texture in the field's band (surveys): its file name, its area, its share on each of
+/// [`SURFACE_CLASSES`] and its looks (none where it did not load).
+#[derive(Clone, Debug)]
+pub struct TextureReport {
+    pub texture: TextureRef,
+    pub name: String,
+    pub area: f32,
+    pub surfaces: [f32; 7],
+    pub looks: Option<Looks>,
+    /// A texel's side on the ground, metres (0: unknown).
+    pub texel: f32,
+}
+
+/// What the field holds at a point ([`Field::probe`]).
+#[derive(Clone, Copy, Debug)]
+pub struct Probe {
+    /// The ground's height, metres.
+    pub height: f32,
+    /// How much grass the ground takes there, 0 to 1 ([`green`], or the converted stage's mask).
+    pub grassy: f32,
+    /// Whether a tuft grows there: [`COVER`] at the point and all round its smallest footprint ([`PATCH_RADIUS`]).
+    pub grows: bool,
+    /// How likely the ground is grass ([`prior`]; 0 on the road mesh and a converted stage's GrassFX ground).
+    pub prior: f32,
+    /// The ground's first texture.
+    pub texture: Option<TextureRef>,
 }
 
 /// A ground triangle: its corners' positions, texture coordinates, vertex alphas and tints ([`tint`]), whether it is
@@ -292,6 +405,9 @@ struct Ground {
     road: bool,
     /// The grass profile of its material ([`Field::fx`]).
     profile: u8,
+    /// How likely its ground is grass by the collision under it and its texture's name and collision ([`prior`]): the
+    /// share of [`vegetation`] it takes besides the plainly green.
+    prior: f32,
     first: u32,
     second: Option<u32>,
     normal: Vec3,
@@ -430,31 +546,41 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
         .flatten()
         .collect();
     let wanted: Vec<TextureRef> = wanted.into_iter().collect();
+    let spans = spans(stage, grows);
     let made = in_parallel(&wanted, |&t| {
         let sharp = Texels::sharp(stage, t)?;
-        Some((sharp.blurred(), sharp))
+        // The patches' blur in texels: [`PATCH`] metres at the texture's size on the ground.
+        let texel = spans.get(&t).map_or(0.0, |&(world, uv)| texel_size(world, uv, &sharp));
+        let radius = if texel > 0.0 { (PATCH / texel).round().clamp(1.0, PATCH_BLUR as f32) as usize } else { BLUR };
+        Some((sharp.blurred(BLUR), sharp.blurred(radius), sharp))
     });
-    let mut made: HashMap<TextureRef, (Texels, Texels)> =
+    let mut made: HashMap<TextureRef, (Texels, Texels, Texels)> =
         wanted.into_iter().zip(made).filter_map(|(t, texels)| Some((t, texels?))).collect();
     let mut textures = Vec::new();
     let mut placement = Vec::new();
+    let mut patches = Vec::new();
+    let mut texture_refs = Vec::new();
     let mut texture_index: HashMap<TextureRef, Option<u32>> = HashMap::new();
     let mut texels = |t: Option<TextureRef>| {
         *texture_index.entry(t?).or_insert_with(|| {
-            let (colour, sharp) = made.remove(&t?)?;
+            let (colour, patch, sharp) = made.remove(&t?)?;
             textures.push(colour);
+            patches.push(patch);
             placement.push(sharp);
+            texture_refs.push(t?);
             Some(textures.len() as u32 - 1)
         })
     };
     let mut triangles = Vec::new();
+    let mut evidence: HashMap<TextureRef, Evidence> = HashMap::new();
+    let mut sources = Vec::new();
     let mut tiles: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
     // The tile meshes go before the first blended mesh, which moves the meshes from there on.
     let blended = stage.meshes.iter().position(|m| m.layer == Layer::Blended).unwrap_or(stage.meshes.len());
     let slots = SLOTS.iter().map(|&(count, _)| count).sum::<usize>();
     let meshes = stage.meshes.iter().enumerate().filter(|(_, m)| m.anchor == Anchor::World && m.layer == Layer::Solid);
     for (index, mesh) in meshes {
-        let index = if index < blended { index } else { index + slots };
+        let (own, index) = (index, if index < blended { index } else { index + slots });
         for draw in mesh.draws.iter().filter(|d| d.lod != Lod::Far && grows(mesh, d)) {
             let Some(first) = texels(draw.state.textures[0]) else { continue };
             let second = if draw.state.second_texture { texels(draw.state.textures[1]) } else { None };
@@ -462,7 +588,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                 let corners = [t[0], t[1], t[2]];
                 let v = corners.map(|i| &mesh.vertices[i as usize]);
                 // The off-road ground, or the road mesh, whose shoulders can be grass: its texture says where.
-                if !fx_stage && v.iter().any(|v| v.edge != GROUND_MARK && v.wet <= 0.0) {
+                if !fx_stage && v.iter().any(|v| v.edge > GROUND_MARK && v.wet <= 0.0) {
                     continue;
                 }
                 // A converted stage's grass never grows on the road it drives, even where its grass materials take
@@ -479,15 +605,23 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                     continue;
                 }
                 let centre = (p[0] + p[1] + p[2]) / 3.0;
-                if !fx_stage
-                    && stage.collision.as_ref().is_some_and(|ground| {
-                        ground
-                            .below([centre.x, centre.z, centre.y])
-                            .is_none_or(|hit| (centre.y - hit.z).abs() > GROUND_REACH)
-                    })
-                {
+                let hit = stage.collision.as_ref().map(|ground| ground.below([centre.x, centre.z, centre.y]));
+                // Over collision ground (none: past a converted stage's collision corridor), not a prop above it.
+                if !fx_stage && hit.flatten().is_some_and(|hit| (centre.y - hit.z).abs() > GROUND_REACH) {
                     continue;
                 }
+                let alpha = v.iter().map(|v| f32::from(v.color[3])).sum::<f32>() / (3.0 * 255.0);
+                let look = match draw.state.textures {
+                    [_, Some(over)] if draw.state.second_texture && alpha > 0.5 => Some(over),
+                    [first, _] => first,
+                };
+                let class = surface_class(hit.flatten().map(|h| h.surface));
+                if let Some(look) = look {
+                    let e = evidence.entry(look).or_default();
+                    e.area += cross.length() * 0.5;
+                    e.surfaces[class] += cross.length() * 0.5;
+                }
+                sources.push((class, look, own, corners));
                 let triangle = triangles.len() as u32;
                 triangles.push(Ground {
                     p,
@@ -497,6 +631,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                     hue: v.map(|v| tint(v.color)),
                     road: v.iter().any(|v| v.wet > 0.0),
                     profile: draw.state.grass.unwrap_or(0),
+                    prior: 0.0,
                     first,
                     second,
                     normal,
@@ -533,9 +668,41 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             (texture, mean, fx.unwrap_or_default())
         }
     };
+    let name = |t: TextureRef| stage.texture_names.get(&t).map_or("", |n| n.file_name.as_str());
+    let by_texture: HashMap<TextureRef, f32> = evidence.iter().map(|(&t, e)| (t, texture_prior(e, name(t)))).collect();
+    for (g, (class, look, mesh, corners)) in triangles.iter_mut().zip(sources) {
+        // The road mesh takes only the plainly green, as before (Kinamba Yala's savanna texture is its road's too).
+        g.prior = if g.road { 0.0 } else { prior(class, look.and_then(|t| by_texture.get(&t).copied())) };
+        // The ground shader's thatch takes the same test (`thatch` in `shader.wgsl`): its vertices carry the prior in
+        // their mark, the most of their triangles'.
+        if !fx_stage && !g.road {
+            for i in corners {
+                let v = &mut stage.meshes[mesh].vertices[i as usize];
+                v.edge = v.edge.min(GROUND_MARK - g.prior);
+            }
+        }
+    }
+    let report = evidence
+        .into_iter()
+        .map(|(t, e)| {
+            let index = texture_index.get(&t).copied().flatten();
+            let looks = index.map(|i| Looks::of(&placement[i as usize]));
+            let texel =
+                index.zip(spans.get(&t)).map_or(0.0, |(i, &(world, uv))| texel_size(world, uv, &placement[i as usize]));
+            let name = stage.texture_names.get(&t).map_or_else(String::new, |n| n.file_name.clone());
+            TextureReport {
+                texture: t,
+                name,
+                area: e.area,
+                surfaces: e.surfaces.map(|s| s / e.area.max(1e-6)),
+                looks,
+                texel,
+            }
+        })
+        .collect();
     let slots = SLOTS.iter().flat_map(|&(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
     stage.meshes.splice(blended..blended, slots);
-    Some(Field { triangles, tiles, textures, placement, line, mean, fx })
+    Some(Field { triangles, tiles, textures, patches, placement, line, mean, fx, report, texture_refs })
 }
 
 impl Field {
@@ -567,6 +734,7 @@ impl Field {
         match self.fx(g) {
             Some(fx) if fx.hidden.contains(&hide_cell((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz())) => 0.0,
             Some(fx) => fx.mask(rgb, g.colour(&self.textures, w)),
+            None if g.prior > 0.0 => green(rgb, g.road).max(g.prior * vegetation(g.colour(&self.patches, w))),
             None => green(rgb, g.road),
         }
     }
@@ -1209,6 +1377,98 @@ fn green(rgb: Vec3, road: bool) -> f32 {
     smoothstep([low, high], c.y - c.z - 2.0 * (c.x - c.y - 0.02).max(0.0))
 }
 
+/// A texel's side on the ground, metres, of `texels` spread `world` square metres over `uv` of its coordinates'
+/// squares ([`spans`]); 0 where it is not spread.
+fn texel_size(world: f32, uv: f32, texels: &Texels) -> f32 {
+    if uv <= 0.0 {
+        0.0
+    } else {
+        (world / (uv * (texels.width * texels.height) as f32)).sqrt()
+    }
+}
+
+/// Each ground texture's ground area and texture area (in its coordinates' squares) under the draws `grows` takes, by
+/// which it is drawn ([`PATCH`]).
+fn spans(stage: &Stage, grows: impl Fn(&Mesh, &Draw) -> bool) -> HashMap<TextureRef, (f32, f32)> {
+    let mut spans: HashMap<TextureRef, (f32, f32)> = HashMap::new();
+    for mesh in &stage.meshes {
+        for draw in mesh.draws.iter().filter(|d| d.lod != Lod::Far && grows(mesh, d)) {
+            let layers =
+                [(draw.state.textures[0], 0), (draw.state.textures[1].filter(|_| draw.state.second_texture), 1)];
+            for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
+                let v = [0, 1, 2].map(|k| &mesh.vertices[t[k] as usize]);
+                let p = v.map(|v| Vec3::from(v.position));
+                let world = (p[1] - p[0]).cross(p[2] - p[0]).length() * 0.5;
+                for (texture, layer) in layers {
+                    let Some(texture) = texture else { continue };
+                    let uv = v.map(|v| Vec2::from(if layer == 0 { v.uv0 } else { v.uv1 }));
+                    let span = spans.entry(texture).or_default();
+                    span.0 += world;
+                    span.1 += (uv[1] - uv[0]).perp_dot(uv[2] - uv[0]).abs() * 0.5;
+                }
+            }
+        }
+    }
+    spans
+}
+
+/// How much ground of colour `rgb` (display, 0 to 1, blurred: its patches) looks like vegetation, green or dry (ours):
+/// its hue from orange-yellow to green, some saturation, not dark. Straw and olive pass, which [`green`] leaves out;
+/// soil (redder), rock and gravel (grey) do not. Only ground likely grass by what lies under it takes it ([`prior`]).
+fn vegetation(rgb: Vec3) -> f32 {
+    let (most, least) = (rgb.max_element(), rgb.min_element());
+    let chroma = most - least;
+    if chroma < 1e-3 || rgb.z >= rgb.y {
+        return 0.0;
+    }
+    // Hue in degrees, red 0, yellow 60, green 120: blue under green, so 0 to 180.
+    let hue = if rgb.x >= rgb.y { 60.0 * (rgb.y - rgb.z) / chroma } else { 60.0 * (2.0 + (rgb.z - rgb.x) / chroma) };
+    smoothstep(VEGETATION_HUE, hue) * smoothstep(VEGETATION_SATURATION, chroma / most) * smoothstep([0.08, 0.16], most)
+}
+
+/// The hue (degrees) and saturation where [`vegetation`] starts and is full: RSF Gabiria's meadow (`forest-brown`,
+/// 40 degrees, 0.34) and Bareyo's grass (37, 0.36) in, their soil (34 and 29) mostly out, gravel (grey) out.
+const VEGETATION_HUE: [f32; 2] = [32.0, 38.0];
+const VEGETATION_SATURATION: [f32; 2] = [0.10, 0.18];
+
+/// How likely ground on a collision class ([`SURFACE_CLASSES`]) is grass: the grass's own and rough (RBR's `Rough_`,
+/// meadows and heath on RSF stages) most, dirt a little (verges marked loose under grass), objects, rocks, bushes and
+/// ground without collision half; gravel and tarmac none (a road atlas's grassy shoulders still take the plainly
+/// green, [`green`]).
+const CLASS_PRIOR: [f32; 7] = [1.0, 0.85, 0.0, 0.3, 0.0, 0.5, 0.5];
+
+/// Words in a texture's file name that say grass, and those that say it is not (lower case).
+const GRASS_WORDS: [&str; 14] = [
+    "grass", "gras", "herbe", "champ", "meadow", "lawn", "prato", "prado", "hierba", "cesped", "wiese", "rasen",
+    "nurmi", "heath",
+];
+const BARE_WORDS: [&str; 18] = [
+    "road", "route", "asphalt", "tarmac", "gravel", "gravier", "grava", "rock", "roche", "stone", "sand", "dirt",
+    "mud", "soil", "concrete", "beton", "snow", "kerb",
+];
+
+/// How likely a ground texture is grass, 0 to 1, by the collision under all its ground ([`CLASS_PRIOR`] by area) and
+/// its file name: a grass word lifts it, a word for bare ground lowers it.
+fn texture_prior(e: &Evidence, name: &str) -> f32 {
+    let collision = e.surfaces.iter().zip(CLASS_PRIOR).map(|(s, p)| s * p).sum::<f32>() / e.area.max(1e-6);
+    let name = name.to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
+    let named = if has(&GRASS_WORDS) {
+        1.0
+    } else if has(&BARE_WORDS) {
+        0.0
+    } else {
+        collision
+    };
+    (collision + named) * 0.5
+}
+
+/// A ground triangle's [`Ground::prior`]: its own collision class's and its texture's ([`texture_prior`]), half each.
+fn prior(class: usize, texture: Option<f32>) -> f32 {
+    let own = CLASS_PRIOR[class];
+    texture.map_or(own, |t| (own + t) * 0.5)
+}
+
 /// The rectangle (`u0, u1, v0, v1`, a texel in from its edges) of an atlas piece: `cell` (column from 1, row from 0 at
 /// the top, the base grass's, as CSP counts: "columns index start at 1, but rows index start at 0") and `size` in
 /// cells, of a `grid` of columns and rows over a texture of `texels`.
@@ -1331,9 +1591,10 @@ pub(crate) struct Texels {
 }
 
 impl Texels {
-    fn blurred(&self) -> Texels {
+    fn blurred(&self, radius: usize) -> Texels {
         let (width, height) = (self.width, self.height);
-        Texels { width, height, rgba: blur(&blur(&self.rgba, width, height, (1, 0)), width, height, (0, 1)) }
+        let rgba = blur(&blur(&self.rgba, width, height, (1, 0), radius), width, height, (0, 1), radius);
+        Texels { width, height, rgba }
     }
 
     /// The unblurred test level, for placement and the dust's colour.
@@ -1352,20 +1613,21 @@ impl Texels {
     }
 }
 
-/// `rgba` (`width` x `height`, repeated) averaged over [`BLUR`] texels each side along `step`: the grass follows the
-/// ground's patches, not its texels.
-fn blur(rgba: &[u8], width: usize, height: usize, step: (usize, usize)) -> Vec<u8> {
-    let at = |x: usize, y: usize, c: usize| u32::from(rgba[((y % height) * width + x % width) * 4 + c]);
+/// `rgba` (`width` x `height`, repeated) averaged over `radius` texels each side along `step` ([`BLUR`],
+/// [`PATCH_BLUR`]): the grass follows the ground's patches, not its texels.
+fn blur(rgba: &[u8], width: usize, height: usize, step: (usize, usize), radius: usize) -> Vec<u8> {
+    let at = |x: isize, y: isize, c: usize| {
+        let (x, y) = (x.rem_euclid(width as isize) as usize, y.rem_euclid(height as isize) as usize);
+        u32::from(rgba[(y * width + x) * 4 + c])
+    };
     let mut out = vec![0; rgba.len()];
     for y in 0..height {
         for x in 0..width {
             for c in 0..4 {
-                let sum: u32 = (0..=2 * BLUR)
-                    .map(|k| {
-                        at(x + width * 2 + step.0 * k - step.0 * BLUR, y + height * 2 + step.1 * k - step.1 * BLUR, c)
-                    })
+                let sum: u32 = (-(radius as isize)..=radius as isize)
+                    .map(|k| at(x as isize + step.0 as isize * k, y as isize + step.1 as isize * k, c))
                     .sum();
-                out[(y * width + x) * 4 + c] = (sum / (2 * BLUR as u32 + 1)) as u8;
+                out[(y * width + x) * 4 + c] = (sum / (2 * radius as u32 + 1)) as u8;
             }
         }
     }
@@ -1613,7 +1875,7 @@ mod tests {
             }
         }
         let sharp = Texels { width: 64, height: 64, rgba };
-        let colour = sharp.blurred();
+        let (colour, patches) = (sharp.blurred(BLUR), sharp.blurred(PATCH_BLUR));
         let triangle = |p: [Vec3; 3]| Ground {
             uv0: p.map(|p| p.xz() / 4.0),
             uv1: [Vec2::ZERO; 3],
@@ -1621,6 +1883,7 @@ mod tests {
             hue: [Vec3::ONE; 3],
             road: true,
             profile: 0,
+            prior: 0.0,
             first: 0,
             second: None,
             normal: Vec3::Y,
@@ -1633,10 +1896,13 @@ mod tests {
             triangles: vec![triangle([a, b, c]), triangle([b, d, c])],
             tiles: HashMap::from([((0, 0), vec![0, 1])]),
             textures: vec![colour],
+            patches: vec![patches],
             placement: vec![sharp],
             line: Line::new(&[a, d]),
             mean: Vec3::splat(0.5),
             fx: Vec::new(),
+            report: Vec::new(),
+            texture_refs: Vec::new(),
         }
     }
 
@@ -1748,6 +2014,53 @@ mod tests {
     fn a_narrow_green_crack_cannot_support_a_tuft() {
         let field = field(|u, _| if (u - 0.5).abs() < 0.02 { [75, 125, 45] } else { [100; 3] });
         assert!(field.cards((0, 0), 1.0, CAPACITY, &[]).is_empty());
+    }
+
+    #[test]
+    fn vegetation_takes_straw_and_green_but_not_soil_gravel_or_shade() {
+        // RSF Gabiria's meadow and Bareyo's grass (texture means), a lawn; Bareyo's soil, gravel, black.
+        for c in [[0.62, 0.55, 0.41], [0.44, 0.38, 0.28], [0.36, 0.39, 0.19]] {
+            assert!(vegetation(Vec3::from(c)) > 0.5, "{c:?}");
+        }
+        for c in [[0.65, 0.53, 0.42], [0.53, 0.51, 0.51], [0.05, 0.06, 0.03]] {
+            assert!(vegetation(Vec3::from(c)) < 0.1, "{c:?}");
+        }
+    }
+
+    #[test]
+    fn the_prior_takes_the_collision_and_the_name() {
+        let on = |class: usize| {
+            let mut e = Evidence { area: 10.0, ..Evidence::default() };
+            e.surfaces[class] = 10.0;
+            e
+        };
+        // A hashed name on grass collision is grass; a grass name on tarmac is half; a road name on tarmac is not.
+        assert_eq!(texture_prior(&on(0), "bdf34259.dds"), 1.0);
+        assert_eq!(texture_prior(&on(4), "Herbe1_T.dds"), 0.5);
+        assert_eq!(texture_prior(&on(4), "Route_O.dds"), 0.0);
+        // A triangle takes its own collision half: Helette's grass texture on a rock's collision is still likely grass.
+        assert!(prior(5, Some(texture_prior(&on(0), "Herbe1_T.dds"))) > 0.7);
+        assert_eq!(prior(2, None), 0.0);
+    }
+
+    #[test]
+    fn straw_grows_only_where_the_ground_is_likely_grass_and_off_the_road() {
+        let mut field = field(|_, _| [158, 140, 105]);
+        assert!(field.cards((0, 0), 1.0, CAPACITY, &[]).is_empty(), "straw is not plainly green");
+        for g in &mut field.triangles {
+            (g.road, g.prior) = (false, 0.9);
+        }
+        assert!(field.cards((0, 0), 1.0, CAPACITY, &[]).len() > 500);
+        for g in &mut field.triangles {
+            g.prior = 0.3;
+        }
+        assert!(field.cards((0, 0), 1.0, CAPACITY, &[]).is_empty(), "dirt's prior is too low");
+    }
+
+    #[test]
+    fn a_wide_blur_wraps_a_small_texture() {
+        let t = Texels { width: 4, height: 4, rgba: (0..64).map(|i| (i * 4) as u8).collect() };
+        assert_eq!(t.blurred(PATCH_BLUR).rgba.len(), 64);
     }
 
     #[test]
