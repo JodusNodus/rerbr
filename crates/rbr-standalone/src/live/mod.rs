@@ -184,9 +184,19 @@ pub struct Live<'a> {
     rally_next: RallyNext,
     /// NGP's UDP telemetry (`--telemetry-udp`): a packet after each driving frame.
     telemetry: Option<Telemetry>,
-    /// `--ffb-tyres`: the mechanical trail (m) of the wheel's force from the front tyres (`tyre_ffb`), in place of
-    /// NGP's.
-    ffb_tyres: Option<f32>,
+    /// The wheel's force: NGP's, or a trial's in its place (`--ffb-tyres`, `--ffb-rack`).
+    wheel_force: WheelForce,
+}
+
+/// The force the wheel gets (`Live::wheel_force`).
+#[derive(Clone, Copy)]
+pub enum WheelForce {
+    /// NGP's: its filtered steering torque through its curve.
+    Ngp,
+    /// `--ffb-tyres`: from the front tyres with this mechanical trail, m (`tyre_ffb`).
+    Tyres(f32),
+    /// `--ffb-rack`: NGP's steering torque without its filter (`rack_ffb`).
+    Rack,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -380,25 +390,31 @@ impl<'a> Live<'a> {
         self.saves = Some(saves);
     }
 
-    /// The wheel's force from the front tyres with the mechanical trail `trail` (m) from here on (`--ffb-tyres`).
-    pub fn set_ffb_tyres(&mut self, trail: f32) {
-        self.ffb_tyres = Some(trail);
+    /// The wheel's force from here on (`--ffb-tyres`, `--ffb-rack`).
+    pub fn set_wheel_force(&mut self, force: WheelForce) {
+        self.wheel_force = force;
     }
 
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
-    /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`).
-    /// NGP's reads the car's store over the held typed state, without lowering it (it runs after every frame).
+    /// NGP's, with `--ffb-tyres` the front tyres' (`tyre_ffb::force`), with `--ffb-rack` NGP's torque unfiltered
+    /// (`rack_ffb::force`). NGP's and the rack's read the car's store over the held typed state, without lowering it
+    /// (it runs after every frame).
     pub fn wheel_force(&self) -> f32 {
         let runner = &self.playback.runner;
-        if let Some(trail) = self.ffb_tyres {
+        if let WheelForce::Tyres(trail) = self.wheel_force {
             return crate::tyre_ffb::force(runner.image(), trail);
         }
+        let rack = matches!(self.wheel_force, WheelForce::Rack);
         let mut mem = runner.unheld_image().clone();
         let car = mem.u32(CAR_PTR);
         let force = |mem: &mut Mem, t: Option<&Typed>| {
             let view = CarView::new(mem, t.map(|t| &t.car.own), t.map(|t| &t.car.wheels));
             let view = view.with_defs(t.map(|t| &t.defs)).with_solids(t.map(|t| &t.solids));
-            rbr_physics::car_body::steering_ffb::force(&view, car)
+            if rack {
+                crate::rack_ffb::force(&view, car)
+            } else {
+                rbr_physics::car_body::steering_ffb::force(&view, car)
+            }
         };
         runner.with_held(|t| force(&mut mem, Some(t))).unwrap_or_else(|| force(&mut mem, None))
     }
@@ -616,7 +632,7 @@ impl<'a> Live<'a> {
         let pace = pace_callouts(&pending.marker_events);
         self.last.flow = self.flow_record(&pending.flow);
         self.last.dash = self.dash(signals, &pace);
-        if self.ffb_tyres.is_some() {
+        if !matches!(self.wheel_force, WheelForce::Ngp) {
             if let Ok(steering) = rbr_recording::ffb::Steering::from_payload(&self.last.steering) {
                 self.last.steering = rbr_recording::ffb::Steering { force: self.wheel_force(), ..steering }.to_bytes();
             }

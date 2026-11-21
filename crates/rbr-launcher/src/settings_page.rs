@@ -83,7 +83,7 @@ impl Form {
                         &mut columns[1],
                         &mut self.physics,
                         self.session_physics,
-                        &mut self.ffb.tyres,
+                        &mut self.ffb,
                     );
                 });
             })

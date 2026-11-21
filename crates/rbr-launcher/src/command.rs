@@ -790,6 +790,8 @@ impl Form {
         args.extend(self.drive_physics().args(car));
         if self.ffb.tyres {
             args.extend(["--ffb-tyres".to_owned(), TYRES_TRAIL_MM.to_owned()]);
+        } else if self.ffb.rack {
+            args.push("--ffb-rack".to_owned());
         }
         if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
             args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
@@ -1625,18 +1627,27 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail; off, the command
-    /// has none.
+    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail, NGP's unfiltered
+    /// torque as `--ffb-rack` (the tyres' first if both are set); off, the command has neither.
     #[test]
     fn the_tyres_force_reaches_the_standalone() {
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
-        for (tyres, trail) in [(false, None), (true, Some("25".to_owned()))] {
+        let tyres_on = Some("25".to_owned());
+        for (tyres, rack, trail, rack_arg) in [
+            (false, false, None, false),
+            (true, false, tyres_on.clone(), false),
+            (false, true, None, true),
+            (true, true, tyres_on, false),
+        ] {
             let Some((_, mut form)) = real_form("command-ffb-tyres", text, false) else { return };
-            form.ffb.tyres = tyres;
+            (form.ffb.tyres, form.ffb.rack) = (tyres, rack);
             let args = launch(&mut form);
             let standalone = standalone_part(&args);
             assert_eq!(value(standalone, "--ffb-tyres"), trail, "{args:?}");
-            assert_eq!(value(&args[..args.len() - standalone.len()], "--ffb-tyres"), None, "{args:?}");
+            assert_eq!(standalone.iter().any(|a| a == "--ffb-rack"), rack_arg, "{args:?}");
+            let viewer = &args[..args.len() - standalone.len()];
+            assert_eq!(value(viewer, "--ffb-tyres"), None, "{args:?}");
+            assert!(!viewer.iter().any(|a| a == "--ffb-rack"), "{args:?}");
         }
     }
 
