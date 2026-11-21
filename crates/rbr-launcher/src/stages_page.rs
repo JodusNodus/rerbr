@@ -133,7 +133,8 @@ impl Form {
         };
         match self.stages_page.browser.ui(ui, env) {
             Some(Action::Choose(index)) => {
-                if self.is_circuit(index) {
+                // Circuits open the Circuit page, which stays behind `RBR_CIRCUIT`; else they play as any stage.
+                if self.is_circuit(index) && crate::pages::circuit_enabled() {
                     self.choose_circuit(self.catalog.maps[index].number);
                     self.page = Page::Circuit;
                 } else {

@@ -2396,7 +2396,8 @@ fn ground_detail(world: vec3<f32>) -> f32 {
 
 // Under our grass (`grass.rs`) the ground between the blades is the sward's thatch in their shade: darker and fuller in
 // colour (`THATCH`: brightness, saturation) by how much grass grows there. That is the grass's own test (`grass::green`,
-// `THATCH_GRASSY` its ranges off the road and on the road mesh) on the ground's colour as it takes it: the texture's mip
+// `THATCH_GRASSY` its ranges off the road and on the road mesh, or off it `grass::vegetation` times the ground's prior)
+// on the ground's colour as it takes it: the texture's mip
 // about 45 texels wide (`THATCH_MIP` levels under its width: the test's 256-texel level blurred over 7) in `THATCH_HUE`
 // of the vertex tint; on faces no steeper than it grows on (`THATCH_UP`, about `grass::LEVEL`), at its density by the
 // distance from the eye (`grass_density`). Not the band along the driveline it keeps to: the near ground past it is thatched too. `face` is the face's
@@ -2421,12 +2422,30 @@ fn thatch(colour: vec3<f32>, v: VertexOut, face: vec3<f32>) -> vec3<f32> {
     let c = ground * mix(vec3<f32>(1.0), baked_hue(v.color.rgb), THATCH_HUE);
     let g = c / max(c.r + c.g + c.b, 1e-3);
     let range = THATCH_GRASSY[u32(road)];
-    let green = smoothstep(range.x, range.y, g.g - g.b - 2.0 * max(g.r - g.g - 0.02, 0.0));
+    let strict = smoothstep(range.x, range.y, g.g - g.b - 2.0 * max(g.r - g.g - 0.02, 0.0));
+    // Straw and olive too where what lies under the ground says grass (`grass::prior`, in the vertices' mark).
+    let prior = select(clamp(-v.wet.y - 1.0, 0.0, 1.0), 0.0, road);
+    let green = max(strict, prior * vegetation(ground));
     let up = smoothstep(THATCH_UP.x, THATCH_UP.y, abs(face.y) * inverseSqrt(max(dot(face, face), 1e-12)));
     let dense = grass_density(distance(v.world, frame.eye.xyz));
     let grey = dot(colour, vec3<f32>(0.2126, 0.7152, 0.0722));
     let thatched = max(mix(vec3<f32>(grey), colour, THATCH.y), vec3<f32>(0.0)) * THATCH.x;
     return mix(colour, thatched, candidate * green * up * dense);
+}
+
+// `grass::vegetation`: how much ground of colour `rgb` looks like vegetation, green or dry: its hue from orange-yellow
+// to green (`VEGETATION_HUE`, degrees), some saturation, not dark.
+const VEGETATION_HUE: vec2<f32> = vec2<f32>(32.0, 38.0);
+const VEGETATION_SATURATION: vec2<f32> = vec2<f32>(0.10, 0.18);
+fn vegetation(rgb: vec3<f32>) -> f32 {
+    let most = max(rgb.r, max(rgb.g, rgb.b));
+    let chroma = most - min(rgb.r, min(rgb.g, rgb.b));
+    if (chroma < 1e-3 || rgb.b >= rgb.g) {
+        return 0.0;
+    }
+    let hue = select(60.0 * (2.0 + (rgb.b - rgb.r) / chroma), 60.0 * (rgb.g - rgb.b) / chroma, rgb.r >= rgb.g);
+    return smoothstep(VEGETATION_HUE.x, VEGETATION_HUE.y, hue)
+        * smoothstep(VEGETATION_SATURATION.x, VEGETATION_SATURATION.y, chroma / most) * smoothstep(0.08, 0.16, most);
 }
 
 fn thatch_texel(t: texture_2d<f32>, uv: vec2<f32>) -> vec4<f32> {
