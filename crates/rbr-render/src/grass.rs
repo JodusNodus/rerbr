@@ -188,13 +188,18 @@ const SATURATION: f32 = 0.85;
 const LUSH: Vec3 = Vec3::new(0.72, 1.0, 0.42);
 const LUSH_SHARE: f32 = 0.15;
 /// A converted stage's green blades' hue: the ground's at [`FX_SATURATION`], leaned by [`FX_OLIVE_SHARE`] to
-/// [`FX_OLIVE`] ([`FX_ALBEDO`] their brightness; `shader.wgsl` darkens their roots), and towards [`STRAW`] by
-/// [`FX_DRY_SHARE`] in the dry patches ([`patches`]). Chosen by eye over the test set (ours: realism, not CSP's
+/// [`FX_OLIVE`] over green ground and to [`STRAW`] over warm or brown ground ([`FX_GREEN_GROUND`]; [`FX_ALBEDO`] their
+/// brightness; `shader.wgsl` darkens their roots), and towards [`STRAW`] by [`FX_DRY_SHARE`] in the dry patches
+/// ([`patches`]). Chosen by eye over the test set (ours: realism, not CSP's
 /// numbers): the ground's hue at half saturation and a light lean read as grey-white on Sa Calobra and Prunières.
 const FX_SATURATION: f32 = 0.8;
 const FX_OLIVE: Vec3 = Vec3::new(0.85, 1.0, 0.35);
 const FX_OLIVE_SHARE: f32 = 0.4;
 const FX_DRY_SHARE: f32 = 0.6;
+/// The ground's green over its red (its texture times its tint, display) from which the blades lean wholly to
+/// [`FX_OLIVE`], from all [`STRAW`] at the first to all olive at the second: CSP's blades take the ground's colour, so
+/// Sa Calobra's grey-brown slopes grow dry grass and Joux Verte's green banks green.
+const FX_GREEN_GROUND: [f32; 2] = [0.95, 1.15];
 /// `specular.z` of a converted stage's cards (ours 1): `shader.wgsl` gives them `FX_GRASS_ROOT` and `FX_GRASS_TIP`.
 const FX_CARD: f32 = 2.0;
 /// `specular.z` of a converted stage's group pieces (flowers, weeds): `shader.wgsl` grows them only past `FX_PIECE_NEAR`
@@ -867,9 +872,9 @@ impl Field {
                 let converted = !self.fx.is_empty();
                 let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
                 let hue = if converted {
-                    (hue / hue.max_element())
-                        .lerp(FX_OLIVE, FX_OLIVE_SHARE)
-                        .lerp(STRAW / STRAW.max_element(), dry * FX_DRY_SHARE)
+                    let straw = STRAW / STRAW.max_element();
+                    let lean = straw.lerp(FX_OLIVE, smoothstep(FX_GREEN_GROUND, colour.y / colour.x.max(1e-4)));
+                    (hue / hue.max_element()).lerp(lean, FX_OLIVE_SHARE).lerp(straw, dry * FX_DRY_SHARE)
                 } else {
                     let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
                     hue.lerp(hue * STRAW, dry * 0.35)
