@@ -372,7 +372,7 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
   - The pull (ours, 2026-11-21, a trial; `rbr-standalone --ffb-pull W` with `--ffb-tyres`, `tyre_ffb::Pull`; the
     launcher's Settings > Experimental "Braking and drive pull", `[ffb] pull`, passes 1): per step the front wheels'
     longitudinal parts times the rack ratio (the force from the tyres has NGP's sign: it follows the lateral and
-    aligning parts with r 0.87-0.98), soft-limited at `0.4 S` (`S tanh(x / S)`), one pole of 25 ms, times `W`; fed the
+    aligning parts with r 0.87-0.98), soft-limited at `L = 0.4 S` (`L tanh(x / L)`), one pole of 25 ms, times `W`; fed the
     runner's kept adds (`Runner::keep_steer_torques`) at each `wheel_force`. Offline over the same drives, over the
     force from the tyres' p90: braking median 0.16-0.21, p95 0.27-0.76; impacts at most 0.53-0.99 (raw to 12); 8-30 Hz
     rms with it 0.035, 0.065, 0.090 against 0.040, 0.058, 0.085 without (raw, 0.057-0.124). Not tried on a wheel.
