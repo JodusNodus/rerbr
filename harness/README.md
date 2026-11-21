@@ -10,7 +10,7 @@ original (`play.sh`, `record.sh`, `slots.sh`, `matrix.py`, `apitrace.sh`) need t
 
 | Path | What |
 | --- | --- |
-| `plugin/` | `RBRRecompHarness.dll`: recorder, playback, snapshots (written, not read), peeks, early stop (`build.sh [--install]`) |
+| `plugin/` | `RBRRecompHarness.dll`: recorder, playback, peeks, early stop (`build.sh [--install]`) |
 | `play.sh` | one unattended playback run in a free slot locally (`RBR_DRIVE`, `RBR_PEEK`, ...); the transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's plugin |
 | `record.sh` | record a live drive by hand |
 | `v1-drive.sh` | make a drive from another drive's controls on another stage and car |

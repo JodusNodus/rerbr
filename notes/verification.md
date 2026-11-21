@@ -49,7 +49,7 @@ One file in the game folder, written by `harness/play.sh` from an environment va
 | `RBRRecompEarlyStop.txt` | `RBR_EARLYSTOP` | quit at the first step differing from a reference ([Early stop](#early-stop)) |
 | `RBRRecompCamera.txt` etc. | `RBR_CAMERA`, `RBR_VOLUMES`, `RBR_POPS`, `RBR_FPS` | sound captures: camera mode, volumes, pop logs, frame-rate cap |
 
-The transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's copy of the plugin (run from rbr-recomp, `harness/README.md` there); this repo reads none of their dumps. The plugin still writes snapshots (`RBRRecompSnapshot.txt`, `RBRRecompSessionSnaps.on`); no script sets them and nothing reads them.
+The transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's copy of the plugin (run from rbr-recomp, `harness/README.md` there); this repo reads none of their dumps. The plugin writes no snapshots.
 
 ## Recordings
 
@@ -125,7 +125,7 @@ A stage load opens the car pack's three `setups/d_*.lsp`, RSF scans every `rsfda
 Determinism and versions. Masked here: words differing at the first step and constant after (pointers, uninitialised memory), the unused fourth word of 16-byte vectors, and car+0x658, +0x674, +0x814, +0x824, (two runs of the same controls differ in them).
 - RSF vs RSF: rsf-drive1 (Evo IX on Tanner from `AUTO`) and its FRM1 played back (rsf-drive2) equal all 38263 steps.
 - RSF vs 7.4.778: with the car pack in slot 5 (`scripts/ngp-install-car.py`) and its model (RSF's `Cars.ini [Car05]` and `Cars/<model>/` copied in), det-audi66's controls (Audi A2, map 66, from `AUTO`) are equal every step the playback drove (40 to 31482; past that the controls ran out and the two plugin builds feed the car differently). 7.5.779 physics equals 7.4.778's on that drive. With the slot's own model (Impreza) the car starts 2-6 cm away.
-- A menu-started drive does not replay from `AUTO`: drive2 attempt 6 vs its `AUTO` controls (same car files, setup) has position equal at step 40, orientation/velocities a few ulp apart, position apart from step 80. No control reaches the car during the load settle (`CTL1` starts at step 1520), so the menu start leaves another state kept in `snap-0.bin`/`snap-1520.bin`. RSF snapshots do not step in `rbr-standalone` yet: first NGP 7.5.779 call unbound.
+- A menu-started drive does not replay from `AUTO`: drive2 attempt 6 vs its `AUTO` controls (same car files, setup) has position equal at step 40, orientation/velocities a few ulp apart, position apart from step 80. No control reaches the car during the load settle (`CTL1` starts at step 1520), so the menu start leaves another state, no longer recorded.
 
 ## Drives and the gate matrix
 

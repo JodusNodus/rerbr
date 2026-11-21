@@ -57,7 +57,7 @@ ours() { for p in $(pids); do cat /proc/$p/task/*/environ 2>/dev/null | tr '\0' 
 stop() { p=$(ours); [ -z "$p" ] && return; kill $p 2>/dev/null || true; sleep 3; p=$(ours); [ -z "$p" ] || kill -9 $p 2>/dev/null || true; sleep 1; }
 idle || { echo "the NGP prefix has processes (the user's game?); not starting" >&2; exit 1; }
 cd "$game"
-rm -f RBRRecompRecord-*.bin RBRRecompSnapshot.txt RBRRecompSnap-*.bin RBRRecompPeek-*.bin
+rm -f RBRRecompRecord-*.bin RBRRecompPeek-*.bin
 [ "$peek" = 1 ] || rm -f RBRRecompPeek.txt
 rm -f RBRRecompPlayback.bin
 [ -z "${PLAYBACK:-}" ] || cp "$runs/.stage-$name.playback" RBRRecompPlayback.bin
@@ -79,7 +79,7 @@ else
 fi
 stop
 idle || echo "NGP prefix processes without our token remain (not ours; left alone)" >&2
-rm -f RBRRecompAuto.txt RBRRecompReplay.txt RBRRecompRecord.on RBRRecompPlayback.bin RBRRecompSnapshot.txt RBRRecompPeek.txt
+rm -f RBRRecompAuto.txt RBRRecompReplay.txt RBRRecompRecord.on RBRRecompPlayback.bin RBRRecompPeek.txt
 for f in RBRRecompPeek-*.bin; do [ -e "$f" ] && mv "$f" "$runs/$name.peek.bin"; done
 mv RBRRecompRecord-*.bin "$runs/$name.bin"
 cp RBRRecompHarness.log "$runs/$name.harness.log"

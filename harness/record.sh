@@ -45,8 +45,7 @@ rsync -a --delete --exclude 'RBRRecompRecord-*.bin' --exclude 'RBRRecomp*.log' "
 rsync -a --delete "$wineprefix/" "$prefix/"
 cd "$game_dir"
 rm -f RBRRecompPlayback.bin RBRRecompRecord-*.bin RBRRecompHarness.log \
-  RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompEarlyStop.txt \
-  RBRRecompSnapshot.txt RBRRecompSnap-*.bin
+  RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompEarlyStop.txt
 touch RBRRecompRecord.on
 echo "$auto" > RBRRecompAuto.txt
 ls -la RBRRecompRecord.on RBRRecompAuto.txt

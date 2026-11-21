@@ -119,7 +119,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 
 ## Decisions
 
-- 2026-11-21: the step-replay and snapshot stack is retired (`replay.py`, `replay-fpu`, `snapshot_reference.py`, `load_*_refs.py`, `compose_load.py`, `ngp_init_diff.py`, the snapshot data set, the Rust snapshot reader and its tests, the `round_trip` tool, the load tests' `RBR_LOAD_OUT` patches, `rbr-standalone --dump-image`). The recorded-drive gate is the oracle. The plugin still writes snapshots (`RBRRecompSnapshot.txt`, `RBRRecompSessionSnaps.on`) though nothing reads them; the committed load vectors (`crates/rbr-physics/tests/vectors`) stay as frozen references.
+- 2026-11-21: the step-replay and snapshot stack is retired (`replay.py`, `replay-fpu`, `snapshot_reference.py`, `load_*_refs.py`, `compose_load.py`, `ngp_init_diff.py`, the snapshot data set, the Rust snapshot reader and its tests, the `round_trip` tool, the load tests' `RBR_LOAD_OUT` patches, `rbr-standalone --dump-image`). The recorded-drive gate is the oracle. The plugin's snapshot code (`RBRRecompSnapshot.txt`, `RBRRecompSessionSnaps.on`) is removed too; the committed load vectors (`crates/rbr-physics/tests/vectors`) stay as frozen references.
 - 2026-11-07 (user): an opt-in experimental physics, "ReRBR experimental (built on NGP 7)" (ours; the launcher's
   Settings > Experimental, `--physics experimental`): NGP 7's physics with some systems replaced by ours, one crate and one
   seam each. The first is the engine model (`rbr-engine`): a mean-value engine from each car's data in place of NGP's

@@ -102,7 +102,6 @@ fi
 test -f RBRRecompPlayback.bin && test -f RBRRecompAuto.txt
 ! pgrep -f "[${game_dir:0:1}]${game_dir:1}/RichardBurnsRally_SSE.exe" >/dev/null
 rm -f RBRRecompRecord-*.bin RBRRecompHarness.log RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompEarlyStop.txt \
-  RBRRecompSnapshot.txt RBRRecompSnap-*.bin \
   RBRRecompWriteWatch.on RBRRecompFastForward.txt RBRRecompCamera.txt RBRRecompVolumes.txt \
   RBRRecompPops.txt RBRRecompFps.txt
 touch RBRRecompRecord.on
@@ -154,7 +153,6 @@ fi
 rm -f RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompFastForward.txt RBRRecompCamera.txt RBRRecompVolumes.txt \
   RBRRecompPops.txt RBRRecompFps.txt
 rm -f RBRRecompWriteWatch.on
-rm -f RBRRecompSnapshot.txt
 echo "slot: $game_dir"
 ls -la "$runs/$name.bin"
 if [ "$has_peek" = 1 ]; then ls -la "$runs/$name.peek.bin"; fi
