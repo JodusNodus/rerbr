@@ -298,6 +298,8 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   the converter marking its physical drawn meshes (`Ground=1`): AC tracks often collide with meshes of their own that
   are never drawn (Riudecanyes' `riu_physical.kn5`), so Coll de la Teixeta marked 61 of 1721 drawn objects and none of
   its road (39k ground triangles against the sampling's 140k), and BeamNG's drawn and collision meshes are apart too.
+  Open (2026-11-21): with a 25 m collision corridor, large terrain objects lie mostly off collision and are not ground,
+  so Gunma's olive hillsides get no grass, detail or film.
 - The film's road (`puddles::Roads`): the surfaces do not tell a BTB road from its ground (Cueva Santa's fields are 53
   `Tarmac_Fine_Covered`, 234k of 288k ground triangles; converted Coll de la Teixeta is all AC's `KRB`, 37), so only
   ground showing a road texture within 10 m across and 2 m up of the driveline takes it. A road texture is under 2 or
