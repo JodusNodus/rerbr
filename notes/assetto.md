@@ -600,6 +600,13 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     verges, Sa Calobra's slopes read as grass. Open: Prunières paler than CSP's, dark ground in a strip at its near
     verges (008.215), Joux Verte greener than CSP's, frame time not measured (ten times Prunières' cards, within the
     tile capacity our own grass uses).
+  - Lean by the ground (2026-11-21, look choice, user: Sa Calobra's grass read lush where its ground is grey-brown;
+    its `[GRASS_FX]` sets no colour, its atlas `monte_grass.dds` is pure marker green, so CSP's blades take the
+    ground's): the 0.4 lean goes to olive over green ground and to `STRAW` over warm ground, by the ground's green over
+    red (texture times tint, display) from 0.95 to 1.15 (`FX_GREEN_GROUND`). `btb-shots.py --count 3` on Sa Calobra
+    down, Prunières, Gabiria, Roure, Joux Verte SS7 reversed: Sa Calobra's verges and slopes khaki to straw (RMSE
+    0.006-0.020), Gabiria's verges warmer (to 0.008; CSP's are yellower than ours), Roure, Prunières and Joux Verte
+    near unchanged (under 0.009).
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Distance haze (2026-11-21): CSP's distance is a deep blue, ours a pale blue-grey. At Joux Verte's mountain ours
