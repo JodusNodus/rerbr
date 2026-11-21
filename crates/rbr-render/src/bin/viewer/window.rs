@@ -140,6 +140,8 @@ pub struct App {
     gamepads: Option<Gamepads>,
     /// The wheel's force feedback (live mode), which the live process's step records set as they come.
     wheel: Option<Arc<ffb::Wheel>>,
+    /// The wheel's rev lights (live mode, `[ffb] rev_lights`), set each frame.
+    lights: Option<rbr_render::wheel_lights::Lights>,
     /// Each action's device input in the last frame, for the gear and restart presses.
     pads: [f32; Action::ALL.len()],
     /// The advanced H-shifter (`h-shifter = advanced`), in live mode.
@@ -216,6 +218,19 @@ impl App {
                 Err(e) => eprintln!("viewer: wheel rotation not set: {e}"),
             }
         }
+        // The wheel's rev lights, in live mode when on.
+        let lights = scene.live.as_ref().filter(|_| !replay && ffb.rev_lights).and_then(|_| {
+            match rbr_render::wheel_lights::Lights::open() {
+                Ok(lights) => {
+                    eprintln!("viewer: rev lights on {}", lights.names.join(", "));
+                    Some(lights)
+                }
+                Err(e) => {
+                    eprintln!("viewer: no rev lights: {e}");
+                    None
+                }
+            }
+        });
         // The wheel's force, in live mode with force feedback on.
         let wheel =
             scene.live.as_ref().filter(|_| !replay && ffb.settings.enabled).and_then(|_| match ffb::Wheel::open(ffb) {
@@ -262,6 +277,7 @@ impl App {
             bindings: args.bindings.clone(),
             gamepads,
             wheel,
+            lights,
             pads: [0.0; Action::ALL.len()],
             shifter,
             feed,

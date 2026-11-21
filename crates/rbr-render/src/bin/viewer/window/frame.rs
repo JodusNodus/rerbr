@@ -372,6 +372,9 @@ impl App {
         if let (Some(dials), Some(playback)) = (&mut self.scene.dials, &self.scene.playback) {
             dials.update(&dial_values(playback, self.scene.live.as_ref()), Some(dt), &mut running.renderer);
         }
+        if let Some(lights) = &self.lights {
+            lights.show(self.scene.live.as_ref().and_then(|l| Some((l.hud.rpm(), l.hud.gear, l.hud.shift?))));
+        }
         span.next("render");
         // Each view into its window, or into its third of the window (cleared first: a width not of three leaves
         // columns no view draws); the centre's first, then the others, each submitted before the next.

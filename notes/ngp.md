@@ -399,6 +399,15 @@ change and viewer at live start: the setting or the car's lock up to it. RSF set
 540 before and after drive2). Car lock = `MaxSteeringLock x 720` degrees (`wheel_rotation::car_degrees`); RSF's
 `steering_wheel` matched for every NGP car in `cars-rsf` (Yaris Rally2 479.52 -> RSF 479).
 
+`rev_lights` (ours, 2026-11-21, `rbr_render::wheel_lights`, `[ffb] rev_lights`, on by default; launcher Controls
+"Rev lights"): the wheel's five LEDs fill over the last 1500 rpm before SHF1's upshift point for the gear (the rev
+limit without one) and flash at 4 Hz past it; dark while paused, at the stage result and after the drive; every
+30 ms, written on a change. Linux: the wheel driver's LED class (`leds/*::RPM1`-`RPM5`, hid-lg4ff and new-lg4ff;
+new-lg4ff's G923 PS: `max_brightness` 1, reads back 255 when on). Live autopilot drive on the G923 PS (Fiesta
+Rally2, Thizy, 60 s from go, LEDs sampled at 20 Hz): 0-5 lit, falling at each upshift, 5 flashes, all dark after
+exit. macOS and Windows: Logitech's classic `f8 12 <mask>` output report through SDL's HID API for the G27, G29
+and G923 PS (crossover-ffb, `notes/references`); type-checked for Windows only, not run on a wheel.
+
 ### RSF settings
 
 What an RSF drive's force feedback, wheel and aids take (`rbr_formats::rsf::settings`, CLI `rsf-settings`;

@@ -192,14 +192,17 @@ impl App {
         self.pause_outputs(false);
     }
 
-    /// Stops or restarts the drive's sound where it is and holds the wheel's force at 0 (the pause menu, a paused
-    /// replay, the stage result).
+    /// Stops or restarts the drive's sound where it is, holds the wheel's force at 0 and darkens its rev lights (the
+    /// pause menu, a paused replay, the stage result).
     pub fn pause_outputs(&self, paused: bool) {
         if let Some(sound) = &self.sound {
             sound.set_paused(paused);
         }
         if let Some(wheel) = &self.wheel {
             wheel.set_paused(paused);
+        }
+        if let Some(lights) = &self.lights {
+            lights.set_paused(paused);
         }
     }
 
