@@ -170,7 +170,7 @@ Some changes need more:
 | renderer, HUD, cameras, launcher | before and after captures (`viewer --screenshot`, `rerbr --screenshot DIR`); for the renderer the [reference shots](#reference-shots) |
 | sound | a short audio render |
 | a file format | a test that parses every retail file it covers |
-| physics, `rbr-standalone` or `rbr-step` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (physics PASS 84084/84084 and exit status 0), the poison build and the drive with every aid on (`RBR_NGP_PHYSICS` and `RBR_RSF` set); `--perf BASE_BIN` adds the step's cost against another build |
+| physics, `rbr-standalone` or `rbr-step` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (physics PASS 84084/84084 and exit status 0), the poison build, the drive with every aid on and the tarmac and gravel drives of `notes/verification.md` (`RBR_NGP_PHYSICS` and `RBR_RSF` set); `--perf BASE_BIN` adds the step's cost against another build |
 
 ## Physics changes
 
