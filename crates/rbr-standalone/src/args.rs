@@ -550,13 +550,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.events_out.is_some() && (args.live || args.recording.is_none() || args.autopilot.is_some()) {
         return Err("--events-out needs --recording, and no --live or --autopilot".into());
     }
-    if (args.recorded_payload || args.trace_out.is_some() || args.steer_breakdown.is_some())
+    if (args.recorded_payload || args.trace_out.is_some())
         && (args.live || args.recording.is_none() || args.autopilot.is_some())
     {
-        return Err(
-            "--recorded-payload, --trace-out and --steer-breakdown need --recording, and no --live or --autopilot"
-                .into(),
-        );
+        return Err("--recorded-payload and --trace-out need --recording, and no --live or --autopilot".into());
+    }
+    if args.steer_breakdown.is_some() && (args.live || args.recording.is_none() || args.autopilot.is_some()) {
+        return Err("--steer-breakdown needs --recording, and no --live or --autopilot".into());
     }
     if ffb_settings.is_some() && args.trace_out.is_none() {
         return Err("--ffb-settings needs --trace-out".into());
@@ -1166,6 +1166,10 @@ mod tests {
             (
                 format!("{LIVE} --recorded-payload"),
                 "--recorded-payload and --trace-out need --recording, and no --live or --autopilot",
+            ),
+            (
+                format!("{LIVE} --steer-breakdown S.csv"),
+                "--steer-breakdown needs --recording, and no --live or --autopilot",
             ),
             (format!("{REC} --recorded-payload --ffb-settings 1,1,0,0,0"), "--ffb-settings needs --trace-out"),
             (format!("{REC} --extra-payloads EP"), "--extra-payloads and --wall-clock need --recorded-payload"),
