@@ -51,7 +51,6 @@ mod hosts;
 
 use hosts::{BootHeap, Files, NoCalls, PhysicsCalls, Profiler, StageCalls, HEAP_BASE};
 
-const PAGE: u32 = 0x1000;
 /// NGP.dll's base in the reference runs; its `.data` (`0x10171000..0x10178000` at the file base) starts zeroed.
 const NGP: car_init::Data = car_init::Data { base: runtime::BASE };
 const NGP_DATA: (u32, usize) = (0x1017_1000, 0x7000);
@@ -437,8 +436,6 @@ pub struct Image {
     pub ffb_sensitivity: [i32; 3],
     /// What the boot built, for the report.
     pub built: Vec<(&'static str, u64)>,
-    /// The boot heap's blocks `(address, size)`, in allocation order (`--dump-image`).
-    pub blocks: Vec<(u32, u32)>,
     /// The handles of the detachable car parts (`rbr_recording::detach::PARTS`): each part's animation object, with its index.
     pub detach: Vec<(u32, u32)>,
 }
@@ -538,7 +535,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     mem.set_u32(QPC_SLOT, QPC_STAND_IN);
     mem.map(NGP.at(ngp_tables.rdata.address), &ngp_tables.rdata.bytes);
     mem.map(NGP.at(NGP_DATA.0), &vec![0; NGP_DATA.1]);
-    let heap = BootHeap { mem: mem.clone(), next: Rc::new(Cell::new(HEAP_BASE)), blocks: Rc::default() };
+    let heap = BootHeap { mem: mem.clone(), next: Rc::new(Cell::new(HEAP_BASE)) };
 
     // The application's state word and the signal manager on it (`CPC_Application`'s constructor).
     let app = heap.take(APPLICATION_SIZE);
@@ -799,7 +796,6 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
         idle_table,
         ffb_sensitivity: race.ffb_sensitivity,
         built,
-        blocks: heap.blocks.take(),
         detach,
     })
 }
@@ -829,29 +825,6 @@ pub fn ngp_init(mem: &mut Mem, image: &Image) {
     mem.set_u32(physics::TELEMETRY_GLOBAL, 0);
     ngp_stage::stage_init(mem, physics::def_global(mem), tables);
     mem.set_u32(physics::TELEMETRY_GLOBAL, replay);
-}
-
-/// `--dump-image FILE` (a dev check, `harness/ngp_init_diff.py`): the image `mem` holds after `UpdateA720`, as records
-/// `base size bytes` (u32 LE each) for the boot's pages and the runner's allocator's, and `FILE.blocks`, one boot heap block
-/// `address size` (hex) per line.
-pub fn dump(mem: &Mem, image: &Image, path: &std::path::Path) -> std::io::Result<()> {
-    use std::fmt::Write as _;
-    let mut out = Vec::new();
-    let allocator = (rbr_step::runner::ALLOCATOR_HEAP_BASE..rbr_step::runner::ALLOCATOR_HEAP_END)
-        .step_by(PAGE as usize)
-        .map_while(|at| mem.try_read(at, PAGE as usize).map(|_| (at, PAGE)));
-    for (base, size) in image.regions.iter().copied().chain(allocator) {
-        let bytes = mem.try_read(base, size as usize).expect("the image's regions are mapped");
-        out.extend(base.to_le_bytes());
-        out.extend(size.to_le_bytes());
-        out.extend(bytes);
-    }
-    std::fs::write(path, out)?;
-    let mut blocks = String::new();
-    for (at, size) in &image.blocks {
-        writeln!(blocks, "{at:08x} {size:x}").unwrap();
-    }
-    std::fs::write(path.with_extension("blocks"), blocks)
 }
 
 #[cfg(test)]

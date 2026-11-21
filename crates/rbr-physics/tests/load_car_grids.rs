@@ -16,9 +16,7 @@
 //! body's alone). The test builds once on the game's bytes there, which must give the game's grids, and once on 0 (the
 //! load's), which may differ from it only there. The vertex blocks' `w` lanes are unwritten and not compared.
 //!
-//! With `RBR_LOAD_OUT` the lcb1 build on 0 is written as the `car-grids` patch for `harness/compose_load.py`: the grid
-//! bank's ids 1-9 at snap-0 (after the hinge moves), the descriptors and their blocks. The bytes built from the unwritten
-//! ones, those, and the `w` lanes are `u`. Runs only when `RBR_DATA` and `RBR_PATCH` are set.
+//! Runs only when `RBR_DATA` and `RBR_PATCH` are set.
 
 use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
@@ -34,9 +32,6 @@ use std::io::Read;
 mod common;
 
 use common::hex;
-
-#[path = "common/patch.rs"]
-mod patch;
 
 const VECTORS: &str = include_str!("vectors/load-car-grids.txt");
 const GRID_SIZE: u32 = 0x6b0;
@@ -286,34 +281,16 @@ fn car_grids_match_the_game() {
             zeroed
         );
 
-        let mut patched = vec![patch::Patched {
-            kind: "car-grids".into(),
-            at: bank,
-            ours: b.clone(),
-            class: (0..bank_len).map(|i| if from_face_garbage(i) { b'u' } else { b'w' }).collect(),
-            game: run.grids.values().flatten().copied().collect(),
-        }];
-
         // The descriptors and their blocks.
         for (&id, (at, want)) in &run.descs {
             assert_eq!(&game.read(*at, DESC_SIZE), want, "{}: descriptor {id}", run.label);
-            patched.push(patch::Patched {
-                kind: "car-mesh-desc".into(),
-                at: *at,
-                ours: ours.read(*at, DESC_SIZE),
-                class: vec![b'w'; DESC_SIZE],
-                game: want.clone(),
-            });
         }
         for ((id, kind), block) in &run.blocks {
             let len = block.len as usize;
             let (got, got_ones, zero) = (game.read(block.at, len), ones.read(block.at, len), ours.read(block.at, len));
             let unwritten = |i: usize| got[i] != got_ones[i];
-            let (game_bytes, class) = match &block.bytes {
-                Bytes::Digest(d) => {
-                    assert_eq!(fnv64(&got), *d, "{}: {kind} of grid {id}", run.label);
-                    (got.clone(), vec![b'w'; len])
-                }
+            match &block.bytes {
+                Bytes::Digest(d) => assert_eq!(fnv64(&got), *d, "{}: {kind} of grid {id}", run.label),
                 Bytes::Raw(want) => {
                     let differ: Vec<usize> = (0..len).filter(|&i| !unwritten(i) && got[i] != want[i]).collect();
                     assert!(differ.is_empty(), "{}: {kind} of grid {id} differs at {:x?}", run.label, differ);
@@ -321,21 +298,12 @@ fn car_grids_match_the_game() {
                     let differ: Vec<usize> =
                         (0..len).filter(|&i| zero[i] != got[i] && !unwritten(i) && !garbage(i)).collect();
                     assert!(differ.is_empty(), "{}: {kind} of grid {id} on 0", run.label);
-                    let class = (0..len).map(|i| if unwritten(i) || garbage(i) { b'u' } else { b'w' }).collect();
-                    (want.clone(), class)
                 }
-            };
+            }
             // Unwritten: the vertices' `w` lanes alone.
             for i in (0..len).filter(|&i| unwritten(i)) {
                 assert!(kind == "vertices" && i % 16 >= 12, "{}: {kind} {i:#x}", run.label);
             }
-            patched.push(patch::Patched {
-                kind: format!("car-mesh-{kind}"),
-                at: block.at,
-                ours: zero,
-                class,
-                game: game_bytes,
-            });
         }
         eprintln!(
             "{}: grids 1-9 equal ({} bytes from the unwritten face bytes), {} descriptors, {} blocks",
@@ -344,8 +312,5 @@ fn car_grids_match_the_game() {
             run.descs.len(),
             run.blocks.len()
         );
-        if run.label == "lcb1" {
-            patch::write("car-grids", &patched);
-        }
     }
 }

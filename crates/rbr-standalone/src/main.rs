@@ -3,7 +3,7 @@
 //! original code, from the boot's memory image, and the car and the wheels are compared with the recording after
 //! every step.
 //!
-//! Usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE] [WEATHER]
+//! Usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE] [WEATHER]
 //!        rbr-standalone --live --stage NAME --boot [WEATHER] [--car N] [--data DIR]
 //!        rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
 //!

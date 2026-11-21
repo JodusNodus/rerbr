@@ -112,7 +112,7 @@ impl<'a> Live<'a> {
         settings: MarkerSettings,
         camera_go: bool,
     ) -> Result<Self, String> {
-        let (playback, image) = boot_playback(data, stage, name, race, None, false)?;
+        let (playback, image) = boot_playback(data, stage, name, race, false)?;
         let built: Vec<String> = image.built.iter().map(|(what, n)| format!("{what} {n}")).collect();
         eprintln!("rbr-standalone: boot built {}", built.join(", "));
         let dt = keeper_layout::max_time_step(playback.runner.image());

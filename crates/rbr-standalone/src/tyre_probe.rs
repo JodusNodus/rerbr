@@ -20,7 +20,7 @@ const BLOCK_2: u32 = 0xC20;
 const MAT_FLAGS: u32 = 0x158;
 /// The scratch's footprint the lab maps back (`load_frame` reads to `+0x50c`; the record's angle
 /// lives at `+0x5ac`), and the state, setup, wear-table and record sizes it maps with it. NGP's
-/// `.data` words come from `NGP_DATA` whole, as `boot::dump` maps them.
+/// `.data` words come from `NGP_DATA` whole.
 const SCRATCH_LEN: u32 = 0x600;
 const STATE_LEN: u32 = 0x200;
 const DEF_LEN: u32 = 0x400;
@@ -291,7 +291,7 @@ fn try_f32(mem: &Mem, at: u32) -> Option<f32> {
 
 /// `--tyre-image FILE` (with `--autopilot`): a memory image of the four wheels' tyre footprints at `step`,
 /// for the lab (`crates/rbr-tyre-lab/examples/ngp_transient.rs`). `FILE` holds records `base size bytes`
-/// (u32 LE each, as `boot::dump` writes them) for each wheel's scratch, state, setup, wear table and contact
+/// (u32 LE each) for each wheel's scratch, state, setup, wear table and contact
 /// record, plus NGP's `.data`; `FILE` with the extension `txt` is a text sidecar with the wheels' addresses
 /// and the thermal scalars the lab's `TyreThermal` needs. Read-only: nothing is written to physics memory.
 /// The image stays out of the repository (the lab reads it from `/tmp/tyre-lab`).

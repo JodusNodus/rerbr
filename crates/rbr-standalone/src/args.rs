@@ -110,7 +110,6 @@ pub struct Args {
     pub car: Option<u32>,
     pub steps: usize,
     pub marker_settings: MarkerSettings,
-    pub dump_image: Option<PathBuf>,
     pub weather: Option<u32>,
     pub tyre: Option<u32>,
     pub wear: Option<u32>,
@@ -223,7 +222,7 @@ fn on_off(flag: &str, value: &str) -> Result<bool, String> {
 }
 
 /// `--help`'s text.
-pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
+pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
        rbr-standalone --live --stage NAME --boot [WEATHER] [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
@@ -342,7 +341,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--rsf-root" => rsf_root = Some(PathBuf::from(value)),
             "--data" => data = Some(PathBuf::from(value)),
             "--car" => args.car = Some(parsed("--car", &value)?),
-            "--dump-image" => args.dump_image = Some(PathBuf::from(value)),
             "--steps" => args.steps = parsed("--steps", &value)?,
             "--weather" => args.weather = Some(parsed("--weather", &value)?),
             "--tyre" => args.tyre = Some(parsed("--tyre", &value)?),
@@ -1028,7 +1026,7 @@ mod tests {
             }),
             (
                 format!(
-                    "{BOOT} --rsf-car PACK --ffb-sensitivity 90,80,70 --head-gasket-durability 3 --saves SV --profile P --dump-image IMG"
+                    "{BOOT} --rsf-car PACK --ffb-sensitivity 90,80,70 --head-gasket-durability 3 --saves SV --profile P"
                 ),
                 |a| {
                     assert_eq!(a.rsf_car.as_deref(), Some("PACK"));
@@ -1036,7 +1034,6 @@ mod tests {
                     assert_eq!(a.head_gasket_durability, Some(3));
                     assert_eq!(a.saves, Some(PathBuf::from("SV")));
                     assert_eq!(a.profile.as_deref(), Some("P"));
-                    assert_eq!(a.dump_image, Some(PathBuf::from("IMG")));
                 },
             ),
         ];

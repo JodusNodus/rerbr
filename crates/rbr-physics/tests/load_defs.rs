@@ -60,9 +60,6 @@ mod common;
 
 use common::hex;
 
-#[path = "common/patch.rs"]
-mod patch;
-
 const VECTORS: [&str; 3] = [
     include_str!("vectors/load-wheel-defs.txt"),
     include_str!("vectors/load-car-def.txt"),
@@ -449,19 +446,17 @@ fn differences(mem: &Mem, object: &Object, skip: &BTreeSet<u32>) -> Vec<String> 
 }
 
 /// Compares `objects` with the build on 0x00 and 0xff fills (`zeros`, `ones`), outside `later` and the bytes the two
-/// builds disagree on; prints the counts by kind and panics on a difference. Returns the objects as built, each byte
-/// classed (`patch`): compared `w`, never written `u`, in a name word `n`, written by a step not built here `l`.
-fn compare(objects: &[Object], zeros: &Mem, ones: &Mem, later: &[(&str, std::ops::Range<u32>)]) -> Vec<patch::Patched> {
+/// builds disagree on; prints the counts by kind (compared, never written, in a name word, written by a step not built
+/// here) and panics on a difference.
+fn compare(objects: &[Object], zeros: &Mem, ones: &Mem, later: &[(&str, std::ops::Range<u32>)]) {
     let mut counts: BTreeMap<&str, [u32; 4]> = BTreeMap::new();
     let mut differing = Vec::new();
-    let mut patched = Vec::new();
     for object in objects {
         let len = object.bytes.len() as u32;
         let a = zeros.read(object.at, len as usize);
         let b = ones.read(object.at, len as usize);
         let count = counts.entry(object.kind.as_str()).or_default();
         let mut skip = BTreeSet::new();
-        let mut classes = Vec::new();
         for offset in 0..len {
             let class = if later.iter().any(|(kind, range)| object.kind == *kind && range.contains(&offset)) {
                 3
@@ -473,18 +468,10 @@ fn compare(objects: &[Object], zeros: &Mem, ones: &Mem, later: &[(&str, std::ops
                 0
             };
             count[class] += 1;
-            classes.push(b"wunl"[class]);
             if class != 0 {
                 skip.insert(offset);
             }
         }
-        patched.push(patch::Patched {
-            kind: object.kind.clone(),
-            at: object.at,
-            ours: a,
-            class: classes,
-            game: object.bytes.clone(),
-        });
         differing.extend(
             differences(zeros, object, &skip).into_iter().map(|d| format!("{} {} {d}", object.kind, object.position)),
         );
@@ -501,7 +488,6 @@ fn compare(objects: &[Object], zeros: &Mem, ones: &Mem, later: &[(&str, std::ops
         differing.len(),
         differing.iter().take(200).cloned().collect::<Vec<_>>().join("\n")
     );
-    patched
 }
 
 /// The same definitions under NGP: NGP's `physics.rbz` (`RBR_NGP_PHYSICS`, with its cars in their slots) parsed with
@@ -536,7 +522,7 @@ fn ngp_definitions_match_the_game() {
         (build(&data, &race, &objects, 0, None), build(&data, &race, &objects, 0xff, None));
     let later: Vec<_> =
         LATER.iter().chain(&NGP_LATER).cloned().chain(ngp_torque_rpms()).chain(wheel_setup_copy(&data)).collect();
-    patch::write("ngp-definitions", &compare(&objects, &zeros, &ones, &later));
+    compare(&objects, &zeros, &ones, &later);
 }
 
 /// The bytes NGP writes after the files (layer 2 of `notes/ngp.md`'s plan, not built here), and one word that holds an
@@ -614,23 +600,5 @@ fn car_instance_matches_the_game() {
         eprintln!("{kind}: {kept} of {len} bytes not written (or copied from such bytes)");
     }
     let (game, _, _) = build(&data, &COROLLA, &objects, 0, Some(Fill::Game));
-    // The bytes as the 0x00 build has them, those the two builds disagree on (the blocks' old bytes) classed `U`, the
-    // others `W`: both only stand while the game's bytes are still these (`harness/compose_load.py`).
-    let mut patched = compare(&instance, &game, &game, &[]);
-    for p in &mut patched {
-        let len = p.ours.len();
-        let (a, b) = (zeros.read(p.at, len), ones.read(p.at, len));
-        for (i, c) in p.class.iter_mut().enumerate() {
-            if *c == b'w' {
-                *c = if a[i] == b[i] { b'W' } else { b'U' };
-            }
-        }
-        // This old heap lane is read by NotifyHost's window-start copy. Preserve snap-0's value rather than zeroing
-        // it as an unwritten constructor byte; the copy into car+0x33c is the game's.
-        if p.kind == "car" {
-            p.class[0x14c..0x150].fill(b'g');
-        }
-        p.ours = a;
-    }
-    patch::write("car-instance", &patched);
+    compare(&instance, &game, &game, &[]);
 }

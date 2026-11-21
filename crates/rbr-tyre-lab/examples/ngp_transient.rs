@@ -6,7 +6,7 @@
 //! blend at low speed, or heat build-up; this harness can. It changes nothing the game computes.
 //!
 //! Capture (read-only): `rbr-standalone --autopilot OUT --boot ... --tyre-image FILE [--tyre-image-step N]`
-//! writes `FILE` (records `base size bytes`, u32 LE each, as `boot::dump` writes them) plus a `txt` sidecar
+//! writes `FILE` (records `base size bytes`, u32 LE each) plus a `txt` sidecar
 //! with the wheels' addresses and NGP's thermal scalars. This example loads them into a `Mem`, so
 //! `layout::frame_of(mem, scratch_at)` works exactly as in the probe.
 //!

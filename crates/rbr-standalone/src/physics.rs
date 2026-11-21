@@ -3,7 +3,6 @@
 
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};
-use std::path::Path;
 
 use rbr_formats::data::Data;
 use rbr_formats::trk::DriveLineRecord;
@@ -176,15 +175,14 @@ pub fn why(e: &(dyn Any + Send)) -> String {
     }
 }
 
-/// The boot's image at step 0 in the application state `Game` starts in, after `CCar::UpdateA720` (written to `dump`
-/// when given), and its playback. Without `track_allocator` the runner's allocator's blocks are in the image's pages and
+/// The boot's image at step 0 in the application state `Game` starts in, after `CCar::UpdateA720`, and its
+/// playback. Without `track_allocator` the runner's allocator's blocks are in the image's pages and
 /// its unwritten reads are not logged ([`rbr_step::runner::Runner::untrack_allocator`]).
 pub fn boot_playback(
     data: &Data,
     stage: &StageData,
     name: &str,
     race: &boot::Race,
-    dump: Option<&Path>,
     track_allocator: bool,
 ) -> Result<(Playback, boot::Image), String> {
     let state = Stage::quick_race(stage.number, stage.car).load_ready().state();
@@ -197,9 +195,6 @@ pub fn boot_playback(
     panic::catch_unwind(AssertUnwindSafe(|| boot::update_a720(&playback.runner, &image)))
         .map_err(|e| format!("the boot's CCar::UpdateA720: {} in {}", why(e.as_ref()), chain(&playback.runner)))?;
     boot::ngp_init(&mut playback.runner.image_mut(), &image);
-    if let Some(path) = dump {
-        boot::dump(playback.runner.image(), &image, path).map_err(|e| format!("{}: {e}", path.display()))?;
-    }
     Ok((playback, image))
 }
 

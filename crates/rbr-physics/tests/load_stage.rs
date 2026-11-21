@@ -32,9 +32,7 @@
 //!   that was its head (objects go in at the head), the last placement's next word in the entity list, that list's tail
 //!   and count, and the later solid.
 //!
-//! `RBR_STAGE_REFS` names another run's vectors (cut from its load dump) to use instead. With
-//! `RBR_LOAD_OUT` the build is written as a patch for `harness/compose_load.py` (`common/patch.rs`); the entity lists
-//! the stage leaves alone are classed as other load code's there.
+//! `RBR_STAGE_REFS` names another run's vectors (cut from its load dump) to use instead.
 
 use rbr_formats::data::Data;
 use rbr_formats::{pe, trk};
@@ -49,9 +47,6 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 mod common;
 
 use common::hex;
-
-#[path = "common/patch.rs"]
-mod patch;
 
 const VECTORS: &str = include_str!("vectors/load-stage-world.txt");
 const STAGE: &str = "Maps/track-54_E";
@@ -417,7 +412,6 @@ fn stage_world_matches_the_game() {
 
     let mut counts: BTreeMap<&str, [u32; 4]> = BTreeMap::new();
     let mut differing = Vec::new();
-    let mut patched = Vec::new();
     // The solid's bytes its digest leaves out: the links (compared in their own lines) and the bytes nothing writes.
     let mask: Vec<bool> = first(&objects, "solid_mask").bytes().iter().map(|&m| m != 0).collect();
     let links = |i: usize| (0x10..0x1c).contains(&i) || (0x160..0x16c).contains(&i);
@@ -439,19 +433,6 @@ fn stage_world_matches_the_game() {
             Payload::Pages(len, digests) if object.kind == "solid" => {
                 let (a, b) = (zeros.read(object.at, *len), ones.read(object.at, *len));
                 let mut ours = a.clone();
-                let class = (0..*len).map(|i| match (mask[i], unset(i), links(i)) {
-                    (false, ..) => b'w',
-                    (true, true, _) => b'g',
-                    (true, _, true) => b'x',
-                    _ => b'u',
-                });
-                patched.push(patch::Patched {
-                    kind: object.kind.clone(),
-                    at: object.at,
-                    ours: a.clone(),
-                    class: class.collect(),
-                    game: a.clone(),
-                });
                 for i in 0..*len {
                     if mask[i] {
                         ours[i] = 0;
@@ -475,21 +456,12 @@ fn stage_world_matches_the_game() {
             }
             Payload::Pages(len, digests) => {
                 let mut ours = zeros.read(object.at, *len);
-                let mut class = vec![b'w'; *len];
                 if object.kind == "drive_tail" {
                     // The tag and the spare bytes of each entry, which the cut zeroes.
-                    for (entry, class) in ours.chunks_mut(DRIVE_STRIDE).zip(class.chunks_mut(DRIVE_STRIDE)) {
+                    for entry in ours.chunks_mut(DRIVE_STRIDE) {
                         entry[0x24..].fill(0);
-                        class[0x24..].fill(b'g');
                     }
                 }
-                patched.push(patch::Patched {
-                    kind: object.kind.clone(),
-                    at: object.at,
-                    ours: ours.clone(),
-                    class,
-                    game: ours.clone(),
-                });
                 for (i, (page, digest)) in ours.chunks(PAGE).zip(digests).enumerate() {
                     if fnv(page) == *digest {
                         count[0] += page.len() as u32;
@@ -501,13 +473,9 @@ fn stage_world_matches_the_game() {
             Payload::Bytes(game) => {
                 let a = zeros.read(object.at, game.len());
                 let b = ones.read(object.at, game.len());
-                let mut classes = Vec::new();
                 for (i, &g) in game.iter().enumerate() {
                     let c = class(object, i, &a, &b, game);
                     count[c as usize] += 1;
-                    // The lists the stage leaves alone hold what other load code (the car's placements) files.
-                    let shared = object.kind == "entity_lists" && matches!(c, Class::Unwritten);
-                    classes.push(if shared { b'l' } else { b"wugl"[c as usize] });
                     if matches!(c, Class::Compared) && a[i] != g {
                         differing.push(format!(
                             "{} {} +{i:#x}: ours {:02x} the game's {g:02x}",
@@ -515,13 +483,6 @@ fn stage_world_matches_the_game() {
                         ));
                     }
                 }
-                patched.push(patch::Patched {
-                    kind: object.kind.clone(),
-                    at: object.at,
-                    ours: a,
-                    class: classes,
-                    game: game.clone(),
-                });
             }
         }
     }
@@ -533,16 +494,7 @@ fn stage_world_matches_the_game() {
     ] {
         assert_eq!(zeros.u32(global), object, "the pointer at {global:#x}");
         assert_eq!(ones.u32(global), object, "the pointer at {global:#x}");
-        let ours = zeros.read(global, 4);
-        patched.push(patch::Patched {
-            kind: "stage_global".into(),
-            at: global,
-            ours: ours.clone(),
-            class: vec![b'w'; 4],
-            game: ours,
-        });
     }
-    patch::write("stage-world", &patched);
     let mut total = [0; 4];
     for (kind, c) in &counts {
         eprintln!(

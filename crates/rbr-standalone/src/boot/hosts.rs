@@ -1,6 +1,6 @@
 //! The boot's hosts: its allocator, and the calls the load ports make while [`super::build`] builds the image.
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -21,12 +21,11 @@ use rbr_step::timekeeper::layout as keeper_layout;
 use super::{CARD_SIZE, SCRATCH, SCRATCH_SIZE, SIGNALS};
 
 /// The boot's allocator (decision O2): 16-byte aligned blocks, each zero-filled (O4), from a range no exe section and
-/// no runner block uses. Clones share the cursor and the block list.
+/// no runner block uses. Clones share the cursor.
 #[derive(Clone)]
 pub struct BootHeap {
     pub mem: Mem,
     pub next: Rc<Cell<u32>>,
-    pub blocks: Rc<RefCell<Vec<(u32, u32)>>>,
 }
 
 pub const HEAP_BASE: u32 = 0x1000_0000;
@@ -39,7 +38,6 @@ impl BootHeap {
         assert!(at + span <= HEAP_END, "the boot heap is full");
         self.next.set(at + span);
         self.mem.clone().map(at, &vec![0; span as usize]);
-        self.blocks.borrow_mut().push((at, size));
         at
     }
 }

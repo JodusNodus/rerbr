@@ -198,9 +198,8 @@ fn boot_start(
     race: &boot::Race,
     frames: &[Frame],
     mask: &[bool],
-    dump: Option<&Path>,
 ) -> Result<Start, String> {
-    let (playback, image) = boot_playback(data, stage, name, race, dump, true)?;
+    let (playback, image) = boot_playback(data, stage, name, race, true)?;
     let mem = playback.runner.image();
     let compare = Compare::at_start_of(mem, image.regions.clone(), mask.to_vec(), frames);
     let dt = keeper_layout::max_time_step(mem);
@@ -219,7 +218,6 @@ pub fn run(
     data: &Data,
     name: &str,
     race: &boot::Race,
-    dump: Option<&Path>,
     frames: &[Frame],
     mask: &[bool],
     stage: &StageData,
@@ -229,7 +227,7 @@ pub fn run(
 ) -> Result<Run, String> {
     let assist = race.assist_settings();
     let Start { playback, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
-        boot_start(data, stage, name, race, frames, mask, dump)?;
+        boot_start(data, stage, name, race, frames, mask)?;
     compare.mask_ngp_padding();
     if let Some((profile, car)) = hooks.physics {
         fit_physics(&playback, profile, car)?;
@@ -524,8 +522,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: &boot::Race, r
             ffb: args.ffb_settings,
             physics: (!args.physics.is_ngp()).then_some((args.physics, &car)),
         };
-        let dump = args.dump_image.as_deref();
-        run(data, &args.stage, race, dump, &frames, &mask, stage, args.steps, args.marker_settings, hooks)
+        run(data, &args.stage, race, &frames, &mask, stage, args.steps, args.marker_settings, hooks)
     });
     let ok = match r {
         Ok(r) => report("boot", &r, args, &mask, stage),
