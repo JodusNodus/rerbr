@@ -55,7 +55,8 @@ pub(super) struct ModeUniform {
     pub(super) bump: [f32; 4],
     /// A BTB highlight's colour and power, zero for none ([`crate::stage::Highlight`]).
     pub(super) highlight: [f32; 4],
-    /// `xy` a BTB material's light factors on the sky and bounce light and on the sun's ([`crate::stage::Light`]).
+    /// `xy` a BTB material's light factors on the sky and bounce light and on the sun's ([`crate::stage::Light`]), `z` 1
+    /// for a converted stage's grass ground ([`DrawState::grass`](crate::stage::DrawState::grass), `grass_warmed`).
     pub(super) tint: [f32; 4],
     /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]).
     pub(super) sheen: [f32; 4],

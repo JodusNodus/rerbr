@@ -525,10 +525,10 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   - Colour: CSP's marker blades (pure green) take the ground's colour, their green the brightness; other texels keep
     their own. The shader splits each filtered texel linearly (green above max(r, b) the blades', the rest its own):
     a threshold on the ratio drew Prunières' base grass lime, its green and dry blades interleaved so filtered texels
-    mix both. Blades: the ground's hue at `FX_SATURATION` 0.5 leaned 0.4 to olive (0.8, 1, 0.4), linear albedo
-    `FX_ALBEDO` 0.07, `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP` at the top.
-  - Size: a cell is 0.18 m x sqrt(`SHAPE_SIZE`) (6.5: 0.46 m; linear in size made Prunières' 9.5 weeds 5 m tall),
-    0.8-1.2 per clump; clumps a m² `FX_COVER` 4.1 over the cell's area, at most 60; unset `SHAPE_SIZE` 1.5.
+    mix both. Blades: the ground's hue leaned to olive, a fixed linear albedo (`FX_ALBEDO`), `FX_GRASS_ROOT` at the
+    foot to `FX_GRASS_TIP` at the top (values: "A field, not tufts" below).
+  - Size: a cell is `CELL_PER_SIZE` x sqrt(`SHAPE_SIZE`) (linear in size made Prunières' 9.5 weeds 5 m tall); clumps
+    a m² `FX_COVER` over the cell's area; unset `SHAPE_SIZE` 1.5 (values: "A field, not tufts" below).
   - Mask: grows where `Fx::green` exceeds `MASK_MAIN_THRESHOLD` x 0.4 (`FX_MASK_SCALE`: at 1x Prunières, 0.75, was
     bare where CSP has grass); none on a converted stage's road mesh (wet-marked), so Gabiria's asphalt stays clear.
   - Occluders: `OCCLUDING_MATERIALS` go to `ReRbrGrass=hide`, `_ALPHA` to `hide-alpha` (30 installed AC tracks set
@@ -564,6 +564,42 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     reference view (profile 1 banks get flowers and grow on duller ground); Akina's A (mask 0.01) on all its grass
     changes under 50 pixels in four views (no atlas: our blades, and its banks already pass the default mask).
     Stages need converting again.
+  - CSP probed at Joux Verte's reference pose (2026-11-21, `[GRASS_FX]` keys overridden for one run, the share of the
+    frame its grass changes, grass off as the base): as shipped 0.036; `MASK_MAIN_THRESHOLD` 0.25 or -1 the same (the
+    colour mask passes all its banks, as ours does); luminance unlimited 0.076, only `MASK_MIN_LUMINANCE` lifted
+    0.080, only the maximum 0.032; `SHAPE_SIZE` 1, 4 (its own), 10: 0.010, 0.036, 0.088 (CSP's cover grows with the
+    size, ours holds it: our clumps overlap, so their count barely moves it). So CSP's default range applies where a
+    track sets none: the converter writes `luminance=0.02,0.35` (its documentation's values) there; it was unlimited.
+    The minimum cuts half of Joux's banks in CSP, yet their texture's linear luminance passes it 96%: CSP tests
+    something darker. Texture x `ksDiffuse` fitted Joux (0.44 kept) and Sa Calobra but not Akina: at a sunlit verge
+    of `haruna_gras513` (`ksDiffuse` 0.2) lifting the minimum changed nothing (0.063 / 0.059), at a shaded bank of the
+    same material it doubled the cover (0.023 / 0.042), and ours under that rule kept 0.005 of the frame. Not the sun:
+    its grass stands in the same places at 15:39 and 10:20 (overlap 0.72, cover 0.077 / 0.081) though the shadows
+    moved. Open: what CSP's luminance reads (perhaps the texture region; our Prunières ground is darker than CSP's).
+  - Ground colour (2026-11-21, Joux Verte shot pose, CSP's frame warped onto ours, linear r/g of the same grass pixels):
+    the albedo path keeps the texture's hue (raw texel, after `albedo_remap`, after `own_light` and `fogged`: r/g 0.86
+    to 0.89 coded); under a clear sky the drawn grass is r/g 0.79 (texture 0.77 linear), and its grass over road
+    chroma (0.78) is the reference shot's (0.83). Under `--clouds broken` the foreground lies in cloud shadow and turns
+    green-cyan (grass 0.66, shaded road 0.92 / b/g 0.94; clear-sky shade 1.01 / 0.94): that, not the ground, made
+    Joux Verte read greener than CSP. CSP draws the same grass at 0.98 (road 1.06): its greens are more neutral than
+    their textures. Across Prunières, Sa Calobra, Gabiria and Roure CSP's road-balanced grass hue is not consistently
+    yellower than ours (r/g CSP 1.00, 1.09, 1.06, 1.10; ours 1.09, 1.00, 0.83, 1.10).
+  - Same pose, both under a clear sky (`WEATHER=sol_01_clear`): sunlit grass CSP 0.91 / b/g 0.38, ours 0.81 / 0.44;
+    shaded grass CSP 0.77 at 0.14 of the sunlit's luminance, ours 0.48 at 0.044 (our light there 0.96 / 1.11; the
+    darkness and the tone curve's toe make it teal). Look choice (user, 2026-11-21): the grass ground's green texels
+    warmer (`grass_warmed` in `albedo.wgsl`, `mode.tint.z` for `ReRbrGrass` draws; red 0.35 of the way to green): sunlit
+    0.87, shaded 0.56. Gabiria and Sa Calobra's frames barely move (their grass textures are not green-led). Open: the
+    shade's darkness against CSP's.
+  - A field, not tufts (2026-11-21, look choice, user; judged by eye on a fixed test set of 13 poses on five stages,
+    CSP as a guide, not a target): at CSP's cover the clumps stood apart over the dark ground. Now `FX_COVER` 3.2,
+    `CELL_PER_SIZE` 0.09, `CELL_VARY` 0.55-1.35, cards `FX_WIDEN` 1.8 wide, size by the patch's tallness squared (0.3
+    to 2.25), at most 48 clumps a m² (Prunières about 42, was about 4); blades `FX_SATURATION` 0.8, leaned 0.4 to
+    (0.85, 1, 0.35), to `STRAW` by 0.6 of the patch's dryness, `FX_ALBEDO` 0.055, `FX_GRASS_ROOT` 0.45. On the base
+    cards a green blade's grey takes the card's hue at 0.8 (it read near white) and texels whose red and blue pass their
+    green (Prunières' purple dry blades, lilac) draw as straw; group pieces keep their colours. Gabiria's and Roure's
+    verges, Sa Calobra's slopes read as grass. Open: Prunières paler than CSP's, dark ground in a strip at its near
+    verges (008.215), Joux Verte greener than CSP's, frame time not measured (ten times Prunières' cards, within the
+    tile capacity our own grass uses).
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.

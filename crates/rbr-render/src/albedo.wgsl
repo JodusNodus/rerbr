@@ -16,3 +16,14 @@ fn albedo_remap(c: vec3<f32>) -> vec3<f32> {
     let eased = vec3<f32>(y) + (c - y) * (1.0 - ALBEDO_CHROMA_CUT * smoothstep(0.5, 0.8, saturation));
     return eased * (1.0 - ALBEDO_NEUTRAL_CUT * neutral * band);
 }
+
+// A converted stage's grass ground (`DrawState::grass`, `mode.tint.z`; ours, a look after CSP's): CSP draws its green
+// texels warmer than our light does (Joux Verte's shot pose under a clear sky, the same sunlit grass r/g 0.91 in CSP,
+// 0.81 in ours, linear; roads 1.06 and 1.03), so a green-led texel's red rises `GRASS_WARM` of the way to its green.
+// The stage shader's only: the bounce's surfaces keep the remap alone.
+const GRASS_WARM: f32 = 0.35;
+
+fn grass_warmed(c: vec3<f32>) -> vec3<f32> {
+    let lead = (c.g - max(c.r, c.b)) / max(c.g, 1e-4);
+    return vec3<f32>(c.r + GRASS_WARM * max(c.g - c.r, 0.0) * smoothstep(0.05, 0.2, lead), c.g, c.b);
+}
