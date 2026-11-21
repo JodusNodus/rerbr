@@ -43,7 +43,6 @@ extern "C" __declspec(dllimport) int __stdcall QueryPerformanceCounter(__int64* 
 extern "C" __declspec(dllimport) int __stdcall QueryPerformanceFrequency(__int64* frequency);
 extern "C" __declspec(dllimport) void* __stdcall AddVectoredExceptionHandler(unsigned long first, long (__stdcall* handler)(void*));
 extern "C" __declspec(dllimport) int __stdcall IsBadReadPtr(const void* p, unsigned long n);
-extern "C" __declspec(dllimport) void* __stdcall VirtualAlloc(void* addr, unsigned long size, unsigned long type, unsigned long prot);
 extern "C" __declspec(dllimport) unsigned long __stdcall VirtualQuery(const void* addr, void* info, unsigned long size);
 extern "C" __declspec(dllimport) unsigned long __stdcall GetCurrentThreadId();
 extern "C" __declspec(dllimport) unsigned long __stdcall GetLastError();
@@ -396,8 +395,6 @@ struct MemInfo  // MEMORY_BASIC_INFORMATION
 {
     unsigned base, allocBase, allocProtect, size, state, protect, type;
 };
-
-static void EnsureSnapBuffers();
 
 // ---- recorder ----
 // CPhysics vtable 0x0073f98c, slot 2 StepForward(unsigned substeps) 0x005273a0: one
@@ -796,10 +793,8 @@ static void Record(unsigned pre, unsigned post, unsigned substeps, const unsigne
         CompareStep(post);
 }
 
-// SnapStepForward when snapshots are on (LoadSnapshots). The hook's frame must stay as it is
-// without the switch (its size sets the step's esp, so the stack garbage it sees), hence asm.
-static unsigned s_snapTarget;
-
+// The step's esp depends on this function's frame (the step copies stack garbage into the car), so it stays as it is,
+// hence asm.
 // clang-cl inlines a function with __asm and takes the asm call's clobbers (eax, ecx, edx) as unchanged; MSVC never
 // inlines one (and 7.1 has no noinline)
 #ifdef __clang__
@@ -813,10 +808,6 @@ static void CallStepForward(void* self, unsigned substeps)
         push substeps
         mov ecx, self
         mov eax, target
-        cmp s_snapTarget, 0
-        je call_it
-        mov eax, s_snapTarget
-    call_it:
         call eax
     }
 }
@@ -848,314 +839,6 @@ static void CallEmit(void* self, const void* sig)
     // clobbers (an asm call hid them from clang-cl, which inlined this and lost the caller's control pointer)
     unsigned target = s_carControlHooked ? (unsigned)&CarControlResume : kEmit;
     ((void (__fastcall*)(void*, int, const void*))target)(self, 0, sig);
-}
-
-// ---- snapshots ----
-// RBRRecompSnapshot.txt lists step counters. Right before the StepForward call that starts
-// at a listed step S and the call after it (in playback after the control emit; the load
-// settles step 40 at a time), every committed readable region of the process goes to
-// RBRRecompSnap-<step>.bin, for harness/replay.py, with the registers at the call (eax ecx edx
-// ebx esp ebp esi edi, esp pointing at the substeps argument), fxsave (x87 control word,
-// MXCSR) and the stack from esp - kSnapBelow to esp + kSnapAbove exactly as the step sees it.
-// A listed step is dumped again right after its call (RBRRecompSnap-<step>-after.bin, no
-// stack copy).
-// The step must see the same stack garbage as without snapshots (it copies uninitialised
-// locals into the car), so SnapStepForward stands in for StepForward at the same esp, and the
-// stack below it is put back after each dump; the hook's code is the same either way.
-// File: region bytes, then the trailer: 'RBRS', 1, step, substeps, thread id, teb, regs[8], stack
-// address, stack bytes, region count, fxsave[512], the stack bytes, region count x
-// { base, size, file offset, protect, type, allocation base }; then the trailer's offset
-// and 'RBRS' as the last 8 bytes.
-extern "C" __declspec(dllimport) unsigned long __stdcall SetFilePointer(void* h, long lo, long* hi, unsigned long how);
-static const unsigned kSnapBelow = 0x3ff00, kSnapAbove = 0x100;
-static const unsigned kSnapStackBytes = kSnapBelow + kSnapAbove, kSnapMaxRegions = 16384;
-static unsigned s_snapSteps[64], s_snapCount, s_snapNext;
-// Session mode with RBRRecompSessionSnaps.on: each attempt's start state, the dump before its first step and before step
-// 1520 (the first with the player's control), RBRRecompSnap-<tick>-<step>.bin with the attempt's tick; no -after or
-// next-step dumps.
-static unsigned s_sessSnap, s_sessSnapFirst, s_sessSnapTick;
-static unsigned s_snapRegs[8], s_snapStackLo, s_snapSubsteps, s_snapStep, s_snapListed;
-static __declspec(align(16)) unsigned char s_snapFx[512];
-struct SnapRegion
-{
-    unsigned base, size, offset, protect, type, allocBase;
-};
-// allocated only when snapshots are on: static buffers this size would shift the game's heap
-static unsigned char* s_snapStack;  // kSnapStackBytes: the step's stack copy
-static unsigned char* s_snapKeep;  // kSnapBelow: the stack below the step while a dump runs
-static SnapRegion* s_snapRegions;
-static void* s_snapFile;
-static unsigned s_snapOffset, s_snapN, s_snapSkipped, s_snapFailed, s_snapMs;
-static char s_snapName[64];
-
-// 0: no snapshot; 1: the call after a listed step; 2: a listed step.
-static int SnapWanted(unsigned step)
-{
-    int next = s_snapNext;
-    s_snapNext = 0;
-    for (unsigned i = 0; i < s_snapCount; i++)
-        if (step == s_snapSteps[i])
-            s_snapNext = 1;
-    return s_snapNext ? 2 : next;
-}
-
-static int SnapWrite(void* h, const void* p, unsigned n)
-{
-    unsigned long done;
-    return WriteFile(h, p, n, &done, 0) && done == n;
-}
-
-// Writes every committed readable region to h; returns the bytes written.
-static unsigned SnapDump(void* h, unsigned& n, unsigned& skipped, unsigned& failed)
-{
-    unsigned offset = 0;
-    n = skipped = failed = 0;
-    MemInfo mi;
-    for (unsigned at = 0x10000; at < 0x7fff0000 && VirtualQuery((void*)at, &mi, sizeof(mi)); at = mi.base + mi.size)
-    {
-        if (mi.state != 0x1000 /* MEM_COMMIT */)
-            continue;
-        // readable, not guard / no-access, and not write-combined or uncached (device memory)
-        if (!(mi.protect & 0xee) || (mi.protect & 0x701))
-        {
-            skipped++;
-            continue;
-        }
-        for (unsigned p = mi.base; p < mi.base + mi.size && n < kSnapMaxRegions;)
-        {
-            unsigned chunk = mi.base + mi.size - p < 0x100000 ? mi.base + mi.size - p : 0x100000;
-            if (!SnapWrite(h, (void*)p, chunk))
-            {
-                SetFilePointer(h, (long)offset, 0, 0 /* FILE_BEGIN */);
-                failed++;
-                p += chunk;
-                continue;
-            }
-            SnapRegion* r = n ? &s_snapRegions[n - 1] : 0;
-            if (r && r->base >= mi.base && r->base + r->size == p && r->offset + r->size == offset)  // same region
-                r->size += chunk;
-            else
-            {
-                r = &s_snapRegions[n++];
-                r->base = p, r->size = chunk, r->offset = offset, r->protect = mi.protect, r->type = mi.type;
-                r->allocBase = mi.allocBase;
-            }
-            offset += chunk;
-            p += chunk;
-        }
-    }
-    return offset;
-}
-
-// Creates the file and writes the regions; the trailer follows in SnapClose.
-static int SnapCreate(const char* name)
-{
-    char path[320];
-    wsprintfA(s_snapName, "%s", name);
-    s_snapFile = CreateFileA(GameFile(path, s_snapName), 0x40000000 /* GENERIC_WRITE */, 0, 0, 2 /* CREATE_ALWAYS */, 0x80, 0);
-    if (s_snapFile == (void*)-1)
-    {
-        char line[128];
-        int len = wsprintfA(line, "snapshot: %s NOT written (no file)\n", s_snapName);
-        AppendLog(line, len);
-        return 0;
-    }
-    unsigned start = GetTickCount();
-    s_snapOffset = SnapDump(s_snapFile, s_snapN, s_snapSkipped, s_snapFailed);
-    s_snapMs = GetTickCount() - start;
-    return 1;
-}
-
-static int SnapOpen(const char* format, unsigned step)
-{
-    char name[64];
-    wsprintfA(name, format, step);
-    return SnapCreate(name);
-}
-
-// `stack`: whether the call's stack copy goes in.
-static void SnapClose(int stack)
-{
-    unsigned teb, head[17] = { 0x53524252 /* 'RBRS' */, 1, s_snapStep, s_snapSubsteps, GetCurrentThreadId() };
-    __asm
-    {
-        mov eax, fs:[0x18]
-        mov teb, eax
-    }
-    head[5] = teb;
-    memcpy(head + 6, s_snapRegs, sizeof(s_snapRegs));
-    head[14] = s_snapStackLo;
-    head[15] = stack ? kSnapStackBytes : 0;
-    head[16] = s_snapN;
-    unsigned tail[2] = { s_snapOffset, 0x53524252 };
-    void* h = s_snapFile;
-    int ok = SnapWrite(h, head, sizeof(head)) && SnapWrite(h, s_snapFx, sizeof(s_snapFx))
-        && (!stack || SnapWrite(h, s_snapStack, kSnapStackBytes))
-        && SnapWrite(h, s_snapRegions, s_snapN * sizeof(SnapRegion)) && SnapWrite(h, tail, sizeof(tail));
-    CloseHandle(h);
-    char line[192];
-    int len = wsprintfA(line, "snapshot: %s %s, %u regions, %u MB, %u skipped, %u chunks unreadable, %u ms\n", s_snapName,
-        ok ? "written" : "WRITE FAILED", s_snapN, s_snapOffset >> 20, s_snapSkipped, s_snapFailed, s_snapMs);
-    AppendLog(line, len);
-}
-
-// Before the step: nonzero when this call is dumped (regions written, trailer pending).
-static int SnapBegin(void* self, unsigned substeps)
-{
-    if (s_sessSnap)
-    {
-        unsigned step = StepCounter(self);
-        int want = s_sessSnapFirst || (step == 1520 && substeps == 1);
-        s_sessSnapFirst = 0;
-        if (!want)
-            return 0;
-        s_snapStep = step;
-        s_snapSubsteps = substeps;
-        s_snapListed = 0;
-        char name[64];
-        wsprintfA(name, "RBRRecompSnap-%lu-%u.bin", s_sessSnapTick, step);
-        return SnapCreate(name);
-    }
-    if (!s_play)
-        return 0;
-    s_snapStep = StepCounter(self);
-    int snap = SnapWanted(s_snapStep);
-    s_snapSubsteps = substeps;
-    s_snapListed = snap == 2;
-    return snap && SnapOpen("RBRRecompSnap-%u.bin", s_snapStep);
-}
-
-// After the step: the trailer, and for a listed step the state right after it.
-static void SnapEnd()
-{
-    SnapClose(1);
-    if (s_snapListed && SnapOpen("RBRRecompSnap-%u-after.bin", s_snapStep))
-        SnapClose(0);
-}
-
-static unsigned s_snapLo, s_snapRet, s_snapOn, s_snapSave[3];
-static const unsigned s_stepForward = kStepForward;
-
-// [s_snapLo, s_snapLo + kSnapBelow) <-> s_snapKeep; uses ecx esi edi only.
-static __declspec(naked) void SnapKeep()
-{
-    __asm
-    {
-        mov esi, s_snapLo
-        mov edi, s_snapKeep
-        mov ecx, 0x3ff00 / 4  // kSnapBelow
-        cld
-        rep movsd
-        ret
-    }
-}
-
-static __declspec(naked) void SnapRestore()
-{
-    __asm
-    {
-        mov esi, s_snapKeep
-        mov edi, s_snapLo
-        mov ecx, 0x3ff00 / 4
-        cld
-        rep movsd
-        ret
-    }
-}
-
-// StepForward's stand-in (thiscall: ecx = self, [esp + 4] = substeps, callee pops 4). The step
-// is called from here at the esp it would have had (entry esp E: the return address is taken
-// off and put back afterwards), and [E - kSnapBelow, E) is restored after SnapBegin and SnapEnd.
-static __declspec(naked) void SnapStepForward()
-{
-    __asm
-    {
-        pop s_snapRet
-        mov s_snapRegs[0], eax
-        mov s_snapRegs[4], ecx
-        mov s_snapRegs[8], edx
-        mov s_snapRegs[12], ebx
-        mov s_snapRegs[16], esp
-        mov s_snapRegs[20], ebp
-        mov s_snapRegs[24], esi
-        mov s_snapRegs[28], edi
-        fxsave s_snapFx
-        lea eax, [esp - 4]
-        lea edx, [esp - 4 - 0x3ff00]  // E - kSnapBelow
-        mov s_snapLo, edx
-    probe:  // commit the stack down to s_snapLo page by page (guard page) before copying it
-        sub eax, 0x1000
-        test dword ptr [eax], eax
-        cmp eax, edx
-        ja probe
-        test dword ptr [edx], eax
-        call SnapKeep
-        push dword ptr [esp]
-        push s_snapRegs[4]
-        call SnapBegin
-        add esp, 8
-        mov s_snapOn, eax
-        call SnapRestore
-        fxrstor s_snapFx
-        cmp s_snapOn, 0
-        je step
-        lea esi, [esp - 0x3ff00]  // esp - kSnapBelow
-        mov s_snapStackLo, esi
-        mov edi, s_snapStack
-        mov ecx, (0x3ff00 + 0x100) / 4  // kSnapStackBytes
-        cld
-        rep movsd
-    step:
-        mov eax, s_snapRegs[0]
-        mov ecx, s_snapRegs[4]
-        mov edx, s_snapRegs[8]
-        mov esi, s_snapRegs[24]
-        mov edi, s_snapRegs[28]
-        call s_stepForward
-        cmp s_snapOn, 0
-        je done
-        mov s_snapSave[0], eax
-        mov s_snapSave[4], esi
-        mov s_snapSave[8], edi
-        call SnapKeep
-        call SnapEnd
-        call SnapRestore
-        mov eax, s_snapSave[0]
-        mov esi, s_snapSave[4]
-        mov edi, s_snapSave[8]
-    done:
-        mov edx, s_snapRet
-        mov [esp - 8], edx  // E: the return address, as after a direct call
-        jmp edx
-    }
-}
-
-static void EnsureSnapBuffers()
-{
-    if (s_snapStack)
-        return;
-    s_snapStack = (unsigned char*)VirtualAlloc(0, kSnapStackBytes + kSnapBelow + kSnapMaxRegions * sizeof(SnapRegion),
-        0x3000 /* MEM_COMMIT | MEM_RESERVE */, 0x04 /* PAGE_READWRITE */);
-    if (!s_snapStack)
-        return;
-    s_snapKeep = s_snapStack + kSnapStackBytes;
-    s_snapRegions = (SnapRegion*)(s_snapKeep + kSnapBelow);
-}
-
-static void LoadSnapshots(FILE* log)
-{
-    FILE* f = fopen("RBRRecompSnapshot.txt", "r");
-    if (!f)
-        return;
-    while (s_snapCount < 64 && fscanf(f, "%u", &s_snapSteps[s_snapCount]) == 1)
-        s_snapCount++;
-    fclose(f);
-    EnsureSnapBuffers();
-    if (!s_snapStack)
-        s_snapCount = 0;
-    if (s_snapCount)
-        s_snapTarget = (unsigned)SnapStepForward;
-    fprintf(log, "snapshot: %u steps listed (and each one's next step)\n", s_snapCount);
 }
 
 // ---- session (RBRRecompSession.on) ----
@@ -1426,8 +1109,6 @@ static void StartAttempt()
     if (s_rec)
         fclose(s_rec);
     unsigned long tick = GetTickCount();
-    s_sessSnapTick = tick;
-    s_sessSnapFirst = 1;
     char name[64], path[320];
     sprintf(name, "RBRRecompRecord-%lu.bin", tick);
     s_rec = fopen(GameFile(path, name), "wb");
@@ -2942,7 +2623,6 @@ static void StartRecorder(FILE* log)
         fclose(ff);
         fprintf(log, "playback: %u steps per requested step\n", s_fastForward);
     }
-    LoadSnapshots(log);
     LoadPeeks(log);
     if (!on && !s_play && !s_peekCount)
         return;
@@ -2964,18 +2644,6 @@ static void StartRecorder(FILE* log)
         s_session = 1;
         StartSession(log);
         HookDelivery(log);
-        FILE* snaps = s_snapCount ? 0 : fopen("RBRRecompSessionSnaps.on", "rb");
-        if (snaps)
-        {
-            fclose(snaps);
-            EnsureSnapBuffers();
-        }
-        if (snaps && s_snapStack)
-        {
-            s_sessSnap = 1;
-            s_snapTarget = (unsigned)SnapStepForward;
-            fprintf(log, "session: start-state snapshots at each attempt's first step and step 1520\n");
-        }
     }
     unsigned hook = (unsigned)&StepForwardHook;
     WriteCode((unsigned char*)kStepSlot, &hook, 4);
@@ -3096,7 +2764,7 @@ static void __stdcall AutoStart()
 }
 
 // The car and the watched words at the first frame of the stage, to check the addresses
-// against the snapshot (car at kCarPtr; the words are whatever the listed addresses hold).
+// against a recording (car at kCarPtr; the words are whatever the listed addresses hold).
 static void LogWatchSample()
 {
     static char buf[512];
