@@ -16,7 +16,7 @@ from `RBR_DEV` (`~/rerbr-dev`). All values are absolute paths. The original runs
 | `RBR_NGP_GAME`, `RBR_NGP_PREFIX` | NGP 7.4.778 install and prefix |
 | `RBR_RSF_PREFIX` | the Wine prefix `RBR_RSF`'s game runs in |
 | `RBR_PROTON` | `PROTONPATH` `umu-run` starts the games with |
-| `RBR_TOOLCHAIN` | MSVC 7.1 (`msvc71/`) and its Wine prefix (`wineprefix/`) for the plugin build, per rbr-recomp's `notes/toolchain.md` |
+| `RBR_TOOLCHAIN` | MSVC 7.1 (`msvc71/`) and its Wine prefix (`wineprefix/`) for the plugin build, per rbr-recomp's `notes/toolchain.md`; without it `harness/plugin/build.sh` builds with clang-cl and lld-link against msvcrt.dll (`harness/plugin/crt/`; not yet compared with an MSVC build's recordings) |
 | `RBR_RUNS`, `RBR_NGP_RUNS`, `RBR_RSF_RUNS` | recordings, playbacks, snapshots and run outputs |
 | `RBR_HARNESS_PLUGIN`, `RBR_RSF_PLUGIN` | the harness DLL (`RBRRecompHarness.dll`) `play.sh` installs, rsf-session's plugin build |
 | `RBR_APITRACE`, `RBR_FFB_TRACE` | capture outputs |

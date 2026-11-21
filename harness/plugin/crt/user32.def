@@ -1,0 +1,8 @@
+LIBRARY user32.dll
+EXPORTS
+  CallWindowProcA@20
+  EnumWindows@8
+  GetWindowLongA@8
+  GetWindowThreadProcessId@8
+  SetWindowLongA@12
+  wsprintfA
