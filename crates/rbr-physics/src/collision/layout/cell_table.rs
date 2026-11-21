@@ -105,21 +105,6 @@ impl CellTable {
         }
     }
 
-    /// As [`CellTable::lower`] with every lifted slot (the round trip's).
-    fn lower_all(&self, mem: &mut Mem) {
-        for (&cell, &(block, _)) in self.slots.borrow().iter() {
-            mem.set_u32(self.slot_at(cell), block);
-        }
-    }
-
-    /// Every slot lifted (the round trip's).
-    fn lift_all(mem: &Mem) -> Self {
-        let table = Self::lift(mem);
-        let cells = table.header.rows.wrapping_mul(table.header.columns);
-        let slots = (0..cells.max(0)).map(|cell| (cell, (mem.u32(table.slot_at(cell)), false))).collect();
-        CellTable { slots: RefCell::new(slots), ..table }
-    }
-
     /// The owned byte ranges, named: the header and every slot (lifted or not).
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         if self.grid == 0 {
@@ -130,28 +115,6 @@ impl CellTable {
             (self.grid..self.grid + 0x14, "cell grid".to_string()),
             (self.slot_at(0)..self.slot_at(cells), "cell grid slots".to_string()),
         ]
-    }
-
-    /// `lower(lift(image))` of the header and every slot into an empty image, compared with `mem`: the bytes
-    /// compared, or the first that differs.
-    pub fn round_trip(mem: &Mem) -> Result<usize, String> {
-        let table = Self::lift_all(mem);
-        if table.grid == 0 {
-            return Ok(0);
-        }
-        let mut out = Mem::new();
-        table.header.store(&mut out, table.grid);
-        table.lower_all(&mut out);
-        let mut bytes = 0;
-        for (range, name) in table.owned() {
-            let len = (range.end - range.start) as usize;
-            let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-            if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-                return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-            }
-            bytes += len;
-        }
-        Ok(bytes)
     }
 }
 

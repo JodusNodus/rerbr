@@ -174,37 +174,3 @@ pub fn checked<T: PartialEq + std::fmt::Debug>(typed: T, _image: impl FnOnce() -
     typed
 }
 
-/// The definitions of the car at `car` lifted from `mem`, each answer against the image's (the tabled definitions' words,
-/// the others' records as their readers read them). The bytes compared, or the first that differs.
-pub fn differential(mem: &Mem, car: u32) -> Result<usize, String> {
-    let defs = Defs::lift(mem, car);
-    let mut bytes = 0;
-    for held in defs.wheels.iter().flatten() {
-        bytes += held.def.differential(mem, held.at)?;
-    }
-    for held in defs.struts.iter().flatten() {
-        if held.def != strut::definition(mem, held.at) {
-            return Err(format!("strut def at {:#010x}: the typed definition differs from the image's", held.at));
-        }
-        bytes += (DEFINITION_BYTES.end - DEFINITION_BYTES.start) as usize;
-    }
-    for held in defs.tyres.iter().flatten() {
-        bytes += held.def.differential(mem, held.at)?;
-    }
-    if let Some(held) = &defs.car {
-        bytes += held.def.differential(mem, held.at)?;
-    }
-    if let Some(held) = &defs.vcu {
-        if held.def != vcu::def(mem, held.at) {
-            return Err(format!("vcu def at {:#010x}: the typed definition differs from the image's", held.at));
-        }
-        bytes += (vcu::DEF_BYTES.end - vcu::DEF_BYTES.start) as usize;
-    }
-    if let Some(held) = &defs.drive {
-        bytes += held.def.differential(mem, held.at)?;
-    }
-    if let Some(held) = &defs.engine {
-        bytes += held.def.differential(mem, held.at)?;
-    }
-    Ok(bytes)
-}

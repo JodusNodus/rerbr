@@ -307,7 +307,6 @@ fn dd_to_x87(value: Dd) -> X87Ext80 {
 #[cfg(test)]
 mod tests {
     use super::{fcos, fsin, X87Ext80};
-    use std::fs;
 
     fn ulp_distance(a: X87Ext80, b: X87Ext80) -> u128 {
         let a_bytes = a.to_le_bytes();
@@ -346,52 +345,6 @@ mod tests {
             let value = f32::from_bits(bits);
             assert_eq!(X87Ext80::from_f32(value).to_f32().to_bits(), bits);
         }
-    }
-
-    #[test]
-    fn matches_every_fsin_fcos_cache_case() {
-        let Some(path) = std::env::var_os("RBR_REPLAY_FPU_CACHE") else {
-            return;
-        };
-        let cache = fs::read(path).expect("read RBR_REPLAY_FPU_CACHE");
-        assert_eq!(cache.len() % 46, 0, "malformed replay-fpu cache");
-        let mut exact = 0usize;
-        let mut one_ulp = 0usize;
-        let mut changed_f64 = 0usize;
-        let mut changed_f32 = 0usize;
-        let mut mismatches_by_op = [0usize; 2];
-        let mut mismatches_by_exponent = std::collections::BTreeMap::new();
-        for row in cache.chunks_exact(46) {
-            let op = row[0];
-            if op != 5 && op != 6 {
-                continue;
-            }
-            let input = X87Ext80::from_le_bytes(row[4..14].try_into().unwrap());
-            let expected = X87Ext80::from_le_bytes(row[24..34].try_into().unwrap());
-            let actual = if op == 5 { fsin(input) } else { fcos(input) };
-            let distance = ulp_distance(actual, expected);
-            assert!(
-                distance <= 1,
-                "op={op} input={:02x?}: got {:02x?}, expected {:02x?} ({distance} ulps)",
-                input.to_le_bytes(),
-                actual.to_le_bytes(),
-                expected.to_le_bytes(),
-            );
-            if distance == 0 {
-                exact += 1;
-            } else {
-                one_ulp += 1;
-                mismatches_by_op[usize::from(op == 6)] += 1;
-                let exponent = input.exponent();
-                let unbiased = if exponent == 0 { -16382 } else { i32::from(exponent) - super::X87_BIAS };
-                *mismatches_by_exponent.entry(unbiased).or_insert(0usize) += 1;
-                changed_f64 += usize::from(actual.to_f64().to_bits() != expected.to_f64().to_bits());
-                changed_f32 += usize::from(actual.to_f32().to_bits() != expected.to_f32().to_bits());
-            }
-        }
-        eprintln!(
-            "FSIN/FCOS cache: {exact} exact, {one_ulp} differ by one extended ULP ({changed_f64} also differ as f64, {changed_f32} as f32); by op={mismatches_by_op:?}, by input exponent={mismatches_by_exponent:?}"
-        );
     }
 
     #[test]

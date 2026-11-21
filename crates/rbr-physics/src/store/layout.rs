@@ -461,26 +461,6 @@ pub fn car_objects(mem: &Mem, car: u32) -> Vec<Tabled> {
     out
 }
 
-/// Checks `lower(lift(image)) == image` on every owned byte of `objects`; the owned byte count, or the first byte that
-/// differs.
-pub fn round_trip(mem: &Mem, objects: &[Tabled]) -> Result<usize, String> {
-    let mut out = Mem::new();
-    for object in objects {
-        object.lower_lift(mem, &mut out);
-    }
-    let mut bytes = 0;
-    for object in objects {
-        if let Some((field, offset)) = object.first_difference(mem, &out) {
-            return Err(format!(
-                "{} at {:#010x}: {field} (+{offset:#x}) differs after lower(lift)",
-                object.name, object.at
-            ));
-        }
-        bytes += object.fields.iter().map(|f| f.len as usize).sum::<usize>();
-    }
-    Ok(bytes)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

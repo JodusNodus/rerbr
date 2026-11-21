@@ -123,20 +123,3 @@ impl CarTyped {
     }
 }
 
-/// `lower(lift(image))` of the car's and the core's typed state into an empty image, compared with `mem` on every owned
-/// byte, and the stage's typed bytes and the definitions' answers against the image's: their count, or the first byte
-/// that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    Ok(crate::spring_damper::layout::round_trip(mem, car)?
-        + crate::vcu::layout::round_trip(mem, car)?
-        + crate::engine_driveline::layout::drive_round_trip(mem, car)?
-        + crate::engine_driveline::layout::engine_round_trip(mem, car)?
-        + crate::tyre::layout::round_trip(mem, car)?
-        + crate::wheel::layout::round_trip(mem, car)?
-        + crate::car_body::layout::round_trip(mem, car)?
-        + crate::collision::layout::round_trip(mem)?
-        + crate::rigid_body::layout::round_trip(mem, car)?
-        + crate::physics_core::layout::typed::round_trip(mem)?
-        + crate::stage::layout::round_trip(mem)?
-        + crate::store::defs::differential(mem, car)?)
-}

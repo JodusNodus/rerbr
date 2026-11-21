@@ -41,7 +41,7 @@ pub use drive_line::{
 };
 pub use drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane};
 pub use drive_typed::{
-    gear_request_at, round_trip as drive_round_trip, wheel_at, with_drive, CarDrive, DriveImage, DriveObj, DriveRef,
+    gear_request_at, wheel_at, with_drive, CarDrive, DriveImage, DriveObj, DriveRef,
     DriveStateObj, DriveTyped, DriveView, WheelObj,
 };
 pub use engine_calls::{
@@ -56,7 +56,7 @@ pub use engine_sim::{
     misfire_roll, overheat_step, signal_update, smooth_damper, solve_damper, turbo_energy_step,
 };
 pub use engine_typed::{
-    round_trip as engine_round_trip, CarEngine, EngineImage, EngineObj, EngineStateObj, EngineTyped, EngineView,
+    CarEngine, EngineImage, EngineObj, EngineStateObj, EngineTyped, EngineView,
 };
 pub use setup::{drive_setup_into_def, link_worker, normalize_gear_rows, select_gear_rows};
 pub use step::step_drive;

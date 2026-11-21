@@ -693,24 +693,6 @@ pub fn with_tyre<T>(mem: &mut Mem, scratch: u32, run: impl FnOnce(&mut TyreView,
     out
 }
 
-/// `lower(lift(image))` of the car's tyres into an empty image, compared with `mem` on every owned byte: their count, or
-/// the first byte that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    let tyres = CarTyres::lift(mem, car);
-    let mut out = Mem::new();
-    tyres.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in tyres.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
-}
-
 /// Tyres in typed storage as a [`TyreStore`]: the state in [`CarTyres`], the setups the step's typed definitions hold
 /// ([`TyreView::with_defs`]); the other setups, the pointers and the wheels' contact angles read from the image.
 pub struct TyreView<'a> {

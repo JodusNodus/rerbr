@@ -42,7 +42,7 @@ pub use solid_ctor::{
     construct_def, construct_solid, construct_state, new_def, new_solid, place_solid, PlaceHost, SolidCtorHost,
     DEF_SIZE, SOLID_SIZE,
 };
-pub use typed::{round_trip, CarSolids, HeldSolid, Solid, SolidView};
+pub use typed::{CarSolids, HeldSolid, Solid, SolidView};
 
 /// The `CSolid` members the ports read and write (`notes/physics.md` "Rigid body", which marks the inferred ones).
 pub const ORIENTATION: u32 = 0x100;

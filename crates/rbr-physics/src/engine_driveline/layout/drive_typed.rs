@@ -1,7 +1,7 @@
 //! The drive's typed state on the image (`notes/physics.md` "Store seam"): its tables ([`DriveObj`], the `CDrive`'s own
 //! words; [`DriveStateObj`], its state's; [`WheelObj`], each wheel's block of the state), where they live
 //! ([`DriveImage`]) with their lift and lower, the car's drive in typed storage ([`CarDrive`]), its store
-//! ([`DriveView`]; [`with_drive`] per call) and the round trip. The definition, the damage handler's block (its
+//! ([`DriveView`]; [`with_drive`] per call). The definition, the damage handler's block (its
 //! functors write it too) and the pointers stay in the image, read per call; so do the state's car and the wheel
 //! worker's matrix words (the step matrix and vector, the solution), which it writes there for the original's
 //! `E39_MatVec`. The records the ports take ([`DriveWorker`], [`CurveState`], ...) are views of these words: a word two
@@ -662,24 +662,6 @@ impl CarDrive {
 pub fn with_drive<T>(mem: &mut Mem, drive: u32, run: impl FnOnce(&mut DriveView) -> T) -> T {
     let at = DriveRef { image: DriveImage::of(mem, drive), held: None, defs: None };
     run(&mut DriveView { mem, at })
-}
-
-/// `lower(lift(image))` of the car's drive into an empty image, compared with `mem` on every owned byte: their count, or
-/// the first byte that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    let drive = CarDrive::lift(mem, car);
-    let mut out = Mem::new();
-    drive.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in drive.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
 }
 
 /// A drive's typed state for its accesses: held (typed storage), or the image's (lifted per access).

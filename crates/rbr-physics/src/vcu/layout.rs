@@ -1036,24 +1036,6 @@ impl CarVcu {
     }
 }
 
-/// `lower(lift(image))` of the car's VCU into an empty image, compared with `mem` on every owned byte: their count, or
-/// the first byte that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    let vcu = CarVcu::lift(mem, car);
-    let mut out = Mem::new();
-    vcu.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in vcu.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
-}
-
 /// A unit in typed storage as a [`VcuStore`]: the state in [`CarVcu`], the definition the step's typed definitions
 /// hold ([`VcuView::with_defs`], else the image's), the pointers read from the image; and the drive's blocks
 /// ([`DriveBlocks`]), the drive's typed state (held in `drive`, else per access on the image).

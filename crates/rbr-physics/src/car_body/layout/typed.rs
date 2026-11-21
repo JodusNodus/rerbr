@@ -1,6 +1,6 @@
 //! The car's typed state on the image (`notes/physics.md` "Store seam"): the `CCar`'s own words that only the car's
 //! functions read and write during a step ([`CarState`], one [`Slot`] per field), their access ([`CarFields`]: `Mem`'s
-//! on the image, [`CarView`]'s on the held state), the car in typed storage ([`CarOwn`]) and the round trip. The solid's
+//! on the image, [`CarView`]'s on the held state), the car in typed storage ([`CarOwn`]). The solid's
 //! words (`< +0x470`: pose, velocities, accumulators) are the solids' ([`SolidWords`], held with
 //! [`CarView::with_solids`]); the pointers, the parts (drive, engine, VCU scratch, lights, passenger), the value cells'
 //! headers (`SetDirty`), the damage handler and every word another subsystem reads or writes at its address stay in the
@@ -334,24 +334,6 @@ impl CarFields for CarView<'_> {
             None => image(),
         }
     }
-}
-
-/// `lower(lift(image))` of the car's typed state into an empty image, compared with `mem` on every owned byte: their
-/// count, or the first byte that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    let own = CarOwn::lift(mem, car);
-    let mut out = Mem::new();
-    own.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in own.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
 }
 
 #[cfg(test)]

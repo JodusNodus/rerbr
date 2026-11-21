@@ -19,7 +19,7 @@ pub mod defs;
 mod layout;
 pub mod typed;
 pub use layout::{
-    car_objects, check_table, first_difference, round_trip, word_fields, Field, FieldInfo, Object, Real, Tabled, Value,
+    car_objects, check_table, first_difference, word_fields, Field, FieldInfo, Object, Real, Tabled, Value,
 };
 
 /// Raw word access on a store's image.

@@ -63,7 +63,7 @@ pub use refresh_pose::{
 };
 pub use step::{wheel_step, StepCalls};
 pub use store::WheelStore;
-pub use typed::{round_trip, slot, CarWheels, Slot, Wheel, WheelView};
+pub use typed::{slot, CarWheels, Slot, Wheel, WheelView};
 pub use wheel_calls::{
     apply_hub_torque, car_frames, carcass_edges, clear_and_forward, deform_top_mount, edge_force, edge_forces,
     edge_residue, forward_to_car_and_clear, pick_contact, spin_cross, steering_walk, transform_and_copy,

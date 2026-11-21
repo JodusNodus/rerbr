@@ -2,7 +2,7 @@
 //! their counts, and the step-written bytes of the car's grids (the sample bytes the edge tests leave, which the event
 //! builder and the grid hit take). Their tables ([`RowsHeadObj`] and [`ContactRowObj`] in [`ContactRows`],
 //! [`OffsetRowObj`], the counts, [`GridHitsObj`]), the storage a step holds ([`CarCollision`]), its store
-//! ([`CollisionView`]) and the round trip.
+//! ([`CollisionView`]).
 //!
 //! The solver's rows are 59 KB and a step touches few of them (none in most steps), so a row is lifted whole when the
 //! step first touches it and only lifted rows are lowered; the counts and the grids' bytes are lifted with the rest.
@@ -348,19 +348,6 @@ impl CarCollision {
         let cells = CellTable::lift(mem);
         let links = CellLinks::lift(mem, &cells);
         CarCollision { image, typed: RefCell::new(typed), cells, links }
-    }
-
-    /// As [`CarCollision::lift`] with every row lifted (the round trip's).
-    pub fn lift_all(mem: &Mem) -> Self {
-        let held = Self::lift(mem);
-        if held.image.solver != 0 {
-            let mut t = held.typed.borrow_mut();
-            for k in 0..ROWS {
-                t.contact_rows.get(k, || ContactRows::lift(mem, held.image.contact_rows_at(k)));
-                t.offset_rows.get(k, || OffsetRowObj::lift(mem, held.image.offset_row_at(k)));
-            }
-        }
-        held
     }
 
     /// Writes the held state back: the counts, the grids' bytes and every lifted row.
@@ -731,24 +718,6 @@ impl CollisionStore for CollisionView<'_> {
             self.mem.set_u8(object + field, 0);
         }
     }
-}
-
-/// `lower(lift(image))` of the collision state, every row lifted, into an empty image, compared with `mem` on every
-/// owned byte: their count, or the first byte that differs.
-pub fn round_trip(mem: &Mem) -> Result<usize, String> {
-    let held = CarCollision::lift_all(mem);
-    let mut out = Mem::new();
-    held.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in held.image.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes + CellTable::round_trip(mem)? + CellLinks::round_trip(mem)?)
 }
 
 #[cfg(test)]

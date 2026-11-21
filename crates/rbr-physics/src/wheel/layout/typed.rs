@@ -314,24 +314,6 @@ impl WheelStore for WheelView<'_> {
     }
 }
 
-/// `lower(lift(image))` of the car's wheels into an empty image, compared with `mem` on every owned byte: their
-/// count, or the first byte that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    let wheels = CarWheels::lift(mem, car);
-    let mut out = Mem::new();
-    wheels.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in wheels.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::fields::*;

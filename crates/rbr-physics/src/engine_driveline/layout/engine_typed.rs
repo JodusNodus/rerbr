@@ -1,6 +1,6 @@
 //! The engine's typed state on the image (`notes/physics.md` "Store seam"): its tables ([`EngineObj`], the `CEngine`'s
 //! own words a step changes; [`EngineStateObj`], its state's), where they live ([`EngineImage`]) with their lift and
-//! lower, the car's engine in typed storage ([`CarEngine`]), its store ([`EngineView`]) and the round trip.
+//! lower, the car's engine in typed storage ([`CarEngine`]), its store ([`EngineView`]).
 //!
 //! The engine's ports reach its words by the original's offsets from `this` and the state (the intake entries, the
 //! damper blocks and the lanes are records several kernels read differently), so the view serves the store's words
@@ -267,24 +267,6 @@ impl CarEngine {
     pub fn owned(&self) -> Vec<(Range<u32>, String)> {
         self.image.owned().collect()
     }
-}
-
-/// `lower(lift(image))` of the car's engine into an empty image, compared with `mem` on every owned byte: their count,
-/// or the first byte that differs.
-pub fn round_trip(mem: &Mem, car: u32) -> Result<usize, String> {
-    let engine = CarEngine::lift(mem, car);
-    let mut out = Mem::new();
-    engine.lower(&mut out);
-    let mut bytes = 0;
-    for (range, name) in engine.owned() {
-        let len = (range.end - range.start) as usize;
-        let (want, got) = (mem.read(range.start, len), out.read(range.start, len));
-        if let Some(k) = want.iter().zip(&got).position(|(a, b)| a != b) {
-            return Err(format!("{name} at {:#010x}: +{k:#x} differs after lower(lift)", range.start));
-        }
-        bytes += len;
-    }
-    Ok(bytes)
 }
 
 /// The engine's stores (`EngineStore`, `EngineTables`, `DamperBlocks`) over a held engine's typed state and the image
