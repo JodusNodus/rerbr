@@ -8,8 +8,11 @@ toolchain=${RBR_TOOLCHAIN:?set RBR_TOOLCHAIN to the MSVC 7.1 toolchain (scripts/
 plugin=${RBR_HARNESS_PLUGIN:?set RBR_HARNESS_PLUGIN to the harness plugin (scripts/dev-env.sh)}
 sdk=${RBR_PLUGIN_SDK:-original/patch-1.02/files/Main_group/Plugins/RBRTestPlugin}
 [ -f "$sdk/IPlugin.h" ] || { echo "Missing plugin SDK header: $sdk/IPlugin.h (set RBR_PLUGIN_SDK)" >&2; exit 1; }
+[ -f "$toolchain/msvc71/bin/cl.exe" ] ||
+  { echo "Missing $toolchain/msvc71/bin/cl.exe: copy the MSVC 7.1 toolchain (msvc71/, wineprefix/) there (rbr-recomp notes/toolchain.md)" >&2; exit 1; }
 export WINEPREFIX=$toolchain/wineprefix WINEDEBUG=-all
 mkdir -p build/harness
+cp harness/plugin/RBRRecompHarness.cpp "$sdk/IPlugin.h" "$sdk/IRBRGame.h" build/harness/
 wine "$toolchain/msvc71/bin/cl.exe" /nologo /O2 /LD /MD /GR- /D__SUPPORT_PLUGIN__=1 "/I$toolchain/msvc71/include" \
   /Ibuild/harness build/harness/RBRRecompHarness.cpp /Fobuild/harness/ /Febuild/harness/RBRRecompHarness.dll \
   /link "/LIBPATH:$toolchain/msvc71/lib" kernel32.lib user32.lib >build/harness/cl.txt || { cat build/harness/cl.txt; exit 1; }
