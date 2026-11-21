@@ -96,7 +96,6 @@ pub mod rbz;
 pub mod repair;
 pub mod rsf;
 pub mod saves;
-pub mod season_dat;
 mod sg_framing;
 pub mod sga;
 pub mod sgc;
