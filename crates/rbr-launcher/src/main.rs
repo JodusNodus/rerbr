@@ -660,13 +660,7 @@ impl Form {
     fn list_maps(&mut self) {
         let catalog = &self.catalog;
         let rows = (catalog.maps.iter().enumerate())
-            .map(|(i, map)| {
-                // A circuit plays on the Circuit page: the Drive page's list shows it as one that cannot start.
-                let problem = catalog.availability(&self.season, map).err().or_else(|| {
-                    map.btb().filter(|btb| btb.circuit).map(|_| "a circuit: it plays on the Circuit page".to_owned())
-                });
-                stage_browser::StageRow::new(i, map, problem)
-            })
+            .map(|(i, map)| stage_browser::StageRow::new(i, map, catalog.availability(&self.season, map).err()))
             .collect();
         self.stage_browser.set_rows(rows);
         self.list_stages_page();

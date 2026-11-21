@@ -1316,13 +1316,39 @@ Dense grass placement and size (2026-11-10):
   points around it, at least 12 cm away and enough for the cards, lean and wind. Samples across a triangle edge
   take the neighbouring ground through the existing tile lookup (`Field::vegetation`, `supported`; tests cover
   tinted pavement, narrow green cracks and grass/pavement seams). Tint and blurred colour still colour the blades.
-- A candidate triangle's centre must be within 10 cm of collision ground where available, excluding elevated
-  props (`grass::add`). Collision tarmac alone cannot exclude grass: Helette 580's grassy `Route_O.dds` shoulders
-  also lie on tarmac-labelled collision (installed-stage diagnostic, dry/new).
+- A candidate triangle's centre must be within 10 cm of collision ground where there is collision under it,
+  excluding elevated props (`grass::add`); ground with none under it (a converted stage past its 25 m collision
+  corridor) is marked and taken since 2026-11-21 (`puddles::mark_ground`). Collision tarmac alone cannot exclude
+  grass: Helette 580's grassy `Route_O.dds` shoulders also lie on tarmac-labelled collision (installed-stage
+  diagnostic, dry/new).
 - Final caps after patch and kind scaling: ordinary grass 14 cm, seed heads 20 cm, card width 20 cm (`MAX_HEIGHT`,
   `MAX_WIDTH`; grassy road-shoulder fixture). Previously the 7–14 cm base reached 39.9 cm tall and 63.84 cm wide.
 - Golden-hour chase captures at 1080p: Helette 580, Gabiria 450 and Wythop 532 keep their verges with shorter
   tufts, RMSE 0.0135/0.0225/0.0335 against the prior placement (`scripts/render-shots.py`, same GPU and build inputs).
+
+Grass detector (2026-11-21, `grass::add`, `vegetation`, `prior`): the green test alone missed straw, olive and
+sun-dried meadows (Gabiria's hillside, Bareyo's fields). A ground point is now grassy at
+`max(green, prior x vegetation)`:
+
+- Vegetation reads the texture blurred over a 0.6 m patch (`PATCH`, in texels by the texture's world size from its
+  triangles' uv spans, 1 to 24): hue 32-38 degrees and up (yellow to green, not blue-over-green), saturation over
+  0.10-0.18, not near black. Unblurred, Gabiria's 7 cm texels left a speckle; a fixed 12-texel blur ran Bareyo's
+  gravel lane into its fields.
+- The prior (0 to 1) is how likely the triangle is grass: the mean of its own collision class (`CLASS_PRIOR`: grass
+  1, rough 0.85, dirt 0.3, other or none 0.5, gravel and tarmac 0) and its texture's, which is the mean of the
+  texture's area-weighted collision class and its name (`GRASS_WORDS` 1, `BARE_WORDS` 0, else the collision value).
+  Road-mesh triangles get 0: Kinamba Yala draws its road with `Grass01.dds` over grass collision.
+- The shader's `thatch` runs the same test, with the prior in the ground vertex's mark (`GROUND_MARK - prior`).
+  Textures stay in display values on both sides.
+- Strips along the driveline (`examples/grass_strip.rs STAGE OUT [--truth]`, 0.1 m/px, +-20 m; with `--truth`,
+  against a converted stage's GrassFX draws): grass share 19 to 64% on Gabiria 450, 24 to 50% on Bareyo (stone
+  banks, the lane and ruts stay bare), 67 to 73-77% on Helette; Pikes Peak, Cercados and Ypsonas near 0. Reference
+  shots against main: Gabiria fly-by RMSE 0.046, 532 0.042, Pengonpohja 0.031, Falstone 0.019, 580 unchanged,
+  GrassFX stages under 0.0004, Nordschleife (no GrassFX) 0.0066 with its verge as full.
+- Open: converted AC stages' terrain colour maps are dark and coarse (3-6 m texels), so colour says little there;
+  against GrassFX the detector ran from precision 86 / recall 68 (Roure) to 15 / 9 (St Jean). Those stages keep
+  GrassFX. Gunma (no GrassFX) gets its verges, but its large olive terrain is not BTB ground (`btb::on_ground`
+  with the collision corridor; `notes/btb.md`).
 
 Scanned surfaces removed (user decision 2026-11-02): `asphalt`, `gravel`, `snow` and `ground` (Poly Haven scans over
 the roads, snow and off-road ground; launcher "Surfaces") did not look right on every stage. The road and ground marks

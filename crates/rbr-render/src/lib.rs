@@ -81,4 +81,5 @@ pub mod upscale;
 pub mod verge;
 pub mod views;
 pub mod visibility;
+pub mod wheel_lights;
 pub mod wheel_rotation;

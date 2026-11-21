@@ -23,7 +23,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 /// [`Vertex::edge`] of the off-road ground's vertices (ours, the grass field, [`mark_ground`]): the road's edge distance
-/// is 0 or more, so a negative one marks ground.
+/// is 0 or more, so a negative one marks ground. The grass field lowers it by how likely the ground is grass, 0 to 1
+/// (`grass::prior`), for the ground shader's thatch.
 pub(crate) const GROUND_MARK: f32 = -1.0;
 
 /// A stage whose ground is more than one in this many triangles on snow is a snow stage.
@@ -446,13 +447,20 @@ pub(crate) fn mark_sheen(meshes: &mut [Mesh], roads: &Roads) {
 const GROUND_REACH: f32 = 0.6;
 
 /// Marks the vertices of the off-road ground of `meshes` ([`Vertex::edge`] [`GROUND_MARK`]): the ground draws' triangles
-/// (`ground`, [`ground_triangles`]) lying on a collision surface that is neither the road's (taking the film) nor snow, and whose vertices [`mark_roads`]
-/// left unmarked. Run after it (the grass field, `Enhance::grass`). Returns whether the stage is a snow stage.
+/// (`ground`, [`ground_triangles`]) lying on a collision surface that is neither the road's (taking the film) nor snow, or
+/// on none and not the road's texture by the road (a converted stage keeps its collision to a corridor about the road, and
+/// Gunma's large terrain triangles have their middle past it), and whose vertices [`mark_roads`] left unmarked. Run after
+/// it (the grass field, `Enhance::grass`). Returns whether the stage is a snow stage.
 pub(crate) fn mark_ground(meshes: &mut [Mesh], ground: &[GroundTriangle]) -> bool {
     let (mut snow_triangles, mut triangles) = (0, 0);
     let mut marked = Vec::new();
     for &GroundTriangle { m, t, y, hit, road, .. } in ground {
-        let Some(hit) = hit else { continue };
+        let Some(hit) = hit else {
+            if !road {
+                marked.extend(t.map(|i| (m, i)));
+            }
+            continue;
+        };
         let surface = hit.surface as usize;
         let snow = SNOW.get(surface).copied().unwrap_or(false);
         snow_triangles += usize::from(snow);

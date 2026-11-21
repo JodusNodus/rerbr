@@ -1070,6 +1070,7 @@ mod tests {
                 "rotation_per_car = 0\n",
                 "smoothing = 0\n",
                 "tyres = 0\n",
+                "rev_lights = 1\n",
                 "\n",
                 "[ffb_cars]\n",
                 "COROLLA = 120,120,130\n",

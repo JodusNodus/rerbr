@@ -16,6 +16,12 @@ use crate::Form;
 /// How often a running viewer is checked for its exit.
 const POLL: Duration = Duration::from_millis(250);
 
+/// Whether the Circuit page is offered: not released yet, so it stays behind `RBR_CIRCUIT=1`.
+pub fn circuit_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("RBR_CIRCUIT").is_ok_and(|v| !matches!(v.as_str(), "" | "0")))
+}
+
 /// The sidebar's groups of pages: driving, the library of content, and the settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
@@ -32,12 +38,13 @@ impl Section {
     /// The group's pages, in order, with their names (the Settings group's are its tabs).
     pub fn pages(self) -> &'static [(Page, &'static str)] {
         match self {
-            Section::Drive => &[
+            Section::Drive if circuit_enabled() => &[
                 (Page::Drive, "Rally"),
                 (Page::Circuit, "Circuit"),
                 (Page::Championship, "Championship"),
                 (Page::School, "School"),
             ],
+            Section::Drive => &[(Page::Drive, "Rally"), (Page::Championship, "Championship"), (Page::School, "School")],
             Section::Library => &[
                 (Page::Cars, "Cars"),
                 (Page::Stages, "Stages"),
@@ -94,6 +101,7 @@ impl Page {
         match self {
             Page::Import => "Import",
             Page::Setup => "Car setup",
+            Page::Circuit => "Circuit",
             _ => Section::ALL
                 .into_iter()
                 .flat_map(|(s, _)| s.pages())
@@ -200,8 +208,6 @@ pub enum Fix {
     DownloadNgp,
     /// The Cars page with the Get more cars dialog open on gvrc.de's list.
     DownloadCars,
-    /// The Circuit page, for a circuit the Drive page has selected.
-    Circuit,
 }
 
 impl Fix {
@@ -210,7 +216,6 @@ impl Fix {
             Fix::Settings => "Open Settings",
             Fix::DownloadNgp => "Download NGP 7.4.778",
             Fix::DownloadCars => "Download cars…",
-            Fix::Circuit => "Open Circuit",
         }
     }
 }
@@ -300,9 +305,6 @@ impl Form {
             return Some(issue);
         }
         let car = self.car()?;
-        if self.page == Page::Drive && self.is_circuit(self.map) {
-            return Some(Issue { text: "a circuit plays on the Circuit page".into(), fix: Some(Fix::Circuit) });
-        }
         if let Some(reason) = car.unavailable() {
             return Some(Issue { text: format!("{}: {reason}", car.name), fix: None });
         }
@@ -319,7 +321,6 @@ impl Form {
             Fix::DownloadCars => {
                 self.open_get_more(GetMore::Cars);
             }
-            Fix::Circuit => self.page = Page::Circuit,
         }
     }
 
@@ -621,7 +622,8 @@ mod tests {
         assert_eq!(press(Page::Drive, Key::Num2, ctrl), Some(Page::Stages));
         assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Drive, Key::Num4, ctrl), None);
-        assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Circuit));
+        // The Circuit page is behind `RBR_CIRCUIT`: unset, Rally's next page is Championship.
+        assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Championship));
         assert_eq!(press(Page::Replays, Key::PageDown, ctrl), Some(Page::Cars));
         assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::School));
         assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Replays));
