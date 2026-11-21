@@ -800,6 +800,11 @@ static void Record(unsigned pre, unsigned post, unsigned substeps, const unsigne
 // without the switch (its size sets the step's esp, so the stack garbage it sees), hence asm.
 static unsigned s_snapTarget;
 
+// clang-cl inlines a function with __asm and takes the asm call's clobbers (eax, ecx, edx) as unchanged; MSVC never
+// inlines one (and 7.1 has no noinline)
+#ifdef __clang__
+__declspec(noinline)
+#endif
 static void CallStepForward(void* self, unsigned substeps)
 {
     unsigned target = kStepForward;
@@ -839,13 +844,10 @@ static __declspec(naked) void CarControlResume()
 static void CallEmit(void* self, const void* sig)
 {
     // through our hook (the return address isn't the player's), or past the car hook
+    // thiscall(self, sig) called as the same-shaped __fastcall with an unused edx, so the compiler knows the call's
+    // clobbers (an asm call hid them from clang-cl, which inlined this and lost the caller's control pointer)
     unsigned target = s_carControlHooked ? (unsigned)&CarControlResume : kEmit;
-    __asm
-    {
-        push sig
-        mov ecx, self
-        call target
-    }
+    ((void (__fastcall*)(void*, int, const void*))target)(self, 0, sig);
 }
 
 // ---- snapshots ----
@@ -3486,13 +3488,7 @@ static void __stdcall CameraTick()
     int was = *mode;
     if (was == s_cameraMode)
         return;
-    __asm
-    {
-        push 0
-        mov ecx, mode
-        mov eax, 0x00487840
-        call eax
-    }
+    ((void (__fastcall*)(int*, int, int))0x00487840)(mode, 0, 0);  // thiscall(mode, 0)
     if (*mode != was)
     {
         char text[64];

@@ -7,10 +7,13 @@
 # - aids: the drive's command again (its work files) with every driving aid on, the paths drive2 (aids off) does not
 #   reach: PASS on exit status 0, or 1 with no failure but the recording's (no stop, the time card and the application
 #   state equal; headless/report.rs);
-# - tarmac, gravel1, gravel2, retail: the other NGP drives that run equal, PASS as the standalone check: drive1 attempt 2
-#   (tarmac, Fiesta Rally3, 103802; recorded before GAM1's damage level, on off, with drive2 attempt 1's setup),
-#   rsf-test1 and rsf-test2 attempt 1 (gravel, map 54, Evo IX N4, 32623 and 58619); retail: ngp-pair1 (NGP 7.4.778,
-#   retail car slot 6 on map 54) to 13043, where its playback's controls end;
+# - tarmac, retail and the driverless drives: the other NGP drives that run equal, PASS as the standalone check: drive1
+#   attempt 2 (tarmac, Fiesta Rally3, 103802; recorded before GAM1's damage level, on off, with drive2 attempt 1's
+#   setup); retail: ngp-pair1 (NGP 7.4.778, retail car slot 6 on map 54) to 13043, where its playback's controls end;
+#   scripts/rsf-autopilot.sh's playbacks on realistic damage, each to where its controls end: fwd-gravel (Opel ADAM R2,
+#   Tanner, test3/1's controls), rwd-gravel (BMW M3 E30, map 21, drive2/2's), fwd-tarmac (Peugeot 208 R2, map 41,
+#   drive2/4's), awd-wet and rwd-wet (Evo IX N4 on map 41, Porsche 911 SC on map 43; rain, wet tyres; drive2/4's and
+#   drive2/3's);
 # - with --perf BASE_BIN, after the others: the step's cost of this build against BASE_BIN (scripts/perf-step.sh,
 #   3 runs), no verdict.
 # Prints one line per check and a final PASS/FAIL (exit 1). A check's full output is in /tmp/gate-<pid>-<name>.txt,
@@ -88,8 +91,12 @@ drive() {
         --out "$out/$session-$attempt" "$@"
 }
 start tarmac drive drive1 2 --damage off --setup "$RBR_RECORDINGS/rsf/drive2/1/setup.lsp"
-start gravel1 drive rsf-test1 1
-start gravel2 drive rsf-test2 1
+# driverless playbacks (scripts/rsf-autopilot.sh), each to the step before its controls end (where rbr-standalone stops)
+start fwd-gravel drive ap-fwd-gravel 1 --steps 19353
+start rwd-gravel drive ap-rwd-gravel 1 --steps 45485
+start fwd-tarmac drive ap-fwd-fast 1 --steps 40392
+start awd-wet drive ap-awd-wet 1 --steps 40392
+start rwd-wet drive ap-rwd-wet 1 --steps 61155
 start retail drive ngp-pair1 1 --steps 13043
 
 # rsf_compare's headline "attempt 5: <stage> | <physics> | ...": the physics column, PASS only with exit status 0.
@@ -116,8 +123,7 @@ aids() {
 finish poison standalone
 finish aids aids
 finish tarmac standalone
-finish gravel1 standalone
-finish gravel2 standalone
+for c in fwd-gravel rwd-gravel fwd-tarmac awd-wet rwd-wet; do finish $c standalone; done
 finish retail standalone
 
 if [ -n "$perf" ]; then

@@ -116,7 +116,7 @@ scripts/rsf-session.sh fetch <name>     # to $RBR_RECORDINGS/rsf/<name>
 | `meta.txt` | `before.`/`after.` keys: date, RSF launcher and NGP.dll versions, sha256 of NGP.dll and exe, plugin commit, `RichardBurnsRally.ini [NGP]`, `RBRControls.ini`, driven cars' `steeringrotation`, `forcefeedbacksensitivity*` (`rallysimfans_personal.ini [car<id>]`, those keys only), wheel/shifter driver and lg4ff `range`, `autocenter`, `gain` |
 | `harness.log`, `watch.log` | plugin log, session's |
 
-Driverless tests: `start` takes `AUTO="map car weather tyre"`, `PLAYBACK=<FRM1 under the home>`, `FAST=N`.
+Driverless tests: `start` takes `AUTO="map car weather tyre [damage [transmission]]"`, `PLAYBACK=<FRM1 under the home>`, `FAST=N`; `scripts/rsf-autopilot.sh` runs one with an RSF car (below). A clang-cl plugin before the `CallEmit` fix recorded the player's live controls (zeros) in a playback's FRM1 in place of the fed ones: clang inlined the asm call and lost the control pointer.
 
 Replay an attempt as `rbr-launcher`'s command does for a pack car: `rbr-standalone --boot --recording <n>/physics.bin --stage track-<map>_<letter> --weather W --tyre T --ngp-physics $RBR_NGP_PHYSICS --rsf-car $RBR_RSF/rsfdata/cars/<pack>` (map, weather, tyre from `GAM1`, the pack from `attempt.txt`; the launcher passes the same car resolved as `--car-pack/--car-model/--car-bank/--car-key`).
 
@@ -137,11 +137,28 @@ Determinism and versions. Masked here: words differing at the first step and con
 
 The gate matrix is the NGP drives `rbr-standalone --boot` runs to the end of their recording. It holds drive2 attempt
 5 (`rsf/drive2`, snow, Ford Focus RS WRC 06, RSF car 55: 84084/84084), drive1 attempt 2 (tarmac, Fiesta Rally3, RSF
-car 88: 103802/103802), rsf-test1 and rsf-test2 attempt 1 (gravel, map 54, Evo IX N4, RSF car 24: 32623/32623,
-58619/58619), ngp-pair1 to 13043 (NGP 7.4.778, retail car slot 6 on map 54, a playback: its controls end there)
-and the NGP playback-made pairs of `harness/matrix.py` (NGP's four car slots). All five recorded drives are four-wheel
-drive with damage off or safe and no heavy impact: front- and rear-wheel drive, wet, damage and crashes
-have no recorded drive that runs equal (drive2/3 and drive2/4 part in the settle, below).
+car 88: 103802/103802), ngp-pair1 to 13043 (NGP 7.4.778, retail car slot 6 on map 54, a playback: its controls end
+there), the driverless playbacks below and the NGP playback-made pairs of `harness/matrix.py` (NGP's four car slots).
+Not covered: a hand drive with front- or rear-wheel drive, wet or heavy damage (only the playbacks reach those), and
+RSF's own stages from a playback.
+
+Driverless playbacks (`scripts/rsf-autopilot.sh`: the harness starts a 1.02 stage, `AUTO`, with an RSF car put in slot
+5, and an earlier drive's controls drive it; realistic damage). The controls are another car's, so these cars go off
+and hit things (10 s penalties). Each is equal on every step that has a control (the run goes on 2 s past them, where
+rbr-standalone stops, so the gate runs to the step before):
+
+| Session | Car, stage, weather | Controls from | Equal steps | Top speed |
+| --- | --- | --- | --- | --- |
+| ap-fwd-gravel | Opel ADAM R2 (FWD), 54, dry gravel | test3/1 | 19354 | 20.2 m/s |
+| ap-rwd-gravel | BMW M3 E30 GrpA (RWD), 21, dry gravel | drive2/2 | 45486 | 12.8 m/s |
+| ap-fwd-fast | Peugeot 208 R2 (FWD), 41, dry tarmac | drive2/4 | 40393 | 18.9 m/s |
+| ap-awd-wet | Evo IX N4 (AWD), 41, rain, wet tarmac tyres | drive2/4 | 40393 | 15.8 m/s |
+| ap-rwd-wet | Porsche 911 SC 3.0 Grp4 (RWD), 43, rain, wet tarmac tyres | drive2/3 | 61156 | 1.5 m/s (stuck) |
+| ap-fwd-tarmac (not in the gate) | Peugeot 208 R2, 41, dry tarmac | drive1/2 | 103802 | 6.9 m/s |
+
+rsf-test1 and rsf-test2 (map 54, Evo IX N4; out of the gate, PASS 32623/32623 and 58619/58619) are idle runs: the car
+never passes 0.3 m/s. An `AUTO` start loads slot 5's car from `Physics/s_i2003` (where RSF copies the chosen pack) with
+`Cars.ini [Car05]`'s model: a model without its pack hangs the load. RSF's own stages (map 176) hang an `AUTO` start.
 
 The 1.02 drives below do not run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and viewer
 playback.
@@ -214,7 +231,8 @@ A word joins the stale lists only with evidence that the original differs from i
   | drive2/2 (gravel) | exact to 23425 but `car+0x160`, the car's cell link's next (`CELL_LINK`): from step 23425 to the car's leaving the cell (frames 21943-22387) the original's cell at x 1360-1370, y 340-350 of track-21_O holds a body after the car, ours none (the car alone, count 1). Ours has all 36 `.trk` placements of the 5x5 cells around, none in that cell; the `.lbs` (2,14) spectator 98015 (`RUN_THREESTATE.LUA`) stands in it (1363.7, 348.4), so a character's body in the original's grid is the likely one (unproven: other spectators' cells match); position and speed equal throughout, not masked | FFB from our physics misses only its 2 late-call sets; mapping misses 2 sets | PASS-BY-SEARCH |
   | drive2/1,3,4 (tarmac, saved setups) | part in the settle (steps 120, 40, 80) at first ground contact, mm apart (body z +2.4, -7.6, -2.6 mm): a different car or start, not drift | mapping misses 1, 1, 3 sets, each the recorded force 2 steps back (no call QPC in drive2 to tell a late call) | PASS-BY-SEARCH |
   | drive1/2 | PASS 103802/103802 `--damage off` (STA1 not recorded); on safe parts at 22803 (impact damage words `car+0x11a8`, `+0x1288..0x1290`) | FFB pass | - |
-  | rsf-test1/1, rsf-test2/1 (gravel, map 54, car 24) | PASS 32623/32623 (STA1 not recorded), 58619/58619 (STA1: slip only) | - | - |
+  | rsf-test1/1, rsf-test2/1 (gravel, map 54, car 24; idle) | PASS 32623/32623 (STA1 not recorded), 58619/58619 (STA1: slip only) | - | - |
+  | the ap-* playbacks (above) | PASS to the step before their controls end (STA1: all) | - | - |
   | drive1/1 (map 127, car 24) | exact to 66628 `--damage off` (62192 on safe); parts standing, engine stalled (ours 0.002-0.007 rad/s), every FRM1 word equal but frame-loop `car+0x670` | mapping pass | - |
   | e2e4 (`FFB=1 FAST=1`, call QPC) | physics and STA1 (every word) equal to the parting at 31682 | ours every set before the parting; mapping PASS | - |
 
