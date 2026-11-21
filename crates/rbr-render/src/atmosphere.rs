@@ -59,8 +59,10 @@ pub struct Atmosphere {
     /// The sun's true elevation, degrees, when a clock sets it (`relight::Clock`; `sun_direction` stays at least 2
     /// degrees up): the physically based sky's twilight (`skylight.rs`).
     pub sun_elevation: Option<f32>,
-    /// The clear sky's aerosol optical depth in place of the section's word's (a converted stage's `[ReRbrAir]`).
+    /// The clear day's aerosol optical depth and ground haze hue (display colour) in place of ours (a converted
+    /// stage's `[ReRbrAir]`; `skylight::CLEAR_AIR`).
     pub aerosol: Option<f32>,
+    pub haze_hue: Option<Vec3>,
     /// The share of the height fog's dawn and dusk mist (`height_fog.rs`; a converted stage's `[ReRbrAir]`), else all.
     pub mist: Option<f32>,
     /// Toward the stage's north, when the stage states it (a converted stage's `[ReRbrAir]`): the clock's sun path
@@ -285,6 +287,7 @@ impl Default for Atmosphere {
             night: false,
             sun_elevation: None,
             aerosol: None,
+            haze_hue: None,
             mist: None,
             north: None,
             moon: None,
@@ -372,6 +375,7 @@ impl Atmosphere {
             night: false,
             sun_elevation: None,
             aerosol: None,
+            haze_hue: None,
             mist: None,
             north: None,
             moon: None,

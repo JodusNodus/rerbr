@@ -602,7 +602,12 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     tile capacity our own grass uses).
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
-  - Open: CSP's distant fog is bluer.
+  - Distance haze (2026-11-21): CSP's distance is a deep blue, ours a pale blue-grey. At Joux Verte's mountain ours
+    (108,117,126) lies within 15 levels of the photograph (123,129,143), CSP's (95,111,175) does not: CSP's blue is a
+    look, not kept. Most of our veil is the clear air (Rayleigh and aerosol), not the ground haze (its reach 7.7 to 50
+    km barely moved Prunières; Joux's mountain 108 to 89). Known: the aerial table keeps one grey transmittance (blue
+    is not dimmed more than red); a per-channel one tried in the shader drew the distance a little bluer (Joux blue
+    126 to 135). The clear-day air is now every stage's (`notes/renderer.md` "One air for every stage").
 
 ## Launcher import (2026-11-18)
 
