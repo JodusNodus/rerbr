@@ -15,9 +15,9 @@ pub struct Enhance {
     /// The stage's soft ground decals (the RSF stages' painted skid marks) alpha blended, as the game's object blend
     /// state, in place of the 60/255 cut that turns them solid ([`crate::decals`]).
     pub decals: bool,
-    /// A grass field over the ground near the road, streamed about the eye ([`crate::grass`]; ours, a proof of concept:
-    /// not in `all`).
-    pub grass: bool,
+    /// A grass field over the ground near the road, streamed about the eye, at its level ([`crate::grass`]; ours, a
+    /// proof of concept: not in `all`; `grass` dense, `grass-light` light).
+    pub grass: Option<crate::grass::Level>,
     /// Motion blur along each pixel's screen motion ([`crate::motion_blur`]; ours, experimental: not in `all`).
     /// Only with the temporal anti-aliasing.
     pub motion_blur: bool,
@@ -201,13 +201,14 @@ impl DebugView {
 }
 
 impl Enhance {
-    pub const NAMES: [&str; 12] = [
+    pub const NAMES: [&str; 13] = [
         "anisotropy",
         "blur",
         "cabin",
         "contact",
         "decals",
         "grass",
+        "grass-light",
         "lighting",
         "marks",
         "particles",
@@ -247,7 +248,8 @@ impl Enhance {
                 "cabin" => enhance.cabin = true,
                 "contact" => enhance.contact = true,
                 "decals" => enhance.decals = true,
-                "grass" => enhance.grass = true,
+                "grass" => enhance.grass = Some(crate::grass::Level::Dense),
+                "grass-light" => enhance.grass = Some(crate::grass::Level::Light),
                 "lighting" => enhance.lighting = true,
                 "marks" => enhance.marks = true,
                 "particles" => enhance.particles = true,

@@ -20,7 +20,7 @@ use rbr_school::Lesson;
 use rbr_sound::mixer::Volumes;
 
 use crate::catalog::{self, Car, Stage, TyreChoice};
-use crate::graphics_page::{Graphics, HudChoice, WetRoads, ALWAYS_ON};
+use crate::graphics_page::{Graphics, Grass, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
 use crate::{pages::Choice, Form};
 
@@ -94,7 +94,8 @@ pub fn render_scale_args(percent: u32) -> Vec<String> {
 pub fn enhance_list(graphics: &Graphics) -> String {
     let on = |name: &str| match name {
         "blur" => graphics.motion_blur,
-        "grass" => graphics.grass,
+        "grass" => graphics.grass == Grass::Dense,
+        "grass-light" => graphics.grass == Grass::Light,
         "windscreen" => graphics.windscreen,
         "cabin" | "lighting" => graphics.lighting,
         "particles" => graphics.particles,
@@ -1517,7 +1518,7 @@ mod tests {
         for preset in Quality::ALL {
             assert_eq!(Quality::of(preset.graphics()), Some(preset));
         }
-        assert_eq!(Quality::of(Graphics { grass: false, ..DEFAULT_GRAPHICS }), None);
+        assert_eq!(Quality::of(Graphics { grass: Grass::Off, ..DEFAULT_GRAPHICS }), None);
         // The motion blur is off until asked for, and no preset's business.
         let blurred = Graphics { motion_blur: true, ..Quality::Low.graphics() };
         assert_eq!(enhance_list(&blurred), "anisotropy,blur,contact,decals,marks,water");

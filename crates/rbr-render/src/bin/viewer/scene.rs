@@ -97,7 +97,7 @@ impl Scene {
         progress: &mut dyn FnMut(f32),
     ) -> Renderer {
         // The stage's pipelines thatch the ground under the grass only where it grows (`GRASS` in `shader.wgsl`).
-        let enhance = Enhance { grass: self.grass.is_some(), ..enhance };
+        let enhance = Enhance { grass: self.grass.as_ref().map(|field| field.level), ..enhance };
         let mut renderer = Renderer::with_progress(gpu, format, &self.stage, enhance, progress);
         renderer.set_render_scale(render_scale);
         if let Some(playback) = &self.playback {
@@ -254,10 +254,10 @@ fn load_scene<'scope, 'env>(
             let maps = data.install().join("Maps");
             progress(Step::Stage);
             let mut stage = stage::load(&maps, name, args.selection).map_err(|e| e.to_string())?;
-            let grass = args.enhance.grass && args.enhance.lighting;
+            let grass = args.enhance.grass.filter(|_| args.enhance.lighting);
             // The grass field needs the surfaces marked; so does a converted stage's road sheen (the roads only).
-            if grass || (args.enhance.lighting && stage.has_sheen()) {
-                stage.mark_surfaces(&maps, grass);
+            if grass.is_some() || (args.enhance.lighting && stage.has_sheen()) {
+                stage.mark_surfaces(&maps, grass.is_some());
             }
             stage.atmosphere.fog = args.fog;
             stage.atmosphere.clouds = args.clouds;
@@ -289,7 +289,7 @@ fn load_scene<'scope, 'env>(
             if !stage_lamps.is_empty() {
                 eprintln!("stage lamps: {}", stage_lamps.len());
             }
-            let grass = grass.then(|| rbr_render::grass::add(&mut stage)).flatten().map(|field| {
+            let grass = grass.and_then(|level| rbr_render::grass::add(&mut stage, level)).map(|field| {
                 eprintln!("grass: {} ground triangles", field.triangles());
                 std::sync::Arc::new(field)
             });

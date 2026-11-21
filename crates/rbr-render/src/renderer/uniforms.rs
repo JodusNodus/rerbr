@@ -200,6 +200,8 @@ pub(super) struct FrameUniform {
     /// eye's distance they fade out by; each lamp's position and intensity, and the way its light falls.
     street_light: [f32; 4],
     street: [[f32; 4]; 2 * MAX_STREET],
+    /// The grass's profile ([`Level::uniform`](crate::grass::Level::uniform), `grass_density` in `shader.wgsl`).
+    grass: [f32; 4],
 }
 
 /// The most stage lamps that light a frame, the nearest the eye ([`Renderer::street_lamps`]).
@@ -481,6 +483,7 @@ impl Renderer {
                 cabin_seen: cabin.1,
                 street_light,
                 street,
+                grass: crate::grass::Level::uniform(self.enhance.grass),
             };
             *slot = uniform;
         }

@@ -13,8 +13,8 @@
 //! [`add`] keeps the ground's triangles by [`TILE`] square tile (a [`Field`]); the stage holds [`SLOTS`] tile meshes,
 //! and the renderer keeps those of the tiles about the eye filled with all their cards ([`Ring`]), each in the
 //! smallest free mesh that holds them, drawn within [`CLOSE_DISTANCE`] ([`Lod::Close`]): all of them near and a
-//! thinning share further out ([`density`], [`take`]). The shader shrinks each card into the ground by its rank against
-//! the density where it stands, and all of them over the last metres of [`REACH`] (`GRASS_THIN`, `GRASS_FADE`), so the
+//! thinning share further out ([`density`], [`take`]), as far as its [`Level`] reaches. The shader shrinks each card
+//! into the ground by its rank against the density where it stands (`grass_density`, `GRASS_MARGIN`), so the
 //! field thins and thickens smoothly rather than popping at share steps. A worker
 //! thread makes the cards off the frame ([`Ring::update`]), the frame only uploading finished tiles. They
 //! are cut-out stage draws marked as grass tufts, so the plants' lighting takes them (`own_light` in `shader.wgsl`)
@@ -53,25 +53,62 @@ const FAR_SHARE: f32 = 0.4;
 const LEVEL: f32 = 0.45;
 /// The side of the square tiles, metres.
 const TILE: f32 = 8.0;
-/// How far from the eye grass draws, metres: the tiles with their middle within this of the eye stream in and draw
-/// ([`CLOSE_DISTANCE`] covers a tile past it), flattened into the ground over its last 10 m (`GRASS_FADE` in
-/// `shader.wgsl`, which the ground under it fades its thatch over too).
-pub(crate) const REACH: f32 = 110.0;
-/// The grass is full within [`FULL_DENSE`] metres of the eye, then halves every [`HALVING`] ([`density`]).
-const FULL_DENSE: f32 = 50.0;
-const HALVING: f32 = 25.0;
+/// How much grass draws and how far (`viewer --enhance grass-light` or `grass`; the launcher's Light and Dense).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    Light,
+    Dense,
+}
+
+impl Level {
+    /// The share of the clumps drawn near the eye, the metres from the eye it stays at that within, and those by which
+    /// it has thinned smoothly to none ([`density`]; `frame.grass` in `shader.wgsl`). A long thinning reads as a field
+    /// fading out, a short one as a front of grass moving with the car.
+    const fn profile(self) -> [f32; 3] {
+        match self {
+            Level::Light => [0.5, 30.0, 80.0],
+            Level::Dense => [1.0, 70.0, 150.0],
+        }
+    }
+
+    /// How far from the eye grass draws, metres: the tiles with their middle within this of the eye stream in and
+    /// draw (at most [`REACH`]).
+    fn reach(self) -> f32 {
+        self.profile()[2]
+    }
+
+    /// `frame.grass` in `shader.wgsl`: [`Level::profile`]; with no grass a profile of none whose edges still differ.
+    pub(crate) fn uniform(level: Option<Level>) -> [f32; 4] {
+        let [share, full, reach] = level.map_or([0.0, 0.0, 1.0], Level::profile);
+        [share, full, reach, 0.0]
+    }
+
+    /// The tile meshes the stage holds at this level: [`SLOTS`]' counts by how many more or fewer tiles its reach
+    /// takes (the grass keeps to [`BAND`] of the driveline, so the tiles grow about with the reach, not its square).
+    fn slots(self) -> impl Iterator<Item = (usize, usize)> {
+        let scale = match self {
+            Level::Light => 0.75,
+            Level::Dense => 1.4,
+        };
+        SLOTS.iter().map(move |&(count, capacity)| ((count as f32 * scale).ceil() as usize, capacity))
+    }
+}
+
+/// The farthest any [`Level`] draws grass, metres ([`CLOSE_DISTANCE`] covers a tile past it).
+pub(crate) const REACH: f32 = Level::Dense.profile()[2];
 /// A tile holds this much more of its cards than its density draws: the shader shrinks those past the density into
 /// the ground (`GRASS_THIN` in `shader.wgsl`), so the field thins and thickens smoothly rather than popping.
 const GROW_MARGIN: f32 = 1.5;
 /// The steps of a tile's share of its cards ([`take`]): a tile rebuilds when its share crosses one.
 const LADDER: f32 = 24.0;
-/// How far past [`REACH`], about the eye a few frames ahead along its motion, tiles are built before the eye needs
+/// How far past the level's reach, about the eye a few frames ahead along its motion, tiles are built before the eye needs
 /// them.
 const PREFETCH: f32 = 16.0;
 /// The tile meshes the stage holds, filled with the tiles about the eye: how many hold up to how many cards. Each
 /// tile takes the smallest free one that holds its cards; the ground with none takes none. Sized for every grassy tile
-/// within [`REACH`] of the RSF stages 580, 621, 532, 450, 417, 176 and retail 52 at their shares (the farthest of a
-/// few at Odry 462's densest spot go without), in about 540 MB of video memory ([`tests::slots_fit_video_budget`]).
+/// within 110 m of the RSF stages 580, 621, 532, 450, 417, 176 and retail 52 at the shares of the earlier falloff
+/// (full to 50 m, halving every 25 m; the farthest of a few at Odry 462's densest spot go without), in about 540 MB of
+/// video memory; each [`Level`] scales the counts ([`Level::slots`], [`tests::slots_fit_video_budget`]).
 const SLOTS: [(usize, usize); 9] =
     [(40, 6400), (40, 5600), (50, 4800), (50, 4000), (50, 3200), (60, 2400), (70, 1600), (80, 800), (100, 400)];
 /// The most cards a tile holds: its clumps at [`DENSITY`], with room for ground laid over ground.
@@ -178,6 +215,8 @@ const PICTURE: (usize, usize) = (256, 256);
 
 /// The grass's ground by tile ([`add`]), from which a tile's cards are made when it is drawn ([`Field::cards`]).
 pub struct Field {
+    /// How much grass it draws and how far.
+    pub level: Level,
     triangles: Vec<Ground>,
     tiles: HashMap<(i32, i32), Vec<u32>>,
     textures: Vec<Texels>,
@@ -519,9 +558,9 @@ impl Light {
 }
 
 /// Keeps the grass's ground of `stage` (after its textures are loaded and its ground and roads marked), and adds its
-/// texture and its [`SLOTS`] empty tile meshes (before the blended ones) for the renderer to fill
+/// texture and its empty tile meshes at `level` ([`Level::slots`], before the blended ones) for the renderer to fill
 /// ([`crate::renderer::Renderer::set_grass`]). `None` on a snow stage or without a driveline.
-pub fn add(stage: &mut Stage) -> Option<Field> {
+pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
     if stage.snow_ground || stage.driveline.len() < 2 {
         return None;
     }
@@ -585,7 +624,7 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
     let mut tiles: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
     // The tile meshes go before the first blended mesh, which moves the meshes from there on.
     let blended = stage.meshes.iter().position(|m| m.layer == Layer::Blended).unwrap_or(stage.meshes.len());
-    let slots = SLOTS.iter().map(|&(count, _)| count).sum::<usize>();
+    let slots = level.slots().map(|(count, _)| count).sum::<usize>();
     let meshes = stage.meshes.iter().enumerate().filter(|(_, m)| m.anchor == Anchor::World && m.layer == Layer::Solid);
     for (index, mesh) in meshes {
         let (own, index) = (index, if index < blended { index } else { index + slots });
@@ -708,9 +747,9 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
             }
         })
         .collect();
-    let slots = SLOTS.iter().flat_map(|&(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
+    let slots = level.slots().flat_map(|(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
     stage.meshes.splice(blended..blended, slots);
-    Some(Field { triangles, tiles, textures, patches, placement, line, mean, fx, report, texture_refs })
+    Some(Field { level, triangles, tiles, textures, patches, placement, line, mean, fx, report, texture_refs })
 }
 
 impl Field {
@@ -946,16 +985,11 @@ fn tile_of(p: Vec3) -> (i32, i32) {
     ((p.x / TILE).floor() as i32, (p.z / TILE).floor() as i32)
 }
 
-/// The density of the grass `distance` metres from the eye: full within [`FULL_DENSE`], halving every [`HALVING`]
-/// past it (`grass_density` in `shader.wgsl` is the same).
-fn density(distance: f32) -> f32 {
-    0.5f32.powf((distance - FULL_DENSE) / HALVING).min(1.0)
-}
-
-/// The density `grass_density` in `shader.wgsl` takes `distance` metres from the eye: [`density`], flattened over the
-/// last 10 m of [`REACH`] (`GRASS_FADE`).
-fn drawn_density(distance: f32) -> f32 {
-    density(distance) * (1.0 - smoothstep([REACH - 10.0, REACH], distance))
+/// The density of the grass at `level` `distance` metres from the eye: its share within its full distance, thinning
+/// smoothly to none at its reach ([`Level::profile`]; `grass_density` in `shader.wgsl` is the same).
+fn density(level: Level, distance: f32) -> f32 {
+    let [share, full, reach] = level.profile();
+    share * (1.0 - smoothstep([full, reach], distance))
 }
 
 /// The steps of a tile's [`Ranks`].
@@ -968,8 +1002,8 @@ pub(crate) type Ranks = [u16; RANKS + 1];
 /// The cards of a tile with `ranks` that the shader grows anywhere `distance` metres or more from the eye: those
 /// ranked under [`GROW_MARGIN`] times the density there (`grass_grown` in `shader.wgsl` shrinks the rest into the
 /// ground), at the step above. A frame draws only those of each tile, by its box's nearest point.
-pub(crate) fn grown_cards(ranks: &Ranks, distance: f32) -> usize {
-    let share = GROW_MARGIN * drawn_density(distance);
+pub(crate) fn grown_cards(ranks: &Ranks, level: Level, distance: f32) -> usize {
+    let share = GROW_MARGIN * density(level, distance);
     let step = ((share * RANKS as f32).ceil().max(0.0) as usize).min(RANKS);
     usize::from(ranks[step])
 }
@@ -1119,6 +1153,11 @@ fn spawn_worker(
 }
 
 impl Ring {
+    /// Its field's level.
+    pub(crate) fn level(&self) -> Level {
+        self.field.level
+    }
+
     /// The ring over `meshes`, the renderer's indices of the tile meshes and how many cards each holds, with the light
     /// of the ground's corners; with `device` the worker stages its tiles' vertices ([`Filled::staged`]).
     pub(crate) fn new(
@@ -1152,8 +1191,8 @@ impl Ring {
     }
 
     /// The finished tiles to upload for the eye at `eye`: each tile mesh's index with its first vertices (the ones to
-    /// draw: the rest still hold an earlier tile's), their bounds and ranks. The tiles with ground within [`REACH`] of
-    /// the eye are wanted nearest first; tiles about the eye a little ahead along its motion are built early
+    /// draw: the rest still hold an earlier tile's), their bounds and ranks. The tiles with ground within the level's
+    /// reach ([`Level::reach`]) of the eye are wanted nearest first; tiles about the eye a little ahead along its motion are built early
     /// ([`PREFETCH`]). A tile keeps the share it holds while that serves it ([`Want`]), so a tile is built again only
     /// every [`LEAD`] metres or so of driving. Missing tiles within [`SYNC_DISTANCE`] are built on the frame itself, so
     /// the near field is steady run to run; the worker thread builds the rest. A finished tile takes the smallest mesh
@@ -1181,11 +1220,12 @@ impl Ring {
             (cx - r..=cx + r).flat_map(move |x| (cz - r..=cz + r).map(move |z| (x, z)))
         };
         // A tile's share by its nearest point to the eye, so none of its cards the shader grows is missing.
+        let level = self.field.level;
         let want = |tile: (i32, i32), at: Vec3| {
-            Want::at(tile, (centre(tile).distance(at.xz()) - TILE * std::f32::consts::FRAC_1_SQRT_2).max(0.0))
+            Want::at(tile, level, (centre(tile).distance(at.xz()) - TILE * std::f32::consts::FRAC_1_SQRT_2).max(0.0))
         };
         // The drawn tiles: ground within reach of the eye, nearest first.
-        let reach = REACH + TILE;
+        let reach = level.reach() + TILE;
         let mut wanted: Vec<(Want, f32)> = range(eye, reach)
             .filter(|tile| self.field.tiles.contains_key(tile))
             .map(|tile| (want(tile, eye), centre(tile).distance(eye.xz())))
@@ -1316,8 +1356,8 @@ const LEAD: f32 = 16.0;
 const SOON: f32 = 4.0;
 
 impl Want {
-    fn at(tile: (i32, i32), near: f32) -> Want {
-        let step = |lead: f32| step_of(density((near - lead).max(0.0)));
+    fn at(tile: (i32, i32), level: Level, near: f32) -> Want {
+        let step = |lead: f32| step_of(density(level, (near - lead).max(0.0)));
         Want { tile, need: step(SOON), most: step(3.0 * LEAD), build: step(LEAD) }
     }
 
@@ -1904,6 +1944,7 @@ mod tests {
         };
         let [a, b, c, d] = [Vec3::ZERO, Vec3::new(4.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 4.0), Vec3::new(4.0, 0.0, 4.0)];
         Field {
+            level: Level::Dense,
             triangles: vec![triangle([a, b, c]), triangle([b, d, c])],
             tiles: HashMap::from([((0, 0), vec![0, 1])]),
             textures: vec![colour],
@@ -2125,11 +2166,15 @@ mod tests {
     }
 
     #[test]
-    fn density_is_full_to_fifty_metres_then_halves_every_twenty_five() {
-        assert_eq!(density(0.0), 1.0);
-        assert_eq!(density(FULL_DENSE), 1.0);
-        assert!((density(75.0) - 0.5).abs() < 1e-6, "{}", density(75.0));
-        assert!((density(100.0) - 0.25).abs() < 1e-6, "{}", density(100.0));
+    fn density_is_full_to_its_level_then_thins_smoothly_to_none() {
+        let dense = |d| density(Level::Dense, d);
+        assert_eq!((dense(0.0), dense(70.0)), (1.0, 1.0));
+        assert!((dense(110.0) - 0.5).abs() < 1e-6, "{}", dense(110.0));
+        assert!(dense(90.0) > dense(100.0) && dense(100.0) > dense(120.0));
+        assert_eq!((dense(150.0), dense(200.0)), (0.0, 0.0));
+        let light = |d| density(Level::Light, d);
+        assert_eq!((light(0.0), light(30.0), light(80.0)), (0.5, 0.5, 0.0));
+        assert!((light(55.0) - 0.25).abs() < 1e-6, "{}", light(55.0));
         assert_eq!(step_of(1.0), LADDER as u32);
         assert_eq!(step_of(0.5), 18);
         assert_eq!(step_of(0.0), 1);
@@ -2139,26 +2184,30 @@ mod tests {
     fn a_tile_draws_the_cards_the_shader_grows() {
         // 100 cards ranked evenly over 0 to 1.
         let ranks: Ranks = std::array::from_fn(|i| (100 * i).div_ceil(RANKS) as u16);
-        assert_eq!(grown_cards(&ranks, 0.0), 100);
-        // At 75 m the shader grows the cards ranked under 1.5 x 0.5, 75 of them; between steps, up to the step above.
-        assert_eq!(grown_cards(&ranks, 75.0), 75);
-        let grown = (GROW_MARGIN * density(74.0) * 100.0).ceil() as usize;
-        assert!((grown..=grown + 2).contains(&grown_cards(&ranks, 74.0)), "{grown}");
-        assert!(grown_cards(&ranks, 90.0) < grown_cards(&ranks, 80.0));
-        assert_eq!(grown_cards(&ranks, REACH), 0);
-        assert_eq!(grown_cards(&ranks, REACH + 50.0), 0);
+        let grown = |level, d| grown_cards(&ranks, level, d);
+        assert_eq!(grown(Level::Dense, 0.0), 100);
+        // At 110 m the shader grows the cards ranked under 1.5 x 0.5, 75 of them; between steps, up to the step above.
+        assert_eq!(grown(Level::Dense, 110.0), 75);
+        let share = (GROW_MARGIN * density(Level::Dense, 105.0) * 100.0).ceil() as usize;
+        assert!((share..=share + 2).contains(&grown(Level::Dense, 105.0)), "{share}");
+        assert!(grown(Level::Dense, 130.0) < grown(Level::Dense, 120.0));
+        assert_eq!(grown(Level::Dense, REACH), 0);
+        assert_eq!(grown(Level::Dense, REACH + 50.0), 0);
+        // Light: three quarters near (1.5 x 0.5), none past its reach.
+        assert_eq!(grown(Level::Light, 0.0), 75);
+        assert_eq!(grown(Level::Light, 80.0), 0);
     }
 
     #[test]
     fn a_tile_keeps_its_share_until_it_runs_short_or_far_over() {
-        let at = |near: f32| Want::at((0, 0), near);
-        let built = at(90.0).build;
+        let at = |near: f32| Want::at((0, 0), Level::Dense, near);
+        let built = at(120.0).build;
         // Built a lead ahead: it serves the tile from where it was built to about a lead nearer.
-        assert!(at(90.0).fits(built) && at(80.0).fits(built));
-        assert!(!at(90.0 - LEAD).fits(built));
+        assert!(at(120.0).fits(built) && at(110.0).fits(built));
+        assert!(!at(120.0 - LEAD).fits(built));
         // Leaving, it serves until it holds far more than the tile needs.
-        assert!(at(110.0).fits(built));
-        assert!(!at(90.0 + 3.0 * LEAD).fits(built));
+        assert!(at(140.0).fits(built));
+        assert!(!at(120.0 + 3.0 * LEAD).fits(built));
         // Within full density every share is all of them.
         assert_eq!((at(10.0).need, at(10.0).most, at(10.0).build), (24, 24, 24));
     }
@@ -2175,12 +2224,14 @@ mod tests {
     #[test]
     fn slots_fit_video_budget() {
         // The fullest tile has a mesh to fit, and the vertices and indices of every tile mesh, and the grass texture
-        // with its mips, are under 600 MB.
+        // with its mips, are under each level's budget (the launcher's tip: about 0.4 and 0.8 GB).
         assert!(SLOTS.iter().any(|&(_, capacity)| capacity >= CAPACITY));
-        let cards: usize = SLOTS.iter().map(|&(count, capacity)| count * capacity).sum();
-        let bytes = cards * 4 * size_of::<Vertex>()
-            + cards * 6 * size_of::<u32>()
-            + (PICTURE.0 * COLUMNS * PICTURE.1 * ROWS * 4) * 4 / 3;
-        assert!(bytes < 600_000_000, "{bytes}");
+        for (level, budget) in [(Level::Light, 450_000_000), (Level::Dense, 800_000_000)] {
+            let cards: usize = level.slots().map(|(count, capacity)| count * capacity).sum();
+            let bytes = cards * 4 * size_of::<Vertex>()
+                + cards * 6 * size_of::<u32>()
+                + (PICTURE.0 * COLUMNS * PICTURE.1 * ROWS * 4) * 4 / 3;
+            assert!(bytes < budget, "{level:?} {bytes}");
+        }
     }
 }
