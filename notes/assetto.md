@@ -564,6 +564,17 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     reference view (profile 1 banks get flowers and grow on duller ground); Akina's A (mask 0.01) on all its grass
     changes under 50 pixels in four views (no atlas: our blades, and its banks already pass the default mask).
     Stages need converting again.
+  - CSP probed at Joux Verte's reference pose (2026-11-21, `[GRASS_FX]` keys overridden for one run, the share of the
+    frame its grass changes, grass off as the base): as shipped 0.036; `MASK_MAIN_THRESHOLD` 0.25 or -1 the same (the
+    colour mask passes all its banks, as ours does); luminance unlimited 0.076, only `MASK_MIN_LUMINANCE` lifted
+    0.080, only the maximum 0.032; `SHAPE_SIZE` 1, 4 (its own), 10: 0.010, 0.036, 0.088 (CSP's cover grows with the
+    size, ours holds it: our clumps overlap, so their count barely moves it). So CSP's default range applies where a
+    track sets none: the converter writes `luminance=0.02,0.35` (its documentation's values) there; it was unlimited.
+    The minimum cuts half of Joux's banks in CSP, yet their texture's linear luminance passes it 96%: CSP tests
+    something darker. Texture x `ksDiffuse` fitted Joux (0.44 kept) and Sa Calobra but not Akina: at a sunlit verge
+    of `haruna_gras513` (`ksDiffuse` 0.2) lifting the minimum changed nothing (0.063 / 0.059), at a shaded bank of the
+    same material it doubled the cover (0.023 / 0.042), and ours under that rule kept 0.005 of the frame. Open: CSP
+    likely tests the lit ground (shade under the minimum), unprobed.
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.

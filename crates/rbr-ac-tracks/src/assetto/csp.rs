@@ -94,6 +94,9 @@ pub fn unrendered(root: &Path) -> Vec<String> {
 
 /// CSP's `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD` where a track gives none (CSP's GrassFX documentation).
 const MASK_DEFAULT: [f32; 2] = [0.5, 0.05];
+/// CSP's `MASK_MIN_LUMINANCE` and `MASK_MAX_LUMINANCE` where a track gives none (its documentation's values; probed:
+/// Joux Verte, which sets neither, grows twice the grass in CSP with the minimum lifted, the same with the maximum).
+const LUMINANCE_DEFAULT: [f32; 2] = [0.02, 0.35];
 
 /// CSP's GrassFX (`[GRASS_FX]` and `[GRASS_FX_TEXTURE_GROUP_<n>]`) as far as ReRBR's grass uses it: the materials it grows
 /// on and those it hides under, its atlas and the pieces drawn from it, and the luminance range of the ground it grows on;
@@ -160,7 +163,7 @@ impl Area {
 struct Shape {
     base: f32,
     size: Option<f32>,
-    luminance: Option<[f32; 2]>,
+    luminance: [f32; 2],
     mask: [f32; 2],
     groups: Vec<f32>,
 }
@@ -172,9 +175,7 @@ impl Shape {
         if let Some(size) = self.size {
             out += &format!("size={size}\n");
         }
-        if let Some([low, high]) = self.luminance {
-            out += &format!("luminance={low},{high}\n");
-        }
+        out += &format!("luminance={},{}\n", self.luminance[0], self.luminance[1]);
         out += &format!("mask={},{}\n", self.mask[0], self.mask[1]);
         for (n, chance) in self.groups.iter().enumerate() {
             out += &format!("group{n}={chance}\n");
@@ -235,11 +236,10 @@ impl GrassFx {
     /// of configuration A, then 50% of B"); a key a configuration leaves out keeps the value so far.
     fn shape(&self, map: [f32; 4]) -> Shape {
         let keys = &self.keys;
-        let luminance = match (number(keys, "MASK_MIN_LUMINANCE"), number(keys, "MASK_MAX_LUMINANCE")) {
-            (Some(low), Some(high)) => Some([low, high]),
-            (None, Some(high)) => Some([0.0, high]),
-            _ => None,
-        };
+        let luminance = [
+            number(keys, "MASK_MIN_LUMINANCE").unwrap_or(LUMINANCE_DEFAULT[0]),
+            number(keys, "MASK_MAX_LUMINANCE").unwrap_or(LUMINANCE_DEFAULT[1]),
+        ];
         let groups = self.groups.keys().next_back().map_or(0, |last| last + 1);
         let mut shape = Shape {
             base: number(keys, "TEXTURE_BASE_CHANCE").unwrap_or(1.0),
@@ -260,10 +260,8 @@ impl GrassFx {
             shape.base = blend(shape.base, "TEXTURE_BASE_CHANCE");
             // No size of the stage's to blend from: the configuration's.
             shape.size = shape.size.map(|s| blend(s, "SHAPE_SIZE")).or(number(config, "SHAPE_SIZE"));
-            if number(config, "MASK_MIN_LUMINANCE").is_some() || number(config, "MASK_MAX_LUMINANCE").is_some() {
-                let [low, high] = shape.luminance.unwrap_or([0.0, 1.0]);
-                shape.luminance = Some([blend(low, "MASK_MIN_LUMINANCE"), blend(high, "MASK_MAX_LUMINANCE")]);
-            }
+            let [low, high] = shape.luminance;
+            shape.luminance = [blend(low, "MASK_MIN_LUMINANCE"), blend(high, "MASK_MAX_LUMINANCE")];
             shape.mask = [blend(shape.mask[0], "MASK_MAIN_THRESHOLD"), blend(shape.mask[1], "MASK_RED_THRESHOLD")];
             for (n, chance) in shape.groups.iter_mut().enumerate() {
                 *chance = blend(*chance, &format!("TEXTURE_GROUP_{n}_CHANCE"));
@@ -450,7 +448,7 @@ mod tests {
         assert!(fx.texture.as_ref().is_some_and(|t| t.ends_with("Mine.DDS")));
         assert_eq!(
             fx.section(Some("ac_00001.dds")),
-            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nsize=6.5\nluminance=0,0.25\nmask=0.5,0.01\ngroup0=0\ngroup1=2\n\
+            "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nsize=6.5\nluminance=0.02,0.25\nmask=0.5,0.01\ngroup0=0\ngroup1=2\n\
              group1_piece0=1,1,1,1,1\ngroup1_piece1=4,1,2,2,0.5,0.6,1.5\n"
         );
     }
@@ -480,10 +478,13 @@ mod tests {
         let at = fx.profile("grass1", "1grass1");
         assert_eq!([[100.0, 9.0], [101.5, 0.0], [103.0, 0.0], [100.0, 11.0]].map(at), [1, 1, 0, 0]);
         let section = fx.section(None);
-        assert!(section.starts_with("[ReRbrGrass]\nbase=1\nsize=4\nmask=0.5,0.05\ngroup0=0\ngroup0_piece0=1,1,1,1,1\n"));
+        // CSP's luminance range where neither sets one.
+        assert!(section.starts_with(
+            "[ReRbrGrass]\nbase=1\nsize=4\nluminance=0.02,0.35\nmask=0.5,0.05\ngroup0=0\ngroup0_piece0=1,1,1,1,1\n"
+        ));
         assert!(section.ends_with(
-            "[ReRbrGrass1]\nbase=1\nsize=4.5\nluminance=0.01,1\nmask=-0.05,0.05\ngroup0=0.5\n\
-             [ReRbrGrass2]\nbase=1\nsize=4\nmask=0,0.05\ngroup0=0\n"
+            "[ReRbrGrass1]\nbase=1\nsize=4.5\nluminance=0.01,0.35\nmask=-0.05,0.05\ngroup0=0.5\n\
+             [ReRbrGrass2]\nbase=1\nsize=4\nluminance=0.02,0.35\nmask=0,0.05\ngroup0=0\n"
         ));
     }
 
