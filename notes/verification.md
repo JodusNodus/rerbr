@@ -138,8 +138,9 @@ Determinism and versions. Masked here: words differing at the first step and con
 The gate matrix is the NGP drives `rbr-standalone --boot` runs to the end of their recording. It holds drive2 attempt
 5 (`rsf/drive2`, snow, Ford Focus RS WRC 06, RSF car 55: 84084/84084), drive1 attempt 2 (tarmac, Fiesta Rally3, RSF
 car 88: 103802/103802), rsf-test1 and rsf-test2 attempt 1 (gravel, map 54, Evo IX N4, RSF car 24: 32623/32623,
-58619/58619) and the NGP playback-made pairs of `harness/matrix.py` (NGP's four car slots). All four recorded drives
-are four-wheel drive with damage off or safe and no heavy impact: front- and rear-wheel drive, wet, damage and crashes
+58619/58619), ngp-pair1 to 13043 (NGP 7.4.778, retail car slot 6 on map 54, a playback: its controls end there)
+and the NGP playback-made pairs of `harness/matrix.py` (NGP's four car slots). All five recorded drives are four-wheel
+drive with damage off or safe and no heavy impact: front- and rear-wheel drive, wet, damage and crashes
 have no recorded drive that runs equal (drive2/3 and drive2/4 part in the settle, below).
 
 The 1.02 drives below do not run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and viewer
@@ -158,7 +159,7 @@ side by side: this drive (standalone), the same drive on a `rbr-step/poison` bui
 word read from the image while a step holds it panics), the drive's command again with every driving aid on (the
 paths drive2, aids off, does not reach; PASS on exit status 0, or 1 with no failure but the recording's), and the
 other three recorded drives above (`tarmac`: drive1/2 with `--damage off --setup drive2/1/setup.lsp`; `gravel1`,
-`gravel2`). `--perf BASE_BIN` adds the step's cost against that build, no verdict. The drive:
+`gravel2`, `retail`: ngp-pair1 with `--steps 13043`). `--perf BASE_BIN` adds the step's cost against that build, no verdict. The drive:
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR
@@ -210,7 +211,7 @@ A word joins the stale lists only with evidence that the original differs from i
   | Attempt | Physics | FFB / mapping | Input |
   | --- | --- | --- | --- |
   | drive2/5 (snow) | PASS 84084/84084 (STA1: slip only) | FFB pass (8 carried); mapping pass | PASS-BY-SEARCH |
-  | drive2/2 (gravel) | exact to 23425 but `car+0x160` (broadphase link next pointer; left as is) | FFB from our physics misses only its 2 late-call sets; mapping misses 2 sets | PASS-BY-SEARCH |
+  | drive2/2 (gravel) | exact to 23425 but `car+0x160`, the car's cell link's next (`CELL_LINK`): from step 23425 to the car's leaving the cell (frames 21943-22387) the original's cell at x 1360-1370, y 340-350 of track-21_O holds a body after the car, ours none (the car alone, count 1). Ours has all 36 `.trk` placements of the 5x5 cells around, none in that cell; the `.lbs` (2,14) spectator 98015 (`RUN_THREESTATE.LUA`) stands in it (1363.7, 348.4), so a character's body in the original's grid is the likely one (unproven: other spectators' cells match); position and speed equal throughout, not masked | FFB from our physics misses only its 2 late-call sets; mapping misses 2 sets | PASS-BY-SEARCH |
   | drive2/1,3,4 (tarmac, saved setups) | part in the settle (steps 120, 40, 80) at first ground contact, mm apart (body z +2.4, -7.6, -2.6 mm): a different car or start, not drift | mapping misses 1, 1, 3 sets, each the recorded force 2 steps back (no call QPC in drive2 to tell a late call) | PASS-BY-SEARCH |
   | drive1/2 | PASS 103802/103802 `--damage off` (STA1 not recorded); on safe parts at 22803 (impact damage words `car+0x11a8`, `+0x1288..0x1290`) | FFB pass | - |
   | rsf-test1/1, rsf-test2/1 (gravel, map 54, car 24) | PASS 32623/32623 (STA1 not recorded), 58619/58619 (STA1: slip only) | - | - |
