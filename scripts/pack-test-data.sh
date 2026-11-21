@@ -31,11 +31,13 @@ grep -v '^#' data/test-data.recordings | while read -r f; do
     esac
 done
 
+# bsdtar (macOS) without its metadata; GNU tar without owners
+if tar --version | grep -q bsdtar; then tar_flags=(--no-xattrs --no-mac-metadata); else tar_flags=(--owner=0 --group=0 --numeric-owner); fi
 for part in recordings; do
     echo "$part: $(find "$out/$tag/$part" -type f | wc -l) files"
     # Sorted, without macOS metadata, so the archive unpacks cleanly with GNU tar.
-    (cd "$out/$tag/$part" && find . -type f | sed 's|^\./||' | sort |
-        tar --no-xattrs --no-mac-metadata -cf - -T -) | zstd -q -T0 -19 --long=31 -o "$out/$tag/$part.tar.zst"
+    (cd "$out/$tag/$part" && find . -type f | sed 's|^\./||' | sort | tar "${tar_flags[@]}" -cf - -T -) |
+        zstd -q -T0 -19 --long=31 -o "$out/$tag/$part.tar.zst"
     rm -r "${out:?}/$tag/$part"
 done
 (cd "$out" && shasum -a 256 "$tag"/recordings.tar.zst) > "$out/$tag.SHA256SUMS"
