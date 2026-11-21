@@ -136,8 +136,11 @@ Determinism and versions. Masked here: words differing at the first step and con
 ## Drives and the gate matrix
 
 The gate matrix is the NGP drives `rbr-standalone --boot` runs to the end of their recording. It holds drive2 attempt
-5 (`rsf/drive2`, snow, Ford Focus RS WRC 06, RSF car 55: 84084/84084) and the NGP playback-made pairs of
-`harness/matrix.py` (NGP's four car slots).
+5 (`rsf/drive2`, snow, Ford Focus RS WRC 06, RSF car 55: 84084/84084), drive1 attempt 2 (tarmac, Fiesta Rally3, RSF
+car 88: 103802/103802), rsf-test1 and rsf-test2 attempt 1 (gravel, map 54, Evo IX N4, RSF car 24: 32623/32623,
+58619/58619) and the NGP playback-made pairs of `harness/matrix.py` (NGP's four car slots). All four recorded drives
+are four-wheel drive with damage off or safe and no heavy impact: front- and rear-wheel drive, wet, damage and crashes
+have no recorded drive that runs equal (drive2/3 and drive2/4 part in the settle, below).
 
 The 1.02 drives below do not run in `rbr-standalone` (it steps NGP physics only); they feed snapshots and viewer
 playback.
@@ -152,9 +155,10 @@ playback.
 
 Standalone check for `rbr-standalone` and `rbr-step` changes. `scripts/gate.sh` builds the release binaries and runs
 side by side: this drive (standalone), the same drive on a `rbr-step/poison` build (`target/poison`: a typed-state
-word read from the image while a step holds it panics), and the drive's command again with every driving aid on (the
-paths drive2, aids off, does not reach; PASS on exit status 0, or 1 with no failure but the recording's). `--perf
-BASE_BIN` adds the step's cost against that build, no verdict. The drive:
+word read from the image while a step holds it panics), the drive's command again with every driving aid on (the
+paths drive2, aids off, does not reach; PASS on exit status 0, or 1 with no failure but the recording's), and the
+other three recorded drives above (`tarmac`: drive1/2 with `--damage off --setup drive2/1/setup.lsp`; `gravel1`,
+`gravel2`). `--perf BASE_BIN` adds the step's cost against that build, no verdict. The drive:
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR
@@ -209,6 +213,7 @@ A word joins the stale lists only with evidence that the original differs from i
   | drive2/2 (gravel) | exact to 23425 but `car+0x160` (broadphase link next pointer; left as is) | FFB from our physics misses only its 2 late-call sets; mapping misses 2 sets | PASS-BY-SEARCH |
   | drive2/1,3,4 (tarmac, saved setups) | part in the settle (steps 120, 40, 80) at first ground contact, mm apart (body z +2.4, -7.6, -2.6 mm): a different car or start, not drift | mapping misses 1, 1, 3 sets, each the recorded force 2 steps back (no call QPC in drive2 to tell a late call) | PASS-BY-SEARCH |
   | drive1/2 | PASS 103802/103802 `--damage off` (STA1 not recorded); on safe parts at 22803 (impact damage words `car+0x11a8`, `+0x1288..0x1290`) | FFB pass | - |
+  | rsf-test1/1, rsf-test2/1 (gravel, map 54, car 24) | PASS 32623/32623 (STA1 not recorded), 58619/58619 (STA1: slip only) | - | - |
   | drive1/1 (map 127, car 24) | exact to 66628 `--damage off` (62192 on safe); parts standing, engine stalled (ours 0.002-0.007 rad/s), every FRM1 word equal but frame-loop `car+0x670` | mapping pass | - |
   | e2e4 (`FFB=1 FAST=1`, call QPC) | physics and STA1 (every word) equal to the parting at 31682 | ours every set before the parting; mapping PASS | - |
 

@@ -20,7 +20,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   curvature pace model calibrated to the 1.02 AI's winning times, the classes and each field car model to the
   RallySimFans hot laps, a fictional AI field, standings, points and a text save ([season.md](season.md)).
 - **Gate matrix:** the NGP gate is drive2 attempt 5 (snow, Ford Focus RS WRC 06, RSF car 55), physics PASS
-  84084/84084 (`harness/rsf_compare.py`), and `harness/matrix.py` (NGP playback-made pairs on NGP's four car slots).
+  84084/84084 (`harness/rsf_compare.py`), with drive1 attempt 2 (tarmac) and rsf-test1/2 (gravel) beside it, and `harness/matrix.py` (NGP playback-made pairs on NGP's four car slots).
   The 1.02 drives (4 hand-recorded, 35 playback-made) feed snapshots and playback
   ([verification.md](verification.md#drives-and-the-gate-matrix)).
 - **NGP 7.4.778:** physics, load path, force feedback and the H-shifter in Rust ([ngp.md](ngp.md)).

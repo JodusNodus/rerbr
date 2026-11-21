@@ -7,6 +7,9 @@
 # - aids: the drive's command again (its work files) with every driving aid on, the paths drive2 (aids off) does not
 #   reach: PASS on exit status 0, or 1 with no failure but the recording's (no stop, the time card and the application
 #   state equal; headless/report.rs);
+# - tarmac, gravel1, gravel2: the other NGP drives that run equal, PASS as the standalone check: drive1 attempt 2
+#   (tarmac, Fiesta Rally3, 103802; recorded before GAM1's damage level, on off, with drive2 attempt 1's setup),
+#   rsf-test1 and rsf-test2 attempt 1 (gravel, map 54, Evo IX N4, 32623 and 58619);
 # - with --perf BASE_BIN, after the others: the step's cost of this build against BASE_BIN (scripts/perf-step.sh,
 #   3 runs), no verdict.
 # Prints one line per check and a final PASS/FAIL (exit 1). A check's full output is in /tmp/gate-<pid>-<name>.txt,
@@ -77,6 +80,15 @@ poison_run() {
             --out "$out/poison" --standalone target/poison/release/rbr-standalone
 }
 start poison poison_run
+drive() {
+    local session=$1 attempt=$2
+    shift 2
+    "$PY" -I -B harness/rsf_compare.py "$RBR_RECORDINGS/rsf/$session" --attempt "$attempt" --sections physics \
+        --out "$out/$session-$attempt" "$@"
+}
+start tarmac drive drive1 2 --damage off --setup "$RBR_RECORDINGS/rsf/drive2/1/setup.lsp"
+start gravel1 drive rsf-test1 1
+start gravel2 drive rsf-test2 1
 
 # rsf_compare's headline "attempt 5: <stage> | <physics> | ...": the physics column, PASS only with exit status 0.
 standalone() {
@@ -101,6 +113,9 @@ aids() {
 }
 finish poison standalone
 finish aids aids
+finish tarmac standalone
+finish gravel1 standalone
+finish gravel2 standalone
 
 if [ -n "$perf" ]; then
     # After the others, so the counts run alone. perf-step.sh's last line, "B vs A: instructions ..."; only a run
