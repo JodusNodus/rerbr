@@ -158,6 +158,7 @@ struct Mode {
     // A BTB highlight's colour and, in w, its power; zero for none (`stage::Highlight`, `with_highlight`).
     highlight: vec4<f32>,
     // xy a BTB material's factors on the sky and bounce light and on the sun's (`stage::Light`, `own_light`); 1 for none.
+    // z 1 for a converted stage's grass ground (`stage::DrawState::grass`, `grass_warmed`).
     tint: vec4<f32>,
     // A BTB road's dry sheen: x its roughness, zero for none (`stage::Sheen`, `with_sheen`).
     sheen: vec4<f32>,
@@ -713,6 +714,9 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     var albedo = pow(surface, vec3<f32>(2.2));
     if (own) {
         albedo = albedo_remap(albedo);
+        if (mode.tint.z != 0.0) {
+            albedo = grass_warmed(albedo);
+        }
         if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
             // A converted stage's atlas cards (`grass::FX_CARD`), as CSP draws them: its bright green blades (red and
             // blue nought) take the ground's colour under them, their green the brightness; its other texels (dry

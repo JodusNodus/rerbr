@@ -584,6 +584,12 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     Joux Verte read greener than CSP. CSP draws the same grass at 0.98 (road 1.06): its greens are more neutral than
     their textures. Across Prunières, Sa Calobra, Gabiria and Roure CSP's road-balanced grass hue is not consistently
     yellower than ours (r/g CSP 1.00, 1.09, 1.06, 1.10; ours 1.09, 1.00, 0.83, 1.10).
+  - Same pose, both under a clear sky (`WEATHER=sol_01_clear`): sunlit grass CSP 0.91 / b/g 0.38, ours 0.81 / 0.44;
+    shaded grass CSP 0.77 at 0.14 of the sunlit's luminance, ours 0.48 at 0.044 (our light there 0.96 / 1.11; the
+    darkness and the tone curve's toe make it teal). Look choice (user, 2026-11-21): the grass ground's green texels
+    warmer (`grass_warmed` in `albedo.wgsl`, `mode.tint.z` for `ReRbrGrass` draws; red 0.35 of the way to green): sunlit
+    0.87, shaded 0.56. Gabiria and Sa Calobra's frames barely move (their grass textures are not green-led). Open: the
+    shade's darkness against CSP's.
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.

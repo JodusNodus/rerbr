@@ -56,6 +56,8 @@ pub(super) struct BindKey {
     highlight: Option<Highlight>,
     /// The material's light factors' bits ([`crate::stage::Surface::light`]).
     light: [u32; 2],
+    /// A converted stage's grass ground ([`DrawState::grass`]): its green texels drawn warmer.
+    grass: bool,
     /// A BTB road's dry sheen ([`crate::stage::Surface::sheen`]).
     sheen: Option<Sheen>,
     /// A multilayer material summed per pixel ([`crate::stage::Surface::layers`]) with its diffuse's, mask's and details' textures;
@@ -175,6 +177,7 @@ pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
         normal_scale: normal.map_or([1.0f32; 2], |n| n.scale).map(f32::to_bits),
         highlight,
         light: state.surface.map_or([1.0f32; 2], |s| s.light.0).map(f32::to_bits),
+        grass: state.grass.is_some(),
         sheen,
         layers: state.surface.and_then(|s| s.layers).and_then(|layers| {
             let found = |texture| loaded.contains_key(&texture).then_some(Source::Texture(texture));
@@ -285,7 +288,7 @@ pub(super) fn bind_group(
             f32::from_bits(key.normal_scale[1]),
         ],
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
-        tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), 0.0, 0.0],
+        tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), f32::from(u8::from(key.grass)), 0.0],
         sheen: [key.sheen.map_or(0.0, |s| s.roughness), 0.0, 0.0, 0.0],
         layer: key.layers.map_or([0.0; 4], |(l, _)| [if l.world { 1.0 } else { 2.0 }, l.magic, 0.0, 0.0]),
         layer_scale: layer_pairs(key.layers.map(|(l, _)| l.scale)),
