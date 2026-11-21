@@ -576,6 +576,14 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     same material it doubled the cover (0.023 / 0.042), and ours under that rule kept 0.005 of the frame. Not the sun:
     its grass stands in the same places at 15:39 and 10:20 (overlap 0.72, cover 0.077 / 0.081) though the shadows
     moved. Open: what CSP's luminance reads (perhaps the texture region; our Prunières ground is darker than CSP's).
+  - Ground colour (2026-11-21, Joux Verte shot pose, CSP's frame warped onto ours, linear r/g of the same grass pixels):
+    the albedo path keeps the texture's hue (raw texel, after `albedo_remap`, after `own_light` and `fogged`: r/g 0.86
+    to 0.89 coded); under a clear sky the drawn grass is r/g 0.79 (texture 0.77 linear), and its grass over road
+    chroma (0.78) is the reference shot's (0.83). Under `--clouds broken` the foreground lies in cloud shadow and turns
+    green-cyan (grass 0.66, shaded road 0.92 / b/g 0.94; clear-sky shade 1.01 / 0.94): that, not the ground, made
+    Joux Verte read greener than CSP. CSP draws the same grass at 0.98 (road 1.06): its greens are more neutral than
+    their textures. Across Prunières, Sa Calobra, Gabiria and Roure CSP's road-balanced grass hue is not consistently
+    yellower than ours (r/g CSP 1.00, 1.09, 1.06, 1.10; ours 1.09, 1.00, 0.83, 1.10).
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.
