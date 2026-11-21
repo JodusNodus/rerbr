@@ -3,7 +3,7 @@
 Usage: .venv/bin/python -I -B harness/rsf_compare.py SESSION_DIR --out REPORT_DIR [--attempt N] [--sections LIST]
            [--standalone BIN] [--sound BIN] [--input-check BIN] [--ngp-physics FILE] [--rsf-car ID|PACK] [--stage NAME]
            [--setup FILE] [--ffb-sensitivity G,T,S] [--profile pf<name>.rbr] [--damage LEVEL] [--settings BIN]
-           [--camera inside|chase|trackside] [--keep-work]
+           [--camera inside|chase|trackside] [--steps N] [--keep-work]
 
 An attempt's <n>/setup.lsp (the setup the game loaded) goes to the boot as --setup unless --setup names another.
 The drive's force-feedback settings come from `rsf-settings --session` (rbr_formats::rsf::settings, notes/ngp.md "RSF
@@ -11,7 +11,8 @@ settings"): NGP's sensitivity per surface for the car's slot, dead zone and thre
 strength and direction from --profile (the session holds no profile; without one, on, strength 1, normal).
 --ffb-sensitivity replaces the percentages. The damage level (the quick race's 0x1660850) is GAM1's; --damage
 replaces it, and gives it for sessions recorded before GAM1 held it, which otherwise run the boot's default, safe
-(drive2 runs exact on safe, drive1/2 on off).
+(drive2 runs exact on safe, drive1/2 on off). --steps N compares the first N frames only, as if the recording ended
+there (a playback-made session's tail past its controls: ngp-pair1 to 13043).
 
 SESSION_DIR is the session tree rec/capture fetches (notes/verification.md "Comparing RSF sessions"): <n>/physics.bin
 (FRM1), <n>/session.bin (RSS1, harness/session.py), audio.wav with audio.txt, meta.txt. For each attempt it writes
@@ -701,6 +702,9 @@ def physics(attempt, s, meta, opts, out, work, env):
     stage = resolve_stage(opts, game, opts.standalone, base, env)
     trace = os.path.join(work, "ours.bin")
     frames = Frames(rec)
+    if opts.steps is not None:
+        frames.n = min(frames.n, opts.steps)
+        frames.raw = frames.raw[:frames.n]
     aids, why = driver_aids(frames, settings["aids"])
     base += aids
     notes.append(why)
@@ -1528,6 +1532,7 @@ def main(argv=None):
     ap.add_argument("--damage", choices=DAMAGE_LEVELS)
     ap.add_argument("--settings", default=os.path.join(ROOT, "target", "release", "rsf-settings"))
     ap.add_argument("--camera", default="chase", choices=("inside", "chase", "trackside"))
+    ap.add_argument("--steps", type=int)
     ap.add_argument("--keep-work", action="store_true")
     opts = ap.parse_args(argv)
     opts.sections = set(opts.sections.split(","))
