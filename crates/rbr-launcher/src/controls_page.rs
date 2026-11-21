@@ -565,6 +565,7 @@ impl ControlsPage {
                 self.pad_rows(rows, bindings, WHEEL);
                 invert_ui(rows, bindings);
                 self.rotation_ui(rows, ffb);
+                rows.switch_row("Rev lights", Some(REV_LIGHTS_HELP), &mut ffb.rev_lights);
             });
             left.add_space(14.0);
             kit::group_label(left, "Wheel buttons", None);
@@ -887,6 +888,10 @@ fn short_name(name: &str) -> String {
 }
 
 /// What the rotation setting does.
+const REV_LIGHTS_HELP: &str = "The wheel's LEDs fill up to the car's shift point and flash past it. Linux: wheels \
+     whose driver gives them RPM lights (Logitech G27, G29, G923 for PlayStation). macOS and Windows: those Logitech \
+     wheels, untested.";
+
 const ROTATION_HELP: &str = "How far the wheel turns from lock to lock. The wheel stops there and full lock is \
      reached there. Fixed: the degrees for every car. Per car: each car's steering lock (its setup's MaxSteeringLock \
      x 720), up to the degrees. Off leaves the wheel as it is. Linux wheel drivers only (the wheel tools' udev rule \

@@ -64,6 +64,8 @@ pub struct Options {
     /// The force from the tyres (the launcher's Settings > Experimental; `rbr-standalone --ffb-tyres`): a straight
     /// line in the steering torque ([`Options::linearity`]); without it NGP's force as it is.
     pub tyres: bool,
+    /// The wheel's rev lights follow the car's shift points (`crate::wheel_lights`).
+    pub rev_lights: bool,
 }
 
 impl Default for Options {
@@ -77,6 +79,7 @@ impl Default for Options {
             rotation_per_car: false,
             smoothing: 0,
             tyres: false,
+            rev_lights: true,
         }
     }
 }
@@ -110,6 +113,7 @@ impl Options {
             .and_then(|v| v.parse().ok())
             .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
         out.tyres = flag("tyres", false);
+        out.rev_lights = flag("rev_lights", true);
         out
     }
 
@@ -135,7 +139,7 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\n",
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\nrev_lights = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -150,6 +154,7 @@ impl Options {
             u8::from(self.rotation_per_car),
             self.smoothing,
             u8::from(self.tyres),
+            u8::from(self.rev_lights),
         )
     }
 }
@@ -1295,6 +1300,7 @@ mod tests {
             rotation: Some(540),
             rotation_per_car: true,
             smoothing: 8,
+            rev_lights: false,
             ..Options::default()
         };
         o.settings.strength = 0.6;
