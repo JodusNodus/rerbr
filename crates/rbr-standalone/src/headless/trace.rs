@@ -39,6 +39,8 @@ pub struct Hooks<'a> {
     pub extra_payloads: Option<&'a Extra>,
     pub wall_clock: Option<&'a WallClock>,
     pub trace_out: Option<&'a Path>,
+    /// `--steer-breakdown`: what the steering torque is made of, per step (`steer.rs`).
+    pub steer_breakdown: Option<&'a Path>,
     /// `--ffb-settings`: the player's settings for the trace's magnitude.
     pub ffb: ffb::Settings,
     /// `--physics` other than NGP 7's, and the car's identity: the profile the run steps.

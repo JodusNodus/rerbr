@@ -173,6 +173,10 @@ pub struct Runner {
     bound: &'static [&'static crate::Binding],
     /// Whether the tyre-particle payloads are kept (the live viewer's particles; off in every check).
     pub keep_tyre_particles: bool,
+    /// Whether the steered wheels' adds to the steering torque sum are kept (`rbr-standalone --steer-breakdown`; off
+    /// in every check), and those kept since the last [`Runner::take_steer_torques`].
+    pub keep_steer_torques: bool,
+    steer_torques: RefCell<Vec<rbr_physics::wheel::layout::SteerTorque>>,
     /// The watched emits' kept payloads and counts ([`Watch`]).
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
@@ -249,6 +253,8 @@ impl Runner {
             leaf_slots: bound().iter().map(|b| LEAVES.contains(&b.addr)).collect(),
             bound: bound(),
             keep_tyre_particles: false,
+            keep_steer_torques: false,
+            steer_torques: RefCell::default(),
             captures: Watch::default(),
             ngp_base: 0,
             held: RefCell::default(),
@@ -404,6 +410,12 @@ impl Runner {
     /// (`rbr_recording::sound::TyreMax`).
     pub fn take_tyre_terms(&self) -> Vec<(u32, Option<f32>)> {
         self.captures.take_tyre_terms()
+    }
+
+    /// The steered wheels' adds to the steering torque sum since the last call (with [`Runner::keep_steer_torques`]),
+    /// in step order.
+    pub fn take_steer_torques(&self) -> Vec<rbr_physics::wheel::layout::SteerTorque> {
+        self.steer_torques.take()
     }
 
     /// The damage, damping and engine-fire emits since the last call (with [`Runner::keep_tyre_particles`]), in emit
@@ -979,6 +991,12 @@ impl Host for Runner {
 
     fn ran_direct(&self) {
         self.entered.set(self.entered.get() + 1);
+    }
+
+    fn steer_torque(&self, read: &dyn Fn() -> rbr_physics::wheel::layout::SteerTorque) {
+        if self.keep_steer_torques {
+            self.steer_torques.borrow_mut().push(read());
+        }
     }
 
     fn tyre_stepped(&self, scratch: u32, dt: f32) {

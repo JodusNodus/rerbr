@@ -32,6 +32,7 @@ use crate::physics::{boot_playback, chain, fit_physics, load_substeps, run_guard
 use crate::stage::StageData;
 
 mod report;
+mod steer;
 mod trace;
 
 use report::report;
@@ -228,13 +229,15 @@ pub fn run(
     hooks: Hooks,
 ) -> Result<Run, String> {
     let assist = race.assist_settings();
-    let Start { playback, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
+    let Start { mut playback, step: start, substeps: start_substeps, mut compare, dt: image_dt, built } =
         boot_start(data, stage, name, race, frames, mask, dump)?;
     compare.mask_ngp_padding();
     if let Some((profile, car)) = hooks.physics {
         fit_physics(&playback, profile, car)?;
     }
     let mut trace_out = hooks.trace_out.map(Trace::create).transpose()?;
+    let mut steer_log = hooks.steer_breakdown.map(steer::SteerLog::create).transpose()?;
+    playback.runner.keep_steer_torques = steer_log.is_some();
     // The first frame the Rust physics runs.
     let first = frames
         .iter()
@@ -421,6 +424,10 @@ pub fn run(
         if out.keeper_diff.is_none() {
             out.keeper_diff = keeper_difference(&game, mem).map(|d| (Some(frame.pre), d));
         }
+        if let Some(log) = &mut steer_log {
+            let controls: Vec<_> = events.substeps.iter().map(|s| s.control).collect();
+            log.frame(mem, frame.pre, &playback.runner.take_steer_torques(), &controls)?;
+        }
         if let Some(trace) = &mut trace_out {
             let state = game.stage().state();
             trace.write(frame, (!hooks.recorded_payload).then_some(control).flatten(), state, &hooks.ffb, mem)?;
@@ -469,6 +476,9 @@ pub fn run(
     out.looping = looping.elapsed();
     if let Some(trace) = trace_out {
         trace.finish()?;
+    }
+    if let Some(log) = steer_log {
+        log.finish()?;
     }
     out.noise_kept_at_stop = compare.kept_words(playback.runner.image());
     out.noise_released = compare.released_noise_words().len();
@@ -521,6 +531,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: &boot::Race, r
             extra_payloads: Some(&extra),
             wall_clock: clock.as_ref(),
             trace_out: args.trace_out.as_deref(),
+            steer_breakdown: args.steer_breakdown.as_deref(),
             ffb: args.ffb_settings,
             physics: (!args.physics.is_ngp()).then_some((args.physics, &car)),
         };

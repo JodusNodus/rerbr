@@ -177,6 +177,9 @@ pub struct Args {
     /// `--wall-clock FILE` (with `--recorded-payload`): the recording's wall clock per step for NGP's starter.
     pub wall_clock: Option<PathBuf>,
     pub trace_out: Option<PathBuf>,
+    /// `--steer-breakdown FILE` (with `--recording`, research tooling): what NGP's steering torque is made of, a CSV
+    /// row per step (`headless/steer.rs`).
+    pub steer_breakdown: Option<PathBuf>,
     /// `--ffb-settings ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD` (with `--trace-out`): the player's settings the
     /// trace's magnitude takes (`rbr_gameplay::ffb::Settings`; default on, 1, normal, no dead zone).
     pub ffb_settings: rbr_gameplay::ffb::Settings,
@@ -226,7 +229,7 @@ fn on_off(flag: &str, value: &str) -> Result<bool, String> {
 }
 
 /// `--help`'s text.
-pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
+pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [--steer-breakdown FILE (what the steering torque is made of, a CSV row per step)] [WEATHER]
        rbr-standalone --live --stage NAME --boot [WEATHER] [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
@@ -409,6 +412,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--profile" => args.profile = Some(value.to_owned()),
             "--events-out" => args.events_out = Some(PathBuf::from(value)),
             "--trace-out" => args.trace_out = Some(PathBuf::from(value)),
+            "--steer-breakdown" => args.steer_breakdown = Some(PathBuf::from(value)),
             "--aero" => {
                 aero = Some(
                     *rbr_step::ngp::AERO_NAMES
@@ -546,10 +550,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.events_out.is_some() && (args.live || args.recording.is_none() || args.autopilot.is_some()) {
         return Err("--events-out needs --recording, and no --live or --autopilot".into());
     }
-    if (args.recorded_payload || args.trace_out.is_some())
+    if (args.recorded_payload || args.trace_out.is_some() || args.steer_breakdown.is_some())
         && (args.live || args.recording.is_none() || args.autopilot.is_some())
     {
-        return Err("--recorded-payload and --trace-out need --recording, and no --live or --autopilot".into());
+        return Err(
+            "--recorded-payload, --trace-out and --steer-breakdown need --recording, and no --live or --autopilot"
+                .into(),
+        );
     }
     if ffb_settings.is_some() && args.trace_out.is_none() {
         return Err("--ffb-settings needs --trace-out".into());

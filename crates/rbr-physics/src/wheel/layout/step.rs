@@ -51,6 +51,9 @@ pub trait StepCalls {
     fn roll_bar_force(&mut self, car: u32, id: u32, slot: u32, sp: u32) -> f32;
     /// `CCar::AddADC` (0x4e6660, `car_body::layout::add_steer_torque_sum`): adds `v` to the steered wheels' torque sum.
     fn add_steer_torque(&mut self, car: u32, v: f32, sp: u32);
+    /// Ours, read-only research tooling (`rbr-standalone --steer-breakdown`): the steered wheel's add `read` describes,
+    /// at its `AddADC`. Nothing by default; `read` reads the store and the frame, never writes them.
+    fn steer_torque(&mut self, _read: &dyn Fn() -> SteerTorque) {}
     /// `CCar::SetA1C` (0x4e66a0, `car_body::layout::set_roll_bar_cell`): the anti-roll bar's cell `(id, slot)` takes `v`.
     fn set_roll_bar_cell(&mut self, car: u32, id: u32, slot: u32, v: f32, sp: u32);
     /// `CE36SubBlock::Init` (0x4f3e80) on the block at `this`.
@@ -414,6 +417,7 @@ fn spring_and_slip<S: WheelStore>(
         let v = dir.z * mem.f32(f + 0xC8) + dir.y * mem.f32(f + 0xC4) + dir.x * mem.f32(f + 0xC0);
         let v = v * mem.get(this, slot::inv_arm) * mem.get(this, slot::inv_rack);
         calls.add_steer_torque(car, v, f - 8);
+        calls.steer_torque(&|| steer_torque(mem, this, f, v));
     }
     calls.cross(this + HUB_POSITION, f + 0x50, f + 0x100, f - 0xC);
     let v = mem.f32(f + 0x100) + mem.f32(f + 0x40);
@@ -527,5 +531,50 @@ mod tests {
         assert_eq!((-MAX_STRUT_VEL).to_bits(), 0xC2C8_0000);
         assert_eq!(ANGLE_WRAP.to_bits(), 0x427B_53D2);
         assert_eq!(AXLE_TERM_SCALE.to_bits(), 0xBF33_3333);
+    }
+}
+
+/// What `wheel_step` adds to the car's steering torque sum for one steered wheel, read from the step's frame and the
+/// wheel at its `AddADC` (ours, read-only: `rbr-standalone --steer-breakdown`). The vectors are in the car's frame
+/// unless said. `added` is `strut_dir . (arm x force + torque) * gain`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SteerTorque {
+    pub wheel: u32,
+    pub on_ground: bool,
+    /// The force on the hub: the tyre's across the strut's travel and the strut's along it.
+    pub force: [f32; 3],
+    /// The tyre's torque.
+    pub torque: [f32; 3],
+    /// The hub from the strut's top mount.
+    pub arm: [f32; 3],
+    /// The steering axis.
+    pub strut_dir: [f32; 3],
+    /// The axle and the strut's travel direction, each in the car's frame and in the world (the world's travel
+    /// direction and the normal are the contact's: stale off the ground).
+    pub axle: [[f32; 3]; 2],
+    pub travel: [[f32; 3]; 2],
+    /// The surface normal, in the world.
+    pub normal: [f32; 3],
+    /// `inv_arm * inv_rack`.
+    pub gain: f32,
+    pub added: f32,
+}
+
+/// The [`SteerTorque`] of the wheel `this` with the step's frame at `f`, at its `AddADC` of `added`.
+fn steer_torque<S: WheelStore>(mem: &S, this: u32, f: u32, added: f32) -> SteerTorque {
+    let v = |at: u32| mem.f32s::<3>(at);
+    let dir = mem.get(this, slot::strut_dir);
+    SteerTorque {
+        wheel: mem.u32(this + WHEEL_INDEX),
+        on_ground: mem.get(this, slot::on_ground) != 0,
+        force: v(f + 0x50),
+        torque: v(f + 0x40),
+        arm: v(f + 0x110),
+        strut_dir: [dir.x, dir.y, dir.z],
+        axle: [v(this + AXLE), v(this + WORLD_AXLE)],
+        travel: [v(this + NEG_KNUCKLE_Z), v(f + 0x1C0)],
+        normal: v(f + 0x140),
+        gain: mem.get(this, slot::inv_arm) * mem.get(this, slot::inv_rack),
+        added,
     }
 }
