@@ -525,10 +525,10 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   - Colour: CSP's marker blades (pure green) take the ground's colour, their green the brightness; other texels keep
     their own. The shader splits each filtered texel linearly (green above max(r, b) the blades', the rest its own):
     a threshold on the ratio drew Prunières' base grass lime, its green and dry blades interleaved so filtered texels
-    mix both. Blades: the ground's hue at `FX_SATURATION` 0.5 leaned 0.4 to olive (0.8, 1, 0.4), linear albedo
-    `FX_ALBEDO` 0.07, `FX_GRASS_ROOT` 0.25 at the foot to `FX_GRASS_TIP` at the top.
-  - Size: a cell is 0.18 m x sqrt(`SHAPE_SIZE`) (6.5: 0.46 m; linear in size made Prunières' 9.5 weeds 5 m tall),
-    0.8-1.2 per clump; clumps a m² `FX_COVER` 4.1 over the cell's area, at most 60; unset `SHAPE_SIZE` 1.5.
+    mix both. Blades: the ground's hue leaned to olive, a fixed linear albedo (`FX_ALBEDO`), `FX_GRASS_ROOT` at the
+    foot to `FX_GRASS_TIP` at the top (values: "A field, not tufts" below).
+  - Size: a cell is `CELL_PER_SIZE` x sqrt(`SHAPE_SIZE`) (linear in size made Prunières' 9.5 weeds 5 m tall); clumps
+    a m² `FX_COVER` over the cell's area; unset `SHAPE_SIZE` 1.5 (values: "A field, not tufts" below).
   - Mask: grows where `Fx::green` exceeds `MASK_MAIN_THRESHOLD` x 0.4 (`FX_MASK_SCALE`: at 1x Prunières, 0.75, was
     bare where CSP has grass); none on a converted stage's road mesh (wet-marked), so Gabiria's asphalt stays clear.
   - Occluders: `OCCLUDING_MATERIALS` go to `ReRbrGrass=hide`, `_ALPHA` to `hide-alpha` (30 installed AC tracks set
@@ -590,6 +590,16 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
     warmer (`grass_warmed` in `albedo.wgsl`, `mode.tint.z` for `ReRbrGrass` draws; red 0.35 of the way to green): sunlit
     0.87, shaded 0.56. Gabiria and Sa Calobra's frames barely move (their grass textures are not green-led). Open: the
     shade's darkness against CSP's.
+  - A field, not tufts (2026-11-21, look choice, user; judged by eye on a fixed test set of 13 poses on five stages,
+    CSP as a guide, not a target): at CSP's cover the clumps stood apart over the dark ground. Now `FX_COVER` 3.2,
+    `CELL_PER_SIZE` 0.09, `CELL_VARY` 0.55-1.35, cards `FX_WIDEN` 1.8 wide, size by the patch's tallness squared (0.3
+    to 2.25), at most 48 clumps a m² (Prunières about 42, was about 4); blades `FX_SATURATION` 0.8, leaned 0.4 to
+    (0.85, 1, 0.35), to `STRAW` by 0.6 of the patch's dryness, `FX_ALBEDO` 0.055, `FX_GRASS_ROOT` 0.45. On the base
+    cards a green blade's grey takes the card's hue at 0.8 (it read near white) and texels whose red and blue pass their
+    green (Prunières' purple dry blades, lilac) draw as straw; group pieces keep their colours. Gabiria's and Roure's
+    verges, Sa Calobra's slopes read as grass. Open: Prunières paler than CSP's, dark ground in a strip at its near
+    verges (008.215), Joux Verte greener than CSP's, frame time not measured (ten times Prunières' cards, within the
+    tile capacity our own grass uses).
   - North (CSP's compass, `ac.getCompassAngle`): AC's -z is north and +x east, so a converted stage's +z is north;
     every import states it (`[ReRbrAir]` `north`, `notes/renderer.md`).
   - Open: CSP's distant fog is bluer.
