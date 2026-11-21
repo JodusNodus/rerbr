@@ -27,7 +27,6 @@ pub mod ngp;
 pub mod ntweak;
 pub mod physics_core;
 pub mod rigid_body;
-pub mod snapshot;
 pub mod spring_damper;
 pub mod stage;
 pub mod store;

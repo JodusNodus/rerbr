@@ -4,11 +4,10 @@
 //! the four wheels', with their spring damper and tyre definitions; the solids, the ground, the car body and the hinged
 //! and mounted bodies), and every object of `CCompleteCarSetup` and `CCompleteCarSetupOptions`.
 //!
-//! The vectors hold the objects from the snap-0 dump of a Corolla gravel run: `vectors/load-wheel-defs.txt`, cut by
-//! `harness/load_wheel_refs.py` (the wheel definitions and the two setup owners, object by object),
-//! `vectors/load-car-def.txt`, cut by `harness/load_car_refs.py` (the car's definition and the 15 blocks its engine
-//! definition allocates), and `vectors/load-registry-defs.txt`, cut by `harness/load_registry_refs.py` (the physics
-//! definition, part by part, and the registry's other definitions). The test builds them at the same addresses (the
+//! The vectors hold the objects from the original's load dump of a Corolla gravel run (the dumps are retired):
+//! `vectors/load-wheel-defs.txt` (the wheel definitions and the two setup owners, object by object),
+//! `vectors/load-car-def.txt` (the car's definition and the 15 blocks its engine definition allocates), and
+//! `vectors/load-registry-defs.txt` (the physics definition, part by part, and the registry's other definitions). The test builds them at the same addresses (the
 //! heap returns the game's blocks, by name or in the game's order): the owners by their constructors, then each file's
 //! root group walked on its owner: `Misc/prime.lsp`, `Physics/physics.lsp`, `Physics/t_coroll/common.lsp` and
 //! `gravel.lsp` on the physics definition, `setups/d_gravel.lsp` on `CCompleteCarSetup`, `michelin/tyres.lsp` and
@@ -20,8 +19,7 @@
 //! The car instance (step 4, `car_instance_matches_the_game`): the car's factory (`CCar::CDef::Vf50`), the four
 //! wheels' (`E51Wheel::CDef::Vf50`), the four hinged bodies' (`CHingedRigidBody::CDef::Vf50`), the three mounted bodies'
 //! (`CMountedRigidBody::CDef::Vf50`) and the car body's (`CCarBody::CDef::Vf50x`), called as the game called them, against
-//! the same run's dumps at each factory's return (`vectors/load-car-instance.txt`, cut by rbr-recomp's
-//! `harness/load_instance_refs.py`):
+//! the same run's dumps at each factory's return (`vectors/load-car-instance.txt`):
 //! the car and its exclusion set, the current car word, the five signal lists the car's connections join, each wheel,
 //! and each body with its exclusion set. The heap returns the blocks the
 //! run's allocation log (`RBR_ALLOCLOG`) shows inside the factory calls, in order, holding what they held at the
@@ -52,15 +50,11 @@ use rbr_formats::{pe, rbz};
 use rbr_physics::load::{self, Registry};
 use rbr_physics::mem::Mem;
 use rbr_physics::ntweak::{ApplyHost, Unsupported};
-use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::physics_core::layout::construct::Heap;
 use rbr_physics::physics_core::layout::setup::DEF_SIZE;
-use rbr_physics::snapshot::Snapshot;
-use rbr_physics::{car_body, collision, entities, rigid_body};
-use std::collections::VecDeque;
+use rbr_physics::{car_body, rigid_body};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
-use std::path::{Path, PathBuf};
 
 mod common;
 
@@ -69,29 +63,15 @@ use common::hex;
 #[path = "common/patch.rs"]
 mod patch;
 
-/// The lcb1-bodies load dump (`snap-0`, with `snapat/` beside it): `RBR_LCB1_BODIES_SNAPSHOT`, else the one under
-/// `RBR_SNAPS` (`dumps/lcb1-bodies/`), else the maintainers' vector store next to the worktree.
-fn lcb1_snapshot() -> PathBuf {
-    let name = "dumps/lcb1-bodies/lcb1-bodies.snap-0.bin";
-    let mut candidates: Vec<PathBuf> =
-        std::env::var_os("RBR_LCB1_BODIES_SNAPSHOT").map(PathBuf::from).into_iter().collect();
-    candidates.extend(std::env::var_os("RBR_SNAPS").map(|dir| Path::new(&dir).join(name)));
-    let store = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../vectors").join(name);
-    candidates.into_iter().find(|path| path.is_file()).unwrap_or(store)
-}
-
 const VECTORS: [&str; 3] = [
     include_str!("vectors/load-wheel-defs.txt"),
     include_str!("vectors/load-car-def.txt"),
     include_str!("vectors/load-registry-defs.txt"),
 ];
-/// The car instance at its factories' returns, cut by rbr-recomp's `harness/load_instance_refs.py` from the same run, with the calls,
+/// The car instance at its factories' returns, from the same run's dumps, with the calls,
 /// the blocks and the words of the game's the constructors read.
 const INSTANCE: &str = include_str!("vectors/load-car-instance.txt");
 const INSTANCE_LINES: [&str; 3] = ["call", "alloc", "env"];
-/// The 13 car placements, captured at 0x5267d0 from the same tanner-corolla run. Their pointers are omitted: the
-/// inputs contain only the CSigStuff fields; the test runs them against the lcb1 allocation layout.
-const PLACEMENTS: &str = include_str!("vectors/load-car-placements.txt");
 
 /// Where the test puts the names and the solid definitions later files replace.
 const NAMES: u32 = 0x1000_0000;
@@ -445,183 +425,6 @@ fn build(data: &Data, race: &Race, objects: &[Object], fill: u8, instance: Optio
     (instance, mem, registry)
 }
 
-#[derive(Debug)]
-struct Placement {
-    position: String,
-    object_type: u32,
-    bytes: Vec<u8>,
-}
-
-fn placements() -> Vec<Placement> {
-    PLACEMENTS
-        .lines()
-        .filter(|line| line.starts_with("placement "))
-        .map(|line| {
-            let fields: Vec<_> = line.split(' ').collect();
-            let bytes = hex(fields[6]);
-            assert_eq!(bytes.len(), 0x64, "{} CSigStuff bytes", fields[1]);
-            let object_type = number(fields[2]);
-            assert_eq!(u32::from_le_bytes(bytes[0x38..0x3c].try_into().unwrap()), object_type);
-            Placement { position: fields[1].to_string(), object_type, bytes }
-        })
-        .collect()
-}
-
-#[derive(Clone, Copy)]
-struct FactoryCall {
-    kind: &'static str,
-    position: &'static str,
-    definition: u32,
-    key: u32,
-    parent: u32,
-    result: u32,
-}
-
-fn factory_calls() -> VecDeque<FactoryCall> {
-    INSTANCE
-        .lines()
-        .filter(|line| line.starts_with("call "))
-        .map(|line| {
-            let f: Vec<_> = line.split(' ').collect();
-            FactoryCall {
-                kind: f[1],
-                position: f[2],
-                definition: number(f[3]),
-                key: number(f[4]),
-                parent: number(f[5]),
-                result: number(f[6]),
-            }
-        })
-        .collect()
-}
-
-/// The factories' calls, answered from the original's records: each placement's definition, sort key and parent must
-/// be the recorded call's, and its object is the one the game made (already in the dump).
-struct ReplayFactory(VecDeque<FactoryCall>);
-
-impl load::layout::PartFactory for ReplayFactory {
-    fn make(
-        &mut self,
-        _: &mut Mem,
-        definition: u32,
-        key: u32,
-        parent: u32,
-    ) -> Result<u32, rigid_body::host::HostUnavailable> {
-        let call = self.0.pop_front().expect("the matching factory call");
-        assert_eq!(definition, call.definition, "{} {} definition", call.kind, call.position);
-        assert_eq!(key, call.key, "{} {} sort key", call.kind, call.position);
-        assert_eq!(parent, call.parent, "{} {} parent", call.kind, call.position);
-        Ok(call.result)
-    }
-}
-
-/// The cell blocks the car's placements would take: the dump's cells already hold blocks for them.
-struct NoCellBlocks;
-
-impl entities::exclusion::Heap for NoCellBlocks {
-    fn allocate(&mut self, _: u32) -> u32 {
-        panic!("the car's pre-existing cell blocks cover its placements")
-    }
-}
-
-fn overlay(mem: &mut Mem, source: &Mem, object: &Object) {
-    mem.map(object.at, &source.read(object.at, object.bytes.len()));
-    for (offset, _) in &object.names {
-        let name = c_string(source, source.u32(object.at + offset));
-        mem.map(source.u32(object.at + offset), &name);
-    }
-}
-
-/// Apply the factory's W/U patch to the A720 entry, retaining every word the original load rewrote later.
-fn overlay_factory(mem: &mut Mem, source: &Mem, object: &Object, entry: &Mem) {
-    let name_bytes: BTreeSet<u32> = object.names.iter().flat_map(|(at, _)| *at..*at + 4).collect();
-    let end = object.at + object.bytes.len() as u32;
-    let mut word = object.at & !3;
-    while word < end {
-        // `CCar` leaves the fourth lane of its position vector unwritten. The game's NotifyHost copies that old heap
-        // lane to the window-start vector on wake; keep the entry value so the fixture models the same input.
-        if object.kind == "car" && word == object.at + 0x14c {
-            word += 4;
-            continue;
-        }
-        let start = word.max(object.at);
-        let finish = (word + 4).min(end);
-        let offsets: Vec<_> = (start..finish).map(|at| (at - object.at) as usize).collect();
-        if offsets.iter().all(|offset| !name_bytes.contains(&(object.at + *offset as u32)))
-            && offsets.iter().all(|offset| entry.u8(object.at + *offset as u32) == object.bytes[*offset])
-        {
-            mem.map(start, &source.read(start, (finish - start) as usize));
-        }
-        word += 4;
-    }
-}
-
-/// Start at the original's 0x4ea720 entry, remove the car cluster's prior filing/cell links, and rebuild the cluster
-/// through `notify_placement` using the Rust factory outputs and captured CSigStuff inputs.
-fn place_car_cluster(data: &Data, objects: &[Object], expected: &Snapshot, fill: Fill) -> Mem {
-    let (built_instance, built_defs, _) = build(data, &COROLLA, objects, 0, Some(fill));
-    let instance = objects_of([INSTANCE]);
-    let mut mem = expected.mem();
-    let factory_guard = expected.mem();
-    let expected_factory_objects: Vec<_> = instance
-        .iter()
-        .filter(|o| matches!(o.kind.as_str(), "car" | "wheel" | "hinged" | "mounted" | "car_body"))
-        .collect();
-    for object in objects {
-        overlay(&mut mem, &built_defs, object);
-    }
-    for object in &instance {
-        overlay_factory(&mut mem, &built_instance, object, &factory_guard);
-    }
-    for object in &expected_factory_objects {
-        let link = object.at + 0x10;
-        let list = mem.u32(link + 8);
-        if list != 0 {
-            physics_layout::unlink_item(&mut mem, link);
-            mem.set_u32(list + 8, mem.u32(list + 8).wrapping_sub(1));
-        }
-        // CCarBody::Vf44 is the CBody path and has no cell-link member at +0x160; those bytes are
-        // opaque data in the snap. The solids alone carry CSolid::CELL_LINK.
-        if object.kind != "car_body" {
-            collision::layout::move_to_cell(&mut mem, object.at + 0x160, 0);
-        }
-        // The placements fill the exclusion sets (`CCar::Vf150x`): they start empty.
-        let set = mem.u32(object.at + 0x2c);
-        if set != 0 {
-            mem.set_u32(set, 0);
-        }
-    }
-
-    let physics = physics_layout::physics(&mem);
-    let scratch = mem.u32(physics + 0x28);
-    mem.set_u32(scratch + 0xE888, u32::MAX);
-    let metadata = expected.metadata();
-    let placement_base = metadata.stack_lo + 0x2000;
-    let mut host = load::layout::CarParts {
-        factory: ReplayFactory(factory_calls()),
-        heap: &mut NoCellBlocks,
-        sync_scratch: placement_base + 0x2000,
-    };
-    for (i, placement) in placements().iter().enumerate() {
-        let at = placement_base + i as u32 * 0x80;
-        let mut bytes = placement.bytes.clone();
-        if placement.object_type != 0x27 {
-            // The capture and lcb1 dump use separate Wine heap layouts; rebase the solid's hook pointer to
-            // this dump's corresponding instance field before replaying the placement.
-            let hook =
-                u32::from_le_bytes(expected.mem().read(expected_factory_objects[i].at + 0x3cc, 4).try_into().unwrap());
-            bytes[0x48..0x4c].copy_from_slice(&hook.to_le_bytes());
-        }
-        mem.map(at, &bytes);
-        physics_layout::notify_placement(&mut mem, &mut host, at)
-            .unwrap_or_else(|_| panic!("{} type {:#x} placement", placement.position, placement.object_type));
-        let expected_object = expected_factory_objects[i].at;
-        assert_eq!(mem.u32(at + 0x3c), expected_object, "{} object", placement.position);
-    }
-    assert!(host.factory.0.is_empty(), "factory calls left: {}", host.factory.0.len());
-    mem
-}
-
 /// The bytes of `object` that differ in `mem`, outside `skip` (offsets) and its name words; its names that differ.
 fn differences(mem: &Mem, object: &Object, skip: &BTreeSet<u32>) -> Vec<String> {
     let ours = mem.read(object.at, object.bytes.len());
@@ -702,7 +505,7 @@ fn compare(objects: &[Object], zeros: &Mem, ones: &Mem, later: &[(&str, std::ops
 }
 
 /// The same definitions under NGP: NGP's `physics.rbz` (`RBR_NGP_PHYSICS`, with its cars in their slots) parsed with
-/// NGP's keys, against the objects `load_*_refs.py` cut from an NGP snapshot (`RBR_NGP_LOAD`: a folder with
+/// NGP's keys, against the objects cut from an NGP load dump (`RBR_NGP_LOAD`: a folder with
 /// `load-wheel-defs.txt`, `load-car-defs.txt` and `load-registry-defs.txt`). The reference is `ngp-rpl11`'s snapshot
 /// at 6438: the Fiesta Rally3 in slot 5 (`s_i2003`, pirelli) on stage 11's gravel.
 #[test]
@@ -823,377 +626,11 @@ fn car_instance_matches_the_game() {
             }
         }
         // This old heap lane is read by NotifyHost's window-start copy. Preserve snap-0's value rather than zeroing
-        // it as an unwritten constructor byte; the placement test proves the copy into car+0x33c.
+        // it as an unwritten constructor byte; the copy into car+0x33c is the game's.
         if p.kind == "car" {
             p.class[0x14c..0x150].fill(b'g');
         }
         p.ours = a;
     }
     patch::write("car-instance", &patched);
-}
-
-#[test]
-fn car_placements_match_lcb1_a720_entry() {
-    let Some(data) = Data::from_env().filter(|d| d.patch().is_some()) else {
-        eprintln!("skipping: RBR_DATA or RBR_PATCH not set");
-        return;
-    };
-    let snapshot_path = lcb1_snapshot();
-    if !snapshot_path.is_file() {
-        eprintln!("skipped car placement parity: {} is absent", snapshot_path.display());
-        return;
-    }
-    let entry_path = snapshot_path.parent().unwrap().join("snapat").join("RBRRecompSnapAt-004ea720-1.bin");
-    if !entry_path.is_file() {
-        eprintln!("skipped car placement parity: {} is absent", entry_path.display());
-        return;
-    }
-    let objects = objects();
-    let entry = Snapshot::open(&entry_path).expect("lcb1 UpdateA720 entry");
-    let expected = entry.mem();
-    let ours = place_car_cluster(&data, &objects, &entry, Fill::Game);
-    let zero = place_car_cluster(&data, &objects, &entry, Fill::Byte(0));
-    let ones = place_car_cluster(&data, &objects, &entry, Fill::Byte(0xff));
-    let instance = objects_of([INSTANCE]);
-    let mut differences = Vec::new();
-    let mut patched = Vec::new();
-    let mut class_counts = [0usize; 4];
-    for object in instance
-        .iter()
-        .filter(|o| matches!(o.kind.as_str(), "car" | "wheel" | "hinged" | "mounted" | "car_body" | "exclusions"))
-    {
-        let built = ours.read(object.at, object.bytes.len());
-        let zero_bytes = zero.read(object.at, object.bytes.len());
-        let one_bytes = ones.read(object.at, object.bytes.len());
-        let mut class = Vec::with_capacity(object.bytes.len());
-        let mut names = BTreeSet::new();
-        for (at, _) in &object.names {
-            names.extend(*at..*at + 4);
-        }
-        for offset in 0..object.bytes.len() {
-            let offset = offset as u32;
-            let c = if names.contains(&offset) {
-                b'n'
-            } else if zero_bytes[offset as usize] == one_bytes[offset as usize] {
-                b'W'
-            } else {
-                b'U'
-            };
-            class_counts[match c {
-                b'W' => 0,
-                b'U' => 1,
-                b'n' => 2,
-                _ => unreachable!(),
-            }] += 1;
-            class.push(c);
-            if c == b'n' {
-                continue;
-            }
-
-            if built[offset as usize] != expected.u8(object.at + offset) {
-                differences.push(format!(
-                    "{} {} +{offset:#x}: Rust {:02x}, lcb1 A720 entry {:02x}",
-                    object.kind,
-                    object.position,
-                    built[offset as usize],
-                    expected.u8(object.at + offset)
-                ));
-            }
-        }
-        patched.push(patch::Patched {
-            kind: object.kind.clone(),
-            at: object.at,
-            ours: zero_bytes,
-            class,
-            game: expected.read(object.at, object.bytes.len()),
-        });
-    }
-    assert!(
-        differences.is_empty(),
-        "{} car placement bytes differ:\n{}",
-        differences.len(),
-        differences.iter().take(100).cloned().collect::<Vec<_>>().join("\n")
-    );
-    eprintln!("car placements: {} W, {} U, {} name bytes", class_counts[0], class_counts[1], class_counts[2]);
-    patch::write("car-placements", &patched);
-}
-
-struct DamageOpsTestCalls;
-
-impl car_body::layout::DamageOpsCalls for DamageOpsTestCalls {
-    fn call(&mut self, mem: &mut Mem, callee: u32, this: u32, args: &[u32]) {
-        match callee {
-            0x4ef720 => {
-                let [index, scale, value, tag, ..] = args else { panic!("AddFunctor arguments") };
-                let _ = car_body::damage::add_functor(mem, this, *index as i32, *scale, *value, *tag);
-            }
-            0x4ef910 => car_body::layout::init_damage_ops_tables(self, mem, this),
-            0x465d80 => mem.map(this, &[0; 16]),
-            0x43c5b0 => {
-                let value = mem.read(args[0], 16);
-                mem.map(this, &value);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn build_damage_ops(fill: u8, at: u32) -> Mem {
-    let mut mem = Mem::new();
-    mem.map(at, &vec![fill; car_body::layout::DAMAGE_OPS_SIZE as usize]);
-    mem.map(0x893600, &0x2000_0000u32.to_le_bytes());
-    mem.map(0x2000_0000, &[0; 0x10000]);
-    mem.map(0x3000_0000, &[fill; 0x40]);
-    car_body::layout::construct_damage_ops(&mut mem, at);
-    car_body::damage::set_level(&mut mem, at, 1);
-    car_body::layout::damage_level_fractions(&mut DamageOpsTestCalls, &mut mem, at, 0x3000_0000);
-    mem
-}
-
-#[test]
-fn damage_ops_tables_match_lcb1_load_dump() {
-    let snapshot_path = lcb1_snapshot();
-    if !snapshot_path.is_file() {
-        eprintln!("skipped damage table parity: {} is absent", snapshot_path.display());
-        return;
-    }
-    let snapshot = Snapshot::open(&snapshot_path).expect("lcb1-bodies snap-0");
-    let snap0 = snapshot.mem();
-    let after_path = snapshot_path.parent().unwrap().join("snapat").join("RBRRecompSnapAt-004ea720-1-after.bin");
-    if !after_path.is_file() {
-        eprintln!("skipped damage table parity: {} is absent", after_path.display());
-        return;
-    }
-    let after = Snapshot::open(&after_path).expect("lcb1-bodies A720 return dump");
-    let reference = after.mem();
-    let car = snap0.u32(0x8ef660);
-    assert_eq!(reference.u32(0x8ef660), car, "the lcb1 car address");
-    let damage = reference.u32(car + 0x3cc);
-    let zeros = build_damage_ops(0, damage);
-    let ones = build_damage_ops(0xff, damage);
-    let ours = zeros.read(damage, car_body::layout::DAMAGE_OPS_SIZE as usize);
-    let noise = ones.read(damage, car_body::layout::DAMAGE_OPS_SIZE as usize);
-    let game = reference.read(damage, car_body::layout::DAMAGE_OPS_SIZE as usize);
-    assert_eq!(zeros.u32(damage + 0x6e8), reference.u32(damage + 0x6e8));
-    assert_eq!(zeros.u32(damage + 0x770), reference.u32(damage + 0x770));
-    // UpdateA720 writes the seed word after Slot4 returns.
-    let written_later = |offset: usize| (0x3de8..=0x3deb).contains(&offset);
-    // Snap-0 holds the A720 return's bytes (standalone-s4: the step reads this object from snap-0 on).
-    let snap0_bytes = snap0.read(damage, car_body::layout::DAMAGE_OPS_SIZE as usize);
-    let mut class = Vec::new();
-    let mut differences = Vec::new();
-    for (offset, ((&a, &b), (&expected, &at_snap0))) in
-        ours.iter().zip(&noise).zip(game.iter().zip(&snap0_bytes)).enumerate()
-    {
-        class.push(if written_later(offset) {
-            b'l'
-        } else if a != b {
-            b'u'
-        } else {
-            b'w'
-        });
-        for (dump, value) in [("A720 return", expected), ("snap-0", at_snap0)] {
-            if a == b && a != value && !written_later(offset) {
-                differences.push(format!("+{offset:#x}: built {a:02x}, {dump} {value:02x}"));
-            }
-        }
-    }
-    assert!(
-        differences.is_empty(),
-        "{} stable damage-op bytes differ:\n{}",
-        differences.len(),
-        differences.iter().take(80).cloned().collect::<Vec<_>>().join("\n")
-    );
-    patch::write(
-        "damage-ops",
-        &[patch::Patched { kind: "damage_ops".into(), at: damage, ours, class, game: snap0_bytes }],
-    );
-}
-
-/// The damage host as the game makes it (`E60Flow::M569270`: `E60DamageHost::Ctor` 0x566840, then each slot's `Vf0c`,
-/// `CCarDamageHandler::ResetDamage` 0x4ec1e0), then the car's handler (slot 0) as the car load leaves it: two more
-/// `ResetDamage` calls (its counter, +0x3a10, is 3 at snap-0; those callers are not identified), `Set3FB0(1)` and
-/// `Slot4`, built on 0x00 and 0xff fills at lcb1's host block (`[car + 0x3cc] - 0x10`), against lcb1's snap-0.
-fn build_damage_host(fill: u8, host: u32) -> Mem {
-    let mut mem = Mem::new();
-    mem.map(host, &vec![fill; car_body::layout::DAMAGE_HOST_SIZE as usize]);
-    mem.map(0x893600, &0x2000_0000u32.to_le_bytes());
-    mem.map(0x2000_0000, &[0; 0x10000]);
-    mem.map(0x3000_0000, &[fill; 0x40]);
-    car_body::layout::construct_damage_host(&mut mem, host);
-    let slot = |k: u32| host + 0x10 + car_body::layout::DAMAGE_OPS_SIZE * k;
-    for k in 0..4 {
-        car_body::damage::reset_damage(&mut car_body::layout::ResetPorts, &mut mem, slot(k));
-    }
-    let car_ops = slot(0);
-    for _ in 0..2 {
-        car_body::damage::reset_damage(&mut car_body::layout::ResetPorts, &mut mem, car_ops);
-    }
-    car_body::damage::set_level(&mut mem, car_ops, 1);
-    car_body::layout::damage_level_fractions(&mut DamageOpsTestCalls, &mut mem, car_ops, 0x3000_0000);
-    mem
-}
-
-/// `build_damage_host` against lcb1's snap-0 (the step reads 484 bytes of the
-/// car's handler, 436 of them `ResetDamage`'s). Every byte of the car's handler (slot 0) the build writes is equal to
-/// snap-0's, apart from one word `UpdateA720` clears (`l`). The other slots and the host's header and tail are compared
-/// too; the bytes where snap-0 differs from a stable build are later code's (`l`, counted).
-#[test]
-fn damage_host_matches_lcb1_snap0() {
-    let snapshot_path = lcb1_snapshot();
-    if !snapshot_path.is_file() {
-        eprintln!("skipped the damage host: {} is absent", snapshot_path.display());
-        return;
-    }
-    let snap0 = Snapshot::open(&snapshot_path).expect("lcb1-bodies snap-0").mem();
-    let car = snap0.u32(0x8ef660);
-    let host = snap0.u32(car + 0x3cc) - 0x10;
-    let size = car_body::layout::DAMAGE_HOST_SIZE as usize;
-    let ours = build_damage_host(0, host).read(host, size);
-    let noise = build_damage_host(0xff, host).read(host, size);
-    let game = snap0.read(host, size);
-    let ops = car_body::layout::DAMAGE_OPS_SIZE as usize;
-    let car_ops = 0x10..0x10 + ops;
-    // The fourth `E44_FillOnes` triple's first word (+0x3da8) is 1 after ResetDamage and 0 at snap-0: a hinged body's
-    // flag link (+0x650, `Set650`) points at it, and `CHingedRigidBody::SimEFE0` (0x51efe0, under `UpdateA720`'s
-    // `UpdateMrr`) clears it (the A720 run builds it). The step reads it.
-    let cleared = 0x10 + 0x3da8..0x10 + 0x3dac;
-    let mut class = Vec::new();
-    let mut differences = Vec::new();
-    let mut later = BTreeMap::new();
-    for (o, ((&a, &b), &g)) in ours.iter().zip(&noise).zip(&game).enumerate() {
-        class.push(if cleared.contains(&o) {
-            b'l'
-        } else if a != b {
-            b'u'
-        } else if a != g {
-            if car_ops.contains(&o) {
-                differences.push(format!("+{:#x}: built {a:02x}, snap-0 {g:02x}", o - 0x10));
-            }
-            *later.entry((o.max(0x10) - 0x10) / ops).or_insert(0) += 1;
-            b'l'
-        } else {
-            b'w'
-        });
-    }
-    let count = |c: u8| class.iter().filter(|&&k| k == c).count();
-    let read_by_step = |o: usize| (0x10 + 0x3a10..0x10 + 0x3dd0).contains(&o);
-    let reset_bytes = (0..size).filter(|&o| read_by_step(o) && class[o] == b'w').count();
-    eprintln!(
-        "damage host {host:#x}: {} bytes built and equal to snap-0 ({reset_bytes} in the handler's +0x3a10..+0x3dd0), {} \
-         unwritten, {} later (by slot: {later:?})",
-        count(b'w'),
-        count(b'u'),
-        count(b'l'),
-    );
-    assert!(
-        differences.is_empty(),
-        "{} of the car's handler bytes differ:\n{}",
-        differences.len(),
-        differences.iter().take(80).cloned().collect::<Vec<_>>().join("\n")
-    );
-    patch::write("damage-host", &[patch::Patched { kind: "damage_host".into(), at: host, ours, class, game }]);
-}
-
-/// A root entity's constructor makes no owner calls, and the singleton is empty: no call reaches this.
-struct NoCalls;
-
-impl rbr_physics::entities::frame::Owner for NoCalls {
-    fn hook(
-        &mut self,
-        _: u32,
-        _: rbr_physics::entities::frame::Hook,
-        _: rbr_physics::entities::frame::Form,
-        _: u32,
-        _: u32,
-    ) -> u32 {
-        unreachable!("a root entity's frames call no owner")
-    }
-    fn gate(&mut self, _: u32) -> u32 {
-        unreachable!("a root entity's frames call no owner")
-    }
-    fn frame_of(&mut self, _: u32) -> u32 {
-        unreachable!("a root entity's frames call no owner")
-    }
-    fn old_frame_of(&mut self, _: u32) -> u32 {
-        unreachable!("a root entity's frames call no owner")
-    }
-}
-
-impl rbr_physics::entities::ground::Replace for NoCalls {
-    fn delete(&mut self, _: u32) {
-        unreachable!("the singleton is empty at the first ground")
-    }
-}
-
-/// The ground object (`CGround::CDef::Vf50`, 0x51c810) on the ground definition the files made, at lcb1's ground block,
-/// against lcb1's snap-0 (the step reads 45 of its bytes). A root entity (no parent,
-/// sort key 0). Bytes later load code writes are `l`: the entity-list link words +0x10 and +0x18 (the filing after the
-/// constructor; `load_stage.rs` compares the ground's link). The options' word +0x60 is the constructor's
-/// (`CEntity::CEntity` 0x51a640 stores the options with the low bit set, `or ecx, 1` at 0x51a6da: 0x81). The name word
-/// is `n`.
-#[test]
-fn ground_matches_lcb1_snap0() {
-    let snapshot_path = lcb1_snapshot();
-    if !snapshot_path.is_file() {
-        eprintln!("skipped the ground: {} is absent", snapshot_path.display());
-        return;
-    }
-    use rbr_physics::entities::layout as entities_layout;
-    let snap0 = Snapshot::open(&snapshot_path).expect("lcb1-bodies snap-0").mem();
-    let def = objects().into_iter().find(|o| o.kind == "ground_def").expect("the ground definition").at;
-    let at = snap0.u32(entities::layout::GROUND_SINGLETON);
-    const IDENTITY: u32 = 0x7cbb00;
-    let build = |fill: u8| {
-        let mut mem = Mem::new();
-        mem.map(at, &vec![fill; entities::layout::GROUND_SIZE as usize]);
-        mem.map(entities::layout::GROUND_SINGLETON, &[0; 4]);
-        mem.map(IDENTITY, &snap0.read(IDENTITY, 4));
-        mem.map(def + 4, &snap0.read(def + 4, 4));
-        let mut heap = |size: u32| {
-            assert_eq!(size, entities::layout::GROUND_SIZE);
-            at
-        };
-        struct Block<'a>(&'a mut dyn FnMut(u32) -> u32);
-        impl rbr_physics::entities::exclusion::Heap for Block<'_> {
-            fn allocate(&mut self, bytes: u32) -> u32 {
-                (self.0)(bytes)
-            }
-        }
-        let made = entities_layout::ground_make(&mut mem, def, 0, 0, &mut Block(&mut heap), &mut NoCalls);
-        assert_eq!(made, at);
-        assert_eq!(mem.u32(entities::layout::GROUND_SINGLETON), at);
-        mem.read(at, entities::layout::GROUND_SIZE as usize)
-    };
-    let (zeros, ones) = (build(0), build(0xff));
-    let game = snap0.read(at, entities::layout::GROUND_SIZE as usize);
-    let later = |o: usize| (0x10..0x14).contains(&o) || (0x18..0x1c).contains(&o);
-    let name = |o: usize| (0x3c..0x40).contains(&o);
-    let mut class = Vec::new();
-    let mut differences = Vec::new();
-    for (o, ((&a, &b), &g)) in zeros.iter().zip(&ones).zip(&game).enumerate() {
-        class.push(if later(o) {
-            b'l'
-        } else if name(o) {
-            b'n'
-        } else if a != b {
-            b'u'
-        } else {
-            b'w'
-        });
-        if a == b && a != g && !later(o) && !name(o) {
-            differences.push(format!("+{o:#x}: built {a:02x}, snap-0 {g:02x}"));
-        }
-    }
-    let count = |c: u8| class.iter().filter(|&&k| k == c).count();
-    eprintln!(
-        "ground {at:#x}: {} bytes built and equal to snap-0, {} unwritten, {} later, {} name",
-        count(b'w'),
-        count(b'u'),
-        count(b'l'),
-        count(b'n')
-    );
-    assert!(differences.is_empty(), "{}", differences.join("\n"));
-    assert_eq!(snap0.u32(at + 0x34), def, "snap-0's ground is on the built definition");
-    patch::write("ground", &[patch::Patched { kind: "ground".into(), at, ours: zeros, class, game }]);
 }
