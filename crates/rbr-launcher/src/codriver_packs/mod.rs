@@ -78,13 +78,12 @@ pub fn source_name(pack: Option<&str>) -> &str {
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
-    /// Caches the RSF install's voices and the note files of every source. Marks the notes summary for refresh (it
-    /// refreshes on draw).
+    /// Caches the RSF install's voices, the speakers of every source and the note files of every source. Marks the
+    /// notes summary for refresh (it refreshes on draw).
     pub fn rescan_codrivers(&mut self) {
         let home = self.here();
         self.owned_voices = voice_packs(&home);
         self.owned_notes = note_packs(&home);
-        self.codriver_mods = self.active_mods();
         let root = self.game_root();
         let mods = CodriverMods::scan(&root);
         self.rsf_plugin = mods.is_some();
@@ -108,6 +107,13 @@ impl Form {
         // The owned packs first: they win a tie with the RSF install's MyPacenotes.
         self.note_sources = self.owned_notes.iter().map(|p| NoteSource::read(&p.dir, Some(&p.name))).collect();
         self.note_sources.extend(notes::my_pacenotes_dir(Path::new(root.trim())).map(|d| NoteSource::read(&d, None)));
+        self.reselect_codriver();
+    }
+
+    /// Points the co-driver at the chosen pack after `codriver_pack` changed, from the packs as last scanned (a
+    /// switch between the calls of a speaker re-reads one pack, not every one). Marks the notes summary for refresh.
+    pub fn reselect_codriver(&mut self) {
+        self.codriver_mods = self.active_mods();
         self.codriver_styles_differ =
             self.codriver_mods.as_ref().is_some_and(|mods| call_sets_differ(&mods.dir, &mods.styles, &mods.ranges).0);
         self.cached_notes_dirty = true;

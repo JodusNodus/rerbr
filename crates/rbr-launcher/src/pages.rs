@@ -434,7 +434,7 @@ impl Form {
         if old_codriver.3 != self.codriver_pack {
             // Another voice pack: its voices, styles and range sets, with the choices aligned to what it
             // offers (before the save below, so the aligned choices persist).
-            self.rescan_codrivers();
+            self.reselect_codriver();
             self.normalize_codriver();
         }
         // The notes summary is cached: mark it dirty and repaint, or a switch keeps the old text until the map

@@ -554,7 +554,8 @@ mod tests {
         use rbr_sound::preview::LADDER;
         let dir = root.join(name);
         write(dir.join("PaceNote.ini"), &format!("[SETTINGS]\nlanguage=english\nsounds={folder}\n"));
-        let calls: String = LADDER.iter().map(|id| format!("[PACENOTE::C{id}]\nid={id}\nSounds=1\nSnd0={id}.ogg\n")).collect();
+        let calls: String =
+            LADDER.iter().map(|id| format!("[PACENOTE::C{id}]\nid={id}\nSounds=1\nSnd0={id}.ogg\n")).collect();
         write(dir.join("config/pacenotes/Rbr.ini"), &calls);
         write(dir.join("config/ranges/Rbr.ini"), "[RANGE::100]\nSounds=1\nSnd0=100.ogg\n");
         let texts: String = LADDER.iter().zip(grades).map(|(id, g)| format!("C{id}={g} Left\n")).collect();
@@ -584,15 +585,23 @@ mod tests {
         let installs = [
             ("Janne Numeric A Number First", "Janne Laahanen EnNu A NF", numeric_a),
             ("Janne Numeric B Number First", "Janne Laahanen EnNu B NF", numeric_b),
-            ("Janne Descriptive", "Janne Laahanen EnDe", ["HP", "Bad", "Square", "K", "Medium", "Fast", "Easy", "Flat"]),
+            (
+                "Janne Descriptive",
+                "Janne Laahanen EnDe",
+                ["HP", "Bad", "Square", "K", "Medium", "Fast", "Easy", "Flat"],
+            ),
             ("Rita Fullon A", "RitaFullonV3 (benofficial2)", numeric_a),
             ("Rita Fullon B", "RitaFullonV3 (benofficial2)", numeric_b),
             ("Darren", "Darren V3", numeric_a),
         ];
         let no_cancel = std::sync::atomic::AtomicBool::new(false);
         for (name, folder, grades) in installs {
-            crate::codriver_packs::import(&home, &v3_install(&root.join("downloads"), name, folder, grades), &no_cancel)
-                .unwrap();
+            crate::codriver_packs::import(
+                &home,
+                &v3_install(&root.join("downloads"), name, folder, grades),
+                &no_cancel,
+            )
+            .unwrap();
         }
         let start = crate::test_start(home.join(SETTINGS_FILE), Some(data.into()), Some(patch.into()));
         let settings = Settings {

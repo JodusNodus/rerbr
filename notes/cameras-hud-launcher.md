@@ -139,10 +139,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   by how their install's texts say the corners (`HP, 1, Square, 2, 3, 4, 5, 6 ("5 Left")`: benofficial2's A and B share
   one folder), else by folder. A folder is checked for the preview's 8 corners in its install's style: missing some
   lists under Incomplete, none is left out (RSF's `english`, `german`, `JanneLaahanen`). Picking another person keeps
-  the calls when they have them. Get more lists the 18 packs with their styles and pages, ✔ when added.
+  the calls when they have them. Get more lists the 18 packs with their styles and pages, ✔ when added. The speakers
+  are scanned with the packs (load, import, remove: 0.47 s with Janne's 42 English installs, release build); switching
+  the calls re-reads only the chosen pack (`reselect_codriver`, 30 ms).
 - The stage notes are automatic (user decision 2026-11-16, `codriver_packs::pick_notes`): with a custom voice, over
-  every owned pack and the RSF
-  MyPacenotes, the set covering the most stages (ties: owned pack, then name), in it the highest `_<n>` version,
+  every owned pack and the RSF MyPacenotes, the set covering the most stages (ties: owned pack, then name), in it the
+  highest `_<n>` version,
   then owned over RSF, then the newest file; none: the stage's own notes. The range set is the plugin's `Rbr.ini`
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.
   The summary ("On Tanner: <voice> calls LuppisV3 (182 notes)") shows under the voice.
@@ -155,9 +157,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   not; a toast on other pages). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
   stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
   co-drivers and pace notes through `codriver_packs::import` (a source holding several plugin installs, as Janne
-  Laahanen's 42 call styles, imports each as its own pack `<source> - <install folder>`; more than 4 give one summary
-  line, a failing install is a `Failed co-driver …` line and the rest still import); NGP car pieces (physics, model and banks dropped
-  together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
+  Laahanen's 42 call styles, imports each as its own pack `<source> - <install folder>`: 42 packs, 633 MB, 9.8 s;
+  more than 4 give one summary line, a failing install is a `Failed co-driver …` line and the rest still import);
+  NGP car pieces (physics, model and banks dropped together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
   car skin to its car (`content/kind/skin.rs`, below).
   Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. The
   Downloads folder is not scanned (user, 2026-11-18): only what is dropped or chosen is added. Links: RSF's stage download, BTBfin, RBR Czech's
