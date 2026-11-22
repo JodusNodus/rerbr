@@ -19,7 +19,8 @@
 //! existing install to COPY from — never modified), or a downloaded ZIP/7z archive of the same. The plugin is
 //! found at the top, in a direct `Pacenote` (or `Plugins/Pacenote`) folder beside the notes, or under a single
 //! wrapper directory (including `wrapper/Pacenote` and `wrapper/Plugins/Pacenote`); note paths are always kept
-//! whole, so stage folders keep their names. Only relevant files are copied: `PaceNote.ini`,
+//! whole, so stage folders keep their names. A source holding several installs (up to 4 folders deep, never inside
+//! a plugin) imports each as its own pack `<source> - <install folder>`, so call styles never collide. Only relevant files are copied: `PaceNote.ini`,
 //! `config/**/*.ini`, voice audio (`sounds/`, `.ogg`/`.wav`/`.mp3`/`.flac`/`.oga`) and parseable note INIs. No
 //! DLLs, executables or anything else. A failed import leaves no active partial pack: everything stages in a temp
 //! folder beside the destination and is renamed only when validated. Existing packs are never overwritten: a taken
@@ -36,6 +37,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rbr_formats::pacenote::codriver;
 use rbr_formats::pacenote::notes;
 
+use crate::command::CodriverMods;
 use crate::Form;
 
 /// The folders in the player's folder with the owned packs.
@@ -50,8 +52,10 @@ type Fail = String;
 /// What the notes summary follows besides the map and the scanned packs: the co-driver switch and the voice.
 pub type NotesInputs = (bool, Option<String>);
 
+pub mod catalog;
 mod import;
 mod scan;
+mod speakers;
 
 pub use import::{cli, import, remove_notes, remove_voice};
 #[cfg(test)]
@@ -65,23 +69,51 @@ pub use scan::{
     call_sets_differ, note_packs, pick_notes, voice_packs, NotePack, NoteSource, NotesPick, NotesSummary, VoicePack,
 };
 use scan::{check_voice, is_plugin_dir};
+pub use speakers::{speakers, Source, Speaker, Style};
+
+/// A voice source's name: an owned pack's, or the RallySimFans install.
+pub fn source_name(pack: Option<&str>) -> &str {
+    pack.unwrap_or("RallySimFans install")
+}
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
-    /// Caches the RSF install's voices and the note files of every source. Marks the notes summary for refresh (it
-    /// refreshes on draw).
+    /// Caches the RSF install's voices, the speakers of every source and the note files of every source. Marks the
+    /// notes summary for refresh (it refreshes on draw).
     pub fn rescan_codrivers(&mut self) {
         let home = self.here();
         self.owned_voices = voice_packs(&home);
         self.owned_notes = note_packs(&home);
-        self.codriver_mods = self.active_mods();
         let root = self.game_root();
-        let mods = crate::command::CodriverMods::scan(&root);
+        let mods = CodriverMods::scan(&root);
         self.rsf_plugin = mods.is_some();
+        // The speakers of every source, the RSF install's and the ready owned packs', each in the style it plays.
+        let owned = self.owned_voices.iter().filter(|p| p.problem.is_none());
+        let plugins: Vec<(Option<&str>, CodriverMods)> = (mods.iter().map(|m| (None, m.clone())))
+            .chain(owned.filter_map(|p| Some((Some(p.name.as_str()), CodriverMods::from_dir(p.dir.clone())?))))
+            .collect();
+        let plays: Vec<(String, String)> = plugins
+            .iter()
+            .map(|(_, m)| {
+                let style = m.styles.iter().find(|s| s.eq_ignore_ascii_case(&self.codriver_style)).or(m.styles.first());
+                (style.cloned().unwrap_or_default(), m.default_ranges())
+            })
+            .collect();
+        let sources: Vec<Source> = (plugins.iter().zip(&plays))
+            .map(|((pack, m), (style, ranges))| Source { pack: *pack, dir: &m.dir, voices: &m.voices, style, ranges })
+            .collect();
+        self.codriver_speakers = speakers(&sources);
         self.rsf_voices = mods.map(|mods| mods.voices).unwrap_or_default();
         // The owned packs first: they win a tie with the RSF install's MyPacenotes.
         self.note_sources = self.owned_notes.iter().map(|p| NoteSource::read(&p.dir, Some(&p.name))).collect();
         self.note_sources.extend(notes::my_pacenotes_dir(Path::new(root.trim())).map(|d| NoteSource::read(&d, None)));
+        self.reselect_codriver();
+    }
+
+    /// Points the co-driver at the chosen pack after `codriver_pack` changed, from the packs as last scanned (a
+    /// switch between the calls of a speaker re-reads one pack, not every one). Marks the notes summary for refresh.
+    pub fn reselect_codriver(&mut self) {
+        self.codriver_mods = self.active_mods();
         self.codriver_styles_differ =
             self.codriver_mods.as_ref().is_some_and(|mods| call_sets_differ(&mods.dir, &mods.styles, &mods.ranges).0);
         self.cached_notes_dirty = true;
@@ -106,6 +138,8 @@ impl Form {
             (false, _) => "no co-driver, no notes are called".into(),
             (true, None) => "the 1.02 co-driver calls the stage's own notes".into(),
             (true, Some(voice)) => {
+                // A catalogued voice by its person's name, others by their folder.
+                let voice = catalog::find(&voice).map_or(voice, |(_, v)| v.person.to_owned());
                 let refs: Vec<&str> = names.iter().flatten().map(String::as_str).collect();
                 let pick = pick_notes(&self.note_sources, &refs);
                 let count = pick.as_ref().and_then(|p| notes::read(&p.file).ok()).map(|notes| notes.len());
@@ -670,6 +704,102 @@ mod tests {
         let lines = imported(&home, &archive).unwrap();
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(home.join(VOICES_DIR).join("zipped-install").join("PaceNote.ini").is_file());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Two installs nested like Janne Laahanen's pack: `English/<style>/Plugins/Pacenote`, each with its own config.
+    fn two_installs(dir: &Path) {
+        for (style, id) in [("Numeric A", 0), ("Hybrid B", 7)] {
+            let plugin = dir.join(style).join("Plugins/Pacenote");
+            plugin_source(&plugin);
+            write(
+                &plugin.join("config/pacenotes/calls.ini"),
+                &format!("[PACENOTE::CALL]\nid={id}\nSounds=1\nSnd0=a.ogg\n"),
+            );
+            write(&dir.join(style).join("Audio/Game/sounds/x.ogg"), "OggS fake");
+        }
+    }
+
+    fn has_call(home: &Path, pack: &str, id: u32) -> bool {
+        let dir = home.join(VOICES_DIR).join(pack);
+        codriver::load(&dir, "Rbr.ini", "Rbr.ini").unwrap().notes.contains_key(&id)
+    }
+
+    #[test]
+    fn a_folder_with_several_installs_imports_each_as_a_pack() {
+        let dir = crate::test_dir("codriver-multi-folder");
+        let src = dir.join("English");
+        two_installs(&src);
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(has_call(&home, "English - Numeric A", 0) && !has_call(&home, "English - Numeric A", 7));
+        assert!(has_call(&home, "English - Hybrid B", 7) && !has_call(&home, "English - Hybrid B", 0));
+        assert!(!home.join(VOICES_DIR).join("English - Hybrid B/x.ogg").exists());
+        // Again: taken names get a suffix.
+        imported(&home, &src).unwrap();
+        assert!(home.join(VOICES_DIR).join("English - Hybrid B-2").is_dir());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_archive_with_several_installs_imports_each_as_a_pack() {
+        let dir = crate::test_dir("codriver-multi-zip");
+        let src = dir.join("English");
+        two_installs(&src);
+        let archive = dir.join("English.zip");
+        make_zip(&archive, &dir.join("English"));
+        let home = dir.join("home");
+        let lines = imported(&home, &archive).unwrap();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(has_call(&home, "English - Numeric A", 0) && has_call(&home, "English - Hybrid B", 7));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn many_installs_report_one_summary_line() {
+        let dir = crate::test_dir("codriver-multi-many");
+        let src = dir.join("Big");
+        for n in 0..6 {
+            plugin_source(&src.join(format!("s{n}/Plugins/Pacenote")));
+        }
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with("Co-driver Big: 6 packs (Big - s0, "), "{lines:?}");
+        assert_eq!(fs::read_dir(home.join(VOICES_DIR)).unwrap().count(), 6);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn one_broken_install_is_reported_and_the_others_import() {
+        let dir = crate::test_dir("codriver-multi-broken");
+        let src = dir.join("English");
+        two_installs(&src);
+        // No definitions: audio only.
+        write(&src.join("Broken/Plugins/Pacenote/sounds/v/a.ogg"), "OggS fake");
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(lines.iter().any(|l| l.starts_with("Failed co-driver English - Broken: ")), "{lines:?}");
+        assert!(has_call(&home, "English - Numeric A", 0) && has_call(&home, "English - Hybrid B", 7));
+        assert!(!home.join(VOICES_DIR).join("English - Broken").exists());
+        // Cancelled: nothing is reported as a partial failure.
+        let cancel = AtomicBool::new(true);
+        assert!(import(&dir.join("home2"), &src, &cancel).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_single_install_in_a_wrapper_keeps_its_name() {
+        let dir = crate::test_dir("codriver-single-nested");
+        let src = dir.join("English");
+        plugin_source(&src.join("Numeric A/Plugins/Pacenote"));
+        write(&src.join("Numeric A/Audio/Game/sounds/x.ogg"), "OggS fake");
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(home.join(VOICES_DIR).join("English/PaceNote.ini").is_file());
         fs::remove_dir_all(&dir).unwrap();
     }
 

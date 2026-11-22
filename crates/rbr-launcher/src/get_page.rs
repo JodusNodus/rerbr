@@ -187,7 +187,13 @@ impl Form {
                     "get more",
                     what.title(),
                     Some(subtitle),
-                    |ui| sites_ui(ui, sites),
+                    |ui| {
+                        if what == GetMore::Codrivers {
+                            self.codriver_catalog_ui(ui);
+                            ui.add_space(12.0);
+                        }
+                        sites_ui(ui, sites)
+                    },
                     |ui| {
                         close = ui.button("Done").clicked();
                         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {

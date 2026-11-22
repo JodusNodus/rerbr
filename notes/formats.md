@@ -345,7 +345,13 @@ RBRHUD cockpit dials: [cameras-hud-launcher.md](cameras-hud-launcher.md#rbrhud-g
 Read from the plugin's files and `PaceNote.dll` (Ghidra; nothing of it is copied or run). Voices, styles, ranges
 and the note file layout (`[PACENOTES]`, `[P<k>] type distance flag`): `pacenote::codriver`, `pacenote::notes`. Luppis V3
 notes start with `PACENOTES_FILE`/`RANGES_FILE` notes spelling `Rbr.ini` and set 0x100 on every note. MyPacenotes
-(`Plugins\NGPCarMenu\MyPacenotes` by default): 1038 files of 525 folders parse.
+(`Plugins\NGPCarMenu\MyPacenotes` by default): 1038 files of 525 folders parse. The editor's texts,
+`language/<PaceNote.ini language>/**/strings.ini` `[STRINGS]` by call name (`EASYLEFT=6 Left`), say how the installed
+style calls each corner (`codriver::strings`). V3 packs (2026-11-22, 16 of Luppis's 18 downloads read): every style file
+of an install loads the same packages, and the style is the install: its `packages/corners/Descriptive.ini` maps each
+grade to a recording (`EASYLEFT` plays `six_left1.ogg` in Janne Laahanen's Numeric A, `five_left1.ogg` in his B) and
+its texts say it, so a pack ships one install per style (Janne's English: 42) and a voice folder sounds right only with
+its own install (Janne's B folder has no `flat_left`). RSF's install is Numeric A, number first.
 
 ## NGP plugin data
 

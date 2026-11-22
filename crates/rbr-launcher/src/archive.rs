@@ -180,7 +180,8 @@ pub fn extract_zip(
     Ok(())
 }
 
-/// Extracts the 7z's `wanted` into `dest`, as [`extract_zip`].
+/// Extracts the 7z's `wanted` into `dest`, as [`extract_zip`]. In a solid archive the entries of a block are slices
+/// of one stream, so an entry not wanted is read through (decoding it is the cost of reaching the next one).
 pub fn extract_seven(
     src: &Path,
     dest: &Path,
@@ -190,17 +191,22 @@ pub fn extract_seven(
     let error = |e: String| format!("{}: {e}", src.display());
     let mut archive = open_seven(src).map_err(error)?;
     progress(0)?;
+    let solid = archive.archive().is_solid;
+    let wanted: std::collections::HashMap<&[String], &[String]> =
+        wanted.iter().map(|(from, to)| (from.as_slice(), to.as_slice())).collect();
     let mut failed: Option<Fail> = None;
     archive
         .for_each_entries(|entry, reader| {
             if failed.is_some() {
                 return Ok(false);
             }
-            if entry.is_directory() {
+            let to = owned_path(entry.name()).filter(|_| !entry.is_directory()).and_then(|p| wanted.get(&p[..]));
+            let Some(to) = to else {
+                if solid {
+                    io::copy(reader, &mut io::sink())?;
+                }
                 return Ok(true);
-            }
-            let Some(parts) = owned_path(entry.name()) else { return Ok(true) };
-            let Some((_, to)) = wanted.iter().find(|(from, _)| *from == parts) else { return Ok(true) };
+            };
             match write_file(dest, to, reader) {
                 Err(e) => {
                     failed = Some(format!("{}: {e}", to.join("/")));
@@ -217,4 +223,29 @@ pub fn extract_seven(
         })
         .map_err(|e| error(e.to_string()))?;
     failed.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_solid_7z_extracts_the_entries_after_one_left_out() {
+        let dir = crate::test_dir("archive-solid-seven");
+        let archive = dir.join("solid.7z");
+        let files = [("skip.dll", "not wanted"), ("a/one.ini", "one"), ("a/two.ini", "two")];
+        let mut out = sevenz_rust2::ArchiveWriter::create(&archive).unwrap();
+        let entries = files.iter().map(|(name, _)| sevenz_rust2::ArchiveEntry::new_file(name)).collect();
+        let readers = files.iter().map(|(_, text)| text.as_bytes().into()).collect();
+        out.push_archive_entries(entries, readers).unwrap();
+        out.finish().unwrap();
+        assert!(open_seven(&archive).unwrap().archive().is_solid);
+        let parts = |p: &str| p.split('/').map(str::to_owned).collect::<Vec<_>>();
+        let wanted = [(parts("a/one.ini"), parts("one.ini")), (parts("a/two.ini"), parts("x/two.ini"))];
+        extract_seven(&archive, &dir.join("out"), &wanted, &mut |_| Ok(())).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("out/one.ini")).unwrap(), "one");
+        assert_eq!(fs::read_to_string(dir.join("out/x/two.ini")).unwrap(), "two");
+        assert!(!dir.join("out/skip.dll").exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

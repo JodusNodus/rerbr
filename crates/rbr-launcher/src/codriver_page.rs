@@ -1,16 +1,19 @@
-//! The Content > Co-drivers page: the voice and its preview, what the voice calls on the Drive page's stage
-//! (the notes are picked by themselves, `codriver_packs::pick_notes`), the corner numbers, the call timing, and the
-//! owned packs (`codriver_packs`).
+//! The Library > Co-drivers page: the co-driver (a person in a language, `codriver_packs::speakers`) with a preview,
+//! their calls when they have several (each a pack's install), what they call on the Drive page's stage (the notes
+//! are picked by themselves, `codriver_packs::pick_notes`), the corner numbers of an older plugin pack, the call
+//! timing, and the owned packs (`codriver_packs`); and Get more's list of the community's voices
+//! (`codriver_packs::catalog`).
 
 use egui::{ComboBox, DragValue, RichText};
-use rbr_sound::preview::{self as codriver_preview, Preview};
+use rbr_sound::preview::{self as codriver_preview, Preview, LADDER};
 
+use crate::codriver_packs::{catalog, source_name, Speaker, Style};
 use crate::command::ORIGINAL_VOICE;
 use crate::get_page::GetMore;
 use crate::kit;
 use crate::pages::combo;
 use crate::settings_page::{note, row_tip};
-use crate::theme::{GOOD, TEXT_2, TEXT_3, WARN};
+use crate::theme::{medium, mono, GOOD, TEXT, TEXT_2, TEXT_3, WARN};
 use crate::Form;
 
 /// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
@@ -75,6 +78,14 @@ pub fn style_label(file: &str) -> String {
     }
 }
 
+/// A co-driver as the dropdown names them: their name and language, or an uncatalogued folder with its source.
+fn speaker_text(s: &Speaker) -> String {
+    match s.language {
+        Some(_) => s.label(),
+        None => format!("{} ({})", s.name, source_name(s.styles[0].pack.as_deref())),
+    }
+}
+
 /// The Co-driver dropdown's choice: off, the original 1.02 voice, or a voice by its source pack (none: the
 /// RallySimFans install's plugin).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +104,14 @@ impl VoiceChoice {
             _ if !codriver => VoiceChoice::Off,
             Some(ORIGINAL_VOICE) | None => VoiceChoice::Original,
             Some(voice) => VoiceChoice::Voice { pack: pack.map(str::to_owned), voice: voice.to_owned() },
+        }
+    }
+
+    /// The source and voice folder, for a voice.
+    fn voice(&self) -> Option<(Option<&str>, &str)> {
+        match self {
+            VoiceChoice::Voice { pack, voice } => Some((pack.as_deref(), voice)),
+            _ => None,
         }
     }
 
@@ -130,6 +149,7 @@ impl Form {
                 let mut warn = None;
                 kit::panel(ui, |rows| {
                     warn = self.codriver_voice_row(rows);
+                    self.codriver_calls_row(rows);
                     let custom = matches!(self.voice_choice(), VoiceChoice::Voice { .. });
                     if let Some(mods) = self.codriver_mods.as_ref().filter(|_| custom) {
                         if self.codriver_styles_differ {
@@ -184,8 +204,9 @@ impl Form {
     /// that is gone or broke: why the original voice drives instead.
     fn codriver_voice_row(&mut self, rows: &mut kit::Rows) -> Option<String> {
         let tip = "Who calls the pace notes: off (no pace notes at all), the original 1.02 co-driver, or a \
-                     voice from the RallySimFans install's Pacenote plugin (only read) or a pack copied into \
-                     your files' folder. Whether a pack covers every note of a stage varies by pack.";
+                     co-driver from the RallySimFans install's Pacenote plugin (only read) or from a pack you added. \
+                     Calls then picks how they say the corners, when they come in several styles. Whether a pack \
+                     covers every note of a stage varies by pack.";
         let current = self.voice_choice();
         row_tip(rows, "Co-driver", tip, |ui| {
             // The preview beside the dropdown: the corner ladder and one distance call with this voice. Built
@@ -201,24 +222,29 @@ impl Form {
                 self.preview_codriver();
             }
             let mut picked = current.clone();
-            ComboBox::from_id_salt("codriver voice").selected_text(current.label()).show_ui(ui, |ui| {
+            let speaker = self.current_speaker();
+            let text = speaker.map_or_else(|| current.label(), speaker_text);
+            // A picked co-driver keeps the current calls when they have them.
+            let calls = speaker.zip(current.voice()).and_then(|(s, (pack, folder))| s.style(pack, folder));
+            let calls = calls.map(|s| s.label.clone());
+            ComboBox::from_id_salt("codriver voice").selected_text(text).show_ui(ui, |ui| {
                 ui.selectable_value(&mut picked, VoiceChoice::Off, "Off");
                 ui.selectable_value(&mut picked, VoiceChoice::Original, "Original (1.02)");
-                if !self.rsf_voices.is_empty() {
-                    ui.label(RichText::new("RallySimFans install").color(TEXT_2));
-                    for voice in &self.rsf_voices {
-                        ui.selectable_value(
-                            &mut picked,
-                            VoiceChoice::Voice { pack: None, voice: voice.clone() },
-                            voice,
-                        );
+                let mut item = |ui: &mut egui::Ui, s: &Speaker, text: String| {
+                    let on = speaker.is_some_and(|c| std::ptr::eq(c, s));
+                    if ui.selectable_label(on, text).clicked() && !on {
+                        let style = s.style_for(calls.as_deref());
+                        picked = VoiceChoice::Voice { pack: style.pack.clone(), voice: style.folder.clone() };
                     }
+                };
+                for s in self.codriver_speakers.iter().filter(|s| s.complete()) {
+                    item(ui, s, speaker_text(s));
                 }
-                for pack in self.owned_voices.iter().filter(|p| p.problem.is_none()) {
-                    ui.label(RichText::new(&pack.name).color(TEXT_2));
-                    for voice in &pack.voices {
-                        let choice = VoiceChoice::Voice { pack: Some(pack.name.clone()), voice: voice.clone() };
-                        ui.selectable_value(&mut picked, choice, voice);
+                if self.codriver_speakers.iter().any(|s| !s.complete()) {
+                    ui.label(RichText::new("Incomplete: the original voice says the rest").size(11.5).color(TEXT_3));
+                    for s in self.codriver_speakers.iter().filter(|s| !s.complete()) {
+                        let best = s.styles.iter().map(|t| t.corners).max().unwrap_or(0);
+                        item(ui, s, format!("{} · {best} of {} corners", speaker_text(s), LADDER.len()));
                     }
                 }
             });
@@ -244,6 +270,38 @@ impl Form {
             },
             None if !self.rsf_plugin => Some("the RallySimFans install has no Pacenote plugin".to_owned()),
             None => None,
+        }
+    }
+
+    /// The speaker of the chosen voice folder, if it is listed.
+    fn current_speaker(&self) -> Option<&Speaker> {
+        let choice = self.voice_choice();
+        let (pack, folder) = choice.voice()?;
+        self.codriver_speakers.iter().find(|s| s.style(pack, folder).is_some())
+    }
+
+    /// The Calls row, when the chosen co-driver has more than one: how they call the corners, each its own install
+    /// (a pack, or the RallySimFans install) and voice folder.
+    fn codriver_calls_row(&mut self, rows: &mut kit::Rows) {
+        let Some(speaker) = self.current_speaker().filter(|s| s.styles.len() > 1).cloned() else { return };
+        let mut chosen = (self.codriver_pack.clone(), self.codriver_voice.clone().unwrap_or_default());
+        let ladder = speaker.style(chosen.0.as_deref(), &chosen.1).and_then(|s| s.ladder.clone());
+        let tip = format!(
+            "How {} calls the corners: each a download or a version of its own. Preview to hear it{}",
+            speaker.name,
+            ladder.map_or_else(String::new, |l| format!("\n\nTightest to fastest: {l}"))
+        );
+        row_tip(rows, "Calls", &tip, |ui| {
+            let styles: Vec<(Option<String>, String)> =
+                speaker.styles.iter().map(|s| (s.pack.clone(), s.folder.clone())).collect();
+            let text = |(pack, folder): (Option<String>, String)| {
+                speaker.style(pack.as_deref(), &folder).map_or(folder, Style::text)
+            };
+            combo(ui, "codriver calls", None, &mut chosen, &styles, text).on_hover_text(&tip);
+        });
+        if (chosen.0.as_ref(), Some(&chosen.1)) != (self.codriver_pack.as_ref(), self.codriver_voice.as_ref()) {
+            // A changed pack rescans and normalizes in `pages.rs`.
+            (self.codriver_pack, self.codriver_voice) = (chosen.0, Some(chosen.1));
         }
     }
 
@@ -329,6 +387,40 @@ impl Form {
         {
             self.open_get_more(GetMore::Codrivers);
         }
+    }
+
+    /// Get more's voices: the catalogued packs by language, each with its calls, whether a source has it and its
+    /// download page.
+    pub fn codriver_catalog_ui(&self, ui: &mut egui::Ui) {
+        let has = |voice: &catalog::Voice| {
+            self.codriver_speakers.iter().any(|s| s.styles.iter().any(|t| voice.is(&t.folder)))
+        };
+        kit::panel(ui, |rows| {
+            for pack in catalog::PACKS {
+                let installed = pack.voices.iter().any(has);
+                rows.full(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Open ↗").on_hover_text(pack.page).clicked() {
+                            crate::crash::open(pack.page.as_ref());
+                        }
+                        if installed {
+                            ui.label(RichText::new("✔ Added").color(GOOD));
+                        }
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                            ui.spacing_mut().item_spacing.y = 3.0;
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(pack.title).family(medium()).color(TEXT));
+                                ui.label(RichText::new(pack.language).font(mono(11.5)).color(TEXT_3));
+                            });
+                            let line = format!("by {} · {}", pack.by, pack.calls);
+                            ui.add(egui::Label::new(RichText::new(line).size(12.0).color(TEXT_2)).wrap());
+                            ui.add_space(8.0);
+                        });
+                    });
+                });
+            }
+        });
     }
 
     /// Plays the corner ladder and one distance call in the chosen voice through the menus' sound, built on its own
@@ -453,6 +545,95 @@ mod tests {
                 crate::capture::write_png(&Path::new(&shots).join("codriver-drop.png"), &hint).unwrap();
             }
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A V3 install: one call style, its corners recorded in voice folder `folder` and said as `grades` (tightest to
+    /// fastest), under `root/<name>`.
+    fn v3_install(root: &Path, name: &str, folder: &str, grades: [&str; 8]) -> PathBuf {
+        use rbr_sound::preview::LADDER;
+        let dir = root.join(name);
+        write(dir.join("PaceNote.ini"), &format!("[SETTINGS]\nlanguage=english\nsounds={folder}\n"));
+        let calls: String =
+            LADDER.iter().map(|id| format!("[PACENOTE::C{id}]\nid={id}\nSounds=1\nSnd0={id}.ogg\n")).collect();
+        write(dir.join("config/pacenotes/Rbr.ini"), &calls);
+        write(dir.join("config/ranges/Rbr.ini"), "[RANGE::100]\nSounds=1\nSnd0=100.ogg\n");
+        let texts: String = LADDER.iter().zip(grades).map(|(id, g)| format!("C{id}={g} Left\n")).collect();
+        write(dir.join("language/english/pacenotes/packages/corners/strings.ini"), &format!("[STRINGS]\n{texts}"));
+        for file in LADDER.iter().map(|id| format!("{id}.ogg")).chain(["100.ogg".into()]) {
+            write(dir.join("sounds").join(folder).join(file), "OggS fake");
+        }
+        dir
+    }
+
+    /// The Co-drivers page with co-drivers in several styles, and Get more's list, drawn offscreen to
+    /// `RBR_SCREENSHOTS`. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS` (and `RBR_RSF` for its plugin's voices).
+    #[test]
+    fn screenshots_of_the_codriver_styles() {
+        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
+        let (Some(shots), Some(data), Some(patch), Some(ngp)) =
+            (env("RBR_SCREENSHOTS"), env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS"))
+        else {
+            eprintln!("skipping: RBR_SCREENSHOTS, RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
+            return;
+        };
+        let root = crate::test_dir("page-codriver-styles");
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let numeric_a = ["HP", "1", "2", "3", "4", "5", "6", "Flat"];
+        let numeric_b = ["HP", "1", "Square", "2", "3", "4", "5", "6"];
+        let installs = [
+            ("Janne Numeric A Number First", "Janne Laahanen EnNu A NF", numeric_a),
+            ("Janne Numeric B Number First", "Janne Laahanen EnNu B NF", numeric_b),
+            (
+                "Janne Descriptive",
+                "Janne Laahanen EnDe",
+                ["HP", "Bad", "Square", "K", "Medium", "Fast", "Easy", "Flat"],
+            ),
+            ("Rita Fullon A", "RitaFullonV3 (benofficial2)", numeric_a),
+            ("Rita Fullon B", "RitaFullonV3 (benofficial2)", numeric_b),
+            ("Darren", "Darren V3", numeric_a),
+        ];
+        let no_cancel = std::sync::atomic::AtomicBool::new(false);
+        for (name, folder, grades) in installs {
+            crate::codriver_packs::import(
+                &home,
+                &v3_install(&root.join("downloads"), name, folder, grades),
+                &no_cancel,
+            )
+            .unwrap();
+        }
+        let start = crate::test_start(home.join(SETTINGS_FILE), Some(data.into()), Some(patch.into()));
+        let settings = Settings {
+            map: Some(54),
+            ngp_physics: Some(ngp),
+            codriver_pack: Some("Janne Numeric B Number First".into()),
+            codriver_voice: Some("Janne Laahanen EnNu B NF".into()),
+            ..Settings::default()
+        };
+        let mut form = load(&start, settings).unwrap();
+        form.read_only = true;
+        // The three installs, and the RSF install's Janne when it has him; their texts name the corners.
+        let janne = form.codriver_speakers.iter().find(|s| s.name == "Janne Laahanen").unwrap();
+        let owned: Vec<_> = janne.styles.iter().filter(|s| s.pack.is_some()).collect();
+        assert_eq!(owned.len(), 3, "{janne:?}");
+        assert!(owned.iter().all(|s| s.ladder.is_some()), "{janne:?}");
+        assert_eq!(form.current_speaker().map(|s| s.name.as_str()), Some("Janne Laahanen"));
+        let shot = |form: &mut Form, name: &str, modal: bool| {
+            let rgba = crate::capture::draw(|ctx| {
+                ctx.root_ui(|root| {
+                    egui::CentralPanel::default().show(root, |ui| form.codriver_section(ui));
+                });
+                if modal {
+                    form.get_more_modal(ctx);
+                }
+            })
+            .unwrap();
+            crate::capture::write_png(&Path::new(&shots).join(name), &rgba).unwrap();
+        };
+        shot(&mut form, "codriver-styles.png", false);
+        form.open_get_more(crate::get_page::GetMore::Codrivers);
+        shot(&mut form, "codriver-get-more.png", true);
         let _ = std::fs::remove_dir_all(&root);
     }
 
