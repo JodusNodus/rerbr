@@ -445,7 +445,8 @@ mod tests {
             ["Shale", "ter9", "roadEdge_tar"].map(|m| fx.role(m)),
             [Grass::Hides, Grass::Hides, Grass::HidesAlpha]
         );
-        assert!(fx.texture.as_ref().is_some_and(|t| t.ends_with("Mine.DDS")));
+        // The file as found: in its own case where the filesystem tells case (Linux), as the ini spells it elsewhere.
+        assert!(fx.texture.as_ref().and_then(|t| t.file_name()).is_some_and(|n| n.eq_ignore_ascii_case("mine.dds")));
         assert_eq!(
             fx.section(Some("ac_00001.dds")),
             "[ReRbrGrass]\ntexture=ac_00001.dds\ngrid=8, 3\nbase=4\nsize=6.5\nluminance=0.02,0.25\nmask=0.5,0.01\ngroup0=0\ngroup1=2\n\
