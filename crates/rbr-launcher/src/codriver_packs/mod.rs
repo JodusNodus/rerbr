@@ -19,7 +19,8 @@
 //! existing install to COPY from — never modified), or a downloaded ZIP/7z archive of the same. The plugin is
 //! found at the top, in a direct `Pacenote` (or `Plugins/Pacenote`) folder beside the notes, or under a single
 //! wrapper directory (including `wrapper/Pacenote` and `wrapper/Plugins/Pacenote`); note paths are always kept
-//! whole, so stage folders keep their names. Only relevant files are copied: `PaceNote.ini`,
+//! whole, so stage folders keep their names. A source holding several installs (up to 4 folders deep, never inside
+//! a plugin) imports each as its own pack `<source> - <install folder>`, so call styles never collide. Only relevant files are copied: `PaceNote.ini`,
 //! `config/**/*.ini`, voice audio (`sounds/`, `.ogg`/`.wav`/`.mp3`/`.flac`/`.oga`) and parseable note INIs. No
 //! DLLs, executables or anything else. A failed import leaves no active partial pack: everything stages in a temp
 //! folder beside the destination and is renamed only when validated. Existing packs are never overwritten: a taken
@@ -697,6 +698,102 @@ mod tests {
         let lines = imported(&home, &archive).unwrap();
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(home.join(VOICES_DIR).join("zipped-install").join("PaceNote.ini").is_file());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Two installs nested like Janne Laahanen's pack: `English/<style>/Plugins/Pacenote`, each with its own config.
+    fn two_installs(dir: &Path) {
+        for (style, id) in [("Numeric A", 0), ("Hybrid B", 7)] {
+            let plugin = dir.join(style).join("Plugins/Pacenote");
+            plugin_source(&plugin);
+            write(
+                &plugin.join("config/pacenotes/calls.ini"),
+                &format!("[PACENOTE::CALL]\nid={id}\nSounds=1\nSnd0=a.ogg\n"),
+            );
+            write(&dir.join(style).join("Audio/Game/sounds/x.ogg"), "OggS fake");
+        }
+    }
+
+    fn has_call(home: &Path, pack: &str, id: u32) -> bool {
+        let dir = home.join(VOICES_DIR).join(pack);
+        codriver::load(&dir, "Rbr.ini", "Rbr.ini").unwrap().notes.contains_key(&id)
+    }
+
+    #[test]
+    fn a_folder_with_several_installs_imports_each_as_a_pack() {
+        let dir = crate::test_dir("codriver-multi-folder");
+        let src = dir.join("English");
+        two_installs(&src);
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(has_call(&home, "English - Numeric A", 0) && !has_call(&home, "English - Numeric A", 7));
+        assert!(has_call(&home, "English - Hybrid B", 7) && !has_call(&home, "English - Hybrid B", 0));
+        assert!(!home.join(VOICES_DIR).join("English - Hybrid B/x.ogg").exists());
+        // Again: taken names get a suffix.
+        imported(&home, &src).unwrap();
+        assert!(home.join(VOICES_DIR).join("English - Hybrid B-2").is_dir());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_archive_with_several_installs_imports_each_as_a_pack() {
+        let dir = crate::test_dir("codriver-multi-zip");
+        let src = dir.join("English");
+        two_installs(&src);
+        let archive = dir.join("English.zip");
+        make_zip(&archive, &dir.join("English"));
+        let home = dir.join("home");
+        let lines = imported(&home, &archive).unwrap();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert!(has_call(&home, "English - Numeric A", 0) && has_call(&home, "English - Hybrid B", 7));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn many_installs_report_one_summary_line() {
+        let dir = crate::test_dir("codriver-multi-many");
+        let src = dir.join("Big");
+        for n in 0..6 {
+            plugin_source(&src.join(format!("s{n}/Plugins/Pacenote")));
+        }
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with("Co-driver Big: 6 packs (Big - s0, "), "{lines:?}");
+        assert_eq!(fs::read_dir(home.join(VOICES_DIR)).unwrap().count(), 6);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn one_broken_install_is_reported_and_the_others_import() {
+        let dir = crate::test_dir("codriver-multi-broken");
+        let src = dir.join("English");
+        two_installs(&src);
+        // No definitions: audio only.
+        write(&src.join("Broken/Plugins/Pacenote/sounds/v/a.ogg"), "OggS fake");
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(lines.iter().any(|l| l.starts_with("Failed co-driver English - Broken: ")), "{lines:?}");
+        assert!(has_call(&home, "English - Numeric A", 0) && has_call(&home, "English - Hybrid B", 7));
+        assert!(!home.join(VOICES_DIR).join("English - Broken").exists());
+        // Cancelled: nothing is reported as a partial failure.
+        let cancel = AtomicBool::new(true);
+        assert!(import(&dir.join("home2"), &src, &cancel).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_single_install_in_a_wrapper_keeps_its_name() {
+        let dir = crate::test_dir("codriver-single-nested");
+        let src = dir.join("English");
+        plugin_source(&src.join("Numeric A/Plugins/Pacenote"));
+        write(&src.join("Numeric A/Audio/Game/sounds/x.ogg"), "OggS fake");
+        let home = dir.join("home");
+        let lines = imported(&home, &src).unwrap();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(home.join(VOICES_DIR).join("English/PaceNote.ini").is_file());
         fs::remove_dir_all(&dir).unwrap();
     }
 

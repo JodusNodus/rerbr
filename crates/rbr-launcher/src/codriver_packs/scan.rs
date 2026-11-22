@@ -130,6 +130,67 @@ pub(super) fn find_voice_root(dir: &Path) -> Option<PathBuf> {
     voice_root_candidates(dir).into_iter().find(|c| is_plugin_dir(c))
 }
 
+/// How many folders below a source an install's plugin folder may sit.
+pub(super) const INSTALL_DEPTH: usize = 4;
+
+/// The install folder's name for a plugin folder at `parts` (below the source): the folder holding `Plugins/Pacenote`
+/// or the `Pacenote` folder, else the plugin folder itself. `None` when that is the source itself.
+pub(super) fn install_name<S: AsRef<str>>(parts: &[S]) -> Option<&str> {
+    let is = |s: &S, name: &str| s.as_ref().eq_ignore_ascii_case(name);
+    let n = parts.len();
+    let at = match parts.last() {
+        Some(last) if is(last, "Pacenote") => match n {
+            n if n >= 3 && is(&parts[n - 2], "Plugins") => n.checked_sub(3),
+            _ => n.checked_sub(2),
+        },
+        _ => n.checked_sub(1),
+    };
+    at.map(|i| parts[i].as_ref())
+}
+
+/// Whether the plugin's files (relative paths) hold voices or definitions, not only the settings.
+pub(super) fn has_voices(rels: impl IntoIterator<Item = Vec<String>>) -> bool {
+    rels.into_iter().any(|rel| {
+        let parts: Vec<&str> = rel.iter().map(String::as_str).collect();
+        parts.len() > 1 && keep_voice(&parts)
+    })
+}
+
+/// Every plugin install below `dir` (at any depth up to a bound, never inside a found plugin): the plugin's folder and
+/// the install's name, sorted. A folder counts when it looks like a plugin folder and has voices or definitions.
+pub(super) fn find_installs(dir: &Path) -> Vec<(PathBuf, Option<String>)> {
+    fn visit(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, Option<String>)>) {
+        if is_plugin_dir(dir)
+            && has_voices(walk(dir).into_iter().map(|(rel, _)| rel.split('/').map(str::to_owned).collect()))
+        {
+            let parts: Vec<String> = dir
+                .strip_prefix(root)
+                .map(|p| p.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect())
+                .unwrap_or_default();
+            out.push((dir.to_owned(), install_name(&parts).map(str::to_owned)));
+        } else if depth > 0 {
+            let mut subs = real_subdirs(dir);
+            subs.sort();
+            subs.iter().for_each(|sub| visit(root, sub, depth - 1, out));
+        }
+    }
+    let mut out = Vec::new();
+    visit(dir, dir, INSTALL_DEPTH, &mut out);
+    out
+}
+
+/// The folders directly in `dir`, symlinks left out.
+fn real_subdirs(dir: &Path) -> Vec<PathBuf> {
+    fs::read_dir(dir)
+        .map(|e| {
+            e.filter_map(Result::ok)
+                .filter(|e| e.file_type().is_ok_and(|k| k.is_dir() && !k.is_symlink()))
+                .map(|e| e.path())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The folders directly in `dir`.
 fn subdirs(dir: &Path) -> Vec<PathBuf> {
     fs::read_dir(dir)

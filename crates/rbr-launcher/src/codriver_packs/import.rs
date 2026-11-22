@@ -5,9 +5,10 @@ use std::sync::atomic::AtomicBool;
 
 use rbr_formats::pacenote::notes;
 
+use super::scan::INSTALL_DEPTH;
 use super::scan::{
-    cancelled, check_voice, copy_notes, copy_voice, find_voice_root, free_dir, is_note_file, is_plugin_dir, keep_voice,
-    note_files, pack_name, walk,
+    cancelled, check_voice, copy_notes, copy_voice, find_installs, find_voice_root, free_dir, has_voices, install_name,
+    is_note_file, is_plugin_dir, keep_voice, note_files, pack_name, walk,
 };
 use super::{Fail, NOTES_DIR, SEVEN_Z, VOICES_DIR, ZIP};
 use crate::archive::{safe_folder, safe_path};
@@ -36,6 +37,10 @@ fn import_folder(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<Str
             (Some(plugin), Some(notes)) => import_both(home, &name, cancel, &plugin, &notes),
         };
     }
+    let installs = find_installs(src);
+    if installs.len() > 1 {
+        return import_folder_installs(home, src, &installs, cancel);
+    }
     let voice = find_voice_root(src);
     // The notes are searched recursively, so wrappers stay on: the stage folders keep their names.
     let notes = note_files(src).len();
@@ -53,6 +58,75 @@ fn import_folder(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<Str
          (PaceNote.ini, sounds/, config/), a MyPacenotes folder, or a whole install to copy from",
         src.display()
     ))
+}
+
+/// The most packs of one source that still get a line each; more get one summary line.
+const LINES_PER_SOURCE: usize = 4;
+
+/// Imports every install of one source as its own pack `<source> - <install>`: `one` imports the install at an index
+/// under a pack name. A failing install is reported (`Failed co-driver …`) and the others still import; the source
+/// fails only when none did, and a cancel stops the whole job. `notes` imports what lies beside the installs.
+fn import_each(
+    src: &Path,
+    names: &[String],
+    cancel: &AtomicBool,
+    one: impl Fn(usize, &str) -> Result<Vec<String>, Fail>,
+    notes: impl FnOnce() -> Option<Result<Vec<String>, Fail>>,
+) -> Result<Vec<String>, Fail> {
+    let base = pack_name(src);
+    let (mut added, mut failed) = (Vec::new(), Vec::new());
+    for (i, name) in names.iter().enumerate() {
+        cancelled(cancel)?;
+        let pack = format!("{base} - {name}");
+        match one(i, &pack) {
+            Ok(lines) => added.extend(lines),
+            Err(e) => {
+                cancelled(cancel)?;
+                failed.push(format!("Failed co-driver {pack}: {e}"));
+            }
+        }
+    }
+    let noted = notes();
+    match noted {
+        Some(Ok(lines)) => added.extend(lines),
+        Some(Err(e)) => {
+            cancelled(cancel)?;
+            failed.push(format!("Failed stage notes {base}: {e}"));
+        }
+        None => {}
+    }
+    if added.is_empty() {
+        return Err(failed.join("\n"));
+    }
+    if added.len() > LINES_PER_SOURCE {
+        let packs: Vec<&str> = added.iter().filter_map(|l| l.strip_prefix("Co-driver ")?.split(':').next()).collect();
+        let summary = format!("Co-driver {base}: {} packs ({})", packs.len(), packs.join(", "));
+        let others = added.iter().filter(|l| !l.starts_with("Co-driver ")).cloned();
+        added = std::iter::once(summary).chain(others).collect();
+    }
+    added.extend(failed);
+    Ok(added)
+}
+
+/// Imports a folder holding several plugin installs: each one's plugin folder as its own pack.
+fn import_folder_installs(
+    home: &Path,
+    src: &Path,
+    installs: &[(PathBuf, Option<String>)],
+    cancel: &AtomicBool,
+) -> Result<Vec<String>, Fail> {
+    let fallback = pack_name(src);
+    let names: Vec<String> = installs.iter().map(|(_, n)| n.clone().unwrap_or_else(|| fallback.clone())).collect();
+    import_each(
+        src,
+        &names,
+        cancel,
+        |i, pack| import_voice_from(home, pack, cancel, |d, c| copy_voice(&installs[i].0, d, c)),
+        || {
+            (!note_files(src).is_empty())
+                .then(|| import_notes_from(home, &pack_name(src), src, cancel, |d, c| copy_notes(src, d, c)))
+        },
+    )
 }
 
 /// Imports a voice pack and a note pack as one atomic operation: both stage into temp folders and validate, and
@@ -242,19 +316,47 @@ fn archive_plugin_root(entries: &[Vec<String>]) -> Option<Vec<String>> {
     candidates.into_iter().find(|root| archive_plugin_at(entries, root))
 }
 
-/// The note files among the entries: every INI except the voice files below the plugin's `root` (the style and
+/// Every plugin install in the entries (raw path parts of the plugin's folder, sorted): at any depth up to a bound,
+/// never inside a found plugin, each with voices or definitions. Mirrors `find_installs`.
+fn archive_installs(entries: &[Vec<String>]) -> Vec<Vec<String>> {
+    let dirs: std::collections::BTreeSet<&[String]> =
+        entries.iter().flat_map(|p| (0..p.len().min(INSTALL_DEPTH + 1)).map(move |n| &p[..n])).collect();
+    let mut found: Vec<Vec<String>> = Vec::new();
+    for dir in dirs {
+        if found.iter().any(|f| dir.starts_with(f)) {
+            continue;
+        }
+        let rels = entries.iter().filter_map(|p| p.strip_prefix(dir)).map(<[String]>::to_vec);
+        if archive_plugin_at(entries, dir) && has_voices(rels) {
+            found.push(dir.to_vec());
+        }
+    }
+    found
+}
+
+/// The entries below the plugin `root` worth owning: (raw path, path in the pack).
+fn archive_voice(entries: &[Vec<String>], root: &[String]) -> Vec<(Vec<String>, Vec<String>)> {
+    entries
+        .iter()
+        .filter_map(|p| p.strip_prefix(root))
+        .filter(|p| !p.is_empty() && safe_path(&p.join("/")).is_some_and(|s| keep_voice(&s)))
+        .map(|p| ([root, p].concat(), p.to_vec()))
+        .collect()
+}
+
+/// The note files among the entries: every INI except the voice files below the plugins' `roots` (the style and
 /// range definitions are not stage notes; anything else unparseable is pruned after extraction). Paths stay whole,
 /// so a single-stage archive's stage folder keeps its name.
-fn archive_note_candidates(entries: &[Vec<String>], root: Option<&[String]>) -> Vec<Vec<String>> {
+fn archive_note_candidates(entries: &[Vec<String>], roots: &[Vec<String>]) -> Vec<Vec<String>> {
     entries
         .iter()
         .filter(|p| p.last().is_some_and(|n| n.to_ascii_lowercase().ends_with(".ini")))
-        .filter(|p| match root {
-            Some(root) if p.len() > root.len() && p[..root.len()] == root[..] => {
+        .filter(|p| match roots.iter().find(|root| p.len() > root.len() && p.starts_with(root)) {
+            Some(root) => {
                 let below: Vec<&str> = p[root.len()..].iter().map(String::as_str).collect();
                 !keep_voice(&below)
             }
-            _ => true,
+            None => true,
         })
         .cloned()
         .collect()
@@ -281,25 +383,19 @@ fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<St
     {
         return Err(format!("{}: no co-driver files in it, only executables", src.display()));
     }
+    let installs = archive_installs(&entries);
+    if installs.len() > 1 {
+        return import_archive_installs(home, src, &entries, &installs, cancel);
+    }
     let name = pack_name(src);
     let extract = |dest: &Path, wanted: &[(Vec<String>, Vec<String>)]| extract_from(src, dest, wanted, cancel);
-    let root = archive_plugin_root(&entries);
-    let voice: Vec<(Vec<String>, Vec<String>)> = root
-        .as_deref()
-        .map(|root| {
-            entries
-                .iter()
-                .filter_map(|p| p.strip_prefix(root))
-                .filter(|p| !p.is_empty() && safe_path(&p.join("/")).is_some_and(|s| keep_voice(&s)))
-                .map(|p| ([root, p].concat(), p.to_vec()))
-                .collect()
-        })
-        .unwrap_or_default();
+    let root: Vec<Vec<String>> = archive_plugin_root(&entries).into_iter().collect();
+    let voice = root.first().map(|root| archive_voice(&entries, root)).unwrap_or_default();
     let extract_voice = |d: &Path, _: &AtomicBool| {
         extract(d, &voice)?;
         Ok(walk(d).len())
     };
-    let notes = archive_note_candidates(&entries, root.as_deref());
+    let notes = archive_note_candidates(&entries, root.as_slice());
     match (voice.is_empty(), notes.is_empty()) {
         (true, true) => Err(format!(
             "{}: no co-driver voices, call styles or stage notes in it: is it a co-driver or note pack?",
@@ -324,6 +420,42 @@ fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<St
             Ok(vec![voice_line(&v.dest, &styles, &ranges), notes_line(&n.dest, count)])
         }
     }
+}
+
+/// Imports an archive holding several plugin installs: each one's plugin folder as its own pack.
+fn import_archive_installs(
+    home: &Path,
+    src: &Path,
+    entries: &[Vec<String>],
+    installs: &[Vec<String>],
+    cancel: &AtomicBool,
+) -> Result<Vec<String>, Fail> {
+    let fallback = pack_name(src);
+    let names: Vec<String> =
+        installs.iter().map(|r| install_name(r).map_or_else(|| fallback.clone(), str::to_owned)).collect();
+    let notes = archive_note_candidates(entries, installs);
+    import_each(
+        src,
+        &names,
+        cancel,
+        |i, pack| {
+            let voice = archive_voice(entries, &installs[i]);
+            import_voice_from(home, pack, cancel, |d, _| {
+                extract_from(src, d, &voice, cancel)?;
+                Ok(walk(d).len())
+            })
+        },
+        || {
+            // INIs that prune to no note file are unrelated, as in a single install: nothing to report.
+            let result = (!notes.is_empty()).then(|| {
+                import_notes_from(home, &pack_name(src), src, cancel, |d, _| {
+                    extract_notes(src, d, &notes, cancel)?;
+                    Ok(note_files(d).len())
+                })
+            });
+            result.filter(|r| r.is_ok() || cancel.load(std::sync::atomic::Ordering::Relaxed))
+        },
+    )
 }
 
 /// Extracts every candidate note INI whole (paths stay whole, so stage folders keep their names) and prunes what
