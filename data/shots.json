@@ -332,14 +332,14 @@
    "wetness": "wet",
    "precipitation": "none"
   },
-  "clock": "06:00",
   "at": 11448,
   "args": [
    "--fov",
    "60",
    "--flyby",
    "16,4,1.2"
-  ]
+  ],
+  "sun": "golden"
  },
  {
   "name": "day-pirttikulma-quattro-cockpit",
@@ -369,11 +369,11 @@
   "at": 10500
  },
  {
-  "name": "day-sa-calobra-alpine-flyby",
+  "name": "golden-sa-calobra-alpine-flyby",
   "stage": 1282190,
   "car": "Alpine A110 Rally RGT",
   "view": "flyby",
-  "sun": "best",
+  "sun": "golden",
   "settings": {
    "clouds": "dimpled"
   },

@@ -11,8 +11,8 @@ same picture. They serve as README pictures and as the reference for graphics ch
 change, then `--compare` the folders.
 
 Needs the release `rerbr`, `viewer` and `rbr-standalone` (`cargo build --release`), the game install (the launcher
-settings' install folder; `dev.env`'s folders, RBR_DATA among them, are left out: `DEV_FOLDERS`) with NGP and the RallySimFans stages and cars the shots name (and the four Assetto Corsa
-tracks of the `golden-akina`, `golden-nordschleife`, `day-sa-calobra` and `fog-crequy` shots, imported with
+settings' install folder; `dev.env`'s folders, RBR_DATA among them, are left out: `DEV_FOLDERS`) with NGP and the RallySimFans stages and cars the shots name (and the five Assetto Corsa
+tracks of the `golden-akina`, `golden-nordschleife`, `golden-sa-calobra`, `fog-crequy` and `day-joux-verte` shots, imported with
 `rbr-ac-tracks import` under their default folder names), and, for the
 same textures as the committed list was made with, the upscaler (`Upscaler/` in the files folder). The player's
 launcher-settings.ini is only read (its install folder and NGP paths); the rest comes from `SETTINGS` below, in a

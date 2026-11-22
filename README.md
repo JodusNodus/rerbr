@@ -36,7 +36,7 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 | Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Luceram Col Saint Roch (stage by Casgra11) | Ford Escort Mk II RS Group 4 (model by Ha3aP, fixed by WorkerBee), Semetin 2009 (stage by Vasek Sourek) |
 | ![An Alpine A110 Rally RGT on Akina Uphill at dusk, guardrails, road signs and the forest behind](docs/shots/golden-akina-alpine-chase.jpg) | ![A BMW M3 E30 Group A in the evening sun on the Nordschleife, pines and grandstands behind](docs/shots/golden-nordschleife-m3-flyby.jpg) |
 | Alpine A110 Rally RGT (model by DMRally74), Akina Uphill (Assetto Corsa track by Project Kaido) | BMW M3 E30 Group A (model by Atiwrc), Nordschleife (Assetto Corsa track) |
-| ![An Alpine A110 Rally RGT on a Sa Calobra hairpin above the sea, mountains behind](docs/shots/day-sa-calobra-alpine-flyby.jpg) | ![A Toyota GR Yaris Rally2 on Crequy in the morning fog, low sun through the trees](docs/shots/fog-crequy-yaris-chase.jpg) |
+| ![An Alpine A110 Rally RGT on a Sa Calobra hairpin in the low evening sun, long shadows over the rocks and the mountains hazy behind](docs/shots/golden-sa-calobra-alpine-flyby.jpg) | ![A Toyota GR Yaris Rally2 on Crequy in the morning fog, low sun through the trees](docs/shots/fog-crequy-yaris-chase.jpg) |
 | Alpine A110 Rally RGT (model by DMRally74), Sa Calobra (Assetto Corsa track by SuperStage) | Toyota GR Yaris Rally2 (model by Ha3aP), Crequy (Assetto Corsa track by JCRR) |
 
 The whole set of 37: [docs/shots](docs/shots/README.md).
