@@ -132,16 +132,19 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   is ignored and dropped on save.
 - The co-driver is set up on the Co-drivers page, not per drive (user decision 2026-10-29); the drive pages don't show
   or link it (user, 2026-11-18).
-- The player picks the co-driver, a person in a language, then their calls when they have several (user decision
-  2026-11-22; `codriver_packs::{speakers, catalog}`): each call style is a V3 install of its own (a pack, or RSF's
-  plugin), so a person's styles gather across the sources. `catalog` (Luppis's V3 list, 18 packs) names a folder's
-  person and language, and Janne Laahanen's codes their style (`EnNu A NF`: Numeric A, number first); others are named
-  by how their install's texts say the corners (`HP, 1, Square, 2, 3, 4, 5, 6 ("5 Left")`: benofficial2's A and B share
-  one folder), else by folder. A folder is checked for the preview's 8 corners in its install's style: missing some
-  lists under Incomplete, none is left out (RSF's `english`, `german`, `JanneLaahanen`). Picking another person keeps
-  the calls when they have them. Get more lists the 18 packs with their styles and pages, ✔ when added. The speakers
-  are scanned with the packs (load, import, remove: 0.47 s with Janne's 42 English installs, release build); switching
-  the calls re-reads only the chosen pack (`reselect_codriver`, 30 ms).
+- The player picks the co-driver as they think of one: Co-driver (off, the original, or a language), Calls (how the
+  corners are said), then Voice (who says them); Said as (`"6 Left"` or `"Left 6"`) and Grades (every grade or
+  Simple) only when the calls come both ways (user decision 2026-11-22, over picking the person first;
+  `codriver_packs::{choices, catalog}`). Each call style is a V3 install of its own (a pack, or RSF's plugin): its
+  texts name the preview's 8 corners tightest to fastest (`choices::Ladder`, `HP` read as Hairpin), grouped as
+  Numbers (one word at most among the inner six, as Square or 90), Numbers and words, or Words; numbers in words
+  count (French `un, deux`). `catalog` (Luppis's V3 list, 18 packs) names a folder's person and language, and lists
+  each pack's calls as read from its downloads (13 packs; Czech, Paolo Lombardi, Hrenovalke and SpaCry unread): what
+  no source has is listed in each dropdown as "Not added yet", opening Get more with its packs first. A folder is
+  checked for the corners in its install's style: missing some lists as incomplete, none is left out (RSF's
+  `english`, `german`, `JanneLaahanen`). A pick keeps as much of the rest as the new choice has (`choices::closest`).
+  The choices are scanned with the packs (load, import, remove: 0.47 s with Janne's 42 English installs, release
+  build); switching re-reads only the chosen pack (`reselect_codriver`, 30 ms).
 - The stage notes are automatic (user decision 2026-11-16, `codriver_packs::pick_notes`): with a custom voice, over
   every owned pack and the RSF MyPacenotes, the set covering the most stages (ties: owned pack, then name), in it the
   highest `_<n>` version,
