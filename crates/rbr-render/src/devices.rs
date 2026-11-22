@@ -340,11 +340,7 @@ pub fn values(state: &[u8], axes: u32, buttons: u32) -> impl Iterator<Item = (Ta
 
 /// The other axis of the stick `axis` is on, of a joystick's sticks (`[x, y]` axis pairs).
 fn partner(sticks: &[[u32; 2]], axis: u32) -> Option<u32> {
-    sticks.iter().find_map(|&[x, y]| match axis {
-        _ if axis == x => Some(y),
-        _ if axis == y => Some(x),
-        _ => None,
-    })
+    sticks.iter().find_map(|&[x, y]| (axis == x).then_some(y).or((axis == y).then_some(x)))
 }
 
 /// A gamepad's sticks in its SDL mapping (`leftx:a0,lefty:a1,rightx:a2,righty:a3`): each stick's joystick axes, `[x,
