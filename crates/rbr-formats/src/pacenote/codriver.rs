@@ -10,7 +10,9 @@
 //!   about 10 m: `INTO`, `ONTO`, none) and `standard`, `column` for the plugin's editor. The style decides how a turn
 //!   is counted: the same id is "six left" in one and "one left" in another. A call without `id=` is one of the
 //!   plugin's own ([`super::notes::NAMED`]) or a 1.02 modifier;
-//! - a range set, `config/ranges/<set>.ini`, the same tree with `[RANGE::<metres>]` calls.
+//! - a range set, `config/ranges/<set>.ini`, the same tree with `[RANGE::<metres>]` calls;
+//! - the editor's texts, `language/<language>/**/strings.ini` `[STRINGS]`, by call name (`EASYLEFT=6 Left`): how the
+//!   installed style says each call (V3 packs install one style each, its corners in `packages/corners/strings.ini`).
 //!
 //! A call without a sound file plays 1.02's sample of its name (`CoDriver.ini`, `Numbers.ini`). The definition files
 //! carry `;` comments after values and section names.
@@ -54,6 +56,8 @@ pub struct Settings {
     pub voice: Option<String>,
     /// `muteReplayPacenotes`.
     pub mute_replay: bool,
+    /// The editor's language, `language` (a folder under `language/`).
+    pub language: Option<String>,
 }
 
 /// The plugin's folder under the install, when it has one.
@@ -68,7 +72,47 @@ pub fn settings(dir: &Path) -> Settings {
     Settings {
         voice: get("sounds").filter(|v| !v.is_empty()),
         mute_replay: get("muteReplayPacenotes").is_some_and(|v| v == "1"),
+        language: get("language").filter(|v| !v.is_empty()),
     }
+}
+
+/// The plugin's call texts by call name in upper case (`EASYLEFT` = `6 Left`): every `strings.ini` under its language
+/// folder (`PaceNote.ini`'s `language`, else the only folder under `language/`), the first text of a name kept.
+/// Empty without one.
+pub fn strings(dir: &Path) -> HashMap<String, String> {
+    fn files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).collect();
+        paths.sort();
+        for path in paths {
+            if path.is_dir() && depth < 6 {
+                files(&path, depth + 1, out);
+            } else if path.file_name().is_some_and(|n| n.eq_ignore_ascii_case("strings.ini")) {
+                out.push(path);
+            }
+        }
+    }
+    let languages = dir.join("language");
+    let folder = settings(dir).language.and_then(|l| stage_files::in_dir(&languages, &l)).or_else(|| {
+        let mut dirs = std::fs::read_dir(&languages).ok()?.filter_map(Result::ok).filter(|e| e.path().is_dir());
+        match (dirs.next(), dirs.next()) {
+            (Some(only), None) => Some(only.path()),
+            _ => None,
+        }
+    });
+    let mut paths = Vec::new();
+    if let Some(folder) = folder {
+        files(&folder, 0, &mut paths);
+    }
+    let mut out = HashMap::new();
+    for section in paths.iter().filter_map(|p| read_ini(p).ok()).flatten() {
+        if section.name.trim().eq_ignore_ascii_case("STRINGS") {
+            for (key, value) in &section.entries {
+                out.entry(key.trim().to_ascii_uppercase()).or_insert_with(|| value.trim().to_owned());
+            }
+        }
+    }
+    out
 }
 
 /// The voices under `sounds/`: the folders holding `.ogg` files, as paths from `sounds/` with `/`, sorted.
@@ -263,6 +307,30 @@ mod tests {
         assert_eq!(calls.ranges.keys().copied().collect::<Vec<_>>(), [30, 50]);
         assert_eq!(calls.ranges[&50].sounds, ["50_1.ogg"]);
         assert_eq!(styles(&dir), ["Rbr.ini"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn strings_come_from_the_language_folder() {
+        let dir = std::env::temp_dir().join(format!("rbr-codriver-strings-{}", std::process::id()));
+        write(
+            &dir,
+            "language/english/pacenotes/packages/corners/strings.ini",
+            "\u{feff};\n[STRINGS]\nEASYLEFT=6 Left ; six\n",
+        );
+        write(&dir, "language/english/strings.ini", "[STRINGS]\nLEFT=Left\nEASYLEFT=other\n");
+        // The only language folder serves without `language=`.
+        let strings = strings(&dir);
+        assert_eq!(strings["LEFT"], "Left");
+        assert_eq!(
+            strings["EASYLEFT"], "6 Left",
+            "the deeper file sorts first: language/english/pacenotes before strings.ini"
+        );
+        // `language=` picks among several.
+        write(&dir, "language/french/strings.ini", "[STRINGS]\nLEFT=Gauche\n");
+        assert!(super::strings(&dir).is_empty());
+        write(&dir, "PaceNote.ini", "[SETTINGS]\nlanguage=French\n");
+        assert_eq!(super::strings(&dir)["LEFT"], "Gauche");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

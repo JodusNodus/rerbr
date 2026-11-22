@@ -213,6 +213,7 @@ impl Form {
             note_sources: Vec::new(),
             rsf_plugin: false,
             rsf_voices: Vec::new(),
+            codriver_speakers: Vec::new(),
             codriver_styles_differ: false,
             cached_notes_map: u32::MAX,
             notes_summary: Default::default(),

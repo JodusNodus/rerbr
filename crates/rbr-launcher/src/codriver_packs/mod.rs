@@ -36,6 +36,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use rbr_formats::pacenote::codriver;
 use rbr_formats::pacenote::notes;
 
+use crate::command::CodriverMods;
 use crate::Form;
 
 /// The folders in the player's folder with the owned packs.
@@ -50,8 +51,10 @@ type Fail = String;
 /// What the notes summary follows besides the map and the scanned packs: the co-driver switch and the voice.
 pub type NotesInputs = (bool, Option<String>);
 
+pub mod catalog;
 mod import;
 mod scan;
+mod speakers;
 
 pub use import::{cli, import, remove_notes, remove_voice};
 #[cfg(test)]
@@ -65,6 +68,12 @@ pub use scan::{
     call_sets_differ, note_packs, pick_notes, voice_packs, NotePack, NoteSource, NotesPick, NotesSummary, VoicePack,
 };
 use scan::{check_voice, is_plugin_dir};
+pub use speakers::{speakers, Source, Speaker, Style};
+
+/// A voice source's name: an owned pack's, or the RallySimFans install.
+pub fn source_name(pack: Option<&str>) -> &str {
+    pack.unwrap_or("RallySimFans install")
+}
 impl Form {
     /// Re-reads the owned packs and points the co-driver at the chosen ones: the local voice pack
     /// (`codriver_pack`), else the RSF install's plugin; a missing local pack keeps the last lists and says so.
@@ -76,8 +85,24 @@ impl Form {
         self.owned_notes = note_packs(&home);
         self.codriver_mods = self.active_mods();
         let root = self.game_root();
-        let mods = crate::command::CodriverMods::scan(&root);
+        let mods = CodriverMods::scan(&root);
         self.rsf_plugin = mods.is_some();
+        // The speakers of every source, the RSF install's and the ready owned packs', each in the style it plays.
+        let owned = self.owned_voices.iter().filter(|p| p.problem.is_none());
+        let plugins: Vec<(Option<&str>, CodriverMods)> = (mods.iter().map(|m| (None, m.clone())))
+            .chain(owned.filter_map(|p| Some((Some(p.name.as_str()), CodriverMods::from_dir(p.dir.clone())?))))
+            .collect();
+        let plays: Vec<(String, String)> = plugins
+            .iter()
+            .map(|(_, m)| {
+                let style = m.styles.iter().find(|s| s.eq_ignore_ascii_case(&self.codriver_style)).or(m.styles.first());
+                (style.cloned().unwrap_or_default(), m.default_ranges())
+            })
+            .collect();
+        let sources: Vec<Source> = (plugins.iter().zip(&plays))
+            .map(|((pack, m), (style, ranges))| Source { pack: *pack, dir: &m.dir, voices: &m.voices, style, ranges })
+            .collect();
+        self.codriver_speakers = speakers(&sources);
         self.rsf_voices = mods.map(|mods| mods.voices).unwrap_or_default();
         // The owned packs first: they win a tie with the RSF install's MyPacenotes.
         self.note_sources = self.owned_notes.iter().map(|p| NoteSource::read(&p.dir, Some(&p.name))).collect();

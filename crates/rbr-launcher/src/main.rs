@@ -545,6 +545,9 @@ struct Form {
     /// The game folder's plugin voices, re-read by `rescan_codrivers`: the Co-driver dropdown lists them beside
     /// the owned packs' (no directory reads while drawing).
     rsf_voices: Vec<String>,
+    /// Every source's voice folders as the people who speak them (`codriver_packs::speakers`), re-read by
+    /// `rescan_codrivers`: the Co-driver and Calls rows list them.
+    codriver_speakers: Vec<codriver_packs::Speaker>,
     /// Whether the active plugin's listed styles actually say different things, re-read by `rescan_codrivers`:
     /// with one distinct result the row hides (the voice decides the words).
     codriver_styles_differ: bool,
