@@ -209,6 +209,7 @@ impl Form {
         }
         if close || import || result.closed() {
             self.get_more = None;
+            self.codriver_focus.clear();
             if what == GetMore::Cars {
                 self.close_car_list();
             }

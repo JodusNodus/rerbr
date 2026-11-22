@@ -545,9 +545,11 @@ struct Form {
     /// The game folder's plugin voices, re-read by `rescan_codrivers`: the Co-driver dropdown lists them beside
     /// the owned packs' (no directory reads while drawing).
     rsf_voices: Vec<String>,
-    /// Every source's voice folders as the people who speak them (`codriver_packs::speakers`), re-read by
-    /// `rescan_codrivers`: the Co-driver and Calls rows list them.
-    codriver_speakers: Vec<codriver_packs::Speaker>,
+    /// Every source's voice folders by language, calls and person (`codriver_packs::choices`), re-read by
+    /// `rescan_codrivers`: the Co-driver, Calls and Voice rows list them.
+    codriver_choices: Vec<codriver_packs::Choice>,
+    /// The catalogue's packs Get more lists first, by title: the ones a "Not added yet" entry named.
+    codriver_focus: Vec<&'static str>,
     /// Whether the active plugin's listed styles actually say different things, re-read by `rescan_codrivers`:
     /// with one distinct result the row hides (the voice decides the words).
     codriver_styles_differ: bool,

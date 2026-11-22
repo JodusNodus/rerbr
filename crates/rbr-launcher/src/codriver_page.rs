@@ -1,19 +1,22 @@
-//! The Library > Co-drivers page: the co-driver (a person in a language, `codriver_packs::speakers`) with a preview,
-//! their calls when they have several (each a pack's install), what they call on the Drive page's stage (the notes
-//! are picked by themselves, `codriver_packs::pick_notes`), the corner numbers of an older plugin pack, the call
-//! timing, and the owned packs (`codriver_packs`); and Get more's list of the community's voices
-//! (`codriver_packs::catalog`).
+//! The Library > Co-drivers page: the co-driver picked as a player thinks of one (`codriver_packs::choices`): a
+//! language, how they call the corners, then who says them, with a preview; what they call on the Drive page's
+//! stage (the notes are picked by themselves, `codriver_packs::pick_notes`), the corner numbers of an older plugin
+//! pack, the call timing, and the owned packs (`codriver_packs`); and Get more's list of the community's voices
+//! (`codriver_packs::catalog`). What the catalogue has and no source does is listed as not added yet, opening Get
+//! more with its packs first.
 
 use egui::{ComboBox, DragValue, RichText};
 use rbr_sound::preview::{self as codriver_preview, Preview, LADDER};
 
-use crate::codriver_packs::{catalog, source_name, Speaker, Style};
+use crate::codriver_packs::catalog::{self, Pack};
+use crate::codriver_packs::choices::{self, Kind, Ladder};
+use crate::codriver_packs::{source_name, Choice};
 use crate::command::ORIGINAL_VOICE;
 use crate::get_page::GetMore;
 use crate::kit;
 use crate::pages::combo;
 use crate::settings_page::{note, row_tip};
-use crate::theme::{medium, mono, GOOD, TEXT, TEXT_2, TEXT_3, WARN};
+use crate::theme::{medium, mono, GOOD, LINK, TEXT, TEXT_2, TEXT_3, WARN};
 use crate::Form;
 
 /// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
@@ -78,11 +81,50 @@ pub fn style_label(file: &str) -> String {
     }
 }
 
-/// A co-driver as the dropdown names them: their name and language, or an uncatalogued folder with its source.
-fn speaker_text(s: &Speaker) -> String {
-    match s.language {
-        Some(_) => s.label(),
-        None => format!("{} ({})", s.name, source_name(s.styles[0].pack.as_deref())),
+/// A dropdown's heading.
+fn heading(ui: &mut egui::Ui, text: &str) {
+    ui.label(RichText::new(text).size(11.5).color(TEXT_3));
+}
+
+/// A dropdown entry for something a pack has that is not added: quiet, saying where it leads.
+fn to_get(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    ui.selectable_label(false, RichText::new(format!("{text} · get ↗")).color(TEXT_2))
+        .on_hover_text("Not added yet: opens Get more with its pack first")
+}
+
+/// The people of `packs`, three at most.
+fn people(packs: &[&Pack]) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for person in packs.iter().flat_map(|p| p.voices.iter().map(|v| v.person)) {
+        if !names.contains(&person) {
+            names.push(person);
+        }
+    }
+    match names.len() {
+        0..=3 => names.join(", "),
+        n => format!("{} and {} more", names[..2].join(", "), n - 2),
+    }
+}
+
+/// A choice's calls as the Calls row names them: their kind and grades, or that the pack does not name them.
+fn calls_text(c: &Choice) -> String {
+    match &c.ladder {
+        Some(ladder) => format!("{}: {}", ladder.kind().name(), ladder.text()),
+        None => "Not named by the pack".into(),
+    }
+}
+
+/// What a row picked: off, the original voice, a source's voice folder, or packs to get.
+enum Pick {
+    Off,
+    Original,
+    Voice(Option<String>, String),
+    Get(Vec<&'static str>),
+}
+
+impl Pick {
+    fn of(c: &Choice) -> Pick {
+        Pick::Voice(c.pack.clone(), c.folder.clone())
     }
 }
 
@@ -149,7 +191,7 @@ impl Form {
                 let mut warn = None;
                 kit::panel(ui, |rows| {
                     warn = self.codriver_voice_row(rows);
-                    self.codriver_calls_row(rows);
+                    self.codriver_calls_rows(rows);
                     let custom = matches!(self.voice_choice(), VoiceChoice::Voice { .. });
                     if let Some(mods) = self.codriver_mods.as_ref().filter(|_| custom) {
                         if self.codriver_styles_differ {
@@ -199,15 +241,23 @@ impl Form {
         });
     }
 
-    /// The Co-driver row: who calls the pace notes, with a preview of the corner ladder and one distance call. An
-    /// unset voice plays its source's default, so an old settings file still names the voice heard. A chosen source
-    /// that is gone or broke: why the original voice drives instead.
+    /// The Co-driver row: off, the original 1.02 co-driver, or one in a language (the catalogue's other languages
+    /// to get), with a preview of the corner ladder and one distance call. An unset voice plays its source's
+    /// default, so an old settings file still names the voice heard. A chosen source that is gone or broke: why the
+    /// original voice drives instead.
     fn codriver_voice_row(&mut self, rows: &mut kit::Rows) -> Option<String> {
-        let tip = "Who calls the pace notes: off (no pace notes at all), the original 1.02 co-driver, or a \
-                     co-driver from the RallySimFans install's Pacenote plugin (only read) or from a pack you added. \
-                     Calls then picks how they say the corners, when they come in several styles. Whether a pack \
-                     covers every note of a stage varies by pack.";
+        let tip = "Who calls the pace notes: off (no pace notes at all), the original 1.02 co-driver, or a co-driver \
+                   in a language, from the RallySimFans install's Pacenote plugin (only read) or a pack you added. \
+                   Calls and Voice then pick how the corners are said and who says them. A language not added yet \
+                   opens Get more.";
         let current = self.voice_choice();
+        let now = self.current_choice().cloned();
+        // Off or the original voice: a language picks as close to the saved voice as it has.
+        let saved = now.clone().or_else(|| {
+            let voice = self.codriver_voice.as_deref()?;
+            self.codriver_choices.iter().find(|c| c.is(self.codriver_pack.as_deref(), voice)).cloned()
+        });
+        let mut picked = None;
         row_tip(rows, "Co-driver", tip, |ui| {
             // The preview beside the dropdown: the corner ladder and one distance call with this voice. Built
             // on a thread, so the UI never stalls.
@@ -215,52 +265,17 @@ impl Form {
             let preview = ui
                 .add_enabled(idle && !matches!(current, VoiceChoice::Off), egui::Button::new("▶ Preview"))
                 .on_hover_text(
-                    "Hear the corners, tightest to fastest, and one distance call with this voice and corner \
-                     numbers",
+                    "Hear the corners, tightest to fastest, and one distance call with this voice and calls",
                 );
             if preview.clicked() {
                 self.preview_codriver();
             }
-            let mut picked = current.clone();
-            let speaker = self.current_speaker();
-            let text = speaker.map_or_else(|| current.label(), speaker_text);
-            // A picked co-driver keeps the current calls when they have them.
-            let calls = speaker.zip(current.voice()).and_then(|(s, (pack, folder))| s.style(pack, folder));
-            let calls = calls.map(|s| s.label.clone());
-            ComboBox::from_id_salt("codriver voice").selected_text(text).show_ui(ui, |ui| {
-                ui.selectable_value(&mut picked, VoiceChoice::Off, "Off");
-                ui.selectable_value(&mut picked, VoiceChoice::Original, "Original (1.02)");
-                let mut item = |ui: &mut egui::Ui, s: &Speaker, text: String| {
-                    let on = speaker.is_some_and(|c| std::ptr::eq(c, s));
-                    if ui.selectable_label(on, text).clicked() && !on {
-                        let style = s.style_for(calls.as_deref());
-                        picked = VoiceChoice::Voice { pack: style.pack.clone(), voice: style.folder.clone() };
-                    }
-                };
-                for s in self.codriver_speakers.iter().filter(|s| s.complete()) {
-                    item(ui, s, speaker_text(s));
-                }
-                if self.codriver_speakers.iter().any(|s| !s.complete()) {
-                    ui.label(RichText::new("Incomplete: the original voice says the rest").size(11.5).color(TEXT_3));
-                    for s in self.codriver_speakers.iter().filter(|s| !s.complete()) {
-                        let best = s.styles.iter().map(|t| t.corners).max().unwrap_or(0);
-                        item(ui, s, format!("{} · {best} of {} corners", speaker_text(s), LADDER.len()));
-                    }
-                }
-            });
-            match picked {
-                _ if picked == current => {}
-                // Off keeps the pack and voice, so turning it back on restores them.
-                VoiceChoice::Off => self.codriver = false,
-                VoiceChoice::Original => {
-                    (self.codriver, self.codriver_voice) = (true, Some(ORIGINAL_VOICE.to_owned()));
-                }
-                // A changed pack rescans and normalizes in `pages.rs`.
-                VoiceChoice::Voice { pack, voice } => {
-                    (self.codriver, self.codriver_pack, self.codriver_voice) = (true, pack, Some(voice));
-                }
-            }
+            let text = now.as_ref().map_or_else(|| current.label(), |c| c.language.clone());
+            ComboBox::from_id_salt("codriver voice")
+                .selected_text(text)
+                .show_ui(ui, |ui| picked = self.language_menu(ui, &current, saved.as_ref()));
         });
+        self.apply_pick(picked);
 
         let VoiceChoice::Voice { pack, .. } = self.voice_choice() else { return None };
         match pack.as_deref() {
@@ -273,36 +288,208 @@ impl Form {
         }
     }
 
-    /// The speaker of the chosen voice folder, if it is listed.
-    fn current_speaker(&self) -> Option<&Speaker> {
-        let choice = self.voice_choice();
-        let (pack, folder) = choice.voice()?;
-        self.codriver_speakers.iter().find(|s| s.style(pack, folder).is_some())
+    /// The Co-driver dropdown: off, the original voice, the languages with a voice, then the catalogue's others.
+    /// `saved` is the voice a language picks closest to (the current one, else the saved one).
+    fn language_menu(&self, ui: &mut egui::Ui, current: &VoiceChoice, saved: Option<&Choice>) -> Option<Pick> {
+        let all = &self.codriver_choices;
+        let mut picked = None;
+        if ui.selectable_label(*current == VoiceChoice::Off, "Off").clicked() && *current != VoiceChoice::Off {
+            picked = Some(Pick::Off);
+        }
+        let original = *current == VoiceChoice::Original;
+        if ui.selectable_label(original, "Original (1.02)").clicked() && !original {
+            picked = Some(Pick::Original);
+        }
+        let custom = matches!(current, VoiceChoice::Voice { .. });
+        for language in choices::languages(all) {
+            let on = custom && saved.is_some_and(|c| c.language == language);
+            if ui.selectable_label(on, language).clicked() && !on {
+                picked = choices::closest(all, saved, |c| c.language == language).map(Pick::of);
+            }
+        }
+        let more = choices::languages_to_get(all);
+        if !more.is_empty() {
+            heading(ui, "Not added yet");
+        }
+        for language in more {
+            if to_get(ui, language).clicked() {
+                picked = Some(Pick::Get(choices::packs_in(language).iter().map(|p| p.title).collect()));
+            }
+        }
+        picked
     }
 
-    /// The Calls row, when the chosen co-driver has more than one: how they call the corners, each its own install
-    /// (a pack, or the RallySimFans install) and voice folder.
-    fn codriver_calls_row(&mut self, rows: &mut kit::Rows) {
-        let Some(speaker) = self.current_speaker().filter(|s| s.styles.len() > 1).cloned() else { return };
-        let mut chosen = (self.codriver_pack.clone(), self.codriver_voice.clone().unwrap_or_default());
-        let ladder = speaker.style(chosen.0.as_deref(), &chosen.1).and_then(|s| s.ladder.clone());
-        let tip = format!(
-            "How {} calls the corners: each a download or a version of its own. Preview to hear it{}",
-            speaker.name,
-            ladder.map_or_else(String::new, |l| format!("\n\nTightest to fastest: {l}"))
-        );
-        row_tip(rows, "Calls", &tip, |ui| {
-            let styles: Vec<(Option<String>, String)> =
-                speaker.styles.iter().map(|s| (s.pack.clone(), s.folder.clone())).collect();
-            let text = |(pack, folder): (Option<String>, String)| {
-                speaker.style(pack.as_deref(), &folder).map_or(folder, Style::text)
-            };
-            combo(ui, "codriver calls", None, &mut chosen, &styles, text).on_hover_text(&tip);
-        });
-        if (chosen.0.as_ref(), Some(&chosen.1)) != (self.codriver_pack.as_ref(), self.codriver_voice.as_ref()) {
-            // A changed pack rescans and normalizes in `pages.rs`.
-            (self.codriver_pack, self.codriver_voice) = (chosen.0, Some(chosen.1));
+    /// Applies a row's pick: a changed pack reselects and normalizes in `pages.rs`; packs to get open Get more with
+    /// them first. Off keeps the pack and voice, so turning it back on restores them.
+    fn apply_pick(&mut self, picked: Option<Pick>) {
+        match picked {
+            None => {}
+            Some(Pick::Off) => self.codriver = false,
+            Some(Pick::Original) => (self.codriver, self.codriver_voice) = (true, Some(ORIGINAL_VOICE.to_owned())),
+            Some(Pick::Voice(pack, folder)) => {
+                (self.codriver, self.codriver_pack, self.codriver_voice) = (true, pack, Some(folder));
+            }
+            Some(Pick::Get(packs)) => {
+                self.codriver_focus = packs;
+                self.open_get_more(GetMore::Codrivers);
+            }
         }
+    }
+
+    /// The choice of the chosen voice folder, if it is listed.
+    fn current_choice(&self) -> Option<&Choice> {
+        let choice = self.voice_choice();
+        let (pack, folder) = choice.voice()?;
+        self.codriver_choices.iter().find(|c| c.is(pack, folder))
+    }
+
+    /// The rows under a language's co-driver: its Calls (with the catalogue's to get), their order and grades when
+    /// they come in several, and the Voice (with the catalogue's to get). Each pick keeps as much of the rest as
+    /// the new choice has.
+    fn codriver_calls_rows(&mut self, rows: &mut kit::Rows) {
+        let Some(now) = self.current_choice().cloned() else { return };
+        let all = &self.codriver_choices;
+        let mut picked = None;
+        let calls_tip = "How the corners are said, tightest to fastest, as the pack writes them: numbers, words, or \
+                         numbers and words for the tight ones. Not added yet: a pack on Luppis's list says them.";
+        row_tip(rows, "Calls", calls_tip, |ui| {
+            ComboBox::from_id_salt("codriver calls")
+                .selected_text(calls_text(&now))
+                .show_ui(ui, |ui| picked = self.calls_menu(ui, &now))
+                .response
+                .on_hover_text(calls_tip);
+        });
+        // The same grades in another order, or only the plain ones: their own rows, when there is a choice.
+        let same: Vec<&Choice> = all.iter().filter(|c| c.language == now.language && c.same_grades(&now)).collect();
+        let mut orders: Vec<(Option<bool>, String)> = Vec::new();
+        for c in &same {
+            if !orders.iter().any(|(first, _)| *first == c.direction_first()) {
+                let said = c.ladder.as_ref().map_or_else(String::new, |l| format!("\"{}\"", l.said));
+                orders.push((c.direction_first(), said));
+            }
+        }
+        orders.sort();
+        if orders.len() > 1 {
+            let tip = "Whether the number or the direction comes first";
+            row_tip(rows, "Said as", tip, |ui| {
+                let options: Vec<(Option<bool>, &str)> = orders.iter().map(|(o, s)| (*o, s.as_str())).collect();
+                let mut order = now.direction_first();
+                if kit::segmented(ui, "codriver order", &mut order, &options).on_hover_text(tip).changed() {
+                    let keep =
+                        |c: &Choice| c.language == now.language && c.same_grades(&now) && c.direction_first() == order;
+                    picked = choices::closest(all, Some(&now), keep).map(Pick::of);
+                }
+            });
+        }
+        let ordered = |c: &&&Choice| c.direction_first() == now.direction_first();
+        if same.iter().filter(ordered).any(|c| c.simple) && same.iter().filter(ordered).any(|c| !c.simple) {
+            let tip = "Simple calls only the plain grades, without the ones in between (6+, 5+ …)";
+            row_tip(rows, "Grades", tip, |ui| {
+                let mut simple = now.simple;
+                let options = [(false, "Every grade"), (true, "Simple")];
+                if kit::segmented(ui, "codriver simple", &mut simple, &options).on_hover_text(tip).changed() {
+                    let keep = |c: &Choice| {
+                        c.language == now.language
+                            && c.same_grades(&now)
+                            && c.direction_first() == now.direction_first()
+                            && c.simple == simple
+                    };
+                    picked = choices::closest(all, Some(&now), keep).map(Pick::of);
+                }
+            });
+        }
+        let voice_tip = "Who says the calls: the voices with these calls. Not added yet: a pack on Luppis's list has \
+                         them in this voice.";
+        row_tip(rows, "Voice", voice_tip, |ui| {
+            ComboBox::from_id_salt("codriver person")
+                .selected_text(self.voice_name(&now))
+                .show_ui(ui, |ui| picked = self.voice_menu(ui, &now))
+                .response
+                .on_hover_text(voice_tip);
+        });
+        self.apply_pick(picked);
+    }
+
+    /// The Calls dropdown: the calls said in `now`'s language by kind, most people first, each kind's not added
+    /// after them.
+    fn calls_menu(&self, ui: &mut egui::Ui, now: &Choice) -> Option<Pick> {
+        let all = &self.codriver_choices;
+        let here = choices::calls_in(all, &now.language);
+        let more = choices::calls_to_get(all, &now.language);
+        let mut picked = None;
+        for kind in Kind::ALL.map(Some).into_iter().chain([None]) {
+            let mine: Vec<&&Choice> = here.iter().filter(|c| c.kind() == kind).collect();
+            let get: Vec<&(Ladder, Vec<&Pack>)> = more.iter().filter(|(l, _)| Some(l.kind()) == kind).collect();
+            if mine.is_empty() && get.is_empty() {
+                continue;
+            }
+            heading(ui, kind.map_or("Not named by their packs", Kind::heading));
+            for c in mine {
+                let same: Vec<&Choice> =
+                    all.iter().filter(|o| o.language == now.language && o.same_grades(c)).collect();
+                let mut text = c.ladder.as_ref().map_or_else(|| "Not named by the pack".into(), Ladder::text);
+                if !same.iter().any(|o| o.complete()) {
+                    let best = same.iter().map(|o| o.corners).max().unwrap_or(0);
+                    text = format!("{text} · {best} of {} corners", LADDER.len());
+                }
+                let on = c.same_grades(now);
+                if ui.selectable_label(on, text).clicked() && !on {
+                    let keep = |o: &Choice| o.language == now.language && o.same_grades(c);
+                    picked = choices::closest(all, Some(now), keep).map(Pick::of);
+                }
+            }
+            for (ladder, packs) in get {
+                if to_get(ui, &format!("{} · {}", ladder.text(), people(packs))).clicked() {
+                    picked = Some(Pick::Get(packs.iter().map(|p| p.title).collect()));
+                }
+            }
+        }
+        picked
+    }
+
+    /// The voices calling as `now` does, in its language.
+    fn voices_like(&self, now: &Choice) -> Vec<&Choice> {
+        self.codriver_choices.iter().filter(|c| c.language == now.language && c.calls_as(now)).collect()
+    }
+
+    /// A voice as the Voice row names it: the person, with the source when the person is there twice (the same
+    /// download added twice, or a version of it).
+    fn voice_name(&self, c: &Choice) -> String {
+        match self.voices_like(c).iter().filter(|o| o.person == c.person).count() {
+            0 | 1 => c.person.clone(),
+            _ => format!("{} ({})", c.person, source_name(c.pack.as_deref())),
+        }
+    }
+
+    /// The Voice dropdown: the complete voices calling as `now`, the incomplete ones, then the catalogue's not added.
+    fn voice_menu(&self, ui: &mut egui::Ui, now: &Choice) -> Option<Pick> {
+        let voices = self.voices_like(now);
+        let mut picked = None;
+        let mut item = |ui: &mut egui::Ui, c: &Choice, text: String| {
+            let on = c.is(now.pack.as_deref(), &now.folder);
+            if ui.selectable_label(on, text).clicked() && !on {
+                picked = Some(Pick::of(c));
+            }
+        };
+        for c in voices.iter().filter(|c| c.complete()) {
+            item(ui, c, self.voice_name(c));
+        }
+        if voices.iter().any(|c| !c.complete()) {
+            heading(ui, "Incomplete: the original voice says the rest");
+            for c in voices.iter().filter(|c| !c.complete()) {
+                item(ui, c, format!("{} · {} of {} corners", self.voice_name(c), c.corners, LADDER.len()));
+            }
+        }
+        let more = choices::voices_to_get(&self.codriver_choices, now);
+        if !more.is_empty() {
+            heading(ui, "Not added yet");
+        }
+        for (person, pack) in &more {
+            if to_get(ui, person).clicked() {
+                picked = Some(Pick::Get(vec![pack.title]));
+            }
+        }
+        picked
     }
 
     /// A Corner numbers row: the plugin's `files` by `label`, language variants left out unless chosen.
@@ -385,18 +572,19 @@ impl Form {
             .on_hover_text("Voices and pace notes, on Library > Co-drivers")
             .clicked()
         {
+            self.codriver_focus.clear();
             self.open_get_more(GetMore::Codrivers);
         }
     }
 
-    /// Get more's voices: the catalogued packs by language, each with its calls, whether a source has it and its
-    /// download page.
+    /// Get more's voices: the catalogued packs by language (a "Not added yet" entry's first), each with its calls,
+    /// whether a source has it and its download page.
     pub fn codriver_catalog_ui(&self, ui: &mut egui::Ui) {
-        let has = |voice: &catalog::Voice| {
-            self.codriver_speakers.iter().any(|s| s.styles.iter().any(|t| voice.is(&t.folder)))
-        };
+        let has = |voice: &catalog::Voice| self.codriver_choices.iter().any(|c| voice.is(&c.folder));
+        let focused = |pack: &&Pack| self.codriver_focus.contains(&pack.title);
+        let packs = catalog::PACKS.iter().filter(focused).chain(catalog::PACKS.iter().filter(|p| !focused(p)));
         kit::panel(ui, |rows| {
-            for pack in catalog::PACKS {
+            for pack in packs {
                 let installed = pack.voices.iter().any(has);
                 rows.full(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -410,7 +598,8 @@ impl Form {
                             ui.spacing_mut().item_spacing.y = 3.0;
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(pack.title).family(medium()).color(TEXT));
+                                let color = if focused(&pack) { LINK } else { TEXT };
+                                ui.label(RichText::new(pack.title).family(medium()).color(color));
                                 ui.label(RichText::new(pack.language).font(mono(11.5)).color(TEXT_3));
                             });
                             let line = format!("by {} · {}", pack.by, pack.calls);
@@ -549,8 +738,8 @@ mod tests {
     }
 
     /// A V3 install: one call style, its corners recorded in voice folder `folder` and said as `grades` (tightest to
-    /// fastest), under `root/<name>`.
-    fn v3_install(root: &Path, name: &str, folder: &str, grades: [&str; 8]) -> PathBuf {
+    /// fastest), the direction first or last, under `root/<name>`.
+    fn v3_install(root: &Path, name: &str, folder: &str, grades: [&str; 8], direction_first: bool) -> PathBuf {
         use rbr_sound::preview::LADDER;
         let dir = root.join(name);
         write(dir.join("PaceNote.ini"), &format!("[SETTINGS]\nlanguage=english\nsounds={folder}\n"));
@@ -558,7 +747,8 @@ mod tests {
             LADDER.iter().map(|id| format!("[PACENOTE::C{id}]\nid={id}\nSounds=1\nSnd0={id}.ogg\n")).collect();
         write(dir.join("config/pacenotes/Rbr.ini"), &calls);
         write(dir.join("config/ranges/Rbr.ini"), "[RANGE::100]\nSounds=1\nSnd0=100.ogg\n");
-        let texts: String = LADDER.iter().zip(grades).map(|(id, g)| format!("C{id}={g} Left\n")).collect();
+        let said = |g: &str| if direction_first { format!("Left {g}") } else { format!("{g} Left") };
+        let texts: String = LADDER.iter().zip(grades).map(|(id, g)| format!("C{id}={}\n", said(g))).collect();
         write(dir.join("language/english/pacenotes/packages/corners/strings.ini"), &format!("[STRINGS]\n{texts}"));
         for file in LADDER.iter().map(|id| format!("{id}.ogg")).chain(["100.ogg".into()]) {
             write(dir.join("sounds").join(folder).join(file), "OggS fake");
@@ -566,8 +756,9 @@ mod tests {
         dir
     }
 
-    /// The Co-drivers page with co-drivers in several styles, and Get more's list, drawn offscreen to
-    /// `RBR_SCREENSHOTS`. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS` (and `RBR_RSF` for its plugin's voices).
+    /// The Co-drivers page with co-drivers in several styles, its dropdowns' lists, and Get more's list with a not
+    /// added pack first, drawn offscreen to `RBR_SCREENSHOTS`. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS`
+    /// (and `RBR_RSF` for its plugin's voices).
     #[test]
     fn screenshots_of_the_codriver_styles() {
         let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
@@ -582,43 +773,51 @@ mod tests {
         std::fs::create_dir_all(&home).unwrap();
         let numeric_a = ["HP", "1", "2", "3", "4", "5", "6", "Flat"];
         let numeric_b = ["HP", "1", "Square", "2", "3", "4", "5", "6"];
+        let words = ["HP", "Bad", "Square", "K", "Medium", "Fast", "Easy", "Flat"];
         let installs = [
-            ("Janne Numeric A Number First", "Janne Laahanen EnNu A NF", numeric_a),
-            ("Janne Numeric B Number First", "Janne Laahanen EnNu B NF", numeric_b),
-            (
-                "Janne Descriptive",
-                "Janne Laahanen EnDe",
-                ["HP", "Bad", "Square", "K", "Medium", "Fast", "Easy", "Flat"],
-            ),
-            ("Rita Fullon A", "RitaFullonV3 (benofficial2)", numeric_a),
-            ("Rita Fullon B", "RitaFullonV3 (benofficial2)", numeric_b),
-            ("Darren", "Darren V3", numeric_a),
+            ("Janne Numeric A Number First", "Janne Laahanen EnNu A NF", numeric_a, false),
+            ("Janne Numeric A Direction First", "Janne Laahanen EnNu A DF", numeric_a, true),
+            ("Janne Numeric A Simple Number First", "Janne Laahanen EnNu A Simple NF", numeric_a, false),
+            ("Janne Numeric B Number First", "Janne Laahanen EnNu B NF", numeric_b, false),
+            ("Janne Descriptive", "Janne Laahanen EnDe", words, false),
+            ("Rita Fullon A", "RitaFullonV3 (benofficial2)", numeric_a, false),
+            ("Rita Fullon B", "RitaFullonV3 (benofficial2)", numeric_b, false),
+            ("Darren", "Darren V3", numeric_a, false),
         ];
         let no_cancel = std::sync::atomic::AtomicBool::new(false);
-        for (name, folder, grades) in installs {
-            crate::codriver_packs::import(
-                &home,
-                &v3_install(&root.join("downloads"), name, folder, grades),
-                &no_cancel,
-            )
-            .unwrap();
+        for (name, folder, grades, first) in installs {
+            let download = v3_install(&root.join("downloads"), name, folder, grades, first);
+            crate::codriver_packs::import(&home, &download, &no_cancel).unwrap();
         }
         let start = crate::test_start(home.join(SETTINGS_FILE), Some(data.into()), Some(patch.into()));
         let settings = Settings {
             map: Some(54),
             ngp_physics: Some(ngp),
-            codriver_pack: Some("Janne Numeric B Number First".into()),
-            codriver_voice: Some("Janne Laahanen EnNu B NF".into()),
+            codriver_pack: Some("Janne Numeric A Number First".into()),
+            codriver_voice: Some("Janne Laahanen EnNu A NF".into()),
             ..Settings::default()
         };
         let mut form = load(&start, settings).unwrap();
         form.read_only = true;
-        // The three installs, and the RSF install's Janne when it has him; their texts name the corners.
-        let janne = form.codriver_speakers.iter().find(|s| s.name == "Janne Laahanen").unwrap();
-        let owned: Vec<_> = janne.styles.iter().filter(|s| s.pack.is_some()).collect();
-        assert_eq!(owned.len(), 3, "{janne:?}");
-        assert!(owned.iter().all(|s| s.ladder.is_some()), "{janne:?}");
-        assert_eq!(form.current_speaker().map(|s| s.name.as_str()), Some("Janne Laahanen"));
+        // English, Numeric A by its texts, said number first with every grade, by Janne, Rita and Darren.
+        let now = form.current_choice().cloned().unwrap();
+        assert_eq!((now.person.as_str(), now.language.as_str()), ("Janne Laahanen", "English"));
+        let calls: Vec<String> = crate::codriver_packs::choices::calls_in(&form.codriver_choices, "English")
+            .iter()
+            .filter(|c| c.pack.is_some())
+            .map(|c| super::calls_text(c))
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                "Numbers: Hairpin, 1, 2, 3, 4, 5, 6, Flat",
+                "Numbers: Hairpin, 1, Square, 2, 3, 4, 5, 6",
+                "Words: Hairpin, Bad, Square, K, Medium, Fast, Easy, Flat"
+            ]
+        );
+        let people: Vec<&str> =
+            form.voices_like(&now).iter().filter(|c| c.pack.is_some()).map(|c| c.person.as_str()).collect();
+        assert_eq!(people, ["Darren", "Janne Laahanen", "Rita Fullon"]);
         let shot = |form: &mut Form, name: &str, modal: bool| {
             let rgba = crate::capture::draw(|ctx| {
                 ctx.root_ui(|root| {
@@ -632,7 +831,32 @@ mod tests {
             crate::capture::write_png(&Path::new(&shots).join(name), &rgba).unwrap();
         };
         shot(&mut form, "codriver-styles.png", false);
-        form.open_get_more(crate::get_page::GetMore::Codrivers);
+        // Each dropdown's list, as its popup draws it.
+        let current = form.voice_choice();
+        type Menu<'a> = &'a dyn Fn(&Form, &mut egui::Ui);
+        let menus: [(&str, Menu); 3] = [
+            ("codriver-menu-language.png", &|f, ui| _ = f.language_menu(ui, &current, Some(&now))),
+            ("codriver-menu-calls.png", &|f, ui| _ = f.calls_menu(ui, &now)),
+            ("codriver-menu-voice.png", &|f, ui| _ = f.voice_menu(ui, &now)),
+        ];
+        for (name, menu) in menus {
+            let rgba = crate::capture::draw(|ctx| {
+                ctx.root_ui(|root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        egui::Frame::menu(ui.style()).show(ui, |ui| {
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                            ui.set_max_width(560.0);
+                            menu(&form, ui);
+                        });
+                    });
+                });
+            })
+            .unwrap();
+            crate::capture::write_png(&Path::new(&shots).join(name), &rgba).unwrap();
+        }
+        // A not added entry opens Get more with its pack first.
+        form.apply_pick(Some(super::Pick::Get(vec!["Pierre Dufond V3"])));
+        assert_eq!(form.get_more, Some(crate::get_page::GetMore::Codrivers));
         shot(&mut form, "codriver-get-more.png", true);
         let _ = std::fs::remove_dir_all(&root);
     }
