@@ -132,8 +132,16 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   is ignored and dropped on save.
 - The co-driver is set up on the Co-drivers page, not per drive (user decision 2026-10-29); the drive pages don't show
   or link it (user, 2026-11-18).
-- The player picks only the voice (and the corner numbers when the styles differ); the stage notes are automatic
-  (user decision 2026-11-16, `codriver_packs::pick_notes`): with a custom voice, over every owned pack and the RSF
+- The player picks the co-driver, a person in a language, then their calls when they have several (user decision
+  2026-11-22; `codriver_packs::{speakers, catalog}`): each call style is a V3 install of its own (a pack, or RSF's
+  plugin), so a person's styles gather across the sources. `catalog` (Luppis's V3 list, 18 packs) names a folder's
+  person and language, and Janne Laahanen's codes their style (`EnNu A NF`: Numeric A, number first); others are named
+  by how their install's texts say the corners (`HP, 1, Square, 2, 3, 4, 5, 6 ("5 Left")`: benofficial2's A and B share
+  one folder), else by folder. A folder is checked for the preview's 8 corners in its install's style: missing some
+  lists under Incomplete, none is left out (RSF's `english`, `german`, `JanneLaahanen`). Picking another person keeps
+  the calls when they have them. Get more lists the 18 packs with their styles and pages, ✔ when added.
+- The stage notes are automatic (user decision 2026-11-16, `codriver_packs::pick_notes`): with a custom voice, over
+  every owned pack and the RSF
   MyPacenotes, the set covering the most stages (ties: owned pack, then name), in it the highest `_<n>` version,
   then owned over RSF, then the newest file; none: the stage's own notes. The range set is the plugin's `Rbr.ini`
   (else its first). `notes_pack`, `notes_set`, `my_pacenotes` and `codriver_ranges` are no longer read or saved.

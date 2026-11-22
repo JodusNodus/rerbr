@@ -60,12 +60,13 @@ fn is_audio(name: &str) -> bool {
 }
 
 /// Whether the relative path (from a plugin's folder) is a co-driver file worth owning: the settings, a config
-/// definition, or voice audio. Everything else (DLLs, executables, editors, pictures) stays out.
+/// definition, a text file (`language/`: how the style says its calls), or voice audio. Everything else (DLLs,
+/// executables, editors, pictures) stays out.
 pub(super) fn keep_voice(rel: &[&str]) -> bool {
     let lower: Vec<String> = rel.iter().map(|p| p.to_ascii_lowercase()).collect();
     match (&lower[..], rel.last()) {
         ([only], _) => only == "pacenote.ini",
-        ([top, .., last], _) if top == "config" => last.ends_with(".ini"),
+        ([top, .., last], _) if top == "config" || top == "language" => last.ends_with(".ini"),
         ([top, ..], Some(last)) => top == "sounds" && rel.len() > 2 && is_audio(last),
         _ => false,
     }

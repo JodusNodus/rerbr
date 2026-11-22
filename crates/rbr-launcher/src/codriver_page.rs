@@ -548,6 +548,86 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A V3 install: one call style, its corners recorded in voice folder `folder` and said as `grades` (tightest to
+    /// fastest), under `root/<name>`.
+    fn v3_install(root: &Path, name: &str, folder: &str, grades: [&str; 8]) -> PathBuf {
+        use rbr_sound::preview::LADDER;
+        let dir = root.join(name);
+        write(dir.join("PaceNote.ini"), &format!("[SETTINGS]\nlanguage=english\nsounds={folder}\n"));
+        let calls: String = LADDER.iter().map(|id| format!("[PACENOTE::C{id}]\nid={id}\nSounds=1\nSnd0={id}.ogg\n")).collect();
+        write(dir.join("config/pacenotes/Rbr.ini"), &calls);
+        write(dir.join("config/ranges/Rbr.ini"), "[RANGE::100]\nSounds=1\nSnd0=100.ogg\n");
+        let texts: String = LADDER.iter().zip(grades).map(|(id, g)| format!("C{id}={g} Left\n")).collect();
+        write(dir.join("language/english/pacenotes/packages/corners/strings.ini"), &format!("[STRINGS]\n{texts}"));
+        for file in LADDER.iter().map(|id| format!("{id}.ogg")).chain(["100.ogg".into()]) {
+            write(dir.join("sounds").join(folder).join(file), "OggS fake");
+        }
+        dir
+    }
+
+    /// The Co-drivers page with co-drivers in several styles, and Get more's list, drawn offscreen to
+    /// `RBR_SCREENSHOTS`. Needs `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS` (and `RBR_RSF` for its plugin's voices).
+    #[test]
+    fn screenshots_of_the_codriver_styles() {
+        let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
+        let (Some(shots), Some(data), Some(patch), Some(ngp)) =
+            (env("RBR_SCREENSHOTS"), env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS"))
+        else {
+            eprintln!("skipping: RBR_SCREENSHOTS, RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS not set");
+            return;
+        };
+        let root = crate::test_dir("page-codriver-styles");
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let numeric_a = ["HP", "1", "2", "3", "4", "5", "6", "Flat"];
+        let numeric_b = ["HP", "1", "Square", "2", "3", "4", "5", "6"];
+        let installs = [
+            ("Janne Numeric A Number First", "Janne Laahanen EnNu A NF", numeric_a),
+            ("Janne Numeric B Number First", "Janne Laahanen EnNu B NF", numeric_b),
+            ("Janne Descriptive", "Janne Laahanen EnDe", ["HP", "Bad", "Square", "K", "Medium", "Fast", "Easy", "Flat"]),
+            ("Rita Fullon A", "RitaFullonV3 (benofficial2)", numeric_a),
+            ("Rita Fullon B", "RitaFullonV3 (benofficial2)", numeric_b),
+            ("Darren", "Darren V3", numeric_a),
+        ];
+        let no_cancel = std::sync::atomic::AtomicBool::new(false);
+        for (name, folder, grades) in installs {
+            crate::codriver_packs::import(&home, &v3_install(&root.join("downloads"), name, folder, grades), &no_cancel)
+                .unwrap();
+        }
+        let start = crate::test_start(home.join(SETTINGS_FILE), Some(data.into()), Some(patch.into()));
+        let settings = Settings {
+            map: Some(54),
+            ngp_physics: Some(ngp),
+            codriver_pack: Some("Janne Numeric B Number First".into()),
+            codriver_voice: Some("Janne Laahanen EnNu B NF".into()),
+            ..Settings::default()
+        };
+        let mut form = load(&start, settings).unwrap();
+        form.read_only = true;
+        // The three installs, and the RSF install's Janne when it has him; their texts name the corners.
+        let janne = form.codriver_speakers.iter().find(|s| s.name == "Janne Laahanen").unwrap();
+        let owned: Vec<_> = janne.styles.iter().filter(|s| s.pack.is_some()).collect();
+        assert_eq!(owned.len(), 3, "{janne:?}");
+        assert!(owned.iter().all(|s| s.ladder.is_some()), "{janne:?}");
+        assert_eq!(form.current_speaker().map(|s| s.name.as_str()), Some("Janne Laahanen"));
+        let shot = |form: &mut Form, name: &str, modal: bool| {
+            let rgba = crate::capture::draw(|ctx| {
+                ctx.root_ui(|root| {
+                    egui::CentralPanel::default().show(root, |ui| form.codriver_section(ui));
+                });
+                if modal {
+                    form.get_more_modal(ctx);
+                }
+            })
+            .unwrap();
+            crate::capture::write_png(&Path::new(&shots).join(name), &rgba).unwrap();
+        };
+        shot(&mut form, "codriver-styles.png", false);
+        form.open_get_more(crate::get_page::GetMore::Codrivers);
+        shot(&mut form, "codriver-get-more.png", true);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// The Co-driver dropdown reads the saved fields: an unset voice names its source's default, and without a
     /// source the original voice drives. Needs no game data.
     #[test]

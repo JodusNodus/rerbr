@@ -131,6 +131,8 @@ impl Form {
             (false, _) => "no co-driver, no notes are called".into(),
             (true, None) => "the 1.02 co-driver calls the stage's own notes".into(),
             (true, Some(voice)) => {
+                // A catalogued voice by its person's name, others by their folder.
+                let voice = catalog::find(&voice).map_or(voice, |(_, v)| v.person.to_owned());
                 let refs: Vec<&str> = names.iter().flatten().map(String::as_str).collect();
                 let pick = pick_notes(&self.note_sources, &refs);
                 let count = pick.as_ref().and_then(|p| notes::read(&p.file).ok()).map(|notes| notes.len());
