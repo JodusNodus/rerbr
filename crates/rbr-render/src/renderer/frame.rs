@@ -408,6 +408,12 @@ impl Renderer {
         }
 
         span(profiler, encoder, "car shadow", t);
+        // The main view's grass made on the GPU (`crate::grass::made`; the mirrors' in their passes).
+        if let Some(made) = &self.grass_made {
+            let t = mark(profiler, encoder);
+            made.make(encoder, &self.queue, 0, view_projection);
+            span(profiler, encoder, "grass", t);
+        }
 
         // The frame is drawn into the post pass's scene, which then writes the target.
         let t = mark(profiler, encoder);
@@ -573,6 +579,17 @@ impl Renderer {
         if !masked {
             draw_clouds(encoder, false);
         }
+        // The grass made on the GPU for this view (the main view's before its frame, `Renderer::draw_frame`).
+        let grass_view = match view {
+            View::Main => Some(0),
+            View::Mirror { side } => Some(1 + usize::from(side)),
+            _ => None,
+        };
+        let grass =
+            self.grass_made.as_ref().zip(grass_view).map(|(made, slot)| (made, slot, &self.meshes[made.mesh].draws[0]));
+        if let Some((made, slot, _)) = grass.filter(|_| view != View::Main) {
+            made.make(encoder, &self.queue, slot, view_projection);
+        }
         let frame = wgpu::RenderPassColorAttachment {
             view: target,
             depth_slice: None,
@@ -638,6 +655,15 @@ impl Renderer {
             pass.set_bind_group(1, &draw.group, &[]);
             bound.draw(&mut pass, mesh, draw);
         }
+        if let Some((made, slot, draw)) = grass.filter(|_| view == View::Main) {
+            if let Some([pipeline, _]) = &draw.prepassed {
+                pass.set_bind_group(0, &self.frames[frame_index(Anchor::World, Layer::Solid)].bind_group, &[]);
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(1, &draw.group, &[]);
+                made.draw(&mut pass, slot);
+                bound.unbind();
+            }
+        }
         if masked {
             drop(pass);
             self.sun_mask.draw(encoder, &self.frames[0].bind_group);
@@ -658,28 +684,37 @@ impl Renderer {
         let opaque_lit =
             |draw: &GpuDraw| draw.bind.shade.is_some() && !draw.pipeline.blend && draw.pipeline.depth_write;
         let lamps_light = self.lamps_light() && view != View::Probe;
-        let mut draw_meshes = |pass: &mut wgpu::RenderPass<'_>, meshes: &[(&GpuMesh, f32)], lit_first: bool| {
-            for &(mesh, distance) in meshes {
-                stats.meshes_drawn += usize::from(!lit_first);
-                pass.set_bind_group(0, &self.frames[frame_index(mesh.anchor, mesh.layer)].bind_group, &[]);
-                for draw in mesh.draws.iter().filter(|draw| draw.lod.shows(distance)) {
-                    if (laid_first && opaque_lit(draw)) != lit_first || (glass_later && car_glass(mesh, draw)) {
-                        continue;
+        let mut draw_meshes =
+            |pass: &mut wgpu::RenderPass<'_>, bound: &mut Bound<'_>, meshes: &[(&GpuMesh, f32)], lit_first: bool| {
+                for &(mesh, distance) in meshes {
+                    stats.meshes_drawn += usize::from(!lit_first);
+                    pass.set_bind_group(0, &self.frames[frame_index(mesh.anchor, mesh.layer)].bind_group, &[]);
+                    for draw in mesh.draws.iter().filter(|draw| draw.lod.shows(distance)) {
+                        if (laid_first && opaque_lit(draw)) != lit_first || (glass_later && car_glass(mesh, draw)) {
+                            continue;
+                        }
+                        let after_prepass = draw.prepassed.is_some() && laid(mesh, distance);
+                        pass.set_pipeline(pipeline_of(draw, inside, lamps_light, after_prepass));
+                        pass.set_bind_group(1, &draw.group, &[]);
+                        bound.draw(pass, mesh, draw);
+                        stats.draws += 1;
+                        stats.triangles += draw.indices.len() / 3;
                     }
-                    let after_prepass = draw.prepassed.is_some() && laid(mesh, distance);
-                    pass.set_pipeline(pipeline_of(draw, inside, lamps_light, after_prepass));
-                    pass.set_bind_group(1, &draw.group, &[]);
-                    bound.draw(pass, mesh, draw);
-                    stats.draws += 1;
-                    stats.triangles += draw.indices.len() / 3;
                 }
-            }
-        };
+            };
         if laid_first {
             let lit: Vec<_> = shown.iter().copied().filter(|(mesh, _)| mesh.draws.iter().any(opaque_lit)).collect();
-            draw_meshes(&mut pass, &lit, true);
+            draw_meshes(&mut pass, &mut bound, &lit, true);
         }
-        draw_meshes(&mut pass, &shown[..behind], false);
+        draw_meshes(&mut pass, &mut bound, &shown[..behind], false);
+        // The grass made on the GPU, with the opaque stage (in the main view over the depth its prepass laid).
+        if let Some((made, slot, draw)) = grass {
+            pass.set_bind_group(0, &self.frames[frame_index(Anchor::World, Layer::Solid)].bind_group, &[]);
+            pass.set_pipeline(pipeline_of(draw, inside, lamps_light, view == View::Main && draw.prepassed.is_some()));
+            pass.set_bind_group(1, &draw.group, &[]);
+            made.draw(&mut pass, slot);
+            bound.unbind();
+        }
         let size = depth.texture().size();
         let (width, height) = (size.width as f32, size.height as f32);
         pass.set_viewport(0.0, 0.0, width, height, 0.0, 0.0);
@@ -687,10 +722,10 @@ impl Renderer {
         pass.set_bind_group(0, &self.frames[1].bind_group, &[]);
         pass.set_bind_group(1, self.cloud_volume.sky_group(), &[]);
         pass.draw(0..3, 0..1);
-        draw_meshes(&mut pass, &sky, false);
+        draw_meshes(&mut pass, &mut bound, &sky, false);
         pass.set_viewport(0.0, 0.0, width, height, 0.0, 1.0);
-        draw_meshes(&mut pass, &backdrop, false);
-        draw_meshes(&mut pass, &shown[behind..], false);
+        draw_meshes(&mut pass, &mut bound, &backdrop, false);
+        draw_meshes(&mut pass, &mut bound, &shown[behind..], false);
         // The marks lie on the ground, so the car's reflection cube shows them too (ours). Each cube face is its own
         // submission, so the marks' view written here is the face's.
         let (light, lamps) = (self.mark_light(), self.air_lamps());

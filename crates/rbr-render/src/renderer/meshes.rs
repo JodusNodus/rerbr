@@ -215,6 +215,11 @@ impl<'a> Bound<'a> {
         Bound { eye: Some(eye), ..self }
     }
 
+    /// Forgets the buffers bound, after a draw that bound its own (the grass made on the GPU).
+    pub(super) fn unbind(&mut self) {
+        self.buffer = None;
+    }
+
     /// Binds `mesh`'s buffers and draws `draw` of it.
     pub(super) fn draw(&mut self, pass: &mut wgpu::RenderPass<'_>, mesh: &GpuMesh, draw: &GpuDraw) {
         self.draw_instance(pass, mesh, draw, u32::from(mesh.in_car.is_some()));
@@ -378,6 +383,13 @@ impl Renderer {
     /// Streams `field`'s grass into the stage's grass tile meshes ([`crate::grass::add`]), about the eye each frame, in
     /// the light computed at load for the ground under it.
     pub fn set_grass(&mut self, field: Arc<crate::grass::Field>) {
+        // Made on the GPU (`crate::grass::made`): its one draw holds the pipelines and the texture.
+        if let Some(mesh) = self.meshes.iter().position(|m| m.draws.iter().any(|d| d.pipeline.made)) {
+            let light = if self.ground_light.is_some() { self.grass_light(&field) } else { Vec::new() };
+            let made = crate::grass::made::Made::new(&self.device, field, light, mesh, &self.grass_cards);
+            self.grass_made = Some(made);
+            return;
+        }
         let tiles = self.meshes.iter_mut().enumerate().filter_map(|(i, m)| {
             let draw = m.draws.iter_mut().find(|d| d.lod == Lod::Close)?;
             let capacity = draw.indices.len() / 6;
@@ -470,6 +482,9 @@ impl Renderer {
     /// The frames from now on hold every grass tile in reach, waiting for the worker's: for a screenshot, which is one
     /// frame, so that it shows the field a drive does.
     pub fn wait_for_grass(&mut self) {
+        if let Some(made) = &mut self.grass_made {
+            made.waits = true;
+        }
         if let Some(ring) = &mut self.grass {
             ring.waits = true;
         }
@@ -477,6 +492,16 @@ impl Renderer {
 
     /// Fills the grass tile meshes the eye at `eye` looking along `forward` now wants ([`crate::grass::Ring::update`]).
     pub(super) fn stream_grass(&mut self, eye: Vec3, forward: Vec3) {
+        if let Some(made) = &mut self.grass_made {
+            // A frame that waits takes every tile in reach.
+            loop {
+                made.update(eye, forward, &mut self.uploads);
+                if !made.waiting() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
         let Some(mut ring) = self.grass.take() else { return };
         loop {
             let filled = ring.update(eye, forward);

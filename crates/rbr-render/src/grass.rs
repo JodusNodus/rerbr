@@ -36,6 +36,8 @@ use rbr_formats::dds;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+pub(crate) mod made;
+
 /// The grass texture's file name in [`Stage::texture_names`] (not a game file: [`texture`] draws it).
 pub const TEXTURE: &str = "rerbr-grass.dds";
 /// How far from the driveline, metres, grass grows.
@@ -639,7 +641,9 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
     let mut tiles: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
     // The tile meshes go before the first blended mesh, which moves the meshes from there on.
     let blended = stage.meshes.iter().position(|m| m.layer == Layer::Blended).unwrap_or(stage.meshes.len());
-    let slots = level.slots().map(|(count, _)| count).sum::<usize>();
+    // Made on the GPU, one draw stands for them all (`made::is_made`).
+    let made = made::on();
+    let slots = if made { 1 } else { level.slots().map(|(count, _)| count).sum::<usize>() };
     let meshes = stage.meshes.iter().enumerate().filter(|(_, m)| m.anchor == Anchor::World && m.layer == Layer::Solid);
     for (index, mesh) in meshes {
         let (own, index) = (index, if index < blended { index } else { index + slots });
@@ -762,8 +766,14 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
             }
         })
         .collect();
-    let slots = level.slots().flat_map(|(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
-    stage.meshes.splice(blended..blended, slots);
+    match made {
+        true => _ = stage.meshes.splice(blended..blended, [slot_mesh(texture, 0)]),
+        false => {
+            let slots =
+                level.slots().flat_map(|(count, capacity)| (0..count).map(move |_| slot_mesh(texture, capacity)));
+            stage.meshes.splice(blended..blended, slots);
+        }
+    }
     Some(Field { level, triangles, tiles, textures, patches, placement, line, mean, fx, report, texture_refs })
 }
 
@@ -876,25 +886,12 @@ impl Field {
                 if !self.supported(g, at, radius) {
                     continue;
                 }
-                let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
-                let hue = colour / self.mean;
-                let grey = Vec3::splat(hue.element_sum() / 3.0);
                 let converted = !self.fx.is_empty();
-                let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
-                let hue = if converted {
-                    let straw = STRAW / STRAW.max_element();
-                    let lean = straw.lerp(FX_OLIVE, smoothstep(FX_GREEN_GROUND, colour.y / colour.x.max(1e-4)));
-                    (hue / hue.max_element()).lerp(lean, FX_OLIVE_SHARE).lerp(straw, dry * FX_DRY_SHARE)
-                } else {
-                    let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
-                    hue.lerp(hue * STRAW, dry * 0.35)
-                };
-                let hue = (hue / hue.max_element() * 255.0).round().as_uvec3();
+                let (hue, bright) = self.look(g, w, dry);
                 let lean_angle = lean_turn * std::f32::consts::TAU;
                 // Each clump's cards a little brighter or darker than the ground's.
                 let bounds = if converted { FX_BRIGHT } else { BRIGHT };
-                let lit = if converted { FX_ALBEDO } else { SHADE * luminance(colour) };
-                let bright = lit / luminance(self.mean) * (0.85 + 0.3 * (pick * 37.0).fract());
+                let bright = bright * (0.85 + 0.3 * (pick * 37.0).fract());
                 let card = Card {
                     at,
                     normal: g.normal,
@@ -902,7 +899,7 @@ impl Field {
                     lean: Vec2::new(lean_angle.cos(), lean_angle.sin()) * lean * LEAN * height,
                     height,
                     bright: bright.clamp(bounds[0], bounds[1]),
-                    hue: [hue.x as u8, hue.y as u8, hue.z as u8],
+                    hue,
                     picture,
                     light: Light::blend(&corners, [1.0 - a - b, a, b]),
                     keep,
@@ -924,6 +921,28 @@ impl Field {
             }
         }
         cards
+    }
+
+    /// The hue (display, its largest channel 255) and the brightness against the texture's ([`GRASS_MARK`], before
+    /// each clump's own and the bounds) of the grass on ground `g` at weights `w` in a patch of dryness `dry`: the
+    /// ground's under it ([`SATURATION`], [`LUSH`], [`STRAW`]), or a converted stage's ([`FX_SATURATION`]).
+    fn look(&self, g: &Ground, w: [f32; 3], dry: f32) -> ([u8; 3], f32) {
+        let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
+        let hue = colour / self.mean;
+        let grey = Vec3::splat(hue.element_sum() / 3.0);
+        let converted = !self.fx.is_empty();
+        let hue = grey.lerp(hue, if converted { FX_SATURATION } else { SATURATION }).max(Vec3::splat(0.01));
+        let hue = if converted {
+            let straw = STRAW / STRAW.max_element();
+            let lean = straw.lerp(FX_OLIVE, smoothstep(FX_GREEN_GROUND, colour.y / colour.x.max(1e-4)));
+            (hue / hue.max_element()).lerp(lean, FX_OLIVE_SHARE).lerp(straw, dry * FX_DRY_SHARE)
+        } else {
+            let hue = (hue / hue.max_element()).lerp(LUSH, LUSH_SHARE * (1.0 - dry));
+            hue.lerp(hue * STRAW, dry * 0.35)
+        };
+        let hue = (hue / hue.max_element() * 255.0).round().as_uvec3();
+        let lit = if converted { FX_ALBEDO } else { SHADE * luminance(colour) };
+        ([hue.x as u8, hue.y as u8, hue.z as u8], lit / luminance(self.mean))
     }
 }
 
