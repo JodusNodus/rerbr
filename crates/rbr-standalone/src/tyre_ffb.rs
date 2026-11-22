@@ -22,7 +22,7 @@ pub const SUGGESTED_TRAIL: f32 = 0.025;
 const ROLLING_SPEED: f32 = 1.0;
 
 /// The wheel pointers in the car (`car+0x470`): the front pair first.
-const WHEELS: u32 = 0x470;
+pub(crate) const WHEELS: u32 = 0x470;
 
 /// The steering torque from the front tyres with the mechanical trail `trail` (m), in the units of the car's
 /// filtered torque (`CarStore::ffb_torque`). The trail torque has the tyre step's sign, `sgn(v_long) * trail * F_lat`
