@@ -37,12 +37,6 @@ Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 17:30
 
 ![day-pirttikulma-quattro-cockpit](day-pirttikulma-quattro-cockpit.jpg)
 
-### day-sa-calobra-alpine-flyby
-
-Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, best
-
-![day-sa-calobra-alpine-flyby](day-sa-calobra-alpine-flyby.jpg)
-
 ### day-joux-verte-celica-chase
 
 Toyota Celica 2000GT-FOUR RC (ST185) Group A, Joux Verte SS7 reversed (AC import 1996319), chase view, best
@@ -101,7 +95,7 @@ Toyota GR Yaris Rally2, Falstone II (RSF 103), flyby view, 17:20
 
 ### golden-pengonpohja-quattro-flyby
 
-Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 06:00
+Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, golden
 
 ![golden-pengonpohja-quattro-flyby](golden-pengonpohja-quattro-flyby.jpg)
 
@@ -116,6 +110,12 @@ Alpine A110 Rally RGT, Akina Uphill (AC import 1290447), chase view, 19:15
 BMW M3 E30 GrpA, Nordschleife (AC import 1333662), flyby view, 10:00
 
 ![golden-nordschleife-m3-flyby](golden-nordschleife-m3-flyby.jpg)
+
+### golden-sa-calobra-alpine-flyby
+
+Alpine A110 Rally RGT, Sa Calobra (AC import 1282190), flyby view, golden
+
+![golden-sa-calobra-alpine-flyby](golden-sa-calobra-alpine-flyby.jpg)
 
 ## Rain
 
