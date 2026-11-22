@@ -234,7 +234,8 @@ pub fn run(
         fit_physics(&playback, profile, car)?;
     }
     let mut trace_out = hooks.trace_out.map(Trace::create).transpose()?;
-    let mut steer_log = hooks.steer_breakdown.map(steer::SteerLog::create).transpose()?;
+    let mut steer_log =
+        hooks.steer_breakdown.map(|p| steer::SteerLog::create(p, image_dt.unwrap_or(DT))).transpose()?;
     playback.runner.keep_steer_torques = steer_log.is_some();
     // The first frame the Rust physics runs.
     let first = frames

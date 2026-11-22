@@ -187,6 +187,8 @@ pub struct Live<'a> {
     /// `--ffb-tyres`: the mechanical trail (m) of the wheel's force from the front tyres (`tyre_ffb`), in place of
     /// NGP's.
     ffb_tyres: Option<f32>,
+    /// `--ffb-surface`: the road's texture added to the force from the tyres (`surface_ffb`).
+    ffb_surface: Option<crate::surface_ffb::Texture>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -381,17 +383,26 @@ impl<'a> Live<'a> {
     }
 
     /// The wheel's force from the front tyres with the mechanical trail `trail` (m) from here on (`--ffb-tyres`).
-    pub fn set_ffb_tyres(&mut self, trail: f32) {
+    /// With `surface`, the road's texture at that weight added (`--ffb-surface`).
+    pub fn set_ffb_tyres(&mut self, trail: f32, surface: Option<f32>) {
         self.ffb_tyres = Some(trail);
+        self.playback.runner.keep_steer_torques = surface.is_some();
+        self.ffb_surface = surface.map(crate::surface_ffb::Texture::new);
     }
 
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
-    /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`).
+    /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`), with `--ffb-surface` the road's texture
+    /// added (`surface_ffb`: it folds the steps since the last call in, so a second call in a frame gives the same
+    /// force).
     /// NGP's reads the car's store over the held typed state, without lowering it (it runs after every frame).
     pub fn wheel_force(&self) -> f32 {
         let runner = &self.playback.runner;
         if let Some(trail) = self.ffb_tyres {
-            return crate::tyre_ffb::force(runner.image(), trail);
+            let texture = self.ffb_surface.as_ref().map_or(0.0, |t| {
+                t.fold(runner.image(), &runner.take_steer_torques(), self.clock.step);
+                t.torque()
+            });
+            return crate::tyre_ffb::force(runner.image(), trail, texture);
         }
         let mut mem = runner.unheld_image().clone();
         let car = mem.u32(CAR_PTR);
