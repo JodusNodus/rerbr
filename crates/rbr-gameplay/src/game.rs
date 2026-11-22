@@ -249,7 +249,12 @@ impl Game {
 
     /// The input filter's grid, before the race starts: a profile's ([`Grid::from_profile`], `E20ReadProfile`).
     pub fn set_filter_grid(&mut self, grid: Grid) {
-        self.filter = Filter::new(grid);
+        self.filter = Filter::new(grid).with_steering(self.filter.steering());
+    }
+
+    /// Ours beside the grid for the steering channel (`crate::steering`), before the race starts.
+    pub fn set_steering(&mut self, steering: crate::steering::Steering) {
+        self.filter = self.filter.clone().with_steering(steering);
     }
 
     /// The camera's start orbit, with [`Game::with_camera_go`].
