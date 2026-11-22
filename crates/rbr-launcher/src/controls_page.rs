@@ -948,7 +948,9 @@ fn aids_ui(rows: &mut Rows, aids: &mut DriverAids) {
 /// saturation, turn and return times and speed curve, the keys' turn and return times. A wheel is not filtered.
 fn steering_ui(rows: &mut Rows, steering: &mut steering::Settings) {
     let percent = |rows: &mut Rows, label: &str, value: &mut f32, range, help: &str| {
-        rows.row(label, |ui| ui.add(DragValue::new(value).range(range).speed(0.5).suffix(" %")).on_hover_text(help));
+        rows.row(label, |ui| {
+            ui.add(DragValue::new(value).range(range).speed(0.5).fixed_decimals(0).suffix(" %")).on_hover_text(help)
+        });
     };
     percent(rows, "Stick dead zone", &mut steering.stick_dead_zone, 0.0..=50.0, STICK_DEAD_ZONE_HELP);
     percent(rows, "Stick saturation", &mut steering.stick_saturation, 50.0..=100.0, STICK_SATURATION_HELP);
