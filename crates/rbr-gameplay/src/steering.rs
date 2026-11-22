@@ -12,10 +12,12 @@ pub const STICK_CELL: u32 = 1;
 /// The filter's `STEER::BUTTON_DIGITAL` cell: keys and buttons.
 pub const BUTTON_CELL: u32 = 3;
 
-/// The speed curve's `k` leaves 0 at this speed (m/s, the fade's speed: `crate::filter::notify_a`).
-const CURVE_FROM: f32 = 8.0;
+/// The speed curve's `k` leaves 0 at this speed (m/s, the fade's speed: `crate::filter::notify_a`). Fitted on the
+/// wheel drives (`harness/steer_fit.py`, `notes/steering-input.md`): a square from about 3.5 m/s, linear only at walking
+/// pace and in big slides, where the fade's speed drops.
+const CURVE_FROM: f32 = 1.5;
 /// Its rise per m/s above [`CURVE_FROM`], up to 1 (a square).
-const CURVE_SLOPE: f32 = 1.0 / 22.0;
+const CURVE_SLOPE: f32 = 0.5;
 
 /// A rate limit's rise and fall per second, against the output (`Cell::rise`, `Cell::fall`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -227,7 +229,7 @@ mod tests {
         }
         assert_eq!(shaped(0.5, 60.0, 1.0), 0.25, "a square at top speed");
         assert_eq!(shaped(0.5, 60.0, 0.0), 0.5, "no curve at 0 %");
-        let mid = shaped(0.5, 19.0, 1.0);
+        let mid = shaped(0.5, CURVE_FROM + 1.0, 1.0);
         assert!(0.25 < mid && mid < 0.5, "{mid}");
     }
 

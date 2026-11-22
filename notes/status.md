@@ -105,6 +105,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | --- | --- | --- |
 | G Input filter, quantisation | done | - |
 | Devices, bindings, pause menu | done | the original's default map is not reproduced |
+| Steering input (ours): stick and keys, [steering-input.md](steering-input.md) | user | tune on a pad |
 | Force feedback | user | - |
 | G NGP physics | user | - |
 

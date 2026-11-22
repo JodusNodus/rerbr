@@ -58,18 +58,40 @@ Two layers, both ours, both on the input side:
   27 m/s): hairpins and big slides at speed need it.
 - The grid itself (a profile's, the INI's) is not changed: ours sits beside it in the filter, so the profile's words
   and `Grid::from_profile` stay the 1.02's.
-- Defaults (ours, to tune by driving): stick dead zone 5 %, saturation 95 %, rise 3.0/s, fall 5.0/s, curve 100 % of
-  the fitted `k(v)`; keys rise 2.5/s, fall 5.0/s.
+- Defaults (ours, to tune by driving): stick dead zone 5 %, saturation 95 %, rise 3.0/s, fall 5.0/s (0.33 s to full
+  lock, 0.2 s back), curve 100 % of the fitted `k(v)`; keys rise 2.5/s, fall 5.0/s. The launcher shows the rates as
+  seconds across the lock (Controls, "Gamepad stick and keys"); `[steering]` in the settings file.
+- Without the launcher's flags (a bare `rbr-standalone --live`), a stick still selects cell 1 and gets the grid's:
+  RBR's own stick cell (its fade, no rates).
+
+## The curve's fit
+
+`crates/rbr-recording/examples/steer_speed.rs` (FRM1 to `step,steering,speed,faded_speed`) and `harness/steer_fit.py`
+(per 2 m/s bin, the quantiles of |steering| fitted with `p + (p^2 - p) k`, normalised to full lock). Data: the wheel
+drives (G923, one driver): drive1/1-2 tarmac 174k steps, drive2/1-6 snow 371k, test3/1-2 gravel 13k (setup file only,
+too small and unlike the others: left out).
+
+- k is 1 (a square) from 2-4 m/s on every surface and both speeds; with the fade's speed it leaves 0 at about 1.5
+  m/s: `k = clamp((v - 1.5) * 0.5, 0, 1)` in code (`CURVE_FROM`, `CURVE_SLOPE`). Unlike OpenCMR2's key drivers, whose k
+  ramps to 1 only at top speed: a wheel driver keeps most of the time near the centre.
+- Above 24 m/s the used lock is steeper than a square (`p^a`, a 2.4-3.1); below 20 m/s a 1.7-2.2. Tarmac and snow
+  agree at speed; snow uses more lock below 16 m/s.
+- Median |steering| 0.12-0.29 at 0-16 m/s, 0.07-0.13 at 20-28, 0.03-0.06 above 30; p90 0.9 to 10 m/s, 0.4 at 20, 0.2 at
+  30, 0.1 at 44.
 
 ## Verification
 
 - Unit tests: the square gate, dead zone and saturation; the curve's ends (0 and full lock at every speed) and its k;
   time to full lock and back at the rates; cell 1 and 3 overrides, and the grid's path without the flags.
 - `scripts/rust-check.sh`; the gate once (nothing in `--boot` changes).
-- Not verified here: a real pad on macOS or Windows (no hardware; the SDL path compiles on Linux for its test only).
+- Not verified here: a real pad on any platform (no pad on this machine). evdev's gamepad mark and axis pairs follow
+  the kernel's gamepad convention; SDL's come from its mapping (the SDL path compiles on Linux for its test only, and
+  now starts SDL's gamepad subsystem with the joysticks').
 
 ## Open
 
-- `k(v)` fitted from the wheel drives (drive1 tarmac, drive2 snow, test3 gravel): pending.
+- Tune on a pad: the rates, the dead zone, and whether the curve should go past a square at speed (the fit's power
+  2.4-3.1 above 24 m/s; `shaped` stops at `x^2`).
+- A gravel hand drive on a wheel for the fit.
 - Later, each its own batch: triggers captured as axes (#6 item 1, unverified on alpha 5), rumble from the surface
   (OpenCMR2's model), DualSense trigger effects, and a slip-angle assist or a rack against NGP's torque.
