@@ -37,8 +37,8 @@ pub(crate) mod made;
 
 /// The grass texture's file name in [`Stage::texture_names`] (not a game file: [`texture`] draws it).
 pub const TEXTURE: &str = "rerbr-grass.dds";
-/// How far from the driveline, metres, grass grows.
-const BAND: f32 = 20.0;
+/// How far from the driveline, metres, grass grows: the hillsides and meadows in view beyond the verges too.
+const BAND: f32 = 40.0;
 /// Clumps (two crossed cards) a square metre on fully grassy ground within [`FULL`] of the driveline, thinning to
 /// [`FAR_SHARE`] of it at [`BAND`].
 const DENSITY: f32 = 40.0;
@@ -69,7 +69,7 @@ impl Level {
     const fn profile(self) -> [f32; 4] {
         match self {
             Level::Light => [0.5, 20.0, 2.0, 100.0],
-            Level::Dense => [1.0, 30.0, 4.0, 240.0],
+            Level::Dense => [1.0, 40.0, 5.0, 300.0],
         }
     }
 
@@ -90,7 +90,7 @@ pub(crate) const REACH: f32 = Level::Dense.profile()[3];
 /// The share of a level's reach past which its field fades out (`GRASS_FADE` in `shader.wgsl`).
 const FADE: f32 = 0.65;
 /// The most any [`Level`]'s cards widen ([`widen`]): the tiles' bounds take it.
-const WIDEST: f32 = 4.0;
+const WIDEST: f32 = 5.0;
 /// How much farther a tile behind the eye counts, by its distance along the view, when the pool picks the tiles to
 /// hold ([`made::Made::update`]): the pool goes to the field in view (the mirrors show the grass behind the eye).
 const BEHIND: f32 = 3.0;
@@ -1528,18 +1528,19 @@ mod tests {
     #[test]
     fn density_is_full_to_its_level_then_thins_as_its_cards_widen() {
         let dense = |d| density(Level::Dense, d);
-        assert_eq!((dense(0.0), dense(30.0)), (1.0, 1.0));
-        assert!((dense(60.0) - 0.5).abs() < 1e-6, "{}", dense(60.0));
+        assert_eq!((dense(0.0), dense(40.0)), (1.0, 1.0));
+        assert!((dense(80.0) - 0.5).abs() < 1e-6, "{}", dense(80.0));
         assert!(dense(90.0) > dense(100.0) && dense(100.0) > dense(200.0));
-        assert_eq!((dense(240.0), dense(300.0)), (0.0, 0.0));
+        assert_eq!((dense(300.0), dense(340.0)), (0.0, 0.0));
         let light = |d| density(Level::Light, d);
         assert_eq!((light(0.0), light(20.0), light(120.0)), (0.5, 0.5, 0.0));
         assert!((light(40.0) - 0.25).abs() < 1e-6, "{}", light(40.0));
-        // The field covers the ground as near while its cards widen (to 4 x 30 m and 3 x 20 m), less past that.
+        // The field covers the ground as near while its cards widen (to 5 x 40 m and 2 x 20 m) and before it fades,
+        // less past that.
         for level in [Level::Light, Level::Dense] {
             let [share, full, most, reach] = level.profile();
             let cover = |d| density(level, d) * widen(level, d) / share;
-            for d in [0.0, full, full * 2.0, full * most] {
+            for d in [0.0, full, full * 2.0, (full * most).min(FADE * reach)] {
                 assert!((cover(d) - 1.0).abs() < 1e-5, "{level:?} {d} {}", cover(d));
             }
             assert!(cover(full * most + 10.0) < 1.0 && cover(reach) == 0.0);
