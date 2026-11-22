@@ -475,11 +475,11 @@ impl Renderer {
         }
     }
 
-    /// Fills the grass tile meshes the eye at `eye` now wants ([`crate::grass::Ring::update`]).
-    pub(super) fn stream_grass(&mut self, eye: Vec3) {
+    /// Fills the grass tile meshes the eye at `eye` looking along `forward` now wants ([`crate::grass::Ring::update`]).
+    pub(super) fn stream_grass(&mut self, eye: Vec3, forward: Vec3) {
         let Some(mut ring) = self.grass.take() else { return };
         loop {
-            let filled = ring.update(eye);
+            let filled = ring.update(eye, forward);
             let idle = filled.is_empty();
             for crate::grass::Filled { mesh: index, vertices, bounds, ranks, staged } in filled {
                 let mesh = &mut self.meshes[index];

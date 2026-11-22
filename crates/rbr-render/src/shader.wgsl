@@ -119,7 +119,7 @@ struct Frame {
     street_light: vec4<f32>,
     street: array<vec4<f32>, 32>,
     // Our grass's profile (`grass::Level::uniform`, `grass_density`): its share near the eye, the metres it stays full
-    // within, those by which it has thinned to none.
+    // within, the most its cards widen past them, the metres by which it has faded to none.
     grass: vec4<f32>,
 }
 
@@ -479,13 +479,19 @@ fn vertex(input: VertexIn) -> VertexOut {
     out.uv1 = v.uv1;
     out.uv2 = v.uv2;
     out.world = v.position;
-    if (is_grass_top(v)) {
-        // Shrunk into the ground past the density where it stands and at the far edge of the grass.
+    if (is_grass_card(v)) {
         let d = distance(v.position, frame.eye.xyz);
-        // A converted stage's group pieces (`grass::FX_PIECE`) grow only away from the eye.
-        let piece = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
-        let height = v.uv2.x * grass_grown(d, v.uv2.y) * piece;
-        out.world = v.position + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
+        // Widened along the ground's plane as much as the field thins there: `wet.y` its half width, `uv1` the way out.
+        let out_way = v.uv1 * (v.wet.y * (grass_widen(d) - 1.0));
+        let n = v.normal;
+        out.world = v.position + vec3<f32>(out_way.x, -(n.x * out_way.x + n.z * out_way.y) / max(n.y, 0.1), out_way.y);
+        if (v.uv2.x > 0.0) {
+            // Shrunk into the ground past the density where it stands and at the far edge of the grass.
+            // A converted stage's group pieces (`grass::FX_PIECE`) grow only away from the eye.
+            let piece = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
+            let height = v.uv2.x * grass_grown(d, v.uv2.y) * piece;
+            out.world = out.world + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
+        }
         out.clip = frame.view_projection * vec4<f32>(out.world, 1.0);
     }
     // The backdrop's depth: moved along the eye's ray (same pixel, same shading) to `BACKDROP_BEHIND` its distance and at
@@ -512,11 +518,11 @@ fn vertex(input: VertexIn) -> VertexOut {
     return out;
 }
 
-// The top of one of our grass cards (`grass.rs`: `specular.x` past `GRASS_MARK` by its brightness, marked as a tuft,
-// `uv2.x` its height; no shadow map on them).
-fn is_grass_top(v: VertexIn) -> bool {
+// A corner of one of our grass cards (`grass.rs`: `specular.x` past `GRASS_MARK` by its brightness, marked as a tuft,
+// `wet.y` its half width; `uv2.x` its height at the top; no shadow map on them).
+fn is_grass_card(v: VertexIn) -> bool {
     return v.specular.x > GRASS_MARK && v.specular.x < GRASS_MARK + 3.0 && v.specular.y > 0.5 && v.specular.y < 1.5
-        && v.specular.z > 0.5 && v.uv2.x > 0.0;
+        && v.specular.z > 0.5 && v.wet.y > 0.0;
 }
 
 // How far the wind moves a grass card's top at `p`, `height` above its foot (ours): a bow along `GRASS_WIND` by
@@ -530,10 +536,29 @@ const GRASS_MARGIN: f32 = 1.5;
 // grass nearer and the pieces from its third generation pass on.
 const FX_PIECE_NEAR: vec2<f32> = vec2<f32>(12.0, 25.0);
 
-// The grass's density `d` metres from the eye (`grass::density`): `frame.grass.x` within `.y` metres, thinning smoothly
-// to none at `.z`, where drawing ends; the ground under it fades its thatch (`thatch`) the same.
+// The share of its reach past which the field fades out (`grass::FADE`).
+const GRASS_FADE: f32 = 0.65;
+
+// The grass's density `d` metres from the eye (`grass::density`): `frame.grass.x` within `.y` metres, then as one over
+// the distance, faded out over the last `GRASS_FADE` of its reach `.w`, where drawing ends.
 fn grass_density(d: f32) -> f32 {
-    return frame.grass.x * (1.0 - smoothstep(frame.grass.y, frame.grass.z, d));
+    return frame.grass.x * min(frame.grass.y / max(d, 1e-3), 1.0) * grass_fade(d);
+}
+
+fn grass_fade(d: f32) -> f32 {
+    return 1.0 - smoothstep(GRASS_FADE * frame.grass.w, frame.grass.w, d);
+}
+
+// How much wider than its own a card draws `d` metres from the eye (`grass::widen`): as much as the field thins past
+// its full distance, up to `frame.grass.z`, so the field covers the ground as near.
+fn grass_widen(d: f32) -> f32 {
+    return clamp(d / frame.grass.y, 1.0, frame.grass.z);
+}
+
+// How much of the ground the field covers `d` metres from the eye against near it, 0 to 1: all of it while its cards
+// widen as it thins, less past their most and in its fade.
+fn grass_cover(d: f32) -> f32 {
+    return min(grass_widen(d) * frame.grass.y / max(d, 1e-3), 1.0) * grass_fade(d);
 }
 
 // How grown a card of rank `keep` is `d` metres from the eye, 0 to 1.
@@ -2418,9 +2443,9 @@ fn ground_detail(world: vec3<f32>) -> f32 {
 // `THATCH_GRASSY` its ranges off the road and on the road mesh, or off it `grass::vegetation` times the ground's prior)
 // on the ground's colour as it takes it: the texture's mip
 // about 45 texels wide (`THATCH_MIP` levels under its width: the test's 256-texel level blurred over 7) in `THATCH_HUE`
-// of the vertex tint; on faces no steeper than it grows on (`THATCH_UP`, about `grass::LEVEL`), at its density by the
-// distance from the eye (`grass_density`). Not the band along the driveline it keeps to: the near ground past it is thatched too. `face` is the face's
-// normal, any length.
+// of the vertex tint; on faces no steeper than it grows on (`THATCH_UP`, about `grass::LEVEL`), at the field's share near
+// the eye, and where the field no longer covers the ground the field's look (`FIELD`). Not the band along the driveline
+// it keeps to: the near ground past it is thatched too. `face` is the face's normal, any length.
 const THATCH: vec2<f32> = vec2<f32>(0.82, 1.1);
 const THATCH_GRASSY: array<vec2<f32>, 2> = array<vec2<f32>, 2>(vec2<f32>(0.02, 0.07), vec2<f32>(0.05, 0.11));
 const THATCH_MIP: f32 = 5.5;
@@ -2446,11 +2471,19 @@ fn thatch(colour: vec3<f32>, v: VertexOut, face: vec3<f32>) -> vec3<f32> {
     let prior = select(clamp(-v.wet.y - 1.0, 0.0, 1.0), 0.0, road);
     let green = max(strict, prior * vegetation(ground));
     let up = smoothstep(THATCH_UP.x, THATCH_UP.y, abs(face.y) * inverseSqrt(max(dot(face, face), 1e-12)));
-    let dense = grass_density(distance(v.world, frame.eye.xyz));
     let grey = dot(colour, vec3<f32>(0.2126, 0.7152, 0.0722));
     let thatched = max(mix(vec3<f32>(grey), colour, THATCH.y), vec3<f32>(0.0)) * THATCH.x;
-    return mix(colour, thatched, candidate * green * up * dense);
+    let field = max(mix(vec3<f32>(grey), colour, FIELD.y), vec3<f32>(0.0)) * FIELD.x;
+    let cover = grass_cover(distance(v.world, frame.eye.xyz));
+    return mix(colour, mix(field, thatched, cover), candidate * green * up * frame.grass.x);
 }
+
+// Where the field no longer covers the ground (`grass_cover`: in its fade and past its reach), the ground takes the
+// field's look instead of the thatch's, so the grass seems to go on (ours): brightness and saturation against the
+// ground's. Measured past the near field of six reference shots, blades and thatch against the bare ground: luminance
+// 0.91 to 1.09 (median 0.99), saturation 1.04 to 1.13 (median 1.075); the grass test's partial weights dilute the
+// saturation here (1.08 left the median at 1.05), so 1.15, from that step.
+const FIELD: vec2<f32> = vec2<f32>(1.0, 1.15);
 
 // `grass::vegetation`: how much ground of colour `rgb` looks like vegetation, green or dry: its hue from orange-yellow
 // to green (`VEGETATION_HUE`, degrees), some saturation, not dark.

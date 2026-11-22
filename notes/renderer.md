@@ -1300,11 +1300,41 @@ bleed nothing. The frame's time step is worked out on its first view, so a tripl
 centre does. Cost (Gabiria chase): 0.09 ms at 1080p, 0.38 ms at 4K. Off byte-identical (chase, cockpit RMSE 0).
 
 Grass levels (2026-11-21, user decision, `grass::Level`, `frame.grass`): the halving falloff (full to 50 m, half every
-25 m, gone by 110 m) read as a front of grass moving with the car (user). The density is now the level's share near the
-eye, smoothly to none: Light 0.5 to 30 m, none by 80 m (`--enhance grass-light`); Dense 1.0 to 70 m, none by 150 m
-(`grass`); `CLOSE_DISTANCE` 158 m. Tile meshes per level (`Level::slots`: `SLOTS` x 0.75 and x 1.4; under 450 and
-800 MB). Cost over grass off, 1080p offscreen `--frames 60` (cachy, quiet machine): Gabiria fly-by old +0.38 ms, Dense
-+0.42, Light +0.26; 580 chase +0.66, +0.90, +0.40; Joux Verte chase +0.68, +0.81, +0.47. Not measured at 4K.
+25 m, gone by 110 m) read as a front of grass moving with the car (user). The density became the level's share near
+the eye, smoothly to none: Light 0.5 to 30 m, none by 80 m (`--enhance grass-light`); Dense 1.0 to 70 m, none by 150 m
+(`grass`); `CLOSE_DISTANCE` 158 m (replaced 2026-11-22, below). Tile meshes per level (`Level::slots`: `SLOTS` x 0.75
+and x 1.4; under 450 and 800 MB). Cost over grass off, 1080p offscreen `--frames 60` (cachy, quiet machine): Gabiria
+fly-by old +0.38 ms, Dense +0.42, Light +0.26; 580 chase +0.66, +0.90, +0.40; Joux Verte chase +0.68, +0.81, +0.47.
+
+Grass far off (2026-11-22, user goal "lots of grass, even in the distance"; `grass::Level::profile`, `Ring::update`,
+`Want`, `thatch` in `shader.wgsl`): grass streamed in late and out just past the car (user). Measured on the user's
+Joux Verte replay (main, Dense, chase): the 6400- and 5600-card meshes all held, 150-190 built tiles waiting for one,
+37 of 85 grassy tiles 30-70 m ahead and 7 of 24 within 30 m without their share: the tiles behind kept the big meshes
+until 158 m off, and the one worker built every bare tile again at each share step (~900 in reach at the shots).
+- Profile: the level's share to `full` metres, then as one over the distance; the cards left widen as much (`grass_widen`,
+  each card's half width in `Vertex::edge`, out along `uv1`) up to the level's most, so the field covers the ground as
+  near; faded out over the last 35% of the reach (`FADE`). Light 0.5 to 20 m, 2x, none by 100 m; Dense 1.0 to 30 m,
+  4x, none by 240 m; `CLOSE_DISTANCE` 248 m. Bounds padded for the widest card.
+- Far ground: where the field stops covering it (`grass_cover`), grassy ground takes the field's look, `FIELD` brightness
+  1.0 and saturation 1.15 of the ground's (blades and thatch against bare ground past the near field of six shots:
+  luminance 0.91-1.09, median 0.99; saturation median 1.075; 1.08 left it 1.05, 1.15 extrapolated, not measured), out
+  to the near ground's 600 m.
+- Streaming: a tile behind the eye counts 3x its distance along the view (`BEHIND`, `camera::forward`); no more tiles
+  with cards than meshes, nearest first; with none free a drawn tile takes the farthest tile's mesh more than 16 m
+  farther; a leaving tile keeps its share; built again at the share 16 m or a quarter of its distance nearer, the nearer
+  (`LEAD_SHARE`; a fixed 16 m rebuilt a tile ~16 times from the reach in); bare tiles remembered at their largest bare
+  share; up to 4 worker threads (a quarter of the machine's), 32 jobs queued. `SLOTS` 54 of 6400 (Dense 76), 765 MB.
+- Same replay, game 10-20 s, 960x540 video at 60 fps: grassy tiles short or without a mesh within 30 m none, 30-70 m 0-1
+  of ~60, 70-150 m 3-8 of ~200, past that a few of ~170; ~10 builds a frame, ~2.2 ms each; ~620 of 659 meshes held.
+- Cost, 4K `--frames 60` scene pass, two interleaved runs, main then this: 580 chase 8.9 / 8.5 ms, Gabiria fly-by 7.1 /
+  7.2, Joux Verte chase 7.2 / 8.4 (+1.2: the widened cards' fill; anisotropic filtering of the stretched picture is half
+  of it, off 6.46 / 7.15). Dense widening at most 2: Joux Verte 8.0; none: 7.07; reach 200: no change. Light, one run:
+  580 7.98 / 7.98, Joux Verte 6.25 / 6.99 (at 3x to 120 m: 7.52). 1080p shots against main: near field unchanged, the
+  field past 30 m smoother and fuller (RMSE under 0.006 on the RSF chase shots, fly-bys 0.02-0.05 from the high eye).
+- Not done: the compact card format (one ~40-byte record a card for the ~376 bytes of four stage vertices and six
+  indices, the meshes' memory the limit on a converted stage's grass everywhere); repeating the picture across a widened
+  card instead of stretching it (the filtering cost); some of Joux Verte's full tiles reach `CAPACITY` (6400 cards,
+  ground laid over ground) and are cut short.
 
 Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --screenshot` waits for the worker's
 tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every

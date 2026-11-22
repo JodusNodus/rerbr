@@ -200,6 +200,11 @@ pub fn eye(view_projection: Mat4) -> Vec3 {
     -(rows.inverse() * Vec3::new(r0.w, r1.w, r3.w))
 }
 
+/// The unit direction a perspective `view_projection` looks along: what clip w measures.
+pub fn forward(view_projection: Mat4) -> Vec3 {
+    view_projection.row(3).truncate().normalize_or_zero()
+}
+
 /// The six clip planes of a view-projection matrix, as `(normal, distance)` with normals pointing
 /// inwards: a point is inside when `normal . p + distance >= 0`.
 #[derive(Debug, Clone, Copy, PartialEq)]
