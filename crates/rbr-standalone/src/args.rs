@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use rbr_formats::{car_pack, rsf, stage_files};
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, DriverAids, Skill};
+use rbr_gameplay::steering::{Rates, Steering, Stick};
 use rbr_school::Lesson;
 use rbr_session::EndRule;
 
@@ -156,6 +157,9 @@ pub struct Args {
     /// `--ffb-rack` (with `--live`, a trial): NGP's steering torque without its filter, mapped as a line
     /// (`rack_ffb.rs`).
     pub ffb_rack: bool,
+    /// `--stick-steering RISE,FALL,CURVE` and `--key-steering RISE,FALL` (with `--live`): ours for a gamepad stick
+    /// and the keys beside the filter's grid (`rbr_gameplay::steering`); a replay's header keeps them.
+    pub steering: Steering,
     /// `--head-gasket-durability N`: NGP's `headGasketDurability` (`boot::Race::head_gasket_durability`).
     pub head_gasket_durability: Option<i32>,
     /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (with `--autopilot --boot` on a pad stage): a handling manoeuvre, open loop
@@ -239,7 +243,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot
        rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
-       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)] [--ffb-rack (a trial: NGP's steering torque without its filter, as a line; rack_ffb.rs)]
+       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)] [--ffb-rack (a trial: NGP's steering torque without its filter, as a line; rack_ffb.rs)] [--stick-steering RISE,FALL,CURVE] [--key-steering RISE,FALL] (ours for a gamepad stick and the keys; rbr_gameplay::steering)
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
        -V, --version prints the version
        -h, --help prints this text";
@@ -397,6 +401,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--ffb-sensitivity" => {
                 args.ffb_sensitivity =
                     Some(percentages(&value).ok_or(format!("--ffb-sensitivity {value}: three percentages, G,T,S"))?)
+            }
+            "--stick-steering" => {
+                let stick = Stick::parse(&value);
+                args.steering.stick = Some(stick.ok_or(format!("--stick-steering {value}: RISE,FALL,CURVE"))?)
+            }
+            "--key-steering" => {
+                args.steering.keys = Some(Rates::parse(&value).ok_or(format!("--key-steering {value}: RISE,FALL"))?)
             }
             "--head-gasket-durability" => {
                 args.head_gasket_durability =
@@ -582,6 +593,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if (args.ffb_tyres.is_some() || args.ffb_rack) && !args.live {
         return Err("--ffb-tyres and --ffb-rack need --live".into());
+    }
+    if args.steering != Steering::default() && !args.live {
+        return Err("--stick-steering and --key-steering need --live".into());
     }
     if args.ffb_tyres.is_some() && args.ffb_rack {
         return Err("--ffb-tyres and --ffb-rack are two forces: one of them".into());
@@ -1039,6 +1053,10 @@ mod tests {
             (format!("{LIVE} --telemetry-udp 127.0.0.1:6776"), |a| {
                 assert_eq!(a.telemetry_udp, Some(([127, 0, 0, 1], 6776).into()))
             }),
+            (format!("{LIVE} --stick-steering 3,5,100 --key-steering 2.5,5"), |a| {
+                let stick = Stick { rates: Rates { rise: 3.0, fall: 5.0 }, curve: 1.0 };
+                assert_eq!(a.steering, Steering { stick: Some(stick), keys: Some(Rates { rise: 2.5, fall: 5.0 }) });
+            }),
             (format!("{LIVE} --frames-out F --start-time 9:36"), |a| {
                 assert_eq!(a.frames_out, Some(PathBuf::from("F")));
                 assert_eq!(a.start_time, Some(34560.0));
@@ -1172,6 +1190,8 @@ mod tests {
             (format!("{REC} --extra-payloads EP"), "--extra-payloads and --wall-clock need --recorded-payload"),
             (format!("{REC} --pilot autopilot"), "--pilot needs --live"),
             (format!("{REC} --frames-out F"), "--frames-out and --frames need --live"),
+            (format!("{REC} --key-steering 1,1"), "--stick-steering and --key-steering need --live"),
+            (format!("{LIVE} --stick-steering 1,1"), "--stick-steering 1,1: RISE,FALL,CURVE"),
             (format!("{LIVE} --frames F --frames-out G"), "--frames takes no --frames-out (the frames are given)"),
             (format!("{REC} --replay-out F"), "--replay-out and --replay need --live"),
             (format!("{LIVE} --frames F --replay G"), "one of --frames-out, --frames, --replay-out and --replay"),
