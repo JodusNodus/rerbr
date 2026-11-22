@@ -192,6 +192,11 @@ impl Settings {
         ]
     }
 
+    /// The `[steering]` section [`Settings::parse`] reads.
+    pub fn to_text(&self) -> String {
+        self.entries().iter().fold(format!("[{SECTION}]\n"), |text, (key, value)| text + &format!("{key} = {value}\n"))
+    }
+
     /// The stepping process's flags (`--stick-steering`, `--key-steering`), which a replay's header keeps.
     pub fn stepping_args(&self) -> [String; 4] {
         ["--stick-steering".into(), self.stick.arg(), "--key-steering".into(), self.keys.arg()]
@@ -325,8 +330,7 @@ mod tests {
         let text = "[steering]\nstick_dead_zone = 8\nstick_curve = 150\nkey_rise = 99\n";
         let read = Settings::parse(text);
         assert_eq!((read.stick_dead_zone, read.stick.curve, read.keys.rise), (8.0, 1.5, defaults.keys.rise));
-        let file = read.entries().iter().fold(String::from("[steering]\n"), |s, (k, v)| s + &format!("{k} = {v}\n"));
-        assert_eq!(Settings::parse(&file), read);
+        assert_eq!(Settings::parse(&read.to_text()), read);
         let [_, stick, _, keys] = read.stepping_args();
         assert_eq!((Stick::parse(&stick), Rates::parse(&keys)), (Some(read.stick), Some(read.keys)));
         assert_eq!(Stick::parse("1,2"), None);

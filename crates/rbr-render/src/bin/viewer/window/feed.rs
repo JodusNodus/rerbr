@@ -104,6 +104,9 @@ fn run(shared: &Mutex<State>, stop: &AtomicBool, bindings: &Bindings, script: Op
     let mut input = Input::open(bindings);
     input.names().iter().for_each(|n| eprintln!("viewer: controls from {n}"));
     input.missing.iter().for_each(|e| eprintln!("viewer: controls: {e}"));
+    if input.steers_with_stick() {
+        eprintln!("viewer: steering from a gamepad stick (the filter's stick cell)");
+    }
     let period = Duration::from_secs(1) / bindings.input_rate.max(1);
     let (mut seq, mut last, mut sent, mut looked, mut searched) =
         (0, None, Instant::now(), Instant::now(), Instant::now());
