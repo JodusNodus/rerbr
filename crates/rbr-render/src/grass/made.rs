@@ -29,7 +29,9 @@ const MOST_DENSITY: f32 = DENSITY * 1.2;
 const CANDIDATES: u32 = (MOST_DENSITY * TILE * TILE) as u32;
 /// The most a cell's support records, metres: past a converted stage's widest cards' footprint.
 const MOST_SUPPORT: f32 = (BORDER as f32 + 0.5) * CELL;
-/// How many tiles the pool holds at each level, and the most cards a view draws.
+/// How many tiles the pool holds at each level (80 KB each: Dense 126 MB, under the 128 MiB a storage binding takes),
+/// and the most cards a view draws. Joux Verte's grass everywhere fills the Dense pool on its replay, 760 thousand cards
+/// in its chase view: the farthest tiles in reach, thin and fading, go without.
 const POOL: [usize; 2] = [768, 1536];
 const MAIN_CARDS: u32 = 1 << 20;
 const MIRROR_CARDS: u32 = 1 << 18;
