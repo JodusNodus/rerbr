@@ -30,15 +30,6 @@ The same sensitivity gives each car a different weight. On a 40 m circle the Fie
 with NGP's force, and the A110 RGT 1.15 times. Set the car's sensitivity again after switching, on the Controls page or
 in the pause menu while driving. Both forces use the same sensitivity setting, so a change applies to both.
 
-## NGP's torque, unfiltered and straight (a trial)
-
-The second Experimental switch, "Force feedback: NGP's torque, unfiltered and straight", keeps NGP's torque but
-changes what NGP does to it afterwards. The torque still has everything NGP adds up: the tyres, the caster trail, the
-pull from braking and drive through the scrub radius, and the lift from the steering axis's tilt. NGP's smoothing is
-dropped, which is light anyway (about 6 ms at speed), and the torque goes to the wheel in a straight line, not
-through NGP's curve. It tells you whether what you dislike in NGP's force is what it is made of or how NGP shapes it.
-Only one of the two switches is on at a time. Records are kept.
-
 ## Why 25 mm
 
 I recorded Assetto Corsa EVO's force from its telemetry in a GT4, an MX-5 and an A110 S. It matches the front tyres'

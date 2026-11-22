@@ -348,13 +348,10 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     our pneumatic trail is shorter than AC's, so less mechanical trail gives its shape.
   - Level against NGP's torque (median above 8 m/s): at 25 mm 0.73 of it for the Fiesta, 1.12-1.16 for the A110
     (its caster trail is short); the per-car sensitivity takes it up. Not tried on a wheel.
-- NGP's torque unfiltered (ours, 2026-11-21, a trial; `rbr-standalone --ffb-rack`, `rack_ffb.rs`; the launcher's
-  Settings > Experimental "Force feedback: NGP's torque, unfiltered and straight", `[ffb] rack`, one of it and
-  `tyres` at a time, the tyres' first in the command; the viewer maps it as a line when its live command has
-  `--ffb-rack`; records are kept): the last step's `rack_ratio * steer_torque_sum` (`+0xadc`, cleared at each
-  step's start, read by `UpdateFfbTorque`) through NGP's curve, without the filter's blend. User: NGP's force feels
-  off. The filter is light (blend 0.5-0.7 a 7 ms step: a time constant of about 6 ms above 13 m/s, 10 ms at rest), so
-  the trial mostly swaps NGP's curve for the line. Not tried on a wheel.
+- NGP's torque unfiltered and mapped as a line (ours, a trial 2026-11-21, dropped 2026-11-22 at the user's call):
+  the last step's `rack_ratio * steer_torque_sum` (`+0xadc`, cleared at each step's start, read by
+  `UpdateFfbTorque`) through NGP's curve without the filter's blend. The filter is light (blend 0.5-0.7 a 7 ms step:
+  a time constant of about 6 ms above 13 m/s, 10 ms at rest), so it mostly swapped NGP's curve for the line.
 - The torque's parts over recorded drives (2026-11-21; `rbr-standalone --recording .. --steer-breakdown FILE`,
   `headless/steer.rs`, a CSV row per step from a read-only hook at the wheel step's `AddADC`; the parts add up to the
   car's sum within 8e-5; physics PASS with it on for drive2/5, drive1/2, rsf-test1/1; rsf-test2/1 stands still).
