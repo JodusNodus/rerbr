@@ -374,6 +374,14 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.07-0.10 of full scale, and pointed with the cornering force 81-95% of the time (the loaded outer wheel brakes
     harder, its scrub moment centres the wheel), so it only made braked corners heavier. The distinct tug, braking with
     one side on looser ground, was rare in the drives.
+  - The rear letting go (2026-11-22; the breakdown's `tK_alpha` columns, the right-hand tyres' mirrored, slides where
+    the rear's slip angle passes the front's by 3 deg from below it, held 0.3 s, above 12 m/s): 12 on snow drive2/5, 3
+    on gravel rsf-test1, 3 on tarmac drive1/2, none in the gate's driverless playbacks. The rear's slip holds while the
+    front's falls (snow 8.3 to 5.9 deg, gravel 6.3 to 3.4, tarmac 5.2 to 2.3, the driver countersteering meanwhile).
+    The force from the tyres after the curve, towards opposite lock throughout: gravel 0.57 to 0.16 and tarmac 0.77 to
+    0.11 from 0.4 s before to 0.5-0.8 s after; snow 0.51 to 0.44 (median change over the 0.6 s around it -0.02). By front
+    slip the force is flat on snow from 3 to 12 deg (0.53-0.59) and rises steeply below 3-4 deg on all three, so the cue
+    comes only once the fronts' slip falls below that. NGP's torque does the same, noisier.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only
