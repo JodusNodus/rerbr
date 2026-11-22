@@ -26,12 +26,19 @@ pub fn looks_like_pack(archive: &str, entries: &[String]) -> bool {
 
 /// The outcome of an import's result line (`Co-driver <pack>: …`, `Stage notes <pack>: …`).
 fn outcome(source: &str, line: &str) -> Outcome {
+    // One install of several that failed: `Failed co-driver <pack>: <why>`.
+    if let Some((pack, why)) = line.strip_prefix("Failed ").and_then(|l| l.split_once(": ")) {
+        return Outcome::failed(source, "co-driver", format!("{pack}: {why}")).refreshing(Refresh::Codriver);
+    }
     let (kind, rest, place) = match (line.strip_prefix("Co-driver "), line.strip_prefix("Stage notes ")) {
         (Some(rest), _) => ("co-driver", rest, "pick it in Co-drivers"),
         (_, Some(rest)) => ("pace notes", rest, "they play with a custom co-driver (Co-drivers)"),
         _ => ("co-driver", line, "pick it in Co-drivers"),
     };
     let pack = rest.split(':').next().unwrap_or(rest);
+    // Many packs in one line: `Co-driver <source>: 42 packs (…)`.
+    let many = rest.split_once(": ").and_then(|(_, r)| r.split_once(" packs (")).map(|(n, _)| n);
+    let pack = &many.map_or_else(|| pack.to_owned(), |n| format!("{pack} ({n} packs)"));
     Outcome::added(source, kind, pack, place, Goto::Codrivers).refreshing(Refresh::Codriver)
 }
 
@@ -81,5 +88,16 @@ mod tests {
         assert!(looks_like_pack("Luppis-notes.zip", &names(&["Finland/x.ini"])));
         assert!(looks_like_pack("My Co-Driver.7z", &names(&["Finland/x.ini"])));
         assert!(!looks_like_pack("Luppis.zip", &names(&["x.ini"])));
+    }
+
+    #[test]
+    fn outcomes_read_single_summary_and_failed_lines() {
+        let ok = |o: Outcome| o.result.unwrap();
+        assert!(ok(outcome("s", "Co-driver Tom: 2 call styles, 1 range sets.")).starts_with("Added Tom (co-driver)"));
+        assert!(ok(outcome("s", "Co-driver English: 42 packs (A, B)")).starts_with("Added English (42 packs)"));
+        assert!(outcome("s", "Failed co-driver English - X: no call styles")
+            .result
+            .unwrap_err()
+            .contains("English - X"));
     }
 }
