@@ -536,8 +536,11 @@ impl Made {
                 let tiles =
                     buffer("grass tiles", (tiles * size_of::<Walk>()) as u64, wgpu::BufferUsages::STORAGE | copy);
                 let cards = buffer("grass cards", u64::from(capacity) * 64, wgpu::BufferUsages::STORAGE);
-                let counter =
-                    buffer("grass counter", 64, wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT | copy);
+                let counter = buffer(
+                    "grass counter",
+                    64,
+                    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT | copy | wgpu::BufferUsages::COPY_SRC,
+                );
                 let make = device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("grass made"),
                     layout: &layout,
