@@ -1071,7 +1071,6 @@ mod tests {
                 "smoothing = 0\n",
                 "tyres = 0\n",
                 "rack = 0\n",
-                "pull = 0\n",
                 "rev_lights = 1\n",
                 "\n",
                 "[ffb_cars]\n",

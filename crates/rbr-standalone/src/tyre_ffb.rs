@@ -5,15 +5,10 @@
 //! contact's normal, then the wheel's steering gain (`inv_arm * inv_rack`) and the car's rack ratio put the sum in the
 //! units NGP's curve takes, so the sensitivity, the linearity (100 %: a line, as AC's) and the steering load read it
 //! as NGP's torque. Reads the tyres' scratch after the step, never writes the memory.
-//!
-//! `--ffb-pull W` adds [`Pull`]: the braking and drive pull NGP's torque has through the scrub radius, which the
-//! front tyres' sideways force leaves out.
-
-use std::cell::Cell;
 
 use rbr_physics::car_body::store::CarStore;
 use rbr_physics::mem::Mem;
-use rbr_physics::wheel::layout::{SteerTorque, INV_ARM, INV_RACK, ON_GROUND, TYRE_SCRATCH};
+use rbr_physics::wheel::layout::{INV_ARM, INV_RACK, ON_GROUND, TYRE_SCRATCH};
 use rbr_step::runner::CAR_PTR;
 
 /// The mechanical trail, m, that gives AC EVO's torque by front slip angle on the r40 circle (`notes/ngp.md`):
@@ -50,73 +45,10 @@ pub fn torque(mem: &Mem, trail: f32) -> f32 {
     -mem.steering_rack_ratio(car).abs() * sum
 }
 
-/// The force the wheel gets, in [-1, 1] before the player's settings: [`torque`], with `pull`'s added, through NGP's
-/// curve at the car's sensitivity, 0 while the car's force feedback is muted or its override timer runs (as NGP's
-/// filter holds it).
-pub fn force(mem: &Mem, trail: f32, pull: Option<&Pull>) -> f32 {
+/// The force the wheel gets, in [-1, 1] before the player's settings: [`torque`] through NGP's curve at the car's
+/// sensitivity, 0 while the car's force feedback is muted or its override timer runs (as NGP's filter holds it).
+pub fn force(mem: &Mem, trail: f32) -> f32 {
     let car = mem.u32(CAR_PTR);
-    let torque = if mem.override_timer(car) > 0.0 { 0.0 } else { torque(mem, trail) + pull.map_or(0.0, Pull::torque) };
+    let torque = if mem.override_timer(car) > 0.0 { 0.0 } else { torque(mem, trail) };
     rbr_physics::ngp::ffb::curve(torque, mem.ffb_muted(car), mem.max_ff_torque(car))
-}
-
-/// The pull's time constant, s: a 7 ms step's one pole. Over the recorded drives NGP's longitudinal part carries the
-/// most of its torque's 8-30 Hz buzz (`notes/ngp.md`); 25 ms keeps 0.9 of it at 3 Hz and 0.4 at 15 Hz.
-const PULL_SMOOTHING: f32 = 0.025;
-
-/// The pull's soft limit, times the car's sensitivity `S`: about 1.1 times the p90 of NGP's torque on the recorded
-/// drives (0.36 `S`), above the braking pull's p95 (to 0.9 of it), under the impacts' (2-12 times it).
-const PULL_LIMIT: f32 = 0.4;
-
-/// The braking and drive pull (`--ffb-pull W`, ours, a trial): each physics step's longitudinal part of the front
-/// wheels' adds to NGP's torque sum (`steer_parts::parts`, the scrub radius's: their difference in braking or drive
-/// force), times the rack ratio as NGP's torque takes the sum, soft-limited at [`PULL_LIMIT`] and smoothed over
-/// [`PULL_SMOOTHING`], times the weight. Fed the runner's kept adds ([`Pull::fold`]); a wheel off the ground adds none.
-pub struct Pull {
-    weight: f32,
-    value: Cell<f32>,
-}
-
-impl Pull {
-    pub fn new(weight: f32) -> Self {
-        Pull { weight, value: Cell::new(0.0) }
-    }
-
-    /// Folds the adds `torques` kept since the last call, step by step, on the car in `mem`.
-    pub fn fold(&self, mem: &Mem, torques: &[SteerTorque]) {
-        let car = mem.u32(CAR_PTR);
-        let limit = PULL_LIMIT * mem.max_ff_torque(car);
-        let rack = mem.steering_rack_ratio(car);
-        let blend = crate::physics::DT / (PULL_SMOOTHING + crate::physics::DT);
-        for step in crate::steer_parts::steps(torques) {
-            let sum: f64 = step.iter().filter_map(crate::steer_parts::parts).map(|p| p.longitudinal).sum();
-            let target = soft_limit(rack * sum as f32, limit);
-            self.value.set(self.value.get() + (target - self.value.get()) * blend);
-        }
-    }
-
-    /// The pull now, in the units of [`torque`].
-    pub fn torque(&self) -> f32 {
-        self.weight * self.value.get()
-    }
-}
-
-/// `x` through `limit * tanh(x / limit)`: itself while small, at most `limit` in size.
-fn soft_limit(x: f32, limit: f32) -> f32 {
-    if limit > 0.0 {
-        limit * (x / limit).tanh()
-    } else {
-        0.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::soft_limit;
-
-    #[test]
-    fn the_soft_limit_keeps_small_pulls_and_caps_large_ones() {
-        assert!((soft_limit(5.0, 100.0) - 5.0).abs() < 0.01);
-        assert!((soft_limit(-1e6, 100.0) + 100.0).abs() < 1e-3);
-        assert_eq!(soft_limit(5.0, 0.0), 0.0);
-    }
 }

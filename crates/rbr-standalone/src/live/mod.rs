@@ -189,12 +189,12 @@ pub struct Live<'a> {
 }
 
 /// The force the wheel gets (`Live::wheel_force`).
+#[derive(Clone, Copy)]
 pub enum WheelForce {
     /// NGP's: its filtered steering torque through its curve.
     Ngp,
-    /// `--ffb-tyres`: from the front tyres with this mechanical trail, m (`tyre_ffb`), and with `--ffb-pull` the
-    /// braking and drive pull.
-    Tyres { trail: f32, pull: Option<crate::tyre_ffb::Pull> },
+    /// `--ffb-tyres`: from the front tyres with this mechanical trail, m (`tyre_ffb`).
+    Tyres(f32),
     /// `--ffb-rack`: NGP's steering torque without its filter (`rack_ffb`).
     Rack,
 }
@@ -392,22 +392,17 @@ impl<'a> Live<'a> {
 
     /// The wheel's force from here on (`--ffb-tyres`, `--ffb-rack`).
     pub fn set_wheel_force(&mut self, force: WheelForce) {
-        self.playback.runner.keep_steer_torques = matches!(force, WheelForce::Tyres { pull: Some(_), .. });
         self.wheel_force = force;
     }
 
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
     /// NGP's, with `--ffb-tyres` the front tyres' (`tyre_ffb::force`), with `--ffb-rack` NGP's torque unfiltered
     /// (`rack_ffb::force`). NGP's and the rack's read the car's store over the held typed state, without lowering it
-    /// (it runs after every frame). The pull folds the steps since the last call in, so a second call in a frame
-    /// gives the same force.
+    /// (it runs after every frame).
     pub fn wheel_force(&self) -> f32 {
         let runner = &self.playback.runner;
-        if let WheelForce::Tyres { trail, pull } = &self.wheel_force {
-            if let Some(pull) = pull {
-                pull.fold(runner.image(), &runner.take_steer_torques());
-            }
-            return crate::tyre_ffb::force(runner.image(), *trail, pull.as_ref());
+        if let WheelForce::Tyres(trail) = self.wheel_force {
+            return crate::tyre_ffb::force(runner.image(), trail);
         }
         let rack = matches!(self.wheel_force, WheelForce::Rack);
         let mut mem = runner.unheld_image().clone();
