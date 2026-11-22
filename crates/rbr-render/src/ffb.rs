@@ -67,9 +67,6 @@ pub struct Options {
     /// NGP's steering torque without its filter (the launcher's Settings > Experimental; `rbr-standalone
     /// --ffb-rack`, a trial): a straight line in it as well.
     pub rack: bool,
-    /// The braking and drive pull added to the force from the tyres (the launcher's Settings > Experimental;
-    /// `rbr-standalone --ffb-pull`, a trial); nothing without [`Options::tyres`].
-    pub pull: bool,
     /// The wheel's rev lights follow the car's shift points (`crate::wheel_lights`).
     pub rev_lights: bool,
 }
@@ -86,7 +83,6 @@ impl Default for Options {
             smoothing: 0,
             tyres: false,
             rack: false,
-            pull: false,
             rev_lights: true,
         }
     }
@@ -122,7 +118,6 @@ impl Options {
             .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
         out.tyres = flag("tyres", false);
         out.rack = flag("rack", false);
-        out.pull = flag("pull", false);
         out.rev_lights = flag("rev_lights", true);
         out
     }
@@ -150,7 +145,7 @@ impl Options {
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
              sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\nrack = {}\n\
-             pull = {}\nrev_lights = {}\n",
+             rev_lights = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -166,7 +161,6 @@ impl Options {
             self.smoothing,
             u8::from(self.tyres),
             u8::from(self.rack),
-            u8::from(self.pull),
             u8::from(self.rev_lights),
         )
     }
@@ -1314,7 +1308,6 @@ mod tests {
             rotation_per_car: true,
             smoothing: 8,
             rack: true,
-            pull: true,
             rev_lights: false,
             ..Options::default()
         };

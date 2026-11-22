@@ -113,14 +113,6 @@ pub fn experimental_section(
         // Two forces in place of NGP's: one at a time, the one turned on last.
         let (tyres, rack) = (ffb.tyres, ffb.rack);
         experiment(rows, "Force feedback", "From the tyres", &mut ffb.tyres, FFB_HELP, FFB_PAGE);
-        experiment(
-            rows,
-            "Force feedback",
-            "Braking and drive pull (with From the tyres)",
-            &mut ffb.pull,
-            PULL_HELP,
-            FFB_PAGE,
-        );
         experiment(rows, "Force feedback", "NGP's torque, unfiltered and straight", &mut ffb.rack, RACK_HELP, FFB_PAGE);
         if ffb.tyres && !tyres {
             ffb.rack = false;
@@ -161,9 +153,6 @@ const TYRE_HELP: &str = "ReRBR's brush tyre, in place of NGP 7's. Still in devel
 const FFB_HELP: &str = "The wheel's force from the front tyres' grip, as Assetto Corsa EVO's, mapped straight: it \
                         goes light as the front lets go. Off: NGP's force and curve. Records are kept either way; the \
                         sensitivity may want a new value.";
-const PULL_HELP: &str = "A trial, with From the tyres: adds the tug through the steering when the front wheels brake \
-                         or drive unevenly (one on loose ground, one locking first, torque steer), smoothed and \
-                         capped so impacts don't max the wheel.";
 const RACK_HELP: &str = "A trial: NGP's own steering torque (tyres, steering geometry, braking and drive pull) \
                          without its smoothing, mapped straight instead of through NGP's curve. Records are kept; \
                          the sensitivity may want a new value.";
