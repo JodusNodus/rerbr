@@ -38,7 +38,7 @@ pub struct Graphics {
 /// water, the soft car shadow and our tyre marks.
 pub const ALWAYS_ON: [&str; 5] = ["anisotropy", "contact", "decals", "marks", "water"];
 
-/// A new install's choices: the High preset.
+/// A new install's choices: the Ultra preset.
 pub const DEFAULT_GRAPHICS: Graphics = Quality::Ultra.graphics();
 
 impl Default for Graphics {
@@ -137,10 +137,11 @@ impl Choice for Detail {
 pub enum Quality {
     /// The game's look with the free additions.
     Low,
-    /// Our lighting and every addition but the grass and the windscreen's glass.
+    /// Our lighting, light grass and every addition but the windscreen's glass; the wet roads without the scenery's
+    /// reflections, the mirrors every third frame.
     Medium,
     High,
-    /// High with the Ultra detail.
+    /// High with the Ultra detail and dense grass.
     Ultra,
 }
 
@@ -169,13 +170,9 @@ impl Quality {
                 mirrors: Rate::Off,
                 ..high
             },
-            Quality::Medium => Graphics {
-                grass: Grass::Off,
-                windscreen: false,
-                wet_roads: WetRoads::Medium,
-                mirrors: Rate::Every(3),
-                ..high
-            },
+            Quality::Medium => {
+                Graphics { windscreen: false, wet_roads: WetRoads::Low, mirrors: Rate::Every(3), ..high }
+            }
             Quality::High => high,
             Quality::Ultra => Graphics { detail: Detail::Ultra, grass: Grass::Dense, ..high },
         }
@@ -731,10 +728,10 @@ impl Form {
         kit::group_label(ui, "Quality", None);
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
-            let tip = "Sets the choices below. Low: the game's look. Medium: all but Grass by the road and \
-                       Windscreen, wet roads at medium, the mirrors every third frame. High: all but Sharper shadows \
-                       and reflections, with light grass. Ultra: all, with dense grass. The render scale and motion \
-                       blur stay as they are";
+            let tip = "Sets the choices below. Low: the game's look. Medium: all but Windscreen, with light grass, \
+                       wet roads at low and the mirrors every third frame. High: all but Sharper shadows and \
+                       reflections, with light grass. Ultra: all, with dense grass. The render scale and motion blur \
+                       stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
                     .selected_text(Quality::of(*g).map_or("Custom", Quality::label))

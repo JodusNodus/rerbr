@@ -1851,6 +1851,14 @@ with low reflections), High 11.4-26.2 (23.7-47.6), Ultra 15.9-33.9 (33.1-63.7). 
 Lighting on with the rest cut saves only 1.5-2 ms dry. Tried: sun maps at 1024 saved 0.4-1.9 ms (the cascades are
 geometry-bound), so no cheaper lighting tier by size.
 
+Presets at 4K (2026-11-22, cachy's RX 9060 XT; GPU frame: the profile's passes, the shadow thread once; `--frames
+60 --profile`, the launcher's arguments of each): 580 chase, 621 cockpit, Gabiria fly-by dry, Luceram cockpit and
+Sipirkakim chase in heavy rain. Low 11.3, 7.7, 6.5, 9.0, 6.4 ms; Medium with lighting, no grass, wet roads medium 14.2,
+11.6, 11.3, 14.9, 9.8; with light grass and wet roads low (the preset since) 14.1, 11.9, 11.5, 14.4, 8.9; High 14.7,
+13.9, 11.9, 17.5, 10.7; High with dense grass 15.5, 15.2, 12.7, 17.8, 10.7 (not taken: up to 1.3 ms, the mirrors draw
+it too); Ultra 17.0, 16.6, 13.9, 19.6, 12.2. Light grass costs Medium 0.2-0.3 ms, the scenery's reflections it drops
+0.5-0.9 in rain.
+
 ### Performance log (2026-10-26)
 
 Launcher Graphics page "Performance log" (`perf_log = on`, default off) passes `viewer --perf-log <files folder>/logs`
