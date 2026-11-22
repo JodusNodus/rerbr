@@ -348,6 +348,34 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     our pneumatic trail is shorter than AC's, so less mechanical trail gives its shape.
   - Level against NGP's torque (median above 8 m/s): at 25 mm 0.73 of it for the Fiesta, 1.12-1.16 for the A110
     (its caster trail is short); the per-car sensitivity takes it up. Not tried on a wheel.
+- NGP's torque unfiltered (ours, 2026-11-21, a trial; `rbr-standalone --ffb-rack`, `rack_ffb.rs`; the launcher's
+  Settings > Experimental "Force feedback: NGP's torque, unfiltered and straight", `[ffb] rack`, one of it and
+  `tyres` at a time, the tyres' first in the command; the viewer maps it as a line when its live command has
+  `--ffb-rack`; records are kept): the last step's `rack_ratio * steer_torque_sum` (`+0xadc`, cleared at each
+  step's start, read by `UpdateFfbTorque`) through NGP's curve, without the filter's blend. User: NGP's force feels
+  off. The filter is light (blend 0.5-0.7 a 7 ms step: a time constant of about 6 ms above 13 m/s, 10 ms at rest), so
+  the trial mostly swaps NGP's curve for the line. Not tried on a wheel.
+- The torque's parts over recorded drives (2026-11-21; `rbr-standalone --recording .. --steer-breakdown FILE`,
+  `headless/steer.rs`, a CSV row per step from a read-only hook at the wheel step's `AddADC`; the parts add up to the
+  car's sum within 8e-5; physics PASS with it on for drive2/5, drive1/2, rsf-test1/1; rsf-test2/1 stands still).
+  Above 8 m/s, both fronts down, sizes over the p90 of NGP's |torque| (snow drive2/5, gravel rsf-test1, tarmac
+  drive1/2):
+  - Longitudinal (scrub radius): the front wheels' difference in braking or drive force, `lon = c (fx0 + fx1)` in the
+    mirrored contact frames (`c` 0.038-0.041, R² 0.57-0.91 without impacts). Braking: median 0.17-0.21, p95 0.29,
+    0.90, 0.51 (left-right `fx` p95 6.7-10.3 kN); under power median 0.05-0.10, p95 0.23-0.45. Impacts (one wheel's
+    `fz` past 10 kN or `|fx|` past 8 kN, 0.4-1.4 % of steps) reach 2-12 times the p90.
+  - Vertical (axis inclination): rms 0.09-0.15, p95 0.13-0.46, mostly below 8 Hz. At rest the two wheels' cancel
+    (rsf-test2: 218 and -196).
+  - Noise, 8-30 Hz rms over the p90: NGP's total 0.051, 0.081, 0.121; the force from the tyres (over its own p90, which
+    is 0.96-1.03 of NGP's) 0.033, 0.058, 0.089. Of NGP's parts the longitudinal has the most (0.052, 0.045, 0.056),
+    then the lateral (0.033-0.044); the vertical 0.016-0.019.
+  - The pull (ours, 2026-11-21, a trial; `rbr-standalone --ffb-pull W` with `--ffb-tyres`, `tyre_ffb::Pull`; the
+    launcher's Settings > Experimental "Braking and drive pull", `[ffb] pull`, passes 1): per step the front wheels'
+    longitudinal parts times the rack ratio (the force from the tyres has NGP's sign: it follows the lateral and
+    aligning parts with r 0.87-0.98), soft-limited at `L = 0.4 S` (`L tanh(x / L)`), one pole of 25 ms, times `W`; fed the
+    runner's kept adds (`Runner::keep_steer_torques`) at each `wheel_force`. Offline over the same drives, over the
+    force from the tyres' p90: braking median 0.16-0.21, p95 0.27-0.76; impacts at most 0.53-0.99 (raw to 12); 8-30 Hz
+    rms with it 0.035, 0.065, 0.090 against 0.040, 0.058, 0.085 without (raw, 0.057-0.124). Not tried on a wheel.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only

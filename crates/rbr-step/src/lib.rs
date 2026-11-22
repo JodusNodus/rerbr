@@ -109,6 +109,9 @@ pub trait Host {
     /// A tyre step (`CScratch::Step` or NGP's wrapper) a caller ran itself on the tyre at `scratch` with the time step
     /// `dt`: the runner keeps its term as after a run of the binding ([`runner::Runner::take_tyre_terms`]).
     fn tyre_stepped(&self, _scratch: u32, _dt: f32) {}
+    /// A steered wheel's add to the steering torque sum, as `read` describes it (ours, read-only research tooling:
+    /// [`runner::Runner::keep_steer_torques`]).
+    fn steer_torque(&self, _read: &dyn Fn() -> rbr_physics::wheel::layout::SteerTorque) {}
     /// `QueryPerformanceCounter(out)` without its call: the host's count into `out` and the eax.
     fn query_counter(&self, _out: u32) -> u32 {
         unimplemented!("a test host counts nothing")

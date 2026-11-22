@@ -337,6 +337,10 @@ impl layout::StepCalls for Step<'_> {
         }
     }
 
+    fn steer_torque(&mut self, read: &dyn Fn() -> layout::SteerTorque) {
+        self.host.steer_torque(read);
+    }
+
     fn add_steer_torque(&mut self, car: u32, v: f32, sp: u32) {
         if on_held_car(self.host, &mut self.mem, car, |m| car_layout::add_steer_torque_sum(m, car, v)).is_none() {
             self.on(sp, 0x4E6660, car, &[v.to_bits()]);

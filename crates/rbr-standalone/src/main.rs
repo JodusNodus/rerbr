@@ -131,10 +131,12 @@ mod live;
 mod physics;
 mod profile;
 mod race;
+mod rack_ffb;
 mod rally;
 mod replay_trace;
 mod saves;
 mod stage;
+mod steer_parts;
 mod tyre_ffb;
 mod tyre_probe;
 
@@ -229,7 +231,10 @@ fn live(args: &Args, data: &Data, race: &boot::Race, stage: &StageData) -> ExitC
         let mut live = live::Live::boot(data, &args.stage, race, stage, args.marker_settings, true)?;
         live.set_physics(args.physics, race::engine_car(args, Some(race), stage.car))?;
         if let Some(trail) = args.ffb_tyres {
-            live.set_ffb_tyres(trail);
+            let pull = args.ffb_pull.map(tyre_ffb::Pull::new);
+            live.set_wheel_force(live::WheelForce::Tyres { trail, pull });
+        } else if args.ffb_rack {
+            live.set_wheel_force(live::WheelForce::Rack);
         }
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;

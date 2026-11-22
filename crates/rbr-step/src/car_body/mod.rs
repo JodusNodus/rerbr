@@ -111,6 +111,10 @@ impl Host for Frame<'_> {
         self.host.tyre_stepped(scratch, dt);
     }
 
+    fn steer_torque(&self, read: &dyn Fn() -> rbr_physics::wheel::layout::SteerTorque) {
+        self.host.steer_torque(read);
+    }
+
     fn query_counter(&self, out: u32) -> u32 {
         self.host.query_counter(out)
     }

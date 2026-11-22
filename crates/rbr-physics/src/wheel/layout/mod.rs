@@ -61,7 +61,7 @@ pub use refresh_pose::{
     DEF_WISHBONE_LENGTH, DEF_WISHBONE_SIGN, DRIVE_AXLE_DIR, NEG_KNUCKLE_Z, ROD_MOUNT, STEERING_ROD,
     STEERING_ROD_LENGTH, STEERING_ROD_TWEAK, TIP, WISHBONE_COPY,
 };
-pub use step::{wheel_step, StepCalls};
+pub use step::{wheel_step, SteerTorque, StepCalls};
 pub use store::WheelStore;
 pub use typed::{slot, CarWheels, Slot, Wheel, WheelView};
 pub use wheel_calls::{
