@@ -51,6 +51,42 @@ const WORKERS: usize = 4;
 /// The compute pass's workgroup size (`grass_made.wgsl`).
 const GROUP: u32 = 256;
 
+/// The cells a side of the blocks the distance to the driveline is taken over ([`Field::bake`]).
+const BLOCK: usize = 4;
+
+/// How far the ground stays grassy ([`COVER`]) around each of `grassy`'s cells (`side` a row), metres, up to
+/// [`MOST_SUPPORT`]: the distance to the nearest cell short of it less half a cell, by two chamfer passes (the
+/// diagonal steps the square root of 2), 0 for those short of it.
+fn support(grassy: &[f32], side: usize) -> Vec<f32> {
+    let far = MOST_SUPPORT / CELL + 1.0;
+    let mut d: Vec<f32> = grassy.iter().map(|&g| if g < COVER { 0.0 } else { far }).collect();
+    let diagonal = std::f32::consts::SQRT_2;
+    let steps = [(-1, 0, 1.0), (0, -1, 1.0), (-1, -1, diagonal), (1, -1, diagonal)];
+    let at = |i: usize, j: usize, (di, dj, _): (isize, isize, f32)| {
+        let (i, j) = (i as isize + di, j as isize + dj);
+        (i >= 0 && j >= 0 && (i as usize) < side && (j as usize) < side).then(|| j as usize * side + i as usize)
+    };
+    for j in 0..side {
+        for i in 0..side {
+            for step in steps {
+                if let Some(n) = at(i, j, step) {
+                    d[j * side + i] = d[j * side + i].min(d[n] + step.2);
+                }
+            }
+        }
+    }
+    for j in (0..side).rev() {
+        for i in (0..side).rev() {
+            for (di, dj, w) in steps {
+                if let Some(n) = at(i, j, (-di, -dj, w)) {
+                    d[j * side + i] = d[j * side + i].min(d[n] + w);
+                }
+            }
+        }
+    }
+    d.iter().map(|&d| ((d - 0.5) * CELL).clamp(0.0, MOST_SUPPORT)).collect()
+}
+
 /// A tile's field: its cells and light, packed ([`Field::bake`]), and its ground's lowest and highest points.
 struct Baked {
     words: Vec<u32>,
@@ -126,6 +162,15 @@ impl Field {
         }
         let ground = |top: &Top| &self.triangles[top.triangle as usize];
         let grassy: Vec<f32> = top.iter().map(|t| t.map_or(0.0, |t| self.grassy(ground(&t), t.w))).collect();
+        let support = support(&grassy, side);
+        // The distance across to the driveline, by blocks of [`BLOCK`] cells: the falloff it sets is metres wide.
+        let blocks = CELLS / BLOCK;
+        let across: Vec<f32> = (0..blocks * blocks)
+            .map(|k| {
+                let block = Vec2::new((k % blocks) as f32, (k / blocks) as f32) + 0.5;
+                self.line.distance(origin + BORDER as f32 * CELL + block * BLOCK as f32 * CELL)
+            })
+            .collect();
         let mut words = vec![0u32; TILE_WORDS];
         let (mut low, mut high, mut any) = (f32::MAX, f32::MIN, false);
         let unorm8 = |x: f32| (x.clamp(0.0, 1.0) * 255.0).round() as u32;
@@ -138,20 +183,8 @@ impl Field {
                 let c = centre(bi, bj);
                 (low, high) = (low.min(t.y), high.max(t.y));
                 let vegetation = grassy[bj * side + bi];
-                // How far the ground stays as grassy around the cell: to the nearest cell short of it, less half a cell.
-                let mut support = MOST_SUPPORT;
-                if vegetation >= COVER {
-                    for dj in -(BORDER as isize)..=BORDER as isize {
-                        for di in -(BORDER as isize)..=BORDER as isize {
-                            let (ni, nj) = ((bi as isize + di) as usize, (bj as isize + dj) as usize);
-                            if grassy[nj * side + ni] < COVER {
-                                let d = ((di * di + dj * dj) as f32).sqrt() * CELL - 0.5 * CELL;
-                                support = support.min(d.max(0.0));
-                            }
-                        }
-                    }
-                }
-                let across = self.line.distance(c);
+                let support = support[bj * side + bi];
+                let across = across[(j / BLOCK) * blocks + i / BLOCK];
                 let near = 1.0 - (1.0 - FAR_SHARE) * smoothstep([FULL, BAND], across);
                 let fade = 1.0 - smoothstep([BAND - 6.0, BAND], across);
                 let share = self.fx(g).map_or(DENSITY, super::Fx::density) / MOST_DENSITY;
