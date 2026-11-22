@@ -24,7 +24,7 @@ use crate::parallel::in_parallel;
 use crate::post::{Post, SCENE_FORMAT};
 use crate::puddles;
 use crate::skylight::SkyLight;
-use crate::stage::{Anchor, Draw, Image, Layer, Lod, Mesh, Stage, Weather};
+use crate::stage::{Anchor, Draw, Image, Layer, Mesh, Stage, Weather};
 use crate::start_board::{self, StartBoard, StartLamp};
 use crate::sun::{self, SunShadow};
 use crate::terrain_detail;
@@ -254,11 +254,19 @@ impl Renderer {
             bind_group_layouts: &[Some(&frame_layout), Some(&texture_layout), Some(&mask_layout)],
             immediate_size: 0,
         });
+        // The grass made on the GPU reads its cards after the stage's groups (`crate::grass::made`).
+        let grass_cards = crate::grass::made::cards_layout(&device);
+        let made_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("grass made"),
+            bind_group_layouts: &[Some(&frame_layout), Some(&texture_layout), Some(&mask_layout), Some(&grass_cards)],
+            immediate_size: 0,
+        });
         let context = Context {
             device: &device,
             format,
             shader: &shader,
             layout: &layout,
+            made_layout: &made_layout,
             vertex: vertex_entry(enhance),
             water_plus: enhance.water || enhance.wet,
             cabin: enhance.cabin,
@@ -275,12 +283,14 @@ impl Renderer {
                             mirror: bool,
                             (anchor, layer): (Anchor, Layer),
                             cabin_set,
-                            wet_road: bool| {
+                            wet_road: bool,
+                            made: bool| {
             let bind = bind_key(&draw.state, &views);
             let pipeline = PipelineKey::of(&draw.state, mirror, layer == Layer::Sky)
                 .drawing(bind.features())
                 .in_cabin(cabin_set)
-                .framed(frame_index(anchor, layer));
+                .framed(frame_index(anchor, layer))
+                .made(made);
             let viewed = pipeline.takes_views().then(|| {
                 [false, true].map(|inside| {
                     let key = pipeline.viewed(inside);
@@ -346,13 +356,10 @@ impl Renderer {
         let mut interactive_slots = HashMap::with_capacity(stage.interactive.len());
         let over = crate::sky_dome::Over::of(&stage.meshes, &stage.driveline);
         // A stage mesh's vertices as drawn, when they are not its own: the sun's light needs the normals the baked stage
-        // draws do not store, the sun's shadows the plants. The grass's tile meshes (`Lod::Close`) have none to light:
-        // `Renderer::stream_grass` gives them their cards' vertices. Their zeroed ones, all in one place, made grouping
-        // the plants into trees quadratic: 5 s of the load on 580.
+        // draws do not store, the sun's shadows the plants.
         let lit = enhance.lighting || enhance.wet || timed;
         let prepare = |mesh: &Mesh| {
-            let grass = mesh.draws.iter().all(|draw| draw.lod == Lod::Close);
-            (lit && !grass).then(|| {
+            lit.then(|| {
                 let mut vertices = sun::with_normals(mesh);
                 // The fences carry their own light (`fences::FENCE`).
                 if mesh.anchor == Anchor::World && !crate::fences::is_fence(mesh) {
@@ -387,7 +394,7 @@ impl Renderer {
                         .draws
                         .iter()
                         .map(|draw| {
-                            gpu_draw(draw, first_index, false, false, (Anchor::World, Layer::Solid), None, false)
+                            gpu_draw(draw, first_index, false, false, (Anchor::World, Layer::Solid), None, false, false)
                         })
                         .collect();
                     interactive_slots.insert(instance.handle, meshes.len());
@@ -411,7 +418,6 @@ impl Renderer {
                         sky_dome: false,
                         backdrop_bounds: None,
                         sun_cascades: true,
-                        grass_ranks: None,
                     });
                 }
                 continue;
@@ -451,13 +457,15 @@ impl Renderer {
                     _ => None,
                 }
             };
+            let made = crate::grass::made::is_made(mesh);
             let draws = mesh
                 .draws
                 .iter()
                 .map(|draw| {
                     let casts_shadow = draw.state.shade.is_some() && draw.state.depth_write;
                     let placed = (mesh.anchor, mesh.layer);
-                    gpu_draw(draw, first_index, casts_shadow, mirror(draw), placed, cabin_set(draw), wet_road(draw))
+                    let (cabin, wet) = (cabin_set(draw), wet_road(draw));
+                    gpu_draw(draw, first_index, casts_shadow, mirror(draw), placed, cabin, wet, made)
                 })
                 .collect();
             meshes.push(GpuMesh {
@@ -478,7 +486,6 @@ impl Renderer {
                     .filter(|_| backdrop && mesh.bounds.is_none())
                     .map(|b| (b.center, b.half_extent)),
                 sun_cascades: mesh.sun_cascades,
-                grass_ranks: None,
             });
         }
 
@@ -599,7 +606,8 @@ impl Renderer {
             meshes,
             slots,
             interactive_slots,
-            grass: None,
+            grass_made: None,
+            grass_cards,
             atmosphere: stage.atmosphere.clone(),
             ground_light,
             wetness,

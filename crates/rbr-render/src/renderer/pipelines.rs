@@ -22,7 +22,9 @@ pub(crate) const SHADER: &str = concat!(
     include_str!("../sun_mask.wgsl"),
     include_str!("../cloud_volume.wgsl"),
     include_str!("../volume_shadow.wgsl"),
-    include_str!("../motion.wgsl")
+    include_str!("../motion.wgsl"),
+    include_str!("../grass_card.wgsl"),
+    include_str!("../grass_cards.wgsl")
 );
 
 /// The pipeline state of a draw.
@@ -61,6 +63,8 @@ pub(super) struct PipelineKey {
     /// pipelines with the lamps' code, which slows the rest of the stage's shading by a millisecond at 1080p on an
     /// M-series Mac.
     lamps: bool,
+    /// The grass made on the GPU (`crate::grass::made`): its cards from their buffer (`vs_grass`), no vertex buffer.
+    pub(super) made: bool,
 }
 
 /// Where a pipeline draws in the main view's pass. The alpha-tested opaque draws ([`prepassed`]) first lay their depth
@@ -106,7 +110,13 @@ impl PipelineKey {
             sky,
             pass: DrawPass::Main,
             lamps: false,
+            made: false,
         }
+    }
+
+    /// The pipeline drawing the grass made on the GPU ([`PipelineKey::made`]).
+    pub(super) fn made(self, made: bool) -> PipelineKey {
+        PipelineKey { made, ..self }
     }
 
     pub(super) fn in_pass(self, pass: DrawPass) -> PipelineKey {
@@ -182,6 +192,8 @@ pub(super) struct Context<'a> {
     pub(super) format: wgpu::TextureFormat,
     pub(super) shader: &'a wgpu::ShaderModule,
     pub(super) layout: &'a wgpu::PipelineLayout,
+    /// The layout with the grass's cards after the stage's groups ([`PipelineKey::made`]).
+    pub(super) made_layout: &'a wgpu::PipelineLayout,
     /// The stage draws' vertex entry point ([`vertex_entry`]).
     pub(super) vertex: &'static str,
     /// [`Enhance::water`] or [`Enhance::wet`] (`WATER_PLUS` in `shader.wgsl`).
@@ -269,14 +281,20 @@ impl Context<'_> {
             _ => wgpu::CompareFunction::Always,
         };
         let features = key.features.unwrap_or_default();
+        let (layout, vertex, buffers) = match key.made {
+            true => {
+                (self.made_layout, if self.vertex == "vs_clouded" { "vs_grass_clouded" } else { "vs_grass" }, &[][..])
+            }
+            false => (self.layout, self.vertex, &[Some(vertex_layout())][..]),
+        };
         self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stage"),
-            layout: Some(self.layout),
+            layout: Some(layout),
             vertex: wgpu::VertexState {
                 module: self.shader,
-                entry_point: Some(self.vertex),
+                entry_point: Some(vertex),
                 compilation_options: Default::default(),
-                buffers: &[Some(vertex_layout())],
+                buffers,
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,

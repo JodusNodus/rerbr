@@ -49,7 +49,7 @@ impl Default for Graphics {
 }
 
 /// Our grass by the road (`--enhance grass-light` or `grass`, [`rbr_render::grass::Level`]): none, light (half the
-/// clumps, to 80 m) or dense (all of them, to 150 m). Drawn only with the lighting.
+/// clumps, to 100 m) or dense (all of them, to 300 m). Drawn only with the lighting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Grass {
     Off,
@@ -776,10 +776,11 @@ impl Form {
                        (the reflection draws the cabin and the stage behind it once more)";
             rows.switch_row("Windscreen glass effects", None, &mut g.windscreen).on_hover_text(tip);
 
-            let tip = "A field of grass blades over the grassy ground within 20 m of the road, swaying in the wind. \
-                       Light: half the blades, as thick to about 40 m of the camera and fading out by 100 m; about \
-                       0.4 GB of video memory. Dense: all of them, as thick to about 120 m and fading out by 240 m; \
-                       about 0.8 GB. Needs Sky, sun and shadows. Costly, Dense the most";
+            let tip = "A field of grass blades over the grassy ground within 40 m of the road, swaying in the wind, \
+                       made on the graphics card every frame. Light: half the blades, as thick to about 40 m of the \
+                       camera and fading out by 100 m; about 0.2 GB of video memory. Dense: all of them, as thick to \
+                       about 200 m and fading out by 300 m; about 0.25 GB. Needs Sky, sun and shadows. Costly, Dense \
+                       the most";
             let lit = g.lighting;
             rows.row("Grass by the road", |ui| {
                 ui.add_enabled_ui(lit, |ui| combo(ui, "grass", None, &mut g.grass, Grass::ALL, Grass::label)).inner

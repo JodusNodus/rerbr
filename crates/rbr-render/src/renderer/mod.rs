@@ -91,8 +91,10 @@ pub struct Renderer {
     slots: Vec<Option<usize>>,
     /// Physics handle to the GPU mesh of each supported interactive visibility record.
     interactive_slots: HashMap<u32, usize>,
-    /// The grass's tile meshes, filled about the eye ([`Renderer::set_grass`]).
-    grass: Option<crate::grass::Ring>,
+    /// The grass made on the GPU about the eye ([`Renderer::set_grass`], `crate::grass::made`), and the layout of
+    /// its views' cards.
+    grass_made: Option<crate::grass::made::Made>,
+    grass_cards: wgpu::BindGroupLayout,
     atmosphere: Atmosphere,
     /// The ground's light seen from above ([`crate::bounce`], with [`Enhance::lighting`]); the stage's light off itself
     /// is drawn into its vertices at load.

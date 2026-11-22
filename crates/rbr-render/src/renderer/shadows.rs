@@ -212,7 +212,7 @@ impl Casting<'_> {
                 mesh.draws
                     .iter()
                     .filter(|draw| {
-                        // The grass's tiles (`Lod::Close`) cast nothing (`vs_sun`): left out, not drawn off the map.
+                        // The grass (`Lod::Close`) casts nothing: left out.
                         draw.lod.shows(distance)
                             && draw.lod != Lod::Close
                             && (draw.pipeline.depth_write || mesh.layer == Layer::Sky)
