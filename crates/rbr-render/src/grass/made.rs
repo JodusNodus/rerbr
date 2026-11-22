@@ -58,6 +58,16 @@ struct Baked {
     high: f32,
 }
 
+/// A tile baked: its field, or none where it grows no grass, and the milliseconds it took.
+type Done = ((i32, i32), Option<Baked>, f32);
+
+/// Bakes `tile` ([`Field::bake`]), timed.
+fn baked(field: &Field, tile: (i32, i32), light: &[[Light; 3]]) -> Done {
+    let start = std::time::Instant::now();
+    let baked = field.bake(tile, light);
+    (tile, baked, start.elapsed().as_secs_f32() * 1000.0)
+}
+
 /// The ground on top at a cell's centre: its triangle, the centre's weights on it and its height.
 #[derive(Clone, Copy)]
 struct Top {
@@ -292,7 +302,7 @@ pub(crate) struct Made {
     /// The renderer's mesh holding the grass's draw (its pipelines and texture, [`is_made`]).
     pub(crate) mesh: usize,
     jobs: Option<SyncSender<(i32, i32)>>,
-    done: Receiver<((i32, i32), Option<Baked>)>,
+    done: Receiver<Done>,
     workers: Vec<std::thread::JoinHandle<()>>,
     in_flight: HashSet<(i32, i32)>,
     ready: Vec<((i32, i32), Baked)>,
@@ -305,6 +315,8 @@ pub(crate) struct Made {
     drawn: Vec<(i32, i32)>,
     /// The tiles in reach not yet resident.
     missing: usize,
+    /// The tiles baked and the milliseconds they took ([`Made::stats`]).
+    baked: (u32, f32),
     /// The frame waits for every tile in reach (a screenshot).
     pub(crate) waits: bool,
     pool: wgpu::Buffer,
@@ -404,7 +416,7 @@ fn source() -> String {
 fn spawn_workers(
     field: &Arc<Field>,
     light: &Arc<Vec<[Light; 3]>>,
-) -> (SyncSender<(i32, i32)>, Receiver<((i32, i32), Option<Baked>)>, Vec<std::thread::JoinHandle<()>>) {
+) -> (SyncSender<(i32, i32)>, Receiver<Done>, Vec<std::thread::JoinHandle<()>>) {
     let (jobs, receive) = std::sync::mpsc::sync_channel::<(i32, i32)>(64);
     let receive = Arc::new(std::sync::Mutex::new(receive));
     let (send, done) = std::sync::mpsc::channel();
@@ -417,7 +429,7 @@ fn spawn_workers(
                 .name(format!("grass {i}"))
                 .spawn(move || {
                     while let Some(tile) = next() {
-                        if send.send((tile, field.bake(tile, &light))).is_err() {
+                        if send.send(baked(&field, tile, &light)).is_err() {
                             break;
                         }
                     }
@@ -561,6 +573,7 @@ impl Made {
             bare: HashSet::new(),
             drawn: Vec::new(),
             missing: 0,
+            baked: (0, 0.0),
             waits: false,
             pool,
             index,
@@ -594,11 +607,14 @@ impl Made {
             let candidates: u32 = walks.iter().map(|w| w.count).sum();
             let resident = self.resident.len();
             eprintln!(
-                "grass made: {} cards of {}, {} tiles walked, {candidates} candidates, {resident} tiles resident, {} missing",
+                "grass made: {} cards of {}, {} tiles walked, {candidates} candidates, {resident} tiles resident, {} missing, \
+                 {} baked at {:.2} ms",
                 cards.unwrap_or(0),
                 self.views[0].capacity,
                 walks.len(),
                 self.missing,
+                self.baked.0,
+                self.baked.1 / self.baked.0.max(1) as f32,
             );
         } else if n % STATS_EVERY == 0 {
             encoder.copy_buffer_to_buffer(&self.views[0].counter, 0, read, 0, 4);
@@ -643,22 +659,16 @@ impl Made {
                 continue;
             }
             if d < SYNC_DISTANCE {
-                match self.field.bake(tile, &self.light) {
-                    Some(baked) => self.ready.push((tile, baked)),
-                    None => _ = self.bare.insert(tile),
-                }
+                self.take(baked(&self.field, tile, &self.light));
             } else if self.jobs.as_ref().is_some_and(|jobs| jobs.try_send(tile).is_ok()) {
                 self.in_flight.insert(tile);
             } else {
                 break;
             }
         }
-        for (tile, baked) in self.done.try_iter() {
-            self.in_flight.remove(&tile);
-            match baked {
-                Some(baked) => self.ready.push((tile, baked)),
-                None => _ = self.bare.insert(tile),
-            }
+        while let Ok(done) = self.done.try_recv() {
+            self.in_flight.remove(&done.0);
+            self.take(done);
         }
         let distance = |tile: &(i32, i32)| order.get(tile).copied().unwrap_or(f32::MAX);
         self.ready.retain(|(tile, _)| order.contains_key(tile));
@@ -687,6 +697,15 @@ impl Made {
         }
         self.drawn = wanted.iter().map(|&(tile, _)| tile).filter(|tile| self.resident.contains_key(tile)).collect();
         self.missing = wanted.len() - self.drawn.len();
+    }
+
+    /// Takes a tile baked: ready to upload, or bare.
+    fn take(&mut self, (tile, baked, took): Done) {
+        self.baked = (self.baked.0 + 1, self.baked.1 + took);
+        match baked {
+            Some(baked) => self.ready.push((tile, baked)),
+            None => _ = self.bare.insert(tile),
+        }
     }
 
     /// Records the compute pass making view `view`'s cards (0 the main view, 1 and 2 the mirrors, [`VIEWS`]) for
@@ -766,6 +785,27 @@ impl Made {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tiles_field_holds_its_grassy_ground_and_how_far_it_stays_grassy() {
+        // A 4 m square of ground, green where x < 2 m and grey past it; none past 4 m.
+        let green = |u: f32, _| if u < 0.5 { [60, 140, 40] } else { [128, 128, 128] };
+        let baked = super::super::tests::field(green).bake((0, 0), &[]).expect("grass");
+        let cell = |x: f32, z: f32| {
+            let at = ((z / CELL) as usize * CELLS + (x / CELL) as usize) * 4;
+            let w = &baked.words[at..at + 4];
+            (f32::from_bits(w[0]), (w[1] >> 16 & 255) as f32 / 255.0, (w[1] >> 24) as f32 / 255.0 * MOST_SUPPORT)
+        };
+        let ((height, likely, deep), (_, edge_likely, edge), (_, grey, _), (_, none, _)) =
+            (cell(1.0, 2.0), cell(1.9, 2.0), cell(3.0, 2.0), cell(6.0, 2.0));
+        assert!(height.abs() < 1e-6 && likely > 0.5 && edge_likely > 0.5, "{likely} {edge_likely}");
+        assert!(grey == 0.0 && none == 0.0);
+        // A metre in, the ground stays grassy past any card's footprint; a cell from the grey, a cell's.
+        assert!(deep >= MOST_SUPPORT - 0.01 && edge < 0.2, "{deep} {edge}");
+        assert!((baked.low, baked.high) == (0.0, 0.0));
+        // Grey all over: no grass.
+        assert!(super::super::tests::field(|_, _| [128, 128, 128]).bake((0, 0), &[]).is_none());
+    }
 
     #[test]
     fn the_gpu_structs_keep_the_shaders_layout() {

@@ -2032,7 +2032,7 @@ mod tests {
     use super::*;
 
     /// Two neighbouring triangles of road mesh: collision labels may cover grassy shoulders too.
-    fn field(paint: impl Fn(f32, f32) -> [u8; 3]) -> Field {
+    pub(super) fn field(paint: impl Fn(f32, f32) -> [u8; 3]) -> Field {
         let mut rgba = Vec::new();
         for y in 0..64 {
             for x in 0..64 {
