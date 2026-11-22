@@ -422,7 +422,9 @@ fn import_archive(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<St
     }
 }
 
-/// Imports an archive holding several plugin installs: each one's plugin folder as its own pack.
+/// Imports an archive holding several plugin installs: each one's plugin folder as its own pack. The archive is read
+/// once (a solid 7z decodes whole on every read: 42 reads took 8 minutes): every install into a numbered folder and
+/// the notes into `notes` of a temp folder beside the packs, then each pack stages from there by rename.
 fn import_archive_installs(
     home: &Path,
     src: &Path,
@@ -434,28 +436,42 @@ fn import_archive_installs(
     let names: Vec<String> =
         installs.iter().map(|r| install_name(r).map_or_else(|| fallback.clone(), str::to_owned)).collect();
     let notes = archive_note_candidates(entries, installs);
+    let under = |folder: String, path: Vec<String>| [vec![folder], path].concat();
+    let voices = installs.iter().enumerate().flat_map(|(i, root)| {
+        archive_voice(entries, root).into_iter().map(move |(from, to)| (from, under(i.to_string(), to)))
+    });
+    let wanted: Vec<_> = notes.iter().map(|p| (p.clone(), under("notes".into(), p.clone()))).chain(voices).collect();
+    let base = home.join(VOICES_DIR);
+    fs::create_dir_all(&base).map_err(with_path(&base))?;
+    let temp = Temp::create(&base, "import")?;
+    extract_from(src, &temp.0, &wanted, cancel)?;
     import_each(
         src,
         &names,
         cancel,
-        |i, pack| {
-            let voice = archive_voice(entries, &installs[i]);
-            import_voice_from(home, pack, cancel, |d, _| {
-                extract_from(src, d, &voice, cancel)?;
-                Ok(walk(d).len())
-            })
-        },
+        |i, pack| import_voice_from(home, pack, cancel, |d, _| move_children(&temp.0.join(i.to_string()), d)),
         || {
             // INIs that prune to no note file are unrelated, as in a single install: nothing to report.
             let result = (!notes.is_empty()).then(|| {
                 import_notes_from(home, &pack_name(src), src, cancel, |d, _| {
-                    extract_notes(src, d, &notes, cancel)?;
-                    Ok(note_files(d).len())
+                    move_children(&temp.0.join("notes"), d)?;
+                    prune_not_notes(d);
+                    cancelled(cancel)
                 })
             });
             result.filter(|r| r.is_ok() || cancel.load(std::sync::atomic::Ordering::Relaxed))
         },
     )
+}
+
+/// Moves what the folder `from` holds into the folder `to`, by rename (both lie in the home).
+fn move_children(from: &Path, to: &Path) -> Result<(), Fail> {
+    for entry in fs::read_dir(from).map_err(with_path(from))? {
+        let path = entry.map_err(with_path(from))?.path();
+        let dest = to.join(path.file_name().unwrap_or_default());
+        fs::rename(&path, &dest).map_err(with_path(&dest))?;
+    }
+    Ok(())
 }
 
 /// Extracts every candidate note INI whole (paths stay whole, so stage folders keep their names) and prunes what

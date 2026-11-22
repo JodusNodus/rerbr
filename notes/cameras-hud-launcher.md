@@ -157,10 +157,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   not; a toast on other pages). BTB stages (`track.ini`, `objectlist.ini`, `Objects.zip`, `Textures.zip`, several per archive) and classic
   stages (below) both go to `<files>/tracks/` through a hidden staging folder, never over an existing stage;
   co-drivers and pace notes through `codriver_packs::import` (a source holding several plugin installs, as Janne
-  Laahanen's 42 call styles, imports each as its own pack `<source> - <install folder>`: 42 packs, 633 MB, 9.8 s;
-  more than 4 give one summary line, a failing install is a `Failed co-driver …` line and the rest still import);
-  NGP car pieces (physics, model and banks dropped together) as one `car_packs::Download`; NGP's package to `NGP 7.4.778/`; a disc opens the disc setup filled in; a
-  car skin to its car (`content/kind/skin.rs`, below).
+  Laahanen's 42 call styles, imports each as its own pack `<source> - <install folder>`: 42 packs, 633 MB, 9.8 s
+  from the folder; an archive is read once, 12.7 s from a solid 7z of it (one read per install took 8 minutes);
+  more than 4 give one summary line, a failing install is a `Failed co-driver …` line and the rest still import).
+  A solid 7z's entries are slices of one stream: `archive::extract_seven` reads through the ones it leaves out, or
+  every later one fails its CRC (sevenz-rust2 0.24 does not skip them itself);
+  NGP car pieces (physics, model and banks dropped together) as one `car_packs::Download`; NGP's package to
+  `NGP 7.4.778/`; a disc opens the disc setup filled in; a car skin to its car (`content/kind/skin.rs`, below).
   Refused with the reason: `.rar`, non-NSIS installers, encrypted stages, a lone model or banks, anything else. The
   Downloads folder is not scanned (user, 2026-11-18): only what is dropped or chosen is added. Links: RSF's stage download, BTBfin, RBR Czech's
   stage list (its installers are read, never run).
