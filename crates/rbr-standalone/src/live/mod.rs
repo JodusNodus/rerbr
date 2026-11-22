@@ -393,8 +393,8 @@ impl<'a> Live<'a> {
     /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
     /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`), with `--ffb-surface` the road's texture
     /// added (`surface_ffb`: it folds the steps since the last call in, so a second call in a frame gives the same
-    /// force).
-    /// NGP's reads the car's store over the held typed state, without lowering it (it runs after every frame).
+    /// force). NGP's reads the car's store over the held typed state, without lowering it (it runs after every
+    /// frame).
     pub fn wheel_force(&self) -> f32 {
         let runner = &self.playback.runner;
         if let Some(trail) = self.ffb_tyres {

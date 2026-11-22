@@ -97,9 +97,9 @@ impl Choice for PhysicsProfile {
     }
 }
 
-/// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`[ffb] tyres`)
-/// and the ground's texture added to it (`[ffb] surface`), the experimental engine (with its aero and drivetrain) and the brush tyre, each with its help and a
-/// link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
+/// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`[ffb] tyres`), the
+/// road's texture added to it (`[ffb] surface`), the experimental engine (with its aero and drivetrain) and the brush
+/// tyre, each with its help and a link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
 /// physics drives what it leaves unsaved.
 pub fn experimental_section(
     ui: &mut Ui,
