@@ -47,9 +47,6 @@ pub(super) struct GpuMesh {
     /// Casts into the sun's near cascades ([`Mesh::sun_cascades`]); the far layer, the lamps' and the bakes take it
     /// either way.
     pub(super) sun_cascades: bool,
-    /// For a grass tile mesh holding a tile, how many of its cards rank under each step ([`crate::grass::Ranks`]), and
-    /// the grass's level: a view draws only those its distance grows ([`GpuMesh::indices_seen_from`]).
-    pub(super) grass_ranks: Option<(Box<crate::grass::Ranks>, crate::grass::Level)>,
 }
 
 impl GpuMesh {
@@ -66,17 +63,6 @@ impl GpuMesh {
     /// cockpit the body casts and outside the hidden interior does not, nor a lamp's or window's other state.
     pub(super) fn present(&self) -> bool {
         self.visible || self.outside == Some(true)
-    }
-
-    /// The indices of `draw` that a view from `eye` draws: a grass tile's cards the shader grows anywhere in its box
-    /// (`grass::grown_cards`, by the box's nearest point), every one for the rest.
-    pub(super) fn indices_seen_from(&self, draw: &GpuDraw, eye: Option<Vec3>) -> Range<u32> {
-        let (Some((ranks, level)), Some((centre, half)), Some(eye)) = (&self.grass_ranks, self.bounds, eye) else {
-            return draw.indices.clone();
-        };
-        let nearest = ((eye - centre).abs() - half).max(Vec3::ZERO).length();
-        let cards = crate::grass::grown_cards(ranks, *level, nearest) as u32;
-        draw.indices.start..draw.indices.end.min(draw.indices.start + cards * 6)
     }
 
     /// Whether the view of `view_projection` leaves the mesh out with its visibility cell (`visibility`).
@@ -201,18 +187,11 @@ impl Packing {
 pub(super) struct Bound<'a> {
     buffers: &'a [MeshBuffers],
     buffer: Option<usize>,
-    /// The view's eye, by which the grass's tiles draw only their grown cards ([`GpuMesh::indices_seen_from`]).
-    eye: Option<Vec3>,
 }
 
 impl<'a> Bound<'a> {
     pub(super) fn new(buffers: &'a [MeshBuffers]) -> Bound<'a> {
-        Bound { buffers, buffer: None, eye: None }
-    }
-
-    /// Draws for a view from `eye` ([`Bound::eye`]).
-    pub(super) fn seen_from(self, eye: Vec3) -> Bound<'a> {
-        Bound { eye: Some(eye), ..self }
+        Bound { buffers, buffer: None }
     }
 
     /// Forgets the buffers bound, after a draw that bound its own (the grass made on the GPU).
@@ -239,7 +218,7 @@ impl<'a> Bound<'a> {
             pass.set_index_buffer(buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
             self.buffer = Some(mesh.slot.buffer);
         }
-        pass.draw_indexed(mesh.indices_seen_from(draw, self.eye), mesh.slot.base_vertex, instance..instance + 1);
+        pass.draw_indexed(draw.indices.clone(), mesh.slot.base_vertex, instance..instance + 1);
     }
 }
 
@@ -380,26 +359,13 @@ impl Renderer {
         self.casters = casters(&self.meshes);
     }
 
-    /// Streams `field`'s grass into the stage's grass tile meshes ([`crate::grass::add`]), about the eye each frame, in
-    /// the light computed at load for the ground under it.
+    /// Makes `field`'s grass on the GPU about the eye each frame ([`crate::grass::made`]), drawn by the stage's grass
+    /// mesh ([`crate::grass::add`]), in the light computed at load for the ground under it.
     pub fn set_grass(&mut self, field: Arc<crate::grass::Field>) {
-        // Made on the GPU (`crate::grass::made`): its one draw holds the pipelines and the texture.
-        if let Some(mesh) = self.meshes.iter().position(|m| m.draws.iter().any(|d| d.pipeline.made)) {
-            let light = if self.ground_light.is_some() { self.grass_light(&field) } else { Vec::new() };
-            let made = crate::grass::made::Made::new(&self.device, field, light, mesh, &self.grass_cards);
-            self.grass_made = Some(made);
-            return;
-        }
-        let tiles = self.meshes.iter_mut().enumerate().filter_map(|(i, m)| {
-            let draw = m.draws.iter_mut().find(|d| d.lod == Lod::Close)?;
-            let capacity = draw.indices.len() / 6;
-            // Nothing drawn until a tile fills it: unbounded, an empty mesh would draw its whole capacity everywhere.
-            draw.indices.end = draw.indices.start;
-            Some((i, capacity))
-        });
-        let tiles = tiles.collect();
+        // Its one draw holds the pipelines and the texture.
+        let Some(mesh) = self.meshes.iter().position(|m| m.draws.iter().any(|d| d.pipeline.made)) else { return };
         let light = if self.ground_light.is_some() { self.grass_light(&field) } else { Vec::new() };
-        self.grass = Some(crate::grass::Ring::new(field, tiles, light, Some(self.device.clone())));
+        self.grass_made = Some(crate::grass::made::Made::new(&self.device, field, light, mesh, &self.grass_cards));
     }
 
     /// The light of the corners of `field`'s ground triangles ([`crate::grass::Light`]), read back from the vertex
@@ -485,53 +451,19 @@ impl Renderer {
         if let Some(made) = &mut self.grass_made {
             made.waits = true;
         }
-        if let Some(ring) = &mut self.grass {
-            ring.waits = true;
-        }
     }
 
-    /// Fills the grass tile meshes the eye at `eye` looking along `forward` now wants ([`crate::grass::Ring::update`]).
+    /// Streams the grass's tiles the eye at `eye` looking along `forward` now wants ([`crate::grass::made::Made::update`]).
     pub(super) fn stream_grass(&mut self, eye: Vec3, forward: Vec3) {
-        if let Some(made) = &mut self.grass_made {
-            // A frame that waits takes every tile in reach.
-            loop {
-                made.update(eye, forward, &mut self.uploads);
-                if !made.waiting() {
-                    return;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-        }
-        let Some(mut ring) = self.grass.take() else { return };
+        let Some(made) = &mut self.grass_made else { return };
+        // A frame that waits takes every tile in reach.
         loop {
-            let filled = ring.update(eye, forward);
-            let idle = filled.is_empty();
-            for crate::grass::Filled { mesh: index, vertices, bounds, ranks, staged } in filled {
-                let mesh = &mut self.meshes[index];
-                let buffer = &self.buffers[mesh.slot.buffer].vertices;
-                match staged {
-                    Some(staged) => self.uploads.copy(&staged, buffer, vertex_offset(mesh.slot)),
-                    None if !vertices.is_empty() => {
-                        self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
-                    }
-                    None => {}
-                }
-                mesh.bounds = Some((bounds.center, bounds.half_extent));
-                mesh.grass_ranks = Some((Box::new(ranks), ring.level()));
-                // Only the tile's cards are drawn: past them the mesh holds an earlier tile's.
-                for draw in &mut mesh.draws {
-                    draw.indices.end = draw.indices.start + (vertices.len() / 4 * 6) as u32;
-                }
+            made.update(eye, forward, &mut self.uploads);
+            if !made.waiting() {
+                return;
             }
-            // A finished tile with no mesh to fit stays ready for good: only the worker's tiles are waited for.
-            if !ring.waiting() && (idle || !ring.waits) {
-                break;
-            }
-            if idle {
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        self.grass = Some(ring);
     }
 
     /// Shows or hides stage mesh `index` (the car's interior or exterior set, by camera view).

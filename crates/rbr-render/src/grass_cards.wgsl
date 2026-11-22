@@ -1,9 +1,15 @@
 // The grass made on the GPU drawn (`grass::made`): a view's cards (`grass_made.wgsl`), four corners each, expanded into
-// the corners `grass::tile_vertices` gives the CPU's cards, so `vertex` grows, widens and sways them as it does those.
+// the stage's vertices, so `vertex` grows, widens and sways them as the plants' tufts: `specular.x` is `GRASS_MARK`
+// plus the card's brightness, `specular.z` its kind (1 ours; 2 a converted stage's cards, which `shader.wgsl` gives
+// `FX_GRASS_ROOT` and `FX_GRASS_TIP`; 3 its group pieces, flowers and weeds, grown only past `FX_PIECE_NEAR` from the
+// eye, as CSP spawns them only from its third generation pass on), `wet.x` the share of height (`uv2.x` the top's
+// height for the wind), `uv1` the way out across, `uv2.y` the card's rank (`GRASS_THIN`) and `wet.y` its half width
+// (`grass_widen`).
 
 @group(3) @binding(0) var<storage, read> grass_cards: array<GrassCard>;
 
-// How deep a card's foot goes into the ground, and the share of height its foot is lit as (`grass::SINK`, `FOOT`).
+// How deep a card's foot goes into the ground, metres (the ground curves away from the plane it stands on), and the
+// share of height its foot is lit as (`own_light`'s occlusion and sun at the foot: dense grass shades its own foot).
 const GRASS_SINK: f32 = 0.03;
 const GRASS_FOOT: f32 = 0.0;
 

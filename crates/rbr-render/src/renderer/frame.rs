@@ -635,7 +635,7 @@ impl Renderer {
         // traced ([`Renderer::draw_car_glass`]): where it covers the stage the frame's depth is the stage's, and a ray
         // that met it there read the glass's colour (the Lancer's red sun strip in the puddles far ahead).
         let glass_later = view == View::Main && inside && self.screen_reflection.is_some();
-        let mut bound = Bound::new(&self.buffers).seen_from(camera::eye(view_projection));
+        let mut bound = Bound::new(&self.buffers);
         pass.set_bind_group(2, self.sun_mask.group(), &[]);
         let mut prepass: Vec<_> = shown
             .iter()
@@ -675,7 +675,7 @@ impl Renderer {
                 wgpu::Operations { load: wgpu::LoadOp::Load, store: depth_store },
             );
             pass.set_bind_group(2, self.sun_mask.group(), &[]);
-            bound = Bound::new(&self.buffers).seen_from(camera::eye(view_projection));
+            bound = Bound::new(&self.buffers);
         }
         // The lit opaque draws (the car's, the characters') go in before the shaded stage draws, whose depth test
         // (`Equal` to the prepass) then fails under them: the ground beneath the car is not shaded to be painted over.
@@ -905,12 +905,11 @@ impl Renderer {
             }
             // The reflection cube draws what lies in the cells near its centre, and no interactive props, as the
             // game's (`visibility::near_cube`); the meshes without a cell keep the surroundings cube's reach (ours).
-            // Nor the grass's tiles (`Lod::Close`): under a texel of the cubes. A tile mesh not given a tile yet
-            // (`Renderer::stream_grass`) has no bounds and draws nothing: its cards' vertices are zero.
+            // Nor the grass (`Lod::Close`, made on the GPU for the main view and the mirrors): under a texel of the cubes.
             let grass = mesh.draws.iter().all(|draw| draw.lod == Lod::Close);
             if (view == View::Reflection && mesh.cell_far_from(eye))
                 || (matches!(view, View::Reflection | View::Probe) && mesh.interactive.is_some())
-                || (grass && (!with_car || mesh.bounds.is_none()))
+                || grass
             {
                 stats.meshes_culled += 1;
                 continue;

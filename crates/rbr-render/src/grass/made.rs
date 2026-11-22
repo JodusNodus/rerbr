@@ -1,9 +1,9 @@
 //! The grass made on the GPU every frame (ours): the CPU bakes each tile's ground once into a field of cells, the same
 //! for any distance ([`Field::bake`]), and a compute pass per view walks each tile's candidate clumps, takes those the
 //! density grows at their distance and the field holds, and writes their cards (`grass_made.wgsl`), which one
-//! indirect draw per view expands into the stage shader's grass cards (`vs_grass` in `grass_cards.wgsl`). The look is
-//! the CPU's ([`Field::cards`]): the same tests, sizes, pictures, hues and light, on the field's cells rather than the
-//! ground's triangles.
+//! indirect draw per view expands into the stage shader's grass cards (`vs_grass` in `grass_cards.wgsl`). The tests
+//! (the ground's grassiness and support, [`Field::grassy`]), hues and light are the CPU's, baked into the cells; the
+//! sizes, pictures and kinds are the shader's.
 
 use super::{
     density, patches, seen, smoothstep, tile_of, Field, Level, Light, BAND, COVER, DENSITY, FAR_SHARE, FULL, TILE,
@@ -14,11 +14,6 @@ use glam::{Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
-
-/// Whether the grass is made on the GPU (`RERBR_GRASS_GPU=1`, while it is developed).
-pub(crate) fn on() -> bool {
-    std::env::var_os("RERBR_GRASS_GPU").is_some_and(|v| v != "0")
-}
 
 /// The cells a tile's side holds, and a cell's side, metres.
 const CELLS: usize = 64;
@@ -445,11 +440,11 @@ fn source() -> String {
     constants + include_str!("../grass_card.wgsl") + include_str!("../grass_made.wgsl")
 }
 
-/// The worker threads baking tiles ([`Field::bake`]): one end of each channel and their handles.
-fn spawn_workers(
-    field: &Arc<Field>,
-    light: &Arc<Vec<[Light; 3]>>,
-) -> (SyncSender<(i32, i32)>, Receiver<Done>, Vec<std::thread::JoinHandle<()>>) {
+/// The worker threads baking tiles: the tiles in, the tiles baked out, and their handles.
+type Workers = (SyncSender<(i32, i32)>, Receiver<Done>, Vec<std::thread::JoinHandle<()>>);
+
+/// The worker threads baking tiles ([`Field::bake`]).
+fn spawn_workers(field: &Arc<Field>, light: &Arc<Vec<[Light; 3]>>) -> Workers {
     let (jobs, receive) = std::sync::mpsc::sync_channel::<(i32, i32)>(64);
     let receive = Arc::new(std::sync::Mutex::new(receive));
     let (send, done) = std::sync::mpsc::channel();
@@ -841,6 +836,62 @@ mod tests {
         assert!((baked.low, baked.high) == (0.0, 0.0));
         // Grey all over: no grass.
         assert!(super::super::tests::field(|_, _| [128, 128, 128]).bake((0, 0), &[]).is_none());
+    }
+
+    /// Each cell of tile (0, 0) of `field`: how likely a clump grows there and how far its ground stays grassy (none
+    /// where the tile grows no grass).
+    fn cells(field: &Field) -> Vec<(f32, f32)> {
+        let Some(baked) = field.bake((0, 0), &[]) else { return Vec::new() };
+        let cell = |w: &[u32]| ((w[1] >> 16 & 255) as f32 / 255.0, (w[1] >> 24) as f32 / 255.0 * MOST_SUPPORT);
+        baked.words[..CELLS * CELLS * 4].chunks_exact(4).map(cell).collect()
+    }
+
+    /// How many cells of tile (0, 0) of `field` hold our narrowest clump's footprint ([`super::super::PATCH_RADIUS`]).
+    fn grown(field: &Field) -> usize {
+        cells(field).iter().filter(|&&(likely, support)| likely > 0.0 && support >= super::super::PATCH_RADIUS).count()
+    }
+
+    #[test]
+    fn vertex_tint_cannot_grow_grass_on_grey_pavement() {
+        let mut field = super::super::tests::field(|_, _| [100; 3]);
+        for g in &mut field.triangles {
+            g.hue = [Vec3::new(0.7, 1.0, 0.7); 3];
+        }
+        assert!(field.bake((0, 0), &[]).is_none());
+    }
+
+    #[test]
+    fn a_narrow_green_crack_cannot_support_a_tuft() {
+        let field = super::super::tests::field(|u, _| if (u - 0.5).abs() < 0.02 { [75, 125, 45] } else { [100; 3] });
+        assert_eq!(grown(&field), 0);
+    }
+
+    #[test]
+    fn straw_grows_only_where_the_ground_is_likely_grass_and_off_the_road() {
+        let mut field = super::super::tests::field(|_, _| [158, 140, 105]);
+        assert_eq!(grown(&field), 0, "straw is not plainly green");
+        for g in &mut field.triangles {
+            (g.road, g.prior) = (false, 0.9);
+        }
+        // Most of the 4 m square's 1024 cells.
+        assert!(grown(&field) > 600, "{}", grown(&field));
+        for g in &mut field.triangles {
+            g.prior = 0.3;
+        }
+        assert_eq!(grown(&field), 0, "dirt's prior is too low");
+    }
+
+    #[test]
+    fn footprint_crosses_mesh_seams_but_stops_at_neighbouring_pavement() {
+        // A cell by the seam of the square's two triangles (x + z = 4 m).
+        let at = |field: &Field| cells(field)[(1.9 / CELL) as usize * CELLS + (1.9 / CELL) as usize].1;
+        let mut field = super::super::tests::field(|_, _| [75, 125, 45]);
+        assert!(at(&field) > 0.2, "{}", at(&field));
+        for texels in [&mut field.placement, &mut field.textures, &mut field.patches] {
+            texels.push(super::super::Texels { width: 1, height: 1, rgba: vec![100, 100, 100, 255] });
+        }
+        field.triangles[1].first = 1;
+        assert!(at(&field) < 0.2, "{}", at(&field));
     }
 
     #[test]

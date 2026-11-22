@@ -24,7 +24,7 @@ use crate::parallel::in_parallel;
 use crate::post::{Post, SCENE_FORMAT};
 use crate::puddles;
 use crate::skylight::SkyLight;
-use crate::stage::{Anchor, Draw, Image, Layer, Lod, Mesh, Stage, Weather};
+use crate::stage::{Anchor, Draw, Image, Layer, Mesh, Stage, Weather};
 use crate::start_board::{self, StartBoard, StartLamp};
 use crate::sun::{self, SunShadow};
 use crate::terrain_detail;
@@ -356,13 +356,10 @@ impl Renderer {
         let mut interactive_slots = HashMap::with_capacity(stage.interactive.len());
         let over = crate::sky_dome::Over::of(&stage.meshes, &stage.driveline);
         // A stage mesh's vertices as drawn, when they are not its own: the sun's light needs the normals the baked stage
-        // draws do not store, the sun's shadows the plants. The grass's tile meshes (`Lod::Close`) have none to light:
-        // `Renderer::stream_grass` gives them their cards' vertices. Their zeroed ones, all in one place, made grouping
-        // the plants into trees quadratic: 5 s of the load on 580.
+        // draws do not store, the sun's shadows the plants.
         let lit = enhance.lighting || enhance.wet || timed;
         let prepare = |mesh: &Mesh| {
-            let grass = mesh.draws.iter().all(|draw| draw.lod == Lod::Close);
-            (lit && !grass).then(|| {
+            lit.then(|| {
                 let mut vertices = sun::with_normals(mesh);
                 // The fences carry their own light (`fences::FENCE`).
                 if mesh.anchor == Anchor::World && !crate::fences::is_fence(mesh) {
@@ -421,7 +418,6 @@ impl Renderer {
                         sky_dome: false,
                         backdrop_bounds: None,
                         sun_cascades: true,
-                        grass_ranks: None,
                     });
                 }
                 continue;
@@ -490,7 +486,6 @@ impl Renderer {
                     .filter(|_| backdrop && mesh.bounds.is_none())
                     .map(|b| (b.center, b.half_extent)),
                 sun_cascades: mesh.sun_cascades,
-                grass_ranks: None,
             });
         }
 
@@ -611,7 +606,6 @@ impl Renderer {
             meshes,
             slots,
             interactive_slots,
-            grass: None,
             grass_made: None,
             grass_cards,
             atmosphere: stage.atmosphere.clone(),

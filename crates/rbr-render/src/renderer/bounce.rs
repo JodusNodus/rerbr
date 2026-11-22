@@ -425,8 +425,7 @@ impl Surfaces {
             .filter(|mesh| mesh.bounds.is_none_or(|(centre, half)| frustum.intersects_box(centre, half)))
             .flat_map(|mesh| mesh.draws.iter().map(move |draw| (mesh, draw)))
             .filter(|(_, draw)| {
-                // The grass's tile meshes (`Lod::Close`) hold no cards at load: drawn, their zeroed vertices only took the
-                // vertex stage's time in every cut-out pass.
+                // The grass (`Lod::Close`) is made on the GPU for the main view and the mirrors alone.
                 draw.lod.shows(0.0)
                     && draw.lod != Lod::Close
                     && draw.pipeline.depth_write

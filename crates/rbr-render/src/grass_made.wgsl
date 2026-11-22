@@ -1,8 +1,8 @@
 // The grass made on the GPU (`grass::made`): each workgroup walks one tile's candidate clumps, ranked by their index
 // (the first of them an even subset, so the density takes a prefix), placed on a low-discrepancy sequence across the
 // tile; a clump grows where the density at its distance reaches its rank, its cell's likelihood takes it and the
-// ground stays grassy under its footprint (the cell's support), as `grass::Field::cards` places them, and writes its
-// two crossed cards when they are in view. The constants before this are `grass`'s (`grass::made::source`).
+// ground stays grassy under its footprint (the cell's support), and writes its two crossed cards when they are in
+// view. The constants before this are `grass`'s (`grass::made::source`).
 
 struct Cull {
     // The view's planes, normalised (a degenerate one 0, 0, 0, 1).
@@ -149,7 +149,7 @@ struct Shape {
     piece: bool,
 }
 
-// A card's picture and size (`size` in `grass::Field::cards`): an atlas piece's cells at the profile's cell size, or
+// A card's picture and size: an atlas piece's cells at the profile's cell size, or
 // our blades' at the meadow's height.
 fn shape(pick: f32, kind: u32, meadow: f32, width: f32, height: f32, tall: f32, profile: Profile, atlas: bool) -> Shape {
     if (atlas) {
