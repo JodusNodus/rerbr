@@ -137,7 +137,7 @@ impl Choice for Detail {
 pub enum Quality {
     /// The game's look with the free additions.
     Low,
-    /// Every addition but our lighting, the costliest.
+    /// Our lighting and every addition but the grass and the windscreen's glass.
     Medium,
     High,
     /// High with the Ultra detail.
@@ -170,7 +170,6 @@ impl Quality {
                 ..high
             },
             Quality::Medium => Graphics {
-                lighting: false,
                 grass: Grass::Off,
                 windscreen: false,
                 wet_roads: WetRoads::Medium,
@@ -732,10 +731,10 @@ impl Form {
         kit::group_label(ui, "Quality", None);
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
-            let tip = "Sets the choices below. Low: the game's look. Medium: all but Sky, sun and shadows, the costliest, \
-                       Grass by the road, which needs them, and Windscreen. High: all but Sharper shadows and reflections, \
-                       with light grass. Ultra: all, with dense grass. The render scale \
-                       and motion blur stay as they are";
+            let tip = "Sets the choices below. Low: the game's look. Medium: all but Grass by the road and \
+                       Windscreen, wet roads at medium, the mirrors every third frame. High: all but Sharper shadows \
+                       and reflections, with light grass. Ultra: all, with dense grass. The render scale and motion \
+                       blur stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
                     .selected_text(Quality::of(*g).map_or("Custom", Quality::label))
