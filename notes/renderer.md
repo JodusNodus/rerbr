@@ -1015,6 +1015,14 @@ splash never shows on a wet stage.
   Luceram GC8 fly-by RMSE 0.010, fog Luceram chase 0.008, rain Sipirkakim chase 0.008, day Gabiria M3 fly-by 0.006
   (damp patches' clods), golden Gabiria chase 0.004, two under 0.001, 29 byte-identical. Captures
   `/tmp/cockpit-spray/wet3/`.
+- Spray off wet tarmac's film (2026-11-23; was a near-opaque white bank out of the sides, bow puffs over the bonnet
+  and a low grey trail): the film's standing water (`FILM_WATER` 0.5) drives the side splashes, `Bow` and the bursts
+  at `FILM_SPLASH` 0.2 of it (0.1, under `BOW_WATER`'s 0.15, so no bow; the sound keeps the full value). Found by
+  zeroing pools one at a time: `SplashMist` was the side bank, `WetMist` the trail. `WetMist` rises behind the
+  tyre (up 0.6 to 2.3 squared, growing 0.8 to 3.4 m, 2.4 s, rise 0.5) in a near white the stage light greys
+  (`wet_mist` 0.86, young 0.94 to 0.9; `water` 0.5 to 0.72). Shots: fog Luceram GC8 chase RMSE 0.054, rain Luceram
+  fly-by 0.031 and cockpit 0.028, night Luceram 131 cockpit 0.012, day Gabiria M3 fly-by 0.003 (damp patches),
+  three under 0.001, 29 byte-identical. Particles pass, Luceram rain chase 1080p: 1.79 to 1.11 ms.
 Soft-particle cost (2026-10-26, RX 9060 XT): the effects pass is fill-bound (Sipirkakim II `--at 15000`: 926
 quads, ~400 screens of coverage, 35 ms at 1440p, nearly all `fs_soft`; GPU clocks bimodal). Fixes, frames within
 2/255 of before (lamps' code out of the day's pipeline, fragments under 1/1000 alpha discarded, depth after the
