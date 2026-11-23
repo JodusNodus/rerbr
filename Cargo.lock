@@ -2338,6 +2338,7 @@ dependencies = [
  "rbr-btb",
  "rbr-formats",
  "serde_json",
+ "texpresso",
  "zip",
 ]
 
