@@ -13,7 +13,7 @@ struct Shafts {
     // (`LampUniform`, at the share they light the stage).
     inverse_view_projection: mat4x4<f32>,
     eye: vec4<f32>,
-    // `fs_march`'s: xyz the direction the sunlight travels.
+    // `fs_march`'s: xyz the direction the sunlight travels. `fs_beams`': x the lamps' phase asymmetry.
     march_dir: vec4<f32>,
     // `fs_march`'s: x how strongly the sun shows (0 to 1), y the share of the sky's light the mist scatters
     // (`MIST_SKY` in `sky_lut.wgsl`), z how much the haze's own lobe adds to the mist's sun term (`MARCH_LOBE` in
@@ -223,21 +223,21 @@ fn fs_blur(v: Out) -> @location(0) vec4<f32> {
 
 // The car's lamps in the air (ours): along the view ray to the stage (or `BEAM_REACH` metres into the sky), each lamp's
 // light at each point (as if from `BEAM_NEAR` square metres away at the least: the light leaves a lens, not a point),
-// scattered toward the eye forward-heavily (Henyey-Greenstein, `BEAM_FORWARD`, as fog droplets do, so that a beam seen
-// from behind its lamp shows most; a quarter of it, as the stage's light leaves out Lambert's 1 / pi and the phase's
-// 1 / (4 pi)), dimmed by the air on the way, at `BEAM_AIR` (the stage's `NIGHT_ALBEDO`; more veiled the road from the
-// bonnet on main beam in fog). The headlights' beams test the shadow map at each step (`lamp_shaft` in `lamps.wgsl`),
-// so things in front of the car cut shafts through them; the rear lamps stay unshadowed. Each lamp's light is taken
-// in `BEAM_STEPS` steps spread evenly in the angle the ray sweeps as seen from the lamp (equi-angular sampling, Kulla
-// and Fajardo 2012), so that the metres about the lamp, where its light peaks, get most of them: steps spread along
-// the ray left too few there, which changed with each pixel's depth (rings about the view's centre, bands at the
-// stage's edges). The rear lamps' faint, knee-held light takes `REAR_STEPS` (at 12 they cost as much as the
+// scattered toward the eye by a Henyey-Greenstein lobe of asymmetry `march_dir.x` (`beam_phase` in `light_shafts.rs`:
+// in fog brightest looking along the light's travel, so that a beam seen from behind its lamp shows most; in rain
+// brightest looking into the lamps, as drops scatter; a quarter of it, as the stage's light leaves out Lambert's 1 / pi
+// and the phase's 1 / (4 pi)), dimmed by the air on the way, at `BEAM_AIR` (the stage's `NIGHT_ALBEDO`; more veiled the
+// road from the bonnet on main beam in fog). The headlights' beams test the shadow map at each step (`lamp_shaft` in
+// `lamps.wgsl`), so things in front of the car cut shafts through them; the rear lamps stay unshadowed. Each lamp's
+// light is taken in `BEAM_STEPS` steps spread evenly in the angle the ray sweeps as seen from the lamp (equi-angular
+// sampling, Kulla and Fajardo 2012), so that the metres about the lamp, where its light peaks, get most of them: steps
+// spread along the ray left too few there, which changed with each pixel's depth (rings about the view's centre, bands
+// at the stage's edges). The rear lamps' faint, knee-held light takes `REAR_STEPS` (at 12 they cost as much as the
 // headlights; at 4 a night chase in heavy fog changed by at most 3/255, about the lamps). Alpha is the texel's depth,
 // for the composite's upsampling (`shafts_at` in `post.wgsl`).
 const BEAM_REACH: f32 = 120.0;
 const BEAM_STEPS: i32 = 12;
 const REAR_STEPS: i32 = 4;
-const BEAM_FORWARD: f32 = 0.3;
 const BEAM_AIR: f32 = 0.045;
 const BEAM_NEAR: f32 = 9.0;
 // The most the rear lamps' light in the air adds to a texel (a soft knee on their sum, after the air's scattering): a
@@ -255,7 +255,7 @@ fn fs_beams(v: Out) -> @location(0) vec4<f32> {
     let dir = normalize(to);
     let reach = select(min(length(to), BEAM_REACH), BEAM_REACH, depth <= 0.0);
     let air = shafts.eye.w;
-    let g = BEAM_FORWARD;
+    let g = shafts.march_dir.x;
     var sum = vec3<f32>(0.0);
     var rear = vec3<f32>(0.0);
     for (var i = 0; i < 8; i++) {

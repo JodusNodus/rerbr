@@ -1,5 +1,6 @@
 // Halves a texture: each target texel is the bilinear sample at the shared corner of four source texels, their mean.
-// Builds the car reflection cube's mip levels (`renderer::Reflection`).
+// Builds the car reflection cube's mip levels (`renderer::Reflection`) and the frame's for the screen-space reflections
+// (`fs_blit_capped`).
 
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var source_sampler: sampler;
@@ -19,4 +20,14 @@ fn vs_blit(@builtin(vertex_index) index: u32) -> BlitOut {
 @fragment
 fn fs_blit(v: BlitOut) -> @location(0) vec4<f32> {
     return textureSampleLevel(source, source_sampler, v.uv, 0.0);
+}
+
+// The frame's levels for the screen-space reflections (`renderer::ScreenReflection`): each halving at most
+// `REFLECTED_CAP` in its strongest channel, keeping its hue (`REFLECTED_CAP` in `ssr.wgsl`).
+override REFLECTED_CAP: f32 = 256.0;
+
+@fragment
+fn fs_blit_capped(v: BlitOut) -> @location(0) vec4<f32> {
+    let c = textureSampleLevel(source, source_sampler, v.uv, 0.0);
+    return vec4<f32>(c.rgb * min(1.0, REFLECTED_CAP / max(max(c.r, max(c.g, c.b)), 1e-6)), c.a);
 }

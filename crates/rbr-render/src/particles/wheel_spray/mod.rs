@@ -125,6 +125,9 @@ const FULL_WATER: f32 = 0.5;
 /// The standing water of wet tarmac's film (`water.wgsl`'s `TARMAC_SHARE`: an even film, no puddles): shallow, so
 /// half a puddle's splash everywhere.
 const FILM_WATER: f32 = 0.5;
+/// The share of [`FILM_WATER`] the side splashes and the front's plume take: a thin film throws its water off the
+/// tread, as drops and mist behind the tyre, not out of the sides in sheets nor over the bonnet as a puddle does.
+const FILM_SPLASH: f32 = 0.2;
 /// The tyre's radius, m (ours: the payload has none; rally tyres are 0.3 to 0.33).
 const TYRE_RADIUS: f32 = 0.32;
 /// Where the tread lets go of its water: from this angle behind the contact to this one, radians up the wheel's back.
@@ -321,7 +324,8 @@ impl WheelSpray {
                     .then(|| front::slide(edges, Vec3::from(p.velocity), pose.up).unwrap_or((out, 0.0))),
             };
             let wheel = p.wheel as usize;
-            (standing[wheel], water[wheel]) = (here.standing, here);
+            let splashing = if here.film { here.standing * FILM_SPLASH } else { here.standing };
+            (standing[wheel], water[wheel]) = (splashing, here);
             if standing[wheel] - self.standing[wheel] >= BURST_RISE {
                 let k = POOLS.iter().position(|&p| p == Pool::Splash).unwrap();
                 self.burst(sim, k, BURST * standing[wheel] * smoothstep(SPLASH_SPEED, speed), &w);
@@ -493,7 +497,7 @@ fn launch(pool: Pool, at: Vec3, w: &Throw, r: &mut Rng) -> (Vec3, Vec3, f32) {
             (
                 from,
                 w.velocity * 0.5
-                    + (w.up * u(0.2, 2.2).powi(2) / 2.0 + w.out * u(-0.6, 1.2) + w.back * u(0.0, 2.0)) * kick,
+                    + (w.up * u(0.6, 2.3).powi(2) / 2.0 + w.out * u(-0.6, 1.2) + w.back * u(0.0, 2.0)) * kick,
                 cloud,
             )
         }
@@ -597,19 +601,19 @@ fn def(pool: Pool, dust: [f32; 3]) -> EmitterDef {
     let fade = |c: [f32; 3], start: f32, most: f32, at: f32| ([rgba(c, start), rgba(c, most), rgba(c, 0.0)], at);
     let growing = |a: f32, b: f32, c: f32| ([[a, a * 0.85], [b, b * 0.8], [c, c * 0.75]], 0.35);
     let low = |a: f32, b: f32, c: f32| ([[a, a * 0.6], [b, b * 0.5], [c, c * 0.45]], 0.35);
-    // Water and its mist in an overcast's grey: lit by the scene they come out no brighter than the sky.
-    let water = [0.5, 0.53, 0.57];
+    // Water and its mist are near white, translucent drops lit by the scene: the stage light greys them, not the colour.
+    let water = [0.72, 0.75, 0.78];
     let splash_mist = [0.8, 0.83, 0.86];
-    let wet_mist = [0.5, 0.53, 0.56];
+    let wet_mist = [0.86, 0.88, 0.9];
     // The damp road's haze: a greyer white than the drops.
     let mist = [0.86, 0.88, 0.9];
     // Loose ground's water: the ground's colour, darker and browner than its dust.
     let mud = airborne(dust).map(|c| c * MUD_SHADE);
     // The clods and muddy water are the wet ground itself: dark and brown, not the dust's pale.
     let clod = dust.map(|c| c * c * CLOD_SHADE);
-    // The road's plume is densest and palest young, at the tyre, and thins and greys as it rises and drifts back.
+    // The road's plume is densest and palest young, at the tyre, and thins as it rises and drifts back.
     let young_mist =
-        ([[0.66, 0.69, 0.72, 0.16], [0.58, 0.61, 0.64, 0.22], [wet_mist[0], wet_mist[1], wet_mist[2], 0.0]], 0.1);
+        ([[0.94, 0.95, 0.97, 0.16], [0.9, 0.92, 0.94, 0.22], [wet_mist[0], wet_mist[1], wet_mist[2], 0.0]], 0.1);
     let puff = |colors, sizes, life, rate, rise, friction, wind| Spec {
         sprite: match pool {
             Pool::WetMist | Pool::SplashMist | Pool::BowMist => sprites::WISP,
@@ -673,7 +677,7 @@ fn def(pool: Pool, dust: [f32; 3]) -> EmitterDef {
             puff(fade([0.95, 0.97, 1.0], 0.4, 1.0, 0.1), growing(0.8, 3.0, 7.0), 3.5, POWDER_RATE, 0.15, 0.8, 0.5)
         }
         Pool::Mist => puff(fade(mist, 0.0, 0.2, 0.2), low(0.8, 2.2, 3.4), 2.5, MIST_RATE * 3.0, 0.2, 0.9, 0.5),
-        Pool::WetMist => puff(young_mist, low(1.0, 2.4, 3.8), 3.2, MIST_RATE * 3.0, 0.3, 0.7, 0.5),
+        Pool::WetMist => puff(young_mist, growing(0.8, 2.0, 3.4), 2.4, MIST_RATE * 3.0, 0.5, 0.7, 0.5),
         Pool::MudMist => puff(fade(mud, 0.0, 0.4, 0.12), low(0.5, 1.5, 2.2), 2.0, MIST_RATE * 3.0, -0.4, 1.2, 0.3),
         // The water off the tread and out of a puddle: soft clumps that spread and thin as they fall, not streaks
         // (their life, fall and drag as the streaked drops' were, so the plume keeps its shape). The clods: small dark
