@@ -7,8 +7,8 @@
 //! + ..) * magic` per pixel with the diffuse and mask at the mesh's uv and each detail at `uv * scale`, so here:
 //!
 //! - the diffuse is the macro colour times the lightmap, the mask the vertex weights, both rasterised in the atlas (one
-//!   texture each per section, shared by the materials whose triangles lie in it), the diffuse as plain
-//!   RGBA (DXT1's 5:6:5 endpoints turn a smooth, nearly grey diffuse into magenta and green blotches);
+//!   texture each per section, shared by the materials whose triangles lie in it), the diffuse as BC7
+//!   (DXT1's 5:6:5 endpoints turn a smooth, nearly grey diffuse into magenta and green blotches);
 //! - the mesh's uv becomes the atlas, transposed (the unwrap lays a road's strip along u, the layers' ruts run along v);
 //! - each detail is a layer's own texture at the repeat the game tiles it at, per axis, from the triangles' metres per
 //!   atlas unit and per layer unit. The details tile the atlas's islands, not the surface, so a pattern jumps at an
@@ -20,7 +20,6 @@ use crate::material::{self, Material};
 use crate::mesh::Mesh;
 use crate::texture::Library;
 use rbr_ac_tracks::btb::textures;
-use rbr_formats::dds;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -417,7 +416,7 @@ fn finish_diffuse((size, mut image, tinted): (usize, Vec<f32>, bool), atlas: &At
         }
         rgba.push(255);
     }
-    dds::rgba8_file(size as u32, size as u32, &rgba)
+    textures::encode_bc7(false, size as u32, size as u32, rgba)
 }
 
 impl Shader {
