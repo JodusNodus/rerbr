@@ -429,6 +429,11 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl Stage {
+    /// The render state of every draw: the meshes' and the instanced groups'.
+    pub fn states(&self) -> impl Iterator<Item = &DrawState> {
+        self.meshes.iter().flat_map(|m| &m.draws).map(|d| &d.state).chain(self.placed.groups.iter().map(|g| &g.state))
+    }
+
     /// Draws over all meshes and instanced groups.
     pub fn draw_count(&self) -> usize {
         self.meshes.iter().map(|m| m.draws.len()).sum::<usize>() + self.placed.groups.len()

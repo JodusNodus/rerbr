@@ -55,7 +55,7 @@ struct Grid {
 impl<'a> Sunlit<'a> {
     /// `stage`'s (its textures loaded, `Stage::load_textures`).
     pub fn of(stage: &'a Stage) -> Sunlit<'a> {
-        let cuts = foliage::cut_out(stage, |draw| cutout(&draw.state));
+        let cuts = foliage::cut_out(stage, cutout);
         let over = crate::sky_dome::Over::of(&stage.meshes, &stage.driveline);
         let (mut blockers, mut backdrop) = (Vec::new(), Vec::new());
         for (m, mesh) in stage.meshes.iter().enumerate().filter(|(_, mesh)| mesh.anchor == Anchor::World) {

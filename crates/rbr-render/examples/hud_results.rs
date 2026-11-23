@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         name: "HUD capture".into(),
         selection: Default::default(),
         meshes: Vec::new(),
+        placed: Default::default(),
         interactive: Vec::new(),
         texture_names: Default::default(),
         textures: Default::default(),
