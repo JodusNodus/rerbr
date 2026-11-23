@@ -2,7 +2,7 @@
 //! (`route`), the collision (`collision`, `surface`) and the drawn world are read, put in the stage's world (`frame`)
 //! and written by `stage`. Nothing here prints, reads the environment or exits the process.
 use crate::install::{Install, Route};
-use crate::{collision, frame, material, mesh, objects, pssg::Pssg, route, stage, surface, texture, trees};
+use crate::{collision, frame, material, mesh, objects, pssg::Pssg, route, shade, stage, surface, texture, trees};
 use rbr_ac_tracks::btb::{
     control::Control,
     geometry::{Grid, Triangle},
@@ -194,7 +194,7 @@ fn collision_triangles(
 }
 
 /// The drawn terrain in the stage's world: the route's `routesplit.pssg` where the area has one (Greece), and the area's
-/// `tracksplit.pssg` (its vista there, all of it elsewhere), each material drawn with its first layer's texture.
+/// `tracksplit.pssg` (its vista there, all of it elsewhere); the ground is shaded by `shade` (layers, macro colour and lightmap per pixel), the rest drawn with its first layer's texture.
 fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Vec<Triangle>), String> {
     let mut library = texture::Library::day(route);
     let files: Vec<_> = [route.dir.join("routesplit.pssg"), route.area_dir().join("tracksplit.pssg")]
@@ -202,16 +202,23 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
         .filter(|p| p.is_file())
         .collect();
     let (mut materials, mut triangles) = (Vec::new(), Vec::new());
+    let mut shader = shade::Shader::default();
     for (file, path) in files.iter().enumerate() {
         control.check()?;
         control.say(&format!("reading {}", path.file_name().unwrap_or_default().to_string_lossy()));
         let pssg = Pssg::read(path)?;
         let sources = material::read(&pssg);
         let mut index = HashMap::<String, u32>::new();
-        for m in mesh::terrain(&pssg)? {
+        let shaded = shader.shade(mesh::terrain(&pssg)?, &sources, &mut library);
+        for m in shaded.meshes {
             let at = *index.entry(m.material.clone()).or_insert_with(|| {
-                let dds =
-                    sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r)).map(|t| t.dds());
+                let layers = shaded.layers.get(&m.material).cloned();
+                // A shaded material's fallback is its first layer, which `stage` takes from the layers.
+                let dds = if layers.is_some() {
+                    None
+                } else {
+                    sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r)).map(|t| t.dds())
+                };
                 // Decals lie on the ground they mark: drawn with their alpha.
                 let transparent = m.node.starts_with("DECAL");
                 materials.push(stage::Material {
@@ -219,6 +226,7 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                     dds,
                     transparent,
                     range: None,
+                    layers,
                 });
                 materials.len() as u32 - 1
             });
@@ -363,6 +371,7 @@ impl Placer<'_> {
                     dds: texture.map(|t| t.dds()),
                     transparent,
                     range: Some(range),
+                    layers: None,
                 });
                 self.index.insert((file.to_owned(), material.to_owned(), range as u64), materials.len() as u32 - 1);
                 materials.len() as u32 - 1

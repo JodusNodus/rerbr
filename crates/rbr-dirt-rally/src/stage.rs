@@ -28,6 +28,8 @@ pub struct Material {
     /// How far it is drawn, metres; `None` for the stage's default (`lod` for alpha, ReRBR's far plane otherwise).
     /// Props are small: they are drawn as far as their size holds.
     pub range: Option<f64>,
+    /// The ground the renderer sums per pixel (`ReRbrLayer*`): `dds` stays the fallback of a reader without them.
+    pub layers: Option<crate::shade::Layers>,
 }
 
 /// A route ready to write, in the stage's world.
@@ -340,12 +342,36 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             Some(section) => String::clone(section),
             None => {
                 let m = &input.materials[*material];
-                let texture = match &m.dds {
-                    Some(dds) => bank.put(dds.clone(), "dds")?,
-                    None => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
+                let texture = match (&m.dds, &m.layers) {
+                    (Some(dds), _) => bank.put(dds.clone(), "dds")?,
+                    (None, Some(l)) => bank.put(l.details[0].to_vec(), "dds")?,
+                    (None, None) => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                 };
                 let name = format!("dr\\{material}");
-                material::section(&mut sections, &name, &texture, m.transparent);
+                let layers = match &m.layers {
+                    Some(l) => Some(material::Layers {
+                        diffuse: bank.put(l.diffuse.to_vec(), "dds")?,
+                        mask: bank.put(l.mask.to_vec(), "dds")?,
+                        details: {
+                            let mut details: [String; 4] = Default::default();
+                            for (slot, dds) in details.iter_mut().zip(&l.details) {
+                                *slot = bank.put(dds.to_vec(), "dds")?;
+                            }
+                            details
+                        },
+                        scale: l.scale,
+                        magic: l.magic,
+                        world: l.world.then_some([0., 0.]),
+                    }),
+                    None => None,
+                };
+                material::section_with(
+                    &mut sections,
+                    &name,
+                    &texture,
+                    m.transparent,
+                    &material::Extras { layers, ..material::Extras::default() },
+                );
                 names.push(name.clone());
                 section_of.insert(*material, name.clone());
                 name
@@ -515,7 +541,7 @@ mod tests {
             start: 60.,
             finish: 540.,
             splits: vec![300.],
-            materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None }],
+            materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None, layers: None }],
             drawn: strip(-4., 4., 0),
             collision,
             collision_source: "test",

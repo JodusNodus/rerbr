@@ -88,9 +88,39 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   closing comment lists them, `wet_materials_remap.xml` their wet codes. No grip value is readable, so codes map by
   kind (`surface.rs`): rock (`ROK`) is coarse gravel 49, never tarmac on a gravel stage; `DEFA` takes the stage's road.
 - Snow, water and rough ids are depths, not weather: their `mat.ini` damp and wet rows repeat the dry id.
+- `audio/materials.xml` gives each code a sound and a physics class: `CBW+` (Hafren's ford) is water over mud, 157.
+
+## Conversion sweep (2026-11-23)
+
+- All 72 rally routes convert (before props and shading, 9 to 34 s each). Physics by the codes under the course:
+  Finland, Greece, UK gravel; Germany and Col de Turini 01 routes 0 to 3 and 02 tarmac; Sweden and Turini 01 routes
+  4 and 5 snow. Panzerplatte 01 route_0 passes a cell's vertex limit (65538) at a 75 m collision corridor: the import
+  retries once at half.
+- Driven headless (btb-autopilot): Ghymno 1 long ran 5.75 of 9.75 km through both splits, off at a gravel bank (GBK).
 
 ## Cross-checks
 
 - Five AC ports (GabenHood's `onin`, `dr_greece` ladders and snakes, `wales_dr`, `dr_sweed`) are translations of
   `*_rally_01` route_0 (no rotation or scale, heights equal, about 1 m along the road). They are someone's rips of
   unknown method: a hint where ours differ, not a reference.
+
+## Terrain shading (`shade.rs`), 2026-11-23
+
+- The shaders (`terrain_road`, `_rockbank`, `_rock_d4`, `_edge_nm`, `_infield_nm`) sum up to four diffuse layers (vertex `Color`
+  R, G, B the second to fourth weights, the first the rest; first-layer detail in `Map<N>UVScaleAndOffset`, 1 on every material read)
+  times `TColourMap` and `TAmbientOcclusion`. Both maps lie on the second `ST` stream, a unique unwrap of a section's ground
+  (15 sections and two specials on Greece, one atlas per lightmap name, shared by its materials); the layers lie on the first's `xy`
+  (metres per unit 4 to 8 on roads and banks, tiling), `zw` unidentified. Compiled DXBC only (`shaderpack.pssg`): the blend is read
+  from the data, not the code.
+- Drawn by ReRBR's `ReRbrLayer*` (no renderer change): per section a diffuse (colour map over its covered texels' mean, hue kept at half,
+  times the lightmap over its bright texels' mean, half strength: its tree-shadow dots show as streaks without the trees) and a 2048
+  mask of the vertex weights rasterised in the atlas, both transposed; uv0 is that atlas; each layer's own texture is a detail at
+  `uv0 * scale`, per island of the mesh (triangles joined by a vertex) at the repeat that gives the layer its metres (atlas rate per metre
+  over the layer's), classed within 20% as a material of its own. Roads' ruts run along the atlas's u, hence the transpose.
+  Islands whose layer runs at no one angle to the atlas, or whose atlas shears over 1.6, read the details at the world's (x, z) instead.
+  Triangles whose atlas jump is 8 times the mesh's median rate (they join islands) keep the old single-texture draw.
+- `TBlendMap2/3` (a height map the game roughens a weight's border with) is not used: finer than the mask. Colour-map hue and
+  lightmap strength are chosen by eye (no game screenshot to compare): Greece's section means run pink to blue.
+- Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB; Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
+  carry their ruts and Finland's grass verges, crisp detail at any distance; Greece's far hills (the mountain atlas, flattened in big
+  islands) show streaks and blotches of the second layer.
