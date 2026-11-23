@@ -17,6 +17,12 @@ use std::path::Path;
 pub const CARDS: usize = 4;
 /// Side of a card's picture, texels; the cards sit side by side in one texture.
 const VIEW: u32 = 256;
+
+/// The distance from which a tree's card, `VIEW` texels across its width, is no coarser than the screen: 1080 pixels over
+/// a 60 degree view are 935 pixels a metre at 1 m, and a card has `VIEW / span` texels a metre.
+pub fn card_range(span: f64) -> f64 {
+    935. * span / f64::from(VIEW)
+}
 /// The picture is rendered this many times as large across and averaged down.
 const SUPERSAMPLE: u32 = 2;
 
@@ -129,6 +135,7 @@ struct Part {
     normal: usize,
     indices: Vec<u16>,
     vertices: Vec<([f32; 3], [f32; 2])>,
+    normals: Vec<[f32; 3]>,
 }
 
 struct TreeMesh {
@@ -166,9 +173,11 @@ fn parse_mesh(data: &[u8]) -> Option<TreeMesh> {
                 .map(|b| b.chunks_exact(4).map(|f| f32::from_le_bytes([f[0], f[1], f[2], f[3]])).collect())
         };
         let mut vertices = Vec::with_capacity(count);
+        let mut normals = Vec::with_capacity(count);
         for i in 0..count {
             let v = floats(at + i * 44, 11)?;
             vertices.push(([v[0], v[1], v[2]], [v[6], v[7]]));
+            normals.push([v[3], v[4], v[5]]);
         }
         at += count * 44;
         if albedo >= names.len() || normal >= names.len() || !indices.len().is_multiple_of(3) {
@@ -177,7 +186,7 @@ fn parse_mesh(data: &[u8]) -> Option<TreeMesh> {
         if indices.iter().any(|&i| i as usize >= vertices.len()) {
             return None;
         }
-        parts.push(Part { albedo, normal, indices, vertices });
+        parts.push(Part { albedo, normal, indices, vertices, normals });
     }
     Some(TreeMesh { textures: names, parts })
 }
@@ -194,6 +203,21 @@ pub struct Prototype {
     /// Metres of a unit of the mesh across and up, at a `size` of 1.
     pub width: f64,
     pub height: f64,
+    /// The tree's width in metres at a `size` of 1 (`tree.ini` `WIDTH`).
+    pub span: f64,
+    /// The LOD 0 mesh itself, one model for each of its parts.
+    pub parts: Vec<ModelPart>,
+}
+
+/// One part of a tree's mesh, in the unit mesh's space (`x, z` in -1..1, `y` up), with its own texture.
+#[derive(Debug)]
+pub struct ModelPart {
+    /// The albedo with the lighting's `BRIGHTNESS` on it and the cut-out's alpha ([`Sampler::image`]).
+    pub texture: Image,
+    pub positions: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
+    pub uvs: Vec<[f32; 2]>,
+    pub indices: Vec<u16>,
 }
 
 /// A part's texture lookup: its colour, with the alpha of the albedo or, where that has none, of the normal map (the
@@ -215,6 +239,19 @@ impl Sampler {
         let y = ((wrap(uv[1]) * image.1 as f32) as usize).min(image.1 as usize - 1);
         let at = (y * image.0 as usize + x) * 4;
         [image.2[at], image.2[at + 1], image.2[at + 2], image.2[at + 3]]
+    }
+    /// The albedo as [`render`] draws it: `brightness` on the colour, the cut-out in the alpha.
+    fn image(&self, brightness: f32) -> Image {
+        let (width, height, texels) = &self.albedo;
+        let mut rgba = texels.clone();
+        for (at, t) in rgba.chunks_exact_mut(4).enumerate() {
+            if let Some(cut) = &self.cut {
+                let (x, y) = ((at % *width as usize) as f32, (at / *width as usize) as f32);
+                t[3] = Self::texel(cut, [(x + 0.5) / *width as f32, (y + 0.5) / *height as f32])[3];
+            }
+            (0..3).for_each(|k| t[k] = (f32::from(t[k]) * brightness).min(255.) as u8);
+        }
+        (*width, *height, rgba)
     }
     fn sample(&self, uv: [f32; 2]) -> [u8; 4] {
         let mut t = Self::texel(&self.albedo, uv);
@@ -372,9 +409,30 @@ pub fn prototype(path: &Path) -> Result<Prototype, String> {
     let brightness =
         (value("SHADING", "BRIGHTNESS").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.3) / 0.3).clamp(0.5, 4.);
     let atlas = bake(&mesh, &files, (radius, low, high), brightness);
+    let image = |name: &String| files.get(&name.to_lowercase()).and_then(|b| textures::decode(b));
+    let parts = mesh
+        .parts
+        .iter()
+        .map(|p| ModelPart {
+            texture: Sampler::new(image(&mesh.textures[p.albedo]), image(&mesh.textures[p.normal])).image(brightness),
+            positions: p.vertices.iter().map(|v| v.0).collect(),
+            normals: p.normals.clone(),
+            uvs: p.vertices.iter().map(|v| v.1).collect(),
+            indices: p.indices.clone(),
+        })
+        .collect();
     // `WIDTH` and `HEIGHT` are the tree's box: the mesh's is the box of its points.
     let across = f64::from((x[1] - x[0]).max(z[1] - z[0]));
-    Ok(Prototype { atlas, radius, low, high, width: width / across, height: height / f64::from(high - low) })
+    Ok(Prototype {
+        atlas,
+        radius,
+        low,
+        high,
+        width: width / across,
+        height: height / f64::from(high - low),
+        span: width,
+        parts,
+    })
 }
 
 #[cfg(test)]

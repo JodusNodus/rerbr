@@ -456,7 +456,8 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   `tree.ini` (`HEIGHT`, `WIDTH`, `[SHADING] BRIGHTNESS`, LOD meshes), `.mesh` files (format in `crates/rbr-ac-tracks/src/assetto/trees.rs`,
   unit mesh `x, z` in -1..1, `y` 0..1) and textures. Three of the 15 source tracks have lists: Mulholland (16,961 trees
   of 3,000 to 4,500 triangles, bushes 700), Roure (4,132 trees, oaks of 10,000 triangles) and St Laurent (1,593 conifers
-  of 8,000). ReRBR expands every placement (no instancing), so a stage cannot take them as meshes. Each tree within the
+  of 8,000). Until 2026-11-23 ReRBR expanded every placement, so a stage could not take them as meshes (see "CSP tree
+  models, instanced" below). Each tree within the
   draw corridor is four crossed cards textured with its LOD 0 rendered from four sides (`trees::bake`, 256 px each,
   alpha from the albedo or, as Roure's pines, the normal map), 8 triangles: Mulholland 16,647 trees 133 k triangles,
   Roure 3,399 and 27 k, St Laurent 1,593 and 13 k. Size is `HEIGHT` and `WIDTH` over the unit mesh's box times `size`;
@@ -489,6 +490,53 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   St Jean - St Laurent and back 1,593. Headless drives, slot 2 at 25 m/s, `finished=1`, `false_start=0`: Roure uphill
   782.6 s (`cause=Left` at the line's end, 1.3 m off), Mulholland East 1131.3 s (`Marker`, 3.8 m off), St Jean - St
   Laurent 767.0 s (`Marker`, 2.2 m off; the run was the reverse layout, `slsj`).
+
+## CSP tree models, instanced, 2026-11-24
+
+- Each tree file's LOD 0 mesh is written once, in its own space, one `.x` per part (a part is one albedo and normal
+  pair), with the file's placements in one `.xform` (`tree_<n>`: size, width, turn and position as the cards are placed,
+  `tree_placement`); the objects carry `ReRbrInstanced=1`, `CollisionModel=-1`, `Visible=1`, `ShadowCaster=1`,
+  `LODIn=0` and `LODOut` the model range. The renderer instances them (`notes/btb.md` "Instancing"); a file used once
+  is baked as world triangles. A unit test places a quad model and the card of the same tree on one another.
+- Material: the albedo times `BRIGHTNESS`/0.3 (as the cards), alpha from the albedo or, where that is opaque, the normal
+  map (`Sampler::image`), the `Transparent` technique as the cards'; no normal map, no highlight. The mesh's normals
+  are written; the material's `Up` lighting is the cards'.
+- The cards stay as the far level: `LODIn` is the model range less the cell's padding (`lod_padding`), so a tree
+  between the two is drawn by both and none falls in a gap (ReRBR measures a card cell's range from the cell's middle,
+  a model's from its own box).
+- Range, a file's `WIDTH` times 3.65 limited to 40 to 100 m (`trees::card_range`, `TREE_MODEL_RANGE`): a card has 256
+  texels across the tree's width, the screen 935 pixels a metre at 1 m (1080 lines, 60 degrees), so the card is as fine
+  as the screen from `935 * WIDTH / 256` m: Roure's oak (35 m) 128 m, St Laurent's conifer (16 m) 60 m, Mulholland's
+  trees and bushes (4 m and less) 14 m. Within the limits: the least because a card is flat at an angle however fine
+  (the 40 m shot shows branches the card loses), the most for the triangles: all trees within R of a driveline point,
+  mean/p90/max over the driveline (in every direction, a view sees about a third) Roure 50 m 35/100/289 k, 100 m
+  150/398/946 k, 150 m 339/900/1892 k; Mulholland 25 m 4/21/50 k, 50 m 18/95/173 k, 100 m 75/331/554 k; St Laurent 50 m
+  21/96/176 k, 100 m 65/273/401 k. The same views drew 0.3 to 1.1 M triangles before.
+- Measured, before and after (release, `--out /tmp`, nothing else running; the viewer 1920x1080 with `--enhance
+  all,grass --detail ultra --anti-aliasing taa --reflections high`, to the screenshot, second of two runs):
+
+  | | Mulholland East | Roure uphill | St Jean - St Laurent |
+  | --- | --- | --- | --- |
+  | stored model triangles (once) | 73,284 | 16,676 | 8,015 |
+  | `RBR_BTB_STATS` baked triangles | 3,256,346 to 3,260,625 | 4,122,889 (same) | 3,350,172 (same) |
+  | instanced | 58 models, 33,292 placements, 35.9 M triangles | 5, 6,634, 41.3 M | 1, 1,593, 12.8 M |
+  | folder | 716.9 to 740.5 MB | 815.2 to 817.8 | 672.1 to 677.9 |
+  | conversion | 15.1 to 16.0 s | 31.3 to 28.5 | 27.4 to 26.8 |
+  | viewer load, peak RSS | 8.4 to 9.2 s, 3.32 to 3.37 GB | 7.6 to 8.3 s, 2.27 to 2.32 GB | 8.0 to 7.5 s, 2.28 to 2.31 GB (noise) |
+  | triangles drawn in two views near trees (`FrameStats`) | 0.34 to 0.58 M, 1.09 to 1.44 M | 0.57 (same), 0.50 to 1.32 M | 0.26 to 0.46 M, 0.40 to 0.50 M |
+
+  The folder grows by the textures (the models' own, 21 MB on Mulholland where each of 30 files has its own); the
+  tree-free Glava-Zete conversion is byte-identical to before (every file compared). Conversion time is within the
+  run-to-run noise. Not measured: frame time (the viewer has no GPU pass log without a window).
+- Shots, `/tmp/csp-trees-out/near-{before,after}-*.png` (not kept): a Roure oak from 35 m shows its trunk and branches
+  through the leaves where the cards had a flat screen of leaves; Mulholland's trees at 20 m have forked trunks, the
+  bushes at 60 m (cards beyond 40 m) are the same colour and place as before, no seam between the levels is visible.
+  `BRIGHTNESS` matches the cards' (same texels).
+- Open: no GPU frame time; the 40 to 100 m limits are by triangles and card sharpness, not a frame budget. LOD 1 and 2
+  of the files (`tree.ini` `LOD_n` `DISTANCE`: Roure's oak 20/40/300 m, St Laurent's conifer 25/45/100 m, Mulholland
+  300 m) are not read; AC itself draws LOD 0 only to 20 or 25 m on the first two. Other tree geometry options
+  (`tree.ini` `NORMALS`, `LEAVES`, `FAKE_SHADOW`) are not used. Triangle winding of the `.mesh` is taken as KN5's
+  (reversed); unchecked against the source, the stage's objects are drawn without back-face culling.
 
 ## CSP mesh adjustments, Puech sheets, grass, 2026-11-18
 
