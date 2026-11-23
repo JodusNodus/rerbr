@@ -155,3 +155,16 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB, with the BC7 diffuse about 45 s and 385 MB (plain RGBA: 458 MB); Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
   carry their ruts and Finland's grass verges, crisp detail at any distance; Greece's far hills (the mountain atlas, flattened in big
   islands) show streaks and blotches of the second layer.
+
+## Decals and birch trunks (Finland route_0), 2026-11-24
+
+- The pale strips on the gravel are the terrain's `DECAL` tier: 73 materials, all `decal_ao_vc.fx` (`TDiffuseAlphaMap` `fin_ral_decal_01..04_d` DXT5, AO map, no
+  `ST` second stream), `set*_mud` (tyre strips, ruts) and `set*_splats` (gravel patches). The shader's alpha is the texture's times the vertex `Color` alpha:
+  mud's runs 0 to 255, mean 0.33, splats' mean 0.95 (histograms over all decal vertices). Drawn with the texture's alpha alone the strips were 3 times too
+  opaque and flat grey. `import::decal_levels` now splits each decal mesh by its triangles' mean vertex alpha (4 levels, clear ones dropped), each level its
+  own copy of the texture with the alpha scaled (`faded`). Shots `/tmp/dr-decals/after/shots/000.300.png`: the strips are faint tyre lines. The AO map and vertex
+  RGB (mean 0.9 to 0.95, grey) are not applied.
+- Birch trunks (`large_tree_tr`, `foliage_trunk.fx`, `fin_birch_full_01_tr_d`, 512x1024 DXT1, opaque, real, not a placeholder): the converter draws the right
+  texture. It is pale grey (mean 166, 161, 153) with dark lichen and bark lines, vertex `Color` a grey AO (mean 0.9). So the bright white of the game's shots
+  is its exposure and lighting (a sunlit trunk of 0.63 albedo), not the converter's pick: the trunks in shade read grey and dark. Nothing in the material (one
+  texture, no tint constant: only `ScaleX_solo`, `ScaleY_solo`) to correct; left as is.
