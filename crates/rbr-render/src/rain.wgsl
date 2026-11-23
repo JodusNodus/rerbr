@@ -167,8 +167,13 @@ fn fs_rain(v: Out) -> @location(0) vec4<f32> {
 // The rain mist (ours): the veil of fine rain between the eye and what it sees, as a fullscreen draw over the frame's
 // depth. Each pixel's cover grows with its distance and the rain's amount (the air's extinction, `MIST_DENSITY` per
 // metre at full rain), most of it kept off the sky, and its density drifts with the wind in slow patches (`MIST_PATCH`
-// metres across) so that the veil is never even. It takes the fog's colour, greyer under the light.
+// metres across) so that the veil is never even. It takes the fog's colour, greyer under the light. The lamps light it
+// within `MIST_LAMP_SPAN` metres of the eye (their light where the ray is that far, or at the scene if nearer), over the
+// mist's cover of that span alone: their light falls off with the square of the distance, so the air about the car
+// holds nearly all of what the mist scatters back. Over the whole ray's cover, a far hill seen through a beam took the
+// mist of hundreds of metres lit as at 25 m, a flat grey slab cut out by the hill's outline (night Luceram 131 cockpit).
 const MIST_DENSITY: f32 = 0.003;
+const MIST_LAMP_SPAN: f32 = 25.0;
 const MIST_COVER: f32 = 0.5;
 const MIST_SKY: f32 = 0.35;
 const MIST_PATCH: f32 = 90.0;
@@ -209,9 +214,11 @@ fn fs_mist(@builtin(position) clip: vec4<f32>) -> @location(0) vec4<f32> {
     let patch_ = (world - drift) / MIST_PATCH;
     let vary = 1.0 + MIST_VARY * (mist_noise(patch_) - 0.5 + 0.5 * mist_noise(patch_ * 2.7 + 7.0) - 0.25) * 2.0;
     let amount = clamp(effects.motion.w, 0.0, 1.0);
-    let depth = MIST_DENSITY * amount * vary * metres;
-    let cover = (1.0 - exp(-depth)) * select(MIST_COVER, MIST_SKY, sky);
-    var colour = mix(effects.fog.rgb, vec3<f32>(dot(effects.fog.rgb, vec3<f32>(0.333))), 0.6) * 0.9;
-    colour += 0.15 * lamp_glow(lamps_at(effects.eye.xyz + direction * min(metres, 25.0)));
-    return vec4<f32>(linear(colour) * cover, cover);
+    let density = MIST_DENSITY * amount * vary;
+    let cover = (1.0 - exp(-density * metres)) * select(MIST_COVER, MIST_SKY, sky);
+    let colour = mix(effects.fog.rgb, vec3<f32>(dot(effects.fog.rgb, vec3<f32>(0.333))), 0.6) * 0.9;
+    let near = min(metres, MIST_LAMP_SPAN);
+    let lit = colour + 0.15 * lamp_glow(lamps_at(effects.eye.xyz + direction * near));
+    let near_cover = (1.0 - exp(-density * near)) * MIST_COVER;
+    return vec4<f32>(linear(colour) * cover + (linear(lit) - linear(colour)) * near_cover, cover);
 }

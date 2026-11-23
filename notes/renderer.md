@@ -517,6 +517,12 @@ probably fit the wrong hour.
   forward. The fog's lobe had laid a white wall over the road on main beam (rain Luceram 131 cockpit 22:30, beams
   off: the road clear, so the air was the wall, at only 2.2e-4 per metre). Tried: 0.6 reversed, the beams all but
   gone. Shots: night Luceram 131 cockpit RMSE 0.061, 35 byte-identical; night rain fly-by: the lamps glow more.
+- The rain mist's lamp light covers the near air only (`MIST_LAMP_SPAN` 25 m in `rain.wgsl`'s `fs_mist`, 2026-11-23):
+  the lamps' light 25 m along the ray took the whole ray's mist cover, so a far hill seen through the main beam over
+  Luceram's wall was a flat grey slab cut out by its outline and the wall's (night Luceram 131 cockpit; gone with the
+  term off, not with the stage's lamp light dimmed by the fog). Now that light takes the cover of its 25 m alone.
+  Shots: night Luceram 131 cockpit RMSE 0.034, three rain shots under 0.00001 (rounding), 32 byte-identical; night
+  rain fly-by 0.00015.
 - The beam's patch on the road is real contrast: some 20 lux on a bank facing the car against 0.1-0.3 lux of moonlight,
   6-7 stops, past what one exposure shows. Local exposure takes 0.8 of the excess over 2 stops (`LOCAL_GIVE`, 0.6
   until 2026-11-16; 36 shots: means within 3 levels, clipped 3.5 to 2.3% on Gabiria's night chase, 12 to 3% on Comb
