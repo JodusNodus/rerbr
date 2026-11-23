@@ -39,7 +39,25 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - `*BATCH*` nodes are position-only copies of the drawn tiers (same triangle counts): skipped.
 - Textures are DXT1 and DXT5. `objectstextures.pssg`, `route_objectstextures.pssg` and tracksplit's lightmaps are 4x4
   placeholders: the real ones are in `patchup_ot.pssg`, `route_patchup_ot.pssg` and `route_N/terrain_lm_<time>.pssg`.
-- Props: `objects.ens` places object types (row-major 4x4, translation last) resolved through `route_objecttypes.pssg`
+- Props (`objects.rs`): `objects.ens` instances (row-major 4x4, translation last) name a `TEMPLATEENTITYREFERENCE`
+  (`route_objecttypes.pssg#x.max`); each `TEMPLATESUBENTITY`'s renderable names a node of `objects.pssg`,
+  `route_objects.pssg` or `trees.pssg`. Only the `default` renderable draws (the `damage` ones are the broken pieces).
+  A `ROOTNODE` holds the same geometry three times: under `lod` nodes (the visible level 0, with the trees' billboard
+  and shadow quads, shaders `*billboard*`, left out), under `default` and `damage` (physics): `mesh::types` takes the `lod`
+  ones and indexes every node id under the root. Every instance of Greece and Finland route_0 resolves.
+- Trees (`trees.rs`): `trees.bin` layout in the module's header (types with local box and name, items of 80 bytes: type,
+  3x3 with scale, position). Placed on the collision surface within 9 cm median (97 % within 1.5 m on Greece, the rest
+  slope). The `*_dist_*` types are 500 m tiles of far trees (~100 triangles each, centred in the air). `objects.ens`
+  also lists the physical trees: every tree-model instance of Greece route_0 (11252) and all but 3 of Finland's (14166)
+  lies within 1.5 m of a `trees.bin` item, so they are drawn once, by `trees.bin`. Finland's header counts 3 more items
+  than its table holds; the table's own count is read.
+- Drawn props (`import.rs`): placed with the instance matrix (a mirrored one keeps the winding), materials split by draw
+  range (100 m to 1 km by size, less for dense models, `*_dist_*` tiles 3 km). Alpha only for `foliage*`/`facing_foliage`/
+  `treesheet*` (not trunk) and `*Blend*` shaders on DXT5: `Object_Emis`, `Object_Norm` and `Object_Stones` have DXT5
+  with varying alpha as a mask, not transparency. Greece route_0: 16592 props + 13394 trees = 7.4 M triangles
+  (terrain 1.9 M); Finland route_0: 16387 + 22228 = 28.9 M (terrain 4.3 M), almost all within 40 m of the road, so the
+  range does not thin them. Not done: the far billboard levels, grass (`grass.grs`), cloth, `ornaments.bin`; foliage
+  is drawn one-sided as the BTB mesh is.
   to nodes of `objects.pssg`, `route_objects.pssg` or `trees.pssg`. `trees.bin`, `grass.grs` not decoded.
 
 ## Course

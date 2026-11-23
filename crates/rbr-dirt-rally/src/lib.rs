@@ -5,6 +5,7 @@
 //!
 //! - `install`: the data folder and its routes (`tracks/locations/<location>/<area>/route_<n>`);
 //! - `pssg`, `mesh`, `material`, `texture`: the drawn world;
+//! - `objects`, `trees`: the props and trees placed in it (`objects.ens`, `trees.bin`);
 //! - `binxml`, `route`: the course, timing, calls and names;
 //! - `jpak`, `collision`, `surface`: the driven surface and its RBR ids;
 //! - `frame`: DiRT Rally's axes to the stage's;
@@ -18,8 +19,10 @@ pub mod install;
 pub mod jpak;
 pub mod material;
 pub mod mesh;
+pub mod objects;
 pub mod pssg;
 pub mod route;
 pub mod stage;
 pub mod surface;
 pub mod texture;
+pub mod trees;

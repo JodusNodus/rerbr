@@ -30,7 +30,7 @@ pub struct Mesh {
     pub triangles: Vec<[u32; 3]>,
 }
 
-type Mat = [[f32; 4]; 4];
+pub(crate) type Mat = [[f32; 4]; 4];
 
 fn mul(a: &Mat, b: &Mat) -> Mat {
     let mut m = [[0.; 4]; 4];
@@ -42,11 +42,11 @@ fn mul(a: &Mat, b: &Mat) -> Mat {
     m
 }
 
-fn point(m: &Mat, p: [f32; 3]) -> [f32; 3] {
+pub(crate) fn point(m: &Mat, p: [f32; 3]) -> [f32; 3] {
     std::array::from_fn(|j| p[0] * m[0][j] + p[1] * m[1][j] + p[2] * m[2][j] + m[3][j])
 }
 
-fn direction(m: &Mat, n: [f32; 3]) -> [f32; 3] {
+pub(crate) fn direction(m: &Mat, n: [f32; 3]) -> [f32; 3] {
     let d: [f32; 3] = std::array::from_fn(|j| n[0] * m[0][j] + n[1] * m[1][j] + n[2] * m[2][j]);
     let len = d.iter().map(|v| v * v).sum::<f32>().sqrt();
     if len > 0. {
@@ -56,7 +56,7 @@ fn direction(m: &Mat, n: [f32; 3]) -> [f32; 3] {
     }
 }
 
-fn determinant(m: &Mat) -> f32 {
+pub(crate) fn determinant(m: &Mat) -> f32 {
     let r = |i: usize| m[i];
     let (a, b, c) = (r(0), r(1), r(2));
     a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])
@@ -268,6 +268,50 @@ pub fn objects(pssg: &Pssg) -> Result<BTreeMap<String, Vec<Mesh>>, String> {
         }
     }
     Ok(out)
+}
+
+/// The placeable object types of an `objects`, `route_objects` or `trees` file: each `ROOTNODE`'s visible level-0
+/// meshes in its own space, and the ids that name it (its own and every node under it, `default!2`,
+/// `gre_rock_rand_small_default_001`), which is what `route_objecttypes` references.
+pub struct Types {
+    pub meshes: Vec<Vec<Mesh>>,
+    pub index: BTreeMap<String, usize>,
+}
+
+/// What [`types`] draws of a root: the level 0 under its `lod` nodes. The `default` and `damage` nodes beside them
+/// repeat that geometry for the physics and the broken state, the `LODRENDERINSTANCES` are coarser levels, and the
+/// camera-facing billboards (the trees' far levels) and shadow quads are sprites no near view wants.
+pub fn types(pssg: &Pssg) -> Result<Types, String> {
+    let materials = material::read(pssg);
+    let mut types = Types { meshes: Vec::new(), index: BTreeMap::new() };
+    for root in pssg.find("ROOTNODE") {
+        let (mut meshes, mut seen) = (Vec::new(), BTreeSet::new());
+        let m = root.transform();
+        for lod in root.children().filter(|c| SCENE.contains(&c.name()) && c.str("nickname") == Some("lod")) {
+            visit(lod, &mul(&lod.transform(), &m), &mut |instance, parent, m| {
+                let sprite = instance
+                    .str("shader")
+                    .and_then(|s| materials.get(s.trim_start_matches('#')))
+                    .is_some_and(|x| x.shader.contains("billboard"));
+                if !sprite && seen.insert(instance.str("indices").unwrap_or("").to_owned()) {
+                    meshes.extend(build(instance, parent.id().unwrap_or(""), m, &materials)?);
+                }
+                Ok(())
+            })?;
+        }
+        let at = types.meshes.len();
+        types.meshes.push(meshes);
+        types.index.extend(root.id().map(|id| (id.to_owned(), at)));
+        index_nodes(root, at, &mut types.index);
+    }
+    Ok(types)
+}
+
+fn index_nodes(node: Node, at: usize, index: &mut BTreeMap<String, usize>) {
+    for child in node.children().filter(|c| c.name() == "NODE") {
+        index.extend(child.id().map(|id| (id.to_owned(), at)));
+        index_nodes(child, at, index);
+    }
 }
 
 fn collect_defaults(node: Node, keys: &mut Vec<String>) {
