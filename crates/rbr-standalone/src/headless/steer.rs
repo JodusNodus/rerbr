@@ -6,7 +6,8 @@
 //! The first line, `#`, holds the car's `SteeringRackRatio` and force-feedback sensitivity `S`. Columns: `pre` (the
 //! frame's), `sub` (the step in the frame), `speed` (m/s, after the frame), `throttle`, `brake`, `handbrake`,
 //! `steering` (the step's control; empty from the autopilot), `sum` (the car's torque sum after the frame, on the
-//! frame's last step only), `tyres` (`tyre_ffb::torque` at its suggested trail, after the frame, last step only), `yaw`
+//! frame's last step only), `tyres` (`tyre_ffb::torque` at its suggested trail, after the frame, last step only),
+//! `levers` (`tyre_ffb::geometry_torque`, the same with each wheel's own trail, last step only), `yaw`
 //! (the car's angular velocity about the world vertical, rad/s), `forward` (its forward speed, m/s) and `texture`
 //! (`surface_ffb::Texture` at weight 1, in the sum's units times the rack ratio), then for each of the four tyres `tK_`
 //! (`K` the wheel's place in the car, the front pair first): `alpha` (the slip angle, degrees, `atan2` of the contact's
@@ -83,7 +84,7 @@ impl SteerLog {
         let out = &mut self.file;
         if self.wheels.is_none() {
             writeln!(out, "# rack_ratio={} sensitivity={}", mem.steering_rack_ratio(car), mem.max_ff_torque(car))?;
-            write!(out, "pre,sub,speed,throttle,brake,handbrake,steering,sum,tyres,yaw,forward,texture")?;
+            write!(out, "pre,sub,speed,throttle,brake,handbrake,steering,sum,tyres,levers,yaw,forward,texture")?;
             for k in 0..4 {
                 write!(out, ",t{k}_alpha,t{k}_fy,t{k}_fz,t{k}_slide,t{k}_fx,t{k}_kappa,t{k}_phase,t{k}_trail")?;
                 write!(out, ",t{k}_class,t{k}_mu,t{k}_soil")?;
@@ -106,9 +107,10 @@ impl SteerLog {
             }
             if sub + 1 == steps.len() {
                 let tyres = crate::tyre_ffb::torque(mem, crate::tyre_ffb::SUGGESTED_TRAIL);
+                let levers = crate::tyre_ffb::geometry_torque(mem, step);
                 let yaw = mem.angular_velocity(car).z;
                 let (sum, forward) = (mem.steer_torque_sum(car).value, mem.forward_speed(car));
-                write!(out, ",{sum},{tyres},{yaw},{forward},{}", self.texture.torque())?;
+                write!(out, ",{sum},{tyres},{levers},{yaw},{forward},{}", self.texture.torque())?;
                 for k in 0..4 {
                     let wheel = mem.u32(car + WHEELS + 4 * k);
                     if mem.u32(wheel + ON_GROUND) == 0 {
@@ -127,7 +129,7 @@ impl SteerLog {
                     write!(out, ",{class},{:.3},{:.4}", s.static_friction, s.soil_thickness)?;
                 }
             } else {
-                write!(out, ",,,,,{}", ",".repeat(44))?;
+                write!(out, ",,,,,,{}", ",".repeat(44))?;
             }
             for wheel in wheels.iter() {
                 match step.iter().find(|t| t.wheel == *wheel) {

@@ -224,6 +224,7 @@ impl<'a> Live<'a> {
             rally_next: RallyNext::default(),
             telemetry: None,
             ffb_tyres: None,
+            ffb_levers: None,
             ffb_surface: None,
             initial,
             initial_game,

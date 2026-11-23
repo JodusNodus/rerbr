@@ -30,6 +30,16 @@ The same sensitivity gives each car a different weight. On a 40 m circle the Fie
 with NGP's force, and the A110 RGT 1.15 times. Set the car's sensitivity again after switching, on the Controls page or
 in the pause menu while driving. Both forces use the same sensitivity setting, so a change applies to both.
 
+## Car's own steering levers (a trial)
+
+The "Force feedback: Car's own steering levers" switch replaces the fixed 25 mm with each front wheel's own lever, the
+caster trail NGP's steering geometry gives it at that moment. It changes with the suspension's travel and the steering
+angle, and differs from car to car: from 15 mm (Trabant) to 43 mm (Punto S2000), 24 mm for the median car. Near
+straight ahead most cars feel as with 25 mm. The Rally2, S2000 and kit cars, at about 40 mm, are about a quarter
+heavier (set the sensitivity again). Every car goes lighter as you turn the wheel further: at half lock about 0.7-0.9
+of the fixed lever's force, at full lock in a hairpin about half. The front's lightening at the grip limit stays. It
+does nothing unless "From the tyres" is on.
+
 ## Road texture (a trial)
 
 The "Force feedback: Road texture" switch adds the bumps the front wheels ride over to the force from the tyres. They

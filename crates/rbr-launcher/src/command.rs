@@ -801,6 +801,9 @@ impl Form {
         args.extend(self.drive_physics().args(car));
         if self.ffb.tyres {
             args.extend(["--ffb-tyres".to_owned(), TYRES_TRAIL_MM.to_owned()]);
+            if self.ffb.levers {
+                args.push("--ffb-levers".to_owned());
+            }
             if self.ffb.surface {
                 args.extend(["--ffb-surface".to_owned(), SURFACE_WEIGHT.to_owned()]);
             }
@@ -1673,18 +1676,19 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail and the surface's
-    /// weight (the surface only with it); off, the command has neither.
+    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail, the levers and the
+    /// surface's weight (those two only with it); off, the command has none.
     #[test]
     fn the_tyres_force_reaches_the_standalone() {
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
         for (tyres, trail) in [(false, None), (true, Some("25".to_owned()))] {
             let Some((_, mut form)) = real_form("command-ffb-tyres", text, false) else { return };
-            (form.ffb.tyres, form.ffb.surface) = (tyres, true);
+            (form.ffb.tyres, form.ffb.levers, form.ffb.surface) = (tyres, true, true);
             let args = launch(&mut form);
             let standalone = standalone_part(&args);
             assert_eq!(value(standalone, "--ffb-tyres"), trail, "{args:?}");
             assert_eq!(value(standalone, "--ffb-surface"), trail.as_ref().map(|_| "1".to_owned()), "{args:?}");
+            assert_eq!(standalone.iter().any(|a| a == "--ffb-levers"), tyres, "{args:?}");
             assert_eq!(value(&args[..args.len() - standalone.len()], "--ffb-tyres"), None, "{args:?}");
         }
     }

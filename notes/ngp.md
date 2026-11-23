@@ -356,6 +356,19 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     over the circle (p10-p90 e.g. 11-31 mm). Pneumatic trail there median 14 mm (6-19). At a car's own lever the
     level against 25 mm is 0.72-1.46 (sensitivity takes it) and the long-trail cars' aligning share falls to
     0.26-0.28, AC's 40 mm shape, with less of the lightening.
+  - The car's own levers (ours, 2026-11-23, a trial; `--ffb-levers` with `--ffb-tyres`, `tyre_ffb::Levers`; the
+    launcher's Settings > Experimental "Car's own steering levers", `[ffb] levers`): the fixed trail's moment
+    replaced by each front wheel's lateral force (the hub's along the contact's `y`) at the contact one tyre
+    effective radius under the hub, about the steering axis (`steer_parts::caster`, the lever within ±0.1 m), from
+    the frame's last step's kept adds, faded below 1 m/s; the pneumatic trail's moment as before. NGP's own lateral
+    part (the tyre's moment about `x` in place of radius times force) agrees in steady cornering but carries the
+    hub's other moments: sliding sideways and on impacts it gave levers to 66 m. Against the fixed 25 mm (breakdown
+    `levers`): circle level 0.84 (Favorit) to 1.30 (Fabia S2000), corr 0.90-0.99, the peak at the same 4.5-5.5°;
+    the user drives 0.84-0.92 overall, by steering input (fraction of lock) 0.95-1.04 under 0.1, 0.71-0.87 at
+    0.5-0.8, 0.30-0.50 at full lock on tarmac and gravel (snow 1.31, countersteer); 8-30 Hz rms 1.05-1.33 times;
+    under 1 m/s p99 0.03-0.63 against the fixed 0.01-0.43 and NGP's 0.06-0.85 (the two fronts' resting lateral
+    forces cancel less as their levers differ at lock). Physics PASS with it in the build (drive2/5, drive1/2,
+    rsf-test1/1, rsf-test2/1). Not tried on a wheel.
   - Front lock-up (2026-11-23; breakdown `tK_kappa` = slip velocity along the rolling axis over the contact's
     longitudinal speed, at least 1 m/s, 1 locked; `tK_phase` 2 sliding): the force goes light as the fronts lock.
     Autopilot full brake mid-corner on the r40 circle (Escort Mk II, Fiesta Rally2, 208 Rally4, Fabia R5 evo, Stratos;

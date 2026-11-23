@@ -1102,6 +1102,7 @@ mod tests {
                 "smoothing = 0\n",
                 "tyres = 0\n",
                 "surface = 0\n",
+                "levers = 0\n",
                 "rev_lights = 1\n",
                 "\n",
                 "[ffb_cars]\n",

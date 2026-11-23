@@ -57,16 +57,24 @@ pub struct Parts {
     pub aligning: f64,
 }
 
-/// `torque`'s parts, which add up to its `added`; none for a wheel off the ground, whose contact is stale.
-pub fn parts(torque: &SteerTorque) -> Option<Parts> {
+fn d(v: [f32; 3]) -> V {
+    v.map(f64::from)
+}
+
+/// The contact's axes `[x, y, n]` in the car's frame; none for a wheel off the ground, whose contact is stale.
+fn axes(torque: &SteerTorque) -> Option<[V; 3]> {
     if !torque.on_ground {
         return None;
     }
-    let d = |v: [f32; 3]| v.map(f64::from);
     let axle = d(torque.axle[0]);
     let n = unit(to_car(d(torque.normal), [d(torque.axle[1]), d(torque.travel[1])], [axle, d(torque.travel[0])])?)?;
     let y = unit(add_scaled(axle, n, -dot(axle, n)))?;
-    let x = cross(y, n);
+    Some([cross(y, n), y, n])
+}
+
+/// `torque`'s parts, which add up to its `added`; none for a wheel off the ground, whose contact is stale.
+pub fn parts(torque: &SteerTorque) -> Option<Parts> {
+    let [x, y, n] = axes(torque)?;
     let (f, m, r, k) = (d(torque.force), d(torque.torque), d(torque.arm), d(torque.strut_dir));
     let gain = f64::from(torque.gain);
     let force = [x, y, n].map(|e| dot(f, e));
@@ -78,6 +86,23 @@ pub fn parts(torque: &SteerTorque) -> Option<Parts> {
         vertical: gain * lever(n) * force[2],
         aligning: gain * dot(k, n) * dot(m, n),
     })
+}
+
+/// The longest mechanical trail [`caster`] gives, m: NGP's cars have 15-43 mm on the r40 circle, but a car on its side
+/// gave 0.3 m (snow drive2/5, its crash).
+const MAX_CASTER: f64 = 0.1;
+
+/// The mechanical trail's part of `torque`'s add from the geometry alone: the lateral force (the hub's along `y`) at
+/// the contact `radius` m under the hub, about the steering axis, times the gain. [`Parts::lateral`] has the tyre's
+/// moment about `x` in place of `radius` times the force, which carries the hub's other moments too (on an impact or a
+/// sideways slide, many times this); in steady cornering the two agree. The lever is held within [`MAX_CASTER`].
+/// None off the ground.
+pub fn caster(torque: &SteerTorque, radius: f64) -> Option<f64> {
+    let [x, y, _] = axes(torque)?;
+    let (f, r, k) = (d(torque.force), d(torque.arm), d(torque.strut_dir));
+    // A unit force along `y` at `r - radius n`: k . ((r - radius n) x y) = k . (r x y) + radius k . x.
+    let lever = (dot(k, cross(r, y)) + radius * dot(k, x)).clamp(-MAX_CASTER, MAX_CASTER);
+    Some(f64::from(torque.gain) * lever * dot(f, y))
 }
 
 /// The steps of a frame's adds, in order: a step ends where a wheel adds again.
@@ -157,5 +182,38 @@ mod tests {
         // The vertical force is the force along the normal.
         assert!((p.force[2] - dot(force, normal)).abs() < 0.5, "{p:?}");
         assert_eq!(parts(&SteerTorque { on_ground: false, ..t }), None);
+    }
+
+    /// With only a lateral force at the contact `radius` under the hub (the tyre's moment its lever's), the caster from
+    /// the geometry is the parts' lateral one; an arm far off the axis is held to the longest trail.
+    #[test]
+    fn the_caster_is_the_lateral_part_of_a_force_at_the_contact() {
+        let m = rotation();
+        let axle = unit([0.98, 0.05, -0.15]).unwrap();
+        let travel = unit([0.05, 0.99, 0.12]).unwrap();
+        let normal = unit([0.03, 0.999, 0.02]).unwrap();
+        let y = unit(add_scaled(axle, normal, -dot(axle, normal))).unwrap();
+        let (radius, gain) = (0.31, 9.5);
+        let force = y.map(|e| e * 4100.0);
+        let torque = cross(normal.map(|e| -e * radius), force);
+        let strut_dir = unit([0.12, 0.98, -0.14]).unwrap();
+        let t = SteerTorque {
+            wheel: 0,
+            on_ground: true,
+            force: f(force),
+            torque: f(torque),
+            arm: f([0.01, -0.3, 0.02]),
+            strut_dir: f(strut_dir),
+            axle: [f(axle), f(turn(&m, axle))],
+            travel: [f(travel), f(turn(&m, travel))],
+            normal: f(turn(&m, normal)),
+            gain: gain as f32,
+            added: 0.0,
+        };
+        let (lateral, got) = (parts(&t).unwrap().lateral, caster(&t, radius).unwrap());
+        assert!((got - lateral).abs() < 1e-3 * lateral.abs(), "{got} against {lateral}");
+        let far = caster(&SteerTorque { arm: f([2.0, -0.3, 2.0]), ..t }, radius).unwrap();
+        assert!((far.abs() - gain * MAX_CASTER * 4100.0).abs() < 1.0, "{far}");
+        assert_eq!(caster(&SteerTorque { on_ground: false, ..t }, radius), None);
     }
 }

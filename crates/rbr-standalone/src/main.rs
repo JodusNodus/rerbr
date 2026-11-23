@@ -231,7 +231,7 @@ fn live(args: &Args, data: &Data, race: &boot::Race, stage: &StageData) -> ExitC
         let mut live = live::Live::boot(data, &args.stage, race, stage, args.marker_settings, true)?;
         live.set_physics(args.physics, race::engine_car(args, Some(race), stage.car))?;
         if let Some(trail) = args.ffb_tyres {
-            live.set_ffb_tyres(trail, args.ffb_surface);
+            live.set_ffb_tyres(trail, args.ffb_levers, args.ffb_surface);
         }
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;

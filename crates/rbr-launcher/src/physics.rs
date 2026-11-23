@@ -104,7 +104,7 @@ impl Choice for PhysicsProfile {
 }
 
 /// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`[ffb] tyres`), the
-/// road's texture added to it (`[ffb] surface`), the experimental engine (with its aero and drivetrain) and the brush
+/// car's own levers in it (`[ffb] levers`), the road's texture added to it (`[ffb] surface`), the experimental engine (with its aero and drivetrain) and the brush
 /// tyre, each with its help and a link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
 /// physics drives what it leaves unsaved.
 pub fn experimental_section(
@@ -117,6 +117,14 @@ pub fn experimental_section(
     kit::panel(ui, |rows| {
         let (mut engine, mut tyre) = physics.parts();
         experiment(rows, "Force feedback", "From the tyres", &mut ffb.tyres, FFB_HELP, FFB_PAGE);
+        experiment(
+            rows,
+            "Force feedback",
+            "Car's own steering levers (with From the tyres)",
+            &mut ffb.levers,
+            LEVERS_HELP,
+            FFB_PAGE,
+        );
         experiment(
             rows,
             "Force feedback",
@@ -159,6 +167,10 @@ const TYRE_HELP: &str = "ReRBR's brush tyre, in place of NGP 7's. Still in devel
 const FFB_HELP: &str = "The wheel's force from the front tyres' grip, as Assetto Corsa EVO's, mapped straight: it \
                         goes light as the front lets go. Off: NGP's force and curve. Records are kept either way; the \
                         sensitivity may want a new value.";
+const LEVERS_HELP: &str = "A trial, with From the tyres: each front wheel's lever is its own from the car's steering \
+                           geometry, moving with the suspension and the steering angle, in place of a fixed 25 mm. \
+                           Near straight ahead most cars feel the same; Rally2, S2000 and kit cars are about a quarter \
+                           heavier, and every car goes lighter at big steering angles, about half at full lock.";
 const SURFACE_HELP: &str = "A trial, with From the tyres: adds the road's texture from the physics, the bumps the \
                             front wheels ride over: rough on gravel and grass, smooth on tarmac and snow, so it also \
                             tells when a wheel leaves the road. Capped so a rock kicks without slamming the wheel.";

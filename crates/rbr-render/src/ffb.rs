@@ -67,6 +67,9 @@ pub struct Options {
     /// The ground's texture under the front tyres added to the force from the tyres (the launcher's Settings >
     /// Experimental; `rbr-standalone --ffb-surface`, a trial); nothing without [`Options::tyres`].
     pub surface: bool,
+    /// Each front wheel's own mechanical trail from NGP's steering geometry in place of the fixed one (the launcher's
+    /// Settings > Experimental; `rbr-standalone --ffb-levers`, a trial); nothing without [`Options::tyres`].
+    pub levers: bool,
     /// The wheel's rev lights follow the car's shift points (`crate::wheel_lights`).
     pub rev_lights: bool,
 }
@@ -83,6 +86,7 @@ impl Default for Options {
             smoothing: 0,
             tyres: false,
             surface: false,
+            levers: false,
             rev_lights: true,
         }
     }
@@ -118,6 +122,7 @@ impl Options {
             .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
         out.tyres = flag("tyres", false);
         out.surface = flag("surface", false);
+        out.levers = flag("levers", false);
         out.rev_lights = flag("rev_lights", true);
         out
     }
@@ -145,7 +150,7 @@ impl Options {
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
              sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\nsurface = {}\n\
-             rev_lights = {}\n",
+             levers = {}\nrev_lights = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -161,6 +166,7 @@ impl Options {
             self.smoothing,
             u8::from(self.tyres),
             u8::from(self.surface),
+            u8::from(self.levers),
             u8::from(self.rev_lights),
         )
     }
@@ -1308,6 +1314,7 @@ mod tests {
             rotation_per_car: true,
             smoothing: 8,
             surface: true,
+            levers: true,
             rev_lights: false,
             ..Options::default()
         };
