@@ -164,7 +164,7 @@ impl App {
         let speed = WALK_SPEED * if self.held.contains(&KeyCode::ShiftLeft) { FAST_FACTOR } else { 1.0 };
         let movement = movement(&self.held);
         let (width, height) = (running.config.width, running.config.height);
-        // One screen's size: the window's, or a third of it holding a triple screen's three views.
+        // One screen's size: the window's, or a third of it holding the three views.
         let screen = triple::screen((width, height), running.spanned());
         let mut live_failed = false;
         if self.menu.is_some() {
@@ -332,8 +332,8 @@ impl App {
                 running.camera.lens(fov)
             }
         };
-        // The frame's views: the one, or a triple screen's left, centre and right.
-        let (views, centre) = triple::views(&lens, running.rig.as_ref(), screen);
+        // The frame's views: the one, or the left, centre and right of a triple rig or a curved panel.
+        let (views, centre) = triple::views(&lens, running.screens.as_ref(), screen);
         let view_projections: Vec<_> = views.iter().map(|&(view_projection, _)| view_projection).collect();
         let view_projection = view_projections[centre];
         if let Some(characters) = &mut self.scene.characters {
@@ -383,7 +383,7 @@ impl App {
             triple::clear(&mut encoder, &view);
         }
         let target = |index: usize| match (spanned, index.cmp(&centre)) {
-            (true, _) => (&view, Some(triple::spanned_at(index, screen))),
+            (true, _) => (&view, Some(triple::spanned_at(index, screen, width))),
             (false, std::cmp::Ordering::Less) => (&side_views[0], None),
             (false, std::cmp::Ordering::Greater) => (&side_views[1], None),
             (false, std::cmp::Ordering::Equal) => (&view, None),
@@ -391,31 +391,6 @@ impl App {
         let (target_view, at) = target(centre);
         let frame_view = FrameView { views: &views, index: centre, first: true, at };
         running.renderer.render_view(&mut encoder, target_view, screen, frame_view);
-        span.next("HUD");
-        let readout =
-            self.scene.playback.as_ref().filter(|_| self.scene.hud.show && demo_ride.is_none()).map(|playback| {
-                let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
-                let ghost = self.scene.ghost.as_ref().and_then(|ghost| ghost.gap());
-                let readout = readout(playback, self.scene.live.as_ref(), ghost, self.scene.hud, fps);
-                // The open HUD page shows every part filled in, where the page has them.
-                if let Some(page) = self.menu.as_ref().and_then(|menu| menu.hud()) {
-                    return hud_page::sample(hud_overlay::Readout { layout: page.layout, ..readout });
-                }
-                readout
-            });
-        if readout.is_some() || self.menu.is_some() || self.results.is_some() || demo_ride.is_some() {
-            // Spanned, the HUD and the menus go on the centre screen.
-            running.overlay.set_region(spanned.then(|| super::shell::spanned_region((width, height))));
-            let (gpu, menu) = (&running.gpu, &self.menu);
-            running.overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, (width, height), |ctx, hud| {
-                readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
-                menu.iter().for_each(|m| pause::paint(ctx, hud, m));
-                self.results.iter().for_each(|m| result_actions::paint(ctx, m));
-                if let Some(ride) = demo_ride {
-                    demo_hint(ctx, ride);
-                }
-            });
-        }
         span.next("submit");
         running.gpu.queue.submit([encoder.finish()]);
         for index in triple::order(views.len()).skip(1) {
@@ -431,6 +406,35 @@ impl App {
             span.next("submit");
             running.gpu.queue.submit([encoder.finish()]);
         }
+        span.next("HUD");
+        // Over every view: a curved panel's HUD spans its segments.
+        let mut encoder = running.gpu.device.create_command_encoder(&Default::default());
+        let readout =
+            self.scene.playback.as_ref().filter(|_| self.scene.hud.show && demo_ride.is_none()).map(|playback| {
+                let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
+                let ghost = self.scene.ghost.as_ref().and_then(|ghost| ghost.gap());
+                let readout = readout(playback, self.scene.live.as_ref(), ghost, self.scene.hud, fps);
+                // The open HUD page shows every part filled in, where the page has them.
+                if let Some(page) = self.menu.as_ref().and_then(|menu| menu.hud()) {
+                    return hud_page::sample(hud_overlay::Readout { layout: page.layout, ..readout });
+                }
+                readout
+            });
+        if readout.is_some() || self.menu.is_some() || self.results.is_some() || demo_ride.is_some() {
+            // Spanned, the HUD and the menus go on the centre screen, or a curved panel's middle.
+            running.overlay.set_region(running.hud_region());
+            let (gpu, menu) = (&running.gpu, &self.menu);
+            running.overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, (width, height), |ctx, hud| {
+                readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
+                menu.iter().for_each(|m| pause::paint(ctx, hud, m));
+                self.results.iter().for_each(|m| result_actions::paint(ctx, m));
+                if let Some(ride) = demo_ride {
+                    demo_hint(ctx, ride);
+                }
+            });
+        }
+        span.next("submit");
+        running.gpu.queue.submit([encoder.finish()]);
         let submitted = Instant::now();
         if let Some(pacer) = &mut self.pacer {
             pacer.submitted(&running.gpu.queue, self.presented, self.last_frame, submitted);

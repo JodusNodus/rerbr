@@ -1,20 +1,21 @@
 //! Triple screens in the window (`--triple`, `rbr_render::triple`): one window split in three (a spanned display, or
-//! windowed), or with `--triple-monitors` a borderless window on each monitor, the main one on the centre's. The
-//! centre view is drawn first (the exposure follows it) and carries the HUD.
+//! windowed), or with `--triple-monitors` a borderless window on each monitor, the main one on the centre's. A curved
+//! panel (`--curved`) is one window split in its three segments. The centre view is drawn first (the exposure follows
+//! it) and carries the HUD.
 
 use glam::Mat4;
 use rbr_render::camera::Lens;
 use rbr_render::present::Acquired;
-use rbr_render::triple::Rig;
+use rbr_render::triple::Screens;
 use std::sync::Arc;
 use winit::event_loop::ActiveEventLoop;
 use winit::monitor::MonitorHandle;
 use winit::window::{Fullscreen, Window, WindowAttributes};
 
-/// The frame's views of `lens` on screens of `screen` pixels: one, or on `rig` the left, centre and right; with the
+/// The frame's views of `lens` on screens of `screen` pixels: one, or of `screens` the left, centre and right; with the
 /// index of the one the HUD goes on.
-pub fn views(lens: &Lens, rig: Option<&Rig>, screen: (u32, u32)) -> (Vec<(Mat4, Mat4)>, usize) {
-    let views = lens.views(rig, screen.0 as f32 / screen.1.max(1) as f32);
+pub fn views(lens: &Lens, screens: Option<&Screens>, screen: (u32, u32)) -> (Vec<(Mat4, Mat4)>, usize) {
+    let views = lens.views(screens, screen.0 as f32 / screen.1.max(1) as f32);
     let centre = views.len() / 2;
     (views, centre)
 }
@@ -33,9 +34,26 @@ pub fn screen(size: (u32, u32), spanned: bool) -> (u32, u32) {
     }
 }
 
-/// Where view `index` of a spanned window's three goes, its top left corner in pixels.
-pub fn spanned_at(index: usize, screen: (u32, u32)) -> (u32, u32) {
-    (screen.0 * index as u32, 0)
+/// Where view `index` of a spanned window's three goes in a window `width` wide, its top left corner in pixels: the
+/// three centred, a width not of three leaving its spare columns at the outer edges.
+pub fn spanned_at(index: usize, screen: (u32, u32), width: u32) -> (u32, u32) {
+    (width.saturating_sub(screen.0 * 3) / 2 + screen.0 * index as u32, 0)
+}
+
+/// Where the HUD, the menus and the loading screen lay out in a window of `size` holding the three views (x, y, width
+/// and height in pixels): a triple rig's centre screen, a curved panel's middle at most 16:9 wide.
+pub fn hud_region(screens: &Screens, size: (u32, u32)) -> [u32; 4] {
+    match screens {
+        Screens::Triple(_) => {
+            let screen = screen(size, true);
+            let (x, y) = spanned_at(1, screen, size.0);
+            [x, y, screen.0, screen.1]
+        }
+        Screens::Curved(_) => {
+            let width = size.0.min(size.1 * 16 / 9);
+            [(size.0 - width) / 2, 0, width, size.1]
+        }
+    }
 }
 
 /// The monitor named `name`, for a window to fill.
@@ -138,6 +156,25 @@ mod tests {
     fn a_spanned_window_holds_three_screens() {
         assert_eq!(screen((5760, 1080), true), (1920, 1080));
         assert_eq!(screen((1920, 1080), false), (1920, 1080));
-        assert_eq!(spanned_at(2, (1920, 1080)), (3840, 0));
+        assert_eq!(spanned_at(2, (1920, 1080), 5760), (3840, 0));
+    }
+
+    #[test]
+    fn a_width_not_of_three_leaves_its_spare_columns_at_the_edges() {
+        let third = screen((3842, 1080), true);
+        assert_eq!(third, (1280, 1080));
+        assert_eq!([0, 1, 2].map(|i| spanned_at(i, third, 3842).0), [1, 1281, 2561]);
+        assert_eq!(spanned_at(0, screen((3841, 1080), true), 3841).0, 0);
+    }
+
+    #[test]
+    fn the_hud_goes_on_the_centre_screen_or_the_panels_middle() {
+        let rig = Screens::Triple(rbr_render::triple::Rig { diagonal: 27.0, bezel: 10.0, distance: 70.0, angle: None });
+        assert_eq!(hud_region(&rig, (5760, 1080)), [1920, 0, 1920, 1080]);
+        let panel = Screens::Curved(rbr_render::triple::Curved { diagonal: 49.0, radius: 1800.0, distance: 70.0 });
+        assert_eq!(hud_region(&panel, (5120, 1440)), [1280, 0, 2560, 1440]);
+        assert_eq!(hud_region(&panel, (3440, 1440)), [440, 0, 2560, 1440]);
+        // Narrower than 16:9, all of the width.
+        assert_eq!(hud_region(&panel, (1280, 1024)), [0, 0, 1280, 1024]);
     }
 }
