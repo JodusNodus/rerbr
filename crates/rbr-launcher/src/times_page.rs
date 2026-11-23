@@ -316,6 +316,11 @@ impl Form {
             },
         );
         let text = format!("{} shown", shown.len());
+        // The same profile's runs on another version: where an empty view's times went.
+        let earlier = runs.iter().filter(|r| r.physics.profile == physics.profile && r.physics != physics);
+        let earlier = earlier
+            .max_by_key(|r| r.recorded)
+            .map(|r| (r.physics.label(), runs.iter().filter(|o| o.physics == r.physics).count()));
         let mut clicked = None;
         browser::hint_bar(ui, &text, &[("↑↓", "Move"), ("↵", "Drive again")], |ui| {
             if shown.is_empty() {
@@ -323,7 +328,11 @@ impl Form {
                 let empty = if building {
                     "Reading your saved drives…".to_owned()
                 } else {
-                    format!("No times under {} yet", physics.label())
+                    let none = format!("No times under {} yet", physics.label());
+                    match &earlier {
+                        Some((label, count)) => format!("{none}.\n{count} earlier runs are under {label}."),
+                        None => none,
+                    }
                 };
                 ui.horizontal(|ui| {
                     ui.add_space(24.0);
