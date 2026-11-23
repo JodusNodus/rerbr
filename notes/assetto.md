@@ -668,6 +668,11 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   49 % of `snakes`' (3.35/4.7 km), and Onin's (0.85) under 0.7 of 15 km. Now 17; the `tar` layouts' `CROCK` (0.96)
   stays 69. Reinstalled 2026-11-23 (`ladders`, `snakes`, `onin`; former ones in the player's
   `backups/pre-rock-gravel-20261123`): only the collision surfaces changed, no 69 left. Not driven or rendered.
+- `physics=` is snow, before gravel, when over half of the driveline lies on snow ids (101-103, 117-119): no AC surface
+  becomes snow by itself, so `--surface` sets them. `dr_sweed` (DiRT Rally Sweden; AC declares it gravel, `ROAD` 17) is
+  converted with `--surface ROAD=117 --surface EDGE=102 --surface OUT=103`, the ids RSF's snow BTB stages use (Hokkara
+  Snow, Kaihuavaara 2021: 117 and 103 most). Geometry, drawn and collision counts unchanged; installed 2026-11-23,
+  the former one in `backups/pre-sweden-snow-20261123`. Not driven or rendered.
 
 ## Converting the whole local install, 2026-11-18
 

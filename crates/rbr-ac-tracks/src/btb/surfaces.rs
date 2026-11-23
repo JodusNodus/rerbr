@@ -36,17 +36,22 @@ pub fn weathers(id: u8) -> [u8; 3] {
     }
 }
 
-/// The stage's `physics=`: gravel where over half of the drive lies on gravel or dirt, else tarmac. `along` pairs a
-/// surface id with the length of road it covers. (Snow is not guessed: a stage of snow ids is set by hand.)
+/// The stage's `physics=`: snow where over half of the drive lies on snow ids, else gravel where over half lies on
+/// gravel or dirt, else tarmac. `along` pairs a surface id with the length of road it covers. (No AC surface becomes
+/// snow by itself, but CSP's `ICE` (117) or `--surface ROAD=117`.)
 pub fn physics(along: impl IntoIterator<Item = (u8, f64)>) -> &'static str {
-    let (mut loose, mut all) = (0., 0.);
+    let (mut snow, mut loose, mut all) = (0., 0., 0.);
     for (id, length) in along {
         all += length;
-        if matches!(id, 1 | 9 | 17 | 133 | 141 | 149) {
+        if matches!(id, 101..=103 | 117..=119) {
+            snow += length;
+        } else if matches!(id, 1 | 9 | 17 | 133 | 141 | 149) {
             loose += length;
         }
     }
-    if loose * 2. > all {
+    if snow * 2. > all {
+        "snow"
+    } else if loose * 2. > all {
         "gravel"
     } else {
         "tarmac"
@@ -63,5 +68,10 @@ mod tests {
         assert_eq!(physics([(133, 5.), (37, 5.)]), "tarmac");
         assert_eq!(physics([(37, 9.), (1, 1.)]), "tarmac");
         assert_eq!(physics([]), "tarmac");
+    }
+    #[test]
+    fn a_stage_is_snow_when_most_of_its_drive_is_snow() {
+        assert_eq!(physics([(117, 6.), (102, 1.), (17, 3.)]), "snow");
+        assert_eq!(physics([(103, 4.), (17, 6.)]), "gravel");
     }
 }
