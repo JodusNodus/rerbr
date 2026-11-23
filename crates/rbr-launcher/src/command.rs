@@ -711,7 +711,7 @@ impl Form {
             weather,
             tyre: tyre.unwrap_or(0),
             size: self.size,
-            fov: self.fov,
+            fov: self.drive_fov(),
             chase_fov: self.chase_fov,
             volume: self.volume,
             volumes: Volumes {
@@ -888,7 +888,10 @@ impl Form {
                 // The pause menu's Camera, HUD and Force feedback pages may have changed them.
                 let saved = crate::settings::read_settings(&self.paths.settings);
                 self.cockpit = saved.camera.cockpit;
-                self.fov = saved.fov.unwrap_or(self.fov);
+                // Changed on the Camera page while it followed the screen: set by hand from now on.
+                let fov = saved.fov.unwrap_or(self.fov);
+                self.fov_from_screen &= fov == self.fov;
+                self.fov = fov;
                 self.chase_fov = saved.chase_fov.unwrap_or(self.chase_fov);
                 self.hud.parts = saved.hud_hide.unwrap_or(self.hud.parts);
                 self.hud.layout = saved.hud_layout.unwrap_or(self.hud.layout);
@@ -979,7 +982,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 14] = [
+    const COMMAND_CASES: [(&str, &str); 16] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -1017,6 +1020,16 @@ mod tests {
             "curved screen",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ncurved = on\nscreen_diagonal = 38\n\
              screen_radius = 2300\nscreen_distance = 80\nfullscreen = off\n",
+        ),
+        (
+            "curved screen, field of view matched",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ncurved = on\nscreen_diagonal = 49\n\
+             screen_radius = 1800\nscreen_distance = 70\nfov_from_screen = on\nsize = 3840x1080\nfullscreen = off\n",
+        ),
+        (
+            "single screen, field of view matched",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nscreen_diagonal = 27\nscreen_distance = 70\n\
+             fov_from_screen = on\nsize = 1920x1080\nfullscreen = off\n",
         ),
         (
             "curved and triple on: triple wins",

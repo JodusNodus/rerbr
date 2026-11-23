@@ -2,7 +2,16 @@
 
 ReRBR can draw the stage at its true size for the screen in front of you. Tell the launcher how big the screen is and
 how far your eyes are from it, and it works out the field of view that makes a corner 50 m ahead look 50 m ahead. The
-settings are on the Graphics & sound page, under Display > Screens, which offers Single, Curved and Triple.
+settings are in the Screen section of Settings > Graphics & sound:
+
+1. Pick Single, Curved or Triple.
+2. Enter the screen's size and your distance to it: the curve's radius for Curved, the bezels and side angle for
+   Triple.
+3. Leave Field of view on "Match my screen".
+
+Measure the distance sitting as you drive, from your eyes to the middle of the screen (the centre screen for Triple).
+A tape measure from the bridge of your nose is close enough. Sit with the middle of the screen at eye level if you can:
+the view assumes it, as iRacing's and Le Mans Ultimate's setups do.
 
 Nobody has tried Curved on a real curved monitor yet, or Triple on a real triple rig. The geometry is tested in code
 and in screenshots. If you have one of these setups, please [report](https://github.com/JodusNodus/rerbr/issues/new/choose)
@@ -10,19 +19,27 @@ how it looks.
 
 ## Field of view
 
-The field of view sliders (Graphics & sound > Camera, and the pause menu's Camera page) set the horizontal angle the
-image covers. The default is 50° for the in-car views and 65° for the chase view.
-
 The true field of view is the angle your screen covers from where you sit. At that setting the world on screen is
 the size it would be through a window. A wider setting shows more but makes everything smaller and further away. A
-narrower one zooms in. Each Screens mode shows the true field of view for what you entered, and "Use for in-car views"
-copies it to the in-car slider. The chase view keeps its own slider, because a camera behind the car has no true size
-to match.
+narrower one zooms in.
+
+Field of view in the Screen section has two settings:
+
+- **Match my screen.** The in-car views use the true field of view, worked out again whenever you change the size,
+  radius or distance. The Camera section's slider shows the value greyed out.
+- **Manual.** The Camera section's slider sets it, 50° by default. The Screen section still shows your screen's true
+  field of view next to it.
+
+Picking Curved or Triple turns on Match my screen. Single starts on Manual, so nothing changes for a player who never
+opens the section. Changing the field of view on the pause menu's Camera page while driving switches to Manual and
+keeps the value you chose.
+
+The chase view keeps its own slider, 65° by default, because a camera behind the car has no true size to match.
 
 ## Single screen
 
-This covers any one flat monitor, ultrawides included. Enter its diagonal and your distance from it. The readout is
-the true field of view across the whole width. Nothing else changes: the default stays 50°.
+This covers any one flat monitor, ultrawides included. Choose Match my screen, then enter its diagonal and your
+distance from it. The field of view covers the whole width.
 
 A flat ultrawide is where this matters most. At 50° a 49" 32:9 panel at 70 cm looks zoomed in, because the panel
 covers about 81° of your view. Some examples at 70 cm:

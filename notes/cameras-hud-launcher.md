@@ -527,9 +527,13 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
   turn), `triple_monitors` (left,centre,right names: with fullscreen, `--triple-monitors`, a window a monitor;
   unset or windowed: one window split in thirds). The FOV sliders set the centre screen's field of view; the true
   field of view readout takes a third of a spanned display's or the window's aspect.
-- Screens (Graphics > Display, Single / Curved / Triple): `curved` (off; triple wins when both are on),
+- Screen section (Graphics, `screen_page.rs`, Single / Curved / Triple): `curved` (off; triple wins when both are on),
   `screen_diagonal` (34 in, 24-65), `screen_radius` (1800 mm, 800-4000), `screen_distance` (70 cm, 30-200); curved
-  adds `viewer --curved D,R,DIST`, single only offers its true field of view for the whole screen.
+  adds `viewer --curved D,R,DIST`. `fov_from_screen` (off; Match my screen / Manual): on, `--fov` is the screen's true
+  field of view (`Form::screen_fov`: flat whole width, curved whole panel, triple centre screen; to 0.1°, within
+  30-120) and `fov` keeps the manual value; picking Curved or Triple turns it on. A `fov` the pause menu's Camera page
+  wrote (it differs from the manual value at the reread) turns it off. Modelled on iRacing's monitor setup, Le Mans
+  Ultimate's triple tool (slider locked) and ACC's view settings (2026-11-23).
 - `[telemetry]` `udp = ADDR:PORT` (Settings page, Telemetry's UDP address; unset off): `rbr-standalone
   --telemetry-udp`, NGP's UDP packet ([ngp.md](ngp.md#udp-telemetry)). A value without a port after its last `:` is
   not read, sent or saved; the field warns while it holds one.

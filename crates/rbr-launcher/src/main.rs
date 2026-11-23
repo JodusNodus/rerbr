@@ -160,6 +160,7 @@ mod physics;
 mod preview;
 mod replay_page;
 mod school_page;
+mod screen_page;
 mod settings;
 mod settings_page;
 mod setup_page;
@@ -609,6 +610,8 @@ struct Form {
     screen_diagonal: f32,
     screen_radius: f32,
     screen_distance: f32,
+    /// The in-car views' field of view follows the screen (`screen_page`, `fov_from_screen`); else `fov`.
+    fov_from_screen: bool,
     /// The monitor names winit sees now, for the Displays dropdowns (never saved).
     monitors: Vec<String>,
     /// The current monitor's size, for the true field of view (never saved).
