@@ -2,13 +2,13 @@
 //! (`route`), the collision (`collision`, `surface`) and the drawn world are read, put in the stage's world (`frame`)
 //! and written by `stage`. Nothing here prints, reads the environment or exits the process.
 use crate::install::{Install, Route};
-use crate::{collision, frame, route, stage, surface};
+use crate::{collision, frame, material, mesh, pssg::Pssg, route, stage, surface, texture};
 use rbr_ac_tracks::btb::{
     control::Control,
     geometry::{Grid, Triangle},
     road::Line,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 pub use stage::Report;
@@ -31,7 +31,8 @@ impl Options {
             name: None,
             out: None,
             replace: false,
-            draw_corridor: 300.,
+            // An area's terrain is a few million triangles: all of it is drawn.
+            draw_corridor: 5000.,
             collision_corridor: 75.,
             lod: 1000.,
             control,
@@ -61,6 +62,8 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
     control.say(&format!("{} collision triangles", collision.len()));
     drop(faces);
     control.check()?;
+    let (materials, drawn) = terrain(&route, control)?;
+    control.say(&format!("{} drawn terrain triangles in {} materials", drawn.len(), materials.len()));
     let input = stage::Input {
         source: route.dir.clone(),
         route: route.id(),
@@ -71,8 +74,8 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         start,
         finish,
         splits,
-        materials: Vec::new(),
-        drawn: Vec::new(),
+        materials,
+        drawn,
         collision,
         collision_source: "track.jpk",
         surface_counts,
@@ -176,4 +179,43 @@ fn collision_triangles(
         t.material.get_or_insert(default);
     }
     Ok((triangles, counts))
+}
+
+/// The drawn terrain in the stage's world: the route's `routesplit.pssg` where the area has one (Greece), and the area's
+/// `tracksplit.pssg` (its vista there, all of it elsewhere), each material drawn with its first layer's texture.
+fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Vec<Triangle>), String> {
+    let mut library = texture::Library::day(route);
+    let files: Vec<_> = [route.dir.join("routesplit.pssg"), route.area_dir().join("tracksplit.pssg")]
+        .into_iter()
+        .filter(|p| p.is_file())
+        .collect();
+    let (mut materials, mut triangles) = (Vec::new(), Vec::new());
+    for (file, path) in files.iter().enumerate() {
+        control.check()?;
+        control.say(&format!("reading {}", path.file_name().unwrap_or_default().to_string_lossy()));
+        let pssg = Pssg::read(path)?;
+        let sources = material::read(&pssg);
+        let mut index = HashMap::<String, u32>::new();
+        for m in mesh::terrain(&pssg)? {
+            let at = *index.entry(m.material.clone()).or_insert_with(|| {
+                let dds =
+                    sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r)).map(|t| t.dds());
+                // Decals lie on the ground they mark: drawn with their alpha.
+                let transparent = m.node.starts_with("DECAL");
+                materials.push(stage::Material { name: format!("{file}:{}", m.material), dds, transparent });
+                materials.len() as u32 - 1
+            });
+            triangles.extend(m.triangles.iter().map(|&[a, b, c]| {
+                // Counter-clockwise in DiRT Rally's right-handed frame; the BTB mesh's winding the other way.
+                let corners = [a, c, b].map(|i| i as usize);
+                Triangle {
+                    pos: corners.map(|i| frame::world(m.positions[i])),
+                    uv: corners.map(|i| m.uv.get(i).copied().unwrap_or_default()),
+                    normal: corners.map(|i| m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(n))),
+                    material: Some(at),
+                }
+            }));
+        }
+    }
+    Ok((materials, triangles))
 }

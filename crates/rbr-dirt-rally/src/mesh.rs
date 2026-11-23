@@ -17,7 +17,8 @@ pub struct Mesh {
     pub positions: Vec<[f32; 3]>,
     /// Empty when the source has none (position-only copies).
     pub normals: Vec<[f32; 3]>,
-    /// Empty without an `ST` stream. What the first diffuse layer reads: the first `ST` stream's `xy` with the layer's `Map<N>UVScaleAndOffset` applied.
+    /// Empty without an `ST` stream. What the drawn texture reads (`material::diffuse`): its `ST` stream's `xy`
+    /// (`material::uv_stream`) with the layer's `Map<N>UVScaleAndOffset` applied.
     pub uv: Vec<[f32; 2]>,
     /// The first `ST` stream's `zw` (terrain: the finer layer coordinates; meaning of the pair not fully verified).
     pub uv_alt: Option<Vec<[f32; 2]>>,
@@ -169,6 +170,7 @@ fn build(
     let material = instance.str("shader").unwrap_or("").trim_start_matches('#').to_owned();
     let [su, sv, ou, ov] = materials.get(&material).map_or([1., 1., 0., 0.], material::uv_transform);
     let st = of("ST");
+    let drawn = materials.get(&material).map_or(0, material::uv_stream);
     let flip = determinant(m) < 0.;
     Ok(Some(Mesh {
         node: parent.to_owned(),
@@ -176,7 +178,7 @@ fn build(
         normals: of("Normal")
             .first()
             .map_or(Vec::new(), |s| s.values.iter().map(|v| direction(m, [v[0], v[1], v[2]])).collect()),
-        uv: st.first().map_or(Vec::new(), |s| s.values.iter().map(|v| [v[0] * su + ou, v[1] * sv + ov]).collect()),
+        uv: st.get(drawn).map_or(Vec::new(), |s| s.values.iter().map(|v| [v[0] * su + ou, v[1] * sv + ov]).collect()),
         uv_alt: st.first().filter(|s| s.width == 4).map(|s| s.values.iter().map(|v| [v[2], v[3]]).collect()),
         uv2: st.get(1).map(|s| s.values.iter().map(xy).collect()),
         colour: of("Color").first().map(|s| s.bytes.iter().map(|c| [c[1], c[2], c[3], c[0]]).collect()),

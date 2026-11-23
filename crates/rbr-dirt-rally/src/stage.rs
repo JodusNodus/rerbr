@@ -155,6 +155,8 @@ impl Corridor {
     }
 }
 
+/// ReRBR's far plane, metres (`rbr_btb::circuit::FAR`'s reach for drawn scenery).
+const FAR: f64 = 10_000.;
 /// Side of the cells ReRBR merges drawn meshes into (its BTB stage's `CELL`), metres.
 const SCENERY_CELL: f64 = 128.;
 /// Side of the collision tiles, metres (as the AC converter's).
@@ -346,7 +348,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 name
             }
         };
-        let lod = if input.materials[*material].transparent { options.lod } else { options.lod.max(2000.) };
+        // Opaque ground is drawn as far as ReRBR sees, so the valley below and the mountains around stay in view.
+        let lod = if input.materials[*material].transparent { options.lod } else { FAR };
         let entries = format!("LODIn=0\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
         objects.mesh(builder, &section, &entries)?;
         drawn_triangles += builder.triangles.len();

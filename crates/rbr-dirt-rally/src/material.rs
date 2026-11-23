@@ -58,8 +58,24 @@ const DIFFUSE_INPUTS: [&str; 6] = [
 ];
 
 /// The input name and texture reference a material is drawn with; `None` for materials without one (`batched_track`).
+/// The vista is drawn with its large colour map, which covers it whole (its layers tile a few metres).
 pub fn diffuse_input(m: &Material) -> Option<(&str, &str)> {
+    if is_vista(m) {
+        if let Some((k, v)) = m.textures.get_key_value("TlargeColourMap") {
+            return Some((k.as_str(), v.as_str()));
+        }
+    }
     DIFFUSE_INPUTS.iter().find_map(|name| m.textures.get_key_value(*name).map(|(k, v)| (k.as_str(), v.as_str())))
+}
+
+/// The distant mountains of an area (`terrain_track_vista_d4.fx`).
+pub fn is_vista(m: &Material) -> bool {
+    m.shader.starts_with("terrain_track_vista")
+}
+
+/// The `ST` stream the drawn texture reads: the vista's large map the second, every other the first.
+pub fn uv_stream(m: &Material) -> usize {
+    usize::from(diffuse_input(m).is_some_and(|(input, _)| input == "TlargeColourMap"))
 }
 
 /// The texture reference a material is drawn with.
