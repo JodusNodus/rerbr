@@ -61,8 +61,6 @@ fn determinant(m: &Mat) -> f32 {
     a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])
 }
 
-const IDENTITY: Mat = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
-
 fn half(bits: u16) -> f32 {
     let (sign, exp, frac) = (f32::from(bits >> 15) * -2. + 1., i32::from((bits >> 10) & 31), f32::from(bits & 1023));
     match exp {
@@ -283,6 +281,8 @@ fn collect_defaults(node: Node, keys: &mut Vec<String>) {
 mod tests {
     use super::*;
     use crate::pssg::tests::sample_areas;
+
+    const IDENTITY: Mat = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
 
     #[test]
     fn halves_decode() {

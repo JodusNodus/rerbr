@@ -18,3 +18,4 @@ rbr-ac-tracks = { path = "../rbr-ac-tracks" }
 rbr-btb = { path = "../rbr-btb" }
 rbr-formats = { path = "../rbr-formats" }
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+texpresso = { version = "2.0.2", features = ["rayon"] }
