@@ -387,7 +387,7 @@ impl Placer<'_> {
         let face = facing(matrix, road, forward);
         for m in meshes {
             let slot = slot(&m.material);
-            if m.uv2.is_some() && source.materials.get(&m.material).is_some_and(|f| f.shader == "facing_foliage.fx") {
+            if is_cards(m) {
                 out.extend(cards(m, matrix, face, slot));
                 self.placed += 1;
                 continue;
@@ -433,9 +433,22 @@ fn facing(matrix: &mesh::Mat, road: [f64; 3], forward: [f64; 3]) -> [f32; 2] {
     }
 }
 
-/// A `facing_foliage` mesh as the placed cards it stands for: the file keeps each card's four vertices at its centre
-/// with their offsets (right, up, metres of the type's own space) in the second `ST` stream, and the game's shader
-/// turns the card to the camera. Upright cards turned to `face` (see [`facing`]).
+/// Whether `m` is camera-facing cards: every triangle's corners at one point, their offsets in the second `ST`
+/// stream. `facing_foliage` leaves (olives, birches, bushes) and the `*_facing` trees (`treesheet_foliage_norm`, a
+/// whole tree on one card; the `*_dist_*` tiles share that shader with real geometry).
+fn is_cards(m: &mesh::Mesh) -> bool {
+    let point = |t: &[u32; 3]| {
+        let [a, b, c] = t.map(|i| m.positions[i as usize]);
+        (0..3).all(|k| (a[k] - b[k]).abs() < 1e-3 && (a[k] - c[k]).abs() < 1e-3)
+    };
+    m.uv2.as_ref().is_some_and(|u| u.len() == m.positions.len())
+        && !m.triangles.is_empty()
+        && m.triangles.iter().all(point)
+}
+
+/// Camera-facing cards ([`is_cards`]) as placed ones: the file keeps each card's four vertices at its centre with their
+/// offsets (right, up, metres of the type's own space) in the second `ST` stream, and the game's shader turns the card
+/// to the camera. Upright cards turned to `face` (see [`facing`]).
 fn cards(m: &mesh::Mesh, matrix: &mesh::Mat, face: [f32; 2], slot: u32) -> Vec<Triangle> {
     let norm = |i: usize| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt();
     let (across, up) = (norm(0).max(norm(2)), norm(1));
