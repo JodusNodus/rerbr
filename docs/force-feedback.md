@@ -5,6 +5,10 @@ steering rack, smooths it, and puts it through a curve that flattens it towards 
 Experimental "Force feedback: From the tyres" switch builds the force the way Assetto Corsa EVO does. It changes only
 what the wheel feels. The car drives the same, and records, ghosts and championship results are kept.
 
+You can also switch while driving: the pause menu's Force feedback page has Force (NGP 7 or From the tyres) and, with
+From the tyres, Steering levers and Road texture. The change starts when you resume, so you can compare them on the
+same corner, and it is kept for the next drive.
+
 ## What it does
 
 Each front tyre on the ground pushes sideways on the road. That push acts a little behind the centre of the tyre, at a

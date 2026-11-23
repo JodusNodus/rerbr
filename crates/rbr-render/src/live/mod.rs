@@ -40,7 +40,7 @@ use rbr_recording::input::{Input, CELL_AXIS, CELL_BUTTON};
 pub use rbr_recording::menu::Menu;
 use rbr_recording::particles::{CarDamage, Event as ParticleEvent, TyreParticles};
 pub use rbr_recording::realtime::Step;
-use rbr_recording::realtime::{Logged, Message, INPUT, LOG_MAGIC, PAUSE, RESTART, RESUME};
+use rbr_recording::realtime::{Logged, Message, FORCE, INPUT, LOG_MAGIC, PAUSE, RESTART, RESUME};
 use rbr_recording::shift::ShiftPoints;
 pub use rbr_recording::sound::{Inputs, Sound};
 use rbr_recording::splits::Splits;
@@ -553,6 +553,16 @@ impl Live {
             return;
         }
         if let Err(e) = self.sender().message(RESUME, 0, &Controls::default()) {
+            eprintln!("viewer: {e}");
+        }
+    }
+
+    /// The wheel's force model from the next frame on (FORCE, `rbr_recording::realtime`'s bits; the pause menu).
+    pub fn set_force(&self, bits: u32) {
+        if self.lockstep {
+            return;
+        }
+        if let Err(e) = self.sender().message(FORCE, bits, &Controls::default()) {
             eprintln!("viewer: {e}");
         }
     }

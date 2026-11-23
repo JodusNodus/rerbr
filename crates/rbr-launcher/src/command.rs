@@ -907,6 +907,9 @@ impl Form {
                 self.ffb_cars = saved.ffb_cars;
                 self.ffb_load = saved.ffb_load;
                 self.ffb.settings.strength = saved.ffb.settings.strength;
+                self.ffb.smoothing = saved.ffb.smoothing;
+                (self.ffb.tyres, self.ffb.levers, self.ffb.surface) =
+                    (saved.ffb.tyres, saved.ffb.levers, saved.ffb.surface);
                 if !replay {
                     self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
                     self.controls.read_last_drive(&self.logs_dir());

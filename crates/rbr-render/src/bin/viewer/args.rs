@@ -777,8 +777,11 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         stage_place =
             (track.info.place.map(|[lat, lon]| (lat as f32, lon as f32)), track.info.country.clone(), name, snow);
     }
-    // The force from the tyres is the stepping process's (`rbr-standalone --ffb-tyres`): the wheel maps it as a line.
-    ffb_options.tyres = live.as_ref().is_some_and(|c: &Vec<String>| c.iter().any(|a| a == "--ffb-tyres"));
+    // The force model is the stepping process's (`rbr-standalone --ffb-tyres`, `--ffb-levers`, `--ffb-surface`): with
+    // the tyres' the wheel maps it as a line.
+    let given = |flag: &str| live.as_ref().is_some_and(|c: &Vec<String>| c.iter().any(|a| a == flag));
+    (ffb_options.tyres, ffb_options.levers, ffb_options.surface) =
+        (given("--ffb-tyres"), given("--ffb-levers"), given("--ffb-surface"));
     Ok(Args {
         stage,
         stage_place,

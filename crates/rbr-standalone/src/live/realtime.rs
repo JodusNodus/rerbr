@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use rbr_gameplay::ffb::racing_gate;
 use rbr_recording::input::{Input, Payload};
 use rbr_recording::realtime::{
-    self, Logged, Message, Step, INPUT, LOGGED_BYTES, LOG_MAGIC, MESSAGE_BYTES, PAUSE, RESTART, RESUME,
+    self, Logged, Message, Step, FORCE, INPUT, LOGGED_BYTES, LOG_MAGIC, MESSAGE_BYTES, PAUSE, RESTART, RESUME,
 };
 use rbr_recording::{CONTROL_BYTES, STEP_SECONDS};
 use rbr_step::runner;
@@ -43,6 +43,8 @@ struct Feed {
     resumes: u64,
     /// The viewer asked for a restart (`RESTART`), taken by the clock loop.
     restart: bool,
+    /// The force model the viewer asked for last (`FORCE`'s bits), taken by the clock loop.
+    force: Option<u32>,
     /// The input ended (`Ok`) or broke.
     end: Option<Result<(), String>>,
 }
@@ -90,7 +92,8 @@ fn read_feed(mut input: impl Read, shared: Shared) {
             (PAUSE, _) => Ok(None).inspect(|_| feed.running = false),
             (RESUME, _) => Ok(None).inspect(|_| (feed.running, feed.resumes) = (true, feed.resumes + 1)),
             (RESTART, _) => Ok(None).inspect(|_| feed.restart = true),
-            _ => unreachable!("Message::read takes the four tags only"),
+            (FORCE, _) => Ok(None).inspect(|_| feed.force = Some(m.seq)),
+            _ => unreachable!("Message::read takes the five tags only"),
         });
         match input {
             Ok(Some((seq, input))) => {
@@ -183,6 +186,9 @@ pub fn serve_realtime<'a>(
                     feed.seq,
                 )
             };
+            if let Some(bits) = lock.lock().unwrap().force.take() {
+                live.set_ffb_model(bits);
+            }
             if std::mem::replace(&mut lock.lock().unwrap().restart, false) {
                 // The stage starts over in process, answered with its first frame like the first RESUME's.
                 live.restart();
@@ -398,6 +404,9 @@ pub fn serve_replay<'a>(
         drop(feed);
         let (mut origin, mut ticks) = (Instant::now(), 0u64);
         loop {
+            if let Some(bits) = lock.lock().unwrap().force.take() {
+                live.set_ffb_model(bits);
+            }
             if std::mem::take(&mut lock.lock().unwrap().restart) {
                 live.restart();
                 answering = start(&mut live, &mut output)?;

@@ -127,14 +127,14 @@ impl Options {
         out
     }
 
-    /// How linear the force is in the steering torque, percent ([`shape`]): 100 with the force from the tyres, as AC
-    /// EVO maps its own (`notes/ngp.md` "Force feedback"), else 0, NGP's curve.
+    /// The force model the three switches choose.
+    pub fn model(&self) -> Model {
+        Model { tyres: self.tyres, levers: self.levers, surface: self.surface }
+    }
+
+    /// How linear the force is in the steering torque, percent ([`shape`]): [`Model::linearity`].
     pub fn linearity(&self) -> i32 {
-        if self.tyres {
-            100
-        } else {
-            0
-        }
+        self.model().linearity()
     }
 
     /// The rotation a drive takes, `car` the car's own lock if known.
@@ -169,6 +169,37 @@ impl Options {
             u8::from(self.levers),
             u8::from(self.rev_lights),
         )
+    }
+}
+
+/// The wheel's force model (the launcher's Settings > Experimental, the pause menu's Force feedback page): NGP's
+/// force, or the front tyres' (`rbr-standalone --ffb-tyres`) with each car's own levers (`--ffb-levers`) and the
+/// road's texture (`--ffb-surface`), those two only with the tyres'.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Model {
+    pub tyres: bool,
+    pub levers: bool,
+    pub surface: bool,
+}
+
+impl Model {
+    /// The live process's FORCE bits (`rbr_recording::realtime::FORCE`).
+    pub fn bits(self) -> u32 {
+        use rbr_recording::realtime::{FORCE_LEVERS, FORCE_SURFACE, FORCE_TYRES};
+        [(self.tyres, FORCE_TYRES), (self.levers, FORCE_LEVERS), (self.surface, FORCE_SURFACE)]
+            .into_iter()
+            .filter(|(on, _)| *on)
+            .fold(0, |bits, (_, bit)| bits | bit)
+    }
+
+    /// How linear the force is in the steering torque, percent ([`shape`]): 100 with the force from the tyres, as AC
+    /// EVO maps its own (`notes/ngp.md` "Force feedback"), else 0, NGP's curve.
+    pub fn linearity(self) -> i32 {
+        if self.tyres {
+            100
+        } else {
+            0
+        }
     }
 }
 
@@ -570,7 +601,9 @@ pub struct Session {
     pub strength: f32,
     /// [`Options::smoothing`].
     pub smoothing: i32,
-    /// [`Options::linearity`].
+    /// [`Options::model`], which the pause menu changes.
+    pub model: Model,
+    /// [`Model::linearity`].
     pub linearity: i32,
     /// This drive's surface and load, from its first kept frame.
     drive: Option<(usize, Load)>,
@@ -590,6 +623,7 @@ impl Session {
             started,
             strength: options.settings.strength,
             smoothing: options.smoothing,
+            model: options.model(),
             linearity: options.linearity(),
             drive: None,
         }
@@ -638,6 +672,18 @@ impl Session {
         self.smoothing = ms.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
         let value = self.smoothing.to_string();
         self.write(|file| rbr_formats::ini::set_value(file, "ffb", "smoothing", &value));
+    }
+
+    /// Sets the force model and writes its switches to the file's `[ffb]`.
+    pub fn set_model(&mut self, model: Model) {
+        (self.model, self.linearity) = (model, model.linearity());
+        self.write(|file| {
+            [("tyres", model.tyres), ("levers", model.levers), ("surface", model.surface)]
+                .into_iter()
+                .fold(file.to_owned(), |file, (key, on)| {
+                    rbr_formats::ini::set_value(&file, "ffb", key, &u8::from(on).to_string())
+                })
+        });
     }
 
     /// One frame of the drive on `surface` (FFB1's), `force` NGP's: sampled when `kept` (a live NGP drive, racing,
@@ -735,8 +781,6 @@ pub fn shape(force: f32, was: i32, now: i32, linearity: i32) -> f32 {
 pub struct Wheel {
     shared: Arc<Shared>,
     settings: Settings,
-    /// [`Options::linearity`].
-    linearity: i32,
     thread: Option<JoinHandle<()>>,
     /// The device's name.
     pub name: String,
@@ -757,6 +801,8 @@ struct Shared {
     strength: AtomicU32,
     /// [`Options::smoothing`], which the pause menu changes too.
     smoothing: AtomicI32,
+    /// [`Options::linearity`], which the pause menu's force model changes.
+    linearity: AtomicI32,
 }
 
 impl Wheel {
@@ -765,6 +811,7 @@ impl Wheel {
         let shared = Arc::new(Shared {
             strength: options.settings.strength.to_bits().into(),
             smoothing: options.smoothing.into(),
+            linearity: options.linearity().into(),
             ..Shared::default()
         });
         let (tx, rx) = mpsc::channel();
@@ -776,13 +823,7 @@ impl Wheel {
                 .map_err(|e| e.to_string())?
         };
         match rx.recv() {
-            Ok(Ok(name)) => Ok(Wheel {
-                shared,
-                settings: options.settings,
-                linearity: options.linearity(),
-                thread: Some(thread),
-                name,
-            }),
+            Ok(Ok(name)) => Ok(Wheel { shared, settings: options.settings, thread: Some(thread), name }),
             Ok(Err(e)) => {
                 let _ = thread.join();
                 Err(e)
@@ -797,7 +838,7 @@ impl Wheel {
         let (was, now) = (self.shared.was.load(Ordering::Relaxed), self.shared.now.load(Ordering::Relaxed));
         let settings =
             Settings { strength: f32::from_bits(self.shared.strength.load(Ordering::Relaxed)), ..self.settings };
-        let force = shape(force, was, now, self.linearity);
+        let force = shape(force, was, now, self.shared.linearity.load(Ordering::Relaxed));
         self.set_magnitude(ffb::magnitude(force, &settings), steering);
     }
 
@@ -809,6 +850,11 @@ impl Wheel {
     /// The smoothing ([`Options::smoothing`], ms) from the thread's next update on.
     pub fn set_smoothing(&self, ms: i32) {
         self.shared.smoothing.store(ms, Ordering::Relaxed);
+    }
+
+    /// How linear the force is ([`Options::linearity`]) from the next step on.
+    pub fn set_linearity(&self, linearity: i32) {
+        self.shared.linearity.store(linearity, Ordering::Relaxed);
     }
 
     /// The force at sensitivity `now` rather than `was`, NGP's car's, on the drive's surface ([`reshape`]).
@@ -1609,6 +1655,11 @@ mod tests {
         session.set_smoothing(8);
         let options = Options::parse(&std::fs::read_to_string(&path).unwrap());
         assert_eq!((options.smoothing, options.settings.strength), (8, 0.35));
+        // And the force model, with the tyres' a straight line.
+        let model = super::Model { tyres: true, levers: false, surface: true };
+        session.set_model(model);
+        let options = Options::parse(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!((options.model(), options.smoothing, session.linearity), (model, 8, 100));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

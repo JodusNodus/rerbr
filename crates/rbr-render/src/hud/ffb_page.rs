@@ -1,20 +1,22 @@
 //! The pause menu's Force feedback page, ours (`crate::hud::pause`): a panel at the bottom of the screen over the
 //! paused view (`crate::ffb::Session`). Its rows: this car's NGP sensitivity on the drive's surface, the wheel's
 //! strength and smoothing (every car's), "Use suggested" when there is a suggestion other than the
-//! sensitivity, Reset ("Use the global sensitivity": the car's own dropped) and Done; a line under them says what the
+//! sensitivity, the force model (NGP's or the tyres', and with the tyres' the steering levers and the road's texture:
+//! `crate::ffb::Model`), Reset ("Use the global sensitivity": the car's own dropped) and Done; a line under them says what the
 //! selected one does. Under them a graph of the wheel's force (NGP's curve, or a line with the force from the tyres:
 //! `crate::ffb::shape`)
 //! at the sensitivity shown over the player's steering load with this car on this surface (`crate::ffb::load`), the
 //! region where the wheel maxes out shaded, and one line of advice (`load::advice`). Up and Down pick a row, Left and
-//! Right change the value by [`STEP`] (the smoothing by [`SMOOTHING_STEP`]); the
+//! Right change the value by [`STEP`] (the smoothing by [`SMOOTHING_STEP`]; the model's rows switch); the
 //! select acts on Use suggested, Reset and Done, and the back returns to the menu's first page. A change takes effect
-//! on the paused drive (`crate::ffb::reshape`, `Wheel::set_strength`, `Wheel::set_smoothing`) and is kept; nothing
+//! on the paused drive (`crate::ffb::reshape`, `Wheel::set_strength`, `Wheel::set_smoothing`, the model from the next
+//! frame on: `Live::set_force`, `Wheel::set_linearity`) and is kept; nothing
 //! changes without the player.
 
 use super::camera_page::Moved;
 use super::pause::Nav;
 use crate::ffb::load::{self, Advice, Load};
-use crate::ffb::{Session, SENSITIVITY_RANGE, SMOOTHING_RANGE, SURFACES};
+use crate::ffb::{Model, Session, SENSITIVITY_RANGE, SMOOTHING_RANGE, SURFACES};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, Vec2};
 use std::ops::RangeInclusive;
 
@@ -42,6 +44,12 @@ pub enum Row {
     Sensitivity,
     Strength,
     Smoothing,
+    /// NGP's force or the front tyres'.
+    Force,
+    /// With the tyres': the fixed lever or the car's own.
+    Levers,
+    /// With the tyres': the road's texture.
+    Texture,
     /// Sets the sensitivity to the suggestion.
     UseSuggested,
     Reset,
@@ -60,17 +68,17 @@ pub struct FfbPage {
     pub strength: i32,
     /// The smoothing, ms (`crate::ffb::smooth`).
     pub smoothing: i32,
-    /// How linear the force is, percent (`crate::ffb::shape`): 100 with the force from the tyres, else 0.
-    linearity: i32,
+    /// The force model; how linear the force is follows it (`Model::linearity`).
+    pub model: Model,
     load: Load,
     row: Row,
 }
 
 impl FfbPage {
-    /// A page at full strength with no smoothing, NGP's curve and no load tracked.
+    /// A page at full strength with no smoothing, NGP's force and no load tracked.
     pub fn new(surface: usize, value: i32, own: bool, global: i32) -> FfbPage {
-        let (load, row) = (Load::default(), Row::Sensitivity);
-        FfbPage { surface, value, own, global, strength: 100, smoothing: 0, linearity: 0, load, row }
+        let (load, row, model) = (Load::default(), Row::Sensitivity, Model::default());
+        FfbPage { surface, value, own, global, strength: 100, smoothing: 0, model, load, row }
     }
 
     /// The page for the drive's car on `surface` (FFB1's: 0 gravel, 1 tarmac, 2 snow).
@@ -78,8 +86,8 @@ impl FfbPage {
         let surface = surface.min(2) as usize;
         let page = FfbPage::new(surface, session.now()[surface], session.own(), session.global[surface]);
         let strength = (session.strength * 100.0).round() as i32;
-        let (smoothing, linearity) = (session.smoothing, session.linearity);
-        FfbPage { strength, smoothing, linearity, load: session.load_on(surface), ..page }
+        let (smoothing, model) = (session.smoothing, session.model);
+        FfbPage { strength, smoothing, model, load: session.load_on(surface), ..page }
     }
 
     /// The selected row.
@@ -87,18 +95,26 @@ impl FfbPage {
         self.row
     }
 
+    /// How linear the force is, percent (`crate::ffb::shape`).
+    fn linearity(&self) -> i32 {
+        self.model.linearity()
+    }
+
     /// The suggestion, when there is driving enough to give one.
     fn suggested(&self) -> Option<i32> {
-        load::suggested(&self.load, self.linearity, SENSITIVITY_RANGE)
+        load::suggested(&self.load, self.linearity(), SENSITIVITY_RANGE)
             .filter(|_| self.load.seconds() >= load::ADVICE_SECONDS)
     }
 
-    /// The rows shown: Use suggested only with a suggestion other than the sensitivity.
+    /// The rows shown: Use suggested only with a suggestion other than the sensitivity, the levers and the texture
+    /// only with the tyres' force.
     fn rows(&self) -> Vec<Row> {
         let suggest = self.suggested().is_some_and(|p| p != self.value);
-        [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Reset, Row::Done]
-            .into_iter()
+        let all = [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Force, Row::Levers];
+        all.into_iter()
+            .chain([Row::Texture, Row::Reset, Row::Done])
             .filter(|&r| r != Row::UseSuggested || suggest)
+            .filter(|&r| !matches!(r, Row::Levers | Row::Texture) || self.model.tyres)
             .collect()
     }
 
@@ -137,6 +153,16 @@ impl FfbPage {
                 self.strength = value;
                 return Some(Moved::Changed);
             }
+            (Nav::Left | Nav::Right, Row::Force | Row::Levers | Row::Texture) => {
+                let m = &mut self.model;
+                let on = match self.row {
+                    Row::Force => &mut m.tyres,
+                    Row::Levers => &mut m.levers,
+                    _ => &mut m.surface,
+                };
+                *on = !*on;
+                return Some(Moved::Changed);
+            }
             (Nav::Left | Nav::Right, Row::Smoothing) => {
                 let value = (self.smoothing + by.signum() * SMOOTHING_STEP)
                     .clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
@@ -161,6 +187,9 @@ fn label(page: &FfbPage, row: Row) -> String {
         Row::Sensitivity => format!("Sensitivity, {}", surface(page)),
         Row::Strength => "Strength".into(),
         Row::Smoothing => "Smoothing".into(),
+        Row::Force => "Force".into(),
+        Row::Levers => "Steering levers".into(),
+        Row::Texture => "Road texture".into(),
         Row::UseSuggested => match page.suggested().unwrap_or(page.value) {
             p if p >= *SENSITIVITY_RANGE.end() => format!("Use suggested ({p} %, the most)"),
             p => format!("Use suggested ({p} %)"),
@@ -176,6 +205,12 @@ fn value(page: &FfbPage, row: Row) -> String {
         Row::Strength => format!("{} %", page.strength),
         Row::Smoothing if page.smoothing == 0 => "off".into(),
         Row::Smoothing => format!("{} ms", page.smoothing),
+        Row::Force if page.model.tyres => "From the tyres".into(),
+        Row::Force => "NGP 7".into(),
+        Row::Levers if page.model.levers => "The car's own".into(),
+        Row::Levers => "25 mm, every car".into(),
+        Row::Texture if page.model.surface => "on".into(),
+        Row::Texture => "off".into(),
         Row::UseSuggested | Row::Reset | Row::Done => String::new(),
     }
 }
@@ -188,6 +223,15 @@ fn help(page: &FfbPage) -> String {
             .into(),
         Row::Strength => "How heavy the wheel feels, for every car.".into(),
         Row::Smoothing => SMOOTHING_HELP.into(),
+        Row::Force => "NGP 7's force through its curve, or the front tyres' grip in a straight line: it goes light as \
+                       the front lets go. From the next moment you drive; records are kept either way."
+            .into(),
+        Row::Levers => "The lever the tyres' force acts on: 25 mm for every car, or each car's own from its steering \
+                        geometry, lighter at big steering angles."
+            .into(),
+        Row::Texture => "Adds the bumps the front wheels ride over: rough on gravel and grass, smooth on tarmac and \
+                         snow."
+            .into(),
         Row::UseSuggested => "Sets Sensitivity to the suggestion. You can change it again.".into(),
         Row::Reset => "Drops this car's own sensitivity: it takes the global one.".into(),
         Row::Done => "Back to the menu.".into(),
@@ -201,7 +245,7 @@ pub const SMOOTHING_HELP: &str = "Takes the rattle out of the wheel, for every c
 /// The advice at the sensitivity shown (`load::advice`).
 fn status(page: &FfbPage) -> String {
     let percent = |share: f32| (share * 100.0).round() as i32;
-    match load::advice(&page.load, page.value, page.linearity, SENSITIVITY_RANGE) {
+    match load::advice(&page.load, page.value, page.linearity(), SENSITIVITY_RANGE) {
         Advice::DriveMore(seconds) => format!(
             "Drive a bit more on {} to see your steering load ({}/{} s)",
             surface(page),
@@ -231,7 +275,7 @@ const GUIDE: &str = "Set Strength once for your wheel. Then for each car, adjust
 
 /// The graph's load range: past where the wheel maxes out at the sensitivity shown, and past the load's last bin.
 fn x_range(page: &FfbPage) -> f32 {
-    let maxed = load::maxed_from(page.value, page.linearity);
+    let maxed = load::maxed_from(page.value, page.linearity());
     let last = page.load.tenths.iter().rposition(|t| *t > 0.0).map_or(0.0, |k| (k + 1) as f32 * load::BIN);
     (maxed * 1.4).max(last * 1.05).clamp(20.0, load::BINS as f32 * load::BIN)
 }
@@ -243,7 +287,7 @@ fn graph(painter: &egui::Painter, rect: Rect, page: &FfbPage) {
     let at =
         |x: f32, f: f32| Pos2::new(rect.min.x + rect.width() * (x / x_max).min(1.0), rect.max.y - rect.height() * f);
     let small = FontId::proportional(11.0);
-    let maxed = load::maxed_from(page.value, page.linearity);
+    let maxed = load::maxed_from(page.value, page.linearity());
     if maxed < x_max {
         painter.rect_filled(Rect::from_min_max(at(maxed, 1.0), rect.max), 0.0, MAXED);
         painter.text(at(maxed, 1.0) + Vec2::new(4.0, 14.0), Align2::LEFT_TOP, "maxed out", small.clone(), TEXT);
@@ -258,8 +302,10 @@ fn graph(painter: &egui::Painter, rect: Rect, page: &FfbPage) {
         let bar = Rect::from_min_max(at(x0, 0.85 * t.sqrt() / top), at(x0 + load::BIN, 0.0));
         painter.rect_filled(bar.shrink2(Vec2::new(0.5, 0.0)), 0.0, BARS);
     }
-    let curve: Vec<Pos2> =
-        (0..=80).map(|k| k as f32 * x_max / 80.0).map(|x| at(x, load::shaped(x, page.value, page.linearity))).collect();
+    let curve: Vec<Pos2> = (0..=80)
+        .map(|k| k as f32 * x_max / 80.0)
+        .map(|x| at(x, load::shaped(x, page.value, page.linearity())))
+        .collect();
     painter.add(Shape::line(curve, Stroke::new(2.0, TEXT)));
     painter.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, HINT));
     painter.line_segment([rect.left_bottom(), rect.left_top()], Stroke::new(1.0, HINT));
@@ -358,8 +404,8 @@ mod tests {
         }
         assert_eq!(p.value, *SENSITIVITY_RANGE.end());
         assert_eq!(p.nav(Nav::Right), None);
-        // Reset: every car's again, once.
-        for _ in 0..3 {
+        // Reset: every car's again, once (past Strength, Smoothing and Force).
+        for _ in 0..4 {
             p.nav(Nav::Down);
         }
         assert_eq!(p.nav(Nav::Select), Some(Moved::Changed));
@@ -405,6 +451,49 @@ mod tests {
         assert_eq!(p.smoothing, *SMOOTHING_RANGE.end());
     }
 
+    /// The force switches between NGP's and the tyres', which bring the levers and the texture rows and a straight
+    /// line; the model's rows say what they are.
+    #[test]
+    fn the_force_model_switches_and_brings_its_rows() {
+        let mut p = FfbPage::new(0, 280, false, 280);
+        for _ in 0..3 {
+            p.nav(Nav::Down);
+        }
+        assert_eq!((p.row(), value(&p, Row::Force), p.linearity()), (Row::Force, "NGP 7".into(), 0));
+        assert!(!p.rows().contains(&Row::Levers) && !p.rows().contains(&Row::Texture));
+        assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
+        assert_eq!((value(&p, Row::Force), p.linearity()), ("From the tyres".into(), 100));
+        assert_eq!(
+            p.rows(),
+            [
+                Row::Sensitivity,
+                Row::Strength,
+                Row::Smoothing,
+                Row::Force,
+                Row::Levers,
+                Row::Texture,
+                Row::Reset,
+                Row::Done
+            ]
+        );
+        p.nav(Nav::Down);
+        assert_eq!((p.row(), value(&p, Row::Levers)), (Row::Levers, "25 mm, every car".into()));
+        assert_eq!(p.nav(Nav::Left), Some(Moved::Changed));
+        p.nav(Nav::Down);
+        assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
+        let model = Model { tyres: true, levers: true, surface: true };
+        assert_eq!(
+            (p.model, value(&p, Row::Levers), value(&p, Row::Texture)),
+            (model, "The car's own".into(), "on".into())
+        );
+        // NGP's again keeps the two for the next time.
+        p.nav(Nav::Up);
+        p.nav(Nav::Up);
+        assert_eq!(p.nav(Nav::Left), Some(Moved::Changed));
+        assert_eq!((p.model, p.rows().len()), (Model { tyres: false, ..model }, 6));
+        assert_eq!((model.bits(), Model::default().bits()), (7, 0));
+    }
+
     /// A page on tarmac at `value` over a load of `seconds` at x 42.5 (suggested 100 %).
     fn page(value: i32, seconds: f32) -> FfbPage {
         let mut session = Session::load(None, Some("rsf-81".into()), &Options::default(), [100; 3]);
@@ -445,7 +534,7 @@ mod tests {
         let mut p = page(155, 30.0);
         assert_eq!(
             p.rows(),
-            [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Reset, Row::Done]
+            [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Force, Row::Reset, Row::Done]
         );
         p.nav(Nav::Down);
         assert_eq!((p.row(), label(&p, Row::UseSuggested)), (Row::UseSuggested, "Use suggested (100 %)".into()));

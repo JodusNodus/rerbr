@@ -187,6 +187,9 @@ pub struct Live<'a> {
     /// `--ffb-tyres`: the mechanical trail (m) of the wheel's force from the front tyres (`tyre_ffb`), in place of
     /// NGP's.
     ffb_tyres: Option<f32>,
+    /// The trail and the texture's weight the pause menu's FORCE turns on ([`Live::set_ffb_model`]): the command's,
+    /// else `tyre_ffb::SUGGESTED_TRAIL` and 1.
+    ffb_choices: (f32, f32),
     /// `--ffb-levers`: each front wheel's mechanical trail from the steering geometry in place of `ffb_tyres`'s.
     ffb_levers: Option<crate::tyre_ffb::Levers>,
     /// `--ffb-surface`: the road's texture added to the force from the tyres (`surface_ffb`).
@@ -396,9 +399,35 @@ impl<'a> Live<'a> {
 
     /// The wheel's force from the front tyres with the mechanical trail `trail` (m) from here on (`--ffb-tyres`), or
     /// with `levers` each wheel's own from the steering geometry (`--ffb-levers`). With `surface`, the road's texture
-    /// at that weight added (`--ffb-surface`).
+    /// at that weight added (`--ffb-surface`). The pause menu turns them on with these.
     pub fn set_ffb_tyres(&mut self, trail: f32, levers: bool, surface: Option<f32>) {
-        self.ffb_tyres = Some(trail);
+        self.ffb_choices = (trail, surface.unwrap_or(self.ffb_choices.1));
+        self.set_ffb(Some(trail), levers, surface);
+    }
+
+    /// The wheel's force model from the next frame on, from the pause menu's FORCE (`rbr_recording::realtime::FORCE`'s bits): NGP's,
+    /// or the front tyres' with the command's trail and texture weight ([`Live::set_ffb_tyres`]).
+    pub fn set_ffb_model(&mut self, bits: u32) {
+        use rbr_recording::realtime::{FORCE_LEVERS, FORCE_SURFACE, FORCE_TYRES};
+        let on = |bit: u32| bits & bit != 0;
+        let (trail, weight) = self.ffb_choices;
+        let tyres = on(FORCE_TYRES);
+        let surface = (tyres && on(FORCE_SURFACE)).then_some(weight);
+        let levers = tyres && on(FORCE_LEVERS);
+        self.set_ffb(tyres.then_some(trail), levers, surface);
+        let model = match (tyres, levers, surface.is_some()) {
+            (false, ..) => "NGP's".to_owned(),
+            (true, levers, texture) => format!(
+                "from the tyres, {} levers, {}",
+                if levers { "the car's own" } else { "fixed" },
+                if texture { "with the road's texture" } else { "no texture" }
+            ),
+        };
+        eprintln!("rbr-standalone: the wheel's force from the next frame: {model}");
+    }
+
+    fn set_ffb(&mut self, tyres: Option<f32>, levers: bool, surface: Option<f32>) {
+        self.ffb_tyres = tyres;
         self.playback.runner.keep_steer_torques = levers || surface.is_some();
         self.ffb_levers = levers.then(crate::tyre_ffb::Levers::default);
         self.ffb_surface = surface.map(crate::surface_ffb::Texture::new);

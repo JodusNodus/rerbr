@@ -398,7 +398,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   car's percentage), "Use suggested (X %)" (sets Sensitivity on the player's select; shown with 20 s of load and a
   suggestion other than the sensitivity; "the most" at 500 %), Strength (every car, 0-100 % by 5, live through
   `Wheel::set_strength`, `[ffb] strength`), Smoothing (every car, off to 10 ms by 2, live through
-  `Wheel::set_smoothing`, `[ffb] smoothing`), "Use the global sensitivity" (the car's own dropped)
+  `Wheel::set_smoothing`, `[ffb] smoothing`), the force model (2026-11-23, `ffb::Model`: Force "NGP 7" / "From the
+  tyres", and with the tyres' Steering levers "25 mm, every car" / "The car's own" and Road texture off / on;
+  Left/Right switch; `[ffb] tyres`, `levers`, `surface`, the launcher's Experimental switches, re-read after the
+  drive with the strength and smoothing; the viewer sends realtime FORCE with the bits, the standalone takes it in
+  the clock or replay loop before the next frame, `Live::set_ffb_model`, with the command's trail and texture weight
+  or 25 mm and 1, and logs it; the wheel's linearity follows, `Wheel::set_linearity`), "Use the global sensitivity"
+  (the car's own dropped)
   and Done, with a line saying what the selected row does. Under them a 420×110 graph: the force at the percentage
   and the model's linearity (wheel force over steering load), the car's stored load on the surface plus this drive's as bars (square-root heights), the
   maxed-out region (force > 95 %) shaded. Then one status line (`load::advice`, in order: under 20 s drive more;

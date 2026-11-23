@@ -6,7 +6,8 @@
 //!
 //! ```text
 //! u8  tag[4]    INPUT: the newest input; PAUSE: the clock stops (the pause menu); RESUME: it goes on from now;
-//!               RESTART: the stage starts over in process (the payload and sequence number are ignored)
+//!               RESTART: the stage starts over in process (the payload and sequence number are ignored);
+//!               FORCE: the wheel's force model from the next frame on, in the sequence number's bits
 //! u32 seq       the input's number (the viewer's count), which the steps that take it echo
 //! u8  payload[0x20]
 //! ```
@@ -28,6 +29,14 @@ pub const PAUSE: [u8; 4] = *b"RTP1";
 pub const RESUME: [u8; 4] = *b"RTR1";
 /// RESTART: the stage starts over in process (the payload and sequence number are ignored).
 pub const RESTART: [u8; 4] = *b"RTS1";
+/// FORCE (the pause menu's Force feedback page): the wheel's force model from the next frame on, in the sequence
+/// number's bits, the payload ignored: [`FORCE_TYRES`] the force from the front tyres in place of NGP's, with
+/// [`FORCE_LEVERS`] each wheel's own levers and [`FORCE_SURFACE`] the road's texture (`rbr-standalone --ffb-tyres`,
+/// `--ffb-levers`, `--ffb-surface`). What the wheel gets only: the physics and the frame log do not change.
+pub const FORCE: [u8; 4] = *b"RTW1";
+pub const FORCE_TYRES: u32 = 1;
+pub const FORCE_LEVERS: u32 = 2;
+pub const FORCE_SURFACE: u32 = 4;
 /// Bytes of a viewer's message.
 pub const MESSAGE_BYTES: usize = 8 + CONTROL_BYTES;
 
@@ -51,7 +60,7 @@ impl Message {
     /// Reads a message; an error for an unknown tag.
     pub fn read(bytes: &[u8; MESSAGE_BYTES]) -> Result<Message, String> {
         let tag: [u8; 4] = bytes[..4].try_into().unwrap();
-        if ![INPUT, PAUSE, RESUME, RESTART].contains(&tag) {
+        if ![INPUT, PAUSE, RESUME, RESTART, FORCE].contains(&tag) {
             return Err(format!("a real-time message tagged {tag:02x?}"));
         }
         Ok(Message {
@@ -178,6 +187,8 @@ mod tests {
     fn the_records_round_trip() {
         let message = Message { tag: INPUT, seq: 7, payload: [3; CONTROL_BYTES] };
         assert_eq!(Message::read(&message.to_bytes()), Ok(message));
+        let force = Message { tag: FORCE, seq: FORCE_TYRES | FORCE_SURFACE, payload: [0; CONTROL_BYTES] };
+        assert_eq!(Message::read(&force.to_bytes()), Ok(force));
         assert!(Message::read(&[0; MESSAGE_BYTES]).is_err());
         let mut control = [0; CONTROL_BYTES];
         control[16..20].copy_from_slice(&(-0.25f32).to_le_bytes());
