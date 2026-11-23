@@ -1,0 +1,20 @@
+[package]
+name = "rbr-dirt-rally"
+version = "0.1.0"
+edition = "2021"
+description = "DiRT Rally stages as BTB stages: readers of the player's DiRT Rally install and the import into ReRBR"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "rbr_dirt_rally"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rbr-dirt-rally"
+path = "src/main.rs"
+
+[dependencies]
+rbr-ac-tracks = { path = "../rbr-ac-tracks" }
+rbr-btb = { path = "../rbr-btb" }
+rbr-formats = { path = "../rbr-formats" }
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }

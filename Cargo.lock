@@ -2330,6 +2330,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-dirt-rally"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "rbr-ac-tracks",
+ "rbr-btb",
+ "rbr-formats",
+]
+
+[[package]]
 name = "rbr-engine"
 version = "0.1.0"
 dependencies = [
