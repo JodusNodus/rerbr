@@ -439,7 +439,7 @@ struct InstanceIn {
     @location(12) row1: vec4<f32>,
     @location(13) row2: vec4<f32>,
     @location(14) light: vec4<f32>,
-    // The placement's probe (`renderer::placed`, a baked `Vertex` at its box's top): how little of the sky it sees, the
+    // The placement's probe (`renderer::placed`, a baked `Vertex` at its box's middle): how little of the sky it sees, the
     // direction it sees it in and its bounce light, as `VertexIn` has them.
     @location(15) probe: vec4<u32>,
 }

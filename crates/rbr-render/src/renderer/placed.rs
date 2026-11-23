@@ -50,7 +50,7 @@ fn probes(placed: &Placed) -> Vec<Vertex> {
         });
         for k in group.instances.clone() {
             let rows = placed.instances[k as usize].rows;
-            // The placed box's top: the highest of its corners.
+            // The placed box (over its eight corners): the probe sits at its middle.
             let at = |c: usize, corner: Vec3| {
                 rows[c][0] * corner.x + rows[c][1] * corner.y + rows[c][2] * corner.z + rows[c][3]
             };
