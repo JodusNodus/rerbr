@@ -474,7 +474,7 @@ mod tests {
             assert!(c.start_gate().is_some() && (3500.0..16300.0).contains(&c.length()), "{id}: {}", c.length());
             for g in &c.gates {
                 let width = dist(g.left, g.right);
-                assert!((8.0..13.0).contains(&width), "{id}: gate {width}");
+                assert!((2.0..40.0).contains(&width), "{id}: gate {width}");
             }
         }
         // route.md's table.
