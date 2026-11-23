@@ -56,8 +56,20 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   `treesheet*` (not trunk) and `*Blend*` shaders on DXT5: `Object_Emis`, `Object_Norm` and `Object_Stones` have DXT5
   with varying alpha as a mask, not transparency. Greece route_0: 16592 props + 13394 trees = 7.4 M triangles
   (terrain 1.9 M); Finland route_0: 16387 + 22228 = 28.9 M (terrain 4.3 M), almost all within 40 m of the road, so the
-  range does not thin them. Not done: the far billboard levels, grass (`grass.grs`), cloth, `ornaments.bin`; foliage
-  is drawn one-sided as the BTB mesh is.
+  range does not thin them. Trees hold no intermediate level: a root has `_x0` (2 to 3.9 k triangles for the big
+  conifers, bare trees and birches, 12.8 k such instances on Finland, 27 M of the 29 M), `_x2` (the far billboard,
+  `foliage_billboard.fx`, 2 triangles: its vertices all sit at one centre and `uv2` is each corner's offset, right and
+  up, in metres; the atlas holds 8 views of the tree, one per 512 px column) and `_xs` (shadow quad). Only
+  `objects.pssg` and `route_objects.pssg` have `LODRENDERINSTANCES`, and their props are small (about 2 M on Finland).
+  So a tree farther than `BILLBOARD_FROM` (8 m) from the road is drawn as its `_x2` quad (`import::billboard`), upright,
+  turned to face the nearest road point (the driver is on the road) with the atlas view of the tree's turn against the
+  road (the view order is a guess; the views look alike). Drawn triangles: Finland route_0 33.2 M -> 9.3 M, Germany
+  panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 8.5 s and 2.7 GB
+  (17 s, 8.8 GB before). Seen: billboards read as the same forest from the road but their birches and poplars are
+  more yellow than the models, and Greece's far olive trees now show leaves where the models near the road show bare
+  branches (the models' foliage cards look missing there: not investigated). Not done: the `*_facing` types (a
+  `treesheet_foliage_norm` quad whose vertices all sit at one point, so it draws nothing), grass (`grass.grs`), cloth,
+  `ornaments.bin`; foliage is drawn one-sided as the BTB mesh is.
 
 ## Course
 

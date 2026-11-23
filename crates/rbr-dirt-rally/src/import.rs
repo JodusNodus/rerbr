@@ -5,9 +5,9 @@ use crate::install::{Install, Route};
 use crate::{collision, frame, material, mesh, objects, pssg::Pssg, route, stage, surface, texture, trees};
 use rbr_ac_tracks::btb::{
     control::Control,
-    stage::CELL_LIMIT,
     geometry::{Grid, Triangle},
     road::Line,
+    stage::CELL_LIMIT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -248,6 +248,14 @@ const PROP_RANGES: [f64; 8] = [100., 150., 225., 340., 500., 750., 1000., 3000.]
 /// The distant forest: `trees.bin`'s `*_dist_*` types are tiles of 500 m of far trees (about a hundred triangles each),
 /// drawn far past where the single trees are.
 const DIST_REACH: f64 = 3000.;
+/// A tree farther than this from the road is drawn as its billboard (two triangles, the game's own far level) in place of
+/// its model (2 to 4 thousand): Finland's forest is 27 M triangles as models, and the BTB stage holds every triangle in
+/// memory whatever its range. a stage of 12 M drawn triangles loads in about 9 s and 3.5 GB.
+const BILLBOARD_FROM: f64 = 8.;
+/// The most triangles a stage draws (terrain, props and trees) on the sample routes: the viewer holds every one in
+/// memory and loads about a million a second.
+#[cfg(test)]
+const DRAWN_BUDGET: usize = 12_000_000;
 
 /// Whether a shader draws its diffuse texture's alpha (cut-out leaves and blended signs; the other props' alpha is a
 /// gloss or emission mask: `Object_Emis`, `Object_Norm` and `Object_Stones` carry DXT5 with varying alpha too). Trunks
@@ -338,29 +346,36 @@ impl Placer<'_> {
         };
         let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
-        if meshes.is_empty() || rbr_ac_tracks::assetto::ai::project(self.line, here).1 > range + f64::from(size) {
+        let (_, distance) = rbr_ac_tracks::assetto::ai::project(self.line, here);
+        if meshes.is_empty() || distance > range + f64::from(size) {
+            return Ok(());
+        }
+        let mut slot = |material: &str| match self.index.get(&(file.to_owned(), material.to_owned(), range as u64)) {
+            Some(&slot) => slot,
+            None => {
+                let found = source.materials.get(material);
+                let texture = found.and_then(material::diffuse).and_then(|r| self.library.get(r));
+                let transparent = found.is_some_and(|f| blended(&f.shader))
+                    && texture.as_ref().is_some_and(|t| t.format == texture::Format::Dxt5);
+                let name = format!("{file}:{material}@{range}");
+                materials.push(stage::Material {
+                    name,
+                    dds: texture.map(|t| t.dds()),
+                    transparent,
+                    range: Some(range),
+                });
+                self.index.insert((file.to_owned(), material.to_owned(), range as u64), materials.len() as u32 - 1);
+                materials.len() as u32 - 1
+            }
+        };
+        if let Some(sprite) = source.types.sprites[at].as_ref().filter(|_| distance > BILLBOARD_FROM) {
+            out.extend(billboard(sprite, matrix, nearest(self.line, here), slot(&sprite.material)));
+            self.placed += 1;
             return Ok(());
         }
         let mirrored = mesh::determinant(matrix) < 0.;
         for m in meshes {
-            let slot = match self.index.get(&(file.to_owned(), m.material.clone(), range as u64)) {
-                Some(&slot) => slot,
-                None => {
-                    let found = source.materials.get(&m.material);
-                    let texture = found.and_then(material::diffuse).and_then(|r| self.library.get(r));
-                    let transparent = found.is_some_and(|f| blended(&f.shader))
-                        && texture.as_ref().is_some_and(|t| t.format == texture::Format::Dxt5);
-                    let name = format!("{file}:{}@{range}", m.material);
-                    materials.push(stage::Material {
-                        name,
-                        dds: texture.map(|t| t.dds()),
-                        transparent,
-                        range: Some(range),
-                    });
-                    self.index.insert((file.to_owned(), m.material.clone(), range as u64), materials.len() as u32 - 1);
-                    materials.len() as u32 - 1
-                }
-            };
+            let slot = slot(&m.material);
             out.extend(m.triangles.iter().map(|&[a, b, c]| {
                 // Counter-clockwise in DiRT Rally's frame, the BTB mesh's winding the other way; a mirrored
                 // placement turned it already.
@@ -378,6 +393,58 @@ impl Placer<'_> {
         }
         Ok(())
     }
+}
+
+/// The point of the road's line nearest `p`, in the stage's plan.
+fn nearest(line: &Line, p: [f64; 3]) -> [f64; 2] {
+    let mut best = (f64::MAX, [0.; 2]);
+    for w in line.points.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let v = [b[0] - a[0], b[1] - a[1]];
+        let den = v[0] * v[0] + v[1] * v[1];
+        let t = if den > 1e-9 { (((p[0] - a[0]) * v[0] + (p[1] - a[1]) * v[1]) / den).clamp(0., 1.) } else { 0. };
+        let q = [a[0] + t * v[0], a[1] + t * v[1]];
+        let d = (p[0] - q[0]).hypot(p[1] - q[1]);
+        if d < best.0 {
+            best = (d, q);
+        }
+    }
+    best.1
+}
+
+/// A tree's far level as it stands at `matrix`: its quad upright and turned to face the road point `road` (the driver
+/// is on the road), showing the atlas view that matches the turn. Two triangles in place of the model's thousands.
+fn billboard(sprite: &mesh::Sprite, matrix: &mesh::Mat, road: [f64; 2], material: u32) -> Vec<Triangle> {
+    let norm = |i: usize| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt();
+    let (across, up) = (norm(0).max(norm(2)), norm(1));
+    let centre = mesh::point(matrix, sprite.centre);
+    // The stage's plan (x, -z of DiRT Rally's) to the road, as a direction in DiRT Rally's.
+    let (dx, dz) = (road[0] - f64::from(centre[0]), -road[1] - f64::from(centre[2]));
+    let len = dx.hypot(dz).max(1e-6);
+    let toward = [(dx / len) as f32, (dz / len) as f32];
+    let right = [toward[1], -toward[0]];
+    // The view of the atlas whose turn is the tree's own turn against the road.
+    let turn = (toward[1].atan2(toward[0]) - matrix[0][2].atan2(matrix[0][0])) / std::f32::consts::TAU;
+    let view = (turn * sprite.views as f32).round().rem_euclid(sprite.views as f32);
+    let width = (sprite.uv[2] - sprite.uv[0]).max(f32::EPSILON);
+    let corner = |sx: f32, sy: f32| {
+        let at = [
+            centre[0] + right[0] * sx * sprite.half[0] * across,
+            centre[1] + sy * sprite.half[1] * up,
+            centre[2] + right[1] * sx * sprite.half[0] * across,
+        ];
+        let uv = [
+            sprite.uv[if sx < 0. { 0 } else { 2 }] + (view - (sprite.uv[0] / width).round()) * width,
+            sprite.uv[if sy > 0. { 1 } else { 3 }],
+        ];
+        (frame::world(at), uv)
+    };
+    let normal = frame::world_dir([toward[0] * 0.5, 0.5, toward[1] * 0.5]);
+    let [tl, bl, tr, br] = [corner(-1., 1.), corner(-1., -1.), corner(1., 1.), corner(1., -1.)];
+    // Counter-clockwise in DiRT Rally's frame, so `(a, c, b)` for the BTB mesh.
+    [[tl, tr, bl], [br, bl, tr]]
+        .map(|t| Triangle { pos: t.map(|c| c.0), uv: t.map(|c| c.1), normal: [normal; 3], material: Some(material) })
+        .to_vec()
 }
 
 /// The props `objects.ens` places and the trees `trees.bin` does, added to the drawn triangles: drawn only (no
@@ -441,4 +508,46 @@ fn props(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_billboard_stands_upright_across_the_line_to_the_road() {
+        let sprite = mesh::Sprite {
+            material: "lod".into(),
+            centre: [0., 10., 0.],
+            half: [4., 10.],
+            uv: [0.25, 0.01, 0.375, 1.],
+            views: 8,
+        };
+        let identity = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
+        // The road lies along the stage's +x from a tree at the origin: DiRT Rally's +x.
+        let quad = billboard(&sprite, &identity, [30., 0.], 7);
+        assert_eq!(quad.len(), 2);
+        for t in &quad {
+            assert_eq!(t.material, Some(7));
+            for (p, uv) in t.pos.iter().zip(t.uv) {
+                // In the plane across the road (x = 0), 8 m wide, from the ground to 20 m, in the atlas's first view (the tree faces the road).
+                assert!(p[0].abs() < 1e-9 && (p[1].abs() - 4.).abs() < 1e-9 && (0. ..=20.).contains(&p[2]));
+                assert!((0. ..=0.125).contains(&uv[0]) && (0.01..=1.).contains(&uv[1]), "{uv:?}");
+            }
+        }
+        let ys: Vec<f64> = quad.iter().flat_map(|t| t.pos.map(|p| p[1].abs())).collect();
+        assert!(ys.iter().all(|y| (y - 4.).abs() < 1e-9));
+    }
+
+    #[test]
+    fn the_sample_routes_draw_within_the_budget() {
+        let Some(game) = std::env::var_os("RBR_DIRT_RALLY") else { return };
+        let install = Install::at(std::path::Path::new(&game)).unwrap();
+        let out = std::env::temp_dir().join("rbr-dirt-rally-budget-test");
+        let mut options = Options::new(Control::new(|_: &str| {}, Default::default()));
+        (options.out, options.replace) = (Some(out.clone()), true);
+        let report = import(&install, "finland/ouninpohja_rally_01/route_0", &options).unwrap();
+        let _ = std::fs::remove_dir_all(out);
+        assert!(report.drawn_triangles <= DRAWN_BUDGET, "{} drawn triangles", report.drawn_triangles);
+    }
 }
