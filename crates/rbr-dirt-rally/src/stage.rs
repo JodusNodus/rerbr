@@ -36,6 +36,8 @@ pub struct Input {
     pub country: Option<&'static str>,
     /// The road's centre line with its width, covering the start and finish with their margins.
     pub line: Line,
+    /// The timed length the game gives it, metres.
+    pub length: f64,
     /// Arc lengths on `line`.
     pub start: f64,
     pub finish: f64,
@@ -395,7 +397,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         format!(
             "[INFO]\nname={}\nphysics={physics}\nauthor=Codemasters (DiRT Rally)\nversion=DiRT Rally local conversion\nlength={:.3}\ncomment=Converted locally from {}\n{country}",
             input.title,
-            (input.finish - input.start) / 1000.,
+            input.length / 1000.,
             input.route
         ),
     )?;
@@ -446,7 +448,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write("spawn.ini", sp)?;
     let provenance = serde_json::json!({
         "source": input.source, "route": input.route, "origin": origin, "physics": physics,
-        "length_m": input.finish - input.start, "start_m": start, "finish_m": finish,
+        "length_m": input.length, "line_length_m": input.finish - input.start, "start_m": start, "finish_m": finish,
         "drawn_triangles": drawn_triangles, "collision_triangles": collision_triangles,
         "collision_source": input.collision_source, "surface_triangles": input.surface_counts,
         "textures": textures, "pacenotes": called.len(), "missing_ground_points": missing,
@@ -458,7 +460,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     control.say(&format!("{} cells, largest {}/65536 vertices; {textures} textures", stats.cells, stats.max_vertices));
     Ok(Report {
         folder: folder.to_owned(),
-        length: input.finish - input.start,
+        length: input.length,
         physics,
         drawn_triangles,
         collision_triangles,
@@ -501,6 +503,7 @@ mod tests {
             route: "test/test_rally_01/route_0".into(),
             title: "Test".into(),
             country: Some("GR"),
+            length: 480.,
             line,
             start: 60.,
             finish: 540.,

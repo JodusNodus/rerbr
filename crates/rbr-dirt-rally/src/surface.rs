@@ -19,10 +19,10 @@ pub fn rbr(code: &str) -> Option<Surface> {
     let code = code.trim_end_matches(['+', '_', ' ', '\0']);
     let id = match dry(code) {
         "DEFA" | "DEFF" => return Some(Surface::Default),
-        // Gravel by its depth: light on the road, medium and heavy loose, banks and traps deeper.
+        // Gravel by its stones, shallow on the road (Greece's road is GHD, GMD and GLD under the gates), banks deeper.
         "GLD" => 17,
         "GMD" | "GVO" | "GM2" | "GLE" => 21,
-        "GHD" | "GD2" => 13,
+        "GHD" | "GD2" => 49,
         "GBK" | "GTP" => 1,
         // Rock among gravel roads (Greece), loose and coarse: never tarmac on a gravel stage.
         "ROK" | "RBK" => 49,
