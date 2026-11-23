@@ -23,7 +23,9 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Codemasters binary XML (`1a 22 52 72`, "Rr): string blob, offsets, element records `[name, text, attribute count,
   first, child count, first]`, attribute pairs; numbers are text. `progress_track.xml`, `ai_track.xml`, codriver files.
 - JPAK (`track.jpk`): little-endian table of uncompressed entries, one `.vcqtc` collision quadtree cell each (1883 on
-  ghymno_rally_01 route_0), named by its quadtree address.
+  ghymno_rally_01 route_0), named by its quadtree address. A triangle crossing cells is in each, quantised over each
+  box: 815,180 stored, 710,212 distinct to 1 cm (Greece route_0); up to 21 copies on Col de Turini. Nine or more
+  copies made the BTB collision split recurse without end, so `collision::read` keeps one.
 
 ## Frame
 
