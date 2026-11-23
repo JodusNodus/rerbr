@@ -100,15 +100,22 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   (15 sections and two specials on Greece, one atlas per lightmap name, shared by its materials); the layers lie on the first's `xy`
   (metres per unit 4 to 8 on roads and banks, tiling), `zw` unidentified. Compiled DXBC only (`shaderpack.pssg`): the blend is read
   from the data, not the code.
-- Drawn by ReRBR's `ReRbrLayer*` (no renderer change): per section a diffuse (colour map over its covered texels' mean, hue kept at half,
-  times the lightmap over its bright texels' mean, half strength: its tree-shadow dots show as streaks without the trees) and a 2048
+- Drawn by ReRBR's `ReRbrLayer*` (no renderer change): per section a diffuse (colour map over its covered texels' mean, 30% of its hue kept,
+  times the lightmap over its bright texels' mean, 80% strength), written as plain RGBA (DXT1 turned the smooth, nearly grey diffuse into
+  the magenta and green blotches on Greece's roads: 5:6:5 endpoints per 4x4 block), and a 2048
   mask of the vertex weights rasterised in the atlas, both transposed; uv0 is that atlas; each layer's own texture is a detail at
   `uv0 * scale`, per island of the mesh (triangles joined by a vertex) at the repeat that gives the layer its metres (atlas rate per metre
   over the layer's), classed within 20% as a material of its own. Roads' ruts run along the atlas's u, hence the transpose.
   Islands whose layer runs at no one angle to the atlas, or whose atlas shears over 1.6, read the details at the world's (x, z) instead.
   Triangles whose atlas jump is 8 times the mesh's median rate (they join islands) keep the old single-texture draw.
 - `TBlendMap2/3` (a height map the game roughens a weight's border with) is not used: finer than the mask. Colour-map hue and
-  lightmap strength are chosen by eye (no game screenshot to compare): Greece's section means run pink to blue.
-- Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB; Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
+  lightmap strength are chosen by eye against the Steam store shots: Greece's section means run pink to blue, `ColourMapScale` is 2 on
+  every material (so the game's neutral is a mid blue-grey, not grey). The renderer multiplies the textures as display values, so no
+  gamma applies to our diffuse.
+- Looked at and not fixed: Sweden's snowbank triangle patches (vertex normals reach the .x and are smooth, cos 0.98 against the faces; the
+  patches vanish with the colour map set flat, not with the lightmap, the mask, bridges, or blurring the map: they are in its data under
+  the banks); the Greece valley seen from the road edge is the vista (colour map only, its detail layers are not read), lit by the
+  renderer's sky in shade, so blue-grey; the Sweden road's smear is the 1024 colour map's ruts (the layers' own detail is crisp).
+- Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB, with the RGBA diffuse 45 s and 458 MB; Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
   carry their ruts and Finland's grass verges, crisp detail at any distance; Greece's far hills (the mountain atlas, flattened in big
   islands) show streaks and blotches of the second layer.

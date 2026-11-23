@@ -7,7 +7,8 @@
 //! + ..) * magic` per pixel with the diffuse and mask at the mesh's uv and each detail at `uv * scale`, so here:
 //!
 //! - the diffuse is the macro colour times the lightmap, the mask the vertex weights, both rasterised in the atlas (one
-//!   texture each per section, shared by the materials whose triangles lie in it);
+//!   texture each per section, shared by the materials whose triangles lie in it), the diffuse as plain
+//!   RGBA (DXT1's 5:6:5 endpoints turn a smooth, nearly grey diffuse into magenta and green blotches);
 //! - the mesh's uv becomes the atlas, transposed (the unwrap lays a road's strip along u, the layers' ruts run along v);
 //! - each detail is a layer's own texture at the repeat the game tiles it at, per axis, from the triangles' metres per
 //!   atlas unit and per layer unit. The details tile the atlas's islands, not the surface, so a pattern jumps at an
@@ -19,6 +20,7 @@ use crate::material::{self, Material};
 use crate::mesh::Mesh;
 use crate::texture::Library;
 use rbr_ac_tracks::btb::textures;
+use rbr_formats::dds;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -31,7 +33,7 @@ const ALIGNED: f32 = 0.8;
 /// The most an island's atlas may differ in rate per metre between its axes to carry its layers.
 const STRETCH: f32 = 1.6;
 /// The share of the colour map's hue the diffuse keeps.
-const TINT: f32 = 0.5;
+const TINT: f32 = 0.3;
 /// The layer inputs in the order the shader sums them.
 const LAYERS: [&str; 4] = ["TDiffuseSpecMap1", "TDiffuseSpecMap2", "TDiffuseSpecMap3", "TDiffuseSpecMap4"];
 /// The RGBA channel of the mask each layer's weight goes in: the colour block holds two independent weights well, so the
@@ -284,7 +286,7 @@ fn diffuse(
                 let p = &px[(sy * w + sx) * 4..];
                 for k in 0..3 {
                     let c = f32::from(p[k]) / 255.;
-                    out[(y * size + x) * 3 + k] *= if tint { 0.5 + 0.5 * (c / white[k]).min(1.) } else { c };
+                    out[(y * size + x) * 3 + k] *= if tint { 0.2 + 0.8 * (c / white[k]).min(1.) } else { c };
                 }
             }
         }
@@ -415,7 +417,7 @@ fn finish_diffuse((size, mut image, tinted): (usize, Vec<f32>, bool), atlas: &At
         }
         rgba.push(255);
     }
-    textures::encode(false, size as u32, size as u32, rgba)
+    dds::rgba8_file(size as u32, size as u32, &rgba)
 }
 
 impl Shader {
