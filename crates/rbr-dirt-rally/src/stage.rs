@@ -32,6 +32,30 @@ pub struct Material {
     pub layers: Option<crate::shade::Layers>,
 }
 
+/// A prop or tree's mesh in its own space, written once as a model (`Objects/dr_<n>.x`) and drawn by its placements. The
+/// triangles are in the stage's world axes (as [`Input::drawn`]) about the model's origin; `material` is the index
+/// into `materials`.
+pub struct Model {
+    pub triangles: Vec<Triangle>,
+    pub material: u32,
+}
+
+/// The placements of models that share them: one `.xform` of row-major Direct3D matrices (`rbr_btb::scene::place_point`),
+/// in the BTB mesh's axes about the stage's world origin (the stage subtracts its own origin), one object per model.
+pub struct Placed {
+    pub models: Vec<usize>,
+    pub matrices: Vec<[f32; 16]>,
+}
+
+/// Props and trees drawn as instances (`ReRbrInstanced=1`).
+#[derive(Default)]
+pub struct Instanced {
+    pub models: Vec<Model>,
+    pub placed: Vec<Placed>,
+    /// Materials drawn only from this far, metres (a far level over the model's range); the others from 0.
+    pub lod_in: BTreeMap<u32, f64>,
+}
+
 /// A route ready to write, in the stage's world.
 pub struct Input {
     /// The route folder it comes from, and its id (`greece/ghymno_rally_01/route_0`).
@@ -50,6 +74,8 @@ pub struct Input {
     pub materials: Vec<Material>,
     /// Drawn triangles, `material` the index into `materials`.
     pub drawn: Vec<Triangle>,
+    /// The props and trees drawn as instances.
+    pub instanced: Instanced,
     /// Collision triangles, `material` the RBR surface id ([`surface::Surface::Default`] already resolved).
     pub collision: Vec<Triangle>,
     /// Where the surfaces came from, for the conversion file (`"track.jpk"`, or the drawn terrain's fallback).
@@ -73,7 +99,10 @@ pub struct Report {
     pub folder: PathBuf,
     pub length: f64,
     pub physics: &'static str,
+    /// Triangles written (baked tiles, and each instanced model once).
     pub drawn_triangles: usize,
+    /// Triangles the instances draw when all are in view.
+    pub instanced_triangles: usize,
     pub collision_triangles: usize,
     pub textures: usize,
     pub max_cell_vertices: usize,
@@ -239,6 +268,11 @@ impl Objects {
 
     /// One mesh with its `materials.ini` section and `objectlist.ini` keys.
     fn mesh(&mut self, builder: &Builder, material: &str, entries: &str) -> Result<(), String> {
+        self.placed(builder, material, "identity", entries)
+    }
+
+    /// One mesh placed by the `.xform` `xform` (already written; `identity` is always there).
+    fn placed(&mut self, builder: &Builder, material: &str, xform: &str, entries: &str) -> Result<(), String> {
         if builder.triangles.is_empty() {
             return Ok(());
         }
@@ -246,7 +280,7 @@ impl Objects {
         self.put(&format!("Objects/dr_{i}.x"), &builder.bytes(material))?;
         let _ = writeln!(
             self.ini,
-            "\n[Object_{i}]\nfile=dr_{i}\nxform=identity\ncloneCount=1\nDrawInstanced=0\nMoveable=0\n{entries}"
+            "\n[Object_{i}]\nfile=dr_{i}\nxform={xform}\ncloneCount=1\nDrawInstanced=0\nMoveable=0\n{entries}"
         );
         self.count += 1;
         Ok(())
@@ -336,6 +370,51 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     let mut section_of = BTreeMap::new();
     let mut drawn_triangles = 0;
+    let (mut instanced_triangles, mut model_triangles) = (0, 0);
+    for (i, placed) in input.instanced.placed.iter().enumerate() {
+        control.check()?;
+        let xform = format!("dr_x{i}");
+        let bytes: Vec<u8> = placed
+            .matrices
+            .iter()
+            .flat_map(|m| {
+                let mut m = *m;
+                (m[12], m[14]) = (m[12] - origin[0] as f32, m[14] - origin[1] as f32);
+                m.map(f32::to_le_bytes)
+            })
+            .flatten()
+            .collect();
+        objects.put(&format!("Objects/{xform}.xform"), &bytes)?;
+        for &at in &placed.models {
+            let model = &input.instanced.models[at];
+            let m = &input.materials[model.material as usize];
+            let section = match section_of.get(&(model.material as usize)) {
+                Some(section) => String::clone(section),
+                None => {
+                    let texture = match &m.dds {
+                        Some(dds) => bank.put(dds.clone(), "dds")?,
+                        None => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
+                    };
+                    let name = format!("dr\\{}", model.material);
+                    material::section(&mut sections, &name, &texture, m.transparent);
+                    names.push(name.clone());
+                    section_of.insert(model.material as usize, name.clone());
+                    name
+                }
+            };
+            let mut builder = Builder::default();
+            for t in &model.triangles {
+                builder.add(t, [0., 0.], true);
+            }
+            let lod = m.range.unwrap_or(options.lod);
+            let entries =
+                format!("LODIn=0\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\nReRbrInstanced=1\n");
+            objects.placed(&builder, &section, &xform, &entries)?;
+            model_triangles += builder.triangles.len();
+            instanced_triangles += builder.triangles.len() * placed.matrices.len();
+        }
+    }
+    drawn_triangles += model_triangles;
     for ((material, _), builder) in &tiles {
         control.check()?;
         let section = match section_of.get(material) {
@@ -380,7 +459,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         // Opaque ground is drawn as far as ReRBR sees, so the valley below and the mountains around stay in view.
         let m = &input.materials[*material];
         let lod = m.range.unwrap_or(if m.transparent { options.lod } else { FAR });
-        let entries = format!("LODIn=0\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
+        let lod_in = input.instanced.lod_in.get(&(*material as u32)).copied().unwrap_or(0.);
+        let entries = format!("LODIn={lod_in}\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
         objects.mesh(builder, &section, &entries)?;
         drawn_triangles += builder.triangles.len();
     }
@@ -496,6 +576,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         length: input.length,
         physics,
         drawn_triangles,
+        instanced_triangles,
         collision_triangles,
         textures,
         max_cell_vertices: stats.max_vertices,
@@ -543,6 +624,7 @@ mod tests {
             splits: vec![300.],
             materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None, layers: None }],
             drawn: strip(-4., 4., 0),
+            instanced: Instanced::default(),
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),

@@ -11,6 +11,7 @@ use rbr_ac_tracks::btb::{
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+use std::rc::Rc;
 
 pub use stage::Report;
 
@@ -66,8 +67,13 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
     let (mut materials, mut drawn) = terrain(&route, control)?;
     control.say(&format!("{} drawn terrain triangles in {} materials", drawn.len(), materials.len()));
     let terrain_triangles = drawn.len();
-    props(&route, &line, control, &mut materials, &mut drawn)?;
-    control.say(&format!("{} drawn prop and tree triangles", drawn.len() - terrain_triangles));
+    let instanced = props(&route, &line, control, &mut materials, &mut drawn)?;
+    control.say(&format!(
+        "{} baked prop and tree triangles, {} instanced models in {} placements",
+        drawn.len() - terrain_triangles,
+        instanced.models.len(),
+        instanced.placed.iter().map(|p| p.matrices.len()).sum::<usize>()
+    ));
     let input = stage::Input {
         source: route.dir.clone(),
         route: route.id(),
@@ -80,6 +86,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         splits,
         materials,
         drawn,
+        instanced,
         collision,
         collision_source: "track.jpk",
         surface_counts,
@@ -248,20 +255,19 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
 /// A prop is drawn as far as this many times its size: a metre-wide rock to 100 m, a tree of ten metres to a kilometre.
 const PROP_REACH: f32 = 100.;
 /// A model of `t` triangles is drawn no farther than this over the square root of `t`: dense trees stand out to a few
-/// hundred metres, a rock to a kilometre. Without it Finland's forest is 48 M triangles.
-const PROP_COST: f64 = 20_000.;
+/// hundred metres, a rock to a kilometre. An instanced model costs its triangles in every view, not in memory.
+const PROP_COST: f64 = 60_000.;
 /// The draw ranges a prop takes, metres, the least that holds its size ([`PROP_REACH`]) and its cost
 /// ([`PROP_COST`]); materials are split by them.
 const PROP_RANGES: [f64; 8] = [100., 150., 225., 340., 500., 750., 1000., 3000.];
 /// The distant forest: `trees.bin`'s `*_dist_*` types are tiles of 500 m of far trees (about a hundred triangles each),
 /// drawn far past where the single trees are.
 const DIST_REACH: f64 = 3000.;
-/// A tree farther than this from the road is drawn as its billboard (4 triangles from the game's own 2-triangle far
-/// level) in place of its model (2 to 4 thousand): the BTB stage holds every triangle in memory whatever its range, and
-/// with 8 m Finland route_0 is 9.3 M drawn triangles that load in 10 s and 3 GB (33 M, 17 s and 8.8 GB as models).
-const BILLBOARD_FROM: f64 = 8.;
-/// The most triangles a stage draws (terrain, props and trees) on the sample routes: the viewer holds every one in
-/// memory and loads about a million a second.
+/// A tree's far level, its billboard (4 triangles from the game's own 2-triangle far level), is drawn from the model's
+/// range to [`DIST_REACH`] for the trees within this far of the road, metres.
+const BILLBOARD_REACH: f64 = 1000.;
+/// The most triangles a stage draws (terrain, props and trees) on the sample routes, instances counted: the viewer
+/// holds every baked one in memory.
 #[cfg(test)]
 const DRAWN_BUDGET: usize = 12_000_000;
 
@@ -306,20 +312,66 @@ impl Source {
     }
 }
 
-/// Props and trees gathered into the drawn triangles.
+/// The placements of one type drawn over one range, mirrored or not: instanced once there are two.
+struct Group {
+    source: Rc<Source>,
+    file: String,
+    at: usize,
+    range: f64,
+    mirrored: bool,
+    /// Each placement's matrix and the turn its cards take ([`facing`]).
+    places: Vec<(mesh::Mat, [f32; 2])>,
+}
+
+/// Props and trees gathered into the drawn triangles and the instances.
 struct Placer<'a> {
     route: &'a Route,
     line: &'a Line,
     library: texture::Library,
-    sources: HashMap<String, Option<Source>>,
-    /// `(file, material id, range)` -> index in the stage's materials.
-    index: HashMap<(String, String, u64), u32>,
+    sources: HashMap<String, Option<Rc<Source>>>,
+    /// `(file, material id, range in, range out)` -> index in the stage's materials.
+    index: HashMap<(String, String, u64, u64), u32>,
+    /// By file, type, range and mirroring.
+    groups: BTreeMap<(String, usize, u64, bool), Group>,
+    lod_in: BTreeMap<u32, f64>,
     placed: usize,
     unresolved: BTreeMap<String, usize>,
 }
 
 impl Placer<'_> {
-    /// Draws the type `key` of `file` at `matrix`; one far from the road for its size is left out.
+    /// The index of `material` of `source`, drawn from `lod.0` to `lod.1` metres, added to `materials` the first time.
+    fn slot(
+        &mut self,
+        (file, source): (&str, &Source),
+        material: &str,
+        lod: (f64, f64),
+        materials: &mut Vec<stage::Material>,
+    ) -> u32 {
+        let key = (file.to_owned(), material.to_owned(), lod.0 as u64, lod.1 as u64);
+        if let Some(&slot) = self.index.get(&key) {
+            return slot;
+        }
+        let found = source.materials.get(material);
+        let texture = found.and_then(material::diffuse).and_then(|r| self.library.get(r));
+        let transparent = found.is_some_and(|f| blended(&f.shader))
+            && texture.as_ref().is_some_and(|t| t.format == texture::Format::Dxt5);
+        materials.push(stage::Material {
+            name: format!("{file}:{material}@{}-{}", lod.0, lod.1),
+            dds: texture.map(|t| t.dds()),
+            transparent,
+            range: Some(lod.1),
+            layers: None,
+        });
+        let slot = materials.len() as u32 - 1;
+        if lod.0 > 0. {
+            self.lod_in.insert(slot, lod.0);
+        }
+        self.index.insert(key, slot);
+        slot
+    }
+
+    /// Draws the type `key` of `file` at `matrix`; one far from the road for its size is left out. A type's models are
+    /// gathered by range and drawn by `finish`; its far billboards and the `*_dist_*` tiles are written here.
     fn place(
         &mut self,
         file: &str,
@@ -332,10 +384,10 @@ impl Placer<'_> {
             let dir =
                 if file.starts_with("route_") { self.route.dir.clone() } else { self.route.area_dir().to_owned() };
             let path = dir.join(file);
-            let source = if path.is_file() { Some(Source::read(&path)?) } else { None };
+            let source = if path.is_file() { Some(Rc::new(Source::read(&path)?)) } else { None };
             self.sources.insert(file.to_owned(), source);
         }
-        let Some(source) = self.sources.get(file).and_then(Option::as_ref) else {
+        let Some(source) = self.sources.get(file).and_then(Clone::clone) else {
             *self.unresolved.entry(format!("{file} (missing)")).or_default() += 1;
             return Ok(());
         };
@@ -347,7 +399,8 @@ impl Placer<'_> {
         let scale = (0..3).map(|i| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt()).fold(0., f32::max);
         let (side, triangles) = source.sizes[at];
         let size = side * scale;
-        let reach = if key.contains("_dist_") {
+        let tile = key.contains("_dist_");
+        let reach = if tile {
             DIST_REACH
         } else {
             f64::from(size * PROP_REACH).min(PROP_COST / (triangles.max(1) as f64).sqrt())
@@ -355,60 +408,149 @@ impl Placer<'_> {
         let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
         let (along, distance) = rbr_ac_tracks::assetto::ai::project(self.line, here);
-        if meshes.is_empty() || distance > range + f64::from(size) {
+        if meshes.is_empty() {
             return Ok(());
         }
-        let mut slot = |material: &str| match self.index.get(&(file.to_owned(), material.to_owned(), range as u64)) {
-            Some(&slot) => slot,
-            None => {
-                let found = source.materials.get(material);
-                let texture = found.and_then(material::diffuse).and_then(|r| self.library.get(r));
-                let transparent = found.is_some_and(|f| blended(&f.shader))
-                    && texture.as_ref().is_some_and(|t| t.format == texture::Format::Dxt5);
-                let name = format!("{file}:{material}@{range}");
-                materials.push(stage::Material {
-                    name,
-                    dds: texture.map(|t| t.dds()),
-                    transparent,
-                    range: Some(range),
-                    layers: None,
-                });
-                self.index.insert((file.to_owned(), material.to_owned(), range as u64), materials.len() as u32 - 1);
-                materials.len() as u32 - 1
+        let (road, forward) = self.line.sample(along);
+        let sprite = source.types.sprites[at].as_ref();
+        // A tree's far level is a baked quad pair facing the road (4 triangles each: the model's own turn is the
+        // placement's, the billboard's the road's), drawn from the model's range on; the tiles stay models, drawn from
+        // 0, with their billboard past 8 m from the road.
+        if let Some(sprite) = sprite.filter(|_| if tile { distance > 8. } else { distance <= BILLBOARD_REACH }) {
+            let lod = if tile { (0., range) } else { (range, DIST_REACH) };
+            let slot = self.slot((file, &source), &sprite.material, lod, materials);
+            out.extend(billboard(sprite, matrix, (road, forward), slot));
+            if tile {
+                self.placed += 1;
+                return Ok(());
             }
-        };
-        if let Some(sprite) = source.types.sprites[at].as_ref().filter(|_| distance > BILLBOARD_FROM) {
-            out.extend(billboard(sprite, matrix, self.line.sample(along), slot(&sprite.material)));
-            self.placed += 1;
+        }
+        if distance > range + f64::from(size) {
+            return Ok(());
+        }
+        let face = facing(matrix, road, forward);
+        if tile {
+            let triangles = bake(meshes, matrix, face, |m| self.slot((file, &source), m, (0., range), materials));
+            self.placed += meshes.len();
+            out.extend(triangles);
             return Ok(());
         }
         let mirrored = mesh::determinant(matrix) < 0.;
-        let (road, forward) = self.line.sample(along);
-        let face = facing(matrix, road, forward);
-        for m in meshes {
-            let slot = slot(&m.material);
-            if is_cards(m) {
-                out.extend(cards(m, matrix, face, slot));
-                self.placed += 1;
-                continue;
-            }
-            out.extend(m.triangles.iter().map(|&[a, b, c]| {
-                // Counter-clockwise in DiRT Rally's frame, the BTB mesh's winding the other way; a mirrored
-                // placement turned it already.
-                let corners = if mirrored { [a, b, c] } else { [a, c, b] }.map(|i| i as usize);
-                Triangle {
-                    pos: corners.map(|i| frame::world(mesh::point(matrix, m.positions[i]))),
-                    uv: corners.map(|i| m.uv.get(i).copied().unwrap_or_default()),
-                    normal: corners.map(|i| {
-                        m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(mesh::direction(matrix, n)))
-                    }),
-                    material: Some(slot),
-                }
-            }));
-            self.placed += 1;
-        }
+        let group = self.groups.entry((file.to_owned(), at, range as u64, mirrored)).or_insert_with(|| Group {
+            source: source.clone(),
+            file: file.to_owned(),
+            at,
+            range,
+            mirrored,
+            places: Vec::new(),
+        });
+        group.places.push((*matrix, face));
         Ok(())
     }
+
+    /// The gathered models: one drawn as instances where a type holds two placements of a range, else baked.
+    fn finish(mut self, materials: &mut Vec<stage::Material>, out: &mut Vec<Triangle>) -> stage::Instanced {
+        let mut instanced = stage::Instanced::default();
+        for group in std::mem::take(&mut self.groups).into_values() {
+            let meshes = &group.source.types.meshes[group.at];
+            let lod = (0., group.range);
+            if let [(matrix, face)] = group.places[..] {
+                out.extend(bake(meshes, &matrix, face, |m| self.slot((&group.file, &group.source), m, lod, materials)));
+                self.placed += meshes.len();
+                continue;
+            }
+            let mut placed =
+                stage::Placed { models: Vec::new(), matrices: group.places.iter().map(|(m, _)| xform(m)).collect() };
+            for m in meshes {
+                let slot = self.slot((&group.file, &group.source), &m.material, lod, materials);
+                placed.models.push(instanced.models.len());
+                instanced.models.push(stage::Model { triangles: model(m, group.mirrored), material: slot });
+            }
+            self.placed += meshes.len() * group.places.len();
+            instanced.placed.push(placed);
+        }
+        instanced.lod_in = std::mem::take(&mut self.lod_in);
+        instanced
+    }
+}
+
+/// `matrix` (DiRT Rally's, row vectors) as the `.xform` of a model written in the BTB mesh's axes: `F M F` with
+/// `F = diag(1, 1, -1)` ([`frame::world`] and the mesh's `(x, height, y)` swap leave `(x, y, -z)`), its translation
+/// `F t`.
+fn xform(matrix: &mesh::Mat) -> [f32; 16] {
+    let flip = |k: usize| if k == 2 { -1. } else { 1. };
+    std::array::from_fn(|n| {
+        let (i, j) = (n / 4, n % 4);
+        matrix[i][j] * flip(j) * if i < 3 { flip(i) } else { 1. }
+    })
+}
+
+/// The triangles of `meshes` placed at `matrix` in the stage's world, the cards turned to `face`; `slot` gives a
+/// material's index.
+fn bake(meshes: &[mesh::Mesh], matrix: &mesh::Mat, face: [f32; 2], mut slot: impl FnMut(&str) -> u32) -> Vec<Triangle> {
+    let mirrored = mesh::determinant(matrix) < 0.;
+    let mut out = Vec::new();
+    for m in meshes {
+        let slot = slot(&m.material);
+        if is_cards(m) {
+            out.extend(cards(m, matrix, face, slot));
+            continue;
+        }
+        out.extend(m.triangles.iter().map(|&[a, b, c]| {
+            // Counter-clockwise in DiRT Rally's frame, the BTB mesh's winding the other way; a mirrored
+            // placement turned it already.
+            let corners = if mirrored { [a, b, c] } else { [a, c, b] }.map(|i| i as usize);
+            Triangle {
+                pos: corners.map(|i| frame::world(mesh::point(matrix, m.positions[i]))),
+                uv: corners.map(|i| m.uv.get(i).copied().unwrap_or_default()),
+                normal: corners
+                    .map(|i| m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(mesh::direction(matrix, n)))),
+                material: Some(slot),
+            }
+        }));
+    }
+    out
+}
+
+/// `m` in its own space for a model placed by [`xform`]: wound as [`bake`] winds it (a mirrored placement flips the
+/// winding again, so its model is wound the other way). Cards cannot turn to the road per placement: each is two
+/// upright cards crossed at 90 degrees about the type's vertical axis, drawn from both sides.
+fn model(m: &mesh::Mesh, mirrored: bool) -> Vec<Triangle> {
+    let triangle =
+        |corners: [usize; 3], pos: &dyn Fn(usize) -> [f32; 3], normal: &dyn Fn(usize) -> [f32; 3]| Triangle {
+            pos: corners.map(|i| frame::world(pos(i))),
+            uv: corners.map(|i| m.uv.get(i).copied().unwrap_or_default()),
+            normal: corners.map(normal),
+            material: None,
+        };
+    if !is_cards(m) {
+        let normal = |i: usize| m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(n));
+        return m
+            .triangles
+            .iter()
+            .map(|&[a, b, c]| {
+                let corners = if mirrored { [a, b, c] } else { [a, c, b] }.map(|i| i as usize);
+                triangle(corners, &|i| m.positions[i], &normal)
+            })
+            .collect();
+    }
+    let offsets = m.uv2.as_deref().unwrap_or_default();
+    let up = |_| [0., 1., 0.];
+    let mut out = Vec::new();
+    for plane in [0, 2] {
+        let pos = |i: usize| {
+            let (c, o) = (m.positions[i], offsets[i]);
+            let mut p = [c[0], c[1] + o[1], c[2]];
+            p[plane] += o[0];
+            p
+        };
+        for &[a, b, c] in &m.triangles {
+            let corners = [a, b, c].map(|i| i as usize);
+            out.push(triangle(corners, &pos, &up));
+            out.push(triangle([corners[0], corners[2], corners[1]], &pos, &up));
+        }
+    }
+    out
 }
 
 /// DiRT Rally's plan direction of a stage's plan vector (x, -z of DiRT Rally's), unit.
@@ -527,21 +669,24 @@ fn billboard(
     out
 }
 
-/// The props `objects.ens` places and the trees `trees.bin` does, added to the drawn triangles: drawn only (no
-/// collision), the intact `default` models at their first level, within reach of the road for their size.
+/// The props `objects.ens` places and the trees `trees.bin` does, added to the drawn triangles (the single ones and the
+/// far levels) and the instances: drawn only (no collision), the intact `default` models at their first level, within
+/// reach of the road for their size.
 fn props(
     route: &Route,
     line: &Line,
     control: &Control,
     materials: &mut Vec<stage::Material>,
     drawn: &mut Vec<Triangle>,
-) -> Result<(), String> {
+) -> Result<stage::Instanced, String> {
     let mut placer = Placer {
         route,
         line,
         library: texture::Library::day(route),
         sources: HashMap::new(),
         index: HashMap::new(),
+        groups: BTreeMap::new(),
+        lod_in: BTreeMap::new(),
         placed: 0,
         unresolved: BTreeMap::new(),
     };
@@ -587,7 +732,7 @@ fn props(
             placer.unresolved
         ));
     }
-    Ok(())
+    Ok(placer.finish(materials, drawn))
 }
 
 #[cfg(test)]
@@ -644,6 +789,60 @@ mod tests {
     }
 
     #[test]
+    fn a_placed_model_is_the_baked_triangles() {
+        let m = mesh::Mesh {
+            positions: vec![[0., 0., 0.], [1., 0., 0.], [0., 2., 0.5], [0.3, 1., -1.]],
+            normals: vec![[0., 1., 0.], [0.6, 0.8, 0.], [0., 0.6, 0.8], [0., 0., 1.]],
+            uv: vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
+            triangles: vec![[0, 1, 2], [1, 3, 2]],
+            ..mesh::Mesh::default()
+        };
+        // A turn about y with a scale and a shift, and the same with x mirrored.
+        let (c, s) = (0.8f32.cos(), 0.8f32.sin());
+        for flip in [1., -1.] {
+            let matrix = [
+                [c * 1.3 * flip, 0., -s * 1.3 * flip, 0.],
+                [0., 1.3, 0., 0.],
+                [s * 1.3, 0., c * 1.3, 0.],
+                [412.5, 33.25, -871.75, 1.],
+            ];
+            let baked = bake(std::slice::from_ref(&m), &matrix, [1., 0.], |_| 5);
+            let local = model(&m, flip < 0.);
+            let placed = xform(&matrix);
+            assert_eq!((baked.len(), local.len()), (2, 2));
+            for (b, l) in baked.iter().zip(&local) {
+                for k in 0..3 {
+                    // The model's world axes are the mesh's `(x, height, y)`; the placement works on those.
+                    let at = rbr_btb::scene::place_point(
+                        &placed,
+                        [l.pos[k][0] as f32, l.pos[k][2] as f32, l.pos[k][1] as f32],
+                    );
+                    let world = [f64::from(at[0]), f64::from(at[2]), f64::from(at[1])];
+                    assert!((0..3).all(|i| (world[i] - b.pos[k][i]).abs() < 1e-3), "{world:?} {:?}", b.pos[k]);
+                    let n = rbr_btb::scene::place_normal(&placed, [l.normal[k][0], l.normal[k][2], l.normal[k][1]]);
+                    assert!((0..3).all(|i| (n[[0, 2, 1][i]] - b.normal[k][i]).abs() < 1e-3));
+                    assert_eq!(l.uv[k], b.uv[k]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cards_in_a_model_are_crossed_pairs_seen_from_both_sides() {
+        let m = mesh::Mesh {
+            positions: vec![[0., 5., 0.]; 4],
+            uv: vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.]],
+            uv2: Some(vec![[-1., 1.], [1., 1.], [1., -1.], [-1., -1.]]),
+            triangles: vec![[0, 1, 2], [2, 3, 0]],
+            ..mesh::Mesh::default()
+        };
+        assert_eq!(model(&m, false).len(), 8);
+        let planes: Vec<usize> =
+            model(&m, false).iter().map(|t| usize::from(t.pos.iter().any(|p| p[0].abs() > 0.5))).collect();
+        assert_eq!(planes.iter().sum::<usize>(), 4);
+    }
+
+    #[test]
     fn the_sample_routes_draw_within_the_budget() {
         let Some(game) = std::env::var_os("RBR_DIRT_RALLY") else { return };
         let install = Install::at(std::path::Path::new(&game)).unwrap();
@@ -652,6 +851,7 @@ mod tests {
         (options.out, options.replace) = (Some(out.clone()), true);
         let report = import(&install, "finland/ouninpohja_rally_01/route_0", &options).unwrap();
         let _ = std::fs::remove_dir_all(out);
-        assert!(report.drawn_triangles <= DRAWN_BUDGET, "{} drawn triangles", report.drawn_triangles);
+        let drawn = report.drawn_triangles + report.instanced_triangles;
+        assert!(drawn <= DRAWN_BUDGET, "{drawn} drawn triangles");
     }
 }
