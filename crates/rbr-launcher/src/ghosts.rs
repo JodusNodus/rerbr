@@ -1,8 +1,9 @@
 //! The quick race's ghost car: the game's best and saved ghosts, by map number.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::catalog;
+use crate::times::{slug, Road};
 use crate::Form;
 use rbr_gameplay::weather::Weather;
 
@@ -37,24 +38,15 @@ impl GhostChoice {
         }
     }
 
-    /// The choice for a run that keeps no records (the experimental physics): the best ghost of map `map` raced as
-    /// a saved one, never replaced.
-    pub fn unrecorded(&self, map: u32) -> GhostChoice {
-        match self {
-            GhostChoice::Best => GhostChoice::File(rbr_formats::ghost::SavedGhost::file_name(BEST_GHOST, map)),
-            other => other.clone(),
-        }
-    }
-
-    /// The viewer's arguments for map `map`: `--best-ghost` with the weather words a new best keeps, or `--ghost` with
-    /// the file (none when the file is gone).
-    pub fn viewer_args(&self, here: &Path, map: u32, weather: &rbr_formats::ghost::Weather) -> Vec<String> {
+    /// The viewer's arguments: `--best-ghost` with the `best` file (`best_ghost`) and the weather words a
+    /// new best keeps, or `--ghost` with the file of `./GhostCars/` (none when it is gone).
+    pub fn viewer_args(&self, here: &Path, best: &Path, weather: &rbr_formats::ghost::Weather) -> Vec<String> {
         let dir = here.join(GHOST_DIR);
         match self {
             GhostChoice::Off => Vec::new(),
             GhostChoice::Best => vec![
                 "--best-ghost".into(),
-                dir.join(rbr_formats::ghost::SavedGhost::file_name(BEST_GHOST, map)).display().to_string(),
+                best.display().to_string(),
                 "--ghost-weather".into(),
                 rbr_render::ghost::weather_arg(weather),
             ],
@@ -66,6 +58,19 @@ impl GhostChoice {
     }
 }
 
+/// The folder of the best ghosts in the player's folder `home` (ours).
+pub const BEST_DIR: &str = "ghosts";
+
+/// The best ghost of map `map` for a physics (`PhysicsId::text`), car class and road, one file per combination so a
+/// ghost is only raced against runs it can be compared with: `<home>/ghosts/<physics>/<class>/<road>/Best_<map>.ghc`.
+pub fn best_ghost(home: &Path, physics: &str, class: &str, road: Road, map: u32) -> PathBuf {
+    home.join(BEST_DIR)
+        .join(slug(physics))
+        .join(slug(class))
+        .join(road.word())
+        .join(rbr_formats::ghost::SavedGhost::file_name(BEST_GHOST, map))
+}
+
 /// The weather words of the saved ghost `file` in `./GhostCars/` (its header only), or `None` when it does not read.
 pub fn ghost_words(here: &Path, file: &str) -> Option<rbr_formats::ghost::Weather> {
     use std::io::Read;
@@ -73,6 +78,16 @@ pub fn ghost_words(here: &Path, file: &str) -> Option<rbr_formats::ghost::Weathe
     let file = std::fs::File::open(here.join(GHOST_DIR).join(file)).ok()?;
     file.take(rbr_formats::ghost::SAVED_HEADER_LEN as u64).read_to_end(&mut header).ok()?;
     rbr_formats::ghost::SavedGhost::header_weather_words(&header)
+}
+
+/// A saved ghost's name in the Ghost dropdown: the old per-map best (`Best_<map>.ghc`, from before the best ghost was
+/// kept per class and road) is no longer written and reads apart from the new Best.
+pub fn ghost_name(file: &str) -> String {
+    let name = file.trim_end_matches(".ghc");
+    match name.rsplit_once('_') {
+        Some((BEST_GHOST, map)) if map.bytes().all(|b| b.is_ascii_digit()) => format!("{BEST_GHOST} (before classes)"),
+        _ => name.to_owned(),
+    }
 }
 
 /// The saved ghosts of map `map` in `./GhostCars/` (`<name>_<map:02>.ghc`, the best one too), sorted.
@@ -119,21 +134,28 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// A run that keeps no records races the best ghost when there is one, without `--best-ghost` (which writes a new
-    /// best); the other choices are as they were.
+    /// Each physics, class and road keeps its own best ghost file, apart from the old `./GhostCars/` one, which still
+    /// lists as a saved ghost.
     #[test]
-    fn an_unrecorded_run_races_the_best_ghost_without_replacing_it() {
-        let here = crate::test_dir("ghost-unrecorded");
-        let dir = here.join(GHOST_DIR);
-        std::fs::create_dir_all(&dir).unwrap();
+    fn the_best_ghost_is_kept_per_physics_class_and_road() {
+        let home = Path::new("/p");
+        let path = |physics, class, road| best_ghost(home, physics, class, road, 54);
+        let base = path("ngp@7.4.778", "Rally 2", Road::Dry);
+        assert_eq!(base, home.join("ghosts/ngp@7.4.778/Rally_2/dry/Best_54.ghc"));
+        assert_ne!(base, path("experimental-brush@0.1.0", "Rally 2", Road::Dry));
+        assert_ne!(base, path("ngp@7.4.778", "Group A", Road::Dry));
+        assert_ne!(base, path("ngp@7.4.778", "Rally 2", Road::Wet));
         let words = rbr_formats::ghost::Weather::default();
-        assert_eq!(GhostChoice::Best.unrecorded(54), GhostChoice::File("Best_54.ghc".into()));
-        assert!(GhostChoice::Best.unrecorded(54).viewer_args(&here, 54, &words).is_empty());
-        std::fs::write(dir.join("Best_54.ghc"), b"").unwrap();
-        let best = dir.join("Best_54.ghc").display().to_string();
-        assert_eq!(GhostChoice::Best.unrecorded(54).viewer_args(&here, 54, &words), ["--ghost".to_owned(), best]);
-        assert_eq!(GhostChoice::Off.unrecorded(54), GhostChoice::Off);
-        assert_eq!(GhostChoice::File("me_54.ghc".into()).unrecorded(54), GhostChoice::File("me_54.ghc".into()));
+        let args = GhostChoice::Best.viewer_args(home, &base, &words);
+        assert_eq!(args[..2], ["--best-ghost".to_owned(), base.display().to_string()]);
+        assert!(GhostChoice::Off.viewer_args(home, &base, &words).is_empty());
+
+        let here = crate::test_dir("ghost-old-best");
+        std::fs::create_dir_all(here.join(GHOST_DIR)).unwrap();
+        std::fs::write(here.join(GHOST_DIR).join("Best_54.ghc"), b"").unwrap();
+        assert_eq!(ghost_files(&here, 54), ["Best_54.ghc"]);
+        assert_eq!(ghost_name("Best_54.ghc"), "Best (before classes)");
+        assert_eq!(ghost_name("me_54.ghc"), "me_54");
         std::fs::remove_dir_all(&here).unwrap();
     }
 }

@@ -20,8 +20,10 @@ use rbr_school::Lesson;
 use rbr_sound::mixer::Volumes;
 
 use crate::catalog::{self, Car, Stage, TyreChoice};
+use crate::ghosts;
 use crate::graphics_page::{Graphics, Grass, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
+use crate::times::Road;
 use crate::{pages::Choice, Form};
 
 /// The mechanical trail of the force from the tyres, mm (`rbr-standalone --ffb-tyres`; its `tyre_ffb::SUGGESTED_TRAIL`,
@@ -539,16 +541,15 @@ impl Form {
         let (stage, weather, preset) = self.selection_from(rand).ok()?;
         // Only the quick race races and keeps a ghost (`rbr_gameplay::ghost::clears`: the championship clears it).
         let words = weather.ghost_words(&self.season);
-        // The experimental physics keeps no records: the best ghost is raced, not replaced.
-        let ghost = match self.drive_physics().keeps_records() {
-            true => self.ghost.clone(),
-            false => self.ghost.unrecorded(stage.map),
-        };
         // A circuit keeps no ghost yet: the ghost is one whole drive against one result (`notes/session.md`).
         let ghost = if self.page == crate::pages::Page::Circuit {
             Vec::new()
         } else {
-            ghost.viewer_args(&self.records(), stage.map, &words)
+            // The best ghost is one per physics and version, car class and road.
+            let class = crate::times::class_of(self.car().and_then(|c| c.group.as_deref()));
+            let road = Road::parse(weather.mat_words().1).unwrap_or(Road::Dry);
+            let best = ghosts::best_ghost(&self.here(), &self.drive_physics().id().text(), &class, road, stage.map);
+            self.ghost.viewer_args(&self.records(), &best, &words)
         };
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
@@ -1598,8 +1599,10 @@ mod tests {
             form.read_only = true;
             assert_eq!(form.physics == PhysicsProfile::Ngp, !line.starts_with("physics = experimental\n"), "{text}");
             let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
-            // Only NGP's runs race for the best ghost (`--best-ghost` writes a new best).
-            assert_eq!(quick.contains(&"--best-ghost".to_owned()), wanted.is_none(), "{text}: {quick:?}");
+            // Every physics races and keeps its own best ghost (`--best-ghost`), under its id.
+            let at = quick.iter().position(|a| a == "--best-ghost").expect(&text);
+            let id = form.drive_physics().id().text();
+            assert!(quick[at + 1].contains(&format!("ghosts/{id}/")), "{text}: {quick:?}");
             let (stage, weather) = form.selection().unwrap();
             let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
             let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();

@@ -31,7 +31,7 @@ const TYRE_PAGE: &str = "tyre-model.md";
 const FFB_PAGE: &str = "force-feedback.md";
 
 /// What the experimental physics leaves unsaved, shown beside the choice while it is picked.
-pub const NO_RECORDS: &str = "Experimental: no records, ghosts or championship results are saved.";
+pub const NO_RECORDS: &str = "Experimental: no stage records, personal bests or championship results are saved; times and ghosts are kept apart under its version.";
 
 impl PhysicsProfile {
     /// `rbr-standalone`'s arguments for it on `car`: none for NGP 7's, so its command lines stay as they were; else
