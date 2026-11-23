@@ -2,7 +2,7 @@
 //! (`route`), the collision (`collision`, `surface`) and the drawn world are read, put in the stage's world (`frame`)
 //! and written by `stage`. Nothing here prints, reads the environment or exits the process.
 use crate::install::{Install, Route};
-use crate::{collision, frame, material, mesh, pssg::Pssg, route, stage, surface, texture};
+use crate::{collision, frame, material, mesh, objects, pssg::Pssg, route, stage, surface, texture, trees};
 use rbr_ac_tracks::btb::{
     control::Control,
     geometry::{Grid, Triangle},
@@ -62,8 +62,11 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
     control.say(&format!("{} collision triangles", collision.len()));
     drop(faces);
     control.check()?;
-    let (materials, drawn) = terrain(&route, control)?;
+    let (mut materials, mut drawn) = terrain(&route, control)?;
     control.say(&format!("{} drawn terrain triangles in {} materials", drawn.len(), materials.len()));
+    let terrain_triangles = drawn.len();
+    props(&route, &line, control, &mut materials, &mut drawn)?;
+    control.say(&format!("{} drawn prop and tree triangles", drawn.len() - terrain_triangles));
     let input = stage::Input {
         source: route.dir.clone(),
         route: route.id(),
@@ -202,7 +205,12 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                     sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r)).map(|t| t.dds());
                 // Decals lie on the ground they mark: drawn with their alpha.
                 let transparent = m.node.starts_with("DECAL");
-                materials.push(stage::Material { name: format!("{file}:{}", m.material), dds, transparent });
+                materials.push(stage::Material {
+                    name: format!("{file}:{}", m.material),
+                    dds,
+                    transparent,
+                    range: None,
+                });
                 materials.len() as u32 - 1
             });
             triangles.extend(m.triangles.iter().map(|&[a, b, c]| {
@@ -218,4 +226,191 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
         }
     }
     Ok((materials, triangles))
+}
+
+/// A prop is drawn as far as this many times its size: a metre-wide rock to 100 m, a tree of ten metres to a kilometre.
+const PROP_REACH: f32 = 100.;
+/// The draw ranges a prop takes, metres, the least that holds its size ([`PROP_REACH`]); materials are split by them.
+const PROP_RANGES: [f64; 5] = [100., 200., 400., 700., 1000.];
+
+/// Whether a shader draws its diffuse texture's alpha (cut-out leaves and blended signs; the other props' alpha is a
+/// gloss or emission mask: `Object_Emis`, `Object_Norm` and `Object_Stones` carry DXT5 with varying alpha too). Trunks
+/// and `foliage_environment` are opaque.
+fn blended(shader: &str) -> bool {
+    let s = shader.to_lowercase();
+    s.contains("blend")
+        || ((s.starts_with("foliage") || s.starts_with("facing_foliage") || s.starts_with("treesheet"))
+            && !s.contains("trunk"))
+}
+
+/// One of the three files props are drawn from, read once.
+struct Source {
+    types: mesh::Types,
+    materials: BTreeMap<String, material::Material>,
+    /// Each type's longest side in its own space, metres.
+    sizes: Vec<f32>,
+}
+
+impl Source {
+    fn read(path: &std::path::Path) -> Result<Source, String> {
+        let pssg = Pssg::read(path)?;
+        let types = mesh::types(&pssg)?;
+        let sizes = types
+            .meshes
+            .iter()
+            .map(|meshes| {
+                let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+                for p in meshes.iter().flat_map(|m| &m.positions) {
+                    for k in 0..3 {
+                        lo[k] = lo[k].min(p[k]);
+                        hi[k] = hi[k].max(p[k]);
+                    }
+                }
+                (0..3).map(|k| (hi[k] - lo[k]).max(0.)).fold(0., f32::max)
+            })
+            .collect();
+        Ok(Source { types, materials: material::read(&pssg), sizes })
+    }
+}
+
+/// Props and trees gathered into the drawn triangles.
+struct Placer<'a> {
+    route: &'a Route,
+    line: &'a Line,
+    library: texture::Library,
+    sources: HashMap<String, Option<Source>>,
+    /// `(file, material id, range)` -> index in the stage's materials.
+    index: HashMap<(String, String, u64), u32>,
+    placed: usize,
+    unresolved: BTreeMap<String, usize>,
+}
+
+impl Placer<'_> {
+    /// Draws the type `key` of `file` at `matrix`; one far from the road for its size is left out.
+    fn place(
+        &mut self,
+        file: &str,
+        key: &str,
+        matrix: &mesh::Mat,
+        materials: &mut Vec<stage::Material>,
+        out: &mut Vec<Triangle>,
+    ) -> Result<(), String> {
+        if !self.sources.contains_key(file) {
+            let dir =
+                if file.starts_with("route_") { self.route.dir.clone() } else { self.route.area_dir().to_owned() };
+            let path = dir.join(file);
+            let source = if path.is_file() { Some(Source::read(&path)?) } else { None };
+            self.sources.insert(file.to_owned(), source);
+        }
+        let Some(source) = self.sources.get(file).and_then(Option::as_ref) else {
+            *self.unresolved.entry(format!("{file} (missing)")).or_default() += 1;
+            return Ok(());
+        };
+        let Some(&at) = source.types.index.get(key) else {
+            *self.unresolved.entry(key.to_owned()).or_default() += 1;
+            return Ok(());
+        };
+        let meshes = &source.types.meshes[at];
+        let scale = (0..3).map(|i| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt()).fold(0., f32::max);
+        let size = source.sizes[at] * scale;
+        let reach = f64::from(size * PROP_REACH);
+        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(1000.);
+        let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
+        if meshes.is_empty() || rbr_ac_tracks::assetto::ai::project(self.line, here).1 > range + f64::from(size) {
+            return Ok(());
+        }
+        let mirrored = mesh::determinant(matrix) < 0.;
+        for m in meshes {
+            let slot = match self.index.get(&(file.to_owned(), m.material.clone(), range as u64)) {
+                Some(&slot) => slot,
+                None => {
+                    let found = source.materials.get(&m.material);
+                    let texture = found.and_then(material::diffuse).and_then(|r| self.library.get(r));
+                    let transparent = found.is_some_and(|f| blended(&f.shader))
+                        && texture.as_ref().is_some_and(|t| t.format == texture::Format::Dxt5);
+                    let name = format!("{file}:{}@{range}", m.material);
+                    materials.push(stage::Material {
+                        name,
+                        dds: texture.map(|t| t.dds()),
+                        transparent,
+                        range: Some(range),
+                    });
+                    self.index.insert((file.to_owned(), m.material.clone(), range as u64), materials.len() as u32 - 1);
+                    materials.len() as u32 - 1
+                }
+            };
+            out.extend(m.triangles.iter().map(|&[a, b, c]| {
+                // Counter-clockwise in DiRT Rally's frame, the BTB mesh's winding the other way; a mirrored
+                // placement turned it already.
+                let corners = if mirrored { [a, b, c] } else { [a, c, b] }.map(|i| i as usize);
+                Triangle {
+                    pos: corners.map(|i| frame::world(mesh::point(matrix, m.positions[i]))),
+                    uv: corners.map(|i| m.uv.get(i).copied().unwrap_or_default()),
+                    normal: corners.map(|i| {
+                        m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(mesh::direction(matrix, n)))
+                    }),
+                    material: Some(slot),
+                }
+            }));
+            self.placed += 1;
+        }
+        Ok(())
+    }
+}
+
+/// The props `objects.ens` places and the trees `trees.bin` does, added to the drawn triangles: drawn only (no
+/// collision), the intact `default` models at their first level, within reach of the road for their size.
+fn props(
+    route: &Route,
+    line: &Line,
+    control: &Control,
+    materials: &mut Vec<stage::Material>,
+    drawn: &mut Vec<Triangle>,
+) -> Result<(), String> {
+    let mut placer = Placer {
+        route,
+        line,
+        library: texture::Library::day(route),
+        sources: HashMap::new(),
+        index: HashMap::new(),
+        placed: 0,
+        unresolved: BTreeMap::new(),
+    };
+    if route.dir.join("objects.ens").is_file() {
+        control.say("reading objects.ens");
+        let layout = objects::read(route)?;
+        for (n, instance) in layout.instances.iter().enumerate() {
+            if n % 1024 == 0 {
+                control.check()?;
+            }
+            for (file, node) in &layout.entities[instance.entity].parts {
+                placer.place(file, node, &instance.matrix, materials, drawn)?;
+            }
+        }
+        control.say(&format!(
+            "{} props placed, {} instances without a model",
+            layout.instances.len(),
+            layout.skipped.values().sum::<usize>()
+        ));
+    }
+    if route.dir.join("trees.bin").is_file() {
+        control.say("reading trees.bin");
+        let placed = trees::read(route)?;
+        for (n, item) in placed.items.iter().enumerate() {
+            if n % 1024 == 0 {
+                control.check()?;
+            }
+            let key = format!("{} Root", placed.types[item.kind].name);
+            placer.place("trees.pssg", &key, &item.matrix, materials, drawn)?;
+        }
+        control.say(&format!("{} trees placed", placed.items.len()));
+    }
+    if !placer.unresolved.is_empty() {
+        control.say(&format!(
+            "{} models not found: {:?}",
+            placer.unresolved.values().sum::<usize>(),
+            placer.unresolved
+        ));
+    }
+    Ok(())
 }

@@ -25,6 +25,9 @@ pub struct Material {
     pub dds: Option<Vec<u8>>,
     /// Drawn with alpha (foliage, decals).
     pub transparent: bool,
+    /// How far it is drawn, metres; `None` for the stage's default (`lod` for alpha, ReRBR's far plane otherwise).
+    /// Props are small: they are drawn as far as their size holds.
+    pub range: Option<f64>,
 }
 
 /// A route ready to write, in the stage's world.
@@ -349,7 +352,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             }
         };
         // Opaque ground is drawn as far as ReRBR sees, so the valley below and the mountains around stay in view.
-        let lod = if input.materials[*material].transparent { options.lod } else { FAR };
+        let m = &input.materials[*material];
+        let lod = m.range.unwrap_or(if m.transparent { options.lod } else { FAR });
         let entries = format!("LODIn=0\nLODOut={lod}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n");
         objects.mesh(builder, &section, &entries)?;
         drawn_triangles += builder.triangles.len();
@@ -511,7 +515,7 @@ mod tests {
             start: 60.,
             finish: 540.,
             splits: vec![300.],
-            materials: vec![Material { name: "road".into(), dds: None, transparent: false }],
+            materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None }],
             drawn: strip(-4., 4., 0),
             collision,
             collision_source: "test",
