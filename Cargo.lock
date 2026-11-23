@@ -2337,6 +2337,8 @@ dependencies = [
  "rbr-ac-tracks",
  "rbr-btb",
  "rbr-formats",
+ "serde_json",
+ "zip",
 ]
 
 [[package]]

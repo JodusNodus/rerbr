@@ -82,6 +82,27 @@ pub fn weathers(id: u8) -> [u8; 3] {
     }
 }
 
+/// The stage's `physics=`: snow where over half of the drive lies on snow ids, else gravel where over half lies on
+/// gravel or dirt, else tarmac. `along` pairs a surface id with the length of road it covers.
+pub fn physics(along: impl IntoIterator<Item = (u8, f64)>) -> &'static str {
+    let (mut snow, mut loose, mut all) = (0., 0., 0.);
+    for (id, length) in along {
+        all += length;
+        if matches!(id, 101..=103 | 117..=119) {
+            snow += length;
+        } else if matches!(id, 1..=23 | 33..=35 | 41..=43 | 49..=51 | 133..=151) {
+            loose += length;
+        }
+    }
+    if snow * 2. > all {
+        "snow"
+    } else if loose * 2. > all {
+        "gravel"
+    } else {
+        "tarmac"
+    }
+}
+
 /// The stage's road surface for [`Surface::Default`] by its `physics=`.
 pub fn default_for(physics: &str) -> u8 {
     match physics {
@@ -115,5 +136,8 @@ mod tests {
         assert_eq!(weathers(129), [129; 3]);
         assert_eq!(weathers(64), [64; 3]);
         assert_eq!(default_for("snow"), 117);
+        assert_eq!(physics([(117, 6.), (17, 4.)]), "snow");
+        assert_eq!(physics([(49, 6.), (37, 4.)]), "gravel");
+        assert_eq!(physics([(37, 6.), (133, 4.)]), "tarmac");
     }
 }
