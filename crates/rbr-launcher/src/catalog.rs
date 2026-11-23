@@ -999,7 +999,7 @@ mod tests {
             surface: "gravel",
             circuit: false,
             problem: None,
-            ac: false,
+            import: None,
         };
         let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };
         let map = Map { number, stages: vec![stage.clone()], origin: Origin::Btb(btb) };

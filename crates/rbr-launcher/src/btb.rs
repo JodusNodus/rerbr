@@ -30,8 +30,28 @@ pub struct Btb {
     pub circuit: bool,
     /// Why it cannot start.
     pub problem: Option<String>,
-    /// Converted from an Assetto Corsa track (`rbr_ac_tracks` writes `ac-conversion.json` into the stage's folder).
-    pub ac: bool,
+    /// The game it was converted from, when it was: the converter's provenance file in the stage's folder says so.
+    pub import: Option<Import>,
+}
+
+/// A stage converted from another game's track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Import {
+    /// `rbr_ac_tracks` writes `ac-conversion.json`.
+    AssettoCorsa,
+    /// `rbr_dirt_rally` writes `dr-conversion.json`.
+    DirtRally,
+}
+
+impl Import {
+    fn of(folder: &Path) -> Option<Import> {
+        [
+            (rbr_ac_tracks::assetto::stage::CONVERSION_FILE, Import::AssettoCorsa),
+            (rbr_dirt_rally::stage::CONVERSION_FILE, Import::DirtRally),
+        ]
+        .into_iter()
+        .find_map(|(file, import)| folder.join(file).is_file().then_some(import))
+    }
 }
 
 impl Btb {
@@ -91,7 +111,7 @@ fn list(
             surface: stage::surface(&track).unwrap_or("gravel"),
             circuit: track.info.circuit,
             problem: None,
-            ac: track.folder.join(rbr_ac_tracks::assetto::stage::CONVERSION_FILE).is_file(),
+            import: Import::of(&track.folder),
             folder: track.folder.clone(),
         };
         let stage = Stage { name: stage::stage_name(&btb.folder, number), map: number, letter: stage::LETTER };

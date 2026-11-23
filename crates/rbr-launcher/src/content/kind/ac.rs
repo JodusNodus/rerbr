@@ -3,7 +3,7 @@
 //! hidden folder beside `<player folder>/tracks/` and converted there, a stage for each layout, by `rbr_ac_tracks`
 //! (`notes/assetto.md`). Every path goes through [`crate::archive::safe_folder`] and programs and sound banks are left
 //! out. A stage appears whole or not at all, and a cancel leaves nothing behind. Each stage keeps the converter's
-//! `ac-conversion.json`, which marks it as an import in the Stages list ([`crate::btb::Btb::ac`]).
+//! `ac-conversion.json`, which marks it as an import in the Stages list ([`crate::btb::Btb::import`]).
 
 use std::fs;
 use std::path::Path;
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(left, ["AC_synthetic_test"], "the unpacked files and the programs are gone");
         let maps = crate::btb::folder_maps(&tracks, |_| false);
         assert_eq!(maps.len(), 1);
-        assert!(maps[0].btb().unwrap().ac);
+        assert_eq!(maps[0].btb().unwrap().import, Some(crate::btb::Import::AssettoCorsa));
         // Again: already added, nothing else appears.
         let again = crate::content::run(
             &home,
@@ -266,7 +266,10 @@ mod tests {
         done.iter().for_each(|o| eprintln!("{}", o.line()));
         assert!(done.iter().all(Outcome::ok), "{done:?}");
         let maps = crate::btb::folder_maps(&home.join("tracks"), |_| false);
-        assert!(!maps.is_empty() && maps.iter().all(|m| m.btb().is_some_and(|b| b.ac)));
+        assert!(
+            !maps.is_empty()
+                && maps.iter().all(|m| m.btb().is_some_and(|b| b.import == Some(crate::btb::Import::AssettoCorsa)))
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 

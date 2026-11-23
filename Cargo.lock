@@ -2382,6 +2382,7 @@ dependencies = [
  "rars",
  "rbr-ac-tracks",
  "rbr-btb",
+ "rbr-dirt-rally",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-recording",

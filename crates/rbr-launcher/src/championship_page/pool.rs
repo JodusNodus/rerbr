@@ -305,7 +305,7 @@ mod tests {
                 surface: "gravel",
                 circuit: false,
                 problem: None,
-                ac: false,
+                import: None,
             };
             Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }
         };

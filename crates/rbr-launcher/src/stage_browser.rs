@@ -17,6 +17,7 @@ use crate::browser::{
     self, block, drive_button, favourite_button, header_line, items, key_action, list_rows, paint_cell,
     paint_selection, paint_star, random_row, row_slot, step_nav, Line, Nav,
 };
+use crate::btb::Import;
 use crate::catalog::{Map, Origin};
 use crate::kit;
 use crate::preview::{self, Previews};
@@ -102,8 +103,8 @@ pub struct StageRow {
     pub retail: bool,
     /// A BTB stage (`crate::btb`).
     pub btb: bool,
-    /// A BTB stage converted from an Assetto Corsa track (`Btb::ac`).
-    pub ac: bool,
+    /// The game a BTB stage was converted from (`Btb::import`).
+    pub import: Option<Import>,
     pub km: Option<f32>,
     /// 0 gravel, 1 tarmac, 2 snow.
     pub surface: u32,
@@ -143,7 +144,8 @@ impl StageRow {
         };
         let origin = match &map.origin {
             Origin::Community(_) => "rsf rallysimfans",
-            Origin::Btb(btb) if btb.ac => "assetto corsa ac import",
+            Origin::Btb(btb) if btb.import == Some(Import::AssettoCorsa) => "assetto corsa ac import",
+            Origin::Btb(btb) if btb.import == Some(Import::DirtRally) => "dirt rally dr import",
             Origin::Btb(_) => "rsf btb",
             Origin::Retail => "retail 1.02",
         };
@@ -158,7 +160,7 @@ impl StageRow {
             author,
             retail: matches!(map.origin, Origin::Retail),
             btb: matches!(map.origin, Origin::Btb(_)),
-            ac: map.btb().is_some_and(|btb| btb.ac),
+            import: map.btb().and_then(|btb| btb.import),
             km,
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
@@ -881,7 +883,8 @@ type Options<'a> =
 fn kind(row: &StageRow) -> &'static str {
     match (row.retail, row.btb, row.added) {
         (true, ..) => "RBR 1.02",
-        _ if row.ac => "Added by you · Assetto Corsa import",
+        _ if row.import == Some(Import::AssettoCorsa) => "Added by you · Assetto Corsa import",
+        _ if row.import == Some(Import::DirtRally) => "Added by you · DiRT Rally import",
         (_, true, true) => "Added by you · BTB",
         (_, false, true) => "Added by you",
         (_, true, false) => "RallySimFans · BTB",
@@ -1102,7 +1105,7 @@ mod tests {
             surface: "gravel",
             circuit: false,
             problem: None,
-            ac: false,
+            import: None,
         };
         let rows = rows_of(&[Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }]);
         assert_eq!(rows[0].country.as_deref(), Some("FI"));
