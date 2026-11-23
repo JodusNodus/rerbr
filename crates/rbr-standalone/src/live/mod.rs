@@ -339,6 +339,16 @@ impl<'a> Live<'a> {
         self.playback.runner.image()
     }
 
+    /// Keeps the steering torque adds for [`Live::take_steer_torques`] (`--steer-breakdown` on the autopilot).
+    pub(crate) fn keep_steer_torques(&mut self) {
+        self.playback.runner.keep_steer_torques = true;
+    }
+
+    /// The steering torque adds kept since the last call ([`rbr_step::runner::Runner::take_steer_torques`]).
+    pub(crate) fn take_steer_torques(&self) -> Vec<rbr_physics::wheel::layout::SteerTorque> {
+        self.playback.runner.take_steer_torques()
+    }
+
     /// NGP's base address in the image.
     pub(crate) fn ngp_base(&self) -> u32 {
         self.playback.runner.ngp_base

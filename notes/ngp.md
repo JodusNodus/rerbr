@@ -348,6 +348,24 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     our pneumatic trail is shorter than AC's, so less mechanical trail gives its shape.
   - Level against NGP's torque (median above 8 m/s): at 25 mm 0.73 of it for the Fiesta, 1.12-1.16 for the A110
     (its caster trail is short); the per-car sensitivity takes it up. Not tried on a wheel.
+  - NGP's own caster trail by car (2026-11-23; `--autopilot --circle -260,120,40` on track-85_M, 24000 steps, with
+    `--steer-breakdown`; `w_lateral / (w_gain w_fy)` over hub `|fy|` past 1500 N, both fronts, the 102 cars of the
+    user's added-cars folder): median 24 mm (p10 21, p90 38, 15-43), so the fixed 25 mm is the typical car's. Long:
+    the Rally2 and Rally3 Evo cars, the S2000s, the kit cars, the Punto S2000 (37-43); BMW M1 and M3, Porsche 911
+    GT3, Fiat 131 31-37. Short: Favorit, Trabant, Wartburg, Skoda 130 15-18. Within a car it spans about 2 times
+    over the circle (p10-p90 e.g. 11-31 mm). Pneumatic trail there median 14 mm (6-19). At a car's own lever the
+    level against 25 mm is 0.72-1.46 (sensitivity takes it) and the long-trail cars' aligning share falls to
+    0.26-0.28, AC's 40 mm shape, with less of the lightening.
+  - Front lock-up (2026-11-23; breakdown `tK_kappa` = slip velocity along the rolling axis over the contact's
+    longitudinal speed, at least 1 m/s, 1 locked; `tK_phase` 2 sliding): the force goes light as the fronts lock.
+    Autopilot full brake mid-corner on the r40 circle (Escort Mk II, Fiesta Rally2, 208 Rally4, Fabia R5 evo, Stratos;
+    tarmac from 15 m/s, gravel 345 from 12): on tarmac from 0.67-0.96 to 0.26-0.47 within 0.1-0.2 s, back to
+    0.6-0.8 as the locked fronts' slip angle grows to 6-9 deg (Fy/Fz 0.2 to 0.4-0.5, the trail's 25 mm on the
+    sliding force); on gravel from 0.44-0.64 to 0.05-0.21 and stays. Threshold braking (`--brake-slip 0.1`, kappa
+    0.05-0.06) keeps 0.69-0.97 on tarmac. User drives (above 8 m/s, brake past 0.3, front slip 2-8 deg), by the
+    larger front kappa: tarmac drive1/2 0.79 (under 0.05), 0.74, 0.48 (0.15-0.4), 0.33 locked (2.2 % of braking);
+    gravel rsf-test1 0.47, 0.49, 0.29, 0.12, 0.11 locked (17.7 %); snow drive2/5 0.61, 0.55, 0.40, 0.28 (0.4-0.8;
+    1.4 % locked). So lock-up needs no cue of its own. NGP's torque does the same on tarmac and swings ±0.9 on gravel.
 - NGP's torque unfiltered and mapped as a line (ours, a trial 2026-11-21, dropped 2026-11-22 at the user's call):
   the last step's `rack_ratio * steer_torque_sum` (`+0xadc`, cleared at each step's start, read by
   `UpdateFfbTorque`) through NGP's curve without the filter's blend. The filter is light (blend 0.5-0.7 a 7 ms step:

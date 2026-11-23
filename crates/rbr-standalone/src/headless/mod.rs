@@ -32,7 +32,7 @@ use crate::physics::{boot_playback, chain, fit_physics, load_substeps, run_guard
 use crate::stage::StageData;
 
 mod report;
-mod steer;
+pub(crate) mod steer;
 mod trace;
 
 use report::report;

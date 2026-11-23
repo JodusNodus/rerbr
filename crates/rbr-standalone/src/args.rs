@@ -176,8 +176,8 @@ pub struct Args {
     /// `--wall-clock FILE` (with `--recorded-payload`): the recording's wall clock per step for NGP's starter.
     pub wall_clock: Option<PathBuf>,
     pub trace_out: Option<PathBuf>,
-    /// `--steer-breakdown FILE` (with `--recording`, research tooling): what NGP's steering torque is made of, a CSV
-    /// row per step (`headless/steer.rs`).
+    /// `--steer-breakdown FILE` (with `--recording` or `--autopilot`, research tooling): what NGP's steering torque is
+    /// made of, a CSV row per step (`headless/steer.rs`; the autopilot's rows have no controls).
     pub steer_breakdown: Option<PathBuf>,
     /// `--ffb-settings ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD` (with `--trace-out`): the player's settings the
     /// trace's magnitude takes (`rbr_gameplay::ffb::Settings`; default on, 1, normal, no dead zone).
@@ -236,7 +236,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a circuit session (with --boot, a stage whose drive line is closed): --laps N|open
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--steer-breakdown FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)] [--ffb-surface W (with --ffb-tyres, a trial: the road's texture, NGP's front wheels' braking, drive and vertical forces about the steering axis at 5-30 Hz, at weight W, 0 to 3; surface_ffb.rs)]
@@ -551,8 +551,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     {
         return Err("--recorded-payload and --trace-out need --recording, and no --live or --autopilot".into());
     }
-    if args.steer_breakdown.is_some() && (args.live || args.recording.is_none() || args.autopilot.is_some()) {
-        return Err("--steer-breakdown needs --recording, and no --live or --autopilot".into());
+    if args.steer_breakdown.is_some() && (args.live || (args.recording.is_none() && args.autopilot.is_none())) {
+        return Err("--steer-breakdown needs --recording or --autopilot, and no --live".into());
     }
     if ffb_settings.is_some() && args.trace_out.is_none() {
         return Err("--ffb-settings needs --trace-out".into());
@@ -1166,7 +1166,7 @@ mod tests {
             ),
             (
                 format!("{LIVE} --steer-breakdown S.csv"),
-                "--steer-breakdown needs --recording, and no --live or --autopilot",
+                "--steer-breakdown needs --recording or --autopilot, and no --live",
             ),
             (format!("{REC} --recorded-payload --ffb-settings 1,1,0,0,0"), "--ffb-settings needs --trace-out"),
             (format!("{REC} --extra-payloads EP"), "--extra-payloads and --wall-clock need --recorded-payload"),

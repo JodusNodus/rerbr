@@ -262,6 +262,13 @@ pub fn drive(
         Some(path) => Some(crate::tyre_probe::TyreProbe::create(path, measure.tyre_probe_every)?),
         None => None,
     };
+    let mut steer_log = match &measure.steer_breakdown {
+        Some(path) => {
+            live.keep_steer_torques();
+            Some(crate::headless::steer::SteerLog::create(path, live.step_clock().step)?)
+        }
+        None => None,
+    };
     let mut hit: Option<u32> = None;
     let mut last: Option<(Vec<u8>, QuantizedControl)> = None;
     let word6 = read_u32(&control, 24).expect("payload word 6");
@@ -280,6 +287,9 @@ pub fn drive(
         }
         file.write_all(&answer[..FRAME_BYTES]).map_err(failed)?;
         drove.steps += 1;
+        if let Some(log) = &mut steer_log {
+            log.frame(live.mem(), step, &live.take_steer_torques(), &[])?;
+        }
         if let Some(probe) = &mut probe {
             probe.step(live.mem(), step, false)?;
         }
@@ -439,6 +449,9 @@ pub fn drive(
         );
     }
     file.flush().map_err(failed)?;
+    if let Some(log) = steer_log {
+        log.finish()?;
+    }
     drove.out = Some(crate::rally::stage_out(live.mem(), live.game().end_now(), live.game().race_clock().jumped));
     Ok(drove)
 }

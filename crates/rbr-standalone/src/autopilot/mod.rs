@@ -585,6 +585,9 @@ pub struct Measure {
     pub trace_speed: Option<std::path::PathBuf>,
     /// `--trace-wheels`: the trace adds the front wheels' tyre columns.
     pub trace_wheels: bool,
+    /// `--steer-breakdown FILE`: what NGP's steering torque is made of, a CSV row per step, without the controls
+    /// (`headless::steer`, research tooling).
+    pub steer_breakdown: Option<std::path::PathBuf>,
     /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<std::path::PathBuf>,
     /// `--tyre-probe-every N`: the probe's interval in steps.

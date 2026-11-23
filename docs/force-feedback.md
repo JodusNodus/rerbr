@@ -46,7 +46,12 @@ on. If the wheel's smoothing setting is high, it smooths the texture away too.
 I recorded Assetto Corsa EVO's force from its telemetry in a GT4, an MX-5 and an A110 S. It matches the front tyres'
 aligning moment plus their sideways force times 36-45 mm, sent in a straight line. ReRBR's tyres have a shorter
 pneumatic trail than AC EVO's, so 40 mm here leaves too little lightening. With 25 mm the torque peaks at 4-6° of front
-slip and keeps 0.69-0.86 of its peak at 10°, close to AC EVO's.
+slip and keeps 0.69-0.86 of its peak at 10°, close to AC EVO's. It is also the typical NGP car's own: over 102
+cars, NGP's steering geometry gives a median of 24 mm, from 15 mm (Trabant) to 43 mm (Punto S2000); the Rally2 cars
+have 38-43 mm.
+
+When the front wheels lock under braking, their sideways force collapses and the wheel goes light: on tarmac to about
+half within 0.2 s, on gravel nearly to nothing.
 
 The measurements are in [notes/ngp.md](../notes/ngp.md), section "Force feedback". The code is in
 `crates/rbr-standalone/src/tyre_ffb.rs`.
