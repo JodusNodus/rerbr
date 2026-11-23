@@ -199,7 +199,7 @@ pub(super) fn bake(
     let dispatch = |encoder: &mut wgpu::CommandEncoder, pipeline, groups: &[wgpu::BindGroup]| {
         let mut pass = encoder.begin_compute_pass(&Default::default());
         pass.set_pipeline(pipeline);
-        for (b, group) in buffers.iter().zip(groups) {
+        for (b, group) in buffers.iter().zip(groups).filter(|(b, _)| b.baked) {
             pass.set_bind_group(0, group, &[]);
             pass.dispatch_workgroups(b.vertex_count.div_ceil(64), 1, 1);
         }
@@ -421,7 +421,8 @@ impl Surfaces {
         let mut drawn: Vec<(&GpuMesh, &GpuDraw)> = meshes
             .iter()
             .filter(|mesh| mesh.visible && mesh.anchor == Anchor::World && mesh.in_car.is_none())
-            .filter(|mesh| mesh.layer != Layer::Sky && !mesh.car)
+            // The instanced meshes (trees) send no light down: their packs are not baked.
+            .filter(|mesh| mesh.layer != Layer::Sky && !mesh.car && mesh.instances.is_none())
             .filter(|mesh| mesh.bounds.is_none_or(|(centre, half)| frustum.intersects_box(centre, half)))
             .flat_map(|mesh| mesh.draws.iter().map(move |draw| (mesh, draw)))
             .filter(|(_, draw)| {

@@ -3,12 +3,13 @@
 //! (for development), draws from the track folder instead of `Maps/`. What each effect and
 //! technique becomes, and what is missing: `notes/btb.md` "Drawing".
 //!
-//! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
-//! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
+//! Every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and `LODOut` (a mesh each,
+//! drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds, except the objects that
+//! ask to be instanced (`ReRbrInstanced=1`, [`instanced`]): their mesh is stored once and each placement is a transform
+//! ([`placed`]), grouped the same way.
 
-use super::mesh::{
-    Bounds, Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex,
-};
+use super::mesh::{Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex};
+use super::placed::{self, bounds_and_cell, Instance, AMBIENT};
 use super::{
     Address, Anchor, Error, GrassFx, GrassOccluder, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName,
     TextureRef, TextureSet,
@@ -37,8 +38,6 @@ pub(super) fn track(name: &str) -> Option<rbr_btb::track::Track> {
     rbr_btb::track::Track::open(&source(name)?).ok()
 }
 
-/// The `ambient` of every BTB material (`materials.ini`, 0.4 in all folders): the light's floor.
-const AMBIENT: f32 = 0.4;
 /// Side of the cells small placements are grouped by, metres.
 const CELL: f32 = 128.0;
 /// A placement wider than this (half extent, metres) is a mesh of its own: the terrain tiles.
@@ -87,6 +86,8 @@ fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Optio
     }
 }
 
+/// The fewest placements of an object that `RBR_BTB_INSTANCE=auto` draws as instances.
+const AUTO_MIN: usize = 8;
 /// The triangles of a placement [`on_ground`] samples, at most.
 const GROUND_SAMPLES: usize = 64;
 
@@ -214,20 +215,45 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     let step = scene.driveline.len().div_ceil(DOME_POINTS).max(1);
     let dome_points: Vec<Vec3> = scene.driveline.iter().step_by(step).map(|&p| Vec3::from(p)).collect();
     let mut groups = Groups::default();
+    let mut placed = placed::Builder::default();
+    let auto = std::env::var("RBR_BTB_INSTANCE").is_ok_and(|v| v == "auto");
     for object in scene.objects.iter().filter(|o| o.visible) {
         let Some(plan) = &plans[object.mesh] else { continue };
         let mesh = &scene.meshes[object.mesh];
         let (low, high) = local_bounds(mesh);
+        let instancing = instanced(object, plan, auto);
         for placement in &object.placements {
             let (centre, half) = world_bounds(placement, low, high);
             let solo = half.max_element() > SOLO;
+            let reach = if solo { half.length() } else { 0.0 };
+            let lod = band(object.lod_in, object.lod_out + reach);
+            if instancing && !solo {
+                // Forced on an object that did not ask (development), a converted stage's ground stays baked.
+                let on = || {
+                    let vertices = world_vertices(mesh, plan, placement, to_sun);
+                    loaded.as_ref().is_some_and(|collision| on_ground(&vertices, &mesh.indices, collision))
+                };
+                if object.instanced || !on() {
+                    let model = placed.model(object.mesh, || placed::Model {
+                        vertices: model_vertices(mesh, plan),
+                        indices: mesh.indices.clone(),
+                    });
+                    let cell = ((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32);
+                    let key = (model, cell, lod, object.sun_cascades);
+                    placed.add(
+                        key,
+                        &plan.draws,
+                        Instance::new(placement, to_sun, plan.up),
+                        (centre - half, centre + half),
+                    );
+                    continue;
+                }
+            }
             let cell = if solo {
                 Cell::Solo(groups.solos.next())
             } else {
                 Cell::At((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32)
             };
-            let reach = if solo { half.length() } else { 0.0 };
-            let lod = band(object.lod_in, object.lod_out + reach);
             let vertices = world_vertices(mesh, plan, placement, to_sun);
             if let (Some(texture), Some(fx)) = (plan.hides, grass_fx.as_mut()) {
                 fx.occluders.extend(mesh.indices.chunks_exact(3).map(|t| {
@@ -253,6 +279,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     }
     let mut meshes = groups.finish();
     meshes.sort_by_key(|mesh| mesh.layer);
+    let placed = placed.finish();
     let (pieces, triangles) =
         (meshes.len(), meshes.iter().flat_map(|m| &m.draws).map(|d| d.indices.len() / 3).sum::<usize>());
     if std::env::var_os("RBR_BTB_STATS").is_some() {
@@ -271,6 +298,16 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles \
              ({bumped} with a normal map, {highlit} with a highlight, {sheened} with a sheen)",
             scene.objects.len()
+        );
+    }
+    if std::env::var_os("RBR_BTB_STATS").is_some() && !placed.groups.is_empty() {
+        eprintln!(
+            "btb: instanced {} models ({} vertices), {} placements in {} groups, {} triangles",
+            placed.models.len(),
+            placed.models.iter().map(|m| m.vertices.len()).sum::<usize>(),
+            placed.instances.len(),
+            placed.groups.len(),
+            placed.triangle_count()
         );
     }
     let driveline: Vec<Vec3> = scene.driveline.iter().map(|&p| Vec3::from(p)).collect();
@@ -296,6 +333,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         name: name.to_owned(),
         selection,
         meshes,
+        placed,
         interactive: Vec::new(),
         texture_names,
         textures: BTreeMap::new(),
@@ -349,35 +387,59 @@ struct Plan {
     hides: Option<Option<TextureRef>>,
 }
 
-/// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the
-/// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha.
-fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun: Vec3) -> Vec<Vertex> {
+/// Whether the placements of `object` are drawn as instances ([`placed`]): when it asks (`ReRbrInstanced`) or, to compare
+/// the two (`RBR_BTB_INSTANCE=auto`), when it has at least [`AUTO_MIN`]; and it has a few placements, is no
+/// collision ground and neither grows nor hides the grass (which are read in the world).
+fn instanced(object: &scene::Object, plan: &Plan, auto: bool) -> bool {
+    let grows = plan.draws.iter().any(|(_, state)| state.grass.is_some());
+    let asks = object.instanced || (auto && object.placements.len() >= AUTO_MIN);
+    asks && object.placements.len() >= 2 && !object.collides && !grows && plan.hides.is_none()
+}
+
+/// One vertex of `mesh`: the plan's UV sets and lerp weight, with `position`, `normal` and the light's `shade`.
+fn vertex(mesh: &scene::Mesh, plan: &Plan, i: usize, position: [f32; 3], normal: [f32; 3], shade: u8) -> Vertex {
     let uv = |set: Option<usize>, i: usize| {
         set.and_then(|s| mesh.uvs.get(s)).and_then(|uvs| uvs.get(i)).copied().unwrap_or([0.0; 2])
     };
+    let weight = if plan.lerp { mesh.blend.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0) } else { 1.0 };
+    Vertex {
+        position,
+        color: [shade, shade, shade, (weight * 255.0).round() as u8],
+        uv0: uv(Some(0), i),
+        uv1: if plan.lerp { uv(plan.uv_lerp, i) } else { plan.uv_bump.map_or([0.0; 2], |s| uv(Some(s), i)) },
+        uv2: [0.0; 2],
+        normal,
+        specular: plan.uv_specular.map_or([0.0; 3], |s| {
+            let [u, v] = uv(Some(s), i);
+            [u, v, 1.0]
+        }),
+        occlusion: 0.0,
+        sky_dir: 0,
+        bounce: [0; 2],
+        wet: 0.0,
+        edge: 0.0,
+    }
+}
+
+/// The mesh's vertices in the world for `placement`: lit by the sun as the effects do, `(ambient + N.L)` on the
+/// texture, in the vertex colour (the renderer's own light replaces it); the lerp weight in the alpha.
+fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun: Vec3) -> Vec<Vertex> {
     (0..mesh.positions.len())
         .map(|i| {
             let normal = if plan.up { [0.0, 1.0, 0.0] } else { scene::place_normal(placement, mesh.normals[i]) };
             let light = (AMBIENT + Vec3::from(normal).dot(to_sun).max(0.0)).min(1.0);
             let shade = (light * 255.0).round() as u8;
-            let weight = if plan.lerp { mesh.blend.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0) } else { 1.0 };
-            Vertex {
-                position: scene::place_point(placement, mesh.positions[i]),
-                color: [shade, shade, shade, (weight * 255.0).round() as u8],
-                uv0: uv(Some(0), i),
-                uv1: if plan.lerp { uv(plan.uv_lerp, i) } else { plan.uv_bump.map_or([0.0; 2], |s| uv(Some(s), i)) },
-                uv2: [0.0; 2],
-                normal,
-                specular: plan.uv_specular.map_or([0.0; 3], |s| {
-                    let [u, v] = uv(Some(s), i);
-                    [u, v, 1.0]
-                }),
-                occlusion: 0.0,
-                sky_dir: 0,
-                bounce: [0; 2],
-                wet: 0.0,
-                edge: 0.0,
-            }
+            vertex(mesh, plan, i, scene::place_point(placement, mesh.positions[i]), normal, shade)
+        })
+        .collect()
+}
+
+/// The mesh's vertices in its own space, for [`Instance::place`] to place and light.
+fn model_vertices(mesh: &scene::Mesh, plan: &Plan) -> Vec<Vertex> {
+    (0..mesh.positions.len())
+        .map(|i| {
+            let normal = if plan.up { [0.0, 1.0, 0.0] } else { mesh.normals[i] };
+            vertex(mesh, plan, i, mesh.positions[i], normal, 255)
         })
         .collect()
 }
@@ -521,19 +583,17 @@ impl Groups {
                     draws.push(Draw { indices: first..indices.len(), state, lod: group.lod });
                 }
                 // The sky has no bounds: always drawn.
-                let bounds = (group.layer != Layer::Sky).then(|| Bounds {
-                    center: (group.low + group.high) / 2.0,
-                    half_extent: (group.high - group.low) / 2.0,
-                });
-                // A mesh whose own range reaches past the game's cells (`visibility::DRAW_REACH`) is culled by that range
-                // alone: a converted stage's far scenery, kept to the far plane (Joux Verte's mountains 3.6 km off).
-                let far_scenery =
-                    matches!(group.lod, Lod::Band { far, .. } if f32::from(far) > crate::visibility::DRAW_REACH);
+                let (bounds, cell) = if group.layer == Layer::Sky {
+                    (None, None)
+                } else {
+                    let (bounds, cell) = bounds_and_cell(group.low, group.high, group.lod);
+                    (Some(bounds), cell)
+                };
                 Mesh {
                     layer: group.layer,
                     anchor: Anchor::World,
                     bounds,
-                    cell: bounds.filter(|_| !far_scenery),
+                    cell,
                     vertices: group.vertices,
                     indices,
                     draws,
@@ -578,6 +638,111 @@ mod tests {
         let meshes = groups.finish();
         let casting: Vec<(bool, usize)> = meshes.iter().map(|m| (m.sun_cascades, m.indices.len() / 3)).collect();
         assert_eq!(casting, [(true, 2), (false, 2), (true, 1)]);
+    }
+
+    fn state() -> DrawState {
+        DrawState {
+            textures: [None; 2],
+            shadow: None,
+            address: [Address::Wrap; 2],
+            second_texture: false,
+            alpha_ref: None,
+            mip_bias: false,
+            ground: false,
+            grass: None,
+            cull_back: false,
+            blend: false,
+            depth_test: true,
+            depth_write: true,
+            shade: None,
+            specular: None,
+            surface: None,
+        }
+    }
+
+    fn plan(up: bool, lerp: bool) -> Plan {
+        Plan {
+            draws: vec![(Layer::Solid, state())],
+            lerp,
+            up,
+            uv_lerp: Some(1),
+            uv_bump: None,
+            uv_specular: Some(1),
+            hides: None,
+        }
+    }
+
+    fn mesh() -> scene::Mesh {
+        scene::Mesh {
+            name: "tree".into(),
+            positions: vec![[0.0, 0.0, 0.0], [1.0, 2.0, 0.5], [-1.5, 3.0, 2.0], [0.2, -1.0, 4.0]],
+            normals: vec![[0.0, 1.0, 0.0], [0.6, 0.0, 0.8], [-0.3, 0.9, 0.3], [0.0, 0.0, -1.0]],
+            tangents: Vec::new(),
+            binormals: Vec::new(),
+            uvs: vec![vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0], [0.25, 0.75]], vec![[0.1, 0.2]; 4]],
+            blend: vec![0.0, 0.3, 1.0, 0.7],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            material: Some(0),
+        }
+    }
+
+    /// A placement turned, scaled and moved: row-major, `p * M`.
+    fn turned() -> [f32; 16] {
+        let (s, c) = 0.7f32.sin_cos();
+        [2.0 * c, 0.0, -2.0 * s, 0.0, 0.0, 1.5, 0.0, 0.0, 2.0 * s, 0.0, 2.0 * c, 0.0, 130.5, 12.0, -77.25, 1.0]
+    }
+
+    #[test]
+    fn a_model_under_an_instance_is_the_placements_expanded_vertices() {
+        let to_sun = Vec3::new(0.3, 0.8, -0.5).normalize();
+        for (up, lerp) in [(false, false), (true, false), (false, true)] {
+            let (mesh, plan) = (mesh(), plan(up, lerp));
+            let placement = turned();
+            let baked = world_vertices(&mesh, &plan, &placement, to_sun);
+            let instance = Instance::new(&placement, to_sun, plan.up);
+            for (model, baked) in model_vertices(&mesh, &plan).iter().zip(&baked) {
+                let placed = instance.place(model);
+                assert_eq!(placed, *baked, "up {up}, lerp {lerp}");
+            }
+        }
+    }
+
+    #[test]
+    fn instanced_groups_have_the_bounds_of_the_expanded_meshes() {
+        let (mesh, plan) = (mesh(), plan(false, false));
+        let (low, high) = local_bounds(&mesh);
+        let to_sun = Vec3::Y;
+        let lod = band(0.0, 300.0);
+        let (mut groups, mut builder) = (Groups::default(), placed::Builder::default());
+        let model = builder
+            .model(0, || placed::Model { vertices: model_vertices(&mesh, &plan), indices: mesh.indices.clone() });
+        for x in [10.0, 20.0, 140.0] {
+            let placement = [turned()[..12].to_vec(), vec![x, 3.0, 5.0, 1.0]].concat().try_into().unwrap();
+            let (centre, half) = world_bounds(&placement, low, high);
+            let cell = ((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32);
+            let vertices = world_vertices(&mesh, &plan, &placement, to_sun);
+            groups.add(
+                (Layer::Solid, Cell::At(cell.0, cell.1), lod, true),
+                state(),
+                &vertices,
+                &mesh.indices,
+                centre - half,
+                centre + half,
+            );
+            builder.add(
+                (model, cell, lod, true),
+                &plan.draws,
+                Instance::new(&placement, to_sun, false),
+                (centre - half, centre + half),
+            );
+        }
+        let (baked, placed) = (groups.finish(), builder.finish());
+        assert_eq!(baked.len(), placed.groups.len());
+        for (mesh, group) in baked.iter().zip(&placed.groups) {
+            assert_eq!((mesh.bounds, mesh.cell), (Some(group.bounds), group.cell));
+            assert_eq!(mesh.indices.len() / 3, placed.models[group.model].indices.len() / 3 * group.instances.len());
+        }
+        assert_eq!(placed.instances.len(), 3);
     }
 
     #[test]

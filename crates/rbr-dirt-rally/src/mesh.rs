@@ -244,7 +244,47 @@ pub fn terrain(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
 /// `gre_rock_rand_small_default_001`), which is what `route_objecttypes` references.
 pub struct Types {
     pub meshes: Vec<Vec<Mesh>>,
+    /// Each type's far-view billboard, where the root holds one.
+    pub sprites: Vec<Option<Sprite>>,
     pub index: BTreeMap<String, usize>,
+}
+
+/// A tree's far level: a camera-facing quad (`foliage_billboard.fx`, the `_x2` node) cut from an atlas of `views`
+/// pictures of the tree turned about its axis in equal steps. The vertices all sit at `centre`; each vertex's
+/// `uv2` is its offset (right, up) from it, in metres of the type's own space.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sprite {
+    /// The `SHADERINSTANCE` id.
+    pub material: String,
+    pub centre: [f32; 3],
+    /// Half the width and the height.
+    pub half: [f32; 2],
+    /// The first view's `[u min, v min, u max, v max]` in the atlas.
+    pub uv: [f32; 4],
+    pub views: u32,
+}
+
+fn sprite_of(meshes: &[Mesh], materials: &BTreeMap<String, Material>) -> Option<Sprite> {
+    let m = meshes.iter().find(|m| {
+        materials.get(&m.material).is_some_and(|x| x.shader == "foliage_billboard.fx")
+            && m.positions.len() == 4
+            && m.uv.len() == 4
+            && m.uv2.is_some()
+    })?;
+    let offsets = m.uv2.as_ref()?;
+    let (mut uv, mut half) = ([f32::MAX, f32::MAX, f32::MIN, f32::MIN], [0f32; 2]);
+    for (t, o) in m.uv.iter().zip(offsets) {
+        uv = [uv[0].min(t[0]), uv[1].min(t[1]), uv[2].max(t[0]), uv[3].max(t[1])];
+        half = [half[0].max(o[0].abs()), half[1].max(o[1].abs())];
+    }
+    let views = (1. / (uv[2] - uv[0])).round();
+    (views >= 1. && half[0] > 0. && half[1] > 0.).then(|| Sprite {
+        material: m.material.clone(),
+        centre: m.positions[0],
+        half,
+        uv,
+        views: views as u32,
+    })
 }
 
 /// What [`types`] draws of a root: the level 0 under its `lod` nodes. The `default` and `damage` nodes beside them
@@ -252,9 +292,9 @@ pub struct Types {
 /// camera-facing billboards (the trees' far levels) and shadow quads are sprites no near view wants.
 pub fn types(pssg: &Pssg) -> Result<Types, String> {
     let materials = material::read(pssg);
-    let mut types = Types { meshes: Vec::new(), index: BTreeMap::new() };
+    let mut types = Types { meshes: Vec::new(), sprites: Vec::new(), index: BTreeMap::new() };
     for root in pssg.find("ROOTNODE") {
-        let (mut meshes, mut seen) = (Vec::new(), BTreeSet::new());
+        let (mut meshes, mut seen, mut sprites) = (Vec::new(), BTreeSet::new(), Vec::new());
         let m = root.transform();
         for lod in root.children().filter(|c| SCENE.contains(&c.name()) && c.str("nickname") == Some("lod")) {
             visit(lod, &mul(&lod.transform(), &m), &mut |instance, parent, m| {
@@ -262,13 +302,19 @@ pub fn types(pssg: &Pssg) -> Result<Types, String> {
                     .str("shader")
                     .and_then(|s| materials.get(s.trim_start_matches('#')))
                     .is_some_and(|x| x.shader.contains("billboard"));
-                if !sprite && seen.insert(instance.str("indices").unwrap_or("").to_owned()) {
-                    meshes.extend(build(instance, parent.id().unwrap_or(""), m, &materials)?);
+                if seen.insert(instance.str("indices").unwrap_or("").to_owned()) {
+                    let built = build(instance, parent.id().unwrap_or(""), m, &materials)?;
+                    if sprite {
+                        sprites.extend(built)
+                    } else {
+                        meshes.extend(built)
+                    }
                 }
                 Ok(())
             })?;
         }
         let at = types.meshes.len();
+        types.sprites.push(sprite_of(&sprites, &materials));
         types.meshes.push(meshes);
         types.index.extend(root.id().map(|id| (id.to_owned(), at)));
         index_nodes(root, at, &mut types.index);

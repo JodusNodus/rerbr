@@ -7,7 +7,7 @@
 //! their textures are named for them ([`STRUCTURES`]), or a piece's part of the texture looks like one
 //! ([`Marks::structure`]: the RSF object atlases hold people, signs and buildings next to their trees).
 
-use crate::stage::{Draw, Image, Mesh, Stage, TextureRef, Vertex};
+use crate::stage::{Draw, DrawState, Image, Mesh, Stage, TextureRef, Vertex};
 use glam::{Vec2, Vec3, Vec3Swizzles};
 use rbr_formats::dds::{self, Format};
 use rbr_formats::stage_files;
@@ -127,7 +127,7 @@ impl Cut {
 /// The textures of the draws `foliage` picks that are cut out at the draw's alpha reference, but for structures, with
 /// their cut-out texels. Only an RSF stage's own textures take the shape test ([`Shape`]): the retail atlases, which
 /// RSF stages borrow too, pack small dry plants and cacti that it takes for structures, and their structures are named.
-pub(crate) fn cut_out(stage: &Stage, foliage: impl Fn(&Draw) -> bool) -> HashMap<TextureRef, Cut> {
+pub(crate) fn cut_out(stage: &Stage, foliage: impl Fn(&DrawState) -> bool) -> HashMap<TextureRef, Cut> {
     let own =
         stage_files::folder(&stage.name).and(stage_files::parts(&stage.name)).map(|(id, _)| format!("track-{id}_"));
     let shaped = |texture: TextureRef| {
@@ -138,8 +138,8 @@ pub(crate) fn cut_out(stage: &Stage, foliage: impl Fn(&Draw) -> bool) -> HashMap
     };
     let mut tested = HashSet::new();
     let mut cut = HashMap::new();
-    for draw in stage.meshes.iter().flat_map(|mesh| &mesh.draws).filter(|draw| foliage(draw)) {
-        let (Some(texture), Some(alpha_ref)) = (draw.state.textures[0], draw.state.alpha_ref) else { continue };
+    for state in stage.states().filter(|state| foliage(state)) {
+        let (Some(texture), Some(alpha_ref)) = (state.textures[0], state.alpha_ref) else { continue };
         if !tested.insert(texture) || stage.texture_names.get(&texture).is_some_and(|name| structure(&name.file_name)) {
             continue;
         }
@@ -460,7 +460,7 @@ pub struct Plants {
 /// ([`trees`] over the cut-out draws [`cut_out`] picks): for tools outside the renderer, which change nothing in it.
 pub fn plants(stage: &Stage) -> Plants {
     let cutout = |draw: &Draw| crate::renderer::cutout(&draw.state);
-    let cut = cut_out(stage, cutout);
+    let cut = cut_out(stage, crate::renderer::cutout);
     let plant = |draw: &Draw| cut.get(&draw.state.textures[0]?).filter(|_| cutout(draw));
     let mut out = Vec::new();
     let mut images = BTreeMap::new();
