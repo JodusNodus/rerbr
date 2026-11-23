@@ -8,6 +8,10 @@
 //! eye at the distance that sees the centre image at that angle, and the side screens follow at their angle and
 //! frame ([`Rig::screens`]). At the seat's own distance's field of view ([`Rig::true_fov`]) the screens show the
 //! world at its true size.
+//!
+//! A curved panel ([`Curved`], `viewer --curved`) is drawn as three flat segments along its arc: a triple rig without
+//! frames whose side screens turn by the angle a segment spans ([`Curved::rig`]). There the field of view the cameras
+//! set is the whole panel's; [`Screens::screens`] turns it into the centre segment's.
 
 use crate::coords;
 use glam::{Mat4, Quat, Vec3};
@@ -16,6 +20,27 @@ use glam::{Mat4, Quat, Vec3};
 const INCH: f32 = 25.4;
 /// The largest side angle taken, degrees: the side screens at right angles to the centre one.
 pub const MAX_ANGLE: f32 = 90.0;
+
+/// The views a frame is drawn as: three like screens, or a curved panel's three segments.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Screens {
+    Triple(Rig),
+    Curved(Curved),
+}
+
+impl Screens {
+    /// The left, centre and right views at horizontal field of view `fov` (radians), each `aspect` wide per high: a
+    /// triple rig's centre screen shows `fov`, a curved panel's whole width does.
+    pub fn screens(&self, fov: f32, aspect: f32) -> [Screen; 3] {
+        match self {
+            Screens::Triple(rig) => rig.screens(fov, aspect),
+            Screens::Curved(panel) => {
+                let whole = aspect * SEGMENTS;
+                panel.rig(whole).screens(panel.centre_fov(fov, whole), aspect)
+            }
+        }
+    }
+}
 
 /// The players' setup: three like screens, the side ones turned in.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,7 +90,7 @@ impl Rig {
 
     /// Each screen's image width, millimetres, for screens `aspect` wide per high.
     pub fn width(&self, aspect: f32) -> f32 {
-        self.diagonal * INCH * aspect / (1.0 + aspect * aspect).sqrt()
+        width(self.diagonal, aspect)
     }
 
     /// The side screens' turn towards the player, radians: the rig's, or the one that faces their images' middles at
@@ -112,6 +137,82 @@ impl Rig {
         };
         let left = Screen { yaw: -angle, left: -right.right, right: -right.left, ..right };
         [left, centre, right]
+    }
+}
+
+/// The width, millimetres, of an image `diagonal` inches across and `aspect` wide per high.
+fn width(diagonal: f32, aspect: f32) -> f32 {
+    diagonal * INCH * aspect / (1.0 + aspect * aspect).sqrt()
+}
+
+/// The flat segments a curved panel is drawn as.
+const SEGMENTS: f32 = 3.0;
+
+/// A curved panel (ours): one screen bent along a circle towards the player, drawn as [`SEGMENTS`] flat segments, the
+/// chords of equal arcs. The segments' heights take the arc's pixels' aspect, about 0.2 % short at 1800R.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Curved {
+    /// The image's diagonal, inches.
+    pub diagonal: f32,
+    /// The curve's radius, millimetres (1800R: 1800).
+    pub radius: f32,
+    /// From the eye to the panel's middle, centimetres.
+    pub distance: f32,
+}
+
+impl Curved {
+    /// Parses `viewer --curved`'s `DIAGONAL,RADIUS,DISTANCE`: inches, millimetres and centimetres. A panel whose
+    /// diagonal is half the circle or more is refused: at some window shape it would span a half circle.
+    pub fn parse(text: &str) -> Option<Curved> {
+        let numbers: Option<Vec<f32>> =
+            text.split(',').map(|p| p.trim().parse::<f32>().ok().filter(|v| v.is_finite() && *v > 0.0)).collect();
+        let [diagonal, radius, distance] = numbers?[..] else { return None };
+        (diagonal * INCH < std::f32::consts::PI * radius).then_some(Curved { diagonal, radius, distance })
+    }
+
+    /// `viewer --curved`'s text for the panel ([`Curved::parse`]).
+    pub fn arg(&self) -> String {
+        format!("{},{},{}", self.diagonal, self.radius, self.distance)
+    }
+
+    /// The image's width along the arc, millimetres, for a panel `aspect` wide per high.
+    pub fn width(&self, aspect: f32) -> f32 {
+        width(self.diagonal, aspect)
+    }
+
+    /// The angle each segment spans about the curve's centre, radians.
+    fn segment_angle(&self, aspect: f32) -> f32 {
+        self.width(aspect) / (SEGMENTS * self.radius)
+    }
+
+    /// The segments as a triple rig for a panel `aspect` wide per high: no frames, each side segment turned by the
+    /// segment angle, each segment's chord as its screen's width and the eye at the centre chord.
+    pub fn rig(&self, aspect: f32) -> Rig {
+        let angle = self.segment_angle(aspect);
+        let chord = 2.0 * self.radius * (angle * 0.5).sin();
+        let sagitta = self.radius * (1.0 - (angle * 0.5).cos());
+        Rig {
+            diagonal: chord / width(1.0, aspect / SEGMENTS),
+            bezel: 0.0,
+            distance: self.distance - sagitta / 10.0,
+            angle: Some(angle.to_degrees()),
+        }
+    }
+
+    /// The centre segment's horizontal field of view (radians) when the whole panel, `aspect` wide per high, shows
+    /// `fov`: the eye's distance in chords is where the outer segments' far edges are `fov` apart.
+    pub fn centre_fov(&self, fov: f32, aspect: f32) -> f32 {
+        let (sin, cos) = self.segment_angle(aspect).sin_cos();
+        let distance = sin + (0.5 + cos) / (fov * 0.5).tan();
+        2.0 * (0.5 / distance).atan()
+    }
+
+    /// The whole panel's horizontal field of view at the panel's distance, radians: the one that shows the world at
+    /// its true size.
+    pub fn true_fov(&self, aspect: f32) -> f32 {
+        let half = self.width(aspect) / (2.0 * self.radius);
+        let depth = self.distance * 10.0 - self.radius * (1.0 - half.cos());
+        2.0 * (self.radius * half.sin()).atan2(depth)
     }
 }
 
@@ -196,6 +297,89 @@ mod tests {
         // Two 10 mm frames at 700 mm hide about 1.4 degrees.
         let gap = (right.left.atan() - centre.right.atan()).to_degrees();
         assert!((gap - 1.36).abs() < 0.05, "{gap}");
+    }
+
+    const ULTRAWIDE: f32 = 32.0 / 9.0;
+
+    fn panel() -> Curved {
+        Curved { diagonal: 49.0, radius: 1800.0, distance: 70.0 }
+    }
+
+    /// The right segment's far edge, as the angle off the centre segment's axis.
+    fn far_edge(screens: &[Screen; 3]) -> f32 {
+        screens[2].yaw + screens[2].right.atan()
+    }
+
+    #[test]
+    fn parses_the_curved_panel_and_refuses_a_half_circle() {
+        assert_eq!(Curved::parse("49,1800,70"), Some(panel()));
+        assert_eq!(Curved::parse(" 49, 1800 ,70"), Some(panel()));
+        assert_eq!(Curved::parse(&panel().arg()), Some(panel()));
+        // 49 inches is 1244.6 mm, half a circle of 396.2 mm radius.
+        assert!(Curved::parse("49,397,70").is_some());
+        for bad in ["", "49,1800", "49,1800,70,1", "0,1800,70", "49,0,70", "49,1800,-1", "49,396,70", "a,1800,70"] {
+            assert_eq!(Curved::parse(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_49_inch_1800r_panel_at_70_cm() {
+        let close = |value: f32, expected: f32, what: &str| assert!((value - expected).abs() < 0.05, "{what} {value}");
+        close(panel().width(ULTRAWIDE), 1198.1, "arc width");
+        let rig = panel().rig(ULTRAWIDE);
+        close(rig.side_angle(ULTRAWIDE / 3.0).to_degrees(), 12.71, "segment angle");
+        close(rig.width(ULTRAWIDE / 3.0), 398.6, "chord");
+        close((70.0 - rig.distance) * 10.0, 11.1, "sagitta");
+        let fov = panel().true_fov(ULTRAWIDE);
+        close(fov.to_degrees(), 88.7, "true field of view");
+        close(panel().centre_fov(fov, ULTRAWIDE).to_degrees(), 32.3, "centre segment's");
+        let flat = Rig { diagonal: 49.0, bezel: 0.0, distance: 70.0, angle: None };
+        close(flat.true_fov(ULTRAWIDE).to_degrees(), 81.1, "flat");
+    }
+
+    #[test]
+    fn the_segments_end_on_the_arc() {
+        let rig = panel().rig(ULTRAWIDE);
+        let (chord, angle) = (rig.width(ULTRAWIDE / 3.0), rig.side_angle(ULTRAWIDE / 3.0));
+        // From the eye, millimetres: across and ahead. The curve's centre is the radius behind the panel's middle.
+        let centre = (0.0, panel().distance * 10.0 - panel().radius);
+        let joint = (chord * 0.5, rig.distance * 10.0);
+        let end = (joint.0 + chord * angle.cos(), joint.1 - chord * angle.sin());
+        for (x, z) in [joint, end] {
+            let off = (x - centre.0).hypot(z - centre.1) - panel().radius;
+            assert!(off.abs() < 0.01, "{off} mm off the arc at {x}, {z}");
+        }
+    }
+
+    #[test]
+    fn the_whole_panel_shows_the_set_field_of_view_and_the_segments_meet() {
+        for degrees in [30.0f32, 65.0, 88.7, 120.0] {
+            let fov = degrees.to_radians();
+            let screens = Screens::Curved(panel()).screens(fov, ULTRAWIDE / 3.0);
+            let [left, centre, right] = screens;
+            assert!((2.0 * far_edge(&screens) - fov).abs() < 1e-5, "{degrees}");
+            assert!((right.yaw + right.left.atan() - centre.right.atan()).abs() < 1e-5);
+            assert!((left.yaw + left.right.atan() - centre.left.atan()).abs() < 1e-5);
+        }
+        // At the true field of view the eye sits at the seat's distance from the centre chord.
+        let fov = panel().true_fov(ULTRAWIDE);
+        let [_, centre, _] = Screens::Curved(panel()).screens(fov, ULTRAWIDE / 3.0);
+        let rig = panel().rig(ULTRAWIDE);
+        let eye = rig.width(ULTRAWIDE / 3.0) * 0.5 / centre.right;
+        assert!((eye - rig.distance * 10.0).abs() < 0.05, "{eye}");
+    }
+
+    #[test]
+    fn a_flat_panel_is_one_view_in_thirds() {
+        let flat = Curved { radius: 1.0e6, ..panel() };
+        let fov = 81.1f32.to_radians();
+        let screens = Screens::Curved(flat).screens(fov, ULTRAWIDE / 3.0);
+        let thirds = (fov * 0.5).tan() / 1.5;
+        let [left, centre, right] = screens.map(|s| [s.yaw + s.left.atan(), s.yaw + s.right.atan()]);
+        for (edges, expected) in [(left, [-3.0, -1.0]), (centre, [-1.0, 1.0]), (right, [1.0, 3.0])] {
+            let expected = expected.map(|t: f32| (t * thirds * 0.5).atan());
+            assert!(edges.iter().zip(expected).all(|(a, b)| (a - b).abs() < 1e-4), "{edges:?} {expected:?}");
+        }
     }
 
     #[test]
