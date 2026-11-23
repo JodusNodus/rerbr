@@ -225,11 +225,7 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                     None
                 } else {
                     let texture = sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r));
-                    match (level, texture) {
-                        (0, t) => t.map(|t| t.dds()),
-                        (level, Some(t)) => Some(faded(&t, level)),
-                        (_, None) => None,
-                    }
+                    texture.map(|t| if level == 0 || level == FADES { t.dds() } else { faded(&t, level) })
                 };
                 // Decals lie on the ground they mark: drawn with their alpha.
                 let transparent = m.node.starts_with("DECAL");
