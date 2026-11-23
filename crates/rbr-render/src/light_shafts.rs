@@ -37,6 +37,13 @@ const CLEAR_AIR: f32 = 0.2;
 /// The same under `UseFog` in a rain section, whose fog stands for the rain's spray and mist (ours: drops are
 /// millimetres and scatter far less than fog's, heavy rain still seeing about 2 km).
 const RAIN_AIR: f32 = 0.1;
+/// The lamps' light in the air scatters toward the eye in a Henyey-Greenstein lobe of this asymmetry, brightest looking
+/// along the light's travel (ours: the beams in fog seen from the seat and the chase view).
+const BEAM_FORWARD: f32 = 0.3;
+/// The same in rain, brightest looking into the lamps (ours): drops scatter forward, so from beside the lamps the
+/// beams show only as a light veil and the road shows through, while the lamps glow facing the car. The fog's lobe
+/// had laid a white wall over the road ahead on main beam (rain Luceram 131 cockpit at 22:30).
+const RAIN_FORWARD: f32 = 0.3;
 
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
@@ -55,12 +62,14 @@ struct Uniform {
 }
 
 /// The car's lamps in the air ([`LightShafts::draw`], `fs_beams`): the frame's clip space to stage space, the eye, the
-/// air's scattering per metre ([`air`]), the lamps at the share they light the stage, and the headlights' shadow map
-/// (`Mat4::ZERO` with no map: beyond the lamps' reach, or the shadows off, the beams shine unshadowed).
+/// air's scattering per metre ([`air`]) and its phase asymmetry ([`beam_phase`]), the lamps at the share they light the
+/// stage, and the headlights' shadow map (`Mat4::ZERO` with no map: beyond the lamps' reach, or the shadows off, the
+/// beams shine unshadowed).
 pub(crate) struct Beams {
     pub(crate) inverse_view_projection: Mat4,
     pub(crate) eye: Vec3,
     pub(crate) air: f32,
+    pub(crate) phase: f32,
     pub(crate) lamps: [LampUniform; MAX_LAMPS],
     pub(crate) lamp: Mat4,
 }
@@ -104,6 +113,18 @@ pub(crate) fn air(atmosphere: &Atmosphere) -> f32 {
         section.min(CLEAR_AIR * fog)
     } else {
         section
+    }
+}
+
+/// The lamps' phase asymmetry in the air (`fs_beams`): [`BEAM_FORWARD`], or less [`RAIN_FORWARD`] while rain falls
+/// (our choice or the section's preset, not snow).
+pub(crate) fn beam_phase(atmosphere: &Atmosphere) -> f32 {
+    let section = atmosphere.section.as_deref().unwrap_or("").to_ascii_lowercase();
+    let snow = section.contains("snow") && !section.contains("nosnow");
+    if atmosphere.precipitation() > 0.0 && !snow {
+        -RAIN_FORWARD
+    } else {
+        BEAM_FORWARD
     }
 }
 
@@ -280,6 +301,7 @@ impl LightShafts {
             let uniform = Uniform {
                 inverse_view_projection: beams.inverse_view_projection.to_cols_array_2d(),
                 eye: beams.eye.extend(beams.air).to_array(),
+                march_dir: [beams.phase, 0.0, 0.0, 0.0],
                 lamps: beams.lamps,
                 lamp_matrix: beams.lamp.to_cols_array_2d(),
                 ..Zeroable::zeroed()
@@ -415,6 +437,18 @@ mod tests {
         assert_eq!(air(&section("45O_N_heavyrain_heavycloud")), RAIN_AIR / 400.0);
         assert_eq!(air(&section("45O_N_norain_lightcloud")), 1.0 / 400.0);
         assert_eq!(air(&Atmosphere { use_fog: false, ..section("45O_N_heavyrain_heavycloud") }), CLEAR_AIR / 400.0);
+    }
+
+    #[test]
+    fn rain_scatters_the_lamps_toward_an_eye_facing_them() {
+        let section = |name: &str| Atmosphere { section: Some(name.into()), ..Default::default() };
+        assert_eq!(beam_phase(&section("45O_N_heavyrain_heavycloud")), -RAIN_FORWARD);
+        assert_eq!(beam_phase(&section("45O_N_lightfog_heavycloud")), BEAM_FORWARD);
+        assert_eq!(beam_phase(&section("13O_E_lightsnow_heavycloud")), BEAM_FORWARD);
+        let chosen = Atmosphere { rain: Some(crate::atmosphere::Rain::Heavy), ..section("45O_N_lightfog_heavycloud") };
+        assert_eq!(beam_phase(&chosen), -RAIN_FORWARD);
+        let dry = Atmosphere { rain: Some(crate::atmosphere::Rain::None), ..section("45O_N_heavyrain_heavycloud") };
+        assert_eq!(beam_phase(&dry), BEAM_FORWARD);
     }
 
     #[test]

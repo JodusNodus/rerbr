@@ -864,8 +864,16 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     } else {
         colour = colour * baked + lamp_albedo(surface, v) * lamp_knee(lamps) * frame.dusk.w;
     }
+    // A pixel's size across the view at the point, metres (the rain's splashes, `splashes`; in uniform control flow).
+    var pixel = 0.0;
+    if (wet && detail_draw()) {
+        pixel = min(length(dpdx(v.world)), length(dpdy(v.world)));
+    }
     if (wet_road) {
-        colour = wet_plus(colour, v);
+        // The light on the road: its lit colour's luminance over its albedo's (a white face's, as the splashes take it).
+        let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+        let light = dot(graded(colour), luma) / max(dot(albedo, luma), 0.01);
+        colour = wet_plus(colour, v, light, pixel);
     }
     // The near ground (`stage::DrawState::ground`) gets fine detail where its textures are blurred.
     if (detail_draw()) {

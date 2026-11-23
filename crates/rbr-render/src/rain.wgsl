@@ -138,8 +138,10 @@ fn vs_rain(@builtin(vertex_index) corner: u32, @builtin(instance_index) index: u
     var out: Out;
     out.clip = vec4<f32>(ndc * end.w, end.z, end.w);
     out.at = c;
-    // Rain shows the sky it refracts, a little brighter where the sun lights it; snow is lit like the stage.
-    var colour = mix(effects.sky.rgb, vec3<f32>(dot(effects.sky.rgb, vec3<f32>(0.333))), 0.5) * 1.4;
+    // Rain shows the sky it refracts, no brighter than the sky behind it (at 1.4 the streaks drew white lines over
+    // an overcast sky and the trees), so by day it shows against dark ground and fades against the sky; snow is lit
+    // like the stage.
+    var colour = mix(effects.sky.rgb, vec3<f32>(dot(effects.sky.rgb, vec3<f32>(0.333))), 0.5) * 1.1;
     if (snow) {
         colour = min(effects.ambient.rgb + effects.sun_colour.rgb * 0.6, vec3<f32>(1.0));
     }
