@@ -88,6 +88,10 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 
 ## Cross-checks
 
+- Look: the Steam store page's official screenshots (app 310560, kept out of Git) show Finland in autumn (yellow
+  birches, pines), Greece warm and dry (golden grass, olive scrub, hazy blue mountains), Sweden with snow-laden
+  spruce over brown-grey icy gravel, Wales dark wet conifer plantations.
+
 - Five AC ports (GabenHood's `onin`, `dr_greece` ladders and snakes, `wales_dr`, `dr_sweed`) are translations of
   `*_rally_01` route_0 (no rotation or scale, heights equal, about 1 m along the road). They are someone's rips of
   unknown method: a hint where ours differ, not a reference.
