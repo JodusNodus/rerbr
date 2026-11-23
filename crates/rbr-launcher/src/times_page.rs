@@ -61,8 +61,8 @@ pub struct TimesPage {
 type Built = Arc<Mutex<Option<Vec<Run>>>>;
 
 /// The widths of the right-aligned columns of the rows, per class and per car.
-const CLASS_COLUMNS: [f32; 5] = [100.0, 52.0, 86.0, 190.0, 90.0];
-const CAR_COLUMNS: [f32; 6] = [190.0, 100.0, 52.0, 86.0, 44.0, 90.0];
+const CLASS_COLUMNS: [f32; 5] = [80.0, 46.0, 76.0, 130.0, 76.0];
+const CAR_COLUMNS: [f32; 6] = [130.0, 80.0, 46.0, 76.0, 32.0, 76.0];
 
 fn clock(ms: u32) -> String {
     rbr_render::hud::clock_label(f64::from(ms) / 1000.0)
@@ -178,7 +178,7 @@ fn draw_row(ui: &egui::Ui, rect: egui::Rect, best: &Best, per_car: bool, (select
     let cell = |k: usize, text: &str, font: &egui::FontId, colour| {
         browser::paint_cell(p, rect, lefts[k], lefts[k] + widths[k], text, font.clone(), colour)
     };
-    browser::paint_cell(p, rect, rect.left() + 14.0, name_right, &run.stage_name, font.clone(), theme::TEXT_LIST);
+    browser::paint_cell(p, rect, browser::name_x(rect), name_right, &run.stage_name, font.clone(), theme::TEXT_LIST);
     let runs = best.runs.to_string();
     if per_car {
         cell(0, &run.car_name, &small, TEXT_2);
@@ -332,11 +332,17 @@ impl Form {
                 return;
             }
             if per_car {
-                let titles =
-                    [("Car", false), ("Class", false), ("Road", false), ("Time", true), ("Runs", true), ("Age", true)];
+                let titles = [
+                    ("Car", false),
+                    ("Class", false),
+                    ("Road", false),
+                    ("Time", false),
+                    ("Runs", false),
+                    ("Age", false),
+                ];
                 browser::list_header(ui, "Stage", &CAR_COLUMNS, &titles);
             } else {
-                let titles = [("Class", false), ("Road", false), ("Time", true), ("Car", false), ("Age", true)];
+                let titles = [("Class", false), ("Road", false), ("Time", false), ("Car", false), ("Age", false)];
                 browser::list_header(ui, "Stage", &CLASS_COLUMNS, &titles);
             }
             let (offset, visible) = self.times.scroll;
