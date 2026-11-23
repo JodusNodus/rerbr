@@ -1060,6 +1060,84 @@ fn the_experimental_physics_idles_revs_to_the_limiter_and_launches() {
     });
 }
 
+/// Each ReRBR profile's version is pinned to a drive: the same fixed inputs (idle, throttle in neutral, first gear,
+/// full throttle, steering, braking) on the boot's stage and car, every step's car pose, wheel poses and HUD speeds hashed (the raw records hold pointers and stale stack) (FNV-1a 64). A change
+/// that moves the car differently under a profile changes its hash, and this fails until the profile's version is
+/// raised in `crates/rbr-recording/src/physics.rs` and the new hash is pinned in `PINNED`. NGP is the physics gate's.
+/// The models' f32/f64 transcendentals may differ between platforms, so the hashes are pinned for x86_64 only: on
+/// other targets the drive runs twice (determinism) and prints its hash without asserting it.
+#[test]
+fn each_rerbr_profile_s_version_is_pinned_to_its_drive() {
+    /// `(profile, version, hash of the drive's answers)`.
+    const PINNED: [(&str, &str, u64); 3] = [
+        ("experimental", "0.1.0", 0x64887567b6efa9cd),
+        ("experimental-brush", "0.1.0", 0xf4da3255830e2b70),
+        ("ngp-brush", "0.1.0", 0x522bc1d0caf1df7d),
+    ];
+    fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
+        bytes.iter().fold(hash, |h, &b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3))
+    }
+    quick_race(|data, stage, race| {
+        let drive_on_this_thread = |profile: crate::profile::Profile| {
+            let mut live = Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
+            let car = crate::race::engine_car(&crate::args::Args::default(), Some(&race), race.car);
+            live.set_physics(profile, car).unwrap();
+            let go = QuantizedControl { throttle: 255, ..QuantizedControl::default() };
+            let first = QuantizedControl { flags: 0x01, ..go };
+            let mut hash = 0xcbf2_9ce4_8422_2325;
+            for k in 0..4500 {
+                let control = match k {
+                    0..1000 => [0; CONTROL_BYTES],
+                    1000..1500 => payload(&go.car_control(), 0),
+                    1500 => payload(&first.car_control(), 0),
+                    1501..2500 => payload(&go.car_control(), 0),
+                    2500..3200 => payload(&QuantizedControl { steering: 60, ..go }.car_control(), 0),
+                    3200..3800 => payload(&QuantizedControl { steering: -60, ..go }.car_control(), 0),
+                    _ => payload(&QuantizedControl { brake: 255, ..QuantizedControl::default() }.car_control(), 0),
+                };
+                let answer = live.answer(&control).unwrap();
+                let frame = &answer[HEADER_BYTES + CONTROL_BYTES..];
+                let car = pose::car_pose(frame).unwrap();
+                let wheels = (0..WHEELS).map(|w| pose::wheel_pose(&frame[CAR_BYTES + w * WHEEL_BYTES..]).unwrap());
+                let hud = Hud::read(&mut &answer[FRAME_BYTES..]).unwrap();
+                let words = car
+                    .position
+                    .into_iter()
+                    .chain(car.orientation)
+                    .chain(car.velocity)
+                    .chain(wheels.flat_map(|w| w.orientation.into_iter().chain([w.roll, w.strut_travel])))
+                    .chain([hud.speed, hud.gear as f32]);
+                hash = words.fold(hash, |h, word| fnv1a(h, &word.to_bits().to_le_bytes()));
+                assert!(!live.stopped, "{}: the drive stopped at step {k}", profile.name);
+            }
+            hash
+        };
+        // Each drive has a thread of its own: the models and caches live in thread-locals that carry a drive's end into
+        // the next one's start.
+        let drive = |profile| on_big_stack(|| drive_on_this_thread(profile)).unwrap();
+        for profile in crate::profile::Profile::ALL.into_iter().filter(|p| !p.is_ngp()) {
+            let hash = drive(profile);
+            assert_eq!(hash, drive(profile), "{}: the drive is not deterministic", profile.name);
+            let version = rbr_recording::physics::PhysicsId::current(profile.name).unwrap().version;
+            eprintln!("{} {version}: {hash:#018x}", profile.name);
+            if cfg!(target_arch = "x86_64") {
+                let (_, pinned_version, pinned) = *PINNED.iter().find(|(name, ..)| *name == profile.name).unwrap();
+                assert_eq!(
+                    version, pinned_version,
+                    "{} is version {version}, pinned at {pinned_version}: pin the drive's hash {hash:#018x} for the new version",
+                    profile.name
+                );
+                assert_eq!(
+                    hash, pinned,
+                    "{} moves the car differently: raise its version in crates/rbr-recording/src/physics.rs and pin \
+                     the new hash {hash:#018x} here",
+                    profile.name
+                );
+            }
+        }
+    });
+}
+
 /// `--telemetry-udp`: an autopilot drive's packets on a local socket, one per driving frame, carry the frame records'
 /// gear, engine speed, race clock and car position, and count the driving steps. The speed is the driven wheels', in
 /// km/h: with the autopilot's wheelspin it runs above the car's, and at the median near it.

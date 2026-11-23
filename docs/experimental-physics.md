@@ -13,6 +13,11 @@ wheel's force from the front tyres instead of NGP's steering torque and changes 
 While they are experimental, a run with the engine or the tyre saves no records, ghosts or championship results. Its replays carry the choice
 and play back with it.
 
+Each ReRBR profile has a version number, and times and ghosts are kept per version: a run on `experimental@0.1.0` is
+never ranked with one on another version. A change that moves the car differently raises the profile's version. A test
+drives each profile with fixed inputs and pins the hash of the result to its version, so it fails until the version is
+raised (`crates/rbr-recording/src/physics.rs`) and the new hash pinned.
+
 This page explains what NGP's formula does, what our engine model does in its place, the evidence behind each part,
 how both compare with BeamNG.drive's published part-throttle model, and what the aero and the drivetrain loss rest
 on. Every constant with its source is in
