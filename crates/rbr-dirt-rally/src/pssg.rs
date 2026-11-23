@@ -111,9 +111,9 @@ impl Pssg {
             return Err("the node chain after the schema is damaged".into());
         }
         pssg.roots = pssg.read_chain(at, end)?;
-        let id_attr = pssg.attr_names.iter().position(|n| n == "id");
+        // Attribute ids are per node kind: several of them are called `id`.
         for (i, node) in pssg.nodes.iter().enumerate() {
-            let Some((_, r)) = node.attrs.iter().find(|(a, _)| Some(*a as usize) == id_attr) else { continue };
+            let Some((_, r)) = node.attrs.iter().find(|(a, _)| pssg.attr_names[*a as usize] == "id") else { continue };
             if let Some(id) = decode_str(&pssg.data[r.clone()]) {
                 pssg.by_id.entry(id.to_owned()).or_insert(i as u32);
             }

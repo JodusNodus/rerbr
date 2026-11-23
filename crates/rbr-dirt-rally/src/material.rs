@@ -21,18 +21,19 @@ pub struct Material {
 pub fn read(pssg: &Pssg) -> BTreeMap<String, Material> {
     let mut definitions: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for group in pssg.find("SHADERGROUP") {
-        let names = group.children().filter(|c| c.name() == "SHADERINPUTDEFINITION").map(|c| c.str("name").unwrap_or("")).collect();
+        let names = group
+            .children()
+            .filter(|c| c.name() == "SHADERINPUTDEFINITION")
+            .map(|c| c.str("name").unwrap_or(""))
+            .collect();
         definitions.insert(group.id().unwrap_or(""), names);
     }
     let mut out = BTreeMap::new();
     for instance in pssg.find("SHADERINSTANCE") {
         let shader = instance.str("shaderGroup").unwrap_or("").trim_start_matches('#');
         let names = definitions.get(shader);
-        let mut material = Material {
-            id: instance.id().unwrap_or("").to_owned(),
-            shader: shader.to_owned(),
-            ..Material::default()
-        };
+        let mut material =
+            Material { id: instance.id().unwrap_or("").to_owned(), shader: shader.to_owned(), ..Material::default() };
         for input in instance.children().filter(|c| c.name() == "SHADERINPUT") {
             let Some(name) = names.and_then(|n| n.get(input.u32("parameterID")? as usize)) else { continue };
             match input.str("texture") {
@@ -47,8 +48,14 @@ pub fn read(pssg: &Pssg) -> BTreeMap<String, Material> {
 
 /// The inputs a material is drawn with, first found wins: a terrain's first layer, a prop's or tree's diffuse map,
 /// then the layers an infield material starts at and the vista's large map (surveyed on both sample areas).
-const DIFFUSE_INPUTS: [&str; 6] =
-    ["TDiffuseSpecMap1", "TDiffuseAlphaMap", "TDiffuseSpecMap2", "TDiffuseSpecMap3", "TlargeColourMap", "TTopDownDiffuseAlphaMap"];
+const DIFFUSE_INPUTS: [&str; 6] = [
+    "TDiffuseSpecMap1",
+    "TDiffuseAlphaMap",
+    "TDiffuseSpecMap2",
+    "TDiffuseSpecMap3",
+    "TlargeColourMap",
+    "TTopDownDiffuseAlphaMap",
+];
 
 /// The input name and texture reference a material is drawn with; `None` for materials without one (`batched_track`).
 pub fn diffuse_input(m: &Material) -> Option<(&str, &str)> {
@@ -89,10 +96,14 @@ mod tests {
 
     #[test]
     fn diffuse_follows_the_shader_family() {
-        let road = material(&["TNormalMap1", "TDiffuseSpecMap2", "TDiffuseSpecMap1"], &[("Map1UVScaleAndOffset", &[2., 3., 0.5, 0.25])]);
+        let road = material(
+            &["TNormalMap1", "TDiffuseSpecMap2", "TDiffuseSpecMap1"],
+            &[("Map1UVScaleAndOffset", &[2., 3., 0.5, 0.25])],
+        );
         assert_eq!(diffuse(&road), Some("f.pssg#TDiffuseSpecMap1.tga"));
         assert_eq!(uv_transform(&road), [2., 3., 0.5, 0.25]);
-        let infield = material(&["TDiffuseSpecMap3", "TDiffuseSpecMap2"], &[("Map2UVScaleAndOffset", &[0., 0., 0., 0.])]);
+        let infield =
+            material(&["TDiffuseSpecMap3", "TDiffuseSpecMap2"], &[("Map2UVScaleAndOffset", &[0., 0., 0., 0.])]);
         assert_eq!(diffuse_input(&infield).map(|d| d.0), Some("TDiffuseSpecMap2"));
         assert_eq!(uv_transform(&infield), [1., 1., 0., 0.]);
         let prop = material(&["TSpecularMap", "TDiffuseAlphaMap"], &[]);
@@ -107,9 +118,18 @@ mod tests {
                 let p = Pssg::read(&area.join(file)).unwrap();
                 let materials = read(&p);
                 assert!(!materials.is_empty(), "{file}");
-                let without: Vec<_> = materials.values().filter(|m| diffuse(m).is_none()).map(|m| m.shader.as_str()).collect();
+                let without: Vec<_> =
+                    materials.values().filter(|m| diffuse(m).is_none()).map(|m| m.shader.as_str()).collect();
                 eprintln!("{} {file}: {} materials, without a diffuse: {without:?}", area.display(), materials.len());
-                assert!(without.iter().all(|s| ["batched_track.fx", "volumetrics.fx", "foliage_billboard_double_shadow.fx"].contains(s)), "{without:?}");
+                assert!(
+                    without.iter().all(|s| [
+                        "batched_track.fx",
+                        "volumetrics.fx",
+                        "foliage_billboard_double_shadow.fx"
+                    ]
+                    .contains(s)),
+                    "{without:?}"
+                );
             }
         }
     }
