@@ -73,9 +73,10 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   stood bare. `import::cards` places them upright, turned between the road point and back along the road
   (`facing`), wound to show to that side. Drawn triangles (with the terrain shading merged): Finland route_0 33.2 M -> 9.3 M, Germany
   panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 10 s and 3.0 GB (stage folder 754 MB, Greece 486, Germany 659)
-  (17 s, 8.8 GB before). Not done: the `*_facing` types (a
-  `treesheet_foliage_norm` quad whose vertices all sit at one point, so it draws nothing), grass (`grass.grs`), cloth,
-  `ornaments.bin`; foliage is drawn one-sided as the BTB mesh is.
+  (17 s, 8.8 GB before). The `*_facing` types (`treesheet_foliage_norm`, a whole tree or bush on one card) are the
+  same trick: any mesh whose triangles all collapse to a point with offsets in the second stream is placed as cards
+  (`import::is_cards`; the `*_dist_*` tiles share the shader with real geometry). Not done: grass (`grass.grs`),
+  cloth, `ornaments.bin`; foliage is drawn one-sided as the BTB mesh is.
 
 ## Course
 
