@@ -67,8 +67,11 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   `/tmp/dr-tree-shots/sc-*`); each shows the atlas view of its turn against the viewer (the view order is a guess; the
   views look alike). Each type's `_x2` samples its own atlas (`<tree>_lod_d.tga`) and the near model its own
   `*_fo_d`/`*_tr_d`: both are autumn (birch leaves average (182, 144, 59), the atlas (133, 114, 57)), as the game's
-  Finland shot is, so the yellow far birches are right and the near ones are the odd ones when they look bare
-  (not investigated). Drawn triangles (with the terrain shading merged): Finland route_0 33.2 M -> 9.3 M, Germany
+  Finland shot is. The near leaves had been missing because `facing_foliage.fx` cards keep all four vertices at the
+  card's centre with the corner offsets (right, up, metres) in the second `ST` stream (as the billboards do) and the
+  game's shader turns them to the camera: drawn as stored they were zero-area, so olives, birches and round bushes
+  stood bare. `import::cards` places them upright, turned between the road point and back along the road
+  (`facing`), wound to show to that side. Drawn triangles (with the terrain shading merged): Finland route_0 33.2 M -> 9.3 M, Germany
   panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 10 s and 3.0 GB (stage folder 754 MB, Greece 486, Germany 659)
   (17 s, 8.8 GB before). Not done: the `*_facing` types (a
   `treesheet_foliage_norm` quad whose vertices all sit at one point, so it draws nothing), grass (`grass.grs`), cloth,
