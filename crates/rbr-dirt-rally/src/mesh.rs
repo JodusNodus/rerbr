@@ -239,37 +239,6 @@ pub fn terrain(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
     Ok(meshes)
 }
 
-/// The level-0 meshes of each object type of an `objects`, `route_objects` or `trees` file in its own space, by the id
-/// of the `NODE` named `default` under its `ROOTNODE` (`default!19`), which is what `route_objecttypes` references
-/// (`objects.pssg#default!19`). A root without one is keyed by its own id. Skinned parts and the `*_physics` nodes
-/// (which reuse the visible sources) are left out.
-pub fn objects(pssg: &Pssg) -> Result<BTreeMap<String, Vec<Mesh>>, String> {
-    let materials = material::read(pssg);
-    let mut out = BTreeMap::new();
-    for root in pssg.find("ROOTNODE") {
-        let mut meshes = Vec::new();
-        let mut seen = BTreeSet::new();
-        visit(root, &root.transform(), &mut |instance, parent, m| {
-            let id = parent.id().unwrap_or("");
-            if !parent.str("nickname").unwrap_or("").ends_with("_physics")
-                && seen.insert(instance.str("indices").unwrap_or("").to_owned())
-            {
-                meshes.extend(build(instance, id, m, &materials)?);
-            }
-            Ok(())
-        })?;
-        let mut keys = Vec::new();
-        collect_defaults(root, &mut keys);
-        if keys.is_empty() {
-            keys.push(root.id().unwrap_or("").to_owned());
-        }
-        for key in keys {
-            out.insert(key, meshes.clone());
-        }
-    }
-    Ok(out)
-}
-
 /// The placeable object types of an `objects`, `route_objects` or `trees` file: each `ROOTNODE`'s visible level-0
 /// meshes in its own space, and the ids that name it (its own and every node under it, `default!2`,
 /// `gre_rock_rand_small_default_001`), which is what `route_objecttypes` references.
@@ -311,15 +280,6 @@ fn index_nodes(node: Node, at: usize, index: &mut BTreeMap<String, usize>) {
     for child in node.children().filter(|c| c.name() == "NODE") {
         index.extend(child.id().map(|id| (id.to_owned(), at)));
         index_nodes(child, at, index);
-    }
-}
-
-fn collect_defaults(node: Node, keys: &mut Vec<String>) {
-    for child in node.children() {
-        if child.name() == "NODE" && child.str("nickname") == Some("default") {
-            keys.extend(child.id().map(str::to_owned));
-        }
-        collect_defaults(child, keys);
     }
 }
 
@@ -434,8 +394,8 @@ mod tests {
             let xml = std::fs::read_to_string(route.join("route_objecttypes.pssg")).unwrap_or_default();
             for (file, dir) in [("objects.pssg", &area), ("route_objects.pssg", &route), ("trees.pssg", &area)] {
                 let started = std::time::Instant::now();
-                let objects = objects(&Pssg::read(&dir.join(file)).unwrap()).unwrap();
-                let all: Vec<Mesh> = objects.values().flatten().cloned().collect();
+                let types = types(&Pssg::read(&dir.join(file)).unwrap()).unwrap();
+                let all: Vec<Mesh> = types.meshes.iter().flatten().cloned().collect();
                 let (tris, _) = check(&all);
                 let wanted: BTreeSet<&str> = xml
                     .split(&format!("{file}#"))
@@ -443,15 +403,15 @@ mod tests {
                     .filter_map(|r| r.split('"').next())
                     .filter(|k| k.starts_with("default"))
                     .collect();
-                let missing: Vec<_> = wanted.iter().filter(|k| !objects.contains_key(**k)).collect();
-                let empty = objects.values().filter(|m| m.is_empty()).count();
+                let missing: Vec<_> = wanted.iter().filter(|k| !types.index.contains_key(**k)).collect();
+                let empty = types.meshes.iter().filter(|m| m.is_empty()).count();
                 eprintln!(
                     "{file}: {} types ({empty} empty), {tris} triangles, {} referenced, missing {missing:?}, {} ms",
-                    objects.len(),
+                    types.meshes.len(),
                     wanted.len(),
                     started.elapsed().as_millis()
                 );
-                assert!(missing.is_empty() && !objects.is_empty());
+                assert!(missing.is_empty() && !types.meshes.is_empty());
             }
         }
     }

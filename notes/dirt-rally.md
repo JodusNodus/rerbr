@@ -58,7 +58,6 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   (terrain 1.9 M); Finland route_0: 16387 + 22228 = 28.9 M (terrain 4.3 M), almost all within 40 m of the road, so the
   range does not thin them. Not done: the far billboard levels, grass (`grass.grs`), cloth, `ornaments.bin`; foliage
   is drawn one-sided as the BTB mesh is.
-  to nodes of `objects.pssg`, `route_objects.pssg` or `trees.pssg`. `trees.bin`, `grass.grs` not decoded.
 
 ## Course
 
