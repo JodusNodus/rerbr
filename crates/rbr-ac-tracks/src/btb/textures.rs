@@ -134,18 +134,75 @@ pub fn merge(color: Option<Image>, factor: [f32; 4], opacity: &Image) -> Vec<u8>
 
 /// A DXT5 (`alpha`, else DXT1) `.dds` of `rgba` with its mip chain, each level the 2x2 box filter of the one above.
 /// Without `alpha` the alpha is ignored: DXT1 would otherwise turn texels under half alpha into transparent black.
-pub fn encode(alpha: bool, mut width: u32, mut height: u32, mut rgba: Vec<u8>) -> Vec<u8> {
+pub fn encode(alpha: bool, width: u32, height: u32, rgba: Vec<u8>) -> Vec<u8> {
+    let format = if alpha { texpresso::Format::Bc3 } else { texpresso::Format::Bc1 };
+    let fourcc = if alpha { *b"DXT5" } else { *b"DXT1" };
+    with_mips(alpha, width, height, rgba, fourcc, |width, height, rgba| {
+        let mut block = vec![0; format.compressed_size(width as usize, height as usize)];
+        let params = texpresso::Params { algorithm: texpresso::Algorithm::RangeFit, ..Default::default() };
+        format.compress(rgba, width as usize, height as usize, params, &mut block);
+        block
+    })
+}
+
+/// A BC7 `.dds` (DX10 header, `BC7_UNORM`) of `rgba` with its mip chain, as [`encode`] makes them: for the baked
+/// colour textures, where DXT1's 5:6:5 endpoints tint smooth near-grey ground magenta and green (a quarter of the
+/// texels of a warm grey ground more than 4/255 off in hue, against none here). Twice DXT1's size, DXT5's.
+pub fn encode_bc7(alpha: bool, width: u32, height: u32, rgba: Vec<u8>) -> Vec<u8> {
+    let settings = if alpha {
+        intel_tex_2::bc7::alpha_very_fast_settings()
+    } else {
+        intel_tex_2::bc7::opaque_very_fast_settings()
+    };
+    with_mips(alpha, width, height, rgba, *b"DX10", |width, height, rgba| bc7_level(&settings, width, height, rgba))
+}
+
+/// One BC7 level: the encoder takes whole blocks, so a level of less is padded with its edge texels; strips of block
+/// rows (16 or more each) are encoded on threads of their own.
+fn bc7_level(settings: &intel_tex_2::bc7::EncodeSettings, width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    let (w, h) = (width.next_multiple_of(4) as usize, height.next_multiple_of(4) as usize);
+    let row = |y: usize| {
+        let row = &rgba[y.min(height as usize - 1) * width as usize * 4..][..width as usize * 4];
+        row.iter().chain(row[row.len() - 4..].iter().cycle().take((w - width as usize) * 4))
+    };
+    let padded: std::borrow::Cow<[u8]> = if (w, h) == (width as usize, height as usize) {
+        rgba.into()
+    } else {
+        (0..h).flat_map(row).copied().collect::<Vec<_>>().into()
+    };
+    let mut out = vec![0; intel_tex_2::bc7::calc_output_size(w as u32, h as u32)];
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(h / 64).max(1);
+    let strip = (h / 4).div_ceil(threads).max(1) * 4;
+    std::thread::scope(|scope| {
+        for (i, blocks) in out.chunks_mut(strip / 4 * (w / 4) * 16).enumerate() {
+            let rows = blocks.len() / ((w / 4) * 16) * 4;
+            let data = &padded[i * strip * w * 4..][..rows * w * 4];
+            scope.spawn(move || {
+                let surface =
+                    intel_tex_2::RgbaSurface { data, width: w as u32, height: rows as u32, stride: w as u32 * 4 };
+                intel_tex_2::bc7::compress_blocks_into(settings, &surface, blocks);
+            });
+        }
+    });
+    out
+}
+
+/// A `.dds` of `rgba` and its box-filtered mip chain, each level made by `level` (`fourcc` `DX10`: a BC7 one).
+fn with_mips(
+    alpha: bool,
+    mut width: u32,
+    mut height: u32,
+    mut rgba: Vec<u8>,
+    fourcc: [u8; 4],
+    level: impl Fn(u32, u32, &[u8]) -> Vec<u8>,
+) -> Vec<u8> {
     if !alpha {
         rgba.chunks_exact_mut(4).for_each(|p| p[3] = 255);
     }
     let (w0, h0) = (width, height);
-    let format = if alpha { texpresso::Format::Bc3 } else { texpresso::Format::Bc1 };
     let mut levels = Vec::new();
     loop {
-        let mut block = vec![0; format.compressed_size(width as usize, height as usize)];
-        let params = texpresso::Params { algorithm: texpresso::Algorithm::RangeFit, ..Default::default() };
-        format.compress(&rgba, width as usize, height as usize, params, &mut block);
-        levels.push(block);
+        levels.push(level(width, height, &rgba));
         if width == 1 && height == 1 {
             break;
         }
@@ -162,10 +219,14 @@ pub fn encode(alpha: bool, mut width: u32, mut height: u32, mut rgba: Vec<u8>) -
     header[7] = levels.len() as u32;
     header[19] = 32;
     header[20] = 0x4;
-    header[21] = u32::from_le_bytes(if alpha { *b"DXT5" } else { *b"DXT1" });
+    header[21] = u32::from_le_bytes(fourcc);
     // Texture, complex, mipmap.
     header[27] = 0x1000 | 0x8 | 0x40_0000;
     let mut file: Vec<u8> = header.iter().flat_map(|w| w.to_le_bytes()).collect();
+    if &fourcc == b"DX10" {
+        // DXGI_FORMAT_BC7_UNORM, a 2D texture, no flags, one in the array, alpha mode unknown.
+        file.extend([98u32, 3, 0, 1, 0].iter().flat_map(|w| w.to_le_bytes()));
+    }
     for block in &levels {
         file.extend_from_slice(block);
     }
@@ -225,6 +286,33 @@ mod tests {
         assert_eq!((dds.width, dds.height, dds.format, dds.mip_count), (8, 8, dds::Format::Dxt5, 4));
         let (_, _, rgba) = decode(&file).unwrap();
         assert_eq!((rgba[3], rgba[7 * 4 + 3], rgba[1]), (0, 255, 128));
+    }
+
+    #[test]
+    fn bc7_keeps_a_warm_grey_ground_grey_where_dxt1_tints_it() {
+        // A smooth warm grey ramp over 37 x 21 texels (neither a multiple of 4: padded levels, the whole chain).
+        let (w, h) = (37u32, 21u32);
+        let rgba: Vec<u8> = (0..w * h)
+            .flat_map(|i| {
+                let g = 100.0 + 50.0 * ((i % w) as f32 / w as f32) + 10.0 * ((i / w) as f32 / h as f32);
+                [(g * 1.06) as u8, g as u8, (g * 0.9) as u8, 255]
+            })
+            .collect();
+        let hue = |t: &[u8]| [i32::from(t[0]) - i32::from(t[1]), i32::from(t[2]) - i32::from(t[1])];
+        let worst = |file: &[u8]| {
+            let (dw, dh, out) = decode(file).unwrap();
+            assert_eq!((dw, dh), (w, h));
+            rgba.chunks(4)
+                .zip(out.chunks(4))
+                .map(|(a, b)| (0..2).map(|k| (hue(a)[k] - hue(b)[k]).abs()).max().unwrap())
+                .max()
+                .unwrap()
+        };
+        let file = encode_bc7(false, w, h, rgba.clone());
+        let dds = dds::parse(&file).unwrap();
+        assert_eq!((dds.format, dds.mip_count, dds.levels().len()), (dds::Format::Bc7, 6, 6));
+        assert!(worst(&file) <= 2, "BC7 hue off by {}", worst(&file));
+        assert!(worst(&encode(false, w, h, rgba.clone())) > worst(&file), "DXT1 is the worse here");
     }
 
     #[test]
