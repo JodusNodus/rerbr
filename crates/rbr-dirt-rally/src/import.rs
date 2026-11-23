@@ -5,6 +5,7 @@ use crate::install::{Install, Route};
 use crate::{collision, frame, material, mesh, objects, pssg::Pssg, route, stage, surface, texture, trees};
 use rbr_ac_tracks::btb::{
     control::Control,
+    stage::CELL_LIMIT,
     geometry::{Grid, Triangle},
     road::Line,
 };
@@ -87,7 +88,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         Some(out) => out.clone(),
         None => rbr_btb::player::tracks().ok_or("no player tracks folder; pass --out")?,
     };
-    let stage_options = stage::Options {
+    let mut stage_options = stage::Options {
         out,
         name: options.name.clone().unwrap_or_else(|| default_name(&route)),
         draw_corridor: options.draw_corridor,
@@ -96,7 +97,15 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         replace: options.replace,
         control: options.control.clone(),
     };
-    stage::convert(&input, &stage_options)
+    match stage::convert(&input, &stage_options) {
+        // Dense collision (Panzerplatte's kerbs and walls) can pass a cell's vertex limit: once more, narrower.
+        Err(e) if e.starts_with(CELL_LIMIT) => {
+            stage_options.collision_corridor *= 0.5;
+            control.say(&format!("{e}; collision narrowed to {:.0} m", stage_options.collision_corridor));
+            stage::convert(&input, &stage_options)
+        }
+        done => done,
+    }
 }
 
 /// Farthest a gate's crossing may lie from the road line, metres.
