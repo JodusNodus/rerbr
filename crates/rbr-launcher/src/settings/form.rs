@@ -181,6 +181,7 @@ impl Form {
             // Filled by `list_maps`.
             stage_browser: Default::default(),
             circuit_browser: Default::default(),
+            times: Default::default(),
             replays: Default::default(),
             recent_cars: settings.recent_cars.clone(),
             recent_maps: settings.recent_maps.clone(),

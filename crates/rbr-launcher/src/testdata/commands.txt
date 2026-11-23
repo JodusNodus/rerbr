@@ -132,7 +132,7 @@ intermittent
 --enhance
 anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --best-ghost
-<here>/NGP/GhostCars/Best_54.ghc
+<here>/ghosts/ngp@7.4.778/Group_N4/wet/Best_54.ghc
 --ghost-weather
 3,3,4,2,2,2,100,0
 --sky
@@ -432,7 +432,7 @@ auto
 --enhance
 anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --best-ghost
-<here>/NGP/GhostCars/Best_54.ghc
+<here>/ghosts/ngp@7.4.778/Group_N4/damp/Best_54.ghc
 --ghost-weather
 2,0,0,2,0,1,0,0
 --sky
@@ -541,7 +541,7 @@ auto
 --enhance
 anisotropy,cabin,contact,decals,grass,lighting,marks,particles,water,wet,windscreen
 --best-ghost
-<here>/NGP/GhostCars/Best_129.ghc
+<here>/ghosts/ngp@7.4.778/Group_N4/dry/Best_129.ghc
 --ghost-weather
 0,1,1,1,0,0,0,0
 --sky

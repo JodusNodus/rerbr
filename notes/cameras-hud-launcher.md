@@ -119,9 +119,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   car its group); NGP's adds nothing. A replay's header keeps it (the stepping command). `rerbr --physics NAME`
   (`scripts/launcher.sh` passes it) drives `ngp`, `experimental` or `experimental-brush` (the brush tyre, not offered
   on the page) for the session over the saved choice, never saved; the Settings page says so under the choice.
-  ReRBR experimental physics keeps no records (user decision): `rbr-standalone` makes `--saves`
-  dry (stage record, personal best, lesson verdict; `Args::keeps_records`), the quick race races the best ghost as
-  `--ghost` and never `--best-ghost`, and championship stages refuse to start (trials still run); `.rrp` replays work.
+  ReRBR experimental physics keeps no stage records, personal bests or championship results (user decision):
+  `rbr-standalone` makes `--saves` dry (`Args::keeps_records`) and championship stages refuse to start (trials still
+  run); `.rrp` replays work. Its times and best ghost are kept apart under its version: the quick race's Best ghost is
+  one file per physics id, car class and road, `<player folder>/ghosts/<physics id>/<class>/<road>/Best_<map>.ghc`
+  (`ghosts::best_ghost`), passed as `--best-ghost` for every physics. The old `GhostCars/Best_<map>.ghc` is no longer
+  written; it lists as "Best (before classes)".
 - The launcher offers no tuning of the brush tyre (user decision 2026-11-13; its Experimental tuning section, the
   `[launcher] tyre_tuning` key and the Drive page's note are gone; an older file's key is not read). `rbr-standalone
   --tyre-tuning` stays for the tyre research ([tyre-model.md](tyre-model.md#experimental-tuning)).
@@ -492,6 +495,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from the chase camera, the HUD and the start lamps hidden under a "Demonstration · Enter or A: skip" hint, Enter
   or the pad's A skipping without confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera,
   and its end or skip sends the brief's confirm, ending the lesson with its award and the verdict panel.
+- Times, after Replays in Library (`times_page.rs`, log in `times/`; user decisions, 2026-11-23): your best time per stage by car
+  class or by car, per road (dry, damp, wet), under one physics id (`rbr_recording::physics`; a dropdown, default the physics a drive steps
+  now), so NGP and ReRBR runs are never ranked together. Browser pattern: Best per class | Best per car, search, class, road, sort;
+  inspector with the splits, "Your runs" (20), Watch and Drive again (the Rally page's car and stage). The Rally page's stage column
+  says "Your best: time · class · road" for the stage and class under the current physics. Log: `times.tsv` (`gameplay.md` Saves).
 - Replays, last in Library (`pages::Section::pages`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and

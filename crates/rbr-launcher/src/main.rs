@@ -44,8 +44,10 @@
 //! service park's ambience, at the sound volume, while a championship is at a service stop (its page and the Setup
 //! page; `rbr_sound::menu`), and nothing while the viewer runs. The game's music is not played (user decision).
 //! The Ghost field races a ghost car in the quick race (`viewer --ghost`): off, the best one (`--best-ghost
-//! GhostCars/Best_<map:02>.ghc`, replaced when a finished drive beats it, as `BeginWrite` keeps the faster run; ours:
-//! the game keeps it in memory and saves on request), or a saved `GhostCars/<name>_<map:02>.ghc` of the stage's map.
+//! ghosts/<physics id>/<class>/<road>/Best_<map:02>.ghc` of the player's folder, one per physics version, car class and
+//! road, replaced when a finished drive beats it, as `BeginWrite` keeps the faster run; ours: the game keeps it in
+//! memory and saves on request), or a saved `GhostCars/<name>_<map:02>.ghc` of the stage's map. The old
+//! `GhostCars/Best_<map:02>.ghc` is no longer written and lists as a saved ghost.
 //! The Graphics & sound page's Quality section sets the renderer's additions beyond the game's look (`viewer --enhance`,
 //! `--reflections`, `--detail`, `--mirrors`; `graphics_page::Graphics`, one `launcher-settings.ini` key each), by hand
 //! or by preset; the free ones are always on. The game's own quality settings are not offered: the stage always draws
@@ -168,6 +170,8 @@ mod stage_browser;
 mod stages_page;
 mod theme;
 mod time_of_day;
+mod times;
+mod times_page;
 mod update;
 mod upscaler;
 mod window;
@@ -484,6 +488,7 @@ struct Form {
     /// The circuit browser (the Circuit page's Browse…): the circuits and the stages that look like one.
     circuit_browser: stage_browser::StageBrowser,
     replays: replay_page::Replays,
+    times: times_page::TimesPage,
     recent_cars: Vec<String>,
     recent_maps: Vec<u32>,
     favourite_cars: Vec<String>,

@@ -31,7 +31,7 @@ const TYRE_PAGE: &str = "tyre-model.md";
 const FFB_PAGE: &str = "force-feedback.md";
 
 /// What the experimental physics leaves unsaved, shown beside the choice while it is picked.
-pub const NO_RECORDS: &str = "Experimental: no records, ghosts or championship results are saved.";
+pub const NO_RECORDS: &str = "Experimental: no stage records, personal bests or championship results are saved; times and ghosts are kept apart under its version.";
 
 impl PhysicsProfile {
     /// `rbr-standalone`'s arguments for it on `car`: none for NGP 7's, so its command lines stay as they were; else
@@ -49,6 +49,12 @@ impl PhysicsProfile {
     /// only, while ReRBR's is experimental (a user decision; `rbr-standalone` writes no records then either).
     pub fn keeps_records(self) -> bool {
         self == PhysicsProfile::Ngp
+    }
+
+    /// The physics a run on it steps now, with its version (`rbr_recording::physics`): what times and ghosts are kept
+    /// under.
+    pub fn id(self) -> rbr_recording::physics::PhysicsId {
+        rbr_recording::physics::PhysicsId::current(self.name()).expect("every profile has a version")
     }
 
     /// `rerbr --physics NAME`'s profile.
@@ -172,6 +178,7 @@ mod tests {
             assert_eq!(PhysicsProfile::from_flag(profile.name()), Some(profile));
             assert_eq!(PhysicsProfile::parse(profile.name()), Some(profile));
             assert_eq!(profile.keeps_records(), profile == PhysicsProfile::Ngp);
+            assert_eq!(profile.id().profile, profile.name());
         }
         assert_eq!(PhysicsProfile::from_flag("brush"), None);
         let car = Car { group: Some("Rally 2".into()), year: Some(2019), ..Car::default() };

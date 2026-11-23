@@ -145,6 +145,10 @@ physics lives: [physics-map.md](physics-map.md).
   or copies a payload at an existing host sink, without writing to it.
 - One module or crate per system. Shared files (`renderer.rs`, `viewer.rs`, both `live.rs`, `lib.rs`, `Cargo.toml`,
   the README tables) get small hooks only.
+- Each ReRBR physics profile (`experimental`, `experimental-brush`, `ngp-brush`) has a version in
+  `crates/rbr-recording/src/physics.rs`; times and ghosts are kept per `profile@version`. A change that moves the car
+  differently under a profile raises its version. `each_rerbr_profile_s_version_is_pinned_to_its_drive` (x86_64 only)
+  hashes a fixed drive of each profile and fails until the version is raised and the new hash pinned.
 - File readers go in `rbr-formats`, one module per format, with a test over every retail file they cover.
 - Physics code names physical quantities; addresses and the original's names stay in `layout` code, the bindings and
   the CSVs ([rbr-physics README](../crates/rbr-physics/README.md#code-style)).

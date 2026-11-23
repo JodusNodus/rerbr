@@ -235,4 +235,8 @@ Mechanics in `car_damage.rs` (carried damage, part severity, repair, service ref
 Mechanics in `record.rs` (submit, personal best, `times.ini`) and the launcher's saves; layouts in [formats.md](formats.md).
 The viewer compares against `misc/times.ini` without `--saves` (`rbr_render::hud::splits`).
 
+- Times log (ours, `rbr-launcher/src/times/`): `<player folder>/times.tsv`, `# ReRBR times 1` then one tab-separated line per finished
+  stage run (recorded, stage, stage name, car key, car name, class, road, physics id `profile@version`, time and penalties in s,
+  splits, replay file); laps and school drives are left out. Appended when a live drive exits, under the physics it stepped; first
+  built from `replays/` (physics `unversioned` for ReRBR profiles, `ngp@7.4.778` for NGP). The game's saves are untouched.
 - The submit rule is not checked against the original.
