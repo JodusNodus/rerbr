@@ -23,6 +23,7 @@ pub use crate::puddles::Roads;
 
 mod btb;
 mod mesh;
+pub mod placed;
 mod textures;
 
 use mesh::{
@@ -34,6 +35,7 @@ pub use mesh::{
     Address, Bounds, Draw, DrawState, Highlight, Image, Layer, Layers, Light, Lod, Mesh, NormalMap, Shade, Sheen,
     StageTexture, Surface, Vertex, CLOSE_DISTANCE, LOD_BAND, LOD_DISTANCE, MIP_MAP_BIAS,
 };
+pub use placed::Placed;
 
 /// Flat RGBA fill for water while its retail texture keys remain unresolved. This is a viewer stand-in,
 /// not the game's water texture.
@@ -230,6 +232,9 @@ pub struct Stage {
     pub selection: Selection,
     /// Sorted by layer: sky, solid, then blended (drawn in this order).
     pub meshes: Vec<Mesh>,
+    /// A BTB stage's instanced placements (`ReRbrInstanced`): drawn after the solid meshes, with their own draws
+    /// ([`Stage::draws`] counts them with the meshes').
+    pub placed: Placed,
     /// `(1,6)` interactive objects expanded once per visibility record. Their vertices stay in object space so the
     /// viewer can replace the load placement with a live solid pose.
     pub interactive: Vec<InteractiveInstance>,
@@ -424,14 +429,15 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl Stage {
-    /// Draws over all meshes.
+    /// Draws over all meshes and instanced groups.
     pub fn draw_count(&self) -> usize {
-        self.meshes.iter().map(|m| m.draws.len()).sum()
+        self.meshes.iter().map(|m| m.draws.len()).sum::<usize>() + self.placed.groups.len()
     }
 
-    /// Triangles over all draws.
+    /// Triangles over all draws, an instanced group's once per placement.
     pub fn triangle_count(&self) -> usize {
-        self.meshes.iter().flat_map(|m| &m.draws).map(|d| d.indices.len() / 3).sum()
+        let baked: usize = self.meshes.iter().flat_map(|m| &m.draws).map(|d| d.indices.len() / 3).sum();
+        baked + self.placed.triangle_count()
     }
 }
 
@@ -594,6 +600,7 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
         name: name.to_owned(),
         selection,
         meshes,
+        placed: Placed::default(),
         interactive: interactive_instances,
         texture_names,
         textures: BTreeMap::new(),
