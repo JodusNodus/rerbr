@@ -766,7 +766,7 @@ fn tile_bakes(
                                     triangles: bake.triangles,
                                     ..Builder::default()
                                 };
-                                (textures::encode(false, w, h, rgba), drawn)
+                                (textures::encode_bc7(false, w, h, rgba), drawn)
                             }),
                         ));
                     }

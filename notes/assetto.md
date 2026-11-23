@@ -294,9 +294,12 @@ date are still mirrored until they are converted again.
   A*mask.a) * magicMult` (read from the compiled `system/shaders/win/*_ps.fxo`). The diffuse is a macro tint, near white
   on Glava Zete's terrain (`teren.dds` averages 0.89), so using it alone gave white ground. Detail texels sit at
   `uv * mult` for `_objsp` (a per-axis pair, stored after the property's scalar) and at the world `(x,z) * mult` for the
-  others. `multilayer::bake` writes the sum at the larger of the diffuse and mask sizes, as DXT1. World-space detail is
+  others. `multilayer::bake` writes the sum at the larger of the diffuse and mask sizes. World-space detail is
   baked with the mesh's average metres per UV unit (right scale, not exact position), and detail finer than the
-  baked pixel becomes its average. Materials whose textures exceed 4096 px (Mont Ventoux's, CréQuy's 109 MB
+  baked pixel becomes its average. The multilayer, detail and far-tile bakes are BC7 (`textures::encode_bc7`, intel_tex_2
+  `very_fast`): DXT1's 5:6:5 endpoints tinted smooth near-grey ground magenta and green (up to 35 % of a bake's texels
+  more than 4/255 off in hue, 0.1 % in BC7). Roure `rbdo`: 28 s to 34 s, Textures.zip 699 MB to 884 MB, same 128
+  textures. intel_tex_2's prebuilt library needs the C++ runtime named on Linux and macOS (rbr-ac-tracks build.rs). Materials whose textures exceed 4096 px (Mont Ventoux's, CréQuy's 109 MB
   `BackgroundMap`) keep the base diffuse.
 - Ebisu's KN5 textures are all the same 70-byte one-pixel PNG, a translucent blue (0,0,255,127), so its scenery
   rendered as overlapping blue glass. A one-pixel PNG diffuse is now a placeholder: an opaque colour from the material

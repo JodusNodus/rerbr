@@ -206,13 +206,13 @@ impl TextureBank {
             // Only where `ReRbrLight` can take the gain back.
             if let Some(((w, h, rgba), gain)) = multilayer::bake(model, index, metres, light(mat).is_some()) {
                 self.baked.insert(mat.shader.clone());
-                return Ok((self.put(textures::encode(false, w, h, rgba), "dds")?, false, gain));
+                return Ok((self.put(textures::encode_bc7(false, w, h, rgba), "dds")?, false, gain));
             }
             self.simplified.insert(mat.shader.clone());
         } else if mat.property("useDetail", 0.) > 0. {
             if let Some((w, h, rgba)) = detail::bake(model, index) {
                 self.baked.insert(mat.shader.clone());
-                return Ok((self.put(textures::encode(is_transparent(mat), w, h, rgba), "dds")?, false, 1.));
+                return Ok((self.put(textures::encode_bc7(is_transparent(mat), w, h, rgba), "dds")?, false, 1.));
             }
             self.simplified.insert(mat.shader.clone());
         }
