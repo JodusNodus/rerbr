@@ -475,8 +475,7 @@ fn billboard(
     let norm = |i: usize| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt();
     let (across, up) = (norm(0).max(norm(2)), norm(1));
     let centre = mesh::point(matrix, sprite.centre);
-    let direction = plan_direction;
-    let to_road = direction([road[0] - f64::from(centre[0]), road[1] + f64::from(centre[2])]);
+    let to_road = plan_direction([road[0] - f64::from(centre[0]), road[1] + f64::from(centre[2])]);
     let width = (sprite.uv[2] - sprite.uv[0]).max(f32::EPSILON);
     let quad = |toward: [f32; 2]| {
         let right = [toward[1], -toward[0]];
@@ -505,7 +504,7 @@ fn billboard(
             material: Some(material),
         })
     };
-    let back = direction([-forward[0], -forward[1]]);
+    let back = plan_direction([-forward[0], -forward[1]]);
     // A tree whose road-facing quad already looks along the road needs no second one.
     let along = (to_road[0] * back[0] + to_road[1] * back[1]).abs() > 0.9;
     let mut out = quad(to_road).to_vec();
