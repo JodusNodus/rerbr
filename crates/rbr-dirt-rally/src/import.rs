@@ -2,7 +2,9 @@
 //! (`route`), the collision (`collision`, `surface`) and the drawn world are read, put in the stage's world (`frame`)
 //! and written by `stage`. Nothing here prints, reads the environment or exits the process.
 use crate::install::{Install, Route};
-use crate::{collision, frame, material, mesh, objects, pssg::Pssg, route, shade, stage, surface, texture, trees};
+use crate::{
+    collision, frame, material, mesh, objects, pssg::Pssg, route, shade, stage, surface, texture, trees, vista,
+};
 use rbr_ac_tracks::btb::{
     control::Control,
     geometry::{Grid, Triangle},
@@ -224,8 +226,17 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                 let dds = if layers.is_some() {
                     None
                 } else {
-                    let texture = sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r));
-                    texture.map(|t| if level == 0 || level == FADES { t.dds() } else { faded(&t, level) })
+                    let source = sources.get(&m.material);
+                    match source.filter(|s| material::is_vista(s)).and_then(|s| vista::diffuse(s, &mut library)) {
+                        Some(dds) => Some(dds),
+                        None => source.and_then(material::diffuse).and_then(|r| library.get(r)).map(|t| {
+                            if level == 0 || level == FADES {
+                                t.dds()
+                            } else {
+                                faded(&t, level)
+                            }
+                        }),
+                    }
                 };
                 // Decals lie on the ground they mark: drawn with their alpha.
                 let transparent = m.node.starts_with("DECAL");

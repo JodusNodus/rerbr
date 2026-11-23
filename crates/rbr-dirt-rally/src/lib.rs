@@ -27,3 +27,4 @@ pub mod stage;
 pub mod surface;
 pub mod texture;
 pub mod trees;
+pub mod vista;

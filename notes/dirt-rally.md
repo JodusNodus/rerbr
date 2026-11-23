@@ -155,6 +155,16 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB, with the BC7 diffuse about 45 s and 385 MB (plain RGBA: 458 MB); Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
   carry their ruts and Finland's grass verges, crisp detail at any distance; Greece's far hills (the mountain atlas, flattened in big
   islands) show streaks and blotches of the second layer.
+- Vista (`vista.rs`), 2026-11-24: the far hills and valley (`NONLOD`, `terrain_track_vista_d4.fx`) were drawn with `TlargeColourMap` alone, a
+  grey-blue macro tint (means 112/110/99), hence the pale blue-grey valley. The shader blends the earth, bush and rock layers (`TDiffuseSpecMap1..3`,
+  means 145/124/97, 98/95/69, 114/109/90) by `TlargeBlendMap` (1024, same uv as the colour map; red the first layer, blue the second, green the
+  third: the first mapping tried, blue first, gave olive green, this one the tan of the reference, chosen by eye) times the colour map times 2.
+  Now baked per vista material at the colour map's size (layer means, BC7): Greece's valley is tan with olive scrub as in `greece-cockpit`. Import 31 -> 32 s,
+  `Textures.zip` 403 -> 426 MB.
+- Rock walls, Greece: not picked by slope; the game assigns materials per mesh (`terrain_rockbank` `fea_0N` layers, `terrain_rock_d4` `rck_a_d`/`rck_b_d` on
+  `rck_c_d`'s atlas). Their layer uv is already metric (steep triangles, median 4.4 to 8 m per unit, 0.5 to 2 cm per texel), and `rck_a_d` is near
+  neutral (102/97/93), `fea_06_d` 124/112/100. The blue-grey is the renderer's lighting: the same stage shot with `--no-relight` is warm and crisp (walls and valley),
+  `--fog off` and `--sun midday` change little. Dropping the colour-map hue (`TINT` 0) or the lightmap's shadow hue did not change the walls. Not a converter defect.
 
 ## Decals and birch trunks (Finland route_0), 2026-11-24
 
