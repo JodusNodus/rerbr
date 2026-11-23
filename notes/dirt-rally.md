@@ -56,8 +56,26 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   `treesheet*` (not trunk) and `*Blend*` shaders on DXT5: `Object_Emis`, `Object_Norm` and `Object_Stones` have DXT5
   with varying alpha as a mask, not transparency. Greece route_0: 16592 props + 13394 trees = 7.4 M triangles
   (terrain 1.9 M); Finland route_0: 16387 + 22228 = 28.9 M (terrain 4.3 M), almost all within 40 m of the road, so the
-  range does not thin them. Not done: the far billboard levels, grass (`grass.grs`), cloth, `ornaments.bin`; foliage
-  is drawn one-sided as the BTB mesh is.
+  range does not thin them. Trees hold no intermediate level: a root has `_x0` (2 to 3.9 k triangles for the big
+  conifers, bare trees and birches, 12.8 k such instances on Finland, 27 M of the 29 M), `_x2` (the far billboard,
+  `foliage_billboard.fx`, 2 triangles: its vertices all sit at one centre and `uv2` is each corner's offset, right and
+  up, in metres; the atlas holds 8 views of the tree, one per 512 px column) and `_xs` (shadow quad). Only
+  `objects.pssg` and `route_objects.pssg` have `LODRENDERINSTANCES`, and their props are small (about 2 M on Finland).
+  So a tree farther than `BILLBOARD_FROM` (8 m) from the road is drawn as two upright `_x2` quads (`import::billboard`,
+  4 triangles): one turned to face the nearest road point (the driver is on the road), one across it facing back along
+  the road, so a tree ahead is not seen edge on (a single quad thinned the far forest out: shots under
+  `/tmp/dr-tree-shots/sc-*`); each shows the atlas view of its turn against the viewer (the view order is a guess; the
+  views look alike). Each type's `_x2` samples its own atlas (`<tree>_lod_d.tga`) and the near model its own
+  `*_fo_d`/`*_tr_d`: both are autumn (birch leaves average (182, 144, 59), the atlas (133, 114, 57)), as the game's
+  Finland shot is. The near leaves had been missing because `facing_foliage.fx` cards keep all four vertices at the
+  card's centre with the corner offsets (right, up, metres) in the second `ST` stream (as the billboards do) and the
+  game's shader turns them to the camera: drawn as stored they were zero-area, so olives, birches and round bushes
+  stood bare. `import::cards` places them upright, turned between the road point and back along the road
+  (`facing`), wound to show to that side. Drawn triangles (with the terrain shading merged): Finland route_0 33.2 M -> 9.3 M, Germany
+  panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 10 s and 3.0 GB (stage folder 754 MB, Greece 486, Germany 659)
+  (17 s, 8.8 GB before). Not done: the `*_facing` types (a
+  `treesheet_foliage_norm` quad whose vertices all sit at one point, so it draws nothing), grass (`grass.grs`), cloth,
+  `ornaments.bin`; foliage is drawn one-sided as the BTB mesh is.
 
 ## Course
 
