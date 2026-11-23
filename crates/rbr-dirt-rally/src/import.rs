@@ -266,10 +266,10 @@ const DIST_REACH: f64 = 3000.;
 /// A tree's far level, its billboard (4 triangles from the game's own 2-triangle far level), is drawn from the model's
 /// range to [`DIST_REACH`] for the trees within this far of the road, metres.
 const BILLBOARD_REACH: f64 = 1000.;
-/// The most triangles a stage draws (terrain, props and trees) on the sample routes, instances counted: the viewer
-/// holds every baked one in memory.
+/// The most triangles a stage writes (terrain, single props, far levels and each instanced model once) on the sample
+/// routes: the viewer holds every one in memory (the instances only their transforms).
 #[cfg(test)]
-const DRAWN_BUDGET: usize = 12_000_000;
+const DRAWN_BUDGET: usize = 6_000_000;
 
 /// Whether a shader draws its diffuse texture's alpha (cut-out leaves and blended signs; the other props' alpha is a
 /// gloss or emission mask: `Object_Emis`, `Object_Norm` and `Object_Stones` carry DXT5 with varying alpha too). Trunks
@@ -851,7 +851,6 @@ mod tests {
         (options.out, options.replace) = (Some(out.clone()), true);
         let report = import(&install, "finland/ouninpohja_rally_01/route_0", &options).unwrap();
         let _ = std::fs::remove_dir_all(out);
-        let drawn = report.drawn_triangles + report.instanced_triangles;
-        assert!(drawn <= DRAWN_BUDGET, "{drawn} drawn triangles");
+        assert!(report.drawn_triangles <= DRAWN_BUDGET, "{} written triangles", report.drawn_triangles);
     }
 }
