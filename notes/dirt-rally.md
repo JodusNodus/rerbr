@@ -76,6 +76,15 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   closing comment lists them, `wet_materials_remap.xml` their wet codes. No grip value is readable, so codes map by
   kind (`surface.rs`): rock (`ROK`) is coarse gravel 49, never tarmac on a gravel stage; `DEFA` takes the stage's road.
 - Snow, water and rough ids are depths, not weather: their `mat.ini` damp and wet rows repeat the dry id.
+- `audio/materials.xml` gives each code a sound and a physics class: `CBW+` (Hafren's ford) is water over mud, 157.
+
+## Conversion sweep (2026-11-23)
+
+- All 72 rally routes convert (before props and shading, 9 to 34 s each). Physics by the codes under the course:
+  Finland, Greece, UK gravel; Germany and Col de Turini 01 routes 0 to 3 and 02 tarmac; Sweden and Turini 01 routes
+  4 and 5 snow. Panzerplatte 01 route_0 passes a cell's vertex limit (65538) at a 75 m collision corridor: the import
+  retries once at half.
+- Driven headless (btb-autopilot): Ghymno 1 long ran 5.75 of 9.75 km through both splits, off at a gravel bank (GBK).
 
 ## Cross-checks
 
