@@ -258,6 +258,31 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
   equal, golden-532-fiesta-chase 4 px by 1/255 (the facing). Not on real triple hardware; side windows of another
   size get the centre's frame scaled.
 
+## Curved panels (ours, 2026-11-23)
+
+`viewer --curved DIAGONAL,RADIUS,DISTANCE` (inches, mm, cm); geometry `triple::Curved`, `triple::Screens`. User doc
+`docs/screens.md`.
+
+- Geometry: the panel as three equal-arc chords, run as a frameless triple rig (`Curved::rig`: side angle = segment
+  angle `W / 3R`, chord as the screen width, eye at `d - sagitta`). The cameras' field of view is the whole panel's;
+  `Screens::screens` converts it to the centre segment's (`Dn = sin a + (0.5 + cos a) / tan(F/2)`), the only place.
+  Refused when the diagonal is half the circle or more. 49" 32:9 1800R at 70 cm: true 88.7°, centre 32.3° (tests).
+  The segments take the arc's pixel aspect: 0.2 % short at 1800R, 0.7 % at 1000R; about 0.3° off mid-segment.
+- Window: always the one window in thirds, centred (a width not of three leaves 1-2 black columns at the outer edges,
+  `triple::spanned_at`); HUD, menus and loading screen in the middle, at most 16:9 (`triple::hud_region`). The HUD is
+  drawn after all views (it spans the side segments). Spanned screenshots (curved and triple) draw as the window does,
+  into one target with the HUD over it (`Renderer::offscreen_target`, `read_back`).
+- `Lens::fov` has no reader but `Lens::views` and the single view's projection. Scripted lenses (start orbit,
+  helicam) and `Orbit::framing` take their angle as the whole panel's too.
+- Checked 2026-11-23: single view against main, 37 of 37 reference shots equal. Flat limit (`--curved 49,1e9,70`
+  against one 3840x1080 view at the same 89°, `RBR_METER_EV=12`): geometry 0 px apart (1e6 R rotates the sides about
+  a pixel); per-view effects at the joins: a 2 px line on each view's left edge, -1 to -2.7/255 averaged over rows
+  (not TAA, SSR or contact shadows); the glare chain and the local exposure it feeds, per view, a step of 1-4/255
+  (up to 4 near a bright overcast windscreen, day-621-i20-cockpit); SSR none (rain shot, reflections on and off
+  equal); exposure shared (later views ease over 0 s). No vignette exists. Not fixed: needs the post chain across the
+  views. Headless sway, one 5120x1440 output, bench scene: curved 44.4 fps (1 % low 21.1, CPU render 11.7 ms) against
+  single 58.5 (52.4, 3.7 ms). Not on a real curved panel.
+
 ## Faithful and ours
 
 | System | Faithful | Ours |

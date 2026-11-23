@@ -44,6 +44,9 @@ Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of vi
 - Triple screens (ours, 2026-11-08, [renderer.md](renderer.md#triple-screens-ours-2026-11-08)): `--fov` and
   `--chase-fov` set the centre screen's field of view; every camera, the start orbit and the helicam included, draws
   the three; the HUD and the menus go on the centre.
+- Curved panels (ours, 2026-11-23, [renderer.md](renderer.md#curved-panels-ours-2026-11-23)): `--fov`, `--chase-fov`
+  and the Camera page set the whole panel's field of view, converted to the centre segment's in `Screens::screens`
+  only; the HUD, menus and loading screen go in the middle, at most 16:9 wide.
 - In-car head (ours, `rbr_render::head`): over the game's seat shake, the view keeps the horizon steadier, on the
   physics clock (same at any frame rate, in replays and videos); a look into corners and slides was dropped (user,
   2026-11-01: motion sickness). On by default;
