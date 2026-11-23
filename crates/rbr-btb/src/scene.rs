@@ -232,6 +232,8 @@ pub struct Object {
     pub shadow_caster: bool,
     /// Casts into the sun's near cascades (`SunCascades`, ReRBR's own key).
     pub sun_cascades: bool,
+    /// Drawn as one mesh and a transform per placement (`ReRbrInstanced`, ReRBR's own key).
+    pub instanced: bool,
 }
 
 /// Where the car starts (`spawn.ini`).
@@ -305,6 +307,7 @@ impl Scene {
                 collides: object.collision_model == Some(0) && (object.visible != Some(false) || object.collision_only),
                 shadow_caster: object.shadow_caster.unwrap_or(false),
                 sun_cascades: object.sun_cascades,
+                instanced: object.instanced,
             });
         }
         let meshes = parse_meshes(&mesh_files, open, &by_name)?;

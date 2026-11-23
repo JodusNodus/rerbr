@@ -572,6 +572,9 @@ pub struct Object {
     /// `SunCascades=0` (ReRBR's own key): the object casts no shadow into the sun's near cascades, only into its far
     /// layer (converted stages' trees back from the road, whose foliage filled the cascades). Absent: it casts.
     pub sun_cascades: bool,
+    /// `ReRbrInstanced=1` (ReRBR's own key): the renderer stores the mesh once and draws each placement as an instance.
+    /// Absent: the placements are expanded into world-space vertices.
+    pub instanced: bool,
     /// `colBox` as the plugin reads it ([`scan_col_box`]): `0,15, 1, 0,15` is (0, 15, 1).
     pub col_box: Option<[f32; 3]>,
     /// The whole section, so unknown keys stay accessible.
@@ -654,6 +657,7 @@ impl Object {
             collision_model: find_entry(section, "CollisionModel").and_then(|v| v.parse().ok()),
             collision_only: Self::flag(section, "CollisionOnly") == Some(true),
             sun_cascades: Self::flag(section, "SunCascades") != Some(false),
+            instanced: Self::flag(section, "ReRbrInstanced") == Some(true),
             col_box,
             entries: section.entries.clone(),
         }
@@ -991,5 +995,18 @@ mod tests {
         assert!(object(&[("ShadowCaster", "0")]).sun_cascades);
         assert!(object(&[("SunCascades", "1")]).sun_cascades);
         assert!(!object(&[("SunCascades", "0")]).sun_cascades);
+    }
+
+    #[test]
+    fn objects_are_instanced_only_when_they_ask() {
+        let object = |entries: &[(&str, &str)]| {
+            let entries = entries.iter().map(|&(k, v)| (k.into(), v.into())).collect();
+            Object::parse(0, &ini::Section { name: "Object_0".into(), entries })
+        };
+        // BTB's own `DrawInstanced` (community stages set it) is not the key.
+        assert!(!object(&[("DrawInstanced", "1")]).instanced);
+        assert!(!object(&[]).instanced);
+        assert!(!object(&[("ReRbrInstanced", "0")]).instanced);
+        assert!(object(&[("ReRbrInstanced", "1")]).instanced);
     }
 }

@@ -67,6 +67,8 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the base 0x10000000; the pipeline is
 `ColSplit` 0x10022c10 (`col.cpp`) -> gather 0x10022770 -> `Split` 0x10025e80 -> `DumpCol` 0x100243a0.
 - `CollisionOnly=1` (ReRBR's key, unknown to the plugin) puts a `Visible=0` object's faces in `col.col` too: an undrawn collision mesh (converted stages).
+- `ReRbrInstanced=1` (ReRBR's key, not BTB's `DrawInstanced`) opts an object into the renderer's GPU instancing: one mesh,
+  a transform per placement ([Drawing](#drawing)). Absent, its placements are expanded as before.
 - `SunCascades=0` (ReRBR's key) keeps an object out of the sun's three near cascades; the far layer, the lamps' map and
   the bakes still take it. Absent, it casts, as every object did before: `ShadowCaster` stays unread, since all 72
   folders write 0 on every object (140785 of 140857; none 1) and still need their shadows. Converted stages write it on
