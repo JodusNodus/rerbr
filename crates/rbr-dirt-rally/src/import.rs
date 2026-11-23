@@ -215,21 +215,26 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
         control.say(&format!("reading {}", path.file_name().unwrap_or_default().to_string_lossy()));
         let pssg = Pssg::read(path)?;
         let sources = material::read(&pssg);
-        let mut index = HashMap::<String, u32>::new();
+        let mut index = HashMap::<(String, u8), u32>::new();
         let shaded = shader.shade(mesh::terrain(&pssg)?, &sources, &mut library);
-        for m in shaded.meshes {
-            let at = *index.entry(m.material.clone()).or_insert_with(|| {
+        for (level, m) in decal_levels(shaded.meshes) {
+            let at = *index.entry((m.material.clone(), level)).or_insert_with(|| {
                 let layers = shaded.layers.get(&m.material).cloned();
                 // A shaded material's fallback is its first layer, which `stage` takes from the layers.
                 let dds = if layers.is_some() {
                     None
                 } else {
-                    sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r)).map(|t| t.dds())
+                    let texture = sources.get(&m.material).and_then(material::diffuse).and_then(|r| library.get(r));
+                    match (level, texture) {
+                        (0, t) => t.map(|t| t.dds()),
+                        (level, Some(t)) => Some(faded(&t, level)),
+                        (_, None) => None,
+                    }
                 };
                 // Decals lie on the ground they mark: drawn with their alpha.
                 let transparent = m.node.starts_with("DECAL");
                 materials.push(stage::Material {
-                    name: format!("{file}:{}", m.material),
+                    name: format!("{file}:{}:{level}", m.material),
                     dds,
                     transparent,
                     range: None,
@@ -250,6 +255,43 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
         }
     }
     Ok((materials, triangles))
+}
+
+/// Steps a decal's vertex alpha is drawn in.
+const FADES: u8 = 4;
+
+/// `meshes` with each decal split by the fade of its triangles: the decal shaders (`decal_ao_vc.fx`) multiply the
+/// texture's alpha by the vertex `Color`'s alpha (a tyre strip fades along and across, mean 0.33; splats 0.95), which
+/// BTB vertices do not hold. A triangle takes the level (1..=`FADES`) nearest its mean alpha, drawn with the texture's
+/// alpha scaled to it ([`faded`]); the nearly clear ones are left out. Everything else is level 0, as it was.
+fn decal_levels(meshes: Vec<mesh::Mesh>) -> Vec<(u8, mesh::Mesh)> {
+    let mut out = Vec::new();
+    for m in meshes {
+        let Some(colour) = m.colour.as_ref().filter(|_| m.node.starts_with("DECAL")) else {
+            out.push((0, m));
+            continue;
+        };
+        let mut by_level = vec![Vec::new(); usize::from(FADES)];
+        for t in &m.triangles {
+            let alpha = t.iter().map(|&i| f32::from(colour[i as usize][3])).sum::<f32>() / 765.;
+            let level = (alpha * f32::from(FADES)).round() as usize;
+            if level > 0 {
+                by_level[level - 1].push(*t);
+            }
+        }
+        for (i, triangles) in by_level.into_iter().enumerate().filter(|(_, t)| !t.is_empty()) {
+            out.push((i as u8 + 1, mesh::Mesh { triangles, ..m.clone() }));
+        }
+    }
+    out
+}
+
+/// A decal texture with its alpha scaled to `level` of [`FADES`].
+fn faded(texture: &texture::Texture, level: u8) -> Vec<u8> {
+    let mut rgba = texture.rgba();
+    let scale = f32::from(level) / f32::from(FADES);
+    rgba.chunks_exact_mut(4).for_each(|p| p[3] = (f32::from(p[3]) * scale).round() as u8);
+    rbr_ac_tracks::btb::textures::encode(true, texture.width, texture.height, rgba)
 }
 
 /// A prop is drawn as far as this many times its size: a metre-wide rock to 100 m, a tree of ten metres to a kilometre.
