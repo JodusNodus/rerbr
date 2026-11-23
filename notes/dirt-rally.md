@@ -51,32 +51,41 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   also lists the physical trees: every tree-model instance of Greece route_0 (11252) and all but 3 of Finland's (14166)
   lies within 1.5 m of a `trees.bin` item, so they are drawn once, by `trees.bin`. Finland's header counts 3 more items
   than its table holds; the table's own count is read.
-- Drawn props (`import.rs`): placed with the instance matrix (a mirrored one keeps the winding), materials split by draw
-  range (100 m to 1 km by size, less for dense models, `*_dist_*` tiles 3 km). Alpha only for `foliage*`/`facing_foliage`/
+- Drawn props (`import.rs`): placed with the instance matrix, drawn instanced (below). Materials split by draw range
+  (100 m to 1 km by size, less for dense models, `*_dist_*` tiles 3 km). Alpha only for `foliage*`/`facing_foliage`/
   `treesheet*` (not trunk) and `*Blend*` shaders on DXT5: `Object_Emis`, `Object_Norm` and `Object_Stones` have DXT5
-  with varying alpha as a mask, not transparency. Greece route_0: 16592 props + 13394 trees = 7.4 M triangles
-  (terrain 1.9 M); Finland route_0: 16387 + 22228 = 28.9 M (terrain 4.3 M), almost all within 40 m of the road, so the
-  range does not thin them. Trees hold no intermediate level: a root has `_x0` (2 to 3.9 k triangles for the big
-  conifers, bare trees and birches, 12.8 k such instances on Finland, 27 M of the 29 M), `_x2` (the far billboard,
-  `foliage_billboard.fx`, 2 triangles: its vertices all sit at one centre and `uv2` is each corner's offset, right and
-  up, in metres; the atlas holds 8 views of the tree, one per 512 px column) and `_xs` (shadow quad). Only
-  `objects.pssg` and `route_objects.pssg` have `LODRENDERINSTANCES`, and their props are small (about 2 M on Finland).
-  So a tree farther than `BILLBOARD_FROM` (8 m) from the road is drawn as two upright `_x2` quads (`import::billboard`,
-  4 triangles): one turned to face the nearest road point (the driver is on the road), one across it facing back along
-  the road, so a tree ahead is not seen edge on (a single quad thinned the far forest out: shots under
-  `/tmp/dr-tree-shots/sc-*`); each shows the atlas view of its turn against the viewer (the view order is a guess; the
-  views look alike). Each type's `_x2` samples its own atlas (`<tree>_lod_d.tga`) and the near model its own
-  `*_fo_d`/`*_tr_d`: both are autumn (birch leaves average (182, 144, 59), the atlas (133, 114, 57)), as the game's
-  Finland shot is. The near leaves had been missing because `facing_foliage.fx` cards keep all four vertices at the
-  card's centre with the corner offsets (right, up, metres) in the second `ST` stream (as the billboards do) and the
-  game's shader turns them to the camera: drawn as stored they were zero-area, so olives, birches and round bushes
-  stood bare. `import::cards` places them upright, turned between the road point and back along the road
-  (`facing`), wound to show to that side. Drawn triangles (with the terrain shading merged): Finland route_0 33.2 M -> 9.3 M, Germany
-  panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 10 s and 3.0 GB (stage folder 754 MB, Greece 486, Germany 659)
-  (17 s, 8.8 GB before). The `*_facing` types (`treesheet_foliage_norm`, a whole tree or bush on one card) are the
-  same trick: any mesh whose triangles all collapse to a point with offsets in the second stream is placed as cards
-  (`import::is_cards`; the `*_dist_*` tiles share the shader with real geometry). Not done: grass (`grass.grs`),
-  cloth, `ornaments.bin`; foliage is drawn one-sided as the BTB mesh is.
+  with varying alpha as a mask, not transparency. Trees hold no intermediate level: a root has `_x0` (2 to 3.9 k
+  triangles for the big conifers, bare trees and birches), `_x2` (the far billboard, `foliage_billboard.fx`, 2
+  triangles: its vertices all sit at one centre and `uv2` is each corner's offset, right and up, in metres; the atlas
+  holds 8 views of the tree, one per 512 px column) and `_xs` (shadow quad). Only `objects.pssg` and
+  `route_objects.pssg` have `LODRENDERINSTANCES`, and their props are small.
+- Instanced (`import::Placer::finish`, `stage.rs`): a prop or tree type is written once per material, range and
+  mirroring in its own space (`dr_<n>.x`), its placements in one `dr_x<n>.xform` per type and range, the objects
+  `ReRbrInstanced=1`, `CollisionModel=-1`, `Visible=1`, `LODIn=0`, `LODOut=range`. The matrix is DiRT Rally's `M` as
+  `F M F` with `F = diag(1, 1, -1)` (`import::xform`; the mesh's axes are `(x, y, -z)` of DiRT Rally's), translation
+  `F t` less the stage origin; a mirrored placement (negative determinant) is its own model wound the other way (the
+  renderer does not flip the winding per instance). A test places a model and compares it with `bake` (1 mm, a turned,
+  scaled, mirrored matrix). A range's single placement stays baked, as do the `*_dist_*` tiles. The range is
+  `min(size * 100, 60000 / sqrt(triangles))` rounded up to `PROP_RANGES`; on Finland every tree lies within 340 m of the
+  road, so raising the cost term to 150000 changes nothing (the same 67003 placements), and a frame costs the same as
+  with the billboards (20 ms read back at 1280x720, everything on, with 32 M instanced triangles in the stage).
+  The far level is the billboard, baked a pair per tree within 1 km of the road (4 triangles, so no instancing: it
+  faces the road per placement; it needs `LODIn` = the model's range, `LODOut` 3 km: `Input::instanced.lod_in`).
+  Leaf cards (`is_cards`) cannot turn to the road per placement in a shared model: each stored card is two cards
+  crossed at 90 degrees about the type's vertical, each drawn from both sides (`import::model`); the shots show birch and
+  olive crowns as full as the road-facing ones (`/tmp/dr-inst-look/*-after`). Baked singles keep the road-facing cards
+  (`import::cards`, `facing`). Each type's `_x2` samples its own atlas (`<tree>_lod_d.tga`) and the near model its
+  own `*_fo_d`/`*_tr_d`: both are autumn on Finland. The near leaves had been missing because `facing_foliage.fx` cards
+  keep all four vertices at the card's centre with the corner offsets (right, up, metres) in the second `ST` stream
+  (the billboards too) and the game's shader turns them to the camera: drawn as stored they were zero-area. The
+  `*_facing` types (`treesheet_foliage_norm`, a whole tree or bush on one card) are the same trick: any mesh whose
+  triangles all collapse to a point with offsets in the second stream is cards (`import::is_cards`).
+  Finland route_0, before (baked models to 8 m, billboards past) and after: written 9.31 M triangles -> 4.70 M (terrain
+  4.3 M; 348 models, 67003 placements, 32 M triangles if all were in view); stage folder 760 -> 644 MB; import 91 -> 72 s;
+  viewer load 12 to 16 -> 8 to 11.5 s, peak RSS 2.9 to 3.1 -> 1.9 to 2.1 GB. Greece 4.86 M -> 2.40 M (14.6 M instanced),
+  499 -> 440 MB, 33 -> 31 s, load 5.0 -> 3.1 s, 2.0 -> 1.3 GB. Germany panzerplatte 9.01 M -> 3.31 M (25.5 M instanced),
+  662 -> 529 MB, 110 -> 88 s, load 7.0 -> 4.7 s, 3.7 -> 1.6 GB. Not done: grass (`grass.grs`), cloth, `ornaments.bin`;
+  foliage is drawn one-sided as the BTB mesh is.
 
 ## Course
 
