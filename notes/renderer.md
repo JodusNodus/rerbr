@@ -511,6 +511,12 @@ probably fit the wrong hour.
   ahead (Sardian 3300, Custom weather: 8.8 to 2.2 % of the road area clipped; the damp and wet roads, darker, had
   raised the exposure further). Tried and dropped: a meter that holds the exposure down by the 95th percentile at
   night (little once the veil was gone). Damp and wet roads under our beam darken, as they should.
+- The beams in rain scatter toward an eye facing the lamps (`light_shafts::beam_phase`, 2026-11-23): `fs_beams`'
+  Henyey-Greenstein lobe is brightest looking along the light's travel (0.3), which shows the beams from the seat in
+  fog; while rain falls (our choice or the section's preset, not snow) it is reversed at 0.3, as drops scatter
+  forward. The fog's lobe had laid a white wall over the road on main beam (rain Luceram 131 cockpit 22:30, beams
+  off: the road clear, so the air was the wall, at only 2.2e-4 per metre). Tried: 0.6 reversed, the beams all but
+  gone. Shots: night Luceram 131 cockpit RMSE 0.061, 35 byte-identical; night rain fly-by: the lamps glow more.
 - The beam's patch on the road is real contrast: some 20 lux on a bank facing the car against 0.1-0.3 lux of moonlight,
   6-7 stops, past what one exposure shows. Local exposure takes 0.8 of the excess over 2 stops (`LOCAL_GIVE`, 0.6
   until 2026-11-16; 36 shots: means within 3 levels, clipped 3.5 to 2.3% on Gabiria's night chase, 12 to 3% on Comb

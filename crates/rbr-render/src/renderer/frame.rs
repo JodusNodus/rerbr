@@ -329,6 +329,7 @@ impl Renderer {
                     inverse_view_projection: view_projection.inverse(),
                     eye,
                     air: crate::light_shafts::air(&self.atmosphere).max(mist[0] * mist[3]),
+                    phase: crate::light_shafts::beam_phase(&self.atmosphere),
                     lamps,
                     lamp,
                 }
