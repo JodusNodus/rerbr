@@ -42,6 +42,8 @@ pub struct Run {
 pub struct Names {
     /// Car key to name and class.
     pub cars: HashMap<String, (String, String)>,
+    /// A car's older key to its key now: an RSF car's `rsf-<number>`, its key before `catalog::pack_key`.
+    pub aliases: HashMap<String, String>,
     pub stages: HashMap<u32, String>,
 }
 
@@ -50,6 +52,10 @@ impl Names {
         Names {
             cars: (catalog.cars.iter())
                 .map(|c| (c.key.clone(), (crate::catalog::car_label(c), class_of(c.group.as_deref()))))
+                .collect(),
+            aliases: (catalog.cars.iter())
+                .filter_map(|c| Some((format!("rsf-{}", c.rsf_id?), c.key.clone())))
+                .filter(|(old, key)| old != key)
                 .collect(),
             stages: catalog.maps.iter().map(|m| (m.number, m.name())).collect(),
         }
@@ -161,6 +167,7 @@ impl Run {
             None => PhysicsId::unversioned(value(command, "--physics").unwrap_or("ngp"))?,
         };
         let key = car_key(&args)?;
+        let key = names.aliases.get(&key).cloned().unwrap_or(key);
         let (car_name, class) = names.cars.get(&key).cloned().unwrap_or_else(|| (key.clone(), "Other".to_owned()));
         let title_stage = value(viewer, "--title").and_then(|t| t.split(" · ").next()).filter(|s| !s.is_empty());
         let stage_name = names
@@ -251,6 +258,7 @@ mod tests {
     fn names() -> Names {
         Names {
             cars: HashMap::from([("evo".into(), ("Lancer Evo".into(), "Group A".into()))]),
+            aliases: HashMap::from([("rsf-41".into(), "evo".into())]),
             stages: HashMap::from([(54, "Torsby".to_owned())]),
         }
     }
@@ -337,6 +345,13 @@ mod tests {
         ] {
             assert!(Run::from_replay(&drive(&home, stamp, extra, &result), &names(), None).is_none(), "{stamp}");
         }
+        // An RSF car's older key (`rsf-<number>`) counts as the car's key now.
+        let old = home.join("8-track_54_E.rrp");
+        let args = ["--weather", "dry", "--car-key", "rsf-41", "--live", "x", "--stage", "/maps/track-54_E"];
+        fs::write(&old, replay::header(&args.map(str::to_owned))).unwrap();
+        replay::save_result(&old, &r).unwrap();
+        let run = Run::from_replay(&old, &names(), None).unwrap();
+        assert_eq!((run.car_key.as_str(), run.car_name.as_str()), ("evo", "Lancer Evo"));
         let no_result = home.join("7-x.rrp");
         fs::write(&no_result, replay::header(&["--live".to_owned()])).unwrap();
         assert!(Run::from_replay(&no_result, &names(), None).is_none());
