@@ -281,7 +281,7 @@ impl<'a> Node<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn s(v: &str) -> Vec<u8> {
