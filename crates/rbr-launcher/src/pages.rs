@@ -50,6 +50,7 @@ impl Section {
                 (Page::Stages, "Stages"),
                 (Page::Codrivers, "Co-drivers"),
                 (Page::Replays, "Replays"),
+                (Page::Times, "Times"),
             ],
             Section::Settings => {
                 &[(Page::Settings, "General"), (Page::Controls, "Controls"), (Page::Graphics, "Graphics & sound")]
@@ -75,6 +76,8 @@ pub enum Page {
     /// The car setup, opened from a page ([`Form::open_setup`]); in no group.
     Setup,
     Replays,
+    /// Your best times per stage, by car class and by car, under one physics.
+    Times,
     /// Every car: its details and skins, the cars added and their removal.
     Cars,
     /// Every stage: its details, the stages added and their removal.
@@ -516,6 +519,7 @@ impl Form {
             Page::Championship => self.championship_page(ui),
             Page::School => self.school_page(ui),
             Page::Replays => self.replays_page(ui),
+            Page::Times => self.times_page(ui),
             Page::Setup => self.setup_page(ui),
             Page::Cars => self.cars_page(ui),
             Page::Stages => self.stages_page(ui),
@@ -624,9 +628,9 @@ mod tests {
         assert_eq!(press(Page::Drive, Key::Num4, ctrl), None);
         // The Circuit page is behind `RBR_CIRCUIT`: unset, Rally's next page is Championship.
         assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Championship));
-        assert_eq!(press(Page::Replays, Key::PageDown, ctrl), Some(Page::Cars));
+        assert_eq!(press(Page::Times, Key::PageDown, ctrl), Some(Page::Cars));
         assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::School));
-        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Replays));
+        assert_eq!(press(Page::Cars, Key::PageUp, ctrl), Some(Page::Times));
         assert_eq!(press(Page::Setup, Key::Tab, ctrl), None);
         assert_eq!(press(Page::Import, Key::Num2, ctrl), Some(Page::Stages));
         assert_eq!(press(Page::Graphics, Key::Tab, ctrl), Some(Page::Settings));

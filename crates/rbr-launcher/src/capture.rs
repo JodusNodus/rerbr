@@ -25,6 +25,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         (Page::Circuit, "circuit"),
         (Page::School, "school"),
         (Page::Replays, "replays"),
+        (Page::Times, "times"),
         (Page::Controls, "controls"),
         (Page::Graphics, "graphics-sound"),
         (Page::Settings, "settings"),

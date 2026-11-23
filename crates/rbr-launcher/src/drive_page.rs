@@ -410,6 +410,9 @@ impl Form {
         if open {
             self.stage_browser.open_on(self.map, &self.favourite_maps, None);
         }
+        if let Some(best) = self.best_line(ui.ctx()) {
+            kit::hint(ui, &best);
+        }
         kit::group_label(ui, "Race", None);
         kit::panel(ui, |rows| {
             self.ghost_row(rows);
