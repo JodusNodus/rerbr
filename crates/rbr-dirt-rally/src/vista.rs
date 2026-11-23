@@ -27,11 +27,8 @@ pub fn diffuse(m: &Material, library: &mut Library) -> Option<Vec<u8>> {
     };
     let (w, h, colour) = get("TlargeColourMap")?;
     let (mw, mh, blend) = get("TlargeBlendMap")?;
-    let layers: [[f32; 3]; 3] = [
-        mean(&get("TDiffuseSpecMap1")?.2),
-        mean(&get("TDiffuseSpecMap2")?.2),
-        mean(&get("TDiffuseSpecMap3")?.2),
-    ];
+    let layers: [[f32; 3]; 3] =
+        [mean(&get("TDiffuseSpecMap1")?.2), mean(&get("TDiffuseSpecMap2")?.2), mean(&get("TDiffuseSpecMap3")?.2)];
     let mut out = Vec::with_capacity(w * h * 4);
     for y in 0..h {
         for x in 0..w {
