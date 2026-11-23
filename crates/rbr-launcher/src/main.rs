@@ -168,6 +168,7 @@ mod stage_browser;
 mod stages_page;
 mod theme;
 mod time_of_day;
+mod times;
 mod update;
 mod upscaler;
 mod window;
