@@ -404,9 +404,9 @@ impl Placer<'_> {
     }
 }
 
-/// The point of the road's line nearest `p`, in the stage's plan.
-fn nearest(line: &Line, p: [f64; 3]) -> [f64; 2] {
-    let mut best = (f64::MAX, [0.; 2]);
+/// The point of the road's line nearest `p` in the stage's plan, and the line's direction there (forward).
+fn nearest(line: &Line, p: [f64; 3]) -> ([f64; 2], [f64; 2]) {
+    let mut best = (f64::MAX, [0.; 2], [1., 0.]);
     for w in line.points.windows(2) {
         let (a, b) = (w[0], w[1]);
         let v = [b[0] - a[0], b[1] - a[1]];
@@ -415,45 +415,67 @@ fn nearest(line: &Line, p: [f64; 3]) -> [f64; 2] {
         let q = [a[0] + t * v[0], a[1] + t * v[1]];
         let d = (p[0] - q[0]).hypot(p[1] - q[1]);
         if d < best.0 {
-            best = (d, q);
+            let n = den.sqrt().max(1e-9);
+            best = (d, q, [v[0] / n, v[1] / n]);
         }
     }
-    best.1
+    (best.1, best.2)
 }
 
-/// A tree's far level as it stands at `matrix`: its quad upright and turned to face the road point `road` (the driver
-/// is on the road), showing the atlas view that matches the turn. Two triangles in place of the model's thousands.
-fn billboard(sprite: &mesh::Sprite, matrix: &mesh::Mat, road: [f64; 2], material: u32) -> Vec<Triangle> {
+/// A tree's far level as it stands at `matrix`: two upright quads (4 triangles in place of the model's thousands), one
+/// turned to face the road point `road` (the driver is on the road), one across it facing back along `forward`, the
+/// way the driver comes, so a tree ahead is not seen edge on. Each shows the atlas view that matches its turn.
+fn billboard(
+    sprite: &mesh::Sprite,
+    matrix: &mesh::Mat,
+    (road, forward): ([f64; 2], [f64; 2]),
+    material: u32,
+) -> Vec<Triangle> {
     let norm = |i: usize| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt();
     let (across, up) = (norm(0).max(norm(2)), norm(1));
     let centre = mesh::point(matrix, sprite.centre);
-    // The stage's plan (x, -z of DiRT Rally's) to the road, as a direction in DiRT Rally's.
-    let (dx, dz) = (road[0] - f64::from(centre[0]), -road[1] - f64::from(centre[2]));
-    let len = dx.hypot(dz).max(1e-6);
-    let toward = [(dx / len) as f32, (dz / len) as f32];
-    let right = [toward[1], -toward[0]];
-    // The view of the atlas whose turn is the tree's own turn against the road.
-    let turn = (toward[1].atan2(toward[0]) - matrix[0][2].atan2(matrix[0][0])) / std::f32::consts::TAU;
-    let view = (turn * sprite.views as f32).round().rem_euclid(sprite.views as f32);
-    let width = (sprite.uv[2] - sprite.uv[0]).max(f32::EPSILON);
-    let corner = |sx: f32, sy: f32| {
-        let at = [
-            centre[0] + right[0] * sx * sprite.half[0] * across,
-            centre[1] + sy * sprite.half[1] * up,
-            centre[2] + right[1] * sx * sprite.half[0] * across,
-        ];
-        let uv = [
-            sprite.uv[if sx < 0. { 0 } else { 2 }] + (view - (sprite.uv[0] / width).round()) * width,
-            sprite.uv[if sy > 0. { 1 } else { 3 }],
-        ];
-        (frame::world(at), uv)
+    let direction = |plan: [f64; 2]| {
+        // The stage's plan (x, -z of DiRT Rally's) as a direction in DiRT Rally's.
+        let len = plan[0].hypot(plan[1]).max(1e-6);
+        [(plan[0] / len) as f32, (-plan[1] / len) as f32]
     };
-    let normal = frame::world_dir([toward[0] * 0.5, 0.5, toward[1] * 0.5]);
-    let [tl, bl, tr, br] = [corner(-1., 1.), corner(-1., -1.), corner(1., 1.), corner(1., -1.)];
-    // Counter-clockwise in DiRT Rally's frame, so `(a, c, b)` for the BTB mesh.
-    [[tl, tr, bl], [br, bl, tr]]
-        .map(|t| Triangle { pos: t.map(|c| c.0), uv: t.map(|c| c.1), normal: [normal; 3], material: Some(material) })
-        .to_vec()
+    let to_road = direction([road[0] - f64::from(centre[0]), road[1] + f64::from(centre[2])]);
+    let width = (sprite.uv[2] - sprite.uv[0]).max(f32::EPSILON);
+    let quad = |toward: [f32; 2]| {
+        let right = [toward[1], -toward[0]];
+        // The view of the atlas whose turn is the tree's own turn against the viewer.
+        let turn = (toward[1].atan2(toward[0]) - matrix[0][2].atan2(matrix[0][0])) / std::f32::consts::TAU;
+        let view = (turn * sprite.views as f32).round().rem_euclid(sprite.views as f32);
+        let corner = |sx: f32, sy: f32| {
+            let at = [
+                centre[0] + right[0] * sx * sprite.half[0] * across,
+                centre[1] + sy * sprite.half[1] * up,
+                centre[2] + right[1] * sx * sprite.half[0] * across,
+            ];
+            let uv = [
+                sprite.uv[if sx < 0. { 0 } else { 2 }] + (view - (sprite.uv[0] / width).round()) * width,
+                sprite.uv[if sy > 0. { 1 } else { 3 }],
+            ];
+            (frame::world(at), uv)
+        };
+        let normal = frame::world_dir([toward[0] * 0.5, 0.5, toward[1] * 0.5]);
+        let [tl, bl, tr, br] = [corner(-1., 1.), corner(-1., -1.), corner(1., 1.), corner(1., -1.)];
+        // Counter-clockwise in DiRT Rally's frame, so `(a, c, b)` for the BTB mesh.
+        [[tl, tr, bl], [br, bl, tr]].map(move |t| Triangle {
+            pos: t.map(|c| c.0),
+            uv: t.map(|c| c.1),
+            normal: [normal; 3],
+            material: Some(material),
+        })
+    };
+    let back = direction([-forward[0], -forward[1]]);
+    // A tree whose road-facing quad already looks along the road needs no second one.
+    let along = (to_road[0] * back[0] + to_road[1] * back[1]).abs() > 0.9;
+    let mut out = quad(to_road).to_vec();
+    if !along {
+        out.extend(quad(back));
+    }
+    out
 }
 
 /// The props `objects.ens` places and the trees `trees.bin` does, added to the drawn triangles: drawn only (no
@@ -534,7 +556,7 @@ mod tests {
         };
         let identity = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
         // The road lies along the stage's +x from a tree at the origin: DiRT Rally's +x.
-        let quad = billboard(&sprite, &identity, [30., 0.], 7);
+        let quad = billboard(&sprite, &identity, ([30., 0.], [1., 0.]), 7);
         assert_eq!(quad.len(), 2);
         for t in &quad {
             assert_eq!(t.material, Some(7));
@@ -544,6 +566,8 @@ mod tests {
                 assert!((0. ..=0.125).contains(&uv[0]) && (0.01..=1.).contains(&uv[1]), "{uv:?}");
             }
         }
+        // Along a road that bends away, a second quad faces back along it.
+        assert_eq!(billboard(&sprite, &identity, ([30., 0.], [0., 1.]), 7).len(), 4);
         let ys: Vec<f64> = quad.iter().flat_map(|t| t.pos.map(|p| p[1].abs())).collect();
         assert!(ys.iter().all(|y| (y - 4.).abs() < 1e-9));
     }

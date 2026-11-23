@@ -61,13 +61,16 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   `foliage_billboard.fx`, 2 triangles: its vertices all sit at one centre and `uv2` is each corner's offset, right and
   up, in metres; the atlas holds 8 views of the tree, one per 512 px column) and `_xs` (shadow quad). Only
   `objects.pssg` and `route_objects.pssg` have `LODRENDERINSTANCES`, and their props are small (about 2 M on Finland).
-  So a tree farther than `BILLBOARD_FROM` (8 m) from the road is drawn as its `_x2` quad (`import::billboard`), upright,
-  turned to face the nearest road point (the driver is on the road) with the atlas view of the tree's turn against the
-  road (the view order is a guess; the views look alike). Drawn triangles: Finland route_0 33.2 M -> 9.3 M, Germany
-  panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 8.5 s and 2.7 GB
-  (17 s, 8.8 GB before). Seen: billboards read as the same forest from the road but their birches and poplars are
-  more yellow than the models, and Greece's far olive trees now show leaves where the models near the road show bare
-  branches (the models' foliage cards look missing there: not investigated). Not done: the `*_facing` types (a
+  So a tree farther than `BILLBOARD_FROM` (8 m) from the road is drawn as two upright `_x2` quads (`import::billboard`,
+  4 triangles): one turned to face the nearest road point (the driver is on the road), one across it facing back along
+  the road, so a tree ahead is not seen edge on (a single quad thinned the far forest out: shots under
+  `/tmp/dr-tree-shots/sc-*`); each shows the atlas view of its turn against the viewer (the view order is a guess; the
+  views look alike). Each type's `_x2` samples its own atlas (`<tree>_lod_d.tga`) and the near model its own
+  `*_fo_d`/`*_tr_d`: both are autumn (birch leaves average (182, 144, 59), the atlas (133, 114, 57)), as the game's
+  Finland shot is, so the yellow far birches are right and the near ones are the odd ones when they look bare
+  (not investigated). Drawn triangles (with the terrain shading merged): Finland route_0 33.2 M -> 9.3 M, Germany
+  panzerplatte route_0 26.9 M -> 9.0 M, Greece route_0 9.3 M -> 4.8 M; the viewer loads Finland in 10 s and 3.0 GB (stage folder 754 MB, Greece 486, Germany 659)
+  (17 s, 8.8 GB before). Not done: the `*_facing` types (a
   `treesheet_foliage_norm` quad whose vertices all sit at one point, so it draws nothing), grass (`grass.grs`), cloth,
   `ornaments.bin`; foliage is drawn one-sided as the BTB mesh is.
 
