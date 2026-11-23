@@ -669,19 +669,20 @@ impl Form {
     /// One screen's aspect as the viewer will draw it on the monitor (fullscreen) or the window; 16:9 before the
     /// monitor is known.
     fn screen_aspect(&self) -> f32 {
-        self.aspect(self.triple_monitors().is_some())
-    }
-
-    /// The whole monitor's or window's aspect: all of it, where `screen_aspect` takes a third when triple.
-    fn whole_aspect(&self) -> f32 {
-        self.aspect(true)
-    }
-
-    fn aspect(&self, per_monitor: bool) -> f32 {
         match (self.fullscreen, self.monitor) {
-            (true, Some(monitor)) => screen_aspect(monitor, per_monitor),
+            (true, Some(monitor)) => screen_aspect(monitor, self.triple_monitors().is_some()),
             (true, None) => 16.0 / 9.0,
-            (false, _) => screen_aspect(self.size, per_monitor),
+            (false, _) => screen_aspect(self.size, false),
+        }
+    }
+
+    /// The whole monitor's (fullscreen) or window's aspect, for a single or curved screen; 16:9 before the monitor
+    /// is known.
+    fn whole_aspect(&self) -> f32 {
+        match (self.fullscreen, self.monitor) {
+            (true, Some(monitor)) => screen_aspect(monitor, true),
+            (true, None) => 16.0 / 9.0,
+            (false, _) => screen_aspect(self.size, true),
         }
     }
 
@@ -767,12 +768,9 @@ impl Form {
                 }
             }
 
-            self.true_fov_row(
-                rows,
-                "The centre screen's horizontal field of view that shows the world at its true size at \
-                       this distance",
-                fov,
-            );
+            let tip = "The centre screen's horizontal field of view that shows the world at its true size at this \
+                       distance";
+            self.true_fov_row(rows, tip, fov);
             rows.hint(&text);
         });
         ui.add_space(4.0);
