@@ -663,6 +663,11 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
   becomes 17, tarmac. Pine Ridge (`ROAD` gravel to 5.7 km, then `TARMAC`) gravel; Steppe gravel, finished (10.4 km);
   Pikes gravel finished (19.3 km); Pikes mixed (`GRAVA` 69 %) gravel, finished. `--surface gravel` reaches the physics.
   Pine Ridge's autopilot stops at 5.98 km in a barrier chicane the straight driveline runs into, with tarmac too.
+- A name with `ROCK`, `STONE` or `COBBLE` (69) that dirties the tyres and declares at most 0.90 is gravel too, by the
+  same edge. Before, `dr_greece`'s `CROCK` (0.82, dirty, `gravel.wav`) was 69 under 35 % of `ladders`' driveline and
+  49 % of `snakes`' (3.35/4.7 km), and Onin's (0.85) under 0.7 of 15 km. Now 17; the `tar` layouts' `CROCK` (0.96)
+  stays 69. Reinstalled 2026-11-23 (`ladders`, `snakes`, `onin`; former ones in the player's
+  `backups/pre-rock-gravel-20261123`): only the collision surfaces changed, no 69 left. Not driven or rendered.
 
 ## Converting the whole local install, 2026-11-18
 

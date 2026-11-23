@@ -105,6 +105,8 @@ impl Surfaces {
                 // where it dirties the tyres and has less grip than any tarmac.
                 (37, Some((share, true))) if share < 0.9 => nearest(&DIRT, 133),
                 (37, Some(_)) => nearest(&TARMAC, 37),
+                // Rock that dirties the tyres and grips like gravel is loose (Greece's and Onin's CROCK, 0.82 and 0.85).
+                (69, _) if gravel_road => nearest(&GRAVEL, 1),
                 (id, _) => id,
             },
         }
@@ -925,6 +927,9 @@ mod tests {
             ("GRAVA", 0.84, true, Some("GRAVEL")),
             ("GRASS", 0.85, true, Some("GRAVEL")),
             ("SNOW", 0.6, true, Some("ICE")),
+            ("CROCK", 0.82, true, None),
+            ("COBBLE", 0.96, true, None),
+            ("STONE", 0.85, false, None),
         ];
         surfaces.friction = declared
             .iter()
@@ -938,6 +943,10 @@ mod tests {
         assert_eq!(surfaces.id("SNOW", false), 117);
         // Gritty tarmac that dirties the tyres is still tarmac.
         assert_eq!(surfaces.id("GRIT", false), 65);
+        // Loose rock is gravel; cobbles that grip like tarmac and clean stone stay rock.
+        assert_eq!(surfaces.id("CROCK", false), 17);
+        assert_eq!(surfaces.id("COBBLE", false), 69);
+        assert_eq!(surfaces.id("STONE", false), 69);
         surfaces.friction.insert("ROAD".into(), (0.93, true, None));
         assert_eq!(surfaces.id("ROAD", false), 53);
     }
