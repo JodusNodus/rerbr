@@ -95,6 +95,10 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   closing comment lists them, `wet_materials_remap.xml` their wet codes. No grip value is readable, so codes map by
   kind (`surface.rs`): rock (`ROK`) is coarse gravel 49, never tarmac on a gravel stage; `DEFA` takes the stage's road.
 - Snow, water and rough ids are depths, not weather: their `mat.ini` damp and wet rows repeat the dry id.
+- Wet: routes carry weather variants of their baked light (`terrain_lm_{day,day_alt,night,wet}`, `buildings_lm_*`,
+  `sky_*`, `shadow_map_*`, `ambient_sh_*`; areas `lighting_*.xml`, `ambientmaps_*`, `envmap_*`, `waterdefs_*`); Greece
+  has no wet set. Road materials' `TWetMask` is `default_wetmap.tga` or, on Hafren, a 512² tiling noise of blobs (wet
+  patches), not a placement map. ReRBR's own wet road (film, puddles, rain) already runs on the converted stages.
 - `audio/materials.xml` gives each code a sound and a physics class: `CBW+` (Hafren's ford) is water over mud, 157.
 
 ## Conversion sweep (2026-11-23)
