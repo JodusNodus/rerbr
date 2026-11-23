@@ -295,9 +295,11 @@ impl Context<'_> {
             (true, _) => {
                 (self.made_layout, if self.vertex == "vs_clouded" { "vs_grass_clouded" } else { "vs_grass" }, &[][..])
             }
-            (false, true) => {
-                (self.layout, if self.vertex == "vs_clouded" { "vs_clouded_placed" } else { "vs_main_placed" }, &placed_buffers[..])
-            }
+            (false, true) => (
+                self.layout,
+                if self.vertex == "vs_clouded" { "vs_clouded_placed" } else { "vs_main_placed" },
+                &placed_buffers[..],
+            ),
             (false, false) => (self.layout, self.vertex, &[Some(vertex_layout())][..]),
         };
         self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

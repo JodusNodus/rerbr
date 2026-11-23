@@ -5,9 +5,9 @@
 
 use super::meshes::{GpuDraw, GpuMesh, MeshBuffers, MeshSlot, Packing};
 use crate::stage::placed::{Group, Placed};
-use glam::Vec3;
 use crate::stage::{Anchor, Draw, Lod, Mesh, Vertex};
 use bytemuck::Zeroable;
+use glam::Vec3;
 use wgpu::util::DeviceExt;
 
 /// The models of `placed` as meshes, for the vertex preparations the stage's meshes get (the sun's normals, the
@@ -39,7 +39,7 @@ pub(super) fn model_meshes(placed: &Placed) -> Vec<Mesh> {
         .collect()
 }
 
-/// One vertex per instance, at the top of its placed box and facing up: the point that the bakes of the sky's occlusion
+/// One vertex per instance, at the middle of its placed box and facing up: the point that the bakes of the sky's occlusion
 /// and the bounce find the light of the whole placement at (`probe` in `InstanceIn`), in the order of the instances.
 fn probes(placed: &Placed) -> Vec<Vertex> {
     let mut probes = vec![Vertex::zeroed(); placed.instances.len()];
@@ -51,7 +51,9 @@ fn probes(placed: &Placed) -> Vec<Vertex> {
         for k in group.instances.clone() {
             let rows = placed.instances[k as usize].rows;
             // The placed box's top: the highest of its corners.
-            let at = |c: usize, corner: Vec3| rows[c][0] * corner.x + rows[c][1] * corner.y + rows[c][2] * corner.z + rows[c][3];
+            let at = |c: usize, corner: Vec3| {
+                rows[c][0] * corner.x + rows[c][1] * corner.y + rows[c][2] * corner.z + rows[c][3]
+            };
             let corners = (0..8).map(|i| Vec3::select(glam::BVec3::new(i & 1 != 0, i & 2 != 0, i & 4 != 0), high, low));
             let (mut min, mut max) = (Vec3::MAX, Vec3::MIN);
             for corner in corners {
@@ -59,7 +61,7 @@ fn probes(placed: &Placed) -> Vec<Vertex> {
                 (min, max) = (min.min(p), max.max(p));
             }
             probes[k as usize] = Vertex {
-                position: [(min.x + max.x) / 2.0, max.y, (min.z + max.z) / 2.0],
+                position: [(min.x + max.x) / 2.0, (min.y + max.y) / 2.0, (min.z + max.z) / 2.0],
                 normal: [0.0, 1.0, 0.0],
                 ..Vertex::zeroed()
             };

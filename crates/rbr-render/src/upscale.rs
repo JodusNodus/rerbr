@@ -176,7 +176,8 @@ pub fn stage_textures(stage: &Stage) -> BTreeMap<TextureRef, u32> {
     let drawn = |sky: bool| -> BTreeSet<TextureRef> {
         let meshes = stage.meshes.iter().filter(|mesh| (mesh.layer == Layer::Sky) == sky);
         let groups = stage.placed.groups.iter().filter(|group| (group.layer == Layer::Sky) == sky);
-        let states = meshes.flat_map(|mesh| &mesh.draws).map(|draw| &draw.state).chain(groups.map(|group| &group.state));
+        let states =
+            meshes.flat_map(|mesh| &mesh.draws).map(|draw| &draw.state).chain(groups.map(|group| &group.state));
         states.flat_map(|state| state.textures.into_iter().flatten()).collect()
     };
     let (sky, rest) = (drawn(true), drawn(false));

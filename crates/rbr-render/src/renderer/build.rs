@@ -4,8 +4,8 @@ use super::enhance::{AntiAliasing, Detail, Enhance};
 use super::gpu::Gpu;
 use super::meshes::mesh_bounds;
 use super::meshes::{transformed_vertices, GpuDraw, GpuMesh, InteractiveGpu, Packing};
-use super::placed as placed_gpu;
 use super::pipelines::{cutout, layouts, prepassed, vertex_entry, Context, DrawPass, PipelineKey};
+use super::placed as placed_gpu;
 use super::reflection::{reflects, Reflection, ScreenReflection};
 use super::shadows::shadow_map;
 use super::sun_mask::SunMask;
@@ -344,8 +344,7 @@ impl Renderer {
         };
 
         let mut slots = Vec::with_capacity(stage.meshes.len());
-        let cut_out =
-            if enhance.lighting { foliage::cut_out(stage, cutout) } else { HashMap::new() };
+        let cut_out = if enhance.lighting { foliage::cut_out(stage, cutout) } else { HashMap::new() };
         let plant = |draw: &Draw| cut_out.get(&draw.state.textures[0]?).filter(|_| cutout(&draw.state));
         let ground = stage.atmosphere.relight.map(|_| crate::relight::Ground::of(stage));
         // The puddles show in wet weather only (`wet_plus`).
@@ -431,7 +430,17 @@ impl Renderer {
                         .draws
                         .iter()
                         .map(|draw| {
-                            gpu_draw(draw, first_index, false, false, (Anchor::World, Layer::Solid), None, false, false, false)
+                            gpu_draw(
+                                draw,
+                                first_index,
+                                false,
+                                false,
+                                (Anchor::World, Layer::Solid),
+                                None,
+                                false,
+                                false,
+                                false,
+                            )
                         })
                         .collect();
                     interactive_slots.insert(instance.handle, meshes.len());
