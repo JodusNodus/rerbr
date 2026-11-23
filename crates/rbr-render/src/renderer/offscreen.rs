@@ -55,17 +55,7 @@ impl Renderer {
         frame_view: FrameView<'_>,
         overlay: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView),
     ) -> Result<(FrameStats, Vec<u8>), ReadbackError> {
-        let (width, height) = size;
-        let target = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("offscreen"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: self.format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let target = self.offscreen_target(size);
         let view = target.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let started = std::time::Instant::now();
@@ -76,7 +66,35 @@ impl Renderer {
             profiler.add("frame (profiled)", started.elapsed());
         }
         overlay(&mut encoder, &view);
+        let pixels = self.read_back(encoder, &target)?;
+        if let Some(profiler) = &mut self.profiler {
+            profiler.end_frame();
+        }
+        Ok((stats, pixels))
+    }
 
+    /// A texture of `size` in this renderer's format to draw a frame into and read back ([`Renderer::read_back`]).
+    pub fn offscreen_target(&self, size: (u32, u32)) -> wgpu::Texture {
+        self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("offscreen"),
+            size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+    }
+
+    /// Submits `encoder` and reads `target`'s pixels back once it is done (`width * height * 4` bytes, rows top to
+    /// bottom).
+    pub fn read_back(
+        &self,
+        mut encoder: wgpu::CommandEncoder,
+        target: &wgpu::Texture,
+    ) -> Result<Vec<u8>, ReadbackError> {
+        let (width, height) = (target.width(), target.height());
         let row_bytes = width * 4;
         let padded_row = row_bytes.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -87,7 +105,7 @@ impl Renderer {
         });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
-                texture: &target,
+                texture: target,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -117,9 +135,6 @@ impl Renderer {
             mapped.chunks_exact(padded_row as usize).flat_map(|row| &row[..row_bytes as usize]).copied().collect();
         drop(mapped);
         readback.unmap();
-        if let Some(profiler) = &mut self.profiler {
-            profiler.end_frame();
-        }
-        Ok((stats, pixels))
+        Ok(pixels)
     }
 }

@@ -20,7 +20,7 @@ use rbr_render::relight;
 use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
-use rbr_render::triple::Rig;
+use rbr_render::triple::{Curved, Rig, Screens};
 use rbr_render::views::CarView;
 use std::path::{Path, PathBuf};
 
@@ -120,7 +120,8 @@ pub struct Args {
     pub fullscreen: bool,
     /// `--triple DIAGONAL,BEZEL,DISTANCE[,ANGLE]`: triple screens (`rbr_render::triple`), the window split in three (a
     /// spanned display) unless `--triple-monitors` names a window's monitor each: left, centre and right.
-    pub triple: Option<Rig>,
+    /// `--curved DIAGONAL,RADIUS,DISTANCE`: a curved panel, the window split in three segments.
+    pub screens: Option<Screens>,
     pub triple_monitors: Option<[String; 3]>,
     /// `--hdr`: the window shows the highlights past the display's SDR white where it can (`present::surface_colour`).
     pub hdr: bool,
@@ -256,6 +257,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --save-replay FILE (with --live)  --replay FILE [ARGS...] (watches a replay, extras override)
   view:       --view NAME  --cameras INI  --fov DEG  --chase-fov DEG  --camera EX,EY,EZ,FX,FY,FZ  --flyby AHEAD,SIDE,HEIGHT  --size WxH  --fullscreen  --look-back
               --triple DIAGONAL,BEZEL,DISTANCE[,ANGLE|auto] (inches, mm, cm, degrees)  --triple-monitors LEFT,CENTRE,RIGHT
+              --curved DIAGONAL,RADIUS,DISTANCE (inches, mm, cm)
               --title TEXT  --pause-menu MOVES  --debug-view MODE
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
@@ -295,6 +297,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut chase_fov = CHASE_FOV_DEGREES;
     let mut triple = None;
     let mut triple_monitors = None;
+    let mut curved = None;
     let mut cameras = None;
     let mut selection = Selection::default();
     let mut view = None;
@@ -374,6 +377,12 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let value = args.next().ok_or("--triple needs DIAGONAL,BEZEL,DISTANCE[,ANGLE]")?;
                 triple = Some(Rig::parse(&value).ok_or_else(|| {
                     format!("--triple {value}: needs inches, mm and cm above 0 (bezel 0 or more) and auto or 0 to 90 degrees")
+                })?);
+            }
+            "--curved" => {
+                let value = args.next().ok_or("--curved needs DIAGONAL,RADIUS,DISTANCE")?;
+                curved = Some(Curved::parse(&value).ok_or_else(|| {
+                    format!("--curved {value}: needs inches, mm and cm above 0, the diagonal under half the circle")
                 })?);
             }
             "--triple-monitors" => {
@@ -727,6 +736,11 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         }
     }
     let (fov, chase_fov) = (fov.to_radians(), chase_fov.to_radians());
+    let screens = match (triple, curved) {
+        (Some(_), Some(_)) => return Err("--curved takes no --triple".to_owned()),
+        (None, Some(_)) if triple_monitors.is_some() => return Err("--curved takes no --triple-monitors".to_owned()),
+        (triple, curved) => triple.map(Screens::Triple).or(curved.map(Screens::Curved)),
+    };
     // A video renders its replay back to back: the live command runs it with `--replay-pace free`.
     // A replay screenshot runs the same way: headless, the answers read back to back (`scene::start_live`).
     if video.is_some() && screenshot.is_some() {
@@ -810,7 +824,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         max_fps,
         pacing,
         fullscreen,
-        triple,
+        screens,
         triple_monitors,
         hdr,
         title,
@@ -1009,8 +1023,14 @@ mod tests {
         assert_eq!((args.present, args.max_fps, args.fullscreen), (Present::default(), None, false));
         assert!(parse("--fullscreen").unwrap().fullscreen);
         let rig = Rig { diagonal: 27.0, bezel: 10.0, distance: 70.0, angle: None };
-        assert_eq!(parse("--triple 27,10,70,auto").unwrap().triple, Some(rig));
-        assert_eq!(parse("track-10_O").unwrap().triple, None);
+        assert_eq!(parse("--triple 27,10,70,auto").unwrap().screens, Some(Screens::Triple(rig)));
+        assert_eq!(parse("track-10_O").unwrap().screens, None);
+        let panel = Curved { diagonal: 49.0, radius: 1800.0, distance: 70.0 };
+        assert_eq!(parse("--curved 49,1800,70").unwrap().screens, Some(Screens::Curved(panel)));
+        for bad in ["--curved 49,1800", "--curved 49,300,70", "--curved 49,1800,70 --triple 27,10,70"] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+        assert!(parse("--curved 49,1800,70 --triple-monitors DP-1,DP-2,HDMI-A-1").is_err());
         assert!(parse("--triple 27,10").is_err() && parse("--triple-monitors DP-1,DP-2").is_err());
         let monitors = parse("--triple 27,10,70 --triple-monitors DP-1,DP-2,HDMI-A-1").unwrap().triple_monitors;
         assert_eq!(monitors, Some(["DP-1", "DP-2", "HDMI-A-1"].map(String::from)));

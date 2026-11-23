@@ -54,6 +54,7 @@ Car telemetry ([docs/experimental-physics.md](docs/experimental-physics.md)).
 Ours, not in 1.02: the launcher in place of the game's menus, the season's car (the game drives your team's), the HUD
 and end screens, the force-feedback graph of your steering load per car (pause menu), the wiper switch, the look-back key, the "Best" ghost, night, working mirrors, and the renderer
 additions on the Graphics & sound page, set by a quality preset or one by one. The stage always draws at the game's highest quality.
+Ultrawide, curved and triple screens get the field of view of your seat ([docs/screens.md](docs/screens.md)).
 
 ### Known limitations
 

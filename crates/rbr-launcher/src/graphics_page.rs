@@ -9,12 +9,10 @@ use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
 use rbr_render::renderer::{Detail, Reflections};
-use rbr_render::triple::Rig;
 
 use crate::kit;
 use crate::pages::{combo, Choice};
-use crate::settings_page::{label_cell, note, row_tip};
-use crate::theme::WARN;
+use crate::settings_page::{label_cell, row_tip};
 use crate::Form;
 
 /// The Quality section's choices: the renderer's additions (`viewer --enhance`), the wet roads (`--enhance wet` and
@@ -255,35 +253,14 @@ fn present_label(present: Present) -> (&'static str, &'static str) {
 /// The frame caps offered, frames a second (`viewer --max-fps`); 0, the first, is none.
 pub const FRAME_CAPS: [u32; 7] = [0, 30, 60, 90, 120, 144, 240];
 
-/// Triple screens (ours, `viewer --triple`): three like screens side by side, the side ones turned towards the
-/// player. Each screen's diagonal in inches (10 to 65, 27 by default), the frame around each screen's image in
-/// millimetres (0 to 60, 10 by default), the eye to the centre screen in centimetres (30 to 200, 70 by default),
-/// and the side screens' turn in degrees (`None`: facing the eye, the default; 0 to 90).
-pub const TRIPLE_DIAGONAL_DEFAULT: f32 = 27.0;
-pub const TRIPLE_DIAGONAL_RANGE: std::ops::RangeInclusive<f32> = 10.0..=65.0;
-pub const TRIPLE_BEZEL_DEFAULT: f32 = 10.0;
-pub const TRIPLE_BEZEL_RANGE: std::ops::RangeInclusive<f32> = 0.0..=60.0;
-pub const TRIPLE_DISTANCE_DEFAULT: f32 = 70.0;
-pub const TRIPLE_DISTANCE_RANGE: std::ops::RangeInclusive<f32> = 30.0..=200.0;
-pub const TRIPLE_ANGLE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=rbr_render::triple::MAX_ANGLE;
-
-/// `names` once each monitor is picked: `viewer --triple-monitors` takes three.
-fn picked(names: Option<&[String; 3]>) -> Option<&[String; 3]> {
-    names.filter(|names| names.iter().all(|name| !name.is_empty()))
-}
-
-/// One screen's aspect on a display or window `whole` pixels: all of it with a window a monitor (`per_monitor`),
-/// else a third of it.
-fn screen_aspect(whole: (u32, u32), per_monitor: bool) -> f32 {
-    let aspect = whole.0 as f32 / whole.1.max(1) as f32;
-    match per_monitor {
-        true => aspect,
-        false => aspect / 3.0,
-    }
-}
-
 /// A whole-number slider with its unit `suffix` and hover `tip`.
-fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, suffix: &str, tip: &str) {
+pub(crate) fn slider(
+    ui: &mut egui::Ui,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+    suffix: &str,
+    tip: &str,
+) {
     ui.spacing_mut().slider_width = 180.0;
     ui.add(egui::Slider::new(value, range).step_by(1.0).fixed_decimals(0).suffix(suffix)).on_hover_text(tip);
 }
@@ -387,10 +364,6 @@ impl Form {
                 });
             });
 
-            let tip = "Three like screens side by side, the side ones turned towards you, each drawing its own \
-                       view from your seat. The field-of-view sliders set the centre screen's view";
-            rows.switch_row("Triple screens", None, &mut self.triple).on_hover_text(tip);
-
             let tip = "Draws the 3D view at this share of the window's size, which the temporal anti-aliasing \
                        upscales to it over the frames: faster, for high refresh rates at 1440p and above; the lower, \
                        the softer, and fast-moving edges grow rougher";
@@ -466,14 +439,24 @@ impl Form {
             rows.switch_row("Performance log for each drive", hint.as_deref(), &mut self.perf_log).on_hover_text(tip);
         });
 
-        self.triple_fields(ui);
+        self.screen_fields(ui);
 
         ui.add_space(14.0);
         kit::group_label(ui, "Camera", None);
         kit::panel(ui, |rows| {
             let tip = "The horizontal field of view of the in-car views and the free camera; the chase view has its \
                        own below. The pause menu's Camera page sets it too";
-            rows.row("Field of view", |ui| slider(ui, &mut self.fov, coords::FOV_RANGE_DEGREES, "°", tip));
+            match self.matched_fov() {
+                Some(fov) => {
+                    let tip = "Matched to your screen (Screen above): pick Manual there to set it here. Changing it \
+                               on the pause menu's Camera page also switches to Manual";
+                    let mut shown = fov.round();
+                    rows.row("Field of view", |ui| {
+                        ui.add_enabled_ui(false, |ui| slider(ui, &mut shown, coords::FOV_RANGE_DEGREES, "°", tip));
+                    });
+                }
+                None => rows.row("Field of view", |ui| slider(ui, &mut self.fov, coords::FOV_RANGE_DEGREES, "°", tip)),
+            }
 
             let tip = "The horizontal field of view of the chase view (65 by default). The pause menu's Camera page \
                        sets it too";
@@ -595,132 +578,6 @@ impl Form {
         });
         ui.add_space(4.0);
         kit::hint(ui, "1 is the game's volume. Volume goes up to 4, each group up to 2.");
-    }
-
-    /// The triple-screen rig from the Triple screens section, when triple screens are on (`viewer --triple`).
-    pub fn triple_rig(&self) -> Option<Rig> {
-        self.triple.then(|| self.rig())
-    }
-
-    /// The Triple screens section's rig.
-    fn rig(&self) -> Rig {
-        Rig {
-            diagonal: self.triple_diagonal,
-            bezel: self.triple_bezel,
-            distance: self.triple_distance,
-            angle: self.triple_angle,
-        }
-    }
-
-    /// The three monitors' names once each is picked (`viewer --triple-monitors`).
-    pub fn triple_monitors(&self) -> Option<&[String; 3]> {
-        picked(self.triple_monitors.as_ref())
-    }
-
-    /// One screen's aspect as the viewer will draw it on the monitor (fullscreen) or the window; 16:9 before the
-    /// monitor is known.
-    fn screen_aspect(&self) -> f32 {
-        match (self.fullscreen, self.monitor) {
-            (true, Some(monitor)) => screen_aspect(monitor, self.triple_monitors().is_some()),
-            (true, None) => 16.0 / 9.0,
-            (false, _) => screen_aspect(self.size, false),
-        }
-    }
-
-    /// The Triple screens section, shown while they are on (the switch is in Display): the rig's geometry, the
-    /// monitors, and the true field of view at the seat.
-    fn triple_fields(&mut self, ui: &mut egui::Ui) {
-        if !self.triple {
-            return;
-        }
-        ui.add_space(14.0);
-        kit::group_label(ui, "Triple screens", None);
-        let aspect = self.screen_aspect();
-        let rig = self.rig();
-        let fov = rig.true_fov(aspect).to_degrees();
-        let auto_degrees = Rig { angle: None, ..rig }.side_angle(aspect).to_degrees();
-        let mut text = format!("{fov:.0}° at this distance");
-        if self.triple_angle.is_none() {
-            text += &format!(", side screens at {:.0}°", rig.side_angle(aspect).to_degrees());
-        }
-        let names = self.monitors.clone();
-        kit::panel(ui, |rows| {
-            rows.row("Screen size", |ui| {
-                slider(ui, &mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE, " in", "Each screen's diagonal")
-            });
-            rows.row("Bezel", |ui| {
-                let tip = "The frame around each screen's image: two of them part neighbouring images";
-                slider(ui, &mut self.triple_bezel, TRIPLE_BEZEL_RANGE, " mm", tip)
-            });
-            rows.row("Distance", |ui| {
-                let tip = "From your eyes to the centre screen";
-                slider(ui, &mut self.triple_distance, TRIPLE_DISTANCE_RANGE, " cm", tip)
-            });
-
-            let tip = "How far each side screen is turned towards you from the centre screen's plane. Auto faces \
-                       their middles at your eyes at this distance";
-            let mut auto = self.triple_angle.is_none();
-            let mut degrees = self.triple_angle.unwrap_or(auto_degrees);
-            rows.row("Side angle", |ui| {
-                ui.add_enabled_ui(!auto, |ui| {
-                    slider(ui, &mut degrees, TRIPLE_ANGLE_RANGE, "°", tip);
-                });
-                if ui.checkbox(&mut auto, "Auto").on_hover_text(tip).changed() {
-                    self.triple_angle = if auto { None } else { Some(degrees) };
-                }
-            });
-            if !auto {
-                self.triple_angle = Some(degrees);
-            }
-
-            let tip = "One borderless fullscreen window a monitor, or one window split in thirds on a spanned \
-                       display such as NVIDIA Surround or AMD Eyefinity";
-            let mut three = self.triple_monitors.is_some();
-            rows.row("Displays", |ui| {
-                let options = [(false, "One wide display (Surround / Eyefinity)"), (true, "Three monitors")];
-                if kit::segmented(ui, "triple displays", &mut three, &options).on_hover_text(tip).changed() {
-                    self.triple_monitors = three.then(|| {
-                        [
-                            names.first().cloned().unwrap_or_default(),
-                            names.get(1).cloned().unwrap_or_default(),
-                            names.get(2).cloned().unwrap_or_default(),
-                        ]
-                    });
-                }
-            });
-            if let Some(monitors) = &mut self.triple_monitors {
-                for (slot, side) in monitors.iter_mut().zip(["Left", "Centre", "Right"]) {
-                    let mut options = names.clone();
-                    if !slot.is_empty() && !options.contains(slot) {
-                        options.push(slot.clone());
-                    }
-                    rows.row(side, |ui| {
-                        ComboBox::from_id_salt(("triple monitor", side))
-                            .selected_text(if slot.is_empty() { "Pick one" } else { slot.as_str() })
-                            .show_ui(ui, |ui| {
-                                for name in &options {
-                                    ui.selectable_value(slot, name.clone(), name);
-                                }
-                            });
-                    });
-                }
-                if names.len() < 3 {
-                    note(rows, WARN, &format!("{} of 3 monitors connected", names.len()));
-                }
-            }
-
-            let tip = "The centre screen's horizontal field of view that shows the world at its true size at \
-                       this distance";
-            row_tip(rows, "True field of view", tip, |ui| {
-                let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
-                if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
-                    self.fov = fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
-                }
-            });
-            rows.hint(&text);
-        });
-        ui.add_space(4.0);
-        kit::hint(ui, "The field-of-view sliders set the centre screen's field of view in triple mode.");
     }
 
     /// The Quality section: the presets, then each choice with its tip on hover.
@@ -846,24 +703,4 @@ impl Form {
 
 fn size_label((w, h): (u32, u32)) -> String {
     format!("{w} x {h}")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn triple_monitors_go_once_all_three_are_picked() {
-        let names = ["DP-1".to_owned(), String::new(), "DP-2".to_owned()];
-        assert_eq!(picked(Some(&names)), None);
-        let names = ["DP-1".to_owned(), "DP-3".to_owned(), "DP-2".to_owned()];
-        assert_eq!(picked(Some(&names)), Some(&names));
-    }
-
-    #[test]
-    fn a_triple_screen_is_a_third_of_a_spanned_display() {
-        let wide = 16.0 / 9.0;
-        assert!((screen_aspect((5760, 1080), false) - wide).abs() < 1e-6);
-        assert!((screen_aspect((1920, 1080), true) - wide).abs() < 1e-6);
-    }
 }

@@ -30,7 +30,7 @@ use rbr_render::perf_log;
 use rbr_render::playback::ChaseLook;
 use rbr_render::renderer::{Gpu, Renderer};
 use rbr_render::shifter::Shifter;
-use rbr_render::triple::Rig;
+use rbr_render::triple::Screens;
 use rbr_render::views::{CarView, Shown};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -103,16 +103,22 @@ pub(super) struct Running {
     camera: FreeFly,
     /// The HUD, drawn with a drive.
     overlay: Overlay,
-    /// Triple screens (`--triple`): the rig, and the side screens' windows (`--triple-monitors`; none: the window
-    /// holds the three).
-    rig: Option<Rig>,
+    /// Triple screens (`--triple`) or a curved panel (`--curved`), and the side screens' windows (`--triple-monitors`;
+    /// none: the window holds the three).
+    screens: Option<Screens>,
     sides: Vec<Side>,
 }
 
 impl Running {
-    /// Whether the window holds a triple screen's three views.
+    /// Whether the window holds the three views.
     fn spanned(&self) -> bool {
-        self.rig.is_some() && self.sides.is_empty()
+        self.screens.is_some() && self.sides.is_empty()
+    }
+
+    /// Where the HUD and the menus go in the window, `None` all of it ([`crate::triple::hud_region`]).
+    fn hud_region(&self) -> Option<[u32; 4]> {
+        let size = (self.config.width, self.config.height);
+        self.screens.as_ref().filter(|_| self.spanned()).map(|screens| crate::triple::hud_region(screens, size))
     }
 }
 pub struct App {

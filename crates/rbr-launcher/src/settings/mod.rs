@@ -19,12 +19,13 @@ use rbr_render::shifter::{CarBox, Engagement};
 
 use crate::catalog::{Car, TyreChoice, WEARS};
 use crate::ghosts::GhostChoice;
-use crate::graphics_page::{
-    Grass, WetRoads, FRAME_CAPS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES, TRIPLE_ANGLE_RANGE, TRIPLE_BEZEL_RANGE,
-    TRIPLE_DIAGONAL_RANGE, TRIPLE_DISTANCE_RANGE,
-};
+use crate::graphics_page::{Grass, WetRoads, FRAME_CAPS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES};
 use crate::pages::Choice;
 use crate::physics::PhysicsProfile;
+use crate::screen_page::{
+    SCREEN_DIAGONAL_RANGE, SCREEN_DISTANCE_RANGE, SCREEN_RADIUS_RANGE, TRIPLE_ANGLE_RANGE, TRIPLE_BEZEL_RANGE,
+    TRIPLE_DIAGONAL_RANGE, TRIPLE_DISTANCE_RANGE,
+};
 use crate::time_of_day::StartTime;
 #[cfg(test)]
 use rbr_gameplay::weather::Preset;
@@ -163,6 +164,16 @@ pub struct Settings {
     pub triple_angle: Option<Option<f32>>,
     /// The three monitors' names (left, centre, right); none: one wide display.
     pub triple_monitors: Option<[String; 3]>,
+    /// One curved panel (`viewer --curved`); off by default, triple wins when both are on.
+    pub curved: Option<bool>,
+    /// The curved or single screen's diagonal, inches (34 by default, 24 to 65).
+    pub screen_diagonal: Option<f32>,
+    /// The curved panel's radius, millimetres (1800 by default, 800 to 4000).
+    pub screen_radius: Option<f32>,
+    /// From the eye to the panel's middle, centimetres (70 by default, 30 to 200).
+    pub screen_distance: Option<f32>,
+    /// The in-car views' field of view follows the screen's size and distance (`screen_page`); off by default.
+    pub fov_from_screen: Option<bool>,
     /// The driving window shows the highlights past an HDR display's SDR white (`viewer --hdr`).
     pub hdr: Option<bool>,
     /// The viewer writes a performance log (`viewer --perf-log`, in the player's `logs` folder).
@@ -489,6 +500,11 @@ impl Settings {
                 Some(degrees) => degrees.parse::<f32>().ok().filter(|a| TRIPLE_ANGLE_RANGE.contains(a)).map(Some),
             },
             triple_monitors: launcher.parsed("triple_monitors", parse_monitors),
+            curved: launcher.on_off("curved"),
+            screen_diagonal: launcher.ranged("screen_diagonal", SCREEN_DIAGONAL_RANGE),
+            screen_radius: launcher.ranged("screen_radius", SCREEN_RADIUS_RANGE),
+            screen_distance: launcher.ranged("screen_distance", SCREEN_DISTANCE_RANGE),
+            fov_from_screen: launcher.on_off("fov_from_screen"),
             hdr: launcher.on_off("hdr"),
             perf_log: launcher.on_off("perf_log"),
             start_time: launcher.parsed("start_time", StartTime::parse),
@@ -596,6 +612,11 @@ impl Settings {
             ("triple_distance", text(self.triple_distance)),
             ("triple_angle", self.triple_angle.map(|angle| angle.map_or_else(|| "auto".to_owned(), |a| a.to_string()))),
             ("triple_monitors", self.triple_monitors.clone().map(|monitors| monitors.join(","))),
+            ("curved", on_off_text(self.curved)),
+            ("screen_diagonal", text(self.screen_diagonal)),
+            ("screen_radius", text(self.screen_radius)),
+            ("screen_distance", text(self.screen_distance)),
+            ("fov_from_screen", on_off_text(self.fov_from_screen)),
             ("hdr", on_off_text(self.hdr)),
             ("start_time", self.start_time.map(StartTime::to_text)),
             ("perf_log", on_off_text(self.perf_log)),
@@ -704,6 +725,11 @@ mod tests {
             triple_distance: Some(65.0),
             triple_angle: Some(Some(45.0)),
             triple_monitors: Some(["HDMI-1".into(), "DP-1".into(), "HDMI-2".into()]),
+            curved: Some(true),
+            screen_diagonal: Some(38.0),
+            screen_radius: Some(2300.0),
+            screen_distance: Some(80.0),
+            fov_from_screen: Some(true),
             hdr: Some(true),
             perf_log: Some(true),
             start_time: Some(StartTime::Baked),
@@ -990,6 +1016,11 @@ mod tests {
                 "triple_distance = 65\n",
                 "triple_angle = 45\n",
                 "triple_monitors = HDMI-1,DP-1,HDMI-2\n",
+                "curved = on\n",
+                "screen_diagonal = 38\n",
+                "screen_radius = 2300\n",
+                "screen_distance = 80\n",
+                "fov_from_screen = on\n",
                 "hdr = on\n",
                 "start_time = baked\n",
                 "perf_log = on\n",
@@ -1160,6 +1191,20 @@ mod tests {
             Some(["A".into(), "B".into(), "C".into()])
         );
         assert_eq!(Settings::parse("[launcher]\ntriple_monitors = A,B,C,D\n").triple_monitors, None);
+        assert_eq!(Settings::parse("[launcher]\ncurved = maybe\n").curved, None);
+        assert_eq!(Settings::parse("[launcher]\ncurved = on\n").curved, Some(true));
+        assert_eq!(Settings::parse("[launcher]\nscreen_diagonal = 23\n").screen_diagonal, None);
+        assert_eq!(Settings::parse("[launcher]\nscreen_diagonal = 24\n").screen_diagonal, Some(24.0));
+        assert_eq!(Settings::parse("[launcher]\nscreen_diagonal = 65\n").screen_diagonal, Some(65.0));
+        assert_eq!(Settings::parse("[launcher]\nscreen_diagonal = 66\n").screen_diagonal, None);
+        assert_eq!(Settings::parse("[launcher]\nscreen_radius = 799\n").screen_radius, None);
+        assert_eq!(Settings::parse("[launcher]\nscreen_radius = 800\n").screen_radius, Some(800.0));
+        assert_eq!(Settings::parse("[launcher]\nscreen_radius = 4000\n").screen_radius, Some(4000.0));
+        assert_eq!(Settings::parse("[launcher]\nscreen_radius = 4001\n").screen_radius, None);
+        assert_eq!(Settings::parse("[launcher]\nscreen_distance = 29\n").screen_distance, None);
+        assert_eq!(Settings::parse("[launcher]\nscreen_distance = 200\n").screen_distance, Some(200.0));
+        assert_eq!(Settings::parse("[launcher]\nfov_from_screen = on\n").fov_from_screen, Some(true));
+        assert_eq!(Settings::parse("[launcher]\nfov_from_screen = yes\n").fov_from_screen, None);
         assert_eq!(Settings::parse("[launcher]\ntriple_monitors = A,,C\n").triple_monitors, None);
         assert_eq!(Settings::parse("[launcher]\nwipers = fast\n").wipers, None);
         // The wipers, the presentation and the mirrors parse case-insensitively.

@@ -332,7 +332,7 @@ impl Overlay {
     }
 
     /// Lays the HUD out in the part `region` of the targets (x, y, width and height in pixels: a spanned triple
-    /// display's centre screen, `crate::triple`), `None` all of them.
+    /// display's centre screen or a curved panel's middle, `crate::triple`), `None` all of them.
     pub fn set_region(&mut self, region: Option<[u32; 4]>) {
         self.region = region;
     }

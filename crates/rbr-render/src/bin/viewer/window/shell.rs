@@ -11,7 +11,7 @@ use rbr_render::hud::Overlay;
 use rbr_render::icon;
 use rbr_render::present::Acquired;
 use rbr_render::renderer::{self, Gpu};
-use rbr_render::triple::Rig;
+use rbr_render::triple::Screens;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -59,9 +59,9 @@ impl Viewer {
     /// The loaded scene's drive, in the loading screen's window.
     fn run(&self, shell: Shell, Loaded { scene, renderer, sound }: Loaded) -> App {
         let args = &*self.args;
-        let Shell { window, surface, config, stale, gpu, overlay, rig, sides, .. } = shell;
+        let Shell { window, surface, config, stale, gpu, overlay, screens, sides, .. } = shell;
         let camera = start_camera(&scene.stage, scene.chase);
-        let running = Running { window, surface, config, stale, gpu, renderer, camera, overlay, rig, sides };
+        let running = Running { window, surface, config, stale, gpu, renderer, camera, overlay, screens, sides };
         App::new(scene, args, sound, running, self.data.clone())
     }
 }
@@ -75,7 +75,7 @@ impl ApplicationHandler for Viewer {
             Ok(shell) => {
                 let (gpu, config) = (shell.gpu.clone(), &shell.config);
                 let (args, data, fmod_bank) = (self.args.clone(), self.data.clone(), self.fmod_bank.clone());
-                // The first frame warms up at one screen's size (a third of a window holding a triple screen's three).
+                // The first frame warms up at one screen's size (a third of a window holding the three views).
                 let screen = triple::screen((config.width, config.height), shell.spanned);
                 let loading = Loading::start(args, data, fmod_bank, gpu, config.format, screen);
                 self.phase = Phase::Loading(Box::new((shell, loading)));
@@ -146,11 +146,11 @@ struct Shell {
     stale: bool,
     gpu: Gpu,
     overlay: Overlay,
-    /// Triple screens (`--triple`, unless its monitors are missing), and the side screens' windows
-    /// (`--triple-monitors`), left and right.
-    rig: Option<Rig>,
+    /// Triple screens (`--triple`, unless its monitors are missing) or a curved panel (`--curved`), and the side
+    /// screens' windows (`--triple-monitors`), left and right.
+    screens: Option<Screens>,
     sides: Vec<Side>,
-    /// The window holds a triple screen's three views (`--triple` without `--triple-monitors`).
+    /// The window holds the three views (`--curved`, or `--triple` without `--triple-monitors`).
     spanned: bool,
 }
 
@@ -167,14 +167,14 @@ impl Shell {
             winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, icon::APP_ID, icon::APP_ID);
         // A triple screen's own monitors (`--triple-monitors`): the main window on the centre one, a side's on each other.
         // Without them (a replay watched away from the rig) the window shows one screen.
-        let mut rig = args.triple;
-        let monitors = match (&rig, &args.triple_monitors) {
-            (Some(_), Some(names)) => {
+        let mut screens = args.screens;
+        let monitors = match (&screens, &args.triple_monitors) {
+            (Some(Screens::Triple(_)), Some(names)) => {
                 match names.iter().map(|name| triple::monitor(event_loop, name)).collect::<Result<Vec<_>, _>>() {
                     Ok(monitors) => Some(monitors),
                     Err(e) => {
                         eprintln!("viewer: {e}; drawing one screen");
-                        rig = None;
+                        screens = None;
                         None
                     }
                 }
@@ -238,8 +238,8 @@ impl Shell {
                 .collect::<Result<Vec<_>, _>>()?,
             None => Vec::new(),
         };
-        let spanned = rig.is_some() && sides.is_empty();
-        Ok(Shell { window, surface, config, stale, gpu, overlay, rig, sides, spanned })
+        let spanned = screens.is_some() && sides.is_empty();
+        Ok(Shell { window, surface, config, stale, gpu, overlay, screens, sides, spanned })
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -247,13 +247,6 @@ impl Shell {
         self.config.height = size.height.max(1);
         self.stale = !rbr_render::present::configure(&self.surface, &self.gpu.device, &self.config);
     }
-}
-
-/// The centre screen of a window split in three: where the HUD and the menus go.
-pub(super) fn spanned_region(size: (u32, u32)) -> [u32; 4] {
-    let screen = triple::screen(size, true);
-    let (x, y) = triple::spanned_at(1, screen);
-    [x, y, screen.0, screen.1]
 }
 
 impl Shell {
@@ -287,8 +280,9 @@ impl Shell {
             ..Default::default()
         });
         let size = (self.config.width, self.config.height);
-        // Spanned, the loading screen goes on the centre screen.
-        self.overlay.set_region(self.spanned.then(|| spanned_region(size)));
+        // Spanned, the loading screen goes where the HUD does.
+        let screens = self.screens.as_ref().filter(|_| self.spanned);
+        self.overlay.set_region(screens.map(|screens| triple::hud_region(screens, size)));
         self.overlay
             .draw_with(&self.gpu.device, &self.gpu.queue, &mut encoder, &view, size, |ctx, _| loading.paint(ctx));
         self.gpu.queue.submit([encoder.finish()]);

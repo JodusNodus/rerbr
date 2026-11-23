@@ -137,8 +137,8 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         if let Some(playback) = &mut scene.playback {
             playback.follow_cameras(shown.swing(), args.look_back);
         }
-        // One screen's size: the image's, or a third of it for a triple screen's three views side by side.
-        let screen = triple::screen(size, args.triple.is_some());
+        // One screen's size: the image's, or a third of it holding the three views side by side.
+        let screen = triple::screen(size, args.screens.is_some());
         // The school demo replaces the player's camera: the chase follows the demo car, the ride watches
         // from the cockpit (or the bonnet).
         let demo_lens = match (&demo, scene.playback.as_ref(), scene.mounts.as_ref()) {
@@ -153,7 +153,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             (None, Some(lens)) => lens,
             (None, None) => lens(scene, shown, look, fov),
         };
-        let (views, centre) = triple::views(&lens, args.triple.as_ref(), screen);
+        let (views, centre) = triple::views(&lens, args.screens.as_ref(), screen);
         let view_projections: Vec<_> = views.iter().map(|&(view_projection, _)| view_projection).collect();
         let (view_projection, sky_view_projection) = views[centre];
         if let Some(characters) = &mut scene.characters {
@@ -214,33 +214,54 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         if frames > 0 && shot == 0 {
             time_frames(&gpu, &mut renderer, format, screen, (view_projection, sky_view_projection), args)?;
         }
-        // The centre view first (a triple screen's draws what the views share), then the others beside it.
-        let frame_view = FrameView { views: &views, index: centre, first: true, at: None };
-        let (stats, pixels) = renderer.render_offscreen_view(screen, frame_view, |encoder, target| {
-            overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, screen, |ctx, hud| {
-                readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
-                menu.iter().for_each(|m| pause::paint(ctx, hud, m));
-                if menu.is_none() {
-                    if let Some(actions) = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu)) {
-                        results::paint(ctx, &actions);
-                    }
+        let paint = |ctx: &egui::Context, hud: &mut dyn hud_overlay::Hud| {
+            readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
+            menu.iter().for_each(|m| pause::paint(ctx, hud, m));
+            if menu.is_none() {
+                if let Some(actions) = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu)) {
+                    results::paint(ctx, &actions);
                 }
-                if let Some(ride) = demo_ride {
-                    demo_hint(ctx, ride);
-                }
-            });
-        })?;
-        eprintln!("screenshot: {stats:?}");
-        let mut images = vec![(centre, pixels)];
-        for index in triple::order(views.len()).skip(1) {
-            if let Some(drawn) = &scene.particles {
-                drawn.view(&mut renderer, views[index].0);
             }
-            let frame_view = FrameView { views: &views, index, first: false, at: None };
-            images.push((index, renderer.render_offscreen_view(screen, frame_view, |_, _| {})?.1));
-        }
-        images.sort_by_key(|&(index, _)| index);
-        let (size, pixels) = side_by_side(screen, &images.into_iter().map(|(_, pixels)| pixels).collect::<Vec<_>>());
+            if let Some(ride) = demo_ride {
+                demo_hint(ctx, ride);
+            }
+        };
+        let pixels = match &args.screens {
+            None => {
+                let frame_view = FrameView { views: &views, index: 0, first: true, at: None };
+                let (stats, pixels) = renderer.render_offscreen_view(screen, frame_view, |encoder, target| {
+                    overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, screen, paint);
+                })?;
+                eprintln!("screenshot: {stats:?}");
+                pixels
+            }
+            // As the window draws the three: each into its place in one image, the centre first (it draws what the
+            // views share), each submitted before the next, then the HUD over them.
+            Some(screens) => {
+                let target = renderer.offscreen_target(size);
+                let view = target.create_view(&Default::default());
+                let encoder = || gpu.device.create_command_encoder(&Default::default());
+                let mut clear = encoder();
+                triple::clear(&mut clear, &view);
+                gpu.queue.submit([clear.finish()]);
+                for index in triple::order(views.len()) {
+                    if let Some(drawn) = scene.particles.as_ref().filter(|_| index != centre) {
+                        drawn.view(&mut renderer, views[index].0);
+                    }
+                    let (mut encoder, at) = (encoder(), Some(triple::spanned_at(index, screen, size.0)));
+                    let frame_view = FrameView { views: &views, index, first: index == centre, at };
+                    let stats = renderer.render_view(&mut encoder, &view, screen, frame_view);
+                    if index == centre {
+                        eprintln!("screenshot: {stats:?}");
+                    }
+                    gpu.queue.submit([encoder.finish()]);
+                }
+                let mut encoder = encoder();
+                overlay.set_region(Some(triple::hud_region(screens, size)));
+                overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, size, paint);
+                renderer.read_back(encoder, &target)?
+            }
+        };
         let path = match args.sequence {
             0 => path.to_path_buf(),
             _ => {
@@ -377,16 +398,6 @@ fn lens(scene: &Scene, shown: Shown, look: ChaseLook, fov: f32) -> Lens {
         }
         _ => start_camera(&scene.stage, scene.chase).lens(fov),
     }
-}
-
-/// One image of `images` of `screen` pixels each (RGBA rows), left to right, and its size.
-fn side_by_side(screen: (u32, u32), images: &[Vec<u8>]) -> ((u32, u32), Vec<u8>) {
-    let row = screen.0 as usize * 4;
-    let pixels = (0..screen.1 as usize)
-        .flat_map(|y| images.iter().flat_map(move |image| &image[y * row..(y + 1) * row]))
-        .copied()
-        .collect();
-    ((screen.0 * images.len() as u32, screen.1), pixels)
 }
 
 /// Writes the colour without the alpha channel. The game's back buffer is `D3DFMT_X8R8G8B8` (the capture's

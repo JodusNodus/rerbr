@@ -13,11 +13,13 @@ use rbr_sound::custom_codriver;
 
 use crate::catalog::{self, Catalog, TyreChoice};
 use crate::controls_page::ControlsPage;
-use crate::graphics_page::{
-    Graphics, HudChoice, DEFAULT_GRAPHICS, TRIPLE_BEZEL_DEFAULT, TRIPLE_DIAGONAL_DEFAULT, TRIPLE_DISTANCE_DEFAULT,
-};
+use crate::graphics_page::{Graphics, HudChoice, DEFAULT_GRAPHICS};
 use crate::pages::Page;
 use crate::school_page::SchoolPage;
+use crate::screen_page::{
+    SCREEN_DIAGONAL_DEFAULT, SCREEN_DISTANCE_DEFAULT, SCREEN_RADIUS_DEFAULT, TRIPLE_BEZEL_DEFAULT,
+    TRIPLE_DIAGONAL_DEFAULT, TRIPLE_DISTANCE_DEFAULT,
+};
 use crate::setup_page::SetupPage;
 use crate::{install, preview, Form, Paths, Start};
 
@@ -261,6 +263,11 @@ impl Form {
             triple_distance: settings.triple_distance.unwrap_or(TRIPLE_DISTANCE_DEFAULT),
             triple_angle: settings.triple_angle.unwrap_or(None),
             triple_monitors: settings.triple_monitors.clone(),
+            curved: settings.curved.unwrap_or(false),
+            screen_diagonal: settings.screen_diagonal.unwrap_or(SCREEN_DIAGONAL_DEFAULT),
+            screen_radius: settings.screen_radius.unwrap_or(SCREEN_RADIUS_DEFAULT),
+            screen_distance: settings.screen_distance.unwrap_or(SCREEN_DISTANCE_DEFAULT),
+            fov_from_screen: settings.fov_from_screen.unwrap_or(false),
             monitors: Vec::new(),
             monitor: None,
             hdr: settings.hdr.unwrap_or(false),
@@ -375,6 +382,11 @@ impl Form {
             triple_distance: Some(self.triple_distance),
             triple_angle: Some(self.triple_angle),
             triple_monitors: self.triple_monitors().cloned(),
+            curved: Some(self.curved),
+            screen_diagonal: Some(self.screen_diagonal),
+            screen_radius: Some(self.screen_radius),
+            screen_distance: Some(self.screen_distance),
+            fov_from_screen: Some(self.fov_from_screen),
             hdr: Some(self.hdr),
             perf_log: Some(self.perf_log),
             start_time: Some(self.start_time),

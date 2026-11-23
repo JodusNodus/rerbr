@@ -15,7 +15,7 @@ use rbr_gameplay::weather::{self, Draws, Preset, Weather};
 use rbr_render::glass::model::Switch;
 use rbr_render::renderer::{Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
-use rbr_render::triple::Rig;
+use rbr_render::triple::{Curved, Rig};
 use rbr_school::Lesson;
 use rbr_sound::mixer::Volumes;
 
@@ -82,6 +82,11 @@ pub fn triple_args(rig: Option<Rig>, monitors: Option<&[String; 3]>, fullscreen:
         }
     }
     args
+}
+
+/// The viewer's `--curved` arguments for `panel`: none for a flat screen or triple (the viewer refuses both).
+pub fn curved_args(panel: Option<Curved>) -> Vec<String> {
+    panel.map_or_else(Vec::new, |panel| vec!["--curved".to_owned(), panel.arg()])
 }
 
 /// The viewer's `--render-scale` arguments for `percent`, none at full size.
@@ -707,7 +712,7 @@ impl Form {
             weather,
             tyre: tyre.unwrap_or(0),
             size: self.size,
-            fov: self.fov,
+            fov: self.drive_fov(),
             chase_fov: self.chase_fov,
             volume: self.volume,
             volumes: Volumes {
@@ -746,6 +751,7 @@ impl Form {
         let mirrors = ["--mirrors".to_owned(), self.graphics.mirrors.name()];
         let fullscreen = self.fullscreen.then(|| "--fullscreen".to_owned());
         let triple = triple_args(self.triple_rig(), self.triple_monitors(), self.fullscreen);
+        let curved = curved_args(self.curved_panel());
         let hdr = (self.hdr && rbr_render::present::HDR_OFFERED).then(|| "--hdr".to_owned());
         let perf_log = perf_log_args(self.perf_log, &self.logs_dir());
         let upscale = (self.upscale_textures && self.upscaler)
@@ -772,6 +778,7 @@ impl Form {
             .chain(mirrors)
             .chain(fullscreen)
             .chain(triple)
+            .chain(curved)
             .chain(hdr)
             .chain(perf_log)
             .chain(upscale.into_iter().flatten())
@@ -883,7 +890,10 @@ impl Form {
                 // The pause menu's Camera, HUD and Force feedback pages may have changed them.
                 let saved = crate::settings::read_settings(&self.paths.settings);
                 self.cockpit = saved.camera.cockpit;
-                self.fov = saved.fov.unwrap_or(self.fov);
+                // Changed on the Camera page while it followed the screen: set by hand from now on.
+                let fov = saved.fov.unwrap_or(self.fov);
+                self.fov_from_screen &= fov == self.fov;
+                self.fov = fov;
                 self.chase_fov = saved.chase_fov.unwrap_or(self.chase_fov);
                 self.hud.parts = saved.hud_hide.unwrap_or(self.hud.parts);
                 self.hud.layout = saved.hud_layout.unwrap_or(self.hud.layout);
@@ -975,7 +985,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 12] = [
+    const COMMAND_CASES: [(&str, &str); 16] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -1008,6 +1018,25 @@ mod tests {
             "triple screens on three monitors",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ntriple = on\n\
              triple_monitors = HDMI-1,DP-1,HDMI-2\n",
+        ),
+        (
+            "curved screen",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ncurved = on\nscreen_diagonal = 38\n\
+             screen_radius = 2300\nscreen_distance = 80\nfullscreen = off\n",
+        ),
+        (
+            "curved screen, field of view matched",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ncurved = on\nscreen_diagonal = 49\n\
+             screen_radius = 1800\nscreen_distance = 70\nfov_from_screen = on\nsize = 3840x1080\nfullscreen = off\n",
+        ),
+        (
+            "single screen, field of view matched",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nscreen_diagonal = 27\nscreen_distance = 70\n\
+             fov_from_screen = on\nsize = 1920x1080\nfullscreen = off\n",
+        ),
+        (
+            "curved and triple on: triple wins",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ncurved = on\ntriple = on\nfullscreen = off\n",
         ),
         (
             "force feedback sensitivity",
@@ -1509,6 +1538,14 @@ mod tests {
         );
         // Windowed, the monitors stay out: triple renders into the one window split in thirds.
         assert_eq!(triple_args(Some(turned), Some(&monitors), false), ["--triple", "27,10,70,45"]);
+    }
+
+    /// A curved panel reaches the viewer as `--curved` with its text; a flat screen or triple, nothing.
+    #[test]
+    fn curved_args_name_the_panel() {
+        let panel = Curved { diagonal: 34.0, radius: 1800.0, distance: 70.0 };
+        assert!(curved_args(None).is_empty());
+        assert_eq!(curved_args(Some(panel)), ["--curved", &panel.arg()]);
     }
 
     #[test]
