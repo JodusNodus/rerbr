@@ -41,7 +41,8 @@ pub fn rbr(code: &str) -> Option<Surface> {
         "SWS" | "SST" | "SNO" | "DSN" | "DSC" => 101,
         "SNB" => 102,
         "SWD" | "DSD" => 103,
-        "WATR" | "DWTR" => 157,
+        // `CBW+` (Hafren's ford) sounds as water over a mud bed (`audio/materials.xml`).
+        "WATR" | "DWTR" | "CBW" => 157,
         "WALL" | "GATE" | "PLAS" | "RUBB" | "DRUB" | "CONE" | "TYRE" | "FENC" | "BBND" | "VBND" => 64,
         _ => return None,
     };
