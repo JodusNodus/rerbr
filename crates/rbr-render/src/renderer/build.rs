@@ -4,6 +4,7 @@ use super::enhance::{AntiAliasing, Detail, Enhance};
 use super::gpu::Gpu;
 use super::meshes::mesh_bounds;
 use super::meshes::{transformed_vertices, GpuDraw, GpuMesh, InteractiveGpu, Packing};
+use super::placed as placed_gpu;
 use super::pipelines::{cutout, layouts, prepassed, vertex_entry, Context, DrawPass, PipelineKey};
 use super::reflection::{reflects, Reflection, ScreenReflection};
 use super::shadows::shadow_map;
@@ -284,13 +285,15 @@ impl Renderer {
                             (anchor, layer): (Anchor, Layer),
                             cabin_set,
                             wet_road: bool,
-                            made: bool| {
+                            made: bool,
+                            placed: bool| {
             let bind = bind_key(&draw.state, &views);
             let pipeline = PipelineKey::of(&draw.state, mirror, layer == Layer::Sky)
                 .drawing(bind.features())
                 .in_cabin(cabin_set)
                 .framed(frame_index(anchor, layer))
-                .made(made);
+                .made(made)
+                .placed(placed);
             let viewed = pipeline.takes_views().then(|| {
                 [false, true].map(|inside| {
                     let key = pipeline.viewed(inside);
@@ -374,6 +377,40 @@ impl Renderer {
                 vertices
             })
         };
+        // The instanced models' vertices, as a mesh's but for what is the world's alone: the ground under a plant, the
+        // film's lowness. Their meshes follow the solid ones (at the props), the blended after the rest.
+        let model_meshes = placed_gpu::model_meshes(&stage.placed);
+        let prepared_models = in_parallel(&model_meshes, |mesh| {
+            lit.then(|| {
+                let mut vertices = sun::with_normals(mesh);
+                // The ground's normal under a plant (`Ground::on_foliage`) is the placement's up here.
+                if ground.is_some() {
+                    let plants = mesh.draws.iter().filter(|d| d.state.shade.is_none() && d.state.alpha_ref.is_some());
+                    for &i in plants.flat_map(|d| &mesh.indices[d.indices.clone()]) {
+                        vertices[i as usize].normal = [0.0, 1.0, 0.0];
+                    }
+                }
+                foliage::with_plants(vertices, mesh, plant)
+            })
+        });
+        let models = (!stage.placed.groups.is_empty())
+            .then(|| placed_gpu::Models::new(&device, &mut packing, &stage.placed, &model_meshes, prepared_models));
+        let mut placed_meshes: Vec<GpuMesh> = stage
+            .placed
+            .groups
+            .iter()
+            .map(|group| {
+                let m = &stage.placed.models[group.model];
+                let draw = Draw { indices: 0..m.indices.len(), state: group.state, lod: group.lod };
+                let models = models.as_ref().expect("models for groups");
+                let first = models.first_index(group.model);
+                let place = (Anchor::World, group.layer);
+                let draw = gpu_draw(&draw, first, false, false, place, None, false, false, true);
+                models.mesh(group, vec![draw])
+            })
+            .collect();
+        let placed_blended = placed_meshes.split_off(placed_meshes.partition_point(|m| m.layer != Layer::Blended));
+        let mut placed_solid = placed_meshes;
         // Made over the load's threads 1024 meshes at a time, bounding the vertices held; the uploads stay in order.
         // One after another they took 1.2 s of the load on 580.
         let mut prepared = stage.meshes.chunks(1024).flat_map(|part| in_parallel(part, prepare));
@@ -394,7 +431,7 @@ impl Renderer {
                         .draws
                         .iter()
                         .map(|draw| {
-                            gpu_draw(draw, first_index, false, false, (Anchor::World, Layer::Solid), None, false, false)
+                            gpu_draw(draw, first_index, false, false, (Anchor::World, Layer::Solid), None, false, false, false)
                         })
                         .collect();
                     interactive_slots.insert(instance.handle, meshes.len());
@@ -418,8 +455,10 @@ impl Renderer {
                         sky_dome: false,
                         backdrop_bounds: None,
                         sun_cascades: true,
+                        instances: None,
                     });
                 }
+                meshes.extend(placed_solid.drain(..));
                 continue;
             };
             let drawn = prepared.next().expect("one per stage mesh");
@@ -465,7 +504,7 @@ impl Renderer {
                     let casts_shadow = draw.state.shade.is_some() && draw.state.depth_write;
                     let placed = (mesh.anchor, mesh.layer);
                     let (cabin, wet) = (cabin_set(draw), wet_road(draw));
-                    gpu_draw(draw, first_index, casts_shadow, mirror(draw), placed, cabin, wet, made)
+                    gpu_draw(draw, first_index, casts_shadow, mirror(draw), placed, cabin, wet, made, false)
                 })
                 .collect();
             meshes.push(GpuMesh {
@@ -486,10 +525,15 @@ impl Renderer {
                     .filter(|_| backdrop && mesh.bounds.is_none())
                     .map(|b| (b.center, b.half_extent)),
                 sun_cascades: mesh.sun_cascades,
+                instances: None,
             });
         }
+        meshes.extend(placed_blended);
 
-        let buffers = packing.finish(&device);
+        let mut buffers = packing.finish(&device);
+        if let Some(models) = models {
+            models.finish(&device, &mut buffers, &mut meshes);
+        }
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();
             let tiles = occlusion::bake(&device, &queue, &texture_layout, &meshes, &buffers, &stage.driveline);

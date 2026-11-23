@@ -431,6 +431,67 @@ fn vs_clouded(v: VertexIn) -> CloudedOut {
     );
 }
 
+// A placement of an instanced BTB mesh (`stage::placed`), the instance-rate vertex buffer: the matrix's three output
+// columns as rows (`place_point`), and in `light` the direction toward the sun and the flags (bit 0: an `Up` technique).
+// Locations 11 to 14 are the instance buffer's, 15 the probes' (a second instance-rate buffer).
+struct InstanceIn {
+    @location(11) row0: vec4<f32>,
+    @location(12) row1: vec4<f32>,
+    @location(13) row2: vec4<f32>,
+    @location(14) light: vec4<f32>,
+    // The placement's probe (`renderer::placed`, a baked `Vertex` at its box's top): how little of the sky it sees, the
+    // direction it sees it in and its bounce light, as `VertexIn` has them.
+    @location(15) probe: vec4<u32>,
+}
+
+// The `ambient` of every BTB material (`stage::placed::AMBIENT`).
+const INSTANCE_AMBIENT: f32 = 0.4;
+
+// The model vertex `v` as placed by `i`, as the loader expands a placement (`btb::world_vertices`): the position and the
+// normal (`place_normal`) by the rows, the vertex colour the effects' `0.4 + N.L` to 1/255, a plant's crown or tuft
+// direction (`uv1`, `foliage::with_plants`, in the horizontal plane) turned with the placement. Its `instance` is 0, so that
+// `placed` leaves it where it is: the instance index of an instanced draw is its first instance.
+fn instanced(v: VertexIn, i: InstanceIn) -> VertexIn {
+    var out = v;
+    out.instance = 0u;
+    let p = vec4<f32>(v.position, 1.0);
+    out.position = vec3<f32>(dot(i.row0, p), dot(i.row1, p), dot(i.row2, p));
+    let turned = vec3<f32>(dot(i.row0.xyz, v.normal), dot(i.row1.xyz, v.normal), dot(i.row2.xyz, v.normal));
+    let size = length(turned);
+    var n = select(turned, turned / size, size > 0.0);
+    if ((u32(i.light.w) & 1u) != 0u) {
+        n = vec3<f32>(0.0, 1.0, 0.0);
+    }
+    out.normal = n;
+    out.occlusion = bitcast<f32>(i.probe.x);
+    out.sky_dir = i.probe.y;
+    out.bounce = i.probe.zw;
+    let shade = round(min(INSTANCE_AMBIENT + max(dot(n, i.light.xyz), 0.0), 1.0) * 255.0) / 255.0;
+    out.color = vec4<f32>(shade, shade, shade, v.color.a);
+    let crown = v.specular.x > 0.15 && v.specular.x < 0.45;
+    let tuft = v.specular.y > 0.5 && v.specular.y < 1.5 && v.specular.z > 0.5;
+    if (mode.cutout != 0u && !second_draw() && (crown || tuft)) {
+        let turn = mat2x2<f32>(i.row0.x, i.row2.x, i.row0.z, i.row2.z);
+        let det = abs(turn[0].x * turn[1].y - turn[1].x * turn[0].y);
+        out.uv1 = (turn * v.uv1) / sqrt(max(det, 1e-12));
+    }
+    return out;
+}
+
+@vertex
+fn vs_main_placed(v: VertexIn, i: InstanceIn) -> VertexOut {
+    return vertex(instanced(v, i));
+}
+
+@vertex
+fn vs_clouded_placed(v: VertexIn, i: InstanceIn) -> CloudedOut {
+    let o = vertex(instanced(v, i));
+    return CloudedOut(
+        o.clip, o.color, o.uv0, o.uv1, o.uv2, o.world, o.normal, o.specular, o.sky, o.bounce_sun, o.bounce_sky, o.wet,
+        cloud_shadow(o.world),
+    );
+}
+
 // `v` in stage space. The car's parts that move only with its body are kept in its model space and drawn as instance
 // 1 (`Renderer::set_car_vertices`): `frame.car_body` places them as `Playback::apply` places the others.
 fn placed(v: VertexIn) -> VertexIn {

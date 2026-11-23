@@ -51,6 +51,28 @@ fn vs_sun(v: VertexIn, @builtin(instance_index) instance: u32) -> Out {
     return out;
 }
 
+// A placement of an instanced BTB mesh (`stage::placed`, `InstanceIn` in `shader.wgsl`): the matrix's rows.
+struct InstanceIn {
+    @location(11) row0: vec4<f32>,
+    @location(12) row1: vec4<f32>,
+    @location(13) row2: vec4<f32>,
+}
+
+// `vs_sun` for an instanced mesh: no backdrop among them.
+@vertex
+fn vs_sun_placed(v: VertexIn, i: InstanceIn) -> Out {
+    var out: Out;
+    if (mode.cutout != 0u && v.specular.y != 0.0) {
+        out.clip = vec4<f32>(0.0, 0.0, -1.0, 1.0);
+        return out;
+    }
+    let p = vec4<f32>(v.position, 1.0);
+    out.clip = cascade.matrix * vec4<f32>(dot(i.row0, p), dot(i.row1, p), dot(i.row2, p), 1.0);
+    out.clip.z = max(out.clip.z, 0.0);
+    out.uv0 = v.uv0;
+    return out;
+}
+
 @fragment
 fn fs_sun(v: Out) {
     let cut = mode.alpha_test != 0u || mode.cutout != 0u;

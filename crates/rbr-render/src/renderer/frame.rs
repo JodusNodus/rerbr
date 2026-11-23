@@ -699,7 +699,7 @@ impl Renderer {
                         pass.set_bind_group(1, &draw.group, &[]);
                         bound.draw(pass, mesh, draw);
                         stats.draws += 1;
-                        stats.triangles += draw.indices.len() / 3;
+                        stats.triangles += draw.indices.len() / 3 * mesh.instances.as_ref().map_or(1, |r| r.len());
                     }
                 }
             };

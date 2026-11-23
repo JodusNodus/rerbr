@@ -32,6 +32,7 @@ mod meshes;
 mod mirrors;
 mod motion;
 mod occlusion;
+mod placed;
 mod offscreen;
 mod pipelines;
 mod probes;
@@ -52,7 +53,7 @@ pub(crate) use meshes::mesh_bounds;
 use meshes::{GpuMesh, MeshBuffers};
 pub use offscreen::ReadbackError;
 use pipelines::Context;
-pub(crate) use pipelines::{cutout, texture_entry, vertex_layout, SHADER, TEXTURE};
+pub(crate) use pipelines::{cutout, placed_layout, texture_entry, vertex_layout, SHADER, TEXTURE};
 #[cfg(test)]
 pub(crate) use reflection::BLIT;
 use reflection::{Reflection, ScreenReflection};

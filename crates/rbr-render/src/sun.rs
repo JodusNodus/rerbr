@@ -107,6 +107,8 @@ pub(crate) struct SunShadow {
     groups: Vec<wgpu::BindGroup>,
     /// For the draws without a cut-out: no fragment stage. Then for those with one: `fs_sun` drops the cut texels.
     pipelines: [wgpu::RenderPipeline; 2],
+    /// The same for the instanced meshes (`vs_sun_placed`).
+    placed: [wgpu::RenderPipeline; 2],
     /// Where [`COARSE`] is drawn when it has fewer texels than its layer, and the copy into the layer.
     coarse: Option<Coarse>,
 }
@@ -271,15 +273,16 @@ impl SunShadow {
             bind_group_layouts: &[Some(&layout), Some(texture_layout)],
             immediate_size: 0,
         });
-        let pipeline = |fragment: Option<&str>| {
+        let pipeline = |fragment: Option<&str>, placed: bool| {
+            let buffers = [Some(crate::renderer::vertex_layout()), Some(crate::renderer::placed_layout())];
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("sun shadow"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some("vs_sun"),
+                    entry_point: Some(if placed { "vs_sun_placed" } else { "vs_sun" }),
                     compilation_options: Default::default(),
-                    buffers: &[Some(crate::renderer::vertex_layout())],
+                    buffers: &buffers[..if placed { 2 } else { 1 }],
                 },
                 // Foliage cards and terrain seen from below both cast.
                 primitive: Default::default(),
@@ -301,12 +304,14 @@ impl SunShadow {
                 cache: None,
             })
         };
-        let pipelines = [pipeline(None), pipeline(Some("fs_sun"))];
-        SunShadow { view, layers, uniforms, groups, pipelines, coarse: None }
+        let pipelines = [pipeline(None, false), pipeline(Some("fs_sun"), false)];
+        let placed = [pipeline(None, true), pipeline(Some("fs_sun"), true)];
+        SunShadow { view, layers, uniforms, groups, pipelines, placed, coarse: None }
     }
 
     /// Clears cascade `index` and draws into it, through `matrix`, the backdrop's draws (instance 1) moved by `drop`:
-    /// `draw` gets the pass with the cascade bound and the two pipelines (without and with the cut-out), and sets the
+    /// `draw` gets the pass with the cascade bound and the pipelines (without and with the cut-out, then the same for the
+    /// instanced meshes), and sets the
     /// pipeline, the vertex buffers and the stage bind group.
     pub(crate) fn draw_cascade(
         &self,
@@ -315,7 +320,7 @@ impl SunShadow {
         index: usize,
         matrix: Mat4,
         drop: Vec3,
-        draw: impl FnOnce(&mut wgpu::RenderPass<'_>, [&wgpu::RenderPipeline; 2]),
+        draw: impl FnOnce(&mut wgpu::RenderPass<'_>, [&wgpu::RenderPipeline; 4]),
     ) {
         let uniform = Uniform { matrix: matrix.to_cols_array_2d(), drop: drop.extend(0.0).to_array() };
         queue.write_buffer(&self.uniforms[index], 0, bytes_of(&uniform));
@@ -334,7 +339,9 @@ impl SunShadow {
         {
             let mut pass = begin(encoder, coarse.map_or(&self.layers[index], |coarse| &coarse.view));
             pass.set_bind_group(0, &self.groups[index], &[]);
-            draw(&mut pass, self.pipelines.each_ref());
+            let [uncut, cut] = self.pipelines.each_ref();
+            let [uncut_placed, cut_placed] = self.placed.each_ref();
+            draw(&mut pass, [uncut, cut, uncut_placed, cut_placed]);
         }
         if let Some(coarse) = coarse {
             let mut pass = begin(encoder, &self.layers[index]);

@@ -47,6 +47,9 @@ pub(super) struct GpuMesh {
     /// Casts into the sun's near cascades ([`Mesh::sun_cascades`]); the far layer, the lamps' and the bakes take it
     /// either way.
     pub(super) sun_cascades: bool,
+    /// An instanced mesh's placements ([`crate::stage::placed`]): its draws are drawn once for each, from the pack's
+    /// instance buffer ([`MeshBuffers::instances`]); its vertices are the model's, in the model's space.
+    pub(super) instances: Option<Range<u32>>,
 }
 
 impl GpuMesh {
@@ -85,6 +88,11 @@ pub(super) struct MeshSlot {
 }
 
 impl MeshSlot {
+    /// The slot with its pack `by` further on (the model packs follow the stage's).
+    pub(super) fn shifted(self, by: usize) -> MeshSlot {
+        MeshSlot { buffer: self.buffer + by, ..self }
+    }
+
     /// Its buffer of [`MeshBuffers`].
     pub(super) fn buffer(self) -> usize {
         self.buffer
@@ -105,6 +113,14 @@ pub(super) struct MeshBuffers {
     /// The vertex ranges of the backdrop's meshes (world-anchored sky faces), which the sky's occlusion weighs against
     /// the backdrop alone.
     pub(super) backdrop: Vec<Range<u32>>,
+    /// Vertices in world space, which the bakes of the sky's occlusion and the bounce write into: false for the packs of
+    /// instanced models, whose vertices are in their own space.
+    pub(super) baked: bool,
+    /// The instance buffer of the instanced meshes of this pack ([`Instance`](crate::stage::placed::Instance)s, shared
+    /// by all model packs).
+    pub(super) instances: Option<wgpu::Buffer>,
+    /// The stage pack holding their probes, one baked `Vertex` per instance, and where they start in bytes.
+    pub(super) probes: Option<(wgpu::Buffer, u64)>,
 }
 
 /// The most bytes of vertices or indices in one pair of [`MeshBuffers`], within wgpu's default buffer size limit.
@@ -174,6 +190,9 @@ impl Packing {
             indices,
             vertex_count,
             backdrop: std::mem::take(&mut self.backdrop),
+            baked: true,
+            instances: None,
+            probes: None,
         });
     }
 
@@ -216,9 +235,16 @@ impl<'a> Bound<'a> {
             let buffers = &self.buffers[mesh.slot.buffer];
             pass.set_vertex_buffer(0, buffers.vertices.slice(..));
             pass.set_index_buffer(buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
+            if let Some(instances) = &buffers.instances {
+                pass.set_vertex_buffer(1, instances.slice(..));
+            }
+            if let Some((probes, from)) = &buffers.probes {
+                pass.set_vertex_buffer(2, probes.slice(*from..));
+            }
             self.buffer = Some(mesh.slot.buffer);
         }
-        pass.draw_indexed(draw.indices.clone(), mesh.slot.base_vertex, instance..instance + 1);
+        let instances = mesh.instances.clone().unwrap_or(instance..instance + 1);
+        pass.draw_indexed(draw.indices.clone(), mesh.slot.base_vertex, instances);
     }
 }
 
