@@ -70,7 +70,8 @@ pub fn cell(b: &[u8]) -> Result<Vec<Face>, String> {
         .collect()
 }
 
-/// Every collision triangle of the route.
+/// Every collision triangle of the route, once. A triangle crossing cells is stored in each, quantised over each
+/// box (up to 21 copies, a millimetre apart); copies with the same corners to the centimetre are dropped.
 pub fn read(route: &Route) -> Result<Vec<Face>, String> {
     let path = route.dir.join("track.jpk");
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -82,6 +83,12 @@ pub fn read(route: &Route) -> Result<Vec<Face>, String> {
             );
         }
     }
+    let mut seen = std::collections::HashSet::new();
+    faces.retain(|f| {
+        let mut key = f.pos.map(|p| p.map(|v| (f64::from(v) * 100.).round() as i64));
+        key.sort_unstable();
+        seen.insert(key)
+    });
     Ok(faces)
 }
 
@@ -122,7 +129,8 @@ mod tests {
     }
 
     /// Over the install (`RBR_DIRT_RALLY`, the game folder): every route's cells decode, and each gate centre of
-    /// ghymno_rally_01 route_0 lies on a collision triangle within 0.5 m of its height, which faces up.
+    /// ghymno_rally_01 route_0 (710,212 triangles of the 815,180 stored) lies on a collision triangle within 0.5 m of
+    /// its height, which faces up.
     #[test]
     fn the_install_collision_lies_under_the_gates() {
         let Some(game) = std::env::var_os("RBR_DIRT_RALLY") else { return };
@@ -134,7 +142,7 @@ mod tests {
         assert!(total > 10_000_000, "{total} triangles");
         let route = install.route("greece/ghymno_rally_01/route_0").unwrap();
         let faces = read(&route).unwrap();
-        assert_eq!(faces.len(), 815_180);
+        assert_eq!(faces.len(), 710_212);
         let course = crate::route::course(&route).unwrap();
         let (mut on, mut up) = (0, 0);
         for gate in &course.gates {

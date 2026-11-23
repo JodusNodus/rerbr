@@ -118,6 +118,10 @@ impl Node {
             return Ok(());
         }
         let (a, b) = sort_halves(&self.faces, cents);
+        // Faces whose centroids no axis separates would split into themselves without end.
+        if a.is_empty() || b.is_empty() {
+            return Err("an empty collision node".into());
+        }
         self.count = self.faces.len() as u32;
         self.faces = Vec::new();
         let mut kids = Box::new([Node::new(a), Node::new(b)]);
