@@ -633,6 +633,10 @@ impl Objects {
     /// Writes `(geometry, material, objectlist entries)` meshes in order. The bytes are built and deflated on every core,
     /// each as a one-entry archive that is copied in without recompressing: deflate is most of an import's time.
     fn meshes(&mut self, batch: Vec<(Builder, String, String)>) -> Result<(), String> {
+        self.meshes_placed(batch, "identity")
+    }
+    /// [`Self::meshes`] placed by the `.xform` entry `xform`, which the caller has [`put`](Self::put).
+    fn meshes_placed(&mut self, batch: Vec<(Builder, String, String)>, xform: &str) -> Result<(), String> {
         let batch: Vec<_> = batch.into_iter().filter(|(b, ..)| !b.triangles.is_empty()).collect();
         let (first, count) = (self.count, batch.len());
         let threads = std::thread::available_parallelism().map_or(4, usize::from).min(batch.len().max(1));
@@ -659,7 +663,7 @@ impl Objects {
             self.zip.raw_copy_file(archive.by_index_raw(0).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             let _ = writeln!(
                 self.ini,
-                "\n[Object_{}]\nfile=ac_{}\nxform=identity\ncloneCount=1\nDrawInstanced=0\nMoveable=0\n{entries}",
+                "\n[Object_{}]\nfile=ac_{}\nxform={xform}\ncloneCount=1\nDrawInstanced=0\nMoveable=0\n{entries}",
                 first + i,
                 first + i
             );
@@ -782,9 +786,92 @@ fn tile_bakes(
     out
 }
 
-/// The trees of CSP's lists inside the draw corridor, as the crossed cards of [`trees::prototype`]: their meshes, the
-/// textures and materials they use are written to `objects`, `bank`, `materials` and `names`. Returns the trees and
-/// triangles drawn.
+/// The least and most metres from a tree within which it is drawn as its whole LOD 0 mesh ([`tree_cards`]), the cards
+/// beyond: the range at which its card is as fine as the screen ([`trees::card_range`]) within these. Full models are 3
+/// to 10 k triangles a tree; see `notes/assetto.md` for how the limits were chosen.
+const TREE_MODEL_RANGE: (f64, f64) = (40., 100.);
+
+fn model_range(proto: &trees::Prototype) -> f64 {
+    trees::card_range(proto.span).clamp(TREE_MODEL_RANGE.0, TREE_MODEL_RANGE.1).round()
+}
+
+/// The four crossed cards of `tree` (`trees::CARDS` of them, two triangles each) as triangles in the world frame.
+fn card_triangles(tree: &trees::Tree, proto: &trees::Prototype) -> Vec<Triangle> {
+    let world = |x: f64, y: f64, z: f64| [x, -z, y];
+    let [x, y, z] = tree.position;
+    let metres = tree.size * proto.height;
+    let half = f64::from(proto.radius) * proto.width * tree.size * tree.width;
+    let (low, high) = (y + f64::from(proto.low) * metres, y + f64::from(proto.high) * metres);
+    let mut out = Vec::new();
+    for card in 0..trees::CARDS {
+        let turn = tree.angle + std::f64::consts::PI * card as f64 / trees::CARDS as f64;
+        let (dx, dz) = (turn.cos() * half, turn.sin() * half);
+        let (u0, u1) = (card as f32 / trees::CARDS as f32, (card + 1) as f32 / trees::CARDS as f32);
+        let corner = |side: f64, y: f64, u: f32, v: f32| (world(x + side * dx, y, z + side * dz), [u, v]);
+        let [a, b, c, d] =
+            [corner(-1., low, u0, 1.), corner(1., low, u1, 1.), corner(1., high, u1, 0.), corner(-1., high, u0, 0.)];
+        for [p, q, r] in [[a, b, c], [a, c, d]] {
+            let up = [0., 0., 1.];
+            out.push(Triangle { pos: [p.0, q.0, r.0], uv: [p.1, q.1, r.1], normal: [up; 3], material: None });
+        }
+    }
+    out
+}
+
+/// The part's mesh in metres at a `size` of 1, in the frame of the stage's meshes: the card's `x, z` across and `y` up
+/// are `proto.width` and `proto.height` metres to the unit mesh (see [`tree_placement`]).
+fn model_part(proto: &trees::Prototype, part: &trees::ModelPart) -> Builder {
+    let mut builder = Builder::default();
+    let world =
+        |p: [f32; 3]| [f64::from(p[0]) * proto.width, -f64::from(p[2]) * proto.width, f64::from(p[1]) * proto.height];
+    for face in part.indices.chunks_exact(3) {
+        // The winding is reversed as the KN5 meshes' is.
+        let at = [face[0], face[2], face[1]].map(|i| i as usize);
+        let t = Triangle {
+            pos: at.map(|i| world(part.positions[i])),
+            uv: at.map(|i| part.uvs[i]),
+            normal: at.map(|i| {
+                let n = part.normals[i];
+                [n[0], -n[2], n[1]]
+            }),
+            material: None,
+        };
+        builder.add(&t, [0.; 2], true);
+    }
+    builder
+}
+
+/// `tree`'s `.xform` matrix for [`model_part`]'s meshes: size, width and turn about the vertical, and its position
+/// less the stage's `origin`, as the cards of [`card_triangles`] are placed.
+fn tree_placement(tree: &trees::Tree, origin: [f64; 2]) -> [f32; 16] {
+    let (across, up) = (tree.size * tree.width, tree.size);
+    let (sin, cos) = tree.angle.sin_cos();
+    let [x, y, z] = tree.position;
+    [
+        across * cos,
+        0.,
+        -across * sin,
+        0.,
+        0.,
+        up,
+        0.,
+        0.,
+        across * sin,
+        0.,
+        across * cos,
+        0.,
+        x - origin[0],
+        y,
+        -z - origin[1],
+        1.,
+    ]
+    .map(|v| v as f32)
+}
+
+/// The trees of CSP's lists inside the draw corridor: each is the crossed cards of [`trees::prototype`] (from
+/// [`model_range`] out) and its whole LOD 0 mesh drawn instanced, one `.xform` of placements for each tree file and
+/// one object for each of its parts, out to that range. Their meshes, textures and materials are written to `objects`,
+/// `bank`, `materials` and `names`. Returns the trees and card triangles drawn, and the model triangles written (once).
 fn tree_cards(
     trees: &[trees::Tree],
     root: &Path,
@@ -792,10 +879,13 @@ fn tree_cards(
     origin: [f64; 2],
     options: &Options,
     (objects, bank, materials, names): (&mut Objects, &mut material::TextureBank, &mut String, &mut Vec<String>),
-) -> Result<(usize, usize), String> {
-    // Each tree file's cards and the material drawn with them; `None` for a file that cannot be read.
-    let mut prototypes = BTreeMap::<&str, Option<(trees::Prototype, String)>>::new();
+) -> Result<(usize, usize, usize), String> {
+    // Each tree file's cards and the material drawn with them, and its parts' materials; `None` for a file that cannot
+    // be read.
+    type Made = Option<(trees::Prototype, String, Vec<String>)>;
+    let mut prototypes = BTreeMap::<&str, Made>::new();
     let mut builders = BTreeMap::<((i64, i64), String), Builder>::new();
+    let mut placements = BTreeMap::<&str, Vec<[f32; 16]>>::new();
     let mut placed = 0;
     let world = |x: f64, y: f64, z: f64| [x, -z, y];
     for tree in trees {
@@ -812,51 +902,74 @@ fn tree_cards(
                     let name = format!("ac\\tree_{}", prototypes.len());
                     material::section(materials, &name, &texture, true);
                     names.push(name.clone());
-                    Ok((p, name))
+                    let mut parts = Vec::new();
+                    for (i, part) in p.parts.iter().enumerate() {
+                        let (w, h, rgba) = part.texture.clone();
+                        let texture = bank.put(textures::encode(true, w, h, rgba), "dds")?;
+                        let name = format!("ac\\tree_{}_{i}", prototypes.len());
+                        material::section(materials, &name, &texture, true);
+                        names.push(name.clone());
+                        parts.push(name);
+                    }
+                    Ok((p, name, parts))
                 });
             if let Err(e) = &made {
                 options.control.say(&format!("tree {} is not drawn: {e}", tree.bin));
             }
             prototypes.insert(tree.bin.as_str(), made.ok());
         }
-        let Some((proto, material)) = &prototypes[tree.bin.as_str()] else { continue };
-        let metres = tree.size * proto.height;
-        let half = f64::from(proto.radius) * proto.width * tree.size * tree.width;
-        let (low, high) = (y + f64::from(proto.low) * metres, y + f64::from(proto.high) * metres);
+        let Some((proto, material, _)) = &prototypes[tree.bin.as_str()] else { continue };
         let centre = Triangle { pos: [world(x, y, z); 3], uv: [[0.; 2]; 3], normal: [[0.; 3]; 3], material: None };
         let builder = builders.entry((scenery_tile(&centre, origin), material.clone())).or_default();
-        for card in 0..trees::CARDS {
-            let turn = tree.angle + std::f64::consts::PI * card as f64 / trees::CARDS as f64;
-            let (dx, dz) = (turn.cos() * half, turn.sin() * half);
-            let (u0, u1) = (card as f32 / trees::CARDS as f32, (card + 1) as f32 / trees::CARDS as f32);
-            let corner = |side: f64, y: f64, u: f32, v: f32| (world(x + side * dx, y, z + side * dz), [u, v]);
-            let [a, b, c, d] = [
-                corner(-1., low, u0, 1.),
-                corner(1., low, u1, 1.),
-                corner(1., high, u1, 0.),
-                corner(-1., high, u0, 0.),
-            ];
-            for [p, q, r] in [[a, b, c], [a, c, d]] {
-                let up = [0., 0., 1.];
-                let t = Triangle { pos: [p.0, q.0, r.0], uv: [p.1, q.1, r.1], normal: [up; 3], material: None };
-                builder.add(&t, origin, true);
-            }
+        for t in card_triangles(tree, proto) {
+            builder.add(&t, origin, true);
         }
+        placements.entry(tree.bin.as_str()).or_default().push(tree_placement(tree, origin));
         placed += 1;
     }
-    let builders: Vec<_> = builders.into_iter().map(|((_, material), b)| (material, b)).collect();
-    let lod = (0, (options.lod as f32).to_bits());
-    let boxes: Vec<_> = builders.iter().map(|(_, b)| (bounds(&b.positions), lod)).collect();
+    // The models: one object for each part of each tree file, all placed by the file's `.xform`.
+    let mut model_triangles = 0;
+    for (n, (bin, matrices)) in placements.iter().enumerate() {
+        let Some((proto, _, parts)) = &prototypes[bin] else { continue };
+        let xform = format!("tree_{n}");
+        objects.put(
+            &format!("Objects/{xform}.xform"),
+            &matrices.iter().flatten().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>(),
+        )?;
+        let entries = format!(
+            "ReRbrInstanced=1\nLODIn=0\nLODOut={}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n",
+            model_range(proto)
+        );
+        let batch: Vec<_> = proto
+            .parts
+            .iter()
+            .zip(parts)
+            .map(|(part, material)| (model_part(proto, part), material.clone(), entries.clone()))
+            .collect();
+        model_triangles += batch.iter().map(|(b, ..)| b.triangles.len()).sum::<usize>();
+        objects.meshes_placed(batch, &xform)?;
+    }
+    // Each file's cards start where its models end.
+    let range_of: BTreeMap<&str, f64> =
+        prototypes.values().flatten().map(|(proto, material, _)| (material.as_str(), model_range(proto))).collect();
+    let builders: Vec<_> =
+        builders.into_iter().map(|((_, material), b)| (range_of[material.as_str()] as f32, material, b)).collect();
+    let lod = options.lod as f32;
+    let boxes: Vec<_> =
+        builders.iter().map(|(range, _, b)| (bounds(&b.positions), (range.to_bits(), lod.to_bits()))).collect();
     let mut triangles = 0;
     let mut batch = Vec::new();
-    for ((material, b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
+    for ((range, material, b), pad) in builders.into_iter().zip(lod_padding(&boxes)) {
         triangles += b.triangles.len();
-        let entries =
-            format!("LODIn=0\nLODOut={}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n", options.lod + f64::from(pad));
+        let entries = format!(
+            "LODIn={}\nLODOut={}\nVisible=1\nShadowCaster=1\nCollisionModel=-1\n",
+            (range - pad).max(0.),
+            f64::from(lod) + f64::from(pad)
+        );
         batch.push((b, material, entries));
     }
     objects.meshes(batch)?;
-    Ok((placed, triangles))
+    Ok((placed, triangles, model_triangles))
 }
 
 /// The file a conversion leaves in its stage's folder: what it was made from and how. It marks the stage as one of ours.
@@ -1198,7 +1311,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             collision.len()
         ));
     }
-    let (tree_count, tree_triangles) = tree_cards(
+    let (tree_count, tree_triangles, tree_model_triangles) = tree_cards(
         &csp_trees,
         &input.root,
         &draw,
@@ -1210,7 +1323,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     if tree_count > 0 {
         options
             .control
-            .say(&format!("{tree_count} of {} CSP trees drawn as cards ({tree_triangles} triangles)", csp_trees.len()));
+            .say(&format!(
+                "{tree_count} of {} CSP trees drawn as cards ({tree_triangles} triangles) and, within {} to {} m, as models ({tree_model_triangles} triangles stored)",
+                csp_trees.len(),
+                TREE_MODEL_RANGE.0,
+                TREE_MODEL_RANGE.1
+            ));
     }
     if collision.is_empty() {
         return Err("no physical meshes near the course".into());
@@ -1408,6 +1526,11 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "textures":texture_count,"missing_textures":missing_names,"base_diffuse_only":simplified,"multilayer_baked":baked,"placeholder_textures":placeholders,"normal_mapped_materials":normal_mapped,"highlight_materials":highlighted,
         "multilayer_tile_textures":tile_textures,"remeshed":options.remesh,"turned_wall_faces":turned_walls,"pacenotes":called.len(),"missing_ground_points":missing,"end_after_finish_m":15,
         "limitations":["RBR surface classes approximate AC physics","multilayer shaders are baked when their textures fit 16384 px and useDetail materials with their detail; reflection maps are not drawn; normal maps, the sun highlight and the roads' dry sheen are written for ReRBR's renderer","CSP scripts and runtime model replacements are not executed","CSP trees are drawn as crossed cards of their rendered picture"]});
+    if tree_count > 0 {
+        provenance["csp_tree_model_triangles"] = tree_model_triangles.into();
+        provenance["csp_tree_model_range_m"] = [TREE_MODEL_RANGE.0, TREE_MODEL_RANGE.1].into();
+        provenance["limitations"][3] = "CSP trees are their LOD 0 meshes instanced within the model range and crossed cards of their rendered picture beyond".into();
+    }
     provenance["sheen_materials"] = sheened.into();
     provenance["multilayer_per_pixel_materials"] = layered.into();
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
@@ -1500,6 +1623,46 @@ mod tests {
         assert!(finish_runoff(&mut line, 100., &Grid::new(vec![], 4.)).is_err());
         assert_eq!(line.length(), 100.);
     }
+    #[test]
+    fn a_placed_tree_model_is_the_model_where_its_cards_stand() {
+        // A quad across the unit mesh's x-y plane, as wide as the card (`radius` 1) and as high.
+        let part = trees::ModelPart {
+            texture: (1, 1, vec![255; 4]),
+            positions: vec![[-1., 0., 0.], [1., 0., 0.], [1., 1., 0.], [-1., 1., 0.]],
+            normals: vec![[0., 0., 1.]; 4],
+            uvs: vec![[0., 1.], [1., 1.], [1., 0.], [0., 0.]],
+            indices: vec![0, 1, 2, 0, 2, 3],
+        };
+        let proto = trees::Prototype {
+            atlas: (1, 1, vec![255; 4]),
+            radius: 1.,
+            low: 0.,
+            high: 1.,
+            width: 2.5,
+            height: 7.,
+            span: 5.,
+            parts: vec![part],
+        };
+        let tree = trees::Tree { bin: "a.bin".into(), position: [30., 12., -41.], size: 1.4, width: 0.8, angle: 0.7 };
+        let origin = [-100., 50.];
+        let m = tree_placement(&tree, origin);
+        let model = model_part(&proto, &proto.parts[0]);
+        assert_eq!(model.triangles.len(), 2);
+        // The cards' first card is the quad: its corners, in the stage's frame, are the model's placed.
+        let mut card = Builder::default();
+        for t in card_triangles(&tree, &proto).iter().take(2) {
+            card.add(t, origin, true);
+        }
+        let placed: Vec<[f32; 3]> = model.positions.iter().map(|&p| rbr_btb::scene::place_point(&m, p)).collect();
+        assert_eq!(card.positions.len(), placed.len());
+        for p in &card.positions {
+            assert!(placed.iter().any(|q| (0..3).all(|k| (p[k] - q[k]).abs() < 1e-3)), "{p:?} in {placed:?}");
+        }
+        // The model's height is the tree's: `height` metres a unit of the mesh, times `size`.
+        let top = placed.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+        assert!((f64::from(top) - (12. + 7. * 1.4)).abs() < 1e-3);
+    }
+
     #[test]
     fn range_padding_covers_the_box_of_the_meshes_merged_with_it() {
         let lod = (0, 200f32.to_bits());
