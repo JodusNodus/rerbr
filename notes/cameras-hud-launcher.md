@@ -119,9 +119,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   car its group); NGP's adds nothing. A replay's header keeps it (the stepping command). `rerbr --physics NAME`
   (`scripts/launcher.sh` passes it) drives `ngp`, `experimental` or `experimental-brush` (the brush tyre, not offered
   on the page) for the session over the saved choice, never saved; the Settings page says so under the choice.
-  ReRBR experimental physics keeps no records (user decision): `rbr-standalone` makes `--saves`
-  dry (stage record, personal best, lesson verdict; `Args::keeps_records`), the quick race races the best ghost as
-  `--ghost` and never `--best-ghost`, and championship stages refuse to start (trials still run); `.rrp` replays work.
+  ReRBR experimental physics keeps no stage records, personal bests or championship results (user decision):
+  `rbr-standalone` makes `--saves` dry (`Args::keeps_records`) and championship stages refuse to start (trials still
+  run); `.rrp` replays work. Its times and best ghost are kept apart under its version: the quick race's Best ghost is
+  one file per physics id, car class and road, `<player folder>/ghosts/<physics id>/<class>/<road>/Best_<map>.ghc`
+  (`ghosts::best_ghost`), passed as `--best-ghost` for every physics. The old `GhostCars/Best_<map>.ghc` is no longer
+  written; it lists as "Best (before classes)".
 - The launcher offers no tuning of the brush tyre (user decision 2026-11-13; its Experimental tuning section, the
   `[launcher] tyre_tuning` key and the Drive page's note are gone; an older file's key is not read). `rbr-standalone
   --tyre-tuning` stays for the tyre research ([tyre-model.md](tyre-model.md#experimental-tuning)).

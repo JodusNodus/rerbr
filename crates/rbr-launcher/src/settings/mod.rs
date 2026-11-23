@@ -903,11 +903,11 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nclouds = storm\nprecipitation = hail\n").clouds, None);
         assert_eq!(Settings::parse("[launcher]\nprecipitation = none\n").precipitation, Some(Precipitation::None));
         assert_eq!(Settings::parse("[launcher]\nghost = best\n").ghost, Some(GhostChoice::Best));
-        let args = GhostChoice::Best.viewer_args(Path::new("/l"), 54, &Default::default());
-        let best = Path::new("/l").join("GhostCars").join("Best_54.ghc");
+        let best = Path::new("/l").join("ghosts").join("Best_54.ghc");
+        let args = GhostChoice::Best.viewer_args(Path::new("/l"), &best, &Default::default());
         assert_eq!(args[..2], ["--best-ghost".to_owned(), best.display().to_string()]);
         assert!(GhostChoice::File("gone_54.ghc".into())
-            .viewer_args(Path::new("/l"), 54, &Default::default())
+            .viewer_args(Path::new("/l"), &best, &Default::default())
             .is_empty());
         assert_eq!(Settings::parse("[launcher]\ndamage = hard\nclutch_help = yes\n"), Settings::default());
         // The old 1.02 season's keys are no longer read.

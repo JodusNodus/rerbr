@@ -44,7 +44,8 @@
 //! service park's ambience, at the sound volume, while a championship is at a service stop (its page and the Setup
 //! page; `rbr_sound::menu`), and nothing while the viewer runs. The game's music is not played (user decision).
 //! The Ghost field races a ghost car in the quick race (`viewer --ghost`): off, the best one (`--best-ghost
-//! GhostCars/Best_<map:02>.ghc`, replaced when a finished drive beats it, as `BeginWrite` keeps the faster run; ours:
+//! ghosts/<physics id>/<class>/<road>/Best_<map:02>.ghc` of the player's folder, one per physics version, car class and
+//! road, whatever the physics; the old `GhostCars/Best_<map:02>.ghc` is no longer written; replaced when a finished drive beats it, as `BeginWrite` keeps the faster run; ours:
 //! the game keeps it in memory and saves on request), or a saved `GhostCars/<name>_<map:02>.ghc` of the stage's map.
 //! The Graphics & sound page's Quality section sets the renderer's additions beyond the game's look (`viewer --enhance`,
 //! `--reflections`, `--detail`, `--mirrors`; `graphics_page::Graphics`, one `launcher-settings.ini` key each), by hand

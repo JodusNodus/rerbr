@@ -786,14 +786,14 @@ impl Form {
         // A saved ghost with the weather its words bring on this map's season (`Season::ghost_weather`).
         let ghost_label = |g: GhostChoice| match g {
             GhostChoice::Off => "Off".to_owned(),
-            GhostChoice::Best => "Best (kept per stage)".to_owned(),
+            GhostChoice::Best => "Best (per stage, class and road)".to_owned(),
             GhostChoice::File(f) => {
                 let weather = ghosts::ghost_words(&records, &f).and_then(|w| map_season.ghost_weather(map, &w));
-                let name = f.trim_end_matches(".ghc");
-                weather.map_or_else(|| name.to_owned(), |w| format!("{name} — {}", weather_label(&w)))
+                let name = ghosts::ghost_name(&f);
+                weather.map_or_else(|| name.clone(), |w| format!("{name} — {}", weather_label(&w)))
             }
         };
-        let tip = "Best: race the fastest finished drive on this stage, replaced when you beat it";
+        let tip = "Best: race the fastest finished drive on this stage with this physics, car class and road, replaced when you beat it";
         let choices: Vec<GhostChoice> = [GhostChoice::Off, GhostChoice::Best]
             .into_iter()
             .chain(ghosts::ghost_files(&records, map).into_iter().map(GhostChoice::File))
