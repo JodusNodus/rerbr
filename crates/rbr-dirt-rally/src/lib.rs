@@ -20,6 +20,7 @@ pub mod material;
 pub mod mesh;
 pub mod pssg;
 pub mod route;
+pub mod shade;
 pub mod stage;
 pub mod surface;
 pub mod texture;
