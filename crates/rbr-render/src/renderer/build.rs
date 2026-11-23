@@ -467,7 +467,7 @@ impl Renderer {
                         instances: None,
                     });
                 }
-                meshes.extend(placed_solid.drain(..));
+                meshes.append(&mut placed_solid);
                 continue;
             };
             let drawn = prepared.next().expect("one per stage mesh");
