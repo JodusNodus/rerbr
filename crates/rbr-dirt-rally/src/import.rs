@@ -230,8 +230,15 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
 
 /// A prop is drawn as far as this many times its size: a metre-wide rock to 100 m, a tree of ten metres to a kilometre.
 const PROP_REACH: f32 = 100.;
-/// The draw ranges a prop takes, metres, the least that holds its size ([`PROP_REACH`]); materials are split by them.
-const PROP_RANGES: [f64; 5] = [100., 200., 400., 700., 1000.];
+/// A model of `t` triangles is drawn no farther than this over the square root of `t`: dense trees stand out to a few
+/// hundred metres, a rock to a kilometre. Without it Finland's forest is 48 M triangles.
+const PROP_COST: f64 = 20_000.;
+/// The draw ranges a prop takes, metres, the least that holds its size ([`PROP_REACH`]) and its cost
+/// ([`PROP_COST`]); materials are split by them.
+const PROP_RANGES: [f64; 8] = [100., 150., 225., 340., 500., 750., 1000., 3000.];
+/// The distant forest: `trees.bin`'s `*_dist_*` types are tiles of 500 m of far trees (about a hundred triangles each),
+/// drawn far past where the single trees are.
+const DIST_REACH: f64 = 3000.;
 
 /// Whether a shader draws its diffuse texture's alpha (cut-out leaves and blended signs; the other props' alpha is a
 /// gloss or emission mask: `Object_Emis`, `Object_Norm` and `Object_Stones` carry DXT5 with varying alpha too). Trunks
@@ -247,8 +254,8 @@ fn blended(shader: &str) -> bool {
 struct Source {
     types: mesh::Types,
     materials: BTreeMap<String, material::Material>,
-    /// Each type's longest side in its own space, metres.
-    sizes: Vec<f32>,
+    /// Each type's longest side in its own space, metres, and its triangles.
+    sizes: Vec<(f32, usize)>,
 }
 
 impl Source {
@@ -266,7 +273,8 @@ impl Source {
                         hi[k] = hi[k].max(p[k]);
                     }
                 }
-                (0..3).map(|k| (hi[k] - lo[k]).max(0.)).fold(0., f32::max)
+                let side = (0..3).map(|k| (hi[k] - lo[k]).max(0.)).fold(0., f32::max);
+                (side, meshes.iter().map(|m| m.triangles.len()).sum())
             })
             .collect();
         Ok(Source { types, materials: material::read(&pssg), sizes })
@@ -312,9 +320,14 @@ impl Placer<'_> {
         };
         let meshes = &source.types.meshes[at];
         let scale = (0..3).map(|i| matrix[i][..3].iter().map(|v| v * v).sum::<f32>().sqrt()).fold(0., f32::max);
-        let size = source.sizes[at] * scale;
-        let reach = f64::from(size * PROP_REACH);
-        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(1000.);
+        let (side, triangles) = source.sizes[at];
+        let size = side * scale;
+        let reach = if key.contains("_dist_") {
+            DIST_REACH
+        } else {
+            f64::from(size * PROP_REACH).min(PROP_COST / (triangles.max(1) as f64).sqrt())
+        };
+        let range = PROP_RANGES.iter().copied().find(|&r| r >= reach).unwrap_or(DIST_REACH);
         let here = frame::world([matrix[3][0], matrix[3][1], matrix[3][2]]);
         if meshes.is_empty() || rbr_ac_tracks::assetto::ai::project(self.line, here).1 > range + f64::from(size) {
             return Ok(());
@@ -376,6 +389,7 @@ fn props(
         placed: 0,
         unresolved: BTreeMap::new(),
     };
+    let has_trees = route.dir.join("trees.bin").is_file();
     if route.dir.join("objects.ens").is_file() {
         control.say("reading objects.ens");
         let layout = objects::read(route)?;
@@ -384,6 +398,11 @@ fn props(
                 control.check()?;
             }
             for (file, node) in &layout.entities[instance.entity].parts {
+                // The physical trees and bushes stand where `trees.bin` draws the same ones (11252 of 11252 on Greece
+                // route_0 within 1.5 m, 14163 of 14166 on Finland's): drawn once.
+                if file == "trees.pssg" && has_trees {
+                    continue;
+                }
                 placer.place(file, node, &instance.matrix, materials, drawn)?;
             }
         }
@@ -393,7 +412,7 @@ fn props(
             layout.skipped.values().sum::<usize>()
         ));
     }
-    if route.dir.join("trees.bin").is_file() {
+    if has_trees {
         control.say("reading trees.bin");
         let placed = trees::read(route)?;
         for (n, item) in placed.items.iter().enumerate() {

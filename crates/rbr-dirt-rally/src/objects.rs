@@ -154,7 +154,7 @@ pub fn read(route: &Route) -> Result<Layout, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const TYPES: &str = r##"<?xml version="1.0"?>
@@ -187,5 +187,55 @@ mod tests {
         assert_eq!(layout.instances.len(), 1);
         assert_eq!(layout.instances[0].matrix[3], [5., 6., 7., 1.]);
         assert_eq!(layout.skipped.get("flag.max"), Some(&1));
+    }
+
+    /// The sample routes of `RBR_DIRT_RALLY`, none without it.
+    pub(crate) fn sample_routes() -> Vec<crate::install::Route> {
+        let Some(game) = std::env::var_os("RBR_DIRT_RALLY") else { return Vec::new() };
+        let install = crate::install::Install::at(std::path::Path::new(&game)).unwrap();
+        ["greece/ghymno_rally_01/route_0", "finland/ouninpohja_rally_01/route_0"]
+            .iter()
+            .map(|id| install.route(id).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn every_instance_of_the_sample_routes_resolves_to_a_model_or_a_known_skip() {
+        for route in sample_routes() {
+            let started = std::time::Instant::now();
+            let layout = read(&route).unwrap();
+            let mut files = HashMap::new();
+            let mut missing = Vec::new();
+            for entity in &layout.entities {
+                for (file, node) in &entity.parts {
+                    let types = files.entry(file.clone()).or_insert_with(|| {
+                        let dir =
+                            if file.starts_with("route_") { route.dir.clone() } else { route.area_dir().to_owned() };
+                        crate::mesh::types(&crate::pssg::Pssg::read(&dir.join(file)).unwrap()).unwrap()
+                    });
+                    match types.index.get(node) {
+                        Some(&at) if !types.meshes[at].is_empty() => {}
+                        _ => missing.push(format!("{}: {file}#{node}", entity.name)),
+                    }
+                }
+            }
+            let skipped: usize = layout.skipped.values().sum();
+            eprintln!(
+                "{}: {} instances of {} entities, {skipped} skipped {:?}, {} without a model {missing:?}, {} ms",
+                route.id(),
+                layout.instances.len(),
+                layout.entities.len(),
+                layout.skipped,
+                missing.len(),
+                started.elapsed().as_millis()
+            );
+            assert!(layout.instances.len() > 10_000 && missing.is_empty(), "{missing:?}");
+            // What is skipped is not an entity with a model: cloth, physics-only and links.
+            assert!(skipped * 20 < layout.instances.len() + skipped);
+            for i in &layout.instances {
+                let m = i.matrix;
+                assert!(m.iter().flatten().all(|v| v.is_finite()) && m[3][3] == 1. && m[0][3] == 0.);
+            }
+        }
     }
 }
