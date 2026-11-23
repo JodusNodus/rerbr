@@ -9,7 +9,7 @@ use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
 use rbr_render::renderer::{Detail, Reflections};
-use rbr_render::triple::Rig;
+use rbr_render::triple::{Curved, Rig};
 
 use crate::kit;
 use crate::pages::{combo, Choice};
@@ -267,6 +267,24 @@ pub const TRIPLE_DISTANCE_DEFAULT: f32 = 70.0;
 pub const TRIPLE_DISTANCE_RANGE: std::ops::RangeInclusive<f32> = 30.0..=200.0;
 pub const TRIPLE_ANGLE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=rbr_render::triple::MAX_ANGLE;
 
+/// Curved and single screens (ours, `viewer --curved`): the panel's diagonal in inches (24 to 65, 34 by default),
+/// its curve radius in millimetres (800 to 4000, 1800 by default: a 1800R) and the eye to its middle in
+/// centimetres (30 to 200, 70 by default). A single screen shares the diagonal and the distance.
+pub const SCREEN_DIAGONAL_DEFAULT: f32 = 34.0;
+pub const SCREEN_DIAGONAL_RANGE: std::ops::RangeInclusive<f32> = 24.0..=65.0;
+pub const SCREEN_RADIUS_DEFAULT: f32 = 1800.0;
+pub const SCREEN_RADIUS_RANGE: std::ops::RangeInclusive<f32> = 800.0..=4000.0;
+pub const SCREEN_DISTANCE_DEFAULT: f32 = 70.0;
+pub const SCREEN_DISTANCE_RANGE: std::ops::RangeInclusive<f32> = 30.0..=200.0;
+
+/// What the screens are: one flat one, one curved one (`viewer --curved`), or three (`viewer --triple`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Screens {
+    Single,
+    Curved,
+    Triple,
+}
+
 /// `names` once each monitor is picked: `viewer --triple-monitors` takes three.
 fn picked(names: Option<&[String; 3]>) -> Option<&[String; 3]> {
     names.filter(|names| names.iter().all(|name| !name.is_empty()))
@@ -387,9 +405,16 @@ impl Form {
                 });
             });
 
-            let tip = "Three like screens side by side, the side ones turned towards you, each drawing its own \
-                       view from your seat. The field-of-view sliders set the centre screen's view";
-            rows.switch_row("Triple screens", None, &mut self.triple).on_hover_text(tip);
+            let tip = "Curved: one curved ultrawide panel, drawn as the panel bends around you. Triple: three like \
+                       screens side by side, the side ones turned towards you, each drawing its own view from your \
+                       seat. The field-of-view sliders set the whole panel's view (curved) or the centre screen's";
+            let mut screens = self.screens();
+            rows.row("Screens", |ui| {
+                let options = [(Screens::Single, "Single"), (Screens::Curved, "Curved"), (Screens::Triple, "Triple")];
+                if kit::segmented(ui, "screens", &mut screens, &options).on_hover_text(tip).changed() {
+                    self.set_screens(screens);
+                }
+            });
 
             let tip = "Draws the 3D view at this share of the window's size, which the temporal anti-aliasing \
                        upscales to it over the frames: faster, for high refresh rates at 1440p and above; the lower, \
@@ -467,6 +492,7 @@ impl Form {
         });
 
         self.triple_fields(ui);
+        self.single_fields(ui);
 
         ui.add_space(14.0);
         kit::group_label(ui, "Camera", None);
@@ -597,6 +623,29 @@ impl Form {
         kit::hint(ui, "1 is the game's volume. Volume goes up to 4, each group up to 2.");
     }
 
+    /// The screens in use: triple wins over curved when the file has both on.
+    pub fn screens(&self) -> Screens {
+        match (self.triple, self.curved) {
+            (true, _) => Screens::Triple,
+            (false, true) => Screens::Curved,
+            (false, false) => Screens::Single,
+        }
+    }
+
+    fn set_screens(&mut self, screens: Screens) {
+        self.triple = screens == Screens::Triple;
+        self.curved = screens == Screens::Curved;
+    }
+
+    /// The curved panel from the Curved screen section, when curved and not triple (`viewer --curved`).
+    pub fn curved_panel(&self) -> Option<Curved> {
+        (self.screens() == Screens::Curved).then_some(Curved {
+            diagonal: self.screen_diagonal,
+            radius: self.screen_radius,
+            distance: self.screen_distance,
+        })
+    }
+
     /// The triple-screen rig from the Triple screens section, when triple screens are on (`viewer --triple`).
     pub fn triple_rig(&self) -> Option<Rig> {
         self.triple.then(|| self.rig())
@@ -620,17 +669,26 @@ impl Form {
     /// One screen's aspect as the viewer will draw it on the monitor (fullscreen) or the window; 16:9 before the
     /// monitor is known.
     fn screen_aspect(&self) -> f32 {
+        self.aspect(self.triple_monitors().is_some())
+    }
+
+    /// The whole monitor's or window's aspect: all of it, where `screen_aspect` takes a third when triple.
+    fn whole_aspect(&self) -> f32 {
+        self.aspect(true)
+    }
+
+    fn aspect(&self, per_monitor: bool) -> f32 {
         match (self.fullscreen, self.monitor) {
-            (true, Some(monitor)) => screen_aspect(monitor, self.triple_monitors().is_some()),
+            (true, Some(monitor)) => screen_aspect(monitor, per_monitor),
             (true, None) => 16.0 / 9.0,
-            (false, _) => screen_aspect(self.size, false),
+            (false, _) => screen_aspect(self.size, per_monitor),
         }
     }
 
     /// The Triple screens section, shown while they are on (the switch is in Display): the rig's geometry, the
     /// monitors, and the true field of view at the seat.
     fn triple_fields(&mut self, ui: &mut egui::Ui) {
-        if !self.triple {
+        if self.screens() != Screens::Triple {
             return;
         }
         ui.add_space(14.0);
@@ -709,18 +767,70 @@ impl Form {
                 }
             }
 
-            let tip = "The centre screen's horizontal field of view that shows the world at its true size at \
-                       this distance";
-            row_tip(rows, "True field of view", tip, |ui| {
-                let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
-                if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
-                    self.fov = fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
-                }
-            });
+            self.true_fov_row(
+                rows,
+                "The centre screen's horizontal field of view that shows the world at its true size at \
+                       this distance",
+                fov,
+            );
             rows.hint(&text);
         });
         ui.add_space(4.0);
         kit::hint(ui, "The field-of-view sliders set the centre screen's field of view in triple mode.");
+    }
+
+    /// The true field of view row, `fov` degrees, with the button that sets the in-car views' field of view to it.
+    fn true_fov_row(&mut self, rows: &mut kit::Rows<'_>, tip: &str, fov: f32) {
+        row_tip(rows, "True field of view", tip, |ui| {
+            let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
+            if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
+                self.fov = fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
+            }
+        });
+    }
+
+    /// The Curved screen or Single screen section: the panel's size and distance (and curve), and the true field of
+    /// view of the whole panel at the seat.
+    fn single_fields(&mut self, ui: &mut egui::Ui) {
+        let screens = self.screens();
+        if screens == Screens::Triple {
+            return;
+        }
+        let curved = screens == Screens::Curved;
+        ui.add_space(14.0);
+        kit::group_label(ui, if curved { "Curved screen" } else { "Single screen" }, None);
+        let aspect = self.whole_aspect();
+        let fov = match self.curved_panel() {
+            Some(panel) => panel.true_fov(aspect),
+            None => {
+                Rig { diagonal: self.screen_diagonal, bezel: 0.0, distance: self.screen_distance, angle: Some(0.0) }
+                    .true_fov(aspect)
+            }
+        }
+        .to_degrees();
+        kit::panel(ui, |rows| {
+            rows.row("Screen size", |ui| {
+                slider(ui, &mut self.screen_diagonal, SCREEN_DIAGONAL_RANGE, " in", "The screen's diagonal")
+            });
+            if curved {
+                rows.row("Curve radius", |ui| {
+                    let tip = "The curve's radius: a 1800R panel is 1800 mm";
+                    slider(ui, &mut self.screen_radius, SCREEN_RADIUS_RANGE, " mm", tip)
+                });
+            }
+            rows.row("Distance", |ui| {
+                let tip = if curved { "From your eyes to the panel's middle" } else { "From your eyes to the screen" };
+                slider(ui, &mut self.screen_distance, SCREEN_DISTANCE_RANGE, " cm", tip)
+            });
+            let tip = "The whole screen's horizontal field of view that shows the world at its true size at this \
+                       distance";
+            self.true_fov_row(rows, tip, fov);
+            rows.hint(&format!("{fov:.0}° at this distance"));
+        });
+        if curved {
+            ui.add_space(4.0);
+            kit::hint(ui, "The field-of-view sliders set the whole panel's field of view in curved mode.");
+        }
     }
 
     /// The Quality section: the presets, then each choice with its tip on hover.

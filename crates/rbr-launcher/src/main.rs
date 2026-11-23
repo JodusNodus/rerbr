@@ -603,6 +603,12 @@ struct Form {
     triple_angle: Option<f32>,
     /// The three monitors' names (left, centre, right, `viewer --triple-monitors`); none: one wide display.
     triple_monitors: Option<[String; 3]>,
+    /// One curved panel (`viewer --curved`); off for a flat screen. Triple wins when both are on.
+    curved: bool,
+    /// The panel's diagonal (inches), curve radius (mm) and distance (cm): the flat screen shares the two it has.
+    screen_diagonal: f32,
+    screen_radius: f32,
+    screen_distance: f32,
     /// The monitor names winit sees now, for the Displays dropdowns (never saved).
     monitors: Vec<String>,
     /// The current monitor's size, for the true field of view (never saved).
