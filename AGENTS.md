@@ -28,6 +28,7 @@ same paths.
 | File formats | `notes/formats.md`; key tables `data/physics-lsp-fields.md`, `data/ngp-lsp-keys.md` |
 | BTB stages (experimental) | `notes/btb.md` |
 | Assetto Corsa tracks converted to BTB stages (experimental) | `notes/assetto.md` |
+| DiRT Rally stages converted to BTB stages (experimental) | `notes/dirt-rally.md` |
 | Renderer and visual systems | `notes/renderer.md` |
 | Sound | `notes/sound.md` |
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
@@ -46,6 +47,7 @@ same paths.
 | `crates/rbr-formats` | Game file parsers, one module per format |
 | `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
 | `crates/rbr-ac-tracks` | Assetto Corsa tracks as BTB stages (experimental): KN5 and AI readers, the shared BTB writer, the import the launcher's Add calls |
+| `crates/rbr-dirt-rally` | DiRT Rally stages as BTB stages (experimental): readers of the player's install (PSSG, binary XML, JPAK collision), kept in this crate, and the import on the shared BTB writer |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |
 | `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces, loose-v1 on soil, to standstill): in development, not released, only `--physics experimental-brush` |
@@ -74,7 +76,7 @@ Treat `original/`, `build/` and the recordings as local data. Do not commit thei
 - Presentation (rendering, sound, HUD, launcher) never changes the physics: it reads the physics memory after a step,
   or copies a payload at an existing host sink, without writing to it.
 - One module or crate per system. Shared files (`renderer.rs`, `viewer.rs`, both `live.rs`, `lib.rs`, `Cargo.toml`,
-  the README tables) get small hooks only. Data parsers go in `rbr-formats`, one module per format, with a test over
+  the README tables) get small hooks only. Data parsers go in `rbr-formats` (DiRT Rally's stay in `rbr-dirt-rally`), one module per format, with a test over
   every retail file it covers (`RBR_DATA`).
 - Physics ports are pure functions over typed values; memory access (`Mem`, raw offsets) only in the subsystem's
   `layout.rs` or `layout/` directory.

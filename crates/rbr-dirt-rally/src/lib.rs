@@ -6,7 +6,7 @@
 //! - `install`: the data folder and its routes (`tracks/locations/<location>/<area>/route_<n>`);
 //! - `pssg`, `mesh`, `material`, `texture`: the drawn world;
 //! - `binxml`, `route`: the course, timing, calls and names;
-//! - `jpak`, `collision`: the driven surface;
+//! - `jpak`, `collision`, `surface`: the driven surface and its RBR ids;
 //! - `frame`: DiRT Rally's axes to the stage's;
 //! - `stage`, `import`, `cli`: the conversion and its interfaces.
 pub mod binxml;
@@ -21,4 +21,5 @@ pub mod mesh;
 pub mod pssg;
 pub mod route;
 pub mod stage;
+pub mod surface;
 pub mod texture;
