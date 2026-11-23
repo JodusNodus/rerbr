@@ -40,6 +40,7 @@ pub mod menu;
 pub mod pacenote;
 pub mod particles;
 pub mod peek;
+pub mod physics;
 pub mod pose;
 pub mod realtime;
 pub mod replay;
