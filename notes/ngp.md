@@ -348,32 +348,50 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     our pneumatic trail is shorter than AC's, so less mechanical trail gives its shape.
   - Level against NGP's torque (median above 8 m/s): at 25 mm 0.73 of it for the Fiesta, 1.12-1.16 for the A110
     (its caster trail is short); the per-car sensitivity takes it up. Not tried on a wheel.
-- NGP's torque unfiltered (ours, 2026-11-21, a trial; `rbr-standalone --ffb-rack`, `rack_ffb.rs`; the launcher's
-  Settings > Experimental "Force feedback: NGP's torque, unfiltered and straight", `[ffb] rack`, one of it and
-  `tyres` at a time, the tyres' first in the command; the viewer maps it as a line when its live command has
-  `--ffb-rack`; records are kept): the last step's `rack_ratio * steer_torque_sum` (`+0xadc`, cleared at each
-  step's start, read by `UpdateFfbTorque`) through NGP's curve, without the filter's blend. User: NGP's force feels
-  off. The filter is light (blend 0.5-0.7 a 7 ms step: a time constant of about 6 ms above 13 m/s, 10 ms at rest), so
-  the trial mostly swaps NGP's curve for the line. Not tried on a wheel.
+- NGP's torque unfiltered and mapped as a line (ours, a trial 2026-11-21, dropped 2026-11-22 at the user's call):
+  the last step's `rack_ratio * steer_torque_sum` (`+0xadc`, cleared at each step's start, read by
+  `UpdateFfbTorque`) through NGP's curve without the filter's blend. The filter is light (blend 0.5-0.7 a 7 ms step:
+  a time constant of about 6 ms above 13 m/s, 10 ms at rest), so it mostly swapped NGP's curve for the line.
 - The torque's parts over recorded drives (2026-11-21; `rbr-standalone --recording .. --steer-breakdown FILE`,
   `headless/steer.rs`, a CSV row per step from a read-only hook at the wheel step's `AddADC`; the parts add up to the
-  car's sum within 8e-5; physics PASS with it on for drive2/5, drive1/2, rsf-test1/1; rsf-test2/1 stands still).
-  Above 8 m/s, both fronts down, sizes over the p90 of NGP's |torque| (snow drive2/5, gravel rsf-test1, tarmac
+  car's sum within 8e-5; physics PASS with it on for drive2/5, drive1/2, rsf-test1/1; rsf-test2/1 stands still). A
+  row is a 1/720 s step (NGP's `MaxTimeStep`, one a recorded frame; until 2026-11-22 these were read as 7 ms, which
+  put every time and frequency off 5 times: corrected below). Above 8 m/s, both fronts down, sizes over the p90 of NGP's |torque| (snow drive2/5, gravel rsf-test1, tarmac
   drive1/2):
   - Longitudinal (scrub radius): the front wheels' difference in braking or drive force, `lon = c (fx0 + fx1)` in the
     mirrored contact frames (`c` 0.038-0.041, R² 0.57-0.91 without impacts). Braking: median 0.17-0.21, p95 0.29,
     0.90, 0.51 (left-right `fx` p95 6.7-10.3 kN); under power median 0.05-0.10, p95 0.23-0.45. Impacts (one wheel's
     `fz` past 10 kN or `|fx|` past 8 kN, 0.4-1.4 % of steps) reach 2-12 times the p90.
-  - Vertical (axis inclination): rms 0.09-0.15, p95 0.13-0.46, mostly below 8 Hz. At rest the two wheels' cancel
-    (rsf-test2: 218 and -196).
-  - Noise, 8-30 Hz rms over the p90: NGP's total 0.051, 0.081, 0.121; the force from the tyres (over its own p90, which
-    is 0.96-1.03 of NGP's) 0.033, 0.058, 0.089. Of NGP's parts the longitudinal has the most (0.052, 0.045, 0.056),
-    then the lateral (0.033-0.044); the vertical 0.016-0.019.
-  - A braking and drive pull on the force from the tyres (the longitudinal part, soft-limited at 0.4 `S`, 25 ms; tried
-    2026-11-21, dropped 2026-11-22: not felt on a wheel). Under braking it moved the force after the curve by a median
+  - Vertical (axis inclination): rms 0.09-0.15, p95 0.13-0.46, 0.09-0.36 of its variance at 3-30 Hz. At rest the two
+    wheels' cancel (rsf-test2: 218 and -196).
+  - 8-30 Hz rms over the p90: NGP's total 0.081, 0.239, 0.168; the force from the tyres (over its own p90, which is
+    0.96-1.03 of NGP's) 0.066, 0.157, 0.140. Of NGP's parts the longitudinal has 0.085, 0.122, 0.060, the lateral
+    0.036, 0.086, 0.073, the aligning 0.037, 0.074, 0.079, the vertical 0.034, 0.057, 0.042. At 40-150 Hz NGP's total
+    has 0.051, 0.081, 0.121 and the force from the tyres 0.033, 0.058, 0.089.
+  - A braking and drive pull on the force from the tyres (the longitudinal part, soft-limited at 0.4 `S`, smoothed
+    over a pole meant as 25 ms that ran as 5 ms, the step taken as 7 ms; tried 2026-11-21, dropped 2026-11-22: not felt on a wheel). Under braking it moved the force after the curve by a median
     0.07-0.10 of full scale, and pointed with the cornering force 81-95% of the time (the loaded outer wheel brakes
     harder, its scrub moment centres the wheel), so it only made braked corners heavier. The distinct tug, braking with
     one side on looser ground, was rare in the drives.
+  - The rear letting go (2026-11-22; the breakdown's `tK_alpha` columns, the right-hand tyres' mirrored; slides where
+    the rear's slip angle passes the front's by 3 deg from below it in the 0.7 s before, held 0.3 s, above 12 m/s): 10
+    on snow drive2/5, 3 on gravel rsf-test1, none on tarmac drive1/2 or in the gate's driverless playbacks. The
+    rear's slip rises past the front's, then the front's falls (snow 10.6 to 4.9 deg in 0.4 s, gravel 7.0 to -4.6),
+    the driver countersteering meanwhile. The force from the tyres after the curve, from 0.1 s before: snow 0.53 to
+    0.30 at 0.8 s after; gravel 0.46 to 0.05 at 0.1 s, then with the car's swing back to -0.41. NGP's torque does the
+    same (snow 0.43 to 0.12). By front slip the force is flat on snow from 3 to 12 deg (0.53-0.59) and rises steeply
+    below 3-4 deg on all three.
+  - The road's texture (ours, 2026-11-22, a trial; `rbr-standalone --ffb-surface W` with `--ffb-tyres`,
+    `surface_ffb.rs`; the launcher's Settings > Experimental "Road texture", `[ffb] surface`, passes 1): per step the
+    front wheels' longitudinal and vertical parts times the rack ratio, one pole each at 30 Hz (low-pass) and 5 Hz
+    (high-pass), soft-limited at `0.3 S` (`L tanh(x / L)`), times `W`, added to the torque before NGP's curve; fed the
+    runner's kept adds at each `wheel_force`. A front wheel's surface (the breakdown's `tK_class`, `tK_mu`, `tK_soil`):
+    tarmac class 2 mu 1.26 soil 0, gravel 1 0.79 0.015-0.018, grass 5 0.63 0.025-0.030, snow 3 0.85 0.013; on
+    tarmac drive1/2 a front wheel is off tarmac 14 % of the time above 10 m/s, 76 % of its changes one-sided, and the
+    force from the tyres barely moves at them. The texture's change to the force after the curve, median rms of 0.25 s
+    windows: fronts on tarmac 0.016, snow 0.015, gravel 0.054, one on gravel and one on tarmac 0.040, gravel and
+    grass 0.070; at 5-30 Hz 68-73 % of it on gravel and tarmac, 50 % on snow; p99 0.25-0.32, at the limit on
+    0.00-0.44 % of steps. Not tried on a wheel.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only

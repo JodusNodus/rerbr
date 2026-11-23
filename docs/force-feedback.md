@@ -22,7 +22,7 @@ find that lightening the most useful part, because it tells you about understeer
 |---|---|---|
 | Near the front's grip limit | keeps building on some cars, the Alpine A110 RGT up to 10° of slip | peaks at 4-6° of slip, then goes light |
 | Torque steer and the pull under braking | felt | absent |
-| Bumps through the suspension | felt | felt only when they change the tyres' grip |
+| Bumps through the suspension | felt | felt only when they change the tyres' grip, or with Road texture |
 | Mapping | NGP's curve | a straight line |
 | At a standstill | a small centring force | none |
 
@@ -30,14 +30,16 @@ The same sensitivity gives each car a different weight. On a 40 m circle the Fie
 with NGP's force, and the A110 RGT 1.15 times. Set the car's sensitivity again after switching, on the Controls page or
 in the pause menu while driving. Both forces use the same sensitivity setting, so a change applies to both.
 
-## NGP's torque, unfiltered and straight (a trial)
+## Road texture (a trial)
 
-The second Experimental switch, "Force feedback: NGP's torque, unfiltered and straight", keeps NGP's torque but
-changes what NGP does to it afterwards. The torque still has everything NGP adds up: the tyres, the caster trail, the
-pull from braking and drive through the scrub radius, and the lift from the steering axis's tilt. NGP's smoothing is
-dropped, which is light anyway (about 6 ms at speed), and the torque goes to the wheel in a straight line, not
-through NGP's curve. It tells you whether what you dislike in NGP's force is what it is made of or how NGP shapes it.
-Only one of the two switches is on at a time. Records are kept.
+The "Force feedback: Road texture" switch adds the bumps the front wheels ride over to the force from the tyres. They
+come from the physics: NGP's own steering torque has them, in the wheels' braking, drive and vertical forces about the
+steering axis, which the force from the tyres leaves out. Only the 5-30 Hz part is added, so there is no steady pull
+and no fine buzz, and it is capped, so hitting a rock kicks the wheel without slamming it to full force.
+
+Gravel and grass are about three times as rough as tarmac and snow, so the texture also tells you when a front wheel
+leaves the tarmac or drops onto the verge, where it has about half the grip. It does nothing unless "From the tyres" is
+on. If the wheel's smoothing setting is high, it smooths the texture away too.
 
 ## Why 25 mm
 

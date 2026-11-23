@@ -153,9 +153,9 @@ pub struct Args {
     /// `--ffb-tyres MM` (with `--live`, a trial): the wheel's force from the front tyres with a mechanical trail of
     /// `MM` mm, in place of NGP's steering torque (`tyre_ffb.rs`); held in m.
     pub ffb_tyres: Option<f32>,
-    /// `--ffb-rack` (with `--live`, a trial): NGP's steering torque without its filter, mapped as a line
-    /// (`rack_ffb.rs`).
-    pub ffb_rack: bool,
+    /// `--ffb-surface W` (with `--ffb-tyres`, a trial): the road's texture from NGP's torque added to the force from
+    /// the tyres at weight `W`, 0 to 3 (`surface_ffb.rs`).
+    pub ffb_surface: Option<f32>,
     /// `--head-gasket-durability N`: NGP's `headGasketDurability` (`boot::Race::head_gasket_durability`).
     pub head_gasket_durability: Option<i32>,
     /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (with `--autopilot --boot` on a pad stage): a handling manoeuvre, open loop
@@ -239,7 +239,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --boot
        rbr-standalone --autopilot OUT --boot [--car N] [WEATHER] --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
-       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)] [--ffb-rack (a trial: NGP's steering torque without its filter, as a line; rack_ffb.rs)]
+       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)] [--ffb-surface W (with --ffb-tyres, a trial: the road's texture, NGP's front wheels' braking, drive and vertical forces about the steering axis at 5-30 Hz, at weight W, 0 to 3; surface_ffb.rs)]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
        -V, --version prints the version
        -h, --help prints this text";
@@ -270,14 +270,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             println!("rbr-standalone {}", env!("CARGO_PKG_VERSION"));
             std::process::exit(0);
         }
-        if flag == "--live"
-            || flag == "--boot"
-            || flag == "--flat-out"
-            || flag == "--trace-wheels"
-            || flag == "--ffb-rack"
-        {
+        if flag == "--live" || flag == "--boot" || flag == "--flat-out" || flag == "--trace-wheels" {
             args.live |= flag == "--live";
-            args.ffb_rack |= flag == "--ffb-rack";
             args.boot |= flag == "--boot";
             args.flat_out |= flag == "--flat-out";
             args.trace_wheels |= flag == "--trace-wheels";
@@ -393,6 +387,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--ffb-tyres" => {
                 let mm = value.parse::<f32>().ok().filter(|mm| (0.0..=100.0).contains(mm));
                 args.ffb_tyres = Some(mm.ok_or(format!("--ffb-tyres {value}: a trail in mm, 0 to 100"))? / 1000.0)
+            }
+            "--ffb-surface" => {
+                let w = value.parse::<f32>().ok().filter(|w| (0.0..=3.0).contains(w));
+                args.ffb_surface = Some(w.ok_or(format!("--ffb-surface {value}: a weight, 0 to 3"))?)
             }
             "--ffb-sensitivity" => {
                 args.ffb_sensitivity =
@@ -580,11 +578,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.telemetry_udp.is_some() && !args.live {
         return Err("--telemetry-udp needs --live".into());
     }
-    if (args.ffb_tyres.is_some() || args.ffb_rack) && !args.live {
-        return Err("--ffb-tyres and --ffb-rack need --live".into());
+    if args.ffb_tyres.is_some() && !args.live {
+        return Err("--ffb-tyres needs --live".into());
     }
-    if args.ffb_tyres.is_some() && args.ffb_rack {
-        return Err("--ffb-tyres and --ffb-rack are two forces: one of them".into());
+    if args.ffb_surface.is_some() && args.ffb_tyres.is_none() {
+        return Err("--ffb-surface needs --ffb-tyres".into());
     }
     if (args.frames_out.is_some() || args.frames.is_some()) && !args.live {
         return Err("--frames-out and --frames need --live".into());
@@ -1092,6 +1090,8 @@ mod tests {
             (format!("{LIVE} --callout-distance x"), "--callout-distance x"),
             (format!("{LIVE} --marker-threshold x"), "--marker-threshold x"),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
+            (format!("{LIVE} --ffb-surface 1"), "--ffb-surface needs --ffb-tyres"),
+            (format!("{LIVE} --ffb-tyres 25 --ffb-surface 4"), "--ffb-surface 4: a weight, 0 to 3"),
             (
                 format!("{LIVE} --physics fast"),
                 "--physics fast: one of ngp, experimental, experimental-brush, ngp-brush",

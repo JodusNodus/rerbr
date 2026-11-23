@@ -60,7 +60,7 @@
 //! quantized is a protocol error and ends the run.
 
 use super::picture::{damper_frame, dash, race_hud, split_record, Picture};
-use super::{Live, Pending, WheelForce};
+use super::{Live, Pending};
 use crate::boot;
 use crate::physics::{boot_playback, load_substeps, why, Runner};
 use crate::stage::StageData;
@@ -223,7 +223,8 @@ impl<'a> Live<'a> {
             saves: None,
             rally_next: RallyNext::default(),
             telemetry: None,
-            wheel_force: WheelForce::Ngp,
+            ffb_tyres: None,
+            ffb_surface: None,
             initial,
             initial_game,
             boot_now: 0.0,

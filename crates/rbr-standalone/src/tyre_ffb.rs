@@ -22,7 +22,7 @@ pub const SUGGESTED_TRAIL: f32 = 0.025;
 const ROLLING_SPEED: f32 = 1.0;
 
 /// The wheel pointers in the car (`car+0x470`): the front pair first.
-const WHEELS: u32 = 0x470;
+pub(crate) const WHEELS: u32 = 0x470;
 
 /// The steering torque from the front tyres with the mechanical trail `trail` (m), in the units of the car's
 /// filtered torque (`CarStore::ffb_torque`). The trail torque has the tyre step's sign, `sgn(v_long) * trail * F_lat`
@@ -45,10 +45,10 @@ pub fn torque(mem: &Mem, trail: f32) -> f32 {
     -mem.steering_rack_ratio(car).abs() * sum
 }
 
-/// The force the wheel gets, in [-1, 1] before the player's settings: [`torque`] through NGP's curve at the car's
-/// sensitivity, 0 while the car's force feedback is muted or its override timer runs (as NGP's filter holds it).
-pub fn force(mem: &Mem, trail: f32) -> f32 {
+/// The force the wheel gets, in [-1, 1] before the player's settings: [`torque`] plus `extra` (in its units: the
+/// surface's texture, `surface_ffb`) through NGP's curve at the car's sensitivity, 0 while the car's force feedback is muted or its override timer runs (as NGP's filter holds it).
+pub fn force(mem: &Mem, trail: f32, extra: f32) -> f32 {
     let car = mem.u32(CAR_PTR);
-    let torque = if mem.override_timer(car) > 0.0 { 0.0 } else { torque(mem, trail) };
+    let torque = if mem.override_timer(car) > 0.0 { 0.0 } else { torque(mem, trail) + extra };
     rbr_physics::ngp::ffb::curve(torque, mem.ffb_muted(car), mem.max_ff_torque(car))
 }

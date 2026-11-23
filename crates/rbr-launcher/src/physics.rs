@@ -103,9 +103,9 @@ impl Choice for PhysicsProfile {
     }
 }
 
-/// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`tyres`,
-/// `[ffb] tyres`), the experimental engine (with its aero and drivetrain) and the brush tyre, each with its help and a
-/// link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
+/// The Settings page's Experimental group: a switch each for the force feedback from the tyres (`[ffb] tyres`), the
+/// road's texture added to it (`[ffb] surface`), the experimental engine (with its aero and drivetrain) and the brush
+/// tyre, each with its help and a link to its page; the session's `rerbr --physics` when it overrides the switches, and while the experimental
 /// physics drives what it leaves unsaved.
 pub fn experimental_section(
     ui: &mut Ui,
@@ -116,15 +116,15 @@ pub fn experimental_section(
     kit::group_label(ui, "Experimental", None);
     kit::panel(ui, |rows| {
         let (mut engine, mut tyre) = physics.parts();
-        // Two forces in place of NGP's: one at a time, the one turned on last.
-        let (tyres, rack) = (ffb.tyres, ffb.rack);
         experiment(rows, "Force feedback", "From the tyres", &mut ffb.tyres, FFB_HELP, FFB_PAGE);
-        experiment(rows, "Force feedback", "NGP's torque, unfiltered and straight", &mut ffb.rack, RACK_HELP, FFB_PAGE);
-        if ffb.tyres && !tyres {
-            ffb.rack = false;
-        } else if ffb.rack && !rack {
-            ffb.tyres = false;
-        }
+        experiment(
+            rows,
+            "Force feedback",
+            "Road texture (with From the tyres)",
+            &mut ffb.surface,
+            SURFACE_HELP,
+            FFB_PAGE,
+        );
         experiment(rows, "Engine", "ReRBR's engine model, aero and drivetrain", &mut engine, ENGINE_HELP, ENGINE_PAGE);
         experiment(rows, "Tyre", "ReRBR's brush tyre (in development)", &mut tyre, TYRE_HELP, TYRE_PAGE);
         *physics = PhysicsProfile::of_parts(engine, tyre);
@@ -159,9 +159,9 @@ const TYRE_HELP: &str = "ReRBR's brush tyre, in place of NGP 7's. Still in devel
 const FFB_HELP: &str = "The wheel's force from the front tyres' grip, as Assetto Corsa EVO's, mapped straight: it \
                         goes light as the front lets go. Off: NGP's force and curve. Records are kept either way; the \
                         sensitivity may want a new value.";
-const RACK_HELP: &str = "A trial: NGP's own steering torque (tyres, steering geometry, braking and drive pull) \
-                         without its smoothing, mapped straight instead of through NGP's curve. Records are kept; \
-                         the sensitivity may want a new value.";
+const SURFACE_HELP: &str = "A trial, with From the tyres: adds the road's texture from the physics, the bumps the \
+                            front wheels ride over: rough on gravel and grass, smooth on tarmac and snow, so it also \
+                            tells when a wheel leaves the road. Capped so a rock kicks without slamming the wheel.";
 
 #[cfg(test)]
 mod tests {

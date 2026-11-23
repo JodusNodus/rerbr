@@ -64,9 +64,9 @@ pub struct Options {
     /// The force from the tyres (the launcher's Settings > Experimental; `rbr-standalone --ffb-tyres`): a straight
     /// line in the steering torque ([`Options::linearity`]); without it NGP's force as it is.
     pub tyres: bool,
-    /// NGP's steering torque without its filter (the launcher's Settings > Experimental; `rbr-standalone
-    /// --ffb-rack`, a trial): a straight line in it as well.
-    pub rack: bool,
+    /// The ground's texture under the front tyres added to the force from the tyres (the launcher's Settings >
+    /// Experimental; `rbr-standalone --ffb-surface`, a trial); nothing without [`Options::tyres`].
+    pub surface: bool,
     /// The wheel's rev lights follow the car's shift points (`crate::wheel_lights`).
     pub rev_lights: bool,
 }
@@ -82,7 +82,7 @@ impl Default for Options {
             rotation_per_car: false,
             smoothing: 0,
             tyres: false,
-            rack: false,
+            surface: false,
             rev_lights: true,
         }
     }
@@ -117,15 +117,15 @@ impl Options {
             .and_then(|v| v.parse().ok())
             .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
         out.tyres = flag("tyres", false);
-        out.rack = flag("rack", false);
+        out.surface = flag("surface", false);
         out.rev_lights = flag("rev_lights", true);
         out
     }
 
     /// How linear the force is in the steering torque, percent ([`shape`]): 100 with the force from the tyres, as AC
-    /// EVO maps its own (`notes/ngp.md` "Force feedback"), or with NGP's torque unfiltered, else 0, NGP's curve.
+    /// EVO maps its own (`notes/ngp.md` "Force feedback"), else 0, NGP's curve.
     pub fn linearity(&self) -> i32 {
-        if self.tyres || self.rack {
+        if self.tyres {
             100
         } else {
             0
@@ -144,7 +144,7 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\nrack = {}\n\
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\nsurface = {}\n\
              rev_lights = {}\n",
             u8::from(s.enabled),
             s.strength,
@@ -160,7 +160,7 @@ impl Options {
             u8::from(self.rotation_per_car),
             self.smoothing,
             u8::from(self.tyres),
-            u8::from(self.rack),
+            u8::from(self.surface),
             u8::from(self.rev_lights),
         )
     }
@@ -1307,7 +1307,7 @@ mod tests {
             rotation: Some(540),
             rotation_per_car: true,
             smoothing: 8,
-            rack: true,
+            surface: true,
             rev_lights: false,
             ..Options::default()
         };
