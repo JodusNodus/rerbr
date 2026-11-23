@@ -93,5 +93,8 @@ too small and unlike the others: left out).
 - Tune on a pad: the rates, the dead zone, and whether the curve should go past a square at speed (the fit's power
   2.4-3.1 above 24 m/s; `shaped` stops at `x^2`).
 - A gravel hand drive on a wheel for the fit.
+- Wheels in Xbox or XInput mode are not supported: they report `BTN_SOUTH` (or have an SDL gamepad mapping), so their
+  steering would be read as a stick. A guard (SDL's wheel joystick type, SDL's wheel vendor and product list on evdev)
+  is left for when they are.
 - Later, each its own batch: triggers captured as axes (#6 item 1, unverified on alpha 5), rumble from the surface
   (OpenCMR2's model), DualSense trigger effects, and a slip-angle assist or a rack against NGP's torque.
