@@ -394,9 +394,12 @@ fn wet_plus(colour: vec3<f32>, v: VertexOut) -> vec3<f32> {
     }
     var shine = glint(mirrored);
     var mirror = mix(soaked, around, film.reflectance);
-    // At night the lamps' streaks (`lamp_glint`), added in linear light.
-    if (frame.night.x != 0.0) {
+    // The lamps' streaks (`lamp_glint`) whenever they light the stage (at night, and at dusk as `shade_stage` lights it
+    // with them, `frame.dusk.w`), added in linear light; at night in place of the sun's glint.
+    if (frame.night.x != 0.0 || frame.dusk.w > 0.01) {
         mirror = ungraded(graded(mirror) + lamp_glint(v.world, mirrored, film.reflectance, film.normal.y));
+    }
+    if (frame.night.x != 0.0) {
         shine = vec3<f32>(0.0);
     }
     return mirror + shine * film.wet * max(film.edge, film.puddle);

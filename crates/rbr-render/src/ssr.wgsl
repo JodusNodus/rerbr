@@ -21,6 +21,16 @@ const SSR_FINEST: i32 = 0;
 // The GGX lobe's alpha over the cone's length along the view (`roughness` times `stretch`): 0.5 matched its length
 // and spread the lamps' streaks wider than the linear march's; 0.25 keeps them as crisp.
 const SSR_ALPHA: f32 = 0.25;
+// The most a ray's hit reads, renderer units, in its strongest channel (hue kept; the levels above the frame's are
+// capped as they are made, `fs_blit_capped` in `blit.wgsl`, `renderer::REFLECTED_CAP`): the lamps' lit parts are drawn
+// up to `LIGHT_CAP`, and their image in the wet road, spread over the lobe, burnt it white well beyond the lamps'
+// streaks (a flat slab with ragged edges under the headlights). `lamp_glint` draws the lamps' streaks instead.
+const REFLECTED_CAP: f32 = 256.0;
+
+fn hit_light(c: vec3<f32>) -> vec3<f32> {
+    return c * min(1.0, REFLECTED_CAP / max(max(c.r, max(c.g, c.b)), 1e-6));
+}
+
 // The cells a ray that passed behind something skips at first, doubling each time it is still behind.
 const SSR_SKIP: f32 = 4.0;
 // The pyramid's coarsest level (`depth_pyramid::LEVELS`).
@@ -222,7 +232,7 @@ fn rebuilt(world: vec3<f32>, ray: vec3<f32>, travelled: f32, pixel: vec2<f32>, c
     let spread = length((e.xy / e.w - c.xy / c.w) * vec2<f32>(0.5, -0.5) * full);
     let pixels = length(at * full - pixel);
     let lod = clamp(log2(max(max(pixels * cone.x, spread), 1.0)), 0.0, f32(textureNumLevels(scene_colour) - 1u));
-    return vec4<f32>(textureSampleLevel(scene_colour, reflection_sampler, at, lod).rgb, 1.0);
+    return vec4<f32>(hit_light(textureSampleLevel(scene_colour, reflection_sampler, at, lod).rgb), 1.0);
 }
 
 @fragment
@@ -380,7 +390,7 @@ fn march(world: vec3<f32>, ray: vec3<f32>, weight: f32, miss: vec4<f32>, still: 
             if (depth > 0.0 && travelled > 0.05 && behind <= room) {
                 let pixels = length(p.xy - o.xy);
                 let lod = clamp(log2(max(pixels * gloss, 1.0)), 0.0, f32(textureNumLevels(scene_colour) - 1u));
-                let colour = textureSampleLevel(scene_colour, reflection_sampler, uv, lod).rgb;
+                let colour = hit_light(textureSampleLevel(scene_colour, reflection_sampler, uv, lod).rgb);
                 let edge = smoothstep(0.0, select(0.15, FILM_EDGE, film), min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
                 let fade = 1.0 - smoothstep(0.6, 1.0, travelled / SSR_REACH);
                 let trust = edge * fade * (1.0 - smoothstep(0.3 * room, room, max(behind, 0.0)));

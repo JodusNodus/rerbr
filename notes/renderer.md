@@ -848,6 +848,12 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   settings.clouds=heavy`): with the stage's own weather the road stays dry. Heavy rain, 1080p chase: rain 2.11 to
   2.66 ms (3.22 with 16 lamps and `pow`), scene 2.7 to 3.2-3.4 ms. Other reference shots byte-identical; the
   stage lamps start where the lamps' pipelines do (level above 0.01; below it golden Odry's dust took them).
+- The car's lamps in the screen-space reflections (2026-11-23): the rays read the frame at most `REFLECTED_CAP` 256
+  units (`hit_light` in `ssr.wgsl`; its levels capped as they are halved, `fs_blit_capped`). The lit lamp parts are
+  drawn up to `LIGHT_CAP` 30000, and their image spread over the rays' lobe burnt the wet road white under the
+  headlights: a flat slab with ragged edges (Luceram GC8 fly-by, 20:30 and 23:00). The streaks are `lamp_glint`'s,
+  now at dusk too (`frame.dusk.w`, was night only). 256 keeps the stage bulbs (200 at night): Sardian wet night
+  byte-identical. Day and dry reference shots byte-identical; golden Gabiria 19:00 one lamp pixel.
 
 ## Damage visuals
 

@@ -327,6 +327,9 @@ const PYRAMID: wgpu::BindingType = wgpu::BindingType::Texture {
 };
 /// The resolved frame's mip levels for the screen-space reflections.
 const SCENE_MIPS: u32 = 6;
+/// The most the screen-space reflections' levels above the frame's hold, renderer units (`REFLECTED_CAP` in
+/// `ssr.wgsl`, which caps the rays' hits as well).
+const REFLECTED_CAP: f32 = 256.0;
 /// The traced reflections' format, and their depths'.
 const TRACED: [wgpu::TextureFormat; 3] =
     [wgpu::TextureFormat::Rgba16Float, wgpu::TextureFormat::R32Float, wgpu::TextureFormat::Rgba16Float];
@@ -557,7 +560,7 @@ impl ScreenReflection {
             multiview_mask: None,
             cache: None,
         });
-        let halver = Halver::new(device, format);
+        let halver = Halver::new(device, format, Some(REFLECTED_CAP));
         let sized =
             Self::targets(device, [&layout, &composite_layout, &resolve_layout], format, size, depth, ultra, &pyramid);
         ScreenReflection {
@@ -847,7 +850,7 @@ impl Reflection {
                 })
                 .collect::<Vec<_>>()
         });
-        let halver = Halver::new(device, format);
+        let halver = Halver::new(device, format, None);
         let sources = mips.each_ref().map(|levels| halver.sources(device, levels));
         let faces = [0, 1, 2, 3, 4, 5].map(|layer| {
             staging.create_view(&wgpu::TextureViewDescriptor {
@@ -873,7 +876,8 @@ impl Reflection {
     }
 }
 
-/// Halves a texture level into the next (`blit.wgsl`), to fill mip chains.
+/// Halves a texture level into the next (`blit.wgsl`), to fill mip chains; with a cap, each level at most that in its
+/// strongest channel (`fs_blit_capped`).
 pub(super) struct Halver {
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -881,7 +885,7 @@ pub(super) struct Halver {
 }
 
 impl Halver {
-    pub(super) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Halver {
+    pub(super) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, cap: Option<f32>) -> Halver {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("mip"),
             entries: &[
@@ -895,6 +899,7 @@ impl Halver {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
+        let constants: Vec<_> = cap.map(|cap| ("REFLECTED_CAP", f64::from(cap))).into_iter().collect();
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mip"),
             source: wgpu::ShaderSource::Wgsl(BLIT.into()),
@@ -917,8 +922,8 @@ impl Halver {
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
                 module: &module,
-                entry_point: Some("fs_blit"),
-                compilation_options: Default::default(),
+                entry_point: Some(if cap.is_some() { "fs_blit_capped" } else { "fs_blit" }),
+                compilation_options: wgpu::PipelineCompilationOptions { constants: &constants, ..Default::default() },
                 targets: &[Some(format.into())],
             }),
             multiview_mask: None,
