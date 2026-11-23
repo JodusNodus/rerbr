@@ -124,7 +124,7 @@ pub(super) fn bake(
     };
     let dispatch = |pass: &mut wgpu::ComputePass, pipeline, groups: &[wgpu::BindGroup]| {
         pass.set_pipeline(pipeline);
-        for (b, group) in buffers.iter().zip(groups) {
+        for (b, group) in buffers.iter().zip(groups).filter(|(b, _)| b.baked) {
             pass.set_bind_group(0, group, &[]);
             pass.dispatch_workgroups(b.vertex_count.div_ceil(64), 1, 1);
         }

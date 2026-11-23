@@ -65,6 +65,9 @@ pub(super) struct PipelineKey {
     lamps: bool,
     /// The grass made on the GPU (`crate::grass::made`): its cards from their buffer (`vs_grass`), no vertex buffer.
     pub(super) made: bool,
+    /// An instanced BTB mesh (`stage::placed`): `vs_main_placed` or `vs_clouded_placed`, with the placements' buffer
+    /// ([`placed_layout`]) after the vertices'.
+    pub(super) placed: bool,
 }
 
 /// Where a pipeline draws in the main view's pass. The alpha-tested opaque draws ([`prepassed`]) first lay their depth
@@ -111,7 +114,13 @@ impl PipelineKey {
             pass: DrawPass::Main,
             lamps: false,
             made: false,
+            placed: false,
         }
+    }
+
+    /// The pipeline drawing an instanced mesh ([`PipelineKey::placed`]).
+    pub(super) fn placed(self, placed: bool) -> PipelineKey {
+        PipelineKey { placed, ..self }
     }
 
     /// The pipeline drawing the grass made on the GPU ([`PipelineKey::made`]).
@@ -281,11 +290,17 @@ impl Context<'_> {
             _ => wgpu::CompareFunction::Always,
         };
         let features = key.features.unwrap_or_default();
-        let (layout, vertex, buffers) = match key.made {
-            true => {
+        let placed_buffers = [Some(vertex_layout()), Some(placed_layout()), Some(probe_layout())];
+        let (layout, vertex, buffers) = match (key.made, key.placed) {
+            (true, _) => {
                 (self.made_layout, if self.vertex == "vs_clouded" { "vs_grass_clouded" } else { "vs_grass" }, &[][..])
             }
-            false => (self.layout, self.vertex, &[Some(vertex_layout())][..]),
+            (false, true) => (
+                self.layout,
+                if self.vertex == "vs_clouded" { "vs_clouded_placed" } else { "vs_main_placed" },
+                &placed_buffers[..],
+            ),
+            (false, false) => (self.layout, self.vertex, &[Some(vertex_layout())][..]),
         };
         self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stage"),
@@ -641,6 +656,39 @@ pub(crate) const TEXTURE: wgpu::BindingType = wgpu::BindingType::Texture {
 pub(crate) fn texture_entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry { binding, visibility: wgpu::ShaderStages::FRAGMENT, ty, count: None }
 }
+
+/// The instance-rate vertex buffer of the instanced BTB meshes ([`Instance`](crate::stage::placed::Instance)): the
+/// matrix's three rows and the light (`InstanceIn` in `shader.wgsl`), locations 11 to 14.
+pub(crate) fn placed_layout() -> wgpu::VertexBufferLayout<'static> {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 4] =
+        wgpu::vertex_attr_array![11 => Float32x4, 12 => Float32x4, 13 => Float32x4, 14 => Float32x4];
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<crate::stage::placed::Instance>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &ATTRIBUTES,
+    }
+}
+
+/// The probes of the instanced meshes, a stage pack's [`Vertex`]es read once per instance: their occlusion, sky direction
+/// and bounce, which lie together (`probe` in `InstanceIn`, location 15).
+pub(crate) fn probe_layout() -> wgpu::VertexBufferLayout<'static> {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Uint32x4,
+        offset: std::mem::offset_of!(Vertex, occlusion) as u64,
+        shader_location: 15,
+    }];
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<Vertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &ATTRIBUTES,
+    }
+}
+
+const _: () = {
+    use std::mem::offset_of;
+    assert!(offset_of!(Vertex, sky_dir) == offset_of!(Vertex, occlusion) + 4);
+    assert!(offset_of!(Vertex, bounce) == offset_of!(Vertex, occlusion) + 8);
+};
 
 /// Vertex buffer layout of [`Vertex`]: position, colour, texture 0, 1 and 2 coordinates, normal.
 pub(crate) fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {

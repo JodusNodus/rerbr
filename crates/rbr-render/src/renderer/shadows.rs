@@ -226,21 +226,25 @@ impl Casting<'_> {
         // Depth only, so the order does not matter: the uncut draws first, with one bind group (they read nothing from
         // theirs but the mode's zero cut-out flags) and no fragment stage, then the cut-out ones by bind group.
         let cut = |draw: &GpuDraw| draw.bind.alpha_ref.is_some() || draw.bind.cutout;
-        casters.sort_by(|(_, a), (_, b)| {
-            cut(a).cmp(&cut(b)).then_with(|| match cut(a) {
-                true => a.group.cmp(&b.group),
-                false => std::cmp::Ordering::Equal,
+        // The instanced meshes have pipelines of their own (`vs_sun_placed`): after the rest.
+        casters.sort_by(|(ma, a), (mb, b)| {
+            ma.instances.is_some().cmp(&mb.instances.is_some()).then_with(|| {
+                cut(a).cmp(&cut(b)).then_with(|| match cut(a) {
+                    true => a.group.cmp(&b.group),
+                    false => std::cmp::Ordering::Equal,
+                })
             })
         });
-        self.sun.draw_cascade(self.queue, encoder, index, matrix, drop, |pass, [uncut_pipeline, cut_pipeline]| {
+        self.sun.draw_cascade(self.queue, encoder, index, matrix, drop, |pass, pipelines| {
             let mut bound = Bound::new(self.buffers);
-            // Whether the pipeline set is the cut-out one, and whether an uncut draw's group is bound.
-            let (mut cut_set, mut uncut_bound) = (None, false);
+            // Which pipeline is set (instanced, cut-out), and whether an uncut draw's group is bound.
+            let (mut set, mut uncut_bound) = (None, false);
             for (mesh, draw) in casters {
                 let cuts = cut(draw);
-                if cut_set != Some(cuts) {
-                    pass.set_pipeline(if cuts { cut_pipeline } else { uncut_pipeline });
-                    cut_set = Some(cuts);
+                let which = (mesh.instances.is_some(), cuts);
+                if set != Some(which) {
+                    pass.set_pipeline(pipelines[usize::from(which.0) * 2 + usize::from(cuts)]);
+                    set = Some(which);
                 }
                 if cuts || !uncut_bound {
                     pass.set_bind_group(1, &draw.group, &[]);

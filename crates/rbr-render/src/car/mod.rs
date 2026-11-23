@@ -697,6 +697,7 @@ impl Car {
             name: self.name,
             selection,
             meshes: self.meshes,
+            placed: Default::default(),
             interactive: Vec::new(),
             texture_names: BTreeMap::new(),
             textures: self.textures,

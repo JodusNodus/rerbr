@@ -335,7 +335,7 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
 - Missing textures (2026-11-04, user decision, were magenta): a draw's first texture that did not load draws plain
   (white: the vertex colour), a cut-out or blended draw's not at all, a second texture adds nothing
   (`renderer/textures.rs` `bind_key`). Savopohja's road, Ponteareas' tent, El Fargue's far cards.
-- BTB stages (RallySimFans track folders, `stage/btb.rs`, `rbr_btb::scene`, `Lod::Band`): [btb.md](btb.md#drawing).
+- BTB stages (RallySimFans track folders, `stage/btb.rs`, `rbr_btb::scene`, `Lod::Band`): [btb.md](btb.md#drawing). Instanced placements (`ReRbrInstanced`): `renderer/placed.rs`, `vs_main_placed`.
 - Object lanes `(1,1)` (`stage::OBJECT_ALPHA_REF`, kind-byte address modes).
 - Interactive props `(1,6)` (`stage/mod.rs` `InteractivePose`): every retail record drawn at its placement while its
   cell shows; live moves a woken prop by its solid's pose. The car's glass (no depth write) goes over them.

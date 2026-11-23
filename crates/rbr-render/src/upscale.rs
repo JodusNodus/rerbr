@@ -175,11 +175,14 @@ pub fn apply(
 pub fn stage_textures(stage: &Stage) -> BTreeMap<TextureRef, u32> {
     let drawn = |sky: bool| -> BTreeSet<TextureRef> {
         let meshes = stage.meshes.iter().filter(|mesh| (mesh.layer == Layer::Sky) == sky);
-        meshes.flat_map(|mesh| &mesh.draws).flat_map(|draw| draw.state.textures.into_iter().flatten()).collect()
+        let groups = stage.placed.groups.iter().filter(|group| (group.layer == Layer::Sky) == sky);
+        let states =
+            meshes.flat_map(|mesh| &mesh.draws).map(|draw| &draw.state).chain(groups.map(|group| &group.state));
+        states.flat_map(|state| state.textures.into_iter().flatten()).collect()
     };
     let (sky, rest) = (drawn(true), drawn(false));
     // A BTB stage's normal maps and highlight maps are data, not pictures: kept as they are.
-    let surfaces = stage.meshes.iter().flat_map(|mesh| &mesh.draws).filter_map(|draw| draw.state.surface);
+    let surfaces = stage.states().filter_map(|state| state.surface);
     let maps: BTreeSet<TextureRef> = surfaces
         .flat_map(|s| [s.normal.map(|n| n.texture), s.highlight.and_then(|h| h.map)])
         .flatten()
