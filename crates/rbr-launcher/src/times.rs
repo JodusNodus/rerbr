@@ -59,6 +59,7 @@ pub fn date(unix: u64) -> String {
 }
 
 /// `text` as a folder name on every system: ASCII letters, digits, `.`, `@` and `-`, the rest as `_`.
+#[allow(dead_code)] // for the per-physics folders of the ghosts, not used here
 pub fn slug(text: &str) -> String {
     text.chars().map(|c| if c.is_ascii_alphanumeric() || ".@-".contains(c) { c } else { '_' }).collect()
 }

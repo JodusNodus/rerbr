@@ -89,7 +89,7 @@ fn stage_number(path: &str) -> Option<u32> {
 fn car_key(args: &[String]) -> Option<String> {
     let live = args.iter().position(|a| a == "--live").unwrap_or(args.len());
     let viewer = &args[..live];
-    value(&args[..], "--car-key")
+    value(args, "--car-key")
         .map(str::to_owned)
         .or_else(|| {
             let pack = value(viewer, "--rsf-car")?;
