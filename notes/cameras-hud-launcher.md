@@ -492,6 +492,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from the chase camera, the HUD and the start lamps hidden under a "Demonstration · Enter or A: skip" hint, Enter
   or the pad's A skipping without confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera,
   and its end or skip sends the brief's confirm, ending the lesson with its award and the verdict panel.
+- Times, after Replays in Library (`times_page.rs`, log in `times/`; user decisions, 2026-11-23): your best time per stage by car
+  class or by car, per road (dry, damp, wet), under one physics id (`rbr_recording::physics`; a dropdown, default the physics a drive steps
+  now), so NGP and ReRBR runs are never ranked together. Browser pattern: Best per class | Best per car, search, class, road, sort;
+  inspector with the splits, "Your runs" (20), Watch and Drive again (the Rally page's car and stage). The Rally page's stage column
+  says "Your best: time · class · road" for the stage and class under the current physics. Log: `times.tsv` (`gameplay.md` Saves).
 - Replays, last in Library (`pages::Section::pages`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and

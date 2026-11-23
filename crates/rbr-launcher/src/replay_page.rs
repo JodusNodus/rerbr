@@ -216,7 +216,7 @@ fn log_tail(path: &Path) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-fn age(modified: SystemTime) -> String {
+pub(crate) fn age(modified: SystemTime) -> String {
     let seconds = modified.elapsed().unwrap_or_default().as_secs();
     match seconds {
         0..60 => "Just now".into(),
@@ -227,7 +227,7 @@ fn age(modified: SystemTime) -> String {
 }
 
 /// Launcher replay names use epoch nanoseconds, or seconds for older files. Copying a drive preserves this date.
-fn recorded_time(path: &Path) -> Option<SystemTime> {
+pub(crate) fn recorded_time(path: &Path) -> Option<SystemTime> {
     let name = path.file_stem()?.to_str()?;
     let stamp = name.split_once('-')?.0.parse::<u64>().ok()?;
     UNIX_EPOCH.checked_add(if stamp >= 1_000_000_000_000 {
@@ -591,6 +591,12 @@ impl Form {
         }
         ui.label(&self.replays.message);
         (watch, export, delete)
+    }
+
+    /// Starts watching the replay at `path` (the Times page's Watch).
+    pub(crate) fn watch_replay(&mut self, path: PathBuf) {
+        self.replays.selected = Some(path);
+        self.start_replay(false);
     }
 
     fn start_replay(&mut self, export: bool) {

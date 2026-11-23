@@ -844,6 +844,7 @@ impl Form {
             Err(e) => eprintln!("launcher: no drive log: {e}"),
         }
         self.controls.release();
+        self.times_drive_started(&args);
         match command.spawn() {
             Ok(child) => {
                 self.status = format!("viewer running (pid {})", child.id());
@@ -892,6 +893,7 @@ impl Form {
                     self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
                     self.controls.read_last_drive(&self.logs_dir());
                 }
+                self.times_drive_closed();
                 self.replays.refresh(&self.here());
             }
         }

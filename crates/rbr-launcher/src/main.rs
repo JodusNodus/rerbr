@@ -169,6 +169,7 @@ mod stages_page;
 mod theme;
 mod time_of_day;
 mod times;
+mod times_page;
 mod update;
 mod upscaler;
 mod window;
@@ -485,6 +486,7 @@ struct Form {
     /// The circuit browser (the Circuit page's Browse…): the circuits and the stages that look like one.
     circuit_browser: stage_browser::StageBrowser,
     replays: replay_page::Replays,
+    times: times_page::TimesPage,
     recent_cars: Vec<String>,
     recent_maps: Vec<u32>,
     favourite_cars: Vec<String>,
