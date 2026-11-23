@@ -854,6 +854,11 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   headlights: a flat slab with ragged edges (Luceram GC8 fly-by, 20:30 and 23:00). The streaks are `lamp_glint`'s,
   now at dusk too (`frame.dusk.w`, was night only). 256 keeps the stage bulbs (200 at night): Sardian wet night
   byte-identical. Day and dry reference shots byte-identical; golden Gabiria 19:00 one lamp pixel.
+- Rain splashes on wet roads (2026-11-23, `splashes` in `water.wgsl`; the photos' "boiling" road): crowns up to
+  1.2 cm in 7 cm cells, 4 a second, seen 40% of the time, drawn round on screen (standing), at least a pixel and
+  fainter by the same share, white at 0.6 albedo in the road's light, half opaque; past two cells' reach their mean
+  cover. Full wetness and rain only (dry, damp, snow, wet without rain byte-identical). 1080p rain Luceram GC8
+  fly-by scene 2.47 to 2.66 ms (`--frames 120 --profile`). Lit as the rain is (no forward scatter toward a lamp).
 
 ## Damage visuals
 

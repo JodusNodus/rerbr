@@ -371,8 +371,68 @@ fn puddled(v: VertexOut) -> Puddled {
     return Puddled(n, f * max(edge, puddle), puddle, wet, margin, edge);
 }
 
-// The wet road over `colour`: soaked, reflecting by `puddled`, with the sun's or the lamps' glint.
-fn wet_plus(colour: vec3<f32>, v: VertexOut) -> vec3<f32> {
+// Rain splashing on a wet road (ours, with the rain, `frame.wind.z`): each drop that lands throws up a crown of water a
+// centimetre or so high that catches the light, a speck that lasts a few hundredths of a second; in heavy rain the road
+// looks to boil. In each `SPLASH_CELL` square a drop lands `SPLASH_RATE` times a second (as many squares as the rain),
+// each time somewhere else, its crown up to `SPLASH_SIZE` metres across (half that to all of it, by the drop) and seen
+// for `SPLASH_LIFE` of the time to the next, a thin sheet and its drops, `SPLASH_OPACITY` opaque. A crown stands up,
+// so it is drawn round on screen (the distance along the view times the view's sine), no smaller than a pixel
+// (`pixel`, metres) and fainter by the same share. Where the crowns would reach past the two cells about a point
+// (their ground footprint grows as the view grazes and the pixels grow), they give way to their mean cover,
+// `SPLASH_PROFILE` of a full disc's (the crowns' sizes, fade and soft edge over their life). Returns the share of the
+// pixel the crowns cover.
+const SPLASH_CELL: f32 = 0.07;
+const SPLASH_RATE: f32 = 4.0;
+const SPLASH_LIFE: f32 = 0.4;
+const SPLASH_SIZE: f32 = 0.012;
+const SPLASH_PROFILE: f32 = 0.105;
+const SPLASH_OPACITY: f32 = 0.5;
+// The crowns' albedo: water drops scatter much of the light that falls on them.
+const SPLASH_ALBEDO: f32 = 0.6;
+
+fn splashes(world: vec3<f32>, view: vec3<f32>, pixel: f32) -> f32 {
+    let rain = frame.wind.z;
+    if (rain <= 0.0) {
+        return 0.0;
+    }
+    let along = normalize(view.xz + vec2<f32>(1e-6, 0.0));
+    let across = vec2<f32>(-along.y, along.x);
+    let sine = max(view.y, 0.05);
+    // The crowns' mean cover: a share `rain` of the cells, each seen `SPLASH_LIFE` of the time, over the view's sine.
+    let disc = 0.25 * PI * SPLASH_SIZE * SPLASH_SIZE;
+    let mean = rain * SPLASH_LIFE * SPLASH_PROFILE * disc / (sine * SPLASH_CELL * SPLASH_CELL);
+    let reach = max(0.5 * SPLASH_SIZE, pixel) / sine / SPLASH_CELL;
+    let near = 1.0 - smoothstep(1.0, 2.0, reach);
+    var cover = 0.0;
+    if (near > 0.0) {
+        let p = world.xz / SPLASH_CELL;
+        let cell = floor(p);
+        for (var k = 0; k < 25; k++) {
+            let c = cell + vec2<f32>(f32(k % 5 - 2), f32(k / 5 - 2));
+            let h = landing_hash(c + vec2<f32>(71.0));
+            if (h.z > rain) {
+                continue;
+            }
+            let time = frame.wind.x * SPLASH_RATE * mix(0.7, 1.3, h.y) + h.x;
+            let age = fract(time) / SPLASH_LIFE;
+            if (age >= 1.0) {
+                continue;
+            }
+            let drop = landing_hash(c + vec2<f32>(13.0, 29.0) * floor(time));
+            let d = (p - c - drop.xy) * SPLASH_CELL;
+            let q = vec2<f32>(dot(d, across), dot(d, along) * sine);
+            let size = 0.5 * SPLASH_SIZE * mix(0.5, 1.0, drop.z) * sqrt(sin(age * PI));
+            let shown = max(size, pixel);
+            let faint = (size / shown) * (size / shown);
+            cover += (1.0 - smoothstep(0.5 * shown, shown, length(q))) * faint * (1.0 - age);
+        }
+    }
+    return min(mix(mean, cover, near), 1.0) * SPLASH_OPACITY;
+}
+
+// The wet road over `colour`: soaked, reflecting by `puddled`, with the sun's or the lamps' glint, and the rain's
+// splashes (`splashes`) white in the road's `light` (a white face's linear luminance), `pixel` a pixel's size there.
+fn wet_plus(colour: vec3<f32>, v: VertexOut, light: f32, pixel: f32) -> vec3<f32> {
     if (dot(v.normal, v.normal) < 1e-8) {
         return colour;
     }
@@ -402,5 +462,14 @@ fn wet_plus(colour: vec3<f32>, v: VertexOut) -> vec3<f32> {
     if (frame.night.x != 0.0) {
         shine = vec3<f32>(0.0);
     }
-    return mirror + shine * film.wet * max(film.edge, film.puddle);
+    let wetted = mirror + shine * film.wet * max(film.edge, film.puddle);
+    // Splashes only where water lies (the full film and puddles), not on a drying road.
+    if (frame.wetness.x < 1.0) {
+        return wetted;
+    }
+    let splashed = splashes(v.world, view, pixel) * clamp(film.wet * 2.0, 0.0, 1.0) * max(film.edge, film.puddle);
+    if (splashed <= 0.0) {
+        return wetted;
+    }
+    return ungraded(mix(graded(wetted), vec3<f32>(light * SPLASH_ALBEDO), splashed));
 }
