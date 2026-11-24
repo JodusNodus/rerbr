@@ -159,7 +159,9 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   whose triangles are at least 3% steep (face up share under 0.85) is `Layers::bake`, the atlas's diffuse times the layers' mean colours by the mask
   (BC7, section-wide channel means); flat ground keeps its first layer (the grass reads it: a bake on Finland's verges lost the grass). Sweden `Textures.zip`
   439 -> 472 MB, import 39 s before and after; Turini's green, pink and yellow stripes are gone (grey rock), Greece and Finland unchanged apart from richer rock.
-- Germany's road at 0.3 km is near white (`terrain_road` first layer, not the banks): not the same cause, not looked at.
+- Germany's road at 0.3 km (2026-11-24) is light concrete, not a converter defect: sections 5 to 8 and 14 are `Concblock` (`terrain_road`, layers `ger_pan_ral_set4_01_d` twice and a skid), and
+  `set4_01_d` is the brightest road texture of the area (mean 145/139/130; `Tarmac_main` `set1_01_d` 126/124/122, `Cobbles` `set2_01_d` 136/132/123). In the shots the sunlit tarmac at 2 km reads
+  about 150 (texture 126, renderer gain 1.2) and the concrete at 0.3 km about 171 (145 x 1.2): the same gain. Nothing wrong in the colour map, lightmap or mask (diffuse means 128 on every section).
 - Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB, with the BC7 diffuse about 45 s and 385 MB (plain RGBA: 458 MB); Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
   carry their ruts and Finland's grass verges, crisp detail at any distance; Greece's far hills (the mountain atlas, flattened in big
   islands) show streaks and blotches of the second layer.
@@ -186,6 +188,14 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   texture. It is pale grey (mean 166, 161, 153) with dark lichen and bark lines, vertex `Color` a grey AO (mean 0.9). So the bright white of the game's shots
   is its exposure and lighting (a sunlit trunk of 0.63 albedo), not the converter's pick: the trunks in shade read grey and dark. Nothing in the material (one
   texture, no tint constant: only `ScaleX_solo`, `ScaleY_solo`) to correct; left as is.
+
+## Sponsor boards, 2026-11-24
+
+- Boards, cloth and flags (`board.tga`, `cloth.tga`, `teardrop.tga`) name `sponsor_pack_<a-d>.pssg|sponsor_fallback.pssg#<name>`. The packs are filled by the game at run time and are not on disk;
+  `tracks/sponsors/sponsor_fallback.pssg` is a debug texture (flat green with "FALLBACK"), and the library only looked in the route and area folders, so the grey rectangle on Col de Turini
+  route_0 (km 0.3, `route_objects.pssg` `Material #1`, `Object_Dynamic.fx`) had no texture at all. `texture::Library` now also reads `tracks/sponsors` and takes a pack's letter to one of the
+  installed `sponsor_*.pssg` (91 files, each with real `board`, `cloth`, `flag`, `teardrop`, `arch`, `drape`), spread over the sorted list: a real board (alpinestars) instead of grey or the fallback.
+  The game's own pick per pack is unknown; the tint files (`sponsor_*_tint.xml`) are not applied. Other stages' shots at 0.3, 2, 4 km are unchanged (mean difference 0).
 
 ## Sun and place, 2026-11-24
 

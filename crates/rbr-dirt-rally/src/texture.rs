@@ -148,8 +148,29 @@ impl Library {
         Library::new(route, "day")
     }
 
+    fn sponsors(&self) -> PathBuf {
+        self.area.ancestors().nth(3).map(|tracks| tracks.join("sponsors")).unwrap_or_default()
+    }
+
+    /// The sponsor file standing for a pack (`sponsor_pack_a.pssg`, filled by the game at run time and not on disk):
+    /// the pack's letter picks one of the installed sponsors, spread over the list, so a stage shows real boards
+    /// instead of `sponsor_fallback.pssg`'s green "FALLBACK".
+    fn sponsor(&self, pack: &str) -> Option<String> {
+        let letter = pack.strip_prefix("sponsor_pack_")?.chars().next()?;
+        let mut names: Vec<String> = std::fs::read_dir(self.sponsors())
+            .ok()?
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".pssg") && n.starts_with("sponsor_") && !n.starts_with("sponsor_pack_"))
+            .filter(|n| n != "sponsor_fallback.pssg")
+            .collect();
+        names.sort();
+        let at = (letter as usize).checked_sub('a' as usize)? * names.len() / 4;
+        names.get(at).cloned()
+    }
+
     fn file(&mut self, name: &str) -> Option<&File> {
-        let path = [&self.route, &self.area].map(|d| d.join(name)).into_iter().find(|p| p.is_file())?;
+        let sponsors = self.sponsors();
+        let path = [&self.route, &self.area, &sponsors].map(|d| d.join(name)).into_iter().find(|p| p.is_file())?;
         self.files
             .entry(path.clone())
             .or_insert_with(|| {
@@ -179,8 +200,9 @@ impl Library {
         let lightmap = stem.ends_with("_lm");
         let lm = [format!("terrain_lm_{}.pssg", self.time), format!("buildings_lm_{}.pssg", self.time)];
         let mut files: Vec<String> = if lightmap { lm.to_vec() } else { Vec::new() };
-        if !listed.is_empty() {
-            files.push(listed.to_owned());
+        // A sponsor reference lists its pack and the fallback: `sponsor_pack_a.pssg|sponsor_fallback.pssg#board.tga`.
+        for file in listed.split('|').filter(|f| !f.is_empty()) {
+            files.push(self.sponsor(file).unwrap_or_else(|| file.to_owned()));
         }
         files.extend(
             [
