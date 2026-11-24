@@ -564,11 +564,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     // Start, finish and the result marker 15 m past the finish; the splits; the corners graded from the line.
     // A circuit's start, finish and end keys lie far past the lap so the 1.02 timekeeper never fires them, and it has no
     // pacenotes.
+    let far = rbr_btb::circuit::FAR;
     let mut notes = if input.circuit {
-        {
-            let far = rbr_btb::circuit::FAR;
-            vec![(0x15, 0, far), (0x16, 0, far + 10.), (0x18, 0, far + 20.)]
-        }
+        vec![(0x15, 0, far), (0x16, 0, far + 10.), (0x18, 0, far + 20.)]
     } else {
         vec![(0x15, 0, start), (0x16, 0, finish), (0x18, 0, (finish + 15.).min(line.length()))]
     };
