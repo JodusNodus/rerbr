@@ -265,6 +265,10 @@ pub struct TrackInfo {
     /// `latitude` and `longitude` (ReRBR's own keys, degrees north and east): where the stage lies, when its source says
     /// (an Assetto Corsa track's geotags).
     pub place: Option<[f64; 2]>,
+    /// `weather_good` and `weather_bad` (ReRBR's own keys): the `TrackSettings.ini` sections of map 41's rows the stage's
+    /// Good and Bad weathers take, where the stage's source states its own conditions (a DiRT Rally stage).
+    pub weather_good: Option<String>,
+    pub weather_bad: Option<String>,
     /// The whole `[INFO]` section, so unknown keys stay accessible.
     pub entries: RawEntries,
 }
@@ -280,6 +284,11 @@ pub struct Air {
     pub mist: Option<f32>,
     pub sky_tint: Option<f32>,
     pub north: Option<[f32; 3]>,
+    /// The post grade's saturation and exposure scale (each 1 neutral, on top of the weather's), and the sun's colour as
+    /// a tint of unit luminance (`saturation`, `exposure`, `sun_tint`).
+    pub saturation: Option<f32>,
+    pub exposure: Option<f32>,
+    pub sun_tint: Option<[f32; 3]>,
 }
 
 impl Air {
@@ -303,6 +312,9 @@ impl Air {
             mist: number("mist"),
             sky_tint: number("sky_tint"),
             north: triple("north"),
+            saturation: number("saturation"),
+            exposure: number("exposure"),
+            sun_tint: triple("sun_tint"),
         })
     }
 }
@@ -313,7 +325,7 @@ impl TrackInfo {
         Physics::parse(&self.physics_raw)
     }
 
-    fn parse(sections: &[ini::Section]) -> Option<TrackInfo> {
+    pub(crate) fn parse(sections: &[ini::Section]) -> Option<TrackInfo> {
         let info = find_section(sections, "INFO")?;
         let get = |key: &str| find_entry(info, key).map(str::to_owned);
         Some(TrackInfo {
@@ -331,6 +343,8 @@ impl TrackInfo {
                 [Some(lat), Some(lon)] => Some([lat, lon]),
                 _ => None,
             },
+            weather_good: get("weather_good").map(|w| w.trim().to_owned()).filter(|w| !w.is_empty()),
+            weather_bad: get("weather_bad").map(|w| w.trim().to_owned()).filter(|w| !w.is_empty()),
             entries: info.entries.clone(),
         })
     }
@@ -874,6 +888,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_info_section_reads_the_stages_own_weathers() {
+        let info = |text: &str| TrackInfo::parse(&rbr_formats::ini::parse(text).unwrap()).unwrap();
+        let own = info("[INFO]\nname=a\nweather_good=41M_hazy_clear\nweather_bad= \n");
+        assert_eq!((own.weather_good.as_deref(), own.weather_bad), (Some("41M_hazy_clear"), None));
+    }
+
+    #[test]
     fn the_info_section_reads_the_place_when_both_coordinates_are_given() {
         let place = |text: &str| TrackInfo::parse(&rbr_formats::ini::parse(text).unwrap()).unwrap().place;
         assert_eq!(place("[INFO]\nname=a\nlatitude=37.9033\nlongitude=-104.8217\n"), Some([37.9033, -104.8217]));
@@ -882,10 +903,11 @@ mod tests {
 
     #[test]
     fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {
-        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\n";
+        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\nsaturation=0.75\nexposure=1.1\nsun_tint=1.1, 1.0, 0.8\n";
         let air = Air::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.7, 0.6, 0.5]), Some(0.3), Some(0.5)));
         assert_eq!((air.sky_tint, air.north), (Some(0.4), Some([0.0, 0.0, 1.0])));
+        assert_eq!((air.saturation, air.exposure, air.sun_tint), (Some(0.75), Some(1.1), Some([1.1, 1.0, 0.8])));
         assert!(Air::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }
 

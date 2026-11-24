@@ -1106,6 +1106,7 @@ mod tests {
             circuit: false,
             problem: None,
             import: None,
+            weather: Default::default(),
         };
         let rows = rows_of(&[Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }]);
         assert_eq!(rows[0].country.as_deref(), Some("FI"));
