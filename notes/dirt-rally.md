@@ -309,7 +309,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   `Textures.zip`'s PNG with `cover=` and `cover_rect=` (`notes/btb.md`); the atlas goes in as it is, `grid` one texel a cell, `base=0`, one group holding every model with its
   rectangle and metre size as `SIZE_MULT` (`size` makes a cell 1 m: 3.2 clumps a m2, `Fx::density`), a model taller or wider than 0.8 m rarer by the square of the ratio. The
   terrain materials (not decals) carry `ReRbrGrass=1`; the map alone decides where. Every class takes the same pieces (the class is stored for later).
-- Result (all enhancements, `--enhance all,grass`, 0.3, 2, 4 km, `/tmp/grs/cmp-*.png`): Greece's verges grow golden tufts and scrub where they were bare, Wales' green tufts line the road in the forest (the base-card
-  look turns them olive: green blades take the ground's colour), Finland's autumn tufts replace the old lawn. Viewer load (1280x720, `--screenshot`, best of 2): Greece 6.7 s both, 1.78 to 1.84 GB;
+- Result (all enhancements, `--enhance all,grass`, 0.3, 2, 4 km, `/tmp/grs/cmp-*.png`): Greece's verges grow golden tufts and scrub where they were bare, Wales' green tufts line the road in the forest, Finland's tufts replace the old lawn, all in the atlas's own colours
+  and sizes (first render: olive and 5 m bushes, from the base cards' ground hue and size spread; see `notes/btb.md`). Viewer load (1280x720, `--screenshot`, best of 2): Greece 6.7 s both, 1.78 to 1.84 GB;
   Wales 9.35 to 9.05 s, 2.67 to 2.68 GB. Greece `Textures.zip` +0.25 MB (400.22 to 400.48 MB); import time unmeasured (the machine was shared). The 37 reference shots: RMSE 0 against the build before.
 - Open: the class's meaning (which tufts each zone grows), the types' parameters (counts, scales), the tint bytes, tufts' densities against the game's (ours is a guess from the reference shots).

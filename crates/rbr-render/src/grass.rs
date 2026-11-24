@@ -733,16 +733,10 @@ impl Field {
     /// How much grass ground `g` takes at weights `w` ([`green`], or the converted stage's [`Fx::mask`]).
     fn grassy(&self, g: &Ground, w: [f32; 3]) -> f32 {
         let rgb = g.colour(&self.placement, w);
+        let at = (g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz();
         match self.fx(g) {
-            Some(fx) if fx.hidden.contains(&hide_cell((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz())) => 0.0,
-            Some(fx)
-                if fx
-                    .cover
-                    .as_ref()
-                    .is_some_and(|c| c.at((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz()) == 0) =>
-            {
-                0.0
-            }
+            Some(fx) if fx.hidden.contains(&hide_cell(at)) => 0.0,
+            Some(fx) if fx.cover.as_ref().is_some_and(|c| c.at(at) == 0) => 0.0,
             Some(fx) => fx.mask(rgb, g.colour(&self.textures, w)),
             None if g.prior > 0.0 => green(rgb, g.road).max(g.prior * vegetation(g.colour(&self.patches, w))),
             None => green(rgb, g.road),
@@ -766,6 +760,10 @@ impl Field {
     /// each clump's own and the bounds) of the grass on ground `g` at weights `w` in a patch of dryness `dry`: the
     /// ground's under it ([`SATURATION`], [`LUSH`], [`STRAW`]), or a converted stage's ([`FX_SATURATION`]).
     fn look(&self, g: &Ground, w: [f32; 3], dry: f32) -> ([u8; 3], f32) {
+        // A cover-map stage's tufts keep the atlas's own colours (kind 2: `shader.wgsl`): a white hue, no brightness.
+        if self.fx.first().is_some_and(|fx| fx.cover.is_some()) {
+            return ([255; 3], 1.0);
+        }
         let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
         let hue = colour / self.mean;
         let grey = Vec3::splat(hue.element_sum() / 3.0);

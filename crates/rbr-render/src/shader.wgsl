@@ -615,7 +615,9 @@ fn vertex(input: VertexIn) -> VertexOut {
         if (v.uv2.x > 0.0) {
             // Shrunk into the ground past the density where it stands and at the far edge of the grass.
             // A converted stage's group pieces (`grass::FX_PIECE`) grow only away from the eye.
-            let piece = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
+            let faded = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
+            // A cover-map stage's tufts (kind 4) are its grass, grown in from the eye.
+            let piece = select(faded, 1.0, v.specular.z > 3.5);
             let height = v.uv2.x * grass_grown(d, v.uv2.y) * piece;
             out.world = out.world + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
         }
@@ -887,7 +889,10 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (mode.tint.z != 0.0) {
             albedo = grass_warmed(albedo);
         }
-        if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
+        if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 3.5) {
+            // A cover-map stage's tufts (`grass::made`, kind 4): the atlas's own colours, as the game draws them,
+            // lit like the other converted cards; no ground hue or brightness (`own_light` takes a white hue).
+        } else if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
             // A converted stage's atlas cards (`grass::FX_CARD`), as CSP draws them: its bright green blades (red and
             // blue nought) take the ground's colour under them, their green the brightness; its other texels (dry
             // blades, flowers) keep their own, the card's hue (`own_light`) taken back off them. The filtered texel
