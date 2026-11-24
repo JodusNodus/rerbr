@@ -10,6 +10,7 @@
 //! car and bind their textures by name ([`exterior_style`]), the interior's bind theirs ([`interior_style`]).
 use crate::binxml::{self, Element};
 use crate::car::{self, Instance, Part};
+use crate::car_dirt;
 use crate::car_maps::{self, Plane};
 use crate::gauges;
 use crate::material::{self, Material};
@@ -17,6 +18,7 @@ use crate::mesh::{self, Mat};
 use crate::needles;
 use crate::pssg::Pssg;
 use crate::texture::{self, Texture};
+use rbr_ac_tracks::btb::textures::encode_bc7;
 use rbr_formats::car_gauges::{self, Needle};
 use rbr_formats::{ini, rsf, sgc};
 use std::cell::RefCell;
@@ -180,7 +182,7 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
     match name {
         // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
         "Car Body Paint" | "Shiny Metal" => Some(body("CarPaint")),
-        "Matt" | "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTextureNoDirt")),
+        "Matt" | "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTexture")),
         "Cabin" => Some(matt("cabin", own("cabin"))),
         "Window Glass" => Some(Style { opacity: true, ..Style::new("CarGlass", "glass", own("glass")) }),
         // The lens carries the lamp's colours: its UVs lie on the lights atlas (red and amber at the tail, a clear
@@ -963,9 +965,13 @@ fn ini_file(template: &str, pieces: &[Piece], eyes: &BTreeMap<&str, [f32; 3]>) -
     out
 }
 
+/// The body's mud mask, on the body atlas's UVs (`car_dirt`).
+const DIRT_FILE: &str = "dr_dirt.dds";
+
 /// `<name>_shaders.ini`: every material by its key with its texture, and its normal map as the
 /// `[<material>_bump_bitmap]` section the renderer's cars read (`rbr_formats::car_parts::bump_path`).
-fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>) -> String {
+/// With `dirt`, the body's mud mask ([`DIRT_FILE`]) is the texture the renderer's `Dirt` friendly name finds.
+fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>, dirt: bool) -> String {
     let mut out = String::from(
         "[Default Material]\nAmbient=0.500000 0.500000 0.500000\nDiffuse=0.500000 0.500000 0.500000\n\
          Specular=0.500000 0.500000 0.500000\nShininess=0.000000\nShineStrenth=0.000000\nTransparency=0.000000\n\
@@ -973,14 +979,22 @@ fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>) -> String {
          BumpChannel=false\nSelfIllumunationChannel=false\nSpecularColorChannel=false\n\n[TSDefault]\n",
     );
     let normal = |style: &Style| style.maps.normal.as_ref().map(Source::file);
-    let files: BTreeSet<String> =
-        styles.iter().flat_map(|(key, style)| [Some(file(key)), normal(style)]).flatten().collect();
+    let files: BTreeSet<String> = styles
+        .iter()
+        .flat_map(|(key, style)| [Some(file(key)), normal(style)])
+        .chain([dirt.then(|| DIRT_FILE.to_owned())])
+        .flatten()
+        .collect();
     for f in &files {
         out += &format!("{f} = cars\\{name}\\textures\\{f}\n");
     }
     out += "\n[TextureSets]\nTextureSet0 = TSDefault\n\n[Textures]\n";
     for (i, f) in files.iter().enumerate() {
         out += &format!("Texture{i} = {f}\n");
+    }
+    if dirt {
+        out +=
+            &format!("\n[{DIRT_FILE}]\nCreateCopy = false\nFriendlyName = Dirt\nGlossMap = false\nNoMipMaps = false\n");
     }
     for (key, style) in styles {
         let m = material_name(key);
@@ -1073,6 +1087,15 @@ impl Library {
         found.cloned().ok_or_else(|| format!("{}: no texture {name}", path.display()))
     }
 
+    /// The body's mud mask as the `.dds` the car reads: white with the mask as its alpha.
+    fn dirt(&self, triangles: Vec<car_dirt::Triangle>) -> Result<Vec<u8>, String> {
+        let mud = Plane::of(&self.find(&Source::Generic("main", "body_mud.tga".into()))?, 3);
+        let size = car_dirt::SIZE;
+        let mask = car_dirt::bake(triangles, &mud, size);
+        let rgba = mask.into_iter().flat_map(|a| [255, 255, 255, a]).collect();
+        Ok(encode_bc7(true, size as u32, size as u32, rgba))
+    }
+
     /// A style's texture as the `.dds` the car reads: with the occlusion baked in and the specular as its alpha where
     /// its maps have them, else its blocks as they are.
     fn diffuse(&self, style: &Style) -> Result<Vec<u8>, String> {
@@ -1089,6 +1112,23 @@ impl Library {
             (occlusion, specular) => Ok(car_maps::diffuse(&texture, occlusion.as_ref(), specular.as_ref())),
         }
     }
+}
+
+/// The body atlas's triangles (the materials that draw `<car>_main`) with their UVs in the mud's layout.
+fn mud_triangles(car: &str, parts: &[Part], exterior: &BTreeMap<String, Style>) -> Vec<car_dirt::Triangle> {
+    let atlas = Source::Livery(format!("{car}_main.tga"));
+    let mut out = Vec::new();
+    for instance in parts.iter().filter(|p| !dropped(&p.name)).flat_map(|p| &p.instances) {
+        let on_atlas = exterior.get(&instance.material).is_some_and(|s| s.texture == atlas);
+        if !on_atlas || instance.uv2.len() != instance.uv.len() {
+            continue;
+        }
+        out.extend(instance.triangles.iter().map(|t| {
+            let corners = |uv: &[[f32; 2]]| t.map(|i| uv[i as usize]);
+            (corners(&instance.uv), corners(&instance.uv2))
+        }));
+    }
+    out
 }
 
 /// A template's wheel nodes closer than this, m, are at one point: a class the model left stacked.
@@ -1200,6 +1240,11 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
             write(textures.join(glow_file(key)), &library.find(emissive)?.dds())?;
         }
     }
+    let triangles = mud_triangles(car, &parts, &exterior);
+    let dirt = if triangles.is_empty() { None } else { Some(library.dirt(triangles)?) };
+    if let Some(dirt) = &dirt {
+        write(textures.join(DIRT_FILE), dirt)?;
+    }
     let normals: BTreeMap<&Source, bool> =
         styles.values().filter_map(|s| Some((s.maps.normal.as_ref()?, s.maps.crumpled))).collect();
     for (source, crumpled) in normals {
@@ -1228,7 +1273,7 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         folder.join(format!("{name}.ini")),
         ini_file(&template.ini, &pieces, &eyes(&cameras, &model.frame)).as_bytes(),
     )?;
-    write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &styles).as_bytes())?;
+    write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &styles, dirt.is_some()).as_bytes())?;
     let turned: Vec<Needle> = needles.iter().map(|n| needle_in(n, &model.frame)).collect();
     if !turned.is_empty() {
         write(folder.join(car_gauges::file_name(name)), car_gauges::write(&turned).as_bytes())?;
@@ -1360,7 +1405,7 @@ mod tests {
     fn materials_map_to_the_renderers_classes() {
         let class = |m: &str| exterior(m).map(|s| (s.shader, s.key));
         assert_eq!(class("Car Body Paint"), Some(("CarPaint", "main40".to_owned())));
-        assert_eq!(class("Matt"), Some(("CarTextureNoDirt", "main40".to_owned())));
+        assert_eq!(class("Matt"), Some(("CarTexture", "main40".to_owned())));
         // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
         assert_eq!(class("Shiny Metal").map(|c| c.0), Some("CarPaint"));
         assert_eq!(class("Gravel Wheel"), Some(("CarRim", "wheel_gravel".to_owned())));
@@ -1406,6 +1451,29 @@ mod tests {
     }
 
     #[test]
+    fn the_shaders_file_names_the_dirt_mask_as_the_dirt_texture() {
+        let styles = BTreeMap::new();
+        let with = shaders_file("Car", &styles, true);
+        assert!(with.contains("dr_dirt.dds = cars\\Car\\textures\\dr_dirt.dds"));
+        assert!(with.contains("[dr_dirt.dds]\nCreateCopy = false\nFriendlyName = Dirt\n"));
+        assert!(!shaders_file("Car", &styles, false).contains("FriendlyName"));
+    }
+
+    #[test]
+    fn the_mud_triangles_are_the_body_atlas_ones_with_a_second_uv_set() {
+        let mut body = instance("Matt", vec![[0.0; 3]; 3], vec![[0, 1, 2]]);
+        body.uv = vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        body.uv2 = vec![[0.5, 0.5]; 3];
+        let mut plain = body.clone();
+        plain.uv2.clear();
+        let cabin = Instance { material: "Cabin".into(), ..body.clone() };
+        let style = |key: &str| Style::new("CarTexture", key, Source::Livery(format!("cme_{key}.tga")));
+        let exterior = BTreeMap::from([("Matt".to_owned(), style("main")), ("Cabin".to_owned(), style("cabin"))]);
+        let parts = [part("body", vec![body, plain, cabin])];
+        assert_eq!(mud_triangles("cme", &parts, &exterior).len(), 1);
+    }
+
+    #[test]
     fn a_maps_file_names_its_source_once() {
         assert_eq!(Source::Livery("cme_main_nm.tga".into()).file(), "dr_cme_main_nm.dds");
         assert_eq!(Source::LiveryClass("tm", "cme_wheel_nm.tga".into()).file(), "dr_cme_wheel_nm_tm.dds");
@@ -1419,7 +1487,7 @@ mod tests {
         let paint = exterior("Car Body Paint").unwrap();
         let disc = Style::new("CarTextureNoDirt", "disc", Source::Livery("disc.tga".into()));
         let styles = BTreeMap::from([("paint", &paint), ("disc", &disc)]);
-        let text = shaders_file("Car", &styles);
+        let text = shaders_file("Car", &styles, false);
         let sections = rbr_formats::ini::parse(&text).unwrap();
         let bump = rbr_formats::car_parts::bump_path;
         assert_eq!(bump(&sections, &material_name("paint")), Some("cars\\Car\\textures\\dr_cme_main_nm.dds"));
@@ -1456,6 +1524,7 @@ mod tests {
             source: "src".into(),
             normals: vec![[0.0, 0.0, 1.0]; positions.len()],
             uv: vec![[0.0, 0.0]; positions.len()],
+            uv2: Vec::new(),
             positions,
             triangles,
         }

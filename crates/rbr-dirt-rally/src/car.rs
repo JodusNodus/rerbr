@@ -21,6 +21,8 @@ pub struct Instance {
     pub positions: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub uv: Vec<[f32; 2]>,
+    /// The second UV set, where the mesh has one (`mesh::Geometry::uv2`).
+    pub uv2: Vec<[f32; 2]>,
     /// Counter-clockwise, right handed, into this instance's vertices.
     pub triangles: Vec<[u32; 3]>,
 }
@@ -77,6 +79,7 @@ pub fn parts(pssg: &Pssg) -> Result<Vec<Part>, String> {
                 source: id,
                 normals: slice(&geometry.normals, first, count).unwrap_or_default(),
                 uv: slice(&geometry.uv, first, count).unwrap_or_default(),
+                uv2: slice(&geometry.uv2, first, count).unwrap_or_default(),
                 positions,
                 triangles,
             });
@@ -97,6 +100,7 @@ pub fn interior(pssg: &Pssg) -> Result<Vec<Part>, String> {
             positions: mesh.positions,
             normals: mesh.normals,
             uv: mesh.uv,
+            uv2: Vec::new(),
             triangles: mesh.triangles,
         };
         match out.iter_mut().find(|p| p.name == mesh.node) {
