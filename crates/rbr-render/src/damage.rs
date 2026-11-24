@@ -107,6 +107,8 @@ pub struct MeshDamage {
     /// `viewer --hide-wheel` hides it. A rim with its column has its bounds centre away from the hub (the Lancia
     /// Delta HF 4WD GrpA's is 0.17 m off), so the mesh is marked by its node, not found by its centre.
     pub steering: bool,
+    /// The needle (its index in the model's gauges file, `crate::needles`) this mesh is, by its node name.
+    pub needle: Option<usize>,
 }
 
 /// A scrape amount as the vertex colour's alpha byte.

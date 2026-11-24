@@ -368,6 +368,7 @@ fn load_set(
 
     let model_path = resolve(data, &entry.file_name)?;
     let model = sgc::parse(&read_bytes(&model_path)?).map_err(Error::Sgc)?;
+    let needles = crate::needles::of_model(&model_path);
     let parts = read_ini(data, &entry.ini_file)?;
     let settings_file = entry.ini_file.replace(".ini", "_settings.ini");
     // When lit the options' files stand in for the model's, in memory (the exterior and the interior
@@ -505,6 +506,7 @@ fn load_set(
         let detach = detach_part(&mesh.node.name);
         let hub = brake_disc_of(&mesh.node.name);
         let steering = mesh.node.name.eq_ignore_ascii_case("i_steeringwheel");
+        let needle = needles.iter().position(|n| n.node.eq_ignore_ascii_case(&mesh.node.name));
         let mirror = cabin::Mirror::of_part(&mesh.node.name);
         let window = damage::window_slot(&mesh.node.name);
         // A lit lamp's part's area along the car (its lamp's axis), over all its meshes.
@@ -535,7 +537,11 @@ fn load_set(
                     shade.window = true;
                 }
             }
-            (order, placed, MeshDamage { lamp, detach, hinge: swung, wheel, hub, mirror, window, steering, ..effect })
+            (
+                order,
+                placed,
+                MeshDamage { lamp, detach, hinge: swung, wheel, hub, mirror, window, steering, needle, ..effect },
+            )
         }));
         if let Some(window) = damage::window_slot(&mesh.node.name) {
             let style = FaceStyle {

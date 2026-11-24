@@ -369,6 +369,13 @@ impl Playback {
         }
     }
 
+    /// Moves the interior parts of needle `needle` ([`MeshDamage::needle`]) by `motion`, model space, before their pose.
+    pub fn set_needle_motion(&mut self, needle: usize, motion: Mat4) {
+        for part in self.parts.iter_mut().filter(|p| p.interior && p.effect.needle == Some(needle)) {
+            part.motion = motion;
+        }
+    }
+
     /// The windows that have crack overlays.
     fn windows(&self) -> [bool; damage::WINDOWS.len()] {
         let mut present = [false; damage::WINDOWS.len()];

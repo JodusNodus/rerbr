@@ -1317,6 +1317,8 @@ car's `c_e_body`. With the own light (ours) the lines carry their normals; fence
 additions off equal on 64_O, 45_O, 61_M but 1 to 2 pixels by 1 (shader codegen). Cost: +0.17 ms scene at 1440p with
 a net filling the view. A torn line's rewrite has occlusion 0 (no bake), as before. `dials/` (ours): a community car's
 needles and displays from RBRHUD's gauges, drawn into the dial textures from the HUD records.
+`needles.rs` (ours): a model's needle meshes turned about their pivots by its gauges file
+(`notes/cameras-hud-launcher.md`).
 
 ## Enhancements
 

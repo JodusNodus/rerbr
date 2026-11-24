@@ -63,6 +63,8 @@ pub struct Scene {
     pub fences: Option<fences::Drawn>,
     /// The cockpit's working dials, with a drive.
     pub dials: Option<Dials>,
+    /// The cockpit's moving needles (`rbr_render::needles`), with a drive.
+    pub needles: Option<rbr_render::needles::Needles>,
     pub hud: HudOptions,
     /// The ghost car and the ghost recording, with a drive.
     pub ghost: Option<ghost::Session>,
@@ -238,6 +240,7 @@ fn load_scene<'scope, 'env>(
                 precipitation: None,
                 fences: None,
                 dials: None,
+                needles: None,
                 hud: args.hud,
                 ghost: None,
                 school_demo: None,
@@ -303,6 +306,7 @@ fn load_scene<'scope, 'env>(
             let fences = if args.fences { fences::load(data, &mut stage) } else { None };
             let (mut playback, mut live, mut mounts, mut crew, mut car_bounds, mut ghost, mut dials) =
                 (None, None, None, None, None, None, None);
+            let mut needles = None;
             let mut school_demo = None;
             let mut roadside = None;
             let mut cabin_sun = None;
@@ -359,6 +363,10 @@ fn load_scene<'scope, 'env>(
                             .filter(|_| args.dials)
                             .and_then(|model| rbr_formats::car_pack::root_of(model).ok());
                         dials = rsf.as_deref().and_then(|root| load_dials(root, data.install(), car_name, &mut stage));
+                        needles = rbr_render::needles::Needles::load(data, car_name).filter(|_| args.dials);
+                        if let Some(needles) = &needles {
+                            eprintln!("needles: {} turned", needles.len());
+                        }
                         for _ in 1..args.gauge_mode {
                             dials.iter_mut().for_each(Dials::next_mode);
                         }
@@ -511,6 +519,7 @@ fn load_scene<'scope, 'env>(
                 precipitation,
                 fences,
                 dials,
+                needles,
                 hud: args.hud,
                 ghost,
                 school_demo,

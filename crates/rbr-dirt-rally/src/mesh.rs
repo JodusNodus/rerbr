@@ -237,6 +237,25 @@ fn visit<'a>(
     Ok(())
 }
 
+/// Each scene node's accumulated transform under the file's roots, by id (render nodes and plain ones, such as the
+/// interior's `int_needle_tach_max`).
+pub fn node_worlds(pssg: &Pssg) -> BTreeMap<String, Mat> {
+    fn walk(node: Node<'_>, m: &Mat, out: &mut BTreeMap<String, Mat>) {
+        for child in node.children().filter(|c| SCENE.contains(&c.name())) {
+            let world = mul(&child.transform(), m);
+            if let Some(id) = child.id() {
+                out.entry(id.to_owned()).or_insert(world);
+            }
+            walk(child, &world, out);
+        }
+    }
+    let mut out = BTreeMap::new();
+    for root in pssg.find("ROOTNODE") {
+        walk(root, &root.transform(), &mut out);
+    }
+    out
+}
+
 /// The tile tier of a node id: `SHADOWCASTING_9_9` is `SHADOWCASTING`.
 fn tier(id: &str) -> &str {
     id.split('_').next().unwrap_or(id)

@@ -110,6 +110,13 @@ Data in `rbr_formats::rbrhud`, drawing in `rbr_render::dials` (toggle: `dials`);
 - A car copied into ReRBR's own folder has no `Plugins/RBRHUD` beside it: its gauges come from the game install's,
   read in place (`load_dials` in the viewer's `scene.rs`; the M3 E36 GrpA drew none before, 2026-11-01).
 
+### Needle meshes (ours)
+
+A model's `<model>_gauges.ini` beside its `.sgc` (`rbr_formats::car_gauges`, written by `rbr-dirt-rally`) names its needle
+parts, reading (rpm, km/h, bar over the air), range, pivot, axis and sweep; `rbr_render::needles` turns those interior
+parts each frame (`Playback::set_needle_motion`, model space before the pose), in the drive and the screenshot paths, with
+the same `dials` toggle. A recording without a live process has no rpm: its tach stays at rest.
+
 ## Launcher
 
 Pages and policy in `crates/rbr-launcher/src/` (`main.rs` doc: command line, weather rules, volumes, co-driver

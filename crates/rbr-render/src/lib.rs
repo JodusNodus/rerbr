@@ -41,6 +41,7 @@ pub mod lights;
 pub mod live;
 pub mod mirrors;
 mod motion_blur;
+pub mod needles;
 mod parallel;
 mod particle_target;
 pub mod particles;

@@ -34,6 +34,7 @@ Parsers: `crates/rbr-formats/src/`; retail tests: `crates/rbr-formats/tests/` (`
 | RSF | cars, stages, settings, car/stage lists | `rsf` | `rsf_data.rs` (`RBR_RSF`) | see below |
 | Pacenote plugin | co-driver voices, stage notes | `pacenote::{codriver,notes}` | `rsf_data.rs` (`RBR_RSF`) | [below](#pacenote-plugin) |
 | RBRHUD | cockpit dials | `rbrhud` | `rsf_data.rs` (`RBR_RSF`) | [below](#rbrhud-gauges) |
+| needles (ours) | `<model>_gauges.ini` | `car_gauges` | unit (written by `rbr-dirt-rally`) | yes |
 | NSIS installers | stage `.exe` (read, never run) | launcher `content/source/nsis/` | `real_installers` (`RBR_INSTALLERS`) | [below](#nsis-installers) |
 
 ## Archives

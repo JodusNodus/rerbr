@@ -114,6 +114,10 @@ fn developer(command: &str, mut args: impl Iterator<Item = String>) -> Result<()
                 if pssg.by_id("LOD0_").is_some() { crate::car::parts(&pssg)? } else { crate::car::interior(&pssg)? };
             print!("{}", crate::car::info(&parts, args.next().as_deref() == Some("-v")));
             print!("{}", crate::car::materials(&pssg));
+            // An interior's needles, by its config beside it, in DiRT's frame.
+            if let Ok(config) = std::fs::read_to_string(Path::new(&path).with_extension("xml")) {
+                print!("{}", rbr_formats::car_gauges::write(&crate::needles::read(&pssg, &config)));
+            }
             Ok(())
         }
         other => Err(format!("unknown command {other}; see --help")),

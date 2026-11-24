@@ -14,8 +14,10 @@ use crate::car_maps::{self, Plane};
 use crate::gauges;
 use crate::material::{self, Material};
 use crate::mesh::{self, Mat};
+use crate::needles;
 use crate::pssg::Pssg;
 use crate::texture::{self, Texture};
+use rbr_formats::car_gauges::{self, Needle};
 use rbr_formats::sgc;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -434,13 +436,29 @@ fn local(p: &Part) -> impl Iterator<Item = (&Instance, Mat)> {
 /// The interior scene's mirror glass (the centre mirror and the driver's wing mirror) and the glass parts they become.
 const MIRRORS: [(&str, &str); 2] = [("int_reflection_m", "i_mirrorglass_m"), ("int_reflection_r", "i_mirrorglass_r")];
 
+/// The model's node of DiRT's needle `node`: `int_needle_tach` is `i_needle_tach` (an interior part).
+fn needle_node(node: &str) -> String {
+    format!("i_{}", node.strip_prefix("int_").unwrap_or(node))
+}
+
+/// DiRT's needle `needle` in the template's frame, on its model node: the mirror turns it the other way.
+fn needle_in(needle: &Needle, frame: &Frame) -> Needle {
+    Needle {
+        node: needle_node(&needle.node),
+        pivot: frame.point(needle.pivot),
+        axis: Frame::direction(needle.axis),
+        sweep: -needle.sweep,
+        ..needle.clone()
+    }
+}
+
 /// The cockpit's source: the interior scene (`int_cme.pssg`) and the exterior nodes its config keeps active.
 struct Cockpit<'a> {
     scene: &'a [Part],
     /// The exterior parts the cockpit draws as well (`bonnet`, `wing_fl`), by name without `x0_`.
     active: Vec<String>,
-    /// The tach's needle is drawn by the gauges (into the dials atlas), not as the mesh at rest.
-    gauged: bool,
+    /// The scene's needles (`needles::read`, DiRT's frame): each is a piece of its own, which the renderer turns.
+    needles: &'a [Needle],
     /// Where the scene is cut for the outside's copy.
     clip: Option<Clip>,
 }
@@ -597,7 +615,7 @@ impl Model<'_> {
             .scene
             .iter()
             .filter(|p| !p.name.starts_with("int_wiper") && p.name != "int_steering_wheel")
-            .filter(|p| !(c.gauged && p.name == "int_needle_tach"))
+            .filter(|p| !c.needles.iter().any(|n| n.node == p.name))
             .filter(|p| !MIRRORS.iter().any(|(node, _)| *node == p.name))
             .flat_map(all)
             .collect();
@@ -613,6 +631,14 @@ impl Model<'_> {
         for (node, name) in MIRRORS {
             for p in c.scene.iter().filter(|p| p.name == node) {
                 out.push(Piece::upright(name, faces(all(p), &self.frame, self.interior, |_| true)));
+            }
+        }
+        for needle in c.needles {
+            for p in c.scene.iter().filter(|p| p.name == needle.node) {
+                out.push(Piece::upright(
+                    needle_node(&needle.node),
+                    faces(all(p), &self.frame, self.interior, |_| true),
+                ));
             }
         }
         let near = self.parts.iter().filter(|p| c.active.contains(&p.name)).flat_map(all);
@@ -1117,6 +1143,7 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         material::read(&pssg).values().filter_map(|m| Some((m.id.clone(), exterior_style(car, m)?))).collect();
     let inside =
         interior.as_ref().map_or_else(BTreeMap::new, |p| interior_styles(car, &material::read(p), gauges.is_some()));
+    let needles = interior.as_ref().map(|p| needles::read(p, &config)).unwrap_or_default();
     let model = Model {
         parts: &parts,
         frame: Frame::fitted(&parts, &template.hubs)?,
@@ -1125,7 +1152,7 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         cockpit: scene.as_deref().map(|scene| Cockpit {
             scene,
             active: active_nodes(&config),
-            gauged: gauges.is_some(),
+            needles: &needles,
             clip: clip(&parts),
         }),
     };
@@ -1175,6 +1202,10 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         ini_file(&template.ini, &pieces, &eyes(&cameras, &model.frame)).as_bytes(),
     )?;
     write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &styles).as_bytes())?;
+    let turned: Vec<Needle> = needles.iter().map(|n| needle_in(n, &model.frame)).collect();
+    if !turned.is_empty() {
+        write(folder.join(car_gauges::file_name(name)), car_gauges::write(&turned).as_bytes())?;
+    }
     for suffix in ["_settings.ini", "_shader_settings_clear.ini", "_shader_settings_overcast.ini"] {
         let from = template.folder.join(format!("{}{suffix}", template.name));
         let text = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;

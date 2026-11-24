@@ -1,13 +1,12 @@
 //! A DiRT car's working gauges as an RBRHUD gauge pack (`rbr_formats::rbrhud`, drawn by `rbr_render::dials`).
 //!
-//! DiRT moves a needle mesh, scrolls strips of digits over small quads and swaps the lamps' texture halves
+//! DiRT moves needle meshes, scrolls strips of digits over small quads and swaps the lamps' texture halves
 //! (`interior_config`'s `displays`: the tach's `int_needle_tach`, the speed and gear `lcd_text` quads, the shift and
-//! limit `indicator_light`s). The renderer has none of those animations, but it redraws a car's own textures from an
-//! RBRHUD pack (needles turned, digits and lamps shown by the live values), so the pack here is made from the interior
-//! file's textures: the needle cut from the dials atlas and turned about the hub, the speed digits drawn into the
-//! display's box on the atlas, the gear digit onto a small texture of its own (the gear quad's), the lamps' lit halves
-//! over their unlit ones, and DiRT's backlight map (`int_cme_dials_on`) as the night glow. Where the pack puts things is
-//! measured on the cme's textures ([`Layout`]).
+//! limit `indicator_light`s). The needles are the model's own meshes, turned by the renderer from the gauges file
+//! (`crate::needles`); the rest the renderer redraws from an RBRHUD pack made from the interior file's textures: the
+//! speed digits drawn into the display's box on the dials atlas, the gear digit onto a small texture of its own (the
+//! gear quad's), the lamps' lit halves over their unlit ones, and DiRT's backlight map (`int_cme_dials_on`) as the night
+//! glow. Where the pack puts things is measured on the cme's textures ([`Layout`]).
 use crate::car_pack::file;
 use crate::pssg::Pssg;
 use crate::texture::Texture;
@@ -15,35 +14,15 @@ use rbr_formats::dds;
 use std::fs;
 use std::path::Path;
 
-/// Where a car's gauges lie in its interior textures, texels, as measured on them: the hub and the angles of the tach's
-/// thirteen long tick marks (a straight-line fit through their centres, 0.23 degrees at worst), the needle's rectangle
-/// in the dials atlas with its pivot in it and its lean, the speed display's box.
+/// Where a car's gauges lie in its interior textures, texels, as measured on them.
 pub struct Layout {
     pub car: &'static str,
-    pub hub: [f32; 2],
-    /// The needle's angle at 0 and each 1000 rpm further, degrees clockwise from up.
-    pub zero_deg: f32,
-    pub deg_per_krpm: f32,
-    /// The needle painted in the dials atlas (`x, y, width, height`), its pivot in that rectangle and how far its tip
-    /// leans from its axis, degrees clockwise.
-    pub needle: [usize; 4],
-    pub pivot: [f32; 2],
-    pub lean: f32,
     /// The speed display's box on the dials atlas (`x0, y0, x1, y1`).
     pub display: [f32; 4],
 }
 
 /// The Escort Mk II (`cme`).
-pub const CME: Layout = Layout {
-    car: "cme",
-    hub: [282.0, 276.0],
-    zero_deg: 65.29,
-    deg_per_krpm: 28.238,
-    needle: [556, 228, 36, 230],
-    pivot: [18.0, 186.0],
-    lean: 1.42,
-    display: [174.0, 351.0, 389.0, 415.0],
-};
+pub const CME: Layout = Layout { car: "cme", display: [174.0, 351.0, 389.0, 415.0] };
 
 pub fn layout(car: &str) -> Option<&'static Layout> {
     [&CME].into_iter().find(|l| l.car == car)
@@ -67,9 +46,6 @@ fn glow_file(key: &str) -> String {
 const GEAR_RED: [u8; 3] = [255, 48, 36];
 /// The speed digits' colour: an LCD's, dark (DiRT's shader draws them black).
 const LCD_INK: [u8; 3] = [20, 22, 18];
-/// How much of DiRT's backlight the needle's sweep gets by night (its colour at this fraction over the whole face: the
-/// needle moves, the map does not).
-const NEEDLE_GLOW: f32 = 0.25;
 /// An unlit lamp is drawn this much of its lifted atlas colour, and glows this much of its lit state's map by night:
 /// the glow is the texel times the map, so a dim lamp drawn as the atlas has it glows at night nearly as a lit one.
 const LAMP_OFF: f32 = 0.4;
@@ -190,7 +166,7 @@ pub struct Sources<'a> {
     pub digits: &'a Texture,
     pub gear_font: &'a [u8],
     pub config: &'a str,
-    /// The tone curve the dials atlas was written with (the needle, cut from the original, takes it too).
+    /// The tone curve the interior's textures were written with (the dimmed lamps take it too).
     pub tone: fn(f32) -> f32,
 }
 
@@ -201,7 +177,7 @@ fn attribute<'a>(config: &'a str, marker: &str, name: &str) -> Option<&'a str> {
     rest.split('"').next()
 }
 
-/// A display of the config's `displays` as a number: the tach's top value (thousands of rpm), the lamps' thresholds.
+/// A display of the config's `displays` as a number: the lamps' thresholds.
 fn number(config: &str, marker: &str, name: &str) -> Option<f32> {
     attribute(config, marker, name)?.trim().parse().ok()
 }
@@ -218,13 +194,13 @@ pub fn gear_font(data: &Path, config: &str) -> Result<Vec<u8>, String> {
 }
 
 /// The sprite sheet: the speed digits as a `simplefont` strip (`rbrhud::FONT_CHARS` is its order of 13 cells, the
-/// last three empty), then the needle, the gear glyphs and the lamps' lit and dimmed halves. Its `.ini` names them.
+/// last three empty), then the gear glyphs and the lamps' lit and dimmed halves. Its `.ini` names them.
 struct Atlas {
     image: Image,
     ini: String,
 }
 
-fn atlas(layout: &Layout, sources: &Sources) -> Result<Atlas, String> {
+fn atlas(sources: &Sources) -> Result<Atlas, String> {
     let digits = Image::decode(sources.digits);
     let glyphs = gear_glyphs(sources.gear_font)?;
     let glyph = |i: usize| digits.crop([0, (i as f32 * 51.2).round() as usize, DIGIT[0], DIGIT[1]]);
@@ -236,14 +212,6 @@ fn atlas(layout: &Layout, sources: &Sources) -> Result<Atlas, String> {
         image.paste(sprite, x, y);
         objects.push(format!("{name}.png={x},{y},{},{}", sprite.w, sprite.h));
     };
-    // The needle: the atlas's painted one, its alpha from how much brighter it is than the face.
-    let dials = Image::decode(sources.dials);
-    let toned = |c: u8| ((sources.tone)(f32::from(c) / 255.0).clamp(0.0, 1.0) * 255.0).round() as u8;
-    let needle = dials.crop(layout.needle).map(|_, _, t| {
-        let light = (f32::from(t[0]) + f32::from(t[1]) + f32::from(t[2])) / 3.0;
-        [toned(t[0]), toned(t[1]), toned(t[2]), (((light - 60.0) / 50.0).clamp(0.0, 1.0) * 255.0).round() as u8]
-    });
-    place("Needle", &needle, 0, 56);
     for (i, (name, sprite)) in glyphs.iter().enumerate() {
         place(name, sprite, 48 + i * 68, 56);
     }
@@ -276,29 +244,12 @@ fn atlas(layout: &Layout, sources: &Sources) -> Result<Atlas, String> {
     Ok(Atlas { image, ini })
 }
 
-/// The dials atlas's night glow map (`emissive_mask`): DiRT's backlight map at the atlas's size, with the needle's
-/// sweep lit a little (the needle moves where the map does not).
-fn dials_glow(layout: &Layout, sources: &Sources) -> Image {
+/// The dials atlas's night glow map (`emissive_mask`): DiRT's backlight map at the atlas's size.
+fn dials_glow(sources: &Sources) -> Image {
     let dials = Image::decode(sources.dials);
     let map = Image::decode(sources.dials_on);
     let map = if map.w == dials.w { map } else { map.resized(dials.w, dials.h) };
-    // The colour DiRT lights the needle with: the map's, where the needle is painted.
-    let [nx, ny, nw, nh] = layout.needle.map(|v| v * map.w / dials.w);
-    let lit: Vec<[u8; 4]> =
-        (0..nh).flat_map(|j| (0..nw).map(move |i| (i, j))).map(|(i, j)| map.at(nx + i, ny + j)).collect();
-    let bright: Vec<&[u8; 4]> = lit.iter().filter(|t| t[0].max(t[1]).max(t[2]) > 120).collect();
-    let mean = |c: usize| bright.iter().map(|t| u32::from(t[c])).sum::<u32>() as f32 / bright.len().max(1) as f32;
-    let glow = [mean(0), mean(1), mean(2)].map(|v| (v * NEEDLE_GLOW).round() as u8);
-    let reach = layout.pivot[1] * map.w as f32 / dials.w as f32;
-    let [hx, hy] = layout.hub.map(|v| v * map.w as f32 / dials.w as f32);
-    map.map(|x, y, t| {
-        let inside = ((x as f32 + 0.5 - hx).powi(2) + (y as f32 + 0.5 - hy).powi(2)).sqrt() <= reach;
-        if inside {
-            [t[0].max(glow[0]), t[1].max(glow[1]), t[2].max(glow[2]), 0]
-        } else {
-            [t[0], t[1], t[2], 0]
-        }
-    })
+    map.map(|_, _, t| [t[0], t[1], t[2], 0])
 }
 
 /// The lamps' night glow map: the lit half's map, scaled, on both halves (the lit sprite is drawn over the unlit half).
@@ -320,7 +271,6 @@ pub fn gear_base() -> Vec<u8> {
 
 /// The three `config<N>.ini`s of the pack.
 fn configs(layout: &Layout, config: &str) -> [String; 3] {
-    let tach_top = number(config, "value=\"tach\" node=\"int_needle_tach\"", "max_value").unwrap_or(12.0);
     let (shift, limit) = (
         number(config, "node=\"int_indicator_shift_1\"", "cond_min").unwrap_or(7.9) * 1000.0,
         number(config, "node=\"int_indicator_limit\"", "cond_min").unwrap_or(8.9) * 1000.0,
@@ -333,33 +283,21 @@ fn configs(layout: &Layout, config: &str) -> [String; 3] {
         )
     };
     let [x0, y0, x1, y1] = layout.display;
-    let [hx, hy] = layout.hub;
     // Three digits fill the box (the strip's cells are 64 wide), the row of them in the box's middle.
     let scale = (x1 - x0 - 4.0) / (3.0 * DIGIT[0] as f32);
     let top = y0 + ((y1 - y0) - DIGIT[1] as f32 * scale) / 2.0;
-    let reach = layout.pivot[1] + 40.0;
-    // The needle is drawn aimed `lean` degrees less, so that its tip, not its axis, is at the tick's angle.
-    let at = |krpm: f32| layout.zero_deg + layout.deg_per_krpm * krpm - layout.lean;
     let region = format!(
         "[dirtyregion1]\ntype = DirtyRegion\nleft = {}\ntop = {}\nright = {}\nbottom = {}\n",
-        (hx - reach).floor(),
-        (hy - reach).floor(),
-        (hx + reach).ceil(),
-        (hy + reach).ceil().max(y1.ceil())
+        x0.floor(),
+        y0.floor(),
+        x1.ceil(),
+        y1.ceil()
     );
     let dials = format!(
-        "{}{region}\n[rpm]\ntype = Rotating\ndata = RPM\nmode = 0\nxpos = {hx}\nypos = {hy}\nscale = 1.0\nrotation = 0.0\n\
-         colour = ffffffff\ntexture = Needle.png\nxpivot = {}\nypivot = {}\nrotationspeed = 10.0\nspringconstant = 30.0\n\
-         dampingratio = 2.0\nrotation0deg = {:.3}\nrotation0value = 0.0\nrotation1deg = {:.3}\nrotation1value = {}\n\n\
-         [speed]\ntype = Number\ndata = SpeedKPH\nmode = 0\nxpos = {}\nypos = {}\nscale = {:.4}\nrotation = 0.0\n\
+        "{}{region}\n[speed]\ntype = Number\ndata = SpeedKPH\nmode = 0\nxpos = {}\nypos = {}\nscale = {:.4}\nrotation = 0.0\n\
          colour = ffffffff\nfont = Digits.png\nformat = Whole\njustification = Right\nprefixenabled = false\n\
          suffixenabled = false\n",
         main(DIALS),
-        layout.pivot[0],
-        layout.pivot[1],
-        at(0.0),
-        at(tach_top),
-        tach_top * 1000.0,
         x1 - 2.0,
         top,
         scale,
@@ -399,10 +337,10 @@ pub fn write(root: &Path, car: &str, layout: &Layout, sources: &Sources) -> Resu
     let write = |path: std::path::PathBuf, bytes: &[u8]| {
         fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))
     };
-    let atlas = atlas(layout, sources)?;
+    let atlas = atlas(sources)?;
     write(textures.join("atlas.ini"), atlas.ini.as_bytes())?;
     write(textures.join("atlas.dds"), &atlas.image.dds())?;
-    write(textures.join(glow_file(DIALS)), &dials_glow(layout, sources).dds())?;
+    write(textures.join(glow_file(DIALS)), &dials_glow(sources).dds())?;
     write(textures.join(glow_file(LAMPS)), &lamps_glow(sources).dds())?;
     write(textures.join(glow_file(GEAR)), &Image::filled(GEAR_SIZE[0], GEAR_SIZE[1], [255, 255, 255, 0]).dds())?;
     for (i, text) in configs(layout, sources.config).iter().enumerate() {
@@ -465,21 +403,14 @@ mod tests {
     fn the_displays_of_the_config_are_read() {
         assert_eq!(attribute(CONFIG, "value=\"gear\"", "font"), Some("int_gear"));
         assert_eq!(number(CONFIG, "node=\"int_indicator_shift_1\"", "cond_min"), Some(7.9));
-        assert_eq!(number(CONFIG, "value=\"tach\" node=\"int_needle_tach\"", "max_value"), Some(12.0));
         assert_eq!(attribute(CONFIG, "node=\"nothing\"", "cond_min"), None);
     }
 
     #[test]
     fn the_pack_reads_as_an_rbrhud_pack() {
         let [dials, gear, lamps] = configs(&CME, CONFIG).map(|text| Config::parse(&text).expect("a config"));
-        // The needle: 0 rpm at the zero tick and 12000 at the last, `lean` degrees less, about the hub.
-        let needle = dials.elements.iter().find(|e| e.name == "rpm").unwrap();
-        let Kind::Rotating(rotating) = &needle.kind else { panic!("not a needle") };
-        assert_eq!((needle.x, needle.y), (282.0, 276.0));
-        assert_eq!(rotating.pivot, [18.0, 186.0]);
-        assert_eq!(rotating.map.len(), 2);
-        assert!((rotating.map[0].1 - 63.87).abs() < 1e-3 && rotating.map[1].0 == 12000.0);
-        assert!((rotating.map[1].1 - rotating.map[0].1 - 12.0 * 28.238).abs() < 1e-2);
+        // No needle: the model's own mesh is turned (`crate::needles`).
+        assert!(!dials.elements.iter().any(|e| matches!(e.kind, Kind::Rotating(_))));
         // The speed digits: right-justified in the display's box, three cells wide.
         let speed = dials.elements.iter().find(|e| e.name == "speed").unwrap();
         let Kind::Number(number) = &speed.kind else { panic!("not a number") };
@@ -503,7 +434,7 @@ mod tests {
     fn every_sprite_a_config_names_is_in_the_sheet() {
         let textures = textures();
         let font = vec![0; GEAR_CELL * GEAR_CELL * 10 * 4];
-        let sheet = atlas(&CME, &sources(&textures, &font)).unwrap();
+        let sheet = atlas(&sources(&textures, &font)).unwrap();
         let parsed = HudAtlas::parse(&sheet.ini);
         for text in configs(&CME, CONFIG) {
             for element in Config::parse(&text).unwrap().elements {
