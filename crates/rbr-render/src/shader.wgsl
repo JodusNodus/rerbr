@@ -774,22 +774,11 @@ fn layer_uv() -> bool {
 
 fn layered(v: VertexOut) -> vec3<f32> {
     let diffuse = textureSampleBias(layer_diffuse, texture_sampler, v.uv0, texture_bias()).rgb;
-    var weights: vec4<f32>;
-    if (layer_uv()) {
-        // The chain mix(mix(mix(L1, L2, R), L3, G), L4, B): the weights sum to 1 (a linear sum with the first layer taking the
-        // rest passed 1 where R + G did, and Hafren's roads, G the skid layer, went near white).
-        let r = v.specular.x;
-        let g = v.specular.y;
-        let b = v.specular.z;
-        weights = vec4<f32>((1.0 - r) * (1.0 - g) * (1.0 - b), r * (1.0 - g) * (1.0 - b), g * (1.0 - b), b);
-    } else {
-        weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
-    }
     let world = mode.layer.x < 1.5;
     let at = select(select(v.uv0, v.uv1, layer_uv()), vec2<f32>(v.world.x, -v.world.z), world);
     let ddx = dpdx(at) * exp2(texture_bias());
     let ddy = dpdy(at) * exp2(texture_bias());
-    var sum = vec3<f32>(0.0);
+    var texels: array<vec4<f32>, 4>;
     for (var i = 0u; i < 4u; i++) {
         let scale = select(mode.layer_scale[i / 2u].xy, mode.layer_scale[i / 2u].zw, (i & 1u) == 1u);
         let off = select(mode.layer_offset[i / 2u].xy, mode.layer_offset[i / 2u].zw, (i & 1u) == 1u);
@@ -797,14 +786,37 @@ fn layered(v: VertexOut) -> vec3<f32> {
         if (world) {
             uv = vec2<f32>(layer_axis(at.x, scale.x, off.x), layer_axis(at.y, scale.y, off.y));
         }
-        var texel: vec3<f32>;
         switch (i) {
-            case 0u: { texel = textureSampleGrad(layer_detail0, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
-            case 1u: { texel = textureSampleGrad(layer_detail1, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
-            case 2u: { texel = textureSampleGrad(layer_detail2, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
-            default: { texel = textureSampleGrad(layer_detail3, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            case 0u: { texels[i] = textureSampleGrad(layer_detail0, texture_sampler, uv, ddx * scale, ddy * scale); }
+            case 1u: { texels[i] = textureSampleGrad(layer_detail1, texture_sampler, uv, ddx * scale, ddy * scale); }
+            case 2u: { texels[i] = textureSampleGrad(layer_detail2, texture_sampler, uv, ddx * scale, ddy * scale); }
+            default: { texels[i] = textureSampleGrad(layer_detail3, texture_sampler, uv, ddx * scale, ddy * scale); }
         }
-        sum += texel * weights[i];
+    }
+    var weights: vec4<f32>;
+    if (layer_uv()) {
+        // The chain mix(mix(mix(L1, L2, R), L3, G), L4, B): the weights sum to 1 (a linear sum with the first layer taking the
+        // rest passed 1 where R + G did, and Hafren's roads, G the skid layer, went near white).
+        var r = v.specular.x;
+        var g = v.specular.y;
+        let b = v.specular.z;
+        if (mode.layer.z != 0.0) {
+            // DiRT Rally's road (`ReRbrLayerBlend`): the height maps in the alpha of the second and third layers roughen R and
+            // G: the second layer wins where its height clears `1 - R`, over a band of `DetailBlendScale`, the third is
+            // `h3 * G`.
+            let a = saturate(1.0 - r);
+            let span = saturate(a + mode.layer.w) - a;
+            let t = select(0.0, saturate((texels[1].a - a) / span), span > 0.0);
+            r = t * t * (3.0 - 2.0 * t);
+            g = texels[2].a * g;
+        }
+        weights = vec4<f32>((1.0 - r) * (1.0 - g) * (1.0 - b), r * (1.0 - g) * (1.0 - b), g * (1.0 - b), b);
+    } else {
+        weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
+    }
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < 4u; i++) {
+        sum += texels[i].rgb * weights[i];
     }
     return clamp(diffuse * sum * mode.layer.y, vec3<f32>(0.0), vec3<f32>(1.0));
 }

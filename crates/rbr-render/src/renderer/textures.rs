@@ -300,8 +300,8 @@ pub(super) fn bind_group(
                     2.0
                 },
                 l.magic,
-                0.0,
-                0.0,
+                f32::from(u8::from(l.blend.is_some())),
+                l.blend.unwrap_or(0.0),
             ]
         }),
         layer_scale: layer_pairs(key.layers.map(|(l, _)| l.scale)),

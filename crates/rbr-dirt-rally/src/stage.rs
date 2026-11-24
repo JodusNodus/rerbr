@@ -531,6 +531,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         magic: l.magic,
                         world: None,
                         uv: true,
+                        blend: l.blend,
                     }),
                     None => None,
                 };

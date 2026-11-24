@@ -40,6 +40,8 @@ pub struct Layers {
     /// The whole number of layer units a mesh's coordinates may be shifted by without moving any layer's tiling.
     pub period: f32,
     pub magic: f32,
+    /// `DetailBlendScale` of a road whose second and third details carry their blend maps in the alpha (`ReRbrLayerBlend`).
+    pub blend: Option<f32>,
     /// The normal map of the layer that weighs most over the material's first mesh, read at that layer's repeat
     /// (`None` where the layer has no real one).
     pub normal: Option<(Arc<Vec<u8>>, [f32; 2])>,
@@ -50,6 +52,7 @@ pub struct Layers {
 pub struct Shader {
     details: HashMap<String, Option<Arc<Vec<u8>>>>,
     normals: HashMap<String, Option<Arc<Vec<u8>>>>,
+    blended: HashMap<(String, String), Option<Arc<Vec<u8>>>>,
 }
 
 type V3 = [f64; 3];
@@ -126,6 +129,8 @@ struct Plan {
     lightmap: String,
     colour: Option<String>,
     magic: f32,
+    /// The road blend: `DetailBlendScale` and the layer 2 and 3 blend maps (`TBlendMap2`, `TBlendMap3`).
+    blend: Option<(f32, [String; 2])>,
 }
 
 fn plan(m: &Material, node: &str) -> Option<Plan> {
@@ -147,13 +152,55 @@ fn plan(m: &Material, node: &str) -> Option<Plan> {
     let colour = m.textures.get("TColourMap").cloned();
     // The diffuse holds the colour map as a multiplier of the layers' sum, halved (see `diffuse`).
     let magic = if colour.is_some() { 2. } else { 1. };
-    Some(Plan { layers, normals, relative, lightmap: m.textures.get("TAmbientOcclusion")?.clone(), colour, magic })
+    // The road shader's blend (read from its DXBC): the height maps lie at their layer's coordinates, so they ride in the
+    // layers' alpha unless a map is offset. Other terrain shaders keep the plain weights.
+    let offset = |l: usize| {
+        m.constants.get(&format!("Map{l}UVScaleAndOffset")).is_some_and(|c| c.get(2..4).is_some_and(|o| o != [0., 0.]))
+    };
+    let blend = (m.shader == "terrain_road.fx" && present.starts_with(&[0, 1, 2]) && !offset(2) && !offset(3))
+        .then(|| {
+            let scale = *m.constants.get("DetailBlendScale")?.first()?;
+            Some((scale, [m.textures.get("TBlendMap2")?.clone(), m.textures.get("TBlendMap3")?.clone()]))
+        })
+        .flatten();
+    Some(Plan {
+        layers,
+        normals,
+        relative,
+        lightmap: m.textures.get("TAmbientOcclusion")?.clone(),
+        colour,
+        magic,
+        blend,
+    })
 }
 
 /// The image of a library texture as RGBA8, `None` for a placeholder or a missing one.
 fn image(library: &mut Library, reference: &str) -> Option<(usize, usize, Vec<u8>)> {
     let t = library.get(reference).filter(|t| !t.is_placeholder())?;
     Some((t.width as usize, t.height as usize, t.rgba()))
+}
+
+/// RGBA8 `pixels` of `from` texels at size `to`: bilinear, wrapped at the edges (the textures tile).
+fn resized(pixels: &[u8], from: (usize, usize), to: (usize, usize)) -> Vec<u8> {
+    if from == to {
+        return pixels.to_vec();
+    }
+    let at = |x: usize, y: usize, k: usize| f32::from(pixels[((y % from.1) * from.0 + x % from.0) * 4 + k]);
+    let mut out = Vec::with_capacity(to.0 * to.1 * 4);
+    for y in 0..to.1 {
+        let sy = ((y as f32 + 0.5) * from.1 as f32 / to.1 as f32 - 0.5).rem_euclid(from.1 as f32);
+        let (y0, fy) = (sy as usize, sy.fract());
+        for x in 0..to.0 {
+            let sx = ((x as f32 + 0.5) * from.0 as f32 / to.0 as f32 - 0.5).rem_euclid(from.0 as f32);
+            let (x0, fx) = (sx as usize, sx.fract());
+            for k in 0..4 {
+                let top = at(x0, y0, k) * (1. - fx) + at(x0 + 1, y0, k) * fx;
+                let bottom = at(x0, y0 + 1, k) * (1. - fx) + at(x0 + 1, y0 + 1, k) * fx;
+                out.push((top * (1. - fy) + bottom * fy).round() as u8);
+            }
+        }
+    }
+    out
 }
 
 /// The macro colour times the lightmap at the larger of their sizes (and whether there is a colour map). A lightmap's colour
@@ -293,6 +340,29 @@ impl Shader {
             .clone()
     }
 
+    /// A layer's texture as BC7 with its blend map's height (red) in the alpha, both read wrapped at the larger of their sizes.
+    /// A blend map the library lacks reads 1.
+    fn blended(&mut self, library: &mut Library, layer: &str, map: &str) -> Option<Arc<Vec<u8>>> {
+        let key = (layer.to_lowercase(), map.to_lowercase());
+        if let Some(hit) = self.blended.get(&key) {
+            return hit.clone();
+        }
+        let made = image(library, layer).map(|(w, h, rgba)| {
+            let height = library.get(map).map(|t| (t.width as usize, t.height as usize, t.rgba()));
+            let size = height.as_ref().map_or((w, h), |(bw, bh, _)| (w.max(*bw), h.max(*bh)));
+            let mut out = resized(&rgba, (w, h), size);
+            if let Some((bw, bh, px)) = height {
+                let height = resized(&px, (bw, bh), size);
+                out.chunks_exact_mut(4).zip(height.chunks_exact(4)).for_each(|(o, p)| o[3] = p[0]);
+            } else {
+                out.chunks_exact_mut(4).for_each(|o| o[3] = 255);
+            }
+            Arc::new(textures::encode_bc7(true, size.0 as u32, size.1 as u32, out))
+        });
+        self.blended.insert(key, made.clone());
+        made
+    }
+
     fn normal(&mut self, library: &mut Library, reference: &str) -> Option<Arc<Vec<u8>>> {
         self.normals
             .entry(reference.to_lowercase())
@@ -330,7 +400,15 @@ impl Shader {
                     continue;
                 }
                 let plan = plans[id].as_ref().expect("planned");
-                let files: Option<Vec<_>> = plan.layers.iter().map(|l| self.detail(library, l)).collect();
+                let files: Option<Vec<_>> = plan
+                    .layers
+                    .iter()
+                    .enumerate()
+                    .map(|(l, layer)| match &plan.blend {
+                        Some((_, maps)) if l == 1 || l == 2 => self.blended(library, layer, &maps[l - 1]),
+                        _ => self.detail(library, layer),
+                    })
+                    .collect();
                 if let Some(files) = files {
                     details.insert(id.clone(), std::array::from_fn(|l| files.get(l).unwrap_or(&files[0]).clone()));
                 }
@@ -375,6 +453,7 @@ impl Shader {
                             scale,
                             period: period(&plan.relative),
                             magic: plan.magic,
+                            blend: plan.blend.as_ref().map(|(scale, _)| *scale),
                         },
                     );
                     shaded.source.insert(id.clone(), m.material.clone());

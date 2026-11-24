@@ -60,8 +60,8 @@ pub(super) struct ModeUniform {
     pub(super) tint: [f32; 4],
     /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]).
     pub(super) sheen: [f32; 4],
-    /// `x` a multilayer material ([`crate::stage::Layers`]): 0 none, 1 details at the world position, 2 at the uv; `y` its
-    /// `magicMult`.
+    /// `x` a multilayer material ([`crate::stage::Layers`]): 0 none, 1 details at the world position, 2 at the uv, 3 DiRT Rally's; `y` its
+    /// `magicMult`; `z` 1 with DiRT Rally's road blend, `w` its `DetailBlendScale`.
     pub(super) layer: [f32; 4],
     /// The details' `(u, v)` multipliers and offsets: layers R and G, then B and A.
     pub(super) layer_scale: [[f32; 4]; 2],

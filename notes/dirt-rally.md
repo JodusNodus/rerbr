@@ -149,9 +149,13 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   stay gone, Sweden's banks have no facets, Finland's grass grows. All 37 reference shots (`scripts/render-shots.py`, AC BTB stages among them) RMSE 0 against the build before. Sheets: `/tmp/luv/sheet-*.png`.
   Hafren's roads (G the skid layer, 0.1 to 0.5 over the road) went near white with a linear sum `1 - R - G - B, R, G, B` (it passes 1 where R + G does); the chain keeps the sum at 1 and they read as before.
   The white dashes on Hafren's road at 4 km (a grey paved stretch by road signs) in the earlier mask-bake render are in no layer texture, the atlas or any weight order (layer 1 alone shows none). `TBlendMap2/3` are greyscale height maps of their layer (pebbles, ruts, noise; Hafren 4 km: `set1_03_b`, `skd_01_b`), no markings; `BlendMaskUVScale` is 0 on every material read. Likely the old mask's rectangular cells over the set4 details' bright flecks (untested).
-  The DXBC blend would only move layer borders at pebble or rut scale: not applied (if ever, h2/h3 fit the alpha of layer 2's and the skid layer's BC7, no extra bindings).
-  The blend formula of the road shaders (below) is not applied: it needs `TBlendMap2/3` bound as textures per draw (fragment textures are 20, past the default 16), and was never seen to improve a view; the chain mix of the weights is what
-  the data gives. Vertex colours are used as bytes over 255 (no gamma): snow, rock and road transitions read right. Greece's verges differ from the mask's (a grass layer on banks, less at some road edges): the weights are per pixel
+  Road blend (2026-11-24, `ReRbrLayerBlend`, `shade.rs`, `notes/btb.md`): `terrain_road` materials with `DetailBlendScale` and zero `Map2/3UVScaleAndOffset` offsets draw the DXBC's weights: `a = sat(1-R)`,
+  `t = sat((h2-a)/(sat(a+S)-a))`, `R' = t²(3-2t)`, `G' = h3*G`, then the chain. h2 and h3 (`TBlendMap2/3`, red, resampled wrapped to the larger size, at the layer's own uv: same scale as the layer) ride in the alpha of
+  layer 2's and layer 3's textures, re-encoded BC7 per (layer, map) pair (the layers' own alpha, the specular, is unread by the renderer). Every road material has both maps (`default_black` is real: the skid weight is 0 there);
+  other shaders (`wsm_edge_nm`, `edge_nm`) and roads with a map offset keep the plain weights (formula unread). Greece 3.5 km: the black tyre stripes in the bends are gone (rmse 11 against before, 22% of pixels over 8/255).
+  Finland, Hafren and Germany change by ruts and pebble-scale borders only (rmse 2 to 8); the roads still read grey and smooth next to DR's light dusty ones, which this blend does not explain (layer textures and the colour-map and
+  lightmap diffuse are the same before and after).
+  The other shaders take the chain mix of the weights, which is what the data gives there. Vertex colours are used as bytes over 255 (no gamma): snow, rock and road transitions read right. Greece's verges differ from the mask's (a grass layer on banks, less at some road edges): the weights are per pixel
   now; against the game itself unverified.
 - (History, superseded by the above) the mask path:
 - Drawn by ReRBR's `ReRbrLayer*` (no renderer change): per section a diffuse (colour map over its covered texels' mean, 30% of its hue kept,
@@ -162,7 +166,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   over the layer's), classed within 20% as a material of its own. Roads' ruts run along the atlas's u, hence the transpose.
   Islands whose layer runs at no one angle to the atlas, or whose atlas shears over 1.6, read the details at the world's (x, z) instead.
   Triangles whose atlas jump is 8 times the mesh's median rate (they join islands) keep the old single-texture draw.
-- `TBlendMap2/3` (a height map the game roughens a weight's border with) is not used: finer than the mask. Colour-map hue and
+- `TBlendMap2/3` (a height map the game roughens a weight's border with): used for roads since `ReRbrLayerBlend` (above); not by the mask path. Colour-map hue and
   lightmap strength are chosen by eye against the Steam store shots: Greece's section means run pink to blue, `ColourMapScale` is 2 on
   every material (so the game's neutral is a mid blue-grey, not grey). The renderer multiplies the textures as display values, so no
   gamma applies to our diffuse.

@@ -82,6 +82,7 @@ fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Optio
         details: std::array::from_fn(|i| named(&l.details[i])),
         world: l.world.is_some(),
         uv: l.uv,
+        blend: l.blend,
         magic: l.magic,
         scale: l.scale,
         offset: std::array::from_fn(offset),
@@ -835,6 +836,7 @@ mod tests {
             magic: 1.5,
             world: Some([-231.0, -563.0]),
             uv: false,
+            blend: None,
         };
         let mut next = 0;
         let mut texture = |file: &Option<String>| {

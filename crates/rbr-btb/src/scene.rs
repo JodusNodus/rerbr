@@ -179,6 +179,9 @@ pub struct Layers {
     /// (`mask` is the diffuse's name, unread). DiRT Rally's terrain: its own layer coordinates beside the atlas of the
     /// diffuse.
     pub uv: bool,
+    /// `ReRbrLayerBlend=S` (with `uv`): DiRT Rally's road blend with `DetailBlendScale` `S`. The second and third layers' textures
+    /// carry their height maps in the alpha, and the weights R and G are roughened by them (`layered` in the shader).
+    pub blend: Option<f32>,
 }
 
 impl Material {
@@ -624,6 +627,11 @@ fn layers(m: &track::Material, textures: &Textures) -> Option<Layers> {
         uv,
         details: details.try_into().ok()?,
         scale: std::array::from_fn(|i| [scale[2 * i] as f32, scale[2 * i + 1] as f32]),
+        blend: m
+            .entry("ReRbrLayerBlend")
+            .and_then(track::decimal_float)
+            .filter(|s| uv && s.is_finite() && *s >= 0.0)
+            .map(|s| s as f32),
         magic: m.entry("ReRbrLayerMagic").and_then(track::decimal_float).map_or(1.0, |v| v as f32),
         world: match world.as_deref() {
             None => None,

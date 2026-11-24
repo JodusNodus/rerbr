@@ -358,6 +358,7 @@ impl TextureBank {
             magic: mat.property("magicMult", 1.),
             world: (!objsp).then_some(self.origin),
             uv: false,
+            blend: None,
         })
     }
     fn count(&mut self, extras: &Extras) {
@@ -553,6 +554,9 @@ pub struct Layers {
     /// `ReRbrLayerUv=1`: the details read the mesh's UV set 1 and the weights are its vertices' (UV sets 2 and 3), no mask
     /// (`mask` is unused); DiRT Rally's terrain.
     pub uv: bool,
+    /// `ReRbrLayerBlend=S` (with `uv`): DiRT Rally's road blend, `DetailBlendScale` `S`, the height maps in the alpha of the
+    /// second and third details.
+    pub blend: Option<f32>,
 }
 
 /// AC's foliage shaders. They light by `ks` as the others do (`ksTree_ps.fxo`: `tex * (ksAmbient * ambient * hemi +
@@ -780,6 +784,9 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
             out.push_str("ReRbrLayerUv=1\n");
         } else {
             let _ = writeln!(out, "ReRbrLayerMask={}", layers.mask);
+        }
+        if let Some(scale) = layers.blend {
+            let _ = writeln!(out, "ReRbrLayerBlend={}", decimal(scale));
         }
         let _ = writeln!(out, "ReRbrLayerDetail={}", layers.details.join(","));
         let _ = writeln!(out, "ReRbrLayerScale={}", list(&mut layers.scale.iter().flatten().map(|m| decimal(*m))));
