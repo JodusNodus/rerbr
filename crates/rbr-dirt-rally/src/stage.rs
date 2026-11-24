@@ -423,7 +423,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 let m = &input.materials[*material];
                 let texture = match (&m.dds, &m.layers) {
                     (Some(dds), _) => bank.put(dds.clone(), "dds")?,
-                    (None, Some(l)) => bank.put(l.details[0].to_vec(), "dds")?,
+                    (None, Some(l)) => bank.put(l.bake.as_ref().unwrap_or(&l.details[0]).to_vec(), "dds")?,
                     (None, None) => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                 };
                 let name = format!("dr\\{material}");
