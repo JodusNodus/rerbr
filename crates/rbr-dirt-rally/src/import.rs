@@ -202,18 +202,23 @@ fn solid_props(route: &Route, control: &Control) -> Result<Vec<Triangle>, String
     }
     let layout = objects::read(route)?;
     let mut out = Vec::new();
-    let (mut solid, mut soft) = (0, 0);
+    let (mut solid, mut small, mut soft) = (0, 0, 0);
     for instance in &layout.instances {
         for shape in &layout.entities[instance.entity].shapes {
-            if shape.solid() {
-                solid += 1;
-                out.extend(solid::triangles(shape, &instance.matrix));
-            } else {
-                soft += 1;
+            let hull = if shape.solid() { solid::triangles(shape, &instance.matrix) } else { Vec::new() };
+            match (shape.solid(), hull.is_empty()) {
+                (true, false) => solid += 1,
+                (true, true) => small += 1,
+                (false, _) => soft += 1,
             }
+            out.extend(hull);
         }
     }
-    control.say(&format!("{solid} solid hulls ({} triangles), {soft} that give way or are vegetation", out.len()));
+    control.say(&format!(
+        "{solid} solid hulls ({} triangles), {small} lower than {} m, {soft} that give way or are vegetation",
+        out.len(),
+        solid::MIN_RISE
+    ));
     Ok(out)
 }
 

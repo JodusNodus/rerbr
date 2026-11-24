@@ -11,6 +11,10 @@ const SIDES: usize = 8;
 const THIN_SIDES: usize = 6;
 const THIN: f32 = 0.4;
 
+/// A hull whose top is not this high above its prop's origin (the ground it stands on) is left out: half-buried
+/// pebbles, which a car rides over (7200 of the 8200 scrub rocks within 15 m of Greece route_0's road).
+pub const MIN_RISE: f64 = 0.3;
+
 type P = [f32; 3];
 
 fn sub(a: P, b: P) -> P {
@@ -98,6 +102,10 @@ pub fn triangles(shape: &Shape, instance: &Mat) -> Vec<Triangle> {
     let upright = row[1] > 0.9 * dot(row, row).sqrt();
     let (v, t) = hull(&shape.hull, !upright);
     let world: Vec<[f64; 3]> = v.iter().map(|&p| frame::world(mesh::point(&matrix, p))).collect();
+    let ground = frame::world(mesh::point(instance, [0.; 3]))[2];
+    if world.iter().all(|p| p[2] - ground < MIN_RISE) {
+        return Vec::new();
+    }
     t.into_iter()
         .map(|[a, b, c]| {
             // The file's winding is counter-clockwise about +y, the BTB mesh's the other way ([`frame`]); a mirrored
