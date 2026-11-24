@@ -73,6 +73,9 @@ pub struct Input {
     pub start: f64,
     pub finish: f64,
     pub splits: Vec<f64>,
+    /// A rallycross lap: `line` is a closed ring that starts at the lap line (the spawn), `start..finish` is
+    /// one lap of it and `splits` are arc lengths from its start.
+    pub circuit: bool,
     pub materials: Vec<Material>,
     /// Drawn triangles, `material` the index into `materials`.
     pub drawn: Vec<Triangle>,
@@ -313,15 +316,25 @@ const SETTINGS_INI: &str =
     "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nsky_tint=0.2\nnorth=0, 0, 1\n";
 
 /// Where the car stands: the start grid's first slot, 3.7 m behind the start line on every rally route's grid.
-const GRID_BEHIND: f64 = 3.7;
+pub(crate) const GRID_BEHIND: f64 = 3.7;
 
 fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, String> {
     let control = &options.control;
-    // The stage keeps 50 m before the start and 40 m past the finish, resampled every 2.5 m.
-    let from = (input.start - 50.).max(0.);
-    let to = (input.finish + 40.).min(input.line.length());
+    // The stage keeps 50 m before the start and 40 m past the finish, resampled every 2.5 m; a circuit is its lap from
+    // the lap line, a closed ring (its last point repeats the first).
+    let (from, to) = if input.circuit {
+        (input.start, input.finish)
+    } else {
+        ((input.start - 50.).max(0.), (input.finish + 40.).min(input.line.length()))
+    };
     let mut line = input.line.stretch(from, to - from, true, 2.5);
-    let (start, finish) = (input.start - from, input.finish - from);
+    if input.circuit {
+        let (first, width) = (line.points[0], line.width[0]);
+        let last = line.points.len() - 1;
+        (line.points[last], line.width[last]) = (first, width);
+        line = Line::new(std::mem::take(&mut line.points), std::mem::take(&mut line.width));
+    }
+    let (start, finish) = if input.circuit { (0., line.length()) } else { (input.start - from, input.finish - from) };
     let origin: [f64; 2] = std::array::from_fn(|k| {
         let (lo, hi) = line.points.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[k]), b.max(p[k])));
         ((lo + hi) * 0.5).round()
@@ -353,7 +366,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let physics = surface::physics(along.iter().copied());
     control.say(&format!("physics={physics}; {missing}/{} driveline points without ground", line.points.len()));
     let (spawn, heading) = {
-        let (p, tangent) = line.sample((start - GRID_BEHIND).max(0.));
+        let (p, tangent) = line.sample(if input.circuit { 0. } else { (start - GRID_BEHIND).max(0.) });
         let (z, _) = ground_near(&ground, p).ok_or("no ground under the start position")?;
         ([p[0], p[1], z], tangent)
     };
@@ -512,20 +525,26 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     write(
         "track.ini",
         format!(
-            "[INFO]\nname={}\nphysics={physics}\nauthor=Codemasters (DiRT Rally)\nversion=DiRT Rally local conversion\nlength={:.3}\ncomment=Converted locally from {}\n{country}",
+            "[INFO]\nname={}\nphysics={physics}\nauthor=Codemasters (DiRT Rally)\nversion=DiRT Rally local conversion\nlength={:.3}\ncomment=Converted locally from {}\n{country}{}",
             input.title,
             input.length / 1000.,
-            input.route
+            input.route,
+            if input.circuit { "circuit=1\n" } else { "" }
         ),
     )?;
     write("settings.ini", SETTINGS_INI.to_owned())?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     let n = line.points.len();
     for (i, p) in line.points.iter().enumerate() {
-        let (a, b) = (line.points[i.saturating_sub(1)], line.points[(i + 1).min(n - 1)]);
+        // A ring's last point repeats its first: neighbours wrap around the seam.
+        let (a, b) = if input.circuit {
+            (line.points[(i + n - 2) % (n - 1)], line.points[(i + 1) % (n - 1)])
+        } else {
+            (line.points[i.saturating_sub(1)], line.points[(i + 1).min(n - 1)])
+        };
         let length = rbr_ac_tracks::assetto::ai::distance(a, b).max(1e-9);
         let t: [f64; 3] = std::array::from_fn(|k| (b[k] - a[k]) / length);
-        let at = i as f64 * 2.5;
+        let at = if input.circuit { line.at[i] } else { i as f64 * 2.5 };
         let _ = writeln!(
             dl,
             "K{i}={}, {}, {}, {}, {}, {}, {}, 0",
@@ -540,9 +559,18 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     write("driveline.ini", dl)?;
     // Start, finish and the result marker 15 m past the finish; the splits; the corners graded from the line.
-    let mut notes = vec![(0x15, 0, start), (0x16, 0, finish), (0x18, 0, (finish + 15.).min(line.length()))];
-    notes.extend(input.splits.iter().map(|s| (0x17, 0, s - from)));
-    let called = pacenotes::notes(&line.points, &line.at, start, finish);
+    // A circuit's start, finish and end keys lie far past the lap so the 1.02 timekeeper never fires them, and it has no
+    // pacenotes.
+    let mut notes = if input.circuit {
+        {
+            let far = rbr_btb::circuit::FAR;
+            vec![(0x15, 0, far), (0x16, 0, far + 10.), (0x18, 0, far + 20.)]
+        }
+    } else {
+        vec![(0x15, 0, start), (0x16, 0, finish), (0x18, 0, (finish + 15.).min(line.length()))]
+    };
+    notes.extend(input.splits.iter().map(|s| (0x17, 0, if input.circuit { *s } else { s - from })));
+    let called = if input.circuit { Vec::new() } else { pacenotes::notes(&line.points, &line.at, start, finish) };
     notes.extend(called.iter().map(|n| (n.tag, n.flags, n.distance)));
     notes.sort_by(|a, b| a.2.total_cmp(&b.2));
     let mut pn = format!("[PACENOTES]\ncount={}\n", notes.len());
@@ -568,7 +596,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         "length_m": input.length, "line_length_m": input.finish - input.start, "start_m": start, "finish_m": finish,
         "drawn_triangles": drawn_triangles, "collision_triangles": collision_triangles,
         "collision_source": input.collision_source, "surface_triangles": input.surface_counts,
-        "textures": textures, "pacenotes": called.len(), "missing_ground_points": missing,
+        "circuit": input.circuit, "textures": textures, "pacenotes": called.len(), "missing_ground_points": missing,
     });
     let provenance = serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?;
     write(CONVERSION_FILE, provenance)?;
@@ -626,6 +654,7 @@ mod tests {
             line,
             start: 60.,
             finish: 540.,
+            circuit: false,
             splits: vec![300.],
             materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None, layers: None }],
             drawn: strip(-4., 4., 0),
@@ -659,6 +688,72 @@ mod tests {
         // A second conversion only replaces with --replace.
         assert!(convert(&input, &options).is_err());
         assert!(convert(&input, &Options { replace: true, ..options }).is_ok());
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn a_lap_writes_a_closed_ring_circuit() {
+        let out = std::env::temp_dir().join(format!("rbr-dirt-rally-circuit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&out);
+        // Up one strip and back down the next: 1240 m, the lap line (arc 0) at the foot of the first.
+        let mut points: Vec<[f64; 3]> = (0..=60).map(|i| [0., f64::from(i) * 10., 0.]).collect();
+        points.extend((0..=60).map(|i| [20., 600. - f64::from(i) * 10., 0.]));
+        points.push(points[0]);
+        let line = Line::new(points, vec![6.; 123]);
+        let length = line.length();
+        let collision = strip(-4., 24., 17);
+        let input = Input {
+            source: "route_0".into(),
+            route: "test/test_rallycross/route_0".into(),
+            title: "Test".into(),
+            country: None,
+            place: None,
+            length,
+            line,
+            start: 10.,
+            finish: 10. + length,
+            circuit: true,
+            splits: vec![300., 900.],
+            materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None, layers: None }],
+            drawn: strip(-4., 4., 0),
+            instanced: Instanced::default(),
+            collision,
+            collision_source: "test",
+            surface_counts: BTreeMap::new(),
+        };
+        let options = Options {
+            out: out.clone(),
+            name: "DR_circuit".into(),
+            draw_corridor: 300.,
+            collision_corridor: 75.,
+            lod: 1000.,
+            replace: false,
+            control: Control::new(|_| {}, Arc::new(AtomicBool::new(false))),
+        };
+        let report = convert(&input, &options).unwrap();
+        let read = |file: &str| std::fs::read_to_string(report.folder.join(file)).unwrap();
+        assert!(read("track.ini").contains("circuit=1\n"));
+        // The ring starts at the lap line, 10 m up the first strip, and ends where it began.
+        let keys: Vec<Vec<f64>> = read("driveline.ini")
+            .lines()
+            .filter(|l| l.starts_with('K'))
+            .map(|l| l.split('=').nth(1).unwrap().split(',').map(|v| v.trim().parse().unwrap()).collect())
+            .collect();
+        let (first, last) = (&keys[0], keys.last().unwrap());
+        assert_eq!(first[..3], last[..3]);
+        assert!((last[6] - length).abs() < 0.01, "{}", last[6]);
+        // The start, finish and end keys lie far past the lap, the splits along it from the line (as given); no calls.
+        let notes = read("pacenotes.ini");
+        for key in
+            ["type=21\nflag=0\ndistance=40000", "type=22\nflag=0\ndistance=40010", "type=24\nflag=0\ndistance=40020"]
+        {
+            assert!(notes.contains(key), "{key}");
+        }
+        assert!(
+            notes.contains("count=5") && notes.contains("distance=300.0000") && notes.contains("distance=900.0000")
+        );
+        let spawn = read("spawn.ini");
+        assert!(spawn.contains("m12=-10\n") && spawn.contains("m14=-290\n") && spawn.contains("angleZ=0"), "{spawn}");
         let _ = std::fs::remove_dir_all(&out);
     }
 }

@@ -34,6 +34,11 @@ impl Route {
     pub fn is_rally(&self) -> bool {
         self.area.contains("_rally_")
     }
+
+    /// A rallycross venue's layout (`holjes_rallycross`): a closed lap.
+    pub fn is_rallycross(&self) -> bool {
+        self.area.ends_with("_rallycross")
+    }
 }
 
 /// The Steam folder name of the game.

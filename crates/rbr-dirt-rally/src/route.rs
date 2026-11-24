@@ -54,9 +54,9 @@ pub fn course(route: &Route) -> Result<Course, String> {
     parse_course(&read(route, "progress_track.xml")?)
 }
 
-fn parse_course(root: &Element) -> Result<Course, String> {
+fn parse_gates(root: &Element) -> Result<Vec<Gate>, String> {
     let gates = root.child("gates").ok_or("no <gates>")?;
-    let gates = gates
+    gates
         .children_named("gate")
         .map(|g| {
             Ok(Gate {
@@ -66,7 +66,11 @@ fn parse_course(root: &Element) -> Result<Course, String> {
                 crossing: point(g, "crossing")?,
             })
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .collect()
+}
+
+fn parse_course(root: &Element) -> Result<Course, String> {
+    let gates = parse_gates(root)?;
     let routes = root.child("routes").ok_or("no <routes>")?;
     let route = routes.children_named("route").find(|r| r.attr_num("id") == Some(0.0)).ok_or("no route 0")?;
     let distance = |split: &Element| {
@@ -84,6 +88,100 @@ fn parse_course(root: &Element) -> Result<Course, String> {
     }
     let (Some(start), Some(finish)) = (start, finish) else { return Err("route 0 has no start or finish".into()) };
     Ok(Course { gates, start, splits, finish })
+}
+
+/// A rallycross lap: the main loop of route id 0 of `progress_track.xml` (id 1 is the joker lap's own span), which
+/// closes on itself. Positions are the gates' crossings, in DiRT Rally's frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lap {
+    /// The finish split's gate: the lap's own line.
+    pub line: [f32; 3],
+    /// The `time` splits, in lap order from the line.
+    pub splits: Vec<[f32; 3]>,
+    /// The lap's length, the file's `total_distance`.
+    pub length: f64,
+}
+
+/// The lap of a rallycross route.
+pub fn lap(route: &Route) -> Result<Lap, String> {
+    parse_lap(&read(route, "progress_track.xml")?)
+}
+
+fn parse_lap(root: &Element) -> Result<Lap, String> {
+    let gates = parse_gates(root)?;
+    let main = root
+        .child("routes")
+        .and_then(|r| r.children_named("route").find(|r| r.attr_num("id") == Some(0.0)))
+        .ok_or("no route 0")?;
+    let crossing = |split: &Element| {
+        let id = split.attr_num("gate").ok_or("split without gate")? as usize;
+        gates.get(id).map(|g| g.crossing).ok_or_else(|| format!("split at gate {id} of {}", gates.len()))
+    };
+    let (mut line, mut splits) = (None, Vec::new());
+    for split in main.children_named("split") {
+        match split.attr("type") {
+            Some("finish") => line = Some(crossing(split)?),
+            Some("time") => splits.push(crossing(split)?),
+            _ => {}
+        }
+    }
+    let line = line.ok_or("route 0 has no finish")?;
+    let track = root.child("track").filter(|t| t.attr("type") == Some("circuit")).ok_or("not a circuit")?;
+    let length = track.attr_num("total_distance").ok_or("circuit without total_distance")?;
+    Ok(Lap { line, splits, length })
+}
+
+/// The road of a rallycross lap in `ai_track.xml`: its gates from the one nearest `from` on along the links, the race
+/// branch at each fork (the joker branch is left out), until the loop closes.
+pub fn lap_road(route: &Route, from: [f32; 3]) -> Result<Vec<Section>, String> {
+    parse_lap_road(&read(route, "ai_track.xml")?, from)
+}
+
+fn parse_lap_road(root: &Element, from: [f32; 3]) -> Result<Vec<Section>, String> {
+    let track = root.child("track").ok_or("no <track>")?;
+    let sections = parse_road(root)?;
+    let id = |e: &Element, name: &str| e.attr_num(name).map(|v| v as usize).ok_or_else(|| format!("no {name}"));
+    let mut links = Vec::<(usize, usize, usize)>::new();
+    for link in track.child("links").into_iter().flat_map(|l| l.children_named("link")) {
+        links.push((id(link, "id")?, id(link, "from_gate")?, id(link, "to_gate")?));
+    }
+    // The links the joker alone takes: a fork's branch used for `race` is the lap's.
+    let mut joker = std::collections::HashSet::new();
+    for fork in track.child("fork_sets").into_iter().flat_map(|f| f.children_named("fork_set")) {
+        for branch in fork.children_named("fork") {
+            let race = branch.children_named("use").any(|u| u.attr("type") == Some("race"));
+            if !race {
+                joker.insert(id(branch, "link_id")?);
+            }
+        }
+    }
+    let dist = |s: &Section| {
+        let c = s.centre();
+        (0..3).map(|i| f64::from(c[i] - from[i]).powi(2)).sum::<f64>()
+    };
+    // A route's file keeps the gates of the other layouts too: only those with a link of the lap are its road.
+    let first = links
+        .iter()
+        .filter(|l| !joker.contains(&l.0) && l.1 < sections.len())
+        .map(|l| l.1)
+        .min_by(|&a, &b| dist(&sections[a]).total_cmp(&dist(&sections[b])))
+        .ok_or("no links")?;
+    let (mut lap, mut at) = (vec![first], first);
+    loop {
+        let mut next = links.iter().filter(|l| l.1 == at && !joker.contains(&l.0));
+        let Some(&(_, _, to)) = next.next() else { return Err(format!("the lap's road ends at gate {at}")) };
+        if next.next().is_some() {
+            return Err(format!("the lap's road forks at gate {at} with no race branch"));
+        }
+        if to == first {
+            return Ok(lap.into_iter().map(|g| sections[g]).collect());
+        }
+        if to >= sections.len() || lap.len() > sections.len() {
+            return Err(format!("the lap's road does not close (gate {to})"));
+        }
+        lap.push(to);
+        at = to;
+    }
 }
 
 /// The road at one AI gate: `left` is the left edge, `normal` the unit direction across the road to the right (flat)
@@ -242,6 +340,13 @@ pub fn role(route: &Route) -> Option<Role> {
 
 /// A readable name from the folders (the game's stage names are not on disk): `Ghymno 1, long, forward`.
 pub fn title(route: &Route) -> String {
+    if route.is_rallycross() {
+        let venue = match route.area.as_str() {
+            "holjes_rallycross" => "Höljes".to_owned(),
+            area => area.trim_end_matches("_rallycross").split('_').map(capitalise).collect::<Vec<_>>().join(" "),
+        };
+        return if route.index == 0 { venue } else { format!("{venue}, layout {}", route.index) };
+    }
     let area = route.area.split("_rally_");
     let (base, number) = (area.clone().next().unwrap_or_default(), area.last().filter(|_| route.is_rally()));
     let words: Vec<String> = base.split('_').map(capitalise).collect();
@@ -575,5 +680,74 @@ mod tests {
             );
         }
         assert_eq!(title(&install.route("greece/ghymno_rally_01/route_2").unwrap()), "Ghymno 1, first half, forward");
+    }
+
+    fn ai_gate(x: f32) -> Element {
+        let at = |name: &str, text: &str| el(name, &[], Some(text), vec![]);
+        let limit = el("waypoint", &[("type", "right_track_limit"), ("length", "10")], None, vec![]);
+        el(
+            "gate",
+            &[],
+            None,
+            vec![at("position", &format!("{x} 0 0")), at("normal", "0 0 1"), el("waypoints", &[], None, vec![limit])],
+        )
+    }
+
+    #[test]
+    fn a_lap_follows_the_race_branch_of_a_fork_and_leaves_gates_without_links_out() {
+        // Gates 0..3 are the lap and gate 5 a joker detour from 1 to 3; gate 6 is another layout's, unlinked, and
+        // nearest the line.
+        let link = |id, from, to| el("link", &[("id", id), ("from_gate", from), ("to_gate", to)], None, vec![]);
+        let branch = |id, kind| el("fork", &[("link_id", id)], None, vec![el("use", &[("type", kind)], None, vec![])]);
+        let gates = [0., 10., 20., 30., 100., 15., 0.5].map(ai_gate).to_vec();
+        let links = vec![
+            link("0", "0", "1"),
+            link("1", "1", "2"),
+            link("2", "2", "3"),
+            link("3", "3", "0"),
+            link("4", "1", "5"),
+            link("5", "5", "3"),
+        ];
+        let forks = vec![el("fork_set", &[], None, vec![branch("1", "race"), branch("4", "joker")])];
+        let track = el(
+            "track",
+            &[],
+            None,
+            vec![el("gates", &[], None, gates), el("links", &[], None, links), el("fork_sets", &[], None, forks)],
+        );
+        let root = el("ai_track_data", &[], None, vec![track]);
+        // Gate positions are the left edge: the centre is 5 m on along the normal.
+        let road = parse_lap_road(&root, [0., 0., 5.]).unwrap();
+        let xs: Vec<f32> = road.iter().map(|s| s.left[0]).collect();
+        assert_eq!(xs, [0., 10., 20., 30.]);
+        assert_eq!(road[0].centre(), [0., 0., 5.]);
+    }
+
+    #[test]
+    fn every_rallycross_route_is_a_closed_lap_on_a_closed_road() {
+        let Some(install) = install() else { return };
+        let routes: Vec<Route> = install.routes().into_iter().filter(Route::is_rallycross).collect();
+        assert_eq!(routes.len(), 8);
+        for route in &routes {
+            let (id, lap) = (route.id(), lap(route).unwrap());
+            assert!((500.0..1400.0).contains(&lap.length) && (1..=3).contains(&lap.splits.len()), "{id}: {lap:?}");
+            let road = lap_road(route, lap.line).unwrap();
+            // The road closes (the last gate to the first is a gate's step) and is the lap's length.
+            let sections = road.len();
+            assert!(dist(road[sections - 1].centre(), road[0].centre()) < 40.0, "{id}");
+            let length: f64 = (0..sections).map(|i| dist(road[i].centre(), road[(i + 1) % sections].centre())).sum();
+            assert!((length - lap.length).abs() < lap.length * 0.03, "{id}: {length} of {}", lap.length);
+            // The line lies on the road, and so does every split.
+            for p in std::iter::once(&lap.line).chain(&lap.splits) {
+                assert!(road.iter().any(|s| dist(s.centre(), *p) < 20.0), "{id}: {p:?} is off the road");
+            }
+            assert!(role(route).is_none() && country(route).is_some(), "{id}");
+        }
+        let names: Vec<String> = routes.iter().map(title).collect();
+        assert_eq!(names[0], "Hell");
+        assert!(
+            names.contains(&"Höljes".to_owned()) && names.contains(&"Lydden Hill, layout 2".to_owned()),
+            "{names:?}"
+        );
     }
 }

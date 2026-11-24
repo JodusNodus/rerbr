@@ -52,17 +52,25 @@ pub fn default_name(route: &Route) -> String {
 /// Converts the route `id` (`location/area/route_<n>`) of `install`.
 pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, String> {
     let route = install.route(id)?;
-    if !route.is_rally() && route.area != "pikes_peak" {
-        return Err(format!("{id}: only rally stages and Pikes Peak convert (not rallycross or the frontend)"));
+    if !route.is_rally() && !route.is_rallycross() && route.area != "pikes_peak" {
+        return Err(format!("{id}: only rally stages, rallycross and Pikes Peak convert (not the frontend)"));
     }
     let control = &options.control;
     control.say(&format!("reading {}", route.id()));
-    let course = route::course(&route)?;
-    let (line, start, finish, splits) = centre_line(&route, &course)?;
-    control.say(&format!("course {:.0} m on a {:.0} m road line", course.length(), line.length()));
+    let (length, line, start, finish, splits, circuit) = if route.is_rallycross() {
+        let (lap, line, start, finish, splits) = lap_line(&route)?;
+        control.say(&format!("lap {:.0} m on a {:.0} m closed road line", lap.length, line.length()));
+        (lap.length, line, start, finish, splits, true)
+    } else {
+        let course = route::course(&route)?;
+        let (line, start, finish, splits) = centre_line(&route, &course)?;
+        control.say(&format!("course {:.0} m on a {:.0} m road line", course.length(), line.length()));
+        (course.length(), line, start, finish, splits, false)
+    };
     control.check()?;
     let faces = collision::read(&route)?;
-    let (collision, surface_counts) = collision_triangles(&faces, &line, start, finish)?;
+    let judged = if circuit { (0., line.length()) } else { (start, finish) };
+    let (collision, surface_counts) = collision_triangles(&faces, &line, judged.0, judged.1)?;
     control.say(&format!("{} collision triangles", collision.len()));
     drop(faces);
     control.check()?;
@@ -82,11 +90,12 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         title: route::title(&route),
         country: route::country(&route),
         place: route::place(&route),
-        length: course.length(),
+        length,
         line,
         start,
         finish,
         splits,
+        circuit,
         materials,
         drawn,
         instanced,
@@ -150,6 +159,35 @@ fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64,
         return Err(format!("the course does not run along the AI road ({start:.0} to {finish:.0} m)"));
     }
     Ok((line, start, finish, splits))
+}
+
+/// A rallycross lap as a ring (the first point repeated at the end) in the stage's world: the race branch of the AI
+/// road, starting at the spawn 3.7 m behind the lap line, where the lap is timed. Returns the lap, the ring, its `start` and `finish`
+/// (one lap on from it, arc lengths) and the time splits' arc lengths from the pole.
+fn lap_line(route: &Route) -> Result<(route::Lap, Line, f64, f64, Vec<f64>), String> {
+    let lap = route::lap(route)?;
+    let road = route::lap_road(route, lap.line)?;
+    let mut points: Vec<[f64; 3]> = road.iter().map(|s| frame::world(s.centre())).collect();
+    let mut width: Vec<f64> = road.iter().map(|s| f64::from(s.width)).collect();
+    points.push(points[0]);
+    width.push(width[0]);
+    let ring = Line::new(points, width);
+    if (ring.length() - lap.length).abs() > lap.length * 0.03 {
+        return Err(format!("the AI loop is {:.0} m, the lap {:.0} m", ring.length(), lap.length));
+    }
+    let on = |p: [f32; 3]| -> Result<f64, String> {
+        let (s, off) = rbr_ac_tracks::assetto::ai::project(&ring, frame::world(p));
+        if off > GATE_OFF_ROAD {
+            return Err(format!("a lap marker lies {off:.1} m off the AI road"));
+        }
+        Ok(s)
+    };
+    // The car stands where rally stages' grids do, 3.7 m behind the line: the ring starts there, and so does the lap.
+    let start = (on(lap.line)? - stage::GRID_BEHIND).rem_euclid(ring.length());
+    let along = |s: f64| (s - start).rem_euclid(ring.length());
+    let splits = lap.splits.iter().map(|&p| on(p).map(along)).collect::<Result<Vec<_>, _>>()?;
+    let finish = start + ring.length();
+    Ok((lap, ring, start, finish, splits))
 }
 
 /// The collision in the stage's world with RBR ids, and the count of each code's triangles. `DEFA` takes the road
