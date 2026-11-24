@@ -147,6 +147,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   Measured (release, 8 cores, shared machine; `Textures.zip` MB before -> after, import s where measured alone): Turini 506 -> 422, Sweden 542 -> 381 (58 -> 27 s), Greece 554 -> 382, Finland 757 -> 565, Wales 660 -> 557,
   Germany 590 -> 452. Turini 6 km scene pass 2.84 -> 1.91 ms, 2099 -> 1267 draws (1280x720, `--enhance all,grass`); first frame 5.9 -> 5.0 s. Turini's wall at 6 and 8 km is continuous (no blocks, seams or flat sheets), the 1 km barcode bands
   stay gone, Sweden's banks have no facets, Finland's grass grows. All 37 reference shots (`scripts/render-shots.py`, AC BTB stages among them) RMSE 0 against the build before. Sheets: `/tmp/luv/sheet-*.png`.
+  Hafren's roads (G the skid layer, 0.1 to 0.5 over the road) went near white with a linear sum `1 - R - G - B, R, G, B` (it passes 1 where R + G does); the chain keeps the sum at 1 and they read as before.
   The blend formula of the road shaders (below) is not applied: it needs `TBlendMap2/3` bound as textures per draw (fragment textures are 20, past the default 16), and was never seen to improve a view; the chain mix of the weights is what
   the data gives. Vertex colours are used as bytes over 255 (no gamma): snow, rock and road transitions read right. Greece's verges differ from the mask's (a grass layer on banks, less at some road edges): the weights are per pixel
   now; against the game itself unverified.

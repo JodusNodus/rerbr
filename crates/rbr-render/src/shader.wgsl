@@ -710,7 +710,12 @@ fn layered(v: VertexOut) -> vec3<f32> {
     let diffuse = textureSampleBias(layer_diffuse, texture_sampler, v.uv0, texture_bias()).rgb;
     var weights: vec4<f32>;
     if (layer_uv()) {
-        weights = vec4<f32>(max(1.0 - v.specular.x - v.specular.y - v.specular.z, 0.0), v.specular);
+        // The chain mix(mix(mix(L1, L2, R), L3, G), L4, B): the weights sum to 1 (a linear sum with the first layer taking the
+        // rest passed 1 where R + G did, and Hafren's roads, G the skid layer, went near white).
+        let r = v.specular.x;
+        let g = v.specular.y;
+        let b = v.specular.z;
+        weights = vec4<f32>((1.0 - r) * (1.0 - g) * (1.0 - b), r * (1.0 - g) * (1.0 - b), g * (1.0 - b), b);
     } else {
         weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
     }
