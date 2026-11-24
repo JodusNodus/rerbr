@@ -60,6 +60,9 @@ pub struct Layers {
     /// Each detail's `(u, v)` repeats per atlas unit.
     pub scale: [[f32; 2]; 4],
     pub magic: f32,
+    /// The normal map of the layer that weighs most over the material's triangles, read at that layer's repeat
+    /// (`None` where the details are read in the world, or the layer has no real one).
+    pub normal: Option<(Arc<Vec<u8>>, [f32; 2])>,
 }
 
 /// The shading of a file's terrain: the layers' textures shared across its materials.
@@ -68,6 +71,7 @@ pub struct Shader {
     details: HashMap<String, Option<Arc<Vec<u8>>>>,
     /// The mean colour (display values) of each layer texture.
     means: HashMap<String, [f64; 3]>,
+    normals: HashMap<String, Option<Arc<Vec<u8>>>>,
 }
 
 type V3 = [f64; 3];
@@ -181,6 +185,18 @@ fn layer_world(m: &Mesh, triangles: &[usize]) -> [f32; 2] {
     [(1. / median(u)) as f32, (1. / median(v)) as f32]
 }
 
+/// The layer (of `n`) with the most vertex weight over `triangles`: R, G, B weigh the second to fourth, the first the rest.
+fn dominant(m: &Mesh, triangles: &[[u32; 3]], n: usize) -> usize {
+    let mut sum = [0u64; 4];
+    for &k in triangles.iter().flatten() {
+        let c = m.colour.as_ref().map_or([0; 4], |c| c[k as usize]);
+        let others: u64 = (1..n).map(|l| u64::from(c[l - 1])).sum();
+        sum[0] += 255u64.saturating_sub(others);
+        (1..n).for_each(|l| sum[l] += u64::from(c[l - 1]));
+    }
+    (0..n).max_by_key(|&l| sum[l]).unwrap_or(0)
+}
+
 /// The triangles of `m` in connected pieces: those sharing a vertex are one island of the atlas.
 fn islands(m: &Mesh, triangles: &[usize]) -> Vec<Vec<usize>> {
     fn find(parent: &mut [usize], mut i: usize) -> usize {
@@ -280,6 +296,8 @@ fn of_class(class: [i32; 2]) -> [f32; 2] {
 /// The layers of a terrain material, `None` unless every input it needs is real.
 struct Plan {
     layers: Vec<String>,
+    /// Each layer's `TNormalMap<N>`.
+    normals: Vec<Option<String>>,
     /// Each layer's `Map<N>UVScaleAndOffset` scale relative to the first layer's, which the mesh's uv already carries.
     relative: Vec<[f32; 2]>,
     lightmap: String,
@@ -300,12 +318,13 @@ fn plan(m: &Material, node: &str) -> Option<Plan> {
         Some(&[u, v, ..]) if u != 0. && v != 0. => [u, v],
         _ => [1., 1.],
     };
+    let normals = present.iter().map(|&l| m.textures.get(&format!("TNormalMap{}", l + 1)).cloned()).collect();
     let first = scale(present[0]);
     let relative = present.iter().map(|&l| scale(l)).map(|s| [s[0] / first[0], s[1] / first[1]]).collect();
     let colour = m.textures.get("TColourMap").cloned();
     // The diffuse holds the colour map as a multiplier of the layers' sum, halved (see `diffuse`).
     let magic = if colour.is_some() { 2. } else { 1. };
-    Some(Plan { layers, relative, lightmap: m.textures.get("TAmbientOcclusion")?.clone(), colour, magic })
+    Some(Plan { layers, normals, relative, lightmap: m.textures.get("TAmbientOcclusion")?.clone(), colour, magic })
 }
 
 /// The image of a library texture as RGBA8, `None` for a placeholder or a missing one.
@@ -535,6 +554,13 @@ impl Shader {
             .clone()
     }
 
+    fn normal(&mut self, library: &mut Library, reference: &str) -> Option<Arc<Vec<u8>>> {
+        self.normals
+            .entry(reference.to_lowercase())
+            .or_insert_with(|| library.get(reference).filter(|t| !t.is_placeholder()).map(|t| Arc::new(t.normal_dds())))
+            .clone()
+    }
+
     /// Shades the terrain meshes whose material the renderer can sum per pixel: their uv becomes the atlas, and each
     /// piece of the atlas whose ground the layers tile at another repeat becomes a mesh of its own material (the
     /// source's id and the repeat's class). The others are left as they are.
@@ -648,9 +674,13 @@ impl Shader {
                         for (layer, relative) in plan.relative.iter().enumerate() {
                             scale[CHANNEL[layer]] = [repeat[0] * relative[0], repeat[1] * relative[1]];
                         }
+                        let normal = (!world).then(|| dominant(m, &triangles, plan.layers.len())).and_then(|layer| {
+                            Some((self.normal(library, plan.normals[layer].as_ref()?)?, scale[CHANNEL[layer]]))
+                        });
                         shaded.layers.insert(
                             id.clone(),
                             Layers {
+                                normal,
                                 world,
                                 diffuse: diffuse.clone(),
                                 bake: (steep_share(m, &triangles) >= STEEP_SHARE).then(|| bake.clone()),
@@ -690,6 +720,15 @@ pub struct Shaded {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_layer_with_most_weight_is_the_one_whose_normal_map_the_material_takes() {
+        // Corner weights: R, G, B are the second to fourth layers; the first takes the rest.
+        let m = Mesh { colour: Some(vec![[200, 0, 0, 0], [200, 0, 0, 0], [0, 90, 0, 0]]), ..Mesh::default() };
+        assert_eq!(dominant(&m, &[[0, 1, 1]], 3), 1);
+        assert_eq!(dominant(&m, &[[2, 2, 2]], 3), 0);
+        assert_eq!(dominant(&Mesh::default(), &[[0, 0, 0]], 2), 0);
+    }
 
     #[test]
     fn derivatives_of_a_stretched_triangle() {

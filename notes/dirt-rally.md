@@ -258,3 +258,19 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   (Höljes 0 to 2), 95.2, 91.6 s (Hell), 109.7, 90.7, 53.8 s (Lydden Hill). Shots (everything on, 4 points a venue, route 0): no converter defect specific to rallycross seen; Höljes' and Hell's gravel
   loops draw as dirt under the tarmac tyre model.
 - Not done: the joker lap (the detour and its `jokerGates`; a circuit has one line), the start grid's real place, the venue's own start (the grid is the heat start; the lap line is the finish line).
+
+## Normal maps and gloss, 2026-11-24
+
+- Encoding (every `TNormalMap*` of props, terrain and trees alike): DXT5nm, alpha is x, green y, red 1, blue 0. Green points up the image: integrating 44 terrain maps to heights (Poisson solve over the four
+  sign choices), 35 correlate best with their diffuse (cracks and mortar low) with `dh/du = -x/z`, `dh/dv = +y/z` (v down the image), the other three choices 0 to 5 votes. `Texture::normal_dds` writes red x, green
+  `255 - y` (along v, as the renderer's `bumped` reads it), opaque DXT1, as the AC conversions' normal maps are stored.
+- Gloss: props carry a separate `TSpecularMap` RGB (rock 4 to 15 of 255, painted cars R about 90, G 120 to 216, B about 20; channel meaning unread, there is no spec constant in any material). Written as the red
+  channel in grey (`specular_dds`), `SpecularColor` 0.5, `SpecularPower` 40, ReRBR's `BTB_DiffuseBumpSpecular`. At 1.0 and 16 painted car bodies read white in the sun.
+- Props (`import::Placer::slot`): solid materials (not `blended`) with a `TNormalMap` and/or `TSpecularMap` write both; leaves and wire keep the card. The tree sheets' (`treesheet_foliage_norm`, billboards) normals are
+  not used.
+- Terrain (`shade::Layers::normal`): the ground's renderer path is `ReRbrLayer*` plus one `normalTexture` read at `uv0 * ReRbrBumpScale`, the same uv the details use, so no renderer change: a material
+  takes the normal map of the layer that weighs most over its triangles (vertex weights), at that layer's repeat (`scale` of its mask channel). Not for the islands read in the world's (x, z): the bump has no
+  world mode. One normal per pixel for all four layers (a per-pixel sum by the mask) would need the shader to sample four normal maps.
+- Result (Turini, Greece, Sweden, Finland, Wales at 0.3, 2, 4 (6) km, `--enhance all`): RMSE against the diffuse-only conversion 1 to 6 of 255 (Turini's rock wall at 6 km 9): grain on rock, gravel and snow, car paint with a soft
+  highlight, no sheen elsewhere. `Textures.zip` +30 % Greece 450 -> 554 MB, +33 % Turini 397 -> 506, +20 % Sweden 452 -> 542, +31 % Finland 577 -> 757, +22 % Wales 539 -> 660 (DXT1 normals, 5:6:5). Import under load
+  (average 15 to 20): Greece 59 -> 65 s, Turini 51 -> 54 s. Viewer frame at Turini 6 km (1280x720, all on, `--frames 60`): 14.9 to 15.4 ms before, 13.7 to 14.4 after (noise; nothing measurable).
