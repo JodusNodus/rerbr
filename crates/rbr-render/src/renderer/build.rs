@@ -104,6 +104,14 @@ impl Renderer {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        // And their crowns (`placed::crowns`), with the plants.
+        let lit = enhance.lighting || enhance.wet || timed;
+        let placed_crowns = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("instanced crowns"),
+            size: (if lit { stage.placed.instances.len() } else { 0 }).max(1) as u64 * 48,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let frames = [(); 3].map(|_| {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("frame"),
@@ -157,6 +165,7 @@ impl Renderer {
                         resource: wgpu::BindingResource::Sampler(&cloud_shadow_sampler),
                     },
                     wgpu::BindGroupEntry { binding: 21, resource: placed_records.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 22, resource: placed_crowns.as_entire_binding() },
                 ],
             });
             FrameBinding { buffer, bind_group }
@@ -368,7 +377,6 @@ impl Renderer {
         let over = crate::sky_dome::Over::of(&stage.meshes, &stage.driveline);
         // A stage mesh's vertices as drawn, when they are not its own: the sun's light needs the normals the baked stage
         // draws do not store, the sun's shadows the plants.
-        let lit = enhance.lighting || enhance.wet || timed;
         let prepare = |mesh: &Mesh| {
             lit.then(|| {
                 let mut vertices = sun::with_normals(mesh);
@@ -395,7 +403,13 @@ impl Renderer {
         let models = (!stage.placed.groups.is_empty())
             .then(|| {
                 let (placed, ground) = (&stage.placed, ground.as_ref());
-                placed_gpu::Models::new(&device, placed, &model_meshes, prepared_models, ground, bakes_placed)
+                let mut crowns = Vec::new();
+                if lit {
+                    let vertices: Vec<&[crate::stage::Vertex]> = prepared_models.iter().flatten().map(Vec::as_slice).collect();
+                    crowns = placed_gpu::crowns(placed, &model_meshes, &vertices, plant);
+                    queue.write_buffer(&placed_crowns, 0, bytemuck::cast_slice(&placed_gpu::crown_words(&crowns)));
+                }
+                placed_gpu::Models::new(&device, placed, &model_meshes, prepared_models, ground, crowns, bakes_placed)
             });
         let mut placed_meshes: Vec<GpuMesh> = stage
             .placed

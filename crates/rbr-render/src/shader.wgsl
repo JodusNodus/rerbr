@@ -441,7 +441,8 @@ struct InstanceIn {
     @location(13) row2: vec4<f32>,
     @location(14) light: vec4<f32>,
     // x where its vertices' ambient records start less its model's first vertex (wrapping), y the ground's normal under
-    // it (packed as `sky_direction`'s, 0 none), w 1 when the records are baked.
+    // it (packed as `sky_direction`'s, 0 none), z its crown in `placed_crowns` plus 1 (0 none), w 1 when the records are
+    // baked.
     @location(15) ambient: vec4<u32>,
 }
 
@@ -449,19 +450,60 @@ struct InstanceIn {
 // bounce as the bakes give them to an expanded vertex.
 @group(0) @binding(21) var<storage, read> placed_ambient: array<vec4<u32>>;
 
+// A placement's tree's crown (`foliage::Crown`, `renderer::placed::crown_words`): the axis's ends (`a.xyz`, `b.xyz`),
+// the centre's height `a.w`, the radii across `b.w` and up `r.x`.
+struct PlacedCrown {
+    a: vec4<f32>,
+    b: vec4<f32>,
+    r: vec4<f32>,
+}
+
+@group(0) @binding(22) var<storage, read> placed_crowns: array<PlacedCrown>;
+
 // The `ambient` of every BTB material (`stage::placed::AMBIENT`).
 const INSTANCE_AMBIENT: f32 = 0.4;
-// A model vertex that takes the ground's normal under its placement, a plant's, and one that blends it with the way out of
-// its crown by `CROWN_UP` (`renderer::placed::ON_GROUND`, `ON_CROWN`; `foliage::with_plants`).
-const ON_GROUND: f32 = 1.0;
-const ON_CROWN: f32 = 2.0;
+// A model vertex's marks in its `occlusion` (`renderer::placed::ON_GROUND`, `ON_PLANT`, `SECOND`): it takes the ground's
+// normal under its placement, its tree's crown, and no crown's place in `uv1` and `wet`.
+const ON_GROUND: u32 = 1u;
+const ON_PLANT: u32 = 2u;
+const SECOND: u32 = 4u;
+// `foliage::CROWN_UP`, `foliage::TREE_CARD`.
 const CROWN_UP: f32 = 0.5;
+const TREE_CARD: f32 = 0.3;
+
+// The crown's axis at height `y` (`foliage::Crown::axis_at`), held to its ends or carried on past them.
+fn crown_axis(c: PlacedCrown, y: f32, clamped: bool) -> vec2<f32> {
+    if (c.b.y - c.a.y > 0.1) {
+        let at = select(y, clamp(y, c.a.y, c.b.y), clamped);
+        return mix(c.a.xz, c.b.xz, (at - c.a.y) / (c.b.y - c.a.y));
+    }
+    return c.a.xz;
+}
+
+// `v` (placed, normal `n`) on crown `c` (`foliage::Crown::apply`): its normal out of the crown blended with `n`, and
+// where in the crown it lies in `uv1` and `wet` unless `second`.
+fn on_crown(v: VertexIn, n: vec3<f32>, c: PlacedCrown, second: bool) -> VertexIn {
+    var out = v;
+    out.specular.x = TREE_CARD;
+    let axis = crown_axis(c, c.a.w, true);
+    let radii = vec3<f32>(c.b.w, c.r.x, c.b.w);
+    let from_centre = (v.position - vec3<f32>(axis.x, c.a.w, axis.y)) / radii;
+    let way_out = select(vec3<f32>(0.0, 1.0, 0.0), normalize(from_centre), dot(from_centre, from_centre) > 0.0);
+    let blended = way_out * (1.0 - CROWN_UP) + n * CROWN_UP;
+    out.normal = select(vec3<f32>(0.0, 1.0, 0.0), normalize(blended), dot(blended, blended) > 0.0);
+    if (!second) {
+        out.uv1 = (v.position.xz - crown_axis(c, v.position.y, false)) / radii.xz;
+        out.wet.x = (v.position.y - c.a.w) / radii.y;
+    }
+    return out;
+}
 
 // The model vertex `v` (vertex `vertex`) as placed by `i`, as the loader expands a placement (`btb::world_vertices`):
 // the position and the normal (`place_normal`) by the rows, the vertex colour the effects' `0.4 + N.L` to 1/255, a
-// plant's normal the ground's under it after that (`Ground::on_foliage`, with a crown's way out), its baked ambient, a plant's crown or tuft
-// direction (`uv1`, `foliage::with_plants`, in the horizontal plane) turned with the placement. Its `instance` is 0, so
-// that `placed` leaves it where it is: the instance index of an instanced draw is its first instance.
+// plant's normal the ground's under it after that (`Ground::on_foliage`), its baked ambient, a tuft's direction (`uv1`,
+// `foliage::with_plants`, in the horizontal plane) turned with the placement, and its tree's crown, found among the
+// placements in the world (`renderer::placed::crowns`). Its `instance` is 0, so that `placed` leaves it where it is: the
+// instance index of an instanced draw is its first instance.
 fn instanced(v: VertexIn, i: InstanceIn, vertex: u32) -> VertexIn {
     var out = v;
     out.instance = 0u;
@@ -475,9 +517,9 @@ fn instanced(v: VertexIn, i: InstanceIn, vertex: u32) -> VertexIn {
     }
     let shade = round(min(INSTANCE_AMBIENT + max(dot(n, i.light.xyz), 0.0), 1.0) * 255.0) / 255.0;
     out.color = vec4<f32>(shade, shade, shade, v.color.a);
-    if (i.ambient.y != 0u && v.occlusion >= ON_GROUND) {
-        let ground = sky_direction(unpack2x16snorm(i.ambient.y), n);
-        n = select(ground, normalize(n * (1.0 - CROWN_UP) + ground * CROWN_UP), v.occlusion == ON_CROWN);
+    let marks = u32(v.occlusion);
+    if (i.ambient.y != 0u && (marks & ON_GROUND) != 0u) {
+        n = sky_direction(unpack2x16snorm(i.ambient.y), n);
     }
     out.normal = n;
     var ambient = vec4<u32>(0u);
@@ -487,12 +529,14 @@ fn instanced(v: VertexIn, i: InstanceIn, vertex: u32) -> VertexIn {
     out.occlusion = bitcast<f32>(ambient.x);
     out.sky_dir = ambient.y;
     out.bounce = ambient.zw;
-    let crown = v.specular.x > 0.15 && v.specular.x < 0.45;
     let tuft = v.specular.y > 0.5 && v.specular.y < 1.5 && v.specular.z > 0.5;
-    if (mode.cutout != 0u && !second_draw() && (crown || tuft)) {
+    if (mode.cutout != 0u && !second_draw() && tuft) {
         let turn = mat2x2<f32>(i.row0.x, i.row2.x, i.row0.z, i.row2.z);
         let det = abs(turn[0].x * turn[1].y - turn[1].x * turn[0].y);
         out.uv1 = (turn * v.uv1) / sqrt(max(det, 1e-12));
+    }
+    if (i.ambient.z != 0u && (marks & ON_PLANT) != 0u) {
+        out = on_crown(out, n, placed_crowns[i.ambient.z - 1u], (marks & SECOND) != 0u);
     }
     return out;
 }

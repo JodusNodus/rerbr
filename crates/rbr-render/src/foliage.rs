@@ -374,19 +374,22 @@ pub(crate) const CROWN_UP: f32 = 0.5;
 /// alike). One ellipsoid for the whole tree: each wing's own would light the halves of a tree as two shapes, with a
 /// seam down the axis. Panels are not crowns ([`CROWN_HIGHEST`]).
 pub(crate) fn with_plants<'a>(
-    mut vertices: Vec<Vertex>,
+    vertices: Vec<Vertex>,
     mesh: &Mesh,
     plant: impl Fn(&Draw) -> Option<&'a Cut> + Copy,
 ) -> Vec<Vertex> {
-    // The vertices of draws that blend a second texture by `uv1`.
-    let mut second = vec![false; vertices.len()];
-    for draw in mesh.draws.iter().filter(|draw| draw.state.second_texture && plant(draw).is_some()) {
-        for &i in &mesh.indices[draw.indices.clone()] {
-            if let Some(s) = second.get_mut(i as usize) {
-                *s = true;
-            }
-        }
-    }
+    with_plants_and(vertices, mesh, plant, true)
+}
+
+/// [`with_plants`] with the crowns or without them: an instanced model's trees are found among its placements in the
+/// world ([`crowns`]).
+pub(crate) fn with_plants_and<'a>(
+    mut vertices: Vec<Vertex>,
+    mesh: &Mesh,
+    plant: impl Fn(&Draw) -> Option<&'a Cut> + Copy,
+    crowns: bool,
+) -> Vec<Vertex> {
+    let second = second_texture(mesh, plant);
     let trees = trees(mesh, plant);
     for ((v, on), second) in vertices.iter_mut().zip(&trees.of).zip(second) {
         let Some(on) = on else { continue };
@@ -403,31 +406,75 @@ pub(crate) fn with_plants<'a>(
                 v.uv1 = ((p.xz() - centre.xz()) / half.xz()).clamp_length_max(1.0).to_array();
             }
         }
-        let tree = &trees.trees[on.tree];
-        if tree.plant && tree.crown() {
-            v.specular[0] = TREE_CARD;
-            let (low, high) = (tree.low, tree.high);
-            let y = low.y + (high.y - low.y) * CROWN_CENTRE;
-            let axis = tree.axis(y);
-            let centre = Vec3::new(axis.x, y, axis.y);
-            // Round across: one radius for x and z, so that the shader finds it on a card at any heading
-            // (`crown_radii`); the wings' own widths gave each wing its own ellipsoid, and a seam where they cross.
-            let half = ((high - low) * 0.5).max(Vec3::splat(0.1));
-            let radii = Vec3::new(half.x.max(half.z), half.y, half.x.max(half.z));
-            let out = ((Vec3::from(v.position) - centre) / radii).normalize_or(Vec3::Y);
-            let before = Vec3::from(v.normal).normalize_or(Vec3::Y);
-            v.normal = (out * (1.0 - CROWN_UP) + before * CROWN_UP).normalize_or(Vec3::Y).to_array();
-            // Where in the ellipsoid, about the leaning axis (affine in the position too), for `crown_sun_seen` in
-            // `shader.wgsl`: `uv1` and `wet`, which plant draws without a second texture do not use.
-            if !second {
-                let p = Vec3::from(v.position);
-                let at = (p.xz() - tree.axis_unclamped(p.y)) / radii.xz();
-                v.uv1 = at.to_array();
-                v.wet = (p.y - y) / radii.y;
-            }
+        if let Some(crown) = trees.trees[on.tree].as_crown().filter(|_| crowns) {
+            crown.apply(v, second);
         }
     }
     vertices
+}
+
+/// Whether each vertex of `mesh` is on a plant draw ([`with_plants`]'s `plant`) that blends a second texture by `uv1`.
+pub(crate) fn second_texture<'a>(mesh: &Mesh, plant: impl Fn(&Draw) -> Option<&'a Cut>) -> Vec<bool> {
+    let mut second = vec![false; mesh.vertices.len()];
+    for draw in mesh.draws.iter().filter(|draw| draw.state.second_texture && plant(draw).is_some()) {
+        for &i in &mesh.indices[draw.indices.clone()] {
+            if let Some(s) = second.get_mut(i as usize) {
+                *s = true;
+            }
+        }
+    }
+    second
+}
+
+/// Each vertex's crown, of the trees among `mesh`'s plant draws ([`with_plants`]); `None` off them and on trees that
+/// are no crown.
+pub(crate) fn crowns<'a>(mesh: &Mesh, plant: impl Fn(&Draw) -> Option<&'a Cut> + Copy) -> Vec<Option<Crown>> {
+    let trees = trees(mesh, plant);
+    let crowns: Vec<Option<Crown>> = trees.trees.iter().map(Tree::as_crown).collect();
+    trees.of.iter().map(|on| crowns[on.as_ref()?.tree]).collect()
+}
+
+/// A tree's crown ([`with_plants`]): the ellipsoid its vertices' normals point out of, about its axis, centred
+/// [`CROWN_CENTRE`] up it. `crown_normal` and `crown_place` in `shader.wgsl` do the same (instanced models).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Crown {
+    /// The axis: from `axis[0]` to `axis[1]` where they are more than 0.1 m apart in height (its wings' edge, which can
+    /// lean), carried on past them; else up through `axis[0]`.
+    pub(crate) axis: [Vec3; 2],
+    /// The centre's height.
+    pub(crate) y: f32,
+    /// Across and up.
+    pub(crate) radii: Vec2,
+}
+
+impl Crown {
+    /// The axis at height `y` (on its wings' edge, else its box's middle), held to its ends or carried on past them.
+    fn axis_at(&self, y: f32, clamped: bool) -> Vec2 {
+        let [low, high] = self.axis;
+        if high.y - low.y > 0.1 {
+            let y = if clamped { y.clamp(low.y, high.y) } else { y };
+            low.xz().lerp(high.xz(), (y - low.y) / (high.y - low.y))
+        } else {
+            low.xz()
+        }
+    }
+
+    /// `v`'s normal out of the crown blended with the one it had by [`CROWN_UP`], and where in the crown it lies, in
+    /// `uv1` and `wet`, unless it is on a draw with a `second` texture; `specular[0]` [`TREE_CARD`].
+    pub(crate) fn apply(&self, v: &mut Vertex, second: bool) {
+        v.specular[0] = TREE_CARD;
+        let axis = self.axis_at(self.y, true);
+        let centre = Vec3::new(axis.x, self.y, axis.y);
+        let radii = Vec3::new(self.radii.x, self.radii.y, self.radii.x);
+        let p = Vec3::from(v.position);
+        let out = ((p - centre) / radii).normalize_or(Vec3::Y);
+        let before = Vec3::from(v.normal).normalize_or(Vec3::Y);
+        v.normal = (out * (1.0 - CROWN_UP) + before * CROWN_UP).normalize_or(Vec3::Y).to_array();
+        if !second {
+            v.uv1 = ((p.xz() - self.axis_at(p.y, false)) / radii.xz()).to_array();
+            v.wet = (p.y - self.y) / radii.y;
+        }
+    }
 }
 
 /// A plant of a stage ([`plants`]) as plain data: its box, whether it is a crown, and its triangles per texture.
@@ -563,21 +610,20 @@ impl Tree {
         crown(self.low, self.high)
     }
 
-    /// The tree's axis at height `y`: on its wings' edge, else its box's middle.
-    fn axis(&self, y: f32) -> Vec2 {
-        match self.hub {
-            Some((low, high)) if high.y - low.y > 0.1 => self.axis_unclamped(y.clamp(low.y, high.y)),
-            _ => self.axis_unclamped(y),
+    /// Its crown, when it is one and holds a plant.
+    fn as_crown(&self) -> Option<Crown> {
+        if !(self.plant && self.crown()) {
+            return None;
         }
-    }
-
-    /// [`Tree::axis`] carried on past its wings' edge: affine in `y`.
-    fn axis_unclamped(&self, y: f32) -> Vec2 {
-        match self.hub {
-            Some((low, high)) if high.y - low.y > 0.1 => low.xz().lerp(high.xz(), (y - low.y) / (high.y - low.y)),
-            Some((low, _)) => low.xz(),
-            None => ((self.low + self.high) * 0.5).xz(),
-        }
+        let (low, high) = (self.low, self.high);
+        let y = low.y + (high.y - low.y) * CROWN_CENTRE;
+        // Round across: one radius for x and z, so that the shader finds it on a card at any heading (`crown_radii`);
+        // the wings' own widths gave each wing its own ellipsoid, and a seam where they cross.
+        let half = ((high - low) * 0.5).max(Vec3::splat(0.1));
+        let radii = Vec2::new(half.x.max(half.z), half.y);
+        let middle = (low + high) * 0.5;
+        let axis = self.hub.unwrap_or((middle, middle));
+        Some(Crown { axis: [axis.0, axis.1], y, radii })
     }
 }
 
