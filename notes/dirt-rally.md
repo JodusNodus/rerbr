@@ -148,7 +148,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   Germany 590 -> 452. Turini 6 km scene pass 2.84 -> 1.91 ms, 2099 -> 1267 draws (1280x720, `--enhance all,grass`); first frame 5.9 -> 5.0 s. Turini's wall at 6 and 8 km is continuous (no blocks, seams or flat sheets), the 1 km barcode bands
   stay gone, Sweden's banks have no facets, Finland's grass grows. All 37 reference shots (`scripts/render-shots.py`, AC BTB stages among them) RMSE 0 against the build before. Sheets: `/tmp/luv/sheet-*.png`.
   Hafren's roads (G the skid layer, 0.1 to 0.5 over the road) went near white with a linear sum `1 - R - G - B, R, G, B` (it passes 1 where R + G does); the chain keeps the sum at 1 and they read as before.
-  The white dashes on Hafren's road at 4 km in the earlier mask-bake render are in no layer, the atlas or any weight order (layer 1 alone shows none): an artefact of that bake, not DR's.
+  The white dashes on Hafren's road at 4 km (a grey paved stretch by road signs) in the earlier mask-bake render are in no layer texture, the atlas or any weight order (layer 1 alone shows none). Open: `TBlendMap2/3` unchecked there.
   The blend formula of the road shaders (below) is not applied: it needs `TBlendMap2/3` bound as textures per draw (fragment textures are 20, past the default 16), and was never seen to improve a view; the chain mix of the weights is what
   the data gives. Vertex colours are used as bytes over 255 (no gamma): snow, rock and road transitions read right. Greece's verges differ from the mask's (a grass layer on banks, less at some road edges): the weights are per pixel
   now; against the game itself unverified.
