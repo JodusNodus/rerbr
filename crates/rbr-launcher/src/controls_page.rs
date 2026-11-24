@@ -693,7 +693,7 @@ impl ControlsPage {
             let mut mode = ffb.rotation.map(|_| ffb.rotation_per_car);
             let mut degrees = ffb.rotation.unwrap_or(900);
             if let Some(per_car) = mode {
-                commit |= degrees_ui(ui, &mut degrees);
+                commit |= degrees_ui(ui, &mut degrees, "");
                 ffb.rotation_per_car = per_car;
             }
             let name = MODES.iter().find(|(m, _)| *m == mode).map_or("", |(_, n)| n);
@@ -704,18 +704,19 @@ impl ControlsPage {
             });
             ffb.rotation = mode.map(|_| degrees);
         });
-        row_tip(rows, "Your wheel turns", WHEEL_ROTATION_HELP, |ui| {
-            let mut known = ffb.wheel_rotation.is_some();
+        row_tip(rows, "Lock stop", LOCK_STOP_HELP, |ui| {
+            let mut soft = ffb.wheel_rotation.is_some();
             let mut degrees = ffb.wheel_rotation.unwrap_or(900);
-            if known {
-                commit |= degrees_ui(ui, &mut degrees);
+            if soft {
+                commit |= degrees_ui(ui, &mut degrees, "wheel set to ");
             }
-            let name = if known { "I set it to" } else { "ReRBR sets it" };
-            ComboBox::from_id_salt("wheel-rotation").selected_text(name).show_ui(ui, |ui| {
-                commit |= ui.selectable_value(&mut known, false, "ReRBR sets it").changed();
-                commit |= ui.selectable_value(&mut known, true, "I set it to").changed();
+            const STOPS: [(bool, &str); 2] = [(false, "Wheel stops itself"), (true, "Soft lock")];
+            ComboBox::from_id_salt("lock-stop").selected_text(STOPS[usize::from(soft)].1).show_ui(ui, |ui| {
+                for (s, n) in STOPS {
+                    commit |= ui.selectable_value(&mut soft, s, n).changed();
+                }
             });
-            ffb.wheel_rotation = known.then_some(degrees);
+            ffb.wheel_rotation = soft.then_some(degrees);
         });
         // On the wheel as the drive will: the wheel's own rotation when given, else the rotation.
         if let Some(degrees) = ffb.rotation.filter(|_| commit).map(|r| ffb.wheel_rotation.unwrap_or(r)) {
@@ -723,7 +724,7 @@ impl ControlsPage {
         }
         let settable = matches!(&self.wheels, Ok(wheels) if !wheels.is_empty());
         let status = match &self.wheels {
-            Ok(wheels) if wheels.is_empty() => "ReRBR cannot set a wheel's rotation here.".to_owned(),
+            Ok(wheels) if wheels.is_empty() => "No wheel here that stops itself: use Soft lock.".to_owned(),
             Ok(wheels) => {
                 wheels.iter().map(|w| format!("{} turns {}°", w.name, w.degrees)).collect::<Vec<_>>().join(", ")
             }
@@ -913,8 +914,8 @@ const REV_LIGHTS_HELP: &str = "The wheel's LEDs fill up to the car's shift point
      wheels, untested.";
 
 /// A rotation's degrees; whether a change is done (typed, or the drag let go), for the wheel's `range`.
-fn degrees_ui(ui: &mut Ui, degrees: &mut u16) -> bool {
-    let r = ui.add(DragValue::new(degrees).range(wheel_rotation::DEGREES).speed(5).suffix("°"));
+fn degrees_ui(ui: &mut Ui, degrees: &mut u16, prefix: &str) -> bool {
+    let r = ui.add(DragValue::new(degrees).range(wheel_rotation::DEGREES).speed(5).prefix(prefix).suffix("°"));
     (r.changed() && !r.dragged()) || r.drag_stopped()
 }
 
@@ -929,7 +930,7 @@ fn rotation_summary(ffb: &ffb::Options, car: Option<(&str, Option<u16>)>, settab
     let at = match ffb.wheel_rotation {
         Some(wheel) => rotation.min(wheel),
         None if settable => rotation,
-        None => return format!("Full lock at your wheel's own end: set Your wheel turns to get {rotation}°."),
+        None => return format!("Full lock at your wheel's own end: pick Soft lock to get {rotation}°."),
     };
     let car_lock = match lock {
         Some(l) => format!("{name}: car lock {l}°. "),
@@ -956,11 +957,11 @@ const ROTATION_HELP: &str = "How far you turn the wheel, lock to lock, for the c
      car's real lock, so it steers as the real car does, up to the degrees; a car with more lock than that steers \
      quicker. Wheel as it is: full lock at your wheel's own end, nothing changed.";
 
-const WHEEL_ROTATION_HELP: &str = "ReRBR sets it: the steering rotation is set on the wheel, which then stops there. \
-     This works on Linux with the wheel drivers that allow it (Logitech, Fanatec), not on Windows or macOS. I set it \
-     to: the degrees your wheel turns as its own software sets it. A steering rotation below that gets a soft lock: \
-     full lock comes early and past it the wheel pushes back. A steering rotation above it, say a car of 1050 on a \
-     900 wheel, reaches full lock at the wheel's end.";
+const LOCK_STOP_HELP: &str = "How the wheel stops at full lock. Wheel stops itself: ReRBR changes your wheel's \
+     rotation to the steering rotation and the wheel's own end stop holds it there. Linux only, with the Logitech and \
+     Fanatec drivers. Soft lock: for Windows, macOS and other wheels. Enter the rotation your wheel is set to in its \
+     own software (often 900°): ReRBR reaches full lock earlier and pushes the wheel back past it. A steering rotation \
+     above it, say a car of 1050 on a 900 wheel, reaches full lock at the wheel's end.";
 
 fn shifter_ui(rows: &mut Rows, bindings: &mut Bindings) {
     let shifter = &mut bindings.shifter;
@@ -1099,13 +1100,13 @@ mod tests {
             "Fiesta: car lock 1050°. Full lock at 900°, steering 1.17× quicker than the real car. Full lock at your \
              wheel's end."
         );
-        // ReRBR sets it: on a driver that takes it, else nothing to go on.
+        // The wheel stops itself: on a driver that takes the rotation, else nothing to go on.
         let set = options(Some(540), true, None);
         assert_eq!(
             say(&set, 450, true),
             "Fiesta: car lock 450°. Full lock at 450°, true to the car. The wheel stops there (as far as it turns)."
         );
-        assert_eq!(say(&set, 450, false), "Full lock at your wheel's own end: set Your wheel turns to get 450°.");
+        assert_eq!(say(&set, 450, false), "Full lock at your wheel's own end: pick Soft lock to get 450°.");
         assert_eq!(
             say(&options(None, false, Some(900)), 450, true),
             "Full lock at your wheel's own end, whatever it is set to."
