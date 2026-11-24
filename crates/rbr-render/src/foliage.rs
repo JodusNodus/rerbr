@@ -363,7 +363,7 @@ const CROWN_HIGHEST: f32 = 40.0;
 const CROWN_WIDEST: f32 = 1.5;
 /// How much of the normal the vertices had (the ground's under them, `relight::Ground::on_foliage`) a crown's normal
 /// keeps, against the direction out from its centre ([`with_plants`]).
-const CROWN_UP: f32 = 0.5;
+pub(crate) const CROWN_UP: f32 = 0.5;
 
 /// `vertices` (of `mesh`) with 1 in `specular[1]` on each grass vertex and 1 in `specular[2]` on each plant vertex (the
 /// light through its leaves, `sun_light` in `shader.wgsl`), which plant draws do not use (they have no specular map).
@@ -531,7 +531,7 @@ fn crown(low: Vec3, high: Vec3) -> bool {
 const SAME_AXIS: f32 = 0.3;
 /// `specular[0]` of a crown's cards, its strips that are no plant's included, which plant draws do not use otherwise
 /// (they have no specular map; under 1, the mirrors' mark). `crown_sun_seen` in `shader.wgsl` shades them.
-const TREE_CARD: f32 = 0.3;
+pub(crate) const TREE_CARD: f32 = 0.3;
 
 /// The trees of a mesh's plant draws ([`trees`]).
 struct Trees {

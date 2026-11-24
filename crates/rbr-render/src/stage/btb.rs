@@ -234,25 +234,27 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                     loaded.as_ref().is_some_and(|collision| on_ground(&vertices, &mesh.indices, collision))
                 };
                 if object.instanced || !on() {
-                    let model = placed.model(object.mesh, || placed::Model {
-                        vertices: model_vertices(mesh, plan),
-                        indices: mesh.indices.clone(),
-                    });
                     let cell = ((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32);
-                    let key = (model, cell, lod, object.sun_cascades);
-                    placed.add(
-                        key,
-                        &plan.draws,
-                        Instance::new(placement, to_sun, plan.up),
-                        (centre - half, centre + half),
-                    );
+                    for &(layer, state) in &plan.draws {
+                        let model = placed.model(object.mesh, layer, || placed::Model {
+                            vertices: model_vertices(mesh, plan),
+                            indices: mesh.indices.clone(),
+                        });
+                        let key = (model, cell, lod, object.sun_cascades);
+                        let instance = Instance::new(placement, to_sun, plan.up);
+                        placed.add(key, (layer, state), instance, (centre - half, centre + half));
+                    }
                     continue;
                 }
             }
             let cell = if solo {
                 Cell::Solo(groups.solos.next())
             } else {
-                Cell::At((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32)
+                let cell = ((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32);
+                for &(layer, _) in &plan.draws {
+                    placed.cover((layer, cell, lod, object.sun_cascades), (centre - half, centre + half));
+                }
+                Cell::At(cell.0, cell.1)
             };
             let vertices = world_vertices(mesh, plan, placement, to_sun);
             if let (Some(texture), Some(fx)) = (plan.hides, grass_fx.as_mut()) {
@@ -715,8 +717,10 @@ mod tests {
         let to_sun = Vec3::Y;
         let lod = band(0.0, 300.0);
         let (mut groups, mut builder) = (Groups::default(), placed::Builder::default());
-        let model = builder
-            .model(0, || placed::Model { vertices: model_vertices(&mesh, &plan), indices: mesh.indices.clone() });
+        let model = builder.model(0, Layer::Solid, || placed::Model {
+            vertices: model_vertices(&mesh, &plan),
+            indices: mesh.indices.clone(),
+        });
         for x in [10.0, 20.0, 140.0] {
             let placement = [turned()[..12].to_vec(), vec![x, 3.0, 5.0, 1.0]].concat().try_into().unwrap();
             let (centre, half) = world_bounds(&placement, low, high);
@@ -732,7 +736,7 @@ mod tests {
             );
             builder.add(
                 (model, cell, lod, true),
-                &plan.draws,
+                plan.draws[0],
                 Instance::new(&placement, to_sun, false),
                 (centre - half, centre + half),
             );

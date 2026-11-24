@@ -290,7 +290,7 @@ impl Context<'_> {
             _ => wgpu::CompareFunction::Always,
         };
         let features = key.features.unwrap_or_default();
-        let placed_buffers = [Some(vertex_layout()), Some(placed_layout()), Some(probe_layout())];
+        let placed_buffers = [Some(vertex_layout()), Some(placed_layout()), Some(header_layout())];
         let (layout, vertex, buffers) = match (key.made, key.placed) {
             (true, _) => {
                 (self.made_layout, if self.vertex == "vs_clouded" { "vs_grass_clouded" } else { "vs_grass" }, &[][..])
@@ -605,6 +605,17 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
+            // The instanced meshes' baked ambient, a record per placed vertex (`renderer::placed::Ambient`).
+            wgpu::BindGroupLayoutEntry {
+                binding: 21,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
         ],
     });
     let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -669,26 +680,15 @@ pub(crate) fn placed_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-/// The probes of the instanced meshes, a stage pack's [`Vertex`]es read once per instance: their occlusion, sky direction
-/// and bounce, which lie together (`probe` in `InstanceIn`, location 15).
-pub(crate) fn probe_layout() -> wgpu::VertexBufferLayout<'static> {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Uint32x4,
-        offset: std::mem::offset_of!(Vertex, occlusion) as u64,
-        shader_location: 15,
-    }];
+/// The instanced meshes' [`Header`](super::placed::Header)s, one per instance (`ambient` in `InstanceIn`, location 15).
+pub(crate) fn header_layout() -> wgpu::VertexBufferLayout<'static> {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![15 => Uint32x4];
     wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<Vertex>() as u64,
+        array_stride: std::mem::size_of::<super::placed::Header>() as u64,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &ATTRIBUTES,
     }
 }
-
-const _: () = {
-    use std::mem::offset_of;
-    assert!(offset_of!(Vertex, sky_dir) == offset_of!(Vertex, occlusion) + 4);
-    assert!(offset_of!(Vertex, bounce) == offset_of!(Vertex, occlusion) + 8);
-};
 
 /// Vertex buffer layout of [`Vertex`]: position, colour, texture 0, 1 and 2 coordinates, normal.
 pub(crate) fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {

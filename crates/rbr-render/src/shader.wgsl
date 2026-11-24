@@ -433,25 +433,36 @@ fn vs_clouded(v: VertexIn) -> CloudedOut {
 
 // A placement of an instanced BTB mesh (`stage::placed`), the instance-rate vertex buffer: the matrix's three output
 // columns as rows (`place_point`), and in `light` the direction toward the sun and the flags (bit 0: an `Up` technique).
-// Locations 11 to 14 are the instance buffer's, 15 the probes' (a second instance-rate buffer).
+// Locations 11 to 14 are the instance buffer's, 15 its header's (`renderer::placed::Header`, a second instance-rate
+// buffer).
 struct InstanceIn {
     @location(11) row0: vec4<f32>,
     @location(12) row1: vec4<f32>,
     @location(13) row2: vec4<f32>,
     @location(14) light: vec4<f32>,
-    // The placement's probe (`renderer::placed`, a baked `Vertex` at its box's middle): how little of the sky it sees, the
-    // direction it sees it in and its bounce light, as `VertexIn` has them.
-    @location(15) probe: vec4<u32>,
+    // x where its vertices' ambient records start less its model's first vertex (wrapping), y the ground's normal under
+    // it (packed as `sky_direction`'s, 0 none), w 1 when the records are baked.
+    @location(15) ambient: vec4<u32>,
 }
+
+// The instanced meshes' ambient (`renderer::placed::Ambient`): per placed vertex its occlusion, sky direction and
+// bounce as the bakes give them to an expanded vertex.
+@group(0) @binding(21) var<storage, read> placed_ambient: array<vec4<u32>>;
 
 // The `ambient` of every BTB material (`stage::placed::AMBIENT`).
 const INSTANCE_AMBIENT: f32 = 0.4;
+// A model vertex that takes the ground's normal under its placement, a plant's, and one that blends it with the way out of
+// its crown by `CROWN_UP` (`renderer::placed::ON_GROUND`, `ON_CROWN`; `foliage::with_plants`).
+const ON_GROUND: f32 = 1.0;
+const ON_CROWN: f32 = 2.0;
+const CROWN_UP: f32 = 0.5;
 
-// The model vertex `v` as placed by `i`, as the loader expands a placement (`btb::world_vertices`): the position and the
-// normal (`place_normal`) by the rows, the vertex colour the effects' `0.4 + N.L` to 1/255, a plant's crown or tuft
-// direction (`uv1`, `foliage::with_plants`, in the horizontal plane) turned with the placement. Its `instance` is 0, so that
-// `placed` leaves it where it is: the instance index of an instanced draw is its first instance.
-fn instanced(v: VertexIn, i: InstanceIn) -> VertexIn {
+// The model vertex `v` (vertex `vertex`) as placed by `i`, as the loader expands a placement (`btb::world_vertices`):
+// the position and the normal (`place_normal`) by the rows, the vertex colour the effects' `0.4 + N.L` to 1/255, a
+// plant's normal the ground's under it after that (`Ground::on_foliage`, with a crown's way out), its baked ambient, a plant's crown or tuft
+// direction (`uv1`, `foliage::with_plants`, in the horizontal plane) turned with the placement. Its `instance` is 0, so
+// that `placed` leaves it where it is: the instance index of an instanced draw is its first instance.
+fn instanced(v: VertexIn, i: InstanceIn, vertex: u32) -> VertexIn {
     var out = v;
     out.instance = 0u;
     let p = vec4<f32>(v.position, 1.0);
@@ -462,20 +473,20 @@ fn instanced(v: VertexIn, i: InstanceIn) -> VertexIn {
     if ((u32(i.light.w) & 1u) != 0u) {
         n = vec3<f32>(0.0, 1.0, 0.0);
     }
-    out.normal = n;
-    // The model vertex's own ambient (`renderer::placed::Ambient`): the share of its probe's sky it sees (as `1 -
-    // share`, 0 for the probe's alone), the direction it sees the sky in, in the model's space (0 none), and its bounce
-    // (0 none).
-    let seen = (1.0 - bitcast<f32>(i.probe.x)) * (1.0 - v.occlusion);
-    out.occlusion = 1.0 - clamp(seen, 0.0, 1.0);
-    out.sky_dir = i.probe.y;
-    if (v.sky_dir != 0u) {
-        let d = sky_direction(unpack2x16snorm(v.sky_dir), vec3<f32>(0.0, 1.0, 0.0));
-        out.sky_dir = packed_sky_direction(vec3<f32>(dot(i.row0.xyz, d), dot(i.row1.xyz, d), dot(i.row2.xyz, d)));
-    }
-    out.bounce = select(i.probe.zw, v.bounce, any(v.bounce != vec2<u32>(0u)));
     let shade = round(min(INSTANCE_AMBIENT + max(dot(n, i.light.xyz), 0.0), 1.0) * 255.0) / 255.0;
     out.color = vec4<f32>(shade, shade, shade, v.color.a);
+    if (i.ambient.y != 0u && v.occlusion >= ON_GROUND) {
+        let ground = sky_direction(unpack2x16snorm(i.ambient.y), n);
+        n = select(ground, normalize(n * (1.0 - CROWN_UP) + ground * CROWN_UP), v.occlusion == ON_CROWN);
+    }
+    out.normal = n;
+    var ambient = vec4<u32>(0u);
+    if (i.ambient.w != 0u) {
+        ambient = placed_ambient[i.ambient.x + vertex];
+    }
+    out.occlusion = bitcast<f32>(ambient.x);
+    out.sky_dir = ambient.y;
+    out.bounce = ambient.zw;
     let crown = v.specular.x > 0.15 && v.specular.x < 0.45;
     let tuft = v.specular.y > 0.5 && v.specular.y < 1.5 && v.specular.z > 0.5;
     if (mode.cutout != 0u && !second_draw() && (crown || tuft)) {
@@ -486,14 +497,16 @@ fn instanced(v: VertexIn, i: InstanceIn) -> VertexIn {
     return out;
 }
 
+// The entry points read `vertex_index` themselves, as `instance_index` (`drawn`): naga's HLSL adds the draw's base
+// vertex only where an entry point reads it.
 @vertex
-fn vs_main_placed(v: VertexIn, i: InstanceIn) -> VertexOut {
-    return vertex(instanced(v, i));
+fn vs_main_placed(v: VertexIn, i: InstanceIn, @builtin(vertex_index) index: u32) -> VertexOut {
+    return vertex(instanced(v, i, index));
 }
 
 @vertex
-fn vs_clouded_placed(v: VertexIn, i: InstanceIn) -> CloudedOut {
-    let o = vertex(instanced(v, i));
+fn vs_clouded_placed(v: VertexIn, i: InstanceIn, @builtin(vertex_index) index: u32) -> CloudedOut {
+    let o = vertex(instanced(v, i, index));
     return CloudedOut(
         o.clip, o.color, o.uv0, o.uv1, o.uv2, o.world, o.normal, o.specular, o.sky, o.bounce_sun, o.bounce_sky, o.wet,
         cloud_shadow(o.world),
@@ -530,15 +543,6 @@ fn sky_direction(p: vec2<f32>, normal: vec3<f32>) -> vec3<f32> {
         d = vec3<f32>((1.0 - abs(p.y)) * sign(p.x), d.y, (1.0 - abs(p.x)) * sign(p.y));
     }
     return normalize(d);
-}
-
-// `d` as `sky_occlusion.wgsl` packs it (`packed_direction`): octahedral about y in two snorms, never 0.
-fn packed_sky_direction(d: vec3<f32>) -> u32 {
-    var p = d.xz / max(abs(d.x) + abs(d.y) + abs(d.z), 1e-12);
-    if (d.y < 0.0) {
-        p = (1.0 - abs(p.yx)) * select(vec2<f32>(-1.0), vec2<f32>(1.0), p >= vec2<f32>(0.0));
-    }
-    return max(pack2x16snorm(p), 1u);
 }
 
 // How much farther than it is the backdrop's depth lies (ours): its upright faces (tree lines, panoramas) and its

@@ -38,7 +38,8 @@ pub struct Group {
     pub sun_cascades: bool,
     /// Into [`Placed::instances`].
     pub instances: Range<u32>,
-    /// The union of the placements' boxes, which the views cull by, and the visibility cell (as [`super::Mesh`]'s).
+    /// The union of the boxes of all placements of its layer, cell, band and cascade flag, instanced or not
+    /// ([`Builder::cover`]), which the views cull and band by, and the visibility cell: the expanded mesh's.
     pub bounds: Bounds,
     pub cell: Option<Bounds>,
 }
@@ -116,48 +117,64 @@ pub fn bounds_and_cell(low: Vec3, high: Vec3, lod: Lod) -> (Bounds, Option<Bound
     (bounds, (!far_scenery).then_some(bounds))
 }
 
-/// Collects the placements into [`Placed`]: one group per model, cell, band and cascade flag and layer.
+/// Collects the placements into [`Placed`]: one group per model, cell, band and cascade flag. A model is a mesh drawn in one
+/// layer ([`Builder::model`]): a translucent mesh's cut-out and blended draws are two, as the expanded placements are two
+/// meshes, whose plants' normals differ (`Ground::on_foliage` takes the cut-out draws alone).
 #[derive(Default)]
 pub struct Builder {
     models: Vec<Model>,
-    by_mesh: HashMap<usize, usize>,
+    by_mesh: HashMap<(usize, Layer), usize>,
     by_key: HashMap<(usize, (i32, i32), Lod, bool), usize>,
     buckets: Vec<Bucket>,
+    /// The box of every placement, instanced or not, by the expanded meshes' key (layer, cell, band, cascade flag): a
+    /// group takes its key's, so that it shows and turns its band where the expanded mesh would.
+    cells: HashMap<CellKey, (Vec3, Vec3)>,
 }
+
+type CellKey = (Layer, (i32, i32), Lod, bool);
 
 struct Bucket {
     model: usize,
+    cell: (i32, i32),
     lod: Lod,
     sun_cascades: bool,
-    states: Vec<(Layer, DrawState)>,
+    state: (Layer, DrawState),
     instances: Vec<Instance>,
     low: Vec3,
     high: Vec3,
 }
 
 impl Builder {
-    /// The model of source mesh `mesh`, made by `make` the first time.
-    pub fn model(&mut self, mesh: usize, make: impl FnOnce() -> Model) -> usize {
-        *self.by_mesh.entry(mesh).or_insert_with(|| {
+    /// The model of source mesh `mesh` drawn in `layer`, made by `make` the first time.
+    pub fn model(&mut self, mesh: usize, layer: Layer, make: impl FnOnce() -> Model) -> usize {
+        *self.by_mesh.entry((mesh, layer)).or_insert_with(|| {
             self.models.push(make());
             self.models.len() - 1
         })
     }
 
-    /// Places `model` as `instance` in `cell`, drawn over `lod` with `states`, its box from `low` to `high`.
+    /// Counts a placement's box from `low` to `high` into the expanded meshes' key `key` ([`Builder::cells`]).
+    pub fn cover(&mut self, key: CellKey, (low, high): (Vec3, Vec3)) {
+        let cell = self.cells.entry(key).or_insert((low, high));
+        *cell = (cell.0.min(low), cell.1.max(high));
+    }
+
+    /// Places `model` as `instance` in `cell`, drawn over `lod` with `state`, its box from `low` to `high`.
     pub fn add(
         &mut self,
         (model, cell, lod, sun_cascades): (usize, (i32, i32), Lod, bool),
-        states: &[(Layer, DrawState)],
+        state: (Layer, DrawState),
         instance: Instance,
         (low, high): (Vec3, Vec3),
     ) {
+        self.cover((state.0, cell, lod, sun_cascades), (low, high));
         let at = *self.by_key.entry((model, cell, lod, sun_cascades)).or_insert_with(|| {
             self.buckets.push(Bucket {
                 model,
+                cell,
                 lod,
                 sun_cascades,
-                states: states.to_vec(),
+                state,
                 instances: Vec::new(),
                 low: Vec3::splat(f32::MAX),
                 high: Vec3::splat(f32::MIN),
@@ -176,19 +193,20 @@ impl Builder {
         for bucket in self.buckets {
             let first = instances.len() as u32;
             instances.extend(bucket.instances);
-            let (bounds, cell) = bounds_and_cell(bucket.low, bucket.high, bucket.lod);
-            for (layer, state) in bucket.states {
-                groups.push(Group {
-                    model: bucket.model,
-                    layer,
-                    state,
-                    lod: bucket.lod,
-                    sun_cascades: bucket.sun_cascades,
-                    instances: first..instances.len() as u32,
-                    bounds,
-                    cell,
-                });
-            }
+            let (layer, state) = bucket.state;
+            let key = (layer, bucket.cell, bucket.lod, bucket.sun_cascades);
+            let (low, high) = self.cells.get(&key).copied().unwrap_or((bucket.low, bucket.high));
+            let (bounds, cell) = bounds_and_cell(low, high, bucket.lod);
+            groups.push(Group {
+                model: bucket.model,
+                layer,
+                state,
+                lod: bucket.lod,
+                sun_cascades: bucket.sun_cascades,
+                instances: first..instances.len() as u32,
+                bounds,
+                cell,
+            });
         }
         // Solid before blended, as the meshes are drawn.
         groups.sort_by_key(|g| g.layer);
