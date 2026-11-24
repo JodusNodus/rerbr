@@ -1447,6 +1447,16 @@ even in the distance" without the cost): replaced the CPU's tile meshes (`Ring`,
 - Not done: Light keeps Dense's card buffers; the pool's 128 MiB (two buffers, or fewer words a cell, would hold more
   tiles); the cards' sway in the motion target.
 
+Converted stages' grass dithered (2026-11-24, user report and pick; `grass_dithered` in `shader.wgsl`, `Level::profile`):
+CSP and DiRT Rally atlas cards (kinds 2 to 4) were squashed as they grew in (height by `grass_grown`, the picture's uv
+fixed), so tufts visibly rose and sank while driving. They now keep their height and are discarded by a screen dither
+(interleaved gradient noise, `dither`) against the same share, in the colour pass and the prepass; the phase
+(`frame.enhance.w`) steps a frame under TAA in the main view, still elsewhere. Their profile stays full `FX_FULL` (1.5)
+farther out (Dense 60 m, Light 30 m), so the thinning starts farther off; ours (kind 1) unchanged. Still shots (Sa
+Calobra fly-by, Akina chase, DiRT Rally Finland and Greece chase at 2500) RMSE 0.003-0.007, Sa Calobra 0.045 (the car's
+place differs); no dither visible in stills. Motion not captured (the viewer's `--video` needs a matching replay).
+Widening past the full distance still stretches the pictures.
+
 Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --screenshot` waits for the worker's
 tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every
 reference shot showed a bare hillside past that where a drive has the field to 110 m (580 chase, the bank to the

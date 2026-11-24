@@ -293,6 +293,15 @@ impl Renderer {
         }
     }
 
+    /// The screen dither's phase in `view` (`frame.enhance.w`, `dither` in `shader.wgsl`): in the main view under the
+    /// temporal anti-aliasing a step a frame, 1 to 16, so the history blends it; else 0, a still pattern.
+    fn dither_phase(&self, view: View) -> f32 {
+        match (view, &self.taa) {
+            (View::Main, Some(taa)) => (taa.frame() % 16 + 1) as f32,
+            _ => 0.0,
+        }
+    }
+
     /// The three frame uniforms [`Renderer::write_frames`] writes.
     pub(super) fn frame_uniforms(
         &self,
@@ -429,7 +438,7 @@ impl Renderer {
                     f32::from(self.enhance.lighting),
                     f32::from(self.enhance.water),
                     f32::from(self.enhance.wet),
-                    0.0,
+                    self.dither_phase(view),
                 ],
                 sun_matrices: [cascades.matrices[0], cascades.matrices[1], cascades.matrices[2], cascades.far]
                     .map(|m| m.to_cols_array_2d()),
@@ -483,7 +492,10 @@ impl Renderer {
                 cabin_seen: cabin.1,
                 street_light,
                 street,
-                grass: crate::grass::Level::uniform(self.enhance.grass),
+                grass: self
+                    .grass_made
+                    .as_ref()
+                    .map_or(crate::grass::Level::uniform(self.enhance.grass, false), |made| made.profile()),
             };
             *slot = uniform;
         }
