@@ -159,6 +159,14 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   whose triangles are at least 3% steep (face up share under 0.85) is `Layers::bake`, the atlas's diffuse times the layers' mean colours by the mask
   (BC7, section-wide channel means); flat ground keeps its first layer (the grass reads it: a bake on Finland's verges lost the grass). Sweden `Textures.zip`
   439 -> 472 MB, import 39 s before and after; Turini's green, pink and yellow stripes are gone (grey rock), Greece and Finland unchanged apart from richer rock.
+- Turini's rock wall at 6 km (`rck6-leaf` `terrain_rockbank.fx`, `rck6-snow`/`leaf-snow` `terrain_road.fx`; 2026-11-24), the blocks with seams and pulled streaks: not the bake, the world
+  projection or the repeat classes alone (bake off, steep islands never world: same picture; classes at 0.1 instead of 0.4: fewer seams, same sheets). The wall is the
+  layered draw (diffuse x mask x details) with the details at the per-island atlas repeat; the same wall drawn with its first layer at the mesh's own uv
+  (`DBG`-skipped shading) is continuous, so the blocks are the islands' separate repeats and the flat grey-white sheets with straight edges are the snow layer's vertex weights
+  (inf_05 is a flat white texture) without the game's height roughening (`TBlendMap2/3`, `DetailBlendPower` 4, `DetailBlendScale` 0.6, compiled shader: the formula is unread).
+  The game's own layer uv is stretched on the overhangs too (the raw-uv draw shows the same smear). Steep rock islands: atlas to layer scale off by over 1.6 on 7% of the area
+  (per-triangle repeats: 2%, but every triangle a seam: worse, tried). Found and fixed on the way: `Map<N>UVScaleAndOffset` of the second and later layers was ignored
+  (mesh uv carries layer 1's only): Map2 is 2 on 109 Turini materials (snow, leaf), `[1, 2]` on 44; the layers' scales are now repeat times the layer's over the first's.
 - Germany's road at 0.3 km (2026-11-24) is light concrete, not a converter defect: sections 5 to 8 and 14 are `Concblock` (`terrain_road`, layers `ger_pan_ral_set4_01_d` twice and a skid), and
   `set4_01_d` is the brightest road texture of the area (mean 145/139/130; `Tarmac_main` `set1_01_d` 126/124/122, `Cobbles` `set2_01_d` 136/132/123). In the shots the sunlit tarmac at 2 km reads
   about 150 (texture 126, renderer gain 1.2) and the concrete at 0.3 km about 171 (145 x 1.2): the same gain. Nothing wrong in the colour map, lightmap or mask (diffuse means 128 on every section).

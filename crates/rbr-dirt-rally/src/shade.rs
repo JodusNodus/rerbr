@@ -239,6 +239,8 @@ fn of_class(class: [i32; 2]) -> [f32; 2] {
 /// The layers of a terrain material, `None` unless every input it needs is real.
 struct Plan {
     layers: Vec<String>,
+    /// Each layer's `Map<N>UVScaleAndOffset` scale relative to the first layer's, which the mesh's uv already carries.
+    relative: Vec<[f32; 2]>,
     lightmap: String,
     colour: Option<String>,
     magic: f32,
@@ -248,14 +250,21 @@ fn plan(m: &Material, node: &str) -> Option<Plan> {
     if !m.shader.starts_with("terrain_") || material::is_vista(m) || node.starts_with("DECAL") {
         return None;
     }
-    let layers: Vec<String> = LAYERS.iter().filter_map(|l| m.textures.get(*l).cloned()).collect();
+    let present: Vec<usize> = (0..LAYERS.len()).filter(|&l| m.textures.contains_key(LAYERS[l])).collect();
+    let layers: Vec<String> = present.iter().map(|&l| m.textures[LAYERS[l]].clone()).collect();
     if layers.is_empty() {
         return None;
     }
+    let scale = |l: usize| match m.constants.get(&format!("Map{}UVScaleAndOffset", l + 1)).map(Vec::as_slice) {
+        Some(&[u, v, ..]) if u != 0. && v != 0. => [u, v],
+        _ => [1., 1.],
+    };
+    let first = scale(present[0]);
+    let relative = present.iter().map(|&l| scale(l)).map(|s| [s[0] / first[0], s[1] / first[1]]).collect();
     let colour = m.textures.get("TColourMap").cloned();
     // The diffuse holds the colour map as a multiplier of the layers' sum, halved (see `diffuse`).
     let magic = if colour.is_some() { 2. } else { 1. };
-    Some(Plan { layers, lightmap: m.textures.get("TAmbientOcclusion")?.clone(), colour, magic })
+    Some(Plan { layers, relative, lightmap: m.textures.get("TAmbientOcclusion")?.clone(), colour, magic })
 }
 
 /// The image of a library texture as RGBA8, `None` for a placeholder or a missing one.
@@ -589,8 +598,8 @@ impl Shader {
                     if !shaded.layers.contains_key(&id) {
                         let repeat = of_class(class);
                         let mut scale = [repeat; 4];
-                        for layer in 0..4 {
-                            scale[CHANNEL[layer.min(plan.layers.len() - 1)]] = repeat;
+                        for (layer, relative) in plan.relative.iter().enumerate() {
+                            scale[CHANNEL[layer]] = [repeat[0] * relative[0], repeat[1] * relative[1]];
                         }
                         shaded.layers.insert(
                             id.clone(),
