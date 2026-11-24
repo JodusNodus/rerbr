@@ -81,6 +81,7 @@ fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Optio
         mask: named(&l.mask),
         details: std::array::from_fn(|i| named(&l.details[i])),
         world: l.world.is_some(),
+        uv: l.uv,
         magic: l.magic,
         scale: l.scale,
         offset: std::array::from_fn(offset),
@@ -157,7 +158,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let lerp = material.effect.vert_lerp && material.second.is_some() && !mesh.blend.is_empty();
             // A multilayer material drawn per pixel (`ReRbrLayer*`) keeps the bake of the sum as its first texture, which
             // the grass and the ground detail read.
-            let layers = material.layers.as_ref().filter(|_| !material.technique.transparent);
+            let layers =
+                material.layers.as_ref().filter(|l| !material.technique.transparent && (!l.uv || mesh.uvs.len() > 3));
             let first = texture(&material.diffuse);
             let second = if lerp { texture(&material.second) } else { None };
             // Two passes only where the texture is translucent; a cut-out one is alpha tested, an opaque one solid.
@@ -227,7 +229,17 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 scene::Grass::HidesAlpha => Some(first),
                 _ => None,
             };
-            Some(Plan { draws, lerp, up: material.technique.up, uv_lerp: slots.lerp, uv_bump, uv_specular, hides })
+            let layer_uv = layers.is_some_and(|l| l.uv);
+            Some(Plan {
+                draws,
+                lerp,
+                up: material.technique.up,
+                uv_lerp: slots.lerp,
+                uv_bump,
+                uv_specular,
+                layer_uv,
+                hides,
+            })
         })
         .collect();
 
@@ -427,6 +439,8 @@ struct Plan {
     uv_bump: Option<usize>,
     /// The highlight's map's UV set, in `specular`'s uv, with strength 1.
     uv_specular: Option<usize>,
+    /// Layers on their own coordinates (`Layers::uv`): `uv1` is UV set 1, `specular` the weights of UV sets 2 and 3.
+    layer_uv: bool,
     /// The grass grows nowhere under the mesh ([`GrassOccluder`]): `Some(texture)` under its opaque texels alone.
     hides: Option<Option<TextureRef>>,
 }
@@ -450,17 +464,31 @@ fn vertex(mesh: &scene::Mesh, plan: &Plan, i: usize, position: [f32; 3], normal:
         set.and_then(|s| mesh.uvs.get(s)).and_then(|uvs| uvs.get(i)).copied().unwrap_or([0.0; 2])
     };
     let weight = if plan.lerp { mesh.blend.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0) } else { 1.0 };
+    let weights = |i: usize| {
+        let [r, g] = uv(Some(2), i);
+        [r, g, uv(Some(3), i)[0]]
+    };
     Vertex {
         position,
         color: [shade, shade, shade, (weight * 255.0).round() as u8],
         uv0: uv(Some(0), i),
-        uv1: if plan.lerp { uv(plan.uv_lerp, i) } else { plan.uv_bump.map_or([0.0; 2], |s| uv(Some(s), i)) },
+        uv1: if plan.layer_uv {
+            uv(Some(1), i)
+        } else if plan.lerp {
+            uv(plan.uv_lerp, i)
+        } else {
+            plan.uv_bump.map_or([0.0; 2], |s| uv(Some(s), i))
+        },
         uv2: [0.0; 2],
         normal,
-        specular: plan.uv_specular.map_or([0.0; 3], |s| {
-            let [u, v] = uv(Some(s), i);
-            [u, v, 1.0]
-        }),
+        specular: if plan.layer_uv {
+            weights(i)
+        } else {
+            plan.uv_specular.map_or([0.0; 3], |s| {
+                let [u, v] = uv(Some(s), i);
+                [u, v, 1.0]
+            })
+        },
         occlusion: 0.0,
         sky_dir: 0,
         bounce: [0; 2],
@@ -715,6 +743,7 @@ mod tests {
             up,
             uv_lerp: Some(1),
             uv_bump: None,
+            layer_uv: false,
             uv_specular: Some(1),
             hides: None,
         }
@@ -805,6 +834,7 @@ mod tests {
             scale: [[0.02, 0.02], [0.5, 0.25], [0.0, 0.0], [4.0, 8.0]],
             magic: 1.5,
             world: Some([-231.0, -563.0]),
+            uv: false,
         };
         let mut next = 0;
         let mut texture = |file: &Option<String>| {

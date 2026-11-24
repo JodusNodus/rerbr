@@ -485,6 +485,7 @@ impl Builder {
             normals: &self.normals,
             uvs: &self.uvs,
             uvs2: self.uvs2.as_deref(),
+            more: &[],
             triangles: &self.triangles,
             material,
         })
