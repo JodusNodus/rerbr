@@ -34,7 +34,8 @@ struct Meter {
     // The weather's grade (`post::Conditions`): `x` the metered exposure's scale, `y` the saturation's; `z` the
     // sharpening (`sharpened`); `w` an HDR display's headroom (`HDR`).
     grade: vec4<f32>,
-    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered.
+    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered; `y`: 1 when
+    // the stage has a colour look-up table (`graded`).
     fixed: vec4<f32>,
     // What tells the share of the view the sun lights (`post::Sunlit`): the view's inverse, the clouds' shadow map's
     // parameters (`volume_shadow`; zero without the map), the way to the sun and, in `w`, the sunny day's exposure
@@ -50,6 +51,9 @@ struct Meter {
 @group(1) @binding(2) var shafts_map: texture_2d<f32>;
 // The frame's depth (reversed), which the shafts' depth (their alpha) is matched against (`shafts_at`).
 @group(1) @binding(3) var composite_depth: texture_depth_2d;
+// A stage's colour look-up table (`[ReRbrAir]` `grade`, `Atmosphere::grade`), 32 green x 16 red x 16 blue nodes
+// (`graded`); one white node, never read, without it.
+@group(1) @binding(5) var grade_lut: texture_3d<f32>;
 override SHAFTS: bool = false;
 // The in-car view's cabin exposure (`Exposure::cabin`, `CABIN_STOPS`): a pipeline override, so the composite outside
 // the car is built as before.
@@ -546,6 +550,15 @@ fn sharpened(uv: vec2<f32>) -> vec3<f32> {
     return sharp / max(1.0 - luminance(sharp), 1.0e-4);
 }
 
+// The display-coded colour `shown` through the stage's look-up table, trilinear between the nodes (DiRT Rally's own
+// grade is the last step on the display's colour); what an HDR display shows past white is kept.
+fn graded(shown: vec3<f32>) -> vec3<f32> {
+    let c = clamp(shown, vec3<f32>(0.0), vec3<f32>(1.0));
+    let nodes = vec3<f32>(32.0, 16.0, 16.0);
+    let at = vec3<f32>(c.g, c.r, c.b) * (nodes - 1.0) / nodes + 0.5 / nodes;
+    return textureSampleLevel(grade_lut, linear_sampler, at, 0.0).rgb + (shown - c);
+}
+
 @fragment
 fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     // The cabin debug view (`viewer --debug-view`): the cabin's pixels carry their debug grey (`cabin_debug` in
@@ -592,5 +605,9 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     let d = display();
     let c = tone_curve(linear, d);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-    return vec4<f32>(clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(d.top)), 1.0);
+    let shown = clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(d.top));
+    if (meter.fixed.y > 0.0) {
+        return vec4<f32>(graded(shown), 1.0);
+    }
+    return vec4<f32>(shown, 1.0);
 }

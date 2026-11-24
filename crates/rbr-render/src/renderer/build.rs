@@ -597,13 +597,14 @@ impl Renderer {
             )
         });
         let post = Post::new(
-            &device,
+            (&device, &queue),
             output_format,
             depth_size,
             (&depth_view, cloud_volume.shadow_map()),
             enhance.lighting,
             taa,
             enhance.debug_view.code(),
+            stage.atmosphere.grade.as_deref(),
         );
         let light_shafts = enhance.lighting.then(|| {
             let clouds = cloud_volume.shadow_map();

@@ -2,6 +2,8 @@
 //! renderer resolves the frame into [`Post::scene`] ([`SCENE_FORMAT`], linear colour); [`Post::draw`] builds the
 //! glare chain from it, meters it, and writes the exposed, tone-curved frame into the caller's target.
 
+use wgpu::util::DeviceExt;
+
 use crate::renderer::{depth_binding, texture_entry, TEXTURE};
 use crate::skylight::NIGHT_PRE_EXPOSURE;
 
@@ -12,6 +14,9 @@ const LEVELS: u32 = 6;
 /// The composite's sharpening under TAA, whose resolve softens texture detail (Laplacian variance of a forest still: 4x
 /// MSAA 422, TAA 201, TAA sharpened 355).
 const TAA_SHARPEN: f32 = 1.0;
+
+/// A stage's colour look-up table (`Atmosphere::grade`): its nodes, green by red by blue (`graded` in `post.wgsl`), RGBA8.
+pub(crate) const GRADE_BYTES: usize = 32 * 16 * 16 * 4;
 
 pub(crate) const SHADER: &str = concat!(include_str!("post.wgsl"), include_str!("volume_shadow.wgsl"));
 
@@ -45,6 +50,9 @@ pub(crate) struct Post {
     fixed_ev: f32,
     /// The volumetric clouds' shadow map (`CloudVolume::shadow_map`), which the meter reads ([`Sunlit`]).
     clouds: wgpu::TextureView,
+    /// The stage's colour look-up table (one white node without it) and whether the composite applies it.
+    grade: wgpu::TextureView,
+    graded: bool,
     /// The resolved frame.
     pub(crate) scene: wgpu::TextureView,
     targets: Targets,
@@ -85,7 +93,7 @@ struct Meter {
     sharpen: f32,
     /// An HDR display's headroom (`HDR` in `post.wgsl`).
     headroom: f32,
-    /// `x`: [`Post::fixed_ev`], 0 metered.
+    /// `x`: [`Post::fixed_ev`], 0 metered; `y`: 1 with a colour look-up table ([`Post::graded`]).
     fixed: [f32; 4],
     /// [`Sunlit`]: the view's inverse, the clouds' shadow map's parameters, the way to the sun and the sunny offset.
     inverse: [[f32; 4]; 4],
@@ -166,15 +174,18 @@ impl Post {
     /// The post pass into targets of `format`, for frames of `size`, the frame's `depth` and the clouds' shadow map; with
     /// `shafts`, the composite adds [`Post::shafts`]; with `sharpen`, it sharpens the scene by [`TAA_SHARPEN`] (the
     /// temporal resolve's blur); with `debug_view`, the composite passes the cabin's debug grey through (`DEBUG_VIEW`
-    /// in `post.wgsl`). A target of [`HDR_FORMAT`](crate::present::HDR_FORMAT) is an HDR display's (`HDR`).
+    /// in `post.wgsl`). A target of [`HDR_FORMAT`](crate::present::HDR_FORMAT) is an HDR display's (`HDR`). With `grade`
+    /// (a stage's [`GRADE_BYTES`] of colour look-up table), the composite grades the finished frame by it.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        device: &wgpu::Device,
+        (device, queue): (&wgpu::Device, &wgpu::Queue),
         format: wgpu::TextureFormat,
         size: (u32, u32),
         (depth, clouds): (&wgpu::TextureView, &wgpu::TextureView),
         shafts: bool,
         sharpen: bool,
         debug_view: u32,
+        grade: Option<&[u8]>,
     ) -> Post {
         let source_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post source"),
@@ -197,6 +208,14 @@ impl Post {
                 ),
                 texture_entry(2, TEXTURE),
                 texture_entry(3, depth_binding()),
+                texture_entry(
+                    5,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                ),
                 texture_entry(
                     4,
                     wgpu::BindingType::Buffer {
@@ -310,13 +329,34 @@ impl Post {
         let histogram = buffer("histogram", METER_SLOTS * 4, wgpu::BufferUsages::STORAGE);
         let meter_settings =
             buffer("meter", size_of::<Meter>() as u64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
+        let nodes = grade.filter(|nodes| nodes.len() == GRADE_BYTES);
+        let table = device.create_texture_with_data(
+            queue,
+            &wgpu::TextureDescriptor {
+                label: Some("grade"),
+                size: wgpu::Extent3d {
+                    width: if nodes.is_some() { 32 } else { 1 },
+                    height: if nodes.is_some() { 16 } else { 1 },
+                    depth_or_array_layers: if nodes.is_some() { 16 } else { 1 },
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D3,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            },
+            wgpu::util::TextureDataOrder::LayerMajor,
+            nodes.unwrap_or(&[255; 4]),
+        );
+        let grade = table.create_view(&Default::default());
         let (scene, targets) = targets(
             device,
             [&source_layout, &composite_layout],
             &sampler,
             [&exposure, &meter_settings, &histogram],
             &meter,
-            (depth, clouds),
+            (depth, clouds, &grade),
             size,
             shafts,
         );
@@ -337,6 +377,8 @@ impl Post {
             headroom: 1.0,
             fixed_ev: std::env::var("RBR_METER_EV").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             clouds: clouds.clone(),
+            grade,
+            graded: nodes.is_some(),
             scene,
             targets,
             shafts,
@@ -352,7 +394,7 @@ impl Post {
             &self.sampler,
             [&self.exposure, &self.meter_settings, &self.histogram],
             &self.meter,
-            (depth, &self.clouds),
+            (depth, &self.clouds, &self.grade),
             size,
             self.shafts,
         );
@@ -395,7 +437,7 @@ impl Post {
             saturation: conditions.saturation,
             sharpen: self.sharpen,
             headroom: self.headroom,
-            fixed: [self.fixed_ev, 0.0, 0.0, 0.0],
+            fixed: [self.fixed_ev, f32::from(u8::from(self.graded)), 0.0, 0.0],
             inverse: sunlit.inverse.to_cols_array_2d(),
             clouds: sunlit.clouds,
             to_sun: sunlit.to_sun.extend(sunlit.stops).to_array(),
@@ -472,7 +514,7 @@ fn targets(
     sampler: &wgpu::Sampler,
     [exposure, meter_settings, histogram]: [&wgpu::Buffer; 3],
     [binning, metering]: &[wgpu::ComputePipeline; 2],
-    (depth, clouds): (&wgpu::TextureView, &wgpu::TextureView),
+    (depth, clouds, grade): (&wgpu::TextureView, &wgpu::TextureView, &wgpu::TextureView),
     (width, height): (u32, u32),
     shafts: bool,
 ) -> (wgpu::TextureView, Targets) {
@@ -562,6 +604,7 @@ fn targets(
             wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&shafts) },
             wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(depth) },
             wgpu::BindGroupEntry { binding: 4, resource: meter_settings.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(grade) },
         ],
     });
     (scene, Targets { levels, sources, composite, shafts, meter })
