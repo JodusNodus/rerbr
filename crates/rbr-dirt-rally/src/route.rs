@@ -277,6 +277,21 @@ pub fn country(route: &Route) -> Option<&'static str> {
     })
 }
 
+/// Where the area's venue lies (latitude, longitude, degrees) where the country's rally region (the renderer's default
+/// for `countrycode`) is far off: the sun's and moon's paths follow it. `None` keeps the country's.
+pub fn place(route: &Route) -> Option<[f64; 2]> {
+    let area = route.area.as_str();
+    Some(match route.location.as_str() {
+        "france" => [43.98, 7.39],  // Col de Turini
+        "germany" => [49.62, 7.30], // Baumholder
+        "usa" => [38.84, -105.04],  // Pikes Peak
+        "norway" => [63.43, 10.93], // Hell
+        "sweden" if area.starts_with("holjes") => [60.05, 12.60],
+        "uk" if area.starts_with("lydden") => [51.18, 1.20],
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -424,6 +439,10 @@ mod tests {
         assert_eq!((role(&r), title(&r)), (None, "Pikes Peak Historic, route 2".into()));
         assert_eq!(role(&route("uk", "hafren_rally_01", 9)), None);
         assert_eq!(country(&route("mars", "a", 0)), None);
+        assert_eq!(place(&route("france", "col_de_turini_rally_01", 0)), Some([43.98, 7.39]));
+        assert_eq!(place(&route("sweden", "holjes_rallycross", 0)), Some([60.05, 12.60]));
+        assert_eq!(place(&route("sweden", "vargasen_rally_01", 0)), None);
+        assert_eq!(place(&route("uk", "hafren_rally_01", 0)), None);
     }
 
     // The tests over the real install (`RBR_DIRT_RALLY`, the game folder; skipped when unset).
@@ -547,6 +566,13 @@ mod tests {
         let Some(install) = install() else { return };
         for route in rally_routes(&install) {
             assert!(role(&route).is_some() && country(&route).is_some(), "{}", route.id());
+            // The renderer's country default is far off at these venues (Turini's FR, Baumholder's DE, Pikes Peak's US).
+            assert_eq!(
+                place(&route).is_some(),
+                ["france", "germany", "usa"].contains(&route.location.as_str()),
+                "{}",
+                route.id()
+            );
         }
         assert_eq!(title(&install.route("greece/ghymno_rally_01/route_2").unwrap()), "Ghymno 1, first half, forward");
     }

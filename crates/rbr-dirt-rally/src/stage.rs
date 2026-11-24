@@ -63,6 +63,8 @@ pub struct Input {
     pub route: String,
     pub title: String,
     pub country: Option<&'static str>,
+    /// Latitude and longitude of the venue, `track.ini`'s own keys, where the country's default is far off.
+    pub place: Option<[f64; 2]>,
     /// The road's centre line with its width, covering the start and finish with their margins.
     pub line: Line,
     /// The timed length the game gives it, metres.
@@ -504,7 +506,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     }
     write("materials.ini", format!("{list}\n{sections}"))?;
     write("mat.ini", format!("[MAPS]\ncount={}\n{maps}", ids.len()))?;
-    let country = input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default();
+    let country = input.country.map(|c| format!("countrycode={c}\n")).unwrap_or_default()
+        + &input.place.map(|[lat, lon]| format!("latitude={lat:.4}\nlongitude={lon:.4}\n")).unwrap_or_default();
     write(
         "track.ini",
         format!(
@@ -617,6 +620,7 @@ mod tests {
             route: "test/test_rally_01/route_0".into(),
             title: "Test".into(),
             country: Some("GR"),
+            place: Some([38.5, 22.5]),
             length: 480.,
             line,
             start: 60.,
@@ -645,6 +649,7 @@ mod tests {
         );
         let read = |file: &str| std::fs::read_to_string(report.folder.join(file)).unwrap();
         assert!(read("track.ini").contains("physics=gravel\n") && read("track.ini").contains("countrycode=GR\n"));
+        assert!(read("track.ini").contains("latitude=38.5000\nlongitude=22.5000\n"));
         let notes = read("pacenotes.ini");
         assert!(
             notes.contains("type=21\nflag=0\ndistance=50.0000") && notes.contains("type=23\nflag=0\ndistance=290.0000")
