@@ -47,7 +47,19 @@ pub fn is_switched(part: &Section) -> bool {
 /// whatever the material's own section says, or whether it has one (RSF's GR Yaris Rally2 has only the bitmap
 /// sections for `internal::hud`).
 pub fn diffuse_path<'a>(shaders: &'a [Section], material: &str) -> Option<&'a str> {
-    let file = section(shaders, &format!("{material}_diffuse_bitmap"))?.get("Filename").filter(|f| !f.is_empty())?;
+    bitmap_path(shaders, material, "diffuse")
+}
+
+/// The DOS path of a material's normal map, or `None` when it has none: ours, the `[<material>_bump_bitmap]` section's
+/// `Filename` the way [`diffuse_path`] reads the diffuse one (no retail car has the section; a converted car's
+/// materials can, `rbr-dirt-rally`).
+pub fn bump_path<'a>(shaders: &'a [Section], material: &str) -> Option<&'a str> {
+    bitmap_path(shaders, material, "bump")
+}
+
+/// The DOS path of the `[<material>_<kind>_bitmap]` section's `Filename`, through the texture set.
+fn bitmap_path<'a>(shaders: &'a [Section], material: &str, kind: &str) -> Option<&'a str> {
+    let file = section(shaders, &format!("{material}_{kind}_bitmap"))?.get("Filename").filter(|f| !f.is_empty())?;
     texture_set(shaders).find_map(|(name, path)| name.eq_ignore_ascii_case(file).then_some(path))
 }
 
@@ -154,6 +166,16 @@ mod tests {
         let shaders = sections(&SHADERS.replace("[TSDefault]\r\n", "[TSDefault]\r\n[TSDefault]\r\n"));
         assert_eq!(diffuse_path(&shaders, "external::carpaint"), Some("cars\\Xsara\\textures\\xsara_external.dds"));
         assert_eq!(friendly_path(&shaders, "Scrape"), Some("cars\\Xsara\\textures\\xsara_external_scrape.dds"));
+    }
+
+    #[test]
+    fn a_normal_map_is_the_bump_bitmaps_file() {
+        let shaders =
+            sections(&format!("{SHADERS}[external::carpaint_bump_bitmap]\r\nFilename = xsara_external_scrape.dds\r\n"));
+        assert_eq!(bump_path(&shaders, "external::carpaint"), Some("cars\\Xsara\\textures\\xsara_external_scrape.dds"));
+        // No retail car has the section, and the diffuse bitmap is not it.
+        assert_eq!(bump_path(&sections(SHADERS), "external::carpaint"), None);
+        assert_eq!(bump_path(&shaders, "external::tire"), None);
     }
 
     #[test]

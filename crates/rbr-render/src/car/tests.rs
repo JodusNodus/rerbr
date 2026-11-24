@@ -48,8 +48,14 @@ fn mirrored_mesh_keeps_its_triangles_and_bad_triangles_are_dropped() {
         morph_lists: Vec::new(),
     };
     let key = TextureRef { set: TextureSet::Car, index: 4 };
-    let opaque =
-        |texture| FaceStyle { texture, scrape: None, shade: None, pass: Pass::Opaque, order: (List::Opaque, 0) };
+    let opaque = |texture| FaceStyle {
+        texture,
+        scrape: None,
+        normal: None,
+        shade: None,
+        pass: Pass::Opaque,
+        order: (List::Opaque, 0),
+    };
     let plain = build_meshes(&mesh, Mat4::IDENTITY, &[opaque(Some(key))]);
     assert_eq!(plain.bad_triangles, 1);
     let [(_, plain, MeshDamage { dents: None, crack: None, .. })] = &plain.meshes[..] else {
@@ -58,7 +64,7 @@ fn mirrored_mesh_keeps_its_triangles_and_bad_triangles_are_dropped() {
     assert_eq!(plain.indices, vec![0, 1, 2]);
     assert_eq!(
         plain.draws,
-        vec![Draw { indices: 0..3, state: draw_state(Some(key), None, Pass::Opaque, None), lod: Lod::Always }]
+        vec![Draw { indices: 0..3, state: draw_state(Some(key), None, None, Pass::Opaque, None), lod: Lod::Always }]
     );
 
     let mirror = Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0));
@@ -77,7 +83,14 @@ fn mirrored_mesh_keeps_its_triangles_and_bad_triangles_are_dropped() {
         ],
         ..mesh.clone()
     };
-    let pane = FaceStyle { texture: None, scrape: None, shade: None, pass: Pass::Blended, order: (List::Opaque, 1) };
+    let pane = FaceStyle {
+        texture: None,
+        scrape: None,
+        normal: None,
+        shade: None,
+        pass: Pass::Blended,
+        order: (List::Opaque, 1),
+    };
     let later = FaceStyle { order: (List::Opaque, 2), ..opaque(None) };
     let built = build_meshes(&two, Mat4::IDENTITY, &[later, pane]);
     assert_eq!(built.meshes.len(), 2);
@@ -134,7 +147,14 @@ fn a_damaged_panel_moves_by_its_placed_delta_and_scrapes() {
         // Zone 1 moves vertex 2 fully and vertex 0 by half.
         morph_lists: vec![Vec::new(), vec![(2, 1.0), (0, 0.5)]],
     };
-    let style = FaceStyle { texture: None, scrape: None, shade: None, pass: Pass::Opaque, order: (List::Opaque, 0) };
+    let style = FaceStyle {
+        texture: None,
+        scrape: None,
+        normal: None,
+        shade: None,
+        pass: Pass::Opaque,
+        order: (List::Opaque, 0),
+    };
     // A quarter turn about +y, then 5 m up: the delta turns with the panel.
     let matrix = Mat4::from_translation(Vec3::new(0.0, 5.0, 0.0)) * Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2);
     let built = build_meshes(&mesh, matrix, &[style]);
@@ -181,7 +201,11 @@ fn the_glass_gets_an_inner_side_drawn_before_it() {
             cell: None,
             vertices: vec![vertex([0.0; 3]), vertex([1.0, 0.0, 0.0]), vertex([0.0, 1.0, 0.0])],
             indices: vec![0, 1, 2],
-            draws: vec![Draw { indices: 0..3, state: draw_state(None, None, pass, Some(shade)), lod: Lod::Always }],
+            draws: vec![Draw {
+                indices: 0..3,
+                state: draw_state(None, None, None, pass, Some(shade)),
+                lod: Lod::Always,
+            }],
             sun_cascades: true,
         }
     };
@@ -213,16 +237,24 @@ fn passes_and_lists_follow_class_and_opacity() {
     assert_eq!(pass_for("CarGlass", false), Pass::Opaque);
     assert_eq!(pass_for("CarPlastic", true), Pass::Plastic);
     assert_eq!(pass_for("CarPlastic", false), Pass::Opaque);
-    let blended = draw_state(None, None, Pass::Blended, None);
+    let blended = draw_state(None, None, None, Pass::Blended, None);
     assert!(blended.blend && !blended.depth_write && blended.cull_back);
     assert_eq!(blended.alpha_ref, Some(0));
-    let plastic = draw_state(None, None, Pass::Plastic, None);
+    let plastic = draw_state(None, None, None, Pass::Plastic, None);
     assert!(plastic.blend && plastic.depth_write && !plastic.cull_back);
-    assert!(!draw_state(None, None, Pass::InteriorGlass, None).cull_back);
-    let two_sided = draw_state(None, None, Pass::TwoSided, None);
+    assert!(!draw_state(None, None, None, Pass::InteriorGlass, None).cull_back);
+    let two_sided = draw_state(None, None, None, Pass::TwoSided, None);
     assert!(two_sided.depth_write && !two_sided.blend && two_sided.alpha_ref.is_none() && !two_sided.cull_back);
-    let opaque = draw_state(None, None, Pass::Opaque, None);
+    let opaque = draw_state(None, None, None, Pass::Opaque, None);
     assert!(opaque.depth_write && !opaque.blend && opaque.alpha_ref.is_none());
+
+    // A normal map makes the draw a bump draw; without one there is no surface.
+    assert!(opaque.surface.is_none());
+    let normal = TextureRef { set: TextureSet::Car, index: 3 };
+    let bumped = draw_state(None, None, Some(normal), Pass::Opaque, None);
+    let map = bumped.surface.and_then(|surface| surface.normal).expect("a normal map");
+    assert_eq!((map.texture, map.uv1, map.doubled, map.scale), (normal, false, false, [1.0; 2]));
+    assert!(bumped.surface.is_some_and(|s| s.highlight.is_none() && s.sheen.is_none() && s.layers.is_none()));
 
     assert_eq!(list_for("CarRim", true), List::Wheels);
     assert_eq!(list_for("CarTire", false), List::Wheels);
@@ -268,4 +300,38 @@ fn a_personal_camera_looking_out_the_side_is_not_taken() {
     assert!(looks_ahead(&section("0 0.9 -0.9", "0.5 0.9 -3.5")));
     // Without a place, as it is.
     assert!(looks_ahead(&ini::parse("[Cam_internal]\nFOV = 1\n").unwrap().remove(0)));
+}
+
+#[test]
+fn a_second_sets_normal_map_moves_with_its_textures() {
+    let key = |index| TextureRef { set: TextureSet::Car, index };
+    let vertex = |position: [f32; 3]| Vertex { position, normal: [0.0, 0.0, 1.0], ..bytemuck::Zeroable::zeroed() };
+    let texture = StageTexture { request: "t".to_owned(), image: None };
+    let car = |diffuse: u32, normal: u32| Car {
+        name: "x".to_owned(),
+        meshes: vec![Mesh {
+            layer: Layer::Solid,
+            anchor: crate::stage::Anchor::World,
+            bounds: None,
+            cell: None,
+            vertices: vec![vertex([0.0; 3]), vertex([1.0, 0.0, 0.0]), vertex([0.0, 1.0, 0.0])],
+            indices: vec![0, 1, 2],
+            draws: vec![Draw {
+                indices: 0..3,
+                state: draw_state(Some(key(diffuse)), None, Some(key(normal)), Pass::Opaque, None),
+                lod: Lod::Always,
+            }],
+            sun_cascades: true,
+        }],
+        damage: vec![MeshDamage::default()],
+        lamp_points: Vec::new(),
+        textures: BTreeMap::from([(key(diffuse), texture.clone()), (key(normal), texture.clone())]),
+        report: CarReport::default(),
+    };
+    let (stage, _) = car(0, 1).into_stage(Selection::default());
+    let second = car(0, 1).after_textures_of(&stage);
+    let state = &second.meshes[0].draws[0].state;
+    assert_eq!(state.textures[0], Some(key(2)));
+    assert_eq!(state.surface.and_then(|s| s.normal).map(|n| n.texture), Some(key(3)));
+    assert_eq!(second.textures.keys().copied().collect::<Vec<_>>(), [key(2), key(3)]);
 }

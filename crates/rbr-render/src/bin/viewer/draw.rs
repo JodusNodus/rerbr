@@ -54,6 +54,9 @@ pub fn draw_car(
     }
     let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return None };
     let lens = shown.lens(playback, mounts, scripted_camera(scene.characters.as_ref()).2, look, fov);
+    if let Some(needles) = &scene.needles {
+        needles.turn(playback, &dial_values(playback, scene.live.as_ref()));
+    }
     playback.interior = view.interior();
     renderer.set_outside_view(!view.interior());
     playback.apply(renderer);

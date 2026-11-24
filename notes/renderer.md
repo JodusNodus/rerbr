@@ -639,6 +639,9 @@ probably fit the wrong hour.
 
 `car/` reads `Cars/Cars.ini`, the `.sgc`, `<car>.ini`, `<car>_shaders.ini` and textures.
 
+- Normal maps (ours, converted cars, 2026-11-24): a material with a `[<material>_bump_bitmap]` section (`car_parts::bump_path`) draws with
+  `Surface::normal` (the stages' `bumped()`, uv0, strength 1); `shade_car` lights and reflects with the bent normal, and the diffuse alpha of an
+  unblended such draw scales the sun highlight and the cabin sheen (`gloss`). No retail car has the section; stock shots are RMSE 0.
 - State per `SShaderMaterial::SetupRenderState`, order wheels, opaque, transparent (`car/shading.rs`): an opacity
   channel means blend, test `> 0`, no depth write; `CarPlastic` writes depth, two-sided; `CarIntGlass` two-sided,
   and opaque without one (the 911 GT3 RS (2010) RGT's inner door panels, the only installed pack with that, 2026-11-01).
@@ -1326,6 +1329,8 @@ car's `c_e_body`. With the own light (ours) the lines carry their normals; fence
 additions off equal on 64_O, 45_O, 61_M but 1 to 2 pixels by 1 (shader codegen). Cost: +0.17 ms scene at 1440p with
 a net filling the view. A torn line's rewrite has occlusion 0 (no bake), as before. `dials/` (ours): a community car's
 needles and displays from RBRHUD's gauges, drawn into the dial textures from the HUD records.
+`needles.rs` (ours): a model's needle meshes turned about their pivots by its gauges file
+(`notes/cameras-hud-launcher.md`).
 
 ## Enhancements
 

@@ -21,6 +21,7 @@ use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
 use rbr_render::hud::ffb_page::SMOOTHING_HELP;
+use rbr_render::soft_lock::SoftLock;
 use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
 
@@ -541,6 +542,7 @@ impl ControlsPage {
         ffb_load: &ffb::Loads,
         cars: &[Car],
         car: usize,
+        car_lock: Option<u16>,
         root: &str,
         settings: &Path,
         read_only: bool,
@@ -564,7 +566,7 @@ impl ControlsPage {
             kit::panel(left, |rows| {
                 self.pad_rows(rows, bindings, WHEEL);
                 invert_ui(rows, bindings);
-                self.rotation_ui(rows, ffb);
+                self.rotation_ui(rows, ffb, cars.get(car).map(|c| (c.name.as_str(), car_lock)));
                 rows.switch_row("Rev lights", Some(REV_LIGHTS_HELP), &mut ffb.rev_lights);
             });
             left.add_space(14.0);
@@ -680,37 +682,56 @@ impl ControlsPage {
         });
     }
 
-    /// The wheel's lock-to-lock rotation: off, fixed, or per car (each car's own up to the degrees). Set on the wheel
-    /// when changed, and by the viewer when a drive starts.
-    fn rotation_ui(&mut self, rows: &mut Rows, ffb: &mut ffb::Options) {
-        row_tip(rows, "Rotation", ROTATION_HELP, |ui| {
-            const MODES: [(Option<bool>, &str); 3] = [(None, "off"), (Some(false), "fixed"), (Some(true), "per car")];
+    /// The wheel's lock-to-lock rotation: as it is, the same for every car, or each car's own up to the degrees; how
+    /// far the player's wheel turns; and what the selected car, `car` (its name and lock), gets from them. Set on the
+    /// wheel when changed, and by the viewer when a drive starts.
+    fn rotation_ui(&mut self, rows: &mut Rows, ffb: &mut ffb::Options, car: Option<(&str, Option<u16>)>) {
+        let mut commit = false;
+        row_tip(rows, "Steering rotation", ROTATION_HELP, |ui| {
+            const MODES: [(Option<bool>, &str); 3] =
+                [(None, "Wheel as it is"), (Some(false), "Same for every car"), (Some(true), "Each car's own, up to")];
             let mut mode = ffb.rotation.map(|_| ffb.rotation_per_car);
             let mut degrees = ffb.rotation.unwrap_or(900);
-            let mut changed = false;
             if let Some(per_car) = mode {
-                let r = ui.add(DragValue::new(&mut degrees).range(wheel_rotation::DEGREES).speed(5).suffix("°"));
-                changed |= (r.changed() && !r.dragged()) || r.drag_stopped();
-                ui.label(RichText::new(if per_car { "up to" } else { "lock to lock" }).color(TEXT_2));
+                commit |= degrees_ui(ui, &mut degrees, "");
                 ffb.rotation_per_car = per_car;
             }
             let name = MODES.iter().find(|(m, _)| *m == mode).map_or("", |(_, n)| n);
             ComboBox::from_id_salt("rotation").selected_text(name).show_ui(ui, |ui| {
                 for (m, n) in MODES {
-                    changed |= ui.selectable_value(&mut mode, m, n).changed();
+                    commit |= ui.selectable_value(&mut mode, m, n).changed();
                 }
             });
             ffb.rotation = mode.map(|_| degrees);
-            if let Some(degrees) = ffb.rotation.filter(|_| changed) {
-                self.wheels = wheel_rotation::set(degrees);
-            }
         });
+        row_tip(rows, "Lock stop", LOCK_STOP_HELP, |ui| {
+            let mut soft = ffb.wheel_rotation.is_some();
+            let mut degrees = ffb.wheel_rotation.unwrap_or(900);
+            if soft {
+                commit |= degrees_ui(ui, &mut degrees, "wheel set to ");
+            }
+            const STOPS: [(bool, &str); 2] = [(false, "Wheel stops itself"), (true, "Soft lock")];
+            ComboBox::from_id_salt("lock-stop").selected_text(STOPS[usize::from(soft)].1).show_ui(ui, |ui| {
+                for (s, n) in STOPS {
+                    commit |= ui.selectable_value(&mut soft, s, n).changed();
+                }
+            });
+            ffb.wheel_rotation = soft.then_some(degrees);
+        });
+        // On the wheel as the drive will: the wheel's own rotation when given, else the rotation.
+        if let Some(degrees) = ffb.rotation.filter(|_| commit).map(|r| ffb.wheel_rotation.unwrap_or(r)) {
+            self.wheels = wheel_rotation::set(degrees);
+        }
+        let settable = matches!(&self.wheels, Ok(wheels) if !wheels.is_empty());
         let status = match &self.wheels {
-            Ok(wheels) if wheels.is_empty() => "No wheel whose rotation can be set.".to_owned(),
-            Ok(wheels) => wheels.iter().map(|w| format!("{}: {}°", w.name, w.degrees)).collect::<Vec<_>>().join(", "),
+            Ok(wheels) if wheels.is_empty() => "No wheel here that stops itself: use Soft lock.".to_owned(),
+            Ok(wheels) => {
+                wheels.iter().map(|w| format!("{} turns {}°", w.name, w.degrees)).collect::<Vec<_>>().join(", ")
+            }
             Err(e) => e.clone(),
         };
         rows.hint(&status);
+        rows.hint(&rotation_summary(ffb, car, settable));
     }
 
     /// Which device gets the force (`ffb::Options::device`): the first found or one by name. The devices are looked
@@ -892,10 +913,55 @@ const REV_LIGHTS_HELP: &str = "The wheel's LEDs fill up to the car's shift point
      whose driver gives them RPM lights (Logitech G27, G29, G923 for PlayStation). macOS and Windows: those Logitech \
      wheels, untested.";
 
-const ROTATION_HELP: &str = "How far the wheel turns from lock to lock. The wheel stops there and full lock is \
-     reached there. Fixed: the degrees for every car. Per car: each car's steering lock (its setup's MaxSteeringLock \
-     x 720), up to the degrees. Off leaves the wheel as it is. Linux wheel drivers only (the wheel tools' udev rule \
-     must allow it).";
+/// A rotation's degrees; whether a change is done (typed, or the drag let go), for the wheel's `range`.
+fn degrees_ui(ui: &mut Ui, degrees: &mut u16, prefix: &str) -> bool {
+    let r = ui.add(DragValue::new(degrees).range(wheel_rotation::DEGREES).speed(5).prefix(prefix).suffix("°"));
+    (r.changed() && !r.dragged()) || r.drag_stopped()
+}
+
+/// What the selected car, `car` (its name and lock, degrees, when its setup loaded), gets from the rotation settings,
+/// worked out as the drive does (`ffb::Options::rotation_for`, `SoftLock::new`); `settable` when a wheel's driver
+/// takes the rotation.
+fn rotation_summary(ffb: &ffb::Options, car: Option<(&str, Option<u16>)>, settable: bool) -> String {
+    let (name, lock) = car.map_or(("This car", None), |(n, l)| (n, l));
+    let Some(rotation) = ffb.rotation_for(lock) else {
+        return "Full lock at your wheel's own end, whatever it is set to.".to_owned();
+    };
+    let at = match ffb.wheel_rotation {
+        Some(wheel) => rotation.min(wheel),
+        None if settable => rotation,
+        None => return format!("Full lock at your wheel's own end: pick Soft lock to get {rotation}°."),
+    };
+    let car_lock = match lock {
+        Some(l) => format!("{name}: car lock {l}°. "),
+        None => format!("{name}: car lock unknown (no setup). "),
+    };
+    let feel = lock.map_or(String::new(), |l| {
+        let ratio = f32::from(l) / f32::from(at);
+        match ratio {
+            r if (r - 1.0).abs() < 0.01 => ", true to the car".to_owned(),
+            r if r > 1.0 => format!(", steering {r:.2}× quicker than the real car"),
+            r => format!(", steering {:.2}× slower than the real car", r),
+        }
+    });
+    let end = match SoftLock::new(Some(rotation), ffb.wheel_rotation) {
+        Some(soft) => format!(" Soft lock at {}° each way.", f32::from(soft.lock) / 2.0),
+        None if ffb.wheel_rotation.is_some() => " Full lock at your wheel's end.".to_owned(),
+        None => " The wheel stops there (as far as it turns).".to_owned(),
+    };
+    format!("{car_lock}Full lock at {at}°{feel}.{end}")
+}
+
+const ROTATION_HELP: &str = "How far you turn the wheel, lock to lock, for the car's full lock. Same for every car: \
+     those degrees for each, so a car with more lock steers quicker and one with less slower. Each car's own: the \
+     car's real lock, so it steers as the real car does, up to the degrees; a car with more lock than that steers \
+     quicker. Wheel as it is: full lock at your wheel's own end, nothing changed.";
+
+const LOCK_STOP_HELP: &str = "How the wheel stops at full lock. Wheel stops itself: ReRBR changes your wheel's \
+     rotation to the steering rotation and the wheel's own end stop holds it there. Linux only, with the Logitech and \
+     Fanatec drivers. Soft lock: for Windows, macOS and other wheels. Enter the rotation your wheel is set to in its \
+     own software (often 900°): ReRBR reaches full lock earlier and pushes the wheel back past it. A steering rotation \
+     above it, say a car of 1050 on a 900 wheel, reaches full lock at the wheel's end.";
 
 fn shifter_ui(rows: &mut Rows, bindings: &mut Bindings) {
     let shifter = &mut bindings.shifter;
@@ -974,6 +1040,7 @@ impl crate::Form {
         let root = self.game_root();
         let settings = self.paths.settings.clone();
         let (read_only, car) = (self.read_only, self.car);
+        let car_lock = self.setup.steering_lock().map(wheel_rotation::car_degrees);
         egui::ScrollArea::vertical().id_salt("controls").auto_shrink([false, false]).show(ui, |ui| {
             kit::body(ui, |ui| {
                 self.controls.ui(
@@ -986,6 +1053,7 @@ impl crate::Form {
                     &self.ffb_load,
                     &self.catalog.cars,
                     car,
+                    car_lock,
                     &root,
                     &settings,
                     read_only,
@@ -998,6 +1066,52 @@ impl crate::Form {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_rotation_summary_says_what_the_car_gets() {
+        let options = |rotation, per_car, wheel| ffb::Options {
+            rotation,
+            rotation_per_car: per_car,
+            wheel_rotation: wheel,
+            ..ffb::Options::default()
+        };
+        let say = |o: &ffb::Options, lock: u16, settable| rotation_summary(o, Some(("Fiesta", Some(lock))), settable);
+        // Each car's own up to 540, on a wheel set to 900 in its software.
+        let own = options(Some(540), true, Some(900));
+        assert_eq!(
+            say(&own, 450, false),
+            "Fiesta: car lock 450°. Full lock at 450°, true to the car. Soft lock at 225° each way."
+        );
+        assert_eq!(
+            say(&own, 720, false),
+            "Fiesta: car lock 720°. Full lock at 540°, steering 1.33× quicker than the real car. Soft lock at 270° \
+             each way."
+        );
+        // The same 540 for every car.
+        let same = options(Some(540), false, Some(900));
+        assert_eq!(
+            say(&same, 450, false),
+            "Fiesta: car lock 450°. Full lock at 540°, steering 0.83× slower than the real car. Soft lock at 270° \
+             each way."
+        );
+        // A car of 1050 on a 900 wheel: the wheel's end.
+        assert_eq!(
+            say(&options(Some(1080), true, Some(900)), 1050, false),
+            "Fiesta: car lock 1050°. Full lock at 900°, steering 1.17× quicker than the real car. Full lock at your \
+             wheel's end."
+        );
+        // The wheel stops itself: on a driver that takes the rotation, else nothing to go on.
+        let set = options(Some(540), true, None);
+        assert_eq!(
+            say(&set, 450, true),
+            "Fiesta: car lock 450°. Full lock at 450°, true to the car. The wheel stops there (as far as it turns)."
+        );
+        assert_eq!(say(&set, 450, false), "Full lock at your wheel's own end: pick Soft lock to get 450°.");
+        assert_eq!(
+            say(&options(None, false, Some(900)), 450, true),
+            "Full lock at your wheel's own end, whatever it is set to."
+        );
+    }
     use rbr_render::bindings::Device;
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };

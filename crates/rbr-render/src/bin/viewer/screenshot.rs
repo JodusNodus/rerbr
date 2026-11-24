@@ -187,6 +187,9 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
                 if let Some(lamps) = scene.live.as_ref().and_then(|live| live.lamps) {
                     playback.set_lamps(lamps);
                 }
+                if let Some(needles) = &scene.needles {
+                    needles.turn(playback, &dial_values(playback, scene.live.as_ref()));
+                }
                 playback.apply(&mut renderer);
             }
         }

@@ -1165,6 +1165,13 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     let baked = select(textureSample(shadow_texture, texture_sampler, v.uv2).r, 1.0, frame.enhance.x != 0.0);
     colour = colour * baked;
     var n = normalize(v.normal) * select(-1.0, 1.0, front);
+    // A converted car's normal map (`stage::Surface::normal`, ours) bends the normal the light and the reflections take; its
+    // diffuse's alpha, where the draw is not blended, is then the specular strength (`gloss`).
+    var gloss = 1.0;
+    if (bump_draw()) {
+        n = bumped(v) * select(-1.0, 1.0, front);
+        gloss = select(first.a, 1.0, mode.alpha_test != 0u);
+    }
     // The car's shadow takes only the sun's term (and a crack's glint): faces turned from the sun skip it.
     var shadowed = 0.0;
     if (lit_class() == 4u || dot(n, -frame.sun.xyz) > 0.0) {
@@ -1279,7 +1286,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         }
         shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside);
     } else {
-        shaded = lit(colour, n, view, sunlit, around.rgb, v.world);
+        shaded = lit(colour, n, view, sunlit, around.rgb, v.world, gloss);
     }
     // The Fresnel weight of the sky reflection: Schlick with F0 = 0.125 (`c91`), clamped to
     // [FresnelMin, FresnelMax] (`c92`), times Kf. Glass adds half of it to the alpha (`CarGlass`: `t0.a + 0.5 * F * Kf`);
@@ -1319,7 +1326,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (cabin_face) {
             let paint = select(0.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), mode.fresnel.z != 0.0);
             let open = shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
-            shine = mix(cabin_sheen(v, n, view), open, paint);
+            shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
         }
         colour = shaded + shine;
         // With the day's light the clear coat (`COAT_ROUGHNESS`).
@@ -1964,7 +1971,7 @@ const LIGHT_SCALE: f32 = 0.5;
 // so it reads as a clear coat rather than chrome.
 const PAINT_GLOSS: vec2<f32> = vec2<f32>(0.75, 1.0);
 
-fn lit(colour: vec3<f32>, n: vec3<f32>, view: vec3<f32>, sunlit: f32, ambient: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+fn lit(colour: vec3<f32>, n: vec3<f32>, view: vec3<f32>, sunlit: f32, ambient: vec3<f32>, world: vec3<f32>, gloss: f32) -> vec3<f32> {
     let to_sun = -frame.sun.xyz;
     let ndl = max(dot(n, to_sun), 0.0) * sunlit;
     if (day_lit()) {
@@ -1978,6 +1985,7 @@ fn lit(colour: vec3<f32>, n: vec3<f32>, view: vec3<f32>, sunlit: f32, ambient: v
             let grey = dot(albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
             albedo = max(mix(vec3<f32>(grey), albedo, PAINT_PIGMENT.x), vec3<f32>(0.0)) * PAINT_PIGMENT.y;
         }
+        highlight = highlight * gloss;
         var linear = albedo * e + highlight * frame.day_sun.rgb * ndl;
         // The stage's lamps light the car and the characters too (`street_sum`, in lux as the stage takes them).
         if (street_on()) {
@@ -1988,7 +1996,7 @@ fn lit(colour: vec3<f32>, n: vec3<f32>, view: vec3<f32>, sunlit: f32, ambient: v
     let h = normalize(to_sun + view);
     let nh = max(dot(n, h), 1e-3);
     let m2 = max(mode.light.w * mode.light.w, 1e-3);
-    let highlight = mode.light.z * exp((1.0 - 1.0 / (nh * nh)) / m2) * step(0.0, ndl) * min(ndl * 4.0, 1.0);
+    let highlight = gloss * mode.light.z * exp((1.0 - 1.0 / (nh * nh)) / m2) * step(0.0, ndl) * min(ndl * 4.0, 1.0);
     var shaded = LIGHT_SCALE * (colour * light(n, sunlit, ambient, world) + 4.0 * highlight * frame.diffuse.rgb);
     if (street_on()) {
         shaded += LIGHT_SCALE * colour * NIGHT_ALBEDO * lamp_knee(street_sum(world, n, false));

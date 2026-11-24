@@ -1,6 +1,6 @@
 //! A face's look: its shader class's lighting constants, dirt and scrape textures, render state, pass and draw list.
 
-use crate::stage::{Address, DrawState, Shade, TextureRef};
+use crate::stage::{Address, DrawState, Light, NormalMap, Shade, Surface, TextureRef};
 use rbr_formats::ini::Section;
 
 /// The lighting constants of `class` in the car's clear-weather shader settings (the overcast file is not used), or
@@ -50,10 +50,12 @@ pub(super) fn scrape_texture(shader: &str) -> Option<&'static str> {
 
 /// The render state of a car face: lit by `shade`, depth tested, and the state `pass` gives. A `scrape` texture is
 /// the second texture, blended in by its alpha and the vertex's scrape amount (`CarPaint1.pso`: `lrp` by
-/// `sat(v0.w * t3.a)` towards `t3 * v0`).
+/// `sat(v0.w * t3.a)` towards `t3 * v0`). A `normal` map (ours, a converted car's) bends the normal the light and the
+/// reflection take, as the stages' bump does, and makes the diffuse's alpha the specular strength.
 pub(super) fn draw_state(
     texture: Option<TextureRef>,
     scrape: Option<TextureRef>,
+    normal: Option<TextureRef>,
     pass: Pass,
     shade: Option<Shade>,
 ) -> DrawState {
@@ -74,7 +76,13 @@ pub(super) fn draw_state(
         depth_write: matches!(pass, Pass::Opaque | Pass::Plastic | Pass::TwoSided),
         shade,
         specular: None,
-        surface: None,
+        surface: normal.map(|texture| Surface {
+            normal: Some(NormalMap { texture, uv1: false, doubled: false, scale: [1.0; 2] }),
+            highlight: None,
+            sheen: None,
+            light: Light::NONE,
+            layers: None,
+        }),
     }
 }
 
@@ -140,11 +148,12 @@ pub(super) fn list_for(shader: &str, opacity: bool) -> List {
 /// shader the parts keep the model's order.
 pub(super) type Order = (List, usize);
 
-/// The diffuse and scrape textures, the pass and the draw order of one face.
+/// The diffuse, scrape and normal textures, the pass and the draw order of one face.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FaceStyle {
     pub(super) texture: Option<TextureRef>,
     pub(super) scrape: Option<TextureRef>,
+    pub(super) normal: Option<TextureRef>,
     pub(super) shade: Option<Shade>,
     pub(super) pass: Pass,
     pub(super) order: Order,

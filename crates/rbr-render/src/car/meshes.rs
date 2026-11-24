@@ -110,7 +110,7 @@ pub(super) fn build_meshes(mesh: &sgc::Mesh, matrix: Mat4, faces: &[FaceStyle]) 
         if indices.len() > first {
             draws.push(Draw {
                 indices: first..indices.len(),
-                state: draw_state(style.texture, style.scrape, style.pass, style.shade),
+                state: draw_state(style.texture, style.scrape, style.normal, style.pass, style.shade),
                 lod: Lod::Always,
             });
         }

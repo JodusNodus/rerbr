@@ -87,12 +87,6 @@ Subaru Impreza GC8 555 GrpA, Odry (RSF 462), chase view, 16:30
 
 ![golden-odry-gc8-chase](golden-odry-gc8-chase.jpg)
 
-### golden-falstone-yaris-flyby
-
-Toyota GR Yaris Rally2, Falstone II (RSF 103), flyby view, 17:20
-
-![golden-falstone-yaris-flyby](golden-falstone-yaris-flyby.jpg)
-
 ### golden-pengonpohja-quattro-flyby
 
 Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, golden
@@ -136,6 +130,12 @@ Subaru Impreza GC8 555 GrpA, Luceram Col Saint Roch (RSF 417), cockpit view, 10:
 Subaru Impreza GC8 555 GrpA, Luceram Col Saint Roch (RSF 417), flyby view, 10:30
 
 ![rain-luceram-gc8-flyby](rain-luceram-gc8-flyby.jpg)
+
+### rain-falstone-yaris-flyby
+
+Toyota GR Yaris Rally2, Falstone II (RSF 103), flyby view, 07:00
+
+![rain-falstone-yaris-flyby](rain-falstone-yaris-flyby.jpg)
 
 ## Fog
 

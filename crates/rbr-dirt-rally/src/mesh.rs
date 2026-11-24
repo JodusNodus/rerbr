@@ -1,9 +1,10 @@
 //! Drawn meshes of a PSSG: terrain tiles in world space and prop types in their own space.
 //!
 //! A `RENDERSTREAMINSTANCE` (`indices="#source" shader="#material"`) names a `RENDERDATASOURCE`: its
-//! `RENDERINDEXSOURCE` (big-endian u16 triangle list) and `RENDERSTREAM`s (`dataBlock="#block" subStream=k`), the k-th
-//! `DATABLOCKSTREAM` (render type, data type, offset, stride) of an interleaved `DATABLOCK`. Everything is in DiRT
-//! Rally's frame (right handed, y up, metres, counter-clockwise front faces); `frame` maps it to the stage's.
+//! `RENDERINDEXSOURCE` (big-endian u16 or u32 triangle list) and `RENDERSTREAM`s (`dataBlock="#block"
+//! subStream=k`), the k-th `DATABLOCKSTREAM` (render type, data type, offset, stride) of an interleaved `DATABLOCK`.
+//! Everything is in DiRT Rally's frame (right handed, y up, metres, counter-clockwise front faces); `frame` maps it to
+//! the stage's.
 use crate::material::{self, Material};
 use crate::pssg::{Node, Pssg};
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,7 +33,9 @@ pub struct Mesh {
 
 pub(crate) type Mat = [[f32; 4]; 4];
 
-fn mul(a: &Mat, b: &Mat) -> Mat {
+pub(crate) const IDENTITY: Mat = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
+
+pub(crate) fn mul(a: &Mat, b: &Mat) -> Mat {
     let mut m = [[0.; 4]; 4];
     for (i, row) in m.iter_mut().enumerate() {
         for (j, v) in row.iter_mut().enumerate() {
@@ -90,7 +93,7 @@ fn decode_stream(block: Node, k: usize) -> Result<Stream, String> {
         "float2" => 8,
         "float3" => 12,
         "float4" => 16,
-        "half2" | "uint_color_argb" | "uchar4" => 4,
+        "float" | "half2" | "uint_color_argb" | "uchar4" => 4,
         "half4" => 8,
         other => return Err(format!("{render_type}: unknown data type {other}")),
     };
@@ -123,23 +126,48 @@ fn decode_stream(block: Node, k: usize) -> Result<Stream, String> {
     Ok(stream)
 }
 
-/// The triangle indices and streams of one `RENDERDATASOURCE`.
+/// The triangle indices and streams of one `RENDERDATASOURCE`. The indices are big-endian `ushort` or `uint` (a car's
+/// largest sources: the i20's body, 24484 vertices).
 fn read_source(source: Node) -> Result<(Vec<u32>, Vec<Stream>), String> {
     let index = source.child("RENDERINDEXSOURCE").ok_or("RENDERDATASOURCE without indices")?;
-    if index.str("format") != Some("ushort") || source.str("primitive") != Some("triangles") {
-        return Err("only ushort triangle lists are read".into());
+    if source.str("primitive").or(index.str("primitive")) != Some("triangles") {
+        return Err("only triangle lists are read".into());
     }
-    let indices = index
-        .child_payload("INDEXSOURCEDATA")
-        .chunks_exact(2)
-        .map(|c| u32::from(u16::from_be_bytes([c[0], c[1]])))
-        .collect();
+    let data = index.child_payload("INDEXSOURCEDATA");
+    let indices = match index.str("format") {
+        Some("ushort") => data.chunks_exact(2).map(|c| u32::from(u16::from_be_bytes([c[0], c[1]]))).collect(),
+        Some("uint") => data.chunks_exact(4).map(|c| u32::from_be_bytes([c[0], c[1], c[2], c[3]])).collect(),
+        other => return Err(format!("indices of format {other:?}")),
+    };
     let mut streams = Vec::new();
     for stream in source.children().filter(|c| c.name() == "RENDERSTREAM") {
         let block = stream.reference("dataBlock").ok_or("RENDERSTREAM without its DATABLOCK")?;
         streams.push(decode_stream(block, stream.u32("subStream").unwrap_or(0) as usize)?);
     }
     Ok((indices, streams))
+}
+
+/// A `RENDERDATASOURCE` read whole, for a reader that slices it itself (the cars': one source serves many parts, each
+/// instance naming its range of the vertices and indices).
+pub(crate) struct Geometry {
+    pub indices: Vec<u32>,
+    pub positions: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
+    /// The first `ST` stream's `xy`; empty without one.
+    pub uv: Vec<[f32; 2]>,
+}
+
+/// The indices and the `Vertex`, `Normal` and first `ST` streams of `source`.
+pub(crate) fn geometry(source: Node) -> Result<Geometry, String> {
+    let (indices, streams) = read_source(source)?;
+    let of = |t: &str| streams.iter().find(|s| s.render_type == t);
+    let vec3 = |s: Option<&Stream>| s.map_or(Vec::new(), |s| s.values.iter().map(|v| [v[0], v[1], v[2]]).collect());
+    Ok(Geometry {
+        indices,
+        positions: vec3(of("Vertex")),
+        normals: vec3(of("Normal")),
+        uv: of("ST").map_or(Vec::new(), |s| s.values.iter().map(xy).collect()),
+    })
 }
 
 fn xy(v: &[f32; 4]) -> [f32; 2] {
@@ -209,6 +237,25 @@ fn visit<'a>(
     Ok(())
 }
 
+/// Each scene node's accumulated transform under the file's roots, by id (render nodes and plain ones, such as the
+/// interior's `int_needle_tach_max`).
+pub fn node_worlds(pssg: &Pssg) -> BTreeMap<String, Mat> {
+    fn walk(node: Node<'_>, m: &Mat, out: &mut BTreeMap<String, Mat>) {
+        for child in node.children().filter(|c| SCENE.contains(&c.name())) {
+            let world = mul(&child.transform(), m);
+            if let Some(id) = child.id() {
+                out.entry(id.to_owned()).or_insert(world);
+            }
+            walk(child, &world, out);
+        }
+    }
+    let mut out = BTreeMap::new();
+    for root in pssg.find("ROOTNODE") {
+        walk(root, &root.transform(), &mut out);
+    }
+    out
+}
+
 /// The tile tier of a node id: `SHADOWCASTING_9_9` is `SHADOWCASTING`.
 fn tier(id: &str) -> &str {
     id.split('_').next().unwrap_or(id)
@@ -235,6 +282,20 @@ pub fn terrain(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
     }
     if meshes.is_empty() {
         return Err("no terrain tiles (HIGH, SHADOWCASTING, DECAL, NONLOD) in this file".into());
+    }
+    Ok(meshes)
+}
+
+/// A car's interior scene (`int_<car>.pssg`): the meshes of every node, each at its place in the scene's rest pose (the
+/// car's frame), named by the node.
+pub fn scene(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
+    let materials = material::read(pssg);
+    let mut meshes = Vec::new();
+    for root in pssg.find("ROOTNODE") {
+        visit(root, &root.transform(), &mut |instance, parent, m| {
+            meshes.extend(build(instance, parent.id().unwrap_or(""), m, &materials)?);
+            Ok(())
+        })?;
     }
     Ok(meshes)
 }
@@ -350,8 +411,6 @@ fn index_nodes(node: Node, at: usize, index: &mut BTreeMap<String, usize>) {
 mod tests {
     use super::*;
     use crate::pssg::tests::sample_areas;
-
-    const IDENTITY: Mat = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
 
     #[test]
     fn halves_decode() {
