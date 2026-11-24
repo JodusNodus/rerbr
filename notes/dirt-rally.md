@@ -438,6 +438,9 @@ without `--livery`; the class is required: it is in the game's database, not in 
   `rsf::night_options` overlaid in order on its `.ini` and `_settings.ini`, the last value of a key kept; the `point_*` sections and the whole
   settings written), as the gvrc Mini WRC's lamp points are only in its option folder and the model had no beams at night. The gvrc Escort's
   `light_ramp_on` sets `[e_lightglass_rf]` twice and disagrees with itself, so the renderer's checked merge is not used.
+  The lit parts draw the lens as `lens_lit` with the livery's `<car>_lights_on` (the lit bulbs and reflectors on the lights atlas's layout,
+  black elsewhere) as its glow map, and `rbr-render`'s `lamp_shown` takes a lit part's glow map in place of its texture for where and in
+  what colour it shines (`lit_styles`): the combined lamp's lit tail shines on its red segment, not over the amber one (cme, ers at 22:30).
 - Look (2026-11-24; the launcher's default is Ultra: `--enhance` lighting, cabin, particles and the rest, which is what these checks use; the renders
   without them hide the first two):
   - The cockpit's textures are `CarTextureNoDirt` like the template's `e_internal` (as `CarPlastic`, Ka and Kd 2, it glared teal), at the

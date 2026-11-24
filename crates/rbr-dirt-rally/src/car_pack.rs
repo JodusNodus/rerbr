@@ -202,6 +202,20 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
     }
 }
 
+/// The exterior's styles for the lit lamps' parts: the lens with the livery's lit lamps' map (`<car>_lights_on`, on the
+/// lights atlas's layout: the bulbs' and reflectors' light, black elsewhere) as its emissive map, which says where the
+/// lit lamp shines (`rbr-render`'s `lamp_shown`), so a combined lamp's lit tail lights its red segment, not the amber
+/// one beside it. Without the map (`lit_map` false) the lens shines where its texture is bright, as before.
+fn lit_styles(car: &str, exterior: &BTreeMap<String, Style>, lit_map: bool) -> BTreeMap<String, Style> {
+    let lit = |style: &Style| Style {
+        key: format!("{}_lit", style.key),
+        maps: Maps { emissive: Some(Source::Livery(format!("{car}_lights_on.tga"))), ..style.maps.clone() },
+        ..style.clone()
+    };
+    let lens = |style: &Style| lit_map && style.key == "lens";
+    exterior.iter().map(|(id, style)| (id.clone(), if lens(style) { lit(style) } else { style.clone() })).collect()
+}
+
 /// The occlusion the interior's own maps put in its colours. The game's `OcclusionMapScale` is 1 there, on the ambient
 /// light alone (which the dash takes from the sky it sees, `rbr-render`'s cabin light), so the bake takes a part of it.
 const INTERIOR_OCCLUSION: f32 = 0.5;
@@ -554,6 +568,8 @@ struct Model<'a> {
     parts: &'a [Part],
     frame: Frame,
     exterior: &'a BTreeMap<String, Style>,
+    /// The exterior's styles for the lit lamps' parts ([`lit_styles`]).
+    lit: &'a BTreeMap<String, Style>,
     interior: &'a BTreeMap<String, Style>,
     cockpit: Option<Cockpit<'a>>,
 }
@@ -603,8 +619,9 @@ impl Model<'_> {
                 let Some(lens) = self.part(&format!("{dirt}_{side}")) else { continue };
                 for suffix in states {
                     let name = format!("{rbr}{rbr_side}{suffix}");
+                    let styles = if suffix.is_empty() { self.exterior } else { self.lit };
                     if !out.iter().any(|p| p.name == name) {
-                        out.push(Piece::upright(name, faces(all(lens), &self.frame, self.exterior, |_| true)));
+                        out.push(Piece::upright(name, faces(all(lens), &self.frame, styles, |_| true)));
                     }
                 }
             }
@@ -1148,10 +1165,13 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     let inside =
         interior.as_ref().map_or_else(BTreeMap::new, |p| interior_styles(car, &material::read(p), gauges.is_some()));
     let needles = interior.as_ref().map(|p| needles::read(p, &config)).unwrap_or_default();
+    let lit_map = library.find(&Source::Livery(format!("{car}_lights_on.tga"))).is_ok();
+    let lit = lit_styles(car, &exterior, lit_map);
     let model = Model {
         parts: &parts,
         frame: Frame::fitted(&parts, &template.hubs)?,
         exterior: &exterior,
+        lit: &lit,
         interior: &inside,
         cockpit: scene.as_deref().map(|scene| Cockpit {
             scene,
@@ -1169,6 +1189,7 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     let used: BTreeSet<&str> = pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.material.as_str())).collect();
     let styles: BTreeMap<&str, &Style> = exterior
         .values()
+        .chain(lit.values())
         .chain(inside.values())
         .filter(|s| used.contains(s.key.as_str()))
         .map(|s| (s.key.as_str(), s))
@@ -1449,10 +1470,12 @@ mod tests {
         let lens = |name: &str| part(name, vec![instance("Lights Glass", vec![[0.0; 3]; 3], vec![[0, 1, 2]])]);
         let parts = [lens("light_combi_glass_bl"), lens("light_brake_glass_bl")];
         let exterior = BTreeMap::from([("Lights Glass".to_owned(), exterior("Lights Glass").unwrap())]);
+        let lit = lit_styles("cme", &exterior, true);
         let model = Model {
             parts: &parts,
             frame: Frame::LOCAL,
             exterior: &exterior,
+            lit: &lit,
             interior: &BTreeMap::new(),
             cockpit: None,
         };
@@ -1611,5 +1634,20 @@ mod tests {
         assert_eq!(read("DiRT_mcr.ini"), "[point_tail]\r\nPos = 0 0 0\r\n\r\n[point_light_lf]\r\nPos = 1 2 3\r\n");
         assert_eq!(read("DiRT_mcr_settings.ini"), "[light_1]\r\nRange = 80\r\n\r\n[light_2]\r\nRange = 40\r\n");
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_lit_lens_shines_by_the_liverys_lit_lamps_map() {
+        let exterior = BTreeMap::from([
+            ("Lights Glass".to_owned(), exterior("Lights Glass").unwrap()),
+            ("Matt".to_owned(), exterior("Matt").unwrap()),
+        ]);
+        let lit = lit_styles("cme", &exterior, true);
+        let lens = &lit["Lights Glass"];
+        assert_eq!(lens.key, "lens_lit");
+        assert_eq!(lens.maps.emissive, Some(Source::Livery("cme_lights_on.tga".to_owned())));
+        assert_eq!((lens.texture.clone(), lens.opacity), (exterior["Lights Glass"].texture.clone(), true));
+        assert_eq!(lit["Matt"], exterior["Matt"]);
+        assert_eq!(lit_styles("cme", &exterior, false), exterior);
     }
 }

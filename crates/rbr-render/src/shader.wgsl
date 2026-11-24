@@ -1381,11 +1381,15 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         alpha = blended;
     }
     colour = colour + glint;
-    // A lit lamp's part (`stage::Shade::glow`) shines at its lamp's luminance (ours, `lamp_shown`).
+    // A lit lamp's part (`stage::Shade::glow`) shines at its lamp's luminance (ours, `lamp_shown`): where its texture
+    // is bright, or with an emissive mask (`mode.glow.x`: a DiRT Rally car's `_lights_on`) where the mask's colour is,
+    // which takes the place of the backlight.
     if (lit_class() == 3u) {
-        colour = max(colour, lamp_shown(first.rgb, v.world, view));
+        let emitted = textureSampleLevel(glow_texture, texture_sampler, v.uv0, 0.0).rgb;
+        colour = max(colour, lamp_shown(select(first.rgb, emitted, mode.glow.x != 0.0), v.world, view));
+    } else {
+        colour = backlit(colour, first.rgb, v.uv0, night, dot(n, view));
     }
-    colour = backlit(colour, first.rgb, v.uv0, night, dot(n, view));
     // The scrape (`CarPaint`, `CarPaintInt`): the scrape texel times the diffuse light (`t3 * v0`, no highlight or
     // reflection) replaces the paint by `sat(v0.w * t3.a)`, `v0.w` being the vertex's damage weight / 100.
     if (second_draw()) {
