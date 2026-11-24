@@ -32,7 +32,8 @@ pub struct Options {
     pub class: String,
     /// The livery number (`livery_00`); `None` for the car's first.
     pub livery: Option<u32>,
-    /// The template car's folder (`.../Cars/Escort_mk_2`).
+    /// The template car's model (`.../Cars/Escort_mk_2/Escort_mk_2.sgc`); its folder holds its `.ini` and settings
+    /// under the same name.
     pub template: PathBuf,
     /// The pack's model folder name (`Cars/<name>/<name>.sgc`).
     pub name: String,
@@ -1043,7 +1044,10 @@ impl Library {
     }
 }
 
-/// The template car's model and ini, and its tarmac wheels' hubs in [`SIDES`] order.
+/// A template's wheel nodes closer than this, m, are at one point: a class the model left stacked.
+const STACKED: f32 = 0.2;
+
+/// The template car's model and ini, and its wheels' hubs at rest.
 struct Template {
     folder: PathBuf,
     name: String,
@@ -1053,8 +1057,9 @@ struct Template {
 }
 
 impl Template {
-    fn read(folder: &Path) -> Result<Template, String> {
-        let name = folder.file_name().and_then(|n| n.to_str()).ok_or("the template's folder has no name")?.to_owned();
+    fn read(model: &Path) -> Result<Template, String> {
+        let name = model.file_stem().and_then(|n| n.to_str()).ok_or("the template's model has no name")?.to_owned();
+        let folder = model.parent().ok_or("the template's model has no folder")?;
         let read = |suffix: &str| {
             let path = folder.join(format!("{name}{suffix}"));
             fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
@@ -1062,16 +1067,30 @@ impl Template {
         let sgc = read(".sgc")?;
         let model = sgc::parse(&sgc).map_err(|e| format!("template model: {e}"))?;
         let worlds = sgc::chained_worlds(&model);
-        let hub = |side: &str| {
-            let name = format!("e_wheel_tarmac_{side}");
-            let world = model.iter().find_map(|e| match e {
-                sgc::Element::Mesh(m) if m.node.name == name => Some(worlds[&m.node.id]),
+        let hub = |class: &str, side: &str| {
+            let name = format!("e_wheel_{class}_{side}");
+            model.iter().find_map(|e| match e {
+                sgc::Element::Mesh(m) if m.node.name == name => {
+                    worlds.get(&m.node.id).map(|w| [w[0][3], w[1][3], w[2][3]])
+                }
                 _ => None,
-            });
-            world.map(|w| [w[0][3], w[1][3], w[2][3]]).ok_or(format!("the template has no {name}"))
+            })
         };
-        let [lf, rf, lb, rb] = SIDES.map(|(_, side)| hub(side));
-        let hubs = [lf?, rf?, lb?, rb?];
+        // Where the renderer draws the wheels at rest (`rbr-render`'s `car::wheels`): the first class whose four are
+        // apart; RSF's Polo WRC 2016, i20s and others stack the tarmac ones at one point.
+        let apart = |hubs: &[[f32; 3]; 4]| {
+            (0..4).all(|i| {
+                (i + 1..4).all(|j| (0..3).map(|a| (hubs[i][a] - hubs[j][a]).powi(2)).sum::<f32>() > STACKED.powi(2))
+            })
+        };
+        let hubs = ["tarmac", "gravel", "snow"]
+            .into_iter()
+            .filter_map(|class| {
+                let [lf, rf, lb, rb] = SIDES.map(|(_, side)| hub(class, side));
+                Some([lf?, rf?, lb?, rb?])
+            })
+            .find(apart)
+            .ok_or("the template has no four wheels apart (e_wheel_tarmac_lf ...)")?;
         let ini = String::from_utf8_lossy(&read(".ini")?).into_owned();
         Ok(Template { folder: folder.to_owned(), name, sgc, ini, hubs })
     }

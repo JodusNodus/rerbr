@@ -10,6 +10,7 @@
 //! - `jpak`, `collision`, `surface`: the driven surface and its RBR ids;
 //! - `frame`: DiRT Rally's axes to the stage's;
 //! - `stage`, `import`, `cli`: the conversion and its interfaces.
+pub mod added_car;
 pub mod binxml;
 pub mod car;
 pub mod car_maps;

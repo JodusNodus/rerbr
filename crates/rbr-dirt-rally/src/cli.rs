@@ -1,19 +1,22 @@
 //! Command dispatch of the `rbr-dirt-rally` executable.
 use crate::install::Install;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-const HELP: &str = "rbr-dirt-rally: convert stages of a locally installed DiRT Rally to BTB stages for ReRBR
+pub(crate) const HELP: &str = "rbr-dirt-rally: convert stages of a locally installed DiRT Rally to BTB stages for ReRBR
 
 Usage:
   rbr-dirt-rally list [INSTALL]
+  rbr-dirt-rally add-car CAR [--livery N] [--cars DIR] [--install INSTALL]
   rbr-dirt-rally car CAR --class CLASS --template CARFOLDER --out DIR [--livery N] [--name NAME] [--install INSTALL]
   rbr-dirt-rally import LOCATION/AREA/route_N [--install INSTALL] [--name NAME] [--out DIR] [--replace]
          [--draw-corridor M] [--collision-corridor M] [--lod M]
 
 INSTALL is the game folder (or its data folder); without it, the Steam libraries are searched.
-Source game files are read in place. CAR is the folder under cars/models (cme), CLASS its generic textures under
-cars/generics (historic, rally, groupb, rallyx, trailblazer), CARFOLDER a car of the player's of the same model; the
-livery is the car's first without --livery.
+Source game files are read in place. CAR is the folder under cars/models (cme); the livery is its first without
+--livery. add-car adds it to the launcher's cars (DIR, the player's cars/ without --cars) as a car of its own, with the
+physics of the gvrc.de car of its model, added before (cme, 131, str, m3r, mta, 20b, ers, 555, 306, imp, for, c4r,
+mer, sti, mcr, ffr, pol). car writes its model alone: CLASS its generic textures under cars/generics (historic, rally,
+groupb, rallyx, trailblazer), CARFOLDER a car of the player's of the same model.
 
 Developer: xml FILE, pssg-tree FILE [DEPTH], car-textures PSSG, car-texture PSSG NAME OUT.dds, car-info PSSG [-v].";
 
@@ -49,6 +52,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
         }
         Some("import") => import(args),
         Some("car") => car(args),
+        Some("add-car") => add_car(args),
         Some(other) => developer(other, args),
     }
 }
@@ -140,16 +144,41 @@ fn car(mut args: impl Iterator<Item = String>) -> Result<(), String> {
             _ => return Err(format!("unknown option {flag}")),
         }
     }
+    // A car folder names its model after itself.
+    let template = PathBuf::from(template.ok_or("car needs --template, the folder of a car of the same model")?);
+    let template = match template.file_name().filter(|_| template.is_dir()) {
+        Some(folder) => template.join(format!("{}.sgc", folder.to_string_lossy())),
+        None => template,
+    };
     let options = crate::car_pack::Options {
         name: name.unwrap_or_else(|| format!("DiRT_{car}")),
         car,
         class: class.ok_or("car needs --class, its generic textures under cars/generics (historic, rally, ...)")?,
         livery,
-        template: template.ok_or("car needs --template, the folder of a car of the same model")?.into(),
+        template,
     };
     let out = out.ok_or("car needs --out")?;
     let model = crate::car_pack::convert(&install(path.as_deref())?.data, &options, Path::new(&out))?;
     println!("{}", model.display());
+    Ok(())
+}
+
+fn add_car(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    use crate::added_car;
+    let car = args.next().filter(|a| !a.starts_with("--")).ok_or("add-car needs the car's folder (cme)")?;
+    let (mut path, mut cars, mut livery) = (None, None, None);
+    while let Some(flag) = args.next() {
+        let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
+        match flag.as_str() {
+            "--install" => path = Some(value),
+            "--cars" => cars = Some(PathBuf::from(value)),
+            "--livery" => livery = Some(value.parse().map_err(|e| format!("{flag}: {e}"))?),
+            _ => return Err(format!("unknown option {flag}")),
+        }
+    }
+    let cars = cars.or_else(added_car::cars_folder).ok_or("no player folder; pass --cars")?;
+    let name = added_car::add(&install(path.as_deref())?.data, &cars, &car, livery)?;
+    println!("added {name} to {}", cars.display());
     Ok(())
 }
 

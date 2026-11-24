@@ -279,8 +279,25 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 
 First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP physics on a retail stage, on the live path
 (`viewer ... --car-pack <physics pack> --car-model <out>/Cars/<name>/<name>.sgc --live rbr-standalone --live ...`).
-`rbr-dirt-rally car CAR --class CLASS --template <car folder> --out DIR [--livery N] [--name NAME]` (the livery is the car's first
+`rbr-dirt-rally car CAR --class CLASS --template <car folder or .sgc> --out DIR [--livery N] [--name NAME]` (the livery is the car's first
 without `--livery`; the class is required: it is in the game's database, not in the car's files).
+
+- Added cars (`added_car.rs`, 2026-11-24): `rbr-dirt-rally add-car CAR [--livery N] [--cars DIR]` adds a DiRT car to the launcher's
+  added cars (`<player folder>/cars`, `rbr-launcher`'s `car_packs`) as a car of its own, on the NGP physics of the gvrc.de car of its model,
+  which must be added first: a copy of that car's pack as `rsfdata/cars/<pack> (DiRT Rally)/`, the model as `Cars/DiRT_<car>/` (the gvrc model as
+  the template), and a `cars.ini` section copying its group, drive, year, revision and bank, with a new id (kept on a re-add). The launcher lists and
+  removes it as any added car. DiRT's own physics is not usable: `*.ctf` and `game.bin` are encrypted (the `.ctf` header names the car in
+  plain text, `Ford Escort RS1800 MK2 - [Tarmac] RWD - v2`); the readable files are AI tables, audio and damage. `MATCHES` pairs 17 of the
+  46 cars with a gvrc car of the same body (cme, 131, str, m3r, mta, 20b, ers, 555, 306, imp, for, c4r, mer, sti, mcr, ffr, pol; some a year or
+  evolution apart: 20b on the 205 Evo 1, imp on the S9, pol and ffr a season later); the others have no gvrc car of their body. The classes in the
+  table are by era, not read. All 17 add, list as startable (`rerbr --list` with `RERBR_HOME` on a copy) and drive; side shots at Gabiria show the
+  wheels in their arches and the crew in the seats. Fit, DiRT's wheelbase against the template's rest wheels: within 30 mm for 11 cars,
+  +44 to +109 mm for ers, 131, ffr, mcr and sti, -144 mm for cme (the gvrc Escort is drawn large: tracks 1.55 against DiRT's 1.43); the body is
+  centred between the axles, so half of it shows at each arch. Tracks differ by up to 11 cm (131, imp, mer front, for rear). The Mini (`mcr`) shows two grey triangles of its interior door frames
+  (`int_door_fl/fr` `Matt`, up to the roof) through the rear of the front side windows from outside.
+- Template wheels: the renderer's rest places (`rbr-render` `car::wheels`), the first class (tarmac, gravel, snow) whose four wheel nodes are
+  more than 0.2 m apart. RSF's Polo WRC 2016, i20s, DS3 WRC and others stack their tarmac wheels at one point: with the tarmac nodes, the Polo's
+  body sat 1.25 m behind the physics and the crew's heads showed on the bonnet.
 
 - All cars (survey of the 46 under `cars/models`, 2026-11-24): the exterior materials are named alike on every car (`Car Body Paint`, `Matt`,
   `Shiny Metal`, `Cabin`, `Window Glass`, `Lights Glass/Pod/Satin`, `Discs`, `Suspension`, the class wheels and tyres; some cars add `Grills`,
@@ -294,8 +311,9 @@ without `--livery`; the class is required: it is in the game's database, not in 
 
 - Files per car under `cars/models/<car>/`: `<car>_highlod.pssg` and `_lowlod.pssg` (gzip PSSG, the stages' container),
   `livery_NN/textures_high/<car>_tex[_tm|_gr|_sn|_wt]_high_NN.pssg`, class textures in `cars/generics/<class>/car_gen_*_high.pssg`,
-  the cockpit in `cars/interiors/models/<car>/` (`int_<car>.pssg`, `int_<car>.xml`). Physics (`*.ctf`), engine bundles (`.bdl`) and banks are not read. Names are not on disk: the
-  folder code and the engine bundle in `audio_car_setup.xml` (`4cyl_na_dat_escort_mkii_dd`) say which car it is.
+  the cockpit in `cars/interiors/models/<car>/` (`int_<car>.pssg`, `int_<car>.xml`). Physics (`*.ctf`, encrypted), engine bundles (`.bdl`) and banks are not read. The car's name
+  is only in the `.ctf` header (plain text, some with stray leading bytes); the folder code and the engine bundle in `audio_car_setup.xml`
+  (`4cyl_na_dat_escort_mkii_dd`) also say which car it is.
 - Scene: `LOD0_` over one `MATRIXPALETTEJOINTNODE` per part (`x0_door_fl`), each holding `MATRIXPALETTEJOINTRENDERINSTANCE`s: a range of a shared
   `RENDERDATASOURCE` (`streamOffset`, `elementCountFromOffset`; `indexOffset`, `indicesCountFromOffset`; indices count from the range's first
   vertex), the material (`shader="#Car Body Paint"`) and a joint. Vertices are in the part's own space (the part's node `TRANSFORM` places it:
@@ -402,7 +420,7 @@ without `--livery`; the class is required: it is in the game's database, not in 
   `interior.fx` strip (drawn at rest), and a look at each.
 - Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
   for both files, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 80 tests (with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 82 tests (the added car's section and the match table, with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
   `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
