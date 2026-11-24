@@ -223,3 +223,13 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   humps, the peaks disagree between day, day_alt and areas (Greece 02 340 against xml 61; day-alt 270 or 60 by sign). The lightmaps are ambient occlusion, not the sun. `sky_day.pssg` holds no sun disc.
   Open: decode `shadow_map_day.clm`, or a DR shot with known camera and sun.
 - Place: `track.ini` carries `latitude` and `longitude` where the renderer's `countrycode` default is far off (Turini, Baumholder, Pikes Peak, Hell, Holjes, Lydden Hill: `route::place`).
+
+## Hafren and Pikes Peak survey, 2026-11-24
+
+- Pikes Peak route_0 imports (`import` allows area `pikes_peak`; `is_rally` stays for naming): 19.5 km, tarmac, 7.7 M drawn triangles; Hafren route_0 3.1 M. Shots at 0.3, 1, 2, 3, 4, 5, 6, 8 km, everything on.
+  All 5200 (Hafren) and 15295 (Pikes) material texture references resolve to real textures (no placeholders, no missing); the black road signs at Pikes 4 to 8 km are the signs'
+  backs (`Object.fx`, real `pke_rd_sign_*` textures), not a missing texture.
+- Hafren's light towers (`core_event_lights_a_night`, 3 solids: `Object_Emis`, a shader with no diffuse `volumetrics.fx` of 448 triangles): the volumetrics are the light cones, additive in the game and
+  untextured, so they drew as a dark blob wider than the road over the trailer (6 and 8 km). `mesh::types` now leaves `volumetrics*` out with the billboards.
+- `Object_Cov` and `Object_2SidedCov` are cut-outs, not opaque (DXT5 alpha is the wire mesh of `wal_wirefnc_mid_a_1_d` and `pke_fence_02_d`, the branches of `wal_gateway_c_2_d`, the cable): `blended` took only
+  `*blend*` shaders, so fences drew as solid slabs. `blended` now includes `cov.fx`.
