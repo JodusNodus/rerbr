@@ -349,7 +349,7 @@ impl Renderer {
             if self.enhance.lighting {
                 let share = day.sun_share(-self.atmosphere.sun_direction.y);
                 sunlit = crate::post::Sunlit {
-                    stops: crate::post::SUN_EXPOSURE * share,
+                    stops: self.atmosphere.sun_stops.unwrap_or(crate::post::SUN_EXPOSURE) * share,
                     inverse: view_projection.inverse(),
                     clouds: self.shadow_params.get(),
                     to_sun: -self.atmosphere.sun_direction,

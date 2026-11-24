@@ -73,6 +73,8 @@ pub struct Atmosphere {
     pub saturation: Option<f32>,
     pub exposure: Option<f32>,
     pub sun_tint: Option<Vec3>,
+    /// The stops a sunlit day is exposed down by under our sun lighting, else `post::SUN_EXPOSURE` (`[ReRbrAir]` `sun_stops`).
+    pub sun_stops: Option<f32>,
     /// Toward the stage's north, when the stage states it (a converted stage's `[ReRbrAir]`): the clock's sun path
     /// turns from it (`relight::Clock`), else from the bake's sun.
     pub north: Option<Vec3>,
@@ -301,6 +303,7 @@ impl Default for Atmosphere {
             saturation: None,
             exposure: None,
             sun_tint: None,
+            sun_stops: None,
             north: None,
             moon: None,
             solar_hour: None,
@@ -393,6 +396,7 @@ impl Atmosphere {
             saturation: None,
             exposure: None,
             sun_tint: None,
+            sun_stops: None,
             north: None,
             moon: None,
             solar_hour: None,
