@@ -13,6 +13,7 @@ use rbr_recording::input::CELL_BUTTON;
 
 use crate::bindings::{dik, Action, Bindings, Device, ACTIONS};
 use crate::live::Controls;
+use crate::soft_lock::SoftLock;
 use rbr_formats::saves::action_map::Object as Target;
 
 /// The joysticks: each opened one, its state as last read, and whether its last read failed.
@@ -156,15 +157,28 @@ pub struct Input {
     pads: Vec<(Action, usize, usize)>,
     /// The bound devices not open, why.
     pub missing: Vec<String>,
+    /// The soft lock on the steering axis, if any, and the poll's place for it.
+    lock: Option<Lock>,
+    /// How far past full lock the last poll found the wheel, degrees, signed as the steering ([`SoftLock::past`]).
+    pub past_lock: f32,
+}
+
+/// A soft lock on joystick `joystick`'s axis `axis`, `invert` when the steering inverts it.
+#[derive(Clone, Copy)]
+struct Lock {
+    soft: SoftLock,
+    joystick: usize,
+    axis: usize,
+    invert: bool,
 }
 
 impl Input {
-    /// The keyboard and the joysticks the bindings name that are connected.
-    pub fn open(bindings: &Bindings) -> Input {
-        Input::open_in(imp::Context::new(), bindings)
+    /// The keyboard and the joysticks the bindings name that are connected, with `soft` on the steering axis.
+    pub fn open(bindings: &Bindings, soft: Option<SoftLock>) -> Input {
+        Input::open_in(imp::Context::new(), bindings, soft)
     }
 
-    fn open_in(context: imp::Context, bindings: &Bindings) -> Input {
+    fn open_in(context: imp::Context, bindings: &Bindings, soft: Option<SoftLock>) -> Input {
         let (joysticks, missing) = Joysticks::open_in(context, &bindings.devices());
         let mut devices = vec![keyboard()];
         for k in 0..joysticks.len() {
@@ -188,7 +202,12 @@ impl Input {
                 Some((a, d, poll.devices[d].find(p.object)?))
             })
             .collect();
-        Input { poll, joysticks, pads, missing }
+        let lock = soft.zip(bindings.steering_axis()).and_then(|(soft, pad)| {
+            let Target::Axis(axis) = pad.object else { return None };
+            let joystick = (0..joysticks.len()).position(|k| joysticks.device(k) == pad.device)?;
+            Some(Lock { soft, joystick, axis: axis as usize, invert: bindings.invert.steering })
+        });
+        Input { poll, joysticks, pads, missing, lock, past_lock: 0.0 }
     }
 
     /// The joysticks open and not answering, by name.
@@ -213,7 +232,14 @@ impl Input {
         for k in 0..self.joysticks.len() {
             // A lost device keeps its entries: `Poll` skips the update on a failed `GetDeviceState`.
             if !self.joysticks.lost[k] {
-                self.poll.devices[k + 1].update(self.joysticks.state(k), 0.0);
+                match self.lock.filter(|l| l.joystick == k) {
+                    Some(lock) => {
+                        let mut state = self.joysticks.state(k).to_vec();
+                        self.past_lock = soft_lock_axis(&mut state, lock);
+                        self.poll.devices[k + 1].update(&state, 0.0);
+                    }
+                    None => self.poll.devices[k + 1].update(self.joysticks.state(k), 0.0),
+                }
                 // An axis that has reported reads where it is, not the placeholder the game's settling waits out.
                 for axis in 0..self.joysticks.objects(k).0 {
                     if self.joysticks.first(k, axis).is_some() {
@@ -255,7 +281,8 @@ impl Input {
         if self.missing.is_empty() || !self.joysticks.found(&bindings.devices()) {
             return false;
         }
-        *self = Input::open_in(std::mem::take(&mut self.joysticks.context), bindings);
+        let soft = self.lock.map(|l| l.soft);
+        *self = Input::open_in(std::mem::take(&mut self.joysticks.context), bindings, soft);
         true
     }
 
@@ -274,6 +301,22 @@ impl Input {
                 }
             }
         }
+    }
+}
+
+/// The soft lock's axis in a joystick's `state`: its dinput value over the wheel's rotation to the one over the lock's
+/// (clamped, full lock), and how far past full lock it is ([`SoftLock::past`]; the poll's inversion applies to both).
+fn soft_lock_axis(state: &mut [u8], lock: Lock) -> f32 {
+    let at = 4 * lock.axis;
+    let Some(bytes) = state.get_mut(at..at + 4) else { return 0.0 };
+    let steering = lock.soft.steering(axis_value(i32::from_le_bytes((&*bytes).try_into().unwrap())));
+    let raw = ((steering.clamp(-1.0, 1.0) + 1.0) * 0.5 * 65535.0).round() as i32;
+    bytes.copy_from_slice(&raw.to_le_bytes());
+    let past = lock.soft.past(steering);
+    if lock.invert {
+        -past
+    } else {
+        past
     }
 }
 
@@ -688,6 +731,28 @@ mod sdl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_soft_lock_reaches_full_lock_early_and_tells_how_far_past() {
+        let lock = Lock { soft: SoftLock { wheel: 900, lock: 540 }, joystick: 0, axis: 1, invert: false };
+        let state = |axis: f32| {
+            let mut s = vec![0u8; 12];
+            let raw = ((axis + 1.0) * 0.5 * 65535.0).round() as i32;
+            s[4..8].copy_from_slice(&raw.to_le_bytes());
+            s
+        };
+        let axis = |s: &[u8]| axis_value(i32::from_le_bytes(s[4..8].try_into().unwrap()));
+        // Half the way to 270 degrees right: half the lock.
+        let mut s = state(0.3);
+        assert_eq!(soft_lock_axis(&mut s, lock), 0.0);
+        assert!((axis(&s) - 0.5).abs() < 1e-4);
+        // The wheel's left end: full lock, 180 degrees past it; inverted steering, the other side.
+        let mut s = state(-1.0);
+        assert!((soft_lock_axis(&mut s, lock) + 180.0).abs() < 0.1);
+        assert_eq!(axis(&s), -1.0);
+        let mut s = state(-1.0);
+        assert!((soft_lock_axis(&mut s, Lock { invert: true, ..lock }) - 180.0).abs() < 0.1);
+    }
 
     #[test]
     fn the_keyboard_s_arrows() {

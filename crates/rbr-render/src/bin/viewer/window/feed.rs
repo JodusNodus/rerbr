@@ -4,12 +4,16 @@
 //! game's (`rbr_render::devices::Input`: the keyboard and the bound joysticks through `Tic`). The frame loop posts the
 //! held keys and its controls ([`Feed::post`]): their flags go once, their gear and the shifter's choice stand, and the
 //! thread puts the poll's axes, pedals, flags and gear actions over them. It reads back each action's device input
-//! and the last polled controls ([`Feed::polled`]) for its presses and the H-shifter.
+//! and the last polled controls ([`Feed::polled`]) for its presses and the H-shifter. With a soft lock
+//! (`rbr_render::soft_lock`) the poll scales the steering axis and the thread tells the wheel how far past full lock it
+//! is, at the poll's rate.
 
 use crate::latency::Script;
 use rbr_render::bindings::{Bindings, ACTIONS};
 use rbr_render::devices::{keyboard_state, Input};
+use rbr_render::ffb::Wheel;
 use rbr_render::live::{Controls, Sender};
+use rbr_render::soft_lock::SoftLock;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -49,15 +53,22 @@ struct State {
 }
 
 impl Feed {
-    /// Starts the thread with the bindings, the scripted steering over the devices' (`RBR_LATENCY`), and with
-    /// `keep_sends` each send kept for [`Feed::take_sends`].
-    pub fn start(bindings: Bindings, script: Option<Script>, keep_sends: bool) -> Feed {
+    /// Starts the thread with the bindings, the scripted steering over the devices' (`RBR_LATENCY`), with
+    /// `keep_sends` each send kept for [`Feed::take_sends`], and the soft lock on the steering, whose stop `wheel`
+    /// pushes.
+    pub fn start(
+        bindings: Bindings,
+        script: Option<Script>,
+        keep_sends: bool,
+        soft: Option<SoftLock>,
+        wheel: Option<Arc<Wheel>>,
+    ) -> Feed {
         let state = State { sends: keep_sends.then(Vec::new), keys: Some(Box::new([0; 256])), ..State::default() };
         let shared = Arc::new(Mutex::new(state));
         let stop = Arc::new(AtomicBool::new(false));
         let thread = {
             let (shared, stop) = (Arc::clone(&shared), Arc::clone(&stop));
-            thread::spawn(move || run(&shared, &stop, &bindings, script))
+            thread::spawn(move || run(&shared, &stop, &bindings, script, soft, wheel.filter(|_| soft.is_some())))
         };
         Feed { shared, stop, thread: Some(thread) }
     }
@@ -99,9 +110,16 @@ impl Drop for Feed {
 }
 
 /// The thread: a poll every period, sent when it differs from the last send, has flags or the keepalive is due.
-fn run(shared: &Mutex<State>, stop: &AtomicBool, bindings: &Bindings, script: Option<Script>) {
+fn run(
+    shared: &Mutex<State>,
+    stop: &AtomicBool,
+    bindings: &Bindings,
+    script: Option<Script>,
+    soft: Option<SoftLock>,
+    wheel: Option<Arc<Wheel>>,
+) {
     // Opened here: off Linux the devices' context stays on its thread.
-    let mut input = Input::open(bindings);
+    let mut input = Input::open(bindings, soft);
     input.names().iter().for_each(|n| eprintln!("viewer: controls from {n}"));
     input.missing.iter().for_each(|e| eprintln!("viewer: controls: {e}"));
     let period = Duration::from_secs(1) / bindings.input_rate.max(1);
@@ -119,6 +137,9 @@ fn run(shared: &Mutex<State>, stop: &AtomicBool, bindings: &Bindings, script: Op
             (state.sender.clone(), Controls { flags, ..state.base }, state.advanced)
         };
         let mut controls = input.controls(&keys, base, &mut pads);
+        if let Some(wheel) = &wheel {
+            wheel.set_past_lock(input.past_lock);
+        }
         if advanced {
             (controls.gears_held, controls.gears_bound) = (0, 0);
         }

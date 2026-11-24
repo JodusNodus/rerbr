@@ -63,6 +63,7 @@ pub mod skidmarks_pass;
 mod sky_dome;
 mod sky_occlusion;
 mod skylight;
+pub mod soft_lock;
 pub mod sound;
 pub mod stage;
 pub mod stage_lamps;

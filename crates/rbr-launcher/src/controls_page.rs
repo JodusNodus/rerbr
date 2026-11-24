@@ -701,7 +701,7 @@ impl ControlsPage {
                 }
             });
             ffb.rotation = mode.map(|_| degrees);
-            if let Some(degrees) = ffb.rotation.filter(|_| changed) {
+            if let Some(degrees) = ffb.rotation.filter(|_| changed).map(|r| ffb.wheel_rotation.unwrap_or(r)) {
                 self.wheels = wheel_rotation::set(degrees);
             }
         });
@@ -711,6 +711,23 @@ impl ControlsPage {
             Err(e) => e.clone(),
         };
         rows.hint(&status);
+        row_tip(rows, "Wheel's own rotation", WHEEL_ROTATION_HELP, |ui| {
+            let mut known = ffb.wheel_rotation.is_some();
+            let mut degrees = ffb.wheel_rotation.unwrap_or(900);
+            if known {
+                ui.add(DragValue::new(&mut degrees).range(wheel_rotation::DEGREES).speed(5).suffix("°"));
+            }
+            let name = if known { "set" } else { "unknown" };
+            ComboBox::from_id_salt("wheel-rotation").selected_text(name).show_ui(ui, |ui| {
+                ui.selectable_value(&mut known, false, "unknown");
+                ui.selectable_value(&mut known, true, "set");
+            });
+            let was = ffb.wheel_rotation;
+            ffb.wheel_rotation = known.then_some(degrees);
+            if let Some(rotation) = ffb.rotation.filter(|_| ffb.wheel_rotation != was) {
+                self.wheels = wheel_rotation::set(ffb.wheel_rotation.unwrap_or(rotation));
+            }
+        });
     }
 
     /// Which device gets the force (`ffb::Options::device`): the first found or one by name. The devices are looked
@@ -894,8 +911,14 @@ const REV_LIGHTS_HELP: &str = "The wheel's LEDs fill up to the car's shift point
 
 const ROTATION_HELP: &str = "How far the wheel turns from lock to lock. The wheel stops there and full lock is \
      reached there. Fixed: the degrees for every car. Per car: each car's steering lock (its setup's MaxSteeringLock \
-     x 720), up to the degrees. Off leaves the wheel as it is. Linux wheel drivers only (the wheel tools' udev rule \
-     must allow it).";
+     x 720), up to the degrees. Off leaves the wheel as it is. Set on the wheel by Linux wheel drivers (the wheel tools' \
+     udev rule must allow it), or through a soft lock with the wheel's own rotation given below.";
+
+const WHEEL_ROTATION_HELP: &str = "How far your wheel turns lock to lock as its own software sets it (Windows, macOS, \
+     a wheel without a Linux driver for it), or as you want it set. ReRBR turns the wheel to it where its Linux \
+     driver allows, and a Rotation below it comes through a soft lock: full lock is reached at the Rotation's degrees and past them the wheel pushes \
+     back. A Rotation above it, say a car of 1050 on a 900 wheel, reaches full lock at the wheel's end. Unknown: the \
+     Rotation is set on the wheel where its Linux driver allows, else the steering spans the wheel's whole turn.";
 
 fn shifter_ui(rows: &mut Rows, bindings: &mut Bindings) {
     let shifter = &mut bindings.shifter;
