@@ -178,3 +178,13 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   texture. It is pale grey (mean 166, 161, 153) with dark lichen and bark lines, vertex `Color` a grey AO (mean 0.9). So the bright white of the game's shots
   is its exposure and lighting (a sunlit trunk of 0.63 albedo), not the converter's pick: the trunks in shade read grey and dark. Nothing in the material (one
   texture, no tint constant: only `ScaleX_solo`, `ScaleY_solo`) to correct; left as is.
+
+## Sun and place, 2026-11-24
+
+- Light: each area's `lighting_day.xml` (binary XML, `param` elements) carries `rotationangle` and `heightangle` (Greece 01 30/45, 02 61/44, `day_alt` -91/15; Finland -90/45; Sweden -90/40; Wales 01 -161/48,
+  02 43/48; Germany -134/35; Turini -105/31-34), the sun colour (`specular_colour`, Greece 1.0/0.93/0.84) and fog. The converter still writes AC's constant `sunDirection` (30 degrees up): the
+  azimuth convention could not be verified. Tried, on Greece 01/02, Finland 01, Wales 02, Germany 01 and Turini: the day lightmap (`terrain_lm_day`, texel at each terrain triangle's `uv2`) against
+  `max(0, n.s)` and a heightfield shadow march over the azimuth scan, then day-night, day_alt-night and day-day_alt per texel against the xml suns over rotation sign and offset: r 0.05-0.3, broad
+  humps, the peaks disagree between day, day_alt and areas (Greece 02 340 against xml 61; day-alt 270 or 60 by sign). The lightmaps are ambient occlusion, not the sun. `sky_day.pssg` holds no sun disc.
+  Open: decode `shadow_map_day.clm`, or a DR shot with known camera and sun.
+- Place: `track.ini` carries `latitude` and `longitude` where the renderer's `countrycode` default is far off (Turini, Baumholder, Pikes Peak, Hell, Holjes, Lydden Hill: `route::place`).
