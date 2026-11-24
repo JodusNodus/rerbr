@@ -4,7 +4,7 @@ use super::enhance::{AntiAliasing, Detail, Enhance};
 use super::gpu::Gpu;
 use super::meshes::mesh_bounds;
 use super::meshes::{transformed_vertices, GpuDraw, GpuMesh, InteractiveGpu, Packing};
-use super::pipelines::{cutout, layouts, prepassed, vertex_entry, Context, DrawPass, PipelineKey};
+use super::pipelines::{cutout, layouts, prepassed, vertex_entry, Context, DrawPass, PipelineKey, Pool};
 use super::placed as placed_gpu;
 use super::reflection::{reflects, Reflection, ScreenReflection};
 use super::shadows::shadow_map;
@@ -244,7 +244,6 @@ impl Renderer {
         });
 
         let mut bind_groups = HashMap::new();
-        let mut pipelines = HashMap::new();
         let mut meshes = Vec::new();
         let mut packing = Packing::default();
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -279,6 +278,7 @@ impl Renderer {
             cube_shift: u32::from(ultra),
             taa,
         };
+        let mut pipelines = Pool::new(&context);
         // A draw of a mesh whose indices start at `first_index` in the shared buffer, with its pipelines and bind group.
         let mut gpu_draw = |draw: &Draw,
                             first_index: u32,
@@ -299,12 +299,12 @@ impl Renderer {
             let viewed = pipeline.takes_views().then(|| {
                 [false, true].map(|inside| {
                     let key = pipeline.viewed(inside);
-                    pipelines.entry(key).or_insert_with(|| context.pipeline(key)).clone()
+                    pipelines.get(key)
                 })
             });
             let mut pipeline_in = |pass: DrawPass| {
                 let key = pipeline.in_pass(pass);
-                pipelines.entry(key).or_insert_with(|| context.pipeline(key)).clone()
+                pipelines.get(key)
             };
             // A lit draw is only drawn with its views' pipelines: its `main` is the outside one, not a third to compile.
             let main = viewed.as_ref().map_or_else(|| pipeline_in(DrawPass::Main), |[outside, _]| outside.clone());
@@ -317,13 +317,13 @@ impl Renderer {
                     } else {
                         pipeline.in_pass(pass)
                     };
-                    pipelines.entry(key).or_insert_with(|| context.pipeline(key)).clone()
+                    pipelines.get(key)
                 })
             });
             let lamps = pipeline.takes_lamps().then(|| {
                 [DrawPass::Main, DrawPass::AfterPrepass].map(|pass| {
                     let key = pipeline.with_lamps().in_pass(pass);
-                    pipelines.entry(key).or_insert_with(|| context.pipeline(key)).clone()
+                    pipelines.get(key)
                 })
             });
             let group = bind_groups
@@ -545,6 +545,7 @@ impl Renderer {
         if let Some(models) = models {
             models.finish(&device, &mut buffers, &mut meshes);
         }
+        pipelines.finish();
         rbr_btb::phases::mark("gpu: mesh prepare, buffer upload, pipelines");
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();

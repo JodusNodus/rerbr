@@ -7,6 +7,8 @@ use super::uniforms::frame_index;
 use super::DEPTH_FORMAT;
 use crate::coords::FRONT_FACE;
 use crate::stage::{Anchor, DrawState, Layer, Vertex};
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock};
 
 pub(crate) const SHADER: &str = concat!(
     include_str!("../shader.wgsl"),
@@ -241,6 +243,166 @@ pub(super) fn vertex_entry(enhance: Enhance) -> &'static str {
         "vs_clouded"
     } else {
         "vs_main"
+    }
+}
+
+/// A stage pipeline made on a worker thread ([`Pool`]): usable once [`Pool::finish`] has returned.
+#[derive(Clone)]
+pub(super) struct Pipe(Arc<OnceLock<wgpu::RenderPipeline>>);
+
+impl std::ops::Deref for Pipe {
+    type Target = wgpu::RenderPipeline;
+
+    fn deref(&self) -> &wgpu::RenderPipeline {
+        self.0.get().expect("the stage's pipelines are finished before the first frame")
+    }
+}
+
+impl PartialEq for Pipe {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl Eq for Pipe {}
+
+impl PartialOrd for Pipe {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Pipe {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (**self).cmp(&**other)
+    }
+}
+
+/// What a worker needs of a [`Context`], owned.
+struct Owned {
+    device: wgpu::Device,
+    format: wgpu::TextureFormat,
+    shader: wgpu::ShaderModule,
+    layout: wgpu::PipelineLayout,
+    made_layout: wgpu::PipelineLayout,
+    vertex: &'static str,
+    water_plus: bool,
+    cabin: bool,
+    grass: bool,
+    lighting: bool,
+    debug_view: u32,
+    cube_shift: u32,
+    taa: bool,
+}
+
+impl Owned {
+    fn create(&self, key: PipelineKey) -> wgpu::RenderPipeline {
+        Context {
+            device: &self.device,
+            format: self.format,
+            shader: &self.shader,
+            layout: &self.layout,
+            made_layout: &self.made_layout,
+            vertex: self.vertex,
+            water_plus: self.water_plus,
+            cabin: self.cabin,
+            grass: self.grass,
+            lighting: self.lighting,
+            debug_view: self.debug_view,
+            cube_shift: self.cube_shift,
+            taa: self.taa,
+        }
+        .pipeline(key)
+    }
+}
+
+/// The stage's pipelines, each made once on a pool of threads while the load goes on: the driver's compile of one
+/// takes about a second on a cold shader cache, and 40 of them in a row took 35 s. `RBR_PIPELINE_THREADS` sets the
+/// threads (0 or 1: made in place, one after another).
+pub(super) struct Pool {
+    made: HashMap<PipelineKey, Pipe>,
+    jobs: Option<mpsc::Sender<(PipelineKey, Pipe)>>,
+    owned: Arc<Owned>,
+    pending: Arc<(Mutex<usize>, Condvar)>,
+}
+
+/// Counts a job done when dropped, so a worker that panics does not leave [`Pool::finish`] waiting.
+struct Done(Arc<(Mutex<usize>, Condvar)>);
+
+impl Drop for Done {
+    fn drop(&mut self) {
+        *self.0 .0.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        self.0 .1.notify_all();
+    }
+}
+
+impl Pool {
+    pub(super) fn new(context: &Context) -> Pool {
+        let owned = Arc::new(Owned {
+            device: context.device.clone(),
+            format: context.format,
+            shader: context.shader.clone(),
+            layout: context.layout.clone(),
+            made_layout: context.made_layout.clone(),
+            vertex: context.vertex,
+            water_plus: context.water_plus,
+            cabin: context.cabin,
+            grass: context.grass,
+            lighting: context.lighting,
+            debug_view: context.debug_view,
+            cube_shift: context.cube_shift,
+            taa: context.taa,
+        });
+        let threads = std::env::var("RBR_PIPELINE_THREADS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()).min(4));
+        let pending = Arc::new((Mutex::new(0), Condvar::new()));
+        let jobs = (threads > 1).then(|| {
+            let (sender, receiver) = mpsc::channel::<(PipelineKey, Pipe)>();
+            let receiver = Arc::new(Mutex::new(receiver));
+            for _ in 0..threads {
+                let (receiver, owned, pending) = (receiver.clone(), owned.clone(), pending.clone());
+                std::thread::spawn(move || loop {
+                    let next = receiver.lock().unwrap_or_else(|e| e.into_inner()).recv();
+                    let Ok((key, pipe)) = next else { break };
+                    let _done = Done(pending.clone());
+                    let _ = pipe.0.set(owned.create(key));
+                });
+            }
+            sender
+        });
+        Pool { made: HashMap::new(), jobs, owned, pending }
+    }
+
+    /// The pipeline of `key`, queued to the pool when it is the first asked for.
+    pub(super) fn get(&mut self, key: PipelineKey) -> Pipe {
+        let Pool { made, jobs, owned, pending } = self;
+        made.entry(key)
+            .or_insert_with(|| {
+                let pipe = Pipe(Arc::new(OnceLock::new()));
+                match jobs {
+                    Some(jobs) => {
+                        *pending.0.lock().unwrap() += 1;
+                        jobs.send((key, pipe.clone())).expect("the pool's threads outlive it");
+                    }
+                    None => {
+                        let _ = pipe.0.set(owned.create(key));
+                    }
+                }
+                pipe
+            })
+            .clone()
+    }
+
+    /// Waits for every queued pipeline, and ends the threads.
+    pub(super) fn finish(&mut self) {
+        self.jobs = None;
+        let (count, done) = &*self.pending;
+        let mut count = count.lock().unwrap_or_else(|e| e.into_inner());
+        while *count > 0 {
+            count = done.wait(count).unwrap_or_else(|e| e.into_inner());
+        }
     }
 }
 

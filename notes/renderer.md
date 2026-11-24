@@ -149,6 +149,14 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   fps; full-screen cockpit 12 to 54 (2026-10-25). The fog, the sun's cascades and the car's shadow still spill
   (~150-310 bytes) in the stage pipelines.
 - Small arrays indexed in loops (`harmonics`, `texel_filter`) are written out: Metal kept them in memory.
+- Stage pipelines on threads (`pipelines.rs` `Pool`, `Pipe`): the stage has 15 to 40 pipelines of one big fragment shader, each about
+  1 s of the driver's compile, made one after another before (Kaihuavaara all enhancements 35 s, Roure with grass 15 s, empty Mesa
+  cache, radv). The load queues each new key to a pool (`RBR_PIPELINE_THREADS`, default 4; 1 = in place) and waits at the end of the
+  mesh loop. Kaihuavaara 35 -> 15 s at 4 threads (8 threads 8 to 11 s, 12 threads 8 s, 32 threads 7 s), Roure 15 -> 3.5 s at 8; peak
+  memory about 0.35 GB per thread (Kaihuavaara 1.1 GB at 1 thread, 2.2 at 4, 3.3 at 8, 10 at 32); the compile CPU time rises (35 ->
+  60 to 80 s) with the threads: contention in the driver. Rendering unchanged (37 shots RMSE 0).
+- Tried and dropped: wgpu's pipeline cache kept on disk (Vulkan): a changed shader misses it and the driver's cache alike, so it
+  gave nothing after an update (38.1 s with it, 37.2 s without) and only replaced a wiped driver cache.
 - Reflections medium, low and off differ from high by up to 35, 58 and 79 in the wet 45_O scene (1280x720, Xsara,
   every enhancement; 2026-10-26, RX 9060 XT, radv).
 - Tried and removed (no gain on an RX 9060 XT, 2026-10-26): the car's shadow filter taps (`Quality`, `--shadows`,
