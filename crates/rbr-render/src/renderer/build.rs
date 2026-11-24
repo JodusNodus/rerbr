@@ -540,9 +540,7 @@ impl Renderer {
         meshes.extend(placed_blended);
 
         let mut buffers = packing.finish(&device);
-        if let Some(models) = models {
-            models.finish(&device, &mut buffers, &mut meshes);
-        }
+        let ambient = models.and_then(|m| m.finish(&device, &stage.placed, &mut buffers, &mut meshes, enhance.lighting));
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();
             let tiles = occlusion::bake(&device, &queue, &texture_layout, &meshes, &buffers, &stage.driveline);
@@ -550,6 +548,9 @@ impl Renderer {
             eprintln!("sky occlusion: {tiles} tiles in {:.1} s", start.elapsed().as_secs_f32());
             let toward = -stage.atmosphere.sun_direction;
             bounce::bake(&device, &queue, &texture_layout, &meshes, &buffers, &ground_light, toward);
+            if let Some(ambient) = ambient {
+                ambient.apply(&device, &queue, &stage.placed, &mut buffers);
+            }
             ground_light
         });
         let depth_size = (1, 1);

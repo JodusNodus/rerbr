@@ -463,9 +463,17 @@ fn instanced(v: VertexIn, i: InstanceIn) -> VertexIn {
         n = vec3<f32>(0.0, 1.0, 0.0);
     }
     out.normal = n;
-    out.occlusion = bitcast<f32>(i.probe.x);
+    // The model vertex's own ambient (`renderer::placed::Ambient`): the share of its probe's sky it sees (as `1 -
+    // share`, 0 for the probe's alone), the direction it sees the sky in, in the model's space (0 none), and its bounce
+    // (0 none).
+    let seen = (1.0 - bitcast<f32>(i.probe.x)) * (1.0 - v.occlusion);
+    out.occlusion = 1.0 - clamp(seen, 0.0, 1.0);
     out.sky_dir = i.probe.y;
-    out.bounce = i.probe.zw;
+    if (v.sky_dir != 0u) {
+        let d = sky_direction(unpack2x16snorm(v.sky_dir), vec3<f32>(0.0, 1.0, 0.0));
+        out.sky_dir = packed_sky_direction(vec3<f32>(dot(i.row0.xyz, d), dot(i.row1.xyz, d), dot(i.row2.xyz, d)));
+    }
+    out.bounce = select(i.probe.zw, v.bounce, any(v.bounce != vec2<u32>(0u)));
     let shade = round(min(INSTANCE_AMBIENT + max(dot(n, i.light.xyz), 0.0), 1.0) * 255.0) / 255.0;
     out.color = vec4<f32>(shade, shade, shade, v.color.a);
     let crown = v.specular.x > 0.15 && v.specular.x < 0.45;
@@ -522,6 +530,15 @@ fn sky_direction(p: vec2<f32>, normal: vec3<f32>) -> vec3<f32> {
         d = vec3<f32>((1.0 - abs(p.y)) * sign(p.x), d.y, (1.0 - abs(p.x)) * sign(p.y));
     }
     return normalize(d);
+}
+
+// `d` as `sky_occlusion.wgsl` packs it (`packed_direction`): octahedral about y in two snorms, never 0.
+fn packed_sky_direction(d: vec3<f32>) -> u32 {
+    var p = d.xz / max(abs(d.x) + abs(d.y) + abs(d.z), 1e-12);
+    if (d.y < 0.0) {
+        p = (1.0 - abs(p.yx)) * select(vec2<f32>(-1.0), vec2<f32>(1.0), p >= vec2<f32>(0.0));
+    }
+    return max(pack2x16snorm(p), 1u);
 }
 
 // How much farther than it is the backdrop's depth lies (ours): its upright faces (tree lines, panoramas) and its
