@@ -431,7 +431,7 @@ pub(super) fn load_textures(stage: &mut Stage) -> Result<(), Error> {
         if image.is_none() {
             missing.push(file.clone());
         }
-        stage.textures.insert(texture, StageTexture { request: file, image });
+        stage.textures.insert(texture, StageTexture { request: file, image, glow: None });
     }
     stage.report.missing_textures = missing;
     rbr_btb::phases::mark("textures: Textures.zip read + decode");

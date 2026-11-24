@@ -212,6 +212,8 @@ Celica ST185 `i_body`, Lada VFTS `i_internal_analog`, Escort Mk II `i_door2_l`, 
 Built: `i_` (outside views skip them), `e_`/`pc_`, mudflaps, wheels naming the surface; never `d_`, `k_` (but
 `k_windscreen`).
 
+Car texture glow (ours): an optional `<texture>_glow.dds` in the folder of a car texture is its night emissive mask (same format as an RBRHUD `emissive_mask`; alpha is the glow unless DXT1; case-insensitive lookup). Unreadable ones are ignored (`car/files.rs`, test `a_car_texture_takes_the_glow_mask_beside_it`).
+
 ## Characters
 
 `SGS/*.sgs` and `SGA/*.sga`, loaded by stage Lua scripts (`app:LoadCharacter`), same container.

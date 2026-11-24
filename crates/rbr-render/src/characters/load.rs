@@ -665,14 +665,15 @@ impl<'a> Assets<'a> {
         let key = TextureRef { set: TextureSet::Character, index: self.first_texture + self.texture_keys.len() as u32 };
         let image = self.read(&request).ok().filter(|bytes| dds::parse(bytes).is_ok()).map(Image::Dds);
         self.texture_keys.insert(request.to_ascii_lowercase(), key);
-        self.textures.insert(key, StageTexture { request, image });
+        self.textures.insert(key, StageTexture { request, image, glow: None });
         key
     }
 
     /// A texture of one colour under `name` (ours, not a game file), made once.
     pub(super) fn plain(&mut self, name: &str, colour: [u8; 4]) -> TextureRef {
         let key = self.texture(name);
-        self.textures.insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Solid(colour)) });
+        self.textures
+            .insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Solid(colour)), glow: None });
         key
     }
 

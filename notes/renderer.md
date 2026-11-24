@@ -1323,6 +1323,8 @@ set (`i_drivers`: the RSF Fiesta Rally2, i20 Rally2, i20 WRC 2020 and 2021) is n
 
 ## Fences and dials
 
+- Car textures' own night glow (ours): `X_glow.dds` beside a car texture `X.dds` is its emissive mask (`StageTexture.glow`, read in `car/files.rs`), lit by `backlit` like an RBRHUD gauge's `emissive_mask` (`views.glows`, alpha unless DXT1, no day term); an `Image::Dial` texture keeps its own mask. Checked on DiRT_131 `dr_int_main` at 22:30 (interior lit) and 14:00 (byte-identical to without).
+
 `fences/` (documents the cloth, spans, posts and textures): `.fnc` lines as `CFenceHandler` cloth, pushed by the
 car's `c_e_body`. With the own light (ours) the lines carry their normals; fence meshes skip `on_foliage` and
 `with_plants` (the 45_O net was a "plant", glowing in patches). Without the own light they stay facing up;

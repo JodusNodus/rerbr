@@ -603,7 +603,7 @@ mod tests {
         assert_eq!((header.width, header.height, header.format), (256, 256, Format::Dxt1));
         let mut textures = BTreeMap::new();
         let key = TextureRef { set: TextureSet::Stage, index: 0 };
-        textures.insert(key, StageTexture { request: "a.dds".into(), image: Some(Image::Dds(file(256))) });
+        textures.insert(key, StageTexture { request: "a.dds".into(), image: Some(Image::Dds(file(256))), glow: None });
         assert_eq!(stage_size(&textures, &[(key, MAX)].into()), chain(1024 * 1024 / 2));
         assert_eq!(stage_size(&textures, &BTreeMap::new()), 0);
     }

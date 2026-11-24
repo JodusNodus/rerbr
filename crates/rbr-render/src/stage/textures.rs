@@ -171,7 +171,7 @@ impl Stage {
                     (first, None)
                 }
             };
-            textures.insert(texture, StageTexture { request, image });
+            textures.insert(texture, StageTexture { request, image, glow: None });
         }
         if self
             .meshes
@@ -184,6 +184,7 @@ impl Stage {
                 StageTexture {
                     request: "WATER_STAND_IN (stand-in; not the game's texture)".to_owned(),
                     image: Some(Image::Solid(WATER_STAND_IN)),
+                    glow: None,
                 },
             );
         }

@@ -652,9 +652,10 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
     // The atlas is the stage's own texture; ours is made here.
     let (texture, mean, fx) = match atlas {
         Some((texture, bytes, mean, settings, size, cover)) => {
-            stage
-                .textures
-                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
+            stage.textures.insert(
+                texture,
+                StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)), glow: None },
+            );
             (texture, mean, Fx::profiles(&settings, Some(size), Arc::new(hidden.unwrap_or_default()), cover))
         }
         None => {
@@ -662,9 +663,10 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
                 texture,
                 TextureName { track: stage.name.clone(), file_name: TEXTURE.to_owned(), ground: false },
             );
-            stage
-                .textures
-                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
+            stage.textures.insert(
+                texture,
+                StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)), glow: None },
+            );
             let fx = stage.grass_fx.as_ref().filter(|_| fx_stage);
             let fx =
                 fx.map(|fx| Fx::profiles(&fx.settings, None, Arc::new(hidden.unwrap_or_default()), fx.cover.clone()));
