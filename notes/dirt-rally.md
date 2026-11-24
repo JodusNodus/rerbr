@@ -339,15 +339,17 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
     a tone curve (`CABIN_GAIN` 4, `Texture::toned`: the DXT blocks' two endpoints, indices and alpha kept, so no decoding; the atlas, the weave, the
     dials and the indicators). The enhanced cabin light takes the albedo as it is, and DiRT's dash (0.05) came out black, the gauges unreadable;
     now the dash, the wheel's stitching and the gauge faces read. Shader constants of the material (`Ambient`, `Diffuse`) change nothing.
-  - The paint's `Kf` is 0 in the written `_shader_settings_*.ini` (`set_key`): the clear coat (on where `Kf` and `FresnelMax` are above 0; their
-    values beyond that do not matter with the day's light) washed the livery's red (168, 7, 10) to pink; off, the red holds, the sun's highlight
-    stays and the bonnet no longer mirrors the trees. DiRT's paint reflects little (`FresnelMin` 0.1, `EnvironmentColour` 0.54). Scaling the
-    albedo or the DXT5 alpha (the reflection's mask, `t0.a`) did nothing for it.
+  - The paint keeps the template's `Kf` (0.21), so the renderer's clear coat (sky reflection and a broad sheen, on where `Kf` and `FresnelMax` are
+    above 0) is on, as on the stock Escort. Earlier it was forced to 0 because the coat washed the livery's saturated red (168, 7, 10) to pink; with
+    it off the car had no reflection at all ("doesn't look reflective"). On: the boot lid, roof and spoiler mirror the sky, and the red does go
+    pink at grazing angles in hazy light, the yellow decals pale. The diffuse alpha (the specular map over `FULL_SPECULAR` 0.9) scales the coat:
+    paint about 0.5, bare metal and chrome 1, plastics and rubber under 0.25; alpha 0.5 against 0.75 and 1 looked alike (the Fresnel term at a grazing
+    view dominates). `Shiny Metal` is `CarPaint` too (DiRT gives it `carpaint_metallic.fx`; as `CarTextureNoDirt` it had no reflection).
   - Maps (`car_maps.rs`, 2026-11-24): the renderer's cars read one diffuse (alpha = reflection mask) and, new, a normal map per material
     (`[<material>_bump_bitmap]` in `_shaders.ini`, `car_parts::bump_path`; `DrawState::surface` with `NormalMap`, the stages' screen-space `bumped()`, so no
     tangents; `shade_car` takes the bent normal, and the diffuse alpha, in an unblended bump draw, scales the sun highlight, the clear coat's sheen and
     the cabin's sheen: `gloss`). No retail car has the section: four stock-car shots (day, night, rain, cockpit) render with RMSE 0 against the build
-    without it. Converter side: `cme_specocc` is specular in RGB (the paint 0.43, the alpha of 1 there: `PAINT_SPECULAR`) and baked occlusion in the
+    without it. Converter side: `cme_specocc` is specular in RGB (the paint 0.43) and baked occlusion in the
     alpha, on `cme_main`'s UVs; the occlusion goes into the colour in linear light with each material's `OcclusionMapScale` (paint 0.4, `Matt` 0.8,
     `Shiny Metal` 0.5: keys `paint`, `matt`, `metal`; the interior atlas 0.5 of its 1, `INTERIOR_OCCLUSION`, as the cabin light already shades it), the
     specular becomes the alpha, and both are written BC7 (a re-encoded 4096 keeps its colours). Normal maps (written BC7, x red, green flipped to run down
@@ -382,7 +384,7 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   by the headlight key, the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
 - Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
   for both files, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 78 tests (with the maps below: occlusion factor, plane lookup, BC7 output, normal repack, the materials' maps, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 77 tests (with the maps below: occlusion factor, plane lookup, BC7 output, normal repack, the materials' maps, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
   `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

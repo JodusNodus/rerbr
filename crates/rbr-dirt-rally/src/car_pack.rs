@@ -85,9 +85,9 @@ struct Maps {
     specular: Option<(Source, usize, f32)>,
 }
 
-/// The specular of the Escort's red paint in `cme_specocc` (the median of its red texels, 0.43): the paint reflects in
-/// full, the dull plastics and rubber less.
-const PAINT_SPECULAR: f32 = 0.43;
+/// The specular that reflects in full (chrome and bare metal reach 0.8 to 1 in DiRT's maps, the Escort's red paint is
+/// 0.43, the dull plastics and rubber under 0.2): the paint's clear coat takes about half its strength, the metal all.
+const FULL_SPECULAR: f32 = 0.9;
 
 /// The occlusion the interior's main atlas takes. The game's `OcclusionMapScale` is 1 there, on the ambient light alone
 /// (which the dash takes from the sky it sees, `rbr-render`'s cabin light), so the bake takes a part of it.
@@ -120,7 +120,7 @@ fn style(material: &str, car: &str) -> Option<Style> {
         normal: Some(livery(&format!("{car}_main_nm.tga"))),
         crumpled: true,
         occlusion: Some((livery(&format!("{car}_specocc.tga")), 3, occlusion)),
-        specular: Some((livery(&format!("{car}_specocc.tga")), 1, PAINT_SPECULAR)),
+        specular: Some((livery(&format!("{car}_specocc.tga")), 1, FULL_SPECULAR)),
     };
     let normal = |source: Source| Maps { normal: Some(source), ..Maps::default() };
     if let Some((_, short, _)) = CLASSES.iter().find(|(_, _, title)| material.starts_with(&format!("{title} "))) {
@@ -144,7 +144,7 @@ fn style(material: &str, car: &str) -> Option<Style> {
         // The three finishes share the livery's atlas and take its occlusion in their own strength (`OcclusionMapScale`).
         "Car Body Paint" => with(flat("CarPaint", "paint", livery(&format!("{car}_main.tga"))), body(0.4)),
         "Matt" => with(flat("CarTextureNoDirt", "matt", livery(&format!("{car}_main.tga"))), body(0.8)),
-        "Shiny Metal" => with(flat("CarTextureNoDirt", "metal", livery(&format!("{car}_main.tga"))), body(0.5)),
+        "Shiny Metal" => with(flat("CarPaint", "metal", livery(&format!("{car}_main.tga"))), body(0.5)),
         "Cabin" => flat("CarTextureNoDirt", "cabin", livery(&format!("{car}_cabin.tga"))),
         "Window Glass" => Some(Style {
             shader: "CarGlass",
@@ -166,7 +166,7 @@ fn style(material: &str, car: &str) -> Option<Style> {
         "Lights Pod" | "Lights Satin" => with(
             flat("CarTextureNoDirt", "lights", livery(&format!("{car}_lights.tga"))),
             Maps {
-                specular: Some((livery(&format!("{car}_lights_spec_occ.tga")), 1, PAINT_SPECULAR)),
+                specular: Some((livery(&format!("{car}_lights_spec_occ.tga")), 1, FULL_SPECULAR)),
                 ..normal(livery(&format!("{car}_lights_nm.tga")))
             },
         ),
@@ -210,7 +210,7 @@ fn interior_style(material: &str, car: &str) -> Option<Style> {
                     normal: Some(atlas("nm")),
                     crumpled: false,
                     occlusion: Some((atlas("occ"), 0, INTERIOR_OCCLUSION)),
-                    specular: Some((atlas("sp"), 0, PAINT_SPECULAR)),
+                    specular: Some((atlas("sp"), 0, FULL_SPECULAR)),
                 },
                 ..style
             })
@@ -890,29 +890,6 @@ fn shaders_file(name: &str, materials: &BTreeMap<String, Entry>) -> String {
     out
 }
 
-/// `settings` with `key` of `section` set to `value`, the rest as it was (line endings too).
-///
-/// The paint's `Kf` goes to 0: the renderer's clear coat (a sky reflection and a broad sheen over the paint, on where
-/// `Kf` and `FresnelMax` are both above 0) washed the livery's saturated red (168, 7, 10) to pink, where DiRT's paint
-/// reflects little (its `FresnelMin` 0.1, `EnvironmentColour` 0.54). Without it the red holds and the sun's highlight stays.
-fn set_key(settings: &str, section: &str, key: &str, value: &str) -> String {
-    let mut inside = false;
-    settings
-        .split_inclusive('\n')
-        .map(|line| {
-            if let Some(name) = line.trim().strip_prefix('[').and_then(|l| l.split(']').next()) {
-                inside = name == section;
-            }
-            match line.split_once('=') {
-                Some((k, _)) if inside && k.trim() == key => {
-                    format!("{}= {value}{}", k, &line[line.trim_end_matches(['\r', '\n']).len()..])
-                }
-                _ => line.to_owned(),
-            }
-        })
-        .collect()
-}
-
 /// The cabin atlas's gain. DiRT lights its dark interior (a black dash, carbon panels, dark gauge faces) far more than the
 /// renderer's cabin light does: unchanged the dash, the wheel and the gauges come out black in the cockpit. The atlas's
 /// colours go through `x * g / (1 + (g - 1) * x)`: black and white stay, the darks rise (a dash of 0.05 reads 0.17).
@@ -1096,10 +1073,7 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     fs::write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &materials)).map_err(|e| e.to_string())?;
     for suffix in ["_settings.ini", "_shader_settings_clear.ini", "_shader_settings_overcast.ini"] {
         let from = options.template.join(format!("{template_name}{suffix}"));
-        let mut text = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
-        if suffix.contains("shader_settings") {
-            text = set_key(&String::from_utf8_lossy(&text), "CarPaint", "Kf", "0.000000").into_bytes();
-        }
+        let text = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
         fs::write(folder.join(format!("{name}{suffix}")), text).map_err(|e| e.to_string())?;
     }
     Ok(model_path)
@@ -1166,7 +1140,8 @@ mod tests {
         let class = |m: &str| style(m, "cme").map(|s| (s.shader, s.key));
         assert_eq!(class("Car Body Paint"), Some(("CarPaint", "paint".to_owned())));
         assert_eq!(class("Matt"), Some(("CarTextureNoDirt", "matt".to_owned())));
-        assert_eq!(class("Shiny Metal"), Some(("CarTextureNoDirt", "metal".to_owned())));
+        // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
+        assert_eq!(class("Shiny Metal"), Some(("CarPaint", "metal".to_owned())));
         assert_eq!(class("Gravel Wheel"), Some(("CarRim", "wheel_gravel".to_owned())));
         assert_eq!(class("Snow Tyre Tread"), Some(("CarTire", "tyre_snow".to_owned())));
         // The sidewall is on the wheel's atlas, the tread has its own texture.
@@ -1219,15 +1194,6 @@ mod tests {
         assert_eq!(bump(&sections, &material_name("paint")), Some("cars\\Car\\textures\\dr_paint_nm.dds"));
         assert_eq!(bump(&sections, &material_name("disc")), None);
         assert!(text.contains("BumpChannel=true") && text.contains("BumpChannel=false"));
-    }
-
-    #[test]
-    fn a_settings_key_is_set_in_its_section_only() {
-        let text = "[CarPaint]\r\nKd = 1.6\r\nKf = 0.210000\r\n[CarGlass]\r\nKf = 1.0\r\n";
-        assert_eq!(
-            set_key(text, "CarPaint", "Kf", "0.000000"),
-            "[CarPaint]\r\nKd = 1.6\r\nKf = 0.000000\r\n[CarGlass]\r\nKf = 1.0\r\n"
-        );
     }
 
     #[test]
