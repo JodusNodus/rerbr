@@ -208,10 +208,10 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 
 ## Sponsor boards, 2026-11-24
 
-- Boards, cloth and flags (`board.tga`, `cloth.tga`, `teardrop.tga`) name `sponsor_pack_<a-d>.pssg|sponsor_fallback.pssg#<name>`. The packs are filled by the game at run time and are not on disk;
+- Boards, cloth and flags (`board.tga`, `cloth.tga`, `teardrop.tga`) name `sponsor_pack_<a-e>.pssg|sponsor_fallback.pssg#<name>` (Höljes has `e`). The packs are filled by the game at run time and are not on disk;
   `tracks/sponsors/sponsor_fallback.pssg` is a debug texture (flat green with "FALLBACK"), and the library only looked in the route and area folders, so the grey rectangle on Col de Turini
   route_0 (km 0.3, `route_objects.pssg` `Material #1`, `Object_Dynamic.fx`) had no texture at all. `texture::Library` now also reads `tracks/sponsors` and takes a pack's letter to one of the
-  installed `sponsor_*.pssg` (91 files, each with real `board`, `cloth`, `flag`, `teardrop`, `arch`, `drape`), spread over the sorted list: a real board (alpinestars) instead of grey or the fallback.
+  installed `sponsor_*.pssg` (91 files, each with real `board`, `cloth`, `flag`, `teardrop`, `arch`, `drape`), a quarter of the sorted list apart and wrapping: a real board (alpinestars) instead of grey or the fallback.
   The game's own pick per pack is unknown; the tint files (`sponsor_*_tint.xml`) are not applied. Other stages' shots at 0.3, 2, 4 km are unchanged (mean difference 0).
 
 ## Sun and place, 2026-11-24

@@ -153,8 +153,8 @@ impl Library {
     }
 
     /// The sponsor file standing for a pack (`sponsor_pack_a.pssg`, filled by the game at run time and not on disk):
-    /// the pack's letter picks one of the installed sponsors, spread over the list, so a stage shows real boards
-    /// instead of `sponsor_fallback.pssg`'s green "FALLBACK".
+    /// the pack's letter picks one of the installed sponsors, a quarter of the list apart and wrapping (Höljes has a
+    /// pack `e`), so a stage shows real boards instead of `sponsor_fallback.pssg`'s green "FALLBACK".
     fn sponsor(&self, pack: &str) -> Option<String> {
         let letter = pack.strip_prefix("sponsor_pack_")?.chars().next()?;
         let mut names: Vec<String> = std::fs::read_dir(self.sponsors())
@@ -164,7 +164,8 @@ impl Library {
             .filter(|n| n != "sponsor_fallback.pssg")
             .collect();
         names.sort();
-        let at = (letter as usize).checked_sub('a' as usize)? * names.len() / 4;
+        let pack = (letter as usize).checked_sub('a' as usize)?;
+        let at = (pack * (names.len() / 4 + 1)).checked_rem(names.len())?;
         names.get(at).cloned()
     }
 
