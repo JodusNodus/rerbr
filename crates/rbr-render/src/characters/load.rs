@@ -672,7 +672,8 @@ impl<'a> Assets<'a> {
     /// A texture of one colour under `name` (ours, not a game file), made once.
     pub(super) fn plain(&mut self, name: &str, colour: [u8; 4]) -> TextureRef {
         let key = self.texture(name);
-        self.textures.insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Solid(colour)), glow: None });
+        self.textures
+            .insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Solid(colour)), glow: None });
         key
     }
 
