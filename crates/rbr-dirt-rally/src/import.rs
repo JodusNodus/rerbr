@@ -103,6 +103,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         collision,
         collision_source: "track.jpk",
         surface_counts,
+        lighting: crate::lighting::Lighting::day(&route),
     };
     let out = match &options.out {
         Some(out) => out.clone(),

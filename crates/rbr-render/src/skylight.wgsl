@@ -30,6 +30,8 @@ struct Sky {
     // the night sky's light on up-facing ground, lux (`moonlit`).
     moon: vec4<f32>,
     night_sky: vec4<f32>,
+    // The stage's sun tint of unit luminance (`Atmosphere::sun_tint`), w 1 when it has one.
+    sun_tint: vec4<f32>,
 }
 
 struct SkyLight {
@@ -664,7 +666,11 @@ fn day_light(e_sky: vec3<f32>, sun: vec3<f32>) -> array<vec4<f32>, 2> {
     if (sky.level.z > 0.0) {
         shade = mix(shade, vec3<f32>(dot(shade, LUMA)), sky.level.z);
     }
-    return array<vec4<f32>, 2>(vec4<f32>(sun_light * balance * gain, pre), vec4<f32>(shade, gain));
+    var sun_out = sun_light * balance * gain;
+    if (sky.sun_tint.w > 0.0 && sky.to_sun.y >= 0.0) {
+        sun_out *= sky.sun_tint.rgb;
+    }
+    return array<vec4<f32>, 2>(vec4<f32>(sun_out, pre), vec4<f32>(shade, gain));
 }
 
 // The tables' light to the renderer's (before `sky_display`): the gain and the white balance.
