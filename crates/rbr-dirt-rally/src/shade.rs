@@ -33,6 +33,10 @@ const ALIGNED: f32 = 0.8;
 const STRETCH: f32 = 1.6;
 /// The share of the colour map's hue the diffuse keeps.
 const TINT: f32 = 0.3;
+/// The share of a draw's triangles that are steep (face normal under `STEEP_Y` up) for it to be a bank, drawn from the
+/// baked look: the renderer takes the first texture on a steep face, and the first layer alone is not the ground's look.
+const STEEP_SHARE: f32 = 0.03;
+const STEEP_Y: f64 = 0.85;
 /// The layer inputs in the order the shader sums them.
 const LAYERS: [&str; 4] = ["TDiffuseSpecMap1", "TDiffuseSpecMap2", "TDiffuseSpecMap3", "TDiffuseSpecMap4"];
 /// The RGBA channel of the mask each layer's weight goes in: the colour block holds two independent weights well, so the
@@ -48,6 +52,11 @@ pub struct Layers {
     pub mask: Arc<Vec<u8>>,
     /// By mask channel; a channel without a layer repeats the first one (its weight is 0).
     pub details: [Arc<Vec<u8>>; 4],
+    /// The ground's look in the atlas as one texture: the macro colour and lightmap times the layers' mean colours
+    /// by the mask. The renderer reads a draw's first texture on steep faces (its bank detail), where the per-pixel
+    /// layers are not summed, so it has to hold what the sum looks like there.
+    /// `None` on ground that is mostly flat: its own first layer stays the first texture, which the grass reads.
+    pub bake: Option<Arc<Vec<u8>>>,
     /// Each detail's `(u, v)` repeats per atlas unit.
     pub scale: [[f32; 2]; 4],
     pub magic: f32,
@@ -57,6 +66,8 @@ pub struct Layers {
 #[derive(Default)]
 pub struct Shader {
     details: HashMap<String, Option<Arc<Vec<u8>>>>,
+    /// The mean colour (display values) of each layer texture.
+    means: HashMap<String, [f64; 3]>,
 }
 
 type V3 = [f64; 3];
@@ -293,6 +304,21 @@ fn diffuse(
     (size, out, colour.is_some())
 }
 
+/// The share of `triangles` of `m` (by area) whose face is steeper than `STEEP_Y`.
+fn steep_share(m: &Mesh, triangles: &[[u32; 3]]) -> f32 {
+    let (mut steep, mut all) = (0., 0.);
+    for t in triangles {
+        let p = t.map(|k| m.positions[k as usize].map(f64::from));
+        let n = cross(sub(p[1], p[0]), sub(p[2], p[0]));
+        let area = length(n);
+        all += area;
+        if n[1].abs() < STEEP_Y * area {
+            steep += area;
+        }
+    }
+    (steep / all.max(1e-9)) as f32
+}
+
 /// A section's rasterised weights.
 struct Atlas {
     /// RGBA8, `MASK` square.
@@ -364,7 +390,7 @@ impl Atlas {
 
 /// The diffuse texture of an atlas: the lightmap's and macro colour's image, grown past the atlas's coverage by `GROW`
 /// of its own texels, empty ground the mean of what is covered.
-fn finish_diffuse((size, mut image, tinted): (usize, Vec<f32>, bool), atlas: &Atlas) -> Vec<u8> {
+fn finish_diffuse((size, mut image, tinted): (usize, Vec<f32>, bool), atlas: &Atlas) -> (Vec<u8>, Vec<u8>) {
     let step = MASK / size;
     let mut covered: Vec<bool> = (0..size * size)
         .map(|at| {
@@ -416,10 +442,42 @@ fn finish_diffuse((size, mut image, tinted): (usize, Vec<f32>, bool), atlas: &At
         }
         rgba.push(255);
     }
-    textures::encode_bc7(false, size as u32, size as u32, rgba)
+    (textures::encode_bc7(false, size as u32, size as u32, rgba.clone()), rgba)
+}
+
+/// The atlas's look as one texture (`Layers::bake`): the diffuse's `rgba` (at its own side) times `magic` and the
+/// layers' mean colours `means` (by mask channel) weighted by the mask.
+fn bake(rgba: &[u8], mask: &[u8], means: &[[f64; 3]; 4], magic: f32) -> Vec<u8> {
+    let size = (rgba.len() / 4).isqrt();
+    let step = MASK / size;
+    let mut out = Vec::with_capacity(rgba.len());
+    for y in 0..size {
+        for x in 0..size {
+            let at = ((y * step + step / 2) * MASK + x * step + step / 2) * 4;
+            let weights: Vec<f64> = mask[at..at + 4].iter().map(|&w| f64::from(w) / 255.).collect();
+            let total = weights.iter().sum::<f64>().max(1e-6);
+            for k in 0..3 {
+                let layers = (0..4).map(|c| weights[c] * means[c][k]).sum::<f64>() / total;
+                let v = f64::from(rgba[(y * size + x) * 4 + k]) * f64::from(magic) * layers;
+                out.push(v.round().clamp(0., 255.) as u8);
+            }
+            out.push(255);
+        }
+    }
+    textures::encode_bc7(false, size as u32, size as u32, out)
 }
 
 impl Shader {
+    /// The mean colour of a layer texture, display values 0 to 1.
+    fn mean(&mut self, library: &mut Library, reference: &str) -> [f64; 3] {
+        *self.means.entry(reference.to_lowercase()).or_insert_with(|| {
+            let Some(t) = library.get(reference).filter(|t| !t.is_placeholder()) else { return [1.; 3] };
+            let (mut sum, rgba) = ([0f64; 3], t.rgba());
+            rgba.chunks_exact(4).for_each(|p| (0..3).for_each(|k| sum[k] += f64::from(p[k])));
+            sum.map(|v| v / (rgba.len() / 4).max(1) as f64 / 255.)
+        })
+    }
+
     fn detail(&mut self, library: &mut Library, reference: &str) -> Option<Arc<Vec<u8>>> {
         self.details
             .entry(reference.to_lowercase())
@@ -451,6 +509,8 @@ impl Shader {
                 (image(library, &first.lightmap), first.colour.as_ref().and_then(|c| image(library, c)));
             // The materials of the section whose layer textures are all real.
             let mut details = BTreeMap::<String, [Arc<Vec<u8>>; 4]>::new();
+            // The layers' mean colours by mask channel, over the section's triangles.
+            let (mut mean_sum, mut mean_weight) = ([[0f64; 3]; 4], [0f64; 4]);
             for &i in members {
                 let id = &meshes[i].material;
                 if details.contains_key(id) {
@@ -464,6 +524,12 @@ impl Shader {
                         by_channel[CHANNEL[layer]] = file.clone();
                     }
                     details.insert(id.clone(), by_channel);
+                    for (layer, reference) in plan.layers.iter().enumerate() {
+                        let (c, mean) = (CHANNEL[layer], self.mean(library, reference));
+                        let triangles = meshes[i].triangles.len() as f64;
+                        (0..3).for_each(|k| mean_sum[c][k] += mean[k] * triangles);
+                        mean_weight[c] += triangles;
+                    }
                 }
             }
             let mut atlas = Atlas::new();
@@ -490,7 +556,17 @@ impl Shader {
                 done[i] = true;
             }
             atlas.grow();
-            let diffuse = Arc::new(finish_diffuse(diffuse(lightmap, colour), &atlas));
+            let (diffuse_dds, diffuse_rgba) = finish_diffuse(diffuse(lightmap, colour), &atlas);
+            let diffuse = Arc::new(diffuse_dds);
+            let first_mean = std::array::from_fn(|k| mean_sum[CHANNEL[0]][k] / mean_weight[CHANNEL[0]].max(1.));
+            let means: [[f64; 3]; 4] = std::array::from_fn(|c| {
+                if mean_weight[c] > 0. {
+                    std::array::from_fn(|k| mean_sum[c][k] / mean_weight[c])
+                } else {
+                    first_mean
+                }
+            });
+            let bake = Arc::new(bake(&diffuse_rgba, &atlas.mask, &means, first.magic));
             let mask = Arc::new(textures::encode(true, MASK as u32, MASK as u32, std::mem::take(&mut atlas.mask)));
             // Each mesh split by the class of its islands' repeat.
             for &i in members.iter().filter(|&&i| details.contains_key(&meshes[i].material)) {
@@ -521,6 +597,7 @@ impl Shader {
                             Layers {
                                 world,
                                 diffuse: diffuse.clone(),
+                                bake: (steep_share(m, &triangles) >= STEEP_SHARE).then(|| bake.clone()),
                                 mask: mask.clone(),
                                 details: details[&m.material].clone(),
                                 scale,
@@ -617,6 +694,18 @@ mod tests {
         let good: Vec<usize> = (0..4).collect();
         let pieces = islands(&m, &good);
         assert_eq!(pieces, vec![vec![0, 1], vec![2, 3]]);
+    }
+
+    #[test]
+    fn steep_share_counts_the_faces_by_area() {
+        // A flat 2 x 2 m quad and a vertical 1 x 1 m wall.
+        let m = Mesh {
+            positions: vec![[0., 0., 0.], [2., 0., 0.], [0., 0., 2.], [0., 1., 0.], [0., 1., 1.], [0., 0., 1.]],
+            triangles: vec![[0, 2, 1], [0, 5, 3]],
+            ..Mesh::default()
+        };
+        assert!((steep_share(&m, &m.triangles) - 0.2).abs() < 1e-6);
+        assert_eq!(steep_share(&m, &m.triangles[..1]), 0.);
     }
 
     #[test]

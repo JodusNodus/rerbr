@@ -148,10 +148,18 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   lightmap strength are chosen by eye against the Steam store shots: Greece's section means run pink to blue, `ColourMapScale` is 2 on
   every material (so the game's neutral is a mid blue-grey, not grey). The renderer multiplies the textures as display values, so no
   gamma applies to our diffuse.
-- Looked at and not fixed: Sweden's snowbank triangle patches (vertex normals reach the .x and are smooth, cos 0.98 against the faces; the
-  patches vanish with the colour map set flat, not with the lightmap, the mask, bridges, or blurring the map: they are in its data under
-  the banks); the Greece valley seen from the road edge is the vista (colour map only, its detail layers are not read), lit by the
-  renderer's sky in shade, so blue-grey; the Sweden road's smear is the 1024 colour map's ruts (the layers' own detail is crisp).
+- Banks (Sweden's snow, Turini's rock, 2026-11-24): the torn triangle patches and colour stripes were not in the colour map or the lightmap (sampled at the second
+  `ST` stream they are smooth: a render of colour times lightmap at the stream over the same view has none; the first stream's `zw` is the second layer's
+  coordinates, 0 to 96 over a road mesh, not a map's; no material constant maps world or `zw` into the maps; vertex-shared uv2 is continuous, 0.3% of
+  positions hold two uv2). They are the renderer's terrain detail: on faces steeper than about 30 degrees (`terrain_steep`, 0.6 to 0.85 of the face's up
+  share) it replaces the layered colour by the draw's first texture (`terrain_even`, `terrain_bank`), which was the first layer alone (no macro colour,
+  no lightmap), so each triangle's flatness switched it between the two looks (facets; with `--no-relight` and without `--enhance` the same). Proof on
+  Sweden: setting the bank materials' magic to 0.3 blackened exactly the patch triangles and left the bank's body unchanged; flat diffuse or flat colour
+  map showed it was the first texture on the body and the layered one on the patches. Fixed in `shade.rs`/`stage.rs`: the first texture of a material
+  whose triangles are at least 3% steep (face up share under 0.85) is `Layers::bake`, the atlas's diffuse times the layers' mean colours by the mask
+  (BC7, section-wide channel means); flat ground keeps its first layer (the grass reads it: a bake on Finland's verges lost the grass). Sweden `Textures.zip`
+  439 -> 472 MB, import 39 s before and after; Turini's green, pink and yellow stripes are gone (grey rock), Greece and Finland unchanged apart from richer rock.
+- Germany's road at 0.3 km is near white (`terrain_road` first layer, not the banks): not the same cause, not looked at.
 - Greece route_0: import 8.6 to 25 s, `Textures.zip` 99 to 291 MB, with the BC7 diffuse about 45 s and 385 MB (plain RGBA: 458 MB); Finland route_0: 21 to 53 s, 109 to 349 MB. Seen at 0.1, 1.5 and 4 km: roads
   carry their ruts and Finland's grass verges, crisp detail at any distance; Greece's far hills (the mountain atlas, flattened in big
   islands) show streaks and blotches of the second layer.
