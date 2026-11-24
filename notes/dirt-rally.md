@@ -302,8 +302,7 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   stages' reader), one node per piece (`int_main` dash and lining, `int_seats`, `int_rollcage`, `int_door_fl/fr`, `int_window_f/fl/fr` glass,
   `int_dials`, `int_needle_tach`, `int_digi_speed`, `int_indicator_gear/limit/shift_1`, pedals, `int_handbrake`, `int_gearstick`,
   `int_steering_wheel`, `int_wiper_*` with `_pos_01/02` animation keys, `int_reflection_m/r` mirrors) at its rest pose, already in the exterior's
-  frame (every node's own transform is identity at the car). Nothing else is read: the animation files, the environment map, the normal, specular
-  and occlusion maps are not used.
+  frame (every node's own transform is identity at the car). Not read: the animation files and the environment map.
   - Materials: the dash, doors, seats, cage, levers and wheel share the atlas `int_cme_main` whatever their shader (`CarTextureNoDirt`, key
     `int_main`); the gauge faces `int_cme_dials` (`int_dials`), the shift and limit lights `int_indicator` (`int_indicator`, unlit). `carbon fibre`'s UVs
     lie on the atlas's occlusion layout (they showed knobs and decals on the dash top): it draws the weave `int_carbon_diff` with the UVs times 500
@@ -344,6 +343,20 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
     values beyond that do not matter with the day's light) washed the livery's red (168, 7, 10) to pink; off, the red holds, the sun's highlight
     stays and the bonnet no longer mirrors the trees. DiRT's paint reflects little (`FresnelMin` 0.1, `EnvironmentColour` 0.54). Scaling the
     albedo or the DXT5 alpha (the reflection's mask, `t0.a`) did nothing for it.
+  - Maps (`car_maps.rs`, 2026-11-24): the renderer's cars read one diffuse (alpha = reflection mask) and, new, a normal map per material
+    (`[<material>_bump_bitmap]` in `_shaders.ini`, `car_parts::bump_path`; `DrawState::surface` with `NormalMap`, the stages' screen-space `bumped()`, so no
+    tangents; `shade_car` takes the bent normal, and the diffuse alpha, in an unblended bump draw, scales the sun highlight, the clear coat's sheen and
+    the cabin's sheen: `gloss`). No retail car has the section: four stock-car shots (day, night, rain, cockpit) render with RMSE 0 against the build
+    without it. Converter side: `cme_specocc` is specular in RGB (the paint 0.43, the alpha of 1 there: `PAINT_SPECULAR`) and baked occlusion in the
+    alpha, on `cme_main`'s UVs; the occlusion goes into the colour in linear light with each material's `OcclusionMapScale` (paint 0.4, `Matt` 0.8,
+    `Shiny Metal` 0.5: keys `paint`, `matt`, `metal`; the interior atlas 0.5 of its 1, `INTERIOR_OCCLUSION`, as the cabin light already shades it), the
+    specular becomes the alpha, and both are written BC7 (a re-encoded 4096 keeps its colours). Normal maps (written BC7, x red, green flipped to run down
+    the image; tread, disc, suspension and grille maps integrate to heights that follow their diffuse with that sign, the wheel's does not tell): body
+    (`cme_main_nm`, DXT5 with x in the alpha), lights and lens, rim and sidewall, tread, disc, suspension, grille, and the interior atlas (`int_cme_nm`, RGB).
+    `cme_main_nm`'s panels (doors, bonnet, roof, wings) hold a foil-like crumple, the damage layer DiRT blends in as the car is hit; it creased the whole
+    door, so `car_maps::flattened` sends the slopes to flat where a 6 texel blur of them is large (the hardware's bolts, vents and edges stay). The
+    damage state itself is not drawn. Also fixed: the tyre's sidewall (`... Tyre Wall`, UVs over all 0..1) is on the wheel's atlas (`wall_<class>`; it
+    had the tread texture, blocks all over the sidewall) and now shows `255/50-16 RADIAL`; the right-hand tyres' lettering reads mirrored.
   - Working gauges (`gauges.rs`, 2026-11-24): DiRT's `int_cme.xml` `displays` name what moves (the tach's `int_needle_tach` over 0 to 12 thousand rpm,
     the speed digits and the gear digit as `lcd_text` quads with fonts in `simplefonts/simple_fonts.pssg`, the shift and limit lights as
     `indicator_light`s at 7900 and 8900 rpm), and the renderer has no animated car meshes but redraws a car's own textures from an RBRHUD pack
@@ -365,11 +378,11 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   - The rear bulkhead (`int_main`) shows from outside through the rear quarter glass as a flat dark panel with sharp edges; it is DiRT's geometry,
     which DiRT never draws from outside.
 - Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's dust and cracks, the oil and trip LCDs (static), the gauges of
-  the other cars, the normal, specular and occlusion maps, the rally lights switched
+  the other cars, the damage crumple normals (below), the rally lights switched
   by the headlight key, the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
 - Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
   for both files, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 72 tests; stills of the car alone, on `track-20_N` at the start and in a
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 78 tests (with the maps below: occlusion factor, plane lookup, BC7 output, normal repack, the materials' maps, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
   `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

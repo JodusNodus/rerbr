@@ -12,6 +12,7 @@
 //! - `stage`, `import`, `cli`: the conversion and its interfaces.
 pub mod binxml;
 pub mod car;
+pub mod car_maps;
 pub mod car_pack;
 pub mod cli;
 pub mod collision;

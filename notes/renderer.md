@@ -627,6 +627,9 @@ probably fit the wrong hour.
 
 `car/` reads `Cars/Cars.ini`, the `.sgc`, `<car>.ini`, `<car>_shaders.ini` and textures.
 
+- Normal maps (ours, converted cars, 2026-11-24): a material with a `[<material>_bump_bitmap]` section (`car_parts::bump_path`) draws with
+  `Surface::normal` (the stages' `bumped()`, uv0, strength 1); `shade_car` lights and reflects with the bent normal, and the diffuse alpha of an
+  unblended such draw scales the sun highlight and the cabin sheen (`gloss`). No retail car has the section; stock shots are RMSE 0.
 - State per `SShaderMaterial::SetupRenderState`, order wheels, opaque, transparent (`car/shading.rs`): an opacity
   channel means blend, test `> 0`, no depth write; `CarPlastic` writes depth, two-sided; `CarIntGlass` two-sided,
   and opaque without one (the 911 GT3 RS (2010) RGT's inner door panels, the only installed pack with that, 2026-11-01).

@@ -449,6 +449,7 @@ fn load_set(
                 let scrape = scrape_texture(shader)
                     .and_then(|name| car_parts::friendly_path(&shaders, name))
                     .map(|dos_path| textures.key(dos_path));
+                let normal = car_parts::bump_path(&shaders, material).map(|dos_path| textures.key(dos_path));
                 let rank = match ranks.iter().position(|(s, m)| s == shader && m == material) {
                     Some(rank) => rank,
                     None => {
@@ -466,6 +467,7 @@ fn load_set(
                 FaceStyle {
                     texture,
                     scrape,
+                    normal,
                     shade: shade_for(&settings, shader).map(|shade| Shade {
                         dirt,
                         grime: crate::dirt::grime(&mesh.node.name, shader),
@@ -539,6 +541,7 @@ fn load_set(
             let style = FaceStyle {
                 texture: Some(textures.generated(CRACK_TEXTURE, crate::crack_decal::dds)),
                 scrape: None,
+                normal: None,
                 shade: shade_for(&settings, CRACK_SHADER).map(|shade| Shade { crack: true, ..shade }),
                 pass: Pass::Crack,
                 order: (List::Transparent, usize::MAX),
@@ -727,6 +730,9 @@ impl Car {
             let state = &mut draw.state;
             for texture in state.textures.iter_mut().chain([&mut state.shadow, &mut state.specular]) {
                 *texture = texture.map(moved);
+            }
+            if let Some(normal) = state.surface.as_mut().and_then(|surface| surface.normal.as_mut()) {
+                normal.texture = moved(normal.texture);
             }
         }
         self.textures = self.textures.into_iter().map(|(key, texture)| (moved(key), texture)).collect();
