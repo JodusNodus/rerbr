@@ -17,6 +17,7 @@ pub mod frame;
 pub mod import;
 pub mod install;
 pub mod jpak;
+pub mod lighting;
 pub mod material;
 pub mod mesh;
 pub mod objects;

@@ -306,6 +306,7 @@ mod tests {
                 circuit: false,
                 problem: None,
                 import: None,
+                weather: Default::default(),
             };
             Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }
         };

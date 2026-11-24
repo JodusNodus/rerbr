@@ -93,6 +93,17 @@ pub fn source(stage_folder: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(folder)).filter(|f| f.is_dir())
 }
 
+/// The Good and Bad weathers a stage names for itself (`track.ini` `weather_good`, `weather_bad`; [`TrackInfo::weather_good`]),
+/// read from the folder the prepared stage `stage_name` was built from; none where it names none.
+pub fn own_weather(stage_name: &str) -> [Option<String>; 2] {
+    let read = || {
+        let folder = source(stage_files::folder(stage_name)?)?;
+        let text = std::fs::read(stage_files::in_dir(&folder, "track.ini")?).ok()?;
+        crate::track::TrackInfo::parse(&ini::parse(&String::from_utf8_lossy(&text)).ok()?)
+    };
+    read().map_or([None, None], |info| [info.weather_good, info.weather_bad])
+}
+
 /// The `--surface` argument of the stage's physics: `track.ini` `physics=`; the plugin's `E14_4a1330` override.
 pub fn surface(track: &Track) -> Option<&'static str> {
     Some(match track.info.physics()? {

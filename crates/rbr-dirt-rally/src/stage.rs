@@ -116,6 +116,8 @@ pub struct Input {
     pub collision_source: &'static str,
     /// Surface counts by source code, for the conversion file.
     pub surface_counts: BTreeMap<String, usize>,
+    /// The stage's look (`[ReRbrAir]`), when the area's files state it.
+    pub lighting: Option<crate::lighting::Lighting>,
 }
 
 pub struct Options {
@@ -377,6 +379,11 @@ fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)
 const SETTINGS_INI: &str =
     "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nsky_tint=0.2\nnorth=0, 0, 1\n";
 
+/// `settings.ini` with the area's own haze, grade and sun tint (`lighting::Lighting`) in `[ReRbrAir]`.
+fn settings_ini(lighting: Option<&crate::lighting::Lighting>) -> String {
+    format!("{SETTINGS_INI}{}", lighting.map(crate::lighting::Lighting::ini).unwrap_or_default())
+}
+
 /// Where the car stands: the start grid's first slot, 3.7 m behind the start line on every rally route's grid.
 pub(crate) const GRID_BEHIND: f64 = 3.7;
 /// A circuit's car stands this far past the lap line (the ring's seam): on the seam itself a first step's progress can
@@ -611,9 +618,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             input.length / 1000.,
             input.route,
             if input.circuit { "circuit=1\n" } else { "" }
-        ),
+        ) + &input.lighting.map(|l| l.info_ini()).unwrap_or_default(),
     )?;
-    write("settings.ini", SETTINGS_INI.to_owned())?;
+    write("settings.ini", settings_ini(input.lighting.as_ref()))?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     let n = line.points.len();
     for (i, p) in line.points.iter().enumerate() {
@@ -758,6 +765,7 @@ mod tests {
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),
+            lighting: None,
         };
         let options = Options {
             out: out.clone(),
@@ -817,6 +825,7 @@ mod tests {
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),
+            lighting: None,
         };
         let options = Options {
             out: out.clone(),

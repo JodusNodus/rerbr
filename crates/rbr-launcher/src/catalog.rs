@@ -328,7 +328,10 @@ impl Map {
     pub fn season<'a>(&self, season: &'a Season) -> Cow<'a, Season> {
         match &self.origin {
             Origin::Community(stage) => Cow::Owned(Season::of_rsf(stage, None)),
-            Origin::Btb(_) => Cow::Owned(Season::of_btb(season, self.number, self.sky_map())),
+            Origin::Btb(btb) => {
+                let [good, bad] = btb.weather.each_ref().map(Option::as_deref);
+                Cow::Owned(Season::of_btb(season, self.number, self.sky_map()).with_own(self.number, good, bad))
+            }
             Origin::Retail => Cow::Borrowed(season),
         }
     }
@@ -1000,6 +1003,7 @@ mod tests {
             circuit: false,
             problem: None,
             import: None,
+            weather: Default::default(),
         };
         let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };
         let map = Map { number, stages: vec![stage.clone()], origin: Origin::Btb(btb) };
