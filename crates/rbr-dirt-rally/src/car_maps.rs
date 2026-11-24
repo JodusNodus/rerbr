@@ -37,17 +37,11 @@ fn kept(ao: f32, scale: f32) -> f32 {
     (1.0 - scale * (1.0 - ao)).powf(1.0 / 2.2)
 }
 
-/// `diffuse` (its colours toned by `tone`) with `occlusion` baked into them and `specular` as its alpha: the plane over
+/// `diffuse` with `occlusion` baked into them and `specular` as its alpha: the plane over
 /// `reference`, the specular of the material's plain finish, which keeps its alpha at 1 (a bare metal, brighter,
 /// does too: the clear coat does not reflect more than it). Without a specular map the alpha is the texture's.
-pub fn diffuse(
-    diffuse: &Texture,
-    tone: impl Fn(f32) -> f32,
-    occlusion: Option<&(Plane, f32)>,
-    specular: Option<&(Plane, f32)>,
-) -> Vec<u8> {
+pub fn diffuse(diffuse: &Texture, occlusion: Option<&(Plane, f32)>, specular: Option<&(Plane, f32)>) -> Vec<u8> {
     let (width, height) = (diffuse.width as usize, diffuse.height as usize);
-    let toned: [u8; 256] = std::array::from_fn(|i| (tone(i as f32 / 255.0).clamp(0.0, 1.0) * 255.0).round() as u8);
     let keeps =
         occlusion.map(|(plane, scale)| (plane, std::array::from_fn::<f32, 256, _>(|i| kept(i as f32 / 255.0, *scale))));
     let mut rgba = diffuse.rgba();
@@ -55,7 +49,7 @@ pub fn diffuse(
         let (x, y) = (i % width, i / width);
         let keep = keeps.map_or(1.0, |(plane, keeps)| keeps[usize::from(plane.at(x, y, width, height))]);
         for c in &mut p[..3] {
-            *c = (f32::from(toned[usize::from(*c)]) * keep).round() as u8;
+            *c = (f32::from(*c) * keep).round() as u8;
         }
         p[3] = specular.map_or(p[3], |(plane, reference)| {
             (f32::from(plane.at(x, y, width, height)) / reference).clamp(0.0, 255.0).round() as u8
@@ -201,7 +195,7 @@ mod tests {
     fn the_baked_diffuse_is_a_bc7_with_its_mips() {
         let texture = dxt1_of(16, 16, [200, 100, 50]);
         let dark = (Plane::of(&dxt1_of(4, 4, [0, 0, 0]), 0), 1.0);
-        let dds = diffuse(&texture, |x| x, Some(&dark), Some(&dark));
+        let dds = diffuse(&texture, Some(&dark), Some(&dark));
         assert_eq!(&dds[84..88], b"DX10");
         let file = rbr_formats::dds::parse(&dds).unwrap();
         assert_eq!((file.width, file.height), (16, 16));

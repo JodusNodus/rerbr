@@ -373,7 +373,7 @@ without `--livery`; the class is required: it is in the game's database, not in 
   (`interior`, `_flock`, `_alpha`, `_netting`, `_carbon`, `motec`, `lcd_text`, `mirror`, `interior_windscreen`). Five cars (`i20`, `306`, `6rb`,
   `fow`, `pol`) index their largest sources with `uint`; some have no `livery_00`. All 46 convert (each with the Escort as template, class
   `historic`); the i20 and the 208 RX (`20x`: own brake lens, mud flaps, calipers, window net) look right in the Gabiria doc shot from the chase
-  and the cockpit. The cabin lift (below) is the Escort's: the i20's grey dash comes out pale.
+  and the cockpit.
 
 - Files per car under `cars/models/<car>/`: `<car>_highlod.pssg` and `_lowlod.pssg` (gzip PSSG, the stages' container),
   `livery_NN/textures_high/<car>_tex[_tm|_gr|_sn|_wt]_high_NN.pssg`, class textures in `cars/generics/<class>/car_gen_*_high.pssg`,
@@ -432,13 +432,19 @@ without `--livery`; the class is required: it is in the game's database, not in 
   `reverse_lb` and so on, named as the renderer names lamps (`e_light_lf`, `e_light_brake_lb`, `e_light_reverse_lb`), so the headlight key, the brake
   pedal and the reverse gear light them (the renderer glows a lit lens by its area). DiRT's combined tail and brake lamp is both: the tail's
   part (`e_light_lb`, `_lit`) always on, so it glows at night, and a brake `_lit` over it, same faces, with no unlit brake part to cover the tail's
-  lit one. The bumper's rally lights (`light_rig_*`) and the small lenses on the bumpers and wings stay in the body, unlit.
+  lit one. The second lamp sets and the bumper's rally lights (`light_2_glass_*`, `light_rig_glass_*`, `light_2_brake_glass_*`) are lamp parts
+  on the same boxes (`e_light_rig_lf` on `light_lf`), so the headlight key lights them; their pods (`light_rig_pod_*`) and the small lenses on the
+  bumpers and wings stay in the body. Beams: the model gets the template's night option as its own `light_on/` (`night_lights`: the template's
+  `rsf::night_options` overlaid in order on its `.ini` and `_settings.ini`, the last value of a key kept; the `point_*` sections and the whole
+  settings written), as the gvrc Mini WRC's lamp points are only in its option folder and the model had no beams at night. The gvrc Escort's
+  `light_ramp_on` sets `[e_lightglass_rf]` twice and disagrees with itself, so the renderer's checked merge is not used.
 - Look (2026-11-24; the launcher's default is Ultra: `--enhance` lighting, cabin, particles and the rest, which is what these checks use; the renders
   without them hide the first two):
-  - The cockpit's textures are `CarTextureNoDirt` like the template's `e_internal` (as `CarPlastic`, Ka and Kd 2, it glared teal), and go through
-    a tone curve (`CABIN_GAIN` 4, `Texture::toned`: the DXT blocks' two endpoints, indices and alpha kept, so no decoding; the atlas, the weave, the
-    dials and the indicators). The enhanced cabin light takes the albedo as it is, and DiRT's dash (0.05) came out black, the gauges unreadable;
-    now the dash, the wheel's stitching and the gauge faces read. Shader constants of the material (`Ambient`, `Diffuse`) change nothing.
+  - The cockpit's textures are `CarTextureNoDirt` like the template's `e_internal` (as `CarPlastic`, Ka and Kd 2, it glared teal), at the
+    atlas's own colours. A 4x tone curve on the DXT blocks (for a dash that came out black) washed every car's cockpit grey; side by side with
+    DiRT's head-cam the untouched atlas matches (2026-11-24). Shader constants of the material (`Ambient`, `Diffuse`) change nothing.
+  - Night: an interior material's `TEmissiveMap` (`int_<car>_dials_on`, `int_indicator_on`) is written as `dr_<key>_glow.dds` beside its texture,
+    the renderer's car texture glow mask (`notes/renderer.md`), so the dials and lamps are backlit at night on every car, not only cme's RBRHUD pack.
   - The paint keeps the template's `Kf` (0.21), so the renderer's clear coat (sky reflection and a broad sheen, on where `Kf` and `FresnelMax` are
     above 0) is on, as on the stock Escort. Earlier it was forced to 0 because the coat washed the livery's saturated red (168, 7, 10) to pink; with
     it off the car had no reflection at all ("doesn't look reflective"). On: the boot lid, roof and spoiler mirror the sky, and the red does go
@@ -483,13 +489,11 @@ without `--livery`; the class is required: it is in the game's database, not in 
   - The rear bulkhead (`int_main`) shows from outside through the rear quarter glass as a flat dark panel with sharp edges; it is DiRT's geometry,
     which DiRT never draws from outside.
 - Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's dust and cracks, the oil and trip LCDs (static), the digital displays and lamps of
-  the other cars, the damage crumple normals (below), the rally lights switched
-  by the headlight key, `pc_e_window_*` cracks, the lower LOD; for the other cars: a template of their own model (the physics), the class from the
-  game's database, the cabin lift per car, the second lamp sets (`light_2_*`, in the body), the gear digit of the cars whose gear display is an
-  `interior.fx` strip (drawn at rest), and a look at each.
+  the other cars, the damage crumple normals (below), `pc_e_window_*` cracks, the lower LOD; for the other cars: a template of their own model
+  (the physics), the class from the game's database, the gear digit of the cars whose gear display is an `interior.fx` strip (drawn at rest).
 - Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
-  for both files, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 84 tests (with the needles' turn between two placements and the analog displays read) (the added car's section and the match table, with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
+  for both files, lamp parts' switch boxes, a settings key set in its section, the template's night option written, the config's active nodes, a part taken into
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 86 tests (with the needles' turn between two placements and the analog displays read) (the added car's section and the match table, with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
   `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

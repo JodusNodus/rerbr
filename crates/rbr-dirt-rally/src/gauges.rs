@@ -46,7 +46,7 @@ fn glow_file(key: &str) -> String {
 const GEAR_RED: [u8; 3] = [255, 48, 36];
 /// The speed digits' colour: an LCD's, dark (DiRT's shader draws them black).
 const LCD_INK: [u8; 3] = [20, 22, 18];
-/// An unlit lamp is drawn this much of its lifted atlas colour, and glows this much of its lit state's map by night:
+/// An unlit lamp is drawn this much of its atlas colour, and glows this much of its lit state's map by night:
 /// the glow is the texel times the map, so a dim lamp drawn as the atlas has it glows at night nearly as a lit one.
 const LAMP_OFF: f32 = 0.4;
 const LAMP_GLOW: f32 = 0.6;
@@ -166,8 +166,6 @@ pub struct Sources<'a> {
     pub digits: &'a Texture,
     pub gear_font: &'a [u8],
     pub config: &'a str,
-    /// The tone curve the interior's textures were written with (the dimmed lamps take it too).
-    pub tone: fn(f32) -> f32,
 }
 
 /// The value of attribute `name` of the first element of `config` that has `marker` (`value="gear"`).
@@ -228,7 +226,7 @@ fn atlas(sources: &Sources) -> Result<Atlas, String> {
     };
     let unlit_cell = |row: usize| {
         let cell = lamps.crop([0, row * lamps.h / 2, half, lamps.h / 2]);
-        let dim = |c: u8| ((sources.tone)(f32::from(c) / 255.0) * LAMP_OFF * 255.0).round().clamp(0.0, 255.0) as u8;
+        let dim = |c: u8| (f32::from(c) * LAMP_OFF).round() as u8;
         cell.map(|_, _, t| [dim(t[0]), dim(t[1]), dim(t[2]), 255])
     };
     place("LimitOn", &lit_cell(0), 48, 176);
@@ -385,7 +383,6 @@ mod tests {
             digits: &textures[4],
             gear_font: font,
             config: CONFIG,
-            tone: |x| x,
         }
     }
 

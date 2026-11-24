@@ -18,7 +18,7 @@ use crate::needles;
 use crate::pssg::Pssg;
 use crate::texture::{self, Texture};
 use rbr_formats::car_gauges::{self, Needle};
-use rbr_formats::sgc;
+use rbr_formats::{ini, rsf, sgc};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -50,8 +50,6 @@ struct Style {
     texture: Source,
     /// The texture's alpha is the faces' opacity (the glass, the lenses), not the specular.
     opacity: bool,
-    /// The colours go through [`cabin_lift`] (the cabin's textures).
-    lifted: bool,
     /// The UVs' repeats (the carbon weave's `CarbonUVRepeat`).
     repeat: f32,
     maps: Maps,
@@ -59,7 +57,7 @@ struct Style {
 
 impl Style {
     fn new(shader: &'static str, key: impl Into<String>, texture: Source) -> Style {
-        Style { shader, key: key.into(), texture, opacity: false, lifted: false, repeat: 1.0, maps: Maps::default() }
+        Style { shader, key: key.into(), texture, opacity: false, repeat: 1.0, maps: Maps::default() }
     }
 
     fn with_normal(self, normal: Source) -> Style {
@@ -77,6 +75,9 @@ struct Maps {
     occlusion: Option<(Source, usize, f32)>,
     /// The map and channel of the specular, and the specular of the finish that reflects in full.
     specular: Option<(Source, usize, f32)>,
+    /// The backlight by night (the interior's `TEmissiveMap`: the dials' and lamps' `_on` maps), written as the texture's
+    /// glow map (`<file>_glow.dds`, `rbr-render`'s car textures).
+    emissive: Option<Source>,
 }
 
 /// Where a texture comes from.
@@ -168,6 +169,7 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
             crumpled: true,
             occlusion: Some((own("specocc"), 3, occlusion)),
             specular: Some((own("specocc"), 1, FULL_SPECULAR)),
+            emissive: None,
         };
         Style { maps, ..Style::new(shader, format!("main{:.0}", occlusion * 100.0), own("main")) }
     };
@@ -179,7 +181,7 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
         // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
         "Car Body Paint" | "Shiny Metal" => Some(body("CarPaint")),
         "Matt" | "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTextureNoDirt")),
-        "Cabin" => Some(Style { lifted: true, ..matt("cabin", own("cabin")) }),
+        "Cabin" => Some(matt("cabin", own("cabin"))),
         "Window Glass" => Some(Style { opacity: true, ..Style::new("CarGlass", "glass", own("glass")) }),
         // The lens carries the lamp's colours: its UVs lie on the lights atlas (red and amber at the tail, a clear
         // circle at the head); the atlas's alpha is the lens's own.
@@ -217,7 +219,7 @@ const INTERIOR_OCCLUSION: f32 = 0.5;
 fn interior_style(car: &str, m: &Material, gauged: bool) -> Option<Style> {
     let bound = |input: &str| m.textures.get(input).map(|t| t.trim_start_matches('#').to_owned());
     let own = |input: &str| bound(input).filter(|t| !t.starts_with("int_gen_")).map(Source::Interior);
-    let style = |key: String, texture| Style { lifted: true, ..Style::new("CarTextureNoDirt", key, texture) };
+    let style = |key: String, texture| Style::new("CarTextureNoDirt", key, texture);
     match m.shader.as_str() {
         "interior_windscreen.fx" => None,
         "lcd_text.fx" => (gauged && m.id == "gear indicator").then(|| style("int_gear".into(), Source::Gear)),
@@ -238,6 +240,7 @@ fn interior_style(car: &str, m: &Material, gauged: bool) -> Option<Style> {
                 crumpled: false,
                 occlusion: occlusion.map(|map| (map, 0, INTERIOR_OCCLUSION)),
                 specular: own("TSpecularMap").filter(|_| !opacity).map(|map| (map, 0, FULL_SPECULAR)),
+                emissive: own("TEmissiveMap"),
             };
             let key = interior_key(car, &texture) + if opacity { "_alpha" } else { "" };
             Some(Style { opacity, maps, ..style(key, Source::Interior(texture)) })
@@ -268,6 +271,7 @@ fn interior_styles(car: &str, materials: &BTreeMap<String, Material>, gauged: bo
         first.normal = first.normal.take().or_else(|| style.maps.normal.clone());
         first.occlusion = first.occlusion.take().or_else(|| style.maps.occlusion.clone());
         first.specular = first.specular.take().or_else(|| style.maps.specular.clone());
+        first.emissive = first.emissive.take().or_else(|| style.maps.emissive.clone());
     }
     styles.iter().map(|(id, style)| ((*id).clone(), merged[style.key.as_str()].clone())).collect()
 }
@@ -275,6 +279,11 @@ fn interior_styles(car: &str, materials: &BTreeMap<String, Material>, gauged: bo
 /// The file a material's texture is written as: `dr_<key>.dds`.
 pub(crate) fn file(key: &str) -> String {
     format!("dr_{key}.dds")
+}
+
+/// The file of a material's texture's glow map: `dr_<key>_glow.dds`, beside it.
+fn glow_file(key: &str) -> String {
+    file(&format!("{key}_glow"))
 }
 
 /// A mesh of the output before it is written: vertices in the part's own space and the node's place.
@@ -328,9 +337,12 @@ fn window(part: &str) -> Option<String> {
 /// (`""` unlit, `_lit` lit), the first of a name kept. The combined tail and brake lamp is both: the tail's part always on,
 /// so at night the lamp glows before the pedal is touched, and the brake's lit part over it (the same faces) while it
 /// brakes, with no unlit one of its own to cover the tail's lit one, where the car has no brake lens of its own. The
-/// bumper's extra lamps and the second sets (`light_2_*`) stay in the body.
-const LAMPS: [(&str, &str, &[&str]); 5] = [
+/// second sets (`light_2_*`: inner headlamps, second tail lamps) and the pods on the bonnet (`light_rig_*`) are lamps of
+/// their own on the side's headlamp or tail lamp switch ([`lamp`]), lit with the headlights.
+const LAMPS: [(&str, &str, &[&str]); 7] = [
     ("light_glass", "e_light_", &["", "_lit"]),
+    ("light_2_glass", "e_light_2_", &["", "_lit"]),
+    ("light_rig_glass", "e_light_rig_", &["", "_lit"]),
     ("light_brake_glass", "e_light_brake_", &["", "_lit"]),
     ("light_combi_glass", "e_light_", &["", "_lit"]),
     ("light_combi_glass", "e_light_brake_", &["_lit"]),
@@ -338,10 +350,12 @@ const LAMPS: [(&str, &str, &[&str]); 5] = [
 ];
 
 /// A lamp part's switch box and whether it is the lit part, by the names the renderer gives lamps (`e_light_lf_lit`:
-/// `light_lf`, lit; `e_light_brake_lb`: `brake_lb`, unlit).
+/// `light_lf`, lit; `e_light_brake_lb`: `brake_lb`, unlit; a second set's or a pod's the side's: `e_light_rig_lf_lit`:
+/// `light_lf`).
 fn lamp(part: &str) -> Option<(String, bool)> {
     let rest = part.strip_prefix("e_light_")?;
     let (rest, lit) = rest.strip_suffix("_lit").map_or((rest, false), |rest| (rest, true));
+    let rest = ["2_", "rig_"].iter().find_map(|set| rest.strip_prefix(set)).unwrap_or(rest);
     let named = rest.starts_with("brake_") || rest.starts_with("reverse_");
     Some((if named { rest.to_owned() } else { format!("light_{rest}") }, lit))
 }
@@ -979,15 +993,6 @@ fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>) -> String {
     out
 }
 
-/// The cabin atlas's gain. DiRT lights its dark interior (a black dash, carbon panels, dark gauge faces) far more than the
-/// renderer's cabin light does: unchanged the dash, the wheel and the gauges come out black in the cockpit. The atlas's
-/// colours go through `x * g / (1 + (g - 1) * x)`: black and white stay, the darks rise (a dash of 0.05 reads 0.17).
-const CABIN_GAIN: f32 = 4.0;
-
-fn cabin_lift(x: f32) -> f32 {
-    x * CABIN_GAIN / (1.0 + (CABIN_GAIN - 1.0) * x)
-}
-
 /// The car's files in the DiRT install, and the textures read from them (each file read once).
 struct Library {
     data: PathBuf,
@@ -1052,20 +1057,19 @@ impl Library {
     }
 
     /// A style's texture as the `.dds` the car reads: with the occlusion baked in and the specular as its alpha where
-    /// its maps have them, else its blocks toned as they are.
+    /// its maps have them, else its blocks as they are.
     fn diffuse(&self, style: &Style) -> Result<Vec<u8>, String> {
         if style.texture == Source::Gear {
             return Ok(gauges::gear_base());
         }
         let texture = self.find(&style.texture)?;
-        let tone: fn(f32) -> f32 = if style.lifted { cabin_lift } else { |x| x };
         let plane = |map: &Option<(Source, usize, f32)>| {
             map.as_ref()
                 .map(|(source, channel, value)| Ok::<_, String>((Plane::of(&self.find(source)?, *channel), *value)))
         };
         match (plane(&style.maps.occlusion).transpose()?, plane(&style.maps.specular).transpose()?) {
-            (None, None) => Ok(texture.toned(tone).dds()),
-            (occlusion, specular) => Ok(car_maps::diffuse(&texture, tone, occlusion.as_ref(), specular.as_ref())),
+            (None, None) => Ok(texture.dds()),
+            (occlusion, specular) => Ok(car_maps::diffuse(&texture, occlusion.as_ref(), specular.as_ref())),
         }
     }
 }
@@ -1171,6 +1175,9 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         .collect();
     for (key, style) in &styles {
         write(textures.join(file(key)), &library.diffuse(style)?)?;
+        if let Some(emissive) = &style.maps.emissive {
+            write(textures.join(glow_file(key)), &library.find(emissive)?.dds())?;
+        }
     }
     let normals: BTreeMap<&Source, bool> =
         styles.values().filter_map(|s| Some((s.maps.normal.as_ref()?, s.maps.crumpled))).collect();
@@ -1187,7 +1194,6 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
             digits: &find("int_digi_speed.tga")?,
             gear_font: &gauges::gear_font(data, &config)?,
             config: &config,
-            tone: cabin_lift,
         };
         gauges::write(out, &options.name, layout, &sources)?;
     }
@@ -1211,7 +1217,52 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         let text = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
         write(folder.join(format!("{name}{suffix}")), &text)?;
     }
+    night_lights(&template, &folder, name)?;
     Ok(model_path)
+}
+
+/// The option folder of the night's lights beside the model (`light_on/`, a bare option the renderer applies at night,
+/// `rbr_formats::rsf::night_options`).
+const NIGHT: &str = "light_on";
+
+/// Writes the template's night lights as the model's [`NIGHT`] option: the template's own night options (headlights on,
+/// pods and extra lights on) merged over its files, of which the lamp points and the light records. Without them a
+/// template whose `.ini` lacks the lamp points (the gvrc Mini WRC's are only in its options) lit nothing at night. The
+/// options' other sections name the template's own meshes and cameras, which the model's replace, and are left out.
+fn night_lights(template: &Template, folder: &Path, name: &str) -> Result<(), String> {
+    let pick = rsf::night_options(&template.folder);
+    if pick.options().is_empty() {
+        return Ok(());
+    }
+    let parse =
+        |text: &str, file: &str| ini::parse(text).map_err(|e| format!("{file}: line {}: {}", e.line, e.message));
+    let options = |dirs: &[PathBuf]| dirs.iter().map(|d| rsf::read_option_files(d)).collect::<Result<Vec<_>, _>>();
+    let settings_file = template.folder.join(format!("{}_settings.ini", template.name));
+    let bytes = fs::read(&settings_file).map_err(|e| format!("{}: {e}", settings_file.display()))?;
+    let mut parts = parse(&template.ini, &template.name)?;
+    let mut settings = parse(&String::from_utf8_lossy(&bytes), &settings_file.display().to_string())?;
+    // Each option over the model's files as RSF's picker copies them, the last value of a key kept (the gvrc Escort's
+    // `light_ramp_on` gives `[e_lightglass_rf]` twice; the renderer's checked merge leaves such an option out).
+    for option in options(&pick.options())? {
+        parts = rsf::overlay_sections(&parts, &option.parts);
+        settings = rsf::overlay_sections(&settings, &option.settings);
+    }
+    let text = |sections: &mut dyn Iterator<Item = &ini::Section>| {
+        sections
+            .map(|s| s.entries.iter().fold(format!("[{}]\r\n", s.name), |t, (k, v)| t + &format!("{k} = {v}\r\n")))
+            .collect::<Vec<_>>()
+            .join("\r\n")
+    };
+    let out = folder.join(NIGHT);
+    fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let points = &mut parts.iter().filter(|s| s.name.to_ascii_lowercase().starts_with("point_"));
+    for (file, body) in
+        [(format!("{name}.ini"), text(points)), (format!("{name}_settings.ini"), text(&mut settings.iter()))]
+    {
+        let path = out.join(file);
+        fs::write(&path, body).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1330,7 +1381,7 @@ mod tests {
         let pod = exterior("Lights Pod").unwrap().maps;
         assert!(pod.normal.is_some() && pod.specular.is_some() && pod.occlusion.is_none());
         assert!(exterior("Window Glass").unwrap().maps.normal.is_none());
-        assert!(exterior("Cabin").is_some_and(|s| s.lifted && s.maps.normal.is_none()));
+        assert!(exterior("Cabin").is_some_and(|s| s.maps.normal.is_none()));
     }
 
     #[test]
@@ -1360,11 +1411,19 @@ mod tests {
         assert_eq!(lamp("e_light_lf"), Some(("light_lf".to_owned(), false)));
         assert_eq!(lamp("e_light_brake_lb_lit"), Some(("brake_lb".to_owned(), true)));
         assert_eq!(lamp("e_light_reverse_rb"), Some(("reverse_rb".to_owned(), false)));
+        assert_eq!(lamp("e_light_rig_rf_lit"), Some(("light_rf".to_owned(), true)));
+        assert_eq!(lamp("e_light_2_lb"), Some(("light_lb".to_owned(), false)));
         assert_eq!(lamp("e_body"), None);
-        assert!(["light_glass_fl", "light_combi_glass_br", "light_rev_glass_bl", "light_brake_glass_bl"]
-            .iter()
-            .all(|p| lens(p)));
-        assert!(!["light_rig_glass_fl", "light_combi_pod_bl", "light_glass_fl_x", "light_2_glass_bl"]
+        assert!([
+            "light_glass_fl",
+            "light_combi_glass_br",
+            "light_rev_glass_bl",
+            "light_2_glass_bl",
+            "light_rig_glass_fl"
+        ]
+        .iter()
+        .all(|p| lens(p)));
+        assert!(!["light_rig_pod_fl", "light_combi_pod_bl", "light_glass_fl_x", "light_2_brake_pod_bl"]
             .iter()
             .any(|p| lens(p)));
     }
@@ -1526,5 +1585,31 @@ mod tests {
         assert_eq!(eyes["Cam_internal"], [head[0], head[1], head[2] - COCKPIT_BACK]);
         assert_eq!(eyes["Cam_bonnet"], frame.point([0.0, 0.5, 2.0]));
         assert!(!eyes.contains_key("Cam_bonnet2"));
+    }
+
+    #[test]
+    fn the_templates_night_option_is_written_with_its_points_and_light_records() {
+        let root = std::env::temp_dir().join(format!("rbr-dirt-rally-night-{}", std::process::id()));
+        let (template, option, out) = (root.join("mini"), root.join("mini/lights on"), root.join("out"));
+        for dir in [&option, &out] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        let write = |path: PathBuf, text: &str| fs::write(path, text).unwrap();
+        write(template.join("mini_settings.ini"), "[light_1]\r\nRange = 10\r\n");
+        write(option.join("mini.ini"), "[point_light_lf]\r\nPos = 1 2 3\r\n[e_body]\r\nSwitch = true\r\n");
+        write(option.join("mini_settings.ini"), "[light_1]\r\nRange = 80\r\n[light_2]\r\nRange = 40\r\n");
+        let template = Template {
+            folder: template,
+            name: "mini".into(),
+            sgc: Vec::new(),
+            ini: "[point_tail]\r\nPos = 0 0 0\r\n".into(),
+            hubs: [[0.0; 3]; 4],
+        };
+        night_lights(&template, &out, "DiRT_mcr").unwrap();
+        let read = |file: &str| fs::read_to_string(out.join(NIGHT).join(file)).unwrap();
+        // The template's points and the option's, not its mesh sections; the option's light records over the template's.
+        assert_eq!(read("DiRT_mcr.ini"), "[point_tail]\r\nPos = 0 0 0\r\n\r\n[point_light_lf]\r\nPos = 1 2 3\r\n");
+        assert_eq!(read("DiRT_mcr_settings.ini"), "[light_1]\r\nRange = 80\r\n\r\n[light_2]\r\nRange = 40\r\n");
+        fs::remove_dir_all(root).unwrap();
     }
 }
