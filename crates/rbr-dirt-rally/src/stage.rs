@@ -753,7 +753,7 @@ mod tests {
             finish: 10. + length,
             circuit: true,
             splits: vec![300., 900.],
-            materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None, layers: None }],
+            materials: vec![Material { name: "road".into(), ..Material::default() }],
             drawn: strip(-4., 4., 0),
             instanced: Instanced::default(),
             collision,
