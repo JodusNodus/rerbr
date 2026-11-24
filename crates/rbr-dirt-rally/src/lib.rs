@@ -16,6 +16,7 @@ pub mod car_pack;
 pub mod cli;
 pub mod collision;
 pub mod frame;
+pub mod gauges;
 pub mod import;
 pub mod install;
 pub mod jpak;

@@ -7,6 +7,7 @@
 //! centres are laid on the template's, the body between them follows (the wheelbases differ by centimetres).
 use crate::binxml::{self, Element};
 use crate::car::{self, Instance, Part};
+use crate::gauges;
 use crate::mesh::Mat;
 use crate::pssg::Pssg;
 use crate::texture::{self, Texture};
@@ -79,6 +80,8 @@ enum Source {
     Generic(&'static str, String),
     /// A texture of the car's interior file (`cars/interiors/models/cme/int_cme.pssg`).
     Interior(String),
+    /// The gear display's base, black: the gauges draw the digit on it (`gauges::gear_base`).
+    Gear,
 }
 
 fn style(material: &str, car: &str) -> Option<Style> {
@@ -121,8 +124,9 @@ fn style(material: &str, car: &str) -> Option<Style> {
 /// What a material of the interior scene draws as. The dash, doors, seats, cage, levers and wheel all read one atlas
 /// (`int_cme_main`), whatever their shader; the gauge faces and the indicator lights have theirs. The carbon fibre's
 /// UVs lie on the atlas's lightmap layout, not on a picture of carbon: it draws the weave (`int_carbon_diff`) repeated
-/// [`CARBON_REPEAT`] times over them, as DiRT's shader does. Not drawn: the digits' strips (`lcd_text`, a texture of
-/// numerals the game scrolls) and the glass. The mirrors' glass (`mirror`, which the game draws as a texture of what
+/// [`CARBON_REPEAT`] times over them, as DiRT's shader does. The gear display (`lcd_text`, a texture of numerals the
+/// game scrolls) is a black texture of its own which the gauges draw the digit on, for a car whose gauges are measured
+/// ([`gauges::layout`]); the speed display is drawn on the dials atlas. Not drawn: the glass. The mirrors' glass (`mirror`, which the game draws as a texture of what
 /// is behind) is the renderer's glass class on a flat texel: it shows the surroundings from the part's name
 /// (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
 fn interior_style(material: &str, car: &str) -> Option<Style> {
@@ -141,6 +145,12 @@ fn interior_style(material: &str, car: &str) -> Option<Style> {
         "carbon fibre" => style("int_carbon", "int_carbon_diff.tga".to_owned()),
         "dials matt" | "dials shiny" => style("int_dials", format!("int_{car}_dials.tga")),
         "shift light_01" | "limit lights" => style("int_indicator", "int_indicator.tga".to_owned()),
+        "gear indicator" if gauges::layout(car).is_some() => Some(Style {
+            shader: "CarTextureNoDirt",
+            key: "int_gear".to_owned(),
+            texture: Source::Gear,
+            opacity: false,
+        }),
         "mirror" => Some(Style {
             shader: "CarGlass",
             key: "int_mirror".to_owned(),
@@ -293,6 +303,8 @@ struct Cockpit<'a> {
     scene: &'a [Part],
     /// The exterior parts the cockpit draws as well (`bonnet`, `wing_fl`), by name without `x0_`.
     active: &'a [String],
+    /// The tach's needle is drawn by the gauges (into the dials atlas), not as the mesh at rest.
+    gauged: bool,
 }
 
 /// The exterior nodes an interior config keeps active in the cockpit (`<node name="x0_bonnet"/>`), without their `x0_`.
@@ -405,6 +417,7 @@ fn pieces(parts: &[Part], cockpit: Option<&Cockpit>, frame: &Frame, car: &str) -
                 .scene
                 .iter()
                 .filter(|p| !p.name.starts_with("int_wiper") && p.name != "int_steering_wheel")
+                .filter(|p| !(c.gauged && p.name == "int_needle_tach"))
                 .filter(|p| !MIRRORS.iter().any(|(node, _)| *node == p.name))
                 .flat_map(all)
                 .collect();
@@ -814,6 +827,7 @@ impl Library {
                 (self.generics.join(&self.class).join(format!("car_gen_{short}_high.pssg")), name)
             }
             Source::Interior(name) => (self.interior_file(), name),
+            Source::Gear => return Err("the gear display's base is made, not read".into()),
         };
         let pssg = Pssg::read(&path)?;
         let textures = texture::read_car(&pssg);
@@ -885,7 +899,8 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     };
     let config = fs::read_to_string(library.interior_file().with_extension("xml")).unwrap_or_default();
     let active = active_nodes(&config);
-    let cockpit = interior.as_deref().map(|scene| Cockpit { scene, active: &active });
+    let gauges = gauges::layout(&options.car).filter(|_| interior.is_some());
+    let cockpit = interior.as_deref().map(|scene| Cockpit { scene, active: &active, gauged: gauges.is_some() });
     let pieces = pieces(&parts, cockpit.as_ref(), &frame, &options.car);
 
     let folder = out.join("Cars").join(&options.name);
@@ -911,10 +926,31 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.material.as_str())).collect();
     materials.retain(|k, _| used.contains(k.as_str()));
     for key in materials.keys() {
-        let texture = library.find(&sources[key])?;
-        let dark = key == "cabin" || key.starts_with("int_");
-        let texture = if dark { texture.toned(cabin_lift) } else { texture };
-        fs::write(textures.join(file(key)), texture.dds()).map_err(|e| e.to_string())?;
+        let bytes = match &sources[key] {
+            Source::Gear => gauges::gear_base(),
+            source => {
+                let texture = library.find(source)?;
+                let dark = key == "cabin" || key.starts_with("int_");
+                if dark { texture.toned(cabin_lift) } else { texture }.dds()
+            }
+        };
+        fs::write(textures.join(file(key)), bytes).map_err(|e| e.to_string())?;
+    }
+    if let Some(layout) = gauges {
+        let find = |name: &str| library.find(&Source::Interior(name.to_owned()));
+        let car = &options.car;
+        let gear_font = gauges::gear_font(data, &config)?;
+        let sources = gauges::Sources {
+            dials: &find(&format!("int_{car}_dials.tga"))?,
+            dials_on: &find(&format!("int_{car}_dials_on.tga"))?,
+            indicator: &find("int_indicator.tga")?,
+            indicator_on: &find("int_indicator_on.tga")?,
+            digits: &find("int_digi_speed.tga")?,
+            gear_font: &gear_font,
+            config: &config,
+            tone: cabin_lift,
+        };
+        gauges::write(out, &options.name, layout, &sources)?;
     }
 
     let name = &options.name;
@@ -1049,9 +1085,13 @@ mod tests {
         assert_eq!(class("dials shiny").map(|c| c.1), Some("int_dials".to_owned()));
         assert_eq!(class("limit lights").map(|c| c.1), Some("int_indicator".to_owned()));
         assert_eq!(class("mirror").map(|c| c.0), Some("CarGlass"));
-        for m in ["interior glass windows", "digital speedometer", "gear indicator", "Car Body Paint"] {
+        for m in ["interior glass windows", "digital speedometer", "Car Body Paint"] {
             assert_eq!(class(m), None, "{m}");
         }
+        // The gear display is drawn only for a car whose gauges are measured.
+        assert_eq!(class("gear indicator").map(|c| c.1), Some("int_gear".to_owned()));
+        assert!(interior_style("gear indicator", "cme").is_some_and(|s| s.texture == Source::Gear));
+        assert!(interior_style("gear indicator", "another").is_none());
         let texture = |m: &str| interior_style(m, "cme").map(|s| s.texture);
         assert!(texture("Matt") == Some(Source::Interior("int_cme_main.tga".to_owned())));
     }

@@ -307,8 +307,8 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   - Materials: the dash, doors, seats, cage, levers and wheel share the atlas `int_cme_main` whatever their shader (`CarTextureNoDirt`, key
     `int_main`); the gauge faces `int_cme_dials` (`int_dials`), the shift and limit lights `int_indicator` (`int_indicator`, unlit). `carbon fibre`'s UVs
     lie on the atlas's occlusion layout (they showed knobs and decals on the dash top): it draws the weave `int_carbon_diff` with the UVs times 500
-    (`CarbonUVRepeat`). Not drawn: the digit strips (`lcd_text`: `int_digi_speed` and the gear indicator, texture strips the game scrolls) and
-    `interior glass windows`. The two mirrors (`int_reflection_m`, `_r`) are parts named `i_mirrorglass_m` and `_r` in the glass class with a flat texel,
+    (`CarbonUVRepeat`). Not drawn: the digit strips as meshes (`lcd_text`: `int_digi_speed` and the gear indicator are quads over strips of digits the game scrolls; the
+    gauges below draw them) and `interior glass windows`. The two mirrors (`int_reflection_m`, `_r`) are parts named `i_mirrorglass_m` and `_r` in the glass class with a flat texel,
     which `rbr-render`'s mirrors pass takes as glass: `--mirrors 1` shows the road behind in the centre mirror and the flank in the wing mirror.
   - Sets: `i_internal` and `e_internal` are both this scene (the exterior file's `Cabin` material is DiRT's low-detail copy and is used only for a car
     without an interior file); the outside copy drops the triangles above y 1.40 or beyond |x| 0.68 (`within_body`), the cage's roof tubes and the lining
@@ -344,16 +344,32 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
     values beyond that do not matter with the day's light) washed the livery's red (168, 7, 10) to pink; off, the red holds, the sun's highlight
     stays and the bonnet no longer mirrors the trees. DiRT's paint reflects little (`FresnelMin` 0.1, `EnvironmentColour` 0.54). Scaling the
     albedo or the DXT5 alpha (the reflection's mask, `t0.a`) did nothing for it.
-  - Gauges read by day and not at night: DiRT lights them (`backlight_shaders` in `int_cme.xml`), the renderer's dials are the RBR cars' own meshes,
-    and ours are static: the needle rests at its zero, the gear and speed digits are blank.
+  - Working gauges (`gauges.rs`, 2026-11-24): DiRT's `int_cme.xml` `displays` name what moves (the tach's `int_needle_tach` over 0 to 12 thousand rpm,
+    the speed digits and the gear digit as `lcd_text` quads with fonts in `simplefonts/simple_fonts.pssg`, the shift and limit lights as
+    `indicator_light`s at 7900 and 8900 rpm), and the renderer has no animated car meshes but redraws a car's own textures from an RBRHUD pack
+    (`rbr_render::dials`), so `car` writes a pack beside `Cars/` (`<out>/Plugins/RBRHUD/gauges/<name>/`: `default/config1..3.ini`, `textures/atlas.*`,
+    three `*_em.dds` glow maps; the viewer reads it from the root of the `--car-model` path). The needle mesh is no longer drawn; its sprite, cut from the
+    dials atlas (alpha from its brightness over the face, the lift's tone curve on its colours), turns about the hub (282, 276) over 65.29 degrees plus
+    28.238 per thousand rpm (a straight-line fit through the 13 long ticks, 0.23 degrees at worst, less the needle's 1.42 degree lean). The speed is
+    `SpeedKPH` (the xml's factor 3.6) in the LCD box (x 174 to 389, y 351 to 415) from the digit strip's cells (64 x 51.2 each, digits dark as DiRT's shader
+    draws them), though the atlas prints MPH. The gear digit is a texture of its own (`dr_int_gear`, 64 x 112, black) with the font's glyphs (32 x 32
+    cells, rows from the bottom of the file; the first is `N`; reverse is the `6`'s lower left, the font having none) stretched over it, red, by the
+    drive's gear (0 reverse, 1 neutral, 2 first). The lamps draw their lit half (diffuse plus emissive) over the unlit one past their rpm, a dimmed
+    unlit half (0.4) under it. Night: DiRT's `int_cme_dials_on` as the glow map (at the atlas's size), the needle's sweep lit at 0.25 of its colour (the glow is
+    the texel times the map, the needle moves and the map does not; a disc at 0.3 lit the face grey, 0.15 left the needle dark), the lamps' map at 0.6 on
+    both halves (their dimmed half at 0.4 times a map of 1 glowed nearly as lit). The oil LCD and the trip computer stay as printed. The layout is
+    measured on the cme's textures (`gauges::CME`); other cars get no pack and keep the needle mesh at rest.
+  - The gear display sits at the instrument pod's left edge, behind the wheel's rim from the head, and by day the pod's hood shades it dark (the cabin
+    light keeps only the needle dials' faces at the game's light, `car::cabin::gauge_faces`); it shows at night. A frame of a moving car: needle at
+    its rpm, the digits at its km/h, the shift light lit past 7900 (night, 8.5 thousand rpm), the limit light at 8900 not yet.
   - The rear bulkhead (`int_main`) shows from outside through the rear quarter glass as a flat dark panel with sharp edges; it is DiRT's geometry,
     which DiRT never draws from outside.
-- Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's dust and cracks, working gauges
-  (needle, gear, speed) and lit gauges at night, the normal, specular and occlusion maps, the rally lights switched
+- Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's dust and cracks, the oil and trip LCDs (static), the gauges of
+  the other cars, the normal, specular and occlusion maps, the rally lights switched
   by the headlight key, the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
-- Checked: loads with 0 missing textures and 0 bad triangles, 12 unit tests (the written mesh parses back, a helper node mirrors, material to class
+- Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
   for both files, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head), the whole crate's 66 tests; stills of the car alone, on `track-20_N` at the start and in a
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 72 tests; stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
-  `car-info` on `int_<car>.pssg`. Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
+  `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
