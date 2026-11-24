@@ -419,6 +419,11 @@ without `--livery`; the class is required: it is in the game's database, not in 
     the headrests, so unchanged the eye sat behind them and the seats' top edge crossed the windscreen as a dark bar (found by dropping nodes one at
     a time; seats moved 0.5 m back, bar gone). `Cam_internal`'s `Pos` is put 0.5 m ahead of the head (`CAMERAS`), the eye lands on it (or 0.05 m
     behind for the wheel's `WHEEL_BEHIND`).
+- Cockpit against DiRT (2026-11-24, cme, a DiRT head-cam video frame): at the same field of view (the video's is DiRT's widest, 70
+  degrees up and down, `--fov 102` across) the framing, dash, cage, door bars, wheel and mirrors match. The eye ends 0.65 m behind the wheel
+  (`WHEEL_BEHIND`) against DiRT's head-cam's 0.61 m (`position` z -0.32, wheel 0.29). In sun (`--weather dry --clouds clear`) the dash, roof and
+  wheel are as dark as DiRT's. In Gabiria's haze the cabin is greyer, from the ambient light; a full-strength interior occlusion changed it by
+  under 3 %. Not DiRT's: the driver's arms (ours with `driver = on`, `camera_prefs`), and the lcd_text digits over the 306's and the Impreza's backlit LCDs.
 - Steering wheel: `x0_steering_wheel` becomes `i_steeringwheel` and `e_steeringwheel`, node at the hub, local axes from the part's rows (x, y and the
   z column negated for the mirrored local vertices; the same sense as the template's matrix, so the renderer's `wheel_turn` turns it the right way).
   Cockpit, bonnet and bumper cameras: DiRT's `cameras.xml` (BXML, `rbr-dirt-rally xml FILE`) views `head-cam` (`position`), `bumper` and `bonnet`
