@@ -108,6 +108,23 @@ impl Texture {
         format.decompress(&self.data[..self.format.level_bytes(self.width, self.height)], w, h, &mut out);
         out
     }
+
+    /// A DXT5nm normal map (`TNormalMap`: alpha is x, green y up the image, red 1, blue 0) as the opaque `.dds` the
+    /// renderer's bump reads: red x, green y along v (down the image), z rebuilt. The sign: integrating 44 terrain
+    /// maps to heights, 35 correlate best with their diffuse (mortar and cracks low) with green up the image.
+    pub fn normal_dds(&self) -> Vec<u8> {
+        let mut rgba = self.rgba();
+        rgba.chunks_exact_mut(4).for_each(|p| (p[0], p[1], p[2], p[3]) = (p[3], 255 - p[1], 255, 255));
+        rbr_ac_tracks::btb::textures::encode(false, self.width, self.height, rgba)
+    }
+
+    /// A specular map (`TSpecularMap`: red the intensity) as a grey `.dds`, which the renderer's highlight takes
+    /// per channel.
+    pub fn specular_dds(&self) -> Vec<u8> {
+        let mut rgba = self.rgba();
+        rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[2], p[3]) = (p[0], p[0], 255));
+        rbr_ac_tracks::btb::textures::encode(false, self.width, self.height, rgba)
+    }
 }
 
 /// Every texture of the file (copies its data; a [`Library`] decodes one at a time).
@@ -265,6 +282,22 @@ mod tests {
         assert_eq!((word(12), word(16), word(20), word(28), word(84)), (4, 8, 32, 4, u32::from_le_bytes(*b"DXT5")));
         assert_eq!(dds.len(), 128 + t.data.len());
         assert!(!t.is_placeholder() && texture(4, 4, Format::Dxt1, 1).is_placeholder());
+    }
+
+    #[test]
+    fn a_dxt5nm_normal_map_becomes_red_x_green_down() {
+        // x in alpha (60), y up the image in green (200): red 60, green 255 - 200, opaque DXT1.
+        let mut block = vec![0; 16];
+        texpresso::Format::Bc3.compress(&[255, 200, 0, 60].repeat(16), 4, 4, texpresso::Params::default(), &mut block);
+        let t = Texture { name: "n".into(), width: 4, height: 4, format: Format::Dxt5, levels: 1, data: block };
+        let dds = t.normal_dds();
+        assert_eq!(&dds[84..88], b"DXT1");
+        let mut px = [0u8; 64];
+        texpresso::Format::Bc1.decompress(&dds[128..136], 4, 4, &mut px);
+        assert!(px[0].abs_diff(60) < 9 && px[1].abs_diff(55) < 9 && px[2] > 247 && px[3] == 255, "{:?}", &px[..4]);
+        let grey = t.specular_dds();
+        texpresso::Format::Bc1.decompress(&grey[128..136], 4, 4, &mut px);
+        assert!(px[0].abs_diff(255) < 9 && px[0].abs_diff(px[1]) < 9 && px[0].abs_diff(px[2]) < 9);
     }
 
     #[test]

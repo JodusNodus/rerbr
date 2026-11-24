@@ -234,3 +234,19 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - `Object_Cov` and `Object_2SidedCov` are cut-outs, not opaque (DXT5 alpha is the wire mesh of `wal_wirefnc_mid_a_1_d` and `pke_fence_02_d`, the branches of `wal_gateway_c_2_d`, the cable): `blended` took only
   `*blend*` shaders, so fences drew as solid slabs. `blended` now includes `cov.fx`.
 - Shade read blue and violet (Wales, Pikes Peak, Turini): the bakes carry DiRT Rally's own ambient and the renderer's clear-sky ambient came on top. `settings.ini` writes `sky_tint=0.2` (`[ReRbrAir]`, `notes/renderer.md`): 0 left Wales' roads warm brown, 0.3 and 0.5 left Pikes' asphalt blue, 0.2 reads near neutral on all five routes.
+
+## Normal maps and gloss, 2026-11-24
+
+- Encoding (every `TNormalMap*` of props, terrain and trees alike): DXT5nm, alpha is x, green y, red 1, blue 0. Green points up the image: integrating 44 terrain maps to heights (Poisson solve over the four
+  sign choices), 35 correlate best with their diffuse (cracks and mortar low) with `dh/du = -x/z`, `dh/dv = +y/z` (v down the image), the other three choices 0 to 5 votes. `Texture::normal_dds` writes red x, green
+  `255 - y` (along v, as the renderer's `bumped` reads it), opaque DXT1, as the AC conversions' normal maps are stored.
+- Gloss: props carry a separate `TSpecularMap` RGB (rock 4 to 15 of 255, painted cars R about 90, G 120 to 216, B about 20; channel meaning unread, there is no spec constant in any material). Written as the red
+  channel in grey (`specular_dds`), `SpecularColor` 0.5, `SpecularPower` 40, ReRBR's `BTB_DiffuseBumpSpecular`. At 1.0 and 16 painted car bodies read white in the sun.
+- Props (`import::Placer::slot`): solid materials (not `blended`) with a `TNormalMap` and/or `TSpecularMap` write both; leaves and wire keep the card. The tree sheets' (`treesheet_foliage_norm`, billboards) normals are
+  not used.
+- Terrain (`shade::Layers::normal`): the ground's renderer path is `ReRbrLayer*` plus one `normalTexture` read at `uv0 * ReRbrBumpScale`, the same uv the details use, so no renderer change: a material
+  takes the normal map of the layer that weighs most over its triangles (vertex weights), at that layer's repeat (`scale` of its mask channel). Not for the islands read in the world's (x, z): the bump has no
+  world mode. One normal per pixel for all four layers (a per-pixel sum by the mask) would need the shader to sample four normal maps.
+- Result (Turini, Greece, Sweden, Finland, Wales at 0.3, 2, 4 (6) km, `--enhance all`): RMSE against the diffuse-only conversion 1 to 6 of 255 (Turini's rock wall at 6 km 9): grain on rock, gravel and snow, car paint with a soft
+  highlight, no sheen elsewhere. `Textures.zip` +30 % Greece 450 -> 554 MB, +33 % Turini 397 -> 506, +20 % Sweden 452 -> 542, +31 % Finland 577 -> 757, +22 % Wales 539 -> 660 (DXT1 normals, 5:6:5). Import under load
+  (average 15 to 20): Greece 59 -> 65 s, Turini 51 -> 54 s. Viewer frame at Turini 6 km (1280x720, all on, `--frames 60`): 14.9 to 15.4 ms before, 13.7 to 14.4 after (noise; nothing measurable).

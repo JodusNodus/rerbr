@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 pub const CONVERSION_FILE: &str = "dr-conversion.json";
 
 /// A drawn material: its `materials.ini` section and the DDS it draws.
+#[derive(Default)]
 pub struct Material {
     pub name: String,
     /// The diffuse texture as a DDS file; `None` draws a flat grey.
@@ -30,7 +31,24 @@ pub struct Material {
     pub range: Option<f64>,
     /// The ground the renderer sums per pixel (`ReRbrLayer*`): `dds` stays the fallback of a reader without them.
     pub layers: Option<crate::shade::Layers>,
+    /// The normal map (`TNormalMap`) and the specular map (`TSpecularMap`) of a prop, as DDS files.
+    pub normal: Option<Vec<u8>>,
+    pub specular: Option<Vec<u8>>,
 }
+
+impl Material {
+    /// The section's bump and highlight: the maps go into the bank, the highlight is ReRBR's own constant.
+    fn extras(&self, bank: &mut TextureBank) -> Result<material::Extras, String> {
+        let mut put = |dds: &Option<Vec<u8>>| dds.as_ref().map(|d| bank.put(d.clone(), "dds")).transpose();
+        let (normal, specular) = (put(&self.normal)?, put(&self.specular)?);
+        let highlight = specular.is_some().then_some(HIGHLIGHT);
+        Ok(material::Extras { normal, specular, highlight, ..material::Extras::default() })
+    }
+}
+
+/// `(SpecularColor, SpecularPower)` of a prop with a specular map: the maps hold the intensity, the shader's own
+/// constants are not on disk.
+const HIGHLIGHT: (f32, f32) = (0.5, 40.);
 
 /// A prop or tree's mesh in its own space, written once as a model (`Objects/dr_<n>.x`) and drawn by its placements. The
 /// triangles are in the stage's world axes (as [`Input::drawn`]) about the model's origin; `material` is the index
@@ -399,7 +417,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         None => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                     };
                     let name = format!("dr\\{}", model.material);
-                    material::section(&mut sections, &name, &texture, m.transparent);
+                    material::section_with(&mut sections, &name, &texture, m.transparent, &m.extras(&mut bank)?);
                     names.push(name.clone());
                     section_of.insert(model.material as usize, name.clone());
                     name
@@ -430,6 +448,10 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     (None, None) => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                 };
                 let name = format!("dr\\{material}");
+                let (normal, bump_scale) = match m.layers.as_ref().and_then(|l| l.normal.as_ref()) {
+                    Some((dds, repeat)) => (Some(bank.put(dds.to_vec(), "dds")?), Some(*repeat)),
+                    None => (None, None),
+                };
                 let layers = match &m.layers {
                     Some(l) => Some(material::Layers {
                         diffuse: bank.put(l.diffuse.to_vec(), "dds")?,
@@ -452,7 +474,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     &name,
                     &texture,
                     m.transparent,
-                    &material::Extras { layers, ..material::Extras::default() },
+                    &material::Extras { layers, normal, bump_scale, ..m.extras(&mut bank)? },
                 );
                 names.push(name.clone());
                 section_of.insert(*material, name.clone());
@@ -610,6 +632,22 @@ mod tests {
     }
 
     #[test]
+    fn a_prop_with_maps_is_a_bump_and_highlight_section() {
+        let out = std::env::temp_dir().join(format!("rbr-dirt-rally-maps-{}.zip", std::process::id()));
+        let mut bank = TextureBank::new(&out).unwrap();
+        let flat = || Some(rbr_ac_tracks::btb::textures::flat([0.5; 4]));
+        let m = Material { normal: flat(), specular: flat(), ..Material::default() };
+        let mut ini = String::new();
+        material::section_with(&mut ini, "p", "d.dds", false, &m.extras(&mut bank).unwrap());
+        assert!(ini.contains("ReRbrEffect=BTB_DiffuseBumpSpecular\n") && ini.contains("SpecularPower=40.0\n"), "{ini}");
+        assert!(ini.contains("normalTexture=") && ini.contains("specularTexture=") && !ini.contains("ReRbrBumpScale"));
+        ini.clear();
+        material::section_with(&mut ini, "q", "d.dds", false, &Material::default().extras(&mut bank).unwrap());
+        assert!(!ini.contains("ReRbrEffect") && !ini.contains("normalTexture"), "{ini}");
+        let _ = std::fs::remove_file(&out);
+    }
+
+    #[test]
     fn a_straight_course_writes_a_stage_whose_cells_check() {
         let out = std::env::temp_dir().join(format!("rbr-dirt-rally-stage-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&out);
@@ -627,7 +665,7 @@ mod tests {
             start: 60.,
             finish: 540.,
             splits: vec![300.],
-            materials: vec![Material { name: "road".into(), dds: None, transparent: false, range: None, layers: None }],
+            materials: vec![Material { name: "road".into(), ..Material::default() }],
             drawn: strip(-4., 4., 0),
             instanced: Instanced::default(),
             collision,

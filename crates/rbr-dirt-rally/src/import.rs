@@ -247,6 +247,7 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                     transparent,
                     range: None,
                     layers,
+                    ..stage::Material::default()
                 });
                 materials.len() as u32 - 1
             });
@@ -406,12 +407,19 @@ impl Placer<'_> {
         let texture = found.and_then(material::diffuse).and_then(|r| self.library.get(r));
         let transparent = found.is_some_and(|f| blended(&f.shader))
             && texture.as_ref().is_some_and(|t| t.format == texture::Format::Dxt5);
+        // Solid props take their normal and specular maps; cut-outs (leaves, wire) keep the flat card.
+        let mut solid = |input: &str| {
+            found.filter(|_| !transparent).and_then(|f| f.textures.get(input)).and_then(|r| self.library.get(r))
+        };
+        let (bumped, shiny) = (solid("TNormalMap"), solid("TSpecularMap"));
         materials.push(stage::Material {
             name: format!("{file}:{material}@{}-{}", lod.0, lod.1),
             dds: texture.map(|t| t.dds()),
             transparent,
             range: Some(lod.1),
-            layers: None,
+            normal: bumped.as_ref().map(|t| t.normal_dds()),
+            specular: shiny.as_ref().map(|t| t.specular_dds()),
+            ..stage::Material::default()
         });
         let slot = materials.len() as u32 - 1;
         if lod.0 > 0. {
