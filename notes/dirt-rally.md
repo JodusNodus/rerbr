@@ -274,3 +274,32 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Result (Turini, Greece, Sweden, Finland, Wales at 0.3, 2, 4 (6) km, `--enhance all`): RMSE against the diffuse-only conversion 1 to 6 of 255 (Turini's rock wall at 6 km 9): grain on rock, gravel and snow, car paint with a soft
   highlight, no sheen elsewhere. `Textures.zip` +30 % Greece 450 -> 554 MB, +33 % Turini 397 -> 506, +20 % Sweden 452 -> 542, +31 % Finland 577 -> 757, +22 % Wales 539 -> 660 (DXT1 normals, 5:6:5). Import under load
   (average 15 to 20): Greece 59 -> 65 s, Turini 51 -> 54 s. Viewer frame at Turini 6 km (1280x720, all on, `--frames 60`): 14.9 to 15.4 ms before, 13.7 to 14.4 after (noise; nothing measurable).
+
+## Cars (`car.rs`, `car_pack.rs`), 2026-11-24
+
+First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP physics on a retail stage, on the live path
+(`viewer ... --car-pack <physics pack> --car-model <out>/Cars/<name>/<name>.sgc --live rbr-standalone --live ...`).
+`rbr-dirt-rally car cme --template <car folder> --out DIR --class historic [--livery N] [--name NAME]`.
+
+- Files per car under `cars/models/<car>/`: `<car>_highlod.pssg` and `_lowlod.pssg` (gzip PSSG, the stages' container),
+  `livery_NN/textures_high/<car>_tex[_tm|_gr|_sn|_wt]_high_NN.pssg`, class textures in `cars/generics/<class>/car_gen_*_high.pssg`,
+  cabin in `cars/interiors/models/<car>/`. Physics (`*.ctf`), engine bundles (`.bdl`) and banks are not read. Names are not on disk: the
+  folder code and the engine bundle in `audio_car_setup.xml` (`4cyl_na_dat_escort_mkii_dd`) say which car it is.
+- Scene: `LOD0_` over one `MATRIXPALETTEJOINTNODE` per part (`x0_door_fl`), each holding `MATRIXPALETTEJOINTRENDERINSTANCE`s: a range of a shared
+  `RENDERDATASOURCE` (`streamOffset`, `elementCountFromOffset`; `indexOffset`, `indicesCountFromOffset`; indices count from the range's first
+  vertex), the material (`shader="#Car Body Paint"`) and a joint. Vertices are in the part's own space (the part's node `TRANSFORM` places it:
+  wheels at their hubs, vertices about the hub); `primitive` is on the index source, `SkinIndices` is a scalar `float` stream. Frame: x left,
+  y up, z forward, right handed (the Escort: wheels at z +1.316 and -1.057, x 0.714 and 0.724, hub height 0.398, tyre radius 0.32).
+- Materials hold constants only; textures bind by name: `cme_main` (4096 DXT1, paint and every `Matt` part), `cme_cabin`, `cme_glass`, `cme_lights`,
+  `disc`, `cme_wheel` (per class file), `tread` (class generics), `suspension` and `grills` (class generics). The livery files' formats are
+  `dxt1_srgb`/`dxt5_srgb` (`texture::read_car`; stage reading is unchanged). UVs need no flip.
+- Into the renderer's car format: z mirrored about the wheels' centre, wheels laid on the template's (wheelbase 2.373 against the RSF Escort's 2.518:
+  the body is 7 cm short at each axle against the physics' hubs), triangle order flipped (the mirror; unflipped, the outer skins were culled).
+  Parts become `e_body` (everything outside, split at 60000 vertices), `e_window_*`, `e_wheel_{tarmac,gravel,snow}_<side>` (rim, tyre and disc, node at
+  the hub), `e_internal` and `i_internal`; the template's collision hulls, helper nodes, points, cameras, lamp and shader settings are kept, so the
+  physics pack's frame holds. Not done: `i_steeringwheel`, doors and hoods as their own hinged or damageable parts (no dents), lamp parts (no brake
+  or reverse light, no flare), mirrors, wipers, the cockpit camera from DiRT's own (the template's sits mid-car), the other cars (`style` and `SIDES`
+  are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
+- Checked: loads with 0 missing textures and 0 bad triangles (25 meshes, 49711 triangles), 3 unit tests (the written mesh parses back, the clear
+  texture is a DDS the renderer reads, material to class), the whole crate's 57 tests; stills of the car alone, on `track-20_N` at the start and in a
+  live autopilot drive (cockpit view). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

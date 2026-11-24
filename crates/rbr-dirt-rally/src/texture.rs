@@ -47,9 +47,17 @@ impl Texture {
     /// Non-square textures carry some bytes after the standard chain (127 blocks for 1024x512, 255 for 2048x1024: not a
     /// level, the levels before them decode as the downsampled base); they are left out.
     fn from_node(node: Node) -> Option<Texture> {
+        Texture::from_node_in(node, false)
+    }
+
+    /// [`Texture::from_node`], also taking the `_srgb` formats when `srgb` (the cars' liveries: the same blocks, tagged
+    /// for sampling as sRGB).
+    fn from_node_in(node: Node, srgb: bool) -> Option<Texture> {
         let format = match node.str("texelFormat")? {
             "dxt1" => Format::Dxt1,
             "dxt5" => Format::Dxt5,
+            "dxt1_srgb" if srgb => Format::Dxt1,
+            "dxt5_srgb" if srgb => Format::Dxt5,
             _ => return None,
         };
         let (width, height) = (node.u32("width")?, node.u32("height")?);
@@ -125,6 +133,11 @@ impl Texture {
         rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[2], p[3]) = (p[0], p[0], 255));
         rbr_ac_tracks::btb::textures::encode(false, self.width, self.height, rgba)
     }
+}
+
+/// The textures of a car's file: [`read`] with the `_srgb` formats.
+pub fn read_car(pssg: &Pssg) -> Vec<Texture> {
+    pssg.find("TEXTURE").filter_map(|n| Texture::from_node_in(n, true)).collect()
 }
 
 /// Every texture of the file (copies its data; a [`Library`] decodes one at a time).

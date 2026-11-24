@@ -32,7 +32,7 @@ pub struct Mesh {
 
 pub(crate) type Mat = [[f32; 4]; 4];
 
-fn mul(a: &Mat, b: &Mat) -> Mat {
+pub(crate) fn mul(a: &Mat, b: &Mat) -> Mat {
     let mut m = [[0.; 4]; 4];
     for (i, row) in m.iter_mut().enumerate() {
         for (j, v) in row.iter_mut().enumerate() {
@@ -90,7 +90,7 @@ fn decode_stream(block: Node, k: usize) -> Result<Stream, String> {
         "float2" => 8,
         "float3" => 12,
         "float4" => 16,
-        "half2" | "uint_color_argb" | "uchar4" => 4,
+        "float" | "half2" | "uint_color_argb" | "uchar4" => 4,
         "half4" => 8,
         other => return Err(format!("{render_type}: unknown data type {other}")),
     };
@@ -126,7 +126,8 @@ fn decode_stream(block: Node, k: usize) -> Result<Stream, String> {
 /// The triangle indices and streams of one `RENDERDATASOURCE`.
 fn read_source(source: Node) -> Result<(Vec<u32>, Vec<Stream>), String> {
     let index = source.child("RENDERINDEXSOURCE").ok_or("RENDERDATASOURCE without indices")?;
-    if index.str("format") != Some("ushort") || source.str("primitive") != Some("triangles") {
+    if index.str("format") != Some("ushort") || source.str("primitive").or(index.str("primitive")) != Some("triangles")
+    {
         return Err("only ushort triangle lists are read".into());
     }
     let indices = index
@@ -140,6 +141,29 @@ fn read_source(source: Node) -> Result<(Vec<u32>, Vec<Stream>), String> {
         streams.push(decode_stream(block, stream.u32("subStream").unwrap_or(0) as usize)?);
     }
     Ok((indices, streams))
+}
+
+/// A `RENDERDATASOURCE` read whole, for a reader that slices it itself (the cars': one source serves many parts, each
+/// instance naming its range of the vertices and indices).
+pub(crate) struct Geometry {
+    pub indices: Vec<u32>,
+    pub positions: Vec<[f32; 3]>,
+    pub normals: Vec<[f32; 3]>,
+    /// The first `ST` stream's `xy`; empty without one.
+    pub uv: Vec<[f32; 2]>,
+}
+
+/// The indices and the `Vertex`, `Normal` and first `ST` streams of `source`.
+pub(crate) fn geometry(source: Node) -> Result<Geometry, String> {
+    let (indices, streams) = read_source(source)?;
+    let of = |t: &str| streams.iter().find(|s| s.render_type == t);
+    let vec3 = |s: Option<&Stream>| s.map_or(Vec::new(), |s| s.values.iter().map(|v| [v[0], v[1], v[2]]).collect());
+    Ok(Geometry {
+        indices,
+        positions: vec3(of("Vertex")),
+        normals: vec3(of("Normal")),
+        uv: of("ST").map_or(Vec::new(), |s| s.values.iter().map(xy).collect()),
+    })
 }
 
 fn xy(v: &[f32; 4]) -> [f32; 2] {

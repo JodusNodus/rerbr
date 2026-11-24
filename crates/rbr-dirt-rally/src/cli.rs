@@ -6,6 +6,7 @@ const HELP: &str = "rbr-dirt-rally: convert stages of a locally installed DiRT R
 
 Usage:
   rbr-dirt-rally list [INSTALL]
+  rbr-dirt-rally car CAR --template CARFOLDER --out DIR [--class historic] [--livery N] [--name NAME] [--install INSTALL]
   rbr-dirt-rally import LOCATION/AREA/route_N [--install INSTALL] [--name NAME] [--out DIR] [--replace]
          [--draw-corridor M] [--collision-corridor M] [--lod M]
 
@@ -43,6 +44,21 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             Ok(())
         }
         Some("import") => import(args),
+        Some("car") => car(args),
+        Some("car-textures") => {
+            let path = args.next().ok_or("car-textures needs a livery .pssg")?;
+            for t in crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?) {
+                println!("{:<40} {}x{} {:?} {} levels", t.name, t.width, t.height, t.format, t.levels);
+            }
+            Ok(())
+        }
+        Some("car-info") => {
+            let path = args.next().ok_or("car-info needs a <car>_highlod.pssg")?;
+            let pssg = crate::pssg::Pssg::read(Path::new(&path))?;
+            print!("{}", crate::car::info(&crate::car::parts(&pssg)?, args.next().as_deref() == Some("-v")));
+            print!("{}", crate::car::materials(&pssg));
+            Ok(())
+        }
         Some(other) => Err(format!("unknown command {other}; see --help")),
     }
 }
@@ -54,6 +70,35 @@ fn install(path: Option<&str>) -> Result<Install, String> {
             Install::find().ok_or_else(|| "no DiRT Rally install found in the Steam libraries; pass its folder".into())
         }
     }
+}
+
+fn car(mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    let car = args.next().filter(|a| !a.starts_with("--")).ok_or("car needs the car's folder (cme)")?;
+    let (mut path, mut out, mut template, mut class, mut livery, mut name) =
+        (None, None, None, "historic".into(), 0, None);
+    while let Some(flag) = args.next() {
+        let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
+        match flag.as_str() {
+            "--install" => path = Some(value),
+            "--out" => out = Some(value),
+            "--template" => template = Some(value),
+            "--class" => class = value,
+            "--livery" => livery = value.parse().map_err(|e| format!("{flag}: {e}"))?,
+            "--name" => name = Some(value),
+            _ => return Err(format!("unknown option {flag}")),
+        }
+    }
+    let options = crate::car_pack::Options {
+        name: name.unwrap_or_else(|| format!("DiRT_{car}")),
+        car,
+        class,
+        livery,
+        template: template.ok_or("car needs --template, the folder of a car of the same model")?.into(),
+    };
+    let out = out.ok_or("car needs --out")?;
+    let model = crate::car_pack::convert(&install(path.as_deref())?.data, &options, Path::new(&out))?;
+    println!("{}", model.display());
+    Ok(())
 }
 
 fn import(args: impl Iterator<Item = String>) -> Result<(), String> {

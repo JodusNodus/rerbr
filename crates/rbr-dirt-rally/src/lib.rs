@@ -11,6 +11,8 @@
 //! - `frame`: DiRT Rally's axes to the stage's;
 //! - `stage`, `import`, `cli`: the conversion and its interfaces.
 pub mod binxml;
+pub mod car;
+pub mod car_pack;
 pub mod cli;
 pub mod collision;
 pub mod frame;
