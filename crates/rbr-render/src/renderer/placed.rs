@@ -97,7 +97,7 @@ fn prepared_model<'a>(
     let mut marks = vec![0u32; vertices.len()];
     for draw in &mesh.draws {
         let on_ground = ground && draw.state.shade.is_none() && draw.state.alpha_ref.is_some();
-        let mark = u32::from(on_ground) * ON_GROUND | u32::from(plant(draw).is_some()) * ON_PLANT;
+        let mark = (u32::from(on_ground) * ON_GROUND) | (u32::from(plant(draw).is_some()) * ON_PLANT);
         for &i in &mesh.indices[draw.indices.clone()] {
             marks[i as usize] |= mark;
         }
