@@ -184,6 +184,15 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   neutral (102/97/93), `fea_06_d` 124/112/100. The blue-grey is the renderer's lighting: the same stage shot with `--no-relight` is warm and crisp (walls and valley),
   `--fog off` and `--sun midday` change little. Dropping the colour-map hue (`TINT` 0) or the lightmap's shadow hue did not change the walls. Not a converter defect.
 
+- Turini's barcode bands on the road at 1 km (2026-11-24): `monte_a` (`terrain_road`) quads whose second-`ST` corners lie on one line of the lightmap (u constant, 192 triangles in
+  `monte_a!3`, atlas area zero; found by skipping materials in the draw until the bands went, then dumping the triangles' `uv`/`uv2`). The details lie at `atlas * repeat`, so a degenerate atlas
+  triangle drew one line of each detail across the road (dense stripes along it). `shade::collapsed` (atlas area per square metre under 2% of the mesh's median) keeps them in the shaded draw
+  with the details read at the world and the layer's own repeat (`layer_world`): the atlas's maps along that line are smooth, as in the game. Drawing them unshaded instead (first layer alone) left
+  light strips. Sweden 0.3 km differs slightly in its ruts (mean 3/255), Finland and Greece unchanged.
+- Turini's near-black rock face at 3 km is not a converter defect: the section's diffuse at those triangles is 150/255 (x2 magic, layers `rck_06_d` mean 107, bright and detailed texture), normals
+  agree with the faces, and with the bake off it is as dark. The same stage shot at 09:00 or 17:00 lights the wall fully (`--clock`): at 13:00 the wall faces away from the renderer's sun (azimuth not the
+  game's, see "Sun and place"), so it is in shadow with little ambient. Fix belongs with the sun direction from `lighting_day.xml` (open) or the renderer's ambient on steep faces.
+
 ## Decals and birch trunks (Finland route_0), 2026-11-24
 
 - The pale strips on the gravel are the terrain's `DECAL` tier: 73 materials, all `decal_ao_vc.fx` (`TDiffuseAlphaMap` `fin_ral_decal_01..04_d` DXT5, AO map, no
