@@ -242,9 +242,12 @@ fn collision_triangles(
     Ok((triangles, counts))
 }
 
+/// The terrain's materials, triangles and the layers' corners of each.
+type Terrain = (Vec<stage::Material>, Vec<Triangle>, Vec<stage::Corners>);
+
 /// The drawn terrain in the stage's world: the route's `routesplit.pssg` where the area has one (Greece), and the area's
 /// `tracksplit.pssg` (its vista there, all of it elsewhere); the ground is shaded by `shade` (layers, macro colour and lightmap per pixel), the rest drawn with its first layer's texture.
-fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Vec<Triangle>, Vec<stage::Corners>), String> {
+fn terrain(route: &Route, control: &Control) -> Result<Terrain, String> {
     let mut library = texture::Library::day(route);
     let files: Vec<_> = [route.dir.join("routesplit.pssg"), route.area_dir().join("tracksplit.pssg")]
         .into_iter()
@@ -304,7 +307,8 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                 });
                 corners.push(stage::Corners {
                     uv: at.map(|i| m.uv.get(i).copied().unwrap_or_default()),
-                    weights: at.map(|i| shade::weights(m.colour.as_ref().map_or([0; 4], |c| c[i]), layers.unwrap_or(1))),
+                    weights: at
+                        .map(|i| shade::weights(m.colour.as_ref().map_or([0; 4], |c| c[i]), layers.unwrap_or(1))),
                 });
             }
         }

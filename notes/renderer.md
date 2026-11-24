@@ -618,6 +618,9 @@ probably fit the wrong hour.
   product with a scale of 100/m stays exact to a texel at 4 km, wrapped to 0..1, with `textureSampleGrad` on the unwrapped gradients (no mip seam).
   Sa Calobra scene pass (1600x900, `--profile`, 3 runs): road and rock view 1.89 ms before (and 1.91 ms for the new viewer on a stage without the keys,
   whose picture is byte-identical to the old viewer's, as is retail `track-10_O`) to 2.00 ms; road view 1.55 to 1.63 ms.
+- `layered` with `ReRbrLayerUv` (`mode.layer.x` 3, `layer_uv()`): details at `uv1 * scale` on the gradients of `uv1`, weights from the vertex (`specular` xyz,
+  chain mix), no mask sample; `shade_stage` skips `terrain_detail`, `terrain_even` and `terrain_bank` for them (they read texture 0, which is the first layer there).
+  Draws without the key are unchanged (reference shots, RMSE 0, `notes/dirt-rally.md`).
 - The clock's ambient share and tint scale the stage's display colours, so its light is them to the 2.2; day frames
   byte-identical (2026-10-20).
 - The headlights' shadow map has its own layer of the sun's map (`sun::LAMP`), so the lamps cast at dusk too, beside the

@@ -291,7 +291,18 @@ pub(super) fn bind_group(
         tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), f32::from(u8::from(key.grass)), 0.0],
         sheen: [key.sheen.map_or(0.0, |s| s.roughness), 0.0, 0.0, 0.0],
         layer: key.layers.map_or([0.0; 4], |(l, _)| {
-            [if l.uv { 3.0 } else if l.world { 1.0 } else { 2.0 }, l.magic, 0.0, 0.0]
+            [
+                if l.uv {
+                    3.0
+                } else if l.world {
+                    1.0
+                } else {
+                    2.0
+                },
+                l.magic,
+                0.0,
+                0.0,
+            ]
         }),
         layer_scale: layer_pairs(key.layers.map(|(l, _)| l.scale)),
         layer_offset: layer_pairs(key.layers.map(|(l, _)| l.offset)),

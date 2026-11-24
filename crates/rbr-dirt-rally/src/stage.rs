@@ -448,10 +448,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             |k: usize| (((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / 3. - origin[k]) / SCENERY_CELL).floor() as i64;
         let material = t.material.unwrap_or(0) as usize;
         let layers = input.materials[material].layers.as_ref();
-        let tile = tiles.entry((material, (cell(0), cell(1)))).or_insert_with(|| Builder {
-            period: layers.map_or(0., |l| l.period),
-            ..Builder::default()
-        });
+        let tile = tiles
+            .entry((material, (cell(0), cell(1))))
+            .or_insert_with(|| Builder { period: layers.map_or(0., |l| l.period), ..Builder::default() });
         tile.add(t, layers.and(input.layer.get(i)), origin, true);
     }
     let mut section_of = BTreeMap::new();
@@ -540,7 +539,13 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     &name,
                     &texture,
                     m.transparent,
-                    &material::Extras { layers, normal, bump_scale, bump_uv: m.layers.is_some(), ..m.extras(&mut bank)? },
+                    &material::Extras {
+                        layers,
+                        normal,
+                        bump_scale,
+                        bump_uv: m.layers.is_some(),
+                        ..m.extras(&mut bank)?
+                    },
                 );
                 names.push(name.clone());
                 section_of.insert(*material, name.clone());

@@ -879,7 +879,8 @@ mod tests {
         assert!(material(&section(true, &[]), &missing).layers.is_none(), "a detail is not in the archive");
         assert!(material(&section(true, &[("ReRbrLayerWorld", "1.0")]), &textures).layers.is_none());
         // On their own coordinates the layers need no mask file.
-        let no_mask = Textures(["d.dds", "a.dds", "b.dds", "c.dds"].iter().map(|n| (n.to_string(), n.to_string())).collect());
+        let no_mask =
+            Textures(["d.dds", "a.dds", "b.dds", "c.dds"].iter().map(|n| (n.to_string(), n.to_string())).collect());
         let mut own = section(true, &[("ReRbrLayerUv", "1")]);
         own.entries.retain(|(k, _)| k != "ReRbrLayerMask");
         let layers = material(&own, &no_mask).layers.unwrap();

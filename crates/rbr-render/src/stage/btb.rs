@@ -135,7 +135,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let lerp = material.effect.vert_lerp && material.second.is_some() && !mesh.blend.is_empty();
             // A multilayer material drawn per pixel (`ReRbrLayer*`) keeps the bake of the sum as its first texture, which
             // the grass and the ground detail read.
-            let layers = material.layers.as_ref().filter(|l| !material.technique.transparent && (!l.uv || mesh.uvs.len() > 3));
+            let layers =
+                material.layers.as_ref().filter(|l| !material.technique.transparent && (!l.uv || mesh.uvs.len() > 3));
             let first = texture(&material.diffuse);
             let second = if lerp { texture(&material.second) } else { None };
             // Two passes only where the texture is translucent; a cut-out one is alpha tested, an opaque one solid.

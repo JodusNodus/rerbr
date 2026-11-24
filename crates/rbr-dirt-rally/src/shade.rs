@@ -363,9 +363,8 @@ impl Shader {
                 if !shaded.layers.contains_key(&id) {
                     let n = plan.layers.len();
                     let scale = std::array::from_fn(|l| plan.relative.get(l).copied().unwrap_or([1., 1.]));
-                    let normal = Some(dominant(m, &triangles, n)).and_then(|layer| {
-                        Some((self.normal(library, plan.normals[layer].as_ref()?)?, scale[layer]))
-                    });
+                    let normal = Some(dominant(m, &triangles, n))
+                        .and_then(|layer| Some((self.normal(library, plan.normals[layer].as_ref()?)?, scale[layer])));
                     shaded.layers.insert(
                         id.clone(),
                         Layers {

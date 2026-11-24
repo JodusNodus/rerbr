@@ -136,6 +136,21 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   (15 sections and two specials on Greece, one atlas per lightmap name, shared by its materials); the layers lie on the first's `xy`
   (metres per unit 4 to 8 on roads and banks, tiling), `zw` unidentified. Compiled DXBC only (`shaderpack.pssg`): the blend is read
   from the data, not the code.
+- Drawn by ReRBR's `ReRbrLayer*` with `ReRbrLayerUv=1` (2026-11-24, `shade.rs`, `notes/btb.md`): per section one BC7 diffuse (colour map over its covered texels' mean, 30% of its hue
+  kept, times the lightmap over its bright texels' mean, 80% strength; DXT1 turned the smooth, nearly grey diffuse into magenta and green blotches on Greece's roads) at the atlas (UV set 0, the second `ST`
+  stream, untransposed); each layer's texture is a detail at the first stream's `xy` (UV set 1, `Map<N>UVScaleAndOffset` of the first layer applied, the others relative to it); the weights are the
+  vertex colour per pixel (R, G, B the second to fourth layers; sets 2 and 3), summed as the chain `mix(mix(mix(L1, L2, R), L3, G), L4, B)`, layers a material lacks weighing 0. The renderer's
+  near-ground detail and steep-bank replacement are off on such draws. This replaced a mask (the weights rasterised in the atlas) with the details at `atlas * repeat` per island of the mesh,
+  repeat classes, a world-space fallback, `collapsed` triangles, and `Layers::bake` (the steep-face first texture): all gone, a material is one draw. Still kept: `bridges` (triangles joining distant atlas
+  islands keep the unshaded first-layer draw). A tile's layer uv is shifted by whole units that keep every layer's tiling (`shade::period`), `f32` at kilometres. The normal map is the dominant layer's at the layer
+  uv (`ReRbrBumpUv`, `ReRbrBumpScale` the layer's relative repeat).
+  Measured (release, 8 cores, shared machine; `Textures.zip` MB before -> after, import s where measured alone): Turini 506 -> 422, Sweden 542 -> 381 (58 -> 27 s), Greece 554 -> 382, Finland 757 -> 565, Wales 660 -> 557,
+  Germany 590 -> 452. Turini 6 km scene pass 2.84 -> 1.91 ms, 2099 -> 1267 draws (1280x720, `--enhance all,grass`); first frame 5.9 -> 5.0 s. Turini's wall at 6 and 8 km is continuous (no blocks, seams or flat sheets), the 1 km barcode bands
+  stay gone, Sweden's banks have no facets, Finland's grass grows. All 37 reference shots (`scripts/render-shots.py`, AC BTB stages among them) RMSE 0 against the build before. Sheets: `/tmp/luv/sheet-*.png`.
+  The blend formula of the road shaders (below) is not applied: it needs `TBlendMap2/3` bound as textures per draw (fragment textures are 20, past the default 16), and was never seen to improve a view; the chain mix of the weights is what
+  the data gives. Vertex colours are used as bytes over 255 (no gamma): snow, rock and road transitions read right. Greece's verges differ from the mask's (a grass layer on banks, less at some road edges): the weights are per pixel
+  now; against the game itself unverified.
+- (History, superseded by the above) the mask path:
 - Drawn by ReRBR's `ReRbrLayer*` (no renderer change): per section a diffuse (colour map over its covered texels' mean, 30% of its hue kept,
   times the lightmap over its bright texels' mean, 80% strength), written as BC7 (DXT1 turned the smooth, nearly grey diffuse into
   the magenta and green blotches on Greece's roads: 5:6:5 endpoints per 4x4 block), and a 2048
