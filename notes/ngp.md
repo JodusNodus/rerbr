@@ -474,6 +474,14 @@ change and viewer at live start: the setting or the car's lock up to it. RSF set
 540 before and after drive2). Car lock = `MaxSteeringLock x 720` degrees (`wheel_rotation::car_degrees`); RSF's
 `steering_wheel` matched for every NGP car in `cars-rsf` (Yaris Rally2 479.52 -> RSF 479).
 
+Soft lock (ours, 2026-11-24, `rbr_render::soft_lock`, `[ffb] wheel_rotation`, launcher Controls "Wheel's own
+rotation"): the wheel's own lock-to-lock W, given by the player (its software's, or written to `range` where the
+driver takes it and read back). A drive's rotation R below W: the input thread scales the steering axis by W/R before
+the game's poll (full lock at R, clamped) and the force thread adds a stop past it, full force 4 degrees in, damped
+(full at 400 deg/s), signed as a centring magnitude (same sign as the steering; `inverse` flips it), over the car's
+force, paused or not. R at or above W (1050 car, 900 wheel): full lock at the wheel's end, no stop. Unknown W: the
+`range` path only.
+
 `rev_lights` (ours, 2026-11-21, `rbr_render::wheel_lights`, `[ffb] rev_lights`, on by default; launcher Controls
 "Rev lights"): the wheel's five LEDs fill over the last 1500 rpm before SHF1's upshift point for the gear (the rev
 limit without one) and flash at 4 Hz past it; dark while paused, at the stage result and after the drive; every

@@ -30,6 +30,7 @@ use rbr_render::perf_log;
 use rbr_render::playback::ChaseLook;
 use rbr_render::renderer::{Gpu, Renderer};
 use rbr_render::shifter::Shifter;
+use rbr_render::soft_lock::SoftLock;
 use rbr_render::triple::Screens;
 use rbr_render::views::{CarView, Shown};
 use std::collections::HashSet;
@@ -217,12 +218,23 @@ impl App {
                 None
             }
         });
-        // The wheel's rotation, in live mode when set (again here: a wheel plugged in again has its own).
-        if let Some(degrees) = ffb.rotation.filter(|_| scene.live.is_some() && !replay) {
+        // The wheel's rotation, in live mode when set (again here: a wheel plugged in again has its own). With the
+        // wheel's own rotation given, the wheel turns that (where the driver takes it, as far as it can) and a soft
+        // lock takes a rotation below it.
+        let rotation = ffb.rotation.filter(|_| scene.live.is_some() && !replay);
+        let mut turns = ffb.wheel_rotation;
+        if let Some(degrees) = rotation.map(|r| ffb.wheel_rotation.unwrap_or(r)) {
             match rbr_render::wheel_rotation::set(degrees) {
-                Ok(wheels) => wheels.iter().for_each(|w| eprintln!("viewer: {} turns {} degrees", w.name, w.degrees)),
+                Ok(wheels) => {
+                    wheels.iter().for_each(|w| eprintln!("viewer: {} turns {} degrees", w.name, w.degrees));
+                    turns = turns.map(|t| wheels.first().map_or(t, |w| w.degrees));
+                }
                 Err(e) => eprintln!("viewer: wheel rotation not set: {e}"),
             }
+        }
+        let soft = SoftLock::new(rotation, turns);
+        if let Some(soft) = soft {
+            eprintln!("viewer: soft lock: full lock at {} of the wheel's {} degrees", soft.lock, soft.wheel);
         }
         // The wheel's rev lights, in live mode when on.
         let lights = scene.live.as_ref().filter(|_| !replay && ffb.rev_lights).and_then(|_| {
@@ -266,7 +278,7 @@ impl App {
         }
         let feed = scene.live.as_ref().filter(|_| !replay).map(|_| {
             let script = latency.as_ref().and_then(Latency::script);
-            Feed::start(args.bindings.clone(), script, latency.is_some())
+            Feed::start(args.bindings.clone(), script, latency.is_some(), soft, wheel.clone())
         });
         let mut app = App {
             scene,

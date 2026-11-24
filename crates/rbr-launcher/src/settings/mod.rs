@@ -1099,6 +1099,7 @@ mod tests {
                 "sensitivity_snow = 100\n",
                 "rotation = \n",
                 "rotation_per_car = 0\n",
+                "wheel_rotation = \n",
                 "smoothing = 0\n",
                 "tyres = 0\n",
                 "surface = 0\n",
