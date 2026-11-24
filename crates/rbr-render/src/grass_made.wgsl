@@ -130,16 +130,20 @@ fn picture_rect(picture: u32) -> vec4<f32> {
         (at.y + 1.0) / size.y - margin.y);
 }
 
-// `grass::Fx::piece`: the profile's piece by `pick`.
+// `grass::Fx::piece`: the profile's piece by `pick`, the first whose bound is above it (the last if none): a binary
+// search, as the bounds only rise and a profile can hold thousands of pieces (DiRT Rally's tufts, 4149 in Finland).
 fn piece_of(profile: Profile, pick: f32) -> Piece {
-    var piece = pieces[profile.first];
-    for (var k = 0u; k < profile.count; k++) {
-        piece = pieces[profile.first + k];
-        if (pick < piece.bound) {
-            break;
+    var low = 0u;
+    var high = max(profile.count, 1u) - 1u;
+    while (low < high) {
+        let middle = (low + high) / 2u;
+        if (pick < pieces[profile.first + middle].bound) {
+            high = middle;
+        } else {
+            low = middle + 1u;
         }
     }
-    return piece;
+    return pieces[profile.first + low];
 }
 
 struct Shape {
