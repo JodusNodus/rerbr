@@ -235,20 +235,23 @@ impl Field {
                 let groups: Vec<_> = atlas.groups.iter().filter(|g| !g.pieces.is_empty()).collect();
                 let total = atlas.base + groups.iter().map(|g| g.chance * super::FX_PIECE_SHARE).sum::<f32>();
                 let mut bound = 0.0;
-                let mut push = |share: f32, rect: [f32; 4], cells: [f32; 2], piece: bool| {
+                let mut push = |share: f32, rect: [f32; 4], cells: [f32; 2], piece: u32| {
                     bound += share / total.max(1e-6);
-                    pieces.push(Piece { rect, cells, bound, piece: u32::from(piece) });
+                    pieces.push(Piece { rect, cells, bound, piece });
                 };
                 let columns = atlas.grid[0];
                 for column in 1..=columns {
                     let rect = super::piece_rect(atlas.grid, [column, 0], [1, 1], *size);
-                    push(atlas.base / columns as f32, rect, [1.0; 2], false);
+                    push(atlas.base / columns as f32, rect, [1.0; 2], 0);
                 }
+                // A stage with a cover map (DiRT Rally's tufts) has no base grass for its pieces to come in beyond:
+                // they are its grass, drawn from the eye in the atlas's own colours (kind 2: `grass_cards.wgsl`).
+                let piece = if fx.cover.is_some() { 2 } else { 1 };
                 for group in groups {
                     let sum = group.pieces.iter().map(|p| p.chance).sum::<f32>().max(1e-6);
                     for p in &group.pieces {
                         let rect = super::piece_rect(atlas.grid, p.cell, p.size, *size);
-                        push(group.chance * super::FX_PIECE_SHARE * p.chance / sum, rect, p.mult, true);
+                        push(group.chance * super::FX_PIECE_SHARE * p.chance / sum, rect, p.mult, piece);
                     }
                 }
                 if let Some(last) = pieces.last_mut() {

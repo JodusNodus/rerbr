@@ -362,6 +362,11 @@ impl TextureFiles {
             .ok_or_else(|| format!("{}: no Textures.zip", folder.display()))
     }
 
+    /// The archive's bytes of `file`, as stored.
+    pub fn bytes(&self, file: &str) -> Option<Vec<u8>> {
+        read_entry(&mut rbz::open(&self.0).ok()?, &format!("Textures/{file}")).ok()
+    }
+
     /// The texture file (a name from a [`Material`]) as a `.dds` file: the archive's own (plain-texel layouts converted
     /// to RGBA), or its `.jpg`, `.png` or `.bmp` decoded to a `.dds` of plain texels (a third of the install's textures
     /// are JPEGs; Crastazza's ground is a BMP). `None` if it is missing or does not decode.

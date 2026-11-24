@@ -404,6 +404,16 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
   ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`
   pieces), in place of its choice by colour; keys in `notes/assetto.md`.
+- `[ReRbrGrass] cover=<file>` and `cover_rect=xmin,ymin,xmax,ymax` (ReRBR's own, 2026-11-24; `track::GrassFx::cover`,
+  `stage::Cover`, `Field::grassy`): a cover map, an 8-bit greyscale PNG in `Textures.zip`, a byte a texel over the
+  rectangle (the stage's x and y as the `.trk` has them, row 0 at `ymin`): 0 no grass, any other value grows grass as
+  the marked materials would (the value is the class a converter gives, not read yet). Outside the rectangle none.
+  Without both keys the field is unchanged (byte-identical). With a cover map the atlas's group pieces are the grass: card
+  kind 4 (`grass_cards.wgsl`; `Piece::piece` 2 in `grass/made.rs`), drawn from the eye (no 12 to 25 m fade-in: the stage has
+  no base grass to fill the near ground), in the atlas's own colours (`Field::look` gives a white hue, so the ground's hue
+  and the green-blade brightness of the base cards, which turned Wales' green tufts olive, do not touch them) and at the
+  atlas's sizes within 0.8 to 1.2 (`OWN_VARY` in `grass_made.wgsl`; a base card's `CELL_VARY` and patch tallness spread them
+  seven-fold, 5 m bushes on Finland), still lit as the other converted cards (dark root, warm tip). Written by the DiRT Rally import (`notes/dirt-rally.md`, Grass).
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

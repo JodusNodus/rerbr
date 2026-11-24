@@ -146,19 +146,29 @@ struct Shape {
     rect: vec4<f32>,
     width: f32,
     height: f32,
-    piece: bool,
+    // 0 a base card, 1 a group piece, 2 a card in the atlas's own colours (`grass_cards.wgsl`).
+    piece: u32,
 }
+
+// How much a cover-map stage's tufts vary in size, either way (`CELL_VARY` and the patches' tallness give a grass card
+// a factor of seven).
+const OWN_VARY: vec2<f32> = vec2<f32>(0.8, 1.2);
 
 // A card's picture and size: an atlas piece's cells at the profile's cell size, or
 // our blades' at the meadow's height.
 fn shape(pick: f32, kind: u32, meadow: f32, width: f32, height: f32, tall: f32, profile: Profile, atlas: bool) -> Shape {
     if (atlas) {
         let p = piece_of(profile, fract(pick * 131.7));
-        let unit = profile.cell * mix(CELL_VARY.x, CELL_VARY.y, height) * tall * tall;
-        return Shape(p.rect, unit * p.cells.x * FX_WIDEN, unit * p.cells.y, p.piece != 0u);
+        // A cover-map stage's tufts are drawn at the game's sizes, within `OWN_VARY` of them (kind 2).
+        let unit = select(
+            profile.cell * mix(CELL_VARY.x, CELL_VARY.y, height) * tall * tall,
+            profile.cell * mix(OWN_VARY.x, OWN_VARY.y, height),
+            p.piece == 2u,
+        );
+        return Shape(p.rect, unit * p.cells.x * FX_WIDEN, unit * p.cells.y, p.piece);
     }
     let w = min(meadow * mix(WIDTH.x, WIDTH.y, width), MAX_WIDTH);
-    return Shape(picture_rect(picture_of(kind, pick)), w, meadow, false);
+    return Shape(picture_rect(picture_of(kind, pick)), w, meadow, 0u);
 }
 
 fn cell_index(base: u32, cell: vec2<i32>) -> u32 {
@@ -262,12 +272,12 @@ fn candidate(tile: Tile, base: u32, offset: vec2<u32>, seed: u32, i: u32) {
     let hue = w.z & 0xffffffu;
     let fx = select(0u, 1u, converted);
     cards[slot] = GrassCard(at, first.height, across, pack2x16float(leaning), pack2x16snorm(n_xz),
-        hue | select(fx, 2u, first.piece) << 24u, pack2x16float(vec2<f32>(bright, keep)), pack2x16unorm(first.rect.xy),
+        hue | select(fx, first.piece + 1u, first.piece != 0u) << 24u, pack2x16float(vec2<f32>(bright, keep)), pack2x16unorm(first.rect.xy),
         pack2x16unorm(first.rect.zw), bitcast<f32>(l.x), l.y, l.zw);
     // The other card across it, a little shorter, with another picture of its kind.
     let crossed = normalize(vec2<f32>(-across.y, across.x)) * other.width * 0.5;
     cards[slot + 1u] = GrassCard(at, other.height * 0.85, crossed, pack2x16float(leaning), pack2x16snorm(n_xz),
-        hue | select(fx, 2u, other.piece) << 24u, pack2x16float(vec2<f32>(bright, keep)), pack2x16unorm(other.rect.xy),
+        hue | select(fx, other.piece + 1u, other.piece != 0u) << 24u, pack2x16float(vec2<f32>(bright, keep)), pack2x16unorm(other.rect.xy),
         pack2x16unorm(other.rect.zw), bitcast<f32>(l.x), l.y, l.zw);
 }
 

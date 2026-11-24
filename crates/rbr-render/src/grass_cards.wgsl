@@ -2,7 +2,7 @@
 // the stage's vertices, so `vertex` grows, widens and sways them as the plants' tufts: `specular.x` is `GRASS_MARK`
 // plus the card's brightness, `specular.z` its kind (1 ours; 2 a converted stage's cards, which `shader.wgsl` gives
 // `FX_GRASS_ROOT` and `FX_GRASS_TIP`; 3 its group pieces, flowers and weeds, grown only past `FX_PIECE_NEAR` from the
-// eye, as CSP spawns them only from its third generation pass on), `wet.x` the share of height (`uv2.x` the top's
+// eye, as CSP spawns them only from its third generation pass on; 4 a cover-map stage's cards, drawn in the atlas's own colours), `wet.x` the share of height (`uv2.x` the top's
 // height for the wind), `uv1` the way out across, `uv2.y` the card's rank (`GRASS_THIN`) and `wet.y` its half width
 // (`grass_widen`).
 
@@ -35,7 +35,7 @@ fn grass_corner(index: u32) -> VertexIn {
     out.uv1 = normalize(card.across) * side;
     out.uv2 = vec2<f32>(select(0.0, card.height, top), bright_keep.y);
     out.normal = n;
-    out.specular = vec3<f32>(GRASS_MARK + bright_keep.x, 1.0, array<f32, 3>(1.0, 2.0, 3.0)[min(kind, 2u)]);
+    out.specular = vec3<f32>(GRASS_MARK + bright_keep.x, 1.0, array<f32, 4>(1.0, 2.0, 3.0, 4.0)[min(kind, 3u)]);
     out.occlusion = card.occlusion;
     out.sky_dir = card.sky_dir;
     out.bounce = card.bounce;
