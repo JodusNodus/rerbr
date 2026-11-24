@@ -700,13 +700,24 @@ fn layer_axis(w: f32, m: f32, off: f32) -> f32 {
 // A*mask.a) * magicMult` over the display values. The mask is read at the uv; each detail at AC's world (x, z) times its
 // multiplier (the stage's x, and its z negated, with the origin's share in `layer_offset`) or at the uv times its pair,
 // on the gradients of the unwrapped coordinate so the wrap leaves no seam in the mip choice. In uniform control flow.
+// With `layer_uv` (DiRT Rally's terrain, `stage::Layers::uv`) the diffuse stays at `uv0`, the details lie at `uv1` times
+// their pair, and the weights are the vertex's: `specular` holds the second to fourth layers', the first the rest.
+fn layer_uv() -> bool {
+    return mode.layer.x > 2.5;
+}
+
 fn layered(v: VertexOut) -> vec3<f32> {
     let diffuse = textureSampleBias(layer_diffuse, texture_sampler, v.uv0, texture_bias()).rgb;
-    let weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
+    var weights: vec4<f32>;
+    if (layer_uv()) {
+        weights = vec4<f32>(max(1.0 - v.specular.x - v.specular.y - v.specular.z, 0.0), v.specular);
+    } else {
+        weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
+    }
     let world = mode.layer.x < 1.5;
-    let at = select(v.uv0, vec2<f32>(v.world.x, -v.world.z), world);
-    let ddx = select(dpdx(v.uv0), dpdx(at), world) * exp2(texture_bias());
-    let ddy = select(dpdy(v.uv0), dpdy(at), world) * exp2(texture_bias());
+    let at = select(select(v.uv0, v.uv1, layer_uv()), vec2<f32>(v.world.x, -v.world.z), world);
+    let ddx = dpdx(at) * exp2(texture_bias());
+    let ddy = dpdy(at) * exp2(texture_bias());
     var sum = vec3<f32>(0.0);
     for (var i = 0u; i < 4u; i++) {
         let scale = select(mode.layer_scale[i / 2u].xy, mode.layer_scale[i / 2u].zw, (i & 1u) == 1u);
@@ -760,7 +771,8 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         surface = surface * backdrop_detail(v.world);
     }
     // The near ground gets the fine structure its thinly spread texture lacks (`terrain_detail`).
-    if (detail_draw() && stage_frame() && mode.cutout == 0u && mode.detail.z != 0.0) {
+    // (Not on layers at their own coordinates: the layered colour holds the steep ground's look and its own fine detail.)
+    if (detail_draw() && stage_frame() && mode.cutout == 0u && mode.detail.z != 0.0 && !(layers_draw() && layer_uv())) {
         // On the banks the texture's streaks are blurred out first (`terrain_even`); the flat keeps its filtering.
         let steep = terrain_steep(v.world);
         let levels = vec2<f32>(terrain_level(texture0, v.uv0), terrain_level(texture1, v.uv1));

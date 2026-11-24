@@ -174,6 +174,11 @@ pub struct Layers {
     /// `ReRbrLayerWorld=x,z`, the stage's origin in AC's frame: each detail is read at AC's `(x, z) * scale`, with
     /// `x = stage x + origin x` and `z = -(stage z + origin z)`. `None`: at the UV set 0 times `scale`.
     pub world: Option<[f64; 2]>,
+    /// `ReRbrLayerUv=1`: the details read the mesh's UV set 1 times `scale`, and the weights are the vertex's, the second
+    /// to fourth layers' in the UV sets 2 (`u`, `v`) and 3 (`u`), the first taking the rest. There is no mask then
+    /// (`mask` is the diffuse's name, unread). DiRT Rally's terrain: its own layer coordinates beside the atlas of the
+    /// diffuse.
+    pub uv: bool,
 }
 
 impl Material {
@@ -611,9 +616,12 @@ fn layers(m: &track::Material, textures: &Textures) -> Option<Layers> {
         return None;
     }
     let world = m.entry("ReRbrLayerWorld").map(track::decimal_floats);
+    let uv = m.entry("ReRbrLayerUv").and_then(track::decimal_float) == Some(1.0);
+    let diffuse = file("ReRbrLayerDiffuse")?;
     Some(Layers {
-        diffuse: file("ReRbrLayerDiffuse")?,
-        mask: file("ReRbrLayerMask")?,
+        mask: if uv { diffuse.clone() } else { file("ReRbrLayerMask")? },
+        diffuse,
+        uv,
         details: details.try_into().ok()?,
         scale: std::array::from_fn(|i| [scale[2 * i] as f32, scale[2 * i + 1] as f32]),
         magic: m.entry("ReRbrLayerMagic").and_then(track::decimal_float).map_or(1.0, |v| v as f32),
@@ -870,5 +878,12 @@ mod tests {
         let missing = Textures(names[..4].iter().map(|n| (n.to_string(), n.to_string())).collect());
         assert!(material(&section(true, &[]), &missing).layers.is_none(), "a detail is not in the archive");
         assert!(material(&section(true, &[("ReRbrLayerWorld", "1.0")]), &textures).layers.is_none());
+        // On their own coordinates the layers need no mask file.
+        let no_mask = Textures(["d.dds", "a.dds", "b.dds", "c.dds"].iter().map(|n| (n.to_string(), n.to_string())).collect());
+        let mut own = section(true, &[("ReRbrLayerUv", "1")]);
+        own.entries.retain(|(k, _)| k != "ReRbrLayerMask");
+        let layers = material(&own, &no_mask).layers.unwrap();
+        assert!(layers.uv && layers.mask == layers.diffuse);
+        assert!(!uv.uv);
     }
 }
