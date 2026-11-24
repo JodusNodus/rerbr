@@ -289,7 +289,8 @@ fn sprite_of(meshes: &[Mesh], materials: &BTreeMap<String, Material>) -> Option<
 
 /// What [`types`] draws of a root: the level 0 under its `lod` nodes. The `default` and `damage` nodes beside them
 /// repeat that geometry for the physics and the broken state, the `LODRENDERINSTANCES` are coarser levels, and the
-/// camera-facing billboards (the trees' far levels) and shadow quads are sprites no near view wants.
+/// camera-facing billboards (the trees' far levels), shadow quads and the light shafts of `volumetrics.fx` (additive cones
+/// with no texture, dark as solids) are sprites no near view wants.
 pub fn types(pssg: &Pssg) -> Result<Types, String> {
     let materials = material::read(pssg);
     let mut types = Types { meshes: Vec::new(), sprites: Vec::new(), index: BTreeMap::new() };
@@ -301,7 +302,7 @@ pub fn types(pssg: &Pssg) -> Result<Types, String> {
                 let sprite = instance
                     .str("shader")
                     .and_then(|s| materials.get(s.trim_start_matches('#')))
-                    .is_some_and(|x| x.shader.contains("billboard"));
+                    .is_some_and(|x| x.shader.contains("billboard") || x.shader.contains("volumetric"));
                 if seen.insert(instance.str("indices").unwrap_or("").to_owned()) {
                     let built = build(instance, parent.id().unwrap_or(""), m, &materials)?;
                     if sprite {
