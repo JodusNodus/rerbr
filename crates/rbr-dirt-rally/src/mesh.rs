@@ -155,18 +155,27 @@ pub(crate) struct Geometry {
     pub normals: Vec<[f32; 3]>,
     /// The first `ST` stream's `xy`; empty without one.
     pub uv: Vec<[f32; 2]>,
+    /// A second UV set: the first `ST` stream's `zw` where it is half4, else the second stream's `xy`; empty without.
+    pub uv2: Vec<[f32; 2]>,
 }
 
 /// The indices and the `Vertex`, `Normal` and first `ST` streams of `source`.
 pub(crate) fn geometry(source: Node) -> Result<Geometry, String> {
     let (indices, streams) = read_source(source)?;
     let of = |t: &str| streams.iter().find(|s| s.render_type == t);
+    let st: Vec<&Stream> = streams.iter().filter(|s| s.render_type == "ST").collect();
+    let uv2 = match st.as_slice() {
+        [first, ..] if first.width == 4 => first.values.iter().map(|v| [v[2], v[3]]).collect(),
+        [_, second, ..] => second.values.iter().map(xy).collect(),
+        _ => Vec::new(),
+    };
     let vec3 = |s: Option<&Stream>| s.map_or(Vec::new(), |s| s.values.iter().map(|v| [v[0], v[1], v[2]]).collect());
     Ok(Geometry {
         indices,
         positions: vec3(of("Vertex")),
         normals: vec3(of("Normal")),
         uv: of("ST").map_or(Vec::new(), |s| s.values.iter().map(xy).collect()),
+        uv2,
     })
 }
 

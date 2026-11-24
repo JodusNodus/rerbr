@@ -13,6 +13,7 @@
 pub mod added_car;
 pub mod binxml;
 pub mod car;
+pub mod car_dirt;
 pub mod car_maps;
 pub mod car_pack;
 pub mod cli;

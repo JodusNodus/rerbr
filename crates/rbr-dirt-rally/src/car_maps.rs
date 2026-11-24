@@ -23,6 +23,18 @@ impl Plane {
         Plane { values, width: texture.width as usize, height: texture.height as usize }
     }
 
+    /// A plane of `width` by `height` values.
+    #[cfg(test)]
+    pub fn from_values(values: Vec<u8>, width: usize, height: usize) -> Plane {
+        Plane { values, width, height }
+    }
+
+    /// The value at UV (`u`, `v`), wrapping, nearest texel (rows run down with v, as the car's UVs need no flip).
+    pub fn sample(&self, u: f32, v: f32) -> u8 {
+        let texel = |t: f32, n: usize| ((t.rem_euclid(1.0) * n as f32) as usize).min(n - 1);
+        self.values[texel(v, self.height) * self.width + texel(u, self.width)]
+    }
+
     /// The value under texel (`x`, `y`) of a `width` by `height` texture (the nearest texel, for a map of another size).
     fn at(&self, x: usize, y: usize, width: usize, height: usize) -> u8 {
         self.values[y * self.height / height * self.width + x * self.width / width]
