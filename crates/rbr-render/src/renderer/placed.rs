@@ -6,7 +6,10 @@
 //! Each placed vertex keeps the ambient the bakes give it as if it were expanded into the world (ours, [`Ambient`]):
 //! every placement is expanded into packs of its own for the bakes, and after them the four words of each vertex's
 //! occlusion, sky direction and bounce go into one storage buffer ([`Ambient::records`], 16 bytes a placed vertex
-//! against the expanded vertex's 88), which `instanced` in `shader.wgsl` reads by the placement's [`Header`].
+//! against the expanded vertex's 88), which `instanced` in `shader.wgsl` reads by the placement's [`Header`]. That holds
+//! for the models whose placed vertices fit in [`EXACT_VERTICES`] ([`exact_models`]: a stage's tree cards, not a DiRT
+//! Rally forest's whole trees); the others' placements take one record each, of a probe at the middle of the placed box,
+//! and their crowns in their own space ([`prepared_model`]).
 
 use super::meshes::{GpuDraw, GpuMesh, MeshBuffers, MeshSlot, Packing};
 use crate::foliage;
@@ -81,13 +84,14 @@ fn turn(instance: &Instance) -> Mat3 {
 
 /// A model's `vertices` (of `mesh`, with the sun's normals) prepared as a stage mesh's, but for what its placement in
 /// the world gives (marked: [`ON_GROUND`]): with the `ground`'s normals its cut-out draws' normals up, then the plants
-/// ([`foliage::with_plants_and`], their crowns left to [`crowns`]) found at `scale`: grass and plants are told apart by
-/// their size.
+/// ([`foliage::with_plants_and`], their crowns in the model's space with `own_crowns`, else left to [`crowns`]) found at
+/// `scale`: grass and plants are told apart by their size.
 fn prepared_model<'a>(
     mut vertices: Vec<Vertex>,
     mesh: &Mesh,
     scale: f32,
     ground: bool,
+    own_crowns: bool,
     plant: impl Fn(&Draw) -> Option<&'a foliage::Cut> + Copy,
 ) -> Vec<Vertex> {
     let mut marks = vec![0u32; vertices.len()];
@@ -109,8 +113,11 @@ fn prepared_model<'a>(
     let scaled = |vertices: Vec<Vertex>, by: f32| -> Vec<Vertex> {
         vertices.into_iter().map(|v| Vertex { position: (Vec3::from(v.position) * by).to_array(), ..v }).collect()
     };
-    let vertices = foliage::with_plants_and(scaled(vertices, scale), mesh, plant, false);
-    scaled(vertices, 1.0 / scale).into_iter().zip(marks).map(|(v, m)| Vertex { occlusion: m as f32, ..v }).collect()
+    let vertices = foliage::with_plants_and(scaled(vertices, scale), mesh, plant, own_crowns);
+    // A crown's normal is the ground's blended outward already: the placement's ground would undo it.
+    let crowned = |v: &Vertex| own_crowns && v.specular[0] == foliage::TREE_CARD;
+    let marked = |v: Vertex, m: u32| Vertex { occlusion: (if crowned(&v) { m & !ON_GROUND } else { m }) as f32, ..v };
+    scaled(vertices, 1.0 / scale).into_iter().zip(marks).map(|(v, m)| marked(v, m)).collect()
 }
 
 /// Each instance's crown ([`foliage::crowns`]): its placements expanded into the world (`vertices`, the models'
@@ -118,12 +125,13 @@ fn prepared_model<'a>(
 /// bounds tell them), the crown of its first vertex on one.
 fn crowns<'a>(
     placed: &Placed,
+    exact: &[bool],
     meshes: &[Mesh],
     vertices: &[&[Vertex]],
     plant: impl Fn(&Draw) -> Option<&'a foliage::Cut> + Copy + Sync,
 ) -> Vec<Option<foliage::Crown>> {
     let mut by_key: HashMap<_, Vec<(usize, u32)>> = HashMap::new();
-    for group in &placed.groups {
+    for group in placed.groups.iter().filter(|g| exact[g.model]) {
         let b = group.bounds;
         let key = (
             group.layer,
@@ -195,9 +203,10 @@ fn crown_words(crowns: &[Option<foliage::Crown>]) -> Vec<[[f32; 4]; 3]> {
 }
 
 /// A placement's word for `instanced` (`ambient` in `InstanceIn`, location 15, read once per instance): where its
-/// vertices' ambient records start less its model's first vertex (wrapping, so that `x + vertex_index` is the record);
-/// the ground's normal under it, packed as the sky's directions are (0: none); its crown's in [`crown_words`], plus 1
-/// (0: none); whether the records are baked.
+/// vertices' ambient records start less its model's first vertex (wrapping, so that `x + vertex_index` is the record),
+/// or its probe's record; the ground's normal under it, packed as the sky's directions are (0: none); its crown's in
+/// [`crown_words`], plus 1 (0: none); how the records are baked: 0 not, 1 a record a vertex (an exact model's), 2 one
+/// ([`probe`]).
 #[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 pub(crate) struct Header {
@@ -218,23 +227,74 @@ fn instance_models(placed: &Placed) -> Vec<usize> {
     model
 }
 
-/// The ambient records of all placed vertices: each instance's model's vertex count, in instance order.
-fn record_count(placed: &Placed) -> usize {
-    instance_models(placed).iter().map(|&m| placed.models[m].vertices.len()).sum()
+/// The placed vertices that the bakes take one by one and the crowns are found among, at most ([`exact_models`]): 32 MB
+/// of records, 185 MB of expanded packs while the bakes run. Kaihuavaara 2022, every object of 8 placements or more
+/// instanced, places 1.15 M; DiRT Rally's Finland route_0 35 M.
+const EXACT_VERTICES: usize = 1 << 21;
+
+/// Whether each model's placements are placed exactly ([`Ambient`], [`crowns`]): [`exact_sizes`] over its vertices and
+/// placements.
+fn exact_models(placed: &Placed) -> Vec<bool> {
+    let mut sizes: Vec<(usize, usize)> = placed.models.iter().map(|m| (m.vertices.len(), 0)).collect();
+    for group in &placed.groups {
+        sizes[group.model].1 += group.instances.len();
+    }
+    exact_sizes(&sizes, EXACT_VERTICES)
 }
 
-/// The instanced meshes' storage buffers, bound with the frame (bindings 21 and 22): the ambient records, one per placed
-/// vertex, when the lighting bakes them ([`Ambient`]), and the crowns, one per placement, when the draws are lit
-/// ([`crowns`]); one empty word else.
+/// Of models of `(vertices, placements)`, those of the fewest vertices first, each while its placed vertices fit in what
+/// the `budget` leaves.
+fn exact_sizes(sizes: &[(usize, usize)], budget: usize) -> Vec<bool> {
+    let mut order: Vec<usize> = (0..sizes.len()).collect();
+    order.sort_by_key(|&m| sizes[m].0);
+    let (mut left, mut exact) = (budget, vec![false; sizes.len()]);
+    for m in order {
+        let placed_vertices = sizes[m].0 * sizes[m].1;
+        if placed_vertices <= left {
+            (left, exact[m]) = (left - placed_vertices, true);
+        }
+    }
+    exact
+}
+
+/// The ambient records of all placements: one per vertex of an exact model's, one of each other's.
+fn record_count(placed: &Placed, exact: &[bool]) -> usize {
+    instance_models(placed).iter().map(|&m| if exact[m] { placed.models[m].vertices.len() } else { 1 }).sum()
+}
+
+/// A vertex at the middle of `instance`'s placed box of a model's `vertices`, facing up: where a placement that is not
+/// exact takes its ambient ([`Header::baked`] 2).
+fn probe(vertices: &[Vertex], instance: &Instance) -> Vertex {
+    let (low, high) = vertices.iter().fold((Vec3::MAX, Vec3::MIN), |(low, high), v| {
+        (low.min(Vec3::from(v.position)), high.max(Vec3::from(v.position)))
+    });
+    let corners = (0..8).map(|i| Vec3::select(glam::BVec3::new(i & 1 != 0, i & 2 != 0, i & 4 != 0), high, low));
+    let (min, max) = corners.fold((Vec3::MAX, Vec3::MIN), |(min, max), corner| {
+        let p = Vec3::from(instance.place(&Vertex { position: corner.to_array(), ..Vertex::zeroed() }).position);
+        (min.min(p), max.max(p))
+    });
+    Vertex { position: ((min + max) / 2.0).to_array(), normal: [0.0, 1.0, 0.0], ..Vertex::zeroed() }
+}
+
+/// The instanced meshes' storage buffers, bound with the frame (bindings 21 and 22): the ambient records
+/// ([`record_count`]) when the lighting bakes them ([`Ambient`]), and the crowns, one per placement, when the draws are
+/// lit ([`crowns`]); one empty word else. And which models are exact ([`exact_models`]).
 pub(super) struct Storage {
     pub(super) records: wgpu::Buffer,
     pub(super) crowns: wgpu::Buffer,
     bakes: bool,
+    exact: Vec<bool>,
 }
 
 impl Storage {
     pub(super) fn new(device: &wgpu::Device, placed: &Placed, bakes: bool, lit: bool) -> Storage {
         let bakes = bakes && !placed.groups.is_empty();
+        let exact = exact_models(placed);
+        if !placed.groups.is_empty() {
+            let records = record_count(placed, &exact);
+            let exact_count = exact.iter().filter(|&&e| e).count();
+            eprintln!("instanced: {} models, {exact_count} exact; {records} ambient records", exact.len());
+        }
         let buffer = |label, count: usize, size: usize| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -244,9 +304,10 @@ impl Storage {
             })
         };
         Storage {
-            records: buffer("instanced ambient", if bakes { record_count(placed) } else { 0 }, 16),
+            records: buffer("instanced ambient", if bakes { record_count(placed, &exact) } else { 0 }, 16),
             crowns: buffer("instanced crowns", if lit { placed.instances.len() } else { 0 }, 48),
             bakes,
+            exact,
         }
     }
 }
@@ -280,12 +341,12 @@ impl Models {
     ) -> Models {
         let meshes = model_meshes(placed);
         let (vertices, crowns) = if lit {
-            let scaled: Vec<_> = meshes.iter().zip(model_scales(placed)).collect();
-            let vertices = in_parallel(&scaled, |&(mesh, scale)| {
-                prepared_model(crate::sun::with_normals(mesh), mesh, scale, ground.is_some(), plant)
+            let models: Vec<_> = meshes.iter().zip(model_scales(placed)).zip(&storage.exact).collect();
+            let vertices = in_parallel(&models, |&((mesh, scale), &exact)| {
+                prepared_model(crate::sun::with_normals(mesh), mesh, scale, ground.is_some(), !exact, plant)
             });
             let slices: Vec<&[Vertex]> = vertices.iter().map(Vec::as_slice).collect();
-            let crowns = self::crowns(placed, &meshes, &slices, plant);
+            let crowns = self::crowns(placed, &storage.exact, &meshes, &slices, plant);
             queue.write_buffer(&storage.crowns, 0, bytemuck::cast_slice(&crown_words(&crowns)));
             (vertices, crowns)
         } else {
@@ -310,13 +371,20 @@ impl Models {
             .zip(&grounds)
             .enumerate()
             .map(|(k, (&model, &ground))| {
+                let exact = storage.exact[model];
                 let header = Header {
-                    record: record.wrapping_sub(at[model].0.base_vertex() as u32),
+                    record: if exact { record.wrapping_sub(at[model].0.base_vertex() as u32) } else { record },
                     ground: if ground == Vec3::ZERO { 0 } else { packed_direction(ground) },
                     crown: if crowns.get(k).is_some_and(Option::is_some) { k as u32 + 1 } else { 0 },
-                    baked: u32::from(storage.bakes),
+                    baked: if !storage.bakes {
+                        0
+                    } else if exact {
+                        1
+                    } else {
+                        2
+                    },
                 };
-                record += vertices[model].len() as u32;
+                record += if exact { vertices[model].len() as u32 } else { 1 };
                 header
             })
             .collect();
@@ -358,7 +426,8 @@ impl Models {
     }
 
     /// Puts the model packs after the stage's `buffers`, moving the slots of the instanced `meshes` to them; when the
-    /// `storage`'s records are baked, every placement expanded into packs after them, for [`Ambient::apply`].
+    /// `storage`'s records are baked, every placement expanded into packs after them (an exact model's, a probe of each
+    /// other's), for [`Ambient::apply`].
     pub(super) fn finish(
         self,
         device: &wgpu::Device,
@@ -384,8 +453,12 @@ impl Models {
         let mut packing = Packing::default();
         for (k, (instance, model)) in placed.instances.iter().zip(instance_models(placed)).enumerate() {
             let (ground, crown) = (self.grounds[k], self.crowns.get(k).and_then(Option::as_ref));
-            let expanded: Vec<Vertex> =
-                self.vertices[model].iter().map(|v| placed_vertex(v, instance, ground, crown)).collect();
+            let vertices = &self.vertices[model];
+            let expanded: Vec<Vertex> = if storage.exact[model] {
+                vertices.iter().map(|v| placed_vertex(v, instance, ground, crown)).collect()
+            } else {
+                vec![probe(vertices, instance)]
+            };
             packing.add(device, &expanded, &[], false);
         }
         buffers.extend(packing.finish(device));
@@ -462,6 +535,15 @@ fn packed_direction(d: Vec3) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_smallest_models_are_exact_while_their_placed_vertices_fit() {
+        // 10 vertices once, 3 twice, 2 four times: 8 and 6 fit in 15, the 10 left do not.
+        let sizes = [(10, 1), (3, 2), (2, 4)];
+        assert_eq!(exact_sizes(&sizes, 15), [false, true, true]);
+        assert_eq!(exact_sizes(&sizes, 24), [true, true, true]);
+        assert_eq!(exact_sizes(&sizes, 7), [false, true, false]);
+    }
 
     #[test]
     fn a_packed_direction_unpacks_as_the_shader_does() {

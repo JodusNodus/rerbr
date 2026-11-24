@@ -524,13 +524,14 @@ fn instanced(v: VertexIn, i: InstanceIn, vertex: u32) -> VertexIn {
     out.normal = n;
     var ambient = vec4<u32>(0u);
     if (i.ambient.w != 0u) {
-        ambient = placed_ambient[i.ambient.x + vertex];
+        ambient = placed_ambient[i.ambient.x + select(0u, vertex, i.ambient.w == 1u)];
     }
     out.occlusion = bitcast<f32>(ambient.x);
     out.sky_dir = ambient.y;
     out.bounce = ambient.zw;
+    let crown = v.specular.x > 0.15 && v.specular.x < 0.45;
     let tuft = v.specular.y > 0.5 && v.specular.y < 1.5 && v.specular.z > 0.5;
-    if (mode.cutout != 0u && !second_draw() && tuft) {
+    if (mode.cutout != 0u && !second_draw() && (crown || tuft)) {
         let turn = mat2x2<f32>(i.row0.x, i.row2.x, i.row0.z, i.row2.z);
         let det = abs(turn[0].x * turn[1].y - turn[1].x * turn[0].y);
         out.uv1 = (turn * v.uv1) / sqrt(max(det, 1e-12));
