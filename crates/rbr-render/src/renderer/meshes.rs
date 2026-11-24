@@ -1,7 +1,7 @@
 //! The stage meshes on the GPU: their shared vertex and index buffers, their draws, and the updates of the car's
 //! and the interactive props' vertices.
 
-use super::pipelines::PipelineKey;
+use super::pipelines::{Pipe, PipelineKey};
 use super::textures::BindKey;
 use super::Renderer;
 use crate::coords::{interactive_pose_matrix, physics_pose_to_stage};
@@ -255,14 +255,14 @@ pub(super) struct GpuDraw {
     pub(super) pipeline: PipelineKey,
     /// The pipeline of [`DrawPass::Main`](super::pipelines::DrawPass::Main), and for a draw whose depth is laid first
     /// in the main view ([`prepassed`](super::pipelines::prepassed)) those of the prepass and after it.
-    pub(super) main: wgpu::RenderPipeline,
-    pub(super) prepassed: Option<[wgpu::RenderPipeline; 2]>,
+    pub(super) main: Pipe,
+    pub(super) prepassed: Option<[Pipe; 2]>,
     /// For the stage's unlit draws, `main` and the pipeline after the prepass with the lamps' code
     /// ([`PipelineKey::lamps`](super::pipelines::PipelineKey)), for the frames the lamps light.
-    pub(super) lamps: Option<[wgpu::RenderPipeline; 2]>,
+    pub(super) lamps: Option<[Pipe; 2]>,
     /// For the lit draws, `main` for a view outside the car (`main` itself) and in it
     /// ([`PipelineKey::inside`](super::pipelines::PipelineKey)).
-    pub(super) views: Option<[wgpu::RenderPipeline; 2]>,
+    pub(super) views: Option<[Pipe; 2]>,
     pub(super) group: wgpu::BindGroup,
     /// Drawn into the car's shadow map: the opaque lit draws (the car's body, wheels and plastic).
     pub(super) casts_shadow: bool,
