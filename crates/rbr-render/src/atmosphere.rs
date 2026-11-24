@@ -65,6 +65,9 @@ pub struct Atmosphere {
     pub haze_hue: Option<Vec3>,
     /// The share of the height fog's dawn and dusk mist (`height_fog.rs`; a converted stage's `[ReRbrAir]`), else all.
     pub mist: Option<f32>,
+    /// How much of the sky's colour the stage's ambient keeps, 0 its luminance in grey to 1 ours (a converted stage's
+    /// `[ReRbrAir]` `sky_tint`, for bakes that carry their own ambient), else 1.
+    pub sky_tint: Option<f32>,
     /// Toward the stage's north, when the stage states it (a converted stage's `[ReRbrAir]`): the clock's sun path
     /// turns from it (`relight::Clock`), else from the bake's sun.
     pub north: Option<Vec3>,
@@ -289,6 +292,7 @@ impl Default for Atmosphere {
             aerosol: None,
             haze_hue: None,
             mist: None,
+            sky_tint: None,
             north: None,
             moon: None,
             solar_hour: None,
@@ -377,6 +381,7 @@ impl Atmosphere {
             aerosol: None,
             haze_hue: None,
             mist: None,
+            sky_tint: None,
             north: None,
             moon: None,
             solar_hour: None,

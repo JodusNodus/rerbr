@@ -238,7 +238,7 @@ pub(crate) fn sky_uniform(atmosphere: &Atmosphere) -> Option<SkyUniform> {
             10f32.powf((-elevation).clamp(0.0, -crate::relight::PHYSICAL_NIGHT) / 2.5),
             f32::from(u8::from(atmosphere.overcast())),
         ],
-        level: [0.0, atmosphere.cloud_cover(), 0.0, 0.0],
+        level: [0.0, atmosphere.cloud_cover(), 1.0 - atmosphere.sky_tint.unwrap_or(1.0).clamp(0.0, 1.0), 0.0],
         moon: moon
             .extend(if moon.max_element() > 0.0 { (-atmosphere.sun_direction.y).max(0.0) } else { 0.0 })
             .to_array(),

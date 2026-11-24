@@ -385,6 +385,7 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   `hazy` sections a hazy one (0.2, 2.3 km); a fogged section keeps its `FogEnd` as the reach, in a grey hue. A
   converted stage's `[ReRbrAir]` `fog_color` and `aerosol` replace the clear day's only (they overrode every weather);
   the converter no longer writes them. The linear fog (lighting off) and our dawn and dusk mist are unchanged.
+- Sky ambient tint (ours, prototype): `[ReRbrAir]` `sky_tint` (`Atmosphere::sky_tint`, 0 to 1, absent 1) takes the sky's light on the stage (`day_sky` from `day_light`) that far from its luminance in grey to the clear sky's own colour, for bakes that already carry their ambient (DiRT Rally's: the clear sky's blue and the eye balance read as a blue cast in their shade). It rides `SkyUniform.level.z` (as `1 - tint`, guarded so absent is bit-identical); the sky drawn and the sun's light are unchanged. Reference shots (7 of RBR and AC) RMSE 0 against the build before.
 - Converted stage haze (ours, 2026-11-19, superseded in part by the above): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
   ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
   crisp to 0.2 hazy, as `skylight.rs`' words) and share of the height fog's dawn and dusk mist (`mist`, 0 none to 1,

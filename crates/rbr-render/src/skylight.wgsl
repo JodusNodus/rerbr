@@ -24,7 +24,7 @@ struct Sky {
     // x Mie's anisotropy g, y the aerial table's reach, km, z the tables' gain (they stay in half floats after dusk),
     // w 1 under an overcast sky (`Atmosphere::overcast`): then the sky is the cloud deck's (`overcast_light`).
     shape: vec4<f32>,
-    // y the cloud cover (0 to 1).
+    // y the cloud cover (0 to 1), z how far the stage's ambient sky light goes to grey (`Atmosphere::sky_tint`).
     level: vec4<f32>,
     // Once the sun is down, the moon's light square on, lux, and w the sine of its elevation (`skylight::moon_light`);
     // the night sky's light on up-facing ground, lux (`moonlit`).
@@ -660,7 +660,11 @@ fn day_light(e_sky: vec3<f32>, sun: vec3<f32>) -> array<vec4<f32>, 2> {
     // pre-exposure (renderer units per cd/m2).
     let pre = min(OPEN_LIGHT * NOON_MEAN / NOON_OPEN / mean * PI / SUN_LUX, NIGHT_PRE_EXPOSURE);
     let gain = pre * SUN_LUX / PI;
-    return array<vec4<f32>, 2>(vec4<f32>(sun_light * balance * gain, pre), vec4<f32>(sky_light * balance * gain, gain));
+    var shade = sky_light * balance * gain;
+    if (sky.level.z > 0.0) {
+        shade = mix(shade, vec3<f32>(dot(shade, LUMA)), sky.level.z);
+    }
+    return array<vec4<f32>, 2>(vec4<f32>(sun_light * balance * gain, pre), vec4<f32>(shade, gain));
 }
 
 // The tables' light to the renderer's (before `sky_display`): the gain and the white balance.

@@ -278,6 +278,7 @@ pub struct Air {
     pub fog_color: Option<[f32; 3]>,
     pub aerosol: Option<f32>,
     pub mist: Option<f32>,
+    pub sky_tint: Option<f32>,
     pub north: Option<[f32; 3]>,
 }
 
@@ -300,6 +301,7 @@ impl Air {
             fog_color: triple("fog_color"),
             aerosol: number("aerosol"),
             mist: number("mist"),
+            sky_tint: number("sky_tint"),
             north: triple("north"),
         })
     }
@@ -873,10 +875,10 @@ mod tests {
 
     #[test]
     fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {
-        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nnorth=0, 0, 1\n";
+        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\n";
         let air = Air::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.7, 0.6, 0.5]), Some(0.3), Some(0.5)));
-        assert_eq!(air.north, Some([0.0, 0.0, 1.0]));
+        assert_eq!((air.sky_tint, air.north), (Some(0.4), Some([0.0, 0.0, 1.0])));
         assert!(Air::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }
 

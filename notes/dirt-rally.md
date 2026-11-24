@@ -233,3 +233,4 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   untextured, so they drew as a dark blob wider than the road over the trailer (6 and 8 km). `mesh::types` now leaves `volumetrics*` out with the billboards.
 - `Object_Cov` and `Object_2SidedCov` are cut-outs, not opaque (DXT5 alpha is the wire mesh of `wal_wirefnc_mid_a_1_d` and `pke_fence_02_d`, the branches of `wal_gateway_c_2_d`, the cable): `blended` took only
   `*blend*` shaders, so fences drew as solid slabs. `blended` now includes `cov.fx`.
+- Shade read blue and violet (Wales, Pikes Peak, Turini): the bakes carry DiRT Rally's own ambient and the renderer's clear-sky ambient came on top. `settings.ini` writes `sky_tint=0.2` (`[ReRbrAir]`, `notes/renderer.md`): 0 left Wales' roads warm brown, 0.3 and 0.5 left Pikes' asphalt blue, 0.2 reads near neutral on all five routes.

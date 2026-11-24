@@ -307,9 +307,10 @@ fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)
     })
 }
 
-/// The stage's `settings.ini`: the sun and the renderer's own air, north the stage's +z (as for AC's frame).
+/// The stage's `settings.ini`: the sun and the renderer's own air, north the stage's +z (as for AC's frame). The
+/// bakes carry DiRT Rally's own ambient, so the clear sky's blue is kept only in part (`sky_tint`).
 const SETTINGS_INI: &str =
-    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nnorth=0, 0, 1\n";
+    "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nsky_tint=0.2\nnorth=0, 0, 1\n";
 
 /// Where the car stands: the start grid's first slot, 3.7 m behind the start line on every rally route's grid.
 const GRID_BEHIND: f64 = 3.7;

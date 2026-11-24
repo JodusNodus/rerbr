@@ -325,6 +325,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         atmosphere.haze_hue = air.fog_color.map(Vec3::from);
         atmosphere.aerosol = air.aerosol;
         atmosphere.mist = air.mist;
+        atmosphere.sky_tint = air.sky_tint;
         atmosphere.north = air.north.map(Vec3::from);
     }
     let (yaw, position) = (scene.spawn.yaw, Vec3::from(scene.spawn.position));
