@@ -292,3 +292,24 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Result (Turini, Greece, Sweden, Finland, Wales at 0.3, 2, 4 (6) km, `--enhance all`): RMSE against the diffuse-only conversion 1 to 6 of 255 (Turini's rock wall at 6 km 9): grain on rock, gravel and snow, car paint with a soft
   highlight, no sheen elsewhere. `Textures.zip` +30 % Greece 450 -> 554 MB, +33 % Turini 397 -> 506, +20 % Sweden 452 -> 542, +31 % Finland 577 -> 757, +22 % Wales 539 -> 660 (DXT1 normals, 5:6:5). Import under load
   (average 15 to 20): Greece 59 -> 65 s, Turini 51 -> 54 s. Viewer frame at Turini 6 km (1280x720, all on, `--frames 60`): 14.9 to 15.4 ms before, 13.7 to 14.4 after (noise; nothing measurable).
+
+## Light, haze and weather (2026-11-24)
+
+- What the game ships per area: `lighting_{day,day_alt,night[,night_alt]}.xml` (binary XML, one attribute per `param`; wet variants on Hafren, Turini, Finland, Germany, Sweden, none on Greece), `ambientmaps_*`,
+  `envmap_*`, `skymap_*.clm`; per route `sky_*.pssg`, `route_skymap_*.clm`, `ambient_sh_*.bin`, `pfx_atmospheric.xml` (`weatherType` dry/wet times `lightingType` day, day_alt, night). `postprocess/effects.xml` has one effect per
+  variant (`t~<location>~<area>~<variant>`: `ColourBalance.colour` (saturation: Greece day 0.75, Hafren day 0.71, Turini 1.0), `ToneMap` target 1.0 to 1.1 with a min/max luminance clamp, `Vignette`, bloom, `Palette`
+  `dd_<area>_<variant>`); the palettes are 32x16x16 RGBA8 colour-grade LUTs in `palettes.pssg` (gzip PSSG, axes G, B, R; Greece day lifts blacks to (0,0,6) and cools mid-grey to 136/142/153). Not read: the LUTs, the skymaps, the
+  sky meshes, the ambient SH. Which variant an event runs is not on disk (only thumbnail names `..._day_alt_dry.tga`).
+- `lighting_day.xml` values (Greece 01 / Hafren 01 / Turini 01): sun `rotationangle`/`heightangle` 30/45, -161/48, -105/31; `specular_colour` (sun) 1/.93/.84, .90/.92/1, .90/.93/.93; `fogHazeDistance` 12000, 4000, 3000/6000;
+  `fogHazeColour` (.51,.63,.74), grey .44, (.77,.88,.93); sun-side `fogHazeColour2` x `fogHazeBrightness2` (1,.95,.87)x1.37, white x1, (.59,.79,1)x1.3; `HDRRange` 2.2, 0.7, 2.2 (Hafren's day is already overcast); `vfogEnable` false
+  everywhere; `skyGlobalColour` .69, .60, (.72,.80,.84).
+- Importer, `lighting.rs`, from the area's `lighting_day.xml` and `t~..~day` post effect, written to `settings.ini` `[ReRbrAir]` (`notes/btb.md`): `aerosol` = 1.2 / `fogHazeDistance` (km, the nearer of the two), clamped 0.05 to 0.2 (Greece 0.10,
+  Hafren and Turini 0.2); `fog_color` = the haze's colour half-way to its sun-side one (each scaled to its brightest channel); `saturation` = `ColourBalance.colour`; `exposure` = `ToneMap.targetLuminance` (the min/max clamp only
+  bounds DiRT Rally's own adaptation, which our meter does; Hafren's 0.315 to 0.555 pins it, not reproduced); `sun_tint` = `specular_colour` over its luminance.
+- Calibration (Greece 9 km, Wales 3.5 km, Turini 3 km against `/tmp/dr-gp` frames): on a clear row the aerosol and haze hue are weak (aerosol 0.05 to 0.16 and a warm or grey hue move the far hills a few levels; saturation 0.75
+  and the tint are subtle), the pale horizon and hills of the frames come from the row: hazy (`41M_hazy_clear`) for Greece and Turini, overcast for Wales. The converted stage's `aerosol` and hue apply only on clear rows
+  (`skylight::sky_uniform`), not on hazy, overcast or rain.
+- Own weather (`track.ini` `weather_good`, `weather_bad`, `Season::with_own`): `weather_good` = `41O_M_norain_lightcloud` when the day's `HDRRange` is under 1.5 (Hafren), else `41M_hazy_clear` when `fogHazeBrightness2` >= 1.3 or the
+  haze reaches 6 km or less (Greece, Turini, Sweden), else none (Finland, Germany stay on the retail good row); `weather_bad` = `41O_M_lightrain_heavycloud` where the area has a wet variant. Wales' own good weather has no damp
+  road (no map 41 row has a damp, heavy-cloud, fog-free section); `lightfog_heavycloud` was too thick against the frames. Open: the clock and the sun's azimuth (see "Sun and place").
+
