@@ -300,6 +300,22 @@ pub fn scene(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
     Ok(meshes)
 }
 
+/// The tuft models of a `ground_cover` file: each `RENDERNODE` named `t<type>_<model>` and its meshes.
+pub fn tuft_meshes(pssg: &Pssg) -> Result<Vec<(String, Vec<Mesh>)>, String> {
+    let materials = material::read(pssg);
+    let mut out = Vec::new();
+    for node in pssg.find("RENDERNODE") {
+        let id = node.id().unwrap_or("").to_owned();
+        let mut meshes = Vec::new();
+        visit(node, &node.transform(), &mut |instance, parent, m| {
+            meshes.extend(build(instance, parent.id().unwrap_or(""), m, &materials)?);
+            Ok(())
+        })?;
+        out.push((id, meshes));
+    }
+    Ok(out)
+}
+
 /// The placeable object types of an `objects`, `route_objects` or `trees` file: each `ROOTNODE`'s visible level-0
 /// meshes in its own space, and the ids that name it (its own and every node under it, `default!2`,
 /// `gre_rock_rand_small_default_001`), which is what `route_objecttypes` references.

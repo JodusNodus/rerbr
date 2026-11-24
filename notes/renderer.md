@@ -149,6 +149,14 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   fps; full-screen cockpit 12 to 54 (2026-10-25). The fog, the sun's cascades and the car's shadow still spill
   (~150-310 bytes) in the stage pipelines.
 - Small arrays indexed in loops (`harmonics`, `texel_filter`) are written out: Metal kept them in memory.
+- Stage pipelines on threads (`pipelines.rs` `Pool`, `Pipe`): the stage has 15 to 40 pipelines of one big fragment shader, each about
+  1 s of the driver's compile, made one after another before (Kaihuavaara all enhancements 35 s, Roure with grass 15 s, empty Mesa
+  cache, radv). The load queues each new key to a pool (`RBR_PIPELINE_THREADS`, default 4; 1 = in place) and waits at the end of the
+  mesh loop. Kaihuavaara 35 -> 15 s at 4 threads (8 threads 8 to 11 s, 12 threads 8 s, 32 threads 7 s), Roure 15 -> 3.5 s at 8; peak
+  memory about 0.35 GB per thread (Kaihuavaara 1.1 GB at 1 thread, 2.2 at 4, 3.3 at 8, 10 at 32); the compile CPU time rises (35 ->
+  60 to 80 s) with the threads: contention in the driver. Rendering unchanged (37 shots RMSE 0).
+- Tried and dropped: wgpu's pipeline cache kept on disk (Vulkan): a changed shader misses it and the driver's cache alike, so it
+  gave nothing after an update (38.1 s with it, 37.2 s without) and only replaced a wiped driver cache.
 - Reflections medium, low and off differ from high by up to 35, 58 and 79 in the wet 45_O scene (1280x720, Xsara,
   every enhancement; 2026-10-26, RX 9060 XT, radv).
 - Tried and removed (no gain on an RX 9060 XT, 2026-10-26): the car's shadow filter taps (`Quality`, `--shadows`,
@@ -386,6 +394,7 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   converted stage's `[ReRbrAir]` `fog_color` and `aerosol` replace the clear day's only (they overrode every weather);
   the converter no longer writes them. The linear fog (lighting off) and our dawn and dusk mist are unchanged.
 - Sky ambient tint (ours, prototype): `[ReRbrAir]` `sky_tint` (`Atmosphere::sky_tint`, 0 to 1, absent 1) takes the sky's light on the stage (`day_sky` from `day_light`) that far from its luminance in grey to the clear sky's own colour, for bakes that already carry their ambient (DiRT Rally's: the clear sky's blue and the eye balance read as a blue cast in their shade). It rides `SkyUniform.level.z` (as `1 - tint`, guarded so absent is bit-identical); the sky drawn and the sun's light are unchanged. Reference shots (7 of RBR and AC) RMSE 0 against the build before.
+- Converted stage grade (ours, 2026-11-24, `[ReRbrAir]` `saturation`, `exposure`, `sun_tint`; `Atmosphere::{saturation, exposure, sun_tint}`): `post::conditions` multiplies the weather's exposure and saturation by them (a heavy rain or cloud grade stays under it); `sun_tint` rides `SkyUniform.sun_tint` (`w` 1 when set) and tints `day_light`'s direct light after the balance, only while the sun is up (the moon is not tinted), the sky drawn unchanged. Absent keys leave every path as it was (the branch is skipped).
 - Converted stage haze (ours, 2026-11-19, superseded in part by the above): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
   ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
   crisp to 0.2 hazy, as `skylight.rs`' words) and share of the height fog's dawn and dusk mist (`mist`, 0 none to 1,
@@ -618,6 +627,9 @@ probably fit the wrong hour.
   product with a scale of 100/m stays exact to a texel at 4 km, wrapped to 0..1, with `textureSampleGrad` on the unwrapped gradients (no mip seam).
   Sa Calobra scene pass (1600x900, `--profile`, 3 runs): road and rock view 1.89 ms before (and 1.91 ms for the new viewer on a stage without the keys,
   whose picture is byte-identical to the old viewer's, as is retail `track-10_O`) to 2.00 ms; road view 1.55 to 1.63 ms.
+- `layered` with `ReRbrLayerUv` (`mode.layer.x` 3, `layer_uv()`): details at `uv1 * scale` on the gradients of `uv1`, weights from the vertex (`specular` xyz,
+  chain mix), no mask sample; `shade_stage` skips `terrain_detail`, `terrain_even` and `terrain_bank` for them (they read texture 0, which is the first layer there).
+  Draws without the key are unchanged (reference shots, RMSE 0, `notes/dirt-rally.md`).
 - The clock's ambient share and tint scale the stage's display colours, so its light is them to the 2.2; day frames
   byte-identical (2026-10-20).
 - The headlights' shadow map has its own layer of the sun's map (`sun::LAMP`), so the lamps cast at dusk too, beside the

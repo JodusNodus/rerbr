@@ -138,8 +138,8 @@ pub(crate) fn conditions(atmosphere: &crate::atmosphere::Atmosphere) -> Conditio
     let overcast = ((atmosphere.cloud_cover() - 0.42) / (0.9 - 0.42)).clamp(0.0, 1.0);
     Conditions {
         pre_exposure: if atmosphere.night { NIGHT_PRE_EXPOSURE } else { DAY_PRE_EXPOSURE },
-        exposure: 1.0 - WET_EXPOSURE * atmosphere.precipitation(),
-        saturation: 1.0 + OVERCAST_SATURATION * overcast,
+        exposure: (1.0 - WET_EXPOSURE * atmosphere.precipitation()) * atmosphere.exposure.unwrap_or(1.0),
+        saturation: (1.0 + OVERCAST_SATURATION * overcast) * atmosphere.saturation.unwrap_or(1.0),
     }
 }
 

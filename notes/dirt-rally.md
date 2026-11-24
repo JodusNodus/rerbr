@@ -84,7 +84,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   4.3 M; 348 models, 67003 placements, 32 M triangles if all were in view); stage folder 760 -> 644 MB; import 91 -> 72 s;
   viewer load 12 to 16 -> 8 to 11.5 s, peak RSS 2.9 to 3.1 -> 1.9 to 2.1 GB. Greece 4.86 M -> 2.40 M (14.6 M instanced),
   499 -> 440 MB, 33 -> 31 s, load 5.0 -> 3.1 s, 2.0 -> 1.3 GB. Germany panzerplatte 9.01 M -> 3.31 M (25.5 M instanced),
-  662 -> 529 MB, 110 -> 88 s, load 7.0 -> 4.7 s, 3.7 -> 1.6 GB. Not done: grass (`grass.grs`), cloth, `ornaments.bin`;
+  662 -> 529 MB, 110 -> 88 s, load 7.0 -> 4.7 s, 3.7 -> 1.6 GB. Grass is done (below); not done: cloth, `ornaments.bin`;
   foliage is drawn one-sided as the BTB mesh is.
 
 ## Course
@@ -136,6 +136,28 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   (15 sections and two specials on Greece, one atlas per lightmap name, shared by its materials); the layers lie on the first's `xy`
   (metres per unit 4 to 8 on roads and banks, tiling), `zw` unidentified. Compiled DXBC only (`shaderpack.pssg`): the blend is read
   from the data, not the code.
+- Drawn by ReRBR's `ReRbrLayer*` with `ReRbrLayerUv=1` (2026-11-24, `shade.rs`, `notes/btb.md`): per section one BC7 diffuse (colour map over its covered texels' mean, 30% of its hue
+  kept, times the lightmap over its bright texels' mean, 80% strength; DXT1 turned the smooth, nearly grey diffuse into magenta and green blotches on Greece's roads) at the atlas (UV set 0, the second `ST`
+  stream, untransposed); each layer's texture is a detail at the first stream's `xy` (UV set 1, `Map<N>UVScaleAndOffset` of the first layer applied, the others relative to it); the weights are the
+  vertex colour per pixel (R, G, B the second to fourth layers; sets 2 and 3), summed as the chain `mix(mix(mix(L1, L2, R), L3, G), L4, B)`, layers a material lacks weighing 0. The renderer's
+  near-ground detail and steep-bank replacement are off on such draws. This replaced a mask (the weights rasterised in the atlas) with the details at `atlas * repeat` per island of the mesh,
+  repeat classes, a world-space fallback, `collapsed` triangles, and `Layers::bake` (the steep-face first texture): all gone, a material is one draw. Still kept: `bridges` (triangles joining distant atlas
+  islands keep the unshaded first-layer draw). A tile's layer uv is shifted by whole units that keep every layer's tiling (`shade::period`), `f32` at kilometres. The normal map is the dominant layer's at the layer
+  uv (`ReRbrBumpUv`, `ReRbrBumpScale` the layer's relative repeat).
+  Measured (release, 8 cores, shared machine; `Textures.zip` MB before -> after, import s where measured alone): Turini 506 -> 422, Sweden 542 -> 381 (58 -> 27 s), Greece 554 -> 382, Finland 757 -> 565, Wales 660 -> 557,
+  Germany 590 -> 452. Turini 6 km scene pass 2.84 -> 1.91 ms, 2099 -> 1267 draws (1280x720, `--enhance all,grass`); first frame 5.9 -> 5.0 s. Turini's wall at 6 and 8 km is continuous (no blocks, seams or flat sheets), the 1 km barcode bands
+  stay gone, Sweden's banks have no facets, Finland's grass grows. All 37 reference shots (`scripts/render-shots.py`, AC BTB stages among them) RMSE 0 against the build before. Sheets: `/tmp/luv/sheet-*.png`.
+  Hafren's roads (G the skid layer, 0.1 to 0.5 over the road) went near white with a linear sum `1 - R - G - B, R, G, B` (it passes 1 where R + G does); the chain keeps the sum at 1 and they read as before.
+  The white dashes on Hafren's road at 4 km (a grey paved stretch by road signs) in the earlier mask-bake render are in no layer texture, the atlas or any weight order (layer 1 alone shows none). `TBlendMap2/3` are greyscale height maps of their layer (pebbles, ruts, noise; Hafren 4 km: `set1_03_b`, `skd_01_b`), no markings; `BlendMaskUVScale` is 0 on every material read. Likely the old mask's rectangular cells over the set4 details' bright flecks (untested).
+  Road blend (2026-11-24, `ReRbrLayerBlend`, `shade.rs`, `notes/btb.md`): `terrain_road` materials with `DetailBlendScale` and zero `Map2/3UVScaleAndOffset` offsets draw the DXBC's weights: `a = sat(1-R)`,
+  `t = sat((h2-a)/(sat(a+S)-a))`, `R' = t²(3-2t)`, `G' = h3*G`, then the chain. h2 and h3 (`TBlendMap2/3`, red, resampled wrapped to the larger size, at the layer's own uv: same scale as the layer) ride in the alpha of
+  layer 2's and layer 3's textures, re-encoded BC7 per (layer, map) pair (the layers' own alpha, the specular, is unread by the renderer). Every road material has both maps (`default_black` is real: the skid weight is 0 there);
+  other shaders (`wsm_edge_nm`, `edge_nm`) and roads with a map offset keep the plain weights (formula unread). Greece 3.5 km: the black tyre stripes in the bends are gone (rmse 11 against before, 22% of pixels over 8/255).
+  Finland, Hafren and Germany change by ruts and pebble-scale borders only (rmse 2 to 8); the roads still read grey and smooth next to DR's light dusty ones, which this blend does not explain (layer textures and the colour-map and
+  lightmap diffuse are the same before and after).
+  The other shaders take the chain mix of the weights, which is what the data gives there. Vertex colours are used as bytes over 255 (no gamma): snow, rock and road transitions read right. Greece's verges differ from the mask's (a grass layer on banks, less at some road edges): the weights are per pixel
+  now; against the game itself unverified.
+- (History, superseded by the above) the mask path:
 - Drawn by ReRBR's `ReRbrLayer*` (no renderer change): per section a diffuse (colour map over its covered texels' mean, 30% of its hue kept,
   times the lightmap over its bright texels' mean, 80% strength), written as BC7 (DXT1 turned the smooth, nearly grey diffuse into
   the magenta and green blotches on Greece's roads: 5:6:5 endpoints per 4x4 block), and a 2048
@@ -144,7 +166,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   over the layer's), classed within 20% as a material of its own. Roads' ruts run along the atlas's u, hence the transpose.
   Islands whose layer runs at no one angle to the atlas, or whose atlas shears over 1.6, read the details at the world's (x, z) instead.
   Triangles whose atlas jump is 8 times the mesh's median rate (they join islands) keep the old single-texture draw.
-- `TBlendMap2/3` (a height map the game roughens a weight's border with) is not used: finer than the mask. Colour-map hue and
+- `TBlendMap2/3` (a height map the game roughens a weight's border with): used for roads since `ReRbrLayerBlend` (above); not by the mask path. Colour-map hue and
   lightmap strength are chosen by eye against the Steam store shots: Greece's section means run pink to blue, `ColourMapScale` is 2 on
   every material (so the game's neutral is a mid blue-grey, not grey). The renderer multiplies the textures as display values, so no
   gamma applies to our diffuse.
@@ -274,6 +296,50 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Result (Turini, Greece, Sweden, Finland, Wales at 0.3, 2, 4 (6) km, `--enhance all`): RMSE against the diffuse-only conversion 1 to 6 of 255 (Turini's rock wall at 6 km 9): grain on rock, gravel and snow, car paint with a soft
   highlight, no sheen elsewhere. `Textures.zip` +30 % Greece 450 -> 554 MB, +33 % Turini 397 -> 506, +20 % Sweden 452 -> 542, +31 % Finland 577 -> 757, +22 % Wales 539 -> 660 (DXT1 normals, 5:6:5). Import under load
   (average 15 to 20): Greece 59 -> 65 s, Turini 51 -> 54 s. Viewer frame at Turini 6 km (1280x720, all on, `--frames 60`): 14.9 to 15.4 ms before, 13.7 to 14.4 after (noise; nothing measurable).
+
+## Light, haze and weather (2026-11-24)
+
+- What the game ships per area: `lighting_{day,day_alt,night[,night_alt]}.xml` (binary XML, one attribute per `param`; wet variants on Hafren, Turini, Finland, Germany, Sweden, none on Greece), `ambientmaps_*`,
+  `envmap_*`, `skymap_*.clm`; per route `sky_*.pssg`, `route_skymap_*.clm`, `ambient_sh_*.bin`, `pfx_atmospheric.xml` (`weatherType` dry/wet times `lightingType` day, day_alt, night). `postprocess/effects.xml` has one effect per
+  variant (`t~<location>~<area>~<variant>`: `ColourBalance.colour` (saturation: Greece day 0.75, Hafren day 0.71, Turini 1.0), `ToneMap` target 1.0 to 1.1 with a min/max luminance clamp, `Vignette`, bloom, `Palette`
+  `dd_<area>_<variant>`); the palettes are 32x16x16 RGBA8 colour-grade LUTs in `palettes.pssg` (gzip PSSG, axes G, B, R; Greece day lifts blacks to (0,0,6) and cools mid-grey to 136/142/153). Not read: the LUTs, the skymaps, the
+  sky meshes, the ambient SH. Which variant an event runs is not on disk (only thumbnail names `..._day_alt_dry.tga`).
+- `lighting_day.xml` values (Greece 01 / Hafren 01 / Turini 01): sun `rotationangle`/`heightangle` 30/45, -161/48, -105/31; `specular_colour` (sun) 1/.93/.84, .90/.92/1, .90/.93/.93; `fogHazeDistance` 12000, 4000, 3000/6000;
+  `fogHazeColour` (.51,.63,.74), grey .44, (.77,.88,.93); sun-side `fogHazeColour2` x `fogHazeBrightness2` (1,.95,.87)x1.37, white x1, (.59,.79,1)x1.3; `HDRRange` 2.2, 0.7, 2.2 (Hafren's day is already overcast); `vfogEnable` false
+  everywhere; `skyGlobalColour` .69, .60, (.72,.80,.84).
+- Importer, `lighting.rs`, from the area's `lighting_day.xml` and `t~..~day` post effect, written to `settings.ini` `[ReRbrAir]` (`notes/btb.md`): `aerosol` = 1.2 / `fogHazeDistance` (km, the nearer of the two), clamped 0.05 to 0.2 (Greece 0.10,
+  Hafren and Turini 0.2); `fog_color` = the haze's colour half-way to its sun-side one (each scaled to its brightest channel); `saturation` = `ColourBalance.colour`; `exposure` = `ToneMap.targetLuminance` (the min/max clamp only
+  bounds DiRT Rally's own adaptation, which our meter does; Hafren's 0.315 to 0.555 pins it, not reproduced); `sun_tint` = `specular_colour` over its luminance.
+- Calibration (Greece 9 km, Wales 3.5 km, Turini 3 km against `/tmp/dr-gp` frames): on a clear row the aerosol and haze hue are weak (aerosol 0.05 to 0.16 and a warm or grey hue move the far hills a few levels; saturation 0.75
+  and the tint are subtle), the pale horizon and hills of the frames come from the row: hazy (`41M_hazy_clear`) for Greece and Turini, overcast for Wales. The converted stage's `aerosol` and hue apply only on clear rows
+  (`skylight::sky_uniform`), not on hazy, overcast or rain.
+- Brightness against the gameplay frames (2026-11-24, `sun_stops`): the converted Finland and Germany roads read 100 to 110 of 255 against DiRT Rally's 150 to 200 because the renderer exposes a sunlit clear day 1.5 stops down (`post::SUN_EXPOSURE`, a photo's look; scaled by the sun's share and the clouds'), while DiRT Rally's sunlit gravel is not held down; Greece (hazy) and Hafren (overcast) were already level with the frames since their share is small. Measured (Finland 12 km road/grass, Germany 9 km road, Greece 6 km, Hafren 3.5 km road): `sun_stops` 1.5 -> 0 gave 108/98/86 -> 160/145/128 (grass 80 -> 121), 116/112/103 -> 169/163/151, 104/92/82 -> 108/96/86, 125/124/123 -> 127/126/125 (DR frames: Finland 169/154/145 shade, 198/175/159 sun; Germany sun 152/133/105; its road is more orange, hue not addressed). Importer writes `sun_stops=0` always. Ruled out: `exposure` alone (1.8 -> x1.26, 3 -> road 171 but Greece and Hafren go pale grey, 184/178/166 on Germany), the diffuse bake (its section mean is 0.5 x `magic` 2: the layer's own albedo, `ColourMapScale` is already honoured), `HDRRange`, `gi_*` and `deferred*` fields (no pattern against the needed factors 1.8 Finland, 1.3 Germany, 1.0 Greece and Hafren).
+- Own weather (`track.ini` `weather_good`, `weather_bad`, `Season::with_own`): `weather_good` = `41O_M_norain_lightcloud` when the day's `HDRRange` is under 1.5 (Hafren), else `41M_hazy_clear` when `fogHazeBrightness2` >= 1.3 or the
+  haze reaches 6 km or less (Greece, Turini, Sweden), else none (Finland, Germany stay on the retail good row); `weather_bad` = `41O_M_lightrain_heavycloud` where the area has a wet variant. Wales' own good weather has no damp
+  road (no map 41 row has a damp, heavy-cloud, fog-free section); `lightfog_heavycloud` was too thick against the frames. Open: the clock and the sun's azimuth (see "Sun and place").
+
+
+## Grass, 2026-11-24
+
+- `grass.grs` (per area; all 18 retail files read, `grass.rs` tests): `u32 7, T (8 types, Lydden Hill 6), N, 0`; words 4 to 908 the tuft types'
+  parameters and names (`t<type>_<model>`, `type_0T`: not read); word 909 on N ascending byte offsets, the cells after. A cell: `u16 vertices, u16
+  triangles`, 3 zero words, box `[xmin ymin zmin xmax ymax zmax]` in DiRT Rally's world, vertices of 8 bytes (`u16` x and `u16` z over the box, `u8` y over its
+  height, 3 bytes `11 10 84` but for 7% of them: RGB565 grey 0x8410 with `ff` before it where it differs; a tint, not read), triangles of 4 bytes (three
+  indices, a flag). Flag bits 4 and 5 are a class 0..3 (0 a 3 to 8 m band at the road's shoulders, 1 the main field, 2 and 3 other zones: Greece's south
+  and Wales' tarmac sections and forest; their meaning is not known), bit 3 and the rest not read.
+- It is the terrain surface where grass grows, the road cut out, 4 m triangles away from the road: vertex heights lie on the gates' crossings to 0.25 m (Greece, 839 gates, median
+  0.03 m), vertices on an exact 4.00 m lattice, holes where nothing grows (4 m squares in Wales' verges). Greece 362 k vertices, 439 k triangles; Wales 718 k and 847 k; the area's
+  routes share it. Grass lies within 8 m of at least 96 % of every rally route's gates (Pikes Peak 55 to 99 %: rock).
+- `ground_cover.pssg`: one quad a tuft (`RENDERNODE t<type>_<model>`, 53 on Greece; position extents are its size in metres, `uv` its rectangle in `gc_billboard_d`, a
+  2048 x 1024 DXT5 atlas: Greece's is dry golden grass, thistles and scrub, Wales' green grass, rushes and brambles). `ground_cover.xml`: draw distance 150 m, fade 120 + 40.
+- Import (`grass.rs`, `stage.rs`): the triangles are rasterised to a 2 m cover map (class + 1, centres within 0.4 m of a triangle) over the drawn rectangle, as
+  `Textures.zip`'s PNG with `cover=` and `cover_rect=` (`notes/btb.md`); the atlas goes in as it is, `grid` one texel a cell, `base=0`, one group holding every model with its
+  rectangle and metre size as `SIZE_MULT` (`size` makes a cell 1 m: 3.2 clumps a m2, `Fx::density`), a model taller or wider than 0.8 m rarer by the square of the ratio. The
+  terrain materials (not decals) carry `ReRbrGrass=1`; the map alone decides where. Every class takes the same pieces (the class is stored for later).
+- Result (all enhancements, `--enhance all,grass`, 0.3, 2, 4 km, `/tmp/grs/cmp-*.png`): Greece's verges grow golden tufts and scrub where they were bare, Wales' green tufts line the road in the forest, Finland's tufts replace the old lawn, all in the atlas's own colours
+  and sizes (first render: olive and 5 m bushes, from the base cards' ground hue and size spread; see `notes/btb.md`). Viewer load (1280x720, `--screenshot`, best of 2): Greece 6.7 s both, 1.78 to 1.84 GB;
+  Wales 9.35 to 9.05 s, 2.67 to 2.68 GB. Greece `Textures.zip` +0.25 MB (400.22 to 400.48 MB); import time unmeasured (the machine was shared). The 37 reference shots: RMSE 0 against the build before.
+- Open: the class's meaning (which tufts each zone grows), the types' parameters (counts, scales), the tint bytes, tufts' densities against the game's (ours is a guess from the reference shots).
 
 ## Cars (`car.rs`, `car_pack.rs`), 2026-11-24
 

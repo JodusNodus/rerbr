@@ -208,6 +208,10 @@ pub struct Layers {
     pub details: [TextureRef; 4],
     /// Details at the world position (else at `uv0`).
     pub world: bool,
+    /// The details at `uv1` and the weights in `specular` (`rbr_btb::scene::Layers::uv`; the diffuse at `uv0`, no mask).
+    pub uv: bool,
+    /// `rbr_btb::scene::Layers::blend`: DiRT Rally's road blend with this `DetailBlendScale`.
+    pub blend: Option<f32>,
     pub magic: f32,
     /// Each detail's `(u, v)` multiplier.
     pub scale: [[f32; 2]; 4],
@@ -216,14 +220,14 @@ pub struct Layers {
 }
 
 impl Layers {
-    fn bits(&self) -> ([TextureRef; 6], bool, [u32; 17]) {
+    fn bits(&self) -> ([TextureRef; 6], [bool; 2], [u32; 17], Option<u32>) {
         let numbers = std::iter::once(self.magic).chain(self.scale.iter().chain(&self.offset).flatten().copied());
         let mut bits = [0; 17];
         for (slot, number) in bits.iter_mut().zip(numbers) {
             *slot = number.to_bits();
         }
         let [a, b, c, d] = self.details;
-        ([self.diffuse, self.mask, a, b, c, d], self.world, bits)
+        ([self.diffuse, self.mask, a, b, c, d], [self.world, self.uv], bits, self.blend.map(f32::to_bits))
     }
 }
 

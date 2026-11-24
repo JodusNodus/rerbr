@@ -35,7 +35,10 @@ pub fn race_weather(data: &Data, args: &Args, map: u32) -> Result<(Preset, Weath
             Season::of_rsf(stage, letter)
         }
         None => match args.btb {
-            Some(sky) => Season::of_btb(&Season::load(data)?, map, sky),
+            Some(sky) => {
+                let [good, bad] = rbr_btb::stage::own_weather(&args.stage);
+                Season::of_btb(&Season::load(data)?, map, sky).with_own(map, good.as_deref(), bad.as_deref())
+            }
             None => Season::load(data)?,
         },
     };

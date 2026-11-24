@@ -407,6 +407,11 @@ impl Bindings {
         self.get(a).pad.filter(|p| p.is_axis() && self.get(b).pad == Some(*p))
     }
 
+    /// The steering axis, when steer left and right are one device axis (a wheel's).
+    pub fn steering_axis(&self) -> Option<PadInput> {
+        self.shared_axis(Action::SteerLeft, Action::SteerRight)
+    }
+
     /// The device poll's bindings (`rbr_gameplay::poll::Poll::bind`): per game action slot, its device (`None` the
     /// keyboard, whose objects are DIK codes) and object. One object per slot: the device input, else the key.
     pub fn slots(&self) -> Vec<(usize, Option<Device>, Target)> {

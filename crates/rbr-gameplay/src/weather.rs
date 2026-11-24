@@ -165,6 +165,26 @@ impl Season {
         Season { rows: rows.collect(), sky: Some(sky), ..retail.clone() }
     }
 
+    /// A BTB stage's own Good and Bad weathers (ours, a converted stage's `track.ini` `weather_good` and `weather_bad`):
+    /// the row of the sky map whose `TrackSettings.ini` section is named (case ignored) leads the list. A word no row
+    /// carries, or none, leaves the retail map's lists.
+    pub fn with_own(mut self, number: u32, good: Option<&str>, bad: Option<&str>) -> Season {
+        let Some(sky) = self.sky else { return self };
+        let row_of = |word: &str| {
+            self.rows.iter().position(|row| {
+                row.map == number
+                    && Weather::section_of(sky, row).is_some_and(|section| section.eq_ignore_ascii_case(word.trim()))
+            })
+        };
+        for (word, list) in [(good, 0), (bad, 1)] {
+            if let Some(k) = word.and_then(row_of) {
+                let list = if list == 0 { &mut self.nice } else { &mut self.bad };
+                list.insert(0, k as u32);
+            }
+        }
+        self
+    }
+
     /// The letter of the stage file `row` loads: its own, M for a BTB stage.
     fn letter(&self, row: &Row) -> u32 {
         if self.sky.is_some() {
@@ -366,6 +386,11 @@ impl Weather {
         )
     }
 
+    /// The section of `row` under the retail map `sky`.
+    fn section_of(sky: u32, row: &Row) -> Option<String> {
+        rbr_formats::rsf::WeatherRow::section_name(sky, row.letter, row.cloud_letter, row.preset, row.cloud)
+    }
+
     /// The collision load's wet meshes (collision list A) load: `Vf1c() == 2`.
     pub fn wet_meshes(&self) -> bool {
         self.wetness == 2
@@ -536,6 +561,22 @@ mod tests {
         // A ghost finds its row again by the file letter.
         let words = bad.ghost_words(&btb);
         assert_eq!(btb.ghost_weather(1_000_007, &words), Some(bad));
+    }
+
+    #[test]
+    fn a_btb_stage_can_name_its_own_good_and_bad_weathers() {
+        let retail = season();
+        let btb = Season::of_btb(&retail, 1_000_007, 20);
+        let own = |good, bad| btb.clone().with_own(1_000_007, good, bad);
+        let weather = |season: &Season, preset| quick_race(season, 1_000_007, preset, Draws::default()).unwrap();
+        // The retail map's rows are 0 (good) and 1 (bad); a named row leads its list, the case ignored.
+        let section = |k: usize| Weather::section_of(20, &btb.rows[k]).unwrap();
+        let (first, second) = (section(2).to_lowercase(), section(0));
+        let changed = own(Some(&first), Some(&second));
+        assert_eq!(weather(&changed, Preset::Good).row, Some(2));
+        assert_eq!(weather(&changed, Preset::Bad).row, Some(0));
+        // A word no row carries, and none, leave the lists.
+        assert_eq!(own(Some("20X_nothing"), None), btb);
     }
 
     #[test]

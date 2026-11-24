@@ -357,6 +357,8 @@ impl TextureBank {
             scale,
             magic: mat.property("magicMult", 1.),
             world: (!objsp).then_some(self.origin),
+            uv: false,
+            blend: None,
         })
     }
     fn count(&mut self, extras: &Extras) {
@@ -549,6 +551,12 @@ pub struct Layers {
     pub magic: f32,
     /// The stage's origin `[x, z]`: the details are read at world space, AC's `(x, z) = (stage x + origin[0], -(stage z + origin[1]))`.
     pub world: Option<[f64; 2]>,
+    /// `ReRbrLayerUv=1`: the details read the mesh's UV set 1 and the weights are its vertices' (UV sets 2 and 3), no mask
+    /// (`mask` is unused); DiRT Rally's terrain.
+    pub uv: bool,
+    /// `ReRbrLayerBlend=S` (with `uv`): DiRT Rally's road blend, `DetailBlendScale` `S`, the height maps in the alpha of the
+    /// second and third details.
+    pub blend: Option<f32>,
 }
 
 /// AC's foliage shaders. They light by `ks` as the others do (`ksTree_ps.fxo`: `tex * (ksAmbient * ambient * hemi +
@@ -771,7 +779,15 @@ pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bo
     }
     if let Some(layers) = &extras.layers {
         let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
-        let _ = writeln!(out, "ReRbrLayerDiffuse={}\nReRbrLayerMask={}", layers.diffuse, layers.mask);
+        let _ = writeln!(out, "ReRbrLayerDiffuse={}", layers.diffuse);
+        if layers.uv {
+            out.push_str("ReRbrLayerUv=1\n");
+        } else {
+            let _ = writeln!(out, "ReRbrLayerMask={}", layers.mask);
+        }
+        if let Some(scale) = layers.blend {
+            let _ = writeln!(out, "ReRbrLayerBlend={}", decimal(scale));
+        }
         let _ = writeln!(out, "ReRbrLayerDetail={}", layers.details.join(","));
         let _ = writeln!(out, "ReRbrLayerScale={}", list(&mut layers.scale.iter().flatten().map(|m| decimal(*m))));
         let _ = writeln!(out, "ReRbrLayerMagic={}", decimal(layers.magic));

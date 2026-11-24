@@ -34,6 +34,8 @@ pub struct Material {
     /// The normal map (`TNormalMap`) and the specular map (`TSpecularMap`) of a prop, as DDS files.
     pub normal: Option<Vec<u8>>,
     pub specular: Option<Vec<u8>>,
+    /// Ground the grass may grow on (`ReRbrGrass=1`, where the stage has [`Input::grass`]): the cover map decides where.
+    pub grows: bool,
 }
 
 impl Material {
@@ -44,6 +46,14 @@ impl Material {
         let highlight = specular.is_some().then_some(HIGHLIGHT);
         Ok(material::Extras { normal, specular, highlight, ..material::Extras::default() })
     }
+}
+
+/// A shaded terrain triangle's corners: the coordinates its layers tile on and its vertex weights (R, G, B of the second
+/// to fourth layers).
+#[derive(Clone, Copy, Default)]
+pub struct Corners {
+    pub uv: [[f32; 2]; 3],
+    pub weights: [[u8; 3]; 3],
 }
 
 /// `(SpecularColor, SpecularPower)` of a prop with a specular map: the maps hold the intensity, the shader's own
@@ -97,6 +107,9 @@ pub struct Input {
     pub materials: Vec<Material>,
     /// Drawn triangles, `material` the index into `materials`.
     pub drawn: Vec<Triangle>,
+    /// The layers' own coordinates and weights of the first drawn triangles (the terrain's), for the materials with
+    /// [`Material::layers`]: their `Triangle::uv` is the atlas.
+    pub layer: Vec<Corners>,
     /// The props and trees drawn as instances.
     pub instanced: Instanced,
     /// Collision triangles, `material` the RBR surface id ([`surface::Surface::Default`] already resolved).
@@ -105,7 +118,14 @@ pub struct Input {
     pub collision_source: &'static str,
     /// Surface counts by source code, for the conversion file.
     pub surface_counts: BTreeMap<String, usize>,
+    /// The stage's look (`[ReRbrAir]`), when the area's files state it.
+    pub lighting: Option<crate::lighting::Lighting>,
+    /// The area's ground cover: where grass grows and its tufts.
+    pub grass: Option<crate::grass::AreaGrass>,
 }
+
+/// Metres a texel of the grass cover map is wide.
+const COVER_TEXEL: f64 = 2.;
 
 pub struct Options {
     pub out: PathBuf,
@@ -225,12 +245,17 @@ struct Builder {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    /// A shaded vertex's layer coordinates and weights ([`Corners`]), empty for the others.
+    layer_uvs: Vec<[f32; 2]>,
+    weights: Vec<[u8; 3]>,
+    /// The whole layer units the layer coordinates may be shifted by ([`shade::Layers::period`]).
+    period: f32,
     triangles: Vec<[u32; 3]>,
-    vertices: HashMap<[u32; 8], u32>,
+    vertices: HashMap<[u32; 11], u32>,
 }
 
 impl Builder {
-    fn add(&mut self, t: &Triangle, origin: [f64; 2], visible: bool) {
+    fn add(&mut self, t: &Triangle, layer: Option<&Corners>, origin: [f64; 2], visible: bool) {
         let index = std::array::from_fn(|k| {
             let p = t.pos[k];
             let position = [(p[0] - origin[0]) as f32, p[2] as f32, (p[1] - origin[1]) as f32];
@@ -239,12 +264,28 @@ impl Builder {
             } else {
                 ([0., 1., 0.], [0.; 2])
             };
-            let key = [position[0], position[1], position[2], normal[0], normal[1], normal[2], uv[0], uv[1]]
-                .map(f32::to_bits);
+            let (layer_uv, weights) = layer.map_or(([0.; 2], [0; 3]), |l| (l.uv[k], l.weights[k]));
+            let key = [
+                position[0].to_bits(),
+                position[1].to_bits(),
+                position[2].to_bits(),
+                normal[0].to_bits(),
+                normal[1].to_bits(),
+                normal[2].to_bits(),
+                uv[0].to_bits(),
+                uv[1].to_bits(),
+                layer_uv[0].to_bits(),
+                layer_uv[1].to_bits(),
+                u32::from_le_bytes([weights[0], weights[1], weights[2], 0]),
+            ];
             *self.vertices.entry(key).or_insert_with(|| {
                 self.positions.push(position);
                 self.normals.push(normal);
                 self.uvs.push(uv);
+                if layer.is_some() {
+                    self.layer_uvs.push(layer_uv);
+                    self.weights.push(weights);
+                }
                 self.positions.len() as u32 - 1
             })
         });
@@ -253,12 +294,24 @@ impl Builder {
         }
     }
 
+    /// The mesh as a `.x`; a shaded one carries the layers' coordinates as UV set 1 and its weights as sets 2 and 3.
     fn bytes(&self, material: &str) -> Vec<u8> {
+        let period = self.period;
+        // Shifted towards the origin so that `f32` holds the layers' texels in the far stretches of a long stage.
+        let low = self.layer_uvs.iter().fold([f32::MAX; 2], |low, uv| [low[0].min(uv[0]), low[1].min(uv[1])]);
+        let shift = low.map(|l| if period > 0. { (l / period).floor() * period } else { 0. });
+        let layer_uvs: Vec<[f32; 2]> = self.layer_uvs.iter().map(|uv| [uv[0] - shift[0], uv[1] - shift[1]]).collect();
+        let weight = |w: u8| f32::from(w) / 255.;
+        let rg: Vec<[f32; 2]> = self.weights.iter().map(|w| [weight(w[0]), weight(w[1])]).collect();
+        let b: Vec<[f32; 2]> = self.weights.iter().map(|w| [weight(w[2]), 0.]).collect();
+        let shaded = !layer_uvs.is_empty();
+        let more: &[&[[f32; 2]]] = if shaded { &[&rg, &b] } else { &[] };
         xwrite::write(&XMesh {
             positions: &self.positions,
             normals: &self.normals,
             uvs: &self.uvs,
-            uvs2: None,
+            uvs2: shaded.then_some(&layer_uvs),
+            more,
             triangles: &self.triangles,
             material,
         })
@@ -333,6 +386,11 @@ fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)
 const SETTINGS_INI: &str =
     "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nsky_tint=0.2\nnorth=0, 0, 1\n";
 
+/// `settings.ini` with the area's own haze, grade and sun tint (`lighting::Lighting`) in `[ReRbrAir]`.
+fn settings_ini(lighting: Option<&crate::lighting::Lighting>) -> String {
+    format!("{SETTINGS_INI}{}", lighting.map(crate::lighting::Lighting::ini).unwrap_or_default())
+}
+
 /// Where the car stands: the start grid's first slot, 3.7 m behind the start line on every rally route's grid.
 pub(crate) const GRID_BEHIND: f64 = 3.7;
 /// A circuit's car stands this far past the lap line (the ring's seam): on the seam itself a first step's progress can
@@ -397,13 +455,39 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut bank = TextureBank::new(&folder.join("Textures.zip"))?;
     let (mut sections, mut names) = (String::new(), Vec::new());
 
+    // The grass: the cover map over the drawn ground, the tufts' atlas and the `[ReRbrGrass]` section that names them.
+    let mut settings = settings_ini(input.lighting.as_ref());
+    if let Some(grass) = &input.grass {
+        let drawn = input.drawn.iter().filter(|t| draw.contains(&t.pos)).flat_map(|t| t.pos);
+        let rect = drawn.fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |r, p| {
+            [
+                r[0].min(p[0] - origin[0]),
+                r[1].min(p[1] - origin[1]),
+                r[2].max(p[0] - origin[0]),
+                r[3].max(p[1] - origin[1]),
+            ]
+        });
+        if rect[2] > rect[0] && rect[3] > rect[1] {
+            let rect = [rect[0].floor(), rect[1].floor(), rect[2].ceil(), rect[3].ceil()];
+            let cover = grass.grass.cover(rect, origin, COVER_TEXEL);
+            let cover = bank.put(cover.png()?, "png")?;
+            let atlas = bank.put(grass.tufts.atlas.clone(), "dds")?;
+            settings.push('\n');
+            settings.push_str(&grass.tufts.section(&atlas, &cover, rect));
+        }
+    }
+
     // Drawn: each material's triangles in the draw corridor, by ReRBR's scenery cell.
     let mut tiles = BTreeMap::<(usize, (i64, i64)), Builder>::new();
-    for t in input.drawn.iter().filter(|t| draw.contains(&t.pos)) {
+    for (i, t) in input.drawn.iter().enumerate().filter(|(_, t)| draw.contains(&t.pos)) {
         let cell =
             |k: usize| (((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / 3. - origin[k]) / SCENERY_CELL).floor() as i64;
         let material = t.material.unwrap_or(0) as usize;
-        tiles.entry((material, (cell(0), cell(1)))).or_default().add(t, origin, true);
+        let layers = input.materials[material].layers.as_ref();
+        let tile = tiles
+            .entry((material, (cell(0), cell(1))))
+            .or_insert_with(|| Builder { period: layers.map_or(0., |l| l.period), ..Builder::default() });
+        tile.add(t, layers.and(input.layer.get(i)), origin, true);
     }
     let mut section_of = BTreeMap::new();
     let mut drawn_triangles = 0;
@@ -441,7 +525,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             };
             let mut builder = Builder::default();
             for t in &model.triangles {
-                builder.add(t, [0., 0.], true);
+                builder.add(t, None, [0., 0.], true);
             }
             let lod = m.range.unwrap_or(options.lod);
             let entries =
@@ -460,7 +544,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 let m = &input.materials[*material];
                 let texture = match (&m.dds, &m.layers) {
                     (Some(dds), _) => bank.put(dds.clone(), "dds")?,
-                    (None, Some(l)) => bank.put(l.bake.as_ref().unwrap_or(&l.details[0]).to_vec(), "dds")?,
+                    (None, Some(l)) => bank.put(l.details[0].to_vec(), "dds")?,
                     (None, None) => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                 };
                 let name = format!("dr\\{material}");
@@ -471,7 +555,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 let layers = match &m.layers {
                     Some(l) => Some(material::Layers {
                         diffuse: bank.put(l.diffuse.to_vec(), "dds")?,
-                        mask: bank.put(l.mask.to_vec(), "dds")?,
+                        mask: String::new(),
                         details: {
                             let mut details: [String; 4] = Default::default();
                             for (slot, dds) in details.iter_mut().zip(&l.details) {
@@ -481,7 +565,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         },
                         scale: l.scale,
                         magic: l.magic,
-                        world: l.world.then_some([0., 0.]),
+                        world: None,
+                        uv: true,
+                        blend: l.blend,
                     }),
                     None => None,
                 };
@@ -490,7 +576,18 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     &name,
                     &texture,
                     m.transparent,
-                    &material::Extras { layers, normal, bump_scale, ..m.extras(&mut bank)? },
+                    &material::Extras {
+                        layers,
+                        normal,
+                        bump_scale,
+                        bump_uv: m.layers.is_some(),
+                        grass: if m.grows && input.grass.is_some() {
+                            rbr_btb::scene::Grass::Grows(0)
+                        } else {
+                            rbr_btb::scene::Grass::None
+                        },
+                        ..m.extras(&mut bank)?
+                    },
                 );
                 names.push(name.clone());
                 section_of.insert(*material, name.clone());
@@ -512,7 +609,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut col = BTreeMap::<((i64, i64), u8), Builder>::new();
     for t in &collision {
         let tile = |k: usize| ((t.pos[0][k] + t.pos[1][k] + t.pos[2][k]) / COLLISION_TILE).floor() as i64;
-        col.entry(((tile(0), tile(1)), t.material.unwrap_or(37) as u8)).or_default().add(t, origin, false);
+        col.entry(((tile(0), tile(1)), t.material.unwrap_or(37) as u8)).or_default().add(t, None, origin, false);
     }
     let collision_triangles = col.values().map(|b| b.triangles.len()).sum();
     let ids: BTreeSet<u8> = col.keys().map(|(_, id)| *id).collect();
@@ -555,9 +652,9 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             input.length / 1000.,
             input.route,
             if input.circuit { "circuit=1\n" } else { "" }
-        ),
+        ) + &input.lighting.map(|l| l.info_ini()).unwrap_or_default(),
     )?;
-    write("settings.ini", SETTINGS_INI.to_owned())?;
+    write("settings.ini", settings)?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     let n = line.points.len();
     for (i, p) in line.points.iter().enumerate() {
@@ -697,10 +794,13 @@ mod tests {
             splits: vec![300.],
             materials: vec![Material { name: "road".into(), ..Material::default() }],
             drawn: strip(-4., 4., 0),
+            layer: Vec::new(),
             instanced: Instanced::default(),
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),
+            lighting: None,
+            grass: None,
         };
         let options = Options {
             out: out.clone(),
@@ -755,10 +855,13 @@ mod tests {
             splits: vec![300., 900.],
             materials: vec![Material { name: "road".into(), ..Material::default() }],
             drawn: strip(-4., 4., 0),
+            layer: Vec::new(),
             instanced: Instanced::default(),
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),
+            lighting: None,
+            grass: None,
         };
         let options = Options {
             out: out.clone(),

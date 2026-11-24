@@ -56,14 +56,14 @@ impl SunMask {
     /// The mask over a `depth` of `size` pixels, with the contact shading as the context says; its passes only with
     /// the context's [`Context::lighting`] (else texels the draws never read).
     pub(super) fn new(
-        context: &Context<'_>,
+        context: &Context,
         (layout, frame_layout): (wgpu::BindGroupLayout, &wgpu::BindGroupLayout),
         depth: &wgpu::TextureView,
         ranges: Option<&wgpu::TextureView>,
         size: (u32, u32),
         quality: Quality,
     ) -> SunMask {
-        let device = context.device;
+        let device = &context.device;
         let depth_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("sun mask depth"),
             entries: &[
@@ -92,7 +92,7 @@ impl SunMask {
                     label: Some(entry),
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
-                        module: context.shader,
+                        module: &context.shader,
                         entry_point: Some("vs_sky"),
                         compilation_options: Default::default(),
                         buffers: &[],
@@ -101,7 +101,7 @@ impl SunMask {
                     depth_stencil: None,
                     multisample: Default::default(),
                     fragment: Some(wgpu::FragmentState {
-                        module: context.shader,
+                        module: &context.shader,
                         entry_point: Some(entry),
                         compilation_options: wgpu::PipelineCompilationOptions {
                             constants: &[

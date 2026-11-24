@@ -68,6 +68,13 @@ pub struct Atmosphere {
     /// How much of the sky's colour the stage's ambient keeps, 0 its luminance in grey to 1 ours (a converted stage's
     /// `[ReRbrAir]` `sky_tint`, for bakes that carry their own ambient), else 1.
     pub sky_tint: Option<f32>,
+    /// A converted stage's `[ReRbrAir]` grade, on top of the weather's (`post::conditions`): the saturation and the
+    /// exposure scale, and the sun's tint of unit luminance (`skylight::sky_uniform`); absent leaves the frame as it was.
+    pub saturation: Option<f32>,
+    pub exposure: Option<f32>,
+    pub sun_tint: Option<Vec3>,
+    /// The stops a sunlit day is exposed down by under our sun lighting, else `post::SUN_EXPOSURE` (`[ReRbrAir]` `sun_stops`).
+    pub sun_stops: Option<f32>,
     /// Toward the stage's north, when the stage states it (a converted stage's `[ReRbrAir]`): the clock's sun path
     /// turns from it (`relight::Clock`), else from the bake's sun.
     pub north: Option<Vec3>,
@@ -293,6 +300,10 @@ impl Default for Atmosphere {
             haze_hue: None,
             mist: None,
             sky_tint: None,
+            saturation: None,
+            exposure: None,
+            sun_tint: None,
+            sun_stops: None,
             north: None,
             moon: None,
             solar_hour: None,
@@ -382,6 +393,10 @@ impl Atmosphere {
             haze_hue: None,
             mist: None,
             sky_tint: None,
+            saturation: None,
+            exposure: None,
+            sun_tint: None,
+            sun_stops: None,
             north: None,
             moon: None,
             solar_hour: None,

@@ -230,6 +230,10 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - `rbr_btb::stage::prepare(track, number, out)` writes `track-<number>_M.{lbs,dls,mat,trk,col}` (`classic` `lbs`/`dls`/`mat`, `trk_from`, the `col`) and map 41's `.fnc` and `.ini` copied from the install and `btb.ini` (`[BTB] folder=`, `stamp=`) into `out`, `<files>/btb/<folder>/`. The plugin rebuilds them on every load; we keep them while `btb.ini`'s `stamp=` (the build number and the track folder's file names, sizes and times) matches, which saves 0.5 to 2 s a Start. `stage::source(folder)` reads `btb.ini` back (the renderer's and the particles' hook). ReRBR never writes the game folder.
 - Map 41's fences, `.ini` and characters stay, as under RSF (user decision 2026-11-04, so a BTB stage looks and collides as under RSF): `prepare` copies the install's `track-41_M.fnc` and `.ini` (`stage::RETAIL`, one place to drop them) next to the generated files, and the characters' script folder, smoke and the physics' `objects_before_car` go by `SKY_MAP` (`--btb 41` sets `Race.map`). `rbr_formats::stage_files::file` has no fall back to `Maps\` (nothing else used it). The `.lbs` has no characters of its own.
 - Weather: the stage offers all of map 41's rows (every variant, good and bad) as a season of its own (`Season::of_btb`): the rows keep their words under the stage's number, the weather's letter is M (the one stage file) and the sky section is the row's own words in map 41's `TrackSettings.ini` (`Weather::section(season)`, `Season::sky`). Physics inputs (wear, wetness, wet meshes, the `.mat` entry) come from the row as for any stage. `rbr-standalone --btb 41` makes the season from the retail table.
+- Own weather (ours, 2026-11-24): `track.ini` `[INFO]` `weather_good` and `weather_bad`, each a map 41 `TrackSettings.ini` section (`41M_hazy_clear`, case ignored), put that row at the head of the stage's good or bad list
+  (`Season::with_own`, applied in `Catalog::Map::season` and `rbr-standalone`'s `race_weather` through `stage::own_weather`). Absent or an unknown word: map 41's lists as before. A converted DiRT Rally stage writes them (`notes/dirt-rally.md`).
+- `[ReRbrAir]` keys of a stage's `settings.ini` (`track::Air`, all optional, absent leaves the frame as it was): `fog_color`, `aerosol` (clear rows only), `mist`, `sky_tint`, `north`, and, on top of the weather's own grade, `saturation` (x the
+  post saturation, 1 neutral), `exposure` (x the metered exposure's scale, 1 neutral) and `sun_tint` (the sun's colour, a tint of unit luminance, applied to the stage's direct light after the white balance, by day only) and `sun_stops` (stops a fully sunlit day is exposed down under our sun lighting, `post::SUN_EXPOSURE` 1.5 when absent; the cloud share still scales it).
 - Presentation borrows map 41's through one constant, `stage::SKY_MAP` (and `SKY_STAGE`, `track-41_M`): the sky sections, the wind (`TrackWeather`), the particle file when the stage names none (`Tracks.ini [Map41]`, tarmac). The time of day's site is the stage's own (2026-11-20): `track.ini` `latitude`/`longitude`, else `countrycode`'s region (`relight::site`; `rbr_render::stage::btb_track`, the launcher's `time_of_day::site`). 
 - Records and ghosts are the stage's own number's, in the player's normal records folder, like a community stage's (`community-records.ini`, `rb_<number>.gho`, `_NN.ghc`); it has no `times.ini` reference time (a map 41 stage did inherit its 168.00 s). The jump start is armed whatever the number (`Game::with_forced_jump_start`, `rbr-standalone --btb`): a retail or community stage arms it when `number % 10 < 8`, and the plugin's map 41 always was.
 - `.col` is `rbr_btb::col::build`; every folder is offered (a build error shows at Start).
@@ -387,10 +391,29 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   values, the diffuse and mask at `uv0`, each detail at AC's world `(x, z) * scale` (`x` = stage x + `ox`, `z` = -(stage z +
   `oz`)) or, without `ReRbrLayerWorld`, at `uv0 * scale`. `diffuseTexture` stays the bake of the same sum (the first texture:
   the grass and ground detail read it; a reader without these keys draws it). Ignored unless every file is in `Textures.zip`.
+- `ReRbrLayerUv=1` (ReRBR's own, with the `ReRbrLayer*` keys; `scene::Layers::uv`, `stage::Layers::uv`): the layers on their own coordinates, DiRT Rally's
+  terrain. The diffuse stays at `uv0` (an atlas), each detail reads the mesh's UV set 1 times its `ReRbrLayerScale` pair, and the weights are the
+  vertex's, not a mask (no `ReRbrLayerMask`): UV set 2 holds the second and third layers' `(u, v)`, set 3 the fourth's `u`, and the colour is the chain
+  `mix(mix(mix(L1, L2, R), L3, G), L4, B)`. Written as one `FVFData` block of three sets (`rbr_ac_tracks::btb::mesh::XMesh::more`). The vertex's
+  `uv1` and `specular` carry them (`Plan::layer_uv`), and the renderer's near-ground detail and steep-bank replacement are off on such draws (the layered colour is the
+  look there). A mesh without the sets draws plain. Layer coordinates are shifted per tile by whole units that keep every layer's tiling (`f32` at kilometres).
+- `ReRbrLayerBlend=S` (ReRBR's own, with `ReRbrLayerUv=1`; `scene::Layers::blend`, `stage::Layers::blend`, `mode.layer.zw`): DiRT Rally's road blend with
+  `DetailBlendScale` `S`. The second and third details carry their blend (height) maps in the alpha, read at the layer's own uv, and the weights R and G
+  become `a = sat(1-R)`, `t = sat((h2-a)/(sat(a+S)-a))`, `R' = t²(3-2t)` and `G' = h3*G`, then the same chain. A material without the key is drawn as before.
 - `ReRbrGrass=1` (ReRBR's own, a material section) and `settings.ini` `[ReRbrGrass]` (own section; `scene::Material::grass`,
   `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
   ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`
   pieces), in place of its choice by colour; keys in `notes/assetto.md`.
+- `[ReRbrGrass] cover=<file>` and `cover_rect=xmin,ymin,xmax,ymax` (ReRBR's own, 2026-11-24; `track::GrassFx::cover`,
+  `stage::Cover`, `Field::grassy`): a cover map, an 8-bit greyscale PNG in `Textures.zip`, a byte a texel over the
+  rectangle (the stage's x and y as the `.trk` has them, row 0 at `ymin`): 0 no grass, any other value grows grass as
+  the marked materials would (the value is the class a converter gives, not read yet). Outside the rectangle none.
+  Without both keys the field is unchanged (byte-identical). With a cover map the atlas's group pieces are the grass: card
+  kind 4 (`grass_cards.wgsl`; `Piece::piece` 2 in `grass/made.rs`), drawn from the eye (no 12 to 25 m fade-in: the stage has
+  no base grass to fill the near ground), in the atlas's own colours (`Field::look` gives a white hue, so the ground's hue
+  and the green-blade brightness of the base cards, which turned Wales' green tufts olive, do not touch them) and at the
+  atlas's sizes within 0.8 to 1.2 (`OWN_VARY` in `grass_made.wgsl`; a base card's `CELL_VARY` and patch tallness spread them
+  seven-fold, 5 m bushes on Finland), still lit as the other converted cards (dark root, warm tip). Written by the DiRT Rally import (`notes/dirt-rally.md`, Grass).
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

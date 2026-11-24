@@ -265,6 +265,10 @@ pub struct TrackInfo {
     /// `latitude` and `longitude` (ReRBR's own keys, degrees north and east): where the stage lies, when its source says
     /// (an Assetto Corsa track's geotags).
     pub place: Option<[f64; 2]>,
+    /// `weather_good` and `weather_bad` (ReRBR's own keys): the `TrackSettings.ini` sections of map 41's rows the stage's
+    /// Good and Bad weathers take, where the stage's source states its own conditions (a DiRT Rally stage).
+    pub weather_good: Option<String>,
+    pub weather_bad: Option<String>,
     /// The whole `[INFO]` section, so unknown keys stay accessible.
     pub entries: RawEntries,
 }
@@ -280,6 +284,13 @@ pub struct Air {
     pub mist: Option<f32>,
     pub sky_tint: Option<f32>,
     pub north: Option<[f32; 3]>,
+    /// The post grade's saturation and exposure scale (each 1 neutral, on top of the weather's), and the sun's colour as
+    /// a tint of unit luminance (`saturation`, `exposure`, `sun_tint`).
+    pub saturation: Option<f32>,
+    pub exposure: Option<f32>,
+    pub sun_tint: Option<[f32; 3]>,
+    /// How many stops down a fully sunlit day is exposed under our sun lighting (`sun_stops`; the renderer's own 1.5 when absent).
+    pub sun_stops: Option<f32>,
 }
 
 impl Air {
@@ -303,6 +314,10 @@ impl Air {
             mist: number("mist"),
             sky_tint: number("sky_tint"),
             north: triple("north"),
+            saturation: number("saturation"),
+            exposure: number("exposure"),
+            sun_tint: triple("sun_tint"),
+            sun_stops: number("sun_stops"),
         })
     }
 }
@@ -313,7 +328,7 @@ impl TrackInfo {
         Physics::parse(&self.physics_raw)
     }
 
-    fn parse(sections: &[ini::Section]) -> Option<TrackInfo> {
+    pub(crate) fn parse(sections: &[ini::Section]) -> Option<TrackInfo> {
         let info = find_section(sections, "INFO")?;
         let get = |key: &str| find_entry(info, key).map(str::to_owned);
         Some(TrackInfo {
@@ -331,6 +346,8 @@ impl TrackInfo {
                 [Some(lat), Some(lon)] => Some([lat, lon]),
                 _ => None,
             },
+            weather_good: get("weather_good").map(|w| w.trim().to_owned()).filter(|w| !w.is_empty()),
+            weather_bad: get("weather_bad").map(|w| w.trim().to_owned()).filter(|w| !w.is_empty()),
             entries: info.entries.clone(),
         })
     }
@@ -433,6 +450,10 @@ pub struct GrassFx {
     /// CSP's colour mask, `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD`: how green the ground must be, and how far
     /// toward yellow and red the green may lean; `None` (stages converted before it): no colour test.
     pub mask: Option<[f32; 2]>,
+    /// ReRBR's own `cover` (a PNG in `Textures.zip`, one byte a texel: 0 no grass, else grass, the value the class a
+    /// converter gives) over the world rectangle `cover_rect` (`xmin, ymin, xmax, ymax`, stage axes: x and y of the
+    /// `.trk`, row 0 at `ymin`); outside it there is none. `None` for both: no cover map.
+    pub cover: Option<(String, [f32; 4])>,
     /// Its profiles from 1 (`[ReRbrGrass<n>]`, CSP's configurations as its adjustments blend them in on some meshes):
     /// this grass with the `base`, `size`, `luminance`, `mask` and group chances each gives, and no profiles.
     pub profiles: Vec<GrassFx>,
@@ -531,6 +552,14 @@ impl GrassFx {
             groups,
             luminance,
             mask,
+            cover: find_entry(grass, "cover")
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .zip(match list("cover_rect")[..] {
+                    [x0, y0, x1, y1] if x1 > x0 && y1 > y0 => Some([x0, y0, x1, y1]),
+                    _ => None,
+                })
+                .map(|(c, rect)| (c.to_owned(), rect)),
             profiles: Vec::new(),
         }
     }
@@ -860,6 +889,13 @@ mod tests {
         assert_eq!(grass.groups[1].pieces[0], GrassPiece { cell: [1, 1], size: [1, 1], chance: 1.0, mult: [1.0, 1.0] });
         assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5, mult: [0.6, 1.5] });
         assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
+        assert_eq!(grass.cover, None);
+        let covered = format!("{ini}cover=c.png\ncover_rect=-10,-20,30,40\n");
+        let covered = GrassFx::parse(&rbr_formats::ini::parse(&covered).unwrap()).unwrap();
+        assert_eq!(covered.cover, Some(("c.png".to_owned(), [-10.0, -20.0, 30.0, 40.0])));
+        // Without its rectangle the cover is not one.
+        let bare = GrassFx::parse(&rbr_formats::ini::parse(&format!("{ini}cover=c.png\n")).unwrap()).unwrap();
+        assert_eq!(bare.cover, None);
         // A profile gives its numbers and keeps the rest.
         let ini = format!("{ini}\n[ReRbrGrass1]\nbase=1\nmask=-0.05,0.01\ngroup0=0\ngroup1=0.5\n");
         let grass = GrassFx::parse(&rbr_formats::ini::parse(&ini).unwrap()).unwrap();
@@ -874,6 +910,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_info_section_reads_the_stages_own_weathers() {
+        let info = |text: &str| TrackInfo::parse(&rbr_formats::ini::parse(text).unwrap()).unwrap();
+        let own = info("[INFO]\nname=a\nweather_good=41M_hazy_clear\nweather_bad= \n");
+        assert_eq!((own.weather_good.as_deref(), own.weather_bad), (Some("41M_hazy_clear"), None));
+    }
+
+    #[test]
     fn the_info_section_reads_the_place_when_both_coordinates_are_given() {
         let place = |text: &str| TrackInfo::parse(&rbr_formats::ini::parse(text).unwrap()).unwrap().place;
         assert_eq!(place("[INFO]\nname=a\nlatitude=37.9033\nlongitude=-104.8217\n"), Some([37.9033, -104.8217]));
@@ -882,10 +925,12 @@ mod tests {
 
     #[test]
     fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {
-        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\n";
+        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\nsaturation=0.75\nexposure=1.1\nsun_tint=1.1, 1.0, 0.8\nsun_stops=0\n";
         let air = Air::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.7, 0.6, 0.5]), Some(0.3), Some(0.5)));
         assert_eq!((air.sky_tint, air.north), (Some(0.4), Some([0.0, 0.0, 1.0])));
+        assert_eq!((air.saturation, air.exposure, air.sun_tint), (Some(0.75), Some(1.1), Some([1.1, 1.0, 0.8])));
+        assert_eq!(air.sun_stops, Some(0.0));
         assert!(Air::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }
 

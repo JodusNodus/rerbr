@@ -33,6 +33,8 @@ use sdl3_sys::joystick::{
     SDL_OpenJoystick,
 };
 
+use crate::soft_lock;
+
 #[cfg(windows)]
 mod dinput_probe;
 
@@ -59,6 +61,10 @@ pub struct Options {
     pub rotation: Option<u16>,
     /// The rotation is the car's own lock ([`crate::wheel_rotation::car_degrees`]), up to [`Options::rotation`].
     pub rotation_per_car: bool,
+    /// The degrees the wheel turns lock to lock, as its own software sets it or as [`crate::wheel_rotation`] sets it
+    /// (where its driver takes it, read back): the drive's rotation below it comes through the soft lock
+    /// ([`crate::soft_lock`]). `None`: the drive's rotation is set on the wheel where its driver takes it.
+    pub wheel_rotation: Option<u16>,
     /// The smoothing's time constant, ms ([`smooth`]); 0 sends NGP's force as it is.
     pub smoothing: i32,
     /// The force from the tyres (the launcher's Settings > Experimental; `rbr-standalone --ffb-tyres`): a straight
@@ -83,6 +89,7 @@ impl Default for Options {
             sensitivity: [100; 3],
             rotation: None,
             rotation_per_car: false,
+            wheel_rotation: None,
             smoothing: 0,
             tyres: false,
             surface: false,
@@ -116,6 +123,10 @@ impl Options {
         out.rotation =
             section.get("rotation").and_then(|v| v.parse().ok()).filter(|v| crate::wheel_rotation::DEGREES.contains(v));
         out.rotation_per_car = flag("rotation_per_car", false);
+        out.wheel_rotation = section
+            .get("wheel_rotation")
+            .and_then(|v| v.parse().ok())
+            .filter(|v| crate::wheel_rotation::DEGREES.contains(v));
         out.smoothing = section
             .get("smoothing")
             .and_then(|v| v.parse().ok())
@@ -149,8 +160,8 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\nsurface = {}\n\
-             levers = {}\nrev_lights = {}\n",
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nwheel_rotation = {}\nsmoothing = {}\n\
+             tyres = {}\nsurface = {}\nlevers = {}\nrev_lights = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -163,6 +174,7 @@ impl Options {
             self.sensitivity[2],
             self.rotation.map_or(String::new(), |d| d.to_string()),
             u8::from(self.rotation_per_car),
+            self.wheel_rotation.map_or(String::new(), |d| d.to_string()),
             self.smoothing,
             u8::from(self.tyres),
             u8::from(self.surface),
@@ -803,6 +815,8 @@ struct Shared {
     smoothing: AtomicI32,
     /// [`Options::linearity`], which the pause menu's force model changes.
     linearity: AtomicI32,
+    /// How far past full lock the wheel is, degrees' bits ([`crate::soft_lock`]; 0 without one).
+    past_lock: AtomicU32,
 }
 
 impl Wheel {
@@ -870,6 +884,12 @@ impl Wheel {
         self.shared.steering.store(steering.to_bits(), Ordering::Relaxed);
     }
 
+    /// How far past full lock the wheel is now, degrees signed as the steering (`crate::devices::Input::past_lock`),
+    /// for the soft lock's stop.
+    pub fn set_past_lock(&self, degrees: f32) {
+        self.shared.past_lock.store(degrees.to_bits(), Ordering::Relaxed);
+    }
+
     /// Holds the force at 0 while `paused` (the pause menu, the stage result), also against the step records still on
     /// their way; the latest one's force comes back after.
     pub fn set_paused(&self, paused: bool) {
@@ -911,6 +931,16 @@ const SHAPES: [(&str, SDL_HapticDirectionType, u32); 3] = [
 ];
 
 const HOUR_MS: u32 = 3_600_000;
+
+/// The soft lock's rate's smoothing, ms: the input's 1 ms steps of the wheel's encoder are noise.
+const LOCK_RATE_MS: i32 = 10;
+
+/// The magnitude `m` with the soft lock's `stop` (-1..1 of the full force, the game's sign: [`soft_lock::stop`]) over
+/// it, inverted as the game's with `inverse`, clamped to the wheel's full force.
+fn with_stop(m: i32, stop: f32, inverse: bool) -> i32 {
+    let stop = (stop * MAX_MAGNITUDE as f32).round() as i32;
+    (m + if inverse { -stop } else { stop }).clamp(-MAX_MAGNITUDE, MAX_MAGNITUDE)
+}
 
 /// The thread: opens the device, reports its name or the error on `ready`, then updates the effect until stopped.
 fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, String>>) {
@@ -959,6 +989,8 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
         let period = Duration::from_secs_f64(1.0 / f64::from(options.rate.clamp(1, 1000)));
         // The smoothed magnitude and when it was taken; a pause drops it to 0 at once.
         let (mut smoothed, mut then) = (0.0, Instant::now());
+        // The soft lock: how far past full lock the wheel was, and how fast it moves there (smoothed).
+        let (mut past, mut rate) = (0.0f32, 0.0f32);
         let mut log = Log::new(features & u32::from(SDL_HAPTIC_STATUS.0) != 0);
         while !shared.stop.load(Ordering::Relaxed) {
             let steering = f32::from_bits(shared.steering.load(Ordering::Relaxed));
@@ -972,6 +1004,13 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
                 smoothed = smooth(smoothed, target, dt, shared.smoothing.load(Ordering::Relaxed));
                 ffb::dead_zone(smoothed.round() as i32, steering, &options.settings)
             };
+            // The soft lock's stop over the force, paused or not: the wheel's end at full lock.
+            let now = f32::from_bits(shared.past_lock.load(Ordering::Relaxed));
+            if dt > 0.0 {
+                rate = smooth(rate, (now - past) / dt, dt, LOCK_RATE_MS);
+            }
+            past = now;
+            let m = with_stop(m, soft_lock::stop(past, rate), options.settings.inverse);
             effect.constant.level = level(m);
             let updated = SDL_UpdateHapticEffect(haptic, id, &effect);
             let update_error = if updated { None } else { Some(sdl_error()) };
@@ -1351,6 +1390,15 @@ mod tests {
     use super::{level, reshape, shape, smooth, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
 
     #[test]
+    fn the_soft_locks_stop_goes_over_the_force_as_the_game_inverts_it() {
+        use super::with_stop;
+        assert_eq!(with_stop(2000, 0.0, false), 2000);
+        assert_eq!(with_stop(2000, 0.5, false), 7000);
+        assert_eq!(with_stop(2000, 0.5, true), -3000);
+        assert_eq!(with_stop(-9000, -1.0, false), -10000);
+    }
+
+    #[test]
     fn options_round_trip_and_default() {
         let mut o = Options {
             rate: 500,
@@ -1358,6 +1406,7 @@ mod tests {
             sensitivity: [80, 100, 120],
             rotation: Some(540),
             rotation_per_car: true,
+            wheel_rotation: Some(900),
             smoothing: 8,
             surface: true,
             levers: true,

@@ -32,6 +32,9 @@ pub struct Btb {
     pub problem: Option<String>,
     /// The game it was converted from, when it was: the converter's provenance file in the stage's folder says so.
     pub import: Option<Import>,
+    /// `track.ini`'s `weather_good` and `weather_bad`, when it names them (a converted DiRT Rally stage's own
+    /// conditions): the `TrackSettings.ini` sections of map 41's rows the Good and Bad weathers take.
+    pub weather: [Option<String>; 2],
 }
 
 /// A stage converted from another game's track.
@@ -112,6 +115,7 @@ fn list(
             circuit: track.info.circuit,
             problem: None,
             import: Import::of(&track.folder),
+            weather: [track.info.weather_good.clone(), track.info.weather_bad.clone()],
             folder: track.folder.clone(),
         };
         let stage = Stage { name: stage::stage_name(&btb.folder, number), map: number, letter: stage::LETTER };

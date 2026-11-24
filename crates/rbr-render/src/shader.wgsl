@@ -615,7 +615,9 @@ fn vertex(input: VertexIn) -> VertexOut {
         if (v.uv2.x > 0.0) {
             // Shrunk into the ground past the density where it stands and at the far edge of the grass.
             // A converted stage's group pieces (`grass::FX_PIECE`) grow only away from the eye.
-            let piece = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
+            let faded = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
+            // A cover-map stage's tufts (kind 4) are its grass, grown in from the eye.
+            let piece = select(faded, 1.0, v.specular.z > 3.5);
             let height = v.uv2.x * grass_grown(d, v.uv2.y) * piece;
             out.world = out.world + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
         }
@@ -766,14 +768,19 @@ fn layer_axis(w: f32, m: f32, off: f32) -> f32 {
 // A*mask.a) * magicMult` over the display values. The mask is read at the uv; each detail at AC's world (x, z) times its
 // multiplier (the stage's x, and its z negated, with the origin's share in `layer_offset`) or at the uv times its pair,
 // on the gradients of the unwrapped coordinate so the wrap leaves no seam in the mip choice. In uniform control flow.
+// With `layer_uv` (DiRT Rally's terrain, `stage::Layers::uv`) the diffuse stays at `uv0`, the details lie at `uv1` times
+// their pair, and the weights are the vertex's: `specular` holds the second to fourth layers', the first the rest.
+fn layer_uv() -> bool {
+    return mode.layer.x > 2.5;
+}
+
 fn layered(v: VertexOut) -> vec3<f32> {
     let diffuse = textureSampleBias(layer_diffuse, texture_sampler, v.uv0, texture_bias()).rgb;
-    let weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
     let world = mode.layer.x < 1.5;
-    let at = select(v.uv0, vec2<f32>(v.world.x, -v.world.z), world);
-    let ddx = select(dpdx(v.uv0), dpdx(at), world) * exp2(texture_bias());
-    let ddy = select(dpdy(v.uv0), dpdy(at), world) * exp2(texture_bias());
-    var sum = vec3<f32>(0.0);
+    let at = select(select(v.uv0, v.uv1, layer_uv()), vec2<f32>(v.world.x, -v.world.z), world);
+    let ddx = dpdx(at) * exp2(texture_bias());
+    let ddy = dpdy(at) * exp2(texture_bias());
+    var texels: array<vec4<f32>, 4>;
     for (var i = 0u; i < 4u; i++) {
         let scale = select(mode.layer_scale[i / 2u].xy, mode.layer_scale[i / 2u].zw, (i & 1u) == 1u);
         let off = select(mode.layer_offset[i / 2u].xy, mode.layer_offset[i / 2u].zw, (i & 1u) == 1u);
@@ -781,14 +788,37 @@ fn layered(v: VertexOut) -> vec3<f32> {
         if (world) {
             uv = vec2<f32>(layer_axis(at.x, scale.x, off.x), layer_axis(at.y, scale.y, off.y));
         }
-        var texel: vec3<f32>;
         switch (i) {
-            case 0u: { texel = textureSampleGrad(layer_detail0, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
-            case 1u: { texel = textureSampleGrad(layer_detail1, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
-            case 2u: { texel = textureSampleGrad(layer_detail2, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
-            default: { texel = textureSampleGrad(layer_detail3, texture_sampler, uv, ddx * scale, ddy * scale).rgb; }
+            case 0u: { texels[i] = textureSampleGrad(layer_detail0, texture_sampler, uv, ddx * scale, ddy * scale); }
+            case 1u: { texels[i] = textureSampleGrad(layer_detail1, texture_sampler, uv, ddx * scale, ddy * scale); }
+            case 2u: { texels[i] = textureSampleGrad(layer_detail2, texture_sampler, uv, ddx * scale, ddy * scale); }
+            default: { texels[i] = textureSampleGrad(layer_detail3, texture_sampler, uv, ddx * scale, ddy * scale); }
         }
-        sum += texel * weights[i];
+    }
+    var weights: vec4<f32>;
+    if (layer_uv()) {
+        // The chain mix(mix(mix(L1, L2, R), L3, G), L4, B): the weights sum to 1 (a linear sum with the first layer taking the
+        // rest passed 1 where R + G did, and Hafren's roads, G the skid layer, went near white).
+        var r = v.specular.x;
+        var g = v.specular.y;
+        let b = v.specular.z;
+        if (mode.layer.z != 0.0) {
+            // DiRT Rally's road (`ReRbrLayerBlend`): the height maps in the alpha of the second and third layers roughen R and
+            // G: the second layer wins where its height clears `1 - R`, over a band of `DetailBlendScale`, the third is
+            // `h3 * G`.
+            let a = saturate(1.0 - r);
+            let span = saturate(a + mode.layer.w) - a;
+            let t = select(0.0, saturate((texels[1].a - a) / span), span > 0.0);
+            r = t * t * (3.0 - 2.0 * t);
+            g = texels[2].a * g;
+        }
+        weights = vec4<f32>((1.0 - r) * (1.0 - g) * (1.0 - b), r * (1.0 - g) * (1.0 - b), g * (1.0 - b), b);
+    } else {
+        weights = textureSampleBias(layer_mask, texture_sampler, v.uv0, texture_bias());
+    }
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < 4u; i++) {
+        sum += texels[i].rgb * weights[i];
     }
     return clamp(diffuse * sum * mode.layer.y, vec3<f32>(0.0), vec3<f32>(1.0));
 }
@@ -826,7 +856,8 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         surface = surface * backdrop_detail(v.world);
     }
     // The near ground gets the fine structure its thinly spread texture lacks (`terrain_detail`).
-    if (detail_draw() && stage_frame() && mode.cutout == 0u && mode.detail.z != 0.0) {
+    // (Not on layers at their own coordinates: the layered colour holds the steep ground's look and its own fine detail.)
+    if (detail_draw() && stage_frame() && mode.cutout == 0u && mode.detail.z != 0.0 && !(layers_draw() && layer_uv())) {
         // On the banks the texture's streaks are blurred out first (`terrain_even`); the flat keeps its filtering.
         let steep = terrain_steep(v.world);
         let levels = vec2<f32>(terrain_level(texture0, v.uv0), terrain_level(texture1, v.uv1));
@@ -870,7 +901,10 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (mode.tint.z != 0.0) {
             albedo = grass_warmed(albedo);
         }
-        if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
+        if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 3.5) {
+            // A cover-map stage's tufts (`grass::made`, kind 4): the atlas's own colours, as the game draws them,
+            // lit like the other converted cards; no ground hue or brightness (`own_light` takes a white hue).
+        } else if (is_tuft(v) && v.specular.x > GRASS_MARK && v.specular.z > 1.5) {
             // A converted stage's atlas cards (`grass::FX_CARD`), as CSP draws them: its bright green blades (red and
             // blue nought) take the ground's colour under them, their green the brightness; its other texels (dry
             // blades, flowers) keep their own, the card's hue (`own_light`) taken back off them. The filtered texel

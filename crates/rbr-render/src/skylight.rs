@@ -131,6 +131,8 @@ pub(crate) struct SkyUniform {
     level: [f32; 4],
     moon: [f32; 4],
     night_sky: [f32; 4],
+    /// The stage's sun tint (`Atmosphere::sun_tint`), `w` 1 when it has one.
+    sun_tint: [f32; 4],
 }
 
 impl SkyUniform {
@@ -243,6 +245,7 @@ pub(crate) fn sky_uniform(atmosphere: &Atmosphere) -> Option<SkyUniform> {
             .extend(if moon.max_element() > 0.0 { (-atmosphere.sun_direction.y).max(0.0) } else { 0.0 })
             .to_array(),
         night_sky: night_sky.extend(0.0).to_array(),
+        sun_tint: atmosphere.sun_tint.map_or([0.0; 4], |t| t.extend(1.0).to_array()),
     })
 }
 

@@ -401,6 +401,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   listed more than once in Device, pick another of its entries." with the reason on hover, from the newest drive log
   with `ffb::LOG_ON`/`LOG_OFF` (read at the form's load and after each drive). The viewer tries every device a choice
   fits until one takes the force (`ngp.md` "Windows").
+- Steering rotation (2026-11-24, `controls_page::rotation_ui`; `ngp.md` "Soft lock"): "Steering rotation" (Wheel as
+  it is / Same for every car / Each car's own, up to + degrees) and "Lock stop" (Wheel stops itself / Soft lock + "wheel set to"
+  degrees), written to the wheel's `range` when a choice settles (the wheel's own rotation when given, else the
+  rotation). Under them the wheels set and a line for the car selected, from `Options::rotation_for` and
+  `SoftLock::new` as the drive takes them: "NAME: car lock X°. Full lock at Y°, true to the car / steering N× quicker
+  / slower than the real car." then "Soft lock at Z° each way.", "Full lock at your wheel's end." or "The wheel stops
+  there (as far as it turns)." Checked in the page's capture (`--screenshot`, Wheel stops itself, per car up to 900).
 - The pause menu's Force feedback page (`hud::ffb_page`, with a wheel, once FFB1 says the surface): Sensitivity (the
   car's percentage), "Use suggested (X %)" (sets Sensitivity on the player's select; shown with 20 s of load and a
   suggestion other than the sensitivity; "the most" at 500 %), Strength (every car, 0-100 % by 5, live through

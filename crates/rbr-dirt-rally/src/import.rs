@@ -74,7 +74,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
     control.say(&format!("{} collision triangles", collision.len()));
     drop(faces);
     control.check()?;
-    let (mut materials, mut drawn) = terrain(&route, control)?;
+    let (mut materials, mut drawn, layer) = terrain(&route, control)?;
     control.say(&format!("{} drawn terrain triangles in {} materials", drawn.len(), materials.len()));
     let terrain_triangles = drawn.len();
     let instanced = props(&route, &line, control, &mut materials, &mut drawn)?;
@@ -98,10 +98,13 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         circuit,
         materials,
         drawn,
+        layer,
         instanced,
         collision,
         collision_source: "track.jpk",
         surface_counts,
+        lighting: crate::lighting::Lighting::day(&route),
+        grass: crate::grass::read(route.area_dir())?,
     };
     let out = match &options.out {
         Some(out) => out.clone(),
@@ -241,15 +244,18 @@ fn collision_triangles(
     Ok((triangles, counts))
 }
 
+/// The terrain's materials, triangles and the layers' corners of each.
+type Terrain = (Vec<stage::Material>, Vec<Triangle>, Vec<stage::Corners>);
+
 /// The drawn terrain in the stage's world: the route's `routesplit.pssg` where the area has one (Greece), and the area's
 /// `tracksplit.pssg` (its vista there, all of it elsewhere); the ground is shaded by `shade` (layers, macro colour and lightmap per pixel), the rest drawn with its first layer's texture.
-fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Vec<Triangle>), String> {
+fn terrain(route: &Route, control: &Control) -> Result<Terrain, String> {
     let mut library = texture::Library::day(route);
     let files: Vec<_> = [route.dir.join("routesplit.pssg"), route.area_dir().join("tracksplit.pssg")]
         .into_iter()
         .filter(|p| p.is_file())
         .collect();
-    let (mut materials, mut triangles) = (Vec::new(), Vec::new());
+    let (mut materials, mut triangles, mut corners) = (Vec::new(), Vec::new(), Vec::new());
     let mut shader = shade::Shader::default();
     for (file, path) in files.iter().enumerate() {
         control.check()?;
@@ -259,7 +265,7 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
         let mut index = HashMap::<(String, u8), u32>::new();
         let shaded = shader.shade(mesh::terrain(&pssg)?, &sources, &mut library);
         for (level, m) in decal_levels(shaded.meshes) {
-            let at = *index.entry((m.material.clone(), level)).or_insert_with(|| {
+            let slot = *index.entry((m.material.clone(), level)).or_insert_with(|| {
                 let layers = shaded.layers.get(&m.material).cloned();
                 // A shaded material's fallback is its first layer, which `stage` takes from the layers.
                 let dds = if layers.is_some() {
@@ -285,23 +291,32 @@ fn terrain(route: &Route, control: &Control) -> Result<(Vec<stage::Material>, Ve
                     transparent,
                     range: None,
                     layers,
+                    grows: !transparent,
                     ..stage::Material::default()
                 });
                 materials.len() as u32 - 1
             });
-            triangles.extend(m.triangles.iter().map(|&[a, b, c]| {
+            // A shaded material draws its atlas (UV set 0) and takes the layers' coordinates and weights beside it.
+            let layers = shaded.layers.get(&m.material).map(|l| l.count);
+            for &[a, b, c] in &m.triangles {
                 // Counter-clockwise in DiRT Rally's right-handed frame; the BTB mesh's winding the other way.
-                let corners = [a, c, b].map(|i| i as usize);
-                Triangle {
-                    pos: corners.map(|i| frame::world(m.positions[i])),
-                    uv: corners.map(|i| m.uv.get(i).copied().unwrap_or_default()),
-                    normal: corners.map(|i| m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(n))),
-                    material: Some(at),
-                }
-            }));
+                let at = [a, c, b].map(|i| i as usize);
+                let atlas = m.uv2.as_ref().filter(|_| layers.is_some());
+                triangles.push(Triangle {
+                    pos: at.map(|i| frame::world(m.positions[i])),
+                    uv: at.map(|i| atlas.map_or_else(|| m.uv.get(i), |uv2| uv2.get(i)).copied().unwrap_or_default()),
+                    normal: at.map(|i| m.normals.get(i).map_or([0., 0., 1.], |&n| frame::world_dir(n))),
+                    material: Some(slot),
+                });
+                corners.push(stage::Corners {
+                    uv: at.map(|i| m.uv.get(i).copied().unwrap_or_default()),
+                    weights: at
+                        .map(|i| shade::weights(m.colour.as_ref().map_or([0; 4], |c| c[i]), layers.unwrap_or(1))),
+                });
+            }
         }
     }
-    Ok((materials, triangles))
+    Ok((materials, triangles, corners))
 }
 
 /// Steps a decal's vertex alpha is drawn in.

@@ -26,12 +26,14 @@ pub struct XMesh<'a> {
     /// A second UV set per vertex, written as an `FVFData` block (code 258); the file is byte for byte the one-set file
     /// without it.
     pub uvs2: Option<&'a [[f32; 2]]>,
+    /// Further UV sets after the second (with `uvs2`), written in the same `FVFData` block.
+    pub more: &'a [&'a [[f32; 2]]],
     pub triangles: &'a [[u32; 3]],
     /// The material name (`materials.ini` section).
     pub material: &'a str,
 }
 
-/// The `FVFData` code of one further 2-float UV set (`0x102`).
+/// The `FVFData` code of one further 2-float UV set (`0x102`); each further set adds `0x100`.
 const FVF_ONE_UV_SET: u32 = 258;
 
 struct Out(Vec<u8>);
@@ -203,10 +205,13 @@ pub fn write(mesh: &XMesh) -> Vec<u8> {
     o.token(CBRACE);
 
     if let Some(uvs) = mesh.uvs2 {
+        let sets: Vec<&[[f32; 2]]> = std::iter::once(uvs).chain(mesh.more.iter().copied()).collect();
         o.name("FVFData");
         o.token(OBRACE);
-        let mut data = vec![FVF_ONE_UV_SET, uvs.len() as u32 * 2];
-        data.extend(uvs.iter().flatten().map(|v| v.to_bits()));
+        let mut data = vec![FVF_ONE_UV_SET + 256 * (sets.len() as u32 - 1), uvs.len() as u32 * 2 * sets.len() as u32];
+        for v in 0..uvs.len() {
+            data.extend(sets.iter().flat_map(|set| set[v]).map(f32::to_bits));
+        }
         o.ints(&data);
         o.token(CBRACE);
     }
@@ -249,6 +254,7 @@ mod tests {
             normals: &normals,
             uvs: &uvs,
             uvs2: None,
+            more: &[],
             triangles: &triangles,
             material: "surf\\asphalt",
         });
@@ -275,6 +281,7 @@ mod tests {
             normals: &normals,
             uvs: &uvs,
             uvs2,
+            more: &[],
             triangles: &[[0, 2, 1]],
             material: "m",
         };
@@ -289,5 +296,29 @@ mod tests {
         assert_eq!(read, second.to_vec());
         assert_eq!(decoded.triangles(), vec![[0, 2, 1]]);
         assert_ne!(bytes, write(&mesh(None)));
+    }
+
+    #[test]
+    fn further_uv_sets_share_the_fvf_block() {
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+        let normals = [[0.0, 1.0, 0.0]; 3];
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let (second, third, fourth) = ([[1.0, 2.0]; 3], [[3.0, 4.0], [5.0, 6.0], [7.0, 8.0]], [[9.0, 0.0]; 3]);
+        let bytes = write(&XMesh {
+            positions: &positions,
+            normals: &normals,
+            uvs: &uvs,
+            uvs2: Some(&second),
+            more: &[&third, &fourth],
+            triangles: &[[0, 2, 1]],
+            material: "m",
+        });
+        let file = xfile::parse(&bytes).unwrap();
+        let mesh = xfile::Mesh::decode(file.objects_of_type("Mesh")[0], &file).unwrap();
+        assert_eq!((mesh.fvf.len(), mesh.fvf[0].uv_set_count()), (1, 3));
+        // Per vertex, its sets in turn.
+        assert_eq!(f32::from_bits(mesh.fvf[0].data[2]), 3.0);
+        assert_eq!(f32::from_bits(mesh.fvf[0].data[4]), 9.0);
+        assert_eq!(f32::from_bits(mesh.fvf[0].data[6]), 1.0);
     }
 }
