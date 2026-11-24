@@ -10,6 +10,7 @@
 
 use super::meshes::{GpuDraw, GpuMesh, MeshBuffers, MeshSlot, Packing};
 use crate::foliage;
+use crate::parallel::in_parallel;
 use crate::relight::Ground;
 use crate::stage::placed::{Group, Instance, Placed};
 use crate::stage::{Anchor, Draw, Lod, Mesh, Vertex};
@@ -21,7 +22,7 @@ use wgpu::util::DeviceExt;
 
 /// The models of `placed` as meshes, for the vertex preparations the stage's meshes get (the sun's normals, the
 /// plants): their draws are those of the groups that draw them.
-pub(super) fn model_meshes(placed: &Placed) -> Vec<Mesh> {
+fn model_meshes(placed: &Placed) -> Vec<Mesh> {
     placed
         .models
         .iter()
@@ -59,7 +60,7 @@ pub(super) const SECOND: u32 = 4;
 
 /// Each model's placements' middle scale (the cube root of the turn's determinant): a model's plants are told apart and
 /// shaped at that size ([`prepared_model`]), as the expanded placements are in the world.
-pub(super) fn model_scales(placed: &Placed) -> Vec<f32> {
+fn model_scales(placed: &Placed) -> Vec<f32> {
     let mut scales = vec![Vec::new(); placed.models.len()];
     for (instance, model) in placed.instances.iter().zip(instance_models(placed)) {
         scales[model].push(turn(instance).determinant().abs().cbrt());
@@ -82,7 +83,7 @@ fn turn(instance: &Instance) -> Mat3 {
 /// the world gives (marked: [`ON_GROUND`]): with the `ground`'s normals its cut-out draws' normals up, then the plants
 /// ([`foliage::with_plants_and`], their crowns left to [`crowns`]) found at `scale`: grass and plants are told apart by
 /// their size.
-pub(super) fn prepared_model<'a>(
+fn prepared_model<'a>(
     mut vertices: Vec<Vertex>,
     mesh: &Mesh,
     scale: f32,
@@ -115,7 +116,7 @@ pub(super) fn prepared_model<'a>(
 /// Each instance's crown ([`foliage::crowns`]): its placements expanded into the world (`vertices`, the models'
 /// [`prepared_model`]s, of `meshes`), as the expanded meshes lie (by layer, cell, band and cascade flag: the groups'
 /// bounds tell them), the crown of its first vertex on one.
-pub(super) fn crowns<'a>(
+fn crowns<'a>(
     placed: &Placed,
     meshes: &[Mesh],
     vertices: &[&[Vertex]],
@@ -185,7 +186,7 @@ fn placed_vertex(v: &Vertex, instance: &Instance, ground: Vec3, crown: Option<&f
 
 /// The instances' crowns as `instanced` in `shader.wgsl` reads them (`PlacedCrown`, by [`Header::crown`]): the axis's
 /// ends and the centre's height, the radii; zero for none.
-pub(super) fn crown_words(crowns: &[Option<foliage::Crown>]) -> Vec<[[f32; 4]; 3]> {
+fn crown_words(crowns: &[Option<foliage::Crown>]) -> Vec<[[f32; 4]; 3]> {
     let words = |crown: &foliage::Crown| {
         let [a, b] = crown.axis;
         [a.extend(crown.y).to_array(), b.extend(crown.radii.x).to_array(), [crown.radii.y, 0.0, 0.0, 0.0]]
@@ -207,7 +208,7 @@ pub(crate) struct Header {
 }
 
 /// Each instance's model, in instance order.
-pub(super) fn instance_models(placed: &Placed) -> Vec<usize> {
+fn instance_models(placed: &Placed) -> Vec<usize> {
     let mut model = vec![0; placed.instances.len()];
     for group in &placed.groups {
         for k in group.instances.clone() {
@@ -218,8 +219,36 @@ pub(super) fn instance_models(placed: &Placed) -> Vec<usize> {
 }
 
 /// The ambient records of all placed vertices: each instance's model's vertex count, in instance order.
-pub(super) fn record_count(placed: &Placed) -> usize {
+fn record_count(placed: &Placed) -> usize {
     instance_models(placed).iter().map(|&m| placed.models[m].vertices.len()).sum()
+}
+
+/// The instanced meshes' storage buffers, bound with the frame (bindings 21 and 22): the ambient records, one per placed
+/// vertex, when the lighting bakes them ([`Ambient`]), and the crowns, one per placement, when the draws are lit
+/// ([`crowns`]); one empty word else.
+pub(super) struct Storage {
+    pub(super) records: wgpu::Buffer,
+    pub(super) crowns: wgpu::Buffer,
+    bakes: bool,
+}
+
+impl Storage {
+    pub(super) fn new(device: &wgpu::Device, placed: &Placed, bakes: bool, lit: bool) -> Storage {
+        let bakes = bakes && !placed.groups.is_empty();
+        let buffer = |label, count: usize, size: usize| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: (count.max(1) * size) as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        Storage {
+            records: buffer("instanced ambient", if bakes { record_count(placed) } else { 0 }, 16),
+            crowns: buffer("instanced crowns", if lit { placed.instances.len() } else { 0 }, 48),
+            bakes,
+        }
+    }
 }
 
 /// The models uploaded, before their packs are placed after the stage's.
@@ -237,24 +266,32 @@ pub(super) struct Models {
 }
 
 impl Models {
-    /// Uploads `meshes` ([`model_meshes`]) with the vertices `prepared` where they differ from their own, the instances
-    /// and their headers; with `baked`, the records are to be baked ([`Models::finish`]). A plant's vertices take the
-    /// `ground`'s normal under their placement and their placement's crown ([`crowns`]).
-    pub(super) fn new(
+    /// Uploads the models of `placed` ([`model_meshes`]), the instances and their headers. For the `lit` draws their
+    /// vertices are prepared ([`prepared_model`]) and their crowns written into `storage` ([`crowns`]); a plant's
+    /// vertices take the `ground`'s normal under their placement.
+    pub(super) fn new<'a>(
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         placed: &Placed,
-        meshes: &[Mesh],
-        prepared: Vec<Option<Vec<Vertex>>>,
+        storage: &Storage,
+        lit: bool,
         ground: Option<&Ground>,
-        crowns: Vec<Option<foliage::Crown>>,
-        baked: bool,
+        plant: impl Fn(&Draw) -> Option<&'a foliage::Cut> + Copy + Sync,
     ) -> Models {
+        let meshes = model_meshes(placed);
+        let (vertices, crowns) = if lit {
+            let scaled: Vec<_> = meshes.iter().zip(model_scales(placed)).collect();
+            let vertices = in_parallel(&scaled, |&(mesh, scale)| {
+                prepared_model(crate::sun::with_normals(mesh), mesh, scale, ground.is_some(), plant)
+            });
+            let slices: Vec<&[Vertex]> = vertices.iter().map(Vec::as_slice).collect();
+            let crowns = self::crowns(placed, &meshes, &slices, plant);
+            queue.write_buffer(&storage.crowns, 0, bytemuck::cast_slice(&crown_words(&crowns)));
+            (vertices, crowns)
+        } else {
+            (meshes.iter().map(|mesh| mesh.vertices.clone()).collect(), Vec::new())
+        };
         let mut packing = Packing::default();
-        let vertices: Vec<Vec<Vertex>> = meshes
-            .iter()
-            .zip(prepared)
-            .map(|(mesh, prepared)| prepared.unwrap_or_else(|| mesh.vertices.clone()))
-            .collect();
         let at: Vec<(MeshSlot, u32)> =
             meshes.iter().zip(&vertices).map(|(mesh, v)| packing.add(device, v, &mesh.indices, false)).collect();
         let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -277,7 +314,7 @@ impl Models {
                     record: record.wrapping_sub(at[model].0.base_vertex() as u32),
                     ground: if ground == Vec3::ZERO { 0 } else { packed_direction(ground) },
                     crown: if crowns.get(k).is_some_and(Option::is_some) { k as u32 + 1 } else { 0 },
-                    baked: u32::from(baked),
+                    baked: u32::from(storage.bakes),
                 };
                 record += vertices[model].len() as u32;
                 header
@@ -320,15 +357,15 @@ impl Models {
         }
     }
 
-    /// Puts the model packs after the stage's `buffers`, moving the slots of the instanced `meshes` to them; with
-    /// `records` (to be baked), every placement expanded into packs after them, for [`Ambient::apply`].
+    /// Puts the model packs after the stage's `buffers`, moving the slots of the instanced `meshes` to them; when the
+    /// `storage`'s records are baked, every placement expanded into packs after them, for [`Ambient::apply`].
     pub(super) fn finish(
         self,
         device: &wgpu::Device,
         placed: &Placed,
         buffers: &mut Vec<MeshBuffers>,
         meshes: &mut [GpuMesh],
-        records: Option<&wgpu::Buffer>,
+        storage: &Storage,
     ) -> Option<Ambient> {
         let first = buffers.len();
         for mesh in meshes.iter_mut().filter(|m| m.instances.is_some()) {
@@ -339,7 +376,10 @@ impl Models {
             instances: Some((self.instances.clone(), self.headers.clone())),
             ..pack
         }));
-        let records = records?.clone();
+        if !storage.bakes {
+            return None;
+        }
+        let records = storage.records.clone();
         let start = buffers.len();
         let mut packing = Packing::default();
         for (k, (instance, model)) in placed.instances.iter().zip(instance_models(placed)).enumerate() {
@@ -374,11 +414,6 @@ impl Ambient {
                 return;
             };
             let words: Vec<[u32; 4]> = vertices.iter().map(record).collect();
-            eprintln!(
-                "DEBUG ambient pack {} vertices, mean occlusion {}",
-                vertices.len(),
-                vertices.iter().map(|v| v.occlusion).sum::<f32>() / vertices.len() as f32
-            );
             queue.write_buffer(&self.records, at, bytemuck::cast_slice(&words));
             at += (words.len() * size_of::<[u32; 4]>()) as u64;
         }

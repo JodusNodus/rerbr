@@ -96,22 +96,10 @@ impl Renderer {
         let shadow_range = shadows::ShadowRange::new(&device, &shadow_view);
         // The volumetric clouds' shadow map ([`cloud_volume::shadow_target`]), read by every draw.
         let (cloud_shadow_view, cloud_shadow_sampler) = cloud_volume::shadow_target(&device);
-        // The instanced meshes' ambient records (`placed::Ambient`), baked with the lighting.
-        let bakes_placed = enhance.lighting && !stage.placed.groups.is_empty();
-        let placed_records = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("instanced ambient"),
-            size: (if bakes_placed { placed_gpu::record_count(&stage.placed) } else { 0 }).max(1) as u64 * 16,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        // And their crowns (`placed::crowns`), with the plants.
+        // The stage's vertices are prepared for the lit draws (`prepare`); the instanced ones' records, baked with the
+        // lighting, and crowns are bound with the frame.
         let lit = enhance.lighting || enhance.wet || timed;
-        let placed_crowns = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("instanced crowns"),
-            size: (if lit { stage.placed.instances.len() } else { 0 }).max(1) as u64 * 48,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let placed_storage = placed_gpu::Storage::new(&device, &stage.placed, enhance.lighting, lit);
         let frames = [(); 3].map(|_| {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("frame"),
@@ -164,8 +152,8 @@ impl Renderer {
                         binding: 20,
                         resource: wgpu::BindingResource::Sampler(&cloud_shadow_sampler),
                     },
-                    wgpu::BindGroupEntry { binding: 21, resource: placed_records.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 22, resource: placed_crowns.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 21, resource: placed_storage.records.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 22, resource: placed_storage.crowns.as_entire_binding() },
                 ],
             });
             FrameBinding { buffer, bind_group }
@@ -393,23 +381,10 @@ impl Renderer {
                 vertices
             })
         };
-        // The instanced models' vertices, as a mesh's but for what is the world's alone: the ground under a plant, the
-        // film's lowness. Their meshes follow the solid ones (at the props), the blended after the rest.
-        let model_meshes = placed_gpu::model_meshes(&stage.placed);
-        let scaled: Vec<_> = model_meshes.iter().zip(placed_gpu::model_scales(&stage.placed)).collect();
-        let prepared_models = in_parallel(&scaled, |&(mesh, scale)| {
-            lit.then(|| placed_gpu::prepared_model(sun::with_normals(mesh), mesh, scale, ground.is_some(), plant))
-        });
+        // The instanced models' vertices, as a mesh's but for what is the world's alone (`placed::prepared_model`).
+        // Their meshes follow the solid ones (at the props), the blended after the rest.
         let models = (!stage.placed.groups.is_empty()).then(|| {
-            let (placed, ground) = (&stage.placed, ground.as_ref());
-            let mut crowns = Vec::new();
-            if lit {
-                let vertices: Vec<&[crate::stage::Vertex]> =
-                    prepared_models.iter().flatten().map(Vec::as_slice).collect();
-                crowns = placed_gpu::crowns(placed, &model_meshes, &vertices, plant);
-                queue.write_buffer(&placed_crowns, 0, bytemuck::cast_slice(&placed_gpu::crown_words(&crowns)));
-            }
-            placed_gpu::Models::new(&device, placed, &model_meshes, prepared_models, ground, crowns, bakes_placed)
+            placed_gpu::Models::new(&device, &queue, &stage.placed, &placed_storage, lit, ground.as_ref(), plant)
         });
         let mut placed_meshes: Vec<GpuMesh> = stage
             .placed
@@ -557,8 +532,7 @@ impl Renderer {
         meshes.extend(placed_blended);
 
         let mut buffers = packing.finish(&device);
-        let records = bakes_placed.then_some(&placed_records);
-        let ambient = models.and_then(|m| m.finish(&device, &stage.placed, &mut buffers, &mut meshes, records));
+        let ambient = models.and_then(|m| m.finish(&device, &stage.placed, &mut buffers, &mut meshes, &placed_storage));
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();
             let tiles = occlusion::bake(&device, &queue, &texture_layout, &meshes, &buffers, &stage.driveline);
