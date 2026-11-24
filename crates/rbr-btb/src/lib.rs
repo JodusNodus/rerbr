@@ -22,6 +22,7 @@ pub mod col;
 pub mod ids;
 pub mod ksh;
 pub mod pad;
+pub mod phases;
 pub mod player;
 pub mod scene;
 pub mod stage;

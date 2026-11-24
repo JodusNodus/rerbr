@@ -177,6 +177,7 @@ impl Renderer {
         } else {
             BTreeMap::new()
         };
+        rbr_btb::phases::mark("gpu: setup, probes alloc, terrain detail windows");
         let mut views = Views {
             loaded: stage
                 .textures
@@ -217,6 +218,7 @@ impl Renderer {
             detail,
             banks: terrain_detail::bank_shares(&stage.meshes),
         };
+        rbr_btb::phases::mark("gpu: texture parse + upload");
         let start_board = stage.start_board().and_then(|texture| {
             let Some(Image::Dds(bytes)) = stage.textures.get(&texture)?.image.as_ref() else { return None };
             let placeholder = start_board::Rgba::decode(&dds::parse(bytes).ok()?);
@@ -543,13 +545,16 @@ impl Renderer {
         if let Some(models) = models {
             models.finish(&device, &mut buffers, &mut meshes);
         }
+        rbr_btb::phases::mark("gpu: mesh prepare, buffer upload, pipelines");
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();
             let tiles = occlusion::bake(&device, &queue, &texture_layout, &meshes, &buffers, &stage.driveline);
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
             eprintln!("sky occlusion: {tiles} tiles in {:.1} s", start.elapsed().as_secs_f32());
+            rbr_btb::phases::mark("bake: sky occlusion");
             let toward = -stage.atmosphere.sun_direction;
             bounce::bake(&device, &queue, &texture_layout, &meshes, &buffers, &ground_light, toward);
+            rbr_btb::phases::mark("bake: bounce");
             ground_light
         });
         let depth_size = (1, 1);
@@ -623,6 +628,7 @@ impl Renderer {
             )),
             _ => None,
         };
+        rbr_btb::phases::mark("gpu: rest of the renderer (post, shadows, clouds)");
         Renderer {
             uploads: Uploads::new(&device),
             device,

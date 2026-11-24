@@ -169,6 +169,7 @@ impl Packing {
         if self.vertices.is_empty() {
             return;
         }
+        let timed = rbr_btb::phases::start();
         let vertex_count = self.vertices.len() as u32;
         // Storage too, for the sky's occlusion to write into (`sky_occlusion.wgsl`), and read back for the grass's
         // light (`Renderer::set_grass`).
@@ -194,6 +195,7 @@ impl Packing {
             instances: None,
             probes: None,
         });
+        rbr_btb::phases::add("vertex/index buffer creation (CPU)", timed);
     }
 
     pub(super) fn finish(mut self, device: &wgpu::Device) -> Vec<MeshBuffers> {

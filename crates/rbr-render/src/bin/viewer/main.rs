@@ -202,6 +202,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
+    rbr_btb::phases::mark("process start");
     let given: Vec<String> = std::env::args().skip(1).collect();
     // Watching a replay: its header's viewer arguments, the current command line's extras over them, then
     // `--live` with the header's stepping command serving the replay.

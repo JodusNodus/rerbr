@@ -96,6 +96,7 @@ const GROUND_SAMPLES: usize = 64;
 pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Error> {
     let folder = &source(name).ok_or_else(|| Error::Btb(format!("{name}: no BTB folder")))?;
     let scene = Scene::load(folder).map_err(Error::Btb)?;
+    use rbr_btb::phases;
     let mut report = LoadReport::default();
 
     // The textures the draws sample: a diffuse one and, for the lerp, the second.
@@ -119,6 +120,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         GrassFx { settings, texture, occluders: Vec::new() }
     });
 
+    phases::mark("stage: grass settings, texture refs");
     // One plan per mesh: the draws it makes, with their layers.
     let mut alphas: HashMap<&str, Alpha> = HashMap::new();
     let plans: Vec<Option<Plan>> = scene
@@ -209,7 +211,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     // A converted stage (`rbr-ac-tracks`: Assetto Corsa; BeamNG's converter alike) collides with meshes of their own (`CollisionOnly`) and
     // draws none of them: its ground is what lies on them ([`on_ground`]), and its surfaces tell its road.
     let converted = scene.objects.iter().any(|o| o.collides && !o.visible);
+    phases::mark("stage: draw plans per mesh");
     let loaded = converted.then(|| super::collision(maps, name, selection)).flatten();
+    phases::mark("stage: collision (converted stages)");
     let sun = scene.sun_direction.map_or(Vec3::new(0.6, -0.6, 0.5).normalize(), Vec3::from).normalize_or_zero();
     let to_sun = -sun;
     let step = scene.driveline.len().div_ceil(DOME_POINTS).max(1);
@@ -230,10 +234,13 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             if instancing && !solo {
                 // Forced on an object that did not ask (development), a converted stage's ground stays baked.
                 let on = || {
+                    let t = phases::start();
                     let vertices = world_vertices(mesh, plan, placement, to_sun);
+                    phases::add("expand (ground test of instanced)", t);
                     loaded.as_ref().is_some_and(|collision| on_ground(&vertices, &mesh.indices, collision))
                 };
                 if object.instanced || !on() {
+                    let t = phases::start();
                     let model = placed.model(object.mesh, || placed::Model {
                         vertices: model_vertices(mesh, plan),
                         indices: mesh.indices.clone(),
@@ -246,6 +253,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                         Instance::new(placement, to_sun, plan.up),
                         (centre - half, centre + half),
                     );
+                    phases::add("instanced group add", t);
                     continue;
                 }
             }
@@ -254,7 +262,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             } else {
                 Cell::At((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32)
             };
+            let t = phases::start();
             let vertices = world_vertices(mesh, plan, placement, to_sun);
+            phases::add("expand placements to world vertices", t);
             if let (Some(texture), Some(fx)) = (plan.hides, grass_fx.as_mut()) {
                 fx.occluders.extend(mesh.indices.chunks_exact(3).map(|t| {
                     let v = [t[0], t[1], t[2]].map(|i| &vertices[i as usize]);
@@ -262,10 +272,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 }));
             }
             let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
+            let t = phases::start();
             let collides = match &loaded {
                 Some(collision) => on_ground(&vertices, &mesh.indices, collision),
                 None => object.collides && !converted,
             };
+            phases::add("ground test (collision)", t);
             for &(layer, state) in &plan.draws {
                 let layer = if dome { Layer::Sky } else { layer };
                 // The opaque faces of the collision ground are the near ground: the terrain detail, the wet film and
@@ -273,13 +285,17 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 let ground = collides && !dome && !state.blend && state.alpha_ref.is_none();
                 let state = DrawState { ground, ..state };
                 let key = (layer, cell, lod, object.sun_cascades);
+                let t = phases::start();
                 groups.add(key, state, &vertices, &mesh.indices, centre - half, centre + half);
+                phases::add("group into cells and LOD bands", t);
             }
         }
     }
+    phases::mark("stage: placements loop (expand, group)");
     let mut meshes = groups.finish();
     meshes.sort_by_key(|mesh| mesh.layer);
     let placed = placed.finish();
+    phases::mark("stage: groups finished");
     let (pieces, triangles) =
         (meshes.len(), meshes.iter().flat_map(|m| &m.draws).map(|d| d.indices.len() / 3).sum::<usize>());
     if std::env::var_os("RBR_BTB_STATS").is_some() {
@@ -313,6 +329,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     let driveline: Vec<Vec3> = scene.driveline.iter().map(|&p| Vec3::from(p)).collect();
     let roads = crate::puddles::roads(&meshes, &driveline);
     let collision = super::mark_wet_roads(&mut meshes, maps, name, selection, Some(&roads), loaded);
+    phases::mark("stage: roads, wet roads");
 
     // The sky is the sky map's (`rbr_btb::stage::SKY_MAP`): its section by the row's own words, in the retail
     // `TrackSettings.ini`; without a row, its variant M's pick by the weather.
@@ -369,6 +386,7 @@ pub(super) fn load_textures(stage: &mut Stage) -> Result<(), Error> {
         stage.textures.insert(texture, StageTexture { request: file, image });
     }
     stage.report.missing_textures = missing;
+    rbr_btb::phases::mark("textures: Textures.zip read + decode");
     Ok(())
 }
 

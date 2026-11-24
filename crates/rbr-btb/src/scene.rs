@@ -271,9 +271,12 @@ impl Scene {
         let driveline = track.driveline()?;
         let settings = track.settings()?;
         let (sun, grass, air) = (settings.sun_direction, settings.grass, settings.air);
+        crate::phases::mark("btb: track, spawn, driveline, settings");
         let objects = track.objects()?;
+        crate::phases::mark("btb: object list");
         let files = TextureFiles::open(folder)?;
         let textures = Textures::list(&files.0)?;
+        crate::phases::mark("btb: Textures.zip list, materials");
 
         let sections = track.materials()?.sections;
         let materials: Vec<Material> = sections.iter().map(|m| material(m, &textures)).collect();
@@ -310,7 +313,9 @@ impl Scene {
                 instanced: object.instanced,
             });
         }
+        crate::phases::mark("btb: Objects.zip entries + .xform parse");
         let meshes = parse_meshes(&mesh_files, open, &by_name)?;
+        crate::phases::mark("btb: .x meshes (read + parse)");
 
         let m = spawn.matrix;
         Ok(Scene {

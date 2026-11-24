@@ -166,6 +166,7 @@ pub fn load(args: &Args, data: &Data, progress: &mut dyn FnMut(Step)) -> Result<
             }
         }
     }
+    rbr_btb::phases::mark("viewer: scene loaded (cars, upscale)");
     report_load(&scene.stage);
     match (args.at, &mut scene.playback, &scene.live) {
         (Some(step), Some(playback), None) => playback.seek_to_step(step),
@@ -259,6 +260,7 @@ fn load_scene<'scope, 'env>(
             if grass.is_some() || (args.enhance.lighting && stage.has_sheen()) {
                 stage.mark_surfaces(&maps, grass.is_some());
             }
+            rbr_btb::phases::mark("viewer: stage load + mark surfaces");
             stage.atmosphere.fog = args.fog;
             stage.atmosphere.clouds = args.clouds;
             // The rain or snow, decided once: `--precipitation`, else with `--enhance particles` ours by the road's
@@ -278,6 +280,7 @@ fn load_scene<'scope, 'env>(
             }
             stage.load_textures(&maps).map_err(|e| e.to_string())?;
             let day_clock = Some(light(args, &mut stage, name));
+            rbr_btb::phases::mark("viewer: day light");
             if let Some(dir) = &args.textures {
                 let replaced = stage.apply_texture_pack(dir, |_| true);
                 eprintln!("texture pack {}: {replaced} stage textures replaced", dir.display());
@@ -293,6 +296,7 @@ fn load_scene<'scope, 'env>(
                 eprintln!("grass: {} ground triangles", field.triangles());
                 std::sync::Arc::new(field)
             });
+            rbr_btb::phases::mark("viewer: stage lamps, grass field build");
             progress(Step::Characters);
             let mut characters = load_characters(data, name, &mut stage, args);
             // Before the car: the playback keeps the car's mesh indices.

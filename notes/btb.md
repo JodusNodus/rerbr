@@ -386,6 +386,35 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 
+## Load phases (measured)
+
+`RBR_LOAD_PHASES=1` (`rbr_btb::phases`, hooks in `Scene::load`, `stage/btb.rs`, the viewer's `scene.rs`, `renderer/build.rs`,
+`screenshot.rs`) prints one line per phase to stderr: seconds, resident and peak memory. Measured with a viewer
+screenshot, 1280x720, `--enhance all,grass-light`, file cache warm, median of 3, radv. Seconds; "stage build" is the
+plans, collision, expanding, grouping, roads, textures and light; "GPU" the renderer's build outside the bakes.
+
+| Stage | wall | parse (list, xform, .x) | stage build | grass + surfaces | bakes (occl, bounce, probes) | GPU (of it pipelines) | peak |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| DR Finland route_0 (36k objects, 67k instances, 3.1M baked vertices) | 18.7 | 5.4 (4.2, 0.3, 1.0) | 1.9 | 2.8 | 6.1 (1.1, 2.0, 3.0) | 2.2 (0.5) | 2.46 GB |
+| DR Greece route_0 (17k objects, 1.8M baked vertices) | 8.8 | 1.2 (0.6, 0.1, 0.5) | 0.9 | 1.0 | 3.2 (0.4, 0.8, 2.0) | 1.8 (0.5) | 1.61 GB |
+| RSF Kaihuavaara 2022 (4.5k objects, 2.1M vertices) | 4.2 | 0.4 (0.06, 0.05, 0.3) | 0.5 | 0.4 | 1.5 (0.4, 0.5, 0.6) | 1.0 (0.4) | 1.02 GB |
+| same, `RBR_BTB_INSTANCE=auto` (1.0M vertices, 69k placements) | 4.5 | 0.4 | 0.4 | 0.4 | 1.6 (0.5, 0.3, 0.8) | 1.1 (0.5) | 0.89 GB |
+| AC Roure Beuil Downhill (4.8k objects, 3.5M vertices, all bumped) | 6.8 | 1.0 (0.08, 0.04, 0.9) | 1.0 | 0.7 | 1.8 (0.4, 0.6, 0.9) | 1.6 (0.7) | 2.22 GB |
+
+- Parsing the `.x` meshes takes 0.6 to 1.1 GB of resident memory (the scene's meshes, dropped when the load returns); the
+  expanded vertices (about 76 bytes each) and the grass field add 0.3 to 0.5 GB; the GPU buffers are 0.15 to 0.3 GB.
+- `objectlist.ini` takes 4.2 s on Finland (5 MB, 67k sections) and 0.6 s on Greece: `Object::parse_all` finds each
+  `[Object_i]` by a linear search of all sections (quadratic); the format is not the cost.
+- Without `--enhance` Finland takes 10.4 s (no bakes, no grass). Pipeline creation takes 0.4 to 0.7 s with the driver's
+  shader cache warm and 45 s on the first run of a new pipeline set (Finland with grass, Roure): no pipeline cache is kept.
+- Sky occlusion reads the geometry and the driveline only; bounce reads the sun and the probes the sky, so they stay at
+  load. The window draws the probes after its first frame.
+- Preparing (`rbr-ac-tracks prepare`, the map 41 files): Finland 16.4 s, Greece 3.9 s, Kaihuavaara 2.0 s, Roure 2.1 s.
+- Estimated, not built: a GPU-ready package (nothing parsed, expanded or grouped at load; occlusion, ground flags, grass
+  ground list and roads stored) takes Finland to about 7 s, Greece 5, Kaihuavaara 2.4, Roure 3.6, with a peak near
+  1.0, 0.8, 0.5 and 0.9 GB. A sidecar of those same extras beside BTB gives 13.8, 7.0, 3.4 and 5.3 s (Finland 9.7 s
+  with `parse_all` made linear) and a peak 0.2 to 0.3 GB lower.
+
 ## The flat pad
 
 - A generated BTB stage (`rbr_btb::pad`, `BUILD 1`): a level 2 km square of one material, written as an ordinary BTB

@@ -255,6 +255,13 @@ impl Context<'_> {
     }
 
     pub(super) fn pipeline(&self, key: PipelineKey) -> wgpu::RenderPipeline {
+        let t = rbr_btb::phases::start();
+        let pipeline = self.create_pipeline(key);
+        rbr_btb::phases::add("pipeline creation (CPU)", t);
+        pipeline
+    }
+
+    fn create_pipeline(&self, key: PipelineKey) -> wgpu::RenderPipeline {
         let (entry, depth_write, depth_compare, alpha_test, write_mask) = match key.pass {
             DrawPass::Main => (
                 self.shading(),
