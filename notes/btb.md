@@ -68,7 +68,8 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
 `ColSplit` 0x10022c10 (`col.cpp`) -> gather 0x10022770 -> `Split` 0x10025e80 -> `DumpCol` 0x100243a0.
 - `CollisionOnly=1` (ReRBR's key, unknown to the plugin) puts a `Visible=0` object's faces in `col.col` too: an undrawn collision mesh (converted stages).
 - `ReRbrInstanced=1` (ReRBR's key, not BTB's `DrawInstanced`) opts an object into the renderer's GPU instancing: one mesh,
-  a transform per placement ([Drawing](#drawing)). Absent, its placements are expanded as before.
+  a transform per placement ([Drawing](#drawing)). Where no object has it, objects of 8 or more placements are instanced
+  (`RBR_BTB_INSTANCE`).
 - `SunCascades=0` (ReRBR's key) keeps an object out of the sun's three near cascades; the far layer, the lamps' map and
   the bakes still take it. Absent, it casts, as every object did before: `ShadowCaster` stays unread, since all 72
   folders write 0 on every object (140785 of 140857; none 1) and still need their shadows. Converted stages write it on
@@ -312,7 +313,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   Bareyo's dirt verges take half the film, as dirt does elsewhere.
 - Load (320x180, best of 2): +0.5 to 1 s; with the grass field, which BTB stages lacked, +1 to 2.6 s (Crastazza 5.0 to
   6.2 s, Muracciole 9.7 to 12.3 s).
-- LOD and size: no instancing unless an object asks (`ReRbrInstanced=1`, below). Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
+- LOD and size: placements of instanced objects aside (below), each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
   128 m cell (a placement over 150 m half extent is a mesh of its own: the terrain tiles) and by `LODIn`/`LODOut` in 50 m
   steps (`Lod::Band`, the draw's distance from its mesh's bounds centre; a solo placement's `LODOut` counts from its
   radius too), both ends 1.5 times the source's (`btb::REACH`, 2026-11-18: AC conversions' cells came in whole, 60 to
@@ -322,24 +323,31 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   triangles in 7070 meshes (peak 0.85 GB in a viewer screenshot); Stoccareddo II 3.79 M vertices, 1.99 M triangles, 1270
   meshes (peak 1.3 GB); Pirttikulma 1.18 M vertices, 0.74 M triangles. Load to the first frame 5 to 9 s on those. A view
   draws 60 to 350 k triangles.
-- Instancing (ours, 2026-11-23, `stage/placed.rs`, `renderer/placed.rs`; opt-in, experimental): an object with `ReRbrInstanced=1`
-  (visible, 2 or more placements, no collision, half extent within 150 m, a material that neither hides nor grows
-  grass) keeps its mesh once in its own space and one 64-byte `Instance` per placement (three matrix rows, `to_sun` and
-  an `Up` flag), in an instance-rate buffer at vertex locations 11 to 14; the probe at 15 is a second instance-rate
-  buffer, a baked `Vertex`'s `occlusion`, `sky_dir` and `bounce` (16 attributes, wgpu's default limit). `vs_main_placed`
-  and `vs_clouded_placed` place the position and normal, light the colour as `world_vertices` does (`0.4 + N.L`, to
-  1/255; a unit test checks the same bits) and turn a crown's or tuft's `uv1` with the placement; `vs_sun_placed` the
-  sun's maps. Grouped like the baked meshes, plus the model: bounds are the union of the placements' boxes, so a group
-  shows by its own distance (LOD borders differ a little from the baked cell's). One probe per instance (the middle of
-  its box, facing up) goes into the stage's own packs, so the sky's occlusion and bounce bake it; the model packs
-  are skipped by the bakes (`MeshBuffers::baked`). Not for the instanced meshes: the bounce's surface draw (trees send no
-  light down), `on_foliage` (the placement's up), the grass occluders, `sunlit`, `stage_lamps`, `relight::fit`.
-  Without the key a stage renders as before (37 reference shots RMSE 0, the same `RBR_BTB_STATS` line);
-  `RBR_BTB_INSTANCE=auto` instances every object with 8 or more placements, to compare. Pirttikulma (34403 placements
-  of 58 models: 665k to 233k baked vertices, 2955 groups; warm, all enhancements 1280x720) 666 to 589 MB,
-  load 2.8 to 2.9 s, 210 to 318 draws a frame; Kaihuavaara 2022 (69507 placements of 53 models: 2.10 M to 0.95 M
-  baked vertices) 991 to 885 MB, 3.7 to 3.8 s, 141 to 173 draws. A/B RMSE 1.6 to 3.1 with the enhancements off and 2.7 to 8.5
-  with them (the trees' ambient: one probe a tree against a bake per vertex). AC conversions repeat no object: none instance.
+- Instancing (ours, 2026-11-24, `stage/placed.rs`, `renderer/placed.rs`): an instanced object (visible, 2 or more
+  placements, no collision, half extent within 150 m, a material that neither hides nor grows grass) keeps its mesh
+  once in its own space, a model per layer (a translucent mesh's cut-out and blended draws differ), and one 64-byte
+  `Instance` per placement (three matrix rows, `to_sun`, an `Up` flag) at vertex locations 11 to 14, plus a 16-byte
+  header at 15 (`placed::Header`). Which objects: `RBR_BTB_INSTANCE` `off`, `asked` (those with `ReRbrInstanced=1`) or
+  `auto` (8 or more placements); unset, `asked` where any object asks (the converters' stages), else `auto`.
+  `vs_main_placed`/`vs_clouded_placed` place position and normal, light the colour as `world_vertices` does, and give each
+  placed vertex what the expanded vertex gets: the ground's normal under the placement on the cut-out draws
+  (`on_foliage`), the plants found at the model's median placement scale, the crown of its tree found among the
+  placements in the world (`placed::crowns`, binding 22: RSF trees are cards of 8 to 30 vertices whose crowns form only
+  across objects), and its own baked ambient: every placement is expanded into packs of its own for the sky occlusion
+  and bounce bakes, read back into 16 bytes a placed vertex (binding 21, `placed::Ambient`) and dropped. Exact within
+  2 M placed vertices (`EXACT_VERTICES`, 32 MB, the smallest models first); past that a placement takes one probe
+  (the middle of its box, facing up) and its model's own crowns (DiRT Rally Finland route_0: 199 of 367 models exact,
+  2.1 M records). `sunlit` and `stage_lamps` take the instanced groups too (golden hour flipped 6.78 to 18.23 h
+  without). Not taken: the bounce's surface draw (trees send no light down), `relight::fit` (Stoccareddo II's strength
+  0.547 to 0.476, RMSE 0.00 on the shot), grass occluders (excluded by eligibility).
+  Auto against off (1280x720, all enhancements, 0.5/2/4 km): Pirttikulma RMSE 1.55/0.84/1.35, 0.24/0.07/0.12 % of
+  pixels off by >16; Kaihuavaara 2022 0.27/0.46/0.51, 0 %; Stoccareddo II 1.46/5.39/0.45, 0.02/1.71/0.01 % (the 2 km
+  bank's tufts); the one probe a tree had given 3.7 to 6.7. Viewer to the screenshot, peak RSS, against the expanded
+  build: Pirttikulma 2.9 to 3.0 s, 651 to 602 MB; Kaihuavaara 2022 3.6 to 3.9 s, 1004 to 846 MB (1.15 M records);
+  Stoccareddo II 3.8 to 3.8 s, 1240 to 1213 MB. Retail shots RMSE 0 (37 of `data/shots.json`, the 5 BTB ones too).
+  Asked objects against the one probe: DiRT Rally Finland route_0 RMSE 4.7/4.1/5.3 (bushes and crowns darker inside);
+  Roure's oak at 35 m 6.2, where expanding it (`off`, 9.3 GB) is 5.6 from the probe and 7.4 from this (leaf order and
+  crowns merged with the CSP cards differ; mean brightness within 0.2 of 255 of both).
 - Load: the sky's occlusion and the ground's bounce bake 1 km tiles; a BTB stage's terrain runs kilometres past the road
   (Cueva Santa 221 tiles, a retail stage about 10), so both bake only the tiles within 1 km of the driveline
   (`sky_occlusion::REACH`; Cueva Santa 31, Crastazza 54 from 121 with its dome out). On a live start at 4K with the
