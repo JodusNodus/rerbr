@@ -98,8 +98,10 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     let gpu = renderer::request_gpu(&instance, None)?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = scene.renderer(&gpu, format, enhance, args.render_scale, &mut |_| {});
+    rbr_btb::phases::mark("renderer built");
     renderer.set_time(time);
     renderer.wait_for_grass();
+    rbr_btb::phases::mark("grass field wait");
     let live = scene.live.as_ref().filter(|_| demo_ride.is_none());
     renderer.set_start_clock(live.and_then(|l| l.hud_model.view().start_clock));
     renderer.set_start_lamps(live.and_then(|l| l.hud.race.as_ref()));
@@ -209,7 +211,9 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         // The probes show a first frame's sky and shadows (as the window's load draws them).
         if shot == 0 && renderer.has_probes() {
             renderer.render_offscreen(screen, view_projection, sky_view_projection)?;
+            rbr_btb::phases::mark("first frame");
             renderer.bake_probes();
+            rbr_btb::phases::mark("bake: probes");
         }
         if frames > 0 && shot == 0 {
             time_frames(&gpu, &mut renderer, format, screen, (view_projection, sky_view_projection), args)?;
@@ -268,6 +272,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
                 path.with_file_name(format!("{}-{shot:03}.png", path.file_stem().unwrap_or_default().to_string_lossy()))
             }
         };
+        rbr_btb::phases::mark("screenshot frame (draw + read back)");
         write_png(&path, size, &pixels)?;
         // `--sequence`: the next frame is the drive's next, `--sequence-step` frames on.
         if let Some(playback) = &mut scene.playback {
