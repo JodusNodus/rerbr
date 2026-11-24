@@ -289,17 +289,18 @@
   "at": 6202
  },
  {
-  "name": "golden-falstone-yaris-flyby",
+  "name": "rain-falstone-yaris-flyby",
   "stage": 103,
   "car": "Toyota GR Yaris Rally2",
   "view": "flyby",
   "settings": {
    "weather": "bad",
    "wetness": "wet",
-   "clouds": "partly",
-   "precipitation": "none"
+   "clouds": "heavy",
+   "precipitation": "heavy",
+   "fog": "off"
   },
-  "clock": "17:20",
+  "clock": "07:00",
   "at": 9000,
   "args": [
    "--fov",
