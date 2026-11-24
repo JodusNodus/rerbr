@@ -52,7 +52,13 @@ struct Uniform {
     cabin_box: [[f32; 4]; 4],
     street_light: [f32; 4],
     street: [[f32; 4]; 2 * MAX_STREET],
+    /// x the share of the billowing dust's alpha a mirror's pass keeps (1 in the main view).
+    mirror: [f32; 4],
 }
+
+/// The share of the billowing dust's alpha a mirror's pass keeps: it looks lengthwise along the car's own wake, where
+/// the puffs stack to a veil over the road (DiRT's own mirrors show the road through its dust).
+const MIRROR_DUST: f32 = 0.3;
 
 pub(crate) struct Effects {
     /// The effects' bind group layout, group 1 of the passes that use them.
@@ -362,6 +368,7 @@ impl Effects {
             }),
             street_light: self.street.0,
             street: self.street.1,
+            mirror: [1.0, 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.uniform, 0, bytes_of(&uniform));
         self.written = uniform;
@@ -382,6 +389,7 @@ impl Effects {
         uniform.eye = crate::camera::eye(view_projection).extend(uniform.eye[3]).to_array();
         uniform.motion = reflect.transform_vector3(self.velocity).extend(uniform.motion[3]).to_array();
         uniform.screen = [width, height, 1.0 / width, 1.0 / height];
+        uniform.mirror[0] = MIRROR_DUST;
         queue.write_buffer(&self.mirror_uniform, 0, bytes_of(&uniform));
     }
 

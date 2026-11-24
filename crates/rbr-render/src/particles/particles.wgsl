@@ -306,7 +306,8 @@ fn fs_soft(in: Out) -> @location(0) vec4<f32> {
     let ball_back = max(in.radius * sqrt(max(1.0 - dot(across, across), 0.0)), depth);
     let back = max(ball_back, low * ground);
     let ball = smoothstep(0.0, 1.0, clamp(gap / back, 0.0, 1.0));
-    let alpha = visible * select(select(reach, reach * reach * (3.0 - 2.0 * reach), lifts), ball, dust);
+    let alpha = visible * select(select(reach, reach * reach * (3.0 - 2.0 * reach), lifts), ball, dust)
+        * select(1.0, effects.mirror.x, dust);
     if (alpha < NEGLIGIBLE) {
         discard;
     }

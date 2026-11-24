@@ -1889,6 +1889,7 @@ launcher "Mirrors" (default every frame). Off: no passes, the frame byte-identic
   wisps (made for the soft draw) over the glass as a white haze: the gvrc and DiRT Escort Mk II door and centre mirrors
   at Gabiria 450 damp, `--at` 3000-5000, showed one flat white (the same shots with `particles` off, or soft, show the road).
   Without the effects the flat draw stays. What is left at `--at 4021` is the spray thrown behind the car (`--look-back`).
+- Dust in the passes (2026-11-24, `MIRROR_DUST` 0.3, `Effects::write_mirror`): billowing dust keeps 0.3 of its alpha in a mirror's pass (the view runs lengthwise along the car's own wake and the puffs stacked to a veil; DiRT's mirrors show the road). The passes' oblique near plane already clips the particles (depth clip is on, same matrix). Main view unchanged (max diff 2 of 255 outside the glass); DiRT_cme Gabiria 450 `--at` 4021, 3000.
 - Passes draw the stage to 300 m, sky, fog, the car, ghosts, the game's particles, rain and lamps, with the frame's
   sun cascades and exposure; no prepass, light shafts, cubes or bloom. Only the glass's pipelines have `MIRRORS`: on
   in the shared shader it cost 1.1 ms a frame at 1440p (M-series).

@@ -41,6 +41,8 @@ struct Effects {
     // axis.
     street_light: vec4<f32>,
     street: array<vec4<f32>, 32>,
+    // x the share of the billowing dust's alpha kept (1 in the main view, less in a mirror's pass).
+    mirror: vec4<f32>,
 }
 
 // The light the car's lamps and the stage's give a point in the air at `world` (0 by day). The headlights' beams past their shadow
