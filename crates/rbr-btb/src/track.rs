@@ -669,9 +669,16 @@ impl Object {
         let objects = find_section(sections, "OBJECTS").ok_or("objectlist.ini: no [OBJECTS]")?;
         let count: usize =
             find_entry(objects, "count").and_then(|v| v.parse().ok()).ok_or("objectlist.ini: bad count")?;
+        // By lowercase name, the first of a name as `find_section` takes it: a search per object was quadratic
+        // (Finland's 4.2 s, `notes/btb.md` "Load phases").
+        let mut by_name = std::collections::HashMap::new();
+        for s in sections {
+            by_name.entry(s.name.to_ascii_lowercase()).or_insert(s);
+        }
         (0..count)
             .map(|i| {
-                find_section(sections, &format!("Object_{i}"))
+                by_name
+                    .get(&format!("object_{i}"))
                     .map(|s| Self::parse(i, s))
                     .ok_or_else(|| format!("objectlist.ini: no [Object_{i}]"))
             })

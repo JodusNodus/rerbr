@@ -404,7 +404,8 @@ plans, collision, expanding, grouping, roads, textures and light; "GPU" the rend
 - Parsing the `.x` meshes takes 0.6 to 1.1 GB of resident memory (the scene's meshes, dropped when the load returns); the
   expanded vertices (about 76 bytes each) and the grass field add 0.3 to 0.5 GB; the GPU buffers are 0.15 to 0.3 GB.
 - `objectlist.ini` takes 4.2 s on Finland (5 MB, 67k sections) and 0.6 s on Greece: `Object::parse_all` finds each
-  `[Object_i]` by a linear search of all sections (quadratic); the format is not the cost.
+  `[Object_i]` by a linear search of all sections (quadratic); the format is not the cost. Fixed (a map by name): Finland
+  0.11 s, its plain screenshot run 8.5 to 4.4 s.
 - Without `--enhance` Finland takes 10.4 s (no bakes, no grass). Pipeline creation takes 0.4 to 0.7 s with the driver's
   shader cache warm and 45 s on the first run of a new pipeline set (Finland with grass, Roure): no pipeline cache is kept.
 - Sky occlusion reads the geometry and the driveline only; bounce reads the sun and the probes the sky, so they stay at
