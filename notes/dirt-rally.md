@@ -341,6 +341,8 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   Wales 9.35 to 9.05 s, 2.67 to 2.68 GB. Greece `Textures.zip` +0.25 MB (400.22 to 400.48 MB); import time unmeasured (the machine was shared). The 37 reference shots: RMSE 0 against the build before.
 - Open: the class's meaning (which tufts each zone grows), the types' parameters (counts, scales), the tint bytes, tufts' densities against the game's (ours is a guess from the reference shots).
 
+- Cost (2026-11-24, RX 9060 XT, 3840x2160, Ultra, dense grass, autopilot): Finland's cover-map atlas has 4149 pieces and `piece_of` scanned them linearly in the grass compute (grass pass 9.8 ms; GPU frame 25.1 -> 15.1 ms with grass off); a binary search makes it 0.12 ms (17.5 ms frame incl. the grass draws), 37 shots and 6 DR shots RMSE 0. Turini's `scene` 10.4 ms: instanced draws 5.2 (alpha-tested foliage 3.9, opaque 1.0), baked opaque terrain 2.2; lighting off 5.6 (shadow sampling 4.8); grass draws 0.25; `RBR_BTB_INSTANCE=off` 15.9. Instanced groups beyond 250 m of their centre are most of the instanced cost (about 4 of 5 ms; machine shared, noisy): 3 to 4 k-triangle trees run to ~1 km before the billboard. Open: a nearer far range for dense models (a quality choice).
+
 ## Cars (`car.rs`, `car_pack.rs`), 2026-11-24
 
 First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP physics on a retail stage, on the live path
