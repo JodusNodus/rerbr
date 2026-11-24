@@ -309,10 +309,22 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   the atlas's alpha is the lens's own, so it is `CarGlass` with that texture, `dr_lens.dds`). The lenses `light_glass_f{l,r}`, `light_combi_glass_b{l,r}`
   and `light_rev_glass_b{l,r}` are each an unlit part (`Predicate = off`) and a lit one (`_lit`, `on`) on the switch boxes `light_lf`, `brake_lb`,
   `reverse_lb` and so on, named as the renderer names lamps (`e_light_lf`, `e_light_brake_lb`, `e_light_reverse_lb`), so the headlight key, the brake
-  pedal and the reverse gear light them (the renderer glows a lit lens by its area). DiRT's combined tail and brake lamp is the brake lamp only: no
-  tail glow at night. The bumper's rally lights (`light_rig_*`) and the small lenses on the bumpers and wings stay in the body, unlit.
-- Not done: doors and hoods as their own hinged or damageable parts (no dents), mirrors, wipers, tail lamps' own glow, the rally lights switched
+  pedal and the reverse gear light them (the renderer glows a lit lens by its area). DiRT's combined tail and brake lamp is both: the tail's
+  part (`e_light_lb`, `_lit`) always on, so it glows at night, and a brake `_lit` over it, same faces, with no unlit brake part to cover the tail's
+  lit one. The bumper's rally lights (`light_rig_*`) and the small lenses on the bumpers and wings stay in the body, unlit.
+- Look (2026-11-24; the launcher's default is Ultra: `--enhance` lighting, cabin, particles and the rest, which is what these checks use; the renders
+  without them hide the first two):
+  - The cabin is `CarTextureNoDirt` like the template's `e_internal` (as `CarPlastic`, Ka and Kd 2, it glared teal), and its atlas goes through
+    a tone curve (`CABIN_GAIN` 4, `Texture::toned`: the DXT blocks' two endpoints, indices and alpha kept, so no decoding). The enhanced cabin
+    light takes the albedo as it is, and DiRT's dash (0.05) came out black, the gauges unreadable; now the dash, the wheel's stitching and the
+    gauge faces read. The roof lining is black in the atlas and stays so. Shader constants of the material (`Ambient`, `Diffuse`) change nothing.
+  - The paint's `Kf` is 0 in the written `_shader_settings_*.ini` (`set_key`): the clear coat (on where `Kf` and `FresnelMax` are above 0; their
+    values beyond that do not matter with the day's light) washed the livery's red (168, 7, 10) to pink; off, the red holds, the sun's highlight
+    stays and the bonnet no longer mirrors the trees. DiRT's paint reflects little (`FresnelMin` 0.1, `EnvironmentColour` 0.54). Scaling the
+    albedo or the DXT5 alpha (the reflection's mask, `t0.a`) did nothing for it.
+  - Gauges read by day and not at night: DiRT lights them, the renderer's dials are the RBR cars' own meshes, and ours are a flat atlas.
+- Not done: doors and hoods as their own hinged or damageable parts (no dents), mirrors, wipers, lit gauges at night, the rally lights switched
   by the headlight key, the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
-- Checked: loads with 0 missing textures and 0 bad triangles (25 meshes, 49711 triangles), 4 unit tests (the written mesh parses back, a helper node
-  mirrors, material to class, lamp parts' switch boxes), the whole crate's 58 tests; stills of the car alone, on `track-20_N` at the start and in a
+- Checked: loads with 0 missing textures and 0 bad triangles (25 meshes, 49711 triangles), 6 unit tests (the written mesh parses back, a helper node
+  mirrors, material to class, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks), the whole crate's 60 tests; stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT wheel and eye, bonnet, bumper and chase; day and night, brake lamps lit and unlit). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

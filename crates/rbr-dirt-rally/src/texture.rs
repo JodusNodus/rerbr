@@ -105,6 +105,43 @@ impl Texture {
         out
     }
 
+    /// The texture with `curve` (0 to 1 to 0 to 1, on the colours as stored) applied to every block's two endpoint
+    /// colours: the colours between follow it piecewise linearly, and the indices and the alpha stay, so nothing is decoded
+    /// and every mip level changes alike. The order of a DXT1 block's endpoints picks its mode (the first above the second:
+    /// four colours), so a block that `curve` would reorder or make equal is kept in its mode, a swapped pair with
+    /// its indices (0 and 1, 2 and 3, in the four-colour mode) swapped too.
+    pub fn toned(&self, curve: impl Fn(f32) -> f32) -> Texture {
+        let unpack = |c: u16| [(c >> 11) as f32 / 31.0, ((c >> 5) & 63) as f32 / 63.0, (c & 31) as f32 / 31.0];
+        let pack = |v: [f32; 3]| {
+            let at = |x: f32, top: f32| (curve(x).clamp(0.0, 1.0) * top).round() as u16;
+            (at(v[0], 31.0) << 11) | (at(v[1], 63.0) << 5) | at(v[2], 31.0)
+        };
+        let (block, colour) = (self.format.block_bytes(), self.format.block_bytes() - 8);
+        let mut out = self.clone();
+        for chunk in out.data.chunks_exact_mut(block) {
+            let colours = &mut chunk[colour..];
+            let (c0, c1) = (u16::from_le_bytes([colours[0], colours[1]]), u16::from_le_bytes([colours[2], colours[3]]));
+            let mut indices = u32::from_le_bytes([colours[4], colours[5], colours[6], colours[7]]);
+            let (mut n0, mut n1) = (pack(unpack(c0)), pack(unpack(c1)));
+            if self.format == Format::Dxt1 {
+                let four = c0 > c1;
+                if four && n0 == n1 {
+                    (n0, n1) = if n1 > 0 { (n0, n1 - 1) } else { (n0 + 1, n1) };
+                }
+                if four != (n0 > n1) && n0 != n1 {
+                    (n0, n1) = (n1, n0);
+                    indices = (0..16).fold(0, |bits, k| {
+                        let i = (indices >> (2 * k)) & 3;
+                        bits | (if four || i < 2 { i ^ 1 } else { i }) << (2 * k)
+                    });
+                }
+            }
+            colours[..4].copy_from_slice(&[n0.to_le_bytes(), n1.to_le_bytes()].concat());
+            colours[4..].copy_from_slice(&indices.to_le_bytes());
+        }
+        out
+    }
+
     /// The base level as RGBA8.
     pub fn rgba(&self) -> Vec<u8> {
         let format = match self.format {
@@ -284,6 +321,40 @@ mod tests {
     fn texture(width: u32, height: u32, format: Format, levels: u32) -> Texture {
         let size: usize = (0..levels).map(|i| format.level_bytes((width >> i).max(1), (height >> i).max(1))).sum();
         Texture { name: "t.tga".into(), width, height, format, levels, data: vec![7; size] }
+    }
+
+    /// One 4x4 block: the endpoints (`red`, `blue` as 565) and an index of `i % 4` for texel `i`.
+    fn block(format: Format, c0: u16, c1: u16) -> Texture {
+        let mut data = if format == Format::Dxt5 { vec![255, 255, 0, 0, 0, 0, 0, 0] } else { vec![] };
+        let indices: u32 = (0..16).fold(0, |bits, i| bits | (i % 4) << (2 * i));
+        data.extend(c0.to_le_bytes());
+        data.extend(c1.to_le_bytes());
+        data.extend(indices.to_le_bytes());
+        Texture { name: "t.tga".into(), width: 4, height: 4, format, levels: 1, data }
+    }
+
+    #[test]
+    fn a_curve_keeps_each_blocks_colours_and_mode() {
+        let (red, blue) = (0xF800, 0x001F);
+        for format in [Format::Dxt1, Format::Dxt5] {
+            for (c0, c1) in [(red, blue), (blue, red)] {
+                let before = block(format, c0, c1);
+                // Reversing the order of the endpoints: the colours are inverted, not the indices' meaning.
+                let after = before.toned(|x| 1.0 - x);
+                let (a, b) = (before.rgba(), after.rgba());
+                // Four colours always for DXT5; for DXT1 only with the first above the second.
+                let four = format == Format::Dxt5 || c0 > c1;
+                for (i, (x, y)) in a.chunks(4).zip(b.chunks(4)).enumerate() {
+                    if !four && i % 4 == 3 {
+                        continue;
+                    }
+                    assert!(
+                        x[..3].iter().zip(&y[..3]).all(|(x, y)| (255 - *x as i16 - *y as i16).abs() <= 8),
+                        "{format:?} {c0:#x} {c1:#x} texel {i}: {x:?} then {y:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

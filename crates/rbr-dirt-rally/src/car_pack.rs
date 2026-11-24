@@ -93,7 +93,7 @@ fn style(material: &str, car: &str) -> Option<Style> {
     match material {
         "Car Body Paint" => flat("CarPaint", "paint", livery(&format!("{car}_main.tga"))),
         "Matt" | "Shiny Metal" => flat("CarTextureNoDirt", "paint", livery(&format!("{car}_main.tga"))),
-        "Cabin" => flat("CarPlastic", "cabin", livery(&format!("{car}_cabin.tga"))),
+        "Cabin" => flat("CarTextureNoDirt", "cabin", livery(&format!("{car}_cabin.tga"))),
         "Window Glass" => Some(Style {
             shader: "CarGlass",
             key: "glass".to_owned(),
@@ -133,10 +133,16 @@ fn window(part: &str) -> Option<String> {
     (!side.contains('_')).then(|| format!("e_window_{side}"))
 }
 
-/// The lamps: DiRT's lens part and the renderer's part name before the side (`e_light_brake_lb`). The combined tail and brake
-/// lamp is the brake lamp; the bumper's extra lamps stay in the body.
-const LAMPS: [(&str, &str); 3] =
-    [("light_glass", "e_light_"), ("light_combi_glass", "e_light_brake_"), ("light_rev_glass", "e_light_reverse_")];
+/// The lamps: DiRT's lens part, the renderer's part name before the side (`e_light_brake_lb`) and the states it draws
+/// (`""` unlit, `_lit` lit). The combined tail and brake lamp is both: the tail's part always on, so at night the lamp
+/// glows before the pedal is touched, and the brake's lit part over it (the same faces) while it brakes, with no unlit
+/// one of its own to cover the tail's lit one. The bumper's extra lamps stay in the body.
+const LAMPS: [(&str, &str, &[&str]); 4] = [
+    ("light_glass", "e_light_", &["", "_lit"]),
+    ("light_combi_glass", "e_light_", &["", "_lit"]),
+    ("light_combi_glass", "e_light_brake_", &["_lit"]),
+    ("light_rev_glass", "e_light_reverse_", &["", "_lit"]),
+];
 
 /// A lamp part's switch box and whether it is the lit part, by the names the renderer gives lamps (`e_light_lf_lit`:
 /// `light_lf`, lit; `e_light_brake_lb`: `brake_lb`, unlit).
@@ -149,7 +155,7 @@ fn lamp(part: &str) -> Option<(String, bool)> {
 
 /// Whether `part` is the lens of a lamp of [`LAMPS`].
 fn lens(part: &str) -> bool {
-    LAMPS.iter().any(|(lens, _)| part.strip_prefix(lens).is_some_and(|side| side.starts_with('_') && side.len() == 3))
+    LAMPS.iter().any(|(lens, ..)| part.strip_prefix(lens).is_some_and(|side| side.starts_with('_') && side.len() == 3))
 }
 
 /// A part's matrix in the template's frame: the DiRT frame (x left, y up, z forward, right handed) turned into the
@@ -278,10 +284,10 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
     }
 
     // The lamps: each lens as an unlit and a lit part, which the lamp's switch box swaps (`ini_file`).
-    for (dirt, rbr) in LAMPS {
+    for (dirt, rbr, states) in LAMPS {
         for (side, rbr_side) in SIDES {
             let Some(lens) = part(&format!("{dirt}_{side}")) else { continue };
-            for suffix in ["", "_lit"] {
+            for suffix in states {
                 let faces = faces(all(lens).into_iter(), frame, [0.0; 3], car, |_| true);
                 out.push(Piece { name: format!("{rbr}{rbr_side}{suffix}"), at: [0.0; 3], axes: UPRIGHT, faces });
             }
@@ -617,6 +623,38 @@ fn shaders_file(name: &str, materials: &BTreeMap<String, (bool, String)>) -> Str
     out
 }
 
+/// `settings` with `key` of `section` set to `value`, the rest as it was (line endings too).
+///
+/// The paint's `Kf` goes to 0: the renderer's clear coat (a sky reflection and a broad sheen over the paint, on where
+/// `Kf` and `FresnelMax` are both above 0) washed the livery's saturated red (168, 7, 10) to pink, where DiRT's paint
+/// reflects little (its `FresnelMin` 0.1, `EnvironmentColour` 0.54). Without it the red holds and the sun's highlight stays.
+fn set_key(settings: &str, section: &str, key: &str, value: &str) -> String {
+    let mut inside = false;
+    settings
+        .split_inclusive('\n')
+        .map(|line| {
+            if let Some(name) = line.trim().strip_prefix('[').and_then(|l| l.split(']').next()) {
+                inside = name == section;
+            }
+            match line.split_once('=') {
+                Some((k, _)) if inside && k.trim() == key => {
+                    format!("{}= {value}{}", k, &line[line.trim_end_matches(['\r', '\n']).len()..])
+                }
+                _ => line.to_owned(),
+            }
+        })
+        .collect()
+}
+
+/// The cabin atlas's gain. DiRT lights its dark interior (a black dash, carbon panels, dark gauge faces) far more than the
+/// renderer's cabin light does: unchanged the dash, the wheel and the gauges come out black in the cockpit. The atlas's
+/// colours go through `x * g / (1 + (g - 1) * x)`: black and white stay, the darks rise (a dash of 0.05 reads 0.17).
+const CABIN_GAIN: f32 = 4.0;
+
+fn cabin_lift(x: f32) -> f32 {
+    x * CABIN_GAIN / (1.0 + (CABIN_GAIN - 1.0) * x)
+}
+
 /// The texture `source` of the DiRT install as a `.dds`, from the files of `car_dir`.
 struct Library {
     car_dir: PathBuf,
@@ -626,7 +664,7 @@ struct Library {
 }
 
 impl Library {
-    fn find(&self, source: &Source) -> Result<Vec<u8>, String> {
+    fn find(&self, source: &Source) -> Result<Texture, String> {
         let (path, name) = match source {
             Source::Livery(name) => (self.livery_file(""), name),
             Source::LiveryClass(short, name) => (self.livery_file(&format!("_{short}")), name),
@@ -637,7 +675,7 @@ impl Library {
         let pssg = Pssg::read(&path)?;
         let textures = texture::read_car(&pssg);
         let found: Option<&Texture> = textures.iter().find(|t| t.name.eq_ignore_ascii_case(name));
-        found.map(Texture::dds).ok_or_else(|| format!("{}: no texture {name}", path.display()))
+        found.cloned().ok_or_else(|| format!("{}: no texture {name}", path.display()))
     }
 
     /// `livery_NN/textures_high/<car>_tex<variant>_high_NN.pssg`.
@@ -709,8 +747,9 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     let library =
         Library { car_dir, generics: data.join("cars/generics"), class: options.class.clone(), livery: options.livery };
     for key in materials.keys() {
-        let dds = library.find(&sources[key])?;
-        fs::write(textures.join(file(key)), dds).map_err(|e| e.to_string())?;
+        let texture = library.find(&sources[key])?;
+        let texture = if key == "cabin" { texture.toned(cabin_lift) } else { texture };
+        fs::write(textures.join(file(key)), texture.dds()).map_err(|e| e.to_string())?;
     }
 
     let name = &options.name;
@@ -728,7 +767,11 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     fs::write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &materials)).map_err(|e| e.to_string())?;
     for suffix in ["_settings.ini", "_shader_settings_clear.ini", "_shader_settings_overcast.ini"] {
         let from = options.template.join(format!("{template_name}{suffix}"));
-        fs::copy(&from, folder.join(format!("{name}{suffix}"))).map_err(|e| format!("{}: {e}", from.display()))?;
+        let mut text = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
+        if suffix.contains("shader_settings") {
+            text = set_key(&String::from_utf8_lossy(&text), "CarPaint", "Kf", "0.000000").into_bytes();
+        }
+        fs::write(folder.join(format!("{name}{suffix}")), text).map_err(|e| e.to_string())?;
     }
     Ok(model_path)
 }
@@ -798,6 +841,15 @@ mod tests {
         assert_eq!(class("Nothing"), None);
         assert_eq!(window("window_fl").as_deref(), Some("e_window_lf"));
         assert_eq!(window("window_f_trim"), None);
+    }
+
+    #[test]
+    fn a_settings_key_is_set_in_its_section_only() {
+        let text = "[CarPaint]\r\nKd = 1.6\r\nKf = 0.210000\r\n[CarGlass]\r\nKf = 1.0\r\n";
+        assert_eq!(
+            set_key(text, "CarPaint", "Kf", "0.000000"),
+            "[CarPaint]\r\nKd = 1.6\r\nKf = 0.000000\r\n[CarGlass]\r\nKf = 1.0\r\n"
+        );
     }
 
     #[test]
