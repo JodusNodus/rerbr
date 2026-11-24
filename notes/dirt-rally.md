@@ -297,9 +297,16 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   the body is 7 cm short at each axle against the physics' hubs), triangle order flipped (the mirror; unflipped, the outer skins were culled).
   Parts become `e_body` (everything outside, split at 60000 vertices), `e_window_*`, `e_wheel_{tarmac,gravel,snow}_<side>` (rim, tyre and disc, node at
   the hub), `e_internal` and `i_internal`; the template's collision hulls, helper nodes, points, cameras, lamp and shader settings are kept, so the
-  physics pack's frame holds. Not done: `i_steeringwheel`, doors and hoods as their own hinged or damageable parts (no dents), lamp parts (no brake
-  or reverse light, no flare), mirrors, wipers, the cockpit camera from DiRT's own (the template's sits mid-car), the other cars (`style` and `SIDES`
-  are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
-- Checked: loads with 0 missing textures and 0 bad triangles (25 meshes, 49711 triangles), 3 unit tests (the written mesh parses back, the clear
-  texture is a DDS the renderer reads, material to class), the whole crate's 57 tests; stills of the car alone, on `track-20_N` at the start and in a
-  live autopilot drive (cockpit view). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
+  physics pack's frame holds.
+- Steering wheel: `x0_steering_wheel` becomes `i_steeringwheel` and `e_steeringwheel`, node at the hub, local axes from the part's rows (x, y and the
+  z column negated for the mirrored local vertices; the same sense as the template's matrix, so the renderer's `wheel_turn` turns it the right way).
+  Cockpit, bonnet and bumper cameras: DiRT's `cameras.xml` (BXML, `rbr-dirt-rally xml FILE`) views `head-cam` (`position`), `bumper` and `bonnet`
+  (`offset`) place the template's `Cam_internal`, `Cam_bonnet` and `Cam_bonnet2` (look direction and length kept). The Escort is right-hand drive and
+  the RSF one left (the wheel hub x -0.343 against +0.299): when the wheel is on the other side from `D_driver_use`, the crew nodes (both seats, the
+  gear and handbrake hands) are mirrored in x, so the driver sits at the DiRT wheel; the game's driver clip shifts with the right hand, so the right
+  hand reaches across to the lever on its left.
+- Not done: doors and hoods as their own hinged or damageable parts (no dents), lamp parts (no brake or reverse light, no flare), mirrors, wipers,
+  the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
+- Checked: loads with 0 missing textures and 0 bad triangles (25 meshes, 49711 triangles), 4 unit tests (the written mesh parses back, a helper node
+  mirrors, the clear texture is a DDS the renderer reads, material to class), the whole crate's 58 tests; stills of the car alone, on `track-20_N` at the start and in a
+  live autopilot drive (cockpit with the DiRT wheel and eye, bonnet, bumper and chase). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

@@ -45,6 +45,16 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
         }
         Some("import") => import(args),
         Some("car") => car(args),
+        Some("xml") => {
+            let path = args.next().ok_or("xml needs a binary XML file")?;
+            let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
+            fn show(e: &crate::binxml::Element, depth: usize) {
+                println!("{}{} {:?} {}", "  ".repeat(depth), e.name, e.attrs, e.text.as_deref().unwrap_or(""));
+                e.children.iter().for_each(|c| show(c, depth + 1));
+            }
+            show(&crate::binxml::parse(&bytes)?, 0);
+            Ok(())
+        }
         Some("car-textures") => {
             let path = args.next().ok_or("car-textures needs a livery .pssg")?;
             for t in crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?) {

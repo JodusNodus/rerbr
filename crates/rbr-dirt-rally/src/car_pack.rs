@@ -5,6 +5,7 @@
 //! model) keeps its collision hulls, helper nodes, points, cameras, lamp settings and shader settings, and gives the
 //! frame the physics pack was fitted to (the rear axle at the origin, the front at -z, +x the left). The DiRT car's wheel
 //! centres are laid on the template's, the body between them follows (the wheelbases differ by centimetres).
+use crate::binxml::{self, Element};
 use crate::car::{self, Instance, Part};
 use crate::mesh::Mat;
 use crate::pssg::Pssg;
@@ -33,8 +34,13 @@ struct Piece {
     name: String,
     /// The node's translation in the template's frame.
     at: [f32; 3],
+    /// The node's axes in the template's frame (its columns), identity for a part modelled in the car's.
+    axes: [[f32; 3]; 3],
     faces: Vec<Face>,
 }
+
+/// The car's own axes: a part modelled in the car's frame.
+const UPRIGHT: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
 
 /// The triangles of one shader class and material.
 struct Face {
@@ -191,6 +197,9 @@ fn faces<'a>(
     groups.into_values().filter(|f| !f.triangles.is_empty()).collect()
 }
 
+/// No transform.
+const IDENTITY: Mat = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+
 /// Rotation and scale only: a part's matrix without its translation.
 fn without_translation(m: &Mat) -> Mat {
     let mut r = *m;
@@ -230,14 +239,19 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
                 car,
                 wanted,
             );
-            out.push(Piece { name: format!("e_wheel_{class}_{rbr}"), at: hub, faces });
+            out.push(Piece { name: format!("e_wheel_{class}_{rbr}"), at: hub, axes: UPRIGHT, faces });
         }
     }
 
     // Windows.
     for p in parts {
         if let Some(name) = window(&p.name) {
-            out.push(Piece { name, at: [0.0; 3], faces: faces(all(p).into_iter(), frame, [0.0; 3], car, |_| true) });
+            out.push(Piece {
+                name,
+                at: [0.0; 3],
+                axes: UPRIGHT,
+                faces: faces(all(p).into_iter(), frame, [0.0; 3], car, |_| true),
+            });
         }
     }
 
@@ -246,7 +260,23 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
     let interior: Vec<_> = parts.iter().filter(|p| cabin(p) && p.name != "steering_wheel").flat_map(all).collect();
     for name in ["e_internal", "i_internal"] {
         let faces = faces(interior.clone().into_iter(), frame, [0.0; 3], car, |m| m == "Cabin");
-        out.push(Piece { name: name.to_owned(), at: [0.0; 3], faces });
+        out.push(Piece { name: name.to_owned(), at: [0.0; 3], axes: UPRIGHT, faces });
+    }
+
+    // The steering wheel, in its own frame: the node's z is the column, toward the driver (the template's convention,
+    // which the crew's hands and the wheel's turn use). The vertices are DiRT's with z negated (`faces` through the
+    // zero frame), the axes the part's turned the same way: the mirror once, so the triangles are flipped once.
+    if let Some(p) = part("steering_wheel") {
+        let row = |k: usize| [p.transform[k][0], p.transform[k][1], p.transform[k][2]];
+        let (x, y, z) = (Frame::direction(row(0)), Frame::direction(row(1)), Frame::direction(row(2)));
+        let axes = [x, y, z.map(|v| -v)];
+        let hub = frame.point([p.transform[3][0], p.transform[3][1], p.transform[3][2]]);
+        let local = Frame { z_dirt: 0.0, z_template: 0.0, y_shift: 0.0 };
+        let instances: Vec<_> = p.instances.iter().map(|i| (i, IDENTITY)).collect();
+        for name in ["i_steeringwheel", "e_steeringwheel"] {
+            let faces = faces(instances.clone().into_iter(), &local, [0.0; 3], car, |_| true);
+            out.push(Piece { name: name.to_owned(), at: hub, axes, faces });
+        }
     }
 
     // Everything else outside: the body.
@@ -271,7 +301,7 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
         }
         n += 1;
         let name = if n == 1 { "e_body".to_owned() } else { format!("e_body{n}") };
-        out.push(Piece { name, at: [0.0; 3], faces: take });
+        out.push(Piece { name, at: [0.0; 3], axes: UPRIGHT, faces: take });
     }
     out
 }
@@ -315,8 +345,11 @@ fn mesh_body(piece: &Piece, id: i32, parent: i32) -> Result<Vec<u8>, String> {
     b.extend(id.to_le_bytes());
     b.extend(parent.to_le_bytes());
     le_f32(&mut b, &[0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0]);
-    let [x, y, z] = piece.at;
-    le_f32(&mut b, &[1.0, 0.0, 0.0, x, 0.0, 1.0, 0.0, y, 0.0, 0.0, 1.0, z]);
+    let (a, t) = (piece.axes, piece.at);
+    le_f32(
+        &mut b,
+        &[a[0][0], a[1][0], a[2][0], t[0], a[0][1], a[1][1], a[2][1], t[1], a[0][2], a[1][2], a[2][2], t[2]],
+    );
     le_f32(&mut b, &centre);
     le_f32(&mut b, &half);
     b.extend((positions.len() as i32).to_le_bytes());
@@ -356,21 +389,54 @@ fn record(out: &mut Vec<u8>, kind: u32, subtype: u32, body: &[u8]) {
     out.extend(body);
 }
 
-/// The template's records but its meshes, then ours.
+/// The nodes the crew sits and reaches by: the seats, the shifter and the handbrake (`rbr-render`'s `characters/incar`).
+const CREW: [&str; 6] = [
+    "D_driver_use",
+    "D_codriver_use",
+    "D_hand R_gear",
+    "D_hand R_gear p",
+    "D_hand R_handbrake",
+    "D_hand R_handbrake p",
+];
+
+/// A helper node's `body` with its place mirrored across the car's middle: the translation's x and the world matrix's.
+fn mirrored(body: &[u8]) -> Option<Vec<u8>> {
+    let name = body.iter().position(|&b| b == 0)?;
+    // The name, the id and the parent, then 14 words of transform and the 3x4 world matrix, row by row.
+    let transform = name + 1 + 8;
+    let mut out = body.to_vec();
+    for at in [transform, transform + 14 * 4 + 3 * 4] {
+        let x = f32::from_le_bytes(out.get(at..at + 4)?.try_into().ok()?);
+        out[at..at + 4].copy_from_slice(&(-x).to_le_bytes());
+    }
+    Some(out)
+}
+
+/// The template's records but its meshes, then ours. The crew's nodes follow the steering wheel to its side of the car.
 fn sgc_file(template: &[u8], pieces: &[Piece]) -> Result<Vec<u8>, String> {
     let mut out = sgc::BANNER.to_vec();
-    let root = sgc::parse(template)
-        .map_err(|e| format!("template model: {e}"))?
+    let elements = sgc::parse(template).map_err(|e| format!("template model: {e}"))?;
+    let root = elements
         .iter()
         .find_map(|e| match e {
             sgc::Element::Node(n) if n.parent == -1 => Some(n.id),
             _ => None,
         })
         .ok_or("the template model has no root node")?;
+    let seat = elements.iter().find_map(|e| match e {
+        sgc::Element::Node(n) if n.name == "D_driver_use" => Some(n.world[0][3]),
+        _ => None,
+    });
+    let hub = pieces.iter().find(|p| p.name == "i_steeringwheel").map(|p| p.at[0]);
+    let flip = seat.zip(hub).is_some_and(|(seat, hub)| seat * hub < 0.0);
     for rec in sgc::records(template).map_err(|e| format!("template model: {e}"))? {
-        if rec.kind != sgc::KIND_GEOMETRY {
-            record(&mut out, rec.kind, rec.subtype, rec.body);
+        if rec.kind == sgc::KIND_GEOMETRY {
+            continue;
         }
+        let named = |name: &str| rec.body.strip_prefix(name.as_bytes()).is_some_and(|rest| rest.first() == Some(&0));
+        let crew = flip && rec.kind == sgc::KIND_HELPER && CREW.iter().any(|n| named(n));
+        let body = if crew { mirrored(rec.body) } else { None };
+        record(&mut out, rec.kind, rec.subtype, body.as_deref().unwrap_or(rec.body));
     }
     for (i, piece) in pieces.iter().enumerate() {
         record(&mut out, sgc::KIND_GEOMETRY, sgc::SUBTYPE_STATIC, &mesh_body(piece, 1000 + i as i32, root)?);
@@ -378,18 +444,77 @@ fn sgc_file(template: &[u8], pieces: &[Piece]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// The part sections of the output ini and, before them, the template's cameras, points and planes.
-fn ini_file(template: &str, pieces: &[Piece]) -> String {
+/// The template's camera sections that DiRT's views replace: the section, DiRT's view and the parameter holding its place.
+const CAMERAS: [(&str, &str, &str); 3] =
+    [("Cam_internal", "head-cam", "position"), ("Cam_bonnet", "bumper", "offset"), ("Cam_bonnet2", "bonnet", "offset")];
+
+/// The view `ident` under `e`.
+fn view<'a>(e: &'a Element, ident: &str) -> Option<&'a Element> {
+    if e.name == "View" && e.attr("ident") == Some(ident) {
+        return Some(e);
+    }
+    e.children.iter().find_map(|c| view(c, ident))
+}
+
+/// Where DiRT's views put the eye, in the template's frame, by the template's camera section.
+fn eyes(cameras: &Element, frame: &Frame) -> BTreeMap<&'static str, [f32; 3]> {
+    let mut out = BTreeMap::new();
+    for (section, ident, parameter) in CAMERAS {
+        let place = view(cameras, ident)
+            .and_then(|v| v.children_named("Parameter").find(|p| p.attr("name") == Some(parameter)))
+            .and_then(|p| Some([p.attr_num("x")? as f32, p.attr_num("y")? as f32, p.attr_num("z")? as f32]));
+        if let Some(place) = place {
+            out.insert(section, frame.point(place));
+        }
+    }
+    out
+}
+
+/// The part sections of the output ini and, before them, the template's cameras, points and planes, the cameras
+/// moved to `eyes` (the look keeps its direction and its length).
+fn ini_file(template: &str, pieces: &[Piece], eyes: &BTreeMap<&str, [f32; 3]>) -> String {
     let mut out = String::new();
     let keep = |name: &str| ["cam_", "point_", "plane_"].iter().any(|p| name.to_ascii_lowercase().starts_with(p));
-    let mut kept = false;
+    let value = |section: &str, key: &str| {
+        let mut inside = false;
+        template.lines().find_map(|line| {
+            let line = line.trim();
+            match line.strip_prefix('[').and_then(|l| l.split(']').next()) {
+                Some(name) => inside = name.eq_ignore_ascii_case(section),
+                None if inside => {
+                    let (k, v) = line.split_once('=')?;
+                    return k.trim().eq_ignore_ascii_case(key).then(|| binxml::numbers::<3>(v)).flatten();
+                }
+                None => {}
+            }
+            None
+        })
+    };
+    let (mut kept, mut section) = (false, String::new());
     for line in template.lines() {
+        let line = line.trim_end_matches('\r');
         if let Some(name) = line.trim().strip_prefix('[').and_then(|l| l.split(']').next()) {
             kept = keep(name);
+            section = name.to_owned();
         }
-        if kept {
-            out += line.trim_end_matches('\r');
-            out.push('\n');
+        if !kept {
+            continue;
+        }
+        let key = line.split_once('=').map(|(k, _)| k.trim().to_ascii_lowercase());
+        let eye = eyes.iter().find(|(s, _)| s.eq_ignore_ascii_case(&section)).map(|(_, e)| *e);
+        let moved = match (eye, key.as_deref()) {
+            (Some(eye), Some("pos")) => Some(eye),
+            (Some(eye), Some("target")) => value(&section, "Pos")
+                .zip(value(&section, "Target"))
+                .map(|(pos, target)| std::array::from_fn(|k| eye[k] + target[k] - pos[k])),
+            _ => None,
+        };
+        match (moved, line.split_once('=')) {
+            (Some(v), Some((k, _))) => out += &format!("{}= {:.6} {:.6} {:.6}\n", k, v[0], v[1], v[2]),
+            _ => {
+                out += line;
+                out.push('\n');
+            }
         }
     }
     for piece in pieces {
@@ -566,7 +691,9 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
                 .map(|b| String::from_utf8_lossy(&b).into_owned())
         })
         .map_err(|e| e.to_string())?;
-    fs::write(folder.join(format!("{name}.ini")), ini_file(&template_ini, &pieces)).map_err(|e| e.to_string())?;
+    let cameras = binxml::parse(&fs::read(library.car_dir.join("cameras.xml")).map_err(|e| e.to_string())?)?;
+    fs::write(folder.join(format!("{name}.ini")), ini_file(&template_ini, &pieces, &eyes(&cameras, &frame)))
+        .map_err(|e| e.to_string())?;
     fs::write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &materials)).map_err(|e| e.to_string())?;
     for suffix in ["_settings.ini", "_shader_settings_clear.ini", "_shader_settings_overcast.ini"] {
         let from = options.template.join(format!("{template_name}{suffix}"));
@@ -592,8 +719,12 @@ mod tests {
 
     #[test]
     fn a_written_mesh_reads_back_with_its_faces() {
-        let piece =
-            Piece { name: "e_body".into(), at: [0.5, 0.25, -1.0], faces: vec![triangle("paint"), triangle("glass")] };
+        let piece = Piece {
+            name: "e_body".into(),
+            at: [0.5, 0.25, -1.0],
+            axes: UPRIGHT,
+            faces: vec![triangle("paint"), triangle("glass")],
+        };
         let mut file = sgc::BANNER.to_vec();
         record(&mut file, sgc::KIND_GEOMETRY, sgc::SUBTYPE_STATIC, &mesh_body(&piece, 7, -1).unwrap());
         let elements = sgc::parse(&file).unwrap();
@@ -607,6 +738,24 @@ mod tests {
             mesh.faces.iter().map(|f| (f.name.as_str(), f.prim_count, f.min_vertex, f.start_index)).collect();
         assert_eq!(faces, [("dr::paint", 1, 0, 0), ("dr::glass", 1, 3, 3)]);
         assert_eq!(mesh.triangles[1], [3, 4, 5]);
+    }
+
+    #[test]
+    fn a_helper_node_mirrors_across_the_middle() {
+        let mut body = b"D_driver_use\0".to_vec();
+        let words = [0.3, 0.1, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+            .into_iter()
+            .chain([1.0, 0.0, 0.0, 0.3, 0.0, 1.0, 0.0, 0.1, 0.0, 0.0, 1.0, -1.0]);
+        body.extend([98i32, 1].iter().flat_map(|v| v.to_le_bytes()));
+        body.extend(words.flat_map(f32::to_le_bytes));
+        let mut file = sgc::BANNER.to_vec();
+        record(&mut file, sgc::KIND_HELPER, 13, &mirrored(&body).unwrap());
+        let elements = sgc::parse(&file).unwrap();
+        let [sgc::Element::Node(node)] = elements.as_slice() else { panic!("one node") };
+        assert_eq!(
+            (node.transform.words()[..3].to_vec(), node.world[0][3], node.world[1][3]),
+            (vec![-0.3, 0.1, -1.0], -0.3, 0.1)
+        );
     }
 
     #[test]
