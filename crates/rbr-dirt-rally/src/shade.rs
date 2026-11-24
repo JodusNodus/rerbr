@@ -628,8 +628,8 @@ impl Shader {
                 if !rest.is_empty() {
                     shaded.meshes.push(Mesh { triangles: rest.iter().map(|&t| m.triangles[t]).collect(), ..m.clone() });
                 }
-                let flat = collapsed(m);
-                let (flat, good): (Vec<usize>, Vec<usize>) = good.into_iter().partition(|&t| flat[t]);
+                let collapsed = collapsed(m);
+                let (flat, good): (Vec<usize>, Vec<usize>) = good.into_iter().partition(|&t| collapsed[t]);
                 for piece in islands(m, &good) {
                     let r = repeats(m, &piece);
                     let world = r.world();
