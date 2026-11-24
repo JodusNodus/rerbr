@@ -52,8 +52,8 @@ pub fn default_name(route: &Route) -> String {
 /// Converts the route `id` (`location/area/route_<n>`) of `install`.
 pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, String> {
     let route = install.route(id)?;
-    if !route.is_rally() {
-        return Err(format!("{id}: only rally stages convert (not rallycross, Pikes Peak or the frontend)"));
+    if !route.is_rally() && route.area != "pikes_peak" {
+        return Err(format!("{id}: only rally stages and Pikes Peak convert (not rallycross or the frontend)"));
     }
     let control = &options.control;
     control.say(&format!("reading {}", route.id()));
@@ -321,12 +321,13 @@ const BILLBOARD_REACH: f64 = 1000.;
 #[cfg(test)]
 const DRAWN_BUDGET: usize = 6_000_000;
 
-/// Whether a shader draws its diffuse texture's alpha (cut-out leaves and blended signs; the other props' alpha is a
-/// gloss or emission mask: `Object_Emis`, `Object_Norm` and `Object_Stones` carry DXT5 with varying alpha too). Trunks
+/// Whether a shader draws its diffuse texture's alpha (cut-out leaves, wire fences and branches of `Object_Cov` and
+/// `Object_2SidedCov`, blended signs; the other props' alpha is a gloss or emission mask: `Object_Emis`, `Object_Norm` and `Object_Stones` carry DXT5 with varying alpha too). Trunks
 /// and `foliage_environment` are opaque.
 fn blended(shader: &str) -> bool {
     let s = shader.to_lowercase();
     s.contains("blend")
+        || s.contains("cov.fx")
         || ((s.starts_with("foliage") || s.starts_with("facing_foliage") || s.starts_with("treesheet"))
             && !s.contains("trunk"))
 }
