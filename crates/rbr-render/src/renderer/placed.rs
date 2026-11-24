@@ -9,8 +9,8 @@
 //! against the expanded vertex's 88), which `instanced` in `shader.wgsl` reads by the placement's [`Header`].
 
 use super::meshes::{GpuDraw, GpuMesh, MeshBuffers, MeshSlot, Packing};
-use crate::relight::Ground;
 use crate::foliage;
+use crate::relight::Ground;
 use crate::stage::placed::{Group, Instance, Placed};
 use crate::stage::{Anchor, Draw, Lod, Mesh, Vertex};
 use bytemuck::{Pod, Zeroable};
@@ -124,29 +124,39 @@ pub(super) fn crowns<'a>(
     let mut by_key: HashMap<_, Vec<(usize, u32)>> = HashMap::new();
     for group in &placed.groups {
         let b = group.bounds;
-        let key = (group.layer, group.lod, group.sun_cascades, b.center.to_array().map(f32::to_bits), b.half_extent.to_array().map(f32::to_bits));
+        let key = (
+            group.layer,
+            group.lod,
+            group.sun_cascades,
+            b.center.to_array().map(f32::to_bits),
+            b.half_extent.to_array().map(f32::to_bits),
+        );
         by_key.entry(key).or_default().extend(group.instances.clone().map(|k| (group.model, k)));
     }
     let cells: Vec<Vec<(usize, u32)>> = by_key.into_values().collect();
     let found = crate::parallel::in_parallel(&cells, |cell| {
-        let mut world = Mesh { vertices: Vec::new(), indices: Vec::new(), draws: Vec::new(), ..meshes[cell[0].0].clone() };
+        let mut world =
+            Mesh { vertices: Vec::new(), indices: Vec::new(), draws: Vec::new(), ..meshes[cell[0].0].clone() };
         for &(model, k) in cell {
             let base = world.vertices.len() as u32;
             let first = world.indices.len();
             let instance = &placed.instances[k as usize];
             world.vertices.extend(vertices[model].iter().map(|v| instance.place(v)));
             world.indices.extend(meshes[model].indices.iter().map(|i| base + i));
-            world.draws.extend(meshes[model].draws.iter().map(|d| Draw {
-                indices: first + d.indices.start..first + d.indices.end,
-                ..d.clone()
-            }));
+            world.draws.extend(
+                meshes[model]
+                    .draws
+                    .iter()
+                    .map(|d| Draw { indices: first + d.indices.start..first + d.indices.end, ..d.clone() }),
+            );
         }
         let crowns = foliage::crowns(&world, plant);
         let mut at = 0;
         cell.iter()
             .map(|&(model, k)| {
                 let n = vertices[model].len();
-                let on = vertices[model].iter().zip(&crowns[at..at + n]).find(|(v, _)| v.occlusion as u32 & ON_PLANT != 0);
+                let on =
+                    vertices[model].iter().zip(&crowns[at..at + n]).find(|(v, _)| v.occlusion as u32 & ON_PLANT != 0);
                 at += n;
                 (k, on.and_then(|(_, c)| *c))
             })
@@ -240,8 +250,11 @@ impl Models {
         baked: bool,
     ) -> Models {
         let mut packing = Packing::default();
-        let vertices: Vec<Vec<Vertex>> =
-            meshes.iter().zip(prepared).map(|(mesh, prepared)| prepared.unwrap_or_else(|| mesh.vertices.clone())).collect();
+        let vertices: Vec<Vec<Vertex>> = meshes
+            .iter()
+            .zip(prepared)
+            .map(|(mesh, prepared)| prepared.unwrap_or_else(|| mesh.vertices.clone()))
+            .collect();
         let at: Vec<(MeshSlot, u32)> =
             meshes.iter().zip(&vertices).map(|(mesh, v)| packing.add(device, v, &mesh.indices, false)).collect();
         let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -361,7 +374,11 @@ impl Ambient {
                 return;
             };
             let words: Vec<[u32; 4]> = vertices.iter().map(record).collect();
-            eprintln!("DEBUG ambient pack {} vertices, mean occlusion {}", vertices.len(), vertices.iter().map(|v| v.occlusion).sum::<f32>() / vertices.len() as f32);
+            eprintln!(
+                "DEBUG ambient pack {} vertices, mean occlusion {}",
+                vertices.len(),
+                vertices.iter().map(|v| v.occlusion).sum::<f32>() / vertices.len() as f32
+            );
             queue.write_buffer(&self.records, at, bytemuck::cast_slice(&words));
             at += (words.len() * size_of::<[u32; 4]>()) as u64;
         }

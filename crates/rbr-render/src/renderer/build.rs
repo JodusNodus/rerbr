@@ -400,17 +400,17 @@ impl Renderer {
         let prepared_models = in_parallel(&scaled, |&(mesh, scale)| {
             lit.then(|| placed_gpu::prepared_model(sun::with_normals(mesh), mesh, scale, ground.is_some(), plant))
         });
-        let models = (!stage.placed.groups.is_empty())
-            .then(|| {
-                let (placed, ground) = (&stage.placed, ground.as_ref());
-                let mut crowns = Vec::new();
-                if lit {
-                    let vertices: Vec<&[crate::stage::Vertex]> = prepared_models.iter().flatten().map(Vec::as_slice).collect();
-                    crowns = placed_gpu::crowns(placed, &model_meshes, &vertices, plant);
-                    queue.write_buffer(&placed_crowns, 0, bytemuck::cast_slice(&placed_gpu::crown_words(&crowns)));
-                }
-                placed_gpu::Models::new(&device, placed, &model_meshes, prepared_models, ground, crowns, bakes_placed)
-            });
+        let models = (!stage.placed.groups.is_empty()).then(|| {
+            let (placed, ground) = (&stage.placed, ground.as_ref());
+            let mut crowns = Vec::new();
+            if lit {
+                let vertices: Vec<&[crate::stage::Vertex]> =
+                    prepared_models.iter().flatten().map(Vec::as_slice).collect();
+                crowns = placed_gpu::crowns(placed, &model_meshes, &vertices, plant);
+                queue.write_buffer(&placed_crowns, 0, bytemuck::cast_slice(&placed_gpu::crown_words(&crowns)));
+            }
+            placed_gpu::Models::new(&device, placed, &model_meshes, prepared_models, ground, crowns, bakes_placed)
+        });
         let mut placed_meshes: Vec<GpuMesh> = stage
             .placed
             .groups
