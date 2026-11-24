@@ -77,8 +77,6 @@ enum Source {
     LiveryClass(&'static str, String),
     /// A texture of the class's generic file (`car_gen_main_high`, `car_gen_tm_high`).
     Generic(&'static str, String),
-    /// A flat light translucent texture made here.
-    Clear,
 }
 
 fn style(material: &str, car: &str) -> Option<Style> {
@@ -102,9 +100,14 @@ fn style(material: &str, car: &str) -> Option<Style> {
             texture: livery(&format!("{car}_glass.tga")),
             opacity: true,
         }),
-        "Lights Glass" => {
-            Some(Style { shader: "CarGlass", key: "clear".to_owned(), texture: Source::Clear, opacity: true })
-        }
+        // The lens carries the lamp's colours: its UVs lie on the lights atlas (red and amber at the tail, a clear
+        // circle at the head); the atlas's alpha is the lens's own.
+        "Lights Glass" => Some(Style {
+            shader: "CarGlass",
+            key: "lens".to_owned(),
+            texture: livery(&format!("{car}_lights.tga")),
+            opacity: true,
+        }),
         "Lights Pod" | "Lights Satin" => flat("CarTextureNoDirt", "lights", livery(&format!("{car}_lights.tga"))),
         "Discs" => flat("CarTextureNoDirt", "disc", livery("disc.tga")),
         "Suspension" => flat("CarTextureNoDirt", "suspension", Source::Generic("main", "suspension.tga".to_owned())),
@@ -128,6 +131,25 @@ fn window(part: &str) -> Option<String> {
     let side = part.strip_prefix("window_")?;
     let side = SIDES.iter().find(|(d, _)| *d == side).map_or(side, |(_, r)| r);
     (!side.contains('_')).then(|| format!("e_window_{side}"))
+}
+
+/// The lamps: DiRT's lens part and the renderer's part name before the side (`e_light_brake_lb`). The combined tail and brake
+/// lamp is the brake lamp; the bumper's extra lamps stay in the body.
+const LAMPS: [(&str, &str); 3] =
+    [("light_glass", "e_light_"), ("light_combi_glass", "e_light_brake_"), ("light_rev_glass", "e_light_reverse_")];
+
+/// A lamp part's switch box and whether it is the lit part, by the names the renderer gives lamps (`e_light_lf_lit`:
+/// `light_lf`, lit; `e_light_brake_lb`: `brake_lb`, unlit).
+fn lamp(part: &str) -> Option<(String, bool)> {
+    let rest = part.strip_prefix("e_light_")?;
+    let (rest, lit) = rest.strip_suffix("_lit").map_or((rest, false), |rest| (rest, true));
+    let named = rest.starts_with("brake_") || rest.starts_with("reverse_");
+    Some((if named { rest.to_owned() } else { format!("light_{rest}") }, lit))
+}
+
+/// Whether `part` is the lens of a lamp of [`LAMPS`].
+fn lens(part: &str) -> bool {
+    LAMPS.iter().any(|(lens, _)| part.strip_prefix(lens).is_some_and(|side| side.starts_with('_') && side.len() == 3))
 }
 
 /// A part's matrix in the template's frame: the DiRT frame (x left, y up, z forward, right handed) turned into the
@@ -255,6 +277,17 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
         }
     }
 
+    // The lamps: each lens as an unlit and a lit part, which the lamp's switch box swaps (`ini_file`).
+    for (dirt, rbr) in LAMPS {
+        for (side, rbr_side) in SIDES {
+            let Some(lens) = part(&format!("{dirt}_{side}")) else { continue };
+            for suffix in ["", "_lit"] {
+                let faces = faces(all(lens).into_iter(), frame, [0.0; 3], car, |_| true);
+                out.push(Piece { name: format!("{rbr}{rbr_side}{suffix}"), at: [0.0; 3], axes: UPRIGHT, faces });
+            }
+        }
+    }
+
     // The interior: the cabin material of every part, seen from outside and from the cockpit.
     let cabin = |p: &Part| p.name.starts_with("main_interior") || p.instances.iter().any(|i| i.material == "Cabin");
     let interior: Vec<_> = parts.iter().filter(|p| cabin(p) && p.name != "steering_wheel").flat_map(all).collect();
@@ -283,7 +316,13 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
     let is_wheel = |n: &str| n.starts_with("wheel_") || n.starts_with("tyre_") || n.starts_with("disc_");
     let body: Vec<_> = parts
         .iter()
-        .filter(|p| !is_wheel(&p.name) && window(&p.name).is_none() && !dropped(&p.name) && p.name != "steering_wheel")
+        .filter(|p| {
+            !is_wheel(&p.name)
+                && window(&p.name).is_none()
+                && !lens(&p.name)
+                && !dropped(&p.name)
+                && p.name != "steering_wheel"
+        })
         .flat_map(all)
         .collect();
     let mut faces = faces(body.into_iter(), frame, [0.0; 3], car, |m| m != "Cabin" && m != "Window Glass");
@@ -518,7 +557,16 @@ fn ini_file(template: &str, pieces: &[Piece], eyes: &BTreeMap<&str, [f32; 3]>) -
         }
     }
     for piece in pieces {
-        out += &format!("\n[{}]\nSwitch = false\nSwitchBox = light\nPredicate = NotUsed\n", piece.name);
+        out += &match lamp(&piece.name) {
+            Some((switch, lit)) => {
+                format!(
+                    "\n[{}]\nSwitch = true\nSwitchBox = {switch}\nPredicate = {}\n",
+                    piece.name,
+                    ["off", "on"][lit as usize]
+                )
+            }
+            None => format!("\n[{}]\nSwitch = false\nSwitchBox = light\nPredicate = NotUsed\n", piece.name),
+        };
         for (i, face) in piece.faces.iter().enumerate() {
             out += &format!(
                 "FaceBlock{i}_Shader = {}\nFaceBlock{i}_Material = {}\n",
@@ -569,22 +617,6 @@ fn shaders_file(name: &str, materials: &BTreeMap<String, (bool, String)>) -> Str
     out
 }
 
-/// A 4x4 `DXT5` of one light grey and a low alpha, for the lamps' lenses.
-fn clear_dds() -> Vec<u8> {
-    let mut out = b"DDS ".to_vec();
-    let mut head = [0u32; 31];
-    (head[0], head[1], head[2], head[3], head[4]) = (124, 0x1 | 0x2 | 0x4 | 0x1000 | 0x8_0000, 4, 4, 16);
-    (head[18], head[19], head[20], head[26]) = (32, 0x4, u32::from_le_bytes(*b"DXT5"), 0x1000);
-    out.extend(head.iter().flat_map(|v| v.to_le_bytes()));
-    // Alpha 70 for every texel, then the colour block: both endpoints (200, 205, 210) as 5:6:5.
-    let colour: u16 = (25 << 11) | (51 << 5) | 26;
-    out.extend([70, 70, 0, 0, 0, 0, 0, 0]);
-    out.extend(colour.to_le_bytes());
-    out.extend(colour.to_le_bytes());
-    out.extend([0; 4]);
-    out
-}
-
 /// The texture `source` of the DiRT install as a `.dds`, from the files of `car_dir`.
 struct Library {
     car_dir: PathBuf,
@@ -596,7 +628,6 @@ struct Library {
 impl Library {
     fn find(&self, source: &Source) -> Result<Vec<u8>, String> {
         let (path, name) = match source {
-            Source::Clear => return Ok(clear_dds()),
             Source::Livery(name) => (self.livery_file(""), name),
             Source::LiveryClass(short, name) => (self.livery_file(&format!("_{short}")), name),
             Source::Generic(short, name) => {
@@ -759,11 +790,6 @@ mod tests {
     }
 
     #[test]
-    fn the_clear_texture_is_a_dxt5_the_renderer_reads() {
-        assert!(rbr_formats::dds::parse(&clear_dds()).is_ok());
-    }
-
-    #[test]
     fn materials_map_to_the_renderers_classes() {
         let class = |m: &str| style(m, "cme").map(|s| (s.shader, s.key));
         assert_eq!(class("Car Body Paint"), Some(("CarPaint", "paint".to_owned())));
@@ -772,5 +798,15 @@ mod tests {
         assert_eq!(class("Nothing"), None);
         assert_eq!(window("window_fl").as_deref(), Some("e_window_lf"));
         assert_eq!(window("window_f_trim"), None);
+    }
+
+    #[test]
+    fn lamp_parts_name_their_switch_boxes() {
+        assert_eq!(lamp("e_light_lf"), Some(("light_lf".to_owned(), false)));
+        assert_eq!(lamp("e_light_brake_lb_lit"), Some(("brake_lb".to_owned(), true)));
+        assert_eq!(lamp("e_light_reverse_rb"), Some(("reverse_rb".to_owned(), false)));
+        assert_eq!(lamp("e_body"), None);
+        assert!(["light_glass_fl", "light_combi_glass_br", "light_rev_glass_bl"].iter().all(|p| lens(p)));
+        assert!(!["light_rig_glass_fl", "light_combi_pod_bl", "light_glass_fl_x"].iter().any(|p| lens(p)));
     }
 }

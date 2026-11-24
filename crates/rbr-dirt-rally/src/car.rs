@@ -102,8 +102,11 @@ pub fn info(parts: &[Part], verbose: bool) -> String {
             let (lo, hi) = i.positions.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(lo, hi), p| {
                 (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
             });
+            let (uv_lo, uv_hi) = i.uv.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| {
+                (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+            });
             out += &format!(
-                "{:<24} {:<18} j{:<3} {:<10} v{:<6} t{:<6} uv{:<6} [{:6.2} {:6.2} {:6.2}] .. [{:6.2} {:6.2} {:6.2}]\n",
+                "{:<24} {:<18} j{:<3} {:<10} v{:<6} t{:<6} uv{:<6} [{:6.2} {:6.2} {:6.2}] .. [{:6.2} {:6.2} {:6.2}] uv [{:.2} {:.2}] .. [{:.2} {:.2}]\n",
                 part.name,
                 i.material,
                 i.joint.map_or("-".to_owned(), |j| j.to_string()),
@@ -117,6 +120,10 @@ pub fn info(parts: &[Part], verbose: bool) -> String {
                 hi[0],
                 hi[1],
                 hi[2],
+                uv_lo[0],
+                uv_lo[1],
+                uv_hi[0],
+                uv_hi[1],
             );
         }
     }

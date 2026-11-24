@@ -305,8 +305,14 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   the RSF one left (the wheel hub x -0.343 against +0.299): when the wheel is on the other side from `D_driver_use`, the crew nodes (both seats, the
   gear and handbrake hands) are mirrored in x, so the driver sits at the DiRT wheel; the game's driver clip shifts with the right hand, so the right
   hand reaches across to the lever on its left.
-- Not done: doors and hoods as their own hinged or damageable parts (no dents), lamp parts (no brake or reverse light, no flare), mirrors, wipers,
-  the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
+- Lamps: `Lights Glass` is the lens, its UVs on the `cme_lights` atlas (red and amber at the tail, white at the reverse, the clear circle at the head;
+  the atlas's alpha is the lens's own, so it is `CarGlass` with that texture, `dr_lens.dds`). The lenses `light_glass_f{l,r}`, `light_combi_glass_b{l,r}`
+  and `light_rev_glass_b{l,r}` are each an unlit part (`Predicate = off`) and a lit one (`_lit`, `on`) on the switch boxes `light_lf`, `brake_lb`,
+  `reverse_lb` and so on, named as the renderer names lamps (`e_light_lf`, `e_light_brake_lb`, `e_light_reverse_lb`), so the headlight key, the brake
+  pedal and the reverse gear light them (the renderer glows a lit lens by its area). DiRT's combined tail and brake lamp is the brake lamp only: no
+  tail glow at night. The bumper's rally lights (`light_rig_*`) and the small lenses on the bumpers and wings stay in the body, unlit.
+- Not done: doors and hoods as their own hinged or damageable parts (no dents), mirrors, wipers, tail lamps' own glow, the rally lights switched
+  by the headlight key, the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
 - Checked: loads with 0 missing textures and 0 bad triangles (25 meshes, 49711 triangles), 4 unit tests (the written mesh parses back, a helper node
-  mirrors, the clear texture is a DDS the renderer reads, material to class), the whole crate's 58 tests; stills of the car alone, on `track-20_N` at the start and in a
-  live autopilot drive (cockpit with the DiRT wheel and eye, bonnet, bumper and chase). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
+  mirrors, material to class, lamp parts' switch boxes), the whole crate's 58 tests; stills of the car alone, on `track-20_N` at the start and in a
+  live autopilot drive (cockpit with the DiRT wheel and eye, bonnet, bumper and chase; day and night, brake lamps lit and unlit). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
