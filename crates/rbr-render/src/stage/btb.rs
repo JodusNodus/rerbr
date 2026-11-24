@@ -4,9 +4,10 @@
 //! technique becomes, and what is missing: `notes/btb.md` "Drawing".
 //!
 //! Every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and `LODOut` (a mesh each,
-//! drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds, except the objects that
-//! ask to be instanced (`ReRbrInstanced=1`, [`instanced`]): their mesh is stored once and each placement is a transform
-//! ([`placed`]), grouped the same way.
+//! drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds, except the instanced
+//! objects ([`instanced`]: those that ask, `ReRbrInstanced=1`, or on a stage where none asks those with
+//! [`AUTO_MIN`] placements or more): their mesh is stored once and each placement is a transform ([`placed`]), grouped
+//! the same way.
 
 use super::mesh::{Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex};
 use super::placed::{self, bounds_and_cell, Instance, AMBIENT};
@@ -86,8 +87,30 @@ fn layered(l: &scene::Layers, texture: &mut impl FnMut(&Option<String>) -> Optio
     }
 }
 
-/// The fewest placements of an object that `RBR_BTB_INSTANCE=auto` draws as instances.
+/// The fewest placements of an object drawn as instances on a stage whose objects do not say ([`Instancing::Auto`]).
 const AUTO_MIN: usize = 8;
+
+/// Which objects are drawn as instances ([`instanced`]): `RBR_BTB_INSTANCE` `off` none, `asked` those that ask
+/// (`ReRbrInstanced=1`), `auto` those and the ones with [`AUTO_MIN`] placements or more; unset, `auto` on a stage where
+/// none asks (RallySimFans' stages), else `asked` (the converters', which ask for their own).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Instancing {
+    Off,
+    Asked,
+    Auto,
+}
+
+impl Instancing {
+    fn of(scene: &Scene) -> Instancing {
+        match std::env::var("RBR_BTB_INSTANCE").as_deref() {
+            Ok("off") => Instancing::Off,
+            Ok("asked") => Instancing::Asked,
+            Ok("auto") => Instancing::Auto,
+            _ if scene.objects.iter().any(|o| o.instanced) => Instancing::Asked,
+            _ => Instancing::Auto,
+        }
+    }
+}
 /// The triangles of a placement [`on_ground`] samples, at most.
 const GROUND_SAMPLES: usize = 64;
 
@@ -220,19 +243,19 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     let dome_points: Vec<Vec3> = scene.driveline.iter().step_by(step).map(|&p| Vec3::from(p)).collect();
     let mut groups = Groups::default();
     let mut placed = placed::Builder::default();
-    let auto = std::env::var("RBR_BTB_INSTANCE").is_ok_and(|v| v == "auto");
+    let rule = Instancing::of(&scene);
     for object in scene.objects.iter().filter(|o| o.visible) {
         let Some(plan) = &plans[object.mesh] else { continue };
         let mesh = &scene.meshes[object.mesh];
         let (low, high) = local_bounds(mesh);
-        let instancing = instanced(object, plan, auto);
+        let instancing = instanced(object, plan, rule);
         for placement in &object.placements {
             let (centre, half) = world_bounds(placement, low, high);
             let solo = half.max_element() > SOLO;
             let reach = if solo { half.length() } else { 0.0 };
             let lod = band(object.lod_in, object.lod_out + reach);
             if instancing && !solo {
-                // Forced on an object that did not ask (development), a converted stage's ground stays baked.
+                // On an object that did not ask (auto), a converted stage's ground stays baked.
                 let on = || {
                     let t = phases::start();
                     let vertices = world_vertices(mesh, plan, placement, to_sun);
@@ -241,18 +264,16 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 };
                 if object.instanced || !on() {
                     let t = phases::start();
-                    let model = placed.model(object.mesh, || placed::Model {
-                        vertices: model_vertices(mesh, plan),
-                        indices: mesh.indices.clone(),
-                    });
                     let cell = ((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32);
-                    let key = (model, cell, lod, object.sun_cascades);
-                    placed.add(
-                        key,
-                        &plan.draws,
-                        Instance::new(placement, to_sun, plan.up),
-                        (centre - half, centre + half),
-                    );
+                    for &(layer, state) in &plan.draws {
+                        let model = placed.model(object.mesh, layer, || placed::Model {
+                            vertices: model_vertices(mesh, plan),
+                            indices: mesh.indices.clone(),
+                        });
+                        let key = (model, cell, lod, object.sun_cascades);
+                        let instance = Instance::new(placement, to_sun, plan.up);
+                        placed.add(key, (layer, state), instance, (centre - half, centre + half));
+                    }
                     phases::add("instanced group add", t);
                     continue;
                 }
@@ -260,7 +281,11 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let cell = if solo {
                 Cell::Solo(groups.solos.next())
             } else {
-                Cell::At((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32)
+                let cell = ((centre.x / CELL).floor() as i32, (centre.z / CELL).floor() as i32);
+                for &(layer, _) in &plan.draws {
+                    placed.cover((layer, cell, lod, object.sun_cascades), (centre - half, centre + half));
+                }
+                Cell::At(cell.0, cell.1)
             };
             let t = phases::start();
             let vertices = world_vertices(mesh, plan, placement, to_sun);
@@ -406,12 +431,16 @@ struct Plan {
     hides: Option<Option<TextureRef>>,
 }
 
-/// Whether the placements of `object` are drawn as instances ([`placed`]): when it asks (`ReRbrInstanced`) or, to compare
-/// the two (`RBR_BTB_INSTANCE=auto`), when it has at least [`AUTO_MIN`]; and it has a few placements, is no
-/// collision ground and neither grows nor hides the grass (which are read in the world).
-fn instanced(object: &scene::Object, plan: &Plan, auto: bool) -> bool {
+/// Whether the placements of `object` are drawn as instances ([`placed`]), by `instancing`: when it asks
+/// (`ReRbrInstanced`) or has at least [`AUTO_MIN`] ([`Instancing::Auto`]); and it has a few placements, is no collision
+/// ground and neither grows nor hides the grass (which are read in the world).
+fn instanced(object: &scene::Object, plan: &Plan, instancing: Instancing) -> bool {
     let grows = plan.draws.iter().any(|(_, state)| state.grass.is_some());
-    let asks = object.instanced || (auto && object.placements.len() >= AUTO_MIN);
+    let asks = match instancing {
+        Instancing::Off => false,
+        Instancing::Asked => object.instanced,
+        Instancing::Auto => object.instanced || object.placements.len() >= AUTO_MIN,
+    };
     asks && object.placements.len() >= 2 && !object.collides && !grows && plan.hides.is_none()
 }
 
@@ -733,8 +762,10 @@ mod tests {
         let to_sun = Vec3::Y;
         let lod = band(0.0, 300.0);
         let (mut groups, mut builder) = (Groups::default(), placed::Builder::default());
-        let model = builder
-            .model(0, || placed::Model { vertices: model_vertices(&mesh, &plan), indices: mesh.indices.clone() });
+        let model = builder.model(0, Layer::Solid, || placed::Model {
+            vertices: model_vertices(&mesh, &plan),
+            indices: mesh.indices.clone(),
+        });
         for x in [10.0, 20.0, 140.0] {
             let placement = [turned()[..12].to_vec(), vec![x, 3.0, 5.0, 1.0]].concat().try_into().unwrap();
             let (centre, half) = world_bounds(&placement, low, high);
@@ -750,7 +781,7 @@ mod tests {
             );
             builder.add(
                 (model, cell, lod, true),
-                &plan.draws,
+                plan.draws[0],
                 Instance::new(&placement, to_sun, false),
                 (centre - half, centre + half),
             );

@@ -116,11 +116,9 @@ pub(super) struct MeshBuffers {
     /// Vertices in world space, which the bakes of the sky's occlusion and the bounce write into: false for the packs of
     /// instanced models, whose vertices are in their own space.
     pub(super) baked: bool,
-    /// The instance buffer of the instanced meshes of this pack ([`Instance`](crate::stage::placed::Instance)s, shared
-    /// by all model packs).
-    pub(super) instances: Option<wgpu::Buffer>,
-    /// The stage pack holding their probes, one baked `Vertex` per instance, and where they start in bytes.
-    pub(super) probes: Option<(wgpu::Buffer, u64)>,
+    /// The instance buffers of the instanced meshes of this pack, shared by all model packs: the
+    /// [`Instance`](crate::stage::placed::Instance)s and their [`Header`](super::placed::Header)s.
+    pub(super) instances: Option<(wgpu::Buffer, wgpu::Buffer)>,
 }
 
 /// The most bytes of vertices or indices in one pair of [`MeshBuffers`], within wgpu's default buffer size limit.
@@ -193,7 +191,6 @@ impl Packing {
             backdrop: std::mem::take(&mut self.backdrop),
             baked: true,
             instances: None,
-            probes: None,
         });
         rbr_btb::phases::add("vertex/index buffer creation (CPU)", timed);
     }
@@ -237,11 +234,9 @@ impl<'a> Bound<'a> {
             let buffers = &self.buffers[mesh.slot.buffer];
             pass.set_vertex_buffer(0, buffers.vertices.slice(..));
             pass.set_index_buffer(buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
-            if let Some(instances) = &buffers.instances {
+            if let Some((instances, headers)) = &buffers.instances {
                 pass.set_vertex_buffer(1, instances.slice(..));
-            }
-            if let Some((probes, from)) = &buffers.probes {
-                pass.set_vertex_buffer(2, probes.slice(*from..));
+                pass.set_vertex_buffer(2, headers.slice(..));
             }
             self.buffer = Some(mesh.slot.buffer);
         }

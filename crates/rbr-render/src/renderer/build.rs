@@ -96,6 +96,10 @@ impl Renderer {
         let shadow_range = shadows::ShadowRange::new(&device, &shadow_view);
         // The volumetric clouds' shadow map ([`cloud_volume::shadow_target`]), read by every draw.
         let (cloud_shadow_view, cloud_shadow_sampler) = cloud_volume::shadow_target(&device);
+        // The stage's vertices are prepared for the lit draws (`prepare`); the instanced ones' records, baked with the
+        // lighting, and crowns are bound with the frame.
+        let lit = enhance.lighting || enhance.wet || timed;
+        let placed_storage = placed_gpu::Storage::new(&device, &stage.placed, enhance.lighting, lit);
         let frames = [(); 3].map(|_| {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("frame"),
@@ -148,6 +152,8 @@ impl Renderer {
                         binding: 20,
                         resource: wgpu::BindingResource::Sampler(&cloud_shadow_sampler),
                     },
+                    wgpu::BindGroupEntry { binding: 21, resource: placed_storage.records.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 22, resource: placed_storage.crowns.as_entire_binding() },
                 ],
             });
             FrameBinding { buffer, bind_group }
@@ -361,7 +367,6 @@ impl Renderer {
         let over = crate::sky_dome::Over::of(&stage.meshes, &stage.driveline);
         // A stage mesh's vertices as drawn, when they are not its own: the sun's light needs the normals the baked stage
         // draws do not store, the sun's shadows the plants.
-        let lit = enhance.lighting || enhance.wet || timed;
         let prepare = |mesh: &Mesh| {
             lit.then(|| {
                 let mut vertices = sun::with_normals(mesh);
@@ -378,24 +383,11 @@ impl Renderer {
                 vertices
             })
         };
-        // The instanced models' vertices, as a mesh's but for what is the world's alone: the ground under a plant, the
-        // film's lowness. Their meshes follow the solid ones (at the props), the blended after the rest.
-        let model_meshes = placed_gpu::model_meshes(&stage.placed);
-        let prepared_models = in_parallel(&model_meshes, |mesh| {
-            lit.then(|| {
-                let mut vertices = sun::with_normals(mesh);
-                // The ground's normal under a plant (`Ground::on_foliage`) is the placement's up here.
-                if ground.is_some() {
-                    let plants = mesh.draws.iter().filter(|d| d.state.shade.is_none() && d.state.alpha_ref.is_some());
-                    for &i in plants.flat_map(|d| &mesh.indices[d.indices.clone()]) {
-                        vertices[i as usize].normal = [0.0, 1.0, 0.0];
-                    }
-                }
-                foliage::with_plants(vertices, mesh, plant)
-            })
+        // The instanced models' vertices, as a mesh's but for what is the world's alone (`placed::prepared_model`).
+        // Their meshes follow the solid ones (at the props), the blended after the rest.
+        let models = (!stage.placed.groups.is_empty()).then(|| {
+            placed_gpu::Models::new(&device, &queue, &stage.placed, &placed_storage, lit, ground.as_ref(), plant)
         });
-        let models = (!stage.placed.groups.is_empty())
-            .then(|| placed_gpu::Models::new(&device, &mut packing, &stage.placed, &model_meshes, prepared_models));
         let mut placed_meshes: Vec<GpuMesh> = stage
             .placed
             .groups
@@ -542,9 +534,7 @@ impl Renderer {
         meshes.extend(placed_blended);
 
         let mut buffers = packing.finish(&device);
-        if let Some(models) = models {
-            models.finish(&device, &mut buffers, &mut meshes);
-        }
+        let ambient = models.and_then(|m| m.finish(&device, &stage.placed, &mut buffers, &mut meshes, &placed_storage));
         rbr_btb::phases::mark("gpu: mesh prepare, buffer upload, pipelines");
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();
@@ -555,6 +545,9 @@ impl Renderer {
             let toward = -stage.atmosphere.sun_direction;
             bounce::bake(&device, &queue, &texture_layout, &meshes, &buffers, &ground_light, toward);
             rbr_btb::phases::mark("bake: bounce");
+            if let Some(ambient) = ambient {
+                ambient.apply(&device, &queue, &mut buffers);
+            }
             ground_light
         });
         let depth_size = (1, 1);

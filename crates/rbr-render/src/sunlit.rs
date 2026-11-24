@@ -10,7 +10,7 @@
 use crate::foliage::{self, Cut};
 use crate::parallel::in_parallel;
 use crate::renderer::cutout;
-use crate::stage::{Anchor, Draw, Layer, Lod, Stage, TextureRef};
+use crate::stage::{Anchor, Draw, Layer, Lod, Stage, TextureRef, Vertex};
 use glam::{Vec2, Vec3, Vec3Swizzles};
 use std::collections::HashMap;
 
@@ -22,12 +22,14 @@ const HEIGHT: f32 = 1.0;
 const CELL: f32 = 8.0;
 const CELLS: f32 = 2048.0;
 
-/// A triangle that may stand in the sun's way: its mesh, its first index, and its cut-out texture.
+/// A triangle that may stand in the sun's way: its mesh, its first index, and its cut-out texture; for an instanced
+/// placement ([`crate::stage::placed`]) its model, the first index there, and its instance.
 #[derive(Clone, Copy)]
 struct Blocker {
     mesh: u32,
     first: u32,
     cut: Option<TextureRef>,
+    instance: Option<u32>,
 }
 
 /// A stage's road points and what stands between them and the sun: the stage's blockers and the backdrop's.
@@ -74,8 +76,22 @@ impl<'a> Sunlit<'a> {
                     mesh: m as u32,
                     first: first as u32,
                     cut,
+                    instance: None,
                 }));
             }
+        }
+        // The instanced placements, as their expanded meshes would stand.
+        let placed = &stage.placed;
+        for group in placed.groups.iter().filter(|g| g.layer == Layer::Solid) {
+            let state = &group.state;
+            if !state.depth_write || state.blend || matches!(group.lod, Lod::Close | Lod::Far) {
+                continue;
+            }
+            let cut = state.textures[0].filter(|texture| cutout(state) && cuts.contains_key(texture));
+            let triangles = placed.models[group.model].indices.len() as u32 / 3;
+            blockers.extend(group.instances.clone().flat_map(|k| {
+                (0..triangles).map(move |t| Blocker { mesh: group.model as u32, first: 3 * t, cut, instance: Some(k) })
+            }));
         }
         let (world, backdrop) = (Grid::of(blockers, stage), Grid::of(backdrop, stage));
         Sunlit { stage, cuts, points: points(&stage.driveline), world, backdrop }
@@ -99,8 +115,8 @@ impl<'a> Sunlit<'a> {
     fn stops(&self, b: &Blocker, from: Vec3, dir: Vec3) -> bool {
         let Some((u, v)) = meet(corners(self.stage, b), from, dir) else { return false };
         let Some(cut) = b.cut.and_then(|texture| self.cuts.get(&texture)) else { return true };
-        let mesh = &self.stage.meshes[b.mesh as usize];
-        let uv = |k: usize| Vec2::from(mesh.vertices[mesh.indices[b.first as usize + k] as usize].uv0);
+        let (vertices, indices) = triangles(self.stage, b);
+        let uv = |k: usize| Vec2::from(vertices[indices[b.first as usize + k] as usize].uv0);
         !cut.clear_at((uv(0) * (1.0 - u - v) + uv(1) * u + uv(2) * v).to_array())
     }
 }
@@ -202,10 +218,34 @@ impl Grid {
     }
 }
 
-/// Blocker `b`'s corners.
+/// The vertices and indices blocker `b` lies in: its mesh's, or its model's.
+fn triangles<'a>(stage: &'a Stage, b: &Blocker) -> (&'a [Vertex], &'a [u32]) {
+    match b.instance {
+        Some(_) => {
+            let model = &stage.placed.models[b.mesh as usize];
+            (&model.vertices, &model.indices)
+        }
+        None => {
+            let mesh = &stage.meshes[b.mesh as usize];
+            (&mesh.vertices, &mesh.indices)
+        }
+    }
+}
+
+/// Blocker `b`'s corners, placed.
 fn corners(stage: &Stage, b: &Blocker) -> [Vec3; 3] {
-    let mesh = &stage.meshes[b.mesh as usize];
-    [0, 1, 2].map(|k| Vec3::from(mesh.vertices[mesh.indices[b.first as usize + k] as usize].position))
+    let (vertices, indices) = triangles(stage, b);
+    let corner = |k: usize| vertices[indices[b.first as usize + k] as usize].position;
+    match b.instance {
+        Some(k) => {
+            let rows = stage.placed.instances[k as usize].rows;
+            [0, 1, 2].map(|c| {
+                let [x, y, z] = corner(c);
+                Vec3::from(rows.map(|r| r[0] * x + r[1] * y + r[2] * z + r[3]))
+            })
+        }
+        None => [0, 1, 2].map(|c| Vec3::from(corner(c))),
+    }
 }
 
 /// Points [`SPACING`] apart along `driveline`, [`HEIGHT`] over it.

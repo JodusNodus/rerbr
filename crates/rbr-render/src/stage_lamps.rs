@@ -8,7 +8,7 @@
 //! (`stage_lamps_pass`); the sprites, the game's painted beams, are no longer drawn (`Renderer::set_stage_lamps`).
 
 use crate::foliage::test_texels;
-use crate::stage::{Anchor, Mesh, Stage, TextureRef};
+use crate::stage::{Anchor, Stage, TextureRef, Vertex};
 use glam::{Vec2, Vec3};
 use std::collections::HashMap;
 
@@ -125,7 +125,8 @@ fn uv_of(i: usize, width: usize, height: usize) -> Vec2 {
 const NAMED: [&str; 6] = ["GLO", "SPOT", "BULB", "LIGHT", "LAMP", "FLARE"];
 
 /// Finds the stage's lamps ([`StageLamp`]: one per light sprite, its crossed quads one lamp) and takes their sprites'
-/// draws out of the stage's meshes. The textures must be loaded (`Stage::load_textures`).
+/// draws out of the stage's meshes, and their groups out of its instanced placements. The textures must be loaded
+/// (`Stage::load_textures`).
 pub fn take(stage: &mut Stage) -> Vec<StageLamp> {
     let mut shapes: HashMap<TextureRef, Option<Shape>> = HashMap::new();
     let mut found: Vec<StageLamp> = Vec::new();
@@ -135,29 +136,58 @@ pub fn take(stage: &mut Stage) -> Vec<StageLamp> {
         }
         let mut kept = Vec::with_capacity(stage.meshes[m].draws.len());
         for draw in std::mem::take(&mut stage.meshes[m].draws) {
-            let texture = draw.state.textures[0].filter(|_| is_sprite_state(&draw.state));
-            let shape = texture.and_then(|t| *shapes.entry(t).or_insert_with(|| sprite_shape(stage, t)));
-            let (Some(texture), Some(shape)) = (texture, shape) else {
+            let Some((texture, shape)) = sprite(stage, &mut shapes, &draw.state) else {
                 kept.push(draw);
                 continue;
             };
             let mesh = &stage.meshes[m];
             for t in mesh.indices[draw.indices.clone()].chunks_exact(3) {
-                let Some(lamp) = triangle_lamp(mesh, [t[0], t[1], t[2]], shape, texture) else { continue };
-                match found.iter_mut().find(|l| l.position.distance(lamp.position) < SAME_LAMP) {
-                    Some(same) => {
-                        same.size = same.size.max(lamp.size);
-                        if same.axis == Vec3::ZERO {
-                            same.axis = lamp.axis;
-                        }
-                    }
-                    None => found.push(lamp),
-                }
+                add(&mut found, triangle_lamp(&mesh.vertices, [t[0], t[1], t[2]], shape, texture));
             }
         }
         stage.meshes[m].draws = kept;
     }
+    let mut kept = Vec::with_capacity(stage.placed.groups.len());
+    for group in std::mem::take(&mut stage.placed.groups) {
+        let Some((texture, shape)) = sprite(stage, &mut shapes, &group.state) else {
+            kept.push(group);
+            continue;
+        };
+        let model = &stage.placed.models[group.model];
+        for k in group.instances.clone() {
+            let instance = &stage.placed.instances[k as usize];
+            let vertices: Vec<Vertex> = model.vertices.iter().map(|v| instance.place(v)).collect();
+            for t in model.indices.chunks_exact(3) {
+                add(&mut found, triangle_lamp(&vertices, [t[0], t[1], t[2]], shape, texture));
+            }
+        }
+    }
+    stage.placed.groups = kept;
     found
+}
+
+/// The light sprite texture and its shape that a draw of `state` shows, if it shows one.
+fn sprite(
+    stage: &Stage,
+    shapes: &mut HashMap<TextureRef, Option<Shape>>,
+    state: &crate::stage::DrawState,
+) -> Option<(TextureRef, Shape)> {
+    let texture = state.textures[0].filter(|_| is_sprite_state(state))?;
+    Some((texture, (*shapes.entry(texture).or_insert_with(|| sprite_shape(stage, texture)))?))
+}
+
+/// Adds `lamp` to `found`, or merges it into the one it is a quad of.
+fn add(found: &mut Vec<StageLamp>, lamp: Option<StageLamp>) {
+    let Some(lamp) = lamp else { return };
+    match found.iter_mut().find(|l| l.position.distance(lamp.position) < SAME_LAMP) {
+        Some(same) => {
+            same.size = same.size.max(lamp.size);
+            if same.axis == Vec3::ZERO {
+                same.axis = lamp.axis;
+            }
+        }
+        None => found.push(lamp),
+    }
 }
 
 /// A light sprite texture's shape: named as one ([`NAMED`]) and white with a soft alpha ([`shape`]).
@@ -175,8 +205,8 @@ fn is_sprite_state(state: &crate::stage::DrawState) -> bool {
 }
 
 /// The lamp of one sprite triangle: the world point at the texture's peak uv when the triangle holds it.
-fn triangle_lamp(mesh: &Mesh, triangle: [u32; 3], shape: Shape, texture: TextureRef) -> Option<StageLamp> {
-    let vertex = |i: u32| &mesh.vertices[i as usize];
+fn triangle_lamp(vertices: &[Vertex], triangle: [u32; 3], shape: Shape, texture: TextureRef) -> Option<StageLamp> {
+    let vertex = |i: u32| &vertices[i as usize];
     let [a, b, c] = triangle.map(|i| Vec3::from(vertex(i).position));
     let [ta, tb, tc] = triangle.map(|i| Vec2::from(vertex(i).uv0));
     let at = |uv: Vec2| -> Option<Vec3> {
@@ -251,18 +281,9 @@ mod tests {
             uv0: [u, v],
             ..bytemuck::Zeroable::zeroed()
         };
-        let mesh = Mesh {
-            layer: crate::stage::Layer::Solid,
-            anchor: crate::stage::Anchor::World,
-            bounds: None,
-            cell: None,
-            vertices: vec![corner(-5.0, 10.0, 0.0, 0.0), corner(5.0, 10.0, 1.0, 0.0), corner(5.0, 0.0, 1.0, 1.0)],
-            indices: vec![0, 1, 2],
-            draws: Vec::new(),
-            sun_cascades: true,
-        };
+        let vertices = [corner(-5.0, 10.0, 0.0, 0.0), corner(5.0, 10.0, 1.0, 0.0), corner(5.0, 0.0, 1.0, 1.0)];
         let lamp =
-            triangle_lamp(&mesh, [0, 1, 2], shape, TextureRef { set: crate::stage::TextureSet::Stage, index: 0 })
+            triangle_lamp(&vertices, [0, 1, 2], shape, TextureRef { set: crate::stage::TextureSet::Stage, index: 0 })
                 .expect("holds the peak");
         assert!(lamp.position.distance(Vec3::new(0.0, 10.0, 0.0)) < 1e-4, "{lamp:?}");
         assert!(lamp.axis.distance(Vec3::NEG_Y) < 1e-4, "{lamp:?}");
