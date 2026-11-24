@@ -25,7 +25,7 @@ use crate::parallel::in_parallel;
 use crate::particles::wheel_spray::ground::smoothstep;
 use crate::puddles::{self, GROUND_MARK};
 use crate::stage::{
-    Address, Anchor, Draw, DrawState, GrassOccluder, Image, Layer, Lod, Mesh, Stage, StageTexture, TextureName,
+    Address, Anchor, Cover, Draw, DrawState, GrassOccluder, Image, Layer, Lod, Mesh, Stage, StageTexture, TextureName,
     TextureRef, TextureSet, Vertex, OBJECT_ALPHA_REF,
 };
 use glam::{Vec2, Vec3, Vec3Swizzles, Vec4Swizzles};
@@ -215,12 +215,19 @@ struct Fx {
     atlas: Option<(rbr_btb::track::GrassFx, Vec2)>,
     /// The cells ([`HIDE_STEP`] square) under its occluders ([`hidden`]), shared by the profiles.
     hidden: Arc<HashSet<(i32, i32)>>,
+    /// The stage's cover map, where it ships one: no grass where it reads 0 (the profiles share it).
+    cover: Option<Arc<Cover>>,
 }
 
 impl Fx {
     /// The stage's grass and its profiles ([`GrassFx::profiles`](rbr_btb::track::GrassFx::profiles)), with the atlas
     /// of `size` texels or our blades.
-    fn profiles(settings: &rbr_btb::track::GrassFx, size: Option<Vec2>, hidden: Arc<HashSet<(i32, i32)>>) -> Vec<Fx> {
+    fn profiles(
+        settings: &rbr_btb::track::GrassFx,
+        size: Option<Vec2>,
+        hidden: Arc<HashSet<(i32, i32)>>,
+        cover: Option<Arc<Cover>>,
+    ) -> Vec<Fx> {
         std::iter::once(settings)
             .chain(&settings.profiles)
             .map(|p| Fx {
@@ -228,6 +235,7 @@ impl Fx {
                 mask: p.mask,
                 atlas: size.map(|size| (p.clone(), size)),
                 hidden: hidden.clone(),
+                cover: cover.clone(),
             })
             .collect()
     }
@@ -529,7 +537,7 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
         let texture = fx.texture?;
         let Some(Some(Image::Dds(bytes))) = stage.textures.get(&texture).map(|t| &t.image) else { return None };
         let (bytes, mean, size) = track_atlas(bytes)?;
-        Some((texture, bytes, mean, fx.settings.clone(), size))
+        Some((texture, bytes, mean, fx.settings.clone(), size, fx.cover.clone()))
     });
     let index = stage.texture_names.keys().chain(stage.textures.keys()).filter(|t| t.set == TextureSet::Stage);
     let texture = TextureRef { set: TextureSet::Stage, index: index.map(|t| t.index + 1).max().unwrap_or(0) };
@@ -643,11 +651,11 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
     }
     // The atlas is the stage's own texture; ours is made here.
     let (texture, mean, fx) = match atlas {
-        Some((texture, bytes, mean, settings, size)) => {
+        Some((texture, bytes, mean, settings, size, cover)) => {
             stage
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-            (texture, mean, Fx::profiles(&settings, Some(size), Arc::new(hidden.unwrap_or_default())))
+            (texture, mean, Fx::profiles(&settings, Some(size), Arc::new(hidden.unwrap_or_default()), cover))
         }
         None => {
             stage.texture_names.insert(
@@ -658,7 +666,8 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
                 .textures
                 .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
             let fx = stage.grass_fx.as_ref().filter(|_| fx_stage);
-            let fx = fx.map(|fx| Fx::profiles(&fx.settings, None, Arc::new(hidden.unwrap_or_default())));
+            let fx =
+                fx.map(|fx| Fx::profiles(&fx.settings, None, Arc::new(hidden.unwrap_or_default()), fx.cover.clone()));
             (texture, mean, fx.unwrap_or_default())
         }
     };
@@ -726,6 +735,14 @@ impl Field {
         let rgb = g.colour(&self.placement, w);
         match self.fx(g) {
             Some(fx) if fx.hidden.contains(&hide_cell((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz())) => 0.0,
+            Some(fx)
+                if fx
+                    .cover
+                    .as_ref()
+                    .is_some_and(|c| c.at((g.p[0] * w[0] + g.p[1] * w[1] + g.p[2] * w[2]).xz()) == 0) =>
+            {
+                0.0
+            }
             Some(fx) => fx.mask(rgb, g.colour(&self.textures, w)),
             None if g.prior > 0.0 => green(rgb, g.road).max(g.prior * vegetation(g.colour(&self.patches, w))),
             None => green(rgb, g.road),
@@ -1384,10 +1401,11 @@ mod tests {
             }],
             luminance: [0.005, 0.25],
             mask: Some([0.3, 0.01]),
+            cover: None,
             profiles: Vec::new(),
         };
         settings.profiles = vec![GrassFx { base: 0.0, mask: Some([-0.05, 0.01]), ..settings.clone() }];
-        let profiles = Fx::profiles(&settings, Some(Vec2::new(2048.0, 768.0)), Arc::default());
+        let profiles = Fx::profiles(&settings, Some(Vec2::new(2048.0, 768.0)), Arc::default(), None);
         let fx = &profiles[0];
         // A profile takes its own mask and weights: Joux Verte's configuration grows grass on dull ground too.
         let dull = Vec3::new(0.46, 0.47, 0.42);

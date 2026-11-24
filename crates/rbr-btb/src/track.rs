@@ -433,6 +433,10 @@ pub struct GrassFx {
     /// CSP's colour mask, `MASK_MAIN_THRESHOLD` and `MASK_RED_THRESHOLD`: how green the ground must be, and how far
     /// toward yellow and red the green may lean; `None` (stages converted before it): no colour test.
     pub mask: Option<[f32; 2]>,
+    /// ReRBR's own `cover` (a PNG in `Textures.zip`, one byte a texel: 0 no grass, else grass, the value the class a
+    /// converter gives) over the world rectangle `cover_rect` (`xmin, ymin, xmax, ymax`, stage axes: x and y of the
+    /// `.trk`, row 0 at `ymin`); outside it there is none. `None` for both: no cover map.
+    pub cover: Option<(String, [f32; 4])>,
     /// Its profiles from 1 (`[ReRbrGrass<n>]`, CSP's configurations as its adjustments blend them in on some meshes):
     /// this grass with the `base`, `size`, `luminance`, `mask` and group chances each gives, and no profiles.
     pub profiles: Vec<GrassFx>,
@@ -531,6 +535,14 @@ impl GrassFx {
             groups,
             luminance,
             mask,
+            cover: find_entry(grass, "cover")
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .zip(match list("cover_rect")[..] {
+                    [x0, y0, x1, y1] if x1 > x0 && y1 > y0 => Some([x0, y0, x1, y1]),
+                    _ => None,
+                })
+                .map(|(c, rect)| (c.to_owned(), rect)),
             profiles: Vec::new(),
         }
     }
@@ -860,6 +872,13 @@ mod tests {
         assert_eq!(grass.groups[1].pieces[0], GrassPiece { cell: [1, 1], size: [1, 1], chance: 1.0, mult: [1.0, 1.0] });
         assert_eq!(grass.groups[1].pieces[1], GrassPiece { cell: [4, 1], size: [2, 2], chance: 0.5, mult: [0.6, 1.5] });
         assert!(GrassFx::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
+        assert_eq!(grass.cover, None);
+        let covered = format!("{ini}cover=c.png\ncover_rect=-10,-20,30,40\n");
+        let covered = GrassFx::parse(&rbr_formats::ini::parse(&covered).unwrap()).unwrap();
+        assert_eq!(covered.cover, Some(("c.png".to_owned(), [-10.0, -20.0, 30.0, 40.0])));
+        // Without its rectangle the cover is not one.
+        let bare = GrassFx::parse(&rbr_formats::ini::parse(&format!("{ini}cover=c.png\n")).unwrap()).unwrap();
+        assert_eq!(bare.cover, None);
         // A profile gives its numbers and keeps the rest.
         let ini = format!("{ini}\n[ReRbrGrass1]\nbase=1\nmask=-0.05,0.01\ngroup0=0\ngroup1=0.5\n");
         let grass = GrassFx::parse(&rbr_formats::ini::parse(&ini).unwrap()).unwrap();

@@ -84,7 +84,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   4.3 M; 348 models, 67003 placements, 32 M triangles if all were in view); stage folder 760 -> 644 MB; import 91 -> 72 s;
   viewer load 12 to 16 -> 8 to 11.5 s, peak RSS 2.9 to 3.1 -> 1.9 to 2.1 GB. Greece 4.86 M -> 2.40 M (14.6 M instanced),
   499 -> 440 MB, 33 -> 31 s, load 5.0 -> 3.1 s, 2.0 -> 1.3 GB. Germany panzerplatte 9.01 M -> 3.31 M (25.5 M instanced),
-  662 -> 529 MB, 110 -> 88 s, load 7.0 -> 4.7 s, 3.7 -> 1.6 GB. Not done: grass (`grass.grs`), cloth, `ornaments.bin`;
+  662 -> 529 MB, 110 -> 88 s, load 7.0 -> 4.7 s, 3.7 -> 1.6 GB. Grass is done (below); not done: cloth, `ornaments.bin`;
   foliage is drawn one-sided as the BTB mesh is.
 
 ## Course
@@ -291,3 +291,25 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - Result (Turini, Greece, Sweden, Finland, Wales at 0.3, 2, 4 (6) km, `--enhance all`): RMSE against the diffuse-only conversion 1 to 6 of 255 (Turini's rock wall at 6 km 9): grain on rock, gravel and snow, car paint with a soft
   highlight, no sheen elsewhere. `Textures.zip` +30 % Greece 450 -> 554 MB, +33 % Turini 397 -> 506, +20 % Sweden 452 -> 542, +31 % Finland 577 -> 757, +22 % Wales 539 -> 660 (DXT1 normals, 5:6:5). Import under load
   (average 15 to 20): Greece 59 -> 65 s, Turini 51 -> 54 s. Viewer frame at Turini 6 km (1280x720, all on, `--frames 60`): 14.9 to 15.4 ms before, 13.7 to 14.4 after (noise; nothing measurable).
+
+## Grass, 2026-11-24
+
+- `grass.grs` (per area; all 18 retail files read, `grass.rs` tests): `u32 7, T (8 types, Lydden Hill 6), N, 0`; words 4 to 908 the tuft types'
+  parameters and names (`t<type>_<model>`, `type_0T`: not read); word 909 on N ascending byte offsets, the cells after. A cell: `u16 vertices, u16
+  triangles`, 3 zero words, box `[xmin ymin zmin xmax ymax zmax]` in DiRT Rally's world, vertices of 8 bytes (`u16` x and `u16` z over the box, `u8` y over its
+  height, 3 bytes `11 10 84` but for 7% of them: RGB565 grey 0x8410 with `ff` before it where it differs; a tint, not read), triangles of 4 bytes (three
+  indices, a flag). Flag bits 4 and 5 are a class 0..3 (0 a 3 to 8 m band at the road's shoulders, 1 the main field, 2 and 3 other zones: Greece's south
+  and Wales' tarmac sections and forest; their meaning is not known), bit 3 and the rest not read.
+- It is the terrain surface where grass grows, the road cut out, 4 m triangles away from the road: vertex heights lie on the gates' crossings to 0.25 m (Greece, 839 gates, median
+  0.03 m), vertices on an exact 4.00 m lattice, holes where nothing grows (4 m squares in Wales' verges). Greece 362 k vertices, 439 k triangles; Wales 718 k and 847 k; the area's
+  routes share it. Grass lies within 8 m of at least 96 % of every rally route's gates (Pikes Peak 55 to 99 %: rock).
+- `ground_cover.pssg`: one quad a tuft (`RENDERNODE t<type>_<model>`, 53 on Greece; position extents are its size in metres, `uv` its rectangle in `gc_billboard_d`, a
+  2048 x 1024 DXT5 atlas: Greece's is dry golden grass, thistles and scrub, Wales' green grass, rushes and brambles). `ground_cover.xml`: draw distance 150 m, fade 120 + 40.
+- Import (`grass.rs`, `stage.rs`): the triangles are rasterised to a 2 m cover map (class + 1, centres within 0.4 m of a triangle) over the drawn rectangle, as
+  `Textures.zip`'s PNG with `cover=` and `cover_rect=` (`notes/btb.md`); the atlas goes in as it is, `grid` one texel a cell, `base=0`, one group holding every model with its
+  rectangle and metre size as `SIZE_MULT` (`size` makes a cell 1 m: 3.2 clumps a m2, `Fx::density`), a model taller or wider than 0.8 m rarer by the square of the ratio. The
+  terrain materials (not decals) carry `ReRbrGrass=1`; the map alone decides where. Every class takes the same pieces (the class is stored for later).
+- Result (all enhancements, `--enhance all,grass`, 0.3, 2, 4 km, `/tmp/grs/cmp-*.png`): Greece's verges grow golden tufts and scrub where they were bare, Wales' green tufts line the road in the forest (the base-card
+  look turns them olive: green blades take the ground's colour), Finland's autumn tufts replace the old lawn. Viewer load (1280x720, `--screenshot`, best of 2): Greece 6.7 s both, 1.78 to 1.84 GB;
+  Wales 9.35 to 9.05 s, 2.67 to 2.68 GB. Greece `Textures.zip` +0.25 MB (400.22 to 400.48 MB); import time unmeasured (the machine was shared). The 37 reference shots: RMSE 0 against the build before.
+- Open: the class's meaning (which tufts each zone grows), the types' parameters (counts, scales), the tint bytes, tufts' densities against the game's (ours is a guess from the reference shots).

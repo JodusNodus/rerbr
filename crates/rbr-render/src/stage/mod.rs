@@ -11,7 +11,7 @@
 //! The texture chain: `notes/formats.md` "Stage geometry" and `notes/formats.md` "Textures and sprites".
 
 use crate::atmosphere::Atmosphere;
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use rbr_formats::{ini, lbs, stage_files, stage_textures, trk};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
@@ -274,6 +274,30 @@ pub struct GrassFx {
     pub settings: rbr_btb::track::GrassFx,
     pub texture: Option<TextureRef>,
     pub occluders: Vec<GrassOccluder>,
+    /// Where it grows at all, where the stage ships a cover map ([`rbr_btb::track::GrassFx::cover`]).
+    pub cover: Option<Arc<Cover>>,
+}
+
+/// A converted stage's cover map: a byte a texel over a world rectangle, 0 where no grass grows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cover {
+    /// `xmin, zmin, xmax, zmax`, stage metres.
+    pub rect: [f32; 4],
+    pub size: [usize; 2],
+    pub texels: Vec<u8>,
+}
+
+impl Cover {
+    /// The texel at stage `xz` (nearest); 0 outside the rectangle.
+    pub fn at(&self, xz: Vec2) -> u8 {
+        let [x0, z0, x1, z1] = self.rect;
+        let (u, v) = ((xz.x - x0) / (x1 - x0), (xz.y - z0) / (z1 - z0));
+        if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+            return 0;
+        }
+        let (i, j) = ((u * self.size[0] as f32) as usize, (v * self.size[1] as f32) as usize);
+        self.texels.get(j * self.size[0] + i).copied().unwrap_or(0)
+    }
 }
 
 /// A world triangle of a material the grass grows nowhere under (CSP's `OCCLUDING_MATERIALS`): `texture`, where only
@@ -852,5 +876,14 @@ mod tests {
         assert!(cloud_shows("US_PRECIPITATION", Weather::Wet, None));
         assert!(!cloud_shows("US_CLEAR", Weather::Wet, None));
         assert!(cloud_shows("US_CLEAR", Weather::Dry, None));
+    }
+
+    #[test]
+    fn a_cover_map_reads_its_texel_and_is_empty_outside_its_rectangle() {
+        // 2 x 2 texels over x 10..14, z -4..0: row 0 at the lowest z.
+        let cover = Cover { rect: [10.0, -4.0, 14.0, 0.0], size: [2, 2], texels: vec![1, 0, 3, 2] };
+        let at = |x: f32, z: f32| cover.at(Vec2::new(x, z));
+        assert_eq!([at(11.0, -3.0), at(13.0, -3.0), at(11.0, -1.0), at(13.0, -1.0)], [1, 0, 3, 2]);
+        assert_eq!([at(9.9, -3.0), at(14.0, -3.0), at(11.0, -4.1), at(11.0, 0.0)], [0, 0, 0, 0]);
     }
 }

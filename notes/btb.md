@@ -397,6 +397,13 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   `track::GrassFx`): a converted stage's Assetto Corsa `[GRASS_FX]`: Dense grass grows on the marked materials by the
   ground texel's luminance (`luminance=min,max`) from the atlas `texture` (its `grid`, `base` and `group<n>_piece<m>`
   pieces), in place of its choice by colour; keys in `notes/assetto.md`.
+- `[ReRbrGrass] cover=<file>` and `cover_rect=xmin,ymin,xmax,ymax` (ReRBR's own, 2026-11-24; `track::GrassFx::cover`,
+  `stage::Cover`, `Field::grassy`): a cover map, an 8-bit greyscale PNG in `Textures.zip`, a byte a texel over the
+  rectangle (the stage's x and y as the `.trk` has them, row 0 at `ymin`): 0 no grass, any other value grows grass as
+  the marked materials would (the value is the class a converter gives, not read yet). Outside the rectangle none.
+  Without both keys the field is unchanged (byte-identical). With a cover map the atlas's group pieces are drawn from
+  the eye like base grass (`Fx::pieces`: no 12 to 25 m fade-in) since the map's stage has no base grass to fill the
+  near ground. Written by the DiRT Rally import (`notes/dirt-rally.md`, Grass).
 - Open: `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
 

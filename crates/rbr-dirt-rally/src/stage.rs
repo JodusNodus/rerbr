@@ -34,6 +34,8 @@ pub struct Material {
     /// The normal map (`TNormalMap`) and the specular map (`TSpecularMap`) of a prop, as DDS files.
     pub normal: Option<Vec<u8>>,
     pub specular: Option<Vec<u8>>,
+    /// Ground the grass may grow on (`ReRbrGrass=1`, where the stage has [`Input::grass`]): the cover map decides where.
+    pub grows: bool,
 }
 
 impl Material {
@@ -116,7 +118,12 @@ pub struct Input {
     pub collision_source: &'static str,
     /// Surface counts by source code, for the conversion file.
     pub surface_counts: BTreeMap<String, usize>,
+    /// The area's ground cover: where grass grows and its tufts.
+    pub grass: Option<crate::grass::AreaGrass>,
 }
+
+/// Metres a texel of the grass cover map is wide.
+const COVER_TEXEL: f64 = 2.;
 
 pub struct Options {
     pub out: PathBuf,
@@ -441,6 +448,28 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let mut bank = TextureBank::new(&folder.join("Textures.zip"))?;
     let (mut sections, mut names) = (String::new(), Vec::new());
 
+    // The grass: the cover map over the drawn ground, the tufts' atlas and the `[ReRbrGrass]` section that names them.
+    let mut settings = SETTINGS_INI.to_owned();
+    if let Some(grass) = &input.grass {
+        let drawn = input.drawn.iter().filter(|t| draw.contains(&t.pos)).flat_map(|t| t.pos);
+        let rect = drawn.fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |r, p| {
+            [
+                r[0].min(p[0] - origin[0]),
+                r[1].min(p[1] - origin[1]),
+                r[2].max(p[0] - origin[0]),
+                r[3].max(p[1] - origin[1]),
+            ]
+        });
+        if rect[2] > rect[0] && rect[3] > rect[1] {
+            let rect = [rect[0].floor(), rect[1].floor(), rect[2].ceil(), rect[3].ceil()];
+            let cover = grass.grass.cover(rect, origin, COVER_TEXEL);
+            let cover = bank.put(cover.png()?, "png")?;
+            let atlas = bank.put(grass.tufts.atlas.clone(), "dds")?;
+            settings.push('\n');
+            settings.push_str(&grass.tufts.section(&atlas, &cover, rect));
+        }
+    }
+
     // Drawn: each material's triangles in the draw corridor, by ReRBR's scenery cell.
     let mut tiles = BTreeMap::<(usize, (i64, i64)), Builder>::new();
     for (i, t) in input.drawn.iter().enumerate().filter(|(_, t)| draw.contains(&t.pos)) {
@@ -544,6 +573,11 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         normal,
                         bump_scale,
                         bump_uv: m.layers.is_some(),
+                        grass: if m.grows && input.grass.is_some() {
+                            rbr_btb::scene::Grass::Grows(0)
+                        } else {
+                            rbr_btb::scene::Grass::None
+                        },
                         ..m.extras(&mut bank)?
                     },
                 );
@@ -612,7 +646,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             if input.circuit { "circuit=1\n" } else { "" }
         ),
     )?;
-    write("settings.ini", SETTINGS_INI.to_owned())?;
+    write("settings.ini", settings)?;
     let mut dl = format!("[DRIVELINE]\ncount={}\n", line.points.len());
     let n = line.points.len();
     for (i, p) in line.points.iter().enumerate() {
@@ -757,6 +791,7 @@ mod tests {
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),
+            grass: None,
         };
         let options = Options {
             out: out.clone(),
@@ -816,6 +851,7 @@ mod tests {
             collision,
             collision_source: "test",
             surface_counts: BTreeMap::new(),
+            grass: None,
         };
         let options = Options {
             out: out.clone(),

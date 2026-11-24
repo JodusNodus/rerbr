@@ -244,11 +244,14 @@ impl Field {
                     let rect = super::piece_rect(atlas.grid, [column, 0], [1, 1], *size);
                     push(atlas.base / columns as f32, rect, [1.0; 2], false);
                 }
+                // A stage with a cover map (DiRT Rally's tufts) has no base grass for its pieces to come in beyond:
+                // they are its grass, drawn from the eye as the base cards are.
+                let piece = fx.cover.is_none();
                 for group in groups {
                     let sum = group.pieces.iter().map(|p| p.chance).sum::<f32>().max(1e-6);
                     for p in &group.pieces {
                         let rect = super::piece_rect(atlas.grid, p.cell, p.size, *size);
-                        push(group.chance * super::FX_PIECE_SHARE * p.chance / sum, rect, p.mult, true);
+                        push(group.chance * super::FX_PIECE_SHARE * p.chance / sum, rect, p.mult, piece);
                     }
                 }
                 if let Some(last) = pieces.last_mut() {

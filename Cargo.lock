@@ -2364,6 +2364,7 @@ name = "rbr-dirt-rally"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "png",
  "rbr-ac-tracks",
  "rbr-btb",
  "rbr-formats",

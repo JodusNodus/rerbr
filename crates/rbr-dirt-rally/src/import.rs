@@ -103,6 +103,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         collision,
         collision_source: "track.jpk",
         surface_counts,
+        grass: crate::grass::read(route.area_dir())?,
     };
     let out = match &options.out {
         Some(out) => out.clone(),
@@ -289,6 +290,7 @@ fn terrain(route: &Route, control: &Control) -> Result<Terrain, String> {
                     transparent,
                     range: None,
                     layers,
+                    grows: !transparent,
                     ..stage::Material::default()
                 });
                 materials.len() as u32 - 1

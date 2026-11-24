@@ -12,8 +12,8 @@
 use super::mesh::{Draw, DrawState, Highlight, Layer, Layers, Light, Lod, Mesh, NormalMap, Sheen, Surface, Vertex};
 use super::placed::{self, bounds_and_cell, Instance, AMBIENT};
 use super::{
-    Address, Anchor, Error, GrassFx, GrassOccluder, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName,
-    TextureRef, TextureSet,
+    Address, Anchor, Cover, Error, GrassFx, GrassOccluder, LoadReport, Pose, Selection, Sky, Stage, StageTexture,
+    TextureName, TextureRef, TextureSet,
 };
 use crate::atmosphere::Atmosphere;
 use glam::{Vec3, Vec3Swizzles};
@@ -21,6 +21,7 @@ use rbr_btb::scene::{self, Alpha, Scene};
 use rbr_formats::stage_files;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// The BTB track folder stage `name` plays: a prepared folder's `btb.ini` source (`rbr_btb::stage::prepare`), or the
 /// track folder itself (`<folder>/track-<n>_<L>`, for development).
@@ -141,7 +142,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     // A converted stage's grass atlas, where it ships one: a stage texture like the draws'.
     let mut grass_fx = scene.grass.clone().map(|settings| {
         let texture = texture(&settings.texture);
-        GrassFx { settings, texture, occluders: Vec::new() }
+        let cover = settings.cover.as_ref().and_then(|(file, rect)| {
+            let (width, height, pixels) = scene.textures.bytes(file).and_then(|b| rbr_btb::scene::decode_image(&b))?;
+            let texels = pixels.chunks_exact(4).map(|p| p[0]).collect();
+            Some(Arc::new(Cover { rect: *rect, size: [width as usize, height as usize], texels }))
+        });
+        GrassFx { settings, texture, occluders: Vec::new(), cover }
     });
 
     phases::mark("stage: grass settings, texture refs");
