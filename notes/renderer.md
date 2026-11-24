@@ -1882,6 +1882,11 @@ launcher "Mirrors" (default every frame). Off: no passes, the frame byte-identic
   by, so the main view's resolve gathers its edges (2026-10-31, no cost). The windscreen's curve shears its image low on
   the pane: an edge along a texel row showed as fins about 10 texels long, halved by a 2048 image (tried for Ultra,
   +1 ms) and only softened by a blur or FXAA; the jitter with TAA's glass-over-the-car rule removes them at 1024.
+- Particles in the passes (2026-11-24): with the effects on (`particles`) they go in the soft pass after the scene, as in
+  the main view (`Renderer::draw_mirrors`, with the near rain). The flat draw they had there laid the wheel spray's
+  wisps (made for the soft draw) over the glass as a white haze: the gvrc and DiRT Escort Mk II door and centre mirrors
+  at Gabiria 450 damp, `--at` 3000-5000, showed one flat white (the same shots with `particles` off, or soft, show the road).
+  Without the effects the flat draw stays. What is left at `--at 4021` is the spray thrown behind the car (`--look-back`).
 - Passes draw the stage to 300 m, sky, fog, the car, ghosts, the game's particles, rain and lamps, with the frame's
   sun cascades and exposure; no prepass, light shafts, cubes or bloom. Only the glass's pipelines have `MIRRORS`: on
   in the shared shader it cost 1.1 ms a frame at 1440p (M-series).

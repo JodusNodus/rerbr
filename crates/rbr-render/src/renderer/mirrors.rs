@@ -215,7 +215,11 @@ impl Renderer {
                 particles.prepare(&self.queue, view.view_projection, &self.game_light().0);
             }
             // The rain goes over the scene, reading its depth.
-            let rain = self.effects.as_ref().filter(|effects| effects.precipitating()).zip(target.effects.as_ref());
+            // The particles, lit and soft, go with it (the wheel spray's wisps are not made for the flat draw, which
+            // laid them over the glass as a white haze).
+            let soft = self.particles.as_ref().is_some_and(|p| p.soft_billboards());
+            let rain =
+                self.effects.as_ref().filter(|effects| effects.precipitating() || soft).zip(target.effects.as_ref());
             let attachments = [&target.resolved_view, &target.depth];
             self.draw_scene(&mut encoder, attachments, view.view_projection, pass, [rain.is_some(); 2]);
             let reflect = mirrors::reflection(placed.corners.iter().sum::<glam::Vec3>() / 4.0, placed.normal);
@@ -238,7 +242,12 @@ impl Renderer {
                     occlusion_query_set: None,
                     multiview_mask: None,
                 });
-                effects.draw_mirror_rain(&mut pass, group);
+                if effects.precipitating() {
+                    effects.draw_mirror_rain(&mut pass, group);
+                }
+                if let Some(particles) = &self.particles {
+                    particles.draw_soft(&mut pass, group, self.lamps_light());
+                }
             }
             encoder.copy_texture_to_texture(
                 target.resolved.as_image_copy(),

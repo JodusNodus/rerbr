@@ -740,9 +740,11 @@ impl Renderer {
             bulbs.draw(&mut pass, &self.queue, view_projection, size.height, self.lamp_glow());
         }
         // The main view without reflections ends here; with them, the particles go over the reflections. The mirrors
-        // draw the game's particles.
+        // draw the game's particles, unless the effects are on: then theirs go in the soft pass after the scene's
+        // (`Renderer::draw_mirrors`), as the main view's, for the wheel spray's wisps are made for it.
+        let flat_mirror = view.mirror() && self.effects.is_none();
         if let (Some(particles), true) =
-            (&self.particles, (view == View::Main && !keep[0] && !self.late_effects()) || view.mirror())
+            (&self.particles, (view == View::Main && !keep[0] && !self.late_effects()) || flat_mirror)
         {
             particles.draw(&mut pass);
         }
@@ -859,7 +861,7 @@ impl Renderer {
     }
 
     /// When the lamps light the stage: at night and at dusk.
-    fn lamps_light(&self) -> bool {
+    pub(super) fn lamps_light(&self) -> bool {
         self.atmosphere.night || self.atmosphere.relight.is_some_and(|r| r.lamps > 0.01)
     }
 
