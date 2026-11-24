@@ -91,9 +91,8 @@ impl Lighting {
             let (own, warm) = (norm(own), norm(warm));
             std::array::from_fn(|i| own[i] + (warm[i] - own[i]) * WARM_SHARE)
         });
-        let post = |group: &str, key: &str| -> Option<f32> {
-            effect_param(effects?, effect, group, key)?.trim().parse().ok()
-        };
+        let post =
+            |group: &str, key: &str| -> Option<f32> { effect_param(effects?, effect, group, key)?.trim().parse().ok() };
         let sun_tint = colour(light, "specular_colour").map(|c| c.map(|v| v / luma(c).max(1e-3)));
         Lighting {
             aerosol: reach.map(|m| (AEROSOL_KM / (m / 1000.0)).clamp(AEROSOL_RANGE.0, AEROSOL_RANGE.1)),
