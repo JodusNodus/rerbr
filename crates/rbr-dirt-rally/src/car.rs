@@ -101,14 +101,17 @@ pub fn interior(pssg: &Pssg) -> Result<Vec<Part>, String> {
         };
         match out.iter_mut().find(|p| p.name == mesh.node) {
             Some(part) => part.instances.push(instance),
-            None => out.push(Part {
-                name: mesh.node,
-                transform: [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]],
-                instances: vec![instance],
-            }),
+            None => out.push(Part { name: mesh.node, transform: mesh::IDENTITY, instances: vec![instance] }),
         }
     }
     Ok(out)
+}
+
+/// The smallest and largest of each coordinate of `points` (`MAX` and `MIN` for none).
+pub(crate) fn bounds<const N: usize>(points: &[[f32; N]]) -> ([f32; N], [f32; N]) {
+    points.iter().fold(([f32::MAX; N], [f32::MIN; N]), |(lo, hi), p| {
+        (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+    })
 }
 
 /// One line per instance: the part, material, joint, sizes and the box of its positions.
@@ -124,12 +127,7 @@ pub fn info(parts: &[Part], verbose: bool) -> String {
             continue;
         }
         for i in &part.instances {
-            let (lo, hi) = i.positions.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(lo, hi), p| {
-                (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
-            });
-            let (uv_lo, uv_hi) = i.uv.iter().fold(([f32::MAX; 2], [f32::MIN; 2]), |(lo, hi), p| {
-                (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
-            });
+            let ((lo, hi), (uv_lo, uv_hi)) = (bounds(&i.positions), bounds(&i.uv));
             out += &format!(
                 "{:<24} {:<18} j{:<3} {:<10} v{:<6} n{:<6} t{:<6} uv{:<6} [{:6.2} {:6.2} {:6.2}] .. [{:6.2} {:6.2} {:6.2}] uv [{:.2} {:.2}] .. [{:.2} {:.2}]\n",
                 part.name,

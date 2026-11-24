@@ -5,96 +5,79 @@
 //! model) keeps its collision hulls, helper nodes, points, cameras, lamp settings and shader settings, and gives the
 //! frame the physics pack was fitted to (the rear axle at the origin, the front at -z, +x the left). The DiRT car's wheel
 //! centres are laid on the template's, the body between them follows (the wheelbases differ by centimetres).
+//!
+//! Every car's files have one layout (`notes/dirt-rally.md`, "Cars"): the exterior's materials are named alike on every
+//! car and bind their textures by name ([`exterior_style`]), the interior's bind theirs ([`interior_style`]).
 use crate::binxml::{self, Element};
 use crate::car::{self, Instance, Part};
 use crate::car_maps::{self, Plane};
 use crate::gauges;
-use crate::mesh::Mat;
+use crate::material::{self, Material};
+use crate::mesh::{self, Mat};
 use crate::pssg::Pssg;
 use crate::texture::{self, Texture};
 use rbr_formats::sgc;
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// What `convert` is asked for.
 pub struct Options {
     /// The car's folder under `cars/models` (`cme`).
     pub car: String,
-    /// The generic texture set of its class under `cars/generics` (`historic`, `rally`, `groupb`, `rallyx`).
+    /// The generic texture set of its class under `cars/generics` (`historic`, `rally`, `groupb`, `rallyx`,
+    /// `trailblazer`): the game's database says which, the car's files do not.
     pub class: String,
-    /// The livery number (`livery_00`).
-    pub livery: u32,
+    /// The livery number (`livery_00`); `None` for the car's first.
+    pub livery: Option<u32>,
     /// The template car's folder (`.../Cars/Escort_mk_2`).
     pub template: PathBuf,
     /// The pack's model folder name (`Cars/<name>/<name>.sgc`).
     pub name: String,
 }
 
-/// A mesh of the output before it is written: vertices in the part's own space and the node's place.
-struct Piece {
-    name: String,
-    /// The node's translation in the template's frame.
-    at: [f32; 3],
-    /// The node's axes in the template's frame (its columns), identity for a part modelled in the car's.
-    axes: [[f32; 3]; 3],
-    faces: Vec<Face>,
-}
-
-/// The car's own axes: a part modelled in the car's frame.
-const UPRIGHT: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-
-/// The triangles of one shader class and material.
-struct Face {
-    shader: &'static str,
-    material: String,
-    positions: Vec<[f32; 3]>,
-    normals: Vec<[f32; 3]>,
-    uv: Vec<[f32; 2]>,
-    triangles: Vec<[u32; 3]>,
-}
-
-/// The tyre classes by the suffix of the livery's wheel file and the generic tread file.
-const CLASSES: [(&str, &str, &str); 3] =
-    [("tarmac", "tm", "Tarmac"), ("gravel", "gr", "Gravel"), ("snow", "sn", "Snow")];
-/// DiRT's wheel suffixes and the RBR's, in the wheel order of the renderer.
-const SIDES: [(&str, &str); 4] = [("fl", "lf"), ("fr", "rf"), ("bl", "lb"), ("br", "rb")];
-/// A part's vertex limit: the triangle indices are 16 bits.
-const MAX_VERTICES: usize = 60_000;
-
-/// What a material draws as: the shader class, the material key and the texture it names (`file`, `source`), and its
-/// other maps.
-#[derive(Clone)]
+/// What a material draws as: the shader class, the material key (the faces of a key share its texture) and the texture
+/// with its other maps.
+#[derive(Clone, Debug, PartialEq)]
 struct Style {
     shader: &'static str,
     key: String,
     texture: Source,
+    /// The texture's alpha is the faces' opacity (the glass, the lenses), not the specular.
     opacity: bool,
+    /// The colours go through [`cabin_lift`] (the cabin's textures).
+    lifted: bool,
+    /// The UVs' repeats (the carbon weave's `CarbonUVRepeat`).
+    repeat: f32,
     maps: Maps,
 }
 
+impl Style {
+    fn new(shader: &'static str, key: impl Into<String>, texture: Source) -> Style {
+        Style { shader, key: key.into(), texture, opacity: false, lifted: false, repeat: 1.0, maps: Maps::default() }
+    }
+
+    fn with_normal(self, normal: Source) -> Style {
+        Style { maps: Maps { normal: Some(normal), ..self.maps }, ..self }
+    }
+}
+
 /// A material's other maps, on its texture's own UVs (`car_maps`).
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct Maps {
     normal: Option<Source>,
     /// The normal map's panels carry a damage crumple, which the car does not take undamaged (`car_maps::normal`).
     crumpled: bool,
-    /// The map and channel of the baked occlusion, and the material's `OcclusionMapScale`.
+    /// The map and channel of the baked occlusion, and how much of it the colour takes.
     occlusion: Option<(Source, usize, f32)>,
     /// The map and channel of the specular, and the specular of the finish that reflects in full.
     specular: Option<(Source, usize, f32)>,
 }
 
-/// The specular that reflects in full (chrome and bare metal reach 0.8 to 1 in DiRT's maps, the Escort's red paint is
-/// 0.43, the dull plastics and rubber under 0.2): the paint's clear coat takes about half its strength, the metal all.
-const FULL_SPECULAR: f32 = 0.9;
-
-/// The occlusion the interior's main atlas takes. The game's `OcclusionMapScale` is 1 there, on the ambient light alone
-/// (which the dash takes from the sky it sees, `rbr-render`'s cabin light), so the bake takes a part of it.
-const INTERIOR_OCCLUSION: f32 = 0.5;
-
 /// Where a texture comes from.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Source {
     /// A texture of the livery's main file, by its name (`cme_main.tga`).
     Livery(String),
@@ -108,174 +91,225 @@ enum Source {
     Gear,
 }
 
-fn style(material: &str, car: &str) -> Option<Style> {
-    let livery = |name: &str| Source::Livery(name.to_owned());
-    let flat = |shader, key: &str, texture| {
-        Some(Style { shader, key: key.to_owned(), texture, opacity: false, maps: Maps::default() })
-    };
-    let with = |style: Option<Style>, maps: Maps| style.map(|style| Style { maps, ..style });
-    // The body's maps share the livery's UVs: the normal map, and `cme_specocc` (specular in the colour, occlusion in
-    // the alpha), the occlusion in the strength the material gives it.
-    let body = |occlusion: f32| Maps {
-        normal: Some(livery(&format!("{car}_main_nm.tga"))),
-        crumpled: true,
-        occlusion: Some((livery(&format!("{car}_specocc.tga")), 3, occlusion)),
-        specular: Some((livery(&format!("{car}_specocc.tga")), 1, FULL_SPECULAR)),
-    };
-    let normal = |source: Source| Maps { normal: Some(source), ..Maps::default() };
-    if let Some((_, short, _)) = CLASSES.iter().find(|(_, _, title)| material.starts_with(&format!("{title} "))) {
-        let class = CLASSES.iter().find(|(_, s, _)| s == short).map(|(c, _, _)| *c)?;
-        // The wheel's atlas holds the rim and the tyre's sidewall (the wall's UVs span all of it), the tread has its own
-        // tiled texture.
-        let atlas = |key: &str, shader| {
-            let flat = flat(shader, &format!("{key}_{class}"), Source::LiveryClass(short, format!("{car}_wheel.tga")));
-            with(flat, normal(Source::LiveryClass(short, format!("{car}_wheel_nm.tga"))))
+impl Source {
+    /// The file a map is written as, once whatever reads it: `dr_<name>.dds`, with the file's class where the name is a
+    /// class file's (`dr_cme_wheel_nm_tm.dds`, `dr_tread_nm_gr.dds`).
+    fn file(&self) -> String {
+        let (name, class) = match self {
+            Source::Livery(name) | Source::Interior(name) => (name.as_str(), "main"),
+            Source::LiveryClass(class, name) | Source::Generic(class, name) => (name.as_str(), *class),
+            Source::Gear => ("gear", "main"),
         };
-        return if material.ends_with(" Wheel") {
-            atlas("wheel", "CarRim")
-        } else if material.ends_with(" Tyre Wall") {
-            atlas("wall", "CarTire")
+        let stem = stem(name);
+        if class == "main" {
+            format!("dr_{stem}.dds")
         } else {
-            let tyre = flat("CarTire", &format!("tyre_{class}"), Source::Generic(short, "tread.tga".to_owned()));
-            with(tyre, normal(Source::Generic(short, "tread_nm.tga".to_owned())))
+            format!("dr_{stem}_{class}.dds")
+        }
+    }
+}
+
+/// The tyre classes: the renderer's name, the suffix of the livery's wheel file and of the generic tread file, and the
+/// materials' prefix (`Tarmac Wheel`).
+const CLASSES: [(&str, &str, &str); 3] =
+    [("tarmac", "tm", "Tarmac"), ("gravel", "gr", "Gravel"), ("snow", "sn", "Snow")];
+
+/// The specular that reflects in full (chrome and bare metal reach 0.8 to 1 in DiRT's maps, the Escort's red paint is
+/// 0.43, the dull plastics and rubber under 0.2): the paint's clear coat takes about half its strength, the metal all.
+const FULL_SPECULAR: f32 = 0.9;
+
+/// The first value of a material's constant `name`.
+fn constant(m: &Material, name: &str) -> Option<f32> {
+    m.constants.get(name).and_then(|v| v.first()).copied()
+}
+
+/// What a material of the car's file draws as. The exterior's materials hold constants only and are named alike on every
+/// car (surveyed on the 46); their textures bind by name: the livery's atlases (`<car>_main`, `_cabin`, `_glass`,
+/// `_lights`, `disc`, `caliper`), its wheel file per tyre class and the class's generics (`tread`, `suspension`,
+/// `grills`). Not drawn: the materials of the damage and the weather (none on the parts) and the spare wheels but the
+/// tarmac class's (the spare is in the body, all three classes in one place).
+fn exterior_style(car: &str, m: &Material) -> Option<Style> {
+    let own = |name: &str| Source::Livery(format!("{car}_{name}.tga"));
+    let livery = |name: &str| Source::Livery(format!("{name}.tga"));
+    let generic = |class: &'static str, name: &str| Source::Generic(class, format!("{name}.tga"));
+    let name = match m.id.strip_prefix("Spare ") {
+        Some(rest) if rest.starts_with("Tarmac ") => rest,
+        Some(_) => return None,
+        None => m.id.as_str(),
+    };
+    if let Some(&(class, short, title)) = CLASSES.iter().find(|(_, _, title)| name.starts_with(title)) {
+        // The wheel's atlas holds the rim and the tyre's sidewall (the wall's UVs span all of it); the tread has its own
+        // tiled texture.
+        let atlas = |shader| {
+            Style::new(shader, format!("wheel_{class}"), Source::LiveryClass(short, format!("{car}_wheel.tga")))
+                .with_normal(Source::LiveryClass(short, format!("{car}_wheel_nm.tga")))
+        };
+        return match &name[title.len()..] {
+            " Wheel" => Some(atlas("CarRim")),
+            " Tyre Wall" => Some(atlas("CarTire")),
+            " Tyre Tread" => Some(
+                Style::new("CarTire", format!("tyre_{class}"), generic(short, "tread"))
+                    .with_normal(generic(short, "tread_nm")),
+            ),
+            _ => None,
         };
     }
-    match material {
-        // The three finishes share the livery's atlas and take its occlusion in their own strength (`OcclusionMapScale`).
-        "Car Body Paint" => with(flat("CarPaint", "paint", livery(&format!("{car}_main.tga"))), body(0.4)),
-        "Matt" => with(flat("CarTextureNoDirt", "matt", livery(&format!("{car}_main.tga"))), body(0.8)),
-        "Shiny Metal" => with(flat("CarPaint", "metal", livery(&format!("{car}_main.tga"))), body(0.5)),
-        "Cabin" => flat("CarTextureNoDirt", "cabin", livery(&format!("{car}_cabin.tga"))),
-        "Window Glass" => Some(Style {
-            shader: "CarGlass",
-            key: "glass".to_owned(),
-            texture: livery(&format!("{car}_glass.tga")),
-            opacity: true,
-            maps: Maps::default(),
-        }),
+    // The body's atlas, which most materials read: its normal map (with the damage crumple), and `<car>_specocc`
+    // (specular in the colour, baked occlusion in the alpha) on its UVs, the occlusion in the strength the material gives
+    // it (`OcclusionMapScale`, per car and material: the Escort's paint 0.4, `Matt` 0.8, `Shiny Metal` 0.5). One texture
+    // per strength.
+    let body = |shader| {
+        let occlusion = constant(m, "OcclusionMapScale").unwrap_or(1.0);
+        let maps = Maps {
+            normal: Some(own("main_nm")),
+            crumpled: true,
+            occlusion: Some((own("specocc"), 3, occlusion)),
+            specular: Some((own("specocc"), 1, FULL_SPECULAR)),
+        };
+        Style { maps, ..Style::new(shader, format!("main{:.0}", occlusion * 100.0), own("main")) }
+    };
+    let matt = |key: &str, texture| Style::new("CarTextureNoDirt", key, texture);
+    // A texture and its normal map beside it (`disc`, `disc_nm`).
+    let mapped =
+        |key: &str, source: &dyn Fn(&str) -> Source| matt(key, source(key)).with_normal(source(&format!("{key}_nm")));
+    match name {
+        // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
+        "Car Body Paint" | "Shiny Metal" => Some(body("CarPaint")),
+        "Matt" | "Mud Flaps" | "Aerials" | "Carbon Fiber" => Some(body("CarTextureNoDirt")),
+        "Cabin" => Some(Style { lifted: true, ..matt("cabin", own("cabin")) }),
+        "Window Glass" => Some(Style { opacity: true, ..Style::new("CarGlass", "glass", own("glass")) }),
         // The lens carries the lamp's colours: its UVs lie on the lights atlas (red and amber at the tail, a clear
         // circle at the head); the atlas's alpha is the lens's own.
-        "Lights Glass" => Some(Style {
-            shader: "CarGlass",
-            key: "lens".to_owned(),
-            texture: livery(&format!("{car}_lights.tga")),
-            opacity: true,
-            maps: normal(livery(&format!("{car}_lights_nm.tga"))),
-        }),
-        // The housings' specular is in `<car>_lights_spec_occ` (their occlusion is left out: the lit lamps' colours are the texture's).
-        "Lights Pod" | "Lights Satin" => with(
-            flat("CarTextureNoDirt", "lights", livery(&format!("{car}_lights.tga"))),
-            Maps {
-                specular: Some((livery(&format!("{car}_lights_spec_occ.tga")), 1, FULL_SPECULAR)),
-                ..normal(livery(&format!("{car}_lights_nm.tga")))
-            },
-        ),
-        "Discs" => with(flat("CarTextureNoDirt", "disc", livery("disc.tga")), normal(livery("disc_nm.tga"))),
-        "Suspension" => with(
-            flat("CarTextureNoDirt", "suspension", Source::Generic("main", "suspension.tga".to_owned())),
-            normal(Source::Generic("main", "suspension_nm.tga".to_owned())),
-        ),
-        "Grills" => with(
-            flat("CarTextureNoDirt", "grills", Source::Generic("main", "grills.tga".to_owned())),
-            normal(Source::Generic("main", "grills_nm.tga".to_owned())),
-        ),
-        _ => None,
-    }
-}
-
-/// What a material of the interior scene draws as. The dash, doors, seats, cage, levers and wheel all read one atlas
-/// (`int_cme_main`), whatever their shader; the gauge faces and the indicator lights have theirs. The carbon fibre's
-/// UVs lie on the atlas's lightmap layout, not on a picture of carbon: it draws the weave (`int_carbon_diff`) repeated
-/// [`CARBON_REPEAT`] times over them, as DiRT's shader does. The gear display (`lcd_text`, a texture of numerals the
-/// game scrolls) is a black texture of its own which the gauges draw the digit on, for a car whose gauges are measured
-/// ([`gauges::layout`]); the speed display is drawn on the dials atlas. Not drawn: the glass. The mirrors' glass (`mirror`, which the game draws as a texture of what
-/// is behind) is the renderer's glass class on a flat texel: it shows the surroundings from the part's name
-/// (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
-fn interior_style(material: &str, car: &str) -> Option<Style> {
-    let style = |key: &str, texture: String| {
-        Some(Style {
-            shader: "CarTextureNoDirt",
-            key: key.to_owned(),
-            texture: Source::Interior(texture),
-            opacity: false,
-            maps: Maps::default(),
-        })
-    };
-    // The main atlas's maps (`int_<car>_nm`, `_occ`, `_sp`) share its UVs.
-    let atlas = |name: &str| Source::Interior(format!("int_{car}_{name}.tga"));
-    match material {
-        "Matt" | "Leather" | "Shiny Painted Metal" | "bare metal" | "Chrome" | "shiny plastic" | "suede" => {
-            style("int_main", format!("int_{car}_main.tga")).map(|style| Style {
-                maps: Maps {
-                    normal: Some(atlas("nm")),
-                    crumpled: false,
-                    occlusion: Some((atlas("occ"), 0, INTERIOR_OCCLUSION)),
-                    specular: Some((atlas("sp"), 0, FULL_SPECULAR)),
-                },
-                ..style
-            })
+        "Lights Glass" => {
+            Some(Style { opacity: true, ..Style::new("CarGlass", "lens", own("lights")) }.with_normal(own("lights_nm")))
         }
-        "carbon fibre" => style("int_carbon", "int_carbon_diff.tga".to_owned()),
-        "dials matt" | "dials shiny" => style("int_dials", format!("int_{car}_dials.tga")),
-        "shift light_01" | "limit lights" => style("int_indicator", "int_indicator.tga".to_owned()),
-        "gear indicator" if gauges::layout(car).is_some() => Some(Style {
-            shader: "CarTextureNoDirt",
-            key: "int_gear".to_owned(),
-            texture: Source::Gear,
-            opacity: false,
-            maps: Maps::default(),
-        }),
-        "mirror" => Some(Style {
-            shader: "CarGlass",
-            key: "int_mirror".to_owned(),
-            texture: Source::Interior("int_gen_sp.tga".to_owned()),
-            opacity: false,
-            maps: Maps::default(),
-        }),
+        // The housings' specular is in `<car>_lights_spec_occ` (their occlusion is left out: the lit lamps' colours are
+        // the texture's).
+        "Lights Pod" | "Lights Satin" => {
+            let maps = Maps { specular: Some((own("lights_spec_occ"), 1, FULL_SPECULAR)), ..Maps::default() };
+            Some(Style { maps, ..matt("lights", own("lights")) }.with_normal(own("lights_nm")))
+        }
+        "Discs" => Some(mapped("disc", &livery)),
+        "Caliper" => Some(mapped("caliper", &livery)),
+        "Suspension" => Some(mapped("suspension", &|name| generic("main", name))),
+        "Grills" => Some(mapped("grills", &|name| generic("main", name))),
         _ => None,
     }
 }
 
-/// The weave's repeats over the UV range (DiRT's `CarbonUVRepeat`).
-const CARBON_REPEAT: f32 = 500.0;
+/// The occlusion the interior's own maps put in its colours. The game's `OcclusionMapScale` is 1 there, on the ambient
+/// light alone (which the dash takes from the sky it sees, `rbr-render`'s cabin light), so the bake takes a part of it.
+const INTERIOR_OCCLUSION: f32 = 0.5;
 
-/// The file a texture is written as: `dr_<key>.dds`.
-fn file(key: &str) -> String {
+/// What a material of the interior scene draws as, by its shader and the textures it binds (surveyed on the 46 cars):
+/// its diffuse (`TDiffuseAlphaMap`), with the normal, occlusion and specular maps that are the car's own (`int_<car>_nm`,
+/// `_occ`, `_sp`, on the atlas's UVs; the shared `int_gen_sp` is a 32 texel constant) and an occlusion its
+/// `OcclusionMapScale` does not turn off. The alpha and netting shaders' alpha is their opacity. The carbon fibre's UVs
+/// lie on the atlas's lightmap layout, not on a picture of carbon: it draws the weave (`TCarbonDiffuseMap`) repeated
+/// `CarbonUVRepeat` times over them, as DiRT's shader does. The gear display (`lcd_text`, a texture of numerals the
+/// game scrolls) is a black texture of its own which the gauges draw the digit on, for a car whose gauges are measured
+/// ([`gauges::layout`]); the other LCDs and the glass are not drawn. The mirrors' glass (which the game draws as a
+/// texture of what is behind) is the renderer's glass class on a flat texel: it shows the surroundings by the part's
+/// name (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
+fn interior_style(car: &str, m: &Material, gauged: bool) -> Option<Style> {
+    let bound = |input: &str| m.textures.get(input).map(|t| t.trim_start_matches('#').to_owned());
+    let own = |input: &str| bound(input).filter(|t| !t.starts_with("int_gen_")).map(Source::Interior);
+    let style = |key: String, texture| Style { lifted: true, ..Style::new("CarTextureNoDirt", key, texture) };
+    match m.shader.as_str() {
+        "interior_windscreen.fx" => None,
+        "lcd_text.fx" => (gauged && m.id == "gear indicator").then(|| style("int_gear".into(), Source::Gear)),
+        "mirror.fx" => {
+            Some(Style { shader: "CarGlass", ..style("int_mirror".into(), Source::Interior("int_gen_sp.tga".into())) })
+        }
+        "interior_carbon.fx" => {
+            let weave = bound("TCarbonDiffuseMap")?;
+            let repeat = constant(m, "CarbonUVRepeat").unwrap_or(1.0);
+            Some(Style { repeat, ..style(interior_key(car, &weave), Source::Interior(weave)) })
+        }
+        shader => {
+            let texture = bound("TDiffuseAlphaMap")?;
+            let opacity = matches!(shader, "interior_alpha.fx" | "interior_netting.fx");
+            let occlusion = own("TOcclusionMap").filter(|_| constant(m, "OcclusionMapScale").unwrap_or(1.0) > 0.0);
+            let maps = Maps {
+                normal: own("TNormalMap"),
+                crumpled: false,
+                occlusion: occlusion.map(|map| (map, 0, INTERIOR_OCCLUSION)),
+                specular: own("TSpecularMap").filter(|_| !opacity).map(|map| (map, 0, FULL_SPECULAR)),
+            };
+            let key = interior_key(car, &texture) + if opacity { "_alpha" } else { "" };
+            Some(Style { opacity, maps, ..style(key, Source::Interior(texture)) })
+        }
+    }
+}
+
+/// A texture's name without its extension, in lower case (`int_405_main.TGA`: `int_405_main`).
+fn stem(texture: &str) -> String {
+    texture.rsplit_once('.').map_or(texture, |(stem, _)| stem).to_ascii_lowercase()
+}
+
+/// An interior texture's key: its name without the car's (`int_cme_main.tga`: `int_main`).
+fn interior_key(car: &str, texture: &str) -> String {
+    let stem = stem(texture);
+    stem.strip_prefix(&format!("int_{car}_")).map_or_else(|| stem.clone(), |rest| format!("int_{rest}"))
+}
+
+/// The interior's materials' styles: one per drawn texture, with every map any of its materials gives it (the dash,
+/// doors, seats, cage, levers and wheel read one atlas, `int_<car>_main`, whatever their shader, and the Escort's chrome
+/// turns its occlusion off).
+fn interior_styles(car: &str, materials: &BTreeMap<String, Material>, gauged: bool) -> BTreeMap<String, Style> {
+    let styles: Vec<(&String, Style)> =
+        materials.values().filter_map(|m| Some((&m.id, interior_style(car, m, gauged)?))).collect();
+    let mut merged: BTreeMap<&str, Style> = BTreeMap::new();
+    for (_, style) in &styles {
+        let first = &mut merged.entry(style.key.as_str()).or_insert_with(|| style.clone()).maps;
+        first.normal = first.normal.take().or_else(|| style.maps.normal.clone());
+        first.occlusion = first.occlusion.take().or_else(|| style.maps.occlusion.clone());
+        first.specular = first.specular.take().or_else(|| style.maps.specular.clone());
+    }
+    styles.iter().map(|(id, style)| ((*id).clone(), merged[style.key.as_str()].clone())).collect()
+}
+
+/// The file a material's texture is written as: `dr_<key>.dds`.
+pub(crate) fn file(key: &str) -> String {
     format!("dr_{key}.dds")
 }
 
-/// The file a normal map is written as: `dr_<key>_nm.dds`.
-fn normal_file(key: &str) -> String {
-    format!("dr_{key}_nm.dds")
+/// A mesh of the output before it is written: vertices in the part's own space and the node's place.
+struct Piece {
+    name: String,
+    /// The node's translation in the template's frame.
+    at: [f32; 3],
+    /// The node's axes in the template's frame (its columns), [`UPRIGHT`] for a part modelled in the car's.
+    axes: [[f32; 3]; 3],
+    faces: Vec<Face>,
 }
 
-/// A material of the car's `_shaders.ini`: its texture file, whether it has an opacity channel, its normal map's file.
-struct Entry {
-    opacity: bool,
-    file: String,
-    normal: Option<String>,
-}
-
-/// `texture` toned by `tone`, as the `.dds` the car reads: with the occlusion baked in and the specular as its alpha
-/// where `maps` has them, else the blocks as they are.
-fn bake(library: &Library, maps: &Maps, texture: &Texture, tone: fn(f32) -> f32) -> Result<Vec<u8>, String> {
-    if maps.occlusion.is_none() && maps.specular.is_none() {
-        return Ok(texture.toned(tone).dds());
+impl Piece {
+    /// A piece modelled in the car's frame.
+    fn upright(name: impl Into<String>, faces: Vec<Face>) -> Piece {
+        Piece { name: name.into(), at: [0.0; 3], axes: UPRIGHT, faces }
     }
-    let plane = |(source, channel, value): &(Source, usize, f32)| {
-        Ok::<_, String>((Plane::of(&library.find(source)?, *channel), *value))
-    };
-    let occlusion = maps.occlusion.as_ref().map(plane).transpose()?;
-    let specular = maps.specular.as_ref().map(plane).transpose()?;
-    Ok(car_maps::diffuse(
-        texture,
-        tone,
-        occlusion.as_ref().map(|(plane, scale)| (plane, *scale)),
-        specular.as_ref().map(|(plane, reference)| (plane, *reference)),
-    ))
 }
 
-/// Parts not drawn in the first pass.
+/// The car's own axes.
+const UPRIGHT: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+/// The triangles of one shader class and material key.
+struct Face {
+    shader: &'static str,
+    material: String,
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    uv: Vec<[f32; 2]>,
+    triangles: Vec<[u32; 3]>,
+}
+
+/// DiRT's wheel suffixes and the RBR's, in the wheel order of the renderer.
+const SIDES: [(&str, &str); 4] = [("fl", "lf"), ("fr", "rf"), ("bl", "lb"), ("br", "rb")];
+/// A part's vertex limit: the triangle indices are 16 bits.
+const MAX_VERTICES: usize = 60_000;
+
+/// Parts not drawn: the wipers' animation keys (`wiper_fl_pos_01`).
 fn dropped(part: &str) -> bool {
     part.contains("_pos_0")
 }
@@ -288,11 +322,13 @@ fn window(part: &str) -> Option<String> {
 }
 
 /// The lamps: DiRT's lens part, the renderer's part name before the side (`e_light_brake_lb`) and the states it draws
-/// (`""` unlit, `_lit` lit). The combined tail and brake lamp is both: the tail's part always on, so at night the lamp
-/// glows before the pedal is touched, and the brake's lit part over it (the same faces) while it brakes, with no unlit
-/// one of its own to cover the tail's lit one. The bumper's extra lamps stay in the body.
-const LAMPS: [(&str, &str, &[&str]); 4] = [
+/// (`""` unlit, `_lit` lit), the first of a name kept. The combined tail and brake lamp is both: the tail's part always on,
+/// so at night the lamp glows before the pedal is touched, and the brake's lit part over it (the same faces) while it
+/// brakes, with no unlit one of its own to cover the tail's lit one, where the car has no brake lens of its own. The
+/// bumper's extra lamps and the second sets (`light_2_*`) stay in the body.
+const LAMPS: [(&str, &str, &[&str]); 5] = [
     ("light_glass", "e_light_", &["", "_lit"]),
+    ("light_brake_glass", "e_light_brake_", &["", "_lit"]),
     ("light_combi_glass", "e_light_", &["", "_lit"]),
     ("light_combi_glass", "e_light_brake_", &["_lit"]),
     ("light_rev_glass", "e_light_reverse_", &["", "_lit"]),
@@ -322,6 +358,22 @@ struct Frame {
 }
 
 impl Frame {
+    /// The mirror alone, for a part drawn in its own frame.
+    const LOCAL: Frame = Frame { z_dirt: 0.0, z_template: 0.0, y_shift: 0.0 };
+
+    /// The frame that lays the DiRT car's wheel centres (their mean) on the template's `hubs`.
+    fn fitted(parts: &[Part], hubs: &[[f32; 3]; 4]) -> Result<Frame, String> {
+        let dirt = SIDES
+            .iter()
+            .map(|(side, _)| {
+                let wheel = parts.iter().find(|p| p.name == format!("wheel_{side}"));
+                wheel.map(|p| translation(&p.transform)).ok_or_else(|| format!("the car has no wheel_{side}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mean = |hubs: &[[f32; 3]], axis: usize| hubs.iter().map(|h| h[axis]).sum::<f32>() / hubs.len() as f32;
+        Ok(Frame { z_dirt: mean(&dirt, 2), z_template: mean(hubs, 2), y_shift: mean(hubs, 1) - mean(&dirt, 1) })
+    }
+
     fn point(&self, p: [f32; 3]) -> [f32; 3] {
         [p[0], p[1] + self.y_shift, -(p[2] - self.z_dirt) + self.z_template]
     }
@@ -331,36 +383,22 @@ impl Frame {
     }
 }
 
-/// The part's vertices as the template's frame with `at` taken out (for a wheel: its local frame).
-fn place(instance: &Instance, matrix: &Mat, frame: &Frame, at: [f32; 3]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
-    let positions = instance
-        .positions
-        .iter()
-        .map(|&p| {
-            let q = frame.point(crate::mesh::point(matrix, p));
-            [q[0] - at[0], q[1] - at[1], q[2] - at[2]]
-        })
-        .collect();
-    let normals = instance.normals.iter().map(|&n| Frame::direction(crate::mesh::direction(matrix, n))).collect();
-    (positions, normals)
+fn translation(m: &Mat) -> [f32; 3] {
+    [m[3][0], m[3][1], m[3][2]]
 }
 
-/// The instances of `parts` as faces of one piece, grouped by shader class and material key.
+/// The instances, with the matrices that place them in DiRT's frame, as faces in `frame`, grouped by shader class and
+/// material key: the materials `styles` draws and `wanted` takes.
 fn faces<'a>(
-    instances: impl Iterator<Item = (&'a Instance, Mat)>,
+    instances: impl IntoIterator<Item = (&'a Instance, Mat)>,
     frame: &Frame,
-    at: [f32; 3],
-    style_of: &dyn Fn(&str) -> Option<Style>,
+    styles: &BTreeMap<String, Style>,
     wanted: impl Fn(&str) -> bool,
 ) -> Vec<Face> {
-    let mut groups: BTreeMap<(&'static str, String), Face> = BTreeMap::new();
+    let mut groups: BTreeMap<(&'static str, &str), Face> = BTreeMap::new();
     for (instance, matrix) in instances {
-        if !wanted(&instance.material) {
-            continue;
-        }
-        let Some(style) = style_of(&instance.material) else { continue };
-        let (positions, normals) = place(instance, &matrix, frame, at);
-        let face = groups.entry((style.shader, style.key.clone())).or_insert_with(|| Face {
+        let Some(style) = styles.get(&instance.material).filter(|_| wanted(&instance.material)) else { continue };
+        let face = groups.entry((style.shader, &style.key)).or_insert_with(|| Face {
             shader: style.shader,
             material: style.key.clone(),
             positions: Vec::new(),
@@ -368,37 +406,28 @@ fn faces<'a>(
             uv: Vec::new(),
             triangles: Vec::new(),
         });
-        let base = face.positions.len() as u32;
-        face.positions.extend(positions);
-        face.normals.extend(normals);
-        let missing = instance.positions.len() - instance.uv.len().min(instance.positions.len());
-        let repeat = if style.key == "int_carbon" { CARBON_REPEAT } else { 1.0 };
-        let uv = instance.uv.iter().map(|t| [t[0] * repeat, t[1] * repeat]);
-        face.uv.extend(uv.chain(std::iter::repeat_n([0.0; 2], missing)));
+        let (base, count) = (face.positions.len() as u32, instance.positions.len());
+        face.positions.extend(instance.positions.iter().map(|&p| frame.point(mesh::point(&matrix, p))));
+        let normals = instance.normals.iter().map(|&n| Frame::direction(mesh::direction(&matrix, n)));
+        face.normals.extend(normals.chain(std::iter::repeat([0.0, 1.0, 0.0])).take(count));
+        let uv = instance.uv.iter().map(|t| t.map(|v| v * style.repeat));
+        face.uv.extend(uv.chain(std::iter::repeat([0.0; 2])).take(count));
         // The z mirror turns right-handed counter-clockwise fronts into the renderer's, which wants them the other way.
         face.triangles.extend(instance.triangles.iter().map(|t| [t[0] + base, t[2] + base, t[1] + base]));
     }
     groups.into_values().filter(|f| !f.triangles.is_empty()).collect()
 }
 
-/// No transform.
-const IDENTITY: Mat = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
-
-/// Rotation and scale only: a part's matrix without its translation.
-fn without_translation(m: &Mat) -> Mat {
-    let mut r = *m;
-    r[3] = [0.0, 0.0, 0.0, 1.0];
-    r
-}
-
 /// A part's instances with the part's matrix.
-fn all(p: &Part) -> Vec<(&Instance, Mat)> {
-    p.instances.iter().map(|i| (i, p.transform)).collect()
+fn all(p: &Part) -> impl Iterator<Item = (&Instance, Mat)> {
+    p.instances.iter().map(|i| (i, p.transform))
 }
 
-/// A part's instances with its rotation only, in the part's own frame.
-fn local(p: &Part) -> Vec<(&Instance, Mat)> {
-    p.instances.iter().map(|i| (i, without_translation(&p.transform))).collect()
+/// A part's instances with its rotation alone, for a part drawn in its own frame.
+fn local(p: &Part) -> impl Iterator<Item = (&Instance, Mat)> {
+    let mut m = p.transform;
+    m[3] = [0.0, 0.0, 0.0, 1.0];
+    p.instances.iter().map(move |i| (i, m))
 }
 
 /// The interior scene's mirror glass (the centre mirror and the driver's wing mirror) and the glass parts they become.
@@ -408,9 +437,11 @@ const MIRRORS: [(&str, &str); 2] = [("int_reflection_m", "i_mirrorglass_m"), ("i
 struct Cockpit<'a> {
     scene: &'a [Part],
     /// The exterior parts the cockpit draws as well (`bonnet`, `wing_fl`), by name without `x0_`.
-    active: &'a [String],
+    active: Vec<String>,
     /// The tach's needle is drawn by the gauges (into the dials atlas), not as the mesh at rest.
     gauged: bool,
+    /// Where the scene is cut for the outside's copy.
+    clip: Option<Clip>,
 }
 
 /// The exterior nodes an interior config keeps active in the cockpit (`<node name="x0_bonnet"/>`), without their `x0_`.
@@ -429,15 +460,39 @@ fn in_part_space(instance: &Instance, m: &Mat) -> Instance {
     }
 }
 
-/// The interior scene's roof and sides, DiRT's frame: what lies above or beyond them is in or past the body's paint.
-const ROOF: f32 = 1.40;
-const SIDE: f32 = 0.68;
+/// The cabin's top and half width in DiRT's frame: what of the interior scene lies above or beyond them is in or past
+/// the body's paint (the cage's roof tubes, the lining at the roof and the sides).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Clip {
+    roof: f32,
+    side: f32,
+}
 
-/// `instance` without the triangles whose centre lies above [`ROOF`] or beyond [`SIDE`].
-fn within_body(instance: &Instance) -> Instance {
+/// How far past the glass the cabin's [`Clip`] lies.
+const GLASS_MARGIN: f32 = 0.01;
+
+/// The cabin's [`Clip`] from the car's glass, [`GLASS_MARGIN`] on: the windscreen's top (`window_f`; the rear window
+/// can sit higher, the Escort's at 1.41, under the roof's slope) and the side windows' outer edge (the Escort: 1.40 and
+/// 0.68, the values found by eye before they were measured); `None` for a car without them.
+fn clip(parts: &[Part]) -> Option<Clip> {
+    let glass = |wanted: &dyn Fn(&str) -> bool| -> Vec<[f32; 3]> {
+        let panes = parts.iter().filter(|p| wanted(&p.name));
+        let instances =
+            panes.flat_map(|p| p.instances.iter().filter(|i| i.material == "Window Glass").map(|i| (i, p.transform)));
+        instances.flat_map(|(i, m)| i.positions.iter().map(move |&q| mesh::point(&m, q))).collect()
+    };
+    let (screen, sides) =
+        (glass(&|n| n == "window_f"), glass(&|n| SIDES.iter().any(|(s, _)| n == format!("window_{s}"))));
+    let ((_, top), (lo, hi)) = (car::bounds(&screen), car::bounds(&sides));
+    (!screen.is_empty() && !sides.is_empty())
+        .then(|| Clip { roof: top[1] + GLASS_MARGIN, side: hi[0].max(-lo[0]) + GLASS_MARGIN })
+}
+
+/// `instance` without the triangles whose centre lies above the clip's roof or beyond its sides.
+fn within_body(instance: &Instance, clip: Clip) -> Instance {
     let inside = |t: &&[u32; 3]| {
         let centre = |k: usize| t.iter().map(|&i| instance.positions[i as usize][k]).sum::<f32>() / 3.0;
-        centre(1) <= ROOF && centre(0).abs() <= SIDE
+        centre(1) <= clip.roof && centre(0).abs() <= clip.side
     };
     Instance { triangles: instance.triangles.iter().filter(inside).copied().collect(), ..instance.clone() }
 }
@@ -456,150 +511,157 @@ fn split(name: &str, mut faces: Vec<Face>) -> Vec<Piece> {
             take.push(faces.remove(0));
         }
         let name = if out.is_empty() { name.to_owned() } else { format!("{name}{}", out.len() + 1) };
-        out.push(Piece { name, at: [0.0; 3], axes: UPRIGHT, faces: take });
+        out.push(Piece::upright(name, take));
     }
     out
 }
 
-fn pieces(parts: &[Part], cockpit: Option<&Cockpit>, frame: &Frame, car: &str) -> Vec<Piece> {
-    let part = |name: &str| parts.iter().find(|p| p.name == name);
-    let exterior = |m: &str| style(m, car);
-    let inside = |m: &str| interior_style(m, car);
-    let mut out = Vec::new();
+/// What the pieces are cut from: the car's parts and its interior scene, placed by `frame`, drawn as their styles say.
+struct Model<'a> {
+    parts: &'a [Part],
+    frame: Frame,
+    exterior: &'a BTreeMap<String, Style>,
+    interior: &'a BTreeMap<String, Style>,
+    cockpit: Option<Cockpit<'a>>,
+}
 
-    // Wheels: each class's rim, tyre and the disc in the wheel's own frame, the node at the hub.
-    for (dirt, rbr) in SIDES {
-        let (Some(wheel), Some(tyre), Some(disc)) =
-            (part(&format!("wheel_{dirt}")), part(&format!("tyre_{dirt}")), part(&format!("disc_{dirt}")))
-        else {
-            continue;
-        };
-        let hub = frame.point([wheel.transform[3][0], wheel.transform[3][1], wheel.transform[3][2]]);
-        for (class, _, title) in CLASSES {
-            let instances = [wheel, tyre, disc].into_iter().flat_map(local).collect::<Vec<_>>();
-            let wanted = |m: &str| m.starts_with(title) || m == "Discs";
-            let faces = faces(
-                instances.into_iter(),
-                &Frame { z_dirt: 0.0, z_template: 0.0, y_shift: 0.0 },
-                [0.0; 3],
-                &exterior,
-                wanted,
-            );
-            out.push(Piece { name: format!("e_wheel_{class}_{rbr}"), at: hub, axes: UPRIGHT, faces });
-        }
+impl Model<'_> {
+    fn part(&self, name: &str) -> Option<&Part> {
+        self.parts.iter().find(|p| p.name == name)
     }
 
-    // Windows.
-    for p in parts {
-        if let Some(name) = window(&p.name) {
-            out.push(Piece {
-                name,
-                at: [0.0; 3],
-                axes: UPRIGHT,
-                faces: faces(all(p).into_iter(), frame, [0.0; 3], &exterior, |_| true),
-            });
-        }
+    fn pieces(&self) -> Vec<Piece> {
+        [self.wheels(), self.windows(), self.lamps(), self.cabin(), self.steering_wheel(), self.body()]
+            .into_iter()
+            .flatten()
+            .collect()
     }
 
-    // The lamps: each lens as an unlit and a lit part, which the lamp's switch box swaps (`ini_file`).
-    for (dirt, rbr, states) in LAMPS {
-        for (side, rbr_side) in SIDES {
-            let Some(lens) = part(&format!("{dirt}_{side}")) else { continue };
-            for suffix in states {
-                let faces = faces(all(lens).into_iter(), frame, [0.0; 3], &exterior, |_| true);
-                out.push(Piece { name: format!("{rbr}{rbr_side}{suffix}"), at: [0.0; 3], axes: UPRIGHT, faces });
+    /// Each class's rim, tyre and the disc in the wheel's own frame, the node at the hub.
+    fn wheels(&self) -> Vec<Piece> {
+        let mut out = Vec::new();
+        for (dirt, rbr) in SIDES {
+            let parts: Vec<&Part> =
+                ["wheel", "tyre", "disc"].iter().filter_map(|kind| self.part(&format!("{kind}_{dirt}"))).collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let hub = self.frame.point(translation(&parts[0].transform));
+            for (class, _, title) in CLASSES {
+                let instances = parts.iter().flat_map(|p| local(p));
+                let faces = faces(instances, &Frame::LOCAL, self.exterior, |m| m.starts_with(title) || m == "Discs");
+                out.push(Piece { name: format!("e_wheel_{class}_{rbr}"), at: hub, axes: UPRIGHT, faces });
             }
         }
+        out
     }
 
-    // The cabin, drawn in the cockpit (`i_internal`) and seen through the windows from outside (`e_internal`): the
-    // interior scene (dash, door cards, cage, seats, pedals, levers, gauges; not the wipers, whose rest pose the body's
-    // own show, nor the steering wheel) for both, and the exterior nodes the interior config keeps active (the bonnet and
-    // wings seen over the dash) in the cockpit. Only the interior scene is used where the car has one: the exterior
-    // file's cabin material is its low-detail copy. Without an interior scene it is the fallback for both.
-    match cockpit {
-        Some(c) => {
-            let drawn: Vec<_> = c
-                .scene
-                .iter()
-                .filter(|p| !p.name.starts_with("int_wiper") && p.name != "int_steering_wheel")
-                .filter(|p| !(c.gauged && p.name == "int_needle_tach"))
-                .filter(|p| !MIRRORS.iter().any(|(node, _)| *node == p.name))
-                .flat_map(all)
-                .collect();
-            out.extend(split("i_internal", faces(drawn.clone().into_iter(), frame, [0.0; 3], &inside, |_| true)));
-            // Seen from outside, the cage's roof tubes and the lining at the roof and the sides lie in the body's paint
-            // (DiRT never draws this scene outside) and show through it as grey bands along the roof edge.
-            let clipped: Vec<_> = drawn.iter().map(|(i, m)| (within_body(i), *m)).collect();
-            let kept = clipped.iter().map(|(i, m)| (i, *m));
-            out.extend(split("e_internal", faces(kept, frame, [0.0; 3], &inside, |_| true)));
-            for (node, name) in MIRRORS {
-                for p in c.scene.iter().filter(|p| p.name == node) {
-                    let faces = faces(all(p).into_iter(), frame, [0.0; 3], &inside, |_| true);
-                    out.push(Piece { name: name.to_owned(), at: [0.0; 3], axes: UPRIGHT, faces });
+    fn windows(&self) -> Vec<Piece> {
+        let piece =
+            |p: &Part| Some(Piece::upright(window(&p.name)?, faces(all(p), &self.frame, self.exterior, |_| true)));
+        self.parts.iter().filter_map(piece).collect()
+    }
+
+    /// Each lens as an unlit and a lit part, which the lamp's switch box swaps (`ini_file`).
+    fn lamps(&self) -> Vec<Piece> {
+        let mut out: Vec<Piece> = Vec::new();
+        for (dirt, rbr, states) in LAMPS {
+            for (side, rbr_side) in SIDES {
+                let Some(lens) = self.part(&format!("{dirt}_{side}")) else { continue };
+                for suffix in states {
+                    let name = format!("{rbr}{rbr_side}{suffix}");
+                    if !out.iter().any(|p| p.name == name) {
+                        out.push(Piece::upright(name, faces(all(lens), &self.frame, self.exterior, |_| true)));
+                    }
                 }
             }
-            let near: Vec<_> = parts.iter().filter(|p| c.active.contains(&p.name)).flat_map(all).collect();
-            let near = faces(near.into_iter(), frame, [0.0; 3], &exterior, |m| m != "Cabin" && m != "Window Glass");
-            out.extend(split("i_body", near));
         }
-        None => {
-            let has_cabin =
-                |p: &Part| p.name.starts_with("main_interior") || p.instances.iter().any(|i| i.material == "Cabin");
-            let shell: Vec<_> =
-                parts.iter().filter(|p| has_cabin(p) && p.name != "steering_wheel").flat_map(all).collect();
-            for name in ["e_internal", "i_internal"] {
-                let faces = faces(shell.clone().into_iter(), frame, [0.0; 3], &exterior, |m| m == "Cabin");
-                out.push(Piece { name: name.to_owned(), at: [0.0; 3], axes: UPRIGHT, faces });
-            }
-        }
+        out
     }
 
-    // The steering wheel, in its own frame: the node's z is the column, toward the driver (the template's convention,
-    // which the crew's hands and the wheel's turn use). The vertices are DiRT's with z negated (`faces` through the
-    // zero frame), the axes the part's turned the same way: the mirror once, so the triangles are flipped once. The
-    // wheel is the interior scene's own, taken into the exterior wheel's node, in both sets; the exterior file's
-    // where there is no interior scene.
-    if let Some(p) = part("steering_wheel") {
-        let row = |k: usize| [p.transform[k][0], p.transform[k][1], p.transform[k][2]];
-        let (x, y, z) = (Frame::direction(row(0)), Frame::direction(row(1)), Frame::direction(row(2)));
-        let axes = [x, y, z.map(|v| -v)];
-        let hub = frame.point([p.transform[3][0], p.transform[3][1], p.transform[3][2]]);
-        let local = Frame { z_dirt: 0.0, z_template: 0.0, y_shift: 0.0 };
-        let own: Vec<Instance> = cockpit
+    /// The cabin, drawn in the cockpit (`i_internal`) and seen through the windows from outside (`e_internal`): the
+    /// interior scene (dash, door cards, cage, seats, pedals, levers, gauges; not the wipers, whose rest pose the body's
+    /// own show, nor the steering wheel) for both, and the exterior nodes the interior config keeps active (the bonnet and
+    /// wings seen over the dash) in the cockpit. Only the interior scene is used where the car has one: the exterior
+    /// file's cabin material is its low-detail copy. Without an interior scene it is the fallback for both.
+    fn cabin(&self) -> Vec<Piece> {
+        let Some(c) = &self.cockpit else {
+            let has_cabin =
+                |p: &&Part| p.name.starts_with("main_interior") || p.instances.iter().any(|i| i.material == "Cabin");
+            let shell = || self.parts.iter().filter(has_cabin).filter(|p| p.name != "steering_wheel").flat_map(all);
+            let cabin = |name| Piece::upright(name, faces(shell(), &self.frame, self.exterior, |m| m == "Cabin"));
+            return vec![cabin("e_internal"), cabin("i_internal")];
+        };
+        let drawn: Vec<_> = c
+            .scene
+            .iter()
+            .filter(|p| !p.name.starts_with("int_wiper") && p.name != "int_steering_wheel")
+            .filter(|p| !(c.gauged && p.name == "int_needle_tach"))
+            .filter(|p| !MIRRORS.iter().any(|(node, _)| *node == p.name))
+            .flat_map(all)
+            .collect();
+        let mut out = split("i_internal", faces(drawn.iter().copied(), &self.frame, self.interior, |_| true));
+        // Seen from outside, the cage's roof tubes and the lining at the roof and the sides lie in the body's paint
+        // (DiRT never draws this scene outside) and show through it as grey bands along the roof edge.
+        let clipped: Vec<_> =
+            drawn.iter().map(|(i, m)| (c.clip.map_or_else(|| (*i).clone(), |clip| within_body(i, clip)), *m)).collect();
+        out.extend(split(
+            "e_internal",
+            faces(clipped.iter().map(|(i, m)| (i, *m)), &self.frame, self.interior, |_| true),
+        ));
+        for (node, name) in MIRRORS {
+            for p in c.scene.iter().filter(|p| p.name == node) {
+                out.push(Piece::upright(name, faces(all(p), &self.frame, self.interior, |_| true)));
+            }
+        }
+        let near = self.parts.iter().filter(|p| c.active.contains(&p.name)).flat_map(all);
+        out.extend(split("i_body", faces(near, &self.frame, self.exterior, |m| m != "Cabin" && m != "Window Glass")));
+        out
+    }
+
+    /// The steering wheel, in its own frame: the node's z is the column, toward the driver (the template's convention,
+    /// which the crew's hands and the wheel's turn use). The vertices are DiRT's with z negated (`faces` through
+    /// [`Frame::LOCAL`]), the axes the part's turned the same way: the mirror once, so the triangles are flipped once. The
+    /// wheel is the interior scene's own, taken into the exterior wheel's node, in both sets; the exterior file's
+    /// where there is no interior scene.
+    fn steering_wheel(&self) -> Vec<Piece> {
+        let Some(p) = self.part("steering_wheel") else { return Vec::new() };
+        let row = |k: usize| Frame::direction([p.transform[k][0], p.transform[k][1], p.transform[k][2]]);
+        let axes = [row(0), row(1), row(2).map(|v| -v)];
+        let hub = self.frame.point(translation(&p.transform));
+        let own: Vec<Instance> = self
+            .cockpit
             .iter()
             .flat_map(|c| c.scene.iter())
             .filter(|q| q.name == "int_steering_wheel")
             .flat_map(|q| q.instances.iter().map(|i| in_part_space(i, &p.transform)))
             .collect();
         let wheel = || {
-            if own.is_empty() {
-                faces(p.instances.iter().map(|i| (i, IDENTITY)), &local, [0.0; 3], &exterior, |_| true)
-            } else {
-                faces(own.iter().map(|i| (i, IDENTITY)), &local, [0.0; 3], &inside, |_| true)
-            }
+            let (instances, styles) =
+                if own.is_empty() { (&p.instances, self.exterior) } else { (&own, self.interior) };
+            faces(instances.iter().map(|i| (i, mesh::IDENTITY)), &Frame::LOCAL, styles, |_| true)
         };
-        for name in ["i_steeringwheel", "e_steeringwheel"] {
-            out.push(Piece { name: name.to_owned(), at: hub, axes, faces: wheel() });
-        }
+        ["i_steeringwheel", "e_steeringwheel"]
+            .map(|name| Piece { name: name.to_owned(), at: hub, axes, faces: wheel() })
+            .into()
     }
 
-    // Everything else outside: the body.
-    let is_wheel = |n: &str| n.starts_with("wheel_") || n.starts_with("tyre_") || n.starts_with("disc_");
-    let body: Vec<_> = parts
-        .iter()
-        .filter(|p| {
-            !is_wheel(&p.name)
-                && window(&p.name).is_none()
-                && !lens(&p.name)
-                && !dropped(&p.name)
-                && p.name != "steering_wheel"
-        })
-        .flat_map(all)
-        .collect();
-    let faces = faces(body.into_iter(), frame, [0.0; 3], &exterior, |m| m != "Cabin" && m != "Window Glass");
-    out.extend(split("e_body", faces));
-    out
+    /// Everything else outside.
+    fn body(&self) -> Vec<Piece> {
+        let is_wheel = |n: &str| n.starts_with("wheel_") || n.starts_with("tyre_") || n.starts_with("disc_");
+        let body = self
+            .parts
+            .iter()
+            .filter(|p| {
+                !is_wheel(&p.name)
+                    && window(&p.name).is_none()
+                    && !lens(&p.name)
+                    && !dropped(&p.name)
+                    && p.name != "steering_wheel"
+            })
+            .flat_map(all);
+        split("e_body", faces(body, &self.frame, self.exterior, |m| m != "Cabin" && m != "Window Glass"))
+    }
 }
 
 fn le_f32(out: &mut Vec<u8>, values: &[f32]) {
@@ -630,9 +692,7 @@ fn mesh_body(piece: &Piece, id: i32, parent: i32) -> Result<Vec<u8>, String> {
     if positions.len() > 65_535 {
         return Err(format!("{}: {} vertices", piece.name, positions.len()));
     }
-    let (lo, hi) = positions.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(lo, hi), p| {
-        (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
-    });
+    let (lo, hi) = car::bounds(&positions);
     let (centre, half): ([f32; 3], [f32; 3]) =
         (std::array::from_fn(|k| (lo[k] + hi[k]) / 2.0), std::array::from_fn(|k| (hi[k] - lo[k]) / 2.0));
 
@@ -845,17 +905,18 @@ fn ini_file(template: &str, pieces: &[Piece], eyes: &BTreeMap<&str, [f32; 3]>) -
     out
 }
 
-/// `<name>_shaders.ini`: every material of the pieces with its texture, and its normal map as the `[<material>_bump_bitmap]`
-/// section the renderer's cars read (`rbr_formats::car_parts::bump_path`).
-fn shaders_file(name: &str, materials: &BTreeMap<String, Entry>) -> String {
+/// `<name>_shaders.ini`: every material by its key with its texture, and its normal map as the
+/// `[<material>_bump_bitmap]` section the renderer's cars read (`rbr_formats::car_parts::bump_path`).
+fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>) -> String {
     let mut out = String::from(
         "[Default Material]\nAmbient=0.500000 0.500000 0.500000\nDiffuse=0.500000 0.500000 0.500000\n\
          Specular=0.500000 0.500000 0.500000\nShininess=0.000000\nShineStrenth=0.000000\nTransparency=0.000000\n\
          Requirements=0\nDiffuseChannel=false\nOpacityChannel=false\nReflectionChannel=false\n\
          BumpChannel=false\nSelfIllumunationChannel=false\nSpecularColorChannel=false\n\n[TSDefault]\n",
     );
-    let files: std::collections::BTreeSet<_> =
-        materials.values().flat_map(|m| [Some(&m.file), m.normal.as_ref()]).flatten().collect();
+    let normal = |style: &Style| style.maps.normal.as_ref().map(Source::file);
+    let files: BTreeSet<String> =
+        styles.iter().flat_map(|(key, style)| [Some(file(key)), normal(style)]).flatten().collect();
     for f in &files {
         out += &format!("{f} = cars\\{name}\\textures\\{f}\n");
     }
@@ -863,7 +924,7 @@ fn shaders_file(name: &str, materials: &BTreeMap<String, Entry>) -> String {
     for (i, f) in files.iter().enumerate() {
         out += &format!("Texture{i} = {f}\n");
     }
-    for (key, Entry { opacity, file, normal }) in materials {
+    for (key, style) in styles {
         let m = material_name(key);
         let bitmap = |kind: &str, f: &str, mono: bool| {
             format!(
@@ -871,20 +932,21 @@ fn shaders_file(name: &str, materials: &BTreeMap<String, Entry>) -> String {
                  TileU=1.000000\nTileV=1.000000\nOffsetU=0.000000\nOffsetV=0.000000\nWrapU=3\nWrapV=3\n"
             )
         };
-        out += &bitmap("diffuse", file, false);
-        if *opacity {
-            out += &bitmap("opacity", file, true);
+        out += &bitmap("diffuse", &file(key), false);
+        if style.opacity {
+            out += &bitmap("opacity", &file(key), true);
         }
-        if let Some(normal) = normal {
-            out += &bitmap("bump", normal, false);
+        if let Some(normal) = normal(style) {
+            out += &bitmap("bump", &normal, false);
         }
         out += &format!(
             "\n[{m}]\nAmbient=0.500000 0.500000 0.500000\nDiffuse=0.500000 0.500000 0.500000\n\
              Specular=0.900000 0.900000 0.900000\nShininess=0.100000\nShineStrength=0.300000\nTransparency=0.000000\n\
-             Requirements=33808\nDiffuseChannel=true\nDiffuseType=Bitmap\nOpacityChannel={opacity}\n{}\
+             Requirements=33808\nDiffuseChannel=true\nDiffuseType=Bitmap\nOpacityChannel={}\n{}\
              ReflectionChannel=false\nSelfIlluminationChannel=false\nBumpChannel={}\nSpecularColorChannel=false\n",
-            if *opacity { "OpacityType=Bitmap\n" } else { "" },
-            normal.is_some(),
+            style.opacity,
+            if style.opacity { "OpacityType=Bitmap\n" } else { "" },
+            style.maps.normal.is_some(),
         );
     }
     out
@@ -899,159 +961,185 @@ fn cabin_lift(x: f32) -> f32 {
     x * CABIN_GAIN / (1.0 + (CABIN_GAIN - 1.0) * x)
 }
 
-/// The texture `source` of the DiRT install as a `.dds`, from the files of `car_dir`.
+/// The car's files in the DiRT install, and the textures read from them (each file read once).
 struct Library {
-    car_dir: PathBuf,
+    data: PathBuf,
+    car: String,
+    /// The class's folder under `cars/generics`.
     generics: PathBuf,
-    class: String,
     livery: u32,
+    files: RefCell<BTreeMap<PathBuf, Rc<Vec<Texture>>>>,
 }
 
 impl Library {
-    fn find(&self, source: &Source) -> Result<Texture, String> {
-        let (path, name) = match source {
-            Source::Livery(name) => (self.livery_file(""), name),
-            Source::LiveryClass(short, name) => (self.livery_file(&format!("_{short}")), name),
-            Source::Generic(short, name) => {
-                (self.generics.join(&self.class).join(format!("car_gen_{short}_high.pssg")), name)
+    fn new(data: &Path, options: &Options) -> Result<Library, String> {
+        let generics = data.join("cars/generics").join(&options.class);
+        if !generics.is_dir() {
+            return Err(format!("{}: no such class", generics.display()));
+        }
+        let folder = data.join("cars/models").join(&options.car);
+        let livery = match options.livery {
+            Some(livery) => livery,
+            None => {
+                let entries = fs::read_dir(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+                let numbers =
+                    entries.filter_map(|e| e.ok()?.file_name().to_str()?.strip_prefix("livery_")?.parse().ok());
+                numbers.min().ok_or_else(|| format!("{}: no livery", folder.display()))?
             }
+        };
+        Ok(Library { data: data.to_owned(), car: options.car.clone(), generics, livery, files: RefCell::default() })
+    }
+
+    /// `cars/models/<car>/<name>`.
+    fn car_file(&self, name: &str) -> PathBuf {
+        self.data.join("cars/models").join(&self.car).join(name)
+    }
+
+    /// `cars/interiors/models/<car>/int_<car>.pssg`.
+    fn interior_file(&self) -> PathBuf {
+        self.data.join(format!("cars/interiors/models/{0}/int_{0}.pssg", self.car))
+    }
+
+    fn find(&self, source: &Source) -> Result<Texture, String> {
+        let (car, n) = (&self.car, self.livery);
+        let livery =
+            |variant: &str| self.car_file(&format!("livery_{n:02}/textures_high/{car}_tex{variant}_high_{n:02}.pssg"));
+        let (path, name) = match source {
+            Source::Livery(name) => (livery(""), name),
+            Source::LiveryClass(short, name) => (livery(&format!("_{short}")), name),
+            Source::Generic(short, name) => (self.generics.join(format!("car_gen_{short}_high.pssg")), name),
             Source::Interior(name) => (self.interior_file(), name),
             Source::Gear => return Err("the gear display's base is made, not read".into()),
         };
-        let pssg = Pssg::read(&path)?;
-        let textures = texture::read_car(&pssg);
-        let found: Option<&Texture> = textures.iter().find(|t| t.name.eq_ignore_ascii_case(name));
+        let cached = self.files.borrow().get(&path).cloned();
+        let textures = match cached {
+            Some(textures) => textures,
+            None => {
+                let textures = Rc::new(texture::read_car(&Pssg::read(&path)?));
+                self.files.borrow_mut().insert(path.clone(), textures.clone());
+                textures
+            }
+        };
+        let found = textures.iter().find(|t| t.name.eq_ignore_ascii_case(name));
         found.cloned().ok_or_else(|| format!("{}: no texture {name}", path.display()))
     }
 
-    /// `cars/interiors/models/<car>/int_<car>.pssg`, beside the `cars/models` folder of the car.
-    fn interior_file(&self) -> PathBuf {
-        let car = self.car_dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let cars = self.car_dir.parent().and_then(Path::parent).unwrap_or(Path::new(""));
-        cars.join(format!("interiors/models/{car}/int_{car}.pssg"))
-    }
-
-    /// `livery_NN/textures_high/<car>_tex<variant>_high_NN.pssg`.
-    fn livery_file(&self, variant: &str) -> PathBuf {
-        let car = self.car_dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let n = self.livery;
-        self.car_dir.join(format!("livery_{n:02}/textures_high/{car}_tex{variant}_high_{n:02}.pssg"))
+    /// A style's texture as the `.dds` the car reads: with the occlusion baked in and the specular as its alpha where
+    /// its maps have them, else its blocks toned as they are.
+    fn diffuse(&self, style: &Style) -> Result<Vec<u8>, String> {
+        if style.texture == Source::Gear {
+            return Ok(gauges::gear_base());
+        }
+        let texture = self.find(&style.texture)?;
+        let tone: fn(f32) -> f32 = if style.lifted { cabin_lift } else { |x| x };
+        let plane = |map: &Option<(Source, usize, f32)>| {
+            map.as_ref()
+                .map(|(source, channel, value)| Ok::<_, String>((Plane::of(&self.find(source)?, *channel), *value)))
+        };
+        match (plane(&style.maps.occlusion).transpose()?, plane(&style.maps.specular).transpose()?) {
+            (None, None) => Ok(texture.toned(tone).dds()),
+            (occlusion, specular) => Ok(car_maps::diffuse(&texture, tone, occlusion.as_ref(), specular.as_ref())),
+        }
     }
 }
 
-/// Converts the car and writes `<out>/Cars/<name>/`; returns the model's `.sgc` path.
-pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, String> {
-    let car_dir = data.join("cars/models").join(&options.car);
-    let pssg = Pssg::read(&car_dir.join(format!("{}_highlod.pssg", options.car)))?;
-    let parts = car::parts(&pssg)?;
+/// The template car's model and ini, and its tarmac wheels' hubs in [`SIDES`] order.
+struct Template {
+    folder: PathBuf,
+    name: String,
+    sgc: Vec<u8>,
+    ini: String,
+    hubs: [[f32; 3]; 4],
+}
 
-    let template_name = options.template.file_name().and_then(|n| n.to_str()).ok_or("template folder name")?;
-    let template_sgc = fs::read(options.template.join(format!("{template_name}.sgc"))).map_err(|e| e.to_string())?;
-    let model = sgc::parse(&template_sgc).map_err(|e| format!("template model: {e}"))?;
-    let worlds = sgc::chained_worlds(&model);
-    let hub = |side: &str| -> Result<[f32; 3], String> {
-        model
-            .iter()
-            .find_map(|e| match e {
-                sgc::Element::Mesh(m) if m.node.name == format!("e_wheel_tarmac_{side}") => {
-                    let w = worlds[&m.node.id];
-                    Some([w[0][3], w[1][3], w[2][3]])
-                }
+impl Template {
+    fn read(folder: &Path) -> Result<Template, String> {
+        let name = folder.file_name().and_then(|n| n.to_str()).ok_or("the template's folder has no name")?.to_owned();
+        let read = |suffix: &str| {
+            let path = folder.join(format!("{name}{suffix}"));
+            fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
+        };
+        let sgc = read(".sgc")?;
+        let model = sgc::parse(&sgc).map_err(|e| format!("template model: {e}"))?;
+        let worlds = sgc::chained_worlds(&model);
+        let hub = |side: &str| {
+            let name = format!("e_wheel_tarmac_{side}");
+            let world = model.iter().find_map(|e| match e {
+                sgc::Element::Mesh(m) if m.node.name == name => Some(worlds[&m.node.id]),
                 _ => None,
-            })
-            .ok_or_else(|| format!("the template has no e_wheel_tarmac_{side}"))
-    };
-    let template_hubs = SIDES.map(|(_, rbr)| hub(rbr)).into_iter().collect::<Result<Vec<_>, _>>()?;
-    let dirt_hubs: Vec<[f32; 3]> = SIDES
-        .iter()
-        .map(|(dirt, _)| {
-            parts
-                .iter()
-                .find(|p| p.name == format!("wheel_{dirt}"))
-                .map(|p| [p.transform[3][0], p.transform[3][1], p.transform[3][2]])
-                .ok_or_else(|| format!("no wheel_{dirt}"))
-        })
-        .collect::<Result<_, _>>()?;
-    let mean = |hubs: &[[f32; 3]], axis: usize| hubs.iter().map(|h| h[axis]).sum::<f32>() / hubs.len() as f32;
-    let frame = Frame {
-        z_dirt: mean(&dirt_hubs, 2),
-        z_template: mean(&template_hubs, 2),
-        y_shift: mean(&template_hubs, 1) - mean(&dirt_hubs, 1),
-    };
+            });
+            world.map(|w| [w[0][3], w[1][3], w[2][3]]).ok_or(format!("the template has no {name}"))
+        };
+        let [lf, rf, lb, rb] = SIDES.map(|(_, side)| hub(side));
+        let hubs = [lf?, rf?, lb?, rb?];
+        let ini = String::from_utf8_lossy(&read(".ini")?).into_owned();
+        Ok(Template { folder: folder.to_owned(), name, sgc, ini, hubs })
+    }
+}
 
-    let library =
-        Library { car_dir, generics: data.join("cars/generics"), class: options.class.clone(), livery: options.livery };
+/// Converts the car and writes `<out>/Cars/<name>/` (and the gauges' pack, for a car whose gauges are measured);
+/// returns the model's `.sgc` path.
+pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, String> {
+    let library = Library::new(data, options)?;
+    let car = options.car.as_str();
+    let pssg = Pssg::read(&library.car_file(&format!("{car}_highlod.pssg")))?;
+    let parts = car::parts(&pssg)?;
+    let template = Template::read(&options.template)?;
+
     // The interior scene and its config, where the car has them (its cockpit is then DiRT's own).
     let interior = match library.interior_file() {
-        path if path.exists() => Some(car::interior(&Pssg::read(&path)?)?),
+        path if path.exists() => Some(Pssg::read(&path)?),
         _ => None,
     };
+    let scene = interior.as_ref().map(car::interior).transpose()?;
     let config = fs::read_to_string(library.interior_file().with_extension("xml")).unwrap_or_default();
-    let active = active_nodes(&config);
-    let gauges = gauges::layout(&options.car).filter(|_| interior.is_some());
-    let cockpit = interior.as_deref().map(|scene| Cockpit { scene, active: &active, gauged: gauges.is_some() });
-    let pieces = pieces(&parts, cockpit.as_ref(), &frame, &options.car);
+    let gauges = gauges::layout(car).filter(|_| scene.is_some());
+    let exterior: BTreeMap<String, Style> =
+        material::read(&pssg).values().filter_map(|m| Some((m.id.clone(), exterior_style(car, m)?))).collect();
+    let inside =
+        interior.as_ref().map_or_else(BTreeMap::new, |p| interior_styles(car, &material::read(p), gauges.is_some()));
+    let model = Model {
+        parts: &parts,
+        frame: Frame::fitted(&parts, &template.hubs)?,
+        exterior: &exterior,
+        interior: &inside,
+        cockpit: scene.as_deref().map(|scene| Cockpit {
+            scene,
+            active: active_nodes(&config),
+            gauged: gauges.is_some(),
+            clip: clip(&parts),
+        }),
+    };
+    let pieces = model.pieces();
 
     let folder = out.join("Cars").join(&options.name);
     let textures = folder.join("textures");
-    fs::create_dir_all(&textures).map_err(|e| e.to_string())?;
-    let mut materials: BTreeMap<String, Entry> = BTreeMap::new();
-    let mut styles: BTreeMap<String, Style> = BTreeMap::new();
-    let mut normals: BTreeMap<Source, String> = BTreeMap::new();
-    let scene = cockpit.iter().flat_map(|c| c.scene);
-    for (part, inside) in parts.iter().map(|p| (p, false)).chain(scene.map(|p| (p, true))) {
-        for instance in &part.instances {
-            let style = if inside {
-                interior_style(&instance.material, &options.car)
-            } else {
-                style(&instance.material, &options.car)
-            };
-            if let Some(s) = style {
-                // The livery's three finishes read one normal map: it is written once, by the first.
-                let normal = s
-                    .maps
-                    .normal
-                    .clone()
-                    .map(|source| normals.entry(source).or_insert_with(|| normal_file(&s.key)).clone());
-                materials.insert(s.key.clone(), Entry { opacity: s.opacity, file: file(&s.key), normal });
-                styles.insert(s.key.clone(), s);
-            }
-        }
+    fs::create_dir_all(&textures).map_err(|e| format!("{}: {e}", textures.display()))?;
+    let write = |path: PathBuf, bytes: &[u8]| fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()));
+    let used: BTreeSet<&str> = pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.material.as_str())).collect();
+    let styles: BTreeMap<&str, &Style> = exterior
+        .values()
+        .chain(inside.values())
+        .filter(|s| used.contains(s.key.as_str()))
+        .map(|s| (s.key.as_str(), s))
+        .collect();
+    for (key, style) in &styles {
+        write(textures.join(file(key)), &library.diffuse(style)?)?;
     }
-    let used: std::collections::BTreeSet<&str> =
-        pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.material.as_str())).collect();
-    materials.retain(|k, _| used.contains(k.as_str()));
-    let mut written = std::collections::BTreeSet::new();
-    for key in materials.keys() {
-        let style = &styles[key];
-        let bytes = match &style.texture {
-            Source::Gear => gauges::gear_base(),
-            source => {
-                let texture = library.find(source)?;
-                let dark = key == "cabin" || key.starts_with("int_");
-                let tone: fn(f32) -> f32 = if dark { cabin_lift } else { |x| x };
-                bake(&library, &style.maps, &texture, tone)?
-            }
-        };
-        fs::write(textures.join(file(key)), bytes).map_err(|e| e.to_string())?;
-        if let (Some(source), Some(file)) = (&style.maps.normal, &materials[key].normal) {
-            if written.insert(file.clone()) {
-                fs::write(textures.join(file), car_maps::normal(&library.find(source)?, style.maps.crumpled))
-                    .map_err(|e| e.to_string())?;
-            }
-        }
+    let normals: BTreeMap<&Source, bool> =
+        styles.values().filter_map(|s| Some((s.maps.normal.as_ref()?, s.maps.crumpled))).collect();
+    for (source, crumpled) in normals {
+        write(textures.join(source.file()), &car_maps::normal(&library.find(source)?, crumpled))?;
     }
     if let Some(layout) = gauges {
         let find = |name: &str| library.find(&Source::Interior(name.to_owned()));
-        let car = &options.car;
-        let gear_font = gauges::gear_font(data, &config)?;
         let sources = gauges::Sources {
             dials: &find(&format!("int_{car}_dials.tga"))?,
             dials_on: &find(&format!("int_{car}_dials_on.tga"))?,
             indicator: &find("int_indicator.tga")?,
             indicator_on: &find("int_indicator_on.tga")?,
             digits: &find("int_digi_speed.tga")?,
-            gear_font: &gear_font,
+            gear_font: &gauges::gear_font(data, &config)?,
             config: &config,
             tone: cabin_lift,
         };
@@ -1060,21 +1148,18 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
 
     let name = &options.name;
     let model_path = folder.join(format!("{name}.sgc"));
-    fs::write(&model_path, sgc_file(&template_sgc, &pieces)?).map_err(|e| e.to_string())?;
-    let template_ini = fs::read_to_string(options.template.join(format!("{template_name}.ini")))
-        .or_else(|_| {
-            fs::read(options.template.join(format!("{template_name}.ini")))
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
-        })
-        .map_err(|e| e.to_string())?;
-    let cameras = binxml::parse(&fs::read(library.car_dir.join("cameras.xml")).map_err(|e| e.to_string())?)?;
-    fs::write(folder.join(format!("{name}.ini")), ini_file(&template_ini, &pieces, &eyes(&cameras, &frame)))
-        .map_err(|e| e.to_string())?;
-    fs::write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &materials)).map_err(|e| e.to_string())?;
+    write(model_path.clone(), &sgc_file(&template.sgc, &pieces)?)?;
+    let cameras = library.car_file("cameras.xml");
+    let cameras = binxml::parse(&fs::read(&cameras).map_err(|e| format!("{}: {e}", cameras.display()))?)?;
+    write(
+        folder.join(format!("{name}.ini")),
+        ini_file(&template.ini, &pieces, &eyes(&cameras, &model.frame)).as_bytes(),
+    )?;
+    write(folder.join(format!("{name}_shaders.ini")), shaders_file(name, &styles).as_bytes())?;
     for suffix in ["_settings.ini", "_shader_settings_clear.ini", "_shader_settings_overcast.ini"] {
-        let from = options.template.join(format!("{template_name}{suffix}"));
+        let from = template.folder.join(format!("{}{suffix}", template.name));
         let text = fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?;
-        fs::write(folder.join(format!("{name}{suffix}")), text).map_err(|e| e.to_string())?;
+        write(folder.join(format!("{name}{suffix}")), &text)?;
     }
     Ok(model_path)
 }
@@ -1092,6 +1177,20 @@ mod tests {
             uv: vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
             triangles: vec![[0, 1, 2]],
         }
+    }
+
+    /// A material of shader `shader` with `textures` bound (input, file) and `constants`.
+    fn material(id: &str, shader: &str, textures: &[(&str, &str)], constants: &[(&str, f32)]) -> Material {
+        Material {
+            id: id.to_owned(),
+            shader: shader.to_owned(),
+            textures: textures.iter().map(|(k, v)| (k.to_string(), format!("#{v}"))).collect(),
+            constants: constants.iter().map(|(k, v)| (k.to_string(), vec![*v])).collect(),
+        }
+    }
+
+    fn exterior(id: &str) -> Option<Style> {
+        exterior_style("cme", &material(id, "car.fx", &[], &[("OcclusionMapScale", 0.4)]))
     }
 
     #[test]
@@ -1137,61 +1236,71 @@ mod tests {
 
     #[test]
     fn materials_map_to_the_renderers_classes() {
-        let class = |m: &str| style(m, "cme").map(|s| (s.shader, s.key));
-        assert_eq!(class("Car Body Paint"), Some(("CarPaint", "paint".to_owned())));
-        assert_eq!(class("Matt"), Some(("CarTextureNoDirt", "matt".to_owned())));
+        let class = |m: &str| exterior(m).map(|s| (s.shader, s.key));
+        assert_eq!(class("Car Body Paint"), Some(("CarPaint", "main40".to_owned())));
+        assert_eq!(class("Matt"), Some(("CarTextureNoDirt", "main40".to_owned())));
         // Bare metal reflects as the paint does (DiRT gives both `carpaint_metallic.fx`).
-        assert_eq!(class("Shiny Metal"), Some(("CarPaint", "metal".to_owned())));
+        assert_eq!(class("Shiny Metal").map(|c| c.0), Some("CarPaint"));
         assert_eq!(class("Gravel Wheel"), Some(("CarRim", "wheel_gravel".to_owned())));
         assert_eq!(class("Snow Tyre Tread"), Some(("CarTire", "tyre_snow".to_owned())));
-        // The sidewall is on the wheel's atlas, the tread has its own texture.
-        assert_eq!(class("Tarmac Tyre Wall"), Some(("CarTire", "wall_tarmac".to_owned())));
-        let texture = |m: &str| style(m, "cme").map(|s| s.texture);
-        assert!(texture("Tarmac Tyre Wall") == Some(Source::LiveryClass("tm", "cme_wheel.tga".to_owned())));
-        assert!(texture("Tarmac Tyre Tread") == Some(Source::Generic("tm", "tread.tga".to_owned())));
+        // The sidewall is on the wheel's atlas (one texture with the rim's), the tread has its own texture.
+        assert_eq!(class("Tarmac Tyre Wall"), Some(("CarTire", "wheel_tarmac".to_owned())));
+        let texture = |m: &str| exterior(m).map(|s| s.texture);
+        assert_eq!(texture("Tarmac Tyre Wall"), Some(Source::LiveryClass("tm", "cme_wheel.tga".to_owned())));
+        assert_eq!(texture("Tarmac Tyre Tread"), Some(Source::Generic("tm", "tread.tga".to_owned())));
+        assert_eq!(texture("Caliper"), Some(Source::Livery("caliper.tga".to_owned())));
+        // The spare is drawn once, as the tarmac wheel.
+        assert_eq!(class("Spare Tarmac Wheel"), class("Tarmac Wheel"));
+        assert_eq!(class("Spare Gravel Tyre Wall"), None);
         assert_eq!(class("Nothing"), None);
         assert_eq!(window("window_fl").as_deref(), Some("e_window_lf"));
         assert_eq!(window("window_f_trim"), None);
     }
 
     #[test]
-    fn the_bodys_maps_are_the_liveries_in_the_materials_own_occlusion() {
-        let maps = |m: &str| style(m, "cme").map(|s| s.maps).unwrap();
-        for (material, scale) in [("Car Body Paint", 0.4), ("Matt", 0.8), ("Shiny Metal", 0.5)] {
-            let maps = maps(material);
-            assert!(maps.normal == Some(Source::Livery("cme_main_nm.tga".to_owned())), "{material}");
-            assert!(maps.crumpled, "{material}");
-            assert!(maps.occlusion == Some((Source::Livery("cme_specocc.tga".to_owned()), 3, scale)), "{material}");
-            assert!(maps.specular.is_some_and(
-                |(source, channel, _)| channel == 1 && source == Source::Livery("cme_specocc.tga".to_owned())
-            ));
+    fn the_bodys_maps_take_the_materials_own_occlusion() {
+        let body = |id: &str, scale: f32| {
+            exterior_style("cme", &material(id, "car.fx", &[], &[("OcclusionMapScale", scale)])).unwrap()
+        };
+        for (id, scale) in [("Car Body Paint", 0.4), ("Matt", 0.8), ("Shiny Metal", 0.5)] {
+            let style = body(id, scale);
+            assert_eq!(style.texture, Source::Livery("cme_main.tga".to_owned()), "{id}");
+            assert_eq!(style.maps.normal, Some(Source::Livery("cme_main_nm.tga".to_owned())), "{id}");
+            assert!(style.maps.crumpled, "{id}");
+            assert_eq!(style.maps.occlusion, Some((Source::Livery("cme_specocc.tga".to_owned()), 3, scale)), "{id}");
+            assert_eq!(style.maps.specular, Some((Source::Livery("cme_specocc.tga".to_owned()), 1, FULL_SPECULAR)));
         }
+        // One texture per strength, whatever the class.
+        assert_eq!(body("Matt", 0.8).key, "main80");
+        assert_eq!(body("Mud Flaps", 0.8).key, body("Matt", 0.8).key);
+        assert_ne!(body("Car Body Paint", 0.4).key, body("Shiny Metal", 0.5).key);
         // The lens's alpha is its opacity, so it takes no specular, and the lit lamps' colours no occlusion.
-        let lens = maps("Lights Glass");
-        assert!(lens.normal.is_some() && lens.specular.is_none() && lens.occlusion.is_none());
-        let pod = maps("Lights Pod");
+        let lens = exterior("Lights Glass").unwrap();
+        assert!(lens.opacity && lens.maps.normal.is_some() && lens.maps.specular.is_none());
+        let pod = exterior("Lights Pod").unwrap().maps;
         assert!(pod.normal.is_some() && pod.specular.is_some() && pod.occlusion.is_none());
-        assert!(maps("Window Glass").normal.is_none() && maps("Cabin").normal.is_none());
-        let interior = interior_style("Leather", "cme").unwrap().maps;
-        assert!(interior.normal == Some(Source::Interior("int_cme_nm.tga".to_owned())) && !interior.crumpled);
-        assert!(interior.occlusion.is_some_and(
-            |(source, channel, _)| channel == 0 && source == Source::Interior("int_cme_occ.tga".to_owned())
-        ));
+        assert!(exterior("Window Glass").unwrap().maps.normal.is_none());
+        assert!(exterior("Cabin").is_some_and(|s| s.lifted && s.maps.normal.is_none()));
+    }
+
+    #[test]
+    fn a_maps_file_names_its_source_once() {
+        assert_eq!(Source::Livery("cme_main_nm.tga".into()).file(), "dr_cme_main_nm.dds");
+        assert_eq!(Source::LiveryClass("tm", "cme_wheel_nm.tga".into()).file(), "dr_cme_wheel_nm_tm.dds");
+        assert_eq!(Source::Generic("gr", "tread_nm.tga".into()).file(), "dr_tread_nm_gr.dds");
+        assert_eq!(Source::Generic("main", "grills_nm.tga".into()).file(), "dr_grills_nm.dds");
+        assert_eq!(Source::Interior("int_405_nm.TGA".into()).file(), "dr_int_405_nm.dds");
     }
 
     #[test]
     fn the_shaders_file_names_each_normal_map_as_a_bump_bitmap() {
-        let entry = |normal: Option<&str>| Entry {
-            opacity: false,
-            file: "dr_paint.dds".to_owned(),
-            normal: normal.map(str::to_owned),
-        };
-        let materials =
-            BTreeMap::from([("paint".to_owned(), entry(Some("dr_paint_nm.dds"))), ("disc".to_owned(), entry(None))]);
-        let text = shaders_file("Car", &materials);
+        let paint = exterior("Car Body Paint").unwrap();
+        let disc = Style::new("CarTextureNoDirt", "disc", Source::Livery("disc.tga".into()));
+        let styles = BTreeMap::from([("paint", &paint), ("disc", &disc)]);
+        let text = shaders_file("Car", &styles);
         let sections = rbr_formats::ini::parse(&text).unwrap();
         let bump = rbr_formats::car_parts::bump_path;
-        assert_eq!(bump(&sections, &material_name("paint")), Some("cars\\Car\\textures\\dr_paint_nm.dds"));
+        assert_eq!(bump(&sections, &material_name("paint")), Some("cars\\Car\\textures\\dr_cme_main_nm.dds"));
         assert_eq!(bump(&sections, &material_name("disc")), None);
         assert!(text.contains("BumpChannel=true") && text.contains("BumpChannel=false"));
     }
@@ -1202,13 +1311,17 @@ mod tests {
         assert_eq!(lamp("e_light_brake_lb_lit"), Some(("brake_lb".to_owned(), true)));
         assert_eq!(lamp("e_light_reverse_rb"), Some(("reverse_rb".to_owned(), false)));
         assert_eq!(lamp("e_body"), None);
-        assert!(["light_glass_fl", "light_combi_glass_br", "light_rev_glass_bl"].iter().all(|p| lens(p)));
-        assert!(!["light_rig_glass_fl", "light_combi_pod_bl", "light_glass_fl_x"].iter().any(|p| lens(p)));
+        assert!(["light_glass_fl", "light_combi_glass_br", "light_rev_glass_bl", "light_brake_glass_bl"]
+            .iter()
+            .all(|p| lens(p)));
+        assert!(!["light_rig_glass_fl", "light_combi_pod_bl", "light_glass_fl_x", "light_2_glass_bl"]
+            .iter()
+            .any(|p| lens(p)));
     }
 
-    fn instance(positions: Vec<[f32; 3]>, triangles: Vec<[u32; 3]>) -> Instance {
+    fn instance(material: &str, positions: Vec<[f32; 3]>, triangles: Vec<[u32; 3]>) -> Instance {
         Instance {
-            material: "Matt".into(),
+            material: material.into(),
             joint: None,
             source: "src".into(),
             normals: vec![[0.0, 0.0, 1.0]; positions.len()],
@@ -1218,25 +1331,71 @@ mod tests {
         }
     }
 
+    fn part(name: &str, instances: Vec<Instance>) -> Part {
+        Part { name: name.to_owned(), transform: mesh::IDENTITY, instances }
+    }
+
     #[test]
-    fn the_interior_scene_has_its_own_materials() {
-        let class = |m: &str| interior_style(m, "cme").map(|s| (s.shader, s.key, s.opacity));
-        for m in ["Matt", "Leather", "Shiny Painted Metal", "bare metal", "Chrome", "shiny plastic", "suede"] {
-            assert_eq!(class(m), Some(("CarTextureNoDirt", "int_main".to_owned(), false)), "{m}");
-        }
-        assert_eq!(class("carbon fibre").map(|c| c.1), Some("int_carbon".to_owned()));
-        assert_eq!(class("dials shiny").map(|c| c.1), Some("int_dials".to_owned()));
-        assert_eq!(class("limit lights").map(|c| c.1), Some("int_indicator".to_owned()));
-        assert_eq!(class("mirror").map(|c| c.0), Some("CarGlass"));
-        for m in ["interior glass windows", "digital speedometer", "Car Body Paint"] {
-            assert_eq!(class(m), None, "{m}");
-        }
+    fn a_separate_brake_lens_takes_the_brake_lamp_from_the_combined_one() {
+        let lens = |name: &str| part(name, vec![instance("Lights Glass", vec![[0.0; 3]; 3], vec![[0, 1, 2]])]);
+        let parts = [lens("light_combi_glass_bl"), lens("light_brake_glass_bl")];
+        let exterior = BTreeMap::from([("Lights Glass".to_owned(), exterior("Lights Glass").unwrap())]);
+        let model = Model {
+            parts: &parts,
+            frame: Frame::LOCAL,
+            exterior: &exterior,
+            interior: &BTreeMap::new(),
+            cockpit: None,
+        };
+        let names: Vec<String> = model.lamps().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["e_light_brake_lb", "e_light_brake_lb_lit", "e_light_lb", "e_light_lb_lit"]);
+    }
+
+    #[test]
+    fn the_interior_draws_what_its_materials_bind() {
+        let atlas = [
+            ("TDiffuseAlphaMap", "int_cme_main.tga"),
+            ("TNormalMap", "int_cme_nm.tga"),
+            ("TOcclusionMap", "int_cme_occ.tga"),
+            ("TSpecularMap", "int_cme_sp.tga"),
+        ];
+        let style = |m: &Material| interior_style("cme", m, true);
+        let leather = style(&material("Leather", "interior.fx", &atlas, &[("OcclusionMapScale", 1.0)])).unwrap();
+        assert_eq!((leather.shader, leather.key.as_str(), leather.opacity), ("CarTextureNoDirt", "int_main", false));
+        assert_eq!(leather.maps.normal, Some(Source::Interior("int_cme_nm.tga".into())));
+        assert_eq!(leather.maps.occlusion, Some((Source::Interior("int_cme_occ.tga".into()), 0, INTERIOR_OCCLUSION)));
+        // An `OcclusionMapScale` of 0 turns the occlusion off; the shared 32 texel specular is not the atlas's.
+        let chrome = style(&material("Chrome", "interior.fx", &atlas, &[("OcclusionMapScale", 0.0)])).unwrap();
+        assert!(chrome.key == "int_main" && chrome.maps.occlusion.is_none() && chrome.maps.normal.is_some());
+        let dials = [("TDiffuseAlphaMap", "int_cme_dials.TGA"), ("TSpecularMap", "int_gen_sp.tga")];
+        let dial = style(&material("dials matt", "interior.fx", &dials, &[])).unwrap();
+        assert!(dial.key == "int_dials" && dial.maps == Maps::default());
+        // The alpha shader's alpha is the opacity: a key of its own, no specular.
+        let alpha = style(&material("dials matt", "interior_alpha.fx", &dials, &[])).unwrap();
+        assert!(alpha.key == "int_dials_alpha" && alpha.opacity && alpha.maps.specular.is_none());
+        let carbon = [("TCarbonDiffuseMap", "int_carbon_diff.tga"), ("TOcclusionMap", "int_cme_occ.tga")];
+        let weave =
+            style(&material("carbon fibre", "interior_carbon.fx", &carbon, &[("CarbonUVRepeat", 300.0)])).unwrap();
+        assert!(weave.key == "int_carbon_diff" && weave.repeat == 300.0 && weave.maps.occlusion.is_none());
+        assert_eq!(style(&material("mirror", "mirror.fx", &[], &[])).map(|s| s.shader), Some("CarGlass"));
+        assert!(style(&material("interior glass windows", "interior_windscreen.fx", &[], &[])).is_none());
+        assert!(style(&material("digital speedometer", "lcd_text.fx", &[], &[])).is_none());
         // The gear display is drawn only for a car whose gauges are measured.
-        assert_eq!(class("gear indicator").map(|c| c.1), Some("int_gear".to_owned()));
-        assert!(interior_style("gear indicator", "cme").is_some_and(|s| s.texture == Source::Gear));
-        assert!(interior_style("gear indicator", "another").is_none());
-        let texture = |m: &str| interior_style(m, "cme").map(|s| s.texture);
-        assert!(texture("Matt") == Some(Source::Interior("int_cme_main.tga".to_owned())));
+        let gear = material("gear indicator", "lcd_text.fx", &[], &[]);
+        assert_eq!(style(&gear).map(|s| (s.key, s.texture)), Some(("int_gear".to_owned(), Source::Gear)));
+        assert!(interior_style("cme", &gear, false).is_none());
+    }
+
+    #[test]
+    fn an_atlas_takes_every_map_its_materials_give_it() {
+        let atlas = [("TDiffuseAlphaMap", "int_cme_main.tga"), ("TOcclusionMap", "int_cme_occ.tga")];
+        let materials = BTreeMap::from([
+            ("Chrome".to_owned(), material("Chrome", "interior.fx", &atlas, &[("OcclusionMapScale", 0.0)])),
+            ("Matt".to_owned(), material("Matt", "interior.fx", &atlas, &[("OcclusionMapScale", 1.0)])),
+        ]);
+        let styles = interior_styles("cme", &materials, false);
+        assert_eq!(styles["Chrome"], styles["Matt"]);
+        assert!(styles["Chrome"].maps.occlusion.is_some());
     }
 
     #[test]
@@ -1251,20 +1410,32 @@ mod tests {
     fn a_part_is_taken_into_its_own_space() {
         // A part turned a quarter about y (its x along the car's -z) and put at (1, 2, 3).
         let m: Mat = [[0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 2.0, 3.0, 1.0]];
-        let local = in_part_space(&instance(vec![[1.0, 2.0, 3.0], [1.0, 2.0, 2.0]], vec![[0, 1, 0]]), &m);
+        let local = in_part_space(&instance("Matt", vec![[1.0, 2.0, 3.0], [1.0, 2.0, 2.0]], vec![[0, 1, 0]]), &m);
         assert_eq!(local.positions, [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
         // Back through the part's own matrix.
-        assert_eq!(crate::mesh::point(&m, local.positions[1]), [1.0, 2.0, 2.0]);
+        assert_eq!(mesh::point(&m, local.positions[1]), [1.0, 2.0, 2.0]);
         assert_eq!(local.normals[0], [-1.0, 0.0, 0.0], "the car's z is the part's -x");
     }
 
     #[test]
-    fn the_roof_and_sides_are_clipped_from_the_outside_cabin() {
+    fn the_roof_and_sides_of_the_glass_clip_the_outside_cabin() {
+        // A windscreen up to y 1.39 (its part's matrix moves it up), side glass out to x 0.67; the rear window and the
+        // paint above them do not count.
+        let pane = |name: &str, material: &str, positions| part(name, vec![instance(material, positions, vec![])]);
+        let mut screen = pane("window_f", "Window Glass", vec![[-0.6, 1.0, 0.4], [0.6, 1.29, 0.4]]);
+        screen.transform[3][1] = 0.1;
+        let side = pane("window_bl", "Window Glass", vec![[0.67, 1.0, -0.5]]);
+        let rear = pane("window_b", "Window Glass", vec![[0.0, 1.41, -1.0], [0.8, 1.2, -1.0]]);
+        let paint = pane("roof", "Car Body Paint", vec![[0.0, 1.5, 0.0]]);
+        let clip = clip(&[screen.clone(), side, rear, paint]).unwrap();
+        assert!((clip.roof - 1.40).abs() < 1e-5 && (clip.side - 0.68).abs() < 1e-5, "{clip:?}");
+        assert_eq!(super::clip(&[screen]), None, "no side glass");
+
         let tri = |dx: f32, y: f32| [[dx, y, 0.0], [dx + 0.1, y, 0.0], [dx, y + 0.1, 0.0]];
         let triangles = [tri(0.0, 1.0), tri(0.0, 1.45), tri(0.7, 1.0), tri(-0.4, 0.5)];
         let positions: Vec<[f32; 3]> = triangles.iter().flatten().copied().collect();
         let all: Vec<[u32; 3]> = (0..4).map(|k| [3 * k, 3 * k + 1, 3 * k + 2]).collect();
-        let kept = within_body(&instance(positions, all));
+        let kept = within_body(&instance("Matt", positions, all), clip);
         assert_eq!(kept.triangles, [[0, 1, 2], [9, 10, 11]]);
         assert_eq!(kept.positions.len(), 12, "the vertices are left as they were");
     }

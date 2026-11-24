@@ -1,9 +1,10 @@
 //! Drawn meshes of a PSSG: terrain tiles in world space and prop types in their own space.
 //!
 //! A `RENDERSTREAMINSTANCE` (`indices="#source" shader="#material"`) names a `RENDERDATASOURCE`: its
-//! `RENDERINDEXSOURCE` (big-endian u16 triangle list) and `RENDERSTREAM`s (`dataBlock="#block" subStream=k`), the k-th
-//! `DATABLOCKSTREAM` (render type, data type, offset, stride) of an interleaved `DATABLOCK`. Everything is in DiRT
-//! Rally's frame (right handed, y up, metres, counter-clockwise front faces); `frame` maps it to the stage's.
+//! `RENDERINDEXSOURCE` (big-endian u16 or u32 triangle list) and `RENDERSTREAM`s (`dataBlock="#block"
+//! subStream=k`), the k-th `DATABLOCKSTREAM` (render type, data type, offset, stride) of an interleaved `DATABLOCK`.
+//! Everything is in DiRT Rally's frame (right handed, y up, metres, counter-clockwise front faces); `frame` maps it to
+//! the stage's.
 use crate::material::{self, Material};
 use crate::pssg::{Node, Pssg};
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,6 +32,8 @@ pub struct Mesh {
 }
 
 pub(crate) type Mat = [[f32; 4]; 4];
+
+pub(crate) const IDENTITY: Mat = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
 
 pub(crate) fn mul(a: &Mat, b: &Mat) -> Mat {
     let mut m = [[0.; 4]; 4];
@@ -123,18 +126,19 @@ fn decode_stream(block: Node, k: usize) -> Result<Stream, String> {
     Ok(stream)
 }
 
-/// The triangle indices and streams of one `RENDERDATASOURCE`.
+/// The triangle indices and streams of one `RENDERDATASOURCE`. The indices are big-endian `ushort` or `uint` (a car's
+/// largest sources: the i20's body, 24484 vertices).
 fn read_source(source: Node) -> Result<(Vec<u32>, Vec<Stream>), String> {
     let index = source.child("RENDERINDEXSOURCE").ok_or("RENDERDATASOURCE without indices")?;
-    if index.str("format") != Some("ushort") || source.str("primitive").or(index.str("primitive")) != Some("triangles")
-    {
-        return Err("only ushort triangle lists are read".into());
+    if source.str("primitive").or(index.str("primitive")) != Some("triangles") {
+        return Err("only triangle lists are read".into());
     }
-    let indices = index
-        .child_payload("INDEXSOURCEDATA")
-        .chunks_exact(2)
-        .map(|c| u32::from(u16::from_be_bytes([c[0], c[1]])))
-        .collect();
+    let data = index.child_payload("INDEXSOURCEDATA");
+    let indices = match index.str("format") {
+        Some("ushort") => data.chunks_exact(2).map(|c| u32::from(u16::from_be_bytes([c[0], c[1]]))).collect(),
+        Some("uint") => data.chunks_exact(4).map(|c| u32::from_be_bytes([c[0], c[1], c[2], c[3]])).collect(),
+        other => return Err(format!("indices of format {other:?}")),
+    };
     let mut streams = Vec::new();
     for stream in source.children().filter(|c| c.name() == "RENDERSTREAM") {
         let block = stream.reference("dataBlock").ok_or("RENDERSTREAM without its DATABLOCK")?;
@@ -372,8 +376,6 @@ fn index_nodes(node: Node, at: usize, index: &mut BTreeMap<String, usize>) {
 mod tests {
     use super::*;
     use crate::pssg::tests::sample_areas;
-
-    const IDENTITY: Mat = [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]];
 
     #[test]
     fn halves_decode() {

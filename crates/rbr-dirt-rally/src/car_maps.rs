@@ -39,64 +39,59 @@ fn kept(ao: f32, scale: f32) -> f32 {
 
 /// `diffuse` (its colours toned by `tone`) with `occlusion` baked into them and `specular` as its alpha: the plane over
 /// `reference`, the specular of the material's plain finish, which keeps its alpha at 1 (a bare metal, brighter,
-/// does too: the clear coat does not reflect more than it). Without a specular map the alpha is 1.
+/// does too: the clear coat does not reflect more than it). Without a specular map the alpha is the texture's.
 pub fn diffuse(
     diffuse: &Texture,
     tone: impl Fn(f32) -> f32,
-    occlusion: Option<(&Plane, f32)>,
-    specular: Option<(&Plane, f32)>,
+    occlusion: Option<&(Plane, f32)>,
+    specular: Option<&(Plane, f32)>,
 ) -> Vec<u8> {
     let (width, height) = (diffuse.width as usize, diffuse.height as usize);
-    let toned: Vec<u8> =
-        (0..=255u8).map(|i| (tone(f32::from(i) / 255.0).clamp(0.0, 1.0) * 255.0).round() as u8).collect();
-    let keeps: Option<Vec<f32>> =
-        occlusion.map(|(_, scale)| (0..=255u8).map(|i| kept(f32::from(i) / 255.0, scale)).collect());
+    let toned: [u8; 256] = std::array::from_fn(|i| (tone(i as f32 / 255.0).clamp(0.0, 1.0) * 255.0).round() as u8);
+    let keeps =
+        occlusion.map(|(plane, scale)| (plane, std::array::from_fn::<f32, 256, _>(|i| kept(i as f32 / 255.0, *scale))));
     let mut rgba = diffuse.rgba();
     for (i, p) in rgba.chunks_exact_mut(4).enumerate() {
         let (x, y) = (i % width, i / width);
-        let keep = match (&keeps, occlusion) {
-            (Some(keeps), Some((plane, _))) => keeps[usize::from(plane.at(x, y, width, height))],
-            _ => 1.0,
-        };
+        let keep = keeps.map_or(1.0, |(plane, keeps)| keeps[usize::from(plane.at(x, y, width, height))]);
         for c in &mut p[..3] {
             *c = (f32::from(toned[usize::from(*c)]) * keep).round() as u8;
         }
-        p[3] = specular.map_or(255, |(plane, reference)| {
+        p[3] = specular.map_or(p[3], |(plane, reference)| {
             (f32::from(plane.at(x, y, width, height)) / reference).clamp(0.0, 255.0).round() as u8
         });
     }
-    encode_bc7(specular.is_some(), diffuse.width, diffuse.height, rgba)
+    encode_bc7(specular.is_some() || diffuse.format == Format::Dxt5, diffuse.width, diffuse.height, rgba)
 }
 
-/// A normal map as the renderer's bump reads it: red x, green y along v (down the image), z rebuilt. DiRT's maps are
-/// DXT5 with the x in the alpha and the y in the green (`cme_main_nm`: red and blue copy the green), or plain RGB
-/// (`int_cme_nm`, DXT1); the green runs up the image (`Texture::normal_dds`: 35 of 44 terrain maps integrate to heights
-/// that follow their diffuse with it so, and so do the Escort's tread, disc, suspension and grille maps). With `crumpled`, the map's panels are flattened first ([`flattened`]).
+/// A normal map as the renderer's bump reads it ([`repacked`]), BC7.
 pub fn normal(map: &Texture, crumpled: bool) -> Vec<u8> {
-    let swizzled = map.format == Format::Dxt5;
+    encode_bc7(false, map.width, map.height, repacked(map, crumpled))
+}
+
+/// `map`'s texels as the renderer's bump reads them: red x, green y along v (down the image), blue and alpha 255 (z is
+/// rebuilt). DiRT's maps are DXT5 with the x in the alpha and the y in the green (`cme_main_nm`: red and blue copy the
+/// green), or plain RGB (`int_cme_nm`, DXT1); the green runs up the image (`Texture::normal_dds`: 35 of 44 terrain maps
+/// integrate to heights that follow their diffuse with it so, and so do the Escort's tread, disc, suspension and grille
+/// maps). The slopes are taken about the map's own flat value, its most common one. With `crumpled`, the map's panels
+/// are flattened first ([`flattened`]).
+fn repacked(map: &Texture, crumpled: bool) -> Vec<u8> {
     let mut rgba = map.rgba();
-    let (width, height) = (map.width as usize, map.height as usize);
-    // Slopes in -1..1 about the flat texel the map's own: its most common value.
-    let channels = |c: usize| -> Vec<u8> { rgba.chunks_exact(4).map(|p| p[c]).collect() };
-    let (xs, ys) = (channels(if swizzled { 3 } else { 0 }), channels(1));
-    let flat = |values: &[u8]| {
+    let slopes = |channel: usize| -> Vec<f32> {
         let mut count = [0u32; 256];
-        values.iter().for_each(|&v| count[usize::from(v)] += 1);
-        (0..256).max_by_key(|&v| count[v]).unwrap_or(128) as f32
+        rgba.chunks_exact(4).for_each(|p| count[usize::from(p[channel])] += 1);
+        let flat = (0..256).max_by_key(|&v| count[v]).unwrap_or(128) as f32;
+        rgba.chunks_exact(4).map(|p| (f32::from(p[channel]) - flat) / 127.5).collect()
     };
-    let slopes = |values: &[u8]| -> Vec<f32> {
-        let flat = flat(values);
-        values.iter().map(|&v| (f32::from(v) - flat) / 127.5).collect()
-    };
-    let (mut x, mut y) = (slopes(&xs), slopes(&ys));
+    let (mut x, mut y) = (slopes(if map.format == Format::Dxt5 { 3 } else { 0 }), slopes(1));
     if crumpled {
-        flattened(&mut x, &mut y, width, height);
+        flattened(&mut x, &mut y, map.width as usize, map.height as usize);
     }
     let byte = |slope: f32| ((slope * 127.5 + 127.5).round().clamp(0.0, 255.0)) as u8;
     for (i, p) in rgba.chunks_exact_mut(4).enumerate() {
-        (p[0], p[1], p[2], p[3]) = (byte(x[i]), byte(-y[i]), 255, 255);
+        p.copy_from_slice(&[byte(x[i]), byte(-y[i]), 255, 255]);
     }
-    encode_bc7(false, map.width, map.height, rgba)
+    rgba
 }
 
 /// The slopes of a body's normal map without the crumpled panels it carries for damage: the doors, bonnet, roof and
@@ -205,8 +200,8 @@ mod tests {
     #[test]
     fn the_baked_diffuse_is_a_bc7_with_its_mips() {
         let texture = dxt1_of(16, 16, [200, 100, 50]);
-        let dark = Plane::of(&dxt1_of(4, 4, [0, 0, 0]), 0);
-        let dds = diffuse(&texture, |x| x, Some((&dark, 1.0)), Some((&dark, 0.5)));
+        let dark = (Plane::of(&dxt1_of(4, 4, [0, 0, 0]), 0), 1.0);
+        let dds = diffuse(&texture, |x| x, Some(&dark), Some(&dark));
         assert_eq!(&dds[84..88], b"DX10");
         let file = rbr_formats::dds::parse(&dds).unwrap();
         assert_eq!((file.width, file.height), (16, 16));
@@ -215,8 +210,19 @@ mod tests {
 
     #[test]
     fn a_normal_map_takes_alpha_as_x_and_flips_green() {
-        let flat = dxt1_of(8, 8, [128, 128, 255]);
-        let dds = normal(&flat, false);
-        assert_eq!(&dds[84..88], b"DX10");
+        // A DXT5 map flat but for its first block, whose x (alpha) is 255 and y (green) 0: a slope of +1 in x and -1 in
+        // y about the flat (128, 128), so red 255 and green, flipped, 255.
+        let flat = dxt1_of(8, 8, [128, 128, 128]);
+        let mut data = Vec::new();
+        for (i, colour) in flat.data.chunks_exact(8).enumerate() {
+            let (alpha, colour) = if i == 0 { (255, &[0; 8][..]) } else { (128, colour) };
+            data.extend([alpha, alpha, 0, 0, 0, 0, 0, 0].iter().chain(colour));
+        }
+        let map = Texture { format: Format::Dxt5, data, ..flat };
+        let texels = repacked(&map, false);
+        let (first, flat) = (&texels[..4], &texels[(5 * 8 + 5) * 4..][..4]);
+        assert!(first[0] >= 254 && first[1] == 255 && first[2..] == [255, 255], "{first:?}");
+        assert!(flat[0].abs_diff(128) <= 1 && flat[1].abs_diff(128) <= 1, "{flat:?}");
+        assert_eq!(&normal(&map, false)[84..88], b"DX10");
     }
 }

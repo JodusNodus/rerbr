@@ -8,6 +8,7 @@
 //! display's box on the atlas, the gear digit onto a small texture of its own (the gear quad's), the lamps' lit halves
 //! over their unlit ones, and DiRT's backlight map (`int_cme_dials_on`) as the night glow. Where the pack puts things is
 //! measured on the cme's textures ([`Layout`]).
+use crate::car_pack::file;
 use crate::pssg::Pssg;
 use crate::texture::Texture;
 use rbr_formats::dds;
@@ -51,10 +52,17 @@ pub fn layout(car: &str) -> Option<&'static Layout> {
 /// The gear display's texture size (the gear quad has its own texture): the quad's proportions, 2.07 by 3.5 cm, the
 /// font's 32 pixel cell stretched over it as DiRT does.
 pub const GEAR_SIZE: [usize; 2] = [64, 112];
-/// The dials atlas's texture and the lamps' file names, as the car pack writes them.
-const DIALS: &str = "dr_int_dials.dds";
-const GEAR: &str = "dr_int_gear.dds";
-const LAMPS: &str = "dr_int_indicator.dds";
+/// The car pack's keys of the textures the gauges redraw (`car_pack::file` names their files): the dials atlas, the
+/// gear display and the lamps.
+const DIALS: &str = "int_dials";
+const GEAR: &str = "int_gear";
+const LAMPS: &str = "int_indicator";
+
+/// The file of a redrawn texture's night glow map.
+fn glow_file(key: &str) -> String {
+    file(&format!("{key}_em"))
+}
+
 /// An LED display's red (the font's own is dim: DiRT adds it to the dash as light).
 const GEAR_RED: [u8; 3] = [255, 48, 36];
 /// The speed digits' colour: an LCD's, dark (DiRT's shader draws them black).
@@ -317,8 +325,12 @@ fn configs(layout: &Layout, config: &str) -> [String; 3] {
         number(config, "node=\"int_indicator_shift_1\"", "cond_min").unwrap_or(7.9) * 1000.0,
         number(config, "node=\"int_indicator_limit\"", "cond_min").unwrap_or(8.9) * 1000.0,
     );
-    let main = |texture: &str, mask: &str| {
-        format!("[main]\nauthor = rbr-dirt-rally\natlas = textures/atlas.ini\ntexture = {texture}\nemissive_mask = textures/{mask}\n")
+    let main = |key: &str| {
+        format!(
+            "[main]\nauthor = rbr-dirt-rally\natlas = textures/atlas.ini\ntexture = {}\nemissive_mask = textures/{}\n",
+            file(key),
+            glow_file(key)
+        )
     };
     let [x0, y0, x1, y1] = layout.display;
     let [hx, hy] = layout.hub;
@@ -342,7 +354,7 @@ fn configs(layout: &Layout, config: &str) -> [String; 3] {
          [speed]\ntype = Number\ndata = SpeedKPH\nmode = 0\nxpos = {}\nypos = {}\nscale = {:.4}\nrotation = 0.0\n\
          colour = ffffffff\nfont = Digits.png\nformat = Whole\njustification = Right\nprefixenabled = false\n\
          suffixenabled = false\n",
-        main(DIALS, "dr_int_dials_em.dds"),
+        main(DIALS),
         layout.pivot[0],
         layout.pivot[1],
         at(0.0),
@@ -353,7 +365,7 @@ fn configs(layout: &Layout, config: &str) -> [String; 3] {
         scale,
     );
     // Reverse is the drive's gear 0, neutral 1, first 2.
-    let mut gear = main(GEAR, "dr_int_gear_em.dds");
+    let mut gear = main(GEAR);
     let shown = std::iter::once(("GearR".to_owned(), 0))
         .chain([("GearN".to_owned(), 1)])
         .chain((1..=9).map(|g| (format!("Gear{g}"), g + 1)));
@@ -373,7 +385,7 @@ fn configs(layout: &Layout, config: &str) -> [String; 3] {
         };
         element("On", "threshold") + &element("Off", "limit")
     };
-    let lamps = main(LAMPS, "dr_int_indicator_em.dds") + &lamp("Shift", 64, shift) + &lamp("Limit", 0, limit);
+    let lamps = main(LAMPS) + &lamp("Shift", 64, shift) + &lamp("Limit", 0, limit);
     [dials, gear, lamps]
 }
 
@@ -390,9 +402,9 @@ pub fn write(root: &Path, car: &str, layout: &Layout, sources: &Sources) -> Resu
     let atlas = atlas(layout, sources)?;
     write(textures.join("atlas.ini"), atlas.ini.as_bytes())?;
     write(textures.join("atlas.dds"), &atlas.image.dds())?;
-    write(textures.join("dr_int_dials_em.dds"), &dials_glow(layout, sources).dds())?;
-    write(textures.join("dr_int_indicator_em.dds"), &lamps_glow(sources).dds())?;
-    write(textures.join("dr_int_gear_em.dds"), &Image::filled(GEAR_SIZE[0], GEAR_SIZE[1], [255, 255, 255, 0]).dds())?;
+    write(textures.join(glow_file(DIALS)), &dials_glow(layout, sources).dds())?;
+    write(textures.join(glow_file(LAMPS)), &lamps_glow(sources).dds())?;
+    write(textures.join(glow_file(GEAR)), &Image::filled(GEAR_SIZE[0], GEAR_SIZE[1], [255, 255, 255, 0]).dds())?;
     for (i, text) in configs(layout, sources.config).iter().enumerate() {
         write(variant.join(format!("config{}.ini", i + 1)), text.as_bytes())?;
     }

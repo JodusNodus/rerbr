@@ -6,12 +6,16 @@ const HELP: &str = "rbr-dirt-rally: convert stages of a locally installed DiRT R
 
 Usage:
   rbr-dirt-rally list [INSTALL]
-  rbr-dirt-rally car CAR --template CARFOLDER --out DIR [--class historic] [--livery N] [--name NAME] [--install INSTALL]
+  rbr-dirt-rally car CAR --class CLASS --template CARFOLDER --out DIR [--livery N] [--name NAME] [--install INSTALL]
   rbr-dirt-rally import LOCATION/AREA/route_N [--install INSTALL] [--name NAME] [--out DIR] [--replace]
          [--draw-corridor M] [--collision-corridor M] [--lod M]
 
 INSTALL is the game folder (or its data folder); without it, the Steam libraries are searched.
-Source game files are read in place.";
+Source game files are read in place. CAR is the folder under cars/models (cme), CLASS its generic textures under
+cars/generics (historic, rally, groupb, rallyx, trailblazer), CARFOLDER a car of the player's of the same model; the
+livery is the car's first without --livery.
+
+Developer: xml FILE, pssg-tree FILE [DEPTH], car-textures PSSG, car-texture PSSG NAME OUT.dds, car-info PSSG [-v].";
 
 pub fn main_entry(args: impl IntoIterator<Item = String>) {
     if let Err(error) = run(args) {
@@ -45,7 +49,14 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
         }
         Some("import") => import(args),
         Some("car") => car(args),
-        Some("xml") => {
+        Some(other) => developer(other, args),
+    }
+}
+
+/// The commands for reading a car's or a stage's files by hand, and the unknown ones.
+fn developer(command: &str, mut args: impl Iterator<Item = String>) -> Result<(), String> {
+    match command {
+        "xml" => {
             let path = args.next().ok_or("xml needs a binary XML file")?;
             let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
             fn show(e: &crate::binxml::Element, depth: usize) {
@@ -55,7 +66,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             show(&crate::binxml::parse(&bytes)?, 0);
             Ok(())
         }
-        Some("pssg-tree") => {
+        "pssg-tree" => {
             let path = args.next().ok_or("pssg-tree needs a .pssg")?;
             let depth: usize = args.next().map_or(Ok(3), |d| d.parse().map_err(|e| format!("depth: {e}")))?;
             fn show(n: crate::pssg::Node, depth: usize, left: usize) {
@@ -76,14 +87,14 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             crate::pssg::Pssg::read(Path::new(&path))?.roots().for_each(|n| show(n, 0, depth));
             Ok(())
         }
-        Some("car-textures") => {
+        "car-textures" => {
             let path = args.next().ok_or("car-textures needs a livery .pssg")?;
             for t in crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?) {
                 println!("{:<40} {}x{} {:?} {} levels", t.name, t.width, t.height, t.format, t.levels);
             }
             Ok(())
         }
-        Some("car-texture") => {
+        "car-texture" => {
             let (path, name, out) = (args.next(), args.next(), args.next());
             let (Some(path), Some(name), Some(out)) = (path, name, out) else {
                 return Err("car-texture needs a .pssg, a texture name and an output .dds".into());
@@ -92,7 +103,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             let texture = textures.iter().find(|t| t.name == name).ok_or("no such texture")?;
             std::fs::write(out, texture.dds()).map_err(|e| e.to_string())
         }
-        Some("car-info") => {
+        "car-info" => {
             let path = args.next().ok_or("car-info needs a <car>_highlod.pssg")?;
             let pssg = crate::pssg::Pssg::read(Path::new(&path))?;
             let parts =
@@ -101,7 +112,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             print!("{}", crate::car::materials(&pssg));
             Ok(())
         }
-        Some(other) => Err(format!("unknown command {other}; see --help")),
+        other => Err(format!("unknown command {other}; see --help")),
     }
 }
 
@@ -116,16 +127,15 @@ fn install(path: Option<&str>) -> Result<Install, String> {
 
 fn car(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let car = args.next().filter(|a| !a.starts_with("--")).ok_or("car needs the car's folder (cme)")?;
-    let (mut path, mut out, mut template, mut class, mut livery, mut name) =
-        (None, None, None, "historic".into(), 0, None);
+    let (mut path, mut out, mut template, mut class, mut livery, mut name) = (None, None, None, None, None, None);
     while let Some(flag) = args.next() {
         let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
         match flag.as_str() {
             "--install" => path = Some(value),
             "--out" => out = Some(value),
             "--template" => template = Some(value),
-            "--class" => class = value,
-            "--livery" => livery = value.parse().map_err(|e| format!("{flag}: {e}"))?,
+            "--class" => class = Some(value),
+            "--livery" => livery = Some(value.parse().map_err(|e| format!("{flag}: {e}"))?),
             "--name" => name = Some(value),
             _ => return Err(format!("unknown option {flag}")),
         }
@@ -133,7 +143,7 @@ fn car(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     let options = crate::car_pack::Options {
         name: name.unwrap_or_else(|| format!("DiRT_{car}")),
         car,
-        class,
+        class: class.ok_or("car needs --class, its generic textures under cars/generics (historic, rally, ...)")?,
         livery,
         template: template.ok_or("car needs --template, the folder of a car of the same model")?.into(),
     };

@@ -279,7 +279,18 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 
 First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP physics on a retail stage, on the live path
 (`viewer ... --car-pack <physics pack> --car-model <out>/Cars/<name>/<name>.sgc --live rbr-standalone --live ...`).
-`rbr-dirt-rally car cme --template <car folder> --out DIR --class historic [--livery N] [--name NAME]`.
+`rbr-dirt-rally car CAR --class CLASS --template <car folder> --out DIR [--livery N] [--name NAME]` (the livery is the car's first
+without `--livery`; the class is required: it is in the game's database, not in the car's files).
+
+- All cars (survey of the 46 under `cars/models`, 2026-11-24): the exterior materials are named alike on every car (`Car Body Paint`, `Matt`,
+  `Shiny Metal`, `Cabin`, `Window Glass`, `Lights Glass/Pod/Satin`, `Discs`, `Suspension`, the class wheels and tyres; some cars add `Grills`,
+  `Mud Flaps`, `Aerials`, `Caliper`, `Carbon Fiber` and `Spare <class> ...`), but each car and material has its own `OcclusionMapScale` (the paint 0
+  to 1), read from the file. The interior's materials bind their textures (`TDiffuseAlphaMap`, `TNormalMap`, `TOcclusionMap`, `TSpecularMap`,
+  `TCarbonDiffuseMap`; names vary: `int_<car>_nm` or `int_<car>_main_nm`, `.TGA` on some), so `interior_style` reads them, by shader
+  (`interior`, `_flock`, `_alpha`, `_netting`, `_carbon`, `motec`, `lcd_text`, `mirror`, `interior_windscreen`). Five cars (`i20`, `306`, `6rb`,
+  `fow`, `pol`) index their largest sources with `uint`; some have no `livery_00`. All 46 convert (each with the Escort as template, class
+  `historic`); the i20 and the 208 RX (`20x`: own brake lens, mud flaps, calipers, window net) look right in the Gabiria doc shot from the chase
+  and the cockpit. The cabin lift (below) is the Escort's: the i20's grey dash comes out pale.
 
 - Files per car under `cars/models/<car>/`: `<car>_highlod.pssg` and `_lowlod.pssg` (gzip PSSG, the stages' container),
   `livery_NN/textures_high/<car>_tex[_tm|_gr|_sn|_wt]_high_NN.pssg`, class textures in `cars/generics/<class>/car_gen_*_high.pssg`,
@@ -290,8 +301,10 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   vertex), the material (`shader="#Car Body Paint"`) and a joint. Vertices are in the part's own space (the part's node `TRANSFORM` places it:
   wheels at their hubs, vertices about the hub); `primitive` is on the index source, `SkinIndices` is a scalar `float` stream. Frame: x left,
   y up, z forward, right handed (the Escort: wheels at z +1.316 and -1.057, x 0.714 and 0.724, hub height 0.398, tyre radius 0.32).
-- Materials hold constants only; textures bind by name: `cme_main` (4096 DXT1, paint and every `Matt` part), `cme_cabin`, `cme_glass`, `cme_lights`,
-  `disc`, `cme_wheel` (per class file), `tread` (class generics), `suspension` and `grills` (class generics). The livery files' formats are
+- Materials hold constants only; textures bind by name: `cme_main` (4096 DXT1, paint and every `Matt` part; one written texture per
+  `OcclusionMapScale`, key `main<percent>`), `cme_cabin`, `cme_glass`, `cme_lights`, `disc`, `caliper`, `cme_wheel` (per class file; the rim and the
+  sidewall share it, key `wheel_<class>`; the spare is drawn once, as the tarmac class's), `tread` (class generics), `suspension` and `grills` (class
+  generics). A normal map is written once per source (`dr_<name>[_<class>].dds`). The livery files' formats are
   `dxt1_srgb`/`dxt5_srgb` (`texture::read_car`; stage reading is unchanged). UVs need no flip.
 - Into the renderer's car format: z mirrored about the wheels' centre, wheels laid on the template's (wheelbase 2.373 against the RSF Escort's 2.518:
   the body is 7 cm short at each axle against the physics' hubs), triangle order flipped (the mirror; unflipped, the outer skins were culled).
@@ -303,14 +316,17 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
   `int_dials`, `int_needle_tach`, `int_digi_speed`, `int_indicator_gear/limit/shift_1`, pedals, `int_handbrake`, `int_gearstick`,
   `int_steering_wheel`, `int_wiper_*` with `_pos_01/02` animation keys, `int_reflection_m/r` mirrors) at its rest pose, already in the exterior's
   frame (every node's own transform is identity at the car). Not read: the animation files and the environment map.
-  - Materials: the dash, doors, seats, cage, levers and wheel share the atlas `int_cme_main` whatever their shader (`CarTextureNoDirt`, key
-    `int_main`); the gauge faces `int_cme_dials` (`int_dials`), the shift and limit lights `int_indicator` (`int_indicator`, unlit). `carbon fibre`'s UVs
-    lie on the atlas's occlusion layout (they showed knobs and decals on the dash top): it draws the weave `int_carbon_diff` with the UVs times 500
-    (`CarbonUVRepeat`). Not drawn: the digit strips as meshes (`lcd_text`: `int_digi_speed` and the gear indicator are quads over strips of digits the game scrolls; the
+  - Materials, by what they bind (key: the texture's name without the car's): the dash, doors, seats, cage, levers and wheel share the atlas
+    `int_cme_main` whatever their shader (`CarTextureNoDirt`, key `int_main`, with every map any of its materials gives it; the car's own maps only,
+    the shared `int_gen_sp` is a 32 texel constant); the gauge faces `int_cme_dials` (`int_dials`), the shift and limit lights `int_indicator`
+    (`int_indicator`, unlit); the alpha and netting shaders' alpha is their opacity (`_alpha` keys). `carbon fibre`'s UVs lie on the atlas's
+    occlusion layout (they showed knobs and decals on the dash top): it draws the weave `int_carbon_diff` with the UVs times its `CarbonUVRepeat`
+    (the Escort 500, most cars 300). Not drawn: the digit strips as meshes (`lcd_text`: `int_digi_speed` and the gear indicator are quads over strips of digits the game scrolls; the
     gauges below draw them) and `interior glass windows`. The two mirrors (`int_reflection_m`, `_r`) are parts named `i_mirrorglass_m` and `_r` in the glass class with a flat texel,
     which `rbr-render`'s mirrors pass takes as glass: `--mirrors 1` shows the road behind in the centre mirror and the flank in the wing mirror.
   - Sets: `i_internal` and `e_internal` are both this scene (the exterior file's `Cabin` material is DiRT's low-detail copy and is used only for a car
-    without an interior file); the outside copy drops the triangles above y 1.40 or beyond |x| 0.68 (`within_body`), the cage's roof tubes and the lining
+    without an interior file); the outside copy drops the triangles above the windscreen's top or beyond the side windows, 1 cm on (`clip`, `within_body`; the
+    Escort 1.40 and 0.68, found by eye first; the rear window's top, 1.41, would keep the bands), the cage's roof tubes and the lining
     that lie in the paint and showed as grey bands along the roof. The steering wheel is the scene's own, taken into the exterior wheel's node, in
     `i_steeringwheel` and `e_steeringwheel`. `i_body` is the exterior parts `int_cme.xml` keeps active in the cockpit (`active_nodes`: bonnet, wings,
     doors, the driver's mirror, the engine and under-bonnet, the light rigs) with their exterior materials; the renderer draws only the `i_*` set in the
@@ -351,13 +367,13 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
     the cabin's sheen: `gloss`). No retail car has the section: four stock-car shots (day, night, rain, cockpit) render with RMSE 0 against the build
     without it. Converter side: `cme_specocc` is specular in RGB (the paint 0.43) and baked occlusion in the
     alpha, on `cme_main`'s UVs; the occlusion goes into the colour in linear light with each material's `OcclusionMapScale` (paint 0.4, `Matt` 0.8,
-    `Shiny Metal` 0.5: keys `paint`, `matt`, `metal`; the interior atlas 0.5 of its 1, `INTERIOR_OCCLUSION`, as the cabin light already shades it), the
+    `Shiny Metal` 0.5: keys `main40`, `main80`, `main50`; the interior atlas 0.5 of its 1, `INTERIOR_OCCLUSION`, as the cabin light already shades it), the
     specular becomes the alpha, and both are written BC7 (a re-encoded 4096 keeps its colours). Normal maps (written BC7, x red, green flipped to run down
     the image; tread, disc, suspension and grille maps integrate to heights that follow their diffuse with that sign, the wheel's does not tell): body
     (`cme_main_nm`, DXT5 with x in the alpha), lights and lens, rim and sidewall, tread, disc, suspension, grille, and the interior atlas (`int_cme_nm`, RGB).
     `cme_main_nm`'s panels (doors, bonnet, roof, wings) hold a foil-like crumple, the damage layer DiRT blends in as the car is hit; it creased the whole
     door, so `car_maps::flattened` sends the slopes to flat where a 6 texel blur of them is large (the hardware's bolts, vents and edges stay). The
-    damage state itself is not drawn. Also fixed: the tyre's sidewall (`... Tyre Wall`, UVs over all 0..1) is on the wheel's atlas (`wall_<class>`; it
+    damage state itself is not drawn. Also fixed: the tyre's sidewall (`... Tyre Wall`, UVs over all 0..1) is on the wheel's atlas (`wheel_<class>`, with the rim; it
     had the tread texture, blocks all over the sidewall) and now shows `255/50-16 RADIAL`; the right-hand tyres' lettering reads mirrored.
   - Working gauges (`gauges.rs`, 2026-11-24): DiRT's `int_cme.xml` `displays` name what moves (the tach's `int_needle_tach` over 0 to 12 thousand rpm,
     the speed digits and the gear digit as `lcd_text` quads with fonts in `simplefonts/simple_fonts.pssg`, the shift and limit lights as
@@ -381,10 +397,12 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
     which DiRT never draws from outside.
 - Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's dust and cracks, the oil and trip LCDs (static), the gauges of
   the other cars, the damage crumple normals (below), the rally lights switched
-  by the headlight key, the other cars (`style` and `SIDES` are the Escort's names), `pc_e_window_*` cracks, the lower LOD.
+  by the headlight key, `pc_e_window_*` cracks, the lower LOD; for the other cars: a template of their own model (the physics), the class from the
+  game's database, the cabin lift per car, the second lamp sets (`light_2_*`, in the body), the gear digit of the cars whose gear display is an
+  `interior.fx` strip (drawn at rest), and a look at each.
 - Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
   for both files, lamp parts' switch boxes, a settings key set in its section, a tone curve on DXT blocks, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 77 tests (with the maps below: occlusion factor, plane lookup, BC7 output, normal repack, the materials' maps, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the gauge pack reading as an RBRHUD pack and naming only sprites its sheet has, the font's glyphs, images cropping and stretching, the lamps' map), the whole crate's 80 tests (with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
   `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.
