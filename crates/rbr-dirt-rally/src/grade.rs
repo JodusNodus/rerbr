@@ -18,7 +18,8 @@ const DISPLAY_GAMMA: f32 = 2.2;
 pub struct Grade {
     /// The table as a 32 x 256 RGBA PNG.
     pub png: Vec<u8>,
-    /// The linear light the table adds to a sunlit road's grey ([`ROAD`]): above 1 it brightens.
+    /// The linear light the table adds to a sunlit road's grey ([`ROAD`]), over the exposure's trim for the area
+    /// ([`trim`]): the exposure is divided by it. Above 1 the table brightens.
     pub lift: f32,
 }
 
@@ -54,11 +55,21 @@ fn png(rgba: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Germany's day road reads 145/130/106 (with the compensation alone: 168/152/128) against the frames' 139/116/89 (sunlit gravel
+/// 152/133/105): its exposure goes down a quarter more. The other areas' roads were level with the frames before the table.
+fn trim(area: &str) -> f32 {
+    if area.starts_with("panzerplatte") {
+        0.76
+    } else {
+        1.0
+    }
+}
+
 impl Grade {
     /// From a palette's bytes; `None` when they are short.
-    pub fn from_palette(payload: &[u8]) -> Option<Grade> {
+    pub fn from_palette(payload: &[u8], area: &str) -> Option<Grade> {
         let table = rgba(payload)?;
-        Some(Grade { png: png(&table).ok()?, lift: lift(&table, ROAD) })
+        Some(Grade { png: png(&table).ok()?, lift: lift(&table, ROAD) / trim(area) })
     }
 
     /// The day variant's palette of `route`'s area, named by its post effect; `None` where the files are missing.
@@ -70,7 +81,7 @@ impl Grade {
         let palettes = Pssg::read(&data.join("palettes.pssg")).ok()?;
         let texture = palettes.find("TEXTURE").find(|t| t.id() == Some(name.as_str()))?;
         let block = texture.child("TEXTUREIMAGEBLOCK")?;
-        Grade::from_palette(block.child_payload("TEXTUREIMAGEBLOCKDATA"))
+        Grade::from_palette(block.child_payload("TEXTUREIMAGEBLOCKDATA"), &route.area)
     }
 }
 
@@ -108,6 +119,6 @@ mod tests {
         let bright: Vec<u8> =
             table.iter().enumerate().map(|(i, &v)| if i % 4 == 3 { v } else { v.saturating_add(20) }).collect();
         assert!(lift(&bright, ROAD) > 1.2);
-        assert!(Grade::from_palette(&identity()).unwrap().png.starts_with(b"\x89PNG"));
+        assert!(Grade::from_palette(&identity(), "x").unwrap().png.starts_with(b"\x89PNG"));
     }
 }
