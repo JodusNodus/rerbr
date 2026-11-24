@@ -9,7 +9,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 ## Install and routes
 
 - `tracks/locations/<location>/<area>/route_<n>`: 12 rally areas (two per location: Finland, France (Col de Turini),
-  Germany, Greece, Sweden, Wales), each route_0..5; Pikes Peak (routes 0, 2, 4, 6), three rallycross circuits,
+  Germany, Greece, Sweden, Wales), each route_0..5; Pikes Peak (routes 0, 2, 4, 6), three rallycross venues (Höljes and Lydden Hill routes 0 to 2, Hell 0 and 1; see Rallycross below),
   `frontend` (no course). 94 route folders.
 - Route roles, all 12 areas (start and finish positions, codriver `_fwd`/`_rvs` names): 0 long forward, 1 long reverse,
   2/3 first half forward/reverse, 4/5 second half forward/reverse. Stage names are not on disk (`game.bin` is opaque).
@@ -234,3 +234,27 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
 - `Object_Cov` and `Object_2SidedCov` are cut-outs, not opaque (DXT5 alpha is the wire mesh of `wal_wirefnc_mid_a_1_d` and `pke_fence_02_d`, the branches of `wal_gateway_c_2_d`, the cable): `blended` took only
   `*blend*` shaders, so fences drew as solid slabs. `blended` now includes `cov.fx`.
 - Shade read blue and violet (Wales, Pikes Peak, Turini): the bakes carry DiRT Rally's own ambient and the renderer's clear-sky ambient came on top. `settings.ini` writes `sky_tint=0.2` (`[ReRbrAir]`, `notes/renderer.md`): 0 left Wales' roads warm brown, 0.3 and 0.5 left Pikes' asphalt blue, 0.2 reads near neutral on all five routes.
+
+## Rallycross circuits, 2026-11-24
+
+- Venues `sweden/holjes_rallycross` (routes 0 to 2), `norway/hell_rallycross` (0, 1), `uk/lydden_hill_rallycross` (0 to 2) import as ReRBR circuits (`circuit=1`, a closed driveline ring), through the same stage writer
+  as the rally stages (`stage::Input::circuit`; the AC converter's circuit conventions: last ring point repeats the first, start, finish and end keys at `rbr_btb::circuit::FAR`, no pacenotes). The route files are
+  the same set as a rally route's. `progress_track.xml` says `track type=circuit total_distance=<lap>`; routes are layouts of one venue (not directions): the
+  lap is 1207, 937, 683 m (Höljes 0, 1, 2), 1036, 986 m (Hell), 1349, 990, 575 m (Lydden Hill); the gates run once round and the last lies one gate step from the first (8 to 15 m).
+- Progress route id 0 is the lap: splits `finish` (the lap line; Lydden 0 and 1 name a late gate, the rest gate 0), `first_corner` and `time` ones (1 to 3). Route id 1 is the joker lap: `joker_lap_start`
+  and `joker_lap_finish` gates and `jokerGates` (the detour's own 13 to 17 gates). The joker lap is not imported.
+- `ai_track.xml` holds the gates of every layout of the venue (Höljes 182 to 219, with unlinked ones), `links` (`from_gate` to `to_gate`) and `fork_sets` (`decision_type=joker`: a fork's branch used for `race` is the
+  lap, the `joker` one the detour; Hell has a second fork on the detour's own gates). The lap is the links walked from the gate nearest the lap line (among gates that have a link out), the race branch at each fork,
+  until it returns (`route::lap_road`): its length is the file's `total_distance` within 3 % on all eight routes. Gates are 8 to 30 m apart (Höljes 2's 20 to 30 m), the line is cut at the 2.5 m
+  resample like a rally route's.
+- `grids.pssg` holds a standing grid (`grid_start_standing_*`, slot_000..004, rows `grid_start_staggered_*`), but its pole lies 20 to 34 m off the road and 3 to 5 m high on all three venues (the
+  progress gates and the AI road agree on the road, the grid is not on the lap), and the grid's matrix has the track going -z (slots at +z are behind): not used. The car stands 3.7 m behind the lap line
+  as on a rally route, and the lap is timed from 1 m behind that, the ring's seam: a car on the seam itself could come out with progress just behind it and the next step counted a lap (Lydden Hill 0: Lap at 0.15 s
+  with the seam at the spawn, 109.6 s with it 1 m behind; Höljes 2 had been lucky). The AC converter's circuit has the car on the seam: the same risk there.
+- Titles: `Höljes`, `Hell`, `Lydden Hill` for route 0, `<venue>, layout N` for the others. Physics by the majority rule: tarmac on all eight (Höljes and Hell are part gravel, which keeps its surface ids but
+  drives on the tarmac tyre model). Rallycross has no codriver files: no pacenotes are written.
+- Imports (release, 8 cores): 28 to 47 s; 442 k to 601 k drawn triangles (Hell 0 5.8 M instanced), 83 k to 380 k collision triangles; Hell 0 and Lydden Hill 2 reach 65.4 k of a cell's 65536 vertices.
+- Driven headless (btb-autopilot, car 2, `--laps 1`, `rbr-standalone` Started, Sector x3, Lap, Finished): all eight lap and finish, 0.7 to 1.2 m off the driveline at most; lap times 135.9, 95.0, 71.5 s
+  (Höljes 0 to 2), 95.2, 91.6 s (Hell), 109.7, 90.7, 53.8 s (Lydden Hill). Shots (everything on, 4 points a venue, route 0): no converter defect specific to rallycross seen; Höljes' and Hell's gravel
+  loops draw as dirt under the tarmac tyre model.
+- Not done: the joker lap (the detour and its `jokerGates`; a circuit has one line), the start grid's real place, the venue's own start (the grid is the heat start; the lap line is the finish line).

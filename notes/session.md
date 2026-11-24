@@ -94,7 +94,9 @@ existing types are built beside, not rewritten, since `FlowMode`/timing/ghost ty
   is a circuit. `rbr-standalone --boot ... --laps N|open` builds `LapRules` from `Course::load(markers, line)` and
   runs it beside the school's rules (`Format` for `(A, B)` and `&mut R`; `Live::take_lap_events`). The lap line is the
   spawn: the line starts where the car stands, a standing start (`LapTiming::start_now`, from `Format::start`), the
-  seam is the lap line. The stage's own start, finish and end keys lie far past the lap (40000 m) so the 1.02
+  seam is the lap line (a converter puts the car 1 m past the seam: a car on it can read progress just behind it and
+  the next step counts a lap, as DiRT Rally's Lydden Hill did). The stage's own start, finish and end keys lie far
+  past the lap (40000 m) so the 1.02
   timekeeper and marker ticker never fire them (the start line's jump start would, with the car past the key).
   The autopilot follows an unrolled copy (`StageData::line`, 3 laps) and maps the wrapping progress onto it
   (`Driver::with_period`).

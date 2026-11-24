@@ -162,7 +162,7 @@ fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64,
 }
 
 /// A rallycross lap as a ring (the first point repeated at the end) in the stage's world: the race branch of the AI
-/// road, starting at the spawn 3.7 m behind the lap line, where the lap is timed. Returns the lap, the ring, its `start` and `finish`
+/// road, starting just behind the spawn (3.7 m behind the lap line), where the lap is timed. Returns the lap, the ring, its `start` and `finish`
 /// (one lap on from it, arc lengths) and the time splits' arc lengths from the pole.
 fn lap_line(route: &Route) -> Result<(route::Lap, Line, f64, f64, Vec<f64>), String> {
     let lap = route::lap(route)?;
@@ -182,8 +182,8 @@ fn lap_line(route: &Route) -> Result<(route::Lap, Line, f64, f64, Vec<f64>), Str
         }
         Ok(s)
     };
-    // The car stands where rally stages' grids do, 3.7 m behind the line: the ring starts there, and so does the lap.
-    let start = (on(lap.line)? - stage::GRID_BEHIND).rem_euclid(ring.length());
+    // The car stands where rally stages' grids do, 3.7 m behind the line, and the lap is timed from there (`stage`).
+    let start = (on(lap.line)? - stage::GRID_BEHIND - stage::SEAM_BEHIND).rem_euclid(ring.length());
     let along = |s: f64| (s - start).rem_euclid(ring.length());
     let splits = lap.splits.iter().map(|&p| on(p).map(along)).collect::<Result<Vec<_>, _>>()?;
     let finish = start + ring.length();

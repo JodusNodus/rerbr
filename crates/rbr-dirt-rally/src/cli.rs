@@ -33,7 +33,12 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
         Some("list") => {
             let install = install(args.next().as_deref())?;
             for route in install.routes() {
-                println!("{}{}", route.id(), if route.is_rally() { "" } else { " (not a rally stage)" });
+                let kind = match (route.is_rally(), route.is_rallycross()) {
+                    (true, _) => "",
+                    (_, true) => " (rallycross circuit)",
+                    _ => " (not a rally stage)",
+                };
+                println!("{}{kind}", route.id());
             }
             Ok(())
         }

@@ -317,6 +317,9 @@ const SETTINGS_INI: &str =
 
 /// Where the car stands: the start grid's first slot, 3.7 m behind the start line on every rally route's grid.
 pub(crate) const GRID_BEHIND: f64 = 3.7;
+/// A circuit's car stands this far past the lap line (the ring's seam): on the seam itself a first step's progress can
+/// come out just behind it, and the next step would count a lap.
+pub(crate) const SEAM_BEHIND: f64 = 1.;
 
 fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, String> {
     let control = &options.control;
@@ -366,7 +369,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let physics = surface::physics(along.iter().copied());
     control.say(&format!("physics={physics}; {missing}/{} driveline points without ground", line.points.len()));
     let (spawn, heading) = {
-        let (p, tangent) = line.sample(if input.circuit { 0. } else { (start - GRID_BEHIND).max(0.) });
+        let (p, tangent) = line.sample(if input.circuit { SEAM_BEHIND } else { (start - GRID_BEHIND).max(0.) });
         let (z, _) = ground_near(&ground, p).ok_or("no ground under the start position")?;
         ([p[0], p[1], z], tangent)
     };
@@ -733,7 +736,7 @@ mod tests {
         let report = convert(&input, &options).unwrap();
         let read = |file: &str| std::fs::read_to_string(report.folder.join(file)).unwrap();
         assert!(read("track.ini").contains("circuit=1\n"));
-        // The ring starts at the lap line, 10 m up the first strip, and ends where it began.
+        // The ring starts at the lap line, 10 m up the first strip, and ends where it began; the car stands 1 m past it.
         let keys: Vec<Vec<f64>> = read("driveline.ini")
             .lines()
             .filter(|l| l.starts_with('K'))
@@ -753,7 +756,7 @@ mod tests {
             notes.contains("count=5") && notes.contains("distance=300.0000") && notes.contains("distance=900.0000")
         );
         let spawn = read("spawn.ini");
-        assert!(spawn.contains("m12=-10\n") && spawn.contains("m14=-290\n") && spawn.contains("angleZ=0"), "{spawn}");
+        assert!(spawn.contains("m12=-10\n") && spawn.contains("m14=-289\n") && spawn.contains("angleZ=0"), "{spawn}");
         let _ = std::fs::remove_dir_all(&out);
     }
 }
