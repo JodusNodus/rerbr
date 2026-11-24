@@ -143,6 +143,9 @@ impl Lighting {
         if let Some(c) = self.sun_tint {
             let _ = writeln!(text, "sun_tint={}", triple(c));
         }
+        // DiRT Rally's sunny day is not held 1.5 stops down as the renderer's photographic one is (the gameplay frames'
+        // sunlit gravel reads 175 to 200 of 255 against 100 here; cloud and haze rows keep the meter's exposure either way).
+        text.push_str("sun_stops=0\n");
         text
     }
 }
@@ -175,6 +178,7 @@ mod tests {
         let tint = l.sun_tint.unwrap();
         assert!((luma(tint) - 1.0).abs() < 1e-5 && tint[0] > tint[2]);
         assert!(l.ini().contains("aerosol=0.100\nfog_color="));
+        assert!(l.ini().ends_with("sun_stops=0\n"));
         // Brightness 1.4 of the sun-side haze: hazy; a wet variant makes the Bad weather rain.
         assert_eq!(l.info_ini(), "weather_good=41M_hazy_clear\nweather_bad=41O_M_lightrain_heavycloud\n");
     }
