@@ -8,7 +8,7 @@ use super::DEPTH_FORMAT;
 use crate::coords::FRONT_FACE;
 use crate::stage::{Anchor, DrawState, Layer, Vertex};
 use std::collections::HashMap;
-use std::sync::{mpsc, Arc, Condvar, Mutex, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 
 pub(crate) const SHADER: &str = concat!(
     include_str!("../shader.wgsl"),
@@ -198,13 +198,13 @@ pub(crate) fn cutout(state: &DrawState) -> bool {
 }
 
 /// What the stage's pipelines are built from: the shader, its layout and the colour format drawn in.
-pub(super) struct Context<'a> {
-    pub(super) device: &'a wgpu::Device,
+pub(super) struct Context {
+    pub(super) device: wgpu::Device,
     pub(super) format: wgpu::TextureFormat,
-    pub(super) shader: &'a wgpu::ShaderModule,
-    pub(super) layout: &'a wgpu::PipelineLayout,
+    pub(super) shader: wgpu::ShaderModule,
+    pub(super) layout: wgpu::PipelineLayout,
     /// The layout with the grass's cards after the stage's groups ([`PipelineKey::made`]).
-    pub(super) made_layout: &'a wgpu::PipelineLayout,
+    pub(super) made_layout: wgpu::PipelineLayout,
     /// The stage draws' vertex entry point ([`vertex_entry`]).
     pub(super) vertex: &'static str,
     /// [`Enhance::water`] or [`Enhance::wet`] (`WATER_PLUS` in `shader.wgsl`).
@@ -278,116 +278,51 @@ impl Ord for Pipe {
     }
 }
 
-/// What a worker needs of a [`Context`], owned.
-struct Owned {
-    device: wgpu::Device,
-    format: wgpu::TextureFormat,
-    shader: wgpu::ShaderModule,
-    layout: wgpu::PipelineLayout,
-    made_layout: wgpu::PipelineLayout,
-    vertex: &'static str,
-    water_plus: bool,
-    cabin: bool,
-    grass: bool,
-    lighting: bool,
-    debug_view: u32,
-    cube_shift: u32,
-    taa: bool,
-}
-
-impl Owned {
-    fn create(&self, key: PipelineKey) -> wgpu::RenderPipeline {
-        Context {
-            device: &self.device,
-            format: self.format,
-            shader: &self.shader,
-            layout: &self.layout,
-            made_layout: &self.made_layout,
-            vertex: self.vertex,
-            water_plus: self.water_plus,
-            cabin: self.cabin,
-            grass: self.grass,
-            lighting: self.lighting,
-            debug_view: self.debug_view,
-            cube_shift: self.cube_shift,
-            taa: self.taa,
-        }
-        .pipeline(key)
-    }
-}
-
 /// The stage's pipelines, each made once on a pool of threads while the load goes on: the driver's compile of one
 /// takes about a second on a cold shader cache, and 40 of them in a row took 35 s. `RBR_PIPELINE_THREADS` sets the
 /// threads (0 or 1: made in place, one after another).
 pub(super) struct Pool {
     made: HashMap<PipelineKey, Pipe>,
     jobs: Option<mpsc::Sender<(PipelineKey, Pipe)>>,
-    owned: Arc<Owned>,
-    pending: Arc<(Mutex<usize>, Condvar)>,
-}
-
-/// Counts a job done when dropped, so a worker that panics does not leave [`Pool::finish`] waiting.
-struct Done(Arc<(Mutex<usize>, Condvar)>);
-
-impl Drop for Done {
-    fn drop(&mut self) {
-        *self.0 .0.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
-        self.0 .1.notify_all();
-    }
+    threads: Vec<std::thread::JoinHandle<()>>,
+    context: Arc<Context>,
 }
 
 impl Pool {
-    pub(super) fn new(context: &Context) -> Pool {
-        let owned = Arc::new(Owned {
-            device: context.device.clone(),
-            format: context.format,
-            shader: context.shader.clone(),
-            layout: context.layout.clone(),
-            made_layout: context.made_layout.clone(),
-            vertex: context.vertex,
-            water_plus: context.water_plus,
-            cabin: context.cabin,
-            grass: context.grass,
-            lighting: context.lighting,
-            debug_view: context.debug_view,
-            cube_shift: context.cube_shift,
-            taa: context.taa,
-        });
-        let threads = std::env::var("RBR_PIPELINE_THREADS")
+    pub(super) fn new(context: Arc<Context>) -> Pool {
+        let count = std::env::var("RBR_PIPELINE_THREADS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()).min(4));
-        let pending = Arc::new((Mutex::new(0), Condvar::new()));
-        let jobs = (threads > 1).then(|| {
+        let (mut jobs, mut threads) = (None, Vec::new());
+        if count > 1 {
             let (sender, receiver) = mpsc::channel::<(PipelineKey, Pipe)>();
             let receiver = Arc::new(Mutex::new(receiver));
-            for _ in 0..threads {
-                let (receiver, owned, pending) = (receiver.clone(), owned.clone(), pending.clone());
-                std::thread::spawn(move || loop {
-                    let next = receiver.lock().unwrap_or_else(|e| e.into_inner()).recv();
-                    let Ok((key, pipe)) = next else { break };
-                    let _done = Done(pending.clone());
-                    let _ = pipe.0.set(owned.create(key));
-                });
-            }
-            sender
-        });
-        Pool { made: HashMap::new(), jobs, owned, pending }
+            threads = (0..count)
+                .map(|_| {
+                    let (receiver, context) = (receiver.clone(), context.clone());
+                    std::thread::spawn(move || loop {
+                        let next = receiver.lock().unwrap_or_else(|e| e.into_inner()).recv();
+                        let Ok((key, pipe)) = next else { break };
+                        let _ = pipe.0.set(context.pipeline(key));
+                    })
+                })
+                .collect();
+            jobs = Some(sender);
+        }
+        Pool { made: HashMap::new(), jobs, threads, context }
     }
 
     /// The pipeline of `key`, queued to the pool when it is the first asked for.
     pub(super) fn get(&mut self, key: PipelineKey) -> Pipe {
-        let Pool { made, jobs, owned, pending } = self;
+        let Pool { made, jobs, context, .. } = self;
         made.entry(key)
             .or_insert_with(|| {
                 let pipe = Pipe(Arc::new(OnceLock::new()));
                 match jobs {
-                    Some(jobs) => {
-                        *pending.0.lock().unwrap() += 1;
-                        jobs.send((key, pipe.clone())).expect("the pool's threads outlive it");
-                    }
+                    Some(jobs) => jobs.send((key, pipe.clone())).expect("the pool's threads outlive it"),
                     None => {
-                        let _ = pipe.0.set(owned.create(key));
+                        let _ = pipe.0.set(context.pipeline(key));
                     }
                 }
                 pipe
@@ -395,18 +330,18 @@ impl Pool {
             .clone()
     }
 
-    /// Waits for every queued pipeline, and ends the threads.
+    /// Waits for every queued pipeline: the threads end once the queue is closed and empty.
     pub(super) fn finish(&mut self) {
         self.jobs = None;
-        let (count, done) = &*self.pending;
-        let mut count = count.lock().unwrap_or_else(|e| e.into_inner());
-        while *count > 0 {
-            count = done.wait(count).unwrap_or_else(|e| e.into_inner());
+        for thread in self.threads.drain(..) {
+            if let Err(panic) = thread.join() {
+                std::panic::resume_unwind(panic);
+            }
         }
     }
 }
 
-impl Context<'_> {
+impl Context {
     /// The fragment entry point that shades the draws, taking the clouds' shadow when the vertex gives it.
     fn shading(&self) -> &'static str {
         if self.vertex == "vs_clouded" {
@@ -462,20 +397,20 @@ impl Context<'_> {
         let placed_buffers = [Some(vertex_layout()), Some(placed_layout()), Some(probe_layout())];
         let (layout, vertex, buffers) = match (key.made, key.placed) {
             (true, _) => {
-                (self.made_layout, if self.vertex == "vs_clouded" { "vs_grass_clouded" } else { "vs_grass" }, &[][..])
+                (&self.made_layout, if self.vertex == "vs_clouded" { "vs_grass_clouded" } else { "vs_grass" }, &[][..])
             }
             (false, true) => (
-                self.layout,
+                &self.layout,
                 if self.vertex == "vs_clouded" { "vs_clouded_placed" } else { "vs_main_placed" },
                 &placed_buffers[..],
             ),
-            (false, false) => (self.layout, self.vertex, &[Some(vertex_layout())][..]),
+            (false, false) => (&self.layout, self.vertex, &[Some(vertex_layout())][..]),
         };
         self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stage"),
             layout: Some(layout),
             vertex: wgpu::VertexState {
-                module: self.shader,
+                module: &self.shader,
                 entry_point: Some(vertex),
                 compilation_options: Default::default(),
                 buffers,
@@ -498,7 +433,7 @@ impl Context<'_> {
             }),
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
-                module: self.shader,
+                module: &self.shader,
                 entry_point: Some(entry),
                 compilation_options: wgpu::PipelineCompilationOptions {
                     constants: &[
@@ -554,7 +489,7 @@ impl Context<'_> {
             label: Some("sky"),
             layout: Some(layout),
             vertex: wgpu::VertexState {
-                module: self.shader,
+                module: &self.shader,
                 entry_point: Some("vs_sky"),
                 compilation_options: Default::default(),
                 buffers: &[],
@@ -569,7 +504,7 @@ impl Context<'_> {
             }),
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
-                module: self.shader,
+                module: &self.shader,
                 entry_point: Some("fs_sky"),
                 compilation_options: wgpu::PipelineCompilationOptions {
                     constants: &[("LIGHTING", f64::from(u8::from(self.lighting)))],
@@ -592,7 +527,7 @@ impl Context<'_> {
             label: Some("car shadow"),
             layout: Some(layout),
             vertex: wgpu::VertexState {
-                module: self.shader,
+                module: &self.shader,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
                 buffers: &[Some(vertex_layout())],

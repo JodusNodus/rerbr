@@ -263,12 +263,12 @@ impl Renderer {
             bind_group_layouts: &[Some(&frame_layout), Some(&texture_layout), Some(&mask_layout), Some(&grass_cards)],
             immediate_size: 0,
         });
-        let context = Context {
-            device: &device,
+        let context = Arc::new(Context {
+            device: device.clone(),
             format,
-            shader: &shader,
-            layout: &layout,
-            made_layout: &made_layout,
+            shader: shader.clone(),
+            layout: layout.clone(),
+            made_layout: made_layout.clone(),
             vertex: vertex_entry(enhance),
             water_plus: enhance.water || enhance.wet,
             cabin: enhance.cabin,
@@ -277,8 +277,8 @@ impl Renderer {
             debug_view: enhance.debug_view.code(),
             cube_shift: u32::from(ultra),
             taa,
-        };
-        let mut pipelines = Pool::new(&context);
+        });
+        let mut pipelines = Pool::new(context.clone());
         // A draw of a mesh whose indices start at `first_index` in the shared buffer, with its pipelines and bind group.
         let mut gpu_draw = |draw: &Draw,
                             first_index: u32,

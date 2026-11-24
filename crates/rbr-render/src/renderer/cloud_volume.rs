@@ -182,7 +182,7 @@ impl CloudVolume {
     /// draw binds. `shadow` is the shadow map's target ([`shadow_target`]), which the volume draws into and the
     /// frame's bind groups read.
     pub(super) fn new(
-        context: &Context<'_>,
+        context: &Context,
         queue: &wgpu::Queue,
         frame_layout: &wgpu::BindGroupLayout,
         (depth, size): (&wgpu::TextureView, (u32, u32)),
@@ -190,7 +190,7 @@ impl CloudVolume {
         frame_uniform: &wgpu::Buffer,
         shadow_view: wgpu::TextureView,
     ) -> CloudVolume {
-        let device = context.device;
+        let device = &context.device;
         let sky_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cloud image"),
             entries: &[texture_entry(7, TEXTURE), texture_entry(8, TEXTURE)],
@@ -348,14 +348,14 @@ impl CloudVolume {
 
 impl Passes {
     fn new(
-        context: &Context<'_>,
+        context: &Context,
         queue: &wgpu::Queue,
         frame_layout: &wgpu::BindGroupLayout,
         frame_uniform: &wgpu::Buffer,
         sky_layout: &wgpu::BindGroupLayout,
         (depth, size): (&wgpu::TextureView, (u32, u32)),
     ) -> Passes {
-        let device = context.device;
+        let device = &context.device;
         let [shape, detail] = [(SHAPE_SIZE, 0), (DETAIL_SIZE, 1)].map(|(side, kind)| noise(device, queue, side, kind));
         let resources = Resources {
             shape,
@@ -416,7 +416,7 @@ impl Passes {
                     label: Some(entry),
                     layout: Some(&layout),
                     vertex: wgpu::VertexState {
-                        module: context.shader,
+                        module: &context.shader,
                         entry_point: Some("vs_sky"),
                         compilation_options: Default::default(),
                         buffers: &[],
@@ -425,7 +425,7 @@ impl Passes {
                     depth_stencil: None,
                     multisample: Default::default(),
                     fragment: Some(wgpu::FragmentState {
-                        module: context.shader,
+                        module: &context.shader,
                         entry_point: Some(entry),
                         compilation_options: wgpu::PipelineCompilationOptions {
                             constants: &[("LIGHTING", f64::from(u8::from(context.lighting)))],
