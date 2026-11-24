@@ -52,7 +52,6 @@ pub(crate) struct Post {
     clouds: wgpu::TextureView,
     /// The stage's colour look-up table (one white node without it) and whether the composite applies it.
     grade: wgpu::TextureView,
-    graded: bool,
     /// The resolved frame.
     pub(crate) scene: wgpu::TextureView,
     targets: Targets,
@@ -93,7 +92,7 @@ struct Meter {
     sharpen: f32,
     /// An HDR display's headroom (`HDR` in `post.wgsl`).
     headroom: f32,
-    /// `x`: [`Post::fixed_ev`], 0 metered; `y`: 1 with a colour look-up table ([`Post::graded`]).
+    /// `x`: [`Post::fixed_ev`], 0 metered.
     fixed: [f32; 4],
     /// [`Sunlit`]: the view's inverse, the clouds' shadow map's parameters, the way to the sun and the sunny offset.
     inverse: [[f32; 4]; 4],
@@ -297,6 +296,7 @@ impl Post {
             },
             &[],
         );
+        let nodes = grade.filter(|nodes| nodes.len() == GRADE_BYTES);
         let composite = [0.0, 1.0].map(|cabin| {
             let hdr = f64::from(u8::from(format == crate::present::HDR_FORMAT));
             let constants = [
@@ -304,6 +304,7 @@ impl Post {
                 ("CABIN", cabin),
                 ("DEBUG_VIEW", f64::from(debug_view)),
                 ("HDR", hdr),
+                ("GRADE", f64::from(u8::from(nodes.is_some()))),
             ];
             pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
         });
@@ -329,7 +330,6 @@ impl Post {
         let histogram = buffer("histogram", METER_SLOTS * 4, wgpu::BufferUsages::STORAGE);
         let meter_settings =
             buffer("meter", size_of::<Meter>() as u64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
-        let nodes = grade.filter(|nodes| nodes.len() == GRADE_BYTES);
         let table = device.create_texture_with_data(
             queue,
             &wgpu::TextureDescriptor {
@@ -378,7 +378,6 @@ impl Post {
             fixed_ev: std::env::var("RBR_METER_EV").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0),
             clouds: clouds.clone(),
             grade,
-            graded: nodes.is_some(),
             scene,
             targets,
             shafts,
@@ -437,7 +436,7 @@ impl Post {
             saturation: conditions.saturation,
             sharpen: self.sharpen,
             headroom: self.headroom,
-            fixed: [self.fixed_ev, f32::from(u8::from(self.graded)), 0.0, 0.0],
+            fixed: [self.fixed_ev, 0.0, 0.0, 0.0],
             inverse: sunlit.inverse.to_cols_array_2d(),
             clouds: sunlit.clouds,
             to_sun: sunlit.to_sun.extend(sunlit.stops).to_array(),

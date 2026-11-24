@@ -34,8 +34,7 @@ struct Meter {
     // The weather's grade (`post::Conditions`): `x` the metered exposure's scale, `y` the saturation's; `z` the
     // sharpening (`sharpened`); `w` an HDR display's headroom (`HDR`).
     grade: vec4<f32>,
-    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered; `y`: 1 when
-    // the stage has a colour look-up table (`graded`).
+    // `x`: the EV100 the scene is taken as metered at (`post::Post::fixed_ev`, for comparisons); 0 metered; `y` unused.
     fixed: vec4<f32>,
     // What tells the share of the view the sun lights (`post::Sunlit`): the view's inverse, the clouds' shadow map's
     // parameters (`volume_shadow`; zero without the map), the way to the sun and, in `w`, the sunny day's exposure
@@ -54,6 +53,8 @@ struct Meter {
 // A stage's colour look-up table (`[ReRbrAir]` `grade`, `Atmosphere::grade`), 32 green x 16 red x 16 blue nodes
 // (`graded`); one white node, never read, without it.
 @group(1) @binding(5) var grade_lut: texture_3d<f32>;
+// Whether the stage has a look-up table: a pipeline override, so the composite without one is built as before.
+override GRADE: bool = false;
 override SHAFTS: bool = false;
 // The in-car view's cabin exposure (`Exposure::cabin`, `CABIN_STOPS`): a pipeline override, so the composite outside
 // the car is built as before.
@@ -606,7 +607,7 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     let c = tone_curve(linear, d);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));
     let shown = clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(d.top));
-    if (meter.fixed.y > 0.0) {
+    if (GRADE) {
         return vec4<f32>(graded(shown), 1.0);
     }
     return vec4<f32>(shown, 1.0);
