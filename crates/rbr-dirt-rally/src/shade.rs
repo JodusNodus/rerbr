@@ -140,6 +140,47 @@ fn bridges(m: &Mesh) -> Vec<bool> {
     rates.iter().map(|&r| r > BRIDGE * usual).collect()
 }
 
+/// Whether each triangle of `m` has no area in the atlas: the unwrap left a road's quad on one line of the lightmap (its
+/// corners differ in one coordinate only). The details lie at the atlas's uv, so such a triangle would draw one line of
+/// each detail across it, as stripes over the road ("barcode"); the game reads the details at the layer uv and the
+/// lightmap, smooth, along that line. They are drawn with the atlas's maps and the details at the world (see
+/// [`layer_world`]).
+fn collapsed(m: &Mesh) -> Vec<bool> {
+    const COLLAPSED: f64 = 0.02;
+    let uv2 = m.uv2.as_ref().expect("usable");
+    let ratios: Vec<f64> = m
+        .triangles
+        .iter()
+        .map(|t| {
+            let i = t.map(|k| k as usize);
+            let p = i.map(|k| m.positions[k].map(f64::from));
+            let q = i.map(|k| uv2[k].map(f64::from));
+            let atlas = ((q[1][0] - q[0][0]) * (q[2][1] - q[0][1]) - (q[2][0] - q[0][0]) * (q[1][1] - q[0][1])).abs();
+            atlas / length(cross(sub(p[1], p[0]), sub(p[2], p[0]))).max(1e-9)
+        })
+        .collect();
+    let mut sorted = ratios.clone();
+    sorted.sort_by(f64::total_cmp);
+    let usual = sorted.get(sorted.len() / 2).copied().unwrap_or(0.);
+    ratios.iter().map(|&r| r < COLLAPSED * usual).collect()
+}
+
+/// The layer's repeats per metre of some triangles of `m` on its own axes, from the mesh's uv alone.
+fn layer_world(m: &Mesh, triangles: &[usize]) -> [f32; 2] {
+    let (mut u, mut v) = (Vec::new(), Vec::new());
+    for t in triangles.iter().map(|&t| m.triangles[t]) {
+        let i = t.map(|k| k as usize);
+        let p = i.map(|k| m.positions[k].map(f64::from));
+        let area = length(cross(sub(p[1], p[0]), sub(p[2], p[0]))) / 2.;
+        if let Some(layer) = derivatives(p, i.map(|k| m.uv[k])).filter(|_| area > 1e-6) {
+            u.push((length(layer.0).ln(), area));
+            v.push((length(layer.1).ln(), area));
+        }
+    }
+    let median = |values: Vec<(f64, f64)>| weighted_median(values).map_or(1., f64::exp);
+    [(1. / median(u)) as f32, (1. / median(v)) as f32]
+}
+
 /// The triangles of `m` in connected pieces: those sharing a vertex are one island of the atlas.
 fn islands(m: &Mesh, triangles: &[usize]) -> Vec<Vec<usize>> {
     fn find(parent: &mut [usize], mut i: usize) -> usize {
@@ -587,10 +628,16 @@ impl Shader {
                 if !rest.is_empty() {
                     shaded.meshes.push(Mesh { triangles: rest.iter().map(|&t| m.triangles[t]).collect(), ..m.clone() });
                 }
+                let flat = collapsed(m);
+                let (flat, good): (Vec<usize>, Vec<usize>) = good.into_iter().partition(|&t| flat[t]);
                 for piece in islands(m, &good) {
                     let r = repeats(m, &piece);
                     let world = r.world();
                     let class = (world, class(if world { r.world } else { r.atlas }));
+                    by_class.entry(class).or_default().extend(piece.iter().map(|&t| m.triangles[t]));
+                }
+                for piece in islands(m, &flat) {
+                    let class = (true, class(layer_world(m, &piece)));
                     by_class.entry(class).or_default().extend(piece.iter().map(|&t| m.triangles[t]));
                 }
                 for ((world, class), triangles) in by_class {
@@ -700,6 +747,10 @@ mod tests {
         let m = islands_mesh();
         let bridging = bridges(&m);
         assert_eq!(bridging, [false, false, false, false, true, true, true]);
+        // A triangle whose atlas corners lie on one line has no texels of its own.
+        let mut flat = islands_mesh();
+        flat.uv2.as_mut().unwrap()[3] = [0.01, 0.];
+        assert_eq!(collapsed(&flat)[..4], [false, true, false, false]);
         let good: Vec<usize> = (0..4).collect();
         let pieces = islands(&m, &good);
         assert_eq!(pieces, vec![vec![0, 1], vec![2, 3]]);
