@@ -49,7 +49,8 @@ struct Frame {
     // dirt maps' alpha is raised to its square root (ours, with the surfaces' dirt: weak maps show).
     wetness: vec4<f32>,
     // Renderer additions (`renderer::Enhance`): x 1 for the aerial perspective (`fogged`), y 1 for the flowing water
-    // (`water_flowing`), z 1 for the puddles (`wet_plus`); w unused.
+    // (`water_flowing`), z 1 for the puddles (`wet_plus`); w the screen dither's phase (`dither`: 0 still, else 1 to 16
+    // a frame under the temporal anti-aliasing).
     enhance: vec4<f32>,
     // The sun's shadow cascades (renderer addition, `sun.rs`): stage space to each cascade's clip space; `sun_shadow`
     // x how much the shadow darkens (0: off), y the filter step in cascade uv, z 1 when they hold the overcast sky's
@@ -613,12 +614,10 @@ fn vertex(input: VertexIn) -> VertexOut {
         let n = v.normal;
         out.world = v.position + vec3<f32>(out_way.x, -(n.x * out_way.x + n.z * out_way.y) / max(n.y, 0.1), out_way.y);
         if (v.uv2.x > 0.0) {
-            // Shrunk into the ground past the density where it stands and at the far edge of the grass.
-            // A converted stage's group pieces (`grass::FX_PIECE`) grow only away from the eye.
-            let faded = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5);
-            // A cover-map stage's tufts (kind 4) are its grass, grown in from the eye.
-            let piece = select(faded, 1.0, v.specular.z > 3.5);
-            let height = v.uv2.x * grass_grown(d, v.uv2.y) * piece;
+            // Shrunk into the ground past the density where it stands and at the far edge of the grass; a converted
+            // stage's cards (kinds 2 to 4, atlas pictures) keep their height and are dithered out (`grass_dithered`).
+            let grown = select(grass_grown(d, v.uv2.y), 1.0, v.specular.z > 1.5);
+            let height = v.uv2.x * grown;
             out.world = out.world + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
         }
         out.clip = frame.view_projection * vec4<f32>(out.world, 1.0);
@@ -695,6 +694,27 @@ fn grass_grown(d: f32, keep: f32) -> f32 {
     let density = grass_density(d);
     return 1.0 - smoothstep(density, density * GRASS_MARGIN, keep);
 }
+
+// Interleaved gradient noise (Jimenez 2014) at pixel `p`, 0 to 1, stepped by the frame's dither phase
+// (`frame.enhance.w`), as `noise` in `motion_blur.wgsl`.
+fn dither(p: vec2<f32>) -> f32 {
+    let q = floor(p) + 5.588238 * frame.enhance.w;
+    return fract(52.9829189 * fract(dot(q, vec2<f32>(0.06711056, 0.00583715))));
+}
+
+// Whether a converted stage's grass card (kinds 2 to 4, `grass_cards.wgsl`) lets this pixel go: it shows as much as
+// a card of ours grows (`grass_grown`), its group pieces (kind 3, `grass::FX_PIECE`) only away from the eye, by a
+// screen dither rather than shrinking, which squashed its picture as the eye came and went.
+fn grass_dithered(v: VertexOut) -> bool {
+    let card = v.specular.x > GRASS_MARK && v.specular.x < GRASS_MARK + 3.0 && v.specular.y > 0.5
+        && v.specular.y < 1.5 && v.specular.z > 1.5 && v.wet.y > 0.0;
+    if (!card) {
+        return false;
+    }
+    let d = distance(v.world, frame.eye.xyz);
+    let piece = select(1.0, smoothstep(FX_PIECE_NEAR.x, FX_PIECE_NEAR.y, d), v.specular.z > 2.5 && v.specular.z < 3.5);
+    return dither(v.clip.xy) >= grass_grown(d, v.uv2.y) * piece;
+}
 const GRASS_SWAY: f32 = 0.22;
 const GRASS_GUST: vec2<f32> = vec2<f32>(2.5, 1.4);
 const GRASS_FLUTTER: vec2<f32> = vec2<f32>(0.3, 4.3);
@@ -731,6 +751,9 @@ fn fs_clouded(c: CloudedOut, @builtin(front_facing) front: bool) -> @location(0)
 // normals under our own light (`own_light`), a span's (two-sided) turned to the eye; else it is lit as before, as
 // facing up.
 fn shade(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
+    if (grass_dithered(v)) {
+        discard;
+    }
     if (lit_class() != 0u) {
         return shade_car(v, front, under_cloud);
     }
@@ -1719,6 +1742,9 @@ fn crown_sun_seen(v: VertexOut, under_cloud: f32, r: vec3<f32>) -> f32 {
 // `own_sun_seen` takes, is written only for the sun's mask (`sun_mask.wgsl`).
 @fragment
 fn fs_prepass(v: VertexOut) -> @location(0) vec4<f32> {
+    if (grass_dithered(v)) {
+        discard;
+    }
     let alpha = textureSampleBias(texture0, texture_sampler, v.uv0, texture_bias()).a;
     if (ALPHA_TEST && mode.alpha_test != 0u && alpha <= mode.alpha_ref) {
         discard;

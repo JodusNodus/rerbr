@@ -66,27 +66,32 @@ impl Level {
     /// `shader.wgsl`). Past the full distance the clumps thin as one over the distance and the cards left widen as
     /// much, so the field covers the ground as near and each card keeps its width on the screen, up to the most; the
     /// last [`FADE`] of the reach fades it out, and the ground past it takes the field's colour (`thatch`).
-    const fn profile(self) -> [f32; 4] {
-        match self {
+    /// A converted stage's (`converted`) stays full [`FX_FULL`] times farther out: its atlas pictures dither out
+    /// rather than shrink (`grass_dithered` in `shader.wgsl`), and the thinning shows less farther off.
+    const fn profile(self, converted: bool) -> [f32; 4] {
+        let [share, full, most, reach] = match self {
             Level::Light => [0.5, 20.0, 2.0, 100.0],
             Level::Dense => [1.0, 40.0, 5.0, 300.0],
-        }
+        };
+        [share, if converted { full * FX_FULL } else { full }, most, reach]
     }
 
     /// How far from the eye grass draws, metres: the tiles with their middle within this of the eye stream in and
     /// draw (at most [`REACH`]).
     fn reach(self) -> f32 {
-        self.profile()[3]
+        self.profile(false)[3]
     }
 
     /// `frame.grass` in `shader.wgsl`: [`Level::profile`]; with no grass a profile of none whose edges still differ.
-    pub(crate) fn uniform(level: Option<Level>) -> [f32; 4] {
-        level.map_or([0.0, 1.0, 1.0, 1.0], Level::profile)
+    pub(crate) fn uniform(level: Option<Level>, converted: bool) -> [f32; 4] {
+        level.map_or([0.0, 1.0, 1.0, 1.0], |level| level.profile(converted))
     }
 }
 
+/// How much farther out a converted stage's grass stays full ([`Level::profile`]).
+const FX_FULL: f32 = 1.5;
 /// The farthest any [`Level`] draws grass, metres ([`CLOSE_DISTANCE`] covers a tile past it).
-pub(crate) const REACH: f32 = Level::Dense.profile()[3];
+pub(crate) const REACH: f32 = Level::Dense.profile(false)[3];
 /// The share of a level's reach past which its field fades out (`GRASS_FADE` in `shader.wgsl`).
 const FADE: f32 = 0.65;
 /// The most any [`Level`]'s cards widen ([`widen`]): the tiles' bounds take it.
@@ -812,16 +817,14 @@ fn tile_of(p: Vec3) -> (i32, i32) {
 /// The density of the grass at `level` `distance` metres from the eye: its share within its full distance, then as
 /// one over the distance, faded out over the last [`FADE`] of its reach ([`Level::profile`]; `grass_density` in
 /// `shader.wgsl` is the same).
-fn density(level: Level, distance: f32) -> f32 {
-    let [share, full, _, reach] = level.profile();
+fn density([share, full, _, reach]: [f32; 4], distance: f32) -> f32 {
     share * (full / distance.max(1e-3)).min(1.0) * (1.0 - smoothstep([FADE * reach, reach], distance))
 }
 
-/// How much wider than its own a card at `level` draws `distance` metres from the eye: as much as its clumps thin
+/// How much wider than its own a card of `profile` draws `distance` metres from the eye: as much as its clumps thin
 /// past the full distance, up to the level's most (`grass_widen` in `shader.wgsl`).
 #[cfg(test)]
-fn widen(level: Level, distance: f32) -> f32 {
-    let [_, full, most, _] = level.profile();
+fn widen([_, full, most, _]: [f32; 4], distance: f32) -> f32 {
     (distance / full).clamp(1.0, most)
 }
 
@@ -1543,21 +1546,23 @@ mod tests {
 
     #[test]
     fn density_is_full_to_its_level_then_thins_as_its_cards_widen() {
-        let dense = |d| density(Level::Dense, d);
+        let dense = |d| density(Level::Dense.profile(false), d);
         assert_eq!((dense(0.0), dense(40.0)), (1.0, 1.0));
         assert!((dense(80.0) - 0.5).abs() < 1e-6, "{}", dense(80.0));
         assert!(dense(90.0) > dense(100.0) && dense(100.0) > dense(200.0));
         assert_eq!((dense(300.0), dense(340.0)), (0.0, 0.0));
-        let light = |d| density(Level::Light, d);
+        let light = |d| density(Level::Light.profile(false), d);
         assert_eq!((light(0.0), light(20.0), light(120.0)), (0.5, 0.5, 0.0));
         assert!((light(40.0) - 0.25).abs() < 1e-6, "{}", light(40.0));
+        // A converted stage's stays full farther out.
+        assert_eq!(density(Level::Dense.profile(true), 40.0 * FX_FULL), 1.0);
         // The field covers the ground as near while its cards widen (to 5 x 40 m and 2 x 20 m) and before it fades,
         // less past that.
-        for level in [Level::Light, Level::Dense] {
-            let [share, full, most, reach] = level.profile();
-            let cover = |d| density(level, d) * widen(level, d) / share;
+        for profile in [Level::Light, Level::Dense].into_iter().flat_map(|l| [l.profile(false), l.profile(true)]) {
+            let [share, full, most, reach] = profile;
+            let cover = |d| density(profile, d) * widen(profile, d) / share;
             for d in [0.0, full, full * 2.0, (full * most).min(FADE * reach)] {
-                assert!((cover(d) - 1.0).abs() < 1e-5, "{level:?} {d} {}", cover(d));
+                assert!((cover(d) - 1.0).abs() < 1e-5, "{profile:?} {d} {}", cover(d));
             }
             assert!(cover(full * most + 10.0) < 1.0 && cover(reach) == 0.0);
         }

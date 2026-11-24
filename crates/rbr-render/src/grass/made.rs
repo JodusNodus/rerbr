@@ -657,6 +657,11 @@ impl Made {
         }
     }
 
+    /// The field's profile ([`Level::profile`]): a converted stage's ([`super::Field::fx`]) stays full farther out.
+    pub(crate) fn profile(&self) -> [f32; 4] {
+        Level::uniform(Some(self.field.level), !self.field.fx.is_empty())
+    }
+
     /// Whether a frame that waits for its tiles ([`Made::waits`]) still misses some.
     pub(crate) fn waiting(&self) -> bool {
         self.waits && self.missing > 0
@@ -756,7 +761,7 @@ impl Made {
     ) {
         let Some(buffers) = self.views.get(view) else { return };
         let eye = crate::camera::eye(view_projection);
-        let level = self.field.level;
+        let profile = self.profile();
         let frustum = crate::camera::Frustum::from_view_projection(view_projection);
         // The cards widen and sway: a tile's box takes the widest and tallest.
         let pad = Vec3::new(1.0, 2.0, 1.0);
@@ -768,7 +773,7 @@ impl Made {
                 let (x, z) = (tile.0 as f32 * TILE, tile.1 as f32 * TILE);
                 let (min, max) = (Vec3::new(x, low, z) - pad, Vec3::new(x + TILE, high, z + TILE) + pad);
                 let nearest = (eye.clamp(min, max) - eye).length();
-                let share = (super::GROW_MARGIN * density(level, nearest)).min(1.0);
+                let share = (super::GROW_MARGIN * density(profile, nearest)).min(1.0);
                 let count = (share * CANDIDATES as f32).ceil() as u32;
                 let shown = frustum.intersects_box((min + max) * 0.5, (max - min) * 0.5);
                 (count > 0 && shown).then_some(Walk { slot: slot as u32, x: tile.0, z: tile.1, count })
@@ -788,7 +793,7 @@ impl Made {
         let cull = Cull {
             planes,
             eye: eye.extend(0.0).to_array(),
-            profile: Level::uniform(Some(level)),
+            profile,
             info: [walks.len() as u32, buffers.capacity, u32::from(!self.field.fx.is_empty()), CANDIDATES],
         };
         queue.write_buffer(&buffers.cull, 0, bytemuck::bytes_of(&cull));
