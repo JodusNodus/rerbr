@@ -394,7 +394,7 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   converted stage's `[ReRbrAir]` `fog_color` and `aerosol` replace the clear day's only (they overrode every weather);
   the converter no longer writes them. The linear fog (lighting off) and our dawn and dusk mist are unchanged.
 - Sky ambient tint (ours, prototype): `[ReRbrAir]` `sky_tint` (`Atmosphere::sky_tint`, 0 to 1, absent 1) takes the sky's light on the stage (`day_sky` from `day_light`) that far from its luminance in grey to the clear sky's own colour, for bakes that already carry their ambient (DiRT Rally's: the clear sky's blue and the eye balance read as a blue cast in their shade). It rides `SkyUniform.level.z` (as `1 - tint`, guarded so absent is bit-identical); the sky drawn and the sun's light are unchanged. Reference shots (7 of RBR and AC) RMSE 0 against the build before.
-- Converted stage grade (ours, 2026-11-24, `[ReRbrAir]` `saturation`, `exposure`, `sun_tint`; `Atmosphere::{saturation, exposure, sun_tint}`): `post::conditions` multiplies the weather's exposure and saturation by them (a heavy rain or cloud grade stays under it); `sun_tint` rides `SkyUniform.sun_tint` (`w` 1 when set) and tints `day_light`'s direct light after the balance, only while the sun is up (the moon is not tinted), the sky drawn unchanged. Absent keys leave every path as it was (the branch is skipped).
+- Converted stage grade (ours, 2026-11-24, `[ReRbrAir]` `saturation`, `exposure`, `sun_tint`; `Atmosphere::{saturation, exposure, sun_tint}`): `post::conditions` multiplies the weather's exposure and saturation by them (a heavy rain or cloud grade stays under it); `sun_tint` rides `SkyUniform.sun_tint` (`w` 1 when set) and tints `day_light`'s direct light after the balance, only while the sun is up (the moon is not tinted), the sky drawn unchanged. Absent keys leave every path as it was (the branch is skipped). `grade` (`Atmosphere::grade`, `post::Post::new`): the composite samples a 32 x 16 x 16 3D look-up table at its end, on the display-coded colour (the node coordinate is `(c * (n - 1) + 0.5) / n`, trilinear); without the key a 1-texel table is bound and the `GRADE` pipeline override is off, so the composite is built without the sample.
 - Converted stage haze (ours, 2026-11-19, superseded in part by the above): `settings.ini` `[ReRbrAir]` (`rbr_btb::track::Air`) gives a BTB stage its own
   ground-haze hue (`fog_color`, display colour) and clear-sky aerosol depth (`aerosol`, `Atmosphere::aerosol`, 0.05
   crisp to 0.2 hazy, as `skylight.rs`' words) and share of the height fog's dawn and dusk mist (`mist`, 0 none to 1,
@@ -1448,6 +1448,16 @@ even in the distance" without the cost): replaced the CPU's tile meshes (`Ring`,
   wanted tiles missing (in flight), 2.7 bakes a frame, cards median 440k, most 740k.
 - Not done: Light keeps Dense's card buffers; the pool's 128 MiB (two buffers, or fewer words a cell, would hold more
   tiles); the cards' sway in the motion target.
+
+Converted stages' grass dithered (2026-11-24, user report and pick; `grass_dithered` in `shader.wgsl`, `Level::profile`):
+CSP and DiRT Rally atlas cards (kinds 2 to 4) were squashed as they grew in (height by `grass_grown`, the picture's uv
+fixed), so tufts visibly rose and sank while driving. They now keep their height and are discarded by a screen dither
+(interleaved gradient noise, `dither`) against the same share, in the colour pass and the prepass; the phase
+(`frame.enhance.w`) steps a frame under TAA in the main view, still elsewhere. Their profile stays full `FX_FULL` (1.5)
+farther out (Dense 60 m, Light 30 m), so the thinning starts farther off; ours (kind 1) unchanged. Still shots (Sa
+Calobra fly-by, Akina chase, DiRT Rally Finland and Greece chase at 2500) RMSE 0.003-0.007, Sa Calobra 0.045 (the car's
+place differs); no dither visible in stills. Motion not captured (the viewer's `--video` needs a matching replay).
+Widening past the full distance still stretches the pictures.
 
 Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --screenshot` waits for the worker's
 tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every

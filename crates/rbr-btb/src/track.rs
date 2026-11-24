@@ -277,7 +277,7 @@ pub struct TrackInfo {
 /// colour) and the aerosol optical depth (`aerosol`, 0.05 crisp to 0.2 hazy) of its clear days, each over the
 /// renderer's own (`skylight::CLEAR_AIR` in `rbr-render`; the converter no longer writes them), the share of the dawn and dusk valley mist (`mist`, 0 none to 1 the section's), and the stage's
 /// north (`north`, a horizontal direction in the stage's frame), which a stage of the plugin's never states.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Air {
     pub fog_color: Option<[f32; 3]>,
     pub aerosol: Option<f32>,
@@ -291,6 +291,9 @@ pub struct Air {
     pub sun_tint: Option<[f32; 3]>,
     /// How many stops down a fully sunlit day is exposed under our sun lighting (`sun_stops`; the renderer's own 1.5 when absent).
     pub sun_stops: Option<f32>,
+    /// A colour look-up table in `Textures.zip` (`grade`): a 32 x 256 PNG, x green, y blue * 16 + red, RGB, that the
+    /// post pass applies last, to the display-coded frame; the renderer's own look when absent.
+    pub grade: Option<String>,
 }
 
 impl Air {
@@ -318,6 +321,7 @@ impl Air {
             exposure: number("exposure"),
             sun_tint: triple("sun_tint"),
             sun_stops: number("sun_stops"),
+            grade: find_entry(air, "grade").map(|v| v.trim().to_owned()).filter(|v| !v.is_empty()),
         })
     }
 }
@@ -925,12 +929,13 @@ mod tests {
 
     #[test]
     fn the_air_section_reads_the_haze_hue_aerosol_mist_and_north() {
-        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\nsaturation=0.75\nexposure=1.1\nsun_tint=1.1, 1.0, 0.8\nsun_stops=0\n";
+        let ini = "[SETTINGS]\nsunDirection=0,-1,0\n\n[ReRbrAir]\nfog_color=0.7, 0.6, 0.5\naerosol=0.3\nmist=0.5\nsky_tint=0.4\nnorth=0, 0, 1\nsaturation=0.75\nexposure=1.1\nsun_tint=1.1, 1.0, 0.8\nsun_stops=0\ngrade=g.png\n";
         let air = Air::parse(&rbr_formats::ini::parse(ini).unwrap()).unwrap();
         assert_eq!((air.fog_color, air.aerosol, air.mist), (Some([0.7, 0.6, 0.5]), Some(0.3), Some(0.5)));
         assert_eq!((air.sky_tint, air.north), (Some(0.4), Some([0.0, 0.0, 1.0])));
         assert_eq!((air.saturation, air.exposure, air.sun_tint), (Some(0.75), Some(1.1), Some([1.1, 1.0, 0.8])));
         assert_eq!(air.sun_stops, Some(0.0));
+        assert_eq!(air.grade.as_deref(), Some("g.png"));
         assert!(Air::parse(&rbr_formats::ini::parse("[SETTINGS]\n").unwrap()).is_none());
     }
 

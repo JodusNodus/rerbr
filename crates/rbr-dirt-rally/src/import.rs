@@ -3,7 +3,7 @@
 //! and written by `stage`. Nothing here prints, reads the environment or exits the process.
 use crate::install::{Install, Route};
 use crate::{
-    collision, frame, material, mesh, objects, pssg::Pssg, route, shade, stage, surface, texture, trees, vista,
+    collision, frame, material, mesh, objects, pssg::Pssg, route, shade, solid, stage, surface, texture, trees, vista,
 };
 use rbr_ac_tracks::btb::{
     control::Control,
@@ -69,8 +69,9 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
     };
     control.check()?;
     let faces = collision::read(&route)?;
+    let solids = solid_props(&route, control)?;
     let judged = if circuit { (0., line.length()) } else { (start, finish) };
-    let (collision, surface_counts) = collision_triangles(&faces, &line, judged.0, judged.1)?;
+    let (collision, surface_counts) = collision_triangles(&faces, solids, &line, judged.0, judged.1)?;
     control.say(&format!("{} collision triangles", collision.len()));
     drop(faces);
     control.check()?;
@@ -84,6 +85,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         instanced.models.len(),
         instanced.placed.iter().map(|p| p.matrices.len()).sum::<usize>()
     ));
+    let grade = crate::grade::Grade::day(&route);
     let input = stage::Input {
         source: route.dir.clone(),
         route: route.id(),
@@ -103,7 +105,8 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         collision,
         collision_source: "track.jpk",
         surface_counts,
-        lighting: crate::lighting::Lighting::day(&route),
+        lighting: crate::lighting::Lighting::day(&route).map(|l| grade.as_ref().map_or(l, |g| l.graded(g.lift))),
+        grade: grade.map(|g| g.png),
         grass: crate::grass::read(route.area_dir())?,
     };
     let out = match &options.out {
@@ -193,10 +196,39 @@ fn lap_line(route: &Route) -> Result<(route::Lap, Line, f64, f64, Vec<f64>), Str
     Ok((lap, ring, start, finish, splits))
 }
 
+/// The hulls of the route's solid props (`objects::Shape::solid`) placed at their instances, as collision triangles with
+/// no surface yet; none where the route has no `objects.ens`.
+fn solid_props(route: &Route, control: &Control) -> Result<Vec<Triangle>, String> {
+    if !route.dir.join("objects.ens").is_file() {
+        return Ok(Vec::new());
+    }
+    let layout = objects::read(route)?;
+    let mut out = Vec::new();
+    let (mut solid, mut small, mut soft) = (0, 0, 0);
+    for instance in &layout.instances {
+        for shape in &layout.entities[instance.entity].shapes {
+            let hull = if shape.solid() { solid::triangles(shape, &instance.matrix) } else { Vec::new() };
+            match (shape.solid(), hull.is_empty()) {
+                (true, false) => solid += 1,
+                (true, true) => small += 1,
+                (false, _) => soft += 1,
+            }
+            out.extend(hull);
+        }
+    }
+    control.say(&format!(
+        "{solid} solid hulls ({} triangles), {small} lower than {} m, {soft} that give way or are vegetation",
+        out.len(),
+        solid::MIN_RISE
+    ));
+    Ok(out)
+}
+
 /// The collision in the stage's world with RBR ids, and the count of each code's triangles. `DEFA` takes the road
 /// surface of the stage's class, judged from the codes under the course; an unknown code is reported.
 fn collision_triangles(
     faces: &[collision::Face],
+    solids: Vec<Triangle>,
     line: &Line,
     start: f64,
     finish: f64,
@@ -237,6 +269,8 @@ fn collision_triangles(
         }
         surface::physics(along)
     };
+    // The solid props, after the road's surface is judged (a trunk is no road).
+    triangles.extend(solids);
     let default = u32::from(surface::default_for(physics));
     for t in &mut triangles {
         t.material.get_or_insert(default);

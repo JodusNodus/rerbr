@@ -383,6 +383,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         atmosphere.sun_direction = sun;
     }
     if let Some(air) = scene.air {
+        atmosphere.grade = air.grade.as_ref().and_then(|file| {
+            let (width, height, pixels) = scene.textures.bytes(file).and_then(|b| rbr_btb::scene::decode_image(&b))?;
+            (pixels.len() == crate::post::GRADE_BYTES && (width, height) == (32, 256)).then(|| pixels.into())
+        });
         atmosphere.haze_hue = air.fog_color.map(Vec3::from);
         atmosphere.aerosol = air.aerosol;
         atmosphere.mist = air.mist;

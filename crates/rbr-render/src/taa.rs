@@ -261,6 +261,11 @@ impl Taa {
         &self.targets.raw_view
     }
 
+    /// Frames begun.
+    pub(crate) fn frame(&self) -> u32 {
+        self.frame
+    }
+
     /// Whether the resolve upscales: the frame is drawn below the output's size.
     pub(crate) fn upscaling(&self) -> bool {
         self.size != self.output
