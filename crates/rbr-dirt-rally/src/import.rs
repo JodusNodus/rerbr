@@ -85,7 +85,8 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         instanced.models.len(),
         instanced.placed.iter().map(|p| p.matrices.len()).sum::<usize>()
     ));
-    let grade = crate::grade::Grade::day(&route);
+    // Greece: the table pinks our road where DiRT's is golden before it (needs a warmer pre-grade), so no grade there yet.
+    let grade = crate::grade::Grade::day(&route).filter(|_| !route.area.starts_with("ghymno"));
     let input = stage::Input {
         source: route.dir.clone(),
         route: route.id(),
