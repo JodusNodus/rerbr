@@ -13,11 +13,45 @@ use std::collections::{BTreeMap, HashMap};
 pub type Mat = [[f32; 4]; 4];
 
 /// One placeable type: the node ids of its `default` renderables, each in the file named.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Entity {
     pub name: String,
     /// `(file, node id)`, `("objects.pssg", "default!4")`.
     pub parts: Vec<(String, String)>,
+    /// The physics hulls of the intact prop ([`Shape`]); the `damage` pieces' are left out.
+    pub shapes: Vec<Shape>,
+}
+
+/// A physics hull's form, in its own axes (y up, centred): `TEMPLATESHAPEBOX` width (x), height (y), length (z);
+/// `CYLINDER` and `CAPSULE` along y; `CONE` base radius and full height.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Hull {
+    Box([f32; 3]),
+    Cylinder { height: f32, radius: f32 },
+    Capsule { height: f32, radius: f32 },
+    Sphere { radius: f32 },
+    Cone { height: f32, radius: f32 },
+}
+
+/// One hull of an entity's intact rigid body (`infMass="1"`, drawn by a `default` renderable).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shape {
+    pub hull: Hull,
+    /// Row-vector matrix of the hull in the entity's space (`TEMPLATERIGIDBODYSHAPE`'s `TEMPLATETRANSFORM`).
+    pub matrix: Mat,
+    /// The shape's `props="physparams.xml#sSolidTreeWood"`.
+    pub material: String,
+    /// The hull's own behaviour impulse class (`bPhantom`, `bLight`, `bHeavy`, `bArmco`...): the prop gives way or
+    /// breaks into its `damage` pieces on a hit. None: nothing in the data lets it give way.
+    pub impulse: Option<String>,
+}
+
+impl Shape {
+    /// What DiRT Rally's data keeps solid: a hull with no impulse class (trees, rocks, walls, buildings, stumps) or the
+    /// armco's, not vegetation (bushes, `*Vegetation`: the car drives through them).
+    pub fn solid(&self) -> bool {
+        matches!(self.impulse.as_deref(), None | Some("bArmco")) && !self.material.contains("Vegetation")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,8 +65,8 @@ pub struct Instance {
 pub struct Layout {
     pub entities: Vec<Entity>,
     pub instances: Vec<Instance>,
-    /// Instances that draw nothing, by the entity or reference they name: no `default` renderable, or not an entity
-    /// of the types file (cloth, links).
+    /// Instances that draw nothing and have no hull, by the entity or reference they name: no `default` renderable, or
+    /// not an entity of the types file (cloth, links).
     pub skipped: BTreeMap<String, usize>,
 }
 
@@ -104,9 +138,91 @@ fn entities(text: &str) -> HashMap<String, Vec<(String, String)>> {
     out
 }
 
+/// The intact hulls of each entity of a `route_objecttypes.pssg` text by id. A `TEMPLATESUBENTITY` holds one
+/// `TEMPLATERIGIDBODY` (`infMass="1"`: fixed; the 0 ones are the pieces that fly off), its `TEMPLATERIGIDBODYSHAPE`s (a
+/// shape id, a transform and maybe a `TEMPLATEBEHAVIOUR` with an impulse class) and the `TEMPLATETRANSFORMABLE` that
+/// names its renderable: a `damage` one is the broken state, left out. The shapes (`TEMPLATESHAPE*`) come by id.
+fn shapes(text: &str) -> HashMap<String, Vec<Shape>> {
+    let renderables: HashMap<&str, &str> = tags(text)
+        .filter(|(t, _)| t.name == "TEMPLATERENDERABLE")
+        .filter_map(|(t, _)| Some((t.attr("id")?, t.attr("uri")?)))
+        .collect();
+    let num = |t: &Tag, k: &str| t.attr(k).and_then(|v| v.parse::<f32>().ok());
+    let mut forms = HashMap::<&str, (Hull, String)>::new();
+    for (tag, _) in tags(text) {
+        let (Some(id), Some(material)) = (tag.attr("id"), tag.attr("props")) else { continue };
+        let hull = match tag.name {
+            "TEMPLATESHAPEBOX" => num(&tag, "width")
+                .zip(num(&tag, "height"))
+                .zip(num(&tag, "length"))
+                .map(|((w, h), l)| Hull::Box([w, h, l])),
+            "TEMPLATESHAPECYLINDER" => {
+                num(&tag, "height").zip(num(&tag, "radius")).map(|(height, radius)| Hull::Cylinder { height, radius })
+            }
+            "TEMPLATESHAPECAPSULE" => {
+                num(&tag, "height").zip(num(&tag, "radius")).map(|(height, radius)| Hull::Capsule { height, radius })
+            }
+            "TEMPLATESHAPESPHERE" => num(&tag, "radius").map(|radius| Hull::Sphere { radius }),
+            "TEMPLATESHAPECONE" => num(&tag, "fullHeight")
+                .zip(num(&tag, "baseRadius"))
+                .map(|(height, radius)| Hull::Cone { height, radius }),
+            _ => None,
+        };
+        if let Some(hull) = hull {
+            forms.insert(id, (hull, material.rsplit_once('#').map_or(material, |(_, m)| m).to_owned()));
+        }
+    }
+    let mut out = HashMap::<String, Vec<Shape>>::new();
+    let (mut entity, mut fixed) = (None::<String>, false);
+    // The open subentity's shapes, and the shape whose transform is awaited.
+    let mut open: Option<Vec<(&str, Mat, Option<String>)>> = None;
+    let mut awaiting: Option<&str> = None;
+    for (tag, text) in tags(text) {
+        match tag.name {
+            "TEMPLATEENTITY" => {
+                entity = tag.attr("id").map(str::to_owned);
+                open = None;
+            }
+            "TEMPLATESUBENTITY" => (open, fixed) = (Some(Vec::new()), false),
+            "TEMPLATERIGIDBODY" => fixed = tag.attr("infMass") == Some("1"),
+            "TEMPLATERIGIDBODYSHAPE" => awaiting = tag.attr("uri").and_then(|u| u.strip_prefix('#')),
+            "TEMPLATETRANSFORM" => {
+                if let (Some(shape), Some(m), Some(open)) = (awaiting.take(), matrix(text), open.as_mut()) {
+                    open.push((shape, m, None));
+                }
+            }
+            "TEMPLATEBEHAVIOUR" => {
+                let class = tag.attr("impulse").and_then(|i| i.rsplit_once('#')).map(|(_, c)| c.to_owned());
+                if let Some(last) = open.as_mut().and_then(|o| o.last_mut()) {
+                    last.2 = class;
+                }
+            }
+            "TEMPLATETRANSFORMABLE" => {
+                let renderable = tag.attr("uri").and_then(|u| u.strip_prefix('#')).and_then(|r| renderables.get(r));
+                let intact = renderable.is_some_and(|r| !r.contains("damage"));
+                if let (Some(open), Some(entity), true) = (open.take(), &entity, fixed && intact) {
+                    for (id, matrix, impulse) in open {
+                        if let Some((hull, material)) = forms.get(id) {
+                            out.entry(entity.clone()).or_default().push(Shape {
+                                hull: *hull,
+                                matrix,
+                                material: material.clone(),
+                                impulse,
+                            });
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// The instances of an `objects.ens` text resolved against a `route_objecttypes.pssg` text.
 pub fn resolve(ens: &str, types: &str) -> Layout {
     let known = entities(types);
+    let mut hulls = shapes(types);
     let mut layout = Layout::default();
     // `TEMPLATEENTITYREFERENCE id` -> the entity id it names (`route_objecttypes.pssg#x.max`).
     let mut references = HashMap::<&str, &str>::new();
@@ -133,12 +249,14 @@ pub fn resolve(ens: &str, types: &str) -> Layout {
     }
     for (uri, matrix) in instances {
         let entity = references.get(uri).copied().unwrap_or(uri);
-        let Some(parts) = known.get(entity).filter(|p| !p.is_empty()) else {
+        let parts = known.get(entity).filter(|p| !p.is_empty());
+        if parts.is_none() && !hulls.contains_key(entity) {
             *layout.skipped.entry(entity.to_owned()).or_default() += 1;
             continue;
-        };
+        }
         let slot = *slots.entry(entity).or_insert_with(|| {
-            layout.entities.push(Entity { name: entity.to_owned(), parts: parts.clone() });
+            let (parts, shapes) = (parts.cloned().unwrap_or_default(), hulls.remove(entity).unwrap_or_default());
+            layout.entities.push(Entity { name: entity.to_owned(), parts, shapes });
             layout.entities.len() - 1
         });
         layout.instances.push(Instance { entity: slot, matrix });
@@ -182,7 +300,11 @@ pub(crate) mod tests {
         let layout = resolve(ENS, TYPES);
         assert_eq!(
             layout.entities,
-            [Entity { name: "rock.max".into(), parts: vec![("objects.pssg".into(), "rock_default_001".into())] }]
+            [Entity {
+                name: "rock.max".into(),
+                parts: vec![("objects.pssg".into(), "rock_default_001".into())],
+                shapes: Vec::new()
+            }]
         );
         assert_eq!(layout.instances.len(), 1);
         assert_eq!(layout.instances[0].matrix[3], [5., 6., 7., 1.]);

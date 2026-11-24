@@ -87,6 +87,16 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   662 -> 529 MB, 110 -> 88 s, load 7.0 -> 4.7 s, 3.7 -> 1.6 GB. Grass is done (below); not done: cloth, `ornaments.bin`;
   foliage is drawn one-sided as the BTB mesh is.
 
+## Collision of props and trees, 2026-11-24
+
+- Source: `route_objecttypes.pssg` gives each entity its physics hulls (`TEMPLATERIGIDBODYSHAPE` -> `TEMPLATESHAPEBOX/CYLINDER/CAPSULE/SPHERE/CONE`, its transform, a material `props="physparams.xml#sSolidTreeWood"`, and for some a `TEMPLATEBEHAVIOUR` with an impulse class). A `TEMPLATESUBENTITY` with `infMass="1"` drawn by a non-`damage` renderable is the intact prop; `infMass="0"` and `damage` ones are the pieces that fly off (`objects::shapes`).
+- Solid (`objects::Shape::solid`): a hull with no impulse class (trees, `sStone` rocks and walls, houses, stumps, logs, fences, `core_barr_fence`, scaffolding, parked vehicles marked `sMetalSolid`) or `bArmco` (rails), unless its material is `*Vegetation` (bushes). Not solid: any hull with `bPhantom` (cones, tape poles), `bLightest`/`bLight`/`bMedium`/`bHeavy`/`bDefault` (signs, small fences, telegraph poles, movable rocks `sSpawnable*`, cars `core_estate`), and vegetation. Telegraph poles and `fin_sign_*` are `bHeavy`: they break in DR, so they stay non-solid here (one `solid()` line to change if wanted).
+- Written (`solid::triangles`, `import::solid_props`): the hull at `shape matrix * instance matrix` as plain collision faces in the same tiles as the ground (no new objects, no BTB change): box 12 triangles, round hulls a prism (6 sides under 0.4 m radius, else 8; apex for cones; no foot cap on an upright one). Hulls whose top is under 0.3 m above the prop's origin (half-buried scrub rocks, 7200 of 8200 within 15 m on Greece) are left out. Trees come from `objects.ens` (all physical trees are listed there), not `trees.bin`. The 75 m collision corridor clips them as the ground.
+- Collision triangles (before -> after): Greece 679,601 -> 744,165; Finland 1,557,326 -> 1,714,242; Hafren 1,253,583 -> 1,369,544; Col de Turini 887,446 -> 971,150. Largest cell 53,964 -> 47,016 (Greece), 59,331 -> 63,960 (Finland), 60,594 -> 64,293 (Hafren), 60,744 -> 63,645 (Turini) of 65,536: Finland, Hafren and Turini sit near the limit (the existing half-corridor retry covers a breach).
+- Ray check (horizontal 2 m segment through the hull at 0.5 m above ground, within 15 m of the road, built col.col): Greece trunks 673/674 hit (268 hit before: slopes), rails 57/58 (1 before); Finland trunks 3825/3835 (60 before), rails 26/26 (0 before). Hull centres lie within 1 m of their drawn prop's bounds on all checked hulls (`solid_hulls_stand_on_their_drawn_props`).
+- Autopilot (btb-autopilot, car 2) on Ghymno route_0: before and after both reach 5769 m of 9750 through both splits and leave the road at the same spot (gravel bank); no tree or rail hit before it.
+- Not done: `barrierlines.cqtc` / `boundarylines.cqtc` (empty on Greece and Finland; non-empty on Turini, Panzerplatte, rallycross), cone and capsule axes unverified (few solid ones), vegetation stays walk-through.
+
 ## Course
 
 - `progress_track.xml`: 12 m gates every 12 m (`distance`, `left`, `right`, `crossing`), splits naming gates (start,
