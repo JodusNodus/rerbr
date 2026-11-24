@@ -44,7 +44,8 @@ impl<'a> Textures<'a> {
                 }
             })
             .map(Image::Dds);
-        self.loaded.insert(key, StageTexture { request: dos_path.to_owned(), image });
+        let glow = image.as_ref().and_then(|_| glow_mask(self.data, dos_path));
+        self.loaded.insert(key, StageTexture { request: dos_path.to_owned(), image, glow });
         key
     }
 
@@ -55,7 +56,7 @@ impl<'a> Textures<'a> {
         }
         let key = TextureRef { set: TextureSet::Car, index: self.keys.len() as u32 };
         self.keys.insert(name.to_owned(), key);
-        self.loaded.insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Dds(make())) });
+        self.loaded.insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Dds(make())), glow: None });
         key
     }
 
@@ -64,6 +65,13 @@ impl<'a> Textures<'a> {
             self.loaded.values().filter(|t| t.image.is_none()).map(|t| t.request.clone()).collect();
         self.loaded
     }
+}
+
+/// The night emissive mask beside a texture (ours): `X_glow.dds` for `X.dds`, in the same folder.
+fn glow_mask(data: &Data, dos_path: &str) -> Option<Vec<u8>> {
+    let (stem, extension) = dos_path.rsplit_once('.')?;
+    let bytes = fs::read(resolve(data, &format!("{stem}_glow.{extension}")).ok()?).ok()?;
+    dds::parse(&bytes).is_ok().then_some(bytes)
 }
 
 /// An uncompressed alpha-only `.dds` (`DDPF_ALPHA`, 8 bits: ACCENT's and IMPREZA03's `Dirt` and `TireDirt` maps) as

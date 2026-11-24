@@ -552,7 +552,7 @@ impl GhostCar {
         };
         stage.textures.insert(
             ramp,
-            StageTexture { request: "ghost alpha ramp (ours)".to_owned(), image: Some(Image::Dds(ramp_dds())) },
+            StageTexture { request: "ghost alpha ramp (ours)".to_owned(), image: Some(Image::Dds(ramp_dds())), glow: None },
         );
         let look = Look::load(data);
         let colour = look.ambient.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);

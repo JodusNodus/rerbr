@@ -111,7 +111,7 @@ fn textures(data: &Data, names: &[Vec<u8>]) -> Vec<StageTexture> {
             if image.is_none() {
                 eprintln!("fences: no texture {file} in {}", path.display());
             }
-            StageTexture { request: format!("Textures\\{file}"), image }
+            StageTexture { request: format!("Textures\\{file}"), image, glow: None }
         })
         .collect()
 }

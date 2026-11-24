@@ -189,17 +189,26 @@ impl Renderer {
                 .textures
                 .iter()
                 .filter_map(|(&key, texture)| {
+                    let lit = |bytes: &[u8]| {
+                        let mask = dds::parse(bytes).ok()?;
+                        // DXT1 has no alpha to read (its texels are opaque).
+                        let view = dds_texture(&device, &queue, &mask).create_view(&Default::default());
+                        Some(Glow { view, alpha: mask.format != dds::Format::Dxt1, day: false })
+                    };
                     let texture = match texture.image.as_ref()? {
-                        Image::Dds(bytes) => dds_texture(&device, &queue, &dds::parse(bytes).ok()?),
+                        Image::Dds(bytes) => {
+                            if let Some(glow) = texture.glow.as_deref().and_then(lit) {
+                                glows.insert(key, glow);
+                            }
+                            dds_texture(&device, &queue, &dds::parse(bytes).ok()?)
+                        }
                         Image::Solid(texel) => solid_texture(&device, &queue, *texel),
                         Image::Shadow { width, height, pixels } => {
                             luminance_texture(&device, &queue, *width, *height, pixels)
                         }
                         Image::Dial { base, glow, .. } => {
-                            if let Some(mask) = glow.as_deref().and_then(|bytes| dds::parse(bytes).ok()) {
-                                // DXT1 has no alpha to read (its texels are opaque).
-                                let view = dds_texture(&device, &queue, &mask).create_view(&Default::default());
-                                glows.insert(key, Glow { view, alpha: mask.format != dds::Format::Dxt1, day: false });
+                            if let Some(glow) = glow.as_deref().and_then(lit) {
+                                glows.insert(key, glow);
                             }
                             // The textures of one file with one base (a face's, each drawn the same) share a target,
                             // drawn on by the first.

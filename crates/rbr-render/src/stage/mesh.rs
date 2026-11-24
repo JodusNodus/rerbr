@@ -458,6 +458,9 @@ pub struct StageTexture {
     /// The archive path that was requested (after the filename map), for reports.
     pub request: String,
     pub image: Option<Image>,
+    /// The texture's night emissive mask, a `.dds` read like a gauge's ([`Image::Dial`]'s `glow`): a car texture's
+    /// `<name>_glow.dds` beside it (ours). Unused where `image` is a `Dial`, which has its own.
+    pub glow: Option<Vec<u8>>,
 }
 
 /// The bytes of a texture file, as the renderer uploads them.

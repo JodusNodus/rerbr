@@ -654,7 +654,7 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
         Some((texture, bytes, mean, settings, size, cover)) => {
             stage
                 .textures
-                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
+                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)), glow: None });
             (texture, mean, Fx::profiles(&settings, Some(size), Arc::new(hidden.unwrap_or_default()), cover))
         }
         None => {
@@ -664,7 +664,7 @@ pub fn add(stage: &mut Stage, level: Level) -> Option<Field> {
             );
             stage
                 .textures
-                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
+                .insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)), glow: None });
             let fx = stage.grass_fx.as_ref().filter(|_| fx_stage);
             let fx =
                 fx.map(|fx| Fx::profiles(&fx.settings, None, Arc::new(hidden.unwrap_or_default()), fx.cover.clone()));

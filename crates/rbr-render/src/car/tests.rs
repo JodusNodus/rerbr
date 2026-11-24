@@ -306,7 +306,7 @@ fn a_personal_camera_looking_out_the_side_is_not_taken() {
 fn a_second_sets_normal_map_moves_with_its_textures() {
     let key = |index| TextureRef { set: TextureSet::Car, index };
     let vertex = |position: [f32; 3]| Vertex { position, normal: [0.0, 0.0, 1.0], ..bytemuck::Zeroable::zeroed() };
-    let texture = StageTexture { request: "t".to_owned(), image: None };
+    let texture = StageTexture { request: "t".to_owned(), image: None, glow: None };
     let car = |diffuse: u32, normal: u32| Car {
         name: "x".to_owned(),
         meshes: vec![Mesh {
@@ -334,4 +334,26 @@ fn a_second_sets_normal_map_moves_with_its_textures() {
     assert_eq!(state.textures[0], Some(key(2)));
     assert_eq!(state.surface.and_then(|s| s.normal).map(|n| n.texture), Some(key(3)));
     assert_eq!(second.textures.keys().copied().collect::<Vec<_>>(), [key(2), key(3)]);
+}
+
+#[test]
+fn a_car_texture_takes_the_glow_mask_beside_it() {
+    let dds = |at: u8| rbr_formats::dds::rgba8_file(4, 4, &[at; 64]);
+    let install = std::env::temp_dir().join(format!("rerbr-glow-{}", std::process::id()));
+    let folder = install.join("Cars").join("x").join("textures");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("lit.dds"), dds(1)).unwrap();
+    std::fs::write(folder.join("LIT_GLOW.DDS"), dds(2)).unwrap();
+    std::fs::write(folder.join("plain.dds"), dds(3)).unwrap();
+    std::fs::write(folder.join("bad.dds"), dds(4)).unwrap();
+    std::fs::write(folder.join("bad_glow.dds"), b"not a dds").unwrap();
+    let data = Data::new(&install, None);
+    let mut textures = files::Textures::new(&data);
+    let keys = ["Cars\\x\\textures\\lit.dds", "Cars\\x\\textures\\plain.dds", "Cars\\x\\textures\\bad.dds"]
+        .map(|path| textures.key(path));
+    let loaded = textures.finish(&mut CarReport::default());
+    std::fs::remove_dir_all(&install).unwrap();
+    assert_eq!(loaded[&keys[0]].glow.as_deref(), Some(dds(2).as_slice()));
+    assert_eq!(loaded[&keys[1]].glow, None);
+    assert_eq!(loaded[&keys[2]].glow, None);
 }
