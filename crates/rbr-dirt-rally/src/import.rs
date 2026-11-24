@@ -85,6 +85,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         instanced.models.len(),
         instanced.placed.iter().map(|p| p.matrices.len()).sum::<usize>()
     ));
+    let grade = crate::grade::Grade::day(&route);
     let input = stage::Input {
         source: route.dir.clone(),
         route: route.id(),
@@ -104,7 +105,8 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         collision,
         collision_source: "track.jpk",
         surface_counts,
-        lighting: crate::lighting::Lighting::day(&route),
+        lighting: crate::lighting::Lighting::day(&route).map(|l| grade.as_ref().map_or(l, |g| l.graded(g.lift))),
+        grade: grade.map(|g| g.png),
         grass: crate::grass::read(route.area_dir())?,
     };
     let out = match &options.out {

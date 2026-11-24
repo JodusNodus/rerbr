@@ -19,6 +19,7 @@ pub mod cli;
 pub mod collision;
 pub mod frame;
 pub mod gauges;
+pub mod grade;
 pub mod grass;
 pub mod import;
 pub mod install;

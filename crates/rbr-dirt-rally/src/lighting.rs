@@ -53,7 +53,7 @@ fn colour(lighting: &Element, name: &str) -> Option<[f32; 3]> {
 }
 
 /// The effect `name`'s `group.param` value as text.
-fn effect_param<'a>(effects: &'a Element, name: &str, group: &str, key: &str) -> Option<&'a str> {
+pub(crate) fn effect_param<'a>(effects: &'a Element, name: &str, group: &str, key: &str) -> Option<&'a str> {
     let effect = effects.children.iter().find(|e| e.attr("name") == Some(name))?;
     let group = effect.children_named("ParameterGroup").find(|g| g.attr("name") == Some(group))?;
     group.children_named("Param").find(|p| p.attr("name") == Some(key))?.text.as_deref()
@@ -111,6 +111,13 @@ impl Lighting {
             },
             weather_bad: wet.then_some(RAIN),
         }
+    }
+
+    /// The exposure taken back by the light the area's grade adds to a sunlit road (`Grade::lift`), so the frame keeps the
+    /// brightness the stage had without the grade (the gameplay frames' roads were matched before it).
+    pub fn graded(mut self, lift: f32) -> Lighting {
+        self.exposure = Some(self.exposure.unwrap_or(1.0) / lift.max(0.1));
+        self
     }
 
     /// The `track.ini` `[INFO]` lines of its own weathers.

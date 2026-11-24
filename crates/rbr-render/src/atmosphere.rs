@@ -75,6 +75,9 @@ pub struct Atmosphere {
     pub sun_tint: Option<Vec3>,
     /// The stops a sunlit day is exposed down by under our sun lighting, else `post::SUN_EXPOSURE` (`[ReRbrAir]` `sun_stops`).
     pub sun_stops: Option<f32>,
+    /// A converted stage's colour look-up table (`[ReRbrAir]` `grade`): [`post::GRADE_BYTES`](crate::post::GRADE_BYTES) of
+    /// RGBA, 32 x 16 x 16 (x green, y red, z blue), which the post pass applies last, to the display-coded frame.
+    pub grade: Option<std::sync::Arc<[u8]>>,
     /// Toward the stage's north, when the stage states it (a converted stage's `[ReRbrAir]`): the clock's sun path
     /// turns from it (`relight::Clock`), else from the bake's sun.
     pub north: Option<Vec3>,
@@ -304,6 +307,7 @@ impl Default for Atmosphere {
             exposure: None,
             sun_tint: None,
             sun_stops: None,
+            grade: None,
             north: None,
             moon: None,
             solar_hour: None,
@@ -397,6 +401,7 @@ impl Atmosphere {
             exposure: None,
             sun_tint: None,
             sun_stops: None,
+            grade: None,
             north: None,
             moon: None,
             solar_hour: None,

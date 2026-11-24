@@ -120,6 +120,8 @@ pub struct Input {
     pub surface_counts: BTreeMap<String, usize>,
     /// The stage's look (`[ReRbrAir]`), when the area's files state it.
     pub lighting: Option<crate::lighting::Lighting>,
+    /// The area's colour grade, a PNG (`grade::Grade::png`), written as `[ReRbrAir]` `grade`.
+    pub grade: Option<Vec<u8>>,
     /// The area's ground cover: where grass grows and its tufts.
     pub grass: Option<crate::grass::AreaGrass>,
 }
@@ -386,9 +388,11 @@ fn ground_near<'a>(ground: &Grid<'a>, p: [f64; 3]) -> Option<(f64, &'a Triangle)
 const SETTINGS_INI: &str =
     "[SETTINGS]\nsunDirection=-0.843359,-0.503774,0.186968\n\n[ReRbrAir]\nmist=0\nsky_tint=0.2\nnorth=0, 0, 1\n";
 
-/// `settings.ini` with the area's own haze, grade and sun tint (`lighting::Lighting`) in `[ReRbrAir]`.
-fn settings_ini(lighting: Option<&crate::lighting::Lighting>) -> String {
-    format!("{SETTINGS_INI}{}", lighting.map(crate::lighting::Lighting::ini).unwrap_or_default())
+/// `settings.ini` with the area's own haze, grade and sun tint (`lighting::Lighting`) in `[ReRbrAir]`, and the colour
+/// grade's file `grade`.
+fn settings_ini(lighting: Option<&crate::lighting::Lighting>, grade: Option<&str>) -> String {
+    let grade = grade.map(|file| format!("grade={file}\n")).unwrap_or_default();
+    format!("{SETTINGS_INI}{}{grade}", lighting.map(crate::lighting::Lighting::ini).unwrap_or_default())
 }
 
 /// Where the car stands: the start grid's first slot, 3.7 m behind the start line on every rally route's grid.
@@ -456,7 +460,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let (mut sections, mut names) = (String::new(), Vec::new());
 
     // The grass: the cover map over the drawn ground, the tufts' atlas and the `[ReRbrGrass]` section that names them.
-    let mut settings = settings_ini(input.lighting.as_ref());
+    let grade = input.grade.as_ref().map(|png| bank.put(png.clone(), "png")).transpose()?;
+    let mut settings = settings_ini(input.lighting.as_ref(), grade.as_deref());
     if let Some(grass) = &input.grass {
         let drawn = input.drawn.iter().filter(|t| draw.contains(&t.pos)).flat_map(|t| t.pos);
         let rect = drawn.fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |r, p| {
@@ -758,6 +763,12 @@ mod tests {
     }
 
     #[test]
+    fn the_grade_file_joins_the_air_section() {
+        assert!(!settings_ini(None, None).contains("grade="));
+        assert!(settings_ini(None, Some("ac_00001.png")).ends_with("north=0, 0, 1\ngrade=ac_00001.png\n"));
+    }
+
+    #[test]
     fn a_prop_with_maps_is_a_bump_and_highlight_section() {
         let out = std::env::temp_dir().join(format!("rbr-dirt-rally-maps-{}.zip", std::process::id()));
         let mut bank = TextureBank::new(&out).unwrap();
@@ -800,6 +811,7 @@ mod tests {
             collision_source: "test",
             surface_counts: BTreeMap::new(),
             lighting: None,
+            grade: None,
             grass: None,
         };
         let options = Options {
@@ -861,6 +873,7 @@ mod tests {
             collision_source: "test",
             surface_counts: BTreeMap::new(),
             lighting: None,
+            grade: None,
             grass: None,
         };
         let options = Options {
