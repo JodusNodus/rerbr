@@ -86,6 +86,31 @@ pub fn parts(pssg: &Pssg) -> Result<Vec<Part>, String> {
     Ok(out)
 }
 
+/// The parts of a car's interior scene (`int_<car>.pssg`): one per node, already in the car's frame (identity transform).
+pub fn interior(pssg: &Pssg) -> Result<Vec<Part>, String> {
+    let mut out: Vec<Part> = Vec::new();
+    for mesh in mesh::scene(pssg)? {
+        let instance = Instance {
+            material: mesh.material,
+            joint: None,
+            source: mesh.node.clone(),
+            positions: mesh.positions,
+            normals: mesh.normals,
+            uv: mesh.uv,
+            triangles: mesh.triangles,
+        };
+        match out.iter_mut().find(|p| p.name == mesh.node) {
+            Some(part) => part.instances.push(instance),
+            None => out.push(Part {
+                name: mesh.node,
+                transform: [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.], [0., 0., 0., 1.]],
+                instances: vec![instance],
+            }),
+        }
+    }
+    Ok(out)
+}
+
 /// One line per instance: the part, material, joint, sizes and the box of its positions.
 pub fn info(parts: &[Part], verbose: bool) -> String {
     let mut out = String::new();
@@ -106,12 +131,13 @@ pub fn info(parts: &[Part], verbose: bool) -> String {
                 (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
             });
             out += &format!(
-                "{:<24} {:<18} j{:<3} {:<10} v{:<6} t{:<6} uv{:<6} [{:6.2} {:6.2} {:6.2}] .. [{:6.2} {:6.2} {:6.2}] uv [{:.2} {:.2}] .. [{:.2} {:.2}]\n",
+                "{:<24} {:<18} j{:<3} {:<10} v{:<6} n{:<6} t{:<6} uv{:<6} [{:6.2} {:6.2} {:6.2}] .. [{:6.2} {:6.2} {:6.2}] uv [{:.2} {:.2}] .. [{:.2} {:.2}]\n",
                 part.name,
                 i.material,
                 i.joint.map_or("-".to_owned(), |j| j.to_string()),
                 i.source,
                 i.positions.len(),
+                i.normals.len(),
                 i.triangles.len(),
                 i.uv.len(),
                 lo[0],

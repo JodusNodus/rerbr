@@ -55,6 +55,27 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             show(&crate::binxml::parse(&bytes)?, 0);
             Ok(())
         }
+        Some("pssg-tree") => {
+            let path = args.next().ok_or("pssg-tree needs a .pssg")?;
+            let depth: usize = args.next().map_or(Ok(3), |d| d.parse().map_err(|e| format!("depth: {e}")))?;
+            fn show(n: crate::pssg::Node, depth: usize, left: usize) {
+                let attrs: Vec<String> = n
+                    .attrs()
+                    .filter(|(k, _)| !matches!(*k, "size" | "id"))
+                    .map(|(k, v)| match crate::pssg::decode_str(v) {
+                        Some(s) => format!("{k}={s}"),
+                        None if v.len() == 4 => format!("{k}={}", u32::from_be_bytes([v[0], v[1], v[2], v[3]])),
+                        None => format!("{k}=[{} bytes]", v.len()),
+                    })
+                    .collect();
+                println!("{}{} {} {}", "  ".repeat(depth), n.name(), n.id().unwrap_or(""), attrs.join(" "));
+                if left > 0 {
+                    n.children().for_each(|c| show(c, depth + 1, left - 1));
+                }
+            }
+            crate::pssg::Pssg::read(Path::new(&path))?.roots().for_each(|n| show(n, 0, depth));
+            Ok(())
+        }
         Some("car-textures") => {
             let path = args.next().ok_or("car-textures needs a livery .pssg")?;
             for t in crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?) {
@@ -62,10 +83,21 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             }
             Ok(())
         }
+        Some("car-texture") => {
+            let (path, name, out) = (args.next(), args.next(), args.next());
+            let (Some(path), Some(name), Some(out)) = (path, name, out) else {
+                return Err("car-texture needs a .pssg, a texture name and an output .dds".into());
+            };
+            let textures = crate::texture::read_car(&crate::pssg::Pssg::read(Path::new(&path))?);
+            let texture = textures.iter().find(|t| t.name == name).ok_or("no such texture")?;
+            std::fs::write(out, texture.dds()).map_err(|e| e.to_string())
+        }
         Some("car-info") => {
             let path = args.next().ok_or("car-info needs a <car>_highlod.pssg")?;
             let pssg = crate::pssg::Pssg::read(Path::new(&path))?;
-            print!("{}", crate::car::info(&crate::car::parts(&pssg)?, args.next().as_deref() == Some("-v")));
+            let parts =
+                if pssg.by_id("LOD0_").is_some() { crate::car::parts(&pssg)? } else { crate::car::interior(&pssg)? };
+            print!("{}", crate::car::info(&parts, args.next().as_deref() == Some("-v")));
             print!("{}", crate::car::materials(&pssg));
             Ok(())
         }

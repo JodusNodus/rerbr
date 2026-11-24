@@ -199,7 +199,7 @@ impl Pssg {
     }
 }
 
-fn decode_str(v: &[u8]) -> Option<&str> {
+pub(crate) fn decode_str(v: &[u8]) -> Option<&str> {
     let len = u32::from_be_bytes(v.get(..4)?.try_into().ok()?) as usize;
     (v.len() == 4 + len).then(|| std::str::from_utf8(&v[4..]).ok()).flatten()
 }
@@ -218,6 +218,12 @@ impl<'a> Node<'a> {
     pub fn attr(&self, name: &str) -> Option<&'a [u8]> {
         let (_, r) = self.data().attrs.iter().find(|(a, _)| self.pssg.attr_names[*a as usize] == name)?;
         Some(&self.pssg.data[r.clone()])
+    }
+
+    /// Every attribute with its raw value, in file order.
+    pub fn attrs(&self) -> impl Iterator<Item = (&'a str, &'a [u8])> + 'a {
+        let pssg = self.pssg;
+        self.data().attrs.iter().map(move |(a, r)| (pssg.attr_names[*a as usize].as_str(), &pssg.data[r.clone()]))
     }
 
     /// A string attribute.

@@ -77,6 +77,8 @@ enum Source {
     LiveryClass(&'static str, String),
     /// A texture of the class's generic file (`car_gen_main_high`, `car_gen_tm_high`).
     Generic(&'static str, String),
+    /// A texture of the car's interior file (`cars/interiors/models/cme/int_cme.pssg`).
+    Interior(String),
 }
 
 fn style(material: &str, car: &str) -> Option<Style> {
@@ -115,6 +117,42 @@ fn style(material: &str, car: &str) -> Option<Style> {
         _ => None,
     }
 }
+
+/// What a material of the interior scene draws as. The dash, doors, seats, cage, levers and wheel all read one atlas
+/// (`int_cme_main`), whatever their shader; the gauge faces and the indicator lights have theirs. The carbon fibre's
+/// UVs lie on the atlas's lightmap layout, not on a picture of carbon: it draws the weave (`int_carbon_diff`) repeated
+/// [`CARBON_REPEAT`] times over them, as DiRT's shader does. Not drawn: the digits' strips (`lcd_text`, a texture of
+/// numerals the game scrolls) and the glass. The mirrors' glass (`mirror`, which the game draws as a texture of what
+/// is behind) is the renderer's glass class on a flat texel: it shows the surroundings from the part's name
+/// (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
+fn interior_style(material: &str, car: &str) -> Option<Style> {
+    let style = |key: &str, texture: String| {
+        Some(Style {
+            shader: "CarTextureNoDirt",
+            key: key.to_owned(),
+            texture: Source::Interior(texture),
+            opacity: false,
+        })
+    };
+    match material {
+        "Matt" | "Leather" | "Shiny Painted Metal" | "bare metal" | "Chrome" | "shiny plastic" | "suede" => {
+            style("int_main", format!("int_{car}_main.tga"))
+        }
+        "carbon fibre" => style("int_carbon", "int_carbon_diff.tga".to_owned()),
+        "dials matt" | "dials shiny" => style("int_dials", format!("int_{car}_dials.tga")),
+        "shift light_01" | "limit lights" => style("int_indicator", "int_indicator.tga".to_owned()),
+        "mirror" => Some(Style {
+            shader: "CarGlass",
+            key: "int_mirror".to_owned(),
+            texture: Source::Interior("int_gen_sp.tga".to_owned()),
+            opacity: false,
+        }),
+        _ => None,
+    }
+}
+
+/// The weave's repeats over the UV range (DiRT's `CarbonUVRepeat`).
+const CARBON_REPEAT: f32 = 500.0;
 
 /// The file a texture is written as: `dr_<key>.dds`.
 fn file(key: &str) -> String {
@@ -196,7 +234,7 @@ fn faces<'a>(
     instances: impl Iterator<Item = (&'a Instance, Mat)>,
     frame: &Frame,
     at: [f32; 3],
-    car: &str,
+    style_of: &dyn Fn(&str) -> Option<Style>,
     wanted: impl Fn(&str) -> bool,
 ) -> Vec<Face> {
     let mut groups: BTreeMap<(&'static str, String), Face> = BTreeMap::new();
@@ -204,7 +242,7 @@ fn faces<'a>(
         if !wanted(&instance.material) {
             continue;
         }
-        let Some(style) = style(&instance.material, car) else { continue };
+        let Some(style) = style_of(&instance.material) else { continue };
         let (positions, normals) = place(instance, &matrix, frame, at);
         let face = groups.entry((style.shader, style.key.clone())).or_insert_with(|| Face {
             shader: style.shader,
@@ -218,7 +256,9 @@ fn faces<'a>(
         face.positions.extend(positions);
         face.normals.extend(normals);
         let missing = instance.positions.len() - instance.uv.len().min(instance.positions.len());
-        face.uv.extend(instance.uv.iter().copied().chain(std::iter::repeat_n([0.0; 2], missing)));
+        let repeat = if style.key == "int_carbon" { CARBON_REPEAT } else { 1.0 };
+        let uv = instance.uv.iter().map(|t| [t[0] * repeat, t[1] * repeat]);
+        face.uv.extend(uv.chain(std::iter::repeat_n([0.0; 2], missing)));
         // The z mirror turns right-handed counter-clockwise fronts into the renderer's, which wants them the other way.
         face.triangles.extend(instance.triangles.iter().map(|t| [t[0] + base, t[2] + base, t[1] + base]));
     }
@@ -245,8 +285,68 @@ fn local(p: &Part) -> Vec<(&Instance, Mat)> {
     p.instances.iter().map(|i| (i, without_translation(&p.transform))).collect()
 }
 
-fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
+/// The interior scene's mirror glass (the centre mirror and the driver's wing mirror) and the glass parts they become.
+const MIRRORS: [(&str, &str); 2] = [("int_reflection_m", "i_mirrorglass_m"), ("int_reflection_r", "i_mirrorglass_r")];
+
+/// The cockpit's source: the interior scene (`int_cme.pssg`) and the exterior nodes its config keeps active.
+struct Cockpit<'a> {
+    scene: &'a [Part],
+    /// The exterior parts the cockpit draws as well (`bonnet`, `wing_fl`), by name without `x0_`.
+    active: &'a [String],
+}
+
+/// The exterior nodes an interior config keeps active in the cockpit (`<node name="x0_bonnet"/>`), without their `x0_`.
+fn active_nodes(config: &str) -> Vec<String> {
+    let names = config.split("<node name=\"").skip(1).filter_map(|rest| rest.split('"').next());
+    names.filter_map(|name| name.strip_prefix("x0_")).map(str::to_owned).collect()
+}
+
+/// `p` of the car's frame as the part whose place is `m` sees it (`m` a rotation and a translation).
+fn in_part_space(instance: &Instance, m: &Mat) -> Instance {
+    let turn = |v: [f32; 3]| -> [f32; 3] { std::array::from_fn(|j| (0..3).map(|k| v[k] * m[j][k]).sum()) };
+    Instance {
+        positions: instance.positions.iter().map(|p| turn([p[0] - m[3][0], p[1] - m[3][1], p[2] - m[3][2]])).collect(),
+        normals: instance.normals.iter().map(|&n| turn(n)).collect(),
+        ..instance.clone()
+    }
+}
+
+/// The interior scene's roof and sides, DiRT's frame: what lies above or beyond them is in or past the body's paint.
+const ROOF: f32 = 1.40;
+const SIDE: f32 = 0.68;
+
+/// `instance` without the triangles whose centre lies above [`ROOF`] or beyond [`SIDE`].
+fn within_body(instance: &Instance) -> Instance {
+    let inside = |t: &&[u32; 3]| {
+        let centre = |k: usize| t.iter().map(|&i| instance.positions[i as usize][k]).sum::<f32>() / 3.0;
+        centre(1) <= ROOF && centre(0).abs() <= SIDE
+    };
+    Instance { triangles: instance.triangles.iter().filter(inside).copied().collect(), ..instance.clone() }
+}
+
+/// `faces` as pieces of at most `MAX_VERTICES` vertices each, named `name`, `name2`, ...
+fn split(name: &str, mut faces: Vec<Face>) -> Vec<Piece> {
+    let mut out: Vec<Piece> = Vec::new();
+    while !faces.is_empty() {
+        let mut take = Vec::new();
+        let mut vertices = 0;
+        while let Some(face) = faces.first() {
+            if !take.is_empty() && vertices + face.positions.len() > MAX_VERTICES {
+                break;
+            }
+            vertices += face.positions.len();
+            take.push(faces.remove(0));
+        }
+        let name = if out.is_empty() { name.to_owned() } else { format!("{name}{}", out.len() + 1) };
+        out.push(Piece { name, at: [0.0; 3], axes: UPRIGHT, faces: take });
+    }
+    out
+}
+
+fn pieces(parts: &[Part], cockpit: Option<&Cockpit>, frame: &Frame, car: &str) -> Vec<Piece> {
     let part = |name: &str| parts.iter().find(|p| p.name == name);
+    let exterior = |m: &str| style(m, car);
+    let inside = |m: &str| interior_style(m, car);
     let mut out = Vec::new();
 
     // Wheels: each class's rim, tyre and the disc in the wheel's own frame, the node at the hub.
@@ -264,7 +364,7 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
                 instances.into_iter(),
                 &Frame { z_dirt: 0.0, z_template: 0.0, y_shift: 0.0 },
                 [0.0; 3],
-                car,
+                &exterior,
                 wanted,
             );
             out.push(Piece { name: format!("e_wheel_{class}_{rbr}"), at: hub, axes: UPRIGHT, faces });
@@ -278,7 +378,7 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
                 name,
                 at: [0.0; 3],
                 axes: UPRIGHT,
-                faces: faces(all(p).into_iter(), frame, [0.0; 3], car, |_| true),
+                faces: faces(all(p).into_iter(), frame, [0.0; 3], &exterior, |_| true),
             });
         }
     }
@@ -288,33 +388,80 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
         for (side, rbr_side) in SIDES {
             let Some(lens) = part(&format!("{dirt}_{side}")) else { continue };
             for suffix in states {
-                let faces = faces(all(lens).into_iter(), frame, [0.0; 3], car, |_| true);
+                let faces = faces(all(lens).into_iter(), frame, [0.0; 3], &exterior, |_| true);
                 out.push(Piece { name: format!("{rbr}{rbr_side}{suffix}"), at: [0.0; 3], axes: UPRIGHT, faces });
             }
         }
     }
 
-    // The interior: the cabin material of every part, seen from outside and from the cockpit.
-    let cabin = |p: &Part| p.name.starts_with("main_interior") || p.instances.iter().any(|i| i.material == "Cabin");
-    let interior: Vec<_> = parts.iter().filter(|p| cabin(p) && p.name != "steering_wheel").flat_map(all).collect();
-    for name in ["e_internal", "i_internal"] {
-        let faces = faces(interior.clone().into_iter(), frame, [0.0; 3], car, |m| m == "Cabin");
-        out.push(Piece { name: name.to_owned(), at: [0.0; 3], axes: UPRIGHT, faces });
+    // The cabin, drawn in the cockpit (`i_internal`) and seen through the windows from outside (`e_internal`): the
+    // interior scene (dash, door cards, cage, seats, pedals, levers, gauges; not the wipers, whose rest pose the body's
+    // own show, nor the steering wheel) for both, and the exterior nodes the interior config keeps active (the bonnet and
+    // wings seen over the dash) in the cockpit. Only the interior scene is used where the car has one: the exterior
+    // file's cabin material is its low-detail copy. Without an interior scene it is the fallback for both.
+    match cockpit {
+        Some(c) => {
+            let drawn: Vec<_> = c
+                .scene
+                .iter()
+                .filter(|p| !p.name.starts_with("int_wiper") && p.name != "int_steering_wheel")
+                .filter(|p| !MIRRORS.iter().any(|(node, _)| *node == p.name))
+                .flat_map(all)
+                .collect();
+            out.extend(split("i_internal", faces(drawn.clone().into_iter(), frame, [0.0; 3], &inside, |_| true)));
+            // Seen from outside, the cage's roof tubes and the lining at the roof and the sides lie in the body's paint
+            // (DiRT never draws this scene outside) and show through it as grey bands along the roof edge.
+            let clipped: Vec<_> = drawn.iter().map(|(i, m)| (within_body(i), *m)).collect();
+            let kept = clipped.iter().map(|(i, m)| (i, *m));
+            out.extend(split("e_internal", faces(kept, frame, [0.0; 3], &inside, |_| true)));
+            for (node, name) in MIRRORS {
+                for p in c.scene.iter().filter(|p| p.name == node) {
+                    let faces = faces(all(p).into_iter(), frame, [0.0; 3], &inside, |_| true);
+                    out.push(Piece { name: name.to_owned(), at: [0.0; 3], axes: UPRIGHT, faces });
+                }
+            }
+            let near: Vec<_> = parts.iter().filter(|p| c.active.contains(&p.name)).flat_map(all).collect();
+            let near = faces(near.into_iter(), frame, [0.0; 3], &exterior, |m| m != "Cabin" && m != "Window Glass");
+            out.extend(split("i_body", near));
+        }
+        None => {
+            let has_cabin =
+                |p: &Part| p.name.starts_with("main_interior") || p.instances.iter().any(|i| i.material == "Cabin");
+            let shell: Vec<_> =
+                parts.iter().filter(|p| has_cabin(p) && p.name != "steering_wheel").flat_map(all).collect();
+            for name in ["e_internal", "i_internal"] {
+                let faces = faces(shell.clone().into_iter(), frame, [0.0; 3], &exterior, |m| m == "Cabin");
+                out.push(Piece { name: name.to_owned(), at: [0.0; 3], axes: UPRIGHT, faces });
+            }
+        }
     }
 
     // The steering wheel, in its own frame: the node's z is the column, toward the driver (the template's convention,
     // which the crew's hands and the wheel's turn use). The vertices are DiRT's with z negated (`faces` through the
-    // zero frame), the axes the part's turned the same way: the mirror once, so the triangles are flipped once.
+    // zero frame), the axes the part's turned the same way: the mirror once, so the triangles are flipped once. The
+    // wheel is the interior scene's own, taken into the exterior wheel's node, in both sets; the exterior file's
+    // where there is no interior scene.
     if let Some(p) = part("steering_wheel") {
         let row = |k: usize| [p.transform[k][0], p.transform[k][1], p.transform[k][2]];
         let (x, y, z) = (Frame::direction(row(0)), Frame::direction(row(1)), Frame::direction(row(2)));
         let axes = [x, y, z.map(|v| -v)];
         let hub = frame.point([p.transform[3][0], p.transform[3][1], p.transform[3][2]]);
         let local = Frame { z_dirt: 0.0, z_template: 0.0, y_shift: 0.0 };
-        let instances: Vec<_> = p.instances.iter().map(|i| (i, IDENTITY)).collect();
+        let own: Vec<Instance> = cockpit
+            .iter()
+            .flat_map(|c| c.scene.iter())
+            .filter(|q| q.name == "int_steering_wheel")
+            .flat_map(|q| q.instances.iter().map(|i| in_part_space(i, &p.transform)))
+            .collect();
+        let wheel = || {
+            if own.is_empty() {
+                faces(p.instances.iter().map(|i| (i, IDENTITY)), &local, [0.0; 3], &exterior, |_| true)
+            } else {
+                faces(own.iter().map(|i| (i, IDENTITY)), &local, [0.0; 3], &inside, |_| true)
+            }
+        };
         for name in ["i_steeringwheel", "e_steeringwheel"] {
-            let faces = faces(instances.clone().into_iter(), &local, [0.0; 3], car, |_| true);
-            out.push(Piece { name: name.to_owned(), at: hub, axes, faces });
+            out.push(Piece { name: name.to_owned(), at: hub, axes, faces: wheel() });
         }
     }
 
@@ -331,23 +478,8 @@ fn pieces(parts: &[Part], frame: &Frame, car: &str) -> Vec<Piece> {
         })
         .flat_map(all)
         .collect();
-    let mut faces = faces(body.into_iter(), frame, [0.0; 3], car, |m| m != "Cabin" && m != "Window Glass");
-    // Split the body when it holds more vertices than a part can index.
-    let mut n = 0;
-    while !faces.is_empty() {
-        let mut take = Vec::new();
-        let mut vertices = 0;
-        while let Some(face) = faces.first() {
-            if !take.is_empty() && vertices + face.positions.len() > MAX_VERTICES {
-                break;
-            }
-            vertices += face.positions.len();
-            take.push(faces.remove(0));
-        }
-        n += 1;
-        let name = if n == 1 { "e_body".to_owned() } else { format!("e_body{n}") };
-        out.push(Piece { name, at: [0.0; 3], axes: UPRIGHT, faces: take });
-    }
+    let faces = faces(body.into_iter(), frame, [0.0; 3], &exterior, |m| m != "Cabin" && m != "Window Glass");
+    out.extend(split("e_body", faces));
     out
 }
 
@@ -489,9 +621,18 @@ fn sgc_file(template: &[u8], pieces: &[Piece]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// The template's camera sections that DiRT's views replace: the section, DiRT's view and the parameter holding its place.
-const CAMERAS: [(&str, &str, &str); 3] =
-    [("Cam_internal", "head-cam", "position"), ("Cam_bonnet", "bumper", "offset"), ("Cam_bonnet2", "bonnet", "offset")];
+/// How far the renderer moves the cockpit eye back from `Cam_internal`'s `Pos` (`rbr-render`'s `views::COCKPIT_BACK`), m.
+/// DiRT's head camera sits at the driver's head, among the seat's headrest: moved back, the eye sat behind it and saw its
+/// top edge as a bar across the windscreen. `Pos` is put this far ahead of the head so that the eye lands on it.
+const COCKPIT_BACK: f32 = 0.5;
+
+/// The template's camera sections that DiRT's views replace: the section, DiRT's view, the parameter holding its place
+/// and how far ahead of that place the section's `Pos` goes.
+const CAMERAS: [(&str, &str, &str, f32); 3] = [
+    ("Cam_internal", "head-cam", "position", COCKPIT_BACK),
+    ("Cam_bonnet", "bumper", "offset", 0.0),
+    ("Cam_bonnet2", "bonnet", "offset", 0.0),
+];
 
 /// The view `ident` under `e`.
 fn view<'a>(e: &'a Element, ident: &str) -> Option<&'a Element> {
@@ -504,12 +645,13 @@ fn view<'a>(e: &'a Element, ident: &str) -> Option<&'a Element> {
 /// Where DiRT's views put the eye, in the template's frame, by the template's camera section.
 fn eyes(cameras: &Element, frame: &Frame) -> BTreeMap<&'static str, [f32; 3]> {
     let mut out = BTreeMap::new();
-    for (section, ident, parameter) in CAMERAS {
+    for (section, ident, parameter, ahead) in CAMERAS {
         let place = view(cameras, ident)
             .and_then(|v| v.children_named("Parameter").find(|p| p.attr("name") == Some(parameter)))
             .and_then(|p| Some([p.attr_num("x")? as f32, p.attr_num("y")? as f32, p.attr_num("z")? as f32]));
         if let Some(place) = place {
-            out.insert(section, frame.point(place));
+            let [x, y, z] = frame.point(place);
+            out.insert(section, [x, y, z - ahead]);
         }
     }
     out
@@ -671,11 +813,19 @@ impl Library {
             Source::Generic(short, name) => {
                 (self.generics.join(&self.class).join(format!("car_gen_{short}_high.pssg")), name)
             }
+            Source::Interior(name) => (self.interior_file(), name),
         };
         let pssg = Pssg::read(&path)?;
         let textures = texture::read_car(&pssg);
         let found: Option<&Texture> = textures.iter().find(|t| t.name.eq_ignore_ascii_case(name));
         found.cloned().ok_or_else(|| format!("{}: no texture {name}", path.display()))
+    }
+
+    /// `cars/interiors/models/<car>/int_<car>.pssg`, beside the `cars/models` folder of the car.
+    fn interior_file(&self) -> PathBuf {
+        let car = self.car_dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let cars = self.car_dir.parent().and_then(Path::parent).unwrap_or(Path::new(""));
+        cars.join(format!("interiors/models/{car}/int_{car}.pssg"))
     }
 
     /// `livery_NN/textures_high/<car>_tex<variant>_high_NN.pssg`.
@@ -726,16 +876,32 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         y_shift: mean(&template_hubs, 1) - mean(&dirt_hubs, 1),
     };
 
-    let pieces = pieces(&parts, &frame, &options.car);
+    let library =
+        Library { car_dir, generics: data.join("cars/generics"), class: options.class.clone(), livery: options.livery };
+    // The interior scene and its config, where the car has them (its cockpit is then DiRT's own).
+    let interior = match library.interior_file() {
+        path if path.exists() => Some(car::interior(&Pssg::read(&path)?)?),
+        _ => None,
+    };
+    let config = fs::read_to_string(library.interior_file().with_extension("xml")).unwrap_or_default();
+    let active = active_nodes(&config);
+    let cockpit = interior.as_deref().map(|scene| Cockpit { scene, active: &active });
+    let pieces = pieces(&parts, cockpit.as_ref(), &frame, &options.car);
 
     let folder = out.join("Cars").join(&options.name);
     let textures = folder.join("textures");
     fs::create_dir_all(&textures).map_err(|e| e.to_string())?;
     let mut materials: BTreeMap<String, (bool, String)> = BTreeMap::new();
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
-    for part in &parts {
+    let scene = cockpit.iter().flat_map(|c| c.scene);
+    for (part, inside) in parts.iter().map(|p| (p, false)).chain(scene.map(|p| (p, true))) {
         for instance in &part.instances {
-            if let Some(s) = style(&instance.material, &options.car) {
+            let style = if inside {
+                interior_style(&instance.material, &options.car)
+            } else {
+                style(&instance.material, &options.car)
+            };
+            if let Some(s) = style {
                 materials.insert(s.key.clone(), (s.opacity, file(&s.key)));
                 sources.insert(s.key, s.texture);
             }
@@ -744,11 +910,10 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     let used: std::collections::BTreeSet<&str> =
         pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.material.as_str())).collect();
     materials.retain(|k, _| used.contains(k.as_str()));
-    let library =
-        Library { car_dir, generics: data.join("cars/generics"), class: options.class.clone(), livery: options.livery };
     for key in materials.keys() {
         let texture = library.find(&sources[key])?;
-        let texture = if key == "cabin" { texture.toned(cabin_lift) } else { texture };
+        let dark = key == "cabin" || key.starts_with("int_");
+        let texture = if dark { texture.toned(cabin_lift) } else { texture };
         fs::write(textures.join(file(key)), texture.dds()).map_err(|e| e.to_string())?;
     }
 
@@ -860,5 +1025,102 @@ mod tests {
         assert_eq!(lamp("e_body"), None);
         assert!(["light_glass_fl", "light_combi_glass_br", "light_rev_glass_bl"].iter().all(|p| lens(p)));
         assert!(!["light_rig_glass_fl", "light_combi_pod_bl", "light_glass_fl_x"].iter().any(|p| lens(p)));
+    }
+
+    fn instance(positions: Vec<[f32; 3]>, triangles: Vec<[u32; 3]>) -> Instance {
+        Instance {
+            material: "Matt".into(),
+            joint: None,
+            source: "src".into(),
+            normals: vec![[0.0, 0.0, 1.0]; positions.len()],
+            uv: vec![[0.0, 0.0]; positions.len()],
+            positions,
+            triangles,
+        }
+    }
+
+    #[test]
+    fn the_interior_scene_has_its_own_materials() {
+        let class = |m: &str| interior_style(m, "cme").map(|s| (s.shader, s.key, s.opacity));
+        for m in ["Matt", "Leather", "Shiny Painted Metal", "bare metal", "Chrome", "shiny plastic", "suede"] {
+            assert_eq!(class(m), Some(("CarTextureNoDirt", "int_main".to_owned(), false)), "{m}");
+        }
+        assert_eq!(class("carbon fibre").map(|c| c.1), Some("int_carbon".to_owned()));
+        assert_eq!(class("dials shiny").map(|c| c.1), Some("int_dials".to_owned()));
+        assert_eq!(class("limit lights").map(|c| c.1), Some("int_indicator".to_owned()));
+        assert_eq!(class("mirror").map(|c| c.0), Some("CarGlass"));
+        for m in ["interior glass windows", "digital speedometer", "gear indicator", "Car Body Paint"] {
+            assert_eq!(class(m), None, "{m}");
+        }
+        let texture = |m: &str| interior_style(m, "cme").map(|s| s.texture);
+        assert!(texture("Matt") == Some(Source::Interior("int_cme_main.tga".to_owned())));
+    }
+
+    #[test]
+    fn the_interior_configs_active_nodes_lose_their_prefix() {
+        let config = "<active_nodes>\n<node name=\"x0_bonnet\"/>\n<node name=\"x0_wing_fl\"/>\n</active_nodes>\n\
+                      <displays><display node=\"int_needle_tach\"/></displays>";
+        assert_eq!(active_nodes(config), ["bonnet", "wing_fl"]);
+        assert!(active_nodes("").is_empty());
+    }
+
+    #[test]
+    fn a_part_is_taken_into_its_own_space() {
+        // A part turned a quarter about y (its x along the car's -z) and put at (1, 2, 3).
+        let m: Mat = [[0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 2.0, 3.0, 1.0]];
+        let local = in_part_space(&instance(vec![[1.0, 2.0, 3.0], [1.0, 2.0, 2.0]], vec![[0, 1, 0]]), &m);
+        assert_eq!(local.positions, [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        // Back through the part's own matrix.
+        assert_eq!(crate::mesh::point(&m, local.positions[1]), [1.0, 2.0, 2.0]);
+        assert_eq!(local.normals[0], [-1.0, 0.0, 0.0], "the car's z is the part's -x");
+    }
+
+    #[test]
+    fn the_roof_and_sides_are_clipped_from_the_outside_cabin() {
+        let tri = |dx: f32, y: f32| [[dx, y, 0.0], [dx + 0.1, y, 0.0], [dx, y + 0.1, 0.0]];
+        let triangles = [tri(0.0, 1.0), tri(0.0, 1.45), tri(0.7, 1.0), tri(-0.4, 0.5)];
+        let positions: Vec<[f32; 3]> = triangles.iter().flatten().copied().collect();
+        let all: Vec<[u32; 3]> = (0..4).map(|k| [3 * k, 3 * k + 1, 3 * k + 2]).collect();
+        let kept = within_body(&instance(positions, all));
+        assert_eq!(kept.triangles, [[0, 1, 2], [9, 10, 11]]);
+        assert_eq!(kept.positions.len(), 12, "the vertices are left as they were");
+    }
+
+    #[test]
+    fn faces_over_the_vertex_limit_make_more_pieces() {
+        let face = |n: usize| Face { positions: vec![[0.0; 3]; n], ..triangle("paint") };
+        let pieces = split("i_internal", vec![face(40_000), face(40_000), face(100)]);
+        let named: Vec<_> = pieces.iter().map(|p| (p.name.as_str(), p.faces.len())).collect();
+        assert_eq!(named, [("i_internal", 1), ("i_internal2", 2)]);
+        assert!(split("e_body", Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn the_cockpit_eye_goes_ahead_of_the_head_by_the_renderers_back_step() {
+        let parameter = |name: &str, [x, y, z]: [&str; 3]| Element {
+            name: "Parameter".into(),
+            attrs: [("name", name), ("x", x), ("y", y), ("z", z)].map(|(k, v)| (k.into(), v.into())).to_vec(),
+            ..Default::default()
+        };
+        let view = |ident: &str, parameter| Element {
+            name: "View".into(),
+            attrs: vec![("ident".into(), ident.into())],
+            children: vec![parameter],
+            ..Default::default()
+        };
+        let cameras = Element {
+            name: "Cameras".into(),
+            children: vec![
+                view("head-cam", parameter("position", ["-0.343", "1.2", "-0.3"])),
+                view("bumper", parameter("offset", ["0.0", "0.5", "2.0"])),
+            ],
+            ..Default::default()
+        };
+        let frame = Frame { z_dirt: 0.0, z_template: -1.0, y_shift: 0.0 };
+        let eyes = eyes(&cameras, &frame);
+        let head = frame.point([-0.343, 1.2, -0.3]);
+        assert_eq!(eyes["Cam_internal"], [head[0], head[1], head[2] - COCKPIT_BACK]);
+        assert_eq!(eyes["Cam_bonnet"], frame.point([0.0, 0.5, 2.0]));
+        assert!(!eyes.contains_key("Cam_bonnet2"));
     }
 }

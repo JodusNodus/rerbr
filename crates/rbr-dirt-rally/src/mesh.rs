@@ -263,6 +263,20 @@ pub fn terrain(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
     Ok(meshes)
 }
 
+/// A car's interior scene (`int_<car>.pssg`): the meshes of every node, each at its place in the scene's rest pose (the
+/// car's frame), named by the node.
+pub fn scene(pssg: &Pssg) -> Result<Vec<Mesh>, String> {
+    let materials = material::read(pssg);
+    let mut meshes = Vec::new();
+    for root in pssg.find("ROOTNODE") {
+        visit(root, &root.transform(), &mut |instance, parent, m| {
+            meshes.extend(build(instance, parent.id().unwrap_or(""), m, &materials)?);
+            Ok(())
+        })?;
+    }
+    Ok(meshes)
+}
+
 /// The placeable object types of an `objects`, `route_objects` or `trees` file: each `ROOTNODE`'s visible level-0
 /// meshes in its own space, and the ids that name it (its own and every node under it, `default!2`,
 /// `gre_rock_rand_small_default_001`), which is what `route_objecttypes` references.
