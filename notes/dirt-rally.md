@@ -119,7 +119,7 @@ saves key on). Nothing of DiRT's text is kept.
 
 Pacenotes. `pacenotes::notes` writes the stage's `pacenotes.ini` from the route's own `_codriver_1_pro_<n>_data.xml`
 (reverse routes have their own file, same convention); a route without calls keeps the converter's notes graded from
-the line. Rallycross has none.
+the line (`notes/btb.md` "Generated pacenotes"). Rallycross has none.
 
 - Distance. A call's `distanceAlongTrack` is metres from the start gate (line start + that), where the codriver
   speaks, ahead of the corner by a speed-dependent lead (matched calls, quartiles: Greece 45 to 100 m, Turini 40 to
@@ -143,7 +143,7 @@ the line. Rallycross has none.
   in degrees (matched corners turn 17, 30, 46, 60, 75, 102, 166 on average for angles 15, 30, 40, 50, 65, 100, 140).
   DiRT's ladder is 15, 30, 40, 50, 65, 80, 100, 140, 180 (rarely measured values between). Bins to the 1.02 tags
   (left, right): up to 22.5 easy (5, 6), 35 fast (4, 7), 57.5 medium (3, 8), 72.5 K (2, 9), 120 90 (1, 10), over it
-  hairpin (0, 11). The converter's crests and jumps (tags 16, 20; not its corners or flags) are added, except within 20 m of a corner note. A distance key (13) follows each note with 30 m or more before the next, as the converter's.
+  hairpin (0, 11). The converter's crests and jumps (tags 16, 20, fitted on Luppis's: `notes/btb.md`; not its corners or flags) are added, except within 20 m of a corner note. A distance key (13) follows each note with 30 m or more before the next, as the converter's.
 - Type 3: a distance call (alone between corner calls, `distanceLink` grows with the gap to the next corner: median 71 m
   for 3, 109 for 4, 140 for 5); covered by the distance keys. Type 6: the finish call (once per route, 38 to 343 m
   before the finish; the stage's finish key says it). The icon atlas of `b_osd_codriver_a.pssg` lists left/right 1 to 9,

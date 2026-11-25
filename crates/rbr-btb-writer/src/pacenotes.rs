@@ -197,8 +197,8 @@ pub fn corners(rules: &Rules, plan: &Plan, at: &[f64]) -> Vec<Corner> {
         // A run of one side is cut at its valleys, where the bend falls under `valley` of its peak and rises again.
         let mut first = run.0;
         let (mut peak, mut valley) = (0.0_f64, (0.0_f64, first));
-        for k in run.0..=run.1 {
-            let c = curvature[k].abs();
+        for (k, c) in curvature.iter().enumerate().take(run.1 + 1).skip(run.0) {
+            let c = c.abs();
             if c > peak {
                 peak = c;
                 valley = (c, k);
@@ -311,7 +311,8 @@ pub fn notes_with(rules: &Rules, points: &[[f64; 3]], at: &[f64], from: f64, to:
         if (2..GRADES.len() - 1).contains(&grade) && c.run_length >= rules.long_run {
             flags |= FLAG_LONG;
         }
-        if (rules.tighten_radius.0..=rules.tighten_radius.1).contains(&c.radius) && c.turn >= rules.tighten_turn
+        if (rules.tighten_radius.0..=rules.tighten_radius.1).contains(&c.radius)
+            && c.turn >= rules.tighten_turn
             && c.entry >= rules.tighten_ratio * c.radius
             && c.peak >= rules.tighten_peak
         {
@@ -322,7 +323,11 @@ pub fn notes_with(rules: &Rules, points: &[[f64; 3]], at: &[f64], from: f64, to:
     let speed = speeds(&plan, at, from);
     for c in crests(rules, points, at, &speed) {
         if c.distance >= from && c.distance <= to {
-            out.push(Note { tag: if c.lift >= rules.jump_lift { TAG_JUMP } else { TAG_CREST }, flags: 0, distance: c.distance });
+            out.push(Note {
+                tag: if c.lift >= rules.jump_lift { TAG_JUMP } else { TAG_CREST },
+                flags: 0,
+                distance: c.distance,
+            });
         }
     }
     out.sort_by(|a, b| a.distance.total_cmp(&b.distance));
