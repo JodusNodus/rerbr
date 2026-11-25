@@ -361,6 +361,13 @@ First car: the Escort Mk II (`cars/models/cme`), drawn by the viewer with NGP ph
 `rbr-dirt-rally car CAR --class CLASS --template <car folder or .sgc> --out DIR [--livery N] [--name NAME]` (the livery is the car's first
 without `--livery`; the class is required: it is in the game's database, not in the car's files).
 
+- Liveries (2026-11-25): the model's own textures are the chosen livery's; each other livery (`livery_NN`, 1 to 11 a car) is a skin of the model,
+  `Cars/<name>/skins/Livery NN/textures/`, which the launcher's Skin box lists for the added car (`car_skins`, a model's own `skins/`). A skin
+  holds only the files a livery's file gives (paint atlases with their baked maps, wheels, glass, lights, their normal maps) that differ from
+  the model's; a reconversion drops the `Livery *` folders first. Every livery of a car holds the same texture names and sizes (17 cars
+  surveyed). Livery names are not in the readable files (the front end's database is `game.bin`, encrypted): the skins are numbered. Cost on
+  the Escort: 10 skins of about 77 MB, 68 s more. Checked: chase shots of the Escort base, 17, 33 and 44 with `--car-skin`.
+
 - Added cars (`added_car.rs`, 2026-11-24): `rbr-dirt-rally add-car CAR [--livery N] [--cars DIR]` adds a DiRT car to the launcher's
   added cars (`<player folder>/cars`, `rbr-launcher`'s `car_packs`) as a car of its own, on the NGP physics of the gvrc.de car of its model,
   which must be added first: a copy of that car's pack as `rsfdata/cars/<pack> (DiRT Rally)/`, the model as `Cars/DiRT_<car>/` (the gvrc model as

@@ -100,6 +100,11 @@ enum Source {
 }
 
 impl Source {
+    /// Whether a livery's file holds it (a skin's texture).
+    fn of_livery(&self) -> bool {
+        matches!(self, Source::Livery(_) | Source::LiveryClass(..))
+    }
+
     /// The file a map is written as, once whatever reads it: `dr_<name>.dds`, with the file's class where the name is a
     /// class file's (`dr_cme_wheel_nm_tm.dds`, `dr_tread_nm_gr.dds`).
     fn file(&self) -> String {
@@ -1061,14 +1066,15 @@ impl Library {
         let folder = data.join("cars/models").join(&options.car);
         let livery = match options.livery {
             Some(livery) => livery,
-            None => {
-                let entries = fs::read_dir(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-                let numbers =
-                    entries.filter_map(|e| e.ok()?.file_name().to_str()?.strip_prefix("livery_")?.parse().ok());
-                numbers.min().ok_or_else(|| format!("{}: no livery", folder.display()))?
-            }
+            None => *liveries(&folder)?.first().ok_or_else(|| format!("{}: no livery", folder.display()))?,
         };
         Ok(Library { data: data.to_owned(), car: options.car.clone(), generics, livery, files: RefCell::default() })
+    }
+
+    /// The same car's livery `n`.
+    fn with_livery(&self, n: u32) -> Library {
+        let (data, car, generics) = (self.data.clone(), self.car.clone(), self.generics.clone());
+        Library { data, car, generics, livery: n, files: RefCell::default() }
     }
 
     /// `cars/models/<car>/<name>`.
@@ -1130,6 +1136,60 @@ impl Library {
             (occlusion, specular) => Ok(car_maps::diffuse(&texture, occlusion.as_ref(), specular.as_ref())),
         }
     }
+}
+
+/// The car's livery numbers (`livery_NN` in its folder), in order. Every livery of a car holds the same textures
+/// (surveyed on the 17 added cars).
+fn liveries(folder: &Path) -> Result<Vec<u32>, String> {
+    let entries = fs::read_dir(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    let mut numbers: Vec<u32> =
+        entries.filter_map(|e| e.ok()?.file_name().to_str()?.strip_prefix("livery_")?.parse().ok()).collect();
+    numbers.sort_unstable();
+    Ok(numbers)
+}
+
+/// The model folder's folder of skins, which the launcher's Skin box lists (`rbr-launcher`'s `car_skins`): each holds
+/// files over the model folder's by path.
+const SKINS: &str = "skins";
+
+/// A livery's skin's name.
+fn skin_name(livery: u32) -> String {
+    format!("Livery {livery:02}")
+}
+
+/// Writes the styles' textures, glow maps and normal maps into `dir`. For a skin (`base`, the model's own textures
+/// folder) only those a livery's file gives, and of those only the ones that differ from the model's.
+fn write_textures(
+    library: &Library,
+    styles: &BTreeMap<&str, &Style>,
+    dir: &Path,
+    base: Option<&Path>,
+) -> Result<(), String> {
+    let wanted = |sources: &[Option<&Source>]| base.is_none() || sources.iter().flatten().any(|s| s.of_livery());
+    let write = |name: String, bytes: Vec<u8>| {
+        if base.is_some_and(|base| fs::read(base.join(&name)).is_ok_and(|old| old == bytes)) {
+            return Ok(());
+        }
+        fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let path = dir.join(name);
+        fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))
+    };
+    for (key, style) in styles.iter().filter(|(_, s)| s.texture != Source::Made) {
+        let maps = &style.maps;
+        let (occlusion, specular) = (maps.occlusion.as_ref().map(|m| &m.0), maps.specular.as_ref().map(|m| &m.0));
+        if wanted(&[Some(&style.texture), occlusion, specular, maps.dust.as_ref()]) {
+            write(file(key), library.diffuse(style)?)?;
+        }
+        if let Some(emissive) = maps.emissive.as_ref().filter(|e| wanted(&[Some(e)])) {
+            write(glow_file(key), library.find(emissive)?.dds())?;
+        }
+    }
+    let normals: BTreeMap<&Source, bool> =
+        styles.values().filter_map(|s| Some((s.maps.normal.as_ref()?, s.maps.crumpled))).collect();
+    for (source, crumpled) in normals.into_iter().filter(|(source, _)| wanted(&[Some(source)])) {
+        write(source.file(), car_maps::normal(&library.find(source)?, crumpled))?;
+    }
+    Ok(())
 }
 
 /// The body atlas's triangles (the materials that draw `<car>_main`) with their UVs in the mud's layout.
@@ -1265,21 +1325,23 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
         .filter(|s| used.contains(s.key.as_str()))
         .map(|s| (s.key.as_str(), s))
         .collect();
-    for (key, style) in styles.iter().filter(|(_, s)| s.texture != Source::Made) {
-        write(textures.join(file(key)), &library.diffuse(style)?)?;
-        if let Some(emissive) = &style.maps.emissive {
-            write(textures.join(glow_file(key)), &library.find(emissive)?.dds())?;
+    write_textures(&library, &styles, &textures, None)?;
+    // The car's other liveries as skins of the model, stale ones (an earlier conversion's other first livery) gone.
+    let skins = folder.join(SKINS);
+    if let Ok(entries) = fs::read_dir(&skins) {
+        let stale = entries.flatten().filter(|e| e.file_name().to_str().is_some_and(|n| n.starts_with("Livery ")));
+        for entry in stale {
+            fs::remove_dir_all(entry.path()).map_err(|e| format!("{}: {e}", entry.path().display()))?;
         }
+    }
+    for n in liveries(&library.car_file(""))?.into_iter().filter(|&n| n != library.livery) {
+        let dir = skins.join(skin_name(n)).join("textures");
+        write_textures(&library.with_livery(n), &styles, &dir, Some(&textures))?;
     }
     let triangles = mud_triangles(car, &parts, &exterior);
     let dirt = if triangles.is_empty() { None } else { Some(library.dirt(triangles)?) };
     if let Some(dirt) = &dirt {
         write(textures.join(DIRT_FILE), dirt)?;
-    }
-    let normals: BTreeMap<&Source, bool> =
-        styles.values().filter_map(|s| Some((s.maps.normal.as_ref()?, s.maps.crumpled))).collect();
-    for (source, crumpled) in normals {
-        write(textures.join(source.file()), &car_maps::normal(&library.find(source)?, crumpled))?;
     }
     for display in &displays {
         write(textures.join(file(&display.key())), &display.texture())?;
@@ -1621,6 +1683,22 @@ mod tests {
         let styles = interior_styles("cme", &materials);
         assert_eq!(styles["Chrome"], styles["Matt"]);
         assert!(styles["Chrome"].maps.occlusion.is_some());
+    }
+
+    #[test]
+    fn a_cars_liveries_are_its_numbered_folders_in_order() {
+        let root = std::env::temp_dir().join(format!("rbr-dirt-rally-liveries-{}", std::process::id()));
+        for name in ["livery_17", "livery_01", "livery_x", "tuning"] {
+            fs::create_dir_all(root.join(name)).unwrap();
+        }
+        assert_eq!(liveries(&root).unwrap(), [1, 17]);
+        assert_eq!(skin_name(1), "Livery 01");
+        fs::remove_dir_all(&root).unwrap();
+        // A skin takes only what a livery's file gives.
+        assert!(Source::LiveryClass("tm", "cme_wheel.tga".into()).of_livery());
+        assert!(
+            !Source::Generic("main", "body_mud.tga".into()).of_livery() && !Source::Interior("x".into()).of_livery()
+        );
     }
 
     #[test]
