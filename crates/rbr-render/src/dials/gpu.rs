@@ -4,6 +4,8 @@
 //! leave out the levels its largest region is under [`SMALLEST`] texels across in, which keep its last whole draw.
 
 use super::Rgba;
+use crate::gpu_util::{self, FILTERING};
+use crate::renderer::TEXTURE;
 use crate::stage::TextureRef;
 use crate::uploads::Uploads;
 use bytemuck::{Pod, Zeroable};
@@ -101,33 +103,8 @@ pub(crate) struct Pass {
 
 impl Pass {
     pub(crate) fn new(device: &wgpu::Device) -> Pass {
-        let texture = |binding| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        };
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("dials"),
-            entries: &[
-                texture(0),
-                texture(1),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("dials"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let layout = gpu_util::layout(device, "dials", &[TEXTURE, TEXTURE, FILTERING]);
+        let shader = gpu_util::shader(device, "dials", SHADER);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("dials"),
             bind_group_layouts: &[Some(&layout)],
@@ -211,21 +188,9 @@ impl Pass {
             });
             for (target_key, target) in draw.keys.iter().filter_map(|k| Some((*k, targets.get(k)?))) {
                 let group = self.groups.entry((target_key, key)).or_insert_with(|| {
-                    device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("dials"),
-                        layout: &self.layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::TextureView(&target.base),
-                            },
-                            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(atlas) },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: wgpu::BindingResource::Sampler(&self.sampler),
-                            },
-                        ],
-                    })
+                    use wgpu::BindingResource::{Sampler, TextureView};
+                    let resources = [TextureView(&target.base), TextureView(atlas), Sampler(&self.sampler)];
+                    gpu_util::bind_group(device, "dials", &self.layout, &resources)
                 });
                 let size = target.texture.size();
                 let scale = [size.width as f32 / draw.size.0 as f32, size.height as f32 / draw.size.1 as f32];
@@ -285,16 +250,7 @@ impl Pass {
             if scissors.is_empty() {
                 continue;
             }
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("dials"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.levels[level as usize],
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-                })],
-                ..Default::default()
-            });
+            let mut pass = gpu_util::colour_pass(encoder, "dials", &target.levels[level as usize], wgpu::LoadOp::Load);
             pass.set_bind_group(0, &group, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..));
             for [x0, y0, x1, y1] in scissors {

@@ -4,6 +4,7 @@
 
 use super::meshes::{GpuMesh, MeshBuffers};
 use super::shadows::Casting;
+use crate::gpu_util;
 use crate::sky_occlusion::{self, Tiles, BATCH, SIZE, TILE};
 use crate::stage::{Anchor, Layer};
 use crate::sun::{self, SunShadow};
@@ -38,16 +39,8 @@ pub(super) fn bake(
     let maps = SunShadow::with_layers(device, texture_layout, SIZE, BATCH);
     let casting = Casting { meshes, buffers, sun: &maps, queue };
 
-    let uniform = |label, size| {
-        device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        })
-    };
-    let params = uniform("sky occlusion", size_of::<Params>() as u64);
-    let matrices = uniform("sky occlusion maps", (BATCH * size_of::<Mat4>()) as u64);
+    let params = gpu_util::uniform_buffer(device, "sky occlusion", size_of::<Params>());
+    let matrices = gpu_util::uniform_buffer(device, "sky occlusion maps", BATCH * size_of::<Mat4>());
     let cells = (tiles.columns * tiles.rows) as usize;
     let map_of = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("sky occlusion tiles"),
@@ -62,20 +55,8 @@ pub(super) fn bake(
         compare: Some(wgpu::CompareFunction::LessEqual),
         ..Default::default()
     });
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("sky occlusion"),
-        source: wgpu::ShaderSource::Wgsl(sky_occlusion::SHADER.into()),
-    });
-    let pipeline = |entry| {
-        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("sky occlusion"),
-            layout: None,
-            module: &module,
-            entry_point: Some(entry),
-            compilation_options: Default::default(),
-            cache: None,
-        })
-    };
+    let module = gpu_util::shader(device, "sky occlusion", sky_occlusion::SHADER);
+    let pipeline = |entry| gpu_util::compute_pipeline(device, "sky occlusion", &module, entry);
     let (accumulate, finish) = (pipeline("accumulate"), pipeline("finish"));
     let storage = |label, size| {
         device.create_buffer(&wgpu::BufferDescriptor {

@@ -4,6 +4,7 @@ use super::meshes::{Bound, GpuDraw, GpuMesh, MeshBuffers};
 use super::uniforms::LampUniform;
 use super::{Renderer, DEPTH_FORMAT};
 use crate::camera::Frustum;
+use crate::gpu_util;
 use crate::stage::{Anchor, Layer, Lod};
 use crate::sun::{self, Cascades, SunShadow};
 use glam::camera::lh::{proj::directx, view};
@@ -396,26 +397,10 @@ impl ShadowRange {
                     ..Default::default()
                 })
         });
-        let reach = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size: 16,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(label),
-            source: wgpu::ShaderSource::Wgsl(RANGE_SHADER.into()),
-        });
-        let pipelines = ["cs_cells", "cs_spread_x", "cs_spread_y"].map(|entry| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(label),
-                layout: None,
-                module: &module,
-                entry_point: Some(entry),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        });
+        let reach = gpu_util::uniform_buffer(device, label, 16);
+        let module = gpu_util::shader(device, label, RANGE_SHADER);
+        let pipelines = ["cs_cells", "cs_spread_x", "cs_spread_y"]
+            .map(|entry| gpu_util::compute_pipeline(device, label, &module, entry));
         let texture =
             |binding, view| wgpu::BindGroupEntry { binding, resource: wgpu::BindingResource::TextureView(view) };
         let group = |pipeline: &wgpu::ComputePipeline, entries: &[wgpu::BindGroupEntry]| {
