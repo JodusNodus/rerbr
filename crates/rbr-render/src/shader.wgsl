@@ -625,12 +625,9 @@ fn vertex(input: VertexIn) -> VertexOut {
         let out_way = v.uv1 * (v.wet.y * (grass_widen(d) - 1.0));
         let n = v.normal;
         out.world = v.position + vec3<f32>(out_way.x, -(n.x * out_way.x + n.z * out_way.y) / max(n.y, 0.1), out_way.y);
+        // At its full height: past the density where it stands it is dithered out (`grass_dithered`).
         if (v.uv2.x > 0.0) {
-            // Shrunk into the ground past the density where it stands and at the far edge of the grass; a converted
-            // stage's cards (kinds 2 to 4, atlas pictures) keep their height and are dithered out (`grass_dithered`).
-            let grown = select(grass_grown(d, v.uv2.y), 1.0, v.specular.z > 1.5);
-            let height = v.uv2.x * grown;
-            out.world = out.world + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
+            out.world = out.world + grass_sway(v.position, v.uv2.x);
         }
         out.clip = frame.view_projection * vec4<f32>(out.world, 1.0);
     }
@@ -675,8 +672,8 @@ fn is_grass_card(v: VertexIn) -> bool {
 // `GRASS_SWAY` of its height, in gusts that cross the field as a slow wave (`GRASS_GUST`: its metres per radian and
 // radians a second), with a quicker flutter of its own (`GRASS_FLUTTER`), dipping the top a little as it bows.
 const GRASS_WIND: vec2<f32> = vec2<f32>(0.8, 0.6);
-// A card of rank `keep` (`grass::Card::keep`) is full height under the density and shrinks into the ground up to
-// `GRASS_MARGIN` times it (`grass::GROW_MARGIN`).
+// A card of rank `keep` (`grass::Card::keep`) shows whole under the density and is dithered out up to `GRASS_MARGIN`
+// times it (`grass::GROW_MARGIN`).
 const GRASS_MARGIN: f32 = 1.5;
 // The metres from the eye over which a converted stage's group pieces grow in (`grass::FX_PIECE`): CSP draws its base
 // grass nearer and the pieces from its third generation pass on.
@@ -707,7 +704,7 @@ fn grass_cover(d: f32) -> f32 {
     return min(grass_widen(d) * frame.grass.y / max(d, 1e-3), 1.0) * grass_fade(d);
 }
 
-// How grown a card of rank `keep` is `d` metres from the eye, 0 to 1.
+// How much of a card of rank `keep` shows `d` metres from the eye, 0 to 1.
 fn grass_grown(d: f32, keep: f32) -> f32 {
     let density = grass_density(d);
     return 1.0 - smoothstep(density, density * GRASS_MARGIN, keep);
@@ -720,12 +717,12 @@ fn dither(p: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(dot(q, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// Whether a converted stage's grass card (kinds 2 to 4, `grass_cards.wgsl`) lets this pixel go: it shows as much as
-// a card of ours grows (`grass_grown`), its group pieces (kind 3, `grass::FX_PIECE`) only away from the eye, by a
-// screen dither rather than shrinking, which squashed its picture as the eye came and went.
+// Whether a grass card (`grass_cards.wgsl`) lets this pixel go: it shows as much as its rank takes
+// (`grass_grown`), a converted stage's group pieces (kind 3, `grass::FX_PIECE`) only away from the eye, by a screen
+// dither rather than shrinking, which made the cards rise and sink (and squashed an atlas picture) as the eye moved.
 fn grass_dithered(v: VertexOut) -> bool {
     let card = v.specular.x > GRASS_MARK && v.specular.x < GRASS_MARK + 3.0 && v.specular.y > 0.5
-        && v.specular.y < 1.5 && v.specular.z > 1.5 && v.wet.y > 0.0;
+        && v.specular.y < 1.5 && v.specular.z > 0.5 && v.wet.y > 0.0;
     if (!card) {
         return false;
     }
