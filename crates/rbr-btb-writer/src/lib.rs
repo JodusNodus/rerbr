@@ -1,5 +1,7 @@
+pub mod bank;
 pub mod control;
 pub mod geometry;
+pub mod materials;
 pub mod mesh;
 pub mod pacenotes;
 pub mod probe;

@@ -1,8 +1,9 @@
 //! One route to a BTB stage folder: drawn tiles, collision, driveline, timing, calls, spawn, `track.ini`. The input is
 //! already in the stage's world (z up, `frame::world`) and in the BTB mesh's winding; the files are those
-//! `rbr_ac_tracks`' AC conversion writes, through its shared mesh, texture and pacenote writers.
+//! `rbr_ac_tracks`' AC conversion writes, through `rbr_btb_writer`: the mesh, texture and pacenote writers.
 use crate::surface;
-use rbr_ac_tracks::assetto::material::{self, TextureBank};
+use rbr_btb_writer::bank::TextureZip;
+use rbr_btb_writer::materials::{self, Extras, Layers};
 use rbr_btb_writer::{
     control::Control,
     geometry::{Grid, Triangle},
@@ -40,11 +41,11 @@ pub struct Material {
 
 impl Material {
     /// The section's bump and highlight: the maps go into the bank, the highlight is ReRBR's own constant.
-    fn extras(&self, bank: &mut TextureBank) -> Result<material::Extras, String> {
+    fn extras(&self, bank: &mut TextureZip) -> Result<Extras, String> {
         let mut put = |dds: &Option<Vec<u8>>| dds.as_ref().map(|d| bank.put(d.clone(), "dds")).transpose();
         let (normal, specular) = (put(&self.normal)?, put(&self.specular)?);
         let highlight = specular.is_some().then_some(HIGHLIGHT);
-        Ok(material::Extras { normal, specular, highlight, ..material::Extras::default() })
+        Ok(Extras { normal, specular, highlight, ..Extras::default() })
     }
 }
 
@@ -458,7 +459,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     drop(ground);
 
     let mut objects = Objects::new(&folder.join("Objects.zip"))?;
-    let mut bank = TextureBank::new(&folder.join("Textures.zip"))?;
+    let mut bank = TextureZip::new(&folder.join("Textures.zip"))?;
     let (mut sections, mut names) = (String::new(), Vec::new());
 
     // The grass: the cover map over the drawn ground, the tufts' atlas and the `[ReRbrGrass]` section that names them.
@@ -524,7 +525,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         None => bank.put(rbr_btb_writer::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                     };
                     let name = format!("dr\\{}", model.material);
-                    material::section_with(&mut sections, &name, &texture, m.transparent, &m.extras(&mut bank)?);
+                    materials::section_with(&mut sections, &name, &texture, m.transparent, &m.extras(&mut bank)?);
                     names.push(name.clone());
                     section_of.insert(model.material as usize, name.clone());
                     name
@@ -560,7 +561,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     None => (None, None),
                 };
                 let layers = match &m.layers {
-                    Some(l) => Some(material::Layers {
+                    Some(l) => Some(Layers {
                         diffuse: bank.put(l.diffuse.to_vec(), "dds")?,
                         mask: String::new(),
                         details: {
@@ -578,12 +579,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                     }),
                     None => None,
                 };
-                material::section_with(
+                materials::section_with(
                     &mut sections,
                     &name,
                     &texture,
                     m.transparent,
-                    &material::Extras {
+                    &Extras {
                         layers,
                         normal,
                         bump_scale,
@@ -624,7 +625,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     for (index, id) in ids.iter().enumerate() {
         let texture = bank.put(rbr_btb_writer::textures::flat([f32::from(*id) / 255.; 4]), "dds")?;
         let name = format!("collision\\surface_{id}");
-        material::section(&mut sections, &name, &texture, false);
+        materials::section(&mut sections, &name, &texture, false);
         names.push(name);
         let _ = writeln!(maps, "[MAP{index}]\ntexture={texture}");
         for (key, surface) in ["data", "damp", "wet"].into_iter().zip(surface::weathers(*id)) {
@@ -779,15 +780,15 @@ mod tests {
     #[test]
     fn a_prop_with_maps_is_a_bump_and_highlight_section() {
         let out = std::env::temp_dir().join(format!("rbr-dirt-rally-maps-{}.zip", std::process::id()));
-        let mut bank = TextureBank::new(&out).unwrap();
+        let mut bank = TextureZip::new(&out).unwrap();
         let flat = || Some(rbr_btb_writer::textures::flat([0.5; 4]));
         let m = Material { normal: flat(), specular: flat(), ..Material::default() };
         let mut ini = String::new();
-        material::section_with(&mut ini, "p", "d.dds", false, &m.extras(&mut bank).unwrap());
+        materials::section_with(&mut ini, "p", "d.dds", false, &m.extras(&mut bank).unwrap());
         assert!(ini.contains("ReRbrEffect=BTB_DiffuseBumpSpecular\n") && ini.contains("SpecularPower=40.0\n"), "{ini}");
         assert!(ini.contains("normalTexture=") && ini.contains("specularTexture=") && !ini.contains("ReRbrBumpScale"));
         ini.clear();
-        material::section_with(&mut ini, "q", "d.dds", false, &Material::default().extras(&mut bank).unwrap());
+        materials::section_with(&mut ini, "q", "d.dds", false, &Material::default().extras(&mut bank).unwrap());
         assert!(!ini.contains("ReRbrEffect") && !ini.contains("normalTexture"), "{ini}");
         let _ = std::fs::remove_file(&out);
     }

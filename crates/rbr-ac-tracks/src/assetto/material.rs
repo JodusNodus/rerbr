@@ -1,11 +1,11 @@
 //! AC material/surface translation. A surface's name gives its RBR class; its declared friction picks the id.
 use crate::assetto::kn5::{Material, Model};
 use crate::assetto::{detail, multilayer};
+use rbr_btb_writer::materials::{decimal, Extras, Layers};
+use rbr_btb_writer::bank::TextureZip;
 use rbr_btb_writer::textures;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::Write;
 use std::path::Path;
 
 #[derive(Default)]
@@ -113,12 +113,8 @@ impl Surfaces {
     }
 }
 
-type TextureBucket = Vec<(String, Vec<u8>)>;
-
 pub struct TextureBank {
-    zip: zip::ZipWriter<std::fs::File>,
-    /// Hash buckets retain output filenames; a hash match is checked against the written payload.
-    seen: BTreeMap<(u64, usize), TextureBucket>,
+    pub files: TextureZip,
     aliases: BTreeMap<String, String>,
     /// The file a model's texture was stored as, by name, alpha and size: a material read twice stores nothing twice.
     stored: BTreeMap<(String, bool, usize), String>,
@@ -136,17 +132,14 @@ pub struct TextureBank {
     pub sheened: usize,
     /// Sections written to be drawn as multilayer at render time ([`Layers`]).
     pub layered: usize,
-    pub count: usize,
     /// The stage's origin `[x, z]` in AC's frame ([`Layers::world`]); the stage's `(x, z)` is AC's `(x - origin[0], -z - origin[1])`.
     pub origin: [f64; 2],
 }
 
 impl TextureBank {
     pub fn new(path: &Path) -> Result<Self, String> {
-        let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
         Ok(Self {
-            zip: zip::ZipWriter::new(file),
-            seen: BTreeMap::new(),
+            files: TextureZip::new(path)?,
             aliases: BTreeMap::new(),
             stored: BTreeMap::new(),
             sizes: BTreeMap::new(),
@@ -158,28 +151,11 @@ impl TextureBank {
             highlighted: 0,
             sheened: 0,
             layered: 0,
-            count: 0,
             origin: [0.; 2],
         })
     }
     pub fn put(&mut self, bytes: Vec<u8>, extension: &str) -> Result<String, String> {
-        let mut hash = DefaultHasher::new();
-        bytes.hash(&mut hash);
-        let key = (hash.finish(), bytes.len());
-        if let Some((file, _)) = self.seen.get(&key).and_then(|bucket| bucket.iter().find(|(_, b)| *b == bytes)) {
-            return Ok(file.clone());
-        }
-        let filename = format!("ac_{:05}.{extension}", self.count);
-        self.zip
-            .start_file(
-                format!("Textures/{filename}"),
-                zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
-            )
-            .map_err(|e| e.to_string())?;
-        self.zip.write_all(&bytes).map_err(|e| e.to_string())?;
-        self.seen.entry(key).or_default().push((filename.clone(), bytes));
-        self.count += 1;
-        Ok(filename)
+        self.files.put(bytes, extension)
     }
     /// The output texture of material `index`. Multilayer materials are baked ([`multilayer`]); a texture that is only
     /// a one-pixel placeholder (some track exports strip theirs) becomes an opaque colour guessed from the material
@@ -415,7 +391,7 @@ impl TextureBank {
         Ok(Some(file))
     }
     pub fn finish(self) -> Result<(), String> {
-        self.zip.finish().map(|_| ()).map_err(|e| e.to_string())
+        self.files.finish()
     }
 }
 
@@ -493,70 +469,6 @@ fn placeholder_colour(name: &str) -> [f32; 4] {
         [0.55, 0.55, 0.53]
     };
     [rgb[0], rgb[1], rgb[2], 1.]
-}
-
-/// What a section carries besides its diffuse, for ReRBR's renderer: files in the textures, and the highlight's
-/// `(ksSpecular, ksSpecularEXP)`.
-#[derive(Default)]
-pub struct Extras {
-    pub normal: Option<String>,
-    pub specular: Option<String>,
-    pub highlight: Option<(f32, f32)>,
-    /// `ReRbrBumpScale`: the normal map is read at its UV times this ([`uv_multipliers`], `detailNMMult`).
-    pub bump_scale: Option<[f32; 2]>,
-    /// `ReRbrBumpUv`: the normal map reads the mesh's second UV set.
-    pub bump_uv: bool,
-    /// `ReRbrSheen`: the dry road sheen's roughness ([`sheen`]).
-    pub sheen: Option<f32>,
-    /// `(ksAmbient, ksDiffuse)` as the material gives them; [`normalise_light`] turns them into `ReRbrLight`.
-    pub light: Option<[f32; 2]>,
-    /// `ksAmbient + ksDiffuse` of a foliage shader's material ([`foliage_light`]); [`normalise_light`] turns it into
-    /// `ReRbrLight` against the track's foliage.
-    pub foliage: Option<f32>,
-    /// `ReRbrGrass`: what CSP's GrassFX does on this material ([`super::csp::GrassFx::role`]).
-    pub grass: rbr_btb::scene::Grass,
-    /// `ReRbrLayer*`: the renderer sums a multilayer material per pixel.
-    pub layers: Option<Layers>,
-    /// The gain its diffuse was stored at ([`Extras::stored_at`]): a third `ReRbrLight` value that
-    /// [`normalise_light`] divides out.
-    pub stored_gain: Option<f32>,
-}
-
-impl Extras {
-    /// These extras for a diffuse stored `gain` times brighter (a dark bake, [`multilayer::bake`]): the per-pixel sum
-    /// takes it too (`magicMult`), the light its inverse.
-    pub fn stored_at(mut self, gain: f32) -> Self {
-        if gain != 1. && self.light.is_some() {
-            if let Some(layers) = &mut self.layers {
-                layers.magic *= gain;
-            }
-            self.stored_gain = Some(gain);
-        }
-        self
-    }
-}
-
-/// A multilayer material for the renderer to draw per pixel (`ReRbrLayer*` keys), as `diffuse * (R*mask.r + G*mask.g
-/// + B*mask.b + A*mask.a) * magicMult` ([`multilayer`]); the section's `diffuseTexture` stays the bake of the same sum.
-/// The diffuse and the mask are read at the mesh's UV; each detail at `uv * scale` ([`Layers::world`] `None`, the
-/// `_objsp` shaders) or at AC's world `(x, z) * scale`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Layers {
-    /// The stored names of the diffuse, the mask and the details R, G, B and A.
-    pub diffuse: String,
-    pub mask: String,
-    pub details: [String; 4],
-    /// Each detail's `(u, v)` multiplier, the same on both axes for world space.
-    pub scale: [[f32; 2]; 4],
-    pub magic: f32,
-    /// The stage's origin `[x, z]`: the details are read at world space, AC's `(x, z) = (stage x + origin[0], -(stage z + origin[1]))`.
-    pub world: Option<[f64; 2]>,
-    /// `ReRbrLayerUv=1`: the details read the mesh's UV set 1 and the weights are its vertices' (UV sets 2 and 3), no mask
-    /// (`mask` is unused); DiRT Rally's terrain.
-    pub uv: bool,
-    /// `ReRbrLayerBlend=S` (with `uv`): DiRT Rally's road blend, `DetailBlendScale` `S`, the height maps in the alpha of the
-    /// second and third details.
-    pub blend: Option<f32>,
 }
 
 /// AC's foliage shaders. They light by `ks` as the others do (`ksTree_ps.fxo`: `tex * (ksAmbient * ambient * hemi +
@@ -714,93 +626,10 @@ fn highlight(mat: &Material) -> Option<(f32, f32)> {
     (specular > 0. && !is_transparent(mat)).then(|| (specular, mat.property("ksSpecularEXP", 4.).max(1.)))
 }
 
-/// A float with a decimal point and no exponent: BTB reads a bare `1,1,1` as 1.1 and 1.
-fn decimal(v: f32) -> String {
-    let text = format!("{v:.6}");
-    let text = text.trim_end_matches('0');
-    if text.ends_with('.') {
-        format!("{text}0")
-    } else {
-        text.to_owned()
-    }
-}
-
-pub fn section(out: &mut String, name: &str, texture: &str, transparent: bool) {
-    section_with(out, name, texture, transparent, &Extras::default());
-}
-
-pub fn section_with(out: &mut String, name: &str, texture: &str, transparent: bool, extras: &Extras) {
-    let technique = if transparent { "Transparent" } else { "Default" };
-    let (power, color) = match extras.highlight {
-        Some((s, p)) => (decimal(p), format!("{0},{0},{0}", decimal(s))),
-        None => ("4".to_owned(), "0,0,0".to_owned()),
-    };
-    let _ = write!(out, "[{name}]\neffectName=BTB_Diffuse\ntechniqueName={technique}\nambient=0.4,0.4,0.4,1.0\nSpecularPower={power}\nSpecularColor={color}\ndiffuseTexture={texture}\n");
-    for (key, file) in [("normalTexture", &extras.normal), ("specularTexture", &extras.specular)] {
-        if let Some(file) = file {
-            let _ = writeln!(out, "{key}={file}");
-        }
-    }
-    let effect = match (extras.normal.is_some(), extras.highlight.is_some()) {
-        (true, true) => Some("BTB_DiffuseBumpSpecular"),
-        (true, false) => Some("BTB_DiffuseBump"),
-        (false, true) => Some("BTB_DiffuseSpecular"),
-        (false, false) => (extras.sheen.is_some() || extras.layers.is_some()).then_some("BTB_Diffuse"),
-    };
-    if let Some(effect) = effect {
-        let _ = writeln!(out, "ReRbrEffect={effect}");
-    }
-    if extras.normal.is_some() {
-        if let Some([u, v]) = extras.bump_scale {
-            let _ = writeln!(out, "ReRbrBumpScale={},{}", decimal(u), decimal(v));
-        }
-        if extras.bump_uv {
-            let _ = writeln!(out, "ReRbrBumpUv=1");
-        }
-    }
-    if let Some(roughness) = extras.sheen {
-        let _ = writeln!(out, "ReRbrSheen={}", decimal(roughness));
-    }
-    if let Some([ambient, diffuse]) = extras.light {
-        let gain = extras.stored_gain.map(|g| format!(",{}", decimal(g))).unwrap_or_default();
-        let _ = writeln!(out, "ReRbrLight={},{}{gain}", decimal(ambient), decimal(diffuse));
-    }
-    if let Some(sum) = extras.foliage {
-        let _ = writeln!(out, "ReRbrFoliage={}", decimal(sum));
-    }
-    match extras.grass {
-        rbr_btb::scene::Grass::None => {}
-        rbr_btb::scene::Grass::Grows(0) => out.push_str("ReRbrGrass=1\n"),
-        rbr_btb::scene::Grass::Grows(p) => {
-            let _ = writeln!(out, "ReRbrGrass=1\nReRbrGrassProfile={p}");
-        }
-        rbr_btb::scene::Grass::Hides => out.push_str("ReRbrGrass=hide\n"),
-        rbr_btb::scene::Grass::HidesAlpha => out.push_str("ReRbrGrass=hide-alpha\n"),
-    }
-    if let Some(layers) = &extras.layers {
-        let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
-        let _ = writeln!(out, "ReRbrLayerDiffuse={}", layers.diffuse);
-        if layers.uv {
-            out.push_str("ReRbrLayerUv=1\n");
-        } else {
-            let _ = writeln!(out, "ReRbrLayerMask={}", layers.mask);
-        }
-        if let Some(scale) = layers.blend {
-            let _ = writeln!(out, "ReRbrLayerBlend={}", decimal(scale));
-        }
-        let _ = writeln!(out, "ReRbrLayerDetail={}", layers.details.join(","));
-        let _ = writeln!(out, "ReRbrLayerScale={}", list(&mut layers.scale.iter().flatten().map(|m| decimal(*m))));
-        let _ = writeln!(out, "ReRbrLayerMagic={}", decimal(layers.magic));
-        if let Some([x, z]) = layers.world {
-            let _ = writeln!(out, "ReRbrLayerWorld={x:.6},{z:.6}");
-        }
-    }
-    out.push('\n');
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rbr_btb_writer::materials::{section, section_with};
     #[test]
     fn a_grass_material_is_marked() {
         let mut out = String::new();
@@ -1002,7 +831,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("ac-extras-{}-{shader}-{transparent}.zip", std::process::id()));
         let mut bank = TextureBank::new(&path).unwrap();
         let extras = bank.extras(&model, 0).unwrap();
-        let count = bank.count;
+        let count = bank.files.count;
         bank.finish().unwrap();
         let _ = std::fs::remove_file(path);
         let mut out = String::new();
@@ -1114,7 +943,7 @@ mod tests {
         let (mut bank, path) = bank_for(&format!("layers-{shader}"));
         bank.origin = [-1234.5, 20.25];
         let extras = bank.extras(&model, 0).unwrap();
-        let (layered, count) = (bank.layered, bank.count);
+        let (layered, count) = (bank.layered, bank.files.count);
         bank.finish().unwrap();
         let _ = std::fs::remove_file(path);
         assert_eq!((layered, count), (1, 4), "diffuse, mask and two shared details are stored once");

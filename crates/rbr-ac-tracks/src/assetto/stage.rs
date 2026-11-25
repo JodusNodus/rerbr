@@ -2,6 +2,7 @@
 //! physics/driveline files use `(x,z,y)`, matching the BTB loader's axis swap.
 use crate::assetto::{ai, csp, kn5, material, multilayer, trees};
 use rbr_btb_writer::{
+    materials,
     control::Control,
     geometry::{Grid, Triangle},
     mesh::{self as xwrite, XMesh},
@@ -704,7 +705,7 @@ fn texel_metres(distance: f64) -> f64 {
 
 /// The tile textures of the builders whose material is world-space multilayer (`multilayer::bake_tile`), as DXT1
 /// files with the meshes drawn with them, baked on every core; `None` for the others, the materials the renderer sums per
-/// pixel (`drawn_per_pixel`, [`material::Layers`]), a tile that does not fit and a tile whose material bake is already
+/// pixel (`drawn_per_pixel`, [`materials::Layers`]), a tile that does not fit and a tile whose material bake is already
 /// as fine.
 fn tile_bakes(
     model: &kn5::Model,
@@ -901,14 +902,14 @@ fn tree_cards(
                     let (w, h, rgba) = p.atlas.clone();
                     let texture = bank.put(textures::encode(true, w, h, rgba), "dds")?;
                     let name = format!("ac\\tree_{}", prototypes.len());
-                    material::section(materials, &name, &texture, true);
+                    materials::section(materials, &name, &texture, true);
                     names.push(name.clone());
                     let mut parts = Vec::new();
                     for (i, part) in p.parts.iter().enumerate() {
                         let (w, h, rgba) = part.texture.clone();
                         let texture = bank.put(textures::encode(true, w, h, rgba), "dds")?;
                         let name = format!("ac\\tree_{}_{i}", prototypes.len());
-                        material::section(materials, &name, &texture, true);
+                        materials::section(materials, &name, &texture, true);
                         names.push(name.clone());
                         parts.push(name);
                     }
@@ -1238,14 +1239,14 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 tile_textures += 1;
                 b = baked;
                 b.material = format!("ac\\{model_index}_{mat_index}_{i}");
-                let extras = material::Extras {
+                let extras = materials::Extras {
                     grass: grass(&model.materials[mat_index].name),
                     ..bank.tile_extras(&model, mat_index)
                 };
                 if !extras.bump_uv {
                     b.uvs2 = None;
                 }
-                material::section_with(&mut materials, &b.material, &texture, false, &extras);
+                materials::section_with(&mut materials, &b.material, &texture, false, &extras);
                 names.push(b.material.clone());
                 drawn.push((key, b));
                 continue;
@@ -1261,8 +1262,8 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                         p => format!("ac\\{model_index}_{mat_index}_g{p}"),
                     };
                     let extras =
-                        material::Extras { grass: grass(&mat.name), ..bank.extras(&model, mat_index)? }.stored_at(gain);
-                    material::section_with(
+                        materials::Extras { grass: grass(&mat.name), ..bank.extras(&model, mat_index)? }.stored_at(gain);
+                    materials::section_with(
                         &mut materials,
                         &name,
                         &texture,
@@ -1405,7 +1406,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     for (index, id) in ids.iter().enumerate() {
         let texture = bank.put(rbr_btb_writer::textures::flat([*id as f32 / 255.; 4]), "dds")?;
         let name = format!("collision\\surface_{id}");
-        material::section(&mut materials, &name, &texture, false);
+        materials::section(&mut materials, &name, &texture, false);
         names.push(name);
         let _ = writeln!(maps, "[MAP{index}]\ntexture={texture}");
         let weather = if *id == 117 { [*id; 3] } else { rbr_btb_writer::surfaces::weathers(*id) };
@@ -1423,7 +1424,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         })
         .collect();
     objects.meshes(batch)?;
-    let texture_count = bank.count;
+    let texture_count = bank.files.count;
     let missing_textures = bank.missing.len();
     let simplified = bank.simplified.clone();
     let baked = bank.baked.clone();

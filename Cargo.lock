@@ -2359,6 +2359,7 @@ dependencies = [
  "rbr-btb",
  "rbr-formats",
  "texpresso",
+ "zip",
 ]
 
 [[package]]
@@ -2374,7 +2375,6 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "png",
- "rbr-ac-tracks",
  "rbr-btb",
  "rbr-btb-writer",
  "rbr-formats",

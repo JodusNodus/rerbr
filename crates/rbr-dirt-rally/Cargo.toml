@@ -14,7 +14,6 @@ name = "rbr-dirt-rally"
 path = "src/main.rs"
 
 [dependencies]
-rbr-ac-tracks = { path = "../rbr-ac-tracks" }
 rbr-btb = { path = "../rbr-btb" }
 rbr-btb-writer = { path = "../rbr-btb-writer" }
 rbr-formats = { path = "../rbr-formats" }
