@@ -66,7 +66,7 @@ pub(super) struct ModeUniform {
     /// The details' `(u, v)` multipliers and offsets: layers R and G, then B and A.
     pub(super) layer_scale: [[f32; 4]; 2],
     pub(super) layer_offset: [[f32; 4]; 2],
-    /// A converted car's interior material's finish ([`crate::car::cabin::finish_uniform`], `cabin_finish`).
+    /// A converted car's interior material's finish ([`crate::car::finish::finish_uniform`], `cabin_finish`).
     pub(super) finish: [[f32; 4]; 4],
 }
 

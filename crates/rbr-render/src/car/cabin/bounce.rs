@@ -1,13 +1,13 @@
 //! The light the cabin's faces bounce onto each other, per vertex (ours, 2026-11-25). In place of a closed room of one
 //! mean albedo, `a / (1 - a)`, which gave every face the same bounce (until 2026-11-25), each vertex gathers
-//! what its own rays meet ([`super::Grid::sky_hits`]): the faces' light times their albedo, over [`BOUNCES`] bounces.
+//! what its own rays meet ([`super::bake::Grid::sky_hits`]): the faces' light times their albedo, over [`BOUNCES`] bounces.
 //! Two terms, per unit of the light that comes in through the glass: the sky's (each face lit by the share of the sky
 //! it sees, as the window light lights it) and the sun's, which depends on where the sun is, as a linear function of
 //! its direction in the car's model space ([`Linear`], fitted per face over [`SUN_DIRECTIONS`] directions past the
 //! car's opaque faces). The sun's bounce is grey, coloured by the sky bounce's hue (the same faces give both back).
 //! `cabin.wgsl` reads them (`cabin_bounce`, `cabin_irradiance`).
 
-use super::cabin::{inside, opaque, Albedos, Grid, LIFT, RAYS};
+use super::bake::{inside, opaque, Albedos, Grid, LIFT, RAYS};
 use crate::parallel::in_parallel;
 use crate::stage::{Mesh, StageTexture, TextureRef, Vertex};
 use glam::{Mat4, Vec3};

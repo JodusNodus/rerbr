@@ -339,7 +339,7 @@ pub struct Side {
 }
 
 impl CarGlass {
-    /// Car `name`'s windscreen and wipers from its `.sgc`, placed as `car::load_interior` and `car::load` place them.
+    /// Car `name`'s windscreen and wipers from its `.sgc`, placed as `car::load` places them.
     pub fn load(data: &Data, name: &str) -> Result<CarGlass, String> {
         let model = car::model(data, name).map_err(|e| e.to_string())?;
         let chained = sgc::chained_worlds(&model);

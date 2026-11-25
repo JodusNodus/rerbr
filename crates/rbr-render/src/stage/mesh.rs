@@ -418,7 +418,7 @@ impl Shade {
 
     fn bits(&self) -> [u32; 28] {
         let glow = self.glow.unwrap_or_default().map(f32::to_bits);
-        let finish = crate::car::cabin::finish_uniform(self.finish.as_ref()).concat();
+        let finish = crate::car::finish::finish_uniform(self.finish.as_ref()).concat();
         let finish: [u32; 16] = std::array::from_fn(|i| finish[i].to_bits());
         [
             self.ka.to_bits(),

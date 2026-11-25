@@ -1,66 +1,15 @@
-//! How much sky each vertex of the interior set sees (renderer addition, ours: [`crate::renderer::Enhance::cabin`]).
-//! The game lights the whole cabin with one ambient; here each interior vertex gets the share of its hemisphere that
-//! reaches out of the car past its opaque faces, both sets (`i_*` and the exterior shell), the glass counting as open.
-//! The cabin's ambient follows it (`cabin.wgsl`): footwells, the dash under its top and the seat folds go darker, faces
-//! by the windows lighter. Measured once at load, at rest, so it costs nothing a frame.
+//! The cabin light's bake (ours): the voxel grid of the car's opaque faces, the rays each vertex casts into it ([`bake`]),
+//! and how light gets in ([`SunIn`]).
 //!
 //! The car's opaque faces are put into a grid of [`VOXEL`] cells; [`RAYS`] cosine-weighted rays from each vertex step
 //! through it for up to [`REACH`] metres.
-//!
-//! Each vertex also keeps which way it sees the sky ([`seen`]): the mean direction of its rays that get out. The cabin
-//! takes the light of what lies that way outside (`cabin.wgsl`), so a face turned to a sunlit or a sunset window is lit
-//! by it and one that sees out only toward the forest is darker; its sheen reflects only what lies within that cone.
-//!
-//! The vertices also say which they are, in the whole part of `specular[1]` (the car's draws have no specular map, so
-//! the field is free): [`INTERIOR`] for the interior set's opaque faces (the cabin light touches nothing else of the
-//! car, so not the glass the outside is seen through), [`GAUGE`] for its dial faces ([`mark_gauges`]) and [`MIRROR`]
-//! for the glass of its mirrors.
-//!
-//! A mirror's glass ([`Mirror`]) is a `*mirrorglass*` part, or in a car without one the faces of its `*mirror*` parts
-//! turned to the back of the car ([`FACING`]). The game has no mirror image: it draws that face with its texture, and
-//! many RSF models leave it a flat texel of white or paint (the Impreza GC8 555's `i_mirrorglass_*` disc, the Lancer Evo
-//! II's `i_mirror_*`). Here it mirrors the surroundings (`cabin_mirror` in `cabin.wgsl`), as the interior's opaque faces
-//! of the glass class do (the BMW M3 E30's `i_body_tukor`).
 
-use super::cabin_bounce;
+use super::{bounce, with_seen, Mirror, FACING, INTERIOR, MIRROR};
 use crate::damage::MeshDamage;
 use crate::parallel::in_parallel;
-use crate::stage::{Draw, Image, Mesh, Stage, StageTexture, TextureRef, TextureSet, Vertex};
-use glam::{IVec3, Mat4, Vec2, Vec3};
-use rbr_formats::car_parts::{Finish, FinishKind};
-use rbr_formats::rbrhud::{self, Atlas, Kind};
+use crate::stage::{Draw, Image, Mesh, StageTexture, TextureRef, Vertex};
+use glam::{IVec3, Vec2, Vec3};
 use std::collections::BTreeMap;
-use std::path::Path;
-
-/// `specular[1]` of a baked interior vertex.
-pub const INTERIOR: f32 = 1.0;
-/// `specular[1]` of an interior vertex on a dial face.
-pub const GAUGE: f32 = 2.0;
-/// `specular[1]` of an interior vertex on a mirror's glass.
-pub const MIRROR: f32 = 3.0;
-/// A mirror housing's face is its glass when its normal's share along the car's back (`+z`) is above this: the glass
-/// turned toward the driver, not the housing's sides and front.
-const FACING: f32 = 0.7;
-
-/// A mirror's part, by its node name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mirror {
-    /// `*mirrorglass*`: all of it is glass.
-    Glass,
-    /// Any other `*mirror*` part: its glass is its faces turned to the back, unless the car has [`Mirror::Glass`] parts.
-    Housing,
-}
-
-impl Mirror {
-    pub fn of_part(name: &str) -> Option<Mirror> {
-        let name = name.to_ascii_lowercase();
-        match () {
-            _ if name.contains("mirrorglass") => Some(Mirror::Glass),
-            _ if name.contains("mirror") => Some(Mirror::Housing),
-            _ => None,
-        }
-    }
-}
 
 /// The grid's cell, metres.
 const VOXEL: f32 = 0.025;
@@ -247,14 +196,14 @@ pub fn bake(
         .iter()
         .flat_map(|m| m.vertices.iter().map(|v| (Vec3::from(v.position), Vec3::from(v.normal))))
         .collect();
-    let normals = cabin_bounce::normals(interior);
+    let normals = bounce::normals(interior);
     let baked = in_parallel(&points, |&(p, n)| grid.sky_hits(p, n, &normals));
     let skies: Vec<(f32, Vec3)> = baked.iter().map(|&(sky, seen, ..)| (sky, seen)).collect();
     let nears: Vec<f32> = baked.iter().map(|&(_, _, near, _)| near).collect();
     let hits: Vec<Vec<u32>> = baked.into_iter().map(|(.., hits)| hits).collect();
     let mut nears = nears.into_iter();
     let panes: Vec<(Vec3, f32)> = interior.iter().chain(exterior).flat_map(panes).collect();
-    let (bounced, fitted) = cabin_bounce::bake(&grid, interior, &skies, &hits, textures);
+    let (bounced, fitted) = bounce::bake(&grid, interior, &skies, &hits, textures);
     let sun_in = SunIn::measure(&grid, interior, &skies, &panes, fitted);
     let mut bounced = bounced.into_iter();
     let mirrors: Vec<Option<Mirror>> = (0..interior.len()).map(|k| damage.get(k).and_then(|d| d.mirror)).collect();
@@ -270,7 +219,7 @@ pub fn bake(
                 vertex.specular[2] = 1.0 - sky;
                 vertex.occlusion = near;
                 if let Some(bounce) = bounced.next() {
-                    *vertex = cabin_bounce::packed(*vertex, bounce);
+                    *vertex = bounce::packed(*vertex, bounce);
                 }
                 seen
             })
@@ -299,31 +248,6 @@ pub fn bake(
     Some(sun_in)
 }
 
-/// A converted car's material's finish (`rbr_formats::car_parts::Finish`, DiRT Rally's shaders' constants) as
-/// `finish.wgsl` reads it (`mode.finish`): `[kind (1 plain, 2 flock, 3 carbon, 4 gated, 5 exterior), Fresnel min, max, power]`,
-/// `[environment rgb, blur (-1: no reflection)]`, `[Phong power, Phong colour times its scale]`, `[carbon strength,
-/// power, falloff power, flock noise size]` (not a carbon: `[specular gain, 0, 0, noise size]`); zero for a face with
-/// none.
-pub fn finish_uniform(finish: Option<&Finish>) -> [[f32; 4]; 4] {
-    let Some(f) = finish else { return [[0.0; 4]; 4] };
-    let kind = match f.kind {
-        FinishKind::Plain => 1.0,
-        FinishKind::Flock => 2.0,
-        FinishKind::Carbon => 3.0,
-        FinishKind::Gated => 4.0,
-        FinishKind::Exterior => 5.0,
-    };
-    let [power, scale, r, g, b] = f.phong;
-    // The last row: a carbon's weave, else the specular's gain; the flock's noise.
-    let [x, y, z] = if f.kind == FinishKind::Carbon { f.carbon } else { [f.specular, 0.0, 0.0] };
-    [
-        [kind, f.fresnel[0], f.fresnel[1], f.fresnel[2]],
-        f.environment.unwrap_or([0.0, 0.0, 0.0, -1.0]),
-        [power, scale * r, scale * g, scale * b],
-        [x, y, z, f.noise],
-    ]
-}
-
 /// How light gets into the cabin (ours), means over the interior set's opaque faces by area, each weighed by how far it
 /// is inside the cabin ([`inside`]): the sun on each by the sun's direction in the car's model space, `n.l` where the
 /// sun reaches it past the car's opaque faces, measured at load for [`SUN_DIRECTIONS`] directions over the sphere from
@@ -339,9 +263,9 @@ pub struct SunIn {
     /// The mean sky share and the mean of where the faces see it (model space).
     pub sky: f32,
     pub seen: Vec3,
-    /// The faces' mean sun as the bounce's bake fitted it ([`cabin_bounce`]), by which the vertices' sun bounce is
+    /// The faces' mean sun as the bounce's bake fitted it ([`bounce`]), by which the vertices' sun bounce is
     /// scaled to the measured mean ([`SunIn::bounce_scale`]).
-    fitted: cabin_bounce::Linear,
+    fitted: bounce::Linear,
 }
 
 /// The most [`SunIn::bounce_scale`] gives.
@@ -437,7 +361,7 @@ impl SunIn {
         interior: &[Mesh],
         skies: &[(f32, Vec3)],
         panes: &[(Vec3, f32)],
-        fitted: cabin_bounce::Linear,
+        fitted: bounce::Linear,
     ) -> SunIn {
         let (sky, seen) = SunIn::incoming(interior, skies);
         // The faces inside the cabin by area ([`inside`]): the body seen through the glass takes in light the cabin does
@@ -544,130 +468,11 @@ pub(crate) fn rgba_at_most(image: &Image, largest: u32) -> Option<(usize, usize,
     }
 }
 
-/// Where a baked interior vertex ([`INTERIOR`] or [`GAUGE`]) sees the sky ([`bake`]), in the car's model space: x and
-/// y in `uv2` (the car's draws have no light map), z in the fraction of `specular[1]` ([`SEEN_Z`]).
-pub fn seen(vertex: &Vertex) -> Vec3 {
-    let z = (vertex.specular[1].fract() - SEEN_Z[0]) / SEEN_Z[1];
-    Vec3::new(vertex.uv2[0], vertex.uv2[1], z)
-}
-
-/// `vertex`, [`INTERIOR`] or [`GAUGE`], with [`seen`] `dir`.
-pub fn with_seen(vertex: Vertex, dir: Vec3) -> Vertex {
-    let mut specular = vertex.specular;
-    specular[1] = specular[1].floor() + SEEN_Z[0] + SEEN_Z[1] * dir.z.clamp(-1.0, 1.0);
-    Vertex { uv2: [dir.x, dir.y], specular, ..vertex }
-}
-
-/// `vertex` placed by `matrix` as the playback places the car's parts: where it sees the sky turns with it (the
-/// position and the normal are the caller's).
-pub fn turned(vertex: &Vertex, matrix: Mat4) -> Vertex {
-    if vertex.specular[1] < INTERIOR {
-        return *vertex;
-    }
-    cabin_bounce::turned(with_seen(*vertex, matrix.transform_vector3(seen(vertex))), matrix)
-}
-
-/// The fraction of `specular[1]` that holds [`seen`]'s z: `SEEN_Z[0] + SEEN_Z[1] * z`, inside (0, 1) so that the whole
-/// part stays the vertex's mark (`cabin.wgsl` reads both).
-const SEEN_Z: [f32; 2] = [0.5, 0.45];
-
-/// A dial face: a circle in a texture's uv, its centre and its radius along u and v.
-pub type Face = (Vec2, Vec2);
-
-/// The dial faces of the RBRHUD gauges of the car whose folder is `car_folder` (the ones [`crate::dials`] draws), under
-/// the install `root`, by the texture of `stage` each is on. Ours: the faces are not in the data, the needles are,
-/// so a face is the circle about a needle's pivot as far as the needle reaches, and a quarter more ([`FACE`]).
-pub fn gauge_faces(root: &Path, car_folder: &str, stage: &Stage) -> BTreeMap<TextureRef, Vec<Face>> {
-    let mut faces: BTreeMap<TextureRef, Vec<Face>> = BTreeMap::new();
-    let Some((folder, configs)) = rbrhud::variant(root, car_folder) else { return faces };
-    for config in configs {
-        let Some(atlas) = rbr_formats::cars::resolve(&folder, &config.atlas)
-            .and_then(|path| std::fs::read(path).ok())
-            .map(|bytes| Atlas::parse(&String::from_utf8_lossy(&bytes)))
-        else {
-            continue;
-        };
-        let needles: Vec<(Vec2, f32)> = config
-            .elements
-            .iter()
-            .filter_map(|element| {
-                let Kind::Rotating(rotating) = &element.kind else { return None };
-                let [_, _, w, h] = atlas.sprite(element.texture.as_deref()?)?;
-                let pivot = Vec2::from(rotating.pivot);
-                let reach = [(0.0, 0.0), (w as f32, 0.0), (0.0, h as f32), (w as f32, h as f32)]
-                    .map(|corner| (Vec2::from(corner) - pivot).length())
-                    .into_iter()
-                    .fold(0.0, f32::max);
-                Some((Vec2::new(element.x, element.y), reach * element.scale * FACE))
-            })
-            .collect();
-        for (&key, texture) in &stage.textures {
-            let file = texture.request.rsplit(['\\', '/']).next().unwrap_or_default();
-            let Some(Image::Dial { texels, .. }) = &texture.image else { continue };
-            if key.set == TextureSet::Car && file.eq_ignore_ascii_case(&config.texture) {
-                let size = Vec2::new(texels.0 as f32, texels.1 as f32);
-                faces.entry(key).or_default().extend(needles.iter().map(|&(at, reach)| (at / size, reach / size)));
-            }
-        }
-    }
-    faces
-}
-
-/// A dial face's radius against its needle's reach.
-const FACE: f32 = 1.25;
-
-/// Marks [`GAUGE`] the baked vertices of `interior`'s triangles whose middle is on one of `faces` (in the uv of their
-/// draw's first texture). The cabin keeps their light at least at the game's (`cabin.wgsl`): under the dash's hood they
-/// would read darker than in the game, and until the exposure follows the cabin the eye cannot adapt to them. True when
-/// any changed.
-pub fn mark_gauges(mesh: &mut Mesh, faces: &BTreeMap<TextureRef, Vec<Face>>) -> bool {
-    let Mesh { draws, indices, vertices, .. } = mesh;
-    let mut marked = false;
-    for draw in draws.iter() {
-        let Some(faces) = draw.state.textures[0].and_then(|t| faces.get(&t)) else { continue };
-        for triangle in indices[draw.indices.clone()].chunks_exact(3) {
-            let middle = triangle.iter().map(|&i| Vec2::from(vertices[i as usize].uv0)).sum::<Vec2>() / 3.0;
-            if faces.iter().any(|&(centre, radius)| ((middle - centre) / radius).length() <= 1.0) {
-                for &i in triangle {
-                    let vertex = &mut vertices[i as usize];
-                    if vertex.specular[1].floor() == INTERIOR {
-                        vertex.specular[1] += GAUGE - INTERIOR;
-                        marked = true;
-                    }
-                }
-            }
-        }
-    }
-    marked
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::stage::{Address, Anchor, DrawState, Layer, Lod};
     use bytemuck::Zeroable;
-
-    #[test]
-    fn a_finish_packs_as_the_shader_reads_it() {
-        let finish = Finish {
-            kind: FinishKind::Flock,
-            fresnel: [0.0, 1.0, 2.5],
-            environment: None,
-            phong: [15.0, 2.0, 1.0, 0.5, 0.25],
-            noise: 10.0,
-            carbon: [1.0, 20.0, 3.0],
-            specular: 1.8,
-        };
-        let packed = finish_uniform(Some(&finish));
-        assert_eq!(packed[0], [2.0, 0.0, 1.0, 2.5]);
-        // No environment: no reflection.
-        assert_eq!(packed[1][3], -1.0);
-        assert_eq!(packed[2], [15.0, 2.0, 1.0, 0.5]);
-        assert_eq!(packed[3], [1.8, 0.0, 0.0, 10.0]);
-        let carbon = finish_uniform(Some(&Finish { kind: FinishKind::Carbon, ..finish }));
-        assert_eq!(carbon[3], [1.0, 20.0, 3.0, 10.0]);
-        assert_eq!(finish_uniform(None), [[0.0; 4]; 4]);
-    }
 
     /// One opaque draw of `triangles`, each vertex with `normal`.
     fn opaque_mesh(triangles: &[[Vec3; 3]], normal: Vec3) -> Mesh {
@@ -777,21 +582,6 @@ mod tests {
     }
 
     #[test]
-    fn where_a_vertex_sees_the_sky_keeps_its_mark_and_turns_with_the_car() {
-        let vertex = Vertex { specular: [0.0, GAUGE, 0.25], ..Vertex::zeroed() };
-        let dir = Vec3::new(0.3, -0.2, 0.6);
-        let seen_at = with_seen(vertex, dir);
-        assert_eq!(seen_at.specular[1].floor(), GAUGE);
-        assert_eq!(seen_at.specular[2], 0.25);
-        assert!((seen(&seen_at) - dir).length() < 1e-5);
-        let turn = Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2) * Mat4::from_translation(Vec3::X);
-        assert!((seen(&turned(&seen_at, turn)) - turn.transform_vector3(dir)).length() < 1e-5);
-        // Not the interior's: left as it is.
-        let glass = Vertex { uv2: [0.5, 0.5], ..Vertex::zeroed() };
-        assert_eq!(turned(&glass, turn), glass);
-    }
-
-    #[test]
     fn a_pane_passes_less_at_a_slant() {
         assert!((pane_through(1.0) - 0.96 * 0.96).abs() < 1e-6);
         assert!(pane_through(0.2) < 0.75 && pane_through(0.0) == 0.0);
@@ -836,14 +626,6 @@ mod tests {
         for shut in [Vec3::Y, Vec3::new(-1.0, 0.4, 0.0), Vec3::NEG_Y] {
             assert!(sun_in.at(shut) < 0.1 * low_side, "{shut}: {}", sun_in.at(shut));
         }
-    }
-
-    #[test]
-    fn mirror_parts_go_by_their_names() {
-        assert_eq!(Mirror::of_part("i_mirrorglass_l"), Some(Mirror::Glass));
-        assert_eq!(Mirror::of_part("i_mirror2_r"), Some(Mirror::Housing));
-        assert_eq!(Mirror::of_part("i_RoomMirror"), Some(Mirror::Housing));
-        assert_eq!(Mirror::of_part("i_body_tukor"), None, "its glass is of the glass class");
     }
 
     #[test]
