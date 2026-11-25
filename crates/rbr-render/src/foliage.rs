@@ -11,7 +11,10 @@ use crate::stage::{Draw, DrawState, Image, Mesh, Stage, TextureRef, Vertex};
 use glam::{Vec2, Vec3, Vec3Swizzles};
 use rbr_formats::dds::{self, Format};
 use rbr_formats::stage_files;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Plants lower than this, metres, are grass. Plant heights on three stages dip between 1.5 and 2 m, between the
@@ -194,6 +197,9 @@ struct Shape {
     height: usize,
     texels: Vec<u8>,
     marks: Mutex<HashMap<[usize; 4], PartMarks>>,
+    /// Its marks' file in the cache ([`use_cache`]) and how many marks it held: written again on drop when more were
+    /// made.
+    file: Option<(PathBuf, usize)>,
 }
 
 /// A part's marks ([`Shape::marks`]), made by the first thread that wants them.
@@ -205,7 +211,16 @@ impl Shape {
             .chunks_exact(4)
             .map(|t| if t[3] > alpha_ref { DRAWN } else { 0 } | if green([t[0], t[1], t[2]]) { GREEN } else { 0 })
             .collect::<Vec<_>>();
-        Shape { width, height: texels.len() / width, texels, marks: Mutex::default() }
+        let file = CACHE.get().map(|dir| {
+            let mut key = Sha256::new();
+            key.update((width as u32).to_le_bytes());
+            key.update([alpha_ref]);
+            key.update(rgba);
+            dir.join(MARKS_FOLDER).join(format!("{:x}.bin", key.finalize()))
+        });
+        let marks: HashMap<_, _> = file.as_deref().map(read_marks).unwrap_or_default();
+        let file = file.map(|path| (path, marks.len()));
+        Shape { width, height: texels.len() / width, texels, marks: Mutex::new(marks), file }
     }
 
     /// The marks of the texels under the uv rectangle `low` to `high` (the texture repeats; at most one copy of it each
@@ -235,6 +250,76 @@ impl Shape {
     }
 }
 
+impl Drop for Shape {
+    fn drop(&mut self) {
+        let Some((path, read)) = &self.file else { return };
+        let marks = self.marks.get_mut().unwrap();
+        let made: Vec<([usize; 4], Option<Marks>)> = marks.iter().filter_map(|(&k, m)| Some((k, *m.get()?))).collect();
+        if made.len() > *read {
+            if let Err(e) = write_marks(path, &made) {
+                eprintln!("foliage: {}: {e}", path.display());
+            }
+        }
+    }
+}
+
+/// The folder [`Shape`]s keep their marks in between loads ([`use_cache`]); none: made again each load.
+static CACHE: OnceLock<PathBuf> = OnceLock::new();
+/// The cache's folder for the marks: raise its number when [`Marks`] or the texels they are counted from change.
+const MARKS_FOLDER: &str = "foliage-marks-1";
+/// A cache entry's bytes: the part's place and size (4 `u16`), whether it has marks, and the marks (4 `f32`).
+const ENTRY: usize = 4 * 2 + 1 + 4 * 4;
+
+/// Keeps the shape test's marks in files under `dir` between loads (ours): a file per texture by the SHA-256 of the
+/// texels and alpha reference tested, holding each part's marks (25 bytes a part, 670 KB for 580's 26 871). A load
+/// of a stage seen before reads them instead of counting texels (580: mesh prepare 9.4 to 0.9 s, load 21 to 11.5 s,
+/// 2026-11-25). Set once, before the stage's renderer is made.
+pub fn use_cache(dir: PathBuf) {
+    let _ = CACHE.set(dir);
+}
+
+/// The marks in the cache file `path`; none where it is missing or does not read.
+fn read_marks(path: &Path) -> HashMap<[usize; 4], PartMarks> {
+    let Ok(bytes) = std::fs::read(path) else { return HashMap::new() };
+    if !bytes.len().is_multiple_of(ENTRY) {
+        return HashMap::new();
+    }
+    let word = |b: &[u8], i: usize| u16::from_le_bytes([b[2 * i], b[2 * i + 1]]) as usize;
+    let float = |b: &[u8], i: usize| f32::from_le_bytes(b[9 + 4 * i..13 + 4 * i].try_into().unwrap());
+    bytes
+        .chunks_exact(ENTRY)
+        .map(|b| {
+            let marks = (b[8] == 1).then(|| Marks {
+                holes: float(b, 0),
+                blobs: float(b, 1),
+                green: float(b, 2),
+                straight: float(b, 3),
+            });
+            ([0, 1, 2, 3].map(|i| word(b, i)), Arc::new(OnceLock::from(marks)))
+        })
+        .collect()
+}
+
+/// Writes `marks` as the cache file `path`: written whole, then renamed, so a stopped load leaves no part file in its
+/// place and two loads writing it at once each write their own.
+fn write_marks(path: &Path, marks: &[([usize; 4], Option<Marks>)]) -> std::io::Result<()> {
+    let mut bytes = Vec::with_capacity(marks.len() * ENTRY);
+    for (key, m) in marks {
+        let Ok(key) = key.map(u16::try_from).into_iter().collect::<Result<Vec<u16>, _>>() else { continue };
+        key.iter().for_each(|w| bytes.extend_from_slice(&w.to_le_bytes()));
+        bytes.push(u8::from(m.is_some()));
+        let m = m.map_or([0.0; 4], |m| [m.holes, m.blobs, m.green, m.straight]);
+        m.iter().for_each(|f| bytes.extend_from_slice(&f.to_le_bytes()));
+    }
+    if let Some(folder) = path.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    static WRITES: AtomicUsize = AtomicUsize::new(0);
+    let part = path.with_extension(format!("part-{}-{}", std::process::id(), WRITES.fetch_add(1, Ordering::Relaxed)));
+    std::fs::write(&part, bytes)?;
+    std::fs::rename(&part, path)
+}
+
 /// Whether an RGB texel is green: hue 50 to 170 degrees, saturation (chroma over the largest channel) over 0.12.
 fn green(rgb: [u8; 3]) -> bool {
     let [r, g, b] = rgb.map(|c| f32::from(c) / 255.0);
@@ -253,7 +338,7 @@ fn green(rgb: [u8; 3]) -> bool {
 }
 
 /// What a part of a texture shows, for [`Marks::structure`]. Counts are per square root of the drawn texels.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Marks {
     /// Undrawn areas that do not reach the part's edge: the gaps between leaves and twigs.
     holes: f32,
@@ -825,7 +910,7 @@ fn pieces<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{green, pieces, structure, Cut, Marks, DRAWN, GREEN};
+    use super::{green, pieces, read_marks, structure, write_marks, Cut, Marks, DRAWN, GREEN};
     use crate::stage::{Address, Anchor, Draw, DrawState, Layer, Lod, Mesh, Vertex};
     use bytemuck::Zeroable;
     use glam::Vec3;
@@ -1020,6 +1105,22 @@ mod tests {
             part.iter().filter(|&&t| t == DRAWN | GREEN).count() as f32 / count as f32,
             straight as f32 / edges.max(1) as f32,
         ))
+    }
+
+    #[test]
+    fn marks_read_back_from_the_cache() {
+        let path = std::env::temp_dir().join(format!("rerbr-marks-{}", std::process::id())).join("a.bin");
+        let some = Marks { holes: 0.25, blobs: 1.0 / 3.0, green: 0.9, straight: 0.1 };
+        let made = [([0, 8, 1024, 512], Some(some)), ([1023, 0, 1, 1], None), ([70_000, 0, 1, 1], Some(some))];
+        write_marks(&path, &made).unwrap();
+        let read = read_marks(&path);
+        assert_eq!(read.len(), 2, "a place past u16 is not kept");
+        assert_eq!(read[&[0, 8, 1024, 512]].get(), Some(&Some(some)));
+        assert_eq!(read[&[1023, 0, 1, 1]].get(), Some(&None));
+        // A file of another length reads as none.
+        std::fs::write(&path, [0; 7]).unwrap();
+        assert!(read_marks(&path).is_empty());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
     #[test]

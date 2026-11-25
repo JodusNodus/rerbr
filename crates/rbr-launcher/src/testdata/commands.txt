@@ -47,6 +47,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Kaihuavaara · ZR
 --car-lock
@@ -147,6 +149,8 @@ ultra
 immediate
 --mirrors
 1
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -256,6 +260,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Kaihuavaara · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -353,6 +359,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Mineshaft · COROLLA
 --car-lock
@@ -456,6 +464,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -565,6 +575,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Peyregrosse Mandagout · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -671,6 +683,8 @@ mailbox
 1
 --triple
 32,8,65,45
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -780,6 +794,8 @@ mailbox
 27,10,70,auto
 --triple-monitors
 HDMI-1,DP-1,HDMI-2
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -886,6 +902,8 @@ mailbox
 1
 --curved
 38,2300,80
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -992,6 +1010,8 @@ mailbox
 1
 --curved
 49,1800,70
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -1096,6 +1116,8 @@ ultra
 mailbox
 --mirrors
 1
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -1202,6 +1224,8 @@ mailbox
 1
 --triple
 27,10,70,auto
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -1307,6 +1331,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -1416,6 +1442,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -1525,6 +1553,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock
@@ -1634,6 +1664,8 @@ mailbox
 --mirrors
 1
 --fullscreen
+--cache
+<here>/cache
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock

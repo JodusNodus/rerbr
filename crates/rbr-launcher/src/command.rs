@@ -759,6 +759,7 @@ impl Form {
         let perf_log = perf_log_args(self.perf_log, &self.logs_dir());
         let upscale = (self.upscale_textures && self.upscaler)
             .then(|| ["--upscale-textures".to_owned(), self.upscaler_dir().display().to_string()]);
+        let cache = ["--cache".to_owned(), self.here().join(crate::home::CACHE).display().to_string()];
         // The loading screen names the stage and the car (a school lesson: the lesson and the car).
         let map = match school {
             Some(lesson) => format!("Rally school lesson {}", lesson.index() + 1),
@@ -785,6 +786,7 @@ impl Form {
             .chain(hdr)
             .chain(perf_log)
             .chain(upscale.into_iter().flatten())
+            .chain(cache)
             .chain(title)
             .chain(car_lock);
         args.splice(live..live, viewer_extra);
