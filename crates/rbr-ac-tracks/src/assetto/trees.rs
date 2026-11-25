@@ -8,7 +8,7 @@
 //! texture index, `u32` index count and `u16` indices, `u32` vertex count and 44-byte vertices (position, normal, UV,
 //! 12 bytes unread), and a 12 byte trailer. Positions are the tree scaled into `x, z` in -1..1 and `y` in 0..1;
 //! `tree.ini` `WIDTH` is its full width and `HEIGHT` its height, in metres at a `size` of 1.
-use crate::btb::textures::{self, Image};
+use rbr_btb_writer::textures::{self, Image};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::Path;

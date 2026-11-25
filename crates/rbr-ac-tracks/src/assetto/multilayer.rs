@@ -8,7 +8,7 @@
 //! metres per UV unit, so the detail has the right scale but not the exact position. Detail finer than the baked
 //! resolution becomes its average colour.
 use crate::assetto::kn5::{Material, Model};
-use crate::btb::textures::{self, Image};
+use rbr_btb_writer::textures::{self, Image};
 
 /// Bakes above this size on either side are not made; the base diffuse is kept. The renderer takes what the GPU does
 /// (ReRBR's largest stage texture is 16384 px) and the bake needs `4 * width * height` bytes for each map it holds.

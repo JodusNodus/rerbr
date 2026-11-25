@@ -105,7 +105,7 @@ pub fn render(folder: &Path, viewer: &Path, maps: &Path, scratch: &Path) -> Resu
     let (eye, target) = viewpoint(&points).ok_or("driveline too short")?;
     let ini = read("track.ini")?;
     let _ = std::fs::remove_dir_all(scratch);
-    let stage = rbr_ac_tracks::btb::stage::prepare(folder, &scratch.join("prepared"), Some(maps))?;
+    let stage = rbr_btb_writer::stage::prepare(folder, &scratch.join("prepared"), Some(maps))?;
     let png = scratch.join(FILE);
     let look = [target[0] - eye[0], target[1] - eye[1] - 1.0, target[2] - eye[2]];
     let camera: Vec<String> = eye.iter().chain(&look).map(|v| format!("{v:.3}")).collect();

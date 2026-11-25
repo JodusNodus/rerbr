@@ -1,5 +1,5 @@
 //! `rbr-ac-tracks import`: list and import the layouts of an Assetto Corsa `content/tracks` folder.
-use crate::btb::control::Control;
+use rbr_btb_writer::control::Control;
 use crate::import::{self, Layout, Request, Status};
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Arc};

@@ -1,5 +1,5 @@
 //! Fast-lane AI v7. The point records are sufficient for the course; trailing AI grid data stays unread.
-use crate::btb::road::Line;
+use rbr_btb_writer::road::Line;
 use std::path::Path;
 
 /// Physics/world axes, z up: AC `(x,y,z)` becomes `(x,-z,y)`. AC's frame is right handed with z south: Monza's

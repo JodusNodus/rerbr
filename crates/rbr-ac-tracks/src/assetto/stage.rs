@@ -1,7 +1,7 @@
 //! AC point-to-point course to an exported BTB stage. Mesh files use AC's Direct3D axes;
 //! physics/driveline files use `(x,z,y)`, matching the BTB loader's axis swap.
 use crate::assetto::{ai, csp, kn5, material, multilayer, trees};
-use crate::btb::{
+use rbr_btb_writer::{
     control::Control,
     geometry::{Grid, Triangle},
     mesh::{self as xwrite, XMesh},
@@ -1345,7 +1345,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     if options.remesh {
         options.control.say("re-meshing road collision");
         let ground = Grid::new(collision.iter().collect(), 4.);
-        let surface = crate::btb::remesh::build(&line, &ground);
+        let surface = rbr_btb_writer::remesh::build(&line, &ground);
         let mut adjusted = Vec::new();
         for mut t in collision.iter().copied() {
             if surface.replaces(&t) {
@@ -1377,7 +1377,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
             None => missing += 1,
         }
     }
-    let physics = crate::btb::surfaces::physics(along);
+    let physics = rbr_btb_writer::surfaces::physics(along);
     if missing > line.points.len() / 100 {
         return Err(format!("{missing}/{} driveline points have no collision within 3 m", line.points.len()));
     }
@@ -1403,12 +1403,12 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let ids = col_builders.keys().map(|(_, id)| *id).collect::<BTreeSet<_>>();
     let mut maps = String::new();
     for (index, id) in ids.iter().enumerate() {
-        let texture = bank.put(crate::btb::textures::flat([*id as f32 / 255.; 4]), "dds")?;
+        let texture = bank.put(rbr_btb_writer::textures::flat([*id as f32 / 255.; 4]), "dds")?;
         let name = format!("collision\\surface_{id}");
         material::section(&mut materials, &name, &texture, false);
         names.push(name);
         let _ = writeln!(maps, "[MAP{index}]\ntexture={texture}");
-        let weather = if *id == 117 { [*id; 3] } else { crate::btb::surfaces::weathers(*id) };
+        let weather = if *id == 117 { [*id; 3] } else { rbr_btb_writer::surfaces::weathers(*id) };
         for (key, surface) in ["data", "damp", "wet"].into_iter().zip(weather) {
             for row in 0..16 {
                 let _ = writeln!(maps, "{key}{row}={}", vec![surface.to_string(); 16].join(" "));
@@ -1536,7 +1536,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     provenance["multilayer_per_pixel_materials"] = layered.into();
     write(CONVERSION_FILE, serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?)?;
     options.control.say("validating BTB collision cells");
-    let stats = crate::btb::stage::check_cells(folder)?;
+    let stats = rbr_btb_writer::stage::check_cells(folder)?;
     let max_cell_vertices = stats.max_vertices;
     options.control.say(&format!(
         "{} cells, largest {max_cell_vertices}/65536 vertices; {texture_count} textures, {missing_textures} missing",

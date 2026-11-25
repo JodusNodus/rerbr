@@ -109,7 +109,7 @@ triggers terminal AI trimming. Format, clippy and 13 tests pass, including all 1
 ## Combined converter and start positions, 2026-11-12
 
 - The source reader now lives at `crates/rbr-ac-tracks/src/assetto`; geometry, texture decoding, mesh writing, road smoothing,
-  pacenotes and stage preparation are shared in `crates/rbr-ac-tracks/src/btb`. The command is `rbr-ac-tracks ac`.
+  pacenotes and stage preparation are shared in `crates/rbr-btb-writer`. The command is `rbr-ac-tracks ac`.
 - The earlier start captures were stationary: the live log shows 0.0 m/s. The converter had placed the car's
   centre at the AB timing gate. Use `AC_START_0` when it lies 2–50 m behind the gate and within 5 m of the line,
   with height sampled from physical road collision. Otherwise sample the driveline five metres before the gate,
@@ -244,7 +244,7 @@ triggers terminal AI trimming. Format, clippy and 13 tests pass, including all 1
 - Gunma's grass (`ksMultilayer`, 47,639 triangles) first rendered as flat white-grey patches on the verges although the report
   listed no missing textures: its mask is an uncompressed A8R8G8B8 DDS, `textures::decode` could not read it, the bake
   returned `None` and the near-white diffuse was kept (`base_diffuse_only`). `decode` now falls back to `legacy_dds`
-  (moved from `material.rs` to `btb/textures.rs`); both multilayer shaders bake and the verges are grass. Earlier
+  (moved from `material.rs` to `rbr-btb-writer`'s `textures.rs`); both multilayer shaders bake and the verges are grass. Earlier
   stages whose multilayer masks are legacy DDS fell back the same way and are worth reconverting; the report's
   `base_diffuse_only` lists them. Reconverted with the fix (2026-11-16, same options, identical triangle counts, timing and
   spawn; old folders in `~/.local/share/rerbr/backups/pre-multilayer-decode-fix-2026-11-16/`): Coll de la Teixeta 2011 and
@@ -669,9 +669,9 @@ driveline points (`scripts/btb-shots.py`), against the previous build's stage.
 
 ## Launcher import (2026-11-18)
 
-- The converter lives in `crates/rbr-ac-tracks` (the readers `assetto`, the writer `btb` and the interface `import`
-  the launcher calls, `cli` for the `rbr-ac-tracks` executable: `ac`, `import`, `prepare`, `probe`). It needs only
-  `rbr-btb` and `rbr-formats`, not the renderer. The standalone `btb-converter` repository (the AC reader's history, and
+- The converter lives in `crates/rbr-ac-tracks` (the readers `assetto` and the interface `import`
+  the launcher calls, `cli` for the `rbr-ac-tracks` executable: `ac`, `import`, `prepare`, `probe`). The shared writer is `crates/rbr-btb-writer`. It needs only
+  `rbr-btb`, `rbr-btb-writer` and `rbr-formats`, not the renderer. The standalone `btb-converter` repository (the AC reader's history, and
   BeamNG) is no longer used; its AC code, tests and the two stage-checking scripts (`scripts/btb-autopilot.py`,
   `scripts/btb-shots.py`) moved here on 2026-11-18, BeamNG did not.
 - The launcher's Add (`crates/rbr-launcher/src/content/kind/ac.rs`) takes a folder, a zip or a 7z with an AC track:

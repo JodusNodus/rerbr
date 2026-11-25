@@ -9,8 +9,8 @@
 //! faces under the band go; those its edge crosses stay, their corners within it moved onto it. Camber, crown and
 //! kerbs (across) stay, as do crests and dips (along) longer than a few metres.
 
-use crate::btb::geometry::{Grid, Triangle};
-use crate::btb::road::Line;
+use crate::geometry::{Grid, Triangle};
+use crate::road::Line;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 

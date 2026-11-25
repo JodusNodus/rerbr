@@ -264,7 +264,7 @@ fn lamps_glow(sources: &Sources) -> Image {
 /// The gear display's base: black, which the digit is drawn on.
 pub fn gear_base() -> Vec<u8> {
     let black = Image::filled(GEAR_SIZE[0], GEAR_SIZE[1], [0, 0, 0, 255]);
-    rbr_ac_tracks::btb::textures::encode(false, black.w as u32, black.h as u32, black.px)
+    rbr_btb_writer::textures::encode(false, black.w as u32, black.h as u32, black.px)
 }
 
 /// The three `config<N>.ini`s of the pack.

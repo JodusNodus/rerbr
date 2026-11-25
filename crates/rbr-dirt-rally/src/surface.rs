@@ -75,11 +75,11 @@ fn dry(code: &str) -> &str {
 }
 
 /// A surface id in dry, damp and wet weather: a `_Dry` gravel, tarmac, grass or dirt id's next two
-/// (`rbr_ac_tracks::btb::surfaces::weathers`); snow, water and the others stay, as their ids are depths, not weather.
+/// (`rbr_btb_writer::surfaces::weathers`); snow, water and the others stay, as their ids are depths, not weather.
 pub fn weathers(id: u8) -> [u8; 3] {
     match id {
         101..=103 | 117..=119 | 129..=139 | 157 => [id; 3],
-        _ => rbr_ac_tracks::btb::surfaces::weathers(id),
+        _ => rbr_btb_writer::surfaces::weathers(id),
     }
 }
 

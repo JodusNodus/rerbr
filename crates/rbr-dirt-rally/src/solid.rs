@@ -4,7 +4,7 @@
 use crate::frame;
 use crate::mesh::{self, Mat};
 use crate::objects::{Hull, Shape};
-use rbr_ac_tracks::btb::geometry::Triangle;
+use rbr_btb_writer::geometry::Triangle;
 
 /// Sides of a round hull (cylinder, capsule, sphere, cone) over `THIN` metres of radius, and of a thinner one (a trunk).
 const SIDES: usize = 8;

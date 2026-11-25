@@ -7,7 +7,7 @@
 //! colour and the result keeps the colour map's light and dark.
 use crate::material::Material;
 use crate::texture::Library;
-use rbr_ac_tracks::btb::textures;
+use rbr_btb_writer::textures;
 
 /// The mean colour of an image's RGB, 0 to 1.
 fn mean(px: &[u8]) -> [f32; 3] {

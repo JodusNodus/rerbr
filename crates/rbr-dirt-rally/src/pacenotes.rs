@@ -6,10 +6,10 @@
 //! degrees on average for angles 15, 30, 40, 50, 65, 100 and 140). Subcalls of other types are not decoded and leave no
 //! note (`notes/dirt-rally.md`).
 use crate::route::Call;
-use rbr_ac_tracks::btb::pacenotes::{self as graded, Note, TAG_CREST, TAG_DISTANCE, TAG_JUMP};
+use rbr_btb_writer::pacenotes::{self as graded, Note, TAG_CREST, TAG_DISTANCE, TAG_JUMP};
 
 /// The tag of a corner by its angle, up to the bound (degrees): easy, fast, medium, K, 90 and hairpin, as the left and
-/// the right tag (`rbr_ac_tracks::btb::pacenotes::GRADES`). The bounds lie between DiRT's own grades, 15, 30, 40 and 50,
+/// the right tag (`rbr_btb_writer::pacenotes::GRADES`). The bounds lie between DiRT's own grades, 15, 30, 40 and 50,
 /// 65, 80 and 100, 140 and 180.
 pub const TURNS: [(f64, u32, u32); 6] =
     [(22.5, 5, 6), (35.0, 4, 7), (57.5, 3, 8), (72.5, 2, 9), (120.0, 1, 10), (f64::INFINITY, 0, 11)];

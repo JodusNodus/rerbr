@@ -5,7 +5,7 @@ use crate::install::{Install, Route};
 use crate::{
     collision, frame, material, mesh, objects, pssg::Pssg, route, shade, solid, stage, surface, texture, trees, vista,
 };
-use rbr_ac_tracks::btb::{
+use rbr_btb_writer::{
     control::Control,
     geometry::{Grid, Triangle},
     road::Line,
@@ -389,7 +389,7 @@ fn faded(texture: &texture::Texture, level: u8) -> Vec<u8> {
     let mut rgba = texture.rgba();
     let scale = f32::from(level) / f32::from(FADES);
     rgba.chunks_exact_mut(4).for_each(|p| p[3] = (f32::from(p[3]) * scale).round() as u8);
-    rbr_ac_tracks::btb::textures::encode(true, texture.width, texture.height, rgba)
+    rbr_btb_writer::textures::encode(true, texture.width, texture.height, rgba)
 }
 
 /// A prop is drawn as far as this many times its size: a metre-wide rock to 100 m, a tree of ten metres to a kilometre.

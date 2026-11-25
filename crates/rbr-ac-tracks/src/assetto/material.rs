@@ -1,7 +1,7 @@
 //! AC material/surface translation. A surface's name gives its RBR class; its declared friction picks the id.
 use crate::assetto::kn5::{Material, Model};
 use crate::assetto::{detail, multilayer};
-use crate::btb::textures;
+use rbr_btb_writer::textures;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -100,7 +100,7 @@ impl Surfaces {
             "MUD" => nearest(&DIRT, 149),
             "WALL" | "GUARDRAIL" => 64,
             "ICE" => 117, // RBR snow on ice, shallow. Approximation; override for another class.
-            _ => match (crate::btb::surfaces::surface(Some(key), steep), declared) {
+            _ => match (rbr_btb_writer::surfaces::surface(Some(key), steep), declared) {
                 // A name of the track's own on level ground (Riudecanyes' BERM, Turini's BORDE): tarmac, or dirt
                 // where it dirties the tyres and has less grip than any tarmac.
                 (37, Some((share, true))) if share < 0.9 => nearest(&DIRT, 133),

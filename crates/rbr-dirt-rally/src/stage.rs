@@ -3,7 +3,7 @@
 //! `rbr_ac_tracks`' AC conversion writes, through its shared mesh, texture and pacenote writers.
 use crate::surface;
 use rbr_ac_tracks::assetto::material::{self, TextureBank};
-use rbr_ac_tracks::btb::{
+use rbr_btb_writer::{
     control::Control,
     geometry::{Grid, Triangle},
     mesh::{self as xwrite, XMesh},
@@ -521,7 +521,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 None => {
                     let texture = match &m.dds {
                         Some(dds) => bank.put(dds.clone(), "dds")?,
-                        None => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
+                        None => bank.put(rbr_btb_writer::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                     };
                     let name = format!("dr\\{}", model.material);
                     material::section_with(&mut sections, &name, &texture, m.transparent, &m.extras(&mut bank)?);
@@ -552,7 +552,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
                 let texture = match (&m.dds, &m.layers) {
                     (Some(dds), _) => bank.put(dds.clone(), "dds")?,
                     (None, Some(l)) => bank.put(l.details[0].to_vec(), "dds")?,
-                    (None, None) => bank.put(rbr_ac_tracks::btb::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
+                    (None, None) => bank.put(rbr_btb_writer::textures::flat([0.5, 0.5, 0.5, 1.]), "dds")?,
                 };
                 let name = format!("dr\\{material}");
                 let (normal, bump_scale) = match m.layers.as_ref().and_then(|l| l.normal.as_ref()) {
@@ -622,7 +622,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let ids: BTreeSet<u8> = col.keys().map(|(_, id)| *id).collect();
     let mut maps = String::new();
     for (index, id) in ids.iter().enumerate() {
-        let texture = bank.put(rbr_ac_tracks::btb::textures::flat([f32::from(*id) / 255.; 4]), "dds")?;
+        let texture = bank.put(rbr_btb_writer::textures::flat([f32::from(*id) / 255.; 4]), "dds")?;
         let name = format!("collision\\surface_{id}");
         material::section(&mut sections, &name, &texture, false);
         names.push(name);
@@ -734,7 +734,7 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
     let provenance = serde_json::to_string_pretty(&provenance).map_err(|e| e.to_string())?;
     write(CONVERSION_FILE, provenance)?;
     control.say("validating BTB collision cells");
-    let stats = rbr_ac_tracks::btb::stage::check_cells(folder)?;
+    let stats = rbr_btb_writer::stage::check_cells(folder)?;
     control.say(&format!("{} cells, largest {}/65536 vertices; {textures} textures", stats.cells, stats.max_vertices));
     Ok(Report {
         folder: folder.to_owned(),
@@ -780,7 +780,7 @@ mod tests {
     fn a_prop_with_maps_is_a_bump_and_highlight_section() {
         let out = std::env::temp_dir().join(format!("rbr-dirt-rally-maps-{}.zip", std::process::id()));
         let mut bank = TextureBank::new(&out).unwrap();
-        let flat = || Some(rbr_ac_tracks::btb::textures::flat([0.5; 4]));
+        let flat = || Some(rbr_btb_writer::textures::flat([0.5; 4]));
         let m = Material { normal: flat(), specular: flat(), ..Material::default() };
         let mut ini = String::new();
         material::section_with(&mut ini, "p", "d.dds", false, &m.extras(&mut bank).unwrap());

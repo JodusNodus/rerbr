@@ -16,7 +16,7 @@
 use crate::material::{self, Material};
 use crate::mesh::Mesh;
 use crate::texture::Library;
-use rbr_ac_tracks::btb::textures;
+use rbr_btb_writer::textures;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 

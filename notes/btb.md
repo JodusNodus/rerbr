@@ -395,7 +395,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - `ReRbrLayerUv=1` (ReRBR's own, with the `ReRbrLayer*` keys; `scene::Layers::uv`, `stage::Layers::uv`): the layers on their own coordinates, DiRT Rally's
   terrain. The diffuse stays at `uv0` (an atlas), each detail reads the mesh's UV set 1 times its `ReRbrLayerScale` pair, and the weights are the
   vertex's, not a mask (no `ReRbrLayerMask`): UV set 2 holds the second and third layers' `(u, v)`, set 3 the fourth's `u`, and the colour is the chain
-  `mix(mix(mix(L1, L2, R), L3, G), L4, B)`. Written as one `FVFData` block of three sets (`rbr_ac_tracks::btb::mesh::XMesh::more`). The vertex's
+  `mix(mix(mix(L1, L2, R), L3, G), L4, B)`. Written as one `FVFData` block of three sets (`rbr_btb_writer::mesh::XMesh::more`). The vertex's
   `uv1` and `specular` carry them (`Plan::layer_uv`), and the renderer's near-ground detail and steep-bank replacement are off on such draws (the layered colour is the
   look there). A mesh without the sets draws plain. Layer coordinates are shifted per tile by whole units that keep every layer's tiling (`f32` at kilometres).
 - `ReRbrLayerBlend=S` (ReRBR's own, with `ReRbrLayerUv=1`; `scene::Layers::blend`, `stage::Layers::blend`, `mode.layer.zw`): DiRT Rally's road blend with

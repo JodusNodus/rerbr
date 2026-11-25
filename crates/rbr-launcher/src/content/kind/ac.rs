@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use rbr_ac_tracks::btb::control::Control;
+use rbr_btb_writer::control::Control;
 use rbr_ac_tracks::import::{self, Error, Layout, Request, Status};
 
 use super::{wanted, Ctx, Found, Item, Kind};

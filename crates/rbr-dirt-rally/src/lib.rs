@@ -1,6 +1,6 @@
 //! DiRT Rally stages as BTB stages for ReRBR. Readers of the player's own DiRT Rally install (the Feral Linux port's
 //! loose files: gzip'd PSSG scenes, Codemasters binary XML, JPAK collision), and the import of one route into a BTB stage
-//! with the BTB writing `rbr_ac_tracks::btb` shares. Game files are read in place and never copied into the repository;
+//! with the BTB writing `rbr_btb_writer` shares. Game files are read in place and never copied into the repository;
 //! `notes/dirt-rally.md` has the verified findings.
 //!
 //! - `install`: the data folder and its routes (`tracks/locations/<location>/<area>/route_<n>`);

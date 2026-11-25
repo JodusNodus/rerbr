@@ -7,7 +7,7 @@
 //! specular its alpha; [`normal`] repacks a normal map as the RGB the renderer's bump reads. Both write BC7: a re-encoded
 //! 4096 livery keeps its colours and the normals their slopes (DXT1's 5:6:5 endpoints band both).
 use crate::texture::{Format, Texture};
-use rbr_ac_tracks::btb::textures::encode_bc7;
+use rbr_btb_writer::textures::encode_bc7;
 
 /// One channel of a map, read at another texture's texels.
 pub struct Plane {
