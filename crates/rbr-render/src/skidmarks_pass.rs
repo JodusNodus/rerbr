@@ -11,7 +11,8 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use rbr_formats::dds::Dds;
 
-use crate::renderer::{LampUniform, DEPTH_FORMAT, MAX_LAMPS};
+use crate::gpu_util::{self, FILTERING};
+use crate::renderer::{LampUniform, DEPTH_FORMAT, MAX_LAMPS, TEXTURE};
 use crate::skidmarks::Quad;
 use crate::tyre_marks;
 use crate::uploads::Uploads;
@@ -100,16 +101,8 @@ impl SkidPass {
         (source, fragment): (&str, &str),
         blend: wgpu::BlendState,
     ) -> SkidPass {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("skid marks"),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
-        let view = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("skid marks view"),
-            size: size_of::<ViewUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let shader = gpu_util::shader(device, "skid marks", source);
+        let view = gpu_util::uniform_buffer(device, "skid marks view", size_of::<ViewUniform>());
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("skid marks frame"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -123,27 +116,7 @@ impl SkidPass {
                 count: None,
             }],
         });
-        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("skid marks texture"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let texture_layout = gpu_util::layout(device, "skid marks texture", &[TEXTURE, FILTERING]);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("skid marks"),
             bind_group_layouts: &[Some(&frame_layout), Some(&texture_layout)],
@@ -180,28 +153,15 @@ impl SkidPass {
             multiview_mask: None,
             cache: None,
         });
-        let frame = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("skid marks frame"),
-            layout: &frame_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: view.as_entire_binding() }],
-        });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("skid marks"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let frame = gpu_util::bind_group(device, "skid marks frame", &frame_layout, &[view.as_entire_binding()]);
+        let sampler = gpu_util::linear_clamp(device, "skid marks");
         let image = crate::renderer::dds_texture(device, queue, texture).create_view(&Default::default());
-        let texture = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("skid marks texture"),
-            layout: &texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&image) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
-            ],
-        });
+        let texture = gpu_util::bind_group(
+            device,
+            "skid marks texture",
+            &texture_layout,
+            &[wgpu::BindingResource::TextureView(&image), wgpu::BindingResource::Sampler(&sampler)],
+        );
         let capacity = 1024;
         let vertices = vertex_buffer(device, capacity);
         SkidPass { pipeline, view, frame, texture, vertices, capacity, count: 0 }

@@ -8,6 +8,7 @@
 use super::{
     density, patches, seen, smoothstep, tile_of, Field, Level, Light, BAND, COVER, DENSITY, FAR_SHARE, FULL, TILE,
 };
+use crate::gpu_util;
 use crate::uploads::Uploads;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3, Vec3Swizzles, Vec4};
@@ -382,10 +383,6 @@ pub(crate) fn cards_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     })
 }
 
-fn entry(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
-    wgpu::BindGroupEntry { binding, resource: buffer.as_entire_binding() }
-}
-
 fn storage_entry(binding: u32, visibility: wgpu::ShaderStages, read_only: bool) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -533,10 +530,7 @@ impl Made {
                 storage_entry(6, compute, false),
             ],
         });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("grass made"),
-            source: wgpu::ShaderSource::Wgsl(source().into()),
-        });
+        let module = gpu_util::shader(device, "grass made", &source());
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("grass made"),
             bind_group_layouts: &[Some(&layout)],
@@ -574,24 +568,9 @@ impl Made {
                     64,
                     wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDIRECT | copy | wgpu::BufferUsages::COPY_SRC,
                 );
-                let make = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("grass made"),
-                    layout: &layout,
-                    entries: &[
-                        entry(0, &cull),
-                        entry(1, &tiles),
-                        entry(2, &pool),
-                        entry(3, &profiles),
-                        entry(4, &pieces),
-                        entry(5, &cards),
-                        entry(6, &counter),
-                    ],
-                });
-                let draw = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("grass cards"),
-                    layout: drawn,
-                    entries: &[entry(0, &cards)],
-                });
+                let make = [&cull, &tiles, &pool, &profiles, &pieces, &cards, &counter].map(|b| b.as_entire_binding());
+                let make = gpu_util::bind_group(device, "grass made", &layout, &make);
+                let draw = gpu_util::bind_group(device, "grass cards", drawn, &[cards.as_entire_binding()]);
                 ViewBuffers { cull, tiles, counter, capacity, make, draw }
             })
             .collect();
