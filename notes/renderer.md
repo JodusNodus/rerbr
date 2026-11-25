@@ -1571,7 +1571,12 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   98% of those it calls plants are. Misses: chain-link and wire (mostly named), bare twigs and dry stalks. At 256
   texels the gaps do not show (9% of plants taken). Retail atlases (tiny dry plants, cacti) failed it: only a stage's
   own textures take it, retail stages unchanged. 394's plant pass +1 s of one thread. 34 shots: 7
-  byte-identical (retail 52 among them), the rest within 0.8% RMSE. Pieces lying flat are no plants (2026-11-18,
+  byte-identical (retail 52 among them), the rest within 0.8% RMSE. Its cost (2026-11-25): 580's load spent 57-63 s
+  (its pieces' 76 799 parts, 26 871 unlike once placed within one copy of the texture, 13.4 G texels; `foliage::plants`
+  345 s on one thread). Parts kept by their place within one copy and made once across threads, the straight runs read
+  from running sums, the areas joined by row runs: 4.2 G texels, `plants` 58 s, the viewer's mesh prepare 63.6 to
+  10.5 s, its load 74 to 23 s; marks equal to the texel-by-texel count (`marks_match_the_texel_by_texel_count`), 580,
+  Odry, Luceram, Semetin, 621 and Gabiria shots byte-identical. Pieces lying flat are no plants (2026-11-18,
   `foliage::FLAT`: no face steeper than about 26 degrees): a converted AC stage's road paint, cut out, was faded
   edge-on and vanished under `lighting` (Riudecanyes, before/after shots); retail stages not re-shot. The edge-on fade is gone for every stage (2026-11-18, user): converted AC hedges and fences are modelled planes along the road, and faded by the angle they came and went as the car passed (Crequy 2025 at 2.3 km, replay re-rendered with `lighting` off: steady). The main view's sun shadow is worked out once per
   pixel before the stage is shaded (PCSS, 3x3 blocker search). Semetin 5.39 to 6.06 ms at 1920x1080 (41M similar,
