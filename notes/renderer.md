@@ -2170,10 +2170,15 @@ maximum. Quick with two binaries: about 2.5 to 4 minutes.
   isolated. The probe transitions and missing cloud shadows are fixed above; dry diffuse terrain does not read the
   probes, and the sun stays fixed during a drive (`relight::Clock::atmosphere`).
 - Sky dome and cloud transforms and inputs (`SkyDome.vso` `c41`-`c66`); stage in-scatter not reproduced.
-- Cut-out backdrop strips with black transparent texels (Odry's panoramas) show a dark rim along the ridge: the
-  alpha cut falls where the filtered colour is half black (462 `HOR_1`, `HOR_2`: transparent texels (0, 0, 0)). A fix
-  bleeds the colour into them at load (the textures upload as BCn, so a decode and re-encode) or reads such textures
-  as premultiplied; either changes every cut-out with black transparent texels, trees included.
+- Cut-out backdrop strips (Odry's panoramas): a faint light fringe along the ridge, no dark rim (2026-11-25). Their
+  edge is a band of partly clear texels with their own colour, the photo's sky (462 `HOR_2`, `Hor_11`: alpha 1-60 at
+  level 186-194, the opaque ridge 60-69); the cut at 60/255 falls in it and the black clear texels lie beyond it.
+  Tried and dropped (2026-11-25): filling the clear black texels from the kept ones at load and remaking the mips
+  (Godot's `fix_alpha_border`; 30-185 ms a stage): backdrops on 462 and 138 about 3 pixels changed per 1080p frame;
+  applied to every cut-out (trees, fences), golden-odry and golden-580 RMSE 0.9 % but no difference by eye (the
+  re-encode and the upscaler's new input, spread over whole textures), Semetin and 52 none. Clear texels within 2 of an
+  edge are black on 0 % of 621's, 532's and 417's cut-outs, 1 % of 176's and 41's, 16-21 % of 580's and Odry's; DXT1
+  cut-outs (most of retail's, 38 of 580's 87) are black there by their format and would need DXT5.
   Cut-out textures (2026-11-11, `examples/cutout_survey.rs`, by triangles drawn): most are DXT3 or DXT5 with a
   smooth alpha (7 to 17% of texels neither 0 nor 255); the clear texels are black on 0 to 2% of 621's and 532's,
   10 to 19% of 450's and 580's, 25% of Semetin's, 38 to 53% of Odry's, 25 to 40% of retail 41's and 52's DXT3.
