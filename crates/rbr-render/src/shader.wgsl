@@ -171,8 +171,8 @@ struct Mode {
     // The details' (u, v) multipliers and offsets: layers R and G in the first vector, B and A in the second.
     layer_scale: array<vec4<f32>, 2>,
     layer_offset: array<vec4<f32>, 2>,
-    // A converted car's interior material's finish (`car::cabin::finish_uniform`, `cabin_finish`): x of the first the
-    // kind, 0 for none.
+    // A converted car's material's finish (`car::cabin::finish_uniform`, `finish.wgsl`): x of the first the kind, 0 for
+    // none.
     finish: array<vec4<f32>, 4>,
 }
 
@@ -1210,7 +1210,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     var gloss = 1.0;
     // A carbon finish's map in the normal slot is its weave's direction (`carbon_fibre`), not a normal map.
     var fibre = vec3<f32>(0.0);
-    if (CABIN && cabin_carbon()) {
+    if (finish_carbon()) {
         fibre = carbon_fibre(v, n);
     } else if (bump_draw()) {
         n = bumped(v) * select(-1.0, 1.0, front);
@@ -1329,6 +1329,10 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             return vec4<f32>(vec3<f32>(cabin_debug(v, n, shadowed, under_cloud, outside)), 1.0);
         }
         shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside, gloss, fibre);
+    } else if (exterior_finish() && day_lit()) {
+        // A finish's highlight in place of the class's (`finish.wgsl`).
+        let sun = finish_sun(v, n, view, gloss, fibre, EXTERIOR_PHONG) * frame.day_sun.rgb * sunlit;
+        shaded = pow(pow(lit(colour, n, view, sunlit, around.rgb, v.world, 0.0), vec3<f32>(2.2)) + sun, vec3<f32>(1.0 / 2.2));
     } else {
         shaded = lit(colour, n, view, sunlit, around.rgb, v.world, gloss);
     }
@@ -1378,20 +1382,24 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             let paint = select(0.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), mode.fresnel.z != 0.0);
             // With the day's light the coat takes the open paint's reflection.
             let open = select(shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n)), vec3<f32>(0.0), physical);
-            if (cabin_finished()) {
-                let mirror = cabin_finish(v, n, view, gloss);
-                shaded = pow(mix(pow(shaded, vec3<f32>(2.2)), pow(mirror.rgb, vec3<f32>(2.2)), mirror.a), vec3<f32>(1.0 / 2.2));
+            if (finished()) {
+                let seen = cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
+                shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, seen, shaded));
                 shine = open * paint;
             } else {
                 shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
             }
+        } else if (exterior_finish()) {
+            // A finish's reflection in place of the class's and of the clear coat (`finish.wgsl`).
+            shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, visible, shaded));
+            shine = vec3<f32>(0.0);
         }
         colour = shaded + shine;
         // With the day's light the clear coat (`COAT_ROUGHNESS`).
         if (physical) {
             let sky_dim = mix(1.0, WET_SKY, film);
             let roughness = COAT_ROUGHNESS * (1.0 - film * (1.0 - WET_ROUGHNESS));
-            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0) * alpha * clean
+            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0 && !exterior_finish()) * alpha * clean
                 * select(1.0, cockpit_coat, inside);
             if (lit_class() == 1u && car_look()) {
                 coat = min(coat * COAT_STRENGTH, 1.0);
@@ -1409,7 +1417,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
                 mirrored = mix(sharp, vec3<f32>(dot(shine, vec3<f32>(0.333))), chrome / max(chrome + glass, 1e-4));
                 coat = min(max(coat, glass) + chrome * (1.0 - glass), 1.0);
             }
-            if (metal > 0.0) {
+            if (metal > 0.0 && !exterior_finish()) {
                 let rim = RIM_METAL * metal * clean;
                 let shine = paint_mirrored(reflect(-view, nr), RIM_ROUGHNESS);
                 mirrored = mix(mirrored, vec3<f32>(dot(shine, vec3<f32>(0.333))), rim / max(rim + coat, 1e-4));

@@ -1784,7 +1784,7 @@ sensor dims it. Day frames at 13:00 to golden hour: the DiRT Impreza's bar graph
 screens a little brighter; the Escort's needle dials unchanged. Nights (Impreza, 306, i20, Clio, Escort) within 23 of
 255 of before, where the reflected light now adds.
 
-Cabin finishes (2026-11-25, `cabin_finish`): a converted car's interior material may carry DiRT Rally's own shading
+Cabin finishes (2026-11-25, `finish_mirror`, `finish.wgsl`): a converted car's interior material may carry DiRT Rally's own shading
 constants (ours, `car_parts::finish`: `Finish` plain, flock or carbon, `FinishFresnel`, `FinishEnvironment`,
 `FinishPhong`, `FinishNoise`, `FinishCarbon`, written by `rbr-dirt-rally`; `car::cabin::finish_uniform`, `mode.finish`).
 They follow DiRT's DX11 interior shaders as disassembled (`share/data/shaderpack/dx11/shaderpack.pssg`, DXBC through
@@ -1795,7 +1795,7 @@ at that strength times `PhongScale`, `PhongColour`, the shadow and occlusion squ
 lerps the colour toward white by the fuzz times the sun's diffuse; `interior_carbon.fx` adds a Kajiya-Kay fibre highlight
 along `TCarbonVectorMap` (red, blue) and a lacquer at `FresnelMin`. All three read `TOcclusionMap` on the second UVs. Ours:
 the reflection is what the face sees of the outside through the windows (`cabin_open`) at the material's strength,
-blended over the lit texel in linear light, sharp `CABIN_FINISH_BLUR.x` or soft `.y` cube levels, a soft one 70 % grey;
+blended over the lit texel in linear light, sharp `FINISH_BLUR.x` or soft `.y` cube levels, a soft one 70 % grey;
 the sun's Phong at `CABIN_PHONG` 2 (DiRT's diffuse sun is halved); the fuzz white at half the sun; the fibre direction from
 the bump slot in the uv's screen-space frame (`carbon_fibre`, never used as a normal). Converted faces with a normal map
 drop the game's -3 mip bias (`car::shading::draw_state`: 2048 to 4096 atlases and a weave repeated 300 to 500 times
@@ -1856,8 +1856,26 @@ outside the interior set, and in it paint open to the sky by `CABIN_OUT`) takes 
 `environment_reflectance` at `COAT_ROUGHNESS`, `COAT_STRENGTH`, `paint_mirrored`) in place of the game's reflection; all
 cars. Without `cabin_open`: its cone about the sky the bonnet sees left out the bonnet's grazing reflection toward the
 horizon ahead, so the bonnet read flat (debug view: open share 1, cone 0 over most of the DiRT Impreza's bonnet). Not in
-the cockpit: rain on the paint (`wet_paint`), the body's occlusion, the surroundings cube (not drawn in the cockpit, the
-probes stand in). Night unchanged.
+the cockpit: rain on the paint (`wet_paint`), the body's occlusion. Night unchanged.
+
+Surroundings cube in the cockpit (2026-11-25, `update_reflection`): with `--reflections high` by day the car-centred
+cube is drawn in the cockpit too (one face every third frame, as outside; 0.10 ms by the October measure, not measured
+again), so the bonnet's coat and the cabin's finishes mirror what the outside view's paint does; below high the probes.
+The 306 Maxi's black bonnet light rig (paint) at 621 by day reads glossy, mirroring the sky ahead; with the probes it
+mirrored the blurred trees.
+
+Exterior finishes (2026-11-25, `finish.wgsl`, shared with the cabin's): DiRT's exterior pixel shaders as disassembled
+(`car_basic.cg.fp_*`): paint, Shiny Metal (`carpaint_metallic.fx`), wheel and lights pod lerp the lit colour toward the
+untinted cube by `lerp(FresnelValues.y, .z, f) * sat(2 * spec)`, `f` a steep sigmoid in n.v whose packing of the fx's
+min, max and power is not read (ours: the interior's power curve on the min and max); a metallic flake toward the sun's
+colour by `pow(R.L, 10)` where the specular is past 0.5; the pod's reflection times `sat(1.8 * lit colour)` (linear);
+`car_matt.fx` a Phong highlight alone (`SpecularHighlightPower`, `...Strength`); discs, grills and suspension neither,
+and `EnvironmentColour` is read by none. The converter's kinds `exterior` and `gated` (`FinishSpecular` the gain on the
+texel, 2 times the reference it was written with) take the reflection in the outside view's light in place of the
+class's and of the clear coat, the sun's lobe at `EXTERIOR_PHONG` 0.2 (not calibrated); the paint keeps the clear coat.
+The interior's kinds stay in the cabin's light only: the outside's copy of the cabin (`e_internal`) has no cabin bake,
+and with the exterior path its pillars mirrored the sky. Seen: the Impreza's gold wheels mirror the sky in the spokes,
+the lamp pods stay dark; trim changes are small, as DiRT's own constants make them.
 
 Interior sheen (2026-10-31, `cabin_sheen`): every cabin face but paint open to the sky (the bonnet through the glass,
 `CABIN_OUT`) reflects as a low-gloss plastic, `environment_reflectance` at roughness 0.8 (2 to 3 %) of the cube's

@@ -82,8 +82,8 @@ pub fn friendly_path<'a>(shaders: &'a [Section], name: &str) -> Option<&'a str> 
         .map(|(_, path)| path)
 }
 
-/// How an interior material's faces reflect (ours, a converted DiRT Rally car's: `rbr-dirt-rally` writes its shaders'
-/// constants as the material section's `Finish*` keys; no retail car has them).
+/// How a material's faces reflect (ours, a converted DiRT Rally car's interior and exterior trim: `rbr-dirt-rally` writes
+/// its shaders' constants as the material section's `Finish*` keys; no retail car has them).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Finish {
     pub kind: FinishKind,
@@ -99,24 +99,33 @@ pub struct Finish {
     pub noise: f32,
     /// `FinishCarbon`: a carbon weave's fibre highlight, its strength, power and falloff power.
     pub carbon: [f32; 3],
+    /// `FinishSpecular`: the gain on the specular texel, the product at most 1 (the exterior's `sat(2 * spec)` over the
+    /// reference the converter wrote the specular with); 1 without the key.
+    pub specular: f32,
 }
 
-/// What shader a [`Finish`] stands for: DiRT Rally's `interior.fx`, `interior_flock.fx` (suede), `interior_carbon.fx`.
+/// What shader a [`Finish`] stands for: DiRT Rally's `interior.fx`, `interior_flock.fx` (suede), `interior_carbon.fx`;
+/// the exterior's `carpaint_metallic.fx` (Shiny Metal), `car_wheel.fx`, `car_matt.fx`, and `car_light_pod.fx`, whose
+/// reflection the lit colour's brightness gates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FinishKind {
     Plain,
     Flock,
     Carbon,
+    Exterior,
+    Gated,
 }
 
 /// A material's [`Finish`], or `None` without a known `Finish` key. Keys missing or short take the converter's defaults
-/// (Fresnel 0 1 1, Phong 10 1 1 1 1, noise 10, carbon 0 1 1).
+/// (Fresnel 0 1 1, Phong 10 1 1 1 1, noise 10, carbon 0 1 1, specular 1).
 pub fn finish(shaders: &[Section], material: &str) -> Option<Finish> {
     let section = section(shaders, material)?;
     let kind = match section.get("Finish")?.trim().to_ascii_lowercase().as_str() {
         "plain" => FinishKind::Plain,
         "flock" => FinishKind::Flock,
         "carbon" => FinishKind::Carbon,
+        "exterior" => FinishKind::Exterior,
+        "gated" => FinishKind::Gated,
         _ => return None,
     };
     let numbers = |key: &str| -> Option<Vec<f32>> {
@@ -133,6 +142,7 @@ pub fn finish(shaders: &[Section], material: &str) -> Option<Finish> {
         phong: filled(numbers("FinishPhong"), [10.0, 1.0, 1.0, 1.0, 1.0]),
         noise: filled(numbers("FinishNoise"), [10.0])[0],
         carbon: filled(numbers("FinishCarbon"), [0.0, 1.0, 1.0]),
+        specular: filled(numbers("FinishSpecular"), [1.0])[0],
     })
 }
 
@@ -242,8 +252,14 @@ mod tests {
             (f.kind, f.fresnel, f.environment),
             (FinishKind::Flock, [0.0, 1.0, 2.5], Some([1.0, 1.0, 1.0, 1.0]))
         );
-        assert_eq!((f.phong, f.noise, f.carbon), ([15.0, 1.0, 1.0, 0.5, 1.0], 10.0, [0.0, 1.0, 1.0]));
+        assert_eq!((f.phong, f.noise, f.carbon, f.specular), ([15.0, 1.0, 1.0, 0.5, 1.0], 10.0, [0.0, 1.0, 1.0], 1.0));
         assert_eq!(finish(&shaders, "external::carpaint"), None);
+        let gated = sections(
+            &SHADERS.replace("[external::tire]\r\n", "[external::tire]\r\nFinish = gated\r\nFinishSpecular = 1.8\r\n"),
+        );
+        assert_eq!(finish(&gated, "external::tire").map(|f| (f.kind, f.specular)), Some((FinishKind::Gated, 1.8)));
+        let exterior = sections(&SHADERS.replace("[external::tire]\r\n", "[external::tire]\r\nFinish = exterior\r\n"));
+        assert_eq!(finish(&exterior, "external::tire").map(|f| f.kind), Some(FinishKind::Exterior));
         // No environment key: the material reflects nothing.
         let plain = sections(&SHADERS.replace("[external::tire]\r\n", "[external::tire]\r\nFinish = plain\r\n"));
         assert_eq!(finish(&plain, "external::tire").map(|f| f.environment), Some(None));

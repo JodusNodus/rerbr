@@ -169,8 +169,10 @@ impl Renderer {
     /// drawn into a staging cube and copied into the sampled one, which the frames bind.
     pub(super) fn update_reflection(&self, profiler: &mut Option<Profiler>) {
         // Baked probes stand in for both cubes (`super::probes`), but the car's paint seen from outside by day reflects
-        // the surroundings cube (`paint_mirrored` in `shader.wgsl`).
-        let paint = self.outside_view && self.day_light().is_some();
+        // the surroundings cube (`paint_mirrored` in `shader.wgsl`), and with the reflections at high from the cockpit
+        // too (the bonnet, the cabin's finishes).
+        let paint =
+            (self.outside_view || self.enhance.reflections == super::Reflections::High) && self.day_light().is_some();
         let Some((low, high)) = self.car_bounds().filter(|_| !self.probes.baked || paint) else {
             return;
         };
