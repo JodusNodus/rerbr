@@ -511,14 +511,7 @@ fn noise(device: &wgpu::Device, queue: &wgpu::Queue, side: u32, kind: u32) -> wg
     });
     let view = texture.create_view(&Default::default());
     let module = gpu_util::shader(device, "cloud noise", NOISE);
-    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("cloud noise"),
-        layout: None,
-        module: &module,
-        entry_point: Some("cs_cloud_noise"),
-        compilation_options: Default::default(),
-        cache: None,
-    });
+    let pipeline = gpu_util::compute_pipeline(device, "cloud noise", &module, "cs_cloud_noise");
     let params = wgpu::util::DeviceExt::create_buffer_init(
         device,
         &wgpu::util::BufferInitDescriptor {

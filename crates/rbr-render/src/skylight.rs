@@ -340,14 +340,7 @@ impl SkyLight {
                     bindings: &[u32],
                     workgroups: (u32, u32, u32),
                     extra: Option<&[wgpu::BindGroupEntry]>| {
-            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(entry),
-                layout: None,
-                module: &shader,
-                entry_point: Some(entry),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+            let pipeline = gpu_util::compute_pipeline(device, entry, &shader, entry);
             let entries: Vec<_> =
                 bindings.iter().map(|&binding| wgpu::BindGroupEntry { binding, resource: resource(binding) }).collect();
             let mut groups = vec![device.create_bind_group(&wgpu::BindGroupDescriptor {

@@ -256,16 +256,7 @@ impl Post {
             ];
             pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
         });
-        let meter = ["cs_histogram", "cs_meter"].map(|entry| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(entry),
-                layout: None,
-                module: &shader,
-                entry_point: Some(entry),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        });
+        let meter = ["cs_histogram", "cs_meter"].map(|entry| gpu_util::compute_pipeline(device, entry, &shader, entry));
         let buffer = |label, size, usage| {
             device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
         };

@@ -78,6 +78,23 @@ pub(crate) fn full_screen_pipeline(
     })
 }
 
+/// A compute pipeline of `module`'s `entry` point, its layout derived from the shader.
+pub(crate) fn compute_pipeline(
+    device: &wgpu::Device,
+    label: &str,
+    module: &wgpu::ShaderModule,
+    entry: &str,
+) -> wgpu::ComputePipeline {
+    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some(label),
+        layout: None,
+        module,
+        entry_point: Some(entry),
+        compilation_options: Default::default(),
+        cache: None,
+    })
+}
+
 /// A WGSL shader module of `source`.
 pub(crate) fn shader(device: &wgpu::Device, label: &str, source: &str) -> wgpu::ShaderModule {
     device.create_shader_module(wgpu::ShaderModuleDescriptor {

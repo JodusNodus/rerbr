@@ -399,16 +399,8 @@ impl ShadowRange {
         });
         let reach = gpu_util::uniform_buffer(device, label, 16);
         let module = gpu_util::shader(device, label, RANGE_SHADER);
-        let pipelines = ["cs_cells", "cs_spread_x", "cs_spread_y"].map(|entry| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(label),
-                layout: None,
-                module: &module,
-                entry_point: Some(entry),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        });
+        let pipelines = ["cs_cells", "cs_spread_x", "cs_spread_y"]
+            .map(|entry| gpu_util::compute_pipeline(device, label, &module, entry));
         let texture =
             |binding, view| wgpu::BindGroupEntry { binding, resource: wgpu::BindingResource::TextureView(view) };
         let group = |pipeline: &wgpu::ComputePipeline, entries: &[wgpu::BindGroupEntry]| {

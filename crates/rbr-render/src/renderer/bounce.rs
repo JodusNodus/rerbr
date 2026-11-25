@@ -112,16 +112,7 @@ pub(super) fn bake(
     });
     let linear = gpu_util::linear_clamp(device, "bounce light");
     let module = gpu_util::shader(device, "bounce", bounce::SHADER);
-    let pipeline = |entry| {
-        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("bounce"),
-            layout: None,
-            module: &module,
-            entry_point: Some(entry),
-            compilation_options: Default::default(),
-            cache: None,
-        })
-    };
+    let pipeline = |entry| gpu_util::compute_pipeline(device, "bounce", &module, entry);
     let [clear, sun, gather, finish, down] = ["clear", "sun", "gather", "finish", "ground"].map(pipeline);
     let sums: Vec<[wgpu::Buffer; 2]> = buffers
         .iter()

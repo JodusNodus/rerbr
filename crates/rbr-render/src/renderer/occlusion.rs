@@ -56,16 +56,7 @@ pub(super) fn bake(
         ..Default::default()
     });
     let module = gpu_util::shader(device, "sky occlusion", sky_occlusion::SHADER);
-    let pipeline = |entry| {
-        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("sky occlusion"),
-            layout: None,
-            module: &module,
-            entry_point: Some(entry),
-            compilation_options: Default::default(),
-            cache: None,
-        })
-    };
+    let pipeline = |entry| gpu_util::compute_pipeline(device, "sky occlusion", &module, entry);
     let (accumulate, finish) = (pipeline("accumulate"), pipeline("finish"));
     let storage = |label, size| {
         device.create_buffer(&wgpu::BufferDescriptor {
