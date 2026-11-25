@@ -903,12 +903,36 @@ mod tests {
         field.triangles[1].first = 1;
         assert!(at(&field) < 0.2, "{}", at(&field));
     }
-
-    #[test]
-    fn the_gpu_structs_keep_the_shaders_layout() {
-        assert_eq!(size_of::<Cull>(), 144);
-        assert_eq!(size_of::<Walk>(), 16);
-        assert_eq!(size_of::<Piece>(), 32);
-        assert_eq!(size_of::<Profile>(), 16);
-    }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_grass_cull_keeps_the_shaders_layout,
+    source(),
+    "Cull",
+    Cull { planes, eye, profile, info }
+);
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_grass_piece_keeps_the_shaders_layout,
+    source(),
+    "Piece",
+    Piece { rect, cells, bound, piece }
+);
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_grass_profile_keeps_the_shaders_layout,
+    source(),
+    "Profile",
+    Profile { cell, first, count, atlas }
+);
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_grass_walk_keeps_the_shaders_layout,
+    source(),
+    "Tile",
+    Walk { slot, x, z, count }
+);

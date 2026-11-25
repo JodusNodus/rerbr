@@ -689,3 +689,11 @@ mod tests {
         assert!(small.chunks_exact(4).all(|p| p == [200, 100, 50, 128]));
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_particles_frame_keeps_the_shaders_layout,
+    source(),
+    "Frame",
+    FrameUniform { view_projection, eye, fog_color, fog_range, light }
+);

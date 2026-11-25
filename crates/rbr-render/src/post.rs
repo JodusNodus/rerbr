@@ -644,3 +644,11 @@ mod tests {
         assert!(depth(eye + forward * 1.0) > at && depth(eye + forward * 5.0) < at);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_meter_keeps_the_shaders_layout,
+    SHADER,
+    "Meter",
+    Meter { step, snap, cabin_depth, pre_exposure, exposure, fixed, inverse, clouds, to_sun }
+);

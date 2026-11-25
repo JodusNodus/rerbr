@@ -447,3 +447,11 @@ mod tests {
         assert!((eye - Vec3::new(3.0, 1.0, -2.0)).length() < 1e-3, "{eye}");
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_taa_keeps_the_shaders_layout,
+    SHADER,
+    "Taa",
+    Uniform { view_to_prev, size, output, jitter, params }
+);

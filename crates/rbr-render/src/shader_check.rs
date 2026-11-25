@@ -127,3 +127,53 @@ fn every_shader_builds_for_vulkan() {
     failures.extend(check("mip blit", crate::renderer::BLIT, &none()));
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// Checks a hand-mirrored Rust GPU struct against its WGSL twin: the size and each member's offset, by order (the
+/// names differ). `offsets` are the Rust fields' `offset_of!`, in declaration order.
+pub(crate) fn check_layout(source: &str, name: &str, size: usize, offsets: &[(&str, usize)]) {
+    let module =
+        naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
+    let found = module.types.iter().find_map(|(_, t)| match (&t.name, &t.inner) {
+        (Some(n), naga::TypeInner::Struct { members, span }) if n == name => Some((members, *span as usize)),
+        _ => None,
+    });
+    let (members, span) = found.unwrap_or_else(|| panic!("WGSL struct {name} not found"));
+    assert_eq!(size, span, "{name}: Rust size {size}, WGSL size {span}");
+    assert_eq!(offsets.len(), members.len(), "{name}: {} Rust fields, {} WGSL members", offsets.len(), members.len());
+    for ((field, at), member) in offsets.iter().zip(members) {
+        let wgsl = member.name.as_deref().unwrap_or("?");
+        assert_eq!(
+            *at as u32, member.offset,
+            "{name}: Rust field {field} at {at}, WGSL member {wgsl} at {}",
+            member.offset
+        );
+    }
+}
+
+/// A WGSL module's `const` of a literal value (a limit the Rust side copies).
+pub(crate) fn wgsl_const(source: &str, name: &str) -> f64 {
+    let module = naga::front::wgsl::parse_str(source).expect("parse");
+    let (_, c) = module.constants.iter().find(|(_, c)| c.name.as_deref() == Some(name)).expect("const");
+    match module.global_expressions[c.init] {
+        naga::Expression::Literal(naga::Literal::U32(v)) => f64::from(v),
+        naga::Expression::Literal(naga::Literal::F32(v)) => f64::from(v),
+        ref other => panic!("{name} is not a literal: {other:?}"),
+    }
+}
+
+/// A test that `$t`'s size and the offsets of its listed fields (in order, a nested field as `a.b`; those the WGSL
+/// struct packs into one member, only the first) are those of the WGSL struct `$name` in `$source`.
+macro_rules! wgsl_layout {
+    ($test:ident, $source:expr, $name:literal, $t:ty { $($($field:ident).+),+ $(,)? }) => {
+        #[test]
+        fn $test() {
+            crate::shader_check::check_layout(
+                &$source,
+                $name,
+                std::mem::size_of::<$t>(),
+                &[$((stringify!($($field).+), std::mem::offset_of!($t, $($field).+))),+],
+            );
+        }
+    };
+}
+pub(crate) use wgsl_layout;

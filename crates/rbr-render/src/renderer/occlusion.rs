@@ -183,3 +183,11 @@ pub(super) fn bake(
     queue.submit([encoder.finish()]);
     tiles.touched.len()
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_sky_occlusion_params_keeps_the_shaders_layout,
+    crate::sky_occlusion::SHADER,
+    "Params",
+    Params { toward, grid, counts }
+);

@@ -464,3 +464,11 @@ impl ShadowRange {
         }
     }
 }
+
+#[cfg(test)]
+#[test]
+fn the_range_cell_is_the_shaders() {
+    use crate::shader_check::wgsl_const;
+    assert_eq!(wgsl_const(RANGE_SHADER, "RANGE_CELL"), f64::from(RANGE_CELL));
+    assert_eq!(wgsl_const(crate::renderer::SHADER, "RANGE_CELL"), f64::from(RANGE_CELL));
+}

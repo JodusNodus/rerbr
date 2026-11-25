@@ -478,3 +478,14 @@ fn bind_group(
         ],
     })
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+crate::shader_check::wgsl_layout!(
+    the_effects_keeps_the_shaders_layout, rain_source(), "Effects",
+    Uniform {
+        view_projection, inverse_view_projection, eye, motion, sun, sun_colour, ambient, sky, fog, screen,
+        sun_matrices, sun_splits, lamps, lamp_matrix, day_sun, day_sky, cabin_from_stage, cabin_box,
+        street_light, street, mirror
+    }
+);

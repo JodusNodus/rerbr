@@ -312,3 +312,11 @@ impl Renderer {
         }
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_mirror_view_keeps_the_shaders_layout,
+    crate::renderer::SHADER,
+    "MirrorView",
+    ViewUniform { view_projection, scale }
+);

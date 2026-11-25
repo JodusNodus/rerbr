@@ -464,3 +464,13 @@ mod tests {
         assert_eq!(air(&fogged), 1.0 / 400.0);
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+crate::shader_check::wgsl_layout!(
+    the_light_shafts_keeps_the_shaders_layout, SHADER, "Shafts",
+    Uniform {
+        inverse_view_projection, eye, march_dir, march_light, march_glow, march_fog, march_splits,
+        march_matrices, march_clouds, lamps, lamp_matrix
+    }
+);

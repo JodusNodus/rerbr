@@ -625,3 +625,11 @@ mod tests {
         assert_eq!(due(300.0), [true; 3]);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_sun_cascade_keeps_the_shaders_layout,
+    SHADER,
+    "Cascade",
+    Uniform { matrix, drop }
+);

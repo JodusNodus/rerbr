@@ -534,3 +534,11 @@ mod tests {
         assert!(sky_uniform(&snow).unwrap().ground[0] > sky_uniform(&gravel).unwrap().ground[0]);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_sky_keeps_the_shaders_layout,
+    SHADER,
+    "Sky",
+    SkyUniform { to_sun, rayleigh, mie, haze, ground, shape, level, moon, night_sky, sun_tint }
+);

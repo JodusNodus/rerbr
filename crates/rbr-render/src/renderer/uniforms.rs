@@ -502,3 +502,35 @@ impl Renderer {
         uniforms
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+crate::shader_check::wgsl_layout!(
+    the_mode_keeps_the_shaders_layout, crate::renderer::SHADER, "Mode",
+    ModeUniform {
+        second_texture, alpha_test, alpha_ref, mip_bias, cutout, lit, water, specular, light, fresnel, glow,
+        grime, detail, lamp, bank, bump, highlight, tint, sheen, layer, layer_scale, layer_offset
+    }
+);
+
+#[cfg(test)]
+#[rustfmt::skip]
+crate::shader_check::wgsl_layout!(
+    the_frame_keeps_the_shaders_layout, crate::renderer::SHADER, "Frame",
+    FrameUniform {
+        view_projection, inverse_view_projection, eye, fog_color, fog_range, haze, zenith, sun, ambient,
+        diffuse, shadow_matrix, shadow, ground_matrix, ground, shadow_box, ground_box, reflection, wetness,
+        enhance, sun_matrices, sun_shadow, sun_texels, sun_splits, world_matrix, world_shadow, wind, night,
+        lamp_matrix, lamps, relight, relight_light, dusk, clouds, skylight, height_fog, car_body, moon,
+        occlusion, ground_grid, day_sun, day_sky, moon_disc, cloud_shadow, car_dirt, cabin, cabin_seen,
+        street_light, street, grass
+    }
+);
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_lamp_keeps_the_shaders_layout,
+    crate::renderer::SHADER,
+    "Lamp",
+    LampUniform { position, forward, up, colour }
+);
