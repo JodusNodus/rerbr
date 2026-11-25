@@ -13,8 +13,8 @@
 //! [`add`] keeps the ground's triangles by [`TILE`] square tile (a [`Field`]) and adds one mesh standing for the grass
 //! ([`Lod::Close`]); the GPU makes the cards every frame ([`made`]): the tiles about the eye are baked once into cells
 //! and a compute pass per view grows their clumps, all of them near and a thinning share further out ([`density`]),
-//! as far as its [`Level`] reaches. The shader shrinks each card into the ground by its rank against the density where
-//! it stands (`grass_density`, `GRASS_MARGIN`), so the field thins and thickens smoothly rather than popping, and
+//! as far as its [`Level`] reaches. The shader dithers each card out by its rank against the density where it stands
+//! (`grass_density`, `GRASS_MARGIN`, `grass_dithered`), so the field thins and thickens smoothly rather than popping, and
 //! widens the cards left as much as the field thins ([`Level::profile`]), so it covers the ground as near with fewer
 //! cards. They are cut-out stage draws marked as grass tufts, so the plants' lighting takes them (`own_light` in
 //! `shader.wgsl`) and they cast no sun shadow; they take the sky's occlusion and the bounce computed at load for the
@@ -99,8 +99,8 @@ const WIDEST: f32 = 5.0;
 /// How much farther a tile behind the eye counts, by its distance along the view, when the pool picks the tiles to
 /// hold ([`made::Made::update`]): the pool goes to the field in view (the mirrors show the grass behind the eye).
 const BEHIND: f32 = 3.0;
-/// The shader grows this much more of a tile's clumps than its density draws, and shrinks those past the density into
-/// the ground (`GRASS_THIN` in `shader.wgsl`), so the field thins and thickens smoothly rather than popping.
+/// The shader grows this much more of a tile's clumps than its density draws, and dithers out those past the density
+/// (`GRASS_MARGIN`, `grass_dithered` in `shader.wgsl`), so the field thins and thickens smoothly rather than popping.
 const GROW_MARGIN: f32 = 1.5;
 /// A card's height range, metres, before its patch and kind scale it, and its width against its height.
 const HEIGHT: [f32; 2] = [0.07, 0.14];

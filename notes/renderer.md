@@ -1467,6 +1467,10 @@ farther out (Dense 60 m, Light 30 m), so the thinning starts farther off; ours (
 Calobra fly-by, Akina chase, DiRT Rally Finland and Greece chase at 2500) RMSE 0.003-0.007, Sa Calobra 0.045 (the car's
 place differs); no dither visible in stills. Motion not captured (the viewer's `--video` needs a matching replay).
 Widening past the full distance still stretches the pictures.
+Our cards (kind 1) dithered too (2026-11-25, user report "grass resizing while driving" and pick): they rose out of
+the ground and sank as the eye moved (each a fixed rank, full where the density at its distance is above it, none at
+`GRASS_MARGIN` times it: Dense 40-60 m for the last third, Light from 20 m). They now keep their height and take the
+same dither (`grass_dithered` for kinds 1 to 4); profile unchanged. Shaders validate; no captures or motion check yet.
 
 Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --screenshot` waits for the worker's
 tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every
