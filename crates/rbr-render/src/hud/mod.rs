@@ -381,16 +381,7 @@ impl Overlay {
         }
         // Only paint callbacks return command buffers, and the HUD has none.
         self.renderer.update_buffers(device, queue, encoder, &primitives, &screen);
-        let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("hud"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-            })],
-            ..Default::default()
-        });
+        let pass = crate::gpu_util::colour_pass(encoder, "hud", target, wgpu::LoadOp::Load);
         self.renderer.render(&mut pass.forget_lifetime(), &primitives, &screen);
         // Applied (egui checks that no delta is dropped unapplied).
         for id in output.textures_delta.free.drain() {

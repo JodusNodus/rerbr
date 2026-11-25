@@ -6,6 +6,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
+use crate::gpu_util;
 use crate::renderer::DEPTH_FORMAT;
 use crate::stage_lamps::StageLamp;
 
@@ -51,16 +52,8 @@ pub(crate) struct BulbPass {
 impl BulbPass {
     /// The pass for `lamps`, for colour targets of `format`.
     pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, lamps: &[StageLamp]) -> BulbPass {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("stage lamps"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-        let view = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("stage lamps view"),
-            size: size_of::<ViewUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let shader = gpu_util::shader(device, "stage lamps", SHADER);
+        let view = gpu_util::uniform_buffer(device, "stage lamps view", size_of::<ViewUniform>());
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("stage lamps frame"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -125,11 +118,7 @@ impl BulbPass {
             multiview_mask: None,
             cache: None,
         });
-        let frame = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("stage lamps frame"),
-            layout: &frame_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: view.as_entire_binding() }],
-        });
+        let frame = gpu_util::bind_group(device, "stage lamps frame", &frame_layout, &[view.as_entire_binding()]);
         let floats: Vec<[f32; 4]> = lamps
             .iter()
             .map(|lamp| {
