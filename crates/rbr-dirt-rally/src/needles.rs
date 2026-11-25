@@ -16,7 +16,7 @@ const VALUES: [(&str, Reading, f32); 3] =
 /// The needles of interior scene `pssg` that its `config` turns, in DiRT's frame, named by their nodes (`int_needle_tach`).
 pub fn read(pssg: &Pssg, config: &str) -> Vec<Needle> {
     let worlds = mesh::node_worlds(pssg);
-    analog(config)
+    displays(config, "analog")
         .filter_map(|display| {
             let attr = |name: &str| attribute(display, name);
             let number = |name: &str| attr(name)?.trim().parse::<f32>().ok();
@@ -42,14 +42,15 @@ pub fn read(pssg: &Pssg, config: &str) -> Vec<Needle> {
         .collect()
 }
 
-/// The `<display .../>` elements of the config's analog `displays`.
-fn analog(config: &str) -> impl Iterator<Item = &str> {
-    let blocks = config.split("<displays").filter(|b| b.trim_start().starts_with("type=\"analog\""));
+/// The `<display .../>` elements of the config's `displays` of type `kind` (`analog`, `digital`).
+pub(crate) fn displays<'a>(config: &'a str, kind: &str) -> impl Iterator<Item = &'a str> {
+    let marker = format!("type=\"{kind}\"");
+    let blocks = config.split("<displays").filter(move |b| b.trim_start().starts_with(&marker));
     blocks.flat_map(|b| b.split("</displays>").next().unwrap_or("").split("<display ").skip(1))
 }
 
 /// The value of attribute `name` in element text `element`.
-fn attribute<'a>(element: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn attribute<'a>(element: &'a str, name: &str) -> Option<&'a str> {
     let element = element.split('>').next()?;
     element
         .split(&format!(" {name}=\""))
@@ -103,7 +104,7 @@ mod tests {
     <displays type="analog_dummy">
         <display node="int_needle_01" deviation="0.001" speed="0.5"/>
     </displays>"#;
-        let displays: Vec<&str> = analog(config).collect();
+        let displays: Vec<&str> = displays(config, "analog").collect();
         assert_eq!(displays.len(), 1);
         assert_eq!(attribute(displays[0], "node"), Some("int_needle_tach"));
         assert_eq!(attribute(displays[0], "value"), Some("tach"));

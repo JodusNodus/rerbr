@@ -24,7 +24,6 @@ impl Plane {
     }
 
     /// A plane of `width` by `height` values.
-    #[cfg(test)]
     pub fn from_values(values: Vec<u8>, width: usize, height: usize) -> Plane {
         Plane { values, width, height }
     }
@@ -47,6 +46,31 @@ impl Plane {
 /// colours as stored is its 2.2th root).
 fn kept(ao: f32, scale: f32) -> f32 {
     (1.0 - scale * (1.0 - ao)).powf(1.0 / 2.2)
+}
+
+/// How much of a windscreen's dust map is on it: the start of a stage, before the road's dust builds up (DiRT raises
+/// it as the car runs; ours is fixed).
+const DUST: f32 = 0.25;
+/// The dust's colour, a light grey brown.
+const DUST_COLOUR: [f32; 3] = [150.0, 140.0, 125.0];
+
+/// A windscreen's inside (`interior_windscreen.fx`): `glass` (its colour, and its alpha: the frit border, the tint band,
+/// faint smears) with `dust` (the grime the wipers clear, its red) over it, [`DUST`] of the way, in [`DUST_COLOUR`].
+pub fn windscreen(glass: &Texture, dust: &Plane) -> Vec<u8> {
+    let (width, height) = (glass.width as usize, glass.height as usize);
+    let mut rgba = glass.rgba();
+    for (i, p) in rgba.chunks_exact_mut(4).enumerate() {
+        let a = f32::from(p[3]) / 255.0;
+        let d = f32::from(dust.at(i % width, i / width, width, height)) / 255.0 * DUST * (1.0 - a);
+        let out = a + d;
+        if out > 0.0 {
+            for (c, dust) in p[..3].iter_mut().zip(DUST_COLOUR) {
+                *c = ((f32::from(*c) * a + dust * d) / out).round() as u8;
+            }
+        }
+        p[3] = (out * 255.0).round() as u8;
+    }
+    encode_bc7(true, glass.width, glass.height, rgba)
 }
 
 /// `diffuse` with `occlusion` baked into them and `specular` as its alpha: the plane over
@@ -73,6 +97,19 @@ pub fn diffuse(diffuse: &Texture, occlusion: Option<&(Plane, f32)>, specular: Op
 /// A normal map as the renderer's bump reads it ([`repacked`]), BC7.
 pub fn normal(map: &Texture, crumpled: bool) -> Vec<u8> {
     encode_bc7(false, map.width, map.height, repacked(map, crumpled))
+}
+
+/// The carbon weave's direction map (`TCarbonVectorMap`: the direction is its red and blue, `*2-1`, on the interior's
+/// tangent and binormal) as the renderer's bump slot reads it: red as it is and green the blue flipped, as [`normal`]
+/// flips a DiRT normal map's green (the binormal runs up the image), BC7.
+pub fn direction(map: &Texture) -> Vec<u8> {
+    encode_bc7(false, map.width, map.height, directions(map))
+}
+
+fn directions(map: &Texture) -> Vec<u8> {
+    let mut rgba = map.rgba();
+    rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[3]) = (255 - p[2], 255));
+    rgba
 }
 
 /// `map`'s texels as the renderer's bump reads them: red x, green y along v (down the image), blue and alpha 255 (z is
@@ -212,6 +249,14 @@ mod tests {
         let file = rbr_formats::dds::parse(&dds).unwrap();
         assert_eq!((file.width, file.height), (16, 16));
         assert!(file.levels().len() > 1);
+    }
+
+    #[test]
+    fn a_direction_map_keeps_red_and_takes_blue_flipped_as_green() {
+        let map = dxt1_of(8, 8, [248, 8, 200]);
+        let texel = &directions(&map)[..4];
+        assert!(texel[0].abs_diff(248) <= 8 && texel[1].abs_diff(55) <= 8 && texel[3] == 255, "{texel:?}");
+        assert_eq!(&direction(&map)[84..88], b"DX10");
     }
 
     #[test]
