@@ -24,8 +24,9 @@
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec4};
 
+use crate::gpu_util::{self, CLEAR, FILTERING, UNIFORM};
 use crate::post::SCENE_FORMAT;
-use crate::renderer::{depth_binding, texture_entry, TEXTURE};
+use crate::renderer::{depth_binding, TEXTURE};
 
 pub(crate) const SHADER: &str = concat!(include_str!("taa.wgsl"), include_str!("particle_layer.wgsl"));
 /// The new frame's base share of the history.
@@ -134,77 +135,19 @@ impl Taa {
         depth: &wgpu::TextureView,
         motion: &wgpu::TextureView,
     ) -> Taa {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("taa"),
-            entries: &[
-                texture_entry(
-                    0,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
-                texture_entry(1, TEXTURE),
-                texture_entry(2, depth_binding()),
-                texture_entry(3, TEXTURE),
-                texture_entry(4, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
-                texture_entry(5, TEXTURE),
-                texture_entry(6, TEXTURE),
-            ],
-        });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("taa"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-        let layer_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("taa mist"),
-            entries: &[texture_entry(0, depth_binding()), texture_entry(1, TEXTURE)],
-        });
-        let pipeline_layout = |groups: &[Option<&wgpu::BindGroupLayout>]| {
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("taa"),
-                bind_group_layouts: groups,
-                immediate_size: 0,
-            })
-        };
-        let (plain, mist) = (pipeline_layout(&[Some(&layout)]), pipeline_layout(&[Some(&layout), Some(&layer_layout)]));
+        let layout =
+            gpu_util::layout(device, "taa", &[UNIFORM, TEXTURE, depth_binding(), TEXTURE, FILTERING, TEXTURE, TEXTURE]);
+        let module = gpu_util::shader(device, "taa", SHADER);
+        let layer_layout = gpu_util::layout(device, "taa mist", &[depth_binding(), TEXTURE]);
         let target = Some(wgpu::ColorTargetState::from(SCENE_FORMAT));
-        let pipelines = [("fs_taa", &plain), ("fs_upscale", &plain), ("fs_taa_mist", &mist)].map(|(entry, layout)| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(entry),
-                layout: Some(layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some("vs_full"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    targets: &[target.clone(), target.clone()],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
-        });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("taa"),
-            size: size_of::<Uniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("taa history"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let pipelines =
+            [("fs_taa", vec![&layout]), ("fs_upscale", vec![&layout]), ("fs_taa_mist", vec![&layout, &layer_layout])]
+                .map(|(entry, layouts)| {
+                    let targets = [target.clone(), target.clone()];
+                    gpu_util::full_screen_pipeline(device, entry, &module, ("vs_full", entry), &layouts, &targets, &[])
+                });
+        let uniform = gpu_util::uniform_buffer(device, "taa", size_of::<Uniform>());
+        let sampler = gpu_util::linear_clamp(device, "taa history");
         let targets = targets(device, &layout, &uniform, &sampler, [depth, motion], [size, output]);
         Taa {
             layout,
@@ -245,14 +188,8 @@ impl Taa {
     /// [`Taa::resolve`] lays over the frame; `None` without one.
     pub(crate) fn set_layer(&mut self, device: &wgpu::Device, views: Option<[&wgpu::TextureView; 2]>) {
         self.layer = views.map(|[depth, colour]| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("taa mist"),
-                layout: &self.layer_layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(depth) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(colour) },
-                ],
-            })
+            let resources = [wgpu::BindingResource::TextureView(depth), wgpu::BindingResource::TextureView(colour)];
+            gpu_util::bind_group(device, "taa mist", &self.layer_layout, &resources)
         });
     }
 
@@ -333,7 +270,7 @@ impl Taa {
                 view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations { load: CLEAR, store: wgpu::StoreOp::Store },
             })
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -388,19 +325,17 @@ fn targets(
     // The resolve reads the frame (upscaling, its copy before the effects) and, upscaling, the frame with them.
     let frame = if size == output { &raw_view } else { &opaque_view };
     let groups = [0, 1].map(|read| {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("taa"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(frame) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&history[read]) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(sampler) },
-                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(motion) },
-                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&raw_view) },
-            ],
-        })
+        use wgpu::BindingResource::{Sampler, TextureView};
+        let resources = [
+            uniform.as_entire_binding(),
+            TextureView(frame),
+            TextureView(depth),
+            TextureView(&history[read]),
+            Sampler(sampler),
+            TextureView(motion),
+            TextureView(&raw_view),
+        ];
+        gpu_util::bind_group(device, "taa", layout, &resources)
     });
     Targets { raw, raw_view, opaque, history, groups }
 }
@@ -447,3 +382,11 @@ mod tests {
         assert!((eye - Vec3::new(3.0, 1.0, -2.0)).length() < 1e-3, "{eye}");
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_taa_keeps_the_shaders_layout,
+    SHADER,
+    "Taa",
+    Uniform { view_to_prev, size, output, jitter, params }
+);

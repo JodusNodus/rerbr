@@ -21,6 +21,7 @@ use super::{bounce, cloud_volume, meshes, mirrors, motion, occlusion, probes, re
 use crate::dials;
 use crate::effects::Effects;
 use crate::foliage;
+use crate::gpu_util;
 use crate::parallel::in_parallel;
 use crate::post::{Post, SCENE_FORMAT};
 use crate::puddles;
@@ -101,12 +102,7 @@ impl Renderer {
         let lit = enhance.lighting || enhance.wet || timed;
         let placed_storage = placed_gpu::Storage::new(&device, &stage.placed, enhance.lighting, lit);
         let frames = [(); 3].map(|_| {
-            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("frame"),
-                size: std::mem::size_of::<FrameUniform>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+            let buffer = gpu_util::uniform_buffer(&device, "frame", size_of::<FrameUniform>());
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("frame"),
                 layout: &frame_layout,
@@ -158,11 +154,8 @@ impl Renderer {
             });
             FrameBinding { buffer, bind_group }
         });
-        let shadow_frame = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("shadow frame"),
-            layout: &shadow_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: frames[0].buffer.as_entire_binding() }],
-        });
+        let shadow_frame =
+            gpu_util::bind_group(&device, "shadow frame", &shadow_layout, &[frames[0].buffer.as_entire_binding()]);
 
         let samplers = Samplers::new(&device, if enhance.anisotropy { 16 } else { 1 });
         let mut dial_targets = BTreeMap::new();
@@ -264,10 +257,7 @@ impl Renderer {
         let mut bind_groups = HashMap::new();
         let mut meshes = Vec::new();
         let mut packing = Packing::default();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("stage"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let shader = gpu_util::shader(&device, "stage", SHADER);
         let mask_layout = SunMask::layout(&device);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stage"),

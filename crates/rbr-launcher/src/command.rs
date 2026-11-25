@@ -22,7 +22,7 @@ use rbr_sound::mixer::Volumes;
 use crate::catalog::{self, Car, Stage, TyreChoice};
 use crate::ghosts;
 use crate::graphics_page::{Graphics, Grass, HudChoice, WetRoads, ALWAYS_ON};
-use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
+use crate::settings::{clock_text, wetness_name, Clouds, Fog, Rain};
 use crate::times::Road;
 use crate::{pages::Choice, Form};
 
@@ -47,7 +47,7 @@ pub fn environment_args(
     section: Option<String>,
     fog: Option<Fog>,
     clouds: Option<Clouds>,
-    precipitation: Option<Precipitation>,
+    precipitation: Option<Rain>,
     wetness: Option<u32>,
     ghosted: bool,
 ) -> (Vec<String>, Vec<String>) {
@@ -759,6 +759,7 @@ impl Form {
         let perf_log = perf_log_args(self.perf_log, &self.logs_dir());
         let upscale = (self.upscale_textures && self.upscaler)
             .then(|| ["--upscale-textures".to_owned(), self.upscaler_dir().display().to_string()]);
+        let cache = ["--cache".to_owned(), self.here().join(crate::home::CACHE).display().to_string()];
         // The loading screen names the stage and the car (a school lesson: the lesson and the car).
         let map = match school {
             Some(lesson) => format!("Rally school lesson {}", lesson.index() + 1),
@@ -785,6 +786,7 @@ impl Form {
             .chain(hdr)
             .chain(perf_log)
             .chain(upscale.into_iter().flatten())
+            .chain(cache)
             .chain(title)
             .chain(car_lock);
         args.splice(live..live, viewer_extra);
@@ -1274,7 +1276,7 @@ mod tests {
             Some("54O_E_heavyfog_heavycloud".into()),
             Some(Fog::Heavy),
             Some(Clouds::Partly),
-            Some(Precipitation::None),
+            Some(Rain::None),
             Some(2),
             false,
         );
@@ -1289,7 +1291,7 @@ mod tests {
             Some("54M_norain_partcloud".into()),
             Some(Fog::Off),
             Some(Clouds::Heavy),
-            Some(Precipitation::Heavy),
+            Some(Rain::Heavy),
             Some(0),
             true,
         );
@@ -1409,7 +1411,7 @@ mod tests {
                 weather: Some(WeatherChoice::Row(section.clone())),
                 wetness: Some(wetness),
                 clouds: Some(Clouds::Broken),
-                precipitation: Some(Precipitation::Heavy),
+                precipitation: Some(Rain::Heavy),
                 ..settings.clone()
             };
             let form = Form::new(
@@ -1472,7 +1474,7 @@ mod tests {
         form.weather_row = Some(rows[1].1.clone());
         form.wetness = Some(2);
         form.fog = Some(Fog::Heavy);
-        form.precipitation = Some(Precipitation::Heavy);
+        form.precipitation = Some(Rain::Heavy);
         form.start_time = crate::time_of_day::StartTime::Moment(crate::time_of_day::Moment::Dusk);
         form.wear = 1;
         let split = |args: Vec<String>| {
@@ -1500,10 +1502,10 @@ mod tests {
         assert_eq!(value(&viewer, "--fog").as_deref(), Some("heavy"));
         assert_eq!(value(&viewer, "--clouds").as_deref(), Some("broken"));
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("heavy"));
-        form.precipitation = Some(Precipitation::Moderate);
+        form.precipitation = Some(Rain::Moderate);
         let (viewer, _) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("moderate"));
-        form.precipitation = Some(Precipitation::Heavy);
+        form.precipitation = Some(Rain::Heavy);
         assert_eq!(value(&viewer, "--sun").as_deref(), Some("dusk"));
         assert_eq!(value(&viewer, "--weather").as_deref(), Some("wet"));
         assert_eq!(value(&standalone, "--wetness").as_deref(), Some("wet"));

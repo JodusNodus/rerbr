@@ -91,6 +91,8 @@ pub struct Args {
     /// `--upscale-textures DIR`: the car's and the stage's textures upscaled ([`rbr_render::upscale`]), DIR the
     /// upscaler's folder.
     pub upscale: Option<PathBuf>,
+    /// `--cache DIR`: what the load works out and keeps between loads ([`rbr_render::foliage::use_cache`]).
+    pub cache: Option<PathBuf>,
     /// `--enhance`: renderer additions beyond the game's look; `--mirrors` its mirrors' rate; `--anti-aliasing` the
     /// frame's anti-aliasing; `--reflections` the screen-space reflections; `--detail` the additions' detail.
     pub enhance: Enhance,
@@ -262,7 +264,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off  --hdr
-              --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
+              --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --cache DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --sun best|golden|midday|dusk|night  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
@@ -305,6 +307,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut cracks = Vec::new();
     let mut textures = None;
     let mut upscale = None;
+    let mut cache = None;
     let mut enhance = Enhance::default();
     let mut mirrors = rbr_render::mirrors::Rate::Off;
     let mut anti_aliasing = AntiAliasing::default();
@@ -626,6 +629,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--upscale-textures" => {
                 upscale = Some(PathBuf::from(args.next().ok_or("--upscale-textures needs the upscaler's folder")?));
             }
+            "--cache" => cache = Some(PathBuf::from(args.next().ok_or("--cache needs a folder")?)),
             "--no-sound" => sound = false,
             "--volume" => {
                 let value = args.next().ok_or("--volume needs a number")?;
@@ -812,6 +816,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         cracks,
         textures,
         upscale,
+        cache,
         enhance: Enhance { mirrors, anti_aliasing, reflections, detail, debug_view, ..enhance },
         clock,
         sun,

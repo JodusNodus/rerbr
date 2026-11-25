@@ -119,27 +119,39 @@ saves key on). Nothing of DiRT's text is kept.
 
 Pacenotes. `pacenotes::notes` writes the stage's `pacenotes.ini` from the route's own `_codriver_1_pro_<n>_data.xml`
 (reverse routes have their own file, same convention); a route without calls keeps the converter's notes graded from
-the line. Rallycross has none.
+the line (`notes/btb.md` "Generated pacenotes"). Rallycross has none.
 
 - Distance. A call's `distanceAlongTrack` is metres from the start gate (line start + that), where the codriver
   speaks, ahead of the corner by a speed-dependent lead (matched calls, quartiles: Greece 45 to 100 m, Turini 40 to
   130, Panzerplatte 40 to 150, Vargasen 75 to 140, Hafren 55 to 140, Ouninpohja 100 to 180). A note's distance is
-  where the corner begins, so each corner subcall goes to the next corner of its side on the 2.5 m line (heading
-  rate over 20 m above 1/700 m^-1, cut at valleys under half the peak, at least 8 degrees, at least 0.3 of the angle,
-  starting within 220 m past the call and not ended before it); with none, at the call plus the route's median lead.
-  Matched: 95 % of Ghymno 1 route_0, 60 % of Ouninpohja 1 (fast flat corners), 70 to 95 % elsewhere.
+  where the corner begins. The corner subcalls of a route are aligned with its line's corners as a whole
+  (`pacenotes::align`, order-preserving DP: each corner once, a skip costs 5, the other side 6): corners are bends of
+  the 2.5 m line (heading rate over 20 m above 1/1000 m^-1, at least 5 degrees, cut at valleys under half the peak),
+  plus runs over 60 m above 1/1500 that no bend covers (the fast flat corners; without them Ouninpohja 1 matches 81 %, with them and the pairs 98 %, greedy 68 %). A
+  match costs its lead against the route's (3 s of the speed the line allows at the call, `pacenotes::speeds`, plus an
+  offset and spread learned from the confident matches: the lead correlates 0.5 with that speed, and 3 s takes a route's
+  lead spread from 30 to 26 m; start definitions and detector thresholds changed nothing), the log of turn over angle,
+  and the side. With the side's cost lowered to 2, 99 % of matches still pick the call's side (82 % by the naive sign
+  at the call). What no corner fits goes at the call plus that lead.
+- Link 12 followed by the same side: one corner that tightens, not two (the pair's matched corners tighten more than
+  single calls': tightest after 0.6 of the bend in 47 % against 28 %, first third 1.9 times the tightest radius
+  against 1.3; the corner's turn is near the second angle, 40/53, 30/43, 65/78). One note, graded by the second angle,
+  with the 1.02 tightens flag. This took the notes closer than 15 m from 362 to 38 of 5245.
+  `rbr-dirt-rally pacenotes-eval` prints the match table over every rally route (before, after: matched 85 to 96 %,
+  with the sides flipped 56 to 66 %, median |turn - angle| 9.6 to 9.1 degrees, p90 31 to 26).
 - Subcall type 1 left, 2 right (checked: the sign agrees with the line's turn for 82 % of calls); `angle` is the turn
   in degrees (matched corners turn 17, 30, 46, 60, 75, 102, 166 on average for angles 15, 30, 40, 50, 65, 100, 140).
   DiRT's ladder is 15, 30, 40, 50, 65, 80, 100, 140, 180 (rarely measured values between). Bins to the 1.02 tags
   (left, right): up to 22.5 easy (5, 6), 35 fast (4, 7), 57.5 medium (3, 8), 72.5 K (2, 9), 120 90 (1, 10), over it
-  hairpin (0, 11). The converter's crests and jumps (tags 16, 20; not its corners or flags) are added, except within 20 m of a corner note. A distance key (13) follows each note with 30 m or more before the next, as the converter's.
+  hairpin (0, 11). The converter's crests and jumps (tags 16, 20, fitted on Luppis's: `notes/btb.md`; not its corners or flags) are added, except within 20 m of a corner note. A distance key (13) follows each note with 30 m or more before the next, as the converter's.
 - Type 3: a distance call (alone between corner calls, `distanceLink` grows with the gap to the next corner: median 71 m
   for 3, 109 for 4, 140 for 5); covered by the distance keys. Type 6: the finish call (once per route, 38 to 343 m
   before the finish; the stage's finish key says it). The icon atlas of `b_osd_codriver_a.pssg` lists left/right 1 to 9,
   narrows, widens, water, tightens into, widens into, widens tightens into, stop, dont cut, distance, jump, into, care,
   and, dip, caution; no type table. Left out (no evidence which): types 5 (0 to 5 a route), 7, 8 (four, Hafren), 9, the
   modifiers A (1, 2, 3) and B (3), `distanceLink`, `delay`: none showed a signature on the line (crest or dip, width,
-  corner length, tightening).
+  corner length, tightening); type 9 calls have corners turning 0.67 of their angle (1.05 for plain ones), but they
+  are mostly small angles, so it stays undecoded.
 - Developer: `rbr-dirt-rally pacenotes ROUTE [--line]` lists each call, its subcalls, the note and the corner it went to.
   Unchecked by ear: no recorded drive of a DiRT stage, so no codriver render.
 

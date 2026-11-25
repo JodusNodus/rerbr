@@ -14,6 +14,10 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
 - The windscreen gets a modern water-on-glass system in place of 1.02's screen-fixed `NParticleSystem2D` sprites.
 - macOS (Metal) and Linux (Vulkan), portable code. `shader_check.rs` validates every WGSL module and override set
   through naga to SPIR-V as wgpu's Vulkan backend does. Reversed-edge `smoothstep` is undefined on Metal.
+- The passes make their wgpu objects through `gpu_util` (2026-11-25): full-screen pipelines and passes, 2-D targets,
+  the linear clamped sampler, uniform buffers, compute pipelines, bind groups and layouts numbered from 0; a pass that
+  differs (depth, vertex buffers, sparse bindings, arrays, mips) keeps the long form. 31 files, net -777 lines; the 37
+  reference shots byte-identical.
 - wgpu 30, naga 30, egui 0.37 (2026-10-25, from 27 and 0.33). wgpu 30 checks the fragment stage's sampled textures at
   the pipeline layout (the reflections read 17; `request_gpu` asks the adapter's limit), refuses to reconfigure a
   surface while another thread submits (the loading thread: `present::configure` reports it and the windows try
@@ -1225,6 +1229,8 @@ not ported.
   byte-identical.
 - Side windows (ours): each side window its own glass (drops, trails, film, mud; no wipers, no bugs), drawn on its
   exterior pane; 0.3 of the windscreen's rain and 0.1 of its spray, landing low.
+- The window draws the particles before the glass (2026-11-25, `draw::car_lens` works out the camera first), as the
+  screenshots and the video export do: the glass took the last frame's spray.
 - The pane itself from inside (ours, 2026-10-30, with `windscreen`; kind 6, `pane` in `glass.wgsl`): a cell per film
   cell, drawn over the water (its inner face is nearer the eye; under it, drops hid the cabin's reflection): Schlick
   loss through both faces, a patchy dust film scattering the sun (forward and broad
@@ -1374,6 +1380,9 @@ gathers it along each pixel's blur vector into the post pass's scene. The veloci
 each but the centre weighted by its own vector's length over the centre's, so the car and the cabin stay sharp and
 bleed nothing. The frame's time step is worked out on its first view, so a triple screen's side views blur as the
 centre does. Cost (Gabiria chase): 0.09 ms at 1080p, 0.38 ms at 4K. Off byte-identical (chase, cockpit RMSE 0).
+Each view binds its own TAA's uniform (2026-11-25, `MotionBlur::bind` in `switch_view`): bound once, the triple
+screen's other views blurred by the first view's `view_to_prev` (621 chase, triple: the centre smeared sideways, RMSE
+0.041 against fixed; first frame and single-view shots byte-identical).
 
 Grass levels (2026-11-21, user decision, `grass::Level`, `frame.grass`): the halving falloff (full to 50 m, half every
 25 m, gone by 110 m) read as a front of grass moving with the car (user). The density became the level's share near
@@ -1571,7 +1580,16 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   98% of those it calls plants are. Misses: chain-link and wire (mostly named), bare twigs and dry stalks. At 256
   texels the gaps do not show (9% of plants taken). Retail atlases (tiny dry plants, cacti) failed it: only a stage's
   own textures take it, retail stages unchanged. 394's plant pass +1 s of one thread. 34 shots: 7
-  byte-identical (retail 52 among them), the rest within 0.8% RMSE. Pieces lying flat are no plants (2026-11-18,
+  byte-identical (retail 52 among them), the rest within 0.8% RMSE. Its cost (2026-11-25): 580's load spent 57-63 s
+  (its pieces' 76 799 parts, 26 871 unlike once placed within one copy of the texture, 13.4 G texels; `foliage::plants`
+  345 s on one thread). Parts kept by their place within one copy and made once across threads, the straight runs read
+  from running sums, the areas joined by row runs: 4.2 G texels, `plants` 58 s, the viewer's mesh prepare 63.6 to
+  10.5 s, its load 74 to 23 s; marks equal to the texel-by-texel count (`marks_match_the_texel_by_texel_count`), 580,
+  Odry, Luceram, Semetin, 621 and Gabiria shots byte-identical. The marks are kept on disk between loads (2026-11-25,
+  `foliage::use_cache`, `viewer --cache`; the launcher passes `<files folder>/cache`): a file per texture by the
+  SHA-256 of its tested texels, 25 bytes a part, written again only when a load made new ones; 580 670 KB in 36 files, its mesh
+  prepare 9.4 to 0.9 s and load 21 to 11.5 s on a load seen before, screenshot byte-identical without, cold and warm.
+  Pieces lying flat are no plants (2026-11-18,
   `foliage::FLAT`: no face steeper than about 26 degrees): a converted AC stage's road paint, cut out, was faded
   edge-on and vanished under `lighting` (Riudecanyes, before/after shots); retail stages not re-shot. The edge-on fade is gone for every stage (2026-11-18, user): converted AC hedges and fences are modelled planes along the road, and faded by the angle they came and went as the car passed (Crequy 2025 at 2.3 km, replay re-rendered with `lighting` off: steady). The main view's sun shadow is worked out once per
   pixel before the stage is shaded (PCSS, 3x3 blocker search). Semetin 5.39 to 6.06 ms at 1920x1080 (41M similar,
@@ -2245,10 +2263,15 @@ maximum. Quick with two binaries: about 2.5 to 4 minutes.
   isolated. The probe transitions and missing cloud shadows are fixed above; dry diffuse terrain does not read the
   probes, and the sun stays fixed during a drive (`relight::Clock::atmosphere`).
 - Sky dome and cloud transforms and inputs (`SkyDome.vso` `c41`-`c66`); stage in-scatter not reproduced.
-- Cut-out backdrop strips with black transparent texels (Odry's panoramas) show a dark rim along the ridge: the
-  alpha cut falls where the filtered colour is half black (462 `HOR_1`, `HOR_2`: transparent texels (0, 0, 0)). A fix
-  bleeds the colour into them at load (the textures upload as BCn, so a decode and re-encode) or reads such textures
-  as premultiplied; either changes every cut-out with black transparent texels, trees included.
+- Cut-out backdrop strips (Odry's panoramas): a faint light fringe along the ridge, no dark rim (2026-11-25). Their
+  edge is a band of partly clear texels with their own colour, the photo's sky (462 `HOR_2`, `Hor_11`: alpha 1-60 at
+  level 186-194, the opaque ridge 60-69); the cut at 60/255 falls in it and the black clear texels lie beyond it.
+  Tried and dropped (2026-11-25): filling the clear black texels from the kept ones at load and remaking the mips
+  (Godot's `fix_alpha_border`; 30-185 ms a stage): backdrops on 462 and 138 about 3 pixels changed per 1080p frame;
+  applied to every cut-out (trees, fences), golden-odry and golden-580 RMSE 0.9 % but no difference by eye (the
+  re-encode and the upscaler's new input, spread over whole textures), Semetin and 52 none. Clear texels within 2 of an
+  edge are black on 0 % of 621's, 532's and 417's cut-outs, 1 % of 176's and 41's, 16-21 % of 580's and Odry's; DXT1
+  cut-outs (most of retail's, 38 of 580's 87) are black there by their format and would need DXT5.
   Cut-out textures (2026-11-11, `examples/cutout_survey.rs`, by triangles drawn): most are DXT3 or DXT5 with a
   smooth alpha (7 to 17% of texels neither 0 nor 255); the clear texels are black on 0 to 2% of 621's and 532's,
   10 to 19% of 450's and 580's, 25% of Semetin's, 38 to 53% of Odry's, 25 to 40% of retail 41's and 52's DXT3.

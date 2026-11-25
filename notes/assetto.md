@@ -910,3 +910,10 @@ Evidence: the compiled AC shaders (`system/shaders/win/*_ps.fxo`, disassembled w
   `rbr-ac-tracks ac --track <joux_verte_2020_2024> --layout joux_verte_SS7_2020 --name AC_Joux_Verte_SS7_2020_reverse
   --reverse-ai --remesh --collision-corridor 25`, launcher id 1996319; `track.ini`'s name takes ` [reverse]` by hand (it
   would otherwise equal the forward layout's). The `day-joux-verte-celica-chase` reference shot is on it.
+
+## Pacenotes, 2026-11-25
+
+- Imports write the notes of the shared generator, refit against Luppis V3's notes (`notes/btb.md`, "Generated pacenotes"):
+  more corners (a gentle bend that turns 15 degrees over 100 m is called), graded by radius over the root of the turn,
+  fewer crests (a fifth of the old count). On Gabiria Legazpi 2004 (Spot check, first 20 notes): the same 70 notes
+  by count, grades one step tighter on a third of them. Stages imported before keep their notes until re-imported.

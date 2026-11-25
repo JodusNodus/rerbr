@@ -7,6 +7,7 @@ use glam::Mat4;
 use wgpu::util::DeviceExt;
 
 use crate::atmosphere::Atmosphere;
+use crate::gpu_util;
 use crate::uploads::Uploads;
 
 /// One drop, flake or bug on the glass: its centre and half axes in stage space, its kind (0 water, 1 snow, 2 bug,
@@ -114,18 +115,8 @@ const HALF_FILM_FROM: u32 = 1800;
 
 /// A colour target of `format` and `size` that the glass reads.
 fn half_target(device: &wgpu::Device, format: wgpu::TextureFormat, size: (u32, u32)) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("glass film, half size"),
-            size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    gpu_util::target(device, "glass film, half size", size, format, usage)
 }
 
 /// Which of [`PIPELINES`] draws a drop of `kind`: the film's cells (4), the panes' cells (6), the rest.
@@ -256,16 +247,8 @@ impl Pass {
             compare: Some(wgpu::CompareFunction::LessEqual),
             ..Default::default()
         });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("glass frame"),
-            size: std::mem::size_of::<FrameUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("glass"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let uniform = gpu_util::uniform_buffer(device, "glass frame", size_of::<FrameUniform>());
+        let shader = gpu_util::shader(device, "glass", SHADER);
         let premultiplied = wgpu::BlendComponent {
             src_factor: wgpu::BlendFactor::One,
             dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
@@ -320,12 +303,7 @@ impl Pass {
         // The film's cells at half size are drawn whole, under what hides them; `fs_film_half` lays them over the
         // frame through their quads at full size, depth tested.
         let half_film = pipeline("fs_film", None);
-        let half_uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("glass frame, half size"),
-            size: std::mem::size_of::<FrameUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let half_uniform = gpu_util::uniform_buffer(device, "glass frame, half size", size_of::<FrameUniform>());
         let no_half = half_target(device, format, (1, 1));
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass drops"),
@@ -442,20 +420,11 @@ impl Pass {
         size: (u32, u32),
     ) -> &wgpu::TextureView {
         if self.scene.as_ref().is_none_or(|(s, _)| *s != size) {
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("glass resolved frame"),
-                size: wgpu::Extent3d { width: size.0.max(1), height: size.1.max(1), depth_or_array_layers: 1 },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                // Copied from when the frame has one sample (`Renderer::over_attachment`).
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_SRC,
-                view_formats: &[],
-            });
-            self.scene = Some((size, texture.create_view(&Default::default())));
+            // Copied from when the frame has one sample (`Renderer::over_attachment`).
+            let usage = wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC;
+            self.scene = Some((size, gpu_util::target(device, "glass resolved frame", size, format, usage)));
         }
         &self.scene.as_ref().expect("made above").1
     }
@@ -475,20 +444,18 @@ impl Pass {
         (images, views): (&wgpu::TextureView, &wgpu::Buffer),
         half: &wgpu::TextureView,
     ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("glass"),
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(scene) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&self.sun_map) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&self.sun_sampler) },
-                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(images) },
-                wgpu::BindGroupEntry { binding: 6, resource: views.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(half) },
-            ],
-        })
+        use wgpu::BindingResource::{Sampler, TextureView};
+        let resources = [
+            uniform.as_entire_binding(),
+            TextureView(scene),
+            Sampler(&self.sampler),
+            TextureView(&self.sun_map),
+            Sampler(&self.sun_sampler),
+            TextureView(images),
+            views.as_entire_binding(),
+            TextureView(half),
+        ];
+        gpu_util::bind_group(device, "glass", &self.layout, &resources)
     }
 
     /// Draws the film's cells at half size ([`HALF_FILM_FROM`]) when the frame does, before [`Pass::draw`] lays them
@@ -503,22 +470,8 @@ impl Pass {
         let Some((_, target)) = self.half.as_ref().filter(|_| self.halved && self.count > 0) else {
             return;
         };
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("glass film, half size"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
+        let load = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+        let mut pass = gpu_util::colour_pass(encoder, "glass film, half size", target, load);
         pass.set_pipeline(&self.half_film);
         pass.set_bind_group(0, &self.group(device, &self.half_uniform, scene, mirrors, &self.no_half), &[]);
         pass.set_vertex_buffer(0, self.instances.slice(..));
@@ -550,3 +503,11 @@ impl Pass {
         }
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_glass_frame_keeps_the_shaders_layout,
+    SHADER,
+    "Frame",
+    FrameUniform { view_projection, screen, light, night, outside, eye, sun, sun_light, wipers.wipers, wipers.strokes, wipers.wiping, wipers.film, sun_matrix, shadow }
+);

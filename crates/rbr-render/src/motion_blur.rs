@@ -9,8 +9,9 @@
 
 use bytemuck::{Pod, Zeroable};
 
+use crate::gpu_util::{self, CLEAR, FILTERING, UNIFORM};
 use crate::post::SCENE_FORMAT;
-use crate::renderer::{depth_binding, texture_entry, TEXTURE};
+use crate::renderer::{depth_binding, TEXTURE};
 
 pub(crate) const SHADER: &str = include_str!("motion_blur.wgsl");
 /// The exposure time each frame's motion blurs over, seconds.
@@ -54,74 +55,21 @@ impl MotionBlur {
         motion: &wgpu::TextureView,
         depth: &wgpu::TextureView,
     ) -> MotionBlur {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("motion blur"),
-            entries: &[
-                texture_entry(
-                    0,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
-                texture_entry(1, TEXTURE),
-                texture_entry(2, depth_binding()),
-                texture_entry(3, TEXTURE),
-                texture_entry(4, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
-                texture_entry(
-                    5,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                ),
-            ],
-        });
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("motion blur"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("motion blur"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("motion blur"),
-                bind_group_layouts: &[Some(&layout)],
-                immediate_size: 0,
-            })),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_full"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: Default::default(),
-            depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs_blur"),
-                compilation_options: Default::default(),
-                targets: &[Some(SCENE_FORMAT.into())],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("motion blur"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let params = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("motion blur"),
-            size: size_of::<Params>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let layout =
+            gpu_util::layout(device, "motion blur", &[UNIFORM, TEXTURE, depth_binding(), TEXTURE, FILTERING, UNIFORM]);
+        let module = gpu_util::shader(device, "motion blur", SHADER);
+        let targets = [Some(SCENE_FORMAT.into())];
+        let pipeline = gpu_util::full_screen_pipeline(
+            device,
+            "motion blur",
+            &module,
+            ("vs_full", "fs_blur"),
+            &[&layout],
+            &targets,
+            &[],
+        );
+        let sampler = gpu_util::linear_clamp(device, "motion blur");
+        let params = gpu_util::uniform_buffer(device, "motion blur", size_of::<Params>());
         let target = target(device, size);
         let group = group(device, &layout, &sampler, &params, uniform, &target, motion, depth);
         MotionBlur { layout, pipeline, sampler, params, target, group, previous: None, frame: 0 }
@@ -144,9 +92,21 @@ impl MotionBlur {
         depth: &wgpu::TextureView,
     ) {
         self.target = target(device, size);
-        self.group = group(device, &self.layout, &self.sampler, &self.params, uniform, &self.target, motion, depth);
+        self.bind(device, uniform, motion, depth);
         // A new target must not carry the old frame's motion: the strength restarts with no previous frame.
         self.previous = None;
+    }
+
+    /// Reads the drawn view's temporal anti-aliasing's `uniform` (each view of a triple screen has its own, with its
+    /// own `view_to_prev` and history reset), the frame's `motion` and `depth`.
+    pub(crate) fn bind(
+        &mut self,
+        device: &wgpu::Device,
+        uniform: &wgpu::Buffer,
+        motion: &wgpu::TextureView,
+        depth: &wgpu::TextureView,
+    ) {
+        self.group = group(device, &self.layout, &self.sampler, &self.params, uniform, &self.target, motion, depth);
     }
 
     /// Gathers [`MotionBlur::target`] along each pixel's blur vector into `scene` (the post pass's): `time` is the
@@ -176,36 +136,14 @@ impl MotionBlur {
                 bytemuck::bytes_of(&Params { scale, frame: self.frame as f32, pad: [0.0; 2] }),
             );
         }
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("motion blur"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: scene,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
-            })],
-            ..Default::default()
-        });
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.group, &[]);
-        pass.draw(0..3, 0..1);
+        gpu_util::full_screen_pass(encoder, "motion blur", scene, CLEAR, &self.pipeline, &[&self.group]);
     }
 }
 
 /// The resolve's target of `size` ([`SCENE_FORMAT`]: the post pass's scene's format).
-fn target(device: &wgpu::Device, (width, height): (u32, u32)) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("motion blur scene"),
-            size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: SCENE_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default())
+fn target(device: &wgpu::Device, size: (u32, u32)) -> wgpu::TextureView {
+    let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+    gpu_util::target(device, "motion blur scene", size, SCENE_FORMAT, usage)
 }
 
 /// The bind group reading the temporal anti-aliasing's `uniform`, the resolve's `target` (as the scene), the frame's
@@ -221,16 +159,14 @@ fn group(
     motion: &wgpu::TextureView,
     depth: &wgpu::TextureView,
 ) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("motion blur"),
-        layout,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(target) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
-            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(motion) },
-            wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(sampler) },
-            wgpu::BindGroupEntry { binding: 5, resource: params.as_entire_binding() },
-        ],
-    })
+    use wgpu::BindingResource::{Sampler, TextureView};
+    let resources = [
+        uniform.as_entire_binding(),
+        TextureView(target),
+        TextureView(depth),
+        TextureView(motion),
+        Sampler(sampler),
+        params.as_entire_binding(),
+    ];
+    gpu_util::bind_group(device, "motion blur", layout, &resources)
 }

@@ -9,8 +9,9 @@
 //! headlights' beams in the fog.
 
 use crate::atmosphere::Atmosphere;
+use crate::gpu_util::{self, CLEAR, UNIFORM};
 use crate::post::SCENE_FORMAT;
-use crate::renderer::{LampUniform, MAX_LAMPS};
+use crate::renderer::{texture_entry, LampUniform, MAX_LAMPS};
 use bytemuck::{bytes_of, Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
@@ -177,12 +178,7 @@ impl LightShafts {
         sun_map: &wgpu::TextureView,
         cloud_map: &wgpu::TextureView,
     ) -> LightShafts {
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("light shafts"),
-            size: size_of::<Uniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let uniform = gpu_util::uniform_buffer(device, "light shafts", size_of::<Uniform>());
         let sun_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("light shafts sun"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -190,16 +186,8 @@ impl LightShafts {
             compare: Some(wgpu::CompareFunction::LessEqual),
             ..Default::default()
         });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("light shafts"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("light shafts"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let sampler = gpu_util::linear_clamp(device, "light shafts");
+        let shader = gpu_util::shader(device, "light shafts", SHADER);
         let texture = |binding, sample_type, view_dimension| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -218,16 +206,7 @@ impl LightShafts {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("light shafts"),
             entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
+                texture_entry(0, UNIFORM),
                 texture(2, wgpu::TextureSampleType::Float { filterable: true }, wgpu::TextureViewDimension::D2),
                 texture(3, wgpu::TextureSampleType::Depth, wgpu::TextureViewDimension::D2),
                 texture(4, unfiltered, wgpu::TextureViewDimension::D2),
@@ -237,39 +216,15 @@ impl LightShafts {
                 sampler_entry(8, wgpu::SamplerBindingType::Filtering),
             ],
         });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("light shafts"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
-        });
+        let colour = [Some(wgpu::ColorTargetState {
+            format: SCENE_FORMAT,
+            blend: None,
+            // The march and the beams keep their depth in alpha (`shafts_at` in `post.wgsl`); the blur
+            // keeps its map's, averaged with the light.
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
         let pipelines = ["fs_march", "fs_blur", "fs_beams"].map(|entry| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(entry),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_full"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: SCENE_FORMAT,
-                        blend: None,
-                        // The march and the beams keep their depth in alpha (`shafts_at` in `post.wgsl`); the blur
-                        // keeps its map's, averaged with the light.
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
+            gpu_util::full_screen_pipeline(device, entry, &shader, ("vs_full", entry), &[&layout], &colour, &[])
         });
         let inputs = Inputs { layout, sun_map: sun_map.clone(), cloud_map: cloud_map.clone(), sun_sampler, sampler };
         let targets = targets(device, &uniform, &inputs, scene, size, depth);
@@ -307,14 +262,14 @@ impl LightShafts {
                 ..Zeroable::zeroed()
             };
             queue.write_buffer(&self.uniform, 0, bytes_of(&uniform));
-            let mut pass = cleared(encoder, shafts);
+            let mut pass = gpu_util::colour_pass(encoder, "light shafts", shafts, CLEAR);
             pass.set_pipeline(&self.pipelines[2]);
             pass.set_bind_group(0, &self.targets.groups[2], &[]);
             pass.draw(0..3, 0..1);
             return;
         }
         let Some(sun) = sun else {
-            cleared(encoder, shafts);
+            gpu_util::colour_pass(encoder, "light shafts", shafts, CLEAR);
             return;
         };
         let mist_sky = MIST_SKY[usize::from(sun.fog_volume)];
@@ -334,26 +289,12 @@ impl LightShafts {
         for ((pipeline, group), target) in
             self.pipelines.iter().zip(&self.targets.groups).zip([&self.targets.march, shafts])
         {
-            let mut pass = cleared(encoder, target);
+            let mut pass = gpu_util::colour_pass(encoder, "light shafts", target, CLEAR);
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, group, &[]);
             pass.draw(0..3, 0..1);
         }
     }
-}
-
-/// A pass that clears `target` to black and draws into it.
-fn cleared<'a>(encoder: &'a mut wgpu::CommandEncoder, target: &wgpu::TextureView) -> wgpu::RenderPass<'a> {
-    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("light shafts"),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: target,
-            depth_slice: None,
-            resolve_target: None,
-            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
-        })],
-        ..Default::default()
-    })
 }
 
 fn targets(
@@ -364,23 +305,10 @@ fn targets(
     (width, height): (u32, u32),
     depth: &wgpu::TextureView,
 ) -> Targets {
-    let map = |label, (width, height), usage| {
-        device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: SCENE_FORMAT,
-                usage,
-                view_formats: &[],
-            })
-            .create_view(&Default::default())
-    };
+    let map = |label, size, usage| gpu_util::target(device, label, size, SCENE_FORMAT, usage);
     let march = map(
         "light shafts",
-        (width.div_ceil(4).max(1), height.div_ceil(4).max(1)),
+        (width.div_ceil(4), height.div_ceil(4)),
         wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
     );
     // The march writes its map while bound, so its unused map binding takes a dummy (the blur and the beams read
@@ -464,3 +392,13 @@ mod tests {
         assert_eq!(air(&fogged), 1.0 / 400.0);
     }
 }
+
+#[cfg(test)]
+#[rustfmt::skip]
+crate::shader_check::wgsl_layout!(
+    the_light_shafts_keeps_the_shaders_layout, SHADER, "Shafts",
+    Uniform {
+        inverse_view_projection, eye, march_dir, march_light, march_glow, march_fog, march_splits,
+        march_matrices, march_clouds, lamps, lamp_matrix
+    }
+);

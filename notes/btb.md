@@ -61,6 +61,39 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 - A missing map or row reads zeros (no oracle for the uncached folders with missing rows: `Pirttikulma` MAP14,
   `Sarvana`'s empty second MAP24, `Pirttikulma snow` data12 rows).
 
+## Generated pacenotes (2026-11-25)
+
+`rbr_btb_writer::pacenotes::notes` (AC imports, DR routes without calls, DR's crests and jumps) is fitted against
+Luppis V3's notes: `Rules` holds the constants, `corners`/`crests` the detection, `notes_with` the calling. Fit data:
+the RSF install's classic stages (driveline of the `.trk`, resampled to 2.5 m with a Hermite spline: the classic lines
+are 7 to 25 m apart, the generator wants 2.5) and BTB stages with a LuppisV3 file in MyPacenotes (name match only):
+317 stages, 299 after dropping 18 whose notes were made for another line (a permissive detection finds under 80 % of
+their corners); fitted on 239 (4/5 of them by order), evaluated on 60. A human corner is a note whose 1.02 stand-in
+(`type`, or the `type` word when `flag` has 0x4000) is a corner tag 0-11, 25, 26; crests 16, jumps 20; flags are read
+from the note and the modifier notes within 1.5 m (`TIGHTENS*`, `LONG`, `VERY_LONG`...). A match is within 30 m on the
+same side.
+
+- Placement: Luppis puts a call where the curvature first reaches 0.4 of the corner's peak (at half the peak the human
+  call lies 2 m before it, MAD 6 m; from the corner's start 9 m after, MAD 8 m; DR's own convention is the start).
+- Corners: runs of curvature over 1/900 m cut at valleys under 0.25 of the peak, at least `2.6 * R^0.57` m long (R the
+  tightest radius, 20 m window) and 3.5 degrees. Held-out: corner recall 76 to 86 %, precision 80 to 82 %, count ratio
+  1.05 (the old 400 m, 15 degree rule on the same lines: 76 %, 80 %, 0.96).
+- Grade by `R / sqrt(turn degrees)` up to 1.3, 3.3, 7.7, 17.5, 31, 150 (hairpin, 90, K, medium, fast, easy; flat above):
+  exact 44.5 to 50.7 %, within one grade 89.6 to 91.9 %. Radius alone fits 50 %, adding the turn 52 %; entry speed
+  from a lateral-grip profile, run length and a short-window radius add nothing (a 53 % ceiling on the matched
+  corners: Luppis grades by eye).
+- `long`: grade K to fast, cut from a run of 90 m or more: precision 36 %, recall 62 % (base rate 14 %; AUC 0.84 on
+  radius, turn and length). `tightens`: tightest radius 20 to 130 m, 45 degrees or more, entry radius 1.2 times the
+  tightest, tightest after 0.4 of the length: precision 39 %, recall 38 % (base rate 19 %; AUC 0.73: curvature alone
+  does not say where a codriver tightens; without the shape conditions recall is 59 %, precision 35 %). `cut`/`dont
+  cut` (4 and 7 % of corners) are not generated: nothing in the line separated them.
+- Crests: convex runs under 370 m lifting the car 0.5 g at the profile's speed, jumps from 0.9 g: crest or jump found
+  38 % at precision 27 % (from 73 % and 9 %: the old rule called 7 times Luppis's count), jumps alone 33 % and 37 %. Human crests and jumps are sparse (1.5 per stage) and the height profile says little about which
+  are called; the rest is not recoverable from the line.
+- DiRT Rally's calls (72 routes, 4970 corner notes): the generator finds 75 % of them (72 % before) at precision 84 %
+  (91 %), 98.6 % of them on the call's side; DR's calls are fewer than Luppis's, so precision falls as recall rises.
+  Routes with calls keep DR's corners; only crests and jumps come from here.
+
 ## Collision
 
 `rbr_btb::col::build(track)` writes `CACHE/col.col` byte for byte (19 of 19 cached folders, `tests/col.rs`; 0.2 to 1.9 s per

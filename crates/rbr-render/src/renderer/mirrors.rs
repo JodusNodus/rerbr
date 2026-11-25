@@ -4,6 +4,7 @@
 use super::frame::{mark, span, View};
 use super::textures::depth_view;
 use super::Renderer;
+use crate::gpu_util;
 use crate::mirrors::{self, Placed, Rate, MOST, MOST_MIRRORS};
 use crate::post::SCENE_FORMAT;
 use crate::profile::Profiler;
@@ -96,12 +97,7 @@ impl Mirrors {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
-        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("mirror views"),
-            size: std::mem::size_of::<[ViewUniform; LAYERS]>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let uniform = gpu_util::uniform_buffer(device, "mirror views", size_of::<[ViewUniform; LAYERS]>());
         Mirrors {
             rate,
             windscreen_on,
@@ -312,3 +308,11 @@ impl Renderer {
         }
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_mirror_view_keeps_the_shaders_layout,
+    crate::renderer::SHADER,
+    "MirrorView",
+    ViewUniform { view_projection, scale }
+);

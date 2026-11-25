@@ -36,7 +36,8 @@ mod form;
 mod weather;
 
 pub use form::{load, or_folder, read_settings};
-pub use weather::{parse_wetness, wetness_name, Clouds, Fog, Precipitation, WeatherChoice};
+pub use rbr_render::atmosphere::{Clouds, Fog, Rain};
+pub use weather::{parse_wetness, wetness_name, WeatherChoice, CLOUDS, FOGS, RAINS};
 
 const DEFAULT_SIZE: (u32, u32) = (1280, 720);
 
@@ -88,7 +89,7 @@ pub struct Settings {
     /// Our cloud cover over the stage; none takes it from the weather.
     pub clouds: Option<Clouds>,
     /// Our rain or snow over the stage; none takes it from the weather.
-    pub precipitation: Option<Precipitation>,
+    pub precipitation: Option<Rain>,
     pub wear: Option<u32>,
     pub tyre: Option<TyreChoice>,
     pub size: Option<(u32, u32)>,
@@ -683,7 +684,7 @@ mod tests {
             wetness: Some(2),
             fog: Some(Fog::Heavy),
             clouds: Some(Clouds::Partly),
-            precipitation: Some(Precipitation::Moderate),
+            precipitation: Some(Rain::Moderate),
             wear: Some(2),
             tyre: Some(TyreChoice::Fixed(5)),
             size: Some((1920, 1080)),
@@ -924,10 +925,10 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nfog = light\n").fog, Some(Fog::Light));
         assert_eq!(
             (Settings::parse(&text).clouds, Settings::parse(&text).precipitation),
-            (Some(Clouds::Partly), Some(Precipitation::Moderate))
+            (Some(Clouds::Partly), Some(Rain::Moderate))
         );
         assert_eq!(Settings::parse("[launcher]\nclouds = storm\nprecipitation = hail\n").clouds, None);
-        assert_eq!(Settings::parse("[launcher]\nprecipitation = none\n").precipitation, Some(Precipitation::None));
+        assert_eq!(Settings::parse("[launcher]\nprecipitation = none\n").precipitation, Some(Rain::None));
         assert_eq!(Settings::parse("[launcher]\nghost = best\n").ghost, Some(GhostChoice::Best));
         let best = Path::new("/l").join("ghosts").join("Best_54.ghc");
         let args = GhostChoice::Best.viewer_args(Path::new("/l"), &best, &Default::default());

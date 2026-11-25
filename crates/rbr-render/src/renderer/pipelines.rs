@@ -6,6 +6,7 @@ use super::textures::{lit_class, DrawFeatures};
 use super::uniforms::frame_index;
 use super::DEPTH_FORMAT;
 use crate::coords::FRONT_FACE;
+use crate::gpu_util::{FILTERING, UNIFORM};
 use crate::stage::{Anchor, DrawState, Layer, Vertex};
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
@@ -556,11 +557,7 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
     let frame_entry = wgpu::BindGroupLayoutEntry {
         binding: 0,
         visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Uniform,
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
+        ty: UNIFORM,
         count: None,
     };
     let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -589,7 +586,7 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
                     multisampled: false,
                 },
             ),
-            texture_entry(4, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+            texture_entry(4, FILTERING),
             wgpu::BindGroupLayoutEntry {
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ..texture_entry(
@@ -645,14 +642,7 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
                     multisampled: false,
                 },
             ),
-            texture_entry(
-                13,
-                wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-            ),
+            texture_entry(13, UNIFORM),
             // The ground's light seen from above and each grid cell's tile (`renderer::bounce::Ground`).
             texture_entry(
                 14,
@@ -707,7 +697,7 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
             wgpu::BindGroupLayoutEntry {
                 binding: 20,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ty: FILTERING,
                 count: None,
             },
             // The instanced meshes' baked ambient, a record per placed vertex, and their crowns, one per placement
@@ -743,19 +733,9 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
         entries: &[
             texture_entry(0, TEXTURE),
             texture_entry(1, TEXTURE),
-            texture_entry(2, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+            texture_entry(2, FILTERING),
             // The mode is read by the vertex stage too (the sun's cascades leave out the grass, `vs_sun`).
-            wgpu::BindGroupLayoutEntry {
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ..texture_entry(
-                    3,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                )
-            },
+            wgpu::BindGroupLayoutEntry { visibility: wgpu::ShaderStages::VERTEX_FRAGMENT, ..texture_entry(3, UNIFORM) },
             texture_entry(4, TEXTURE),
             texture_entry(5, TEXTURE),
             texture_entry(6, TEXTURE),

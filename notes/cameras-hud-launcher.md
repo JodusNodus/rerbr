@@ -544,6 +544,8 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
   only with `lighting` (`viewer`: the grass level and lighting): "Grass by the road" is greyed out while lighting is off,
   its saved value kept.
 - `perf_log` defaults off; on, the viewer logs with `viewer --perf-log <files folder>/logs` (`home::LOGS`, shown on the Graphics page).
+- Every viewer start takes `--cache <files folder>/cache` (`home::CACHE`): the foliage shape test's marks kept between
+  loads (`notes/renderer.md`, vegetation).
 - `present` (`viewer --present`) defaults to mailbox, vsync on macOS: Metal has vsync or immediate only, so the launcher
   offers those two there (`Present::OFFERED`) and shows a saved mailbox as vsync (2026-11-02). `max_fps` (`viewer
   --max-fps`, one of `FRAME_CAPS`, 0 none) is the Frame cap: uncapped held at the display's rate.

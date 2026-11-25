@@ -6,6 +6,7 @@
 //! texel (0.3 ms a frame at 1080p on Semetin's 3.4 million vertices): with it the baked map is not used at all, so the
 //! shadows follow any sun.
 
+use crate::gpu_util;
 use crate::renderer::{Detail, Enhance};
 use crate::stage::{Mesh, Vertex};
 use bytemuck::{bytes_of, Pod, Zeroable};
@@ -121,18 +122,8 @@ struct Coarse {
 
 impl Coarse {
     fn new(device: &wgpu::Device, size: u32) -> Coarse {
-        let view = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("sun shadow (coarse)"),
-                size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: DEPTH_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            })
-            .create_view(&Default::default());
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let view = gpu_util::target(device, "sun shadow (coarse)", (size, size), DEPTH_FORMAT, usage);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("sun shadow (coarse)"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -151,10 +142,7 @@ impl Coarse {
             layout: &layout,
             entries: &[wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) }],
         });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("sun shadow (coarse)"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let shader = gpu_util::shader(device, "sun shadow (coarse)", SHADER);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sun shadow (coarse)"),
             bind_group_layouts: &[Some(&layout)],
@@ -244,30 +232,13 @@ impl SunShadow {
                 count: None,
             }],
         });
-        let uniforms: Vec<wgpu::Buffer> = (0..count)
-            .map(|_| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("sun cascade"),
-                    size: std::mem::size_of::<Uniform>() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                })
-            })
-            .collect();
+        let uniforms: Vec<wgpu::Buffer> =
+            (0..count).map(|_| gpu_util::uniform_buffer(device, "sun cascade", size_of::<Uniform>())).collect();
         let groups = uniforms
             .iter()
-            .map(|uniform| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("sun cascade"),
-                    layout: &layout,
-                    entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() }],
-                })
-            })
+            .map(|uniform| gpu_util::bind_group(device, "sun cascade", &layout, &[uniform.as_entire_binding()]))
             .collect();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("sun shadow"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let shader = gpu_util::shader(device, "sun shadow", SHADER);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sun shadow"),
             bind_group_layouts: &[Some(&layout), Some(texture_layout)],
@@ -625,3 +596,11 @@ mod tests {
         assert_eq!(due(300.0), [true; 3]);
     }
 }
+
+#[cfg(test)]
+crate::shader_check::wgsl_layout!(
+    the_sun_cascade_keeps_the_shaders_layout,
+    SHADER,
+    "Cascade",
+    Uniform { matrix, drop }
+);

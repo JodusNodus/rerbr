@@ -601,3 +601,9 @@ fn with_row(m: Mat4, i: usize, row: Vec4) -> Mat4 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn the_mirror_count_is_the_shaders() {
+    assert_eq!(crate::shader_check::wgsl_const(crate::renderer::SHADER, "MIRROR_COUNT"), MOST_MIRRORS as f64);
+}

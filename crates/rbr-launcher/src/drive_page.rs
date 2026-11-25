@@ -12,7 +12,7 @@ use crate::catalog::{self, TyreChoice};
 use crate::ghosts::{self, GhostChoice};
 use crate::kit::{self, Rows};
 use crate::pages::{combo, Choice, Issue, Page};
-use crate::settings::{Clouds, Fog, Precipitation, SEQUENTIAL};
+use crate::settings::{Clouds, Fog, Rain, CLOUDS, FOGS, RAINS, SEQUENTIAL};
 use crate::stage_browser::{self, Action, StageRow};
 use crate::theme::{self, ERROR, LINE, PANEL, TEXT, TEXT_2, TEXT_3, TEXT_LABEL, WARN};
 use crate::time_of_day::{self, StartTime};
@@ -37,12 +37,12 @@ struct Look {
     /// The name on a snow stage, where it snows.
     snowy: &'static str,
     clouds: Clouds,
-    rain: Precipitation,
+    rain: Rain,
     fog: Fog,
     wetness: u32,
 }
 
-const fn look(names: [&'static str; 2], clouds: Clouds, rain: Precipitation, fog: Fog, wetness: u32) -> Look {
+const fn look(names: [&'static str; 2], clouds: Clouds, rain: Rain, fog: Fog, wetness: u32) -> Look {
     Look { name: names[0], snowy: names[1], clouds, rain, fog, wetness }
 }
 
@@ -58,13 +58,13 @@ impl Look {
 
 /// The Custom weather's looks, the second ([`Form::apply_look`]) the one Custom starts on.
 const LOOKS: [Look; 7] = [
-    look(["Sunny"; 2], Clouds::Clear, Precipitation::None, Fog::Off, 0),
-    look(["Fair"; 2], Clouds::Partly, Precipitation::None, Fog::Off, 0),
-    look(["Cloudy"; 2], Clouds::Broken, Precipitation::None, Fog::Off, 0),
-    look(["Overcast"; 2], Clouds::Heavy, Precipitation::None, Fog::Off, 0),
-    look(["Drizzle", "Flurries"], Clouds::Heavy, Precipitation::Light, Fog::Light, 1),
-    look(["Rain", "Snow"], Clouds::Heavy, Precipitation::Heavy, Fog::Off, 2),
-    look(["Foggy"; 2], Clouds::Broken, Precipitation::None, Fog::Heavy, 1),
+    look(["Sunny"; 2], Clouds::Clear, Rain::None, Fog::Off, 0),
+    look(["Fair"; 2], Clouds::Partly, Rain::None, Fog::Off, 0),
+    look(["Cloudy"; 2], Clouds::Broken, Rain::None, Fog::Off, 0),
+    look(["Overcast"; 2], Clouds::Heavy, Rain::None, Fog::Off, 0),
+    look(["Drizzle", "Flurries"], Clouds::Heavy, Rain::Light, Fog::Light, 1),
+    look(["Rain", "Snow"], Clouds::Heavy, Rain::Heavy, Fog::Off, 2),
+    look(["Foggy"; 2], Clouds::Broken, Rain::None, Fog::Heavy, 1),
 ];
 
 impl Form {
@@ -83,7 +83,7 @@ impl Form {
         look.map(|l| l.name(self.snowy()))
     }
 
-    /// Whether what falls is snow: a snow stage's (the viewer's emitter, `Precipitation::chosen`).
+    /// Whether what falls is snow: a snow stage's (the viewer's emitter, `Rain::chosen`).
     fn snowy(&self) -> bool {
         self.catalog.maps[self.map].surface() == 2
     }
@@ -94,7 +94,7 @@ impl Form {
         self.start_time = StartTime::default();
         self.weather_adjust = adjust;
         if adjust {
-            self.precipitation = Some(Precipitation::Light);
+            self.precipitation = Some(Rain::Light);
         }
     }
 }
@@ -520,7 +520,7 @@ impl Form {
             rows.hint(&format!("over the stage's {base} weather"));
             if self.weather_adjust {
                 labelled(rows, "Clouds", "", |ui| {
-                    combo(ui, "clouds", DROPDOWN, &mut self.clouds, &Clouds::ALL.map(Some), |clouds| {
+                    combo(ui, "clouds", DROPDOWN, &mut self.clouds, &CLOUDS.map(Some), |clouds| {
                         clouds.map_or("Clear", Clouds::label)
                     });
                 });
@@ -530,21 +530,14 @@ impl Form {
                     ("Rain", "What falls and is heard; snow on a snow stage")
                 };
                 labelled(rows, falls, tip, |ui| {
-                    combo(
-                        ui,
-                        "precipitation",
-                        DROPDOWN,
-                        &mut self.precipitation,
-                        &Precipitation::ALL.map(Some),
-                        |rain| rain.unwrap_or(Precipitation::None).label(),
-                    );
+                    combo(ui, "precipitation", DROPDOWN, &mut self.precipitation, &RAINS.map(Some), |rain| {
+                        rain.unwrap_or(Rain::None).label()
+                    });
                 });
                 let tip = "Ours, over any weather (needs the Sky addition in Graphics), not the game's: off, light, \
                            moderate or heavy";
                 labelled(rows, "Fog", tip, |ui| {
-                    combo(ui, "fog", DROPDOWN, &mut self.fog, &Fog::ALL.map(Some), |fog| {
-                        fog.unwrap_or(Fog::Off).label()
-                    });
+                    combo(ui, "fog", DROPDOWN, &mut self.fog, &FOGS.map(Some), |fog| fog.unwrap_or(Fog::Off).label());
                 });
             }
         } else {
