@@ -1321,7 +1321,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (DEBUG_VIEW != 0u) {
             return vec4<f32>(vec3<f32>(cabin_debug(v, n, shadowed, under_cloud, outside)), 1.0);
         }
-        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside);
+        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside, gloss);
     } else {
         shaded = lit(colour, n, view, sunlit, around.rgb, v.world, gloss);
     }
@@ -1363,7 +1363,13 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (cabin_face) {
             let paint = select(0.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), mode.fresnel.z != 0.0);
             let open = shine * cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
-            shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
+            if (cabin_finished()) {
+                let mirror = cabin_finish(v, n, view, gloss);
+                shaded = pow(mix(pow(shaded, vec3<f32>(2.2)), pow(mirror.rgb, vec3<f32>(2.2)), mirror.a), vec3<f32>(1.0 / 2.2));
+                shine = open * paint;
+            } else {
+                shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
+            }
         }
         colour = shaded + shine;
         // With the day's light the clear coat (`COAT_ROUGHNESS`).

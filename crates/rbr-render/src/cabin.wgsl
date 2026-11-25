@@ -146,17 +146,22 @@ const CABIN_NEAR_BOUNCE: f32 = 0.5;
 // grazing Fresnel lit the dash white, which had the highlight left out before.
 const CABIN_HIGHLIGHT: vec2<f32> = vec2<f32>(0.5, 0.035);
 
-fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
+fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>, gloss: f32) -> vec3<f32> {
     let ndl = cabin_sun(v, n, shadowed, under_cloud, outside);
     let sun = frame.day_sun.rgb * frame.cabin_seen.w;
     var around = cabin_irradiance(v, n, ndl, shadowed, under_cloud, outside) - sun * ndl;
     around = mix(around, vec3<f32>(dot(around, vec3<f32>(0.2126, 0.7152, 0.0722))), CABIN_NEUTRAL);
     let gamma = select(CABIN_GAMMA, 2.2, v.specular.y >= CABIN_GAUGE);
-    let albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(gamma)), vec3<f32>(ALBEDO_MOST));
+    var albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(gamma)), vec3<f32>(ALBEDO_MOST));
     var sheen = 0.0;
     var inward = vec3<f32>(0.0);
     if (v.specular.y < CABIN_GAUGE) {
-        if (ndl > 0.0) {
+        if (cabin_finished()) {
+            albedo = albedo * (1.0 + CABIN_FLOCK_RIM * mode.sheen.w * pow(1.0 - clamp(dot(n, view), 0.0, 1.0), 3.0));
+        }
+        if (ndl > 0.0 && cabin_finished()) {
+            sheen = cabin_finish_highlight(n, view, gloss) * ndl;
+        } else if (ndl > 0.0) {
             sheen = min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl;
         }
         let kept = 1.0 - cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
@@ -359,6 +364,40 @@ fn cabin_shade(seen: vec3<f32>) -> vec3<f32> {
 // angle to a third of the sky.
 const CABIN_ROUGHNESS: f32 = 0.8;
 const CABIN_SHEEN_LEVEL: f32 = 3.0;
+
+// An interior material's finish (ours, `car::cabin::Finish`, `mode.sheen.yzw`: roughness, metal, flock) in place of the
+// one plastic: what it mirrors of the outside through the windows (`cabin_open`) at its roughness (the cube's level as
+// `CABIN_SHEEN_LEVEL` is to `CABIN_ROUGHNESS`), as a dielectric (`environment_reflectance`) or a metal of
+// `CABIN_METAL_F0`, times its specular (`gloss`); a flock none. `a` the share of the face it covers: where the face
+// sees the cabin it keeps its texel.
+const CABIN_METAL_F0: f32 = 0.6;
+// A flock's sheen at grazing angles: its albedo up by this times (1 - n.v)^3.
+const CABIN_FLOCK_RIM: f32 = 1.5;
+
+fn cabin_finished() -> bool {
+    return mode.sheen.y > 0.0;
+}
+
+fn cabin_finish(v: VertexOut, n: vec3<f32>, view: vec3<f32>, gloss: f32) -> vec4<f32> {
+    let roughness = mode.sheen.y;
+    let nv = clamp(dot(n, view), 1e-3, 1.0);
+    let metal = CABIN_METAL_F0 + (1.0 - CABIN_METAL_F0) * pow(1.0 - nv, 5.0);
+    let reflectance = mix(environment_reflectance(nv, roughness), metal, mode.sheen.z) * gloss * (1.0 - mode.sheen.w);
+    let r = reflect(-view, n);
+    let seen = reflected(r, roughness * CABIN_SHEEN_LEVEL / CABIN_ROUGHNESS);
+    let grey = vec3<f32>(dot(seen, vec3<f32>(0.2126, 0.7152, 0.0722)));
+    let share = reflectance * cabin_open(cabin_seen(v), 1.0 - v.specular.z, r);
+    return vec4<f32>(mix(seen, grey, CABIN_NEUTRAL * roughness), clamp(share, 0.0, 1.0));
+}
+
+// The sun's highlight on a finish: the lobe at its roughness (at least 0.05), a metal's `CABIN_METAL_F0` over the
+// dielectric's 0.04, capped as `CABIN_HIGHLIGHT` is for the plastic, by the square of how much sharper it is.
+fn cabin_finish_highlight(n: vec3<f32>, view: vec3<f32>, gloss: f32) -> f32 {
+    let m = max(mode.sheen.y, 0.05);
+    let f = mix(1.0, CABIN_METAL_F0 / 0.04, mode.sheen.z) * gloss * (1.0 - mode.sheen.w);
+    let cap = CABIN_HIGHLIGHT.y * pow(CABIN_HIGHLIGHT.x / m, 2.0) * f;
+    return min(sun_lobe(n, view, -frame.sun.xyz, m) * f, cap);
+}
 
 fn cabin_sheen(v: VertexOut, n: vec3<f32>, view: vec3<f32>) -> vec3<f32> {
     let reflectance = environment_reflectance(clamp(dot(n, view), 1e-3, 1.0), CABIN_ROUGHNESS);

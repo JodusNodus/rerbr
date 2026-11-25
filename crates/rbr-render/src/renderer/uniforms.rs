@@ -58,7 +58,8 @@ pub(super) struct ModeUniform {
     /// `xy` a BTB material's light factors on the sky and bounce light and on the sun's ([`crate::stage::Light`]), `z` 1
     /// for a converted stage's grass ground ([`DrawState::grass`](crate::stage::DrawState::grass), `grass_warmed`).
     pub(super) tint: [f32; 4],
-    /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]).
+    /// `x` a BTB road's dry sheen roughness, zero for none ([`crate::stage::Sheen`]); `yzw` a car interior material's
+    /// finish, its roughness (zero for none), metal and flock ([`crate::car::cabin::Finish`], `cabin_finish`).
     pub(super) sheen: [f32; 4],
     /// `x` a multilayer material ([`crate::stage::Layers`]): 0 none, 1 details at the world position, 2 at the uv, 3 DiRT Rally's; `y` its
     /// `magicMult`; `z` 1 with DiRT Rally's road blend, `w` its `DetailBlendScale`.

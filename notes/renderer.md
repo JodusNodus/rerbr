@@ -1784,6 +1784,19 @@ sensor dims it. Day frames at 13:00 to golden hour: the DiRT Impreza's bar graph
 screens a little brighter; the Escort's needle dials unchanged. Nights (Impreza, 306, i20, Clio, Escort) within 23 of
 255 of before, where the reflected light now adds.
 
+Cabin finishes (proof of concept, 2026-11-25, `cabin_finish`): a converted car's interior material may carry a `Finish`
+(ours, `car_parts::finish`; `rbr-dirt-rally` writes DiRT's material library as `chrome`, `metal`, `painted`, `gloss`,
+`carbon`, `leather`, `matt`, `suede`), which `car::cabin::Finish::named` gives a roughness, a metal share and a flock
+share (`mode.sheen.yzw`). Such a face mirrors what it sees of the outside (`cabin_open`) at its roughness, as a
+dielectric or a metal of F0 0.6, times its specular (texture alpha), blended over its lit texel in linear light; the
+sun's highlight takes the same roughness and Fresnel (`cabin_finish_highlight`, capped by the square of its sharpness
+over `CABIN_HIGHLIGHT`'s plastic); a flock (suede) none, its albedo up by 1.5 (1 - n.v)^3. Hand-set per class, DiRT's
+`FresnelMin`/`FresnelMax` and `PhongPower` not decoded; `metal` is half a metal (DiRT's bare metal reflects 0.2 to 0.3).
+Faces with no finish (every RSF car) are unchanged: the i20 WRC 2020 day frame identical to the pixel. Frames (Escort,
+Impreza, 306; day, golden, night): the Escort's Sparco spokes read as satin metal (22 to about 130 of 255 facing an
+overcast sky through the windscreen), its painted cage and the glossy dash top mirror the sky, the carbon a streak;
+the 306's and Impreza's changes small; nights within a few texels.
+
 Exposure in the cockpit (until 2026-11-25, now one exposure, above; user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
 2/5): the outside and the cabin (nearer than `post::CABIN_REACH`) are metered apart (`cs_meter`, 128 bins each), as the
 eye adapts to the dash when it looks there. The outside's meter counts the cabin at 1/5 (`IN_CAR_WEIGHT`): at 1/2 the

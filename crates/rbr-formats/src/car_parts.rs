@@ -82,6 +82,12 @@ pub fn friendly_path<'a>(shaders: &'a [Section], name: &str) -> Option<&'a str> 
         .map(|(_, path)| path)
 }
 
+/// A material's finish, or `None`: ours, the material section's `Finish` (`chrome`, `metal`, `painted`, `gloss`, `carbon`,
+/// `leather`, `matt`, `suede`), which a converted car's interior materials carry (`rbr-dirt-rally`); no retail car has it.
+pub fn finish<'a>(shaders: &'a [Section], material: &str) -> Option<&'a str> {
+    section(shaders, material)?.get("Finish")
+}
+
 /// Whether a material has an opacity channel (`OpacityChannel = true`). The glass classes are alpha
 /// blended only when it does (`CarGlass` in the 1.02 shader, `notes/formats.md` "Shaders and vertex layouts").
 pub fn opacity_channel(shaders: &[Section], material: &str) -> bool {
@@ -176,6 +182,13 @@ mod tests {
         // No retail car has the section, and the diffuse bitmap is not it.
         assert_eq!(bump_path(&sections(SHADERS), "external::carpaint"), None);
         assert_eq!(bump_path(&shaders, "external::tire"), None);
+    }
+
+    #[test]
+    fn a_finish_is_the_materials_own_key() {
+        let shaders = sections(&SHADERS.replace("[external::tire]\r\n", "[external::tire]\r\nFinish = chrome\r\n"));
+        assert_eq!(finish(&shaders, "external::tire"), Some("chrome"));
+        assert_eq!(finish(&shaders, "external::carpaint"), None);
     }
 
     #[test]

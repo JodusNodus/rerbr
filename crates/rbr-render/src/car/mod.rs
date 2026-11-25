@@ -475,6 +475,7 @@ fn load_set(
                         grime: crate::dirt::grime(&mesh.node.name, shader),
                         spatter: crate::dirt::spatter(&mesh.node.name),
                         tint: shade.tint && opacity,
+                        finish: car_parts::finish(&shaders, material).and_then(cabin::Finish::named),
                         ..shade
                     }),
                     pass: pass_for(shader, opacity),

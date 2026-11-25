@@ -298,6 +298,40 @@ pub fn bake(
     Some(sun_in)
 }
 
+/// An interior material's finish (ours, a converted car's `Finish`, `rbr_formats::car_parts::finish`): how its faces
+/// reflect in the cabin (`cabin_finish` in `cabin.wgsl`), where every other face is one low-gloss plastic
+/// (`CABIN_ROUGHNESS`). Hand set per class (DiRT Rally's own constants, `FresnelMin` and `FresnelMax`, `PhongPower`, are
+/// not decoded): the chrome a sharp mirror, the bare metal a satin one, the painted cage, glossy plastic and the carbon's
+/// lacquer smooth dielectrics, the leather and matt plastic rough ones, the suede a flock with no reflection.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Finish {
+    /// The roughness of its reflection and of the sun's highlight.
+    pub roughness: f32,
+    /// 1 for a metal: it mirrors by its specular (the texture's alpha) at every angle.
+    pub metal: f32,
+    /// 1 for a flock (suede): no reflection, a sheen at grazing angles.
+    pub flock: f32,
+}
+
+impl Finish {
+    /// The finish named `name`, or `None` for one not known.
+    pub fn named(name: &str) -> Option<Finish> {
+        let (roughness, metal, flock) = match name.to_ascii_lowercase().as_str() {
+            "chrome" => (0.08, 1.0, 0.0),
+            // Half a metal: DiRT's bare metal reflects 0.2 to 0.3 (`FresnelMin`, `FresnelMax`), a satin steel.
+            "metal" => (0.4, 0.5, 0.0),
+            "painted" => (0.3, 0.0, 0.0),
+            "gloss" => (0.25, 0.0, 0.0),
+            "carbon" => (0.15, 0.0, 0.0),
+            "leather" => (0.55, 0.0, 0.0),
+            "matt" => (0.8, 0.0, 0.0),
+            "suede" => (1.0, 0.0, 1.0),
+            _ => return None,
+        };
+        Some(Finish { roughness, metal, flock })
+    }
+}
+
 /// How light gets into the cabin (ours), means over the interior set's opaque faces by area, each weighed by how far it
 /// is inside the cabin ([`inside`]): the sun on each by the sun's direction in the car's model space, `n.l` where the
 /// sun reaches it past the car's opaque faces, measured at load for [`SUN_DIRECTIONS`] directions over the sphere from

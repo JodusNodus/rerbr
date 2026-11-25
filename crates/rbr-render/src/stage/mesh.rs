@@ -390,11 +390,14 @@ pub struct Shade {
     /// A window part (`damage::window_slot`): seen from outside it mirrors and absorbs as a pane (ours; the lamps'
     /// glass keeps its look).
     pub window: bool,
+    /// A converted car's interior material's finish (ours, [`crate::car::cabin::Finish`]).
+    pub finish: Option<crate::car::cabin::Finish>,
 }
 
 impl Shade {
-    fn bits(&self) -> [u32; 12] {
+    fn bits(&self) -> [u32; 15] {
         let glow = self.glow.unwrap_or_default().map(f32::to_bits);
+        let finish = self.finish.map_or([0.0; 3], |f| [f.roughness, f.metal, f.flock]).map(f32::to_bits);
         [
             self.ka.to_bits(),
             self.kd.to_bits(),
@@ -415,6 +418,9 @@ impl Shade {
             glow[1],
             glow[2],
             glow[3],
+            finish[0],
+            finish[1],
+            finish[2],
         ]
     }
 }
