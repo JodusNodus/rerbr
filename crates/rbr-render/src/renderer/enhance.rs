@@ -46,9 +46,15 @@ pub struct Enhance {
     /// wiper scratches and dried water spots (`pane` in `glass.wgsl`), and the cabin reflected in it, a mirror pass of
     /// its own every frame ([`Renderer::set_windscreen_mirror`](super::Renderer::set_windscreen_mirror)).
     pub windscreen: bool,
-    /// The cockpit's mirrors drawn as mirrors, and how often ([`crate::mirrors`]; ours, `viewer --mirrors`, not in
-    /// [`Enhance::NAMES`]).
-    pub mirrors: crate::mirrors::Rate,
+    /// The cockpit's mirrors drawn as mirrors ([`crate::mirrors`]; ours, `viewer --mirrors`, not in
+    /// [`Enhance::NAMES`]), at [`Enhance::reflection_rate`] and [`Enhance::reflection_scale`].
+    pub mirrors: bool,
+    /// How often the dynamic reflections update: the mirrors', the windscreen's (never more often than every 2nd
+    /// frame) and the surroundings cube's face (`viewer --reflection-rate`, not in [`Enhance::NAMES`]).
+    pub reflection_rate: crate::mirrors::Rate,
+    /// Their resolution: the mirrors' and the windscreen's images, the surroundings cube's side and the wet roads'
+    /// trace (`viewer --reflection-res`, not in [`Enhance::NAMES`]).
+    pub reflection_scale: ReflectionScale,
     /// The frame's anti-aliasing (`viewer --anti-aliasing`, not in [`Enhance::NAMES`]).
     pub anti_aliasing: AntiAliasing,
     /// The screen-space reflections on the wet roads and the water (`viewer --reflections`, not in
@@ -85,6 +91,44 @@ impl Detail {
         match self {
             Detail::High => "high",
             Detail::Ultra => "ultra",
+        }
+    }
+}
+
+/// The dynamic reflections' resolution ([`Enhance::reflection_scale`]), percent of the full one.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReflectionScale {
+    #[default]
+    Half,
+    ThreeQuarters,
+    Full,
+}
+
+impl ReflectionScale {
+    /// The choices offered, in the launcher's order.
+    pub const ALL: [ReflectionScale; 3] =
+        [ReflectionScale::Half, ReflectionScale::ThreeQuarters, ReflectionScale::Full];
+
+    /// `50`, `75` or `100`.
+    pub fn parse(text: &str) -> Option<ReflectionScale> {
+        ReflectionScale::ALL.into_iter().find(|s| s.name() == text)
+    }
+
+    /// Its [`ReflectionScale::parse`] name.
+    pub fn name(self) -> &'static str {
+        match self {
+            ReflectionScale::Half => "50",
+            ReflectionScale::ThreeQuarters => "75",
+            ReflectionScale::Full => "100",
+        }
+    }
+
+    /// The share of the full resolution.
+    pub fn fraction(self) -> f32 {
+        match self {
+            ReflectionScale::Half => 0.5,
+            ReflectionScale::ThreeQuarters => 0.75,
+            ReflectionScale::Full => 1.0,
         }
     }
 }
@@ -237,6 +281,8 @@ impl Enhance {
                         wet: true,
                         windscreen: true,
                         mirrors: enhance.mirrors,
+                        reflection_rate: enhance.reflection_rate,
+                        reflection_scale: enhance.reflection_scale,
                         anti_aliasing: enhance.anti_aliasing,
                         reflections: enhance.reflections,
                         detail: enhance.detail,

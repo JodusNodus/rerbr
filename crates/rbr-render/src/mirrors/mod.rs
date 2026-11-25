@@ -17,43 +17,45 @@ use crate::stage::{Draw, Mesh, Stage};
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use std::collections::HashMap;
 
-/// How the mirrors are updated (`viewer --mirrors`, the launcher's "Mirrors" setting).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Rate {
-    /// No mirror passes: the glass as without this addition.
-    #[default]
-    Off,
-    /// Each mirror is drawn every this many frames, the mirrors taking turns (1 to 3).
-    Every(u32),
+/// How often the dynamic reflections are updated (`viewer --reflection-rate`, the launcher's "Reflection updates"):
+/// the mirrors', the windscreen's and the surroundings cube's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rate(u32);
+
+impl Default for Rate {
+    /// Every 3rd frame, the default detail's.
+    fn default() -> Rate {
+        Rate(3)
+    }
 }
 
 impl Rate {
-    /// The rates offered, in the launcher's order.
-    pub const ALL: [Rate; 4] = [Rate::Off, Rate::Every(1), Rate::Every(2), Rate::Every(3)];
+    /// The rates offered, in the launcher's order: every frame, every 2nd, every 3rd.
+    pub const ALL: [Rate; 3] = [Rate(1), Rate(2), Rate(3)];
 
-    /// `off`, `1`, `2` or `3`.
+    /// `1`, `2` or `3`.
     pub fn parse(text: &str) -> Option<Rate> {
-        match text {
-            "off" => Some(Rate::Off),
-            "1" | "2" | "3" => text.parse().ok().map(Rate::Every),
-            _ => None,
-        }
+        Rate::ALL.into_iter().find(|rate| rate.name() == text)
     }
 
     /// Its [`Rate::parse`] name.
     pub fn name(self) -> String {
-        match self {
-            Rate::Off => "off".to_owned(),
-            Rate::Every(n) => n.to_string(),
-        }
+        self.0.to_string()
     }
 
-    /// Whether mirror `index` is drawn on frame `frame`.
+    /// The frames between one update and the next (1 to 3).
+    pub fn every(self) -> u32 {
+        self.0
+    }
+
+    /// This rate, but no more often than every `n`th frame.
+    pub fn at_most_every(self, n: u32) -> Rate {
+        Rate(self.0.max(n))
+    }
+
+    /// Whether item `index` is drawn on frame `frame`: the items take turns.
     pub fn due(self, index: usize, frame: u64) -> bool {
-        match self {
-            Rate::Off => false,
-            Rate::Every(n) => (frame + index as u64).is_multiple_of(u64::from(n.max(1))),
-        }
+        (frame + index as u64).is_multiple_of(u64::from(self.0.max(1)))
     }
 }
 
@@ -518,10 +520,17 @@ const STEP: u32 = 32;
 /// drawn as on this one and magnified (at 4K two thirds of its pixels' side, the passes being mostly fill).
 pub const DENSEST: u32 = 1440;
 
-/// The view of the glass `placed`, from the main view `view_projection` (and its camera-anchored
-/// `sky_view_projection`) drawn at `screen` pixels: `None` when the glass is behind the eye, turned away, or off
-/// screen.
-pub fn view(view_projection: Mat4, sky_view_projection: Mat4, screen: (u32, u32), placed: &Placed) -> Option<View> {
+/// The view of the glass `placed`, from the main view `view_projection` (and its camera-anchored `sky_view_projection`)
+/// drawn at `screen` pixels, its image at `resolution` times the screen's density (the reflection resolution,
+/// [`ReflectionScale::fraction`](crate::renderer::ReflectionScale::fraction)): `None` when the glass is behind the eye,
+/// turned away, or off screen.
+pub fn view(
+    view_projection: Mat4,
+    sky_view_projection: Mat4,
+    screen: (u32, u32),
+    resolution: f32,
+    placed: &Placed,
+) -> Option<View> {
     let Placed { corners, normal, past: near, .. } = *placed;
     let eye = crate::camera::eye(view_projection);
     let centre = corners.iter().sum::<Vec3>() / 4.0;
@@ -546,7 +555,7 @@ pub fn view(view_projection: Mat4, sky_view_projection: Mat4, screen: (u32, u32)
     // texel aspect).
     let pixels = (high - low) * 0.5 * Vec2::new(screen.0 as f32, screen.1 as f32);
     let densest = DENSEST as f32 / screen.1 as f32;
-    let scale = (MOST.0 as f32 / pixels.x).min(MOST.1 as f32 / pixels.y).min(densest).min(1.0);
+    let scale = (MOST.0 as f32 / pixels.x).min(MOST.1 as f32 / pixels.y).min(densest).min(1.0) * resolution;
     let side = |p: f32, most: u32| ((p * scale / STEP as f32).ceil() as u32 * STEP).clamp(STEP, most);
     let size = (side(pixels.x, MOST.0), side(pixels.y, MOST.1));
     let half = Vec2::new(size.0 as f32, size.1 as f32) / scale / Vec2::new(screen.0 as f32, screen.1 as f32);

@@ -221,9 +221,9 @@ pub(super) struct Context {
     pub(super) lighting: bool,
     /// [`DebugView`] (`DEBUG_VIEW` in `cabin.wgsl`): 0 draws the shaded colour, as without the flag.
     pub(super) debug_view: u32,
-    /// The surroundings cube's mip levels past [`REFLECTION_SIZE`](super::reflection::REFLECTION_SIZE)'s: 1 at
-    /// [`Detail::Ultra`](super::Detail::Ultra) (`CUBE_SHIFT`).
-    pub(super) cube_shift: u32,
+    /// The surroundings cube's mip levels past [`REFLECTION_SIZE`](super::reflection::REFLECTION_SIZE)'s
+    /// ([`cube_shift`](super::reflection::cube_shift), `CUBE_SHIFT`).
+    pub(super) cube_shift: f32,
     /// The colour targets' alpha the draws write ([`alpha_writes`]).
     pub(super) taa: bool,
 }

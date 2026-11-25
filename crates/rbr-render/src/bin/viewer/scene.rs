@@ -383,7 +383,7 @@ fn load_scene<'scope, 'env>(
                         // Before the mirrors are marked: marking copies their vertices where they are, so the views
                         // stay the same.
                         let mut car_mounts = Mounts::load(data, car_name, lo, hi, &model, &interior)?;
-                        let mirrors = (args.enhance.mirrors != mirrors::Rate::Off).then(|| {
+                        let mirrors = args.enhance.mirrors.then(|| {
                             let eye = car_mounts.cockpit.eye;
                             let found = mirrors::add(&mut stage, &mut interior, &mut interior_damage, eye);
                             eprintln!(

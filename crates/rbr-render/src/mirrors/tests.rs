@@ -66,12 +66,15 @@ fn rates_parse_name_and_take_turns() {
         assert_eq!(Rate::parse(&rate.name()), Some(rate));
     }
     assert_eq!(Rate::parse("4"), None);
-    assert_eq!(Rate::default(), Rate::Off);
-    assert!((0..6).all(|frame| !Rate::Off.due(0, frame) && Rate::Every(1).due(1, frame)));
+    assert_eq!(Rate::default().every(), 3);
+    let every = |n: u32| Rate::parse(&n.to_string()).unwrap();
+    assert!((0..6).all(|frame| every(1).due(1, frame)));
+    // The windscreen's never more often than every 2nd frame.
+    assert_eq!([1, 2, 3].map(|n| every(n).at_most_every(2).every()), [2, 2, 3]);
     // Every 2nd frame: two mirrors in turn, one a frame.
-    let two: Vec<[bool; 2]> = (0..4).map(|f| [0, 1].map(|k| Rate::Every(2).due(k, f))).collect();
+    let two: Vec<[bool; 2]> = (0..4).map(|f| [0, 1].map(|k| every(2).due(k, f))).collect();
     assert_eq!(two, [[true, false], [false, true], [true, false], [false, true]]);
-    assert_eq!((0..6).filter(|&f| Rate::Every(3).due(2, f)).count(), 2);
+    assert_eq!((0..6).filter(|&f| every(3).due(2, f)).count(), 2);
 }
 
 #[test]
@@ -250,9 +253,15 @@ fn a_view_reflects_the_scene_into_the_glass_box() {
     let centre = Vec3::new(0.3, 0.0, 1.0);
     let corners = [centre - u - v, centre + u - v, centre + u + v, centre - u + v];
     let placed = Placed { corners, normal, past: NEAR_PAST, side: true };
-    let view = view(main, sky, screen, &placed).expect("the glass is in view");
+    let view = view(main, sky, screen, 1.0, &placed).expect("the glass is in view");
     assert!(view.size.0.is_multiple_of(STEP) && view.size.1.is_multiple_of(STEP));
     assert!(view.size.0 <= MOST.0 && view.size.1 <= MOST.1);
+    // A smaller reflection resolution gives a smaller image, still in steps and at least one.
+    for share in [0.5, 0.75] {
+        let less = super::view(main, sky, screen, share, &placed).unwrap().size;
+        assert!(less.0.is_multiple_of(STEP) && less.1.is_multiple_of(STEP) && less.0 >= STEP && less.1 >= STEP);
+        assert!(less.0 < view.size.0 && less.1 < view.size.1, "{less:?} {:?}", view.size);
+    }
     // The glass's own outline lies in the image, left and right swapped.
     for corner in corners {
         let p = ndc(view.view_projection, corner);
@@ -279,10 +288,16 @@ fn a_view_reflects_the_scene_into_the_glass_box() {
     let facing_glass = [2, 1, 0].map(|i| reflect.transform_point3(facing_eye[i]));
     assert_eq!(turn(main, facing_eye).signum(), turn(view.view_projection, facing_glass).signum());
     // Turned away or behind the eye, no view.
-    assert!(super::view(main, sky, screen, &Placed { normal: -normal, ..placed }).is_none());
+    assert!(super::view(main, sky, screen, 1.0, &Placed { normal: -normal, ..placed }).is_none());
     let behind = corners.map(|c| c * Vec3::new(1.0, 1.0, -1.0));
-    assert!(super::view(main, sky, screen, &Placed { corners: behind, normal: -normal, past: NEAR_PAST, side: true })
-        .is_none());
+    assert!(super::view(
+        main,
+        sky,
+        screen,
+        1.0,
+        &Placed { corners: behind, normal: -normal, past: NEAR_PAST, side: true }
+    )
+    .is_none());
 }
 
 /// Each retail car's mirrors face the driver and back along the car, at least two and one a door's (as
