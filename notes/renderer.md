@@ -755,12 +755,12 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   textures light the indicator. 43 installed cars had dark tail lamps (night Sardian M3 chase); the GC8 brakes red
   (rain Sipirkakim chase 0.6 % RMSE), other reference shots byte-identical.
 - Ours: a `_lit` part the game always draws (shown from the start, on no lamp's box: installed `Switch = false`, or a
-  lights-on option's, `load_lit`) stays drawn and glows only while a lit lamp of its kind is within `LAMP_NEAR`
+  lights-on option's, `load` with `lit`) stays drawn and glows only while a lit lamp of its kind is within `LAMP_NEAR`
   (`Switch::of_drawn`, `steady`; the kind's number in `mode.glow.w` and `LampUniform.up.w`; 2026-11-05). Its lamp is
   its name's, else the `Point_light_*` nearest its centre within 0.3 m (pods, bars, bonnet lamps); names first, as a
   tail part's centre can lie nearest the reversing or brake point (Fiesta Rally2's and GC8's `e_light_lb_lit`). Of a
   part with lamp and body classes only the `CarLight`, `CarGlass` and `CarPlastic` faces glow (the quattro pod's
-  `CarPaint` housing). This fixed the M3 E30's headlamps, dark at night since `load_lit`'s Lights_On option drew its
+  `CarPaint` housing). This fixed the M3 E30's headlamps, dark at night since `load` with `lit`'s Lights_On option drew its
   lit parts always. Now glow: GC8 headlamps and tails (night Sipirkakim chase 3.6 % RMSE, fly-by 10.8 %, rain by day
   0.13 %; retail cars under 0.04 %; the GC8's tail part also covers the amber indicator band, which glows red), the M3
   E30's headlamps, the Fiesta Rally2's and M3's bars and bumper lamps. Still dark: the Fiesta Rally2's tails (the lit
@@ -830,7 +830,7 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   exposure from 1.5 stops (halos, day highlights down). The road under the beam at 1 to 5 lux against ~50x dimmer
   moonlight is physical.
 - Ours: a stage the lamps light (sun below +6 degrees, `relight::LAMPS_FROM`, dusk included) loads the car with
-  its car-parts light options on (`car::load_lit`, 2026-11-05, user: automatic, no picker UI): the headlights'
+  its car-parts light options on (`car::load` with `lit`, 2026-11-05, user: automatic, no picker UI): the headlights'
   on-option, then each extra-lights/pod on-option merged over the model's `.ini`/`_settings.ini` in memory
   before any mesh is built, so visibility, lamp switches and points all use the merged files
   (`rsf::night_options`, `rsf::merge_night_options`; `notes/formats.md` "RSF cars"). By day, and for the six
@@ -1784,7 +1784,7 @@ sky's share through two clear faces, `(1 - F)^2` over the cosine-weighed hemisph
 former 0.85 was this); the sun's from the blended panes facing it, weighed by area toward it, per measured direction
 (`SunIn::through`; 208 at 19:30 about 0.8). Left heuristic: `CABIN_SHADE`, `CABIN_GAUGE_LEAST`.
 
-Cabin bounce per vertex, one exposure (user's call, 2026-11-25, `car::cabin_bounce`): each vertex's 64 rays
+Cabin bounce per vertex, one exposure (user's call, 2026-11-25, `car::cabin::bounce`): each vertex's 64 rays
 (`Grid::sky_hits`) note the cabin face they meet on its front (a back hit, a door's outer skin from inside, gives
 nothing: counted, it lit the DiRT Escort's cabin with the skins' outside light); three bounces of the faces' albedo
 times their sky share, and of their sun as `c0 + c1 . d` over 64 directions past the car, give each vertex its sky

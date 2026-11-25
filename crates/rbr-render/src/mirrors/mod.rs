@@ -278,7 +278,7 @@ fn opaque(draw: &Draw) -> bool {
 
 /// An opaque draw of the glass class: the game lights it as glass, but nothing is seen through it.
 fn opaque_glass(draw: &Draw) -> bool {
-    draw.state.shade.is_some_and(|shade| shade.glass) && opaque(draw)
+    draw.state.shade.is_some_and(|shade| shade.glass()) && opaque(draw)
 }
 
 fn corners(mesh: &Mesh, t: usize) -> [Vec3; 3] {

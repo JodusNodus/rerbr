@@ -50,7 +50,7 @@ fn every_installed_rsf_car_with_a_drawn_interior_wheel_turns_it() {
             continue;
         }
         let name = selected.folder().to_owned();
-        let Ok(interior) = car::load_interior(&selected.data, &name, glam::Mat4::IDENTITY) else {
+        let Ok(interior) = car::load(&selected.data, &name, glam::Mat4::IDENTITY, car::Set::Interior, false) else {
             eprintln!("{name}: interior does not load");
             skipped += 1;
             continue;

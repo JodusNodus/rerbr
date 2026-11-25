@@ -43,14 +43,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     for (label, data, folder) in cars {
-        let interior = match car::load_interior(&data, &folder, car::placement_at(None)) {
+        let interior = match car::load(&data, &folder, car::placement_at(None), car::Set::Interior, false) {
             Ok(interior) => interior,
             Err(e) => {
                 println!("{label}: {e:?}");
                 continue;
             }
         };
-        let exterior = match car::load(&data, &folder, car::placement_at(None)) {
+        let exterior = match car::load(&data, &folder, car::placement_at(None), car::Set::Exterior, false) {
             Ok(exterior) => exterior,
             Err(e) => {
                 println!("{label}: {e:?}");

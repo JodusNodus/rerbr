@@ -1,5 +1,5 @@
 use super::*;
-use crate::stage::{Draw, Layer, Lod};
+use crate::stage::{Draw, FaceRole, Layer, Lod};
 use rbr_formats::{ini, sgc};
 use rbr_recording::detach;
 
@@ -192,7 +192,8 @@ fn a_damaged_panel_moves_by_its_placed_delta_and_scrapes() {
 fn the_glass_gets_an_inner_side_drawn_before_it() {
     let vertex = |position: [f32; 3]| Vertex { position, normal: [0.0, 0.0, 1.0], ..bytemuck::Zeroable::zeroed() };
     let mesh = |glass: bool| {
-        let shade = Shade { glass, ..Shade::default() };
+        let role = if glass { FaceRole::Glass } else { FaceRole::Body };
+        let shade = Shade { role, ..Shade::default() };
         let pass = if glass { Pass::Blended } else { Pass::Opaque };
         Mesh {
             layer: Layer::Blended,

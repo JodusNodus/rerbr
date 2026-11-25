@@ -214,7 +214,7 @@ fn load_scene<'scope, 'env>(
     match (&args.stage, &args.car) {
         (None, Some(name)) => {
             progress(Step::Car);
-            let mut car = car::load(data, name, car::placement_at(None)).map_err(error)?;
+            let mut car = car::load(data, name, car::placement_at(None), car::Set::Exterior, false).map_err(error)?;
             if args.enhance.cabin {
                 car.add_inner_glass();
             }
@@ -316,8 +316,14 @@ fn load_scene<'scope, 'env>(
                 match (&args.drive, &args.live) {
                     (None, None) => {
                         progress(Step::Car);
-                        let mut car = car::load_lit(data, car_name, car::placement_at(stage.start), lit(&day_clock))
-                            .map_err(error)?;
+                        let mut car = car::load(
+                            data,
+                            car_name,
+                            car::placement_at(stage.start),
+                            car::Set::Exterior,
+                            lit(&day_clock),
+                        )
+                        .map_err(error)?;
                         car.set_headlamp_year(args.car_year.filter(|_| args.enhance.lighting));
                         damage_static(&mut car, args);
                         report_car(&car.at_rest().add_to_stage(&mut stage));
@@ -341,7 +347,8 @@ fn load_scene<'scope, 'env>(
                         let probe = scope.spawn(|| StageProbe::load(data, name).map(std::sync::Arc::new));
                         progress(Step::Car);
                         let mut car =
-                            car::load_lit(data, car_name, car::placement_at(None), lit(&day_clock)).map_err(error)?;
+                            car::load(data, car_name, car::placement_at(None), car::Set::Exterior, lit(&day_clock))
+                                .map_err(error)?;
                         car.set_headlamp_year(args.car_year.filter(|_| args.enhance.lighting));
                         if args.enhance.cabin {
                             car.add_inner_glass();
@@ -835,7 +842,7 @@ fn add_interior(
     windscreen: bool,
     lit: bool,
 ) -> Result<Interior, String> {
-    let mut interior = car::load_interior_lit(data, car_name, car::placement_at(None), lit)
+    let mut interior = car::load(data, car_name, car::placement_at(None), car::Set::Interior, lit)
         .map_err(|e| e.to_string())?
         .after_textures_of(stage);
     let sun_in = exterior

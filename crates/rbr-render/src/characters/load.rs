@@ -5,8 +5,8 @@ use super::anim::{Clip, Skeleton, Skin};
 use super::random;
 use super::script::{Host, Lua, Value};
 use crate::stage::{
-    Address, Anchor, Bounds, Draw, DrawState, Image, Layer, Lod, Mesh, Shade, Stage, StageTexture, TextureRef,
-    TextureSet, Vertex,
+    Address, Anchor, Bounds, Draw, DrawState, FaceRole, Image, Layer, Lod, Mesh, Shade, Stage, StageTexture,
+    TextureRef, TextureSet, Vertex,
 };
 use glam::Vec3;
 use rbr_formats::data::Data;
@@ -32,15 +32,11 @@ const SHADE: Shade = Shade {
     fresnel_min: 0.0,
     fresnel_max: 0.0,
     kf: 0.0,
-    glass: false,
+    role: FaceRole::Body,
     glow: None,
     glow_kind: 0,
-    crack: false,
     dirt: None,
     grime: 0,
-    spatter: false,
-    tint: false,
-    window: false,
     finish: None,
 };
 /// Alpha test of faces with an opacity map (ours, as the object lanes').
