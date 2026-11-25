@@ -13,6 +13,27 @@
 
 // True with `Enhance::cabin` (a pipeline override, so that the frame without it is built as before).
 override CABIN: bool = false;
+// True with the cabin's bounce baked per vertex (`car::cabin_bounce`, `RERBR_CABIN_BOUNCE`, an experiment): its faces'
+// light bounced onto each other per vertex in place of the closed room's (`frame.cabin`).
+override CABIN_LOCAL_BOUNCE: bool = false;
+// `car::cabin_bounce::SUN_SLOPE`.
+const CABIN_SUN_SLOPE: f32 = 2.0;
+
+// A baked cabin vertex's bounce (`car::cabin_bounce::packed`): rgb the sky's per unit of the sky's light through the
+// glass, a the sun's per unit of the sun's through the glass, toward the sun now (its direction term in the car's model
+// space for the parts drawn with the body, instance 1, turned with it as `placed` turns the rest; already turned for the
+// others, `cabin::turned`).
+fn cabin_bounce(v: VertexIn) -> vec4<f32> {
+    let q = vec3<u32>(v.bounce.y, v.bounce.y >> 10u, v.bounce.y >> 20u) & vec3<u32>(1023u);
+    let root = vec3<f32>(q) / 1023.0;
+    let c0 = pow(f32(v.sky_dir & 0xffffu) / 65535.0, 2.0);
+    let s = vec3<f32>(vec3<u32>(v.bounce.x, v.bounce.x >> 10u, v.bounce.x >> 20u) & vec3<u32>(1023u)) / 1023.0;
+    var slope = (2.0 * s - 1.0) * CABIN_SUN_SLOPE;
+    if (v.instance != 0u) {
+        slope = mat3x3<f32>(frame.car_body[0].xyz, frame.car_body[1].xyz, frame.car_body[2].xyz) * slope;
+    }
+    return vec4<f32>(root * root, max(c0 * (1.0 + dot(slope, -frame.sun.xyz)), 0.0));
+}
 // The whole part of `specular.y` of the interior set's vertices and of its dial faces (`car::cabin::INTERIOR`,
 // `GAUGE`). Its fraction holds the z of where the vertex sees the sky (`cabin_seen`).
 const CABIN_INTERIOR: f32 = 1.0;
@@ -230,6 +251,21 @@ fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_c
     }
     let bounced = CABIN_BOUNCE_SHARE * bounce * mix(1.0, near, CABIN_NEAR_BOUNCE);
     var e = CABIN_WINDOW_LIGHT * sky_through * window * near + bounced + sun_through * ndl;
+    // The baked bounce (`CABIN_LOCAL_BOUNCE`): what this vertex's rays meet gives it back, the near faces' shade in it, so no
+    // weights: the window light once, the per-vertex near occlusion not again (the sky share has it), the contact
+    // shading per pixel on the window light and half on the bounce. The sun's bounce takes the sky bounce's hue.
+    if (CABIN_LOCAL_BOUNCE) {
+        var contact = 1.0;
+        if (LIGHTING) {
+            contact = cabin_contact();
+        }
+        let luma = dot(v.bounce_sky, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let hue = select(vec3<f32>(1.0), v.bounce_sky / max(luma, 1e-6), luma > 1e-6);
+        let outside = cabin_window(frame.cabin_seen.xyz, frame.cabin.w, IBL_TINT, CABIN_DAY_RANGE);
+        let sun = v.sky.x * frame.cabin.r * shade.z * cloud;
+        let baked = sky_through * outside * shade.y * v.bounce_sky + sun_through * sun * hue;
+        e = sky_through * window * contact + baked * mix(1.0, contact, CABIN_NEAR_BOUNCE) + sun_through * ndl;
+    }
     let level = select(frame.dusk.w, 1.0, frame.night.x != 0.0);
     if (level > 0.0) {
         var bounce = vec3<f32>(0.0);

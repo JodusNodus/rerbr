@@ -1757,6 +1757,20 @@ sky's share through two clear faces, `(1 - F)^2` over the cosine-weighed hemisph
 former 0.85 was this); the sun's from the blended panes facing it, weighed by area toward it, per measured direction
 (`SunIn::through`; 208 at 19:30 about 0.8). Left heuristic: `CABIN_SHADE`, `CABIN_GAUGE_LEAST`.
 
+Cabin bounce per vertex (experiment, 2026-11-25, `car::cabin_bounce`, `RERBR_CABIN_BOUNCE=1`, off by default; frames
+without it byte-identical): each vertex's 64 rays (`Grid::sky_hits`) note the cabin face they meet on its front (a back
+hit, a door's outer skin from inside, gives nothing: counted, it lit the DiRT Escort's cabin with the skins' outside
+light); three bounces of the faces' albedo times their sky share, and of their sun as `c0 + c1 . d` over 64 directions
+past the car, give each vertex its sky bounce (rgb, `bounce[1]`) and its sun bounce (`sky_dir`, `bounce[0]`, turned with
+the car), scaled to the measured mean sun (`SunIn::bounce_scale`: the two bands smear the window-only sun over all
+directions). In place of the room's bounce, `CABIN_WINDOW_LIGHT`, `CABIN_BOUNCE_SHARE` and the vertex near occlusion
+(`cabin_irradiance`). The sky bounce alone lands where the room's did (DiRT cme, Gabiria 3600 m 09:00, shade 37.5 of 255
+against 37.0), the sun's lifts the cabin by a sunlit floor (shade 44.5, sun patch over shade 2.35 to 1.84; stock
+Escort 4.08 to 3.12). Under the cabin's own exposure the bounce takes the cabin further from DiRT screenshots (15:00,
+lower third: Fiesta 53 to 61 against DiRT's 34, Escort RS 43 to 54 against 31); with one exposure (`CABIN_STOPS` 0, a
+trial build) 38 and 32, near DiRT's, where one exposure without it crushed the Fiesta's dash (32, its detail gone).
+The M3's shot (57) has the sunroof and the notes in it. Open: one exposure is the user's call.
+
 Exposure in the cockpit (user's call, 2026-10-31; was one exposure, the cabin metered at 1/2 of the outside, before that
 2/5): the outside and the cabin (nearer than `post::CABIN_REACH`) are metered apart (`cs_meter`, 128 bins each), as the
 eye adapts to the dash when it looks there. The outside's meter counts the cabin at 1/5 (`IN_CAR_WEIGHT`): at 1/2 the

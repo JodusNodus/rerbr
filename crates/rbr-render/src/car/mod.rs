@@ -40,6 +40,7 @@ use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 
 pub mod cabin;
+pub mod cabin_bounce;
 mod files;
 mod meshes;
 mod parts;
