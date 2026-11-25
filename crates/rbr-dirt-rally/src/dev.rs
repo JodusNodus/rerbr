@@ -134,13 +134,54 @@ fn pacenotes(mut args: impl Iterator<Item = String>) -> Result<(), String> {
     Ok(())
 }
 
-/// `pacenotes-eval`: how the calls place on every rally route's line, per area (routes without calls are skipped).
+/// One area's figures of `pacenotes-eval`.
+#[derive(Default)]
+struct Row {
+    notes: usize,
+    matched: usize,
+    own_side: usize,
+    flipped: usize,
+    close: usize,
+    /// |turn - angle| and the lead of the matched notes; the lead less the route's median of it less 3 s of speed.
+    off: Vec<f64>,
+    lead: Vec<f64>,
+    resid: Vec<f64>,
+}
+
+fn quantile(v: &mut [f64], q: f64) -> f64 {
+    v.sort_by(f64::total_cmp);
+    v.get(((v.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0.0)
+}
+
+impl Row {
+    fn show(&mut self, name: &str) {
+        let (n, m) = (self.notes as f64, self.matched.max(1) as f64);
+        let mut dev: Vec<f64> = self.resid.iter().map(|x| x.abs()).collect();
+        println!(
+            "{name}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.1}\t{:.1}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.0}",
+            self.notes,
+            100.0 * self.matched as f64 / n,
+            100.0 * self.own_side as f64 / m,
+            100.0 * self.flipped as f64 / n,
+            quantile(&mut self.off, 0.5),
+            quantile(&mut self.off, 0.9),
+            self.close,
+            quantile(&mut self.lead, 0.25),
+            quantile(&mut self.lead, 0.5),
+            quantile(&mut self.lead, 0.75),
+            1.4826 * quantile(&mut dev, 0.5),
+        );
+    }
+}
+
+/// `pacenotes-eval`: how the calls place on every rally route's line, per area (routes without calls are skipped):
+/// notes, matched %, matched on the call's own side %, matched with every side flipped % (the control), median and p90
+/// |turn - angle|, notes closer than 15 m, quartiles of the lead (corner start less call), spread of the lead about
+/// 3 s of line speed plus a route offset.
 fn pacenotes_eval() -> Result<(), String> {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashSet};
     let install = crate::cli::install(None)?;
-    // Per area: notes, matched, side agreements, |turn - angle| of the matched, notes closer than 15 m.
-    let mut areas: BTreeMap<String, (usize, usize, usize, Vec<f64>, usize, Vec<f64>, usize, Vec<f64>)> =
-        BTreeMap::new();
+    let mut areas: BTreeMap<String, Row> = BTreeMap::new();
     for route in install.routes().into_iter().filter(|r| r.is_rally()) {
         let calls = crate::route::calls(&route)?;
         if calls.is_empty() {
@@ -151,92 +192,46 @@ fn pacenotes_eval() -> Result<(), String> {
         let from = (start - 50.).max(0.);
         let line = line.stretch(from, (finish + 40.).min(line.length()) - from, true, 2.5);
         let start = start - from;
-        let placed = crate::pacenotes::place(&calls, &line.points, &line.at, start);
+        let place = |calls: &[crate::route::Call]| crate::pacenotes::place(calls, &line.points, &line.at, start);
+        let placed = place(&calls);
         let row = areas.entry(format!("{}/{}", route.location, route.area)).or_default();
-        row.0 += placed.len();
+        row.notes += placed.len();
+        row.close += placed.windows(2).filter(|w| w[1].note.distance - w[0].note.distance < 15.0).count();
+        let speed = crate::pacenotes::speeds(&line.points, &line.at);
+        let (mut seen, mut resid) = (HashSet::new(), Vec::new());
         for p in &placed {
-            if let Some(c) = p.corner {
-                row.1 += 1;
-                row.2 += usize::from(c.left == p.tag_left);
-                row.3.push((c.turn - p.angle).abs());
-                row.5.push(c.start - start - calls[p.call].distance);
+            let Some(c) = p.corner else { continue };
+            row.matched += 1;
+            row.own_side += usize::from(c.left == p.tag_left);
+            row.off.push((c.turn - p.angle).abs());
+            let spoken = start + calls[p.call].distance;
+            row.lead.push(c.start - spoken);
+            if seen.insert(p.call) {
+                let i = line.at.partition_point(|a| *a < spoken).min(speed.len() - 1);
+                resid.push(c.start - spoken - 3.0 * speed[i]);
             }
         }
-        {
-            let v = crate::pacenotes::speeds(&line.points, &line.at);
-            let mut seen = std::collections::HashSet::new();
-            let mut d: Vec<f64> = placed
-                .iter()
-                .filter_map(|p| {
-                    let c = p.corner?;
-                    let spoken = start + calls[p.call].distance;
-                    let i = line.at.partition_point(|a| *a < spoken).min(v.len() - 1);
-                    seen.insert(p.call).then(|| c.start - spoken - 3.0 * v[i])
-                })
-                .collect();
-            d.sort_by(f64::total_cmp);
-            let m = d.get(d.len() / 2).copied().unwrap_or(0.0);
-            row.7.extend(d.iter().map(|x| x - m));
-        }
+        let middle = quantile(&mut resid, 0.5);
+        row.resid.extend(resid.iter().map(|x| x - middle));
         let mut flipped = calls.clone();
         flipped.iter_mut().flat_map(|c| &mut c.subcalls).for_each(|s| s.kind = 3 - s.kind.min(2));
-        let f = crate::pacenotes::place(&flipped, &line.points, &line.at, start)
-            .iter()
-            .filter(|p| p.corner.is_some())
-            .count();
-        row.6 += f;
-        row.4 += placed.windows(2).filter(|w| w[1].note.distance - w[0].note.distance < 15.0).count();
+        row.flipped += place(&flipped).iter().filter(|p| p.corner.is_some()).count();
     }
-    let pct = |v: &mut Vec<f64>, q: f64| {
-        v.sort_by(f64::total_cmp);
-        v.get(((v.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0.0)
-    };
-    let mad = |v: &mut Vec<f64>| {
-        let m = pct(v, 0.5);
-        let mut d: Vec<f64> = v.iter().map(|x| (x - m).abs()).collect();
-        1.4826 * pct(&mut d, 0.5)
-    };
     println!(
         "area\tnotes\tmatched%\tside%\tflipped%\tmedian|d|\tp90|d|\tclose<15m\tlead_q1\tlead_med\tlead_q3\tresid_mad"
     );
-    let mut total = (0, 0, 0, Vec::new(), 0, Vec::new(), 0, Vec::new());
-    for (area, mut r) in areas {
-        println!(
-            "{area}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.1}\t{:.1}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.0}",
-            r.0,
-            100.0 * r.1 as f64 / r.0 as f64,
-            100.0 * r.2 as f64 / r.1.max(1) as f64,
-            100.0 * r.6 as f64 / r.0 as f64,
-            pct(&mut r.3, 0.5),
-            pct(&mut r.3, 0.9),
-            r.4,
-            pct(&mut r.5, 0.25),
-            pct(&mut r.5, 0.5),
-            pct(&mut r.5, 0.75),
-            mad(&mut r.7)
-        );
-        total.0 += r.0;
-        total.1 += r.1;
-        total.2 += r.2;
-        total.3.extend(r.3);
-        total.4 += r.4;
-        total.5.extend(r.5);
-        total.6 += r.6;
-        total.7.extend(r.7);
+    let mut all = Row::default();
+    for (area, mut row) in areas {
+        row.show(&area);
+        all.notes += row.notes;
+        all.matched += row.matched;
+        all.own_side += row.own_side;
+        all.flipped += row.flipped;
+        all.close += row.close;
+        all.off.append(&mut row.off);
+        all.lead.append(&mut row.lead);
+        all.resid.append(&mut row.resid);
     }
-    println!(
-        "ALL\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.1}\t{:.1}\t{}\t{:.0}\t{:.0}\t{:.0}\t{:.0}",
-        total.0,
-        100.0 * total.1 as f64 / total.0 as f64,
-        100.0 * total.2 as f64 / total.1.max(1) as f64,
-        100.0 * total.6 as f64 / total.0 as f64,
-        pct(&mut total.3, 0.5),
-        pct(&mut total.3, 0.9),
-        total.4,
-        pct(&mut total.5, 0.25),
-        pct(&mut total.5, 0.5),
-        pct(&mut total.5, 0.75),
-        mad(&mut total.7)
-    );
+    all.show("ALL");
     Ok(())
 }

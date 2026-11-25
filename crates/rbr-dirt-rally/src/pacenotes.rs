@@ -65,6 +65,7 @@ pub fn bends(points: &[[f64; 3]], at: &[f64], arm: usize, flat: f64, min_turn: f
             (heading[b] - heading[a]) / (at[b] - at[a]).max(1e-6)
         })
         .collect();
+    let cut = Bends { heading: &heading, curvature: &curvature, at, min_turn };
     let mut out = Vec::new();
     let mut i = 0;
     while i < n {
@@ -84,40 +85,44 @@ pub fn bends(points: &[[f64; 3]], at: &[f64], arm: usize, flat: f64, min_turn: f
             } else if c < valley.0 {
                 valley = (c, i);
             } else if valley.0 < peak * 0.5 && c > valley.0 * 1.5 {
-                push(&mut out, &heading, &curvature, at, first, valley.1, sign, min_turn);
+                cut.push(&mut out, first, valley.1, sign);
                 (first, peak, valley) = (valley.1, c, (c, i));
             }
             i += 1;
         }
-        push(&mut out, &heading, &curvature, at, first, i - 1, sign, min_turn);
+        cut.push(&mut out, first, i - 1, sign);
     }
     out
 }
 
-fn push(
-    out: &mut Vec<Corner>,
-    heading: &[f64],
-    curvature: &[f64],
-    at: &[f64],
-    first: usize,
-    last: usize,
-    sign: f64,
+/// A line's unwrapped heading, its heading rate and arc length at each point, for cutting corners out of.
+struct Bends<'a> {
+    heading: &'a [f64],
+    curvature: &'a [f64],
+    at: &'a [f64],
     min_turn: f64,
-) {
-    let turn = (heading[last] - heading[first]).abs().to_degrees();
-    if turn >= min_turn {
-        let top = (first..=last).max_by(|&a, &b| curvature[a].abs().total_cmp(&curvature[b].abs())).unwrap_or(first);
-        let third = (last - first) / 3;
-        let entry = (first..=first + third).fold(0.0_f64, |m, k| m.max(curvature[k].abs()));
-        out.push(Corner {
-            start: at[first],
-            end: at[last],
-            left: sign > 0.0,
-            turn,
-            radius: 1.0 / curvature[top].abs(),
-            peak: (at[top] - at[first]) / (at[last] - at[first]).max(1e-6),
-            entry: 1.0 / entry,
-        });
+}
+
+impl Bends<'_> {
+    /// The corner between points `first` and `last` bending to the side of `sign`, if it turns enough.
+    fn push(&self, out: &mut Vec<Corner>, first: usize, last: usize, sign: f64) {
+        let Bends { heading, curvature, at, min_turn } = *self;
+        let turn = (heading[last] - heading[first]).abs().to_degrees();
+        if turn >= min_turn {
+            let top =
+                (first..=last).max_by(|&a, &b| curvature[a].abs().total_cmp(&curvature[b].abs())).unwrap_or(first);
+            let third = (last - first) / 3;
+            let entry = (first..=first + third).fold(0.0_f64, |m, k| m.max(curvature[k].abs()));
+            out.push(Corner {
+                start: at[first],
+                end: at[last],
+                left: sign > 0.0,
+                turn,
+                radius: 1.0 / curvature[top].abs(),
+                peak: (at[top] - at[first]) / (at[last] - at[first]).max(1e-6),
+                entry: 1.0 / entry,
+            });
+        }
     }
 }
 
