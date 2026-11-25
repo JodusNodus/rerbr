@@ -503,7 +503,7 @@ pub fn bulkhead(meshes: &[Mesh], damage: &[MeshDamage]) -> Option<Mesh> {
         })
         .collect();
     let w = Windscreen::new(&triangles)?;
-    let lit = |draw: &&Draw| draw.state.shade.is_some_and(|shade| !shade.glass) && !draw.state.blend;
+    let lit = |draw: &&Draw| draw.state.shade.is_some_and(|shade| !shade.glass()) && !draw.state.blend;
     let (source, draw) = meshes.iter().find_map(|mesh| Some((mesh, mesh.draws.iter().find(lit)?)))?;
     // The glass's foot: a cell below each column's lowest cell on the glass, so that it reaches past where the glass
     // ends between the grid's cells.
@@ -661,7 +661,7 @@ mod tests {
 
     #[test]
     fn the_bulkhead_hangs_from_the_windscreen_s_foot_as_the_cabin_s_first_lit_face() {
-        use crate::stage::{Address, Anchor, Layer, Lod, Shade};
+        use crate::stage::{Address, Anchor, FaceRole, Layer, Lod, Shade};
         use bytemuck::Zeroable;
         let mesh = |triangles: &[[Vec3; 3]], blend: bool, shade: Option<Shade>| {
             let vertices: Vec<Vertex> = triangles
@@ -699,7 +699,11 @@ mod tests {
         };
         let up = Vec3::new(0.0, 0.53, 0.85) * 0.8;
         let (a, b) = (Vec3::new(0.7, 0.72, -2.13), Vec3::new(-0.7, 0.72, -2.13));
-        let glass = mesh(&[[a, b, b + up], [a, b + up, a + up]], true, Some(Shade { glass: true, ..Shade::default() }));
+        let glass = mesh(
+            &[[a, b, b + up], [a, b + up, a + up]],
+            true,
+            Some(Shade { role: FaceRole::Glass, ..Shade::default() }),
+        );
         let dash = mesh(&[[Vec3::ZERO, Vec3::X, Vec3::Z]], false, Some(Shade::default()));
         let windscreen = MeshDamage { window: damage::window_slot(WINDSCREEN), ..MeshDamage::default() };
         let hung = bulkhead(&[glass.clone(), dash], &[windscreen, MeshDamage::default()]).unwrap();

@@ -4,7 +4,9 @@ use super::pipelines::cutout;
 use super::uniforms::ModeUniform;
 use super::DEPTH_FORMAT;
 use crate::gpu_util;
-use crate::stage::{Address, DrawState, Highlight, Layers, Shade, Sheen, TextureRef, TextureSet, MIP_MAP_BIAS};
+use crate::stage::{
+    Address, DrawState, FaceRole, Highlight, Layers, Shade, Sheen, TextureRef, TextureSet, MIP_MAP_BIAS,
+};
 use bytemuck::bytes_of;
 use rbr_formats::dds::{self, Format};
 use std::collections::BTreeMap;
@@ -232,10 +234,11 @@ impl Views {
 
 /// A draw's lit class (`mode.lit`, `LIT` in `shader.wgsl`): 0 unlit, 1 lit, 2 glass, 3 a lit lamp's part, 4 a crack.
 pub(super) fn lit_class(shade: Option<&Shade>) -> u32 {
-    shade.map_or(0, |s| match (s.glow.is_some(), s.crack) {
-        (true, _) => 3,
-        (_, true) => 4,
-        _ => 1 + u32::from(s.glass),
+    shade.map_or(0, |s| match s.role {
+        _ if s.glow.is_some() => 3,
+        FaceRole::Crack => 4,
+        FaceRole::Glass | FaceRole::Window => 2,
+        _ => 1,
     })
 }
 
@@ -273,14 +276,7 @@ pub(super) fn bind_group(
             key.shade.map_or(0.0, |s| f32::from(s.glow_kind)),
         ],
         lamp: key.shade.and_then(|s| s.glow).unwrap_or_default(),
-        grime: key.shade.map_or([0.0; 4], |s| {
-            [
-                f32::from(s.grime) / 10.0,
-                f32::from(u8::from(s.tint)),
-                f32::from(u8::from(s.spatter)),
-                f32::from(u8::from(s.window)),
-            ]
-        }),
+        car: key.shade.map_or([0.0; 4], |s| [f32::from(s.grime) / 10.0, f32::from(s.role as u8), 0.0, 0.0]),
         detail: match key.textures[0] {
             Source::Texture(texture) if key.ground => views.detail.get(&texture).copied().unwrap_or_default(),
             _ => [0.0; 4],
@@ -512,4 +508,33 @@ pub(super) fn depth_view(device: &wgpu::Device, size: (u32, u32)) -> wgpu::Textu
     // Read by the reflections, the sun's mask, the effects and the post pass.
     let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
     gpu_util::target(device, "depth", size, DEPTH_FORMAT, usage)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shader_check::wgsl_const;
+
+    #[test]
+    fn the_shader_numbers_the_face_roles_as_the_stage_does() {
+        let roles = [
+            ("ROLE_WINDOW", FaceRole::Window),
+            ("ROLE_INTERIOR_GLASS", FaceRole::InteriorGlass),
+            ("ROLE_WHEEL", FaceRole::Wheel),
+            ("ROLE_LENS", FaceRole::Lens),
+        ];
+        for (name, role) in roles {
+            assert_eq!(wgsl_const(crate::renderer::SHADER, name), f64::from(role as u8), "{name}");
+        }
+    }
+
+    #[test]
+    fn the_lit_class_follows_the_role_and_the_glow() {
+        let shade = |role| Some(Shade { role, ..Shade::default() });
+        let classes = [FaceRole::Body, FaceRole::Glass, FaceRole::Window, FaceRole::Crack, FaceRole::Lens]
+            .map(|role| lit_class(shade(role).as_ref()));
+        assert_eq!(classes, [1, 2, 2, 4, 1]);
+        let glowing = Shade { role: FaceRole::Glass, glow: Some([1.0; 4]), ..Shade::default() };
+        assert_eq!((lit_class(None), lit_class(Some(&glowing))), (0, 3));
+    }
 }

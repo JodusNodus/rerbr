@@ -144,9 +144,8 @@ struct Mode {
     // x 1: an emissive mask in `glow_texture` (`backlit`: a dial's, the start board's); y 1 when its alpha counts (not
     // DXT1); z 1 when it glows by day too (the start board's lamps).
     glow: vec4<f32>,
-    // x a glass pane's share of the mud film (`stage::Shade::grime`), 0 for none; y 1: interior glass
-    // (`stage::Shade::tint`); z 1 for a wheel's or mud flap's dirt spatter (`stage::Shade::spatter`).
-    grime: vec4<f32>,
+    // x a glass pane's share of the mud film (`stage::Shade::grime`), 0 for none; y the car face's role (`car_role`).
+    car: vec4<f32>,
     // The near ground's detail window in texture 0's uv (low u and v, width and height; z 0 for none;
     // `terrain_detail`).
     detail: vec4<f32>,
@@ -204,6 +203,16 @@ override DRAW_BUMP: bool = false;
 override DRAW_HIGHLIGHT: bool = false;
 override DRAW_SHEEN: bool = false;
 override DRAW_LAYERS: bool = false;
+
+// A car face's role (`stage::FaceRole`, the same numbers; 0 a body's).
+const ROLE_WINDOW: u32 = 2u;
+const ROLE_INTERIOR_GLASS: u32 = 3u;
+const ROLE_WHEEL: u32 = 5u;
+const ROLE_LENS: u32 = 6u;
+
+fn car_role() -> u32 {
+    return u32(mode.car.y + 0.5);
+}
 
 fn water_draw() -> bool {
     return select(mode.water != 0u, DRAW_WATER, KNOWN);
@@ -1266,7 +1275,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // A wheel's rubber and metal by the texel's luminance (`WHEEL_LUMA`); 0 for the rest of the car.
     var metal = 0.0;
     var dirt_share = 1.0;
-    if (mode.grime.z != 0.0 && day_lit() && car_look()) {
+    if (car_role() == ROLE_WHEEL && day_lit() && car_look()) {
         metal = smoothstep(WHEEL_LUMA.x, WHEEL_LUMA.y, dot(surface, vec3<f32>(0.2126, 0.7152, 0.0722)));
         colour = colour * mix(RUBBER_ALBEDO, 1.0, metal);
         // The dust sits low on the tyre: the rubber higher up keeps `RUBBER_DIRT_HIGH` of its dirt.
@@ -1280,7 +1289,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         colour = mix(colour, frame.car_dirt.rgb, covered);
         clean = 1.0 - covered * (1.0 - frame.car_dirt.w);
     }
-    if (mode.grime.z != 0.0 && frame.wetness.w != 0.0) {
+    if (car_role() == ROLE_WHEEL && frame.wetness.w != 0.0) {
         // A wheel's or mud flap's spatter by the dirt level (ours, `dirt::spatter`, with the surfaces' dirt), in spots
         // of a value noise over its texels (so of about one size on every car) over a film, on what its dirt map gave.
         let texels = v.uv0 * vec2<f32>(textureDimensions(texture0)) / SPATTER_TEXELS;
@@ -1292,10 +1301,10 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         colour = mix(colour, frame.car_dirt.rgb, covered);
         clean = clean * (1.0 - covered * (1.0 - frame.car_dirt.w));
     }
-    if (mode.grime.x != 0.0 && frame.wetness.y > 0.0) {
+    if (mode.car.x != 0.0 && frame.wetness.y > 0.0) {
         // A pane's mud film by the dirt level times its share (ours, `dirt::grime`), in patches of a value noise
         // on the pane's uv with clearer glass between them; the wet mud keeps `GRIME_SHEEN` of the reflection.
-        let film = frame.wetness.y * mode.grime.x;
+        let film = frame.wetness.y * mode.car.x;
         let patches = 0.65 * value_noise(vec3<f32>(v.uv0 * GRIME_SCALE, 0.0))
             + 0.35 * value_noise(vec3<f32>(v.uv0 * GRIME_SCALE * 4.0, 1.7));
         let covered = GRIME_MOST * film * smoothstep(0.3, 0.7, patches);
@@ -1313,9 +1322,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         film = WET_FILM;
         colour = wet_base(colour, v.world, wp.up) * (1.0 - WET_DROP * wp.drops);
     }
-    // A lamp's lens (ours): a reflecting lit draw with no dirt map, not a wheel's (the lit lamps' parts glow, `lit_class` 3).
-    let lens = lit_class() == 1u && mode.fresnel.w == 0.0 && mode.grime.z == 0.0 && mode.fresnel.y * mode.fresnel.z > 0.0
-        && day_lit() && car_look() && !cabin_face;
+    // A lamp's lens (ours; the lit lamps' parts glow, `lit_class` 3).
+    let lens = car_role() == ROLE_LENS && lit_class() == 1u && day_lit() && car_look() && !cabin_face;
     var shaded: vec3<f32>;
     var visible = 1.0;
     if (day_lit() && !cabin_face && car_look()) {
@@ -1363,7 +1371,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         let mirrored = select(reflected(reflect(-view, n), 0.0), paint_mirrored(reflect(-view, n), COAT_ROUGHNESS), physical);
         colour = shaded + mirrored * f * clean;
         alpha = clamp(alpha + 0.5 * f * clean, 0.0, 1.0);
-        if (physical && !inside && mode.grime.y == 0.0 && mode.grime.w != 0.0) {
+        if (physical && !inside && car_role() == ROLE_WINDOW) {
             // Seen from outside the pane mirrors the surroundings by their own weight F, not the blend's alpha times F
             // (a tenth of it), and absorbs at least `GLASS_ABSORB` (dry, rain) of the view through it.
             let rain = select(0.0, 1.0, frame.wind.z > 0.0);
@@ -1443,7 +1451,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // With the day's light the interior glass's translucent texels only darken what is seen through it, by their
     // alpha and darkness: lit as in the game under the day's exposure, a light one (RSF 52's `i_window_f`) greyed the
     // view. Near-opaque texels (sun strips, visors printed on the glass) and coloured ones (banners) stay lit.
-    if (inside && day_on() && mode.grime.y != 0.0 && mirror >= MIRROR_COUNT) {
+    if (inside && day_on() && car_role() == ROLE_INTERIOR_GLASS && mirror >= MIRROR_COUNT) {
         let chroma = max(first.r, max(first.g, first.b)) - min(first.r, min(first.g, first.b));
         let printed = max(smoothstep(INT_GLASS_PRINTED.x, INT_GLASS_PRINTED.y, alpha),
             smoothstep(INT_GLASS_PRINTED_CHROMA.x, INT_GLASS_PRINTED_CHROMA.y, chroma));

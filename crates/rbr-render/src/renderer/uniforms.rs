@@ -37,9 +37,9 @@ pub(super) struct ModeUniform {
     /// `x` 1 for a dial with an emissive mask in `glow_texture` (`backlit` in `shader.wgsl`), `y` 1 when its alpha
     /// counts, `z` what lights it (`textures::GlowKind`), `w` a lit lamp's kind (`stage::Shade::glow_kind`).
     pub(super) glow: [f32; 4],
-    /// `x` a glass pane's share of the mud film (`Shade::grime`), `y` 1 for interior glass (`Shade::tint`), `z` 1 for
-    /// a wheel's or mud flap's dirt spatter (`Shade::spatter`), `w` 1 for a window (`Shade::window`).
-    pub(super) grime: [f32; 4],
+    /// `x` a glass pane's share of the mud film (`Shade::grime`), `y` the car face's role (`stage::FaceRole`, `car_role`
+    /// in `shader.wgsl`).
+    pub(super) car: [f32; 4],
     /// The near ground's detail window in its first texture's uv (low u and v, width and height; zero for none;
     /// [`terrain_detail::window`](crate::terrain_detail::window)).
     pub(super) detail: [f32; 4],
@@ -509,7 +509,7 @@ crate::shader_check::wgsl_layout!(
     the_mode_keeps_the_shaders_layout, crate::renderer::SHADER, "Mode",
     ModeUniform {
         second_texture, alpha_test, alpha_ref, mip_bias, cutout, lit, water, specular, light, fresnel, glow,
-        grime, detail, lamp, bank, bump, highlight, tint, sheen, layer, layer_scale, layer_offset
+        car, detail, lamp, bank, bump, highlight, tint, sheen, layer, layer_scale, layer_offset
     }
 );
 

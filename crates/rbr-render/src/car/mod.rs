@@ -29,7 +29,7 @@ use crate::coords;
 use crate::damage::{self, Cracks, Dents, MeshDamage, Zones};
 use crate::lights::{self, LampPoint};
 use crate::parallel::in_parallel;
-use crate::stage::{Draw, Mesh, Pose, Selection, Shade, Stage, StageTexture, TextureRef, TextureSet, Vertex};
+use crate::stage::{Draw, FaceRole, Mesh, Pose, Selection, Shade, Stage, StageTexture, TextureRef, TextureSet, Vertex};
 use glam::{Mat4, Vec3};
 use rbr_formats::data::Data;
 use rbr_formats::ini::Section;
@@ -52,7 +52,7 @@ use meshes::{build_meshes, crack_overlays, in_draw_order};
 pub(crate) use parts::wheel_of;
 use parts::{brake_disc_of, detach_part, ghost_part_for, hinge_side, interior_part_for, part_for};
 use shading::{
-    class_finish, dirt_texture, list_for, pass_for, scrape_texture, shade_for, FaceStyle, List, Order, Pass,
+    class_finish, dirt_texture, list_for, pass_for, role, scrape_texture, shade_for, FaceStyle, List, Order, Pass,
 };
 pub use wheels::{wheel_at_rest, wheel_places, WheelPlaces};
 
@@ -473,10 +473,15 @@ fn load_set(
                     scrape,
                     normal,
                     shade: shade_for(&settings, shader).map(|shade| Shade {
+                        role: role(
+                            shader,
+                            opacity,
+                            crate::dirt::spatter(&mesh.node.name),
+                            dirt.is_some(),
+                            shade.fresnel_max * shade.kf > 0.0,
+                        ),
                         dirt,
                         grime: crate::dirt::grime(&mesh.node.name, shader),
-                        spatter: crate::dirt::spatter(&mesh.node.name),
-                        tint: shade.tint && opacity,
                         finish: car_parts::finish(&shaders, material).or_else(|| class_finish(shader)),
                         ..shade
                     }),
@@ -538,7 +543,9 @@ fn load_set(
             }
             if window.is_some() {
                 for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
-                    shade.window = true;
+                    if shade.role == FaceRole::Glass {
+                        shade.role = FaceRole::Window;
+                    }
                 }
             }
             (
@@ -552,7 +559,7 @@ fn load_set(
                 texture: Some(textures.generated(CRACK_TEXTURE, crate::crack_decal::dds)),
                 scrape: None,
                 normal: None,
-                shade: shade_for(&settings, CRACK_SHADER).map(|shade| Shade { crack: true, ..shade }),
+                shade: shade_for(&settings, CRACK_SHADER).map(|shade| Shade { role: FaceRole::Crack, ..shade }),
                 pass: Pass::Crack,
                 order: (List::Transparent, usize::MAX),
             };
@@ -648,7 +655,7 @@ impl Car {
     /// through the near one tints and reflects too, where the game culls its back faces, and the near pane, blended
     /// after it, stays over it.
     pub fn add_inner_glass(&mut self) {
-        let glass = |draw: &Draw| draw.state.shade.is_some_and(|shade| shade.glass);
+        let glass = |draw: &Draw| draw.state.shade.is_some_and(|shade| shade.glass());
         let Some(first) = self.meshes.iter().position(|mesh| mesh.draws.iter().any(glass)) else {
             return;
         };

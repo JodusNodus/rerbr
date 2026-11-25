@@ -1,6 +1,6 @@
 use super::*;
 use crate::camera::FreeFly;
-use crate::stage::{Address, Anchor, DrawState, Layer, Lod, Shade, Vertex};
+use crate::stage::{Address, Anchor, DrawState, FaceRole, Layer, Lod, Shade, Vertex};
 use bytemuck::Zeroable;
 
 /// The cockpit's eye in the tests' model space (the car looks along `-z`).
@@ -34,7 +34,7 @@ fn mesh(triangles: &[[Vec3; 3]], normal: Vec3, glass: bool) -> Mesh {
                 blend: false,
                 depth_test: true,
                 depth_write: true,
-                shade: glass.then(|| Shade { glass: true, ..Shade::default() }),
+                shade: glass.then(|| Shade { role: FaceRole::Glass, ..Shade::default() }),
                 specular: None,
                 surface: None,
             },
