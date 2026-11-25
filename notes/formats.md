@@ -309,7 +309,7 @@ the like), each holding the `<model>.ini`/`_settings.ini` replacements RSF's pic
 added pack cars carry bare option folders instead (`lights_on/`, `Close Roof/`, no metadata). A stage the
 lamps light (sun below +6 degrees, `relight::LAMPS_FROM`, dusk included) loads the car with its light options on,
 in memory: the headlights' on-option, then each extra-lights/pod on-option merged over the model's files
-(`rsf::night_options`, `rsf::merge_night_options`; `car::load_lit`), before any mesh is built, so visibility,
+(`rsf::night_options`, `rsf::merge_night_options`; `car::load` with `lit`), before any mesh is built, so visibility,
 lamp switches and points all use the merged files; by day the installed parts stay. A light group is `metadata` names
 holding `light` but no rear word; its on variant the `on` state, preferring `all`/`full`, bare `On`, the high beam
 for headlights, else the `*on` folder; of several still tied (Audi quattros, Volvo 242, Celica ST185, TA64, 208

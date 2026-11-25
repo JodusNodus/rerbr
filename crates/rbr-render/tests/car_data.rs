@@ -47,7 +47,8 @@ fn all_retail_cars_load_with_their_textures_and_indices() {
         return;
     };
     for name in CARS {
-        let car = car::load(&data, name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let car =
+            car::load(&data, name, Mat4::IDENTITY, car::Set::Exterior, false).unwrap_or_else(|e| panic!("{name}: {e}"));
         let report = &car.report;
         assert!(report.missing_textures.is_empty(), "{name}: {:?}", report.missing_textures);
         assert_eq!(report.bad_triangles, 0, "{name}: bad triangles");
@@ -79,7 +80,7 @@ fn xsara_sits_at_the_track_10_o_start() {
     let start = stage.start.expect("car start location");
     let (meshes, textures) = (stage.meshes.len(), stage.textures.len());
 
-    let car = car::load(&data, "XSARA", car::placement_at(Some(start))).expect("XSARA");
+    let car = car::load(&data, "XSARA", car::placement_at(Some(start)), car::Set::Exterior, false).expect("XSARA");
     let (lo, hi) = car.bounds().expect("car geometry");
     let centre = (lo + hi) * 0.5;
     let from_start = Vec3::new(centre.x - start.position.x, 0.0, centre.z - start.position.z);
@@ -118,7 +119,8 @@ fn all_retail_cars_draw_only_their_exterior_set() {
         return;
     };
     for name in CARS {
-        let car = car::load(&data, name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let car =
+            car::load(&data, name, Mat4::IDENTITY, car::Set::Exterior, false).unwrap_or_else(|e| panic!("{name}: {e}"));
         let skipped: Vec<&str> = car.report.skipped.iter().map(|(n, _)| n.as_str()).collect();
         let meshes: Vec<String> = model(&data, name)
             .into_iter()
@@ -249,7 +251,8 @@ fn shader_files_follow_the_game_id_tables() {
         return;
     };
     for name in CARS {
-        let car = car::load(&data, name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let car =
+            car::load(&data, name, Mat4::IDENTITY, car::Set::Exterior, false).unwrap_or_else(|e| panic!("{name}: {e}"));
         for (class, files) in &car.report.shader_files {
             let pixel = files.pixel.file_name().expect("file").to_string_lossy();
             let expected = match class.as_str() {
@@ -277,7 +280,7 @@ fn shader_files_are_the_1_02_patch_files_when_the_patch_is_set() {
     let Some(data) = data() else {
         return;
     };
-    let car = car::load(&data, "XSARA", Mat4::IDENTITY).expect("XSARA");
+    let car = car::load(&data, "XSARA", Mat4::IDENTITY, car::Set::Exterior, false).expect("XSARA");
     let files = &car.report.shader_files;
     assert!(files.contains_key("CarGlass") && files.contains_key("CarPaint"));
     let Some(patch) = data.patch() else {
@@ -323,7 +326,8 @@ fn transparent_faces_are_drawn_in_the_cars() {
     };
     let (mut blended, mut plastic, mut cracks) = (0, 0, 0);
     for name in CARS {
-        let car = car::load(&data, name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let car =
+            car::load(&data, name, Mat4::IDENTITY, car::Set::Exterior, false).unwrap_or_else(|e| panic!("{name}: {e}"));
         // Every car has the six windows `g_HH_DmgParts` names; the crack overlays are blended without the alpha test.
         assert_eq!(car.windows(), [true; 6], "{name}: windows");
         for (mesh, damage) in car.meshes.iter().zip(&car.damage).filter(|(_, d)| d.crack.is_some()) {
@@ -378,8 +382,8 @@ fn in_car_views_frame_the_cabin_and_the_bonnet_at_fifty_degrees() {
     let Some(data) = data() else {
         return;
     };
-    let exterior = car::load(&data, "COROLLA", Mat4::IDENTITY).expect("COROLLA");
-    let interior = car::load_interior(&data, "COROLLA", Mat4::IDENTITY).expect("COROLLA interior");
+    let exterior = car::load(&data, "COROLLA", Mat4::IDENTITY, car::Set::Exterior, false).expect("COROLLA");
+    let interior = car::load(&data, "COROLLA", Mat4::IDENTITY, car::Set::Interior, false).expect("COROLLA interior");
     let (lo, hi) = exterior.bounds().expect("COROLLA bounds");
     let mounts = Mounts::load(&data, "COROLLA", lo, hi, &exterior.meshes, &interior.meshes).expect("COROLLA views");
     let sections = car::part_sections(&data, "COROLLA").expect("COROLLA sections");
@@ -434,9 +438,10 @@ fn rsf_car_models_load_with_their_textures() {
             continue;
         }
         let name = selected.folder().to_owned();
-        let outside = car::load(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let inside =
-            car::load_interior(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let outside = car::load(&selected.data, &name, Mat4::IDENTITY, car::Set::Exterior, false)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let inside = car::load(&selected.data, &name, Mat4::IDENTITY, car::Set::Interior, false)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
         for (set, car) in [("outside", &outside), ("inside", &inside)] {
             assert!(car.report.meshes_drawn > 0, "{name} {set}");
             assert_eq!(car.report.missing_textures, Vec::<String>::new(), "{name} {set}");
@@ -466,9 +471,10 @@ fn rsf_night_options_load_where_they_apply() {
             continue;
         }
         let name = selected.folder().to_owned();
-        let day = car::load(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let night =
-            car::load_lit(&selected.data, &name, Mat4::IDENTITY, true).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let day = car::load(&selected.data, &name, Mat4::IDENTITY, car::Set::Exterior, false)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let night = car::load(&selected.data, &name, Mat4::IDENTITY, car::Set::Exterior, true)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
         if !night.report.night_options.is_empty() {
             assert!(night.report.night_veto.is_none(), "{name}: {:?}", night.report.night_veto);
             // The counts may go either way: a lights-off car lights nothing by day but for the two
@@ -484,7 +490,7 @@ fn rsf_night_options_load_where_they_apply() {
             assert_eq!(night.meshes.len(), day.meshes.len(), "{name}: vetoed night differs");
         }
         // The interior set takes the same options (its pods and ramps), or stays as installed.
-        let inside = car::load_interior_lit(&selected.data, &name, Mat4::IDENTITY, true)
+        let inside = car::load(&selected.data, &name, Mat4::IDENTITY, car::Set::Interior, true)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(inside.report.night_options, night.report.night_options, "{name}: interior");
     }
@@ -507,7 +513,7 @@ fn the_cockpit_eye_stays_out_of_the_seat() {
         Mount::from_section(car_parts::section(&sections, "Cam_internal").expect(name)).expect(name)
     };
     let shows_bonnet = |data: &Data, name: &str, interior: &[Mesh]| {
-        let exterior = car::load(data, name, Mat4::IDENTITY).expect(name);
+        let exterior = car::load(data, name, Mat4::IDENTITY, car::Set::Exterior, false).expect(name);
         let (lo, hi) = exterior.bounds().expect(name);
         let mounts = Mounts::load(data, name, lo, hi, &exterior.meshes, interior).expect(name);
         // The line through the bottom middle of a 50-degree, 16:9 image meets the body.
@@ -525,7 +531,7 @@ fn the_cockpit_eye_stays_out_of_the_seat() {
         mounts
     };
     for name in CARS {
-        let interior = car::load_interior(&data, name, Mat4::IDENTITY).expect(name);
+        let interior = car::load(&data, name, Mat4::IDENTITY, car::Set::Interior, false).expect(name);
         let mounts = shows_bonnet(&data, name, &interior.meshes);
         assert_eq!(mounts.cockpit, internal(&data, name).moved_back(COCKPIT_BACK), "{name}");
     }
@@ -543,7 +549,7 @@ fn the_cockpit_eye_stays_out_of_the_seat() {
             continue;
         }
         let name = selected.folder().to_owned();
-        let interior = car::load_interior(&selected.data, &name, Mat4::IDENTITY).expect(&name);
+        let interior = car::load(&selected.data, &name, Mat4::IDENTITY, car::Set::Interior, false).expect(&name);
         let mounts = shows_bonnet(&selected.data, &name, &interior.meshes);
         let mount = internal(&selected.data, &name);
         let back = mounts.cockpit.eye.z - mount.eye.z;
@@ -596,7 +602,8 @@ fn doors_hang_on_their_front_outer_edge() {
         return;
     };
     for name in CARS {
-        let car = car::load(&data, name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let car =
+            car::load(&data, name, Mat4::IDENTITY, car::Set::Exterior, false).unwrap_or_else(|e| panic!("{name}: {e}"));
         let mut hinged = 0;
         let mut left = None;
         let mut right = None;

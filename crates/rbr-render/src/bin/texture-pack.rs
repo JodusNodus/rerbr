@@ -69,8 +69,10 @@ fn run() -> Result<(), String> {
     }
     let textures: Vec<StageTexture> = match &car_name {
         Some(name) => {
-            let exterior = car::load(&data, name, car::placement_at(None)).map_err(|e| e.to_string())?;
-            let interior = car::load_interior(&data, name, car::placement_at(None)).map_err(|e| e.to_string())?;
+            let exterior = car::load(&data, name, car::placement_at(None), car::Set::Exterior, false)
+                .map_err(|e| e.to_string())?;
+            let interior = car::load(&data, name, car::placement_at(None), car::Set::Interior, false)
+                .map_err(|e| e.to_string())?;
             exterior.textures.into_values().chain(interior.textures.into_values()).collect()
         }
         None => {

@@ -1,4 +1,4 @@
-//! Lists each car's lamps as a night drive loads them (`car::load_lit`): per kind, the lamp points that light when
+//! Lists each car's lamps as a night drive loads them (`car::load` with `lit`): per kind, the lamp points that light when
 //! switched on (headlights on main beam, brake pressed, reverse engaged), and the parts that glow, with their size and
 //! colour, then flags what reads as a broken lamp. Usage: `lamp_survey [-v] [CAR...]` (retail folder names, RSF ids).
 //! Flags: `no-light` (no point lights the stage), `no-glow` (no part glows), `dropped` (light of the kind lost when
@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let mut flagged: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (label, data, folder) in &cars {
-        let car = match car::load_lit(data, folder, car::placement_at(None), true) {
+        let car = match car::load(data, folder, car::placement_at(None), car::Set::Exterior, true) {
             Ok(car) => car,
             Err(e) => {
                 println!("{label}: {e:?}");

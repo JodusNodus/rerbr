@@ -53,8 +53,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     for (label, data, folder) in cars {
-        let interior = car::load_interior(&data, &folder, car::placement_at(None))?;
-        let exterior = car::load(&data, &folder, car::placement_at(None))?;
+        let interior = car::load(&data, &folder, car::placement_at(None), car::Set::Interior, false)?;
+        let exterior = car::load(&data, &folder, car::placement_at(None), car::Set::Exterior, false)?;
         let (lo, hi) = exterior.bounds().ok_or("no geometry")?;
         let mounts = Mounts::load(&data, &folder, lo, hi, &exterior.meshes, &interior.meshes)?;
         let sections = car::camera_sections(&data, &folder)?;

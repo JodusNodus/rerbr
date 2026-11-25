@@ -296,7 +296,7 @@ impl Playback {
         self.parts.iter().map(|part| part.stage).collect()
     }
 
-    /// Adds the car's interior set (`car::load_interior` at the identity placement, each mesh in `stage`, with its
+    /// Adds the car's interior set (`car::load` of `Set::Interior` at the identity placement, each mesh in `stage`, with its
     /// deformation) as body parts shown when [`Playback::interior`] is set.
     pub fn add_interior(&mut self, stage: &Stage, interior: &[Mesh], damage: &[MeshDamage]) -> Result<(), String> {
         for (mesh, effect) in interior.iter().zip(damage) {

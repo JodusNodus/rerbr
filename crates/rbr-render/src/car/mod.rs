@@ -59,7 +59,7 @@ pub use wheels::{wheel_at_rest, wheel_places, WheelPlaces};
 /// Vertex colour of every car vertex: white, as the model has none, so the texture is drawn as it is. The alpha is the
 /// scrape amount ([`crate::damage`]), 0 until the car is damaged.
 const UNDAMAGED: [u8; 4] = [255, 255, 255, 0];
-/// Name prefix of the ghost parts, which only the ghost car uses ([`load_ghost`]).
+/// Name prefix of the ghost parts, which only the ghost car uses ([`Set::Ghost`]).
 const GHOST_PREFIX: &str = "ghost_";
 /// Name prefix of the overlay layers (dirt and scrape maps, milestone 5).
 const OVERLAY_PREFIX: &str = "texture_";
@@ -75,7 +75,7 @@ const PREMOVE_PART: &str = "pc_e_premove";
 const UNBUILT_PREFIXES: [&str; 2] = ["k_", "d_"];
 /// Name prefix of the interior set. The loader keeps its shaders in their own lists, and `CHH_Car::Render` draws
 /// either the interior lists (mode 0, the in-car views) or the exterior ones (rbr-recomp `notes/formats/sgc.md`, section 9).
-/// [`load`] reads the exterior set and [`load_interior`] the interior one, for the viewer's cockpit view.
+/// [`load`] reads the exterior set or the interior one, for the viewer's cockpit view.
 const INTERIOR_PREFIX: &str = "i_";
 /// The crew some RSF models hold as an interior part (the Fiesta Rally2, the i20 Rally2 and the i20 WRC 2020 and 2021,
 /// of the installed models): a static driver and co-driver, helmets and all, which the game draws with the rest of the
@@ -121,7 +121,7 @@ pub enum Skip {
     NoSection,
     /// A ghost part.
     Ghost,
-    /// Not in the ghost set ([`load_ghost`]).
+    /// Not in the ghost set ([`Set::Ghost`]).
     NotGhost,
     /// An overlay layer (dirt or scrape map).
     Overlay,
@@ -133,7 +133,7 @@ pub enum Skip {
     BakedCrew,
     /// The interior set, drawn only in the in-car views.
     Interior,
-    /// Not in the interior set ([`load_interior`]): the outside views' parts.
+    /// Not in the interior set ([`Set::Interior`]): the outside views' parts.
     Exterior,
     /// A switch part (`Switch = true`) whose box is not in its `Predicate` state at the start ([`lights::shown_at_start`]):
     /// the lit lights and the like.
@@ -279,35 +279,32 @@ pub fn placement_at(pose: Option<Pose>) -> Mat4 {
     }
 }
 
+/// Which of a car's sets a load builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Set {
+    /// The exterior set, which the outside views draw.
+    Exterior,
+    /// The interior set (`i_*`), loaded as the exterior is. `CHH_Car::Render` draws these instead of the exterior in
+    /// the in-car views (the cockpit camera; rbr-recomp `notes/formats/sgc.md`, section 9).
+    Interior,
+    /// The ghost set (`ghost_*`, one `GhostCar` mesh per car), which the ghost car is drawn with (`E09_LoadGhostCar`
+    /// 0x466910). [`crate::ghost`] gives it the ghost's look.
+    Ghost,
+}
+
 /// Loads car `name` (its `Cars.ini` folder, for example `XSARA`, matched ignoring case) from `data`
-/// (the install, with the 1.02 patch over it when set), with its model-space positions mapped by `placement`.
-pub fn load(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, part_for, true, false)
-}
-
-/// Loads car `name` with its car-parts light options on when `lit` (headlights, extra lights and pods),
-/// the way RSF's picker takes them over the model, in memory: for a stage the lamps light (dusk and night).
-/// A vetoed car, or one with no night option, loads as [`load`].
-pub fn load_lit(data: &Data, name: &str, placement: Mat4, lit: bool) -> Result<Car, Error> {
-    load_set(data, name, placement, part_for, true, lit)
-}
-
-/// Loads car `name`'s interior set (`i_*`) as [`load`] loads the exterior. `CHH_Car::Render` draws these instead of
-/// the exterior in the in-car views (the cockpit camera; rbr-recomp `notes/formats/sgc.md`, section 9).
-pub fn load_interior(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, interior_part_for, false, false)
-}
-
-/// Loads car `name`'s interior set with its car-parts light options on when `lit`, as [`load_lit`] loads
-/// the exterior.
-pub fn load_interior_lit(data: &Data, name: &str, placement: Mat4, lit: bool) -> Result<Car, Error> {
-    load_set(data, name, placement, interior_part_for, false, lit)
-}
-
-/// Loads car `name`'s ghost set (`ghost_*`, one `GhostCar` mesh per car), which the ghost car is drawn with
-/// (`E09_LoadGhostCar` 0x466910). [`crate::ghost`] gives it the ghost's look.
-pub fn load_ghost(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, ghost_part_for, false, false)
+/// (the install, with the 1.02 patch over it when set), the meshes of `set`, with its model-space positions mapped by
+/// `placement`.
+///
+/// With `lit` the car-parts light options are on (headlights, extra lights and pods), the way RSF's picker takes them
+/// over the model, in memory: for a stage the lamps light (dusk and night). A vetoed car, or one with no night option,
+/// loads as unlit. The ghost set ignores `lit`.
+pub fn load(data: &Data, name: &str, placement: Mat4, set: Set, lit: bool) -> Result<Car, Error> {
+    match set {
+        Set::Exterior => load_set(data, name, placement, part_for, true, lit),
+        Set::Interior => load_set(data, name, placement, interior_part_for, false, lit),
+        Set::Ghost => load_set(data, name, placement, ghost_part_for, false, false),
+    }
 }
 
 /// The file of `dos_path`'s name in the "lights on" car-parts option `option` ([`rbr_formats::rsf::headlights_on`]),
@@ -728,7 +725,7 @@ impl Car {
     }
 
     /// Every load numbers its car textures from 0: moves this car's past the car textures already in `stage`, so a
-    /// second set (the interior, [`load_interior`]) added to it doesn't replace the first one's.
+    /// second set (the interior, [`Set::Interior`]) added to it doesn't replace the first one's.
     pub fn after_textures_of(mut self, stage: &Stage) -> Car {
         let base =
             stage.textures.keys().filter(|key| key.set == TextureSet::Car).map(|key| key.index + 1).max().unwrap_or(0);

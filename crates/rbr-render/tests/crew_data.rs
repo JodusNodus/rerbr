@@ -25,7 +25,7 @@ fn the_crew_sits_in_every_retail_car_and_its_wheel_is_found() {
         let turn = crew.wheel_turn().unwrap_or_else(|| panic!("{name}: no i_steeringwheel"));
         // The wheel turns about its node: the node stays where it is (steer 0, so the turn is the identity).
         assert!((turn.transform_point3(node) - node).length() < 1e-4, "{name}: the wheel leaves its node");
-        let interior = car::load_interior(&data, name, glam::Mat4::IDENTITY).expect("interior");
+        let interior = car::load(&data, name, glam::Mat4::IDENTITY, car::Set::Interior, false).expect("interior");
         let wheels: Vec<_> = interior
             .meshes
             .iter()
