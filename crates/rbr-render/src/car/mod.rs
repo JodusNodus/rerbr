@@ -40,8 +40,8 @@ use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 
 pub mod cabin;
-pub mod cabin_bounce;
 mod files;
+pub mod finish;
 mod meshes;
 mod parts;
 mod shading;
@@ -535,6 +535,8 @@ fn load_set(
 
 /// The draw style of each of `mesh`'s faces, from the part's `faces` and the car's `shaders` and shader `settings`.
 /// Allocates the textures' keys in `textures` and each new shader and material's rank in `ranks`.
+// The style expressions are kept as they were when they read the car's files by value.
+#[allow(clippy::needless_borrow)]
 fn face_styles(
     mesh: &sgc::Mesh,
     faces: &[car_parts::FaceBlock],

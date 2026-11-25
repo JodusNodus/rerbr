@@ -301,7 +301,7 @@ pub(super) fn bind_group(
         highlight: key.highlight.map_or([0.0; 4], |h| [h.colour[0], h.colour[1], h.colour[2], h.power]),
         tint: [f32::from_bits(key.light[0]), f32::from_bits(key.light[1]), f32::from(u8::from(key.grass)), 0.0],
         sheen: [key.sheen.map_or(0.0, |s| s.roughness), 0.0, 0.0, 0.0],
-        finish: crate::car::cabin::finish_uniform(key.shade.as_ref().and_then(|s| s.finish.as_ref())),
+        finish: crate::car::finish::finish_uniform(key.shade.as_ref().and_then(|s| s.finish.as_ref())),
         layer: key.layers.map_or([0.0; 4], |(l, _)| {
             [
                 if l.uv {

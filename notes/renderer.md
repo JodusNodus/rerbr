@@ -1775,7 +1775,7 @@ sky's share through two clear faces, `(1 - F)^2` over the cosine-weighed hemisph
 former 0.85 was this); the sun's from the blended panes facing it, weighed by area toward it, per measured direction
 (`SunIn::through`; 208 at 19:30 about 0.8). Left heuristic: `CABIN_SHADE`, `CABIN_GAUGE_LEAST`.
 
-Cabin bounce per vertex, one exposure (user's call, 2026-11-25, `car::cabin_bounce`): each vertex's 64 rays
+Cabin bounce per vertex, one exposure (user's call, 2026-11-25, `car::cabin::bounce`): each vertex's 64 rays
 (`Grid::sky_hits`) note the cabin face they meet on its front (a back hit, a door's outer skin from inside, gives
 nothing: counted, it lit the DiRT Escort's cabin with the skins' outside light); three bounces of the faces' albedo
 times their sky share, and of their sun as `c0 + c1 . d` over 64 directions past the car, give each vertex its sky
