@@ -302,6 +302,7 @@ impl Post {
             let constants = [
                 ("SHAFTS", f64::from(u8::from(shafts))),
                 ("CABIN", cabin),
+                ("CABIN_SHARE", cabin_share()),
                 ("DEBUG_VIEW", f64::from(debug_view)),
                 ("HDR", hdr),
                 ("GRADE", f64::from(u8::from(nodes.is_some()))),
@@ -503,6 +504,16 @@ impl Post {
         pass.set_bind_group(1, &t.composite, &[]);
         pass.draw(0..3, 0..1);
     }
+}
+
+/// The share of the gap between the cabin's exposure and the outside's the cabin is lifted by (`CABIN_SHARE` in
+/// `post.wgsl`): `RERBR_CABIN_SHARE` (experiment), else 1 as before.
+fn cabin_share() -> f64 {
+    std::env::var("RERBR_CABIN_SHARE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|s: &f64| (0.0..=1.0).contains(s))
+        .unwrap_or(1.0)
 }
 
 /// The frame and the bloom levels for `size`, and their bind groups; the light shafts' map with `shafts`.

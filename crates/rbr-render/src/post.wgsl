@@ -59,6 +59,10 @@ override SHAFTS: bool = false;
 // The in-car view's cabin exposure (`Exposure::cabin`, `CABIN_STOPS`): a pipeline override, so the composite outside
 // the car is built as before.
 override CABIN: bool = false;
+// The share of the stops between the cabin's metered exposure and the outside's the cabin is lifted by, at most
+// `CABIN_STOPS` (experiment, `RERBR_CABIN_SHARE`; 1 as before): as Far Cry 5's local exposure (McAuley, SIGGRAPH 2018),
+// the inside lifted part of the way, keeping some of its contrast with the outside.
+override CABIN_SHARE: f32 = 1.0;
 // What `viewer --debug-view` passes through (`renderer::DebugView`, `cabin_debug` in `cabin.wgsl`): 0 the shaded
 // scene, else the cabin's debug grey, already in display grey. A pipeline override, so the composite without it is
 // built as before.
@@ -576,7 +580,8 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     var exposed = exposure.value;
     var veil = 1.0;
     if (cabin) {
-        exposed = clamp(exposure.cabin, exposure.value, exposure.value * exp2(CABIN_STOPS));
+        let gap = max(log2(exposure.cabin / exposure.value), 0.0);
+        exposed = exposure.value * exp2(min(CABIN_SHARE * gap, CABIN_STOPS));
         // Tapered (`CABIN_TAPER`): the lift over the outside's exposure in full on the cabin's dark, less on what is
         // bright at the outside's (the sun on it), `x + (g - 1) k x / (k + x)`, which keeps the order of the values.
         // `x` is the darker of the pixel and the frame about it (the glare chain's luminance), so a dial's white
