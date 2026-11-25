@@ -27,7 +27,7 @@ fn tanner_corolla_starts_at_the_stage_start() {
     let drive = Drive::parse(&bytes).expect("frames");
 
     let data = Data::from_env().expect("RBR_DATA");
-    let car = car::load(&data, "COROLLA", Mat4::IDENTITY).expect("COROLLA");
+    let car = car::load(&data, "COROLLA", Mat4::IDENTITY, car::Set::Exterior, false).expect("COROLLA");
     let (model, damage) = (car.meshes.clone(), car.damage.clone());
     car.add_to_stage(&mut stage);
     let playback = Playback::load(&data, "COROLLA", &stage, &model, &damage, drive).expect("playback");

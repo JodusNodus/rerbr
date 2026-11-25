@@ -144,9 +144,8 @@ struct Mode {
     // x 1: an emissive mask in `glow_texture` (`backlit`: a dial's, the start board's); y 1 when its alpha counts (not
     // DXT1); z 1 when it glows by day too (the start board's lamps).
     glow: vec4<f32>,
-    // x a glass pane's share of the mud film (`stage::Shade::grime`), 0 for none; y 1: interior glass
-    // (`stage::Shade::tint`); z 1 for a wheel's or mud flap's dirt spatter (`stage::Shade::spatter`).
-    grime: vec4<f32>,
+    // x a glass pane's share of the mud film (`stage::Shade::grime`), 0 for none; y the car face's role (`car_role`).
+    car: vec4<f32>,
     // The near ground's detail window in texture 0's uv (low u and v, width and height; z 0 for none;
     // `terrain_detail`).
     detail: vec4<f32>,
@@ -204,6 +203,16 @@ override DRAW_BUMP: bool = false;
 override DRAW_HIGHLIGHT: bool = false;
 override DRAW_SHEEN: bool = false;
 override DRAW_LAYERS: bool = false;
+
+// A car face's role (`stage::FaceRole`, the same numbers; 0 a body's).
+const ROLE_WINDOW: u32 = 2u;
+const ROLE_INTERIOR_GLASS: u32 = 3u;
+const ROLE_WHEEL: u32 = 5u;
+const ROLE_LENS: u32 = 6u;
+
+fn car_role() -> u32 {
+    return u32(mode.car.y + 0.5);
+}
 
 fn water_draw() -> bool {
     return select(mode.water != 0u, DRAW_WATER, KNOWN);
@@ -616,12 +625,9 @@ fn vertex(input: VertexIn) -> VertexOut {
         let out_way = v.uv1 * (v.wet.y * (grass_widen(d) - 1.0));
         let n = v.normal;
         out.world = v.position + vec3<f32>(out_way.x, -(n.x * out_way.x + n.z * out_way.y) / max(n.y, 0.1), out_way.y);
+        // At its full height: past the density where it stands it is dithered out (`grass_dithered`).
         if (v.uv2.x > 0.0) {
-            // Shrunk into the ground past the density where it stands and at the far edge of the grass; a converted
-            // stage's cards (kinds 2 to 4, atlas pictures) keep their height and are dithered out (`grass_dithered`).
-            let grown = select(grass_grown(d, v.uv2.y), 1.0, v.specular.z > 1.5);
-            let height = v.uv2.x * grown;
-            out.world = out.world + vec3<f32>(0.0, height - v.uv2.x, 0.0) + grass_sway(v.position, max(height, 1e-3));
+            out.world = out.world + grass_sway(v.position, v.uv2.x);
         }
         out.clip = frame.view_projection * vec4<f32>(out.world, 1.0);
     }
@@ -666,8 +672,8 @@ fn is_grass_card(v: VertexIn) -> bool {
 // `GRASS_SWAY` of its height, in gusts that cross the field as a slow wave (`GRASS_GUST`: its metres per radian and
 // radians a second), with a quicker flutter of its own (`GRASS_FLUTTER`), dipping the top a little as it bows.
 const GRASS_WIND: vec2<f32> = vec2<f32>(0.8, 0.6);
-// A card of rank `keep` (`grass::Card::keep`) is full height under the density and shrinks into the ground up to
-// `GRASS_MARGIN` times it (`grass::GROW_MARGIN`).
+// A card of rank `keep` (`grass::Card::keep`) shows whole under the density and is dithered out up to `GRASS_MARGIN`
+// times it (`grass::GROW_MARGIN`).
 const GRASS_MARGIN: f32 = 1.5;
 // The metres from the eye over which a converted stage's group pieces grow in (`grass::FX_PIECE`): CSP draws its base
 // grass nearer and the pieces from its third generation pass on.
@@ -698,7 +704,7 @@ fn grass_cover(d: f32) -> f32 {
     return min(grass_widen(d) * frame.grass.y / max(d, 1e-3), 1.0) * grass_fade(d);
 }
 
-// How grown a card of rank `keep` is `d` metres from the eye, 0 to 1.
+// How much of a card of rank `keep` shows `d` metres from the eye, 0 to 1.
 fn grass_grown(d: f32, keep: f32) -> f32 {
     let density = grass_density(d);
     return 1.0 - smoothstep(density, density * GRASS_MARGIN, keep);
@@ -711,12 +717,12 @@ fn dither(p: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(dot(q, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// Whether a converted stage's grass card (kinds 2 to 4, `grass_cards.wgsl`) lets this pixel go: it shows as much as
-// a card of ours grows (`grass_grown`), its group pieces (kind 3, `grass::FX_PIECE`) only away from the eye, by a
-// screen dither rather than shrinking, which squashed its picture as the eye came and went.
+// Whether a grass card (`grass_cards.wgsl`) lets this pixel go: it shows as much as its rank takes
+// (`grass_grown`), a converted stage's group pieces (kind 3, `grass::FX_PIECE`) only away from the eye, by a screen
+// dither rather than shrinking, which made the cards rise and sink (and squashed an atlas picture) as the eye moved.
 fn grass_dithered(v: VertexOut) -> bool {
     let card = v.specular.x > GRASS_MARK && v.specular.x < GRASS_MARK + 3.0 && v.specular.y > 0.5
-        && v.specular.y < 1.5 && v.specular.z > 1.5 && v.wet.y > 0.0;
+        && v.specular.y < 1.5 && v.specular.z > 0.5 && v.wet.y > 0.0;
     if (!card) {
         return false;
     }
@@ -1180,6 +1186,33 @@ const GLASS_DARK: vec2<f32> = vec2<f32>(0.6, 0.35);
 // The share more it mirrors with rain: the water film over the glass (the sheet's own Fresnel, a rougher face).
 const GLASS_WET: f32 = 0.5;
 
+// A car layer's mirror and its share of the face (the coat over the lit colour).
+struct CoatLayer {
+    mirrored: vec3<f32>,
+    coat: f32,
+}
+
+// A lamp's lens over its reflector bowl (ours): a sharp, Fresnel-weighted mirror over the texture, whose bright texels
+// (the bowl) are chrome, a rough mirror of the surroundings; `coat` the paint's before.
+fn lens_layer(surface: vec3<f32>, nv: f32, nr: vec3<f32>, view: vec3<f32>, coat: f32) -> CoatLayer {
+    let lum = dot(surface, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let bowl = smoothstep(LENS_LUMA.x, LENS_LUMA.y, lum);
+    let glass = environment_reflectance(max(nv, 1e-3), LENS_ROUGHNESS) * LENS_COAT;
+    let chrome = RIM_METAL * bowl;
+    let shine = paint_mirrored(reflect(-view, nr), LENS_BOWL_ROUGHNESS);
+    let sharp = paint_mirrored(reflect(-view, nr), LENS_ROUGHNESS);
+    let mirrored = mix(sharp, vec3<f32>(dot(shine, vec3<f32>(0.333))), chrome / max(chrome + glass, 1e-4));
+    return CoatLayer(mirrored, min(max(coat, glass) + chrome * (1.0 - glass), 1.0));
+}
+
+// A tyre-wall's or rim's metal (`metal` its share of the texels times the dirt left clean): chrome's grey mirror
+// (`RIM_METAL`, `RIM_ROUGHNESS`) over the paint's.
+fn rim_layer(metal: f32, nr: vec3<f32>, view: vec3<f32>, mirrored: vec3<f32>, coat: f32) -> CoatLayer {
+    let rim = RIM_METAL * metal;
+    let shine = paint_mirrored(reflect(-view, nr), RIM_ROUGHNESS);
+    return CoatLayer(mix(mirrored, vec3<f32>(dot(shine, vec3<f32>(0.333))), rim / max(rim + coat, 1e-4)), max(coat, rim));
+}
+
 // A lit draw's colour (`lit_class` 1 to 4: the car's paint, glass, lit lamps and cracks, the characters), with
 // `under_cloud` of the sun taken by a cloud. Never water, a sky face nor camera-anchored, with no specular map, and no
 // lamps' light on it (`lamp_sum` is the stage's).
@@ -1266,7 +1299,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // A wheel's rubber and metal by the texel's luminance (`WHEEL_LUMA`); 0 for the rest of the car.
     var metal = 0.0;
     var dirt_share = 1.0;
-    if (mode.grime.z != 0.0 && day_lit() && car_look()) {
+    if (car_role() == ROLE_WHEEL && day_lit() && car_look()) {
         metal = smoothstep(WHEEL_LUMA.x, WHEEL_LUMA.y, dot(surface, vec3<f32>(0.2126, 0.7152, 0.0722)));
         colour = colour * mix(RUBBER_ALBEDO, 1.0, metal);
         // The dust sits low on the tyre: the rubber higher up keeps `RUBBER_DIRT_HIGH` of its dirt.
@@ -1280,7 +1313,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         colour = mix(colour, frame.car_dirt.rgb, covered);
         clean = 1.0 - covered * (1.0 - frame.car_dirt.w);
     }
-    if (mode.grime.z != 0.0 && frame.wetness.w != 0.0) {
+    if (car_role() == ROLE_WHEEL && frame.wetness.w != 0.0) {
         // A wheel's or mud flap's spatter by the dirt level (ours, `dirt::spatter`, with the surfaces' dirt), in spots
         // of a value noise over its texels (so of about one size on every car) over a film, on what its dirt map gave.
         let texels = v.uv0 * vec2<f32>(textureDimensions(texture0)) / SPATTER_TEXELS;
@@ -1292,10 +1325,10 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         colour = mix(colour, frame.car_dirt.rgb, covered);
         clean = clean * (1.0 - covered * (1.0 - frame.car_dirt.w));
     }
-    if (mode.grime.x != 0.0 && frame.wetness.y > 0.0) {
+    if (mode.car.x != 0.0 && frame.wetness.y > 0.0) {
         // A pane's mud film by the dirt level times its share (ours, `dirt::grime`), in patches of a value noise
         // on the pane's uv with clearer glass between them; the wet mud keeps `GRIME_SHEEN` of the reflection.
-        let film = frame.wetness.y * mode.grime.x;
+        let film = frame.wetness.y * mode.car.x;
         let patches = 0.65 * value_noise(vec3<f32>(v.uv0 * GRIME_SCALE, 0.0))
             + 0.35 * value_noise(vec3<f32>(v.uv0 * GRIME_SCALE * 4.0, 1.7));
         let covered = GRIME_MOST * film * smoothstep(0.3, 0.7, patches);
@@ -1313,9 +1346,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         film = WET_FILM;
         colour = wet_base(colour, v.world, wp.up) * (1.0 - WET_DROP * wp.drops);
     }
-    // A lamp's lens (ours): a reflecting lit draw with no dirt map, not a wheel's (the lit lamps' parts glow, `lit_class` 3).
-    let lens = lit_class() == 1u && mode.fresnel.w == 0.0 && mode.grime.z == 0.0 && mode.fresnel.y * mode.fresnel.z > 0.0
-        && day_lit() && car_look() && !cabin_face;
+    // A lamp's lens (ours; the lit lamps' parts glow, `lit_class` 3).
+    let lens = car_role() == ROLE_LENS && lit_class() == 1u && day_lit() && car_look() && !cabin_face;
     var shaded: vec3<f32>;
     var visible = 1.0;
     if (day_lit() && !cabin_face && car_look()) {
@@ -1355,6 +1387,8 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         cockpit_coat = select(1.0, smoothstep(CABIN_OUT.x, CABIN_OUT.y, 1.0 - v.specular.z), cabin_face);
     }
     let physical = day_lit() || cockpit_coat > 0.0;
+    // An exterior finish owns the reflection: no class Fresnel shine, clear coat or rim chrome over it (`finish.wgsl`).
+    let finish_owns = exterior_finish();
     if (physical) {
         f = select(0.0, 0.04 + 0.96 * pow(1.0 - nv, 5.0), mode.fresnel.y * mode.fresnel.z > 0.0);
     }
@@ -1363,7 +1397,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         let mirrored = select(reflected(reflect(-view, n), 0.0), paint_mirrored(reflect(-view, n), COAT_ROUGHNESS), physical);
         colour = shaded + mirrored * f * clean;
         alpha = clamp(alpha + 0.5 * f * clean, 0.0, 1.0);
-        if (physical && !inside && mode.grime.y == 0.0 && mode.grime.w != 0.0) {
+        if (physical && !inside && car_role() == ROLE_WINDOW) {
             // Seen from outside the pane mirrors the surroundings by their own weight F, not the blend's alpha times F
             // (a tenth of it), and absorbs at least `GLASS_ABSORB` (dry, rain) of the view through it.
             let rain = select(0.0, 1.0, frame.wind.z > 0.0);
@@ -1394,9 +1428,10 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
             } else {
                 shine = mix(cabin_sheen(v, n, view) * gloss, open, paint);
             }
-        } else if (exterior_finish()) {
+        } else if (finish_owns) {
             // A finish's reflection in place of the class's and of the clear coat (`finish.wgsl`).
-            shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, visible, shaded));
+            let open = specular_occlusion(visible, nv, mix(FINISH_BLUR.x, FINISH_BLUR.y, mode.finish[1].w) / 7.0);
+            shaded = finish_over(shaded, finish_mirror(v, n, view, gloss, open, shaded));
             shine = vec3<f32>(0.0);
         }
         colour = shaded + shine;
@@ -1404,31 +1439,25 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (physical) {
             let sky_dim = mix(1.0, WET_SKY, film);
             let roughness = COAT_ROUGHNESS * (1.0 - film * (1.0 - WET_ROUGHNESS));
-            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0 && !exterior_finish()) * alpha * clean
+            var coat = select(0.0, environment_reflectance(max(nv, 1e-3), roughness), f > 0.0 && !finish_owns) * alpha * clean
                 * select(1.0, cockpit_coat, inside);
             if (lit_class() == 1u && car_look()) {
                 coat = min(coat * COAT_STRENGTH, 1.0);
             }
             var mirrored = paint_mirrored(reflect(-view, nr), roughness);
             if (lens) {
-                // A lamp's lens over its reflector bowl: a sharp, Fresnel-weighted mirror over the texture, whose
-                // bright texels (the bowl) are chrome, a rough mirror of the surroundings.
-                let lum = dot(surface, vec3<f32>(0.2126, 0.7152, 0.0722));
-                let bowl = smoothstep(LENS_LUMA.x, LENS_LUMA.y, lum);
-                let glass = environment_reflectance(max(nv, 1e-3), LENS_ROUGHNESS) * LENS_COAT;
-                let chrome = RIM_METAL * bowl;
-                let shine = paint_mirrored(reflect(-view, nr), LENS_BOWL_ROUGHNESS);
-                let sharp = paint_mirrored(reflect(-view, nr), LENS_ROUGHNESS);
-                mirrored = mix(sharp, vec3<f32>(dot(shine, vec3<f32>(0.333))), chrome / max(chrome + glass, 1e-4));
-                coat = min(max(coat, glass) + chrome * (1.0 - glass), 1.0);
+                let layer = lens_layer(surface, nv, nr, view, coat);
+                mirrored = layer.mirrored;
+                coat = layer.coat;
             }
-            if (metal > 0.0 && !exterior_finish()) {
-                let rim = RIM_METAL * metal * clean;
-                let shine = paint_mirrored(reflect(-view, nr), RIM_ROUGHNESS);
-                mirrored = mix(mirrored, vec3<f32>(dot(shine, vec3<f32>(0.333))), rim / max(rim + coat, 1e-4));
-                coat = max(coat, rim);
+            if (metal > 0.0 && !finish_owns) {
+                let layer = rim_layer(metal * clean, nr, view, mirrored, coat);
+                mirrored = layer.mirrored;
+                coat = layer.coat;
             }
-            colour = pow(pow(shaded, vec3<f32>(2.2)) * (1.0 - coat) + pow(mirrored, vec3<f32>(2.2)) * coat * sky_dim * visible, vec3<f32>(1.0 / 2.2));
+            // Lagarde's specular occlusion from the body's occlusion: a sharp lobe cut harder than a rough one.
+            let mirror_seen = specular_occlusion(visible, nv, roughness);
+            colour = pow(pow(shaded, vec3<f32>(2.2)) * (1.0 - coat) + pow(mirrored, vec3<f32>(2.2)) * coat * sky_dim * mirror_seen, vec3<f32>(1.0 / 2.2));
         }
     }
     if (CABIN && inside && v.specular.y >= CABIN_MIRROR_GLASS) {
@@ -1443,7 +1472,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // With the day's light the interior glass's translucent texels only darken what is seen through it, by their
     // alpha and darkness: lit as in the game under the day's exposure, a light one (RSF 52's `i_window_f`) greyed the
     // view. Near-opaque texels (sun strips, visors printed on the glass) and coloured ones (banners) stay lit.
-    if (inside && day_on() && mode.grime.y != 0.0 && mirror >= MIRROR_COUNT) {
+    if (inside && day_on() && car_role() == ROLE_INTERIOR_GLASS && mirror >= MIRROR_COUNT) {
         let chroma = max(first.r, max(first.g, first.b)) - min(first.r, min(first.g, first.b));
         let printed = max(smoothstep(INT_GLASS_PRINTED.x, INT_GLASS_PRINTED.y, alpha),
             smoothstep(INT_GLASS_PRINTED_CHROMA.x, INT_GLASS_PRINTED_CHROMA.y, chroma));
@@ -2332,6 +2361,12 @@ fn environment_reflectance(nv: f32, roughness: f32) -> f32 {
     return min(0.04 * ab.x + ab.y, 1.0);
 }
 
+// Lagarde's specular occlusion (Moving Frostbite to PBR, 2014): how much of the reflection an ambient visibility `ao`
+// leaves at facing `nv` and `roughness`; 1 for an open point, a sharp lobe cut harder than a rough one.
+fn specular_occlusion(ao: f32, nv: f32, roughness: f32) -> f32 {
+    return clamp(pow(nv + ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ao, 0.0, 1.0);
+}
+
 // A BTB normal map's normal (`stage::Surface::normal`): red and green are x and y, z is rebuilt and the slope scaled,
 // as the `Bump` effects read it, in the frame of the map's uv on screen (Schuler 2013, as `crack_normal`), so the meshes need no
 // tangents: x along u, y along v, the uv's own handedness whatever the mesh's.
@@ -2401,7 +2436,7 @@ fn rough_dielectric(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, roughness: f3
     let nv = max(dot(n, view), 1e-3);
     let reflectance = environment_reflectance(nv, roughness);
     let seen = 1.0 - v.sky.z;
-    let occlusion = clamp(pow(nv + seen, exp2(-16.0 * roughness - 1.0)) - 1.0 + seen, 0.0, 1.0);
+    let occlusion = specular_occlusion(seen, nv, roughness);
     let sky = pow(sky_reflected(reflect(-view, n), roughness), vec3<f32>(2.2)) * occlusion;
     // The sun's highlight.
     let to_sun = -frame.sun.xyz;

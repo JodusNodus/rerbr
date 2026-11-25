@@ -47,7 +47,7 @@ mod views;
 pub use cloud_volume::survey::CloudSurvey;
 #[cfg(test)]
 pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
-pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
+pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections};
 pub use frame::FrameStats;
 pub use gpu::{instance, request_gpu, Gpu, GpuError};
 pub(crate) use meshes::mesh_bounds;

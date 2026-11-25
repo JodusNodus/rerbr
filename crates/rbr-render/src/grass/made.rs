@@ -636,9 +636,9 @@ impl Made {
         }
     }
 
-    /// The field's profile ([`Level::profile`]): a converted stage's ([`super::Field::fx`]) stays full farther out.
+    /// The field's profile ([`Level::profile`]).
     pub(crate) fn profile(&self) -> [f32; 4] {
-        Level::uniform(Some(self.field.level), !self.field.fx.is_empty())
+        Level::uniform(Some(self.field.level))
     }
 
     /// Whether a frame that waits for its tiles ([`Made::waits`]) still misses some.

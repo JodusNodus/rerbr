@@ -2,7 +2,7 @@
 //! on the car's ghost mesh, drawn the way `CShaderGhostCar` draws it, and the recording of a drive (`--save-ghost`).
 //!
 //! Faithful:
-//! - the mesh: the car's `ghost_*` part, one `GhostCar` mesh per car (`car::load_ghost`, `E09_LoadGhostCar`);
+//! - the mesh: the car's `ghost_*` part, one `GhostCar` mesh per car (`car::load` of `Set::Ghost`, `E09_LoadGhostCar`);
 //! - the look: `GhostCar.vso` (`m4x4 oPos, v0, c0; mov oD0, c93`, no pixel shader) gives every vertex the constant
 //!   `c93`, which `CShaderGhostCar::SetObject` (HH 0x1007f000) sets to the `Ambient` of `Cars/GhostCarSettings.ini`
 //!   and the alpha `min(d² / FadeDistance, MaxOpacity)`, `d` the camera's distance to the car's origin; the shader is
@@ -542,7 +542,7 @@ impl GhostCar {
     /// Adds car `car_name`'s ghost mesh to `stage` and plays `track` on it. The meshes go to the blended layer, the
     /// last one, so adding them moves no mesh another part of the viewer has found.
     pub fn add(data: &Data, car_name: &str, stage: &mut Stage, track: Track) -> Result<GhostCar, String> {
-        let mut ghost = car::load_ghost(data, car_name, Mat4::IDENTITY).map_err(|e| e.to_string())?;
+        let mut ghost = car::load(data, car_name, Mat4::IDENTITY, car::Set::Ghost, false).map_err(|e| e.to_string())?;
         if ghost.meshes.is_empty() {
             return Err(format!("the car {car_name} has no ghost mesh"));
         }

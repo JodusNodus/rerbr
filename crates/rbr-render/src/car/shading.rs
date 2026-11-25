@@ -1,6 +1,6 @@
 //! A face's look: its shader class's lighting constants, dirt and scrape textures, render state, pass and draw list.
 
-use crate::stage::{Address, DrawState, Light, NormalMap, Shade, Surface, TextureRef};
+use crate::stage::{Address, DrawState, FaceRole, Light, NormalMap, Shade, Surface, TextureRef};
 use rbr_formats::car_parts::{Finish, FinishKind};
 use rbr_formats::ini::Section;
 
@@ -17,17 +17,28 @@ pub(super) fn shade_for(settings: &[Section], class: &str) -> Option<Shade> {
         fresnel_min: number("FresnelMin"),
         fresnel_max: number("FresnelMax"),
         kf: number("Kf"),
-        glass: class == "CarGlass",
-        tint: class == "CarIntGlass",
+        role: FaceRole::Body,
         glow: None,
         glow_kind: 0,
-        crack: false,
         dirt: None,
         grime: 0,
-        spatter: false,
-        window: false,
         finish: None,
     })
+}
+
+/// The role of a face of class `class` ([`FaceRole`]), whose material has an opacity map when `opacity`, on a part with
+/// the wheels' spatter when `spatter`, with a dirt map when `dirt`; `reflects` when its class's Fresnel is not zero
+/// (`FresnelMax * Kf`). The panes go by class; a window's pane is told by its part after (`FaceRole::Window`). A lens is a
+/// reflecting face with no dirt map off the wheels: `CarLight`, and with it every reflecting class with no dirt map
+/// (`CarPaintInt`, `CarColor`, `CarTextureNoDirt`, `Chrome`, a spare wheel's `CarRim`), as the shader told it.
+pub(super) fn role(class: &str, opacity: bool, spatter: bool, dirt: bool, reflects: bool) -> FaceRole {
+    match class {
+        "CarGlass" => FaceRole::Glass,
+        "CarIntGlass" if opacity => FaceRole::InteriorGlass,
+        _ if spatter => FaceRole::Wheel,
+        _ if reflects && !dirt => FaceRole::Lens,
+        _ => FaceRole::Body,
+    }
 }
 
 /// The friendly name of the dirt mask a car class blends in by the dirt level (`Shade::dirt`).
@@ -191,5 +202,17 @@ mod tests {
         for class in ["CarPaint", "CarTexture", "CarTire", "CarPlastic", "CarGlass"] {
             assert_eq!(class_finish(class), None);
         }
+    }
+
+    #[test]
+    fn roles_follow_class_part_and_maps() {
+        assert_eq!(role("CarGlass", true, true, false, true), FaceRole::Glass);
+        assert_eq!(role("CarIntGlass", true, false, false, true), FaceRole::InteriorGlass);
+        assert_eq!(role("CarIntGlass", false, false, false, false), FaceRole::Body);
+        assert_eq!(role("CarRim", false, true, false, true), FaceRole::Wheel);
+        assert_eq!(role("CarLight", false, false, false, true), FaceRole::Lens);
+        assert_eq!(role("CarPaintInt", false, false, false, true), FaceRole::Lens);
+        assert_eq!(role("CarPaint", false, false, true, true), FaceRole::Body);
+        assert_eq!(role("CarLight", false, false, false, false), FaceRole::Body);
     }
 }

@@ -14,7 +14,7 @@ use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
-use rbr_render::renderer::Detail;
+use rbr_render::renderer::{Detail, ReflectionScale};
 use rbr_render::shifter::{CarBox, Engagement};
 
 use crate::catalog::{Car, TyreChoice, WEARS};
@@ -149,8 +149,13 @@ pub struct Settings {
     pub present: Option<Present>,
     /// The driving window's frame cap (`viewer --max-fps`; 0: none), one of [`FRAME_CAPS`].
     pub max_fps: Option<u32>,
-    /// How often the cockpit's mirrors are drawn (`viewer --mirrors`).
-    pub mirrors: Option<Rate>,
+    /// The cockpit's mirrors drawn (`viewer --mirrors`). Files from before the reflection keys hold `1`, `2` or `3`
+    /// (on, at that rate: [`Settings::reflection_rate`]) or `off`.
+    pub mirrors: Option<bool>,
+    /// How often the dynamic reflections update (`viewer --reflection-rate`; key `reflection_updates`).
+    pub reflection_rate: Option<Rate>,
+    /// Their resolution (`viewer --reflection-res`; key `reflection_resolution`).
+    pub reflection_scale: Option<ReflectionScale>,
     /// The driving window fills the monitor (`viewer --fullscreen`).
     pub fullscreen: Option<bool>,
     /// Triple screens (`viewer --triple`); off by default, the field of view is the centre screen's.
@@ -489,7 +494,15 @@ impl Settings {
             upscale_textures: launcher.on_off("upscale_textures"),
             present: launcher.parsed("present", Present::parse),
             max_fps: launcher.number("max_fps").filter(|v| FRAME_CAPS.contains(v)),
-            mirrors: launcher.parsed("mirrors", Rate::parse),
+            mirrors: launcher.parsed("mirrors", |word| match word {
+                "off" => Some(false),
+                "on" => Some(true),
+                _ => Rate::parse(word).map(|_| true),
+            }),
+            reflection_rate: launcher
+                .parsed("reflection_updates", Rate::parse)
+                .or_else(|| launcher.parsed("mirrors", Rate::parse)),
+            reflection_scale: launcher.parsed("reflection_resolution", ReflectionScale::parse),
             fullscreen: launcher.on_off("fullscreen"),
             triple: launcher.on_off("triple"),
             triple_diagonal: launcher.ranged("triple_diagonal", TRIPLE_DIAGONAL_RANGE),
@@ -605,7 +618,9 @@ impl Settings {
             ("upscale_textures", on_off_text(self.upscale_textures)),
             ("present", self.present.map(|v| v.name().to_owned())),
             ("max_fps", text(self.max_fps)),
-            ("mirrors", self.mirrors.map(Rate::name)),
+            ("mirrors", on_off_text(self.mirrors)),
+            ("reflection_updates", self.reflection_rate.map(Rate::name)),
+            ("reflection_resolution", self.reflection_scale.map(|s| s.name().to_owned())),
             ("fullscreen", on_off_text(self.fullscreen)),
             ("triple", on_off_text(self.triple)),
             ("triple_diagonal", text(self.triple_diagonal)),
@@ -718,7 +733,9 @@ mod tests {
             upscale_textures: Some(true),
             present: Some(Present::Immediate),
             max_fps: Some(120),
-            mirrors: Some(Rate::Every(3)),
+            mirrors: Some(true),
+            reflection_rate: Rate::parse("2"),
+            reflection_scale: Some(ReflectionScale::ThreeQuarters),
             fullscreen: Some(false),
             triple: Some(true),
             triple_diagonal: Some(32.0),
@@ -886,7 +903,7 @@ mod tests {
         assert!(text.contains("render_scale = 75\nwet_roads = low\ndetail = ultra\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\ndetail = high\n").detail, Some(Detail::High));
         assert_eq!(Settings::parse("[launcher]\nwet_roads = medium\n").wet_roads, Some(WetRoads::Medium));
-        assert!(text.contains("present = immediate\nmax_fps = 120\nmirrors = 3\n"), "{text}");
+        assert!(text.contains("present = immediate\nmax_fps = 120\nmirrors = on\nreflection_updates = 2\nreflection_resolution = 75\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\nmax_fps = 100\n").max_fps, None);
         assert!(
             text.contains(
@@ -1009,7 +1026,9 @@ mod tests {
                 "upscale_textures = on\n",
                 "present = immediate\n",
                 "max_fps = 120\n",
-                "mirrors = 3\n",
+                "mirrors = on\n",
+                "reflection_updates = 2\n",
+                "reflection_resolution = 75\n",
                 "fullscreen = off\n",
                 "triple = on\n",
                 "triple_diagonal = 32\n",
@@ -1178,6 +1197,8 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ndetail = max\n").detail, None);
         assert_eq!(Settings::parse("[launcher]\nwet_roads = on\n").wet_roads, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = 4\n").mirrors, None);
+        assert_eq!(Settings::parse("[launcher]\nreflection_updates = 4\n").reflection_rate, None);
+        assert_eq!(Settings::parse("[launcher]\nreflection_resolution = 60\n").reflection_scale, None);
         assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 9\n").triple_diagonal, None);
         assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 10\n").triple_diagonal, Some(10.0));
         assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 65\n").triple_diagonal, Some(65.0));
@@ -1213,7 +1234,20 @@ mod tests {
         // The wipers, the presentation and the mirrors parse case-insensitively.
         assert_eq!(Settings::parse("[launcher]\nwipers = INTERMITTENT\n").wipers, Some(Switch::Intermittent));
         assert_eq!(Settings::parse("[launcher]\npresent = FIFO\n").present, Some(Present::Fifo));
-        assert_eq!(Settings::parse("[launcher]\nmirrors = off\n").mirrors, Some(Rate::Off));
+        assert_eq!(Settings::parse("[launcher]\nmirrors = off\n").mirrors, Some(false));
+        // A file from before the reflection keys: a rate word is on at that rate, `off` is off.
+        let old = Settings::parse("[launcher]\nmirrors = 2\n");
+        assert_eq!((old.mirrors, old.reflection_rate, old.reflection_scale), (Some(true), Rate::parse("2"), None));
+        let old = Settings::parse("[launcher]\nmirrors = off\n");
+        assert_eq!((old.mirrors, old.reflection_rate), (Some(false), None));
+        // The new rate key wins over the old word.
+        let both = Settings::parse("[launcher]\nmirrors = 1\nreflection_updates = 3\n");
+        assert_eq!((both.mirrors, both.reflection_rate), (Some(true), Rate::parse("3")));
+        let new = Settings::parse("[launcher]\nmirrors = on\nreflection_updates = 3\nreflection_resolution = 50\n");
+        assert_eq!(
+            (new.mirrors, new.reflection_rate, new.reflection_scale),
+            (Some(true), Rate::parse("3"), Some(ReflectionScale::Half))
+        );
         // Missing keys keep the default; an empty file is the default settings.
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("[launcher]\n"), Settings::default());

@@ -567,7 +567,8 @@ fn render_car(
             (selected.data, name)
         }
     };
-    let mut car = render_car::load(&data, &name, render_car::placement_at(None)).map_err(|e| e.to_string())?;
+    let mut car = render_car::load(&data, &name, render_car::placement_at(None), render_car::Set::Exterior, false)
+        .map_err(|e| e.to_string())?;
     // Whole windows, as the viewer's car alone.
     car.crack(&rbr_render::damage::Cracks::new(car.windows()));
     let car = car.at_rest();

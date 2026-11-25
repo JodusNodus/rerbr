@@ -8,7 +8,7 @@ use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
-use rbr_render::renderer::{Detail, Reflections};
+use rbr_render::renderer::{Detail, ReflectionScale, Reflections};
 
 use crate::kit;
 use crate::pages::{combo, Choice};
@@ -16,7 +16,8 @@ use crate::settings_page::{label_cell, row_tip};
 use crate::Form;
 
 /// The Quality section's choices: the renderer's additions (`viewer --enhance`), the wet roads (`--enhance wet` and
-/// `--reflections`), the detail (`--detail`) and the mirrors (`--mirrors`). Each is kept under its own key.
+/// `--reflections`), the detail (`--detail`), the mirrors (`--mirrors`) and how often and how sharp the reflections
+/// update (`--reflection-rate`, `--reflection-res`). Each is kept under its own key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Graphics {
     pub lighting: bool,
@@ -29,7 +30,11 @@ pub struct Graphics {
     pub motion_blur: bool,
     pub wet_roads: WetRoads,
     pub detail: Detail,
-    pub mirrors: Rate,
+    pub mirrors: bool,
+    /// How often the dynamic reflections update (`--reflection-rate`).
+    pub reflection_rate: Rate,
+    /// Their resolution (`--reflection-res`).
+    pub reflection_scale: ReflectionScale,
 }
 
 /// The additions always on, as they cost next to nothing: 16x anisotropic filtering, the soft decals, the flowing
@@ -125,7 +130,7 @@ impl Choice for Detail {
     fn label(self) -> &'static str {
         match self {
             Detail::High => "Off",
-            Detail::Ultra => "Sharper shadows and reflections",
+            Detail::Ultra => "Sharper shadows",
         }
     }
 }
@@ -136,7 +141,7 @@ pub enum Quality {
     /// The game's look with the free additions.
     Low,
     /// Our lighting, light grass and every addition but the windscreen's glass; the wet roads without the scenery's
-    /// reflections, the mirrors every third frame.
+    /// reflections, the reflections updated every third frame at half size.
     Medium,
     High,
     /// High with the Ultra detail and dense grass.
@@ -156,7 +161,9 @@ impl Quality {
             motion_blur: false,
             wet_roads: WetRoads::High,
             detail: Detail::High,
-            mirrors: Rate::Every(1),
+            mirrors: true,
+            reflection_rate: Rate::ALL[1],
+            reflection_scale: ReflectionScale::ThreeQuarters,
         };
         match self {
             Quality::Low => Graphics {
@@ -165,14 +172,26 @@ impl Quality {
                 grass: Grass::Off,
                 windscreen: false,
                 wet_roads: WetRoads::Off,
-                mirrors: Rate::Off,
+                mirrors: false,
+                reflection_rate: Rate::ALL[2],
+                reflection_scale: ReflectionScale::Half,
                 ..high
             },
-            Quality::Medium => {
-                Graphics { windscreen: false, wet_roads: WetRoads::Low, mirrors: Rate::Every(3), ..high }
-            }
+            Quality::Medium => Graphics {
+                windscreen: false,
+                wet_roads: WetRoads::Low,
+                reflection_rate: Rate::ALL[2],
+                reflection_scale: ReflectionScale::Half,
+                ..high
+            },
             Quality::High => high,
-            Quality::Ultra => Graphics { detail: Detail::Ultra, grass: Grass::Dense, ..high },
+            Quality::Ultra => Graphics {
+                detail: Detail::Ultra,
+                grass: Grass::Dense,
+                reflection_rate: Rate::ALL[0],
+                reflection_scale: ReflectionScale::Full,
+                ..high
+            },
         }
     }
 
@@ -209,13 +228,21 @@ fn scale_label(percent: u32) -> String {
     }
 }
 
-/// A mirrors' rate's label.
-fn mirrors_label(rate: Rate) -> &'static str {
-    match rate {
-        Rate::Off => "Off",
-        Rate::Every(1) => "Every frame",
-        Rate::Every(2) => "Every 2nd frame",
-        Rate::Every(_) => "Every 3rd frame",
+/// A reflection rate's label.
+fn rate_label(rate: Rate) -> &'static str {
+    match rate.every() {
+        1 => "Every frame",
+        2 => "Every 2nd frame",
+        _ => "Every 3rd frame",
+    }
+}
+
+/// A reflection resolution's label.
+fn reflection_scale_label(scale: ReflectionScale) -> &'static str {
+    match scale {
+        ReflectionScale::Half => "50 %",
+        ReflectionScale::ThreeQuarters => "75 %",
+        ReflectionScale::Full => "100 %",
     }
 }
 
@@ -586,8 +613,9 @@ impl Form {
         let g = &mut self.graphics;
         kit::panel(ui, |rows| {
             let tip = "Sets the choices below. Low: the game's look. Medium: all but Windscreen, with light grass, \
-                       wet roads at low and the mirrors every third frame. High: all but Sharper shadows and \
-                       reflections, with light grass. Ultra: all, with dense grass. The render scale and motion blur \
+                       wet roads at low, the reflections every third frame at 50 %. High: all but Sharper shadows, \
+                       with light grass, the reflections every 2nd frame at 75 %. Ultra: all, with dense grass, \
+                       the reflections every frame at 100 %. The render scale and motion blur \
                        stay as they are";
             rows.row("Preset", |ui| {
                 ComboBox::from_id_salt("preset")
@@ -642,19 +670,38 @@ impl Form {
             .on_disabled_hover_text(tip);
 
             let tip = "For strong GPUs: sun shadows at twice the texels (sharper shadows of posts, cables and \
-                       trunks) and sharper reflections in the car's paint and the wet roads; in the cockpit the bonnet \
-                       and the cabin's chrome mirror the surroundings as the outside view does. Needs Sky, sun and \
-                       shadows for the shadows. 15 to 40 % more frame time, and 0.5 GB more video memory on long \
-                       stages";
+                       trunks). Needs Sky, sun and shadows. Some more frame time, and video memory on long stages";
             let mut sharp = g.detail == Detail::Ultra;
-            rows.switch_row("Sharper shadows and reflections", None, &mut sharp).on_hover_text(tip);
+            rows.switch_row("Sharper shadows", None, &mut sharp).on_hover_text(tip);
             g.detail = if sharp { Detail::Ultra } else { Detail::High };
 
-            let tip = "In the cockpit: the rear-view and door mirrors show the stage, the car and the cars behind, \
-                       redrawn this often (each mirror in turn). Costly in the rain, which they draw too. Off: they \
-                       only reflect the sky";
-            rows.row("Mirrors", |ui| {
-                combo(ui, "mirrors", None, &mut g.mirrors, &Rate::ALL, mirrors_label).on_hover_text(tip);
+            let tip = "In the cockpit: the rear-view and door mirrors show the stage, the car and the cars behind. \
+                       Costly in the rain, which they draw too. Off: they only reflect the sky. How often and how \
+                       sharp: the two choices below";
+            rows.switch_row("Mirrors", None, &mut g.mirrors).on_hover_text(tip);
+
+            let tip = "How often the reflections update: the mirrors (each in turn), the windscreen's (at most every \
+                       2nd frame) and the surroundings the car's paint and glass reflect. Every frame is the \
+                       smoothest and costs the most";
+            rows.row("Reflection updates", |ui| {
+                combo(ui, "reflection updates", None, &mut g.reflection_rate, &Rate::ALL, rate_label)
+                    .on_hover_text(tip);
+            });
+
+            let tip = "How sharp the reflections are: the mirrors' and the windscreen's images, the surroundings in \
+                       the car's paint and glass (a cube of 128, 192 or 256 texels), and at 100 % the wet roads' \
+                       reflections at full size (50 and 75 %: half). At 100 % the cockpit's bonnet and chrome mirror \
+                       the surroundings as the outside view does. Costs frame time and video memory";
+            rows.row("Reflection resolution", |ui| {
+                combo(
+                    ui,
+                    "reflection resolution",
+                    None,
+                    &mut g.reflection_scale,
+                    &ReflectionScale::ALL,
+                    reflection_scale_label,
+                )
+                .on_hover_text(tip);
             });
 
             let tip = "Blurs what moves across the screen over a 1/120 s shutter: the road and the verges at speed, \
