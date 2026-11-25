@@ -55,11 +55,18 @@ struct Style {
     /// The UVs' repeats (the carbon weave's `CarbonUVRepeat`).
     repeat: f32,
     maps: Maps,
+    /// The interior material's finish (ours, [`finish`]): its faces are a material of their own on the key's texture.
+    finish: Option<&'static str>,
 }
 
 impl Style {
     fn new(shader: &'static str, key: impl Into<String>, texture: Source) -> Style {
-        Style { shader, key: key.into(), texture, opacity: false, repeat: 1.0, maps: Maps::default() }
+        Style { shader, key: key.into(), texture, opacity: false, repeat: 1.0, maps: Maps::default(), finish: None }
+    }
+
+    /// The material its faces are: the key, with the finish where it has one (`int_main_chrome`).
+    fn material(&self) -> String {
+        self.finish.map_or_else(|| self.key.clone(), |finish| format!("{}_{finish}", self.key))
     }
 
     fn with_normal(self, normal: Source) -> Style {
@@ -240,6 +247,11 @@ const INTERIOR_OCCLUSION: f32 = 1.0;
 /// `CarIntGlass`, with its dust map laid over it. The mirrors' glass (which the game draws as a texture of what is behind) is the renderer's glass class on a
 /// flat texel: it shows the surroundings by the part's name (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
 fn interior_style(car: &str, m: &Material) -> Option<Style> {
+    interior_texture(car, m).map(|style| Style { finish: finish(m), ..style })
+}
+
+/// The style of an interior material without its finish.
+fn interior_texture(car: &str, m: &Material) -> Option<Style> {
     let bound = |input: &str| m.textures.get(input).map(|t| t.trim_start_matches('#').to_owned());
     let own = |input: &str| bound(input).filter(|t| !t.starts_with("int_gen_")).map(Source::Interior);
     let style = |key: String, texture| Style::new("CarTextureNoDirt", key, texture);
@@ -277,6 +289,30 @@ fn interior_style(car: &str, m: &Material) -> Option<Style> {
     }
 }
 
+/// The finish of an interior material (ours), which the renderer's cabin reflects by (`rbr_formats::car_parts::finish`):
+/// DiRT's interiors name their materials from one library (surveyed on the 46: `Chrome`, `bare metal`, `Shiny Painted
+/// Metal`, `shiny plastic`, `Matt`, `Leather`, `suede`, `carbon fibre`), whose shader and Fresnel constants differ
+/// (`Chrome` mirrors in full, `FresnelMin` and `FresnelMax` 1; `suede` is `interior_flock.fx` on the blurred cube). The
+/// dials, lamps and displays have none.
+fn finish(m: &Material) -> Option<&'static str> {
+    match m.shader.as_str() {
+        "interior_flock.fx" => return Some("suede"),
+        "interior_carbon.fx" => return Some("carbon"),
+        "interior.fx" => {}
+        _ => return None,
+    }
+    Some(match m.id.to_ascii_lowercase().as_str() {
+        "chrome" => "chrome",
+        "bare metal" => "metal",
+        "shiny painted metal" => "painted",
+        "shiny plastic" => "gloss",
+        "leather" => "leather",
+        "matt" => "matt",
+        "suede" => "suede",
+        _ => return None,
+    })
+}
+
 /// A texture's name without its extension, in lower case (`int_405_main.TGA`: `int_405_main`).
 fn stem(texture: &str) -> String {
     texture.rsplit_once('.').map_or(texture, |(stem, _)| stem).to_ascii_lowercase()
@@ -302,7 +338,10 @@ fn interior_styles(car: &str, materials: &BTreeMap<String, Material>) -> BTreeMa
         first.specular = first.specular.take().or_else(|| style.maps.specular.clone());
         first.emissive = first.emissive.take().or_else(|| style.maps.emissive.clone());
     }
-    styles.iter().map(|(id, style)| ((*id).clone(), merged[style.key.as_str()].clone())).collect()
+    styles
+        .iter()
+        .map(|(id, style)| ((*id).clone(), Style { finish: style.finish, ..merged[style.key.as_str()].clone() }))
+        .collect()
 }
 
 /// The file a material's texture is written as: `dr_<key>.dds`.
@@ -441,12 +480,12 @@ fn faces<'a>(
     styles: &BTreeMap<String, Style>,
     wanted: impl Fn(&str) -> bool,
 ) -> Vec<Face> {
-    let mut groups: BTreeMap<(&'static str, &str), Face> = BTreeMap::new();
+    let mut groups: BTreeMap<(&'static str, String), Face> = BTreeMap::new();
     for (instance, matrix) in instances {
         let Some(style) = styles.get(&instance.material).filter(|_| wanted(&instance.material)) else { continue };
-        let face = groups.entry((style.shader, &style.key)).or_insert_with(|| Face {
+        let face = groups.entry((style.shader, style.material())).or_insert_with(|| Face {
             shader: style.shader,
-            material: style.key.clone(),
+            material: style.material(),
             positions: Vec::new(),
             normals: Vec::new(),
             uv: Vec::new(),
@@ -994,7 +1033,7 @@ const DIRT_FILE: &str = "dr_dirt.dds";
 /// `<name>_shaders.ini`: every material by its key with its texture, and its normal map as the
 /// `[<material>_bump_bitmap]` section the renderer's cars read (`rbr_formats::car_parts::bump_path`).
 /// With `dirt`, the body's mud mask ([`DIRT_FILE`]) is the texture the renderer's `Dirt` friendly name finds.
-fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>, dirt: bool) -> String {
+fn shaders_file(name: &str, styles: &BTreeMap<String, &Style>, dirt: bool) -> String {
     let mut out = String::from(
         "[Default Material]\nAmbient=0.500000 0.500000 0.500000\nDiffuse=0.500000 0.500000 0.500000\n\
          Specular=0.500000 0.500000 0.500000\nShininess=0.000000\nShineStrenth=0.000000\nTransparency=0.000000\n\
@@ -1003,8 +1042,8 @@ fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>, dirt: bool) -> Stri
     );
     let normal = |style: &Style| style.maps.normal.as_ref().map(Source::file);
     let files: BTreeSet<String> = styles
-        .iter()
-        .flat_map(|(key, style)| [Some(file(key)), normal(style)])
+        .values()
+        .flat_map(|style| [Some(file(&style.key)), normal(style)])
         .chain([dirt.then(|| DIRT_FILE.to_owned())])
         .flatten()
         .collect();
@@ -1019,17 +1058,17 @@ fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>, dirt: bool) -> Stri
         out +=
             &format!("\n[{DIRT_FILE}]\nCreateCopy = false\nFriendlyName = Dirt\nGlossMap = false\nNoMipMaps = false\n");
     }
-    for (key, style) in styles {
-        let m = material_name(key);
+    for (material, style) in styles {
+        let m = material_name(material);
         let bitmap = |kind: &str, f: &str, mono: bool| {
             format!(
                 "\n[{m}_{kind}_bitmap]\nFilename={f}\nAmount=1.000000\nAlphaAsMono={mono}\nAlphaAsRGB=false\n\
                  TileU=1.000000\nTileV=1.000000\nOffsetU=0.000000\nOffsetV=0.000000\nWrapU=3\nWrapV=3\n"
             )
         };
-        out += &bitmap("diffuse", &file(key), false);
+        out += &bitmap("diffuse", &file(&style.key), false);
         if style.opacity {
-            out += &bitmap("opacity", &file(key), true);
+            out += &bitmap("opacity", &file(&style.key), true);
         }
         if let Some(normal) = normal(style) {
             out += &bitmap("bump", &normal, false);
@@ -1043,6 +1082,9 @@ fn shaders_file(name: &str, styles: &BTreeMap<&str, &Style>, dirt: bool) -> Stri
             if style.opacity { "OpacityType=Bitmap\n" } else { "" },
             style.maps.normal.is_some(),
         );
+        if let Some(finish) = style.finish {
+            out += &format!("Finish={finish}\n");
+        }
     }
     out
 }
@@ -1161,7 +1203,7 @@ fn skin_name(livery: u32) -> String {
 /// folder) only those a livery's file gives, and of those only the ones that differ from the model's.
 fn write_textures(
     library: &Library,
-    styles: &BTreeMap<&str, &Style>,
+    styles: &BTreeMap<String, &Style>,
     dir: &Path,
     base: Option<&Path>,
 ) -> Result<(), String> {
@@ -1174,7 +1216,9 @@ fn write_textures(
         let path = dir.join(name);
         fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))
     };
-    for (key, style) in styles.iter().filter(|(_, s)| s.texture != Source::Made) {
+    // The materials of a key share its texture (the interior's finishes), written once.
+    let textures: BTreeMap<&str, &Style> = styles.values().map(|s| (s.key.as_str(), *s)).collect();
+    for (key, style) in textures.into_iter().filter(|(_, s)| s.texture != Source::Made) {
         let maps = &style.maps;
         let (occlusion, specular) = (maps.occlusion.as_ref().map(|m| &m.0), maps.specular.as_ref().map(|m| &m.0));
         if wanted(&[Some(&style.texture), occlusion, specular, maps.dust.as_ref()]) {
@@ -1318,12 +1362,12 @@ pub fn convert(data: &Path, options: &Options, out: &Path) -> Result<PathBuf, St
     fs::create_dir_all(&textures).map_err(|e| format!("{}: {e}", textures.display()))?;
     let write = |path: PathBuf, bytes: &[u8]| fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()));
     let used: BTreeSet<&str> = pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.material.as_str())).collect();
-    let styles: BTreeMap<&str, &Style> = exterior
+    let styles: BTreeMap<String, &Style> = exterior
         .values()
         .chain(lit.values())
         .chain(inside.values())
-        .filter(|s| used.contains(s.key.as_str()))
-        .map(|s| (s.key.as_str(), s))
+        .map(|s| (s.material(), s))
+        .filter(|(material, _)| used.contains(material.as_str()))
         .collect();
     write_textures(&library, &styles, &textures, None)?;
     // The car's other liveries as skins of the model, stale ones (an earlier conversion's other first livery) gone.
@@ -1536,7 +1580,7 @@ mod tests {
 
     #[test]
     fn the_shaders_file_names_the_dirt_mask_as_the_dirt_texture() {
-        let styles = BTreeMap::new();
+        let styles = BTreeMap::<String, &Style>::new();
         let with = shaders_file("Car", &styles, true);
         assert!(with.contains("dr_dirt.dds = cars\\Car\\textures\\dr_dirt.dds"));
         assert!(with.contains("[dr_dirt.dds]\nCreateCopy = false\nFriendlyName = Dirt\n"));
@@ -1570,13 +1614,32 @@ mod tests {
     fn the_shaders_file_names_each_normal_map_as_a_bump_bitmap() {
         let paint = exterior("Car Body Paint").unwrap();
         let disc = Style::new("CarTextureNoDirt", "disc", Source::Livery("disc.tga".into()));
-        let styles = BTreeMap::from([("paint", &paint), ("disc", &disc)]);
+        let styles = BTreeMap::from([("paint".to_owned(), &paint), ("disc".to_owned(), &disc)]);
         let text = shaders_file("Car", &styles, false);
         let sections = rbr_formats::ini::parse(&text).unwrap();
         let bump = rbr_formats::car_parts::bump_path;
         assert_eq!(bump(&sections, &material_name("paint")), Some("cars\\Car\\textures\\dr_cme_main_nm.dds"));
         assert_eq!(bump(&sections, &material_name("disc")), None);
         assert!(text.contains("BumpChannel=true") && text.contains("BumpChannel=false"));
+    }
+
+    #[test]
+    fn an_interiors_finishes_are_materials_of_their_own_on_one_texture() {
+        let atlas = [("TDiffuseAlphaMap", "int_cme_main.tga")];
+        let materials = BTreeMap::from([
+            ("Chrome".to_owned(), material("Chrome", "interior.fx", &atlas, &[])),
+            ("suede".to_owned(), material("suede", "interior_flock.fx", &atlas, &[])),
+            ("dials matt".to_owned(), material("dials matt", "interior.fx", &atlas, &[])),
+        ]);
+        let inside = interior_styles("cme", &materials);
+        let names: Vec<String> = inside.values().map(Style::material).collect();
+        assert_eq!(names, ["int_main_chrome", "int_main", "int_main_suede"]);
+        let styles: BTreeMap<String, &Style> = inside.values().map(|s| (s.material(), s)).collect();
+        let sections = rbr_formats::ini::parse(&shaders_file("Car", &styles, false)).unwrap();
+        let diffuse = |m: &str| rbr_formats::car_parts::diffuse_path(&sections, &material_name(m));
+        assert!(diffuse("int_main_chrome").is_some() && diffuse("int_main_chrome") == diffuse("int_main"));
+        let finish = |m: &str| rbr_formats::car_parts::section(&sections, &material_name(m))?.get("Finish");
+        assert_eq!((finish("int_main_suede"), finish("int_main")), (Some("suede"), None));
     }
 
     #[test]
@@ -1681,7 +1744,7 @@ mod tests {
             ("Matt".to_owned(), material("Matt", "interior.fx", &atlas, &[("OcclusionMapScale", 1.0)])),
         ]);
         let styles = interior_styles("cme", &materials);
-        assert_eq!(styles["Chrome"], styles["Matt"]);
+        assert_eq!(styles["Chrome"], Style { finish: Some("chrome"), ..styles["Matt"].clone() });
         assert!(styles["Chrome"].maps.occlusion.is_some());
     }
 

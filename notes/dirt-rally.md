@@ -425,7 +425,11 @@ without `--livery`; the class is required: it is in the game's database, not in 
     the shared `int_gen_sp` is a 32 texel constant); the gauge faces `int_cme_dials` (`int_dials`), the shift and limit lights `int_indicator`
     (`int_indicator`, unlit); the alpha and netting shaders' alpha is their opacity (`_alpha` keys). `carbon fibre`'s UVs lie on the atlas's
     occlusion layout (they showed knobs and decals on the dash top): it draws the weave `int_carbon_diff` with the UVs times its `CarbonUVRepeat`
-    (the Escort 500, most cars 300). Not drawn: `lcd_text` by its font (the working displays below give
+    (the Escort 500, most cars 300). The atlas's materials stay apart by their finish (ours, proof of concept, 2026-11-25, `finish`): DiRT names
+    them from one library on every car (surveyed on the 46: `Chrome` (`FresnelMin`/`Max` 1/1), `bare metal` (0.2/0.3), `Shiny Painted Metal`
+    (0.5/0.8, the cage), `shiny plastic` (0.5/0.9), `Matt`, `Leather` (0.1/0.2), `suede` (`interior_flock.fx` on the blurred cube), `carbon
+    fibre`), written as materials `<key>_<finish>` on the key's one texture with `Finish=` (`chrome`, `metal`, `painted`, `gloss`, `matt`,
+    `leather`, `suede`, `carbon`), which the renderer's cabin reflects by. The specular map is one grey channel (R = G = B). Not drawn: `lcd_text` by its font (the working displays below give
     those quads a texture of their own). `interior glass windows` (`interior_windscreen.fx`) is `CarIntGlass` with `TDiffuseAlphaMap` (the frit
     border, the tint band, smears in the alpha) and `TDustMap`'s red laid over it, 0.25 of the way in a grey brown (`car_maps::windscreen`; DiRT
     raises the dust as the car runs, ours is fixed); the outside copy leaves it out, the body's glass is the windows there. The two mirrors (`int_reflection_m`, `_r`) are parts named `i_mirrorglass_m` and `_r` in the glass class with a flat texel,
