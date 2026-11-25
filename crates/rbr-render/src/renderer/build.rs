@@ -1,6 +1,6 @@
 //! Building a [`Renderer`]: uploading the stage and making its pipelines and bind groups.
 
-use super::enhance::{AntiAliasing, Detail, Enhance};
+use super::enhance::{AntiAliasing, Enhance, ReflectionScale};
 use super::gpu::Gpu;
 use super::meshes::mesh_bounds;
 use super::meshes::{transformed_vertices, GpuDraw, GpuMesh, InteractiveGpu, Packing};
@@ -68,8 +68,7 @@ impl Renderer {
         let sun_range = sun.as_ref().map(|sun| shadows::ShadowRange::sun(&device, &queue, &sun.view, quality));
         let sun_view = sun.as_ref().map_or_else(|| sun::placeholder(&device), |sun| sun.view.clone());
         let taa = enhance.anti_aliasing == AntiAliasing::Taa;
-        let ultra = enhance.detail == Detail::Ultra;
-        let surroundings_side = if ultra { reflection::ULTRA_SIZE } else { reflection::REFLECTION_SIZE };
+        let surroundings_side = reflection::surroundings_side(enhance.reflection_scale);
         let reflection = Reflection::new(&device, format, reflection::REFLECTION_SIZE);
         let surroundings = Reflection::new(&device, format, surroundings_side);
         let probes = probes::Probes::new(&device, format, &stage.driveline, enhance.lighting, surroundings_side);
@@ -88,7 +87,12 @@ impl Renderer {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
-        let mirrors = mirrors::Mirrors::new(&device, format, enhance.mirrors, enhance.windscreen);
+        let mirrors = mirrors::Mirrors::new(
+            &device,
+            format,
+            (enhance.mirrors, enhance.reflection_rate, enhance.reflection_scale),
+            enhance.windscreen,
+        );
         let ground_light = bounce::Ground::new(&device, stage, enhance.lighting);
         let world_box = (stage.meshes.iter().filter(|m| m.anchor == Anchor::World).flat_map(|m| &m.vertices))
             .map(|v| Vec3::from(v.position))
@@ -283,7 +287,7 @@ impl Renderer {
             grass: enhance.grass.is_some(),
             lighting: enhance.lighting,
             debug_view: enhance.debug_view.code(),
-            cube_shift: u32::from(ultra),
+            cube_shift: reflection::cube_shift(surroundings_side),
             taa,
         });
         let mut pipelines = Pool::new(context.clone());
@@ -479,7 +483,7 @@ impl Renderer {
             let (slot, first_index) = packing.add(&device, drawn, &mesh.indices, backdrop);
             // A mirror's glass (`mirrors::mark`): a lit draw with a marked corner.
             let mirror = |draw: &Draw| {
-                enhance.mirrors != crate::mirrors::Rate::Off
+                enhance.mirrors
                     && draw.state.shade.is_some()
                     && mesh.indices[draw.indices.clone()].iter().any(|&i| mesh.vertices[i as usize].specular[0] >= 1.0)
             };
@@ -595,7 +599,7 @@ impl Renderer {
                 format,
                 depth_size,
                 &depth_view,
-                ultra,
+                enhance.reflection_scale == ReflectionScale::Full,
             )
         });
         let post = Post::new(

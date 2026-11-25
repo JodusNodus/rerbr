@@ -14,10 +14,11 @@ use rbr_render::hud::layout::{Layout, SCALES};
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
+use rbr_render::mirrors::Rate;
 use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
 use rbr_render::relight;
-use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
+use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, ReflectionScale, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
 use rbr_render::triple::{Curved, Rig, Screens};
@@ -93,7 +94,9 @@ pub struct Args {
     pub upscale: Option<PathBuf>,
     /// `--cache DIR`: what the load works out and keeps between loads ([`rbr_render::foliage::use_cache`]).
     pub cache: Option<PathBuf>,
-    /// `--enhance`: renderer additions beyond the game's look; `--mirrors` its mirrors' rate; `--anti-aliasing` the
+    /// `--enhance`: renderer additions beyond the game's look; `--mirrors` the cockpit's mirrors; `--reflection-rate` and `--reflection-res` how often the dynamic
+    /// reflections update and at what resolution (by `--detail` when not given: high every 3rd frame at 50 %, ultra every
+    /// frame at 100 %); `--anti-aliasing` the
     /// frame's anti-aliasing; `--reflections` the screen-space reflections; `--detail` the additions' detail.
     pub enhance: Enhance,
     /// `--clock HH:MM`: the sun, its light and the ambient at that local solar time on the stage's rally
@@ -264,7 +267,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off  --hdr
-              --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --cache DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
+              --enhance LIST  --mirrors on|off  --reflection-rate 1|2|3  --reflection-res 50|75|100  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --cache DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --sun best|golden|midday|dusk|night  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
@@ -309,7 +312,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut upscale = None;
     let mut cache = None;
     let mut enhance = Enhance::default();
-    let mut mirrors = rbr_render::mirrors::Rate::Off;
+    let mut mirrors = false;
+    let (mut mirrors_rate, mut reflection_rate, mut reflection_scale) = (None, None, None);
     let mut anti_aliasing = AntiAliasing::default();
     let mut reflections = Reflections::default();
     let mut detail = Detail::default();
@@ -540,9 +544,22 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 cracks = damage::parse_events(&value).map_err(|e| format!("--crack: {e}"))?;
             }
             "--mirrors" => {
-                let value = args.next().ok_or("--mirrors needs off, 1, 2 or 3")?;
-                mirrors =
-                    rbr_render::mirrors::Rate::parse(&value).ok_or(format!("--mirrors {value}: off, 1, 2 or 3"))?;
+                let value = args.next().ok_or("--mirrors needs on or off")?;
+                // 1, 2 and 3 are the rate of before `--reflection-rate`: on, at that rate.
+                (mirrors, mirrors_rate) = match value.as_str() {
+                    "on" => (true, None),
+                    "off" => (false, None),
+                    _ => (true, Some(Rate::parse(&value).ok_or(format!("--mirrors {value}: on or off"))?)),
+                };
+            }
+            "--reflection-rate" => {
+                let value = args.next().ok_or("--reflection-rate needs 1, 2 or 3")?;
+                reflection_rate = Some(Rate::parse(&value).ok_or(format!("--reflection-rate {value}: 1, 2 or 3"))?);
+            }
+            "--reflection-res" => {
+                let value = args.next().ok_or("--reflection-res needs 50, 75 or 100")?;
+                reflection_scale =
+                    Some(ReflectionScale::parse(&value).ok_or(format!("--reflection-res {value}: 50, 75 or 100"))?);
             }
             "--anti-aliasing" => {
                 let value = args.next().ok_or("--anti-aliasing needs taa or off")?;
@@ -817,7 +834,23 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         textures,
         upscale,
         cache,
-        enhance: Enhance { mirrors, anti_aliasing, reflections, detail, debug_view, ..enhance },
+        enhance: {
+            // Without the flags the reflections update and draw as the detail does.
+            let (rate, scale) = match detail {
+                Detail::High => (Rate::default(), ReflectionScale::default()),
+                Detail::Ultra => (Rate::ALL[0], ReflectionScale::Full),
+            };
+            Enhance {
+                mirrors,
+                reflection_rate: reflection_rate.or(mirrors_rate).unwrap_or(rate),
+                reflection_scale: reflection_scale.unwrap_or(scale),
+                anti_aliasing,
+                reflections,
+                detail,
+                debug_view,
+                ..enhance
+            }
+        },
         clock,
         sun,
         relight,
@@ -1073,6 +1106,24 @@ mod tests {
         assert_eq!(parse("track-54_E").unwrap().enhance.detail, Detail::High);
         assert_eq!(parse("--detail ultra --enhance all").unwrap().enhance.detail, Detail::Ultra);
         for bad in ["--detail low", "--detail"] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn reflection_flags_default_by_detail() {
+        let of = |line: &str| {
+            let e = parse(line).unwrap().enhance;
+            (e.mirrors, e.reflection_rate.every(), e.reflection_scale.name())
+        };
+        assert_eq!(of("track-54_E"), (false, 3, "50"));
+        assert_eq!(of("--detail ultra"), (false, 1, "100"));
+        assert_eq!(of("--mirrors on --reflection-rate 2 --reflection-res 75"), (true, 2, "75"));
+        // The old rate word means on, and sets the rate unless the new flag is there.
+        assert_eq!(of("--mirrors 2"), (true, 2, "50"));
+        assert_eq!(of("--mirrors 1 --reflection-rate 3 --detail ultra"), (true, 3, "100"));
+        assert_eq!(of("--mirrors 2 --mirrors off"), (false, 3, "50"));
+        for bad in ["--mirrors 4", "--mirrors", "--reflection-rate 0", "--reflection-rate", "--reflection-res 60"] {
             assert!(parse(bad).is_err(), "{bad}");
         }
     }

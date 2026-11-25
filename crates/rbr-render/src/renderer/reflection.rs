@@ -5,7 +5,7 @@ use super::frame::{mark, span, View};
 use super::meshes::{Bound, GpuDraw, GpuMesh};
 use super::pipelines::{texture_entry, vertex_layout, TEXTURE};
 use super::textures::depth_view;
-use super::{depth_binding, Detail, Renderer, CLEAR_COLOR, DEPTH_FORMAT};
+use super::{depth_binding, ReflectionScale, Renderer, CLEAR_COLOR, DEPTH_FORMAT};
 use crate::camera::{self, Frustum};
 use crate::coords::{self, FRONT_FACE, NEAR};
 use crate::gpu_util::{self, FILTERING};
@@ -24,14 +24,26 @@ pub(super) const REFLECTION_SIZE: u32 = 128;
 /// [`CELL_REACH`](crate::visibility::CELL_REACH)): at 128 texels a 90 degree face shows a
 /// 10 m thing 500 m away as one texel, and on a long stage (RSF 129, 6972 meshes) the far draws cost a face 2-3 ms.
 pub(super) const REFLECTION_REACH: f32 = 500.0;
-/// The surroundings cube's side with [`Detail::Ultra`], texels: the car's paint and glass
-/// mirror it at the coat's blur, a mip level finer than at [`REFLECTION_SIZE`].
-pub(super) const ULTRA_SIZE: u32 = 256;
+
+/// The surroundings cube's side at a reflection resolution, texels (128, 192 or 256): the car's paint and glass
+/// mirror it at the coat's blur, finer than at [`REFLECTION_SIZE`].
+pub(super) fn surroundings_side(scale: ReflectionScale) -> u32 {
+    match scale {
+        ReflectionScale::Half => REFLECTION_SIZE,
+        ReflectionScale::ThreeQuarters => REFLECTION_SIZE * 3 / 2,
+        ReflectionScale::Full => REFLECTION_SIZE * 2,
+    }
+}
+
+/// The surroundings cube's mip levels finer than [`REFLECTION_SIZE`]'s at `side` texels (`CUBE_SHIFT`): 0, 0.58 or 1.
+pub(super) fn cube_shift(side: u32) -> f32 {
+    (side as f32 / REFLECTION_SIZE as f32).log2()
+}
 
 impl Renderer {
     /// Draws the screen-space reflections ([`ScreenReflection`]) over the frame `draw_scene` kept, and resolves it into
-    /// `target`: the water draws, and in wet weather the wet roads, again at half size (full with
-    /// [`Detail::Ultra`]; `fs_reflect`, which hides what lies behind the frame's depth),
+    /// `target`: the water draws, and in wet weather the wet roads, again at half size (full at a
+    /// reflection resolution of 100 %; `fs_reflect`, which hides what lies behind the frame's depth),
     /// then the frame with them laid over is written into `target` (`reflection_composite.wgsl`). The car's glass
     /// `draw_scene` left out (`glass`) goes into the frame in between, unseen by the rays.
     pub(super) fn draw_reflections(
@@ -170,15 +182,16 @@ impl Renderer {
     /// drawn into a staging cube and copied into the sampled one, which the frames bind.
     pub(super) fn update_reflection(&self, profiler: &mut Option<Profiler>) {
         // Baked probes stand in for both cubes (`super::probes`), but the car's paint seen from outside by day reflects
-        // the surroundings cube (`paint_mirrored` in `shader.wgsl`), and at `Detail::Ultra` from the cockpit too (the
+        // the surroundings cube (`paint_mirrored` in `shader.wgsl`), and at a full-size reflection resolution from the cockpit too (the
         // bonnet, the cabin's finishes).
-        let paint = (self.outside_view || self.enhance.detail == Detail::Ultra) && self.day_light().is_some();
+        let paint =
+            (self.outside_view || self.enhance.reflection_scale == ReflectionScale::Full) && self.day_light().is_some();
         let Some((low, high)) = self.car_bounds().filter(|_| !self.probes.baked || paint) else {
             return;
         };
         let eye = (low + high) * 0.5;
         let s = &self.surroundings;
-        let every = if self.enhance.detail == Detail::Ultra { 1 } else { SURROUNDINGS_EVERY };
+        let every = self.enhance.reflection_rate.every();
         let surroundings = surroundings_due(s.skipped.get(), s.at.get(), eye, every);
         s.skipped.set(if surroundings == 0 { s.skipped.get() + 1 } else { 0 });
         if surroundings > 0 {
@@ -249,10 +262,9 @@ pub(super) fn face_views(eye: Vec3, face: u32) -> (Mat4, Mat4) {
     (projection * view::look_to_mat4(eye, direction, up), projection * view::look_to_mat4(Vec3::ZERO, direction, up))
 }
 
-/// The surroundings cube draws one face every this many frames, a full refresh every six times as many (ours: it
-/// feeds blurred light and far reflections, which change slowly); every frame with
-/// [`Detail::Ultra`], whose paint mirrors it sharply.
-const SURROUNDINGS_EVERY: u32 = 3;
+/// The surroundings cube draws one face every [`Enhance::reflection_rate`] frames, a full refresh every six times as
+/// many (ours: it feeds blurred light and far reflections, which change slowly; every frame, the paint mirrors it
+/// sharply).
 /// How far the cube's centre may move from where the surroundings cube last drew a face before it draws all six
 /// again, metres (ours): a seek, a teleport or a cut to another car, never driving between two faces.
 const SURROUNDINGS_SNAP: f32 = 50.0;
@@ -282,7 +294,7 @@ pub(super) fn reflects(draw: &GpuDraw, wetness: f32) -> bool {
 }
 
 /// Screen-space reflections (renderer choice, `fs_reflect` in `shader.wgsl`): the frame is resolved into `scene`
-/// first, then the reflecting draws are drawn again at half size (full with [`Detail::Ultra`])
+/// first, then the reflecting draws are drawn again at half size (full at a reflection resolution of 100 %)
 /// with `pipeline`, which reads `scene` and the depth (`group`) and writes what their reflected rays hit on screen and
 /// their depth into `traced`; `composite` lays that over the frame (`composite_group`).
 pub(super) struct ScreenReflection {
@@ -313,8 +325,8 @@ pub(super) struct ScreenReflection {
     resolve_pipeline: wgpu::RenderPipeline,
     resolve_layout: wgpu::BindGroupLayout,
     resolve_group: Option<wgpu::BindGroup>,
-    /// [`Detail::Ultra`] ([`Trace::of`]).
-    ultra: bool,
+    /// The reflection resolution is 100 % ([`Trace::of`]).
+    full: bool,
     /// How the rays are traced now.
     trace: Trace,
     /// The frame's depth pyramid, which the rays traverse.
@@ -341,8 +353,8 @@ const COMPOSITE: &str = include_str!("../reflection_composite.wgsl");
 impl ScreenReflection {
     /// `shader` with the stage draws' vertex entry point ([`vertex_entry`](super::pipelines::vertex_entry)) and the
     /// fragment entry point (`fs_reflect` in `ssr.wgsl`), `rays` a pixel and
-    /// the pyramid's cells a ray visits ([`Reflections::rays`](super::Reflections::rays)). `ultra`: [`Detail::Ultra`]
-    /// ([`Trace::of`]).
+    /// the pyramid's cells a ray visits ([`Reflections::rays`](super::Reflections::rays)). `full`: the reflection resolution is
+    /// 100 % ([`Trace::of`]).
     pub(super) fn new(
         device: &wgpu::Device,
         (shader, vertex, fragment, [rays, steps]): (&wgpu::ShaderModule, &str, &str, [u32; 2]),
@@ -350,7 +362,7 @@ impl ScreenReflection {
         format: wgpu::TextureFormat,
         size: (u32, u32),
         depth: &wgpu::TextureView,
-        ultra: bool,
+        full: bool,
     ) -> ScreenReflection {
         let pyramid = DepthPyramid::new(device, size, depth);
         let entries = [
@@ -531,7 +543,7 @@ impl ScreenReflection {
         });
         let halver = Halver::new(device, format, Some(REFLECTED_CAP));
         let sized =
-            Self::targets(device, [&layout, &composite_layout, &resolve_layout], format, size, depth, ultra, &pyramid);
+            Self::targets(device, [&layout, &composite_layout, &resolve_layout], format, size, depth, full, &pyramid);
         ScreenReflection {
             pipelines,
             surface_pipeline,
@@ -551,7 +563,7 @@ impl ScreenReflection {
             resolve_pipeline,
             resolve_layout,
             resolve_group: sized.resolve_group,
-            ultra,
+            full,
             trace: sized.trace,
             pyramid,
         }
@@ -571,7 +583,7 @@ impl ScreenReflection {
             format,
             size,
             depth,
-            self.ultra,
+            self.full,
             &self.pyramid,
         );
         self.sources = self.halver.sources(device, &sized.levels);
@@ -590,11 +602,11 @@ impl ScreenReflection {
         format: wgpu::TextureFormat,
         (width, height): (u32, u32),
         depth: &wgpu::TextureView,
-        ultra: bool,
+        full: bool,
         pyramid: &DepthPyramid,
     ) -> FrameTargets {
         let (width, height) = (width.max(1), height.max(1));
-        let trace = Trace::of(ultra, height);
+        let trace = Trace::of(full, height);
         let (traced_width, traced_height) = trace.size(width, height);
         let mips = SCENE_MIPS.min(width.min(height).ilog2() + 1);
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -683,14 +695,14 @@ impl ScreenReflection {
     }
 }
 
-/// The frame's height up to which [`Detail::Ultra`] traces the reflections at the frame's size, pixels (ours); above
+/// The frame's height up to which a reflection resolution of 100 % traces the reflections at the frame's size, pixels (ours); above
 /// it the split trace. Wet 127 chase at 3840x2160, RX 9060 XT: the full-size trace 3.9 ms (2026-11-05).
-const ULTRA_FULL_HEIGHT: u32 = 1440;
+const FULL_HEIGHT: u32 = 1440;
 
 /// How the reflections are traced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Trace {
-    /// At half size (below [`Detail::Ultra`]).
+    /// At half size (below 100 %).
     Half,
     /// At the frame's size, depth-tested.
     Full,
@@ -701,8 +713,8 @@ enum Trace {
 
 impl Trace {
     /// The trace for frames of `height` rows.
-    fn of(ultra: bool, height: u32) -> Trace {
-        match (ultra, height <= ULTRA_FULL_HEIGHT) {
+    fn of(full: bool, height: u32) -> Trace {
+        match (full, height <= FULL_HEIGHT) {
             (false, _) => Trace::Half,
             (true, true) => Trace::Full,
             (true, false) => Trace::Split,
@@ -905,13 +917,13 @@ mod tests {
     #[test]
     fn surroundings_snap_then_one_face_every_third_frame() {
         let at = Some(Vec3::ZERO);
-        assert_eq!(surroundings_due(0, None, Vec3::ZERO, SURROUNDINGS_EVERY), 6);
-        assert_eq!(surroundings_due(0, at, Vec3::X, SURROUNDINGS_EVERY), 0);
-        assert_eq!(surroundings_due(1, at, Vec3::X, SURROUNDINGS_EVERY), 0);
-        assert_eq!(surroundings_due(2, at, Vec3::X, SURROUNDINGS_EVERY), 1);
+        assert_eq!(surroundings_due(0, None, Vec3::ZERO, 3), 6);
+        assert_eq!(surroundings_due(0, at, Vec3::X, 3), 0);
+        assert_eq!(surroundings_due(1, at, Vec3::X, 3), 0);
+        assert_eq!(surroundings_due(2, at, Vec3::X, 3), 1);
         assert_eq!(surroundings_due(0, at, Vec3::X, 1), 1);
         // A seek, teleport or cut to another car redraws the whole cube at once.
-        assert_eq!(surroundings_due(0, at, Vec3::new(0.0, 0.0, 50.5), SURROUNDINGS_EVERY), 6);
+        assert_eq!(surroundings_due(0, at, Vec3::new(0.0, 0.0, 50.5), 3), 6);
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 use super::frame::{mark, span, View};
 use super::textures::depth_view;
+use super::ReflectionScale;
 use super::Renderer;
 use crate::gpu_util;
 use crate::mirrors::{self, Placed, Rate, MOST, MOST_MIRRORS};
@@ -20,9 +21,9 @@ pub(super) const REACH: f32 = 300.0;
 /// samples: `glass.wgsl`).
 const LAYERS: usize = MOST_MIRRORS + 1;
 const WINDSCREEN: usize = MOST_MIRRORS;
-/// The windscreen's image is drawn every this many frames (user's call: its pass cost 1.2-1.5 ms a frame); between,
-/// the glass holds it still with the car as it does the mirrors'.
-const WINDSCREEN_RATE: Rate = Rate::Every(2);
+/// The windscreen's image is drawn at the reflection rate but no more often than every this many frames (user's call:
+/// its pass cost 1.2-1.5 ms a frame); between, the glass holds it still with the car as it does the mirrors'.
+const WINDSCREEN_EVERY: u32 = 2;
 /// Each layer's span in `--profile`.
 const LABELS: [&str; LAYERS] = ["mirror 1", "mirror 2", "mirror 3", "mirror 4", "windscreen reflection"];
 
@@ -59,9 +60,13 @@ struct Target {
 
 /// The mirrors' images, their views for the glass, and what each pass needs.
 pub(super) struct Mirrors {
+    /// Whether the mirrors are drawn ([`Enhance::mirrors`](super::Enhance::mirrors)), each every `rate` frames.
+    on: bool,
     rate: Rate,
-    /// Whether the windscreen's image is drawn ([`Enhance::windscreen`](super::Enhance::windscreen)), at
-    /// [`WINDSCREEN_RATE`].
+    /// Their images' and the windscreen's resolution ([`ReflectionScale::fraction`]).
+    resolution: f32,
+    /// Whether the windscreen's image is drawn ([`Enhance::windscreen`](super::Enhance::windscreen)), at `rate` but
+    /// at most every [`WINDSCREEN_EVERY`]th frame.
     windscreen_on: bool,
     /// [`LAYERS`] layers of [`MOST`] (one texel without mirrors), and their view.
     images: wgpu::Texture,
@@ -78,9 +83,14 @@ pub(super) struct Mirrors {
 }
 
 impl Mirrors {
-    pub(super) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, rate: Rate, windscreen_on: bool) -> Mirrors {
-        let (size, layers) = match (rate, windscreen_on) {
-            (Rate::Off, false) => ((1, 1), 1),
+    pub(super) fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        (on, rate, scale): (bool, Rate, ReflectionScale),
+        windscreen_on: bool,
+    ) -> Mirrors {
+        let (size, layers) = match (on, windscreen_on) {
+            (false, false) => ((1, 1), 1),
             _ => (MOST, LAYERS as u32),
         };
         let images = device.create_texture(&wgpu::TextureDescriptor {
@@ -99,7 +109,9 @@ impl Mirrors {
         });
         let uniform = gpu_util::uniform_buffer(device, "mirror views", size_of::<[ViewUniform; LAYERS]>());
         Mirrors {
+            on,
             rate,
+            resolution: scale.fraction(),
             windscreen_on,
             images,
             view,
@@ -119,11 +131,11 @@ impl Mirrors {
         self.placed.iter().copied().enumerate().chain(self.windscreen.map(|placed| (WINDSCREEN, placed)))
     }
 
-    /// Whether layer `k`'s image is drawn on frame `frame`: the mirrors' at their rate, the windscreen's at
-    /// [`WINDSCREEN_RATE`].
+    /// Whether layer `k`'s image is drawn on frame `frame`: the mirrors' at the rate, the windscreen's at most
+    /// every [`WINDSCREEN_EVERY`]th frame.
     fn due(&self, k: usize, frame: u64) -> bool {
         match k {
-            WINDSCREEN => WINDSCREEN_RATE.due(k, frame),
+            WINDSCREEN => self.rate.at_most_every(WINDSCREEN_EVERY).due(k, frame),
             _ => self.rate.due(k, frame),
         }
     }
@@ -134,7 +146,7 @@ impl Renderer {
     /// them (none: no mirror passes). Only with [`Enhance::mirrors`](super::Enhance::mirrors) on.
     pub fn set_mirrors(&mut self, placed: &[Placed]) {
         let mirrors = &mut self.mirrors;
-        if mirrors.rate == Rate::Off {
+        if !mirrors.on {
             return;
         }
         mirrors.placed = placed.iter().take(MOST_MIRRORS).copied().collect();
@@ -144,7 +156,7 @@ impl Renderer {
     }
 
     /// The windscreen's pane seen from inside this frame, its mean plane facing the eye (none: no pass). Drawn as the
-    /// centre mirror's is, the cabin and the stage behind it, at [`WINDSCREEN_RATE`]; only with
+    /// centre mirror's is, the cabin and the stage behind it, at the reflection rate (at most every 2nd frame); only with
     /// [`Enhance::windscreen`](super::Enhance::windscreen).
     pub(crate) fn set_windscreen_mirror(&mut self, placed: Option<Placed>) {
         let mirrors = &mut self.mirrors;
@@ -170,7 +182,7 @@ impl Renderer {
         before: &mut Option<impl FnOnce() -> wgpu::CommandBuffer>,
     ) {
         let m = &self.mirrors;
-        if m.rate == Rate::Off && !m.windscreen_on {
+        if !m.on && !m.windscreen_on {
             return;
         }
         let frame = m.frame.get();
@@ -186,7 +198,9 @@ impl Renderer {
                 continue;
             }
             // Of a triple screen's views, the one that shows most of the glass.
-            let seen = views.iter().filter_map(|&(view, sky)| mirrors::view(view, sky, self.depth_size, &placed));
+            let seen = views
+                .iter()
+                .filter_map(|&(view, sky)| mirrors::view(view, sky, self.depth_size, m.resolution, &placed));
             let Some(view) = seen.max_by_key(|view| view.size.0 * view.size.1) else {
                 continue;
             };
