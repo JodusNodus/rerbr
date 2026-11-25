@@ -8,6 +8,7 @@ use super::shadows::Casting;
 use super::DEPTH_FORMAT;
 use crate::bounce::{self, DIRECTIONS, GROUND, SIZE};
 use crate::camera::Frustum;
+use crate::gpu_util;
 use crate::sky_occlusion::{self, Tiles, BATCH, TILE};
 use crate::stage::{Anchor, Layer, Lod, Stage};
 use crate::sun::{self, SunShadow};
@@ -93,16 +94,8 @@ pub(super) fn bake(
     let start = std::time::Instant::now();
     let Some(tiles) = &ground.tiles else { return };
 
-    let uniform = |label, size| {
-        device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        })
-    };
-    let params = uniform("bounce", size_of::<Params>() as u64);
-    let matrices = uniform("bounce maps", (BATCH * size_of::<Mat4>()) as u64);
+    let params = gpu_util::uniform_buffer(device, "bounce", size_of::<Params>());
+    let matrices = gpu_util::uniform_buffer(device, "bounce maps", BATCH * size_of::<Mat4>());
     let cells = (tiles.columns * tiles.rows) as usize;
     let map_of = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("bounce tiles"),
@@ -117,16 +110,8 @@ pub(super) fn bake(
         compare: Some(wgpu::CompareFunction::LessEqual),
         ..Default::default()
     });
-    let linear = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("bounce light"),
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        ..Default::default()
-    });
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("bounce"),
-        source: wgpu::ShaderSource::Wgsl(bounce::SHADER.into()),
-    });
+    let linear = gpu_util::linear_clamp(device, "bounce light");
+    let module = gpu_util::shader(device, "bounce", bounce::SHADER);
     let pipeline = |entry| {
         device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("bounce"),
@@ -345,29 +330,13 @@ impl Surfaces {
             }],
         });
         let uniforms: Vec<wgpu::Buffer> = (0..BATCH)
-            .map(|_| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("bounce surfaces"),
-                    size: (size_of::<Mat4>() + size_of::<[f32; 4]>()) as u64,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                })
-            })
+            .map(|_| gpu_util::uniform_buffer(device, "bounce surfaces", size_of::<Mat4>() + size_of::<[f32; 4]>()))
             .collect();
         let groups = uniforms
             .iter()
-            .map(|uniform| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("bounce surfaces"),
-                    layout: &layout,
-                    entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() }],
-                })
-            })
+            .map(|uniform| gpu_util::bind_group(device, "bounce surfaces", &layout, &[uniform.as_entire_binding()]))
             .collect();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("bounce surfaces"),
-            source: wgpu::ShaderSource::Wgsl(bounce::SURFACE_SHADER.into()),
-        });
+        let shader = gpu_util::shader(device, "bounce surfaces", bounce::SURFACE_SHADER);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("bounce surfaces"),
             bind_group_layouts: &[Some(&layout), Some(texture_layout)],

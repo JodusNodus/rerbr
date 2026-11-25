@@ -20,10 +20,7 @@ pub(super) struct DepthPyramid {
 
 impl DepthPyramid {
     pub(super) fn new(device: &wgpu::Device, size: (u32, u32), depth: &wgpu::TextureView) -> DepthPyramid {
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("depth pyramid"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
+        let module = crate::gpu_util::shader(device, "depth pyramid", SHADER);
         let [copy, halve] = ["cs_copy", "cs_halve"].map(|entry| {
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some("depth pyramid"),
