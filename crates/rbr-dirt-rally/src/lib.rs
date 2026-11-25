@@ -30,6 +30,7 @@ pub mod material;
 pub mod mesh;
 pub mod needles;
 pub mod objects;
+pub mod pacenotes;
 pub mod pssg;
 pub mod route;
 pub mod shade;
