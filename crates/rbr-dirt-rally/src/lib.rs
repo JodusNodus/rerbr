@@ -18,6 +18,7 @@ pub mod car_maps;
 pub mod car_pack;
 pub mod cli;
 pub mod collision;
+pub mod dev;
 pub mod frame;
 pub mod gauges;
 pub mod grade;
