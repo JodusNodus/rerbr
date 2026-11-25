@@ -1576,7 +1576,11 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   345 s on one thread). Parts kept by their place within one copy and made once across threads, the straight runs read
   from running sums, the areas joined by row runs: 4.2 G texels, `plants` 58 s, the viewer's mesh prepare 63.6 to
   10.5 s, its load 74 to 23 s; marks equal to the texel-by-texel count (`marks_match_the_texel_by_texel_count`), 580,
-  Odry, Luceram, Semetin, 621 and Gabiria shots byte-identical. Pieces lying flat are no plants (2026-11-18,
+  Odry, Luceram, Semetin, 621 and Gabiria shots byte-identical. The marks are kept on disk between loads (2026-11-25,
+  `foliage::use_cache`, `viewer --cache`; the launcher passes `<files folder>/cache`): a file per texture by the
+  SHA-256 of its tested texels, 25 bytes a part, written again only when a load made new ones; 580 670 KB in 36 files, its mesh
+  prepare 9.4 to 0.9 s and load 21 to 11.5 s on a load seen before, screenshot byte-identical without, cold and warm.
+  Pieces lying flat are no plants (2026-11-18,
   `foliage::FLAT`: no face steeper than about 26 degrees): a converted AC stage's road paint, cut out, was faded
   edge-on and vanished under `lighting` (Riudecanyes, before/after shots); retail stages not re-shot. The edge-on fade is gone for every stage (2026-11-18, user): converted AC hedges and fences are modelled planes along the road, and faded by the angle they came and went as the car passed (Crequy 2025 at 2.3 km, replay re-rendered with `lighting` off: steady). The main view's sun shadow is worked out once per
   pixel before the stage is shaded (PCSS, 3x3 blocker search). Semetin 5.39 to 6.06 ms at 1920x1080 (41M similar,

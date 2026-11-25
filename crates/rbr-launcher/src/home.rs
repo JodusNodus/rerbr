@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 /// The folder of the viewer's performance logs (`viewer --perf-log`), in the player's folder.
 pub const LOGS: &str = "logs";
+/// The folder of what the viewer's loads keep between them (`viewer --cache`), in the player's folder.
+pub const CACHE: &str = "cache";
 
 /// The player's folder ([`rbr_btb::player::player_folder`], shared with converters), else (no `HOME`, or no
 /// `APPDATA` on Windows) `fallback`.

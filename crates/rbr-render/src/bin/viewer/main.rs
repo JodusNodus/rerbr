@@ -217,6 +217,9 @@ fn run() -> Result<(), String> {
         None => given,
     };
     let mut args = args::parse_args(given.into_iter())?;
+    if let Some(dir) = &args.cache {
+        rbr_render::foliage::use_cache(dir.clone());
+    }
     // Recording a replay: the header first (the stepping process appends its frames), then its command serves
     // them. A replay watched is not recorded again.
     if args.replay.is_some() && args.save_replay.is_some() {
