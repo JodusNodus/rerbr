@@ -54,8 +54,8 @@ impl SunMask {
         })
     }
 
-    /// The mask over a `depth` of `size` pixels, with the occlusion; its passes only with
-    /// the context's [`Context::lighting`] (else texels the draws never read).
+    /// The mask over a `depth` of `size` pixels, with the occlusion; its passes only with the context's
+    /// [`Context::lighting`] (else texels the draws never read).
     pub(super) fn new(
         context: &Context,
         (layout, frame_layout): (wgpu::BindGroupLayout, &wgpu::BindGroupLayout),
@@ -111,8 +111,8 @@ impl SunMask {
         self.passes.is_some()
     }
 
-    /// Puts `history` in place of the drawn view's screen occlusion history and gives the drawn view's back (a fresh one
-    /// when `None`); `None` without the passes.
+    /// Puts `history` in place of the drawn view's screen occlusion history and gives the drawn view's back (a fresh
+    /// one when `None`); `None` without the passes.
     pub(super) fn exchange(&mut self, device: &wgpu::Device, history: Option<GtaoHistory>) -> Option<GtaoHistory> {
         Some(self.gtao.as_mut()?.exchange(device, history))
     }

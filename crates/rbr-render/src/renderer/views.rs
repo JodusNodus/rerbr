@@ -1,8 +1,8 @@
-//! A frame of several views from one eye (ours: a triple screen's, `crate::triple`). Each view keeps what carries
-//! from frame to frame (the temporal anti-aliasing's history, the motion's last view, the clouds' march, the screen occlusion's history), parked while
-//! another is drawn; the frame's first view draws what they share (the sun's maps, the reflection cubes, the mirrors,
-//! the grass about the eye). Like-sized views share the rest of the targets: each view's commands are submitted before
-//! the next is drawn ([`Renderer::render_view`]).
+//! A frame of several views from one eye (ours: a triple screen's, `crate::triple`). Each view keeps what carries from
+//! frame to frame (the temporal anti-aliasing's history, the motion's last view, the clouds' march, the screen
+//! occlusion's history), parked while another is drawn; the frame's first view draws what they share (the sun's maps,
+//! the reflection cubes, the mirrors, the grass about the eye). Like-sized views share the rest of the targets: each
+//! view's commands are submitted before the next is drawn ([`Renderer::render_view`]).
 
 use super::cloud_volume::CloudHistory;
 use super::gtao::GtaoHistory;

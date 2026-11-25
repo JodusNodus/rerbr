@@ -1,8 +1,8 @@
-// Ground-truth ambient occlusion in place of the old contact shading (`renderer::gtao`, `Enhance::lighting`, ours), appended to
-// `shader.wgsl`. After Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate Indirect
-// Occlusion", and Intel's XeGTAO (MIT) for the slice set-up: per half-size texel a few slices through the view vector, in
-// each the highest horizon either way from the depth, integrated against the face's cosine. Never the sun's: the stage
-// reads it on the sky's and bounce's light only (`contact_at`, `combine_ao`).
+// Ground-truth ambient occlusion in place of the old contact shading (`renderer::gtao`, `Enhance::lighting`, ours),
+// appended to `shader.wgsl`. After Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate Indirect
+// Occlusion", and Intel's XeGTAO (MIT) for the slice set-up: per half-size texel a few slices through the view vector,
+// in each the highest horizon either way from the depth, integrated against the face's cosine. Never the sun's: the
+// stage reads it on the sky's and bounce's light only (`contact_at`, `combine_ao`).
 //
 // Three passes over the 2x2 pixels' top left pixel: `fs_gtao` (raw, noisy: the slices turned and the steps jittered by
 // the pixel and the frame), `fs_gtao_resolve` (3x3 depth-aware blur, then the previous frame's result reprojected,

@@ -129,7 +129,8 @@ pub(super) struct FrameUniform {
     enhance: [f32; 4],
     /// Stage space to the sun's cascades' clip spaces ([`SunShadow`](crate::sun::SunShadow)).
     sun_matrices: [[[f32; 4]; 4]; 4],
-    /// `x` how much the sun's shadow darkens (0: off), `y` one cascade texel in uv, `z` 1 under an overcast sky, `w` unused.
+    /// `x` how much the sun's shadow darkens (0: off), `y` one cascade texel in uv, `z` 1 under an overcast sky, `w`
+    /// unused.
     sun_shadow: [f32; 4],
     /// Each cascade's texel in metres, and the far layer's.
     sun_texels: [f32; 4],
