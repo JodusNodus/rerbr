@@ -98,6 +98,7 @@ pub fn import(install: &Install, id: &str, options: &Options) -> Result<Report, 
         start,
         finish,
         splits,
+        calls: if circuit { Vec::new() } else { route::calls(&route)? },
         circuit,
         materials,
         drawn,
@@ -139,7 +140,7 @@ const GATE_OFF_ROAD: f64 = 8.;
 
 /// The road's centre line in the stage's world (the AI track's, shared by a route's halves), with the arc lengths of
 /// its start, finish and splits: each gate's crossing projected onto it. A line running the other way is reversed.
-fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64, Vec<f64>), String> {
+pub(crate) fn centre_line(route: &Route, course: &route::Course) -> Result<(Line, f64, f64, Vec<f64>), String> {
     let road = route::road(route)?;
     let mut points: Vec<[f64; 3]> = road.iter().map(|s| frame::world(s.centre())).collect();
     let mut width: Vec<f64> = road.iter().map(|s| f64::from(s.width)).collect();

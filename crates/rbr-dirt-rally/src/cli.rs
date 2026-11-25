@@ -23,7 +23,7 @@ physics of the gvrc.de car of its model, added before (cme, 131, str, m3r, mta, 
 mer, sti, mcr, ffr, pol). car writes its model alone: CLASS its generic textures under cars/generics (historic, rally,
 groupb, rallyx, trailblazer), CARFOLDER a car of the player's of the same model.
 
-Developer: xml FILE, pssg-tree FILE [DEPTH], car-textures PSSG, car-texture PSSG NAME OUT.dds, car-info PSSG [-v].";
+Developer: xml FILE, pacenotes ROUTE, pssg-tree FILE [DEPTH], car-textures PSSG, car-texture PSSG NAME OUT.dds, car-info PSSG [-v].";
 
 pub fn main_entry(args: impl IntoIterator<Item = String>) {
     if let Err(error) = run(args) {
@@ -74,6 +74,75 @@ fn developer(command: &str, mut args: impl Iterator<Item = String>) -> Result<()
                 e.children.iter().for_each(|c| show(c, depth + 1));
             }
             show(&crate::binxml::parse(&bytes)?, 0);
+            Ok(())
+        }
+        "pacenotes" => {
+            let id = args.next().ok_or("pacenotes needs LOCATION/AREA/route_N")?;
+            let install = install(None)?;
+            let route = install.route(&id)?;
+            let course = crate::route::course(&route)?;
+            let (line, start, finish, _) = crate::import::centre_line(&route, &course)?;
+            // The line as the stage keeps it: 50 m before the start, 2.5 m apart.
+            let from = (start - 50.).max(0.);
+            let line = line.stretch(from, (finish + 40.).min(line.length()) - from, true, 2.5);
+            let start = start - from;
+            if args.next().as_deref() == Some("--line") {
+                for (i, p) in line.points.iter().enumerate() {
+                    println!(
+                        "L\t{:.1}\t{:.2}\t{:.2}\t{:.2}\t{:.2}",
+                        line.at[i] - start,
+                        p[0],
+                        p[1],
+                        p[2],
+                        line.width[i]
+                    );
+                }
+            }
+            let calls = crate::route::calls(&route)?;
+            let placed = crate::pacenotes::place(&calls, &line.points, &line.at, start);
+            let all = crate::pacenotes::notes(&calls, &line.points, &line.at, start, finish);
+            let count = |t: u32| all.iter().filter(|n| n.tag == t).count();
+            eprintln!(
+                "{} notes: {} corners, {} crests, {} jumps, {} distance keys",
+                all.len(),
+                placed.len(),
+                count(16),
+                count(20),
+                count(13)
+            );
+            println!("call\tdr_m\tsubcalls(type/angle/mA/mB/link)\ttag\tnote_m\tcorner(start-end m, turn, radius)");
+            for (i, call) in calls.iter().enumerate() {
+                let subs: Vec<String> = call
+                    .subcalls
+                    .iter()
+                    .map(|s| format!("{}/{}/{}/{}/{}", s.kind, s.angle, s.modifier_a, s.modifier_b, s.distance_link))
+                    .collect();
+                let notes: Vec<_> = placed.iter().filter(|p| p.call == i).collect();
+                let at = line.at.partition_point(|a| *a < start + call.distance).min(line.at.len() - 1);
+                let info = format!("z={:.1} width={:.1}", line.points[at][2], line.width[at]);
+                if notes.is_empty() {
+                    println!("{i}\t{:.1}\t{}\t-\t-\t{info}", call.distance, subs.join(" "));
+                }
+                for p in notes {
+                    let corner = p.corner.map_or("none".into(), |c| {
+                        format!(
+                            "{:.0}-{:.0} {}{:.0} r{:.0}",
+                            c.start - start,
+                            c.end - start,
+                            if c.left { "L" } else { "R" },
+                            c.turn,
+                            c.radius
+                        )
+                    });
+                    println!(
+                        "{i}\t{:.1}\t{}\t{}\t{:.1}\t{corner}",
+                        call.distance,
+                        subs.join(" "),
+                        p.note.tag,
+                        p.note.distance - start
+                    );
+                }
+            }
             Ok(())
         }
         "pssg-tree" => {

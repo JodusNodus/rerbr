@@ -12,7 +12,7 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   Germany, Greece, Sweden, Wales), each route_0..5; Pikes Peak (routes 0, 2, 4, 6), three rallycross venues (Höljes and Lydden Hill routes 0 to 2, Hell 0 and 1; see Rallycross below),
   `frontend` (no course). 94 route folders.
 - Route roles, all 12 areas (start and finish positions, codriver `_fwd`/`_rvs` names): 0 long forward, 1 long reverse,
-  2/3 first half forward/reverse, 4/5 second half forward/reverse. Stage names are not on disk (`game.bin` is opaque).
+  2/3 first half forward/reverse, 4/5 second half forward/reverse. Stage names are not on disk ([Names and pacenotes](#names-and-pacenotes-2026-11-25)).
 - An area is one world its routes share: `routesplit.pssg` and `terrain_lm_day.pssg` are byte identical across
   ghymno_rally_01's six routes; objects (`objects.ens`, `route_objects.pssg`), trees, collision and course differ.
 
@@ -105,8 +105,43 @@ investigation of 2026-11-23 (`/tmp/dr-investigation/*.md` at the time); each sti
   from the gates; to be confirmed on the mesh).
 - The start grid (`grids.pssg`) lies on the start gate's crossing within 0.54 m on 79 of 84 rally routes; its matrix
   is rotated on eight, so the heading comes from the gates.
-- Codriver `_data.xml`: calls at `distanceAlongTrack` from the start line with subcalls (type 1 left, 2 right
-  probable, `angle` the corner's turn in degrees); other types undecoded.
+- Codriver `_data.xml`: calls at `distanceAlongTrack` with subcalls (type 1 left, 2 right, `angle` the corner's turn in
+  degrees); the other types are in [Names and pacenotes](#names-and-pacenotes-2026-11-25).
+
+## Names and pacenotes, 2026-11-25
+
+Names. DiRT's stage names are in no readable file of the install: the frontend bundles (`b_language_def.pssg` holds
+font and atlas data, `d_osd.pssg` materials), `debug/config.xml` (event table by folder name), the audio banks (hashed
+event names) and every other loose file name only the folders; `game.bin` (407 MB) is encrypted from its first byte.
+So the title is made from the folders: `Greece, Ghymno 1, long reverse` (`route::title`: country folder, area and its
+number, part, direction); the stage folder (`DR_greece_ghymno_rally_01_route_1`) is unchanged (ids the launcher and
+saves key on). Nothing of DiRT's text is kept.
+
+Pacenotes. `pacenotes::notes` writes the stage's `pacenotes.ini` from the route's own `_codriver_1_pro_<n>_data.xml`
+(reverse routes have their own file, same convention); a route without calls keeps the converter's notes graded from
+the line. Rallycross has none.
+
+- Distance. A call's `distanceAlongTrack` is metres from the start gate (line start + that), where the codriver
+  speaks, ahead of the corner by a speed-dependent lead (matched calls, quartiles: Greece 45 to 100 m, Turini 40 to
+  130, Panzerplatte 40 to 150, Vargasen 75 to 140, Hafren 55 to 140, Ouninpohja 100 to 180). A note's distance is
+  where the corner begins, so each corner subcall goes to the next corner of its side on the 2.5 m line (heading
+  rate over 20 m above 1/700 m^-1, cut at valleys under half the peak, at least 8 degrees, at least 0.3 of the angle,
+  starting within 220 m past the call and not ended before it); with none, at the call plus the route's median lead.
+  Matched: 95 % of Ghymno 1 route_0, 60 % of Ouninpohja 1 (fast flat corners), 70 to 95 % elsewhere.
+- Subcall type 1 left, 2 right (checked: the sign agrees with the line's turn for 82 % of calls); `angle` is the turn
+  in degrees (matched corners turn 17, 30, 46, 60, 75, 102, 166 on average for angles 15, 30, 40, 50, 65, 100, 140).
+  DiRT's ladder is 15, 30, 40, 50, 65, 80, 100, 140, 180 (rarely measured values between). Bins to the 1.02 tags
+  (left, right): up to 22.5 easy (5, 6), 35 fast (4, 7), 57.5 medium (3, 8), 72.5 K (2, 9), 120 90 (1, 10), over it
+  hairpin (0, 11). The converter's crests and jumps (tags 16, 20; not its corners or flags) are added, except within 20 m of a corner note. A distance key (13) follows each note with 30 m or more before the next, as the converter's.
+- Type 3: a distance call (alone between corner calls, `distanceLink` grows with the gap to the next corner: median 71 m
+  for 3, 109 for 4, 140 for 5); covered by the distance keys. Type 6: the finish call (once per route, 38 to 343 m
+  before the finish; the stage's finish key says it). The icon atlas of `b_osd_codriver_a.pssg` lists left/right 1 to 9,
+  narrows, widens, water, tightens into, widens into, widens tightens into, stop, dont cut, distance, jump, into, care,
+  and, dip, caution; no type table. Left out (no evidence which): types 5 (0 to 5 a route), 7, 8 (four, Hafren), 9, the
+  modifiers A (1, 2, 3) and B (3), `distanceLink`, `delay`: none showed a signature on the line (crest or dip, width,
+  corner length, tightening).
+- Developer: `rbr-dirt-rally pacenotes ROUTE [--line]` lists each call, its subcalls, the note and the corner it went to.
+  Unchecked by ear: no recorded drive of a DiRT stage, so no codriver render.
 
 ## Surfaces
 
@@ -523,5 +558,5 @@ without `--livery`; the class is required: it is in the game's database, not in 
 ## Stage previews, 2026-11-25
 
 - DR's own menu pictures are not in the install (frontend bundles hold HUD art, `game.bin` is encrypted), so the launcher card's picture is rendered by ReRBR's `viewer` from the stage (`preview.rs`): `viewer --camera --screenshot`, 1920x1080, 13:00, the stage's `weather_good` sky, everything on (`all,grass`), no HUD, no car. Written as `preview.png` and named in `track.ini` `splashscreen`, so `btb_picture` shows it with no launcher change (checked on `rerbr --screenshot`, Ghymno 1).
-- Viewpoint rule (`preview::viewpoint`, from `driveline.ini` alone): the tightest bend between 8 % and 92 % of the course (largest plan-heading change over 40 m either side, first on a tie); the eye on the road 100 m before the apex and 28 m above, looking at the apex. It picks hairpins on Ghymno, Turini and Hafren, junctions on Finland and Panzerplatte.
+- Viewpoint rule (`preview::viewpoints`, from `driveline.ini` alone): the bends between 8 % and 92 % of the course ranked by plan-heading change over 40 m either side (first on a tie, none within 300 m along the course of a better one); an odd route (the reverse of its pair, `dr-conversion.json` `route`) starts at the second, so a pair differs; if more than 2 % of the picture's top third is under luma 40 (terrain missing past the edge, deep shade) the next bend is tried, up to 5, and the least dark kept. The eye on the road 100 m before the apex and 28 m above, looking at the apex. It picks hairpins on Ghymno, Turini and Hafren, junctions on Finland and Panzerplatte.
 - Hooks: `rbr-dirt-rally import` renders it after the import (the `viewer` beside the program, `$RBR_DATA/Maps`; a failure is a warning, `--no-preview` skips it); `rbr-dirt-rally preview STAGE_FOLDER... [--viewer] [--maps]` makes or remakes it. The launcher itself has no DR import, so no launcher hook. 26 installed `DR_*` folders done, 15 s each. A later `import --replace` without the viewer leaves the folder without it until `preview` is run.

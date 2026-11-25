@@ -101,6 +101,8 @@ pub struct Input {
     pub start: f64,
     pub finish: f64,
     pub splits: Vec<f64>,
+    /// The codriver's calls ([`pacenotes`]); the corners graded from the line when there are none.
+    pub calls: Vec<crate::route::Call>,
     /// A rallycross lap: `line` is a closed ring that starts at the lap line (the spawn), `start..finish` is
     /// one lap of it and `splits` are arc lengths from its start.
     pub circuit: bool,
@@ -695,7 +697,13 @@ fn build(input: &Input, options: &Options, folder: &Path) -> Result<Report, Stri
         vec![(0x15, 0, start), (0x16, 0, finish), (0x18, 0, (finish + 15.).min(line.length()))]
     };
     notes.extend(input.splits.iter().map(|s| (0x17, 0, if input.circuit { *s } else { s - from })));
-    let called = if input.circuit { Vec::new() } else { pacenotes::notes(&line.points, &line.at, start, finish) };
+    let called = if input.circuit {
+        Vec::new()
+    } else if input.calls.is_empty() {
+        pacenotes::notes(&line.points, &line.at, start, finish)
+    } else {
+        crate::pacenotes::notes(&input.calls, &line.points, &line.at, start, finish)
+    };
     notes.extend(called.iter().map(|n| (n.tag, n.flags, n.distance)));
     notes.sort_by(|a, b| a.2.total_cmp(&b.2));
     let mut pn = format!("[PACENOTES]\ncount={}\n", notes.len());
@@ -803,6 +811,7 @@ mod tests {
             finish: 540.,
             circuit: false,
             splits: vec![300.],
+            calls: Vec::new(),
             materials: vec![Material { name: "road".into(), ..Material::default() }],
             drawn: strip(-4., 4., 0),
             layer: Vec::new(),
@@ -865,6 +874,7 @@ mod tests {
             finish: 10. + length,
             circuit: true,
             splits: vec![300., 900.],
+            calls: Vec::new(),
             materials: vec![Material { name: "road".into(), ..Material::default() }],
             drawn: strip(-4., 4., 0),
             layer: Vec::new(),
