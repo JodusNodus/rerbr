@@ -353,6 +353,33 @@ impl std::hash::Hash for Highlight {
     }
 }
 
+/// What a car face is (ours), set where the car loads (`car::shading::role`): the shader branches on it (`car_role` in
+/// `shader.wgsl`, the same numbers) rather than on its other constants. A lit lamp's part glows whatever its role
+/// ([`Shade::glow`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum FaceRole {
+    /// Paint, plastics, trim: lit by its class.
+    #[default]
+    Body = 0,
+    /// `CarGlass`: the Fresnel term adds to the alpha (`alpha = t0.a + 0.5 * F * Kf`).
+    Glass = 1,
+    /// `CarGlass` on a window part (`damage::window_slot`): seen from outside it mirrors and absorbs as a pane (the
+    /// lamps' glass keeps its look).
+    Window = 2,
+    /// `CarIntGlass` with an opacity map: in the in-car view with the day's light a tint over what is seen through it,
+    /// not a lit layer.
+    InteriorGlass = 3,
+    /// A window's crack overlay ([`crate::crack_decal`]): its normal comes from the crack texture's alpha, so the
+    /// cracks catch the light.
+    Crack = 4,
+    /// A wheel's or mud flap's face ([`crate::dirt::spatter`]): its rubber and metal by the texel's brightness, and
+    /// a dirt spatter by the car's dirt level.
+    Wheel = 5,
+    /// A lamp's lens over its reflector bowl, with the day's light: a sharp mirror over the texture, its bright texels
+    /// chrome.
+    Lens = 6,
+}
+
 /// A car class's lighting constants from `<car>_shader_settings_clear.ini` (`Ka`, `Kd`, `CookTorranceKs`,
 /// `CookTorranceM`, `FresnelMin`, `FresnelMax`, `Kf`; `notes/formats.md` "Shaders and vertex layouts", Car pixel constants and vertex
 /// constants). The game's own use of them goes through constants with unproven sources (`c41`, `c67`, `c68`, `c90`,
@@ -366,38 +393,32 @@ pub struct Shade {
     pub fresnel_min: f32,
     pub fresnel_max: f32,
     pub kf: f32,
-    /// `CarGlass`: the Fresnel term adds to the alpha (`alpha = t0.a + 0.5 * F * Kf`).
-    pub glass: bool,
+    /// What the face is ([`FaceRole`]), which picks its branches of `shade_car` (`shader.wgsl`).
+    pub role: FaceRole,
     /// A lit lamp's part (`lights::Switch`): glows in this colour (its texture's where white) at its fourth, its
     /// luminance on the lamp's axis, cd/m2, negative for a headlight's (renderer addition, `lights::Switch::glow`).
     pub glow: Option<[f32; 4]>,
     /// A lit part the game always draws (`lights::Switch::steady`): its lamp's kind number, so that it glows only
     /// while a lamp of that kind near it is lit; 0 for one drawn only while its lamp is lit.
     pub glow_kind: u8,
-    /// A window's crack overlay (ours, [`crate::crack_decal`]): its normal comes from the crack texture's alpha, so
-    /// the cracks catch the light.
-    pub crack: bool,
     /// `CarPaint`'s dirt map (`Dirt`, `<car>_external_mud.dds`), blended in by the car's dirt level (`crate::dirt`).
     pub dirt: Option<TextureRef>,
     /// An exterior pane's mud film by the car's dirt level (ours, [`crate::dirt::grime`]): 0 none, else its share in
     /// tenths.
     pub grime: u8,
-    /// A wheel's or mud flap's dirt spatter by the car's dirt level (ours, [`crate::dirt::spatter`]).
-    pub spatter: bool,
-    /// `CarIntGlass`: in the in-car view with the day's light a tint over what is seen through it, not a lit layer
-    /// (ours).
-    pub tint: bool,
-    /// A window part (`damage::window_slot`): seen from outside it mirrors and absorbs as a pane (ours; the lamps'
-    /// glass keeps its look).
-    pub window: bool,
     /// A converted car's interior material's finish (ours, [`rbr_formats::car_parts::Finish`]).
     pub finish: Option<rbr_formats::car_parts::Finish>,
 }
 
 impl Shade {
+    /// `CarGlass`, a window's or another pane: the Fresnel term adds to the alpha.
+    pub fn glass(&self) -> bool {
+        matches!(self.role, FaceRole::Glass | FaceRole::Window)
+    }
+
     fn bits(&self) -> [u32; 28] {
         let glow = self.glow.unwrap_or_default().map(f32::to_bits);
-        let finish = crate::car::cabin::finish_uniform(self.finish.as_ref()).concat();
+        let finish = crate::car::finish::finish_uniform(self.finish.as_ref()).concat();
         let finish: [u32; 16] = std::array::from_fn(|i| finish[i].to_bits());
         [
             self.ka.to_bits(),
@@ -407,14 +428,10 @@ impl Shade {
             self.fresnel_min.to_bits(),
             self.fresnel_max.to_bits(),
             self.kf.to_bits(),
-            u32::from(self.glass)
-                | u32::from(self.glow.is_some()) << 1
-                | u32::from(self.crack) << 2
-                | u32::from(self.grime) << 3
-                | u32::from(self.tint) << 11
-                | u32::from(self.spatter) << 12
-                | u32::from(self.window) << 13
-                | u32::from(self.glow_kind) << 14,
+            self.role as u32
+                | u32::from(self.glow.is_some()) << 3
+                | u32::from(self.grime) << 4
+                | u32::from(self.glow_kind) << 12,
             glow[0],
             glow[1],
             glow[2],

@@ -29,7 +29,7 @@ use crate::coords;
 use crate::damage::{self, Cracks, Dents, MeshDamage, Zones};
 use crate::lights::{self, LampPoint};
 use crate::parallel::in_parallel;
-use crate::stage::{Draw, Mesh, Pose, Selection, Shade, Stage, StageTexture, TextureRef, TextureSet, Vertex};
+use crate::stage::{Draw, FaceRole, Mesh, Pose, Selection, Shade, Stage, StageTexture, TextureRef, TextureSet, Vertex};
 use glam::{Mat4, Vec3};
 use rbr_formats::data::Data;
 use rbr_formats::ini::Section;
@@ -40,8 +40,8 @@ use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 
 pub mod cabin;
-pub mod cabin_bounce;
 mod files;
+pub mod finish;
 mod meshes;
 mod parts;
 mod shading;
@@ -52,14 +52,14 @@ use meshes::{build_meshes, crack_overlays, in_draw_order};
 pub(crate) use parts::wheel_of;
 use parts::{brake_disc_of, detach_part, ghost_part_for, hinge_side, interior_part_for, part_for};
 use shading::{
-    class_finish, dirt_texture, list_for, pass_for, scrape_texture, shade_for, FaceStyle, List, Order, Pass,
+    class_finish, dirt_texture, list_for, pass_for, role, scrape_texture, shade_for, FaceStyle, List, Order, Pass,
 };
 pub use wheels::{wheel_at_rest, wheel_places, WheelPlaces};
 
 /// Vertex colour of every car vertex: white, as the model has none, so the texture is drawn as it is. The alpha is the
 /// scrape amount ([`crate::damage`]), 0 until the car is damaged.
 const UNDAMAGED: [u8; 4] = [255, 255, 255, 0];
-/// Name prefix of the ghost parts, which only the ghost car uses ([`load_ghost`]).
+/// Name prefix of the ghost parts, which only the ghost car uses ([`Set::Ghost`]).
 const GHOST_PREFIX: &str = "ghost_";
 /// Name prefix of the overlay layers (dirt and scrape maps, milestone 5).
 const OVERLAY_PREFIX: &str = "texture_";
@@ -75,7 +75,7 @@ const PREMOVE_PART: &str = "pc_e_premove";
 const UNBUILT_PREFIXES: [&str; 2] = ["k_", "d_"];
 /// Name prefix of the interior set. The loader keeps its shaders in their own lists, and `CHH_Car::Render` draws
 /// either the interior lists (mode 0, the in-car views) or the exterior ones (rbr-recomp `notes/formats/sgc.md`, section 9).
-/// [`load`] reads the exterior set and [`load_interior`] the interior one, for the viewer's cockpit view.
+/// [`load`] reads the exterior set or the interior one, for the viewer's cockpit view.
 const INTERIOR_PREFIX: &str = "i_";
 /// The crew some RSF models hold as an interior part (the Fiesta Rally2, the i20 Rally2 and the i20 WRC 2020 and 2021,
 /// of the installed models): a static driver and co-driver, helmets and all, which the game draws with the rest of the
@@ -121,7 +121,7 @@ pub enum Skip {
     NoSection,
     /// A ghost part.
     Ghost,
-    /// Not in the ghost set ([`load_ghost`]).
+    /// Not in the ghost set ([`Set::Ghost`]).
     NotGhost,
     /// An overlay layer (dirt or scrape map).
     Overlay,
@@ -133,7 +133,7 @@ pub enum Skip {
     BakedCrew,
     /// The interior set, drawn only in the in-car views.
     Interior,
-    /// Not in the interior set ([`load_interior`]): the outside views' parts.
+    /// Not in the interior set ([`Set::Interior`]): the outside views' parts.
     Exterior,
     /// A switch part (`Switch = true`) whose box is not in its `Predicate` state at the start ([`lights::shown_at_start`]):
     /// the lit lights and the like.
@@ -279,35 +279,32 @@ pub fn placement_at(pose: Option<Pose>) -> Mat4 {
     }
 }
 
+/// Which of a car's sets a load builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Set {
+    /// The exterior set, which the outside views draw.
+    Exterior,
+    /// The interior set (`i_*`), loaded as the exterior is. `CHH_Car::Render` draws these instead of the exterior in
+    /// the in-car views (the cockpit camera; rbr-recomp `notes/formats/sgc.md`, section 9).
+    Interior,
+    /// The ghost set (`ghost_*`, one `GhostCar` mesh per car), which the ghost car is drawn with (`E09_LoadGhostCar`
+    /// 0x466910). [`crate::ghost`] gives it the ghost's look.
+    Ghost,
+}
+
 /// Loads car `name` (its `Cars.ini` folder, for example `XSARA`, matched ignoring case) from `data`
-/// (the install, with the 1.02 patch over it when set), with its model-space positions mapped by `placement`.
-pub fn load(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, part_for, true, false)
-}
-
-/// Loads car `name` with its car-parts light options on when `lit` (headlights, extra lights and pods),
-/// the way RSF's picker takes them over the model, in memory: for a stage the lamps light (dusk and night).
-/// A vetoed car, or one with no night option, loads as [`load`].
-pub fn load_lit(data: &Data, name: &str, placement: Mat4, lit: bool) -> Result<Car, Error> {
-    load_set(data, name, placement, part_for, true, lit)
-}
-
-/// Loads car `name`'s interior set (`i_*`) as [`load`] loads the exterior. `CHH_Car::Render` draws these instead of
-/// the exterior in the in-car views (the cockpit camera; rbr-recomp `notes/formats/sgc.md`, section 9).
-pub fn load_interior(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, interior_part_for, false, false)
-}
-
-/// Loads car `name`'s interior set with its car-parts light options on when `lit`, as [`load_lit`] loads
-/// the exterior.
-pub fn load_interior_lit(data: &Data, name: &str, placement: Mat4, lit: bool) -> Result<Car, Error> {
-    load_set(data, name, placement, interior_part_for, false, lit)
-}
-
-/// Loads car `name`'s ghost set (`ghost_*`, one `GhostCar` mesh per car), which the ghost car is drawn with
-/// (`E09_LoadGhostCar` 0x466910). [`crate::ghost`] gives it the ghost's look.
-pub fn load_ghost(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, ghost_part_for, false, false)
+/// (the install, with the 1.02 patch over it when set), the meshes of `set`, with its model-space positions mapped by
+/// `placement`.
+///
+/// With `lit` the car-parts light options are on (headlights, extra lights and pods), the way RSF's picker takes them
+/// over the model, in memory: for a stage the lamps light (dusk and night). A vetoed car, or one with no night option,
+/// loads as unlit. The ghost set ignores `lit`.
+pub fn load(data: &Data, name: &str, placement: Mat4, set: Set, lit: bool) -> Result<Car, Error> {
+    match set {
+        Set::Exterior => load_set(data, name, placement, part_for, true, lit),
+        Set::Interior => load_set(data, name, placement, interior_part_for, false, lit),
+        Set::Ghost => load_set(data, name, placement, ghost_part_for, false, false),
+    }
 }
 
 /// The file of `dos_path`'s name in the "lights on" car-parts option `option` ([`rbr_formats::rsf::headlights_on`]),
@@ -358,15 +355,26 @@ fn option_name(dir: &Path) -> String {
     dir.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned()
 }
 
-/// The meshes `part` admits, each with its part section.
-fn load_set(
-    data: &Data,
-    name: &str,
-    placement: Mat4,
-    part: for<'a> fn(&str, &'a [Section]) -> Result<&'a Section, Skip>,
-    exterior: bool,
-    lit: bool,
-) -> Result<Car, Error> {
+/// A car's files as [`load_set`] reads them, before any mesh is built.
+struct Source {
+    model: Vec<sgc::Element>,
+    needles: Vec<rbr_formats::car_gauges::Needle>,
+    /// The part sections, with the night options over them when lit.
+    parts: Vec<Section>,
+    /// The material sections (`<car>_shaders.ini`).
+    shaders: Vec<Section>,
+    /// The shader settings (`<settings>_clear.ini`).
+    settings: Vec<Section>,
+    /// The shader classes the settings define.
+    classes: BTreeSet<String>,
+    /// The lamps' records and points (the exterior set only).
+    lamp_points: Vec<LampPoint>,
+    /// What the night options did, when lit: the options applied, the groups skipped and the veto.
+    night: Option<(Vec<String>, Vec<String>, Option<String>)>,
+}
+
+/// Reads car `name`'s model and the files its meshes are built from.
+fn read_source(data: &Data, name: &str, exterior: bool, lit: bool) -> Result<Source, Error> {
     let entry = entry(data, name)?;
 
     let model_path = resolve(data, &entry.file_name)?;
@@ -377,7 +385,7 @@ fn load_set(
     // When lit the options' files stand in for the model's, in memory (the exterior and the interior
     // sets alike), before any mesh is built: visibility, lamp switches and points all use the merged
     // files. By day only the headlights' colour and points come from the "lights on" option.
-    let (parts, lit_settings, night_report) = match (lit, model_path.parent()) {
+    let (parts, lit_settings, night) = match (lit, model_path.parent()) {
         (true, Some(model)) => {
             let settings = if exterior { read_ini(data, &settings_file)? } else { Vec::new() };
             let applied = night_overlays(model, parts, settings);
@@ -389,6 +397,34 @@ fn load_set(
     let shaders = read_ini(data, &entry.shader_file)?;
     let settings = read_ini(data, &format!("{}_clear.ini", entry.shader_settings))?;
     let classes: BTreeSet<String> = settings.iter().map(|s| s.name.clone()).collect();
+
+    let lamp_points = if exterior {
+        let settings = match lit_settings {
+            Some(settings) => settings,
+            None => read_ini(data, &settings_file)?,
+        };
+        let on = model_path.parent().and_then(rbr_formats::rsf::headlights_on);
+        let on_ini = |file: &str| on.as_deref().and_then(|on| option_ini(on, file)).unwrap_or_default();
+        let beam = lights::headlight_colour(&on_ini(&settings_file));
+        let parts = lights::with_headlight_points(&parts, &on_ini(&entry.ini_file));
+        lights::lamp_points(&settings, &parts, beam)
+    } else {
+        Vec::new()
+    };
+    Ok(Source { model, needles, parts, shaders, settings, classes, lamp_points, night })
+}
+
+/// The meshes `part` admits, each with its part section.
+fn load_set(
+    data: &Data,
+    name: &str,
+    placement: Mat4,
+    part: for<'a> fn(&str, &'a [Section]) -> Result<&'a Section, Skip>,
+    exterior: bool,
+    lit: bool,
+) -> Result<Car, Error> {
+    let Source { model, needles, parts, shaders, settings, classes, lamp_points, night } =
+        read_source(data, name, exterior, lit)?;
 
     let chained = sgc::chained_worlds(&model);
     let places = wheel_places(&model, &chained);
@@ -405,24 +441,11 @@ fn load_set(
     };
     let mut textures = Textures::new(data);
     let mut report = CarReport::default();
-    if let Some((applied, skipped, veto)) = night_report {
+    if let Some((applied, skipped, veto)) = night {
         report.night_options = applied;
         report.night_skipped = skipped;
         report.night_veto = veto;
     }
-    let lamp_points = if exterior {
-        let settings = match lit_settings {
-            Some(settings) => settings,
-            None => read_ini(data, &settings_file)?,
-        };
-        let on = model_path.parent().and_then(rbr_formats::rsf::headlights_on);
-        let on_ini = |file: &str| on.as_deref().and_then(|on| option_ini(on, file)).unwrap_or_default();
-        let beam = lights::headlight_colour(&on_ini(&settings_file));
-        let parts = lights::with_headlight_points(&parts, &on_ini(&entry.ini_file));
-        lights::lamp_points(&settings, &parts, beam)
-    } else {
-        Vec::new()
-    };
     // The car's shaders in the order the loader creates them: one per class and material, at its first face
     // (`FUN_1001e430`). Each list draws its shaders in that order.
     let mut ranks: Vec<(String, String)> = Vec::new();
@@ -445,46 +468,7 @@ fn load_set(
             }
             report.base_only_shaders.insert(face.shader.clone());
         }
-        let face_styles: Vec<FaceStyle> = (0..mesh.faces.len())
-            .map(|i| {
-                let (shader, material) = faces.get(i).map_or(("", ""), |b| (b.shader.as_str(), b.material.as_str()));
-                let texture = car_parts::diffuse_path(&shaders, material).map(|dos_path| textures.key(dos_path));
-                let opacity = car_parts::opacity_channel(&shaders, material);
-                let scrape = scrape_texture(shader)
-                    .and_then(|name| car_parts::friendly_path(&shaders, name))
-                    .map(|dos_path| textures.key(dos_path));
-                let normal = car_parts::bump_path(&shaders, material).map(|dos_path| textures.key(dos_path));
-                let rank = match ranks.iter().position(|(s, m)| s == shader && m == material) {
-                    Some(rank) => rank,
-                    None => {
-                        ranks.push((shader.to_owned(), material.to_owned()));
-                        ranks.len() - 1
-                    }
-                };
-                // `CarPaint` blends its dirt map in by the dirt level (`CarPaint1.pso`, `crate::dirt`); `CarTexture`
-                // and `CarTire` bind theirs as their second texture (`Dirt`, `TireDirt`: `<car>_external_dynamic_mud`,
-                // `lerp(t0, c3.xyz, t1.a)`). Ours: those two also by the dirt level and in the paint's dirt colour
-                // (the game's mask is not scaled and its `c3.xyz` is never written, `notes/formats.md` "Shaders and vertex layouts").
-                let dirt = dirt_texture(shader)
-                    .and_then(|name| car_parts::friendly_path(&shaders, name))
-                    .map(|dos_path| textures.key(dos_path));
-                FaceStyle {
-                    texture,
-                    scrape,
-                    normal,
-                    shade: shade_for(&settings, shader).map(|shade| Shade {
-                        dirt,
-                        grime: crate::dirt::grime(&mesh.node.name, shader),
-                        spatter: crate::dirt::spatter(&mesh.node.name),
-                        tint: shade.tint && opacity,
-                        finish: car_parts::finish(&shaders, material).or_else(|| class_finish(shader)),
-                        ..shade
-                    }),
-                    pass: pass_for(shader, opacity),
-                    order: (list_for(shader, opacity), rank),
-                }
-            })
-            .collect();
+        let face_styles = face_styles(mesh, &faces, &shaders, &settings, &mut textures, &mut ranks);
         let world = chained.get(&mesh.node.id).copied().unwrap_or(mesh.node.world);
         // The node's world matrix after its transform block (`coords::part_to_car`). The side doors are hinged
         // bodies at rest (`coords::hinged_panel_to_car`); their hinge point and side also hang them open by
@@ -507,52 +491,25 @@ fn load_set(
         }
         let lamp = lights::Switch::of_part(part, &parts)
             .or_else(|| lights::Switch::of_drawn(part, model_centre(mesh, transform)?, &lamp_points));
-        let detach = detach_part(&mesh.node.name);
-        let hub = brake_disc_of(&mesh.node.name);
-        let steering = mesh.node.name.eq_ignore_ascii_case("i_steeringwheel");
-        let needle = needles.iter().position(|n| n.node.eq_ignore_ascii_case(&mesh.node.name));
-        let mirror = cabin::Mirror::of_part(&mesh.node.name);
-        let window = damage::window_slot(&mesh.node.name);
-        // A lit lamp's part's area along the car (its lamp's axis), over all its meshes.
-        let along = placement.transform_vector3(Vec3::Z).normalize_or(Vec3::Z);
-        let lit_area: f32 = built
-            .meshes
-            .iter()
-            .map(|(_, placed, _)| {
-                let positions: Vec<Vec3> = placed.vertices.iter().map(|v| Vec3::from(v.position)).collect();
-                lights::projected_area(&positions, &placed.indices, along)
-            })
-            .sum();
-        // A brake disc's lit part follows the brake lamp's box but is the hot disc, not a lamp: it keeps its own texture.
-        let disc = mesh.node.name.to_ascii_lowercase().contains("brakedisc");
-        // Of a lit part with lamp and body classes only the lamp's faces glow, not a pod's or bar's housing.
-        let lamp_faces = faces.iter().any(|f| lights::lamp_class(&f.shader));
-        let body_faces = faces.iter().any(|f| !lights::lamp_class(&f.shader));
-        groups.extend(built.meshes.into_iter().map(|(order, mut placed, effect)| {
-            let glows = !(lamp_faces && body_faces) || lights::lamp_class(&ranks[order.1].0);
-            if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass && glows && !disc) {
-                for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
-                    shade.glow = Some(switch.glow(lit_area));
-                    shade.glow_kind = if switch.steady { switch.kind.number() as u8 } else { 0 };
-                }
-            }
-            if window.is_some() {
-                for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
-                    shade.window = true;
-                }
-            }
-            (
-                order,
-                placed,
-                MeshDamage { lamp, detach, hinge: swung, wheel, hub, mirror, window, steering, needle, ..effect },
-            )
-        }));
+        let tags = MeshDamage {
+            lamp,
+            detach: detach_part(&mesh.node.name),
+            hinge: swung,
+            wheel,
+            hub: brake_disc_of(&mesh.node.name),
+            mirror: cabin::Mirror::of_part(&mesh.node.name),
+            window: damage::window_slot(&mesh.node.name),
+            steering: mesh.node.name.eq_ignore_ascii_case("i_steeringwheel"),
+            needle: needles.iter().position(|n| n.node.eq_ignore_ascii_case(&mesh.node.name)),
+            ..MeshDamage::default()
+        };
+        groups.extend(tag_meshes(built.meshes, &tags, &mesh.node.name, &faces, &ranks, placement));
         if let Some(window) = damage::window_slot(&mesh.node.name) {
             let style = FaceStyle {
                 texture: Some(textures.generated(CRACK_TEXTURE, crate::crack_decal::dds)),
                 scrape: None,
                 normal: None,
-                shade: shade_for(&settings, CRACK_SHADER).map(|shade| Shade { crack: true, ..shade }),
+                shade: shade_for(&settings, CRACK_SHADER).map(|shade| Shade { role: FaceRole::Crack, ..shade }),
                 pass: Pass::Crack,
                 order: (List::Transparent, usize::MAX),
             };
@@ -574,6 +531,116 @@ fn load_set(
     }
 
     Ok(Car { name: name.to_owned(), meshes, damage, lamp_points, textures: textures.finish(&mut report), report })
+}
+
+/// The draw style of each of `mesh`'s faces, from the part's `faces` and the car's `shaders` and shader `settings`.
+/// Allocates the textures' keys in `textures` and each new shader and material's rank in `ranks`.
+// The style expressions are kept as they were when they read the car's files by value.
+#[allow(clippy::needless_borrow)]
+fn face_styles(
+    mesh: &sgc::Mesh,
+    faces: &[car_parts::FaceBlock],
+    shaders: &[Section],
+    settings: &[Section],
+    textures: &mut Textures,
+    ranks: &mut Vec<(String, String)>,
+) -> Vec<FaceStyle> {
+    (0..mesh.faces.len())
+        .map(|i| {
+            let (shader, material) = faces.get(i).map_or(("", ""), |b| (b.shader.as_str(), b.material.as_str()));
+            let texture = car_parts::diffuse_path(&shaders, material).map(|dos_path| textures.key(dos_path));
+            let opacity = car_parts::opacity_channel(&shaders, material);
+            let scrape = scrape_texture(shader)
+                .and_then(|name| car_parts::friendly_path(&shaders, name))
+                .map(|dos_path| textures.key(dos_path));
+            let normal = car_parts::bump_path(&shaders, material).map(|dos_path| textures.key(dos_path));
+            let rank = match ranks.iter().position(|(s, m)| s == shader && m == material) {
+                Some(rank) => rank,
+                None => {
+                    ranks.push((shader.to_owned(), material.to_owned()));
+                    ranks.len() - 1
+                }
+            };
+            // `CarPaint` blends its dirt map in by the dirt level (`CarPaint1.pso`, `crate::dirt`); `CarTexture`
+            // and `CarTire` bind theirs as their second texture (`Dirt`, `TireDirt`: `<car>_external_dynamic_mud`,
+            // `lerp(t0, c3.xyz, t1.a)`). Ours: those two also by the dirt level and in the paint's dirt colour
+            // (the game's mask is not scaled and its `c3.xyz` is never written, `notes/formats.md` "Shaders and vertex layouts").
+            let dirt = dirt_texture(shader)
+                .and_then(|name| car_parts::friendly_path(&shaders, name))
+                .map(|dos_path| textures.key(dos_path));
+            FaceStyle {
+                texture,
+                scrape,
+                normal,
+                shade: shade_for(&settings, shader).map(|shade| Shade {
+                    role: role(
+                        shader,
+                        opacity,
+                        crate::dirt::spatter(&mesh.node.name),
+                        dirt.is_some(),
+                        shade.fresnel_max * shade.kf > 0.0,
+                    ),
+                    dirt,
+                    grime: crate::dirt::grime(&mesh.node.name, shader),
+                    finish: car_parts::finish(&shaders, material).or_else(|| class_finish(shader)),
+                    ..shade
+                }),
+                pass: pass_for(shader, opacity),
+                order: (list_for(shader, opacity), rank),
+            }
+        })
+        .collect()
+}
+
+/// Tags the meshes `built` from one part with the part's `tags` (its damage, lamp and window roles) and its lit lamp's
+/// glow, and the window's flag.
+fn tag_meshes(
+    built: Vec<(Order, Mesh, MeshDamage)>,
+    tags: &MeshDamage,
+    part_name: &str,
+    faces: &[car_parts::FaceBlock],
+    ranks: &[(String, String)],
+    placement: Mat4,
+) -> Vec<(Order, Mesh, MeshDamage)> {
+    let MeshDamage { lamp, detach, hinge: swung, wheel, hub, mirror, window, steering, needle, .. } = *tags;
+    // A lit lamp's part's area along the car (its lamp's axis), over all its meshes.
+    let along = placement.transform_vector3(Vec3::Z).normalize_or(Vec3::Z);
+    let lit_area: f32 = built
+        .iter()
+        .map(|(_, placed, _)| {
+            let positions: Vec<Vec3> = placed.vertices.iter().map(|v| Vec3::from(v.position)).collect();
+            lights::projected_area(&positions, &placed.indices, along)
+        })
+        .sum();
+    // A brake disc's lit part follows the brake lamp's box but is the hot disc, not a lamp: it keeps its own texture.
+    let disc = part_name.to_ascii_lowercase().contains("brakedisc");
+    // Of a lit part with lamp and body classes only the lamp's faces glow, not a pod's or bar's housing.
+    let lamp_faces = faces.iter().any(|f| lights::lamp_class(&f.shader));
+    let body_faces = faces.iter().any(|f| !lights::lamp_class(&f.shader));
+    built
+        .into_iter()
+        .map(|(order, mut placed, effect)| {
+            let glows = !(lamp_faces && body_faces) || lights::lamp_class(&ranks[order.1].0);
+            if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass && glows && !disc) {
+                for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
+                    shade.glow = Some(switch.glow(lit_area));
+                    shade.glow_kind = if switch.steady { switch.kind.number() as u8 } else { 0 };
+                }
+            }
+            if window.is_some() {
+                for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
+                    if shade.role == FaceRole::Glass {
+                        shade.role = FaceRole::Window;
+                    }
+                }
+            }
+            (
+                order,
+                placed,
+                MeshDamage { lamp, detach, hinge: swung, wheel, hub, mirror, window, steering, needle, ..effect },
+            )
+        })
+        .collect()
 }
 
 /// Ours: the lamp faces the game draws at a lamp with no switched lit part (`lights::bare`: the game shows it by its
@@ -648,7 +715,7 @@ impl Car {
     /// through the near one tints and reflects too, where the game culls its back faces, and the near pane, blended
     /// after it, stays over it.
     pub fn add_inner_glass(&mut self) {
-        let glass = |draw: &Draw| draw.state.shade.is_some_and(|shade| shade.glass);
+        let glass = |draw: &Draw| draw.state.shade.is_some_and(|shade| shade.glass());
         let Some(first) = self.meshes.iter().position(|mesh| mesh.draws.iter().any(glass)) else {
             return;
         };
@@ -728,7 +795,7 @@ impl Car {
     }
 
     /// Every load numbers its car textures from 0: moves this car's past the car textures already in `stage`, so a
-    /// second set (the interior, [`load_interior`]) added to it doesn't replace the first one's.
+    /// second set (the interior, [`Set::Interior`]) added to it doesn't replace the first one's.
     pub fn after_textures_of(mut self, stage: &Stage) -> Car {
         let base =
             stage.textures.keys().filter(|key| key.set == TextureSet::Car).map(|key| key.index + 1).max().unwrap_or(0);

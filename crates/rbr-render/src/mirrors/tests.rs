@@ -1,6 +1,6 @@
 use super::*;
 use crate::camera::FreeFly;
-use crate::stage::{Address, Anchor, DrawState, Layer, Lod, Shade, Vertex};
+use crate::stage::{Address, Anchor, DrawState, FaceRole, Layer, Lod, Shade, Vertex};
 use bytemuck::Zeroable;
 
 /// The cockpit's eye in the tests' model space (the car looks along `-z`).
@@ -34,7 +34,7 @@ fn mesh(triangles: &[[Vec3; 3]], normal: Vec3, glass: bool) -> Mesh {
                 blend: false,
                 depth_test: true,
                 depth_write: true,
-                shade: glass.then(|| Shade { glass: true, ..Shade::default() }),
+                shade: glass.then(|| Shade { role: FaceRole::Glass, ..Shade::default() }),
                 specular: None,
                 surface: None,
             },
@@ -292,8 +292,10 @@ fn every_retail_car_has_mirrors() {
     let Some(data) = rbr_formats::data::Data::from_env() else { return };
     let retail = ["XSARA", "ACCENT", "ZR", "LANCER_EVO_VII", "PEUGEOT_206", "IMPREZA03", "COROLLA", "IMPREZA00"];
     for name in retail {
-        let interior = crate::car::load_interior(&data, name, crate::car::placement_at(None)).unwrap();
-        let exterior = crate::car::load(&data, name, crate::car::placement_at(None)).unwrap();
+        let interior =
+            crate::car::load(&data, name, crate::car::placement_at(None), crate::car::Set::Interior, false).unwrap();
+        let exterior =
+            crate::car::load(&data, name, crate::car::placement_at(None), crate::car::Set::Exterior, false).unwrap();
         let (lo, hi) = exterior.bounds().unwrap();
         let mounts = crate::views::Mounts::load(&data, name, lo, hi, &exterior.meshes, &interior.meshes).unwrap();
         let found = find(&interior.meshes, &interior.damage, mounts.cockpit.eye);

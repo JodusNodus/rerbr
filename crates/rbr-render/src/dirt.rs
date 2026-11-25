@@ -52,7 +52,7 @@ pub fn grime(part: &str, shader: &str) -> u8 {
     GRIME.iter().find(|(name, _)| *name == part).map_or(0, |&(_, share)| share)
 }
 
-/// Whether a car part takes a dirt spatter with the surfaces' dirt (ours, `Shade::spatter`): the wheels and what hangs
+/// Whether a car part takes a dirt spatter with the surfaces' dirt (ours, `FaceRole::Wheel`): the wheels and what hangs
 /// by them (`e_wheel_*`, `e_wheelsusp_*`, ...) and the mud flaps, by name, as the cars' classes and dirt maps for them
 /// vary (the 208 Rally4's wheels are `CarPlastic` and `CarRim`, its `TireDirt` map is empty, as a third of the RSF
 /// cars' are).
