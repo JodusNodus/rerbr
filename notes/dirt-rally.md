@@ -419,7 +419,9 @@ without `--livery`; the class is required: it is in the game's database, not in 
     (`int_indicator`, unlit); the alpha and netting shaders' alpha is their opacity (`_alpha` keys). `carbon fibre`'s UVs lie on the atlas's
     occlusion layout (they showed knobs and decals on the dash top): it draws the weave `int_carbon_diff` with the UVs times its `CarbonUVRepeat`
     (the Escort 500, most cars 300). Not drawn: `lcd_text` by its font (the working displays below give
-    those quads a texture of their own) and `interior glass windows`. The two mirrors (`int_reflection_m`, `_r`) are parts named `i_mirrorglass_m` and `_r` in the glass class with a flat texel,
+    those quads a texture of their own). `interior glass windows` (`interior_windscreen.fx`) is `CarIntGlass` with `TDiffuseAlphaMap` (the frit
+    border, the tint band, smears in the alpha) and `TDustMap`'s red laid over it, 0.25 of the way in a grey brown (`car_maps::windscreen`; DiRT
+    raises the dust as the car runs, ours is fixed); the outside copy leaves it out, the body's glass is the windows there. The two mirrors (`int_reflection_m`, `_r`) are parts named `i_mirrorglass_m` and `_r` in the glass class with a flat texel,
     which `rbr-render`'s mirrors pass takes as glass: `--mirrors 1` shows the road behind in the centre mirror and the flank in the wing mirror.
   - Sets: `i_internal` and `e_internal` are both this scene (the exterior file's `Cabin` material is DiRT's low-detail copy and is used only for a car
     without an interior file); the outside copy drops the triangles above the windscreen's top or beyond the side windows, 1 cm on (`clip`, `within_body`; the
@@ -435,8 +437,11 @@ without `--livery`; the class is required: it is in the game's database, not in 
 - Cockpit against DiRT (2026-11-24, cme, a DiRT head-cam video frame): at the same field of view (the video's is DiRT's widest, 70
   degrees up and down, `--fov 102` across) the framing, dash, cage, door bars, wheel and mirrors match. The eye ends 0.65 m behind the wheel
   (`WHEEL_BEHIND`) against DiRT's head-cam's 0.61 m (`position` z -0.32, wheel 0.29). In sun (`--weather dry --clouds clear`) the dash, roof and
-  wheel are as dark as DiRT's. In Gabiria's haze the cabin is greyer, from the ambient light; a full-strength interior occlusion changed it by
-  under 3 %. Not DiRT's: the driver's arms (ours with `driver = on`, `camera_prefs`), nothing more on the dash (the digits, bars and lamps work, `gauges.rs`).
+  wheel are as dark as DiRT's. In Gabiria's haze the cabin is greyer, from the ambient light.
+- Cockpits against DiRT screenshots in sun (2026-11-25, ffr, m3r, ers, 15:00): textures match. The interior occlusion is baked at full strength
+  (`INTERIOR_OCCLUSION` 1.0, was 0.5): the footwell and under the dash darken; the lower third's mean grey went 56 to 53 (ffr, DiRT 34), 53 to 48
+  (m3r, DiRT 57), 47 to 43 (ers, DiRT 31). The rest is the renderer's cabin exposure (`CABIN_STOPS`, shared with every car, unchanged) and no sun
+  patches inside the cabin. Not DiRT's: the driver's arms (ours with `driver = on`, `camera_prefs`), nothing more on the dash (the digits, bars and lamps work, `gauges.rs`).
 - Steering wheel: `x0_steering_wheel` becomes `i_steeringwheel` and `e_steeringwheel`, node at the hub, local axes from the part's rows (x, y and the
   z column negated for the mirrored local vertices; the same sense as the template's matrix, so the renderer's `wheel_turn` turns it the right way).
   Cockpit, bonnet and bumper cameras: DiRT's `cameras.xml` (BXML, `rbr-dirt-rally xml FILE`) views `head-cam` (`position`), `bumper` and `bonnet`
@@ -518,12 +523,12 @@ without `--livery`; the class is required: it is in the game's database, not in 
     its rpm, the digits at its km/h, the shift light lit past 7900 (night, 8.5 thousand rpm), the limit light at 8900 not yet.
   - The rear bulkhead (`int_main`) shows from outside through the rear quarter glass as a flat dark panel with sharp edges; it is DiRT's geometry,
     which DiRT never draws from outside.
-- Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's dust and cracks, the oil and trip LCDs (static), the damage
+- Not done: doors and hoods as their own hinged or damageable parts (no dents), the interior's wipers and the glass's cracks (its dust is fixed), the oil and trip LCDs (static), the damage
   crumple normals (below), `pc_e_window_*` cracks, the lower LOD; for the other cars: a template of their own model
   (the physics), the class from the game's database.
 - Checked: loads with 0 missing textures and 0 bad triangles, 18 unit tests (the written mesh parses back, a helper node mirrors, material to class
   for both files, lamp parts' switch boxes, a settings key set in its section, the template's night option written, the config's active nodes, a part taken into
-  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the displays read from the scene's nodes, their pack reading as an RBRHUD pack with every sprite on its sheet, a bar as one mask value's texels, an LED font at full hue, the sheet's rows, images cropping and stretching), the whole crate's 100 tests (with the needles' turn between two placements and the analog displays read) (the added car's section and the match table, with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
+  its own space, the outside clip, the vertex split, the cockpit eye ahead of the head, the displays read from the scene's nodes, their pack reading as an RBRHUD pack with every sprite on its sheet, a bar as one mask value's texels, an LED font at full hue, the sheet's rows, images cropping and stretching), the whole crate's 100 tests (with the needles' turn between two placements and the analog displays read) (the added car's section and the match table, with the maps below: occlusion factor, plane lookup, BC7 output, normal repack and its swizzle, the materials' maps from their constants, the interior's from its bindings (the windscreen's with its dust) and an atlas's maps merged, a separate brake lens, the clip from the glass, the shaders file's bump bitmaps); stills of the car alone, on `track-20_N` at the start and in a
   live autopilot drive (cockpit with the DiRT dash, wheel, gauges, cage, door card, mirrors and eye, bonnet, bumper and chase; side and front from outside; day
   and night, brake lamps lit and unlit; Ultra settings and `--mirrors 1`). Developer commands: `pssg-tree FILE [DEPTH]`, `car-texture PSSG NAME OUT.dds`,
   `car-info` on `int_<car>.pssg`. Gauge stills: the needle at idle, 7.3 and 8.8 thousand rpm, the speed digits 0, 18, 31, 45, 60 km/h, day and night (`--clock 22:30`). Not compared with the game: DiRT's shaders (`carpaint_metallic.fx`) are not ported, the paint is RBR's `CarPaint`.

@@ -49,6 +49,31 @@ fn kept(ao: f32, scale: f32) -> f32 {
     (1.0 - scale * (1.0 - ao)).powf(1.0 / 2.2)
 }
 
+/// How much of a windscreen's dust map is on it: the start of a stage, before the road's dust builds up (DiRT raises
+/// it as the car runs; ours is fixed).
+const DUST: f32 = 0.25;
+/// The dust's colour, a light grey brown.
+const DUST_COLOUR: [f32; 3] = [150.0, 140.0, 125.0];
+
+/// A windscreen's inside (`interior_windscreen.fx`): `glass` (its colour, and its alpha: the frit border, the tint band,
+/// faint smears) with `dust` (the grime the wipers clear, its red) over it, [`DUST`] of the way, in [`DUST_COLOUR`].
+pub fn windscreen(glass: &Texture, dust: &Plane) -> Vec<u8> {
+    let (width, height) = (glass.width as usize, glass.height as usize);
+    let mut rgba = glass.rgba();
+    for (i, p) in rgba.chunks_exact_mut(4).enumerate() {
+        let a = f32::from(p[3]) / 255.0;
+        let d = f32::from(dust.at(i % width, i / width, width, height)) / 255.0 * DUST * (1.0 - a);
+        let out = a + d;
+        if out > 0.0 {
+            for (c, dust) in p[..3].iter_mut().zip(DUST_COLOUR) {
+                *c = ((f32::from(*c) * a + dust * d) / out).round() as u8;
+            }
+        }
+        p[3] = (out * 255.0).round() as u8;
+    }
+    encode_bc7(true, glass.width, glass.height, rgba)
+}
+
 /// `diffuse` with `occlusion` baked into them and `specular` as its alpha: the plane over
 /// `reference`, the specular of the material's plain finish, which keeps its alpha at 1 (a bare metal, brighter,
 /// does too: the clear coat does not reflect more than it). Without a specular map the alpha is the texture's.

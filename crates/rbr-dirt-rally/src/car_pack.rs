@@ -80,6 +80,8 @@ struct Maps {
     /// The backlight by night (the interior's `TEmissiveMap`: the dials' and lamps' `_on` maps), written as the texture's
     /// glow map (`<file>_glow.dds`, `rbr-render`'s car textures).
     emissive: Option<Source>,
+    /// The grime on a windscreen's inside (`TDustMap`), laid over its texture (`car_maps::windscreen`).
+    dust: Option<Source>,
 }
 
 /// Where a texture comes from.
@@ -171,7 +173,7 @@ fn exterior_style(car: &str, m: &Material) -> Option<Style> {
             crumpled: true,
             occlusion: Some((own("specocc"), 3, occlusion)),
             specular: Some((own("specocc"), 1, FULL_SPECULAR)),
-            emissive: None,
+            ..Maps::default()
         };
         Style { maps, ..Style::new(shader, format!("main{:.0}", occlusion * 100.0), own("main")) }
     };
@@ -220,7 +222,7 @@ fn lit_styles(car: &str, exterior: &BTreeMap<String, Style>, lit_map: bool) -> B
 
 /// The occlusion the interior's own maps put in its colours. The game's `OcclusionMapScale` is 1 there, on the ambient
 /// light alone (which the dash takes from the sky it sees, `rbr-render`'s cabin light), so the bake takes a part of it.
-const INTERIOR_OCCLUSION: f32 = 0.5;
+const INTERIOR_OCCLUSION: f32 = 1.0;
 
 /// What a material of the interior scene draws as, by its shader and the textures it binds (surveyed on the 46 cars):
 /// its diffuse (`TDiffuseAlphaMap`), with the normal, occlusion and specular maps that are the car's own (`int_<car>_nm`,
@@ -228,15 +230,22 @@ const INTERIOR_OCCLUSION: f32 = 0.5;
 /// `OcclusionMapScale` does not turn off. The alpha and netting shaders' alpha is their opacity. The carbon fibre's UVs
 /// lie on the atlas's lightmap layout, not on a picture of carbon: it draws the weave (`TCarbonDiffuseMap`) repeated
 /// `CarbonUVRepeat` times over them, as DiRT's shader does. The displays' digits (`lcd_text`, a font the game scrolls)
-/// are not drawn by their material, as a working display's faces take a texture of their own ([`gauges`]); nor is the
-/// glass. The mirrors' glass (which the game draws as a texture of what is behind) is the renderer's glass class on a
+/// are not drawn by their material, as a working display's faces take a texture of their own ([`gauges`]). The glass's
+/// inside (`interior_windscreen`: the frit border, the tint band, faint smears) is the template's cockpit glass,
+/// `CarIntGlass`, with its dust map laid over it. The mirrors' glass (which the game draws as a texture of what is behind) is the renderer's glass class on a
 /// flat texel: it shows the surroundings by the part's name (`i_mirrorglass_*`, `rbr-render`'s `mirrors`).
 fn interior_style(car: &str, m: &Material) -> Option<Style> {
     let bound = |input: &str| m.textures.get(input).map(|t| t.trim_start_matches('#').to_owned());
     let own = |input: &str| bound(input).filter(|t| !t.starts_with("int_gen_")).map(Source::Interior);
     let style = |key: String, texture| Style::new("CarTextureNoDirt", key, texture);
     match m.shader.as_str() {
-        "interior_windscreen.fx" | "lcd_text.fx" => None,
+        "lcd_text.fx" => None,
+        "interior_windscreen.fx" => {
+            let texture = bound("TDiffuseAlphaMap")?;
+            let maps = Maps { dust: own("TDustMap"), ..Maps::default() };
+            let style = style(interior_key(car, &texture), Source::Interior(texture));
+            Some(Style { shader: "CarIntGlass", opacity: true, maps, ..style })
+        }
         "mirror.fx" => {
             Some(Style { shader: "CarGlass", ..style("int_mirror".into(), Source::Interior("int_gen_sp.tga".into())) })
         }
@@ -255,6 +264,7 @@ fn interior_style(car: &str, m: &Material) -> Option<Style> {
                 occlusion: occlusion.map(|map| (map, 0, INTERIOR_OCCLUSION)),
                 specular: own("TSpecularMap").filter(|_| !opacity).map(|map| (map, 0, FULL_SPECULAR)),
                 emissive: own("TEmissiveMap"),
+                dust: None,
             };
             let key = interior_key(car, &texture) + if opacity { "_alpha" } else { "" };
             Some(Style { opacity, maps, ..style(key, Source::Interior(texture)) })
@@ -664,7 +674,10 @@ impl Model<'_> {
             drawn.iter().map(|(i, m)| (c.clip.map_or_else(|| (*i).clone(), |clip| within_body(i, clip)), *m)).collect();
         out.extend(split(
             "e_internal",
-            displays_last(faces(clipped.iter().map(|(i, m)| (i, *m)), &self.frame, self.interior, |_| true)),
+            // Not the windscreen's inside: from outside the body's own glass is the windows.
+            displays_last(faces(clipped.iter().map(|(i, m)| (i, *m)), &self.frame, self.interior, |m| {
+                self.interior.get(m).is_none_or(|s| s.shader != "CarIntGlass")
+            })),
         ));
         for (node, name) in MIRRORS {
             for p in c.scene.iter().filter(|p| p.name == node) {
@@ -1105,6 +1118,9 @@ impl Library {
     /// its maps have them, else its blocks as they are.
     fn diffuse(&self, style: &Style) -> Result<Vec<u8>, String> {
         let texture = self.find(&style.texture)?;
+        if let Some(dust) = &style.maps.dust {
+            return Ok(car_maps::windscreen(&texture, &Plane::of(&self.find(dust)?, 0)));
+        }
         let plane = |map: &Option<(Source, usize, f32)>| {
             map.as_ref()
                 .map(|(source, channel, value)| Ok::<_, String>((Plane::of(&self.find(source)?, *channel), *value)))
@@ -1585,6 +1601,11 @@ mod tests {
             style(&material("carbon fibre", "interior_carbon.fx", &carbon, &[("CarbonUVRepeat", 300.0)])).unwrap();
         assert!(weave.key == "int_carbon_diff" && weave.repeat == 300.0 && weave.maps.occlusion.is_none());
         assert_eq!(style(&material("mirror", "mirror.fx", &[], &[])).map(|s| s.shader), Some("CarGlass"));
+        // The windscreen's inside: its border, band and smears with the grime laid over, see-through.
+        let glass = [("TDiffuseAlphaMap", "int_cme_glass.tga"), ("TDustMap", "int_cme_glass_m1.tga")];
+        let screen = style(&material("interior glass windows", "interior_windscreen.fx", &glass, &[])).unwrap();
+        assert!(screen.shader == "CarIntGlass" && screen.key == "int_glass" && screen.opacity);
+        assert_eq!(screen.maps.dust, Some(Source::Interior("int_cme_glass_m1.tga".into())));
         assert!(style(&material("interior glass windows", "interior_windscreen.fx", &[], &[])).is_none());
         // The digits are drawn by the displays' own textures (`gauges`), not by the font.
         assert!(style(&material("digital speedometer", "lcd_text.fx", &[], &[])).is_none());
