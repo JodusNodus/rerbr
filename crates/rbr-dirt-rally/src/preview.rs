@@ -21,13 +21,22 @@ const WINDOW: f64 = 40.0;
 /// The share of the course at each end left out (the start line and the finish).
 const MARGIN: f64 = 0.08;
 /// How far before the apex (m, along the road) and how far above it the eye stands.
-const BACK: f64 = 100.0;
+const BACK: f64 = 60.0;
 /// Bends taken are this far apart (m along the course).
 const APART: f64 = 300.0;
+/// The stretch of road (m either side of the apex) that must show, and the share of it that may be hidden.
+const ROAD: f64 = 20.0;
+const HIDDEN: f64 = 0.5;
+/// A road point is seen when the luma's spread over the 9 by 9 pixels around it is at most this (foliage is busier).
+const SMOOTH: f64 = 16.0;
+/// The camera's horizontal field of view (degrees) and the picture's size.
+const FOV: f64 = 50.0;
+const WIDTH: f64 = 1920.0;
+const HEIGHT_PX: f64 = 1080.0;
 /// Candidates tried before the least dark is kept, and the dark share ([`dark_share`]) that is too much.
 const TRIES: usize = 5;
 const DARK: f64 = 0.02;
-const HEIGHT: f64 = 28.0;
+const HEIGHT: f64 = 14.0;
 
 /// A driveline point: scene position `(x, height, z)` and the distance along the stage (m).
 type Point = ([f64; 3], f64);
@@ -49,11 +58,19 @@ pub fn driveline(text: &str) -> Vec<Point> {
         .collect()
 }
 
+/// A bend to shoot: the eye, the apex it looks at and the road's centre line [`ROAD`] m either side of the apex.
+#[derive(Debug, Clone)]
+pub struct Bend {
+    pub eye: [f64; 3],
+    pub target: [f64; 3],
+    pub road: Vec<[f64; 3]>,
+}
+
 /// The eye and the point it looks at for each of the course's bends, tightest first: a bend's turn is the change of
 /// plan heading over [`WINDOW`] m either side of a point outside the [`MARGIN`] of the course's ends; the points are taken
 /// by turn (the lower distance on a tie), none within [`APART`] m along the course of one taken. The eye stands on the
 /// road [`BACK`] m before the apex, [`HEIGHT`] m above it, the apex is what it looks at.
-pub fn viewpoints(points: &[Point]) -> Vec<([f64; 3], [f64; 3])> {
+pub fn viewpoints(points: &[Point]) -> Vec<Bend> {
     let Some(length) = points.last().map(|p| p.1) else { return Vec::new() };
     let at = |s: f64| points.partition_point(|p| p.1 < s).min(points.len() - 1);
     let heading = |a: usize, b: usize| (points[b].0[2] - points[a].0[2]).atan2(points[b].0[0] - points[a].0[0]);
@@ -75,29 +92,74 @@ pub fn viewpoints(points: &[Point]) -> Vec<([f64; 3], [f64; 3])> {
         .into_iter()
         .map(|i| {
             let from = points[at((points[i].1 - BACK).max(0.0))].0;
-            ([from[0], from[1] + HEIGHT, from[2]], points[i].0)
+            let s = points[i].1;
+            let road = (at((s - ROAD).max(0.0))..=at(s + ROAD)).map(|k| points[k].0).collect();
+            Bend { eye: [from[0], from[1] + HEIGHT, from[2]], target: points[i].0, road }
         })
         .collect()
 }
 
-/// The share of the picture's top third that is near black (luma under 40): terrain missing past the stage's edge.
-fn dark_share(png: &Path) -> Result<f64, String> {
+/// What the picture shows of a bend: the share of its top third that is dark (luma under 40: terrain missing past the
+/// stage's edge, deep shade) and the share of the road points ([`Bend::road`], projected through the camera) that are
+/// hidden, off the picture or under foliage (a busy 9 by 9 patch, [`SMOOTH`]). The viewer has no depth output and no
+/// switch to leave the trees out, so the road is judged by how smooth the picture is there.
+fn judge(png: &Path, bend: &Bend) -> Result<(f64, f64), String> {
     let file = std::fs::File::open(png).map_err(|e| format!("{}: {e}", png.display()))?;
     let mut reader = png::Decoder::new(std::io::BufReader::new(file)).read_info().map_err(|e| e.to_string())?;
     let mut data = vec![0; reader.output_buffer_size().ok_or("picture too large")?];
     let info = reader.next_frame(&mut data).map_err(|e| e.to_string())?;
-    let channels = info.color_type.samples();
-    let row = info.width as usize * channels;
-    let top = &data[..row * (info.height as usize / 3)];
-    let pixels = top.chunks_exact(channels);
-    let count = pixels.len().max(1) as f64;
-    let dark = pixels
-        .filter(|p| {
-            let (r, g, b) = if channels >= 3 { (p[0], p[1], p[2]) } else { (p[0], p[0], p[0]) };
-            0.2126 * f64::from(r) + 0.7152 * f64::from(g) + 0.0722 * f64::from(b) < 40.0
+    let (w, h, channels) = (info.width as usize, info.height as usize, info.color_type.samples());
+    let rgb = |x: usize, y: usize| {
+        let p = &data[(y * w + x) * channels..];
+        if channels >= 3 {
+            [f64::from(p[0]), f64::from(p[1]), f64::from(p[2])]
+        } else {
+            [f64::from(p[0]); 3]
+        }
+    };
+    let top = w * (h / 3);
+    let dark = (0..top)
+        .filter(|&i| {
+            let [r, g, b] = rgb(i % w, i / w);
+            0.2126 * r + 0.7152 * g + 0.0722 * b < 40.0
         })
         .count();
-    Ok(dark as f64 / count)
+    let (fx, fy, fz) = {
+        let f = [bend.target[0] - bend.eye[0], bend.target[1] - bend.eye[1] - 1.0, bend.target[2] - bend.eye[2]];
+        let n = f.iter().map(|v| v * v).sum::<f64>().sqrt();
+        (f[0] / n, f[1] / n, f[2] / n)
+    };
+    let horizontal = fx.hypot(fz);
+    let right = [fz / horizontal, 0.0, -fx / horizontal];
+    let up = [fy * right[2] - fz * right[1], fz * right[0] - fx * right[2], fx * right[1] - fy * right[0]];
+    let tan = (FOV.to_radians() / 2.0).tan();
+    let seen = bend
+        .road
+        .iter()
+        .filter(|p| {
+            let d = [p[0] - bend.eye[0], p[1] - bend.eye[1], p[2] - bend.eye[2]];
+            let dot = |v: [f64; 3]| d[0] * v[0] + d[1] * v[1] + d[2] * v[2];
+            let depth = dot([fx, fy, fz]);
+            if depth < 1.0 {
+                return false;
+            }
+            let x = (dot(right) / depth / tan + 1.0) / 2.0 * WIDTH;
+            let y = (1.0 - dot(up) / depth / (tan * WIDTH / HEIGHT_PX)) / 2.0 * HEIGHT_PX;
+            if !(2.0..WIDTH - 3.0).contains(&x) || !(2.0..HEIGHT_PX - 3.0).contains(&y) {
+                return false;
+            }
+            let (x, y) = (x.clamp(4.0, WIDTH - 5.0) as usize, y.clamp(4.0, HEIGHT_PX - 5.0) as usize);
+            let (mut m, mut sq) = (0.0, 0.0);
+            for (dx, dy) in (0..81).map(|k| (k % 9, k / 9)) {
+                let c = rgb(x + dx - 4, y + dy - 4);
+                let l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+                m += l / 81.0;
+                sq += l * l / 81.0;
+            }
+            (sq - m * m).max(0.0).sqrt() <= SMOOTH
+        })
+        .count();
+    Ok((dark as f64 / top.max(1) as f64, 1.0 - seen as f64 / bend.road.len().max(1) as f64))
 }
 
 /// The route's number from `dr-conversion.json` (`greece/ghymno_rally_01/route_1`): odd is the reverse.
@@ -150,14 +212,14 @@ pub fn render(folder: &Path, viewer: &Path, maps: &Path, scratch: &Path) -> Resu
     // A reverse route starts at the second bend, so it does not show its forward's.
     let first = usize::from(route_number(folder).is_some_and(|n| n % 2 == 1) && bends.len() > 1);
     let mut best: Option<(f64, PathBuf)> = None;
-    for (n, (eye, target)) in bends.iter().skip(first).take(TRIES).enumerate() {
+    for (n, bend) in bends.iter().skip(first).take(TRIES).enumerate() {
         let png = scratch.join(format!("try-{n}.png"));
-        shoot(viewer, &stage, &png, *eye, *target, weather(&ini))?;
-        let dark = dark_share(&png)?;
-        if best.as_ref().is_none_or(|b| dark < b.0) {
-            best = Some((dark, png));
+        shoot(viewer, &stage, &png, bend.eye, bend.target, weather(&ini))?;
+        let (dark, hidden) = judge(&png, bend)?;
+        if best.as_ref().is_none_or(|b| dark + hidden < b.0) {
+            best = Some((dark + hidden, png));
         }
-        if dark <= DARK {
+        if dark <= DARK && hidden <= HIDDEN {
             break;
         }
     }
@@ -183,7 +245,7 @@ fn shoot(
     let mut command = Command::new(viewer);
     command
         .arg(stage)
-        .args(["--camera", &camera.join(","), "--size", SIZE, "--clock", "13:00", "--no-hud"])
+        .args(["--camera", &camera.join(","), "--size", SIZE, "--fov", "50", "--clock", "13:00", "--no-hud"])
         .args(["--enhance", "all,grass", "--detail", "ultra", "--anti-aliasing", "taa", "--reflections", "high"])
         .arg("--screenshot")
         .arg(png);
@@ -241,7 +303,7 @@ mod tests {
             z += 2.5 * heading.sin();
         }
         let bends = viewpoints(&points);
-        let (eye, target) = bends[0];
+        let (eye, target) = (bends[0].eye, bends[0].target);
         // The next bend is 300 m or more along the course from the first.
         assert!(bends.len() > 1);
         let apex = points[810].0;
