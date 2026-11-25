@@ -99,15 +99,16 @@ pub fn normal(map: &Texture, crumpled: bool) -> Vec<u8> {
     encode_bc7(false, map.width, map.height, repacked(map, crumpled))
 }
 
-/// The carbon weave's direction map (`TCarbonVectorMap`: the direction is its red and blue, `*2-1`) as the renderer's bump
-/// slot reads it: red as it is and green the blue, BC7.
+/// The carbon weave's direction map (`TCarbonVectorMap`: the direction is its red and blue, `*2-1`, on the interior's
+/// tangent and binormal) as the renderer's bump slot reads it: red as it is and green the blue flipped, as [`normal`]
+/// flips a DiRT normal map's green (the binormal runs up the image), BC7.
 pub fn direction(map: &Texture) -> Vec<u8> {
     encode_bc7(false, map.width, map.height, directions(map))
 }
 
 fn directions(map: &Texture) -> Vec<u8> {
     let mut rgba = map.rgba();
-    rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[3]) = (p[2], 255));
+    rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[3]) = (255 - p[2], 255));
     rgba
 }
 
@@ -251,10 +252,10 @@ mod tests {
     }
 
     #[test]
-    fn a_direction_map_keeps_red_and_copies_blue_to_green() {
+    fn a_direction_map_keeps_red_and_takes_blue_flipped_as_green() {
         let map = dxt1_of(8, 8, [248, 8, 200]);
         let texel = &directions(&map)[..4];
-        assert!(texel[0].abs_diff(248) <= 8 && texel[1].abs_diff(200) <= 8 && texel[3] == 255, "{texel:?}");
+        assert!(texel[0].abs_diff(248) <= 8 && texel[1].abs_diff(55) <= 8 && texel[3] == 255, "{texel:?}");
         assert_eq!(&direction(&map)[84..88], b"DX10");
     }
 
