@@ -4,7 +4,7 @@
 //! choosing the options a person would otherwise pick after a failure, and reports through a `Control`.
 //! Nothing here prints, reads the environment or exits the process.
 use crate::assetto::stage::{self, source_path, Input, Options, Report};
-use crate::btb::{control::Control, control::CANCELLED, stage::CELL_LIMIT};
+use rbr_btb_writer::{control::Control, control::CANCELLED, stage::CELL_LIMIT};
 use std::fmt;
 use std::path::{Path, PathBuf};
 

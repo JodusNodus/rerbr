@@ -46,11 +46,11 @@ const BRAKE: f64 = 10.0;
 const G: f64 = 9.81;
 /// The arm of the slope differences, in points either side.
 const VERTICAL_ARM: usize = 6;
-/// The arm of the heading and slope differences, in points either side.
-const ARM: usize = 4;
+/// The arm of the heading differences, in points either side.
+pub const ARM: usize = 4;
 /// A distance key follows a note this far after it when the next note is at least [`ROOM`] metres on.
-const DISTANCE_AFTER: f64 = 0.1;
-const ROOM: f64 = 30.0;
+pub const DISTANCE_AFTER: f64 = 0.1;
+pub const ROOM: f64 = 30.0;
 
 pub const TAG_CREST: u32 = 16;
 pub const TAG_JUMP: u32 = 20;
@@ -159,19 +159,24 @@ pub fn notes(points: &[[f64; 3]], at: &[f64], from: f64, to: f64) -> Vec<Note> {
         out.push(Note { tag, flags: 0, distance: at[top] });
     }
     out.sort_by(|a, b| a.distance.total_cmp(&b.distance));
-    let mut with_distances = Vec::with_capacity(out.len() * 2);
-    for (k, note) in out.iter().enumerate() {
-        with_distances.push(*note);
-        let next = out.get(k + 1).map_or(to, |m| m.distance);
+    with_distance_keys(&out, to)
+}
+
+/// `notes` (sorted) each followed by a distance key where the next note, or `to`, is at least [`ROOM`] on.
+pub fn with_distance_keys(notes: &[Note], to: f64) -> Vec<Note> {
+    let mut out = Vec::with_capacity(notes.len() * 2);
+    for (k, note) in notes.iter().enumerate() {
+        out.push(*note);
+        let next = notes.get(k + 1).map_or(to, |m| m.distance);
         if next - note.distance >= ROOM {
-            with_distances.push(Note { tag: TAG_DISTANCE, flags: 0, distance: note.distance + DISTANCE_AFTER });
+            out.push(Note { tag: TAG_DISTANCE, flags: 0, distance: note.distance + DISTANCE_AFTER });
         }
     }
-    with_distances
+    out
 }
 
 /// An angle into -pi..pi.
-fn wrap(a: f64) -> f64 {
+pub fn wrap(a: f64) -> f64 {
     (a + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI
 }
 

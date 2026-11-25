@@ -1,6 +1,6 @@
 //! The import interface over the synthetic track: discovery, automatic options, cancellation.
-use rbr_ac_tracks::btb::control::Control;
 use rbr_ac_tracks::import::{self, Error, Request, Status};
+use rbr_btb_writer::control::Control;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

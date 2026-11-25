@@ -2331,13 +2331,11 @@ dependencies = [
 name = "rbr-ac-tracks"
 version = "0.1.0"
 dependencies = [
- "bcdec_rs",
- "intel_tex_2",
  "rbr-ac-tracks",
  "rbr-btb",
+ "rbr-btb-writer",
  "rbr-formats",
  "serde_json",
- "texpresso",
  "zip",
 ]
 
@@ -2353,6 +2351,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-btb-writer"
+version = "0.1.0"
+dependencies = [
+ "bcdec_rs",
+ "intel_tex_2",
+ "rbr-btb",
+ "rbr-formats",
+ "serde_json",
+ "texpresso",
+ "zip",
+]
+
+[[package]]
 name = "rbr-counters"
 version = "0.1.0"
 dependencies = [
@@ -2365,8 +2376,8 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "png",
- "rbr-ac-tracks",
  "rbr-btb",
+ "rbr-btb-writer",
  "rbr-formats",
  "serde_json",
  "texpresso",
@@ -2413,6 +2424,7 @@ dependencies = [
  "rars",
  "rbr-ac-tracks",
  "rbr-btb",
+ "rbr-btb-writer",
  "rbr-dirt-rally",
  "rbr-formats",
  "rbr-gameplay",

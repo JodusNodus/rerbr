@@ -10,8 +10,9 @@ pub struct Line {
     pub width: Vec<f64>,
 }
 
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+/// The straight distance between two points.
+pub fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f64>().sqrt()
 }
 
 impl Line {
@@ -20,7 +21,7 @@ impl Line {
         let mut s = 0.0;
         for (i, p) in points.iter().enumerate() {
             if i > 0 {
-                s += dist(points[i - 1], *p);
+                s += distance(points[i - 1], *p);
             }
             at.push(s);
         }
@@ -37,7 +38,7 @@ impl Line {
         let (a, b) = (self.points[i - 1], self.points[i]);
         let span = (self.at[i] - self.at[i - 1]).max(1e-9);
         let t = ((s - self.at[i - 1]) / span).clamp(0.0, 1.0);
-        let d = dist(a, b).max(1e-9);
+        let d = distance(a, b).max(1e-9);
         (
             [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t],
             [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d],
@@ -67,6 +68,22 @@ impl Line {
         }
         Line::new(points, width)
     }
+}
+
+/// Project in plan, since timing gates can sit below the road surface.
+pub fn project(line: &Line, p: [f64; 3]) -> (f64, f64) {
+    let mut best = (0., f64::MAX);
+    for i in 1..line.points.len() {
+        let (a, b) = (line.points[i - 1], line.points[i]);
+        let v = [b[0] - a[0], b[1] - a[1]];
+        let den = v[0] * v[0] + v[1] * v[1];
+        let t = if den > 1e-9 { (((p[0] - a[0]) * v[0] + (p[1] - a[1]) * v[1]) / den).clamp(0., 1.) } else { 0. };
+        let d = (p[0] - a[0] - t * v[0]).hypot(p[1] - a[1] - t * v[1]);
+        if d < best.1 {
+            best = (line.at[i - 1] + t * (line.at[i] - line.at[i - 1]), d);
+        }
+    }
+    best
 }
 
 #[cfg(test)]

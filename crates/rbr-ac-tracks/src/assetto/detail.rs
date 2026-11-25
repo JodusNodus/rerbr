@@ -5,7 +5,7 @@
 //! diffuse is baked at the detail's resolution; the detail is periodic in it when the multiplier is a whole number.
 use crate::assetto::kn5::Model;
 use crate::assetto::multilayer::{fit, sample, texture};
-use crate::btb::textures::Image;
+use rbr_btb_writer::textures::Image;
 
 /// The largest side of a detail bake: four times the usual 1024 px road diffuse, 8 MB as DXT1.
 const LIMIT: u32 = 4096;

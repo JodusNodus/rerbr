@@ -208,7 +208,7 @@ pub fn render(folder: &Path, viewer: &Path, maps: &Path, scratch: &Path) -> Resu
     let bends = viewpoints(&driveline(&read("driveline.ini")?));
     let ini = read("track.ini")?;
     let _ = std::fs::remove_dir_all(scratch);
-    let stage = rbr_ac_tracks::btb::stage::prepare(folder, &scratch.join("prepared"), Some(maps))?;
+    let stage = rbr_btb_writer::stage::prepare(folder, &scratch.join("prepared"), Some(maps))?;
     // A reverse route starts at the second bend, so it does not show its forward's.
     let first = usize::from(route_number(folder).is_some_and(|n| n % 2 == 1) && bends.len() > 1);
     let mut best: Option<(f64, PathBuf)> = None;

@@ -123,7 +123,7 @@ impl Texture {
     pub fn normal_dds(&self) -> Vec<u8> {
         let mut rgba = self.rgba();
         rgba.chunks_exact_mut(4).for_each(|p| (p[0], p[1], p[2], p[3]) = (p[3], 255 - p[1], 255, 255));
-        rbr_ac_tracks::btb::textures::encode(false, self.width, self.height, rgba)
+        rbr_btb_writer::textures::encode(false, self.width, self.height, rgba)
     }
 
     /// A specular map (`TSpecularMap`: red the intensity) as a grey `.dds`, which the renderer's highlight takes
@@ -131,7 +131,7 @@ impl Texture {
     pub fn specular_dds(&self) -> Vec<u8> {
         let mut rgba = self.rgba();
         rgba.chunks_exact_mut(4).for_each(|p| (p[1], p[2], p[3]) = (p[0], p[0], 255));
-        rbr_ac_tracks::btb::textures::encode(false, self.width, self.height, rgba)
+        rbr_btb_writer::textures::encode(false, self.width, self.height, rgba)
     }
 }
 

@@ -6,10 +6,12 @@
 //! degrees on average for angles 15, 30, 40, 50, 65, 100 and 140). Subcalls of other types are not decoded and leave no
 //! note (`notes/dirt-rally.md`).
 use crate::route::Call;
-use rbr_ac_tracks::btb::pacenotes::{self as graded, Note, TAG_CREST, TAG_DISTANCE, TAG_JUMP};
+use rbr_btb_writer::pacenotes::{self as graded, wrap, Note, ARM, TAG_CREST, TAG_JUMP};
+#[cfg(test)]
+use rbr_btb_writer::pacenotes::{DISTANCE_AFTER, TAG_DISTANCE};
 
 /// The tag of a corner by its angle, up to the bound (degrees): easy, fast, medium, K, 90 and hairpin, as the left and
-/// the right tag (`rbr_ac_tracks::btb::pacenotes::GRADES`). The bounds lie between DiRT's own grades, 15, 30, 40 and 50,
+/// the right tag (`rbr_btb_writer::pacenotes::GRADES`). The bounds lie between DiRT's own grades, 15, 30, 40 and 50,
 /// 65, 80 and 100, 140 and 180.
 pub const TURNS: [(f64, u32, u32); 6] =
     [(22.5, 5, 6), (35.0, 4, 7), (57.5, 3, 8), (72.5, 2, 9), (120.0, 1, 10), (f64::INFINITY, 0, 11)];
@@ -17,8 +19,6 @@ pub const TURNS: [(f64, u32, u32); 6] =
 /// A corner is a run of the line bending to one side with a radius of 700 m or less, turning at least this many degrees.
 const MIN_TURN: f64 = 8.0;
 const FLAT: f64 = 1.0 / 700.0;
-/// The arm of the heading difference, in points either side (the converter's own).
-const ARM: usize = 4;
 /// A call can mean a corner that begins this far past its place (and has not ended before it).
 const REACH: f64 = 220.0;
 /// A corner turns at least this fraction of the angle its call gives (the matched ones turn 0.9 to 1.1 times it on average).
@@ -26,9 +26,6 @@ const SMALLEST: f64 = 0.3;
 /// Where a corner call goes when no corner is near: this far past the call, [`LEAD`] unless the route's matched calls
 /// say otherwise (the lead follows the stage's speed: its median is 60 to 100 m on most, 150 m on Ouninpohja).
 const LEAD: f64 = 70.0;
-/// A distance key follows a note this far after it when the next note is at least [`ROOM`] metres on.
-const DISTANCE_AFTER: f64 = 0.1;
-const ROOM: f64 = 30.0;
 
 /// A bend of the road line: arc lengths of its first and last point, the turn (degrees), the tightest radius (metres).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,10 +93,6 @@ fn push(out: &mut Vec<Corner>, heading: &[f64], curvature: &[f64], at: &[f64], f
         let tightest = curvature[first..=last].iter().fold(0.0_f64, |m, c| m.max(c.abs()));
         out.push(Corner { start: at[first], end: at[last], left: sign > 0.0, turn, radius: 1.0 / tightest });
     }
-}
-
-fn wrap(a: f64) -> f64 {
-    (a + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI
 }
 
 /// The tag of a corner call of `angle` degrees on the given side.
@@ -179,15 +172,7 @@ pub fn notes(calls: &[Call], points: &[[f64; 3]], at: &[f64], from: f64, to: f64
         matches!(n.tag, TAG_CREST | TAG_JUMP) && corners.iter().all(|c| (c.distance - n.distance).abs() > NEAR_CORNER)
     }));
     placed.sort_by(|a, b| a.distance.total_cmp(&b.distance));
-    let mut out = Vec::with_capacity(placed.len() * 2);
-    for (k, note) in placed.iter().enumerate() {
-        out.push(*note);
-        let next = placed.get(k + 1).map_or(to, |m| m.distance);
-        if next - note.distance >= ROOM {
-            out.push(Note { tag: TAG_DISTANCE, flags: 0, distance: note.distance + DISTANCE_AFTER });
-        }
-    }
-    out
+    graded::with_distance_keys(&placed, to)
 }
 
 #[cfg(test)]

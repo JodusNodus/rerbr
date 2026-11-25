@@ -1,6 +1,6 @@
 //! AC collides with either side of a physical face; RBR only with its front. Invisible AC wall sheets are
 //! often wound away from the road, so a car would pass straight through them.
-use crate::btb::{
+use rbr_btb_writer::{
     geometry::{Grid, Triangle},
     road::Line,
 };
