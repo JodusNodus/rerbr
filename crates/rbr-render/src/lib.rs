@@ -64,6 +64,7 @@ pub mod skidmarks;
 pub mod skidmarks_pass;
 mod sky_dome;
 mod sky_occlusion;
+mod spec_poc;
 mod skylight;
 pub mod soft_lock;
 pub mod sound;

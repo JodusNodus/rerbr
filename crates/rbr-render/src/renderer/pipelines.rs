@@ -396,6 +396,7 @@ impl Context {
             _ => wgpu::CompareFunction::Always,
         };
         let features = key.features.unwrap_or_default();
+        let spec = crate::spec_poc::overrides();
         let placed_buffers = [Some(vertex_layout()), Some(placed_layout()), Some(header_layout())];
         let (layout, vertex, buffers) = match (key.made, key.placed) {
             (true, _) => {
@@ -469,6 +470,8 @@ impl Context {
                             )),
                         ),
                         ("CUBE_SHIFT", f64::from(self.cube_shift)),
+                        spec[0],
+                        spec[1],
                     ],
                     ..Default::default()
                 },
